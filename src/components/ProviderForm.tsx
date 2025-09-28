@@ -126,6 +126,7 @@ const ProviderForm: React.FC<ProviderFormProps> = ({
   }, [isCodex, initialData]);
 
   const [error, setError] = useState("");
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [useCommonConfig, setUseCommonConfig] = useState(false);
   const [commonConfigSnippet, setCommonConfigSnippet] = useState<string>(() => {
     if (typeof window === "undefined") {
@@ -352,7 +353,12 @@ const ProviderForm: React.FC<ProviderFormProps> = ({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+
+    // 防止重复提交
+    if (isSubmitting) return;
+
     setError("");
+    setIsSubmitting(true);
 
     // 如果是 PackyCode 且未测速，执行自动测速
     if (formData.name.toLowerCase().includes("packycode")) {
@@ -367,6 +373,7 @@ const ProviderForm: React.FC<ProviderFormProps> = ({
 
     if (!formData.name) {
       setError("请填写供应商名称");
+      setIsSubmitting(false);
       return;
     }
 
@@ -377,11 +384,13 @@ const ProviderForm: React.FC<ProviderFormProps> = ({
       setCodexAuthError(currentAuthError);
       if (currentAuthError) {
         setError(currentAuthError);
+        setIsSubmitting(false);
         return;
       }
       // Codex: 仅要求 auth.json 必填；config.toml 可为空
       if (!codexAuth.trim()) {
         setError("请填写 auth.json 配置");
+        setIsSubmitting(false);
         return;
       }
 
@@ -399,6 +408,7 @@ const ProviderForm: React.FC<ProviderFormProps> = ({
                 : "";
             if (!key) {
               setError("请填写 OPENAI_API_KEY");
+              setIsSubmitting(false);
               return;
             }
           }
@@ -410,6 +420,7 @@ const ProviderForm: React.FC<ProviderFormProps> = ({
         };
       } catch (err) {
         setError("auth.json 格式错误，请检查JSON语法");
+        setIsSubmitting(false);
         return;
       }
     } else {
@@ -419,11 +430,13 @@ const ProviderForm: React.FC<ProviderFormProps> = ({
       setSettingsConfigError(currentSettingsError);
       if (currentSettingsError) {
         setError(currentSettingsError);
+        setIsSubmitting(false);
         return;
       }
       // Claude: 原有逻辑
       if (!formData.settingsConfig.trim()) {
         setError("请填写配置内容");
+        setIsSubmitting(false);
         return;
       }
 
@@ -431,17 +444,29 @@ const ProviderForm: React.FC<ProviderFormProps> = ({
         settingsConfig = JSON.parse(formData.settingsConfig);
       } catch (err) {
         setError("配置JSON格式错误，请检查语法");
+        setIsSubmitting(false);
         return;
       }
     }
 
-    onSubmit({
-      name: formData.name,
-      websiteUrl: formData.websiteUrl,
-      settingsConfig,
-      // 仅在用户选择了预设或手动选择“自定义”时持久化分类
-      ...(category ? { category } : {}),
-    });
+    try {
+      await onSubmit({
+        name: formData.name,
+        websiteUrl: formData.websiteUrl,
+        settingsConfig,
+        // 仅在用户选择了预设或手动选择"自定义"时持久化分类
+        ...(category ? { category } : {}),
+      });
+
+      // 提交成功后，onSubmit 通常会关闭模态框
+      // 如果模态框没有关闭，重置状态
+      setIsSubmitting(false);
+    } catch (error) {
+      // 处理未预期的错误
+      console.error("提交失败:", error);
+      setError("提交失败，请稍后重试");
+      setIsSubmitting(false);
+    }
   };
 
   const handleChange = (
@@ -1405,10 +1430,20 @@ const ProviderForm: React.FC<ProviderFormProps> = ({
             </button>
             <button
               type="submit"
-              className="px-4 py-2 bg-blue-500 dark:bg-blue-600 text-white rounded-lg hover:bg-blue-600 dark:hover:bg-blue-700 transition-colors text-sm font-medium flex items-center gap-2"
+              disabled={isSubmitting}
+              className="px-4 py-2 bg-blue-500 dark:bg-blue-600 text-white rounded-lg hover:bg-blue-600 dark:hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors text-sm font-medium flex items-center gap-2"
             >
-              <Save className="w-4 h-4" />
-              {submitText}
+              {isSubmitting ? (
+                <>
+                  <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                  提交中...
+                </>
+              ) : (
+                <>
+                  <Save className="w-4 h-4" />
+                  {submitText}
+                </>
+              )}
             </button>
           </div>
         </form>
