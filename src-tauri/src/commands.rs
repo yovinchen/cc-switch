@@ -720,6 +720,64 @@ pub async fn read_vscode_settings() -> Result<String, String> {
     }
 }
 
+/// PackyCode: 测试所有服务的端点延迟
+#[tauri::command]
+pub async fn test_packycode_endpoints() -> Result<serde_json::Value, String> {
+    use crate::packycode;
+    
+    let services = packycode::get_packycode_services();
+    let mut results = Vec::new();
+    
+    for mut service in services {
+        for endpoint in &mut service.endpoints {
+            match packycode::test_endpoint_latency(&endpoint.url).await {
+                Ok(latency) => {
+                    endpoint.latency = Some(latency);
+                }
+                Err(_) => {
+                    endpoint.latency = None;
+                }
+            }
+        }
+        results.push(serde_json::json!({
+            "name": service.name,
+            "endpoints": service.endpoints,
+        }));
+    }
+    
+    Ok(serde_json::json!(results))
+}
+
+/// PackyCode: 为指定服务选择最佳端点
+#[tauri::command]
+pub async fn select_best_packycode_endpoint(
+    service_name: String,
+) -> Result<serde_json::Value, String> {
+    use crate::packycode;
+    
+    let best = packycode::select_best_endpoint(&service_name).await?;
+    Ok(serde_json::json!({
+        "name": best.name,
+        "url": best.url,
+        "latency": best.latency,
+    }))
+}
+
+/// PackyCode: 测试单个端点的延迟
+#[tauri::command]
+pub async fn test_single_endpoint(url: String) -> Result<serde_json::Value, String> {
+    use crate::packycode;
+    
+    match packycode::test_endpoint_latency(&url).await {
+        Ok(latency) => Ok(serde_json::json!({
+            "latency": latency,
+        })),
+        Err(_) => Ok(serde_json::json!({
+            "latency": null,
+        })),
+    }
+}
+
 /// VS Code: 写入 settings.json 文本（仅当文件存在；不自动创建）
 #[tauri::command]
 pub async fn write_vscode_settings(content: String) -> Result<bool, String> {
