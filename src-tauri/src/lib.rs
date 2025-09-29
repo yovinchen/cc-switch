@@ -397,6 +397,7 @@ pub fn run() {
             commands::test_packycode_endpoints,
             commands::select_best_packycode_endpoint,
             commands::test_single_endpoint,
+            commands::test_endpoints_batch,
             update_tray_menu,
         ]);
 
