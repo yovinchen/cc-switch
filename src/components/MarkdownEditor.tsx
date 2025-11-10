@@ -71,7 +71,7 @@ const MarkdownEditor: React.FC<MarkdownEditorProps> = ({
           if (update.docChanged && onChange) {
             onChange(update.state.doc.toString());
           }
-        })
+        }),
       );
     } else {
       // 只读模式下隐藏光标和高亮行
@@ -80,7 +80,7 @@ const MarkdownEditor: React.FC<MarkdownEditorProps> = ({
           ".cm-cursor, .cm-dropCursor": { border: "none" },
           ".cm-activeLine": { backgroundColor: "transparent !important" },
           ".cm-activeLineGutter": { backgroundColor: "transparent !important" },
-        })
+        }),
       );
     }
 
@@ -107,8 +107,8 @@ const MarkdownEditor: React.FC<MarkdownEditorProps> = ({
               backgroundColor: "#e5e7eb",
             },
           },
-          { dark: false }
-        )
+          { dark: false },
+        ),
       );
     }
 

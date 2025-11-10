@@ -37,14 +37,8 @@ const PromptPanel: React.FC<PromptPanelProps> = ({
     onConfirm: () => void;
   } | null>(null);
 
-  const {
-    prompts,
-    loading,
-    reload,
-    savePrompt,
-    deletePrompt,
-    toggleEnabled,
-  } = usePromptActions(appId);
+  const { prompts, loading, reload, savePrompt, deletePrompt, toggleEnabled } =
+    usePromptActions(appId);
 
   useEffect(() => {
     if (open) reload();
@@ -78,11 +72,7 @@ const PromptPanel: React.FC<PromptPanelProps> = ({
     });
   };
 
-
-  const promptEntries = useMemo(
-    () => Object.entries(prompts),
-    [prompts]
-  );
+  const promptEntries = useMemo(() => Object.entries(prompts), [prompts]);
 
   const enabledPrompt = promptEntries.find(([_, p]) => p.enabled);
 

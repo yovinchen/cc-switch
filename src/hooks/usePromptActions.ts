@@ -7,7 +7,9 @@ export function usePromptActions(appId: AppId) {
   const { t } = useTranslation();
   const [prompts, setPrompts] = useState<Record<string, Prompt>>({});
   const [loading, setLoading] = useState(false);
-  const [currentFileContent, setCurrentFileContent] = useState<string | null>(null);
+  const [currentFileContent, setCurrentFileContent] = useState<string | null>(
+    null,
+  );
 
   const reload = useCallback(async () => {
     setLoading(true);
@@ -40,7 +42,7 @@ export function usePromptActions(appId: AppId) {
         throw error;
       }
     },
-    [appId, reload, t]
+    [appId, reload, t],
   );
 
   const deletePrompt = useCallback(
@@ -54,7 +56,7 @@ export function usePromptActions(appId: AppId) {
         throw error;
       }
     },
-    [appId, reload, t]
+    [appId, reload, t],
   );
 
   const enablePrompt = useCallback(
@@ -68,23 +70,26 @@ export function usePromptActions(appId: AppId) {
         throw error;
       }
     },
-    [appId, reload, t]
+    [appId, reload, t],
   );
 
   const toggleEnabled = useCallback(
     async (id: string, enabled: boolean) => {
       // Optimistic update
       const previousPrompts = prompts;
-      
+
       // 如果要启用当前提示词，先禁用其他所有提示词
       if (enabled) {
-        const updatedPrompts = Object.keys(prompts).reduce((acc, key) => {
-          acc[key] = {
-            ...prompts[key],
-            enabled: key === id,
-          };
-          return acc;
-        }, {} as Record<string, Prompt>);
+        const updatedPrompts = Object.keys(prompts).reduce(
+          (acc, key) => {
+            acc[key] = {
+              ...prompts[key],
+              enabled: key === id,
+            };
+            return acc;
+          },
+          {} as Record<string, Prompt>,
+        );
         setPrompts(updatedPrompts);
       } else {
         setPrompts((prev) => ({
@@ -102,18 +107,23 @@ export function usePromptActions(appId: AppId) {
           toast.success(t("prompts.enableSuccess"));
         } else {
           // 禁用提示词 - 需要后端支持
-          await promptsApi.upsertPrompt(appId, id, { ...prompts[id], enabled: false });
+          await promptsApi.upsertPrompt(appId, id, {
+            ...prompts[id],
+            enabled: false,
+          });
           toast.success(t("prompts.disableSuccess"));
         }
         await reload();
       } catch (error) {
         // Rollback on failure
         setPrompts(previousPrompts);
-        toast.error(enabled ? t("prompts.enableFailed") : t("prompts.disableFailed"));
+        toast.error(
+          enabled ? t("prompts.enableFailed") : t("prompts.disableFailed"),
+        );
         throw error;
       }
     },
-    [appId, prompts, reload, t]
+    [appId, prompts, reload, t],
   );
 
   const importFromFile = useCallback(async () => {
