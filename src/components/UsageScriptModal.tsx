@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { Play, Wand2 } from "lucide-react";
+import { Play, Wand2, Eye, EyeOff } from "lucide-react";
 import { toast } from "sonner";
 import { useTranslation } from "react-i18next";
 import { Provider, UsageScript } from "@/types";
@@ -16,6 +16,9 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Switch } from "@/components/ui/switch";
 
 interface UsageScriptModalProps {
   provider: Provider;
@@ -140,6 +143,10 @@ const UsageScriptModal: React.FC<UsageScriptModalProps> = ({
     },
   );
 
+  // 控制 API Key 的显示/隐藏
+  const [showApiKey, setShowApiKey] = useState(false);
+  const [showAccessToken, setShowAccessToken] = useState(false);
+
   const handleSave = () => {
     // 验证脚本格式
     if (script.enabled && !script.code.trim()) {
@@ -166,6 +173,8 @@ const UsageScriptModal: React.FC<UsageScriptModalProps> = ({
         appId,
         script.code,
         script.timeout,
+        script.apiKey,
+        script.baseUrl,
         script.accessToken,
         script.userId,
       );
@@ -225,23 +234,40 @@ const UsageScriptModal: React.FC<UsageScriptModalProps> = ({
   const handleUsePreset = (presetName: string) => {
     const preset = PRESET_TEMPLATES[presetName];
     if (preset) {
-      // 如果选择的不是 NewAPI 模板，清空高级配置字段
-      if (presetName !== TEMPLATE_KEYS.NEW_API) {
+      // 根据模板类型清空不同的字段
+      if (presetName === TEMPLATE_KEYS.CUSTOM) {
+        // 自定义：清空所有凭证字段
+        setScript({
+          ...script,
+          code: preset,
+          apiKey: undefined,
+          baseUrl: undefined,
+          accessToken: undefined,
+          userId: undefined,
+        });
+      } else if (presetName === TEMPLATE_KEYS.GENERAL) {
+        // 通用：保留 apiKey 和 baseUrl，清空 NewAPI 字段
         setScript({
           ...script,
           code: preset,
           accessToken: undefined,
           userId: undefined,
         });
-      } else {
-        setScript({ ...script, code: preset });
+      } else if (presetName === TEMPLATE_KEYS.NEW_API) {
+        // NewAPI：清空 apiKey（NewAPI 不使用通用的 apiKey）
+        setScript({
+          ...script,
+          code: preset,
+          apiKey: undefined,
+        });
       }
       setSelectedTemplate(presetName); // 记录选择的模板
     }
   };
 
-  // 判断是否应该显示高级配置（仅 NewAPI 模板需要）
-  const shouldShowAdvancedConfig = selectedTemplate === TEMPLATE_KEYS.NEW_API;
+  // 判断是否应该显示凭证配置区域
+  const shouldShowCredentialsConfig =
+    selectedTemplate === TEMPLATE_KEYS.GENERAL || selectedTemplate === TEMPLATE_KEYS.NEW_API;
 
   return (
     <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
@@ -255,27 +281,28 @@ const UsageScriptModal: React.FC<UsageScriptModalProps> = ({
         {/* Content - Scrollable */}
         <div className="flex-1 overflow-y-auto px-6 py-4 space-y-4">
           {/* 启用开关 */}
-          <label className="flex items-center gap-2 cursor-pointer">
-            <input
-              type="checkbox"
+          <div className="flex items-center justify-between gap-4 rounded-lg border border-border-default p-4">
+            <div className="space-y-1">
+              <p className="text-sm font-medium leading-none">
+                {t("usageScript.enableUsageQuery")}
+              </p>
+            </div>
+            <Switch
               checked={script.enabled}
-              onChange={(e) =>
-                setScript({ ...script, enabled: e.target.checked })
+              onCheckedChange={(checked) =>
+                setScript({ ...script, enabled: checked })
               }
-              className="w-4 h-4"
+              aria-label={t("usageScript.enableUsageQuery")}
             />
-            <span className="text-sm font-medium text-gray-900 dark:text-gray-100">
-              {t("usageScript.enableUsageQuery")}
-            </span>
-          </label>
+          </div>
 
           {script.enabled && (
             <>
               {/* 预设模板选择 */}
               <div>
-                <label className="block text-sm font-medium mb-2 text-gray-900 dark:text-gray-100">
+                <Label className="mb-2">
                   {t("usageScript.presetTemplate")}
-                </label>
+                </Label>
                 <div className="flex gap-2">
                   {Object.keys(PRESET_TEMPLATES).map((name) => {
                     const isSelected = selectedTemplate === name;
@@ -296,46 +323,134 @@ const UsageScriptModal: React.FC<UsageScriptModalProps> = ({
                 </div>
               </div>
 
-              {/* 高级配置：Access Token 和 User ID（仅 NewAPI 模板显示） */}
-              {shouldShowAdvancedConfig && (
-                <div className="space-y-3 p-4 bg-gray-50 dark:bg-gray-800/50 rounded-lg">
-                  <label className="block">
-                    <span className="text-xs text-gray-600 dark:text-gray-400">
-                      {t("usageScript.accessToken")}
-                    </span>
-                    <input
-                      type="text"
-                      value={script.accessToken || ""}
-                      onChange={(e) =>
-                        setScript({ ...script, accessToken: e.target.value })
-                      }
-                      placeholder={t("usageScript.accessTokenPlaceholder")}
-                      className="mt-1 w-full px-3 py-2 border border-border-default dark:border-border-default rounded bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 text-sm"
-                    />
-                  </label>
+              {/* 凭证配置区域：通用和 NewAPI 模板显示 */}
+              {shouldShowCredentialsConfig && (
+                <div className="space-y-4 p-4 bg-gray-50 dark:bg-gray-800/50 rounded-lg">
+                  <h4 className="text-sm font-medium text-gray-900 dark:text-gray-100">
+                    {t("usageScript.credentialsConfig")}
+                  </h4>
 
-                  <label className="block">
-                    <span className="text-xs text-gray-600 dark:text-gray-400">
-                      {t("usageScript.userId")}
-                    </span>
-                    <input
-                      type="text"
-                      value={script.userId || ""}
-                      onChange={(e) =>
-                        setScript({ ...script, userId: e.target.value })
-                      }
-                      placeholder={t("usageScript.userIdPlaceholder")}
-                      className="mt-1 w-full px-3 py-2 border border-border-default dark:border-border-default rounded bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 text-sm"
-                    />
-                  </label>
+                  {/* 通用模板：显示 apiKey + baseUrl */}
+                  {selectedTemplate === TEMPLATE_KEYS.GENERAL && (
+                    <>
+                      <div className="space-y-2">
+                        <Label htmlFor="usage-api-key">
+                          API Key
+                        </Label>
+                        <div className="relative">
+                          <Input
+                            id="usage-api-key"
+                            type={showApiKey ? "text" : "password"}
+                            value={script.apiKey || ""}
+                            onChange={(e) =>
+                              setScript({ ...script, apiKey: e.target.value })
+                            }
+                            placeholder="sk-xxxxx"
+                            autoComplete="off"
+                          />
+                          {script.apiKey && (
+                            <button
+                              type="button"
+                              onClick={() => setShowApiKey(!showApiKey)}
+                              className="absolute inset-y-0 right-0 flex items-center pr-3 text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100 transition-colors"
+                              aria-label={showApiKey ? t("apiKeyInput.hide") : t("apiKeyInput.show")}
+                            >
+                              {showApiKey ? <EyeOff size={16} /> : <Eye size={16} />}
+                            </button>
+                          )}
+                        </div>
+                      </div>
+
+                      <div className="space-y-2">
+                        <Label htmlFor="usage-base-url">
+                          Base URL
+                        </Label>
+                        <Input
+                          id="usage-base-url"
+                          type="text"
+                          value={script.baseUrl || ""}
+                          onChange={(e) =>
+                            setScript({ ...script, baseUrl: e.target.value })
+                          }
+                          placeholder="https://api.example.com"
+                          autoComplete="off"
+                        />
+                      </div>
+                    </>
+                  )}
+
+                  {/* NewAPI 模板：显示 baseUrl + accessToken + userId */}
+                  {selectedTemplate === TEMPLATE_KEYS.NEW_API && (
+                    <>
+                      <div className="space-y-2">
+                        <Label htmlFor="usage-newapi-base-url">
+                          Base URL
+                        </Label>
+                        <Input
+                          id="usage-newapi-base-url"
+                          type="text"
+                          value={script.baseUrl || ""}
+                          onChange={(e) =>
+                            setScript({ ...script, baseUrl: e.target.value })
+                          }
+                          placeholder="https://api.newapi.com"
+                          autoComplete="off"
+                        />
+                      </div>
+
+                      <div className="space-y-2">
+                        <Label htmlFor="usage-access-token">
+                          {t("usageScript.accessToken")}
+                        </Label>
+                        <div className="relative">
+                          <Input
+                            id="usage-access-token"
+                            type={showAccessToken ? "text" : "password"}
+                            value={script.accessToken || ""}
+                            onChange={(e) =>
+                              setScript({ ...script, accessToken: e.target.value })
+                            }
+                            placeholder={t("usageScript.accessTokenPlaceholder")}
+                            autoComplete="off"
+                          />
+                          {script.accessToken && (
+                            <button
+                              type="button"
+                              onClick={() => setShowAccessToken(!showAccessToken)}
+                              className="absolute inset-y-0 right-0 flex items-center pr-3 text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100 transition-colors"
+                              aria-label={showAccessToken ? t("apiKeyInput.hide") : t("apiKeyInput.show")}
+                            >
+                              {showAccessToken ? <EyeOff size={16} /> : <Eye size={16} />}
+                            </button>
+                          )}
+                        </div>
+                      </div>
+
+                      <div className="space-y-2">
+                        <Label htmlFor="usage-user-id">
+                          {t("usageScript.userId")}
+                        </Label>
+                        <Input
+                          id="usage-user-id"
+                          type="text"
+                          value={script.userId || ""}
+                          onChange={(e) =>
+                            setScript({ ...script, userId: e.target.value })
+                          }
+                          placeholder={t("usageScript.userIdPlaceholder")}
+                          autoComplete="off"
+                        />
+                      </div>
+                    </>
+                  )}
                 </div>
               )}
 
               {/* 脚本编辑器 */}
               <div>
-                <label className="block text-sm font-medium mb-2 text-gray-900 dark:text-gray-100">
+                <Label className="mb-2">
                   {t("usageScript.queryScript")}
-                </label>
+                </Label>
                 <JsonEditor
                   value={script.code}
                   onChange={(code) => setScript({ ...script, code })}
@@ -352,14 +467,15 @@ const UsageScriptModal: React.FC<UsageScriptModalProps> = ({
 
               {/* 配置选项 */}
               <div className="grid grid-cols-2 gap-4">
-                <label className="block">
-                  <span className="text-sm font-medium text-gray-900 dark:text-gray-100">
+                <div className="space-y-2">
+                  <Label htmlFor="usage-timeout">
                     {t("usageScript.timeoutSeconds")}
-                  </span>
-                  <input
+                  </Label>
+                  <Input
+                    id="usage-timeout"
                     type="number"
-                    min="2"
-                    max="30"
+                    min={2}
+                    max={30}
                     value={script.timeout || 10}
                     onChange={(e) =>
                       setScript({
@@ -367,20 +483,20 @@ const UsageScriptModal: React.FC<UsageScriptModalProps> = ({
                         timeout: parseInt(e.target.value),
                       })
                     }
-                    className="mt-1 w-full px-3 py-2 border border-border-default dark:border-border-default rounded bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100"
                   />
-                </label>
+                </div>
 
                 {/* 🆕 自动查询间隔 */}
-                <label className="block">
-                  <span className="text-sm font-medium text-gray-900 dark:text-gray-100">
+                <div className="space-y-2">
+                  <Label htmlFor="usage-auto-interval">
                     {t("usageScript.autoQueryInterval")}
-                  </span>
-                  <input
+                  </Label>
+                  <Input
+                    id="usage-auto-interval"
                     type="number"
-                    min="0"
-                    max="1440"
-                    step="1"
+                    min={0}
+                    max={1440}
+                    step={1}
                     value={script.autoQueryInterval || 0}
                     onChange={(e) =>
                       setScript({
@@ -388,12 +504,11 @@ const UsageScriptModal: React.FC<UsageScriptModalProps> = ({
                         autoQueryInterval: parseInt(e.target.value) || 0,
                       })
                     }
-                    className="mt-1 w-full px-3 py-2 border border-border-default dark:border-border-default rounded bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100"
                   />
-                  <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                  <p className="text-xs text-muted-foreground">
                     {t("usageScript.autoQueryIntervalHint")}
                   </p>
-                </label>
+                </div>
               </div>
 
               {/* 脚本说明 */}
