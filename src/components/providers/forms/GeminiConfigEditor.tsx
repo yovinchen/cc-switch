@@ -19,7 +19,7 @@ export function GeminiConfigEditor({
     try {
       const config = JSON.parse(jsonString);
       const env = config?.env || {};
-      
+
       const lines: string[] = [];
       if (env.GOOGLE_GEMINI_BASE_URL) {
         lines.push(`GOOGLE_GEMINI_BASE_URL=${env.GOOGLE_GEMINI_BASE_URL}`);
@@ -30,31 +30,31 @@ export function GeminiConfigEditor({
       if (env.GEMINI_MODEL) {
         lines.push(`GEMINI_MODEL=${env.GEMINI_MODEL}`);
       }
-      
-      return lines.join('\n');
+
+      return lines.join("\n");
     } catch {
-      return '';
+      return "";
     }
   };
 
   // 将 .env 格式转换为 JSON 格式保存
   const envToJson = (envString: string): string => {
     try {
-      const lines = envString.split('\n');
+      const lines = envString.split("\n");
       const env: Record<string, string> = {};
-      
-      lines.forEach(line => {
+
+      lines.forEach((line) => {
         const trimmed = line.trim();
-        if (!trimmed || trimmed.startsWith('#')) return;
-        
-        const equalIndex = trimmed.indexOf('=');
+        if (!trimmed || trimmed.startsWith("#")) return;
+
+        const equalIndex = trimmed.indexOf("=");
         if (equalIndex > 0) {
           const key = trimmed.substring(0, equalIndex).trim();
           const value = trimmed.substring(equalIndex + 1).trim();
           env[key] = value;
         }
       });
-      
+
       return JSON.stringify({ env }, null, 2);
     } catch {
       return value;
@@ -74,12 +74,16 @@ export function GeminiConfigEditor({
     try {
       // 重新格式化
       const envString = jsonToEnv(value);
-      const formatted = envString.split('\n').filter(l => l.trim()).join('\n');
+      const formatted = envString
+        .split("\n")
+        .filter((l) => l.trim())
+        .join("\n");
       const jsonString = envToJson(formatted);
       onChange(jsonString);
       toast.success(t("common.formatSuccess", { defaultValue: "格式化成功" }));
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : String(error);
+      const errorMessage =
+        error instanceof Error ? error.message : String(error);
       toast.error(
         t("common.formatError", {
           defaultValue: "格式化失败：{{error}}",

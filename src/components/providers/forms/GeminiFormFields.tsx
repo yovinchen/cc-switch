@@ -83,7 +83,9 @@ export function GeminiFormFields({
           label={t("providerForm.apiEndpoint", { defaultValue: "API 端点" })}
           value={baseUrl}
           onChange={onBaseUrlChange}
-          placeholder={t("providerForm.apiEndpointPlaceholder", { defaultValue: "https://www.packyapi.com" })}
+          placeholder={t("providerForm.apiEndpointPlaceholder", {
+            defaultValue: "https://www.packyapi.com",
+          })}
           onManageClick={() => onEndpointModalToggle(true)}
         />
       )}

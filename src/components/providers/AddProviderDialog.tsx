@@ -99,7 +99,9 @@ export function AddProviderDialog({
             }
           } else if (appId === "gemini") {
             const presets = geminiProviderPresets;
-            const presetIndex = parseInt(values.presetId.replace("gemini-", ""));
+            const presetIndex = parseInt(
+              values.presetId.replace("gemini-", ""),
+            );
             if (
               !isNaN(presetIndex) &&
               presetIndex >= 0 &&

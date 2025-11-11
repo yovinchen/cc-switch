@@ -45,13 +45,17 @@ import {
 
 const CLAUDE_DEFAULT_CONFIG = JSON.stringify({ env: {} }, null, 2);
 const CODEX_DEFAULT_CONFIG = JSON.stringify({ auth: {}, config: "" }, null, 2);
-const GEMINI_DEFAULT_CONFIG = JSON.stringify({
-  env: {
-    GOOGLE_GEMINI_BASE_URL: "https://www.packyapi.com",
-    GEMINI_API_KEY: "",
-    GEMINI_MODEL: "gemini-2.5-pro"
-  }
-}, null, 2);
+const GEMINI_DEFAULT_CONFIG = JSON.stringify(
+  {
+    env: {
+      GOOGLE_GEMINI_BASE_URL: "https://www.packyapi.com",
+      GEMINI_API_KEY: "",
+      GEMINI_MODEL: "gemini-2.5-pro",
+    },
+  },
+  null,
+  2,
+);
 
 type PresetEntry = {
   id: string;
@@ -137,8 +141,8 @@ export function ProviderForm({
         : appId === "codex"
           ? CODEX_DEFAULT_CONFIG
           : appId === "gemini"
-          ? GEMINI_DEFAULT_CONFIG
-          : CLAUDE_DEFAULT_CONFIG,
+            ? GEMINI_DEFAULT_CONFIG
+            : CLAUDE_DEFAULT_CONFIG,
     }),
     [initialData, appId],
   );
@@ -163,20 +167,18 @@ export function ProviderForm({
   });
 
   // 使用 Base URL hook (Claude, Codex, Gemini)
-  const { 
-    baseUrl, 
-    handleClaudeBaseUrlChange,
-    handleGeminiBaseUrlChange,
-  } = useBaseUrlState({
-    appType: appId,
-    category,
-    settingsConfig: form.watch("settingsConfig"),
-    codexConfig: "",
-    onSettingsConfigChange: (config) => form.setValue("settingsConfig", config),
-    onCodexConfigChange: () => {
-      /* noop */
-    },
-  });
+  const { baseUrl, handleClaudeBaseUrlChange, handleGeminiBaseUrlChange } =
+    useBaseUrlState({
+      appType: appId,
+      category,
+      settingsConfig: form.watch("settingsConfig"),
+      codexConfig: "",
+      onSettingsConfigChange: (config) =>
+        form.setValue("settingsConfig", config),
+      onCodexConfigChange: () => {
+        /* noop */
+      },
+    });
 
   // 使用 Model hook（新：主模型 + Haiku/Sonnet/Opus 默认模型）
   const {
@@ -653,7 +655,12 @@ export function ProviderForm({
             onEndpointModalToggle={setIsEndpointModalOpen}
             onCustomEndpointsChange={setDraftCustomEndpoints}
             shouldShowModelField={true}
-            model={form.watch("settingsConfig") ? JSON.parse(form.watch("settingsConfig") || "{}")?.env?.GEMINI_MODEL || "" : ""}
+            model={
+              form.watch("settingsConfig")
+                ? JSON.parse(form.watch("settingsConfig") || "{}")?.env
+                    ?.GEMINI_MODEL || ""
+                : ""
+            }
             onModelChange={(model) => {
               const config = JSON.parse(form.watch("settingsConfig") || "{}");
               if (!config.env) config.env = {};

@@ -166,25 +166,28 @@ export const hasCommonConfigSnippet = (
 };
 
 // 读取配置中的 API Key（支持 Claude, Codex, Gemini）
-export const getApiKeyFromConfig = (jsonString: string, appType?: string): string => {
+export const getApiKeyFromConfig = (
+  jsonString: string,
+  appType?: string,
+): string => {
   try {
     const config = JSON.parse(jsonString);
     const env = config?.env;
-    
+
     if (!env) return "";
-    
+
     // Gemini API Key
     if (appType === "gemini") {
       const geminiKey = env.GEMINI_API_KEY;
       return typeof geminiKey === "string" ? geminiKey : "";
     }
-    
+
     // Codex API Key
     if (appType === "codex") {
       const codexKey = env.CODEX_API_KEY;
       return typeof codexKey === "string" ? codexKey : "";
     }
-    
+
     // Claude API Key (优先 ANTHROPIC_AUTH_TOKEN，其次 ANTHROPIC_API_KEY)
     const token = env.ANTHROPIC_AUTH_TOKEN;
     const apiKey = env.ANTHROPIC_API_KEY;
@@ -246,19 +249,22 @@ export const applyTemplateValues = (
 };
 
 // 判断配置中是否存在 API Key 字段
-export const hasApiKeyField = (jsonString: string, appType?: string): boolean => {
+export const hasApiKeyField = (
+  jsonString: string,
+  appType?: string,
+): boolean => {
   try {
     const config = JSON.parse(jsonString);
     const env = config?.env ?? {};
-    
+
     if (appType === "gemini") {
       return Object.prototype.hasOwnProperty.call(env, "GEMINI_API_KEY");
     }
-    
+
     if (appType === "codex") {
       return Object.prototype.hasOwnProperty.call(env, "CODEX_API_KEY");
     }
-    
+
     return (
       Object.prototype.hasOwnProperty.call(env, "ANTHROPIC_AUTH_TOKEN") ||
       Object.prototype.hasOwnProperty.call(env, "ANTHROPIC_API_KEY")
@@ -282,7 +288,7 @@ export const setApiKeyInConfig = (
       config.env = {};
     }
     const env = config.env as Record<string, any>;
-    
+
     // Gemini API Key
     if (appType === "gemini") {
       if ("GEMINI_API_KEY" in env) {
@@ -294,7 +300,7 @@ export const setApiKeyInConfig = (
       }
       return JSON.stringify(config, null, 2);
     }
-    
+
     // Codex API Key
     if (appType === "codex") {
       if ("CODEX_API_KEY" in env) {
@@ -306,7 +312,7 @@ export const setApiKeyInConfig = (
       }
       return JSON.stringify(config, null, 2);
     }
-    
+
     // Claude API Key (优先写入已存在的字段；若两者均不存在且允许创建，则默认创建 AUTH_TOKEN 字段)
     if ("ANTHROPIC_AUTH_TOKEN" in env) {
       env.ANTHROPIC_AUTH_TOKEN = apiKey;

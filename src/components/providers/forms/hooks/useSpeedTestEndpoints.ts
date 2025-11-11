@@ -88,7 +88,10 @@ export function useSpeedTestEndpoints({
         };
         // 添加预设自己的 baseUrl（兼容 Claude/Gemini）
         const presetEnv = preset.settingsConfig as {
-          env?: { ANTHROPIC_BASE_URL?: string; GOOGLE_GEMINI_BASE_URL?: string };
+          env?: {
+            ANTHROPIC_BASE_URL?: string;
+            GOOGLE_GEMINI_BASE_URL?: string;
+          };
         };
         const presetUrls = [
           presetEnv?.env?.ANTHROPIC_BASE_URL,

@@ -196,7 +196,8 @@
   },
   "apps": {
     "claude": "Claude Code",
-    "codex": "Codex"
+    "codex": "Codex",
+    "gemini": "Gemini"
   },
   "console": {
     "providerSwitchReceived": "Received provider switch event:",
