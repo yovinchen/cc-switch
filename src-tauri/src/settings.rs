@@ -32,6 +32,8 @@ pub struct AppSettings {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub codex_config_dir: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub gemini_config_dir: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub language: Option<String>,
     /// Claude 自定义端点列表
     #[serde(default, skip_serializing_if = "HashMap::is_empty")]
@@ -57,6 +59,7 @@ impl Default for AppSettings {
             enable_claude_plugin_integration: false,
             claude_config_dir: None,
             codex_config_dir: None,
+            gemini_config_dir: None,
             language: None,
             custom_endpoints_claude: HashMap::new(),
             custom_endpoints_codex: HashMap::new(),
@@ -84,6 +87,13 @@ impl AppSettings {
 
         self.codex_config_dir = self
             .codex_config_dir
+            .as_ref()
+            .map(|s| s.trim())
+            .filter(|s| !s.is_empty())
+            .map(|s| s.to_string());
+
+        self.gemini_config_dir = self
+            .gemini_config_dir
             .as_ref()
             .map(|s| s.trim())
             .filter(|s| !s.is_empty())
@@ -183,6 +193,14 @@ pub fn get_codex_override_dir() -> Option<PathBuf> {
     let settings = settings_store().read().ok()?;
     settings
         .codex_config_dir
+        .as_ref()
+        .map(|p| resolve_override_path(p))
+}
+
+pub fn get_gemini_override_dir() -> Option<PathBuf> {
+    let settings = settings_store().read().ok()?;
+    settings
+        .gemini_config_dir
         .as_ref()
         .map(|p| resolve_override_path(p))
 }

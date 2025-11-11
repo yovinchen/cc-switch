@@ -29,6 +29,15 @@ pub async fn get_config_status(app: String) -> Result<ConfigStatus, String> {
 
             Ok(ConfigStatus { exists, path })
         }
+        AppType::Gemini => {
+            let env_path = crate::gemini_config::get_gemini_env_path();
+            let exists = env_path.exists();
+            let path = crate::gemini_config::get_gemini_dir()
+                .to_string_lossy()
+                .to_string();
+
+            Ok(ConfigStatus { exists, path })
+        }
     }
 }
 
@@ -44,6 +53,7 @@ pub async fn get_config_dir(app: String) -> Result<String, String> {
     let dir = match AppType::from_str(&app).map_err(|e| e.to_string())? {
         AppType::Claude => config::get_claude_config_dir(),
         AppType::Codex => codex_config::get_codex_config_dir(),
+        AppType::Gemini => crate::gemini_config::get_gemini_dir(),
     };
 
     Ok(dir.to_string_lossy().to_string())
@@ -55,6 +65,7 @@ pub async fn open_config_folder(handle: AppHandle, app: String) -> Result<bool, 
     let config_dir = match AppType::from_str(&app).map_err(|e| e.to_string())? {
         AppType::Claude => config::get_claude_config_dir(),
         AppType::Codex => codex_config::get_codex_config_dir(),
+        AppType::Gemini => crate::gemini_config::get_gemini_dir(),
     };
 
     if !config_dir.exists() {

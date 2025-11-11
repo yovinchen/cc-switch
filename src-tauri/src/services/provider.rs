@@ -29,6 +29,9 @@ enum LiveSnapshot {
         auth: Option<Value>,
         config: Option<String>,
     },
+    Gemini {
+        env: Option<HashMap<String, String>>,  // 新增
+    },
 }
 
 #[derive(Clone)]
@@ -64,6 +67,15 @@ impl LiveSnapshot {
                     write_text_file(&config_path, text)?;
                 } else if config_path.exists() {
                     delete_file(&config_path)?;
+                }
+            }
+            LiveSnapshot::Gemini { env } => {  // 新增
+                use crate::gemini_config::{get_gemini_env_path, write_gemini_env_atomic};
+                let path = get_gemini_env_path();
+                if let Some(env_map) = env {
+                    write_gemini_env_atomic(env_map)?;
+                } else if path.exists() {
+                    delete_file(&path)?;
                 }
             }
         }
@@ -330,6 +342,30 @@ impl ProviderService {
                 }
                 state.save()?;
             }
+            AppType::Gemini => {
+                use crate::gemini_config::{get_gemini_env_path, read_gemini_env, env_to_json};
+                
+                let env_path = get_gemini_env_path();
+                if !env_path.exists() {
+                    return Err(AppError::localized(
+                        "gemini.live.missing",
+                        "Gemini .env 文件不存在，无法刷新快照",
+                        "Gemini .env file missing; cannot refresh snapshot",
+                    ));
+                }
+                let env_map = read_gemini_env()?;
+                let live_after = env_to_json(&env_map);
+                
+                {
+                    let mut guard = state.config.write().map_err(AppError::from)?;
+                    if let Some(manager) = guard.get_manager_mut(app_type) {
+                        if let Some(target) = manager.providers.get_mut(provider_id) {
+                            target.settings_config = live_after;
+                        }
+                    }
+                }
+                state.save()?;
+            }
         }
         Ok(())
     }
@@ -362,6 +398,16 @@ impl ProviderService {
                     None
                 };
                 Ok(LiveSnapshot::Codex { auth, config })
+            }
+            AppType::Gemini => {  // 新增
+                use crate::gemini_config::{get_gemini_env_path, read_gemini_env};
+                let path = get_gemini_env_path();
+                let env = if path.exists() {
+                    Some(read_gemini_env()?)
+                } else {
+                    None
+                };
+                Ok(LiveSnapshot::Gemini { env })
             }
         }
     }
@@ -530,6 +576,20 @@ impl ProviderService {
                 let _ = Self::normalize_claude_models_in_value(&mut v);
                 v
             }
+            AppType::Gemini => {  // 新增
+                use crate::gemini_config::{get_gemini_env_path, read_gemini_env, env_to_json};
+                
+                let path = get_gemini_env_path();
+                if !path.exists() {
+                    return Err(AppError::localized(
+                        "gemini.live.missing",
+                        "Gemini 配置文件不存在",
+                        "Gemini configuration file is missing",
+                    ));
+                }
+                let env_map = read_gemini_env()?;
+                env_to_json(&env_map)
+            }
         };
 
         let mut provider = Provider::with_id(
@@ -581,6 +641,21 @@ impl ProviderService {
                     ));
                 }
                 read_json_file(&path)
+            }
+            AppType::Gemini => {  // 新增
+                use crate::gemini_config::{get_gemini_env_path, read_gemini_env, env_to_json};
+                
+                let path = get_gemini_env_path();
+                if !path.exists() {
+                    return Err(AppError::localized(
+                        "gemini.env.missing",
+                        "Gemini .env 文件不存在",
+                        "Gemini .env file not found",
+                    ));
+                }
+                
+                let env_map = read_gemini_env()?;
+                Ok(env_to_json(&env_map))
             }
         }
     }
@@ -891,6 +966,7 @@ impl ProviderService {
             let provider = match app_type_clone {
                 AppType::Codex => Self::prepare_switch_codex(config, &provider_id_owned)?,
                 AppType::Claude => Self::prepare_switch_claude(config, &provider_id_owned)?,
+                AppType::Gemini => Self::prepare_switch_gemini(config, &provider_id_owned)?,
             };
 
             let action = PostCommitAction {
@@ -1019,6 +1095,33 @@ impl ProviderService {
         Ok(provider)
     }
 
+    fn prepare_switch_gemini(
+        config: &mut MultiAppConfig,
+        provider_id: &str,
+    ) -> Result<Provider, AppError> {
+        let provider = config
+            .get_manager(&AppType::Gemini)
+            .ok_or_else(|| Self::app_not_found(&AppType::Gemini))?
+            .providers
+            .get(provider_id)
+            .cloned()
+            .ok_or_else(|| {
+                AppError::localized(
+                    "provider.not_found",
+                    format!("供应商不存在: {}", provider_id),
+                    format!("Provider not found: {}", provider_id),
+                )
+            })?;
+
+        Self::backfill_gemini_current(config, provider_id)?;
+
+        if let Some(manager) = config.get_manager_mut(&AppType::Gemini) {
+            manager.current = provider_id.to_string();
+        }
+
+        Ok(provider)
+    }
+
     fn backfill_claude_current(
         config: &mut MultiAppConfig,
         next_provider: &str,
@@ -1047,16 +1150,54 @@ impl ProviderService {
         Ok(())
     }
 
-    fn write_claude_live(provider: &Provider) -> Result<(), AppError> {
-        let settings_path = get_claude_settings_path();
-        if let Some(parent) = settings_path.parent() {
-            std::fs::create_dir_all(parent).map_err(|e| AppError::io(parent, e))?;
+    fn backfill_gemini_current(
+        config: &mut MultiAppConfig,
+        next_provider: &str,
+    ) -> Result<(), AppError> {
+        use crate::gemini_config::{get_gemini_env_path, read_gemini_env, env_to_json};
+        
+        let env_path = get_gemini_env_path();
+        if !env_path.exists() {
+            return Ok(());
         }
 
-        // 归一化后再写入
+        let current_id = config
+            .get_manager(&AppType::Gemini)
+            .map(|m| m.current.clone())
+            .unwrap_or_default();
+        if current_id.is_empty() || current_id == next_provider {
+            return Ok(());
+        }
+
+        let env_map = read_gemini_env()?;
+        let live = env_to_json(&env_map);
+        if let Some(manager) = config.get_manager_mut(&AppType::Gemini) {
+            if let Some(current) = manager.providers.get_mut(&current_id) {
+                current.settings_config = live;
+            }
+        }
+
+        Ok(())
+    }
+
+    fn write_claude_live(provider: &Provider) -> Result<(), AppError> {
+        let settings_path = get_claude_settings_path();
         let mut content = provider.settings_config.clone();
         let _ = Self::normalize_claude_models_in_value(&mut content);
         write_json_file(&settings_path, &content)?;
+        Ok(())
+    }
+
+    fn write_gemini_live(provider: &Provider) -> Result<(), AppError> {
+        use crate::gemini_config::{json_to_env, validate_gemini_settings, write_gemini_env_atomic};
+        
+        // 验证配置
+        validate_gemini_settings(&provider.settings_config)?;
+        
+        // 转换并写入
+        let env_map = json_to_env(&provider.settings_config)?;
+        write_gemini_env_atomic(&env_map)?;
+        
         Ok(())
     }
 
@@ -1064,6 +1205,7 @@ impl ProviderService {
         match app_type {
             AppType::Codex => Self::write_codex_live(provider),
             AppType::Claude => Self::write_claude_live(provider),
+            AppType::Gemini => Self::write_gemini_live(provider),  // 新增
         }
     }
 
@@ -1117,6 +1259,10 @@ impl ProviderService {
                         crate::codex_config::validate_config_toml(cfg_text)?;
                     }
                 }
+            }
+            AppType::Gemini => {  // 新增
+                use crate::gemini_config::validate_gemini_settings;
+                validate_gemini_settings(&provider.settings_config)?
             }
         }
 
@@ -1228,6 +1374,27 @@ impl ProviderService {
 
                 Ok((api_key, base_url))
             }
+            AppType::Gemini => {  // 新增
+                use crate::gemini_config::json_to_env;
+                
+                let env_map = json_to_env(&provider.settings_config)?;
+                
+                let api_key = env_map
+                    .get("GEMINI_API_KEY")
+                    .cloned()
+                    .ok_or_else(|| AppError::localized(
+                        "gemini.missing_api_key",
+                        "缺少 GEMINI_API_KEY",
+                        "Missing GEMINI_API_KEY",
+                    ))?;
+                
+                let base_url = env_map
+                    .get("GOOGLE_GEMINI_BASE_URL")
+                    .cloned()
+                    .unwrap_or_else(|| "https://generativelanguage.googleapis.com".to_string());
+                
+                Ok((api_key, base_url))
+            }
         }
     }
 
@@ -1284,6 +1451,9 @@ impl ProviderService {
                 let by_id = get_provider_config_path(provider_id, None);
                 delete_file(&by_name)?;
                 delete_file(&by_id)?;
+            }
+            AppType::Gemini => {
+                // Gemini 使用单一的 .env 文件，不需要删除单独的供应商配置文件
             }
         }
 

@@ -158,6 +158,7 @@ impl ConfigService {
         match app_type {
             AppType::Codex => Self::sync_codex_live(config, &current_id, &provider)?,
             AppType::Claude => Self::sync_claude_live(config, &current_id, &provider)?,
+            AppType::Gemini => Self::sync_gemini_live(config, &current_id, &provider)?,
         }
 
         Ok(())
@@ -219,6 +220,35 @@ impl ConfigService {
 
         let live_after = read_json_file::<serde_json::Value>(&settings_path)?;
         if let Some(manager) = config.get_manager_mut(&AppType::Claude) {
+            if let Some(target) = manager.providers.get_mut(provider_id) {
+                target.settings_config = live_after;
+            }
+        }
+
+        Ok(())
+    }
+
+    fn sync_gemini_live(
+        config: &mut MultiAppConfig,
+        provider_id: &str,
+        provider: &Provider,
+    ) -> Result<(), AppError> {
+        use crate::gemini_config::{json_to_env, write_gemini_env_atomic, read_gemini_env, env_to_json};
+
+        let env_path = crate::gemini_config::get_gemini_env_path();
+        if let Some(parent) = env_path.parent() {
+            fs::create_dir_all(parent).map_err(|e| AppError::io(parent, e))?;
+        }
+
+        // 转换 JSON 配置为 .env 格式并写入
+        let env_map = json_to_env(&provider.settings_config)?;
+        write_gemini_env_atomic(&env_map)?;
+
+        // 读回实际写入的内容并更新到配置中
+        let live_after_env = read_gemini_env()?;
+        let live_after = env_to_json(&live_after_env);
+        
+        if let Some(manager) = config.get_manager_mut(&AppType::Gemini) {
             if let Some(target) = manager.providers.get_mut(provider_id) {
                 target.settings_config = live_after;
             }

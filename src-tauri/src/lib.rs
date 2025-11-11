@@ -6,6 +6,7 @@ mod codex_config;
 mod commands;
 mod config;
 mod error;
+mod gemini_config;  // 新增
 mod init_status;
 mod mcp;
 mod provider;
