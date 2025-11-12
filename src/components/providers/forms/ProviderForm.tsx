@@ -48,7 +48,7 @@ const CODEX_DEFAULT_CONFIG = JSON.stringify({ auth: {}, config: "" }, null, 2);
 const GEMINI_DEFAULT_CONFIG = JSON.stringify(
   {
     env: {
-      GOOGLE_GEMINI_BASE_URL: "https://www.packyapi.com",
+      GOOGLE_GEMINI_BASE_URL: "",
       GEMINI_API_KEY: "",
       GEMINI_MODEL: "gemini-2.5-pro",
     },
@@ -97,6 +97,7 @@ export function ProviderForm({
     id: string;
     category?: ProviderCategory;
     isPartner?: boolean;
+    partnerPromotionKey?: string;
   } | null>(null);
   const [isEndpointModalOpen, setIsEndpointModalOpen] = useState(false);
 
@@ -393,20 +394,26 @@ export function ProviderForm({
       hadEndpoints && draftCustomEndpoints.length === 0;
 
     // 如果用户明确清空了端点，传递空对象（而不是 null）让后端知道要删除
-    const mergedMeta = needsClearEndpoints
+    let mergedMeta = needsClearEndpoints
       ? mergeProviderMeta(initialData?.meta, {})
       : mergeProviderMeta(initialData?.meta, customEndpointsToSave);
 
-    // 添加合作伙伴标识到 meta 中
+    // 添加合作伙伴标识与促销 key
     if (activePreset?.isPartner) {
-      if (mergedMeta) {
-        mergedMeta.isPartner = true;
-      } else {
-        payload.meta = { isPartner: true };
-      }
+      mergedMeta = {
+        ...(mergedMeta ?? {}),
+        isPartner: true,
+      };
     }
 
-    if (mergedMeta) {
+    if (activePreset?.partnerPromotionKey) {
+      mergedMeta = {
+        ...(mergedMeta ?? {}),
+        partnerPromotionKey: activePreset.partnerPromotionKey,
+      };
+    }
+
+    if (mergedMeta !== undefined) {
       payload.meta = mergedMeta;
     }
 
@@ -507,6 +514,7 @@ export function ProviderForm({
       id: value,
       category: entry.preset.category,
       isPartner: entry.preset.isPartner,
+      partnerPromotionKey: entry.preset.partnerPromotionKey,
     });
 
     if (appId === "codex") {

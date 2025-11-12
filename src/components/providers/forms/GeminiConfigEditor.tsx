@@ -104,7 +104,7 @@ export function GeminiConfigEditor({
         id="geminiConfig"
         value={displayValue}
         onChange={(e) => handleChange(e.target.value)}
-        placeholder={`GOOGLE_GEMINI_BASE_URL=https://www.packyapi.com
+        placeholder={`GOOGLE_GEMINI_BASE_URL=https://your-api-endpoint.com/
 GEMINI_API_KEY=sk-your-api-key-here
 GEMINI_MODEL=gemini-2.5-pro`}
         rows={8}

@@ -69,13 +69,13 @@ pub async fn open_config_folder(handle: AppHandle, app: String) -> Result<bool, 
     };
 
     if !config_dir.exists() {
-        std::fs::create_dir_all(&config_dir).map_err(|e| format!("创建目录失败: {}", e))?;
+        std::fs::create_dir_all(&config_dir).map_err(|e| format!("创建目录失败: {e}"))?;
     }
 
     handle
         .opener()
         .open_path(config_dir.to_string_lossy().to_string(), None::<String>)
-        .map_err(|e| format!("打开文件夹失败: {}", e))?;
+        .map_err(|e| format!("打开文件夹失败: {e}"))?;
 
     Ok(true)
 }
@@ -98,14 +98,14 @@ pub async fn pick_directory(
         builder.blocking_pick_folder()
     })
     .await
-    .map_err(|e| format!("弹出目录选择器失败: {}", e))?;
+    .map_err(|e| format!("弹出目录选择器失败: {e}"))?;
 
     match result {
         Some(file_path) => {
             let resolved = file_path
                 .simplified()
                 .into_path()
-                .map_err(|e| format!("解析选择的目录失败: {}", e))?;
+                .map_err(|e| format!("解析选择的目录失败: {e}"))?;
             Ok(Some(resolved.to_string_lossy().to_string()))
         }
         None => Ok(None),
@@ -125,13 +125,13 @@ pub async fn open_app_config_folder(handle: AppHandle) -> Result<bool, String> {
     let config_dir = config::get_app_config_dir();
 
     if !config_dir.exists() {
-        std::fs::create_dir_all(&config_dir).map_err(|e| format!("创建目录失败: {}", e))?;
+        std::fs::create_dir_all(&config_dir).map_err(|e| format!("创建目录失败: {e}"))?;
     }
 
     handle
         .opener()
         .open_path(config_dir.to_string_lossy().to_string(), None::<String>)
-        .map_err(|e| format!("打开文件夹失败: {}", e))?;
+        .map_err(|e| format!("打开文件夹失败: {e}"))?;
 
     Ok(true)
 }

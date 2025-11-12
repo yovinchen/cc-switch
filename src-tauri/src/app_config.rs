@@ -145,7 +145,7 @@ impl MultiAppConfig {
         if config_path.exists() {
             let backup_path = get_app_config_dir().join("config.json.bak");
             if let Err(e) = copy_file(&config_path, &backup_path) {
-                log::warn!("备份 config.json 到 .bak 失败: {}", e);
+                log::warn!("备份 config.json 到 .bak 失败: {e}");
             }
         }
 

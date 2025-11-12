@@ -92,7 +92,17 @@
     "addProvider": "添加供应商",
     "sortUpdated": "排序已更新",
     "usageSaved": "用量查询配置已保存",
-    "usageSaveFailed": "用量查询配置保存失败"
+    "usageSaveFailed": "用量查询配置保存失败",
+    "geminiConfig": "Gemini 配置",
+    "geminiConfigHint": "使用 .env 格式配置 Gemini",
+    "form": {
+      "gemini": {
+        "model": "模型",
+        "oauthTitle": "OAuth 认证模式",
+        "oauthHint": "Google 官方使用 OAuth 个人认证，无需填写 API Key。首次使用时会自动打开浏览器进行登录。",
+        "apiKeyPlaceholder": "请输入 Gemini API Key"
+      }
+    }
   },
   "notifications": {
     "providerAdded": "供应商已添加",

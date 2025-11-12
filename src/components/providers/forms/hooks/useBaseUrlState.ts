@@ -73,9 +73,11 @@ export function useBaseUrlState({
     try {
       const config = JSON.parse(settingsConfig || "{}");
       const envUrl: unknown = config?.env?.GOOGLE_GEMINI_BASE_URL;
-      if (typeof envUrl === "string" && envUrl && envUrl !== geminiBaseUrl) {
-        setGeminiBaseUrl(envUrl.trim());
-        setBaseUrl(envUrl.trim()); // 也更新 baseUrl 用于 UI
+      const nextUrl =
+        typeof envUrl === "string" ? envUrl.trim().replace(/\/+$/, "") : "";
+      if (nextUrl !== geminiBaseUrl) {
+        setGeminiBaseUrl(nextUrl);
+        setBaseUrl(nextUrl); // 也更新 baseUrl 用于 UI
       }
     } catch {
       // ignore

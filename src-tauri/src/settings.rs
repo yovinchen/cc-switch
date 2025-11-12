@@ -16,6 +16,20 @@ pub struct CustomEndpoint {
     pub last_used: Option<i64>,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct SecurityAuthSettings {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub selected_type: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct SecuritySettings {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub auth: Option<SecurityAuthSettings>,
+}
+
 /// 应用设置结构，允许覆盖默认配置目录
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -35,6 +49,8 @@ pub struct AppSettings {
     pub gemini_config_dir: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub language: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub security: Option<SecuritySettings>,
     /// Claude 自定义端点列表
     #[serde(default, skip_serializing_if = "HashMap::is_empty")]
     pub custom_endpoints_claude: HashMap<String, CustomEndpoint>,
@@ -61,6 +77,7 @@ impl Default for AppSettings {
             codex_config_dir: None,
             gemini_config_dir: None,
             language: None,
+            security: None,
             custom_endpoints_claude: HashMap::new(),
             custom_endpoints_codex: HashMap::new(),
         }
@@ -179,6 +196,27 @@ pub fn update_settings(mut new_settings: AppSettings) -> Result<(), AppError> {
     let mut guard = settings_store().write().expect("写入设置锁失败");
     *guard = new_settings;
     Ok(())
+}
+
+pub fn ensure_security_auth_selected_type(selected_type: &str) -> Result<(), AppError> {
+    let mut settings = get_settings();
+    let current = settings
+        .security
+        .as_ref()
+        .and_then(|sec| sec.auth.as_ref())
+        .and_then(|auth| auth.selected_type.as_deref());
+
+    if current == Some(selected_type) {
+        return Ok(());
+    }
+
+    let mut security = settings.security.unwrap_or_default();
+    let mut auth = security.auth.unwrap_or_default();
+    auth.selected_type = Some(selected_type.to_string());
+    security.auth = Some(auth);
+    settings.security = Some(security);
+
+    update_settings(settings)
 }
 
 pub fn get_claude_override_dir() -> Option<PathBuf> {

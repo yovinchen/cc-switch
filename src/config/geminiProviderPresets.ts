@@ -16,6 +16,20 @@ export interface GeminiProviderPreset {
 
 export const geminiProviderPresets: GeminiProviderPreset[] = [
   {
+    name: "Google",
+    websiteUrl: "https://ai.google.dev/",
+    apiKeyUrl: "https://aistudio.google.com/apikey",
+    settingsConfig: {
+      env: {
+        GEMINI_MODEL: "gemini-2.5-pro",
+      },
+    },
+    description: "Google 官方 Gemini API (OAuth)",
+    category: "official",
+    partnerPromotionKey: "google-official",
+    model: "gemini-2.5-pro",
+  },
+  {
     name: "PackyCode",
     websiteUrl: "https://www.packyapi.com",
     apiKeyUrl: "https://www.packyapi.com/register?aff=cc-switch",
@@ -45,7 +59,6 @@ export const geminiProviderPresets: GeminiProviderPreset[] = [
         GEMINI_MODEL: "gemini-2.5-pro",
       },
     },
-    baseURL: "",
     model: "gemini-2.5-pro",
     description: "自定义 Gemini API 端点",
     category: "custom",
