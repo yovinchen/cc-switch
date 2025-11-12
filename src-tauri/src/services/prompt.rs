@@ -29,15 +29,25 @@ impl PromptService {
         id: &str,
         prompt: Prompt,
     ) -> Result<(), AppError> {
+        // 检查是否为已启用的提示词
+        let is_enabled = prompt.enabled;
+
         let mut cfg = state.config.write()?;
         let prompts = match app {
             AppType::Claude => &mut cfg.prompts.claude.prompts,
             AppType::Codex => &mut cfg.prompts.codex.prompts,
             AppType::Gemini => &mut cfg.prompts.gemini.prompts,
         };
-        prompts.insert(id.to_string(), prompt);
+        prompts.insert(id.to_string(), prompt.clone());
         drop(cfg);
         state.save()?;
+
+        // 如果是已启用的提示词，同步更新到对应的文件
+        if is_enabled {
+            let target_path = Self::get_prompt_file_path(&app)?;
+            write_text_file(&target_path, &prompt.content)?;
+        }
+
         Ok(())
     }
 
