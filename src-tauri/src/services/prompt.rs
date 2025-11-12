@@ -18,6 +18,7 @@ impl PromptService {
         let prompts = match app {
             AppType::Claude => &cfg.prompts.claude.prompts,
             AppType::Codex => &cfg.prompts.codex.prompts,
+            AppType::Gemini => &cfg.prompts.gemini.prompts,
         };
         Ok(prompts.clone())
     }
@@ -32,6 +33,7 @@ impl PromptService {
         let prompts = match app {
             AppType::Claude => &mut cfg.prompts.claude.prompts,
             AppType::Codex => &mut cfg.prompts.codex.prompts,
+            AppType::Gemini => &mut cfg.prompts.gemini.prompts,
         };
         prompts.insert(id.to_string(), prompt);
         drop(cfg);
@@ -44,6 +46,7 @@ impl PromptService {
         let prompts = match app {
             AppType::Claude => &mut cfg.prompts.claude.prompts,
             AppType::Codex => &mut cfg.prompts.codex.prompts,
+            AppType::Gemini => &mut cfg.prompts.gemini.prompts,
         };
 
         if let Some(prompt) = prompts.get(id) {
@@ -68,6 +71,7 @@ impl PromptService {
             let prompts = match app {
                 AppType::Claude => &mut cfg.prompts.claude.prompts,
                 AppType::Codex => &mut cfg.prompts.codex.prompts,
+                AppType::Gemini => &mut cfg.prompts.gemini.prompts,
             };
 
             // 检查是否有已启用的提示词
@@ -108,6 +112,7 @@ impl PromptService {
         let prompts = match app {
             AppType::Claude => &mut cfg.prompts.claude.prompts,
             AppType::Codex => &mut cfg.prompts.codex.prompts,
+            AppType::Gemini => &mut cfg.prompts.gemini.prompts,
         };
 
         for prompt in prompts.values_mut() {
@@ -144,11 +149,13 @@ impl PromptService {
                         .expect("无法获取用户目录")
                         .join(".codex")
                 }),
+            AppType::Gemini => crate::gemini_config::get_gemini_dir(),
         };
 
         let filename = match app {
             AppType::Claude => "CLAUDE.md",
             AppType::Codex => "AGENTS.md",
+            AppType::Gemini => "GEMINI.md",
         };
 
         Ok(base_dir.join(filename))
