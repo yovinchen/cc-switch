@@ -6,6 +6,9 @@
 [![Trending](https://img.shields.io/badge/🔥_TypeScript_Trending-Daily%20%7C%20Weekly%20%7C%20Monthly-ff6b6b.svg)](https://github.com/trending/typescript)
 [![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey.svg)](https://github.com/farion1231/cc-switch/releases)
 [![Built with Tauri](https://img.shields.io/badge/built%20with-Tauri%202-orange.svg)](https://tauri.app/)
+[![Downloads](https://img.shields.io/endpoint?url=https://api.pinstudios.net/api/badges/downloads/farion1231/cc-switch/total)](https://github.com/farion1231/cc-switch/releases/latest)
+
+<a href="https://trendshift.io/repositories/15372" target="_blank"><img src="https://trendshift.io/api/badge/repositories/15372" alt="farion1231%2Fcc-switch | Trendshift" style="width: 250px; height: 55px;" width="250" height="55"/></a>
 
 [English](README.md) | 中文 | [更新日志](CHANGELOG.md)
 
@@ -40,11 +43,11 @@ CC Switch 已经预设了智谱GLM，只需要填写 key 即可一键导入编�
 
 ## 功能特性
 
-### 当前版本：v3.6.1 | [完整更新日志](CHANGELOG.md)
+### 当前版本：v3.6.2 | [完整更新日志](CHANGELOG.md)
 
 **核心功能**
 
-- **供应商管理**：一键切换 Claude Code 与 Codex 的 API 配置
+- **供应商管理**：一键切换 Claude Code、Codex 与 Gemini 的 API 配置
 - **MCP 集成**：集中管理 MCP 服务器，支持 stdio/http 类型和实时同步
 - **速度测试**：测量 API 端点延迟，可视化连接质量指示器
 - **导入导出**：备份和恢复配置，自动轮换（保留最近 10 个）
@@ -112,8 +115,8 @@ brew upgrade --cask cc-switch
 2. **切换供应商**：
    - 主界面：选择供应商 → 点击"启用"
    - 系统托盘：直接点击供应商名称（立即生效）
-3. **生效方式**：重启终端或 Claude Code/Codex 以应用更改
-4. **恢复官方登录**：选择"官方登录"预设，重启终端后使用 `/login`（Claude）或官方登录流程（Codex）
+3. **生效方式**：重启终端或 Claude Code / Codex / Gemini 客户端以应用更改
+4. **恢复官方登录**：选择"官方登录"预设（Claude/Codex）或"Google 官方"预设（Gemini），重启对应客户端后按照其登录/OAuth 流程操作
 
 ### MCP 管理
 
@@ -135,6 +138,12 @@ brew upgrade --cask cc-switch
 - Live 配置：`~/.codex/auth.json`（必需）+ `config.toml`（可选）
 - API key 字段：`auth.json` 中的 `OPENAI_API_KEY`
 - MCP 服务器：`~/.codex/config.toml` → `[mcp.servers]`
+
+**Gemini**
+
+- Live 配置：`~/.gemini/.env`（API Key）+ `~/.gemini/settings.json`（保存认证模式，支持托盘快速切换）
+- API key 字段：`.env` 文件中的 `GEMINI_API_KEY`
+- 托盘快速切换：每次切换供应商都会重写 `~/.gemini/.env`，Gemini CLI 无需额外操作即可使用新配置
 
 **CC Switch 存储**
 
