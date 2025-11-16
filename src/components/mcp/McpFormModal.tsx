@@ -1,8 +1,9 @@
 import React, { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
-import { Save, Plus, AlertCircle, ChevronDown, ChevronUp } from "lucide-react";
+import { Save, Plus, AlertCircle, ChevronDown, ChevronUp, Wand2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   Dialog,
   DialogContent,
@@ -26,30 +27,33 @@ import {
   mcpServerToToml,
 } from "@/utils/tomlUtils";
 import { normalizeTomlText } from "@/utils/textNormalization";
+import { formatJSON } from "@/utils/formatters";
 import { useMcpValidation } from "./useMcpValidation";
 import { useUpsertMcpServer } from "@/hooks/useMcp";
 
 interface McpFormModalProps {
-  appId: AppId;
   editingId?: string;
   initialData?: McpServer;
   onSave: () => Promise<void>; // v3.7.0: 简化为仅用于关闭表单的回调
   onClose: () => void;
   existingIds?: string[];
+  defaultFormat?: "json" | "toml"; // 默认配置格式（可选，默认为 JSON）
+  defaultEnabledApps?: AppId[]; // 默认启用到哪些应用（可选，默认为全部应用）
 }
 
 /**
- * MCP 表单模态框组件（简化版）
- * Claude: 使用 JSON 格式
- * Codex: 使用 TOML 格式
+ * MCP 表单模态框组件（v3.7.0 完整重构版）
+ * - 支持 JSON 和 TOML 两种格式
+ * - 统一管理，通过复选框选择启用到哪些应用
  */
 const McpFormModal: React.FC<McpFormModalProps> = ({
-  appId,
   editingId,
   initialData,
   onSave,
   onClose,
   existingIds = [],
+  defaultFormat = "json",
+  defaultEnabledApps = ["claude", "codex", "gemini"],
 }) => {
   const { t } = useTranslation();
   const { formatTomlError, validateTomlConfig, validateJsonConfig } =
@@ -68,6 +72,23 @@ const McpFormModal: React.FC<McpFormModalProps> = ({
   const [formDocs, setFormDocs] = useState(initialData?.docs || "");
   const [formTags, setFormTags] = useState(initialData?.tags?.join(", ") || "");
 
+  // 启用状态：编辑模式使用现有值，新增模式使用默认值
+  const [enabledApps, setEnabledApps] = useState<{
+    claude: boolean;
+    codex: boolean;
+    gemini: boolean;
+  }>(() => {
+    if (initialData?.apps) {
+      return { ...initialData.apps };
+    }
+    // 新增模式：根据 defaultEnabledApps 设置初始值
+    return {
+      claude: defaultEnabledApps.includes("claude"),
+      codex: defaultEnabledApps.includes("codex"),
+      gemini: defaultEnabledApps.includes("gemini"),
+    };
+  });
+
   // 编辑模式下禁止修改 ID
   const isEditing = !!editingId;
 
@@ -84,11 +105,20 @@ const McpFormModal: React.FC<McpFormModalProps> = ({
     isEditing ? hasAdditionalInfo : false,
   );
 
-  // 根据 appId 决定初始格式
+  // 配置格式：优先使用 defaultFormat，编辑模式下可从现有数据推断
+  const useTomlFormat = useMemo(() => {
+    if (initialData?.server) {
+      // 编辑模式：尝试从现有数据推断格式（这里简化处理，默认 JSON）
+      return defaultFormat === "toml";
+    }
+    return defaultFormat === "toml";
+  }, [defaultFormat, initialData]);
+
+  // 根据格式决定初始配置
   const [formConfig, setFormConfig] = useState(() => {
     const spec = initialData?.server;
     if (!spec) return "";
-    if (appId === "codex") {
+    if (useTomlFormat) {
       return mcpServerToToml(spec);
     }
     return JSON.stringify(spec, null, 2);
@@ -99,8 +129,8 @@ const McpFormModal: React.FC<McpFormModalProps> = ({
   const [isWizardOpen, setIsWizardOpen] = useState(false);
   const [idError, setIdError] = useState("");
 
-  // 判断是否使用 TOML 格式
-  const useToml = appId === "codex";
+  // 判断是否使用 TOML 格式（向后兼容，后续可扩展为格式切换按钮）
+  const useToml = useTomlFormat;
 
   const wizardInitialSpec = useMemo(() => {
     const fallback = initialData?.server;
@@ -222,6 +252,24 @@ const McpFormModal: React.FC<McpFormModalProps> = ({
     setConfigError("");
   };
 
+  const handleFormatJson = () => {
+    if (!formConfig.trim()) return;
+
+    try {
+      const formatted = formatJSON(formConfig);
+      setFormConfig(formatted);
+      toast.success(t("common.formatSuccess"));
+    } catch (error) {
+      const errorMessage =
+        error instanceof Error ? error.message : String(error);
+      toast.error(
+        t("common.formatError", {
+          error: errorMessage,
+        }),
+      );
+    }
+  };
+
   const handleWizardApply = (title: string, json: string) => {
     setFormId(title);
     if (!formName.trim()) {
@@ -317,7 +365,10 @@ const McpFormModal: React.FC<McpFormModalProps> = ({
       toast.error(t("mcp.error.commandRequired"), { duration: 3000 });
       return;
     }
-    if (serverSpec?.type === "http" && !serverSpec?.url?.trim()) {
+    if (
+      (serverSpec?.type === "http" || serverSpec?.type === "sse") &&
+      !serverSpec?.url?.trim()
+    ) {
       toast.error(t("mcp.wizard.urlRequired"), { duration: 3000 });
       return;
     }
@@ -333,12 +384,8 @@ const McpFormModal: React.FC<McpFormModalProps> = ({
         id: trimmedId,
         name: finalName,
         server: serverSpec,
-        // 确保 apps 字段始终存在（v3.7.0 新架构必需）
-        apps: initialData?.apps || {
-          claude: false,
-          codex: false,
-          gemini: false,
-        },
+        // 使用表单中的启用状态（v3.7.0 完整重构）
+        apps: enabledApps,
       };
 
       const descriptionTrimmed = formDescription.trim();
@@ -387,11 +434,7 @@ const McpFormModal: React.FC<McpFormModalProps> = ({
   };
 
   const getFormTitle = () => {
-    if (appId === "claude") {
-      return isEditing ? t("mcp.editClaudeServer") : t("mcp.addClaudeServer");
-    } else {
-      return isEditing ? t("mcp.editCodexServer") : t("mcp.addCodexServer");
-    }
+    return isEditing ? t("mcp.editServer") : t("mcp.addServer");
   };
 
   return (
@@ -477,6 +520,62 @@ const McpFormModal: React.FC<McpFormModalProps> = ({
               />
             </div>
 
+            {/* 启用到哪些应用（v3.7.0 新增） */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-3">
+                {t("mcp.form.enabledApps")}
+              </label>
+              <div className="flex flex-wrap gap-4">
+                <div className="flex items-center gap-2">
+                  <Checkbox
+                    id="enable-claude"
+                    checked={enabledApps.claude}
+                    onCheckedChange={(checked: boolean) =>
+                      setEnabledApps({ ...enabledApps, claude: checked })
+                    }
+                  />
+                  <label
+                    htmlFor="enable-claude"
+                    className="text-sm text-gray-700 dark:text-gray-300 cursor-pointer select-none"
+                  >
+                    {t("mcp.unifiedPanel.apps.claude")}
+                  </label>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <Checkbox
+                    id="enable-codex"
+                    checked={enabledApps.codex}
+                    onCheckedChange={(checked: boolean) =>
+                      setEnabledApps({ ...enabledApps, codex: checked })
+                    }
+                  />
+                  <label
+                    htmlFor="enable-codex"
+                    className="text-sm text-gray-700 dark:text-gray-300 cursor-pointer select-none"
+                  >
+                    {t("mcp.unifiedPanel.apps.codex")}
+                  </label>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <Checkbox
+                    id="enable-gemini"
+                    checked={enabledApps.gemini}
+                    onCheckedChange={(checked: boolean) =>
+                      setEnabledApps({ ...enabledApps, gemini: checked })
+                    }
+                  />
+                  <label
+                    htmlFor="enable-gemini"
+                    className="text-sm text-gray-700 dark:text-gray-300 cursor-pointer select-none"
+                  >
+                    {t("mcp.unifiedPanel.apps.gemini")}
+                  </label>
+                </div>
+              </div>
+            </div>
+
             {/* 可折叠的附加信息按钮 */}
             <div>
               <button
@@ -553,7 +652,7 @@ const McpFormModal: React.FC<McpFormModalProps> = ({
             {/* 配置输入框（根据格式显示 JSON 或 TOML） */}
             <div>
               <div className="flex items-center justify-between mb-2">
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
+                <label className="text-sm font-medium text-gray-700 dark:text-gray-300">
                   {useToml
                     ? t("mcp.form.tomlConfig")
                     : t("mcp.form.jsonConfig")}
@@ -578,6 +677,19 @@ const McpFormModal: React.FC<McpFormModalProps> = ({
                 value={formConfig}
                 onChange={(e) => handleConfigChange(e.target.value)}
               />
+              {/* 格式化按钮（仅 JSON 模式） */}
+              {!useToml && (
+                <div className="flex items-center justify-between mt-2">
+                  <button
+                    type="button"
+                    onClick={handleFormatJson}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-gray-700 dark:text-gray-300 hover:text-blue-600 dark:hover:text-blue-400 transition-colors"
+                  >
+                    <Wand2 className="w-3.5 h-3.5" />
+                    {t("common.format")}
+                  </button>
+                </div>
+              )}
               {configError && (
                 <div className="flex items-center gap-2 mt-2 text-red-500 dark:text-red-400 text-sm">
                   <AlertCircle size={16} />

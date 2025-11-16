@@ -21,6 +21,7 @@ import {
 } from "@/config/geminiProviderPresets";
 import { applyTemplateValues } from "@/utils/providerConfigUtils";
 import { mergeProviderMeta } from "@/utils/providerMetaUtils";
+import { getCodexCustomTemplate } from "@/config/codexTemplates";
 import CodexConfigEditor from "./CodexConfigEditor";
 import { CommonConfigEditor } from "./CommonConfigEditor";
 import GeminiConfigEditor from "./GeminiConfigEditor";
@@ -220,8 +221,13 @@ export function ProviderForm({
     [originalHandleCodexConfigChange, debouncedValidate],
   );
 
-  const [isCodexTemplateModalOpen, setIsCodexTemplateModalOpen] =
-    useState(false);
+  // Codex 新建模式：初始化时自动填充模板
+  useEffect(() => {
+    if (appId === "codex" && !initialData && selectedPresetId === "custom") {
+      const template = getCodexCustomTemplate();
+      resetCodexConfig(template.auth, template.config);
+    }
+  }, [appId, initialData, selectedPresetId, resetCodexConfig]);
 
   useEffect(() => {
     form.reset(defaultValues);
@@ -528,9 +534,10 @@ export function ProviderForm({
       setActivePreset(null);
       form.reset(defaultValues);
 
-      // Codex 自定义模式：重置为空配置
+      // Codex 自定义模式：加载模板
       if (appId === "codex") {
-        resetCodexConfig({}, "");
+        const template = getCodexCustomTemplate();
+        resetCodexConfig(template.auth, template.config);
       }
       // Gemini 自定义模式：重置为空配置
       if (appId === "gemini") {
@@ -615,11 +622,6 @@ export function ProviderForm({
             onPresetChange={handlePresetChange}
             category={category}
             appId={appId}
-            onOpenWizard={
-              appId === "codex"
-                ? () => setIsCodexTemplateModalOpen(true)
-                : undefined
-            }
           />
         )}
 
@@ -739,10 +741,6 @@ export function ProviderForm({
               commonConfigError={codexCommonConfigError}
               authError={codexAuthError}
               configError={codexConfigError}
-              onWebsiteUrlChange={(url) => form.setValue("websiteUrl", url)}
-              onNameChange={(name) => form.setValue("name", name)}
-              isTemplateModalOpen={isCodexTemplateModalOpen}
-              setIsTemplateModalOpen={setIsCodexTemplateModalOpen}
             />
             {/* 配置验证错误显示 */}
             <FormField
