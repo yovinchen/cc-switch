@@ -108,7 +108,7 @@ export function SkillsPage({ onClose: _onClose }: SkillsPageProps = {}) {
       {/* 顶部操作栏（固定区域） */}
       <div className="flex-shrink-0 border-b border-border-default bg-muted/20 px-6 py-4">
         <div className="flex items-center justify-between pr-8">
-          <h1 className="text-2xl font-bold text-foreground">
+          <h1 className="text-lg font-semibold leading-tight tracking-tight text-gray-900 dark:text-gray-100">
             {t("skills.title")}
           </h1>
           <div className="flex gap-2">
@@ -135,7 +135,7 @@ export function SkillsPage({ onClose: _onClose }: SkillsPageProps = {}) {
         </div>
 
         {/* 描述 */}
-        <p className="text-muted-foreground text-sm mt-2">
+        <p className="mt-1.5 text-sm text-gray-500 dark:text-gray-400">
           {t("skills.description")}
         </p>
       </div>
@@ -147,12 +147,17 @@ export function SkillsPage({ onClose: _onClose }: SkillsPageProps = {}) {
             <RefreshCw className="h-8 w-8 animate-spin text-muted-foreground" />
           </div>
         ) : skills.length === 0 ? (
-          <div className="flex flex-col items-center justify-center h-64 text-muted-foreground">
-            <p>{t("skills.empty")}</p>
+          <div className="flex flex-col items-center justify-center h-64 text-center">
+            <p className="text-lg font-medium text-gray-900 dark:text-gray-100">
+              {t("skills.empty")}
+            </p>
+            <p className="mt-2 text-sm text-gray-500 dark:text-gray-400">
+              {t("skills.emptyDescription")}
+            </p>
             <Button
               variant="link"
               onClick={() => setRepoManagerOpen(true)}
-              className="mt-2"
+              className="mt-3 text-sm font-normal"
             >
               {t("skills.addRepo")}
             </Button>
