@@ -623,7 +623,6 @@ export function ProviderForm({
             presetCategoryLabels={presetCategoryLabels}
             onPresetChange={handlePresetChange}
             category={category}
-            appId={appId}
           />
         )}
 

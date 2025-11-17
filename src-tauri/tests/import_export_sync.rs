@@ -488,10 +488,17 @@ url = "https://example.com"
     assert!(changed >= 2, "should import both servers");
 
     // v3.7.0: 检查统一结构
-    let servers = config.mcp.servers.as_ref().expect("unified servers should exist");
+    let servers = config
+        .mcp
+        .servers
+        .as_ref()
+        .expect("unified servers should exist");
 
     let echo = servers.get("echo_server").expect("echo server");
-    assert_eq!(echo.apps.codex, true, "Codex app should be enabled for echo_server");
+    assert_eq!(
+        echo.apps.codex, true,
+        "Codex app should be enabled for echo_server"
+    );
     let server_spec = echo.server.as_object().expect("server spec");
     assert_eq!(
         server_spec
@@ -502,7 +509,10 @@ url = "https://example.com"
     );
 
     let http = servers.get("http_server").expect("http server");
-    assert_eq!(http.apps.codex, true, "Codex app should be enabled for http_server");
+    assert_eq!(
+        http.apps.codex, true,
+        "Codex app should be enabled for http_server"
+    );
     let http_spec = http.server.as_object().expect("http spec");
     assert_eq!(
         http_spec.get("url").and_then(|v| v.as_str()).unwrap_or(""),
@@ -541,7 +551,7 @@ command = "echo"
             }),
             apps: cc_switch_lib::McpApps {
                 claude: false,
-                codex: false,  // 初始未启用
+                codex: false, // 初始未启用
                 gemini: false,
             },
             description: None,
@@ -564,7 +574,10 @@ command = "echo"
         .expect("existing entry");
 
     // 验证 Codex 应用已启用
-    assert_eq!(entry.apps.codex, true, "Codex app should be enabled after import");
+    assert_eq!(
+        entry.apps.codex, true,
+        "Codex app should be enabled after import"
+    );
 
     // 验证现有配置被保留（server 不应被覆盖）
     let spec = entry.server.as_object().expect("server spec");
@@ -662,7 +675,7 @@ fn import_from_claude_merges_into_config() {
                 "command": "prev"
             }),
             apps: cc_switch_lib::McpApps {
-                claude: false,  // 初始未启用
+                claude: false, // 初始未启用
                 codex: false,
                 gemini: false,
             },
@@ -686,7 +699,10 @@ fn import_from_claude_merges_into_config() {
         .expect("entry exists");
 
     // 验证 Claude 应用已启用
-    assert_eq!(entry.apps.claude, true, "Claude app should be enabled after import");
+    assert_eq!(
+        entry.apps.claude, true,
+        "Claude app should be enabled after import"
+    );
 
     // 验证现有配置被保留（server 不应被覆盖）
     let server = entry.server.as_object().expect("server obj");
