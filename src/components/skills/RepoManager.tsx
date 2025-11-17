@@ -34,6 +34,7 @@ export function RepoManager({
   const { t } = useTranslation();
   const [repoUrl, setRepoUrl] = useState("");
   const [branch, setBranch] = useState("");
+  const [skillsPath, setSkillsPath] = useState("");
   const [error, setError] = useState("");
 
   const getSkillCount = (repo: SkillRepo) =>
@@ -79,10 +80,12 @@ export function RepoManager({
         name: parsed.name,
         branch: branch || "main",
         enabled: true,
+        skillsPath: skillsPath.trim() || undefined, // 仅在有值时传递
       });
 
       setRepoUrl("");
       setBranch("");
+      setSkillsPath("");
     } catch (e) {
       setError(e instanceof Error ? e.message : t("skills.repo.addFailed"));
     }
@@ -107,7 +110,7 @@ export function RepoManager({
         <div className="mt-4 rounded-2xl border border-border-default bg-muted/10 px-5 py-4 space-y-5">
           <div className="space-y-2">
             <Label htmlFor="repo-url">{t("skills.repo.url")}</Label>
-            <div className="flex flex-col gap-3 sm:flex-row">
+            <div className="flex flex-col gap-3">
               <Input
                 id="repo-url"
                 placeholder={t("skills.repo.urlPlaceholder")}
@@ -115,22 +118,31 @@ export function RepoManager({
                 onChange={(e) => setRepoUrl(e.target.value)}
                 className="flex-1"
               />
-              <Input
-                id="branch"
-                placeholder={t("skills.repo.branchPlaceholder")}
-                value={branch}
-                onChange={(e) => setBranch(e.target.value)}
-                className="w-full sm:w-32"
-              />
-              <Button
-                onClick={handleAdd}
-                className="w-full sm:w-auto sm:px-4"
-                variant="mcp"
-                type="button"
-              >
-                <Plus className="h-4 w-4 mr-2" />
-                {t("skills.repo.add")}
-              </Button>
+              <div className="flex flex-col gap-3 sm:flex-row">
+                <Input
+                  id="branch"
+                  placeholder={t("skills.repo.branchPlaceholder")}
+                  value={branch}
+                  onChange={(e) => setBranch(e.target.value)}
+                  className="flex-1"
+                />
+                <Input
+                  id="skills-path"
+                  placeholder={t("skills.repo.pathPlaceholder")}
+                  value={skillsPath}
+                  onChange={(e) => setSkillsPath(e.target.value)}
+                  className="flex-1"
+                />
+                <Button
+                  onClick={handleAdd}
+                  className="w-full sm:w-auto sm:px-4"
+                  variant="mcp"
+                  type="button"
+                >
+                  <Plus className="h-4 w-4 mr-2" />
+                  {t("skills.repo.add")}
+                </Button>
+              </div>
             </div>
             {error && <p className="text-xs text-destructive">{error}</p>}
           </div>
@@ -154,6 +166,12 @@ export function RepoManager({
                       </div>
                       <div className="mt-1 text-xs text-muted-foreground">
                         {t("skills.repo.branch")}: {repo.branch || "main"}
+                        {repo.skillsPath && (
+                          <>
+                            <span className="mx-2">•</span>
+                            {t("skills.repo.path")}: {repo.skillsPath}
+                          </>
+                        )}
                         <span className="ml-3 inline-flex items-center rounded-full border border-border-default px-2 py-0.5 text-[11px]">
                           {t("skills.repo.skillCount", {
                             count: getSkillCount(repo),

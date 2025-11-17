@@ -45,6 +45,9 @@ pub struct SkillRepo {
     pub branch: String,
     /// 是否启用
     pub enabled: bool,
+    /// 技能所在的子目录路径 (可选, 如 "skills", "my-skills/subdir")
+    #[serde(rename = "skillsPath")]
+    pub skills_path: Option<String>,
 }
 
 /// 技能安装状态
@@ -76,12 +79,21 @@ impl Default for SkillStore {
                     name: "awesome-claude-skills".to_string(),
                     branch: "main".to_string(),
                     enabled: true,
+                    skills_path: None, // 扫描根目录
                 },
                 SkillRepo {
                     owner: "anthropics".to_string(),
                     name: "skills".to_string(),
                     branch: "main".to_string(),
                     enabled: true,
+                    skills_path: None, // 扫描根目录
+                },
+                SkillRepo {
+                    owner: "cexll".to_string(),
+                    name: "myclaude".to_string(),
+                    branch: "master".to_string(),
+                    enabled: true,
+                    skills_path: Some("skills".to_string()), // 扫描 skills 子目录
                 },
             ],
         }
@@ -163,8 +175,28 @@ impl SkillService {
             .map_err(|_| anyhow!("下载仓库 {}/{} 超时", repo.owner, repo.name))??;
         let mut skills = Vec::new();
 
-        // 遍历仓库目录
-        for entry in fs::read_dir(&temp_dir)? {
+        // 确定要扫描的目录路径
+        let scan_dir = if let Some(ref skills_path) = repo.skills_path {
+            // 如果指定了 skillsPath，则扫描该子目录
+            let subdir = temp_dir.join(skills_path.trim_matches('/'));
+            if !subdir.exists() {
+                log::warn!(
+                    "仓库 {}/{} 中指定的技能路径 '{}' 不存在",
+                    repo.owner,
+                    repo.name,
+                    skills_path
+                );
+                let _ = fs::remove_dir_all(&temp_dir);
+                return Ok(skills);
+            }
+            subdir
+        } else {
+            // 否则扫描仓库根目录
+            temp_dir.clone()
+        };
+
+        // 遍历目标目录
+        for entry in fs::read_dir(&scan_dir)? {
             let entry = entry?;
             let path = entry.path();
 
@@ -182,6 +214,13 @@ impl SkillService {
                 Ok(meta) => {
                     let directory = path.file_name().unwrap().to_string_lossy().to_string();
 
+                    // 构建 README URL（考虑 skillsPath）
+                    let readme_path = if let Some(ref skills_path) = repo.skills_path {
+                        format!("{}/{}", skills_path.trim_matches('/'), directory)
+                    } else {
+                        directory.clone()
+                    };
+
                     skills.push(Skill {
                         key: format!("{}/{}:{}", repo.owner, repo.name, directory),
                         name: meta.name.unwrap_or_else(|| directory.clone()),
@@ -189,10 +228,7 @@ impl SkillService {
                         directory,
                         readme_url: Some(format!(
                             "https://github.com/{}/{}/tree/{}/{}",
-                            repo.owner,
-                            repo.name,
-                            repo.branch,
-                            path.file_name().unwrap().to_string_lossy()
+                            repo.owner, repo.name, repo.branch, readme_path
                         )),
                         installed: false,
                         repo_owner: Some(repo.owner.clone()),
@@ -267,7 +303,7 @@ impl SkillService {
                 if skill_md.exists() {
                     if let Ok(meta) = self.parse_skill_metadata(&skill_md) {
                         skills.push(Skill {
-                            key: format!("local:{}", directory),
+                            key: format!("local:{directory}"),
                             name: meta.name.unwrap_or_else(|| directory.clone()),
                             description: meta.description.unwrap_or_default(),
                             directory: directory.clone(),
@@ -290,11 +326,11 @@ impl SkillService {
         let mut seen = HashMap::new();
         skills.retain(|skill| {
             let key = skill.directory.to_lowercase();
-            if seen.contains_key(&key) {
-                false
-            } else {
-                seen.insert(key, true);
+            if let std::collections::hash_map::Entry::Vacant(e) = seen.entry(key) {
+                e.insert(true);
                 true
+            } else {
+                false
             }
         });
     }
@@ -348,7 +384,7 @@ impl SkillService {
         let mut archive = zip::ZipArchive::new(cursor)?;
 
         // 获取根目录名称 (GitHub 的 zip 会有一个根目录)
-        let root_name = if archive.len() > 0 {
+        let root_name = if !archive.is_empty() {
             let first_file = archive.by_index(0)?;
             let name = first_file.name();
             name.split('/').next().unwrap_or("").to_string()
@@ -363,7 +399,7 @@ impl SkillService {
 
             // 跳过根目录，直接提取内容
             let relative_path =
-                if let Some(stripped) = file_path.strip_prefix(&format!("{}/", root_name)) {
+                if let Some(stripped) = file_path.strip_prefix(&format!("{root_name}/")) {
                     stripped
                 } else {
                     continue;

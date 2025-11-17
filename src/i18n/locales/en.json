@@ -639,6 +639,8 @@
       "urlPlaceholder": "owner/name or https://github.com/owner/name",
       "branch": "Branch",
       "branchPlaceholder": "main",
+      "path": "Skills Path",
+      "pathPlaceholder": "skills (optional, leave empty for root)",
       "add": "Add Repository",
       "list": "Added Repositories",
       "empty": "No repositories",

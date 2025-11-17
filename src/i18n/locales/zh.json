@@ -639,6 +639,8 @@
       "urlPlaceholder": "owner/name 或 https://github.com/owner/name",
       "branch": "分支",
       "branchPlaceholder": "main",
+      "path": "技能路径",
+      "pathPlaceholder": "skills (可选，留空扫描根目录)",
       "add": "添加仓库",
       "list": "已添加的仓库",
       "empty": "暂无仓库",

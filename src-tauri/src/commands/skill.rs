@@ -1,5 +1,5 @@
-use crate::services::{Skill, SkillRepo, SkillService};
 use crate::services::skill::SkillState;
+use crate::services::{Skill, SkillRepo, SkillService};
 use crate::store::AppState;
 use chrono::Utc;
 use std::sync::Arc;
@@ -13,10 +13,7 @@ pub async fn get_skills(
     app_state: State<'_, AppState>,
 ) -> Result<Vec<Skill>, String> {
     let repos = {
-        let config = app_state
-            .config
-            .read()
-            .map_err(|e| e.to_string())?;
+        let config = app_state.config.read().map_err(|e| e.to_string())?;
         config.skills.repos.clone()
     };
 
@@ -35,10 +32,7 @@ pub async fn install_skill(
 ) -> Result<bool, String> {
     // 先在不持有写锁的情况下收集仓库与技能信息
     let repos = {
-        let config = app_state
-            .config
-            .read()
-            .map_err(|e| e.to_string())?;
+        let config = app_state.config.read().map_err(|e| e.to_string())?;
         config.skills.repos.clone()
     };
 
@@ -68,6 +62,7 @@ pub async fn install_skill(
                 .clone()
                 .unwrap_or_else(|| "main".to_string()),
             enabled: true,
+            skills_path: None, // 安装时使用默认路径
         };
 
         service
@@ -78,10 +73,7 @@ pub async fn install_skill(
     }
 
     {
-        let mut config = app_state
-            .config
-            .write()
-            .map_err(|e| e.to_string())?;
+        let mut config = app_state.config.write().map_err(|e| e.to_string())?;
 
         config.skills.skills.insert(
             directory.clone(),
@@ -109,10 +101,7 @@ pub fn uninstall_skill(
         .map_err(|e| e.to_string())?;
 
     {
-        let mut config = app_state
-            .config
-            .write()
-            .map_err(|e| e.to_string())?;
+        let mut config = app_state.config.write().map_err(|e| e.to_string())?;
 
         config.skills.skills.remove(&directory);
     }
@@ -127,10 +116,7 @@ pub fn get_skill_repos(
     _service: State<'_, SkillServiceState>,
     app_state: State<'_, AppState>,
 ) -> Result<Vec<SkillRepo>, String> {
-    let config = app_state
-        .config
-        .read()
-        .map_err(|e| e.to_string())?;
+    let config = app_state.config.read().map_err(|e| e.to_string())?;
 
     Ok(config.skills.repos.clone())
 }
@@ -142,10 +128,7 @@ pub fn add_skill_repo(
     app_state: State<'_, AppState>,
 ) -> Result<bool, String> {
     {
-        let mut config = app_state
-            .config
-            .write()
-            .map_err(|e| e.to_string())?;
+        let mut config = app_state.config.write().map_err(|e| e.to_string())?;
 
         service
             .0
@@ -166,10 +149,7 @@ pub fn remove_skill_repo(
     app_state: State<'_, AppState>,
 ) -> Result<bool, String> {
     {
-        let mut config = app_state
-            .config
-            .write()
-            .map_err(|e| e.to_string())?;
+        let mut config = app_state.config.write().map_err(|e| e.to_string())?;
 
         service
             .0

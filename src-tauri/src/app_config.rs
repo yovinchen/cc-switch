@@ -294,7 +294,9 @@ impl MultiAppConfig {
             ));
         }
 
-        let has_skills_in_config = value.as_object().is_some_and(|map| map.contains_key("skills"));
+        let has_skills_in_config = value
+            .as_object()
+            .is_some_and(|map| map.contains_key("skills"));
 
         // 解析 v2 结构
         let mut config: Self =
