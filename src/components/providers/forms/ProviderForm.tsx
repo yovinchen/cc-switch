@@ -74,6 +74,7 @@ interface ProviderFormProps {
   initialData?: {
     name?: string;
     websiteUrl?: string;
+    notes?: string;
     settingsConfig?: Record<string, unknown>;
     category?: ProviderCategory;
     meta?: ProviderMeta;
@@ -138,6 +139,7 @@ export function ProviderForm({
     () => ({
       name: initialData?.name ?? "",
       websiteUrl: initialData?.websiteUrl ?? "",
+      notes: initialData?.notes ?? "",
       settingsConfig: initialData?.settingsConfig
         ? JSON.stringify(initialData.settingsConfig, null, 2)
         : appId === "codex"

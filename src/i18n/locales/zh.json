@@ -83,6 +83,8 @@
     "name": "供应商名称",
     "namePlaceholder": "例如：Claude 官方",
     "websiteUrl": "官网链接",
+    "notes": "备注",
+    "notesPlaceholder": "例如：公司专用账号",
     "configJson": "配置 JSON",
     "writeCommonConfig": "写入通用配置",
     "editCommonConfigButton": "编辑通用配置",

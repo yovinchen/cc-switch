@@ -83,6 +83,8 @@
     "name": "Provider Name",
     "namePlaceholder": "e.g., Claude Official",
     "websiteUrl": "Website URL",
+    "notes": "Notes",
+    "notesPlaceholder": "e.g., Company dedicated account",
     "configJson": "Config JSON",
     "writeCommonConfig": "Write common config",
     "editCommonConfigButton": "Edit common config",
