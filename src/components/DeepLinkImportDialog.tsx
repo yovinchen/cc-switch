@@ -113,10 +113,8 @@ export function DeepLinkImportDialog() {
             <div className="font-medium text-sm text-muted-foreground">
               {t("deeplink.app")}
             </div>
-            <div className="col-span-2 text-sm">
-              <span className="inline-flex items-center rounded-full bg-primary/10 px-2.5 py-0.5 text-xs font-medium text-primary capitalize">
-                {request.app}
-              </span>
+            <div className="col-span-2 text-sm font-medium capitalize">
+              {request.app}
             </div>
           </div>
 

@@ -1,6 +1,7 @@
 #![allow(non_snake_case)]
 
 mod config;
+mod deeplink;
 mod import_export;
 mod mcp;
 mod misc;
@@ -10,6 +11,7 @@ mod provider;
 mod settings;
 
 pub use config::*;
+pub use deeplink::*;
 pub use import_export::*;
 pub use mcp::*;
 pub use misc::*;

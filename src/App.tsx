@@ -22,6 +22,7 @@ import { UpdateBadge } from "@/components/UpdateBadge";
 import UsageScriptModal from "@/components/UsageScriptModal";
 import UnifiedMcpPanel from "@/components/mcp/UnifiedMcpPanel";
 import PromptPanel from "@/components/prompts/PromptPanel";
+import { DeepLinkImportDialog } from "@/components/DeepLinkImportDialog";
 import { Button } from "@/components/ui/button";
 
 function App() {
@@ -303,6 +304,8 @@ function App() {
       />
 
       <UnifiedMcpPanel open={isMcpOpen} onOpenChange={setIsMcpOpen} />
+
+      <DeepLinkImportDialog />
     </div>
   );
 }

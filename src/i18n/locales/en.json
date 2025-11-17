@@ -608,5 +608,23 @@
       "deleteTitle": "Confirm Delete",
       "deleteMessage": "Are you sure you want to delete prompt \"{{name}}\"?"
     }
+  },
+  "deeplink": {
+    "confirmImport": "Confirm Import Provider",
+    "confirmImportDescription": "The following configuration will be imported from deep link into CC Switch",
+    "app": "App Type",
+    "providerName": "Provider Name",
+    "homepage": "Homepage",
+    "endpoint": "API Endpoint",
+    "apiKey": "API Key",
+    "model": "Model",
+    "notes": "Notes",
+    "import": "Import",
+    "importing": "Importing...",
+    "warning": "Please confirm the information above is correct before importing. You can edit or delete it later in the provider list.",
+    "parseError": "Failed to parse deep link",
+    "importSuccess": "Import successful",
+    "importSuccessDescription": "Provider \"{{name}}\" has been successfully imported",
+    "importError": "Failed to import"
   }
 }

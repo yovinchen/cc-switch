@@ -608,5 +608,23 @@
       "deleteTitle": "确认删除",
       "deleteMessage": "确定要删除提示词 \"{{name}}\" 吗？"
     }
+  },
+  "deeplink": {
+    "confirmImport": "确认导入供应商配置",
+    "confirmImportDescription": "以下配置将导入到 CC Switch",
+    "app": "应用类型",
+    "providerName": "供应商名称",
+    "homepage": "官网地址",
+    "endpoint": "API 端点",
+    "apiKey": "API 密钥",
+    "model": "模型",
+    "notes": "备注",
+    "import": "导入",
+    "importing": "导入中...",
+    "warning": "请确认以上信息准确无误后再导入。导入后可在供应商列表中编辑或删除。",
+    "parseError": "深链接解析失败",
+    "importSuccess": "导入成功",
+    "importSuccessDescription": "供应商 \"{{name}}\" 已成功导入",
+    "importError": "导入失败"
   }
 }
