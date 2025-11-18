@@ -2,6 +2,7 @@
 
 mod config;
 mod env;
+mod deeplink;
 mod import_export;
 mod mcp;
 mod misc;
@@ -13,6 +14,7 @@ pub mod skill;
 
 pub use config::*;
 pub use env::*;
+pub use deeplink::*;
 pub use import_export::*;
 pub use mcp::*;
 pub use misc::*;

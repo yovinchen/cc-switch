@@ -26,6 +26,7 @@ import UsageScriptModal from "@/components/UsageScriptModal";
 import UnifiedMcpPanel from "@/components/mcp/UnifiedMcpPanel";
 import PromptPanel from "@/components/prompts/PromptPanel";
 import { SkillsPage } from "@/components/skills/SkillsPage";
+import { DeepLinkImportDialog } from "@/components/DeepLinkImportDialog";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -370,8 +371,8 @@ function App() {
         message={
           confirmDelete
             ? t("confirm.deleteProviderMessage", {
-                name: confirmDelete.name,
-              })
+              name: confirmDelete.name,
+            })
             : ""
         }
         onConfirm={() => void handleConfirmDelete()}
@@ -402,6 +403,7 @@ function App() {
           <SkillsPage onClose={() => setIsSkillsOpen(false)} />
         </DialogContent>
       </Dialog>
+      <DeepLinkImportDialog />
     </div>
   );
 }
