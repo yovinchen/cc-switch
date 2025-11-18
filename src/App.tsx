@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import { Plus, Settings, Edit3 } from "lucide-react";
+import { listen } from "@tauri-apps/api/event";
 import type { Provider } from "@/types";
 import { useProvidersQuery } from "@/lib/query";
 import {
@@ -24,6 +25,12 @@ import UnifiedMcpPanel from "@/components/mcp/UnifiedMcpPanel";
 import PromptPanel from "@/components/prompts/PromptPanel";
 import { DeepLinkImportDialog } from "@/components/DeepLinkImportDialog";
 import { Button } from "@/components/ui/button";
+import { ConfigImportDialog } from "@/components/deeplink/ConfigImportDialog";
+import {
+  deeplinkApi,
+  type ConfigImportRequest,
+  type DeepLinkEventRequest,
+} from "@/lib/api/deeplink";
 
 function App() {
   const { t } = useTranslation();
@@ -37,6 +44,10 @@ function App() {
   const [editingProvider, setEditingProvider] = useState<Provider | null>(null);
   const [usageProvider, setUsageProvider] = useState<Provider | null>(null);
   const [confirmDelete, setConfirmDelete] = useState<Provider | null>(null);
+  const [configRequest, setConfigRequest] =
+    useState<ConfigImportRequest | null>(null);
+  const [isConfigDialogOpen, setIsConfigDialogOpen] = useState(false);
+  const [isConfigImporting, setIsConfigImporting] = useState(false);
 
   const { data, isLoading, refetch } = useProvidersQuery(activeApp);
   const providers = useMemo(() => data?.providers ?? {}, [data]);
@@ -161,6 +172,53 @@ function App() {
     } catch (error) {
       console.error("[App] Failed to refresh tray menu", error);
     }
+  };
+
+  // 监听深链接配置导入
+  useEffect(() => {
+    const unlistenPromise = listen<DeepLinkEventRequest>(
+      "deeplink-import",
+      (event) => {
+        if (!isConfigPayload(event.payload)) {
+          return;
+        }
+
+        setConfigRequest({
+          ...event.payload,
+          resource: "config",
+        });
+        setIsConfigDialogOpen(true);
+      },
+    );
+
+    return () => {
+      unlistenPromise.then((fn) => fn());
+    };
+  }, []);
+
+  const handleConfigImport = async (payload: ConfigImportRequest) => {
+    setIsConfigImporting(true);
+    try {
+      await deeplinkApi.importConfig(payload);
+      await handleImportSuccess();
+      toast.success(t("deeplink.config.importSuccessToast"));
+      closeConfigDialog();
+    } catch (error) {
+      console.error("[App] Failed to import config from deep link", error);
+      toast.error(t("deeplink.config.importError"), {
+        description:
+          extractErrorMessage(error) ||
+          t("deeplink.config.importErrorFallback"),
+      });
+    } finally {
+      setIsConfigImporting(false);
+    }
+  };
+
+  const closeConfigDialog = () => {
+    if (isConfigImporting) return;
+    setIsConfigDialogOpen(false);
+    setConfigRequest(null);
   };
 
   return (
@@ -306,7 +364,24 @@ function App() {
       <UnifiedMcpPanel open={isMcpOpen} onOpenChange={setIsMcpOpen} />
 
       <DeepLinkImportDialog />
+      <ConfigImportDialog
+        open={isConfigDialogOpen && Boolean(configRequest)}
+        request={configRequest}
+        isSubmitting={isConfigImporting}
+        onConfirm={(payload) => void handleConfigImport(payload)}
+        onClose={closeConfigDialog}
+      />
     </div>
+  );
+}
+
+function isConfigPayload(
+  payload: DeepLinkEventRequest,
+): payload is ConfigImportRequest & { resource: "config" } {
+  return (
+    Object.prototype.hasOwnProperty.call(payload, "data") &&
+    (!Object.prototype.hasOwnProperty.call(payload, "resource") ||
+      (payload as ConfigImportRequest).resource === "config")
   );
 }
 

@@ -1,7 +1,7 @@
 #![allow(non_snake_case)]
 
 use crate::init_status::InitErrorPayload;
-use tauri::AppHandle;
+use tauri::{AppHandle, Manager};
 use tauri_plugin_opener::OpenerExt;
 
 /// 打开外部链接
@@ -18,6 +18,21 @@ pub async fn open_external(app: AppHandle, url: String) -> Result<bool, String> 
         .map_err(|e| format!("打开链接失败: {e}"))?;
 
     Ok(true)
+}
+
+/// 切换开发者工具
+#[tauri::command]
+pub async fn toggle_devtools(app: AppHandle) -> Result<(), String> {
+    if let Some(window) = app.get_webview_window("main") {
+        if window.is_devtools_open() {
+            window.close_devtools();
+        } else {
+            window.open_devtools();
+        }
+        Ok(())
+    } else {
+        Err("找不到主窗口".to_string())
+    }
 }
 
 /// 检查更新

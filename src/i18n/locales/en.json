@@ -625,6 +625,28 @@
     "parseError": "Failed to parse deep link",
     "importSuccess": "Import successful",
     "importSuccessDescription": "Provider \"{{name}}\" has been successfully imported",
-    "importError": "Failed to import"
+    "importError": "Failed to import",
+    "config": {
+      "title": "Import full configuration",
+      "description": "A ccswitch deep link contains a full provider config. Review and adjust it before importing.",
+      "securityTitle": "Security notice",
+      "securityBody": "Only import links from trusted sources and double check API keys or base URLs. CC Switch processes this data locally only.",
+      "app": "Target app",
+      "format": "Format",
+      "formatAuto": "Auto detect",
+      "maskHint": "Sensitive fields are masked to first and last 4 characters. Switch to raw view to edit.",
+      "showRaw": "Show raw content",
+      "hideRaw": "Hide raw content",
+      "ariaEditor": "Configuration editor",
+      "placeholder": "Preview or tweak the config here. A new provider will be created after import.",
+      "decodeError": "Failed to decode config: {{message}}",
+      "decodeErrorFallback": "Failed to decode config",
+      "editTip": "When everything looks good, click Confirm import to apply the configuration.",
+      "import": "Confirm import",
+      "importing": "Importing...",
+      "importSuccessToast": "Configuration imported successfully",
+      "importError": "Failed to import configuration",
+      "importErrorFallback": "Import failed, please retry"
+    }
   }
 }

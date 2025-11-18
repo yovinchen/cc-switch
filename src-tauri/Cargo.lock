@@ -565,6 +565,7 @@ dependencies = [
 name = "cc-switch"
 version = "3.6.2"
 dependencies = [
+ "base64 0.22.1",
  "chrono",
  "dirs 5.0.1",
  "futures",
@@ -593,6 +594,7 @@ dependencies = [
  "toml 0.8.2",
  "toml_edit 0.22.27",
  "url",
+ "uuid",
 ]
 
 [[package]]

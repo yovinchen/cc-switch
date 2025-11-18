@@ -11,6 +11,7 @@ mod gemini_config; // 新增
 mod gemini_mcp;
 mod init_status;
 mod mcp;
+mod models;
 mod prompt;
 mod prompt_files;
 mod provider;
@@ -31,9 +32,11 @@ pub use mcp::{
     sync_enabled_to_codex, sync_enabled_to_gemini, sync_single_server_to_claude,
     sync_single_server_to_codex, sync_single_server_to_gemini,
 };
+pub use models::deeplink::{ConfigImportRequest, DeepLinkRequest, ProviderImportRequest};
 pub use provider::{Provider, ProviderMeta};
 pub use services::{
-    ConfigService, EndpointLatency, McpService, PromptService, ProviderService, SpeedtestService,
+    ConfigService, DeepLinkService, EndpointLatency, McpService, PromptService, ProviderService,
+    SpeedtestService,
 };
 pub use settings::{update_settings, AppSettings};
 pub use store::AppState;
@@ -301,14 +304,24 @@ fn handle_deeplink_url(
 
     log::info!("✓ Deep link URL detected from {source}: {url_str}");
 
-    match crate::deeplink::parse_deeplink_url(url_str) {
+    match crate::DeepLinkRequest::from_url(url_str) {
         Ok(request) => {
-            log::info!(
-                "✓ Successfully parsed deep link: resource={}, app={}, name={}",
-                request.resource,
-                request.app,
-                request.name
-            );
+            match &request {
+                crate::DeepLinkRequest::Provider(p) => {
+                    log::info!(
+                        "✓ Successfully parsed provider deep link: app={}, name={}",
+                        p.app,
+                        p.name
+                    );
+                }
+                crate::DeepLinkRequest::Config(c) => {
+                    log::info!(
+                        "✓ Successfully parsed config deep link: app={}, format={:?}",
+                        c.app,
+                        c.format
+                    );
+                }
+            }
 
             if let Err(e) = app.emit("deeplink-import", &request) {
                 log::error!("✗ Failed to emit deeplink-import event: {e}");
@@ -612,6 +625,21 @@ pub fn run() {
             let _tray = tray_builder.build(app)?;
             // 将同一个实例注入到全局状态，避免重复创建导致的不一致
             app.manage(app_state);
+
+            // 启用开发者工具（Debug 模式自动打开，Release 模式通过快捷键手动打开）
+            if let Some(main_window) = app.get_webview_window("main") {
+                #[cfg(debug_assertions)]
+                {
+                    main_window.open_devtools();
+                    log::info!("开发者工具已自动启用（Debug 模式）");
+                }
+
+                #[cfg(not(debug_assertions))]
+                {
+                    log::info!("开发者工具可通过快捷键启用（Cmd/Ctrl+Shift+I 或 F12）");
+                }
+            }
+
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -629,6 +657,7 @@ pub fn run() {
             commands::open_config_folder,
             commands::pick_directory,
             commands::open_external,
+            commands::toggle_devtools,
             commands::get_init_error,
             commands::get_app_config_path,
             commands::open_app_config_folder,
@@ -692,6 +721,7 @@ pub fn run() {
             // Deep link import
             commands::parse_deeplink,
             commands::import_from_deeplink,
+            commands::import_config_from_deeplink,
             update_tray_menu,
         ]);
 

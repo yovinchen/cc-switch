@@ -625,6 +625,28 @@
     "parseError": "深链接解析失败",
     "importSuccess": "导入成功",
     "importSuccessDescription": "供应商 \"{{name}}\" 已成功导入",
-    "importError": "导入失败"
+    "importError": "导入失败",
+    "config": {
+      "title": "导入完整配置",
+      "description": "检测到 ccswitch 深链接携带完整配置，请在导入前确认内容并可适当修改。",
+      "securityTitle": "安全提示",
+      "securityBody": "请仅导入来自可信来源的链接，并确认 API Key、Base URL 等敏感字段。CC Switch 仅在本地处理数据，不会上传到云端。",
+      "app": "目标应用",
+      "format": "配置格式",
+      "formatAuto": "自动判别",
+      "maskHint": "敏感字段默认仅显示首尾 4 位，需要编辑时可切换到原始内容。",
+      "showRaw": "显示原始内容",
+      "hideRaw": "恢复安全预览",
+      "ariaEditor": "配置内容编辑器",
+      "placeholder": "在此检查或调整配置内容，导入后会创建新的供应商。",
+      "decodeError": "配置内容解析失败：{{message}}",
+      "decodeErrorFallback": "配置内容解析失败",
+      "editTip": "确认内容无误后点击“确认导入”即可应用配置。",
+      "import": "确认导入",
+      "importing": "正在导入...",
+      "importSuccessToast": "完整配置导入成功",
+      "importError": "导入完整配置失败",
+      "importErrorFallback": "导入失败，请稍后重试"
+    }
   }
 }

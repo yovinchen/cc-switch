@@ -261,6 +261,34 @@
             color: #e91e63;
         }
 
+        .config-preview {
+            background: #2d3748;
+            color: #e2e8f0;
+            padding: 16px;
+            border-radius: 8px;
+            font-family: 'Monaco', 'Menlo', 'Consolas', monospace;
+            font-size: 12px;
+            line-height: 1.5;
+            overflow-x: auto;
+            margin: 12px 0;
+            white-space: pre;
+        }
+
+        .config-toggle {
+            background: #e2e8f0;
+            border: none;
+            padding: 6px 12px;
+            border-radius: 4px;
+            font-size: 12px;
+            cursor: pointer;
+            margin-bottom: 8px;
+            color: #4a5568;
+        }
+
+        .config-toggle:hover {
+            background: #cbd5e0;
+        }
+
         @media (max-width: 768px) {
             .header h1 {
                 font-size: 24px;
@@ -383,6 +411,81 @@
                 </div>
             </div>
 
+            <!-- v1.1 配置导入示例 -->
+            <div class="section">
+                <h2>📦 完整配置导入 (v1.1)</h2>
+                <p style="color: #7f8c8d; margin-bottom: 20px;">导入完整的配置文件（JSON/TOML 格式），支持更复杂的配置场景</p>
+
+                <div class="link-card">
+                    <h3>
+                        <span class="app-badge badge-claude">Claude</span>
+                        Claude settings.json 导入
+                    </h3>
+                    <p class="description">
+                        导入完整的 Claude Code settings.json 配置，包含环境变量、API Token 和模型设置。
+                    </p>
+                    <button class="config-toggle" onclick="toggleConfig('claude-config')">📄 查看配置内容</button>
+                    <div id="claude-config" style="display: none;">
+                        <pre class="config-preview">{
+  "env": {
+    "ANTHROPIC_AUTH_TOKEN": "sk-ant-test-demo-key-12345",
+    "ANTHROPIC_BASE_URL": "https://api.anthropic.com",
+    "ANTHROPIC_DEFAULT_SONNET_MODEL": "claude-sonnet-4-5-20250929"
+  }
+}</pre>
+                    </div>
+                    <a href="ccswitch://v1/import?resource=config&app=claude&data=eyJlbnYiOnsiQU5USFJPUElDX0FVVEhfVE9LRU4iOiJzay1hbnQtdGVzdC1kZW1vLWtleS0xMjM0NSIsIkFOVEhST1BJQ19CQVNFX1VSTCI6Imh0dHBzOi8vYXBpLmFudGhyb3BpYy5jb20iLCJBTlRIUk9QSUNfREVGQVVMVF9TT05ORVRfTU9ERUwiOiJjbGF1ZGUtc29ubmV0LTQtNS0yMDI1MDkyOSJ9fQ%3D%3D&format=json"
+                       class="deep-link">
+                        📥 导入 Claude 配置
+                    </a>
+                </div>
+
+                <div class="link-card">
+                    <h3>
+                        <span class="app-badge badge-gemini">Gemini</span>
+                        Gemini config.json 导入
+                    </h3>
+                    <p class="description">
+                        导入 Gemini 配置文件，包含 API Key、Base URL 和模型设置。
+                    </p>
+                    <button class="config-toggle" onclick="toggleConfig('gemini-config')">📄 查看配置内容</button>
+                    <div id="gemini-config" style="display: none;">
+                        <pre class="config-preview">{
+  "apiKey": "AIzaSy-test-demo-key-abc123",
+  "baseURL": "https://generativelanguage.googleapis.com",
+  "model": "gemini-2.0-flash-exp"
+}</pre>
+                    </div>
+                    <a href="ccswitch://v1/import?resource=config&app=gemini&data=eyJhcGlLZXkiOiJBSXphU3ktdGVzdC1kZW1vLWtleS1hYmMxMjMiLCJiYXNlVVJMIjoiaHR0cHM6Ly9nZW5lcmF0aXZlbGFuZ3VhZ2UuZ29vZ2xlYXBpcy5jb20iLCJtb2RlbCI6ImdlbWluaS0yLjAtZmxhc2gtZXhwIn0%3D&format=json"
+                       class="deep-link">
+                        📥 导入 Gemini 配置
+                    </a>
+                </div>
+
+                <div class="link-card">
+                    <h3>
+                        <span class="app-badge badge-codex">Codex</span>
+                        Codex config.toml 导入
+                    </h3>
+                    <p class="description">
+                        导入 Codex TOML 配置文件，包含 API 端点和模型设置。
+                    </p>
+                    <button class="config-toggle" onclick="toggleConfig('codex-config')">📄 查看配置内容</button>
+                    <div id="codex-config" style="display: none;">
+                        <pre class="config-preview">[api]
+base_url = "https://api.openai.com/v1"
+model = "gpt-5-codex"
+
+[features]
+web_search_request = true</pre>
+                    </div>
+                    <a href="ccswitch://v1/import?resource=config&app=codex&data=W2FwaV0KYmFzZV91cmwgPSAiaHR0cHM6Ly9hcGkub3BlbmFpLmNvbS92MSIKbW9kZWwgPSAiZ3B0LTUtY29kZXgiCgpbZmVhdHVyZXNdCndlYl9zZWFyY2hfcmVxdWVzdCA9IHRydWU%3D&format=toml"
+                       class="deep-link">
+                        📥 导入 Codex 配置
+                    </a>
+                </div>
+            </div>
+
             <!-- 注意事项 -->
             <div class="info-box">
                 <h4>⚠️ 使用注意事项</h4>
@@ -452,10 +555,68 @@
                     </div>
                 </div>
             </div>
+
+            <!-- 配置导入生成器 -->
+            <div class="generator-section" style="background: #fff3e0;">
+                <h2>🛠️ 配置导入生成器 (v1.1)</h2>
+                <p style="color: #7f8c8d; margin-bottom: 24px;">粘贴您的 JSON/TOML 配置内容，生成配置导入深链接</p>
+
+                <div class="form-group">
+                    <label>应用类型 *</label>
+                    <select id="configApp">
+                        <option value="claude">Claude Code (JSON)</option>
+                        <option value="gemini">Gemini (JSON)</option>
+                        <option value="codex">Codex (TOML)</option>
+                    </select>
+                </div>
+
+                <div class="form-group">
+                    <label>配置内容 *</label>
+                    <textarea id="configContent" rows="10" placeholder='Claude JSON 示例:
+{
+  "env": {
+    "ANTHROPIC_AUTH_TOKEN": "sk-ant-xxx",
+    "ANTHROPIC_BASE_URL": "https://api.anthropic.com",
+    "ANTHROPIC_DEFAULT_SONNET_MODEL": "claude-sonnet-4-5-20250929"
+  }
+}
+
+Codex TOML 示例:
+[api]
+base_url = "https://api.openai.com/v1"
+model = "gpt-5-codex"'></textarea>
+                </div>
+
+                <button class="btn" style="background: linear-gradient(135deg, #f39c12 0%, #e67e22 100%);" onclick="generateConfigLink()">🚀 生成配置导入链接</button>
+
+                <div id="configResult" style="display: none;">
+                    <div class="result-box" style="border-color: #f39c12;">
+                        <strong>✅ 生成的配置导入链接：</strong>
+                        <div class="result-text" id="configLinkText"></div>
+                        <button class="btn btn-copy" onclick="copyConfigLink()">📋 复制链接</button>
+                        <a id="configTestLink" class="deep-link" style="text-decoration: none; background: linear-gradient(135deg, #f39c12 0%, #e67e22 100%);">
+                            🧪 测试链接
+                        </a>
+                    </div>
+                </div>
+            </div>
         </div>
     </div>
 
     <script>
+        // 切换配置内容显示
+        function toggleConfig(id) {
+            const element = document.getElementById(id);
+            const button = event.target;
+            if (element.style.display === 'none') {
+                element.style.display = 'block';
+                button.textContent = '📄 隐藏配置内容';
+            } else {
+                element.style.display = 'none';
+                button.textContent = '📄 查看配置内容';
+            }
+        }
+
         function generateLink() {
             const app = document.getElementById('app').value;
             const name = document.getElementById('name').value.trim();
@@ -543,6 +704,81 @@
                 });
             });
         });
+
+        // v1.1 配置导入生成器
+        function generateConfigLink() {
+            const app = document.getElementById('configApp').value;
+            const content = document.getElementById('configContent').value.trim();
+
+            // 验证必填字段
+            if (!content) {
+                alert('❌ 请输入配置内容！');
+                return;
+            }
+
+            // 检查配置大小 (100KB 限制)
+            if (content.length > 100 * 1024) {
+                alert('❌ 配置内容过大（最大 100KB）！');
+                return;
+            }
+
+            // 验证配置格式
+            const format = app === 'codex' ? 'toml' : 'json';
+            if (format === 'json') {
+                try {
+                    JSON.parse(content);
+                } catch (e) {
+                    alert('❌ JSON 格式无效：' + e.message);
+                    return;
+                }
+            }
+
+            // Base64 编码（支持中文）
+            const encoder = new TextEncoder();
+            const bytes = encoder.encode(content);
+            const binary = Array.from(bytes, byte => String.fromCharCode(byte)).join('');
+            const base64Data = btoa(binary);
+
+            // 构建 URL
+            const params = new URLSearchParams({
+                resource: 'config',
+                app: app,
+                data: base64Data,
+                format: format
+            });
+
+            const deepLink = `ccswitch://v1/import?${params.toString()}`;
+
+            // 显示结果
+            document.getElementById('configLinkText').textContent = deepLink;
+            document.getElementById('configTestLink').href = deepLink;
+            document.getElementById('configResult').style.display = 'block';
+
+            // 滚动到结果区域
+            document.getElementById('configResult').scrollIntoView({
+                behavior: 'smooth',
+                block: 'nearest'
+            });
+        }
+
+        function copyConfigLink() {
+            const linkText = document.getElementById('configLinkText').textContent;
+
+            navigator.clipboard.writeText(linkText).then(() => {
+                const btn = event.target;
+                const originalText = btn.textContent;
+                btn.textContent = '✅ 已复制！';
+                btn.style.background = 'linear-gradient(135deg, #27ae60 0%, #229954 100%)';
+
+                setTimeout(() => {
+                    btn.textContent = originalText;
+                    btn.style.background = '';
+                }, 2000);
+            }).catch(err => {
+                console.error('复制失败:', err);
+                alert('❌ 复制失败，请手动复制链接');
+            });
+        }
     </script>
 </body>
 </html>

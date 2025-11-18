@@ -1,9 +1,10 @@
 import { invoke } from "@tauri-apps/api/core";
+import type { AppId } from "./types";
 
 export interface DeepLinkImportRequest {
   version: string;
   resource: string;
-  app: "claude" | "codex" | "gemini";
+  app: AppId;
   name: string;
   homepage: string;
   endpoint: string;
@@ -11,6 +12,17 @@ export interface DeepLinkImportRequest {
   model?: string;
   notes?: string;
 }
+
+export interface ConfigImportRequest {
+  resource?: "config";
+  app: AppId;
+  data: string;
+  format?: "json" | "toml";
+}
+
+export type DeepLinkEventRequest =
+  | DeepLinkImportRequest
+  | (ConfigImportRequest & { resource: "config" });
 
 export const deeplinkApi = {
   /**
@@ -31,5 +43,12 @@ export const deeplinkApi = {
     request: DeepLinkImportRequest,
   ): Promise<string> => {
     return invoke("import_from_deeplink", { request });
+  },
+
+  /**
+   * Import a full config payload (resource=config)
+   */
+  importConfig: async (request: ConfigImportRequest): Promise<string> => {
+    return invoke("import_config_from_deeplink", { request });
   },
 };

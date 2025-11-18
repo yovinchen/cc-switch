@@ -1,6 +1,10 @@
 import { useState, useEffect } from "react";
 import { listen } from "@tauri-apps/api/event";
-import { DeepLinkImportRequest, deeplinkApi } from "@/lib/api/deeplink";
+import {
+  type DeepLinkImportRequest,
+  type DeepLinkEventRequest,
+  deeplinkApi,
+} from "@/lib/api/deeplink";
 import {
   Dialog,
   DialogContent,
@@ -19,6 +23,12 @@ interface DeeplinkError {
   error: string;
 }
 
+const isProviderRequest = (
+  payload: DeepLinkEventRequest,
+): payload is DeepLinkImportRequest => {
+  return (payload as DeepLinkImportRequest).resource === "provider";
+};
+
 export function DeepLinkImportDialog() {
   const { t } = useTranslation();
   const queryClient = useQueryClient();
@@ -28,9 +38,11 @@ export function DeepLinkImportDialog() {
 
   useEffect(() => {
     // Listen for deep link import events
-    const unlistenImport = listen<DeepLinkImportRequest>(
+    const unlistenImport = listen<DeepLinkEventRequest>(
       "deeplink-import",
       (event) => {
+        if (!isProviderRequest(event.payload)) return;
+
         console.log("Deep link import event received:", event.payload);
         setRequest(event.payload);
         setIsOpen(true);
