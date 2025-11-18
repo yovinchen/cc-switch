@@ -152,8 +152,7 @@ fn delete_single_env(conflict: &EnvConflict) -> Result<(), String> {
 /// Restore environment variables from backup
 pub fn restore_from_backup(backup_path: String) -> Result<(), String> {
     // Read backup file
-    let content =
-        fs::read_to_string(&backup_path).map_err(|e| format!("读取备份文件失败: {e}"))?;
+    let content = fs::read_to_string(&backup_path).map_err(|e| format!("读取备份文件失败: {e}"))?;
 
     let backup_info: BackupInfo =
         serde_json::from_str(&content).map_err(|e| format!("解析备份文件失败: {e}"))?;
@@ -218,8 +217,7 @@ fn restore_single_env(conflict: &EnvConflict) -> Result<(), String> {
             content.push_str(&export_line);
 
             // Write back to file
-            fs::write(file_path, content)
-                .map_err(|e| format!("写入文件失败 {file_path}: {e}"))?;
+            fs::write(file_path, content).map_err(|e| format!("写入文件失败 {file_path}: {e}"))?;
 
             Ok(())
         }

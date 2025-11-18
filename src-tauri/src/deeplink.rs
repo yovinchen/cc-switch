@@ -233,11 +233,7 @@ fn build_provider_from_request(
             //    - 去掉首尾下划线
             //    - 若结果为空，则使用 "custom"
             let clean_provider_name = {
-                let raw: String = request
-                    .name
-                    .chars()
-                    .filter(|c| !c.is_control())
-                    .collect();
+                let raw: String = request.name.chars().filter(|c| !c.is_control()).collect();
                 let lower = raw.to_lowercase();
                 let mut key: String = lower
                     .chars()
