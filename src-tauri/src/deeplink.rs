@@ -220,20 +220,73 @@ fn build_provider_from_request(
         }
         AppType::Codex => {
             // Codex configuration structure
-            // For Codex, we store auth.json (JSON) and config.toml (TOML string) in settings_config
+            // For Codex, we store auth.json (JSON) and config.toml (TOML string) in settings_config。
+            //
+            // 这里尽量与前端 `getCodexCustomTemplate` 的默认模板保持一致，
+            // 再根据深链接参数注入 base_url / model，避免出现“只有 base_url 行”的极简配置，
+            // 让通过 UI 新建和通过深链接导入的 Codex 自定义供应商行为一致。
 
-            // Generate TOML string for config.toml
-            let mut config_toml = format!(
-                r#"[api]
-base_url = "{}"
-"#,
-                request.endpoint
+            // 1. 生成一个适合作为 model_provider 名的安全标识
+            //    规则尽量与前端 codexProviderPresets.generateThirdPartyConfig 保持一致：
+            //    - 转小写
+            //    - 非 [a-z0-9_] 统一替换为下划线
+            //    - 去掉首尾下划线
+            //    - 若结果为空，则使用 "custom"
+            let clean_provider_name = {
+                let raw: String = request
+                    .name
+                    .chars()
+                    .filter(|c| !c.is_control())
+                    .collect();
+                let lower = raw.to_lowercase();
+                let mut key: String = lower
+                    .chars()
+                    .map(|c| match c {
+                        'a'..='z' | '0'..='9' | '_' => c,
+                        _ => '_',
+                    })
+                    .collect();
+
+                // 去掉首尾下划线
+                while key.starts_with('_') {
+                    key.remove(0);
+                }
+                while key.ends_with('_') {
+                    key.pop();
+                }
+
+                if key.is_empty() {
+                    "custom".to_string()
+                } else {
+                    key
+                }
+            };
+
+            // 2. 模型名称：优先使用 deeplink 中的 model，否则退回到 Codex 默认模型
+            let model_name = request
+                .model
+                .as_deref()
+                .unwrap_or("gpt-5-codex")
+                .to_string();
+
+            // 3. 端点：与 UI 中 Base URL 处理方式保持一致，去掉结尾多余的斜杠
+            let endpoint = request.endpoint.trim().trim_end_matches('/').to_string();
+
+            // 4. 组装 config.toml 内容
+            // 使用 Rust 1.58+ 的内联格式化语法，避免 clippy::uninlined_format_args 警告
+            let config_toml = format!(
+                r#"model_provider = "{clean_provider_name}"
+model = "{model_name}"
+model_reasoning_effort = "high"
+disable_response_storage = true
+
+[model_providers.{clean_provider_name}]
+name = "{clean_provider_name}"
+base_url = "{endpoint}"
+wire_api = "responses"
+requires_openai_auth = true
+"#
             );
-
-            // Add model if provided
-            if let Some(model) = &request.model {
-                config_toml.push_str(&format!("model = \"{model}\"\n"));
-            }
 
             json!({
                 "auth": {
