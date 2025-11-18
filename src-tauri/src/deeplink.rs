@@ -302,7 +302,7 @@ requires_openai_auth = true
 
             // Add model if provided
             if let Some(model) = &request.model {
-                env.insert("GOOGLE_GEMINI_MODEL".to_string(), json!(model));
+                env.insert("GEMINI_MODEL".to_string(), json!(model));
             }
 
             json!({ "env": env })
@@ -399,5 +399,59 @@ mod tests {
             .unwrap_err()
             .to_string()
             .contains("must be http or https"));
+    }
+
+    #[test]
+    fn test_build_gemini_provider_with_model() {
+        let request = DeepLinkImportRequest {
+            version: "v1".to_string(),
+            resource: "provider".to_string(),
+            app: "gemini".to_string(),
+            name: "Test Gemini".to_string(),
+            homepage: "https://example.com".to_string(),
+            endpoint: "https://api.example.com".to_string(),
+            api_key: "test-api-key".to_string(),
+            model: Some("gemini-2.0-flash".to_string()),
+            notes: None,
+        };
+
+        let provider = build_provider_from_request(&AppType::Gemini, &request).unwrap();
+
+        // Verify provider basic info
+        assert_eq!(provider.name, "Test Gemini");
+        assert_eq!(
+            provider.website_url,
+            Some("https://example.com".to_string())
+        );
+
+        // Verify settings_config structure
+        let env = provider.settings_config["env"].as_object().unwrap();
+        assert_eq!(env["GEMINI_API_KEY"], "test-api-key");
+        assert_eq!(env["GOOGLE_GEMINI_BASE_URL"], "https://api.example.com");
+        assert_eq!(env["GEMINI_MODEL"], "gemini-2.0-flash");
+    }
+
+    #[test]
+    fn test_build_gemini_provider_without_model() {
+        let request = DeepLinkImportRequest {
+            version: "v1".to_string(),
+            resource: "provider".to_string(),
+            app: "gemini".to_string(),
+            name: "Test Gemini".to_string(),
+            homepage: "https://example.com".to_string(),
+            endpoint: "https://api.example.com".to_string(),
+            api_key: "test-api-key".to_string(),
+            model: None,
+            notes: None,
+        };
+
+        let provider = build_provider_from_request(&AppType::Gemini, &request).unwrap();
+
+        // Verify settings_config structure
+        let env = provider.settings_config["env"].as_object().unwrap();
+        assert_eq!(env["GEMINI_API_KEY"], "test-api-key");
+        assert_eq!(env["GOOGLE_GEMINI_BASE_URL"], "https://api.example.com");
+        // Model should not be present
+        assert!(env.get("GEMINI_MODEL").is_none());
     }
 }

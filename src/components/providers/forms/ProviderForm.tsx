@@ -202,10 +202,12 @@ export function ProviderForm({
     codexConfig,
     codexApiKey,
     codexBaseUrl,
+    codexModelName,
     codexAuthError,
     setCodexAuth,
     handleCodexApiKeyChange,
     handleCodexBaseUrlChange,
+    handleCodexModelNameChange,
     handleCodexConfigChange: originalHandleCodexConfigChange,
     resetCodexConfig,
   } = useCodexConfigState({ initialData });
@@ -315,12 +317,14 @@ export function ProviderForm({
   const {
     geminiEnv,
     geminiConfig,
+    geminiModel,
     envError,
     configError: geminiConfigError,
     handleGeminiEnvChange,
     handleGeminiConfigChange,
     resetGeminiConfig,
     envStringToObj,
+    envObjToString,
   } = useGeminiConfigState({
     initialData: appId === "gemini" ? initialData : undefined,
   });
@@ -685,6 +689,9 @@ export function ProviderForm({
             onCustomEndpointsChange={
               isEditMode ? undefined : setDraftCustomEndpoints
             }
+            shouldShowModelField={category !== "official"}
+            modelName={codexModelName}
+            onModelNameChange={handleCodexModelNameChange}
             speedTestEndpoints={speedTestEndpoints}
           />
         )}
@@ -711,17 +718,19 @@ export function ProviderForm({
             onEndpointModalToggle={setIsEndpointModalOpen}
             onCustomEndpointsChange={setDraftCustomEndpoints}
             shouldShowModelField={true}
-            model={
-              form.watch("settingsConfig")
-                ? JSON.parse(form.watch("settingsConfig") || "{}")?.env
-                    ?.GEMINI_MODEL || ""
-                : ""
-            }
+            model={geminiModel}
             onModelChange={(model) => {
+              // 同时更新 form.settingsConfig 和 geminiEnv
               const config = JSON.parse(form.watch("settingsConfig") || "{}");
               if (!config.env) config.env = {};
               config.env.GEMINI_MODEL = model;
               form.setValue("settingsConfig", JSON.stringify(config, null, 2));
+
+              // 同步更新 geminiEnv，确保提交时不丢失
+              const envObj = envStringToObj(geminiEnv);
+              envObj.GEMINI_MODEL = model.trim();
+              const newEnv = envObjToString(envObj);
+              handleGeminiEnvChange(newEnv);
             }}
             speedTestEndpoints={speedTestEndpoints}
           />
