@@ -58,7 +58,7 @@ function App() {
   const mcpPanelRef = useRef<any>(null);
   const skillsPageRef = useRef<any>(null);
   const addActionButtonClass =
-    "bg-primary hover:bg-primary/90 text-primary-foreground shadow-lg shadow-primary/20 rounded-full w-8 h-8";
+    "bg-orange-500 hover:bg-orange-600 dark:bg-orange-500 dark:hover:bg-orange-600 text-white shadow-lg shadow-orange-500/30 dark:shadow-orange-500/40 rounded-full w-8 h-8";
 
   const { data, isLoading, refetch } = useProvidersQuery(activeApp);
   const providers = useMemo(() => data?.providers ?? {}, [data]);
@@ -281,7 +281,7 @@ function App() {
         return <AgentsPanel onOpenChange={() => setCurrentView("providers")} />;
       default:
         return (
-          <div className="mx-auto max-w-5xl space-y-4">
+          <div className="mx-auto max-w-4xl space-y-4">
             <ProviderList
               providers={providers}
               currentProviderId={currentProviderId}
@@ -509,9 +509,8 @@ function App() {
       </header>
 
       <main
-        className={`flex-1 overflow-y-auto pb-12 px-6 animate-fade-in scroll-overlay ${
-          currentView === "providers" ? "pt-24" : "pt-20"
-        }`}
+        className={`flex-1 overflow-y-auto pb-12 px-6 animate-fade-in scroll-overlay ${currentView === "providers" ? "pt-24" : "pt-20"
+          }`}
         style={{ overflowX: "hidden" }}
       >
         {renderContent()}
@@ -554,8 +553,8 @@ function App() {
         message={
           confirmDelete
             ? t("confirm.deleteProviderMessage", {
-                name: confirmDelete.name,
-              })
+              name: confirmDelete.name,
+            })
             : ""
         }
         onConfirm={() => void handleConfirmDelete()}

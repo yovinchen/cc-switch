@@ -120,7 +120,7 @@ export function ProviderCard({
           ? "border-primary/50 bg-primary/5 shadow-[0_0_20px_rgba(59,130,246,0.15)]"
           : "hover:scale-[1.01]",
         dragHandleProps?.isDragging &&
-          "cursor-grabbing border-primary shadow-lg scale-105 z-10",
+        "cursor-grabbing border-primary shadow-lg scale-105 z-10",
       )}
     >
       <div className="absolute inset-0 bg-gradient-to-r from-primary/10 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500 pointer-events-none" />
@@ -141,7 +141,7 @@ export function ProviderCard({
           </button>
 
           {/* 供应商图标 */}
-          <div className="w-10 h-10 rounded-lg bg-white/5 flex items-center justify-center border border-white/10 group-hover:scale-105 transition-transform duration-300">
+          <div className="w-10 h-10 rounded-lg bg-white/5 flex items-center justify-center border border-gray-200 dark:border-white/10 group-hover:scale-105 transition-transform duration-300">
             <ProviderIcon
               icon={provider.icon}
               name={provider.name}
@@ -196,7 +196,7 @@ export function ProviderCard({
         </div>
 
         <div className="relative flex items-center ml-auto">
-          <div className="ml-auto transition-transform duration-200 group-hover:-translate-x-[14rem] group-focus-within:-translate-x-[14rem] sm:group-hover:-translate-x-[16rem] sm:group-focus-within:-translate-x-[16rem]">
+          <div className="ml-auto transition-transform duration-200 group-hover:-translate-x-[11rem] group-focus-within:-translate-x-[11rem] sm:group-hover:-translate-x-[13rem] sm:group-focus-within:-translate-x-[13rem]">
             <UsageFooter
               provider={provider}
               providerId={provider.id}
