@@ -726,5 +726,22 @@
     "importSuccess": "Import successful",
     "importSuccessDescription": "Provider \"{{name}}\" has been successfully imported",
     "importError": "Failed to import"
+  },
+  "iconPicker": {
+    "search": "Search Icons",
+    "searchPlaceholder": "Enter icon name...",
+    "noResults": "No matching icons found",
+    "category": {
+      "aiProvider": "AI Providers",
+      "cloud": "Cloud Platforms",
+      "tool": "Dev Tools",
+      "other": "Other"
+    }
+  },
+  "providerIcon": {
+    "label": "Icon",
+    "colorLabel": "Icon Color",
+    "selectIcon": "Select Icon",
+    "preview": "Preview"
   }
 }
