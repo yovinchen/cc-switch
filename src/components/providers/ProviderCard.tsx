@@ -9,6 +9,7 @@ import type { Provider } from "@/types";
 import type { AppId } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { ProviderActions } from "@/components/providers/ProviderActions";
+import { ProviderIcon } from "@/components/ProviderIcon";
 import UsageFooter from "@/components/UsageFooter";
 
 interface DragHandleProps {
@@ -139,6 +140,16 @@ export function ProviderCard({
             <GripVertical className="h-4 w-4" />
           </button>
 
+          {/* 供应商图标 */}
+          <div className="w-10 h-10 rounded-lg bg-white/5 flex items-center justify-center border border-white/10 group-hover:scale-105 transition-transform duration-300">
+            <ProviderIcon
+              icon={provider.icon}
+              name={provider.name}
+              color={provider.iconColor}
+              size={28}
+            />
+          </div>
+
           <div className="space-y-1">
             <div className="flex flex-wrap items-center gap-2 min-h-[20px]">
               <h3 className="text-base font-semibold leading-none">
@@ -185,7 +196,7 @@ export function ProviderCard({
         </div>
 
         <div className="relative flex items-center ml-auto">
-          <div className="ml-auto transition-transform duration-200 group-hover:-translate-x-[16rem] group-focus-within:-translate-x-[16rem] sm:group-hover:-translate-x-[18rem] sm:group-focus-within:-translate-x-[18rem]">
+          <div className="ml-auto transition-transform duration-200 group-hover:-translate-x-[14rem] group-focus-within:-translate-x-[14rem] sm:group-hover:-translate-x-[16rem] sm:group-focus-within:-translate-x-[16rem]">
             <UsageFooter
               provider={provider}
               providerId={provider.id}

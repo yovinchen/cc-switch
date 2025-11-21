@@ -78,6 +78,8 @@ interface ProviderFormProps {
     settingsConfig?: Record<string, unknown>;
     category?: ProviderCategory;
     meta?: ProviderMeta;
+    icon?: string;
+    iconColor?: string;
   };
   showButtons?: boolean;
 }
@@ -147,6 +149,8 @@ export function ProviderForm({
           : appId === "gemini"
             ? GEMINI_DEFAULT_CONFIG
             : CLAUDE_DEFAULT_CONFIG,
+      icon: initialData?.icon ?? "",
+      iconColor: initialData?.iconColor ?? "",
     }),
     [initialData, appId],
   );

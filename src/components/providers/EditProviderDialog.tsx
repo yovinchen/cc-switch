@@ -89,6 +89,8 @@ export function EditProviderDialog({
         notes: values.notes?.trim() || undefined,
         websiteUrl: values.websiteUrl?.trim() || undefined,
         settingsConfig: parsedConfig,
+        icon: values.icon?.trim() || undefined,
+        iconColor: values.iconColor?.trim() || undefined,
         ...(values.presetCategory ? { category: values.presetCategory } : {}),
         // 保留或更新 meta 字段
         ...(values.meta ? { meta: values.meta } : {}),
@@ -124,6 +126,8 @@ export function EditProviderDialog({
           settingsConfig: initialSettingsConfig,
           category: provider.category,
           meta: provider.meta,
+          icon: provider.icon,
+          iconColor: provider.iconColor,
         }}
         showButtons={false}
       />

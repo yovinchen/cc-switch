@@ -20,6 +20,9 @@ export interface Provider {
   isPartner?: boolean;
   // 可选：供应商元数据（仅存于 ~/.cc-switch/config.json，不写入 live 配置）
   meta?: ProviderMeta;
+  // 图标配置
+  icon?: string; // 图标名称（如 "openai", "anthropic"）
+  iconColor?: string; // 图标颜色（Hex 格式，如 "#00A67E"）
 }
 
 export interface AppConfig {
