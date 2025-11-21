@@ -15,6 +15,7 @@ mod mcp;
 mod prompt;
 mod prompt_files;
 mod provider;
+mod provider_defaults;
 mod services;
 mod settings;
 mod store;

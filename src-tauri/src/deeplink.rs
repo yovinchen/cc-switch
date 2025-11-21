@@ -319,6 +319,8 @@ requires_openai_auth = true
         sort_index: None,
         notes: request.notes.clone(),
         meta: None,
+        icon: None,
+        icon_color: None,
     };
 
     Ok(provider)

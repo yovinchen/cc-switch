@@ -616,6 +616,7 @@ dependencies = [
  "log",
  "objc2 0.5.2",
  "objc2-app-kit 0.2.2",
+ "once_cell",
  "regex",
  "reqwest",
  "rquickjs",
