@@ -33,7 +33,10 @@ export interface UseSettingsResult {
   browseAppConfigDir: () => Promise<void>;
   resetDirectory: (app: AppId) => Promise<void>;
   resetAppConfigDir: () => Promise<void>;
-  saveSettings: () => Promise<SaveResult | null>;
+  saveSettings: (
+    overrides?: Partial<SettingsFormState>,
+    options?: { silent?: boolean },
+  ) => Promise<SaveResult | null>;
   resetSettings: () => void;
   acknowledgeRestart: () => void;
 }
@@ -115,24 +118,29 @@ export function useSettings(): UseSettingsResult {
   ]);
 
   // 保存设置
-  const saveSettings = useCallback(async (): Promise<SaveResult | null> => {
-    if (!settings) return null;
+  const saveSettings = useCallback(
+    async (
+      overrides?: Partial<SettingsFormState>,
+      options?: { silent?: boolean },
+    ): Promise<SaveResult | null> => {
+      const mergedSettings = settings ? { ...settings, ...overrides } : null;
+      if (!mergedSettings) return null;
     try {
       const sanitizedAppDir = sanitizeDir(appConfigDir);
-      const sanitizedClaudeDir = sanitizeDir(settings.claudeConfigDir);
-      const sanitizedCodexDir = sanitizeDir(settings.codexConfigDir);
-      const sanitizedGeminiDir = sanitizeDir(settings.geminiConfigDir);
+      const sanitizedClaudeDir = sanitizeDir(mergedSettings.claudeConfigDir);
+      const sanitizedCodexDir = sanitizeDir(mergedSettings.codexConfigDir);
+      const sanitizedGeminiDir = sanitizeDir(mergedSettings.geminiConfigDir);
       const previousAppDir = initialAppConfigDir;
       const previousClaudeDir = sanitizeDir(data?.claudeConfigDir);
       const previousCodexDir = sanitizeDir(data?.codexConfigDir);
       const previousGeminiDir = sanitizeDir(data?.geminiConfigDir);
 
       const payload: Settings = {
-        ...settings,
+        ...mergedSettings,
         claudeConfigDir: sanitizedClaudeDir,
         codexConfigDir: sanitizedCodexDir,
         geminiConfigDir: sanitizedGeminiDir,
-        language: settings.language,
+        language: mergedSettings.language,
       };
 
       await saveMutation.mutateAsync(payload);
@@ -191,9 +199,23 @@ export function useSettings(): UseSettingsResult {
       const appDirChanged = sanitizedAppDir !== (previousAppDir ?? undefined);
       setRequiresRestart(appDirChanged);
 
+      if (!options?.silent) {
+        toast.success(
+          t("notifications.settingsSaved", {
+            defaultValue: "设置已保存",
+          }),
+        );
+      }
+
       return { requiresRestart: appDirChanged };
     } catch (error) {
       console.error("[useSettings] Failed to save settings", error);
+      toast.error(
+        t("notifications.settingsSaveFailed", {
+          defaultValue: "保存设置失败: {{error}}",
+          error: (error as Error)?.message ?? String(error),
+        }),
+      );
       throw error;
     }
   }, [
