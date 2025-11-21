@@ -346,9 +346,13 @@ function App() {
         <div className="h-4 w-full" aria-hidden data-tauri-drag-region />
         <div
           className="flex flex-wrap items-center justify-between gap-2"
-          style={{ WebkitAppRegion: "no-drag" } as any}
+          data-tauri-drag-region
+          style={{ WebkitAppRegion: "drag" } as any}
         >
-          <div className="flex items-center gap-1">
+          <div
+            className="flex items-center gap-1"
+            style={{ WebkitAppRegion: "no-drag" } as any}
+          >
             {currentView !== "providers" ? (
               <div className="flex items-center gap-2">
                 <Button
@@ -393,7 +397,10 @@ function App() {
             )}
           </div>
 
-          <div className="flex items-center gap-2">
+          <div
+            className="flex items-center gap-2"
+            style={{ WebkitAppRegion: "no-drag" } as any}
+          >
             {currentView === "prompts" && (
               <Button
                 size="icon"
@@ -499,9 +506,8 @@ function App() {
       </header>
 
       <main
-        className={`flex-1 overflow-y-auto pb-12 px-6 animate-fade-in scroll-overlay ${
-          currentView === "providers" ? "pt-24" : "pt-20"
-        }`}
+        className={`flex-1 overflow-y-auto pb-12 px-6 animate-fade-in scroll-overlay ${currentView === "providers" ? "pt-24" : "pt-20"
+          }`}
         style={{ overflowX: "hidden" }}
       >
         {renderContent()}
@@ -544,8 +550,8 @@ function App() {
         message={
           confirmDelete
             ? t("confirm.deleteProviderMessage", {
-                name: confirmDelete.name,
-              })
+              name: confirmDelete.name,
+            })
             : ""
         }
         onConfirm={() => void handleConfirmDelete()}
