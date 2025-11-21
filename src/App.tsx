@@ -281,7 +281,7 @@ function App() {
         return <AgentsPanel onOpenChange={() => setCurrentView("providers")} />;
       default:
         return (
-          <div className="mx-auto max-w-4xl space-y-4">
+          <div className="mx-auto max-w-[60rem] px-6 space-y-4">
             <ProviderList
               providers={providers}
               currentProviderId={currentProviderId}
@@ -339,13 +339,13 @@ function App() {
       )}
 
       <header
-        className="glass-header fixed top-0 z-50 w-full px-6 py-3 transition-all duration-300"
+        className="glass-header fixed top-0 z-50 w-full py-3 transition-all duration-300"
         data-tauri-drag-region
         style={{ WebkitAppRegion: "drag" } as any}
       >
         <div className="h-4 w-full" aria-hidden data-tauri-drag-region />
         <div
-          className="flex flex-wrap items-center justify-between gap-2"
+          className="mx-auto max-w-[60rem] px-6 flex flex-wrap items-center justify-between gap-2"
           data-tauri-drag-region
           style={{ WebkitAppRegion: "drag" } as any}
         >
@@ -375,7 +375,7 @@ function App() {
               </div>
             ) : (
               <>
-                <div className="flex items-center gap-2 pl-1 sm:pl-2">
+                <div className="flex items-center gap-2">
                   <a
                     href="https://github.com/farion1231/cc-switch"
                     target="_blank"
@@ -509,7 +509,7 @@ function App() {
       </header>
 
       <main
-        className={`flex-1 overflow-y-auto pb-12 px-6 animate-fade-in scroll-overlay ${currentView === "providers" ? "pt-24" : "pt-20"
+        className={`flex-1 overflow-y-auto pb-12 animate-fade-in scroll-overlay ${currentView === "providers" ? "pt-24" : "pt-20"
           }`}
         style={{ overflowX: "hidden" }}
       >

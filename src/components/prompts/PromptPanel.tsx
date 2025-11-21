@@ -80,8 +80,8 @@ const PromptPanel = React.forwardRef<PromptPanelHandle, PromptPanelProps>(
     const enabledPrompt = promptEntries.find(([_, p]) => p.enabled);
 
     return (
-      <div className="mx-auto max-w-5xl flex flex-col h-[calc(100vh-8rem)]">
-        <div className="flex-shrink-0 px-6 py-4 glass rounded-xl border border-white/10 mb-4">
+      <div className="mx-auto max-w-[60rem] flex flex-col h-[calc(100vh-8rem)] px-6">
+        <div className="flex-shrink-0 py-4 glass rounded-xl border border-white/10 mb-4 px-6">
           <div className="text-sm text-muted-foreground">
             {t("prompts.count", { count: promptEntries.length })} ·{" "}
             {enabledPrompt
@@ -90,7 +90,7 @@ const PromptPanel = React.forwardRef<PromptPanelHandle, PromptPanelProps>(
           </div>
         </div>
 
-        <div className="flex-1 overflow-y-auto px-6 pb-16">
+        <div className="flex-1 overflow-y-auto pb-16">
           {loading ? (
             <div className="text-center py-12 text-gray-500 dark:text-gray-400">
               {t("prompts.loading")}
