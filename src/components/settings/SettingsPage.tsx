@@ -106,8 +106,6 @@ export function SettingsPage({
     onOpenChange(false);
   }, [acknowledgeRestart, clearSelection, onOpenChange, resetStatus]);
 
-
-
   const handleSave = useCallback(async () => {
     try {
       const result = await saveSettings(undefined, { silent: false });
@@ -192,10 +190,7 @@ export function SettingsPage({
           </TabsList>
 
           <div className="flex-1 overflow-y-auto pr-2">
-            <TabsContent
-              value="general"
-              className="space-y-6 mt-0"
-            >
+            <TabsContent value="general" className="space-y-6 mt-0">
               {settings ? (
                 <>
                   <LanguageSettings
@@ -211,10 +206,7 @@ export function SettingsPage({
               ) : null}
             </TabsContent>
 
-            <TabsContent
-              value="advanced"
-              className="space-y-6 mt-0"
-            >
+            <TabsContent value="advanced" className="space-y-6 mt-0">
               {settings ? (
                 <>
                   <DirectorySettings
@@ -245,40 +237,43 @@ export function SettingsPage({
               ) : null}
             </TabsContent>
 
-          <TabsContent value="about" className="mt-0">
-            <AboutSection isPortable={isPortable} />
-          </TabsContent>
-        </div>
-
-        {activeTab === "advanced" ? (
-          <div className="flex-shrink-0 pt-6 border-t border-white/5 sticky bottom-0 bg-background/95 backdrop-blur-sm">
-            <Button
-              onClick={handleSave}
-              className="w-full bg-primary hover:bg-primary/90"
-              disabled={isSaving}
-            >
-              {isSaving ? (
-                <span className="inline-flex items-center gap-2">
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                  {t("settings.saving")}
-                </span>
-              ) : (
-                <>
-                  <Save className="mr-2 h-4 w-4" />
-                  {t("common.save")}
-                </>
-              )}
-            </Button>
+            <TabsContent value="about" className="mt-0">
+              <AboutSection isPortable={isPortable} />
+            </TabsContent>
           </div>
-        ) : null}
-      </Tabs>
-    )}
+
+          {activeTab === "advanced" ? (
+            <div className="flex-shrink-0 pt-6 border-t border-white/5 sticky bottom-0 bg-background/95 backdrop-blur-sm">
+              <Button
+                onClick={handleSave}
+                className="w-full bg-primary hover:bg-primary/90"
+                disabled={isSaving}
+              >
+                {isSaving ? (
+                  <span className="inline-flex items-center gap-2">
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    {t("settings.saving")}
+                  </span>
+                ) : (
+                  <>
+                    <Save className="mr-2 h-4 w-4" />
+                    {t("common.save")}
+                  </>
+                )}
+              </Button>
+            </div>
+          ) : null}
+        </Tabs>
+      )}
 
       <Dialog
         open={showRestartPrompt}
         onOpenChange={(open) => !open && handleRestartLater()}
       >
-        <DialogContent zIndex="alert" className="max-w-md glass-card border-white/10">
+        <DialogContent
+          zIndex="alert"
+          className="max-w-md glass-card border-white/10"
+        >
           <DialogHeader>
             <DialogTitle>{t("settings.restartRequired")}</DialogTitle>
           </DialogHeader>
@@ -288,10 +283,17 @@ export function SettingsPage({
             </p>
           </div>
           <DialogFooter>
-            <Button variant="ghost" onClick={handleRestartLater} className="hover:bg-white/5">
+            <Button
+              variant="ghost"
+              onClick={handleRestartLater}
+              className="hover:bg-white/5"
+            >
               {t("settings.restartLater")}
             </Button>
-            <Button onClick={handleRestartNow} className="bg-primary hover:bg-primary/90">
+            <Button
+              onClick={handleRestartNow}
+              className="bg-primary hover:bg-primary/90"
+            >
               {t("settings.restartNow")}
             </Button>
           </DialogFooter>
