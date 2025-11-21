@@ -27,7 +27,8 @@
     "formatSuccess": "格式化成功",
     "formatError": "格式化失败：{{error}}",
     "copy": "复制",
-    "view": "查看"
+    "view": "查看",
+    "back": "返回"
   },
   "apiKeyInput": {
     "placeholder": "请输入API Key",
@@ -314,7 +315,8 @@
     "pleaseAddEndpoint": "请先添加端点",
     "testUnavailable": "测速功能不可用",
     "noResult": "未返回结果",
-    "testFailed": "测速失败: {{error}}"
+    "testFailed": "测速失败: {{error}}",
+    "status": "状态码：{{code}}"
   },
   "codexConfig": {
     "authJson": "auth.json (JSON) *",
@@ -361,6 +363,9 @@
     "title": "配置用量查询",
     "enableUsageQuery": "启用用量查询",
     "presetTemplate": "预设模板",
+    "requestUrl": "请求地址",
+    "requestUrlPlaceholder": "例如：https://api.example.com",
+    "method": "HTTP 方法",
     "templateCustom": "自定义",
     "templateGeneral": "通用模板",
     "templateNewAPI": "NewAPI",
@@ -373,11 +378,14 @@
     "queryFailedMessage": "查询失败",
     "queryScript": "查询脚本（JavaScript）",
     "timeoutSeconds": "超时时间（秒）",
+    "headers": "请求头",
+    "body": "请求 Body",
     "timeoutHint": "范围: 2-30 秒",
     "timeoutMustBeInteger": "超时时间必须为整数，小数部分已忽略",
     "timeoutCannotBeNegative": "超时时间不能为负数",
+    "autoIntervalMinutes": "自动查询间隔（分钟）",
     "autoQueryInterval": "自动查询间隔（分钟）",
-    "autoQueryIntervalHint": "0 表示不自动查询，建议设置 5-60 分钟",
+    "autoQueryIntervalHint": "0 表示不自动查询，建议 5-60 分钟",
     "intervalMustBeInteger": "自动查询间隔必须为整数，小数部分已忽略",
     "intervalCannotBeNegative": "自动查询间隔不能为负数",
     "intervalAdjusted": "自动查询间隔已调整为 {{value}} 分钟",
@@ -398,6 +406,9 @@
     "formatSuccess": "格式化成功",
     "formatFailed": "格式化失败",
     "variablesHint": "支持变量: {{apiKey}}, {{baseUrl}} | extractor 函数接收 API 响应的 JSON 对象",
+    "scriptConfig": "请求配置",
+    "extractorCode": "提取器代码",
+    "extractorHint": "返回对象需包含剩余额度等字段",
     "fieldIsValid": "• isValid: 布尔值，套餐是否有效",
     "fieldInvalidMessage": "• invalidMessage: 字符串，失效原因说明（当 isValid 为 false 时显示）",
     "fieldRemaining": "• remaining: 数字，剩余额度",

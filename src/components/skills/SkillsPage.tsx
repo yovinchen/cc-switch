@@ -1,17 +1,22 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, forwardRef, useImperativeHandle } from "react";
 import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
-import { RefreshCw, Settings } from "lucide-react";
+import { RefreshCw } from "lucide-react";
 import { toast } from "sonner";
 import { SkillCard } from "./SkillCard";
-import { RepoManager } from "./RepoManager";
+import { RepoManagerPanel } from "./RepoManagerPanel";
 import { skillsApi, type Skill, type SkillRepo } from "@/lib/api/skills";
 
 interface SkillsPageProps {
   onClose?: () => void;
 }
 
-export function SkillsPage({ onClose: _onClose }: SkillsPageProps = {}) {
+export interface SkillsPageHandle {
+  refresh: () => void;
+  openRepoManager: () => void;
+}
+
+export const SkillsPage = forwardRef<SkillsPageHandle, SkillsPageProps>(({ onClose: _onClose }, ref) => {
   const { t } = useTranslation();
   const [skills, setSkills] = useState<Skill[]>([]);
   const [repos, setRepos] = useState<SkillRepo[]>([]);
@@ -47,6 +52,11 @@ export function SkillsPage({ onClose: _onClose }: SkillsPageProps = {}) {
   useEffect(() => {
     Promise.all([loadSkills(), loadRepos()]);
   }, []);
+
+  useImperativeHandle(ref, () => ({
+    refresh: () => loadSkills(),
+    openRepoManager: () => setRepoManagerOpen(true)
+  }));
 
   const handleInstall = async (directory: string) => {
     try {
@@ -104,44 +114,11 @@ export function SkillsPage({ onClose: _onClose }: SkillsPageProps = {}) {
   };
 
   return (
-    <div className="flex flex-col h-full min-h-0 bg-background">
-      {/* 顶部操作栏（固定区域） */}
-      <div className="flex-shrink-0 border-b border-border-default bg-muted/20 px-6 py-4">
-        <div className="flex items-center justify-between pr-8">
-          <h1 className="text-lg font-semibold leading-tight tracking-tight text-gray-900 dark:text-gray-100">
-            {t("skills.title")}
-          </h1>
-          <div className="flex gap-2">
-            <Button
-              variant="mcp"
-              size="sm"
-              onClick={() => loadSkills()}
-              disabled={loading}
-            >
-              <RefreshCw
-                className={`h-4 w-4 mr-2 ${loading ? "animate-spin" : ""}`}
-              />
-              {loading ? t("skills.refreshing") : t("skills.refresh")}
-            </Button>
-            <Button
-              variant="mcp"
-              size="sm"
-              onClick={() => setRepoManagerOpen(true)}
-            >
-              <Settings className="h-4 w-4 mr-2" />
-              {t("skills.repoManager")}
-            </Button>
-          </div>
-        </div>
-
-        {/* 描述 */}
-        <p className="mt-1.5 text-sm text-gray-500 dark:text-gray-400">
-          {t("skills.description")}
-        </p>
-      </div>
+    <div className="flex flex-col h-full min-h-0 bg-background/50">
+      {/* 顶部操作栏（固定区域）已移除，由 App.tsx 接管 */}
 
       {/* 技能网格（可滚动详情区域） */}
-      <div className="flex-1 min-h-0 overflow-y-auto px-6 py-6 bg-muted/10">
+      <div className="flex-1 min-h-0 overflow-y-auto px-6 py-4 animate-fade-in">
         {loading ? (
           <div className="flex items-center justify-center h-64">
             <RefreshCw className="h-8 w-8 animate-spin text-muted-foreground" />
@@ -176,15 +153,18 @@ export function SkillsPage({ onClose: _onClose }: SkillsPageProps = {}) {
         )}
       </div>
 
-      {/* 仓库管理对话框 */}
-      <RepoManager
-        open={repoManagerOpen}
-        onOpenChange={setRepoManagerOpen}
-        repos={repos}
-        skills={skills}
-        onAdd={handleAddRepo}
-        onRemove={handleRemoveRepo}
-      />
+      {/* 仓库管理面板 */}
+      {repoManagerOpen && (
+        <RepoManagerPanel
+          repos={repos}
+          skills={skills}
+          onAdd={handleAddRepo}
+          onRemove={handleRemoveRepo}
+          onClose={() => setRepoManagerOpen(false)}
+        />
+      )}
     </div>
   );
-}
+});
+
+SkillsPage.displayName = "SkillsPage";
