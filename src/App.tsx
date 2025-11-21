@@ -375,23 +375,26 @@ function App() {
               </div>
             ) : (
               <>
-                <a
-                  href="https://github.com/farion1231/cc-switch"
-                  target="_blank"
-                  rel="noreferrer"
-                  className="text-xl font-semibold text-blue-500 transition-colors hover:text-blue-600 dark:text-blue-400 dark:hover:text-blue-300"
-                >
-                  CC Switch
-                </a>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  onClick={() => setCurrentView("settings")}
-                  title={t("common.settings")}
-                  className="ml-2 hover:bg-black/5 dark:hover:bg-white/5"
-                >
-                  <Settings className="h-4 w-4" />
-                </Button>
+                <div className="flex items-center gap-2 pl-1 sm:pl-2">
+                  <a
+                    href="https://github.com/farion1231/cc-switch"
+                    target="_blank"
+                    rel="noreferrer"
+                    className="text-xl font-semibold text-blue-500 transition-colors hover:text-blue-600 dark:text-blue-400 dark:hover:text-blue-300"
+                  >
+                    CC Switch
+                  </a>
+                  <div className="h-5 w-[1px] bg-black/10 dark:bg-white/15" />
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={() => setCurrentView("settings")}
+                    title={t("common.settings")}
+                    className="hover:bg-black/5 dark:hover:bg-white/5"
+                  >
+                    <Settings className="h-4 w-4" />
+                  </Button>
+                </div>
                 <UpdateBadge onClick={() => setCurrentView("settings")} />
               </>
             )}
@@ -506,8 +509,9 @@ function App() {
       </header>
 
       <main
-        className={`flex-1 overflow-y-auto pb-12 px-6 animate-fade-in scroll-overlay ${currentView === "providers" ? "pt-24" : "pt-20"
-          }`}
+        className={`flex-1 overflow-y-auto pb-12 px-6 animate-fade-in scroll-overlay ${
+          currentView === "providers" ? "pt-24" : "pt-20"
+        }`}
         style={{ overflowX: "hidden" }}
       >
         {renderContent()}
@@ -550,8 +554,8 @@ function App() {
         message={
           confirmDelete
             ? t("confirm.deleteProviderMessage", {
-              name: confirmDelete.name,
-            })
+                name: confirmDelete.name,
+              })
             : ""
         }
         onConfirm={() => void handleConfirmDelete()}

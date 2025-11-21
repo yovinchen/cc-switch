@@ -110,11 +110,13 @@
   backdrop-filter: none;
   -webkit-backdrop-filter: none;
   border: none;
+  border-top: 2px solid hsl(var(--border));
 }
 
 .dark .glass-header {
   background: hsl(var(--background));
   border: none;
+  border-top: 2px solid hsl(var(--border));
 }
 
 /* Tauri 拖拽区域 */
