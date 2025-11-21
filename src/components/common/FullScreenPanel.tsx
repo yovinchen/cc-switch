@@ -32,33 +32,39 @@ export const FullScreenPanel: React.FC<FullScreenPanelProps> = ({
     >
       {/* Header */}
       <div
-        className="flex-shrink-0 px-6 py-4 flex items-center gap-4"
+        className="flex-shrink-0 py-4 border-b border-border-default"
         style={{ backgroundColor: "hsl(var(--background))" }}
       >
-        <Button
-          type="button"
-          variant="ghost"
-          size="icon"
-          onClick={onClose}
-          className="hover:bg-black/5 dark:hover:bg-white/5"
-        >
-          <ArrowLeft className="h-5 w-5" />
-        </Button>
-        <h2 className="text-lg font-semibold text-foreground">{title}</h2>
+        <div className="mx-auto max-w-[60rem] px-6 flex items-center gap-4">
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            onClick={onClose}
+            className="hover:bg-black/5 dark:hover:bg-white/5"
+          >
+            <ArrowLeft className="h-5 w-5" />
+          </Button>
+          <h2 className="text-lg font-semibold text-foreground">{title}</h2>
+        </div>
       </div>
 
       {/* Content */}
-      <div className="flex-1 overflow-y-auto px-6 py-6 space-y-6 max-w-5xl mx-auto w-full">
-        {children}
+      <div className="flex-1 overflow-y-auto">
+        <div className="mx-auto max-w-[60rem] px-6 py-6 space-y-6 w-full">
+          {children}
+        </div>
       </div>
 
       {/* Footer */}
       {footer && (
         <div
-          className="flex-shrink-0 px-6 py-4 flex items-center justify-end gap-3"
+          className="flex-shrink-0 py-4 border-t border-border-default"
           style={{ backgroundColor: "hsl(var(--background))" }}
         >
-          {footer}
+          <div className="mx-auto max-w-[60rem] px-6 flex items-center justify-end gap-3">
+            {footer}
+          </div>
         </div>
       )}
     </div>,

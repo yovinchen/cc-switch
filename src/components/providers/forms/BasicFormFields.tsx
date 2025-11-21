@@ -80,18 +80,11 @@ export function BasicFormFields({ form }: BasicFormFieldsProps) {
                     <ArrowLeft className="h-5 w-5" />
                   </Button>
                 </DialogClose>
-                <div className="space-y-1">
-                  <p className="text-lg font-semibold leading-tight">
-                    {t("providerIcon.selectIcon", {
-                      defaultValue: "选择图标",
-                    })}
-                  </p>
-                  <p className="text-sm text-muted-foreground">
-                    {t("providerIcon.selectDescription", {
-                      defaultValue: "为供应商选择一个图标",
-                    })}
-                  </p>
-                </div>
+                <p className="text-lg font-semibold leading-tight">
+                  {t("providerIcon.selectIcon", {
+                    defaultValue: "选择图标",
+                  })}
+                </p>
               </div>
               <div className="flex-1 overflow-y-auto px-6 py-6">
                 <div className="space-y-6 max-w-5xl mx-auto w-full">

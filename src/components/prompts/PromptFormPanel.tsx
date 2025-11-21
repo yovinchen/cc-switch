@@ -91,47 +91,11 @@ const PromptFormPanel: React.FC<PromptFormPanelProps> = ({
     : t("prompts.addTitle", { appName });
 
   return (
-    <FullScreenPanel isOpen={true} title={title} onClose={onClose}>
-      <div>
-        <Label htmlFor="name" className="text-foreground">
-          {t("prompts.name")}
-        </Label>
-        <Input
-          id="name"
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-          placeholder={t("prompts.namePlaceholder")}
-          className="mt-2"
-        />
-      </div>
-
-      <div>
-        <Label htmlFor="description" className="text-foreground">
-          {t("prompts.description")}
-        </Label>
-        <Input
-          id="description"
-          value={description}
-          onChange={(e) => setDescription(e.target.value)}
-          placeholder={t("prompts.descriptionPlaceholder")}
-          className="mt-2"
-        />
-      </div>
-
-      <div>
-        <Label htmlFor="content" className="block mb-2 text-foreground">
-          {t("prompts.content")}
-        </Label>
-        <MarkdownEditor
-          value={content}
-          onChange={setContent}
-          placeholder={t("prompts.contentPlaceholder", { filename })}
-          darkMode={isDarkMode}
-          minHeight="500px"
-        />
-      </div>
-
-      <div className="flex justify-end pt-6">
+    <FullScreenPanel
+      isOpen={true}
+      title={title}
+      onClose={onClose}
+      footer={
         <Button
           type="button"
           onClick={handleSave}
@@ -140,6 +104,47 @@ const PromptFormPanel: React.FC<PromptFormPanelProps> = ({
         >
           {saving ? t("common.saving") : t("common.save")}
         </Button>
+      }
+    >
+      <div className="glass rounded-xl p-6 border border-white/10 space-y-6">
+        <div>
+          <Label htmlFor="name" className="text-foreground">
+            {t("prompts.name")}
+          </Label>
+          <Input
+            id="name"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            placeholder={t("prompts.namePlaceholder")}
+            className="mt-2"
+          />
+        </div>
+
+        <div>
+          <Label htmlFor="description" className="text-foreground">
+            {t("prompts.description")}
+          </Label>
+          <Input
+            id="description"
+            value={description}
+            onChange={(e) => setDescription(e.target.value)}
+            placeholder={t("prompts.descriptionPlaceholder")}
+            className="mt-2"
+          />
+        </div>
+
+        <div>
+          <Label htmlFor="content" className="block mb-2 text-foreground">
+            {t("prompts.content")}
+          </Label>
+          <MarkdownEditor
+            value={content}
+            onChange={setContent}
+            placeholder={t("prompts.contentPlaceholder", { filename })}
+            darkMode={isDarkMode}
+            minHeight="500px"
+          />
+        </div>
       </div>
     </FullScreenPanel>
   );

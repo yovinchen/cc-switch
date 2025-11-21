@@ -115,9 +115,9 @@ const UnifiedMcpPanel = React.forwardRef<
   };
 
   return (
-    <div className="mx-auto max-w-5xl flex flex-col h-[calc(100vh-8rem)] overflow-hidden">
+    <div className="mx-auto max-w-[60rem] px-6 flex flex-col h-[calc(100vh-8rem)] overflow-hidden">
       {/* Info Section */}
-      <div className="flex-shrink-0 px-6 py-4 glass rounded-xl border border-white/10 mb-4">
+      <div className="flex-shrink-0 py-4 glass rounded-xl border border-white/10 mb-4 px-6">
         <div className="text-sm text-muted-foreground">
           {t("mcp.serverCount", { count: serverEntries.length })} ·{" "}
           {t("mcp.unifiedPanel.apps.claude")}: {enabledCounts.claude} ·{" "}
@@ -127,7 +127,7 @@ const UnifiedMcpPanel = React.forwardRef<
       </div>
 
       {/* Content - Scrollable */}
-      <div className="flex-1 overflow-y-auto overflow-x-hidden px-6 pb-24">
+      <div className="flex-1 overflow-y-auto overflow-x-hidden pb-24">
         {isLoading ? (
           <div className="text-center py-12 text-gray-500 dark:text-gray-400">
             {t("mcp.loading")}
@@ -233,112 +233,110 @@ const UnifiedMcpListItem: React.FC<UnifiedMcpListItemProps> = ({
   };
 
   return (
-    <div className="min-h-16 rounded-lg border border-border-default bg-card p-4 transition-[border-color,box-shadow] duration-200 hover:border-border-hover hover:shadow-sm">
-      <div className="flex items-center gap-4">
-        {/* 左侧：服务器信息 */}
-        <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2 mb-1">
-            <h3 className="font-medium text-gray-900 dark:text-gray-100">
-              {name}
-            </h3>
-            {docsUrl && (
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                onClick={openDocs}
-                title={t("mcp.presets.docs")}
-              >
-                {t("mcp.presets.docs")}
-              </Button>
-            )}
-          </div>
-          {description && (
-            <p className="text-sm text-gray-500 dark:text-gray-400 line-clamp-2">
-              {description}
-            </p>
-          )}
-          {!description && tags && tags.length > 0 && (
-            <p className="text-xs text-gray-400 dark:text-gray-500 truncate">
-              {tags.join(", ")}
-            </p>
+    <div className="group relative flex items-center gap-4 p-4 rounded-xl border border-white/10 bg-gray-900/40 hover:bg-gray-900/60 transition-all duration-300">
+      {/* 左侧：服务器信息 */}
+      <div className="flex-1 min-w-0">
+        <div className="flex items-center gap-2 mb-1">
+          <h3 className="font-medium text-gray-900 dark:text-gray-100">
+            {name}
+          </h3>
+          {docsUrl && (
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              onClick={openDocs}
+              title={t("mcp.presets.docs")}
+            >
+              {t("mcp.presets.docs")}
+            </Button>
           )}
         </div>
+        {description && (
+          <p className="text-sm text-gray-500 dark:text-gray-400 line-clamp-2">
+            {description}
+          </p>
+        )}
+        {!description && tags && tags.length > 0 && (
+          <p className="text-xs text-gray-400 dark:text-gray-500 truncate">
+            {tags.join(", ")}
+          </p>
+        )}
+      </div>
 
-        {/* 中间：应用开关 */}
-        <div className="flex flex-col gap-2 flex-shrink-0 min-w-[120px]">
-          <div className="flex items-center justify-between gap-3">
-            <label
-              htmlFor={`${id}-claude`}
-              className="text-sm text-gray-700 dark:text-gray-300 cursor-pointer"
-            >
-              {t("mcp.unifiedPanel.apps.claude")}
-            </label>
-            <Switch
-              id={`${id}-claude`}
-              checked={server.apps.claude}
-              onCheckedChange={(checked: boolean) =>
-                onToggleApp(id, "claude", checked)
-              }
-            />
-          </div>
-
-          <div className="flex items-center justify-between gap-3">
-            <label
-              htmlFor={`${id}-codex`}
-              className="text-sm text-gray-700 dark:text-gray-300 cursor-pointer"
-            >
-              {t("mcp.unifiedPanel.apps.codex")}
-            </label>
-            <Switch
-              id={`${id}-codex`}
-              checked={server.apps.codex}
-              onCheckedChange={(checked: boolean) =>
-                onToggleApp(id, "codex", checked)
-              }
-            />
-          </div>
-
-          <div className="flex items-center justify-between gap-3">
-            <label
-              htmlFor={`${id}-gemini`}
-              className="text-sm text-gray-700 dark:text-gray-300 cursor-pointer"
-            >
-              {t("mcp.unifiedPanel.apps.gemini")}
-            </label>
-            <Switch
-              id={`${id}-gemini`}
-              checked={server.apps.gemini}
-              onCheckedChange={(checked: boolean) =>
-                onToggleApp(id, "gemini", checked)
-              }
-            />
-          </div>
+      {/* 中间：应用开关 */}
+      <div className="flex flex-col gap-2 flex-shrink-0 min-w-[120px]">
+        <div className="flex items-center justify-between gap-3">
+          <label
+            htmlFor={`${id}-claude`}
+            className="text-sm text-gray-700 dark:text-gray-300 cursor-pointer"
+          >
+            {t("mcp.unifiedPanel.apps.claude")}
+          </label>
+          <Switch
+            id={`${id}-claude`}
+            checked={server.apps.claude}
+            onCheckedChange={(checked: boolean) =>
+              onToggleApp(id, "claude", checked)
+            }
+          />
         </div>
 
-        {/* 右侧：操作按钮 */}
-        <div className="flex items-center gap-2 flex-shrink-0">
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon"
-            onClick={() => onEdit(id)}
-            title={t("common.edit")}
+        <div className="flex items-center justify-between gap-3">
+          <label
+            htmlFor={`${id}-codex`}
+            className="text-sm text-gray-700 dark:text-gray-300 cursor-pointer"
           >
-            <Edit3 size={16} />
-          </Button>
-
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon"
-            onClick={() => onDelete(id)}
-            className="hover:text-red-500 hover:bg-red-100 dark:hover:text-red-400 dark:hover:bg-red-500/10"
-            title={t("common.delete")}
-          >
-            <Trash2 size={16} />
-          </Button>
+            {t("mcp.unifiedPanel.apps.codex")}
+          </label>
+          <Switch
+            id={`${id}-codex`}
+            checked={server.apps.codex}
+            onCheckedChange={(checked: boolean) =>
+              onToggleApp(id, "codex", checked)
+            }
+          />
         </div>
+
+        <div className="flex items-center justify-between gap-3">
+          <label
+            htmlFor={`${id}-gemini`}
+            className="text-sm text-gray-700 dark:text-gray-300 cursor-pointer"
+          >
+            {t("mcp.unifiedPanel.apps.gemini")}
+          </label>
+          <Switch
+            id={`${id}-gemini`}
+            checked={server.apps.gemini}
+            onCheckedChange={(checked: boolean) =>
+              onToggleApp(id, "gemini", checked)
+            }
+          />
+        </div>
+      </div>
+
+      {/* 右侧：操作按钮 */}
+      <div className="flex items-center gap-2 flex-shrink-0">
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon"
+          onClick={() => onEdit(id)}
+          title={t("common.edit")}
+        >
+          <Edit3 size={16} />
+        </Button>
+
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon"
+          onClick={() => onDelete(id)}
+          className="hover:text-red-500 hover:bg-red-100 dark:hover:text-red-400 dark:hover:bg-red-500/10"
+          title={t("common.delete")}
+        >
+          <Trash2 size={16} />
+        </Button>
       </div>
     </div>
   );

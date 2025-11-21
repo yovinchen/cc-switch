@@ -57,7 +57,7 @@ export function SkillCard({ skill, onInstall, onUninstall }: SkillCardProps) {
     skill.directory.trim().toLowerCase() !== skill.name.trim().toLowerCase();
 
   return (
-    <Card className="glass-card flex flex-col h-full border-white/5 transition-all duration-300 hover:bg-white/[0.02] hover:border-primary/50 hover:shadow-lg hover:-translate-y-1 group relative overflow-hidden">
+    <Card className="glass flex flex-col h-full border border-white/10 bg-gray-900/40 transition-all duration-300 hover:bg-gray-900/60 hover:border-white/20 hover:shadow-lg group relative overflow-hidden">
       <div className="absolute inset-0 bg-gradient-to-br from-primary/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500 pointer-events-none" />
       <CardHeader className="pb-3">
         <div className="flex items-start justify-between gap-2">
