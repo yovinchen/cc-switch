@@ -1,5 +1,6 @@
 mod app_config;
 mod app_store;
+mod auto_launch;
 mod claude_mcp;
 mod claude_plugin;
 mod codex_config;
@@ -717,6 +718,9 @@ pub fn run() {
             commands::get_skill_repos,
             commands::add_skill_repo,
             commands::remove_skill_repo,
+            // Auto launch
+            commands::set_auto_launch,
+            commands::get_auto_launch_status,
         ]);
 
     let app = builder
