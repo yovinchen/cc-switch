@@ -152,35 +152,19 @@ html.dark {
   color-scheme: dark;
 }
 
-/* 滚动条样式（避免在伪元素中使用自定义 dark 变体，消除构建警告） */
+/* 滚动条样式 - 完全隐藏（支持所有浏览器） */
 ::-webkit-scrollbar {
-  width: 0.375rem;
-  height: 0.375rem;
+  display: none;
 }
 
-::-webkit-scrollbar-track {
-  background-color: #f4f4f5;
+/* Firefox */
+* {
+  scrollbar-width: none;
 }
 
-html.dark ::-webkit-scrollbar-track {
-  background-color: #1c1c1e;
-}
-
-::-webkit-scrollbar-thumb {
-  background-color: #d4d4d8;
-  border-radius: 0.25rem;
-}
-
-html.dark ::-webkit-scrollbar-thumb {
-  background-color: #3a3a3c;
-}
-
-::-webkit-scrollbar-thumb:hover {
-  background-color: #a1a1aa;
-}
-
-html.dark ::-webkit-scrollbar-thumb:hover {
-  background-color: #636366;
+/* IE 10+ */
+* {
+  -ms-overflow-style: none;
 }
 
 /* 焦点样式 */

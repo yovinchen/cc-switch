@@ -45,19 +45,105 @@ export function BasicFormFields({ form }: BasicFormFieldsProps) {
 
   return (
     <>
-      <FormField
-        control={form.control}
-        name="name"
-        render={({ field }) => (
-          <FormItem>
-            <FormLabel>{t("provider.name")}</FormLabel>
-            <FormControl>
-              <Input {...field} placeholder={t("provider.namePlaceholder")} />
-            </FormControl>
-            <FormMessage />
-          </FormItem>
-        )}
-      />
+      {/* 图标选择区域 - 顶部居中，可选 */}
+      <div className="flex justify-center mb-6">
+        <Dialog open={iconDialogOpen} onOpenChange={setIconDialogOpen}>
+          <DialogTrigger asChild>
+            <button
+              type="button"
+              className="w-20 h-20 p-3 rounded-xl border-2 border-gray-300 dark:border-gray-600 hover:border-primary dark:hover:border-primary transition-colors cursor-pointer bg-gray-50 dark:bg-gray-800/50 flex items-center justify-center"
+              title={currentIcon ? "点击更换图标" : "点击选择图标"}
+            >
+              <ProviderIcon
+                icon={currentIcon}
+                name={providerName}
+                color={effectiveIconColor}
+                size={48}
+              />
+            </button>
+          </DialogTrigger>
+          <DialogContent
+            variant="fullscreen"
+            zIndex="top"
+            overlayClassName="bg-[hsl(var(--background))] backdrop-blur-0"
+            className="p-0 sm:rounded-none"
+          >
+            <div className="flex h-full flex-col">
+              <div className="flex-shrink-0 px-6 py-4 flex items-center gap-4 border-b border-border-default bg-muted/40">
+                <DialogClose asChild>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    className="hover:bg-black/5 dark:hover:bg-white/5"
+                  >
+                    <ArrowLeft className="h-5 w-5" />
+                  </Button>
+                </DialogClose>
+                <div className="space-y-1">
+                  <p className="text-lg font-semibold leading-tight">
+                    {t("providerIcon.selectIcon", {
+                      defaultValue: "选择图标",
+                    })}
+                  </p>
+                  <p className="text-sm text-muted-foreground">
+                    {t("providerIcon.selectDescription", {
+                      defaultValue: "为供应商选择一个图标",
+                    })}
+                  </p>
+                </div>
+              </div>
+              <div className="flex-1 overflow-y-auto px-6 py-6">
+                <div className="space-y-6 max-w-5xl mx-auto w-full">
+                  <IconPicker
+                    value={currentIcon}
+                    onValueChange={handleIconSelect}
+                    color={effectiveIconColor}
+                  />
+                  <div className="flex justify-end gap-2">
+                    <DialogClose asChild>
+                      <Button type="button" variant="outline">
+                        {t("common.done", { defaultValue: "完成" })}
+                      </Button>
+                    </DialogClose>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </DialogContent>
+        </Dialog>
+      </div>
+
+      {/* 基础信息 - 网格布局 */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <FormField
+          control={form.control}
+          name="name"
+          render={({ field }) => (
+            <FormItem>
+              <FormLabel>{t("provider.name")}</FormLabel>
+              <FormControl>
+                <Input {...field} placeholder={t("provider.namePlaceholder")} />
+              </FormControl>
+              <FormMessage />
+            </FormItem>
+          )}
+        />
+
+        <FormField
+          control={form.control}
+          name="notes"
+          render={({ field }) => (
+            <FormItem>
+              <FormLabel>{t("provider.notes")}</FormLabel>
+              <FormControl>
+                <Input {...field} placeholder={t("provider.notesPlaceholder")} />
+              </FormControl>
+              <FormMessage />
+            </FormItem>
+          )}
+        />
+      </div>
 
       <FormField
         control={form.control}
@@ -72,101 +158,6 @@ export function BasicFormFields({ form }: BasicFormFieldsProps) {
           </FormItem>
         )}
       />
-
-      <FormField
-        control={form.control}
-        name="notes"
-        render={({ field }) => (
-          <FormItem>
-            <FormLabel>{t("provider.notes")}</FormLabel>
-            <FormControl>
-              <Input {...field} placeholder={t("provider.notesPlaceholder")} />
-            </FormControl>
-            <FormMessage />
-          </FormItem>
-        )}
-      />
-
-      {/* 图标配置 */}
-      <div className="space-y-3">
-        <FormLabel>
-          {t("providerIcon.label", { defaultValue: "图标" })}
-        </FormLabel>
-
-        {/* 图标预览 */}
-        <div className="flex items-center gap-4 p-4 rounded-lg bg-muted">
-          <ProviderIcon
-            icon={currentIcon}
-            name={providerName}
-            color={effectiveIconColor}
-            size={48}
-          />
-          <div className="flex-1">
-            <p className="font-medium">{providerName}</p>
-            <p className="text-sm text-muted-foreground">
-              {currentIcon ||
-                t("providerIcon.noIcon", { defaultValue: "未选择图标" })}
-            </p>
-          </div>
-          <Dialog open={iconDialogOpen} onOpenChange={setIconDialogOpen}>
-            <DialogTrigger asChild>
-              <Button type="button" variant="outline">
-                {t("providerIcon.selectIcon", { defaultValue: "选择图标" })}
-              </Button>
-            </DialogTrigger>
-            <DialogContent
-              variant="fullscreen"
-              zIndex="top"
-              overlayClassName="bg-[hsl(var(--background))] backdrop-blur-0"
-              className="p-0 sm:rounded-none"
-            >
-              <div className="flex h-full flex-col">
-                <div className="flex-shrink-0 px-6 py-4 flex items-center gap-4 border-b border-border-default bg-muted/40">
-                  <DialogClose asChild>
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="icon"
-                      className="hover:bg-black/5 dark:hover:bg-white/5"
-                    >
-                      <ArrowLeft className="h-5 w-5" />
-                    </Button>
-                  </DialogClose>
-                  <div className="space-y-1">
-                    <p className="text-lg font-semibold leading-tight">
-                      {t("providerIcon.selectIcon", {
-                        defaultValue: "选择图标",
-                      })}
-                    </p>
-                    <p className="text-sm text-muted-foreground">
-                      {t("providerIcon.selectDescription", {
-                        defaultValue: "为供应商选择一个图标",
-                      })}
-                    </p>
-                  </div>
-                </div>
-                <div className="flex-1 overflow-y-auto px-6 py-6">
-                  <div className="space-y-6 max-w-5xl mx-auto w-full">
-                    {/* 图标选择器 */}
-                    <IconPicker
-                      value={currentIcon}
-                      onValueChange={handleIconSelect}
-                      color={effectiveIconColor}
-                    />
-                    <div className="flex justify-end gap-2">
-                      <DialogClose asChild>
-                        <Button type="button" variant="outline">
-                          {t("common.done", { defaultValue: "完成" })}
-                        </Button>
-                      </DialogClose>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </DialogContent>
-          </Dialog>
-        </div>
-      </div>
     </>
   );
 }
