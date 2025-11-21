@@ -57,7 +57,7 @@ const UsageFooter: React.FC<UsageFooterProps> = ({
   if (!usageEnabled || !usage) return null;
 
   // 错误状态
-    if (!usage.success) {
+  if (!usage.success) {
     if (inline) {
       return (
         <div className="inline-flex items-center gap-2 text-xs rounded-lg border border-border-default bg-card px-3 py-2 shadow-sm">
@@ -132,7 +132,9 @@ const UsageFooter: React.FC<UsageFooterProps> = ({
         {/* 剩余 */}
         {firstUsage.remaining !== undefined && (
           <span className="inline-flex items-center gap-1">
-            <span className="text-muted-foreground">{t("usage.remaining")}</span>
+            <span className="text-muted-foreground">
+              {t("usage.remaining")}
+            </span>
             <span
               className={`font-semibold tabular-nums ${
                 isExpired
@@ -150,7 +152,9 @@ const UsageFooter: React.FC<UsageFooterProps> = ({
 
         {/* 单位 */}
         {firstUsage.unit && (
-          <span className="text-gray-500 dark:text-gray-400">{firstUsage.unit}</span>
+          <span className="text-gray-500 dark:text-gray-400">
+            {firstUsage.unit}
+          </span>
         )}
 
         {/* 刷新按钮 */}

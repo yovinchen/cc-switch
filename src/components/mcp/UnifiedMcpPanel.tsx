@@ -26,9 +26,10 @@ export interface UnifiedMcpPanelHandle {
   openAdd: () => void;
 }
 
-const UnifiedMcpPanel = React.forwardRef<UnifiedMcpPanelHandle, UnifiedMcpPanelProps>(({
-  onOpenChange,
-}, ref) => {
+const UnifiedMcpPanel = React.forwardRef<
+  UnifiedMcpPanelHandle,
+  UnifiedMcpPanelProps
+>(({ onOpenChange: _onOpenChange }, ref) => {
   const { t } = useTranslation();
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -86,7 +87,7 @@ const UnifiedMcpPanel = React.forwardRef<UnifiedMcpPanelHandle, UnifiedMcpPanelP
   };
 
   React.useImperativeHandle(ref, () => ({
-    openAdd: handleAdd
+    openAdd: handleAdd,
   }));
 
   const handleDelete = (id: string) => {
@@ -134,10 +135,7 @@ const UnifiedMcpPanel = React.forwardRef<UnifiedMcpPanelHandle, UnifiedMcpPanelP
         ) : serverEntries.length === 0 ? (
           <div className="text-center py-12">
             <div className="w-16 h-16 mx-auto mb-4 bg-gray-100 dark:bg-gray-800 rounded-full flex items-center justify-center">
-              <Server
-                size={24}
-                className="text-gray-400 dark:text-gray-500"
-              />
+              <Server size={24} className="text-gray-400 dark:text-gray-500" />
             </div>
             <h3 className="text-lg font-medium text-gray-900 dark:text-gray-100 mb-2">
               {t("mcp.unifiedPanel.noServers")}

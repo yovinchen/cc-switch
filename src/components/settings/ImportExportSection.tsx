@@ -45,7 +45,9 @@ export function ImportExportSection({
   return (
     <section className="space-y-4">
       <header className="space-y-2">
-        <h3 className="text-base font-semibold text-foreground">{t("settings.importExport")}</h3>
+        <h3 className="text-base font-semibold text-foreground">
+          {t("settings.importExport")}
+        </h3>
         <p className="text-sm text-muted-foreground">
           {t("settings.importExportHint")}
         </p>
@@ -166,11 +168,15 @@ function ImportStatusMessage({
 
   if (status === "importing") {
     return (
-      <div className={`${baseClass} border-blue-500/30 bg-blue-500/10 text-blue-600 dark:text-blue-400`}>
+      <div
+        className={`${baseClass} border-blue-500/30 bg-blue-500/10 text-blue-600 dark:text-blue-400`}
+      >
         <Loader2 className="mt-0.5 h-5 w-5 flex-shrink-0 animate-spin" />
         <div>
           <p className="font-semibold">{t("settings.importing")}</p>
-          <p className="text-blue-600/80 dark:text-blue-400/80">{t("common.loading")}</p>
+          <p className="text-blue-600/80 dark:text-blue-400/80">
+            {t("common.loading")}
+          </p>
         </div>
       </div>
     );
@@ -189,7 +195,9 @@ function ImportStatusMessage({
               {t("settings.backupId")}: {backupId}
             </p>
           ) : null}
-          <p className="text-green-600/80 dark:text-green-400/80">{t("settings.autoReload")}</p>
+          <p className="text-green-600/80 dark:text-green-400/80">
+            {t("settings.autoReload")}
+          </p>
         </div>
       </div>
     );
@@ -203,7 +211,9 @@ function ImportStatusMessage({
         <AlertCircle className="mt-0.5 h-5 w-5 flex-shrink-0" />
         <div className="space-y-1.5">
           <p className="font-semibold">{t("settings.importPartialSuccess")}</p>
-          <p className="text-yellow-600/80 dark:text-yellow-400/80">{t("settings.importPartialHint")}</p>
+          <p className="text-yellow-600/80 dark:text-yellow-400/80">
+            {t("settings.importPartialHint")}
+          </p>
         </div>
       </div>
     );
@@ -212,7 +222,9 @@ function ImportStatusMessage({
   const message = errorMessage || t("settings.importFailed");
 
   return (
-    <div className={`${baseClass} border-red-500/30 bg-red-500/10 text-red-600 dark:text-red-400`}>
+    <div
+      className={`${baseClass} border-red-500/30 bg-red-500/10 text-red-600 dark:text-red-400`}
+    >
       <AlertCircle className="mt-0.5 h-5 w-5 flex-shrink-0" />
       <div className="space-y-1.5">
         <p className="font-semibold">{t("settings.importFailed")}</p>

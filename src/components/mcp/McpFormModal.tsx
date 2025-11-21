@@ -1,13 +1,7 @@
 import React, { useMemo, useState, useEffect } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
-import {
-  Save,
-  Plus,
-  AlertCircle,
-  ChevronDown,
-  ChevronUp,
-} from "lucide-react";
+import { Save, Plus, AlertCircle, ChevronDown, ChevronUp } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
@@ -415,11 +409,7 @@ const McpFormModal: React.FC<McpFormModalProps> = ({
 
   return (
     <>
-      <FullScreenPanel
-        isOpen={true}
-        title={getFormTitle()}
-        onClose={onClose}
-      >
+      <FullScreenPanel isOpen={true} title={getFormTitle()} onClose={onClose}>
         {/* 预设选择（仅新增时展示） */}
         {!isEditing && (
           <div>
@@ -430,10 +420,11 @@ const McpFormModal: React.FC<McpFormModalProps> = ({
               <button
                 type="button"
                 onClick={applyCustom}
-                className={`inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${selectedPreset === -1
-                  ? "bg-emerald-500 text-white dark:bg-emerald-600"
-                  : "bg-accent text-muted-foreground hover:bg-accent/80"
-                  }`}
+                className={`inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+                  selectedPreset === -1
+                    ? "bg-emerald-500 text-white dark:bg-emerald-600"
+                    : "bg-accent text-muted-foreground hover:bg-accent/80"
+                }`}
               >
                 {t("presetSelector.custom")}
               </button>
@@ -444,10 +435,11 @@ const McpFormModal: React.FC<McpFormModalProps> = ({
                     key={preset.id}
                     type="button"
                     onClick={() => applyPreset(idx)}
-                    className={`inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${selectedPreset === idx
-                      ? "bg-emerald-500 text-white dark:bg-emerald-600"
-                      : "bg-accent text-muted-foreground hover:bg-accent/80"
-                      }`}
+                    className={`inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+                      selectedPreset === idx
+                        ? "bg-emerald-500 text-white dark:bg-emerald-600"
+                        : "bg-accent text-muted-foreground hover:bg-accent/80"
+                    }`}
                     title={t(descriptionKey)}
                   >
                     {preset.id}
@@ -555,11 +547,7 @@ const McpFormModal: React.FC<McpFormModalProps> = ({
             onClick={() => setShowMetadata(!showMetadata)}
             className="flex items-center gap-2 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
           >
-            {showMetadata ? (
-              <ChevronUp size={16} />
-            ) : (
-              <ChevronDown size={16} />
-            )}
+            {showMetadata ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
             {t("mcp.form.additionalInfo")}
           </button>
         </div>
@@ -621,9 +609,7 @@ const McpFormModal: React.FC<McpFormModalProps> = ({
         <div>
           <div className="flex items-center justify-between mb-2">
             <label className="text-sm font-medium text-foreground">
-              {useToml
-                ? t("mcp.form.tomlConfig")
-                : t("mcp.form.jsonConfig")}
+              {useToml ? t("mcp.form.tomlConfig") : t("mcp.form.jsonConfig")}
             </label>
             {(isEditing || selectedPreset === -1) && (
               <button

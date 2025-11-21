@@ -12,6 +12,7 @@ import { toast } from "sonner";
 import { formatJSON } from "@/utils/formatters";
 
 interface JsonEditorProps {
+  id?: string;
   value: string;
   onChange: (value: string) => void;
   placeholder?: string;
@@ -19,7 +20,8 @@ interface JsonEditorProps {
   rows?: number;
   showValidation?: boolean;
   language?: "json" | "javascript";
-  height?: string;
+  height?: string | number;
+  showMinimap?: boolean; // 添加此属性以防未来使用
 }
 
 const JsonEditor: React.FC<JsonEditorProps> = ({
@@ -116,8 +118,15 @@ const JsonEditor: React.FC<JsonEditorProps> = ({
     });
 
     // 使用 theme 定义尺寸和字体样式
+    const heightValue = height
+      ? typeof height === "number"
+        ? `${height}px`
+        : height
+      : undefined;
     const sizingTheme = EditorView.theme({
-      "&": height ? { height } : { minHeight: `${minHeightPx}px` },
+      "&": heightValue
+        ? { height: heightValue }
+        : { minHeight: `${minHeightPx}px` },
       ".cm-scroller": { overflow: "auto" },
       ".cm-content": {
         fontFamily:

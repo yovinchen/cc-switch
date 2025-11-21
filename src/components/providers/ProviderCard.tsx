@@ -8,7 +8,6 @@ import type {
 import type { Provider } from "@/types";
 import type { AppId } from "@/lib/api";
 import { cn } from "@/lib/utils";
-import { Button } from "@/components/ui/button";
 import { ProviderActions } from "@/components/providers/ProviderActions";
 import UsageFooter from "@/components/UsageFooter";
 
@@ -115,14 +114,18 @@ export function ProviderCard({
     <div
       className={cn(
         "glass-card relative overflow-hidden rounded-xl p-4 transition-all duration-300",
-        "group hover:bg-black/[0.02] dark:hover:bg-white/[0.02] hover:border-primary/50",
+        "group hover:border-primary/50",
         isCurrent
-          ? "border-primary/50 bg-primary/5 shadow-[0_0_20px_rgba(59,130,246,0.15)]"
+          ? "border-primary/50 shadow-[0_0_20px_rgba(59,130,246,0.15)]"
           : "hover:scale-[1.01]",
         dragHandleProps?.isDragging &&
-        "cursor-grabbing border-primary shadow-lg scale-105 z-10",
+          "cursor-grabbing border-primary shadow-lg scale-105 z-10",
       )}
     >
+      {/* 选中状态的浅色背景叠加层 */}
+      {isCurrent && (
+        <div className="absolute inset-0 bg-primary/[0.02] pointer-events-none" />
+      )}
       <div className="absolute inset-0 bg-gradient-to-r from-primary/10 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500 pointer-events-none" />
       <div className="relative flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex flex-1 items-center gap-3">

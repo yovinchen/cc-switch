@@ -229,8 +229,8 @@ export function EnvWarningBanner({
                       {isDeleting
                         ? t("env.actions.deleting")
                         : t("env.actions.deleteSelected", {
-                          count: selectedConflicts.size,
-                        })}
+                            count: selectedConflicts.size,
+                          })}
                     </Button>
                   </div>
                 </div>

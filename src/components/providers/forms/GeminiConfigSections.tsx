@@ -176,9 +176,7 @@ export const GeminiConfigSection: React.FC<GeminiConfigSectionProps> = ({
       />
 
       {configError && (
-        <p className="text-xs text-red-500 dark:text-red-400">
-          {configError}
-        </p>
+        <p className="text-xs text-red-500 dark:text-red-400">{configError}</p>
       )}
 
       {!configError && (

@@ -71,7 +71,10 @@ export function ProviderList({
         items={sortedProviders.map((provider) => provider.id)}
         strategy={verticalListSortingStrategy}
       >
-        <div className="space-y-3 animate-slide-up" style={{ animationDelay: '0.1s' }}>
+        <div
+          className="space-y-3 animate-slide-up"
+          style={{ animationDelay: "0.1s" }}
+        >
           {sortedProviders.map((provider) => (
             <SortableProviderCard
               key={provider.id}
