@@ -1,4 +1,4 @@
-import { BarChart3, Check, Edit, Play, Trash2 } from "lucide-react";
+import { BarChart3, Check, Copy, Edit, Play, Trash2 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -7,6 +7,7 @@ interface ProviderActionsProps {
   isCurrent: boolean;
   onSwitch: () => void;
   onEdit: () => void;
+  onDuplicate: () => void;
   onConfigureUsage: () => void;
   onDelete: () => void;
 }
@@ -15,6 +16,7 @@ export function ProviderActions({
   isCurrent,
   onSwitch,
   onEdit,
+  onDuplicate,
   onConfigureUsage,
   onDelete,
 }: ProviderActionsProps) {
@@ -54,6 +56,15 @@ export function ProviderActions({
           title={t("common.edit")}
         >
           <Edit className="h-4 w-4" />
+        </Button>
+
+        <Button
+          size="icon"
+          variant="ghost"
+          onClick={onDuplicate}
+          title={t("provider.duplicate")}
+        >
+          <Copy className="h-4 w-4" />
         </Button>
 
         <Button
