@@ -45,46 +45,54 @@ const DialogContent = React.forwardRef<
     variant?: "default" | "fullscreen";
     overlayClassName?: string;
   }
->(({ className, children, zIndex = "base", variant = "default", overlayClassName, ...props }, ref) => {
-  const zIndexMap = {
-    base: "z-40",
-    nested: "z-50",
-    alert: "z-[60]",
-    top: "z-[110]",
-  };
+>(
+  (
+    {
+      className,
+      children,
+      zIndex = "base",
+      variant = "default",
+      overlayClassName,
+      ...props
+    },
+    ref,
+  ) => {
+    const zIndexMap = {
+      base: "z-40",
+      nested: "z-50",
+      alert: "z-[60]",
+      top: "z-[110]",
+    };
 
-  const variantClass = {
-    default:
-      "fixed left-1/2 top-1/2 flex flex-col w-full max-w-lg max-h-[90vh] translate-x-[-50%] translate-y-[-50%] border border-border-default bg-white dark:bg-gray-900 shadow-lg duration-200 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 data-[state=closed]:slide-out-to-left-1/2 data-[state=closed]:slide-out-to-top-[48%] data-[state=open]:slide-in-from-left-1/2 data-[state=open]:slide-in-from-top-[48%] sm:rounded-lg",
-    fullscreen:
-      "fixed inset-0 flex flex-col w-screen h-screen translate-x-0 translate-y-0 bg-background text-foreground p-0 sm:rounded-none shadow-none",
-  }[variant];
+    const variantClass = {
+      default:
+        "fixed left-1/2 top-1/2 flex flex-col w-full max-w-lg max-h-[90vh] translate-x-[-50%] translate-y-[-50%] border border-border-default bg-white dark:bg-gray-900 shadow-lg duration-200 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 data-[state=closed]:slide-out-to-left-1/2 data-[state=closed]:slide-out-to-top-[48%] data-[state=open]:slide-in-from-left-1/2 data-[state=open]:slide-in-from-top-[48%] sm:rounded-lg",
+      fullscreen:
+        "fixed inset-0 flex flex-col w-screen h-screen translate-x-0 translate-y-0 bg-background text-foreground p-0 sm:rounded-none shadow-none",
+    }[variant];
 
-  return (
-    <DialogPortal>
-      <DialogOverlay zIndex={zIndex} className={overlayClassName} />
-      <DialogPrimitive.Content
-        ref={ref}
-        className={cn(
-          variantClass,
-          zIndexMap[zIndex],
-          className,
-        )}
-        onInteractOutside={(e) => {
-          // 防止点击遮罩层关闭对话框
-          e.preventDefault();
-        }}
-        {...props}
-      >
-        {children}
-        <DialogPrimitive.Close className="absolute right-4 top-4 rounded-sm opacity-70 ring-offset-background transition-opacity hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:pointer-events-none">
-          <X className="h-4 w-4" />
-          <span className="sr-only">关闭</span>
-        </DialogPrimitive.Close>
-      </DialogPrimitive.Content>
-    </DialogPortal>
-  );
-});
+    return (
+      <DialogPortal>
+        <DialogOverlay zIndex={zIndex} className={overlayClassName} />
+        <DialogPrimitive.Content
+          ref={ref}
+          className={cn(variantClass, zIndexMap[zIndex], className)}
+          onInteractOutside={(e) => {
+            // 防止点击遮罩层关闭对话框
+            e.preventDefault();
+          }}
+          {...props}
+        >
+          {children}
+          <DialogPrimitive.Close className="absolute right-4 top-4 rounded-sm opacity-70 ring-offset-background transition-opacity hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:pointer-events-none">
+            <X className="h-4 w-4" />
+            <span className="sr-only">关闭</span>
+          </DialogPrimitive.Close>
+        </DialogPrimitive.Content>
+      </DialogPortal>
+    );
+  },
+);
 DialogContent.displayName = DialogPrimitive.Content.displayName;
 
 const DialogHeader = ({

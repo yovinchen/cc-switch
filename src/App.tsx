@@ -1,7 +1,16 @@
 import { useEffect, useMemo, useState, useRef } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
-import { Plus, Settings, ArrowLeft, Bot, Book, Wrench, Server, RefreshCw } from "lucide-react";
+import {
+  Plus,
+  Settings,
+  ArrowLeft,
+  Bot,
+  Book,
+  Wrench,
+  Server,
+  RefreshCw,
+} from "lucide-react";
 import type { Provider } from "@/types";
 import type { EnvConflict } from "@/types/env";
 import { useProvidersQuery } from "@/lib/query";
@@ -30,14 +39,13 @@ import { DeepLinkImportDialog } from "@/components/DeepLinkImportDialog";
 import { AgentsPanel } from "@/components/agents/AgentsPanel";
 import { Button } from "@/components/ui/button";
 
-
-type View = 'providers' | 'settings' | 'prompts' | 'skills' | 'mcp' | 'agents';
+type View = "providers" | "settings" | "prompts" | "skills" | "mcp" | "agents";
 
 function App() {
   const { t } = useTranslation();
 
   const [activeApp, setActiveApp] = useState<AppId>("claude");
-  const [currentView, setCurrentView] = useState<View>('providers');
+  const [currentView, setCurrentView] = useState<View>("providers");
   const [isAddOpen, setIsAddOpen] = useState(false);
 
   const [editingProvider, setEditingProvider] = useState<Provider | null>(null);
@@ -238,38 +246,39 @@ function App() {
 
   const renderContent = () => {
     switch (currentView) {
-      case 'settings':
+      case "settings":
         return (
           <SettingsPage
             open={true}
-            onOpenChange={() => setCurrentView('providers')}
+            onOpenChange={() => setCurrentView("providers")}
             onImportSuccess={handleImportSuccess}
           />
         );
-      case 'prompts':
+      case "prompts":
         return (
           <PromptPanel
             ref={promptPanelRef}
             open={true}
-            onOpenChange={() => setCurrentView('providers')}
+            onOpenChange={() => setCurrentView("providers")}
             appId={activeApp}
           />
         );
-      case 'skills':
-        return <SkillsPage ref={skillsPageRef} onClose={() => setCurrentView('providers')} />;
-      case 'mcp':
+      case "skills":
+        return (
+          <SkillsPage
+            ref={skillsPageRef}
+            onClose={() => setCurrentView("providers")}
+          />
+        );
+      case "mcp":
         return (
           <UnifiedMcpPanel
             ref={mcpPanelRef}
-            onOpenChange={() => setCurrentView('providers')}
+            onOpenChange={() => setCurrentView("providers")}
           />
         );
-      case 'agents':
-        return (
-          <AgentsPanel
-            onOpenChange={() => setCurrentView('providers')}
-          />
-        );
+      case "agents":
+        return <AgentsPanel onOpenChange={() => setCurrentView("providers")} />;
       default:
         return (
           <div className="mx-auto max-w-5xl space-y-4">
@@ -292,12 +301,15 @@ function App() {
   };
 
   return (
-    <div className="flex min-h-screen flex-col bg-background text-foreground selection:bg-primary/30" style={{ overflowX: "hidden" }}>
+    <div
+      className="flex min-h-screen flex-col bg-background text-foreground selection:bg-primary/30"
+      style={{ overflowX: "hidden" }}
+    >
       {/* 全局拖拽区域（顶部 4px），避免上边框无法拖动 */}
       <div
         className="fixed top-0 left-0 right-0 h-4 z-[60]"
         data-tauri-drag-region
-        style={{ WebkitAppRegion: "drag" }}
+        style={{ WebkitAppRegion: "drag" } as any}
       />
       {/* 环境变量警告横幅 */}
       {showEnvBanner && envConflicts.length > 0 && (
@@ -329,31 +341,32 @@ function App() {
       <header
         className="glass-header fixed top-0 z-50 w-full px-6 py-3 transition-all duration-300"
         data-tauri-drag-region
-        style={{ WebkitAppRegion: "drag" }}
+        style={{ WebkitAppRegion: "drag" } as any}
       >
-          <div className="h-4 w-full" aria-hidden data-tauri-drag-region />
+        <div className="h-4 w-full" aria-hidden data-tauri-drag-region />
         <div
           className="flex flex-wrap items-center justify-between gap-2"
-          style={{ WebkitAppRegion: "no-drag" }}
+          style={{ WebkitAppRegion: "no-drag" } as any}
         >
           <div className="flex items-center gap-1">
-            {currentView !== 'providers' ? (
+            {currentView !== "providers" ? (
               <div className="flex items-center gap-2">
                 <Button
                   variant="ghost"
                   size="sm"
-                  onClick={() => setCurrentView('providers')}
+                  onClick={() => setCurrentView("providers")}
                   className="mr-1 hover:bg-black/5 dark:hover:bg-white/5 -ml-2"
                 >
                   <ArrowLeft className="h-5 w-5 mr-1" />
                   {t("common.back")}
                 </Button>
                 <h1 className="text-lg font-semibold">
-                  {currentView === 'settings' && t("settings.title")}
-                  {currentView === 'prompts' && t("prompts.title", { appName: t(`apps.${activeApp}`) })}
-                  {currentView === 'skills' && t("skills.title")}
-                  {currentView === 'mcp' && t("mcp.unifiedPanel.title")}
-                  {currentView === 'agents' && "Agents"}
+                  {currentView === "settings" && t("settings.title")}
+                  {currentView === "prompts" &&
+                    t("prompts.title", { appName: t(`apps.${activeApp}`) })}
+                  {currentView === "skills" && t("skills.title")}
+                  {currentView === "mcp" && t("mcp.unifiedPanel.title")}
+                  {currentView === "agents" && "Agents"}
                 </h1>
               </div>
             ) : (
@@ -369,19 +382,19 @@ function App() {
                 <Button
                   variant="ghost"
                   size="icon"
-                  onClick={() => setCurrentView('settings')}
+                  onClick={() => setCurrentView("settings")}
                   title={t("common.settings")}
                   className="ml-2 hover:bg-black/5 dark:hover:bg-white/5"
                 >
                   <Settings className="h-4 w-4" />
                 </Button>
-                <UpdateBadge onClick={() => setCurrentView('settings')} />
+                <UpdateBadge onClick={() => setCurrentView("settings")} />
               </>
             )}
           </div>
 
           <div className="flex items-center gap-2">
-            {currentView === 'prompts' && (
+            {currentView === "prompts" && (
               <Button
                 size="icon"
                 onClick={() => promptPanelRef.current?.openAdd()}
@@ -391,7 +404,7 @@ function App() {
                 <Plus className="h-5 w-5" />
               </Button>
             )}
-            {currentView === 'mcp' && (
+            {currentView === "mcp" && (
               <Button
                 size="icon"
                 onClick={() => mcpPanelRef.current?.openAdd()}
@@ -401,7 +414,7 @@ function App() {
                 <Plus className="h-5 w-5" />
               </Button>
             )}
-            {currentView === 'skills' && (
+            {currentView === "skills" && (
               <>
                 <Button
                   variant="ghost"
@@ -423,7 +436,7 @@ function App() {
                 </Button>
               </>
             )}
-            {currentView === 'providers' && (
+            {currentView === "providers" && (
               <>
                 <AppSwitcher activeApp={activeApp} onSwitch={setActiveApp} />
 
@@ -433,7 +446,7 @@ function App() {
                   <Button
                     variant="ghost"
                     size="sm"
-                    onClick={() => setCurrentView('prompts')}
+                    onClick={() => setCurrentView("prompts")}
                     className="text-muted-foreground hover:text-foreground hover:bg-black/5 dark:hover:bg-white/5"
                     title={t("prompts.manage")}
                   >
@@ -443,7 +456,7 @@ function App() {
                     <Button
                       variant="ghost"
                       size="sm"
-                      onClick={() => setCurrentView('skills')}
+                      onClick={() => setCurrentView("skills")}
                       className="text-muted-foreground hover:text-foreground hover:bg-black/5 dark:hover:bg-white/5"
                       title={t("skills.manage")}
                     >
@@ -453,7 +466,7 @@ function App() {
                   <Button
                     variant="ghost"
                     size="sm"
-                    onClick={() => setCurrentView('mcp')}
+                    onClick={() => setCurrentView("mcp")}
                     className="text-muted-foreground hover:text-foreground hover:bg-black/5 dark:hover:bg-white/5"
                     title="MCP"
                   >
@@ -463,7 +476,7 @@ function App() {
                     <Button
                       variant="ghost"
                       size="sm"
-                      onClick={() => setCurrentView('agents')}
+                      onClick={() => setCurrentView("agents")}
                       className="text-muted-foreground hover:text-foreground hover:bg-black/5 dark:hover:bg-white/5"
                       title="Agents"
                     >
@@ -487,7 +500,7 @@ function App() {
 
       <main
         className={`flex-1 overflow-y-auto pb-12 px-6 animate-fade-in scroll-overlay ${
-          currentView === 'providers' ? "pt-24" : "pt-20"
+          currentView === "providers" ? "pt-24" : "pt-20"
         }`}
         style={{ overflowX: "hidden" }}
       >
@@ -531,8 +544,8 @@ function App() {
         message={
           confirmDelete
             ? t("confirm.deleteProviderMessage", {
-              name: confirmDelete.name,
-            })
+                name: confirmDelete.name,
+              })
             : ""
         }
         onConfirm={() => void handleConfirmDelete()}
