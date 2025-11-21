@@ -263,6 +263,34 @@
             color: #e91e63;
         }
 
+        .param-list {
+            background: #f8f9fa;
+            border-left: 3px solid #3498db;
+            padding: 12px;
+            border-radius: 6px;
+            margin: 12px 0;
+            font-size: 13px;
+            line-height: 1.8;
+            color: #495057;
+            font-family: 'SF Mono', Monaco, 'Cascadia Code', 'Roboto Mono', Consolas, 'Courier New', monospace;
+        }
+
+        .param-tag {
+            display: inline-block;
+            padding: 2px 8px;
+            border-radius: 4px;
+            font-size: 11px;
+            font-weight: 600;
+            text-transform: uppercase;
+            margin-right: 6px;
+            background: #3498db;
+            color: white;
+        }
+
+        .param-tag.optional {
+            background: #95a5a6;
+        }
+
         @media (max-width: 768px) {
             .header h1 {
                 font-size: 24px;
@@ -293,28 +321,90 @@
                 <div class="link-card">
                     <h3>
                         <span class="app-badge badge-claude">Claude</span>
-                        Claude Official (官方)
+                        基础配置（无模型）
                     </h3>
                     <p class="description">
-                        导入 Claude 官方 API 配置。使用官方端点 api.anthropic.com，默认模型 claude-haiku-4.1。
+                        最简单的 Claude 配置，仅包含必需参数（API Key、端点等），不指定任何模型，使用 Claude Code 默认值。
                     </p>
-                    <a href="ccswitch://v1/import?resource=provider&app=claude&name=Claude%20Official&homepage=https%3A%2F%2Fclaude.ai&endpoint=https%3A%2F%2Fapi.anthropic.com%2Fv1&apiKey=sk-ant-test-demo-key-12345&model=claude-haiku-4.1&notes=%E5%AE%98%E6%96%B9%E6%B5%8B%E8%AF%95%E9%85%8D%E7%BD%AE"
+                    <div class="param-list">
+                        <span class="param-tag">必需</span> resource=provider, app=claude, name, homepage, endpoint, apiKey<br>
+                        <span class="param-tag optional">可选</span> notes
+                    </div>
+                    <a href="ccswitch://v1/import?resource=provider&app=claude&name=Claude%20Basic&homepage=https%3A%2F%2Fclaude.ai&endpoint=https%3A%2F%2Fapi.anthropic.com%2Fv1&apiKey=sk-ant-test-basic-key&notes=%E5%9F%BA%E7%A1%80%E9%85%8D%E7%BD%AE%EF%BC%8C%E6%97%A0%E6%A8%A1%E5%9E%8B%E6%8C%87%E5%AE%9A"
                        class="deep-link">
-                        📥 导入 Claude Official
+                        📥 导入基础配置
                     </a>
                 </div>
 
                 <div class="link-card">
                     <h3>
                         <span class="app-badge badge-claude">Claude</span>
-                        Claude 测试环境
+                        带默认模型
                     </h3>
                     <p class="description">
-                        公司内部测试环境配置示例。包含备注信息，方便区分不同环境。默认模型 claude-haiku-4.1。
+                        设置通用默认模型（ANTHROPIC_MODEL），适用于只需要一个固定模型的场景。
                     </p>
-                    <a href="ccswitch://v1/import?resource=provider&app=claude&name=%E5%85%AC%E5%8F%B8%E6%B5%8B%E8%AF%95%E7%8E%AF%E5%A2%83&homepage=https%3A%2F%2Ftest.company.com&endpoint=https%3A%2F%2Fapi-test.company.com%2Fv1&apiKey=sk-ant-test-company-key&model=claude-haiku-4.1&notes=%E5%85%AC%E5%8F%B8%E5%86%85%E9%83%A8%E6%B5%8B%E8%AF%95%E7%8E%AF%E5%A2%83%EF%BC%8C%E4%BB%85%E4%BE%9B%E5%BC%80%E5%8F%91%E4%BD%BF%E7%94%A8"
+                    <div class="param-list">
+                        <span class="param-tag">必需</span> resource=provider, app=claude, name, homepage, endpoint, apiKey<br>
+                        <span class="param-tag optional">可选</span> <strong>model=claude-haiku-4.1</strong>, notes
+                    </div>
+                    <a href="ccswitch://v1/import?resource=provider&app=claude&name=Claude%20with%20Model&homepage=https%3A%2F%2Fclaude.ai&endpoint=https%3A%2F%2Fapi.anthropic.com%2Fv1&apiKey=sk-ant-test-model-key&model=claude-haiku-4.1&notes=%E5%B8%A6%E9%BB%98%E8%AE%A4%E6%A8%A1%E5%9E%8B"
                        class="deep-link">
-                        📥 导入测试环境
+                        📥 导入带默认模型
+                    </a>
+                </div>
+
+                <div class="link-card">
+                    <h3>
+                        <span class="app-badge badge-claude">Claude</span>
+                        完整配置（四种模型）
+                    </h3>
+                    <p class="description">
+                        设置所有四种模型字段：默认模型、Haiku 模型、Sonnet 模型、Opus 模型。适用于需要精细控制不同模型系列的场景。
+                    </p>
+                    <div class="param-list">
+                        <span class="param-tag">必需</span> resource=provider, app=claude, name, homepage, endpoint, apiKey<br>
+                        <span class="param-tag optional">可选</span> <strong>model=claude-sonnet-4.5</strong>, <strong>haikuModel=claude-haiku-4.1</strong>, <strong>sonnetModel=claude-sonnet-4.5</strong>, <strong>opusModel=claude-opus-4</strong>, notes
+                    </div>
+                    <a href="ccswitch://v1/import?resource=provider&app=claude&name=Claude%20Complete&homepage=https%3A%2F%2Fclaude.ai&endpoint=https%3A%2F%2Fapi.anthropic.com%2Fv1&apiKey=sk-ant-test-complete-key&model=claude-sonnet-4.5&haikuModel=claude-haiku-4.1&sonnetModel=claude-sonnet-4.5&opusModel=claude-opus-4&notes=%E5%AE%8C%E6%95%B4%E6%A8%A1%E5%9E%8B%E9%85%8D%E7%BD%AE"
+                       class="deep-link">
+                        📥 导入完整配置
+                    </a>
+                </div>
+
+                <div class="link-card">
+                    <h3>
+                        <span class="app-badge badge-claude">Claude</span>
+                        部分模型配置
+                    </h3>
+                    <p class="description">
+                        仅设置特定的模型字段（例如只设置 Haiku 和 Sonnet），其他模型使用默认值。演示参数灵活性。
+                    </p>
+                    <div class="param-list">
+                        <span class="param-tag">必需</span> resource=provider, app=claude, name, homepage, endpoint, apiKey<br>
+                        <span class="param-tag optional">可选</span> <strong>haikuModel=claude-haiku-4.1</strong>, <strong>sonnetModel=claude-sonnet-4.5</strong>, notes
+                    </div>
+                    <a href="ccswitch://v1/import?resource=provider&app=claude&name=Claude%20Partial&homepage=https%3A%2F%2Fclaude.ai&endpoint=https%3A%2F%2Fapi.anthropic.com%2Fv1&apiKey=sk-ant-test-partial-key&haikuModel=claude-haiku-4.1&sonnetModel=claude-sonnet-4.5&notes=%E9%83%A8%E5%88%86%E6%A8%A1%E5%9E%8B%E9%85%8D%E7%BD%AE"
+                       class="deep-link">
+                        📥 导入部分模型配置
+                    </a>
+                </div>
+
+                <div class="link-card">
+                    <h3>
+                        <span class="app-badge badge-claude">Claude</span>
+                        第三方供应商示例
+                    </h3>
+                    <p class="description">
+                        使用第三方供应商的 API 端点和自定义模型名称，演示兼容性。
+                    </p>
+                    <div class="param-list">
+                        <span class="param-tag">必需</span> resource=provider, app=claude, name, homepage, endpoint, apiKey<br>
+                        <span class="param-tag optional">可选</span> <strong>model=custom-claude-v1</strong>, notes
+                    </div>
+                    <a href="ccswitch://v1/import?resource=provider&app=claude&name=Third-Party%20Claude&homepage=https%3A%2F%2Fthirdparty.com&endpoint=https%3A%2F%2Fapi.thirdparty.com%2Fv1&apiKey=sk-third-party-key&model=custom-claude-v1&notes=%E7%AC%AC%E4%B8%89%E6%96%B9%E4%BE%9B%E5%BA%94%E5%95%86%E7%A4%BA%E4%BE%8B"
+                       class="deep-link">
+                        📥 导入第三方供应商
                     </a>
                 </div>
             </div>
@@ -326,11 +416,33 @@
                 <div class="link-card">
                     <h3>
                         <span class="app-badge badge-codex">Codex</span>
-                        OpenAI Official (官方)
+                        基础配置
                     </h3>
                     <p class="description">
-                        导入 OpenAI 官方 API 配置。使用官方端点 api.openai.com，默认模型 gpt-5.1。
+                        OpenAI 官方 API 基础配置，仅包含必需参数。
                     </p>
+                    <div class="param-list">
+                        <span class="param-tag">必需</span> resource=provider, app=codex, name, homepage, endpoint, apiKey<br>
+                        <span class="param-tag optional">可选</span> notes
+                    </div>
+                    <a href="ccswitch://v1/import?resource=provider&app=codex&name=OpenAI%20Basic&homepage=https%3A%2F%2Fopenai.com&endpoint=https%3A%2F%2Fapi.openai.com%2Fv1&apiKey=sk-test-basic-openai-key&notes=%E5%9F%BA%E7%A1%80%E9%85%8D%E7%BD%AE"
+                       class="deep-link">
+                        📥 导入基础配置
+                    </a>
+                </div>
+
+                <div class="link-card">
+                    <h3>
+                        <span class="app-badge badge-codex">Codex</span>
+                        带默认模型
+                    </h3>
+                    <p class="description">
+                        OpenAI API 配置，指定默认模型为 gpt-5.1。
+                    </p>
+                    <div class="param-list">
+                        <span class="param-tag">必需</span> resource=provider, app=codex, name, homepage, endpoint, apiKey<br>
+                        <span class="param-tag optional">可选</span> <strong>model=gpt-5.1</strong>, notes
+                    </div>
                     <a href="ccswitch://v1/import?resource=provider&app=codex&name=OpenAI%20Official&homepage=https%3A%2F%2Fopenai.com&endpoint=https%3A%2F%2Fapi.openai.com%2Fv1&apiKey=sk-test-demo-openai-key-67890&model=gpt-5.1&notes=OpenAI%20%E5%AE%98%E6%96%B9%E6%9C%8D%E5%8A%A1"
                        class="deep-link">
                         📥 导入 OpenAI Official
@@ -345,9 +457,31 @@
                     <p class="description">
                         Azure 部署的 OpenAI 服务示例。适合企业用户使用 Azure 云服务。默认模型 gpt-5.1。
                     </p>
+                    <div class="param-list">
+                        <span class="param-tag">必需</span> resource=provider, app=codex, name, homepage, endpoint, apiKey<br>
+                        <span class="param-tag optional">可选</span> <strong>model=gpt-5.1</strong>, notes
+                    </div>
                     <a href="ccswitch://v1/import?resource=provider&app=codex&name=Azure%20OpenAI&homepage=https%3A%2F%2Fazure.microsoft.com%2Fopenai&endpoint=https%3A%2F%2Fyour-resource.openai.azure.com%2F&apiKey=azure-test-api-key-xyz&model=gpt-5.1&notes=Azure%20%E4%BC%81%E4%B8%9A%E7%89%88%E6%9C%AC"
                        class="deep-link">
                         📥 导入 Azure OpenAI
+                    </a>
+                </div>
+
+                <div class="link-card">
+                    <h3>
+                        <span class="app-badge badge-codex">Codex</span>
+                        第三方兼容 API
+                    </h3>
+                    <p class="description">
+                        使用兼容 OpenAI API 格式的第三方服务（如 Together AI、Groq 等）。
+                    </p>
+                    <div class="param-list">
+                        <span class="param-tag">必需</span> resource=provider, app=codex, name, homepage, endpoint, apiKey<br>
+                        <span class="param-tag optional">可选</span> <strong>model=mixtral-8x7b</strong>, notes
+                    </div>
+                    <a href="ccswitch://v1/import?resource=provider&app=codex&name=Third-Party%20API&homepage=https%3A%2F%2Fthirdparty.com&endpoint=https%3A%2F%2Fapi.thirdparty.com%2Fv1&apiKey=sk-third-party-key&model=mixtral-8x7b&notes=%E7%AC%AC%E4%B8%89%E6%96%B9%E5%85%BC%E5%AE%B9%E6%9C%8D%E5%8A%A1"
+                       class="deep-link">
+                        📥 导入第三方 API
                     </a>
                 </div>
             </div>
@@ -359,11 +493,33 @@
                 <div class="link-card">
                     <h3>
                         <span class="app-badge badge-gemini">Gemini</span>
+                        基础配置
+                    </h3>
+                    <p class="description">
+                        Google Gemini 官方 API 基础配置，仅包含必需参数。
+                    </p>
+                    <div class="param-list">
+                        <span class="param-tag">必需</span> resource=provider, app=gemini, name, homepage, endpoint, apiKey<br>
+                        <span class="param-tag optional">可选</span> notes
+                    </div>
+                    <a href="ccswitch://v1/import?resource=provider&app=gemini&name=Google%20Gemini%20Basic&homepage=https%3A%2F%2Fai.google.dev&endpoint=https%3A%2F%2Fgenerativelanguage.googleapis.com%2Fv1beta&apiKey=AIzaSy-test-basic-key&notes=%E5%9F%BA%E7%A1%80%E9%85%8D%E7%BD%AE"
+                       class="deep-link">
+                        📥 导入基础配置
+                    </a>
+                </div>
+
+                <div class="link-card">
+                    <h3>
+                        <span class="app-badge badge-gemini">Gemini</span>
                         Google Gemini Official
                     </h3>
                     <p class="description">
                         导入 Google Gemini 官方 API 配置。默认模型 gemini-3-pro-preview。
                     </p>
+                    <div class="param-list">
+                        <span class="param-tag">必需</span> resource=provider, app=gemini, name, homepage, endpoint, apiKey<br>
+                        <span class="param-tag optional">可选</span> <strong>model=gemini-3-pro-preview</strong>, notes
+                    </div>
                     <a href="ccswitch://v1/import?resource=provider&app=gemini&name=Google%20Gemini&homepage=https%3A%2F%2Fai.google.dev&endpoint=https%3A%2F%2Fgenerativelanguage.googleapis.com%2Fv1beta&apiKey=AIzaSy-test-demo-key-abc123&model=gemini-3-pro-preview&notes=Google%20AI%20%E5%AE%98%E6%96%B9%E6%9C%8D%E5%8A%A1"
                        class="deep-link">
                         📥 导入 Google Gemini
@@ -376,11 +532,33 @@
                         Gemini 测试环境
                     </h3>
                     <p class="description">
-                        公司内部 Gemini 测试环境配置示例。用于验证 Gemini 相关深链接导入流程，请求地址为：https://api-gemini-test.company.com/v1beta。默认模型 gemini-3-pro-preview。
+                        公司内部 Gemini 测试环境配置示例。用于验证 Gemini 相关深链接导入流程。默认模型 gemini-3-pro-preview。
                     </p>
+                    <div class="param-list">
+                        <span class="param-tag">必需</span> resource=provider, app=gemini, name, homepage, endpoint, apiKey<br>
+                        <span class="param-tag optional">可选</span> <strong>model=gemini-3-pro-preview</strong>, notes
+                    </div>
                     <a href="ccswitch://v1/import?resource=provider&app=gemini&name=%E5%85%AC%E5%8F%B8%20Gemini%20%E6%B5%8B%E8%AF%95%E7%8E%AF%E5%A2%83&homepage=https%3A%2F%2Fgemini-test.company.com&endpoint=https%3A%2F%2Fapi-gemini-test.company.com%2Fv1beta&apiKey=sk-gemini-test-company-key&model=gemini-3-pro-preview&notes=%E5%85%AC%E5%8F%B8%E5%86%85%E9%83%A8%20Gemini%20%E6%B5%8B%E8%AF%95%E7%8E%AF%E5%A2%83%EF%BC%8C%E4%BB%85%E4%BE%9B%E5%BC%80%E5%8F%91%E4%BD%BF%E7%94%A8"
                        class="deep-link">
                         📥 导入 Gemini 测试环境
+                    </a>
+                </div>
+
+                <div class="link-card">
+                    <h3>
+                        <span class="app-badge badge-gemini">Gemini</span>
+                        第三方兼容服务
+                    </h3>
+                    <p class="description">
+                        使用第三方提供的 Gemini API 兼容服务，支持自定义模型名称。
+                    </p>
+                    <div class="param-list">
+                        <span class="param-tag">必需</span> resource=provider, app=gemini, name, homepage, endpoint, apiKey<br>
+                        <span class="param-tag optional">可选</span> <strong>model=gemini-custom-v2</strong>, notes
+                    </div>
+                    <a href="ccswitch://v1/import?resource=provider&app=gemini&name=Third-Party%20Gemini&homepage=https%3A%2F%2Fthirdparty-gemini.com&endpoint=https%3A%2F%2Fapi.thirdparty-gemini.com%2Fv1&apiKey=tpg-test-key-xyz&model=gemini-custom-v2&notes=%E7%AC%AC%E4%B8%89%E6%96%B9%20Gemini%20%E5%85%BC%E5%AE%B9%E6%9C%8D%E5%8A%A1"
+                       class="deep-link">
+                        📥 导入第三方服务
                     </a>
                 </div>
             </div>
@@ -404,7 +582,7 @@
 
                 <div class="form-group">
                     <label>应用类型 *</label>
-                    <select id="app">
+                    <select id="app" onchange="updateModelFields()">
                         <option value="claude">Claude Code</option>
                         <option value="codex">Codex</option>
                         <option value="gemini">Gemini</option>
@@ -432,8 +610,47 @@
                 </div>
 
                 <div class="form-group">
-                    <label>模型（可选）</label>
+                    <label>默认模型（可选）</label>
                     <input type="text" id="model" placeholder="例如: claude-haiku-4.1, gpt-5.1, gemini-3-pro-preview">
+                    <small style="color: #7f8c8d; font-size: 12px; display: block; margin-top: 4px;">
+                        通用模型字段，适用于所有应用类型
+                    </small>
+                </div>
+
+                <!-- Claude 专用字段 -->
+                <div id="claudeFields" style="display: block;">
+                    <div style="background: #e8f4f8; padding: 16px; border-radius: 8px; margin: 16px 0;">
+                        <h4 style="color: #2c3e50; margin-bottom: 12px; font-size: 14px;">
+                            📋 Claude 专用模型字段（可选）
+                        </h4>
+                        <p style="color: #7f8c8d; font-size: 12px; margin-bottom: 12px;">
+                            可以根据需要设置特定的模型字段，这些字段仅在 Claude 应用中生效
+                        </p>
+
+                        <div class="form-group">
+                            <label>Haiku 模型</label>
+                            <input type="text" id="haikuModel" placeholder="claude-haiku-4.1">
+                            <small style="color: #7f8c8d; font-size: 11px; display: block; margin-top: 4px;">
+                                对应环境变量：ANTHROPIC_DEFAULT_HAIKU_MODEL
+                            </small>
+                        </div>
+
+                        <div class="form-group">
+                            <label>Sonnet 模型</label>
+                            <input type="text" id="sonnetModel" placeholder="claude-sonnet-4.5">
+                            <small style="color: #7f8c8d; font-size: 11px; display: block; margin-top: 4px;">
+                                对应环境变量：ANTHROPIC_DEFAULT_SONNET_MODEL
+                            </small>
+                        </div>
+
+                        <div class="form-group">
+                            <label>Opus 模型</label>
+                            <input type="text" id="opusModel" placeholder="claude-opus-4">
+                            <small style="color: #7f8c8d; font-size: 11px; display: block; margin-top: 4px;">
+                                对应环境变量：ANTHROPIC_DEFAULT_OPUS_MODEL
+                            </small>
+                        </div>
+                    </div>
                 </div>
 
                 <div class="form-group">
@@ -458,6 +675,18 @@
     </div>
 
     <script>
+        // 更新模型字段显示
+        function updateModelFields() {
+            const app = document.getElementById('app').value;
+            const claudeFields = document.getElementById('claudeFields');
+
+            if (app === 'claude') {
+                claudeFields.style.display = 'block';
+            } else {
+                claudeFields.style.display = 'none';
+            }
+        }
+
         function generateLink() {
             const app = document.getElementById('app').value;
             const name = document.getElementById('name').value.trim();
@@ -466,6 +695,11 @@
             const apiKey = document.getElementById('apiKey').value.trim();
             const model = document.getElementById('model').value.trim();
             const notes = document.getElementById('notes').value.trim();
+
+            // Claude 专用字段
+            const haikuModel = document.getElementById('haikuModel').value.trim();
+            const sonnetModel = document.getElementById('sonnetModel').value.trim();
+            const opusModel = document.getElementById('opusModel').value.trim();
 
             // 验证必填字段
             if (!name || !homepage || !endpoint || !apiKey) {
@@ -492,10 +726,25 @@
                 apiKey: apiKey
             });
 
+            // 添加通用模型
             if (model) {
                 params.append('model', model);
             }
 
+            // 添加 Claude 专用模型字段
+            if (app === 'claude') {
+                if (haikuModel) {
+                    params.append('haikuModel', haikuModel);
+                }
+                if (sonnetModel) {
+                    params.append('sonnetModel', sonnetModel);
+                }
+                if (opusModel) {
+                    params.append('opusModel', opusModel);
+                }
+            }
+
+            // 添加备注
             if (notes) {
                 params.append('notes', notes);
             }
@@ -544,6 +793,9 @@
                     }
                 });
             });
+
+            // 初始化显示 Claude 字段
+            updateModelFields();
         });
     </script>
 </body>

@@ -130,7 +130,10 @@ export function BasicFormFields({ form }: BasicFormFieldsProps) {
             <FormItem>
               <FormLabel>{t("provider.notes")}</FormLabel>
               <FormControl>
-                <Input {...field} placeholder={t("provider.notesPlaceholder")} />
+                <Input
+                  {...field}
+                  placeholder={t("provider.notesPlaceholder")}
+                />
               </FormControl>
               <FormMessage />
             </FormItem>

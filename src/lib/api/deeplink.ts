@@ -10,6 +10,10 @@ export interface DeepLinkImportRequest {
   apiKey: string;
   model?: string;
   notes?: string;
+  // Claude 专用模型字段 (v3.7.1+)
+  haikuModel?: string;
+  sonnetModel?: string;
+  opusModel?: string;
 }
 
 export const deeplinkApi = {

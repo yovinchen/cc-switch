@@ -37,6 +37,15 @@ pub struct DeepLinkImportRequest {
     /// Optional notes/description
     #[serde(skip_serializing_if = "Option::is_none")]
     pub notes: Option<String>,
+    /// Optional Haiku model (Claude only, v3.7.1+)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub haiku_model: Option<String>,
+    /// Optional Sonnet model (Claude only, v3.7.1+)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub sonnet_model: Option<String>,
+    /// Optional Opus model (Claude only, v3.7.1+)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub opus_model: Option<String>,
 }
 
 /// Parse a ccswitch:// URL into a DeepLinkImportRequest
@@ -133,6 +142,11 @@ pub fn parse_deeplink_url(url_str: &str) -> Result<DeepLinkImportRequest, AppErr
     let model = params.get("model").cloned();
     let notes = params.get("notes").cloned();
 
+    // Extract Claude-specific optional model fields (v3.7.1+)
+    let haiku_model = params.get("haikuModel").cloned();
+    let sonnet_model = params.get("sonnetModel").cloned();
+    let opus_model = params.get("opusModel").cloned();
+
     Ok(DeepLinkImportRequest {
         version,
         resource,
@@ -143,6 +157,9 @@ pub fn parse_deeplink_url(url_str: &str) -> Result<DeepLinkImportRequest, AppErr
         api_key,
         model,
         notes,
+        haiku_model,
+        sonnet_model,
+        opus_model,
     })
 }
 
@@ -211,9 +228,20 @@ fn build_provider_from_request(
             env.insert("ANTHROPIC_AUTH_TOKEN".to_string(), json!(request.api_key));
             env.insert("ANTHROPIC_BASE_URL".to_string(), json!(request.endpoint));
 
-            // Add model if provided (use as default model)
+            // Add default model if provided
             if let Some(model) = &request.model {
                 env.insert("ANTHROPIC_MODEL".to_string(), json!(model));
+            }
+
+            // Add Claude-specific model fields (v3.7.1+)
+            if let Some(haiku_model) = &request.haiku_model {
+                env.insert("ANTHROPIC_DEFAULT_HAIKU_MODEL".to_string(), json!(haiku_model));
+            }
+            if let Some(sonnet_model) = &request.sonnet_model {
+                env.insert("ANTHROPIC_DEFAULT_SONNET_MODEL".to_string(), json!(sonnet_model));
+            }
+            if let Some(opus_model) = &request.opus_model {
+                env.insert("ANTHROPIC_DEFAULT_OPUS_MODEL".to_string(), json!(opus_model));
             }
 
             json!({ "env": env })

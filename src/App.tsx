@@ -509,8 +509,9 @@ function App() {
       </header>
 
       <main
-        className={`flex-1 overflow-y-auto pb-12 animate-fade-in scroll-overlay ${currentView === "providers" ? "pt-24" : "pt-20"
-          }`}
+        className={`flex-1 overflow-y-auto pb-12 animate-fade-in scroll-overlay ${
+          currentView === "providers" ? "pt-24" : "pt-20"
+        }`}
         style={{ overflowX: "hidden" }}
       >
         {renderContent()}
@@ -553,8 +554,8 @@ function App() {
         message={
           confirmDelete
             ? t("confirm.deleteProviderMessage", {
-              name: confirmDelete.name,
-            })
+                name: confirmDelete.name,
+              })
             : ""
         }
         onConfirm={() => void handleConfirmDelete()}
