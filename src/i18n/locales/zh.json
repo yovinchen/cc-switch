@@ -753,7 +753,12 @@
     "parseError": "深链接解析失败",
     "importSuccess": "导入成功",
     "importSuccessDescription": "供应商 \"{{name}}\" 已成功导入",
-    "importError": "导入失败"
+    "importError": "导入失败",
+    "configSource": "配置来源",
+    "configEmbedded": "内嵌配置",
+    "configRemote": "远程配置",
+    "configDetails": "配置详情",
+    "configUrl": "配置文件 URL"
   },
   "iconPicker": {
     "search": "搜索图标",
