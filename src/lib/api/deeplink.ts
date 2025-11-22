@@ -31,6 +31,18 @@ export const deeplinkApi = {
   },
 
   /**
+   * Merge configuration from Base64/URL into a deep link request
+   * This is used to show the complete configuration in the confirmation dialog
+   * @param request The deep link import request
+   * @returns Merged deep link request with config fields populated
+   */
+  mergeDeeplinkConfig: async (
+    request: DeepLinkImportRequest,
+  ): Promise<DeepLinkImportRequest> => {
+    return invoke("merge_deeplink_config", { request });
+  },
+
+  /**
    * Import a provider from a deep link request
    * @param request The deep link import request
    * @returns The ID of the imported provider

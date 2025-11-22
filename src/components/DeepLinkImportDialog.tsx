@@ -30,9 +30,30 @@ export function DeepLinkImportDialog() {
     // Listen for deep link import events
     const unlistenImport = listen<DeepLinkImportRequest>(
       "deeplink-import",
-      (event) => {
+      async (event) => {
         console.log("Deep link import event received:", event.payload);
-        setRequest(event.payload);
+
+        // If config is present, merge it to get the complete configuration
+        if (event.payload.config || event.payload.configUrl) {
+          try {
+            const mergedRequest = await deeplinkApi.mergeDeeplinkConfig(
+              event.payload,
+            );
+            console.log("Config merged successfully:", mergedRequest);
+            setRequest(mergedRequest);
+          } catch (error) {
+            console.error("Failed to merge config:", error);
+            toast.error(t("deeplink.configMergeError"), {
+              description:
+                error instanceof Error ? error.message : String(error),
+            });
+            // Fall back to original request
+            setRequest(event.payload);
+          }
+        } else {
+          setRequest(event.payload);
+        }
+
         setIsOpen(true);
       },
     );
@@ -108,10 +129,22 @@ export function DeepLinkImportDialog() {
     raw: Record<string, unknown>;
   }
 
+  // Helper to decode base64 with UTF-8 support
+  const b64ToUtf8 = (str: string): string => {
+    try {
+      const binString = atob(str);
+      const bytes = Uint8Array.from(binString, (m) => m.codePointAt(0) || 0);
+      return new TextDecoder().decode(bytes);
+    } catch (e) {
+      console.error("Failed to decode base64:", e);
+      return atob(str);
+    }
+  };
+
   const parsedConfig = useMemo((): ParsedConfig | null => {
     if (!request?.config) return null;
     try {
-      const decoded = atob(request.config);
+      const decoded = b64ToUtf8(request.config);
       const parsed = JSON.parse(decoded) as Record<string, unknown>;
 
       if (request.app === "claude") {
@@ -170,7 +203,7 @@ export function DeepLinkImportDialog() {
             </DialogHeader>
 
             {/* 主体内容整体右移，略大于标题内边距，让内容看起来不贴边 */}
-            <div className="space-y-4 px-8 py-4">
+            <div className="space-y-4 px-8 py-4 max-h-[60vh] overflow-y-auto [scrollbar-width:thin] [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar]:block [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-gray-200 dark:[&::-webkit-scrollbar-thumb]:bg-gray-700">
               {/* App Type */}
               <div className="grid grid-cols-3 items-center gap-4">
                 <div className="font-medium text-sm text-muted-foreground">
