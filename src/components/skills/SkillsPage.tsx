@@ -111,12 +111,12 @@ export const SkillsPage = forwardRef<SkillsPageHandle, SkillsPageProps>(
         const errorMessage =
           error instanceof Error ? error.message : String(error);
 
-      // 使用错误解析器格式化错误，传入 "skills.uninstallFailed"
-      const { title, description } = formatSkillError(
-        errorMessage,
-        t,
-        "skills.uninstallFailed",
-      );
+        // 使用错误解析器格式化错误，传入 "skills.uninstallFailed"
+        const { title, description } = formatSkillError(
+          errorMessage,
+          t,
+          "skills.uninstallFailed",
+        );
 
         toast.error(title, {
           description,
