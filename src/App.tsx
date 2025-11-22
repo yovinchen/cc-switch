@@ -281,7 +281,7 @@ function App() {
         return <AgentsPanel onOpenChange={() => setCurrentView("providers")} />;
       default:
         return (
-          <div className="mx-auto max-w-[60rem] px-6 space-y-4">
+          <div className="mx-auto max-w-[56rem] px-6 space-y-4">
             <ProviderList
               providers={providers}
               currentProviderId={currentProviderId}
@@ -345,7 +345,7 @@ function App() {
       >
         <div className="h-4 w-full" aria-hidden data-tauri-drag-region />
         <div
-          className="mx-auto max-w-[60rem] px-6 flex flex-wrap items-center justify-between gap-2"
+          className="mx-auto max-w-[56rem] px-6 flex flex-wrap items-center justify-between gap-2"
           data-tauri-drag-region
           style={{ WebkitAppRegion: "drag" } as any}
         >
@@ -356,13 +356,12 @@ function App() {
             {currentView !== "providers" ? (
               <div className="flex items-center gap-2">
                 <Button
-                  variant="ghost"
-                  size="sm"
+                  variant="outline"
+                  size="icon"
                   onClick={() => setCurrentView("providers")}
-                  className="mr-1 hover:bg-black/5 dark:hover:bg-white/5 -ml-2"
+                  className="mr-2 rounded-lg"
                 >
-                  <ArrowLeft className="h-5 w-5 mr-1" />
-                  {t("common.back")}
+                  <ArrowLeft className="h-4 w-4" />
                 </Button>
                 <h1 className="text-lg font-semibold">
                   {currentView === "settings" && t("settings.title")}

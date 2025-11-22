@@ -14,6 +14,10 @@ export interface DeepLinkImportRequest {
   haikuModel?: string;
   sonnetModel?: string;
   opusModel?: string;
+  // 配置文件导入字段 (v3.8+)
+  config?: string; // Base64 编码的配置内容
+  configFormat?: string; // json/toml
+  configUrl?: string; // 远程配置 URL
 }
 
 export const deeplinkApi = {
