@@ -69,25 +69,22 @@ export function BasicFormFields({ form }: BasicFormFieldsProps) {
             className="p-0 sm:rounded-none"
           >
             <div className="flex h-full flex-col">
-              <div className="flex-shrink-0 px-6 py-4 flex items-center gap-4 border-b border-border-default bg-muted/40">
-                <DialogClose asChild>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="icon"
-                    className="hover:bg-black/5 dark:hover:bg-white/5"
-                  >
-                    <ArrowLeft className="h-5 w-5" />
-                  </Button>
-                </DialogClose>
-                <p className="text-lg font-semibold leading-tight">
-                  {t("providerIcon.selectIcon", {
-                    defaultValue: "选择图标",
-                  })}
-                </p>
+              <div className="flex-shrink-0 py-4 border-b border-border-default bg-muted/40">
+                <div className="mx-auto max-w-[56rem] px-6 flex items-center gap-4">
+                  <DialogClose asChild>
+                    <Button type="button" variant="outline" size="icon">
+                      <ArrowLeft className="h-4 w-4" />
+                    </Button>
+                  </DialogClose>
+                  <p className="text-lg font-semibold leading-tight">
+                    {t("providerIcon.selectIcon", {
+                      defaultValue: "选择图标",
+                    })}
+                  </p>
+                </div>
               </div>
-              <div className="flex-1 overflow-y-auto px-6 py-6">
-                <div className="space-y-6 max-w-5xl mx-auto w-full">
+              <div className="flex-1 overflow-y-auto">
+                <div className="space-y-6 mx-auto max-w-[56rem] px-6 py-6 w-full">
                   <IconPicker
                     value={currentIcon}
                     onValueChange={handleIconSelect}

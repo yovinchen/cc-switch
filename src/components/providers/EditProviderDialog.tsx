@@ -111,6 +111,16 @@ export function EditProviderDialog({
       isOpen={open}
       title={t("provider.editProvider")}
       onClose={() => onOpenChange(false)}
+      footer={
+        <Button
+          type="submit"
+          form="provider-form"
+          className="bg-primary text-primary-foreground hover:bg-primary/90"
+        >
+          <Save className="h-4 w-4 mr-2" />
+          {t("common.save")}
+        </Button>
+      }
     >
       <ProviderForm
         appId={appId}
@@ -131,16 +141,6 @@ export function EditProviderDialog({
         }}
         showButtons={false}
       />
-      <div className="flex justify-end pt-6">
-        <Button
-          type="submit"
-          form="provider-form"
-          className="bg-primary text-primary-foreground hover:bg-primary/90"
-        >
-          <Save className="h-4 w-4 mr-2" />
-          {t("common.save")}
-        </Button>
-      </div>
     </FullScreenPanel>
   );
 }

@@ -168,7 +168,7 @@ export const SkillsPage = forwardRef<SkillsPageHandle, SkillsPageProps>(
 
         {/* 技能网格（可滚动详情区域） */}
         <div className="flex-1 min-h-0 overflow-y-auto animate-fade-in">
-          <div className="mx-auto max-w-[60rem] px-6 py-4">
+          <div className="mx-auto max-w-[56rem] px-6 py-4">
             {loading ? (
               <div className="flex items-center justify-center h-64">
                 <RefreshCw className="h-8 w-8 animate-spin text-muted-foreground" />

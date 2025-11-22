@@ -23,6 +23,15 @@ export const FullScreenPanel: React.FC<FullScreenPanelProps> = ({
   children,
   footer,
 }) => {
+  React.useEffect(() => {
+    if (isOpen) {
+      document.body.style.overflow = "hidden";
+    }
+    return () => {
+      document.body.style.overflow = "";
+    };
+  }, [isOpen]);
+
   if (!isOpen) return null;
 
   return createPortal(
@@ -32,26 +41,21 @@ export const FullScreenPanel: React.FC<FullScreenPanelProps> = ({
     >
       {/* Header */}
       <div
-        className="flex-shrink-0 py-4 border-b border-border-default"
+        className="flex-shrink-0 py-3 border-b border-border-default"
         style={{ backgroundColor: "hsl(var(--background))" }}
       >
-        <div className="mx-auto max-w-[60rem] px-6 flex items-center gap-4">
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon"
-            onClick={onClose}
-            className="hover:bg-black/5 dark:hover:bg-white/5"
-          >
-            <ArrowLeft className="h-5 w-5" />
+        <div className="h-4 w-full" data-tauri-drag-region />
+        <div className="mx-auto max-w-[56rem] px-6 flex items-center gap-4">
+          <Button type="button" variant="outline" size="icon" onClick={onClose}>
+            <ArrowLeft className="h-4 w-4" />
           </Button>
           <h2 className="text-lg font-semibold text-foreground">{title}</h2>
         </div>
       </div>
 
       {/* Content */}
-      <div className="flex-1 overflow-y-auto">
-        <div className="mx-auto max-w-[60rem] px-6 py-6 space-y-6 w-full">
+      <div className="flex-1 overflow-y-auto scroll-overlay">
+        <div className="mx-auto max-w-[56rem] px-6 py-6 space-y-6 w-full">
           {children}
         </div>
       </div>
@@ -62,7 +66,7 @@ export const FullScreenPanel: React.FC<FullScreenPanelProps> = ({
           className="flex-shrink-0 py-4 border-t border-border-default"
           style={{ backgroundColor: "hsl(var(--background))" }}
         >
-          <div className="mx-auto max-w-[60rem] px-6 flex items-center justify-end gap-3">
+          <div className="mx-auto max-w-[56rem] px-6 flex items-center justify-end gap-3">
             {footer}
           </div>
         </div>

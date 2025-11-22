@@ -348,7 +348,7 @@ const UsageScriptModal: React.FC<UsageScriptModalProps> = ({
       onClose={onClose}
       footer={footer}
     >
-      <div className="rounded-xl border border-border-default bg-card px-4 py-3 shadow-sm flex items-center justify-between gap-4">
+      <div className="glass rounded-xl border border-white/10 px-6 py-4 flex items-center justify-between gap-4">
         <div className="space-y-1">
           <p className="text-sm font-medium leading-none text-foreground">
             {t("usageScript.enableUsageQuery")}
@@ -369,7 +369,7 @@ const UsageScriptModal: React.FC<UsageScriptModalProps> = ({
       {script.enabled && (
         <div className="space-y-6">
           {/* 预设模板选择 */}
-          <div className="space-y-4 rounded-xl border border-border-default bg-card p-4 shadow-sm">
+          <div className="space-y-4 glass rounded-xl border border-white/10 p-6">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <Label className="text-base font-medium">
                 {t("usageScript.presetTemplate")}
@@ -423,7 +423,7 @@ const UsageScriptModal: React.FC<UsageScriptModalProps> = ({
                             }
                             placeholder="sk-xxxxx"
                             autoComplete="off"
-                            className="bg-card border-border-default"
+                            className="border-white/10"
                           />
                           {script.apiKey && (
                             <button
@@ -457,7 +457,7 @@ const UsageScriptModal: React.FC<UsageScriptModalProps> = ({
                           }
                           placeholder="https://api.example.com"
                           autoComplete="off"
-                          className="bg-card border-border-default"
+                          className="border-white/10"
                         />
                       </div>
                     </>
@@ -476,7 +476,7 @@ const UsageScriptModal: React.FC<UsageScriptModalProps> = ({
                           }
                           placeholder="https://api.newapi.com"
                           autoComplete="off"
-                          className="bg-card border-border-default"
+                          className="border-white/10"
                         />
                       </div>
 
@@ -499,7 +499,7 @@ const UsageScriptModal: React.FC<UsageScriptModalProps> = ({
                               "usageScript.accessTokenPlaceholder",
                             )}
                             autoComplete="off"
-                            className="bg-card border-border-default"
+                            className="border-white/10"
                           />
                           {script.accessToken && (
                             <button
@@ -537,7 +537,7 @@ const UsageScriptModal: React.FC<UsageScriptModalProps> = ({
                           }
                           placeholder={t("usageScript.userIdPlaceholder")}
                           autoComplete="off"
-                          className="bg-card border-border-default"
+                          className="border-white/10"
                         />
                       </div>
                     </>
@@ -548,7 +548,7 @@ const UsageScriptModal: React.FC<UsageScriptModalProps> = ({
           </div>
 
           {/* 脚本配置 */}
-          <div className="space-y-4 rounded-xl border border-border-default bg-card p-4 shadow-sm">
+          <div className="space-y-4 glass rounded-xl border border-white/10 p-6">
             <div className="flex items-center justify-between">
               <h4 className="text-base font-medium text-foreground">
                 {t("usageScript.scriptConfig")}
@@ -574,7 +574,7 @@ const UsageScriptModal: React.FC<UsageScriptModalProps> = ({
                     });
                   }}
                   placeholder={t("usageScript.requestUrlPlaceholder")}
-                  className="bg-card border-border-default"
+                  className="border-white/10"
                 />
               </div>
 
@@ -597,7 +597,7 @@ const UsageScriptModal: React.FC<UsageScriptModalProps> = ({
                       });
                     }}
                     placeholder="GET / POST"
-                    className="bg-card border-border-default"
+                    className="border-white/10"
                   />
                 </div>
 
@@ -622,7 +622,7 @@ const UsageScriptModal: React.FC<UsageScriptModalProps> = ({
                         timeout: validateTimeout(e.target.value),
                       })
                     }
-                    className="bg-card border-border-default"
+                    className="border-white/10"
                   />
                 </div>
               </div>
@@ -706,7 +706,7 @@ const UsageScriptModal: React.FC<UsageScriptModalProps> = ({
                       ),
                     })
                   }
-                  className="bg-card border-border-default"
+                  className="border-white/10"
                 />
                 <p className="text-xs text-muted-foreground">
                   {t("usageScript.autoQueryIntervalHint")}
@@ -716,7 +716,7 @@ const UsageScriptModal: React.FC<UsageScriptModalProps> = ({
           </div>
 
           {/* 提取器代码 */}
-          <div className="space-y-4 rounded-xl border border-border-default bg-card p-4 shadow-sm">
+          <div className="space-y-4 glass rounded-xl border border-white/10 p-6">
             <div className="flex items-center justify-between">
               <Label className="text-base font-medium">
                 {t("usageScript.extractorCode")}
@@ -736,12 +736,12 @@ const UsageScriptModal: React.FC<UsageScriptModalProps> = ({
           </div>
 
           {/* 帮助信息 */}
-          <div className="rounded-xl border border-border-default bg-card p-4 shadow-sm text-sm text-foreground/90">
+          <div className="glass rounded-xl border border-white/10 p-6 text-sm text-foreground/90">
             <h4 className="font-medium mb-2">{t("usageScript.scriptHelp")}</h4>
             <div className="space-y-3 text-xs">
               <div>
                 <strong>{t("usageScript.configFormat")}</strong>
-                <pre className="mt-1 p-2 bg-muted text-foreground rounded border border-border-default text-[10px] overflow-x-auto">
+                <pre className="mt-1 p-2 bg-black/20 text-foreground rounded border border-white/10 text-[10px] overflow-x-auto">
                   {`({
   request: {
     url: "{{baseUrl}}/api/usage",
