@@ -29,11 +29,17 @@ pub async fn export_config_to_file(
 }
 
 /// 从文件导入配置
+/// TODO: 需要重构以使用数据库而不是 JSON 配置
 #[tauri::command]
 pub async fn import_config_from_file(
-    #[allow(non_snake_case)] filePath: String,
-    state: State<'_, AppState>,
+    #[allow(non_snake_case)] _filePath: String,
+    _state: State<'_, AppState>,
 ) -> Result<Value, String> {
+    // TODO: 实现基于数据库的导入逻辑
+    // 当前暂时禁用此功能
+    Err("配置导入功能正在重构中,暂时不可用".to_string())
+
+    /* 旧的实现,需要重构:
     let (new_config, backup_id) = tauri::async_runtime::spawn_blocking(move || {
         let path_buf = PathBuf::from(&filePath);
         ConfigService::load_config_for_import(&path_buf)
@@ -55,11 +61,18 @@ pub async fn import_config_from_file(
         "message": "Configuration imported successfully",
         "backupId": backup_id
     }))
+    */
 }
 
 /// 同步当前供应商配置到对应的 live 文件
+/// TODO: 需要重构以使用数据库而不是 JSON 配置
 #[tauri::command]
-pub async fn sync_current_providers_live(state: State<'_, AppState>) -> Result<Value, String> {
+pub async fn sync_current_providers_live(_state: State<'_, AppState>) -> Result<Value, String> {
+    // TODO: 实现基于数据库的同步逻辑
+    // 当前暂时禁用此功能
+    Err("配置同步功能正在重构中,暂时不可用".to_string())
+
+    /* 旧的实现,需要重构:
     {
         let mut config_state = state
             .config
@@ -73,6 +86,7 @@ pub async fn sync_current_providers_live(state: State<'_, AppState>) -> Result<V
         "success": true,
         "message": "Live configuration synchronized"
     }))
+    */
 }
 
 /// 保存文件对话框
