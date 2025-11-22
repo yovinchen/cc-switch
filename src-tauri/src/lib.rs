@@ -6,6 +6,7 @@ mod claude_plugin;
 mod codex_config;
 mod commands;
 mod config;
+mod database;
 mod deeplink;
 mod error;
 mod gemini_config; // 新增
@@ -206,8 +207,6 @@ fn create_tray_menu(
     let app_settings = crate::settings::get_settings();
     let tray_texts = TrayTexts::from_language(app_settings.language.as_deref().unwrap_or("zh"));
 
-    let config = app_state.config.read().map_err(AppError::from)?;
-
     let mut menu_builder = MenuBuilder::new(app);
 
     // 顶部：打开主界面
@@ -218,13 +217,20 @@ fn create_tray_menu(
 
     // 直接添加所有供应商到主菜单（扁平化结构，更简单可靠）
     for section in TRAY_SECTIONS.iter() {
-        menu_builder = append_provider_section(
-            app,
-            menu_builder,
-            config.get_manager(&section.app_type),
-            section,
-            &tray_texts,
-        )?;
+        let app_type_str = section.app_type.as_str();
+        let providers = app_state.db.get_all_providers(app_type_str)?;
+        let current_id = app_state
+            .db
+            .get_current_provider(app_type_str)?
+            .unwrap_or_default();
+
+        let manager = crate::provider::ProviderManager {
+            providers,
+            current: current_id,
+        };
+
+        menu_builder =
+            append_provider_section(app, menu_builder, Some(&manager), section, &tray_texts)?;
     }
 
     // 分隔符和退出菜单
@@ -523,40 +529,45 @@ pub fn run() {
             // 预先刷新 Store 覆盖配置，确保 AppState 初始化时可读取到最新路径
             app_store::refresh_app_config_dir_override(app.handle());
 
-            // 初始化应用状态（仅创建一次，并在本函数末尾注入 manage）
-            // 如果配置解析失败，则向前端发送错误事件并提前结束 setup（不落盘、不覆盖配置）。
-            let app_state = match AppState::try_new() {
-                Ok(state) => state,
-                Err(err) => {
-                    let path = crate::config::get_app_config_path();
-                    let payload_json = serde_json::json!({
-                        "path": path.display().to_string(),
-                        "error": err.to_string(),
-                    });
-                    // 事件通知（可能早于前端订阅，不保证送达）
-                    if let Err(e) = app.emit("configLoadError", payload_json) {
-                        log::error!("发射配置加载错误事件失败: {e}");
-                    }
-                    // 同时缓存错误，供前端启动阶段主动拉取
-                    crate::init_status::set_init_error(crate::init_status::InitErrorPayload {
-                        path: path.display().to_string(),
-                        error: err.to_string(),
-                    });
-                    // 不再继续构建托盘/命令依赖的状态，交由前端提示后退出。
-                    return Ok(());
+            // 初始化数据库
+            let app_config_dir = crate::config::get_app_config_dir();
+            let db_path = app_config_dir.join("cc-switch.db");
+            let json_path = app_config_dir.join("config.json");
+
+            // Check if migration is needed (DB doesn't exist but JSON does)
+            let migration_needed = !db_path.exists() && json_path.exists();
+
+            let db = match crate::database::Database::init() {
+                Ok(db) => Arc::new(db),
+                Err(e) => {
+                    log::error!("Failed to init database: {e}");
+                    // 这里的错误处理比较棘手，因为 setup 返回 Result<Box<dyn Error>>
+                    // 我们暂时记录日志并让应用继续运行（可能会崩溃）或者返回错误
+                    return Err(Box::new(e));
                 }
             };
+
+            if migration_needed {
+                log::info!("Starting migration from config.json to SQLite...");
+                match crate::app_config::MultiAppConfig::load() {
+                    Ok(config) => {
+                        if let Err(e) = db.migrate_from_json(&config) {
+                            log::error!("Migration failed: {e}");
+                        } else {
+                            log::info!("Migration successful");
+                            // Optional: Rename config.json
+                            // let _ = std::fs::rename(&json_path, json_path.with_extension("json.bak"));
+                        }
+                    }
+                    Err(e) => log::error!("Failed to load config.json for migration: {e}"),
+                }
+            }
+
+            let app_state = AppState::new(db);
 
             // 迁移旧的 app_config_dir 配置到 Store
             if let Err(e) = app_store::migrate_app_config_dir_from_settings(app.handle()) {
                 log::warn!("迁移 app_config_dir 失败: {e}");
-            }
-
-            // 确保配置结构就绪（已移除旧版本的副本迁移逻辑）
-            {
-                let mut config_guard = app_state.config.write().unwrap();
-                config_guard.ensure_app(&app_config::AppType::Claude);
-                config_guard.ensure_app(&app_config::AppType::Codex);
             }
 
             // 启动阶段不再无条件保存,避免意外覆盖用户配置。
