@@ -84,6 +84,7 @@ describe("useDirectorySettings", () => {
       appConfig: "/override/app",
       claude: "/remote/claude",
       codex: "/remote/codex",
+      gemini: "/remote/codex", // Gemini 使用 codex 作为默认
     });
   });
 
