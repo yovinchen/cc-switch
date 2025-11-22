@@ -442,10 +442,11 @@ const McpFormModal: React.FC<McpFormModalProps> = ({
                   <button
                     type="button"
                     onClick={applyCustom}
-                    className={`inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${selectedPreset === -1
+                    className={`inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+                      selectedPreset === -1
                         ? "bg-emerald-500 text-white dark:bg-emerald-600"
                         : "bg-accent text-muted-foreground hover:bg-accent/80"
-                      }`}
+                    }`}
                   >
                     {t("presetSelector.custom")}
                   </button>
@@ -456,10 +457,11 @@ const McpFormModal: React.FC<McpFormModalProps> = ({
                         key={preset.id}
                         type="button"
                         onClick={() => applyPreset(idx)}
-                        className={`inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${selectedPreset === idx
+                        className={`inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+                          selectedPreset === idx
                             ? "bg-emerald-500 text-white dark:bg-emerald-600"
                             : "bg-accent text-muted-foreground hover:bg-accent/80"
-                          }`}
+                        }`}
                         title={t(descriptionKey)}
                       >
                         {preset.id}
