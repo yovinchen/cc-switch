@@ -96,8 +96,8 @@ export function DeepLinkImportDialog() {
       : "****";
 
   return (
-    <Dialog open={isOpen} onOpenChange={setIsOpen} modal={true}>
-      <DialogContent className="sm:max-w-[650px] z-[9999]">
+    <Dialog open={isOpen} onOpenChange={setIsOpen}>
+      <DialogContent className="sm:max-w-[500px]">
         {/* 标题显式左对齐，避免默认居中样式影响 */}
         <DialogHeader className="text-left sm:text-left">
           <DialogTitle>{t("deeplink.confirmImport")}</DialogTitle>
@@ -106,120 +106,82 @@ export function DeepLinkImportDialog() {
           </DialogDescription>
         </DialogHeader>
 
-        {/* 使用两列布局压缩内容 */}
-        <div className="space-y-4 px-4 py-3">
-          {/* 第一行：应用类型 + 供应商名称 */}
-          <div className="grid grid-cols-2 gap-4">
-            <div className="space-y-1">
-              <div className="font-medium text-xs text-muted-foreground uppercase">
-                {t("deeplink.app")}
-              </div>
-              <div className="text-sm font-medium capitalize">
-                {request.app}
-              </div>
+        {/* 主体内容整体右移，略大于标题内边距，让内容看起来不贴边 */}
+        <div className="space-y-4 px-8 py-4">
+          {/* App Type */}
+          <div className="grid grid-cols-3 items-center gap-4">
+            <div className="font-medium text-sm text-muted-foreground">
+              {t("deeplink.app")}
             </div>
-            <div className="space-y-1">
-              <div className="font-medium text-xs text-muted-foreground uppercase">
-                {t("deeplink.providerName")}
-              </div>
-              <div className="text-sm font-medium truncate" title={request.name}>
-                {request.name}
-              </div>
+            <div className="col-span-2 text-sm font-medium capitalize">
+              {request.app}
             </div>
           </div>
 
-          {/* 第二行：官网 + 端点 */}
-          <div className="grid grid-cols-2 gap-4">
-            <div className="space-y-1">
-              <div className="font-medium text-xs text-muted-foreground uppercase">
-                {t("deeplink.homepage")}
-              </div>
-              <div className="text-xs break-all text-blue-600 dark:text-blue-400 line-clamp-2" title={request.homepage}>
-                {request.homepage}
-              </div>
+          {/* Provider Name */}
+          <div className="grid grid-cols-3 items-center gap-4">
+            <div className="font-medium text-sm text-muted-foreground">
+              {t("deeplink.providerName")}
             </div>
-            <div className="space-y-1">
-              <div className="font-medium text-xs text-muted-foreground uppercase">
-                {t("deeplink.endpoint")}
-              </div>
-              <div className="text-xs break-all line-clamp-2" title={request.endpoint}>
-                {request.endpoint}
-              </div>
+            <div className="col-span-2 text-sm font-medium">{request.name}</div>
+          </div>
+
+          {/* Homepage */}
+          <div className="grid grid-cols-3 items-center gap-4">
+            <div className="font-medium text-sm text-muted-foreground">
+              {t("deeplink.homepage")}
+            </div>
+            <div className="col-span-2 text-sm break-all text-blue-600 dark:text-blue-400">
+              {request.homepage}
             </div>
           </div>
 
-          {/* 第三行：API Key */}
-          <div className="space-y-1">
-            <div className="font-medium text-xs text-muted-foreground uppercase">
+          {/* API Endpoint */}
+          <div className="grid grid-cols-3 items-center gap-4">
+            <div className="font-medium text-sm text-muted-foreground">
+              {t("deeplink.endpoint")}
+            </div>
+            <div className="col-span-2 text-sm break-all">
+              {request.endpoint}
+            </div>
+          </div>
+
+          {/* API Key (masked) */}
+          <div className="grid grid-cols-3 items-center gap-4">
+            <div className="font-medium text-sm text-muted-foreground">
               {t("deeplink.apiKey")}
             </div>
-            <div className="text-sm font-mono text-muted-foreground">
+            <div className="col-span-2 text-sm font-mono text-muted-foreground">
               {maskedApiKey}
             </div>
           </div>
 
-          {/* 第四行：默认模型（如果有） */}
+          {/* Model (if present) */}
           {request.model && (
-            <div className="space-y-1">
-              <div className="font-medium text-xs text-muted-foreground uppercase">
+            <div className="grid grid-cols-3 items-center gap-4">
+              <div className="font-medium text-sm text-muted-foreground">
                 {t("deeplink.model")}
               </div>
-              <div className="text-sm font-mono">{request.model}</div>
-            </div>
-          )}
-
-          {/* Claude 专用模型字段（紧凑布局） */}
-          {request.app === "claude" && (request.haikuModel || request.sonnetModel || request.opusModel) && (
-            <div className="rounded-lg bg-blue-50 dark:bg-blue-900/20 p-3 space-y-2">
-              <div className="font-medium text-xs text-blue-900 dark:text-blue-100 uppercase">
-                {t("deeplink.claudeModels", "Claude 模型配置")}
-              </div>
-
-              <div className="grid grid-cols-3 gap-2 text-xs">
-                {request.haikuModel && (
-                  <div>
-                    <span className="text-muted-foreground">Haiku:</span>
-                    <div className="font-mono truncate" title={request.haikuModel}>
-                      {request.haikuModel}
-                    </div>
-                  </div>
-                )}
-
-                {request.sonnetModel && (
-                  <div>
-                    <span className="text-muted-foreground">Sonnet:</span>
-                    <div className="font-mono truncate" title={request.sonnetModel}>
-                      {request.sonnetModel}
-                    </div>
-                  </div>
-                )}
-
-                {request.opusModel && (
-                  <div>
-                    <span className="text-muted-foreground">Opus:</span>
-                    <div className="font-mono truncate" title={request.opusModel}>
-                      {request.opusModel}
-                    </div>
-                  </div>
-                )}
+              <div className="col-span-2 text-sm font-mono">
+                {request.model}
               </div>
             </div>
           )}
 
-          {/* 备注（如果有） */}
+          {/* Notes (if present) */}
           {request.notes && (
-            <div className="space-y-1">
-              <div className="font-medium text-xs text-muted-foreground uppercase">
+            <div className="grid grid-cols-3 items-start gap-4">
+              <div className="font-medium text-sm text-muted-foreground">
                 {t("deeplink.notes")}
               </div>
-              <div className="text-sm text-muted-foreground line-clamp-2" title={request.notes}>
+              <div className="col-span-2 text-sm text-muted-foreground">
                 {request.notes}
               </div>
             </div>
           )}
 
-          {/* 警告提示（紧凑版） */}
-          <div className="rounded-lg bg-yellow-50 dark:bg-yellow-900/20 p-2 text-xs text-yellow-800 dark:text-yellow-200">
+          {/* Warning */}
+          <div className="rounded-lg bg-yellow-50 dark:bg-yellow-900/20 p-3 text-sm text-yellow-800 dark:text-yellow-200">
             {t("deeplink.warning")}
           </div>
         </div>
