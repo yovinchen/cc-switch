@@ -398,7 +398,7 @@ requires_openai_auth = true
 /// Parse and merge configuration from Base64 encoded config or remote URL
 ///
 /// Priority: URL params > inline config > remote config
-fn parse_and_merge_config(
+pub fn parse_and_merge_config(
     request: &DeepLinkImportRequest,
 ) -> Result<DeepLinkImportRequest, AppError> {
     use base64::prelude::*;
