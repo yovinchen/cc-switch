@@ -247,14 +247,23 @@ const JsonEditor: React.FC<JsonEditorProps> = ({
     }
   };
 
+  const isFullHeight = height === "100%";
+
   return (
-    <div style={{ width: "100%" }}>
-      <div ref={editorRef} style={{ width: "100%" }} />
+    <div
+      style={{ width: "100%", height: isFullHeight ? "100%" : "auto" }}
+      className={isFullHeight ? "flex flex-col" : ""}
+    >
+      <div
+        ref={editorRef}
+        style={{ width: "100%", height: isFullHeight ? undefined : "auto" }}
+        className={isFullHeight ? "flex-1 min-h-0" : ""}
+      />
       {language === "json" && (
         <button
           type="button"
           onClick={handleFormat}
-          className="mt-2 inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-gray-700 dark:text-gray-300 hover:text-blue-600 dark:hover:text-blue-400 transition-colors"
+          className={`${isFullHeight ? "mt-2 flex-shrink-0" : "mt-2"} inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-gray-700 dark:text-gray-300 hover:text-blue-600 dark:hover:text-blue-400 transition-colors`}
         >
           <Wand2 className="w-3.5 h-3.5" />
           {t("common.format", { defaultValue: "格式化" })}

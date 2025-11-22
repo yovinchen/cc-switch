@@ -142,7 +142,7 @@ const PromptFormPanel: React.FC<PromptFormPanelProps> = ({
             onChange={setContent}
             placeholder={t("prompts.contentPlaceholder", { filename })}
             darkMode={isDarkMode}
-            minHeight="500px"
+            minHeight="167px"
           />
         </div>
       </div>
