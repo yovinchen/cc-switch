@@ -233,7 +233,7 @@ const UnifiedMcpListItem: React.FC<UnifiedMcpListItemProps> = ({
   };
 
   return (
-    <div className="group relative flex items-center gap-4 p-4 rounded-xl border border-white/10 bg-gray-900/40 hover:bg-gray-900/60 transition-all duration-300">
+    <div className="group relative flex items-center gap-4 p-4 rounded-xl border border-border-default bg-muted/50 hover:bg-muted hover:border-border-default/80 hover:shadow-sm transition-all duration-300">
       {/* 左侧：服务器信息 */}
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-2 mb-1">

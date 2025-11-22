@@ -468,7 +468,7 @@ const EndpointSpeedTest: React.FC<EndpointSpeedTestProps> = ({
       onClose={onClose}
       footer={footer}
     >
-      <div className="flex flex-col gap-4">
+      <div className="glass rounded-xl p-6 border border-white/10 flex flex-col gap-6">
         {/* 测速控制栏 */}
         <div className="flex items-center justify-between">
           <div className="text-sm text-muted-foreground">
@@ -550,20 +550,18 @@ const EndpointSpeedTest: React.FC<EndpointSpeedTestProps> = ({
                 <div
                   key={entry.id}
                   onClick={() => handleSelect(entry.url)}
-                  className={`group flex cursor-pointer items-center justify-between px-3 py-2.5 rounded-lg border transition ${
-                    isSelected
+                  className={`group flex cursor-pointer items-center justify-between px-3 py-2.5 rounded-lg border transition ${isSelected
                       ? "border-primary/70 bg-primary/5 shadow-sm"
                       : "border-border-default bg-background hover:bg-muted"
-                  }`}
+                    }`}
                 >
                   <div className="flex min-w-0 flex-1 items-center gap-3">
                     {/* 选择指示器 */}
                     <div
-                      className={`h-1.5 w-1.5 flex-shrink-0 rounded-full transition ${
-                        isSelected
+                      className={`h-1.5 w-1.5 flex-shrink-0 rounded-full transition ${isSelected
                           ? "bg-blue-500 dark:bg-blue-400"
                           : "bg-gray-300 dark:bg-gray-700"
-                      }`}
+                        }`}
                     />
 
                     {/* 内容 */}
@@ -579,15 +577,14 @@ const EndpointSpeedTest: React.FC<EndpointSpeedTestProps> = ({
                     {latency !== null ? (
                       <div className="text-right">
                         <div
-                          className={`font-mono text-sm font-medium ${
-                            latency < 300
+                          className={`font-mono text-sm font-medium ${latency < 300
                               ? "text-emerald-600 dark:text-emerald-400"
                               : latency < 500
                                 ? "text-yellow-600 dark:text-yellow-400"
                                 : latency < 800
                                   ? "text-orange-600 dark:text-orange-400"
                                   : "text-red-600 dark:text-red-400"
-                          }`}
+                            }`}
                         >
                           {latency}ms
                         </div>
