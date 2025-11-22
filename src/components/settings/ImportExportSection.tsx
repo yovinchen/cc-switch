@@ -54,86 +54,63 @@ export function ImportExportSection({
       </header>
 
       <div className="space-y-4 rounded-xl glass-card p-6 border border-white/10">
-        {/* Export Section */}
-        <div className="space-y-3">
-          <div className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
-            <Save className="h-4 w-4" />
-            <span>导出配置</span>
-          </div>
-          <Button
-            type="button"
-            className="w-full bg-primary/90 hover:bg-primary text-primary-foreground shadow-lg shadow-primary/20"
-            onClick={onExport}
-          >
-            <Save className="mr-2 h-4 w-4" />
-            {t("settings.exportConfig")}
-          </Button>
-        </div>
-
-        {/* Divider */}
-        <div className="border-t border-white/10" />
-
-        {/* Import Section */}
-        <div className="space-y-3">
-          <div className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
-            <FolderOpen className="h-4 w-4" />
-            <span>导入配置</span>
-          </div>
-
-          <div className="flex flex-wrap items-center gap-2">
+        {/* Import and Export Buttons Side by Side */}
+        <div className="grid grid-cols-2 gap-4 items-stretch">
+          {/* Import Button */}
+          <div className="relative">
             <Button
               type="button"
-              variant="outline"
-              className="flex-1 min-w-[180px] hover:bg-black/5 dark:hover:bg-white/5 border-white/10"
-              onClick={onSelectFile}
+              className={`w-full h-auto py-3 px-4 bg-blue-500 hover:bg-blue-600 dark:bg-blue-600 dark:hover:bg-blue-700 text-white ${selectedFile && !isImporting ? "flex-col items-start" : "items-center"}`}
+              onClick={!selectedFile ? onSelectFile : onImport}
+              disabled={isImporting}
             >
-              <FolderOpen className="mr-2 h-4 w-4" />
-              {t("settings.selectConfigFile")}
-            </Button>
-            <Button
-              type="button"
-              disabled={!selectedFile || isImporting}
-              className="bg-primary hover:bg-primary/90"
-              onClick={onImport}
-            >
-              {isImporting ? (
-                <span className="inline-flex items-center gap-2">
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                  {t("settings.importing")}
+              <div className="flex items-center gap-2 w-full justify-center">
+                {isImporting ? (
+                  <Loader2 className="h-4 w-4 animate-spin flex-shrink-0" />
+                ) : selectedFile ? (
+                  <CheckCircle2 className="h-4 w-4 flex-shrink-0" />
+                ) : (
+                  <FolderOpen className="h-4 w-4 flex-shrink-0" />
+                )}
+                <span className="font-medium">
+                  {isImporting
+                    ? t("settings.importing")
+                    : selectedFile
+                      ? t("settings.import")
+                      : t("settings.selectConfigFile")}
                 </span>
-              ) : (
-                <>
-                  <CheckCircle2 className="mr-2 h-4 w-4" />
-                  {t("settings.import")}
-                </>
+              </div>
+              {selectedFile && !isImporting && (
+                <div className="mt-2 w-full text-left">
+                  <p className="text-xs font-mono text-white/80 truncate">
+                    📄 {selectedFileName}
+                  </p>
+                </div>
               )}
             </Button>
-            {selectedFile ? (
-              <Button
+            {selectedFile && (
+              <button
                 type="button"
-                variant="ghost"
                 onClick={onClear}
-                className="hover:bg-black/5 dark:hover:bg-white/5"
+                className="absolute -top-2 -right-2 h-6 w-6 rounded-full bg-red-500 hover:bg-red-600 text-white flex items-center justify-center shadow-lg transition-colors z-10"
+                aria-label="Clear selection"
               >
-                <XCircle className="mr-2 h-4 w-4" />
-                {t("common.clear")}
-              </Button>
-            ) : null}
+                <XCircle className="h-4 w-4" />
+              </button>
+            )}
           </div>
 
-          {selectedFile ? (
-            <div className="glass rounded-lg border border-white/10 p-3">
-              <p className="text-xs font-mono text-foreground/80 truncate">
-                📄 {selectedFileName}
-              </p>
-            </div>
-          ) : (
-            <div className="glass rounded-lg border border-white/10 p-3">
-              <p className="text-xs text-muted-foreground italic">
-                {t("settings.noFileSelected")}
-              </p>
-            </div>
-          )}
+          {/* Export Button */}
+          <div>
+            <Button
+              type="button"
+              className="w-full h-full py-3 px-4 bg-blue-500 hover:bg-blue-600 dark:bg-blue-600 dark:hover:bg-blue-700 text-white items-center"
+              onClick={onExport}
+            >
+              <Save className="mr-2 h-4 w-4" />
+              {t("settings.exportConfig")}
+            </Button>
+          </div>
         </div>
 
         <ImportStatusMessage

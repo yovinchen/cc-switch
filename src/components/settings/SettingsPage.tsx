@@ -49,7 +49,7 @@ export function SettingsPage({
     resetDirectory,
     resetAppConfigDir,
     saveSettings,
-    resetSettings,
+    autoSaveSettings,
     requiresRestart,
     acknowledgeRestart,
   } = useSettings();
@@ -83,21 +83,6 @@ export function SettingsPage({
     }
   }, [requiresRestart]);
 
-  const closeDialog = useCallback(() => {
-    // 取消/直接关闭：恢复到初始设置（包括语言回滚）
-    resetSettings();
-    acknowledgeRestart();
-    clearSelection();
-    resetStatus();
-    onOpenChange(false);
-  }, [
-    acknowledgeRestart,
-    clearSelection,
-    onOpenChange,
-    resetSettings,
-    resetStatus,
-  ]);
-
   const closeAfterSave = useCallback(() => {
     // 保存成功后关闭：不再重置语言，避免需要“保存两次”才生效
     acknowledgeRestart();
@@ -118,7 +103,7 @@ export function SettingsPage({
     } catch (error) {
       console.error("[SettingsPage] Failed to save settings", error);
     }
-  }, [closeDialog, saveSettings]);
+  }, [closeAfterSave, saveSettings]);
 
   const handleRestartLater = useCallback(() => {
     setShowRestartPrompt(false);
@@ -144,15 +129,13 @@ export function SettingsPage({
   }, [closeAfterSave, t]);
 
   // 通用设置即时保存（无需手动点击）
+  // 使用 autoSaveSettings 避免误触发系统 API（开机自启、Claude 插件等）
   const handleAutoSave = useCallback(
     async (updates: Partial<SettingsFormState>) => {
       if (!settings) return;
       updateSettings(updates);
       try {
-        const result = await saveSettings(updates, { silent: true });
-        if (result?.requiresRestart) {
-          setShowRestartPrompt(true);
-        }
+        await autoSaveSettings(updates);
       } catch (error) {
         console.error("[SettingsPage] Failed to autosave settings", error);
         toast.error(
@@ -162,7 +145,7 @@ export function SettingsPage({
         );
       }
     },
-    [saveSettings, settings, t, updateSettings],
+    [autoSaveSettings, settings, t, updateSettings],
   );
 
   const isBusy = useMemo(() => isLoading && !settings, [isLoading, settings]);
@@ -206,7 +189,7 @@ export function SettingsPage({
               ) : null}
             </TabsContent>
 
-            <TabsContent value="advanced" className="space-y-6 mt-0">
+            <TabsContent value="advanced" className="space-y-6 mt-0 pb-6">
               {settings ? (
                 <>
                   <DirectorySettings
@@ -233,6 +216,25 @@ export function SettingsPage({
                     onExport={exportConfig}
                     onClear={clearSelection}
                   />
+                  <div className="pt-6 border-t border-gray-200 dark:border-white/10">
+                    <Button
+                      onClick={handleSave}
+                      className="w-full"
+                      disabled={isSaving}
+                    >
+                      {isSaving ? (
+                        <span className="inline-flex items-center gap-2">
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                          {t("settings.saving")}
+                        </span>
+                      ) : (
+                        <>
+                          <Save className="mr-2 h-4 w-4" />
+                          {t("common.save")}
+                        </>
+                      )}
+                    </Button>
+                  </div>
                 </>
               ) : null}
             </TabsContent>
@@ -241,28 +243,6 @@ export function SettingsPage({
               <AboutSection isPortable={isPortable} />
             </TabsContent>
           </div>
-
-          {activeTab === "advanced" ? (
-            <div className="flex-shrink-0 pt-6 border-t border-white/5 sticky bottom-0 bg-background/95 backdrop-blur-sm">
-              <Button
-                onClick={handleSave}
-                className="w-full bg-primary hover:bg-primary/90"
-                disabled={isSaving}
-              >
-                {isSaving ? (
-                  <span className="inline-flex items-center gap-2">
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                    {t("settings.saving")}
-                  </span>
-                ) : (
-                  <>
-                    <Save className="mr-2 h-4 w-4" />
-                    {t("common.save")}
-                  </>
-                )}
-              </Button>
-            </div>
-          ) : null}
         </Tabs>
       )}
 
