@@ -758,7 +758,8 @@
     "configEmbedded": "Embedded Config",
     "configRemote": "Remote Config",
     "configDetails": "Config Details",
-    "configUrl": "Config File URL"
+    "configUrl": "Config File URL",
+    "configMergeError": "Failed to merge configuration file"
   },
   "iconPicker": {
     "search": "Search Icons",
