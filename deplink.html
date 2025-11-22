@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html lang="zh-CN">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -318,6 +319,7 @@
         }
     </style>
 </head>
+
 <body>
     <div class="container">
         <div class="header">
@@ -339,16 +341,18 @@
                         最简单的 Claude 配置，仅包含必需参数（API Key、端点等），不指定任何模型，使用 Claude Code 默认值。
                     </p>
                     <div class="param-list">
-                        <span class="param-tag">必需</span> resource=provider, app=claude, name, homepage, endpoint, apiKey<br>
+                        <span class="param-tag">必需</span> resource=provider, app=claude, name, homepage, endpoint,
+                        apiKey<br>
                         <span class="param-tag optional">可选</span> notes
                     </div>
                     <div style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap;">
                         <a href="ccswitch://v1/import?resource=provider&app=claude&name=Claude%20Basic&homepage=https%3A%2F%2Fclaude.ai&endpoint=https%3A%2F%2Fapi.anthropic.com%2Fv1&apiKey=sk-ant-test-basic-key&notes=%E5%9F%BA%E7%A1%80%E9%85%8D%E7%BD%AE%EF%BC%8C%E6%97%A0%E6%A8%A1%E5%9E%8B%E6%8C%87%E5%AE%9A"
-                           class="deep-link">
+                            class="deep-link">
                             📥 导入基础配置
                         </a>
-                        <button class="deep-link" style="background: linear-gradient(135deg, #9b59b6 0%, #8e44ad 100%); cursor: pointer; border: none;"
-                                onclick="copyDeepLink('ccswitch://v1/import?resource=provider&app=claude&name=Claude%20Basic&homepage=https%3A%2F%2Fclaude.ai&endpoint=https%3A%2F%2Fapi.anthropic.com%2Fv1&apiKey=sk-ant-test-basic-key&notes=%E5%9F%BA%E7%A1%80%E9%85%8D%E7%BD%AE%EF%BC%8C%E6%97%A0%E6%A8%A1%E5%9E%8B%E6%8C%87%E5%AE%9A', this)">
+                        <button class="deep-link"
+                            style="background: linear-gradient(135deg, #9b59b6 0%, #8e44ad 100%); cursor: pointer; border: none;"
+                            onclick="copyDeepLink('ccswitch://v1/import?resource=provider&app=claude&name=Claude%20Basic&homepage=https%3A%2F%2Fclaude.ai&endpoint=https%3A%2F%2Fapi.anthropic.com%2Fv1&apiKey=sk-ant-test-basic-key&notes=%E5%9F%BA%E7%A1%80%E9%85%8D%E7%BD%AE%EF%BC%8C%E6%97%A0%E6%A8%A1%E5%9E%8B%E6%8C%87%E5%AE%9A', this)">
                             📋 复制链接
                         </button>
                     </div>
@@ -363,16 +367,18 @@
                         设置通用默认模型（ANTHROPIC_MODEL），适用于只需要一个固定模型的场景。
                     </p>
                     <div class="param-list">
-                        <span class="param-tag">必需</span> resource=provider, app=claude, name, homepage, endpoint, apiKey<br>
+                        <span class="param-tag">必需</span> resource=provider, app=claude, name, homepage, endpoint,
+                        apiKey<br>
                         <span class="param-tag optional">可选</span> <strong>model=claude-haiku-4.1</strong>, notes
                     </div>
                     <div style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap;">
                         <a href="ccswitch://v1/import?resource=provider&app=claude&name=Claude%20with%20Model&homepage=https%3A%2F%2Fclaude.ai&endpoint=https%3A%2F%2Fapi.anthropic.com%2Fv1&apiKey=sk-ant-test-model-key&model=claude-haiku-4.1&notes=%E5%B8%A6%E9%BB%98%E8%AE%A4%E6%A8%A1%E5%9E%8B"
-                           class="deep-link">
+                            class="deep-link">
                             📥 导入带默认模型
                         </a>
-                        <button class="deep-link" style="background: linear-gradient(135deg, #9b59b6 0%, #8e44ad 100%); cursor: pointer; border: none;"
-                                onclick="copyDeepLink('ccswitch://v1/import?resource=provider&app=claude&name=Claude%20with%20Model&homepage=https%3A%2F%2Fclaude.ai&endpoint=https%3A%2F%2Fapi.anthropic.com%2Fv1&apiKey=sk-ant-test-model-key&model=claude-haiku-4.1&notes=%E5%B8%A6%E9%BB%98%E8%AE%A4%E6%A8%A1%E5%9E%8B', this)">
+                        <button class="deep-link"
+                            style="background: linear-gradient(135deg, #9b59b6 0%, #8e44ad 100%); cursor: pointer; border: none;"
+                            onclick="copyDeepLink('ccswitch://v1/import?resource=provider&app=claude&name=Claude%20with%20Model&homepage=https%3A%2F%2Fclaude.ai&endpoint=https%3A%2F%2Fapi.anthropic.com%2Fv1&apiKey=sk-ant-test-model-key&model=claude-haiku-4.1&notes=%E5%B8%A6%E9%BB%98%E8%AE%A4%E6%A8%A1%E5%9E%8B', this)">
                             📋 复制链接
                         </button>
                     </div>
@@ -387,16 +393,20 @@
                         设置所有四种模型字段：默认模型、Haiku 模型、Sonnet 模型、Opus 模型。适用于需要精细控制不同模型系列的场景。
                     </p>
                     <div class="param-list">
-                        <span class="param-tag">必需</span> resource=provider, app=claude, name, homepage, endpoint, apiKey<br>
-                        <span class="param-tag optional">可选</span> <strong>model=claude-sonnet-4.5</strong>, <strong>haikuModel=claude-haiku-4.1</strong>, <strong>sonnetModel=claude-sonnet-4.5</strong>, <strong>opusModel=claude-opus-4</strong>, notes
+                        <span class="param-tag">必需</span> resource=provider, app=claude, name, homepage, endpoint,
+                        apiKey<br>
+                        <span class="param-tag optional">可选</span> <strong>model=claude-sonnet-4.5</strong>,
+                        <strong>haikuModel=claude-haiku-4.1</strong>, <strong>sonnetModel=claude-sonnet-4.5</strong>,
+                        <strong>opusModel=claude-opus-4</strong>, notes
                     </div>
                     <div style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap;">
                         <a href="ccswitch://v1/import?resource=provider&app=claude&name=Claude%20Complete&homepage=https%3A%2F%2Fclaude.ai&endpoint=https%3A%2F%2Fapi.anthropic.com%2Fv1&apiKey=sk-ant-test-complete-key&model=claude-sonnet-4.5&haikuModel=claude-haiku-4.1&sonnetModel=claude-sonnet-4.5&opusModel=claude-opus-4&notes=%E5%AE%8C%E6%95%B4%E6%A8%A1%E5%9E%8B%E9%85%8D%E7%BD%AE"
-                           class="deep-link">
+                            class="deep-link">
                             📥 导入完整配置
                         </a>
-                        <button class="deep-link" style="background: linear-gradient(135deg, #9b59b6 0%, #8e44ad 100%); cursor: pointer; border: none;"
-                                onclick="copyDeepLink('ccswitch://v1/import?resource=provider&app=claude&name=Claude%20Complete&homepage=https%3A%2F%2Fclaude.ai&endpoint=https%3A%2F%2Fapi.anthropic.com%2Fv1&apiKey=sk-ant-test-complete-key&model=claude-sonnet-4.5&haikuModel=claude-haiku-4.1&sonnetModel=claude-sonnet-4.5&opusModel=claude-opus-4&notes=%E5%AE%8C%E6%95%B4%E6%A8%A1%E5%9E%8B%E9%85%8D%E7%BD%AE', this)">
+                        <button class="deep-link"
+                            style="background: linear-gradient(135deg, #9b59b6 0%, #8e44ad 100%); cursor: pointer; border: none;"
+                            onclick="copyDeepLink('ccswitch://v1/import?resource=provider&app=claude&name=Claude%20Complete&homepage=https%3A%2F%2Fclaude.ai&endpoint=https%3A%2F%2Fapi.anthropic.com%2Fv1&apiKey=sk-ant-test-complete-key&model=claude-sonnet-4.5&haikuModel=claude-haiku-4.1&sonnetModel=claude-sonnet-4.5&opusModel=claude-opus-4&notes=%E5%AE%8C%E6%95%B4%E6%A8%A1%E5%9E%8B%E9%85%8D%E7%BD%AE', this)">
                             📋 复制链接
                         </button>
                     </div>
@@ -411,16 +421,19 @@
                         仅设置特定的模型字段（例如只设置 Haiku 和 Sonnet），其他模型使用默认值。演示参数灵活性。
                     </p>
                     <div class="param-list">
-                        <span class="param-tag">必需</span> resource=provider, app=claude, name, homepage, endpoint, apiKey<br>
-                        <span class="param-tag optional">可选</span> <strong>haikuModel=claude-haiku-4.1</strong>, <strong>sonnetModel=claude-sonnet-4.5</strong>, notes
+                        <span class="param-tag">必需</span> resource=provider, app=claude, name, homepage, endpoint,
+                        apiKey<br>
+                        <span class="param-tag optional">可选</span> <strong>haikuModel=claude-haiku-4.1</strong>,
+                        <strong>sonnetModel=claude-sonnet-4.5</strong>, notes
                     </div>
                     <div style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap;">
                         <a href="ccswitch://v1/import?resource=provider&app=claude&name=Claude%20Partial&homepage=https%3A%2F%2Fclaude.ai&endpoint=https%3A%2F%2Fapi.anthropic.com%2Fv1&apiKey=sk-ant-test-partial-key&haikuModel=claude-haiku-4.1&sonnetModel=claude-sonnet-4.5&notes=%E9%83%A8%E5%88%86%E6%A8%A1%E5%9E%8B%E9%85%8D%E7%BD%AE"
-                           class="deep-link">
+                            class="deep-link">
                             📥 导入部分模型配置
                         </a>
-                        <button class="deep-link" style="background: linear-gradient(135deg, #9b59b6 0%, #8e44ad 100%); cursor: pointer; border: none;"
-                                onclick="copyDeepLink('ccswitch://v1/import?resource=provider&app=claude&name=Claude%20Partial&homepage=https%3A%2F%2Fclaude.ai&endpoint=https%3A%2F%2Fapi.anthropic.com%2Fv1&apiKey=sk-ant-test-partial-key&haikuModel=claude-haiku-4.1&sonnetModel=claude-sonnet-4.5&notes=%E9%83%A8%E5%88%86%E6%A8%A1%E5%9E%8B%E9%85%8D%E7%BD%AE', this)">
+                        <button class="deep-link"
+                            style="background: linear-gradient(135deg, #9b59b6 0%, #8e44ad 100%); cursor: pointer; border: none;"
+                            onclick="copyDeepLink('ccswitch://v1/import?resource=provider&app=claude&name=Claude%20Partial&homepage=https%3A%2F%2Fclaude.ai&endpoint=https%3A%2F%2Fapi.anthropic.com%2Fv1&apiKey=sk-ant-test-partial-key&haikuModel=claude-haiku-4.1&sonnetModel=claude-sonnet-4.5&notes=%E9%83%A8%E5%88%86%E6%A8%A1%E5%9E%8B%E9%85%8D%E7%BD%AE', this)">
                             📋 复制链接
                         </button>
                     </div>
@@ -435,16 +448,18 @@
                         使用第三方供应商的 API 端点和自定义模型名称，演示兼容性。
                     </p>
                     <div class="param-list">
-                        <span class="param-tag">必需</span> resource=provider, app=claude, name, homepage, endpoint, apiKey<br>
+                        <span class="param-tag">必需</span> resource=provider, app=claude, name, homepage, endpoint,
+                        apiKey<br>
                         <span class="param-tag optional">可选</span> <strong>model=custom-claude-v1</strong>, notes
                     </div>
                     <div style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap;">
                         <a href="ccswitch://v1/import?resource=provider&app=claude&name=Third-Party%20Claude&homepage=https%3A%2F%2Fthirdparty.com&endpoint=https%3A%2F%2Fapi.thirdparty.com%2Fv1&apiKey=sk-third-party-key&model=custom-claude-v1&notes=%E7%AC%AC%E4%B8%89%E6%96%B9%E4%BE%9B%E5%BA%94%E5%95%86%E7%A4%BA%E4%BE%8B"
-                           class="deep-link">
+                            class="deep-link">
                             📥 导入第三方供应商
                         </a>
-                        <button class="deep-link" style="background: linear-gradient(135deg, #9b59b6 0%, #8e44ad 100%); cursor: pointer; border: none;"
-                                onclick="copyDeepLink('ccswitch://v1/import?resource=provider&app=claude&name=Third-Party%20Claude&homepage=https%3A%2F%2Fthirdparty.com&endpoint=https%3A%2F%2Fapi.thirdparty.com%2Fv1&apiKey=sk-third-party-key&model=custom-claude-v1&notes=%E7%AC%AC%E4%B8%89%E6%96%B9%E4%BE%9B%E5%BA%94%E5%95%86%E7%A4%BA%E4%BE%8B', this)">
+                        <button class="deep-link"
+                            style="background: linear-gradient(135deg, #9b59b6 0%, #8e44ad 100%); cursor: pointer; border: none;"
+                            onclick="copyDeepLink('ccswitch://v1/import?resource=provider&app=claude&name=Third-Party%20Claude&homepage=https%3A%2F%2Fthirdparty.com&endpoint=https%3A%2F%2Fapi.thirdparty.com%2Fv1&apiKey=sk-third-party-key&model=custom-claude-v1&notes=%E7%AC%AC%E4%B8%89%E6%96%B9%E4%BE%9B%E5%BA%94%E5%95%86%E7%A4%BA%E4%BE%8B', this)">
                             📋 复制链接
                         </button>
                     </div>
@@ -464,16 +479,18 @@
                         OpenAI 官方 API 基础配置，仅包含必需参数。
                     </p>
                     <div class="param-list">
-                        <span class="param-tag">必需</span> resource=provider, app=codex, name, homepage, endpoint, apiKey<br>
+                        <span class="param-tag">必需</span> resource=provider, app=codex, name, homepage, endpoint,
+                        apiKey<br>
                         <span class="param-tag optional">可选</span> notes
                     </div>
                     <div style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap;">
                         <a href="ccswitch://v1/import?resource=provider&app=codex&name=OpenAI%20Basic&homepage=https%3A%2F%2Fopenai.com&endpoint=https%3A%2F%2Fapi.openai.com%2Fv1&apiKey=sk-test-basic-openai-key&notes=%E5%9F%BA%E7%A1%80%E9%85%8D%E7%BD%AE"
-                           class="deep-link">
+                            class="deep-link">
                             📥 导入基础配置
                         </a>
-                        <button class="deep-link" style="background: linear-gradient(135deg, #9b59b6 0%, #8e44ad 100%); cursor: pointer; border: none;"
-                                onclick="copyDeepLink('ccswitch://v1/import?resource=provider&app=codex&name=OpenAI%20Basic&homepage=https%3A%2F%2Fopenai.com&endpoint=https%3A%2F%2Fapi.openai.com%2Fv1&apiKey=sk-test-basic-openai-key&notes=%E5%9F%BA%E7%A1%80%E9%85%8D%E7%BD%AE', this)">
+                        <button class="deep-link"
+                            style="background: linear-gradient(135deg, #9b59b6 0%, #8e44ad 100%); cursor: pointer; border: none;"
+                            onclick="copyDeepLink('ccswitch://v1/import?resource=provider&app=codex&name=OpenAI%20Basic&homepage=https%3A%2F%2Fopenai.com&endpoint=https%3A%2F%2Fapi.openai.com%2Fv1&apiKey=sk-test-basic-openai-key&notes=%E5%9F%BA%E7%A1%80%E9%85%8D%E7%BD%AE', this)">
                             📋 复制链接
                         </button>
                     </div>
@@ -488,16 +505,18 @@
                         OpenAI API 配置，指定默认模型为 gpt-5.1。
                     </p>
                     <div class="param-list">
-                        <span class="param-tag">必需</span> resource=provider, app=codex, name, homepage, endpoint, apiKey<br>
+                        <span class="param-tag">必需</span> resource=provider, app=codex, name, homepage, endpoint,
+                        apiKey<br>
                         <span class="param-tag optional">可选</span> <strong>model=gpt-5.1</strong>, notes
                     </div>
                     <div style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap;">
                         <a href="ccswitch://v1/import?resource=provider&app=codex&name=OpenAI%20Official&homepage=https%3A%2F%2Fopenai.com&endpoint=https%3A%2F%2Fapi.openai.com%2Fv1&apiKey=sk-test-demo-openai-key-67890&model=gpt-5.1&notes=OpenAI%20%E5%AE%98%E6%96%B9%E6%9C%8D%E5%8A%A1"
-                           class="deep-link">
+                            class="deep-link">
                             📥 导入 OpenAI Official
                         </a>
-                        <button class="deep-link" style="background: linear-gradient(135deg, #9b59b6 0%, #8e44ad 100%); cursor: pointer; border: none;"
-                                onclick="copyDeepLink('ccswitch://v1/import?resource=provider&app=codex&name=OpenAI%20Official&homepage=https%3A%2F%2Fopenai.com&endpoint=https%3A%2F%2Fapi.openai.com%2Fv1&apiKey=sk-test-demo-openai-key-67890&model=gpt-5.1&notes=OpenAI%20%E5%AE%98%E6%96%B9%E6%9C%8D%E5%8A%A1', this)">
+                        <button class="deep-link"
+                            style="background: linear-gradient(135deg, #9b59b6 0%, #8e44ad 100%); cursor: pointer; border: none;"
+                            onclick="copyDeepLink('ccswitch://v1/import?resource=provider&app=codex&name=OpenAI%20Official&homepage=https%3A%2F%2Fopenai.com&endpoint=https%3A%2F%2Fapi.openai.com%2Fv1&apiKey=sk-test-demo-openai-key-67890&model=gpt-5.1&notes=OpenAI%20%E5%AE%98%E6%96%B9%E6%9C%8D%E5%8A%A1', this)">
                             📋 复制链接
                         </button>
                     </div>
@@ -512,16 +531,18 @@
                         Azure 部署的 OpenAI 服务示例。适合企业用户使用 Azure 云服务。默认模型 gpt-5.1。
                     </p>
                     <div class="param-list">
-                        <span class="param-tag">必需</span> resource=provider, app=codex, name, homepage, endpoint, apiKey<br>
+                        <span class="param-tag">必需</span> resource=provider, app=codex, name, homepage, endpoint,
+                        apiKey<br>
                         <span class="param-tag optional">可选</span> <strong>model=gpt-5.1</strong>, notes
                     </div>
                     <div style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap;">
                         <a href="ccswitch://v1/import?resource=provider&app=codex&name=Azure%20OpenAI&homepage=https%3A%2F%2Fazure.microsoft.com%2Fopenai&endpoint=https%3A%2F%2Fyour-resource.openai.azure.com%2F&apiKey=azure-test-api-key-xyz&model=gpt-5.1&notes=Azure%20%E4%BC%81%E4%B8%9A%E7%89%88%E6%9C%AC"
-                           class="deep-link">
+                            class="deep-link">
                             📥 导入 Azure OpenAI
                         </a>
-                        <button class="deep-link" style="background: linear-gradient(135deg, #9b59b6 0%, #8e44ad 100%); cursor: pointer; border: none;"
-                                onclick="copyDeepLink('ccswitch://v1/import?resource=provider&app=codex&name=Azure%20OpenAI&homepage=https%3A%2F%2Fazure.microsoft.com%2Fopenai&endpoint=https%3A%2F%2Fyour-resource.openai.azure.com%2F&apiKey=azure-test-api-key-xyz&model=gpt-5.1&notes=Azure%20%E4%BC%81%E4%B8%9A%E7%89%88%E6%9C%AC', this)">
+                        <button class="deep-link"
+                            style="background: linear-gradient(135deg, #9b59b6 0%, #8e44ad 100%); cursor: pointer; border: none;"
+                            onclick="copyDeepLink('ccswitch://v1/import?resource=provider&app=codex&name=Azure%20OpenAI&homepage=https%3A%2F%2Fazure.microsoft.com%2Fopenai&endpoint=https%3A%2F%2Fyour-resource.openai.azure.com%2F&apiKey=azure-test-api-key-xyz&model=gpt-5.1&notes=Azure%20%E4%BC%81%E4%B8%9A%E7%89%88%E6%9C%AC', this)">
                             📋 复制链接
                         </button>
                     </div>
@@ -536,16 +557,18 @@
                         使用兼容 OpenAI API 格式的第三方服务（如 Together AI、Groq 等）。
                     </p>
                     <div class="param-list">
-                        <span class="param-tag">必需</span> resource=provider, app=codex, name, homepage, endpoint, apiKey<br>
+                        <span class="param-tag">必需</span> resource=provider, app=codex, name, homepage, endpoint,
+                        apiKey<br>
                         <span class="param-tag optional">可选</span> <strong>model=mixtral-8x7b</strong>, notes
                     </div>
                     <div style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap;">
                         <a href="ccswitch://v1/import?resource=provider&app=codex&name=Third-Party%20API&homepage=https%3A%2F%2Fthirdparty.com&endpoint=https%3A%2F%2Fapi.thirdparty.com%2Fv1&apiKey=sk-third-party-key&model=mixtral-8x7b&notes=%E7%AC%AC%E4%B8%89%E6%96%B9%E5%85%BC%E5%AE%B9%E6%9C%8D%E5%8A%A1"
-                           class="deep-link">
+                            class="deep-link">
                             📥 导入第三方 API
                         </a>
-                        <button class="deep-link" style="background: linear-gradient(135deg, #9b59b6 0%, #8e44ad 100%); cursor: pointer; border: none;"
-                                onclick="copyDeepLink('ccswitch://v1/import?resource=provider&app=codex&name=Third-Party%20API&homepage=https%3A%2F%2Fthirdparty.com&endpoint=https%3A%2F%2Fapi.thirdparty.com%2Fv1&apiKey=sk-third-party-key&model=mixtral-8x7b&notes=%E7%AC%AC%E4%B8%89%E6%96%B9%E5%85%BC%E5%AE%B9%E6%9C%8D%E5%8A%A1', this)">
+                        <button class="deep-link"
+                            style="background: linear-gradient(135deg, #9b59b6 0%, #8e44ad 100%); cursor: pointer; border: none;"
+                            onclick="copyDeepLink('ccswitch://v1/import?resource=provider&app=codex&name=Third-Party%20API&homepage=https%3A%2F%2Fthirdparty.com&endpoint=https%3A%2F%2Fapi.thirdparty.com%2Fv1&apiKey=sk-third-party-key&model=mixtral-8x7b&notes=%E7%AC%AC%E4%B8%89%E6%96%B9%E5%85%BC%E5%AE%B9%E6%9C%8D%E5%8A%A1', this)">
                             📋 复制链接
                         </button>
                     </div>
@@ -565,16 +588,18 @@
                         Google Gemini 官方 API 基础配置，仅包含必需参数。
                     </p>
                     <div class="param-list">
-                        <span class="param-tag">必需</span> resource=provider, app=gemini, name, homepage, endpoint, apiKey<br>
+                        <span class="param-tag">必需</span> resource=provider, app=gemini, name, homepage, endpoint,
+                        apiKey<br>
                         <span class="param-tag optional">可选</span> notes
                     </div>
                     <div style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap;">
                         <a href="ccswitch://v1/import?resource=provider&app=gemini&name=Google%20Gemini%20Basic&homepage=https%3A%2F%2Fai.google.dev&endpoint=https%3A%2F%2Fgenerativelanguage.googleapis.com%2Fv1beta&apiKey=AIzaSy-test-basic-key&notes=%E5%9F%BA%E7%A1%80%E9%85%8D%E7%BD%AE"
-                           class="deep-link">
+                            class="deep-link">
                             📥 导入基础配置
                         </a>
-                        <button class="deep-link" style="background: linear-gradient(135deg, #9b59b6 0%, #8e44ad 100%); cursor: pointer; border: none;"
-                                onclick="copyDeepLink('ccswitch://v1/import?resource=provider&app=gemini&name=Google%20Gemini%20Basic&homepage=https%3A%2F%2Fai.google.dev&endpoint=https%3A%2F%2Fgenerativelanguage.googleapis.com%2Fv1beta&apiKey=AIzaSy-test-basic-key&notes=%E5%9F%BA%E7%A1%80%E9%85%8D%E7%BD%AE', this)">
+                        <button class="deep-link"
+                            style="background: linear-gradient(135deg, #9b59b6 0%, #8e44ad 100%); cursor: pointer; border: none;"
+                            onclick="copyDeepLink('ccswitch://v1/import?resource=provider&app=gemini&name=Google%20Gemini%20Basic&homepage=https%3A%2F%2Fai.google.dev&endpoint=https%3A%2F%2Fgenerativelanguage.googleapis.com%2Fv1beta&apiKey=AIzaSy-test-basic-key&notes=%E5%9F%BA%E7%A1%80%E9%85%8D%E7%BD%AE', this)">
                             📋 复制链接
                         </button>
                     </div>
@@ -589,16 +614,18 @@
                         导入 Google Gemini 官方 API 配置。默认模型 gemini-3-pro-preview。
                     </p>
                     <div class="param-list">
-                        <span class="param-tag">必需</span> resource=provider, app=gemini, name, homepage, endpoint, apiKey<br>
+                        <span class="param-tag">必需</span> resource=provider, app=gemini, name, homepage, endpoint,
+                        apiKey<br>
                         <span class="param-tag optional">可选</span> <strong>model=gemini-3-pro-preview</strong>, notes
                     </div>
                     <div style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap;">
                         <a href="ccswitch://v1/import?resource=provider&app=gemini&name=Google%20Gemini&homepage=https%3A%2F%2Fai.google.dev&endpoint=https%3A%2F%2Fgenerativelanguage.googleapis.com%2Fv1beta&apiKey=AIzaSy-test-demo-key-abc123&model=gemini-3-pro-preview&notes=Google%20AI%20%E5%AE%98%E6%96%B9%E6%9C%8D%E5%8A%A1"
-                           class="deep-link">
+                            class="deep-link">
                             📥 导入 Google Gemini
                         </a>
-                        <button class="deep-link" style="background: linear-gradient(135deg, #9b59b6 0%, #8e44ad 100%); cursor: pointer; border: none;"
-                                onclick="copyDeepLink('ccswitch://v1/import?resource=provider&app=gemini&name=Google%20Gemini&homepage=https%3A%2F%2Fai.google.dev&endpoint=https%3A%2F%2Fgenerativelanguage.googleapis.com%2Fv1beta&apiKey=AIzaSy-test-demo-key-abc123&model=gemini-3-pro-preview&notes=Google%20AI%20%E5%AE%98%E6%96%B9%E6%9C%8D%E5%8A%A1', this)">
+                        <button class="deep-link"
+                            style="background: linear-gradient(135deg, #9b59b6 0%, #8e44ad 100%); cursor: pointer; border: none;"
+                            onclick="copyDeepLink('ccswitch://v1/import?resource=provider&app=gemini&name=Google%20Gemini&homepage=https%3A%2F%2Fai.google.dev&endpoint=https%3A%2F%2Fgenerativelanguage.googleapis.com%2Fv1beta&apiKey=AIzaSy-test-demo-key-abc123&model=gemini-3-pro-preview&notes=Google%20AI%20%E5%AE%98%E6%96%B9%E6%9C%8D%E5%8A%A1', this)">
                             📋 复制链接
                         </button>
                     </div>
@@ -613,16 +640,18 @@
                         公司内部 Gemini 测试环境配置示例。用于验证 Gemini 相关深链接导入流程。默认模型 gemini-3-pro-preview。
                     </p>
                     <div class="param-list">
-                        <span class="param-tag">必需</span> resource=provider, app=gemini, name, homepage, endpoint, apiKey<br>
+                        <span class="param-tag">必需</span> resource=provider, app=gemini, name, homepage, endpoint,
+                        apiKey<br>
                         <span class="param-tag optional">可选</span> <strong>model=gemini-3-pro-preview</strong>, notes
                     </div>
                     <div style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap;">
                         <a href="ccswitch://v1/import?resource=provider&app=gemini&name=%E5%85%AC%E5%8F%B8%20Gemini%20%E6%B5%8B%E8%AF%95%E7%8E%AF%E5%A2%83&homepage=https%3A%2F%2Fgemini-test.company.com&endpoint=https%3A%2F%2Fapi-gemini-test.company.com%2Fv1beta&apiKey=sk-gemini-test-company-key&model=gemini-3-pro-preview&notes=%E5%85%AC%E5%8F%B8%E5%86%85%E9%83%A8%20Gemini%20%E6%B5%8B%E8%AF%95%E7%8E%AF%E5%A2%83%EF%BC%8C%E4%BB%85%E4%BE%9B%E5%BC%80%E5%8F%91%E4%BD%BF%E7%94%A8"
-                           class="deep-link">
+                            class="deep-link">
                             📥 导入 Gemini 测试环境
                         </a>
-                        <button class="deep-link" style="background: linear-gradient(135deg, #9b59b6 0%, #8e44ad 100%); cursor: pointer; border: none;"
-                                onclick="copyDeepLink('ccswitch://v1/import?resource=provider&app=gemini&name=%E5%85%AC%E5%8F%B8%20Gemini%20%E6%B5%8B%E8%AF%95%E7%8E%AF%E5%A2%83&homepage=https%3A%2F%2Fgemini-test.company.com&endpoint=https%3A%2F%2Fapi-gemini-test.company.com%2Fv1beta&apiKey=sk-gemini-test-company-key&model=gemini-3-pro-preview&notes=%E5%85%AC%E5%8F%B8%E5%86%85%E9%83%A8%20Gemini%20%E6%B5%8B%E8%AF%95%E7%8E%AF%E5%A2%83%EF%BC%8C%E4%BB%85%E4%BE%9B%E5%BC%80%E5%8F%91%E4%BD%BF%E7%94%A8', this)">
+                        <button class="deep-link"
+                            style="background: linear-gradient(135deg, #9b59b6 0%, #8e44ad 100%); cursor: pointer; border: none;"
+                            onclick="copyDeepLink('ccswitch://v1/import?resource=provider&app=gemini&name=%E5%85%AC%E5%8F%B8%20Gemini%20%E6%B5%8B%E8%AF%95%E7%8E%AF%E5%A2%83&homepage=https%3A%2F%2Fgemini-test.company.com&endpoint=https%3A%2F%2Fapi-gemini-test.company.com%2Fv1beta&apiKey=sk-gemini-test-company-key&model=gemini-3-pro-preview&notes=%E5%85%AC%E5%8F%B8%E5%86%85%E9%83%A8%20Gemini%20%E6%B5%8B%E8%AF%95%E7%8E%AF%E5%A2%83%EF%BC%8C%E4%BB%85%E4%BE%9B%E5%BC%80%E5%8F%91%E4%BD%BF%E7%94%A8', this)">
                             📋 复制链接
                         </button>
                     </div>
@@ -637,16 +666,18 @@
                         使用第三方提供的 Gemini API 兼容服务，支持自定义模型名称。
                     </p>
                     <div class="param-list">
-                        <span class="param-tag">必需</span> resource=provider, app=gemini, name, homepage, endpoint, apiKey<br>
+                        <span class="param-tag">必需</span> resource=provider, app=gemini, name, homepage, endpoint,
+                        apiKey<br>
                         <span class="param-tag optional">可选</span> <strong>model=gemini-custom-v2</strong>, notes
                     </div>
                     <div style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap;">
                         <a href="ccswitch://v1/import?resource=provider&app=gemini&name=Third-Party%20Gemini&homepage=https%3A%2F%2Fthirdparty-gemini.com&endpoint=https%3A%2F%2Fapi.thirdparty-gemini.com%2Fv1&apiKey=tpg-test-key-xyz&model=gemini-custom-v2&notes=%E7%AC%AC%E4%B8%89%E6%96%B9%20Gemini%20%E5%85%BC%E5%AE%B9%E6%9C%8D%E5%8A%A1"
-                           class="deep-link">
+                            class="deep-link">
                             📥 导入第三方服务
                         </a>
-                        <button class="deep-link" style="background: linear-gradient(135deg, #9b59b6 0%, #8e44ad 100%); cursor: pointer; border: none;"
-                                onclick="copyDeepLink('ccswitch://v1/import?resource=provider&app=gemini&name=Third-Party%20Gemini&homepage=https%3A%2F%2Fthirdparty-gemini.com&endpoint=https%3A%2F%2Fapi.thirdparty-gemini.com%2Fv1&apiKey=tpg-test-key-xyz&model=gemini-custom-v2&notes=%E7%AC%AC%E4%B8%89%E6%96%B9%20Gemini%20%E5%85%BC%E5%AE%B9%E6%9C%8D%E5%8A%A1', this)">
+                        <button class="deep-link"
+                            style="background: linear-gradient(135deg, #9b59b6 0%, #8e44ad 100%); cursor: pointer; border: none;"
+                            onclick="copyDeepLink('ccswitch://v1/import?resource=provider&app=gemini&name=Third-Party%20Gemini&homepage=https%3A%2F%2Fthirdparty-gemini.com&endpoint=https%3A%2F%2Fapi.thirdparty-gemini.com%2Fv1&apiKey=tpg-test-key-xyz&model=gemini-custom-v2&notes=%E7%AC%AC%E4%B8%89%E6%96%B9%20Gemini%20%E5%85%BC%E5%AE%B9%E6%9C%8D%E5%8A%A1', this)">
                             📋 复制链接
                         </button>
                     </div>
@@ -668,19 +699,22 @@
                     </p>
                     <div class="param-list">
                         <span class="param-tag">必需</span> resource=provider, app=claude, name<br>
-                        <span class="param-tag optional">可选</span> <strong>config</strong> (Base64 JSON), <strong>configFormat=json</strong>
+                        <span class="param-tag optional">可选</span> <strong>config</strong> (Base64 JSON),
+                        <strong>configFormat=json</strong>
                     </div>
                     <div style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap;">
                         <a href="ccswitch://v1/import?resource=provider&app=claude&name=Claude%20Complete&configFormat=json&config=eyJlbnYiOnsiQU5USFJPUElDX0FVVEhfVE9LRU4iOiJzay1hbnQtdGVzdC1rZXkxMjMiLCJBTlRIUk9QSUNfQkFTRV9VUkwiOiJodHRwczovL2FwaS5hbnRocm9waWMuY29tL3YxIiwiQU5USFJPUElDX01PREVMIjoiY2xhdWRlLXNvbm5ldC00LjUiLCJBTlRIUk9QSUNfREVGQVVMVF9IQUlLVV9NT0RFTCI6ImNsYXVkZS1oYWlrdS00LjEiLCJBTlRIUk9QSUNfREVGQVVMVF9TT05ORVRfTU9ERUwiOiJjbGF1ZGUtc29ubmV0LTQuNSIsIkFOVEhST1BJQ19ERUZBVUxUX09QVVNfTU9ERUwiOiJjbGF1ZGUtb3B1cy00In19"
-                           class="deep-link">
+                            class="deep-link">
                             📥 导入完整配置
                         </a>
-                        <button class="deep-link" style="background: linear-gradient(135deg, #9b59b6 0%, #8e44ad 100%); cursor: pointer; border: none;"
-                                onclick="copyDeepLink('ccswitch://v1/import?resource=provider&app=claude&name=Claude%20Complete&configFormat=json&config=eyJlbnYiOnsiQU5USFJPUElDX0FVVEhfVE9LRU4iOiJzay1hbnQtdGVzdC1rZXkxMjMiLCJBTlRIUk9QSUNfQkFTRV9VUkwiOiJodHRwczovL2FwaS5hbnRocm9waWMuY29tL3YxIiwiQU5USFJPUElDX01PREVMIjoiY2xhdWRlLXNvbm5ldC00LjUiLCJBTlRIUk9QSUNfREVGQVVMVF9IQUlLVV9NT0RFTCI6ImNsYXVkZS1oYWlrdS00LjEiLCJBTlRIUk9QSUNfREVGQVVMVF9TT05ORVRfTU9ERUwiOiJjbGF1ZGUtc29ubmV0LTQuNSIsIkFOVEhST1BJQ19ERUZBVUxUX09QVVNfTU9ERUwiOiJjbGF1ZGUtb3B1cy00In19', this)">
+                        <button class="deep-link"
+                            style="background: linear-gradient(135deg, #9b59b6 0%, #8e44ad 100%); cursor: pointer; border: none;"
+                            onclick="copyDeepLink('ccswitch://v1/import?resource=provider&app=claude&name=Claude%20Complete&configFormat=json&config=eyJlbnYiOnsiQU5USFJPUElDX0FVVEhfVE9LRU4iOiJzay1hbnQtdGVzdC1rZXkxMjMiLCJBTlRIUk9QSUNfQkFTRV9VUkwiOiJodHRwczovL2FwaS5hbnRocm9waWMuY29tL3YxIiwiQU5USFJPUElDX01PREVMIjoiY2xhdWRlLXNvbm5ldC00LjUiLCJBTlRIUk9QSUNfREVGQVVMVF9IQUlLVV9NT0RFTCI6ImNsYXVkZS1oYWlrdS00LjEiLCJBTlRIUk9QSUNfREVGQVVMVF9TT05ORVRfTU9ERUwiOiJjbGF1ZGUtc29ubmV0LTQuNSIsIkFOVEhST1BJQ19ERUZBVUxUX09QVVNfTU9ERUwiOiJjbGF1ZGUtb3B1cy00In19', this)">
                             📋 复制链接
                         </button>
                     </div>
-                    <div class="code-block" style="margin-top: 12px; padding: 12px; background: #2c3e50; color: #ecf0f1; border-radius: 8px; font-family: monospace; font-size: 12px; overflow-x: auto;">
+                    <div class="code-block"
+                        style="margin-top: 12px; padding: 12px; background: #2c3e50; color: #ecf0f1; border-radius: 8px; font-family: monospace; font-size: 12px; overflow-x: auto;">
                         <div style="color: #95a5a6; margin-bottom: 8px;">// 解码后的配置内容:</div>
                         {<br>
                         &nbsp;&nbsp;"env": {<br>
@@ -710,15 +744,17 @@
                     </div>
                     <div style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap;">
                         <a href="ccswitch://v1/import?resource=provider&app=claude&name=My%20Custom&apiKey=sk-ant-my-new-key&configFormat=json&config=eyJlbnYiOnsiQU5USFJPUElDX0JBU0VfVVJMIjoiaHR0cHM6Ly9hcGkuYW50aHJvcGljLmNvbS92MSIsIkFOVEhST1BJQ19NT0RFTCI6ImNsYXVkZS1zb25uZXQtNC41In19"
-                           class="deep-link">
+                            class="deep-link">
                             📥 导入混合配置
                         </a>
-                        <button class="deep-link" style="background: linear-gradient(135deg, #9b59b6 0%, #8e44ad 100%); cursor: pointer; border: none;"
-                                onclick="copyDeepLink('ccswitch://v1/import?resource=provider&app=claude&name=My%20Custom&apiKey=sk-ant-my-new-key&configFormat=json&config=eyJlbnYiOnsiQU5USFJPUElDX0JBU0VfVVJMIjoiaHR0cHM6Ly9hcGkuYW50aHJvcGljLmNvbS92MSIsIkFOVEhST1BJQ19NT0RFTCI6ImNsYXVkZS1zb25uZXQtNC41In19', this)">
+                        <button class="deep-link"
+                            style="background: linear-gradient(135deg, #9b59b6 0%, #8e44ad 100%); cursor: pointer; border: none;"
+                            onclick="copyDeepLink('ccswitch://v1/import?resource=provider&app=claude&name=My%20Custom&apiKey=sk-ant-my-new-key&configFormat=json&config=eyJlbnYiOnsiQU5USFJPUElDX0JBU0VfVVJMIjoiaHR0cHM6Ly9hcGkuYW50aHJvcGljLmNvbS92MSIsIkFOVEhST1BJQ19NT0RFTCI6ImNsYXVkZS1zb25uZXQtNC41In19', this)">
                             📋 复制链接
                         </button>
                     </div>
-                    <div class="code-block" style="margin-top: 12px; padding: 12px; background: #2c3e50; color: #ecf0f1; border-radius: 8px; font-family: monospace; font-size: 12px; overflow-x: auto;">
+                    <div class="code-block"
+                        style="margin-top: 12px; padding: 12px; background: #2c3e50; color: #ecf0f1; border-radius: 8px; font-family: monospace; font-size: 12px; overflow-x: auto;">
                         <div style="color: #95a5a6; margin-bottom: 8px;">// 解码后的配置内容:</div>
                         {<br>
                         &nbsp;&nbsp;"env": {<br>
@@ -728,7 +764,8 @@
                         }<br>
                         <div style="color: #f39c12; margin-top: 8px;">// URL 参数覆盖: apiKey=sk-ant-my-new-key</div>
                     </div>
-                    <div style="margin-top: 12px; padding: 10px; background: #fff3cd; border-left: 4px solid #ffc107; border-radius: 4px; font-size: 13px;">
+                    <div
+                        style="margin-top: 12px; padding: 10px; background: #fff3cd; border-left: 4px solid #ffc107; border-radius: 4px; font-size: 13px;">
                         <strong>优先级规则:</strong> URL 参数 (apiKey) > 配置文件 (endpoint, model)
                     </div>
                 </div>
@@ -744,25 +781,29 @@
                     </p>
                     <div class="param-list">
                         <span class="param-tag">必需</span> name, config<br>
-                        <span class="param-tag optional">可选</span> <strong>configFormat=json</strong> (Codex 配置为 JSON 包装的 TOML)
+                        <span class="param-tag optional">可选</span> <strong>configFormat=json</strong> (Codex 配置为 JSON
+                        包装的 TOML)
                     </div>
                     <div style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap;">
                         <a href="ccswitch://v1/import?resource=provider&app=codex&name=OpenAI%20Complete&configFormat=json&config=eyJhdXRoIjp7Ik9QRU5BSV9BUElfS0VZIjoic2stcHJvai10ZXN0LWtleTEyMyJ9LCJjb25maWciOiJbbW9kZWxfcHJvdmlkZXJzLm9wZW5haV1cbmJhc2VfdXJsID0gXCJodHRwczovL2FwaS5vcGVuYWkuY29tL3YxXCJcblxuW2dlbmVyYWxdXG5tb2RlbCA9IFwiZ3B0LTUuMVwiIn0="
-                           class="deep-link">
+                            class="deep-link">
                             📥 导入 Codex 配置
                         </a>
-                        <button class="deep-link" style="background: linear-gradient(135deg, #9b59b6 0%, #8e44ad 100%); cursor: pointer; border: none;"
-                                onclick="copyDeepLink('ccswitch://v1/import?resource=provider&app=codex&name=OpenAI%20Complete&configFormat=json&config=eyJhdXRoIjp7Ik9QRU5BSV9BUElfS0VZIjoic2stcHJvai10ZXN0LWtleTEyMyJ9LCJjb25maWciOiJbbW9kZWxfcHJvdmlkZXJzLm9wZW5haV1cbmJhc2VfdXJsID0gXCJodHRwczovL2FwaS5vcGVuYWkuY29tL3YxXCJcblxuW2dlbmVyYWxdXG5tb2RlbCA9IFwiZ3B0LTUuMVwiIn0=', this)">
+                        <button class="deep-link"
+                            style="background: linear-gradient(135deg, #9b59b6 0%, #8e44ad 100%); cursor: pointer; border: none;"
+                            onclick="copyDeepLink('ccswitch://v1/import?resource=provider&app=codex&name=OpenAI%20Complete&configFormat=json&config=eyJhdXRoIjp7Ik9QRU5BSV9BUElfS0VZIjoic2stcHJvai10ZXN0LWtleTEyMyJ9LCJjb25maWciOiJbbW9kZWxfcHJvdmlkZXJzLm9wZW5haV1cbmJhc2VfdXJsID0gXCJodHRwczovL2FwaS5vcGVuYWkuY29tL3YxXCJcblxuW2dlbmVyYWxdXG5tb2RlbCA9IFwiZ3B0LTUuMVwiIn0=', this)">
                             📋 复制链接
                         </button>
                     </div>
-                    <div class="code-block" style="margin-top: 12px; padding: 12px; background: #2c3e50; color: #ecf0f1; border-radius: 8px; font-family: monospace; font-size: 12px; overflow-x: auto;">
+                    <div class="code-block"
+                        style="margin-top: 12px; padding: 12px; background: #2c3e50; color: #ecf0f1; border-radius: 8px; font-family: monospace; font-size: 12px; overflow-x: auto;">
                         <div style="color: #95a5a6; margin-bottom: 8px;">// 解码后的配置内容:</div>
                         {<br>
                         &nbsp;&nbsp;"auth": {<br>
                         &nbsp;&nbsp;&nbsp;&nbsp;"OPENAI_API_KEY": "sk-proj-test-key123"<br>
                         &nbsp;&nbsp;},<br>
-                        &nbsp;&nbsp;"config": "[model_providers.openai]\nbase_url = \"https://api.openai.com/v1\"\n\n[general]\nmodel = \"gpt-5.1\""<br>
+                        &nbsp;&nbsp;"config": "[model_providers.openai]\nbase_url =
+                        \"https://api.openai.com/v1\"\n\n[general]\nmodel = \"gpt-5.1\""<br>
                         }
                         <div style="color: #95a5a6; margin-top: 12px; margin-bottom: 4px;">// config 字段解析 (TOML):</div>
                         <div style="color: #a8d08d;">[model_providers.openai]</div>
@@ -787,15 +828,17 @@
                     </div>
                     <div style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap;">
                         <a href="ccswitch://v1/import?resource=provider&app=gemini&name=Google%20Gemini&configFormat=json&config=eyJHRU1JTklfQVBJX0tFWSI6IkFJemFTeUR0ZXN0a2V5MTIzIiwiR0VNSU5JX0JBU0VfVVJMIjoiaHR0cHM6Ly9nZW5lcmF0aXZlbGFuZ3VhZ2UuZ29vZ2xlYXBpcy5jb20vdjFiZXRhIiwiR0VNSU5JX01PREVMIjoiZ2VtaW5pLTMtcHJvLXByZXZpZXcifQ=="
-                           class="deep-link">
+                            class="deep-link">
                             📥 导入 Gemini 配置
                         </a>
-                        <button class="deep-link" style="background: linear-gradient(135deg, #9b59b6 0%, #8e44ad 100%); cursor: pointer; border: none;"
-                                onclick="copyDeepLink('ccswitch://v1/import?resource=provider&app=gemini&name=Google%20Gemini&configFormat=json&config=eyJHRU1JTklfQVBJX0tFWSI6IkFJemFTeUR0ZXN0a2V5MTIzIiwiR0VNSU5JX0JBU0VfVVJMIjoiaHR0cHM6Ly9nZW5lcmF0aXZlbGFuZ3VhZ2UuZ29vZ2xlYXBpcy5jb20vdjFiZXRhIiwiR0VNSU5JX01PREVMIjoiZ2VtaW5pLTMtcHJvLXByZXZpZXcifQ==', this)">
+                        <button class="deep-link"
+                            style="background: linear-gradient(135deg, #9b59b6 0%, #8e44ad 100%); cursor: pointer; border: none;"
+                            onclick="copyDeepLink('ccswitch://v1/import?resource=provider&app=gemini&name=Google%20Gemini&configFormat=json&config=eyJHRU1JTklfQVBJX0tFWSI6IkFJemFTeUR0ZXN0a2V5MTIzIiwiR0VNSU5JX0JBU0VfVVJMIjoiaHR0cHM6Ly9nZW5lcmF0aXZlbGFuZ3VhZ2UuZ29vZ2xlYXBpcy5jb20vdjFiZXRhIiwiR0VNSU5JX01PREVMIjoiZ2VtaW5pLTMtcHJvLXByZXZpZXcifQ==', this)">
                             📋 复制链接
                         </button>
                     </div>
-                    <div class="code-block" style="margin-top: 12px; padding: 12px; background: #2c3e50; color: #ecf0f1; border-radius: 8px; font-family: monospace; font-size: 12px; overflow-x: auto;">
+                    <div class="code-block"
+                        style="margin-top: 12px; padding: 12px; background: #2c3e50; color: #ecf0f1; border-radius: 8px; font-family: monospace; font-size: 12px; overflow-x: auto;">
                         <div style="color: #95a5a6; margin-bottom: 8px;">// 解码后的配置内容:</div>
                         {<br>
                         &nbsp;&nbsp;"GEMINI_API_KEY": "AIzaSyDtestkey123",<br>
@@ -820,15 +863,17 @@
                     </div>
                     <div style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap;">
                         <a href="ccswitch://v1/import?resource=provider&app=claude&name=Auto%20Filled&configFormat=json&config=eyJlbnYiOnsiQU5USFJPUElDX0FVVEhfVE9LRU4iOiJzay1hbnQtYXV0by1maWxsZWQta2V5IiwiQU5USFJPUElDX0JBU0VfVVJMIjoiaHR0cHM6Ly9hcGkuYW50aHJvcGljLmNvbS92MSJ9fQ=="
-                           class="deep-link">
+                            class="deep-link">
                             📥 测试自动填充
                         </a>
-                        <button class="deep-link" style="background: linear-gradient(135deg, #9b59b6 0%, #8e44ad 100%); cursor: pointer; border: none;"
-                                onclick="copyDeepLink('ccswitch://v1/import?resource=provider&app=claude&name=Auto%20Filled&configFormat=json&config=eyJlbnYiOnsiQU5USFJPUElDX0FVVEhfVE9LRU4iOiJzay1hbnQtYXV0by1maWxsZWQta2V5IiwiQU5USFJPUElDX0JBU0VfVVJMIjoiaHR0cHM6Ly9hcGkuYW50aHJvcGljLmNvbS92MSJ9fQ==', this)">
+                        <button class="deep-link"
+                            style="background: linear-gradient(135deg, #9b59b6 0%, #8e44ad 100%); cursor: pointer; border: none;"
+                            onclick="copyDeepLink('ccswitch://v1/import?resource=provider&app=claude&name=Auto%20Filled&configFormat=json&config=eyJlbnYiOnsiQU5USFJPUElDX0FVVEhfVE9LRU4iOiJzay1hbnQtYXV0by1maWxsZWQta2V5IiwiQU5USFJPUElDX0JBU0VfVVJMIjoiaHR0cHM6Ly9hcGkuYW50aHJvcGljLmNvbS92MSJ9fQ==', this)">
                             📋 复制链接
                         </button>
                     </div>
-                    <div class="code-block" style="margin-top: 12px; padding: 12px; background: #2c3e50; color: #ecf0f1; border-radius: 8px; font-family: monospace; font-size: 12px; overflow-x: auto;">
+                    <div class="code-block"
+                        style="margin-top: 12px; padding: 12px; background: #2c3e50; color: #ecf0f1; border-radius: 8px; font-family: monospace; font-size: 12px; overflow-x: auto;">
                         <div style="color: #95a5a6; margin-bottom: 8px;">// 解码后的配置内容:</div>
                         {<br>
                         &nbsp;&nbsp;"env": {<br>
@@ -840,7 +885,8 @@
                         <div style="color: #52c41a;">✓ Endpoint: 从配置文件提取</div>
                         <div style="color: #52c41a;">✓ Homepage: 自动推断为 https://anthropic.com</div>
                     </div>
-                    <div style="margin-top: 12px; padding: 10px; background: #d1ecf1; border-left: 4px solid #17a2b8; border-radius: 4px; font-size: 13px;">
+                    <div
+                        style="margin-top: 12px; padding: 10px; background: #d1ecf1; border-left: 4px solid #17a2b8; border-radius: 4px; font-size: 13px;">
                         <strong>自动填充规则:</strong><br>
                         • API Key: 从配置文件中提取<br>
                         • Endpoint: 从配置文件中提取<br>
@@ -849,7 +895,8 @@
                 </div>
 
                 <!-- 功能说明 -->
-                <div style="margin-top: 24px; padding: 20px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); border-radius: 12px; color: white;">
+                <div
+                    style="margin-top: 24px; padding: 20px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); border-radius: 12px; color: white;">
                     <h4 style="margin-bottom: 16px; font-size: 18px;">✨ 配置文件导入新特性 (v3.8+)</h4>
                     <ul style="list-style: none; padding-left: 0;">
                         <li style="margin-bottom: 12px; padding-left: 24px; position: relative;">
@@ -895,10 +942,12 @@
 
                 <div class="form-group">
                     <label>深链接 URL</label>
-                    <textarea id="parseUrl" rows="3" placeholder="粘贴完整的 ccswitch:// 深链接..." style="font-family: monospace; font-size: 13px;"></textarea>
+                    <textarea id="parseUrl" rows="3" placeholder="粘贴完整的 ccswitch:// 深链接..."
+                        style="font-family: monospace; font-size: 13px;"></textarea>
                 </div>
 
-                <button class="btn" style="background: linear-gradient(135deg, #3498db 0%, #2980b9 100%);" onclick="parseDeepLink()">
+                <button class="btn" style="background: linear-gradient(135deg, #3498db 0%, #2980b9 100%);"
+                    onclick="parseDeepLink()">
                     🔍 解析深链接
                 </button>
 
@@ -973,12 +1022,35 @@
 
                 <!-- 配置文件模式字段 -->
                 <div id="configModeFields" style="display: none;">
-                    <div class="form-group">
-                        <label>配置文件内容（JSON）</label>
-                        <textarea id="configJson" rows="12" placeholder='输入 JSON 配置，例如：&#10;{&#10;  "env": {&#10;    "ANTHROPIC_AUTH_TOKEN": "sk-ant-xxx",&#10;    "ANTHROPIC_BASE_URL": "https://api.anthropic.com/v1",&#10;    "ANTHROPIC_MODEL": "claude-sonnet-4.5"&#10;  }&#10;}'></textarea>
+                    <!-- 通用/Claude/Gemini JSON 配置 -->
+                    <div id="generalConfigGroup" class="form-group">
+                        <label id="configJsonLabel">配置文件内容（JSON）</label>
+                        <textarea id="configJson" rows="12"
+                            placeholder='输入 JSON 配置，例如：&#10;{&#10;  "env": {&#10;    "ANTHROPIC_AUTH_TOKEN": "sk-ant-xxx",&#10;    "ANTHROPIC_BASE_URL": "https://api.anthropic.com/v1",&#10;    "ANTHROPIC_MODEL": "claude-sonnet-4.5"&#10;  }&#10;}'></textarea>
                         <small style="color: #7f8c8d; font-size: 12px; display: block; margin-top: 4px;">
                             配置文件将自动进行 Base64 编码
                         </small>
+                    </div>
+
+                    <!-- Codex 专用配置字段 -->
+                    <div id="codexConfigGroup" style="display: none;">
+                        <div class="form-group">
+                            <label>Codex 认证信息 (JSON)</label>
+                            <textarea id="codexAuthJson" rows="5"
+                                placeholder='{&#10;  "auth": {&#10;    "OPENAI_API_KEY": "sk-..."&#10;  }&#10;}'></textarea>
+                            <small style="color: #7f8c8d; font-size: 12px; display: block; margin-top: 4px;">
+                                包含 API Key 的认证信息 JSON 对象
+                            </small>
+                        </div>
+                        <div class="form-group">
+                            <label>Codex 配置文件 (TOML)</label>
+                            <textarea id="codexConfigToml" rows="10"
+                                placeholder='[model_providers.openai]&#10;base_url = "..."&#10;&#10;[general]&#10;model = "..."'
+                                style="font-family: monospace;"></textarea>
+                            <small style="color: #7f8c8d; font-size: 12px; display: block; margin-top: 4px;">
+                                config.toml 的原始内容
+                            </small>
+                        </div>
                     </div>
 
                     <div class="form-group">
@@ -1059,6 +1131,30 @@
     </div>
 
     <script>
+        // UTF-8 字符串转 Base64
+        function utf8_to_b64(str) {
+            try {
+                const bytes = new TextEncoder().encode(str);
+                const binString = Array.from(bytes, (byte) => String.fromCharCode(byte)).join("");
+                return btoa(binString);
+            } catch (e) {
+                console.error("Base64 encode error:", e);
+                return window.btoa(unescape(encodeURIComponent(str)));
+            }
+        }
+
+        // Base64 转 UTF-8 字符串
+        function b64_to_utf8(str) {
+            try {
+                const binString = atob(str);
+                const bytes = Uint8Array.from(binString, (m) => m.codePointAt(0));
+                return new TextDecoder().decode(bytes);
+            } catch (e) {
+                console.error("Base64 decode error:", e);
+                return decodeURIComponent(escape(window.atob(str)));
+            }
+        }
+
         // 切换导入模式
         function toggleImportMode() {
             const mode = document.getElementById('importMode').value;
@@ -1076,10 +1172,14 @@
             }
         }
 
+        // ... (rest of the functions) ...
+
         // 根据应用类型填充配置模板
         function populateConfigTemplate() {
             const app = document.getElementById('app').value;
             const configTextarea = document.getElementById('configJson');
+            const codexAuthTextarea = document.getElementById('codexAuthJson');
+            const codexConfigTextarea = document.getElementById('codexConfigToml');
 
             let template = '';
 
@@ -1094,38 +1194,58 @@
     "ANTHROPIC_DEFAULT_OPUS_MODEL": "claude-opus-4"
   }
 }`;
+                configTextarea.value = template;
             } else if (app === 'codex') {
-                template = `{
+                // Codex 分开填充
+                codexAuthTextarea.value = `{
   "auth": {
     "OPENAI_API_KEY": "sk-proj-your-api-key-here"
-  },
-  "config": "model_provider = \\"custom\\"\\nmodel = \\"gpt-5.1\\"\\nmodel_reasoning_effort = \\"high\\"\\ndisable_response_storage = true\\n\\n[model_providers.custom]\\nname = \\"custom\\"\\nbase_url = \\"https://api.openai.com/v1\\"\\nwire_api = \\"responses\\"\\nrequires_openai_auth = true"
+  }
 }`;
+                codexConfigTextarea.value = `model_provider = "custom"
+model = "gpt-5.1"
+model_reasoning_effort = "high"
+disable_response_storage = true
+
+[model_providers.custom]
+name = "custom"
+base_url = "https://api.openai.com/v1"
+wire_api = "responses"
+requires_openai_auth = true`;
             } else if (app === 'gemini') {
                 template = `{
   "GEMINI_API_KEY": "AIzaSy-your-api-key-here",
   "GEMINI_BASE_URL": "https://generativelanguage.googleapis.com/v1beta",
   "GEMINI_MODEL": "gemini-3-pro-preview"
 }`;
+                configTextarea.value = template;
             }
-
-            configTextarea.value = template;
         }
 
         // 更新模型字段显示
         function updateModelFields() {
             const app = document.getElementById('app').value;
             const claudeFields = document.getElementById('claudeFields');
+            const generalConfigGroup = document.getElementById('generalConfigGroup');
+            const codexConfigGroup = document.getElementById('codexConfigGroup');
+            const mode = document.getElementById('importMode').value;
 
+            // Claude 字段显示控制
             if (app === 'claude') {
                 claudeFields.style.display = 'block';
             } else {
                 claudeFields.style.display = 'none';
             }
 
-            // 如果在配置文件模式，更新模板
-            const mode = document.getElementById('importMode').value;
+            // 配置文件输入框控制
             if (mode === 'config') {
+                if (app === 'codex') {
+                    generalConfigGroup.style.display = 'none';
+                    codexConfigGroup.style.display = 'block';
+                } else {
+                    generalConfigGroup.style.display = 'block';
+                    codexConfigGroup.style.display = 'none';
+                }
                 populateConfigTemplate();
             }
         }
@@ -1199,7 +1319,50 @@
                 }
             } else {
                 // 配置文件模式
-                const configJson = document.getElementById('configJson').value.trim();
+                let configJson = '';
+
+                if (app === 'codex') {
+                    // Codex 特殊处理：合并 Auth JSON 和 Config TOML
+                    const authJson = document.getElementById('codexAuthJson').value.trim();
+                    const configToml = document.getElementById('codexConfigToml').value.trim();
+
+                    if (!authJson) {
+                        alert('❌ 请填写 Codex 认证信息 (JSON)！');
+                        return;
+                    }
+                    if (!configToml) {
+                        alert('❌ 请填写 Codex 配置文件 (TOML)！');
+                        return;
+                    }
+
+                    try {
+                        const authObj = JSON.parse(authJson);
+                        // 构造最终对象
+                        const finalObj = {
+                            ...authObj,
+                            config: configToml
+                        };
+                        configJson = JSON.stringify(finalObj);
+                    } catch (e) {
+                        alert('❌ Codex 认证信息不是有效的 JSON 格式：' + e.message);
+                        return;
+                    }
+                } else {
+                    // 其他应用使用通用 JSON 输入框
+                    configJson = document.getElementById('configJson').value.trim();
+                    if (!configJson) {
+                        alert('❌ 配置文件模式下，请填写配置文件内容！');
+                        return;
+                    }
+                    // 验证 JSON 格式
+                    try {
+                        JSON.parse(configJson);
+                    } catch (e) {
+                        alert('❌ 配置文件不是有效的 JSON 格式：' + e.message);
+                        return;
+                    }
+                }
+
                 const overrideApiKey = document.getElementById('overrideApiKey').value.trim();
                 const overrideEndpoint = document.getElementById('overrideEndpoint').value.trim();
                 const model = document.getElementById('model').value.trim();
@@ -1210,21 +1373,8 @@
                 const sonnetModel = document.getElementById('sonnetModel').value.trim();
                 const opusModel = document.getElementById('opusModel').value.trim();
 
-                if (!configJson) {
-                    alert('❌ 配置文件模式下，请填写配置文件内容！');
-                    return;
-                }
-
-                // 验证 JSON 格式
-                try {
-                    JSON.parse(configJson);
-                } catch (e) {
-                    alert('❌ 配置文件不是有效的 JSON 格式：' + e.message);
-                    return;
-                }
-
                 // Base64 编码配置文件
-                const configB64 = btoa(unescape(encodeURIComponent(configJson)));
+                const configB64 = utf8_to_b64(configJson);
                 params.append('config', configB64);
                 params.append('configFormat', 'json');
 
@@ -1391,7 +1541,7 @@
                 if (paramsObj.config) {
                     try {
                         // 解码 Base64
-                        const decoded = decodeURIComponent(escape(atob(paramsObj.config)));
+                        const decoded = b64_to_utf8(paramsObj.config);
                         const configObj = JSON.parse(decoded);
 
                         configHtml = `
@@ -1504,10 +1654,10 @@
         }
 
         // 阻止表单默认提交行为
-        document.addEventListener('DOMContentLoaded', function() {
+        document.addEventListener('DOMContentLoaded', function () {
             const inputs = document.querySelectorAll('input, textarea, select');
             inputs.forEach(input => {
-                input.addEventListener('keypress', function(e) {
+                input.addEventListener('keypress', function (e) {
                     if (e.key === 'Enter' && e.target.tagName !== 'TEXTAREA') {
                         e.preventDefault();
                         generateLink();
@@ -1520,5 +1670,5 @@
         });
     </script>
 </body>
-</html>
 
+</html>
