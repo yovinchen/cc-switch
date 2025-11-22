@@ -735,7 +735,10 @@
       "removeSuccess": "Repository {{owner}}/{{name}} removed",
       "removeFailed": "Failed to remove",
       "skillCount": "{{count}} skills detected"
-    }
+    },
+    "search": "Search Skills",
+    "searchPlaceholder": "Search skill name or description...",
+    "noResults": "No matching skills found"
   },
   "deeplink": {
     "confirmImport": "Confirm Import Provider",

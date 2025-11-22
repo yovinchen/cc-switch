@@ -735,7 +735,10 @@
       "removeSuccess": "仓库 {{owner}}/{{name}} 已删除",
       "removeFailed": "删除失败",
       "skillCount": "识别到 {{count}} 个技能"
-    }
+    },
+    "search": "搜索技能",
+    "searchPlaceholder": "搜索技能名称或描述...",
+    "noResults": "未找到匹配的技能"
   },
   "deeplink": {
     "confirmImport": "确认导入供应商配置",
