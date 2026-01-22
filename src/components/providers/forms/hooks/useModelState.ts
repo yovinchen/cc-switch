@@ -20,7 +20,8 @@ export function useModelState({
   const [defaultOpusModel, setDefaultOpusModel] = useState("");
 
   const isUserEditingRef = useRef(false);
-  const lastConfigRef = useRef(settingsConfig);
+  // 初始化为 null 确保首次渲染时 effect 会执行读取配置
+  const lastConfigRef = useRef<string | null>(null);
 
   // 初始化读取：读新键；若缺失，按兼容优先级回退
   // Haiku: DEFAULT_HAIKU || SMALL_FAST || MODEL
@@ -43,26 +44,34 @@ export function useModelState({
     try {
       const cfg = settingsConfig ? JSON.parse(settingsConfig) : {};
       const env = cfg?.env || {};
+      // 确保只接受字符串类型，null/undefined/其他类型都转为空字符串
       const model =
-        typeof env.ANTHROPIC_MODEL === "string" ? env.ANTHROPIC_MODEL : "";
+        typeof env.ANTHROPIC_MODEL === "string" && env.ANTHROPIC_MODEL !== null
+          ? env.ANTHROPIC_MODEL
+          : "";
       const reasoning =
-        typeof env.ANTHROPIC_REASONING_MODEL === "string"
+        typeof env.ANTHROPIC_REASONING_MODEL === "string" &&
+        env.ANTHROPIC_REASONING_MODEL !== null
           ? env.ANTHROPIC_REASONING_MODEL
           : "";
       const small =
-        typeof env.ANTHROPIC_SMALL_FAST_MODEL === "string"
+        typeof env.ANTHROPIC_SMALL_FAST_MODEL === "string" &&
+        env.ANTHROPIC_SMALL_FAST_MODEL !== null
           ? env.ANTHROPIC_SMALL_FAST_MODEL
           : "";
       const haiku =
-        typeof env.ANTHROPIC_DEFAULT_HAIKU_MODEL === "string"
+        typeof env.ANTHROPIC_DEFAULT_HAIKU_MODEL === "string" &&
+        env.ANTHROPIC_DEFAULT_HAIKU_MODEL !== null
           ? env.ANTHROPIC_DEFAULT_HAIKU_MODEL
           : small || model;
       const sonnet =
-        typeof env.ANTHROPIC_DEFAULT_SONNET_MODEL === "string"
+        typeof env.ANTHROPIC_DEFAULT_SONNET_MODEL === "string" &&
+        env.ANTHROPIC_DEFAULT_SONNET_MODEL !== null
           ? env.ANTHROPIC_DEFAULT_SONNET_MODEL
           : model || small;
       const opus =
-        typeof env.ANTHROPIC_DEFAULT_OPUS_MODEL === "string"
+        typeof env.ANTHROPIC_DEFAULT_OPUS_MODEL === "string" &&
+        env.ANTHROPIC_DEFAULT_OPUS_MODEL !== null
           ? env.ANTHROPIC_DEFAULT_OPUS_MODEL
           : model || small;
 

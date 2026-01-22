@@ -216,7 +216,7 @@ export function ProviderForm({
     mode: "onSubmit",
   });
 
-  const settingsConfigValue = form.getValues("settingsConfig");
+  const settingsConfigValue = form.watch("settingsConfig");
 
   // 使用 API Key hook
   const {
@@ -224,7 +224,7 @@ export function ProviderForm({
     handleApiKeyChange,
     showApiKey: shouldShowApiKey,
   } = useApiKeyState({
-    initialConfig: form.getValues("settingsConfig"),
+    initialConfig: settingsConfigValue,
     onConfigChange: (config) => form.setValue("settingsConfig", config),
     selectedPresetId,
     category,
@@ -235,7 +235,7 @@ export function ProviderForm({
   const { baseUrl, handleClaudeBaseUrlChange } = useBaseUrlState({
     appType: appId,
     category,
-    settingsConfig: form.getValues("settingsConfig"),
+    settingsConfig: settingsConfigValue,
     codexConfig: "",
     onSettingsConfigChange: (config) => form.setValue("settingsConfig", config),
     onCodexConfigChange: () => {
@@ -252,7 +252,7 @@ export function ProviderForm({
     defaultOpusModel,
     handleModelChange,
   } = useModelState({
-    settingsConfig: form.getValues("settingsConfig"),
+    settingsConfig: settingsConfigValue,
     onConfigChange: (config) => form.setValue("settingsConfig", config),
   });
 
@@ -295,6 +295,276 @@ export function ProviderForm({
           form.getValues("settingsConfig") || "{}",
         );
         currentConfig.openrouter_compat_mode = enabled;
+        form.setValue("settingsConfig", JSON.stringify(currentConfig, null, 2));
+      } catch {
+        // ignore
+      }
+    },
+    [form],
+  );
+
+  // Chat Completions 协议转换模式
+  const chatCompletionsModeEnabled = useMemo(() => {
+    if (appId !== "claude") return false;
+    try {
+      const config = JSON.parse(settingsConfigValue || "{}");
+      const raw = config?.chat_completions_mode;
+      if (typeof raw === "boolean") return raw;
+      if (typeof raw === "number") return raw !== 0;
+      if (typeof raw === "string") {
+        const normalized = raw.trim().toLowerCase();
+        return normalized === "true" || normalized === "1";
+      }
+    } catch {
+      // ignore
+    }
+    return false;
+  }, [appId, settingsConfigValue]);
+
+  const handleChatCompletionsModeChange = useCallback(
+    (enabled: boolean) => {
+      try {
+        const currentConfig = JSON.parse(
+          form.getValues("settingsConfig") || "{}",
+        );
+        currentConfig.chat_completions_mode = enabled;
+        // 如果禁用协议转换，同时清除转换器设置
+        if (!enabled) {
+          delete currentConfig.converter;
+        }
+        form.setValue("settingsConfig", JSON.stringify(currentConfig, null, 2));
+      } catch {
+        // ignore
+      }
+    },
+    [form],
+  );
+
+  // 转换器类型选择
+  const converterType = useMemo(() => {
+    if (appId !== "claude") return "legacy";
+    try {
+      const config = JSON.parse(settingsConfigValue || "{}");
+      const raw = config?.converter;
+      if (typeof raw === "string") {
+        const normalized = raw.trim().toLowerCase();
+        if (
+          normalized === "rig" ||
+          normalized === "v2" ||
+          normalized === "unified"
+        ) {
+          return "rig";
+        }
+      }
+    } catch {
+      // ignore
+    }
+    return "legacy";
+  }, [appId, settingsConfigValue]);
+
+  const handleConverterTypeChange = useCallback(
+    (type: string) => {
+      try {
+        const currentConfig = JSON.parse(
+          form.getValues("settingsConfig") || "{}",
+        );
+        currentConfig.converter = type;
+        form.setValue("settingsConfig", JSON.stringify(currentConfig, null, 2));
+      } catch {
+        // ignore
+      }
+    },
+    [form],
+  );
+
+  // 源协议格式
+  const sourceFormat = useMemo(() => {
+    if (appId !== "claude") return "anthropic";
+    try {
+      const config = JSON.parse(settingsConfigValue || "{}");
+      const raw = config?.source_format;
+      if (typeof raw === "string") {
+        return raw.trim().toLowerCase();
+      }
+    } catch {
+      // ignore
+    }
+    return "anthropic";
+  }, [appId, settingsConfigValue]);
+
+  const handleSourceFormatChange = useCallback(
+    (format: string) => {
+      try {
+        const currentConfig = JSON.parse(
+          form.getValues("settingsConfig") || "{}",
+        );
+        currentConfig.source_format = format;
+        form.setValue("settingsConfig", JSON.stringify(currentConfig, null, 2));
+      } catch {
+        // ignore
+      }
+    },
+    [form],
+  );
+
+  // 目标协议格式
+  const targetFormat = useMemo(() => {
+    if (appId !== "claude") return "openai";
+    try {
+      const config = JSON.parse(settingsConfigValue || "{}");
+      const raw = config?.target_format;
+      if (typeof raw === "string") {
+        return raw.trim().toLowerCase();
+      }
+    } catch {
+      // ignore
+    }
+    return "openai";
+  }, [appId, settingsConfigValue]);
+
+  const handleTargetFormatChange = useCallback(
+    (format: string) => {
+      try {
+        const currentConfig = JSON.parse(
+          form.getValues("settingsConfig") || "{}",
+        );
+        currentConfig.target_format = format;
+        form.setValue("settingsConfig", JSON.stringify(currentConfig, null, 2));
+      } catch {
+        // ignore
+      }
+    },
+    [form],
+  );
+
+  // Gemini 协议转换模式
+  const geminiProtocolConversionEnabled = useMemo(() => {
+    if (appId !== "gemini") return false;
+    try {
+      const config = JSON.parse(settingsConfigValue || "{}");
+      const raw = config?.protocol_conversion_mode;
+      if (typeof raw === "boolean") return raw;
+      if (typeof raw === "number") return raw !== 0;
+      if (typeof raw === "string") {
+        const normalized = raw.trim().toLowerCase();
+        return normalized === "true" || normalized === "1";
+      }
+    } catch {
+      // ignore
+    }
+    return false;
+  }, [appId, settingsConfigValue]);
+
+  const handleGeminiProtocolConversionChange = useCallback(
+    (enabled: boolean) => {
+      try {
+        const currentConfig = JSON.parse(
+          form.getValues("settingsConfig") || "{}",
+        );
+        currentConfig.protocol_conversion_mode = enabled;
+        // 如果禁用协议转换，同时清除转换器设置
+        if (!enabled) {
+          delete currentConfig.converter;
+          delete currentConfig.source_format;
+          delete currentConfig.target_format;
+        }
+        form.setValue("settingsConfig", JSON.stringify(currentConfig, null, 2));
+      } catch {
+        // ignore
+      }
+    },
+    [form],
+  );
+
+  // Gemini 转换器类型选择
+  const geminiConverterType = useMemo(() => {
+    if (appId !== "gemini") return "legacy";
+    try {
+      const config = JSON.parse(settingsConfigValue || "{}");
+      const raw = config?.converter;
+      if (typeof raw === "string") {
+        const normalized = raw.trim().toLowerCase();
+        if (
+          normalized === "rig" ||
+          normalized === "v2" ||
+          normalized === "unified"
+        ) {
+          return "rig";
+        }
+      }
+    } catch {
+      // ignore
+    }
+    return "legacy";
+  }, [appId, settingsConfigValue]);
+
+  const handleGeminiConverterTypeChange = useCallback(
+    (type: string) => {
+      try {
+        const currentConfig = JSON.parse(
+          form.getValues("settingsConfig") || "{}",
+        );
+        currentConfig.converter = type;
+        form.setValue("settingsConfig", JSON.stringify(currentConfig, null, 2));
+      } catch {
+        // ignore
+      }
+    },
+    [form],
+  );
+
+  // Gemini 源协议格式
+  const geminiSourceFormat = useMemo(() => {
+    if (appId !== "gemini") return "gemini";
+    try {
+      const config = JSON.parse(settingsConfigValue || "{}");
+      const raw = config?.source_format;
+      if (typeof raw === "string") {
+        return raw.trim().toLowerCase();
+      }
+    } catch {
+      // ignore
+    }
+    return "gemini";
+  }, [appId, settingsConfigValue]);
+
+  const handleGeminiSourceFormatChange = useCallback(
+    (format: string) => {
+      try {
+        const currentConfig = JSON.parse(
+          form.getValues("settingsConfig") || "{}",
+        );
+        currentConfig.source_format = format;
+        form.setValue("settingsConfig", JSON.stringify(currentConfig, null, 2));
+      } catch {
+        // ignore
+      }
+    },
+    [form],
+  );
+
+  // Gemini 目标协议格式
+  const geminiTargetFormat = useMemo(() => {
+    if (appId !== "gemini") return "gemini";
+    try {
+      const config = JSON.parse(settingsConfigValue || "{}");
+      const raw = config?.target_format;
+      if (typeof raw === "string") {
+        return raw.trim().toLowerCase();
+      }
+    } catch {
+      // ignore
+    }
+    return "gemini";
+  }, [appId, settingsConfigValue]);
+
+  const handleGeminiTargetFormatChange = useCallback(
+    (format: string) => {
+      try {
+        const currentConfig = JSON.parse(
+          form.getValues("settingsConfig") || "{}",
+        );
+        currentConfig.target_format = format;
         form.setValue("settingsConfig", JSON.stringify(currentConfig, null, 2));
       } catch {
         // ignore
@@ -395,7 +665,7 @@ export function ProviderForm({
   } = useTemplateValues({
     selectedPresetId: appId === "claude" ? selectedPresetId : null,
     presetEntries: appId === "claude" ? presetEntries : [],
-    settingsConfig: form.getValues("settingsConfig"),
+    settingsConfig: settingsConfigValue,
     onConfigChange: (config) => form.setValue("settingsConfig", config),
   });
 
@@ -409,7 +679,7 @@ export function ProviderForm({
     isExtracting: isClaudeExtracting,
     handleExtract: handleClaudeExtract,
   } = useCommonConfigSnippet({
-    settingsConfig: form.getValues("settingsConfig"),
+    settingsConfig: settingsConfigValue,
     onConfigChange: (config) => form.setValue("settingsConfig", config),
     initialData: appId === "claude" ? initialData : undefined,
     selectedPresetId: selectedPresetId ?? undefined,
@@ -848,11 +1118,20 @@ export function ProviderForm({
       try {
         const envObj = envStringToObj(geminiEnv);
         const configObj = geminiConfig.trim() ? JSON.parse(geminiConfig) : {};
-        const combined = {
+        let baseConfig: Record<string, unknown> = {};
+        try {
+          const parsed = JSON.parse(values.settingsConfig || "{}");
+          if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+            baseConfig = parsed;
+          }
+        } catch {
+          // ignore
+        }
+        settingsConfig = JSON.stringify({
+          ...baseConfig,
           env: envObj,
           config: configObj,
-        };
-        settingsConfig = JSON.stringify(combined);
+        });
       } catch (err) {
         // 如果解析失败，使用表单中的配置
         settingsConfig = values.settingsConfig.trim();
@@ -1226,10 +1505,7 @@ export function ProviderForm({
         {appId === "claude" && (
           <ClaudeFormFields
             providerId={providerId}
-            shouldShowApiKey={shouldShowApiKey(
-              form.getValues("settingsConfig"),
-              isEditMode,
-            )}
+            shouldShowApiKey={shouldShowApiKey(settingsConfigValue, isEditMode)}
             apiKey={apiKey}
             onApiKeyChange={handleApiKeyChange}
             category={category}
@@ -1251,7 +1527,9 @@ export function ProviderForm({
             }
             autoSelect={endpointAutoSelect}
             onAutoSelectChange={setEndpointAutoSelect}
-            shouldShowModelSelector={category !== "official"}
+            shouldShowModelSelector={
+              category !== "official" || chatCompletionsModeEnabled
+            }
             claudeModel={claudeModel}
             reasoningModel={reasoningModel}
             defaultHaikuModel={defaultHaikuModel}
@@ -1262,6 +1540,16 @@ export function ProviderForm({
             showOpenRouterCompatToggle={false}
             openRouterCompatEnabled={openRouterCompatEnabled}
             onOpenRouterCompatChange={handleOpenRouterCompatChange}
+            showChatCompletionsMode={category !== "official"}
+            chatCompletionsModeEnabled={chatCompletionsModeEnabled}
+            onChatCompletionsModeChange={handleChatCompletionsModeChange}
+            showConverterSelector={category !== "official"}
+            converterType={converterType}
+            onConverterTypeChange={handleConverterTypeChange}
+            sourceFormat={sourceFormat}
+            targetFormat={targetFormat}
+            onSourceFormatChange={handleSourceFormatChange}
+            onTargetFormatChange={handleTargetFormatChange}
           />
         )}
 
@@ -1297,10 +1585,7 @@ export function ProviderForm({
         {appId === "gemini" && (
           <GeminiFormFields
             providerId={providerId}
-            shouldShowApiKey={shouldShowApiKey(
-              form.getValues("settingsConfig"),
-              isEditMode,
-            )}
+            shouldShowApiKey={shouldShowApiKey(settingsConfigValue, isEditMode)}
             apiKey={geminiApiKey}
             onApiKeyChange={handleGeminiApiKeyChange}
             category={category}
@@ -1320,6 +1605,16 @@ export function ProviderForm({
             model={geminiModel}
             onModelChange={handleGeminiModelChange}
             speedTestEndpoints={speedTestEndpoints}
+            showProtocolConversionMode={category !== "official"}
+            protocolConversionEnabled={geminiProtocolConversionEnabled}
+            onProtocolConversionChange={handleGeminiProtocolConversionChange}
+            showConverterSelector={category !== "official"}
+            converterType={geminiConverterType}
+            onConverterTypeChange={handleGeminiConverterTypeChange}
+            sourceFormat={geminiSourceFormat}
+            targetFormat={geminiTargetFormat}
+            onSourceFormatChange={handleGeminiSourceFormatChange}
+            onTargetFormatChange={handleGeminiTargetFormatChange}
           />
         )}
 
@@ -1406,7 +1701,7 @@ export function ProviderForm({
             <div className="space-y-2">
               <Label htmlFor="settingsConfig">{t("provider.configJson")}</Label>
               <JsonEditor
-                value={form.getValues("settingsConfig")}
+                value={settingsConfigValue}
                 onChange={(config) => form.setValue("settingsConfig", config)}
                 placeholder={`{
   "npm": "@ai-sdk/openai-compatible",
@@ -1434,7 +1729,7 @@ export function ProviderForm({
         ) : (
           <>
             <CommonConfigEditor
-              value={form.getValues("settingsConfig")}
+              value={settingsConfigValue}
               onChange={(value) => form.setValue("settingsConfig", value)}
               useCommonConfig={useCommonConfig}
               onCommonConfigToggle={handleCommonConfigToggle}

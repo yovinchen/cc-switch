@@ -128,4 +128,26 @@ pub trait ProviderAdapter: Send + Sync {
     fn transform_response(&self, body: Value) -> Result<Value, ProxyError> {
         Ok(body)
     }
+
+    /// 转换响应体（带 Provider 配置）
+    ///
+    /// 将响应体从一种格式转换为另一种格式，使用 Provider 配置来确定转换方向。
+    /// 这对于多协议转换场景非常重要，因为需要知道原始的 source_format 和 target_format。
+    ///
+    /// # Arguments
+    /// * `body` - 原始响应体
+    /// * `provider` - Provider 配置（用于获取协议配置）
+    ///
+    /// # Returns
+    /// * `Ok(Value)` - 转换后的响应体
+    /// * `Err(ProxyError)` - 转换失败
+    #[allow(dead_code)]
+    fn transform_response_with_provider(
+        &self,
+        body: Value,
+        _provider: &Provider,
+    ) -> Result<Value, ProxyError> {
+        // 默认实现调用无 provider 版本
+        self.transform_response(body)
+    }
 }

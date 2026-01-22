@@ -7,12 +7,16 @@ use super::{
     error::*,
     failover_switch::FailoverSwitchManager,
     provider_router::ProviderRouter,
-    providers::{get_adapter, ProviderAdapter, ProviderType},
+    providers::{get_adapter_for_provider_type, protocol_helper, ProviderAdapter, ProviderType},
     thinking_rectifier::{rectify_anthropic_request, should_rectify_thinking_signature},
     types::{ProxyStatus, RectifierConfig},
     ProxyError,
 };
-use crate::{app_config::AppType, provider::Provider};
+use crate::{
+    app_config::AppType,
+    provider::Provider,
+    proxy::unified::protocol::ProtocolFormat,
+};
 use reqwest::Response;
 use serde_json::Value;
 use std::sync::Arc;
@@ -140,8 +144,6 @@ impl RequestForwarder {
         headers: axum::http::HeaderMap,
         providers: Vec<Provider>,
     ) -> Result<ForwardResult, ForwardError> {
-        // 获取适配器
-        let adapter = get_adapter(app_type);
         let app_type_str = app_type.as_str();
 
         if providers.is_empty() {
@@ -190,9 +192,19 @@ impl RequestForwarder {
                 status.last_request_at = Some(chrono::Utc::now().to_rfc3339());
             }
 
+            let provider_type = ProviderType::from_app_type_and_config(app_type, provider);
+            let adapter = get_adapter_for_provider_type(&provider_type);
+
             // 转发请求（每个 Provider 只尝试一次，重试由客户端控制）
             match self
-                .forward(provider, endpoint, &body, &headers, adapter.as_ref())
+                .forward(
+                    provider,
+                    endpoint,
+                    &body,
+                    &headers,
+                    adapter.as_ref(),
+                    provider_type,
+                )
                 .await
             {
                 Ok(response) => {
@@ -253,10 +265,9 @@ impl RequestForwarder {
                 }
                 Err(e) => {
                     // 检测是否需要触发整流器（仅 Claude/ClaudeAuth 供应商）
-                    let provider_type = ProviderType::from_app_type_and_config(app_type, provider);
                     let is_anthropic_provider = matches!(
                         provider_type,
-                        ProviderType::Claude | ProviderType::ClaudeAuth
+                        ProviderType::Claude | ProviderType::ClaudeAuth | ProviderType::ChatCompletions
                     );
 
                     if is_anthropic_provider {
@@ -333,7 +344,14 @@ impl RequestForwarder {
 
                             // 使用同一供应商重试（不计入熔断器）
                             match self
-                                .forward(provider, endpoint, &body, &headers, adapter.as_ref())
+                                .forward(
+                                    provider,
+                                    endpoint,
+                                    &body,
+                                    &headers,
+                                    adapter.as_ref(),
+                                    provider_type,
+                                )
                                 .await
                             {
                                 Ok(response) => {
@@ -554,6 +572,7 @@ impl RequestForwarder {
         body: &Value,
         headers: &axum::http::HeaderMap,
         adapter: &dyn ProviderAdapter,
+        provider_type: ProviderType,
     ) -> Result<Response, ProxyError> {
         // 使用适配器提取 base_url
         let base_url = adapter.extract_base_url(provider)?;
@@ -561,26 +580,20 @@ impl RequestForwarder {
         // 检查是否需要格式转换
         let needs_transform = adapter.needs_transform(provider);
 
-        // 确定有效端点：
-        // - 如果需要转换且是 Claude 的 /v1/messages 端点，改写为 /v1/chat/completions
-        // - 但如果 base_url 已包含 chat/completions，则不再自动添加
-        let effective_endpoint = if needs_transform && adapter.name() == "Claude" {
-            let base_has_chat_completions = base_url.contains("chat/completions");
-            if endpoint == "/v1/messages" && !base_has_chat_completions {
-                "/v1/chat/completions"
-            } else {
-                endpoint
-            }
+        // 应用模型映射（必须在确定端点之前，因为 Gemini URL 路径包含模型名）
+        let (mapped_body, _original_model, _mapped_model) =
+            super::model_mapper::apply_model_mapping(body.clone(), provider);
+
+        // 确定有效端点（多协议转换时按目标协议选择端点）
+        // 注意：使用映射后的 body，确保 Gemini URL 中的模型名称正确
+        let effective_endpoint = if needs_transform {
+            resolve_transform_endpoint(provider, endpoint, &mapped_body, &base_url, provider_type)?
         } else {
-            endpoint
+            endpoint.to_string()
         };
 
         // 使用适配器构建 URL
-        let url = adapter.build_url(&base_url, effective_endpoint);
-
-        // 应用模型映射（独立于格式转换）
-        let (mapped_body, _original_model, _mapped_model) =
-            super::model_mapper::apply_model_mapping(body.clone(), provider);
+        let url = adapter.build_url(&base_url, &effective_endpoint);
 
         // 转换请求体（如果需要）
         let request_body = if needs_transform {
@@ -730,6 +743,82 @@ impl RequestForwarder {
             _ => ErrorCategory::NonRetryable,
         }
     }
+}
+
+fn resolve_transform_endpoint(
+    provider: &Provider,
+    endpoint: &str,
+    body: &Value,
+    base_url: &str,
+    provider_type: ProviderType,
+) -> Result<String, ProxyError> {
+    let (default_source, default_target) = default_protocol_pair(provider_type);
+    let config = protocol_helper::get_protocol_config(provider, default_source, default_target);
+    let target_format = config.target_format;
+
+    match target_format {
+        ProtocolFormat::Gemini => resolve_gemini_endpoint(provider, body),
+        _ if target_format.is_openai_compatible() => {
+            let base_has_chat_completions = base_url.contains("chat/completions");
+            let target_endpoint = target_format.default_endpoint();
+            if endpoint == "/v1/messages" && base_has_chat_completions {
+                Ok(endpoint.to_string())
+            } else {
+                Ok(target_endpoint.to_string())
+            }
+        }
+        _ => Ok(target_format.default_endpoint().to_string()),
+    }
+}
+
+fn default_protocol_pair(provider_type: ProviderType) -> (ProtocolFormat, ProtocolFormat) {
+    match provider_type {
+        ProviderType::Gemini | ProviderType::GeminiCli => {
+            (ProtocolFormat::Gemini, ProtocolFormat::Gemini)
+        }
+        ProviderType::Codex => (ProtocolFormat::OpenAIChat, ProtocolFormat::OpenAIChat),
+        _ => (ProtocolFormat::Anthropic, ProtocolFormat::OpenAIChat),
+    }
+}
+
+fn resolve_gemini_endpoint(provider: &Provider, body: &Value) -> Result<String, ProxyError> {
+    let model = resolve_gemini_model(provider, body).ok_or_else(|| {
+        ProxyError::ConfigError("Gemini 目标格式缺少模型配置".to_string())
+    })?;
+
+    let is_stream = body
+        .get("stream")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false);
+
+    if is_stream {
+        Ok(format!(
+            "/v1beta/models/{model}:streamGenerateContent?alt=sse"
+        ))
+    } else {
+        Ok(format!("/v1beta/models/{model}:generateContent"))
+    }
+}
+
+/// 解析 Gemini 目标模型
+///
+/// 优先级：
+/// 1. 请求体中的 model 字段（已经过 model_mapper 映射）
+/// 2. Provider 配置的 GEMINI_MODEL
+fn resolve_gemini_model(provider: &Provider, body: &Value) -> Option<String> {
+    // 优先使用请求体中的模型（已经过 model_mapper 映射）
+    if let Some(model) = body.get("model").and_then(|m| m.as_str()).filter(|s| !s.is_empty()) {
+        return Some(model.to_string());
+    }
+
+    // 回退到 GEMINI_MODEL 配置
+    provider
+        .settings_config
+        .get("env")
+        .and_then(|env| env.get("GEMINI_MODEL"))
+        .and_then(|v| v.as_str())
+        .filter(|s| !s.is_empty())
+        .map(|s| s.to_string())
 }
 
 /// 从 ProxyError 中提取错误消息

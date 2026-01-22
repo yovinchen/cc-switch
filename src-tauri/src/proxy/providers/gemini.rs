@@ -1,14 +1,24 @@
 //! Gemini (Google) Provider Adapter
 //!
-//! 支持 API Key 和 OAuth 两种认证方式
+//! 支持 API Key 和 OAuth 两种认证方式，以及多协议转换
 //!
 //! ## 认证模式
 //! - **Gemini**: API Key 认证 (x-goog-api-key)
 //! - **GeminiCli**: OAuth Bearer 认证 (用于 Gemini CLI)
+//!
+//! ## 多协议转换
+//! 支持通过 `source_format` 和 `target_format` 配置自定义协议转换：
+//! - `source_format`: 源协议格式（默认 "gemini"）
+//! - `target_format`: 目标协议格式（默认 "gemini"，即透传）
 
 use super::{AuthInfo, AuthStrategy, ProviderAdapter, ProviderType};
+use super::protocol_helper;
 use crate::provider::Provider;
 use crate::proxy::error::ProxyError;
+use crate::proxy::unified::{
+    converter::ProtocolConverter,
+    protocol::{ProtocolConfig, ProtocolFormat},
+};
 use reqwest::RequestBuilder;
 
 /// Gemini 适配器
@@ -40,6 +50,23 @@ impl OAuthCredentials {
 impl GeminiAdapter {
     pub fn new() -> Self {
         Self
+    }
+
+    /// 获取协议配置
+    ///
+    /// 从 Provider 配置中解析 `source_format` 和 `target_format`
+    /// 默认：Gemini → Gemini（透传）
+    pub fn get_protocol_config(&self, provider: &Provider) -> ProtocolConfig {
+        protocol_helper::get_protocol_config(
+            provider,
+            ProtocolFormat::Gemini,
+            ProtocolFormat::Gemini,
+        )
+    }
+
+    /// 检查是否配置了自定义协议转换
+    pub fn has_custom_protocol(&self, provider: &Provider) -> bool {
+        protocol_helper::has_custom_protocol_config(provider)
     }
 
     /// 获取供应商类型
@@ -229,6 +256,61 @@ impl ProviderAdapter for GeminiAdapter {
             // API Key 认证
             _ => request.header("x-goog-api-key", &auth.api_key),
         }
+    }
+
+    fn needs_transform(&self, provider: &Provider) -> bool {
+        // 检查是否配置了自定义协议转换
+        if self.has_custom_protocol(provider) {
+            let config = self.get_protocol_config(provider);
+            return config.needs_transform();
+        }
+        // 默认不转换（透传）
+        false
+    }
+
+    fn transform_request(
+        &self,
+        body: serde_json::Value,
+        provider: &Provider,
+    ) -> Result<serde_json::Value, ProxyError> {
+        // 检查是否使用自定义协议转换
+        if self.has_custom_protocol(provider) {
+            let config = self.get_protocol_config(provider);
+            log::debug!(
+                "[Gemini] 使用多协议转换: {} -> {}",
+                config.source_format,
+                config.target_format
+            );
+            return ProtocolConverter::convert_request(body, &config, provider);
+        }
+        // 默认透传
+        Ok(body)
+    }
+
+    fn transform_response(&self, body: serde_json::Value) -> Result<serde_json::Value, ProxyError> {
+        // 默认透传
+        Ok(body)
+    }
+
+    fn transform_response_with_provider(
+        &self,
+        body: serde_json::Value,
+        provider: &Provider,
+    ) -> Result<serde_json::Value, ProxyError> {
+        // 检查是否使用自定义协议转换
+        if self.has_custom_protocol(provider) {
+            let config = self.get_protocol_config(provider);
+            // 响应转换是请求转换的逆过程
+            let response_config = ProtocolConfig::transform(config.target_format, config.source_format);
+            log::debug!(
+                "[Gemini] 使用多协议响应转换: {} -> {}",
+                response_config.source_format,
+                response_config.target_format
+            );
+            return ProtocolConverter::convert_response(body, &response_config);
+        }
+        // 默认透传
+        Ok(body)
     }
 }
 

@@ -1,25 +1,79 @@
 //! 模型映射模块
 //!
 //! 在请求转发前，根据 Provider 配置替换请求中的模型名称
+//!
+//! ## 设计原则
+//!
+//! 这是**唯一的模型映射入口**，转换器（transform_v2.rs、converter.rs）不再执行模型映射。
+//! 这样确保：
+//! 1. 模型映射只执行一次，避免重复映射导致的问题
+//! 2. 所有映射配置在一处统一管理
+//! 3. 配置优先级清晰明确
+//!
+//! ## 配置优先级（从高到低）
+//!
+//! 1. 显式 `model_mapping` 配置（精确匹配）
+//! 2. `ANTHROPIC_REASONING_MODEL`（当启用 thinking 模式时）
+//! 3. 按模型类型匹配（haiku/opus/sonnet）
+//! 4. 按模型族匹配（claude/gemini/gpt）
+//! 5. 回退到默认模型或原始模型
 
 use crate::provider::Provider;
 use serde_json::Value;
+use std::collections::HashMap;
 
 /// 模型映射配置
 pub struct ModelMapping {
+    /// 显式模型映射表（精确匹配，优先级最高）
+    pub explicit_mapping: HashMap<String, String>,
+    /// Anthropic Haiku 模型
     pub haiku_model: Option<String>,
+    /// Anthropic Sonnet 模型
     pub sonnet_model: Option<String>,
+    /// Anthropic Opus 模型
     pub opus_model: Option<String>,
-    pub default_model: Option<String>,
+    /// Anthropic 默认模型
+    pub anthropic_model: Option<String>,
+    /// Anthropic 推理模型（thinking 模式）
     pub reasoning_model: Option<String>,
+    /// Gemini 模型
+    pub gemini_model: Option<String>,
+    /// OpenAI 模型
+    pub openai_model: Option<String>,
+    /// 通用默认模型
+    pub default_model: Option<String>,
 }
 
 impl ModelMapping {
     /// 从 Provider 配置中提取模型映射
+    ///
+    /// 支持以下配置来源：
+    /// - `settings_config.model_mapping`: 显式映射表（精确匹配）
+    /// - `settings_config.env.ANTHROPIC_*`: Anthropic 相关配置
+    /// - `settings_config.env.GEMINI_MODEL`: Gemini 模型
+    /// - `settings_config.env.OPENAI_MODEL`: OpenAI 模型
+    /// - `settings_config.env.MODEL`: 通用默认模型
     pub fn from_provider(provider: &Provider) -> Self {
         let env = provider.settings_config.get("env");
 
+        // 解析显式映射表
+        let explicit_mapping = provider
+            .settings_config
+            .get("model_mapping")
+            .and_then(|m| m.as_object())
+            .map(|obj| {
+                obj.iter()
+                    .filter_map(|(k, v)| {
+                        v.as_str()
+                            .filter(|s| !s.is_empty())
+                            .map(|s| (k.clone(), s.to_string()))
+                    })
+                    .collect()
+            })
+            .unwrap_or_default();
+
         Self {
+            explicit_mapping,
             haiku_model: env
                 .and_then(|e| e.get("ANTHROPIC_DEFAULT_HAIKU_MODEL"))
                 .and_then(|v| v.as_str())
@@ -35,7 +89,7 @@ impl ModelMapping {
                 .and_then(|v| v.as_str())
                 .filter(|s| !s.is_empty())
                 .map(String::from),
-            default_model: env
+            anthropic_model: env
                 .and_then(|e| e.get("ANTHROPIC_MODEL"))
                 .and_then(|v| v.as_str())
                 .filter(|s| !s.is_empty())
@@ -45,52 +99,133 @@ impl ModelMapping {
                 .and_then(|v| v.as_str())
                 .filter(|s| !s.is_empty())
                 .map(String::from),
+            gemini_model: env
+                .and_then(|e| e.get("GEMINI_MODEL"))
+                .and_then(|v| v.as_str())
+                .filter(|s| !s.is_empty())
+                .map(String::from),
+            openai_model: env
+                .and_then(|e| e.get("OPENAI_MODEL"))
+                .and_then(|v| v.as_str())
+                .filter(|s| !s.is_empty())
+                .map(String::from),
+            default_model: env
+                .and_then(|e| e.get("MODEL"))
+                .and_then(|v| v.as_str())
+                .filter(|s| !s.is_empty())
+                .map(String::from),
         }
     }
 
     /// 检查是否配置了任何模型映射
     pub fn has_mapping(&self) -> bool {
-        self.haiku_model.is_some()
+        !self.explicit_mapping.is_empty()
+            || self.haiku_model.is_some()
             || self.sonnet_model.is_some()
             || self.opus_model.is_some()
-            || self.default_model.is_some()
+            || self.anthropic_model.is_some()
             || self.reasoning_model.is_some()
+            || self.gemini_model.is_some()
+            || self.openai_model.is_some()
+            || self.default_model.is_some()
     }
 
     /// 根据原始模型名称获取映射后的模型
+    ///
+    /// 映射优先级：
+    /// 1. 显式 model_mapping（精确匹配）
+    /// 2. thinking 模式使用推理模型
+    /// 3. 按模型类型匹配（haiku/opus/sonnet）
+    /// 4. 按模型族匹配（claude/gemini/gpt）
+    /// 5. 回退到默认模型
+    /// 6. 无映射则保持原样
     pub fn map_model(&self, original_model: &str, has_thinking: bool) -> String {
         let model_lower = original_model.to_lowercase();
 
-        // 1. thinking 模式优先使用推理模型
+        // 1. 显式映射（精确匹配，优先级最高）
+        if let Some(mapped) = self.explicit_mapping.get(original_model) {
+            log::debug!("[ModelMapper] 显式映射: {original_model} → {mapped}");
+            return mapped.clone();
+        }
+
+        // 2. thinking 模式优先使用推理模型
         if has_thinking {
             if let Some(ref m) = self.reasoning_model {
+                log::debug!("[ModelMapper] 推理模型映射: {original_model} → {m}");
                 return m.clone();
             }
         }
 
-        // 2. 按模型类型匹配
+        // 3. 按模型类型匹配（Anthropic 模型族）
         if model_lower.contains("haiku") {
             if let Some(ref m) = self.haiku_model {
+                log::debug!("[ModelMapper] Haiku 映射: {original_model} → {m}");
                 return m.clone();
             }
         }
         if model_lower.contains("opus") {
             if let Some(ref m) = self.opus_model {
+                log::debug!("[ModelMapper] Opus 映射: {original_model} → {m}");
                 return m.clone();
             }
         }
         if model_lower.contains("sonnet") {
             if let Some(ref m) = self.sonnet_model {
+                log::debug!("[ModelMapper] Sonnet 映射: {original_model} → {m}");
                 return m.clone();
             }
         }
 
-        // 3. 默认模型
+        // 4. 按模型族匹配
+        // 4.1 Claude 模型族
+        if model_lower.contains("claude") {
+            if let Some(ref m) = self.anthropic_model {
+                log::debug!("[ModelMapper] Anthropic 默认映射: {original_model} → {m}");
+                return m.clone();
+            }
+        }
+        // 4.2 Gemini 模型族
+        if model_lower.contains("gemini") {
+            if let Some(ref m) = self.gemini_model {
+                log::debug!("[ModelMapper] Gemini 映射: {original_model} → {m}");
+                return m.clone();
+            }
+        }
+        // 4.3 OpenAI 模型族（gpt, o1, o3 等）
+        if model_lower.contains("gpt")
+            || model_lower.contains("o1")
+            || model_lower.contains("o3")
+        {
+            if let Some(ref m) = self.openai_model {
+                log::debug!("[ModelMapper] OpenAI 映射: {original_model} → {m}");
+                return m.clone();
+            }
+        }
+
+        // 5. 回退到默认模型（按优先级尝试）
+        // 5.1 Anthropic 默认（因为主要用于 Claude 转发）
+        if let Some(ref m) = self.anthropic_model {
+            log::debug!("[ModelMapper] 回退 Anthropic 默认: {original_model} → {m}");
+            return m.clone();
+        }
+        // 5.2 Gemini 默认
+        if let Some(ref m) = self.gemini_model {
+            log::debug!("[ModelMapper] 回退 Gemini 默认: {original_model} → {m}");
+            return m.clone();
+        }
+        // 5.3 OpenAI 默认
+        if let Some(ref m) = self.openai_model {
+            log::debug!("[ModelMapper] 回退 OpenAI 默认: {original_model} → {m}");
+            return m.clone();
+        }
+        // 5.4 通用默认
         if let Some(ref m) = self.default_model {
+            log::debug!("[ModelMapper] 回退通用默认: {original_model} → {m}");
             return m.clone();
         }
 
-        // 4. 无映射，保持原样
+        // 6. 无映射，保持原样
+        log::debug!("[ModelMapper] 无映射，保持原样: {original_model}");
         original_model.to_string()
     }
 }

@@ -13,14 +13,19 @@ use super::{
         CLAUDE_PARSER_CONFIG, CODEX_PARSER_CONFIG, GEMINI_PARSER_CONFIG, OPENAI_PARSER_CONFIG,
     },
     handler_context::RequestContext,
-    providers::{get_adapter, streaming::create_anthropic_sse_stream, transform},
-    response_processor::{create_logged_passthrough_stream, process_response, SseUsageCollector},
+    providers::{
+        get_adapter_for_provider_type, protocol_helper, streaming::create_anthropic_sse_stream,
+        transform, ProviderAdapter, ProviderType,
+    },
+    response_processor::{
+        create_logged_passthrough_stream, is_sse_response, process_response, SseUsageCollector,
+    },
     server::ProxyState,
     types::*,
     usage::parser::TokenUsage,
     ProxyError,
 };
-use crate::app_config::AppType;
+use crate::{app_config::AppType, proxy::unified::protocol::ProtocolFormat};
 use axum::{extract::State, http::StatusCode, response::IntoResponse, Json};
 use rust_decimal::Decimal;
 use serde_json::{json, Value};
@@ -64,7 +69,7 @@ pub async fn handle_messages(
     let mut ctx =
         RequestContext::new(&state, &body, &headers, AppType::Claude, "Claude", "claude").await?;
 
-    let is_stream = body
+    let request_is_stream = body
         .get("stream")
         .and_then(|s| s.as_bool())
         .unwrap_or(false);
@@ -86,7 +91,7 @@ pub async fn handle_messages(
             if let Some(provider) = err.provider.take() {
                 ctx.provider = provider;
             }
-            log_forward_error(&state, &ctx, is_stream, &err.error);
+            log_forward_error(&state, &ctx, request_is_stream, &err.error);
             return Err(err.error);
         }
     };
@@ -95,12 +100,24 @@ pub async fn handle_messages(
     let response = result.response;
 
     // 检查是否需要格式转换（OpenRouter 等中转服务）
-    let adapter = get_adapter(&AppType::Claude);
+    let provider_type = ProviderType::from_app_type_and_config(&AppType::Claude, &ctx.provider);
+    let adapter = get_adapter_for_provider_type(&provider_type);
     let needs_transform = adapter.needs_transform(&ctx.provider);
 
     // Claude 特有：格式转换处理
     if needs_transform {
-        return handle_claude_transform(response, &ctx, &state, &body, is_stream).await;
+        let response_is_stream = is_sse_response(&response);
+        if protocol_helper::has_custom_protocol_config(&ctx.provider) {
+            return handle_custom_protocol_transform(
+                response,
+                &ctx,
+                &state,
+                adapter.as_ref(),
+                response_is_stream,
+            )
+            .await;
+        }
+        return handle_claude_transform(response, &ctx, &state, &body, response_is_stream).await;
     }
 
     // 通用响应处理（透传模式）
@@ -259,6 +276,224 @@ async fn handle_claude_transform(
         log::error!("[Claude] 构建响应失败: {e}");
         ProxyError::Internal(format!("Failed to build response: {e}"))
     })
+}
+
+/// Claude 多协议响应转换
+///
+/// 支持流式和非流式响应的协议转换
+async fn handle_custom_protocol_transform(
+    response: reqwest::Response,
+    ctx: &RequestContext,
+    state: &ProxyState,
+    adapter: &dyn ProviderAdapter,
+    is_stream: bool,
+) -> Result<axum::response::Response, ProxyError> {
+    let config = protocol_helper::get_protocol_config(
+        &ctx.provider,
+        ProtocolFormat::Anthropic,
+        ProtocolFormat::OpenAIChat,
+    );
+
+    if is_stream {
+        // 流式响应转换
+        return handle_custom_protocol_stream_transform(response, ctx, state, &config).await;
+    }
+
+    // 非流式响应转换
+    let status = response.status();
+    let response_headers = response.headers().clone();
+
+    let body_bytes = response.bytes().await.map_err(|e| {
+        log::error!("[Claude] 读取响应体失败: {e}");
+        ProxyError::ForwardFailed(format!("Failed to read response body: {e}"))
+    })?;
+
+    let body_str = String::from_utf8_lossy(&body_bytes);
+    let raw_response: Value = serde_json::from_slice(&body_bytes).map_err(|e| {
+        log::error!("[Claude] 解析响应失败: {e}, body: {body_str}");
+        ProxyError::TransformError(format!("Failed to parse response: {e}"))
+    })?;
+
+    let converted = adapter
+        .transform_response_with_provider(raw_response, &ctx.provider)
+        .map_err(|e| {
+            log::error!("[Claude] 转换响应失败: {e}");
+            e
+        })?;
+
+    // 记录使用量（按 source_format 选择解析器，因为响应已转换回源格式）
+    let usage = match config.source_format {
+        ProtocolFormat::Anthropic => TokenUsage::from_claude_response(&converted),
+        ProtocolFormat::OpenAIChat => TokenUsage::from_openai_response(&converted),
+        ProtocolFormat::Gemini => TokenUsage::from_gemini_response(&converted),
+        _ => None,
+    };
+
+    if let Some(usage) = usage {
+        let model = usage
+            .model
+            .clone()
+            .or_else(|| {
+                converted
+                    .get("model")
+                    .and_then(|m| m.as_str())
+                    .map(|s| s.to_string())
+            })
+            .or_else(|| {
+                converted
+                    .get("modelVersion")
+                    .and_then(|m| m.as_str())
+                    .map(|s| s.to_string())
+            })
+            .unwrap_or_else(|| ctx.request_model.clone());
+        let latency_ms = ctx.latency_ms();
+
+        tokio::spawn({
+            let state = state.clone();
+            let provider_id = ctx.provider.id.clone();
+            async move {
+                log_usage(
+                    &state,
+                    &provider_id,
+                    "claude",
+                    &model,
+                    usage,
+                    latency_ms,
+                    None,
+                    false,
+                    status.as_u16(),
+                )
+                .await;
+            }
+        });
+    }
+
+    let mut builder = axum::response::Response::builder().status(status);
+    for (key, value) in response_headers.iter() {
+        if key.as_str().to_lowercase() != "content-length"
+            && key.as_str().to_lowercase() != "transfer-encoding"
+        {
+            builder = builder.header(key, value);
+        }
+    }
+
+    builder = builder.header("content-type", "application/json");
+
+    let response_body = serde_json::to_vec(&converted).map_err(|e| {
+        log::error!("[Claude] 序列化响应失败: {e}");
+        ProxyError::TransformError(format!("Failed to serialize response: {e}"))
+    })?;
+
+    let body = axum::body::Body::from(response_body);
+    builder.body(body).map_err(|e| {
+        log::error!("[Claude] 构建响应失败: {e}");
+        ProxyError::Internal(format!("Failed to build response: {e}"))
+    })
+}
+
+/// Claude 多协议流式响应转换
+///
+/// 根据目标协议格式选择合适的流式转换器
+async fn handle_custom_protocol_stream_transform(
+    response: reqwest::Response,
+    ctx: &RequestContext,
+    state: &ProxyState,
+    config: &crate::proxy::unified::protocol::ProtocolConfig,
+) -> Result<axum::response::Response, ProxyError> {
+    let status = response.status();
+
+    // 根据目标格式选择流式转换器
+    match config.target_format {
+        ProtocolFormat::OpenAIChat => {
+            // OpenAI SSE → Anthropic SSE 转换
+            let stream = response.bytes_stream();
+            let sse_stream = create_anthropic_sse_stream(stream);
+
+            // 创建使用量收集器
+            let usage_collector = {
+                let state = state.clone();
+                let provider_id = ctx.provider.id.clone();
+                let model = ctx.request_model.clone();
+                let status_code = status.as_u16();
+                let start_time = ctx.start_time;
+
+                SseUsageCollector::new(start_time, move |events, first_token_ms| {
+                    if let Some(usage) = TokenUsage::from_claude_stream_events(&events) {
+                        let latency_ms = start_time.elapsed().as_millis() as u64;
+                        let state = state.clone();
+                        let provider_id = provider_id.clone();
+                        let model = model.clone();
+
+                        tokio::spawn(async move {
+                            log_usage(
+                                &state,
+                                &provider_id,
+                                "claude",
+                                &model,
+                                usage,
+                                latency_ms,
+                                first_token_ms,
+                                true,
+                                status_code,
+                            )
+                            .await;
+                        });
+                    } else {
+                        log::debug!("[Claude] 多协议流式响应缺少 usage 统计，跳过消费记录");
+                    }
+                })
+            };
+
+            // 获取流式超时配置
+            let timeout_config = ctx.streaming_timeout_config();
+
+            let logged_stream = create_logged_passthrough_stream(
+                sse_stream,
+                "Claude/CustomProtocol",
+                Some(usage_collector),
+                timeout_config,
+            );
+
+            let mut headers = axum::http::HeaderMap::new();
+            headers.insert(
+                "Content-Type",
+                axum::http::HeaderValue::from_static("text/event-stream"),
+            );
+            headers.insert(
+                "Cache-Control",
+                axum::http::HeaderValue::from_static("no-cache"),
+            );
+            headers.insert(
+                "Connection",
+                axum::http::HeaderValue::from_static("keep-alive"),
+            );
+
+            let body = axum::body::Body::from_stream(logged_stream);
+            let mut builder = axum::response::Response::builder().status(status);
+            for (key, value) in headers.iter() {
+                builder = builder.header(key, value);
+            }
+
+            builder.body(body).map_err(|e| {
+                log::error!("[Claude] 构建流式响应失败: {e}");
+                ProxyError::Internal(format!("Failed to build streaming response: {e}"))
+            })
+        }
+        ProtocolFormat::Gemini => {
+            // Gemini SSE 目前暂不支持转换，直接透传并记录警告
+            log::warn!(
+                "[Claude] Gemini 流式响应转换暂未实现，将透传原始响应"
+            );
+            process_response(response, ctx, state, &CLAUDE_PARSER_CONFIG).await
+        }
+        _ => {
+            // 其他格式暂不支持
+            Err(ProxyError::TransformError(format!(
+                "流式响应转换暂不支持目标格式: {}",
+                config.target_format
+            )))
+        }
+    }
 }
 
 // ============================================================================

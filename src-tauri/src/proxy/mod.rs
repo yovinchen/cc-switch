@@ -23,6 +23,7 @@ pub(crate) mod server;
 pub mod session;
 pub mod thinking_rectifier;
 pub(crate) mod types;
+pub mod unified;
 pub mod usage;
 
 // 公开导出给外部使用（commands, services等模块需要）

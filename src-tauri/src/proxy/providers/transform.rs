@@ -2,78 +2,29 @@
 //!
 //! 实现 Anthropic ↔ OpenAI 格式转换，用于 OpenRouter 支持
 //! 参考: anthropic-proxy-rs
+//!
+//! ## 重要说明
+//!
+//! **模型映射已移至 `model_mapper.rs`**
+//!
+//! 为了避免重复映射和逻辑冲突，本模块不再执行模型映射。
+//! 模型映射在 `forwarder.rs` 中统一调用 `model_mapper::apply_model_mapping()`。
+//! 本模块接收到的请求体中的模型名称已经是映射后的结果。
 
 use crate::provider::Provider;
 use crate::proxy::error::ProxyError;
 use serde_json::{json, Value};
 
-/// 从 Provider 配置中获取模型映射
-fn get_model_from_provider(model: &str, provider: &Provider, body: &Value) -> String {
-    let env = provider.settings_config.get("env");
-    let model_lower = model.to_lowercase();
-
-    // 检测 thinking 参数
-    let has_thinking = body
-        .get("thinking")
-        .and_then(|v| v.as_object())
-        .and_then(|o| o.get("type"))
-        .and_then(|t| t.as_str())
-        == Some("enabled");
-
-    if let Some(env) = env {
-        // 如果启用 thinking，优先使用推理模型
-        if has_thinking {
-            if let Some(m) = env
-                .get("ANTHROPIC_REASONING_MODEL")
-                .and_then(|v| v.as_str())
-            {
-                log::debug!("[Transform] 使用推理模型: {m}");
-                return m.to_string();
-            }
-        }
-
-        // 根据模型类型选择配置模型
-        if model_lower.contains("haiku") {
-            if let Some(m) = env
-                .get("ANTHROPIC_DEFAULT_HAIKU_MODEL")
-                .and_then(|v| v.as_str())
-            {
-                return m.to_string();
-            }
-        }
-        if model_lower.contains("opus") {
-            if let Some(m) = env
-                .get("ANTHROPIC_DEFAULT_OPUS_MODEL")
-                .and_then(|v| v.as_str())
-            {
-                return m.to_string();
-            }
-        }
-        if model_lower.contains("sonnet") {
-            if let Some(m) = env
-                .get("ANTHROPIC_DEFAULT_SONNET_MODEL")
-                .and_then(|v| v.as_str())
-            {
-                return m.to_string();
-            }
-        }
-        // 默认使用 ANTHROPIC_MODEL
-        if let Some(m) = env.get("ANTHROPIC_MODEL").and_then(|v| v.as_str()) {
-            return m.to_string();
-        }
-    }
-
-    model.to_string()
-}
-
 /// Anthropic 请求 → OpenAI 请求
-pub fn anthropic_to_openai(body: Value, provider: &Provider) -> Result<Value, ProxyError> {
+///
+/// 注意：模型映射已在 forwarder.rs 中通过 model_mapper.rs 完成，
+/// 此处接收的 body 中的 model 字段已经是映射后的结果。
+pub fn anthropic_to_openai(body: Value, _provider: &Provider) -> Result<Value, ProxyError> {
     let mut result = json!({});
 
-    // 模型映射：使用 Provider 配置中的模型（支持 thinking 参数）
-    if let Some(model) = body.get("model").and_then(|m| m.as_str()) {
-        let mapped_model = get_model_from_provider(model, provider, &body);
-        result["model"] = json!(mapped_model);
+    // 模型名称直接使用（已在 model_mapper.rs 中完成映射）
+    if let Some(model) = body.get("model") {
+        result["model"] = model.clone();
     }
 
     let mut messages = Vec::new();
@@ -270,10 +221,40 @@ fn convert_message_to_openai(
     Ok(result)
 }
 
-/// 清理 JSON schema（移除不支持的 format）
-fn clean_schema(mut schema: Value) -> Value {
+/// 清理 JSON Schema，移除 OpenAI/Gemini 不支持的扩展字段
+///
+/// 需要移除的字段：
+/// - `$schema`: JSON Schema 版本声明
+/// - `additionalProperties`: OpenAI/Gemini 不支持
+/// - `exclusiveMinimum`/`exclusiveMaximum`: Gemini 不支持
+/// - `propertyNames`: Gemini 不支持
+/// - `format: "uri"`: OpenAI 不支持
+/// - `$id`, `$ref`, `$defs`: JSON Schema 引用
+/// - `examples`: 非标准字段
+pub fn clean_schema(mut schema: Value) -> Value {
     if let Some(obj) = schema.as_object_mut() {
-        // 移除 "format": "uri"
+        // 移除不支持的顶层字段
+        let unsupported_fields = [
+            "$schema",
+            "$id",
+            "$ref",
+            "$defs",
+            "additionalProperties",
+            "exclusiveMinimum",
+            "exclusiveMaximum",
+            "propertyNames",
+            "patternProperties",
+            "examples",
+            "default",
+            "const",
+            "contentMediaType",
+            "contentEncoding",
+        ];
+        for field in unsupported_fields {
+            obj.remove(field);
+        }
+
+        // 移除 "format": "uri"（OpenAI 不支持）
         if obj.get("format").and_then(|v| v.as_str()) == Some("uri") {
             obj.remove("format");
         }
@@ -285,8 +266,25 @@ fn clean_schema(mut schema: Value) -> Value {
             }
         }
 
+        // 清理 items（数组元素 schema）
         if let Some(items) = obj.get_mut("items") {
             *items = clean_schema(items.clone());
+        }
+
+        // 清理 anyOf/oneOf/allOf
+        for key in ["anyOf", "oneOf", "allOf"] {
+            if let Some(arr) = obj.get_mut(key).and_then(|v| v.as_array_mut()) {
+                for item in arr.iter_mut() {
+                    *item = clean_schema(item.clone());
+                }
+            }
+        }
+
+        // 清理 $defs 中的 schema（如果有的话，虽然我们已经移除了 $defs）
+        if let Some(defs) = obj.get_mut("$defs").and_then(|v| v.as_object_mut()) {
+            for (_, value) in defs.iter_mut() {
+                *value = clean_schema(value.clone());
+            }
         }
     }
     schema
@@ -411,14 +409,15 @@ mod tests {
     #[test]
     fn test_anthropic_to_openai_simple() {
         let provider = create_openrouter_provider();
+        // 注意：模型映射已在 model_mapper.rs 中完成
+        // 这里测试的是格式转换，传入的模型名称会被直接使用
         let input = json!({
-            "model": "claude-3-opus",
+            "model": "anthropic/claude-opus-4.5",  // 假设已经被映射
             "max_tokens": 1024,
             "messages": [{"role": "user", "content": "Hello"}]
         });
 
         let result = anthropic_to_openai(input, &provider).unwrap();
-        // opus 模型映射到配置的 ANTHROPIC_DEFAULT_OPUS_MODEL
         assert_eq!(result["model"], "anthropic/claude-opus-4.5");
         assert_eq!(result["max_tokens"], 1024);
         assert_eq!(result["messages"][0]["role"], "user");
@@ -563,78 +562,74 @@ mod tests {
     }
 
     #[test]
-    fn test_model_mapping_from_provider() {
-        let provider = create_openrouter_provider();
-        let body = json!({"model": "test"});
+    fn test_clean_schema_removes_unsupported_fields() {
+        let input = json!({
+            "$schema": "https://json-schema.org/draft/2020-12/schema",
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+                "name": {
+                    "type": "string",
+                    "description": "The name"
+                },
+                "count": {
+                    "type": "integer",
+                    "exclusiveMinimum": 0,
+                    "default": 1
+                },
+                "items": {
+                    "type": "array",
+                    "items": {
+                        "$schema": "nested",
+                        "type": "string",
+                        "additionalProperties": true
+                    }
+                }
+            },
+            "required": ["name"]
+        });
 
-        // sonnet 模型
-        assert_eq!(
-            get_model_from_provider("claude-sonnet-4-5-20250929", &provider, &body),
-            "anthropic/claude-sonnet-4.5"
-        );
+        let result = clean_schema(input);
 
-        // haiku 模型
-        assert_eq!(
-            get_model_from_provider("claude-haiku-4-5-20250929", &provider, &body),
-            "anthropic/claude-haiku-4.5"
-        );
+        // 顶层字段应被移除
+        assert!(result.get("$schema").is_none());
+        assert!(result.get("additionalProperties").is_none());
 
-        // opus 模型
-        assert_eq!(
-            get_model_from_provider("claude-opus-4-5", &provider, &body),
-            "anthropic/claude-opus-4.5"
-        );
+        // 嵌套字段也应被移除
+        assert!(result["properties"]["count"].get("exclusiveMinimum").is_none());
+        assert!(result["properties"]["count"].get("default").is_none());
+        assert!(result["properties"]["items"]["items"].get("$schema").is_none());
+        assert!(result["properties"]["items"]["items"].get("additionalProperties").is_none());
+
+        // 有效字段应保留
+        assert_eq!(result["type"], "object");
+        assert_eq!(result["properties"]["name"]["type"], "string");
+        assert!(result["required"].is_array());
     }
 
     #[test]
-    fn test_anthropic_to_openai_model_mapping() {
-        let provider = create_openrouter_provider();
+    fn test_clean_schema_removes_uri_format() {
         let input = json!({
-            "model": "claude-sonnet-4-5-20250929",
-            "max_tokens": 1024,
-            "messages": [{"role": "user", "content": "Hello"}]
+            "type": "string",
+            "format": "uri"
         });
 
-        let result = anthropic_to_openai(input, &provider).unwrap();
-        assert_eq!(result["model"], "anthropic/claude-sonnet-4.5");
+        let result = clean_schema(input);
+        assert!(result.get("format").is_none());
+        assert_eq!(result["type"], "string");
     }
 
     #[test]
-    fn test_thinking_parameter_detection() {
-        let mut provider = create_openrouter_provider();
-        // 添加推理模型配置
-        if let Some(env) = provider.settings_config.get_mut("env") {
-            env["ANTHROPIC_REASONING_MODEL"] = json!("anthropic/claude-sonnet-4.5:extended");
-        }
-
+    fn test_clean_schema_preserves_valid_format() {
         let input = json!({
-            "model": "claude-sonnet-4-5",
-            "max_tokens": 1024,
-            "thinking": {"type": "enabled"},
-            "messages": [{"role": "user", "content": "Solve this problem"}]
+            "type": "string",
+            "format": "email"
         });
 
-        let result = anthropic_to_openai(input, &provider).unwrap();
-        // 应该使用推理模型
-        assert_eq!(result["model"], "anthropic/claude-sonnet-4.5:extended");
+        let result = clean_schema(input);
+        assert_eq!(result["format"], "email");
     }
 
-    #[test]
-    fn test_thinking_parameter_disabled() {
-        let mut provider = create_openrouter_provider();
-        if let Some(env) = provider.settings_config.get_mut("env") {
-            env["ANTHROPIC_REASONING_MODEL"] = json!("anthropic/claude-sonnet-4.5:extended");
-        }
-
-        let input = json!({
-            "model": "claude-sonnet-4-5",
-            "max_tokens": 1024,
-            "thinking": {"type": "disabled"},
-            "messages": [{"role": "user", "content": "Hello"}]
-        });
-
-        let result = anthropic_to_openai(input, &provider).unwrap();
-        // 应该使用普通模型
-        assert_eq!(result["model"], "anthropic/claude-sonnet-4.5");
-    }
+    // 注意：模型映射测试已移至 model_mapper.rs
+    // transform.rs 不再负责模型映射，只负责格式转换
 }

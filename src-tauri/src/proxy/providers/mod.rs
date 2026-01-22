@@ -13,12 +13,15 @@
 
 mod adapter;
 mod auth;
+mod chat_completions;
 mod claude;
 mod codex;
 mod gemini;
 pub mod models;
+pub mod protocol_helper;
 pub mod streaming;
 pub mod transform;
+pub mod transform_v2;
 
 use crate::app_config::AppType;
 use crate::provider::Provider;
@@ -27,6 +30,7 @@ use serde::{Deserialize, Serialize};
 // 公开导出
 pub use adapter::ProviderAdapter;
 pub use auth::{AuthInfo, AuthStrategy};
+pub use chat_completions::ChatCompletionsAdapter;
 pub use claude::ClaudeAdapter;
 pub use codex::CodexAdapter;
 pub use gemini::GeminiAdapter;
@@ -88,6 +92,29 @@ impl ProviderType {
     pub fn from_app_type_and_config(app_type: &AppType, provider: &Provider) -> Self {
         match app_type {
             AppType::Claude => {
+                // Chat Completions 模式优先（用于多协议转换）
+                if let Some(raw) = provider.settings_config.get("chat_completions_mode") {
+                    let enabled = match raw {
+                        serde_json::Value::Bool(v) => *v,
+                        serde_json::Value::Number(num) => num.as_i64().unwrap_or(0) != 0,
+                        serde_json::Value::String(value) => {
+                            let normalized = value.trim().to_lowercase();
+                            normalized == "true" || normalized == "1"
+                        }
+                        _ => false,
+                    };
+                    if enabled {
+                        return ProviderType::ChatCompletions;
+                    }
+                }
+
+                // 自定义协议转换（source/target）也视为 ChatCompletions
+                if provider.settings_config.get("source_format").is_some()
+                    || provider.settings_config.get("target_format").is_some()
+                {
+                    return ProviderType::ChatCompletions;
+                }
+
                 // 检测是否为 OpenRouter
                 let adapter = ClaudeAdapter::new();
                 if let Ok(base_url) = adapter.extract_base_url(provider) {
@@ -200,10 +227,10 @@ pub fn get_adapter_for_provider_type(provider_type: &ProviderType) -> Box<dyn Pr
     match provider_type {
         ProviderType::Claude
         | ProviderType::ClaudeAuth
-        | ProviderType::OpenRouter
-        | ProviderType::ChatCompletions => Box::new(ClaudeAdapter::new()),
+        | ProviderType::OpenRouter => Box::new(ClaudeAdapter::new()),
         ProviderType::Codex => Box::new(CodexAdapter::new()),
         ProviderType::Gemini | ProviderType::GeminiCli => Box::new(GeminiAdapter::new()),
+        ProviderType::ChatCompletions => Box::new(ChatCompletionsAdapter::new()),
     }
 }
 

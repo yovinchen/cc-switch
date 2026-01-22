@@ -87,15 +87,27 @@ export function useGeminiConfigState({
       const configObj = (config as any).config || {};
       setGeminiConfigState(JSON.stringify(configObj, null, 2));
 
-      // 提取 API Key、Base URL 和 Model
-      if (typeof env.GEMINI_API_KEY === "string") {
+      // 提取 API Key、Base URL 和 Model（确保只接受非 null 的字符串）
+      if (
+        typeof env.GEMINI_API_KEY === "string" &&
+        env.GEMINI_API_KEY !== null
+      ) {
         setGeminiApiKey(env.GEMINI_API_KEY);
+      } else {
+        setGeminiApiKey("");
       }
-      if (typeof env.GOOGLE_GEMINI_BASE_URL === "string") {
+      if (
+        typeof env.GOOGLE_GEMINI_BASE_URL === "string" &&
+        env.GOOGLE_GEMINI_BASE_URL !== null
+      ) {
         setGeminiBaseUrl(env.GOOGLE_GEMINI_BASE_URL);
+      } else {
+        setGeminiBaseUrl("");
       }
-      if (typeof env.GEMINI_MODEL === "string") {
+      if (typeof env.GEMINI_MODEL === "string" && env.GEMINI_MODEL !== null) {
         setGeminiModel(env.GEMINI_MODEL);
+      } else {
+        setGeminiModel("");
       }
     }
   }, [initialData, envObjToString]);

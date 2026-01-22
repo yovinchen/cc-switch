@@ -1,16 +1,40 @@
 //! Claude (Anthropic) Provider Adapter
 //!
-//! 支持透传模式和 OpenRouter 兼容模式
+//! 支持透传模式、OpenRouter 兼容模式和多协议转换
 //!
 //! ## 认证模式
 //! - **Claude**: Anthropic 官方 API (x-api-key + anthropic-version)
 //! - **ClaudeAuth**: 中转服务 (仅 Bearer 认证，无 x-api-key)
 //! - **OpenRouter**: 已支持 Claude Code 兼容接口，默认透传（保留旧转换逻辑备用）
+//!
+//! ## 转换器选择
+//! - **legacy**: 使用 transform.rs（旧版转换器）
+//! - **rig**: 使用 transform_v2.rs（基于 Rig 设计的统一格式转换器）
+//!
+//! ## 多协议转换
+//! 支持通过 `source_format` 和 `target_format` 配置自定义协议转换：
+//! - `source_format`: 源协议格式（默认 "anthropic"）
+//! - `target_format`: 目标协议格式（默认 "openai"）
 
 use super::{AuthInfo, AuthStrategy, ProviderAdapter, ProviderType};
+use super::protocol_helper;
 use crate::provider::Provider;
 use crate::proxy::error::ProxyError;
+use crate::proxy::unified::{
+    converter::ProtocolConverter,
+    protocol::{ProtocolConfig, ProtocolFormat},
+};
 use reqwest::RequestBuilder;
+
+/// 转换器类型
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum ConverterType {
+    /// 旧版转换器 (transform.rs)
+    #[default]
+    Legacy,
+    /// Rig 统一格式转换器 (transform_v2.rs)
+    Rig,
+}
 
 /// Claude 适配器
 pub struct ClaudeAdapter;
@@ -18,6 +42,42 @@ pub struct ClaudeAdapter;
 impl ClaudeAdapter {
     pub fn new() -> Self {
         Self
+    }
+
+    /// 获取转换器类型
+    ///
+    /// 从 Provider 配置中读取 `converter` 字段：
+    /// - "rig" 或 "v2": 使用 Rig 统一格式转换器
+    /// - "legacy" 或 "v1" 或其他: 使用旧版转换器（默认）
+    pub fn get_converter_type(&self, provider: &Provider) -> ConverterType {
+        let raw = provider.settings_config.get("converter");
+        match raw {
+            Some(serde_json::Value::String(value)) => {
+                let normalized = value.trim().to_lowercase();
+                match normalized.as_str() {
+                    "rig" | "v2" | "unified" => ConverterType::Rig,
+                    _ => ConverterType::Legacy,
+                }
+            }
+            _ => ConverterType::Legacy,
+        }
+    }
+
+    /// 获取协议配置
+    ///
+    /// 从 Provider 配置中解析 `source_format` 和 `target_format`
+    /// 默认：Anthropic → OpenAI
+    pub fn get_protocol_config(&self, provider: &Provider) -> ProtocolConfig {
+        protocol_helper::get_protocol_config(
+            provider,
+            ProtocolFormat::Anthropic,
+            ProtocolFormat::OpenAIChat,
+        )
+    }
+
+    /// 检查是否配置了自定义协议转换
+    pub fn has_custom_protocol(&self, provider: &Provider) -> bool {
+        protocol_helper::has_custom_protocol_config(provider)
     }
 
     /// 获取供应商类型
@@ -274,7 +334,13 @@ impl ProviderAdapter for ClaudeAdapter {
     }
 
     fn needs_transform(&self, provider: &Provider) -> bool {
-        // ChatCompletions 模式或 OpenRouter 兼容模式都需要转换
+        // 1. 检查是否配置了自定义协议转换
+        if self.has_custom_protocol(provider) {
+            let config = self.get_protocol_config(provider);
+            return config.needs_transform();
+        }
+
+        // 2. ChatCompletions 模式或 OpenRouter 兼容模式都需要转换
         self.is_chat_completions_mode(provider) || self.is_openrouter_compat_enabled(provider)
     }
 
@@ -283,11 +349,55 @@ impl ProviderAdapter for ClaudeAdapter {
         body: serde_json::Value,
         provider: &Provider,
     ) -> Result<serde_json::Value, ProxyError> {
-        super::transform::anthropic_to_openai(body, provider)
+        // 检查是否使用自定义协议转换
+        if self.has_custom_protocol(provider) {
+            let config = self.get_protocol_config(provider);
+            log::debug!(
+                "[Claude] 使用多协议转换: {} -> {}",
+                config.source_format,
+                config.target_format
+            );
+            return ProtocolConverter::convert_request(body, &config, provider);
+        }
+
+        // 根据配置选择转换器
+        match self.get_converter_type(provider) {
+            ConverterType::Rig => {
+                log::debug!("[Claude] 使用 Rig 转换器 (transform_v2)");
+                super::transform_v2::UnifiedConverter::anthropic_to_openai(body, provider)
+            }
+            ConverterType::Legacy => {
+                log::debug!("[Claude] 使用 Legacy 转换器 (transform)");
+                super::transform::anthropic_to_openai(body, provider)
+            }
+        }
     }
 
     fn transform_response(&self, body: serde_json::Value) -> Result<serde_json::Value, ProxyError> {
+        // 响应转换目前两个转换器实现相同，使用 legacy
         super::transform::openai_to_anthropic(body)
+    }
+
+    fn transform_response_with_provider(
+        &self,
+        body: serde_json::Value,
+        provider: &Provider,
+    ) -> Result<serde_json::Value, ProxyError> {
+        // 检查是否使用自定义协议转换
+        if self.has_custom_protocol(provider) {
+            let config = self.get_protocol_config(provider);
+            // 响应转换是请求转换的逆过程
+            let response_config = ProtocolConfig::transform(config.target_format, config.source_format);
+            log::debug!(
+                "[Claude] 使用多协议响应转换: {} -> {}",
+                response_config.source_format,
+                response_config.target_format
+            );
+            return ProtocolConverter::convert_response(body, &response_config);
+        }
+
+        // 默认使用 legacy 转换器
+        self.transform_response(body)
     }
 }
 
@@ -506,5 +616,87 @@ mod tests {
             "openrouter_compat_mode": false
         }));
         assert!(!adapter.needs_transform(&openrouter_disabled));
+    }
+
+    #[test]
+    fn test_converter_type_default() {
+        let adapter = ClaudeAdapter::new();
+        
+        // 默认使用 Legacy 转换器
+        let provider = create_provider(json!({
+            "env": {
+                "ANTHROPIC_BASE_URL": "https://api.example.com"
+            }
+        }));
+        assert_eq!(adapter.get_converter_type(&provider), ConverterType::Legacy);
+    }
+
+    #[test]
+    fn test_converter_type_rig() {
+        let adapter = ClaudeAdapter::new();
+        
+        // 显式指定 rig 转换器
+        let provider_rig = create_provider(json!({
+            "env": {
+                "ANTHROPIC_BASE_URL": "https://api.example.com"
+            },
+            "converter": "rig"
+        }));
+        assert_eq!(adapter.get_converter_type(&provider_rig), ConverterType::Rig);
+
+        // v2 也映射到 Rig
+        let provider_v2 = create_provider(json!({
+            "env": {
+                "ANTHROPIC_BASE_URL": "https://api.example.com"
+            },
+            "converter": "v2"
+        }));
+        assert_eq!(adapter.get_converter_type(&provider_v2), ConverterType::Rig);
+
+        // unified 也映射到 Rig
+        let provider_unified = create_provider(json!({
+            "env": {
+                "ANTHROPIC_BASE_URL": "https://api.example.com"
+            },
+            "converter": "unified"
+        }));
+        assert_eq!(adapter.get_converter_type(&provider_unified), ConverterType::Rig);
+    }
+
+    #[test]
+    fn test_converter_type_legacy() {
+        let adapter = ClaudeAdapter::new();
+        
+        // 显式指定 legacy 转换器
+        let provider_legacy = create_provider(json!({
+            "env": {
+                "ANTHROPIC_BASE_URL": "https://api.example.com"
+            },
+            "converter": "legacy"
+        }));
+        assert_eq!(adapter.get_converter_type(&provider_legacy), ConverterType::Legacy);
+
+        // v1 也映射到 Legacy
+        let provider_v1 = create_provider(json!({
+            "env": {
+                "ANTHROPIC_BASE_URL": "https://api.example.com"
+            },
+            "converter": "v1"
+        }));
+        assert_eq!(adapter.get_converter_type(&provider_v1), ConverterType::Legacy);
+    }
+
+    #[test]
+    fn test_converter_type_case_insensitive() {
+        let adapter = ClaudeAdapter::new();
+        
+        // 大小写不敏感
+        let provider = create_provider(json!({
+            "env": {
+                "ANTHROPIC_BASE_URL": "https://api.example.com"
+            },
+            "converter": "RIG"
+        }));
+        assert_eq!(adapter.get_converter_type(&provider), ConverterType::Rig);
     }
 }
