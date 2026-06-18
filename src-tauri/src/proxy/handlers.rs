@@ -38,16 +38,16 @@ use crate::proxy_core::{
     body_diagnostics_suffix, body_looks_like_sse, claude_stream_usage_event_filter,
     codex_stream_usage_event_filter, should_aggregate_codex_oauth_responses_sse,
     should_use_claude_transform_streaming, strip_entity_headers_for_rebuilt_body,
-    strip_hop_by_hop_response_headers, AppChannelListResponse, AppChannelResponse,
-    AppChannelRouteResponse, AppKind, AppListResponse, AppSummary, ChannelDeleteResponse,
-    ChannelHealthResetResponse, ChannelListResponse, ChannelMigrationMaterializeResponse,
-    ChannelMigrationPreviewResponse, ChannelModelsResponse, ChannelRouteCandidate,
-    ChannelRouteRejected, ChannelRouteSource, CurrentRouteProviderSummary, CurrentRouteResponse,
-    HealthCheckResponse, InterfaceKind, ProviderListResponse, ProviderSummary, ProxyBody,
-    ProxyChannelModelsReplaceRequest, ProxyChannelPatchRequest, ProxyChannelWriteRequest,
-    ProxyCoreError, ProxyCoreResponse, ProxyEngine, ProxyRequest, ProxyResponseBody, ProxyResult,
-    ProxyServices, RoutableModelList, RouteGroupChannelInput, RouteGroupListResponse,
-    RouteGroupSourceInput, RouteResolveRequest, RouteResolveResponse,
+    strip_hop_by_hop_response_headers, AppChannelListQuery, AppChannelListResponse,
+    AppChannelResponse, AppChannelRouteResponse, AppKind, AppListResponse, AppModelListQuery,
+    AppSummary, ChannelDeleteResponse, ChannelHealthResetResponse, ChannelListResponse,
+    ChannelMigrationMaterializeResponse, ChannelMigrationPreviewResponse, ChannelModelsResponse,
+    ChannelRouteCandidate, ChannelRouteRejected, ChannelRouteSource, CurrentRouteProviderSummary,
+    CurrentRouteResponse, HealthCheckResponse, InterfaceKind, ProviderListResponse,
+    ProviderSummary, ProxyBody, ProxyChannelModelsReplaceRequest, ProxyChannelPatchRequest,
+    ProxyChannelWriteRequest, ProxyCoreError, ProxyCoreResponse, ProxyEngine, ProxyRequest,
+    ProxyResponseBody, ProxyResult, ProxyServices, RoutableModelList, RouteGroupChannelInput,
+    RouteGroupListResponse, RouteGroupSourceInput, RouteResolveRequest, RouteResolveResponse,
 };
 use axum::{
     extract::{Path, Query, State},
@@ -77,76 +77,6 @@ pub struct ChannelListQuery {
 pub struct GroupListQuery {
     #[serde(default)]
     app_type: Option<String>,
-}
-
-#[derive(Debug, Deserialize, Default)]
-#[serde(rename_all = "camelCase")]
-pub struct AppChannelListQuery {
-    #[serde(default)]
-    requested_model: Option<String>,
-    #[serde(default)]
-    model: Option<String>,
-    #[serde(default)]
-    interface_kind: Option<String>,
-    #[serde(default, rename = "interface")]
-    interface_alias: Option<String>,
-    #[serde(default)]
-    route_group: Option<String>,
-    #[serde(default)]
-    group: Option<String>,
-}
-
-impl AppChannelListQuery {
-    fn has_route_filters(&self) -> bool {
-        self.requested_model.is_some()
-            || self.model.is_some()
-            || self.interface_kind.is_some()
-            || self.interface_alias.is_some()
-            || self.route_group.is_some()
-            || self.group.is_some()
-    }
-
-    fn into_route_request(self, app_type: String) -> RouteResolveRequest {
-        RouteResolveRequest {
-            app_type,
-            requested_model: self.requested_model.or(self.model),
-            interface_kind: self.interface_kind.or(self.interface_alias),
-            route_group: self.route_group.or(self.group),
-        }
-    }
-}
-
-#[derive(Debug, Deserialize, Default)]
-#[serde(rename_all = "camelCase")]
-pub struct AppModelListQuery {
-    #[serde(default)]
-    interface_kind: Option<String>,
-    #[serde(default, rename = "interface")]
-    interface_alias: Option<String>,
-    #[serde(default)]
-    route_group: Option<String>,
-    #[serde(default)]
-    group: Option<String>,
-}
-
-impl AppModelListQuery {
-    fn route_group(&self) -> Option<String> {
-        self.route_group
-            .as_deref()
-            .or(self.group.as_deref())
-            .map(str::trim)
-            .filter(|value| !value.is_empty())
-            .map(ToString::to_string)
-    }
-
-    fn interface_kind(&self) -> Option<InterfaceKind> {
-        self.interface_kind
-            .as_deref()
-            .or(self.interface_alias.as_deref())
-            .map(str::trim)
-            .filter(|value| !value.is_empty())
-            .map(InterfaceKind::from_storage)
-    }
 }
 
 // ============================================================================

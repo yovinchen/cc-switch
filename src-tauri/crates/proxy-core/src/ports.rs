@@ -1,6 +1,6 @@
 use super::domain::{
-    AppKind, AuthProfileRef, ChannelAttemptResult, ChannelQuery, ChannelSpec, ProviderSpec,
-    ProxyRequest, ProxyResult, RoutePlan, RoutePolicy, RouteRequest, UsageRecord,
+    AppKind, AuthProfileRef, ChannelAttemptResult, ChannelQuery, ChannelSpec, InterfaceKind,
+    ProviderSpec, ProxyRequest, ProxyResult, RoutePlan, RoutePolicy, RouteRequest, UsageRecord,
     DEFAULT_ROUTE_GROUP,
 };
 use super::error::ProxyCoreResult;
@@ -648,6 +648,76 @@ pub struct RouteResolveRequest {
     pub route_group: Option<String>,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct AppChannelListQuery {
+    #[serde(default)]
+    requested_model: Option<String>,
+    #[serde(default)]
+    model: Option<String>,
+    #[serde(default)]
+    interface_kind: Option<String>,
+    #[serde(default, rename = "interface")]
+    interface_alias: Option<String>,
+    #[serde(default)]
+    route_group: Option<String>,
+    #[serde(default)]
+    group: Option<String>,
+}
+
+impl AppChannelListQuery {
+    pub fn has_route_filters(&self) -> bool {
+        self.requested_model.is_some()
+            || self.model.is_some()
+            || self.interface_kind.is_some()
+            || self.interface_alias.is_some()
+            || self.route_group.is_some()
+            || self.group.is_some()
+    }
+
+    pub fn into_route_request(self, app_type: impl Into<String>) -> RouteResolveRequest {
+        RouteResolveRequest {
+            app_type: app_type.into(),
+            requested_model: self.requested_model.or(self.model),
+            interface_kind: self.interface_kind.or(self.interface_alias),
+            route_group: self.route_group.or(self.group),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct AppModelListQuery {
+    #[serde(default)]
+    interface_kind: Option<String>,
+    #[serde(default, rename = "interface")]
+    interface_alias: Option<String>,
+    #[serde(default)]
+    route_group: Option<String>,
+    #[serde(default)]
+    group: Option<String>,
+}
+
+impl AppModelListQuery {
+    pub fn route_group(&self) -> Option<String> {
+        self.route_group
+            .as_deref()
+            .or(self.group.as_deref())
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(ToString::to_string)
+    }
+
+    pub fn interface_kind(&self) -> Option<InterfaceKind> {
+        self.interface_kind
+            .as_deref()
+            .or(self.interface_alias.as_deref())
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(InterfaceKind::from_storage)
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct ChannelRouteCandidate {
@@ -834,11 +904,11 @@ pub enum ProxyCoreEventType {
 #[cfg(test)]
 mod tests {
     use super::{
-        AppChannelListResponse, AppChannelResponse, AppChannelRouteResponse, AppListResponse,
-        AppSummary, ChannelDeleteResponse, ChannelListResponse, ChannelModelsResponse,
-        ChannelMigrationMaterializeResponse, ChannelMigrationPreviewResponse,
-        ChannelRouteCandidate, ChannelRouteRejected, ChannelRouteSource,
-        CurrentRouteProviderSummary, CurrentRouteResponse, ProviderListResponse, ProviderSummary,
+        AppChannelListQuery, AppChannelListResponse, AppChannelResponse, AppChannelRouteResponse,
+        AppListResponse, AppModelListQuery, AppSummary, ChannelDeleteResponse, ChannelListResponse,
+        ChannelModelsResponse, ChannelMigrationMaterializeResponse, ChannelMigrationPreviewResponse,
+        ChannelRouteCandidate, ChannelRouteRejected, ChannelRouteSource, CurrentRouteProviderSummary,
+        CurrentRouteResponse, ProviderListResponse, ProviderSummary,
         HealthCheckResponse, ProxyChannelModelWriteRequest, ProxyChannelModelsReplaceRequest,
         ProxyChannelPatchRequest, ProxyChannelWriteRequest, RouteGroupChannelInput,
         RouteGroupListResponse, RouteGroupSourceInput, RouteResolveResponse,
@@ -858,6 +928,52 @@ mod tests {
                 "timestamp": "2026-06-18T00:00:00+00:00"
             })
         );
+    }
+
+    #[test]
+    fn app_model_list_query_normalizes_aliases() {
+        let query: AppModelListQuery = serde_json::from_value(json!({
+            "interface": " openai_responses ",
+            "group": " beta "
+        }))
+        .expect("deserialize query");
+
+        assert_eq!(query.route_group().as_deref(), Some("beta"));
+        assert_eq!(
+            query.interface_kind().as_ref().map(|kind| kind.as_str()),
+            Some("openai_responses")
+        );
+    }
+
+    #[test]
+    fn app_channel_list_query_builds_route_resolve_request() {
+        let query: AppChannelListQuery = serde_json::from_value(json!({
+            "model": "claude-sonnet-4",
+            "interface": "anthropic_messages",
+            "group": "default"
+        }))
+        .expect("deserialize query");
+
+        assert!(query.has_route_filters());
+        let request = query.into_route_request("claude");
+
+        assert_eq!(request.app_type, "claude");
+        assert_eq!(request.requested_model.as_deref(), Some("claude-sonnet-4"));
+        assert_eq!(request.interface_kind.as_deref(), Some("anthropic_messages"));
+        assert_eq!(request.route_group.as_deref(), Some("default"));
+    }
+
+    #[test]
+    fn app_channel_list_query_treats_present_blank_alias_as_filter() {
+        let query: AppChannelListQuery = serde_json::from_value(json!({
+            "group": " "
+        }))
+        .expect("deserialize query");
+
+        assert!(query.has_route_filters());
+        let request = query.into_route_request("claude");
+
+        assert_eq!(request.route_group.as_deref(), Some(" "));
     }
 
     #[test]
