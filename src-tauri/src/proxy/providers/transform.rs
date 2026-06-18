@@ -4,50 +4,11 @@
 //! 参考: anthropic-proxy-rs
 
 use crate::proxy::{error::ProxyError, json_canonical::canonical_json_string};
+pub(crate) use crate::proxy_core::strip_leading_anthropic_billing_header;
 pub use crate::proxy_core::{
     is_openai_o_series, resolve_reasoning_effort, supports_reasoning_effort,
 };
 use serde_json::{json, Value};
-
-const ANTHROPIC_BILLING_HEADER_PREFIX: &str = "x-anthropic-billing-header:";
-
-/// Strip only a leading Claude Code attribution line from system text.
-///
-/// Claude Code can send dynamic `x-anthropic-billing-header` metadata at the
-/// start of `system`. If forwarded into OpenAI Chat messages or Responses
-/// `instructions`, the rotating `cch=` value changes the prompt prefix on every
-/// request and prevents prefix cache reuse (#2350). Later occurrences are kept
-/// to avoid deleting user-authored prompt text.
-pub(crate) fn strip_leading_anthropic_billing_header(text: &str) -> &str {
-    if !text.starts_with(ANTHROPIC_BILLING_HEADER_PREFIX) {
-        return text;
-    }
-
-    let Some(line_end) = text
-        .as_bytes()
-        .iter()
-        .position(|byte| *byte == b'\n' || *byte == b'\r')
-    else {
-        return "";
-    };
-
-    let bytes = text.as_bytes();
-    let mut rest_start = line_end + 1;
-    if bytes[line_end] == b'\r' && bytes.get(line_end + 1) == Some(&b'\n') {
-        rest_start += 1;
-    }
-
-    let rest = &text[rest_start..];
-    if let Some(stripped) = rest.strip_prefix("\r\n") {
-        stripped
-    } else if let Some(stripped) = rest.strip_prefix('\n') {
-        stripped
-    } else if let Some(stripped) = rest.strip_prefix('\r') {
-        stripped
-    } else {
-        rest
-    }
-}
 
 /// Anthropic 请求 → OpenAI Chat Completions 请求
 ///

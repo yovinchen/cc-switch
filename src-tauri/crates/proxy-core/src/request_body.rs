@@ -2,6 +2,8 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::HashSet;
 
+const ANTHROPIC_BILLING_HEADER_PREFIX: &str = "x-anthropic-billing-header:";
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RequestBodyFilterResult {
@@ -81,6 +83,37 @@ pub fn resolve_reasoning_effort(body: &Value) -> Option<&'static str> {
             }
         }
         _ => None,
+    }
+}
+
+pub fn strip_leading_anthropic_billing_header(text: &str) -> &str {
+    if !text.starts_with(ANTHROPIC_BILLING_HEADER_PREFIX) {
+        return text;
+    }
+
+    let Some(line_end) = text
+        .as_bytes()
+        .iter()
+        .position(|byte| *byte == b'\n' || *byte == b'\r')
+    else {
+        return "";
+    };
+
+    let bytes = text.as_bytes();
+    let mut rest_start = line_end + 1;
+    if bytes[line_end] == b'\r' && bytes.get(line_end + 1) == Some(&b'\n') {
+        rest_start += 1;
+    }
+
+    let rest = &text[rest_start..];
+    if let Some(stripped) = rest.strip_prefix("\r\n") {
+        stripped
+    } else if let Some(stripped) = rest.strip_prefix('\n') {
+        stripped
+    } else if let Some(stripped) = rest.strip_prefix('\r') {
+        stripped
+    } else {
+        rest
     }
 }
 
@@ -195,7 +228,8 @@ mod tests {
         filter_private_params_with_whitelist, filter_private_params_with_whitelist_report,
         is_openai_o_series, method_allows_upstream_request_body,
         prepare_upstream_request_body_with_report, resolve_reasoning_effort,
-        serialize_upstream_request_body, supports_reasoning_effort,
+        serialize_upstream_request_body, strip_leading_anthropic_billing_header,
+        supports_reasoning_effort,
     };
     use http::Method;
     use serde_json::json;
@@ -402,6 +436,30 @@ mod tests {
         assert_eq!(
             resolve_reasoning_effort(&json!({"thinking": {"type": "disabled"}})),
             None
+        );
+    }
+
+    #[test]
+    fn strips_only_leading_anthropic_billing_header() {
+        assert_eq!(
+            strip_leading_anthropic_billing_header(
+                "x-anthropic-billing-header:cch=abc\n\nKeep this prompt"
+            ),
+            "Keep this prompt"
+        );
+        assert_eq!(
+            strip_leading_anthropic_billing_header(
+                "x-anthropic-billing-header:cch=abc\r\nKeep this prompt"
+            ),
+            "Keep this prompt"
+        );
+        assert_eq!(
+            strip_leading_anthropic_billing_header("Keep\nx-anthropic-billing-header:cch=abc"),
+            "Keep\nx-anthropic-billing-header:cch=abc"
+        );
+        assert_eq!(
+            strip_leading_anthropic_billing_header("x-anthropic-billing-header:cch=abc"),
+            ""
         );
     }
 }
