@@ -22,6 +22,21 @@ pub fn prepare_upstream_request_body(request_body: Value) -> Value {
     prepare_upstream_request_body_with_report(request_body).body
 }
 
+pub fn serialize_upstream_request_body(
+    method: &http::Method,
+    body: &Value,
+) -> serde_json::Result<Vec<u8>> {
+    if !method_allows_upstream_request_body(method) {
+        return Ok(Vec::new());
+    }
+
+    serde_json::to_vec(body)
+}
+
+pub fn method_allows_upstream_request_body(method: &http::Method) -> bool {
+    !matches!(method, &http::Method::GET | &http::Method::HEAD)
+}
+
 pub fn prepare_upstream_request_body_with_report(
     request_body: Value,
 ) -> PreparedUpstreamRequestBody {
@@ -131,8 +146,10 @@ mod tests {
     use super::{
         canonicalize_request_body_value, filter_private_params,
         filter_private_params_with_whitelist, filter_private_params_with_whitelist_report,
-        prepare_upstream_request_body_with_report,
+        method_allows_upstream_request_body, prepare_upstream_request_body_with_report,
+        serialize_upstream_request_body,
     };
+    use http::Method;
     use serde_json::json;
 
     #[test]
@@ -242,6 +259,33 @@ mod tests {
         assert_eq!(
             prepared.removed_private_keys,
             vec!["_internal".to_string(), "_private_note".to_string()]
+        );
+    }
+
+    #[test]
+    fn get_and_head_do_not_send_upstream_request_body() {
+        let body = json!({"model": "gpt-5"});
+
+        assert!(!method_allows_upstream_request_body(&Method::GET));
+        assert!(!method_allows_upstream_request_body(&Method::HEAD));
+        assert_eq!(
+            serialize_upstream_request_body(&Method::GET, &body).unwrap(),
+            Vec::<u8>::new()
+        );
+        assert_eq!(
+            serialize_upstream_request_body(&Method::HEAD, &body).unwrap(),
+            Vec::<u8>::new()
+        );
+    }
+
+    #[test]
+    fn non_safe_methods_serialize_json_body() {
+        let body = canonicalize_request_body_value(json!({"b": 2, "a": 1}));
+
+        assert!(method_allows_upstream_request_body(&Method::POST));
+        assert_eq!(
+            serialize_upstream_request_body(&Method::POST, &body).unwrap(),
+            br#"{"a":1,"b":2}"#.to_vec()
         );
     }
 }
