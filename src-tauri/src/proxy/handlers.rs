@@ -26,7 +26,6 @@ use super::{
     },
     response_processor::{
         create_logged_passthrough_stream, process_response, read_decoded_body,
-        strip_entity_headers_for_rebuilt_body, strip_hop_by_hop_response_headers,
         usage_logging_enabled, SseUsageCollector,
     },
     server::ProxyState,
@@ -41,8 +40,9 @@ use crate::database::{
     ProxyChannelModelsReplaceRequest, ProxyChannelPatchRequest, ProxyChannelWriteRequest,
 };
 use crate::proxy_core::{
-    AppKind, InterfaceKind, ProxyBody, ProxyCoreError, ProxyCoreResponse, ProxyEngine,
-    ProxyRequest, ProxyResponseBody, ProxyResult, ProxyServices,
+    strip_entity_headers_for_rebuilt_body, strip_hop_by_hop_response_headers, AppKind,
+    InterfaceKind, ProxyBody, ProxyCoreError, ProxyCoreResponse, ProxyEngine, ProxyRequest,
+    ProxyResponseBody, ProxyResult, ProxyServices,
 };
 use axum::{
     extract::{Path, Query, State},

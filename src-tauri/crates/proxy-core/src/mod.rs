@@ -8,8 +8,10 @@ pub mod domain;
 pub mod engine;
 pub mod error;
 pub mod ports;
+pub mod response_headers;
 
 pub use domain::*;
 pub use engine::*;
 pub use error::*;
 pub use ports::*;
+pub use response_headers::*;
