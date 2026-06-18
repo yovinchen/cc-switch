@@ -282,6 +282,37 @@ impl AppListResponse {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub struct ProviderSummary {
+    pub id: String,
+    pub name: String,
+    pub category: Option<String>,
+    pub sort_index: Option<usize>,
+    pub icon: Option<String>,
+    pub icon_color: Option<String>,
+    pub provider_type: Option<String>,
+    pub current: bool,
+    pub in_failover_queue: bool,
+    pub route_candidate: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ProviderListResponse {
+    pub app_type: String,
+    pub providers: Vec<ProviderSummary>,
+}
+
+impl ProviderListResponse {
+    pub fn new(app_type: impl Into<String>, providers: Vec<ProviderSummary>) -> Self {
+        Self {
+            app_type: app_type.into(),
+            providers,
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct ChannelListResponse<T> {
     pub channels: Vec<T>,
 }
@@ -430,8 +461,8 @@ pub enum ProxyCoreEventType {
 mod tests {
     use super::{
         AppListResponse, AppSummary, ChannelDeleteResponse, ChannelListResponse,
-        ChannelModelsResponse, RouteGroupChannelInput, RouteGroupListResponse,
-        RouteGroupSourceInput,
+        ChannelModelsResponse, ProviderListResponse, ProviderSummary, RouteGroupChannelInput,
+        RouteGroupListResponse, RouteGroupSourceInput,
     };
     use serde_json::json;
 
@@ -450,6 +481,46 @@ mod tests {
                     "autoFailoverEnabled": false,
                     "providerCount": 2,
                     "channelCount": 3
+                }]
+            })
+        );
+    }
+
+    #[test]
+    fn provider_list_response_serializes_sanitized_management_envelope() {
+        let response = ProviderListResponse::new(
+            "claude",
+            vec![ProviderSummary {
+                id: "provider-a".to_string(),
+                name: "Provider A".to_string(),
+                category: Some("aggregator".to_string()),
+                sort_index: Some(1),
+                icon: None,
+                icon_color: Some("#00A67E".to_string()),
+                provider_type: Some("openai_compatible".to_string()),
+                current: true,
+                in_failover_queue: false,
+                route_candidate: true,
+            }],
+        );
+
+        let value = serde_json::to_value(response).expect("serialize response");
+
+        assert_eq!(
+            value,
+            json!({
+                "appType": "claude",
+                "providers": [{
+                    "id": "provider-a",
+                    "name": "Provider A",
+                    "category": "aggregator",
+                    "sortIndex": 1,
+                    "icon": null,
+                    "iconColor": "#00A67E",
+                    "providerType": "openai_compatible",
+                    "current": true,
+                    "inFailoverQueue": false,
+                    "routeCandidate": true
                 }]
             })
         );

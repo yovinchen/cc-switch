@@ -43,9 +43,9 @@ use crate::proxy_core::{
     should_use_claude_transform_streaming, strip_entity_headers_for_rebuilt_body,
     strip_hop_by_hop_response_headers, AppKind, AppListResponse, AppSummary, ChannelDeleteResponse,
     ChannelHealthResetResponse, ChannelListResponse, ChannelModelsResponse, InterfaceKind,
-    ProxyBody, ProxyCoreError, ProxyCoreResponse, ProxyEngine, ProxyRequest, ProxyResponseBody,
-    ProxyResult, ProxyServices, RoutableModelList, RouteGroupChannelInput, RouteGroupListResponse,
-    RouteGroupSourceInput,
+    ProviderListResponse, ProviderSummary, ProxyBody, ProxyCoreError, ProxyCoreResponse,
+    ProxyEngine, ProxyRequest, ProxyResponseBody, ProxyResult, ProxyServices, RoutableModelList,
+    RouteGroupChannelInput, RouteGroupListResponse, RouteGroupSourceInput,
 };
 use axum::{
     extract::{Path, Query, State},
@@ -327,7 +327,7 @@ pub async fn list_proxy_apps(
 pub async fn list_proxy_providers(
     State(state): State<ProxyState>,
     Path(app_type): Path<String>,
-) -> Result<Json<Value>, ProxyError> {
+) -> Result<Json<ProviderListResponse>, ProxyError> {
     validate_management_app_type(&app_type)?;
 
     let providers = state
@@ -355,32 +355,36 @@ pub async fn list_proxy_providers(
             Err(e) => return Err(ProxyError::DatabaseError(e.to_string())),
         };
 
-    let provider_summaries: Vec<Value> = providers
+    let provider_summaries = providers
         .into_values()
         .map(|provider| {
             let provider_type = provider
                 .meta
                 .as_ref()
-                .and_then(|meta| meta.provider_type.as_deref());
-            json!({
-                "id": provider.id,
-                "name": provider.name,
-                "category": provider.category,
-                "sortIndex": provider.sort_index,
-                "icon": provider.icon,
-                "iconColor": provider.icon_color,
-                "providerType": provider_type,
-                "current": current_provider.as_deref() == Some(provider.id.as_str()),
-                "inFailoverQueue": failover_ids.contains(&provider.id),
-                "routeCandidate": route_candidate_ids.contains(&provider.id),
-            })
+                .and_then(|meta| meta.provider_type.clone());
+            let current = current_provider.as_deref() == Some(provider.id.as_str());
+            let in_failover_queue = failover_ids.contains(&provider.id);
+            let route_candidate = route_candidate_ids.contains(&provider.id);
+
+            ProviderSummary {
+                id: provider.id,
+                name: provider.name,
+                category: provider.category,
+                sort_index: provider.sort_index,
+                icon: provider.icon,
+                icon_color: provider.icon_color,
+                provider_type,
+                current,
+                in_failover_queue,
+                route_candidate,
+            }
         })
         .collect();
 
-    Ok(Json(json!({
-        "appType": app_type,
-        "providers": provider_summaries,
-    })))
+    Ok(Json(ProviderListResponse::new(
+        app_type,
+        provider_summaries,
+    )))
 }
 
 /// GET /proxy/v1/apps/{app}/models
