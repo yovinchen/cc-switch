@@ -77,6 +77,56 @@ pub fn append_utf8_safe(buffer: &mut String, remainder: &mut Vec<u8>, new_bytes:
     }
 }
 
+#[derive(Debug, Clone, PartialEq)]
+pub struct SseDataEvent {
+    pub data: String,
+    pub parsed: Option<Value>,
+    pub done: bool,
+}
+
+#[derive(Debug, Default)]
+pub struct SseEventScanner {
+    buffer: String,
+    utf8_remainder: Vec<u8>,
+}
+
+impl SseEventScanner {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    pub fn push_bytes<F>(&mut self, bytes: &[u8], mut should_parse: F) -> Vec<SseDataEvent>
+    where
+        F: FnMut(&str) -> bool,
+    {
+        append_utf8_safe(&mut self.buffer, &mut self.utf8_remainder, bytes);
+
+        let mut events = Vec::new();
+        while let Some(event_text) = take_sse_block(&mut self.buffer) {
+            if event_text.trim().is_empty() {
+                continue;
+            }
+
+            for line in event_text.lines() {
+                if let Some(data) = strip_sse_field(line, "data") {
+                    let done = data.trim() == "[DONE]";
+                    let parsed = if done || !should_parse(data) {
+                        None
+                    } else {
+                        serde_json::from_str::<Value>(data).ok()
+                    };
+                    events.push(SseDataEvent {
+                        data: data.to_string(),
+                        parsed,
+                        done,
+                    });
+                }
+            }
+        }
+        events
+    }
+}
+
 pub fn responses_sse_to_response_value(body: &str) -> ProxyCoreResult<Value> {
     let mut buffer = body.trim_start_matches('\u{feff}').to_string();
     let mut completed_response: Option<Value> = None;
@@ -560,7 +610,7 @@ fn extract_reasoning_detail_part_text(value: &Value) -> Option<String> {
 mod tests {
     use super::{
         append_utf8_safe, chat_sse_to_response_value, responses_sse_to_response_value,
-        strip_sse_field, take_sse_block,
+        strip_sse_field, take_sse_block, SseEventScanner,
     };
 
     fn generated_id_factory() -> impl FnMut() -> String {
@@ -797,6 +847,67 @@ mod tests {
         assert!(buf.contains("hello"));
         let replacement_count = buf.chars().filter(|&c| c == '\u{FFFD}').count();
         assert_eq!(replacement_count, 4);
+    }
+
+    #[test]
+    fn sse_event_scanner_parses_json_data_events() {
+        let mut scanner = SseEventScanner::new();
+
+        let events = scanner.push_bytes(b"data: {\"usage\":{\"total_tokens\":3}}\n\n", |_| true);
+
+        assert_eq!(events.len(), 1);
+        assert_eq!(events[0].data, "{\"usage\":{\"total_tokens\":3}}");
+        assert_eq!(events[0].parsed.as_ref().unwrap()["usage"]["total_tokens"], 3);
+        assert!(!events[0].done);
+    }
+
+    #[test]
+    fn sse_event_scanner_preserves_utf8_across_chunks() {
+        let text = "data: {\"text\":\"\u{4f60}\"}\n\n";
+        let bytes = text.as_bytes();
+        let split = bytes
+            .windows(3)
+            .position(|window| window == "\u{4f60}".as_bytes())
+            .unwrap()
+            + 1;
+        let mut scanner = SseEventScanner::new();
+
+        assert!(scanner.push_bytes(&bytes[..split], |_| true).is_empty());
+        let events = scanner.push_bytes(&bytes[split..], |_| true);
+
+        assert_eq!(events.len(), 1);
+        assert_eq!(events[0].parsed.as_ref().unwrap()["text"], "\u{4f60}");
+    }
+
+    #[test]
+    fn sse_event_scanner_marks_done_without_parsing() {
+        let mut scanner = SseEventScanner::new();
+
+        let events = scanner.push_bytes(b"data: [DONE]\n\n", |_| true);
+
+        assert_eq!(events.len(), 1);
+        assert!(events[0].done);
+        assert!(events[0].parsed.is_none());
+    }
+
+    #[test]
+    fn sse_event_scanner_filter_can_skip_json_parse() {
+        let mut scanner = SseEventScanner::new();
+
+        let events = scanner.push_bytes(b"data: {\"usage\":{\"total_tokens\":3}}\n\n", |_| false);
+
+        assert_eq!(events.len(), 1);
+        assert!(events[0].parsed.is_none());
+    }
+
+    #[test]
+    fn sse_event_scanner_handles_crlf_delimiters() {
+        let mut scanner = SseEventScanner::new();
+
+        let events = scanner.push_bytes(b"data: {\"ok\":true}\r\n\r\n", |_| true);
+
+        assert_eq!(events.len(), 1);
+        assert_eq!(events[0].parsed.as_ref().unwrap()["ok"], true);
     }
 
     #[test]

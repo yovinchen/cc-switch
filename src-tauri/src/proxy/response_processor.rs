@@ -8,14 +8,13 @@ use super::{
     handler_context::{RequestContext, StreamingTimeoutConfig},
     hyper_client::ProxyResponse,
     server::ProxyState,
-    sse::{strip_sse_field, take_sse_block},
     usage::parser::TokenUsage,
     usage_sink_bridge::{provider_kind_from_provider, success_usage_record},
     ProxyError,
 };
 use crate::proxy_core::{
     decompress_body, get_content_encoding, strip_entity_headers_for_rebuilt_body,
-    strip_hop_by_hop_response_headers, ProviderKind, ProxyServices,
+    strip_hop_by_hop_response_headers, ProviderKind, ProxyServices, SseEventScanner,
 };
 use axum::http::header::HeaderMap;
 use axum::response::{IntoResponse, Response};
@@ -642,8 +641,7 @@ pub fn create_logged_passthrough_stream(
 ) -> impl Stream<Item = Result<Bytes, std::io::Error>> + Send {
     async_stream::stream! {
         let _conn_guard = connection_guard;
-        let mut buffer = String::new();
-        let mut utf8_remainder: Vec<u8> = Vec::new();
+        let mut sse_scanner = SseEventScanner::new();
         let mut collector = usage_collector;
         let mut finish_guard = collector.clone().map(SseUsageFinishGuard::new);
         let inspect_sse_events =
@@ -699,37 +697,30 @@ pub fn create_logged_passthrough_stream(
                     }
                     is_first_chunk = false;
                     if inspect_sse_events {
-                        crate::proxy::sse::append_utf8_safe(&mut buffer, &mut utf8_remainder, &bytes);
+                        let events = sse_scanner.push_bytes(&bytes, |data| {
+                            collector
+                                .as_ref()
+                                .map(|collector| collector.should_collect(data))
+                                .unwrap_or(false)
+                        });
 
-                        // 尝试解析并记录完整的 SSE 事件
-                        while let Some(event_text) = take_sse_block(&mut buffer) {
-                            if !event_text.trim().is_empty() {
-                                // 提取 data 部分；只有 usage collector 存在时才解析 JSON。
-                                for line in event_text.lines() {
-                                    if let Some(data) = strip_sse_field(line, "data") {
-                                        if data.trim() != "[DONE]" {
-                                            let collected = match &collector {
-                                                Some(c) if c.should_collect(data) => {
-                                                    match serde_json::from_str::<Value>(data) {
-                                                        Ok(json_value) => {
-                                                            c.push(json_value).await;
-                                                            true
-                                                        }
-                                                        Err(_) => false,
-                                                    }
-                                                }
-                                                _ => false,
-                                            };
-                                            if collected {
-                                                log::debug!("[{tag}] <<< SSE 事件: {data}");
-                                            } else {
-                                                log::debug!("[{tag}] <<< SSE 数据: {data}");
-                                            }
-                                        } else {
-                                            log::debug!("[{tag}] <<< SSE: [DONE]");
-                                        }
-                                    }
+                        for event in events {
+                            if event.done {
+                                log::debug!("[{tag}] <<< SSE: [DONE]");
+                                continue;
+                            }
+
+                            let collected = match (&collector, event.parsed) {
+                                (Some(collector), Some(json_value)) => {
+                                    collector.push(json_value).await;
+                                    true
                                 }
+                                _ => false,
+                            };
+                            if collected {
+                                log::debug!("[{tag}] <<< SSE 事件: {}", event.data);
+                            } else {
+                                log::debug!("[{tag}] <<< SSE 数据: {}", event.data);
                             }
                         }
                     }
@@ -824,22 +815,22 @@ mod tests {
     #[test]
     fn test_strip_sse_field_accepts_optional_space() {
         assert_eq!(
-            super::strip_sse_field("data: {\"ok\":true}", "data"),
+            crate::proxy_core::strip_sse_field("data: {\"ok\":true}", "data"),
             Some("{\"ok\":true}")
         );
         assert_eq!(
-            super::strip_sse_field("data:{\"ok\":true}", "data"),
+            crate::proxy_core::strip_sse_field("data:{\"ok\":true}", "data"),
             Some("{\"ok\":true}")
         );
         assert_eq!(
-            super::strip_sse_field("event: message_start", "event"),
+            crate::proxy_core::strip_sse_field("event: message_start", "event"),
             Some("message_start")
         );
         assert_eq!(
-            super::strip_sse_field("event:message_start", "event"),
+            crate::proxy_core::strip_sse_field("event:message_start", "event"),
             Some("message_start")
         );
-        assert_eq!(super::strip_sse_field("id:1", "data"), None);
+        assert_eq!(crate::proxy_core::strip_sse_field("id:1", "data"), None);
     }
 
     fn build_state(db: Arc<Database>) -> ProxyState {
