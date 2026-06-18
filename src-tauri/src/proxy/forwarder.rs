@@ -14,6 +14,7 @@ use super::{
         codex_chat_history::CodexChatHistoryStore, gemini_shadow::GeminiShadowStore, get_adapter,
         AuthInfo, AuthStrategy, ProviderAdapter, ProviderType,
     },
+    route_attempt::{apply_channel_model_override, ForwardAttempt},
     thinking_budget_rectifier::{rectify_thinking_budget, should_rectify_thinking_budget},
     thinking_rectifier::{
         normalize_thinking_type, rectify_anthropic_request, should_rectify_thinking_signature,
@@ -219,10 +220,42 @@ impl RequestForwarder {
 
     async fn record_success_result(
         &self,
-        provider_id: &str,
+        attempt: &ForwardAttempt,
         app_type: &str,
         used_half_open_permit: bool,
     ) {
+        if let Some(channel) = attempt.channel() {
+            if used_half_open_permit {
+                if let Err(e) = self
+                    .router
+                    .record_channel_result(&channel.channel_id, app_type, true, true, None, None)
+                    .await
+                {
+                    log::warn!(
+                        "[{app_type}] 记录 Channel 成功结果失败: channel_id={}, error={e}",
+                        channel.channel_id
+                    );
+                }
+                return;
+            }
+
+            let router = self.router.clone();
+            let channel_id = channel.channel_id.clone();
+            let app_type = app_type.to_string();
+            tokio::spawn(async move {
+                if let Err(e) = router
+                    .record_channel_result(&channel_id, &app_type, false, true, None, None)
+                    .await
+                {
+                    log::warn!(
+                        "[{app_type}] 异步记录 Channel 成功结果失败: channel_id={channel_id}, error={e}"
+                    );
+                }
+            });
+            return;
+        }
+
+        let provider_id = &attempt.provider().id;
         if used_half_open_permit {
             if let Err(e) = self
                 .router
@@ -237,7 +270,7 @@ impl RequestForwarder {
         }
 
         let router = self.router.clone();
-        let provider_id = provider_id.to_string();
+        let provider_id = provider_id.clone();
         let app_type = app_type.to_string();
         tokio::spawn(async move {
             if let Err(e) = router
@@ -251,6 +284,62 @@ impl RequestForwarder {
         });
     }
 
+    async fn record_failure_result(
+        &self,
+        attempt: &ForwardAttempt,
+        app_type: &str,
+        used_half_open_permit: bool,
+        error_msg: String,
+    ) {
+        if let Some(channel) = attempt.channel() {
+            let _ = self
+                .router
+                .record_channel_result(
+                    &channel.channel_id,
+                    app_type,
+                    used_half_open_permit,
+                    false,
+                    Some(error_msg),
+                    None,
+                )
+                .await;
+            return;
+        }
+
+        let _ = self
+            .router
+            .record_result(
+                &attempt.provider().id,
+                app_type,
+                used_half_open_permit,
+                false,
+                Some(error_msg),
+            )
+            .await;
+    }
+
+    async fn release_attempt_permit_neutral(
+        &self,
+        attempt: &ForwardAttempt,
+        app_type: &str,
+        used_half_open_permit: bool,
+    ) {
+        if let Some(channel) = attempt.channel() {
+            self.router
+                .release_channel_permit_neutral(
+                    &channel.channel_id,
+                    app_type,
+                    used_half_open_permit,
+                )
+                .await;
+            return;
+        }
+
+        self.router
+            .release_permit_neutral(&attempt.provider().id, app_type, used_half_open_permit)
+            .await;
+    }
+
     /// 整流（thinking signature 或 budget）重试失败后的统一收尾。
     ///
     /// `None` 表示已记录熔断器、累积 `last_error`/`last_provider`，
@@ -261,13 +350,14 @@ impl RequestForwarder {
     async fn handle_rectifier_retry_failure(
         &self,
         retry_err: ProxyError,
-        provider: &Provider,
+        attempt: &ForwardAttempt,
         app_type_str: &str,
         used_half_open_permit: bool,
         rectifier_label: &str,
         last_error: &mut Option<ProxyError>,
         last_provider: &mut Option<Provider>,
     ) -> Option<ForwardError> {
+        let provider = attempt.provider();
         // Provider 错误：本家上游/网络确实出问题，下一家 provider 可能可用 → 继续故障转移。
         // 客户端错误：整流后请求仍违法，下一家也修不好 → 直接返回。
         let is_provider_error = match &retry_err {
@@ -277,16 +367,13 @@ impl RequestForwarder {
         };
 
         if is_provider_error {
-            let _ = self
-                .router
-                .record_result(
-                    &provider.id,
-                    app_type_str,
-                    used_half_open_permit,
-                    false,
-                    Some(retry_err.to_string()),
-                )
-                .await;
+            self.record_failure_result(
+                attempt,
+                app_type_str,
+                used_half_open_permit,
+                retry_err.to_string(),
+            )
+            .await;
             {
                 let mut status = self.status.write().await;
                 status.last_error = Some(format!(
@@ -299,8 +386,7 @@ impl RequestForwarder {
             return None;
         }
 
-        self.router
-            .release_permit_neutral(&provider.id, app_type_str, used_half_open_permit)
+        self.release_attempt_permit_neutral(attempt, app_type_str, used_half_open_permit)
             .await;
         let mut status = self.status.write().await;
         status.failed_requests += 1;
@@ -352,6 +438,37 @@ impl RequestForwarder {
         })
     }
 
+    async fn build_forward_attempts(
+        &self,
+        app_type: &AppType,
+        endpoint: &str,
+        body: &Value,
+        providers: Vec<Provider>,
+    ) -> Result<Vec<ForwardAttempt>, crate::error::AppError> {
+        let requested_model = request_model_for_forward(app_type, endpoint, body);
+        let interface_kind =
+            interface_kind_for_forward(app_type, endpoint).map(ToString::to_string);
+
+        if let Some(channel_attempts) = self
+            .router
+            .select_materialized_channel_attempts(
+                app_type,
+                &providers,
+                requested_model,
+                interface_kind,
+                None,
+            )
+            .await?
+        {
+            return Ok(channel_attempts);
+        }
+
+        Ok(providers
+            .into_iter()
+            .map(ForwardAttempt::from_provider)
+            .collect())
+    }
+
     /// 实际转发逻辑（不包含客户端维度的入口/出口计数）
     ///
     /// # Arguments
@@ -383,15 +500,33 @@ impl RequestForwarder {
             });
         }
 
+        let attempts = self
+            .build_forward_attempts(app_type, endpoint, &body, providers)
+            .await
+            .map_err(|e| ForwardError {
+                error: ProxyError::DatabaseError(e.to_string()),
+                provider: None,
+            })?;
+
+        if attempts.is_empty() {
+            return Err(ForwardError {
+                error: ProxyError::NoAvailableProvider,
+                provider: None,
+            });
+        }
+
         let mut last_error = None;
         let mut last_provider = None;
         let mut attempted_providers = 0usize;
 
-        // 单 Provider 场景下跳过熔断器检查（故障转移关闭时）
-        let bypass_circuit_breaker = providers.len() == 1;
+        // Legacy 单 Provider 场景下跳过熔断器检查（故障转移关闭时）。
+        // Materialized channel attempts are already explicit route units and
+        // should use channel-level breaker state.
+        let bypass_circuit_breaker = attempts.len() == 1 && !attempts[0].is_channel();
 
         // 依次尝试每个供应商
-        for provider in providers.iter() {
+        for attempt in attempts.iter() {
+            let provider = attempt.provider();
             // 整流器重试标记：每个 provider 独立持有，避免标记跨 provider 短路故障转移
             // —— 首家 provider 整流后被 5xx/timeout 击落时，下家仍能用整流后的请求体走整流流程
             let mut rectifier_retried = false;
@@ -413,6 +548,12 @@ impl RequestForwarder {
             // 单 Provider 场景下跳过此检查，避免熔断器阻塞所有请求
             let (allowed, used_half_open_permit) = if bypass_circuit_breaker {
                 (true, false)
+            } else if let Some(channel) = attempt.channel() {
+                let permit = self
+                    .router
+                    .allow_channel_request(&channel.channel_id, app_type_str)
+                    .await;
+                (permit.allowed, permit.used_half_open_permit)
             } else {
                 let permit = self
                     .router
@@ -459,7 +600,7 @@ impl RequestForwarder {
                 .forward(
                     app_type,
                     &method,
-                    provider,
+                    attempt,
                     endpoint,
                     &provider_body,
                     &headers,
@@ -471,7 +612,7 @@ impl RequestForwarder {
                 Ok((response, claude_api_format, outbound_model)) => {
                     // 成功：普通闭合熔断状态异步记录，避免阻塞流式首包返回；
                     // HalfOpen 探测仍同步等待，保证 permit 与熔断状态及时释放。
-                    self.record_success_result(&provider.id, app_type_str, used_half_open_permit)
+                    self.record_success_result(attempt, app_type_str, used_half_open_permit)
                         .await;
 
                     // 更新当前应用类型使用的 provider
@@ -558,7 +699,7 @@ impl RequestForwarder {
                                 .forward(
                                     app_type,
                                     &method,
-                                    provider,
+                                    attempt,
                                     endpoint,
                                     &media_body,
                                     &headers,
@@ -572,7 +713,7 @@ impl RequestForwarder {
                                         "[{app_type_str}] [Media] Unsupported-image retry succeeded"
                                     );
                                     self.record_success_result(
-                                        &provider.id,
+                                        attempt,
                                         app_type_str,
                                         used_half_open_permit,
                                     )
@@ -630,7 +771,7 @@ impl RequestForwarder {
                                     if let Some(err) = self
                                         .handle_rectifier_retry_failure(
                                             retry_err,
-                                            provider,
+                                            attempt,
                                             app_type_str,
                                             used_half_open_permit,
                                             "media 降级",
@@ -657,13 +798,12 @@ impl RequestForwarder {
                             if rectifier_retried {
                                 log::warn!("[{app_type_str}] [RECT-005] 整流器已触发过，不再重试");
                                 // 释放 HalfOpen permit（不记录熔断器，这是客户端兼容性问题）
-                                self.router
-                                    .release_permit_neutral(
-                                        &provider.id,
-                                        app_type_str,
-                                        used_half_open_permit,
-                                    )
-                                    .await;
+                                self.release_attempt_permit_neutral(
+                                    attempt,
+                                    app_type_str,
+                                    used_half_open_permit,
+                                )
+                                .await;
                                 let mut status = self.status.write().await;
                                 status.failed_requests += 1;
                                 status.last_error = Some(e.to_string());
@@ -704,7 +844,7 @@ impl RequestForwarder {
                                     .forward(
                                         app_type,
                                         &method,
-                                        provider,
+                                        attempt,
                                         endpoint,
                                         &provider_body,
                                         &headers,
@@ -716,7 +856,7 @@ impl RequestForwarder {
                                     Ok((response, claude_api_format, outbound_model)) => {
                                         log::info!("[{app_type_str}] [RECT-002] 整流重试成功");
                                         self.record_success_result(
-                                            &provider.id,
+                                            attempt,
                                             app_type_str,
                                             used_half_open_permit,
                                         )
@@ -779,7 +919,7 @@ impl RequestForwarder {
                                         if let Some(err) = self
                                             .handle_rectifier_retry_failure(
                                                 retry_err,
-                                                provider,
+                                                attempt,
                                                 app_type_str,
                                                 used_half_open_permit,
                                                 "整流",
@@ -809,13 +949,12 @@ impl RequestForwarder {
                                 log::warn!(
                                     "[{app_type_str}] [RECT-013] budget 整流器已触发过，不再重试"
                                 );
-                                self.router
-                                    .release_permit_neutral(
-                                        &provider.id,
-                                        app_type_str,
-                                        used_half_open_permit,
-                                    )
-                                    .await;
+                                self.release_attempt_permit_neutral(
+                                    attempt,
+                                    app_type_str,
+                                    used_half_open_permit,
+                                )
+                                .await;
                                 let mut status = self.status.write().await;
                                 status.failed_requests += 1;
                                 status.last_error = Some(e.to_string());
@@ -835,13 +974,12 @@ impl RequestForwarder {
                                 log::warn!(
                                     "[{app_type_str}] [RECT-014] budget 整流器触发但无可整流内容，不做无意义重试"
                                 );
-                                self.router
-                                    .release_permit_neutral(
-                                        &provider.id,
-                                        app_type_str,
-                                        used_half_open_permit,
-                                    )
-                                    .await;
+                                self.release_attempt_permit_neutral(
+                                    attempt,
+                                    app_type_str,
+                                    used_half_open_permit,
+                                )
+                                .await;
                                 let mut status = self.status.write().await;
                                 status.failed_requests += 1;
                                 status.last_error = Some(e.to_string());
@@ -870,7 +1008,7 @@ impl RequestForwarder {
                                 .forward(
                                     app_type,
                                     &method,
-                                    provider,
+                                    attempt,
                                     endpoint,
                                     &provider_body,
                                     &headers,
@@ -882,7 +1020,7 @@ impl RequestForwarder {
                                 Ok((response, claude_api_format, outbound_model)) => {
                                     log::info!("[{app_type_str}] [RECT-011] budget 整流重试成功");
                                     self.record_success_result(
-                                        &provider.id,
+                                        attempt,
                                         app_type_str,
                                         used_half_open_permit,
                                     )
@@ -939,7 +1077,7 @@ impl RequestForwarder {
                                     if let Some(err) = self
                                         .handle_rectifier_retry_failure(
                                             retry_err,
-                                            provider,
+                                            attempt,
                                             app_type_str,
                                             used_half_open_permit,
                                             "budget 整流",
@@ -957,13 +1095,12 @@ impl RequestForwarder {
                     }
 
                     if signature_rectifier_non_retryable_client_error {
-                        self.router
-                            .release_permit_neutral(
-                                &provider.id,
-                                app_type_str,
-                                used_half_open_permit,
-                            )
-                            .await;
+                        self.release_attempt_permit_neutral(
+                            attempt,
+                            app_type_str,
+                            used_half_open_permit,
+                        )
+                        .await;
                         let mut status = self.status.write().await;
                         status.failed_requests += 1;
                         status.last_error = Some(e.to_string());
@@ -986,16 +1123,13 @@ impl RequestForwarder {
                     match category {
                         ErrorCategory::Retryable => {
                             // 可重试：真正的 provider 故障 → 记录失败并更新熔断器/DB 健康度
-                            let _ = self
-                                .router
-                                .record_result(
-                                    &provider.id,
-                                    app_type_str,
-                                    used_half_open_permit,
-                                    false,
-                                    Some(e.to_string()),
-                                )
-                                .await;
+                            self.record_failure_result(
+                                attempt,
+                                app_type_str,
+                                used_half_open_permit,
+                                e.to_string(),
+                            )
+                            .await;
 
                             {
                                 let mut status = self.status.write().await;
@@ -1006,7 +1140,7 @@ impl RequestForwarder {
                             let (log_code, log_message) = build_retryable_failure_log(
                                 &provider.name,
                                 attempted_providers,
-                                providers.len(),
+                                attempts.len(),
                                 &e,
                             );
                             log::warn!("[{app_type_str}] [{log_code}] {log_message}");
@@ -1018,13 +1152,12 @@ impl RequestForwarder {
                         }
                         ErrorCategory::NonRetryable | ErrorCategory::ClientAbort => {
                             // 不可重试：客户端层错误或客户端断连 → 不污染健康度，仅释放 HalfOpen permit
-                            self.router
-                                .release_permit_neutral(
-                                    &provider.id,
-                                    app_type_str,
-                                    used_half_open_permit,
-                                )
-                                .await;
+                            self.release_attempt_permit_neutral(
+                                attempt,
+                                app_type_str,
+                                used_half_open_permit,
+                            )
+                            .await;
                             {
                                 let mut status = self.status.write().await;
                                 status.failed_requests += 1;
@@ -1074,7 +1207,7 @@ impl RequestForwarder {
         }
 
         if let Some((log_code, log_message)) =
-            build_terminal_failure_log(attempted_providers, providers.len(), last_error.as_ref())
+            build_terminal_failure_log(attempted_providers, attempts.len(), last_error.as_ref())
         {
             log::warn!("[{app_type_str}] [{log_code}] {log_message}");
         }
@@ -1094,13 +1227,14 @@ impl RequestForwarder {
         &self,
         app_type: &AppType,
         method: &http::Method,
-        provider: &Provider,
+        attempt: &ForwardAttempt,
         endpoint: &str,
         body: &Value,
         headers: &axum::http::HeaderMap,
         extensions: &Extensions,
         adapter: &dyn ProviderAdapter,
     ) -> Result<(ProxyResponse, Option<String>, Option<String>), ProxyError> {
+        let provider = attempt.provider();
         // 使用适配器提取 base_url
         let mut base_url = adapter.extract_base_url(provider)?;
 
@@ -1132,6 +1266,7 @@ impl RequestForwarder {
 
         // 与 CCH 对齐：请求前不做 thinking 主动改写（仅保留兼容入口）
         let mut mapped_body = normalize_thinking_type(mapped_body);
+        apply_channel_model_override(&mut mapped_body, attempt);
 
         if is_copilot {
             mapped_body =
@@ -2403,6 +2538,35 @@ fn merge_query_params(base_query: Option<&str>, extra_param: Option<&str>) -> Op
     }
 }
 
+fn request_model_for_forward(app_type: &AppType, endpoint: &str, body: &Value) -> Option<String> {
+    if matches!(app_type, AppType::Gemini) {
+        return super::handler_context::extract_gemini_model_from_path(endpoint);
+    }
+
+    body.get("model")
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|model| !model.is_empty())
+        .map(ToString::to_string)
+}
+
+fn interface_kind_for_forward(app_type: &AppType, endpoint: &str) -> Option<&'static str> {
+    match app_type {
+        AppType::Claude | AppType::ClaudeDesktop => Some("anthropic_messages"),
+        AppType::Codex | AppType::OpenCode | AppType::OpenClaw | AppType::Hermes => {
+            let path = endpoint.split_once('?').map_or(endpoint, |(path, _)| path);
+            if path.ends_with("/chat/completions") {
+                Some("openai_chat_completions")
+            } else if path.ends_with("/responses") || path.ends_with("/responses/compact") {
+                Some("openai_responses")
+            } else {
+                None
+            }
+        }
+        AppType::Gemini => Some("gemini_native"),
+    }
+}
+
 fn append_query_to_full_url(base_url: &str, query: Option<&str>) -> String {
     match query {
         Some(query) if !query.is_empty() => {
@@ -3138,6 +3302,37 @@ mod tests {
         let url = append_query_to_full_url("https://relay.example/api?foo=bar", Some("x-id=1"));
 
         assert_eq!(url, "https://relay.example/api?foo=bar&x-id=1");
+    }
+
+    #[test]
+    fn route_request_model_and_interface_follow_inbound_shape() {
+        let body = json!({ "model": "gpt-5.4" });
+
+        assert_eq!(
+            request_model_for_forward(&AppType::Codex, "/v1/responses", &body).as_deref(),
+            Some("gpt-5.4")
+        );
+        assert_eq!(
+            interface_kind_for_forward(&AppType::Codex, "/v1/responses?stream=1"),
+            Some("openai_responses")
+        );
+        assert_eq!(
+            interface_kind_for_forward(&AppType::Codex, "/v1/chat/completions"),
+            Some("openai_chat_completions")
+        );
+        assert_eq!(
+            request_model_for_forward(
+                &AppType::Gemini,
+                "/v1beta/models/gemini-2.0-flash:generateContent",
+                &json!({})
+            )
+            .as_deref(),
+            Some("gemini-2.0-flash")
+        );
+        assert_eq!(
+            interface_kind_for_forward(&AppType::Claude, "/v1/messages"),
+            Some("anthropic_messages")
+        );
     }
 
     #[test]

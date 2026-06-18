@@ -933,6 +933,7 @@ node_modules/.bin/tsc --noEmit
 - 同一份旧配置经兼容投影后，当前默认 provider 行为不变。
 - 新增 channel 表为空时，系统仍可从旧 provider 和 `provider_endpoints` 解析路由。
 - 新增 channel 表有数据时，route resolver 优先使用 channel 表；旧数据仅作为 fallback。
+- live forwarder 在 channel 表为空时继续使用 legacy provider attempt；显式 materialize 后使用 channel-backed attempt，base URL、接口格式和匹配模型映射来自 channel，认证仍继承 provider。
 
 ### Phase 3：抽 `ProxyEngine`
 
