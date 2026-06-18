@@ -5,7 +5,7 @@
 use super::{
     forwarder::ActiveConnectionGuard,
     handler_config::{StreamUsageEventFilter, UsageParserConfig},
-    handler_context::{RequestContext, StreamingTimeoutConfig},
+    handler_context::RequestContext,
     hyper_client::ProxyResponse,
     server::ProxyState,
     usage::parser::TokenUsage,
@@ -15,7 +15,7 @@ use super::{
 use crate::proxy_core::{
     decompress_body, get_content_encoding, strip_entity_headers_for_rebuilt_body,
     strip_hop_by_hop_response_headers, ProviderKind, ProxyServices, SseEventScanner,
-    SseUsageAccumulator,
+    SseUsageAccumulator, StreamingTimeoutConfig,
 };
 use axum::http::header::HeaderMap;
 use axum::response::{IntoResponse, Response};
@@ -166,15 +166,8 @@ pub async fn handle_non_streaming(
     // guard 在函数 scope 内持有，整包响应读取完成后随函数返回一并 drop
     _connection_guard: Option<ActiveConnectionGuard>,
 ) -> Result<Response, ProxyError> {
-    // 整包超时：仅在故障转移开启且配置值非零时生效
-    let body_timeout =
-        if ctx.app_config.auto_failover_enabled && ctx.app_config.non_streaming_timeout > 0 {
-            Duration::from_secs(ctx.app_config.non_streaming_timeout as u64)
-        } else {
-            Duration::ZERO
-        };
     let (mut response_headers, status, body_bytes) =
-        read_decoded_body(response, ctx.tag, body_timeout).await?;
+        read_decoded_body(response, ctx.tag, ctx.body_timeout_duration()).await?;
     strip_hop_by_hop_response_headers(&mut response_headers);
 
     log::debug!(

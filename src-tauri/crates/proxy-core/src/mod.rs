@@ -11,6 +11,7 @@ pub mod ports;
 pub mod response_body;
 pub mod response_diagnostics;
 pub mod response_headers;
+pub mod response_timeout;
 pub mod sse;
 pub mod usage;
 
@@ -21,5 +22,6 @@ pub use ports::*;
 pub use response_body::*;
 pub use response_diagnostics::*;
 pub use response_headers::*;
+pub use response_timeout::*;
 pub use sse::*;
 pub use usage::*;

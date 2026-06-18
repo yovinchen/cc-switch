@@ -1085,14 +1085,8 @@ async fn handle_claude_transform(
     }
 
     // 非流式响应转换 (OpenAI/Responses → Anthropic)
-    let body_timeout =
-        if ctx.app_config.auto_failover_enabled && ctx.app_config.non_streaming_timeout > 0 {
-            std::time::Duration::from_secs(ctx.app_config.non_streaming_timeout as u64)
-        } else {
-            std::time::Duration::ZERO
-        };
     let (mut response_headers, _status, body_bytes) =
-        read_decoded_body(response, ctx.tag, body_timeout).await?;
+        read_decoded_body(response, ctx.tag, ctx.body_timeout_duration()).await?;
 
     let body_str = String::from_utf8_lossy(&body_bytes);
 
@@ -1622,14 +1616,8 @@ async fn handle_codex_chat_to_responses_transform(
     }
 
     let _connection_guard = connection_guard;
-    let body_timeout =
-        if ctx.app_config.auto_failover_enabled && ctx.app_config.non_streaming_timeout > 0 {
-            std::time::Duration::from_secs(ctx.app_config.non_streaming_timeout as u64)
-        } else {
-            std::time::Duration::ZERO
-        };
     let (mut response_headers, status, body_bytes) =
-        read_decoded_body(response, ctx.tag, body_timeout).await?;
+        read_decoded_body(response, ctx.tag, ctx.body_timeout_duration()).await?;
     let body_str = String::from_utf8_lossy(&body_bytes);
     let chat_response: Value = match serde_json::from_slice(&body_bytes) {
         Ok(value) => value,
@@ -1751,14 +1739,8 @@ async fn handle_codex_chat_error_response(
     ctx: &RequestContext,
     status: axum::http::StatusCode,
 ) -> Result<axum::response::Response, ProxyError> {
-    let body_timeout =
-        if ctx.app_config.auto_failover_enabled && ctx.app_config.non_streaming_timeout > 0 {
-            std::time::Duration::from_secs(ctx.app_config.non_streaming_timeout as u64)
-        } else {
-            std::time::Duration::ZERO
-        };
     let (mut response_headers, _status, body_bytes) =
-        read_decoded_body(response, ctx.tag, body_timeout).await?;
+        read_decoded_body(response, ctx.tag, ctx.body_timeout_duration()).await?;
 
     // 非 JSON 上游错误体（Cloudflare HTML、纯文本 "Unauthorized" 等）若丢成 None，
     // 客户端就看不到原始诊断信息；包成 Value::String 走转换函数的字符串分支。
