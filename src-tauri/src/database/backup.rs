@@ -20,6 +20,7 @@ const SYNC_SKIP_TABLES: &[&str] = &[
     "proxy_request_logs",
     "stream_check_logs",
     "provider_health",
+    "proxy_channel_health",
     "proxy_live_backup",
     "usage_daily_rollups",
 ];

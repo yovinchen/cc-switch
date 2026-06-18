@@ -98,6 +98,19 @@ pub(crate) struct ProxyChannelMaterializeResult {
     pub needs_review_count: usize,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct ProxyChannelHealth {
+    pub channel_id: String,
+    pub status: String,
+    pub last_success_at: Option<i64>,
+    pub last_failure_at: Option<i64>,
+    pub consecutive_failures: u32,
+    pub response_time_ms: Option<i64>,
+    pub disabled_reason: Option<String>,
+    pub updated_at: i64,
+}
+
 impl Database {
     pub(crate) fn preview_legacy_proxy_channel_migration(
         &self,
@@ -349,6 +362,117 @@ impl Database {
     ) -> Result<Vec<ProxyChannelModelRecord>, AppError> {
         let conn = lock_conn!(self.conn);
         list_proxy_channel_models_on_conn(&conn, channel_id)
+    }
+
+    pub(crate) fn get_proxy_channel_health(
+        &self,
+        channel_id: &str,
+    ) -> Result<ProxyChannelHealth, AppError> {
+        let conn = lock_conn!(self.conn);
+        let result = conn.query_row(
+            "SELECT channel_id, status, last_success_at, last_failure_at,
+                    consecutive_failures, response_time_ms, disabled_reason, updated_at
+             FROM proxy_channel_health
+             WHERE channel_id = ?1",
+            [channel_id],
+            |row| {
+                Ok(ProxyChannelHealth {
+                    channel_id: row.get(0)?,
+                    status: row.get(1)?,
+                    last_success_at: row.get(2)?,
+                    last_failure_at: row.get(3)?,
+                    consecutive_failures: row.get::<_, i64>(4)?.max(0) as u32,
+                    response_time_ms: row.get(5)?,
+                    disabled_reason: row.get(6)?,
+                    updated_at: row.get(7)?,
+                })
+            },
+        );
+
+        match result {
+            Ok(health) => Ok(health),
+            Err(rusqlite::Error::QueryReturnedNoRows) => Ok(ProxyChannelHealth {
+                channel_id: channel_id.to_string(),
+                status: "unknown".to_string(),
+                last_success_at: None,
+                last_failure_at: None,
+                consecutive_failures: 0,
+                response_time_ms: None,
+                disabled_reason: None,
+                updated_at: chrono::Utc::now().timestamp_millis(),
+            }),
+            Err(e) => Err(AppError::Database(e.to_string())),
+        }
+    }
+
+    pub(crate) fn update_proxy_channel_health_with_threshold(
+        &self,
+        channel_id: &str,
+        success: bool,
+        error_msg: Option<String>,
+        failure_threshold: u32,
+        response_time_ms: Option<i64>,
+    ) -> Result<(), AppError> {
+        let conn = lock_conn!(self.conn);
+        let now = chrono::Utc::now().timestamp_millis();
+        let current_failures = conn
+            .query_row(
+                "SELECT consecutive_failures FROM proxy_channel_health WHERE channel_id = ?1",
+                [channel_id],
+                |row| row.get::<_, i64>(0),
+            )
+            .unwrap_or(0)
+            .max(0) as u32;
+
+        let (status, consecutive_failures, last_success_at, last_failure_at, disabled_reason) =
+            if success {
+                ("healthy", 0u32, Some(now), None, None)
+            } else {
+                let failures = current_failures + 1;
+                let status = if failures >= failure_threshold {
+                    "unhealthy"
+                } else {
+                    "degraded"
+                };
+                (status, failures, None, Some(now), error_msg)
+            };
+
+        conn.execute(
+            "INSERT OR REPLACE INTO proxy_channel_health (
+                channel_id, status, last_success_at, last_failure_at,
+                consecutive_failures, response_time_ms, disabled_reason, updated_at
+            ) VALUES (
+                ?1, ?2,
+                COALESCE(?3, (SELECT last_success_at FROM proxy_channel_health WHERE channel_id = ?1)),
+                COALESCE(?4, (SELECT last_failure_at FROM proxy_channel_health WHERE channel_id = ?1)),
+                ?5,
+                COALESCE(?6, (SELECT response_time_ms FROM proxy_channel_health WHERE channel_id = ?1)),
+                ?7, ?8
+            )",
+            params![
+                channel_id,
+                status,
+                last_success_at,
+                last_failure_at,
+                consecutive_failures as i64,
+                response_time_ms,
+                disabled_reason,
+                now,
+            ],
+        )
+        .map_err(|e| AppError::Database(format!("更新 proxy channel health 失败: {e}")))?;
+
+        Ok(())
+    }
+
+    pub(crate) fn reset_proxy_channel_health(&self, channel_id: &str) -> Result<(), AppError> {
+        let conn = lock_conn!(self.conn);
+        conn.execute(
+            "DELETE FROM proxy_channel_health WHERE channel_id = ?1",
+            [channel_id],
+        )
+        .map_err(|e| AppError::Database(format!("重置 proxy channel health 失败: {e}")))?;
+        Ok(())
     }
 }
 
@@ -834,6 +958,74 @@ mod tests {
             .list_proxy_channel_models(&stored[0].id)
             .expect("list channel models");
         assert_eq!(direct_models.len(), stored[0].models.len());
+    }
+
+    #[test]
+    fn channel_health_tracks_threshold_and_reset() {
+        let db = Database::memory().expect("memory db");
+        save_claude_provider(&db);
+        db.materialize_legacy_proxy_channels("claude")
+            .expect("materialize");
+
+        let stored = db
+            .list_proxy_channels_for_app("claude")
+            .expect("list channels");
+        let channel_id = &stored[0].id;
+
+        let initial = db
+            .get_proxy_channel_health(channel_id)
+            .expect("initial health");
+        assert_eq!(initial.status, "unknown");
+        assert_eq!(initial.consecutive_failures, 0);
+
+        db.update_proxy_channel_health_with_threshold(
+            channel_id,
+            false,
+            Some("first failure".to_string()),
+            2,
+            Some(120),
+        )
+        .expect("record first failure");
+        let degraded = db
+            .get_proxy_channel_health(channel_id)
+            .expect("degraded health");
+        assert_eq!(degraded.status, "degraded");
+        assert_eq!(degraded.consecutive_failures, 1);
+        assert_eq!(degraded.response_time_ms, Some(120));
+        assert_eq!(degraded.disabled_reason.as_deref(), Some("first failure"));
+
+        db.update_proxy_channel_health_with_threshold(
+            channel_id,
+            false,
+            Some("second failure".to_string()),
+            2,
+            None,
+        )
+        .expect("record second failure");
+        let unhealthy = db
+            .get_proxy_channel_health(channel_id)
+            .expect("unhealthy health");
+        assert_eq!(unhealthy.status, "unhealthy");
+        assert_eq!(unhealthy.consecutive_failures, 2);
+        assert_eq!(unhealthy.response_time_ms, Some(120));
+
+        db.update_proxy_channel_health_with_threshold(channel_id, true, None, 2, Some(45))
+            .expect("record success");
+        let healthy = db
+            .get_proxy_channel_health(channel_id)
+            .expect("healthy health");
+        assert_eq!(healthy.status, "healthy");
+        assert_eq!(healthy.consecutive_failures, 0);
+        assert_eq!(healthy.response_time_ms, Some(45));
+        assert!(healthy.last_success_at.is_some());
+
+        db.reset_proxy_channel_health(channel_id)
+            .expect("reset health");
+        let reset = db
+            .get_proxy_channel_health(channel_id)
+            .expect("reset health");
+        assert_eq!(reset.status, "unknown");
+        assert_eq!(reset.consecutive_failures, 0);
     }
 
     #[test]

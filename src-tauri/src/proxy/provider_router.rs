@@ -7,9 +7,12 @@ use crate::database::{Database, ProxyChannelMigrationPreview, ProxyChannelRecord
 use crate::error::AppError;
 use crate::provider::Provider;
 use crate::proxy::channel_routing::{
-    resolve_channel_route, ChannelRouteSource, RouteResolveRequest, RouteResolveResponse,
+    resolve_channel_route, ChannelRouteRejected, ChannelRouteSource, RouteResolveRequest,
+    RouteResolveResponse,
 };
-use crate::proxy::circuit_breaker::{AllowResult, CircuitBreaker, CircuitBreakerConfig};
+use crate::proxy::circuit_breaker::{
+    AllowResult, CircuitBreaker, CircuitBreakerConfig, CircuitBreakerStats,
+};
 use std::collections::HashMap;
 use std::str::FromStr;
 use std::sync::Arc;
@@ -19,7 +22,7 @@ use tokio::sync::RwLock;
 pub struct ProviderRouter {
     /// 数据库连接
     db: Arc<Database>,
-    /// 熔断器管理器 - key 格式: "app_type:provider_id"
+    /// 熔断器管理器 - provider key: "app_type:provider_id", channel key: "channel:app_type:channel_id"
     circuit_breakers: Arc<RwLock<HashMap<String, Arc<CircuitBreaker>>>>,
 }
 
@@ -138,7 +141,31 @@ impl ProviderRouter {
         request: RouteResolveRequest,
     ) -> Result<RouteResolveResponse, AppError> {
         let (channels, source) = self.list_channels_for_app(&request.app_type).await?;
-        resolve_channel_route(request, channels, source)
+        let mut response = resolve_channel_route(request, channels, source)?;
+        let candidates = std::mem::take(&mut response.candidates);
+        let mut available = Vec::with_capacity(candidates.len());
+
+        for candidate in candidates {
+            let circuit_key = channel_circuit_key(&response.app_type, &candidate.channel_id);
+            let is_available = match self.get_existing_circuit_breaker(&circuit_key).await {
+                Some(breaker) => breaker.is_available().await,
+                None => true,
+            };
+
+            if is_available {
+                available.push(candidate);
+            } else {
+                response.rejected.push(ChannelRouteRejected {
+                    channel_id: candidate.channel_id,
+                    provider_id: candidate.provider_id,
+                    channel_name: candidate.channel_name,
+                    reasons: vec!["circuit_open".to_string()],
+                });
+            }
+        }
+
+        response.candidates = available;
+        Ok(response)
     }
 
     /// 请求执行前获取熔断器“放行许可”
@@ -155,6 +182,13 @@ impl ProviderRouter {
         breaker.allow_request().await
     }
 
+    /// 请求执行前获取 Channel 熔断器“放行许可”
+    pub async fn allow_channel_request(&self, channel_id: &str, app_type: &str) -> AllowResult {
+        let circuit_key = channel_circuit_key(app_type, channel_id);
+        let breaker = self.get_or_create_circuit_breaker(&circuit_key).await;
+        breaker.allow_request().await
+    }
+
     /// 记录供应商请求结果
     pub async fn record_result(
         &self,
@@ -165,10 +199,7 @@ impl ProviderRouter {
         error_msg: Option<String>,
     ) -> Result<(), AppError> {
         // 1. 按应用独立获取熔断器配置
-        let failure_threshold = match self.db.get_proxy_config_for_app(app_type).await {
-            Ok(app_config) => app_config.circuit_failure_threshold,
-            Err(_) => 5, // 默认值
-        };
+        let failure_threshold = self.failure_threshold_for_app(app_type, 5).await;
 
         // 2. 更新熔断器状态
         let circuit_key = format!("{app_type}:{provider_id}");
@@ -194,6 +225,39 @@ impl ProviderRouter {
         Ok(())
     }
 
+    /// 记录 Channel 请求结果
+    pub async fn record_channel_result(
+        &self,
+        channel_id: &str,
+        app_type: &str,
+        used_half_open_permit: bool,
+        success: bool,
+        error_msg: Option<String>,
+        response_time_ms: Option<i64>,
+    ) -> Result<(), AppError> {
+        let failure_threshold = self
+            .failure_threshold_for_app(app_type, CircuitBreakerConfig::default().failure_threshold)
+            .await;
+        let circuit_key = channel_circuit_key(app_type, channel_id);
+        let breaker = self.get_or_create_circuit_breaker(&circuit_key).await;
+
+        if success {
+            breaker.record_success(used_half_open_permit).await;
+        } else {
+            breaker.record_failure(used_half_open_permit).await;
+        }
+
+        self.db.update_proxy_channel_health_with_threshold(
+            channel_id,
+            success,
+            error_msg,
+            failure_threshold,
+            response_time_ms,
+        )?;
+
+        Ok(())
+    }
+
     /// 重置熔断器（手动恢复）
     pub async fn reset_circuit_breaker(&self, circuit_key: &str) {
         let breakers = self.circuit_breakers.read().await;
@@ -206,6 +270,17 @@ impl ProviderRouter {
     pub async fn reset_provider_breaker(&self, provider_id: &str, app_type: &str) {
         let circuit_key = format!("{app_type}:{provider_id}");
         self.reset_circuit_breaker(&circuit_key).await;
+    }
+
+    /// 重置指定 Channel 的熔断器和健康状态
+    pub async fn reset_channel_breaker(
+        &self,
+        channel_id: &str,
+        app_type: &str,
+    ) -> Result<(), AppError> {
+        let circuit_key = channel_circuit_key(app_type, channel_id);
+        self.reset_circuit_breaker(&circuit_key).await;
+        self.db.reset_proxy_channel_health(channel_id)
     }
 
     /// 仅释放 HalfOpen permit，不影响健康统计（neutral 接口）
@@ -236,10 +311,11 @@ impl ProviderRouter {
 
     /// 更新指定应用已创建熔断器的配置（热更新）
     pub async fn update_app_configs(&self, app_type: &str, config: CircuitBreakerConfig) {
-        let prefix = format!("{app_type}:");
+        let provider_prefix = format!("{app_type}:");
+        let channel_prefix = format!("channel:{app_type}:");
         let breakers = self.circuit_breakers.read().await;
         for (key, breaker) in breakers.iter() {
-            if key.starts_with(&prefix) {
+            if key.starts_with(&provider_prefix) || key.starts_with(&channel_prefix) {
                 breaker.update_config(config.clone()).await;
             }
         }
@@ -251,8 +327,25 @@ impl ProviderRouter {
         &self,
         provider_id: &str,
         app_type: &str,
-    ) -> Option<crate::proxy::circuit_breaker::CircuitBreakerStats> {
+    ) -> Option<CircuitBreakerStats> {
         let circuit_key = format!("{app_type}:{provider_id}");
+        let breakers = self.circuit_breakers.read().await;
+
+        if let Some(breaker) = breakers.get(&circuit_key) {
+            Some(breaker.get_stats().await)
+        } else {
+            None
+        }
+    }
+
+    /// 获取 Channel 熔断器状态
+    #[allow(dead_code)]
+    pub async fn get_channel_circuit_breaker_stats(
+        &self,
+        channel_id: &str,
+        app_type: &str,
+    ) -> Option<CircuitBreakerStats> {
+        let circuit_key = channel_circuit_key(app_type, channel_id);
         let breakers = self.circuit_breakers.read().await;
 
         if let Some(breaker) = breakers.get(&circuit_key) {
@@ -280,8 +373,7 @@ impl ProviderRouter {
             return breaker.clone();
         }
 
-        // 从 key 中提取 app_type (格式: "app_type:provider_id")
-        let app_type = key.split(':').next().unwrap_or("claude");
+        let app_type = app_type_from_circuit_key(key);
 
         // 按应用独立读取熔断器配置
         let config = match self.db.get_proxy_config_for_app(app_type).await {
@@ -300,6 +392,28 @@ impl ProviderRouter {
 
         breaker
     }
+
+    async fn get_existing_circuit_breaker(&self, key: &str) -> Option<Arc<CircuitBreaker>> {
+        let breakers = self.circuit_breakers.read().await;
+        breakers.get(key).cloned()
+    }
+
+    async fn failure_threshold_for_app(&self, app_type: &str, fallback: u32) -> u32 {
+        match self.db.get_proxy_config_for_app(app_type).await {
+            Ok(app_config) => app_config.circuit_failure_threshold,
+            Err(_) => fallback,
+        }
+    }
+}
+
+fn channel_circuit_key(app_type: &str, channel_id: &str) -> String {
+    format!("channel:{app_type}:{channel_id}")
+}
+
+fn app_type_from_circuit_key(key: &str) -> &str {
+    key.strip_prefix("channel:")
+        .and_then(|rest| rest.split(':').next())
+        .unwrap_or_else(|| key.split(':').next().unwrap_or("claude"))
 }
 
 #[cfg(test)]
@@ -307,6 +421,7 @@ mod tests {
     use super::*;
     use crate::database::Database;
     use crate::proxy::channel_routing::{ChannelRouteSource, RouteResolveRequest};
+    use crate::proxy::circuit_breaker::CircuitState;
     use crate::settings::CustomEndpoint;
     use serde_json::json;
     use serial_test::serial;
@@ -481,6 +596,102 @@ mod tests {
             response.candidates[0].base_url,
             "https://primary.example.com/v1"
         );
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn route_dry_run_filters_open_channel_breakers() {
+        let _home = TempHome::new();
+        let db = Arc::new(Database::memory().unwrap());
+        let provider = Provider::with_id(
+            "a".to_string(),
+            "Provider A".to_string(),
+            json!({
+                "env": {
+                    "ANTHROPIC_BASE_URL": "https://primary.example.com/v1",
+                    "ANTHROPIC_MODEL": "claude-sonnet-4"
+                }
+            }),
+            None,
+        );
+        db.save_provider("claude", &provider).unwrap();
+        db.materialize_legacy_proxy_channels("claude").unwrap();
+
+        let mut config = db.get_proxy_config_for_app("claude").await.unwrap();
+        config.circuit_failure_threshold = 1;
+        config.circuit_timeout_seconds = 60;
+        db.update_proxy_config_for_app(config).await.unwrap();
+
+        let channels = db.list_proxy_channels_for_app("claude").unwrap();
+        let channel_id = channels[0].id.clone();
+
+        let router = ProviderRouter::new(db.clone());
+        router
+            .record_channel_result(
+                &channel_id,
+                "claude",
+                false,
+                false,
+                Some("upstream failed".to_string()),
+                Some(123),
+            )
+            .await
+            .unwrap();
+
+        let stats = router
+            .get_channel_circuit_breaker_stats(&channel_id, "claude")
+            .await
+            .expect("channel stats");
+        assert_eq!(stats.state, CircuitState::Open);
+
+        let health = db.get_proxy_channel_health(&channel_id).unwrap();
+        assert_eq!(health.status, "unhealthy");
+        assert_eq!(health.consecutive_failures, 1);
+        assert_eq!(health.response_time_ms, Some(123));
+
+        let blocked = router
+            .resolve_channel_route_dry_run(RouteResolveRequest {
+                app_type: "claude".to_string(),
+                requested_model: Some("claude-sonnet-4".to_string()),
+                interface_kind: Some("anthropic_messages".to_string()),
+                route_group: None,
+            })
+            .await
+            .unwrap();
+
+        assert!(blocked.candidates.is_empty());
+        assert!(blocked.rejected.iter().any(|rejected| {
+            rejected.channel_id == channel_id
+                && rejected
+                    .reasons
+                    .iter()
+                    .any(|reason| reason == "circuit_open")
+        }));
+        assert!(
+            !router
+                .allow_channel_request(&channel_id, "claude")
+                .await
+                .allowed
+        );
+
+        router
+            .reset_channel_breaker(&channel_id, "claude")
+            .await
+            .unwrap();
+        let reset_health = db.get_proxy_channel_health(&channel_id).unwrap();
+        assert_eq!(reset_health.status, "unknown");
+
+        let recovered = router
+            .resolve_channel_route_dry_run(RouteResolveRequest {
+                app_type: "claude".to_string(),
+                requested_model: Some("claude-sonnet-4".to_string()),
+                interface_kind: Some("anthropic_messages".to_string()),
+                route_group: None,
+            })
+            .await
+            .unwrap();
+        assert_eq!(recovered.candidates.len(), 1);
+        assert!(recovered.rejected.is_empty());
     }
 
     #[tokio::test]
