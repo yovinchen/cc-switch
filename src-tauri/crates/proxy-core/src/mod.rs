@@ -10,6 +10,7 @@ pub mod error;
 pub mod ports;
 pub mod response_diagnostics;
 pub mod response_headers;
+pub mod sse;
 
 pub use domain::*;
 pub use engine::*;
@@ -17,3 +18,4 @@ pub use error::*;
 pub use ports::*;
 pub use response_diagnostics::*;
 pub use response_headers::*;
+pub use sse::*;
