@@ -91,6 +91,11 @@ pub trait ModelCatalogProvider: Send + Sync {
         app: &'a AppKind,
         provider_id: &'a str,
     ) -> BoxFuture<'a, ProxyCoreResult<ModelCatalog>>;
+
+    fn load_client_catalog<'a>(
+        &'a self,
+        app: &'a AppKind,
+    ) -> BoxFuture<'a, ProxyCoreResult<ModelCatalog>>;
 }
 
 pub trait UsageSink: Send + Sync {

@@ -3,7 +3,7 @@ use super::domain::{
     ProxyRequest, ProxyResult, RoutableModel, RoutePlan, RouteRequest, DEFAULT_ROUTE_GROUP,
 };
 use super::error::ProxyCoreResult;
-use super::ports::{ProxyCoreEvent, ProxyCoreEventType, ProxyServices};
+use super::ports::{ModelCatalog, ProxyCoreEvent, ProxyCoreEventType, ProxyServices};
 use serde_json::{json, to_value};
 use std::collections::BTreeMap;
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -153,6 +153,13 @@ where
                 .then_with(|| left.channel_id.cmp(&right.channel_id))
         });
         Ok(models)
+    }
+
+    pub async fn client_model_catalog(
+        &self,
+        app: &super::domain::AppKind,
+    ) -> ProxyCoreResult<ModelCatalog> {
+        self.services.model_catalog().load_client_catalog(app).await
     }
 
     async fn plan_route_with_legacy_projection(
@@ -442,6 +449,19 @@ mod tests {
                 })
             })
         }
+
+        fn load_client_catalog<'a>(
+            &'a self,
+            app: &'a AppKind,
+        ) -> BoxFuture<'a, ProxyCoreResult<ModelCatalog>> {
+            Box::pin(async move {
+                Ok(ModelCatalog {
+                    provider_id: app.as_str().to_string(),
+                    models: vec!["gpt-5".to_string()],
+                    raw: json!({"models": [{"id": "gpt-5"}]}),
+                })
+            })
+        }
     }
 
     impl UsageSink for TestServices {
@@ -617,6 +637,20 @@ mod tests {
         assert_eq!(models.len(), 1);
         assert_eq!(models[0].public_model, "sonnet");
         assert_eq!(models[0].channel_id, "channel-a");
+    }
+
+    #[test]
+    fn client_model_catalog_delegates_to_catalog_provider() {
+        let services = Arc::new(TestServices::default());
+        let engine = ProxyEngine::new(services);
+
+        let catalog =
+            futures::executor::block_on(engine.client_model_catalog(&AppKind::Codex))
+                .expect("client model catalog");
+
+        assert_eq!(catalog.provider_id, "codex");
+        assert_eq!(catalog.models, ["gpt-5"]);
+        assert_eq!(catalog.raw, json!({"models": [{"id": "gpt-5"}]}));
     }
 
     fn provider_spec() -> ProviderSpec {

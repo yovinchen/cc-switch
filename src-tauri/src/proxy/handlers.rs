@@ -785,29 +785,12 @@ fn normalize_channel_id_path(channel_id: String) -> Result<String, ProxyError> {
 /// Only serves the catalog when the live config.toml still references the
 /// cc-switch–owned `model_catalog_json`, using the same path ownership rules as
 /// Codex live-setting import.
-pub async fn handle_models() -> Result<Json<Value>, ProxyError> {
-    let generated_path = crate::codex_config::get_codex_model_catalog_path();
-    let active_catalog_path = match crate::codex_config::read_codex_config_text() {
-        Ok(config_text) => {
-            crate::codex_config::resolve_cc_switch_catalog_path(&config_text, &generated_path)
-        }
-        Err(_) => None,
-    };
-
-    let catalog = if let Some(catalog_path) =
-        active_catalog_path.as_ref().filter(|path| path.exists())
-    {
-        let text = std::fs::read_to_string(catalog_path).unwrap_or_default();
-        serde_json::from_str(&text).unwrap_or(json!({"models": []}))
-    } else {
-        if active_catalog_path.is_none() {
-            log::debug!(
-                "[models] stale guard: catalog not served (model_catalog_json not set to cc-switch catalog)"
-            );
-        }
-        json!({"models": []})
-    };
-    Ok(Json(catalog))
+pub async fn handle_models(State(state): State<ProxyState>) -> Result<Json<Value>, ProxyError> {
+    let catalog = ProxyEngine::new(state.proxy_core_services.clone())
+        .client_model_catalog(&AppKind::Codex)
+        .await
+        .map_err(proxy_core_error_to_proxy_error)?;
+    Ok(Json(catalog.raw))
 }
 
 // ============================================================================

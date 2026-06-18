@@ -521,6 +521,19 @@ impl crate::proxy_core::ModelCatalogProvider for CcSwitchModelCatalogProvider {
             })
         })
     }
+
+    fn load_client_catalog<'a>(
+        &'a self,
+        app: &'a AppKind,
+    ) -> BoxFuture<'a, ProxyCoreResult<ModelCatalog>> {
+        Box::pin(async move {
+            let raw = match app {
+                AppKind::Codex => load_codex_client_model_catalog_raw(),
+                _ => json!({"models": []}),
+            };
+            Ok(model_catalog_from_raw(app.as_str(), raw))
+        })
+    }
 }
 
 #[derive(Clone)]
@@ -1064,6 +1077,58 @@ fn collect_models_from_value(value: &Value, models: &mut Vec<String>) {
     }
 }
 
+fn load_codex_client_model_catalog_raw() -> Value {
+    let generated_path = crate::codex_config::get_codex_model_catalog_path();
+    let active_catalog_path = match crate::codex_config::read_codex_config_text() {
+        Ok(config_text) => {
+            crate::codex_config::resolve_cc_switch_catalog_path(&config_text, &generated_path)
+        }
+        Err(_) => None,
+    };
+
+    if let Some(catalog_path) = active_catalog_path.as_ref().filter(|path| path.exists()) {
+        let text = std::fs::read_to_string(catalog_path).unwrap_or_default();
+        serde_json::from_str(&text).unwrap_or_else(|_| json!({"models": []}))
+    } else {
+        if active_catalog_path.is_none() {
+            log::debug!(
+                "[models] stale guard: catalog not served (model_catalog_json not set to cc-switch catalog)"
+            );
+        }
+        json!({"models": []})
+    }
+}
+
+fn model_catalog_from_raw(provider_id: &str, raw: Value) -> ModelCatalog {
+    let mut models = Vec::new();
+    collect_client_catalog_models(&raw, &mut models);
+    models.sort();
+    models.dedup();
+    ModelCatalog {
+        provider_id: provider_id.to_string(),
+        models,
+        raw,
+    }
+}
+
+fn collect_client_catalog_models(value: &Value, models: &mut Vec<String>) {
+    let Some(catalog_models) = value.get("models").and_then(Value::as_array) else {
+        return;
+    };
+
+    for entry in catalog_models {
+        if let Some(model) = entry.as_str().or_else(|| {
+            entry
+                .get("model")
+                .or_else(|| entry.get("id"))
+                .or_else(|| entry.get("name"))
+                .and_then(Value::as_str)
+        }) {
+            push_model(models, model);
+        }
+    }
+}
+
 fn push_model(models: &mut Vec<String>, model: &str) {
     let model = model.trim();
     if !model.is_empty() {
@@ -1084,6 +1149,33 @@ mod tests {
     use bytes::Bytes;
     use futures::StreamExt;
     use http::{Method, StatusCode};
+    use std::ffi::OsString;
+
+    struct IsolatedTestHome {
+        _dir: tempfile::TempDir,
+        original_test_home: Option<OsString>,
+    }
+
+    impl IsolatedTestHome {
+        fn new() -> Self {
+            let dir = tempfile::tempdir().expect("temp home");
+            let original_test_home = std::env::var_os("CC_SWITCH_TEST_HOME");
+            std::env::set_var("CC_SWITCH_TEST_HOME", dir.path());
+            Self {
+                _dir: dir,
+                original_test_home,
+            }
+        }
+    }
+
+    impl Drop for IsolatedTestHome {
+        fn drop(&mut self) {
+            match &self.original_test_home {
+                Some(value) => std::env::set_var("CC_SWITCH_TEST_HOME", value),
+                None => std::env::remove_var("CC_SWITCH_TEST_HOME"),
+            }
+        }
+    }
 
     fn save_claude_provider(db: &Database) {
         let provider = Provider::with_id(
@@ -1261,6 +1353,96 @@ mod tests {
         );
         assert_eq!(plan.attempts.len(), 2);
         assert_eq!(plan.selections.len(), 2);
+    }
+
+    #[test]
+    fn model_catalog_from_raw_extracts_supported_client_model_ids() {
+        let catalog = model_catalog_from_raw(
+            "codex",
+            json!({
+                "models": [
+                    {"id": " gpt-5 "},
+                    {"model": "o4-mini"},
+                    {"name": "gemini-2.5-pro"},
+                    "claude-sonnet-4",
+                    {"id": "gpt-5"}
+                ]
+            }),
+        );
+
+        assert_eq!(
+            catalog.models,
+            vec![
+                "claude-sonnet-4".to_string(),
+                "gemini-2.5-pro".to_string(),
+                "gpt-5".to_string(),
+                "o4-mini".to_string(),
+            ]
+        );
+        assert_eq!(catalog.provider_id, "codex");
+    }
+
+    #[tokio::test]
+    #[serial_test::serial]
+    async fn model_catalog_provider_loads_codex_client_catalog_file() {
+        let _home = IsolatedTestHome::new();
+        let codex_dir = crate::codex_config::get_codex_config_dir();
+        std::fs::create_dir_all(&codex_dir).expect("create codex dir");
+        std::fs::write(
+            crate::codex_config::get_codex_config_path(),
+            "model_catalog_json = \"cc-switch-model-catalog.json\"\n",
+        )
+        .expect("write codex config");
+        std::fs::write(
+            crate::codex_config::get_codex_model_catalog_path(),
+            r#"{"models":[{"id":"gpt-5"},{"model":"o4-mini"}]}"#,
+        )
+        .expect("write codex model catalog");
+        let services = CcSwitchProxyServices::new(Arc::new(Database::memory().expect("memory db")));
+
+        let catalog = services
+            .model_catalog()
+            .load_client_catalog(&AppKind::Codex)
+            .await
+            .expect("load client catalog");
+
+        assert_eq!(catalog.provider_id, "codex");
+        assert_eq!(
+            catalog.models,
+            vec!["gpt-5".to_string(), "o4-mini".to_string()]
+        );
+        assert_eq!(
+            catalog.raw,
+            json!({"models": [{"id": "gpt-5"}, {"model": "o4-mini"}]})
+        );
+    }
+
+    #[tokio::test]
+    #[serial_test::serial]
+    async fn model_catalog_provider_ignores_user_owned_codex_catalog_file() {
+        let _home = IsolatedTestHome::new();
+        let codex_dir = crate::codex_config::get_codex_config_dir();
+        std::fs::create_dir_all(&codex_dir).expect("create codex dir");
+        std::fs::write(
+            crate::codex_config::get_codex_config_path(),
+            "model_catalog_json = \"my-custom-catalog.json\"\n",
+        )
+        .expect("write codex config");
+        std::fs::write(
+            codex_dir.join("my-custom-catalog.json"),
+            r#"{"models":[{"id":"user-model"}]}"#,
+        )
+        .expect("write user catalog");
+        let services = CcSwitchProxyServices::new(Arc::new(Database::memory().expect("memory db")));
+
+        let catalog = services
+            .model_catalog()
+            .load_client_catalog(&AppKind::Codex)
+            .await
+            .expect("load client catalog");
+
+        assert_eq!(catalog.models, Vec::<String>::new());
+        assert_eq!(catalog.raw, json!({"models": []}));
     }
 
     #[tokio::test]
