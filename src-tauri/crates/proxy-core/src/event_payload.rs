@@ -81,11 +81,18 @@ pub fn build_attempt_event_payload(input: AttemptEventPayloadInput<'_>) -> Value
     payload
 }
 
+pub fn build_request_started_event_payload(request_id: &str, app_type: &str) -> Value {
+    json!({
+        "requestId": request_id,
+        "appType": app_type,
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::{
-        attempt_event_name, build_attempt_event_payload, AttemptEventChannel, AttemptEventPayloadInput,
-        AttemptEventPhase,
+        attempt_event_name, build_attempt_event_payload, build_request_started_event_payload,
+        AttemptEventChannel, AttemptEventPayloadInput, AttemptEventPhase,
     };
 
     #[test]
@@ -157,5 +164,13 @@ mod tests {
         assert_eq!(payload["appType"], "codex");
         assert!(payload.get("channelId").is_none());
         assert!(payload.get("error").is_none());
+    }
+
+    #[test]
+    fn request_started_payload_contains_request_and_app_identity() {
+        let payload = build_request_started_event_payload("req-1", "claude");
+
+        assert_eq!(payload["requestId"], "req-1");
+        assert_eq!(payload["appType"], "claude");
     }
 }

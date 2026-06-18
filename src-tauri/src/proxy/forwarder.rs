@@ -29,25 +29,25 @@ use crate::proxy::providers::copilot_auth::CopilotAuthManager;
 use crate::proxy_core::append_query_to_full_url;
 use crate::proxy_core::{
     attempt_event_name, build_attempt_event_payload, build_codex_oauth_session_headers,
-    build_retryable_forward_failure_log, build_terminal_forward_failure_log,
-    build_upstream_auth_headers, categorize_forward_failure, is_github_copilot_upstream,
-    is_socks_proxy_url, resolve_media_prevention_policy, resolve_upstream_request_transport_policy,
-    resolve_upstream_send_policy, resolved_copilot_dynamic_base_url,
-    should_apply_bedrock_pre_send_optimizer, should_check_media_retry,
-    should_failover_after_rectifier_retry_failure, should_preserve_exact_request_header_case,
-    should_resolve_copilot_dynamic_endpoint, should_send_anthropic_request_headers,
-    should_trigger_media_retry, split_endpoint_and_query, validate_managed_account_upstream_auth,
-    AppKind, AttemptEventChannel, AttemptEventPayloadInput, AttemptEventPhase, ChannelQuery,
-    CopilotAuthHeaderOverrides, ForwardFailureCategory, ForwardFailureKind, InterfaceKind,
-    MediaRetryInput, ProxyBody, ProxyEngine, ProxyRequest, ProxyServices, UpstreamAuthHeadersInput,
-    UpstreamRequestHeadersInput, UpstreamSendPolicyInput, UpstreamTransportKind,
-    BEDROCK_OPTIMIZER_ENV_FLAG,
+    build_request_started_event_payload, build_retryable_forward_failure_log,
+    build_terminal_forward_failure_log, build_upstream_auth_headers, categorize_forward_failure,
+    is_github_copilot_upstream, is_socks_proxy_url, resolve_media_prevention_policy,
+    resolve_upstream_request_transport_policy, resolve_upstream_send_policy,
+    resolved_copilot_dynamic_base_url, should_apply_bedrock_pre_send_optimizer,
+    should_check_media_retry, should_failover_after_rectifier_retry_failure,
+    should_preserve_exact_request_header_case, should_resolve_copilot_dynamic_endpoint,
+    should_send_anthropic_request_headers, should_trigger_media_retry, split_endpoint_and_query,
+    validate_managed_account_upstream_auth, AppKind, AttemptEventChannel, AttemptEventPayloadInput,
+    AttemptEventPhase, ChannelQuery, CopilotAuthHeaderOverrides, ForwardFailureCategory,
+    ForwardFailureKind, InterfaceKind, MediaRetryInput, ProxyBody, ProxyEngine, ProxyRequest,
+    ProxyServices, UpstreamAuthHeadersInput, UpstreamRequestHeadersInput, UpstreamSendPolicyInput,
+    UpstreamTransportKind, BEDROCK_OPTIMIZER_ENV_FLAG,
 };
 use crate::proxy_core_host::CcSwitchProxyServices;
 use crate::{app_config::AppType, provider::Provider};
 use futures::StreamExt;
 use http::Extensions;
-use serde_json::{json, Value};
+use serde_json::Value;
 use std::sync::Arc;
 use tauri::Manager;
 use tokio::sync::RwLock;
@@ -454,10 +454,7 @@ impl RequestForwarder {
     fn emit_request_started(&self, request_id: &str, app_type: &str) {
         self.events.emit(
             "request_started",
-            json!({
-                "requestId": request_id,
-                "appType": app_type,
-            }),
+            build_request_started_event_payload(request_id, app_type),
         );
     }
 
