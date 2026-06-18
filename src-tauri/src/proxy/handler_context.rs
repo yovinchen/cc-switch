@@ -11,6 +11,7 @@ use crate::proxy::{
     types::{AppProxyConfig, CopilotOptimizerConfig, OptimizerConfig, RectifierConfig},
     ProxyError,
 };
+use crate::proxy_core::{AppKind, ProxyServices};
 use axum::http::HeaderMap;
 use std::time::Instant;
 
@@ -95,20 +96,28 @@ impl RequestContext {
     ) -> Result<Self, ProxyError> {
         let start_time = Instant::now();
 
-        // 从数据库读取应用级代理配置（per-app）
-        let app_config = state
-            .db
-            .get_proxy_config_for_app(app_type_str)
+        let app_kind = AppKind::from(&app_type);
+        let core_app_config = state
+            .proxy_core_services
+            .config()
+            .load_app(&app_kind)
             .await
             .map_err(|e| ProxyError::DatabaseError(e.to_string()))?;
-
-        // 从数据库读取整流器配置
-        let rectifier_config = state.db.get_rectifier_config().unwrap_or_default();
-        let optimizer_config = state.db.get_optimizer_config().unwrap_or_default();
-        let copilot_optimizer_config = state.db.get_copilot_optimizer_config().unwrap_or_default();
-
-        let current_provider_id =
-            crate::settings::get_current_provider(&app_type).unwrap_or_default();
+        let app_config = serde_json::from_value(core_app_config.raw.clone())
+            .map_err(|e| ProxyError::ConfigError(format!("invalid app proxy config: {e}")))?;
+        let rectifier_config =
+            serde_json::from_value(core_app_config.rectifier.raw.clone()).unwrap_or_default();
+        let optimizer_config =
+            serde_json::from_value(core_app_config.optimizer.raw.clone()).unwrap_or_default();
+        let copilot_optimizer_config =
+            serde_json::from_value(core_app_config.copilot_optimizer.raw.clone())
+                .unwrap_or_default();
+        let current_provider_id = core_app_config
+            .raw
+            .get("currentProviderId")
+            .and_then(|value| value.as_str())
+            .unwrap_or_default()
+            .to_string();
 
         // 从请求体提取模型名称
         let request_model = body

@@ -19,6 +19,7 @@ use super::{
     ProxyError,
 };
 use crate::database::Database;
+use crate::proxy_core_host::CcSwitchProxyServices;
 use axum::{
     extract::DefaultBodyLimit,
     middleware,
@@ -43,6 +44,8 @@ pub struct ProxyState {
     pub current_providers: Arc<RwLock<HashMap<String, ActiveTarget>>>,
     /// 共享的 ProviderRouter（持有熔断器状态，跨请求保持）
     pub provider_router: Arc<ProviderRouter>,
+    /// Host adapter surface for the neutral proxy core contracts.
+    pub proxy_core_services: Arc<CcSwitchProxyServices>,
     /// Gemini Native shadow state，用于 thoughtSignature / tool call 回放
     pub gemini_shadow: Arc<GeminiShadowStore>,
     /// Codex Chat bridge history，用于恢复 previous_response_id 指向的 tool call
@@ -72,6 +75,7 @@ impl ProxyServer {
     ) -> Self {
         // 创建共享的 ProviderRouter（熔断器状态将跨所有请求保持）
         let provider_router = Arc::new(ProviderRouter::new(db.clone()));
+        let proxy_core_services = Arc::new(CcSwitchProxyServices::new(db.clone()));
         // 创建故障转移切换管理器
         let failover_manager = Arc::new(FailoverSwitchManager::new(db.clone()));
         let events = Arc::new(ProxyEventBus::default());
@@ -83,6 +87,7 @@ impl ProxyServer {
             start_time: Arc::new(RwLock::new(None)),
             current_providers: Arc::new(RwLock::new(HashMap::new())),
             provider_router,
+            proxy_core_services,
             gemini_shadow: Arc::new(GeminiShadowStore::default()),
             codex_chat_history: Arc::new(CodexChatHistoryStore::default()),
             app_handle,

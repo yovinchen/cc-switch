@@ -4,10 +4,11 @@ use crate::error::AppError;
 use crate::proxy::provider_router::ProviderRouter;
 use crate::proxy_core::{
     AppKind, AuthInfo, AuthProfileRef, ChannelAttemptPlan, ChannelAttemptResult, ChannelQuery,
-    ChannelSource, ChannelSpec, ChannelStatus, ModelCatalog, ProviderSource, ProviderSpec,
-    ProxyAppConfig, ProxyConfigSource, ProxyCoreError, ProxyCoreEvent, ProxyCoreResult,
-    ProxyEventSink, ProxyGlobalConfig, ProxyRequest, ProxyRuntimeConfig, ProxyServices, RoutePlan,
-    RoutePolicy, RoutePolicySource, RouteRequest, RouteResolver, UsageHint, UsageSink,
+    ChannelSource, ChannelSpec, ChannelStatus, CopilotOptimizerConfigSpec, ModelCatalog,
+    OptimizerConfigSpec, ProviderSource, ProviderSpec, ProxyAppConfig, ProxyConfigSource,
+    ProxyCoreError, ProxyCoreEvent, ProxyCoreResult, ProxyEventSink, ProxyGlobalConfig,
+    ProxyRequest, ProxyRuntimeConfig, ProxyServices, RectifierConfigSpec, RoutePlan, RoutePolicy,
+    RoutePolicySource, RouteRequest, RouteResolver, UsageHint, UsageSink,
 };
 use crate::proxy_core_adapter::{ToProxyCoreChannelSpec, ToProxyCoreProviderSpec};
 use futures::future::BoxFuture;
@@ -121,19 +122,37 @@ impl ProxyConfigSource for CcSwitchConfigSource {
 
     fn load_app<'a>(&'a self, app: &'a AppKind) -> BoxFuture<'a, ProxyCoreResult<ProxyAppConfig>> {
         Box::pin(async move {
+            let app_type = AppType::from_str(app.as_str()).ok();
             let config = self
                 .db
                 .get_proxy_config_for_app(app.as_str())
                 .await
                 .map_err(|error| app_error("load app proxy config", error))?;
+            let rectifier = self.db.get_rectifier_config().unwrap_or_default();
+            let optimizer = self.db.get_optimizer_config().unwrap_or_default();
+            let copilot_optimizer = self.db.get_copilot_optimizer_config().unwrap_or_default();
+            let current_provider_id = app_type
+                .as_ref()
+                .and_then(crate::settings::get_current_provider);
+            let raw = app_config_raw(config.clone(), current_provider_id);
+
             Ok(ProxyAppConfig {
                 app: Some(app.clone()),
                 enabled: config.enabled,
                 default_group: Some(DEFAULT_ROUTE_GROUP.to_string()),
-                rectifier: Default::default(),
-                optimizer: Default::default(),
-                copilot_optimizer: Default::default(),
-                raw: serde_json::to_value(config).unwrap_or_else(|_| json!({})),
+                rectifier: RectifierConfigSpec {
+                    enabled: rectifier.enabled,
+                    raw: serde_json::to_value(rectifier).unwrap_or_else(|_| json!({})),
+                },
+                optimizer: OptimizerConfigSpec {
+                    enabled: optimizer.enabled,
+                    raw: serde_json::to_value(optimizer).unwrap_or_else(|_| json!({})),
+                },
+                copilot_optimizer: CopilotOptimizerConfigSpec {
+                    enabled: copilot_optimizer.enabled,
+                    raw: serde_json::to_value(copilot_optimizer).unwrap_or_else(|_| json!({})),
+                },
+                raw,
             })
         })
     }
@@ -457,6 +476,22 @@ fn parse_app_type(app: &AppKind) -> ProxyCoreResult<AppType> {
 
 fn app_error(context: &str, error: AppError) -> ProxyCoreError {
     ProxyCoreError::Config(format!("{context}: {error}"))
+}
+
+fn app_config_raw(
+    config: crate::proxy::types::AppProxyConfig,
+    current_provider_id: Option<String>,
+) -> Value {
+    let mut raw = serde_json::to_value(config).unwrap_or_else(|_| json!({}));
+    if let Value::Object(object) = &mut raw {
+        object.insert(
+            "currentProviderId".to_string(),
+            current_provider_id
+                .map(Value::String)
+                .unwrap_or(Value::Null),
+        );
+    }
+    raw
 }
 
 fn channel_matches_query(channel: &ChannelSpec, query: &ChannelQuery<'_>) -> bool {
