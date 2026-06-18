@@ -38,7 +38,8 @@ use crate::database::{
 };
 use crate::proxy_core::{
     body_diagnostics_suffix, body_looks_like_sse, claude_stream_usage_event_filter,
-    codex_stream_usage_event_filter, strip_entity_headers_for_rebuilt_body,
+    codex_stream_usage_event_filter, should_aggregate_codex_oauth_responses_sse,
+    should_use_claude_transform_streaming, strip_entity_headers_for_rebuilt_body,
     strip_hop_by_hop_response_headers, AppKind, InterfaceKind, ProxyBody, ProxyCoreError,
     ProxyCoreResponse, ProxyEngine, ProxyRequest, ProxyResponseBody, ProxyResult, ProxyServices,
 };
@@ -962,7 +963,7 @@ async fn handle_claude_transform(
     // 这里为这个特定组合打开 override：把上游 SSE 聚合成 Anthropic JSON 回给客户端，其它
     // 场景（任意上游 is_sse、非 Codex OAuth 等）仍沿用原有流式兜底。
     let aggregate_codex_oauth_responses_sse =
-        !is_stream && is_codex_oauth && api_format == "openai_responses";
+        should_aggregate_codex_oauth_responses_sse(is_stream, api_format, is_codex_oauth);
     let use_streaming = if aggregate_codex_oauth_responses_sse {
         false
     } else {
@@ -2051,15 +2052,6 @@ pub async fn handle_gemini(
     process_response(response, &ctx, &state, &GEMINI_PARSER_CONFIG, None).await
 }
 
-fn should_use_claude_transform_streaming(
-    requested_streaming: bool,
-    upstream_is_sse: bool,
-    api_format: &str,
-    is_codex_oauth: bool,
-) -> bool {
-    requested_streaming || upstream_is_sse || (is_codex_oauth && api_format == "openai_responses")
-}
-
 fn responses_sse_to_response_value(body: &str) -> Result<Value, ProxyError> {
     crate::proxy_core::responses_sse_to_response_value(body)
         .map_err(sse_aggregation_error_to_proxy_error)
@@ -2192,11 +2184,13 @@ async fn log_usage(
 mod tests {
     use super::{
         chat_sse_to_response_value, codex_proxy_error_json, proxy_core_error_to_proxy_error,
-        proxy_core_response_to_proxy_response, responses_sse_to_response_value,
-        should_use_claude_transform_streaming, transform, upstream_body_parse_error,
+        proxy_core_response_to_proxy_response, responses_sse_to_response_value, transform,
+        upstream_body_parse_error,
     };
     use crate::proxy::ProxyError;
-    use crate::proxy_core::{ProxyCoreError, ProxyCoreResponse, ProxyResponseBody};
+    use crate::proxy_core::{
+        should_use_claude_transform_streaming, ProxyCoreError, ProxyCoreResponse, ProxyResponseBody,
+    };
     use bytes::Bytes;
     use http::StatusCode;
 

@@ -12,6 +12,7 @@ pub mod response_body;
 pub mod response_diagnostics;
 pub mod response_headers;
 pub mod response_timeout;
+pub mod response_transform;
 pub mod sse;
 pub mod usage;
 
@@ -23,5 +24,6 @@ pub use response_body::*;
 pub use response_diagnostics::*;
 pub use response_headers::*;
 pub use response_timeout::*;
+pub use response_transform::*;
 pub use sse::*;
 pub use usage::*;
