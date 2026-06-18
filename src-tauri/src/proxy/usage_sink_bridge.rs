@@ -1,8 +1,8 @@
 use crate::provider::Provider;
-use crate::proxy::usage::parser::{TokenUsage, SESSION_REQUEST_ID_PREFIX};
+use crate::proxy::usage::parser::TokenUsage;
 use crate::proxy_core::{
-    normalize_error_usage_models, normalize_usage_models, usage_tokens_from_token_usage, AppKind,
-    ProviderKind, UsageRecord, UsageTokens,
+    normalize_error_usage_models, normalize_usage_models, usage_request_id_with_fallback,
+    usage_tokens_from_token_usage, AppKind, ProviderKind, UsageRecord, UsageTokens,
 };
 use serde_json::Value;
 
@@ -50,11 +50,7 @@ pub(crate) fn success_usage_record(
 }
 
 fn usage_request_id(usage: &TokenUsage) -> String {
-    usage
-        .message_id
-        .as_ref()
-        .map(|message_id| format!("{SESSION_REQUEST_ID_PREFIX}{message_id}"))
-        .unwrap_or_else(|| uuid::Uuid::new_v4().to_string())
+    usage_request_id_with_fallback(usage, || uuid::Uuid::new_v4().to_string())
 }
 
 #[allow(clippy::too_many_arguments)]

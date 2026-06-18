@@ -570,6 +570,17 @@ pub fn usage_tokens_from_token_usage(usage: &TokenUsage) -> UsageTokens {
     }
 }
 
+pub fn usage_request_id_with_fallback(
+    usage: &TokenUsage,
+    fallback: impl FnOnce() -> String,
+) -> String {
+    usage
+        .message_id
+        .as_ref()
+        .map(|message_id| format!("{SESSION_REQUEST_ID_PREFIX}{message_id}"))
+        .unwrap_or_else(fallback)
+}
+
 pub fn token_usage_from_usage_record(record: &UsageRecord) -> TokenUsage {
     TokenUsage {
         input_tokens: u64_to_u32_saturating(record.tokens.input_tokens),
@@ -1438,6 +1449,29 @@ mod tests {
         assert_eq!(usage.cache_creation_tokens, 11);
         assert_eq!(usage.model.as_deref(), Some("response-model"));
         assert_eq!(usage.message_id.as_deref(), Some("msg-1"));
+    }
+
+    #[test]
+    fn test_usage_request_id_prefers_session_message_id() {
+        let usage = TokenUsage {
+            message_id: Some("msg-1".to_string()),
+            ..TokenUsage::default()
+        };
+
+        assert_eq!(
+            usage_request_id_with_fallback(&usage, || "fallback".to_string()),
+            "session:msg-1"
+        );
+    }
+
+    #[test]
+    fn test_usage_request_id_uses_host_fallback_without_message_id() {
+        let usage = TokenUsage::default();
+
+        assert_eq!(
+            usage_request_id_with_fallback(&usage, || "fallback".to_string()),
+            "fallback"
+        );
     }
 
     #[test]
