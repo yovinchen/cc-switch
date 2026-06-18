@@ -29,8 +29,9 @@ use crate::commands::{CodexOAuthState, CopilotAuthState};
 use crate::proxy::providers::codex_oauth_auth::CodexOAuthManager;
 use crate::proxy::providers::copilot_auth::CopilotAuthManager;
 use crate::proxy_core::{
-    should_preserve_exact_request_header_case, validate_managed_account_upstream_auth, AppKind,
-    ChannelQuery, InterfaceKind, ProxyBody, ProxyEngine, ProxyRequest, ProxyServices,
+    resolve_upstream_request_transport_policy, should_preserve_exact_request_header_case,
+    validate_managed_account_upstream_auth, AppKind, ChannelQuery, InterfaceKind, ProxyBody,
+    ProxyEngine, ProxyRequest, ProxyServices,
 };
 use crate::proxy_core_host::CcSwitchProxyServices;
 use crate::{app_config::AppType, provider::Provider};
@@ -1849,10 +1850,15 @@ impl RequestForwarder {
             &filtered_body,
             self.session_client_provided,
         );
-        let request_is_streaming =
-            is_streaming_request(&effective_endpoint, &filtered_body, headers);
-        let force_identity_encoding =
-            needs_transform || codex_responses_to_chat || request_is_streaming;
+        let transport_policy = resolve_upstream_request_transport_policy(
+            needs_transform,
+            codex_responses_to_chat,
+            &effective_endpoint,
+            &filtered_body,
+            headers,
+        );
+        let request_is_streaming = transport_policy.is_streaming_request;
+        let force_identity_encoding = transport_policy.force_identity_encoding;
 
         // Codex OAuth 需要注入的 ChatGPT-Account-Id（在动态 token 获取期间填充）
         let mut codex_oauth_account_id: Option<String> = None;
@@ -2988,35 +2994,6 @@ fn should_preserve_exact_header_case(
     )
 }
 
-fn is_streaming_request(endpoint: &str, body: &Value, headers: &axum::http::HeaderMap) -> bool {
-    if body
-        .get("stream")
-        .and_then(|value| value.as_bool())
-        .unwrap_or(false)
-    {
-        return true;
-    }
-
-    if endpoint.contains("streamGenerateContent") || endpoint.contains("alt=sse") {
-        return true;
-    }
-
-    headers
-        .get(axum::http::header::ACCEPT)
-        .and_then(|value| value.to_str().ok())
-        .map(|accept| accept.contains("text/event-stream"))
-        .unwrap_or(false)
-}
-
-#[cfg(test)]
-fn should_force_identity_encoding(
-    endpoint: &str,
-    body: &Value,
-    headers: &axum::http::HeaderMap,
-) -> bool {
-    is_streaming_request(endpoint, body, headers)
-}
-
 fn map_reqwest_send_error(error: reqwest::Error) -> ProxyError {
     if error.is_timeout() {
         ProxyError::Timeout(format!("请求超时: {error}"))
@@ -3867,29 +3844,37 @@ mod tests {
     fn force_identity_for_stream_flag_requests() {
         let headers = HeaderMap::new();
 
-        assert!(should_force_identity_encoding(
+        let policy = resolve_upstream_request_transport_policy(
+            false,
+            false,
             "/v1/responses",
             &json!({ "stream": true }),
-            &headers
-        ));
+            &headers,
+        );
+
+        assert!(policy.force_identity_encoding);
     }
 
     #[test]
     fn force_identity_for_gemini_stream_endpoints() {
         let headers = HeaderMap::new();
 
-        assert!(should_force_identity_encoding(
+        let policy = resolve_upstream_request_transport_policy(
+            false,
+            false,
             "/v1beta/models/gemini-2.5-pro:streamGenerateContent?alt=sse",
             &json!({ "model": "gemini-2.5-pro" }),
-            &headers
-        ));
+            &headers,
+        );
+
+        assert!(policy.force_identity_encoding);
     }
 
     #[test]
     fn streaming_request_detects_gemini_sse_without_body_stream_flag() {
         let headers = HeaderMap::new();
 
-        assert!(is_streaming_request(
+        assert!(crate::proxy_core::is_streaming_upstream_request(
             "/v1beta/models/gemini-2.5-pro:streamGenerateContent?alt=sse",
             &json!({ "model": "gemini-2.5-pro" }),
             &headers
@@ -3901,22 +3886,30 @@ mod tests {
         let mut headers = HeaderMap::new();
         headers.insert(ACCEPT, HeaderValue::from_static("text/event-stream"));
 
-        assert!(should_force_identity_encoding(
+        let policy = resolve_upstream_request_transport_policy(
+            false,
+            false,
             "/v1/responses",
             &json!({ "model": "gpt-5" }),
-            &headers
-        ));
+            &headers,
+        );
+
+        assert!(policy.force_identity_encoding);
     }
 
     #[test]
     fn non_streaming_requests_allow_automatic_compression() {
         let headers = HeaderMap::new();
 
-        assert!(!should_force_identity_encoding(
+        let policy = resolve_upstream_request_transport_policy(
+            false,
+            false,
             "/v1/responses",
             &json!({ "model": "gpt-5" }),
-            &headers
-        ));
+            &headers,
+        );
+
+        assert!(!policy.force_identity_encoding);
     }
 
     // ==================== Copilot 动态 endpoint 路由相关测试 ====================
