@@ -1,5 +1,6 @@
 use super::channel_identity::stable_channel_id;
 use super::domain::{AppKind, InterfaceKind, DEFAULT_ROUTE_GROUP};
+use super::request_url::is_codex_chat_wire_api;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::collections::BTreeMap;
@@ -220,7 +221,7 @@ pub fn infer_legacy_channel_interface(
             .codex_wire_api
             .as_deref()
             .map(|wire_api| {
-                if is_chat_wire_api(wire_api) {
+                if is_codex_chat_wire_api(wire_api) {
                     InterfaceKind::OpenAiChatCompletions
                 } else {
                     InterfaceKind::OpenAiResponses
@@ -242,18 +243,6 @@ pub fn infer_legacy_model_routes(
         Some(AppKind::Gemini) => infer_env_models(provider, &["GEMINI_MODEL"]),
         Some(AppKind::Custom(_)) | None => Vec::new(),
     }
-}
-
-pub fn is_chat_wire_api(value: &str) -> bool {
-    matches!(
-        value.trim().to_ascii_lowercase().as_str(),
-        "chat"
-            | "chat_completions"
-            | "chat-completions"
-            | "openai_chat"
-            | "openai-chat"
-            | "openai_chat_completions"
-    )
 }
 
 fn infer_claude_models(
@@ -323,7 +312,7 @@ fn push_model_route(
 mod tests {
     use super::{
         build_legacy_channel_projection, infer_legacy_channel_interface, infer_legacy_model_routes,
-        is_chat_wire_api, legacy_channel_priority, push_model_route, LegacyChannelProjectionInput,
+        legacy_channel_priority, push_model_route, LegacyChannelProjectionInput,
         LegacyModelRouteInput, LegacyModelRouteProjection, LegacyProviderProjectionInput,
     };
     use crate::{AppKind, InterfaceKind};
@@ -614,13 +603,5 @@ mod tests {
             projection.metadata["review_reasons"],
             serde_json::json!(["missing_base_url", "no_model_mapping_inferred"])
         );
-    }
-
-    #[test]
-    fn chat_wire_api_aliases_are_recognized() {
-        assert!(is_chat_wire_api("chat"));
-        assert!(is_chat_wire_api("openai-chat"));
-        assert!(is_chat_wire_api("openai_chat_completions"));
-        assert!(!is_chat_wire_api("responses"));
     }
 }
