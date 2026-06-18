@@ -29,6 +29,7 @@ mod provider_defaults;
 mod proxy;
 pub mod proxy_core;
 mod proxy_core_adapter;
+mod proxy_core_host;
 mod services;
 mod session_manager;
 mod settings;
