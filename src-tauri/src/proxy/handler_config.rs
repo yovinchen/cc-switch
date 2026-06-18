@@ -5,8 +5,10 @@
 use crate::app_config::AppType;
 use crate::proxy::usage::parser::TokenUsage;
 use crate::proxy_core::{
-    claude_stream_usage_event_filter, codex_stream_usage_event_filter,
-    gemini_stream_usage_event_filter, openai_stream_usage_event_filter,
+    claude_stream_model_extractor, claude_stream_usage_event_filter,
+    codex_auto_stream_model_extractor, codex_stream_usage_event_filter,
+    gemini_stream_model_extractor, gemini_stream_usage_event_filter, openai_stream_model_extractor,
+    openai_stream_usage_event_filter,
 };
 use serde_json::Value;
 
@@ -40,82 +42,6 @@ pub struct UsageParserConfig {
 }
 
 // ============================================================================
-// 模型提取器实现
-// ============================================================================
-
-/// Claude 流式响应模型提取（优先使用 usage.model）
-///
-/// 空字符串模型名视为缺失（转换层对无回显上游会合成 model:""），
-/// 落到 fallback_model（映射后的出站模型或客户端请求模型）。
-fn claude_model_extractor(events: &[Value], fallback_model: &str) -> String {
-    // 首先尝试从解析的 usage 中获取模型
-    if let Some(usage) = TokenUsage::from_claude_stream_events(events) {
-        if let Some(model) = usage.model.filter(|m| !m.is_empty()) {
-            return model;
-        }
-    }
-    fallback_model.to_string()
-}
-
-/// OpenAI Chat Completions 流式响应模型提取（优先使用 usage.model）
-fn openai_model_extractor(events: &[Value], fallback_model: &str) -> String {
-    // 首先尝试从解析的 usage 中获取模型
-    if let Some(usage) = TokenUsage::from_openai_stream_events(events) {
-        if let Some(model) = usage.model.filter(|m| !m.is_empty()) {
-            return model;
-        }
-    }
-    // 回退：从事件中直接提取
-    events
-        .iter()
-        .find_map(|e| e.get("model")?.as_str().filter(|m| !m.is_empty()))
-        .unwrap_or(fallback_model)
-        .to_string()
-}
-
-/// Codex 智能流式响应模型提取（自动检测格式）
-fn codex_auto_model_extractor(events: &[Value], fallback_model: &str) -> String {
-    // 首先尝试从解析的 usage 中获取模型
-    if let Some(usage) = TokenUsage::from_codex_stream_events_auto(events) {
-        if let Some(model) = usage.model.filter(|m| !m.is_empty()) {
-            return model;
-        }
-    }
-    // 回退：从 response.completed 事件中提取
-    events
-        .iter()
-        .find_map(|e| {
-            if e.get("type")?.as_str()? == "response.completed" {
-                e.get("response")?
-                    .get("model")?
-                    .as_str()
-                    .filter(|m| !m.is_empty())
-            } else {
-                None
-            }
-        })
-        .or_else(|| {
-            // 再回退：从 OpenAI 格式事件中提取
-            events
-                .iter()
-                .find_map(|e| e.get("model")?.as_str().filter(|m| !m.is_empty()))
-        })
-        .unwrap_or(fallback_model)
-        .to_string()
-}
-
-/// Gemini 流式响应模型提取（优先使用 usage.model）
-fn gemini_model_extractor(events: &[Value], fallback_model: &str) -> String {
-    // 首先尝试从解析的 usage 中获取模型
-    if let Some(usage) = TokenUsage::from_gemini_stream_chunks(events) {
-        if let Some(model) = usage.model.filter(|m| !m.is_empty()) {
-            return model;
-        }
-    }
-    fallback_model.to_string()
-}
-
-// ============================================================================
 // 预定义配置
 // ============================================================================
 
@@ -123,7 +49,7 @@ fn gemini_model_extractor(events: &[Value], fallback_model: &str) -> String {
 pub const CLAUDE_PARSER_CONFIG: UsageParserConfig = UsageParserConfig {
     stream_parser: TokenUsage::from_claude_stream_events,
     response_parser: TokenUsage::from_claude_response,
-    model_extractor: claude_model_extractor,
+    model_extractor: claude_stream_model_extractor,
     stream_event_filter: Some(claude_stream_usage_event_filter),
     app_type_str: "claude",
 };
@@ -132,7 +58,7 @@ pub const CLAUDE_PARSER_CONFIG: UsageParserConfig = UsageParserConfig {
 pub const OPENAI_PARSER_CONFIG: UsageParserConfig = UsageParserConfig {
     stream_parser: TokenUsage::from_openai_stream_events,
     response_parser: TokenUsage::from_openai_response,
-    model_extractor: openai_model_extractor,
+    model_extractor: openai_stream_model_extractor,
     stream_event_filter: Some(openai_stream_usage_event_filter),
     app_type_str: "codex",
 };
@@ -141,7 +67,7 @@ pub const OPENAI_PARSER_CONFIG: UsageParserConfig = UsageParserConfig {
 pub const CODEX_PARSER_CONFIG: UsageParserConfig = UsageParserConfig {
     stream_parser: TokenUsage::from_codex_stream_events_auto,
     response_parser: TokenUsage::from_codex_response_auto,
-    model_extractor: codex_auto_model_extractor,
+    model_extractor: codex_auto_stream_model_extractor,
     stream_event_filter: Some(codex_stream_usage_event_filter),
     app_type_str: "codex",
 };
@@ -150,7 +76,7 @@ pub const CODEX_PARSER_CONFIG: UsageParserConfig = UsageParserConfig {
 pub const GEMINI_PARSER_CONFIG: UsageParserConfig = UsageParserConfig {
     stream_parser: TokenUsage::from_gemini_stream_chunks,
     response_parser: TokenUsage::from_gemini_response,
-    model_extractor: gemini_model_extractor,
+    model_extractor: gemini_stream_model_extractor,
     stream_event_filter: Some(gemini_stream_usage_event_filter),
     app_type_str: "gemini",
 };

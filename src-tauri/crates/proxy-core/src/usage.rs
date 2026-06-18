@@ -485,6 +485,67 @@ impl TokenUsage {
     }
 }
 
+pub fn claude_stream_model_extractor(events: &[Value], fallback_model: &str) -> String {
+    if let Some(usage) = TokenUsage::from_claude_stream_events(events) {
+        if let Some(model) = usage.model.filter(|model| !model.is_empty()) {
+            return model;
+        }
+    }
+    fallback_model.to_string()
+}
+
+pub fn openai_stream_model_extractor(events: &[Value], fallback_model: &str) -> String {
+    if let Some(usage) = TokenUsage::from_openai_stream_events(events) {
+        if let Some(model) = usage.model.filter(|model| !model.is_empty()) {
+            return model;
+        }
+    }
+
+    events
+        .iter()
+        .find_map(|event| event.get("model")?.as_str().filter(|model| !model.is_empty()))
+        .unwrap_or(fallback_model)
+        .to_string()
+}
+
+pub fn codex_auto_stream_model_extractor(events: &[Value], fallback_model: &str) -> String {
+    if let Some(usage) = TokenUsage::from_codex_stream_events_auto(events) {
+        if let Some(model) = usage.model.filter(|model| !model.is_empty()) {
+            return model;
+        }
+    }
+
+    events
+        .iter()
+        .find_map(|event| {
+            if event.get("type")?.as_str()? == "response.completed" {
+                event
+                    .get("response")?
+                    .get("model")?
+                    .as_str()
+                    .filter(|model| !model.is_empty())
+            } else {
+                None
+            }
+        })
+        .or_else(|| {
+            events
+                .iter()
+                .find_map(|event| event.get("model")?.as_str().filter(|model| !model.is_empty()))
+        })
+        .unwrap_or(fallback_model)
+        .to_string()
+}
+
+pub fn gemini_stream_model_extractor(events: &[Value], fallback_model: &str) -> String {
+    if let Some(usage) = TokenUsage::from_gemini_stream_chunks(events) {
+        if let Some(model) = usage.model.filter(|model| !model.is_empty()) {
+            return model;
+        }
+    }
+    fallback_model.to_string()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1115,5 +1176,64 @@ mod tests {
         assert_eq!(usage.input_tokens, 100);
         assert_eq!(usage.output_tokens, 50);
         assert_eq!(usage.model, Some("gpt-4o".to_string()));
+    }
+
+    #[test]
+    fn test_stream_model_extractors_use_usage_model_or_fallback() {
+        let claude_events = vec![json!({
+            "type": "message_start",
+            "message": {
+                "model": "claude-sonnet-4-20250514",
+                "usage": {"input_tokens": 10}
+            }
+        })];
+        assert_eq!(
+            claude_stream_model_extractor(&claude_events, "fallback"),
+            "claude-sonnet-4-20250514"
+        );
+
+        let gemini_events = vec![json!({
+            "modelVersion": "gemini-3-pro-high",
+            "usageMetadata": {"promptTokenCount": 10, "totalTokenCount": 15}
+        })];
+        assert_eq!(
+            gemini_stream_model_extractor(&gemini_events, "fallback"),
+            "gemini-3-pro-high"
+        );
+
+        assert_eq!(
+            claude_stream_model_extractor(&[], "fallback-model"),
+            "fallback-model"
+        );
+    }
+
+    #[test]
+    fn test_codex_stream_model_extractor_prefers_response_completed_model() {
+        let events = vec![
+            json!({"type":"response.created","response":{"id":"resp_123"}}),
+            json!({
+                "type": "response.completed",
+                "response": {
+                    "model": "o3",
+                    "usage": {"input_tokens": 10, "output_tokens": 2}
+                }
+            }),
+        ];
+
+        assert_eq!(codex_auto_stream_model_extractor(&events, "fallback"), "o3");
+    }
+
+    #[test]
+    fn test_openai_stream_model_extractor_falls_back_to_event_model() {
+        let events = vec![json!({
+            "id": "chatcmpl-123",
+            "model": "gpt-4o",
+            "choices": [{"delta": {"content": "hello"}}]
+        })];
+
+        assert_eq!(
+            openai_stream_model_extractor(&events, "fallback"),
+            "gpt-4o"
+        );
     }
 }
