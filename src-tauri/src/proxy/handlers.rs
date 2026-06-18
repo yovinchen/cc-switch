@@ -36,7 +36,7 @@ use crate::app_config::AppType;
 use crate::database::{ProxyChannelModelRecord, ProxyChannelRecord};
 use crate::proxy_core::{
     claude_stream_usage_event_filter, codex_stream_usage_event_filter,
-    parse_upstream_json_or_unlabeled_sse, prepare_rebuilt_json_response_headers,
+    parse_upstream_json_or_unlabeled_sse, rebuilt_json_proxy_response,
     resolve_management_auth_decision, should_aggregate_codex_oauth_responses_sse,
     should_use_claude_transform_streaming, transformed_sse_response_headers,
     validate_management_bearer_value, AppChannelListQuery, AppChannelListResponse,
@@ -948,7 +948,7 @@ async fn handle_claude_transform(
     }
 
     // 非流式响应转换 (OpenAI/Responses → Anthropic)
-    let (mut response_headers, _status, body_bytes) =
+    let (response_headers, _status, body_bytes) =
         read_decoded_body(response, ctx.tag, ctx.body_timeout_duration()).await?;
 
     let body_str = String::from_utf8_lossy(&body_bytes);
@@ -1053,24 +1053,13 @@ async fn handle_claude_transform(
         });
     }
 
-    // 构建响应
-    let mut builder = axum::response::Response::builder().status(status);
-    prepare_rebuilt_json_response_headers(&mut response_headers);
+    let response = rebuilt_json_proxy_response(status, response_headers, anthropic_response)
+        .map_err(|error| {
+            log::error!("[Claude] 构造 JSON 响应失败: {error}");
+            proxy_core_error_to_proxy_error(error)
+        })?;
 
-    for (key, value) in response_headers.iter() {
-        builder = builder.header(key, value);
-    }
-
-    let response_body = serde_json::to_vec(&anthropic_response).map_err(|e| {
-        log::error!("[Claude] 序列化响应失败: {e}");
-        ProxyError::TransformError(format!("Failed to serialize response: {e}"))
-    })?;
-
-    let body = axum::body::Body::from(response_body);
-    builder.body(body).map_err(|e| {
-        log::error!("[Claude] 构建响应失败: {e}");
-        ProxyError::Internal(format!("Failed to build response: {e}"))
-    })
+    proxy_core_response_to_axum_response(response, "[Claude] 构建响应失败")
 }
 
 fn endpoint_with_query(uri: &axum::http::Uri, endpoint: &str) -> String {
@@ -1108,6 +1097,38 @@ fn proxy_core_response_to_proxy_response(
     };
 
     Ok(response)
+}
+
+fn proxy_core_response_to_axum_response(
+    response: ProxyCoreResponse,
+    build_error_context: &str,
+) -> Result<axum::response::Response, ProxyError> {
+    let ProxyCoreResponse {
+        status,
+        headers,
+        body,
+    } = response;
+    let body = match body {
+        ProxyResponseBody::Empty => axum::body::Body::from(Bytes::new()),
+        ProxyResponseBody::Bytes(body) => axum::body::Body::from(body),
+        ProxyResponseBody::Json(value) => {
+            let body = serde_json::to_vec(&value).map_err(|error| {
+                ProxyError::Internal(format!("Failed to serialize proxy core response: {error}"))
+            })?;
+            axum::body::Body::from(body)
+        }
+        ProxyResponseBody::Stream(stream) => axum::body::Body::from_stream(stream),
+    };
+
+    let mut builder = axum::response::Response::builder().status(status);
+    for (key, value) in headers.iter() {
+        builder = builder.header(key, value);
+    }
+
+    builder.body(body).map_err(|error| {
+        log::error!("{build_error_context}: {error}");
+        ProxyError::Internal(format!("Failed to build response: {error}"))
+    })
 }
 
 fn proxy_core_error_to_proxy_error(error: ProxyCoreError) -> ProxyError {
@@ -1456,7 +1477,7 @@ async fn handle_codex_chat_to_responses_transform(
     }
 
     let _connection_guard = connection_guard;
-    let (mut response_headers, status, body_bytes) =
+    let (response_headers, status, body_bytes) =
         read_decoded_body(response, ctx.tag, ctx.body_timeout_duration()).await?;
     let body_str = String::from_utf8_lossy(&body_bytes);
     // 与 Claude 侧 handle_claude_transform 对称的兜底嗅探（#2234）：
@@ -1541,24 +1562,13 @@ async fn handle_codex_chat_to_responses_transform(
         });
     }
 
-    prepare_rebuilt_json_response_headers(&mut response_headers);
+    let response = rebuilt_json_proxy_response(status, response_headers, responses_response)
+        .map_err(|error| {
+            log::error!("[Codex] 构造 Responses 响应失败: {error}");
+            proxy_core_error_to_proxy_error(error)
+        })?;
 
-    let mut builder = axum::response::Response::builder().status(status);
-    for (key, value) in response_headers.iter() {
-        builder = builder.header(key, value);
-    }
-
-    let response_body = serde_json::to_vec(&responses_response).map_err(|e| {
-        log::error!("[Codex] 序列化 Responses 响应失败: {e}");
-        ProxyError::TransformError(format!("Failed to serialize responses response: {e}"))
-    })?;
-
-    builder
-        .body(axum::body::Body::from(response_body))
-        .map_err(|e| {
-            log::error!("[Codex] 构建 Responses 响应失败: {e}");
-            ProxyError::Internal(format!("Failed to build response: {e}"))
-        })
+    proxy_core_response_to_axum_response(response, "[Codex] 构建 Responses 响应失败")
 }
 
 /// 把上游 Chat Completions 的错误响应转换为 Responses API 错误形状。
@@ -1572,7 +1582,7 @@ async fn handle_codex_chat_error_response(
     ctx: &RequestContext,
     status: axum::http::StatusCode,
 ) -> Result<axum::response::Response, ProxyError> {
-    let (mut response_headers, _status, body_bytes) =
+    let (response_headers, _status, body_bytes) =
         read_decoded_body(response, ctx.tag, ctx.body_timeout_duration()).await?;
 
     let normalized_error = crate::proxy_core::normalize_codex_chat_error_body(&body_bytes);
@@ -1581,22 +1591,14 @@ async fn handle_codex_chat_error_response(
     }
     let responses_error = normalized_error.response_error;
 
-    prepare_rebuilt_json_response_headers(&mut response_headers);
+    let response = rebuilt_json_proxy_response(status, response_headers, responses_error).map_err(
+        |error| {
+            log::error!("[Codex] 构造 Responses 错误体失败: {error}");
+            proxy_core_error_to_proxy_error(error)
+        },
+    )?;
 
-    let mut builder = axum::response::Response::builder().status(status);
-    for (key, value) in response_headers.iter() {
-        builder = builder.header(key, value);
-    }
-
-    let body = serde_json::to_vec(&responses_error).map_err(|e| {
-        log::error!("[Codex] 序列化 Responses 错误体失败: {e}");
-        ProxyError::TransformError(format!("Failed to serialize responses error: {e}"))
-    })?;
-
-    builder.body(axum::body::Body::from(body)).map_err(|e| {
-        log::error!("[Codex] 构建 Responses 错误响应失败: {e}");
-        ProxyError::Internal(format!("Failed to build response: {e}"))
-    })
+    proxy_core_response_to_axum_response(response, "[Codex] 构建 Responses 错误响应失败")
 }
 
 /// 把转发层（非上游响应）的失败构造成富化的 Codex 错误响应。
@@ -1854,7 +1856,8 @@ async fn log_usage(
 mod tests {
     use super::{
         chat_sse_to_response_value, codex_proxy_error_json, proxy_core_error_to_proxy_error,
-        proxy_core_response_to_proxy_response, responses_sse_to_response_value, transform,
+        proxy_core_response_to_axum_response, proxy_core_response_to_proxy_response,
+        responses_sse_to_response_value, transform,
     };
     use crate::proxy::ProxyError;
     use crate::proxy_core::{
@@ -1862,6 +1865,7 @@ mod tests {
     };
     use bytes::Bytes;
     use http::StatusCode;
+    use http_body_util::BodyExt as _;
 
     #[tokio::test]
     async fn proxy_core_response_bridge_preserves_stream_body() {
@@ -1878,6 +1882,27 @@ mod tests {
         assert_eq!(proxy_response.status(), StatusCode::OK);
         let body = proxy_response.bytes().await.expect("body");
         assert_eq!(body, Bytes::from_static(b"chunk"));
+    }
+
+    #[tokio::test]
+    async fn proxy_core_response_to_axum_response_preserves_buffered_body_and_headers() {
+        let mut headers = http::HeaderMap::new();
+        headers.insert("x-test", http::HeaderValue::from_static("yes"));
+        let response = ProxyCoreResponse::with_body(
+            StatusCode::CREATED,
+            headers,
+            ProxyResponseBody::bytes(Bytes::from_static(b"ok")),
+        );
+
+        let response = proxy_core_response_to_axum_response(response, "test").expect("bridge");
+
+        assert_eq!(response.status(), StatusCode::CREATED);
+        assert_eq!(
+            response.headers().get("x-test"),
+            Some(&http::HeaderValue::from_static("yes"))
+        );
+        let body = response.into_body().collect().await.unwrap().to_bytes();
+        assert_eq!(body, Bytes::from_static(b"ok"));
     }
 
     #[test]
