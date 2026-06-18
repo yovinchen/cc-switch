@@ -72,8 +72,9 @@
 61. Codex OAuth 上游 session 路由头构造已迁入 `proxy-core::request_headers::build_codex_oauth_session_headers`；host forwarder 保留“只发送客户端提供 session_id”的 gating，并消费 core 生成的 header 集合。
 62. 上游请求 header 清理中的连接、追踪和 CDN 类 header strip policy 已迁入 `proxy-core::request_headers::should_strip_forwarded_request_header`；host forwarder 继续负责有序 header assembly 和 provider-specific 替换。
 63. 上游请求 URL/query 处理中 endpoint query 拆分、beta 参数剥离、Gemini `alt` 参数合并和 full URL query 追加 helper 已迁入 `proxy-core::request_url`；host forwarder 继续负责协议特定 endpoint rewrite 决策。
+64. Codex Responses 到 Chat endpoint rewrite、Claude transform endpoint 目标选择、Copilot/Responses/Gemini Native 目标路径和透传 query 组装已迁入 `proxy-core::request_url`；host forwarder 只负责提取并规范化 Gemini 模型作为 core 输入。
 
-因此，本分支目前已把主要转发入口（Claude Messages、Claude Desktop Messages、Codex Chat Completions、Codex Responses、Codex Responses Compact、Gemini Native）切到 `ProxyEngine`，并开始把管理查询类能力、Codex 客户端模型目录、legacy channel 投影构造、channel 写请求规范化、托管账号上游安全保护、请求头 transport 策略、请求 header strip policy、Codex OAuth session header 构造、上游请求体准备/发送策略、上游请求 transport policy、上游请求 URL/query helper 和请求日志写入收敛到 core 可复用接口。HTTP transport 与 response pipeline 仍是宿主层兼容桥；下一阶段需要把响应转换、剩余模型目录生成策略和剩余外部管理 API 继续收敛到独立代理模块边界内。
+因此，本分支目前已把主要转发入口（Claude Messages、Claude Desktop Messages、Codex Chat Completions、Codex Responses、Codex Responses Compact、Gemini Native）切到 `ProxyEngine`，并开始把管理查询类能力、Codex 客户端模型目录、legacy channel 投影构造、channel 写请求规范化、托管账号上游安全保护、请求头 transport 策略、请求 header strip policy、Codex OAuth session header 构造、上游请求体准备/发送策略、上游请求 transport policy、上游请求 URL/query helper、endpoint rewrite policy 和请求日志写入收敛到 core 可复用接口。HTTP transport 与 response pipeline 仍是宿主层兼容桥；下一阶段需要把响应转换、剩余模型目录生成策略和剩余外部管理 API 继续收敛到独立代理模块边界内。
 
 当前原则：核心 crate 可以新增端口和领域字段，但不得引入 `tauri`、`Database`、settings、commands、services 等宿主依赖；现有 runtime 行为必须继续通过 targeted tests 证明不回归。
 
