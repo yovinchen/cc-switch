@@ -33,8 +33,8 @@ use crate::proxy_core::{
     build_retryable_forward_failure_log, build_terminal_forward_failure_log,
     build_upstream_auth_headers, categorize_forward_failure, classify_copilot_request,
     is_github_copilot_upstream, is_socks_proxy_url, merge_copilot_tool_results,
-    resolve_copilot_deterministic_interaction_id, resolve_copilot_deterministic_request_id,
-    resolve_copilot_optimizer_session_id, resolve_media_prevention_policy,
+    resolve_copilot_deterministic_interaction_id, resolve_copilot_optimizer_session_id,
+    resolve_copilot_request_id_with_fallback, resolve_media_prevention_policy,
     resolve_upstream_request_transport_policy, resolve_upstream_send_policy,
     resolved_copilot_dynamic_base_url, sanitize_copilot_orphan_tool_results,
     should_apply_bedrock_pre_send_optimizer, should_check_media_retry,
@@ -1680,10 +1680,11 @@ impl RequestForwarder {
             //   4. x-session-id header
             let session_id = resolve_copilot_optimizer_session_id(body, headers);
             let det_request_id = if self.copilot_optimizer_config.deterministic_request_id {
-                Some(
-                    resolve_copilot_deterministic_request_id(&mapped_body, &session_id)
-                        .unwrap_or_else(|| uuid::Uuid::new_v4().to_string()),
-                )
+                Some(resolve_copilot_request_id_with_fallback(
+                    &mapped_body,
+                    &session_id,
+                    || uuid::Uuid::new_v4().to_string(),
+                ))
             } else {
                 None
             };

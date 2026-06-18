@@ -165,6 +165,14 @@ pub fn resolve_copilot_deterministic_request_id(body: &Value, session_id: &str) 
     })
 }
 
+pub fn resolve_copilot_request_id_with_fallback(
+    body: &Value,
+    session_id: &str,
+    fallback: impl FnOnce() -> String,
+) -> String {
+    resolve_copilot_deterministic_request_id(body, session_id).unwrap_or_else(fallback)
+}
+
 pub fn resolve_copilot_deterministic_interaction_id(session_id: &str) -> Option<String> {
     if session_id.is_empty() {
         return None;
@@ -549,7 +557,8 @@ mod tests {
         parse_session_from_user_id, provider_declares_bedrock, sanitize_copilot_orphan_tool_results,
         resolve_copilot_optimizer_session_id, should_apply_bedrock_pre_send_optimizer,
         resolve_copilot_deterministic_interaction_id, resolve_copilot_deterministic_request_id,
-        resolve_copilot_warmup_model_override, strip_copilot_thinking_blocks,
+        resolve_copilot_request_id_with_fallback, resolve_copilot_warmup_model_override,
+        strip_copilot_thinking_blocks,
     };
     use http::{HeaderMap, HeaderValue};
     use serde_json::json;
@@ -860,6 +869,32 @@ mod tests {
         });
 
         assert_eq!(resolve_copilot_deterministic_request_id(&body, "s"), None);
+    }
+
+    #[test]
+    fn copilot_request_id_uses_fallback_without_user_content() {
+        let body = json!({
+            "messages": [{"role": "assistant", "content": "Hi"}]
+        });
+
+        assert_eq!(
+            resolve_copilot_request_id_with_fallback(&body, "s", || "fallback-id".to_string()),
+            "fallback-id"
+        );
+    }
+
+    #[test]
+    fn copilot_request_id_prefers_deterministic_id_over_fallback() {
+        let body = json!({
+            "messages": [{"role": "user", "content": "test"}]
+        });
+
+        let request_id =
+            resolve_copilot_request_id_with_fallback(&body, "session", || "fallback-id".to_string());
+
+        assert_ne!(request_id, "fallback-id");
+        assert_eq!(request_id.len(), 36);
+        assert_eq!(request_id.as_bytes()[14], b'4');
     }
 
     #[test]
