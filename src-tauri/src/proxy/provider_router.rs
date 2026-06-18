@@ -3,9 +3,12 @@
 //! 负责选择和管理代理目标供应商，实现智能故障转移
 
 use crate::app_config::AppType;
-use crate::database::Database;
+use crate::database::{Database, ProxyChannelMigrationPreview, ProxyChannelRecord};
 use crate::error::AppError;
 use crate::provider::Provider;
+use crate::proxy::channel_routing::{
+    resolve_channel_route, ChannelRouteSource, RouteResolveRequest, RouteResolveResponse,
+};
 use crate::proxy::circuit_breaker::{AllowResult, CircuitBreaker, CircuitBreakerConfig};
 use std::collections::HashMap;
 use std::str::FromStr;
@@ -106,6 +109,36 @@ impl ProviderRouter {
         }
 
         Ok(result)
+    }
+
+    /// List routable channels for an app without changing the forwarding path.
+    ///
+    /// Materialized proxy_channels win. If the migration table is still empty,
+    /// fall back to a live projection from legacy providers/provider_endpoints.
+    pub async fn list_channels_for_app(
+        &self,
+        app_type: &str,
+    ) -> Result<(Vec<ProxyChannelRecord>, ChannelRouteSource), AppError> {
+        let channels = self.db.list_proxy_channels_for_app(app_type)?;
+        if !channels.is_empty() {
+            return Ok((channels, ChannelRouteSource::MaterializedChannels));
+        }
+
+        let preview: ProxyChannelMigrationPreview =
+            self.db.preview_legacy_proxy_channel_migration(app_type)?;
+        Ok((preview.channels, ChannelRouteSource::LegacyProjection))
+    }
+
+    /// Resolve a dry-run channel route for management API/debugging.
+    ///
+    /// This does not allocate circuit-breaker permits and does not mutate
+    /// current provider state.
+    pub async fn resolve_channel_route_dry_run(
+        &self,
+        request: RouteResolveRequest,
+    ) -> Result<RouteResolveResponse, AppError> {
+        let (channels, source) = self.list_channels_for_app(&request.app_type).await?;
+        resolve_channel_route(request, channels, source)
     }
 
     /// 请求执行前获取熔断器“放行许可”
@@ -273,8 +306,11 @@ impl ProviderRouter {
 mod tests {
     use super::*;
     use crate::database::Database;
+    use crate::proxy::channel_routing::{ChannelRouteSource, RouteResolveRequest};
+    use crate::settings::CustomEndpoint;
     use serde_json::json;
     use serial_test::serial;
+    use std::collections::HashMap;
     use std::env;
     use tempfile::TempDir;
 
@@ -358,6 +394,93 @@ mod tests {
 
         assert_eq!(providers.len(), 1);
         assert_eq!(providers[0].id, "a");
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn route_dry_run_uses_legacy_projection_before_materialization() {
+        let _home = TempHome::new();
+        let db = Arc::new(Database::memory().unwrap());
+        let mut provider = Provider::with_id(
+            "a".to_string(),
+            "Provider A".to_string(),
+            json!({
+                "env": {
+                    "ANTHROPIC_BASE_URL": "https://primary.example.com/v1",
+                    "ANTHROPIC_MODEL": "claude-sonnet-4"
+                }
+            }),
+            None,
+        );
+        let mut endpoints = HashMap::new();
+        endpoints.insert(
+            "https://backup.example.com/v1".to_string(),
+            CustomEndpoint {
+                url: "https://backup.example.com/v1".to_string(),
+                added_at: 1,
+                last_used: None,
+            },
+        );
+        provider.meta = Some(crate::provider::ProviderMeta {
+            custom_endpoints: endpoints,
+            ..crate::provider::ProviderMeta::default()
+        });
+        db.save_provider("claude", &provider).unwrap();
+        db.set_current_provider("claude", "a").unwrap();
+
+        let router = ProviderRouter::new(db);
+        let response = router
+            .resolve_channel_route_dry_run(RouteResolveRequest {
+                app_type: "claude".to_string(),
+                requested_model: Some("claude-sonnet-4".to_string()),
+                interface_kind: Some("anthropic_messages".to_string()),
+                route_group: None,
+            })
+            .await
+            .unwrap();
+
+        assert_eq!(response.source, ChannelRouteSource::LegacyProjection);
+        assert_eq!(response.candidates.len(), 2);
+        assert!(response.rejected.is_empty());
+        assert_eq!(response.candidates[0].provider_id, "a");
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn route_dry_run_prefers_materialized_channels() {
+        let _home = TempHome::new();
+        let db = Arc::new(Database::memory().unwrap());
+        let provider = Provider::with_id(
+            "a".to_string(),
+            "Provider A".to_string(),
+            json!({
+                "env": {
+                    "ANTHROPIC_BASE_URL": "https://primary.example.com/v1",
+                    "ANTHROPIC_MODEL": "claude-sonnet-4"
+                }
+            }),
+            None,
+        );
+        db.save_provider("claude", &provider).unwrap();
+        db.materialize_legacy_proxy_channels("claude").unwrap();
+
+        let router = ProviderRouter::new(db);
+        let response = router
+            .resolve_channel_route_dry_run(RouteResolveRequest {
+                app_type: "claude".to_string(),
+                requested_model: Some("claude-sonnet-4".to_string()),
+                interface_kind: Some("anthropic_messages".to_string()),
+                route_group: None,
+            })
+            .await
+            .unwrap();
+
+        assert_eq!(response.source, ChannelRouteSource::MaterializedChannels);
+        assert_eq!(response.candidates.len(), 1);
+        assert_eq!(
+            response.candidates[0].base_url,
+            "https://primary.example.com/v1"
+        );
     }
 
     #[tokio::test]

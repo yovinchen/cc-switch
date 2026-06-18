@@ -37,7 +37,12 @@ use super::{
 };
 use crate::app_config::AppType;
 use crate::database::PRICING_SOURCE_REQUEST;
-use axum::{extract::State, http::StatusCode, response::IntoResponse, Json};
+use axum::{
+    extract::{Path, State},
+    http::StatusCode,
+    response::IntoResponse,
+    Json,
+};
 use bytes::Bytes;
 use http_body_util::BodyExt;
 use serde_json::{json, Value};
@@ -61,6 +66,44 @@ pub async fn health_check() -> (StatusCode, Json<Value>) {
 pub async fn get_status(State(state): State<ProxyState>) -> Result<Json<ProxyStatus>, ProxyError> {
     let status = state.status.read().await.clone();
     Ok(Json(status))
+}
+
+/// GET /proxy/v1/apps/{app}/channels
+pub async fn list_proxy_channels(
+    State(state): State<ProxyState>,
+    Path(app_type): Path<String>,
+) -> Result<Json<Value>, ProxyError> {
+    let (channels, source) = state
+        .provider_router
+        .list_channels_for_app(&app_type)
+        .await
+        .map_err(|e| ProxyError::DatabaseError(e.to_string()))?;
+
+    Ok(Json(json!({
+        "appType": app_type,
+        "source": source,
+        "channels": channels,
+    })))
+}
+
+/// POST /proxy/v1/route/resolve
+pub async fn resolve_proxy_route(
+    State(state): State<ProxyState>,
+    Json(request): Json<crate::proxy::channel_routing::RouteResolveRequest>,
+) -> Result<Json<crate::proxy::channel_routing::RouteResolveResponse>, ProxyError> {
+    if request.app_type.trim().is_empty() {
+        return Err(ProxyError::InvalidRequest(
+            "appType/app_type cannot be empty".to_string(),
+        ));
+    }
+
+    let response = state
+        .provider_router
+        .resolve_channel_route_dry_run(request)
+        .await
+        .map_err(|e| ProxyError::DatabaseError(e.to_string()))?;
+
+    Ok(Json(response))
 }
 
 /// GET /v1/models — Codex model list (reachability check)

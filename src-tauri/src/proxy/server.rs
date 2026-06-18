@@ -293,6 +293,17 @@ impl ProxyServer {
             // 健康检查
             .route("/health", get(handlers::health_check))
             .route("/status", get(handlers::get_status))
+            // Versioned management API (read-only channel migration surface)
+            .route("/proxy/v1/health", get(handlers::health_check))
+            .route("/proxy/v1/status", get(handlers::get_status))
+            .route(
+                "/proxy/v1/apps/:app/channels",
+                get(handlers::list_proxy_channels),
+            )
+            .route(
+                "/proxy/v1/route/resolve",
+                post(handlers::resolve_proxy_route),
+            )
             // Claude API (支持带前缀和不带前缀两种格式)
             .route("/v1/messages", post(handlers::handle_messages))
             .route("/claude/v1/messages", post(handlers::handle_messages))
@@ -391,5 +402,18 @@ impl ProxyServer {
             .provider_router
             .reset_provider_breaker(provider_id, app_type)
             .await;
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn build_router_accepts_management_routes() {
+        let db = Arc::new(Database::memory().expect("memory db"));
+        let server = ProxyServer::new(ProxyConfig::default(), db, None);
+
+        let _router = server.build_router();
     }
 }
