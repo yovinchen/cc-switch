@@ -86,6 +86,59 @@ pub fn resolve_reasoning_effort(body: &Value) -> Option<&'static str> {
     }
 }
 
+pub fn codex_chat_reasoning_requested(body: &Value) -> Option<bool> {
+    if let Some(effort) = body
+        .pointer("/reasoning/effort")
+        .and_then(|value| value.as_str())
+    {
+        return Some(!matches!(
+            effort.trim().to_ascii_lowercase().as_str(),
+            "none" | "off" | "disabled"
+        ));
+    }
+
+    body.get("reasoning").map(|value| !value.is_null())
+}
+
+pub fn map_codex_chat_reasoning_effort(
+    effort: &str,
+    mode: Option<&str>,
+) -> Option<&'static str> {
+    let effort = effort.trim().to_ascii_lowercase();
+    if matches!(effort.as_str(), "none" | "off" | "disabled") {
+        return None;
+    }
+
+    match mode.unwrap_or("passthrough") {
+        "deepseek" => match effort.as_str() {
+            "max" | "xhigh" => Some("max"),
+            _ => Some("high"),
+        },
+        "low_high" => match effort.as_str() {
+            "minimal" | "low" => Some("low"),
+            _ => Some("high"),
+        },
+        // OpenRouter accepts xhigh|high|medium|low|minimal, but not max.
+        "openrouter" => match effort.as_str() {
+            "max" | "xhigh" => Some("xhigh"),
+            "high" => Some("high"),
+            "medium" => Some("medium"),
+            "low" => Some("low"),
+            "minimal" => Some("minimal"),
+            _ => None,
+        },
+        _ => match effort.as_str() {
+            "minimal" => Some("minimal"),
+            "low" => Some("low"),
+            "medium" => Some("medium"),
+            "high" => Some("high"),
+            "xhigh" => Some("xhigh"),
+            "max" => Some("max"),
+            _ => None,
+        },
+    }
+}
+
 pub fn strip_leading_anthropic_billing_header(text: &str) -> &str {
     if !text.starts_with(ANTHROPIC_BILLING_HEADER_PREFIX) {
         return text;
@@ -317,11 +370,12 @@ mod tests {
     use super::{
         canonicalize_request_body_value, clean_openai_tool_schema, filter_private_params,
         filter_private_params_with_whitelist, filter_private_params_with_whitelist_report,
-        inject_openai_stream_include_usage, is_openai_o_series, method_allows_upstream_request_body,
-        map_anthropic_tool_choice_to_openai_chat,
+        inject_openai_stream_include_usage, is_openai_o_series, map_codex_chat_reasoning_effort,
+        method_allows_upstream_request_body, map_anthropic_tool_choice_to_openai_chat,
         map_anthropic_tool_choice_to_openai_responses, prepare_upstream_request_body_with_report,
         resolve_reasoning_effort, serialize_upstream_request_body,
         strip_leading_anthropic_billing_header, supports_reasoning_effort,
+        codex_chat_reasoning_requested,
     };
     use http::Method;
     use serde_json::json;
@@ -529,6 +583,52 @@ mod tests {
             resolve_reasoning_effort(&json!({"thinking": {"type": "disabled"}})),
             None
         );
+    }
+
+    #[test]
+    fn detects_codex_chat_reasoning_request_state() {
+        assert_eq!(
+            codex_chat_reasoning_requested(&json!({"reasoning": {"effort": "high"}})),
+            Some(true)
+        );
+        assert_eq!(
+            codex_chat_reasoning_requested(&json!({"reasoning": {"effort": "none"}})),
+            Some(false)
+        );
+        assert_eq!(
+            codex_chat_reasoning_requested(&json!({"reasoning": null})),
+            Some(false)
+        );
+        assert_eq!(codex_chat_reasoning_requested(&json!({})), None);
+    }
+
+    #[test]
+    fn maps_codex_chat_reasoning_effort_for_provider_modes() {
+        assert_eq!(
+            map_codex_chat_reasoning_effort("xhigh", Some("deepseek")),
+            Some("max")
+        );
+        assert_eq!(
+            map_codex_chat_reasoning_effort("medium", Some("deepseek")),
+            Some("high")
+        );
+        assert_eq!(
+            map_codex_chat_reasoning_effort("minimal", Some("low_high")),
+            Some("low")
+        );
+        assert_eq!(
+            map_codex_chat_reasoning_effort("max", Some("openrouter")),
+            Some("xhigh")
+        );
+        assert_eq!(
+            map_codex_chat_reasoning_effort("turbo", Some("openrouter")),
+            None
+        );
+        assert_eq!(
+            map_codex_chat_reasoning_effort("none", Some("deepseek")),
+            None
+        );
+        assert_eq!(map_codex_chat_reasoning_effort("max", None), Some("max"));
     }
 
     #[test]

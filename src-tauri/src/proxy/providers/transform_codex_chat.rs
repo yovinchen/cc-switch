@@ -17,6 +17,7 @@ use crate::proxy::{
         short_sha256_hex,
     },
 };
+use crate::proxy_core::{codex_chat_reasoning_requested, map_codex_chat_reasoning_effort};
 use serde_json::{json, Value};
 use std::collections::{HashMap, HashSet};
 
@@ -359,7 +360,7 @@ fn apply_reasoning_options(
 
     let supports_effort = config.supports_effort.unwrap_or(false);
     let supports_thinking = config.supports_thinking.unwrap_or(false) || supports_effort;
-    let Some(reasoning_enabled) = reasoning_requested(body) else {
+    let Some(reasoning_enabled) = codex_chat_reasoning_requested(body) else {
         return;
     };
 
@@ -416,7 +417,8 @@ fn apply_reasoning_options(
     let Some(effort) = body.pointer("/reasoning/effort").and_then(|v| v.as_str()) else {
         return;
     };
-    let Some(mapped) = map_reasoning_effort(effort, config.effort_value_mode.as_deref()) else {
+    let Some(mapped) = map_codex_chat_reasoning_effort(effort, config.effort_value_mode.as_deref())
+    else {
         return;
     };
 
@@ -433,56 +435,6 @@ fn apply_reasoning_options(
             result["reasoning"] = json!({ "effort": mapped });
         }
         _ => {}
-    }
-}
-
-fn reasoning_requested(body: &Value) -> Option<bool> {
-    if let Some(effort) = body.pointer("/reasoning/effort").and_then(|v| v.as_str()) {
-        return Some(!matches!(
-            effort.trim().to_ascii_lowercase().as_str(),
-            "none" | "off" | "disabled"
-        ));
-    }
-
-    body.get("reasoning").map(|value| !value.is_null())
-}
-
-fn map_reasoning_effort(effort: &str, mode: Option<&str>) -> Option<&'static str> {
-    let effort = effort.trim().to_ascii_lowercase();
-    if matches!(effort.as_str(), "none" | "off" | "disabled") {
-        return None;
-    }
-
-    match mode.unwrap_or("passthrough") {
-        "deepseek" => match effort.as_str() {
-            "max" | "xhigh" => Some("max"),
-            _ => Some("high"),
-        },
-        "low_high" => match effort.as_str() {
-            "minimal" | "low" => Some("low"),
-            _ => Some("high"),
-        },
-        // OpenRouter effort 枚举为 xhigh|high|medium|low|minimal（无 max）。max 是
-        // Codex / 部分模型的扩展档位，对 OpenRouter 非法，会触发
-        // `400 reasoning_effort: Invalid option`（见 openclaw#77350）；钳到最高合法档
-        // xhigh，其余合法值透传，未知值丢弃以免被上游拒绝。
-        "openrouter" => match effort.as_str() {
-            "max" | "xhigh" => Some("xhigh"),
-            "high" => Some("high"),
-            "medium" => Some("medium"),
-            "low" => Some("low"),
-            "minimal" => Some("minimal"),
-            _ => None,
-        },
-        _ => match effort.as_str() {
-            "minimal" => Some("minimal"),
-            "low" => Some("low"),
-            "medium" => Some("medium"),
-            "high" => Some("high"),
-            "xhigh" => Some("xhigh"),
-            "max" => Some("max"),
-            _ => None,
-        },
     }
 }
 
