@@ -30,8 +30,9 @@ use crate::proxy::providers::codex_oauth_auth::CodexOAuthManager;
 use crate::proxy::providers::copilot_auth::CopilotAuthManager;
 use crate::proxy_core::{
     build_codex_oauth_session_headers, resolve_upstream_request_transport_policy,
-    should_preserve_exact_request_header_case, validate_managed_account_upstream_auth, AppKind,
-    ChannelQuery, InterfaceKind, ProxyBody, ProxyEngine, ProxyRequest, ProxyServices,
+    should_preserve_exact_request_header_case, should_strip_forwarded_request_header,
+    validate_managed_account_upstream_auth, AppKind, ChannelQuery, InterfaceKind, ProxyBody,
+    ProxyEngine, ProxyRequest, ProxyServices,
 };
 use crate::proxy_core_host::CcSwitchProxyServices;
 use crate::{app_config::AppType, provider::Provider};
@@ -2113,36 +2114,7 @@ impl RequestForwarder {
             }
 
             // --- 连接 / 追踪 / CDN 类 — 无条件跳过 ---
-            if matches!(
-                key_str,
-                "content-length"
-                    | "transfer-encoding"
-                    | "x-forwarded-host"
-                    | "x-forwarded-port"
-                    | "x-forwarded-proto"
-                    | "forwarded"
-                    | "cf-connecting-ip"
-                    | "cf-ipcountry"
-                    | "cf-ray"
-                    | "cf-visitor"
-                    | "true-client-ip"
-                    | "fastly-client-ip"
-                    | "x-azure-clientip"
-                    | "x-azure-fdid"
-                    | "x-azure-ref"
-                    | "akamai-origin-hop"
-                    | "x-akamai-config-log-detail"
-                    | "x-request-id"
-                    | "x-correlation-id"
-                    | "x-trace-id"
-                    | "x-amzn-trace-id"
-                    | "x-b3-traceid"
-                    | "x-b3-spanid"
-                    | "x-b3-parentspanid"
-                    | "x-b3-sampled"
-                    | "traceparent"
-                    | "tracestate"
-            ) {
+            if should_strip_forwarded_request_header(key_str) {
                 continue;
             }
 
