@@ -74,7 +74,10 @@ pub trait ChannelHealthStore: Send + Sync {
         result: ChannelAttemptResult,
     ) -> BoxFuture<'a, ProxyCoreResult<()>>;
 
-    fn reset_channel<'a>(&'a self, channel_id: &'a str) -> BoxFuture<'a, ProxyCoreResult<()>>;
+    fn reset_channel<'a>(
+        &'a self,
+        channel_id: &'a str,
+    ) -> BoxFuture<'a, ProxyCoreResult<ChannelHealthReset>>;
 }
 
 pub trait AuthProvider: Send + Sync {
@@ -192,6 +195,13 @@ pub struct ModelCatalog {
     pub models: Vec<String>,
     #[serde(default)]
     pub raw: Value,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ChannelHealthReset {
+    pub channel_id: String,
+    pub app: AppKind,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

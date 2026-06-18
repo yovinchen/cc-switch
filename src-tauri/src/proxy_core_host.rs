@@ -85,7 +85,10 @@ impl CcSwitchProxyServices {
             },
             route_policies: CcSwitchRoutePolicySource { db: db.clone() },
             route_resolver: CcSwitchRouteResolver,
-            health_store: CcSwitchHealthStore { db: db.clone() },
+            health_store: CcSwitchHealthStore {
+                db: db.clone(),
+                router: runtime.provider_router.clone(),
+            },
             auth_provider: CcSwitchAuthProvider,
             model_catalog: CcSwitchModelCatalogProvider { db: db.clone() },
             usage_sink: CcSwitchUsageSink { db },
@@ -107,7 +110,10 @@ impl CcSwitchProxyServices {
             },
             route_policies: CcSwitchRoutePolicySource { db: db.clone() },
             route_resolver: CcSwitchRouteResolver,
-            health_store: CcSwitchHealthStore { db: db.clone() },
+            health_store: CcSwitchHealthStore {
+                db: db.clone(),
+                router: router.clone(),
+            },
             auth_provider: CcSwitchAuthProvider,
             model_catalog: CcSwitchModelCatalogProvider { db: db.clone() },
             usage_sink: CcSwitchUsageSink { db: db.clone() },
@@ -444,6 +450,7 @@ impl RouteResolver for CcSwitchRouteResolver {
 #[derive(Clone)]
 struct CcSwitchHealthStore {
     db: Arc<Database>,
+    router: Arc<ProviderRouter>,
 }
 
 impl crate::proxy_core::ChannelHealthStore for CcSwitchHealthStore {
@@ -464,11 +471,26 @@ impl crate::proxy_core::ChannelHealthStore for CcSwitchHealthStore {
         })
     }
 
-    fn reset_channel<'a>(&'a self, channel_id: &'a str) -> BoxFuture<'a, ProxyCoreResult<()>> {
+    fn reset_channel<'a>(
+        &'a self,
+        channel_id: &'a str,
+    ) -> BoxFuture<'a, ProxyCoreResult<crate::proxy_core::ChannelHealthReset>> {
         Box::pin(async move {
-            self.db
-                .reset_proxy_channel_health(channel_id)
-                .map_err(|error| app_error("reset channel health", error))
+            let app_type = self
+                .db
+                .get_proxy_channel_app_type(channel_id)
+                .map_err(|error| app_error("lookup channel app", error))?
+                .ok_or_else(|| {
+                    ProxyCoreError::InvalidRequest(format!("channel not found: {channel_id}"))
+                })?;
+            self.router
+                .reset_channel_breaker(channel_id, &app_type)
+                .await
+                .map_err(|error| app_error("reset channel health", error))?;
+            Ok(crate::proxy_core::ChannelHealthReset {
+                channel_id: channel_id.to_string(),
+                app: AppKind::from(app_type.as_str()),
+            })
         })
     }
 }

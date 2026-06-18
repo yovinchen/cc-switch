@@ -708,28 +708,15 @@ pub async fn reset_proxy_channel_breaker(
     State(state): State<ProxyState>,
     Path(channel_id): Path<String>,
 ) -> Result<Json<Value>, ProxyError> {
-    let channel_id = channel_id.trim().to_string();
-    if channel_id.is_empty() {
-        return Err(ProxyError::InvalidRequest(
-            "channel_id cannot be empty".to_string(),
-        ));
-    }
-
-    let app_type = state
-        .db
-        .get_proxy_channel_app_type(&channel_id)
-        .map_err(|e| ProxyError::DatabaseError(e.to_string()))?
-        .ok_or_else(|| ProxyError::InvalidRequest(format!("channel not found: {channel_id}")))?;
-
-    state
-        .provider_router
-        .reset_channel_breaker(&channel_id, &app_type)
+    let channel_id = normalize_channel_id_path(channel_id)?;
+    let reset = ProxyEngine::new(state.proxy_core_services.clone())
+        .reset_channel_health(&channel_id)
         .await
-        .map_err(|e| ProxyError::DatabaseError(e.to_string()))?;
+        .map_err(proxy_core_error_to_proxy_error)?;
 
     Ok(Json(json!({
-        "channelId": channel_id,
-        "appType": app_type,
+        "channelId": reset.channel_id,
+        "appType": reset.app.as_str(),
         "reset": true,
     })))
 }

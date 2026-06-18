@@ -3,7 +3,9 @@ use super::domain::{
     ProxyRequest, ProxyResult, RoutableModel, RoutePlan, RouteRequest, DEFAULT_ROUTE_GROUP,
 };
 use super::error::ProxyCoreResult;
-use super::ports::{ModelCatalog, ProxyCoreEvent, ProxyCoreEventType, ProxyServices};
+use super::ports::{
+    ChannelHealthReset, ModelCatalog, ProxyCoreEvent, ProxyCoreEventType, ProxyServices,
+};
 use serde_json::{json, to_value};
 use std::collections::BTreeMap;
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -160,6 +162,13 @@ where
         app: &super::domain::AppKind,
     ) -> ProxyCoreResult<ModelCatalog> {
         self.services.model_catalog().load_client_catalog(app).await
+    }
+
+    pub async fn reset_channel_health(
+        &self,
+        channel_id: &str,
+    ) -> ProxyCoreResult<ChannelHealthReset> {
+        self.services.health_store().reset_channel(channel_id).await
     }
 
     async fn plan_route_with_legacy_projection(
@@ -420,8 +429,16 @@ mod tests {
             Box::pin(async { Ok(()) })
         }
 
-        fn reset_channel<'a>(&'a self, _channel_id: &'a str) -> BoxFuture<'a, ProxyCoreResult<()>> {
-            Box::pin(async { Ok(()) })
+        fn reset_channel<'a>(
+            &'a self,
+            channel_id: &'a str,
+        ) -> BoxFuture<'a, ProxyCoreResult<ChannelHealthReset>> {
+            Box::pin(async move {
+                Ok(ChannelHealthReset {
+                    channel_id: channel_id.to_string(),
+                    app: AppKind::Claude,
+                })
+            })
         }
     }
 
@@ -651,6 +668,19 @@ mod tests {
         assert_eq!(catalog.provider_id, "codex");
         assert_eq!(catalog.models, ["gpt-5"]);
         assert_eq!(catalog.raw, json!({"models": [{"id": "gpt-5"}]}));
+    }
+
+    #[test]
+    fn reset_channel_health_delegates_to_health_store() {
+        let services = Arc::new(TestServices::default());
+        let engine = ProxyEngine::new(services);
+
+        let reset =
+            futures::executor::block_on(engine.reset_channel_health("channel-a"))
+                .expect("reset channel health");
+
+        assert_eq!(reset.channel_id, "channel-a");
+        assert_eq!(reset.app, AppKind::Claude);
     }
 
     fn provider_spec() -> ProviderSpec {
