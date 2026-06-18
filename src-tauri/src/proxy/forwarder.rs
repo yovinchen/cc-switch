@@ -30,10 +30,11 @@ use crate::proxy::providers::codex_oauth_auth::CodexOAuthManager;
 use crate::proxy::providers::copilot_auth::CopilotAuthManager;
 use crate::proxy_core::append_query_to_full_url;
 use crate::proxy_core::{
-    build_codex_oauth_session_headers, resolve_upstream_request_transport_policy,
-    should_preserve_exact_request_header_case, should_send_anthropic_request_headers,
-    split_endpoint_and_query, validate_managed_account_upstream_auth, AppKind, ChannelQuery,
-    InterfaceKind, ProxyBody, ProxyEngine, ProxyRequest, ProxyServices,
+    build_codex_oauth_session_headers, build_upstream_auth_headers,
+    resolve_upstream_request_transport_policy, should_preserve_exact_request_header_case,
+    should_send_anthropic_request_headers, split_endpoint_and_query,
+    validate_managed_account_upstream_auth, AppKind, ChannelQuery, CopilotAuthHeaderOverrides,
+    InterfaceKind, ProxyBody, ProxyEngine, ProxyRequest, ProxyServices, UpstreamAuthHeadersInput,
     UpstreamRequestHeadersInput,
 };
 use crate::proxy_core_host::CcSwitchProxyServices;
@@ -1978,13 +1979,6 @@ impl RequestForwarder {
             Vec::new()
         };
 
-        // 注入 Codex OAuth 的 ChatGPT-Account-Id header（如果有 account_id）
-        if let Some(ref account_id) = codex_oauth_account_id {
-            if let Ok(hv) = http::HeaderValue::from_str(account_id) {
-                auth_headers.push((http::HeaderName::from_static("chatgpt-account-id"), hv));
-            }
-        }
-
         let codex_oauth_session_headers =
             if should_send_codex_oauth_session_headers && self.session_client_provided {
                 build_codex_oauth_session_headers(&self.session_id)
@@ -2005,36 +1999,25 @@ impl RequestForwarder {
         };
 
         // --- Copilot 优化器：动态 header 注入 ---
-        if let Some((ref classification, ref det_request_id, ref interaction_id)) =
-            copilot_optimization
-        {
-            for (name, value) in auth_headers.iter_mut() {
-                match name.as_str() {
-                    "x-initiator" if self.copilot_optimizer_config.request_classification => {
-                        *value = http::HeaderValue::from_static(classification.initiator);
-                    }
-                    "x-interaction-type" if classification.is_subagent => {
-                        // 子代理请求：conversation-subagent 不计 premium interaction
-                        *value = http::HeaderValue::from_static("conversation-subagent");
-                    }
-                    "x-request-id" | "x-agent-task-id" => {
-                        if let Some(ref det_id) = det_request_id {
-                            if let Ok(hv) = http::HeaderValue::from_str(det_id) {
-                                *value = hv;
-                            }
-                        }
-                    }
-                    _ => {}
-                }
-            }
+        let copilot_auth_header_overrides = copilot_optimization.as_ref().map(
+            |(classification, det_request_id, interaction_id)| CopilotAuthHeaderOverrides {
+                initiator: self
+                    .copilot_optimizer_config
+                    .request_classification
+                    .then_some(classification.initiator),
+                is_subagent: classification.is_subagent,
+                deterministic_request_id: det_request_id.as_deref(),
+                interaction_id: interaction_id.as_deref(),
+            },
+        );
 
-            // x-interaction-id：仅在有 session 时注入（不在 get_auth_headers 中）
-            if let Some(ref iid) = interaction_id {
-                if let Ok(hv) = http::HeaderValue::from_str(iid) {
-                    auth_headers.push((http::HeaderName::from_static("x-interaction-id"), hv));
-                }
-            }
+        auth_headers = build_upstream_auth_headers(UpstreamAuthHeadersInput {
+            base_auth_headers: &auth_headers,
+            codex_oauth_account_id: codex_oauth_account_id.as_deref(),
+            copilot_overrides: copilot_auth_header_overrides,
+        });
 
+        if let Some((ref classification, _, _)) = copilot_optimization {
             if classification.is_subagent {
                 log::info!(
                     "[Copilot] 子代理请求: x-initiator=agent, x-interaction-type=conversation-subagent"

@@ -59,6 +59,20 @@ pub struct UpstreamRequestHeadersInput<'a> {
     pub ensure_json_content_type: bool,
 }
 
+pub struct UpstreamAuthHeadersInput<'a> {
+    pub base_auth_headers: &'a [(http::HeaderName, http::HeaderValue)],
+    pub codex_oauth_account_id: Option<&'a str>,
+    pub copilot_overrides: Option<CopilotAuthHeaderOverrides<'a>>,
+}
+
+#[derive(Clone, Copy)]
+pub struct CopilotAuthHeaderOverrides<'a> {
+    pub initiator: Option<&'a str>,
+    pub is_subagent: bool,
+    pub deterministic_request_id: Option<&'a str>,
+    pub interaction_id: Option<&'a str>,
+}
+
 pub fn should_send_anthropic_request_headers(
     adapter_name: &str,
     resolved_claude_api_format: Option<&str>,
@@ -91,6 +105,36 @@ pub fn build_codex_oauth_session_headers(
     let window_id = format!("{session_id}:0");
     if let Ok(value) = http::HeaderValue::from_str(&window_id) {
         headers.push((http::HeaderName::from_static("x-codex-window-id"), value));
+    }
+
+    headers
+}
+
+pub fn build_upstream_auth_headers(
+    input: UpstreamAuthHeadersInput<'_>,
+) -> Vec<(http::HeaderName, http::HeaderValue)> {
+    let mut headers = Vec::with_capacity(input.base_auth_headers.len() + 2);
+
+    for (name, value) in input.base_auth_headers {
+        let mut value = value.clone();
+        if let Some(overrides) = input.copilot_overrides {
+            value = apply_copilot_auth_header_override(name, value, overrides);
+        }
+        headers.push((name.clone(), value));
+    }
+
+    if let Some(account_id) = input.codex_oauth_account_id {
+        if let Ok(value) = http::HeaderValue::from_str(account_id) {
+            headers.push((http::HeaderName::from_static("chatgpt-account-id"), value));
+        }
+    }
+
+    if let Some(overrides) = input.copilot_overrides {
+        if let Some(interaction_id) = overrides.interaction_id {
+            if let Ok(value) = http::HeaderValue::from_str(interaction_id) {
+                headers.push((http::HeaderName::from_static("x-interaction-id"), value));
+            }
+        }
     }
 
     headers
@@ -264,6 +308,28 @@ fn is_upstream_auth_header(name: &str) -> bool {
         || name.eq_ignore_ascii_case("x-goog-api-key")
 }
 
+fn apply_copilot_auth_header_override(
+    name: &http::HeaderName,
+    current: http::HeaderValue,
+    overrides: CopilotAuthHeaderOverrides<'_>,
+) -> http::HeaderValue {
+    let name = name.as_str();
+    if name.eq_ignore_ascii_case("x-initiator") {
+        return header_value_from_optional_str(overrides.initiator).unwrap_or(current);
+    }
+
+    if name.eq_ignore_ascii_case("x-interaction-type") && overrides.is_subagent {
+        return http::HeaderValue::from_static("conversation-subagent");
+    }
+
+    if name.eq_ignore_ascii_case("x-request-id") || name.eq_ignore_ascii_case("x-agent-task-id") {
+        return header_value_from_optional_str(overrides.deterministic_request_id)
+            .unwrap_or(current);
+    }
+
+    current
+}
+
 fn append_header_pairs(
     headers: &mut http::HeaderMap,
     pairs: &[(http::HeaderName, http::HeaderValue)],
@@ -271,6 +337,10 @@ fn append_header_pairs(
     for (name, value) in pairs {
         headers.append(name.clone(), value.clone());
     }
+}
+
+fn header_value_from_optional_str(value: Option<&str>) -> Option<http::HeaderValue> {
+    value.and_then(|value| http::HeaderValue::from_str(value).ok())
 }
 
 fn append_header_from_str(
@@ -289,10 +359,12 @@ fn append_header_from_str(
 mod tests {
     use super::{
         anthropic_beta_header_value, build_codex_oauth_session_headers,
+        build_upstream_auth_headers,
         build_upstream_request_headers,
         should_preserve_exact_request_header_case, should_send_anthropic_request_headers,
         should_skip_copilot_fingerprint_request_header, should_strip_forwarded_request_header,
-        UpstreamRequestHeadersInput, CLAUDE_CODE_BETA, DEFAULT_ANTHROPIC_VERSION,
+        CopilotAuthHeaderOverrides, UpstreamAuthHeadersInput, UpstreamRequestHeadersInput,
+        CLAUDE_CODE_BETA, DEFAULT_ANTHROPIC_VERSION,
     };
     use http::{header, HeaderMap, HeaderName, HeaderValue};
 
@@ -483,6 +555,157 @@ mod tests {
             map.get("x-codex-window-id"),
             Some(&HeaderValue::from_static("session-abc:0"))
         );
+    }
+
+    #[test]
+    fn builds_upstream_auth_headers_with_codex_account_id() {
+        let base_auth_headers = vec![
+            (
+                HeaderName::from_static("authorization"),
+                HeaderValue::from_static("Bearer token"),
+            ),
+            (
+                HeaderName::from_static("originator"),
+                HeaderValue::from_static("cc-switch"),
+            ),
+        ];
+
+        let headers = build_upstream_auth_headers(UpstreamAuthHeadersInput {
+            base_auth_headers: &base_auth_headers,
+            codex_oauth_account_id: Some("account-123"),
+            copilot_overrides: None,
+        });
+
+        assert_eq!(headers.len(), 3);
+        assert_eq!(headers[0], base_auth_headers[0]);
+        assert_eq!(headers[1], base_auth_headers[1]);
+        assert_eq!(
+            headers[2],
+            (
+                HeaderName::from_static("chatgpt-account-id"),
+                HeaderValue::from_static("account-123"),
+            )
+        );
+    }
+
+    #[test]
+    fn skips_invalid_codex_account_id_auth_header() {
+        let base_auth_headers = vec![(
+            HeaderName::from_static("authorization"),
+            HeaderValue::from_static("Bearer token"),
+        )];
+
+        let headers = build_upstream_auth_headers(UpstreamAuthHeadersInput {
+            base_auth_headers: &base_auth_headers,
+            codex_oauth_account_id: Some("bad\naccount"),
+            copilot_overrides: None,
+        });
+
+        assert_eq!(headers, base_auth_headers);
+    }
+
+    #[test]
+    fn builds_upstream_auth_headers_with_copilot_overrides() {
+        let base_auth_headers = vec![
+            (
+                HeaderName::from_static("authorization"),
+                HeaderValue::from_static("Bearer token"),
+            ),
+            (
+                HeaderName::from_static("x-initiator"),
+                HeaderValue::from_static("user"),
+            ),
+            (
+                HeaderName::from_static("x-interaction-type"),
+                HeaderValue::from_static("conversation"),
+            ),
+            (
+                HeaderName::from_static("x-request-id"),
+                HeaderValue::from_static("random-request"),
+            ),
+            (
+                HeaderName::from_static("x-agent-task-id"),
+                HeaderValue::from_static("random-task"),
+            ),
+        ];
+
+        let headers = build_upstream_auth_headers(UpstreamAuthHeadersInput {
+            base_auth_headers: &base_auth_headers,
+            codex_oauth_account_id: None,
+            copilot_overrides: Some(CopilotAuthHeaderOverrides {
+                initiator: Some("agent"),
+                is_subagent: true,
+                deterministic_request_id: Some("deterministic-id"),
+                interaction_id: Some("interaction-id"),
+            }),
+        });
+
+        assert_eq!(
+            headers[1],
+            (
+                HeaderName::from_static("x-initiator"),
+                HeaderValue::from_static("agent"),
+            )
+        );
+        assert_eq!(
+            headers[2],
+            (
+                HeaderName::from_static("x-interaction-type"),
+                HeaderValue::from_static("conversation-subagent"),
+            )
+        );
+        assert_eq!(
+            headers[3],
+            (
+                HeaderName::from_static("x-request-id"),
+                HeaderValue::from_static("deterministic-id"),
+            )
+        );
+        assert_eq!(
+            headers[4],
+            (
+                HeaderName::from_static("x-agent-task-id"),
+                HeaderValue::from_static("deterministic-id"),
+            )
+        );
+        assert_eq!(
+            headers[5],
+            (
+                HeaderName::from_static("x-interaction-id"),
+                HeaderValue::from_static("interaction-id"),
+            )
+        );
+    }
+
+    #[test]
+    fn copilot_auth_overrides_preserve_headers_without_enabled_values() {
+        let base_auth_headers = vec![
+            (
+                HeaderName::from_static("x-initiator"),
+                HeaderValue::from_static("user"),
+            ),
+            (
+                HeaderName::from_static("x-interaction-type"),
+                HeaderValue::from_static("conversation"),
+            ),
+            (
+                HeaderName::from_static("x-request-id"),
+                HeaderValue::from_static("random-request"),
+            ),
+        ];
+
+        let headers = build_upstream_auth_headers(UpstreamAuthHeadersInput {
+            base_auth_headers: &base_auth_headers,
+            codex_oauth_account_id: None,
+            copilot_overrides: Some(CopilotAuthHeaderOverrides {
+                initiator: None,
+                is_subagent: false,
+                deterministic_request_id: None,
+                interaction_id: None,
+            }),
+        });
+
+        assert_eq!(headers, base_auth_headers);
     }
 
     #[test]
