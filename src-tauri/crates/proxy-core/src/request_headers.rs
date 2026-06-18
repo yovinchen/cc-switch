@@ -28,6 +28,24 @@ const REQUEST_HEADERS_STRIPPED_BEFORE_UPSTREAM: &[&str] = &[
     "tracestate",
 ];
 
+pub const CLAUDE_CODE_BETA: &str = "claude-code-20250219";
+pub const DEFAULT_ANTHROPIC_VERSION: &str = "2023-06-01";
+
+pub fn should_send_anthropic_request_headers(
+    adapter_name: &str,
+    resolved_claude_api_format: Option<&str>,
+) -> bool {
+    adapter_name == "Claude" && matches!(resolved_claude_api_format, Some("anthropic"))
+}
+
+pub fn anthropic_beta_header_value(existing_beta: Option<&str>) -> String {
+    match existing_beta {
+        Some(value) if value.contains(CLAUDE_CODE_BETA) => value.to_string(),
+        Some(value) if !value.is_empty() => format!("{CLAUDE_CODE_BETA},{value}"),
+        _ => CLAUDE_CODE_BETA.to_string(),
+    }
+}
+
 pub fn build_codex_oauth_session_headers(
     session_id: &str,
 ) -> Vec<(http::HeaderName, http::HeaderValue)> {
@@ -76,8 +94,9 @@ pub fn should_preserve_exact_request_header_case(
 #[cfg(test)]
 mod tests {
     use super::{
-        build_codex_oauth_session_headers, should_preserve_exact_request_header_case,
-        should_strip_forwarded_request_header,
+        anthropic_beta_header_value, build_codex_oauth_session_headers,
+        should_preserve_exact_request_header_case, should_send_anthropic_request_headers,
+        should_strip_forwarded_request_header, CLAUDE_CODE_BETA, DEFAULT_ANTHROPIC_VERSION,
     };
     use http::{HeaderMap, HeaderValue};
 
@@ -124,6 +143,40 @@ mod tests {
             true,
             Some("anthropic"),
         ));
+    }
+
+    #[test]
+    fn sends_anthropic_request_headers_only_for_native_claude() {
+        assert!(should_send_anthropic_request_headers(
+            "Claude",
+            Some("anthropic"),
+        ));
+        assert!(!should_send_anthropic_request_headers(
+            "Claude",
+            Some("openai_responses"),
+        ));
+        assert!(!should_send_anthropic_request_headers(
+            "Codex",
+            Some("anthropic"),
+        ));
+        assert_eq!(DEFAULT_ANTHROPIC_VERSION, "2023-06-01");
+    }
+
+    #[test]
+    fn anthropic_beta_header_value_preserves_or_prepends_claude_code_beta() {
+        assert_eq!(
+            anthropic_beta_header_value(None),
+            CLAUDE_CODE_BETA.to_string()
+        );
+        assert_eq!(
+            anthropic_beta_header_value(Some("other-beta")),
+            format!("{CLAUDE_CODE_BETA},other-beta")
+        );
+        assert_eq!(
+            anthropic_beta_header_value(Some("other-beta,claude-code-20250219")),
+            "other-beta,claude-code-20250219"
+        );
+        assert_eq!(anthropic_beta_header_value(Some("")), CLAUDE_CODE_BETA);
     }
 
     #[test]

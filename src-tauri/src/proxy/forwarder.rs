@@ -31,9 +31,10 @@ use crate::proxy::providers::copilot_auth::CopilotAuthManager;
 use crate::proxy_core::append_query_to_full_url;
 use crate::proxy_core::{
     build_codex_oauth_session_headers, resolve_upstream_request_transport_policy,
-    should_preserve_exact_request_header_case, should_strip_forwarded_request_header,
-    split_endpoint_and_query, validate_managed_account_upstream_auth, AppKind, ChannelQuery,
-    InterfaceKind, ProxyBody, ProxyEngine, ProxyRequest, ProxyServices,
+    should_preserve_exact_request_header_case, should_send_anthropic_request_headers,
+    should_strip_forwarded_request_header, split_endpoint_and_query,
+    validate_managed_account_upstream_auth, AppKind, ChannelQuery, InterfaceKind, ProxyBody,
+    ProxyEngine, ProxyRequest, ProxyServices, DEFAULT_ANTHROPIC_VERSION,
 };
 use crate::proxy_core_host::CcSwitchProxyServices;
 use crate::{app_config::AppType, provider::Provider};
@@ -2068,25 +2069,18 @@ impl RequestForwarder {
             .ok()
             .and_then(|u| u.authority().map(|a| a.to_string()));
 
-        let should_send_anthropic_headers = adapter.name() == "Claude"
-            && matches!(resolved_claude_api_format.as_deref(), Some("anthropic"));
+        let should_send_anthropic_headers = should_send_anthropic_request_headers(
+            adapter.name(),
+            resolved_claude_api_format.as_deref(),
+        );
 
         // 预计算 anthropic-beta 值（仅 Claude）
         let anthropic_beta_value = if should_send_anthropic_headers {
-            const CLAUDE_CODE_BETA: &str = "claude-code-20250219";
-            Some(if let Some(beta) = headers.get("anthropic-beta") {
-                if let Ok(beta_str) = beta.to_str() {
-                    if beta_str.contains(CLAUDE_CODE_BETA) {
-                        beta_str.to_string()
-                    } else {
-                        format!("{CLAUDE_CODE_BETA},{beta_str}")
-                    }
-                } else {
-                    CLAUDE_CODE_BETA.to_string()
-                }
-            } else {
-                CLAUDE_CODE_BETA.to_string()
-            })
+            Some(crate::proxy_core::anthropic_beta_header_value(
+                headers
+                    .get("anthropic-beta")
+                    .and_then(|beta| beta.to_str().ok()),
+            ))
         } else {
             None
         };
@@ -2230,7 +2224,7 @@ impl RequestForwarder {
         if should_send_anthropic_headers && !saw_anthropic_version {
             ordered_headers.append(
                 "anthropic-version",
-                http::HeaderValue::from_static("2023-06-01"),
+                http::HeaderValue::from_static(DEFAULT_ANTHROPIC_VERSION),
             );
         }
 
