@@ -76,6 +76,29 @@ pub fn append_query_to_full_url(base_url: &str, query: Option<&str>) -> String {
     }
 }
 
+pub fn is_github_copilot_upstream(provider_type: Option<&str>, base_url: &str) -> bool {
+    matches!(provider_type, Some("github_copilot")) || base_url.contains("githubcopilot.com")
+}
+
+pub fn should_resolve_copilot_dynamic_endpoint(is_copilot: bool, is_full_url: bool) -> bool {
+    is_copilot && !is_full_url
+}
+
+pub fn resolved_copilot_dynamic_base_url(
+    current_base_url: &str,
+    dynamic_endpoint: &str,
+    is_copilot: bool,
+    is_full_url: bool,
+) -> Option<String> {
+    if should_resolve_copilot_dynamic_endpoint(is_copilot, is_full_url)
+        && dynamic_endpoint != current_base_url
+    {
+        Some(dynamic_endpoint.to_string())
+    } else {
+        None
+    }
+}
+
 pub fn is_claude_messages_path(path: &str) -> bool {
     matches!(path, "/v1/messages" | "/claude/v1/messages")
 }
@@ -220,9 +243,10 @@ fn is_openai_compatible_custom_app(value: &str) -> bool {
 mod tests {
     use super::{
         append_query_to_full_url, extract_gemini_model_from_path, interface_kind_for_forward,
-        merge_query_params, request_model_for_forward, rewrite_claude_transform_endpoint,
-        rewrite_codex_responses_endpoint_to_chat, split_endpoint_and_query, strip_beta_query,
-        AppKind, ClaudeTransformEndpointRewriteInput,
+        is_github_copilot_upstream, merge_query_params, request_model_for_forward,
+        resolved_copilot_dynamic_base_url, rewrite_claude_transform_endpoint,
+        rewrite_codex_responses_endpoint_to_chat, should_resolve_copilot_dynamic_endpoint,
+        split_endpoint_and_query, strip_beta_query, AppKind, ClaudeTransformEndpointRewriteInput,
     };
     use serde_json::json;
 
@@ -268,6 +292,58 @@ mod tests {
         assert_eq!(
             append_query_to_full_url("https://relay.example/api", None),
             "https://relay.example/api"
+        );
+    }
+
+    #[test]
+    fn detects_github_copilot_upstream_from_provider_type_or_base_url() {
+        assert!(is_github_copilot_upstream(
+            Some("github_copilot"),
+            "https://copilot-api.corp.example.com"
+        ));
+        assert!(is_github_copilot_upstream(
+            None,
+            "https://api.githubcopilot.com"
+        ));
+        assert!(!is_github_copilot_upstream(
+            Some("anthropic"),
+            "https://api.anthropic.com"
+        ));
+    }
+
+    #[test]
+    fn resolves_copilot_dynamic_base_url_only_for_non_full_url_copilot() {
+        assert!(should_resolve_copilot_dynamic_endpoint(true, false));
+        assert!(!should_resolve_copilot_dynamic_endpoint(true, true));
+        assert!(!should_resolve_copilot_dynamic_endpoint(false, false));
+
+        assert_eq!(
+            resolved_copilot_dynamic_base_url(
+                "https://api.githubcopilot.com",
+                "https://copilot-api.enterprise.example.com",
+                true,
+                false,
+            )
+            .as_deref(),
+            Some("https://copilot-api.enterprise.example.com")
+        );
+        assert_eq!(
+            resolved_copilot_dynamic_base_url(
+                "https://api.githubcopilot.com",
+                "https://api.githubcopilot.com",
+                true,
+                false,
+            ),
+            None
+        );
+        assert_eq!(
+            resolved_copilot_dynamic_base_url(
+                "https://api.githubcopilot.com",
+                "https://copilot-api.enterprise.example.com",
+                true,
+                true,
+            ),
+            None
         );
     }
 

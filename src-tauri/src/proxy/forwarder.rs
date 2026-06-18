@@ -30,8 +30,9 @@ use crate::proxy::providers::codex_oauth_auth::CodexOAuthManager;
 use crate::proxy::providers::copilot_auth::CopilotAuthManager;
 use crate::proxy_core::append_query_to_full_url;
 use crate::proxy_core::{
-    build_codex_oauth_session_headers, build_upstream_auth_headers,
-    resolve_upstream_request_transport_policy, should_preserve_exact_request_header_case,
+    build_codex_oauth_session_headers, build_upstream_auth_headers, is_github_copilot_upstream,
+    resolve_upstream_request_transport_policy, resolved_copilot_dynamic_base_url,
+    should_preserve_exact_request_header_case, should_resolve_copilot_dynamic_endpoint,
     should_send_anthropic_request_headers, split_endpoint_and_query,
     validate_managed_account_upstream_auth, AppKind, ChannelQuery, CopilotAuthHeaderOverrides,
     InterfaceKind, ProxyBody, ProxyEngine, ProxyRequest, ProxyServices, UpstreamAuthHeadersInput,
@@ -1561,12 +1562,13 @@ impl RequestForwarder {
             .unwrap_or(false);
 
         // GitHub Copilot API 使用 /chat/completions（无 /v1 前缀）
-        let is_copilot = provider
-            .meta
-            .as_ref()
-            .and_then(|m| m.provider_type.as_deref())
-            == Some("github_copilot")
-            || base_url.contains("githubcopilot.com");
+        let is_copilot = is_github_copilot_upstream(
+            provider
+                .meta
+                .as_ref()
+                .and_then(|m| m.provider_type.as_deref()),
+            &base_url,
+        );
 
         // 应用模型映射（独立于格式转换）
         // Claude Desktop proxy 模式必须先把 Desktop 可见的 claude-* route
@@ -1698,7 +1700,7 @@ impl RequestForwarder {
 
         // GitHub Copilot 动态 endpoint 路由
         // 从 CopilotAuthManager 获取缓存的 API endpoint（支持企业版等非默认 endpoint）
-        if is_copilot && !is_full_url {
+        if should_resolve_copilot_dynamic_endpoint(is_copilot, is_full_url) {
             if let Some(app_handle) = &self.app_handle {
                 let copilot_state = app_handle.state::<CopilotAuthState>();
                 let copilot_auth = copilot_state.0.read().await;
@@ -1714,14 +1716,18 @@ impl RequestForwarder {
                     None => copilot_auth.get_default_api_endpoint().await,
                 };
 
-                // 只在动态 endpoint 与当前 base_url 不同时替换
-                if dynamic_endpoint != base_url {
+                if let Some(next_base_url) = resolved_copilot_dynamic_base_url(
+                    &base_url,
+                    &dynamic_endpoint,
+                    is_copilot,
+                    is_full_url,
+                ) {
                     log::debug!(
                         "[Copilot] 使用动态 API endpoint: {} (原: {})",
-                        dynamic_endpoint,
+                        next_base_url,
                         base_url
                     );
-                    base_url = dynamic_endpoint;
+                    base_url = next_base_url;
                 }
             }
         }
@@ -3551,109 +3557,6 @@ mod tests {
         );
 
         assert!(!policy.force_identity_encoding);
-    }
-
-    // ==================== Copilot 动态 endpoint 路由相关测试 ====================
-
-    /// 验证 is_copilot 检测逻辑：通过 provider_type 判断
-    #[test]
-    fn copilot_detection_via_provider_type() {
-        use crate::provider::{Provider, ProviderMeta};
-
-        let provider = Provider {
-            id: "test".to_string(),
-            name: "Test Copilot".to_string(),
-            settings_config: serde_json::json!({}),
-            website_url: None,
-            category: None,
-            created_at: None,
-            sort_index: None,
-            notes: None,
-            meta: Some(ProviderMeta {
-                provider_type: Some("github_copilot".to_string()),
-                ..Default::default()
-            }),
-            icon: None,
-            icon_color: None,
-            in_failover_queue: false,
-        };
-
-        let is_copilot = provider
-            .meta
-            .as_ref()
-            .and_then(|m| m.provider_type.as_deref())
-            == Some("github_copilot");
-
-        assert!(is_copilot, "应该通过 provider_type 检测为 Copilot");
-    }
-
-    /// 验证 is_copilot 检测逻辑：通过 base_url 判断
-    #[test]
-    fn copilot_detection_via_base_url() {
-        let base_url = "https://api.githubcopilot.com";
-        let is_copilot = base_url.contains("githubcopilot.com");
-        assert!(is_copilot, "应该通过 base_url 检测为 Copilot");
-
-        let non_copilot_url = "https://api.anthropic.com";
-        let is_not_copilot = non_copilot_url.contains("githubcopilot.com");
-        assert!(!is_not_copilot, "非 Copilot URL 不应被检测为 Copilot");
-    }
-
-    /// 验证企业版 endpoint（不包含 githubcopilot.com）场景下 is_copilot 仍然正确
-    #[test]
-    fn copilot_detection_for_enterprise_endpoint() {
-        use crate::provider::{Provider, ProviderMeta};
-
-        // 企业版场景：provider_type 是 github_copilot，但 base_url 可能是企业内部域名
-        let provider = Provider {
-            id: "enterprise".to_string(),
-            name: "Enterprise Copilot".to_string(),
-            settings_config: serde_json::json!({}),
-            website_url: None,
-            category: None,
-            created_at: None,
-            sort_index: None,
-            notes: None,
-            meta: Some(ProviderMeta {
-                provider_type: Some("github_copilot".to_string()),
-                ..Default::default()
-            }),
-            icon: None,
-            icon_color: None,
-            in_failover_queue: false,
-        };
-
-        let enterprise_base_url = "https://copilot-api.corp.example.com";
-
-        // is_copilot 应该通过 provider_type 检测成功，即使 base_url 不包含 githubcopilot.com
-        let is_copilot = provider
-            .meta
-            .as_ref()
-            .and_then(|m| m.provider_type.as_deref())
-            == Some("github_copilot")
-            || enterprise_base_url.contains("githubcopilot.com");
-
-        assert!(
-            is_copilot,
-            "企业版 Copilot 应该通过 provider_type 被正确检测"
-        );
-    }
-
-    /// 验证动态 endpoint 替换条件
-    #[test]
-    fn dynamic_endpoint_replacement_conditions() {
-        // 条件：is_copilot && !is_full_url
-        let test_cases = [
-            (true, false, true, "Copilot + 非 full_url 应该替换"),
-            (true, true, false, "Copilot + full_url 不应替换"),
-            (false, false, false, "非 Copilot 不应替换"),
-            (false, true, false, "非 Copilot + full_url 不应替换"),
-        ];
-
-        for (is_copilot, is_full_url, should_replace, desc) in test_cases {
-            let will_replace = is_copilot && !is_full_url;
-            assert_eq!(will_replace, should_replace, "{desc}");
-        }
     }
 
     // ===== P3: forwarder 层 media 开关回归测试 =====
