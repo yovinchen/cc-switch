@@ -45,7 +45,7 @@ use crate::proxy_core::{
     ChannelMigrationMaterializeResponse, ChannelMigrationPreviewResponse, ChannelModelsResponse,
     ChannelRouteCandidate, ChannelRouteRejected, CurrentRouteProviderSummary, CurrentRouteResponse,
     HealthCheckResponse, InterfaceKind, ManagementAuthDecision, ManagementAuthError,
-    ProviderListResponse, ProviderSummary, ProxyBody, ProxyChannelModelsReplaceRequest,
+    ProviderListResponse, ProviderSummaryInput, ProxyBody, ProxyChannelModelsReplaceRequest,
     ProxyChannelPatchRequest, ProxyChannelWriteRequest, ProxyCoreError, ProxyCoreResponse,
     ProxyEngine, ProxyRequest, ProxyResponseBody, ProxyResult, ProxyServices, RoutableModelList,
     RouteGroupChannelInput, RouteGroupListResponse, RouteGroupSourceInput, RouteResolveRequest,
@@ -62,7 +62,6 @@ use bytes::Bytes;
 use http_body_util::BodyExt;
 use serde::Deserialize;
 use serde_json::{json, Value};
-use std::collections::HashSet;
 use std::convert::Infallible;
 use std::time::Duration;
 
@@ -239,31 +238,28 @@ pub async fn list_proxy_providers(
         .db
         .get_failover_queue(&app_type)
         .map_err(|e| ProxyError::DatabaseError(e.to_string()))?;
-    let failover_ids: HashSet<String> = failover_queue
-        .iter()
-        .map(|item| item.provider_id.clone())
+    let failover_ids: Vec<String> = failover_queue
+        .into_iter()
+        .map(|item| item.provider_id)
         .collect();
 
-    let route_candidate_ids: HashSet<String> =
+    let route_candidate_ids: Vec<String> =
         match state.provider_router.select_providers(&app_type).await {
             Ok(selected) => selected.into_iter().map(|provider| provider.id).collect(),
             Err(crate::error::AppError::NoProvidersConfigured)
-            | Err(crate::error::AppError::AllProvidersCircuitOpen) => HashSet::new(),
+            | Err(crate::error::AppError::AllProvidersCircuitOpen) => Vec::new(),
             Err(e) => return Err(ProxyError::DatabaseError(e.to_string())),
         };
 
-    let provider_summaries = providers
+    let provider_inputs = providers
         .into_values()
         .map(|provider| {
             let provider_type = provider
                 .meta
                 .as_ref()
                 .and_then(|meta| meta.provider_type.clone());
-            let current = current_provider.as_deref() == Some(provider.id.as_str());
-            let in_failover_queue = failover_ids.contains(&provider.id);
-            let route_candidate = route_candidate_ids.contains(&provider.id);
 
-            ProviderSummary {
+            ProviderSummaryInput {
                 id: provider.id,
                 name: provider.name,
                 category: provider.category,
@@ -271,16 +267,16 @@ pub async fn list_proxy_providers(
                 icon: provider.icon,
                 icon_color: provider.icon_color,
                 provider_type,
-                current,
-                in_failover_queue,
-                route_candidate,
             }
         })
         .collect();
 
-    Ok(Json(ProviderListResponse::new(
+    Ok(Json(ProviderListResponse::from_provider_inputs(
         app_type,
-        provider_summaries,
+        provider_inputs,
+        current_provider.as_deref(),
+        &failover_ids,
+        &route_candidate_ids,
     )))
 }
 

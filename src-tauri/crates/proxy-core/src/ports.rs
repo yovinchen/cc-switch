@@ -454,6 +454,44 @@ pub struct ProviderSummary {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub struct ProviderSummaryInput {
+    pub id: String,
+    pub name: String,
+    pub category: Option<String>,
+    pub sort_index: Option<usize>,
+    pub icon: Option<String>,
+    pub icon_color: Option<String>,
+    pub provider_type: Option<String>,
+}
+
+impl ProviderSummary {
+    pub fn from_input(
+        input: ProviderSummaryInput,
+        current_provider: Option<&str>,
+        failover_provider_ids: &[String],
+        route_candidate_ids: &[String],
+    ) -> Self {
+        let current = current_provider == Some(input.id.as_str());
+        let in_failover_queue = contains_provider_id(failover_provider_ids, &input.id);
+        let route_candidate = contains_provider_id(route_candidate_ids, &input.id);
+
+        Self {
+            id: input.id,
+            name: input.name,
+            category: input.category,
+            sort_index: input.sort_index,
+            icon: input.icon,
+            icon_color: input.icon_color,
+            provider_type: input.provider_type,
+            current,
+            in_failover_queue,
+            route_candidate,
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct ProviderListResponse {
     pub app_type: String,
     pub providers: Vec<ProviderSummary>,
@@ -466,6 +504,35 @@ impl ProviderListResponse {
             providers,
         }
     }
+
+    pub fn from_provider_inputs(
+        app_type: impl Into<String>,
+        providers: Vec<ProviderSummaryInput>,
+        current_provider: Option<&str>,
+        failover_provider_ids: &[String],
+        route_candidate_ids: &[String],
+    ) -> Self {
+        Self::new(
+            app_type,
+            providers
+                .into_iter()
+                .map(|provider| {
+                    ProviderSummary::from_input(
+                        provider,
+                        current_provider,
+                        failover_provider_ids,
+                        route_candidate_ids,
+                    )
+                })
+                .collect(),
+        )
+    }
+}
+
+fn contains_provider_id(provider_ids: &[String], provider_id: &str) -> bool {
+    provider_ids
+        .iter()
+        .any(|candidate| candidate.as_str() == provider_id)
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -939,7 +1006,7 @@ mod tests {
         AppListResponse, AppModelListQuery, AppSummary, ChannelDeleteResponse, ChannelListResponse,
         ChannelModelsResponse, ChannelMigrationMaterializeResponse, ChannelMigrationPreviewResponse,
         ChannelRouteCandidate, ChannelRouteRejected, ChannelRouteSource, CurrentRouteProviderSummary,
-        CurrentRouteResponse, ProviderListResponse, ProviderSummary,
+        CurrentRouteResponse, ProviderListResponse, ProviderSummaryInput,
         HealthCheckResponse, ProxyChannelModelWriteRequest, ProxyChannelModelsReplaceRequest,
         ProxyChannelPatchRequest, ProxyChannelWriteRequest, RouteGroupChannelInput,
         RouteGroupListResponse, RouteGroupSourceInput, RouteResolveResponse,
@@ -1085,9 +1152,9 @@ mod tests {
 
     #[test]
     fn provider_list_response_serializes_sanitized_management_envelope() {
-        let response = ProviderListResponse::new(
+        let response = ProviderListResponse::from_provider_inputs(
             "claude",
-            vec![ProviderSummary {
+            vec![ProviderSummaryInput {
                 id: "provider-a".to_string(),
                 name: "Provider A".to_string(),
                 category: Some("aggregator".to_string()),
@@ -1095,10 +1162,10 @@ mod tests {
                 icon: None,
                 icon_color: Some("#00A67E".to_string()),
                 provider_type: Some("openai_compatible".to_string()),
-                current: true,
-                in_failover_queue: false,
-                route_candidate: true,
             }],
+            Some("provider-a"),
+            &[],
+            &["provider-a".to_string()],
         );
 
         let value = serde_json::to_value(response).expect("serialize response");
@@ -1121,6 +1188,44 @@ mod tests {
                 }]
             })
         );
+    }
+
+    #[test]
+    fn provider_list_response_marks_failover_and_route_candidates() {
+        let response = ProviderListResponse::from_provider_inputs(
+            "claude",
+            vec![
+                ProviderSummaryInput {
+                    id: "provider-a".to_string(),
+                    name: "Provider A".to_string(),
+                    category: None,
+                    sort_index: None,
+                    icon: None,
+                    icon_color: None,
+                    provider_type: None,
+                },
+                ProviderSummaryInput {
+                    id: "provider-b".to_string(),
+                    name: "Provider B".to_string(),
+                    category: None,
+                    sort_index: None,
+                    icon: None,
+                    icon_color: None,
+                    provider_type: None,
+                },
+            ],
+            Some("provider-b"),
+            &["provider-a".to_string()],
+            &["provider-b".to_string()],
+        );
+
+        assert_eq!(response.providers.len(), 2);
+        assert!(response.providers[0].in_failover_queue);
+        assert!(!response.providers[0].current);
+        assert!(!response.providers[0].route_candidate);
+        assert!(response.providers[1].current);
+        assert!(!response.providers[1].in_failover_queue);
+        assert!(response.providers[1].route_candidate);
     }
 
     #[test]
