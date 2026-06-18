@@ -148,6 +148,32 @@ pub fn resolve_copilot_deterministic_interaction_id(session_id: &str) -> Option<
     Some(uuid_v4_string_from_hash(&hasher.finalize()))
 }
 
+/// Strip Anthropic thinking blocks from assistant messages before forwarding to Copilot.
+pub fn strip_copilot_thinking_blocks(mut body: Value) -> Value {
+    let Some(messages) = body.get_mut("messages").and_then(Value::as_array_mut) else {
+        return body;
+    };
+
+    for message in messages.iter_mut() {
+        if message.get("role").and_then(Value::as_str) != Some("assistant") {
+            continue;
+        }
+
+        let Some(content) = message.get_mut("content").and_then(Value::as_array_mut) else {
+            continue;
+        };
+
+        content.retain(|block| {
+            !matches!(
+                block.get("type").and_then(Value::as_str),
+                Some("thinking") | Some("redacted_thinking")
+            )
+        });
+    }
+
+    body
+}
+
 fn find_last_user_content(body: &Value) -> Option<String> {
     let messages = body.get("messages").and_then(Value::as_array)?;
 
@@ -290,7 +316,7 @@ mod tests {
         classify_copilot_request, parse_session_from_user_id, provider_declares_bedrock,
         resolve_copilot_optimizer_session_id, should_apply_bedrock_pre_send_optimizer,
         resolve_copilot_deterministic_interaction_id, resolve_copilot_deterministic_request_id,
-        resolve_copilot_warmup_model_override,
+        resolve_copilot_warmup_model_override, strip_copilot_thinking_blocks,
     };
     use http::{HeaderMap, HeaderValue};
     use serde_json::json;
@@ -615,5 +641,43 @@ mod tests {
             resolve_copilot_deterministic_interaction_id("session_abc"),
             resolve_copilot_deterministic_request_id(&body, "session_abc")
         );
+    }
+
+    #[test]
+    fn copilot_thinking_strip_removes_only_assistant_thinking_blocks() {
+        let body = json!({
+            "messages": [
+                {"role": "user", "content": [
+                    {"type": "thinking", "thinking": "leave user content alone"},
+                    {"type": "text", "text": "hi"}
+                ]},
+                {"role": "assistant", "content": [
+                    {"type": "thinking", "thinking": "internal", "signature": "sig"},
+                    {"type": "redacted_thinking", "data": "opaque"},
+                    {"type": "text", "text": "hello"},
+                    {"type": "tool_use", "id": "t1", "name": "read", "input": {}, "signature": "keep"}
+                ]},
+                {"role": "assistant", "content": "plain response"}
+            ]
+        });
+
+        let stripped = strip_copilot_thinking_blocks(body);
+
+        let user_content = stripped["messages"][0]["content"].as_array().unwrap();
+        assert_eq!(user_content.len(), 2);
+
+        let assistant_content = stripped["messages"][1]["content"].as_array().unwrap();
+        assert_eq!(assistant_content.len(), 2);
+        assert_eq!(assistant_content[0]["type"], "text");
+        assert_eq!(assistant_content[1]["type"], "tool_use");
+        assert_eq!(assistant_content[1]["signature"], "keep");
+        assert_eq!(stripped["messages"][2]["content"], "plain response");
+    }
+
+    #[test]
+    fn copilot_thinking_strip_preserves_body_without_messages() {
+        let body = json!({"model": "claude-sonnet-4"});
+
+        assert_eq!(strip_copilot_thinking_blocks(body.clone()), body);
     }
 }

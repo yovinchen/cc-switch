@@ -250,27 +250,8 @@ pub fn sanitize_orphan_tool_results(mut body: Value) -> Value {
 ///   移除顶层 thinking 字段——那些是错误路径上的激进整流，常规路径不需要。
 /// - 保持与 `merge_tool_results` / `sanitize_orphan_tool_results` 一致的"消费 body、
 ///   返回新 body"签名，便于接入 forwarder 管道。
-pub fn strip_thinking_blocks(mut body: Value) -> Value {
-    let Some(messages) = body.get_mut("messages").and_then(|m| m.as_array_mut()) else {
-        return body;
-    };
-
-    for msg in messages.iter_mut() {
-        if msg.get("role").and_then(|r| r.as_str()) != Some("assistant") {
-            continue;
-        }
-        let Some(content) = msg.get_mut("content").and_then(|c| c.as_array_mut()) else {
-            continue;
-        };
-        content.retain(|block| {
-            !matches!(
-                block.get("type").and_then(|t| t.as_str()),
-                Some("thinking") | Some("redacted_thinking")
-            )
-        });
-    }
-
-    body
+pub fn strip_thinking_blocks(body: Value) -> Value {
+    crate::proxy_core::strip_copilot_thinking_blocks(body)
 }
 
 // ─── 内部辅助 ─────────────────────────────────
