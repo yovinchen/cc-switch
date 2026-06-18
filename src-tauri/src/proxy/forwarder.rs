@@ -26,6 +26,10 @@ use super::{
 use crate::commands::{CodexOAuthState, CopilotAuthState};
 use crate::proxy::providers::codex_oauth_auth::CodexOAuthManager;
 use crate::proxy::providers::copilot_auth::CopilotAuthManager;
+use crate::proxy_core::{
+    AppKind, ChannelQuery, InterfaceKind, ProxyBody, ProxyEngine, ProxyRequest, ProxyServices,
+};
+use crate::proxy_core_host::CcSwitchProxyServices;
 use crate::{app_config::AppType, provider::Provider};
 use futures::StreamExt;
 use http::Extensions;
@@ -96,6 +100,8 @@ impl Drop for ActiveConnectionGuard {
 pub struct RequestForwarder {
     /// 共享的 ProviderRouter（持有熔断器状态）
     router: Arc<ProviderRouter>,
+    /// Neutral proxy services used for engine-owned route planning.
+    proxy_core_services: Arc<CcSwitchProxyServices>,
     status: Arc<RwLock<ProxyStatus>>,
     current_providers: Arc<RwLock<std::collections::HashMap<String, ActiveTarget>>>,
     events: Arc<ProxyEventBus>,
@@ -178,6 +184,7 @@ impl RequestForwarder {
     #[allow(clippy::too_many_arguments)]
     pub fn new(
         router: Arc<ProviderRouter>,
+        proxy_core_services: Arc<CcSwitchProxyServices>,
         non_streaming_timeout: u64,
         status: Arc<RwLock<ProxyStatus>>,
         current_providers: Arc<RwLock<std::collections::HashMap<String, ActiveTarget>>>,
@@ -201,6 +208,7 @@ impl RequestForwarder {
         let max_attempts = (max_retries as usize).saturating_add(1);
         Self {
             router,
+            proxy_core_services,
             status,
             current_providers,
             events,
@@ -540,6 +548,7 @@ impl RequestForwarder {
     async fn build_forward_attempts(
         &self,
         app_type: &AppType,
+        method: &http::Method,
         endpoint: &str,
         body: &Value,
         providers: Vec<Provider>,
@@ -548,18 +557,66 @@ impl RequestForwarder {
         let interface_kind =
             interface_kind_for_forward(app_type, endpoint).map(ToString::to_string);
 
-        if let Some(channel_attempts) = self
-            .router
-            .select_materialized_channel_attempts(
-                app_type,
-                &providers,
-                requested_model,
-                interface_kind,
-                None,
-            )
-            .await?
-        {
-            return Ok(channel_attempts);
+        if let Some(interface_kind) = interface_kind {
+            let app_kind = AppKind::from(app_type);
+            let materialized_channels = self
+                .proxy_core_services
+                .channels()
+                .list_channels(ChannelQuery {
+                    app: &app_kind,
+                    provider_id: None,
+                    model: None,
+                    group: None,
+                    include_disabled: true,
+                    allow_legacy_projection: false,
+                })
+                .await
+                .map_err(|error| crate::error::AppError::Config(error.to_string()))?;
+            if materialized_channels.is_empty() {
+                return Ok(providers
+                    .into_iter()
+                    .map(ForwardAttempt::from_provider)
+                    .collect());
+            }
+
+            let engine = ProxyEngine::new(self.proxy_core_services.clone());
+            let mut proxy_request = ProxyRequest::new(
+                app_kind,
+                method.clone(),
+                endpoint,
+                InterfaceKind::from_storage(&interface_kind),
+                ProxyBody::Json(body.clone()),
+            );
+            proxy_request.requested_model = requested_model.clone();
+
+            match engine.plan_materialized_route(&proxy_request).await {
+                Ok(plan) => {
+                    let providers_by_id: std::collections::HashMap<&str, &Provider> = providers
+                        .iter()
+                        .map(|provider| (provider.id.as_str(), provider))
+                        .collect();
+                    let attempts = plan
+                        .selections
+                        .iter()
+                        .filter_map(|selection| {
+                            providers_by_id
+                                .get(selection.channel.provider_id.as_str())
+                                .map(|provider| {
+                                    ForwardAttempt::from_core_selection(
+                                        app_type, provider, selection,
+                                    )
+                                })
+                        })
+                        .collect::<Vec<_>>();
+                    return Ok(attempts);
+                }
+                Err(crate::proxy_core::ProxyCoreError::Unavailable(_)) => {
+                    return Ok(Vec::new());
+                }
+                Err(error) => {
+                    return Err(crate::error::AppError::Config(error.to_string()));
+                }
+            }
         }
 
         Ok(providers
@@ -601,7 +658,7 @@ impl RequestForwarder {
         }
 
         let attempts = self
-            .build_forward_attempts(app_type, endpoint, &body, providers)
+            .build_forward_attempts(app_type, &method, endpoint, &body, providers)
             .await
             .map_err(|e| ForwardError {
                 error: ProxyError::DatabaseError(e.to_string()),
@@ -2952,6 +3009,7 @@ mod tests {
 
         RequestForwarder {
             router: Arc::new(ProviderRouter::new(db.clone())),
+            proxy_core_services: Arc::new(CcSwitchProxyServices::new(db.clone())),
             status: Arc::new(RwLock::new(ProxyStatus::default())),
             current_providers: Arc::new(RwLock::new(HashMap::new())),
             events: Arc::new(ProxyEventBus::default()),
@@ -3007,6 +3065,90 @@ mod tests {
         let success_event = subscriber.recv().await.expect("success event");
         assert_eq!(success_event.event, "channel_succeeded");
         assert_eq!(success_event.payload["channelName"], "Relay A");
+    }
+
+    #[tokio::test]
+    async fn build_forward_attempts_uses_proxy_engine_for_materialized_channels() {
+        let db = Arc::new(Database::memory().expect("memory db"));
+        let provider = Provider::with_id(
+            "provider-a".to_string(),
+            "Provider A".to_string(),
+            json!({
+                "env": {
+                    "ANTHROPIC_BASE_URL": "https://primary.example.com/v1",
+                    "ANTHROPIC_MODEL": "public-sonnet",
+                    "ANTHROPIC_API_KEY": "keep-key"
+                }
+            }),
+            None,
+        );
+        db.save_provider("claude", &provider)
+            .expect("save provider");
+        db.materialize_legacy_proxy_channels("claude")
+            .expect("materialize channels");
+
+        let forwarder = RequestForwarder {
+            router: Arc::new(ProviderRouter::new(db.clone())),
+            proxy_core_services: Arc::new(CcSwitchProxyServices::new(db.clone())),
+            status: Arc::new(RwLock::new(ProxyStatus::default())),
+            current_providers: Arc::new(RwLock::new(HashMap::new())),
+            events: Arc::new(ProxyEventBus::default()),
+            gemini_shadow: Arc::new(GeminiShadowStore::new()),
+            codex_chat_history: Arc::new(CodexChatHistoryStore::default()),
+            failover_manager: Arc::new(FailoverSwitchManager::new(db)),
+            app_handle: None,
+            current_provider_id_at_start: String::new(),
+            session_id: String::new(),
+            session_client_provided: false,
+            rectifier_config: RectifierConfig::default(),
+            optimizer_config: OptimizerConfig::default(),
+            copilot_optimizer_config: CopilotOptimizerConfig::default(),
+            non_streaming_timeout: Duration::from_secs(0),
+            streaming_first_byte_timeout: Duration::from_secs(0),
+            max_attempts: 1,
+        };
+
+        let attempts = forwarder
+            .build_forward_attempts(
+                &AppType::Claude,
+                &http::Method::POST,
+                "/v1/messages",
+                &json!({"model": "public-sonnet"}),
+                vec![provider],
+            )
+            .await
+            .expect("build attempts");
+
+        assert_eq!(attempts.len(), 1);
+        let attempt = &attempts[0];
+        assert!(attempt.is_channel());
+        assert_eq!(
+            attempt.channel().map(|channel| channel.base_url.as_str()),
+            Some("https://primary.example.com/v1")
+        );
+        assert_eq!(
+            attempt
+                .provider()
+                .settings_config
+                .pointer("/env/ANTHROPIC_MODEL")
+                .and_then(Value::as_str),
+            Some("public-sonnet")
+        );
+
+        let missing_model_attempts = forwarder
+            .build_forward_attempts(
+                &AppType::Claude,
+                &http::Method::POST,
+                "/v1/messages",
+                &json!({"model": "missing-model"}),
+                vec![attempt.provider().clone()],
+            )
+            .await
+            .expect("build attempts for missing model");
+        assert!(
+            missing_model_attempts.is_empty(),
+            "materialized channels must not fallback to legacy provider chain when routing fails"
+        );
     }
 
     #[test]

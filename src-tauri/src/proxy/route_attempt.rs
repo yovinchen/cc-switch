@@ -6,6 +6,7 @@
 use crate::app_config::AppType;
 use crate::provider::{Provider, ProviderMeta};
 use crate::proxy::channel_routing::ChannelRouteCandidate;
+use crate::proxy_core::RouteSelection;
 use serde_json::{Map, Value};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -51,6 +52,34 @@ impl ForwardAttempt {
                 upstream_model: candidate.upstream_model,
             }),
         }
+    }
+
+    pub(crate) fn from_core_selection(
+        app_type: &AppType,
+        provider: &Provider,
+        selection: &RouteSelection,
+    ) -> Self {
+        let candidate = ChannelRouteCandidate {
+            channel_id: selection.channel.id.clone(),
+            provider_id: selection.channel.provider_id.clone(),
+            channel_name: selection.channel.name.clone(),
+            base_url: selection.channel.endpoint.base_url.clone(),
+            interface_kind: selection.channel.interface.as_str().to_string(),
+            public_model: selection
+                .model_route
+                .as_ref()
+                .map(|route| route.public_model.clone()),
+            upstream_model: selection
+                .model_route
+                .as_ref()
+                .map(|route| route.upstream_model.clone()),
+            route_group: "default".to_string(),
+            priority: selection.channel.priority,
+            weight: selection.channel.weight,
+            source_kind: "proxy_core".to_string(),
+        };
+
+        Self::from_channel(app_type, provider, candidate)
     }
 
     pub(crate) fn provider(&self) -> &Provider {

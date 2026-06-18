@@ -224,11 +224,17 @@ impl ChannelSource for CcSwitchChannelSource {
         query: ChannelQuery<'a>,
     ) -> BoxFuture<'a, ProxyCoreResult<Vec<ChannelSpec>>> {
         Box::pin(async move {
-            let (channels, _) = self
-                .router
-                .list_channels_for_app(query.app.as_str())
-                .await
-                .map_err(|error| app_error("list channels", error))?;
+            let channels = if query.allow_legacy_projection {
+                self.router
+                    .list_channels_for_app(query.app.as_str())
+                    .await
+                    .map_err(|error| app_error("list channels", error))?
+                    .0
+            } else {
+                self.db
+                    .list_proxy_channels_for_app(query.app.as_str())
+                    .map_err(|error| app_error("list materialized channels", error))?
+            };
             let channels = channels
                 .into_iter()
                 .map(|channel| channel.to_proxy_core_channel_spec())
@@ -363,6 +369,7 @@ impl RouteResolver for CcSwitchRouteResolver {
 
             Ok(RoutePlan {
                 selection,
+                selections,
                 attempts,
             })
         })
@@ -683,6 +690,7 @@ mod tests {
                 model: Some("claude-sonnet-4"),
                 group: Some(DEFAULT_ROUTE_GROUP),
                 include_disabled: false,
+                allow_legacy_projection: true,
             })
             .await
             .expect("list channels");
@@ -733,6 +741,7 @@ mod tests {
             Some("upstream-sonnet")
         );
         assert_eq!(plan.attempts.len(), 2);
+        assert_eq!(plan.selections.len(), 2);
     }
 
     #[tokio::test]
@@ -796,5 +805,35 @@ mod tests {
                 .map(|route| route.upstream_model.as_str()),
             Some("claude-sonnet-4")
         );
+    }
+
+    #[tokio::test]
+    async fn proxy_engine_materialized_plan_does_not_fallback_to_legacy_projection() {
+        let db = Arc::new(Database::memory().expect("memory db"));
+        save_claude_provider(&db);
+        let services = Arc::new(CcSwitchProxyServices::new(db.clone()));
+        let engine = ProxyEngine::new(services);
+        let mut request = ProxyRequest::new(
+            AppKind::Claude,
+            Method::POST,
+            "/v1/messages",
+            InterfaceKind::AnthropicMessages,
+            ProxyBody::Json(json!({})),
+        );
+        request.requested_model = Some("claude-sonnet-4".to_string());
+
+        let err = engine
+            .plan_materialized_route(&request)
+            .await
+            .expect_err("empty channel table should not fallback to legacy projection");
+        assert!(matches!(err, ProxyCoreError::Unavailable(_)));
+
+        db.materialize_legacy_proxy_channels("claude")
+            .expect("materialize channels");
+        let plan = engine
+            .plan_materialized_route(&request)
+            .await
+            .expect("materialized plan");
+        assert_eq!(plan.selection.channel.provider_id, "anthropic-main");
     }
 }

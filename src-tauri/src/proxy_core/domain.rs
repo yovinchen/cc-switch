@@ -351,6 +351,8 @@ pub struct RouteSelection {
 pub struct RoutePlan {
     pub selection: RouteSelection,
     #[serde(default)]
+    pub selections: Vec<RouteSelection>,
+    #[serde(default)]
     pub attempts: Vec<ChannelAttemptPlan>,
 }
 
@@ -402,6 +404,7 @@ pub struct ChannelQuery<'a> {
     pub model: Option<&'a str>,
     pub group: Option<&'a str>,
     pub include_disabled: bool,
+    pub allow_legacy_projection: bool,
 }
 
 #[derive(Debug)]

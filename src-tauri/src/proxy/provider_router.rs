@@ -13,7 +13,6 @@ use crate::proxy::channel_routing::{
 use crate::proxy::circuit_breaker::{
     AllowResult, CircuitBreaker, CircuitBreakerConfig, CircuitBreakerStats,
 };
-use crate::proxy::route_attempt::ForwardAttempt;
 use std::collections::HashMap;
 use std::str::FromStr;
 use std::sync::Arc;
@@ -167,52 +166,6 @@ impl ProviderRouter {
 
         response.candidates = available;
         Ok(response)
-    }
-
-    /// Build live forwarding attempts from materialized channels.
-    ///
-    /// Returns `Ok(None)` while no channel table rows exist, so callers can keep
-    /// using the legacy provider list without behavior changes before explicit
-    /// materialization.
-    pub async fn select_materialized_channel_attempts(
-        &self,
-        app_type: &crate::app_config::AppType,
-        selected_providers: &[Provider],
-        requested_model: Option<String>,
-        interface_kind: Option<String>,
-        route_group: Option<String>,
-    ) -> Result<Option<Vec<ForwardAttempt>>, AppError> {
-        let app_type_str = app_type.as_str();
-        let channels = self.db.list_proxy_channels_for_app(app_type_str)?;
-        if channels.is_empty() {
-            return Ok(None);
-        }
-
-        let response = self
-            .resolve_channel_route_dry_run(RouteResolveRequest {
-                app_type: app_type_str.to_string(),
-                requested_model,
-                interface_kind,
-                route_group,
-            })
-            .await?;
-
-        let providers_by_id: HashMap<&str, &Provider> = selected_providers
-            .iter()
-            .map(|provider| (provider.id.as_str(), provider))
-            .collect();
-
-        let attempts = response
-            .candidates
-            .into_iter()
-            .filter_map(|candidate| {
-                providers_by_id
-                    .get(candidate.provider_id.as_str())
-                    .map(|provider| ForwardAttempt::from_channel(app_type, provider, candidate))
-            })
-            .collect();
-
-        Ok(Some(attempts))
     }
 
     /// 请求执行前获取熔断器“放行许可”
@@ -481,7 +434,6 @@ fn app_type_from_circuit_key(key: &str) -> &str {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::app_config::AppType;
     use crate::database::Database;
     use crate::proxy::channel_routing::{ChannelRouteSource, RouteResolveRequest};
     use crate::proxy::circuit_breaker::CircuitState;
@@ -755,76 +707,6 @@ mod tests {
             .unwrap();
         assert_eq!(recovered.candidates.len(), 1);
         assert!(recovered.rejected.is_empty());
-    }
-
-    #[tokio::test]
-    #[serial]
-    async fn materialized_channels_build_live_forward_attempts() {
-        let _home = TempHome::new();
-        let db = Arc::new(Database::memory().unwrap());
-        let provider = Provider::with_id(
-            "a".to_string(),
-            "Provider A".to_string(),
-            json!({
-                "env": {
-                    "ANTHROPIC_BASE_URL": "https://primary.example.com/v1",
-                    "ANTHROPIC_MODEL": "claude-sonnet-4",
-                    "ANTHROPIC_API_KEY": "keep-key"
-                }
-            }),
-            None,
-        );
-        db.save_provider("claude", &provider).unwrap();
-
-        let router = ProviderRouter::new(db.clone());
-        let before_materialize = router
-            .select_materialized_channel_attempts(
-                &AppType::Claude,
-                std::slice::from_ref(&provider),
-                Some("claude-sonnet-4".to_string()),
-                Some("anthropic_messages".to_string()),
-                None,
-            )
-            .await
-            .unwrap();
-        assert!(before_materialize.is_none());
-
-        db.materialize_legacy_proxy_channels("claude").unwrap();
-        let attempts = router
-            .select_materialized_channel_attempts(
-                &AppType::Claude,
-                std::slice::from_ref(&provider),
-                Some("claude-sonnet-4".to_string()),
-                Some("anthropic_messages".to_string()),
-                None,
-            )
-            .await
-            .unwrap()
-            .expect("materialized attempts");
-
-        assert_eq!(attempts.len(), 1);
-        let attempt = &attempts[0];
-        assert!(attempt.is_channel());
-        assert_eq!(
-            attempt.channel().map(|channel| channel.base_url.as_str()),
-            Some("https://primary.example.com/v1")
-        );
-        assert_eq!(
-            attempt
-                .provider()
-                .settings_config
-                .pointer("/env/ANTHROPIC_BASE_URL")
-                .and_then(serde_json::Value::as_str),
-            Some("https://primary.example.com/v1")
-        );
-        assert_eq!(
-            attempt
-                .provider()
-                .settings_config
-                .pointer("/env/ANTHROPIC_API_KEY")
-                .and_then(serde_json::Value::as_str),
-            Some("keep-key")
-        );
     }
 
     #[tokio::test]

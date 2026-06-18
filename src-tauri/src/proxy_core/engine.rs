@@ -57,6 +57,21 @@ where
     }
 
     pub async fn plan_route(&self, request: &ProxyRequest) -> ProxyCoreResult<RoutePlan> {
+        self.plan_route_with_legacy_projection(request, true).await
+    }
+
+    pub async fn plan_materialized_route(
+        &self,
+        request: &ProxyRequest,
+    ) -> ProxyCoreResult<RoutePlan> {
+        self.plan_route_with_legacy_projection(request, false).await
+    }
+
+    async fn plan_route_with_legacy_projection(
+        &self,
+        request: &ProxyRequest,
+        allow_legacy_projection: bool,
+    ) -> ProxyCoreResult<RoutePlan> {
         let providers = self
             .services
             .providers()
@@ -71,6 +86,7 @@ where
                 model: request.requested_model.as_deref(),
                 group: request.route_group.as_deref(),
                 include_disabled: false,
+                allow_legacy_projection,
             })
             .await?;
         let policy = self
