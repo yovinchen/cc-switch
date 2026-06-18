@@ -3,6 +3,7 @@
 //! 将 ProxyError 映射到合适的 HTTP 状态码，用于日志记录和手动构建错误响应
 
 use super::ProxyError;
+use crate::proxy_core::ProxyCoreError;
 
 /// 将 ProxyError 映射到 HTTP 状态码
 ///
@@ -86,6 +87,20 @@ pub fn get_error_message(error: &ProxyError) -> String {
     }
 }
 
+pub(crate) fn proxy_core_error_to_proxy_error(error: ProxyCoreError) -> ProxyError {
+    let message = error.to_string();
+    match error {
+        ProxyCoreError::InvalidRequest(_) => ProxyError::InvalidRequest(message),
+        ProxyCoreError::Config(_) => ProxyError::ConfigError(message),
+        ProxyCoreError::Auth(_) => ProxyError::AuthError(message),
+        ProxyCoreError::Unavailable(_) => ProxyError::NoAvailableProvider,
+        ProxyCoreError::Upstream(_) => ProxyError::ForwardFailed(message),
+        ProxyCoreError::Unsupported(_) | ProxyCoreError::Internal(_) => {
+            ProxyError::Internal(message)
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -151,5 +166,38 @@ mod tests {
         assert!(msg.contains("上游错误"));
         assert!(msg.contains("500"));
         assert!(msg.contains("Internal Server Error"));
+    }
+
+    #[test]
+    fn test_proxy_core_error_bridge_maps_unavailable_to_proxy_error() {
+        let error = proxy_core_error_to_proxy_error(ProxyCoreError::Unavailable(
+            "no routable channel".to_string(),
+        ));
+
+        assert!(matches!(error, ProxyError::NoAvailableProvider));
+    }
+
+    #[test]
+    fn test_proxy_core_error_bridge_maps_categories() {
+        assert!(matches!(
+            proxy_core_error_to_proxy_error(ProxyCoreError::InvalidRequest("bad".to_string())),
+            ProxyError::InvalidRequest(_)
+        ));
+        assert!(matches!(
+            proxy_core_error_to_proxy_error(ProxyCoreError::Config("bad".to_string())),
+            ProxyError::ConfigError(_)
+        ));
+        assert!(matches!(
+            proxy_core_error_to_proxy_error(ProxyCoreError::Auth("bad".to_string())),
+            ProxyError::AuthError(_)
+        ));
+        assert!(matches!(
+            proxy_core_error_to_proxy_error(ProxyCoreError::Upstream("bad".to_string())),
+            ProxyError::ForwardFailed(_)
+        ));
+        assert!(matches!(
+            proxy_core_error_to_proxy_error(ProxyCoreError::Internal("bad".to_string())),
+            ProxyError::Internal(_)
+        ));
     }
 }

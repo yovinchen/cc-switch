@@ -8,7 +8,7 @@
 //! - Claude 的格式转换逻辑保留在此文件（用于 OpenRouter 旧接口回退）
 
 use super::{
-    error_mapper::{get_error_message, map_proxy_error_to_status},
+    error_mapper::{get_error_message, map_proxy_error_to_status, proxy_core_error_to_proxy_error},
     forwarder::ActiveConnectionGuard,
     handler_config::{
         CLAUDE_PARSER_CONFIG, CODEX_PARSER_CONFIG, GEMINI_PARSER_CONFIG, OPENAI_PARSER_CONFIG,
@@ -1061,20 +1061,6 @@ fn endpoint_with_query(uri: &axum::http::Uri, endpoint: &str) -> String {
     }
 }
 
-fn proxy_core_error_to_proxy_error(error: ProxyCoreError) -> ProxyError {
-    let message = error.to_string();
-    match error {
-        ProxyCoreError::InvalidRequest(_) => ProxyError::InvalidRequest(message),
-        ProxyCoreError::Config(_) => ProxyError::ConfigError(message),
-        ProxyCoreError::Auth(_) => ProxyError::AuthError(message),
-        ProxyCoreError::Unavailable(_) => ProxyError::NoAvailableProvider,
-        ProxyCoreError::Upstream(_) => ProxyError::ForwardFailed(message),
-        ProxyCoreError::Unsupported(_) | ProxyCoreError::Internal(_) => {
-            ProxyError::Internal(message)
-        }
-    }
-}
-
 fn apply_proxy_result_to_context(
     state: &ProxyState,
     ctx: &mut RequestContext,
@@ -1775,20 +1761,11 @@ async fn log_usage(
 #[cfg(test)]
 mod tests {
     use super::{
-        chat_sse_to_response_value, codex_proxy_error_json, proxy_core_error_to_proxy_error,
-        responses_sse_to_response_value, transform,
+        chat_sse_to_response_value, codex_proxy_error_json, responses_sse_to_response_value,
+        transform,
     };
     use crate::proxy::ProxyError;
-    use crate::proxy_core::{should_use_claude_transform_streaming, ProxyCoreError};
-
-    #[test]
-    fn proxy_core_error_bridge_maps_unavailable_to_proxy_error() {
-        let error = proxy_core_error_to_proxy_error(ProxyCoreError::Unavailable(
-            "no routable channel".to_string(),
-        ));
-
-        assert!(matches!(error, ProxyError::NoAvailableProvider));
-    }
+    use crate::proxy_core::should_use_claude_transform_streaming;
 
     #[test]
     fn chat_sse_to_response_value_collects_reasoning_alias() {
