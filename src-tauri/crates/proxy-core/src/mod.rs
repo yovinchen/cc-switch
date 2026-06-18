@@ -4,6 +4,7 @@
 //! traffic still uses the existing proxy module, while new code can start
 //! depending on these neutral domain types and service ports.
 
+pub mod codex_error;
 pub mod domain;
 pub mod engine;
 pub mod error;
@@ -16,6 +17,7 @@ pub mod response_transform;
 pub mod sse;
 pub mod usage;
 
+pub use codex_error::*;
 pub use domain::*;
 pub use engine::*;
 pub use error::*;
