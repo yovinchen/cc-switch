@@ -68,8 +68,9 @@
 57. 请求头大小写保真策略已迁入 `proxy-core::request_headers::should_preserve_exact_request_header_case`；host forwarder 只提供 adapter/provider 事实并据此选择 raw hyper 或 pooled reqwest transport。
 58. 上游请求体准备中的私有字段过滤、JSON Schema 名称保护和稳定 key 排序已迁入 `proxy-core::request_body`；host forwarder 只负责调用 core report 并保留 debug 日志。
 59. 上游请求 transport policy 中的流式请求识别和 `Accept-Encoding: identity` 强制规则已迁入 `proxy-core::request_transport`；host forwarder 只传入 transform/endpoint/body/header 事实并消费 core policy。
+60. 上游请求体发送策略中的 GET/HEAD 空 body 规则和 JSON body 序列化已迁入 `proxy-core::request_body`；host forwarder 只负责把序列化错误映射成现有 `ProxyError`。
 
-因此，本分支目前已把主要转发入口（Claude Messages、Claude Desktop Messages、Codex Chat Completions、Codex Responses、Codex Responses Compact、Gemini Native）切到 `ProxyEngine`，并开始把管理查询类能力、Codex 客户端模型目录、legacy channel 投影构造、channel 写请求规范化、托管账号上游安全保护、请求头 transport 策略、上游请求体准备、上游请求 transport policy 和请求日志写入收敛到 core 可复用接口。HTTP transport 与 response pipeline 仍是宿主层兼容桥；下一阶段需要把响应转换、剩余模型目录生成策略和剩余外部管理 API 继续收敛到独立代理模块边界内。
+因此，本分支目前已把主要转发入口（Claude Messages、Claude Desktop Messages、Codex Chat Completions、Codex Responses、Codex Responses Compact、Gemini Native）切到 `ProxyEngine`，并开始把管理查询类能力、Codex 客户端模型目录、legacy channel 投影构造、channel 写请求规范化、托管账号上游安全保护、请求头 transport 策略、上游请求体准备/发送策略、上游请求 transport policy 和请求日志写入收敛到 core 可复用接口。HTTP transport 与 response pipeline 仍是宿主层兼容桥；下一阶段需要把响应转换、剩余模型目录生成策略和剩余外部管理 API 继续收敛到独立代理模块边界内。
 
 当前原则：核心 crate 可以新增端口和领域字段，但不得引入 `tauri`、`Database`、settings、commands、services 等宿主依赖；现有 runtime 行为必须继续通过 targeted tests 证明不回归。
 
