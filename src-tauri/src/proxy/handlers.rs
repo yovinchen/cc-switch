@@ -43,7 +43,7 @@ use crate::proxy_core::{
     ChannelHealthResetResponse, ChannelListResponse, ChannelMigrationMaterializeResponse,
     ChannelMigrationPreviewResponse, ChannelModelsResponse, ChannelRouteCandidate,
     ChannelRouteRejected, ChannelRouteSource, CurrentRouteProviderSummary, CurrentRouteResponse,
-    InterfaceKind, ProviderListResponse, ProviderSummary, ProxyBody,
+    HealthCheckResponse, InterfaceKind, ProviderListResponse, ProviderSummary, ProxyBody,
     ProxyChannelModelsReplaceRequest, ProxyChannelPatchRequest, ProxyChannelWriteRequest,
     ProxyCoreError, ProxyCoreResponse, ProxyEngine, ProxyRequest, ProxyResponseBody, ProxyResult,
     ProxyServices, RoutableModelList, RouteGroupChannelInput, RouteGroupListResponse,
@@ -154,13 +154,12 @@ impl AppModelListQuery {
 // ============================================================================
 
 /// 健康检查
-pub async fn health_check() -> (StatusCode, Json<Value>) {
+pub async fn health_check() -> (StatusCode, Json<HealthCheckResponse>) {
     (
         StatusCode::OK,
-        Json(json!({
-            "status": "healthy",
-            "timestamp": chrono::Utc::now().to_rfc3339(),
-        })),
+        Json(HealthCheckResponse::healthy(
+            chrono::Utc::now().to_rfc3339(),
+        )),
     )
 }
 

@@ -208,6 +208,22 @@ pub struct ChannelHealthReset {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub struct HealthCheckResponse {
+    pub status: String,
+    pub timestamp: String,
+}
+
+impl HealthCheckResponse {
+    pub fn healthy(timestamp: impl Into<String>) -> Self {
+        Self {
+            status: "healthy".to_string(),
+            timestamp: timestamp.into(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct ChannelHealthResetResponse {
     pub channel_id: String,
     pub app_type: String,
@@ -823,11 +839,26 @@ mod tests {
         ChannelMigrationMaterializeResponse, ChannelMigrationPreviewResponse,
         ChannelRouteCandidate, ChannelRouteRejected, ChannelRouteSource,
         CurrentRouteProviderSummary, CurrentRouteResponse, ProviderListResponse, ProviderSummary,
-        ProxyChannelModelWriteRequest, ProxyChannelModelsReplaceRequest,
+        HealthCheckResponse, ProxyChannelModelWriteRequest, ProxyChannelModelsReplaceRequest,
         ProxyChannelPatchRequest, ProxyChannelWriteRequest, RouteGroupChannelInput,
         RouteGroupListResponse, RouteGroupSourceInput, RouteResolveResponse,
     };
     use serde_json::json;
+
+    #[test]
+    fn health_check_response_serializes_management_envelope() {
+        let response = HealthCheckResponse::healthy("2026-06-18T00:00:00+00:00");
+
+        let value = serde_json::to_value(response).expect("serialize response");
+
+        assert_eq!(
+            value,
+            json!({
+                "status": "healthy",
+                "timestamp": "2026-06-18T00:00:00+00:00"
+            })
+        );
+    }
 
     #[test]
     fn proxy_channel_write_request_defaults_match_management_contract() {

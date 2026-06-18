@@ -739,6 +739,31 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn proxy_health_route_returns_core_contract() {
+        let db = Arc::new(Database::memory().expect("memory db"));
+        let server = ProxyServer::new(ProxyConfig::default(), db, None);
+        let mut router = server.build_router();
+
+        let response = Service::call(
+            &mut router,
+            Request::builder()
+                .method(Method::GET)
+                .uri("/proxy/v1/health")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(response.status(), StatusCode::OK);
+        let health = response_json(response).await;
+        assert_eq!(health["status"], "healthy");
+        assert!(health["timestamp"]
+            .as_str()
+            .is_some_and(|value| chrono::DateTime::parse_from_rfc3339(value).is_ok()));
+    }
+
+    #[tokio::test]
     async fn app_channel_management_route_applies_route_filters() {
         let db = Arc::new(Database::memory().expect("memory db"));
         let provider = Provider::with_id(
