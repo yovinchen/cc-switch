@@ -68,7 +68,7 @@ use axum::{
 };
 use bytes::Bytes;
 use http_body_util::BodyExt;
-use serde_json::{json, Value};
+use serde_json::Value;
 use std::convert::Infallible;
 use std::time::Duration;
 
@@ -323,19 +323,19 @@ pub async fn list_all_proxy_channels(
 pub async fn create_proxy_channel(
     State(state): State<ProxyState>,
     Json(request): Json<ProxyChannelWriteRequest>,
-) -> Result<Json<Value>, ProxyError> {
+) -> Result<Json<ProxyChannelRecord>, ProxyError> {
     let channel = state
         .db
         .create_proxy_channel(request)
         .map_err(|e| ProxyError::InvalidRequest(e.to_string()))?;
-    Ok(Json(json!(channel)))
+    Ok(Json(channel))
 }
 
 /// GET /proxy/v1/channels/{channel_id}
 pub async fn get_proxy_channel(
     State(state): State<ProxyState>,
     Path(channel_id): Path<String>,
-) -> Result<Json<Value>, ProxyError> {
+) -> Result<Json<ProxyChannelRecord>, ProxyError> {
     let channel_id =
         normalize_channel_id_path(channel_id).map_err(management_api_error_to_proxy_error)?;
     let channel = state
@@ -343,7 +343,7 @@ pub async fn get_proxy_channel(
         .get_proxy_channel(&channel_id)
         .map_err(|e| ProxyError::DatabaseError(e.to_string()))?
         .ok_or_else(|| ProxyError::InvalidRequest(format!("channel not found: {channel_id}")))?;
-    Ok(Json(json!(channel)))
+    Ok(Json(channel))
 }
 
 /// PATCH /proxy/v1/channels/{channel_id}
@@ -351,7 +351,7 @@ pub async fn update_proxy_channel(
     State(state): State<ProxyState>,
     Path(channel_id): Path<String>,
     Json(request): Json<ProxyChannelPatchRequest>,
-) -> Result<Json<Value>, ProxyError> {
+) -> Result<Json<ProxyChannelRecord>, ProxyError> {
     let channel_id =
         normalize_channel_id_path(channel_id).map_err(management_api_error_to_proxy_error)?;
     let channel = state
@@ -359,7 +359,7 @@ pub async fn update_proxy_channel(
         .update_proxy_channel(&channel_id, request)
         .map_err(|e| ProxyError::InvalidRequest(e.to_string()))?
         .ok_or_else(|| ProxyError::InvalidRequest(format!("channel not found: {channel_id}")))?;
-    Ok(Json(json!(channel)))
+    Ok(Json(channel))
 }
 
 /// DELETE /proxy/v1/channels/{channel_id}
