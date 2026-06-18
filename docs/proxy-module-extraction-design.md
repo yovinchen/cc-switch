@@ -48,6 +48,7 @@
 37. `/proxy/v1/groups` 的 route group 聚合规则和 response envelope 已迁入 `proxy-core::RouteGroupListResponse`；host 只负责按 app 查询可见 channel，并把 app/source/groups 投影为 core 输入。
 38. `/proxy/v1/channels` GET 的管理 API list envelope 已迁入泛型 `proxy-core::ChannelListResponse<T>`；host 继续负责 DB 列表查询和可选 app 过滤。
 39. `/proxy/v1/apps` GET 的管理 API list envelope 已迁入 `proxy-core::AppListResponse` 与 `AppSummary`；host 继续负责读取 app 配置、provider 数量和 channel 数量。
+40. `/proxy/v1/apps/{app}/providers` GET 的脱敏 provider summary 与 response envelope 已迁入 `proxy-core::ProviderListResponse`/`ProviderSummary`；host 继续负责 provider 查询、current/failover/routeCandidate 计算。
 
 因此，本分支目前已把主要转发入口（Claude Messages、Claude Desktop Messages、Codex Chat Completions、Codex Responses、Codex Responses Compact、Gemini Native）切到 `ProxyEngine`，并开始把管理查询类能力、Codex 客户端模型目录和请求日志写入收敛到 core 可复用接口。HTTP transport 与 response pipeline 仍是宿主层兼容桥；下一阶段需要把响应转换、剩余模型目录生成策略和剩余外部管理 API 继续收敛到独立代理模块边界内。
 
@@ -805,7 +806,7 @@ impl ProxyEngine {
 
 `ProxyEngine::list_models` 是 route-visible 视图，用于管理 API 或未来可控的客户端 catalog 生成；它按 app、group、inbound interface 过滤 channel，避免暴露当前 group 不可用的 channel。`ProxyEngine::list_model_catalog` 在 core 内包装 `/proxy/v1/apps/{app}/models` 对外 envelope，使管理 API response shape 不再由 host handler 手写。`ProxyEngine::client_model_catalog` 保留客户端兼容 raw catalog 语义；当前 Codex `/v1/models` handler 只调用该 core 方法并返回 `ModelCatalog.raw`。
 
-Channel 管理 API 的部分 response envelope 也已开始收敛到 core：`AppListResponse`/`AppSummary` 表示 app namespace 列表结果，`ChannelListResponse<T>` 表示 channel 列表结果，`ChannelHealthResetResponse` 表示 breaker reset 结果，`ChannelDeleteResponse` 表示 channel 删除结果，`ChannelModelsResponse<T>` 表示 channel model 列表/替换结果，`RouteGroupListResponse` 负责 `/proxy/v1/groups` 的默认组补齐、group 计数、appTypes 聚合和 sources 去重排序。host handler 仍负责 HTTP path/query 解析、DB CRUD、provider router 查询和 host record 类型，但外部 response shape 不再散落在 `json!` 调用中。
+Channel 管理 API 的部分 response envelope 也已开始收敛到 core：`AppListResponse`/`AppSummary` 表示 app namespace 列表结果，`ProviderListResponse`/`ProviderSummary` 表示脱敏 provider 候选列表，`ChannelListResponse<T>` 表示 channel 列表结果，`ChannelHealthResetResponse` 表示 breaker reset 结果，`ChannelDeleteResponse` 表示 channel 删除结果，`ChannelModelsResponse<T>` 表示 channel model 列表/替换结果，`RouteGroupListResponse` 负责 `/proxy/v1/groups` 的默认组补齐、group 计数、appTypes 聚合和 sources 去重排序。host handler 仍负责 HTTP path/query 解析、DB CRUD、provider router 查询和 host record 类型，但外部 response shape 不再散落在 `json!` 调用中。
 
 CC Switch 桌面宿主在 `CcSwitchModelCatalogProvider::load_client_catalog` 中实现 Codex `model_catalog_json` 文件读取和 stale guard；外部宿主可以返回自己的模型目录。后续如需让 Codex `/v1/models` 完全使用 route-visible 目录，应在 core 内生成 Codex 兼容 raw catalog，而不是让 handler 重新拼装。
 
