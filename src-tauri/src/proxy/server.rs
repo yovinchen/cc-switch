@@ -601,6 +601,81 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn app_channel_management_route_applies_route_filters() {
+        let db = Arc::new(Database::memory().expect("memory db"));
+        let provider = Provider::with_id(
+            "a".to_string(),
+            "Provider A".to_string(),
+            json!({
+                "env": {
+                    "ANTHROPIC_BASE_URL": "https://primary.example.com/v1",
+                    "ANTHROPIC_MODEL": "claude-sonnet-4"
+                }
+            }),
+            None,
+        );
+        db.save_provider("claude", &provider).unwrap();
+        db.set_current_provider("claude", "a").unwrap();
+        db.materialize_legacy_proxy_channels("claude").unwrap();
+
+        let server = ProxyServer::new(ProxyConfig::default(), db, None);
+        let mut router = server.build_router();
+
+        let unfiltered_response = Service::call(
+            &mut router,
+            Request::builder()
+                .method(Method::GET)
+                .uri("/proxy/v1/apps/claude/channels")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+        assert_eq!(unfiltered_response.status(), StatusCode::OK);
+        let unfiltered = response_json(unfiltered_response).await;
+        assert_eq!(unfiltered["channels"].as_array().unwrap().len(), 1);
+        assert!(unfiltered.get("rejected").is_none());
+
+        let matched_response = Service::call(
+            &mut router,
+            Request::builder()
+                .method(Method::GET)
+                .uri("/proxy/v1/apps/claude/channels?requestedModel=claude-sonnet-4&interfaceKind=anthropic_messages")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+        assert_eq!(matched_response.status(), StatusCode::OK);
+        let matched = response_json(matched_response).await;
+        assert_eq!(matched["requestedModel"], "claude-sonnet-4");
+        assert_eq!(matched["interfaceKind"], "anthropic_messages");
+        assert_eq!(matched["routeGroup"], "default");
+        assert_eq!(matched["channels"].as_array().unwrap().len(), 1);
+        assert!(matched["rejected"].as_array().unwrap().is_empty());
+        assert_eq!(matched["channels"][0]["upstreamModel"], "claude-sonnet-4");
+
+        let rejected_response = Service::call(
+            &mut router,
+            Request::builder()
+                .method(Method::GET)
+                .uri("/proxy/v1/apps/claude/channels?model=missing-model&group=default")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+        assert_eq!(rejected_response.status(), StatusCode::OK);
+        let rejected = response_json(rejected_response).await;
+        assert!(rejected["channels"].as_array().unwrap().is_empty());
+        assert_eq!(rejected["rejected"].as_array().unwrap().len(), 1);
+        assert_eq!(
+            rejected["rejected"][0]["reasons"][0],
+            "model_unavailable:missing-model"
+        );
+    }
+
+    #[tokio::test]
     async fn channel_crud_management_routes_manage_manual_channels_and_models() {
         let db = Arc::new(Database::memory().expect("memory db"));
         let provider = Provider::with_id(

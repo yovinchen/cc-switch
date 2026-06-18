@@ -59,6 +59,46 @@ pub struct ChannelListQuery {
     app_type: Option<String>,
 }
 
+#[derive(Debug, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct AppChannelListQuery {
+    #[serde(default)]
+    requested_model: Option<String>,
+    #[serde(default)]
+    model: Option<String>,
+    #[serde(default)]
+    interface_kind: Option<String>,
+    #[serde(default, rename = "interface")]
+    interface_alias: Option<String>,
+    #[serde(default)]
+    route_group: Option<String>,
+    #[serde(default)]
+    group: Option<String>,
+}
+
+impl AppChannelListQuery {
+    fn has_route_filters(&self) -> bool {
+        self.requested_model.is_some()
+            || self.model.is_some()
+            || self.interface_kind.is_some()
+            || self.interface_alias.is_some()
+            || self.route_group.is_some()
+            || self.group.is_some()
+    }
+
+    fn into_route_request(
+        self,
+        app_type: String,
+    ) -> crate::proxy::channel_routing::RouteResolveRequest {
+        crate::proxy::channel_routing::RouteResolveRequest {
+            app_type,
+            requested_model: self.requested_model.or(self.model),
+            interface_kind: self.interface_kind.or(self.interface_alias),
+            route_group: self.route_group.or(self.group),
+        }
+    }
+}
+
 // ============================================================================
 // 健康检查和状态查询（简单端点）
 // ============================================================================
@@ -300,8 +340,28 @@ pub async fn replace_proxy_channel_models(
 pub async fn list_proxy_channels(
     State(state): State<ProxyState>,
     Path(app_type): Path<String>,
+    Query(query): Query<AppChannelListQuery>,
 ) -> Result<Json<Value>, ProxyError> {
     validate_management_app_type(&app_type)?;
+    let app_type = app_type.trim().to_string();
+
+    if query.has_route_filters() {
+        let response = state
+            .provider_router
+            .resolve_channel_route_dry_run(query.into_route_request(app_type))
+            .await
+            .map_err(|e| ProxyError::DatabaseError(e.to_string()))?;
+
+        return Ok(Json(json!({
+            "appType": response.app_type,
+            "source": response.source,
+            "requestedModel": response.requested_model,
+            "interfaceKind": response.interface_kind,
+            "routeGroup": response.route_group,
+            "channels": response.candidates,
+            "rejected": response.rejected,
+        })));
+    }
 
     let (channels, source) = state
         .provider_router
