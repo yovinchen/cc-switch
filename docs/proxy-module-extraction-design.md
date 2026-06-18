@@ -23,7 +23,7 @@
 12. Gemini handler 已改为进入 `ProxyEngine::handle`；模型名继续从 URI 提取，无模型的 `/models` 类端点不会把 `unknown` 写入 route filter，避免误过滤 channel。
 13. Codex `/v1/responses` 与 `/v1/responses/compact` handler 已进入 `ProxyEngine::handle`；chat-to-responses 转换仍在 host 层执行，等待后续 response pipeline 迁移。
 14. Claude 与 Claude Desktop `/v1/messages` handler 已进入 `ProxyEngine::handle`；核心 `ProxyResult` 会带回 `claudeApiFormat` 等宿主 metadata，host 侧继续复用现有格式转换、SSE/非流式响应处理和用量解析。
-15. `ProxyEngine::list_models` 已提供按 app/group/interface 过滤的可路由模型视图，复用 channel source 的 legacy projection；`/proxy/v1/apps/{app}/models` 已接入该视图，返回模型对应的 provider/channel/interface 路由信息。
+15. `ProxyEngine::list_models` 已提供按 app/group/interface 过滤的可路由模型视图，复用 channel source 的 legacy projection；`ProxyEngine::list_model_catalog` 负责生成 `/proxy/v1/apps/{app}/models` 的管理 API response envelope，返回模型对应的 provider/channel/interface 路由信息。
 16. Codex 兼容 `/v1/models` 已从 handler 直读配置迁到 `ModelCatalogProvider::load_client_catalog` 与 `ProxyEngine::client_model_catalog`；CC Switch host adapter 保留 `model_catalog_json` stale guard 和 raw catalog 返回语义。
 17. `/proxy/v1/channels/{channel_id}/breakers/reset` 已从 handler 直连 DB/router 改为 `ProxyEngine::reset_channel_health`；`CcSwitchHealthStore` 负责同时清内存 circuit breaker 和持久化健康状态。
 18. response pipeline 中的 hop-by-hop 响应头清理和重建 body 后实体头清理已迁入 `proxy-core::response_headers`，host `response_processor` 与特殊响应转换分支复用 core helper。
@@ -41,6 +41,7 @@
 30. 非流式 body timeout 与流式 first-byte/idle timeout 的 failover-gated 选择规则已迁入 `proxy-core::response_timeout`；host `RequestContext` 只把 app 配置传入 core，并把返回的 `Duration`/`StreamingTimeoutConfig` 接到现有 transport。
 31. Claude transform 是否走 streaming，以及 Codex OAuth Responses 非流请求是否聚合上游 SSE 的路由策略已迁入 `proxy-core::response_transform`；host 只负责识别 provider type 并执行对应的 stream/non-stream transport 分支。
 32. 非流式 response body decode outcome、未知编码/失败解码原样透传策略，以及成功解码后的 entity header 清理已收敛到 `proxy-core::response_body::decode_response_body`；host 只根据 outcome 打日志。
+33. route-visible 模型列表的管理 API envelope 已迁入 `proxy-core::RoutableModelList` 与 `ProxyEngine::list_model_catalog`；host `/proxy/v1/apps/{app}/models` 只解析 query 并返回 typed JSON。
 
 因此，本分支目前已把主要转发入口（Claude Messages、Claude Desktop Messages、Codex Chat Completions、Codex Responses、Codex Responses Compact、Gemini Native）切到 `ProxyEngine`，并开始把管理查询类能力、Codex 客户端模型目录和请求日志写入收敛到 core 可复用接口。HTTP transport 与 response pipeline 仍是宿主层兼容桥；下一阶段需要把响应转换、剩余模型目录生成策略和剩余外部管理 API 继续收敛到独立代理模块边界内。
 
@@ -783,12 +784,20 @@ impl ProxyEngine {
         inbound_interface: Option<&InterfaceKind>,
     ) -> ProxyCoreResult<Vec<RoutableModel>>;
 
+    pub async fn list_model_catalog(
+        &self,
+        app: &AppKind,
+        app_type: impl Into<String>,
+        group: Option<&str>,
+        inbound_interface: Option<&InterfaceKind>,
+    ) -> ProxyCoreResult<RoutableModelList>;
+
     pub async fn client_model_catalog(&self, app: &AppKind)
         -> ProxyCoreResult<ModelCatalog>;
 }
 ```
 
-`ProxyEngine::list_models` 是 route-visible 视图，用于管理 API 或未来可控的客户端 catalog 生成；它按 app、group、inbound interface 过滤 channel，避免暴露当前 group 不可用的 channel。`ProxyEngine::client_model_catalog` 保留客户端兼容 raw catalog 语义；当前 Codex `/v1/models` handler 只调用该 core 方法并返回 `ModelCatalog.raw`。
+`ProxyEngine::list_models` 是 route-visible 视图，用于管理 API 或未来可控的客户端 catalog 生成；它按 app、group、inbound interface 过滤 channel，避免暴露当前 group 不可用的 channel。`ProxyEngine::list_model_catalog` 在 core 内包装 `/proxy/v1/apps/{app}/models` 对外 envelope，使管理 API response shape 不再由 host handler 手写。`ProxyEngine::client_model_catalog` 保留客户端兼容 raw catalog 语义；当前 Codex `/v1/models` handler 只调用该 core 方法并返回 `ModelCatalog.raw`。
 
 CC Switch 桌面宿主在 `CcSwitchModelCatalogProvider::load_client_catalog` 中实现 Codex `model_catalog_json` 文件读取和 stale guard；外部宿主可以返回自己的模型目录。后续如需让 Codex `/v1/models` 完全使用 route-visible 目录，应在 core 内生成 Codex 兼容 raw catalog，而不是让 handler 重新拼装。
 
