@@ -38,7 +38,7 @@ use crate::proxy_core::{
     claude_stream_usage_event_filter, codex_stream_usage_event_filter,
     parse_upstream_json_or_unlabeled_sse, rebuilt_json_proxy_response,
     resolve_management_auth_decision, should_aggregate_codex_oauth_responses_sse,
-    should_use_claude_transform_streaming, transformed_sse_response_headers,
+    should_use_claude_transform_streaming, transformed_sse_proxy_response,
     validate_management_bearer_value, AppChannelListQuery, AppChannelListResponse,
     AppChannelResponse, AppChannelRouteResponse, AppKind, AppListResponse, AppModelListQuery,
     AppSummary, ChannelDeleteResponse, ChannelHealthResetResponse, ChannelListResponse,
@@ -55,7 +55,6 @@ use axum::{
     extract::{Path, Query, State},
     http::StatusCode,
     response::sse::{Event, KeepAlive, Sse},
-    response::IntoResponse,
     Json,
 };
 use bytes::Bytes;
@@ -942,9 +941,8 @@ async fn handle_claude_transform(
             connection_guard,
         );
 
-        let headers = transformed_sse_response_headers();
-        let body = axum::body::Body::from_stream(logged_stream);
-        return Ok((headers, body).into_response());
+        let response = transformed_sse_proxy_response(logged_stream);
+        return proxy_core_response_to_axum_response(response, "[Claude] 构建 SSE 响应失败");
     }
 
     // 非流式响应转换 (OpenAI/Responses → Anthropic)
@@ -1471,9 +1469,8 @@ async fn handle_codex_chat_to_responses_transform(
             connection_guard,
         );
 
-        let headers = transformed_sse_response_headers();
-        let body = axum::body::Body::from_stream(logged_stream);
-        return Ok((headers, body).into_response());
+        let response = transformed_sse_proxy_response(logged_stream);
+        return proxy_core_response_to_axum_response(response, "[Codex] 构建 SSE 响应失败");
     }
 
     let _connection_guard = connection_guard;

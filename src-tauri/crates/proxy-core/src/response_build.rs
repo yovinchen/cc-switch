@@ -1,8 +1,9 @@
 use crate::{
-    prepare_rebuilt_json_response_headers, ProxyCoreError, ProxyCoreResponse, ProxyCoreResult,
-    ProxyResponseBody,
+    prepare_rebuilt_json_response_headers, transformed_sse_response_headers, ProxyCoreError,
+    ProxyCoreResponse, ProxyCoreResult, ProxyResponseBody,
 };
 use bytes::Bytes;
+use futures::Stream;
 use http::{HeaderMap, StatusCode};
 use serde_json::Value;
 
@@ -23,9 +24,21 @@ pub fn rebuilt_json_proxy_response(
     ))
 }
 
+/// Build a host-neutral response for a transformed SSE byte stream.
+pub fn transformed_sse_proxy_response(
+    stream: impl Stream<Item = Result<Bytes, std::io::Error>> + Send + 'static,
+) -> ProxyCoreResponse {
+    ProxyCoreResponse::with_body(
+        StatusCode::OK,
+        transformed_sse_response_headers(),
+        ProxyResponseBody::stream(stream),
+    )
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use futures::StreamExt as _;
     use http::{header, HeaderValue};
     use serde_json::json;
 
@@ -55,6 +68,35 @@ mod tests {
         match response.body {
             ProxyResponseBody::Bytes(body) => assert_eq!(body, Bytes::from_static(br#"{"ok":true}"#)),
             other => panic!("expected bytes body, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn transformed_sse_response_wraps_stream_with_fixed_headers() {
+        let stream = futures::stream::once(async {
+            Ok::<_, std::io::Error>(Bytes::from_static(b"data: ok\n\n"))
+        });
+
+        let response = transformed_sse_proxy_response(stream);
+
+        assert_eq!(response.status, StatusCode::OK);
+        assert_eq!(
+            response.headers.get(header::CONTENT_TYPE),
+            Some(&HeaderValue::from_static("text/event-stream"))
+        );
+        assert_eq!(
+            response.headers.get(header::CACHE_CONTROL),
+            Some(&HeaderValue::from_static("no-cache"))
+        );
+
+        match response.body {
+            ProxyResponseBody::Stream(mut stream) => {
+                let chunk = futures::executor::block_on(stream.next())
+                    .expect("stream item")
+                    .expect("stream chunk");
+                assert_eq!(chunk, Bytes::from_static(b"data: ok\n\n"));
+            }
+            other => panic!("expected stream body, got {other:?}"),
         }
     }
 }
