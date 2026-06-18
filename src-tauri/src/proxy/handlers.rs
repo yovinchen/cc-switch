@@ -8,7 +8,10 @@
 //! - Claude 的格式转换逻辑保留在此文件（用于 OpenRouter 旧接口回退）
 
 use super::{
-    error_mapper::{get_error_message, map_proxy_error_to_status, proxy_core_error_to_proxy_error},
+    error_mapper::{
+        get_error_message, map_proxy_error_to_status, proxy_core_error_to_proxy_error,
+        response_body_parse_error_to_proxy_error,
+    },
     forwarder::ActiveConnectionGuard,
     handler_config::{
         CLAUDE_PARSER_CONFIG, CODEX_PARSER_CONFIG, GEMINI_PARSER_CONFIG, OPENAI_PARSER_CONFIG,
@@ -50,10 +53,10 @@ use crate::proxy_core::{
     CurrentRouteProviderSummary, CurrentRouteResponse, HealthCheckResponse, InterfaceKind,
     ManagementAuthDecision, ManagementAuthError, ProviderListResponse, ProviderSummaryInput,
     ProxyBody, ProxyChannelModelsReplaceRequest, ProxyChannelPatchRequest,
-    ProxyChannelWriteRequest, ProxyCoreError, ProxyEngine, ProxyRequest, ProxyResult,
-    ProxyServices, RoutableModelList, RouteGroupChannelInput, RouteGroupListResponse,
-    RouteGroupSourceInput, RouteResolveRequest, RouteResolveResponse,
-    TransformedResponseUsageFormat, UpstreamJsonBodySource, UpstreamSseAggregationKind,
+    ProxyChannelWriteRequest, ProxyEngine, ProxyRequest, ProxyResult, ProxyServices,
+    RoutableModelList, RouteGroupChannelInput, RouteGroupListResponse, RouteGroupSourceInput,
+    RouteResolveRequest, RouteResolveResponse, TransformedResponseUsageFormat,
+    UpstreamJsonBodySource, UpstreamSseAggregationKind,
 };
 use axum::{
     extract::{Path, Query, State},
@@ -1668,13 +1671,6 @@ fn responses_sse_to_response_value(body: &str) -> Result<Value, ProxyError> {
 fn chat_sse_to_response_value(body: &str) -> Result<Value, ProxyError> {
     crate::proxy_core::chat_sse_to_response_value(body, || uuid::Uuid::new_v4().to_string())
         .map_err(response_body_parse_error_to_proxy_error)
-}
-
-fn response_body_parse_error_to_proxy_error(error: ProxyCoreError) -> ProxyError {
-    match error {
-        ProxyCoreError::Upstream(message) => ProxyError::TransformError(message),
-        other => proxy_core_error_to_proxy_error(other),
-    }
 }
 
 // ============================================================================

@@ -101,6 +101,13 @@ pub(crate) fn proxy_core_error_to_proxy_error(error: ProxyCoreError) -> ProxyErr
     }
 }
 
+pub(crate) fn response_body_parse_error_to_proxy_error(error: ProxyCoreError) -> ProxyError {
+    match error {
+        ProxyCoreError::Upstream(message) => ProxyError::TransformError(message),
+        other => proxy_core_error_to_proxy_error(other),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -199,5 +206,17 @@ mod tests {
             proxy_core_error_to_proxy_error(ProxyCoreError::Internal("bad".to_string())),
             ProxyError::Internal(_)
         ));
+    }
+
+    #[test]
+    fn test_response_body_parse_error_maps_upstream_to_transform_error() {
+        let error = response_body_parse_error_to_proxy_error(ProxyCoreError::Upstream(
+            "bad upstream body".to_string(),
+        ));
+
+        match error {
+            ProxyError::TransformError(message) => assert!(message.contains("bad upstream body")),
+            other => panic!("expected TransformError, got {other:?}"),
+        }
     }
 }
