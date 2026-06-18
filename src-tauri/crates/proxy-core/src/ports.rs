@@ -242,6 +242,18 @@ impl ChannelDeleteResponse {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub struct ChannelListResponse<T> {
+    pub channels: Vec<T>,
+}
+
+impl<T> ChannelListResponse<T> {
+    pub fn new(channels: Vec<T>) -> Self {
+        Self { channels }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct ChannelModelsResponse<T> {
     pub channel_id: String,
     pub models: Vec<T>,
@@ -377,7 +389,7 @@ pub enum ProxyCoreEventType {
 #[cfg(test)]
 mod tests {
     use super::{
-        ChannelDeleteResponse, ChannelModelsResponse, RouteGroupChannelInput,
+        ChannelDeleteResponse, ChannelListResponse, ChannelModelsResponse, RouteGroupChannelInput,
         RouteGroupListResponse, RouteGroupSourceInput,
     };
     use serde_json::json;
@@ -395,6 +407,19 @@ mod tests {
                 "deleted": true
             })
         );
+    }
+
+    #[test]
+    fn channel_list_response_serializes_management_envelope() {
+        let response = ChannelListResponse::new(vec![json!({
+            "id": "channel-a",
+            "name": "Primary"
+        })]);
+
+        let value = serde_json::to_value(response).expect("serialize response");
+
+        assert_eq!(value["channels"][0]["id"], "channel-a");
+        assert_eq!(value["channels"][0]["name"], "Primary");
     }
 
     #[test]

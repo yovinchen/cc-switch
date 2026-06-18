@@ -35,16 +35,16 @@ use super::{
 use crate::app_config::AppType;
 use crate::database::{
     ProxyChannelModelRecord, ProxyChannelModelsReplaceRequest, ProxyChannelPatchRequest,
-    ProxyChannelWriteRequest,
+    ProxyChannelRecord, ProxyChannelWriteRequest,
 };
 use crate::proxy_core::{
     body_diagnostics_suffix, body_looks_like_sse, claude_stream_usage_event_filter,
     codex_stream_usage_event_filter, should_aggregate_codex_oauth_responses_sse,
     should_use_claude_transform_streaming, strip_entity_headers_for_rebuilt_body,
     strip_hop_by_hop_response_headers, AppKind, ChannelDeleteResponse, ChannelHealthResetResponse,
-    ChannelModelsResponse, InterfaceKind, ProxyBody, ProxyCoreError, ProxyCoreResponse,
-    ProxyEngine, ProxyRequest, ProxyResponseBody, ProxyResult, ProxyServices, RoutableModelList,
-    RouteGroupChannelInput, RouteGroupListResponse, RouteGroupSourceInput,
+    ChannelListResponse, ChannelModelsResponse, InterfaceKind, ProxyBody, ProxyCoreError,
+    ProxyCoreResponse, ProxyEngine, ProxyRequest, ProxyResponseBody, ProxyResult, ProxyServices,
+    RoutableModelList, RouteGroupChannelInput, RouteGroupListResponse, RouteGroupSourceInput,
 };
 use axum::{
     extract::{Path, Query, State},
@@ -409,7 +409,7 @@ pub async fn list_proxy_app_models(
 pub async fn list_all_proxy_channels(
     State(state): State<ProxyState>,
     Query(query): Query<ChannelListQuery>,
-) -> Result<Json<Value>, ProxyError> {
+) -> Result<Json<ChannelListResponse<ProxyChannelRecord>>, ProxyError> {
     let channels = if let Some(app_type) = query.app_type.as_deref() {
         validate_management_app_type(app_type)?;
         state
@@ -423,7 +423,7 @@ pub async fn list_all_proxy_channels(
             .map_err(|e| ProxyError::DatabaseError(e.to_string()))?
     };
 
-    Ok(Json(json!({ "channels": channels })))
+    Ok(Json(ChannelListResponse::new(channels)))
 }
 
 /// POST /proxy/v1/channels
