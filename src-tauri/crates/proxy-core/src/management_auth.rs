@@ -1,5 +1,7 @@
 use std::net::IpAddr;
 
+use http::HeaderMap;
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ManagementAuthDecision {
     AllowWithoutToken,
@@ -83,12 +85,30 @@ pub fn validate_management_bearer_value(
     Ok(())
 }
 
+pub fn validate_management_bearer_header(
+    headers: &HeaderMap,
+    expected_token: &str,
+) -> Result<(), ManagementAuthError> {
+    let value = headers
+        .get(http::header::AUTHORIZATION)
+        .map(|value| {
+            value
+                .to_str()
+                .map_err(|_| ManagementAuthError::InvalidAuthorizationHeader)
+        })
+        .transpose()?;
+
+    validate_management_bearer_value(value, expected_token)
+}
+
 #[cfg(test)]
 mod tests {
     use super::{
         is_loopback_listen_address, resolve_management_auth_decision,
-        validate_management_bearer_value, ManagementAuthDecision, ManagementAuthError,
+        validate_management_bearer_header, validate_management_bearer_value,
+        ManagementAuthDecision, ManagementAuthError,
     };
+    use http::{HeaderMap, HeaderValue};
 
     #[test]
     fn loopback_without_token_allows_management_access() {
@@ -186,6 +206,22 @@ mod tests {
             validate_management_bearer_value(Some("Bearer other-token"), "secret-token")
                 .unwrap_err(),
             ManagementAuthError::InvalidBearerToken
+        );
+    }
+
+    #[test]
+    fn bearer_header_validation_reads_authorization_header() {
+        let mut headers = HeaderMap::new();
+        headers.insert(
+            http::header::AUTHORIZATION,
+            HeaderValue::from_static("Bearer secret-token"),
+        );
+
+        validate_management_bearer_header(&headers, "secret-token").expect("valid bearer");
+
+        assert_eq!(
+            validate_management_bearer_header(&HeaderMap::new(), "secret-token").unwrap_err(),
+            ManagementAuthError::MissingBearerToken
         );
     }
 }

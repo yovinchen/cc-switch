@@ -46,14 +46,14 @@ use crate::proxy_core::{
     normalize_channel_id_path, parse_upstream_json_or_unlabeled_sse, rebuilt_json_proxy_response,
     resolve_management_auth_decision, should_aggregate_codex_oauth_responses_sse,
     should_use_claude_transform_streaming, transformed_response_usage,
-    transformed_sse_proxy_response, validate_management_app_type, validate_management_bearer_value,
-    validate_route_resolve_app_type, AppChannelListQuery, AppChannelListResponse,
-    AppChannelResponse, AppChannelRouteResponse, AppKind, AppListResponse, AppModelListQuery,
-    AppSummary, ChannelDeleteResponse, ChannelHealthResetResponse, ChannelListQuery,
-    ChannelListResponse, ChannelMigrationMaterializeResponse, ChannelMigrationPreviewResponse,
-    ChannelModelsResponse, ChannelRouteCandidate, ChannelRouteRejected,
-    CurrentRouteProviderSummary, CurrentRouteResponse, GroupListQuery, HealthCheckResponse,
-    InterfaceKind, ManagementAuthDecision, ManagementAuthError, ProviderListResponse,
+    transformed_sse_proxy_response, validate_management_app_type,
+    validate_management_bearer_header, validate_route_resolve_app_type, AppChannelListQuery,
+    AppChannelListResponse, AppChannelResponse, AppChannelRouteResponse, AppKind, AppListResponse,
+    AppModelListQuery, AppSummary, ChannelDeleteResponse, ChannelHealthResetResponse,
+    ChannelListQuery, ChannelListResponse, ChannelMigrationMaterializeResponse,
+    ChannelMigrationPreviewResponse, ChannelModelsResponse, ChannelRouteCandidate,
+    ChannelRouteRejected, CurrentRouteProviderSummary, CurrentRouteResponse, GroupListQuery,
+    HealthCheckResponse, InterfaceKind, ManagementAuthDecision, ProviderListResponse,
     ProviderSummaryInput, ProxyBody, ProxyChannelModelsReplaceRequest, ProxyChannelPatchRequest,
     ProxyChannelWriteRequest, ProxyEngine, ProxyRequest, ProxyResult, ProxyServices,
     RoutableModelList, RouteGroupChannelInput, RouteGroupListResponse, RouteGroupSourceInput,
@@ -150,28 +150,11 @@ pub async fn require_proxy_management_auth(
     };
 
     if let ManagementAuthDecision::RequireToken(expected_token) = auth_decision {
-        validate_management_bearer(request.headers(), &expected_token)?;
+        validate_management_bearer_header(request.headers(), &expected_token)
+            .map_err(management_auth_error_to_proxy_error)?;
     }
 
     Ok(next.run(request).await)
-}
-
-fn validate_management_bearer(
-    headers: &axum::http::HeaderMap,
-    expected_token: &str,
-) -> Result<(), ProxyError> {
-    let value = headers
-        .get(axum::http::header::AUTHORIZATION)
-        .map(|value| {
-            value
-                .to_str()
-                .map_err(|_| ManagementAuthError::InvalidAuthorizationHeader)
-        })
-        .transpose()
-        .map_err(management_auth_error_to_proxy_error)?;
-
-    validate_management_bearer_value(value, expected_token)
-        .map_err(management_auth_error_to_proxy_error)
 }
 
 /// GET /proxy/v1/apps
