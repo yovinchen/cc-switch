@@ -10,8 +10,8 @@
 use super::{
     error_mapper::{
         codex_proxy_error_json, get_error_message, management_api_error_to_proxy_error,
-        map_proxy_error_to_status, proxy_core_error_to_proxy_error,
-        response_body_parse_error_to_proxy_error,
+        management_auth_error_to_proxy_error, map_proxy_error_to_status,
+        proxy_core_error_to_proxy_error, response_body_parse_error_to_proxy_error,
     },
     forwarder::ActiveConnectionGuard,
     handler_config::{
@@ -172,10 +172,6 @@ fn validate_management_bearer(
 
     validate_management_bearer_value(value, expected_token)
         .map_err(management_auth_error_to_proxy_error)
-}
-
-fn management_auth_error_to_proxy_error(error: ManagementAuthError) -> ProxyError {
-    ProxyError::AuthError(error.message().to_string())
 }
 
 /// GET /proxy/v1/apps

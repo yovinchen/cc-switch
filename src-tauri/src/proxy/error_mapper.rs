@@ -3,7 +3,7 @@
 //! 将 ProxyError 映射到合适的 HTTP 状态码，用于日志记录和手动构建错误响应
 
 use super::ProxyError;
-use crate::proxy_core::{CodexProxyErrorContext, ProxyCoreError};
+use crate::proxy_core::{CodexProxyErrorContext, ManagementAuthError, ProxyCoreError};
 use serde_json::Value;
 
 /// 将 ProxyError 映射到 HTTP 状态码
@@ -107,6 +107,10 @@ pub(crate) fn management_api_error_to_proxy_error(error: ProxyCoreError) -> Prox
         ProxyCoreError::InvalidRequest(message) => ProxyError::InvalidRequest(message),
         other => proxy_core_error_to_proxy_error(other),
     }
+}
+
+pub(crate) fn management_auth_error_to_proxy_error(error: ManagementAuthError) -> ProxyError {
+    ProxyError::AuthError(error.message().to_string())
 }
 
 pub(crate) fn response_body_parse_error_to_proxy_error(error: ProxyCoreError) -> ProxyError {
@@ -267,6 +271,15 @@ mod tests {
             management_api_error_to_proxy_error(ProxyCoreError::InvalidRequest("bad".to_string()));
 
         assert!(matches!(error, ProxyError::InvalidRequest(message) if message == "bad"));
+    }
+
+    #[test]
+    fn test_management_auth_error_bridge_maps_to_auth_error() {
+        let error = management_auth_error_to_proxy_error(ManagementAuthError::MissingBearerToken);
+
+        assert!(
+            matches!(error, ProxyError::AuthError(message) if message == "Missing management bearer token")
+        );
     }
 
     #[test]
