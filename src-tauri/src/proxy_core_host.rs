@@ -1,15 +1,16 @@
 use crate::app_config::AppType;
 use crate::database::Database;
 use crate::error::AppError;
+use crate::proxy::events::ProxyEventBus;
 use crate::proxy::provider_router::ProviderRouter;
 use crate::proxy_core::{
     AppKind, AuthInfo, AuthProfileRef, ChannelAttemptPlan, ChannelAttemptResult, ChannelQuery,
     ChannelSource, ChannelSpec, ChannelStatus, CopilotOptimizerConfigSpec, ForwardPipeline,
     ModelCatalog, OptimizerConfigSpec, ProviderSource, ProviderSpec, ProxyAppConfig,
-    ProxyConfigSource, ProxyCoreError, ProxyCoreEvent, ProxyCoreResult, ProxyEventSink,
-    ProxyGlobalConfig, ProxyRequest, ProxyResult, ProxyRuntimeConfig, ProxyServices,
-    RectifierConfigSpec, RoutePlan, RoutePolicy, RoutePolicySource, RouteRequest, RouteResolver,
-    UsageHint, UsageSink,
+    ProxyConfigSource, ProxyCoreError, ProxyCoreEvent, ProxyCoreEventType, ProxyCoreResult,
+    ProxyEventSink, ProxyGlobalConfig, ProxyRequest, ProxyResult, ProxyRuntimeConfig,
+    ProxyServices, RectifierConfigSpec, RoutePlan, RoutePolicy, RoutePolicySource, RouteRequest,
+    RouteResolver, UsageHint, UsageSink,
 };
 use crate::proxy_core_adapter::{ToProxyCoreChannelSpec, ToProxyCoreProviderSpec};
 use futures::future::BoxFuture;
@@ -39,6 +40,14 @@ pub(crate) struct CcSwitchProxyServices {
 #[allow(dead_code)]
 impl CcSwitchProxyServices {
     pub(crate) fn new(db: Arc<Database>) -> Self {
+        Self::with_optional_event_bus(db, None)
+    }
+
+    pub(crate) fn with_event_bus(db: Arc<Database>, events: Arc<ProxyEventBus>) -> Self {
+        Self::with_optional_event_bus(db, Some(events))
+    }
+
+    fn with_optional_event_bus(db: Arc<Database>, events: Option<Arc<ProxyEventBus>>) -> Self {
         let router = Arc::new(ProviderRouter::new(db.clone()));
         Self {
             config: CcSwitchConfigSource { db: db.clone() },
@@ -53,7 +62,7 @@ impl CcSwitchProxyServices {
             auth_provider: CcSwitchAuthProvider,
             model_catalog: CcSwitchModelCatalogProvider { db: db.clone() },
             usage_sink: CcSwitchUsageSink,
-            event_sink: CcSwitchEventSink,
+            event_sink: CcSwitchEventSink { events },
             forward_pipeline: CcSwitchForwardPipeline,
         }
     }
@@ -475,11 +484,21 @@ impl UsageSink for CcSwitchUsageSink {
 }
 
 #[derive(Clone, Default)]
-struct CcSwitchEventSink;
+struct CcSwitchEventSink {
+    events: Option<Arc<ProxyEventBus>>,
+}
 
 impl ProxyEventSink for CcSwitchEventSink {
-    fn emit_event<'a>(&'a self, _event: ProxyCoreEvent) -> BoxFuture<'a, ProxyCoreResult<()>> {
-        Box::pin(async move { Ok(()) })
+    fn emit_event<'a>(&'a self, event: ProxyCoreEvent) -> BoxFuture<'a, ProxyCoreResult<()>> {
+        Box::pin(async move {
+            if let Some(events) = self.events.as_ref() {
+                events.emit(
+                    proxy_core_event_name(&event.event_type),
+                    proxy_core_payload(event),
+                );
+            }
+            Ok(())
+        })
     }
 }
 
@@ -498,6 +517,38 @@ impl ForwardPipeline for CcSwitchForwardPipeline {
             ))
         })
     }
+}
+
+fn proxy_core_event_name(event_type: &ProxyCoreEventType) -> String {
+    match event_type {
+        ProxyCoreEventType::RouteSelected => "route_selected".to_string(),
+        ProxyCoreEventType::AttemptStarted => "attempt_started".to_string(),
+        ProxyCoreEventType::AttemptSucceeded => "attempt_succeeded".to_string(),
+        ProxyCoreEventType::AttemptFailed => "attempt_failed".to_string(),
+        ProxyCoreEventType::BreakerOpened => "breaker_opened".to_string(),
+        ProxyCoreEventType::BreakerClosed => "breaker_closed".to_string(),
+        ProxyCoreEventType::UsageRecorded => "usage_recorded".to_string(),
+        ProxyCoreEventType::Custom(value) => value.clone(),
+    }
+}
+
+fn proxy_core_payload(event: ProxyCoreEvent) -> Value {
+    let mut payload = if event.payload.is_object() {
+        event.payload
+    } else {
+        json!({ "data": event.payload })
+    };
+
+    if let Value::Object(object) = &mut payload {
+        if let Some(request_id) = event.request_id {
+            object.insert("requestId".to_string(), Value::String(request_id));
+        }
+        if let Some(channel_id) = event.channel_id {
+            object.insert("channelId".to_string(), Value::String(channel_id));
+        }
+    }
+
+    payload
 }
 
 fn parse_app_type(app: &AppKind) -> ProxyCoreResult<AppType> {
@@ -801,6 +852,33 @@ mod tests {
         assert_eq!(health.status, "degraded");
         assert_eq!(health.consecutive_failures, 1);
         assert_eq!(health.response_time_ms, Some(123));
+    }
+
+    #[tokio::test]
+    async fn event_sink_bridges_core_events_to_proxy_event_bus() {
+        let db = Arc::new(Database::memory().expect("memory db"));
+        let events = Arc::new(ProxyEventBus::default());
+        let mut subscriber = events.subscribe();
+        let services = CcSwitchProxyServices::with_event_bus(db, events);
+
+        services
+            .event_sink()
+            .emit_event(ProxyCoreEvent {
+                event_type: ProxyCoreEventType::RouteSelected,
+                request_id: Some("req-1".to_string()),
+                channel_id: Some("channel-a".to_string()),
+                payload: json!({
+                    "attemptCount": 2,
+                }),
+            })
+            .await
+            .expect("emit event");
+
+        let event = subscriber.recv().await.expect("receive event");
+        assert_eq!(event.event, "route_selected");
+        assert_eq!(event.payload["requestId"], "req-1");
+        assert_eq!(event.payload["channelId"], "channel-a");
+        assert_eq!(event.payload["attemptCount"], 2);
     }
 
     #[tokio::test]

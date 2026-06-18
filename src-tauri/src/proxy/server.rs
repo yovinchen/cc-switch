@@ -75,10 +75,13 @@ impl ProxyServer {
     ) -> Self {
         // 创建共享的 ProviderRouter（熔断器状态将跨所有请求保持）
         let provider_router = Arc::new(ProviderRouter::new(db.clone()));
-        let proxy_core_services = Arc::new(CcSwitchProxyServices::new(db.clone()));
+        let events = Arc::new(ProxyEventBus::default());
+        let proxy_core_services = Arc::new(CcSwitchProxyServices::with_event_bus(
+            db.clone(),
+            events.clone(),
+        ));
         // 创建故障转移切换管理器
         let failover_manager = Arc::new(FailoverSwitchManager::new(db.clone()));
-        let events = Arc::new(ProxyEventBus::default());
 
         let state = ProxyState {
             db,
