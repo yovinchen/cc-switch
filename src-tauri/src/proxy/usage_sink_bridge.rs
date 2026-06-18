@@ -1,6 +1,9 @@
 use crate::provider::Provider;
 use crate::proxy::usage::parser::{TokenUsage, SESSION_REQUEST_ID_PREFIX};
-use crate::proxy_core::{AppKind, ProviderKind, UsageRecord, UsageTokens};
+use crate::proxy_core::{
+    normalize_error_usage_models, normalize_usage_models, usage_tokens_from_token_usage, AppKind,
+    ProviderKind, UsageRecord, UsageTokens,
+};
 use serde_json::Value;
 
 #[allow(clippy::too_many_arguments)]
@@ -18,9 +21,7 @@ pub(crate) fn success_usage_record(
     status_code: u16,
     session_id: Option<String>,
 ) -> UsageRecord {
-    let response_model = non_empty(model).or_else(|| non_empty(outbound_model));
-    let outbound_model = non_empty(outbound_model).unwrap_or_else(|| request_model.to_string());
-    let request_model = non_empty(request_model).unwrap_or_else(|| outbound_model.clone());
+    let models = normalize_usage_models(Some(model), request_model, Some(outbound_model));
     let request_id = usage_request_id(&usage);
     let message_id = usage.message_id.clone();
 
@@ -33,11 +34,11 @@ pub(crate) fn success_usage_record(
         channel_id: None,
         channel_name: None,
         route_group: None,
-        request_model,
-        outbound_model,
-        response_model,
+        request_model: models.request_model,
+        outbound_model: models.outbound_model,
+        response_model: models.response_model,
         pricing_model: None,
-        tokens: usage_tokens(&usage),
+        tokens: usage_tokens_from_token_usage(&usage),
         latency_ms,
         first_token_ms,
         status_code,
@@ -68,10 +69,7 @@ pub(crate) fn error_usage_record(
     is_streaming: bool,
     session_id: Option<String>,
 ) -> UsageRecord {
-    let outbound_model = outbound_model
-        .and_then(non_empty)
-        .unwrap_or_else(|| request_model.to_string());
-    let request_model = non_empty(request_model).unwrap_or_else(|| outbound_model.clone());
+    let models = normalize_error_usage_models(request_model, outbound_model);
 
     UsageRecord {
         request_id: Some(uuid::Uuid::new_v4().to_string()),
@@ -82,8 +80,8 @@ pub(crate) fn error_usage_record(
         channel_id: None,
         channel_name: None,
         route_group: None,
-        request_model,
-        outbound_model,
+        request_model: models.request_model,
+        outbound_model: models.outbound_model,
         response_model: None,
         pricing_model: None,
         tokens: UsageTokens {
@@ -108,24 +106,6 @@ pub(crate) fn provider_kind_from_provider(provider: &Provider) -> Option<Provide
         .as_ref()
         .and_then(|meta| meta.provider_type.as_deref())
         .map(ProviderKind::from)
-}
-
-fn usage_tokens(usage: &TokenUsage) -> UsageTokens {
-    UsageTokens {
-        input_tokens: usage.input_tokens as u64,
-        output_tokens: usage.output_tokens as u64,
-        cache_read_tokens: usage.cache_read_tokens as u64,
-        cache_creation_tokens: usage.cache_creation_tokens as u64,
-    }
-}
-
-fn non_empty(value: &str) -> Option<String> {
-    let value = value.trim();
-    if value.is_empty() {
-        None
-    } else {
-        Some(value.to_string())
-    }
 }
 
 #[cfg(test)]

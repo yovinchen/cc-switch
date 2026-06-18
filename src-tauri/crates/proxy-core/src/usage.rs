@@ -6,6 +6,7 @@
 //! - Codex API (非流式和流式)
 //! - Gemini API (非流式和流式)
 
+use crate::UsageTokens;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
@@ -544,6 +545,67 @@ pub fn gemini_stream_model_extractor(events: &[Value], fallback_model: &str) -> 
         }
     }
     fallback_model.to_string()
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct UsageModelAttribution {
+    pub request_model: String,
+    pub outbound_model: String,
+    pub response_model: Option<String>,
+}
+
+pub fn usage_tokens_from_token_usage(usage: &TokenUsage) -> UsageTokens {
+    UsageTokens {
+        input_tokens: usage.input_tokens as u64,
+        output_tokens: usage.output_tokens as u64,
+        cache_read_tokens: usage.cache_read_tokens as u64,
+        cache_creation_tokens: usage.cache_creation_tokens as u64,
+    }
+}
+
+pub fn normalize_usage_models(
+    response_model: Option<&str>,
+    request_model: &str,
+    outbound_model: Option<&str>,
+) -> UsageModelAttribution {
+    let response_model = response_model
+        .and_then(non_empty_model)
+        .or_else(|| outbound_model.and_then(non_empty_model));
+    let outbound_model = outbound_model
+        .and_then(non_empty_model)
+        .unwrap_or_else(|| request_model.to_string());
+    let request_model = non_empty_model(request_model).unwrap_or_else(|| outbound_model.clone());
+
+    UsageModelAttribution {
+        request_model,
+        outbound_model,
+        response_model,
+    }
+}
+
+pub fn normalize_error_usage_models(
+    request_model: &str,
+    outbound_model: Option<&str>,
+) -> UsageModelAttribution {
+    let outbound_model = outbound_model
+        .and_then(non_empty_model)
+        .unwrap_or_else(|| request_model.to_string());
+    let request_model = non_empty_model(request_model).unwrap_or_else(|| outbound_model.clone());
+
+    UsageModelAttribution {
+        request_model,
+        outbound_model,
+        response_model: None,
+    }
+}
+
+fn non_empty_model(value: &str) -> Option<String> {
+    let value = value.trim();
+    if value.is_empty() {
+        None
+    } else {
+        Some(value.to_string())
+    }
 }
 
 #[cfg(test)]
@@ -1235,5 +1297,55 @@ mod tests {
             openai_stream_model_extractor(&events, "fallback"),
             "gpt-4o"
         );
+    }
+
+    #[test]
+    fn test_usage_tokens_from_token_usage_maps_all_buckets() {
+        let usage = TokenUsage {
+            input_tokens: 3,
+            output_tokens: 5,
+            cache_read_tokens: 7,
+            cache_creation_tokens: 11,
+            model: None,
+            message_id: None,
+        };
+
+        let tokens = usage_tokens_from_token_usage(&usage);
+
+        assert_eq!(tokens.input_tokens, 3);
+        assert_eq!(tokens.output_tokens, 5);
+        assert_eq!(tokens.cache_read_tokens, 7);
+        assert_eq!(tokens.cache_creation_tokens, 11);
+    }
+
+    #[test]
+    fn test_normalize_usage_models_prefers_response_then_outbound() {
+        let models = normalize_usage_models(
+            Some(" response-model "),
+            " request-model ",
+            Some(" outbound-model "),
+        );
+
+        assert_eq!(models.response_model.as_deref(), Some("response-model"));
+        assert_eq!(models.request_model, "request-model");
+        assert_eq!(models.outbound_model, "outbound-model");
+    }
+
+    #[test]
+    fn test_normalize_usage_models_uses_outbound_for_missing_response() {
+        let models = normalize_usage_models(None, "request-model", Some("upstream-model"));
+
+        assert_eq!(models.response_model.as_deref(), Some("upstream-model"));
+        assert_eq!(models.request_model, "request-model");
+        assert_eq!(models.outbound_model, "upstream-model");
+    }
+
+    #[test]
+    fn test_normalize_error_usage_models_keeps_response_empty() {
+        let models = normalize_error_usage_models("client-model", Some("upstream-model"));
+
+        assert_eq!(models.response_model, None);
+        assert_eq!(models.request_model, "client-model");
+        assert_eq!(models.outbound_model, "upstream-model");
     }
 }
