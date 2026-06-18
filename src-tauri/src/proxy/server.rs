@@ -346,6 +346,7 @@ impl ProxyServer {
                 "/proxy/v1/route/resolve",
                 post(handlers::resolve_proxy_route),
             )
+            .route("/proxy/v1/groups", get(handlers::list_proxy_groups))
             // Claude API (支持带前缀和不带前缀两种格式)
             .route("/v1/messages", post(handlers::handle_messages))
             .route("/claude/v1/messages", post(handlers::handle_messages))
@@ -673,6 +674,47 @@ mod tests {
             rejected["rejected"][0]["reasons"][0],
             "model_unavailable:missing-model"
         );
+    }
+
+    #[tokio::test]
+    async fn group_management_route_lists_visible_channel_groups() {
+        let db = Arc::new(Database::memory().expect("memory db"));
+        let provider = Provider::with_id(
+            "a".to_string(),
+            "Provider A".to_string(),
+            json!({
+                "env": {
+                    "ANTHROPIC_BASE_URL": "https://primary.example.com/v1",
+                    "ANTHROPIC_MODEL": "claude-sonnet-4"
+                }
+            }),
+            None,
+        );
+        db.save_provider("claude", &provider).unwrap();
+        db.materialize_legacy_proxy_channels("claude").unwrap();
+
+        let server = ProxyServer::new(ProxyConfig::default(), db, None);
+        let mut router = server.build_router();
+
+        let response = Service::call(
+            &mut router,
+            Request::builder()
+                .method(Method::GET)
+                .uri("/proxy/v1/groups?appType=claude")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(response.status(), StatusCode::OK);
+        let groups = response_json(response).await;
+        assert_eq!(groups["appType"], "claude");
+        assert_eq!(groups["sources"][0], "materialized_channels");
+        assert_eq!(groups["groups"].as_array().unwrap().len(), 1);
+        assert_eq!(groups["groups"][0]["name"], "default");
+        assert_eq!(groups["groups"][0]["channelCount"], 1);
+        assert_eq!(groups["groups"][0]["appTypes"][0], "claude");
     }
 
     #[tokio::test]

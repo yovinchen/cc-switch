@@ -50,11 +50,18 @@ use bytes::Bytes;
 use http_body_util::BodyExt;
 use serde::Deserialize;
 use serde_json::{json, Value};
-use std::collections::HashSet;
+use std::collections::{BTreeMap, BTreeSet, HashSet};
 
 #[derive(Debug, Deserialize, Default)]
 #[serde(rename_all = "camelCase")]
 pub struct ChannelListQuery {
+    #[serde(default)]
+    app_type: Option<String>,
+}
+
+#[derive(Debug, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct GroupListQuery {
     #[serde(default)]
     app_type: Option<String>,
 }
@@ -373,6 +380,72 @@ pub async fn list_proxy_channels(
         "appType": app_type,
         "source": source,
         "channels": channels,
+    })))
+}
+
+/// GET /proxy/v1/groups
+pub async fn list_proxy_groups(
+    State(state): State<ProxyState>,
+    Query(query): Query<GroupListQuery>,
+) -> Result<Json<Value>, ProxyError> {
+    let app_types = if let Some(app_type) = query.app_type.as_deref() {
+        validate_management_app_type(app_type)?;
+        vec![app_type.trim().to_string()]
+    } else {
+        AppType::all()
+            .into_iter()
+            .map(|app| app.as_str().to_string())
+            .collect()
+    };
+
+    let mut groups: BTreeMap<String, (BTreeSet<String>, usize)> = BTreeMap::new();
+    let mut sources = BTreeSet::new();
+
+    for app_type in &app_types {
+        let (channels, source) = state
+            .provider_router
+            .list_channels_for_app(app_type)
+            .await
+            .map_err(|e| ProxyError::DatabaseError(e.to_string()))?;
+        sources.insert(match source {
+            crate::proxy::channel_routing::ChannelRouteSource::MaterializedChannels => {
+                "materialized_channels".to_string()
+            }
+            crate::proxy::channel_routing::ChannelRouteSource::LegacyProjection => {
+                "legacy_projection".to_string()
+            }
+        });
+
+        for channel in channels {
+            let channel_groups = if channel.groups.is_empty() {
+                vec!["default".to_string()]
+            } else {
+                channel.groups
+            };
+
+            for group in channel_groups {
+                let entry = groups.entry(group).or_default();
+                entry.0.insert(app_type.clone());
+                entry.1 += 1;
+            }
+        }
+    }
+
+    let groups: Vec<Value> = groups
+        .into_iter()
+        .map(|(name, (app_types, channel_count))| {
+            json!({
+                "name": name,
+                "appTypes": app_types.into_iter().collect::<Vec<_>>(),
+                "channelCount": channel_count,
+            })
+        })
+        .collect();
+
+    Ok(Json(json!({
+        "appType": query.app_type.map(|app_type| app_type.trim().to_string()),
+        "sources": sources.into_iter().collect::<Vec<_>>(),
+        "groups": groups,
     })))
 }
 
