@@ -16,6 +16,10 @@ pub struct ProxyConfig {
     /// 是否正在接管 Live 配置
     #[serde(default)]
     pub live_takeover_active: bool,
+    /// 管理 API Bearer token。为空时本地 loopback 监听允许免认证；
+    /// 非 loopback 监听会要求该字段或环境变量提供 token。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub management_auth_token: Option<String>,
     /// 流式首字超时（秒）- 等待首个数据块的最大时间，范围 1-120 秒，默认 60 秒
     #[serde(default = "default_streaming_first_byte_timeout")]
     pub streaming_first_byte_timeout: u64,
@@ -48,6 +52,7 @@ impl Default for ProxyConfig {
             request_timeout: 600,
             enable_logging: true,
             live_takeover_active: false,
+            management_auth_token: None,
             streaming_first_byte_timeout: 60,
             streaming_idle_timeout: 120,
             non_streaming_timeout: 600,

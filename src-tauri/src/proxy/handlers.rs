@@ -53,6 +53,7 @@ use serde::Deserialize;
 use serde_json::{json, Value};
 use std::collections::{BTreeMap, BTreeSet, HashSet};
 use std::convert::Infallible;
+use std::net::IpAddr;
 use std::time::Duration;
 
 #[derive(Debug, Deserialize, Default)]
@@ -164,6 +165,88 @@ fn proxy_event_to_sse(event: crate::proxy::events::ProxyEventEnvelope) -> Event 
         .id(event.id.to_string())
         .event(event.event)
         .data(data)
+}
+
+/// Management API auth middleware.
+///
+/// Loopback listeners stay compatible and allow unauthenticated local access.
+/// Non-loopback listeners require a bearer token from `ProxyConfig` or
+/// `CC_SWITCH_PROXY_MANAGEMENT_TOKEN`.
+pub async fn require_proxy_management_auth(
+    State(state): State<ProxyState>,
+    request: axum::extract::Request,
+    next: axum::middleware::Next,
+) -> Result<axum::response::Response, ProxyError> {
+    let expected_token = {
+        let config = state.config.read().await;
+        let configured_token = normalized_management_token(config.management_auth_token.as_deref());
+        let external_listener = !is_loopback_listen_address(&config.listen_address);
+
+        if configured_token.is_none() && !external_listener {
+            None
+        } else {
+            configured_token
+                .or_else(|| {
+                    if external_listener {
+                        std::env::var("CC_SWITCH_PROXY_MANAGEMENT_TOKEN")
+                            .ok()
+                            .and_then(|value| normalized_management_token(Some(&value)))
+                    } else {
+                        None
+                    }
+                })
+                .ok_or_else(|| {
+                    ProxyError::AuthError(
+                        "Proxy management token is required for non-loopback listeners".to_string(),
+                    )
+                })
+                .map(Some)?
+        }
+    };
+
+    if let Some(expected_token) = expected_token {
+        validate_management_bearer(request.headers(), &expected_token)?;
+    }
+
+    Ok(next.run(request).await)
+}
+
+fn normalized_management_token(token: Option<&str>) -> Option<String> {
+    token
+        .map(str::trim)
+        .filter(|token| !token.is_empty())
+        .map(ToString::to_string)
+}
+
+fn is_loopback_listen_address(listen_address: &str) -> bool {
+    let listen_address = listen_address.trim();
+    listen_address.eq_ignore_ascii_case("localhost")
+        || listen_address
+            .parse::<IpAddr>()
+            .map(|address| address.is_loopback())
+            .unwrap_or(false)
+}
+
+fn validate_management_bearer(
+    headers: &axum::http::HeaderMap,
+    expected_token: &str,
+) -> Result<(), ProxyError> {
+    let value = headers
+        .get(axum::http::header::AUTHORIZATION)
+        .ok_or_else(|| ProxyError::AuthError("Missing management bearer token".to_string()))?
+        .to_str()
+        .map_err(|_| ProxyError::AuthError("Invalid Authorization header".to_string()))?;
+    let (scheme, token) = value
+        .split_once(' ')
+        .ok_or_else(|| ProxyError::AuthError("Invalid Authorization header".to_string()))?;
+
+    if !scheme.eq_ignore_ascii_case("bearer") || token.trim() != expected_token {
+        return Err(ProxyError::AuthError(
+            "Invalid management bearer token".to_string(),
+        ));
+    }
+
+    Ok(())
 }
 
 /// GET /proxy/v1/apps

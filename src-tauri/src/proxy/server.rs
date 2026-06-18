@@ -21,6 +21,7 @@ use super::{
 use crate::database::Database;
 use axum::{
     extract::DefaultBodyLimit,
+    middleware,
     routing::{any, get, post},
     Router,
 };
@@ -308,11 +309,7 @@ impl ProxyServer {
     }
 
     fn build_router(&self) -> Router {
-        Router::new()
-            // 健康检查
-            .route("/health", get(handlers::health_check))
-            .route("/status", get(handlers::get_status))
-            // Versioned management API (channel migration surface)
+        let management_routes = Router::new()
             .route("/proxy/v1/health", get(handlers::health_check))
             .route("/proxy/v1/status", get(handlers::get_status))
             .route("/proxy/v1/events", get(handlers::stream_proxy_events))
@@ -361,6 +358,17 @@ impl ProxyServer {
                 post(handlers::resolve_proxy_route),
             )
             .route("/proxy/v1/groups", get(handlers::list_proxy_groups))
+            .route_layer(middleware::from_fn_with_state(
+                self.state.clone(),
+                handlers::require_proxy_management_auth,
+            ));
+
+        Router::new()
+            // 健康检查
+            .route("/health", get(handlers::health_check))
+            .route("/status", get(handlers::get_status))
+            // Versioned management API (channel migration surface)
+            .merge(management_routes)
             // Claude API (支持带前缀和不带前缀两种格式)
             .route("/v1/messages", post(handlers::handle_messages))
             .route("/claude/v1/messages", post(handlers::handle_messages))
@@ -506,6 +514,69 @@ mod tests {
             .and_then(|value| value.to_str().ok())
             .unwrap_or_default();
         assert!(content_type.starts_with("text/event-stream"));
+    }
+
+    #[tokio::test]
+    async fn management_routes_require_token_for_non_loopback_listener() {
+        let db = Arc::new(Database::memory().expect("memory db"));
+        let config = ProxyConfig {
+            listen_address: "0.0.0.0".to_string(),
+            ..ProxyConfig::default()
+        };
+        let server = ProxyServer::new(config, db, None);
+        let mut router = server.build_router();
+
+        let response = Service::call(
+            &mut router,
+            Request::builder()
+                .method(Method::GET)
+                .uri("/proxy/v1/apps")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+    }
+
+    #[tokio::test]
+    async fn management_routes_accept_configured_bearer_token() {
+        let db = Arc::new(Database::memory().expect("memory db"));
+        let config = ProxyConfig {
+            listen_address: "0.0.0.0".to_string(),
+            management_auth_token: Some("secret-token".to_string()),
+            ..ProxyConfig::default()
+        };
+        let server = ProxyServer::new(config, db, None);
+        let mut router = server.build_router();
+
+        let rejected = Service::call(
+            &mut router,
+            Request::builder()
+                .method(Method::GET)
+                .uri("/proxy/v1/apps")
+                .header(axum::http::header::AUTHORIZATION, "Bearer wrong")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+        assert_eq!(rejected.status(), StatusCode::UNAUTHORIZED);
+
+        let accepted = Service::call(
+            &mut router,
+            Request::builder()
+                .method(Method::GET)
+                .uri("/proxy/v1/apps")
+                .header(axum::http::header::AUTHORIZATION, "Bearer secret-token")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(accepted.status(), StatusCode::OK);
     }
 
     #[tokio::test]
