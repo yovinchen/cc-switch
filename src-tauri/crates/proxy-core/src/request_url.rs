@@ -212,6 +212,15 @@ pub fn is_codex_chat_completions_url(value: &str) -> bool {
         .ends_with("/chat/completions")
 }
 
+/// `scheme://host` 之后没有路径段的纯 origin 形式。
+pub fn is_origin_only_url(value: &str) -> bool {
+    let trimmed = value.trim_end_matches('/');
+    match trimmed.split_once("://") {
+        Some((_scheme, rest)) => !rest.contains('/'),
+        None => !trimmed.contains('/'),
+    }
+}
+
 pub fn is_codex_responses_endpoint(endpoint: &str) -> bool {
     let (path, _query) = split_endpoint_and_query(endpoint);
     matches!(
@@ -278,7 +287,7 @@ mod tests {
     use super::{
         append_query_to_full_url, extract_gemini_model_from_path, interface_kind_for_forward,
         is_codex_chat_completions_url, is_codex_chat_wire_api, is_codex_responses_endpoint,
-        is_github_copilot_upstream, merge_query_params, request_model_for_forward,
+        is_github_copilot_upstream, is_origin_only_url, merge_query_params, request_model_for_forward,
         resolved_copilot_dynamic_base_url, rewrite_claude_transform_endpoint,
         rewrite_codex_responses_endpoint_to_chat, should_convert_codex_responses_endpoint_to_chat,
         should_resolve_copilot_dynamic_endpoint, split_endpoint_and_query, strip_beta_query,
@@ -363,6 +372,14 @@ mod tests {
         assert!(!is_codex_chat_completions_url(
             "https://relay.example.com/v1/responses"
         ));
+    }
+
+    #[test]
+    fn detects_origin_only_urls() {
+        assert!(is_origin_only_url("https://api.openai.com/"));
+        assert!(is_origin_only_url("localhost:8080"));
+        assert!(!is_origin_only_url("https://api.openai.com/v1"));
+        assert!(!is_origin_only_url("localhost:8080/v1"));
     }
 
     #[test]

@@ -9,7 +9,7 @@ use super::{AuthInfo, AuthStrategy, ProviderAdapter};
 use crate::provider::{CodexChatReasoningConfig, Provider};
 use crate::proxy::error::ProxyError;
 use crate::proxy_core::{
-    is_codex_chat_completions_url, is_codex_chat_wire_api,
+    is_codex_chat_completions_url, is_codex_chat_wire_api, is_origin_only_url,
     should_convert_codex_responses_endpoint_to_chat,
 };
 use regex::Regex;
@@ -331,16 +331,6 @@ fn infer_aggregator_platform_config(
     }
 
     None
-}
-
-/// `scheme://host` 之后没有路径段的纯 origin 形式。`build_url` 在这种情况下
-/// 会自动补 `/v1`；Stream Check 等同步生产路径的代码也需要同一判定。
-pub fn is_origin_only_url(value: &str) -> bool {
-    let trimmed = value.trim_end_matches('/');
-    match trimmed.split_once("://") {
-        Some((_scheme, rest)) => !rest.contains('/'),
-        None => !trimmed.contains('/'),
-    }
 }
 
 fn extract_codex_wire_api_from_toml(config_text: &str) -> Option<String> {
