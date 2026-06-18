@@ -9,7 +9,7 @@ use super::{AuthInfo, AuthStrategy, ProviderAdapter};
 use crate::provider::{CodexChatReasoningConfig, Provider};
 use crate::proxy::error::ProxyError;
 use crate::proxy_core::{
-    is_codex_chat_completions_url, is_codex_chat_wire_api, is_origin_only_url,
+    is_origin_only_url, resolve_codex_provider_uses_chat_completions,
     should_convert_codex_responses_endpoint_to_chat,
 };
 use regex::Regex;
@@ -30,51 +30,39 @@ pub struct CodexAdapter;
 /// OpenAI Chat Completions, even if the local Codex client is talking to CC
 /// Switch through the Responses API.
 pub fn codex_provider_uses_chat_completions(provider: &Provider) -> bool {
-    if let Some(api_format) = provider
-        .meta
-        .as_ref()
-        .and_then(|meta| meta.api_format.as_deref())
-        .or_else(|| {
-            provider
-                .settings_config
-                .get("api_format")
-                .and_then(|v| v.as_str())
-        })
-        .or_else(|| {
-            provider
-                .settings_config
-                .get("apiFormat")
-                .and_then(|v| v.as_str())
-        })
-    {
-        return is_codex_chat_wire_api(api_format);
-    }
-
-    if let Some(wire_api) = provider
+    let config_text = provider
         .settings_config
         .get("config")
-        .and_then(|v| v.as_str())
-        .and_then(extract_codex_wire_api_from_toml)
-    {
-        return is_codex_chat_wire_api(&wire_api);
-    }
-
-    if let Some(base_url) = provider
-        .settings_config
-        .get("base_url")
-        .or_else(|| provider.settings_config.get("baseURL"))
-        .and_then(|v| v.as_str())
-    {
-        return is_codex_chat_completions_url(base_url);
-    }
-
-    provider
-        .settings_config
-        .get("config")
-        .and_then(|v| v.as_str())
-        .and_then(extract_codex_base_url_from_toml)
-        .map(|url| is_codex_chat_completions_url(&url))
-        .unwrap_or(false)
+        .and_then(|v| v.as_str());
+    resolve_codex_provider_uses_chat_completions(
+        provider
+            .meta
+            .as_ref()
+            .and_then(|meta| meta.api_format.as_deref())
+            .or_else(|| {
+                provider
+                    .settings_config
+                    .get("api_format")
+                    .and_then(|v| v.as_str())
+            })
+            .or_else(|| {
+                provider
+                    .settings_config
+                    .get("apiFormat")
+                    .and_then(|v| v.as_str())
+            }),
+        config_text
+            .and_then(extract_codex_wire_api_from_toml)
+            .as_deref(),
+        provider
+            .settings_config
+            .get("base_url")
+            .or_else(|| provider.settings_config.get("baseURL"))
+            .and_then(|v| v.as_str()),
+        config_text
+            .and_then(extract_codex_base_url_from_toml)
+            .as_deref(),
+    )
 }
 
 pub fn should_convert_codex_responses_to_chat(provider: &Provider, endpoint: &str) -> bool {

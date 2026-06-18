@@ -236,6 +236,29 @@ pub fn should_convert_codex_responses_endpoint_to_chat(
     provider_uses_chat_completions && is_codex_responses_endpoint(endpoint)
 }
 
+pub fn resolve_codex_provider_uses_chat_completions(
+    api_format: Option<&str>,
+    wire_api: Option<&str>,
+    base_url: Option<&str>,
+    config_base_url: Option<&str>,
+) -> bool {
+    if let Some(api_format) = api_format {
+        return is_codex_chat_wire_api(api_format);
+    }
+
+    if let Some(wire_api) = wire_api {
+        return is_codex_chat_wire_api(wire_api);
+    }
+
+    if let Some(base_url) = base_url {
+        return is_codex_chat_completions_url(base_url);
+    }
+
+    config_base_url
+        .map(is_codex_chat_completions_url)
+        .unwrap_or(false)
+}
+
 pub fn request_model_for_forward(
     app: &AppKind,
     endpoint: &str,
@@ -291,7 +314,7 @@ mod tests {
         resolved_copilot_dynamic_base_url, rewrite_claude_transform_endpoint,
         rewrite_codex_responses_endpoint_to_chat, should_convert_codex_responses_endpoint_to_chat,
         should_resolve_copilot_dynamic_endpoint, split_endpoint_and_query, strip_beta_query,
-        AppKind, ClaudeTransformEndpointRewriteInput,
+        AppKind, ClaudeTransformEndpointRewriteInput, resolve_codex_provider_uses_chat_completions,
     };
     use serde_json::json;
 
@@ -394,6 +417,46 @@ mod tests {
         assert!(!should_convert_codex_responses_endpoint_to_chat(
             false,
             "/v1/responses"
+        ));
+    }
+
+    #[test]
+    fn resolves_codex_chat_completions_provider_priority() {
+        assert!(resolve_codex_provider_uses_chat_completions(
+            Some("openai_chat"),
+            Some("responses"),
+            Some("https://relay.example.com/v1/responses"),
+            None,
+        ));
+        assert!(!resolve_codex_provider_uses_chat_completions(
+            Some("responses"),
+            Some("chat"),
+            Some("https://relay.example.com/v1/chat/completions"),
+            None,
+        ));
+        assert!(resolve_codex_provider_uses_chat_completions(
+            None,
+            Some("chat"),
+            Some("https://relay.example.com/v1/responses"),
+            None,
+        ));
+        assert!(resolve_codex_provider_uses_chat_completions(
+            None,
+            None,
+            Some("https://relay.example.com/v1/chat/completions"),
+            None,
+        ));
+        assert!(resolve_codex_provider_uses_chat_completions(
+            None,
+            None,
+            None,
+            Some("https://relay.example.com/v1/chat/completions"),
+        ));
+        assert!(!resolve_codex_provider_uses_chat_completions(
+            None,
+            None,
+            None,
+            Some("https://relay.example.com/v1"),
         ));
     }
 
