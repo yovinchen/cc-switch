@@ -1,0 +1,214 @@
+use serde_json::Value;
+
+pub const PROVIDER_FAILED_RETRY: &str = "FWD-001";
+pub const ALL_PROVIDERS_FAILED: &str = "FWD-002";
+pub const SINGLE_PROVIDER_FAILED: &str = "FWD-003";
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ForwardFailureLog {
+    pub code: &'static str,
+    pub message: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ForwardFailureKind {
+    Upstream { status: u16, body: Option<String> },
+    Timeout(String),
+    ForwardFailed(String),
+    TransformError(String),
+    ConfigError(String),
+    AuthError(String),
+    Other(String),
+}
+
+pub fn build_retryable_forward_failure_log(
+    provider_name: &str,
+    attempted_providers: usize,
+    total_providers: usize,
+    failure: &ForwardFailureKind,
+) -> ForwardFailureLog {
+    let error_summary = summarize_forward_failure(failure);
+
+    if total_providers <= 1 {
+        ForwardFailureLog {
+            code: SINGLE_PROVIDER_FAILED,
+            message: format!("Provider {provider_name} 请求失败: {error_summary}"),
+        }
+    } else {
+        ForwardFailureLog {
+            code: PROVIDER_FAILED_RETRY,
+            message: format!(
+                "Provider {provider_name} 失败，继续尝试下一个 ({attempted_providers}/{total_providers}): {error_summary}"
+            ),
+        }
+    }
+}
+
+pub fn build_terminal_forward_failure_log(
+    attempted_providers: usize,
+    total_providers: usize,
+    last_failure: Option<&ForwardFailureKind>,
+) -> Option<ForwardFailureLog> {
+    if total_providers <= 1 {
+        return None;
+    }
+
+    let error_summary = last_failure
+        .map(summarize_forward_failure)
+        .unwrap_or_else(|| "未知错误".to_string());
+
+    Some(ForwardFailureLog {
+        code: ALL_PROVIDERS_FAILED,
+        message: format!(
+            "已尝试 {attempted_providers}/{total_providers} 个 Provider，均失败。最后错误: {error_summary}"
+        ),
+    })
+}
+
+pub fn summarize_forward_failure(failure: &ForwardFailureKind) -> String {
+    match failure {
+        ForwardFailureKind::Upstream { status, body } => {
+            let body_summary = body
+                .as_deref()
+                .map(summarize_upstream_body_for_log)
+                .filter(|summary| !summary.is_empty());
+
+            match body_summary {
+                Some(summary) => format!("上游 HTTP {status}: {summary}"),
+                None => format!("上游 HTTP {status}"),
+            }
+        }
+        ForwardFailureKind::Timeout(message) => {
+            format!("请求超时: {}", summarize_text_for_log(message, 180))
+        }
+        ForwardFailureKind::ForwardFailed(message) => {
+            format!("请求转发失败: {}", summarize_text_for_log(message, 180))
+        }
+        ForwardFailureKind::TransformError(message) => {
+            format!("响应转换失败: {}", summarize_text_for_log(message, 180))
+        }
+        ForwardFailureKind::ConfigError(message) => {
+            format!("配置错误: {}", summarize_text_for_log(message, 180))
+        }
+        ForwardFailureKind::AuthError(message) => {
+            format!("认证失败: {}", summarize_text_for_log(message, 180))
+        }
+        ForwardFailureKind::Other(message) => summarize_text_for_log(message, 180),
+    }
+}
+
+pub fn summarize_upstream_body_for_log(body: &str) -> String {
+    if let Ok(json_body) = serde_json::from_str::<Value>(body) {
+        if let Some(message) = extract_json_error_message(&json_body) {
+            return summarize_text_for_log(&message, 180);
+        }
+
+        if let Ok(compact_json) = serde_json::to_string(&json_body) {
+            return summarize_text_for_log(&compact_json, 180);
+        }
+    }
+
+    summarize_text_for_log(body, 180)
+}
+
+pub fn summarize_text_for_log(text: &str, max_chars: usize) -> String {
+    let normalized = text.split_whitespace().collect::<Vec<_>>().join(" ");
+    let trimmed = normalized.trim();
+
+    if trimmed.chars().count() <= max_chars {
+        return trimmed.to_string();
+    }
+
+    let truncated: String = trimmed.chars().take(max_chars).collect();
+    let truncated = truncated.trim_end();
+    format!("{truncated}...")
+}
+
+fn extract_json_error_message(body: &Value) -> Option<String> {
+    let candidates = [
+        body.pointer("/error/message"),
+        body.pointer("/message"),
+        body.pointer("/detail"),
+        body.pointer("/error"),
+    ];
+
+    candidates
+        .into_iter()
+        .flatten()
+        .find_map(|value| value.as_str().map(ToString::to_string))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{
+        build_retryable_forward_failure_log, build_terminal_forward_failure_log,
+        summarize_text_for_log, summarize_upstream_body_for_log, ForwardFailureKind,
+        ALL_PROVIDERS_FAILED, PROVIDER_FAILED_RETRY, SINGLE_PROVIDER_FAILED,
+    };
+    use serde_json::json;
+
+    #[test]
+    fn single_provider_retryable_log_uses_single_provider_code() {
+        let failure = ForwardFailureKind::Upstream {
+            status: 429,
+            body: Some(r#"{"error":{"message":"rate limit exceeded"}}"#.to_string()),
+        };
+
+        let log = build_retryable_forward_failure_log("PackyCode-response", 1, 1, &failure);
+
+        assert_eq!(log.code, SINGLE_PROVIDER_FAILED);
+        assert!(log.message.contains("Provider PackyCode-response 请求失败"));
+        assert!(log.message.contains("上游 HTTP 429"));
+        assert!(log.message.contains("rate limit exceeded"));
+        assert!(!log.message.contains("切换下一个"));
+    }
+
+    #[test]
+    fn multi_provider_retryable_log_keeps_failover_wording() {
+        let failure = ForwardFailureKind::Timeout("upstream timed out after 30s".to_string());
+
+        let log = build_retryable_forward_failure_log("primary", 1, 3, &failure);
+
+        assert_eq!(log.code, PROVIDER_FAILED_RETRY);
+        assert!(log.message.contains("继续尝试下一个 (1/3)"));
+        assert!(log.message.contains("请求超时"));
+    }
+
+    #[test]
+    fn single_provider_has_no_terminal_all_failed_log() {
+        assert!(build_terminal_forward_failure_log(1, 1, None).is_none());
+    }
+
+    #[test]
+    fn multi_provider_terminal_log_contains_last_error_summary() {
+        let failure = ForwardFailureKind::ForwardFailed("connection reset by peer".to_string());
+
+        let log = build_terminal_forward_failure_log(2, 2, Some(&failure))
+            .expect("expected terminal log");
+
+        assert_eq!(log.code, ALL_PROVIDERS_FAILED);
+        assert!(log.message.contains("已尝试 2/2 个 Provider，均失败"));
+        assert!(log.message.contains("connection reset by peer"));
+    }
+
+    #[test]
+    fn summarize_upstream_body_prefers_json_message() {
+        let body = json!({
+            "error": {
+                "message": "invalid_request_error: unsupported field"
+            },
+            "request_id": "req_123"
+        });
+
+        let summary = summarize_upstream_body_for_log(&body.to_string());
+
+        assert_eq!(summary, "invalid_request_error: unsupported field");
+    }
+
+    #[test]
+    fn summarize_text_for_log_collapses_whitespace_and_truncates() {
+        let summary = summarize_text_for_log("line1\n\n line2   line3", 12);
+
+        assert_eq!(summary, "line1 line2...");
+    }
+}
