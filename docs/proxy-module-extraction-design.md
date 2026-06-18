@@ -24,8 +24,9 @@
 13. Codex `/v1/responses` 与 `/v1/responses/compact` handler 已进入 `ProxyEngine::handle`；chat-to-responses 转换仍在 host 层执行，等待后续 response pipeline 迁移。
 14. Claude 与 Claude Desktop `/v1/messages` handler 已进入 `ProxyEngine::handle`；核心 `ProxyResult` 会带回 `claudeApiFormat` 等宿主 metadata，host 侧继续复用现有格式转换、SSE/非流式响应处理和用量解析。
 15. `ProxyEngine::list_models` 已提供按 app/group/interface 过滤的可路由模型视图，复用 channel source 的 legacy projection；`/proxy/v1/apps/{app}/models` 已接入该视图，返回模型对应的 provider/channel/interface 路由信息。
+16. Codex 兼容 `/v1/models` 已从 handler 直读配置迁到 `ModelCatalogProvider::load_client_catalog` 与 `ProxyEngine::client_model_catalog`；CC Switch host adapter 保留 `model_catalog_json` stale guard 和 raw catalog 返回语义。
 
-因此，本分支目前已把主要转发入口（Claude Messages、Claude Desktop Messages、Codex Chat Completions、Codex Responses、Codex Responses Compact、Gemini Native）切到 `ProxyEngine`，并开始把管理查询类能力与请求日志写入收敛到 core 可复用接口。HTTP transport 与 response pipeline 仍是宿主层兼容桥，Codex 兼容 `/v1/models` 仍保留现有 catalog 文件语义；下一阶段需要把响应转换、客户端兼容模型列表和剩余外部管理 API 继续收敛到独立代理模块边界内。
+因此，本分支目前已把主要转发入口（Claude Messages、Claude Desktop Messages、Codex Chat Completions、Codex Responses、Codex Responses Compact、Gemini Native）切到 `ProxyEngine`，并开始把管理查询类能力、Codex 客户端模型目录和请求日志写入收敛到 core 可复用接口。HTTP transport 与 response pipeline 仍是宿主层兼容桥；下一阶段需要把响应转换、剩余模型目录生成策略和剩余外部管理 API 继续收敛到独立代理模块边界内。
 
 当前原则：核心 crate 可以新增端口和领域字段，但不得引入 `tauri`、`Database`、settings、commands、services 等宿主依赖；现有 runtime 行为必须继续通过 targeted tests 证明不回归。
 
@@ -750,19 +751,33 @@ provider adapter 仍负责将 `AuthInfo` 变成 header，但 token 刷新和宿�
 
 ### Model catalog 接口
 
-`GET /v1/models` 目前在 `handlers::handle_models` 中直接读取 Codex 配置文件。抽离后应变成：
+`GET /v1/models` 已从 `handlers::handle_models` 直读 Codex 配置文件迁出。当前端口分两类模型视图：
 
 ```rust
 pub trait ModelCatalogProvider: Send + Sync {
-    fn list_models<'a>(&'a self, app: &'a AppKind, group: Option<&'a str>)
-        -> BoxFuture<'a, Result<serde_json::Value, ProxyError>>;
+    fn load_catalog<'a>(&'a self, app: &'a AppKind, provider_id: &'a str)
+        -> BoxFuture<'a, ProxyCoreResult<ModelCatalog>>;
 
-    fn list_channel_models<'a>(&'a self, channel_id: &'a str)
-        -> BoxFuture<'a, Result<Vec<ModelRoute>, ProxyError>>;
+    fn load_client_catalog<'a>(&'a self, app: &'a AppKind)
+        -> BoxFuture<'a, ProxyCoreResult<ModelCatalog>>;
+}
+
+impl ProxyEngine {
+    pub async fn list_models(
+        &self,
+        app: &AppKind,
+        group: Option<&str>,
+        inbound_interface: Option<&InterfaceKind>,
+    ) -> ProxyCoreResult<Vec<RoutableModel>>;
+
+    pub async fn client_model_catalog(&self, app: &AppKind)
+        -> ProxyCoreResult<ModelCatalog>;
 }
 ```
 
-CC Switch 桌面宿主实现 Codex model catalog 文件读取；外部宿主可以返回自己的模型目录。对外 `/v1/models` 应返回 route resolver 可见的模型，而不是简单拼接所有 provider 模型，避免暴露当前 group 不可用的 channel。
+`ProxyEngine::list_models` 是 route-visible 视图，用于管理 API 或未来可控的客户端 catalog 生成；它按 app、group、inbound interface 过滤 channel，避免暴露当前 group 不可用的 channel。`ProxyEngine::client_model_catalog` 保留客户端兼容 raw catalog 语义；当前 Codex `/v1/models` handler 只调用该 core 方法并返回 `ModelCatalog.raw`。
+
+CC Switch 桌面宿主在 `CcSwitchModelCatalogProvider::load_client_catalog` 中实现 Codex `model_catalog_json` 文件读取和 stale guard；外部宿主可以返回自己的模型目录。后续如需让 Codex `/v1/models` 完全使用 route-visible 目录，应在 core 内生成 Codex 兼容 raw catalog，而不是让 handler 重新拼装。
 
 ## HTTP 对外接口
 
@@ -1146,7 +1161,7 @@ CC Switch 前端可以继续用 Tauri commands；外部集成用 HTTP API。
 13. request body 413 错误体转换。
 14. 同 provider 两个 channel：不同 base URL、不同接口、不同模型映射。
 15. 同模型多个 channel：priority 优先，同 priority 按 weight 分流。
-16. group 限制：默认组不可见的 channel 不出现在 `/v1/models` 和 route plan。
+16. group 限制：默认组不可见的 channel 不出现在 route-visible 模型 API（如 `/proxy/v1/apps/{app}/models`）和 route plan；Codex `/v1/models` 继续按客户端 raw catalog 兼容语义返回。
 17. channel param/header override 只影响当前 channel。
 18. channel test API 返回上游延迟、模型可用性和失败原因。
 
