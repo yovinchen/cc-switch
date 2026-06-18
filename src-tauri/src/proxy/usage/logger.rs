@@ -114,44 +114,6 @@ impl<'a> UsageLogger<'a> {
         Ok(())
     }
 
-    /// 记录失败的请求
-    ///
-    /// 用于记录无法从上游获取 usage 信息的失败请求
-    #[allow(dead_code, clippy::too_many_arguments)]
-    pub fn log_error(
-        &self,
-        request_id: String,
-        provider_id: String,
-        app_type: String,
-        model: String,
-        status_code: u16,
-        error_message: String,
-        latency_ms: u64,
-    ) -> Result<(), AppError> {
-        let request_model = model.clone();
-        let log = RequestLog {
-            request_id,
-            provider_id,
-            app_type,
-            model,
-            request_model,
-            // 错误行未经过计价，留空（回填的 has_usage 闸门也不会碰全 0 行）
-            pricing_model: String::new(),
-            usage: TokenUsage::default(),
-            cost: None,
-            latency_ms,
-            first_token_ms: None,
-            status_code,
-            error_message: Some(error_message),
-            session_id: None,
-            provider_type: None,
-            is_streaming: false,
-            cost_multiplier: "1.0".to_string(),
-        };
-
-        self.log_request(&log)
-    }
-
     /// 获取模型定价
     pub fn get_model_pricing(&self, model_id: &str) -> Result<Option<ModelPricing>, AppError> {
         let conn = crate::database::lock_conn!(self.db.conn);
@@ -313,35 +275,6 @@ mod tests {
             .unwrap();
         assert_eq!(count, 1);
         assert_eq!(request_model, "req-model");
-        Ok(())
-    }
-
-    #[test]
-    fn test_log_error() -> Result<(), AppError> {
-        let db = Database::memory()?;
-        let logger = UsageLogger::new(&db);
-
-        logger.log_error(
-            "req-error".to_string(),
-            "provider-1".to_string(),
-            "claude".to_string(),
-            "unknown-model".to_string(),
-            500,
-            "Internal Server Error".to_string(),
-            50,
-        )?;
-
-        // 验证错误记录已插入
-        let conn = crate::database::lock_conn!(db.conn);
-        let (status, error): (i64, Option<String>) = conn
-            .query_row(
-                "SELECT status_code, error_message FROM proxy_request_logs WHERE request_id = 'req-error'",
-                [],
-                |row| Ok((row.get(0)?, row.get(1)?)),
-            )
-            .unwrap();
-        assert_eq!(status, 500);
-        assert_eq!(error, Some("Internal Server Error".to_string()));
         Ok(())
     }
 }
