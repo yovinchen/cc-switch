@@ -44,11 +44,12 @@ use crate::proxy_core::{
     should_use_claude_transform_streaming, strip_entity_headers_for_rebuilt_body,
     strip_hop_by_hop_response_headers, AppChannelListResponse, AppChannelResponse,
     AppChannelRouteResponse, AppKind, AppListResponse, AppSummary, ChannelDeleteResponse,
-    ChannelHealthResetResponse, ChannelListResponse, ChannelModelsResponse,
-    CurrentRouteProviderSummary, CurrentRouteResponse, InterfaceKind, ProviderListResponse,
-    ProviderSummary, ProxyBody, ProxyCoreError, ProxyCoreResponse, ProxyEngine, ProxyRequest,
-    ProxyResponseBody, ProxyResult, ProxyServices, RoutableModelList, RouteGroupChannelInput,
-    RouteGroupListResponse, RouteGroupSourceInput,
+    ChannelHealthResetResponse, ChannelListResponse, ChannelMigrationMaterializeResponse,
+    ChannelMigrationPreviewResponse, ChannelModelsResponse, CurrentRouteProviderSummary,
+    CurrentRouteResponse, InterfaceKind, ProviderListResponse, ProviderSummary, ProxyBody,
+    ProxyCoreError, ProxyCoreResponse, ProxyEngine, ProxyRequest, ProxyResponseBody, ProxyResult,
+    ProxyServices, RoutableModelList, RouteGroupChannelInput, RouteGroupListResponse,
+    RouteGroupSourceInput,
 };
 use axum::{
     extract::{Path, Query, State},
@@ -658,7 +659,7 @@ pub async fn get_current_proxy_route(
 pub async fn preview_proxy_channel_migration(
     State(state): State<ProxyState>,
     Path(app_type): Path<String>,
-) -> Result<Json<Value>, ProxyError> {
+) -> Result<Json<ChannelMigrationPreviewResponse<ProxyChannelRecord>>, ProxyError> {
     validate_management_app_type(&app_type)?;
 
     let preview = state
@@ -666,14 +667,19 @@ pub async fn preview_proxy_channel_migration(
         .preview_legacy_proxy_channel_migration(&app_type)
         .map_err(|e| ProxyError::DatabaseError(e.to_string()))?;
 
-    Ok(Json(json!(preview)))
+    Ok(Json(ChannelMigrationPreviewResponse::new(
+        preview.app_type,
+        preview.channels,
+        preview.duplicate_count,
+        preview.needs_review_count,
+    )))
 }
 
 /// POST /proxy/v1/apps/{app}/channels/migration/materialize
 pub async fn materialize_proxy_channel_migration(
     State(state): State<ProxyState>,
     Path(app_type): Path<String>,
-) -> Result<Json<Value>, ProxyError> {
+) -> Result<Json<ChannelMigrationMaterializeResponse>, ProxyError> {
     validate_management_app_type(&app_type)?;
 
     let result = state
@@ -681,7 +687,15 @@ pub async fn materialize_proxy_channel_migration(
         .materialize_legacy_proxy_channels(&app_type)
         .map_err(|e| ProxyError::DatabaseError(e.to_string()))?;
 
-    Ok(Json(json!(result)))
+    Ok(Json(ChannelMigrationMaterializeResponse::new(
+        result.app_type,
+        result.previewed_channels,
+        result.inserted_channels,
+        result.inserted_models,
+        result.inserted_health_rows,
+        result.duplicate_count,
+        result.needs_review_count,
+    )))
 }
 
 /// POST /proxy/v1/channels/{channel_id}/breakers/reset

@@ -415,6 +415,65 @@ impl<T> CurrentRouteResponse<T> {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub struct ChannelMigrationPreviewResponse<T> {
+    pub app_type: String,
+    pub channels: Vec<T>,
+    pub duplicate_count: usize,
+    pub needs_review_count: usize,
+}
+
+impl<T> ChannelMigrationPreviewResponse<T> {
+    pub fn new(
+        app_type: impl Into<String>,
+        channels: Vec<T>,
+        duplicate_count: usize,
+        needs_review_count: usize,
+    ) -> Self {
+        Self {
+            app_type: app_type.into(),
+            channels,
+            duplicate_count,
+            needs_review_count,
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ChannelMigrationMaterializeResponse {
+    pub app_type: String,
+    pub previewed_channels: usize,
+    pub inserted_channels: usize,
+    pub inserted_models: usize,
+    pub inserted_health_rows: usize,
+    pub duplicate_count: usize,
+    pub needs_review_count: usize,
+}
+
+impl ChannelMigrationMaterializeResponse {
+    pub fn new(
+        app_type: impl Into<String>,
+        previewed_channels: usize,
+        inserted_channels: usize,
+        inserted_models: usize,
+        inserted_health_rows: usize,
+        duplicate_count: usize,
+        needs_review_count: usize,
+    ) -> Self {
+        Self {
+            app_type: app_type.into(),
+            previewed_channels,
+            inserted_channels,
+            inserted_models,
+            inserted_health_rows,
+            duplicate_count,
+            needs_review_count,
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct ChannelListResponse<T> {
     pub channels: Vec<T>,
 }
@@ -564,6 +623,7 @@ mod tests {
     use super::{
         AppChannelListResponse, AppChannelResponse, AppChannelRouteResponse, AppListResponse,
         AppSummary, ChannelDeleteResponse, ChannelListResponse, ChannelModelsResponse,
+        ChannelMigrationMaterializeResponse, ChannelMigrationPreviewResponse,
         CurrentRouteProviderSummary, CurrentRouteResponse, ProviderListResponse, ProviderSummary,
         RouteGroupChannelInput, RouteGroupListResponse, RouteGroupSourceInput,
     };
@@ -714,6 +774,42 @@ mod tests {
         assert_eq!(value["active"], false);
         assert!(value["target"].is_null());
         assert!(value["configuredProvider"].is_null());
+    }
+
+    #[test]
+    fn channel_migration_preview_response_serializes_management_envelope() {
+        let response = ChannelMigrationPreviewResponse::new(
+            "claude",
+            vec![json!({
+                "id": "channel-a",
+                "needsReview": false
+            })],
+            1,
+            0,
+        );
+
+        let value = serde_json::to_value(response).expect("serialize response");
+
+        assert_eq!(value["appType"], "claude");
+        assert_eq!(value["channels"][0]["id"], "channel-a");
+        assert_eq!(value["duplicateCount"], 1);
+        assert_eq!(value["needsReviewCount"], 0);
+    }
+
+    #[test]
+    fn channel_migration_materialize_response_serializes_management_envelope() {
+        let response =
+            ChannelMigrationMaterializeResponse::new("claude", 2, 1, 3, 1, 1, 0);
+
+        let value = serde_json::to_value(response).expect("serialize response");
+
+        assert_eq!(value["appType"], "claude");
+        assert_eq!(value["previewedChannels"], 2);
+        assert_eq!(value["insertedChannels"], 1);
+        assert_eq!(value["insertedModels"], 3);
+        assert_eq!(value["insertedHealthRows"], 1);
+        assert_eq!(value["duplicateCount"], 1);
+        assert_eq!(value["needsReviewCount"], 0);
     }
 
     #[test]
