@@ -127,6 +127,27 @@ pub fn map_openai_chat_finish_reason_to_anthropic(
         .or(if has_tool_use { Some("tool_use") } else { None })
 }
 
+pub fn map_gemini_finish_reason_to_anthropic(
+    finish_reason: Option<&str>,
+    has_tool_use: bool,
+    blocked: bool,
+) -> &'static str {
+    if blocked {
+        return "refusal";
+    }
+
+    match finish_reason {
+        Some("MAX_TOKENS") => "max_tokens",
+        Some("SAFETY")
+        | Some("RECITATION")
+        | Some("SPII")
+        | Some("BLOCKLIST")
+        | Some("PROHIBITED_CONTENT") => "refusal",
+        _ if has_tool_use => "tool_use",
+        _ => "end_turn",
+    }
+}
+
 pub fn sanitize_anthropic_tool_use_input(name: &str, input: Value) -> Value {
     if name != "Read" {
         return input;
@@ -396,6 +417,38 @@ mod tests {
         assert_eq!(
             map_openai_chat_finish_reason_to_anthropic(None, false),
             None
+        );
+    }
+
+    #[test]
+    fn maps_gemini_finish_reason_to_anthropic_stop_reason() {
+        assert_eq!(
+            map_gemini_finish_reason_to_anthropic(Some("MAX_TOKENS"), false, false),
+            "max_tokens"
+        );
+        assert_eq!(
+            map_gemini_finish_reason_to_anthropic(Some("SAFETY"), false, false),
+            "refusal"
+        );
+        assert_eq!(
+            map_gemini_finish_reason_to_anthropic(Some("RECITATION"), false, false),
+            "refusal"
+        );
+        assert_eq!(
+            map_gemini_finish_reason_to_anthropic(Some("STOP"), true, false),
+            "tool_use"
+        );
+        assert_eq!(
+            map_gemini_finish_reason_to_anthropic(Some("STOP"), false, false),
+            "end_turn"
+        );
+        assert_eq!(
+            map_gemini_finish_reason_to_anthropic(Some("UNKNOWN"), false, false),
+            "end_turn"
+        );
+        assert_eq!(
+            map_gemini_finish_reason_to_anthropic(None, false, true),
+            "refusal"
         );
     }
 

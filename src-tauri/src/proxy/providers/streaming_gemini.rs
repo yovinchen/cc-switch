@@ -9,29 +9,12 @@ use super::transform_gemini::{
     AnthropicToolSchemaHints,
 };
 use crate::proxy::sse::{append_utf8_safe, strip_sse_field, take_sse_block};
-use crate::proxy_core::build_anthropic_usage_from_gemini;
+use crate::proxy_core::{build_anthropic_usage_from_gemini, map_gemini_finish_reason_to_anthropic};
 use bytes::Bytes;
 use futures::stream::{Stream, StreamExt};
 use serde_json::{json, Value};
 use std::collections::HashSet;
 use std::sync::Arc;
-
-fn map_finish_reason(reason: Option<&str>, has_tool_use: bool, blocked: bool) -> &'static str {
-    if blocked {
-        return "refusal";
-    }
-
-    match reason {
-        Some("MAX_TOKENS") => "max_tokens",
-        Some("SAFETY")
-        | Some("RECITATION")
-        | Some("SPII")
-        | Some("BLOCKLIST")
-        | Some("PROHIBITED_CONTENT") => "refusal",
-        _ if has_tool_use => "tool_use",
-        _ => "end_turn",
-    }
-}
 
 fn extract_visible_text(parts: &[Value]) -> String {
     parts
@@ -553,7 +536,7 @@ pub fn create_anthropic_sse_stream_from_gemini<E: std::error::Error + Send + 'st
             yield Ok(encode_sse("content_block_stop", &stop_event));
         }
 
-        let stop_reason = map_finish_reason(
+        let stop_reason = map_gemini_finish_reason_to_anthropic(
             latest_finish_reason.as_deref(),
             !tool_calls.is_empty(),
             blocked_text.is_some(),

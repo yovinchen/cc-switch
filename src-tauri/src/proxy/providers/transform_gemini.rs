@@ -7,7 +7,7 @@
 use super::gemini_schema::build_gemini_function_declaration;
 use super::gemini_shadow::{GeminiAssistantTurn, GeminiShadowStore, GeminiToolCallMeta};
 use crate::proxy::error::ProxyError;
-use crate::proxy_core::build_anthropic_usage_from_gemini;
+use crate::proxy_core::{build_anthropic_usage_from_gemini, map_gemini_finish_reason_to_anthropic};
 use serde_json::{json, Map, Value};
 use std::collections::{HashMap, HashSet};
 
@@ -238,12 +238,13 @@ pub fn gemini_to_anthropic_with_shadow_and_hints(
         }
     }
 
-    let stop_reason = map_finish_reason(
+    let stop_reason = json!(map_gemini_finish_reason_to_anthropic(
         candidate
             .get("finishReason")
             .and_then(|value| value.as_str()),
         has_tool_use,
-    );
+        false,
+    ));
 
     let anthropic_response = json!({
         "id": body.get("responseId").and_then(|value| value.as_str()).unwrap_or(""),
@@ -1093,33 +1094,6 @@ fn map_tool_choice(tool_choice: Option<&Value>) -> Result<Option<Value>, ProxyEr
             Ok(Some(json!({ "functionCallingConfig": config })))
         }
         _ => Ok(None),
-    }
-}
-
-fn map_finish_reason(reason: Option<&str>, has_tool_use: bool) -> Value {
-    let mapped = match reason {
-        Some("MAX_TOKENS") => Some("max_tokens"),
-        Some("STOP") | Some("FINISH_REASON_UNSPECIFIED") | None => {
-            if has_tool_use {
-                Some("tool_use")
-            } else {
-                Some("end_turn")
-            }
-        }
-        Some("SAFETY")
-        | Some("RECITATION")
-        | Some("SPII")
-        | Some("BLOCKLIST")
-        | Some("PROHIBITED_CONTENT") => Some("refusal"),
-        Some(other) => {
-            log::warn!("[Claude/Gemini] Unknown Gemini finishReason `{other}`, using end_turn");
-            Some("end_turn")
-        }
-    };
-
-    match mapped {
-        Some(value) => json!(value),
-        None => Value::Null,
     }
 }
 
