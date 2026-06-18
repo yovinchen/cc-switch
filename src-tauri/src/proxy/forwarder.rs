@@ -30,7 +30,8 @@ use crate::commands::{CodexOAuthState, CopilotAuthState};
 use crate::proxy::providers::codex_oauth_auth::CodexOAuthManager;
 use crate::proxy::providers::copilot_auth::CopilotAuthManager;
 use crate::proxy_core::{
-    AppKind, ChannelQuery, InterfaceKind, ProxyBody, ProxyEngine, ProxyRequest, ProxyServices,
+    validate_managed_account_upstream_auth, AppKind, ChannelQuery, InterfaceKind, ProxyBody,
+    ProxyEngine, ProxyRequest, ProxyServices,
 };
 use crate::proxy_core_host::CcSwitchProxyServices;
 use crate::{app_config::AppType, provider::Provider};
@@ -40,8 +41,6 @@ use serde_json::{json, Value};
 use std::sync::Arc;
 use tauri::Manager;
 use tokio::sync::RwLock;
-
-const PROXY_AUTH_PLACEHOLDER: &str = "PROXY_MANAGED";
 
 pub struct ForwardResult {
     pub response: ProxyResponse,
@@ -2972,37 +2971,8 @@ fn reject_proxy_placeholder_for_managed_account_upstream(
     url: &str,
     headers: &http::HeaderMap,
 ) -> Result<(), ProxyError> {
-    if !is_managed_account_upstream_url(url) || !headers_contain_proxy_placeholder(headers) {
-        return Ok(());
-    }
-
-    Err(ProxyError::AuthError(
-        "Managed account proxy auth was not resolved; PROXY_MANAGED must not be sent upstream"
-            .to_string(),
-    ))
-}
-
-fn is_managed_account_upstream_url(url: &str) -> bool {
-    let Ok(uri) = url.parse::<http::Uri>() else {
-        return false;
-    };
-
-    let Some(host) = uri.host().map(str::to_ascii_lowercase) else {
-        return false;
-    };
-
-    host == "githubcopilot.com"
-        || host.ends_with(".githubcopilot.com")
-        || (host == "chatgpt.com" && uri.path().starts_with("/backend-api/codex"))
-}
-
-fn headers_contain_proxy_placeholder(headers: &http::HeaderMap) -> bool {
-    headers.values().any(|value| {
-        value
-            .to_str()
-            .map(|value| value.contains(PROXY_AUTH_PLACEHOLDER))
-            .unwrap_or(false)
-    })
+    validate_managed_account_upstream_auth(url, headers)
+        .map_err(|error| ProxyError::AuthError(error.to_string()))
 }
 
 fn should_preserve_exact_header_case(
