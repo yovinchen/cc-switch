@@ -204,6 +204,24 @@ pub struct ChannelHealthReset {
     pub app: AppKind,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ChannelHealthResetResponse {
+    pub channel_id: String,
+    pub app_type: String,
+    pub reset: bool,
+}
+
+impl ChannelHealthResetResponse {
+    pub fn from_reset(reset: ChannelHealthReset) -> Self {
+        Self {
+            channel_id: reset.channel_id,
+            app_type: reset.app.as_str().to_string(),
+            reset: true,
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ProxyCoreEvent {

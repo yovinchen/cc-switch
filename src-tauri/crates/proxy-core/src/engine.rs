@@ -5,7 +5,8 @@ use super::domain::{
 };
 use super::error::ProxyCoreResult;
 use super::ports::{
-    ChannelHealthReset, ModelCatalog, ProxyCoreEvent, ProxyCoreEventType, ProxyServices,
+    ChannelHealthReset, ChannelHealthResetResponse, ModelCatalog, ProxyCoreEvent,
+    ProxyCoreEventType, ProxyServices,
 };
 use serde_json::{json, to_value};
 use std::collections::BTreeMap;
@@ -186,6 +187,15 @@ where
         channel_id: &str,
     ) -> ProxyCoreResult<ChannelHealthReset> {
         self.services.health_store().reset_channel(channel_id).await
+    }
+
+    pub async fn reset_channel_health_response(
+        &self,
+        channel_id: &str,
+    ) -> ProxyCoreResult<ChannelHealthResetResponse> {
+        self.reset_channel_health(channel_id)
+            .await
+            .map(ChannelHealthResetResponse::from_reset)
     }
 
     async fn plan_route_with_legacy_projection(
@@ -727,6 +737,24 @@ mod tests {
 
         assert_eq!(reset.channel_id, "channel-a");
         assert_eq!(reset.app, AppKind::Claude);
+    }
+
+    #[test]
+    fn reset_channel_health_response_wraps_management_envelope() {
+        let services = Arc::new(TestServices::default());
+        let engine = ProxyEngine::new(services);
+
+        let response = futures::executor::block_on(engine.reset_channel_health_response("channel-a"))
+            .expect("reset response");
+
+        assert_eq!(response.channel_id, "channel-a");
+        assert_eq!(response.app_type, "claude");
+        assert!(response.reset);
+
+        let value = serde_json::to_value(&response).expect("serialize reset response");
+        assert_eq!(value["channelId"], "channel-a");
+        assert_eq!(value["appType"], "claude");
+        assert_eq!(value["reset"], true);
     }
 
     fn provider_spec() -> ProviderSpec {

@@ -40,9 +40,9 @@ use crate::proxy_core::{
     body_diagnostics_suffix, body_looks_like_sse, claude_stream_usage_event_filter,
     codex_stream_usage_event_filter, should_aggregate_codex_oauth_responses_sse,
     should_use_claude_transform_streaming, strip_entity_headers_for_rebuilt_body,
-    strip_hop_by_hop_response_headers, AppKind, InterfaceKind, ProxyBody, ProxyCoreError,
-    ProxyCoreResponse, ProxyEngine, ProxyRequest, ProxyResponseBody, ProxyResult, ProxyServices,
-    RoutableModelList,
+    strip_hop_by_hop_response_headers, AppKind, ChannelHealthResetResponse, InterfaceKind,
+    ProxyBody, ProxyCoreError, ProxyCoreResponse, ProxyEngine, ProxyRequest, ProxyResponseBody,
+    ProxyResult, ProxyServices, RoutableModelList,
 };
 use axum::{
     extract::{Path, Query, State},
@@ -707,18 +707,14 @@ pub async fn materialize_proxy_channel_migration(
 pub async fn reset_proxy_channel_breaker(
     State(state): State<ProxyState>,
     Path(channel_id): Path<String>,
-) -> Result<Json<Value>, ProxyError> {
+) -> Result<Json<ChannelHealthResetResponse>, ProxyError> {
     let channel_id = normalize_channel_id_path(channel_id)?;
-    let reset = ProxyEngine::new(state.proxy_core_services.clone())
-        .reset_channel_health(&channel_id)
+    let response = ProxyEngine::new(state.proxy_core_services.clone())
+        .reset_channel_health_response(&channel_id)
         .await
         .map_err(proxy_core_error_to_proxy_error)?;
 
-    Ok(Json(json!({
-        "channelId": reset.channel_id,
-        "appType": reset.app.as_str(),
-        "reset": true,
-    })))
+    Ok(Json(response))
 }
 
 /// POST /proxy/v1/route/resolve
