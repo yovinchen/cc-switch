@@ -2,6 +2,8 @@ use crate::UpstreamSseAggregationKind;
 use serde_json::{json, Value};
 
 pub const CLAUDE_API_FORMAT_METADATA_KEY: &str = "claudeApiFormat";
+const THINK_OPEN_TAG: &str = "<think>";
+const THINK_CLOSE_TAG: &str = "</think>";
 
 pub fn claude_api_format_from_metadata(metadata: &Value, fallback: &str) -> String {
     metadata
@@ -264,6 +266,55 @@ pub fn extract_reasoning_summary_text(value: &Value) -> Option<String> {
         .join("\n\n");
 
     (!text.is_empty()).then_some(text)
+}
+
+pub fn codex_response_item_call_id(item: &Value) -> Option<String> {
+    item.get("call_id")
+        .or_else(|| item.get("id"))
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(ToString::to_string)
+}
+
+pub fn is_empty_json_value(value: &Value) -> bool {
+    match value {
+        Value::Null => true,
+        Value::String(value) => value.trim().is_empty(),
+        Value::Array(value) => value.is_empty(),
+        Value::Object(value) => value.is_empty(),
+        _ => false,
+    }
+}
+
+pub fn split_leading_think_block(text: &str) -> Option<(String, String)> {
+    let leading_ws_len = text.len() - text.trim_start().len();
+    let after_ws = &text[leading_ws_len..];
+    if !after_ws.starts_with(THINK_OPEN_TAG) {
+        return None;
+    }
+
+    let body_start = leading_ws_len + THINK_OPEN_TAG.len();
+    let close_relative = text[body_start..].find(THINK_CLOSE_TAG)?;
+    let close_start = body_start + close_relative;
+    let answer_start = close_start + THINK_CLOSE_TAG.len();
+
+    Some((
+        text[body_start..close_start].trim().to_string(),
+        strip_think_answer_separator(&text[answer_start..]).to_string(),
+    ))
+}
+
+pub fn strip_leading_think_open_tag(text: &str) -> Option<String> {
+    let leading_ws_len = text.len() - text.trim_start().len();
+    let after_ws = &text[leading_ws_len..];
+    after_ws
+        .strip_prefix(THINK_OPEN_TAG)
+        .map(|value| value.trim().to_string())
+}
+
+fn strip_think_answer_separator(text: &str) -> &str {
+    text.trim_start_matches(['\r', '\n', '\t', ' '])
 }
 
 pub fn sanitize_anthropic_tool_use_input(name: &str, input: Value) -> Value {
@@ -633,6 +684,44 @@ mod tests {
             extract_reasoning_summary_text(&json!({"reasoning_content": "compat"})).as_deref(),
             Some("compat")
         );
+    }
+
+    #[test]
+    fn extracts_codex_response_item_call_ids() {
+        assert_eq!(
+            codex_response_item_call_id(&json!({"call_id": " call_1 ", "id": "fallback"}))
+                .as_deref(),
+            Some("call_1")
+        );
+        assert_eq!(
+            codex_response_item_call_id(&json!({"id": " item_1 "})).as_deref(),
+            Some("item_1")
+        );
+        assert_eq!(codex_response_item_call_id(&json!({"call_id": "  "})), None);
+    }
+
+    #[test]
+    fn detects_empty_json_values_for_history_merge() {
+        assert!(is_empty_json_value(&Value::Null));
+        assert!(is_empty_json_value(&json!("  ")));
+        assert!(is_empty_json_value(&json!([])));
+        assert!(is_empty_json_value(&json!({})));
+        assert!(!is_empty_json_value(&json!(0)));
+        assert!(!is_empty_json_value(&json!("text")));
+    }
+
+    #[test]
+    fn splits_and_strips_leading_think_tags() {
+        assert_eq!(
+            split_leading_think_block(" \n<think> plan </think>\n\nanswer"),
+            Some(("plan".to_string(), "answer".to_string()))
+        );
+        assert_eq!(split_leading_think_block("answer only"), None);
+        assert_eq!(
+            strip_leading_think_open_tag("\t<think>still thinking").as_deref(),
+            Some("still thinking")
+        );
+        assert_eq!(strip_leading_think_open_tag("answer"), None);
     }
 
     #[test]
