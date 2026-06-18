@@ -9,6 +9,7 @@
 //! - usage 字段命名与 Anthropic 一致 (input_tokens/output_tokens)
 
 use crate::proxy::{error::ProxyError, json_canonical::canonical_json_string};
+use crate::proxy_core::map_anthropic_tool_choice_to_openai_responses;
 use serde_json::{json, Value};
 
 pub(crate) fn sanitize_anthropic_tool_use_input(name: &str, input: Value) -> Value {
@@ -136,7 +137,7 @@ pub fn anthropic_to_responses(
     }
 
     if let Some(v) = body.get("tool_choice") {
-        result["tool_choice"] = map_tool_choice_to_responses(v);
+        result["tool_choice"] = map_anthropic_tool_choice_to_openai_responses(v);
     }
 
     // Inject prompt_cache_key for improved cache routing on OpenAI-compatible endpoints
@@ -203,28 +204,6 @@ pub fn anthropic_to_responses(
     }
 
     Ok(result)
-}
-
-fn map_tool_choice_to_responses(tool_choice: &Value) -> Value {
-    match tool_choice {
-        Value::String(_) => tool_choice.clone(),
-        Value::Object(obj) => match obj.get("type").and_then(|t| t.as_str()) {
-            // Anthropic "any" means at least one tool call is required
-            Some("any") => json!("required"),
-            Some("auto") => json!("auto"),
-            Some("none") => json!("none"),
-            // Anthropic forced tool -> Responses function tool selector
-            Some("tool") => {
-                let name = obj.get("name").and_then(|n| n.as_str()).unwrap_or("");
-                json!({
-                    "type": "function",
-                    "name": name
-                })
-            }
-            _ => tool_choice.clone(),
-        },
-        _ => tool_choice.clone(),
-    }
 }
 
 pub(crate) fn map_responses_stop_reason(
