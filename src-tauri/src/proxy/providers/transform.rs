@@ -7,7 +7,8 @@ use crate::proxy::{error::ProxyError, json_canonical::canonical_json_string};
 pub(crate) use crate::proxy_core::strip_leading_anthropic_billing_header;
 use crate::proxy_core::{clean_openai_tool_schema, map_anthropic_tool_choice_to_openai_chat};
 pub use crate::proxy_core::{
-    is_openai_o_series, resolve_reasoning_effort, supports_reasoning_effort,
+    is_openai_o_series, map_openai_chat_finish_reason_to_anthropic, resolve_reasoning_effort,
+    supports_reasoning_effort,
 };
 use serde_json::{json, Value};
 
@@ -443,22 +444,10 @@ pub fn openai_to_anthropic(body: Value) -> Result<Value, ProxyError> {
     }
 
     // 映射 finish_reason → stop_reason
-    let stop_reason = choice
-        .get("finish_reason")
-        .and_then(|r| r.as_str())
-        .map(|r| match r {
-            "stop" => "end_turn",
-            "length" => "max_tokens",
-            "tool_calls" | "function_call" => "tool_use",
-            "content_filter" => "end_turn",
-            other => {
-                log::warn!(
-                    "[Claude/OpenAI] Unknown finish_reason in non-streaming response: {other}"
-                );
-                "end_turn"
-            }
-        })
-        .or(if has_tool_use { Some("tool_use") } else { None });
+    let stop_reason = map_openai_chat_finish_reason_to_anthropic(
+        choice.get("finish_reason").and_then(|r| r.as_str()),
+        has_tool_use,
+    );
 
     // usage — map cache tokens from OpenAI format to Anthropic format
     let usage = body.get("usage").cloned().unwrap_or(json!({}));

@@ -112,6 +112,21 @@ pub fn map_openai_responses_stop_reason_to_anthropic(
     })
 }
 
+pub fn map_openai_chat_finish_reason_to_anthropic(
+    finish_reason: Option<&str>,
+    has_tool_use: bool,
+) -> Option<&'static str> {
+    finish_reason
+        .map(|value| match value {
+            "stop" => "end_turn",
+            "length" => "max_tokens",
+            "tool_calls" | "function_call" => "tool_use",
+            "content_filter" => "end_turn",
+            _ => "end_turn",
+        })
+        .or(if has_tool_use { Some("tool_use") } else { None })
+}
+
 pub fn sanitize_anthropic_tool_use_input(name: &str, input: Value) -> Value {
     if name != "Read" {
         return input;
@@ -344,6 +359,42 @@ mod tests {
         );
         assert_eq!(
             map_openai_responses_stop_reason_to_anthropic(None, true, Some("max_tokens")),
+            None
+        );
+    }
+
+    #[test]
+    fn maps_openai_chat_finish_reason_to_anthropic_stop_reason() {
+        assert_eq!(
+            map_openai_chat_finish_reason_to_anthropic(Some("stop"), false),
+            Some("end_turn")
+        );
+        assert_eq!(
+            map_openai_chat_finish_reason_to_anthropic(Some("length"), false),
+            Some("max_tokens")
+        );
+        assert_eq!(
+            map_openai_chat_finish_reason_to_anthropic(Some("tool_calls"), false),
+            Some("tool_use")
+        );
+        assert_eq!(
+            map_openai_chat_finish_reason_to_anthropic(Some("function_call"), false),
+            Some("tool_use")
+        );
+        assert_eq!(
+            map_openai_chat_finish_reason_to_anthropic(Some("content_filter"), false),
+            Some("end_turn")
+        );
+        assert_eq!(
+            map_openai_chat_finish_reason_to_anthropic(Some("unknown"), false),
+            Some("end_turn")
+        );
+        assert_eq!(
+            map_openai_chat_finish_reason_to_anthropic(None, true),
+            Some("tool_use")
+        );
+        assert_eq!(
+            map_openai_chat_finish_reason_to_anthropic(None, false),
             None
         );
     }

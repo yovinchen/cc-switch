@@ -3,6 +3,7 @@
 //! 实现 OpenAI SSE → Anthropic SSE 格式转换
 
 use crate::proxy::sse::{strip_sse_field, take_sse_block};
+use crate::proxy_core::map_openai_chat_finish_reason_to_anthropic;
 use bytes::Bytes;
 use futures::stream::{Stream, StreamExt};
 use serde::{Deserialize, Serialize};
@@ -513,7 +514,12 @@ pub fn create_anthropic_sse_stream<E: std::error::Error + Send + 'static>(
                                         // （第一个 usage 为 null，后续才补全）。此处只做缓存，不立即发送，
                                         // 等到 [DONE] 或流末尾再统一发出，确保 usage 完整且只发一次。
                                         if let Some(finish_reason) = &choice.finish_reason {
-                                            let stop_reason = map_stop_reason(Some(finish_reason));
+                                            let stop_reason =
+                                                map_openai_chat_finish_reason_to_anthropic(
+                                                    Some(finish_reason),
+                                                    false,
+                                                )
+                                                .map(ToString::to_string);
                                             let usage_json =
                                                 chunk_usage_json.clone().or_else(|| latest_usage.clone());
 
@@ -683,23 +689,6 @@ fn extract_cache_read_tokens(usage: &Usage) -> Option<u32> {
         .filter(|&v| v > 0)
 }
 
-/// 映射停止原因
-fn map_stop_reason(finish_reason: Option<&str>) -> Option<String> {
-    finish_reason.map(|r| {
-        match r {
-            "tool_calls" | "function_call" => "tool_use",
-            "stop" => "end_turn",
-            "length" => "max_tokens",
-            "content_filter" => "end_turn",
-            other => {
-                log::warn!("[Claude/OpenRouter] Unknown finish_reason in streaming: {other}");
-                "end_turn"
-            }
-        }
-        .to_string()
-    })
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -737,12 +726,12 @@ mod tests {
     #[test]
     fn test_map_stop_reason_legacy_and_filtered_values() {
         assert_eq!(
-            map_stop_reason(Some("function_call")),
-            Some("tool_use".to_string())
+            map_openai_chat_finish_reason_to_anthropic(Some("function_call"), false),
+            Some("tool_use")
         );
         assert_eq!(
-            map_stop_reason(Some("content_filter")),
-            Some("end_turn".to_string())
+            map_openai_chat_finish_reason_to_anthropic(Some("content_filter"), false),
+            Some("end_turn")
         );
     }
 
