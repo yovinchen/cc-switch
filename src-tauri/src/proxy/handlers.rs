@@ -37,11 +37,13 @@ use crate::database::{
     ProxyChannelModelRecord, ProxyChannelModelsReplaceRequest, ProxyChannelPatchRequest,
     ProxyChannelRecord, ProxyChannelWriteRequest,
 };
+use crate::proxy::channel_routing::{ChannelRouteCandidate, ChannelRouteRejected};
 use crate::proxy_core::{
     body_diagnostics_suffix, body_looks_like_sse, claude_stream_usage_event_filter,
     codex_stream_usage_event_filter, should_aggregate_codex_oauth_responses_sse,
     should_use_claude_transform_streaming, strip_entity_headers_for_rebuilt_body,
-    strip_hop_by_hop_response_headers, AppKind, AppListResponse, AppSummary, ChannelDeleteResponse,
+    strip_hop_by_hop_response_headers, AppChannelListResponse, AppChannelResponse,
+    AppChannelRouteResponse, AppKind, AppListResponse, AppSummary, ChannelDeleteResponse,
     ChannelHealthResetResponse, ChannelListResponse, ChannelModelsResponse, InterfaceKind,
     ProviderListResponse, ProviderSummary, ProxyBody, ProxyCoreError, ProxyCoreResponse,
     ProxyEngine, ProxyRequest, ProxyResponseBody, ProxyResult, ProxyServices, RoutableModelList,
@@ -532,7 +534,10 @@ pub async fn list_proxy_channels(
     State(state): State<ProxyState>,
     Path(app_type): Path<String>,
     Query(query): Query<AppChannelListQuery>,
-) -> Result<Json<Value>, ProxyError> {
+) -> Result<
+    Json<AppChannelResponse<ProxyChannelRecord, ChannelRouteCandidate, ChannelRouteRejected>>,
+    ProxyError,
+> {
     validate_management_app_type(&app_type)?;
     let app_type = app_type.trim().to_string();
 
@@ -543,15 +548,17 @@ pub async fn list_proxy_channels(
             .await
             .map_err(|e| ProxyError::DatabaseError(e.to_string()))?;
 
-        return Ok(Json(json!({
-            "appType": response.app_type,
-            "source": response.source,
-            "requestedModel": response.requested_model,
-            "interfaceKind": response.interface_kind,
-            "routeGroup": response.route_group,
-            "channels": response.candidates,
-            "rejected": response.rejected,
-        })));
+        return Ok(Json(AppChannelResponse::Route(
+            AppChannelRouteResponse::new(
+                response.app_type,
+                channel_route_source_label(&response.source),
+                response.requested_model,
+                response.interface_kind,
+                response.route_group,
+                response.candidates,
+                response.rejected,
+            ),
+        )));
     }
 
     let (channels, source) = state
@@ -560,11 +567,11 @@ pub async fn list_proxy_channels(
         .await
         .map_err(|e| ProxyError::DatabaseError(e.to_string()))?;
 
-    Ok(Json(json!({
-        "appType": app_type,
-        "source": source,
-        "channels": channels,
-    })))
+    Ok(Json(AppChannelResponse::List(AppChannelListResponse::new(
+        app_type,
+        channel_route_source_label(&source),
+        channels,
+    ))))
 }
 
 /// GET /proxy/v1/groups
