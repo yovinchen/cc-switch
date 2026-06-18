@@ -28,11 +28,12 @@ use super::{
 use crate::commands::{CodexOAuthState, CopilotAuthState};
 use crate::proxy::providers::codex_oauth_auth::CodexOAuthManager;
 use crate::proxy::providers::copilot_auth::CopilotAuthManager;
+use crate::proxy_core::{append_query_to_full_url, merge_query_params};
 use crate::proxy_core::{
     build_codex_oauth_session_headers, resolve_upstream_request_transport_policy,
     should_preserve_exact_request_header_case, should_strip_forwarded_request_header,
-    validate_managed_account_upstream_auth, AppKind, ChannelQuery, InterfaceKind, ProxyBody,
-    ProxyEngine, ProxyRequest, ProxyServices,
+    split_endpoint_and_query, strip_beta_query, validate_managed_account_upstream_auth, AppKind,
+    ChannelQuery, InterfaceKind, ProxyBody, ProxyEngine, ProxyRequest, ProxyServices,
 };
 use crate::proxy_core_host::CcSwitchProxyServices;
 use crate::{app_config::AppType, provider::Provider};
@@ -2698,12 +2699,6 @@ fn extract_json_error_message(body: &Value) -> Option<String> {
         .find_map(|value| value.as_str().map(ToString::to_string))
 }
 
-fn split_endpoint_and_query(endpoint: &str) -> (&str, Option<&str>) {
-    endpoint
-        .split_once('?')
-        .map_or((endpoint, None), |(path, query)| (path, Some(query)))
-}
-
 fn attempt_event_payload(
     request_id: &str,
     app_type: &str,
@@ -2753,21 +2748,6 @@ fn attempt_event_payload(
     }
 
     payload
-}
-
-fn strip_beta_query(query: Option<&str>) -> Option<String> {
-    let filtered = query.map(|query| {
-        query
-            .split('&')
-            .filter(|pair| !pair.is_empty() && !pair.starts_with("beta="))
-            .collect::<Vec<_>>()
-            .join("&")
-    });
-
-    match filtered.as_deref() {
-        Some("") | None => None,
-        Some(_) => filtered,
-    }
 }
 
 fn is_claude_messages_path(path: &str) -> bool {
@@ -2851,26 +2831,6 @@ fn rewrite_claude_transform_endpoint(
     (rewritten, passthrough_query)
 }
 
-fn merge_query_params(base_query: Option<&str>, extra_param: Option<&str>) -> Option<String> {
-    let mut params: Vec<String> = base_query
-        .into_iter()
-        .flat_map(|query| query.split('&'))
-        .filter(|pair| !pair.is_empty())
-        .filter(|pair| !pair.starts_with("alt="))
-        .map(ToString::to_string)
-        .collect();
-
-    if let Some(extra_param) = extra_param {
-        params.push(extra_param.to_string());
-    }
-
-    if params.is_empty() {
-        None
-    } else {
-        Some(params.join("&"))
-    }
-}
-
 #[allow(dead_code)]
 fn request_model_for_forward(app_type: &AppType, endpoint: &str, body: &Value) -> Option<String> {
     if matches!(app_type, AppType::Gemini) {
@@ -2899,19 +2859,6 @@ fn interface_kind_for_forward(app_type: &AppType, endpoint: &str) -> Option<&'st
             }
         }
         AppType::Gemini => Some("gemini_native"),
-    }
-}
-
-fn append_query_to_full_url(base_url: &str, query: Option<&str>) -> String {
-    match query {
-        Some(query) if !query.is_empty() => {
-            if base_url.contains('?') {
-                format!("{base_url}&{query}")
-            } else {
-                format!("{base_url}?{query}")
-            }
-        }
-        _ => base_url.to_string(),
     }
 }
 
