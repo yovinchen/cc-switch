@@ -19,6 +19,52 @@ pub fn claude_api_format_needs_transform(api_format: &str) -> bool {
     )
 }
 
+pub fn resolve_claude_api_format(
+    provider_type: Option<&str>,
+    meta_api_format: Option<&str>,
+    settings_api_format: Option<&str>,
+    openrouter_compat_mode: Option<&Value>,
+) -> &'static str {
+    if provider_type == Some("codex_oauth") {
+        return "openai_responses";
+    }
+
+    if let Some(api_format) = meta_api_format {
+        return normalize_configured_claude_api_format(api_format);
+    }
+
+    if let Some(api_format) = settings_api_format {
+        return normalize_configured_claude_api_format(api_format);
+    }
+
+    if openrouter_compat_mode_enabled(openrouter_compat_mode) {
+        "openai_chat"
+    } else {
+        "anthropic"
+    }
+}
+
+fn normalize_configured_claude_api_format(api_format: &str) -> &'static str {
+    match api_format {
+        "openai_chat" => "openai_chat",
+        "openai_responses" => "openai_responses",
+        "gemini_native" => "gemini_native",
+        _ => "anthropic",
+    }
+}
+
+fn openrouter_compat_mode_enabled(raw: Option<&Value>) -> bool {
+    match raw {
+        Some(Value::Bool(value)) => *value,
+        Some(Value::Number(number)) => number.as_i64().unwrap_or(0) != 0,
+        Some(Value::String(value)) => {
+            let normalized = value.trim().to_lowercase();
+            normalized == "true" || normalized == "1"
+        }
+        _ => false,
+    }
+}
+
 pub fn should_aggregate_codex_oauth_responses_sse(
     requested_streaming: bool,
     api_format: &str,
@@ -92,6 +138,45 @@ mod tests {
         assert!(claude_api_format_needs_transform("openai_responses"));
         assert!(claude_api_format_needs_transform("gemini_native"));
         assert!(!claude_api_format_needs_transform("unknown"));
+    }
+
+    #[test]
+    fn resolve_claude_api_format_uses_codex_oauth_first() {
+        assert_eq!(
+            resolve_claude_api_format(
+                Some("codex_oauth"),
+                Some("anthropic"),
+                Some("openai_chat"),
+                None,
+            ),
+            "openai_responses"
+        );
+    }
+
+    #[test]
+    fn resolve_claude_api_format_prefers_meta_then_settings_then_openrouter() {
+        assert_eq!(
+            resolve_claude_api_format(
+                None,
+                Some("gemini_native"),
+                Some("openai_chat"),
+                Some(&json!(true)),
+            ),
+            "gemini_native"
+        );
+        assert_eq!(
+            resolve_claude_api_format(None, Some("unknown"), Some("openai_chat"), None),
+            "anthropic"
+        );
+        assert_eq!(
+            resolve_claude_api_format(None, None, Some("unknown"), Some(&json!("1"))),
+            "anthropic"
+        );
+        assert_eq!(
+            resolve_claude_api_format(None, None, None, Some(&json!("1"))),
+            "openai_chat"
+        );
+        assert_eq!(resolve_claude_api_format(None, None, None, None), "anthropic");
     }
 
     #[test]

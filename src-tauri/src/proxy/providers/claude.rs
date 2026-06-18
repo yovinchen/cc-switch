@@ -17,7 +17,7 @@
 use super::{AuthInfo, AuthStrategy, ProviderAdapter, ProviderType};
 use crate::provider::Provider;
 use crate::proxy::error::ProxyError;
-use crate::proxy_core::claude_api_format_needs_transform;
+use crate::proxy_core::{claude_api_format_needs_transform, resolve_claude_api_format};
 use serde_json::{json, Value};
 
 const ANTHROPIC_THINKING_PLACEHOLDER: &str = "tool call";
@@ -30,56 +30,16 @@ const REASONING_VENDOR_HINTS: &[&str] = &["moonshot", "kimi", "deepseek", "mimo"
 /// 供 handler/forwarder 外部使用的公开函数。
 /// 优先级：meta.apiFormat > settings_config.api_format > openrouter_compat_mode > 默认 "anthropic"
 pub fn get_claude_api_format(provider: &Provider) -> &'static str {
-    // 0) Codex OAuth 强制使用 openai_responses（不可被覆盖）
-    if let Some(meta) = provider.meta.as_ref() {
-        if meta.provider_type.as_deref() == Some("codex_oauth") {
-            return "openai_responses";
-        }
-    }
-
-    // 1) Preferred: meta.apiFormat (SSOT, never written to Claude Code config)
-    if let Some(meta) = provider.meta.as_ref() {
-        if let Some(api_format) = meta.api_format.as_deref() {
-            return match api_format {
-                "openai_chat" => "openai_chat",
-                "openai_responses" => "openai_responses",
-                "gemini_native" => "gemini_native",
-                _ => "anthropic",
-            };
-        }
-    }
-
-    // 2) Backward compatibility: legacy settings_config.api_format
-    if let Some(api_format) = provider
-        .settings_config
-        .get("api_format")
-        .and_then(|v| v.as_str())
-    {
-        return match api_format {
-            "openai_chat" => "openai_chat",
-            "openai_responses" => "openai_responses",
-            "gemini_native" => "gemini_native",
-            _ => "anthropic",
-        };
-    }
-
-    // 3) Backward compatibility: legacy openrouter_compat_mode (bool/number/string)
-    let raw = provider.settings_config.get("openrouter_compat_mode");
-    let enabled = match raw {
-        Some(serde_json::Value::Bool(v)) => *v,
-        Some(serde_json::Value::Number(num)) => num.as_i64().unwrap_or(0) != 0,
-        Some(serde_json::Value::String(value)) => {
-            let normalized = value.trim().to_lowercase();
-            normalized == "true" || normalized == "1"
-        }
-        _ => false,
-    };
-
-    if enabled {
-        "openai_chat"
-    } else {
-        "anthropic"
-    }
+    let meta = provider.meta.as_ref();
+    resolve_claude_api_format(
+        meta.and_then(|meta| meta.provider_type.as_deref()),
+        meta.and_then(|meta| meta.api_format.as_deref()),
+        provider
+            .settings_config
+            .get("api_format")
+            .and_then(|value| value.as_str()),
+        provider.settings_config.get("openrouter_compat_mode"),
+    )
 }
 
 fn is_reasoning_vendor_identifier(value: &str) -> bool {
