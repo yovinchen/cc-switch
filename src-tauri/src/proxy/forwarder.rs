@@ -30,15 +30,17 @@ use crate::proxy_core::append_query_to_full_url;
 use crate::proxy_core::{
     build_codex_oauth_session_headers, build_retryable_forward_failure_log,
     build_terminal_forward_failure_log, build_upstream_auth_headers, categorize_forward_failure,
-    is_github_copilot_upstream, resolve_media_prevention_policy,
-    resolve_upstream_request_transport_policy, resolved_copilot_dynamic_base_url,
-    should_apply_bedrock_pre_send_optimizer, should_check_media_retry,
-    should_failover_after_rectifier_retry_failure, should_preserve_exact_request_header_case,
-    should_resolve_copilot_dynamic_endpoint, should_send_anthropic_request_headers,
-    should_trigger_media_retry, split_endpoint_and_query, validate_managed_account_upstream_auth,
-    AppKind, ChannelQuery, CopilotAuthHeaderOverrides, ForwardFailureCategory, ForwardFailureKind,
-    InterfaceKind, MediaRetryInput, ProxyBody, ProxyEngine, ProxyRequest, ProxyServices,
-    UpstreamAuthHeadersInput, UpstreamRequestHeadersInput, BEDROCK_OPTIMIZER_ENV_FLAG,
+    is_github_copilot_upstream, is_socks_proxy_url, resolve_media_prevention_policy,
+    resolve_upstream_request_transport_policy, resolve_upstream_send_policy,
+    resolved_copilot_dynamic_base_url, should_apply_bedrock_pre_send_optimizer,
+    should_check_media_retry, should_failover_after_rectifier_retry_failure,
+    should_preserve_exact_request_header_case, should_resolve_copilot_dynamic_endpoint,
+    should_send_anthropic_request_headers, should_trigger_media_retry, split_endpoint_and_query,
+    validate_managed_account_upstream_auth, AppKind, ChannelQuery, CopilotAuthHeaderOverrides,
+    ForwardFailureCategory, ForwardFailureKind, InterfaceKind, MediaRetryInput, ProxyBody,
+    ProxyEngine, ProxyRequest, ProxyServices, UpstreamAuthHeadersInput,
+    UpstreamRequestHeadersInput, UpstreamSendPolicyInput, UpstreamTransportKind,
+    BEDROCK_OPTIMIZER_ENV_FLAG,
 };
 use crate::proxy_core_host::CcSwitchProxyServices;
 use crate::{app_config::AppType, provider::Provider};
@@ -2120,21 +2122,8 @@ impl RequestForwarder {
             }
         }
 
-        // 确定超时
-        let timeout = if self.non_streaming_timeout.is_zero() {
-            std::time::Duration::from_secs(600) // 默认 600 秒
-        } else {
-            self.non_streaming_timeout
-        };
-
         // 获取全局代理 URL
         let upstream_proxy_url: Option<String> = super::http_client::get_current_proxy_url();
-
-        // SOCKS5 代理不支持 CONNECT 隧道，需要用 reqwest
-        let is_socks_proxy = upstream_proxy_url
-            .as_deref()
-            .map(|u| u.starts_with("socks5"))
-            .unwrap_or(false);
 
         let preserve_exact_header_case = should_preserve_exact_header_case(
             adapter.name(),
@@ -2142,33 +2131,33 @@ impl RequestForwarder {
             resolved_claude_api_format.as_deref(),
             is_copilot,
         );
+        let send_policy = resolve_upstream_send_policy(UpstreamSendPolicyInput {
+            is_socks_proxy: is_socks_proxy_url(upstream_proxy_url.as_deref()),
+            preserve_exact_header_case,
+            request_is_streaming,
+            non_streaming_timeout: self.non_streaming_timeout,
+            streaming_first_byte_timeout: self.streaming_first_byte_timeout,
+        });
 
         // 发送请求
-        let response = if is_socks_proxy || !preserve_exact_header_case {
+        let response = if matches!(send_policy.transport, UpstreamTransportKind::PooledReqwest) {
             // OpenAI / Copilot / Codex 类后端不依赖原始 header 大小写；走 reqwest
             // 连接池，避免 raw TCP/TLS path 每次请求都重新握手。SOCKS5 也只能走 reqwest。
             log::debug!(
-                "[Forwarder] Using pooled reqwest client (preserve_exact_header_case={preserve_exact_header_case}, socks_proxy={is_socks_proxy})"
+                "[Forwarder] Using pooled reqwest client (preserve_exact_header_case={}, socks_proxy={})",
+                preserve_exact_header_case,
+                is_socks_proxy_url(upstream_proxy_url.as_deref())
             );
             let client = super::http_client::get();
             let mut request = client.request(method.clone(), &url);
-            if request_is_streaming {
-                // reqwest 的 timeout 是整请求超时；流式请求交给 response_processor
-                // 的首包/静默期超时控制，避免长流被总时长误杀。
-                request = request.timeout(std::time::Duration::from_secs(24 * 60 * 60));
-            } else if !self.non_streaming_timeout.is_zero() {
-                request = request.timeout(self.non_streaming_timeout);
+            if let Some(request_timeout) = send_policy.reqwest_request_timeout {
+                request = request.timeout(request_timeout);
             }
             for (key, value) in &ordered_headers {
                 request = request.header(key, value);
             }
             let send = request.body(body_bytes).send();
-            let send_result = if request_is_streaming {
-                let header_timeout = if self.streaming_first_byte_timeout.is_zero() {
-                    timeout
-                } else {
-                    self.streaming_first_byte_timeout
-                };
+            let send_result = if let Some(header_timeout) = send_policy.streaming_header_timeout {
                 tokio::time::timeout(header_timeout, send)
                     .await
                     .map_err(|_| {
@@ -2194,7 +2183,7 @@ impl RequestForwarder {
                 ordered_headers,
                 extensions.clone(),
                 body_bytes,
-                timeout,
+                send_policy.base_timeout,
                 upstream_proxy_url.as_deref(),
             )
             .await?
