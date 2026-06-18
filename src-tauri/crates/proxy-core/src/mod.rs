@@ -38,6 +38,7 @@ pub mod response_timeout;
 pub mod response_transform;
 pub mod route_resolve;
 pub mod sse;
+pub mod thinking_budget_rectifier;
 pub mod usage;
 
 pub use codex_error::*;
@@ -74,4 +75,5 @@ pub use response_timeout::*;
 pub use response_transform::*;
 pub use route_resolve::*;
 pub use sse::*;
+pub use thinking_budget_rectifier::*;
 pub use usage::*;
