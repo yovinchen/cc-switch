@@ -1608,28 +1608,11 @@ async fn handle_codex_chat_error_response(
     let (mut response_headers, _status, body_bytes) =
         read_decoded_body(response, ctx.tag, ctx.body_timeout_duration()).await?;
 
-    // 非 JSON 上游错误体（Cloudflare HTML、纯文本 "Unauthorized" 等）若丢成 None，
-    // 客户端就看不到原始诊断信息；包成 Value::String 走转换函数的字符串分支。
-    let parsed_value: Value = match serde_json::from_slice::<Value>(&body_bytes) {
-        Ok(value) => value,
-        Err(_) => {
-            const MAX_RAW_ERROR_BYTES: usize = 1024;
-            let lossy = String::from_utf8_lossy(&body_bytes);
-            let truncated = if lossy.len() > MAX_RAW_ERROR_BYTES {
-                let mut end = MAX_RAW_ERROR_BYTES;
-                while end > 0 && !lossy.is_char_boundary(end) {
-                    end -= 1;
-                }
-                format!("{}…(truncated)", &lossy[..end])
-            } else {
-                lossy.into_owned()
-            };
-            log::warn!("[Codex] Chat 错误响应不是合法 JSON，按文本透传: {truncated}");
-            Value::String(truncated)
-        }
-    };
-
-    let responses_error = transform_codex_chat::chat_error_to_response_error(Some(&parsed_value));
+    let normalized_error = crate::proxy_core::normalize_codex_chat_error_body(&body_bytes);
+    if let Some(preview) = normalized_error.non_json_body_preview.as_deref() {
+        log::warn!("[Codex] Chat 错误响应不是合法 JSON，按文本透传: {preview}");
+    }
+    let responses_error = normalized_error.response_error;
 
     strip_entity_headers_for_rebuilt_body(&mut response_headers);
     strip_hop_by_hop_response_headers(&mut response_headers);

@@ -1,6 +1,7 @@
 use serde_json::{json, Value};
 
 const CODEX_ERROR_MESSAGE_LIMIT: usize = 1800;
+const CODEX_RAW_ERROR_BODY_LIMIT: usize = 1024;
 
 #[derive(Debug, Clone, Copy)]
 pub struct CodexProxyErrorContext<'a> {
@@ -174,6 +175,32 @@ pub fn codex_upstream_error_to_response_error(body: Option<&Value>) -> Value {
     })
 }
 
+#[derive(Debug, Clone, PartialEq)]
+pub struct CodexChatErrorNormalization {
+    pub response_error: Value,
+    pub non_json_body_preview: Option<String>,
+}
+
+/// Normalize an upstream Chat Completions error body into the OpenAI Responses
+/// error envelope used by Codex clients.
+pub fn normalize_codex_chat_error_body(body: &[u8]) -> CodexChatErrorNormalization {
+    match serde_json::from_slice::<Value>(body) {
+        Ok(value) => CodexChatErrorNormalization {
+            response_error: codex_upstream_error_to_response_error(Some(&value)),
+            non_json_body_preview: None,
+        },
+        Err(_) => {
+            let preview = raw_error_body_preview(body, CODEX_RAW_ERROR_BODY_LIMIT);
+            CodexChatErrorNormalization {
+                response_error: codex_upstream_error_to_response_error(Some(&Value::String(
+                    preview.clone(),
+                ))),
+                non_json_body_preview: Some(preview),
+            }
+        }
+    }
+}
+
 fn compact_error_message(message: &str, max_chars: usize) -> String {
     let normalized = message.split_whitespace().collect::<Vec<_>>().join(" ");
     if normalized.chars().count() <= max_chars {
@@ -187,6 +214,19 @@ fn compact_error_message(message: &str, max_chars: usize) -> String {
         .trim_end()
         .to_string();
     format!("{truncated}…(truncated)")
+}
+
+fn raw_error_body_preview(body: &[u8], max_bytes: usize) -> String {
+    let lossy = String::from_utf8_lossy(body);
+    if lossy.len() <= max_bytes {
+        return lossy.into_owned();
+    }
+
+    let mut end = max_bytes;
+    while end > 0 && !lossy.is_char_boundary(end) {
+        end -= 1;
+    }
+    format!("{}…(truncated)", &lossy[..end])
 }
 
 #[cfg(test)]
@@ -275,5 +315,43 @@ mod tests {
         let text = Value::String("plain upstream error".to_string());
         let normalized = codex_upstream_error_to_response_error(Some(&text));
         assert_eq!(normalized["error"]["message"], "plain upstream error");
+    }
+
+    #[test]
+    fn codex_chat_error_body_normalizes_json_without_preview() {
+        let normalized = normalize_codex_chat_error_body(
+            br#"{"base_resp":{"status_code":2013,"status_msg":"bad role"}}"#,
+        );
+
+        assert_eq!(normalized.response_error["error"]["message"], "bad role");
+        assert_eq!(normalized.response_error["error"]["code"], 2013);
+        assert_eq!(normalized.non_json_body_preview, None);
+    }
+
+    #[test]
+    fn codex_chat_error_body_wraps_plain_text_with_preview() {
+        let normalized = normalize_codex_chat_error_body(b"Unauthorized");
+
+        assert_eq!(
+            normalized.response_error["error"]["message"],
+            "Unauthorized"
+        );
+        assert_eq!(
+            normalized.non_json_body_preview.as_deref(),
+            Some("Unauthorized")
+        );
+    }
+
+    #[test]
+    fn codex_chat_error_body_truncates_non_json_preview_on_char_boundary() {
+        let body = format!("{}你", "a".repeat(CODEX_RAW_ERROR_BODY_LIMIT - 1));
+
+        let normalized = normalize_codex_chat_error_body(body.as_bytes());
+        let preview = normalized.non_json_body_preview.unwrap();
+
+        assert!(preview.ends_with("…(truncated)"), "{preview}");
+        assert!(preview.starts_with(&"a".repeat(CODEX_RAW_ERROR_BODY_LIMIT - 1)));
+        assert!(!preview.contains('你'));
+        assert_eq!(normalized.response_error["error"]["message"], preview);
     }
 }
