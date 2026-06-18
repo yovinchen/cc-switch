@@ -1555,7 +1555,7 @@ async fn handle_codex_chat_to_responses_transform(
                     // 上游遵守 OpenAI 语义省略 usage 时，Chat→Responses 转换器会合成一个
                     // 全 0 的 response.completed，from_codex_response 对 input/output 字段
                     // 存在（哪怕=0）即返回 Some。缺 nonzero 闸门会让全 0 usage 也被写入：
-                    // message_id=None → dedup_request_id 退化为随机 UUID，无法去重，每笔
+                    // message_id=None → host request_id 退化为随机 UUID，无法去重，每笔
                     // 请求插入一条无意义空行、虚增请求数。对齐 Claude transform handler 的 skip。
                     if !usage.has_billable_tokens() {
                         log::debug!("[Codex] 流式响应 usage 全 0 或缺失，跳过消费记录");

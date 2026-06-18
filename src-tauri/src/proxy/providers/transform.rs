@@ -1089,7 +1089,11 @@ mod tests {
             Some("chatcmpl-claude-compatible")
         );
         assert_eq!(
-            usage.dedup_request_id(),
+            format!(
+                "{}{}",
+                crate::proxy::usage::parser::SESSION_REQUEST_ID_PREFIX,
+                usage.message_id.as_deref().unwrap()
+            ),
             "session:chatcmpl-claude-compatible"
         );
     }

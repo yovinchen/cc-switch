@@ -12,6 +12,7 @@ pub mod response_body;
 pub mod response_diagnostics;
 pub mod response_headers;
 pub mod sse;
+pub mod usage;
 
 pub use domain::*;
 pub use engine::*;
@@ -21,3 +22,4 @@ pub use response_body::*;
 pub use response_diagnostics::*;
 pub use response_headers::*;
 pub use sse::*;
+pub use usage::*;

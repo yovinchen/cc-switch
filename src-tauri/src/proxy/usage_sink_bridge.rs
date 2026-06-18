@@ -1,5 +1,5 @@
 use crate::provider::Provider;
-use crate::proxy::usage::parser::TokenUsage;
+use crate::proxy::usage::parser::{TokenUsage, SESSION_REQUEST_ID_PREFIX};
 use crate::proxy_core::{AppKind, ProviderKind, UsageRecord, UsageTokens};
 use serde_json::Value;
 
@@ -21,7 +21,7 @@ pub(crate) fn success_usage_record(
     let response_model = non_empty(model).or_else(|| non_empty(outbound_model));
     let outbound_model = non_empty(outbound_model).unwrap_or_else(|| request_model.to_string());
     let request_model = non_empty(request_model).unwrap_or_else(|| outbound_model.clone());
-    let request_id = usage.dedup_request_id();
+    let request_id = usage_request_id(&usage);
     let message_id = usage.message_id.clone();
 
     UsageRecord {
@@ -46,6 +46,14 @@ pub(crate) fn success_usage_record(
         is_streaming,
         metadata: Value::Object(Default::default()),
     }
+}
+
+fn usage_request_id(usage: &TokenUsage) -> String {
+    usage
+        .message_id
+        .as_ref()
+        .map(|message_id| format!("{SESSION_REQUEST_ID_PREFIX}{message_id}"))
+        .unwrap_or_else(|| uuid::Uuid::new_v4().to_string())
 }
 
 #[allow(clippy::too_many_arguments)]
