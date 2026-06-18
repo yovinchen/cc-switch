@@ -1,7 +1,11 @@
-use super::domain::{ChannelQuery, ProxyRequest, ProxyResult, RoutePlan, RouteRequest};
+use super::domain::{
+    interfaces_compatible, route_group_matches, ChannelQuery, ChannelStatus, InterfaceKind,
+    ProxyRequest, ProxyResult, RoutableModel, RoutePlan, RouteRequest, DEFAULT_ROUTE_GROUP,
+};
 use super::error::ProxyCoreResult;
 use super::ports::{ProxyCoreEvent, ProxyCoreEventType, ProxyServices};
 use serde_json::{json, to_value};
+use std::collections::BTreeMap;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 
@@ -66,6 +70,89 @@ where
         request: &ProxyRequest,
     ) -> ProxyCoreResult<RoutePlan> {
         self.plan_route_with_legacy_projection(request, false).await
+    }
+
+    pub async fn list_models(
+        &self,
+        app: &super::domain::AppKind,
+        group: Option<&str>,
+        inbound_interface: Option<&InterfaceKind>,
+    ) -> ProxyCoreResult<Vec<RoutableModel>> {
+        let providers = self.services.providers().list_providers(app).await?;
+        let channels = self
+            .services
+            .channels()
+            .list_channels(ChannelQuery {
+                app,
+                provider_id: None,
+                model: None,
+                group,
+                include_disabled: false,
+                allow_legacy_projection: true,
+            })
+            .await?;
+        let requested_group = group.unwrap_or(DEFAULT_ROUTE_GROUP);
+        let mut models = BTreeMap::new();
+
+        for channel in channels {
+            if channel.status != ChannelStatus::Enabled {
+                continue;
+            }
+            if !route_group_matches(&channel.groups, requested_group) {
+                continue;
+            }
+            if let Some(inbound_interface) = inbound_interface {
+                if !interfaces_compatible(inbound_interface, &channel.interface) {
+                    continue;
+                }
+            }
+            let Some(provider) = providers
+                .iter()
+                .find(|provider| provider.id == channel.provider_id)
+            else {
+                continue;
+            };
+
+            for model in &channel.models {
+                if model.public_model.trim().is_empty() {
+                    continue;
+                }
+                let item = RoutableModel {
+                    public_model: model.public_model.clone(),
+                    upstream_model: model.upstream_model.clone(),
+                    pricing_model: model.pricing_model.clone(),
+                    app: channel.app.clone(),
+                    provider_id: provider.id.clone(),
+                    provider_name: provider.name.clone(),
+                    channel_id: channel.id.clone(),
+                    channel_name: channel.name.clone(),
+                    interface: channel.interface.clone(),
+                    groups: channel.groups.clone(),
+                    priority: channel.priority,
+                    weight: channel.weight,
+                    capabilities: model.capabilities.clone(),
+                };
+                models.insert(
+                    (
+                        item.public_model.clone(),
+                        item.channel_id.clone(),
+                        item.upstream_model.clone(),
+                    ),
+                    item,
+                );
+            }
+        }
+
+        let mut models: Vec<_> = models.into_values().collect();
+        models.sort_by(|left, right| {
+            left.public_model
+                .cmp(&right.public_model)
+                .then_with(|| right.priority.cmp(&left.priority))
+                .then_with(|| right.weight.cmp(&left.weight))
+                .then_with(|| left.channel_name.cmp(&right.channel_name))
+                .then_with(|| left.channel_id.cmp(&right.channel_id))
+        });
+        Ok(models)
     }
 
     async fn plan_route_with_legacy_projection(
@@ -144,7 +231,7 @@ mod tests {
         AppKind, AuthProfileRef, ChannelAttemptResult, ChannelHealthPolicy, ChannelOverrides,
         ChannelSpec, ChannelStatus, InterfaceKind, ModelCapabilities, ModelRoute, ProviderKind,
         ProviderMetadata, ProviderSpec, ProxyBody, ProxyCoreResponse, RetryPolicy,
-        RouteSelection, UpstreamEndpoint, UsageRecord, UsageTokens,
+        RouteSelection, UpstreamEndpoint, UsageRecord, UsageTokens, DEFAULT_ROUTE_GROUP,
     };
     use crate::error::ProxyCoreError;
     use crate::ports::{
@@ -162,6 +249,7 @@ mod tests {
         events: Mutex<Vec<ProxyCoreEvent>>,
         forwarded: Mutex<Vec<String>>,
         usage: Mutex<Vec<UsageRecord>>,
+        channels: Mutex<Vec<ChannelSpec>>,
     }
 
     impl ProxyServices for TestServices {
@@ -251,7 +339,14 @@ mod tests {
             &'a self,
             _query: crate::domain::ChannelQuery<'a>,
         ) -> BoxFuture<'a, ProxyCoreResult<Vec<ChannelSpec>>> {
-            Box::pin(async { Ok(vec![channel_spec()]) })
+            Box::pin(async move {
+                let channels = self.channels.lock().expect("channels mutex").clone();
+                if channels.is_empty() {
+                    Ok(vec![channel_spec()])
+                } else {
+                    Ok(channels)
+                }
+            })
         }
 
         fn get_channel<'a>(
@@ -455,6 +550,73 @@ mod tests {
         assert_eq!(events[0].event_type, ProxyCoreEventType::RouteSelected);
         assert_eq!(events[0].request_id.as_deref(), Some("req-1"));
         assert_eq!(events[0].channel_id.as_deref(), Some("channel-a"));
+    }
+
+    #[test]
+    fn list_models_returns_route_visible_channel_models() {
+        let services = Arc::new(TestServices::default());
+        let engine = ProxyEngine::new(services.clone());
+        let mut default_channel = channel_spec();
+        default_channel.models.push(ModelRoute {
+            public_model: "sonnet".to_string(),
+            upstream_model: "upstream-sonnet".to_string(),
+            capabilities: ModelCapabilities::default(),
+            pricing_model: None,
+            request_overrides: json!({}),
+            response_overrides: json!({}),
+        });
+        let mut beta_channel = channel_spec();
+        beta_channel.id = "channel-beta".to_string();
+        beta_channel.name = "Channel Beta".to_string();
+        beta_channel.groups = vec!["beta".to_string()];
+        beta_channel.models = vec![ModelRoute {
+            public_model: "haiku".to_string(),
+            upstream_model: "upstream-haiku".to_string(),
+            capabilities: ModelCapabilities::default(),
+            pricing_model: None,
+            request_overrides: json!({}),
+            response_overrides: json!({}),
+        }];
+        let mut disabled_channel = channel_spec();
+        disabled_channel.id = "channel-disabled".to_string();
+        disabled_channel.status = ChannelStatus::ManuallyDisabled;
+        disabled_channel.models = vec![ModelRoute {
+            public_model: "opus".to_string(),
+            upstream_model: "upstream-opus".to_string(),
+            capabilities: ModelCapabilities::default(),
+            pricing_model: None,
+            request_overrides: json!({}),
+            response_overrides: json!({}),
+        }];
+        let mut incompatible_channel = channel_spec();
+        incompatible_channel.id = "channel-embeddings".to_string();
+        incompatible_channel.interface = InterfaceKind::Embeddings;
+        incompatible_channel.models = vec![ModelRoute {
+            public_model: "embedding-3".to_string(),
+            upstream_model: "embedding-3".to_string(),
+            capabilities: ModelCapabilities::default(),
+            pricing_model: None,
+            request_overrides: json!({}),
+            response_overrides: json!({}),
+        }];
+
+        *services.channels.lock().expect("channels mutex") = vec![
+            default_channel,
+            beta_channel,
+            disabled_channel,
+            incompatible_channel,
+        ];
+
+        let models = futures::executor::block_on(engine.list_models(
+            &AppKind::Claude,
+            Some(DEFAULT_ROUTE_GROUP),
+            Some(&InterfaceKind::AnthropicMessages),
+        ))
+        .expect("list models");
+
+        assert_eq!(models.len(), 1);
+        assert_eq!(models[0].public_model, "sonnet");
+        assert_eq!(models[0].channel_id, "channel-a");
     }
 
     fn provider_spec() -> ProviderSpec {

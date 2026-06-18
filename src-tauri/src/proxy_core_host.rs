@@ -14,13 +14,14 @@ use crate::proxy::usage::parser::SESSION_REQUEST_ID_PREFIX;
 use crate::proxy::usage::{CostCalculator, RequestLog, TokenUsage, UsageLogger};
 use crate::proxy::RequestForwarder;
 use crate::proxy_core::{
-    AppKind, AuthInfo, AuthProfileRef, ChannelAttemptPlan, ChannelAttemptResult, ChannelQuery,
-    ChannelSource, ChannelSpec, ChannelStatus, CopilotOptimizerConfigSpec, ForwardPipeline,
-    ModelCatalog, OptimizerConfigSpec, ProviderSource, ProviderSpec, ProxyAppConfig, ProxyBody,
-    ProxyConfigSource, ProxyCoreError, ProxyCoreEvent, ProxyCoreEventType, ProxyCoreResponse,
-    ProxyCoreResult, ProxyEventSink, ProxyGlobalConfig, ProxyRequest, ProxyResponseBody,
-    ProxyResult, ProxyRuntimeConfig, ProxyServices, RectifierConfigSpec, RoutePlan, RoutePolicy,
-    RoutePolicySource, RouteRequest, RouteResolver, RouteSelection, UsageRecord, UsageSink,
+    interfaces_compatible, route_group_matches, AppKind, AuthInfo, AuthProfileRef,
+    ChannelAttemptPlan, ChannelAttemptResult, ChannelQuery, ChannelSource, ChannelSpec,
+    ChannelStatus, CopilotOptimizerConfigSpec, ForwardPipeline, ModelCatalog, OptimizerConfigSpec,
+    ProviderSource, ProviderSpec, ProxyAppConfig, ProxyBody, ProxyConfigSource, ProxyCoreError,
+    ProxyCoreEvent, ProxyCoreEventType, ProxyCoreResponse, ProxyCoreResult, ProxyEventSink,
+    ProxyGlobalConfig, ProxyRequest, ProxyResponseBody, ProxyResult, ProxyRuntimeConfig,
+    ProxyServices, RectifierConfigSpec, RoutePlan, RoutePolicy, RoutePolicySource, RouteRequest,
+    RouteResolver, RouteSelection, UsageRecord, UsageSink, DEFAULT_ROUTE_GROUP,
 };
 use crate::proxy_core_adapter::{ToProxyCoreChannelSpec, ToProxyCoreProviderSpec};
 use crate::services::usage_stats::is_placeholder_pricing_model;
@@ -32,7 +33,6 @@ use std::str::FromStr;
 use std::sync::Arc;
 use tokio::sync::RwLock;
 
-const DEFAULT_ROUTE_GROUP: &str = "default";
 const DEFAULT_CHANNEL_FAILURE_THRESHOLD: u32 = 4;
 
 #[derive(Clone)]
@@ -371,7 +371,7 @@ impl RouteResolver for CcSwitchRouteResolver {
                 if channel.status != ChannelStatus::Enabled {
                     continue;
                 }
-                if !channel_groups_match(&channel.groups, requested_group) {
+                if !route_group_matches(&channel.groups, requested_group) {
                     continue;
                 }
                 if !interfaces_compatible(&request.request.inbound_interface, &channel.interface) {
@@ -1015,7 +1015,7 @@ fn channel_matches_query(channel: &ChannelSpec, query: &ChannelQuery<'_>) -> boo
         }
     }
     if let Some(group) = query.group {
-        if !channel_groups_match(&channel.groups, group) {
+        if !route_group_matches(&channel.groups, group) {
             return false;
         }
     }
@@ -1026,40 +1026,6 @@ fn channel_matches_query(channel: &ChannelSpec, query: &ChannelQuery<'_>) -> boo
             .any(|route| route.public_model == model || route.upstream_model == model);
     }
     true
-}
-
-fn channel_groups_match(groups: &[String], requested_group: &str) -> bool {
-    if groups.is_empty() {
-        return requested_group == DEFAULT_ROUTE_GROUP;
-    }
-    groups.iter().any(|group| group == requested_group)
-}
-
-fn interfaces_compatible(
-    requested: &crate::proxy_core::InterfaceKind,
-    channel: &crate::proxy_core::InterfaceKind,
-) -> bool {
-    use crate::proxy_core::InterfaceKind;
-
-    if requested == channel {
-        return true;
-    }
-
-    matches!(
-        (requested, channel),
-        (
-            InterfaceKind::AnthropicMessages,
-            InterfaceKind::OpenAiChatCompletions
-                | InterfaceKind::OpenAiResponses
-                | InterfaceKind::GeminiNative
-        ) | (
-            InterfaceKind::OpenAiResponses,
-            InterfaceKind::OpenAiChatCompletions | InterfaceKind::OpenAiResponses
-        ) | (
-            InterfaceKind::OpenAiChatCompletions,
-            InterfaceKind::OpenAiChatCompletions | InterfaceKind::OpenAiResponses
-        )
-    )
 }
 
 fn collect_models_from_value(value: &Value, models: &mut Vec<String>) {

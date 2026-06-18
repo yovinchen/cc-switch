@@ -5,6 +5,8 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::pin::Pin;
 
+pub const DEFAULT_ROUTE_GROUP: &str = "default";
+
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum AppKind {
@@ -276,6 +278,27 @@ pub struct ModelRoute {
     pub response_overrides: Value,
 }
 
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RoutableModel {
+    pub public_model: String,
+    pub upstream_model: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub pricing_model: Option<String>,
+    pub app: AppKind,
+    pub provider_id: String,
+    pub provider_name: String,
+    pub channel_id: String,
+    pub channel_name: String,
+    pub interface: InterfaceKind,
+    #[serde(default)]
+    pub groups: Vec<String>,
+    pub priority: i64,
+    pub weight: u32,
+    #[serde(default)]
+    pub capabilities: ModelCapabilities,
+}
+
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ModelCapabilities {
@@ -407,6 +430,35 @@ pub struct ChannelQuery<'a> {
     pub group: Option<&'a str>,
     pub include_disabled: bool,
     pub allow_legacy_projection: bool,
+}
+
+pub fn route_group_matches(groups: &[String], requested_group: &str) -> bool {
+    if groups.is_empty() {
+        return requested_group == DEFAULT_ROUTE_GROUP;
+    }
+    groups.iter().any(|group| group == requested_group)
+}
+
+pub fn interfaces_compatible(requested: &InterfaceKind, channel: &InterfaceKind) -> bool {
+    if requested == channel {
+        return true;
+    }
+
+    matches!(
+        (requested, channel),
+        (
+            InterfaceKind::AnthropicMessages,
+            InterfaceKind::OpenAiChatCompletions
+                | InterfaceKind::OpenAiResponses
+                | InterfaceKind::GeminiNative
+        ) | (
+            InterfaceKind::OpenAiResponses,
+            InterfaceKind::OpenAiChatCompletions | InterfaceKind::OpenAiResponses
+        ) | (
+            InterfaceKind::OpenAiChatCompletions,
+            InterfaceKind::OpenAiChatCompletions | InterfaceKind::OpenAiResponses
+        )
+    )
 }
 
 #[derive(Debug)]

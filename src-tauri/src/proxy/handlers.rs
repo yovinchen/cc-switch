@@ -114,6 +114,39 @@ impl AppChannelListQuery {
     }
 }
 
+#[derive(Debug, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct AppModelListQuery {
+    #[serde(default)]
+    interface_kind: Option<String>,
+    #[serde(default, rename = "interface")]
+    interface_alias: Option<String>,
+    #[serde(default)]
+    route_group: Option<String>,
+    #[serde(default)]
+    group: Option<String>,
+}
+
+impl AppModelListQuery {
+    fn route_group(&self) -> Option<String> {
+        self.route_group
+            .as_deref()
+            .or(self.group.as_deref())
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(ToString::to_string)
+    }
+
+    fn interface_kind(&self) -> Option<InterfaceKind> {
+        self.interface_kind
+            .as_deref()
+            .or(self.interface_alias.as_deref())
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(InterfaceKind::from_storage)
+    }
+}
+
 // ============================================================================
 // 健康检查和状态查询（简单端点）
 // ============================================================================
@@ -342,6 +375,31 @@ pub async fn list_proxy_providers(
     Ok(Json(json!({
         "appType": app_type,
         "providers": provider_summaries,
+    })))
+}
+
+/// GET /proxy/v1/apps/{app}/models
+pub async fn list_proxy_app_models(
+    State(state): State<ProxyState>,
+    Path(app_type): Path<String>,
+    Query(query): Query<AppModelListQuery>,
+) -> Result<Json<Value>, ProxyError> {
+    validate_management_app_type(&app_type)?;
+    let app_type = app_type.trim().to_string();
+    let app = AppKind::from(app_type.as_str());
+    let route_group = query.route_group();
+    let interface_kind = query.interface_kind();
+    let engine = ProxyEngine::new(state.proxy_core_services.clone());
+    let models = engine
+        .list_models(&app, route_group.as_deref(), interface_kind.as_ref())
+        .await
+        .map_err(proxy_core_error_to_proxy_error)?;
+
+    Ok(Json(json!({
+        "appType": app_type,
+        "routeGroup": route_group,
+        "interfaceKind": interface_kind.as_ref().map(InterfaceKind::as_str),
+        "models": models,
     })))
 }
 

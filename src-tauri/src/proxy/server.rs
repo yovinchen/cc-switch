@@ -341,6 +341,10 @@ impl ProxyServer {
                 get(handlers::list_proxy_providers),
             )
             .route(
+                "/proxy/v1/apps/:app/models",
+                get(handlers::list_proxy_app_models),
+            )
+            .route(
                 "/proxy/v1/channels",
                 get(handlers::list_all_proxy_channels).post(handlers::create_proxy_channel),
             )
@@ -977,6 +981,111 @@ mod tests {
         let deleted = response_json(delete_response).await;
         assert_eq!(deleted["deleted"], true);
         assert!(db.get_proxy_channel(&channel_id).unwrap().is_none());
+    }
+
+    #[tokio::test]
+    async fn app_model_management_route_lists_routable_models() {
+        let db = Arc::new(Database::memory().expect("memory db"));
+        let provider = Provider::with_id(
+            "a".to_string(),
+            "Provider A".to_string(),
+            json!({
+                "env": {
+                    "ANTHROPIC_BASE_URL": "https://primary.example.com/v1",
+                    "ANTHROPIC_API_KEY": "secret-key"
+                }
+            }),
+            None,
+        );
+        db.save_provider("claude", &provider).unwrap();
+
+        let server = ProxyServer::new(ProxyConfig::default(), db, None);
+        let mut router = server.build_router();
+
+        for body in [
+            json!({
+                "providerId": "a",
+                "appType": "claude",
+                "name": "Default Responses",
+                "baseUrl": "https://default.example.com/v1",
+                "interfaceKind": "openai_responses",
+                "groups": ["default"],
+                "priority": 100,
+                "models": [{
+                    "publicModel": "sonnet-public",
+                    "upstreamModel": "upstream-sonnet"
+                }]
+            }),
+            json!({
+                "providerId": "a",
+                "appType": "claude",
+                "name": "Beta Responses",
+                "baseUrl": "https://beta.example.com/v1",
+                "interfaceKind": "openai_responses",
+                "groups": ["beta"],
+                "priority": 90,
+                "models": [{
+                    "publicModel": "haiku-public",
+                    "upstreamModel": "upstream-haiku"
+                }]
+            }),
+            json!({
+                "providerId": "a",
+                "appType": "claude",
+                "name": "Embeddings",
+                "baseUrl": "https://embeddings.example.com/v1",
+                "interfaceKind": "embeddings",
+                "groups": ["default"],
+                "priority": 80,
+                "models": [{
+                    "publicModel": "embedding-3",
+                    "upstreamModel": "embedding-3"
+                }]
+            }),
+        ] {
+            let response = Service::call(
+                &mut router,
+                json_request(Method::POST, "/proxy/v1/channels", body),
+            )
+            .await
+            .unwrap();
+            assert_eq!(response.status(), StatusCode::OK);
+        }
+
+        let default_response = Service::call(
+            &mut router,
+            Request::builder()
+                .method(Method::GET)
+                .uri("/proxy/v1/apps/claude/models?group=default&interface=anthropic_messages")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+        assert_eq!(default_response.status(), StatusCode::OK);
+        let default_models = response_json(default_response).await;
+        assert_eq!(default_models["routeGroup"], "default");
+        assert_eq!(default_models["interfaceKind"], "anthropic_messages");
+        let models = default_models["models"].as_array().unwrap();
+        assert_eq!(models.len(), 1);
+        assert_eq!(models[0]["publicModel"], "sonnet-public");
+        assert_eq!(models[0]["channelName"], "Default Responses");
+
+        let beta_response = Service::call(
+            &mut router,
+            Request::builder()
+                .method(Method::GET)
+                .uri("/proxy/v1/apps/claude/models?group=beta")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+        assert_eq!(beta_response.status(), StatusCode::OK);
+        let beta_models = response_json(beta_response).await;
+        let models = beta_models["models"].as_array().unwrap();
+        assert_eq!(models.len(), 1);
+        assert_eq!(models[0]["publicModel"], "haiku-public");
     }
 
     #[tokio::test]
