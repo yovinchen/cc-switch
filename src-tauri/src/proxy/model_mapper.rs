@@ -2,100 +2,38 @@
 //!
 //! 在请求转发前，根据 Provider 配置替换请求中的模型名称
 
-use crate::claude_desktop_config::ONE_M_CONTEXT_MARKER;
 use crate::provider::Provider;
 use serde_json::Value;
 
-/// 模型映射配置
-pub struct ModelMapping {
-    pub haiku_model: Option<String>,
-    pub sonnet_model: Option<String>,
-    pub opus_model: Option<String>,
-    pub fable_model: Option<String>,
-    pub default_model: Option<String>,
-}
+fn model_mapping_from_provider(provider: &Provider) -> crate::proxy_core::ModelMapping {
+    let env = provider.settings_config.get("env");
 
-impl ModelMapping {
-    /// 从 Provider 配置中提取模型映射
-    pub fn from_provider(provider: &Provider) -> Self {
-        let env = provider.settings_config.get("env");
-
-        Self {
-            haiku_model: env
-                .and_then(|e| e.get("ANTHROPIC_DEFAULT_HAIKU_MODEL"))
-                .and_then(|v| v.as_str())
-                .filter(|s| !s.is_empty())
-                .map(String::from),
-            sonnet_model: env
-                .and_then(|e| e.get("ANTHROPIC_DEFAULT_SONNET_MODEL"))
-                .and_then(|v| v.as_str())
-                .filter(|s| !s.is_empty())
-                .map(String::from),
-            opus_model: env
-                .and_then(|e| e.get("ANTHROPIC_DEFAULT_OPUS_MODEL"))
-                .and_then(|v| v.as_str())
-                .filter(|s| !s.is_empty())
-                .map(String::from),
-            fable_model: env
-                .and_then(|e| e.get("ANTHROPIC_DEFAULT_FABLE_MODEL"))
-                .and_then(|v| v.as_str())
-                .filter(|s| !s.is_empty())
-                .map(String::from),
-            default_model: env
-                .and_then(|e| e.get("ANTHROPIC_MODEL"))
-                .and_then(|v| v.as_str())
-                .filter(|s| !s.is_empty())
-                .map(String::from),
-        }
-    }
-
-    /// 检查是否配置了任何模型映射
-    pub fn has_mapping(&self) -> bool {
-        self.haiku_model.is_some()
-            || self.sonnet_model.is_some()
-            || self.opus_model.is_some()
-            || self.fable_model.is_some()
-            || self.default_model.is_some()
-    }
-
-    /// 根据原始模型名称获取映射后的模型
-    pub fn map_model(&self, original_model: &str) -> String {
-        let model_lower = original_model.to_lowercase();
-
-        // 1. 按模型类型匹配
-        if model_lower.contains("fable") {
-            if let Some(ref m) = self.fable_model {
-                return m.clone();
-            }
-            // 未单独配置 fable 档时归入 opus 档，与 Claude Code 官方
-            // 分类器降级方向一致（fable→opus），避免落到 default 失去层级。
-            if let Some(ref m) = self.opus_model {
-                return m.clone();
-            }
-        }
-        if model_lower.contains("haiku") {
-            if let Some(ref m) = self.haiku_model {
-                return m.clone();
-            }
-        }
-        if model_lower.contains("opus") {
-            if let Some(ref m) = self.opus_model {
-                return m.clone();
-            }
-        }
-        if model_lower.contains("sonnet") {
-            if let Some(ref m) = self.sonnet_model {
-                return m.clone();
-            }
-        }
-
-        // 2. 默认模型
-        if let Some(ref m) = self.default_model {
-            return m.clone();
-        }
-
-        // 3. 无映射，保持原样
-        original_model.to_string()
+    crate::proxy_core::ModelMapping {
+        haiku_model: env
+            .and_then(|e| e.get("ANTHROPIC_DEFAULT_HAIKU_MODEL"))
+            .and_then(|v| v.as_str())
+            .filter(|s| !s.is_empty())
+            .map(String::from),
+        sonnet_model: env
+            .and_then(|e| e.get("ANTHROPIC_DEFAULT_SONNET_MODEL"))
+            .and_then(|v| v.as_str())
+            .filter(|s| !s.is_empty())
+            .map(String::from),
+        opus_model: env
+            .and_then(|e| e.get("ANTHROPIC_DEFAULT_OPUS_MODEL"))
+            .and_then(|v| v.as_str())
+            .filter(|s| !s.is_empty())
+            .map(String::from),
+        fable_model: env
+            .and_then(|e| e.get("ANTHROPIC_DEFAULT_FABLE_MODEL"))
+            .and_then(|v| v.as_str())
+            .filter(|s| !s.is_empty())
+            .map(String::from),
+        default_model: env
+            .and_then(|e| e.get("ANTHROPIC_MODEL"))
+            .and_then(|v| v.as_str())
+            .filter(|s| !s.is_empty())
+            .map(String::from),
     }
 }
 
@@ -103,56 +41,33 @@ impl ModelMapping {
 ///
 /// 返回 (映射后的请求体, 原始模型名, 映射后模型名)
 pub fn apply_model_mapping(
-    mut body: Value,
+    body: Value,
     provider: &Provider,
 ) -> (Value, Option<String>, Option<String>) {
-    let mapping = ModelMapping::from_provider(provider);
-
-    // 如果没有配置映射，直接返回
-    if !mapping.has_mapping() {
-        let original = body.get("model").and_then(|m| m.as_str()).map(String::from);
-        return (body, original, None);
+    let mapping = model_mapping_from_provider(provider);
+    let (body, original, mapped) = crate::proxy_core::apply_model_mapping_to_body(body, &mapping);
+    if let (Some(original), Some(mapped)) = (&original, &mapped) {
+        log::debug!("[ModelMapper] 模型映射: {original} → {mapped}");
     }
 
-    // 提取原始模型名
-    let original_model = body.get("model").and_then(|m| m.as_str()).map(String::from);
-
-    if let Some(ref original) = original_model {
-        let mapped = mapping.map_model(original);
-
-        if mapped != *original {
-            log::debug!("[ModelMapper] 模型映射: {original} → {mapped}");
-            body["model"] = serde_json::json!(mapped);
-            return (body, Some(original.clone()), Some(mapped));
-        }
-    }
-
-    (body, original_model, None)
+    (body, original, mapped)
 }
 
 /// Claude Code 通过 `[1M]` 后缀声明 100 万上下文能力；上游 API
 /// 通常不接受这个本地能力标记，转发前需要剥离。
 pub fn strip_one_m_suffix_for_upstream(model: &str) -> &str {
-    let trimmed = model.trim_end();
-    let marker = ONE_M_CONTEXT_MARKER.as_bytes();
-    let bytes = trimmed.as_bytes();
-    if bytes.len() >= marker.len()
-        && bytes[bytes.len() - marker.len()..].eq_ignore_ascii_case(marker)
-    {
-        return trimmed[..trimmed.len() - marker.len()].trim_end();
-    }
-    model
+    crate::proxy_core::strip_one_m_suffix_for_upstream(model)
 }
 
-pub fn strip_one_m_suffix_for_upstream_from_body(mut body: Value) -> Value {
-    let Some(model) = body.get("model").and_then(Value::as_str) else {
-        return body;
-    };
+pub fn strip_one_m_suffix_for_upstream_from_body(body: Value) -> Value {
+    let model_change = body.get("model").and_then(Value::as_str).and_then(|model| {
+        let stripped = crate::proxy_core::strip_one_m_suffix_for_upstream(model);
+        (stripped != model).then(|| (model.to_string(), stripped.to_string()))
+    });
+    let body = crate::proxy_core::strip_one_m_suffix_for_upstream_from_body(body);
 
-    let stripped = strip_one_m_suffix_for_upstream(model);
-    if stripped != model {
+    if let Some((model, stripped)) = model_change {
         log::debug!("[ModelMapper] 去除本地 1M 标记: {model} → {stripped}");
-        body["model"] = serde_json::json!(stripped);
     }
     body
 }
