@@ -31,13 +31,16 @@ use crate::proxy_core::{
     attempt_event_name, build_attempt_event_payload, build_codex_oauth_session_headers,
     build_request_started_event_payload, build_retryable_forward_failure_log,
     build_terminal_forward_failure_log, build_upstream_auth_headers, categorize_forward_failure,
-    is_github_copilot_upstream, is_socks_proxy_url, resolve_copilot_optimizer_session_id,
+    classify_copilot_request, is_github_copilot_upstream, is_socks_proxy_url,
+    merge_copilot_tool_results, resolve_copilot_deterministic_interaction_id,
+    resolve_copilot_deterministic_request_id, resolve_copilot_optimizer_session_id,
     resolve_copilot_warmup_model_override, resolve_media_prevention_policy,
     resolve_upstream_request_transport_policy, resolve_upstream_send_policy,
-    resolved_copilot_dynamic_base_url, should_apply_bedrock_pre_send_optimizer,
-    should_check_media_retry, should_failover_after_rectifier_retry_failure,
-    should_preserve_exact_request_header_case, should_resolve_copilot_dynamic_endpoint,
-    should_send_anthropic_request_headers, should_trigger_media_retry, split_endpoint_and_query,
+    resolved_copilot_dynamic_base_url, sanitize_copilot_orphan_tool_results,
+    should_apply_bedrock_pre_send_optimizer, should_check_media_retry,
+    should_failover_after_rectifier_retry_failure, should_preserve_exact_request_header_case,
+    should_resolve_copilot_dynamic_endpoint, should_send_anthropic_request_headers,
+    should_trigger_media_retry, split_endpoint_and_query, strip_copilot_thinking_blocks,
     validate_managed_account_upstream_auth, AppKind, AttemptEventChannel, AttemptEventPayloadInput,
     AttemptEventPhase, ChannelQuery, CopilotAuthHeaderOverrides, ForwardFailureCategory,
     ForwardFailureKind, InterfaceKind, MediaRetryInput, ProxyBody, ProxyEngine, ProxyRequest,
@@ -1627,7 +1630,7 @@ impl RequestForwarder {
             // 1. 在原始 body 上分类 — 必须在清洗/合并之前执行
             //    孤立 tool_result 仍保持 tool_result 类型，分类能正确识别为 agent
             let has_anthropic_beta = headers.contains_key("anthropic-beta");
-            let classification = super::copilot_optimizer::classify_request(
+            let classification = classify_copilot_request(
                 &mapped_body,
                 has_anthropic_beta,
                 self.copilot_optimizer_config.compact_detection,
@@ -1644,17 +1647,17 @@ impl RequestForwarder {
 
             // 2. 孤立 tool_result 清理 — 分类完成后再清洗
             //    防止上游 API 因不匹配的 tool_result 报错导致重试/重复计费
-            mapped_body = super::copilot_optimizer::sanitize_orphan_tool_results(mapped_body);
+            mapped_body = sanitize_copilot_orphan_tool_results(mapped_body);
 
             // 3. Tool result 合并 — 将 [tool_result, text] 变为 [tool_result(含text)]
             if self.copilot_optimizer_config.tool_result_merging {
-                mapped_body = super::copilot_optimizer::merge_tool_results(mapped_body);
+                mapped_body = merge_copilot_tool_results(mapped_body);
             }
 
             // 3.5. 主动剥离 thinking block — Copilot 走 OpenAI 兼容端点不识别该块
             //      避免上游拒绝后由 rectifier 反应式重试（首次请求已消耗 quota）
             if self.copilot_optimizer_config.strip_thinking {
-                mapped_body = super::copilot_optimizer::strip_thinking_blocks(mapped_body);
+                mapped_body = strip_copilot_thinking_blocks(mapped_body);
             }
 
             // 4. Warmup 小模型降级
@@ -1675,17 +1678,16 @@ impl RequestForwarder {
             //   4. x-session-id header
             let session_id = resolve_copilot_optimizer_session_id(body, headers);
             let det_request_id = if self.copilot_optimizer_config.deterministic_request_id {
-                Some(super::copilot_optimizer::deterministic_request_id(
-                    &mapped_body,
-                    &session_id,
-                ))
+                Some(
+                    resolve_copilot_deterministic_request_id(&mapped_body, &session_id)
+                        .unwrap_or_else(|| uuid::Uuid::new_v4().to_string()),
+                )
             } else {
                 None
             };
 
             // 从 session ID 派生稳定的 interaction ID（同一主对话共享）
-            let interaction_id =
-                super::copilot_optimizer::deterministic_interaction_id(&session_id);
+            let interaction_id = resolve_copilot_deterministic_interaction_id(&session_id);
 
             Some((classification, det_request_id, interaction_id))
         } else {

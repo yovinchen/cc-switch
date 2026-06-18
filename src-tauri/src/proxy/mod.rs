@@ -6,6 +6,7 @@ pub mod body_filter;
 pub mod cache_injector;
 pub mod channel_routing;
 pub mod circuit_breaker;
+#[cfg(test)]
 pub mod copilot_optimizer;
 pub mod error;
 pub mod error_mapper;
