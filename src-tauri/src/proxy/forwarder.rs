@@ -28,12 +28,12 @@ use super::{
 use crate::commands::{CodexOAuthState, CopilotAuthState};
 use crate::proxy::providers::codex_oauth_auth::CodexOAuthManager;
 use crate::proxy::providers::copilot_auth::CopilotAuthManager;
-use crate::proxy_core::{append_query_to_full_url, merge_query_params};
+use crate::proxy_core::append_query_to_full_url;
 use crate::proxy_core::{
     build_codex_oauth_session_headers, resolve_upstream_request_transport_policy,
     should_preserve_exact_request_header_case, should_strip_forwarded_request_header,
-    split_endpoint_and_query, strip_beta_query, validate_managed_account_upstream_auth, AppKind,
-    ChannelQuery, InterfaceKind, ProxyBody, ProxyEngine, ProxyRequest, ProxyServices,
+    split_endpoint_and_query, validate_managed_account_upstream_auth, AppKind, ChannelQuery,
+    InterfaceKind, ProxyBody, ProxyEngine, ProxyRequest, ProxyServices,
 };
 use crate::proxy_core_host::CcSwitchProxyServices;
 use crate::{app_config::AppType, provider::Provider};
@@ -2750,20 +2750,8 @@ fn attempt_event_payload(
     payload
 }
 
-fn is_claude_messages_path(path: &str) -> bool {
-    matches!(path, "/v1/messages" | "/claude/v1/messages")
-}
-
 fn rewrite_codex_responses_endpoint_to_chat(endpoint: &str) -> (String, Option<String>) {
-    let (_path, query) = split_endpoint_and_query(endpoint);
-    let passthrough_query = query.map(ToString::to_string);
-    let target_path = "/chat/completions";
-    let rewritten = match passthrough_query.as_deref() {
-        Some(query) if !query.is_empty() => format!("{target_path}?{query}"),
-        _ => target_path.to_string(),
-    };
-
-    (rewritten, passthrough_query)
+    crate::proxy_core::rewrite_codex_responses_endpoint_to_chat(endpoint).into_parts()
 }
 
 fn rewrite_claude_transform_endpoint(
@@ -2772,18 +2760,7 @@ fn rewrite_claude_transform_endpoint(
     is_copilot: bool,
     body: &Value,
 ) -> (String, Option<String>) {
-    let (path, query) = split_endpoint_and_query(endpoint);
-    let passthrough_query = if is_claude_messages_path(path) {
-        strip_beta_query(query)
-    } else {
-        query.map(ToString::to_string)
-    };
-
-    if !is_claude_messages_path(path) {
-        return (endpoint.to_string(), passthrough_query);
-    }
-
-    if api_format == "gemini_native" {
+    let (gemini_model, gemini_stream) = if api_format == "gemini_native" {
         let model =
             super::providers::transform_gemini::extract_gemini_model(body).unwrap_or("unknown");
         // Accept both bare ids (`gemini-2.5-pro`) and the resource-name
@@ -2794,41 +2771,21 @@ fn rewrite_claude_transform_endpoint(
             .get("stream")
             .and_then(|value| value.as_bool())
             .unwrap_or(false);
-        let target_path = if is_stream {
-            format!("/v1beta/models/{model}:streamGenerateContent")
-        } else {
-            format!("/v1beta/models/{model}:generateContent")
-        };
-
-        let rewritten_query = merge_query_params(
-            passthrough_query.as_deref(),
-            if is_stream { Some("alt=sse") } else { None },
-        );
-
-        let rewritten = match rewritten_query.as_deref() {
-            Some(query) if !query.is_empty() => format!("{target_path}?{query}"),
-            _ => target_path,
-        };
-
-        return (rewritten, rewritten_query);
-    }
-
-    let target_path = if is_copilot && api_format == "openai_responses" {
-        "/v1/responses"
-    } else if is_copilot {
-        "/chat/completions"
-    } else if api_format == "openai_responses" {
-        "/v1/responses"
+        (Some(model), is_stream)
     } else {
-        "/v1/chat/completions"
+        (None, false)
     };
 
-    let rewritten = match passthrough_query.as_deref() {
-        Some(query) if !query.is_empty() => format!("{target_path}?{query}"),
-        _ => target_path.to_string(),
-    };
-
-    (rewritten, passthrough_query)
+    crate::proxy_core::rewrite_claude_transform_endpoint(
+        crate::proxy_core::ClaudeTransformEndpointRewriteInput {
+            endpoint,
+            api_format,
+            is_copilot,
+            gemini_model,
+            gemini_stream,
+        },
+    )
+    .into_parts()
 }
 
 #[allow(dead_code)]
