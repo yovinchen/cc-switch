@@ -36,9 +36,9 @@ use crate::app_config::AppType;
 use crate::database::{ProxyChannelModelRecord, ProxyChannelRecord};
 use crate::proxy_core::{
     claude_stream_usage_event_filter, codex_stream_usage_event_filter,
-    parse_upstream_json_or_unlabeled_sse, resolve_management_auth_decision,
-    should_aggregate_codex_oauth_responses_sse, should_use_claude_transform_streaming,
-    strip_entity_headers_for_rebuilt_body, strip_hop_by_hop_response_headers,
+    parse_upstream_json_or_unlabeled_sse, prepare_rebuilt_json_response_headers,
+    resolve_management_auth_decision, should_aggregate_codex_oauth_responses_sse,
+    should_use_claude_transform_streaming, transformed_sse_response_headers,
     validate_management_bearer_value, AppChannelListQuery, AppChannelListResponse,
     AppChannelResponse, AppChannelRouteResponse, AppKind, AppListResponse, AppModelListQuery,
     AppSummary, ChannelDeleteResponse, ChannelHealthResetResponse, ChannelListResponse,
@@ -942,16 +942,7 @@ async fn handle_claude_transform(
             connection_guard,
         );
 
-        let mut headers = axum::http::HeaderMap::new();
-        headers.insert(
-            "Content-Type",
-            axum::http::HeaderValue::from_static("text/event-stream"),
-        );
-        headers.insert(
-            "Cache-Control",
-            axum::http::HeaderValue::from_static("no-cache"),
-        );
-
+        let headers = transformed_sse_response_headers();
         let body = axum::body::Body::from_stream(logged_stream);
         return Ok((headers, body).into_response());
     }
@@ -1064,19 +1055,11 @@ async fn handle_claude_transform(
 
     // 构建响应
     let mut builder = axum::response::Response::builder().status(status);
-    strip_entity_headers_for_rebuilt_body(&mut response_headers);
-    strip_hop_by_hop_response_headers(&mut response_headers);
-    // Builder::header 是 append 语义；不先 remove 会和上游 Content-Type 双发。
-    response_headers.remove(axum::http::header::CONTENT_TYPE);
+    prepare_rebuilt_json_response_headers(&mut response_headers);
 
     for (key, value) in response_headers.iter() {
         builder = builder.header(key, value);
     }
-
-    builder = builder.header(
-        axum::http::header::CONTENT_TYPE,
-        axum::http::HeaderValue::from_static("application/json"),
-    );
 
     let response_body = serde_json::to_vec(&anthropic_response).map_err(|e| {
         log::error!("[Claude] 序列化响应失败: {e}");
@@ -1467,16 +1450,7 @@ async fn handle_codex_chat_to_responses_transform(
             connection_guard,
         );
 
-        let mut headers = axum::http::HeaderMap::new();
-        headers.insert(
-            "Content-Type",
-            axum::http::HeaderValue::from_static("text/event-stream"),
-        );
-        headers.insert(
-            "Cache-Control",
-            axum::http::HeaderValue::from_static("no-cache"),
-        );
-
+        let headers = transformed_sse_response_headers();
         let body = axum::body::Body::from_stream(logged_stream);
         return Ok((headers, body).into_response());
     }
@@ -1567,19 +1541,12 @@ async fn handle_codex_chat_to_responses_transform(
         });
     }
 
-    strip_entity_headers_for_rebuilt_body(&mut response_headers);
-    strip_hop_by_hop_response_headers(&mut response_headers);
-    // Builder::header 是 append 语义；不先 remove 会和上游 Content-Type 双发。
-    response_headers.remove(axum::http::header::CONTENT_TYPE);
+    prepare_rebuilt_json_response_headers(&mut response_headers);
 
     let mut builder = axum::response::Response::builder().status(status);
     for (key, value) in response_headers.iter() {
         builder = builder.header(key, value);
     }
-    builder = builder.header(
-        axum::http::header::CONTENT_TYPE,
-        axum::http::HeaderValue::from_static("application/json"),
-    );
 
     let response_body = serde_json::to_vec(&responses_response).map_err(|e| {
         log::error!("[Codex] 序列化 Responses 响应失败: {e}");
@@ -1614,19 +1581,12 @@ async fn handle_codex_chat_error_response(
     }
     let responses_error = normalized_error.response_error;
 
-    strip_entity_headers_for_rebuilt_body(&mut response_headers);
-    strip_hop_by_hop_response_headers(&mut response_headers);
-    // Builder::header 是 append 语义；不先 remove 会和上游 Content-Type 双发。
-    response_headers.remove(axum::http::header::CONTENT_TYPE);
+    prepare_rebuilt_json_response_headers(&mut response_headers);
 
     let mut builder = axum::response::Response::builder().status(status);
     for (key, value) in response_headers.iter() {
         builder = builder.header(key, value);
     }
-    builder = builder.header(
-        axum::http::header::CONTENT_TYPE,
-        axum::http::HeaderValue::from_static("application/json"),
-    );
 
     let body = serde_json::to_vec(&responses_error).map_err(|e| {
         log::error!("[Codex] 序列化 Responses 错误体失败: {e}");

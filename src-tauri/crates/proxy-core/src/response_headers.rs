@@ -1,4 +1,4 @@
-use http::{header, HeaderMap, HeaderName};
+use http::{header, HeaderMap, HeaderName, HeaderValue};
 
 /// RFC 2616 / RFC 7230 hop-by-hop response headers that must not be forwarded.
 const HOP_BY_HOP_RESPONSE_HEADERS: &[&str] = &[
@@ -42,10 +42,32 @@ pub fn strip_entity_headers_for_rebuilt_body(headers: &mut HeaderMap) {
     headers.remove(header::TRANSFER_ENCODING);
 }
 
+/// Prepare upstream response headers for a rebuilt JSON response body.
+pub fn prepare_rebuilt_json_response_headers(headers: &mut HeaderMap) {
+    strip_entity_headers_for_rebuilt_body(headers);
+    strip_hop_by_hop_response_headers(headers);
+    headers.remove(header::CONTENT_TYPE);
+    headers.insert(
+        header::CONTENT_TYPE,
+        HeaderValue::from_static("application/json"),
+    );
+}
+
+/// Build headers for transformed SSE responses that no longer reuse upstream
+/// response headers.
+pub fn transformed_sse_response_headers() -> HeaderMap {
+    let mut headers = HeaderMap::new();
+    headers.insert(
+        header::CONTENT_TYPE,
+        HeaderValue::from_static("text/event-stream"),
+    );
+    headers.insert(header::CACHE_CONTROL, HeaderValue::from_static("no-cache"));
+    headers
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
-    use http::HeaderValue;
 
     #[test]
     fn strips_standard_hop_by_hop_response_headers() {
@@ -98,6 +120,41 @@ mod tests {
         assert_eq!(
             headers.get(header::CONTENT_TYPE),
             Some(&HeaderValue::from_static("application/json"))
+        );
+    }
+
+    #[test]
+    fn prepares_rebuilt_json_response_headers() {
+        let mut headers = HeaderMap::new();
+        headers.insert(header::CONNECTION, HeaderValue::from_static("x-debug"));
+        headers.insert("x-debug", HeaderValue::from_static("1"));
+        headers.insert(header::CONTENT_ENCODING, HeaderValue::from_static("gzip"));
+        headers.insert(header::CONTENT_LENGTH, HeaderValue::from_static("24"));
+        headers.insert(header::CONTENT_TYPE, HeaderValue::from_static("text/plain"));
+
+        prepare_rebuilt_json_response_headers(&mut headers);
+
+        assert!(!headers.contains_key(header::CONNECTION));
+        assert!(!headers.contains_key("x-debug"));
+        assert!(!headers.contains_key(header::CONTENT_ENCODING));
+        assert!(!headers.contains_key(header::CONTENT_LENGTH));
+        assert_eq!(
+            headers.get(header::CONTENT_TYPE),
+            Some(&HeaderValue::from_static("application/json"))
+        );
+    }
+
+    #[test]
+    fn transformed_sse_headers_are_stable() {
+        let headers = transformed_sse_response_headers();
+
+        assert_eq!(
+            headers.get(header::CONTENT_TYPE),
+            Some(&HeaderValue::from_static("text/event-stream"))
+        );
+        assert_eq!(
+            headers.get(header::CACHE_CONTROL),
+            Some(&HeaderValue::from_static("no-cache"))
         );
     }
 }
