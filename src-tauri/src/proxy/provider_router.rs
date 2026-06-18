@@ -6,12 +6,12 @@ use crate::app_config::AppType;
 use crate::database::{Database, ProxyChannelMigrationPreview, ProxyChannelRecord};
 use crate::error::AppError;
 use crate::provider::Provider;
-use crate::proxy::channel_routing::{
-    resolve_channel_route, ChannelRouteRejected, ChannelRouteSource, RouteResolveRequest,
-    RouteResolveResponse,
-};
+use crate::proxy::channel_routing::resolve_channel_route;
 use crate::proxy::circuit_breaker::{
     AllowResult, CircuitBreaker, CircuitBreakerConfig, CircuitBreakerStats,
+};
+use crate::proxy_core::{
+    ChannelRouteRejected, ChannelRouteSource, RouteResolveRequest, RouteResolveResponse,
 };
 use std::collections::HashMap;
 use std::str::FromStr;
@@ -435,8 +435,8 @@ fn app_type_from_circuit_key(key: &str) -> &str {
 mod tests {
     use super::*;
     use crate::database::Database;
-    use crate::proxy::channel_routing::{ChannelRouteSource, RouteResolveRequest};
     use crate::proxy::circuit_breaker::CircuitState;
+    use crate::proxy_core::{ChannelRouteSource, RouteResolveRequest};
     use crate::settings::CustomEndpoint;
     use serde_json::json;
     use serial_test::serial;

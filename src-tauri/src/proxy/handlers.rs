@@ -37,7 +37,6 @@ use crate::database::{
     ProxyChannelModelRecord, ProxyChannelModelsReplaceRequest, ProxyChannelPatchRequest,
     ProxyChannelRecord, ProxyChannelWriteRequest,
 };
-use crate::proxy::channel_routing::{ChannelRouteCandidate, ChannelRouteRejected};
 use crate::proxy_core::{
     body_diagnostics_suffix, body_looks_like_sse, claude_stream_usage_event_filter,
     codex_stream_usage_event_filter, should_aggregate_codex_oauth_responses_sse,
@@ -45,11 +44,12 @@ use crate::proxy_core::{
     strip_hop_by_hop_response_headers, AppChannelListResponse, AppChannelResponse,
     AppChannelRouteResponse, AppKind, AppListResponse, AppSummary, ChannelDeleteResponse,
     ChannelHealthResetResponse, ChannelListResponse, ChannelMigrationMaterializeResponse,
-    ChannelMigrationPreviewResponse, ChannelModelsResponse, CurrentRouteProviderSummary,
-    CurrentRouteResponse, InterfaceKind, ProviderListResponse, ProviderSummary, ProxyBody,
-    ProxyCoreError, ProxyCoreResponse, ProxyEngine, ProxyRequest, ProxyResponseBody, ProxyResult,
-    ProxyServices, RoutableModelList, RouteGroupChannelInput, RouteGroupListResponse,
-    RouteGroupSourceInput,
+    ChannelMigrationPreviewResponse, ChannelModelsResponse, ChannelRouteCandidate,
+    ChannelRouteRejected, ChannelRouteSource, CurrentRouteProviderSummary, CurrentRouteResponse,
+    InterfaceKind, ProviderListResponse, ProviderSummary, ProxyBody, ProxyCoreError,
+    ProxyCoreResponse, ProxyEngine, ProxyRequest, ProxyResponseBody, ProxyResult, ProxyServices,
+    RoutableModelList, RouteGroupChannelInput, RouteGroupListResponse, RouteGroupSourceInput,
+    RouteResolveRequest, RouteResolveResponse,
 };
 use axum::{
     extract::{Path, Query, State},
@@ -108,11 +108,8 @@ impl AppChannelListQuery {
             || self.group.is_some()
     }
 
-    fn into_route_request(
-        self,
-        app_type: String,
-    ) -> crate::proxy::channel_routing::RouteResolveRequest {
-        crate::proxy::channel_routing::RouteResolveRequest {
+    fn into_route_request(self, app_type: String) -> RouteResolveRequest {
+        RouteResolveRequest {
             app_type,
             requested_model: self.requested_model.or(self.model),
             interface_kind: self.interface_kind.or(self.interface_alias),
@@ -715,8 +712,8 @@ pub async fn reset_proxy_channel_breaker(
 /// POST /proxy/v1/route/resolve
 pub async fn resolve_proxy_route(
     State(state): State<ProxyState>,
-    Json(request): Json<crate::proxy::channel_routing::RouteResolveRequest>,
-) -> Result<Json<crate::proxy::channel_routing::RouteResolveResponse>, ProxyError> {
+    Json(request): Json<RouteResolveRequest>,
+) -> Result<Json<RouteResolveResponse>, ProxyError> {
     if request.app_type.trim().is_empty() {
         return Err(ProxyError::InvalidRequest(
             "appType/app_type cannot be empty".to_string(),
@@ -753,14 +750,10 @@ fn normalize_channel_id_path(channel_id: String) -> Result<String, ProxyError> {
     }
 }
 
-fn channel_route_source_label(
-    source: &crate::proxy::channel_routing::ChannelRouteSource,
-) -> &'static str {
+fn channel_route_source_label(source: &ChannelRouteSource) -> &'static str {
     match source {
-        crate::proxy::channel_routing::ChannelRouteSource::MaterializedChannels => {
-            "materialized_channels"
-        }
-        crate::proxy::channel_routing::ChannelRouteSource::LegacyProjection => "legacy_projection",
+        ChannelRouteSource::MaterializedChannels => "materialized_channels",
+        ChannelRouteSource::LegacyProjection => "legacy_projection",
     }
 }
 

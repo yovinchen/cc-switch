@@ -5,65 +5,12 @@
 
 use crate::database::{ProxyChannelRecord, ProxyChannelSourceKind};
 use crate::error::AppError;
-use serde::{Deserialize, Serialize};
+use crate::proxy_core::{
+    ChannelRouteCandidate, ChannelRouteRejected, ChannelRouteSource, RouteResolveRequest,
+    RouteResolveResponse,
+};
 
 const DEFAULT_GROUP: &str = "default";
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-#[serde(rename_all = "snake_case")]
-pub enum ChannelRouteSource {
-    MaterializedChannels,
-    LegacyProjection,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
-#[serde(rename_all = "camelCase")]
-pub struct RouteResolveRequest {
-    pub app_type: String,
-    #[serde(default)]
-    pub requested_model: Option<String>,
-    #[serde(default)]
-    pub interface_kind: Option<String>,
-    #[serde(default)]
-    pub route_group: Option<String>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-#[serde(rename_all = "camelCase")]
-pub struct ChannelRouteCandidate {
-    pub channel_id: String,
-    pub provider_id: String,
-    pub channel_name: String,
-    pub base_url: String,
-    pub interface_kind: String,
-    pub public_model: Option<String>,
-    pub upstream_model: Option<String>,
-    pub route_group: String,
-    pub priority: i64,
-    pub weight: u32,
-    pub source_kind: String,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-#[serde(rename_all = "camelCase")]
-pub struct ChannelRouteRejected {
-    pub channel_id: String,
-    pub provider_id: String,
-    pub channel_name: String,
-    pub reasons: Vec<String>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-#[serde(rename_all = "camelCase")]
-pub struct RouteResolveResponse {
-    pub app_type: String,
-    pub requested_model: Option<String>,
-    pub interface_kind: Option<String>,
-    pub route_group: String,
-    pub source: ChannelRouteSource,
-    pub candidates: Vec<ChannelRouteCandidate>,
-    pub rejected: Vec<ChannelRouteRejected>,
-}
 
 pub(crate) fn resolve_channel_route(
     request: RouteResolveRequest,

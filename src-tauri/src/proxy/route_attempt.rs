@@ -5,8 +5,7 @@
 
 use crate::app_config::AppType;
 use crate::provider::{Provider, ProviderMeta};
-use crate::proxy::channel_routing::ChannelRouteCandidate;
-use crate::proxy_core::RoutePlan;
+use crate::proxy_core::{ChannelRouteCandidate, RoutePlan};
 use serde_json::{Map, Value};
 use std::collections::HashMap;
 

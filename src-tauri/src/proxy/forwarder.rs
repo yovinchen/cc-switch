@@ -3201,7 +3201,7 @@ mod tests {
         let attempt = ForwardAttempt::from_channel(
             &AppType::Claude,
             &provider,
-            crate::proxy::channel_routing::ChannelRouteCandidate {
+            crate::proxy_core::ChannelRouteCandidate {
                 channel_id: "channel-a".to_string(),
                 provider_id: provider.id.clone(),
                 channel_name: "Relay A".to_string(),

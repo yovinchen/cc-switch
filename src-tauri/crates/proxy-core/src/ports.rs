@@ -472,6 +472,62 @@ impl ChannelMigrationMaterializeResponse {
     }
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum ChannelRouteSource {
+    MaterializedChannels,
+    LegacyProjection,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct RouteResolveRequest {
+    pub app_type: String,
+    #[serde(default)]
+    pub requested_model: Option<String>,
+    #[serde(default)]
+    pub interface_kind: Option<String>,
+    #[serde(default)]
+    pub route_group: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct ChannelRouteCandidate {
+    pub channel_id: String,
+    pub provider_id: String,
+    pub channel_name: String,
+    pub base_url: String,
+    pub interface_kind: String,
+    pub public_model: Option<String>,
+    pub upstream_model: Option<String>,
+    pub route_group: String,
+    pub priority: i64,
+    pub weight: u32,
+    pub source_kind: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct ChannelRouteRejected {
+    pub channel_id: String,
+    pub provider_id: String,
+    pub channel_name: String,
+    pub reasons: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct RouteResolveResponse {
+    pub app_type: String,
+    pub requested_model: Option<String>,
+    pub interface_kind: Option<String>,
+    pub route_group: String,
+    pub source: ChannelRouteSource,
+    pub candidates: Vec<ChannelRouteCandidate>,
+    pub rejected: Vec<ChannelRouteRejected>,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ChannelListResponse<T> {
@@ -624,8 +680,10 @@ mod tests {
         AppChannelListResponse, AppChannelResponse, AppChannelRouteResponse, AppListResponse,
         AppSummary, ChannelDeleteResponse, ChannelListResponse, ChannelModelsResponse,
         ChannelMigrationMaterializeResponse, ChannelMigrationPreviewResponse,
+        ChannelRouteCandidate, ChannelRouteRejected, ChannelRouteSource,
         CurrentRouteProviderSummary, CurrentRouteResponse, ProviderListResponse, ProviderSummary,
         RouteGroupChannelInput, RouteGroupListResponse, RouteGroupSourceInput,
+        RouteResolveResponse,
     };
     use serde_json::json;
 
@@ -810,6 +868,45 @@ mod tests {
         assert_eq!(value["insertedHealthRows"], 1);
         assert_eq!(value["duplicateCount"], 1);
         assert_eq!(value["needsReviewCount"], 0);
+    }
+
+    #[test]
+    fn route_resolve_response_serializes_management_contract() {
+        let response = RouteResolveResponse {
+            app_type: "claude".to_string(),
+            requested_model: Some("sonnet".to_string()),
+            interface_kind: Some("anthropic_messages".to_string()),
+            route_group: "default".to_string(),
+            source: ChannelRouteSource::MaterializedChannels,
+            candidates: vec![ChannelRouteCandidate {
+                channel_id: "channel-a".to_string(),
+                provider_id: "provider-a".to_string(),
+                channel_name: "Primary".to_string(),
+                base_url: "https://primary.example.com/v1".to_string(),
+                interface_kind: "anthropic_messages".to_string(),
+                public_model: Some("sonnet".to_string()),
+                upstream_model: Some("claude-sonnet".to_string()),
+                route_group: "default".to_string(),
+                priority: 10,
+                weight: 100,
+                source_kind: "manual".to_string(),
+            }],
+            rejected: vec![ChannelRouteRejected {
+                channel_id: "channel-b".to_string(),
+                provider_id: "provider-b".to_string(),
+                channel_name: "Backup".to_string(),
+                reasons: vec!["model_unavailable:sonnet".to_string()],
+            }],
+        };
+
+        let value = serde_json::to_value(response).expect("serialize response");
+
+        assert_eq!(value["appType"], "claude");
+        assert_eq!(value["requestedModel"], "sonnet");
+        assert_eq!(value["interfaceKind"], "anthropic_messages");
+        assert_eq!(value["source"], "materialized_channels");
+        assert_eq!(value["candidates"][0]["channelId"], "channel-a");
+        assert_eq!(value["rejected"][0]["reasons"][0], "model_unavailable:sonnet");
     }
 
     #[test]

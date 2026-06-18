@@ -500,7 +500,7 @@ impl ProxyServer {
 mod tests {
     use super::*;
     use crate::provider::Provider;
-    use crate::proxy::channel_routing::RouteResolveRequest;
+    use crate::proxy_core::RouteResolveRequest;
     use axum::{
         body::{to_bytes, Body},
         http::{Method, Request, StatusCode},
@@ -811,6 +811,55 @@ mod tests {
             rejected["rejected"][0]["reasons"][0],
             "model_unavailable:missing-model"
         );
+    }
+
+    #[tokio::test]
+    async fn route_resolve_management_route_returns_core_contract() {
+        let db = Arc::new(Database::memory().expect("memory db"));
+        let provider = Provider::with_id(
+            "a".to_string(),
+            "Provider A".to_string(),
+            json!({
+                "env": {
+                    "ANTHROPIC_BASE_URL": "https://primary.example.com/v1",
+                    "ANTHROPIC_MODEL": "claude-sonnet-4"
+                }
+            }),
+            None,
+        );
+        db.save_provider("claude", &provider).unwrap();
+        db.materialize_legacy_proxy_channels("claude").unwrap();
+
+        let server = ProxyServer::new(ProxyConfig::default(), db, None);
+        let mut router = server.build_router();
+        let body = serde_json::to_vec(&RouteResolveRequest {
+            app_type: "claude".to_string(),
+            requested_model: Some("claude-sonnet-4".to_string()),
+            interface_kind: Some("anthropic_messages".to_string()),
+            route_group: None,
+        })
+        .unwrap();
+
+        let response = Service::call(
+            &mut router,
+            Request::builder()
+                .method(Method::POST)
+                .uri("/proxy/v1/route/resolve")
+                .header("content-type", "application/json")
+                .body(Body::from(body))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(response.status(), StatusCode::OK);
+        let resolved = response_json(response).await;
+        assert_eq!(resolved["appType"], "claude");
+        assert_eq!(resolved["source"], "materialized_channels");
+        assert_eq!(resolved["routeGroup"], "default");
+        assert_eq!(resolved["candidates"].as_array().unwrap().len(), 1);
+        assert_eq!(resolved["candidates"][0]["providerId"], "a");
+        assert!(resolved["rejected"].as_array().unwrap().is_empty());
     }
 
     #[tokio::test]
