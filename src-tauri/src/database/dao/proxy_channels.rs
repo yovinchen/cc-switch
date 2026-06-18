@@ -9,12 +9,12 @@ use crate::database::{lock_conn, to_json_string, Database};
 use crate::error::AppError;
 use crate::provider::Provider;
 use crate::proxy_core::{
-    ProxyChannelModelWriteRequest, ProxyChannelPatchRequest, ProxyChannelWriteRequest,
+    stable_channel_id, ProxyChannelModelWriteRequest, ProxyChannelPatchRequest,
+    ProxyChannelWriteRequest,
 };
 use rusqlite::{params, Connection, OptionalExtension, Row};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
-use sha2::{Digest, Sha256};
 use std::collections::HashSet;
 use std::str::FromStr;
 
@@ -960,51 +960,6 @@ fn build_legacy_channel(
         needs_review,
         review_reasons,
     }
-}
-
-fn stable_channel_id(
-    app_type: &str,
-    provider_id: &str,
-    source_kind: &str,
-    base_url: &str,
-) -> String {
-    let mut hasher = Sha256::new();
-    hasher.update(app_type.as_bytes());
-    hasher.update([0]);
-    hasher.update(provider_id.as_bytes());
-    hasher.update([0]);
-    hasher.update(source_kind.as_bytes());
-    hasher.update([0]);
-    hasher.update(base_url.as_bytes());
-    let digest = hasher.finalize();
-    let suffix = digest
-        .iter()
-        .take(6)
-        .map(|byte| format!("{byte:02x}"))
-        .collect::<String>();
-    format!(
-        "legacy-{}-{}-{}-{suffix}",
-        slug_part(app_type),
-        slug_part(provider_id),
-        source_kind.replace('_', "-")
-    )
-}
-
-fn slug_part(value: &str) -> String {
-    let mut slug = String::new();
-    for ch in value.chars() {
-        if ch.is_ascii_alphanumeric() {
-            slug.push(ch.to_ascii_lowercase());
-        } else if ch == '-' || ch == '_' {
-            slug.push(ch);
-        } else if !slug.ends_with('-') {
-            slug.push('-');
-        }
-        if slug.len() >= 48 {
-            break;
-        }
-    }
-    slug.trim_matches('-').to_string()
 }
 
 fn legacy_priority(provider: &Provider, current_provider_id: Option<&str>) -> i64 {

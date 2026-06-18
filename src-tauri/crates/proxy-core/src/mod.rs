@@ -5,6 +5,7 @@
 //! depending on these neutral domain types and service ports.
 
 pub mod codex_error;
+pub mod channel_identity;
 pub mod domain;
 pub mod engine;
 pub mod error;
@@ -20,6 +21,7 @@ pub mod sse;
 pub mod usage;
 
 pub use codex_error::*;
+pub use channel_identity::*;
 pub use domain::*;
 pub use engine::*;
 pub use error::*;
