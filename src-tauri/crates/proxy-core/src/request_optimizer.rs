@@ -1,3 +1,5 @@
+use std::collections::HashSet;
+
 use http::HeaderMap;
 use serde_json::Value;
 use sha2::{Digest, Sha256};
@@ -146,6 +148,78 @@ pub fn resolve_copilot_deterministic_interaction_id(session_id: &str) -> Option<
     hasher.update(b"interaction:");
     hasher.update(session_id.as_bytes());
     Some(uuid_v4_string_from_hash(&hasher.finalize()))
+}
+
+/// Convert tool_result blocks without a matching adjacent assistant tool_use into text blocks.
+pub fn sanitize_copilot_orphan_tool_results(mut body: Value) -> Value {
+    let messages = match body.get_mut("messages").and_then(Value::as_array_mut) {
+        Some(messages) if messages.len() >= 2 => messages,
+        _ => return body,
+    };
+
+    for index in 1..messages.len() {
+        if messages[index].get("role").and_then(Value::as_str) != Some("user") {
+            continue;
+        }
+
+        let previous_tool_use_ids: HashSet<String> =
+            if messages[index - 1].get("role").and_then(Value::as_str) == Some("assistant") {
+                messages[index - 1]
+                    .get("content")
+                    .and_then(Value::as_array)
+                    .map(|blocks| {
+                        blocks
+                            .iter()
+                            .filter(|block| {
+                                block.get("type").and_then(Value::as_str) == Some("tool_use")
+                            })
+                            .filter_map(|block| {
+                                block.get("id").and_then(Value::as_str).map(str::to_string)
+                            })
+                            .collect()
+                    })
+                    .unwrap_or_default()
+            } else {
+                HashSet::new()
+            };
+
+        let Some(content) = messages[index]
+            .get_mut("content")
+            .and_then(Value::as_array_mut)
+        else {
+            continue;
+        };
+
+        for block in content.iter_mut() {
+            if block.get("type").and_then(Value::as_str) != Some("tool_result") {
+                continue;
+            }
+
+            let tool_use_id = block
+                .get("tool_use_id")
+                .and_then(Value::as_str)
+                .unwrap_or("");
+
+            if tool_use_id.is_empty() || !previous_tool_use_ids.contains(tool_use_id) {
+                let content_text = match block.get("content") {
+                    Some(Value::String(text)) => text.clone(),
+                    Some(Value::Array(blocks)) => blocks
+                        .iter()
+                        .filter_map(|block| block.get("text").and_then(Value::as_str))
+                        .collect::<Vec<_>>()
+                        .join("\n"),
+                    _ => String::new(),
+                };
+
+                *block = serde_json::json!({
+                    "type": "text",
+                    "text": format!("[Tool result for {}]: {}", tool_use_id, content_text)
+                });
+            }
+        }
+    }
+
+    body
 }
 
 /// Strip Anthropic thinking blocks from assistant messages before forwarding to Copilot.
@@ -314,6 +388,7 @@ fn uuid_v4_string_from_hash(hash: &[u8]) -> String {
 mod tests {
     use super::{
         classify_copilot_request, parse_session_from_user_id, provider_declares_bedrock,
+        sanitize_copilot_orphan_tool_results,
         resolve_copilot_optimizer_session_id, should_apply_bedrock_pre_send_optimizer,
         resolve_copilot_deterministic_interaction_id, resolve_copilot_deterministic_request_id,
         resolve_copilot_warmup_model_override, strip_copilot_thinking_blocks,
@@ -641,6 +716,77 @@ mod tests {
             resolve_copilot_deterministic_interaction_id("session_abc"),
             resolve_copilot_deterministic_request_id(&body, "session_abc")
         );
+    }
+
+    #[test]
+    fn copilot_orphan_tool_result_sanitize_keeps_adjacent_matches_and_converts_orphans() {
+        let body = json!({
+            "messages": [
+                {"role": "assistant", "content": [
+                    {"type": "tool_use", "id": "tool_1", "name": "read", "input": {}}
+                ]},
+                {"role": "user", "content": [
+                    {"type": "tool_result", "tool_use_id": "tool_1", "content": "file contents"},
+                    {"type": "tool_result", "tool_use_id": "tool_orphan", "content": "orphan data"}
+                ]}
+            ]
+        });
+
+        let sanitized = sanitize_copilot_orphan_tool_results(body);
+        let content = sanitized["messages"][1]["content"].as_array().unwrap();
+
+        assert_eq!(content[0]["type"], "tool_result");
+        assert_eq!(content[1]["type"], "text");
+        assert!(content[1]["text"].as_str().unwrap().contains("tool_orphan"));
+        assert!(content[1]["text"].as_str().unwrap().contains("orphan data"));
+    }
+
+    #[test]
+    fn copilot_orphan_tool_result_sanitize_requires_adjacent_assistant_tool_use() {
+        let body = json!({
+            "messages": [
+                {"role": "assistant", "content": [
+                    {"type": "tool_use", "id": "old_tool", "name": "search", "input": {}}
+                ]},
+                {"role": "user", "content": [
+                    {"type": "tool_result", "tool_use_id": "old_tool", "content": "found"}
+                ]},
+                {"role": "assistant", "content": [{"type": "text", "text": "ok"}]},
+                {"role": "user", "content": [
+                    {"type": "tool_result", "tool_use_id": "old_tool", "content": "stale"}
+                ]}
+            ]
+        });
+
+        let sanitized = sanitize_copilot_orphan_tool_results(body);
+
+        assert_eq!(sanitized["messages"][1]["content"][0]["type"], "tool_result");
+        assert_eq!(sanitized["messages"][3]["content"][0]["type"], "text");
+    }
+
+    #[test]
+    fn copilot_orphan_tool_result_sanitize_handles_empty_id_and_array_content() {
+        let body = json!({
+            "messages": [
+                {"role": "assistant", "content": [
+                    {"type": "tool_use", "id": "tool_1", "name": "read", "input": {}}
+                ]},
+                {"role": "user", "content": [
+                    {"type": "tool_result", "tool_use_id": "", "content": [
+                        {"type": "text", "text": "first"},
+                        {"type": "text", "text": "second"}
+                    ]},
+                    {"type": "tool_result", "content": "missing id"}
+                ]}
+            ]
+        });
+
+        let sanitized = sanitize_copilot_orphan_tool_results(body);
+        let content = sanitized["messages"][1]["content"].as_array().unwrap();
+
+        assert_eq!(content[0]["type"], "text");
+        assert!(content[0]["text"].as_str().unwrap().contains("first\nsecond"));
+        assert_eq!(content[1]["type"], "text");
     }
 
     #[test]

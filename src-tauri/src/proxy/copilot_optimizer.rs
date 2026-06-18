@@ -8,8 +8,6 @@
 //!
 //! 参考实现: https://github.com/caozhiyuan/copilot-api
 
-use std::collections::HashSet;
-
 use serde_json::Value;
 use uuid::Uuid;
 
@@ -167,75 +165,8 @@ pub fn deterministic_interaction_id(session_id: &str) -> Option<String> {
 /// 但后续 user 消息中的 tool_result 仍在。上游 API 可能因不匹配而报错/重试。
 ///
 /// 与 copilot-api 的 `sanitizeOrphanToolResults` 对齐。
-pub fn sanitize_orphan_tool_results(mut body: Value) -> Value {
-    let messages = match body.get_mut("messages").and_then(|m| m.as_array_mut()) {
-        Some(msgs) if msgs.len() >= 2 => msgs,
-        _ => return body,
-    };
-
-    // Anthropic 协议要求 tool_result 紧跟其对应 tool_use 所在的 assistant turn。
-    // 只检查 messages[i-1]（紧邻上一条 assistant）来判定是否 orphan，
-    // 与参考实现 sanitizeOrphanToolResults 对齐。
-    for i in 1..messages.len() {
-        if messages[i].get("role").and_then(|r| r.as_str()) != Some("user") {
-            continue;
-        }
-
-        // 收集紧邻上一条 assistant 的 tool_use id
-        let prev_tool_use_ids: HashSet<String> =
-            if messages[i - 1].get("role").and_then(|r| r.as_str()) == Some("assistant") {
-                messages[i - 1]
-                    .get("content")
-                    .and_then(|c| c.as_array())
-                    .map(|blocks| {
-                        blocks
-                            .iter()
-                            .filter(|b| b.get("type").and_then(|t| t.as_str()) == Some("tool_use"))
-                            .filter_map(|b| b.get("id").and_then(|i| i.as_str()).map(String::from))
-                            .collect()
-                    })
-                    .unwrap_or_default()
-            } else {
-                // 上一条不是 assistant → 这条 user 中的所有 tool_result 都是 orphan
-                HashSet::new()
-            };
-
-        let content = match messages[i]
-            .get_mut("content")
-            .and_then(|c| c.as_array_mut())
-        {
-            Some(blocks) => blocks,
-            None => continue,
-        };
-
-        for block in content.iter_mut() {
-            if block.get("type").and_then(|t| t.as_str()) != Some("tool_result") {
-                continue;
-            }
-            let tool_use_id = block
-                .get("tool_use_id")
-                .and_then(|id| id.as_str())
-                .unwrap_or("");
-            // 空 tool_use_id 或不在紧邻 assistant 的 tool_use 中 → orphan
-            if tool_use_id.is_empty() || !prev_tool_use_ids.contains(tool_use_id) {
-                let content_text = match block.get("content") {
-                    Some(Value::String(text)) => text.clone(),
-                    Some(Value::Array(blocks)) => blocks
-                        .iter()
-                        .filter_map(|b| b.get("text").and_then(|t| t.as_str()))
-                        .collect::<Vec<_>>()
-                        .join("\n"),
-                    _ => String::new(),
-                };
-                *block = serde_json::json!({
-                    "type": "text",
-                    "text": format!("[Tool result for {}]: {}", tool_use_id, content_text)
-                });
-            }
-        }
-    }
-
-    body
+pub fn sanitize_orphan_tool_results(body: Value) -> Value {
+    crate::proxy_core::sanitize_copilot_orphan_tool_results(body)
 }
 
 /// 请求前主动剥离所有 assistant 消息里的 thinking / redacted_thinking block
