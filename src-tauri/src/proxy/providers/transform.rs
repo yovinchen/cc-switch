@@ -4,8 +4,8 @@
 //! 参考: anthropic-proxy-rs
 
 use crate::proxy::{error::ProxyError, json_canonical::canonical_json_string};
-use crate::proxy_core::map_anthropic_tool_choice_to_openai_chat;
 pub(crate) use crate::proxy_core::strip_leading_anthropic_billing_header;
+use crate::proxy_core::{clean_openai_tool_schema, map_anthropic_tool_choice_to_openai_chat};
 pub use crate::proxy_core::{
     is_openai_o_series, resolve_reasoning_effort, supports_reasoning_effort,
 };
@@ -111,7 +111,7 @@ pub fn anthropic_to_openai_with_reasoning_content(
                     "function": {
                         "name": t.get("name").and_then(|n| n.as_str()).unwrap_or(""),
                         "description": t.get("description"),
-                        "parameters": clean_schema(t.get("input_schema").cloned().unwrap_or(json!({})))
+                        "parameters": clean_openai_tool_schema(t.get("input_schema").cloned().unwrap_or(json!({})))
                     }
                 })
             })
@@ -324,28 +324,6 @@ fn convert_message_to_openai(
     // 其他情况直接透传
     result.push(json!({"role": role, "content": content}));
     Ok(result)
-}
-
-/// 清理 JSON schema（移除不支持的 format）
-pub fn clean_schema(mut schema: Value) -> Value {
-    if let Some(obj) = schema.as_object_mut() {
-        // 移除 "format": "uri"
-        if obj.get("format").and_then(|v| v.as_str()) == Some("uri") {
-            obj.remove("format");
-        }
-
-        // 递归清理嵌套 schema
-        if let Some(properties) = obj.get_mut("properties").and_then(|v| v.as_object_mut()) {
-            for (_, value) in properties.iter_mut() {
-                *value = clean_schema(value.clone());
-            }
-        }
-
-        if let Some(items) = obj.get_mut("items") {
-            *items = clean_schema(items.clone());
-        }
-    }
-    schema
 }
 
 /// OpenAI 响应 → Anthropic 响应

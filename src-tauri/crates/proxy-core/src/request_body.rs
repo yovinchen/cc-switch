@@ -185,6 +185,29 @@ pub fn inject_openai_stream_include_usage(body: &mut Value) {
     }
 }
 
+pub fn clean_openai_tool_schema(mut schema: Value) -> Value {
+    if let Some(object) = schema.as_object_mut() {
+        if object.get("format").and_then(|value| value.as_str()) == Some("uri") {
+            object.remove("format");
+        }
+
+        if let Some(properties) = object
+            .get_mut("properties")
+            .and_then(|value| value.as_object_mut())
+        {
+            for value in properties.values_mut() {
+                *value = clean_openai_tool_schema(value.clone());
+            }
+        }
+
+        if let Some(items) = object.get_mut("items") {
+            *items = clean_openai_tool_schema(items.clone());
+        }
+    }
+
+    schema
+}
+
 pub fn prepare_upstream_request_body_with_report(
     request_body: Value,
 ) -> PreparedUpstreamRequestBody {
@@ -292,7 +315,7 @@ fn matches_schema_name_map(key: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::{
-        canonicalize_request_body_value, filter_private_params,
+        canonicalize_request_body_value, clean_openai_tool_schema, filter_private_params,
         filter_private_params_with_whitelist, filter_private_params_with_whitelist_report,
         inject_openai_stream_include_usage, is_openai_o_series, method_allows_upstream_request_body,
         map_anthropic_tool_choice_to_openai_chat,
@@ -605,5 +628,28 @@ mod tests {
 
         assert_eq!(body["stream_options"]["include_usage"], true);
         assert_eq!(body["stream_options"]["continuous_usage_stats"], true);
+    }
+
+    #[test]
+    fn cleans_openai_tool_schema_uri_formats_recursively() {
+        let cleaned = clean_openai_tool_schema(json!({
+            "type": "object",
+            "format": "uri",
+            "properties": {
+                "url": {"type": "string", "format": "uri"},
+                "date": {"type": "string", "format": "date-time"},
+                "nested": {
+                    "type": "array",
+                    "items": {"type": "string", "format": "uri"}
+                }
+            }
+        }));
+
+        assert!(cleaned.get("format").is_none());
+        assert!(cleaned["properties"]["url"].get("format").is_none());
+        assert!(cleaned["properties"]["nested"]["items"]
+            .get("format")
+            .is_none());
+        assert_eq!(cleaned["properties"]["date"]["format"], "date-time");
     }
 }

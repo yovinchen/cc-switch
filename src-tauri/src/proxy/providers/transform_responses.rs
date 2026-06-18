@@ -10,8 +10,9 @@
 
 use crate::proxy::{error::ProxyError, json_canonical::canonical_json_string};
 use crate::proxy_core::{
-    build_anthropic_usage_from_openai_responses, map_anthropic_tool_choice_to_openai_responses,
-    map_openai_responses_stop_reason_to_anthropic, sanitize_anthropic_tool_use_input,
+    build_anthropic_usage_from_openai_responses, clean_openai_tool_schema,
+    map_anthropic_tool_choice_to_openai_responses, map_openai_responses_stop_reason_to_anthropic,
+    sanitize_anthropic_tool_use_input,
 };
 use serde_json::{json, Value};
 
@@ -98,7 +99,7 @@ pub fn anthropic_to_responses(
                     "type": "function",
                     "name": t.get("name").and_then(|n| n.as_str()).unwrap_or(""),
                     "description": t.get("description"),
-                    "parameters": super::transform::clean_schema(
+                    "parameters": clean_openai_tool_schema(
                         t.get("input_schema").cloned().unwrap_or(json!({}))
                     )
                 })
