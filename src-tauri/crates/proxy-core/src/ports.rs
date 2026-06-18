@@ -6,7 +6,7 @@ use super::domain::{
 use super::error::ProxyCoreResult;
 use futures::future::BoxFuture;
 use serde::{Deserialize, Serialize};
-use serde_json::Value;
+use serde_json::{Map, Value};
 use std::collections::{BTreeMap, BTreeSet};
 
 pub trait ProxyServices: Send + Sync {
@@ -238,6 +238,147 @@ impl ChannelDeleteResponse {
             deleted,
         }
     }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ProxyChannelWriteRequest {
+    #[serde(default)]
+    pub id: Option<String>,
+    pub provider_id: String,
+    pub app_type: String,
+    pub name: String,
+    #[serde(default = "default_channel_status")]
+    pub status: String,
+    pub base_url: String,
+    pub interface_kind: String,
+    #[serde(default)]
+    pub auth_profile_ref: Option<String>,
+    #[serde(default = "default_channel_groups")]
+    pub groups: Vec<String>,
+    #[serde(default)]
+    pub priority: i64,
+    #[serde(default = "default_channel_weight")]
+    pub weight: u32,
+    #[serde(default)]
+    pub retry_policy: Value,
+    #[serde(default)]
+    pub health_policy: Value,
+    #[serde(default)]
+    pub header_overrides: Value,
+    #[serde(default)]
+    pub param_overrides: Value,
+    #[serde(default)]
+    pub status_code_mapping: Value,
+    #[serde(default)]
+    pub tags: Vec<String>,
+    #[serde(default)]
+    pub metadata: Value,
+    #[serde(default)]
+    pub models: Vec<ProxyChannelModelWriteRequest>,
+}
+
+impl Default for ProxyChannelWriteRequest {
+    fn default() -> Self {
+        Self {
+            id: None,
+            provider_id: String::new(),
+            app_type: String::new(),
+            name: String::new(),
+            status: default_channel_status(),
+            base_url: String::new(),
+            interface_kind: String::new(),
+            auth_profile_ref: None,
+            groups: default_channel_groups(),
+            priority: 0,
+            weight: default_channel_weight(),
+            retry_policy: empty_object_value(),
+            health_policy: empty_object_value(),
+            header_overrides: empty_object_value(),
+            param_overrides: empty_object_value(),
+            status_code_mapping: empty_array_value(),
+            tags: Vec::new(),
+            metadata: empty_object_value(),
+            models: Vec::new(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct ProxyChannelPatchRequest {
+    #[serde(default)]
+    pub name: Option<String>,
+    #[serde(default)]
+    pub status: Option<String>,
+    #[serde(default)]
+    pub base_url: Option<String>,
+    #[serde(default)]
+    pub interface_kind: Option<String>,
+    #[serde(default)]
+    pub auth_profile_ref: Option<String>,
+    #[serde(default)]
+    pub groups: Option<Vec<String>>,
+    #[serde(default)]
+    pub priority: Option<i64>,
+    #[serde(default)]
+    pub weight: Option<u32>,
+    #[serde(default)]
+    pub retry_policy: Option<Value>,
+    #[serde(default)]
+    pub health_policy: Option<Value>,
+    #[serde(default)]
+    pub header_overrides: Option<Value>,
+    #[serde(default)]
+    pub param_overrides: Option<Value>,
+    #[serde(default)]
+    pub status_code_mapping: Option<Value>,
+    #[serde(default)]
+    pub tags: Option<Vec<String>>,
+    #[serde(default)]
+    pub metadata: Option<Value>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct ProxyChannelModelWriteRequest {
+    pub public_model: String,
+    pub upstream_model: String,
+    #[serde(default)]
+    pub capabilities: Value,
+    #[serde(default)]
+    pub pricing_model: Option<String>,
+    #[serde(default)]
+    pub request_overrides: Value,
+    #[serde(default)]
+    pub response_overrides: Value,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct ProxyChannelModelsReplaceRequest {
+    #[serde(default)]
+    pub models: Vec<ProxyChannelModelWriteRequest>,
+}
+
+fn default_channel_status() -> String {
+    "enabled".to_string()
+}
+
+fn default_channel_groups() -> Vec<String> {
+    vec![DEFAULT_ROUTE_GROUP.to_string()]
+}
+
+fn default_channel_weight() -> u32 {
+    100
+}
+
+fn empty_object_value() -> Value {
+    Value::Object(Map::new())
+}
+
+fn empty_array_value() -> Value {
+    Value::Array(Vec::new())
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -682,10 +823,67 @@ mod tests {
         ChannelMigrationMaterializeResponse, ChannelMigrationPreviewResponse,
         ChannelRouteCandidate, ChannelRouteRejected, ChannelRouteSource,
         CurrentRouteProviderSummary, CurrentRouteResponse, ProviderListResponse, ProviderSummary,
-        RouteGroupChannelInput, RouteGroupListResponse, RouteGroupSourceInput,
-        RouteResolveResponse,
+        ProxyChannelModelWriteRequest, ProxyChannelModelsReplaceRequest,
+        ProxyChannelPatchRequest, ProxyChannelWriteRequest, RouteGroupChannelInput,
+        RouteGroupListResponse, RouteGroupSourceInput, RouteResolveResponse,
     };
     use serde_json::json;
+
+    #[test]
+    fn proxy_channel_write_request_defaults_match_management_contract() {
+        let request: ProxyChannelWriteRequest = serde_json::from_value(json!({
+            "providerId": "provider-a",
+            "appType": "claude",
+            "name": "Primary",
+            "baseUrl": "https://primary.example.com/v1",
+            "interfaceKind": "anthropic_messages"
+        }))
+        .expect("deserialize request");
+
+        assert_eq!(request.status, "enabled");
+        assert_eq!(request.groups, vec!["default".to_string()]);
+        assert_eq!(request.weight, 100);
+        assert_eq!(request.retry_policy, serde_json::Value::Null);
+        assert_eq!(request.status_code_mapping, serde_json::Value::Null);
+        assert!(request.models.is_empty());
+    }
+
+    #[test]
+    fn proxy_channel_patch_request_accepts_partial_updates() {
+        let request: ProxyChannelPatchRequest = serde_json::from_value(json!({
+            "baseUrl": "https://next.example.com/v1",
+            "groups": ["beta"]
+        }))
+        .expect("deserialize request");
+
+        assert_eq!(
+            request.base_url.as_deref(),
+            Some("https://next.example.com/v1")
+        );
+        assert_eq!(request.groups, Some(vec!["beta".to_string()]));
+        assert!(request.name.is_none());
+        assert!(request.metadata.is_none());
+    }
+
+    #[test]
+    fn proxy_channel_models_replace_request_wraps_model_writes() {
+        let request = ProxyChannelModelsReplaceRequest {
+            models: vec![ProxyChannelModelWriteRequest {
+                public_model: "sonnet".to_string(),
+                upstream_model: "claude-sonnet".to_string(),
+                capabilities: json!({"toolUse": true}),
+                pricing_model: Some("claude-sonnet".to_string()),
+                request_overrides: json!({}),
+                response_overrides: json!({}),
+            }],
+        };
+
+        let value = serde_json::to_value(request).expect("serialize request");
+
+        assert_eq!(value["models"][0]["publicModel"], "sonnet");
+        assert_eq!(value["models"][0]["upstreamModel"], "claude-sonnet");
+        assert_eq!(value["models"][0]["capabilities"]["toolUse"], true);
+    }
 
     #[test]
     fn app_list_response_serializes_management_envelope() {

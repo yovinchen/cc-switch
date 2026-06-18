@@ -8,6 +8,9 @@ use crate::app_config::AppType;
 use crate::database::{lock_conn, to_json_string, Database};
 use crate::error::AppError;
 use crate::provider::Provider;
+use crate::proxy_core::{
+    ProxyChannelModelWriteRequest, ProxyChannelPatchRequest, ProxyChannelWriteRequest,
+};
 use rusqlite::{params, Connection, OptionalExtension, Row};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
@@ -110,127 +113,6 @@ pub(crate) struct ProxyChannelHealth {
     pub response_time_ms: Option<i64>,
     pub disabled_reason: Option<String>,
     pub updated_at: i64,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub(crate) struct ProxyChannelWriteRequest {
-    #[serde(default)]
-    pub id: Option<String>,
-    pub provider_id: String,
-    pub app_type: String,
-    pub name: String,
-    #[serde(default = "default_channel_status")]
-    pub status: String,
-    pub base_url: String,
-    pub interface_kind: String,
-    #[serde(default)]
-    pub auth_profile_ref: Option<String>,
-    #[serde(default = "default_channel_groups")]
-    pub groups: Vec<String>,
-    #[serde(default)]
-    pub priority: i64,
-    #[serde(default = "default_channel_weight")]
-    pub weight: u32,
-    #[serde(default)]
-    pub retry_policy: Value,
-    #[serde(default)]
-    pub health_policy: Value,
-    #[serde(default)]
-    pub header_overrides: Value,
-    #[serde(default)]
-    pub param_overrides: Value,
-    #[serde(default)]
-    pub status_code_mapping: Value,
-    #[serde(default)]
-    pub tags: Vec<String>,
-    #[serde(default)]
-    pub metadata: Value,
-    #[serde(default)]
-    pub models: Vec<ProxyChannelModelWriteRequest>,
-}
-
-impl Default for ProxyChannelWriteRequest {
-    fn default() -> Self {
-        Self {
-            id: None,
-            provider_id: String::new(),
-            app_type: String::new(),
-            name: String::new(),
-            status: default_channel_status(),
-            base_url: String::new(),
-            interface_kind: String::new(),
-            auth_profile_ref: None,
-            groups: default_channel_groups(),
-            priority: 0,
-            weight: default_channel_weight(),
-            retry_policy: json!({}),
-            health_policy: json!({}),
-            header_overrides: json!({}),
-            param_overrides: json!({}),
-            status_code_mapping: json!([]),
-            tags: Vec::new(),
-            metadata: json!({}),
-            models: Vec::new(),
-        }
-    }
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
-#[serde(rename_all = "camelCase")]
-pub(crate) struct ProxyChannelPatchRequest {
-    #[serde(default)]
-    pub name: Option<String>,
-    #[serde(default)]
-    pub status: Option<String>,
-    #[serde(default)]
-    pub base_url: Option<String>,
-    #[serde(default)]
-    pub interface_kind: Option<String>,
-    #[serde(default)]
-    pub auth_profile_ref: Option<String>,
-    #[serde(default)]
-    pub groups: Option<Vec<String>>,
-    #[serde(default)]
-    pub priority: Option<i64>,
-    #[serde(default)]
-    pub weight: Option<u32>,
-    #[serde(default)]
-    pub retry_policy: Option<Value>,
-    #[serde(default)]
-    pub health_policy: Option<Value>,
-    #[serde(default)]
-    pub header_overrides: Option<Value>,
-    #[serde(default)]
-    pub param_overrides: Option<Value>,
-    #[serde(default)]
-    pub status_code_mapping: Option<Value>,
-    #[serde(default)]
-    pub tags: Option<Vec<String>>,
-    #[serde(default)]
-    pub metadata: Option<Value>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
-#[serde(rename_all = "camelCase")]
-pub(crate) struct ProxyChannelModelWriteRequest {
-    pub public_model: String,
-    pub upstream_model: String,
-    #[serde(default)]
-    pub capabilities: Value,
-    #[serde(default)]
-    pub pricing_model: Option<String>,
-    #[serde(default)]
-    pub request_overrides: Value,
-    #[serde(default)]
-    pub response_overrides: Value,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
-#[serde(rename_all = "camelCase")]
-pub(crate) struct ProxyChannelModelsReplaceRequest {
-    #[serde(default)]
-    pub models: Vec<ProxyChannelModelWriteRequest>,
 }
 
 impl Database {
@@ -1139,16 +1021,8 @@ fn normalize_base_url(value: &str) -> String {
     value.trim().trim_end_matches('/').to_string()
 }
 
-fn default_channel_status() -> String {
-    "enabled".to_string()
-}
-
 fn default_channel_groups() -> Vec<String> {
     vec![DEFAULT_GROUP.to_string()]
-}
-
-fn default_channel_weight() -> u32 {
-    100
 }
 
 fn validate_proxy_channel_write_request(

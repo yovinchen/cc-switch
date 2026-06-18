@@ -39,8 +39,7 @@ pub(crate) use dao::proxy::{
 };
 pub(crate) use dao::proxy_channels::ProxyChannelModelRecord;
 pub(crate) use dao::proxy_channels::{
-    ProxyChannelMigrationPreview, ProxyChannelModelsReplaceRequest, ProxyChannelPatchRequest,
-    ProxyChannelRecord, ProxyChannelSourceKind, ProxyChannelWriteRequest,
+    ProxyChannelMigrationPreview, ProxyChannelRecord, ProxyChannelSourceKind,
 };
 pub use dao::FailoverQueueItem;
 
