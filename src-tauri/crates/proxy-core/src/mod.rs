@@ -14,6 +14,7 @@ pub mod response_diagnostics;
 pub mod response_headers;
 pub mod response_timeout;
 pub mod response_transform;
+pub mod route_resolve;
 pub mod sse;
 pub mod usage;
 
@@ -27,5 +28,6 @@ pub use response_diagnostics::*;
 pub use response_headers::*;
 pub use response_timeout::*;
 pub use response_transform::*;
+pub use route_resolve::*;
 pub use sse::*;
 pub use usage::*;
