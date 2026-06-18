@@ -35,8 +35,8 @@ use super::{
 use crate::app_config::AppType;
 use crate::database::{ProxyChannelModelRecord, ProxyChannelRecord};
 use crate::proxy_core::{
-    body_diagnostics_suffix, body_looks_like_sse, claude_stream_usage_event_filter,
-    codex_stream_usage_event_filter, resolve_management_auth_decision,
+    claude_stream_usage_event_filter, codex_stream_usage_event_filter,
+    parse_upstream_json_or_unlabeled_sse, resolve_management_auth_decision,
     should_aggregate_codex_oauth_responses_sse, should_use_claude_transform_streaming,
     strip_entity_headers_for_rebuilt_body, strip_hop_by_hop_response_headers,
     validate_management_bearer_value, AppChannelListQuery, AppChannelListResponse,
@@ -49,7 +49,7 @@ use crate::proxy_core::{
     ProxyChannelPatchRequest, ProxyChannelWriteRequest, ProxyCoreError, ProxyCoreResponse,
     ProxyEngine, ProxyRequest, ProxyResponseBody, ProxyResult, ProxyServices, RoutableModelList,
     RouteGroupChannelInput, RouteGroupListResponse, RouteGroupSourceInput, RouteResolveRequest,
-    RouteResolveResponse,
+    RouteResolveResponse, UpstreamJsonBodySource, UpstreamSseAggregationKind,
 };
 use axum::{
     extract::{Path, Query, State},
@@ -965,39 +965,33 @@ async fn handle_claude_transform(
     let upstream_response: Value = if aggregate_codex_oauth_responses_sse {
         responses_sse_to_response_value(&body_str)?
     } else {
-        match serde_json::from_slice(&body_bytes) {
-            Ok(value) => value,
-            // 兜底嗅探（#2234）：部分网关对 stream:false 强制返回 SSE 体，却把
-            // Content-Type 标成 application/json 等，is_sse() 的 header 检查失效。
-            // 此时按 SSE 聚合成单个 JSON 再走既有非流转换器，客户端仍收到
-            // Anthropic JSON，非流语义不变。gemini_native 暂无聚合器，落诊断错误。
-            Err(_) if body_looks_like_sse(&body_str) && api_format != "gemini_native" => {
-                log::warn!(
-                    "[Claude] 上游对非流请求返回未标记的 SSE 体（api_format={api_format}），按 SSE 聚合兜底"
-                );
-                let aggregated = if api_format == "openai_responses" {
-                    responses_sse_to_response_value(&body_str)
-                } else {
-                    chat_sse_to_response_value(&body_str)
-                };
-                // 聚合也失败时：保留全量 body 服务端日志，并给客户端错误附带同款
-                // 现场诊断（content-type/body 摘要），否则命中嗅探臂的用户只拿到
-                // 裸聚合错误、丢失非嗅探臂已有的诊断增强（C7）
-                aggregated.map_err(|e| {
-                    log::error!("[Claude] SSE 聚合兜底失败: {e}, body: {body_str}");
-                    aggregate_fallback_error(e, &response_headers, &body_str)
-                })?
-            }
-            Err(e) => {
-                log::error!("[Claude] 解析上游响应失败: {e}, body: {body_str}");
-                return Err(upstream_body_parse_error(
-                    "Failed to parse upstream response",
-                    &e,
-                    &response_headers,
-                    &body_str,
-                ));
-            }
+        // 兜底嗅探（#2234）：部分网关对 stream:false 强制返回 SSE 体，却把
+        // Content-Type 标成 application/json 等，is_sse() 的 header 检查失效。
+        // 此时按 SSE 聚合成单个 JSON 再走既有非流转换器，客户端仍收到
+        // Anthropic JSON，非流语义不变。gemini_native 暂无聚合器，落诊断错误。
+        let unlabeled_sse_aggregation = match api_format {
+            "gemini_native" => None,
+            "openai_responses" => Some(UpstreamSseAggregationKind::Responses),
+            _ => Some(UpstreamSseAggregationKind::ChatCompletions),
+        };
+        let parsed = parse_upstream_json_or_unlabeled_sse(
+            &body_bytes,
+            &response_headers,
+            "Failed to parse upstream response",
+            unlabeled_sse_aggregation,
+            || uuid::Uuid::new_v4().to_string(),
+        )
+        .map_err(|error| {
+            log::error!("[Claude] 解析/聚合上游响应失败: {error}, body: {body_str}");
+            response_body_parse_error_to_proxy_error(error)
+        })?;
+
+        if matches!(parsed.source, UpstreamJsonBodySource::UnlabeledSse { .. }) {
+            log::warn!(
+                "[Claude] 上游对非流请求返回未标记的 SSE 体（api_format={api_format}），按 SSE 聚合兜底"
+            );
         }
+        parsed.value
     };
 
     // 根据 api_format 选择非流式转换器
@@ -1491,28 +1485,28 @@ async fn handle_codex_chat_to_responses_transform(
     let (mut response_headers, status, body_bytes) =
         read_decoded_body(response, ctx.tag, ctx.body_timeout_duration()).await?;
     let body_str = String::from_utf8_lossy(&body_bytes);
-    let chat_response: Value = match serde_json::from_slice(&body_bytes) {
-        Ok(value) => value,
-        // 与 Claude 侧 handle_claude_transform 对称的兜底嗅探（#2234）：
-        // 上游对 stream:false 返回未标记 Content-Type 的 SSE 体时按 SSE 聚合。
-        Err(_) if body_looks_like_sse(&body_str) => {
-            log::warn!("[Codex] 上游对非流请求返回未标记的 SSE 体，按 Chat SSE 聚合兜底");
-            // 聚合也失败时：保留全量 body 服务端日志，并给客户端错误附带现场诊断（C7）
-            chat_sse_to_response_value(&body_str).map_err(|e| {
-                log::error!("[Codex] SSE 聚合兜底失败: {e}, body: {body_str}");
-                aggregate_fallback_error(e, &response_headers, &body_str)
-            })?
-        }
-        Err(e) => {
-            log::error!("[Codex] 解析 Chat 上游响应失败: {e}, body: {body_str}");
-            return Err(upstream_body_parse_error(
-                "Failed to parse upstream chat response",
-                &e,
-                &response_headers,
-                &body_str,
-            ));
-        }
-    };
+    // 与 Claude 侧 handle_claude_transform 对称的兜底嗅探（#2234）：
+    // 上游对 stream:false 返回未标记 Content-Type 的 SSE 体时按 Chat SSE 聚合。
+    let parsed_chat_response = parse_upstream_json_or_unlabeled_sse(
+        &body_bytes,
+        &response_headers,
+        "Failed to parse upstream chat response",
+        Some(UpstreamSseAggregationKind::ChatCompletions),
+        || uuid::Uuid::new_v4().to_string(),
+    )
+    .map_err(|error| {
+        log::error!("[Codex] 解析/聚合 Chat 上游响应失败: {error}, body: {body_str}");
+        response_body_parse_error_to_proxy_error(error)
+    })?;
+
+    if matches!(
+        parsed_chat_response.source,
+        UpstreamJsonBodySource::UnlabeledSse { .. }
+    ) {
+        log::warn!("[Codex] 上游对非流请求返回未标记的 SSE 体，按 Chat SSE 聚合兜底");
+    }
+
+    let chat_response = parsed_chat_response.value;
     let responses_response = transform_codex_chat::chat_completion_to_response_with_context(
         chat_response,
         &tool_context,
@@ -1816,47 +1810,16 @@ pub async fn handle_gemini(
 
 fn responses_sse_to_response_value(body: &str) -> Result<Value, ProxyError> {
     crate::proxy_core::responses_sse_to_response_value(body)
-        .map_err(sse_aggregation_error_to_proxy_error)
+        .map_err(response_body_parse_error_to_proxy_error)
 }
 
-/// 构造带现场诊断的上游解析错误：附 content-type / content-encoding 与 body
-/// 前缀摘要，让客户端收到的报错自带根因判别（"data:"=错标 SSE、"<"=HTML
-/// 拦截页、� 乱码=未解压二进制），不再依赖向用户索要服务端日志。
-fn upstream_body_parse_error(
-    prefix: &str,
-    err: &serde_json::Error,
-    headers: &axum::http::HeaderMap,
-    body: &str,
-) -> ProxyError {
-    ProxyError::TransformError(format!(
-        "{prefix}: {err} {}",
-        body_diagnostics_suffix(headers, body)
-    ))
-}
-
-/// SSE 聚合兜底失败时，给聚合器内部错误附加同款现场诊断（content-type/
-/// content-encoding/body 摘要），使命中 #2234 嗅探臂的客户端也拿到根因线索，
-/// 而非仅 "No chat completion choices in upstream SSE" 这类无 header/body 的裸消息。
-fn aggregate_fallback_error(
-    err: ProxyError,
-    headers: &axum::http::HeaderMap,
-    body: &str,
-) -> ProxyError {
-    let base = match &err {
-        ProxyError::TransformError(m) => m.clone(),
-        other => other.to_string(),
-    };
-    ProxyError::TransformError(crate::proxy_core::aggregate_fallback_diagnostics_message(
-        &base, headers, body,
-    ))
-}
-
+#[cfg(test)]
 fn chat_sse_to_response_value(body: &str) -> Result<Value, ProxyError> {
     crate::proxy_core::chat_sse_to_response_value(body, || uuid::Uuid::new_v4().to_string())
-        .map_err(sse_aggregation_error_to_proxy_error)
+        .map_err(response_body_parse_error_to_proxy_error)
 }
 
-fn sse_aggregation_error_to_proxy_error(error: ProxyCoreError) -> ProxyError {
+fn response_body_parse_error_to_proxy_error(error: ProxyCoreError) -> ProxyError {
     match error {
         ProxyCoreError::Upstream(message) => ProxyError::TransformError(message),
         other => proxy_core_error_to_proxy_error(other),
@@ -1949,7 +1912,6 @@ mod tests {
     use super::{
         chat_sse_to_response_value, codex_proxy_error_json, proxy_core_error_to_proxy_error,
         proxy_core_response_to_proxy_response, responses_sse_to_response_value, transform,
-        upstream_body_parse_error,
     };
     use crate::proxy::ProxyError;
     use crate::proxy_core::{
@@ -1982,46 +1944,6 @@ mod tests {
         ));
 
         assert!(matches!(error, ProxyError::NoAvailableProvider));
-    }
-
-    #[test]
-    fn upstream_body_parse_error_carries_field_diagnostics() {
-        let mut headers = axum::http::HeaderMap::new();
-        headers.insert("content-type", "text/html".parse().unwrap());
-        headers.insert("content-encoding", "gzip".parse().unwrap());
-        let parse_err = serde_json::from_str::<serde_json::Value>("<html>").unwrap_err();
-
-        let err = upstream_body_parse_error(
-            "Failed to parse upstream response",
-            &parse_err,
-            &headers,
-            "<html>\nblocked</html>",
-        );
-
-        match err {
-            ProxyError::TransformError(msg) => {
-                assert!(msg.contains("content-type: text/html"), "{msg}");
-                assert!(msg.contains("content-encoding: gzip"), "{msg}");
-                assert!(msg.contains("<html>\\nblocked</html>"), "{msg}");
-            }
-            other => panic!("expected TransformError, got {other:?}"),
-        }
-    }
-
-    #[test]
-    fn upstream_body_parse_error_marks_missing_headers() {
-        let headers = axum::http::HeaderMap::new();
-        let parse_err = serde_json::from_str::<serde_json::Value>("data:").unwrap_err();
-
-        let err = upstream_body_parse_error("x", &parse_err, &headers, "data: oops");
-
-        match err {
-            ProxyError::TransformError(msg) => {
-                assert!(msg.contains("content-type: <none>"), "{msg}");
-                assert!(msg.contains("content-encoding: <none>"), "{msg}");
-            }
-            other => panic!("expected TransformError, got {other:?}"),
-        }
     }
 
     #[test]

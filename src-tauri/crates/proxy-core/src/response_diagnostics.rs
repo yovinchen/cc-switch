@@ -1,4 +1,5 @@
 use http::HeaderMap;
+use std::fmt;
 
 /// Detect whether a body looks like Server-Sent Events text.
 ///
@@ -34,6 +35,19 @@ pub fn aggregate_fallback_diagnostics_message(
     body: &str,
 ) -> String {
     format!("{base_message} {}", body_diagnostics_suffix(headers, body))
+}
+
+/// Build an upstream JSON parse error message with response-body diagnostics.
+pub fn upstream_body_parse_error_message(
+    prefix: &str,
+    error: impl fmt::Display,
+    headers: &HeaderMap,
+    body: &str,
+) -> String {
+    format!(
+        "{prefix}: {error} {}",
+        body_diagnostics_suffix(headers, body)
+    )
 }
 
 /// Return a single-line snippet of the first `max_chars` chars.
@@ -128,5 +142,25 @@ mod tests {
         );
         assert!(message.contains("content-type: application/json"), "{message}");
         assert!(message.contains("body[..120]: 'data: {}\\n\\n'"), "{message}");
+    }
+
+    #[test]
+    fn upstream_parse_error_message_includes_error_and_diagnostics() {
+        let mut headers = HeaderMap::new();
+        headers.insert("content-type", "text/html".parse().unwrap());
+        headers.insert("content-encoding", "gzip".parse().unwrap());
+        let parse_err = serde_json::from_str::<serde_json::Value>("<html>").unwrap_err();
+
+        let message = upstream_body_parse_error_message(
+            "Failed to parse upstream response",
+            parse_err,
+            &headers,
+            "<html>\nblocked</html>",
+        );
+
+        assert!(message.contains("Failed to parse upstream response"), "{message}");
+        assert!(message.contains("content-type: text/html"), "{message}");
+        assert!(message.contains("content-encoding: gzip"), "{message}");
+        assert!(message.contains("<html>\\nblocked</html>"), "{message}");
     }
 }
