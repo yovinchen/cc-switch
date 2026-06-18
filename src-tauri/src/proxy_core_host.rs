@@ -24,7 +24,8 @@ use crate::proxy_core::{
 };
 use crate::proxy_core_adapter::{ToProxyCoreChannelSpec, ToProxyCoreProviderSpec};
 use crate::services::usage_stats::is_placeholder_pricing_model;
-use futures::future::BoxFuture;
+use bytes::Bytes;
+use futures::{future::BoxFuture, Stream, StreamExt};
 use serde_json::{json, Value};
 use std::collections::HashMap;
 use std::str::FromStr;
@@ -776,12 +777,13 @@ fn proxy_body_to_json(body: ProxyBody) -> ProxyCoreResult<Value> {
 }
 
 fn forward_result_to_proxy_result(
-    result: crate::proxy::ForwardResult,
+    mut result: crate::proxy::ForwardResult,
     plan: RoutePlan,
 ) -> ProxyResult {
     let selected_route = selected_route_for_forward_result(&result, &plan);
+    let connection_guard = result.connection_guard.take();
     ProxyResult {
-        response: proxy_response_to_core_response(result.response),
+        response: proxy_response_to_core_response(result.response, connection_guard),
         selected_route,
         outbound_model: result.outbound_model,
         usage_record: None,
@@ -817,7 +819,13 @@ fn selected_route_for_forward_result(
         .unwrap_or_else(|| plan.selection.clone())
 }
 
-fn proxy_response_to_core_response(response: ProxyResponse) -> ProxyCoreResponse {
+fn proxy_response_to_core_response<G>(
+    response: ProxyResponse,
+    connection_guard: Option<G>,
+) -> ProxyCoreResponse
+where
+    G: Send + 'static,
+{
     match response {
         ProxyResponse::Buffered {
             status,
@@ -828,15 +836,39 @@ fn proxy_response_to_core_response(response: ProxyResponse) -> ProxyCoreResponse
             status,
             headers,
             stream,
-        } => ProxyCoreResponse::with_body(status, headers, ProxyResponseBody::Stream(stream)),
+        } => ProxyCoreResponse::with_body(
+            status,
+            headers,
+            ProxyResponseBody::stream(stream_with_connection_guard(stream, connection_guard)),
+        ),
         other => {
             let status = other.status();
             let headers = other.headers().clone();
             ProxyCoreResponse::with_body(
                 status,
                 headers,
-                ProxyResponseBody::stream(other.bytes_stream()),
+                ProxyResponseBody::stream(stream_with_connection_guard(
+                    other.bytes_stream(),
+                    connection_guard,
+                )),
             )
+        }
+    }
+}
+
+fn stream_with_connection_guard<S, G>(
+    stream: S,
+    connection_guard: Option<G>,
+) -> impl Stream<Item = Result<Bytes, std::io::Error>> + Send + 'static
+where
+    S: Stream<Item = Result<Bytes, std::io::Error>> + Send + 'static,
+    G: Send + 'static,
+{
+    async_stream::stream! {
+        let _connection_guard = connection_guard;
+        tokio::pin!(stream);
+        while let Some(chunk) = stream.next().await {
+            yield chunk;
         }
     }
 }
@@ -1077,6 +1109,7 @@ mod tests {
         UsageTokens,
     };
     use bytes::Bytes;
+    use futures::StreamExt;
     use http::{Method, StatusCode};
 
     fn save_claude_provider(db: &Database) {
@@ -1363,7 +1396,7 @@ mod tests {
             Bytes::from_static(br#"{"ok":true}"#),
         );
 
-        let core_response = proxy_response_to_core_response(response);
+        let core_response = proxy_response_to_core_response(response, Option::<()>::None);
 
         assert_eq!(core_response.status, StatusCode::CREATED);
         assert_eq!(
@@ -1418,6 +1451,26 @@ mod tests {
         let selected = selected_route_for_forward_result(&result, &plan);
 
         assert_eq!(selected.channel.id, "channel-b");
+    }
+
+    #[tokio::test]
+    async fn proxy_response_bridge_wraps_streamed_body() {
+        let response = ProxyResponse::streamed(
+            StatusCode::OK,
+            http::HeaderMap::new(),
+            futures::stream::once(async { Ok(Bytes::from_static(b"chunk")) }),
+        );
+
+        let core_response = proxy_response_to_core_response(response, Option::<()>::None);
+
+        match core_response.body {
+            ProxyResponseBody::Stream(mut stream) => {
+                let chunk = stream.next().await.expect("chunk").expect("stream item");
+                assert_eq!(chunk, Bytes::from_static(b"chunk"));
+                assert!(stream.next().await.is_none());
+            }
+            other => panic!("expected stream body, got {other:?}"),
+        }
     }
 
     #[tokio::test]
