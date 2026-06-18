@@ -9,6 +9,7 @@
 //! a direct (non-proxied) CLI request.
 
 use super::{
+    events::ProxyEventBus,
     failover_switch::FailoverSwitchManager,
     handlers,
     log_codes::srv as log_srv,
@@ -49,6 +50,8 @@ pub struct ProxyState {
     pub app_handle: Option<tauri::AppHandle>,
     /// 故障转移切换管理器
     pub failover_manager: Arc<FailoverSwitchManager>,
+    /// 代理事件总线，供外部 SSE 监控和未来 ProxyEventSink 使用。
+    pub events: Arc<ProxyEventBus>,
 }
 
 /// 代理HTTP服务器
@@ -70,6 +73,7 @@ impl ProxyServer {
         let provider_router = Arc::new(ProviderRouter::new(db.clone()));
         // 创建故障转移切换管理器
         let failover_manager = Arc::new(FailoverSwitchManager::new(db.clone()));
+        let events = Arc::new(ProxyEventBus::default());
 
         let state = ProxyState {
             db,
@@ -82,6 +86,7 @@ impl ProxyServer {
             codex_chat_history: Arc::new(CodexChatHistoryStore::default()),
             app_handle,
             failover_manager,
+            events,
         };
 
         Self {
@@ -119,6 +124,13 @@ impl ProxyServer {
         let actual_port = local_addr.port();
 
         log::info!("[{}] 代理服务器启动于 {local_addr}", log_srv::STARTED);
+        self.state.events.emit(
+            "server_started",
+            serde_json::json!({
+                "address": local_addr.ip().to_string(),
+                "port": actual_port,
+            }),
+        );
 
         // 更新全局代理端口，用于系统代理检测
         crate::proxy::http_client::set_proxy_port(actual_port);
@@ -211,6 +223,7 @@ impl ProxyServer {
             // 服务器停止后更新状态
             state.status.write().await.running = false;
             *state.start_time.write().await = None;
+            state.events.emit("server_stopped", serde_json::json!({}));
         });
 
         // 保存服务器任务句柄
@@ -302,6 +315,7 @@ impl ProxyServer {
             // Versioned management API (channel migration surface)
             .route("/proxy/v1/health", get(handlers::health_check))
             .route("/proxy/v1/status", get(handlers::get_status))
+            .route("/proxy/v1/events", get(handlers::stream_proxy_events))
             .route("/proxy/v1/apps", get(handlers::list_proxy_apps))
             .route(
                 "/proxy/v1/apps/:app/providers",
@@ -466,6 +480,32 @@ mod tests {
         let server = ProxyServer::new(ProxyConfig::default(), db, None);
 
         let _router = server.build_router();
+    }
+
+    #[tokio::test]
+    async fn event_stream_management_route_returns_sse_response() {
+        let db = Arc::new(Database::memory().expect("memory db"));
+        let server = ProxyServer::new(ProxyConfig::default(), db, None);
+        let mut router = server.build_router();
+
+        let response = Service::call(
+            &mut router,
+            Request::builder()
+                .method(Method::GET)
+                .uri("/proxy/v1/events")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(response.status(), StatusCode::OK);
+        let content_type = response
+            .headers()
+            .get(axum::http::header::CONTENT_TYPE)
+            .and_then(|value| value.to_str().ok())
+            .unwrap_or_default();
+        assert!(content_type.starts_with("text/event-stream"));
     }
 
     #[tokio::test]

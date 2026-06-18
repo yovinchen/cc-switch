@@ -43,6 +43,7 @@ use crate::database::{
 use axum::{
     extract::{Path, Query, State},
     http::StatusCode,
+    response::sse::{Event, KeepAlive, Sse},
     response::IntoResponse,
     Json,
 };
@@ -51,6 +52,8 @@ use http_body_util::BodyExt;
 use serde::Deserialize;
 use serde_json::{json, Value};
 use std::collections::{BTreeMap, BTreeSet, HashSet};
+use std::convert::Infallible;
+use std::time::Duration;
 
 #[derive(Debug, Deserialize, Default)]
 #[serde(rename_all = "camelCase")]
@@ -125,6 +128,42 @@ pub async fn health_check() -> (StatusCode, Json<Value>) {
 pub async fn get_status(State(state): State<ProxyState>) -> Result<Json<ProxyStatus>, ProxyError> {
     let status = state.status.read().await.clone();
     Ok(Json(status))
+}
+
+/// GET /proxy/v1/events
+pub async fn stream_proxy_events(
+    State(state): State<ProxyState>,
+) -> Sse<impl futures::Stream<Item = Result<Event, Infallible>>> {
+    let mut receiver = state.events.subscribe();
+    let events = state.events.clone();
+
+    let stream = async_stream::stream! {
+        yield Ok(proxy_event_to_sse(events.connected_event()));
+
+        loop {
+            match receiver.recv().await {
+                Ok(event) => yield Ok(proxy_event_to_sse(event)),
+                Err(tokio::sync::broadcast::error::RecvError::Lagged(skipped)) => {
+                    yield Ok(proxy_event_to_sse(events.lagged_event(skipped)));
+                }
+                Err(tokio::sync::broadcast::error::RecvError::Closed) => break,
+            }
+        }
+    };
+
+    Sse::new(stream).keep_alive(
+        KeepAlive::new()
+            .interval(Duration::from_secs(15))
+            .text("keep-alive"),
+    )
+}
+
+fn proxy_event_to_sse(event: crate::proxy::events::ProxyEventEnvelope) -> Event {
+    let data = serde_json::to_string(&event).unwrap_or_else(|_| "{}".to_string());
+    Event::default()
+        .id(event.id.to_string())
+        .event(event.event)
+        .data(data)
 }
 
 /// GET /proxy/v1/apps

@@ -6,6 +6,7 @@ use super::hyper_client::ProxyResponse;
 use super::{
     body_filter::filter_private_params_with_whitelist,
     error::*,
+    events::ProxyEventBus,
     failover_switch::FailoverSwitchManager,
     json_canonical::{canonicalize_value, short_value_hash},
     log_codes::fwd as log_fwd,
@@ -28,7 +29,7 @@ use crate::proxy::providers::copilot_auth::CopilotAuthManager;
 use crate::{app_config::AppType, provider::Provider};
 use futures::StreamExt;
 use http::Extensions;
-use serde_json::Value;
+use serde_json::{json, Value};
 use std::sync::Arc;
 use tauri::Manager;
 use tokio::sync::RwLock;
@@ -97,6 +98,7 @@ pub struct RequestForwarder {
     router: Arc<ProviderRouter>,
     status: Arc<RwLock<ProxyStatus>>,
     current_providers: Arc<RwLock<std::collections::HashMap<String, ActiveTarget>>>,
+    events: Arc<ProxyEventBus>,
     gemini_shadow: Arc<GeminiShadowStore>,
     codex_chat_history: Arc<CodexChatHistoryStore>,
     /// 故障转移切换管理器
@@ -179,6 +181,7 @@ impl RequestForwarder {
         non_streaming_timeout: u64,
         status: Arc<RwLock<ProxyStatus>>,
         current_providers: Arc<RwLock<std::collections::HashMap<String, ActiveTarget>>>,
+        events: Arc<ProxyEventBus>,
         gemini_shadow: Arc<GeminiShadowStore>,
         codex_chat_history: Arc<CodexChatHistoryStore>,
         failover_manager: Arc<FailoverSwitchManager>,
@@ -200,6 +203,7 @@ impl RequestForwarder {
             router,
             status,
             current_providers,
+            events,
             gemini_shadow,
             codex_chat_history,
             failover_manager,
@@ -220,6 +224,7 @@ impl RequestForwarder {
 
     async fn record_success_result(
         &self,
+        request_id: &str,
         attempt: &ForwardAttempt,
         app_type: &str,
         used_half_open_permit: bool,
@@ -236,22 +241,24 @@ impl RequestForwarder {
                         channel.channel_id
                     );
                 }
+                self.emit_attempt_succeeded(request_id, app_type, attempt);
                 return;
             }
 
             let router = self.router.clone();
             let channel_id = channel.channel_id.clone();
-            let app_type = app_type.to_string();
+            let app_type_owned = app_type.to_string();
             tokio::spawn(async move {
                 if let Err(e) = router
-                    .record_channel_result(&channel_id, &app_type, false, true, None, None)
+                    .record_channel_result(&channel_id, &app_type_owned, false, true, None, None)
                     .await
                 {
                     log::warn!(
-                        "[{app_type}] 异步记录 Channel 成功结果失败: channel_id={channel_id}, error={e}"
+                        "[{app_type_owned}] 异步记录 Channel 成功结果失败: channel_id={channel_id}, error={e}"
                     );
                 }
             });
+            self.emit_attempt_succeeded(request_id, app_type, attempt);
             return;
         }
 
@@ -266,25 +273,32 @@ impl RequestForwarder {
                     "[{app_type}] 记录 Provider 成功结果失败: provider_id={provider_id}, error={e}"
                 );
             }
+            self.emit_attempt_succeeded(request_id, app_type, attempt);
             return;
         }
 
         let router = self.router.clone();
         let provider_id = provider_id.clone();
-        let app_type = app_type.to_string();
+        let app_type_owned = app_type.to_string();
         tokio::spawn(async move {
             if let Err(e) = router
-                .record_result(&provider_id, &app_type, false, true, None)
+                .record_result(&provider_id, &app_type_owned, false, true, None)
                 .await
             {
                 log::warn!(
-                    "[{app_type}] 异步记录 Provider 成功结果失败: provider_id={provider_id}, error={e}"
+                    "[{app_type_owned}] 异步记录 Provider 成功结果失败: provider_id={provider_id}, error={e}"
                 );
             }
         });
+        self.emit_attempt_succeeded(request_id, app_type, attempt);
     }
 
-    async fn record_active_target(&self, app_type: &str, attempt: &ForwardAttempt) {
+    async fn record_active_target(
+        &self,
+        request_id: &str,
+        app_type: &str,
+        attempt: &ForwardAttempt,
+    ) {
         let provider = attempt.provider();
         let channel = attempt.channel();
         let target = ActiveTarget {
@@ -300,10 +314,64 @@ impl RequestForwarder {
 
         let mut current_providers = self.current_providers.write().await;
         current_providers.insert(app_type.to_string(), target);
+        self.events.emit(
+            "route_selected",
+            attempt_event_payload(request_id, app_type, attempt, None),
+        );
+    }
+
+    fn emit_request_started(&self, request_id: &str, app_type: &str) {
+        self.events.emit(
+            "request_started",
+            json!({
+                "requestId": request_id,
+                "appType": app_type,
+            }),
+        );
+    }
+
+    fn emit_attempt_started(&self, request_id: &str, app_type: &str, attempt: &ForwardAttempt) {
+        self.events.emit(
+            if attempt.is_channel() {
+                "channel_attempt"
+            } else {
+                "provider_attempt"
+            },
+            attempt_event_payload(request_id, app_type, attempt, None),
+        );
+    }
+
+    fn emit_attempt_succeeded(&self, request_id: &str, app_type: &str, attempt: &ForwardAttempt) {
+        self.events.emit(
+            if attempt.is_channel() {
+                "channel_succeeded"
+            } else {
+                "provider_succeeded"
+            },
+            attempt_event_payload(request_id, app_type, attempt, None),
+        );
+    }
+
+    fn emit_attempt_failed(
+        &self,
+        request_id: &str,
+        app_type: &str,
+        attempt: &ForwardAttempt,
+        error: &str,
+    ) {
+        self.events.emit(
+            if attempt.is_channel() {
+                "channel_failed"
+            } else {
+                "provider_failed"
+            },
+            attempt_event_payload(request_id, app_type, attempt, Some(error)),
+        );
     }
 
     async fn record_failure_result(
         &self,
+        request_id: &str,
         attempt: &ForwardAttempt,
         app_type: &str,
         used_half_open_permit: bool,
@@ -317,10 +385,11 @@ impl RequestForwarder {
                     app_type,
                     used_half_open_permit,
                     false,
-                    Some(error_msg),
+                    Some(error_msg.clone()),
                     None,
                 )
                 .await;
+            self.emit_attempt_failed(request_id, app_type, attempt, &error_msg);
             return;
         }
 
@@ -331,9 +400,10 @@ impl RequestForwarder {
                 app_type,
                 used_half_open_permit,
                 false,
-                Some(error_msg),
+                Some(error_msg.clone()),
             )
             .await;
+        self.emit_attempt_failed(request_id, app_type, attempt, &error_msg);
     }
 
     async fn release_attempt_permit_neutral(
@@ -368,6 +438,7 @@ impl RequestForwarder {
     async fn handle_rectifier_retry_failure(
         &self,
         retry_err: ProxyError,
+        request_id: &str,
         attempt: &ForwardAttempt,
         app_type_str: &str,
         used_half_open_permit: bool,
@@ -386,6 +457,7 @@ impl RequestForwarder {
 
         if is_provider_error {
             self.record_failure_result(
+                request_id,
                 attempt,
                 app_type_str,
                 used_half_open_permit,
@@ -436,6 +508,8 @@ impl RequestForwarder {
         extensions: Extensions,
         providers: Vec<Provider>,
     ) -> Result<ForwardResult, ForwardError> {
+        let request_id = uuid::Uuid::new_v4().to_string();
+        self.emit_request_started(&request_id, app_type.as_str());
         let guard = ActiveConnectionGuard::acquire(self.status.clone()).await;
         {
             let mut s = self.status.write().await;
@@ -444,7 +518,14 @@ impl RequestForwarder {
         }
         let result = self
             .forward_with_retry_inner(
-                app_type, method, endpoint, body, headers, extensions, providers,
+                &request_id,
+                app_type,
+                method,
+                endpoint,
+                body,
+                headers,
+                extensions,
+                providers,
             )
             .await;
         // 把 guard 注入到 Ok 结果，让它随响应一起流转到 response_processor，
@@ -499,6 +580,7 @@ impl RequestForwarder {
     #[allow(clippy::too_many_arguments)]
     async fn forward_with_retry_inner(
         &self,
+        request_id: &str,
         app_type: &AppType,
         method: http::Method,
         endpoint: &str,
@@ -583,6 +665,7 @@ impl RequestForwarder {
             if !allowed {
                 continue;
             }
+            self.emit_attempt_started(request_id, app_type_str, attempt);
 
             // PRE-SEND 优化器：每个 provider 独立决定是否优化
             // clone body 以避免 Bedrock 优化字段泄漏到非 Bedrock provider（failover 场景）
@@ -630,11 +713,17 @@ impl RequestForwarder {
                 Ok((response, claude_api_format, outbound_model)) => {
                     // 成功：普通闭合熔断状态异步记录，避免阻塞流式首包返回；
                     // HalfOpen 探测仍同步等待，保证 permit 与熔断状态及时释放。
-                    self.record_success_result(attempt, app_type_str, used_half_open_permit)
-                        .await;
+                    self.record_success_result(
+                        request_id,
+                        attempt,
+                        app_type_str,
+                        used_half_open_permit,
+                    )
+                    .await;
 
                     // 更新当前应用类型使用的 provider/channel
-                    self.record_active_target(app_type_str, attempt).await;
+                    self.record_active_target(request_id, app_type_str, attempt)
+                        .await;
 
                     // 更新成功统计
                     {
@@ -725,13 +814,15 @@ impl RequestForwarder {
                                         "[{app_type_str}] [Media] Unsupported-image retry succeeded"
                                     );
                                     self.record_success_result(
+                                        request_id,
                                         attempt,
                                         app_type_str,
                                         used_half_open_permit,
                                     )
                                     .await;
 
-                                    self.record_active_target(app_type_str, attempt).await;
+                                    self.record_active_target(request_id, app_type_str, attempt)
+                                        .await;
 
                                     {
                                         let mut status = self.status.write().await;
@@ -776,6 +867,7 @@ impl RequestForwarder {
                                     if let Some(err) = self
                                         .handle_rectifier_retry_failure(
                                             retry_err,
+                                            request_id,
                                             attempt,
                                             app_type_str,
                                             used_half_open_permit,
@@ -861,6 +953,7 @@ impl RequestForwarder {
                                     Ok((response, claude_api_format, outbound_model)) => {
                                         log::info!("[{app_type_str}] [RECT-002] 整流重试成功");
                                         self.record_success_result(
+                                            request_id,
                                             attempt,
                                             app_type_str,
                                             used_half_open_permit,
@@ -868,7 +961,12 @@ impl RequestForwarder {
                                         .await;
 
                                         // 更新当前应用类型使用的 provider/channel
-                                        self.record_active_target(app_type_str, attempt).await;
+                                        self.record_active_target(
+                                            request_id,
+                                            app_type_str,
+                                            attempt,
+                                        )
+                                        .await;
 
                                         // 更新成功统计
                                         {
@@ -917,6 +1015,7 @@ impl RequestForwarder {
                                         if let Some(err) = self
                                             .handle_rectifier_retry_failure(
                                                 retry_err,
+                                                request_id,
                                                 attempt,
                                                 app_type_str,
                                                 used_half_open_permit,
@@ -1018,13 +1117,15 @@ impl RequestForwarder {
                                 Ok((response, claude_api_format, outbound_model)) => {
                                     log::info!("[{app_type_str}] [RECT-011] budget 整流重试成功");
                                     self.record_success_result(
+                                        request_id,
                                         attempt,
                                         app_type_str,
                                         used_half_open_permit,
                                     )
                                     .await;
 
-                                    self.record_active_target(app_type_str, attempt).await;
+                                    self.record_active_target(request_id, app_type_str, attempt)
+                                        .await;
 
                                     {
                                         let mut status = self.status.write().await;
@@ -1068,6 +1169,7 @@ impl RequestForwarder {
                                     if let Some(err) = self
                                         .handle_rectifier_retry_failure(
                                             retry_err,
+                                            request_id,
                                             attempt,
                                             app_type_str,
                                             used_half_open_permit,
@@ -1115,6 +1217,7 @@ impl RequestForwarder {
                         ErrorCategory::Retryable => {
                             // 可重试：真正的 provider 故障 → 记录失败并更新熔断器/DB 健康度
                             self.record_failure_result(
+                                request_id,
                                 attempt,
                                 app_type_str,
                                 used_half_open_permit,
@@ -2413,6 +2516,57 @@ fn split_endpoint_and_query(endpoint: &str) -> (&str, Option<&str>) {
         .map_or((endpoint, None), |(path, query)| (path, Some(query)))
 }
 
+fn attempt_event_payload(
+    request_id: &str,
+    app_type: &str,
+    attempt: &ForwardAttempt,
+    error: Option<&str>,
+) -> Value {
+    let provider = attempt.provider();
+    let channel = attempt.channel();
+    let mut payload = json!({
+        "requestId": request_id,
+        "appType": app_type,
+        "providerId": provider.id.as_str(),
+        "providerName": provider.name.as_str(),
+    });
+
+    if let Value::Object(ref mut object) = payload {
+        if let Some(channel) = channel {
+            object.insert(
+                "channelId".to_string(),
+                Value::String(channel.channel_id.clone()),
+            );
+            object.insert(
+                "channelName".to_string(),
+                Value::String(channel.channel_name.clone()),
+            );
+            object.insert(
+                "interfaceKind".to_string(),
+                Value::String(channel.interface_kind.clone()),
+            );
+            if let Some(public_model) = channel.public_model.as_deref() {
+                object.insert(
+                    "publicModel".to_string(),
+                    Value::String(public_model.to_string()),
+                );
+            }
+            if let Some(upstream_model) = channel.upstream_model.as_deref() {
+                object.insert(
+                    "upstreamModel".to_string(),
+                    Value::String(upstream_model.to_string()),
+                );
+            }
+        }
+
+        if let Some(error) = error {
+            object.insert("error".to_string(), Value::String(error.to_string()));
+        }
+    }
+
+    payload
+}
+
 fn strip_beta_query(query: Option<&str>) -> Option<String> {
     let filtered = query.map(|query| {
         query
@@ -2800,6 +2954,7 @@ mod tests {
             router: Arc::new(ProviderRouter::new(db.clone())),
             status: Arc::new(RwLock::new(ProxyStatus::default())),
             current_providers: Arc::new(RwLock::new(HashMap::new())),
+            events: Arc::new(ProxyEventBus::default()),
             gemini_shadow: Arc::new(GeminiShadowStore::new()),
             codex_chat_history: Arc::new(CodexChatHistoryStore::default()),
             failover_manager: Arc::new(FailoverSwitchManager::new(db)),
@@ -2814,6 +2969,44 @@ mod tests {
             streaming_first_byte_timeout,
             max_attempts: 1,
         }
+    }
+
+    #[tokio::test]
+    async fn forwarder_event_helpers_emit_channel_attempt_payloads() {
+        let forwarder = test_forwarder(Duration::from_secs(0), Duration::from_secs(0));
+        let mut subscriber = forwarder.events.subscribe();
+        let provider = test_provider_with_type(None);
+        let attempt = ForwardAttempt::from_channel(
+            &AppType::Claude,
+            &provider,
+            crate::proxy::channel_routing::ChannelRouteCandidate {
+                channel_id: "channel-a".to_string(),
+                provider_id: provider.id.clone(),
+                channel_name: "Relay A".to_string(),
+                base_url: "https://relay.example.com/v1".to_string(),
+                interface_kind: "openai_responses".to_string(),
+                public_model: Some("public-sonnet".to_string()),
+                upstream_model: Some("upstream-sonnet".to_string()),
+                route_group: "default".to_string(),
+                priority: 100,
+                weight: 50,
+                source_kind: "manual".to_string(),
+            },
+        );
+
+        forwarder.emit_attempt_started("req-1", "claude", &attempt);
+        let attempt_event = subscriber.recv().await.expect("attempt event");
+        assert_eq!(attempt_event.event, "channel_attempt");
+        assert_eq!(attempt_event.payload["requestId"], "req-1");
+        assert_eq!(attempt_event.payload["providerId"], "provider-1");
+        assert_eq!(attempt_event.payload["channelId"], "channel-a");
+        assert_eq!(attempt_event.payload["interfaceKind"], "openai_responses");
+        assert_eq!(attempt_event.payload["upstreamModel"], "upstream-sonnet");
+
+        forwarder.emit_attempt_succeeded("req-1", "claude", &attempt);
+        let success_event = subscriber.recv().await.expect("success event");
+        assert_eq!(success_event.event, "channel_succeeded");
+        assert_eq!(success_event.payload["channelName"], "Relay A");
     }
 
     #[test]
