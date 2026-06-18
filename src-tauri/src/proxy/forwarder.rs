@@ -4,7 +4,6 @@
 
 use super::hyper_client::ProxyResponse;
 use super::{
-    error::*,
     events::ProxyEventBus,
     failover_switch::FailoverSwitchManager,
     json_canonical::short_value_hash,
@@ -30,13 +29,14 @@ use crate::proxy::providers::copilot_auth::CopilotAuthManager;
 use crate::proxy_core::append_query_to_full_url;
 use crate::proxy_core::{
     build_codex_oauth_session_headers, build_retryable_forward_failure_log,
-    build_terminal_forward_failure_log, build_upstream_auth_headers, is_github_copilot_upstream,
-    resolve_upstream_request_transport_policy, resolved_copilot_dynamic_base_url,
-    should_preserve_exact_request_header_case, should_resolve_copilot_dynamic_endpoint,
-    should_send_anthropic_request_headers, split_endpoint_and_query,
-    validate_managed_account_upstream_auth, AppKind, ChannelQuery, CopilotAuthHeaderOverrides,
-    ForwardFailureKind, InterfaceKind, ProxyBody, ProxyEngine, ProxyRequest, ProxyServices,
-    UpstreamAuthHeadersInput, UpstreamRequestHeadersInput,
+    build_terminal_forward_failure_log, build_upstream_auth_headers, categorize_forward_failure,
+    is_github_copilot_upstream, resolve_upstream_request_transport_policy,
+    resolved_copilot_dynamic_base_url, should_preserve_exact_request_header_case,
+    should_resolve_copilot_dynamic_endpoint, should_send_anthropic_request_headers,
+    split_endpoint_and_query, validate_managed_account_upstream_auth, AppKind, ChannelQuery,
+    CopilotAuthHeaderOverrides, ForwardFailureCategory, ForwardFailureKind, InterfaceKind,
+    ProxyBody, ProxyEngine, ProxyRequest, ProxyServices, UpstreamAuthHeadersInput,
+    UpstreamRequestHeadersInput,
 };
 use crate::proxy_core_host::CcSwitchProxyServices;
 use crate::{app_config::AppType, provider::Provider};
@@ -1432,12 +1432,13 @@ impl RequestForwarder {
                     }
 
                     // 先分类错误，决定是否计入 provider 健康度
-                    // —— NonRetryable / ClientAbort 是客户端层错误，无论换哪家 provider 都会被拒绝，
+                    // —— NonRetryable 是客户端层错误，无论换哪家 provider 都会被拒绝，
                     //    不应污染熔断器和数据库健康度（与 release_permit_neutral 同语义）。
-                    let category = self.categorize_proxy_error(&e);
+                    let failure = forward_failure_kind_from_proxy_error(&e);
+                    let category = categorize_forward_failure(&failure);
 
                     match category {
-                        ErrorCategory::Retryable => {
+                        ForwardFailureCategory::Retryable => {
                             // 可重试：真正的 provider 故障 → 记录失败并更新熔断器/DB 健康度
                             self.record_failure_result(
                                 request_id,
@@ -1454,7 +1455,6 @@ impl RequestForwarder {
                                     Some(format!("Provider {} 失败: {}", provider.name, e));
                             }
 
-                            let failure = forward_failure_kind_from_proxy_error(&e);
                             let failure_log = build_retryable_forward_failure_log(
                                 &provider.name,
                                 attempted_providers,
@@ -1472,7 +1472,7 @@ impl RequestForwarder {
                             // 继续尝试下一个供应商
                             continue;
                         }
-                        ErrorCategory::NonRetryable | ErrorCategory::ClientAbort => {
+                        ForwardFailureCategory::NonRetryable => {
                             // 不可重试：客户端层错误或客户端断连 → 不污染健康度，仅释放 HalfOpen permit
                             self.release_attempt_permit_neutral(
                                 attempt,
@@ -2373,40 +2373,6 @@ impl RequestForwarder {
             }
         }
     }
-
-    fn categorize_proxy_error(&self, error: &ProxyError) -> ErrorCategory {
-        match error {
-            // 网络和上游错误：都应该尝试下一个供应商
-            ProxyError::Timeout(_) => ErrorCategory::Retryable,
-            ProxyError::ForwardFailed(_) => ErrorCategory::Retryable,
-            ProxyError::ProviderUnhealthy(_) => ErrorCategory::Retryable,
-            // 上游 HTTP 错误：按状态码分桶。
-            //
-            // 客户端请求自身有问题的状态码无论换哪个 provider 都会被拒绝，
-            // 继续轮询只会放大错误率、污染熔断器健康度、浪费配额：
-            //   400 Bad Request / 422 Unprocessable Entity   ← 请求体格式或语义错误
-            //   405 Method Not Allowed / 406 Not Acceptable  ← 方法或 Accept 错误
-            //   413 Payload Too Large / 414 URI Too Long     ← 客户端构造超限
-            //   415 Unsupported Media Type                    ← Content-Type 错误
-            //   501 Not Implemented                           ← 上游协议确实不支持
-            //
-            // 其他 4xx（401/403/404/408/409/429/451 等）和全部 5xx 都保留
-            // Retryable —— 换一家 provider 可能持有不同的 key、配额、地域或模型映射。
-            ProxyError::UpstreamError { status, .. } => match *status {
-                400 | 405 | 406 | 413 | 414 | 415 | 422 | 501 => ErrorCategory::NonRetryable,
-                _ => ErrorCategory::Retryable,
-            },
-            // Provider 级配置/转换问题：换一个 Provider 可能就能成功
-            ProxyError::ConfigError(_) => ErrorCategory::Retryable,
-            ProxyError::TransformError(_) => ErrorCategory::Retryable,
-            ProxyError::AuthError(_) => ErrorCategory::Retryable,
-            ProxyError::StreamIdleTimeout(_) => ErrorCategory::Retryable,
-            // 无可用供应商：所有供应商都试过了，无法重试
-            ProxyError::NoAvailableProvider => ErrorCategory::NonRetryable,
-            // 其他错误（数据库/内部错误等）：不是换供应商能解决的问题
-            _ => ErrorCategory::NonRetryable,
-        }
-    }
 }
 
 /// 从 ProxyError 中提取错误消息
@@ -2439,6 +2405,9 @@ fn forward_failure_kind_from_proxy_error(error: &ProxyError) -> ForwardFailureKi
         ProxyError::TransformError(message) => ForwardFailureKind::TransformError(message.clone()),
         ProxyError::ConfigError(message) => ForwardFailureKind::ConfigError(message.clone()),
         ProxyError::AuthError(message) => ForwardFailureKind::AuthError(message.clone()),
+        ProxyError::ProviderUnhealthy(_) | ProxyError::StreamIdleTimeout(_) => {
+            ForwardFailureKind::RetryableOther(error.to_string())
+        }
         _ => ForwardFailureKind::Other(error.to_string()),
     }
 }

@@ -18,7 +18,32 @@ pub enum ForwardFailureKind {
     TransformError(String),
     ConfigError(String),
     AuthError(String),
+    RetryableOther(String),
     Other(String),
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ForwardFailureCategory {
+    Retryable,
+    NonRetryable,
+}
+
+pub fn categorize_forward_failure(failure: &ForwardFailureKind) -> ForwardFailureCategory {
+    match failure {
+        ForwardFailureKind::Timeout(_)
+        | ForwardFailureKind::ForwardFailed(_)
+        | ForwardFailureKind::TransformError(_)
+        | ForwardFailureKind::ConfigError(_)
+        | ForwardFailureKind::AuthError(_)
+        | ForwardFailureKind::RetryableOther(_) => ForwardFailureCategory::Retryable,
+        ForwardFailureKind::Upstream { status, .. } => match *status {
+            400 | 405 | 406 | 413 | 414 | 415 | 422 | 501 => {
+                ForwardFailureCategory::NonRetryable
+            }
+            _ => ForwardFailureCategory::Retryable,
+        },
+        ForwardFailureKind::Other(_) => ForwardFailureCategory::NonRetryable,
+    }
 }
 
 pub fn build_retryable_forward_failure_log(
@@ -93,7 +118,9 @@ pub fn summarize_forward_failure(failure: &ForwardFailureKind) -> String {
         ForwardFailureKind::AuthError(message) => {
             format!("认证失败: {}", summarize_text_for_log(message, 180))
         }
-        ForwardFailureKind::Other(message) => summarize_text_for_log(message, 180),
+        ForwardFailureKind::RetryableOther(message) | ForwardFailureKind::Other(message) => {
+            summarize_text_for_log(message, 180)
+        }
     }
 }
 
@@ -142,8 +169,9 @@ fn extract_json_error_message(body: &Value) -> Option<String> {
 mod tests {
     use super::{
         build_retryable_forward_failure_log, build_terminal_forward_failure_log,
-        summarize_text_for_log, summarize_upstream_body_for_log, ForwardFailureKind,
-        ALL_PROVIDERS_FAILED, PROVIDER_FAILED_RETRY, SINGLE_PROVIDER_FAILED,
+        categorize_forward_failure, summarize_text_for_log, summarize_upstream_body_for_log,
+        ForwardFailureCategory, ForwardFailureKind, ALL_PROVIDERS_FAILED, PROVIDER_FAILED_RETRY,
+        SINGLE_PROVIDER_FAILED,
     };
     use serde_json::json;
 
@@ -210,5 +238,59 @@ mod tests {
         let summary = summarize_text_for_log("line1\n\n line2   line3", 12);
 
         assert_eq!(summary, "line1 line2...");
+    }
+
+    #[test]
+    fn categorizes_client_request_upstream_statuses_as_non_retryable() {
+        for status in [400, 405, 406, 413, 414, 415, 422, 501] {
+            let failure = ForwardFailureKind::Upstream { status, body: None };
+
+            assert_eq!(
+                categorize_forward_failure(&failure),
+                ForwardFailureCategory::NonRetryable,
+                "status {status} should not fail over"
+            );
+        }
+    }
+
+    #[test]
+    fn categorizes_quota_auth_network_and_server_errors_as_retryable() {
+        let failures = [
+            ForwardFailureKind::Upstream {
+                status: 401,
+                body: None,
+            },
+            ForwardFailureKind::Upstream {
+                status: 429,
+                body: None,
+            },
+            ForwardFailureKind::Upstream {
+                status: 500,
+                body: None,
+            },
+            ForwardFailureKind::Timeout("timeout".to_string()),
+            ForwardFailureKind::ForwardFailed("connection reset".to_string()),
+            ForwardFailureKind::ConfigError("bad provider config".to_string()),
+            ForwardFailureKind::TransformError("transform failed".to_string()),
+            ForwardFailureKind::AuthError("token expired".to_string()),
+            ForwardFailureKind::RetryableOther("provider unhealthy".to_string()),
+        ];
+
+        for failure in failures {
+            assert_eq!(
+                categorize_forward_failure(&failure),
+                ForwardFailureCategory::Retryable
+            );
+        }
+    }
+
+    #[test]
+    fn categorizes_unknown_host_errors_as_non_retryable() {
+        let failure = ForwardFailureKind::Other("database error".to_string());
+
+        assert_eq!(
+            categorize_forward_failure(&failure),
+            ForwardFailureCategory::NonRetryable
+        );
     }
 }
