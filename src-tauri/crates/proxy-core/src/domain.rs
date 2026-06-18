@@ -546,6 +546,7 @@ pub struct ProxyResult {
     pub selected_route: RouteSelection,
     pub outbound_model: Option<String>,
     pub usage_record: Option<UsageRecord>,
+    pub metadata: Value,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

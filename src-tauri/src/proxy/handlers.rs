@@ -837,39 +837,30 @@ async fn handle_messages_for_app(
         .and_then(|s| s.as_bool())
         .unwrap_or(false);
 
-    // 转发请求
-    let forwarder = ctx.create_forwarder(&state);
-    let mut result = match forwarder
-        .forward_with_retry(
-            &app_type,
-            method,
-            endpoint,
-            body.clone(),
-            headers,
-            extensions,
-            ctx.get_providers(),
-        )
-        .await
-    {
+    let mut proxy_request = ProxyRequest::new(
+        AppKind::from(&app_type),
+        method,
+        endpoint,
+        InterfaceKind::AnthropicMessages,
+        ProxyBody::Json(body.clone()),
+    );
+    proxy_request.requested_model = Some(ctx.request_model.clone());
+    proxy_request.headers = headers;
+    proxy_request.extensions = extensions;
+
+    let engine = ProxyEngine::new(state.proxy_core_services.clone());
+    let result = match engine.handle(proxy_request).await {
         Ok(result) => result,
-        Err(mut err) => {
-            if let Some(provider) = err.provider.take() {
-                ctx.provider = provider;
-            }
-            log_forward_error(&state, &ctx, is_stream, &err.error);
-            return Err(err.error);
+        Err(error) => {
+            let error = proxy_core_error_to_proxy_error(error);
+            log_forward_error(&state, &ctx, is_stream, &error);
+            return Err(error);
         }
     };
 
-    let connection_guard = result.connection_guard.take();
-    ctx.outbound_model = result.outbound_model.take();
-    ctx.provider = result.provider;
-    let api_format = result
-        .claude_api_format
-        .as_deref()
-        .unwrap_or_else(|| get_claude_api_format(&ctx.provider))
-        .to_string();
-    let response = result.response;
+    apply_proxy_result_to_context(&state, &mut ctx, &result)?;
+    let api_format = proxy_result_claude_api_format(&result, &ctx);
+    let response = proxy_core_response_to_proxy_response(result.response)?;
 
     // 检查是否需要格式转换（OpenRouter 等中转服务）
     let adapter = get_adapter(&app_type);
@@ -884,20 +875,13 @@ async fn handle_messages_for_app(
             &body,
             is_stream,
             &api_format,
-            connection_guard,
+            None,
         )
         .await;
     }
 
     // 通用响应处理（透传模式）
-    process_response(
-        response,
-        &ctx,
-        &state,
-        &CLAUDE_PARSER_CONFIG,
-        connection_guard,
-    )
-    .await
+    process_response(response, &ctx, &state, &CLAUDE_PARSER_CONFIG, None).await
 }
 
 fn validate_claude_desktop_gateway_auth(
@@ -1273,22 +1257,34 @@ fn apply_proxy_result_to_context(
 ) -> Result<(), ProxyError> {
     ctx.outbound_model = result.outbound_model.clone();
     let provider_id = result.selected_route.provider.id.as_str();
-    if ctx.provider.id == provider_id {
-        return Ok(());
-    }
-
-    if let Some(provider) = state
+    let Some(provider) = state
         .db
         .get_provider_by_id(provider_id, ctx.app_type_str)
         .map_err(|error| ProxyError::DatabaseError(error.to_string()))?
-    {
-        ctx.provider = provider;
-        return Ok(());
-    }
+    else {
+        return Err(ProxyError::ConfigError(format!(
+            "selected provider is missing from host database: {provider_id}"
+        )));
+    };
 
-    Err(ProxyError::ConfigError(format!(
-        "selected provider is missing from host database: {provider_id}"
-    )))
+    ctx.provider = super::route_attempt::ForwardAttempt::from_core_selection(
+        &ctx.app_type,
+        &provider,
+        &result.selected_route,
+    )
+    .provider()
+    .clone();
+    Ok(())
+}
+
+fn proxy_result_claude_api_format(result: &ProxyResult, ctx: &RequestContext) -> String {
+    result
+        .metadata
+        .get("claudeApiFormat")
+        .and_then(Value::as_str)
+        .filter(|value| !value.trim().is_empty())
+        .map(ToString::to_string)
+        .unwrap_or_else(|| get_claude_api_format(&ctx.provider).to_string())
 }
 
 // ============================================================================

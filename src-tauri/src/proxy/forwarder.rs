@@ -61,6 +61,7 @@ pub struct ForwardResult {
 
 pub struct ForwardError {
     pub error: ProxyError,
+    #[allow(dead_code)]
     pub provider: Option<Provider>,
 }
 
@@ -106,6 +107,7 @@ pub struct RequestForwarder {
     /// 共享的 ProviderRouter（持有熔断器状态）
     router: Arc<ProviderRouter>,
     /// Neutral proxy services used only when this forwarder still owns attempt planning.
+    #[allow(dead_code)]
     proxy_core_services: Option<Arc<CcSwitchProxyServices>>,
     status: Arc<RwLock<ProxyStatus>>,
     current_providers: Arc<RwLock<std::collections::HashMap<String, ActiveTarget>>>,
@@ -186,6 +188,7 @@ impl RequestForwarder {
             && super::media_sanitizer::is_unsupported_image_error(error)
     }
 
+    #[allow(dead_code)]
     #[allow(clippy::too_many_arguments)]
     pub fn new(
         router: Arc<ProviderRouter>,
@@ -600,6 +603,7 @@ impl RequestForwarder {
     /// `active_connections` / 刷新 `last_request_at`，无论 inner 走哪条出口路径，
     /// 出口处都会把 `active_connections` 回收。Per-attempt 维度（成功/失败/熔断
     /// 等）仍由 inner 内自行更新 `success_requests` / `failed_requests`。
+    #[allow(dead_code)]
     #[allow(clippy::too_many_arguments)]
     pub async fn forward_with_retry(
         &self,
@@ -683,6 +687,7 @@ impl RequestForwarder {
         })
     }
 
+    #[allow(dead_code)]
     async fn build_forward_attempts(
         &self,
         app_type: &AppType,
@@ -760,6 +765,7 @@ impl RequestForwarder {
     /// * `body` - 请求体
     /// * `headers` - 请求头
     /// * `providers` - 已选择的 Provider 列表（由 RequestContext 提供，避免重复调用 select_providers）
+    #[allow(dead_code)]
     #[allow(clippy::too_many_arguments)]
     async fn forward_with_retry_inner(
         &self,
@@ -2896,6 +2902,7 @@ fn merge_query_params(base_query: Option<&str>, extra_param: Option<&str>) -> Op
     }
 }
 
+#[allow(dead_code)]
 fn request_model_for_forward(app_type: &AppType, endpoint: &str, body: &Value) -> Option<String> {
     if matches!(app_type, AppType::Gemini) {
         return super::handler_context::extract_gemini_model_from_path(endpoint);
@@ -2908,6 +2915,7 @@ fn request_model_for_forward(app_type: &AppType, endpoint: &str, body: &Value) -
         .map(ToString::to_string)
 }
 
+#[allow(dead_code)]
 fn interface_kind_for_forward(app_type: &AppType, endpoint: &str) -> Option<&'static str> {
     match app_type {
         AppType::Claude | AppType::ClaudeDesktop => Some("anthropic_messages"),

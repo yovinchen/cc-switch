@@ -388,6 +388,7 @@ mod tests {
                     response: ProxyCoreResponse::empty(StatusCode::OK),
                     selected_route: plan.selection,
                     outbound_model: outbound_model.clone(),
+                    metadata: json!({}),
                     usage_record: Some(UsageRecord {
                         request_id: request.client_request_id,
                         message_id: Some("msg-1".to_string()),

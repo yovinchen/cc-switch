@@ -27,6 +27,7 @@ pub(crate) struct ForwardAttempt {
 }
 
 impl ForwardAttempt {
+    #[allow(dead_code)]
     pub(crate) fn from_provider(provider: Provider) -> Self {
         Self {
             provider,

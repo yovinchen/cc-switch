@@ -782,11 +782,18 @@ fn forward_result_to_proxy_result(
 ) -> ProxyResult {
     let selected_route = selected_route_for_forward_result(&result, &plan);
     let connection_guard = result.connection_guard.take();
+    let metadata = json!({
+        "hostProviderId": result.provider.id,
+        "hostProviderName": result.provider.name,
+        "claudeApiFormat": result.claude_api_format,
+        "selectedChannelId": result.selected_channel.as_ref().map(|channel| channel.channel_id.clone()),
+    });
     ProxyResult {
         response: proxy_response_to_core_response(result.response, connection_guard),
         selected_route,
         outbound_model: result.outbound_model,
         usage_record: None,
+        metadata,
     }
 }
 

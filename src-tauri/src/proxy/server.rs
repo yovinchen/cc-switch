@@ -51,8 +51,10 @@ pub struct ProxyState {
     /// Codex Chat bridge history，用于恢复 previous_response_id 指向的 tool call
     pub codex_chat_history: Arc<CodexChatHistoryStore>,
     /// AppHandle，用于发射事件和更新托盘菜单
+    #[allow(dead_code)]
     pub app_handle: Option<tauri::AppHandle>,
     /// 故障转移切换管理器
+    #[allow(dead_code)]
     pub failover_manager: Arc<FailoverSwitchManager>,
     /// 代理事件总线，供外部 SSE 监控和未来 ProxyEventSink 使用。
     pub events: Arc<ProxyEventBus>,

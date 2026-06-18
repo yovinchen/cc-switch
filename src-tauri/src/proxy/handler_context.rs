@@ -41,11 +41,13 @@ pub struct RequestContext {
     /// 选中的 Provider（故障转移链的第一个）
     pub provider: Provider,
     /// 完整的 Provider 列表（用于故障转移）
+    #[allow(dead_code)]
     providers: Vec<Provider>,
     /// 请求开始时的"当前供应商"（用于判断是否需要同步 UI/托盘）
     ///
     /// 这里使用本地 settings 的设备级 current provider。
     /// 代理模式下如果实际使用的 provider 与此不一致，会触发切换以确保 UI 始终准确。
+    #[allow(dead_code)]
     pub current_provider_id: String,
     /// 请求中的模型名称
     pub request_model: String,
@@ -64,12 +66,16 @@ pub struct RequestContext {
     /// Session ID（从客户端请求提取或新生成）
     pub session_id: String,
     /// Session ID 是否由客户端提供。生成的 UUID 不能作为上游缓存 key，否则每个请求都会换 key。
+    #[allow(dead_code)]
     pub session_client_provided: bool,
     /// 整流器配置
+    #[allow(dead_code)]
     pub rectifier_config: RectifierConfig,
     /// 优化器配置
+    #[allow(dead_code)]
     pub optimizer_config: OptimizerConfig,
     /// Copilot 优化器配置
+    #[allow(dead_code)]
     pub copilot_optimizer_config: CopilotOptimizerConfig,
 }
 
@@ -207,6 +213,7 @@ impl RequestContext {
     /// 配置生效规则：
     /// - 故障转移开启：超时配置正常生效（0 表示禁用超时）
     /// - 故障转移关闭：超时配置不生效（全部传入 0）
+    #[allow(dead_code)]
     pub fn create_forwarder(&self, state: &ProxyState) -> RequestForwarder {
         let (non_streaming_timeout, first_byte_timeout, idle_timeout) =
             if self.app_config.auto_failover_enabled {
@@ -258,6 +265,7 @@ impl RequestContext {
     /// 获取 Provider 列表（用于故障转移）
     ///
     /// 返回在创建上下文时已选择的 providers，避免重复调用 select_providers()
+    #[allow(dead_code)]
     pub fn get_providers(&self) -> Vec<Provider> {
         self.providers.clone()
     }
