@@ -19,7 +19,7 @@ use super::{
     ProxyError,
 };
 use crate::database::Database;
-use crate::proxy_core_host::CcSwitchProxyServices;
+use crate::proxy_core_host::{CcSwitchProxyRuntime, CcSwitchProxyServices};
 use axum::{
     extract::DefaultBodyLimit,
     middleware,
@@ -76,23 +76,35 @@ impl ProxyServer {
         // 创建共享的 ProviderRouter（熔断器状态将跨所有请求保持）
         let provider_router = Arc::new(ProviderRouter::new(db.clone()));
         let events = Arc::new(ProxyEventBus::default());
-        let proxy_core_services = Arc::new(CcSwitchProxyServices::with_event_bus(
-            db.clone(),
-            events.clone(),
-        ));
         // 创建故障转移切换管理器
         let failover_manager = Arc::new(FailoverSwitchManager::new(db.clone()));
+        let status = Arc::new(RwLock::new(ProxyStatus::default()));
+        let current_providers = Arc::new(RwLock::new(HashMap::new()));
+        let gemini_shadow = Arc::new(GeminiShadowStore::default());
+        let codex_chat_history = Arc::new(CodexChatHistoryStore::default());
+        let proxy_core_services =
+            Arc::new(CcSwitchProxyServices::with_runtime(CcSwitchProxyRuntime {
+                db: db.clone(),
+                provider_router: provider_router.clone(),
+                status: status.clone(),
+                current_providers: current_providers.clone(),
+                events: events.clone(),
+                gemini_shadow: gemini_shadow.clone(),
+                codex_chat_history: codex_chat_history.clone(),
+                failover_manager: failover_manager.clone(),
+                app_handle: app_handle.clone(),
+            }));
 
         let state = ProxyState {
             db,
             config: Arc::new(RwLock::new(config.clone())),
-            status: Arc::new(RwLock::new(ProxyStatus::default())),
+            status,
             start_time: Arc::new(RwLock::new(None)),
-            current_providers: Arc::new(RwLock::new(HashMap::new())),
+            current_providers,
             provider_router,
             proxy_core_services,
-            gemini_shadow: Arc::new(GeminiShadowStore::default()),
-            codex_chat_history: Arc::new(CodexChatHistoryStore::default()),
+            gemini_shadow,
+            codex_chat_history,
             app_handle,
             failover_manager,
             events,

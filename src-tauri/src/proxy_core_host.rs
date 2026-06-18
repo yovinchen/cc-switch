@@ -2,27 +2,50 @@ use crate::app_config::AppType;
 use crate::database::{Database, PRICING_SOURCE_REQUEST};
 use crate::error::AppError;
 use crate::proxy::events::ProxyEventBus;
+use crate::proxy::failover_switch::FailoverSwitchManager;
+use crate::proxy::hyper_client::ProxyResponse;
 use crate::proxy::provider_router::ProviderRouter;
+use crate::proxy::providers::{
+    codex_chat_history::CodexChatHistoryStore, gemini_shadow::GeminiShadowStore,
+};
+use crate::proxy::route_attempt::forward_attempts_from_route_plan;
+use crate::proxy::types::{ActiveTarget, ProxyStatus};
 use crate::proxy::usage::parser::SESSION_REQUEST_ID_PREFIX;
 use crate::proxy::usage::{CostCalculator, RequestLog, TokenUsage, UsageLogger};
+use crate::proxy::RequestForwarder;
 use crate::proxy_core::{
     AppKind, AuthInfo, AuthProfileRef, ChannelAttemptPlan, ChannelAttemptResult, ChannelQuery,
     ChannelSource, ChannelSpec, ChannelStatus, CopilotOptimizerConfigSpec, ForwardPipeline,
-    ModelCatalog, OptimizerConfigSpec, ProviderSource, ProviderSpec, ProxyAppConfig,
-    ProxyConfigSource, ProxyCoreError, ProxyCoreEvent, ProxyCoreEventType, ProxyCoreResult,
-    ProxyEventSink, ProxyGlobalConfig, ProxyRequest, ProxyResult, ProxyRuntimeConfig,
-    ProxyServices, RectifierConfigSpec, RoutePlan, RoutePolicy, RoutePolicySource, RouteRequest,
-    RouteResolver, UsageRecord, UsageSink,
+    ModelCatalog, OptimizerConfigSpec, ProviderSource, ProviderSpec, ProxyAppConfig, ProxyBody,
+    ProxyConfigSource, ProxyCoreError, ProxyCoreEvent, ProxyCoreEventType, ProxyCoreResponse,
+    ProxyCoreResult, ProxyEventSink, ProxyGlobalConfig, ProxyRequest, ProxyResponseBody,
+    ProxyResult, ProxyRuntimeConfig, ProxyServices, RectifierConfigSpec, RoutePlan, RoutePolicy,
+    RoutePolicySource, RouteRequest, RouteResolver, RouteSelection, UsageRecord, UsageSink,
 };
 use crate::proxy_core_adapter::{ToProxyCoreChannelSpec, ToProxyCoreProviderSpec};
 use crate::services::usage_stats::is_placeholder_pricing_model;
 use futures::future::BoxFuture;
 use serde_json::{json, Value};
+use std::collections::HashMap;
 use std::str::FromStr;
 use std::sync::Arc;
+use tokio::sync::RwLock;
 
 const DEFAULT_ROUTE_GROUP: &str = "default";
 const DEFAULT_CHANNEL_FAILURE_THRESHOLD: u32 = 4;
+
+#[derive(Clone)]
+pub(crate) struct CcSwitchProxyRuntime {
+    pub(crate) db: Arc<Database>,
+    pub(crate) provider_router: Arc<ProviderRouter>,
+    pub(crate) status: Arc<RwLock<ProxyStatus>>,
+    pub(crate) current_providers: Arc<RwLock<HashMap<String, ActiveTarget>>>,
+    pub(crate) events: Arc<ProxyEventBus>,
+    pub(crate) gemini_shadow: Arc<GeminiShadowStore>,
+    pub(crate) codex_chat_history: Arc<CodexChatHistoryStore>,
+    pub(crate) failover_manager: Arc<FailoverSwitchManager>,
+    pub(crate) app_handle: Option<tauri::AppHandle>,
+}
 
 #[derive(Clone)]
 #[allow(dead_code)]
@@ -50,6 +73,28 @@ impl CcSwitchProxyServices {
         Self::with_optional_event_bus(db, Some(events))
     }
 
+    pub(crate) fn with_runtime(runtime: CcSwitchProxyRuntime) -> Self {
+        let db = runtime.db.clone();
+        Self {
+            config: CcSwitchConfigSource { db: db.clone() },
+            providers: CcSwitchProviderSource { db: db.clone() },
+            channels: CcSwitchChannelSource {
+                db: db.clone(),
+                router: runtime.provider_router.clone(),
+            },
+            route_policies: CcSwitchRoutePolicySource { db: db.clone() },
+            route_resolver: CcSwitchRouteResolver,
+            health_store: CcSwitchHealthStore { db: db.clone() },
+            auth_provider: CcSwitchAuthProvider,
+            model_catalog: CcSwitchModelCatalogProvider { db: db.clone() },
+            usage_sink: CcSwitchUsageSink { db },
+            event_sink: CcSwitchEventSink {
+                events: Some(runtime.events.clone()),
+            },
+            forward_pipeline: CcSwitchForwardPipeline::with_runtime(runtime),
+        }
+    }
+
     fn with_optional_event_bus(db: Arc<Database>, events: Option<Arc<ProxyEventBus>>) -> Self {
         let router = Arc::new(ProviderRouter::new(db.clone()));
         Self {
@@ -66,7 +111,7 @@ impl CcSwitchProxyServices {
             model_catalog: CcSwitchModelCatalogProvider { db: db.clone() },
             usage_sink: CcSwitchUsageSink { db: db.clone() },
             event_sink: CcSwitchEventSink { events },
-            forward_pipeline: CcSwitchForwardPipeline,
+            forward_pipeline: CcSwitchForwardPipeline::default(),
         }
     }
 }
@@ -570,19 +615,255 @@ impl ProxyEventSink for CcSwitchEventSink {
 }
 
 #[derive(Clone, Default)]
-struct CcSwitchForwardPipeline;
+struct CcSwitchForwardPipeline {
+    runtime: Option<CcSwitchProxyRuntime>,
+}
+
+impl CcSwitchForwardPipeline {
+    fn with_runtime(runtime: CcSwitchProxyRuntime) -> Self {
+        Self {
+            runtime: Some(runtime),
+        }
+    }
+}
 
 impl ForwardPipeline for CcSwitchForwardPipeline {
     fn forward<'a>(
         &'a self,
-        _request: ProxyRequest,
-        _plan: RoutePlan,
+        request: ProxyRequest,
+        plan: RoutePlan,
     ) -> BoxFuture<'a, ProxyCoreResult<ProxyResult>> {
         Box::pin(async move {
-            Err(ProxyCoreError::Unsupported(
-                "cc-switch forwarding is still hosted by RequestForwarder".to_string(),
-            ))
+            let runtime = self.runtime.as_ref().ok_or_else(|| {
+                ProxyCoreError::Unsupported(
+                    "cc-switch forwarding requires a proxy server runtime".to_string(),
+                )
+            })?;
+            runtime.forward(request, plan).await
         })
+    }
+}
+
+impl CcSwitchProxyRuntime {
+    async fn forward(
+        &self,
+        request: ProxyRequest,
+        plan: RoutePlan,
+    ) -> ProxyCoreResult<ProxyResult> {
+        let ProxyRequest {
+            app,
+            method,
+            endpoint,
+            headers,
+            extensions,
+            body,
+            ..
+        } = request;
+        let app_type = parse_app_type(&app)?;
+        let body = proxy_body_to_json(body)?;
+        let app_config = self
+            .db
+            .get_proxy_config_for_app(app_type.as_str())
+            .await
+            .map_err(|error| app_error("load app proxy config", error))?;
+        let rectifier_config = self.db.get_rectifier_config().unwrap_or_default();
+        let optimizer_config = self.db.get_optimizer_config().unwrap_or_default();
+        let copilot_optimizer_config = self.db.get_copilot_optimizer_config().unwrap_or_default();
+        let current_provider_id = crate::settings::get_current_provider(&app_type)
+            .or_else(|| {
+                self.db
+                    .get_current_provider(app_type.as_str())
+                    .ok()
+                    .flatten()
+            })
+            .unwrap_or_default();
+        let session_result = crate::proxy::extract_session_id(&headers, &body, app_type.as_str());
+        let providers = host_providers_for_plan(&self.db, &app_type, &plan)?;
+        let attempts = forward_attempts_from_route_plan(&app_type, &providers, &plan);
+        if attempts.is_empty() {
+            return Err(ProxyCoreError::Unavailable(
+                "route plan has no matching host providers".to_string(),
+            ));
+        }
+
+        let (non_streaming_timeout, first_byte_timeout, idle_timeout) =
+            if app_config.auto_failover_enabled {
+                (
+                    app_config.non_streaming_timeout as u64,
+                    app_config.streaming_first_byte_timeout as u64,
+                    app_config.streaming_idle_timeout as u64,
+                )
+            } else {
+                (0, 0, 0)
+            };
+        let max_retries = if app_config.auto_failover_enabled {
+            app_config.max_retries
+        } else {
+            0
+        };
+
+        let forwarder = RequestForwarder::new_preplanned(
+            self.provider_router.clone(),
+            non_streaming_timeout,
+            self.status.clone(),
+            self.current_providers.clone(),
+            self.events.clone(),
+            self.gemini_shadow.clone(),
+            self.codex_chat_history.clone(),
+            self.failover_manager.clone(),
+            self.app_handle.clone(),
+            current_provider_id,
+            session_result.session_id,
+            session_result.client_provided,
+            first_byte_timeout,
+            idle_timeout,
+            rectifier_config,
+            optimizer_config,
+            copilot_optimizer_config,
+            max_retries,
+        );
+
+        let result = forwarder
+            .forward_with_preplanned_attempts(
+                &app_type, method, &endpoint, body, headers, extensions, attempts,
+            )
+            .await
+            .map_err(forward_error_to_core)?;
+        Ok(forward_result_to_proxy_result(result, plan))
+    }
+}
+
+fn host_providers_for_plan(
+    db: &Database,
+    app_type: &AppType,
+    plan: &RoutePlan,
+) -> ProxyCoreResult<Vec<crate::provider::Provider>> {
+    let providers = db
+        .get_all_providers(app_type.as_str())
+        .map_err(|error| app_error("load host providers", error))?;
+    let mut provider_ids = Vec::new();
+    let selections = if plan.selections.is_empty() {
+        std::slice::from_ref(&plan.selection)
+    } else {
+        plan.selections.as_slice()
+    };
+    for selection in selections {
+        let provider_id = selection.channel.provider_id.as_str();
+        if !provider_ids.contains(&provider_id) {
+            provider_ids.push(provider_id);
+        }
+    }
+
+    let matching: Vec<_> = provider_ids
+        .into_iter()
+        .filter_map(|provider_id| providers.get(provider_id).cloned())
+        .collect();
+    if matching.is_empty() {
+        return Err(ProxyCoreError::Unavailable(
+            "route plan providers are not configured in host database".to_string(),
+        ));
+    }
+    Ok(matching)
+}
+
+fn proxy_body_to_json(body: ProxyBody) -> ProxyCoreResult<Value> {
+    match body {
+        ProxyBody::Json(value) => Ok(value),
+        ProxyBody::Empty => Ok(json!({})),
+        ProxyBody::Bytes(bytes) => serde_json::from_slice(&bytes)
+            .map_err(|error| ProxyCoreError::InvalidRequest(format!("invalid JSON body: {error}"))),
+    }
+}
+
+fn forward_result_to_proxy_result(
+    result: crate::proxy::ForwardResult,
+    plan: RoutePlan,
+) -> ProxyResult {
+    let selected_route = selected_route_for_forward_result(&result, &plan);
+    ProxyResult {
+        response: proxy_response_to_core_response(result.response),
+        selected_route,
+        outbound_model: result.outbound_model,
+        usage_record: None,
+    }
+}
+
+fn selected_route_for_forward_result(
+    result: &crate::proxy::ForwardResult,
+    plan: &RoutePlan,
+) -> RouteSelection {
+    let selections = if plan.selections.is_empty() {
+        std::slice::from_ref(&plan.selection)
+    } else {
+        plan.selections.as_slice()
+    };
+
+    if let Some(channel) = result.selected_channel.as_ref() {
+        if let Some(selection) = selections
+            .iter()
+            .find(|selection| selection.channel.id == channel.channel_id)
+        {
+            return selection.clone();
+        }
+    }
+
+    selections
+        .iter()
+        .find(|selection| {
+            selection.provider.id == result.provider.id
+                || selection.channel.provider_id == result.provider.id
+        })
+        .cloned()
+        .unwrap_or_else(|| plan.selection.clone())
+}
+
+fn proxy_response_to_core_response(response: ProxyResponse) -> ProxyCoreResponse {
+    match response {
+        ProxyResponse::Buffered {
+            status,
+            headers,
+            body,
+        } => ProxyCoreResponse::with_body(status, headers, ProxyResponseBody::bytes(body)),
+        ProxyResponse::Streamed {
+            status,
+            headers,
+            stream,
+        } => ProxyCoreResponse::with_body(status, headers, ProxyResponseBody::Stream(stream)),
+        other => {
+            let status = other.status();
+            let headers = other.headers().clone();
+            ProxyCoreResponse::with_body(
+                status,
+                headers,
+                ProxyResponseBody::stream(other.bytes_stream()),
+            )
+        }
+    }
+}
+
+fn forward_error_to_core(error: crate::proxy::ForwardError) -> ProxyCoreError {
+    let message = error.error.to_string();
+    match error.error {
+        crate::proxy::ProxyError::NoAvailableProvider
+        | crate::proxy::ProxyError::AllProvidersCircuitOpen
+        | crate::proxy::ProxyError::NoProvidersConfigured
+        | crate::proxy::ProxyError::ProviderUnhealthy(_)
+        | crate::proxy::ProxyError::MaxRetriesExceeded => ProxyCoreError::Unavailable(message),
+        crate::proxy::ProxyError::ConfigError(_) => ProxyCoreError::Config(message),
+        crate::proxy::ProxyError::AuthError(_) => ProxyCoreError::Auth(message),
+        crate::proxy::ProxyError::InvalidRequest(_) => ProxyCoreError::InvalidRequest(message),
+        crate::proxy::ProxyError::DatabaseError(_) => ProxyCoreError::Internal(message),
+        crate::proxy::ProxyError::ForwardFailed(_)
+        | crate::proxy::ProxyError::UpstreamError { .. }
+        | crate::proxy::ProxyError::Timeout(_)
+        | crate::proxy::ProxyError::StreamIdleTimeout(_) => ProxyCoreError::Upstream(message),
+        crate::proxy::ProxyError::TransformError(_) => ProxyCoreError::Internal(message),
+        crate::proxy::ProxyError::AlreadyRunning
+        | crate::proxy::ProxyError::NotRunning
+        | crate::proxy::ProxyError::BindFailed(_)
+        | crate::proxy::ProxyError::StopTimeout
+        | crate::proxy::ProxyError::StopFailed(_)
+        | crate::proxy::ProxyError::Internal(_) => ProxyCoreError::Internal(message),
     }
 }
 
@@ -789,10 +1070,13 @@ fn push_model(models: &mut Vec<String>, model: &str) {
 mod tests {
     use super::*;
     use crate::provider::Provider;
+    use crate::proxy::types::ProxyStatus;
     use crate::proxy_core::{
         ChannelOverrides, InterfaceKind, ModelCapabilities, ModelRoute, ProviderKind, ProxyBody,
-        ProxyEngine, RetryPolicy, UpstreamEndpoint, UsageRecord, UsageTokens,
+        ProxyEngine, ProxyResponseBody, RetryPolicy, RouteSelection, UpstreamEndpoint, UsageRecord,
+        UsageTokens,
     };
+    use bytes::Bytes;
     use http::{Method, StatusCode};
 
     fn save_claude_provider(db: &Database) {
@@ -857,6 +1141,51 @@ mod tests {
             source_ref: None,
             needs_review: false,
             review_reasons: Vec::new(),
+        }
+    }
+
+    fn route_plan(provider_id: &str, channel_id: &str) -> RoutePlan {
+        let mut channel = channel_spec(channel_id, 100, "sonnet");
+        channel.provider_id = provider_id.to_string();
+        let model_route = channel.models.first().cloned();
+        let selection = RouteSelection {
+            provider: provider_spec(provider_id),
+            channel,
+            model_route,
+            inbound_interface: InterfaceKind::AnthropicMessages,
+            outbound_interface: InterfaceKind::OpenAiResponses,
+        };
+        RoutePlan {
+            selection,
+            selections: Vec::new(),
+            attempts: Vec::new(),
+        }
+    }
+
+    fn proxy_request() -> ProxyRequest {
+        let mut request = ProxyRequest::new(
+            AppKind::Claude,
+            Method::POST,
+            "/v1/messages",
+            InterfaceKind::AnthropicMessages,
+            ProxyBody::Json(json!({ "model": "sonnet", "messages": [] })),
+        );
+        request.requested_model = Some("sonnet".to_string());
+        request
+    }
+
+    fn runtime(db: Arc<Database>) -> CcSwitchProxyRuntime {
+        let events = Arc::new(ProxyEventBus::default());
+        CcSwitchProxyRuntime {
+            db: db.clone(),
+            provider_router: Arc::new(ProviderRouter::new(db.clone())),
+            status: Arc::new(RwLock::new(ProxyStatus::default())),
+            current_providers: Arc::new(RwLock::new(std::collections::HashMap::new())),
+            events,
+            gemini_shadow: Arc::new(GeminiShadowStore::default()),
+            codex_chat_history: Arc::new(CodexChatHistoryStore::default()),
+            failover_manager: Arc::new(FailoverSwitchManager::new(db)),
+            app_handle: None,
         }
     }
 
@@ -988,6 +1317,107 @@ mod tests {
         assert_eq!(event.payload["requestId"], "req-1");
         assert_eq!(event.payload["channelId"], "channel-a");
         assert_eq!(event.payload["attemptCount"], 2);
+    }
+
+    #[tokio::test]
+    async fn forward_pipeline_without_runtime_reports_unsupported() {
+        let db = Arc::new(Database::memory().expect("memory db"));
+        let services = CcSwitchProxyServices::new(db);
+
+        let err = services
+            .forward_pipeline()
+            .forward(proxy_request(), route_plan("provider-a", "channel-a"))
+            .await
+            .expect_err("plain services do not own server runtime");
+
+        assert!(matches!(err, ProxyCoreError::Unsupported(_)));
+    }
+
+    #[tokio::test]
+    async fn runtime_forward_pipeline_requires_matching_host_provider() {
+        let db = Arc::new(Database::memory().expect("memory db"));
+        let services = CcSwitchProxyServices::with_runtime(runtime(db));
+
+        let err = services
+            .forward_pipeline()
+            .forward(proxy_request(), route_plan("missing-provider", "channel-a"))
+            .await
+            .expect_err("missing provider should stop before forwarding");
+
+        assert!(matches!(err, ProxyCoreError::Unavailable(_)));
+        assert!(err
+            .to_string()
+            .contains("route plan providers are not configured"));
+    }
+
+    #[test]
+    fn proxy_response_bridge_preserves_buffered_body() {
+        let mut headers = http::HeaderMap::new();
+        headers.insert(
+            http::header::CONTENT_TYPE,
+            http::HeaderValue::from_static("application/json"),
+        );
+        let response = ProxyResponse::buffered(
+            StatusCode::CREATED,
+            headers,
+            Bytes::from_static(br#"{"ok":true}"#),
+        );
+
+        let core_response = proxy_response_to_core_response(response);
+
+        assert_eq!(core_response.status, StatusCode::CREATED);
+        assert_eq!(
+            core_response
+                .headers
+                .get(http::header::CONTENT_TYPE)
+                .and_then(|value| value.to_str().ok()),
+            Some("application/json")
+        );
+        match core_response.body {
+            ProxyResponseBody::Bytes(body) => {
+                assert_eq!(body, Bytes::from_static(br#"{"ok":true}"#))
+            }
+            other => panic!("expected bytes body, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn selected_route_prefers_successful_channel_from_forward_result() {
+        let primary = route_plan("provider-a", "channel-a").selection;
+        let fallback = route_plan("provider-a", "channel-b").selection;
+        let plan = RoutePlan {
+            selection: primary.clone(),
+            selections: vec![primary, fallback],
+            attempts: Vec::new(),
+        };
+        let result = crate::proxy::ForwardResult {
+            response: ProxyResponse::buffered(
+                StatusCode::OK,
+                http::HeaderMap::new(),
+                Bytes::from_static(b"{}"),
+            ),
+            provider: Provider::with_id(
+                "provider-a".to_string(),
+                "Provider A".to_string(),
+                json!({}),
+                None,
+            ),
+            claude_api_format: None,
+            outbound_model: None,
+            selected_channel: Some(crate::proxy::route_attempt::ChannelAttempt {
+                channel_id: "channel-b".to_string(),
+                channel_name: "Channel B".to_string(),
+                base_url: "https://fallback.example.com/v1".to_string(),
+                interface_kind: "openai_responses".to_string(),
+                public_model: Some("sonnet".to_string()),
+                upstream_model: Some("upstream-sonnet".to_string()),
+            }),
+            connection_guard: None,
+        };
+
+        let selected = selected_route_for_forward_result(&result, &plan);
+
+        assert_eq!(selected.channel.id, "channel-b");
     }
 
     #[tokio::test]

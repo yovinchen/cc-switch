@@ -45,6 +45,7 @@ pub use circuit_breaker::{
 };
 #[allow(unused_imports)]
 pub use error::ProxyError;
+pub(crate) use forwarder::{ForwardError, ForwardResult, RequestForwarder};
 #[allow(unused_imports)]
 pub use provider_router::ProviderRouter;
 #[allow(unused_imports)]

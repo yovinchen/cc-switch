@@ -16,7 +16,8 @@ use super::{
         AuthInfo, AuthStrategy, ProviderAdapter, ProviderType,
     },
     route_attempt::{
-        apply_channel_model_override, forward_attempts_from_route_plan, ForwardAttempt,
+        apply_channel_model_override, forward_attempts_from_route_plan, ChannelAttempt,
+        ForwardAttempt,
     },
     thinking_budget_rectifier::{rectify_thinking_budget, should_rectify_thinking_budget},
     thinking_rectifier::{
@@ -51,6 +52,8 @@ pub struct ForwardResult {
     /// usage 归因不能依赖 ctx.request_model（映射前的客户端别名）：上游响应
     /// 缺失 model 或回显别名时，接管流量会被记成 claude-* 并按其定价计费。
     pub outbound_model: Option<String>,
+    /// 实际成功的 channel，用于 core adapter 把结果映射回真实路由选择。
+    pub(crate) selected_channel: Option<ChannelAttempt>,
     /// 活跃连接 RAII guard：随响应一起流转到 response_processor / handle_claude_transform，
     /// 最终被 move 进流式 body future（或非流式响应作用域），覆盖整个响应生命周期。
     pub(crate) connection_guard: Option<ActiveConnectionGuard>,
@@ -965,6 +968,7 @@ impl RequestForwarder {
                         provider: provider.clone(),
                         claude_api_format,
                         outbound_model,
+                        selected_channel: attempt.channel().cloned(),
                         connection_guard: None,
                     });
                 }
@@ -1063,6 +1067,7 @@ impl RequestForwarder {
                                         provider: provider.clone(),
                                         claude_api_format,
                                         outbound_model,
+                                        selected_channel: attempt.channel().cloned(),
                                         connection_guard: None,
                                     });
                                 }
@@ -1211,6 +1216,7 @@ impl RequestForwarder {
                                             provider: provider.clone(),
                                             claude_api_format,
                                             outbound_model,
+                                            selected_channel: attempt.channel().cloned(),
                                             connection_guard: None,
                                         });
                                     }
@@ -1365,6 +1371,7 @@ impl RequestForwarder {
                                         provider: provider.clone(),
                                         claude_api_format,
                                         outbound_model,
+                                        selected_channel: attempt.channel().cloned(),
                                         connection_guard: None,
                                     });
                                 }
