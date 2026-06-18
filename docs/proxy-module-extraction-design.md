@@ -1,9 +1,23 @@
 # 代理模块抽离与独立中转接口设计
 
-> 分支：`refactor-proxy-module`
+> 分支：`refactor-proxy-channel-migration-module`
 > 基线：`origin/main`
 > 日期：2026-06-18
-> 状态：设计草案
+> 状态：已进入分阶段实现
+
+## 当前落地状态
+
+截至 2026-06-18，本分支已经完成以下迁移切片：
+
+1. 新增 host-neutral `proxy_core` 领域模型和 `ProxyServices` 端口，主工程通过 `cc-switch-proxy-core` path crate 引用。
+2. 新增 `proxy_channels`、`proxy_channel_models`、`proxy_channel_health` 等 channel 存储，并提供 legacy provider/endpoints 到 channel 的兼容投影。
+3. 路由规划已进入 `ProxyEngine`：`plan_route` 支持 legacy projection，`plan_materialized_route` 只使用显式 materialized channel。
+4. 现有 live `RequestForwarder` 的 materialized channel 尝试已改为经 `ProxyEngine` 规划，再映射回 host `ForwardAttempt` 执行，保持旧转发链路不回归。
+5. `ProxyEngine::handle` 已拥有编排骨架：请求计数、route selected 事件、`ForwardPipeline` 端口调用、`UsageSink` 调用。
+6. `CcSwitchEventSink` 已桥接到现有 `ProxyEventBus`，核心事件可以进入 `/proxy/v1/events` 的 SSE 流。
+7. `ForwardPipeline` 和 `UsageSink` 仍处于迁移中：host 侧实际 HTTP 转发仍由 `RequestForwarder` 承载；`UsageSink` 不能直接接 `UsageLogger`，因为当前 `UsageHint` 缺 provider_id、request_model、latency、status、stream/session、pricing_model 等落库必需字段。
+
+当前原则：核心 crate 可以新增端口和领域字段，但不得引入 `tauri`、`Database`、settings、commands、services 等宿主依赖；现有 runtime 行为必须继续通过 targeted tests 证明不回归。
 
 ## 背景
 
@@ -508,15 +522,17 @@ impl<S: ProxyServices> ProxyEngine<S> {
 
 ```rust
 pub trait ProxyServices: Send + Sync + 'static {
-    fn config_source(&self) -> &dyn ProxyConfigSource;
-    fn provider_source(&self) -> &dyn ProviderSource;
-    fn channel_source(&self) -> &dyn ChannelSource;
-    fn route_policy_source(&self) -> &dyn RoutePolicySource;
+    fn config(&self) -> &dyn ProxyConfigSource;
+    fn providers(&self) -> &dyn ProviderSource;
+    fn channels(&self) -> &dyn ChannelSource;
+    fn route_policies(&self) -> &dyn RoutePolicySource;
+    fn route_resolver(&self) -> &dyn RouteResolver;
     fn health_store(&self) -> &dyn ChannelHealthStore;
-    fn usage_sink(&self) -> &dyn UsageSink;
-    fn event_sink(&self) -> &dyn ProxyEventSink;
     fn auth_provider(&self) -> &dyn AuthProvider;
     fn model_catalog(&self) -> &dyn ModelCatalogProvider;
+    fn usage_sink(&self) -> &dyn UsageSink;
+    fn event_sink(&self) -> &dyn ProxyEventSink;
+    fn forward_pipeline(&self) -> &dyn ForwardPipeline;
 }
 ```
 
@@ -668,7 +684,7 @@ pub trait UsageSink: Send + Sync {
 - session_id
 - streaming
 
-当前 `UsageLogger` 和定价查询迁到 `CcSwitchUsageSink`。
+当前 `UsageLogger` 和定价查询最终迁到 `CcSwitchUsageSink`。落地前必须先把 `UsageRecord` 字段补齐；只用目前的 `UsageHint` 落库会丢失 provider、pricing、latency、status 和 session 语义。
 
 ### 事件接口
 
@@ -901,8 +917,8 @@ node_modules/.bin/tsc --noEmit
 3. `CcSwitchChannelSource` 包装 provider 主 URL、`provider_endpoints` 和未来 channel 表读取。
 4. `CcSwitchRoutePolicySource` 包装 failover queue、group 和优先级/权重策略。
 5. `CcSwitchHealthStore` 包装 channel health 写入；兼容期可同时写 provider health 聚合。
-6. `CcSwitchUsageSink` 包装 `UsageLogger`。
-7. `CcSwitchEventSink` 包装 Tauri event，初期可 no-op。
+6. `CcSwitchUsageSink` 包装 `UsageLogger`；落地前先补齐 `UsageRecord` 字段，不能用简化 hint 直接写账单。
+7. `CcSwitchEventSink` 包装 `ProxyEventBus`，再由宿主决定是否转发到 Tauri/UI/托盘。
 8. `CcSwitchAuthProvider` 包装 Codex/Copilot OAuth token 刷新和 channel key 选择。
 
 验收：
@@ -980,7 +996,7 @@ rg -n "tauri|crate::database|crate::settings|crate::commands|crate::services|cra
 当 `proxy_core` 已无宿主依赖后，移动到：
 
 ```text
-src-tauri/crates/cc-proxy-core
+src-tauri/crates/proxy-core
 ```
 
 `cc-switch` 主 crate 通过 path dependency 引用。
