@@ -4,6 +4,7 @@
 //! traffic still uses the existing proxy module, while new code can start
 //! depending on these neutral domain types and service ports.
 
+pub mod cache_injector;
 pub mod codex_error;
 pub mod claude_desktop_gateway_auth;
 pub mod channel_identity;
@@ -41,6 +42,7 @@ pub mod sse;
 pub mod thinking_budget_rectifier;
 pub mod usage;
 
+pub use cache_injector::*;
 pub use codex_error::*;
 pub use claude_desktop_gateway_auth::*;
 pub use channel_identity::*;
