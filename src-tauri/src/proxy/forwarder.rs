@@ -32,17 +32,17 @@ use crate::proxy_core::{
     build_request_started_event_payload, build_retryable_forward_failure_log,
     build_terminal_forward_failure_log, build_upstream_auth_headers, categorize_forward_failure,
     is_github_copilot_upstream, is_socks_proxy_url, resolve_copilot_optimizer_session_id,
-    resolve_media_prevention_policy, resolve_upstream_request_transport_policy,
-    resolve_upstream_send_policy, resolved_copilot_dynamic_base_url,
-    should_apply_bedrock_pre_send_optimizer, should_check_media_retry,
-    should_failover_after_rectifier_retry_failure, should_preserve_exact_request_header_case,
-    should_resolve_copilot_dynamic_endpoint, should_send_anthropic_request_headers,
-    should_trigger_media_retry, split_endpoint_and_query, validate_managed_account_upstream_auth,
-    AppKind, AttemptEventChannel, AttemptEventPayloadInput, AttemptEventPhase, ChannelQuery,
-    CopilotAuthHeaderOverrides, ForwardFailureCategory, ForwardFailureKind, InterfaceKind,
-    MediaRetryInput, ProxyBody, ProxyEngine, ProxyRequest, ProxyServices, UpstreamAuthHeadersInput,
-    UpstreamRequestHeadersInput, UpstreamSendPolicyInput, UpstreamTransportKind,
-    BEDROCK_OPTIMIZER_ENV_FLAG,
+    resolve_copilot_warmup_model_override, resolve_media_prevention_policy,
+    resolve_upstream_request_transport_policy, resolve_upstream_send_policy,
+    resolved_copilot_dynamic_base_url, should_apply_bedrock_pre_send_optimizer,
+    should_check_media_retry, should_failover_after_rectifier_retry_failure,
+    should_preserve_exact_request_header_case, should_resolve_copilot_dynamic_endpoint,
+    should_send_anthropic_request_headers, should_trigger_media_retry, split_endpoint_and_query,
+    validate_managed_account_upstream_auth, AppKind, AttemptEventChannel, AttemptEventPayloadInput,
+    AttemptEventPhase, ChannelQuery, CopilotAuthHeaderOverrides, ForwardFailureCategory,
+    ForwardFailureKind, InterfaceKind, MediaRetryInput, ProxyBody, ProxyEngine, ProxyRequest,
+    ProxyServices, UpstreamAuthHeadersInput, UpstreamRequestHeadersInput, UpstreamSendPolicyInput,
+    UpstreamTransportKind, BEDROCK_OPTIMIZER_ENV_FLAG,
 };
 use crate::proxy_core_host::CcSwitchProxyServices;
 use crate::{app_config::AppType, provider::Provider};
@@ -1658,13 +1658,13 @@ impl RequestForwarder {
             }
 
             // 4. Warmup 小模型降级
-            if self.copilot_optimizer_config.warmup_downgrade && classification.is_warmup {
-                log::info!(
-                    "[Copilot] Warmup 请求降级到模型: {}",
-                    self.copilot_optimizer_config.warmup_model
-                );
-                mapped_body["model"] =
-                    serde_json::json!(&self.copilot_optimizer_config.warmup_model);
+            if let Some(warmup_model) = resolve_copilot_warmup_model_override(
+                self.copilot_optimizer_config.warmup_downgrade,
+                classification.is_warmup,
+                &self.copilot_optimizer_config.warmup_model,
+            ) {
+                log::info!("[Copilot] Warmup 请求降级到模型: {}", warmup_model);
+                mapped_body["model"] = serde_json::json!(warmup_model);
             }
 
             // 预计算确定性 Request ID（在 body 被 move 之前）

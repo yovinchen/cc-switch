@@ -15,6 +15,14 @@ pub fn should_apply_bedrock_pre_send_optimizer(
     optimizer_enabled && provider_declares_bedrock(use_bedrock_env)
 }
 
+pub fn resolve_copilot_warmup_model_override<'a>(
+    warmup_downgrade_enabled: bool,
+    is_warmup_request: bool,
+    warmup_model: &'a str,
+) -> Option<&'a str> {
+    (warmup_downgrade_enabled && is_warmup_request).then_some(warmup_model)
+}
+
 pub fn parse_session_from_user_id(user_id: &str) -> Option<String> {
     user_id.find("_session_").and_then(|position| {
         let session_id = &user_id[position + "_session_".len()..];
@@ -132,6 +140,7 @@ mod tests {
         parse_session_from_user_id, provider_declares_bedrock,
         resolve_copilot_optimizer_session_id, should_apply_bedrock_pre_send_optimizer,
         resolve_copilot_deterministic_interaction_id, resolve_copilot_deterministic_request_id,
+        resolve_copilot_warmup_model_override,
     };
     use http::{HeaderMap, HeaderValue};
     use serde_json::json;
@@ -151,6 +160,22 @@ mod tests {
         assert!(!should_apply_bedrock_pre_send_optimizer(false, Some("1")));
         assert!(!should_apply_bedrock_pre_send_optimizer(true, Some("0")));
         assert!(!should_apply_bedrock_pre_send_optimizer(true, None));
+    }
+
+    #[test]
+    fn copilot_warmup_model_override_requires_switch_and_warmup_classification() {
+        assert_eq!(
+            resolve_copilot_warmup_model_override(true, true, "gpt-4o-mini"),
+            Some("gpt-4o-mini")
+        );
+        assert_eq!(
+            resolve_copilot_warmup_model_override(false, true, "gpt-4o-mini"),
+            None
+        );
+        assert_eq!(
+            resolve_copilot_warmup_model_override(true, false, "gpt-4o-mini"),
+            None
+        );
     }
 
     #[test]
