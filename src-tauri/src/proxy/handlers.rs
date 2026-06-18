@@ -40,6 +40,10 @@ use crate::database::{
     ProxyChannelModelsReplaceRequest, ProxyChannelPatchRequest, ProxyChannelWriteRequest,
     PRICING_SOURCE_REQUEST,
 };
+use crate::proxy_core::{
+    AppKind, InterfaceKind, ProxyBody, ProxyCoreError, ProxyCoreResponse, ProxyEngine,
+    ProxyRequest, ProxyResponseBody, ProxyResult,
+};
 use axum::{
     extract::{Path, Query, State},
     http::StatusCode,
@@ -1218,6 +1222,75 @@ fn endpoint_with_query(uri: &axum::http::Uri, endpoint: &str) -> String {
     }
 }
 
+fn proxy_core_response_to_proxy_response(
+    response: ProxyCoreResponse,
+) -> Result<super::hyper_client::ProxyResponse, ProxyError> {
+    let ProxyCoreResponse {
+        status,
+        headers,
+        body,
+    } = response;
+
+    let response = match body {
+        ProxyResponseBody::Empty => {
+            super::hyper_client::ProxyResponse::buffered(status, headers, Bytes::new())
+        }
+        ProxyResponseBody::Json(value) => {
+            let body = serde_json::to_vec(&value).map_err(|error| {
+                ProxyError::Internal(format!("Failed to serialize proxy core response: {error}"))
+            })?;
+            super::hyper_client::ProxyResponse::buffered(status, headers, Bytes::from(body))
+        }
+        ProxyResponseBody::Bytes(body) => {
+            super::hyper_client::ProxyResponse::buffered(status, headers, body)
+        }
+        ProxyResponseBody::Stream(stream) => {
+            super::hyper_client::ProxyResponse::streamed(status, headers, stream)
+        }
+    };
+
+    Ok(response)
+}
+
+fn proxy_core_error_to_proxy_error(error: ProxyCoreError) -> ProxyError {
+    let message = error.to_string();
+    match error {
+        ProxyCoreError::InvalidRequest(_) => ProxyError::InvalidRequest(message),
+        ProxyCoreError::Config(_) => ProxyError::ConfigError(message),
+        ProxyCoreError::Auth(_) => ProxyError::AuthError(message),
+        ProxyCoreError::Unavailable(_) => ProxyError::NoAvailableProvider,
+        ProxyCoreError::Upstream(_) => ProxyError::ForwardFailed(message),
+        ProxyCoreError::Unsupported(_) | ProxyCoreError::Internal(_) => {
+            ProxyError::Internal(message)
+        }
+    }
+}
+
+fn apply_proxy_result_to_context(
+    state: &ProxyState,
+    ctx: &mut RequestContext,
+    result: &ProxyResult,
+) -> Result<(), ProxyError> {
+    ctx.outbound_model = result.outbound_model.clone();
+    let provider_id = result.selected_route.provider.id.as_str();
+    if ctx.provider.id == provider_id {
+        return Ok(());
+    }
+
+    if let Some(provider) = state
+        .db
+        .get_provider_by_id(provider_id, ctx.app_type_str)
+        .map_err(|error| ProxyError::DatabaseError(error.to_string()))?
+    {
+        ctx.provider = provider;
+        return Ok(());
+    }
+
+    Err(ProxyError::ConfigError(format!(
+        "selected provider is missing from host database: {provider_id}"
+    )))
+}
+
 // ============================================================================
 // Codex API 处理器
 // ============================================================================
@@ -1249,42 +1322,31 @@ pub async fn handle_chat_completions(
         .and_then(|v| v.as_bool())
         .unwrap_or(false);
 
-    let forwarder = ctx.create_forwarder(&state);
-    let mut result = match forwarder
-        .forward_with_retry(
-            &AppType::Codex,
-            method,
-            &endpoint,
-            body,
-            headers,
-            extensions,
-            ctx.get_providers(),
-        )
-        .await
-    {
+    let mut proxy_request = ProxyRequest::new(
+        AppKind::from(&AppType::Codex),
+        method,
+        &endpoint,
+        InterfaceKind::OpenAiChatCompletions,
+        ProxyBody::Json(body),
+    );
+    proxy_request.requested_model = Some(ctx.request_model.clone());
+    proxy_request.headers = headers;
+    proxy_request.extensions = extensions;
+
+    let engine = ProxyEngine::new(state.proxy_core_services.clone());
+    let result = match engine.handle(proxy_request).await {
         Ok(result) => result,
-        Err(mut err) => {
-            if let Some(provider) = err.provider.take() {
-                ctx.provider = provider;
-            }
-            log_forward_error(&state, &ctx, is_stream, &err.error);
-            return build_codex_proxy_error_response(&ctx, &endpoint, &err.error);
+        Err(error) => {
+            let error = proxy_core_error_to_proxy_error(error);
+            log_forward_error(&state, &ctx, is_stream, &error);
+            return build_codex_proxy_error_response(&ctx, &endpoint, &error);
         }
     };
 
-    let connection_guard = result.connection_guard.take();
-    ctx.outbound_model = result.outbound_model.take();
-    ctx.provider = result.provider;
-    let response = result.response;
+    apply_proxy_result_to_context(&state, &mut ctx, &result)?;
+    let response = proxy_core_response_to_proxy_response(result.response)?;
 
-    process_response(
-        response,
-        &ctx,
-        &state,
-        &OPENAI_PARSER_CONFIG,
-        connection_guard,
-    )
-    .await
+    process_response(response, &ctx, &state, &OPENAI_PARSER_CONFIG, None).await
 }
 
 /// 处理 /v1/responses 请求（OpenAI Responses API - Codex CLI 透传）
@@ -2648,10 +2710,14 @@ async fn log_usage(
 mod tests {
     use super::{
         body_looks_like_sse, body_snippet, chat_sse_to_response_value, codex_proxy_error_json,
+        proxy_core_error_to_proxy_error, proxy_core_response_to_proxy_response,
         responses_sse_to_response_value, should_use_claude_transform_streaming, transform,
         upstream_body_parse_error,
     };
     use crate::proxy::ProxyError;
+    use crate::proxy_core::{ProxyCoreError, ProxyCoreResponse, ProxyResponseBody};
+    use bytes::Bytes;
+    use http::StatusCode;
 
     #[test]
     fn body_looks_like_sse_detects_unlabeled_sse_prefixes() {
@@ -2670,6 +2736,32 @@ mod tests {
         assert!(!body_looks_like_sse("<html><body>blocked</body></html>"));
         assert!(!body_looks_like_sse("Bad Gateway"));
         assert!(!body_looks_like_sse(""));
+    }
+
+    #[tokio::test]
+    async fn proxy_core_response_bridge_preserves_stream_body() {
+        let response = ProxyCoreResponse::with_body(
+            StatusCode::OK,
+            http::HeaderMap::new(),
+            ProxyResponseBody::stream(futures::stream::once(async {
+                Ok(Bytes::from_static(b"chunk"))
+            })),
+        );
+
+        let proxy_response = proxy_core_response_to_proxy_response(response).expect("bridge");
+
+        assert_eq!(proxy_response.status(), StatusCode::OK);
+        let body = proxy_response.bytes().await.expect("body");
+        assert_eq!(body, Bytes::from_static(b"chunk"));
+    }
+
+    #[test]
+    fn proxy_core_error_bridge_maps_unavailable_to_proxy_error() {
+        let error = proxy_core_error_to_proxy_error(ProxyCoreError::Unavailable(
+            "no routable channel".to_string(),
+        ));
+
+        assert!(matches!(error, ProxyError::NoAvailableProvider));
     }
 
     #[test]
