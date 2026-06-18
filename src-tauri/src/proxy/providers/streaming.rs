@@ -4,7 +4,8 @@
 
 use crate::proxy::sse::{strip_sse_field, take_sse_block};
 use crate::proxy_core::{
-    build_anthropic_usage_from_openai_chat_tokens, map_openai_chat_finish_reason_to_anthropic,
+    build_anthropic_message_delta_event, build_anthropic_usage_from_openai_chat_tokens,
+    map_openai_chat_finish_reason_to_anthropic,
 };
 use bytes::Bytes;
 use futures::stream::{Stream, StreamExt};
@@ -111,28 +112,6 @@ fn build_anthropic_usage_json(usage: &Usage) -> Value {
     )
 }
 
-fn default_anthropic_usage_json() -> Value {
-    json!({
-        "input_tokens": 0,
-        "output_tokens": 0
-    })
-}
-
-fn build_message_delta_event(stop_reason: Option<String>, usage_json: Option<Value>) -> Value {
-    let usage = usage_json
-        .filter(|usage| usage.is_object())
-        .unwrap_or_else(default_anthropic_usage_json);
-
-    json!({
-        "type": "message_delta",
-        "delta": {
-            "stop_reason": stop_reason,
-            "stop_sequence": null
-        },
-        "usage": usage
-    })
-}
-
 /// 创建 Anthropic SSE 流
 pub fn create_anthropic_sse_stream<E: std::error::Error + Send + 'static>(
     stream: impl Stream<Item = Result<Bytes, E>> + Send + 'static,
@@ -178,7 +157,7 @@ pub fn create_anthropic_sse_stream<E: std::error::Error + Send + 'static>(
 
                                     // 流正常结束，发出缓存的 message_delta（含完整 usage）。
                                     if let Some((stop_reason, usage_json)) = pending_message_delta.take() {
-                                        let event = build_message_delta_event(stop_reason, usage_json);
+                                        let event = build_anthropic_message_delta_event(stop_reason.as_deref(), usage_json);
                                         let sse_data = format!("event: message_delta\ndata: {}\n\n",
                                             serde_json::to_string(&event).unwrap_or_default());
                                         log::debug!("[Claude/OpenRouter] >>> Anthropic SSE: message_delta (from pending)");
@@ -643,7 +622,7 @@ pub fn create_anthropic_sse_stream<E: std::error::Error + Send + 'static>(
             let emitted_pending_message_delta = if let Some((stop_reason, usage_json)) =
                 pending_message_delta.take()
             {
-                let event = build_message_delta_event(stop_reason, usage_json);
+                let event = build_anthropic_message_delta_event(stop_reason.as_deref(), usage_json);
                 let sse_data = format!("event: message_delta\ndata: {}\n\n",
                     serde_json::to_string(&event).unwrap_or_default());
                 log::debug!("[Claude/OpenRouter] >>> Anthropic SSE: message_delta (at stream end)");

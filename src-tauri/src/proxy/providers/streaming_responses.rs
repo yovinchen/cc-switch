@@ -10,8 +10,8 @@
 
 use crate::proxy::sse::{strip_sse_field, take_sse_block};
 use crate::proxy_core::{
-    build_anthropic_usage_from_openai_responses, map_openai_responses_stop_reason_to_anthropic,
-    sanitize_anthropic_tool_use_input_json,
+    build_anthropic_message_delta_event, build_anthropic_usage_from_openai_responses,
+    map_openai_responses_stop_reason_to_anthropic, sanitize_anthropic_tool_use_input_json,
 };
 use bytes::Bytes;
 use futures::stream::{Stream, StreamExt};
@@ -725,14 +725,8 @@ pub fn create_anthropic_sse_stream_from_responses<E: std::error::Error + Send + 
                                 );
 
                                 // Emit message_delta (with usage + stop_reason)
-                                let delta_event = json!({
-                                    "type": "message_delta",
-                                    "delta": {
-                                        "stop_reason": stop_reason,
-                                        "stop_sequence": null
-                                    },
-                                    "usage": usage_json
-                                });
+                                let delta_event =
+                                    build_anthropic_message_delta_event(stop_reason, Some(usage_json));
                                 let sse = format!("event: message_delta\ndata: {}\n\n",
                                     serde_json::to_string(&delta_event).unwrap_or_default());
                                 log::debug!("[Claude/Responses] >>> Anthropic SSE: message_delta");

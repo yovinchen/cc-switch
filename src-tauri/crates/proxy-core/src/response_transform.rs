@@ -1,5 +1,5 @@
 use crate::UpstreamSseAggregationKind;
-use serde_json::Value;
+use serde_json::{json, Value};
 
 pub const CLAUDE_API_FORMAT_METADATA_KEY: &str = "claudeApiFormat";
 
@@ -146,6 +146,24 @@ pub fn map_gemini_finish_reason_to_anthropic(
         _ if has_tool_use => "tool_use",
         _ => "end_turn",
     }
+}
+
+pub fn build_anthropic_message_delta_event(
+    stop_reason: Option<&str>,
+    usage: Option<Value>,
+) -> Value {
+    let usage = usage
+        .filter(Value::is_object)
+        .unwrap_or_else(|| json!({ "input_tokens": 0, "output_tokens": 0 }));
+
+    json!({
+        "type": "message_delta",
+        "delta": {
+            "stop_reason": stop_reason,
+            "stop_sequence": null
+        },
+        "usage": usage
+    })
 }
 
 pub fn sanitize_anthropic_tool_use_input(name: &str, input: Value) -> Value {
@@ -450,6 +468,25 @@ mod tests {
             map_gemini_finish_reason_to_anthropic(None, false, true),
             "refusal"
         );
+    }
+
+    #[test]
+    fn builds_anthropic_message_delta_event_with_usage_fallback() {
+        let event =
+            build_anthropic_message_delta_event(Some("end_turn"), Some(json!({"input_tokens": 7})));
+        assert_eq!(event["type"], "message_delta");
+        assert_eq!(event["delta"]["stop_reason"], "end_turn");
+        assert!(event["delta"]["stop_sequence"].is_null());
+        assert_eq!(event["usage"]["input_tokens"], 7);
+
+        let fallback = build_anthropic_message_delta_event(None, None);
+        assert!(fallback["delta"]["stop_reason"].is_null());
+        assert_eq!(fallback["usage"]["input_tokens"], 0);
+        assert_eq!(fallback["usage"]["output_tokens"], 0);
+
+        let non_object = build_anthropic_message_delta_event(Some("tool_use"), Some(json!(42)));
+        assert_eq!(non_object["usage"]["input_tokens"], 0);
+        assert_eq!(non_object["usage"]["output_tokens"], 0);
     }
 
     #[test]

@@ -9,7 +9,10 @@ use super::transform_gemini::{
     AnthropicToolSchemaHints,
 };
 use crate::proxy::sse::{append_utf8_safe, strip_sse_field, take_sse_block};
-use crate::proxy_core::{build_anthropic_usage_from_gemini, map_gemini_finish_reason_to_anthropic};
+use crate::proxy_core::{
+    build_anthropic_message_delta_event, build_anthropic_usage_from_gemini,
+    map_gemini_finish_reason_to_anthropic,
+};
 use bytes::Bytes;
 use futures::stream::{Stream, StreamExt};
 use serde_json::{json, Value};
@@ -542,14 +545,7 @@ pub fn create_anthropic_sse_stream_from_gemini<E: std::error::Error + Send + 'st
             blocked_text.is_some(),
         );
         let usage = build_anthropic_usage_from_gemini(latest_usage.as_ref());
-        let message_delta = json!({
-            "type": "message_delta",
-            "delta": {
-                "stop_reason": stop_reason,
-                "stop_sequence": Value::Null
-            },
-            "usage": usage
-        });
+        let message_delta = build_anthropic_message_delta_event(Some(stop_reason), Some(usage));
         yield Ok(encode_sse("message_delta", &message_delta));
 
         let message_stop = json!({ "type": "message_stop" });
