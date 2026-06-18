@@ -29,9 +29,9 @@ use crate::commands::{CodexOAuthState, CopilotAuthState};
 use crate::proxy::providers::codex_oauth_auth::CodexOAuthManager;
 use crate::proxy::providers::copilot_auth::CopilotAuthManager;
 use crate::proxy_core::{
-    resolve_upstream_request_transport_policy, should_preserve_exact_request_header_case,
-    validate_managed_account_upstream_auth, AppKind, ChannelQuery, InterfaceKind, ProxyBody,
-    ProxyEngine, ProxyRequest, ProxyServices,
+    build_codex_oauth_session_headers, resolve_upstream_request_transport_policy,
+    should_preserve_exact_request_header_case, validate_managed_account_upstream_auth, AppKind,
+    ChannelQuery, InterfaceKind, ProxyBody, ProxyEngine, ProxyRequest, ProxyServices,
 };
 use crate::proxy_core_host::CcSwitchProxyServices;
 use crate::{app_config::AppType, provider::Provider};
@@ -2941,28 +2941,6 @@ fn append_query_to_full_url(base_url: &str, query: Option<&str>) -> String {
         }
         _ => base_url.to_string(),
     }
-}
-
-fn build_codex_oauth_session_headers(
-    session_id: &str,
-) -> Vec<(http::HeaderName, http::HeaderValue)> {
-    let session_id = session_id.trim();
-    if session_id.is_empty() {
-        return Vec::new();
-    }
-
-    let mut headers = Vec::new();
-    if let Ok(value) = http::HeaderValue::from_str(session_id) {
-        headers.push((http::HeaderName::from_static("session_id"), value.clone()));
-        headers.push((http::HeaderName::from_static("x-client-request-id"), value));
-    }
-
-    let window_id = format!("{session_id}:0");
-    if let Ok(value) = http::HeaderValue::from_str(&window_id) {
-        headers.push((http::HeaderName::from_static("x-codex-window-id"), value));
-    }
-
-    headers
 }
 
 fn reject_proxy_placeholder_for_managed_account_upstream(
