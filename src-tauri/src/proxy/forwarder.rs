@@ -28,17 +28,18 @@ use crate::proxy::providers::codex_oauth_auth::CodexOAuthManager;
 use crate::proxy::providers::copilot_auth::CopilotAuthManager;
 use crate::proxy_core::append_query_to_full_url;
 use crate::proxy_core::{
-    build_codex_oauth_session_headers, build_retryable_forward_failure_log,
-    build_terminal_forward_failure_log, build_upstream_auth_headers, categorize_forward_failure,
-    is_github_copilot_upstream, is_socks_proxy_url, resolve_media_prevention_policy,
-    resolve_upstream_request_transport_policy, resolve_upstream_send_policy,
-    resolved_copilot_dynamic_base_url, should_apply_bedrock_pre_send_optimizer,
-    should_check_media_retry, should_failover_after_rectifier_retry_failure,
-    should_preserve_exact_request_header_case, should_resolve_copilot_dynamic_endpoint,
-    should_send_anthropic_request_headers, should_trigger_media_retry, split_endpoint_and_query,
-    validate_managed_account_upstream_auth, AppKind, ChannelQuery, CopilotAuthHeaderOverrides,
-    ForwardFailureCategory, ForwardFailureKind, InterfaceKind, MediaRetryInput, ProxyBody,
-    ProxyEngine, ProxyRequest, ProxyServices, UpstreamAuthHeadersInput,
+    attempt_event_name, build_attempt_event_payload, build_codex_oauth_session_headers,
+    build_retryable_forward_failure_log, build_terminal_forward_failure_log,
+    build_upstream_auth_headers, categorize_forward_failure, is_github_copilot_upstream,
+    is_socks_proxy_url, resolve_media_prevention_policy, resolve_upstream_request_transport_policy,
+    resolve_upstream_send_policy, resolved_copilot_dynamic_base_url,
+    should_apply_bedrock_pre_send_optimizer, should_check_media_retry,
+    should_failover_after_rectifier_retry_failure, should_preserve_exact_request_header_case,
+    should_resolve_copilot_dynamic_endpoint, should_send_anthropic_request_headers,
+    should_trigger_media_retry, split_endpoint_and_query, validate_managed_account_upstream_auth,
+    AppKind, AttemptEventChannel, AttemptEventPayloadInput, AttemptEventPhase, ChannelQuery,
+    CopilotAuthHeaderOverrides, ForwardFailureCategory, ForwardFailureKind, InterfaceKind,
+    MediaRetryInput, ProxyBody, ProxyEngine, ProxyRequest, ProxyServices, UpstreamAuthHeadersInput,
     UpstreamRequestHeadersInput, UpstreamSendPolicyInput, UpstreamTransportKind,
     BEDROCK_OPTIMIZER_ENV_FLAG,
 };
@@ -462,22 +463,14 @@ impl RequestForwarder {
 
     fn emit_attempt_started(&self, request_id: &str, app_type: &str, attempt: &ForwardAttempt) {
         self.events.emit(
-            if attempt.is_channel() {
-                "channel_attempt"
-            } else {
-                "provider_attempt"
-            },
+            attempt_event_name(attempt.is_channel(), AttemptEventPhase::Started),
             attempt_event_payload(request_id, app_type, attempt, None),
         );
     }
 
     fn emit_attempt_succeeded(&self, request_id: &str, app_type: &str, attempt: &ForwardAttempt) {
         self.events.emit(
-            if attempt.is_channel() {
-                "channel_succeeded"
-            } else {
-                "provider_succeeded"
-            },
+            attempt_event_name(attempt.is_channel(), AttemptEventPhase::Succeeded),
             attempt_event_payload(request_id, app_type, attempt, None),
         );
     }
@@ -490,11 +483,7 @@ impl RequestForwarder {
         error: &str,
     ) {
         self.events.emit(
-            if attempt.is_channel() {
-                "channel_failed"
-            } else {
-                "provider_failed"
-            },
+            attempt_event_name(attempt.is_channel(), AttemptEventPhase::Failed),
             attempt_event_payload(request_id, app_type, attempt, Some(error)),
         );
     }
@@ -2422,48 +2411,22 @@ fn attempt_event_payload(
     error: Option<&str>,
 ) -> Value {
     let provider = attempt.provider();
-    let channel = attempt.channel();
-    let mut payload = json!({
-        "requestId": request_id,
-        "appType": app_type,
-        "providerId": provider.id.as_str(),
-        "providerName": provider.name.as_str(),
+    let channel = attempt.channel().map(|channel| AttemptEventChannel {
+        channel_id: channel.channel_id.as_str(),
+        channel_name: channel.channel_name.as_str(),
+        interface_kind: channel.interface_kind.as_str(),
+        public_model: channel.public_model.as_deref(),
+        upstream_model: channel.upstream_model.as_deref(),
     });
 
-    if let Value::Object(ref mut object) = payload {
-        if let Some(channel) = channel {
-            object.insert(
-                "channelId".to_string(),
-                Value::String(channel.channel_id.clone()),
-            );
-            object.insert(
-                "channelName".to_string(),
-                Value::String(channel.channel_name.clone()),
-            );
-            object.insert(
-                "interfaceKind".to_string(),
-                Value::String(channel.interface_kind.clone()),
-            );
-            if let Some(public_model) = channel.public_model.as_deref() {
-                object.insert(
-                    "publicModel".to_string(),
-                    Value::String(public_model.to_string()),
-                );
-            }
-            if let Some(upstream_model) = channel.upstream_model.as_deref() {
-                object.insert(
-                    "upstreamModel".to_string(),
-                    Value::String(upstream_model.to_string()),
-                );
-            }
-        }
-
-        if let Some(error) = error {
-            object.insert("error".to_string(), Value::String(error.to_string()));
-        }
-    }
-
-    payload
+    build_attempt_event_payload(AttemptEventPayloadInput {
+        request_id,
+        app_type,
+        provider_id: provider.id.as_str(),
+        provider_name: provider.name.as_str(),
+        channel,
+        error,
+    })
 }
 
 fn rewrite_codex_responses_endpoint_to_chat(endpoint: &str) -> (String, Option<String>) {
