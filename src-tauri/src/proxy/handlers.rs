@@ -2031,42 +2031,32 @@ pub async fn handle_gemini(
         .and_then(|v| v.as_bool())
         .unwrap_or(false);
 
-    let forwarder = ctx.create_forwarder(&state);
-    let mut result = match forwarder
-        .forward_with_retry(
-            &AppType::Gemini,
-            method,
-            endpoint,
-            body,
-            headers,
-            extensions,
-            ctx.get_providers(),
-        )
-        .await
-    {
+    let mut proxy_request = ProxyRequest::new(
+        AppKind::from(&AppType::Gemini),
+        method,
+        endpoint,
+        InterfaceKind::GeminiNative,
+        ProxyBody::Json(body),
+    );
+    proxy_request.requested_model =
+        super::handler_context::extract_gemini_model_from_path(endpoint);
+    proxy_request.headers = headers;
+    proxy_request.extensions = extensions;
+
+    let engine = ProxyEngine::new(state.proxy_core_services.clone());
+    let result = match engine.handle(proxy_request).await {
         Ok(result) => result,
-        Err(mut err) => {
-            if let Some(provider) = err.provider.take() {
-                ctx.provider = provider;
-            }
-            log_forward_error(&state, &ctx, is_stream, &err.error);
-            return Err(err.error);
+        Err(error) => {
+            let error = proxy_core_error_to_proxy_error(error);
+            log_forward_error(&state, &ctx, is_stream, &error);
+            return Err(error);
         }
     };
 
-    let connection_guard = result.connection_guard.take();
-    ctx.outbound_model = result.outbound_model.take();
-    ctx.provider = result.provider;
-    let response = result.response;
+    apply_proxy_result_to_context(&state, &mut ctx, &result)?;
+    let response = proxy_core_response_to_proxy_response(result.response)?;
 
-    process_response(
-        response,
-        &ctx,
-        &state,
-        &GEMINI_PARSER_CONFIG,
-        connection_guard,
-    )
-    .await
+    process_response(response, &ctx, &state, &GEMINI_PARSER_CONFIG, None).await
 }
 
 fn should_use_claude_transform_streaming(
