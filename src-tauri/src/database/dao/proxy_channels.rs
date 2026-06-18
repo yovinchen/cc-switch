@@ -9,13 +9,15 @@ use crate::database::{lock_conn, to_json_string, Database};
 use crate::error::AppError;
 use crate::provider::Provider;
 use crate::proxy_core::{
-    stable_channel_id, ProxyChannelModelWriteRequest, ProxyChannelPatchRequest,
+    infer_legacy_channel_interface, infer_legacy_model_routes, legacy_channel_priority,
+    stable_channel_id, AppKind, LegacyModelRouteInput, LegacyModelRouteProjection,
+    LegacyProviderProjectionInput, ProxyChannelModelWriteRequest, ProxyChannelPatchRequest,
     ProxyChannelWriteRequest,
 };
 use rusqlite::{params, Connection, OptionalExtension, Row};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
-use std::collections::HashSet;
+use std::collections::{BTreeMap, HashSet};
 use std::str::FromStr;
 
 const DEFAULT_GROUP: &str = "default";
@@ -123,13 +125,21 @@ impl Database {
         let providers = self.get_all_providers(app_type)?;
         let current_provider_id = self.get_current_provider(app_type)?;
         let app = AppType::from_str(app_type).ok();
+        let app_kind = app.as_ref().map(|app| AppKind::from(app.as_str()));
         let mut channels = Vec::new();
         let mut seen_routes = HashSet::new();
         let mut duplicate_count = 0usize;
 
         for provider in providers.values() {
-            let priority = legacy_priority(provider, current_provider_id.as_deref());
-            let interface_kind = infer_interface_kind(app.as_ref(), provider);
+            let projection = legacy_provider_projection_input(provider);
+            let priority = legacy_channel_priority(
+                &provider.id,
+                provider.in_failover_queue,
+                current_provider_id.as_deref(),
+            );
+            let interface_kind = infer_legacy_channel_interface(app_kind.as_ref(), &projection)
+                .as_str()
+                .to_string();
             let primary_base_url = app
                 .as_ref()
                 .map(|app| provider.resolve_usage_credentials(app).0)
@@ -137,7 +147,9 @@ impl Database {
 
             let primary = build_legacy_channel(
                 app_type,
+                app_kind.as_ref(),
                 provider,
+                &projection,
                 normalize_base_url(&primary_base_url),
                 interface_kind.clone(),
                 priority,
@@ -161,7 +173,9 @@ impl Database {
             for endpoint in endpoints {
                 let channel = build_legacy_channel(
                     app_type,
+                    app_kind.as_ref(),
                     provider,
+                    &projection,
                     normalize_base_url(&endpoint.url),
                     interface_kind.clone(),
                     priority,
@@ -899,7 +913,9 @@ fn push_channel_or_count_duplicate(
 
 fn build_legacy_channel(
     app_type: &str,
+    app: Option<&AppKind>,
     provider: &Provider,
+    projection: &LegacyProviderProjectionInput,
     base_url: String,
     interface_kind: String,
     priority: i64,
@@ -907,10 +923,10 @@ fn build_legacy_channel(
     source_endpoint_url: Option<String>,
 ) -> ProxyChannelRecord {
     let id = stable_channel_id(app_type, &provider.id, source_kind.as_str(), &base_url);
-    let mut models = infer_model_routes(app_type, provider);
-    for model in &mut models {
-        model.channel_id = id.clone();
-    }
+    let models = infer_legacy_model_routes(app, projection)
+        .into_iter()
+        .map(|route| proxy_channel_model_record_from_legacy(&id, route))
+        .collect::<Vec<_>>();
 
     let mut review_reasons = Vec::new();
     if base_url.is_empty() {
@@ -962,13 +978,18 @@ fn build_legacy_channel(
     }
 }
 
-fn legacy_priority(provider: &Provider, current_provider_id: Option<&str>) -> i64 {
-    if current_provider_id == Some(provider.id.as_str()) {
-        100
-    } else if provider.in_failover_queue {
-        50
-    } else {
-        0
+fn proxy_channel_model_record_from_legacy(
+    channel_id: &str,
+    route: LegacyModelRouteProjection,
+) -> ProxyChannelModelRecord {
+    ProxyChannelModelRecord {
+        channel_id: channel_id.to_string(),
+        public_model: route.public_model,
+        upstream_model: route.upstream_model,
+        capabilities: json!({}),
+        pricing_model: None,
+        request_overrides: json!({}),
+        response_overrides: json!({}),
     }
 }
 
@@ -1056,145 +1077,66 @@ fn array_or_default(value: Value) -> Value {
     }
 }
 
-fn infer_interface_kind(app: Option<&AppType>, provider: &Provider) -> String {
-    match app {
-        Some(AppType::Claude | AppType::ClaudeDesktop) => provider
-            .meta
-            .as_ref()
-            .and_then(|meta| meta.api_format.as_deref())
-            .map(|format| match format.trim().to_ascii_lowercase().as_str() {
-                "openai_chat" | "openai-chat" | "openai_chat_completions" => {
-                    "openai_chat_completions"
-                }
-                "openai_responses" | "openai-responses" | "responses" => "openai_responses",
-                "gemini" | "gemini_native" | "gemini-native" => "gemini_native",
-                _ => "anthropic_messages",
-            })
-            .unwrap_or("anthropic_messages")
-            .to_string(),
-        Some(AppType::Codex) => provider
-            .settings_config
-            .get("config")
-            .and_then(|value| value.as_str())
-            .and_then(extract_codex_wire_api)
-            .map(|wire_api| {
-                if is_chat_wire_api(&wire_api) {
-                    "openai_chat_completions"
-                } else {
-                    "openai_responses"
-                }
-            })
-            .unwrap_or("openai_responses")
-            .to_string(),
-        Some(AppType::Gemini) => "gemini_native".to_string(),
-        Some(AppType::OpenCode | AppType::OpenClaw | AppType::Hermes) | None => {
-            "custom".to_string()
-        }
-    }
-}
-
-fn infer_model_routes(app_type: &str, provider: &Provider) -> Vec<ProxyChannelModelRecord> {
-    match AppType::from_str(app_type).ok() {
-        Some(AppType::Claude | AppType::ClaudeDesktop) => infer_claude_models(provider),
-        Some(AppType::Codex) => infer_codex_models(provider),
-        Some(AppType::Gemini) => infer_env_models(provider, &["GEMINI_MODEL"]),
-        Some(AppType::OpenCode | AppType::OpenClaw | AppType::Hermes) | None => Vec::new(),
-    }
-}
-
-fn infer_claude_models(provider: &Provider) -> Vec<ProxyChannelModelRecord> {
-    let mut routes = infer_env_models(
-        provider,
-        &[
-            "ANTHROPIC_MODEL",
-            "ANTHROPIC_SMALL_FAST_MODEL",
-            "ANTHROPIC_DEFAULT_HAIKU_MODEL",
-            "ANTHROPIC_DEFAULT_HAIKU_MODEL_NAME",
-            "ANTHROPIC_DEFAULT_SONNET_MODEL",
-            "ANTHROPIC_DEFAULT_SONNET_MODEL_NAME",
-            "ANTHROPIC_DEFAULT_OPUS_MODEL",
-            "ANTHROPIC_DEFAULT_OPUS_MODEL_NAME",
-        ],
-    );
-
-    if let Some(meta) = provider.meta.as_ref() {
-        for (public_model, route) in &meta.claude_desktop_model_routes {
-            push_model_route(&mut routes, public_model, &route.model);
-        }
-    }
-
-    routes
-}
-
-fn infer_codex_models(provider: &Provider) -> Vec<ProxyChannelModelRecord> {
-    let mut routes = Vec::new();
-
-    if let Some(config_text) = provider
+fn legacy_provider_projection_input(provider: &Provider) -> LegacyProviderProjectionInput {
+    let config_text = provider
         .settings_config
         .get("config")
-        .and_then(|value| value.as_str())
-    {
-        if let Some(model) = extract_codex_model(config_text) {
-            push_model_route(&mut routes, &model, &model);
-        }
-    }
-
-    if let Some(models) = provider
+        .and_then(|value| value.as_str());
+    let env = provider
+        .settings_config
+        .get("env")
+        .and_then(|value| value.as_object())
+        .map(|env| {
+            env.iter()
+                .filter_map(|(key, value)| {
+                    value
+                        .as_str()
+                        .map(|model| (key.to_string(), model.to_string()))
+                })
+                .collect::<BTreeMap<_, _>>()
+        })
+        .unwrap_or_default();
+    let codex_catalog_models = provider
         .settings_config
         .get("modelCatalog")
         .and_then(|catalog| catalog.get("models"))
         .and_then(|models| models.as_array())
-    {
-        for entry in models {
-            if let Some(model) = entry.get("model").and_then(|value| value.as_str()) {
-                push_model_route(&mut routes, model, model);
-            }
-        }
+        .map(|models| {
+            models
+                .iter()
+                .filter_map(|entry| {
+                    entry
+                        .get("model")
+                        .and_then(|value| value.as_str())
+                        .map(ToString::to_string)
+                })
+                .collect::<Vec<_>>()
+        })
+        .unwrap_or_default();
+    let (api_format, claude_desktop_model_routes) = provider
+        .meta
+        .as_ref()
+        .map(|meta| {
+            let routes = meta
+                .claude_desktop_model_routes
+                .iter()
+                .map(|(public_model, route)| LegacyModelRouteInput {
+                    public_model: public_model.clone(),
+                    upstream_model: route.model.clone(),
+                })
+                .collect::<Vec<_>>();
+            (meta.api_format.clone(), routes)
+        })
+        .unwrap_or_default();
+
+    LegacyProviderProjectionInput {
+        api_format,
+        codex_wire_api: config_text.and_then(extract_codex_wire_api),
+        codex_model: config_text.and_then(extract_codex_model),
+        codex_catalog_models,
+        env,
+        claude_desktop_model_routes,
     }
-
-    routes
-}
-
-fn infer_env_models(provider: &Provider, keys: &[&str]) -> Vec<ProxyChannelModelRecord> {
-    let mut routes = Vec::new();
-    let Some(env) = provider.settings_config.get("env") else {
-        return routes;
-    };
-
-    for key in keys {
-        if let Some(model) = env.get(key).and_then(|value| value.as_str()) {
-            push_model_route(&mut routes, model, model);
-        }
-    }
-
-    routes
-}
-
-fn push_model_route(
-    routes: &mut Vec<ProxyChannelModelRecord>,
-    public_model: &str,
-    upstream_model: &str,
-) {
-    let public_model = public_model.trim();
-    let upstream_model = upstream_model.trim();
-    if public_model.is_empty()
-        || upstream_model.is_empty()
-        || routes
-            .iter()
-            .any(|route| route.public_model == public_model)
-    {
-        return;
-    }
-
-    routes.push(ProxyChannelModelRecord {
-        channel_id: String::new(),
-        public_model: public_model.to_string(),
-        upstream_model: upstream_model.to_string(),
-        capabilities: json!({}),
-        pricing_model: None,
-        request_overrides: json!({}),
-        response_overrides: json!({}),
-    });
 }
 
 fn extract_codex_wire_api(config_text: &str) -> Option<String> {
@@ -1221,18 +1163,6 @@ fn extract_codex_model(config_text: &str) -> Option<String> {
         .map(str::trim)
         .filter(|model| !model.is_empty())
         .map(ToString::to_string)
-}
-
-fn is_chat_wire_api(value: &str) -> bool {
-    matches!(
-        value.trim().to_ascii_lowercase().as_str(),
-        "chat"
-            | "chat_completions"
-            | "chat-completions"
-            | "openai_chat"
-            | "openai-chat"
-            | "openai_chat_completions"
-    )
 }
 
 fn parse_json_or_default<T>(value: &str) -> T
