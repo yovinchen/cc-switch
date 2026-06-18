@@ -46,6 +46,19 @@ const COPILOT_FINGERPRINT_REQUEST_HEADERS: &[&str] = &[
 pub const CLAUDE_CODE_BETA: &str = "claude-code-20250219";
 pub const DEFAULT_ANTHROPIC_VERSION: &str = "2023-06-01";
 
+pub struct UpstreamRequestHeadersInput<'a> {
+    pub inbound_headers: &'a http::HeaderMap,
+    pub upstream_host: Option<&'a str>,
+    pub auth_headers: &'a [(http::HeaderName, http::HeaderValue)],
+    pub force_identity_encoding: bool,
+    pub custom_user_agent: Option<&'a http::HeaderValue>,
+    pub is_copilot: bool,
+    pub should_send_anthropic_headers: bool,
+    pub anthropic_beta_value: Option<&'a str>,
+    pub codex_oauth_session_headers: &'a [(http::HeaderName, http::HeaderValue)],
+    pub ensure_json_content_type: bool,
+}
+
 pub fn should_send_anthropic_request_headers(
     adapter_name: &str,
     resolved_claude_api_format: Option<&str>,
@@ -113,15 +126,175 @@ pub fn should_preserve_exact_request_header_case(
     matches!(resolved_claude_api_format, None | Some("anthropic"))
 }
 
+pub fn build_upstream_request_headers(input: UpstreamRequestHeadersInput<'_>) -> http::HeaderMap {
+    let mut ordered_headers = http::HeaderMap::new();
+    let mut saw_auth = false;
+    let mut saw_accept_encoding = false;
+    let mut saw_user_agent = false;
+    let mut saw_anthropic_beta = false;
+    let mut saw_anthropic_version = false;
+
+    for (key, value) in input.inbound_headers {
+        let key_str = key.as_str();
+
+        if key_str.eq_ignore_ascii_case("host") {
+            if let Some(host) = input.upstream_host {
+                if let Ok(value) = http::HeaderValue::from_str(host) {
+                    ordered_headers.append(key.clone(), value);
+                }
+            }
+            continue;
+        }
+
+        if should_strip_forwarded_request_header(key_str) {
+            continue;
+        }
+
+        if is_upstream_auth_header(key_str) {
+            if !saw_auth {
+                saw_auth = true;
+                append_header_pairs(&mut ordered_headers, input.auth_headers);
+            }
+            continue;
+        }
+
+        if key_str.eq_ignore_ascii_case("accept-encoding") {
+            if !saw_accept_encoding {
+                saw_accept_encoding = true;
+                if input.force_identity_encoding {
+                    ordered_headers.append(
+                        http::header::ACCEPT_ENCODING,
+                        http::HeaderValue::from_static("identity"),
+                    );
+                } else {
+                    ordered_headers.append(key.clone(), value.clone());
+                }
+            }
+            continue;
+        }
+
+        if !input.is_copilot && key_str.eq_ignore_ascii_case("user-agent") {
+            if !saw_user_agent {
+                saw_user_agent = true;
+                if let Some(user_agent) = input.custom_user_agent {
+                    ordered_headers.append(http::header::USER_AGENT, user_agent.clone());
+                } else {
+                    ordered_headers.append(key.clone(), value.clone());
+                }
+            }
+            continue;
+        }
+
+        if key_str.eq_ignore_ascii_case("anthropic-beta") {
+            if !saw_anthropic_beta {
+                saw_anthropic_beta = true;
+                append_header_from_str(
+                    &mut ordered_headers,
+                    http::HeaderName::from_static("anthropic-beta"),
+                    input.anthropic_beta_value,
+                );
+            }
+            continue;
+        }
+
+        if key_str.eq_ignore_ascii_case("anthropic-version") {
+            if input.should_send_anthropic_headers {
+                saw_anthropic_version = true;
+                ordered_headers.append(key.clone(), value.clone());
+            }
+            continue;
+        }
+
+        if should_skip_copilot_fingerprint_request_header(input.is_copilot, key_str) {
+            continue;
+        }
+
+        ordered_headers.append(key.clone(), value.clone());
+    }
+
+    if !saw_auth && !input.auth_headers.is_empty() {
+        append_header_pairs(&mut ordered_headers, input.auth_headers);
+    }
+
+    if !saw_accept_encoding && input.force_identity_encoding {
+        ordered_headers.append(
+            http::header::ACCEPT_ENCODING,
+            http::HeaderValue::from_static("identity"),
+        );
+    }
+
+    if !input.is_copilot && !saw_user_agent {
+        if let Some(user_agent) = input.custom_user_agent {
+            ordered_headers.append(http::header::USER_AGENT, user_agent.clone());
+        }
+    }
+
+    if !saw_anthropic_beta {
+        append_header_from_str(
+            &mut ordered_headers,
+            http::HeaderName::from_static("anthropic-beta"),
+            input.anthropic_beta_value,
+        );
+    }
+
+    if input.should_send_anthropic_headers && !saw_anthropic_version {
+        ordered_headers.append(
+            "anthropic-version",
+            http::HeaderValue::from_static(DEFAULT_ANTHROPIC_VERSION),
+        );
+    }
+
+    for (name, value) in input.codex_oauth_session_headers {
+        ordered_headers.insert(name.clone(), value.clone());
+    }
+
+    if input.ensure_json_content_type && !ordered_headers.contains_key(http::header::CONTENT_TYPE) {
+        ordered_headers.insert(
+            http::header::CONTENT_TYPE,
+            http::HeaderValue::from_static("application/json"),
+        );
+    }
+
+    ordered_headers
+}
+
+fn is_upstream_auth_header(name: &str) -> bool {
+    name.eq_ignore_ascii_case("authorization")
+        || name.eq_ignore_ascii_case("x-api-key")
+        || name.eq_ignore_ascii_case("x-goog-api-key")
+}
+
+fn append_header_pairs(
+    headers: &mut http::HeaderMap,
+    pairs: &[(http::HeaderName, http::HeaderValue)],
+) {
+    for (name, value) in pairs {
+        headers.append(name.clone(), value.clone());
+    }
+}
+
+fn append_header_from_str(
+    headers: &mut http::HeaderMap,
+    name: http::HeaderName,
+    value: Option<&str>,
+) {
+    if let Some(value) = value {
+        if let Ok(value) = http::HeaderValue::from_str(value) {
+            headers.append(name, value);
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::{
         anthropic_beta_header_value, build_codex_oauth_session_headers,
+        build_upstream_request_headers,
         should_preserve_exact_request_header_case, should_send_anthropic_request_headers,
         should_skip_copilot_fingerprint_request_header, should_strip_forwarded_request_header,
-        CLAUDE_CODE_BETA, DEFAULT_ANTHROPIC_VERSION,
+        UpstreamRequestHeadersInput, CLAUDE_CODE_BETA, DEFAULT_ANTHROPIC_VERSION,
     };
-    use http::{HeaderMap, HeaderValue};
+    use http::{header, HeaderMap, HeaderName, HeaderValue};
 
     #[test]
     fn preserves_exact_header_case_for_native_claude_or_unknown_claude_format() {
@@ -309,6 +482,123 @@ mod tests {
         assert_eq!(
             map.get("x-codex-window-id"),
             Some(&HeaderValue::from_static("session-abc:0"))
+        );
+    }
+
+    #[test]
+    fn builds_upstream_headers_with_auth_replacement_and_stripping() {
+        let mut inbound = HeaderMap::new();
+        inbound.insert("host", HeaderValue::from_static("localhost:3456"));
+        inbound.insert("authorization", HeaderValue::from_static("Bearer inbound"));
+        inbound.insert("content-length", HeaderValue::from_static("99"));
+        inbound.insert("x-request-id", HeaderValue::from_static("trace"));
+        inbound.insert("x-keep", HeaderValue::from_static("keep"));
+        let auth_headers = vec![(
+            HeaderName::from_static("authorization"),
+            HeaderValue::from_static("Bearer upstream"),
+        )];
+
+        let headers = build_upstream_request_headers(UpstreamRequestHeadersInput {
+            inbound_headers: &inbound,
+            upstream_host: Some("api.example.com"),
+            auth_headers: &auth_headers,
+            force_identity_encoding: false,
+            custom_user_agent: None,
+            is_copilot: false,
+            should_send_anthropic_headers: false,
+            anthropic_beta_value: None,
+            codex_oauth_session_headers: &[],
+            ensure_json_content_type: true,
+        });
+
+        assert_eq!(
+            headers.get(header::HOST),
+            Some(&HeaderValue::from_static("api.example.com"))
+        );
+        assert_eq!(
+            headers.get(header::AUTHORIZATION),
+            Some(&HeaderValue::from_static("Bearer upstream"))
+        );
+        assert_eq!(headers.get("x-keep"), Some(&HeaderValue::from_static("keep")));
+        assert!(headers.get(header::CONTENT_LENGTH).is_none());
+        assert!(headers.get("x-request-id").is_none());
+        assert_eq!(
+            headers.get(header::CONTENT_TYPE),
+            Some(&HeaderValue::from_static("application/json"))
+        );
+    }
+
+    #[test]
+    fn builds_upstream_headers_with_identity_user_agent_and_anthropic_defaults() {
+        let mut inbound = HeaderMap::new();
+        inbound.insert(header::ACCEPT_ENCODING, HeaderValue::from_static("gzip"));
+        inbound.insert(header::USER_AGENT, HeaderValue::from_static("client"));
+        inbound.insert("anthropic-beta", HeaderValue::from_static("other-beta"));
+        let custom_user_agent = HeaderValue::from_static("cc-switch-test");
+        let anthropic_beta = anthropic_beta_header_value(Some("other-beta"));
+
+        let headers = build_upstream_request_headers(UpstreamRequestHeadersInput {
+            inbound_headers: &inbound,
+            upstream_host: None,
+            auth_headers: &[],
+            force_identity_encoding: true,
+            custom_user_agent: Some(&custom_user_agent),
+            is_copilot: false,
+            should_send_anthropic_headers: true,
+            anthropic_beta_value: Some(&anthropic_beta),
+            codex_oauth_session_headers: &[],
+            ensure_json_content_type: false,
+        });
+
+        assert_eq!(
+            headers.get(header::ACCEPT_ENCODING),
+            Some(&HeaderValue::from_static("identity"))
+        );
+        assert_eq!(
+            headers.get(header::USER_AGENT),
+            Some(&HeaderValue::from_static("cc-switch-test"))
+        );
+        assert_eq!(
+            headers.get("anthropic-beta"),
+            Some(&HeaderValue::from_static("claude-code-20250219,other-beta"))
+        );
+        assert_eq!(
+            headers.get("anthropic-version"),
+            Some(&HeaderValue::from_static(DEFAULT_ANTHROPIC_VERSION))
+        );
+    }
+
+    #[test]
+    fn builds_upstream_headers_with_copilot_and_codex_session_overrides() {
+        let mut inbound = HeaderMap::new();
+        inbound.insert(header::USER_AGENT, HeaderValue::from_static("client"));
+        inbound.insert("x-agent-task-id", HeaderValue::from_static("old-task"));
+        inbound.insert("x-safe", HeaderValue::from_static("safe"));
+        let session_headers = build_codex_oauth_session_headers("session-123");
+
+        let headers = build_upstream_request_headers(UpstreamRequestHeadersInput {
+            inbound_headers: &inbound,
+            upstream_host: None,
+            auth_headers: &[],
+            force_identity_encoding: false,
+            custom_user_agent: Some(&HeaderValue::from_static("ignored-for-copilot")),
+            is_copilot: true,
+            should_send_anthropic_headers: false,
+            anthropic_beta_value: None,
+            codex_oauth_session_headers: &session_headers,
+            ensure_json_content_type: false,
+        });
+
+        assert!(headers.get(header::USER_AGENT).is_none());
+        assert!(headers.get("x-agent-task-id").is_none());
+        assert_eq!(headers.get("x-safe"), Some(&HeaderValue::from_static("safe")));
+        assert_eq!(
+            headers.get("session_id"),
+            Some(&HeaderValue::from_static("session-123"))
+        );
+        assert_eq!(
+            headers.get("x-codex-window-id"),
+            Some(&HeaderValue::from_static("session-123:0"))
         );
     }
 }

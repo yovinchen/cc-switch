@@ -32,9 +32,9 @@ use crate::proxy_core::append_query_to_full_url;
 use crate::proxy_core::{
     build_codex_oauth_session_headers, resolve_upstream_request_transport_policy,
     should_preserve_exact_request_header_case, should_send_anthropic_request_headers,
-    should_skip_copilot_fingerprint_request_header, should_strip_forwarded_request_header,
     split_endpoint_and_query, validate_managed_account_upstream_auth, AppKind, ChannelQuery,
-    InterfaceKind, ProxyBody, ProxyEngine, ProxyRequest, ProxyServices, DEFAULT_ANTHROPIC_VERSION,
+    InterfaceKind, ProxyBody, ProxyEngine, ProxyRequest, ProxyServices,
+    UpstreamRequestHeadersInput,
 };
 use crate::proxy_core_host::CcSwitchProxyServices;
 use crate::{app_config::AppType, provider::Provider};
@@ -2064,162 +2064,22 @@ impl RequestForwarder {
             None
         };
 
-        // ============================================================
-        // 构建有序 HeaderMap — 内联替换，保持客户端原始顺序
-        // ============================================================
-        let mut ordered_headers = http::HeaderMap::new();
-        let mut saw_auth = false;
-        let mut saw_accept_encoding = false;
-        let mut saw_user_agent = false;
-        let mut saw_anthropic_beta = false;
-        let mut saw_anthropic_version = false;
-
-        for (key, value) in headers {
-            let key_str = key.as_str();
-
-            // --- host — 原位替换为上游 host（保持客户端原始位置） ---
-            if key_str.eq_ignore_ascii_case("host") {
-                if let Some(ref host_val) = upstream_host {
-                    if let Ok(hv) = http::HeaderValue::from_str(host_val) {
-                        ordered_headers.append(key.clone(), hv);
-                    }
-                }
-                continue;
-            }
-
-            // --- 连接 / 追踪 / CDN 类 — 无条件跳过 ---
-            if should_strip_forwarded_request_header(key_str) {
-                continue;
-            }
-
-            // --- 认证类 — 用 adapter 提供的认证头替换（在原始位置） ---
-            if key_str.eq_ignore_ascii_case("authorization")
-                || key_str.eq_ignore_ascii_case("x-api-key")
-                || key_str.eq_ignore_ascii_case("x-goog-api-key")
-            {
-                if !saw_auth {
-                    saw_auth = true;
-                    for (ah_name, ah_value) in &auth_headers {
-                        ordered_headers.append(ah_name.clone(), ah_value.clone());
-                    }
-                }
-                continue;
-            }
-
-            // --- accept-encoding — transform / SSE 路径强制 identity，其余保留原值 ---
-            if key_str.eq_ignore_ascii_case("accept-encoding") {
-                if !saw_accept_encoding {
-                    saw_accept_encoding = true;
-                    if force_identity_encoding {
-                        ordered_headers.append(
-                            http::header::ACCEPT_ENCODING,
-                            http::HeaderValue::from_static("identity"),
-                        );
-                    } else {
-                        ordered_headers.append(key.clone(), value.clone());
-                    }
-                }
-                continue;
-            }
-
-            // --- user-agent: provider-level override for local proxy routing ---
-            if !is_copilot && key_str.eq_ignore_ascii_case("user-agent") {
-                if !saw_user_agent {
-                    saw_user_agent = true;
-                    if let Some(ref ua) = custom_user_agent {
-                        ordered_headers.append(http::header::USER_AGENT, ua.clone());
-                    } else {
-                        ordered_headers.append(key.clone(), value.clone());
-                    }
-                }
-                continue;
-            }
-
-            // --- anthropic-beta — 用重建值替换（确保含 claude-code 标记） ---
-            if key_str.eq_ignore_ascii_case("anthropic-beta") {
-                if !saw_anthropic_beta {
-                    saw_anthropic_beta = true;
-                    if let Some(ref beta_val) = anthropic_beta_value {
-                        if let Ok(hv) = http::HeaderValue::from_str(beta_val) {
-                            ordered_headers.append("anthropic-beta", hv);
-                        }
-                    }
-                }
-                continue;
-            }
-
-            // --- anthropic-version — 透传客户端值 ---
-            if key_str.eq_ignore_ascii_case("anthropic-version") {
-                if should_send_anthropic_headers {
-                    saw_anthropic_version = true;
-                    ordered_headers.append(key.clone(), value.clone());
-                }
-                continue;
-            }
-
-            // --- Copilot 指纹头 — 跳过（由 auth_headers 提供） ---
-            if should_skip_copilot_fingerprint_request_header(is_copilot, key_str) {
-                continue;
-            }
-
-            // --- 默认：透传 ---
-            ordered_headers.append(key.clone(), value.clone());
-        }
-
-        // 如果原始请求中没有认证头，在末尾追加
-        if !saw_auth && !auth_headers.is_empty() {
-            for (ah_name, ah_value) in &auth_headers {
-                ordered_headers.append(ah_name.clone(), ah_value.clone());
-            }
-        }
-
-        // transform / SSE 路径在缺失时补 identity；普通透传不主动补 accept-encoding
-        if !saw_accept_encoding && force_identity_encoding {
-            ordered_headers.append(
-                http::header::ACCEPT_ENCODING,
-                http::HeaderValue::from_static("identity"),
-            );
-        }
-
-        if !saw_user_agent {
-            if let Some(ref ua) = custom_user_agent {
-                ordered_headers.append(http::header::USER_AGENT, ua.clone());
-            }
-        }
-
-        // 如果原始请求中没有 anthropic-beta 且有值需要添加，追加
-        if !saw_anthropic_beta {
-            if let Some(ref beta_val) = anthropic_beta_value {
-                if let Ok(hv) = http::HeaderValue::from_str(beta_val) {
-                    ordered_headers.append("anthropic-beta", hv);
-                }
-            }
-        }
-
-        // anthropic-version：仅在缺失时补充默认值
-        if should_send_anthropic_headers && !saw_anthropic_version {
-            ordered_headers.append(
-                "anthropic-version",
-                http::HeaderValue::from_static(DEFAULT_ANTHROPIC_VERSION),
-            );
-        }
-
-        // Codex OAuth 反代尽量对齐官方 Codex CLI 的会话路由信号。
-        // 只发送客户端提供的 session_id；生成的 UUID 每次不同，反而会破坏前缀缓存。
-        for (name, value) in codex_oauth_session_headers {
-            ordered_headers.insert(name, value);
-        }
+        let ordered_headers =
+            crate::proxy_core::build_upstream_request_headers(UpstreamRequestHeadersInput {
+                inbound_headers: headers,
+                upstream_host: upstream_host.as_deref(),
+                auth_headers: &auth_headers,
+                force_identity_encoding,
+                custom_user_agent: custom_user_agent.as_ref(),
+                is_copilot,
+                should_send_anthropic_headers,
+                anthropic_beta_value: anthropic_beta_value.as_deref(),
+                codex_oauth_session_headers: &codex_oauth_session_headers,
+                ensure_json_content_type: true,
+            });
 
         let body_bytes = crate::proxy_core::serialize_upstream_request_body(method, &filtered_body)
             .map_err(|e| ProxyError::Internal(format!("Failed to serialize request body: {e}")))?;
-
-        // 确保 content-type 存在
-        if !ordered_headers.contains_key(http::header::CONTENT_TYPE) {
-            ordered_headers.insert(
-                http::header::CONTENT_TYPE,
-                http::HeaderValue::from_static("application/json"),
-            );
-        }
 
         reject_proxy_placeholder_for_managed_account_upstream(&url, &ordered_headers)?;
 
