@@ -25,6 +25,7 @@
 14. Claude 与 Claude Desktop `/v1/messages` handler 已进入 `ProxyEngine::handle`；核心 `ProxyResult` 会带回 `claudeApiFormat` 等宿主 metadata，host 侧继续复用现有格式转换、SSE/非流式响应处理和用量解析。
 15. `ProxyEngine::list_models` 已提供按 app/group/interface 过滤的可路由模型视图，复用 channel source 的 legacy projection；`/proxy/v1/apps/{app}/models` 已接入该视图，返回模型对应的 provider/channel/interface 路由信息。
 16. Codex 兼容 `/v1/models` 已从 handler 直读配置迁到 `ModelCatalogProvider::load_client_catalog` 与 `ProxyEngine::client_model_catalog`；CC Switch host adapter 保留 `model_catalog_json` stale guard 和 raw catalog 返回语义。
+17. `/proxy/v1/channels/{channel_id}/breakers/reset` 已从 handler 直连 DB/router 改为 `ProxyEngine::reset_channel_health`；`CcSwitchHealthStore` 负责同时清内存 circuit breaker 和持久化健康状态。
 
 因此，本分支目前已把主要转发入口（Claude Messages、Claude Desktop Messages、Codex Chat Completions、Codex Responses、Codex Responses Compact、Gemini Native）切到 `ProxyEngine`，并开始把管理查询类能力、Codex 客户端模型目录和请求日志写入收敛到 core 可复用接口。HTTP transport 与 response pipeline 仍是宿主层兼容桥；下一阶段需要把响应转换、剩余模型目录生成策略和剩余外部管理 API 继续收敛到独立代理模块边界内。
 
@@ -657,20 +658,17 @@ pub trait RouteResolver {
 
 ```rust
 pub trait ChannelHealthStore: Send + Sync {
-    fn record_result<'a>(
+    fn record_attempt<'a>(
         &'a self,
-        app: &'a AppKind,
-        provider_id: &'a str,
-        channel_id: &'a str,
         result: ChannelAttemptResult,
-    ) -> BoxFuture<'a, Result<(), ProxyError>>;
+    ) -> BoxFuture<'a, ProxyCoreResult<()>>;
 
-    fn reset<'a>(&'a self, app: &'a AppKind, channel_id: &'a str)
-        -> BoxFuture<'a, Result<(), ProxyError>>;
+    fn reset_channel<'a>(&'a self, channel_id: &'a str)
+        -> BoxFuture<'a, ProxyCoreResult<ChannelHealthReset>>;
 }
 ```
 
-健康状态必须以 channel 为主键。provider 级状态只能作为聚合视图，否则同一 provider 下一个地址失败会误伤另一个健康地址。
+当前实现已落到 `ChannelHealthStore::record_attempt` 与 `reset_channel`：`record_attempt` 写入 channel 健康统计，`reset_channel` 由 host adapter 查询 channel 所属 app，并复用 `ProviderRouter::reset_channel_breaker` 同时清内存 circuit breaker 与 DB 健康状态。健康状态必须以 channel 为主键。provider 级状态只能作为聚合视图，否则同一 provider 下一个地址失败会误伤另一个健康地址。
 
 ### 用量接口
 
