@@ -8,11 +8,11 @@
 //!
 //! 与 Chat Completions 的 delta chunk 模型完全不同，需要独立的状态机处理。
 
-use super::transform_responses::{
-    build_anthropic_usage_from_responses, sanitize_anthropic_tool_use_input_json,
-};
+use super::transform_responses::sanitize_anthropic_tool_use_input_json;
 use crate::proxy::sse::{strip_sse_field, take_sse_block};
-use crate::proxy_core::map_openai_responses_stop_reason_to_anthropic;
+use crate::proxy_core::{
+    build_anthropic_usage_from_openai_responses, map_openai_responses_stop_reason_to_anthropic,
+};
 use bytes::Bytes;
 use futures::stream::{Stream, StreamExt};
 use serde_json::{json, Value};
@@ -179,7 +179,7 @@ pub fn create_anthropic_sse_stream_from_responses<E: std::error::Error + Send + 
                                 // Some() wrapper ensures build function always receives valid input
                                 // Fallback to empty object {} if usage field missing, ensuring message_start
                                 // event always has valid usage structure for VSCode Extension compatibility
-                                let start_usage = build_anthropic_usage_from_responses(
+                                let start_usage = build_anthropic_usage_from_openai_responses(
                                     Some(response_obj.get("usage").unwrap_or(&json!({}))),
                                 );
 
@@ -718,9 +718,9 @@ pub fn create_anthropic_sse_stream_from_responses<E: std::error::Error + Send + 
                                 fallback_open_index = None;
 
                                 // Defensive: Always build usage_json, even if usage field missing
-                                // Some() wrapper with fallback to {} ensures build_anthropic_usage_from_responses
+                                // Some() wrapper with fallback to {} ensures build_anthropic_usage_from_openai_responses
                                 // always receives valid input, preventing null pointer errors in VSCode Extension
-                                let usage_json = build_anthropic_usage_from_responses(
+                                let usage_json = build_anthropic_usage_from_openai_responses(
                                     Some(response_obj.get("usage").unwrap_or(&json!({})))
                                 );
 

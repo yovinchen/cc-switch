@@ -8,7 +8,7 @@
 
 use crate::{AppKind, ProviderKind, UsageRecord, UsageTokens};
 use serde::{Deserialize, Serialize};
-use serde_json::Value;
+use serde_json::{json, Value};
 
 /// Session 日志 request_id 前缀，与 `session_usage.rs` 中的格式保持一致
 pub const SESSION_REQUEST_ID_PREFIX: &str = "session:";
@@ -51,6 +51,82 @@ pub enum ApiType {
     OpenRouter,
     Codex,
     Gemini,
+}
+
+/// Build Anthropic-style usage JSON from OpenAI Responses API usage.
+///
+/// OpenAI input token counts include cache hits, while Anthropic reports fresh
+/// input separately from cache read/cache creation buckets. This helper
+/// preserves the cache buckets and subtracts them from `input_tokens` with
+/// saturating arithmetic so the Anthropic-style buckets remain non-overlapping.
+pub fn build_anthropic_usage_from_openai_responses(usage: Option<&Value>) -> Value {
+    let Some(usage) = usage.filter(|value| !value.is_null() && value.is_object()) else {
+        return json!({
+            "input_tokens": 0,
+            "output_tokens": 0
+        });
+    };
+
+    if usage.as_object().map(|object| object.is_empty()).unwrap_or(false) {
+        return json!({
+            "input_tokens": 0,
+            "output_tokens": 0
+        });
+    }
+
+    let input = usage
+        .get("input_tokens")
+        .and_then(Value::as_u64)
+        .or_else(|| usage.get("prompt_tokens").and_then(Value::as_u64))
+        .unwrap_or(0);
+
+    let output = usage
+        .get("output_tokens")
+        .and_then(Value::as_u64)
+        .or_else(|| usage.get("completion_tokens").and_then(Value::as_u64))
+        .unwrap_or(0);
+
+    let mut result = json!({
+        "input_tokens": input,
+        "output_tokens": output
+    });
+
+    if let Some(cached) = usage
+        .pointer("/input_tokens_details/cached_tokens")
+        .and_then(Value::as_u64)
+    {
+        result["cache_read_input_tokens"] = json!(cached);
+    }
+
+    if result.get("cache_read_input_tokens").is_none() {
+        if let Some(cached) = usage
+            .pointer("/prompt_tokens_details/cached_tokens")
+            .and_then(Value::as_u64)
+        {
+            result["cache_read_input_tokens"] = json!(cached);
+        }
+    }
+
+    if let Some(value) = usage.get("cache_read_input_tokens") {
+        result["cache_read_input_tokens"] = value.clone();
+    }
+    if let Some(value) = usage.get("cache_creation_input_tokens") {
+        result["cache_creation_input_tokens"] = value.clone();
+    }
+
+    let cached = result
+        .get("cache_read_input_tokens")
+        .and_then(Value::as_u64)
+        .unwrap_or(0);
+    let cache_creation = result
+        .get("cache_creation_input_tokens")
+        .and_then(Value::as_u64)
+        .unwrap_or(0);
+    if cached > 0 || cache_creation > 0 {
+        result["input_tokens"] = json!(input.saturating_sub(cached).saturating_sub(cache_creation));
+    }
+
+    result
 }
 
 impl TokenUsage {
@@ -809,6 +885,79 @@ fn u64_to_u32_saturating(value: u64) -> u32 {
 mod tests {
     use super::*;
     use serde_json::json;
+
+    #[test]
+    fn builds_anthropic_usage_from_openai_responses_defaults() {
+        assert_eq!(
+            build_anthropic_usage_from_openai_responses(None),
+            json!({"input_tokens": 0, "output_tokens": 0})
+        );
+        assert_eq!(
+            build_anthropic_usage_from_openai_responses(Some(&json!(null))),
+            json!({"input_tokens": 0, "output_tokens": 0})
+        );
+        assert_eq!(
+            build_anthropic_usage_from_openai_responses(Some(&json!({}))),
+            json!({"input_tokens": 0, "output_tokens": 0})
+        );
+    }
+
+    #[test]
+    fn builds_anthropic_usage_from_openai_responses_field_aliases() {
+        let usage = build_anthropic_usage_from_openai_responses(Some(&json!({
+            "prompt_tokens": 120,
+            "completion_tokens": 45
+        })));
+
+        assert_eq!(usage["input_tokens"], json!(120));
+        assert_eq!(usage["output_tokens"], json!(45));
+    }
+
+    #[test]
+    fn builds_anthropic_usage_from_openai_responses_cache_buckets() {
+        let usage = build_anthropic_usage_from_openai_responses(Some(&json!({
+            "input_tokens": 100,
+            "output_tokens": 50,
+            "input_tokens_details": {
+                "cached_tokens": 80
+            }
+        })));
+
+        assert_eq!(usage["input_tokens"], json!(20));
+        assert_eq!(usage["output_tokens"], json!(50));
+        assert_eq!(usage["cache_read_input_tokens"], json!(80));
+    }
+
+    #[test]
+    fn direct_cache_fields_override_openai_responses_nested_details() {
+        let usage = build_anthropic_usage_from_openai_responses(Some(&json!({
+            "input_tokens": 100,
+            "output_tokens": 50,
+            "input_tokens_details": {
+                "cached_tokens": 80
+            },
+            "cache_read_input_tokens": 60,
+            "cache_creation_input_tokens": 20
+        })));
+
+        assert_eq!(usage["input_tokens"], json!(20));
+        assert_eq!(usage["cache_read_input_tokens"], json!(60));
+        assert_eq!(usage["cache_creation_input_tokens"], json!(20));
+    }
+
+    #[test]
+    fn openai_responses_cache_subtraction_saturates() {
+        let usage = build_anthropic_usage_from_openai_responses(Some(&json!({
+            "input_tokens": 100,
+            "output_tokens": 10,
+            "cache_read_input_tokens": 60,
+            "cache_creation_input_tokens": 50
+        })));
+
+        assert_eq!(usage["input_tokens"], json!(0));
+        assert_eq!(usage["cache_read_input_tokens"], json!(60));
+        assert_eq!(usage["cache_creation_input_tokens"], json!(50));
+    }
 
     #[test]
     fn test_claude_response_parsing() {
