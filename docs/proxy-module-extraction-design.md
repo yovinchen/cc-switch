@@ -15,7 +15,8 @@
 4. 现有 live `RequestForwarder` 的 materialized channel 尝试已改为经 `ProxyEngine` 规划，再映射回 host `ForwardAttempt` 执行，保持旧转发链路不回归。
 5. `ProxyEngine::handle` 已拥有编排骨架：请求计数、route selected 事件、`ForwardPipeline` 端口调用、`UsageSink` 调用。
 6. `CcSwitchEventSink` 已桥接到现有 `ProxyEventBus`，核心事件可以进入 `/proxy/v1/events` 的 SSE 流。
-7. `ForwardPipeline` 和 `UsageSink` 仍处于迁移中：host 侧实际 HTTP 转发仍由 `RequestForwarder` 承载；`UsageSink` 不能直接接 `UsageLogger`，因为当前 `UsageHint` 缺 provider_id、request_model、latency、status、stream/session、pricing_model 等落库必需字段。
+7. `UsageSink` 已升级为完整 `UsageRecord` 并可通过 `CcSwitchUsageSink` 写入现有 `proxy_request_logs`；现有 response pipeline 仍直接调用 `UsageLogger`，切到核心 sink 需在迁移响应 pipeline 时完成。
+8. `ForwardPipeline` 仍处于迁移中：host 侧实际 HTTP 转发仍由 `RequestForwarder` 承载；接入前需要先补齐中立的流式响应体抽象，避免把 axum/hyper 类型带入 core crate。
 
 当前原则：核心 crate 可以新增端口和领域字段，但不得引入 `tauri`、`Database`、settings、commands、services 等宿主依赖；现有 runtime 行为必须继续通过 targeted tests 证明不回归。
 
@@ -478,7 +479,7 @@ pub struct ProxyResult {
     pub response: ProxyResponse,
     pub selected_route: RouteSelection,
     pub outbound_model: Option<String>,
-    pub usage_hint: Option<UsageHint>,
+    pub usage_record: Option<UsageRecord>,
 }
 ```
 
@@ -684,7 +685,7 @@ pub trait UsageSink: Send + Sync {
 - session_id
 - streaming
 
-当前 `UsageLogger` 和定价查询最终迁到 `CcSwitchUsageSink`。落地前必须先把 `UsageRecord` 字段补齐；只用目前的 `UsageHint` 落库会丢失 provider、pricing、latency、status 和 session 语义。
+当前 `UsageLogger` 和定价查询已经可以通过 `CcSwitchUsageSink` 复用。`UsageRecord` 必须保持完整字段；不能退回只含 token/model 的简化 hint，否则会丢失 provider、pricing、latency、status 和 session 语义。
 
 ### 事件接口
 
@@ -917,7 +918,7 @@ node_modules/.bin/tsc --noEmit
 3. `CcSwitchChannelSource` 包装 provider 主 URL、`provider_endpoints` 和未来 channel 表读取。
 4. `CcSwitchRoutePolicySource` 包装 failover queue、group 和优先级/权重策略。
 5. `CcSwitchHealthStore` 包装 channel health 写入；兼容期可同时写 provider health 聚合。
-6. `CcSwitchUsageSink` 包装 `UsageLogger`；落地前先补齐 `UsageRecord` 字段，不能用简化 hint 直接写账单。
+6. `CcSwitchUsageSink` 包装 `UsageLogger`；写入必须使用完整 `UsageRecord`，不能用简化 hint 直接写账单。
 7. `CcSwitchEventSink` 包装 `ProxyEventBus`，再由宿主决定是否转发到 Tauri/UI/托盘。
 8. `CcSwitchAuthProvider` 包装 Codex/Copilot OAuth token 刷新和 channel key 选择。
 

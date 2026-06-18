@@ -1,6 +1,6 @@
 use super::domain::{
     AppKind, AuthProfileRef, ChannelAttemptResult, ChannelQuery, ChannelSpec, ProviderSpec,
-    ProxyRequest, ProxyResult, RoutePlan, RoutePolicy, RouteRequest, UsageHint,
+    ProxyRequest, ProxyResult, RoutePlan, RoutePolicy, RouteRequest, UsageRecord,
 };
 use super::error::ProxyCoreResult;
 use futures::future::BoxFuture;
@@ -94,7 +94,7 @@ pub trait ModelCatalogProvider: Send + Sync {
 }
 
 pub trait UsageSink: Send + Sync {
-    fn record_usage<'a>(&'a self, hint: UsageHint) -> BoxFuture<'a, ProxyCoreResult<()>>;
+    fn record_usage<'a>(&'a self, record: UsageRecord) -> BoxFuture<'a, ProxyCoreResult<()>>;
 }
 
 pub trait ProxyEventSink: Send + Sync {

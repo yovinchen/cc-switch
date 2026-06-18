@@ -1,8 +1,10 @@
 use crate::app_config::AppType;
-use crate::database::Database;
+use crate::database::{Database, PRICING_SOURCE_REQUEST};
 use crate::error::AppError;
 use crate::proxy::events::ProxyEventBus;
 use crate::proxy::provider_router::ProviderRouter;
+use crate::proxy::usage::parser::SESSION_REQUEST_ID_PREFIX;
+use crate::proxy::usage::{CostCalculator, RequestLog, TokenUsage, UsageLogger};
 use crate::proxy_core::{
     AppKind, AuthInfo, AuthProfileRef, ChannelAttemptPlan, ChannelAttemptResult, ChannelQuery,
     ChannelSource, ChannelSpec, ChannelStatus, CopilotOptimizerConfigSpec, ForwardPipeline,
@@ -10,9 +12,10 @@ use crate::proxy_core::{
     ProxyConfigSource, ProxyCoreError, ProxyCoreEvent, ProxyCoreEventType, ProxyCoreResult,
     ProxyEventSink, ProxyGlobalConfig, ProxyRequest, ProxyResult, ProxyRuntimeConfig,
     ProxyServices, RectifierConfigSpec, RoutePlan, RoutePolicy, RoutePolicySource, RouteRequest,
-    RouteResolver, UsageHint, UsageSink,
+    RouteResolver, UsageRecord, UsageSink,
 };
 use crate::proxy_core_adapter::{ToProxyCoreChannelSpec, ToProxyCoreProviderSpec};
+use crate::services::usage_stats::is_placeholder_pricing_model;
 use futures::future::BoxFuture;
 use serde_json::{json, Value};
 use std::str::FromStr;
@@ -61,7 +64,7 @@ impl CcSwitchProxyServices {
             health_store: CcSwitchHealthStore { db: db.clone() },
             auth_provider: CcSwitchAuthProvider,
             model_catalog: CcSwitchModelCatalogProvider { db: db.clone() },
-            usage_sink: CcSwitchUsageSink,
+            usage_sink: CcSwitchUsageSink { db: db.clone() },
             event_sink: CcSwitchEventSink { events },
             forward_pipeline: CcSwitchForwardPipeline,
         }
@@ -474,12 +477,76 @@ impl crate::proxy_core::ModelCatalogProvider for CcSwitchModelCatalogProvider {
     }
 }
 
-#[derive(Clone, Default)]
-struct CcSwitchUsageSink;
+#[derive(Clone)]
+struct CcSwitchUsageSink {
+    db: Arc<Database>,
+}
 
 impl UsageSink for CcSwitchUsageSink {
-    fn record_usage<'a>(&'a self, _hint: UsageHint) -> BoxFuture<'a, ProxyCoreResult<()>> {
-        Box::pin(async move { Ok(()) })
+    fn record_usage<'a>(&'a self, record: UsageRecord) -> BoxFuture<'a, ProxyCoreResult<()>> {
+        Box::pin(async move {
+            let logger = UsageLogger::new(&self.db);
+            let app_type = record.app.as_str().to_string();
+            let response_model = non_empty_string(record.response_model.as_deref())
+                .or_else(|| non_empty_string(Some(&record.outbound_model)))
+                .unwrap_or_else(|| record.request_model.clone());
+            let outbound_model = non_empty_string(Some(&record.outbound_model))
+                .unwrap_or_else(|| record.request_model.clone());
+            let (multiplier, pricing_model_source) = logger
+                .resolve_pricing_config(&record.provider_id, &app_type)
+                .await;
+            let pricing_model =
+                non_empty_string(record.pricing_model.as_deref()).unwrap_or_else(|| {
+                    if pricing_model_source == PRICING_SOURCE_REQUEST {
+                        outbound_model.clone()
+                    } else {
+                        response_model.clone()
+                    }
+                });
+            let usage = token_usage_from_record(&record);
+            let pricing = logger
+                .get_model_pricing(&pricing_model)
+                .map_err(|error| usage_error("load model pricing", error))?;
+
+            if pricing.is_none()
+                && record.tokens.has_billable_tokens()
+                && !is_placeholder_pricing_model(&pricing_model)
+            {
+                log::warn!("[USG-002] 模型定价未找到，成本将记录为 0: {pricing_model}");
+            }
+
+            let cost = CostCalculator::try_calculate_for_app(
+                &app_type,
+                &usage,
+                pricing.as_ref(),
+                multiplier,
+            );
+            let log = RequestLog {
+                request_id: usage_request_id(&record),
+                provider_id: record.provider_id.clone(),
+                app_type,
+                model: response_model,
+                request_model: record.request_model.clone(),
+                pricing_model,
+                usage,
+                cost,
+                latency_ms: record.latency_ms,
+                first_token_ms: record.first_token_ms,
+                status_code: record.status_code,
+                error_message: record.error_message.clone(),
+                session_id: record.session_id.clone(),
+                provider_type: record
+                    .provider_kind
+                    .as_ref()
+                    .map(|provider_kind| provider_kind.as_str().to_string()),
+                is_streaming: record.is_streaming,
+                cost_multiplier: multiplier.to_string(),
+            };
+
+            logger
+                .log_request(&log)
+                .map_err(|error| usage_error("record usage", error))
+        })
     }
 }
 
@@ -558,6 +625,48 @@ fn parse_app_type(app: &AppKind) -> ProxyCoreResult<AppType> {
 
 fn app_error(context: &str, error: AppError) -> ProxyCoreError {
     ProxyCoreError::Config(format!("{context}: {error}"))
+}
+
+fn usage_error(context: &str, error: AppError) -> ProxyCoreError {
+    ProxyCoreError::Internal(format!("{context}: {error}"))
+}
+
+fn non_empty_string(value: Option<&str>) -> Option<String> {
+    value
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(ToString::to_string)
+}
+
+fn usage_request_id(record: &UsageRecord) -> String {
+    record
+        .request_id
+        .as_ref()
+        .filter(|value| !value.trim().is_empty())
+        .cloned()
+        .or_else(|| {
+            record
+                .message_id
+                .as_ref()
+                .filter(|value| !value.trim().is_empty())
+                .map(|message_id| format!("{SESSION_REQUEST_ID_PREFIX}{message_id}"))
+        })
+        .unwrap_or_else(|| uuid::Uuid::new_v4().to_string())
+}
+
+fn token_usage_from_record(record: &UsageRecord) -> TokenUsage {
+    TokenUsage {
+        input_tokens: u64_to_u32_saturating(record.tokens.input_tokens),
+        output_tokens: u64_to_u32_saturating(record.tokens.output_tokens),
+        cache_read_tokens: u64_to_u32_saturating(record.tokens.cache_read_tokens),
+        cache_creation_tokens: u64_to_u32_saturating(record.tokens.cache_creation_tokens),
+        model: record.response_model.clone(),
+        message_id: record.message_id.clone(),
+    }
+}
+
+fn u64_to_u32_saturating(value: u64) -> u32 {
+    value.min(u32::MAX as u64) as u32
 }
 
 fn app_config_raw(
@@ -682,7 +791,7 @@ mod tests {
     use crate::provider::Provider;
     use crate::proxy_core::{
         ChannelOverrides, InterfaceKind, ModelCapabilities, ModelRoute, ProviderKind, ProxyBody,
-        ProxyEngine, RetryPolicy, UpstreamEndpoint,
+        ProxyEngine, RetryPolicy, UpstreamEndpoint, UsageRecord, UsageTokens,
     };
     use http::{Method, StatusCode};
 
@@ -879,6 +988,139 @@ mod tests {
         assert_eq!(event.payload["requestId"], "req-1");
         assert_eq!(event.payload["channelId"], "channel-a");
         assert_eq!(event.payload["attemptCount"], 2);
+    }
+
+    #[tokio::test]
+    async fn usage_sink_records_complete_usage_records() -> Result<(), AppError> {
+        let db = Arc::new(Database::memory().expect("memory db"));
+        {
+            let conn = crate::database::lock_conn!(db.conn);
+            conn.execute(
+                "INSERT INTO model_pricing (
+                    model_id,
+                    display_name,
+                    input_cost_per_million,
+                    output_cost_per_million,
+                    cache_read_cost_per_million,
+                    cache_creation_cost_per_million
+                ) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+                rusqlite::params![
+                    "upstream-sonnet",
+                    "Upstream Sonnet",
+                    "3.0",
+                    "15.0",
+                    "0.3",
+                    "3.75"
+                ],
+            )
+            .expect("insert pricing");
+        }
+        let services = CcSwitchProxyServices::new(db.clone());
+
+        services
+            .usage_sink()
+            .record_usage(UsageRecord {
+                request_id: Some("req-usage-1".to_string()),
+                message_id: Some("msg-usage-1".to_string()),
+                app: AppKind::Claude,
+                provider_id: "provider-a".to_string(),
+                provider_kind: Some(ProviderKind::Claude),
+                channel_id: Some("channel-a".to_string()),
+                channel_name: Some("Channel A".to_string()),
+                route_group: Some(DEFAULT_ROUTE_GROUP.to_string()),
+                request_model: "public-sonnet".to_string(),
+                outbound_model: "upstream-sonnet".to_string(),
+                response_model: Some("upstream-sonnet".to_string()),
+                pricing_model: None,
+                tokens: UsageTokens {
+                    input_tokens: 1_000,
+                    output_tokens: 500,
+                    cache_read_tokens: 0,
+                    cache_creation_tokens: 0,
+                },
+                latency_ms: 42,
+                first_token_ms: Some(7),
+                status_code: 200,
+                error_message: None,
+                session_id: Some("session-a".to_string()),
+                is_streaming: true,
+                metadata: json!({}),
+            })
+            .await
+            .expect("record usage");
+
+        let conn = crate::database::lock_conn!(db.conn);
+        let row: (
+            String,
+            String,
+            String,
+            String,
+            String,
+            i64,
+            i64,
+            i64,
+            Option<i64>,
+            i64,
+            Option<String>,
+            Option<String>,
+            i64,
+            String,
+        ) = conn
+            .query_row(
+                "SELECT
+                    provider_id,
+                    app_type,
+                    model,
+                    request_model,
+                    pricing_model,
+                    input_tokens,
+                    output_tokens,
+                    latency_ms,
+                    first_token_ms,
+                    status_code,
+                    session_id,
+                    provider_type,
+                    is_streaming,
+                    total_cost_usd
+                 FROM proxy_request_logs
+                 WHERE request_id = 'req-usage-1'",
+                [],
+                |row| {
+                    Ok((
+                        row.get(0)?,
+                        row.get(1)?,
+                        row.get(2)?,
+                        row.get(3)?,
+                        row.get(4)?,
+                        row.get(5)?,
+                        row.get(6)?,
+                        row.get(7)?,
+                        row.get(8)?,
+                        row.get(9)?,
+                        row.get(10)?,
+                        row.get(11)?,
+                        row.get(12)?,
+                        row.get(13)?,
+                    ))
+                },
+            )
+            .expect("usage row");
+
+        assert_eq!(row.0, "provider-a");
+        assert_eq!(row.1, "claude");
+        assert_eq!(row.2, "upstream-sonnet");
+        assert_eq!(row.3, "public-sonnet");
+        assert_eq!(row.4, "upstream-sonnet");
+        assert_eq!(row.5, 1_000);
+        assert_eq!(row.6, 500);
+        assert_eq!(row.7, 42);
+        assert_eq!(row.8, Some(7));
+        assert_eq!(row.9, 200);
+        assert_eq!(row.10.as_deref(), Some("session-a"));
+        assert_eq!(row.11.as_deref(), Some("claude"));
+        assert_eq!(row.12, 1);
+        assert_ne!(row.13, "0");
+        Ok(())
     }
 
     #[tokio::test]

@@ -129,8 +129,8 @@ where
             .forward(request, route_plan)
             .await?;
 
-        if let Some(usage_hint) = result.usage_hint.clone() {
-            self.services().usage_sink().record_usage(usage_hint).await?;
+        if let Some(usage_record) = result.usage_record.clone() {
+            self.services().usage_sink().record_usage(usage_record).await?;
         }
 
         Ok(result)
@@ -144,7 +144,7 @@ mod tests {
         AppKind, AuthProfileRef, ChannelAttemptResult, ChannelHealthPolicy, ChannelOverrides,
         ChannelSpec, ChannelStatus, InterfaceKind, ModelCapabilities, ModelRoute, ProviderKind,
         ProviderMetadata, ProviderSpec, ProxyBody, ProxyCoreResponse, RetryPolicy,
-        RouteSelection, UpstreamEndpoint, UsageHint,
+        RouteSelection, UpstreamEndpoint, UsageRecord, UsageTokens,
     };
     use crate::error::ProxyCoreError;
     use crate::ports::{
@@ -161,7 +161,7 @@ mod tests {
     struct TestServices {
         events: Mutex<Vec<ProxyCoreEvent>>,
         forwarded: Mutex<Vec<String>>,
-        usage: Mutex<Vec<UsageHint>>,
+        usage: Mutex<Vec<UsageRecord>>,
     }
 
     impl ProxyServices for TestServices {
@@ -350,9 +350,9 @@ mod tests {
     }
 
     impl UsageSink for TestServices {
-        fn record_usage<'a>(&'a self, hint: UsageHint) -> BoxFuture<'a, ProxyCoreResult<()>> {
+        fn record_usage<'a>(&'a self, record: UsageRecord) -> BoxFuture<'a, ProxyCoreResult<()>> {
             Box::pin(async move {
-                self.usage.lock().expect("usage mutex").push(hint);
+                self.usage.lock().expect("usage mutex").push(record);
                 Ok(())
             })
         }
@@ -388,12 +388,32 @@ mod tests {
                     response: ProxyCoreResponse::empty(StatusCode::OK),
                     selected_route: plan.selection,
                     outbound_model: outbound_model.clone(),
-                    usage_hint: Some(UsageHint {
+                    usage_record: Some(UsageRecord {
                         request_id: request.client_request_id,
+                        message_id: Some("msg-1".to_string()),
                         app: request.app,
-                        model: outbound_model,
-                        input_tokens: Some(5),
-                        output_tokens: Some(8),
+                        provider_id: "provider-a".to_string(),
+                        provider_kind: Some(ProviderKind::Claude),
+                        channel_id: Some("channel-a".to_string()),
+                        channel_name: Some("Channel A".to_string()),
+                        route_group: Some("default".to_string()),
+                        request_model: "sonnet".to_string(),
+                        outbound_model: outbound_model.clone().unwrap_or_default(),
+                        response_model: outbound_model,
+                        pricing_model: None,
+                        tokens: UsageTokens {
+                            input_tokens: 5,
+                            output_tokens: 8,
+                            cache_read_tokens: 0,
+                            cache_creation_tokens: 0,
+                        },
+                        latency_ms: 10,
+                        first_token_ms: Some(3),
+                        status_code: StatusCode::OK.as_u16(),
+                        error_message: None,
+                        session_id: Some("session-1".to_string()),
+                        is_streaming: false,
+                        metadata: json!({}),
                     }),
                 })
             })
@@ -424,7 +444,11 @@ mod tests {
             services.forwarded.lock().expect("forwarded mutex").as_slice(),
             ["POST /v1/messages"]
         );
-        assert_eq!(services.usage.lock().expect("usage mutex").len(), 1);
+        let usage = services.usage.lock().expect("usage mutex");
+        assert_eq!(usage.len(), 1);
+        assert_eq!(usage[0].provider_id, "provider-a");
+        assert_eq!(usage[0].request_model, "sonnet");
+        assert_eq!(usage[0].tokens.input_tokens, 5);
         let events = services.events.lock().expect("events mutex");
         assert_eq!(events.len(), 1);
         assert_eq!(events[0].event_type, ProxyCoreEventType::RouteSelected);

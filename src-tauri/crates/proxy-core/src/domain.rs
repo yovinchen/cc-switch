@@ -487,17 +487,60 @@ pub struct ProxyResult {
     pub response: ProxyCoreResponse,
     pub selected_route: RouteSelection,
     pub outbound_model: Option<String>,
-    pub usage_hint: Option<UsageHint>,
+    pub usage_record: Option<UsageRecord>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct UsageHint {
+pub struct UsageTokens {
+    pub input_tokens: u64,
+    pub output_tokens: u64,
+    pub cache_read_tokens: u64,
+    pub cache_creation_tokens: u64,
+}
+
+impl UsageTokens {
+    pub fn has_billable_tokens(&self) -> bool {
+        self.input_tokens > 0
+            || self.output_tokens > 0
+            || self.cache_read_tokens > 0
+            || self.cache_creation_tokens > 0
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UsageRecord {
     pub request_id: Option<String>,
+    pub message_id: Option<String>,
     pub app: AppKind,
-    pub model: Option<String>,
-    pub input_tokens: Option<u64>,
-    pub output_tokens: Option<u64>,
+    pub provider_id: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub provider_kind: Option<ProviderKind>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub channel_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub channel_name: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub route_group: Option<String>,
+    pub request_model: String,
+    pub outbound_model: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub response_model: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub pricing_model: Option<String>,
+    pub tokens: UsageTokens,
+    pub latency_ms: u64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub first_token_ms: Option<u64>,
+    pub status_code: u16,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub error_message: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub session_id: Option<String>,
+    pub is_streaming: bool,
+    #[serde(default)]
+    pub metadata: Value,
 }
 
 fn normalize_token(value: &str) -> String {
