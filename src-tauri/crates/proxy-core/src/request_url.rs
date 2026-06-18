@@ -193,6 +193,40 @@ pub fn extract_gemini_model_from_path(endpoint: &str) -> Option<String> {
         .map(ToString::to_string)
 }
 
+pub fn is_codex_chat_wire_api(value: &str) -> bool {
+    matches!(
+        value.trim().to_ascii_lowercase().as_str(),
+        "chat"
+            | "chat_completions"
+            | "chat-completions"
+            | "openai_chat"
+            | "openai-chat"
+            | "openai_chat_completions"
+    )
+}
+
+pub fn is_codex_chat_completions_url(value: &str) -> bool {
+    value
+        .trim_end_matches('/')
+        .to_ascii_lowercase()
+        .ends_with("/chat/completions")
+}
+
+pub fn is_codex_responses_endpoint(endpoint: &str) -> bool {
+    let (path, _query) = split_endpoint_and_query(endpoint);
+    matches!(
+        path,
+        "/responses" | "/v1/responses" | "/responses/compact" | "/v1/responses/compact"
+    )
+}
+
+pub fn should_convert_codex_responses_endpoint_to_chat(
+    provider_uses_chat_completions: bool,
+    endpoint: &str,
+) -> bool {
+    provider_uses_chat_completions && is_codex_responses_endpoint(endpoint)
+}
+
 pub fn request_model_for_forward(
     app: &AppKind,
     endpoint: &str,
@@ -243,10 +277,12 @@ fn is_openai_compatible_custom_app(value: &str) -> bool {
 mod tests {
     use super::{
         append_query_to_full_url, extract_gemini_model_from_path, interface_kind_for_forward,
+        is_codex_chat_completions_url, is_codex_chat_wire_api, is_codex_responses_endpoint,
         is_github_copilot_upstream, merge_query_params, request_model_for_forward,
         resolved_copilot_dynamic_base_url, rewrite_claude_transform_endpoint,
-        rewrite_codex_responses_endpoint_to_chat, should_resolve_copilot_dynamic_endpoint,
-        split_endpoint_and_query, strip_beta_query, AppKind, ClaudeTransformEndpointRewriteInput,
+        rewrite_codex_responses_endpoint_to_chat, should_convert_codex_responses_endpoint_to_chat,
+        should_resolve_copilot_dynamic_endpoint, split_endpoint_and_query, strip_beta_query,
+        AppKind, ClaudeTransformEndpointRewriteInput,
     };
     use serde_json::json;
 
@@ -308,6 +344,39 @@ mod tests {
         assert!(!is_github_copilot_upstream(
             Some("anthropic"),
             "https://api.anthropic.com"
+        ));
+    }
+
+    #[test]
+    fn detects_codex_chat_wire_api_aliases() {
+        assert!(is_codex_chat_wire_api("chat"));
+        assert!(is_codex_chat_wire_api("openai_chat"));
+        assert!(is_codex_chat_wire_api("openai_chat_completions"));
+        assert!(!is_codex_chat_wire_api("responses"));
+    }
+
+    #[test]
+    fn detects_codex_chat_completions_urls() {
+        assert!(is_codex_chat_completions_url(
+            "https://relay.example.com/v1/chat/completions/"
+        ));
+        assert!(!is_codex_chat_completions_url(
+            "https://relay.example.com/v1/responses"
+        ));
+    }
+
+    #[test]
+    fn detects_codex_responses_endpoint_conversion_targets() {
+        assert!(is_codex_responses_endpoint("/responses?stream=true"));
+        assert!(is_codex_responses_endpoint("/v1/responses/compact"));
+        assert!(!is_codex_responses_endpoint("/chat/completions"));
+        assert!(should_convert_codex_responses_endpoint_to_chat(
+            true,
+            "/v1/responses"
+        ));
+        assert!(!should_convert_codex_responses_endpoint_to_chat(
+            false,
+            "/v1/responses"
         ));
     }
 

@@ -8,6 +8,10 @@
 use super::{AuthInfo, AuthStrategy, ProviderAdapter};
 use crate::provider::{CodexChatReasoningConfig, Provider};
 use crate::proxy::error::ProxyError;
+use crate::proxy_core::{
+    is_codex_chat_completions_url, is_codex_chat_wire_api,
+    should_convert_codex_responses_endpoint_to_chat,
+};
 use regex::Regex;
 use serde_json::Value as JsonValue;
 use std::collections::HashSet;
@@ -43,7 +47,7 @@ pub fn codex_provider_uses_chat_completions(provider: &Provider) -> bool {
                 .and_then(|v| v.as_str())
         })
     {
-        return is_chat_wire_api(api_format);
+        return is_codex_chat_wire_api(api_format);
     }
 
     if let Some(wire_api) = provider
@@ -52,7 +56,7 @@ pub fn codex_provider_uses_chat_completions(provider: &Provider) -> bool {
         .and_then(|v| v.as_str())
         .and_then(extract_codex_wire_api_from_toml)
     {
-        return is_chat_wire_api(&wire_api);
+        return is_codex_chat_wire_api(&wire_api);
     }
 
     if let Some(base_url) = provider
@@ -61,7 +65,7 @@ pub fn codex_provider_uses_chat_completions(provider: &Provider) -> bool {
         .or_else(|| provider.settings_config.get("baseURL"))
         .and_then(|v| v.as_str())
     {
-        return is_chat_completions_url(base_url);
+        return is_codex_chat_completions_url(base_url);
     }
 
     provider
@@ -69,19 +73,15 @@ pub fn codex_provider_uses_chat_completions(provider: &Provider) -> bool {
         .get("config")
         .and_then(|v| v.as_str())
         .and_then(extract_codex_base_url_from_toml)
-        .map(|url| is_chat_completions_url(&url))
+        .map(|url| is_codex_chat_completions_url(&url))
         .unwrap_or(false)
 }
 
 pub fn should_convert_codex_responses_to_chat(provider: &Provider, endpoint: &str) -> bool {
-    let path = endpoint
-        .split_once('?')
-        .map_or(endpoint, |(path, _query)| path);
-
-    matches!(
-        path,
-        "/responses" | "/v1/responses" | "/responses/compact" | "/v1/responses/compact"
-    ) && codex_provider_uses_chat_completions(provider)
+    should_convert_codex_responses_endpoint_to_chat(
+        codex_provider_uses_chat_completions(provider),
+        endpoint,
+    )
 }
 
 /// Extract the real upstream model configured for a Codex provider.
@@ -331,25 +331,6 @@ fn infer_aggregator_platform_config(
     }
 
     None
-}
-
-fn is_chat_wire_api(value: &str) -> bool {
-    matches!(
-        value.trim().to_ascii_lowercase().as_str(),
-        "chat"
-            | "chat_completions"
-            | "chat-completions"
-            | "openai_chat"
-            | "openai-chat"
-            | "openai_chat_completions"
-    )
-}
-
-fn is_chat_completions_url(value: &str) -> bool {
-    value
-        .trim_end_matches('/')
-        .to_ascii_lowercase()
-        .ends_with("/chat/completions")
 }
 
 /// `scheme://host` 之后没有路径段的纯 origin 形式。`build_url` 在这种情况下
