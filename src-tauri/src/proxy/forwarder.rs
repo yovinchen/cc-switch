@@ -545,6 +545,49 @@ impl RequestForwarder {
         })
     }
 
+    /// Forward a request using attempts planned by a caller such as ProxyEngine.
+    ///
+    /// This keeps request-scope accounting in one place while allowing the route
+    /// planning step to move out of RequestForwarder incrementally.
+    #[allow(dead_code)]
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) async fn forward_with_preplanned_attempts(
+        &self,
+        app_type: &AppType,
+        method: http::Method,
+        endpoint: &str,
+        body: Value,
+        headers: axum::http::HeaderMap,
+        extensions: Extensions,
+        attempts: Vec<ForwardAttempt>,
+    ) -> Result<ForwardResult, ForwardError> {
+        let request_id = uuid::Uuid::new_v4().to_string();
+        self.emit_request_started(&request_id, app_type.as_str());
+        let guard = ActiveConnectionGuard::acquire(self.status.clone()).await;
+        {
+            let mut s = self.status.write().await;
+            s.total_requests = s.total_requests.saturating_add(1);
+            s.last_request_at = Some(chrono::Utc::now().to_rfc3339());
+        }
+        let result = self
+            .forward_preplanned_attempts_inner(
+                &request_id,
+                app_type,
+                method,
+                endpoint,
+                body,
+                headers,
+                extensions,
+                attempts,
+            )
+            .await;
+
+        result.map(|mut fr| {
+            fr.connection_guard = Some(guard);
+            fr
+        })
+    }
+
     async fn build_forward_attempts(
         &self,
         app_type: &AppType,
@@ -646,10 +689,6 @@ impl RequestForwarder {
         extensions: Extensions,
         providers: Vec<Provider>,
     ) -> Result<ForwardResult, ForwardError> {
-        // 获取适配器
-        let adapter = get_adapter(app_type);
-        let app_type_str = app_type.as_str();
-
         if providers.is_empty() {
             return Err(ForwardError {
                 error: ProxyError::NoAvailableProvider,
@@ -664,6 +703,36 @@ impl RequestForwarder {
                 error: ProxyError::DatabaseError(e.to_string()),
                 provider: None,
             })?;
+
+        if attempts.is_empty() {
+            return Err(ForwardError {
+                error: ProxyError::NoAvailableProvider,
+                provider: None,
+            });
+        }
+
+        self.forward_preplanned_attempts_inner(
+            request_id, app_type, method, endpoint, body, headers, extensions, attempts,
+        )
+        .await
+    }
+
+    /// 实际转发逻辑（不包含客户端维度的入口/出口计数，也不构建 route attempts）。
+    #[allow(clippy::too_many_arguments)]
+    async fn forward_preplanned_attempts_inner(
+        &self,
+        request_id: &str,
+        app_type: &AppType,
+        method: http::Method,
+        endpoint: &str,
+        body: Value,
+        headers: axum::http::HeaderMap,
+        extensions: Extensions,
+        attempts: Vec<ForwardAttempt>,
+    ) -> Result<ForwardResult, ForwardError> {
+        // 获取适配器
+        let adapter = get_adapter(app_type);
+        let app_type_str = app_type.as_str();
 
         if attempts.is_empty() {
             return Err(ForwardError {
@@ -3065,6 +3134,34 @@ mod tests {
         let success_event = subscriber.recv().await.expect("success event");
         assert_eq!(success_event.event, "channel_succeeded");
         assert_eq!(success_event.payload["channelName"], "Relay A");
+    }
+
+    #[tokio::test]
+    async fn preplanned_forwarding_reuses_request_scope_accounting() {
+        let forwarder = test_forwarder(Duration::from_secs(0), Duration::from_secs(0));
+        let mut subscriber = forwarder.events.subscribe();
+
+        let result = forwarder
+            .forward_with_preplanned_attempts(
+                &AppType::Claude,
+                http::Method::POST,
+                "/v1/messages",
+                json!({"model": "claude-sonnet-4"}),
+                axum::http::HeaderMap::new(),
+                Extensions::new(),
+                Vec::new(),
+            )
+            .await;
+
+        let error = result.err().expect("empty attempts should fail");
+        assert!(matches!(error.error, ProxyError::NoAvailableProvider));
+
+        let started_event = subscriber.recv().await.expect("request started");
+        assert_eq!(started_event.event, "request_started");
+        assert_eq!(started_event.payload["appType"], "claude");
+
+        let status = forwarder.status.read().await;
+        assert_eq!(status.total_requests, 1);
     }
 
     #[tokio::test]
