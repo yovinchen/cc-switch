@@ -1,11 +1,13 @@
 use super::domain::{
     AppKind, AuthProfileRef, ChannelAttemptResult, ChannelQuery, ChannelSpec, ProviderSpec,
     ProxyRequest, ProxyResult, RoutePlan, RoutePolicy, RouteRequest, UsageRecord,
+    DEFAULT_ROUTE_GROUP,
 };
 use super::error::ProxyCoreResult;
 use futures::future::BoxFuture;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
+use std::collections::{BTreeMap, BTreeSet};
 
 pub trait ProxyServices: Send + Sync {
     fn config(&self) -> &(dyn ProxyConfigSource + Send + Sync);
@@ -254,6 +256,99 @@ impl<T> ChannelModelsResponse<T> {
     }
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RouteGroupChannelInput {
+    #[serde(default)]
+    pub groups: Vec<String>,
+}
+
+impl RouteGroupChannelInput {
+    pub fn new(groups: Vec<String>) -> Self {
+        Self { groups }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RouteGroupSourceInput {
+    pub app_type: String,
+    pub source: String,
+    #[serde(default)]
+    pub channels: Vec<RouteGroupChannelInput>,
+}
+
+impl RouteGroupSourceInput {
+    pub fn new(
+        app_type: impl Into<String>,
+        source: impl Into<String>,
+        channels: Vec<RouteGroupChannelInput>,
+    ) -> Self {
+        Self {
+            app_type: app_type.into(),
+            source: source.into(),
+            channels,
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RouteGroupSummary {
+    pub name: String,
+    pub app_types: Vec<String>,
+    pub channel_count: usize,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RouteGroupListResponse {
+    pub app_type: Option<String>,
+    pub sources: Vec<String>,
+    pub groups: Vec<RouteGroupSummary>,
+}
+
+impl RouteGroupListResponse {
+    pub fn from_sources(
+        app_type: Option<String>,
+        sources: impl IntoIterator<Item = RouteGroupSourceInput>,
+    ) -> Self {
+        let mut groups: BTreeMap<String, (BTreeSet<String>, usize)> = BTreeMap::new();
+        let mut source_names = BTreeSet::new();
+
+        for source in sources {
+            source_names.insert(source.source);
+
+            for channel in source.channels {
+                let channel_groups = if channel.groups.is_empty() {
+                    vec![DEFAULT_ROUTE_GROUP.to_string()]
+                } else {
+                    channel.groups
+                };
+
+                for group in channel_groups {
+                    let entry = groups.entry(group).or_default();
+                    entry.0.insert(source.app_type.clone());
+                    entry.1 += 1;
+                }
+            }
+        }
+
+        Self {
+            app_type,
+            sources: source_names.into_iter().collect(),
+            groups: groups
+                .into_iter()
+                .map(|(name, (app_types, channel_count))| RouteGroupSummary {
+                    name,
+                    app_types: app_types.into_iter().collect(),
+                    channel_count,
+                })
+                .collect(),
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ProxyCoreEvent {
@@ -281,7 +376,10 @@ pub enum ProxyCoreEventType {
 
 #[cfg(test)]
 mod tests {
-    use super::{ChannelDeleteResponse, ChannelModelsResponse};
+    use super::{
+        ChannelDeleteResponse, ChannelModelsResponse, RouteGroupChannelInput,
+        RouteGroupListResponse, RouteGroupSourceInput,
+    };
     use serde_json::json;
 
     #[test]
@@ -314,5 +412,52 @@ mod tests {
         assert_eq!(value["channelId"], "channel-a");
         assert_eq!(value["models"][0]["publicModel"], "sonnet");
         assert_eq!(value["models"][0]["upstreamModel"], "upstream-sonnet");
+    }
+
+    #[test]
+    fn route_group_list_response_aggregates_groups_and_sources() {
+        let response = RouteGroupListResponse::from_sources(
+            Some("claude".to_string()),
+            vec![
+                RouteGroupSourceInput::new(
+                    "claude",
+                    "materialized_channels",
+                    vec![
+                        RouteGroupChannelInput::new(vec![]),
+                        RouteGroupChannelInput::new(vec!["beta".to_string()]),
+                    ],
+                ),
+                RouteGroupSourceInput::new(
+                    "codex",
+                    "legacy_projection",
+                    vec![RouteGroupChannelInput::new(vec![
+                        "default".to_string(),
+                        "paid".to_string(),
+                    ])],
+                ),
+            ],
+        );
+
+        assert_eq!(response.app_type.as_deref(), Some("claude"));
+        assert_eq!(
+            response.sources,
+            vec![
+                "legacy_projection".to_string(),
+                "materialized_channels".to_string()
+            ]
+        );
+        assert_eq!(response.groups.len(), 3);
+        assert_eq!(response.groups[0].name, "beta");
+        assert_eq!(response.groups[0].app_types, vec!["claude"]);
+        assert_eq!(response.groups[0].channel_count, 1);
+        assert_eq!(response.groups[1].name, "default");
+        assert_eq!(response.groups[1].app_types, vec!["claude", "codex"]);
+        assert_eq!(response.groups[1].channel_count, 2);
+        assert_eq!(response.groups[2].name, "paid");
+        assert_eq!(response.groups[2].app_types, vec!["codex"]);
+
+        let value = serde_json::to_value(response).expect("serialize response");
+        assert_eq!(value["appType"], "claude");
+        assert_eq!(value["groups"][1]["channelCount"], 2);
     }
 }

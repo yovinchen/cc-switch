@@ -44,6 +44,7 @@ use crate::proxy_core::{
     strip_hop_by_hop_response_headers, AppKind, ChannelDeleteResponse, ChannelHealthResetResponse,
     ChannelModelsResponse, InterfaceKind, ProxyBody, ProxyCoreError, ProxyCoreResponse,
     ProxyEngine, ProxyRequest, ProxyResponseBody, ProxyResult, ProxyServices, RoutableModelList,
+    RouteGroupChannelInput, RouteGroupListResponse, RouteGroupSourceInput,
 };
 use axum::{
     extract::{Path, Query, State},
@@ -56,7 +57,7 @@ use bytes::Bytes;
 use http_body_util::BodyExt;
 use serde::Deserialize;
 use serde_json::{json, Value};
-use std::collections::{BTreeMap, BTreeSet, HashSet};
+use std::collections::HashSet;
 use std::convert::Infallible;
 use std::net::IpAddr;
 use std::time::Duration;
@@ -563,10 +564,15 @@ pub async fn list_proxy_channels(
 pub async fn list_proxy_groups(
     State(state): State<ProxyState>,
     Query(query): Query<GroupListQuery>,
-) -> Result<Json<Value>, ProxyError> {
-    let app_types = if let Some(app_type) = query.app_type.as_deref() {
+) -> Result<Json<RouteGroupListResponse>, ProxyError> {
+    let requested_app_type = query
+        .app_type
+        .as_deref()
+        .map(str::trim)
+        .map(ToString::to_string);
+    let app_types = if let Some(app_type) = requested_app_type.as_deref() {
         validate_management_app_type(app_type)?;
-        vec![app_type.trim().to_string()]
+        vec![app_type.to_string()]
     } else {
         AppType::all()
             .into_iter()
@@ -574,8 +580,7 @@ pub async fn list_proxy_groups(
             .collect()
     };
 
-    let mut groups: BTreeMap<String, (BTreeSet<String>, usize)> = BTreeMap::new();
-    let mut sources = BTreeSet::new();
+    let mut sources = Vec::new();
 
     for app_type in &app_types {
         let (channels, source) = state
@@ -583,46 +588,20 @@ pub async fn list_proxy_groups(
             .list_channels_for_app(app_type)
             .await
             .map_err(|e| ProxyError::DatabaseError(e.to_string()))?;
-        sources.insert(match source {
-            crate::proxy::channel_routing::ChannelRouteSource::MaterializedChannels => {
-                "materialized_channels".to_string()
-            }
-            crate::proxy::channel_routing::ChannelRouteSource::LegacyProjection => {
-                "legacy_projection".to_string()
-            }
-        });
-
-        for channel in channels {
-            let channel_groups = if channel.groups.is_empty() {
-                vec!["default".to_string()]
-            } else {
-                channel.groups
-            };
-
-            for group in channel_groups {
-                let entry = groups.entry(group).or_default();
-                entry.0.insert(app_type.clone());
-                entry.1 += 1;
-            }
-        }
+        sources.push(RouteGroupSourceInput::new(
+            app_type.clone(),
+            channel_route_source_label(&source),
+            channels
+                .into_iter()
+                .map(|channel| RouteGroupChannelInput::new(channel.groups))
+                .collect(),
+        ));
     }
 
-    let groups: Vec<Value> = groups
-        .into_iter()
-        .map(|(name, (app_types, channel_count))| {
-            json!({
-                "name": name,
-                "appTypes": app_types.into_iter().collect::<Vec<_>>(),
-                "channelCount": channel_count,
-            })
-        })
-        .collect();
-
-    Ok(Json(json!({
-        "appType": query.app_type.map(|app_type| app_type.trim().to_string()),
-        "sources": sources.into_iter().collect::<Vec<_>>(),
-        "groups": groups,
-    })))
+    Ok(Json(RouteGroupListResponse::from_sources(
+        requested_app_type,
+        sources,
+    )))
 }
 
 /// GET /proxy/v1/apps/{app}/routes/current
@@ -747,6 +726,17 @@ fn normalize_channel_id_path(channel_id: String) -> Result<String, ProxyError> {
         ))
     } else {
         Ok(channel_id)
+    }
+}
+
+fn channel_route_source_label(
+    source: &crate::proxy::channel_routing::ChannelRouteSource,
+) -> &'static str {
+    match source {
+        crate::proxy::channel_routing::ChannelRouteSource::MaterializedChannels => {
+            "materialized_channels"
+        }
+        crate::proxy::channel_routing::ChannelRouteSource::LegacyProjection => "legacy_projection",
     }
 }
 
