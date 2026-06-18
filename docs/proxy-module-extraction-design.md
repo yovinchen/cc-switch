@@ -18,7 +18,8 @@
 7. `UsageSink` 已升级为完整 `UsageRecord` 并可通过 `CcSwitchUsageSink` 写入现有 `proxy_request_logs`；现有 response pipeline 仍直接调用 `UsageLogger`，切到核心 sink 需在迁移响应 pipeline 时完成。
 8. 核心响应体已从请求 `ProxyBody` 拆出为 `ProxyResponseBody`，可以表达 empty/json/bytes/stream，避免把 axum/hyper 类型带入 core crate。
 9. `RequestForwarder` 的重试循环已从 attempts 构建中拆出，新增 preplanned attempts 入口，并且预规划入口不再强制持有 `CcSwitchProxyServices`，避免 host runtime adapter 产生自引用。
-10. `CcSwitchForwardPipeline` 已接入运行中 `ProxyServer` 的共享 router/status/event/history/failover 运行态，可以把 `ProxyEngine::handle` 的 `RoutePlan` 映射为 host `ForwardAttempt` 并复用现有 HTTP 转发链；HTTP handlers 仍暂时直接调用 `RequestForwarder`，后续需要把 handler 入口切到 `ProxyEngine::handle` 并迁移 response pipeline。
+10. `CcSwitchForwardPipeline` 已接入运行中 `ProxyServer` 的共享 router/status/event/history/failover 运行态，可以把 `ProxyEngine::handle` 的 `RoutePlan` 映射为 host `ForwardAttempt` 并复用现有 HTTP 转发链；多数 HTTP handlers 仍暂时直接调用 `RequestForwarder`，后续需要继续把 handler 入口切到 `ProxyEngine::handle` 并迁移 response pipeline。
+11. Codex `/v1/chat/completions` handler 已改为构造 neutral `ProxyRequest` 并进入 `ProxyEngine::handle`；返回的 `ProxyResult` 暂时桥接回旧 `process_response`，保留现有 usage 解析、流式处理和响应构造。
 
 当前原则：核心 crate 可以新增端口和领域字段，但不得引入 `tauri`、`Database`、settings、commands、services 等宿主依赖；现有 runtime 行为必须继续通过 targeted tests 证明不回归。
 
