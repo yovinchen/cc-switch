@@ -59,6 +59,8 @@ impl Database {
         )
         .map_err(|e| AppError::Database(e.to_string()))?;
 
+        Self::create_proxy_channel_tables_on_conn(conn)?;
+
         // 3. MCP Servers 表
         conn.execute(
             "CREATE TABLE IF NOT EXISTS mcp_servers (
@@ -443,6 +445,11 @@ impl Database {
                         log::info!("迁移数据库从 v10 到 v11（usage_daily_rollups 保留 request_model 维度）");
                         Self::migrate_v10_to_v11(conn)?;
                         Self::set_user_version(conn, 11)?;
+                    }
+                    11 => {
+                        log::info!("迁移数据库从 v11 到 v12（代理 channel 路由迁移表）");
+                        Self::migrate_v11_to_v12(conn)?;
+                        Self::set_user_version(conn, 12)?;
                     }
                     _ => {
                         return Err(AppError::Database(format!(
@@ -1267,6 +1274,85 @@ impl Database {
         log::info!(
             "v10 -> v11 迁移完成：usage_daily_rollups 已保留 request_model/pricing_model 维度"
         );
+        Ok(())
+    }
+
+    /// v11 -> v12：引入代理 channel 迁移表。
+    ///
+    /// 这些表先作为 provider/provider_endpoints 的兼容投影落点，不接管现有转发路径。
+    /// 后续 RouteResolver 可以优先读取 `proxy_channels`，旧表继续作为 fallback。
+    fn migrate_v11_to_v12(conn: &Connection) -> Result<(), AppError> {
+        Self::create_proxy_channel_tables_on_conn(conn)?;
+        log::info!("v11 -> v12 迁移完成：已创建代理 channel 路由迁移表");
+        Ok(())
+    }
+
+    pub(crate) fn create_proxy_channel_tables_on_conn(conn: &Connection) -> Result<(), AppError> {
+        conn.execute_batch(
+            "CREATE TABLE IF NOT EXISTS proxy_channels (
+                id TEXT PRIMARY KEY,
+                provider_id TEXT NOT NULL,
+                app_type TEXT NOT NULL,
+                name TEXT NOT NULL,
+                status TEXT NOT NULL DEFAULT 'enabled',
+                base_url TEXT NOT NULL,
+                interface_kind TEXT NOT NULL,
+                auth_profile_ref TEXT,
+                groups_json TEXT NOT NULL DEFAULT '[\"default\"]',
+                priority INTEGER NOT NULL DEFAULT 0,
+                weight INTEGER NOT NULL DEFAULT 100,
+                retry_policy_json TEXT NOT NULL DEFAULT '{}',
+                health_policy_json TEXT NOT NULL DEFAULT '{}',
+                header_override_json TEXT NOT NULL DEFAULT '{}',
+                param_override_json TEXT NOT NULL DEFAULT '{}',
+                status_code_mapping_json TEXT NOT NULL DEFAULT '[]',
+                tags_json TEXT NOT NULL DEFAULT '[]',
+                metadata_json TEXT NOT NULL DEFAULT '{}',
+                source_kind TEXT NOT NULL DEFAULT 'manual',
+                source_endpoint_url TEXT,
+                created_at INTEGER NOT NULL,
+                updated_at INTEGER NOT NULL,
+                FOREIGN KEY (provider_id, app_type)
+                    REFERENCES providers(id, app_type) ON DELETE CASCADE,
+                UNIQUE (provider_id, app_type, base_url, interface_kind)
+            );
+
+            CREATE TABLE IF NOT EXISTS proxy_channel_models (
+                channel_id TEXT NOT NULL,
+                public_model TEXT NOT NULL,
+                upstream_model TEXT NOT NULL,
+                capabilities_json TEXT NOT NULL DEFAULT '{}',
+                pricing_model TEXT,
+                request_overrides_json TEXT NOT NULL DEFAULT '{}',
+                response_overrides_json TEXT NOT NULL DEFAULT '{}',
+                created_at INTEGER NOT NULL,
+                updated_at INTEGER NOT NULL,
+                PRIMARY KEY (channel_id, public_model),
+                FOREIGN KEY (channel_id) REFERENCES proxy_channels(id) ON DELETE CASCADE
+            );
+
+            CREATE TABLE IF NOT EXISTS proxy_channel_health (
+                channel_id TEXT PRIMARY KEY,
+                status TEXT NOT NULL DEFAULT 'unknown',
+                last_success_at INTEGER,
+                last_failure_at INTEGER,
+                consecutive_failures INTEGER NOT NULL DEFAULT 0,
+                response_time_ms INTEGER,
+                disabled_reason TEXT,
+                updated_at INTEGER NOT NULL,
+                FOREIGN KEY (channel_id) REFERENCES proxy_channels(id) ON DELETE CASCADE
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_proxy_channels_app_lookup
+                ON proxy_channels(app_type, status, priority DESC, weight DESC);
+            CREATE INDEX IF NOT EXISTS idx_proxy_channels_provider
+                ON proxy_channels(provider_id, app_type);
+            CREATE INDEX IF NOT EXISTS idx_proxy_channel_models_model
+                ON proxy_channel_models(public_model, upstream_model);
+            CREATE INDEX IF NOT EXISTS idx_proxy_channel_health_status
+                ON proxy_channel_health(status, consecutive_failures);",
+        )
+        .map_err(|e| AppError::Database(format!("创建 proxy channel 表失败: {e}")))?;
         Ok(())
     }
 

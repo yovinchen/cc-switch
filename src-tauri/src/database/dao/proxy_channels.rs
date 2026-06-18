@@ -1,0 +1,867 @@
+//! Proxy channel migration DAO.
+//!
+//! The first migration step is intentionally additive: project existing
+//! providers and provider_endpoints into channel-shaped records without
+//! changing the current provider router or forwarding path.
+
+use crate::app_config::AppType;
+use crate::database::{lock_conn, to_json_string, Database};
+use crate::error::AppError;
+use crate::provider::Provider;
+use rusqlite::{params, Connection};
+use serde::{Deserialize, Serialize};
+use serde_json::{json, Value};
+use sha2::{Digest, Sha256};
+use std::collections::HashSet;
+use std::str::FromStr;
+
+const DEFAULT_GROUP: &str = "default";
+const LEGACY_PRIMARY_SOURCE: &str = "legacy_primary";
+const LEGACY_ENDPOINT_SOURCE: &str = "legacy_endpoint";
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub(crate) enum ProxyChannelSourceKind {
+    LegacyPrimary,
+    LegacyEndpoint,
+    Manual,
+}
+
+impl ProxyChannelSourceKind {
+    fn as_str(&self) -> &'static str {
+        match self {
+            Self::LegacyPrimary => LEGACY_PRIMARY_SOURCE,
+            Self::LegacyEndpoint => LEGACY_ENDPOINT_SOURCE,
+            Self::Manual => "manual",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct ProxyChannelModelRecord {
+    pub channel_id: String,
+    pub public_model: String,
+    pub upstream_model: String,
+    pub capabilities: Value,
+    pub pricing_model: Option<String>,
+    pub request_overrides: Value,
+    pub response_overrides: Value,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct ProxyChannelRecord {
+    pub id: String,
+    pub provider_id: String,
+    pub app_type: String,
+    pub name: String,
+    pub status: String,
+    pub base_url: String,
+    pub interface_kind: String,
+    pub auth_profile_ref: Option<String>,
+    pub groups: Vec<String>,
+    pub priority: i64,
+    pub weight: u32,
+    pub retry_policy: Value,
+    pub health_policy: Value,
+    pub header_overrides: Value,
+    pub param_overrides: Value,
+    pub status_code_mapping: Value,
+    pub tags: Vec<String>,
+    pub metadata: Value,
+    pub source_kind: ProxyChannelSourceKind,
+    pub source_endpoint_url: Option<String>,
+    pub models: Vec<ProxyChannelModelRecord>,
+    pub needs_review: bool,
+    pub review_reasons: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct ProxyChannelMigrationPreview {
+    pub app_type: String,
+    pub channels: Vec<ProxyChannelRecord>,
+    pub duplicate_count: usize,
+    pub needs_review_count: usize,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct ProxyChannelMaterializeResult {
+    pub app_type: String,
+    pub previewed_channels: usize,
+    pub inserted_channels: usize,
+    pub inserted_models: usize,
+    pub inserted_health_rows: usize,
+    pub duplicate_count: usize,
+    pub needs_review_count: usize,
+}
+
+impl Database {
+    pub(crate) fn preview_legacy_proxy_channel_migration(
+        &self,
+        app_type: &str,
+    ) -> Result<ProxyChannelMigrationPreview, AppError> {
+        let providers = self.get_all_providers(app_type)?;
+        let current_provider_id = self.get_current_provider(app_type)?;
+        let app = AppType::from_str(app_type).ok();
+        let mut channels = Vec::new();
+        let mut seen_routes = HashSet::new();
+        let mut duplicate_count = 0usize;
+
+        for provider in providers.values() {
+            let priority = legacy_priority(provider, current_provider_id.as_deref());
+            let interface_kind = infer_interface_kind(app.as_ref(), provider);
+            let primary_base_url = app
+                .as_ref()
+                .map(|app| provider.resolve_usage_credentials(app).0)
+                .unwrap_or_default();
+
+            let primary = build_legacy_channel(
+                app_type,
+                provider,
+                normalize_base_url(&primary_base_url),
+                interface_kind.clone(),
+                priority,
+                ProxyChannelSourceKind::LegacyPrimary,
+                None,
+            );
+            push_channel_or_count_duplicate(
+                &mut channels,
+                &mut seen_routes,
+                &mut duplicate_count,
+                primary,
+            );
+
+            let mut endpoints: Vec<_> = provider
+                .meta
+                .as_ref()
+                .map(|meta| meta.custom_endpoints.values().cloned().collect::<Vec<_>>())
+                .unwrap_or_default();
+            endpoints.sort_by(|a, b| a.added_at.cmp(&b.added_at).then_with(|| a.url.cmp(&b.url)));
+
+            for endpoint in endpoints {
+                let channel = build_legacy_channel(
+                    app_type,
+                    provider,
+                    normalize_base_url(&endpoint.url),
+                    interface_kind.clone(),
+                    priority,
+                    ProxyChannelSourceKind::LegacyEndpoint,
+                    Some(endpoint.url),
+                );
+                push_channel_or_count_duplicate(
+                    &mut channels,
+                    &mut seen_routes,
+                    &mut duplicate_count,
+                    channel,
+                );
+            }
+        }
+
+        let needs_review_count = channels
+            .iter()
+            .filter(|channel| channel.needs_review)
+            .count();
+        Ok(ProxyChannelMigrationPreview {
+            app_type: app_type.to_string(),
+            channels,
+            duplicate_count,
+            needs_review_count,
+        })
+    }
+
+    pub(crate) fn materialize_legacy_proxy_channels(
+        &self,
+        app_type: &str,
+    ) -> Result<ProxyChannelMaterializeResult, AppError> {
+        let preview = self.preview_legacy_proxy_channel_migration(app_type)?;
+        let conn = lock_conn!(self.conn);
+        let now = chrono::Utc::now().timestamp_millis();
+        let mut inserted_channels = 0usize;
+        let mut inserted_models = 0usize;
+        let mut inserted_health_rows = 0usize;
+
+        for channel in &preview.channels {
+            let groups_json = to_json_string(&channel.groups)?;
+            let retry_policy_json = to_json_string(&channel.retry_policy)?;
+            let health_policy_json = to_json_string(&channel.health_policy)?;
+            let header_override_json = to_json_string(&channel.header_overrides)?;
+            let param_override_json = to_json_string(&channel.param_overrides)?;
+            let status_code_mapping_json = to_json_string(&channel.status_code_mapping)?;
+            let tags_json = to_json_string(&channel.tags)?;
+            let metadata_json = to_json_string(&channel.metadata)?;
+
+            inserted_channels += conn
+                .execute(
+                    "INSERT OR IGNORE INTO proxy_channels (
+                        id, provider_id, app_type, name, status, base_url, interface_kind,
+                        auth_profile_ref, groups_json, priority, weight, retry_policy_json,
+                        health_policy_json, header_override_json, param_override_json,
+                        status_code_mapping_json, tags_json, metadata_json, source_kind,
+                        source_endpoint_url, created_at, updated_at
+                    ) VALUES (
+                        ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12,
+                        ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21, ?22
+                    )",
+                    params![
+                        channel.id,
+                        channel.provider_id,
+                        channel.app_type,
+                        channel.name,
+                        channel.status,
+                        channel.base_url,
+                        channel.interface_kind,
+                        channel.auth_profile_ref,
+                        groups_json,
+                        channel.priority,
+                        channel.weight,
+                        retry_policy_json,
+                        health_policy_json,
+                        header_override_json,
+                        param_override_json,
+                        status_code_mapping_json,
+                        tags_json,
+                        metadata_json,
+                        channel.source_kind.as_str(),
+                        channel.source_endpoint_url,
+                        now,
+                        now,
+                    ],
+                )
+                .map_err(|e| AppError::Database(format!("写入 proxy channel 失败: {e}")))?;
+
+            inserted_health_rows += conn
+                .execute(
+                    "INSERT OR IGNORE INTO proxy_channel_health (
+                        channel_id, status, consecutive_failures, updated_at
+                    ) VALUES (?1, 'unknown', 0, ?2)",
+                    params![channel.id, now],
+                )
+                .map_err(|e| AppError::Database(format!("写入 proxy channel health 失败: {e}")))?;
+
+            for model in &channel.models {
+                inserted_models += conn
+                    .execute(
+                        "INSERT OR IGNORE INTO proxy_channel_models (
+                            channel_id, public_model, upstream_model, capabilities_json,
+                            pricing_model, request_overrides_json, response_overrides_json,
+                            created_at, updated_at
+                        ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
+                        params![
+                            model.channel_id,
+                            model.public_model,
+                            model.upstream_model,
+                            to_json_string(&model.capabilities)?,
+                            model.pricing_model,
+                            to_json_string(&model.request_overrides)?,
+                            to_json_string(&model.response_overrides)?,
+                            now,
+                            now,
+                        ],
+                    )
+                    .map_err(|e| {
+                        AppError::Database(format!("写入 proxy channel model 失败: {e}"))
+                    })?;
+            }
+        }
+
+        Ok(ProxyChannelMaterializeResult {
+            app_type: preview.app_type,
+            previewed_channels: preview.channels.len(),
+            inserted_channels,
+            inserted_models,
+            inserted_health_rows,
+            duplicate_count: preview.duplicate_count,
+            needs_review_count: preview.needs_review_count,
+        })
+    }
+
+    pub(crate) fn list_proxy_channels_for_app(
+        &self,
+        app_type: &str,
+    ) -> Result<Vec<ProxyChannelRecord>, AppError> {
+        let conn = lock_conn!(self.conn);
+        let mut stmt = conn
+            .prepare(
+                "SELECT id, provider_id, app_type, name, status, base_url, interface_kind,
+                    auth_profile_ref, groups_json, priority, weight, retry_policy_json,
+                    health_policy_json, header_override_json, param_override_json,
+                    status_code_mapping_json, tags_json, metadata_json, source_kind,
+                    source_endpoint_url
+                 FROM proxy_channels
+                 WHERE app_type = ?1
+                 ORDER BY priority DESC, weight DESC, name ASC, id ASC",
+            )
+            .map_err(|e| AppError::Database(e.to_string()))?;
+
+        let mut channels = Vec::new();
+        let rows = stmt
+            .query_map([app_type], |row| {
+                let source_kind = match row.get::<_, String>(18)?.as_str() {
+                    LEGACY_PRIMARY_SOURCE => ProxyChannelSourceKind::LegacyPrimary,
+                    LEGACY_ENDPOINT_SOURCE => ProxyChannelSourceKind::LegacyEndpoint,
+                    _ => ProxyChannelSourceKind::Manual,
+                };
+                Ok(ProxyChannelRecord {
+                    id: row.get(0)?,
+                    provider_id: row.get(1)?,
+                    app_type: row.get(2)?,
+                    name: row.get(3)?,
+                    status: row.get(4)?,
+                    base_url: row.get(5)?,
+                    interface_kind: row.get(6)?,
+                    auth_profile_ref: row.get(7)?,
+                    groups: parse_json_or_default(row.get::<_, String>(8)?.as_str()),
+                    priority: row.get(9)?,
+                    weight: row.get::<_, i64>(10)?.max(0) as u32,
+                    retry_policy: parse_json_or_default(row.get::<_, String>(11)?.as_str()),
+                    health_policy: parse_json_or_default(row.get::<_, String>(12)?.as_str()),
+                    header_overrides: parse_json_or_default(row.get::<_, String>(13)?.as_str()),
+                    param_overrides: parse_json_or_default(row.get::<_, String>(14)?.as_str()),
+                    status_code_mapping: parse_json_or_default(row.get::<_, String>(15)?.as_str()),
+                    tags: parse_json_or_default(row.get::<_, String>(16)?.as_str()),
+                    metadata: parse_json_or_default(row.get::<_, String>(17)?.as_str()),
+                    source_kind,
+                    source_endpoint_url: row.get(19)?,
+                    models: Vec::new(),
+                    needs_review: false,
+                    review_reasons: Vec::new(),
+                })
+            })
+            .map_err(|e| AppError::Database(e.to_string()))?;
+
+        for row in rows {
+            channels.push(row.map_err(|e| AppError::Database(e.to_string()))?);
+        }
+
+        for channel in &mut channels {
+            channel.models = list_proxy_channel_models_on_conn(&conn, &channel.id)?;
+        }
+
+        Ok(channels)
+    }
+
+    pub(crate) fn list_proxy_channel_models(
+        &self,
+        channel_id: &str,
+    ) -> Result<Vec<ProxyChannelModelRecord>, AppError> {
+        let conn = lock_conn!(self.conn);
+        list_proxy_channel_models_on_conn(&conn, channel_id)
+    }
+}
+
+fn list_proxy_channel_models_on_conn(
+    conn: &Connection,
+    channel_id: &str,
+) -> Result<Vec<ProxyChannelModelRecord>, AppError> {
+    let mut stmt = conn
+        .prepare(
+            "SELECT channel_id, public_model, upstream_model, capabilities_json,
+                    pricing_model, request_overrides_json, response_overrides_json
+                 FROM proxy_channel_models
+                 WHERE channel_id = ?1
+                 ORDER BY public_model ASC",
+        )
+        .map_err(|e| AppError::Database(e.to_string()))?;
+
+    let rows = stmt
+        .query_map([channel_id], |row| {
+            Ok(ProxyChannelModelRecord {
+                channel_id: row.get(0)?,
+                public_model: row.get(1)?,
+                upstream_model: row.get(2)?,
+                capabilities: parse_json_or_default(row.get::<_, String>(3)?.as_str()),
+                pricing_model: row.get(4)?,
+                request_overrides: parse_json_or_default(row.get::<_, String>(5)?.as_str()),
+                response_overrides: parse_json_or_default(row.get::<_, String>(6)?.as_str()),
+            })
+        })
+        .map_err(|e| AppError::Database(e.to_string()))?;
+
+    rows.collect::<Result<Vec<_>, _>>()
+        .map_err(|e| AppError::Database(e.to_string()))
+}
+
+fn push_channel_or_count_duplicate(
+    channels: &mut Vec<ProxyChannelRecord>,
+    seen_routes: &mut HashSet<(String, String, String)>,
+    duplicate_count: &mut usize,
+    channel: ProxyChannelRecord,
+) {
+    let route_key = (
+        channel.provider_id.clone(),
+        channel.interface_kind.clone(),
+        channel.base_url.clone(),
+    );
+    if !seen_routes.insert(route_key) {
+        *duplicate_count += 1;
+        return;
+    }
+    channels.push(channel);
+}
+
+fn build_legacy_channel(
+    app_type: &str,
+    provider: &Provider,
+    base_url: String,
+    interface_kind: String,
+    priority: i64,
+    source_kind: ProxyChannelSourceKind,
+    source_endpoint_url: Option<String>,
+) -> ProxyChannelRecord {
+    let id = stable_channel_id(app_type, &provider.id, source_kind.as_str(), &base_url);
+    let mut models = infer_model_routes(app_type, provider);
+    for model in &mut models {
+        model.channel_id = id.clone();
+    }
+
+    let mut review_reasons = Vec::new();
+    if base_url.is_empty() {
+        review_reasons.push("missing_base_url".to_string());
+    }
+    if models.is_empty() {
+        review_reasons.push("no_model_mapping_inferred".to_string());
+    }
+
+    let needs_review = !review_reasons.is_empty();
+    let metadata = json!({
+        "migration_source": source_kind.as_str(),
+        "provider_name": provider.name.as_str(),
+        "provider_sort_index": provider.sort_index,
+        "provider_in_failover_queue": provider.in_failover_queue,
+        "needs_review": needs_review,
+        "review_reasons": review_reasons,
+    });
+    let name = match &source_kind {
+        ProxyChannelSourceKind::LegacyPrimary => format!("{} primary", provider.name),
+        ProxyChannelSourceKind::LegacyEndpoint => format!("{} endpoint", provider.name),
+        ProxyChannelSourceKind::Manual => provider.name.clone(),
+    };
+
+    ProxyChannelRecord {
+        id,
+        provider_id: provider.id.clone(),
+        app_type: app_type.to_string(),
+        name,
+        status: "enabled".to_string(),
+        base_url,
+        interface_kind,
+        auth_profile_ref: Some(format!("provider:{app_type}:{}", provider.id)),
+        groups: vec![DEFAULT_GROUP.to_string()],
+        priority,
+        weight: 100,
+        retry_policy: json!({}),
+        health_policy: json!({}),
+        header_overrides: json!({}),
+        param_overrides: json!({}),
+        status_code_mapping: json!([]),
+        tags: vec!["legacy".to_string()],
+        metadata,
+        source_kind,
+        source_endpoint_url,
+        models,
+        needs_review,
+        review_reasons,
+    }
+}
+
+fn stable_channel_id(
+    app_type: &str,
+    provider_id: &str,
+    source_kind: &str,
+    base_url: &str,
+) -> String {
+    let mut hasher = Sha256::new();
+    hasher.update(app_type.as_bytes());
+    hasher.update([0]);
+    hasher.update(provider_id.as_bytes());
+    hasher.update([0]);
+    hasher.update(source_kind.as_bytes());
+    hasher.update([0]);
+    hasher.update(base_url.as_bytes());
+    let digest = hasher.finalize();
+    let suffix = digest
+        .iter()
+        .take(6)
+        .map(|byte| format!("{byte:02x}"))
+        .collect::<String>();
+    format!(
+        "legacy-{}-{}-{}-{suffix}",
+        slug_part(app_type),
+        slug_part(provider_id),
+        source_kind.replace('_', "-")
+    )
+}
+
+fn slug_part(value: &str) -> String {
+    let mut slug = String::new();
+    for ch in value.chars() {
+        if ch.is_ascii_alphanumeric() {
+            slug.push(ch.to_ascii_lowercase());
+        } else if ch == '-' || ch == '_' {
+            slug.push(ch);
+        } else if !slug.ends_with('-') {
+            slug.push('-');
+        }
+        if slug.len() >= 48 {
+            break;
+        }
+    }
+    slug.trim_matches('-').to_string()
+}
+
+fn legacy_priority(provider: &Provider, current_provider_id: Option<&str>) -> i64 {
+    if current_provider_id == Some(provider.id.as_str()) {
+        100
+    } else if provider.in_failover_queue {
+        50
+    } else {
+        0
+    }
+}
+
+fn normalize_base_url(value: &str) -> String {
+    value.trim().trim_end_matches('/').to_string()
+}
+
+fn infer_interface_kind(app: Option<&AppType>, provider: &Provider) -> String {
+    match app {
+        Some(AppType::Claude | AppType::ClaudeDesktop) => provider
+            .meta
+            .as_ref()
+            .and_then(|meta| meta.api_format.as_deref())
+            .map(|format| match format.trim().to_ascii_lowercase().as_str() {
+                "openai_chat" | "openai-chat" | "openai_chat_completions" => {
+                    "openai_chat_completions"
+                }
+                "openai_responses" | "openai-responses" | "responses" => "openai_responses",
+                "gemini" | "gemini_native" | "gemini-native" => "gemini_native",
+                _ => "anthropic_messages",
+            })
+            .unwrap_or("anthropic_messages")
+            .to_string(),
+        Some(AppType::Codex) => provider
+            .settings_config
+            .get("config")
+            .and_then(|value| value.as_str())
+            .and_then(extract_codex_wire_api)
+            .map(|wire_api| {
+                if is_chat_wire_api(&wire_api) {
+                    "openai_chat_completions"
+                } else {
+                    "openai_responses"
+                }
+            })
+            .unwrap_or("openai_responses")
+            .to_string(),
+        Some(AppType::Gemini) => "gemini_native".to_string(),
+        Some(AppType::OpenCode | AppType::OpenClaw | AppType::Hermes) | None => {
+            "custom".to_string()
+        }
+    }
+}
+
+fn infer_model_routes(app_type: &str, provider: &Provider) -> Vec<ProxyChannelModelRecord> {
+    match AppType::from_str(app_type).ok() {
+        Some(AppType::Claude | AppType::ClaudeDesktop) => infer_claude_models(provider),
+        Some(AppType::Codex) => infer_codex_models(provider),
+        Some(AppType::Gemini) => infer_env_models(provider, &["GEMINI_MODEL"]),
+        Some(AppType::OpenCode | AppType::OpenClaw | AppType::Hermes) | None => Vec::new(),
+    }
+}
+
+fn infer_claude_models(provider: &Provider) -> Vec<ProxyChannelModelRecord> {
+    let mut routes = infer_env_models(
+        provider,
+        &[
+            "ANTHROPIC_MODEL",
+            "ANTHROPIC_SMALL_FAST_MODEL",
+            "ANTHROPIC_DEFAULT_HAIKU_MODEL",
+            "ANTHROPIC_DEFAULT_HAIKU_MODEL_NAME",
+            "ANTHROPIC_DEFAULT_SONNET_MODEL",
+            "ANTHROPIC_DEFAULT_SONNET_MODEL_NAME",
+            "ANTHROPIC_DEFAULT_OPUS_MODEL",
+            "ANTHROPIC_DEFAULT_OPUS_MODEL_NAME",
+        ],
+    );
+
+    if let Some(meta) = provider.meta.as_ref() {
+        for (public_model, route) in &meta.claude_desktop_model_routes {
+            push_model_route(&mut routes, public_model, &route.model);
+        }
+    }
+
+    routes
+}
+
+fn infer_codex_models(provider: &Provider) -> Vec<ProxyChannelModelRecord> {
+    let mut routes = Vec::new();
+
+    if let Some(config_text) = provider
+        .settings_config
+        .get("config")
+        .and_then(|value| value.as_str())
+    {
+        if let Some(model) = extract_codex_model(config_text) {
+            push_model_route(&mut routes, &model, &model);
+        }
+    }
+
+    if let Some(models) = provider
+        .settings_config
+        .get("modelCatalog")
+        .and_then(|catalog| catalog.get("models"))
+        .and_then(|models| models.as_array())
+    {
+        for entry in models {
+            if let Some(model) = entry.get("model").and_then(|value| value.as_str()) {
+                push_model_route(&mut routes, model, model);
+            }
+        }
+    }
+
+    routes
+}
+
+fn infer_env_models(provider: &Provider, keys: &[&str]) -> Vec<ProxyChannelModelRecord> {
+    let mut routes = Vec::new();
+    let Some(env) = provider.settings_config.get("env") else {
+        return routes;
+    };
+
+    for key in keys {
+        if let Some(model) = env.get(key).and_then(|value| value.as_str()) {
+            push_model_route(&mut routes, model, model);
+        }
+    }
+
+    routes
+}
+
+fn push_model_route(
+    routes: &mut Vec<ProxyChannelModelRecord>,
+    public_model: &str,
+    upstream_model: &str,
+) {
+    let public_model = public_model.trim();
+    let upstream_model = upstream_model.trim();
+    if public_model.is_empty()
+        || upstream_model.is_empty()
+        || routes
+            .iter()
+            .any(|route| route.public_model == public_model)
+    {
+        return;
+    }
+
+    routes.push(ProxyChannelModelRecord {
+        channel_id: String::new(),
+        public_model: public_model.to_string(),
+        upstream_model: upstream_model.to_string(),
+        capabilities: json!({}),
+        pricing_model: None,
+        request_overrides: json!({}),
+        response_overrides: json!({}),
+    });
+}
+
+fn extract_codex_wire_api(config_text: &str) -> Option<String> {
+    let doc = config_text.parse::<toml::Value>().ok()?;
+    if let Some(active_provider) = doc.get("model_provider").and_then(|value| value.as_str()) {
+        if let Some(wire_api) = doc
+            .get("model_providers")
+            .and_then(|providers| providers.get(active_provider))
+            .and_then(|provider| provider.get("wire_api"))
+            .and_then(|value| value.as_str())
+        {
+            return Some(wire_api.to_string());
+        }
+    }
+    doc.get("wire_api")
+        .and_then(|value| value.as_str())
+        .map(ToString::to_string)
+}
+
+fn extract_codex_model(config_text: &str) -> Option<String> {
+    let doc = config_text.parse::<toml::Value>().ok()?;
+    doc.get("model")
+        .and_then(|value| value.as_str())
+        .map(str::trim)
+        .filter(|model| !model.is_empty())
+        .map(ToString::to_string)
+}
+
+fn is_chat_wire_api(value: &str) -> bool {
+    matches!(
+        value.trim().to_ascii_lowercase().as_str(),
+        "chat"
+            | "chat_completions"
+            | "chat-completions"
+            | "openai_chat"
+            | "openai-chat"
+            | "openai_chat_completions"
+    )
+}
+
+fn parse_json_or_default<T>(value: &str) -> T
+where
+    T: serde::de::DeserializeOwned + Default,
+{
+    serde_json::from_str(value).unwrap_or_default()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::provider::{ClaudeDesktopModelRoute, ProviderMeta};
+    use crate::settings::CustomEndpoint;
+    use serde_json::json;
+    use std::collections::HashMap;
+
+    fn save_claude_provider(db: &Database) {
+        let mut custom_endpoints = HashMap::new();
+        custom_endpoints.insert(
+            "https://relay-b.example.com/v1/".to_string(),
+            CustomEndpoint {
+                url: "https://relay-b.example.com/v1/".to_string(),
+                added_at: 2,
+                last_used: None,
+            },
+        );
+        custom_endpoints.insert(
+            "https://relay-a.example.com/v1".to_string(),
+            CustomEndpoint {
+                url: "https://relay-a.example.com/v1".to_string(),
+                added_at: 1,
+                last_used: None,
+            },
+        );
+
+        let mut routes = HashMap::new();
+        routes.insert(
+            "sonnet-safe".to_string(),
+            ClaudeDesktopModelRoute {
+                model: "claude-sonnet-4".to_string(),
+                label_override: Some("Sonnet".to_string()),
+                supports_1m: None,
+            },
+        );
+
+        let mut provider = Provider::with_id(
+            "anthropic-main".to_string(),
+            "Anthropic Main".to_string(),
+            json!({
+                "env": {
+                    "ANTHROPIC_BASE_URL": "https://relay-a.example.com/v1/",
+                    "ANTHROPIC_MODEL": "claude-sonnet-4",
+                    "ANTHROPIC_SMALL_FAST_MODEL": "claude-haiku-4"
+                }
+            }),
+            None,
+        );
+        provider.meta = Some(ProviderMeta {
+            api_format: Some("openai_responses".to_string()),
+            custom_endpoints,
+            claude_desktop_model_routes: routes,
+            ..ProviderMeta::default()
+        });
+        db.save_provider("claude", &provider)
+            .expect("save provider");
+        db.set_current_provider("claude", "anthropic-main")
+            .expect("set current");
+    }
+
+    #[test]
+    fn preview_projects_primary_and_unique_legacy_endpoints() {
+        let db = Database::memory().expect("memory db");
+        save_claude_provider(&db);
+
+        let preview = db
+            .preview_legacy_proxy_channel_migration("claude")
+            .expect("preview");
+
+        assert_eq!(preview.channels.len(), 2);
+        assert_eq!(preview.duplicate_count, 1);
+        assert_eq!(preview.needs_review_count, 0);
+
+        let primary = &preview.channels[0];
+        assert_eq!(primary.provider_id, "anthropic-main");
+        assert_eq!(primary.source_kind, ProxyChannelSourceKind::LegacyPrimary);
+        assert_eq!(primary.base_url, "https://relay-a.example.com/v1");
+        assert_eq!(primary.interface_kind, "openai_responses");
+        assert_eq!(primary.priority, 100);
+        assert_eq!(primary.models.len(), 3);
+        assert!(primary
+            .models
+            .iter()
+            .any(|model| model.public_model == "sonnet-safe"
+                && model.upstream_model == "claude-sonnet-4"));
+
+        let endpoint = &preview.channels[1];
+        assert_eq!(endpoint.source_kind, ProxyChannelSourceKind::LegacyEndpoint);
+        assert_eq!(endpoint.base_url, "https://relay-b.example.com/v1");
+    }
+
+    #[test]
+    fn materialize_is_idempotent() {
+        let db = Database::memory().expect("memory db");
+        save_claude_provider(&db);
+
+        let first = db
+            .materialize_legacy_proxy_channels("claude")
+            .expect("first materialize");
+        assert_eq!(first.previewed_channels, 2);
+        assert_eq!(first.inserted_channels, 2);
+        assert_eq!(first.inserted_health_rows, 2);
+        assert_eq!(first.inserted_models, 6);
+
+        let second = db
+            .materialize_legacy_proxy_channels("claude")
+            .expect("second materialize");
+        assert_eq!(second.inserted_channels, 0);
+        assert_eq!(second.inserted_health_rows, 0);
+        assert_eq!(second.inserted_models, 0);
+
+        let stored = db
+            .list_proxy_channels_for_app("claude")
+            .expect("list channels");
+        assert_eq!(stored.len(), 2);
+        assert!(stored.iter().all(|channel| !channel.models.is_empty()));
+
+        let direct_models = db
+            .list_proxy_channel_models(&stored[0].id)
+            .expect("list channel models");
+        assert_eq!(direct_models.len(), stored[0].models.len());
+    }
+
+    #[test]
+    fn codex_projection_infers_wire_api_and_models() {
+        let db = Database::memory().expect("memory db");
+        let provider = Provider::with_id(
+            "codex-relay".to_string(),
+            "Codex Relay".to_string(),
+            json!({
+                "config": "model_provider = \"custom\"\nmodel = \"gpt-5.4\"\n\n[model_providers.custom]\nbase_url = \"https://codex.example.com/v1\"\nwire_api = \"chat\"\n",
+                "modelCatalog": {
+                    "models": [
+                        { "model": "gpt-5.4" },
+                        { "model": "gpt-5.4-mini" }
+                    ]
+                }
+            }),
+            None,
+        );
+        db.save_provider("codex", &provider).expect("save provider");
+
+        let preview = db
+            .preview_legacy_proxy_channel_migration("codex")
+            .expect("preview");
+        assert_eq!(preview.channels.len(), 1);
+        let channel = &preview.channels[0];
+        assert_eq!(channel.interface_kind, "openai_chat_completions");
+        assert_eq!(channel.base_url, "https://codex.example.com/v1");
+        assert_eq!(channel.models.len(), 2);
+    }
+}

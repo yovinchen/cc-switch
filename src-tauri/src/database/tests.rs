@@ -198,6 +198,9 @@ fn schema_migration_adds_missing_columns_for_providers() {
         ("providers", "meta"),
         ("providers", "is_current"),
         ("provider_endpoints", "added_at"),
+        ("proxy_channels", "interface_kind"),
+        ("proxy_channel_models", "upstream_model"),
+        ("proxy_channel_health", "consecutive_failures"),
         ("mcp_servers", "enabled_gemini"),
         ("prompts", "updated_at"),
         ("skills", "installed_at"),
@@ -221,6 +224,42 @@ fn schema_migration_adds_missing_columns_for_providers() {
     assert_eq!(
         Database::get_user_version(&conn).expect("version after migration"),
         SCHEMA_VERSION
+    );
+}
+
+#[test]
+fn schema_migration_creates_proxy_channel_tables() {
+    let conn = Connection::open_in_memory().expect("open memory db");
+    conn.execute_batch(V3_8_SCHEMA_V1_SQL)
+        .expect("seed v3.8 schema");
+    Database::set_user_version(&conn, 1).expect("set legacy version");
+
+    Database::apply_schema_migrations_on_conn(&conn).expect("apply migrations");
+
+    for table in [
+        "proxy_channels",
+        "proxy_channel_models",
+        "proxy_channel_health",
+    ] {
+        assert!(
+            Database::table_exists(&conn, table).expect("check table"),
+            "{table} should exist after migration"
+        );
+    }
+
+    let status = get_column_info(&conn, "proxy_channels", "status");
+    assert_eq!(status.r#type, "TEXT");
+    assert_eq!(status.notnull, 1);
+    assert_eq!(
+        normalize_default(&status.default).as_deref(),
+        Some("enabled")
+    );
+
+    let health_status = get_column_info(&conn, "proxy_channel_health", "status");
+    assert_eq!(health_status.r#type, "TEXT");
+    assert_eq!(
+        normalize_default(&health_status.default).as_deref(),
+        Some("unknown")
     );
 }
 
