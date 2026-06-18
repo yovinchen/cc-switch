@@ -48,15 +48,15 @@ use crate::proxy_core::{
     transformed_sse_proxy_response, validate_management_bearer_value, AppChannelListQuery,
     AppChannelListResponse, AppChannelResponse, AppChannelRouteResponse, AppKind, AppListResponse,
     AppModelListQuery, AppSummary, ChannelDeleteResponse, ChannelHealthResetResponse,
-    ChannelListResponse, ChannelMigrationMaterializeResponse, ChannelMigrationPreviewResponse,
-    ChannelModelsResponse, ChannelRouteCandidate, ChannelRouteRejected,
-    CurrentRouteProviderSummary, CurrentRouteResponse, HealthCheckResponse, InterfaceKind,
-    ManagementAuthDecision, ManagementAuthError, ProviderListResponse, ProviderSummaryInput,
-    ProxyBody, ProxyChannelModelsReplaceRequest, ProxyChannelPatchRequest,
-    ProxyChannelWriteRequest, ProxyEngine, ProxyRequest, ProxyResult, ProxyServices,
-    RoutableModelList, RouteGroupChannelInput, RouteGroupListResponse, RouteGroupSourceInput,
-    RouteResolveRequest, RouteResolveResponse, TransformedResponseUsageFormat,
-    UpstreamJsonBodySource, UpstreamSseAggregationKind,
+    ChannelListQuery, ChannelListResponse, ChannelMigrationMaterializeResponse,
+    ChannelMigrationPreviewResponse, ChannelModelsResponse, ChannelRouteCandidate,
+    ChannelRouteRejected, CurrentRouteProviderSummary, CurrentRouteResponse, GroupListQuery,
+    HealthCheckResponse, InterfaceKind, ManagementAuthDecision, ManagementAuthError,
+    ProviderListResponse, ProviderSummaryInput, ProxyBody, ProxyChannelModelsReplaceRequest,
+    ProxyChannelPatchRequest, ProxyChannelWriteRequest, ProxyEngine, ProxyRequest, ProxyResult,
+    ProxyServices, RoutableModelList, RouteGroupChannelInput, RouteGroupListResponse,
+    RouteGroupSourceInput, RouteResolveRequest, RouteResolveResponse,
+    TransformedResponseUsageFormat, UpstreamJsonBodySource, UpstreamSseAggregationKind,
 };
 use axum::{
     extract::{Path, Query, State},
@@ -66,24 +66,9 @@ use axum::{
 };
 use bytes::Bytes;
 use http_body_util::BodyExt;
-use serde::Deserialize;
 use serde_json::{json, Value};
 use std::convert::Infallible;
 use std::time::Duration;
-
-#[derive(Debug, Deserialize, Default)]
-#[serde(rename_all = "camelCase")]
-pub struct ChannelListQuery {
-    #[serde(default)]
-    app_type: Option<String>,
-}
-
-#[derive(Debug, Deserialize, Default)]
-#[serde(rename_all = "camelCase")]
-pub struct GroupListQuery {
-    #[serde(default)]
-    app_type: Option<String>,
-}
 
 // ============================================================================
 // 健康检查和状态查询（简单端点）
@@ -316,11 +301,11 @@ pub async fn list_all_proxy_channels(
     State(state): State<ProxyState>,
     Query(query): Query<ChannelListQuery>,
 ) -> Result<Json<ChannelListResponse<ProxyChannelRecord>>, ProxyError> {
-    let channels = if let Some(app_type) = query.app_type.as_deref() {
-        validate_management_app_type(app_type)?;
+    let channels = if let Some(app_type) = query.app_type() {
+        validate_management_app_type(&app_type)?;
         state
             .db
-            .list_proxy_channels_for_app(app_type)
+            .list_proxy_channels_for_app(&app_type)
             .map_err(|e| ProxyError::DatabaseError(e.to_string()))?
     } else {
         state
@@ -466,11 +451,7 @@ pub async fn list_proxy_groups(
     State(state): State<ProxyState>,
     Query(query): Query<GroupListQuery>,
 ) -> Result<Json<RouteGroupListResponse>, ProxyError> {
-    let requested_app_type = query
-        .app_type
-        .as_deref()
-        .map(str::trim)
-        .map(ToString::to_string);
+    let requested_app_type = query.app_type();
     let app_types = if let Some(app_type) = requested_app_type.as_deref() {
         validate_management_app_type(app_type)?;
         vec![app_type.to_string()]

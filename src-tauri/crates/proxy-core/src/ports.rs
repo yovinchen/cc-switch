@@ -816,6 +816,38 @@ impl AppModelListQuery {
     }
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct ChannelListQuery {
+    #[serde(default)]
+    app_type: Option<String>,
+}
+
+impl ChannelListQuery {
+    pub fn app_type(&self) -> Option<String> {
+        self.app_type
+            .as_deref()
+            .map(str::trim)
+            .map(ToString::to_string)
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct GroupListQuery {
+    #[serde(default)]
+    app_type: Option<String>,
+}
+
+impl GroupListQuery {
+    pub fn app_type(&self) -> Option<String> {
+        self.app_type
+            .as_deref()
+            .map(str::trim)
+            .map(ToString::to_string)
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct ChannelRouteCandidate {
@@ -1003,13 +1035,14 @@ pub enum ProxyCoreEventType {
 mod tests {
     use super::{
         AppChannelListQuery, AppChannelListResponse, AppChannelResponse, AppChannelRouteResponse,
-        AppListResponse, AppModelListQuery, AppSummary, ChannelDeleteResponse, ChannelListResponse,
-        ChannelModelsResponse, ChannelMigrationMaterializeResponse, ChannelMigrationPreviewResponse,
-        ChannelRouteCandidate, ChannelRouteRejected, ChannelRouteSource, CurrentRouteProviderSummary,
-        CurrentRouteResponse, ProviderListResponse, ProviderSummaryInput,
-        HealthCheckResponse, ProxyChannelModelWriteRequest, ProxyChannelModelsReplaceRequest,
-        ProxyChannelPatchRequest, ProxyChannelWriteRequest, RouteGroupChannelInput,
-        RouteGroupListResponse, RouteGroupSourceInput, RouteResolveResponse,
+        AppListResponse, AppModelListQuery, AppSummary, ChannelDeleteResponse, ChannelListQuery,
+        ChannelListResponse, ChannelModelsResponse, ChannelMigrationMaterializeResponse,
+        ChannelMigrationPreviewResponse, ChannelRouteCandidate, ChannelRouteRejected,
+        ChannelRouteSource, CurrentRouteProviderSummary, CurrentRouteResponse, GroupListQuery,
+        HealthCheckResponse, ProviderListResponse, ProviderSummaryInput,
+        ProxyChannelModelWriteRequest, ProxyChannelModelsReplaceRequest, ProxyChannelPatchRequest,
+        ProxyChannelWriteRequest, RouteGroupChannelInput, RouteGroupListResponse,
+        RouteGroupSourceInput, RouteResolveResponse,
     };
     use serde_json::json;
 
@@ -1072,6 +1105,40 @@ mod tests {
         let request = query.into_route_request("claude");
 
         assert_eq!(request.route_group.as_deref(), Some(" "));
+    }
+
+    #[test]
+    fn channel_list_query_trims_app_type_without_dropping_empty_value() {
+        let query: ChannelListQuery = serde_json::from_value(json!({
+            "appType": " claude "
+        }))
+        .expect("deserialize query");
+
+        assert_eq!(query.app_type().as_deref(), Some("claude"));
+
+        let query: ChannelListQuery = serde_json::from_value(json!({
+            "appType": " "
+        }))
+        .expect("deserialize query");
+
+        assert_eq!(query.app_type().as_deref(), Some(""));
+    }
+
+    #[test]
+    fn group_list_query_trims_app_type_without_dropping_empty_value() {
+        let query: GroupListQuery = serde_json::from_value(json!({
+            "appType": " codex "
+        }))
+        .expect("deserialize query");
+
+        assert_eq!(query.app_type().as_deref(), Some("codex"));
+
+        let query: GroupListQuery = serde_json::from_value(json!({
+            "appType": " "
+        }))
+        .expect("deserialize query");
+
+        assert_eq!(query.app_type().as_deref(), Some(""));
     }
 
     #[test]
