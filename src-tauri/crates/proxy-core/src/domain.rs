@@ -1,7 +1,9 @@
 use bytes::Bytes;
+use futures::stream::Stream;
 use http::{HeaderMap, Method, StatusCode};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
+use std::pin::Pin;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -465,11 +467,59 @@ impl Default for ProxyBody {
     }
 }
 
-#[derive(Debug, Clone, PartialEq)]
+pub type ProxyByteStream =
+    Pin<Box<dyn Stream<Item = Result<Bytes, std::io::Error>> + Send + 'static>>;
+
+pub enum ProxyResponseBody {
+    Empty,
+    Json(Value),
+    Bytes(Bytes),
+    Stream(ProxyByteStream),
+}
+
+impl ProxyResponseBody {
+    pub fn bytes(body: impl Into<Bytes>) -> Self {
+        Self::Bytes(body.into())
+    }
+
+    pub fn json(body: Value) -> Self {
+        Self::Json(body)
+    }
+
+    pub fn stream(stream: impl Stream<Item = Result<Bytes, std::io::Error>> + Send + 'static) -> Self {
+        Self::Stream(Box::pin(stream))
+    }
+
+    pub fn is_stream(&self) -> bool {
+        matches!(self, Self::Stream(_))
+    }
+}
+
+impl Default for ProxyResponseBody {
+    fn default() -> Self {
+        Self::Empty
+    }
+}
+
+impl std::fmt::Debug for ProxyResponseBody {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Empty => f.write_str("Empty"),
+            Self::Json(value) => f.debug_tuple("Json").field(value).finish(),
+            Self::Bytes(bytes) => f
+                .debug_tuple("Bytes")
+                .field(&format_args!("{} bytes", bytes.len()))
+                .finish(),
+            Self::Stream(_) => f.write_str("Stream(..)"),
+        }
+    }
+}
+
+#[derive(Debug)]
 pub struct ProxyCoreResponse {
     pub status: StatusCode,
     pub headers: HeaderMap,
-    pub body: ProxyBody,
+    pub body: ProxyResponseBody,
 }
 
 impl ProxyCoreResponse {
@@ -477,12 +527,20 @@ impl ProxyCoreResponse {
         Self {
             status,
             headers: HeaderMap::new(),
-            body: ProxyBody::Empty,
+            body: ProxyResponseBody::Empty,
+        }
+    }
+
+    pub fn with_body(status: StatusCode, headers: HeaderMap, body: ProxyResponseBody) -> Self {
+        Self {
+            status,
+            headers,
+            body,
         }
     }
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug)]
 pub struct ProxyResult {
     pub response: ProxyCoreResponse,
     pub selected_route: RouteSelection,
@@ -545,4 +603,27 @@ pub struct UsageRecord {
 
 fn normalize_token(value: &str) -> String {
     value.trim().to_ascii_lowercase()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use futures::StreamExt;
+
+    #[test]
+    fn response_body_can_hold_stream_without_host_transport_types() {
+        let stream = futures::stream::iter(vec![Ok(Bytes::from_static(b"chunk"))]);
+        let body = ProxyResponseBody::stream(stream);
+
+        assert!(body.is_stream());
+        match body {
+            ProxyResponseBody::Stream(mut stream) => {
+                let chunk = futures::executor::block_on(stream.next())
+                    .expect("stream item")
+                    .expect("stream chunk");
+                assert_eq!(chunk, Bytes::from_static(b"chunk"));
+            }
+            _ => panic!("expected stream body"),
+        }
+    }
 }

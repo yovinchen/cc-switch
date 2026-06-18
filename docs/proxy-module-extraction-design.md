@@ -16,7 +16,8 @@
 5. `ProxyEngine::handle` 已拥有编排骨架：请求计数、route selected 事件、`ForwardPipeline` 端口调用、`UsageSink` 调用。
 6. `CcSwitchEventSink` 已桥接到现有 `ProxyEventBus`，核心事件可以进入 `/proxy/v1/events` 的 SSE 流。
 7. `UsageSink` 已升级为完整 `UsageRecord` 并可通过 `CcSwitchUsageSink` 写入现有 `proxy_request_logs`；现有 response pipeline 仍直接调用 `UsageLogger`，切到核心 sink 需在迁移响应 pipeline 时完成。
-8. `ForwardPipeline` 仍处于迁移中：host 侧实际 HTTP 转发仍由 `RequestForwarder` 承载；接入前需要先补齐中立的流式响应体抽象，避免把 axum/hyper 类型带入 core crate。
+8. 核心响应体已从请求 `ProxyBody` 拆出为 `ProxyResponseBody`，可以表达 empty/json/bytes/stream，避免把 axum/hyper 类型带入 core crate。
+9. `ForwardPipeline` 仍处于迁移中：host 侧实际 HTTP 转发仍由 `RequestForwarder` 承载；下一步应把 `RequestForwarder` 收窄成 host `ForwardPipeline` adapter。
 
 当前原则：核心 crate 可以新增端口和领域字段，但不得引入 `tauri`、`Database`、settings、commands、services 等宿主依赖；现有 runtime 行为必须继续通过 targeted tests 证明不回归。
 
@@ -476,10 +477,17 @@ pub enum ProxyBody {
 }
 
 pub struct ProxyResult {
-    pub response: ProxyResponse,
+    pub response: ProxyCoreResponse,
     pub selected_route: RouteSelection,
     pub outbound_model: Option<String>,
     pub usage_record: Option<UsageRecord>,
+}
+
+pub enum ProxyResponseBody {
+    Empty,
+    Json(serde_json::Value),
+    Bytes(bytes::Bytes),
+    Stream(ProxyByteStream),
 }
 ```
 
