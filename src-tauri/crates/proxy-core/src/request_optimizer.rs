@@ -14,6 +14,12 @@ pub struct CopilotClassification {
     pub is_subagent: bool,
 }
 
+#[derive(Debug, Clone, PartialEq)]
+pub struct CopilotWarmupModelOverrideResult {
+    pub body: Value,
+    pub applied_model: Option<String>,
+}
+
 pub fn provider_declares_bedrock(use_bedrock_env: Option<&str>) -> bool {
     matches!(use_bedrock_env, Some("1"))
 }
@@ -31,6 +37,26 @@ pub fn resolve_copilot_warmup_model_override<'a>(
     warmup_model: &'a str,
 ) -> Option<&'a str> {
     (warmup_downgrade_enabled && is_warmup_request).then_some(warmup_model)
+}
+
+pub fn apply_copilot_warmup_model_override(
+    mut body: Value,
+    warmup_downgrade_enabled: bool,
+    is_warmup_request: bool,
+    warmup_model: &str,
+) -> CopilotWarmupModelOverrideResult {
+    let applied_model =
+        resolve_copilot_warmup_model_override(warmup_downgrade_enabled, is_warmup_request, warmup_model)
+            .map(str::to_string);
+
+    if let Some(model) = &applied_model {
+        body["model"] = Value::String(model.clone());
+    }
+
+    CopilotWarmupModelOverrideResult {
+        body,
+        applied_model,
+    }
 }
 
 pub fn classify_copilot_request(
@@ -519,8 +545,8 @@ fn uuid_v4_string_from_hash(hash: &[u8]) -> String {
 #[cfg(test)]
 mod tests {
     use super::{
-        classify_copilot_request, merge_copilot_tool_results, parse_session_from_user_id,
-        provider_declares_bedrock, sanitize_copilot_orphan_tool_results,
+        apply_copilot_warmup_model_override, classify_copilot_request, merge_copilot_tool_results,
+        parse_session_from_user_id, provider_declares_bedrock, sanitize_copilot_orphan_tool_results,
         resolve_copilot_optimizer_session_id, should_apply_bedrock_pre_send_optimizer,
         resolve_copilot_deterministic_interaction_id, resolve_copilot_deterministic_request_id,
         resolve_copilot_warmup_model_override, strip_copilot_thinking_blocks,
@@ -559,6 +585,32 @@ mod tests {
             resolve_copilot_warmup_model_override(true, false, "gpt-4o-mini"),
             None
         );
+    }
+
+    #[test]
+    fn copilot_warmup_model_override_applies_model_body_mutation() {
+        let body = json!({
+            "model": "claude-sonnet-4",
+            "messages": [{"role": "user", "content": "Hello"}]
+        });
+
+        let result = apply_copilot_warmup_model_override(body, true, true, "gpt-4o-mini");
+
+        assert_eq!(result.body["model"], "gpt-4o-mini");
+        assert_eq!(result.applied_model, Some("gpt-4o-mini".to_string()));
+    }
+
+    #[test]
+    fn copilot_warmup_model_override_leaves_body_when_gate_is_closed() {
+        let body = json!({
+            "model": "claude-sonnet-4",
+            "messages": [{"role": "user", "content": "Hello"}]
+        });
+
+        let result = apply_copilot_warmup_model_override(body.clone(), false, true, "gpt-4o-mini");
+
+        assert_eq!(result.body, body);
+        assert_eq!(result.applied_model, None);
     }
 
     #[test]

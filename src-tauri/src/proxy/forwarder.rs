@@ -28,13 +28,13 @@ use crate::proxy::providers::codex_oauth_auth::CodexOAuthManager;
 use crate::proxy::providers::copilot_auth::CopilotAuthManager;
 use crate::proxy_core::append_query_to_full_url;
 use crate::proxy_core::{
-    attempt_event_name, build_attempt_event_payload, build_codex_oauth_session_headers,
-    build_request_started_event_payload, build_retryable_forward_failure_log,
-    build_terminal_forward_failure_log, build_upstream_auth_headers, categorize_forward_failure,
-    classify_copilot_request, is_github_copilot_upstream, is_socks_proxy_url,
-    merge_copilot_tool_results, resolve_copilot_deterministic_interaction_id,
-    resolve_copilot_deterministic_request_id, resolve_copilot_optimizer_session_id,
-    resolve_copilot_warmup_model_override, resolve_media_prevention_policy,
+    apply_copilot_warmup_model_override, attempt_event_name, build_attempt_event_payload,
+    build_codex_oauth_session_headers, build_request_started_event_payload,
+    build_retryable_forward_failure_log, build_terminal_forward_failure_log,
+    build_upstream_auth_headers, categorize_forward_failure, classify_copilot_request,
+    is_github_copilot_upstream, is_socks_proxy_url, merge_copilot_tool_results,
+    resolve_copilot_deterministic_interaction_id, resolve_copilot_deterministic_request_id,
+    resolve_copilot_optimizer_session_id, resolve_media_prevention_policy,
     resolve_upstream_request_transport_policy, resolve_upstream_send_policy,
     resolved_copilot_dynamic_base_url, sanitize_copilot_orphan_tool_results,
     should_apply_bedrock_pre_send_optimizer, should_check_media_retry,
@@ -1661,14 +1661,16 @@ impl RequestForwarder {
             }
 
             // 4. Warmup 小模型降级
-            if let Some(warmup_model) = resolve_copilot_warmup_model_override(
+            let warmup_override = apply_copilot_warmup_model_override(
+                mapped_body,
                 self.copilot_optimizer_config.warmup_downgrade,
                 classification.is_warmup,
                 &self.copilot_optimizer_config.warmup_model,
-            ) {
+            );
+            if let Some(warmup_model) = &warmup_override.applied_model {
                 log::info!("[Copilot] Warmup 请求降级到模型: {}", warmup_model);
-                mapped_body["model"] = serde_json::json!(warmup_model);
             }
+            mapped_body = warmup_override.body;
 
             // 预计算确定性 Request ID（在 body 被 move 之前）
             // Session 提取优先级由 proxy-core::request_optimizer 固化：
