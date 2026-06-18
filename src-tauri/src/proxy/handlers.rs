@@ -36,18 +36,20 @@ use crate::app_config::AppType;
 use crate::database::{ProxyChannelModelRecord, ProxyChannelRecord};
 use crate::proxy_core::{
     body_diagnostics_suffix, body_looks_like_sse, claude_stream_usage_event_filter,
-    codex_stream_usage_event_filter, should_aggregate_codex_oauth_responses_sse,
-    should_use_claude_transform_streaming, strip_entity_headers_for_rebuilt_body,
-    strip_hop_by_hop_response_headers, AppChannelListQuery, AppChannelListResponse,
+    codex_stream_usage_event_filter, resolve_management_auth_decision,
+    should_aggregate_codex_oauth_responses_sse, should_use_claude_transform_streaming,
+    strip_entity_headers_for_rebuilt_body, strip_hop_by_hop_response_headers,
+    validate_management_bearer_value, AppChannelListQuery, AppChannelListResponse,
     AppChannelResponse, AppChannelRouteResponse, AppKind, AppListResponse, AppModelListQuery,
     AppSummary, ChannelDeleteResponse, ChannelHealthResetResponse, ChannelListResponse,
     ChannelMigrationMaterializeResponse, ChannelMigrationPreviewResponse, ChannelModelsResponse,
     ChannelRouteCandidate, ChannelRouteRejected, CurrentRouteProviderSummary, CurrentRouteResponse,
-    HealthCheckResponse, InterfaceKind, ProviderListResponse, ProviderSummary, ProxyBody,
-    ProxyChannelModelsReplaceRequest, ProxyChannelPatchRequest, ProxyChannelWriteRequest,
-    ProxyCoreError, ProxyCoreResponse, ProxyEngine, ProxyRequest, ProxyResponseBody, ProxyResult,
-    ProxyServices, RoutableModelList, RouteGroupChannelInput, RouteGroupListResponse,
-    RouteGroupSourceInput, RouteResolveRequest, RouteResolveResponse,
+    HealthCheckResponse, InterfaceKind, ManagementAuthDecision, ManagementAuthError,
+    ProviderListResponse, ProviderSummary, ProxyBody, ProxyChannelModelsReplaceRequest,
+    ProxyChannelPatchRequest, ProxyChannelWriteRequest, ProxyCoreError, ProxyCoreResponse,
+    ProxyEngine, ProxyRequest, ProxyResponseBody, ProxyResult, ProxyServices, RoutableModelList,
+    RouteGroupChannelInput, RouteGroupListResponse, RouteGroupSourceInput, RouteResolveRequest,
+    RouteResolveResponse,
 };
 use axum::{
     extract::{Path, Query, State},
@@ -62,7 +64,6 @@ use serde::Deserialize;
 use serde_json::{json, Value};
 use std::collections::HashSet;
 use std::convert::Infallible;
-use std::net::IpAddr;
 use std::time::Duration;
 
 #[derive(Debug, Deserialize, Default)]
@@ -145,54 +146,22 @@ pub async fn require_proxy_management_auth(
     request: axum::extract::Request,
     next: axum::middleware::Next,
 ) -> Result<axum::response::Response, ProxyError> {
-    let expected_token = {
+    let auth_decision = {
         let config = state.config.read().await;
-        let configured_token = normalized_management_token(config.management_auth_token.as_deref());
-        let external_listener = !is_loopback_listen_address(&config.listen_address);
-
-        if configured_token.is_none() && !external_listener {
-            None
-        } else {
-            configured_token
-                .or_else(|| {
-                    if external_listener {
-                        std::env::var("CC_SWITCH_PROXY_MANAGEMENT_TOKEN")
-                            .ok()
-                            .and_then(|value| normalized_management_token(Some(&value)))
-                    } else {
-                        None
-                    }
-                })
-                .ok_or_else(|| {
-                    ProxyError::AuthError(
-                        "Proxy management token is required for non-loopback listeners".to_string(),
-                    )
-                })
-                .map(Some)?
-        }
+        let fallback_token = std::env::var("CC_SWITCH_PROXY_MANAGEMENT_TOKEN").ok();
+        resolve_management_auth_decision(
+            &config.listen_address,
+            config.management_auth_token.as_deref(),
+            fallback_token.as_deref(),
+        )
+        .map_err(management_auth_error_to_proxy_error)?
     };
 
-    if let Some(expected_token) = expected_token {
+    if let ManagementAuthDecision::RequireToken(expected_token) = auth_decision {
         validate_management_bearer(request.headers(), &expected_token)?;
     }
 
     Ok(next.run(request).await)
-}
-
-fn normalized_management_token(token: Option<&str>) -> Option<String> {
-    token
-        .map(str::trim)
-        .filter(|token| !token.is_empty())
-        .map(ToString::to_string)
-}
-
-fn is_loopback_listen_address(listen_address: &str) -> bool {
-    let listen_address = listen_address.trim();
-    listen_address.eq_ignore_ascii_case("localhost")
-        || listen_address
-            .parse::<IpAddr>()
-            .map(|address| address.is_loopback())
-            .unwrap_or(false)
 }
 
 fn validate_management_bearer(
@@ -201,20 +170,20 @@ fn validate_management_bearer(
 ) -> Result<(), ProxyError> {
     let value = headers
         .get(axum::http::header::AUTHORIZATION)
-        .ok_or_else(|| ProxyError::AuthError("Missing management bearer token".to_string()))?
-        .to_str()
-        .map_err(|_| ProxyError::AuthError("Invalid Authorization header".to_string()))?;
-    let (scheme, token) = value
-        .split_once(' ')
-        .ok_or_else(|| ProxyError::AuthError("Invalid Authorization header".to_string()))?;
+        .map(|value| {
+            value
+                .to_str()
+                .map_err(|_| ManagementAuthError::InvalidAuthorizationHeader)
+        })
+        .transpose()
+        .map_err(management_auth_error_to_proxy_error)?;
 
-    if !scheme.eq_ignore_ascii_case("bearer") || token.trim() != expected_token {
-        return Err(ProxyError::AuthError(
-            "Invalid management bearer token".to_string(),
-        ));
-    }
+    validate_management_bearer_value(value, expected_token)
+        .map_err(management_auth_error_to_proxy_error)
+}
 
-    Ok(())
+fn management_auth_error_to_proxy_error(error: ManagementAuthError) -> ProxyError {
+    ProxyError::AuthError(error.message().to_string())
 }
 
 /// GET /proxy/v1/apps
