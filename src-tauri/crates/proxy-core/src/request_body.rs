@@ -166,6 +166,25 @@ pub fn map_anthropic_tool_choice_to_openai_responses(tool_choice: &Value) -> Val
     }
 }
 
+pub fn inject_openai_stream_include_usage(body: &mut Value) {
+    let is_stream = body
+        .get("stream")
+        .and_then(|value| value.as_bool())
+        .unwrap_or(false);
+    if !is_stream {
+        return;
+    }
+
+    match body.get_mut("stream_options") {
+        Some(Value::Object(options)) => {
+            options.insert("include_usage".to_string(), Value::Bool(true));
+        }
+        _ => {
+            body["stream_options"] = serde_json::json!({ "include_usage": true });
+        }
+    }
+}
+
 pub fn prepare_upstream_request_body_with_report(
     request_body: Value,
 ) -> PreparedUpstreamRequestBody {
@@ -275,7 +294,7 @@ mod tests {
     use super::{
         canonicalize_request_body_value, filter_private_params,
         filter_private_params_with_whitelist, filter_private_params_with_whitelist_report,
-        is_openai_o_series, method_allows_upstream_request_body,
+        inject_openai_stream_include_usage, is_openai_o_series, method_allows_upstream_request_body,
         map_anthropic_tool_choice_to_openai_chat,
         map_anthropic_tool_choice_to_openai_responses, prepare_upstream_request_body_with_report,
         resolve_reasoning_effort, serialize_upstream_request_body,
@@ -559,5 +578,32 @@ mod tests {
             ),
             json!({"type": "function", "name": "search"})
         );
+    }
+
+    #[test]
+    fn injects_openai_stream_include_usage_only_for_streaming_requests() {
+        let mut non_streaming = json!({"stream": false});
+        inject_openai_stream_include_usage(&mut non_streaming);
+        assert!(non_streaming.get("stream_options").is_none());
+
+        let mut streaming = json!({"stream": true});
+        inject_openai_stream_include_usage(&mut streaming);
+        assert_eq!(streaming["stream_options"]["include_usage"], true);
+    }
+
+    #[test]
+    fn injects_openai_stream_include_usage_preserves_existing_options() {
+        let mut body = json!({
+            "stream": true,
+            "stream_options": {
+                "continuous_usage_stats": true,
+                "include_usage": false
+            }
+        });
+
+        inject_openai_stream_include_usage(&mut body);
+
+        assert_eq!(body["stream_options"]["include_usage"], true);
+        assert_eq!(body["stream_options"]["continuous_usage_stats"], true);
     }
 }

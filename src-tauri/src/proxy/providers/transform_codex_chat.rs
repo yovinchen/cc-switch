@@ -337,7 +337,7 @@ pub fn responses_to_chat_completions_with_reasoning(
     // 自身不带 stream_options，缺这一注入会导致 kimi/MiniMax 等第三方流式请求的
     // token/成本/缓存命中率全部漏记（input/output/cache 全为 0）。
     // 与 Claude→openai_chat 路径共用同一 helper，保证两个客户端方向一致。
-    super::transform::inject_openai_stream_include_usage(&mut result);
+    crate::proxy_core::inject_openai_stream_include_usage(&mut result);
 
     Ok(result)
 }
