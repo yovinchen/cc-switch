@@ -625,6 +625,51 @@ pub fn success_usage_record_with_request_id_fallback(
     }
 }
 
+#[allow(clippy::too_many_arguments)]
+pub fn error_usage_record_with_request_id_fallback(
+    provider_id: &str,
+    provider_kind: Option<ProviderKind>,
+    app: AppKind,
+    request_model: &str,
+    outbound_model: Option<&str>,
+    status_code: u16,
+    error_message: String,
+    latency_ms: u64,
+    is_streaming: bool,
+    session_id: Option<String>,
+    request_id_fallback: impl FnOnce() -> String,
+) -> UsageRecord {
+    let models = normalize_error_usage_models(request_model, outbound_model);
+
+    UsageRecord {
+        request_id: Some(request_id_fallback()),
+        message_id: None,
+        app,
+        provider_id: provider_id.to_string(),
+        provider_kind,
+        channel_id: None,
+        channel_name: None,
+        route_group: None,
+        request_model: models.request_model,
+        outbound_model: models.outbound_model,
+        response_model: None,
+        pricing_model: None,
+        tokens: UsageTokens {
+            input_tokens: 0,
+            output_tokens: 0,
+            cache_read_tokens: 0,
+            cache_creation_tokens: 0,
+        },
+        latency_ms,
+        first_token_ms: None,
+        status_code,
+        error_message: Some(error_message),
+        session_id,
+        is_streaming,
+        metadata: Value::Object(Default::default()),
+    }
+}
+
 pub fn token_usage_from_usage_record(record: &UsageRecord) -> TokenUsage {
     TokenUsage {
         input_tokens: u64_to_u32_saturating(record.tokens.input_tokens),
@@ -1560,6 +1605,40 @@ mod tests {
         assert_eq!(record.latency_ms, 123);
         assert_eq!(record.first_token_ms, Some(45));
         assert!(record.is_streaming);
+    }
+
+    #[test]
+    fn test_error_usage_record_builder_uses_zero_tokens_and_fallback_id() {
+        let record = error_usage_record_with_request_id_fallback(
+            "provider-a",
+            Some(crate::ProviderKind::CodexOAuth),
+            crate::AppKind::Codex,
+            "client-model",
+            Some("upstream-model"),
+            502,
+            "upstream failed".to_string(),
+            321,
+            false,
+            Some("session-1".to_string()),
+            || "error-id".to_string(),
+        );
+
+        assert_eq!(record.request_id.as_deref(), Some("error-id"));
+        assert_eq!(record.provider_id, "provider-a");
+        assert_eq!(record.provider_kind, Some(crate::ProviderKind::CodexOAuth));
+        assert_eq!(record.app, crate::AppKind::Codex);
+        assert_eq!(record.request_model, "client-model");
+        assert_eq!(record.outbound_model, "upstream-model");
+        assert_eq!(record.response_model, None);
+        assert_eq!(record.status_code, 502);
+        assert_eq!(record.error_message.as_deref(), Some("upstream failed"));
+        assert_eq!(record.tokens.input_tokens, 0);
+        assert_eq!(record.tokens.output_tokens, 0);
+        assert_eq!(record.tokens.cache_read_tokens, 0);
+        assert_eq!(record.tokens.cache_creation_tokens, 0);
+        assert_eq!(record.latency_ms, 321);
+        assert_eq!(record.first_token_ms, None);
+        assert!(!record.is_streaming);
     }
 
     #[test]
