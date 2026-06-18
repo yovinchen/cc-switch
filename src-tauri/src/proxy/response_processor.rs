@@ -15,19 +15,14 @@ use super::{
 use crate::proxy_core::{
     decompress_body, get_content_encoding, strip_entity_headers_for_rebuilt_body,
     strip_hop_by_hop_response_headers, ProviderKind, ProxyServices, SseEventScanner,
+    SseUsageAccumulator,
 };
 use axum::http::header::HeaderMap;
 use axum::response::{IntoResponse, Response};
 use bytes::Bytes;
 use futures::stream::{Stream, StreamExt};
 use serde_json::Value;
-use std::{
-    sync::{
-        atomic::{AtomicBool, Ordering},
-        Arc,
-    },
-    time::Duration,
-};
+use std::{sync::Arc, time::Duration};
 use tokio::sync::Mutex;
 
 /// 读取响应体并在需要时解压，确保 headers 与返回 body 一致。
@@ -303,13 +298,9 @@ pub struct SseUsageCollector {
 }
 
 struct SseUsageCollectorInner {
-    events: Mutex<Vec<Value>>,
-    first_event_time: Mutex<Option<std::time::Instant>>,
-    first_event_set: AtomicBool,
-    start_time: std::time::Instant,
+    accumulator: Mutex<SseUsageAccumulator>,
     on_complete: UsageCallbackWithTiming,
     should_collect: Option<StreamUsageEventFilter>,
-    finished: AtomicBool,
 }
 
 impl SseUsageCollector {
@@ -322,13 +313,9 @@ impl SseUsageCollector {
         let on_complete: UsageCallbackWithTiming = Arc::new(callback);
         Self {
             inner: Arc::new(SseUsageCollectorInner {
-                events: Mutex::new(Vec::new()),
-                first_event_time: Mutex::new(None),
-                first_event_set: AtomicBool::new(false),
-                start_time,
+                accumulator: Mutex::new(SseUsageAccumulator::new(start_time)),
                 on_complete,
                 should_collect,
-                finished: AtomicBool::new(false),
             }),
         }
     }
@@ -340,42 +327,21 @@ impl SseUsageCollector {
             .unwrap_or(true)
     }
 
-    /// 标记首个被收集的 SSE 事件时间，沿用 `first_token_ms` 的既有近似语义。
-    async fn mark_first_collected_event_time(&self) {
-        if self.inner.first_event_set.load(Ordering::Acquire) {
-            return;
-        }
-        let mut first_time = self.inner.first_event_time.lock().await;
-        if first_time.is_none() {
-            *first_time = Some(std::time::Instant::now());
-            self.inner.first_event_set.store(true, Ordering::Release);
-        }
-    }
-
     /// 推送 SSE 事件
     pub async fn push(&self, event: Value) {
-        self.mark_first_collected_event_time().await;
-        let mut events = self.inner.events.lock().await;
-        events.push(event);
+        let mut accumulator = self.inner.accumulator.lock().await;
+        accumulator.push(event);
     }
 
     /// 完成收集并触发回调
     pub async fn finish(&self) {
-        if self.inner.finished.swap(true, Ordering::SeqCst) {
-            return;
+        let snapshot = {
+            let mut accumulator = self.inner.accumulator.lock().await;
+            accumulator.finish()
+        };
+        if let Some(snapshot) = snapshot {
+            (self.inner.on_complete)(snapshot.events, snapshot.first_token_ms);
         }
-
-        let events = {
-            let mut guard = self.inner.events.lock().await;
-            std::mem::take(&mut *guard)
-        };
-
-        let first_token_ms = {
-            let first_time = self.inner.first_event_time.lock().await;
-            first_time.map(|t| (t - self.inner.start_time).as_millis() as u64)
-        };
-
-        (self.inner.on_complete)(events, first_token_ms);
     }
 }
 

@@ -1,6 +1,6 @@
 use crate::{ProxyCoreError, ProxyCoreResult};
 use serde_json::{json, Value};
-use std::collections::BTreeMap;
+use std::{collections::BTreeMap, time::Instant};
 
 #[inline]
 pub fn strip_sse_field<'a>(line: &'a str, field: &str) -> Option<&'a str> {
@@ -124,6 +124,56 @@ impl SseEventScanner {
             }
         }
         events
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct SseUsageSnapshot {
+    pub events: Vec<Value>,
+    pub first_token_ms: Option<u64>,
+}
+
+#[derive(Debug)]
+pub struct SseUsageAccumulator {
+    events: Vec<Value>,
+    first_event_time: Option<Instant>,
+    start_time: Instant,
+    finished: bool,
+}
+
+impl SseUsageAccumulator {
+    pub fn new(start_time: Instant) -> Self {
+        Self {
+            events: Vec::new(),
+            first_event_time: None,
+            start_time,
+            finished: false,
+        }
+    }
+
+    pub fn push(&mut self, event: Value) {
+        if self.finished {
+            return;
+        }
+
+        if self.first_event_time.is_none() {
+            self.first_event_time = Some(Instant::now());
+        }
+        self.events.push(event);
+    }
+
+    pub fn finish(&mut self) -> Option<SseUsageSnapshot> {
+        if self.finished {
+            return None;
+        }
+
+        self.finished = true;
+        Some(SseUsageSnapshot {
+            events: std::mem::take(&mut self.events),
+            first_token_ms: self
+                .first_event_time
+                .map(|time| time.saturating_duration_since(self.start_time).as_millis() as u64),
+        })
     }
 }
 
@@ -610,8 +660,10 @@ fn extract_reasoning_detail_part_text(value: &Value) -> Option<String> {
 mod tests {
     use super::{
         append_utf8_safe, chat_sse_to_response_value, responses_sse_to_response_value,
-        strip_sse_field, take_sse_block, SseEventScanner,
+        strip_sse_field, take_sse_block, SseEventScanner, SseUsageAccumulator,
     };
+    use serde_json::json;
+    use std::time::{Duration, Instant};
 
     fn generated_id_factory() -> impl FnMut() -> String {
         let mut next = 0usize;
@@ -908,6 +960,41 @@ mod tests {
 
         assert_eq!(events.len(), 1);
         assert_eq!(events[0].parsed.as_ref().unwrap()["ok"], true);
+    }
+
+    #[test]
+    fn sse_usage_accumulator_returns_events_and_first_token_time_once() {
+        let start_time = Instant::now() - Duration::from_millis(25);
+        let mut accumulator = SseUsageAccumulator::new(start_time);
+
+        accumulator.push(json!({"usage":{"input_tokens":1}}));
+        accumulator.push(json!({"usage":{"output_tokens":2}}));
+
+        let snapshot = accumulator.finish().unwrap();
+
+        assert_eq!(snapshot.events.len(), 2);
+        assert!(snapshot.first_token_ms.unwrap() >= 25);
+        assert!(accumulator.finish().is_none());
+    }
+
+    #[test]
+    fn sse_usage_accumulator_finishes_empty_stream() {
+        let mut accumulator = SseUsageAccumulator::new(Instant::now());
+
+        let snapshot = accumulator.finish().unwrap();
+
+        assert!(snapshot.events.is_empty());
+        assert!(snapshot.first_token_ms.is_none());
+    }
+
+    #[test]
+    fn sse_usage_accumulator_ignores_push_after_finish() {
+        let mut accumulator = SseUsageAccumulator::new(Instant::now());
+
+        assert!(accumulator.finish().is_some());
+        accumulator.push(json!({"usage":{"input_tokens":1}}));
+
+        assert!(accumulator.finish().is_none());
     }
 
     #[test]
