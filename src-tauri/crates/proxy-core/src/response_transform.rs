@@ -92,6 +92,26 @@ pub fn claude_transform_unlabeled_sse_aggregation(
     }
 }
 
+pub fn map_openai_responses_stop_reason_to_anthropic(
+    status: Option<&str>,
+    has_tool_use: bool,
+    incomplete_reason: Option<&str>,
+) -> Option<&'static str> {
+    status.map(|value| match value {
+        "completed" if has_tool_use => "tool_use",
+        "incomplete"
+            if matches!(
+                incomplete_reason,
+                Some("max_output_tokens") | Some("max_tokens")
+            ) || incomplete_reason.is_none() =>
+        {
+            "max_tokens"
+        }
+        "incomplete" => "end_turn",
+        _ => "end_turn",
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -255,6 +275,46 @@ mod tests {
         );
         assert_eq!(
             claude_transform_unlabeled_sse_aggregation("gemini_native"),
+            None
+        );
+    }
+
+    #[test]
+    fn maps_openai_responses_status_to_anthropic_stop_reason() {
+        assert_eq!(
+            map_openai_responses_stop_reason_to_anthropic(Some("completed"), true, None),
+            Some("tool_use")
+        );
+        assert_eq!(
+            map_openai_responses_stop_reason_to_anthropic(
+                Some("incomplete"),
+                false,
+                Some("max_output_tokens")
+            ),
+            Some("max_tokens")
+        );
+        assert_eq!(
+            map_openai_responses_stop_reason_to_anthropic(
+                Some("incomplete"),
+                false,
+                Some("max_tokens")
+            ),
+            Some("max_tokens")
+        );
+        assert_eq!(
+            map_openai_responses_stop_reason_to_anthropic(Some("incomplete"), false, None),
+            Some("max_tokens")
+        );
+        assert_eq!(
+            map_openai_responses_stop_reason_to_anthropic(
+                Some("incomplete"),
+                false,
+                Some("content_filter")
+            ),
+            Some("end_turn")
+        );
+        assert_eq!(
+            map_openai_responses_stop_reason_to_anthropic(None, true, Some("max_tokens")),
             None
         );
     }

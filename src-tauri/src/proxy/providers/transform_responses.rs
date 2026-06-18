@@ -9,7 +9,9 @@
 //! - usage 字段命名与 Anthropic 一致 (input_tokens/output_tokens)
 
 use crate::proxy::{error::ProxyError, json_canonical::canonical_json_string};
-use crate::proxy_core::map_anthropic_tool_choice_to_openai_responses;
+use crate::proxy_core::{
+    map_anthropic_tool_choice_to_openai_responses, map_openai_responses_stop_reason_to_anthropic,
+};
 use serde_json::{json, Value};
 
 pub(crate) fn sanitize_anthropic_tool_use_input(name: &str, input: Value) -> Value {
@@ -204,26 +206,6 @@ pub fn anthropic_to_responses(
     }
 
     Ok(result)
-}
-
-pub(crate) fn map_responses_stop_reason(
-    status: Option<&str>,
-    has_tool_use: bool,
-    incomplete_reason: Option<&str>,
-) -> Option<&'static str> {
-    status.map(|s| match s {
-        "completed" if has_tool_use => "tool_use",
-        "incomplete"
-            if matches!(
-                incomplete_reason,
-                Some("max_output_tokens") | Some("max_tokens")
-            ) || incomplete_reason.is_none() =>
-        {
-            "max_tokens"
-        }
-        "incomplete" => "end_turn",
-        _ => "end_turn",
-    })
 }
 
 /// Build Anthropic-style usage JSON from Responses API usage, including cache tokens.
@@ -579,7 +561,7 @@ pub fn responses_to_anthropic(body: Value) -> Result<Value, ProxyError> {
     }
 
     // status → stop_reason
-    let stop_reason = map_responses_stop_reason(
+    let stop_reason = map_openai_responses_stop_reason_to_anthropic(
         body.get("status").and_then(|s| s.as_str()),
         has_tool_use,
         body.pointer("/incomplete_details/reason")

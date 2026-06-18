@@ -9,10 +9,10 @@
 //! 与 Chat Completions 的 delta chunk 模型完全不同，需要独立的状态机处理。
 
 use super::transform_responses::{
-    build_anthropic_usage_from_responses, map_responses_stop_reason,
-    sanitize_anthropic_tool_use_input_json,
+    build_anthropic_usage_from_responses, sanitize_anthropic_tool_use_input_json,
 };
 use crate::proxy::sse::{strip_sse_field, take_sse_block};
+use crate::proxy_core::map_openai_responses_stop_reason_to_anthropic;
 use bytes::Bytes;
 use futures::stream::{Stream, StreamExt};
 use serde_json::{json, Value};
@@ -692,7 +692,7 @@ pub fn create_anthropic_sse_stream_from_responses<E: std::error::Error + Send + 
                             // ================================================
                             "response.completed" => {
                                 let response_obj = response_object_from_event(&data);
-                                let stop_reason = map_responses_stop_reason(
+                                let stop_reason = map_openai_responses_stop_reason_to_anthropic(
                                     response_obj.get("status").and_then(|s| s.as_str()),
                                     has_tool_use,
                                     response_obj
@@ -801,19 +801,27 @@ mod tests {
     #[test]
     fn test_map_responses_stop_reason_tool_use() {
         assert_eq!(
-            map_responses_stop_reason(Some("completed"), true, None),
+            map_openai_responses_stop_reason_to_anthropic(Some("completed"), true, None),
             Some("tool_use")
         );
         assert_eq!(
-            map_responses_stop_reason(Some("completed"), false, None),
+            map_openai_responses_stop_reason_to_anthropic(Some("completed"), false, None),
             Some("end_turn")
         );
         assert_eq!(
-            map_responses_stop_reason(Some("incomplete"), false, Some("max_output_tokens")),
+            map_openai_responses_stop_reason_to_anthropic(
+                Some("incomplete"),
+                false,
+                Some("max_output_tokens")
+            ),
             Some("max_tokens")
         );
         assert_eq!(
-            map_responses_stop_reason(Some("incomplete"), false, Some("content_filter")),
+            map_openai_responses_stop_reason_to_anthropic(
+                Some("incomplete"),
+                false,
+                Some("content_filter")
+            ),
             Some("end_turn")
         );
     }
