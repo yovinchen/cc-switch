@@ -23,8 +23,9 @@
 12. Gemini handler 已改为进入 `ProxyEngine::handle`；模型名继续从 URI 提取，无模型的 `/models` 类端点不会把 `unknown` 写入 route filter，避免误过滤 channel。
 13. Codex `/v1/responses` 与 `/v1/responses/compact` handler 已进入 `ProxyEngine::handle`；chat-to-responses 转换仍在 host 层执行，等待后续 response pipeline 迁移。
 14. Claude 与 Claude Desktop `/v1/messages` handler 已进入 `ProxyEngine::handle`；核心 `ProxyResult` 会带回 `claudeApiFormat` 等宿主 metadata，host 侧继续复用现有格式转换、SSE/非流式响应处理和用量解析。
+15. `ProxyEngine::list_models` 已提供按 app/group/interface 过滤的可路由模型视图，复用 channel source 的 legacy projection；`/proxy/v1/apps/{app}/models` 已接入该视图，返回模型对应的 provider/channel/interface 路由信息。
 
-因此，本分支目前已把主要转发入口（Claude Messages、Claude Desktop Messages、Codex Chat Completions、Codex Responses、Codex Responses Compact、Gemini Native）切到 `ProxyEngine`。HTTP transport 与 response pipeline 仍是宿主层兼容桥，下一阶段需要把响应转换、用量落库和外部管理 API 继续收敛到独立代理模块边界内。
+因此，本分支目前已把主要转发入口（Claude Messages、Claude Desktop Messages、Codex Chat Completions、Codex Responses、Codex Responses Compact、Gemini Native）切到 `ProxyEngine`，并开始把管理查询类能力收敛到 core 可复用接口。HTTP transport 与 response pipeline 仍是宿主层兼容桥，Codex 兼容 `/v1/models` 仍保留现有 catalog 文件语义；下一阶段需要把响应转换、用量落库、客户端兼容模型列表和剩余外部管理 API 继续收敛到独立代理模块边界内。
 
 当前原则：核心 crate 可以新增端口和领域字段，但不得引入 `tauri`、`Database`、settings、commands、services 等宿主依赖；现有 runtime 行为必须继续通过 targeted tests 证明不回归。
 
@@ -792,6 +793,7 @@ CC Switch 桌面宿主实现 Codex model catalog 文件读取；外部宿主可�
 | `/proxy/v1/status` | GET | 运行状态、active targets、统计 |
 | `/proxy/v1/apps` | GET | 已注册 app namespace |
 | `/proxy/v1/apps/{app}/providers` | GET | 当前 app 的 provider 候选 |
+| `/proxy/v1/apps/{app}/models` | GET | 当前 app 可路由模型，支持 group/interface 过滤，并返回对应 provider/channel 信息 |
 | `/proxy/v1/apps/{app}/channels` | GET | 当前 app 可见 channel 候选，支持 group/model/interface 过滤 |
 | `/proxy/v1/apps/{app}/channels/migration/preview` | GET | 只读预览旧 provider/endpoint 到 channel 的投影结果和需人工复核项 |
 | `/proxy/v1/apps/{app}/channels/migration/materialize` | POST | 将旧 provider/endpoint 投影幂等写入 channel 表 |
