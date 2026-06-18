@@ -15,7 +15,9 @@ use super::{
         codex_chat_history::CodexChatHistoryStore, gemini_shadow::GeminiShadowStore, get_adapter,
         AuthInfo, AuthStrategy, ProviderAdapter, ProviderType,
     },
-    route_attempt::{apply_channel_model_override, ForwardAttempt},
+    route_attempt::{
+        apply_channel_model_override, forward_attempts_from_route_plan, ForwardAttempt,
+    },
     thinking_budget_rectifier::{rectify_thinking_budget, should_rectify_thinking_budget},
     thinking_rectifier::{
         normalize_thinking_type, rectify_anthropic_request, should_rectify_thinking_signature,
@@ -634,23 +636,7 @@ impl RequestForwarder {
 
             match engine.plan_materialized_route(&proxy_request).await {
                 Ok(plan) => {
-                    let providers_by_id: std::collections::HashMap<&str, &Provider> = providers
-                        .iter()
-                        .map(|provider| (provider.id.as_str(), provider))
-                        .collect();
-                    let attempts = plan
-                        .selections
-                        .iter()
-                        .filter_map(|selection| {
-                            providers_by_id
-                                .get(selection.channel.provider_id.as_str())
-                                .map(|provider| {
-                                    ForwardAttempt::from_core_selection(
-                                        app_type, provider, selection,
-                                    )
-                                })
-                        })
-                        .collect::<Vec<_>>();
+                    let attempts = forward_attempts_from_route_plan(app_type, &providers, &plan);
                     return Ok(attempts);
                 }
                 Err(crate::proxy_core::ProxyCoreError::Unavailable(_)) => {

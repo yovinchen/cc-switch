@@ -6,8 +6,9 @@
 use crate::app_config::AppType;
 use crate::provider::{Provider, ProviderMeta};
 use crate::proxy::channel_routing::ChannelRouteCandidate;
-use crate::proxy_core::RouteSelection;
+use crate::proxy_core::RoutePlan;
 use serde_json::{Map, Value};
+use std::collections::HashMap;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct ChannelAttempt {
@@ -57,7 +58,7 @@ impl ForwardAttempt {
     pub(crate) fn from_core_selection(
         app_type: &AppType,
         provider: &Provider,
-        selection: &RouteSelection,
+        selection: &crate::proxy_core::RouteSelection,
     ) -> Self {
         let candidate = ChannelRouteCandidate {
             channel_id: selection.channel.id.clone(),
@@ -93,6 +94,32 @@ impl ForwardAttempt {
     pub(crate) fn is_channel(&self) -> bool {
         self.channel.is_some()
     }
+}
+
+pub(crate) fn forward_attempts_from_route_plan(
+    app_type: &AppType,
+    providers: &[Provider],
+    plan: &RoutePlan,
+) -> Vec<ForwardAttempt> {
+    let providers_by_id: HashMap<&str, &Provider> = providers
+        .iter()
+        .map(|provider| (provider.id.as_str(), provider))
+        .collect();
+
+    let selections = if plan.selections.is_empty() {
+        std::slice::from_ref(&plan.selection)
+    } else {
+        plan.selections.as_slice()
+    };
+
+    selections
+        .iter()
+        .filter_map(|selection| {
+            providers_by_id
+                .get(selection.channel.provider_id.as_str())
+                .map(|provider| ForwardAttempt::from_core_selection(app_type, provider, selection))
+        })
+        .collect()
 }
 
 pub(crate) fn apply_channel_model_override(body: &mut Value, attempt: &ForwardAttempt) {
@@ -214,6 +241,11 @@ fn ensure_object(value: &mut Value) -> &mut Map<String, Value> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::proxy_core::{
+        AppKind, ChannelOverrides, ChannelSpec, ChannelStatus, InterfaceKind, ModelCapabilities,
+        ModelRoute, ProviderKind, ProviderMetadata, ProviderSpec, RoutePlan, RouteSelection,
+        UpstreamEndpoint,
+    };
     use serde_json::json;
 
     fn candidate(interface_kind: &str) -> ChannelRouteCandidate {
@@ -229,6 +261,65 @@ mod tests {
             priority: 100,
             weight: 1,
             source_kind: "manual".to_string(),
+        }
+    }
+
+    fn route_selection(provider_id: &str, channel_id: &str) -> RouteSelection {
+        let provider = ProviderSpec {
+            id: provider_id.to_string(),
+            name: provider_id.to_string(),
+            kind: ProviderKind::Claude,
+            account_ref: None,
+            metadata: ProviderMetadata::default(),
+        };
+        let channel = ChannelSpec {
+            id: channel_id.to_string(),
+            provider_id: provider_id.to_string(),
+            app: AppKind::Claude,
+            name: channel_id.to_string(),
+            status: ChannelStatus::Enabled,
+            endpoint: UpstreamEndpoint {
+                base_url: format!("https://{channel_id}.example.com/v1"),
+                path_template: None,
+                api_version: None,
+                timeout_profile: None,
+            },
+            interface: InterfaceKind::OpenAiResponses,
+            auth_profile: None,
+            models: vec![ModelRoute {
+                public_model: "sonnet-public".to_string(),
+                upstream_model: "upstream-sonnet".to_string(),
+                capabilities: ModelCapabilities::default(),
+                pricing_model: None,
+                request_overrides: json!({}),
+                response_overrides: json!({}),
+            }],
+            groups: vec!["default".to_string()],
+            priority: 100,
+            weight: 1,
+            retry_policy: Default::default(),
+            health_policy: Default::default(),
+            overrides: ChannelOverrides::default(),
+            tags: Vec::new(),
+            metadata: json!({}),
+            source_ref: None,
+            needs_review: false,
+            review_reasons: Vec::new(),
+        };
+
+        RouteSelection {
+            provider,
+            channel,
+            model_route: Some(ModelRoute {
+                public_model: "sonnet-public".to_string(),
+                upstream_model: "upstream-sonnet".to_string(),
+                capabilities: ModelCapabilities::default(),
+                pricing_model: None,
+                request_overrides: json!({}),
+                response_overrides: json!({}),
+            }),
+            inbound_interface: InterfaceKind::AnthropicMessages,
+            outbound_interface: InterfaceKind::OpenAiResponses,
         }
     }
 
@@ -284,6 +375,56 @@ mod tests {
                 .as_ref()
                 .and_then(|meta| meta.api_format.as_deref()),
             Some("openai_responses")
+        );
+    }
+
+    #[test]
+    fn route_plan_mapping_uses_matching_host_providers_only() {
+        let provider = Provider::with_id("p1".to_string(), "Provider".to_string(), json!({}), None);
+        let matching = route_selection("p1", "ch_matching");
+        let missing = route_selection("missing-provider", "ch_missing");
+        let plan = RoutePlan {
+            selection: matching.clone(),
+            selections: vec![matching, missing],
+            attempts: Vec::new(),
+        };
+
+        let attempts = forward_attempts_from_route_plan(&AppType::Claude, &[provider], &plan);
+
+        assert_eq!(attempts.len(), 1);
+        let attempt = &attempts[0];
+        assert_eq!(attempt.provider().id, "p1");
+        assert_eq!(
+            attempt.channel().map(|channel| channel.channel_id.as_str()),
+            Some("ch_matching")
+        );
+        assert_eq!(
+            attempt
+                .provider()
+                .settings_config
+                .pointer("/env/ANTHROPIC_BASE_URL")
+                .and_then(Value::as_str),
+            Some("https://ch_matching.example.com/v1")
+        );
+    }
+
+    #[test]
+    fn route_plan_mapping_falls_back_to_primary_selection() {
+        let provider = Provider::with_id("p1".to_string(), "Provider".to_string(), json!({}), None);
+        let plan = RoutePlan {
+            selection: route_selection("p1", "ch_primary"),
+            selections: Vec::new(),
+            attempts: Vec::new(),
+        };
+
+        let attempts = forward_attempts_from_route_plan(&AppType::Claude, &[provider], &plan);
+
+        assert_eq!(attempts.len(), 1);
+        assert_eq!(
+            attempts[0]
+                .channel()
+                .map(|channel| channel.channel_id.as_str()),
+            Some("ch_primary")
         );
     }
 
