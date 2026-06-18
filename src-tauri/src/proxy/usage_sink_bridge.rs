@@ -1,8 +1,8 @@
 use crate::provider::Provider;
 use crate::proxy::usage::parser::TokenUsage;
 use crate::proxy_core::{
-    normalize_error_usage_models, normalize_usage_models, usage_request_id_with_fallback,
-    usage_tokens_from_token_usage, AppKind, ProviderKind, UsageRecord, UsageTokens,
+    normalize_error_usage_models, success_usage_record_with_request_id_fallback, AppKind,
+    ProviderKind, UsageRecord, UsageTokens,
 };
 use serde_json::Value;
 
@@ -21,36 +21,21 @@ pub(crate) fn success_usage_record(
     status_code: u16,
     session_id: Option<String>,
 ) -> UsageRecord {
-    let models = normalize_usage_models(Some(model), request_model, Some(outbound_model));
-    let request_id = usage_request_id(&usage);
-    let message_id = usage.message_id.clone();
-
-    UsageRecord {
-        request_id: Some(request_id),
-        message_id,
-        app: AppKind::from(app_type),
-        provider_id: provider_id.to_string(),
+    success_usage_record_with_request_id_fallback(
+        provider_id,
         provider_kind,
-        channel_id: None,
-        channel_name: None,
-        route_group: None,
-        request_model: models.request_model,
-        outbound_model: models.outbound_model,
-        response_model: models.response_model,
-        pricing_model: None,
-        tokens: usage_tokens_from_token_usage(&usage),
+        AppKind::from(app_type),
+        model,
+        request_model,
+        outbound_model,
+        usage,
         latency_ms,
         first_token_ms,
-        status_code,
-        error_message: None,
-        session_id,
         is_streaming,
-        metadata: Value::Object(Default::default()),
-    }
-}
-
-fn usage_request_id(usage: &TokenUsage) -> String {
-    usage_request_id_with_fallback(usage, || uuid::Uuid::new_v4().to_string())
+        status_code,
+        session_id,
+        || uuid::Uuid::new_v4().to_string(),
+    )
 }
 
 #[allow(clippy::too_many_arguments)]

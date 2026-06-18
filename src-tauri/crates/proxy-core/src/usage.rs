@@ -6,7 +6,7 @@
 //! - Codex API (非流式和流式)
 //! - Gemini API (非流式和流式)
 
-use crate::{UsageRecord, UsageTokens};
+use crate::{AppKind, ProviderKind, UsageRecord, UsageTokens};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
@@ -579,6 +579,50 @@ pub fn usage_request_id_with_fallback(
         .as_ref()
         .map(|message_id| format!("{SESSION_REQUEST_ID_PREFIX}{message_id}"))
         .unwrap_or_else(fallback)
+}
+
+#[allow(clippy::too_many_arguments)]
+pub fn success_usage_record_with_request_id_fallback(
+    provider_id: &str,
+    provider_kind: Option<ProviderKind>,
+    app: AppKind,
+    response_model: &str,
+    request_model: &str,
+    outbound_model: &str,
+    usage: TokenUsage,
+    latency_ms: u64,
+    first_token_ms: Option<u64>,
+    is_streaming: bool,
+    status_code: u16,
+    session_id: Option<String>,
+    request_id_fallback: impl FnOnce() -> String,
+) -> UsageRecord {
+    let models = normalize_usage_models(Some(response_model), request_model, Some(outbound_model));
+    let request_id = usage_request_id_with_fallback(&usage, request_id_fallback);
+    let message_id = usage.message_id.clone();
+
+    UsageRecord {
+        request_id: Some(request_id),
+        message_id,
+        app,
+        provider_id: provider_id.to_string(),
+        provider_kind,
+        channel_id: None,
+        channel_name: None,
+        route_group: None,
+        request_model: models.request_model,
+        outbound_model: models.outbound_model,
+        response_model: models.response_model,
+        pricing_model: None,
+        tokens: usage_tokens_from_token_usage(&usage),
+        latency_ms,
+        first_token_ms,
+        status_code,
+        error_message: None,
+        session_id,
+        is_streaming,
+        metadata: Value::Object(Default::default()),
+    }
 }
 
 pub fn token_usage_from_usage_record(record: &UsageRecord) -> TokenUsage {
@@ -1472,6 +1516,50 @@ mod tests {
             usage_request_id_with_fallback(&usage, || "fallback".to_string()),
             "fallback"
         );
+    }
+
+    #[test]
+    fn test_success_usage_record_builder_preserves_identity_models_and_tokens() {
+        let usage = TokenUsage {
+            input_tokens: 3,
+            output_tokens: 5,
+            cache_read_tokens: 7,
+            cache_creation_tokens: 11,
+            model: None,
+            message_id: Some("msg-1".to_string()),
+        };
+
+        let record = success_usage_record_with_request_id_fallback(
+            "provider-a",
+            Some(crate::ProviderKind::GitHubCopilot),
+            crate::AppKind::Claude,
+            "response-model",
+            "request-model",
+            "upstream-model",
+            usage,
+            123,
+            Some(45),
+            true,
+            200,
+            Some("session-1".to_string()),
+            || "fallback".to_string(),
+        );
+
+        assert_eq!(record.request_id.as_deref(), Some("session:msg-1"));
+        assert_eq!(record.provider_id, "provider-a");
+        assert_eq!(record.provider_kind, Some(crate::ProviderKind::GitHubCopilot));
+        assert_eq!(record.app, crate::AppKind::Claude);
+        assert_eq!(record.message_id.as_deref(), Some("msg-1"));
+        assert_eq!(record.request_model, "request-model");
+        assert_eq!(record.outbound_model, "upstream-model");
+        assert_eq!(record.response_model.as_deref(), Some("response-model"));
+        assert_eq!(record.tokens.input_tokens, 3);
+        assert_eq!(record.tokens.output_tokens, 5);
+        assert_eq!(record.tokens.cache_read_tokens, 7);
+        assert_eq!(record.tokens.cache_creation_tokens, 11);
+        assert_eq!(record.latency_ms, 123);
+        assert_eq!(record.first_token_ms, Some(45));
+        assert!(record.is_streaming);
     }
 
     #[test]
