@@ -112,6 +112,35 @@ pub fn map_openai_responses_stop_reason_to_anthropic(
     })
 }
 
+pub fn sanitize_anthropic_tool_use_input(name: &str, input: Value) -> Value {
+    if name != "Read" {
+        return input;
+    }
+
+    match input {
+        Value::Object(mut object) => {
+            if matches!(object.get("pages"), Some(Value::String(value)) if value.is_empty()) {
+                object.remove("pages");
+            }
+            Value::Object(object)
+        }
+        other => other,
+    }
+}
+
+pub fn sanitize_anthropic_tool_use_input_json(name: &str, raw: &str) -> String {
+    if name != "Read" || raw.is_empty() {
+        return raw.to_string();
+    }
+
+    let Ok(input) = serde_json::from_str::<Value>(raw) else {
+        return raw.to_string();
+    };
+
+    serde_json::to_string(&sanitize_anthropic_tool_use_input(name, input))
+        .unwrap_or_else(|_| raw.to_string())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -316,6 +345,64 @@ mod tests {
         assert_eq!(
             map_openai_responses_stop_reason_to_anthropic(None, true, Some("max_tokens")),
             None
+        );
+    }
+
+    #[test]
+    fn sanitizes_read_tool_empty_pages_for_anthropic() {
+        let input = sanitize_anthropic_tool_use_input(
+            "Read",
+            json!({
+                "file_path": "/tmp/demo.py",
+                "limit": 2000,
+                "offset": 0,
+                "pages": ""
+            }),
+        );
+
+        assert_eq!(input["file_path"], "/tmp/demo.py");
+        assert_eq!(input["limit"], 2000);
+        assert_eq!(input["offset"], 0);
+        assert!(input.get("pages").is_none());
+    }
+
+    #[test]
+    fn read_tool_sanitizer_preserves_other_tools_and_non_empty_pages() {
+        let other_tool = sanitize_anthropic_tool_use_input(
+            "Search",
+            json!({
+                "query": "pages",
+                "pages": ""
+            }),
+        );
+        assert_eq!(other_tool["pages"], "");
+
+        let non_empty_pages = sanitize_anthropic_tool_use_input(
+            "Read",
+            json!({
+                "file_path": "/tmp/demo.py",
+                "pages": "1-2"
+            }),
+        );
+        assert_eq!(non_empty_pages["pages"], "1-2");
+    }
+
+    #[test]
+    fn sanitizes_read_tool_json_without_rewriting_invalid_input() {
+        assert_eq!(
+            sanitize_anthropic_tool_use_input_json(
+                "Read",
+                r#"{"file_path":"/tmp/demo.py","pages":""}"#
+            ),
+            r#"{"file_path":"/tmp/demo.py"}"#
+        );
+        assert_eq!(
+            sanitize_anthropic_tool_use_input_json("Read", "{not-json"),
+            "{not-json"
+        );
+        assert_eq!(
+            sanitize_anthropic_tool_use_input_json("Search", r#"{"pages":""}"#),
+            r#"{"pages":""}"#
         );
     }
 }

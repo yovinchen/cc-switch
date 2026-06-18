@@ -8,10 +8,10 @@
 //!
 //! 与 Chat Completions 的 delta chunk 模型完全不同，需要独立的状态机处理。
 
-use super::transform_responses::sanitize_anthropic_tool_use_input_json;
 use crate::proxy::sse::{strip_sse_field, take_sse_block};
 use crate::proxy_core::{
     build_anthropic_usage_from_openai_responses, map_openai_responses_stop_reason_to_anthropic,
+    sanitize_anthropic_tool_use_input_json,
 };
 use bytes::Bytes;
 use futures::stream::{Stream, StreamExt};

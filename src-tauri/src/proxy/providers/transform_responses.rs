@@ -11,38 +11,9 @@
 use crate::proxy::{error::ProxyError, json_canonical::canonical_json_string};
 use crate::proxy_core::{
     build_anthropic_usage_from_openai_responses, map_anthropic_tool_choice_to_openai_responses,
-    map_openai_responses_stop_reason_to_anthropic,
+    map_openai_responses_stop_reason_to_anthropic, sanitize_anthropic_tool_use_input,
 };
 use serde_json::{json, Value};
-
-pub(crate) fn sanitize_anthropic_tool_use_input(name: &str, input: Value) -> Value {
-    if name != "Read" {
-        return input;
-    }
-
-    match input {
-        Value::Object(mut object) => {
-            if matches!(object.get("pages"), Some(Value::String(value)) if value.is_empty()) {
-                object.remove("pages");
-            }
-            Value::Object(object)
-        }
-        other => other,
-    }
-}
-
-pub(crate) fn sanitize_anthropic_tool_use_input_json(name: &str, raw: &str) -> String {
-    if name != "Read" || raw.is_empty() {
-        return raw.to_string();
-    }
-
-    let Ok(input) = serde_json::from_str::<Value>(raw) else {
-        return raw.to_string();
-    };
-
-    serde_json::to_string(&sanitize_anthropic_tool_use_input(name, input))
-        .unwrap_or_else(|_| raw.to_string())
-}
 
 /// Anthropic 请求 → OpenAI Responses 请求
 ///
