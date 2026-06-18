@@ -3,7 +3,9 @@
 //! 实现 OpenAI SSE → Anthropic SSE 格式转换
 
 use crate::proxy::sse::{strip_sse_field, take_sse_block};
-use crate::proxy_core::map_openai_chat_finish_reason_to_anthropic;
+use crate::proxy_core::{
+    build_anthropic_usage_from_openai_chat_tokens, map_openai_chat_finish_reason_to_anthropic,
+};
 use bytes::Bytes;
 use futures::stream::{Stream, StreamExt};
 use serde::{Deserialize, Serialize};
@@ -101,25 +103,12 @@ struct ToolBlockState {
 const INFINITE_WHITESPACE_THRESHOLD: usize = 500;
 
 fn build_anthropic_usage_json(usage: &Usage) -> Value {
-    // OpenAI prompt_tokens 含缓存，Anthropic input_tokens 不含，需减去 cache_read 与 cache_creation
-    // （三桶互斥，恒等 input + cache_read + cache_creation == prompt_tokens）。
-    let cached = extract_cache_read_tokens(usage).unwrap_or(0);
-    let cache_creation = usage.cache_creation_input_tokens.unwrap_or(0);
-    let input_tokens = usage
-        .prompt_tokens
-        .saturating_sub(cached)
-        .saturating_sub(cache_creation);
-    let mut usage_json = json!({
-        "input_tokens": input_tokens,
-        "output_tokens": usage.completion_tokens
-    });
-    if cached > 0 {
-        usage_json["cache_read_input_tokens"] = json!(cached);
-    }
-    if cache_creation > 0 {
-        usage_json["cache_creation_input_tokens"] = json!(cache_creation);
-    }
-    usage_json
+    build_anthropic_usage_from_openai_chat_tokens(
+        usage.prompt_tokens as u64,
+        usage.completion_tokens as u64,
+        extract_cache_read_tokens(usage).unwrap_or(0) as u64,
+        usage.cache_creation_input_tokens.unwrap_or(0) as u64,
+    )
 }
 
 fn default_anthropic_usage_json() -> Value {

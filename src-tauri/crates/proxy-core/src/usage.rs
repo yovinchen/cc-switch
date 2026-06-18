@@ -129,6 +129,67 @@ pub fn build_anthropic_usage_from_openai_responses(usage: Option<&Value>) -> Val
     result
 }
 
+pub fn build_anthropic_usage_from_openai_chat(usage: Option<&Value>) -> Value {
+    let Some(usage) = usage.filter(|value| !value.is_null() && value.is_object()) else {
+        return json!({
+            "input_tokens": 0,
+            "output_tokens": 0
+        });
+    };
+
+    let prompt_tokens = usage
+        .get("prompt_tokens")
+        .and_then(Value::as_u64)
+        .unwrap_or(0);
+    let completion_tokens = usage
+        .get("completion_tokens")
+        .and_then(Value::as_u64)
+        .unwrap_or(0);
+    let cache_read = usage
+        .get("cache_read_input_tokens")
+        .and_then(Value::as_u64)
+        .or_else(|| {
+            usage
+                .pointer("/prompt_tokens_details/cached_tokens")
+                .and_then(Value::as_u64)
+        })
+        .unwrap_or(0);
+    let cache_creation = usage
+        .get("cache_creation_input_tokens")
+        .and_then(Value::as_u64)
+        .unwrap_or(0);
+
+    build_anthropic_usage_from_openai_chat_tokens(
+        prompt_tokens,
+        completion_tokens,
+        cache_read,
+        cache_creation,
+    )
+}
+
+pub fn build_anthropic_usage_from_openai_chat_tokens(
+    prompt_tokens: u64,
+    completion_tokens: u64,
+    cache_read_tokens: u64,
+    cache_creation_tokens: u64,
+) -> Value {
+    let mut result = json!({
+        "input_tokens": prompt_tokens
+            .saturating_sub(cache_read_tokens)
+            .saturating_sub(cache_creation_tokens),
+        "output_tokens": completion_tokens
+    });
+
+    if cache_read_tokens > 0 {
+        result["cache_read_input_tokens"] = json!(cache_read_tokens);
+    }
+    if cache_creation_tokens > 0 {
+        result["cache_creation_input_tokens"] = json!(cache_creation_tokens);
+    }
+
+    result
+}
+
 impl TokenUsage {
     /// 从 Claude API 非流式响应解析
     pub fn from_claude_response(body: &Value) -> Option<Self> {
@@ -955,6 +1016,60 @@ mod tests {
         })));
 
         assert_eq!(usage["input_tokens"], json!(0));
+        assert_eq!(usage["cache_read_input_tokens"], json!(60));
+        assert_eq!(usage["cache_creation_input_tokens"], json!(50));
+    }
+
+    #[test]
+    fn builds_anthropic_usage_from_openai_chat_defaults() {
+        assert_eq!(
+            build_anthropic_usage_from_openai_chat(None),
+            json!({"input_tokens": 0, "output_tokens": 0})
+        );
+        assert_eq!(
+            build_anthropic_usage_from_openai_chat(Some(&json!({}))),
+            json!({"input_tokens": 0, "output_tokens": 0})
+        );
+    }
+
+    #[test]
+    fn builds_anthropic_usage_from_openai_chat_cache_buckets() {
+        let usage = build_anthropic_usage_from_openai_chat(Some(&json!({
+            "prompt_tokens": 100,
+            "completion_tokens": 50,
+            "prompt_tokens_details": {
+                "cached_tokens": 80
+            }
+        })));
+
+        assert_eq!(usage["input_tokens"], json!(20));
+        assert_eq!(usage["output_tokens"], json!(50));
+        assert_eq!(usage["cache_read_input_tokens"], json!(80));
+    }
+
+    #[test]
+    fn direct_openai_chat_cache_fields_override_nested_details() {
+        let usage = build_anthropic_usage_from_openai_chat(Some(&json!({
+            "prompt_tokens": 100,
+            "completion_tokens": 50,
+            "prompt_tokens_details": {
+                "cached_tokens": 80
+            },
+            "cache_read_input_tokens": 60,
+            "cache_creation_input_tokens": 20
+        })));
+
+        assert_eq!(usage["input_tokens"], json!(20));
+        assert_eq!(usage["cache_read_input_tokens"], json!(60));
+        assert_eq!(usage["cache_creation_input_tokens"], json!(20));
+    }
+
+    #[test]
+    fn openai_chat_cache_subtraction_saturates() {
+        let usage = build_anthropic_usage_from_openai_chat_tokens(100, 10, 60, 50);
+
+        assert_eq!(usage["input_tokens"], json!(0));
+        assert_eq!(usage["output_tokens"], json!(10));
         assert_eq!(usage["cache_read_input_tokens"], json!(60));
         assert_eq!(usage["cache_creation_input_tokens"], json!(50));
     }
