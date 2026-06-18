@@ -31,17 +31,18 @@ use crate::proxy_core::{
     attempt_event_name, build_attempt_event_payload, build_codex_oauth_session_headers,
     build_request_started_event_payload, build_retryable_forward_failure_log,
     build_terminal_forward_failure_log, build_upstream_auth_headers, categorize_forward_failure,
-    is_github_copilot_upstream, is_socks_proxy_url, resolve_media_prevention_policy,
-    resolve_upstream_request_transport_policy, resolve_upstream_send_policy,
-    resolved_copilot_dynamic_base_url, should_apply_bedrock_pre_send_optimizer,
-    should_check_media_retry, should_failover_after_rectifier_retry_failure,
-    should_preserve_exact_request_header_case, should_resolve_copilot_dynamic_endpoint,
-    should_send_anthropic_request_headers, should_trigger_media_retry, split_endpoint_and_query,
-    validate_managed_account_upstream_auth, AppKind, AttemptEventChannel, AttemptEventPayloadInput,
-    AttemptEventPhase, ChannelQuery, CopilotAuthHeaderOverrides, ForwardFailureCategory,
-    ForwardFailureKind, InterfaceKind, MediaRetryInput, ProxyBody, ProxyEngine, ProxyRequest,
-    ProxyServices, UpstreamAuthHeadersInput, UpstreamRequestHeadersInput, UpstreamSendPolicyInput,
-    UpstreamTransportKind, BEDROCK_OPTIMIZER_ENV_FLAG,
+    is_github_copilot_upstream, is_socks_proxy_url, resolve_copilot_optimizer_session_id,
+    resolve_media_prevention_policy, resolve_upstream_request_transport_policy,
+    resolve_upstream_send_policy, resolved_copilot_dynamic_base_url,
+    should_apply_bedrock_pre_send_optimizer, should_check_media_retry,
+    should_failover_after_rectifier_retry_failure, should_preserve_exact_request_header_case,
+    should_resolve_copilot_dynamic_endpoint, should_send_anthropic_request_headers,
+    should_trigger_media_retry, split_endpoint_and_query, validate_managed_account_upstream_auth,
+    AppKind, AttemptEventChannel, AttemptEventPayloadInput, AttemptEventPhase, ChannelQuery,
+    CopilotAuthHeaderOverrides, ForwardFailureCategory, ForwardFailureKind, InterfaceKind,
+    MediaRetryInput, ProxyBody, ProxyEngine, ProxyRequest, ProxyServices, UpstreamAuthHeadersInput,
+    UpstreamRequestHeadersInput, UpstreamSendPolicyInput, UpstreamTransportKind,
+    BEDROCK_OPTIMIZER_ENV_FLAG,
 };
 use crate::proxy_core_host::CcSwitchProxyServices;
 use crate::{app_config::AppType, provider::Provider};
@@ -1667,38 +1668,12 @@ impl RequestForwarder {
             }
 
             // 预计算确定性 Request ID（在 body 被 move 之前）
-            // Session 提取优先级（与 session.rs extract_from_metadata 对齐）：
+            // Session 提取优先级由 proxy-core::request_optimizer 固化：
             //   1. metadata.user_id 中的 _session_ 后缀
             //   2. metadata.session_id（直接字段）
             //   3. raw metadata.user_id（整串 fallback）
             //   4. x-session-id header
-            let metadata = body.get("metadata");
-            let session_id = metadata
-                .and_then(|m| m.get("user_id"))
-                .and_then(|v| v.as_str())
-                .and_then(super::session::parse_session_from_user_id)
-                .or_else(|| {
-                    metadata
-                        .and_then(|m| m.get("session_id"))
-                        .and_then(|v| v.as_str())
-                        .filter(|s| !s.is_empty())
-                        .map(|s| s.to_string())
-                })
-                .or_else(|| {
-                    metadata
-                        .and_then(|m| m.get("user_id"))
-                        .and_then(|v| v.as_str())
-                        .filter(|s| !s.is_empty())
-                        .map(|s| s.to_string())
-                })
-                .or_else(|| {
-                    headers
-                        .get("x-session-id")
-                        .and_then(|v| v.to_str().ok())
-                        .filter(|s| !s.is_empty())
-                        .map(|s| s.to_string())
-                })
-                .unwrap_or_default();
+            let session_id = resolve_copilot_optimizer_session_id(body, headers);
             let det_request_id = if self.copilot_optimizer_config.deterministic_request_id {
                 Some(super::copilot_optimizer::deterministic_request_id(
                     &mapped_body,
