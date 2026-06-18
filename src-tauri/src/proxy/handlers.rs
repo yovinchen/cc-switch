@@ -1377,33 +1377,29 @@ pub async fn handle_responses(
         .unwrap_or(false);
     let codex_tool_context = transform_codex_chat::build_codex_tool_context_from_request(&body);
 
-    let forwarder = ctx.create_forwarder(&state);
-    let mut result = match forwarder
-        .forward_with_retry(
-            &AppType::Codex,
-            method,
-            &endpoint,
-            body,
-            headers,
-            extensions,
-            ctx.get_providers(),
-        )
-        .await
-    {
+    let mut proxy_request = ProxyRequest::new(
+        AppKind::from(&AppType::Codex),
+        method,
+        &endpoint,
+        InterfaceKind::OpenAiResponses,
+        ProxyBody::Json(body),
+    );
+    proxy_request.requested_model = Some(ctx.request_model.clone());
+    proxy_request.headers = headers;
+    proxy_request.extensions = extensions;
+
+    let engine = ProxyEngine::new(state.proxy_core_services.clone());
+    let result = match engine.handle(proxy_request).await {
         Ok(result) => result,
-        Err(mut err) => {
-            if let Some(provider) = err.provider.take() {
-                ctx.provider = provider;
-            }
-            log_forward_error(&state, &ctx, is_stream, &err.error);
-            return build_codex_proxy_error_response(&ctx, &endpoint, &err.error);
+        Err(error) => {
+            let error = proxy_core_error_to_proxy_error(error);
+            log_forward_error(&state, &ctx, is_stream, &error);
+            return build_codex_proxy_error_response(&ctx, &endpoint, &error);
         }
     };
 
-    let connection_guard = result.connection_guard.take();
-    ctx.outbound_model = result.outbound_model.take();
-    ctx.provider = result.provider;
-    let response = result.response;
+    apply_proxy_result_to_context(&state, &mut ctx, &result)?;
+    let response = proxy_core_response_to_proxy_response(result.response)?;
 
     if super::providers::should_convert_codex_responses_to_chat(&ctx.provider, &endpoint) {
         return handle_codex_chat_to_responses_transform(
@@ -1411,20 +1407,13 @@ pub async fn handle_responses(
             &ctx,
             &state,
             is_stream,
-            connection_guard,
+            None,
             codex_tool_context,
         )
         .await;
     }
 
-    process_response(
-        response,
-        &ctx,
-        &state,
-        &CODEX_PARSER_CONFIG,
-        connection_guard,
-    )
-    .await
+    process_response(response, &ctx, &state, &CODEX_PARSER_CONFIG, None).await
 }
 
 /// 处理 /v1/responses/compact 请求（OpenAI Responses Compact API - Codex CLI 透传）
@@ -1455,33 +1444,29 @@ pub async fn handle_responses_compact(
         .unwrap_or(false);
     let codex_tool_context = transform_codex_chat::build_codex_tool_context_from_request(&body);
 
-    let forwarder = ctx.create_forwarder(&state);
-    let mut result = match forwarder
-        .forward_with_retry(
-            &AppType::Codex,
-            method,
-            &endpoint,
-            body,
-            headers,
-            extensions,
-            ctx.get_providers(),
-        )
-        .await
-    {
+    let mut proxy_request = ProxyRequest::new(
+        AppKind::from(&AppType::Codex),
+        method,
+        &endpoint,
+        InterfaceKind::OpenAiResponses,
+        ProxyBody::Json(body),
+    );
+    proxy_request.requested_model = Some(ctx.request_model.clone());
+    proxy_request.headers = headers;
+    proxy_request.extensions = extensions;
+
+    let engine = ProxyEngine::new(state.proxy_core_services.clone());
+    let result = match engine.handle(proxy_request).await {
         Ok(result) => result,
-        Err(mut err) => {
-            if let Some(provider) = err.provider.take() {
-                ctx.provider = provider;
-            }
-            log_forward_error(&state, &ctx, is_stream, &err.error);
-            return build_codex_proxy_error_response(&ctx, &endpoint, &err.error);
+        Err(error) => {
+            let error = proxy_core_error_to_proxy_error(error);
+            log_forward_error(&state, &ctx, is_stream, &error);
+            return build_codex_proxy_error_response(&ctx, &endpoint, &error);
         }
     };
 
-    let connection_guard = result.connection_guard.take();
-    ctx.outbound_model = result.outbound_model.take();
-    ctx.provider = result.provider;
-    let response = result.response;
+    apply_proxy_result_to_context(&state, &mut ctx, &result)?;
+    let response = proxy_core_response_to_proxy_response(result.response)?;
 
     if super::providers::should_convert_codex_responses_to_chat(&ctx.provider, &endpoint) {
         return handle_codex_chat_to_responses_transform(
@@ -1489,20 +1474,13 @@ pub async fn handle_responses_compact(
             &ctx,
             &state,
             is_stream,
-            connection_guard,
+            None,
             codex_tool_context,
         )
         .await;
     }
 
-    process_response(
-        response,
-        &ctx,
-        &state,
-        &CODEX_PARSER_CONFIG,
-        connection_guard,
-    )
-    .await
+    process_response(response, &ctx, &state, &CODEX_PARSER_CONFIG, None).await
 }
 
 async fn handle_codex_chat_to_responses_transform(
