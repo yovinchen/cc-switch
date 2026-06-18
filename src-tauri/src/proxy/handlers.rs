@@ -40,9 +40,9 @@ use crate::database::{
     ProxyChannelModelsReplaceRequest, ProxyChannelPatchRequest, ProxyChannelWriteRequest,
 };
 use crate::proxy_core::{
-    strip_entity_headers_for_rebuilt_body, strip_hop_by_hop_response_headers, AppKind,
-    InterfaceKind, ProxyBody, ProxyCoreError, ProxyCoreResponse, ProxyEngine, ProxyRequest,
-    ProxyResponseBody, ProxyResult, ProxyServices,
+    body_diagnostics_suffix, body_looks_like_sse, strip_entity_headers_for_rebuilt_body,
+    strip_hop_by_hop_response_headers, AppKind, InterfaceKind, ProxyBody, ProxyCoreError,
+    ProxyCoreResponse, ProxyEngine, ProxyRequest, ProxyResponseBody, ProxyResult, ProxyServices,
 };
 use axum::{
     extract::{Path, Query, State},
@@ -2176,18 +2176,6 @@ fn responses_sse_to_response_value(body: &str) -> Result<Value, ProxyError> {
     Ok(response)
 }
 
-/// 判断响应体是否"看起来像" SSE 文本（#2234 兜底嗅探）。
-///
-/// 仅在 JSON 解析已失败后调用：合法 JSON 不可能以这些前缀开头，误判面为零。
-/// 覆盖 SSE 规范的全部四种字段行；包含 ":" 是因为 OpenRouter 等会在流前发
-/// `: PROCESSING` 注释行。
-fn body_looks_like_sse(body: &str) -> bool {
-    let trimmed = body.trim_start_matches('\u{feff}').trim_start();
-    ["data:", "event:", "id:", "retry:", ":"]
-        .iter()
-        .any(|prefix| trimmed.starts_with(prefix))
-}
-
 /// 构造带现场诊断的上游解析错误：附 content-type / content-encoding 与 body
 /// 前缀摘要，让客户端收到的报错自带根因判别（"data:"=错标 SSE、"<"=HTML
 /// 拦截页、� 乱码=未解压二进制），不再依赖向用户索要服务端日志。
@@ -2218,22 +2206,6 @@ fn aggregate_fallback_error(
     ProxyError::TransformError(format!("{base} {}", body_diagnostics_suffix(headers, body)))
 }
 
-/// 现场诊断后缀：content-type、content-encoding 与 body 前 120 字符摘要。
-fn body_diagnostics_suffix(headers: &axum::http::HeaderMap, body: &str) -> String {
-    let header_str = |name: &str| {
-        headers
-            .get(name)
-            .and_then(|v| v.to_str().ok())
-            .unwrap_or("<none>")
-    };
-    format!(
-        "(content-type: {}; content-encoding: {}; body[..120]: '{}')",
-        header_str("content-type"),
-        header_str("content-encoding"),
-        body_snippet(body, 120),
-    )
-}
-
 /// 从 SSE chunk 的 error 字段提取可报告的错误消息。占位形状（空对象、空消息、
 /// false、空字符串等，常见于 OpenAI 兼容网关每 chunk 附带的 error 字段）返回
 /// None——不应据此判定整条流失败（否则会把成功流误杀成 422，C12/C2234 目标人群）。
@@ -2245,24 +2217,6 @@ fn error_event_message(error: &Value) -> Option<String> {
         return (!s.is_empty()).then(|| s.to_string());
     }
     None
-}
-
-/// 取 body 前 `max_chars` 个字符的单行摘要：\r 丢弃、\n 折叠为字面 \n、
-/// 其余控制字符替换为 �，超长加省略号。
-fn body_snippet(body: &str, max_chars: usize) -> String {
-    let mut snippet = String::new();
-    for c in body.chars().take(max_chars) {
-        match c {
-            '\n' => snippet.push_str("\\n"),
-            '\r' => {}
-            c if c.is_control() => snippet.push('\u{FFFD}'),
-            c => snippet.push(c),
-        }
-    }
-    if body.chars().nth(max_chars).is_some() {
-        snippet.push('…');
-    }
-    snippet
 }
 
 /// 解析单个 SSE 块的 event 名与 data 负载（多行 data 按规范以 \n 连接）。
@@ -2702,34 +2656,14 @@ async fn log_usage(
 #[cfg(test)]
 mod tests {
     use super::{
-        body_looks_like_sse, body_snippet, chat_sse_to_response_value, codex_proxy_error_json,
-        proxy_core_error_to_proxy_error, proxy_core_response_to_proxy_response,
-        responses_sse_to_response_value, should_use_claude_transform_streaming, transform,
-        upstream_body_parse_error,
+        chat_sse_to_response_value, codex_proxy_error_json, proxy_core_error_to_proxy_error,
+        proxy_core_response_to_proxy_response, responses_sse_to_response_value,
+        should_use_claude_transform_streaming, transform, upstream_body_parse_error,
     };
     use crate::proxy::ProxyError;
     use crate::proxy_core::{ProxyCoreError, ProxyCoreResponse, ProxyResponseBody};
     use bytes::Bytes;
     use http::StatusCode;
-
-    #[test]
-    fn body_looks_like_sse_detects_unlabeled_sse_prefixes() {
-        assert!(body_looks_like_sse("data: {\"id\":\"1\"}\n\n"));
-        assert!(body_looks_like_sse("event: message\ndata: {}\n\n"));
-        // SSE 规范的另两种字段行也可能打头
-        assert!(body_looks_like_sse("id: 1\ndata: {}\n\n"));
-        assert!(body_looks_like_sse("retry: 3000\ndata: {}\n\n"));
-        // OpenRouter 会在流前发注释行
-        assert!(body_looks_like_sse(
-            ": OPENROUTER PROCESSING\n\ndata: {}\n\n"
-        ));
-        // BOM + 前导空白
-        assert!(body_looks_like_sse("\u{feff}\n  data: {}\n\n"));
-        // HTML 拦截页与普通文本不应误判为 SSE
-        assert!(!body_looks_like_sse("<html><body>blocked</body></html>"));
-        assert!(!body_looks_like_sse("Bad Gateway"));
-        assert!(!body_looks_like_sse(""));
-    }
 
     #[tokio::test]
     async fn proxy_core_response_bridge_preserves_stream_body() {
@@ -2934,18 +2868,6 @@ data: {\"id\":\"c1\",\"choices\":[{\"index\":0,\"message\":{\"role\":\"assistant
         let response = chat_sse_to_response_value(sse).unwrap();
 
         assert_eq!(response["choices"][0]["message"]["content"], "hi");
-    }
-
-    #[test]
-    fn body_snippet_sanitizes_controls_and_truncates() {
-        assert_eq!(
-            body_snippet("<html>\r\nblocked\u{0}</html>", 120),
-            "<html>\\nblocked\u{FFFD}</html>"
-        );
-        let long = "a".repeat(200);
-        let snippet = body_snippet(&long, 120);
-        assert_eq!(snippet.chars().count(), 121); // 120 个字符 + 省略号
-        assert!(snippet.ends_with('…'));
     }
 
     #[test]
