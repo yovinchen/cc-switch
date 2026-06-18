@@ -22,6 +22,9 @@ use super::{
         streaming_responses::create_anthropic_sse_stream_from_responses, transform,
         transform_codex_chat, transform_gemini, transform_responses,
     },
+    response_adapter::{
+        proxy_core_response_to_axum_response, proxy_core_response_to_proxy_response,
+    },
     response_processor::{
         create_logged_passthrough_stream, process_response, read_decoded_body,
         usage_logging_enabled, SseUsageCollector,
@@ -46,10 +49,10 @@ use crate::proxy_core::{
     ChannelRouteCandidate, ChannelRouteRejected, CurrentRouteProviderSummary, CurrentRouteResponse,
     HealthCheckResponse, InterfaceKind, ManagementAuthDecision, ManagementAuthError,
     ProviderListResponse, ProviderSummaryInput, ProxyBody, ProxyChannelModelsReplaceRequest,
-    ProxyChannelPatchRequest, ProxyChannelWriteRequest, ProxyCoreError, ProxyCoreResponse,
-    ProxyEngine, ProxyRequest, ProxyResponseBody, ProxyResult, ProxyServices, RoutableModelList,
-    RouteGroupChannelInput, RouteGroupListResponse, RouteGroupSourceInput, RouteResolveRequest,
-    RouteResolveResponse, UpstreamJsonBodySource, UpstreamSseAggregationKind,
+    ProxyChannelPatchRequest, ProxyChannelWriteRequest, ProxyCoreError, ProxyEngine, ProxyRequest,
+    ProxyResult, ProxyServices, RoutableModelList, RouteGroupChannelInput, RouteGroupListResponse,
+    RouteGroupSourceInput, RouteResolveRequest, RouteResolveResponse, UpstreamJsonBodySource,
+    UpstreamSseAggregationKind,
 };
 use axum::{
     extract::{Path, Query, State},
@@ -1067,68 +1070,6 @@ fn endpoint_with_query(uri: &axum::http::Uri, endpoint: &str) -> String {
     }
 }
 
-fn proxy_core_response_to_proxy_response(
-    response: ProxyCoreResponse,
-) -> Result<super::hyper_client::ProxyResponse, ProxyError> {
-    let ProxyCoreResponse {
-        status,
-        headers,
-        body,
-    } = response;
-
-    let response = match body {
-        ProxyResponseBody::Empty => {
-            super::hyper_client::ProxyResponse::buffered(status, headers, Bytes::new())
-        }
-        ProxyResponseBody::Json(value) => {
-            let body = serde_json::to_vec(&value).map_err(|error| {
-                ProxyError::Internal(format!("Failed to serialize proxy core response: {error}"))
-            })?;
-            super::hyper_client::ProxyResponse::buffered(status, headers, Bytes::from(body))
-        }
-        ProxyResponseBody::Bytes(body) => {
-            super::hyper_client::ProxyResponse::buffered(status, headers, body)
-        }
-        ProxyResponseBody::Stream(stream) => {
-            super::hyper_client::ProxyResponse::streamed(status, headers, stream)
-        }
-    };
-
-    Ok(response)
-}
-
-fn proxy_core_response_to_axum_response(
-    response: ProxyCoreResponse,
-    build_error_context: &str,
-) -> Result<axum::response::Response, ProxyError> {
-    let ProxyCoreResponse {
-        status,
-        headers,
-        body,
-    } = response;
-    let body = match body {
-        ProxyResponseBody::Empty => axum::body::Body::from(Bytes::new()),
-        ProxyResponseBody::Bytes(body) => axum::body::Body::from(body),
-        ProxyResponseBody::Json(value) => {
-            let body = serde_json::to_vec(&value).map_err(|error| {
-                ProxyError::Internal(format!("Failed to serialize proxy core response: {error}"))
-            })?;
-            axum::body::Body::from(body)
-        }
-        ProxyResponseBody::Stream(stream) => axum::body::Body::from_stream(stream),
-    };
-
-    let mut builder = axum::response::Response::builder().status(status);
-    for (key, value) in headers.iter() {
-        builder = builder.header(key, value);
-    }
-
-    builder.body(body).map_err(|error| {
-        log::error!("{build_error_context}: {error}");
-        ProxyError::Internal(format!("Failed to build response: {error}"))
-    })
-}
-
 fn proxy_core_error_to_proxy_error(error: ProxyCoreError) -> ProxyError {
     let message = error.to_string();
     match error {
@@ -1853,54 +1794,10 @@ async fn log_usage(
 mod tests {
     use super::{
         chat_sse_to_response_value, codex_proxy_error_json, proxy_core_error_to_proxy_error,
-        proxy_core_response_to_axum_response, proxy_core_response_to_proxy_response,
         responses_sse_to_response_value, transform,
     };
     use crate::proxy::ProxyError;
-    use crate::proxy_core::{
-        should_use_claude_transform_streaming, ProxyCoreError, ProxyCoreResponse, ProxyResponseBody,
-    };
-    use bytes::Bytes;
-    use http::StatusCode;
-    use http_body_util::BodyExt as _;
-
-    #[tokio::test]
-    async fn proxy_core_response_bridge_preserves_stream_body() {
-        let response = ProxyCoreResponse::with_body(
-            StatusCode::OK,
-            http::HeaderMap::new(),
-            ProxyResponseBody::stream(futures::stream::once(async {
-                Ok(Bytes::from_static(b"chunk"))
-            })),
-        );
-
-        let proxy_response = proxy_core_response_to_proxy_response(response).expect("bridge");
-
-        assert_eq!(proxy_response.status(), StatusCode::OK);
-        let body = proxy_response.bytes().await.expect("body");
-        assert_eq!(body, Bytes::from_static(b"chunk"));
-    }
-
-    #[tokio::test]
-    async fn proxy_core_response_to_axum_response_preserves_buffered_body_and_headers() {
-        let mut headers = http::HeaderMap::new();
-        headers.insert("x-test", http::HeaderValue::from_static("yes"));
-        let response = ProxyCoreResponse::with_body(
-            StatusCode::CREATED,
-            headers,
-            ProxyResponseBody::bytes(Bytes::from_static(b"ok")),
-        );
-
-        let response = proxy_core_response_to_axum_response(response, "test").expect("bridge");
-
-        assert_eq!(response.status(), StatusCode::CREATED);
-        assert_eq!(
-            response.headers().get("x-test"),
-            Some(&http::HeaderValue::from_static("yes"))
-        );
-        let body = response.into_body().collect().await.unwrap().to_bytes();
-        assert_eq!(body, Bytes::from_static(b"ok"));
-    }
+    use crate::proxy_core::{should_use_claude_transform_streaming, ProxyCoreError};
 
     #[test]
     fn proxy_core_error_bridge_maps_unavailable_to_proxy_error() {
