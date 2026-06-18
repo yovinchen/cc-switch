@@ -13,19 +13,7 @@ use std::collections::HashSet;
 use serde_json::Value;
 use uuid::Uuid;
 
-/// 请求分类结果
-#[derive(Debug, Clone)]
-pub struct CopilotClassification {
-    /// "user" 或 "agent" — 映射到 x-initiator 请求头
-    pub initiator: &'static str,
-    /// 是否为 warmup/探针请求（可降级到小模型）
-    pub is_warmup: bool,
-    /// 是否为上下文压缩请求
-    pub is_compact: bool,
-    /// 是否为 Claude Code 子代理请求（Agent tool 生成的 subagent）
-    /// 子代理请求应设置 x-interaction-type=conversation-subagent，不计 premium interaction
-    pub is_subagent: bool,
-}
+pub use crate::proxy_core::CopilotClassification;
 
 /// 分类 Anthropic 格式的请求体，决定 Copilot 请求头。
 ///
@@ -51,126 +39,12 @@ pub fn classify_request(
     compact_detection: bool,
     subagent_detection: bool,
 ) -> CopilotClassification {
-    let is_compact = compact_detection && is_compact_request(body);
-    let is_subagent = subagent_detection && detect_subagent(body);
-
-    let messages = match body.get("messages").and_then(|m| m.as_array()) {
-        Some(msgs) if !msgs.is_empty() => msgs,
-        _ => {
-            return CopilotClassification {
-                initiator: "user",
-                is_warmup: is_warmup_request(body, has_anthropic_beta, false),
-                is_compact: false,
-                is_subagent,
-            }
-        }
-    };
-
-    let last_msg = &messages[messages.len() - 1];
-    let role = last_msg.get("role").and_then(|r| r.as_str()).unwrap_or("");
-
-    // 只有 role=user 的消息需要细分
-    if role != "user" {
-        return CopilotClassification {
-            initiator: if is_subagent { "agent" } else { "user" },
-            is_warmup: false,
-            is_compact,
-            is_subagent,
-        };
-    }
-
-    // 判定逻辑（与 copilot-api 的 merge-then-classify 效果对齐）：
-    // 只要 content 数组中包含 tool_result → 视为工具续写 → agent
-    // 这覆盖了 skill/edit hook/plan follow-up 等常见场景，
-    // 它们的 content 通常是 [tool_result, text] 混合形态。
-    // copilot-api 通过先 merge（text 吸收进 tool_result）再 classify 实现同等效果；
-    // 直接在分类层处理更稳健，不依赖 merge 启用状态和执行顺序。
-    let is_user_initiated = match last_msg.get("content") {
-        Some(Value::Array(blocks)) => {
-            // 含有 tool_result → 工具续写（agent），否则 → 用户发起（user）
-            !blocks
-                .iter()
-                .any(|block| block.get("type").and_then(|t| t.as_str()) == Some("tool_result"))
-        }
-        Some(Value::String(_)) => true,
-        _ => false,
-    };
-
-    // 子代理请求始终标记为 agent（即使首条消息包含用户文本）
-    let initiator = if is_subagent || !is_user_initiated || is_compact {
-        "agent"
-    } else {
-        "user"
-    };
-
-    CopilotClassification {
-        initiator,
-        is_warmup: initiator == "user" && is_warmup_request(body, has_anthropic_beta, is_compact),
-        is_compact,
-        is_subagent,
-    }
-}
-
-/// 检测是否为 warmup/探针请求（适合降级到小模型）。
-///
-/// 与参考实现对齐，三个条件同时满足：
-/// 1. 请求头有 `anthropic-beta`（Claude Code warmup 探针的标志）
-/// 2. 无 tools 定义
-/// 3. 非 compact 请求
-fn is_warmup_request(body: &Value, has_anthropic_beta: bool, is_compact: bool) -> bool {
-    if !has_anthropic_beta || is_compact {
-        return false;
-    }
-    // 无工具定义
-    body.get("tools")
-        .and_then(|tools| tools.as_array())
-        .is_none_or(|tools| tools.is_empty())
-}
-
-/// 检测是否为 Claude Code 上下文压缩/compact 请求。
-///
-/// 只匹配 Claude Code **内部生成**的机器特征，不匹配用户可能手动输入的通用短语，
-/// 避免将真实用户请求误标为 agent。
-///
-/// 强特征来源：
-/// 1. system prompt — Claude Code compact 模式会设置专用 system prompt，用户无法手动设置
-/// 2. "CRITICAL: Respond with TEXT ONLY. Do NOT call any tools." — 机器指令
-/// 3. 同时包含 "Pending Tasks:" 和 "Current Work:" — Claude Code compact 的结构标记
-fn is_compact_request(body: &Value) -> bool {
-    // 信号 1: system prompt 以 Claude Code compact 专用前缀开头
-    // 用户在 Claude Code 中无法直接控制 system prompt，这是最可靠的信号
-    let system_text = extract_system_text(body);
-    if system_text
-        .starts_with("You are a helpful AI assistant tasked with summarizing conversations")
-    {
-        return true;
-    }
-
-    // 信号 2 & 3: 检查最后一条用户消息中的机器生成特征
-    let messages = match body.get("messages").and_then(|m| m.as_array()) {
-        Some(msgs) => msgs,
-        None => return false,
-    };
-
-    if let Some(last_msg) = messages.last() {
-        if last_msg.get("role").and_then(|r| r.as_str()) != Some("user") {
-            return false;
-        }
-
-        let text = extract_text_from_message(last_msg);
-
-        // 信号 2: Claude Code compact 的机器指令（大小写敏感，精确匹配）
-        if text.contains("CRITICAL: Respond with TEXT ONLY. Do NOT call any tools.") {
-            return true;
-        }
-
-        // 信号 3: Claude Code compact 的结构标记（两个同时出现才算）
-        if text.contains("Pending Tasks:") && text.contains("Current Work:") {
-            return true;
-        }
-    }
-
-    false
+    crate::proxy_core::classify_copilot_request(
+        body,
+        has_anthropic_beta,
+        compact_detection,
+        subagent_detection,
+    )
 }
 
 /// 合并用户消息中的 tool_result 和 text block。
@@ -287,55 +161,6 @@ pub fn deterministic_interaction_id(session_id: &str) -> Option<String> {
     crate::proxy_core::resolve_copilot_deterministic_interaction_id(session_id)
 }
 
-/// 检测请求是否来自 Claude Code 子代理（Agent tool 生成的 subagent）。
-///
-/// Claude Code 的 Agent tool 会在子代理首条用户消息的 `<system-reminder>` 标签中
-/// 注入 `__SUBAGENT_MARKER__` JSON 标记，格式如：
-/// ```json
-/// {"__SUBAGENT_MARKER__": {"session_id": "...", "agent_id": "...", "agent_type": "..."}}
-/// ```
-///
-/// 扫描策略（与 copilot-api 的 subagent-marker.ts 对齐）：
-/// 1. 遍历所有 user 消息（不仅是第一条，因为 context 压缩可能重排消息）
-/// 2. 在消息文本中查找 `__SUBAGENT_MARKER__` 关键字
-/// 3. 找到即判定为子代理请求
-fn detect_subagent(body: &Value) -> bool {
-    // 信号 1: 显式 __SUBAGENT_MARKER__（Claude Code 2.x+ 自动注入）
-    if extract_system_text(body).contains("__SUBAGENT_MARKER__") {
-        return true;
-    }
-
-    if let Some(messages) = body.get("messages").and_then(|m| m.as_array()) {
-        for msg in messages {
-            if msg.get("role").and_then(|r| r.as_str()) != Some("user") {
-                continue;
-            }
-            let text = extract_text_from_message(msg);
-            if text.contains("__SUBAGENT_MARKER__") {
-                return true;
-            }
-        }
-    }
-
-    // 信号 2（fallback）: metadata.user_id 包含子代理标识
-    // Claude Code 的 Agent tool 会将 subagent session 标记为
-    // "parentSessionId_agent_agentId" 格式，检测 "_agent_" 后缀
-    if let Some(user_id) = body.pointer("/metadata/user_id").and_then(|v| v.as_str()) {
-        // "_agent_" 是 Claude Code Agent tool 的内部标记
-        if user_id.contains("_agent_") {
-            return true;
-        }
-    }
-
-    // 信号 3（fallback）: system prompt 包含 Claude Code 子代理的典型框架文本
-    // Agent tool 生成的子代理会在 system prompt 中包含由 Agent tool 注入的任务描述，
-    // 但主对话的 system prompt 由 Claude Code CLI 直接生成，两者格式不同
-    // 这个信号不够可靠（用户 prompt 也可能包含这些词），因此只作为辅助判据
-    // 暂不启用，预留接口
-
-    false
-}
-
 /// 清理孤立的 tool_result — 没有对应 tool_use 的 tool_result 转为 text block。
 ///
 /// 场景：上下文压缩、消息截断等可能导致 assistant 消息中的 tool_use 被删除，
@@ -450,19 +275,6 @@ pub fn strip_thinking_blocks(mut body: Value) -> Value {
 
 // ─── 内部辅助 ─────────────────────────────────
 
-/// 从请求体的 `system` 字段提取文本（处理 string/array 两种格式）。
-fn extract_system_text(body: &Value) -> String {
-    match body.get("system") {
-        Some(Value::String(text)) => text.clone(),
-        Some(Value::Array(blocks)) => blocks
-            .iter()
-            .filter_map(|b| b.get("text").and_then(|t| t.as_str()))
-            .collect::<Vec<_>>()
-            .join(" "),
-        _ => String::new(),
-    }
-}
-
 /// 将 text block 合并进 tool_result block。
 ///
 /// 两种合并策略（与参考实现对齐）：
@@ -511,25 +323,6 @@ fn append_text_to_tool_result(tool_result: &mut Value, text_block: &Value) {
             // content 缺失或 null — 直接设置
             tool_result["content"] = Value::String(text.to_string());
         }
-    }
-}
-
-/// 从消息中提取文本内容
-fn extract_text_from_message(msg: &Value) -> String {
-    match msg.get("content") {
-        Some(Value::String(text)) => text.clone(),
-        Some(Value::Array(blocks)) => blocks
-            .iter()
-            .filter_map(|block| {
-                if block.get("type").and_then(|t| t.as_str()) == Some("text") {
-                    block.get("text").and_then(|t| t.as_str())
-                } else {
-                    None
-                }
-            })
-            .collect::<Vec<_>>()
-            .join(" "),
-        _ => String::new(),
     }
 }
 
@@ -1010,7 +803,7 @@ mod tests {
                 {"role": "user", "content": "Here is the conversation to summarize..."}
             ]
         });
-        assert!(is_compact_request(&body));
+        assert!(classify_request(&body, false, true, false).is_compact);
     }
 
     #[test]
@@ -1020,7 +813,7 @@ mod tests {
                 {"role": "user", "content": "CRITICAL: Respond with TEXT ONLY. Do NOT call any tools. Summarize this conversation."}
             ]
         });
-        assert!(is_compact_request(&body));
+        assert!(classify_request(&body, false, true, false).is_compact);
     }
 
     #[test]
@@ -1031,7 +824,7 @@ mod tests {
                 {"role": "user", "content": "Summary of conversation:\n\nPending Tasks:\n- Fix bug\n\nCurrent Work:\n- Implementing feature"}
             ]
         });
-        assert!(is_compact_request(&body));
+        assert!(classify_request(&body, false, true, false).is_compact);
     }
 
     #[test]
@@ -1042,7 +835,7 @@ mod tests {
                 {"role": "user", "content": "Your task is to create a detailed summary of the conversation so far."}
             ]
         });
-        assert!(!is_compact_request(&body));
+        assert!(!classify_request(&body, false, true, false).is_compact);
     }
 
     #[test]
@@ -1052,7 +845,7 @@ mod tests {
                 {"role": "user", "content": "What is the weather today?"}
             ]
         });
-        assert!(!is_compact_request(&body));
+        assert!(!classify_request(&body, false, true, false).is_compact);
     }
 
     #[test]
@@ -1065,7 +858,7 @@ mod tests {
                 {"role": "user", "content": "Summarize"}
             ]
         });
-        assert!(is_compact_request(&body));
+        assert!(classify_request(&body, false, true, false).is_compact);
     }
 
     // === detect_subagent 测试 ===
@@ -1079,7 +872,7 @@ mod tests {
                 ]}
             ]
         });
-        assert!(detect_subagent(&body));
+        assert!(classify_request(&body, false, true, true).is_subagent);
     }
 
     #[test]
@@ -1090,7 +883,7 @@ mod tests {
                 {"role": "user", "content": "Design the implementation plan"}
             ]
         });
-        assert!(detect_subagent(&body));
+        assert!(classify_request(&body, false, true, true).is_subagent);
     }
 
     #[test]
@@ -1100,7 +893,7 @@ mod tests {
                 {"role": "user", "content": "Hello, please help me write code"}
             ]
         });
-        assert!(!detect_subagent(&body));
+        assert!(!classify_request(&body, false, true, true).is_subagent);
     }
 
     #[test]
@@ -1114,7 +907,7 @@ mod tests {
                 {"role": "user", "content": "Search for files"}
             ]
         });
-        assert!(detect_subagent(&body));
+        assert!(classify_request(&body, false, true, true).is_subagent);
     }
 
     #[test]
@@ -1128,7 +921,7 @@ mod tests {
                 {"role": "user", "content": "Hello"}
             ]
         });
-        assert!(!detect_subagent(&body));
+        assert!(!classify_request(&body, false, true, true).is_subagent);
     }
 
     #[test]

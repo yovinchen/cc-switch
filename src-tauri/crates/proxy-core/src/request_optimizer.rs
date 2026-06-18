@@ -4,6 +4,14 @@ use sha2::{Digest, Sha256};
 
 pub const BEDROCK_OPTIMIZER_ENV_FLAG: &str = "CLAUDE_CODE_USE_BEDROCK";
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CopilotClassification {
+    pub initiator: &'static str,
+    pub is_warmup: bool,
+    pub is_compact: bool,
+    pub is_subagent: bool,
+}
+
 pub fn provider_declares_bedrock(use_bedrock_env: Option<&str>) -> bool {
     matches!(use_bedrock_env, Some("1"))
 }
@@ -21,6 +29,65 @@ pub fn resolve_copilot_warmup_model_override<'a>(
     warmup_model: &'a str,
 ) -> Option<&'a str> {
     (warmup_downgrade_enabled && is_warmup_request).then_some(warmup_model)
+}
+
+pub fn classify_copilot_request(
+    body: &Value,
+    has_anthropic_beta: bool,
+    compact_detection: bool,
+    subagent_detection: bool,
+) -> CopilotClassification {
+    let is_compact = compact_detection && is_copilot_compact_request(body);
+    let is_subagent = subagent_detection && detect_copilot_subagent(body);
+
+    let messages = match body.get("messages").and_then(Value::as_array) {
+        Some(messages) if !messages.is_empty() => messages,
+        _ => {
+            return CopilotClassification {
+                initiator: "user",
+                is_warmup: is_copilot_warmup_request(body, has_anthropic_beta, false),
+                is_compact: false,
+                is_subagent,
+            }
+        }
+    };
+
+    let last_message = &messages[messages.len() - 1];
+    let role = last_message
+        .get("role")
+        .and_then(Value::as_str)
+        .unwrap_or("");
+
+    if role != "user" {
+        return CopilotClassification {
+            initiator: if is_subagent { "agent" } else { "user" },
+            is_warmup: false,
+            is_compact,
+            is_subagent,
+        };
+    }
+
+    let is_user_initiated = match last_message.get("content") {
+        Some(Value::Array(blocks)) => !blocks
+            .iter()
+            .any(|block| block.get("type").and_then(Value::as_str) == Some("tool_result")),
+        Some(Value::String(_)) => true,
+        _ => false,
+    };
+
+    let initiator = if is_subagent || !is_user_initiated || is_compact {
+        "agent"
+    } else {
+        "user"
+    };
+
+    CopilotClassification {
+        initiator,
+        is_warmup: initiator == "user"
+            && is_copilot_warmup_request(body, has_anthropic_beta, is_compact),
+        is_compact,
+        is_subagent,
+    }
 }
 
 pub fn parse_session_from_user_id(user_id: &str) -> Option<String> {
@@ -116,6 +183,89 @@ fn find_last_user_content(body: &Value) -> Option<String> {
     None
 }
 
+fn is_copilot_warmup_request(body: &Value, has_anthropic_beta: bool, is_compact: bool) -> bool {
+    if !has_anthropic_beta || is_compact {
+        return false;
+    }
+
+    body.get("tools")
+        .and_then(Value::as_array)
+        .is_none_or(|tools| tools.is_empty())
+}
+
+fn is_copilot_compact_request(body: &Value) -> bool {
+    let system_text = extract_system_text(body);
+    if system_text
+        .starts_with("You are a helpful AI assistant tasked with summarizing conversations")
+    {
+        return true;
+    }
+
+    let Some(messages) = body.get("messages").and_then(Value::as_array) else {
+        return false;
+    };
+
+    let Some(last_message) = messages.last() else {
+        return false;
+    };
+    if last_message.get("role").and_then(Value::as_str) != Some("user") {
+        return false;
+    }
+
+    let text = extract_text_from_message(last_message);
+    text.contains("CRITICAL: Respond with TEXT ONLY. Do NOT call any tools.")
+        || (text.contains("Pending Tasks:") && text.contains("Current Work:"))
+}
+
+fn detect_copilot_subagent(body: &Value) -> bool {
+    if extract_system_text(body).contains("__SUBAGENT_MARKER__") {
+        return true;
+    }
+
+    if let Some(messages) = body.get("messages").and_then(Value::as_array) {
+        for message in messages {
+            if message.get("role").and_then(Value::as_str) != Some("user") {
+                continue;
+            }
+            if extract_text_from_message(message).contains("__SUBAGENT_MARKER__") {
+                return true;
+            }
+        }
+    }
+
+    body.pointer("/metadata/user_id")
+        .and_then(Value::as_str)
+        .is_some_and(|user_id| user_id.contains("_agent_"))
+}
+
+fn extract_system_text(body: &Value) -> String {
+    match body.get("system") {
+        Some(Value::String(text)) => text.clone(),
+        Some(Value::Array(blocks)) => blocks
+            .iter()
+            .filter_map(|block| block.get("text").and_then(Value::as_str))
+            .collect::<Vec<_>>()
+            .join(" "),
+        _ => String::new(),
+    }
+}
+
+fn extract_text_from_message(message: &Value) -> String {
+    match message.get("content") {
+        Some(Value::String(text)) => text.clone(),
+        Some(Value::Array(blocks)) => blocks
+            .iter()
+            .filter_map(|block| {
+                (block.get("type").and_then(Value::as_str) == Some("text"))
+                    .then(|| block.get("text").and_then(Value::as_str))
+                    .flatten()
+            })
+            .collect::<Vec<_>>()
+            .join(" "),
+        _ => String::new(),
+    }
+}
+
 fn uuid_v4_string_from_hash(hash: &[u8]) -> String {
     let mut bytes = [0u8; 16];
     bytes.copy_from_slice(&hash[..16]);
@@ -137,7 +287,7 @@ fn uuid_v4_string_from_hash(hash: &[u8]) -> String {
 #[cfg(test)]
 mod tests {
     use super::{
-        parse_session_from_user_id, provider_declares_bedrock,
+        classify_copilot_request, parse_session_from_user_id, provider_declares_bedrock,
         resolve_copilot_optimizer_session_id, should_apply_bedrock_pre_send_optimizer,
         resolve_copilot_deterministic_interaction_id, resolve_copilot_deterministic_request_id,
         resolve_copilot_warmup_model_override,
@@ -176,6 +326,101 @@ mod tests {
             resolve_copilot_warmup_model_override(true, false, "gpt-4o-mini"),
             None
         );
+    }
+
+    #[test]
+    fn copilot_classifies_user_text_as_user_initiated() {
+        let body = json!({
+            "messages": [{"role": "user", "content": "Hello"}]
+        });
+
+        let classification = classify_copilot_request(&body, false, true, false);
+
+        assert_eq!(classification.initiator, "user");
+        assert!(!classification.is_compact);
+        assert!(!classification.is_warmup);
+        assert!(!classification.is_subagent);
+    }
+
+    #[test]
+    fn copilot_classifies_tool_result_turn_as_agent_initiated() {
+        let body = json!({
+            "messages": [{
+                "role": "user",
+                "content": [
+                    {"type": "tool_result", "tool_use_id": "toolu_123", "content": "ok"},
+                    {"type": "text", "text": "continue"}
+                ]
+            }]
+        });
+
+        let classification = classify_copilot_request(&body, true, true, false);
+
+        assert_eq!(classification.initiator, "agent");
+        assert!(!classification.is_warmup);
+    }
+
+    #[test]
+    fn copilot_classifies_compact_system_prompt_as_agent() {
+        let body = json!({
+            "system": "You are a helpful AI assistant tasked with summarizing conversations. Please create a summary.",
+            "messages": [{"role": "user", "content": "Summarize"}]
+        });
+
+        let classification = classify_copilot_request(&body, false, true, false);
+
+        assert_eq!(classification.initiator, "agent");
+        assert!(classification.is_compact);
+    }
+
+    #[test]
+    fn copilot_compact_detection_can_be_disabled() {
+        let body = json!({
+            "system": "You are a helpful AI assistant tasked with summarizing conversations.",
+            "messages": [{"role": "user", "content": "Summarize"}]
+        });
+
+        let classification = classify_copilot_request(&body, false, false, false);
+
+        assert_eq!(classification.initiator, "user");
+        assert!(!classification.is_compact);
+    }
+
+    #[test]
+    fn copilot_warmup_requires_anthropic_beta_no_tools_and_user_initiator() {
+        let warmup = json!({
+            "messages": [{"role": "user", "content": "Hello"}]
+        });
+        let with_tools = json!({
+            "tools": [{"name": "Read"}],
+            "messages": [{"role": "user", "content": "Hello"}]
+        });
+        let agent = json!({
+            "messages": [{
+                "role": "user",
+                "content": [{"type": "tool_result", "tool_use_id": "toolu_123", "content": "ok"}]
+            }]
+        });
+
+        assert!(classify_copilot_request(&warmup, true, true, false).is_warmup);
+        assert!(!classify_copilot_request(&warmup, false, true, false).is_warmup);
+        assert!(!classify_copilot_request(&with_tools, true, true, false).is_warmup);
+        assert!(!classify_copilot_request(&agent, true, true, false).is_warmup);
+    }
+
+    #[test]
+    fn copilot_subagent_detection_forces_agent_initiator() {
+        let body = json!({
+            "messages": [{
+                "role": "user",
+                "content": [{"type": "text", "text": "{\"__SUBAGENT_MARKER__\":{\"agent_id\":\"a\"}}"}]
+            }]
+        });
+
+        let classification = classify_copilot_request(&body, false, true, true);
+
+        assert_eq!(classification.initiator, "agent");
+        assert!(classification.is_subagent);
     }
 
     #[test]
