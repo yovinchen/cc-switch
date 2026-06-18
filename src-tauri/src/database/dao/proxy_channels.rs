@@ -9,18 +9,23 @@ use crate::database::{lock_conn, to_json_string, Database};
 use crate::error::AppError;
 use crate::provider::Provider;
 use crate::proxy_core::{
-    build_legacy_channel_projection, infer_legacy_channel_interface, legacy_channel_priority,
-    stable_channel_id, AppKind, LegacyChannelModelProjection, LegacyChannelProjection,
+    build_legacy_channel_projection, channel_array_or_default as array_or_default,
+    channel_object_or_default as object_or_default, infer_legacy_channel_interface,
+    legacy_channel_priority, normalize_channel_base_url as normalize_base_url,
+    normalize_channel_groups as normalized_groups,
+    normalize_optional_channel_string as normalize_optional_string,
+    normalize_required_channel_string, stable_channel_id,
+    validate_proxy_channel_model_write_request_fields, validate_proxy_channel_write_request_fields,
+    AppKind, ChannelRequestValidationError, LegacyChannelModelProjection, LegacyChannelProjection,
     LegacyChannelProjectionInput, LegacyModelRouteInput, LegacyProviderProjectionInput,
     ProxyChannelModelWriteRequest, ProxyChannelPatchRequest, ProxyChannelWriteRequest,
 };
 use rusqlite::{params, Connection, OptionalExtension, Row};
 use serde::{Deserialize, Serialize};
-use serde_json::{json, Value};
+use serde_json::Value;
 use std::collections::{BTreeMap, HashSet};
 use std::str::FromStr;
 
-const DEFAULT_GROUP: &str = "default";
 const LEGACY_PRIMARY_SOURCE: &str = "legacy_primary";
 const LEGACY_ENDPOINT_SOURCE: &str = "legacy_endpoint";
 
@@ -987,88 +992,26 @@ fn proxy_channel_model_record_from_legacy(
     }
 }
 
-fn normalize_base_url(value: &str) -> String {
-    value.trim().trim_end_matches('/').to_string()
-}
-
-fn default_channel_groups() -> Vec<String> {
-    vec![DEFAULT_GROUP.to_string()]
-}
-
 fn validate_proxy_channel_write_request(
     request: &ProxyChannelWriteRequest,
 ) -> Result<(), AppError> {
     let _ = AppType::from_str(&request.app_type)?;
-    normalize_required_string(&request.provider_id, "providerId")?;
-    normalize_required_string(&request.name, "name")?;
-    normalize_required_string(&request.status, "status")?;
-    if normalize_base_url(&request.base_url).is_empty() {
-        return Err(AppError::InvalidInput(
-            "baseUrl cannot be empty".to_string(),
-        ));
-    }
-    normalize_required_string(&request.interface_kind, "interfaceKind")?;
-    for model in &request.models {
-        validate_proxy_channel_model_write_request(model)?;
-    }
-    Ok(())
+    validate_proxy_channel_write_request_fields(request).map_err(channel_request_error_to_app_error)
 }
 
 fn validate_proxy_channel_model_write_request(
     model: &ProxyChannelModelWriteRequest,
 ) -> Result<(), AppError> {
-    normalize_required_string(&model.public_model, "publicModel")?;
-    normalize_required_string(&model.upstream_model, "upstreamModel")?;
-    Ok(())
+    validate_proxy_channel_model_write_request_fields(model)
+        .map_err(channel_request_error_to_app_error)
 }
 
 fn normalize_required_string(value: &str, field: &str) -> Result<String, AppError> {
-    let normalized = value.trim();
-    if normalized.is_empty() {
-        Err(AppError::InvalidInput(format!("{field} cannot be empty")))
-    } else {
-        Ok(normalized.to_string())
-    }
+    normalize_required_channel_string(value, field).map_err(channel_request_error_to_app_error)
 }
 
-fn normalize_optional_string(value: String) -> Option<String> {
-    let normalized = value.trim().to_string();
-    if normalized.is_empty() {
-        None
-    } else {
-        Some(normalized)
-    }
-}
-
-fn normalized_groups(groups: Vec<String>) -> Vec<String> {
-    let mut normalized: Vec<String> = groups
-        .into_iter()
-        .map(|group| group.trim().to_string())
-        .filter(|group| !group.is_empty())
-        .collect();
-    normalized.sort();
-    normalized.dedup();
-    if normalized.is_empty() {
-        default_channel_groups()
-    } else {
-        normalized
-    }
-}
-
-fn object_or_default(value: Value) -> Value {
-    if value.is_object() {
-        value
-    } else {
-        json!({})
-    }
-}
-
-fn array_or_default(value: Value) -> Value {
-    if value.is_array() {
-        value
-    } else {
-        json!([])
-    }
+fn channel_request_error_to_app_error(error: ChannelRequestValidationError) -> AppError {
+    AppError::InvalidInput(error.message)
 }
 
 fn legacy_provider_projection_input(provider: &Provider) -> LegacyProviderProjectionInput {

@@ -6,6 +6,7 @@
 
 pub mod codex_error;
 pub mod channel_identity;
+pub mod channel_request;
 pub mod domain;
 pub mod engine;
 pub mod error;
@@ -23,6 +24,7 @@ pub mod usage;
 
 pub use codex_error::*;
 pub use channel_identity::*;
+pub use channel_request::*;
 pub use domain::*;
 pub use engine::*;
 pub use error::*;
