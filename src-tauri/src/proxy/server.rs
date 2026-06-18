@@ -296,6 +296,11 @@ impl ProxyServer {
             // Versioned management API (channel migration surface)
             .route("/proxy/v1/health", get(handlers::health_check))
             .route("/proxy/v1/status", get(handlers::get_status))
+            .route("/proxy/v1/apps", get(handlers::list_proxy_apps))
+            .route(
+                "/proxy/v1/apps/:app/providers",
+                get(handlers::list_proxy_providers),
+            )
             .route(
                 "/proxy/v1/apps/:app/channels",
                 get(handlers::list_proxy_channels),
@@ -435,6 +440,67 @@ mod tests {
         let server = ProxyServer::new(ProxyConfig::default(), db, None);
 
         let _router = server.build_router();
+    }
+
+    #[tokio::test]
+    async fn management_apps_and_providers_return_sanitized_summaries() {
+        let db = Arc::new(Database::memory().expect("memory db"));
+        let provider = Provider::with_id(
+            "a".to_string(),
+            "Provider A".to_string(),
+            json!({
+                "env": {
+                    "ANTHROPIC_BASE_URL": "https://primary.example.com/v1",
+                    "ANTHROPIC_API_KEY": "secret-key"
+                }
+            }),
+            None,
+        );
+        db.save_provider("claude", &provider).unwrap();
+        db.set_current_provider("claude", "a").unwrap();
+
+        let server = ProxyServer::new(ProxyConfig::default(), db, None);
+        let mut router = server.build_router();
+
+        let apps_response = Service::call(
+            &mut router,
+            Request::builder()
+                .method(Method::GET)
+                .uri("/proxy/v1/apps")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+        assert_eq!(apps_response.status(), StatusCode::OK);
+        let apps = response_json(apps_response).await;
+        let claude = apps["apps"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|app| app["appType"] == "claude")
+            .expect("claude app summary");
+        assert_eq!(claude["providerCount"], 1);
+
+        let providers_response = Service::call(
+            &mut router,
+            Request::builder()
+                .method(Method::GET)
+                .uri("/proxy/v1/apps/claude/providers")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+        assert_eq!(providers_response.status(), StatusCode::OK);
+        let providers = response_json(providers_response).await;
+        let provider = &providers["providers"].as_array().unwrap()[0];
+        assert_eq!(provider["id"], "a");
+        assert_eq!(provider["name"], "Provider A");
+        assert_eq!(provider["current"], true);
+        assert_eq!(provider["routeCandidate"], true);
+        assert!(provider.get("settingsConfig").is_none());
+        assert!(provider.to_string().find("secret-key").is_none());
     }
 
     #[tokio::test]

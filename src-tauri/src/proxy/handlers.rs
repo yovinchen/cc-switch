@@ -46,6 +46,7 @@ use axum::{
 use bytes::Bytes;
 use http_body_util::BodyExt;
 use serde_json::{json, Value};
+use std::collections::HashSet;
 
 // ============================================================================
 // 健康检查和状态查询（简单端点）
@@ -66,6 +67,98 @@ pub async fn health_check() -> (StatusCode, Json<Value>) {
 pub async fn get_status(State(state): State<ProxyState>) -> Result<Json<ProxyStatus>, ProxyError> {
     let status = state.status.read().await.clone();
     Ok(Json(status))
+}
+
+/// GET /proxy/v1/apps
+pub async fn list_proxy_apps(State(state): State<ProxyState>) -> Result<Json<Value>, ProxyError> {
+    let mut apps = Vec::new();
+
+    for app in AppType::all() {
+        let app_type = app.as_str();
+        let config = state
+            .db
+            .get_proxy_config_for_app(app_type)
+            .await
+            .map_err(|e| ProxyError::DatabaseError(e.to_string()))?;
+        let providers = state
+            .db
+            .get_all_providers(app_type)
+            .map_err(|e| ProxyError::DatabaseError(e.to_string()))?;
+        let channels = state
+            .db
+            .list_proxy_channels_for_app(app_type)
+            .map_err(|e| ProxyError::DatabaseError(e.to_string()))?;
+
+        apps.push(json!({
+            "appType": app_type,
+            "enabled": config.enabled,
+            "autoFailoverEnabled": config.auto_failover_enabled,
+            "providerCount": providers.len(),
+            "channelCount": channels.len(),
+        }));
+    }
+
+    Ok(Json(json!({ "apps": apps })))
+}
+
+/// GET /proxy/v1/apps/{app}/providers
+pub async fn list_proxy_providers(
+    State(state): State<ProxyState>,
+    Path(app_type): Path<String>,
+) -> Result<Json<Value>, ProxyError> {
+    validate_management_app_type(&app_type)?;
+
+    let providers = state
+        .db
+        .get_all_providers(&app_type)
+        .map_err(|e| ProxyError::DatabaseError(e.to_string()))?;
+    let current_provider = state
+        .db
+        .get_current_provider(&app_type)
+        .map_err(|e| ProxyError::DatabaseError(e.to_string()))?;
+    let failover_queue = state
+        .db
+        .get_failover_queue(&app_type)
+        .map_err(|e| ProxyError::DatabaseError(e.to_string()))?;
+    let failover_ids: HashSet<String> = failover_queue
+        .iter()
+        .map(|item| item.provider_id.clone())
+        .collect();
+
+    let route_candidate_ids: HashSet<String> =
+        match state.provider_router.select_providers(&app_type).await {
+            Ok(selected) => selected.into_iter().map(|provider| provider.id).collect(),
+            Err(crate::error::AppError::NoProvidersConfigured)
+            | Err(crate::error::AppError::AllProvidersCircuitOpen) => HashSet::new(),
+            Err(e) => return Err(ProxyError::DatabaseError(e.to_string())),
+        };
+
+    let provider_summaries: Vec<Value> = providers
+        .into_values()
+        .map(|provider| {
+            let provider_type = provider
+                .meta
+                .as_ref()
+                .and_then(|meta| meta.provider_type.as_deref());
+            json!({
+                "id": provider.id,
+                "name": provider.name,
+                "category": provider.category,
+                "sortIndex": provider.sort_index,
+                "icon": provider.icon,
+                "iconColor": provider.icon_color,
+                "providerType": provider_type,
+                "current": current_provider.as_deref() == Some(provider.id.as_str()),
+                "inFailoverQueue": failover_ids.contains(&provider.id),
+                "routeCandidate": route_candidate_ids.contains(&provider.id),
+            })
+        })
+        .collect();
+
+    Ok(Json(json!({
+        "appType": app_type,
+        "providers": provider_summaries,
+    })))
 }
 
 /// GET /proxy/v1/apps/{app}/channels
