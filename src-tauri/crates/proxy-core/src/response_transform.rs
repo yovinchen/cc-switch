@@ -1,4 +1,16 @@
 use crate::UpstreamSseAggregationKind;
+use serde_json::Value;
+
+pub const CLAUDE_API_FORMAT_METADATA_KEY: &str = "claudeApiFormat";
+
+pub fn claude_api_format_from_metadata(metadata: &Value, fallback: &str) -> String {
+    metadata
+        .get(CLAUDE_API_FORMAT_METADATA_KEY)
+        .and_then(Value::as_str)
+        .filter(|value| !value.trim().is_empty())
+        .map(ToString::to_string)
+        .unwrap_or_else(|| fallback.to_string())
+}
 
 pub fn should_aggregate_codex_oauth_responses_sse(
     requested_streaming: bool,
@@ -30,6 +42,41 @@ pub fn claude_transform_unlabeled_sse_aggregation(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serde_json::json;
+
+    fn metadata_with_claude_api_format(value: &str) -> Value {
+        let mut metadata = serde_json::Map::new();
+        metadata.insert(
+            CLAUDE_API_FORMAT_METADATA_KEY.to_string(),
+            Value::String(value.to_string()),
+        );
+        Value::Object(metadata)
+    }
+
+    #[test]
+    fn claude_api_format_from_metadata_uses_non_empty_metadata_value() {
+        let metadata = metadata_with_claude_api_format("openai_responses");
+
+        assert_eq!(
+            claude_api_format_from_metadata(&metadata, "openai_chat"),
+            "openai_responses"
+        );
+    }
+
+    #[test]
+    fn claude_api_format_from_metadata_falls_back_for_missing_or_blank_values() {
+        assert_eq!(
+            claude_api_format_from_metadata(&json!({}), "openai_chat"),
+            "openai_chat"
+        );
+        assert_eq!(
+            claude_api_format_from_metadata(
+                &metadata_with_claude_api_format(" "),
+                "openai_chat"
+            ),
+            "openai_chat"
+        );
+    }
 
     #[test]
     fn claude_transform_streaming_uses_requested_streaming() {

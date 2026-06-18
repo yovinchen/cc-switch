@@ -43,25 +43,25 @@ use super::{
 use crate::app_config::AppType;
 use crate::database::{ProxyChannelModelRecord, ProxyChannelRecord};
 use crate::proxy_core::{
-    claude_stream_usage_event_filter, claude_transform_unlabeled_sse_aggregation,
-    codex_stream_usage_event_filter, json_proxy_response, normalize_channel_id_path,
-    parse_upstream_json_or_unlabeled_sse, rebuilt_json_proxy_response,
-    resolve_management_auth_decision, should_aggregate_codex_oauth_responses_sse,
-    should_use_claude_transform_streaming, transformed_response_usage,
-    transformed_sse_proxy_response, validate_claude_desktop_gateway_bearer_header,
-    validate_management_app_type, validate_management_bearer_header,
-    validate_route_resolve_app_type, AppChannelListQuery, AppChannelListResponse,
-    AppChannelResponse, AppChannelRouteResponse, AppKind, AppListResponse, AppModelListQuery,
-    AppSummary, ChannelDeleteResponse, ChannelHealthResetResponse, ChannelListQuery,
-    ChannelListResponse, ChannelMigrationMaterializeResponse, ChannelMigrationPreviewResponse,
-    ChannelModelsResponse, ChannelRouteCandidate, ChannelRouteRejected,
-    CurrentRouteProviderSummary, CurrentRouteResponse, GroupListQuery, HealthCheckResponse,
-    InterfaceKind, ManagementAuthDecision, ProviderListResponse, ProviderSummaryInput, ProxyBody,
-    ProxyChannelModelsReplaceRequest, ProxyChannelPatchRequest, ProxyChannelWriteRequest,
-    ProxyEngine, ProxyRequest, ProxyResult, ProxyServices, RoutableModelList,
-    RouteGroupChannelInput, RouteGroupListResponse, RouteGroupSourceInput, RouteResolveRequest,
-    RouteResolveResponse, TransformedResponseUsageFormat, UpstreamJsonBodySource,
-    UpstreamSseAggregationKind,
+    claude_api_format_from_metadata, claude_stream_usage_event_filter,
+    claude_transform_unlabeled_sse_aggregation, codex_stream_usage_event_filter,
+    json_proxy_response, normalize_channel_id_path, parse_upstream_json_or_unlabeled_sse,
+    rebuilt_json_proxy_response, resolve_management_auth_decision,
+    should_aggregate_codex_oauth_responses_sse, should_use_claude_transform_streaming,
+    transformed_response_usage, transformed_sse_proxy_response,
+    validate_claude_desktop_gateway_bearer_header, validate_management_app_type,
+    validate_management_bearer_header, validate_route_resolve_app_type, AppChannelListQuery,
+    AppChannelListResponse, AppChannelResponse, AppChannelRouteResponse, AppKind, AppListResponse,
+    AppModelListQuery, AppSummary, ChannelDeleteResponse, ChannelHealthResetResponse,
+    ChannelListQuery, ChannelListResponse, ChannelMigrationMaterializeResponse,
+    ChannelMigrationPreviewResponse, ChannelModelsResponse, ChannelRouteCandidate,
+    ChannelRouteRejected, CurrentRouteProviderSummary, CurrentRouteResponse, GroupListQuery,
+    HealthCheckResponse, InterfaceKind, ManagementAuthDecision, ProviderListResponse,
+    ProviderSummaryInput, ProxyBody, ProxyChannelModelsReplaceRequest, ProxyChannelPatchRequest,
+    ProxyChannelWriteRequest, ProxyEngine, ProxyRequest, ProxyResult, ProxyServices,
+    RoutableModelList, RouteGroupChannelInput, RouteGroupListResponse, RouteGroupSourceInput,
+    RouteResolveRequest, RouteResolveResponse, TransformedResponseUsageFormat,
+    UpstreamJsonBodySource, UpstreamSseAggregationKind,
 };
 use axum::{
     extract::{Path, Query, State},
@@ -1018,13 +1018,7 @@ fn apply_proxy_result_to_context(
 }
 
 fn proxy_result_claude_api_format(result: &ProxyResult, ctx: &RequestContext) -> String {
-    result
-        .metadata
-        .get("claudeApiFormat")
-        .and_then(Value::as_str)
-        .filter(|value| !value.trim().is_empty())
-        .map(ToString::to_string)
-        .unwrap_or_else(|| get_claude_api_format(&ctx.provider).to_string())
+    claude_api_format_from_metadata(&result.metadata, get_claude_api_format(&ctx.provider))
 }
 
 // ============================================================================

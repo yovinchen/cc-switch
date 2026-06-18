@@ -22,13 +22,13 @@ use crate::proxy_core::{
     ProxyCoreEventType, ProxyCoreResponse, ProxyCoreResult, ProxyEventSink, ProxyGlobalConfig,
     ProxyRequest, ProxyResponseBody, ProxyResult, ProxyRuntimeConfig, ProxyServices,
     RectifierConfigSpec, RoutePlan, RoutePolicy, RoutePolicySource, RouteRequest, RouteResolver,
-    RouteSelection, UsageRecord, UsageSink, DEFAULT_ROUTE_GROUP,
+    RouteSelection, UsageRecord, UsageSink, CLAUDE_API_FORMAT_METADATA_KEY, DEFAULT_ROUTE_GROUP,
 };
 use crate::proxy_core_adapter::{ToProxyCoreChannelSpec, ToProxyCoreProviderSpec};
 use crate::services::usage_stats::is_placeholder_pricing_model;
 use bytes::Bytes;
 use futures::{future::BoxFuture, Stream, StreamExt};
-use serde_json::{json, Value};
+use serde_json::{json, Map, Value};
 use std::collections::HashMap;
 use std::str::FromStr;
 use std::sync::Arc;
@@ -810,18 +810,26 @@ fn forward_result_to_proxy_result(
 ) -> ProxyResult {
     let selected_route = selected_route_for_forward_result(&result, &plan);
     let connection_guard = result.connection_guard.take();
-    let metadata = json!({
-        "hostProviderId": result.provider.id,
-        "hostProviderName": result.provider.name,
-        "claudeApiFormat": result.claude_api_format,
-        "selectedChannelId": result.selected_channel.as_ref().map(|channel| channel.channel_id.clone()),
-    });
+    let mut metadata = Map::new();
+    metadata.insert("hostProviderId".to_string(), json!(result.provider.id));
+    metadata.insert("hostProviderName".to_string(), json!(result.provider.name));
+    metadata.insert(
+        CLAUDE_API_FORMAT_METADATA_KEY.to_string(),
+        json!(result.claude_api_format),
+    );
+    metadata.insert(
+        "selectedChannelId".to_string(),
+        json!(result
+            .selected_channel
+            .as_ref()
+            .map(|channel| channel.channel_id.clone())),
+    );
     ProxyResult {
         response: proxy_response_to_core_response(result.response, connection_guard),
         selected_route,
         outbound_model: result.outbound_model,
         usage_record: None,
-        metadata,
+        metadata: Value::Object(metadata),
     }
 }
 
