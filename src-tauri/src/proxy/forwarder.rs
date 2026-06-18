@@ -30,13 +30,15 @@ use crate::proxy_core::append_query_to_full_url;
 use crate::proxy_core::{
     build_codex_oauth_session_headers, build_retryable_forward_failure_log,
     build_terminal_forward_failure_log, build_upstream_auth_headers, categorize_forward_failure,
-    is_github_copilot_upstream, resolve_upstream_request_transport_policy,
-    resolved_copilot_dynamic_base_url, should_failover_after_rectifier_retry_failure,
+    is_github_copilot_upstream, resolve_media_prevention_policy,
+    resolve_upstream_request_transport_policy, resolved_copilot_dynamic_base_url,
+    should_check_media_retry, should_failover_after_rectifier_retry_failure,
     should_preserve_exact_request_header_case, should_resolve_copilot_dynamic_endpoint,
-    should_send_anthropic_request_headers, split_endpoint_and_query,
+    should_send_anthropic_request_headers, should_trigger_media_retry, split_endpoint_and_query,
     validate_managed_account_upstream_auth, AppKind, ChannelQuery, CopilotAuthHeaderOverrides,
-    ForwardFailureCategory, ForwardFailureKind, InterfaceKind, ProxyBody, ProxyEngine,
-    ProxyRequest, ProxyServices, UpstreamAuthHeadersInput, UpstreamRequestHeadersInput,
+    ForwardFailureCategory, ForwardFailureKind, InterfaceKind, MediaRetryInput, ProxyBody,
+    ProxyEngine, ProxyRequest, ProxyServices, UpstreamAuthHeadersInput,
+    UpstreamRequestHeadersInput,
 };
 use crate::proxy_core_host::CcSwitchProxyServices;
 use crate::{app_config::AppType, provider::Provider};
@@ -153,13 +155,18 @@ impl RequestForwarder {
     /// 再受 `request_media_heuristic` 单独管辖（显式声明 text-only 始终生效）。
     /// 返回被替换的图片块数量（0 = 未触发或开关关闭）。
     fn apply_media_prevention(&self, body: &mut Value, provider: &Provider) -> usize {
-        if !(self.rectifier_config.enabled && self.rectifier_config.request_media_fallback) {
+        let policy = resolve_media_prevention_policy(
+            self.rectifier_config.enabled,
+            self.rectifier_config.request_media_fallback,
+            self.rectifier_config.request_media_heuristic,
+        );
+        if !policy.should_attempt {
             return 0;
         }
         let replaced_images = super::media_sanitizer::replace_images_for_text_only_model(
             body,
             provider,
-            self.rectifier_config.request_media_heuristic,
+            policy.allow_heuristic,
         );
         if replaced_images > 0 {
             let model = body.get("model").and_then(Value::as_str).unwrap_or("");
@@ -184,12 +191,23 @@ impl RequestForwarder {
         provider_body: &Value,
         error: &ProxyError,
     ) -> bool {
-        matches!(adapter_name, "Claude" | "Codex")
-            && self.rectifier_config.enabled
-            && self.rectifier_config.request_media_fallback
-            && !already_retried
-            && super::media_sanitizer::contains_image_blocks(provider_body)
-            && super::media_sanitizer::is_unsupported_image_error(error)
+        if !should_check_media_retry(
+            adapter_name,
+            self.rectifier_config.enabled,
+            self.rectifier_config.request_media_fallback,
+            already_retried,
+        ) {
+            return false;
+        }
+
+        should_trigger_media_retry(MediaRetryInput {
+            adapter_name,
+            rectifier_enabled: self.rectifier_config.enabled,
+            request_media_fallback: self.rectifier_config.request_media_fallback,
+            already_retried,
+            body_has_images: super::media_sanitizer::contains_image_blocks(provider_body),
+            unsupported_image_error: super::media_sanitizer::is_unsupported_image_error(error),
+        })
     }
 
     #[allow(dead_code)]
