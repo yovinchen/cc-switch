@@ -46,6 +46,14 @@ pub fn categorize_forward_failure(failure: &ForwardFailureKind) -> ForwardFailur
     }
 }
 
+pub fn should_failover_after_rectifier_retry_failure(failure: &ForwardFailureKind) -> bool {
+    match failure {
+        ForwardFailureKind::Timeout(_) | ForwardFailureKind::ForwardFailed(_) => true,
+        ForwardFailureKind::Upstream { status, .. } => *status >= 500,
+        _ => false,
+    }
+}
+
 pub fn build_retryable_forward_failure_log(
     provider_name: &str,
     attempted_providers: usize,
@@ -169,9 +177,9 @@ fn extract_json_error_message(body: &Value) -> Option<String> {
 mod tests {
     use super::{
         build_retryable_forward_failure_log, build_terminal_forward_failure_log,
-        categorize_forward_failure, summarize_text_for_log, summarize_upstream_body_for_log,
-        ForwardFailureCategory, ForwardFailureKind, ALL_PROVIDERS_FAILED, PROVIDER_FAILED_RETRY,
-        SINGLE_PROVIDER_FAILED,
+        categorize_forward_failure, should_failover_after_rectifier_retry_failure,
+        summarize_text_for_log, summarize_upstream_body_for_log, ForwardFailureCategory,
+        ForwardFailureKind, ALL_PROVIDERS_FAILED, PROVIDER_FAILED_RETRY, SINGLE_PROVIDER_FAILED,
     };
     use serde_json::json;
 
@@ -292,5 +300,46 @@ mod tests {
             categorize_forward_failure(&failure),
             ForwardFailureCategory::NonRetryable
         );
+    }
+
+    #[test]
+    fn rectifier_retry_failover_only_for_network_and_server_side_errors() {
+        for failure in [
+            ForwardFailureKind::Timeout("timeout".to_string()),
+            ForwardFailureKind::ForwardFailed("connection reset".to_string()),
+            ForwardFailureKind::Upstream {
+                status: 500,
+                body: None,
+            },
+            ForwardFailureKind::Upstream {
+                status: 503,
+                body: None,
+            },
+        ] {
+            assert!(
+                should_failover_after_rectifier_retry_failure(&failure),
+                "{failure:?} should keep provider failover alive"
+            );
+        }
+
+        for failure in [
+            ForwardFailureKind::Upstream {
+                status: 400,
+                body: None,
+            },
+            ForwardFailureKind::Upstream {
+                status: 429,
+                body: None,
+            },
+            ForwardFailureKind::TransformError("still invalid".to_string()),
+            ForwardFailureKind::AuthError("bad token".to_string()),
+            ForwardFailureKind::RetryableOther("provider unhealthy".to_string()),
+            ForwardFailureKind::Other("database error".to_string()),
+        ] {
+            assert!(
+                !should_failover_after_rectifier_retry_failure(&failure),
+                "{failure:?} should end rectifier retry as a client/non-provider failure"
+            );
+        }
     }
 }

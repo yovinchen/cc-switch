@@ -31,12 +31,12 @@ use crate::proxy_core::{
     build_codex_oauth_session_headers, build_retryable_forward_failure_log,
     build_terminal_forward_failure_log, build_upstream_auth_headers, categorize_forward_failure,
     is_github_copilot_upstream, resolve_upstream_request_transport_policy,
-    resolved_copilot_dynamic_base_url, should_preserve_exact_request_header_case,
-    should_resolve_copilot_dynamic_endpoint, should_send_anthropic_request_headers,
-    split_endpoint_and_query, validate_managed_account_upstream_auth, AppKind, ChannelQuery,
-    CopilotAuthHeaderOverrides, ForwardFailureCategory, ForwardFailureKind, InterfaceKind,
-    ProxyBody, ProxyEngine, ProxyRequest, ProxyServices, UpstreamAuthHeadersInput,
-    UpstreamRequestHeadersInput,
+    resolved_copilot_dynamic_base_url, should_failover_after_rectifier_retry_failure,
+    should_preserve_exact_request_header_case, should_resolve_copilot_dynamic_endpoint,
+    should_send_anthropic_request_headers, split_endpoint_and_query,
+    validate_managed_account_upstream_auth, AppKind, ChannelQuery, CopilotAuthHeaderOverrides,
+    ForwardFailureCategory, ForwardFailureKind, InterfaceKind, ProxyBody, ProxyEngine,
+    ProxyRequest, ProxyServices, UpstreamAuthHeadersInput, UpstreamRequestHeadersInput,
 };
 use crate::proxy_core_host::CcSwitchProxyServices;
 use crate::{app_config::AppType, provider::Provider};
@@ -559,11 +559,8 @@ impl RequestForwarder {
         let provider = attempt.provider();
         // Provider 错误：本家上游/网络确实出问题，下一家 provider 可能可用 → 继续故障转移。
         // 客户端错误：整流后请求仍违法，下一家也修不好 → 直接返回。
-        let is_provider_error = match &retry_err {
-            ProxyError::Timeout(_) | ProxyError::ForwardFailed(_) => true,
-            ProxyError::UpstreamError { status, .. } => *status >= 500,
-            _ => false,
-        };
+        let failure = forward_failure_kind_from_proxy_error(&retry_err);
+        let is_provider_error = should_failover_after_rectifier_retry_failure(&failure);
 
         if is_provider_error {
             self.record_failure_result(
