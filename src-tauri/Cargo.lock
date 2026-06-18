@@ -809,7 +809,9 @@ dependencies = [
 name = "cc-switch-proxy-core"
 version = "0.1.0"
 dependencies = [
+ "brotli 7.0.0",
  "bytes",
+ "flate2",
  "futures",
  "http",
  "serde",

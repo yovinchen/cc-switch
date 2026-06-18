@@ -14,8 +14,8 @@ use super::{
     ProxyError,
 };
 use crate::proxy_core::{
-    strip_entity_headers_for_rebuilt_body, strip_hop_by_hop_response_headers, ProviderKind,
-    ProxyServices,
+    decompress_body, get_content_encoding, strip_entity_headers_for_rebuilt_body,
+    strip_hop_by_hop_response_headers, ProviderKind, ProxyServices,
 };
 use axum::http::header::HeaderMap;
 use axum::response::{IntoResponse, Response};
@@ -23,7 +23,6 @@ use bytes::Bytes;
 use futures::stream::{Stream, StreamExt};
 use serde_json::Value;
 use std::{
-    io::Read,
     sync::{
         atomic::{AtomicBool, Ordering},
         Arc,
@@ -31,61 +30,6 @@ use std::{
     time::Duration,
 };
 use tokio::sync::Mutex;
-
-// ============================================================================
-// 响应解压
-// ============================================================================
-
-/// 根据 content-encoding 解压响应体字节
-///
-/// reqwest 自动解压已禁用（为了透传 accept-encoding），需要手动解压。
-/// 返回 `Ok(None)` 表示编码不受支持、原样透传——此时调用方必须保留
-/// content-encoding 头，否则下游（诊断/客户端）会把压缩字节误当明文。
-fn decompress_body(content_encoding: &str, body: &[u8]) -> Result<Option<Vec<u8>>, std::io::Error> {
-    match content_encoding {
-        "gzip" | "x-gzip" => {
-            let mut decoder = flate2::read::GzDecoder::new(body);
-            let mut decompressed = Vec::new();
-            decoder.read_to_end(&mut decompressed)?;
-            Ok(Some(decompressed))
-        }
-        "deflate" => {
-            // RFC 9110: deflate 指 zlib 包裹格式；但部分上游发 raw deflate 流。
-            // 先按规范尝试 zlib，失败再回退 raw —— 否则合规上游必然解压失败，
-            // 原始压缩字节会被 fail-open 透传给 JSON 解析（#2234 形态 C 之一）。
-            let mut decompressed = Vec::new();
-            let mut zlib = flate2::read::ZlibDecoder::new(body);
-            match zlib.read_to_end(&mut decompressed) {
-                Ok(_) => Ok(Some(decompressed)),
-                Err(zlib_err) => {
-                    log::debug!("deflate 按 zlib 解压失败（{zlib_err}），回退 raw deflate");
-                    let mut decompressed = Vec::new();
-                    let mut raw = flate2::read::DeflateDecoder::new(body);
-                    raw.read_to_end(&mut decompressed)?;
-                    Ok(Some(decompressed))
-                }
-            }
-        }
-        "br" => {
-            let mut decompressed = Vec::new();
-            brotli::BrotliDecompress(&mut std::io::Cursor::new(body), &mut decompressed)?;
-            Ok(Some(decompressed))
-        }
-        _ => {
-            log::warn!("未知的 content-encoding: {content_encoding}，跳过解压");
-            Ok(None)
-        }
-    }
-}
-
-/// 从响应头提取 content-encoding（忽略 identity 和 chunked）
-fn get_content_encoding(headers: &HeaderMap) -> Option<String> {
-    headers
-        .get("content-encoding")
-        .and_then(|v| v.to_str().ok())
-        .map(|s| s.trim().to_lowercase())
-        .filter(|s| !s.is_empty() && s != "identity")
-}
 
 /// 读取响应体并在需要时解压，确保 headers 与返回 body 一致。
 ///
@@ -131,7 +75,9 @@ pub(crate) async fn read_decoded_body(
             }
             // 不支持的编码：原样透传且保留 content-encoding 头，
             // 让下游诊断/客户端知道这仍是压缩字节
-            Ok(None) => {}
+            Ok(None) => {
+                log::warn!("未知的 content-encoding: {encoding}，跳过解压");
+            }
             Err(e) => {
                 log::warn!("[{tag}] 解压失败 ({encoding}): {e}，使用原始数据");
             }
