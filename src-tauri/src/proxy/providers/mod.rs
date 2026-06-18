@@ -38,12 +38,12 @@ use crate::provider::Provider;
 use serde::{Deserialize, Serialize};
 
 // 公开导出
+pub use crate::proxy_core::claude_api_format_needs_transform;
 pub use adapter::ProviderAdapter;
 pub use auth::{AuthInfo, AuthStrategy};
 pub use claude::{
-    claude_api_format_needs_transform, get_claude_api_format,
-    normalize_anthropic_messages_for_provider, transform_claude_request_for_api_format,
-    ClaudeAdapter,
+    get_claude_api_format, normalize_anthropic_messages_for_provider,
+    transform_claude_request_for_api_format, ClaudeAdapter,
 };
 pub use codex::CodexAdapter;
 pub use codex::{

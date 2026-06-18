@@ -17,6 +17,7 @@
 use super::{AuthInfo, AuthStrategy, ProviderAdapter, ProviderType};
 use crate::provider::Provider;
 use crate::proxy::error::ProxyError;
+use crate::proxy_core::claude_api_format_needs_transform;
 use serde_json::{json, Value};
 
 const ANTHROPIC_THINKING_PLACEHOLDER: &str = "tool call";
@@ -79,13 +80,6 @@ pub fn get_claude_api_format(provider: &Provider) -> &'static str {
     } else {
         "anthropic"
     }
-}
-
-pub fn claude_api_format_needs_transform(api_format: &str) -> bool {
-    matches!(
-        api_format,
-        "openai_chat" | "openai_responses" | "gemini_native"
-    )
 }
 
 fn is_reasoning_vendor_identifier(value: &str) -> bool {
@@ -912,10 +906,7 @@ impl ProviderAdapter for ClaudeAdapter {
         // - "anthropic" (默认): 直接透传，无需转换
         // - "openai_chat": 需要 Anthropic ↔ OpenAI Chat Completions 格式转换
         // - "openai_responses": 需要 Anthropic ↔ OpenAI Responses API 格式转换
-        matches!(
-            self.get_api_format(provider),
-            "openai_chat" | "openai_responses" | "gemini_native"
-        )
+        claude_api_format_needs_transform(self.get_api_format(provider))
     }
 
     fn transform_request(

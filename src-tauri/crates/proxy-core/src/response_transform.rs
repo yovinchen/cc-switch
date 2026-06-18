@@ -12,6 +12,13 @@ pub fn claude_api_format_from_metadata(metadata: &Value, fallback: &str) -> Stri
         .unwrap_or_else(|| fallback.to_string())
 }
 
+pub fn claude_api_format_needs_transform(api_format: &str) -> bool {
+    matches!(
+        api_format,
+        "openai_chat" | "openai_responses" | "gemini_native"
+    )
+}
+
 pub fn should_aggregate_codex_oauth_responses_sse(
     requested_streaming: bool,
     api_format: &str,
@@ -76,6 +83,15 @@ mod tests {
             ),
             "openai_chat"
         );
+    }
+
+    #[test]
+    fn claude_api_format_needs_transform_only_for_translated_formats() {
+        assert!(!claude_api_format_needs_transform("anthropic"));
+        assert!(claude_api_format_needs_transform("openai_chat"));
+        assert!(claude_api_format_needs_transform("openai_responses"));
+        assert!(claude_api_format_needs_transform("gemini_native"));
+        assert!(!claude_api_format_needs_transform("unknown"));
     }
 
     #[test]
