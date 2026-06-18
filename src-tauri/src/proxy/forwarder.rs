@@ -32,9 +32,9 @@ use crate::proxy_core::append_query_to_full_url;
 use crate::proxy_core::{
     build_codex_oauth_session_headers, resolve_upstream_request_transport_policy,
     should_preserve_exact_request_header_case, should_send_anthropic_request_headers,
-    should_strip_forwarded_request_header, split_endpoint_and_query,
-    validate_managed_account_upstream_auth, AppKind, ChannelQuery, InterfaceKind, ProxyBody,
-    ProxyEngine, ProxyRequest, ProxyServices, DEFAULT_ANTHROPIC_VERSION,
+    should_skip_copilot_fingerprint_request_header, should_strip_forwarded_request_header,
+    split_endpoint_and_query, validate_managed_account_upstream_auth, AppKind, ChannelQuery,
+    InterfaceKind, ProxyBody, ProxyEngine, ProxyRequest, ProxyServices, DEFAULT_ANTHROPIC_VERSION,
 };
 use crate::proxy_core_host::CcSwitchProxyServices;
 use crate::{app_config::AppType, provider::Provider};
@@ -2042,27 +2042,6 @@ impl RequestForwarder {
             }
         }
 
-        // Copilot 指纹头名（由 get_auth_headers 注入，需在原始头中去重）
-        let copilot_fingerprint_headers: &[&str] = if is_copilot {
-            &[
-                "user-agent",
-                "editor-version",
-                "editor-plugin-version",
-                "copilot-integration-id",
-                "x-github-api-version",
-                "openai-intent",
-                // 新增 headers
-                "x-initiator",
-                "x-interaction-type",
-                "x-interaction-id",
-                "x-vscode-user-agent-library-version",
-                "x-request-id",
-                "x-agent-task-id",
-            ]
-        } else {
-            &[]
-        };
-
         // 预计算上游 host 值（用于在原位替换 host header）
         let upstream_host = url
             .parse::<http::Uri>()
@@ -2179,10 +2158,7 @@ impl RequestForwarder {
             }
 
             // --- Copilot 指纹头 — 跳过（由 auth_headers 提供） ---
-            if copilot_fingerprint_headers
-                .iter()
-                .any(|h| key_str.eq_ignore_ascii_case(h))
-            {
+            if should_skip_copilot_fingerprint_request_header(is_copilot, key_str) {
                 continue;
             }
 

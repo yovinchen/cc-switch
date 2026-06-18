@@ -28,6 +28,21 @@ const REQUEST_HEADERS_STRIPPED_BEFORE_UPSTREAM: &[&str] = &[
     "tracestate",
 ];
 
+const COPILOT_FINGERPRINT_REQUEST_HEADERS: &[&str] = &[
+    "user-agent",
+    "editor-version",
+    "editor-plugin-version",
+    "copilot-integration-id",
+    "x-github-api-version",
+    "openai-intent",
+    "x-initiator",
+    "x-interaction-type",
+    "x-interaction-id",
+    "x-vscode-user-agent-library-version",
+    "x-request-id",
+    "x-agent-task-id",
+];
+
 pub const CLAUDE_CODE_BETA: &str = "claude-code-20250219";
 pub const DEFAULT_ANTHROPIC_VERSION: &str = "2023-06-01";
 
@@ -74,6 +89,13 @@ pub fn should_strip_forwarded_request_header(name: &str) -> bool {
         .any(|header| name.eq_ignore_ascii_case(header))
 }
 
+pub fn should_skip_copilot_fingerprint_request_header(is_copilot: bool, name: &str) -> bool {
+    is_copilot
+        && COPILOT_FINGERPRINT_REQUEST_HEADERS
+            .iter()
+            .any(|header| name.eq_ignore_ascii_case(header))
+}
+
 pub fn should_preserve_exact_request_header_case(
     adapter_name: &str,
     provider_is_codex_oauth: bool,
@@ -96,7 +118,8 @@ mod tests {
     use super::{
         anthropic_beta_header_value, build_codex_oauth_session_headers,
         should_preserve_exact_request_header_case, should_send_anthropic_request_headers,
-        should_strip_forwarded_request_header, CLAUDE_CODE_BETA, DEFAULT_ANTHROPIC_VERSION,
+        should_skip_copilot_fingerprint_request_header, should_strip_forwarded_request_header,
+        CLAUDE_CODE_BETA, DEFAULT_ANTHROPIC_VERSION,
     };
     use http::{HeaderMap, HeaderValue};
 
@@ -214,6 +237,37 @@ mod tests {
                 "expected {header} to stay available to forwarder policy"
             );
         }
+    }
+
+    #[test]
+    fn skips_copilot_fingerprint_headers_only_for_copilot_requests() {
+        for header in [
+            "user-agent",
+            "editor-version",
+            "copilot-integration-id",
+            "openai-intent",
+            "x-initiator",
+            "x-interaction-id",
+            "x-agent-task-id",
+        ] {
+            assert!(
+                should_skip_copilot_fingerprint_request_header(true, header),
+                "expected {header} to be skipped for Copilot"
+            );
+        }
+
+        assert!(should_skip_copilot_fingerprint_request_header(
+            true,
+            "X-GitHub-Api-Version"
+        ));
+        assert!(!should_skip_copilot_fingerprint_request_header(
+            false,
+            "user-agent"
+        ));
+        assert!(!should_skip_copilot_fingerprint_request_header(
+            true,
+            "authorization"
+        ));
     }
 
     #[test]
