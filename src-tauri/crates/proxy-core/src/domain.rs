@@ -213,6 +213,32 @@ impl InterfaceKind {
             _ => Self::Custom(value.trim().to_string()),
         }
     }
+
+    pub fn claude_api_format(&self) -> Option<&'static str> {
+        match self {
+            Self::AnthropicMessages => Some("anthropic"),
+            Self::OpenAiChatCompletions => Some("openai_chat"),
+            Self::OpenAiResponses => Some("openai_responses"),
+            Self::GeminiNative => Some("gemini_native"),
+            _ => None,
+        }
+    }
+
+    pub fn codex_api_format(&self) -> Option<&'static str> {
+        match self {
+            Self::OpenAiChatCompletions => Some("openai_chat"),
+            Self::OpenAiResponses => Some("openai_responses"),
+            _ => None,
+        }
+    }
+}
+
+pub fn claude_api_format_for_interface_kind(interface_kind: &str) -> Option<&'static str> {
+    InterfaceKind::from_storage(interface_kind).claude_api_format()
+}
+
+pub fn codex_api_format_for_interface_kind(interface_kind: &str) -> Option<&'static str> {
+    InterfaceKind::from_storage(interface_kind).codex_api_format()
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -704,5 +730,39 @@ mod tests {
             }
             _ => panic!("expected stream body"),
         }
+    }
+
+    #[test]
+    fn interface_kind_maps_claude_channel_formats() {
+        assert_eq!(
+            claude_api_format_for_interface_kind("anthropic_messages"),
+            Some("anthropic")
+        );
+        assert_eq!(
+            claude_api_format_for_interface_kind("openai_chat_completions"),
+            Some("openai_chat")
+        );
+        assert_eq!(
+            claude_api_format_for_interface_kind("openai_responses"),
+            Some("openai_responses")
+        );
+        assert_eq!(
+            claude_api_format_for_interface_kind("gemini_native"),
+            Some("gemini_native")
+        );
+        assert_eq!(claude_api_format_for_interface_kind("embeddings"), None);
+    }
+
+    #[test]
+    fn interface_kind_maps_codex_channel_formats() {
+        assert_eq!(
+            codex_api_format_for_interface_kind("openai_chat_completions"),
+            Some("openai_chat")
+        );
+        assert_eq!(
+            codex_api_format_for_interface_kind("openai_responses"),
+            Some("openai_responses")
+        );
+        assert_eq!(codex_api_format_for_interface_kind("gemini_native"), None);
     }
 }

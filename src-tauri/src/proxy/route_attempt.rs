@@ -5,7 +5,10 @@
 
 use crate::app_config::AppType;
 use crate::provider::{Provider, ProviderMeta};
-use crate::proxy_core::{ChannelRouteCandidate, RoutePlan};
+use crate::proxy_core::{
+    claude_api_format_for_interface_kind, codex_api_format_for_interface_kind,
+    ChannelRouteCandidate, RoutePlan,
+};
 use serde_json::{Map, Value};
 use std::collections::HashMap;
 
@@ -171,7 +174,9 @@ fn apply_channel_provider_overrides(
                 );
             }
 
-            if let Some(api_format) = claude_api_format_for_interface(&candidate.interface_kind) {
+            if let Some(api_format) =
+                claude_api_format_for_interface_kind(&candidate.interface_kind)
+            {
                 provider
                     .meta
                     .get_or_insert_with(ProviderMeta::default)
@@ -184,7 +189,8 @@ fn apply_channel_provider_overrides(
                 "base_url",
                 &candidate.base_url,
             );
-            if let Some(api_format) = codex_api_format_for_interface(&candidate.interface_kind) {
+            if let Some(api_format) = codex_api_format_for_interface_kind(&candidate.interface_kind)
+            {
                 provider
                     .meta
                     .get_or_insert_with(ProviderMeta::default)
@@ -198,24 +204,6 @@ fn apply_channel_provider_overrides(
                 &candidate.base_url,
             );
         }
-    }
-}
-
-fn claude_api_format_for_interface(interface_kind: &str) -> Option<&'static str> {
-    match interface_kind {
-        "anthropic_messages" => Some("anthropic"),
-        "openai_chat_completions" => Some("openai_chat"),
-        "openai_responses" => Some("openai_responses"),
-        "gemini_native" => Some("gemini_native"),
-        _ => None,
-    }
-}
-
-fn codex_api_format_for_interface(interface_kind: &str) -> Option<&'static str> {
-    match interface_kind {
-        "openai_chat_completions" => Some("openai_chat"),
-        "openai_responses" => Some("openai_responses"),
-        _ => None,
     }
 }
 
@@ -375,6 +363,50 @@ mod tests {
                 .as_ref()
                 .and_then(|meta| meta.api_format.as_deref()),
             Some("openai_responses")
+        );
+    }
+
+    #[test]
+    fn channel_attempt_overrides_codex_base_url_and_api_format() {
+        let provider = Provider::with_id(
+            "p1".to_string(),
+            "Provider".to_string(),
+            json!({
+                "base_url": "https://old.example.com/v1",
+                "api_key": "keep-key"
+            }),
+            None,
+        );
+
+        let attempt = ForwardAttempt::from_channel(
+            &AppType::Codex,
+            &provider,
+            candidate("openai_chat_completions"),
+        );
+
+        assert_eq!(
+            attempt
+                .provider()
+                .settings_config
+                .get("base_url")
+                .and_then(Value::as_str),
+            Some("https://relay.example.com/v1")
+        );
+        assert_eq!(
+            attempt
+                .provider()
+                .settings_config
+                .get("api_key")
+                .and_then(Value::as_str),
+            Some("keep-key")
+        );
+        assert_eq!(
+            attempt
+                .provider()
+                .meta
+                .as_ref()
+                .and_then(|meta| meta.api_format.as_deref()),
+            Some("openai_chat")
         );
     }
 
