@@ -41,10 +41,11 @@ use crate::proxy_core::{
     body_diagnostics_suffix, body_looks_like_sse, claude_stream_usage_event_filter,
     codex_stream_usage_event_filter, should_aggregate_codex_oauth_responses_sse,
     should_use_claude_transform_streaming, strip_entity_headers_for_rebuilt_body,
-    strip_hop_by_hop_response_headers, AppKind, ChannelDeleteResponse, ChannelHealthResetResponse,
-    ChannelListResponse, ChannelModelsResponse, InterfaceKind, ProxyBody, ProxyCoreError,
-    ProxyCoreResponse, ProxyEngine, ProxyRequest, ProxyResponseBody, ProxyResult, ProxyServices,
-    RoutableModelList, RouteGroupChannelInput, RouteGroupListResponse, RouteGroupSourceInput,
+    strip_hop_by_hop_response_headers, AppKind, AppListResponse, AppSummary, ChannelDeleteResponse,
+    ChannelHealthResetResponse, ChannelListResponse, ChannelModelsResponse, InterfaceKind,
+    ProxyBody, ProxyCoreError, ProxyCoreResponse, ProxyEngine, ProxyRequest, ProxyResponseBody,
+    ProxyResult, ProxyServices, RoutableModelList, RouteGroupChannelInput, RouteGroupListResponse,
+    RouteGroupSourceInput,
 };
 use axum::{
     extract::{Path, Query, State},
@@ -289,7 +290,9 @@ fn validate_management_bearer(
 }
 
 /// GET /proxy/v1/apps
-pub async fn list_proxy_apps(State(state): State<ProxyState>) -> Result<Json<Value>, ProxyError> {
+pub async fn list_proxy_apps(
+    State(state): State<ProxyState>,
+) -> Result<Json<AppListResponse>, ProxyError> {
     let mut apps = Vec::new();
 
     for app in AppType::all() {
@@ -308,16 +311,16 @@ pub async fn list_proxy_apps(State(state): State<ProxyState>) -> Result<Json<Val
             .list_proxy_channels_for_app(app_type)
             .map_err(|e| ProxyError::DatabaseError(e.to_string()))?;
 
-        apps.push(json!({
-            "appType": app_type,
-            "enabled": config.enabled,
-            "autoFailoverEnabled": config.auto_failover_enabled,
-            "providerCount": providers.len(),
-            "channelCount": channels.len(),
-        }));
+        apps.push(AppSummary::new(
+            app_type,
+            config.enabled,
+            config.auto_failover_enabled,
+            providers.len(),
+            channels.len(),
+        ));
     }
 
-    Ok(Json(json!({ "apps": apps })))
+    Ok(Json(AppListResponse::new(apps)))
 }
 
 /// GET /proxy/v1/apps/{app}/providers

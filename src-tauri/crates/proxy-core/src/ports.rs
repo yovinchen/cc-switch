@@ -242,6 +242,46 @@ impl ChannelDeleteResponse {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub struct AppSummary {
+    pub app_type: String,
+    pub enabled: bool,
+    pub auto_failover_enabled: bool,
+    pub provider_count: usize,
+    pub channel_count: usize,
+}
+
+impl AppSummary {
+    pub fn new(
+        app_type: impl Into<String>,
+        enabled: bool,
+        auto_failover_enabled: bool,
+        provider_count: usize,
+        channel_count: usize,
+    ) -> Self {
+        Self {
+            app_type: app_type.into(),
+            enabled,
+            auto_failover_enabled,
+            provider_count,
+            channel_count,
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AppListResponse {
+    pub apps: Vec<AppSummary>,
+}
+
+impl AppListResponse {
+    pub fn new(apps: Vec<AppSummary>) -> Self {
+        Self { apps }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct ChannelListResponse<T> {
     pub channels: Vec<T>,
 }
@@ -389,10 +429,31 @@ pub enum ProxyCoreEventType {
 #[cfg(test)]
 mod tests {
     use super::{
-        ChannelDeleteResponse, ChannelListResponse, ChannelModelsResponse, RouteGroupChannelInput,
-        RouteGroupListResponse, RouteGroupSourceInput,
+        AppListResponse, AppSummary, ChannelDeleteResponse, ChannelListResponse,
+        ChannelModelsResponse, RouteGroupChannelInput, RouteGroupListResponse,
+        RouteGroupSourceInput,
     };
     use serde_json::json;
+
+    #[test]
+    fn app_list_response_serializes_management_envelope() {
+        let response = AppListResponse::new(vec![AppSummary::new("claude", true, false, 2, 3)]);
+
+        let value = serde_json::to_value(response).expect("serialize response");
+
+        assert_eq!(
+            value,
+            json!({
+                "apps": [{
+                    "appType": "claude",
+                    "enabled": true,
+                    "autoFailoverEnabled": false,
+                    "providerCount": 2,
+                    "channelCount": 3
+                }]
+            })
+        );
+    }
 
     #[test]
     fn channel_delete_response_serializes_management_envelope() {
