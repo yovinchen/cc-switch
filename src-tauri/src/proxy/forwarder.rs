@@ -2790,33 +2790,14 @@ fn rewrite_claude_transform_endpoint(
 
 #[allow(dead_code)]
 fn request_model_for_forward(app_type: &AppType, endpoint: &str, body: &Value) -> Option<String> {
-    if matches!(app_type, AppType::Gemini) {
-        return super::handler_context::extract_gemini_model_from_path(endpoint);
-    }
-
-    body.get("model")
-        .and_then(Value::as_str)
-        .map(str::trim)
-        .filter(|model| !model.is_empty())
-        .map(ToString::to_string)
+    let app_kind = AppKind::from(app_type);
+    crate::proxy_core::request_model_for_forward(&app_kind, endpoint, body)
 }
 
 #[allow(dead_code)]
 fn interface_kind_for_forward(app_type: &AppType, endpoint: &str) -> Option<&'static str> {
-    match app_type {
-        AppType::Claude | AppType::ClaudeDesktop => Some("anthropic_messages"),
-        AppType::Codex | AppType::OpenCode | AppType::OpenClaw | AppType::Hermes => {
-            let path = endpoint.split_once('?').map_or(endpoint, |(path, _)| path);
-            if path.ends_with("/chat/completions") {
-                Some("openai_chat_completions")
-            } else if path.ends_with("/responses") || path.ends_with("/responses/compact") {
-                Some("openai_responses")
-            } else {
-                None
-            }
-        }
-        AppType::Gemini => Some("gemini_native"),
-    }
+    let app_kind = AppKind::from(app_type);
+    crate::proxy_core::interface_kind_for_forward(&app_kind, endpoint)
 }
 
 fn reject_proxy_placeholder_for_managed_account_upstream(

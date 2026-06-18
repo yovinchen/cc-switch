@@ -1,3 +1,6 @@
+use crate::AppKind;
+use serde_json::Value;
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct EndpointRewrite {
     pub endpoint: String,
@@ -155,13 +158,73 @@ pub fn rewrite_claude_transform_endpoint(
     }
 }
 
+pub fn extract_gemini_model_from_path(endpoint: &str) -> Option<String> {
+    let segments: Vec<&str> = endpoint.split('/').collect();
+    segments
+        .iter()
+        .position(|segment| *segment == "models")
+        .and_then(|index| segments.get(index + 1).copied())
+        .map(|segment| segment.split('?').next().unwrap_or(segment))
+        .map(|segment| segment.split(':').next().unwrap_or(segment))
+        .filter(|segment| !segment.is_empty())
+        .map(ToString::to_string)
+}
+
+pub fn request_model_for_forward(
+    app: &AppKind,
+    endpoint: &str,
+    body: &Value,
+) -> Option<String> {
+    if matches!(app, AppKind::Gemini) {
+        return extract_gemini_model_from_path(endpoint);
+    }
+
+    body.get("model")
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|model| !model.is_empty())
+        .map(ToString::to_string)
+}
+
+pub fn interface_kind_for_forward(app: &AppKind, endpoint: &str) -> Option<&'static str> {
+    match app {
+        AppKind::Claude | AppKind::ClaudeDesktop => Some("anthropic_messages"),
+        AppKind::Codex => openai_interface_kind_for_endpoint(endpoint),
+        AppKind::Custom(value) if is_openai_compatible_custom_app(value) => {
+            openai_interface_kind_for_endpoint(endpoint)
+        }
+        AppKind::Gemini => Some("gemini_native"),
+        AppKind::Custom(_) => None,
+    }
+}
+
+fn openai_interface_kind_for_endpoint(endpoint: &str) -> Option<&'static str> {
+    let path = endpoint.split_once('?').map_or(endpoint, |(path, _)| path);
+    if path.ends_with("/chat/completions") {
+        Some("openai_chat_completions")
+    } else if path.ends_with("/responses") || path.ends_with("/responses/compact") {
+        Some("openai_responses")
+    } else {
+        None
+    }
+}
+
+fn is_openai_compatible_custom_app(value: &str) -> bool {
+    matches!(
+        value.trim().to_ascii_lowercase().as_str(),
+        "opencode" | "openclaw" | "hermes"
+    )
+}
+
 #[cfg(test)]
 mod tests {
     use super::{
-        append_query_to_full_url, merge_query_params, rewrite_claude_transform_endpoint,
+        append_query_to_full_url, extract_gemini_model_from_path, interface_kind_for_forward,
+        merge_query_params, request_model_for_forward, rewrite_claude_transform_endpoint,
         rewrite_codex_responses_endpoint_to_chat, split_endpoint_and_query, strip_beta_query,
-        ClaudeTransformEndpointRewriteInput,
+        AppKind, ClaudeTransformEndpointRewriteInput,
     };
+    use serde_json::json;
 
     #[test]
     fn split_endpoint_and_query_separates_first_query_marker() {
@@ -279,5 +342,80 @@ mod tests {
             "/v1beta/models/gemini-2.5-flash:streamGenerateContent?alt=sse"
         );
         assert_eq!(stream.passthrough_query.as_deref(), Some("alt=sse"));
+    }
+
+    #[test]
+    fn extracts_gemini_model_from_path_variants() {
+        assert_eq!(
+            extract_gemini_model_from_path("/v1beta/models/gemini-pro:generateContent").as_deref(),
+            Some("gemini-pro"),
+        );
+        assert_eq!(
+            extract_gemini_model_from_path(
+                "/v1beta/models/gemini-1.5-flash:streamGenerateContent"
+            )
+            .as_deref(),
+            Some("gemini-1.5-flash"),
+        );
+        assert_eq!(
+            extract_gemini_model_from_path("/gemini/v1beta/models/gemini-2.0-flash?key=abc")
+                .as_deref(),
+            Some("gemini-2.0-flash"),
+        );
+        assert_eq!(extract_gemini_model_from_path("/v1beta/models"), None);
+        assert_eq!(extract_gemini_model_from_path("/v1beta/operations"), None);
+    }
+
+    #[test]
+    fn infers_forward_request_model_from_body_or_gemini_path() {
+        assert_eq!(
+            request_model_for_forward(
+                &AppKind::Codex,
+                "/v1/responses",
+                &json!({"model": " gpt-5 "})
+            )
+            .as_deref(),
+            Some("gpt-5"),
+        );
+        assert_eq!(
+            request_model_for_forward(
+                &AppKind::Gemini,
+                "/v1beta/models/gemini-2.0-flash:generateContent",
+                &json!({"model": "ignored"})
+            )
+            .as_deref(),
+            Some("gemini-2.0-flash"),
+        );
+        assert_eq!(
+            request_model_for_forward(&AppKind::Codex, "/v1/responses", &json!({"model": "  "})),
+            None
+        );
+    }
+
+    #[test]
+    fn infers_forward_interface_kind_from_app_and_endpoint() {
+        assert_eq!(
+            interface_kind_for_forward(&AppKind::Claude, "/v1/messages"),
+            Some("anthropic_messages")
+        );
+        assert_eq!(
+            interface_kind_for_forward(&AppKind::Codex, "/v1/responses?stream=1"),
+            Some("openai_responses")
+        );
+        assert_eq!(
+            interface_kind_for_forward(
+                &AppKind::Custom("opencode".to_string()),
+                "/v1/chat/completions"
+            ),
+            Some("openai_chat_completions")
+        );
+        assert_eq!(
+            interface_kind_for_forward(&AppKind::Gemini, "/v1beta/models/gemini-pro"),
+            Some("gemini_native")
+        );
+        assert_eq!(
+            interface_kind_for_forward(&AppKind::Custom("other".to_string()), "/v1/responses"),
+            None
+        );
     }
 }

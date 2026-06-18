@@ -293,16 +293,7 @@ impl RequestContext {
 /// `/v1/models/gemini-1.5-flash`, `gemini/v1beta/models/<model>:streamGenerateContent`.
 /// Returns `None` when no `models/<name>` segment is present.
 pub(crate) fn extract_gemini_model_from_path(endpoint: &str) -> Option<String> {
-    let segments: Vec<&str> = endpoint.split('/').collect();
-    segments
-        .iter()
-        .position(|s| *s == "models")
-        .and_then(|i| segments.get(i + 1).copied())
-        // 防御性裁剪：即便调用方传入带 ? 或 :action 的字符串，也只保留 model id 本身
-        .map(|s| s.split('?').next().unwrap_or(s))
-        .map(|s| s.split(':').next().unwrap_or(s))
-        .filter(|s| !s.is_empty())
-        .map(|s| s.to_string())
+    crate::proxy_core::extract_gemini_model_from_path(endpoint)
 }
 
 #[cfg(test)]
