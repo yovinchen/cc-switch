@@ -1,5 +1,5 @@
 use crate::app_config::AppType;
-use crate::database::{Database, PRICING_SOURCE_REQUEST};
+use crate::database::Database;
 use crate::error::AppError;
 use crate::proxy::events::ProxyEventBus;
 use crate::proxy::failover_switch::FailoverSwitchManager;
@@ -11,17 +11,18 @@ use crate::proxy::providers::{
 use crate::proxy::route_attempt::forward_attempts_from_route_plan;
 use crate::proxy::types::{ActiveTarget, ProxyStatus};
 use crate::proxy::usage::parser::SESSION_REQUEST_ID_PREFIX;
-use crate::proxy::usage::{CostCalculator, RequestLog, TokenUsage, UsageLogger};
+use crate::proxy::usage::{CostCalculator, RequestLog, UsageLogger};
 use crate::proxy::RequestForwarder;
 use crate::proxy_core::{
-    interfaces_compatible, route_group_matches, AppKind, AuthInfo, AuthProfileRef,
-    ChannelAttemptPlan, ChannelAttemptResult, ChannelQuery, ChannelSource, ChannelSpec,
-    ChannelStatus, CopilotOptimizerConfigSpec, ForwardPipeline, ModelCatalog, OptimizerConfigSpec,
-    ProviderSource, ProviderSpec, ProxyAppConfig, ProxyBody, ProxyConfigSource, ProxyCoreError,
-    ProxyCoreEvent, ProxyCoreEventType, ProxyCoreResponse, ProxyCoreResult, ProxyEventSink,
-    ProxyGlobalConfig, ProxyRequest, ProxyResponseBody, ProxyResult, ProxyRuntimeConfig,
-    ProxyServices, RectifierConfigSpec, RoutePlan, RoutePolicy, RoutePolicySource, RouteRequest,
-    RouteResolver, RouteSelection, UsageRecord, UsageSink, DEFAULT_ROUTE_GROUP,
+    interfaces_compatible, resolve_usage_record_pricing_models, route_group_matches,
+    token_usage_from_usage_record, AppKind, AuthInfo, AuthProfileRef, ChannelAttemptPlan,
+    ChannelAttemptResult, ChannelQuery, ChannelSource, ChannelSpec, ChannelStatus,
+    CopilotOptimizerConfigSpec, ForwardPipeline, ModelCatalog, OptimizerConfigSpec, ProviderSource,
+    ProviderSpec, ProxyAppConfig, ProxyBody, ProxyConfigSource, ProxyCoreError, ProxyCoreEvent,
+    ProxyCoreEventType, ProxyCoreResponse, ProxyCoreResult, ProxyEventSink, ProxyGlobalConfig,
+    ProxyRequest, ProxyResponseBody, ProxyResult, ProxyRuntimeConfig, ProxyServices,
+    RectifierConfigSpec, RoutePlan, RoutePolicy, RoutePolicySource, RouteRequest, RouteResolver,
+    RouteSelection, UsageRecord, UsageSink, DEFAULT_ROUTE_GROUP,
 };
 use crate::proxy_core_adapter::{ToProxyCoreChannelSpec, ToProxyCoreProviderSpec};
 use crate::services::usage_stats::is_placeholder_pricing_model;
@@ -568,32 +569,24 @@ impl UsageSink for CcSwitchUsageSink {
         Box::pin(async move {
             let logger = UsageLogger::new(&self.db);
             let app_type = record.app.as_str().to_string();
-            let response_model = non_empty_string(record.response_model.as_deref())
-                .or_else(|| non_empty_string(Some(&record.outbound_model)))
-                .unwrap_or_else(|| record.request_model.clone());
-            let outbound_model = non_empty_string(Some(&record.outbound_model))
-                .unwrap_or_else(|| record.request_model.clone());
             let (multiplier, pricing_model_source) = logger
                 .resolve_pricing_config(&record.provider_id, &app_type)
                 .await;
-            let pricing_model =
-                non_empty_string(record.pricing_model.as_deref()).unwrap_or_else(|| {
-                    if pricing_model_source == PRICING_SOURCE_REQUEST {
-                        outbound_model.clone()
-                    } else {
-                        response_model.clone()
-                    }
-                });
-            let usage = token_usage_from_record(&record);
+            let model_selection =
+                resolve_usage_record_pricing_models(&record, &pricing_model_source);
+            let usage = token_usage_from_usage_record(&record);
             let pricing = logger
-                .get_model_pricing(&pricing_model)
+                .get_model_pricing(&model_selection.pricing_model)
                 .map_err(|error| usage_error("load model pricing", error))?;
 
             if pricing.is_none()
                 && record.tokens.has_billable_tokens()
-                && !is_placeholder_pricing_model(&pricing_model)
+                && !is_placeholder_pricing_model(&model_selection.pricing_model)
             {
-                log::warn!("[USG-002] 模型定价未找到，成本将记录为 0: {pricing_model}");
+                log::warn!(
+                    "[USG-002] 模型定价未找到，成本将记录为 0: {}",
+                    model_selection.pricing_model
+                );
             }
 
             let cost = CostCalculator::try_calculate_for_app(
@@ -606,9 +599,9 @@ impl UsageSink for CcSwitchUsageSink {
                 request_id: usage_request_id(&record),
                 provider_id: record.provider_id.clone(),
                 app_type,
-                model: response_model,
+                model: model_selection.response_model,
                 request_model: record.request_model.clone(),
-                pricing_model,
+                pricing_model: model_selection.pricing_model,
                 usage,
                 cost,
                 latency_ms: record.latency_ms,
@@ -986,13 +979,6 @@ fn usage_error(context: &str, error: AppError) -> ProxyCoreError {
     ProxyCoreError::Internal(format!("{context}: {error}"))
 }
 
-fn non_empty_string(value: Option<&str>) -> Option<String> {
-    value
-        .map(str::trim)
-        .filter(|value| !value.is_empty())
-        .map(ToString::to_string)
-}
-
 fn usage_request_id(record: &UsageRecord) -> String {
     record
         .request_id
@@ -1007,21 +993,6 @@ fn usage_request_id(record: &UsageRecord) -> String {
                 .map(|message_id| format!("{SESSION_REQUEST_ID_PREFIX}{message_id}"))
         })
         .unwrap_or_else(|| uuid::Uuid::new_v4().to_string())
-}
-
-fn token_usage_from_record(record: &UsageRecord) -> TokenUsage {
-    TokenUsage {
-        input_tokens: u64_to_u32_saturating(record.tokens.input_tokens),
-        output_tokens: u64_to_u32_saturating(record.tokens.output_tokens),
-        cache_read_tokens: u64_to_u32_saturating(record.tokens.cache_read_tokens),
-        cache_creation_tokens: u64_to_u32_saturating(record.tokens.cache_creation_tokens),
-        model: record.response_model.clone(),
-        message_id: record.message_id.clone(),
-    }
-}
-
-fn u64_to_u32_saturating(value: u64) -> u32 {
-    value.min(u32::MAX as u64) as u32
 }
 
 fn app_config_raw(

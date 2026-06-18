@@ -6,7 +6,7 @@
 //! - Codex API (非流式和流式)
 //! - Gemini API (非流式和流式)
 
-use crate::UsageTokens;
+use crate::{UsageRecord, UsageTokens};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
@@ -554,12 +554,55 @@ pub struct UsageModelAttribution {
     pub response_model: Option<String>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct UsageRecordPricingModels {
+    pub response_model: String,
+    pub outbound_model: String,
+    pub pricing_model: String,
+}
+
 pub fn usage_tokens_from_token_usage(usage: &TokenUsage) -> UsageTokens {
     UsageTokens {
         input_tokens: usage.input_tokens as u64,
         output_tokens: usage.output_tokens as u64,
         cache_read_tokens: usage.cache_read_tokens as u64,
         cache_creation_tokens: usage.cache_creation_tokens as u64,
+    }
+}
+
+pub fn token_usage_from_usage_record(record: &UsageRecord) -> TokenUsage {
+    TokenUsage {
+        input_tokens: u64_to_u32_saturating(record.tokens.input_tokens),
+        output_tokens: u64_to_u32_saturating(record.tokens.output_tokens),
+        cache_read_tokens: u64_to_u32_saturating(record.tokens.cache_read_tokens),
+        cache_creation_tokens: u64_to_u32_saturating(record.tokens.cache_creation_tokens),
+        model: record.response_model.clone(),
+        message_id: record.message_id.clone(),
+    }
+}
+
+pub fn resolve_usage_record_pricing_models(
+    record: &UsageRecord,
+    pricing_model_source: &str,
+) -> UsageRecordPricingModels {
+    let response_model = non_empty_model_option(record.response_model.as_deref())
+        .or_else(|| non_empty_model_option(Some(&record.outbound_model)))
+        .unwrap_or_else(|| record.request_model.clone());
+    let outbound_model = non_empty_model_option(Some(&record.outbound_model))
+        .unwrap_or_else(|| record.request_model.clone());
+    let pricing_model =
+        non_empty_model_option(record.pricing_model.as_deref()).unwrap_or_else(|| {
+            if pricing_model_source.trim() == "request" {
+                outbound_model.clone()
+            } else {
+                response_model.clone()
+            }
+        });
+
+    UsageRecordPricingModels {
+        response_model,
+        outbound_model,
+        pricing_model,
     }
 }
 
@@ -606,6 +649,14 @@ fn non_empty_model(value: &str) -> Option<String> {
     } else {
         Some(value.to_string())
     }
+}
+
+fn non_empty_model_option(value: Option<&str>) -> Option<String> {
+    value.and_then(non_empty_model)
+}
+
+fn u64_to_u32_saturating(value: u64) -> u32 {
+    value.min(u32::MAX as u64) as u32
 }
 
 #[cfg(test)]
@@ -1347,5 +1398,88 @@ mod tests {
         assert_eq!(models.response_model, None);
         assert_eq!(models.request_model, "client-model");
         assert_eq!(models.outbound_model, "upstream-model");
+    }
+
+    #[test]
+    fn test_token_usage_from_usage_record_saturates_token_buckets() {
+        let record = UsageRecord {
+            request_id: None,
+            message_id: Some("msg-1".to_string()),
+            app: crate::AppKind::Claude,
+            provider_id: "provider-1".to_string(),
+            provider_kind: None,
+            channel_id: None,
+            channel_name: None,
+            route_group: None,
+            request_model: "request-model".to_string(),
+            outbound_model: "outbound-model".to_string(),
+            response_model: Some("response-model".to_string()),
+            pricing_model: None,
+            tokens: UsageTokens {
+                input_tokens: u32::MAX as u64 + 1,
+                output_tokens: 5,
+                cache_read_tokens: 7,
+                cache_creation_tokens: 11,
+            },
+            latency_ms: 1,
+            first_token_ms: None,
+            status_code: 200,
+            error_message: None,
+            session_id: None,
+            is_streaming: false,
+            metadata: Value::Object(Default::default()),
+        };
+
+        let usage = token_usage_from_usage_record(&record);
+
+        assert_eq!(usage.input_tokens, u32::MAX);
+        assert_eq!(usage.output_tokens, 5);
+        assert_eq!(usage.cache_read_tokens, 7);
+        assert_eq!(usage.cache_creation_tokens, 11);
+        assert_eq!(usage.model.as_deref(), Some("response-model"));
+        assert_eq!(usage.message_id.as_deref(), Some("msg-1"));
+    }
+
+    #[test]
+    fn test_resolve_usage_record_pricing_models_uses_pricing_source() {
+        let mut record = UsageRecord {
+            request_id: None,
+            message_id: None,
+            app: crate::AppKind::Codex,
+            provider_id: "provider-1".to_string(),
+            provider_kind: None,
+            channel_id: None,
+            channel_name: None,
+            route_group: None,
+            request_model: "public-model".to_string(),
+            outbound_model: "upstream-model".to_string(),
+            response_model: Some("response-model".to_string()),
+            pricing_model: None,
+            tokens: UsageTokens {
+                input_tokens: 1,
+                output_tokens: 2,
+                cache_read_tokens: 0,
+                cache_creation_tokens: 0,
+            },
+            latency_ms: 1,
+            first_token_ms: None,
+            status_code: 200,
+            error_message: None,
+            session_id: None,
+            is_streaming: false,
+            metadata: Value::Object(Default::default()),
+        };
+
+        let response_pricing = resolve_usage_record_pricing_models(&record, "response");
+        assert_eq!(response_pricing.response_model, "response-model");
+        assert_eq!(response_pricing.outbound_model, "upstream-model");
+        assert_eq!(response_pricing.pricing_model, "response-model");
+
+        let request_pricing = resolve_usage_record_pricing_models(&record, "request");
+        assert_eq!(request_pricing.pricing_model, "upstream-model");
+
+        record.pricing_model = Some(" explicit-price ".to_string());
+        let explicit_pricing = resolve_usage_record_pricing_models(&record, "request");
+        assert_eq!(explicit_pricing.pricing_model, "explicit-price");
     }
 }
