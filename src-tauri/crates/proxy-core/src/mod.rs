@@ -41,6 +41,7 @@ pub mod route_resolve;
 pub mod sse;
 pub mod thinking_budget_rectifier;
 pub mod thinking_rectifier;
+pub mod thinking_optimizer;
 pub mod usage;
 
 pub use cache_injector::*;
@@ -80,4 +81,5 @@ pub use route_resolve::*;
 pub use sse::*;
 pub use thinking_budget_rectifier::*;
 pub use thinking_rectifier::*;
+pub use thinking_optimizer::*;
 pub use usage::*;
