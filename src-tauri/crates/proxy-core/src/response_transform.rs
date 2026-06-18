@@ -1,3 +1,5 @@
+use crate::UpstreamSseAggregationKind;
+
 pub fn should_aggregate_codex_oauth_responses_sse(
     requested_streaming: bool,
     api_format: &str,
@@ -13,6 +15,16 @@ pub fn should_use_claude_transform_streaming(
     is_codex_oauth: bool,
 ) -> bool {
     requested_streaming || upstream_is_sse || (is_codex_oauth && api_format == "openai_responses")
+}
+
+pub fn claude_transform_unlabeled_sse_aggregation(
+    api_format: &str,
+) -> Option<UpstreamSseAggregationKind> {
+    match api_format {
+        "gemini_native" => None,
+        "openai_responses" => Some(UpstreamSseAggregationKind::Responses),
+        _ => Some(UpstreamSseAggregationKind::ChatCompletions),
+    }
 }
 
 #[cfg(test)]
@@ -81,5 +93,21 @@ mod tests {
             "openai_responses",
             false,
         ));
+    }
+
+    #[test]
+    fn claude_transform_unlabeled_sse_aggregation_matches_api_format() {
+        assert_eq!(
+            claude_transform_unlabeled_sse_aggregation("openai_responses"),
+            Some(UpstreamSseAggregationKind::Responses)
+        );
+        assert_eq!(
+            claude_transform_unlabeled_sse_aggregation("openai_chat"),
+            Some(UpstreamSseAggregationKind::ChatCompletions)
+        );
+        assert_eq!(
+            claude_transform_unlabeled_sse_aggregation("gemini_native"),
+            None
+        );
     }
 }

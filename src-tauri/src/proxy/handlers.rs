@@ -43,8 +43,9 @@ use super::{
 use crate::app_config::AppType;
 use crate::database::{ProxyChannelModelRecord, ProxyChannelRecord};
 use crate::proxy_core::{
-    claude_stream_usage_event_filter, codex_stream_usage_event_filter, json_proxy_response,
-    normalize_channel_id_path, parse_upstream_json_or_unlabeled_sse, rebuilt_json_proxy_response,
+    claude_stream_usage_event_filter, claude_transform_unlabeled_sse_aggregation,
+    codex_stream_usage_event_filter, json_proxy_response, normalize_channel_id_path,
+    parse_upstream_json_or_unlabeled_sse, rebuilt_json_proxy_response,
     resolve_management_auth_decision, should_aggregate_codex_oauth_responses_sse,
     should_use_claude_transform_streaming, transformed_response_usage,
     transformed_sse_proxy_response, validate_claude_desktop_gateway_bearer_header,
@@ -894,11 +895,7 @@ async fn handle_claude_transform(
         // Content-Type 标成 application/json 等，is_sse() 的 header 检查失效。
         // 此时按 SSE 聚合成单个 JSON 再走既有非流转换器，客户端仍收到
         // Anthropic JSON，非流语义不变。gemini_native 暂无聚合器，落诊断错误。
-        let unlabeled_sse_aggregation = match api_format {
-            "gemini_native" => None,
-            "openai_responses" => Some(UpstreamSseAggregationKind::Responses),
-            _ => Some(UpstreamSseAggregationKind::ChatCompletions),
-        };
+        let unlabeled_sse_aggregation = claude_transform_unlabeled_sse_aggregation(api_format);
         let parsed = parse_upstream_json_or_unlabeled_sse(
             &body_bytes,
             &response_headers,
