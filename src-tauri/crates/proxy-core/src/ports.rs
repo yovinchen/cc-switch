@@ -222,6 +222,38 @@ impl ChannelHealthResetResponse {
     }
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ChannelDeleteResponse {
+    pub channel_id: String,
+    pub deleted: bool,
+}
+
+impl ChannelDeleteResponse {
+    pub fn new(channel_id: impl Into<String>, deleted: bool) -> Self {
+        Self {
+            channel_id: channel_id.into(),
+            deleted,
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ChannelModelsResponse<T> {
+    pub channel_id: String,
+    pub models: Vec<T>,
+}
+
+impl<T> ChannelModelsResponse<T> {
+    pub fn new(channel_id: impl Into<String>, models: Vec<T>) -> Self {
+        Self {
+            channel_id: channel_id.into(),
+            models,
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ProxyCoreEvent {
@@ -245,4 +277,42 @@ pub enum ProxyCoreEventType {
     BreakerClosed,
     UsageRecorded,
     Custom(String),
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{ChannelDeleteResponse, ChannelModelsResponse};
+    use serde_json::json;
+
+    #[test]
+    fn channel_delete_response_serializes_management_envelope() {
+        let response = ChannelDeleteResponse::new("channel-a", true);
+
+        let value = serde_json::to_value(response).expect("serialize response");
+
+        assert_eq!(
+            value,
+            json!({
+                "channelId": "channel-a",
+                "deleted": true
+            })
+        );
+    }
+
+    #[test]
+    fn channel_models_response_serializes_management_envelope() {
+        let response = ChannelModelsResponse::new(
+            "channel-a",
+            vec![json!({
+                "publicModel": "sonnet",
+                "upstreamModel": "upstream-sonnet"
+            })],
+        );
+
+        let value = serde_json::to_value(response).expect("serialize response");
+
+        assert_eq!(value["channelId"], "channel-a");
+        assert_eq!(value["models"][0]["publicModel"], "sonnet");
+        assert_eq!(value["models"][0]["upstreamModel"], "upstream-sonnet");
+    }
 }
