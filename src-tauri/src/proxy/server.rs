@@ -606,6 +606,31 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn claude_desktop_gateway_requires_bearer_token() {
+        let db = Arc::new(Database::memory().expect("memory db"));
+        let server = ProxyServer::new(ProxyConfig::default(), db, None);
+        let mut router = server.build_router();
+
+        let response = Service::call(
+            &mut router,
+            Request::builder()
+                .method(Method::GET)
+                .uri("/claude-desktop/v1/models")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+        let body = response_json(response).await;
+        assert_eq!(
+            body["error"]["message"],
+            "认证失败: Claude Desktop gateway 缺少 Authorization 头"
+        );
+    }
+
+    #[tokio::test]
     async fn management_apps_and_providers_return_sanitized_summaries() {
         let db = Arc::new(Database::memory().expect("memory db"));
         let provider = Provider::with_id(

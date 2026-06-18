@@ -9,7 +9,8 @@
 
 use super::{
     error_mapper::{
-        codex_proxy_error_json, get_error_message, management_api_error_to_proxy_error,
+        claude_desktop_gateway_auth_error_to_proxy_error, codex_proxy_error_json,
+        get_error_message, management_api_error_to_proxy_error,
         management_auth_error_to_proxy_error, map_proxy_error_to_status,
         proxy_core_error_to_proxy_error, response_body_parse_error_to_proxy_error,
     },
@@ -46,19 +47,20 @@ use crate::proxy_core::{
     normalize_channel_id_path, parse_upstream_json_or_unlabeled_sse, rebuilt_json_proxy_response,
     resolve_management_auth_decision, should_aggregate_codex_oauth_responses_sse,
     should_use_claude_transform_streaming, transformed_response_usage,
-    transformed_sse_proxy_response, validate_management_app_type,
-    validate_management_bearer_header, validate_route_resolve_app_type, AppChannelListQuery,
-    AppChannelListResponse, AppChannelResponse, AppChannelRouteResponse, AppKind, AppListResponse,
-    AppModelListQuery, AppSummary, ChannelDeleteResponse, ChannelHealthResetResponse,
-    ChannelListQuery, ChannelListResponse, ChannelMigrationMaterializeResponse,
-    ChannelMigrationPreviewResponse, ChannelModelsResponse, ChannelRouteCandidate,
-    ChannelRouteRejected, CurrentRouteProviderSummary, CurrentRouteResponse, GroupListQuery,
-    HealthCheckResponse, InterfaceKind, ManagementAuthDecision, ProviderListResponse,
-    ProviderSummaryInput, ProxyBody, ProxyChannelModelsReplaceRequest, ProxyChannelPatchRequest,
-    ProxyChannelWriteRequest, ProxyEngine, ProxyRequest, ProxyResult, ProxyServices,
-    RoutableModelList, RouteGroupChannelInput, RouteGroupListResponse, RouteGroupSourceInput,
-    RouteResolveRequest, RouteResolveResponse, TransformedResponseUsageFormat,
-    UpstreamJsonBodySource, UpstreamSseAggregationKind,
+    transformed_sse_proxy_response, validate_claude_desktop_gateway_bearer_header,
+    validate_management_app_type, validate_management_bearer_header,
+    validate_route_resolve_app_type, AppChannelListQuery, AppChannelListResponse,
+    AppChannelResponse, AppChannelRouteResponse, AppKind, AppListResponse, AppModelListQuery,
+    AppSummary, ChannelDeleteResponse, ChannelHealthResetResponse, ChannelListQuery,
+    ChannelListResponse, ChannelMigrationMaterializeResponse, ChannelMigrationPreviewResponse,
+    ChannelModelsResponse, ChannelRouteCandidate, ChannelRouteRejected,
+    CurrentRouteProviderSummary, CurrentRouteResponse, GroupListQuery, HealthCheckResponse,
+    InterfaceKind, ManagementAuthDecision, ProviderListResponse, ProviderSummaryInput, ProxyBody,
+    ProxyChannelModelsReplaceRequest, ProxyChannelPatchRequest, ProxyChannelWriteRequest,
+    ProxyEngine, ProxyRequest, ProxyResult, ProxyServices, RoutableModelList,
+    RouteGroupChannelInput, RouteGroupListResponse, RouteGroupSourceInput, RouteResolveRequest,
+    RouteResolveResponse, TransformedResponseUsageFormat, UpstreamJsonBodySource,
+    UpstreamSseAggregationKind,
 };
 use axum::{
     extract::{Path, Query, State},
@@ -738,25 +740,8 @@ fn validate_claude_desktop_gateway_auth(
 ) -> Result<(), ProxyError> {
     let expected = crate::claude_desktop_config::get_or_create_gateway_token(state.db.as_ref())
         .map_err(|e| ProxyError::AuthError(e.to_string()))?;
-    let Some(value) = headers.get(axum::http::header::AUTHORIZATION) else {
-        return Err(ProxyError::AuthError(
-            "Claude Desktop gateway 缺少 Authorization 头".to_string(),
-        ));
-    };
-    let value = value
-        .to_str()
-        .map_err(|_| ProxyError::AuthError("Authorization 头格式无效".to_string()))?;
-    let token = value
-        .strip_prefix("Bearer ")
-        .or_else(|| value.strip_prefix("bearer "))
-        .unwrap_or("")
-        .trim();
-    if token != expected {
-        return Err(ProxyError::AuthError(
-            "Claude Desktop gateway token 无效".to_string(),
-        ));
-    }
-    Ok(())
+    validate_claude_desktop_gateway_bearer_header(headers, &expected)
+        .map_err(claude_desktop_gateway_auth_error_to_proxy_error)
 }
 
 /// Claude 格式转换处理（独有逻辑）

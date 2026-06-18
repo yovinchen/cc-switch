@@ -3,7 +3,9 @@
 //! 将 ProxyError 映射到合适的 HTTP 状态码，用于日志记录和手动构建错误响应
 
 use super::ProxyError;
-use crate::proxy_core::{CodexProxyErrorContext, ManagementAuthError, ProxyCoreError};
+use crate::proxy_core::{
+    ClaudeDesktopGatewayAuthError, CodexProxyErrorContext, ManagementAuthError, ProxyCoreError,
+};
 use serde_json::Value;
 
 /// 将 ProxyError 映射到 HTTP 状态码
@@ -110,6 +112,12 @@ pub(crate) fn management_api_error_to_proxy_error(error: ProxyCoreError) -> Prox
 }
 
 pub(crate) fn management_auth_error_to_proxy_error(error: ManagementAuthError) -> ProxyError {
+    ProxyError::AuthError(error.message().to_string())
+}
+
+pub(crate) fn claude_desktop_gateway_auth_error_to_proxy_error(
+    error: ClaudeDesktopGatewayAuthError,
+) -> ProxyError {
     ProxyError::AuthError(error.message().to_string())
 }
 
@@ -279,6 +287,17 @@ mod tests {
 
         assert!(
             matches!(error, ProxyError::AuthError(message) if message == "Missing management bearer token")
+        );
+    }
+
+    #[test]
+    fn test_claude_desktop_gateway_auth_error_bridge_maps_to_auth_error() {
+        let error = claude_desktop_gateway_auth_error_to_proxy_error(
+            ClaudeDesktopGatewayAuthError::MissingAuthorizationHeader,
+        );
+
+        assert!(
+            matches!(error, ProxyError::AuthError(message) if message == "Claude Desktop gateway 缺少 Authorization 头")
         );
     }
 
