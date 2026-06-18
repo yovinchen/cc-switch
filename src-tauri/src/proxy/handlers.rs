@@ -44,10 +44,11 @@ use crate::proxy_core::{
     should_use_claude_transform_streaming, strip_entity_headers_for_rebuilt_body,
     strip_hop_by_hop_response_headers, AppChannelListResponse, AppChannelResponse,
     AppChannelRouteResponse, AppKind, AppListResponse, AppSummary, ChannelDeleteResponse,
-    ChannelHealthResetResponse, ChannelListResponse, ChannelModelsResponse, InterfaceKind,
-    ProviderListResponse, ProviderSummary, ProxyBody, ProxyCoreError, ProxyCoreResponse,
-    ProxyEngine, ProxyRequest, ProxyResponseBody, ProxyResult, ProxyServices, RoutableModelList,
-    RouteGroupChannelInput, RouteGroupListResponse, RouteGroupSourceInput,
+    ChannelHealthResetResponse, ChannelListResponse, ChannelModelsResponse,
+    CurrentRouteProviderSummary, CurrentRouteResponse, InterfaceKind, ProviderListResponse,
+    ProviderSummary, ProxyBody, ProxyCoreError, ProxyCoreResponse, ProxyEngine, ProxyRequest,
+    ProxyResponseBody, ProxyResult, ProxyServices, RoutableModelList, RouteGroupChannelInput,
+    RouteGroupListResponse, RouteGroupSourceInput,
 };
 use axum::{
     extract::{Path, Query, State},
@@ -622,7 +623,7 @@ pub async fn list_proxy_groups(
 pub async fn get_current_proxy_route(
     State(state): State<ProxyState>,
     Path(app_type): Path<String>,
-) -> Result<Json<Value>, ProxyError> {
+) -> Result<Json<CurrentRouteResponse<ActiveTarget>>, ProxyError> {
     validate_management_app_type(&app_type)?;
     let app_type = app_type.trim().to_string();
 
@@ -641,21 +642,16 @@ pub async fn get_current_proxy_route(
             .get_provider_by_id(&provider_id, &app_type)
             .map_err(|e| ProxyError::DatabaseError(e.to_string()))?
             .map(|provider| {
-                json!({
-                    "id": provider.id,
-                    "name": provider.name,
-                    "category": provider.category,
-                })
+                CurrentRouteProviderSummary::new(provider.id, provider.name, provider.category)
             }),
         None => None,
     };
 
-    Ok(Json(json!({
-        "appType": app_type,
-        "active": active_target.is_some(),
-        "target": active_target,
-        "configuredProvider": configured_provider,
-    })))
+    Ok(Json(CurrentRouteResponse::new(
+        app_type,
+        active_target,
+        configured_provider,
+    )))
 }
 
 /// GET /proxy/v1/apps/{app}/channels/migration/preview

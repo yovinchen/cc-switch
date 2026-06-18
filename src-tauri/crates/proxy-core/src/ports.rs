@@ -372,6 +372,49 @@ impl<C, R> AppChannelRouteResponse<C, R> {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub struct CurrentRouteProviderSummary {
+    pub id: String,
+    pub name: String,
+    pub category: Option<String>,
+}
+
+impl CurrentRouteProviderSummary {
+    pub fn new(id: impl Into<String>, name: impl Into<String>, category: Option<String>) -> Self {
+        Self {
+            id: id.into(),
+            name: name.into(),
+            category,
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CurrentRouteResponse<T> {
+    pub app_type: String,
+    pub active: bool,
+    pub target: Option<T>,
+    pub configured_provider: Option<CurrentRouteProviderSummary>,
+}
+
+impl<T> CurrentRouteResponse<T> {
+    pub fn new(
+        app_type: impl Into<String>,
+        target: Option<T>,
+        configured_provider: Option<CurrentRouteProviderSummary>,
+    ) -> Self {
+        let active = target.is_some();
+        Self {
+            app_type: app_type.into(),
+            active,
+            target,
+            configured_provider,
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct ChannelListResponse<T> {
     pub channels: Vec<T>,
 }
@@ -521,8 +564,8 @@ mod tests {
     use super::{
         AppChannelListResponse, AppChannelResponse, AppChannelRouteResponse, AppListResponse,
         AppSummary, ChannelDeleteResponse, ChannelListResponse, ChannelModelsResponse,
-        ProviderListResponse, ProviderSummary, RouteGroupChannelInput, RouteGroupListResponse,
-        RouteGroupSourceInput,
+        CurrentRouteProviderSummary, CurrentRouteResponse, ProviderListResponse, ProviderSummary,
+        RouteGroupChannelInput, RouteGroupListResponse, RouteGroupSourceInput,
     };
     use serde_json::json;
 
@@ -634,6 +677,43 @@ mod tests {
         assert_eq!(value["routeGroup"], "default");
         assert_eq!(value["channels"][0]["channelId"], "channel-a");
         assert_eq!(value["rejected"][0]["channelId"], "channel-b");
+    }
+
+    #[test]
+    fn current_route_response_serializes_runtime_target_envelope() {
+        let response = CurrentRouteResponse::new(
+            "claude",
+            Some(json!({
+                "providerId": "provider-a",
+                "channelId": "channel-a"
+            })),
+            Some(CurrentRouteProviderSummary::new(
+                "provider-a",
+                "Provider A",
+                Some("aggregator".to_string()),
+            )),
+        );
+
+        let value = serde_json::to_value(response).expect("serialize response");
+
+        assert_eq!(value["appType"], "claude");
+        assert_eq!(value["active"], true);
+        assert_eq!(value["target"]["providerId"], "provider-a");
+        assert_eq!(value["configuredProvider"]["id"], "provider-a");
+        assert_eq!(value["configuredProvider"]["category"], "aggregator");
+    }
+
+    #[test]
+    fn current_route_response_serializes_inactive_target_as_null() {
+        let response: CurrentRouteResponse<serde_json::Value> =
+            CurrentRouteResponse::new("claude", None, None);
+
+        let value = serde_json::to_value(response).expect("serialize response");
+
+        assert_eq!(value["appType"], "claude");
+        assert_eq!(value["active"], false);
+        assert!(value["target"].is_null());
+        assert!(value["configuredProvider"].is_null());
     }
 
     #[test]
