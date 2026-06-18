@@ -11,7 +11,6 @@
 use std::collections::HashSet;
 
 use serde_json::Value;
-use sha2::{Digest, Sha256};
 use uuid::Uuid;
 
 /// 请求分类结果
@@ -273,25 +272,8 @@ pub fn merge_tool_results(mut body: Value) -> Value {
 /// - 找不到用户内容时退化为随机 UUID
 /// - 使用 UUID v4 格式
 pub fn deterministic_request_id(body: &Value, session_id: &str) -> String {
-    let last_user_content = find_last_user_content(body);
-
-    match last_user_content {
-        Some(content) => {
-            let mut hasher = Sha256::new();
-            hasher.update(session_id.as_bytes());
-            hasher.update(content.as_bytes());
-            let result = hasher.finalize();
-
-            let mut bytes = [0u8; 16];
-            bytes.copy_from_slice(&result[..16]);
-            // UUID v4 版本位和变体位（与参考实现一致）
-            bytes[6] = (bytes[6] & 0x0f) | 0x40; // version 4
-            bytes[8] = (bytes[8] & 0x3f) | 0x80; // variant 1
-
-            Uuid::from_bytes(bytes).to_string()
-        }
-        None => Uuid::new_v4().to_string(),
-    }
+    crate::proxy_core::resolve_copilot_deterministic_request_id(body, session_id)
+        .unwrap_or_else(|| Uuid::new_v4().to_string())
 }
 
 /// 基于 session ID 生成稳定的 Interaction ID。
@@ -302,21 +284,7 @@ pub fn deterministic_request_id(body: &Value, session_id: &str) -> String {
 /// - Copilot 用此 ID 将请求聚合为同一个 "interaction"，影响 premium 计费归属
 /// - 空 session ID 时返回 None（不应注入随机值，避免 interaction 碎片化）
 pub fn deterministic_interaction_id(session_id: &str) -> Option<String> {
-    if session_id.is_empty() {
-        return None;
-    }
-
-    let mut hasher = Sha256::new();
-    hasher.update(b"interaction:");
-    hasher.update(session_id.as_bytes());
-    let result = hasher.finalize();
-
-    let mut bytes = [0u8; 16];
-    bytes.copy_from_slice(&result[..16]);
-    bytes[6] = (bytes[6] & 0x0f) | 0x40; // version 4
-    bytes[8] = (bytes[8] & 0x3f) | 0x80; // variant 1
-
-    Some(Uuid::from_bytes(bytes).to_string())
+    crate::proxy_core::resolve_copilot_deterministic_interaction_id(session_id)
 }
 
 /// 检测请求是否来自 Claude Code 子代理（Agent tool 生成的 subagent）。
@@ -493,48 +461,6 @@ fn extract_system_text(body: &Value) -> String {
             .join(" "),
         _ => String::new(),
     }
-}
-
-/// 查找最后一条 user 消息的非 tool_result 文本内容。
-///
-/// 与参考实现的 `findLastUserContent` 对齐：
-/// - 从后往前遍历消息
-/// - 排除 tool_result block
-/// - 排除 cache_control 字段
-fn find_last_user_content(body: &Value) -> Option<String> {
-    let messages = body.get("messages").and_then(|m| m.as_array())?;
-
-    for msg in messages.iter().rev() {
-        if msg.get("role").and_then(|r| r.as_str()) != Some("user") {
-            continue;
-        }
-        let content = msg.get("content")?;
-
-        if let Some(s) = content.as_str() {
-            return Some(s.to_string());
-        }
-
-        if let Some(blocks) = content.as_array() {
-            // 过滤 tool_result，保留其他 block（去掉 cache_control）
-            let filtered: Vec<Value> = blocks
-                .iter()
-                .filter(|b| b.get("type").and_then(|t| t.as_str()) != Some("tool_result"))
-                .map(|b| {
-                    let mut b = b.clone();
-                    if let Some(obj) = b.as_object_mut() {
-                        obj.remove("cache_control");
-                    }
-                    b
-                })
-                .collect();
-
-            if !filtered.is_empty() {
-                return Some(serde_json::to_string(&filtered).unwrap_or_default());
-            }
-        }
-    }
-
-    None
 }
 
 /// 将 text block 合并进 tool_result block。

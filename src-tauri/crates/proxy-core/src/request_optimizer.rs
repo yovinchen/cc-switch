@@ -1,5 +1,6 @@
 use http::HeaderMap;
 use serde_json::Value;
+use sha2::{Digest, Sha256};
 
 pub const BEDROCK_OPTIMIZER_ENV_FLAG: &str = "CLAUDE_CODE_USE_BEDROCK";
 
@@ -52,11 +53,85 @@ pub fn resolve_copilot_optimizer_session_id(body: &Value, headers: &HeaderMap) -
         .unwrap_or_default()
 }
 
+pub fn resolve_copilot_deterministic_request_id(body: &Value, session_id: &str) -> Option<String> {
+    find_last_user_content(body).map(|content| {
+        let mut hasher = Sha256::new();
+        hasher.update(session_id.as_bytes());
+        hasher.update(content.as_bytes());
+        uuid_v4_string_from_hash(&hasher.finalize())
+    })
+}
+
+pub fn resolve_copilot_deterministic_interaction_id(session_id: &str) -> Option<String> {
+    if session_id.is_empty() {
+        return None;
+    }
+
+    let mut hasher = Sha256::new();
+    hasher.update(b"interaction:");
+    hasher.update(session_id.as_bytes());
+    Some(uuid_v4_string_from_hash(&hasher.finalize()))
+}
+
+fn find_last_user_content(body: &Value) -> Option<String> {
+    let messages = body.get("messages").and_then(Value::as_array)?;
+
+    for message in messages.iter().rev() {
+        if message.get("role").and_then(Value::as_str) != Some("user") {
+            continue;
+        }
+
+        let content = message.get("content")?;
+        if let Some(content) = content.as_str() {
+            return Some(content.to_string());
+        }
+
+        if let Some(blocks) = content.as_array() {
+            let filtered = blocks
+                .iter()
+                .filter(|block| block.get("type").and_then(Value::as_str) != Some("tool_result"))
+                .map(|block| {
+                    let mut block = block.clone();
+                    if let Some(object) = block.as_object_mut() {
+                        object.remove("cache_control");
+                    }
+                    block
+                })
+                .collect::<Vec<_>>();
+
+            if !filtered.is_empty() {
+                return Some(serde_json::to_string(&filtered).unwrap_or_default());
+            }
+        }
+    }
+
+    None
+}
+
+fn uuid_v4_string_from_hash(hash: &[u8]) -> String {
+    let mut bytes = [0u8; 16];
+    bytes.copy_from_slice(&hash[..16]);
+    bytes[6] = (bytes[6] & 0x0f) | 0x40;
+    bytes[8] = (bytes[8] & 0x3f) | 0x80;
+
+    format!(
+        "{:08x}-{:04x}-{:04x}-{:04x}-{:012x}",
+        u32::from_be_bytes([bytes[0], bytes[1], bytes[2], bytes[3]]),
+        u16::from_be_bytes([bytes[4], bytes[5]]),
+        u16::from_be_bytes([bytes[6], bytes[7]]),
+        u16::from_be_bytes([bytes[8], bytes[9]]),
+        u64::from_be_bytes([
+            0, 0, bytes[10], bytes[11], bytes[12], bytes[13], bytes[14], bytes[15],
+        ])
+    )
+}
+
 #[cfg(test)]
 mod tests {
     use super::{
         parse_session_from_user_id, provider_declares_bedrock,
         resolve_copilot_optimizer_session_id, should_apply_bedrock_pre_send_optimizer,
+        resolve_copilot_deterministic_interaction_id, resolve_copilot_deterministic_request_id,
     };
     use http::{HeaderMap, HeaderValue};
     use serde_json::json;
@@ -161,5 +236,114 @@ mod tests {
         let body = json!({});
 
         assert_eq!(resolve_copilot_optimizer_session_id(&body, &headers), "");
+    }
+
+    #[test]
+    fn copilot_deterministic_request_id_is_stable_for_same_session_and_content() {
+        let body = json!({
+            "messages": [{"role": "user", "content": "Hello"}]
+        });
+
+        assert_eq!(
+            resolve_copilot_deterministic_request_id(&body, "session1"),
+            resolve_copilot_deterministic_request_id(&body, "session1")
+        );
+    }
+
+    #[test]
+    fn copilot_deterministic_request_id_varies_by_content_and_session() {
+        let left = json!({
+            "messages": [{"role": "user", "content": "Hello"}]
+        });
+        let right = json!({
+            "messages": [{"role": "user", "content": "Goodbye"}]
+        });
+
+        assert_ne!(
+            resolve_copilot_deterministic_request_id(&left, "session1"),
+            resolve_copilot_deterministic_request_id(&right, "session1")
+        );
+        assert_ne!(
+            resolve_copilot_deterministic_request_id(&left, "session1"),
+            resolve_copilot_deterministic_request_id(&left, "session2")
+        );
+    }
+
+    #[test]
+    fn copilot_deterministic_request_id_ignores_tool_result_blocks() {
+        let body_one = json!({
+            "messages": [
+                {"role": "user", "content": "Hello"},
+                {"role": "assistant", "content": "Hi"},
+                {"role": "user", "content": [
+                    {"type": "tool_result", "tool_use_id": "t1", "content": "version_A"}
+                ]},
+                {"role": "user", "content": "do something"}
+            ]
+        });
+        let body_two = json!({
+            "messages": [
+                {"role": "user", "content": "Hello"},
+                {"role": "assistant", "content": "Hi"},
+                {"role": "user", "content": [
+                    {"type": "tool_result", "tool_use_id": "t1", "content": "version_B"}
+                ]},
+                {"role": "user", "content": "do something"}
+            ]
+        });
+
+        assert_eq!(
+            resolve_copilot_deterministic_request_id(&body_one, "s"),
+            resolve_copilot_deterministic_request_id(&body_two, "s")
+        );
+    }
+
+    #[test]
+    fn copilot_deterministic_request_id_returns_none_without_user_content() {
+        let body = json!({
+            "messages": [{"role": "assistant", "content": "Hi"}]
+        });
+
+        assert_eq!(resolve_copilot_deterministic_request_id(&body, "s"), None);
+    }
+
+    #[test]
+    fn copilot_deterministic_request_id_is_uuid_formatted() {
+        let body = json!({
+            "messages": [{"role": "user", "content": "test"}]
+        });
+        let id = resolve_copilot_deterministic_request_id(&body, "session").unwrap();
+
+        assert_eq!(id.len(), 36);
+        assert_eq!(id.as_bytes()[14], b'4');
+        assert_eq!(id.as_bytes()[8], b'-');
+        assert_eq!(id.as_bytes()[13], b'-');
+        assert_eq!(id.as_bytes()[18], b'-');
+        assert_eq!(id.as_bytes()[23], b'-');
+    }
+
+    #[test]
+    fn copilot_deterministic_interaction_id_is_stable_and_session_scoped() {
+        assert_eq!(
+            resolve_copilot_deterministic_interaction_id("session_abc"),
+            resolve_copilot_deterministic_interaction_id("session_abc")
+        );
+        assert_ne!(
+            resolve_copilot_deterministic_interaction_id("session_abc"),
+            resolve_copilot_deterministic_interaction_id("session_def")
+        );
+        assert_eq!(resolve_copilot_deterministic_interaction_id(""), None);
+    }
+
+    #[test]
+    fn copilot_deterministic_interaction_id_differs_from_request_id() {
+        let body = json!({
+            "messages": [{"role": "user", "content": "Hello"}]
+        });
+
+        assert_ne!(
+            resolve_copilot_deterministic_interaction_id("session_abc"),
+            resolve_copilot_deterministic_request_id(&body, "session_abc")
+        );
     }
 }
