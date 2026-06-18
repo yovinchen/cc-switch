@@ -4,6 +4,7 @@
 //! 参考: anthropic-proxy-rs
 
 use crate::proxy::{error::ProxyError, json_canonical::canonical_json_string};
+use crate::proxy_core::map_anthropic_tool_choice_to_openai_chat;
 pub(crate) use crate::proxy_core::strip_leading_anthropic_billing_header;
 pub use crate::proxy_core::{
     is_openai_o_series, resolve_reasoning_effort, supports_reasoning_effort,
@@ -122,7 +123,7 @@ pub fn anthropic_to_openai_with_reasoning_content(
     }
 
     if let Some(v) = body.get("tool_choice") {
-        result["tool_choice"] = map_tool_choice_to_chat(v);
+        result["tool_choice"] = map_anthropic_tool_choice_to_openai_chat(v);
     }
 
     Ok(result)
@@ -152,43 +153,6 @@ pub(crate) fn inject_openai_stream_include_usage(result: &mut Value) {
         _ => {
             result["stream_options"] = json!({ "include_usage": true });
         }
-    }
-}
-
-/// Translate an Anthropic `tool_choice` into the OpenAI Chat Completions form.
-///
-/// Anthropic forms:
-///   "auto" / "any" / "none"           (string enum)
-///   {"type": "auto" | "any" | "none"}
-///   {"type": "tool", "name": "<X>"}
-///
-/// OpenAI Chat forms:
-///   "auto" / "none" / "required"      (note: no "any" — use "required")
-///   {"type": "function", "function": {"name": "<X>"}}
-///
-/// The Responses API uses a flatter `{"type":"function","name":"X"}` selector,
-/// so it has a sibling `map_tool_choice_to_responses` in `transform_responses.rs`.
-/// Keep the two in sync.
-fn map_tool_choice_to_chat(tool_choice: &Value) -> Value {
-    match tool_choice {
-        Value::String(s) => match s.as_str() {
-            "any" => json!("required"),
-            _ => json!(s),
-        },
-        Value::Object(obj) => match obj.get("type").and_then(|t| t.as_str()) {
-            Some("any") => json!("required"),
-            Some("auto") => json!("auto"),
-            Some("none") => json!("none"),
-            Some("tool") => {
-                let name = obj.get("name").and_then(|n| n.as_str()).unwrap_or("");
-                json!({
-                    "type": "function",
-                    "function": { "name": name }
-                })
-            }
-            _ => tool_choice.clone(),
-        },
-        _ => tool_choice.clone(),
     }
 }
 

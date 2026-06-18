@@ -117,6 +117,32 @@ pub fn strip_leading_anthropic_billing_header(text: &str) -> &str {
     }
 }
 
+pub fn map_anthropic_tool_choice_to_openai_chat(tool_choice: &Value) -> Value {
+    match tool_choice {
+        Value::String(value) => match value.as_str() {
+            "any" => Value::String("required".to_string()),
+            _ => Value::String(value.clone()),
+        },
+        Value::Object(object) => match object.get("type").and_then(|value| value.as_str()) {
+            Some("any") => Value::String("required".to_string()),
+            Some("auto") => Value::String("auto".to_string()),
+            Some("none") => Value::String("none".to_string()),
+            Some("tool") => {
+                let name = object
+                    .get("name")
+                    .and_then(|value| value.as_str())
+                    .unwrap_or("");
+                serde_json::json!({
+                    "type": "function",
+                    "function": {"name": name}
+                })
+            }
+            _ => tool_choice.clone(),
+        },
+        _ => tool_choice.clone(),
+    }
+}
+
 pub fn prepare_upstream_request_body_with_report(
     request_body: Value,
 ) -> PreparedUpstreamRequestBody {
@@ -227,9 +253,9 @@ mod tests {
         canonicalize_request_body_value, filter_private_params,
         filter_private_params_with_whitelist, filter_private_params_with_whitelist_report,
         is_openai_o_series, method_allows_upstream_request_body,
-        prepare_upstream_request_body_with_report, resolve_reasoning_effort,
-        serialize_upstream_request_body, strip_leading_anthropic_billing_header,
-        supports_reasoning_effort,
+        map_anthropic_tool_choice_to_openai_chat, prepare_upstream_request_body_with_report,
+        resolve_reasoning_effort, serialize_upstream_request_body,
+        strip_leading_anthropic_billing_header, supports_reasoning_effort,
     };
     use http::Method;
     use serde_json::json;
@@ -460,6 +486,32 @@ mod tests {
         assert_eq!(
             strip_leading_anthropic_billing_header("x-anthropic-billing-header:cch=abc"),
             ""
+        );
+    }
+
+    #[test]
+    fn maps_anthropic_tool_choice_to_openai_chat_shape() {
+        assert_eq!(
+            map_anthropic_tool_choice_to_openai_chat(&json!("any")),
+            json!("required")
+        );
+        assert_eq!(
+            map_anthropic_tool_choice_to_openai_chat(&json!("auto")),
+            json!("auto")
+        );
+        assert_eq!(
+            map_anthropic_tool_choice_to_openai_chat(&json!({"type": "any"})),
+            json!("required")
+        );
+        assert_eq!(
+            map_anthropic_tool_choice_to_openai_chat(&json!({"type": "none"})),
+            json!("none")
+        );
+        assert_eq!(
+            map_anthropic_tool_choice_to_openai_chat(
+                &json!({"type": "tool", "name": "search"})
+            ),
+            json!({"type": "function", "function": {"name": "search"}})
         );
     }
 }
