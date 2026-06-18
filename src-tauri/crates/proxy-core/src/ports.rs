@@ -1,6 +1,6 @@
 use super::domain::{
     AppKind, AuthProfileRef, ChannelAttemptResult, ChannelQuery, ChannelSpec, ProviderSpec,
-    ProxyRequest, RoutePlan, RoutePolicy, RouteRequest, UsageHint,
+    ProxyRequest, ProxyResult, RoutePlan, RoutePolicy, RouteRequest, UsageHint,
 };
 use super::error::ProxyCoreResult;
 use futures::future::BoxFuture;
@@ -18,6 +18,7 @@ pub trait ProxyServices: Send + Sync {
     fn model_catalog(&self) -> &(dyn ModelCatalogProvider + Send + Sync);
     fn usage_sink(&self) -> &(dyn UsageSink + Send + Sync);
     fn event_sink(&self) -> &(dyn ProxyEventSink + Send + Sync);
+    fn forward_pipeline(&self) -> &(dyn ForwardPipeline + Send + Sync);
 }
 
 pub trait ProxyConfigSource: Send + Sync {
@@ -98,6 +99,14 @@ pub trait UsageSink: Send + Sync {
 
 pub trait ProxyEventSink: Send + Sync {
     fn emit_event<'a>(&'a self, event: ProxyCoreEvent) -> BoxFuture<'a, ProxyCoreResult<()>>;
+}
+
+pub trait ForwardPipeline: Send + Sync {
+    fn forward<'a>(
+        &'a self,
+        request: ProxyRequest,
+        plan: RoutePlan,
+    ) -> BoxFuture<'a, ProxyCoreResult<ProxyResult>>;
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]

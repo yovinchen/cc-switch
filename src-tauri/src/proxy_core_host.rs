@@ -4,11 +4,12 @@ use crate::error::AppError;
 use crate::proxy::provider_router::ProviderRouter;
 use crate::proxy_core::{
     AppKind, AuthInfo, AuthProfileRef, ChannelAttemptPlan, ChannelAttemptResult, ChannelQuery,
-    ChannelSource, ChannelSpec, ChannelStatus, CopilotOptimizerConfigSpec, ModelCatalog,
-    OptimizerConfigSpec, ProviderSource, ProviderSpec, ProxyAppConfig, ProxyConfigSource,
-    ProxyCoreError, ProxyCoreEvent, ProxyCoreResult, ProxyEventSink, ProxyGlobalConfig,
-    ProxyRequest, ProxyRuntimeConfig, ProxyServices, RectifierConfigSpec, RoutePlan, RoutePolicy,
-    RoutePolicySource, RouteRequest, RouteResolver, UsageHint, UsageSink,
+    ChannelSource, ChannelSpec, ChannelStatus, CopilotOptimizerConfigSpec, ForwardPipeline,
+    ModelCatalog, OptimizerConfigSpec, ProviderSource, ProviderSpec, ProxyAppConfig,
+    ProxyConfigSource, ProxyCoreError, ProxyCoreEvent, ProxyCoreResult, ProxyEventSink,
+    ProxyGlobalConfig, ProxyRequest, ProxyResult, ProxyRuntimeConfig, ProxyServices,
+    RectifierConfigSpec, RoutePlan, RoutePolicy, RoutePolicySource, RouteRequest, RouteResolver,
+    UsageHint, UsageSink,
 };
 use crate::proxy_core_adapter::{ToProxyCoreChannelSpec, ToProxyCoreProviderSpec};
 use futures::future::BoxFuture;
@@ -32,6 +33,7 @@ pub(crate) struct CcSwitchProxyServices {
     model_catalog: CcSwitchModelCatalogProvider,
     usage_sink: CcSwitchUsageSink,
     event_sink: CcSwitchEventSink,
+    forward_pipeline: CcSwitchForwardPipeline,
 }
 
 #[allow(dead_code)]
@@ -52,6 +54,7 @@ impl CcSwitchProxyServices {
             model_catalog: CcSwitchModelCatalogProvider { db: db.clone() },
             usage_sink: CcSwitchUsageSink,
             event_sink: CcSwitchEventSink,
+            forward_pipeline: CcSwitchForwardPipeline,
         }
     }
 }
@@ -95,6 +98,10 @@ impl ProxyServices for CcSwitchProxyServices {
 
     fn event_sink(&self) -> &(dyn ProxyEventSink + Send + Sync) {
         &self.event_sink
+    }
+
+    fn forward_pipeline(&self) -> &(dyn ForwardPipeline + Send + Sync) {
+        &self.forward_pipeline
     }
 }
 
@@ -473,6 +480,23 @@ struct CcSwitchEventSink;
 impl ProxyEventSink for CcSwitchEventSink {
     fn emit_event<'a>(&'a self, _event: ProxyCoreEvent) -> BoxFuture<'a, ProxyCoreResult<()>> {
         Box::pin(async move { Ok(()) })
+    }
+}
+
+#[derive(Clone, Default)]
+struct CcSwitchForwardPipeline;
+
+impl ForwardPipeline for CcSwitchForwardPipeline {
+    fn forward<'a>(
+        &'a self,
+        _request: ProxyRequest,
+        _plan: RoutePlan,
+    ) -> BoxFuture<'a, ProxyCoreResult<ProxyResult>> {
+        Box::pin(async move {
+            Err(ProxyCoreError::Unsupported(
+                "cc-switch forwarding is still hosted by RequestForwarder".to_string(),
+            ))
+        })
     }
 }
 
