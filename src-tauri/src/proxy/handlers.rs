@@ -1846,7 +1846,9 @@ fn aggregate_fallback_error(
         ProxyError::TransformError(m) => m.clone(),
         other => other.to_string(),
     };
-    ProxyError::TransformError(format!("{base} {}", body_diagnostics_suffix(headers, body)))
+    ProxyError::TransformError(crate::proxy_core::aggregate_fallback_diagnostics_message(
+        &base, headers, body,
+    ))
 }
 
 fn chat_sse_to_response_value(body: &str) -> Result<Value, ProxyError> {

@@ -27,6 +27,15 @@ pub fn body_diagnostics_suffix(headers: &HeaderMap, body: &str) -> String {
     )
 }
 
+/// Append body diagnostics to an upstream SSE aggregation fallback error message.
+pub fn aggregate_fallback_diagnostics_message(
+    base_message: &str,
+    headers: &HeaderMap,
+    body: &str,
+) -> String {
+    format!("{base_message} {}", body_diagnostics_suffix(headers, body))
+}
+
 /// Return a single-line snippet of the first `max_chars` chars.
 ///
 /// Carriage returns are dropped, line feeds are rendered as literal `\n`, and
@@ -100,5 +109,24 @@ mod tests {
         assert!(suffix.contains("content-type: <none>"), "{suffix}");
         assert!(suffix.contains("content-encoding: <none>"), "{suffix}");
         assert!(suffix.contains("Bad Gateway"), "{suffix}");
+    }
+
+    #[test]
+    fn aggregate_fallback_message_appends_diagnostics() {
+        let mut headers = HeaderMap::new();
+        headers.insert("content-type", "application/json".parse().unwrap());
+
+        let message = aggregate_fallback_diagnostics_message(
+            "No chat completion choices in upstream SSE",
+            &headers,
+            "data: {}\n\n",
+        );
+
+        assert!(
+            message.starts_with("No chat completion choices in upstream SSE "),
+            "{message}"
+        );
+        assert!(message.contains("content-type: application/json"), "{message}");
+        assert!(message.contains("body[..120]: 'data: {}\\n\\n'"), "{message}");
     }
 }
