@@ -43,6 +43,7 @@
 32. 非流式 response body decode outcome、未知编码/失败解码原样透传策略，以及成功解码后的 entity header 清理已收敛到 `proxy-core::response_body::decode_response_body`；host 只根据 outcome 打日志。
 33. route-visible 模型列表的管理 API envelope 已迁入 `proxy-core::RoutableModelList` 与 `ProxyEngine::list_model_catalog`；host `/proxy/v1/apps/{app}/models` 只解析 query 并返回 typed JSON。
 34. Codex 转发层代理错误的 Responses 风格 JSON envelope、上游错误体归一化和 413 上游体积限制提示已迁入 `proxy-core::codex_error`；host 只把 `ProxyError` 映射成 fallback message/code/status/body。
+35. `/proxy/v1/channels/{channel_id}/breakers/reset` 的管理 API response envelope 已迁入 `proxy-core::ChannelHealthResetResponse` 与 `ProxyEngine::reset_channel_health_response`；host 只做 path 解析和 typed JSON 返回。
 
 因此，本分支目前已把主要转发入口（Claude Messages、Claude Desktop Messages、Codex Chat Completions、Codex Responses、Codex Responses Compact、Gemini Native）切到 `ProxyEngine`，并开始把管理查询类能力、Codex 客户端模型目录和请求日志写入收敛到 core 可复用接口。HTTP transport 与 response pipeline 仍是宿主层兼容桥；下一阶段需要把响应转换、剩余模型目录生成策略和剩余外部管理 API 继续收敛到独立代理模块边界内。
 
@@ -685,7 +686,7 @@ pub trait ChannelHealthStore: Send + Sync {
 }
 ```
 
-当前实现已落到 `ChannelHealthStore::record_attempt` 与 `reset_channel`：`record_attempt` 写入 channel 健康统计，`reset_channel` 由 host adapter 查询 channel 所属 app，并复用 `ProviderRouter::reset_channel_breaker` 同时清内存 circuit breaker 与 DB 健康状态。健康状态必须以 channel 为主键。provider 级状态只能作为聚合视图，否则同一 provider 下一个地址失败会误伤另一个健康地址。
+当前实现已落到 `ChannelHealthStore::record_attempt` 与 `reset_channel`：`record_attempt` 写入 channel 健康统计，`reset_channel` 由 host adapter 查询 channel 所属 app，并复用 `ProviderRouter::reset_channel_breaker` 同时清内存 circuit breaker 与 DB 健康状态；`ProxyEngine::reset_channel_health_response` 在 core 内包装管理 API response envelope。健康状态必须以 channel 为主键。provider 级状态只能作为聚合视图，否则同一 provider 下一个地址失败会误伤另一个健康地址。
 
 ### 用量接口
 
