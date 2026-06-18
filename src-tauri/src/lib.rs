@@ -27,7 +27,6 @@ mod prompt_files;
 mod provider;
 mod provider_defaults;
 mod proxy;
-pub mod proxy_core;
 mod proxy_core_adapter;
 mod proxy_core_host;
 mod services;
@@ -40,6 +39,7 @@ mod usage_events;
 mod usage_script;
 
 pub use app_config::{AppType, InstalledSkill, McpApps, McpServer, MultiAppConfig, SkillApps};
+pub use cc_switch_proxy_core as proxy_core;
 pub use codex_config::{get_codex_auth_path, get_codex_config_path, write_codex_live_atomic};
 pub use commands::open_provider_terminal;
 pub use commands::*;
