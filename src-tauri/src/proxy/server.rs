@@ -309,6 +309,10 @@ impl ProxyServer {
                 post(handlers::materialize_proxy_channel_migration),
             )
             .route(
+                "/proxy/v1/channels/:channel_id/breakers/reset",
+                post(handlers::reset_proxy_channel_breaker),
+            )
+            .route(
                 "/proxy/v1/route/resolve",
                 post(handlers::resolve_proxy_route),
             )
@@ -417,6 +421,7 @@ impl ProxyServer {
 mod tests {
     use super::*;
     use crate::provider::Provider;
+    use crate::proxy::channel_routing::RouteResolveRequest;
     use axum::{
         body::{to_bytes, Body},
         http::{Method, Request, StatusCode},
@@ -433,7 +438,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn channel_migration_management_routes_preview_and_materialize() {
+    async fn channel_migration_management_routes_preview_materialize_and_reset_breaker() {
         let db = Arc::new(Database::memory().expect("memory db"));
         let provider = Provider::with_id(
             "a".to_string(),
@@ -485,6 +490,68 @@ mod tests {
         let stored = db.list_proxy_channels_for_app("claude").unwrap();
         assert_eq!(stored.len(), 1);
         assert_eq!(stored[0].base_url, "https://primary.example.com/v1");
+
+        let mut config = db.get_proxy_config_for_app("claude").await.unwrap();
+        config.circuit_failure_threshold = 1;
+        config.circuit_timeout_seconds = 60;
+        db.update_proxy_config_for_app(config).await.unwrap();
+
+        let channel_id = stored[0].id.clone();
+        server
+            .state
+            .provider_router
+            .record_channel_result(
+                &channel_id,
+                "claude",
+                false,
+                false,
+                Some("upstream failed".to_string()),
+                Some(123),
+            )
+            .await
+            .unwrap();
+
+        let blocked = server
+            .state
+            .provider_router
+            .resolve_channel_route_dry_run(RouteResolveRequest {
+                app_type: "claude".to_string(),
+                requested_model: Some("claude-sonnet-4".to_string()),
+                interface_kind: Some("anthropic_messages".to_string()),
+                route_group: None,
+            })
+            .await
+            .unwrap();
+        assert!(blocked.candidates.is_empty());
+
+        let reset_response = Service::call(
+            &mut router,
+            Request::builder()
+                .method(Method::POST)
+                .uri(format!("/proxy/v1/channels/{channel_id}/breakers/reset"))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+        assert_eq!(reset_response.status(), StatusCode::OK);
+        let reset = response_json(reset_response).await;
+        assert_eq!(reset["channelId"], channel_id);
+        assert_eq!(reset["appType"], "claude");
+        assert_eq!(reset["reset"], true);
+
+        let recovered = server
+            .state
+            .provider_router
+            .resolve_channel_route_dry_run(RouteResolveRequest {
+                app_type: "claude".to_string(),
+                requested_model: Some("claude-sonnet-4".to_string()),
+                interface_kind: Some("anthropic_messages".to_string()),
+                route_group: None,
+            })
+            .await
+            .unwrap();
+        assert_eq!(recovered.candidates.len(), 1);
     }
 
     async fn response_json(response: axum::response::Response) -> Value {

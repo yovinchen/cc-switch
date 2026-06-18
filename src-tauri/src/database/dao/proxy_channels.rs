@@ -364,6 +364,24 @@ impl Database {
         list_proxy_channel_models_on_conn(&conn, channel_id)
     }
 
+    pub(crate) fn get_proxy_channel_app_type(
+        &self,
+        channel_id: &str,
+    ) -> Result<Option<String>, AppError> {
+        let conn = lock_conn!(self.conn);
+        let result = conn.query_row(
+            "SELECT app_type FROM proxy_channels WHERE id = ?1",
+            [channel_id],
+            |row| row.get(0),
+        );
+
+        match result {
+            Ok(app_type) => Ok(Some(app_type)),
+            Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
+            Err(e) => Err(AppError::Database(e.to_string())),
+        }
+    }
+
     pub(crate) fn get_proxy_channel_health(
         &self,
         channel_id: &str,
@@ -958,6 +976,17 @@ mod tests {
             .list_proxy_channel_models(&stored[0].id)
             .expect("list channel models");
         assert_eq!(direct_models.len(), stored[0].models.len());
+
+        assert_eq!(
+            db.get_proxy_channel_app_type(&stored[0].id)
+                .expect("channel app type")
+                .as_deref(),
+            Some("claude")
+        );
+        assert!(db
+            .get_proxy_channel_app_type("missing-channel")
+            .expect("missing channel app type")
+            .is_none());
     }
 
     #[test]
