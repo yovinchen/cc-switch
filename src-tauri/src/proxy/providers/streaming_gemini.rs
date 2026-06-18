@@ -5,10 +5,11 @@
 
 use super::gemini_shadow::{GeminiShadowStore, GeminiToolCallMeta};
 use super::transform_gemini::{
-    build_anthropic_usage, is_synthesized_tool_call_id, rectify_tool_call_parts,
-    synthesize_tool_call_id, AnthropicToolSchemaHints,
+    is_synthesized_tool_call_id, rectify_tool_call_parts, synthesize_tool_call_id,
+    AnthropicToolSchemaHints,
 };
 use crate::proxy::sse::{append_utf8_safe, strip_sse_field, take_sse_block};
+use crate::proxy_core::build_anthropic_usage_from_gemini;
 use bytes::Bytes;
 use futures::stream::{Stream, StreamExt};
 use serde_json::{json, Value};
@@ -313,7 +314,7 @@ pub fn create_anthropic_sse_stream_from_gemini<E: std::error::Error + Send + 'st
                                     "type": "message",
                                     "role": "assistant",
                                     "model": current_model.clone().unwrap_or_default(),
-                                    "usage": build_anthropic_usage(chunk_json.get("usageMetadata"))
+                                    "usage": build_anthropic_usage_from_gemini(chunk_json.get("usageMetadata"))
                                 }
                             });
                             yield Ok(encode_sse("message_start", &event));
@@ -417,7 +418,7 @@ pub fn create_anthropic_sse_stream_from_gemini<E: std::error::Error + Send + 'st
                     "type": "message",
                     "role": "assistant",
                     "model": current_model.clone().unwrap_or_default(),
-                    "usage": build_anthropic_usage(latest_usage.as_ref())
+                    "usage": build_anthropic_usage_from_gemini(latest_usage.as_ref())
                 }
             });
             yield Ok(encode_sse("message_start", &event));
@@ -557,7 +558,7 @@ pub fn create_anthropic_sse_stream_from_gemini<E: std::error::Error + Send + 'st
             !tool_calls.is_empty(),
             blocked_text.is_some(),
         );
-        let usage = build_anthropic_usage(latest_usage.as_ref());
+        let usage = build_anthropic_usage_from_gemini(latest_usage.as_ref());
         let message_delta = json!({
             "type": "message_delta",
             "delta": {

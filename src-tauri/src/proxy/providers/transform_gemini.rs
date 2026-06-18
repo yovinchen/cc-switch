@@ -7,6 +7,7 @@
 use super::gemini_schema::build_gemini_function_declaration;
 use super::gemini_shadow::{GeminiAssistantTurn, GeminiShadowStore, GeminiToolCallMeta};
 use crate::proxy::error::ProxyError;
+use crate::proxy_core::build_anthropic_usage_from_gemini;
 use serde_json::{json, Map, Value};
 use std::collections::{HashMap, HashSet};
 
@@ -152,7 +153,7 @@ pub fn gemini_to_anthropic_with_shadow_and_hints(
             "model": body.get("modelVersion").and_then(|value| value.as_str()).unwrap_or(""),
             "stop_reason": "refusal",
             "stop_sequence": Value::Null,
-            "usage": build_anthropic_usage(body.get("usageMetadata"))
+            "usage": build_anthropic_usage_from_gemini(body.get("usageMetadata"))
         }));
     }
 
@@ -252,7 +253,7 @@ pub fn gemini_to_anthropic_with_shadow_and_hints(
         "model": body.get("modelVersion").and_then(|value| value.as_str()).unwrap_or(""),
         "stop_reason": stop_reason,
         "stop_sequence": Value::Null,
-        "usage": build_anthropic_usage(body.get("usageMetadata"))
+        "usage": build_anthropic_usage_from_gemini(body.get("usageMetadata"))
     });
 
     if let (Some(store), Some(provider_id), Some(session_id), Some(content)) = (
@@ -1093,50 +1094,6 @@ fn map_tool_choice(tool_choice: Option<&Value>) -> Result<Option<Value>, ProxyEr
         }
         _ => Ok(None),
     }
-}
-
-/// Convert a Gemini `usageMetadata` object into an Anthropic-style `usage`
-/// object. Used by both the streaming SSE converter and the non-streaming
-/// transform path so the two emit identical shapes.
-pub(crate) fn build_anthropic_usage(usage: Option<&Value>) -> Value {
-    let Some(usage) = usage else {
-        return json!({
-            "input_tokens": 0,
-            "output_tokens": 0
-        });
-    };
-
-    let prompt_tokens = usage
-        .get("promptTokenCount")
-        .and_then(|value| value.as_u64())
-        .unwrap_or(0);
-    let total_tokens = usage
-        .get("totalTokenCount")
-        .and_then(|value| value.as_u64())
-        .unwrap_or(0);
-    let cached_tokens = usage
-        .get("cachedContentTokenCount")
-        .and_then(|value| value.as_u64())
-        .unwrap_or(0);
-    // Gemini 的 promptTokenCount 含缓存命中（cachedContentTokenCount）；而 Anthropic
-    // 语义下 input_tokens 必须是不含 cache 的 fresh input、cache_read 单列。本路径转成
-    // Anthropic 后以 app_type=claude 记账，calculator 对 claude 设 input_includes_cache_read
-    // =false 不再从 input 扣 cache，因此这里必须先扣减，否则缓存 token 会被双重计费
-    // （一次按完整 input 价、一次按 cache_read 价）。output 仍按 total-prompt 计算
-    // （prompt 是总输入，扣减只作用于 input/cache 的拆分，不影响 output）。
-    let input_tokens = prompt_tokens.saturating_sub(cached_tokens);
-    let output_tokens = total_tokens.saturating_sub(prompt_tokens);
-
-    let mut result = json!({
-        "input_tokens": input_tokens,
-        "output_tokens": output_tokens
-    });
-
-    if cached_tokens > 0 {
-        result["cache_read_input_tokens"] = json!(cached_tokens);
-    }
-
-    result
 }
 
 fn map_finish_reason(reason: Option<&str>, has_tool_use: bool) -> Value {

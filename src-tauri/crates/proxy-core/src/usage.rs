@@ -190,6 +190,39 @@ pub fn build_anthropic_usage_from_openai_chat_tokens(
     result
 }
 
+pub fn build_anthropic_usage_from_gemini(usage: Option<&Value>) -> Value {
+    let Some(usage) = usage else {
+        return json!({
+            "input_tokens": 0,
+            "output_tokens": 0
+        });
+    };
+
+    let prompt_tokens = usage
+        .get("promptTokenCount")
+        .and_then(Value::as_u64)
+        .unwrap_or(0);
+    let total_tokens = usage
+        .get("totalTokenCount")
+        .and_then(Value::as_u64)
+        .unwrap_or(0);
+    let cached_tokens = usage
+        .get("cachedContentTokenCount")
+        .and_then(Value::as_u64)
+        .unwrap_or(0);
+
+    let mut result = json!({
+        "input_tokens": prompt_tokens.saturating_sub(cached_tokens),
+        "output_tokens": total_tokens.saturating_sub(prompt_tokens)
+    });
+
+    if cached_tokens > 0 {
+        result["cache_read_input_tokens"] = json!(cached_tokens);
+    }
+
+    result
+}
+
 impl TokenUsage {
     /// 从 Claude API 非流式响应解析
     pub fn from_claude_response(body: &Value) -> Option<Self> {
@@ -1072,6 +1105,40 @@ mod tests {
         assert_eq!(usage["output_tokens"], json!(10));
         assert_eq!(usage["cache_read_input_tokens"], json!(60));
         assert_eq!(usage["cache_creation_input_tokens"], json!(50));
+    }
+
+    #[test]
+    fn builds_anthropic_usage_from_gemini_defaults() {
+        assert_eq!(
+            build_anthropic_usage_from_gemini(None),
+            json!({"input_tokens": 0, "output_tokens": 0})
+        );
+    }
+
+    #[test]
+    fn builds_anthropic_usage_from_gemini_cache_buckets() {
+        let usage = build_anthropic_usage_from_gemini(Some(&json!({
+            "promptTokenCount": 12,
+            "totalTokenCount": 20,
+            "cachedContentTokenCount": 3
+        })));
+
+        assert_eq!(usage["input_tokens"], json!(9));
+        assert_eq!(usage["output_tokens"], json!(8));
+        assert_eq!(usage["cache_read_input_tokens"], json!(3));
+    }
+
+    #[test]
+    fn gemini_usage_output_tokens_saturate() {
+        let usage = build_anthropic_usage_from_gemini(Some(&json!({
+            "promptTokenCount": 20,
+            "totalTokenCount": 12,
+            "cachedContentTokenCount": 25
+        })));
+
+        assert_eq!(usage["input_tokens"], json!(0));
+        assert_eq!(usage["output_tokens"], json!(0));
+        assert_eq!(usage["cache_read_input_tokens"], json!(25));
     }
 
     #[test]
