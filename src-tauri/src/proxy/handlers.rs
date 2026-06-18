@@ -36,17 +36,28 @@ use super::{
     ProxyError,
 };
 use crate::app_config::AppType;
-use crate::database::PRICING_SOURCE_REQUEST;
+use crate::database::{
+    ProxyChannelModelsReplaceRequest, ProxyChannelPatchRequest, ProxyChannelWriteRequest,
+    PRICING_SOURCE_REQUEST,
+};
 use axum::{
-    extract::{Path, State},
+    extract::{Path, Query, State},
     http::StatusCode,
     response::IntoResponse,
     Json,
 };
 use bytes::Bytes;
 use http_body_util::BodyExt;
+use serde::Deserialize;
 use serde_json::{json, Value};
 use std::collections::HashSet;
+
+#[derive(Debug, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct ChannelListQuery {
+    #[serde(default)]
+    app_type: Option<String>,
+}
 
 // ============================================================================
 // 健康检查和状态查询（简单端点）
@@ -161,6 +172,130 @@ pub async fn list_proxy_providers(
     })))
 }
 
+/// GET /proxy/v1/channels
+pub async fn list_all_proxy_channels(
+    State(state): State<ProxyState>,
+    Query(query): Query<ChannelListQuery>,
+) -> Result<Json<Value>, ProxyError> {
+    let channels = if let Some(app_type) = query.app_type.as_deref() {
+        validate_management_app_type(app_type)?;
+        state
+            .db
+            .list_proxy_channels_for_app(app_type)
+            .map_err(|e| ProxyError::DatabaseError(e.to_string()))?
+    } else {
+        state
+            .db
+            .list_all_proxy_channels()
+            .map_err(|e| ProxyError::DatabaseError(e.to_string()))?
+    };
+
+    Ok(Json(json!({ "channels": channels })))
+}
+
+/// POST /proxy/v1/channels
+pub async fn create_proxy_channel(
+    State(state): State<ProxyState>,
+    Json(request): Json<ProxyChannelWriteRequest>,
+) -> Result<Json<Value>, ProxyError> {
+    let channel = state
+        .db
+        .create_proxy_channel(request)
+        .map_err(|e| ProxyError::InvalidRequest(e.to_string()))?;
+    Ok(Json(json!(channel)))
+}
+
+/// GET /proxy/v1/channels/{channel_id}
+pub async fn get_proxy_channel(
+    State(state): State<ProxyState>,
+    Path(channel_id): Path<String>,
+) -> Result<Json<Value>, ProxyError> {
+    let channel_id = normalize_channel_id_path(channel_id)?;
+    let channel = state
+        .db
+        .get_proxy_channel(&channel_id)
+        .map_err(|e| ProxyError::DatabaseError(e.to_string()))?
+        .ok_or_else(|| ProxyError::InvalidRequest(format!("channel not found: {channel_id}")))?;
+    Ok(Json(json!(channel)))
+}
+
+/// PATCH /proxy/v1/channels/{channel_id}
+pub async fn update_proxy_channel(
+    State(state): State<ProxyState>,
+    Path(channel_id): Path<String>,
+    Json(request): Json<ProxyChannelPatchRequest>,
+) -> Result<Json<Value>, ProxyError> {
+    let channel_id = normalize_channel_id_path(channel_id)?;
+    let channel = state
+        .db
+        .update_proxy_channel(&channel_id, request)
+        .map_err(|e| ProxyError::InvalidRequest(e.to_string()))?
+        .ok_or_else(|| ProxyError::InvalidRequest(format!("channel not found: {channel_id}")))?;
+    Ok(Json(json!(channel)))
+}
+
+/// DELETE /proxy/v1/channels/{channel_id}
+pub async fn delete_proxy_channel(
+    State(state): State<ProxyState>,
+    Path(channel_id): Path<String>,
+) -> Result<Json<Value>, ProxyError> {
+    let channel_id = normalize_channel_id_path(channel_id)?;
+    let deleted = state
+        .db
+        .delete_proxy_channel(&channel_id)
+        .map_err(|e| ProxyError::DatabaseError(e.to_string()))?;
+    Ok(Json(json!({
+        "channelId": channel_id,
+        "deleted": deleted,
+    })))
+}
+
+/// GET /proxy/v1/channels/{channel_id}/models
+pub async fn list_proxy_channel_models(
+    State(state): State<ProxyState>,
+    Path(channel_id): Path<String>,
+) -> Result<Json<Value>, ProxyError> {
+    let channel_id = normalize_channel_id_path(channel_id)?;
+    if state
+        .db
+        .get_proxy_channel(&channel_id)
+        .map_err(|e| ProxyError::DatabaseError(e.to_string()))?
+        .is_none()
+    {
+        return Err(ProxyError::InvalidRequest(format!(
+            "channel not found: {channel_id}"
+        )));
+    }
+
+    let models = state
+        .db
+        .list_proxy_channel_models(&channel_id)
+        .map_err(|e| ProxyError::DatabaseError(e.to_string()))?;
+    Ok(Json(json!({
+        "channelId": channel_id,
+        "models": models,
+    })))
+}
+
+/// PUT /proxy/v1/channels/{channel_id}/models
+pub async fn replace_proxy_channel_models(
+    State(state): State<ProxyState>,
+    Path(channel_id): Path<String>,
+    Json(request): Json<ProxyChannelModelsReplaceRequest>,
+) -> Result<Json<Value>, ProxyError> {
+    let channel_id = normalize_channel_id_path(channel_id)?;
+    let models = state
+        .db
+        .replace_proxy_channel_models(&channel_id, request.models)
+        .map_err(|e| ProxyError::InvalidRequest(e.to_string()))?
+        .ok_or_else(|| ProxyError::InvalidRequest(format!("channel not found: {channel_id}")))?;
+
+    Ok(Json(json!({
+        "channelId": channel_id,
+        "models": models,
+    })))
+}
+
 /// GET /proxy/v1/apps/{app}/channels
 pub async fn list_proxy_channels(
     State(state): State<ProxyState>,
@@ -269,6 +404,17 @@ fn validate_management_app_type(app_type: &str) -> Result<(), ProxyError> {
         ))
     } else {
         Ok(())
+    }
+}
+
+fn normalize_channel_id_path(channel_id: String) -> Result<String, ProxyError> {
+    let channel_id = channel_id.trim().to_string();
+    if channel_id.is_empty() {
+        Err(ProxyError::InvalidRequest(
+            "channel_id cannot be empty".to_string(),
+        ))
+    } else {
+        Ok(channel_id)
     }
 }
 

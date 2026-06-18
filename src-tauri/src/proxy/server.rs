@@ -302,6 +302,21 @@ impl ProxyServer {
                 get(handlers::list_proxy_providers),
             )
             .route(
+                "/proxy/v1/channels",
+                get(handlers::list_all_proxy_channels).post(handlers::create_proxy_channel),
+            )
+            .route(
+                "/proxy/v1/channels/:channel_id",
+                get(handlers::get_proxy_channel)
+                    .patch(handlers::update_proxy_channel)
+                    .delete(handlers::delete_proxy_channel),
+            )
+            .route(
+                "/proxy/v1/channels/:channel_id/models",
+                get(handlers::list_proxy_channel_models)
+                    .put(handlers::replace_proxy_channel_models),
+            )
+            .route(
                 "/proxy/v1/apps/:app/channels",
                 get(handlers::list_proxy_channels),
             )
@@ -504,6 +519,135 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn channel_crud_management_routes_manage_manual_channels_and_models() {
+        let db = Arc::new(Database::memory().expect("memory db"));
+        let provider = Provider::with_id(
+            "a".to_string(),
+            "Provider A".to_string(),
+            json!({
+                "env": {
+                    "ANTHROPIC_BASE_URL": "https://primary.example.com/v1",
+                    "ANTHROPIC_API_KEY": "secret-key"
+                }
+            }),
+            None,
+        );
+        db.save_provider("claude", &provider).unwrap();
+
+        let server = ProxyServer::new(ProxyConfig::default(), db.clone(), None);
+        let mut router = server.build_router();
+
+        let create_response = Service::call(
+            &mut router,
+            json_request(
+                Method::POST,
+                "/proxy/v1/channels",
+                json!({
+                    "providerId": "a",
+                    "appType": "claude",
+                    "name": "Manual Relay",
+                    "baseUrl": "https://manual.example.com/v1/",
+                    "interfaceKind": "openai_responses",
+                    "priority": 80,
+                    "models": [{
+                        "publicModel": "sonnet-public",
+                        "upstreamModel": "upstream-sonnet"
+                    }]
+                }),
+            ),
+        )
+        .await
+        .unwrap();
+        assert_eq!(create_response.status(), StatusCode::OK);
+        let created = response_json(create_response).await;
+        let channel_id = created["id"].as_str().unwrap().to_string();
+        assert_eq!(created["baseUrl"], "https://manual.example.com/v1");
+        assert_eq!(created["models"].as_array().unwrap().len(), 1);
+
+        let list_response = Service::call(
+            &mut router,
+            Request::builder()
+                .method(Method::GET)
+                .uri("/proxy/v1/channels?appType=claude")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+        assert_eq!(list_response.status(), StatusCode::OK);
+        let list = response_json(list_response).await;
+        assert_eq!(list["channels"].as_array().unwrap().len(), 1);
+
+        let patch_response = Service::call(
+            &mut router,
+            json_request(
+                Method::PATCH,
+                &format!("/proxy/v1/channels/{channel_id}"),
+                json!({
+                    "status": "disabled",
+                    "weight": 25,
+                    "groups": ["default", "beta"]
+                }),
+            ),
+        )
+        .await
+        .unwrap();
+        assert_eq!(patch_response.status(), StatusCode::OK);
+        let patched = response_json(patch_response).await;
+        assert_eq!(patched["status"], "disabled");
+        assert_eq!(patched["weight"], 25);
+
+        let replace_models_response = Service::call(
+            &mut router,
+            json_request(
+                Method::PUT,
+                &format!("/proxy/v1/channels/{channel_id}/models"),
+                json!({
+                    "models": [{
+                        "publicModel": "haiku-public",
+                        "upstreamModel": "upstream-haiku"
+                    }]
+                }),
+            ),
+        )
+        .await
+        .unwrap();
+        assert_eq!(replace_models_response.status(), StatusCode::OK);
+        let replaced = response_json(replace_models_response).await;
+        assert_eq!(replaced["models"].as_array().unwrap().len(), 1);
+        assert_eq!(replaced["models"][0]["publicModel"], "haiku-public");
+
+        let get_models_response = Service::call(
+            &mut router,
+            Request::builder()
+                .method(Method::GET)
+                .uri(format!("/proxy/v1/channels/{channel_id}/models"))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+        assert_eq!(get_models_response.status(), StatusCode::OK);
+        let models = response_json(get_models_response).await;
+        assert_eq!(models["models"][0]["upstreamModel"], "upstream-haiku");
+
+        let delete_response = Service::call(
+            &mut router,
+            Request::builder()
+                .method(Method::DELETE)
+                .uri(format!("/proxy/v1/channels/{channel_id}"))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+        assert_eq!(delete_response.status(), StatusCode::OK);
+        let deleted = response_json(delete_response).await;
+        assert_eq!(deleted["deleted"], true);
+        assert!(db.get_proxy_channel(&channel_id).unwrap().is_none());
+    }
+
+    #[tokio::test]
     async fn channel_migration_management_routes_preview_materialize_and_reset_breaker() {
         let db = Arc::new(Database::memory().expect("memory db"));
         let provider = Provider::with_id(
@@ -625,5 +769,14 @@ mod tests {
             .await
             .expect("read response body");
         serde_json::from_slice(&bytes).expect("json response")
+    }
+
+    fn json_request(method: Method, uri: &str, body: Value) -> Request<Body> {
+        Request::builder()
+            .method(method)
+            .uri(uri)
+            .header("content-type", "application/json")
+            .body(Body::from(body.to_string()))
+            .unwrap()
     }
 }
