@@ -1,6 +1,33 @@
 use http::HeaderMap;
 use std::io::Read;
 
+use crate::strip_entity_headers_for_rebuilt_body;
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ResponseBodyDecodeStatus {
+    NotEncoded,
+    Decoded { encoding: String },
+    UnsupportedEncoding { encoding: String },
+    DecodeFailed { encoding: String, error: String },
+}
+
+impl ResponseBodyDecodeStatus {
+    pub fn content_encoding(&self) -> Option<&str> {
+        match self {
+            Self::NotEncoded => None,
+            Self::Decoded { encoding }
+            | Self::UnsupportedEncoding { encoding }
+            | Self::DecodeFailed { encoding, .. } => Some(encoding),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ResponseBodyDecode {
+    pub body: Vec<u8>,
+    pub status: ResponseBodyDecodeStatus,
+}
+
 /// Decode a response body according to `content-encoding`.
 ///
 /// `Ok(None)` means the encoding is intentionally unsupported and callers must
@@ -38,6 +65,36 @@ pub fn decompress_body(
     }
 }
 
+pub fn decode_response_body(headers: &mut HeaderMap, raw_body: &[u8]) -> ResponseBodyDecode {
+    let Some(encoding) = get_content_encoding(headers) else {
+        return ResponseBodyDecode {
+            body: raw_body.to_vec(),
+            status: ResponseBodyDecodeStatus::NotEncoded,
+        };
+    };
+
+    match decompress_body(&encoding, raw_body) {
+        Ok(Some(decompressed)) => {
+            strip_entity_headers_for_rebuilt_body(headers);
+            ResponseBodyDecode {
+                body: decompressed,
+                status: ResponseBodyDecodeStatus::Decoded { encoding },
+            }
+        }
+        Ok(None) => ResponseBodyDecode {
+            body: raw_body.to_vec(),
+            status: ResponseBodyDecodeStatus::UnsupportedEncoding { encoding },
+        },
+        Err(error) => ResponseBodyDecode {
+            body: raw_body.to_vec(),
+            status: ResponseBodyDecodeStatus::DecodeFailed {
+                encoding,
+                error: error.to_string(),
+            },
+        },
+    }
+}
+
 /// Extract response `content-encoding`, ignoring empty values and `identity`.
 pub fn get_content_encoding(headers: &HeaderMap) -> Option<String> {
     headers
@@ -49,8 +106,13 @@ pub fn get_content_encoding(headers: &HeaderMap) -> Option<String> {
 
 #[cfg(test)]
 mod tests {
-    use super::{decompress_body, get_content_encoding};
-    use http::{HeaderMap, HeaderValue};
+    use super::{
+        decode_response_body, decompress_body, get_content_encoding, ResponseBodyDecodeStatus,
+    };
+    use http::{
+        header::{CONTENT_ENCODING, CONTENT_LENGTH, CONTENT_TYPE, TRANSFER_ENCODING},
+        HeaderMap, HeaderValue,
+    };
     use std::io::Write;
 
     #[test]
@@ -129,5 +191,105 @@ mod tests {
         let result = decompress_body("zstd", b"\x28\xb5\x2f\xfd").unwrap();
 
         assert!(result.is_none());
+    }
+
+    #[test]
+    fn decode_response_body_decodes_supported_encoding_and_strips_stale_entity_headers() {
+        let payload = br#"{"ok":true}"#;
+        let mut encoder =
+            flate2::write::GzEncoder::new(Vec::new(), flate2::Compression::default());
+        encoder.write_all(payload).unwrap();
+        let compressed = encoder.finish().unwrap();
+        let mut headers = HeaderMap::new();
+        headers.insert(CONTENT_ENCODING, HeaderValue::from_static("gzip"));
+        headers.insert(CONTENT_LENGTH, HeaderValue::from_static("42"));
+        headers.insert(TRANSFER_ENCODING, HeaderValue::from_static("chunked"));
+        headers.insert(CONTENT_TYPE, HeaderValue::from_static("application/json"));
+
+        let decoded = decode_response_body(&mut headers, &compressed);
+
+        assert_eq!(decoded.body, payload);
+        assert_eq!(
+            decoded.status,
+            ResponseBodyDecodeStatus::Decoded {
+                encoding: "gzip".to_string(),
+            }
+        );
+        assert!(!headers.contains_key(CONTENT_ENCODING));
+        assert!(!headers.contains_key(CONTENT_LENGTH));
+        assert!(!headers.contains_key(TRANSFER_ENCODING));
+        assert_eq!(
+            headers.get(CONTENT_TYPE),
+            Some(&HeaderValue::from_static("application/json"))
+        );
+    }
+
+    #[test]
+    fn decode_response_body_preserves_unknown_encoding_body_and_headers() {
+        let raw = b"\x28\xb5\x2f\xfd";
+        let mut headers = HeaderMap::new();
+        headers.insert(CONTENT_ENCODING, HeaderValue::from_static("zstd"));
+        headers.insert(CONTENT_LENGTH, HeaderValue::from_static("4"));
+
+        let decoded = decode_response_body(&mut headers, raw);
+
+        assert_eq!(decoded.body, raw);
+        assert_eq!(
+            decoded.status,
+            ResponseBodyDecodeStatus::UnsupportedEncoding {
+                encoding: "zstd".to_string(),
+            }
+        );
+        assert_eq!(
+            headers.get(CONTENT_ENCODING),
+            Some(&HeaderValue::from_static("zstd"))
+        );
+        assert_eq!(
+            headers.get(CONTENT_LENGTH),
+            Some(&HeaderValue::from_static("4"))
+        );
+    }
+
+    #[test]
+    fn decode_response_body_preserves_failed_decode_body_and_headers() {
+        let raw = b"not gzip";
+        let mut headers = HeaderMap::new();
+        headers.insert(CONTENT_ENCODING, HeaderValue::from_static("gzip"));
+        headers.insert(CONTENT_LENGTH, HeaderValue::from_static("8"));
+
+        let decoded = decode_response_body(&mut headers, raw);
+
+        assert_eq!(decoded.body, raw);
+        match decoded.status {
+            ResponseBodyDecodeStatus::DecodeFailed { encoding, error } => {
+                assert_eq!(encoding, "gzip");
+                assert!(!error.is_empty());
+            }
+            status => panic!("expected decode failure, got {status:?}"),
+        }
+        assert_eq!(
+            headers.get(CONTENT_ENCODING),
+            Some(&HeaderValue::from_static("gzip"))
+        );
+        assert_eq!(
+            headers.get(CONTENT_LENGTH),
+            Some(&HeaderValue::from_static("8"))
+        );
+    }
+
+    #[test]
+    fn decode_response_body_leaves_unencoded_body_unchanged() {
+        let raw = br#"{"ok":true}"#;
+        let mut headers = HeaderMap::new();
+        headers.insert(CONTENT_TYPE, HeaderValue::from_static("application/json"));
+
+        let decoded = decode_response_body(&mut headers, raw);
+
+        assert_eq!(decoded.body, raw);
+        assert_eq!(decoded.status, ResponseBodyDecodeStatus::NotEncoded);
+        assert_eq!(
+            headers.get(CONTENT_TYPE),
+            Some(&HeaderValue::from_static("application/json"))
+        );
     }
 }

@@ -13,9 +13,9 @@ use super::{
     ProxyError,
 };
 use crate::proxy_core::{
-    decompress_body, get_content_encoding, strip_entity_headers_for_rebuilt_body,
-    strip_hop_by_hop_response_headers, ProviderKind, ProxyServices, SseEventScanner,
-    SseUsageAccumulator, StreamingTimeoutConfig,
+    decode_response_body, get_content_encoding, strip_hop_by_hop_response_headers, ProviderKind,
+    ProxyServices, ResponseBodyDecodeStatus, SseEventScanner, SseUsageAccumulator,
+    StreamingTimeoutConfig,
 };
 use axum::http::header::HeaderMap;
 use axum::response::{IntoResponse, Response};
@@ -57,32 +57,21 @@ pub(crate) async fn read_decoded_body(
         format_headers(&headers)
     );
 
-    let mut body_bytes = raw_bytes.clone();
-    let mut decoded = false;
-
-    if let Some(encoding) = get_content_encoding(&headers) {
+    let decoded = decode_response_body(&mut headers, &raw_bytes);
+    if let Some(encoding) = decoded.status.content_encoding() {
         log::debug!("[{tag}] 解压非流式响应: content-encoding={encoding}");
-        match decompress_body(&encoding, &raw_bytes) {
-            Ok(Some(decompressed)) => {
-                body_bytes = Bytes::from(decompressed);
-                decoded = true;
-            }
-            // 不支持的编码：原样透传且保留 content-encoding 头，
-            // 让下游诊断/客户端知道这仍是压缩字节
-            Ok(None) => {
+        match &decoded.status {
+            ResponseBodyDecodeStatus::UnsupportedEncoding { encoding } => {
                 log::warn!("未知的 content-encoding: {encoding}，跳过解压");
             }
-            Err(e) => {
-                log::warn!("[{tag}] 解压失败 ({encoding}): {e}，使用原始数据");
+            ResponseBodyDecodeStatus::DecodeFailed { encoding, error } => {
+                log::warn!("[{tag}] 解压失败 ({encoding}): {error}，使用原始数据");
             }
+            ResponseBodyDecodeStatus::NotEncoded | ResponseBodyDecodeStatus::Decoded { .. } => {}
         }
     }
 
-    if decoded {
-        strip_entity_headers_for_rebuilt_body(&mut headers);
-    }
-
-    Ok((headers, status, body_bytes))
+    Ok((headers, status, Bytes::from(decoded.body)))
 }
 
 // ============================================================================
@@ -746,7 +735,9 @@ mod tests {
         std::io::Write::write_all(&mut encoder, payload).unwrap();
         let compressed = encoder.finish().unwrap();
 
-        let decompressed = decompress_body("deflate", &compressed).unwrap().unwrap();
+        let decompressed = crate::proxy_core::decompress_body("deflate", &compressed)
+            .unwrap()
+            .unwrap();
         assert_eq!(decompressed, payload);
     }
 
@@ -759,7 +750,9 @@ mod tests {
         std::io::Write::write_all(&mut encoder, payload).unwrap();
         let compressed = encoder.finish().unwrap();
 
-        let decompressed = decompress_body("deflate", &compressed).unwrap().unwrap();
+        let decompressed = crate::proxy_core::decompress_body("deflate", &compressed)
+            .unwrap()
+            .unwrap();
         assert_eq!(decompressed, payload);
     }
 
@@ -767,7 +760,7 @@ mod tests {
     fn decompress_body_unknown_encoding_returns_none_to_keep_headers() {
         // 未知编码必须返回 None（而非伪装成"已解码"），否则 content-encoding
         // 头被剥掉，下游诊断会把压缩字节误报成明文
-        let result = decompress_body("zstd", b"\x28\xb5\x2f\xfd").unwrap();
+        let result = crate::proxy_core::decompress_body("zstd", b"\x28\xb5\x2f\xfd").unwrap();
         assert!(result.is_none());
     }
 
