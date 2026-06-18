@@ -150,6 +150,85 @@ pub fn resolve_copilot_deterministic_interaction_id(session_id: &str) -> Option<
     Some(uuid_v4_string_from_hash(&hasher.finalize()))
 }
 
+/// Merge user tool_result and text blocks so Copilot treats tool continuations as agent turns.
+pub fn merge_copilot_tool_results(mut body: Value) -> Value {
+    let messages = match body.get_mut("messages").and_then(Value::as_array_mut) {
+        Some(messages) if !messages.is_empty() => messages,
+        _ => return body,
+    };
+
+    for message in messages.iter_mut() {
+        if message.get("role").and_then(Value::as_str) != Some("user") {
+            continue;
+        }
+
+        let content = match message.get("content").and_then(Value::as_array) {
+            Some(blocks) => blocks,
+            None => continue,
+        };
+
+        let mut tool_results: Vec<Value> = Vec::new();
+        let mut text_blocks: Vec<Value> = Vec::new();
+        let mut valid = true;
+
+        for block in content {
+            match block.get("type").and_then(Value::as_str) {
+                Some("tool_result") => tool_results.push(block.clone()),
+                Some("text") => text_blocks.push(block.clone()),
+                _ => {
+                    valid = false;
+                    break;
+                }
+            }
+        }
+
+        if !valid || tool_results.is_empty() || text_blocks.is_empty() {
+            continue;
+        }
+
+        message["content"] = Value::Array(merge_blocks_into_tool_results(
+            tool_results,
+            text_blocks,
+        ));
+    }
+
+    let messages = match body.get("messages").and_then(Value::as_array) {
+        Some(messages) => messages.clone(),
+        None => return body,
+    };
+    if messages.len() <= 1 {
+        return body;
+    }
+
+    let mut merged_messages: Vec<Value> = Vec::with_capacity(messages.len());
+    let mut index = 0;
+
+    while index < messages.len() {
+        if is_tool_result_only_message(&messages[index]) {
+            let mut combined_content: Vec<Value> = Vec::new();
+            while index < messages.len() && is_tool_result_only_message(&messages[index]) {
+                if let Some(content) = messages[index].get("content").and_then(Value::as_array) {
+                    combined_content.extend(content.iter().cloned());
+                }
+                index += 1;
+            }
+
+            if !combined_content.is_empty() {
+                merged_messages.push(serde_json::json!({
+                    "role": "user",
+                    "content": combined_content
+                }));
+            }
+        } else {
+            merged_messages.push(messages[index].clone());
+            index += 1;
+        }
+    }
+
+    body["messages"] = Value::Array(merged_messages);
+    body
+}
+
 /// Convert tool_result blocks without a matching adjacent assistant tool_use into text blocks.
 pub fn sanitize_copilot_orphan_tool_results(mut body: Value) -> Value {
     let messages = match body.get_mut("messages").and_then(Value::as_array_mut) {
@@ -246,6 +325,59 @@ pub fn strip_copilot_thinking_blocks(mut body: Value) -> Value {
     }
 
     body
+}
+
+fn merge_blocks_into_tool_results(
+    mut tool_results: Vec<Value>,
+    text_blocks: Vec<Value>,
+) -> Vec<Value> {
+    if tool_results.len() == text_blocks.len() {
+        for (tool_result, text_block) in tool_results.iter_mut().zip(text_blocks.iter()) {
+            append_text_to_tool_result(tool_result, text_block);
+        }
+    } else if let Some(last_tool_result) = tool_results.last_mut() {
+        for text_block in &text_blocks {
+            append_text_to_tool_result(last_tool_result, text_block);
+        }
+    }
+
+    tool_results
+}
+
+fn append_text_to_tool_result(tool_result: &mut Value, text_block: &Value) {
+    let text = text_block
+        .get("text")
+        .and_then(Value::as_str)
+        .unwrap_or("");
+    if text.trim().is_empty() {
+        return;
+    }
+
+    match tool_result.get_mut("content") {
+        Some(Value::String(existing)) => {
+            existing.push('\n');
+            existing.push_str(text);
+        }
+        Some(Value::Array(blocks)) => {
+            blocks.push(serde_json::json!({"type": "text", "text": text}));
+        }
+        _ => {
+            tool_result["content"] = Value::String(text.to_string());
+        }
+    }
+}
+
+fn is_tool_result_only_message(message: &Value) -> bool {
+    if message.get("role").and_then(Value::as_str) != Some("user") {
+        return false;
+    }
+
+    match message.get("content").and_then(Value::as_array) {
+        Some(blocks) if !blocks.is_empty() => blocks
+            .iter()
+            .all(|block| block.get("type").and_then(Value::as_str) == Some("tool_result")),
+        _ => false,
+    }
 }
 
 fn find_last_user_content(body: &Value) -> Option<String> {
@@ -387,8 +519,8 @@ fn uuid_v4_string_from_hash(hash: &[u8]) -> String {
 #[cfg(test)]
 mod tests {
     use super::{
-        classify_copilot_request, parse_session_from_user_id, provider_declares_bedrock,
-        sanitize_copilot_orphan_tool_results,
+        classify_copilot_request, merge_copilot_tool_results, parse_session_from_user_id,
+        provider_declares_bedrock, sanitize_copilot_orphan_tool_results,
         resolve_copilot_optimizer_session_id, should_apply_bedrock_pre_send_optimizer,
         resolve_copilot_deterministic_interaction_id, resolve_copilot_deterministic_request_id,
         resolve_copilot_warmup_model_override, strip_copilot_thinking_blocks,
@@ -716,6 +848,94 @@ mod tests {
             resolve_copilot_deterministic_interaction_id("session_abc"),
             resolve_copilot_deterministic_request_id(&body, "session_abc")
         );
+    }
+
+    #[test]
+    fn copilot_tool_result_merge_absorbs_text_blocks_inside_user_message() {
+        let body = json!({
+            "messages": [
+                {"role": "user", "content": [
+                    {"type": "tool_result", "tool_use_id": "t1", "content": "file contents"},
+                    {"type": "text", "text": "skill output"}
+                ]}
+            ]
+        });
+
+        let merged = merge_copilot_tool_results(body);
+        let content = merged["messages"][0]["content"].as_array().unwrap();
+
+        assert_eq!(content.len(), 1);
+        assert_eq!(content[0]["type"], "tool_result");
+        assert!(content[0]["content"]
+            .as_str()
+            .unwrap()
+            .contains("file contents"));
+        assert!(content[0]["content"].as_str().unwrap().contains("skill output"));
+    }
+
+    #[test]
+    fn copilot_tool_result_merge_maps_equal_counts_positionally() {
+        let body = json!({
+            "messages": [
+                {"role": "user", "content": [
+                    {"type": "tool_result", "tool_use_id": "t1", "content": "result1"},
+                    {"type": "text", "text": "text1"},
+                    {"type": "tool_result", "tool_use_id": "t2", "content": "result2"},
+                    {"type": "text", "text": "text2"}
+                ]}
+            ]
+        });
+
+        let merged = merge_copilot_tool_results(body);
+        let content = merged["messages"][0]["content"].as_array().unwrap();
+
+        assert_eq!(content.len(), 2);
+        assert!(content[0]["content"].as_str().unwrap().contains("text1"));
+        assert!(content[1]["content"].as_str().unwrap().contains("text2"));
+    }
+
+    #[test]
+    fn copilot_tool_result_merge_combines_consecutive_tool_result_only_messages() {
+        let body = json!({
+            "messages": [
+                {"role": "user", "content": "Read files"},
+                {"role": "assistant", "content": [
+                    {"type": "tool_use", "id": "t1", "name": "Read", "input": {}},
+                    {"type": "tool_use", "id": "t2", "name": "Read", "input": {}}
+                ]},
+                {"role": "user", "content": [
+                    {"type": "tool_result", "tool_use_id": "t1", "content": "file1"}
+                ]},
+                {"role": "user", "content": [
+                    {"type": "tool_result", "tool_use_id": "t2", "content": "file2"}
+                ]}
+            ]
+        });
+
+        let merged = merge_copilot_tool_results(body);
+        let messages = merged["messages"].as_array().unwrap();
+
+        assert_eq!(messages.len(), 3);
+        assert_eq!(messages[2]["content"].as_array().unwrap().len(), 2);
+    }
+
+    #[test]
+    fn copilot_tool_result_merge_skips_messages_with_other_block_types() {
+        let body = json!({
+            "messages": [
+                {"role": "user", "content": [
+                    {"type": "tool_result", "tool_use_id": "t1", "content": "result"},
+                    {"type": "image", "source": {"data": "..."}},
+                    {"type": "text", "text": "caption"}
+                ]}
+            ]
+        });
+
+        let merged = merge_copilot_tool_results(body);
+        let content = merged["messages"][0]["content"].as_array().unwrap();
+
+        assert_eq!(content.len(), 3);
+        assert_eq!(content[1]["type"], "image");
     }
 
     #[test]

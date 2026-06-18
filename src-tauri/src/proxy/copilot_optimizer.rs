@@ -56,84 +56,8 @@ pub fn classify_request(
 /// tool_result + text 的用户消息。text block 的存在让 Copilot 将其计为 premium request。
 ///
 /// **跨消息合并**（补充）：连续的 tool_result-only 用户消息合并为一条。
-pub fn merge_tool_results(mut body: Value) -> Value {
-    let messages = match body.get_mut("messages").and_then(|m| m.as_array_mut()) {
-        Some(msgs) if !msgs.is_empty() => msgs,
-        _ => return body,
-    };
-
-    // Phase 1: 消息内部合并 — 将 text block 吸收进 tool_result block
-    for msg in messages.iter_mut() {
-        if msg.get("role").and_then(|r| r.as_str()) != Some("user") {
-            continue;
-        }
-        let content = match msg.get("content").and_then(|c| c.as_array()) {
-            Some(blocks) => blocks,
-            None => continue,
-        };
-
-        // 分离 tool_result 和 text block
-        let mut tool_results: Vec<Value> = Vec::new();
-        let mut text_blocks: Vec<Value> = Vec::new();
-        let mut valid = true;
-
-        for block in content {
-            match block.get("type").and_then(|t| t.as_str()) {
-                Some("tool_result") => tool_results.push(block.clone()),
-                Some("text") => text_blocks.push(block.clone()),
-                _ => {
-                    // 存在其他类型 block → 跳过此消息
-                    valid = false;
-                    break;
-                }
-            }
-        }
-
-        // 必须同时有 tool_result 和 text 才需要合并
-        if !valid || tool_results.is_empty() || text_blocks.is_empty() {
-            continue;
-        }
-
-        // 合并策略（与参考实现对齐）
-        let merged = merge_blocks_into_tool_results(tool_results, text_blocks);
-        msg["content"] = Value::Array(merged);
-    }
-
-    // Phase 2: 跨消息合并 — 连续的 tool_result-only 用户消息合并
-    let messages = match body.get("messages").and_then(|m| m.as_array()) {
-        Some(messages) => messages.clone(),
-        None => return body,
-    };
-    if messages.len() <= 1 {
-        return body;
-    }
-
-    let mut merged_msgs: Vec<Value> = Vec::with_capacity(messages.len());
-    let mut i = 0;
-
-    while i < messages.len() {
-        if is_tool_result_only_message(&messages[i]) {
-            let mut combined_content: Vec<Value> = Vec::new();
-            while i < messages.len() && is_tool_result_only_message(&messages[i]) {
-                if let Some(content) = messages[i].get("content").and_then(|c| c.as_array()) {
-                    combined_content.extend(content.iter().cloned());
-                }
-                i += 1;
-            }
-            if !combined_content.is_empty() {
-                merged_msgs.push(serde_json::json!({
-                    "role": "user",
-                    "content": combined_content
-                }));
-            }
-        } else {
-            merged_msgs.push(messages[i].clone());
-            i += 1;
-        }
-    }
-
-    body["messages"] = Value::Array(merged_msgs);
-    body
+pub fn merge_tool_results(body: Value) -> Value {
+    crate::proxy_core::merge_copilot_tool_results(body)
 }
 
 /// 基于最后一条用户消息内容生成确定性 Request ID。
@@ -183,72 +107,6 @@ pub fn sanitize_orphan_tool_results(body: Value) -> Value {
 ///   返回新 body"签名，便于接入 forwarder 管道。
 pub fn strip_thinking_blocks(body: Value) -> Value {
     crate::proxy_core::strip_copilot_thinking_blocks(body)
-}
-
-// ─── 内部辅助 ─────────────────────────────────
-
-/// 将 text block 合并进 tool_result block。
-///
-/// 两种合并策略（与参考实现对齐）：
-/// - 数量相等：一一对应，text 追加到对应 tool_result 的 content 中
-/// - 数量不等：所有 text 追加到最后一个 tool_result 的 content 中
-fn merge_blocks_into_tool_results(
-    mut tool_results: Vec<Value>,
-    text_blocks: Vec<Value>,
-) -> Vec<Value> {
-    if tool_results.len() == text_blocks.len() {
-        // 一一对应合并
-        for (tr, tb) in tool_results.iter_mut().zip(text_blocks.iter()) {
-            append_text_to_tool_result(tr, tb);
-        }
-    } else {
-        // 所有 text 追加到最后一个 tool_result
-        if let Some(last_tr) = tool_results.last_mut() {
-            for tb in &text_blocks {
-                append_text_to_tool_result(last_tr, tb);
-            }
-        }
-    }
-    tool_results
-}
-
-/// 将 text block 的内容追加到 tool_result 的 content 中
-fn append_text_to_tool_result(tool_result: &mut Value, text_block: &Value) {
-    let text = text_block
-        .get("text")
-        .and_then(|t| t.as_str())
-        .unwrap_or("");
-    if text.trim().is_empty() {
-        return;
-    }
-
-    // tool_result 的 content 可以是字符串或数组
-    match tool_result.get_mut("content") {
-        Some(Value::String(existing)) => {
-            existing.push('\n');
-            existing.push_str(text);
-        }
-        Some(Value::Array(arr)) => {
-            arr.push(serde_json::json!({"type": "text", "text": text}));
-        }
-        _ => {
-            // content 缺失或 null — 直接设置
-            tool_result["content"] = Value::String(text.to_string());
-        }
-    }
-}
-
-/// 判断消息是否为 tool_result-only 的用户消息
-fn is_tool_result_only_message(msg: &Value) -> bool {
-    if msg.get("role").and_then(|r| r.as_str()) != Some("user") {
-        return false;
-    }
-    match msg.get("content").and_then(|c| c.as_array()) {
-        Some(blocks) if !blocks.is_empty() => blocks
-            .iter()
-            .all(|block| block.get("type").and_then(|t| t.as_str()) == Some("tool_result")),
-        _ => false,
-    }
 }
 
 // ─── 测试 ─────────────────────────────────────
