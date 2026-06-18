@@ -293,12 +293,20 @@ impl ProxyServer {
             // 健康检查
             .route("/health", get(handlers::health_check))
             .route("/status", get(handlers::get_status))
-            // Versioned management API (read-only channel migration surface)
+            // Versioned management API (channel migration surface)
             .route("/proxy/v1/health", get(handlers::health_check))
             .route("/proxy/v1/status", get(handlers::get_status))
             .route(
                 "/proxy/v1/apps/:app/channels",
                 get(handlers::list_proxy_channels),
+            )
+            .route(
+                "/proxy/v1/apps/:app/channels/migration/preview",
+                get(handlers::preview_proxy_channel_migration),
+            )
+            .route(
+                "/proxy/v1/apps/:app/channels/migration/materialize",
+                post(handlers::materialize_proxy_channel_migration),
             )
             .route(
                 "/proxy/v1/route/resolve",
@@ -408,6 +416,13 @@ impl ProxyServer {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::provider::Provider;
+    use axum::{
+        body::{to_bytes, Body},
+        http::{Method, Request, StatusCode},
+    };
+    use serde_json::{json, Value};
+    use tower::Service;
 
     #[test]
     fn build_router_accepts_management_routes() {
@@ -415,5 +430,67 @@ mod tests {
         let server = ProxyServer::new(ProxyConfig::default(), db, None);
 
         let _router = server.build_router();
+    }
+
+    #[tokio::test]
+    async fn channel_migration_management_routes_preview_and_materialize() {
+        let db = Arc::new(Database::memory().expect("memory db"));
+        let provider = Provider::with_id(
+            "a".to_string(),
+            "Provider A".to_string(),
+            json!({
+                "env": {
+                    "ANTHROPIC_BASE_URL": "https://primary.example.com/v1",
+                    "ANTHROPIC_MODEL": "claude-sonnet-4"
+                }
+            }),
+            None,
+        );
+        db.save_provider("claude", &provider).unwrap();
+
+        let server = ProxyServer::new(ProxyConfig::default(), db.clone(), None);
+        let mut router = server.build_router();
+
+        let preview_response = Service::call(
+            &mut router,
+            Request::builder()
+                .method(Method::GET)
+                .uri("/proxy/v1/apps/claude/channels/migration/preview")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+        assert_eq!(preview_response.status(), StatusCode::OK);
+        let preview = response_json(preview_response).await;
+        assert_eq!(preview["appType"], "claude");
+        assert_eq!(preview["channels"].as_array().unwrap().len(), 1);
+
+        let materialize_response = Service::call(
+            &mut router,
+            Request::builder()
+                .method(Method::POST)
+                .uri("/proxy/v1/apps/claude/channels/migration/materialize")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+        assert_eq!(materialize_response.status(), StatusCode::OK);
+        let materialize = response_json(materialize_response).await;
+        assert_eq!(materialize["appType"], "claude");
+        assert_eq!(materialize["insertedChannels"], 1);
+        assert_eq!(materialize["insertedHealthRows"], 1);
+
+        let stored = db.list_proxy_channels_for_app("claude").unwrap();
+        assert_eq!(stored.len(), 1);
+        assert_eq!(stored[0].base_url, "https://primary.example.com/v1");
+    }
+
+    async fn response_json(response: axum::response::Response) -> Value {
+        let bytes = to_bytes(response.into_body(), usize::MAX)
+            .await
+            .expect("read response body");
+        serde_json::from_slice(&bytes).expect("json response")
     }
 }

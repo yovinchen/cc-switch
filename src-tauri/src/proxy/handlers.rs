@@ -73,6 +73,8 @@ pub async fn list_proxy_channels(
     State(state): State<ProxyState>,
     Path(app_type): Path<String>,
 ) -> Result<Json<Value>, ProxyError> {
+    validate_management_app_type(&app_type)?;
+
     let (channels, source) = state
         .provider_router
         .list_channels_for_app(&app_type)
@@ -84,6 +86,36 @@ pub async fn list_proxy_channels(
         "source": source,
         "channels": channels,
     })))
+}
+
+/// GET /proxy/v1/apps/{app}/channels/migration/preview
+pub async fn preview_proxy_channel_migration(
+    State(state): State<ProxyState>,
+    Path(app_type): Path<String>,
+) -> Result<Json<Value>, ProxyError> {
+    validate_management_app_type(&app_type)?;
+
+    let preview = state
+        .db
+        .preview_legacy_proxy_channel_migration(&app_type)
+        .map_err(|e| ProxyError::DatabaseError(e.to_string()))?;
+
+    Ok(Json(json!(preview)))
+}
+
+/// POST /proxy/v1/apps/{app}/channels/migration/materialize
+pub async fn materialize_proxy_channel_migration(
+    State(state): State<ProxyState>,
+    Path(app_type): Path<String>,
+) -> Result<Json<Value>, ProxyError> {
+    validate_management_app_type(&app_type)?;
+
+    let result = state
+        .db
+        .materialize_legacy_proxy_channels(&app_type)
+        .map_err(|e| ProxyError::DatabaseError(e.to_string()))?;
+
+    Ok(Json(json!(result)))
 }
 
 /// POST /proxy/v1/route/resolve
@@ -104,6 +136,16 @@ pub async fn resolve_proxy_route(
         .map_err(|e| ProxyError::DatabaseError(e.to_string()))?;
 
     Ok(Json(response))
+}
+
+fn validate_management_app_type(app_type: &str) -> Result<(), ProxyError> {
+    if app_type.trim().is_empty() {
+        Err(ProxyError::InvalidRequest(
+            "app cannot be empty".to_string(),
+        ))
+    } else {
+        Ok(())
+    }
 }
 
 /// GET /v1/models — Codex model list (reachability check)

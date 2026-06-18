@@ -761,6 +761,8 @@ CC Switch 桌面宿主实现 Codex model catalog 文件读取；外部宿主可�
 | `/proxy/v1/apps` | GET | 已注册 app namespace |
 | `/proxy/v1/apps/{app}/providers` | GET | 当前 app 的 provider 候选 |
 | `/proxy/v1/apps/{app}/channels` | GET | 当前 app 可见 channel 候选，支持 group/model/interface 过滤 |
+| `/proxy/v1/apps/{app}/channels/migration/preview` | GET | 只读预览旧 provider/endpoint 到 channel 的投影结果和需人工复核项 |
+| `/proxy/v1/apps/{app}/channels/migration/materialize` | POST | 将旧 provider/endpoint 投影幂等写入 channel 表 |
 | `/proxy/v1/channels` | GET/POST | channel 列表和创建 |
 | `/proxy/v1/channels/{channel_id}` | GET/PATCH/DELETE | 查询、更新、删除单个 channel |
 | `/proxy/v1/channels/{channel_id}/models` | GET/PUT | 查询或替换 channel 模型映射 |
@@ -998,12 +1000,14 @@ cargo test --manifest-path src-tauri/Cargo.toml proxy --lib
 3. `GET /proxy/v1/apps`
 4. `GET /proxy/v1/apps/{app}/providers`
 5. `GET /proxy/v1/apps/{app}/channels`
-6. `GET/POST /proxy/v1/channels`
-7. `GET/PATCH/DELETE /proxy/v1/channels/{channel_id}`
-8. `GET/PUT /proxy/v1/channels/{channel_id}/models`
-9. `POST /proxy/v1/channels/{channel_id}/test`
-10. `POST /proxy/v1/route/resolve`
-11. `POST /proxy/v1/channels/{channel_id}/breakers/reset`
+6. `GET /proxy/v1/apps/{app}/channels/migration/preview`
+7. `POST /proxy/v1/apps/{app}/channels/migration/materialize`
+8. `GET/POST /proxy/v1/channels`
+9. `GET/PATCH/DELETE /proxy/v1/channels/{channel_id}`
+10. `GET/PUT /proxy/v1/channels/{channel_id}/models`
+11. `POST /proxy/v1/channels/{channel_id}/test`
+12. `POST /proxy/v1/route/resolve`
+13. `POST /proxy/v1/channels/{channel_id}/breakers/reset`
 
 CC Switch 前端可以继续用 Tauri commands；外部集成用 HTTP API。
 
