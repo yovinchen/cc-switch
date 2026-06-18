@@ -41,18 +41,19 @@ use crate::proxy_core::{
     claude_stream_usage_event_filter, codex_stream_usage_event_filter,
     parse_upstream_json_or_unlabeled_sse, rebuilt_json_proxy_response,
     resolve_management_auth_decision, should_aggregate_codex_oauth_responses_sse,
-    should_use_claude_transform_streaming, transformed_sse_proxy_response,
-    validate_management_bearer_value, AppChannelListQuery, AppChannelListResponse,
-    AppChannelResponse, AppChannelRouteResponse, AppKind, AppListResponse, AppModelListQuery,
-    AppSummary, ChannelDeleteResponse, ChannelHealthResetResponse, ChannelListResponse,
-    ChannelMigrationMaterializeResponse, ChannelMigrationPreviewResponse, ChannelModelsResponse,
-    ChannelRouteCandidate, ChannelRouteRejected, CurrentRouteProviderSummary, CurrentRouteResponse,
-    HealthCheckResponse, InterfaceKind, ManagementAuthDecision, ManagementAuthError,
-    ProviderListResponse, ProviderSummaryInput, ProxyBody, ProxyChannelModelsReplaceRequest,
-    ProxyChannelPatchRequest, ProxyChannelWriteRequest, ProxyCoreError, ProxyEngine, ProxyRequest,
-    ProxyResult, ProxyServices, RoutableModelList, RouteGroupChannelInput, RouteGroupListResponse,
-    RouteGroupSourceInput, RouteResolveRequest, RouteResolveResponse, UpstreamJsonBodySource,
-    UpstreamSseAggregationKind,
+    should_use_claude_transform_streaming, transformed_response_usage,
+    transformed_sse_proxy_response, validate_management_bearer_value, AppChannelListQuery,
+    AppChannelListResponse, AppChannelResponse, AppChannelRouteResponse, AppKind, AppListResponse,
+    AppModelListQuery, AppSummary, ChannelDeleteResponse, ChannelHealthResetResponse,
+    ChannelListResponse, ChannelMigrationMaterializeResponse, ChannelMigrationPreviewResponse,
+    ChannelModelsResponse, ChannelRouteCandidate, ChannelRouteRejected,
+    CurrentRouteProviderSummary, CurrentRouteResponse, HealthCheckResponse, InterfaceKind,
+    ManagementAuthDecision, ManagementAuthError, ProviderListResponse, ProviderSummaryInput,
+    ProxyBody, ProxyChannelModelsReplaceRequest, ProxyChannelPatchRequest,
+    ProxyChannelWriteRequest, ProxyCoreError, ProxyEngine, ProxyRequest, ProxyResult,
+    ProxyServices, RoutableModelList, RouteGroupChannelInput, RouteGroupListResponse,
+    RouteGroupSourceInput, RouteResolveRequest, RouteResolveResponse,
+    TransformedResponseUsageFormat, UpstreamJsonBodySource, UpstreamSseAggregationKind,
 };
 use axum::{
     extract::{Path, Query, State},
@@ -1005,28 +1006,18 @@ async fn handle_claude_transform(
         e
     })?;
 
-    // 记录使用量
-    // 全 0 usage 不落账（对齐 Codex 流式收集器的 skip）：SSE 聚合兜底救回的流
-    // 在上游缺 stream_options.include_usage 时没有 usage，写入只会产生无意义空行
-    if let Some(usage) =
-        TokenUsage::from_claude_response(&anthropic_response).filter(|u| u.has_billable_tokens())
-    {
-        // 转换后的响应缺失/合成空 model 时，回退到映射后的出站模型（接管真值），
-        // 再回退到客户端请求别名
-        let model = anthropic_response
-            .get("model")
-            .and_then(|m| m.as_str())
-            .filter(|m| !m.is_empty())
-            .map(str::to_string)
-            .or_else(|| ctx.outbound_model.clone())
-            .unwrap_or_else(|| ctx.request_model.clone());
+    if let Some(usage) = transformed_response_usage(
+        &anthropic_response,
+        TransformedResponseUsageFormat::Claude,
+        &ctx.request_model,
+        ctx.outbound_model.as_deref(),
+    ) {
         let latency_ms = ctx.latency_ms();
 
-        let request_model = ctx.request_model.clone();
-        let outbound_model = ctx
-            .outbound_model
-            .clone()
-            .unwrap_or_else(|| ctx.request_model.clone());
+        let model = usage.response_model;
+        let request_model = usage.request_model;
+        let outbound_model = usage.outbound_model;
+        let token_usage = usage.usage;
         let app_type_str = ctx.app_type_str;
         tokio::spawn({
             let state = state.clone();
@@ -1042,7 +1033,7 @@ async fn handle_claude_transform(
                     &model,
                     &request_model,
                     &outbound_model,
-                    usage,
+                    token_usage,
                     latency_ms,
                     None,
                     false,
@@ -1453,25 +1444,16 @@ async fn handle_codex_chat_to_responses_transform(
         .record_response(&responses_response)
         .await;
 
-    // 上游非流式 Chat 省略 usage 时，chat_usage_to_responses_usage 会合成全 0 usage
-    // (transform_codex_chat.rs:1581)，from_codex_response 对 input/output 字段存在(哪怕=0)
-    // 即返回 Some。用 has_billable_tokens 闸门跳过全 0，避免空行虚增请求数——与流式分支
-    // 及 Claude transform handler 的 skip 行为对齐。
-    if let Some(usage) = TokenUsage::from_codex_response_auto(&responses_response)
-        .filter(TokenUsage::has_billable_tokens)
-    {
-        let model = responses_response
-            .get("model")
-            .and_then(|m| m.as_str())
-            .filter(|m| !m.is_empty())
-            .map(str::to_string)
-            .or_else(|| ctx.outbound_model.clone())
-            .unwrap_or_else(|| ctx.request_model.clone());
-        let request_model = ctx.request_model.clone();
-        let outbound_model = ctx
-            .outbound_model
-            .clone()
-            .unwrap_or_else(|| ctx.request_model.clone());
+    if let Some(usage) = transformed_response_usage(
+        &responses_response,
+        TransformedResponseUsageFormat::CodexAuto,
+        &ctx.request_model,
+        ctx.outbound_model.as_deref(),
+    ) {
+        let model = usage.response_model;
+        let request_model = usage.request_model;
+        let outbound_model = usage.outbound_model;
+        let token_usage = usage.usage;
         let app_type_str = ctx.app_type_str;
         tokio::spawn({
             let state = state.clone();
@@ -1488,7 +1470,7 @@ async fn handle_codex_chat_to_responses_transform(
                     &model,
                     &request_model,
                     &outbound_model,
-                    usage,
+                    token_usage,
                     latency_ms,
                     None,
                     false,

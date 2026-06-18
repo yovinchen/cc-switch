@@ -561,6 +561,45 @@ pub struct UsageRecordPricingModels {
     pub pricing_model: String,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TransformedResponseUsageFormat {
+    Claude,
+    CodexAuto,
+}
+
+#[derive(Debug, Clone)]
+pub struct TransformedResponseUsage {
+    pub usage: TokenUsage,
+    pub response_model: String,
+    pub request_model: String,
+    pub outbound_model: String,
+}
+
+pub fn transformed_response_usage(
+    body: &Value,
+    format: TransformedResponseUsageFormat,
+    request_model: &str,
+    outbound_model: Option<&str>,
+) -> Option<TransformedResponseUsage> {
+    let usage = match format {
+        TransformedResponseUsageFormat::Claude => TokenUsage::from_claude_response(body),
+        TransformedResponseUsageFormat::CodexAuto => TokenUsage::from_codex_response_auto(body),
+    }
+    .filter(TokenUsage::has_billable_tokens)?;
+
+    let outbound_model = outbound_model
+        .map(str::to_string)
+        .unwrap_or_else(|| request_model.to_string());
+    let response_model = response_body_model(body).unwrap_or_else(|| outbound_model.clone());
+
+    Some(TransformedResponseUsage {
+        usage,
+        response_model,
+        request_model: request_model.to_string(),
+        outbound_model,
+    })
+}
+
 pub fn usage_tokens_from_token_usage(usage: &TokenUsage) -> UsageTokens {
     UsageTokens {
         input_tokens: usage.input_tokens as u64,
@@ -753,6 +792,13 @@ fn non_empty_model(value: &str) -> Option<String> {
 
 fn non_empty_model_option(value: Option<&str>) -> Option<String> {
     value.and_then(non_empty_model)
+}
+
+fn response_body_model(body: &Value) -> Option<String> {
+    body.get("model")
+        .and_then(|model| model.as_str())
+        .filter(|model| !model.is_empty())
+        .map(str::to_string)
 }
 
 fn u64_to_u32_saturating(value: u64) -> u32 {
@@ -1498,6 +1544,95 @@ mod tests {
         assert_eq!(models.response_model, None);
         assert_eq!(models.request_model, "client-model");
         assert_eq!(models.outbound_model, "upstream-model");
+    }
+
+    #[test]
+    fn test_transformed_response_usage_prefers_response_model() {
+        let response = json!({
+            "id": "msg_1",
+            "model": "claude-response-model",
+            "usage": {
+                "input_tokens": 3,
+                "output_tokens": 5
+            }
+        });
+
+        let usage = transformed_response_usage(
+            &response,
+            TransformedResponseUsageFormat::Claude,
+            "request-model",
+            Some("outbound-model"),
+        )
+        .expect("usage");
+
+        assert_eq!(usage.response_model, "claude-response-model");
+        assert_eq!(usage.request_model, "request-model");
+        assert_eq!(usage.outbound_model, "outbound-model");
+        assert_eq!(usage.usage.input_tokens, 3);
+        assert_eq!(usage.usage.output_tokens, 5);
+    }
+
+    #[test]
+    fn test_transformed_response_usage_falls_back_to_outbound_model() {
+        let response = json!({
+            "usage": {
+                "input_tokens": 3,
+                "output_tokens": 5
+            }
+        });
+
+        let usage = transformed_response_usage(
+            &response,
+            TransformedResponseUsageFormat::Claude,
+            "request-model",
+            Some("outbound-model"),
+        )
+        .expect("usage");
+
+        assert_eq!(usage.response_model, "outbound-model");
+        assert_eq!(usage.outbound_model, "outbound-model");
+    }
+
+    #[test]
+    fn test_transformed_response_usage_falls_back_to_request_model() {
+        let response = json!({
+            "usage": {
+                "input_tokens": 3,
+                "output_tokens": 5
+            }
+        });
+
+        let usage = transformed_response_usage(
+            &response,
+            TransformedResponseUsageFormat::Claude,
+            "request-model",
+            None,
+        )
+        .expect("usage");
+
+        assert_eq!(usage.response_model, "request-model");
+        assert_eq!(usage.outbound_model, "request-model");
+    }
+
+    #[test]
+    fn test_transformed_response_usage_skips_codex_all_zero_usage() {
+        let response = json!({
+            "model": "o3",
+            "usage": {
+                "input_tokens": 0,
+                "output_tokens": 0,
+                "total_tokens": 0
+            }
+        });
+
+        let usage = transformed_response_usage(
+            &response,
+            TransformedResponseUsageFormat::CodexAuto,
+            "request-model",
+            Some("outbound-model"),
+        );
+
+        assert!(usage.is_none());
     }
 
     #[test]
