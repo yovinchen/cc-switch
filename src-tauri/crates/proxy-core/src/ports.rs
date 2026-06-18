@@ -491,6 +491,14 @@ impl<T> AppChannelListResponse<T> {
             channels,
         }
     }
+
+    pub fn from_route_source(
+        app_type: impl Into<String>,
+        source: &ChannelRouteSource,
+        channels: Vec<T>,
+    ) -> Self {
+        Self::new(app_type, source.as_str(), channels)
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -524,6 +532,20 @@ impl<C, R> AppChannelRouteResponse<C, R> {
             channels,
             rejected,
         }
+    }
+}
+
+impl AppChannelRouteResponse<ChannelRouteCandidate, ChannelRouteRejected> {
+    pub fn from_route_resolve(response: RouteResolveResponse) -> Self {
+        Self::new(
+            response.app_type,
+            response.source.as_str(),
+            response.requested_model,
+            response.interface_kind,
+            response.route_group,
+            response.candidates,
+            response.rejected,
+        )
     }
 }
 
@@ -634,6 +656,15 @@ impl ChannelMigrationMaterializeResponse {
 pub enum ChannelRouteSource {
     MaterializedChannels,
     LegacyProjection,
+}
+
+impl ChannelRouteSource {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Self::MaterializedChannels => "materialized_channels",
+            Self::LegacyProjection => "legacy_projection",
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -1095,9 +1126,9 @@ mod tests {
     #[test]
     fn app_channel_response_serializes_unfiltered_list_envelope() {
         let response: AppChannelResponse<_, serde_json::Value, serde_json::Value> =
-            AppChannelResponse::List(AppChannelListResponse::new(
+            AppChannelResponse::List(AppChannelListResponse::from_route_source(
                 "claude",
-                "materialized_channels",
+                &ChannelRouteSource::MaterializedChannels,
                 vec![json!({
                     "id": "channel-a",
                     "name": "Primary"
@@ -1115,20 +1146,33 @@ mod tests {
     #[test]
     fn app_channel_response_serializes_route_filter_envelope() {
         let response: AppChannelResponse<serde_json::Value, _, _> =
-            AppChannelResponse::Route(AppChannelRouteResponse::new(
-                "claude",
-                "legacy_projection",
-                Some("sonnet".to_string()),
-                Some("anthropic_messages".to_string()),
-                "default",
-                vec![json!({
-                    "channelId": "channel-a",
-                    "upstreamModel": "claude-sonnet"
-                })],
-                vec![json!({
-                    "channelId": "channel-b",
-                    "reasons": ["model_unavailable:sonnet"]
-                })],
+            AppChannelResponse::Route(AppChannelRouteResponse::from_route_resolve(
+                RouteResolveResponse {
+                    app_type: "claude".to_string(),
+                    requested_model: Some("sonnet".to_string()),
+                    interface_kind: Some("anthropic_messages".to_string()),
+                    route_group: "default".to_string(),
+                    source: ChannelRouteSource::LegacyProjection,
+                    candidates: vec![ChannelRouteCandidate {
+                        channel_id: "channel-a".to_string(),
+                        provider_id: "provider-a".to_string(),
+                        channel_name: "Primary".to_string(),
+                        base_url: "https://primary.example.com/v1".to_string(),
+                        interface_kind: "anthropic_messages".to_string(),
+                        public_model: Some("sonnet".to_string()),
+                        upstream_model: Some("claude-sonnet".to_string()),
+                        route_group: "default".to_string(),
+                        priority: 10,
+                        weight: 100,
+                        source_kind: "legacy_primary".to_string(),
+                    }],
+                    rejected: vec![ChannelRouteRejected {
+                        channel_id: "channel-b".to_string(),
+                        provider_id: "provider-b".to_string(),
+                        channel_name: "Secondary".to_string(),
+                        reasons: vec!["model_unavailable:sonnet".to_string()],
+                    }],
+                },
             ));
 
         let value = serde_json::to_value(response).expect("serialize response");

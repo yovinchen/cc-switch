@@ -42,12 +42,12 @@ use crate::proxy_core::{
     AppChannelResponse, AppChannelRouteResponse, AppKind, AppListResponse, AppModelListQuery,
     AppSummary, ChannelDeleteResponse, ChannelHealthResetResponse, ChannelListResponse,
     ChannelMigrationMaterializeResponse, ChannelMigrationPreviewResponse, ChannelModelsResponse,
-    ChannelRouteCandidate, ChannelRouteRejected, ChannelRouteSource, CurrentRouteProviderSummary,
-    CurrentRouteResponse, HealthCheckResponse, InterfaceKind, ProviderListResponse,
-    ProviderSummary, ProxyBody, ProxyChannelModelsReplaceRequest, ProxyChannelPatchRequest,
-    ProxyChannelWriteRequest, ProxyCoreError, ProxyCoreResponse, ProxyEngine, ProxyRequest,
-    ProxyResponseBody, ProxyResult, ProxyServices, RoutableModelList, RouteGroupChannelInput,
-    RouteGroupListResponse, RouteGroupSourceInput, RouteResolveRequest, RouteResolveResponse,
+    ChannelRouteCandidate, ChannelRouteRejected, CurrentRouteProviderSummary, CurrentRouteResponse,
+    HealthCheckResponse, InterfaceKind, ProviderListResponse, ProviderSummary, ProxyBody,
+    ProxyChannelModelsReplaceRequest, ProxyChannelPatchRequest, ProxyChannelWriteRequest,
+    ProxyCoreError, ProxyCoreResponse, ProxyEngine, ProxyRequest, ProxyResponseBody, ProxyResult,
+    ProxyServices, RoutableModelList, RouteGroupChannelInput, RouteGroupListResponse,
+    RouteGroupSourceInput, RouteResolveRequest, RouteResolveResponse,
 };
 use axum::{
     extract::{Path, Query, State},
@@ -475,15 +475,7 @@ pub async fn list_proxy_channels(
             .map_err(|e| ProxyError::DatabaseError(e.to_string()))?;
 
         return Ok(Json(AppChannelResponse::Route(
-            AppChannelRouteResponse::new(
-                response.app_type,
-                channel_route_source_label(&response.source),
-                response.requested_model,
-                response.interface_kind,
-                response.route_group,
-                response.candidates,
-                response.rejected,
-            ),
+            AppChannelRouteResponse::from_route_resolve(response),
         )));
     }
 
@@ -493,11 +485,9 @@ pub async fn list_proxy_channels(
         .await
         .map_err(|e| ProxyError::DatabaseError(e.to_string()))?;
 
-    Ok(Json(AppChannelResponse::List(AppChannelListResponse::new(
-        app_type,
-        channel_route_source_label(&source),
-        channels,
-    ))))
+    Ok(Json(AppChannelResponse::List(
+        AppChannelListResponse::from_route_source(app_type, &source, channels),
+    )))
 }
 
 /// GET /proxy/v1/groups
@@ -530,7 +520,7 @@ pub async fn list_proxy_groups(
             .map_err(|e| ProxyError::DatabaseError(e.to_string()))?;
         sources.push(RouteGroupSourceInput::new(
             app_type.clone(),
-            channel_route_source_label(&source),
+            source.as_str(),
             channels
                 .into_iter()
                 .map(|channel| RouteGroupChannelInput::new(channel.groups))
@@ -674,13 +664,6 @@ fn normalize_channel_id_path(channel_id: String) -> Result<String, ProxyError> {
         ))
     } else {
         Ok(channel_id)
-    }
-}
-
-fn channel_route_source_label(source: &ChannelRouteSource) -> &'static str {
-    match source {
-        ChannelRouteSource::MaterializedChannels => "materialized_channels",
-        ChannelRouteSource::LegacyProjection => "legacy_projection",
     }
 }
 
