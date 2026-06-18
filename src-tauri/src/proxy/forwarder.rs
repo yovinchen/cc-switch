@@ -4,11 +4,10 @@
 
 use super::hyper_client::ProxyResponse;
 use super::{
-    body_filter::filter_private_params_with_whitelist,
     error::*,
     events::ProxyEventBus,
     failover_switch::FailoverSwitchManager,
-    json_canonical::{canonicalize_value, short_value_hash},
+    json_canonical::short_value_hash,
     log_codes::fwd as log_fwd,
     provider_router::ProviderRouter,
     providers::{
@@ -3042,7 +3041,14 @@ fn summarize_text_for_log(text: &str, max_chars: usize) -> String {
 }
 
 fn prepare_upstream_request_body(request_body: Value) -> Value {
-    canonicalize_value(filter_private_params_with_whitelist(request_body, &[]))
+    let prepared = crate::proxy_core::prepare_upstream_request_body_with_report(request_body);
+    if !prepared.removed_private_keys.is_empty() {
+        log::debug!(
+            "[BodyFilter] 过滤私有参数: {:?}",
+            prepared.removed_private_keys
+        );
+    }
+    prepared.body
 }
 
 fn log_prompt_cache_trace(

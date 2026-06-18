@@ -15,8 +15,8 @@
 //! - `_session_token`: 会话令牌
 //! - `_client_version`: 客户端版本
 
+#[cfg(test)]
 use serde_json::Value;
-use std::collections::HashSet;
 
 /// 过滤私有参数（以 `_` 开头的字段）
 ///
@@ -40,7 +40,7 @@ use std::collections::HashSet;
 /// ```
 #[cfg(test)]
 pub fn filter_private_params(body: Value) -> Value {
-    filter_private_params_with_whitelist(body, &[])
+    crate::proxy_core::filter_private_params(body)
 }
 
 /// 过滤私有参数（支持白名单）
@@ -65,63 +65,9 @@ pub fn filter_private_params(body: Value) -> Value {
 /// let output = filter_private_params_with_whitelist(input, &["_metadata"]);
 /// // output 包含 _metadata，不包含 _internal_id
 /// ```
+#[cfg(test)]
 pub fn filter_private_params_with_whitelist(body: Value, whitelist: &[String]) -> Value {
-    let whitelist_set: HashSet<&str> = whitelist.iter().map(|s| s.as_str()).collect();
-    filter_recursive_with_whitelist(body, &mut Vec::new(), &mut Vec::new(), &whitelist_set)
-}
-
-/// 递归过滤实现（支持白名单）
-fn filter_recursive_with_whitelist(
-    value: Value,
-    path: &mut Vec<String>,
-    removed_keys: &mut Vec<String>,
-    whitelist: &HashSet<&str>,
-) -> Value {
-    match value {
-        Value::Object(map) => {
-            let is_schema_name_map = path.last().is_some_and(|key| matches_schema_name_map(key));
-            let filtered: serde_json::Map<String, Value> = map
-                .into_iter()
-                .filter_map(|(key, val)| {
-                    // 以 _ 开头且不在白名单中的字段被过滤
-                    if key.starts_with('_')
-                        && !whitelist.contains(key.as_str())
-                        && !is_schema_name_map
-                    {
-                        removed_keys.push(key);
-                        None
-                    } else {
-                        path.push(key.clone());
-                        let filtered_value =
-                            filter_recursive_with_whitelist(val, path, removed_keys, whitelist);
-                        path.pop();
-                        Some((key, filtered_value))
-                    }
-                })
-                .collect();
-
-            // 仅在有过滤时记录日志（避免每次请求都打印）
-            if !removed_keys.is_empty() {
-                log::debug!("[BodyFilter] 过滤私有参数: {removed_keys:?}");
-                removed_keys.clear();
-            }
-
-            Value::Object(filtered)
-        }
-        Value::Array(arr) => Value::Array(
-            arr.into_iter()
-                .map(|v| filter_recursive_with_whitelist(v, path, removed_keys, whitelist))
-                .collect(),
-        ),
-        other => other,
-    }
-}
-
-fn matches_schema_name_map(key: &str) -> bool {
-    matches!(
-        key,
-        "properties" | "patternProperties" | "definitions" | "$defs"
-    )
+    crate::proxy_core::filter_private_params_with_whitelist(body, whitelist)
 }
 
 #[cfg(test)]
