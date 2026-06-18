@@ -14,9 +14,24 @@ pub fn rebuilt_json_proxy_response(
     body: Value,
 ) -> ProxyCoreResult<ProxyCoreResponse> {
     prepare_rebuilt_json_response_headers(&mut headers);
-    let body = serde_json::to_vec(&body)
-        .map_err(|error| ProxyCoreError::Internal(format!("failed to serialize JSON response: {error}")))?;
+    json_proxy_response_with_headers(status, headers, body)
+}
 
+/// Build a host-neutral JSON response with fresh JSON headers.
+pub fn json_proxy_response(status: StatusCode, body: Value) -> ProxyCoreResult<ProxyCoreResponse> {
+    let mut headers = HeaderMap::new();
+    prepare_rebuilt_json_response_headers(&mut headers);
+    json_proxy_response_with_headers(status, headers, body)
+}
+
+fn json_proxy_response_with_headers(
+    status: StatusCode,
+    headers: HeaderMap,
+    body: Value,
+) -> ProxyCoreResult<ProxyCoreResponse> {
+    let body = serde_json::to_vec(&body).map_err(|error| {
+        ProxyCoreError::Internal(format!("failed to serialize JSON response: {error}"))
+    })?;
     Ok(ProxyCoreResponse::with_body(
         status,
         headers,
@@ -67,6 +82,25 @@ mod tests {
 
         match response.body {
             ProxyResponseBody::Bytes(body) => assert_eq!(body, Bytes::from_static(br#"{"ok":true}"#)),
+            other => panic!("expected bytes body, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn json_response_serializes_body_with_json_headers() {
+        let response =
+            json_proxy_response(StatusCode::BAD_GATEWAY, json!({"error": "upstream"})).unwrap();
+
+        assert_eq!(response.status, StatusCode::BAD_GATEWAY);
+        assert_eq!(
+            response.headers.get(header::CONTENT_TYPE),
+            Some(&HeaderValue::from_static("application/json"))
+        );
+
+        match response.body {
+            ProxyResponseBody::Bytes(body) => {
+                assert_eq!(body, Bytes::from_static(br#"{"error":"upstream"}"#))
+            }
             other => panic!("expected bytes body, got {other:?}"),
         }
     }

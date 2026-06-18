@@ -9,8 +9,8 @@
 
 use super::{
     error_mapper::{
-        get_error_message, map_proxy_error_to_status, proxy_core_error_to_proxy_error,
-        response_body_parse_error_to_proxy_error,
+        codex_proxy_error_json, get_error_message, map_proxy_error_to_status,
+        proxy_core_error_to_proxy_error, response_body_parse_error_to_proxy_error,
     },
     forwarder::ActiveConnectionGuard,
     handler_config::{
@@ -41,7 +41,7 @@ use super::{
 use crate::app_config::AppType;
 use crate::database::{ProxyChannelModelRecord, ProxyChannelRecord};
 use crate::proxy_core::{
-    claude_stream_usage_event_filter, codex_stream_usage_event_filter,
+    claude_stream_usage_event_filter, codex_stream_usage_event_filter, json_proxy_response,
     parse_upstream_json_or_unlabeled_sse, rebuilt_json_proxy_response,
     resolve_management_auth_decision, should_aggregate_codex_oauth_responses_sse,
     should_use_claude_transform_streaming, transformed_response_usage,
@@ -1524,70 +1524,15 @@ fn build_codex_proxy_error_response(
     endpoint: &str,
     error: &ProxyError,
 ) -> Result<axum::response::Response, ProxyError> {
-    let status = axum::http::StatusCode::from_u16(map_proxy_error_to_status(error))
-        .unwrap_or(axum::http::StatusCode::INTERNAL_SERVER_ERROR);
+    let status = StatusCode::from_u16(map_proxy_error_to_status(error))
+        .unwrap_or(StatusCode::INTERNAL_SERVER_ERROR);
     let body = codex_proxy_error_json(&ctx.provider.name, &ctx.request_model, endpoint, error);
-    let body = serde_json::to_vec(&body).map_err(|e| {
-        log::error!("[Codex] 序列化代理错误体失败: {e}");
-        ProxyError::Internal(format!("Failed to serialize proxy error: {e}"))
+    let response = json_proxy_response(status, body).map_err(|error| {
+        log::error!("[Codex] 构造代理错误响应失败: {error}");
+        proxy_core_error_to_proxy_error(error)
     })?;
 
-    axum::response::Response::builder()
-        .status(status)
-        .header(
-            axum::http::header::CONTENT_TYPE,
-            axum::http::HeaderValue::from_static("application/json"),
-        )
-        .body(axum::body::Body::from(body))
-        .map_err(|e| {
-            log::error!("[Codex] 构建代理错误响应失败: {e}");
-            ProxyError::Internal(format!("Failed to build proxy error response: {e}"))
-        })
-}
-
-fn codex_proxy_error_json(
-    provider_name: &str,
-    request_model: &str,
-    endpoint: &str,
-    error: &ProxyError,
-) -> Value {
-    let (upstream_status, upstream_body) = match error {
-        ProxyError::UpstreamError { status, body } => (Some(*status), body.as_deref()),
-        _ => (None, None),
-    };
-    crate::proxy_core::codex_proxy_error_json(crate::proxy_core::CodexProxyErrorContext {
-        provider_name,
-        request_model,
-        endpoint,
-        fallback_message: &get_error_message(error),
-        fallback_code: codex_proxy_error_code(error),
-        upstream_status,
-        upstream_body,
-    })
-}
-
-fn codex_proxy_error_code(error: &ProxyError) -> &'static str {
-    match error {
-        ProxyError::ForwardFailed(_) => "cc_switch_forward_failed",
-        ProxyError::Timeout(_) | ProxyError::StreamIdleTimeout(_) => "cc_switch_timeout",
-        ProxyError::NoAvailableProvider => "cc_switch_no_available_provider",
-        ProxyError::AllProvidersCircuitOpen => "cc_switch_all_providers_circuit_open",
-        ProxyError::NoProvidersConfigured => "cc_switch_no_providers_configured",
-        ProxyError::MaxRetriesExceeded => "cc_switch_max_retries_exceeded",
-        ProxyError::ProviderUnhealthy(_) => "cc_switch_provider_unhealthy",
-        ProxyError::ConfigError(_) => "cc_switch_config_error",
-        ProxyError::TransformError(_) => "cc_switch_transform_error",
-        ProxyError::InvalidRequest(_) => "cc_switch_invalid_request",
-        ProxyError::AuthError(_) => "cc_switch_auth_error",
-        ProxyError::UpstreamError { .. } => "cc_switch_upstream_error",
-        ProxyError::DatabaseError(_) => "cc_switch_database_error",
-        ProxyError::Internal(_) => "cc_switch_internal_error",
-        ProxyError::AlreadyRunning
-        | ProxyError::NotRunning
-        | ProxyError::BindFailed(_)
-        | ProxyError::StopTimeout
-        | ProxyError::StopFailed(_) => "cc_switch_proxy_error",
-    }
+    proxy_core_response_to_axum_response(response, "[Codex] 构建代理错误响应失败")
 }
 
 // ============================================================================

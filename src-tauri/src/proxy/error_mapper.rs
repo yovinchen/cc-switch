@@ -3,7 +3,8 @@
 //! 将 ProxyError 映射到合适的 HTTP 状态码，用于日志记录和手动构建错误响应
 
 use super::ProxyError;
-use crate::proxy_core::ProxyCoreError;
+use crate::proxy_core::{CodexProxyErrorContext, ProxyCoreError};
+use serde_json::Value;
 
 /// 将 ProxyError 映射到 HTTP 状态码
 ///
@@ -105,6 +106,51 @@ pub(crate) fn response_body_parse_error_to_proxy_error(error: ProxyCoreError) ->
     match error {
         ProxyCoreError::Upstream(message) => ProxyError::TransformError(message),
         other => proxy_core_error_to_proxy_error(other),
+    }
+}
+
+pub(crate) fn codex_proxy_error_json(
+    provider_name: &str,
+    request_model: &str,
+    endpoint: &str,
+    error: &ProxyError,
+) -> Value {
+    let (upstream_status, upstream_body) = match error {
+        ProxyError::UpstreamError { status, body } => (Some(*status), body.as_deref()),
+        _ => (None, None),
+    };
+    crate::proxy_core::codex_proxy_error_json(CodexProxyErrorContext {
+        provider_name,
+        request_model,
+        endpoint,
+        fallback_message: &get_error_message(error),
+        fallback_code: codex_proxy_error_code(error),
+        upstream_status,
+        upstream_body,
+    })
+}
+
+fn codex_proxy_error_code(error: &ProxyError) -> &'static str {
+    match error {
+        ProxyError::ForwardFailed(_) => "cc_switch_forward_failed",
+        ProxyError::Timeout(_) | ProxyError::StreamIdleTimeout(_) => "cc_switch_timeout",
+        ProxyError::NoAvailableProvider => "cc_switch_no_available_provider",
+        ProxyError::AllProvidersCircuitOpen => "cc_switch_all_providers_circuit_open",
+        ProxyError::NoProvidersConfigured => "cc_switch_no_providers_configured",
+        ProxyError::MaxRetriesExceeded => "cc_switch_max_retries_exceeded",
+        ProxyError::ProviderUnhealthy(_) => "cc_switch_provider_unhealthy",
+        ProxyError::ConfigError(_) => "cc_switch_config_error",
+        ProxyError::TransformError(_) => "cc_switch_transform_error",
+        ProxyError::InvalidRequest(_) => "cc_switch_invalid_request",
+        ProxyError::AuthError(_) => "cc_switch_auth_error",
+        ProxyError::UpstreamError { .. } => "cc_switch_upstream_error",
+        ProxyError::DatabaseError(_) => "cc_switch_database_error",
+        ProxyError::Internal(_) => "cc_switch_internal_error",
+        ProxyError::AlreadyRunning
+        | ProxyError::NotRunning
+        | ProxyError::BindFailed(_)
+        | ProxyError::StopTimeout
+        | ProxyError::StopFailed(_) => "cc_switch_proxy_error",
     }
 }
 
@@ -218,5 +264,40 @@ mod tests {
             ProxyError::TransformError(message) => assert!(message.contains("bad upstream body")),
             other => panic!("expected TransformError, got {other:?}"),
         }
+    }
+
+    #[test]
+    fn test_codex_proxy_error_json_maps_host_error_code() {
+        let body = codex_proxy_error_json(
+            "DeepSeek",
+            "deepseek-chat",
+            "/responses",
+            &ProxyError::ForwardFailed("dns lookup failed".to_string()),
+        );
+
+        assert_eq!(body["error"]["code"], "cc_switch_forward_failed");
+        assert_eq!(body["error"]["provider"], "DeepSeek");
+        assert_eq!(body["error"]["model"], "deepseek-chat");
+        assert_eq!(body["error"]["endpoint"], "/responses");
+    }
+
+    #[test]
+    fn test_codex_proxy_error_json_preserves_upstream_status() {
+        let body = codex_proxy_error_json(
+            "MiniMax",
+            "abab6.5s",
+            "/responses",
+            &ProxyError::UpstreamError {
+                status: 413,
+                body: Some(r#"{"error":{"message":"too large"}}"#.to_string()),
+            },
+        );
+
+        assert_eq!(body["error"]["code"], "cc_switch_upstream_error");
+        assert_eq!(body["error"]["upstream_status"], 413);
+        let message = body["error"]["message"].as_str().unwrap();
+        assert!(message.contains("413"));
+        assert!(message.to_lowercase().contains("upstream"));
+        assert_eq!(body["error"]["endpoint"], "/responses");
     }
 }
