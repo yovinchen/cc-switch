@@ -102,6 +102,13 @@ pub(crate) fn proxy_core_error_to_proxy_error(error: ProxyCoreError) -> ProxyErr
     }
 }
 
+pub(crate) fn management_api_error_to_proxy_error(error: ProxyCoreError) -> ProxyError {
+    match error {
+        ProxyCoreError::InvalidRequest(message) => ProxyError::InvalidRequest(message),
+        other => proxy_core_error_to_proxy_error(other),
+    }
+}
+
 pub(crate) fn response_body_parse_error_to_proxy_error(error: ProxyCoreError) -> ProxyError {
     match error {
         ProxyCoreError::Upstream(message) => ProxyError::TransformError(message),
@@ -252,6 +259,14 @@ mod tests {
             proxy_core_error_to_proxy_error(ProxyCoreError::Internal("bad".to_string())),
             ProxyError::Internal(_)
         ));
+    }
+
+    #[test]
+    fn test_management_api_error_bridge_preserves_invalid_request_message() {
+        let error =
+            management_api_error_to_proxy_error(ProxyCoreError::InvalidRequest("bad".to_string()));
+
+        assert!(matches!(error, ProxyError::InvalidRequest(message) if message == "bad"));
     }
 
     #[test]

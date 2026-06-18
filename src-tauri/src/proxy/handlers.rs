@@ -9,8 +9,9 @@
 
 use super::{
     error_mapper::{
-        codex_proxy_error_json, get_error_message, map_proxy_error_to_status,
-        proxy_core_error_to_proxy_error, response_body_parse_error_to_proxy_error,
+        codex_proxy_error_json, get_error_message, management_api_error_to_proxy_error,
+        map_proxy_error_to_status, proxy_core_error_to_proxy_error,
+        response_body_parse_error_to_proxy_error,
     },
     forwarder::ActiveConnectionGuard,
     handler_config::{
@@ -42,21 +43,22 @@ use crate::app_config::AppType;
 use crate::database::{ProxyChannelModelRecord, ProxyChannelRecord};
 use crate::proxy_core::{
     claude_stream_usage_event_filter, codex_stream_usage_event_filter, json_proxy_response,
-    parse_upstream_json_or_unlabeled_sse, rebuilt_json_proxy_response,
+    normalize_channel_id_path, parse_upstream_json_or_unlabeled_sse, rebuilt_json_proxy_response,
     resolve_management_auth_decision, should_aggregate_codex_oauth_responses_sse,
     should_use_claude_transform_streaming, transformed_response_usage,
-    transformed_sse_proxy_response, validate_management_bearer_value, AppChannelListQuery,
-    AppChannelListResponse, AppChannelResponse, AppChannelRouteResponse, AppKind, AppListResponse,
-    AppModelListQuery, AppSummary, ChannelDeleteResponse, ChannelHealthResetResponse,
-    ChannelListQuery, ChannelListResponse, ChannelMigrationMaterializeResponse,
-    ChannelMigrationPreviewResponse, ChannelModelsResponse, ChannelRouteCandidate,
-    ChannelRouteRejected, CurrentRouteProviderSummary, CurrentRouteResponse, GroupListQuery,
-    HealthCheckResponse, InterfaceKind, ManagementAuthDecision, ManagementAuthError,
-    ProviderListResponse, ProviderSummaryInput, ProxyBody, ProxyChannelModelsReplaceRequest,
-    ProxyChannelPatchRequest, ProxyChannelWriteRequest, ProxyEngine, ProxyRequest, ProxyResult,
-    ProxyServices, RoutableModelList, RouteGroupChannelInput, RouteGroupListResponse,
-    RouteGroupSourceInput, RouteResolveRequest, RouteResolveResponse,
-    TransformedResponseUsageFormat, UpstreamJsonBodySource, UpstreamSseAggregationKind,
+    transformed_sse_proxy_response, validate_management_app_type, validate_management_bearer_value,
+    validate_route_resolve_app_type, AppChannelListQuery, AppChannelListResponse,
+    AppChannelResponse, AppChannelRouteResponse, AppKind, AppListResponse, AppModelListQuery,
+    AppSummary, ChannelDeleteResponse, ChannelHealthResetResponse, ChannelListQuery,
+    ChannelListResponse, ChannelMigrationMaterializeResponse, ChannelMigrationPreviewResponse,
+    ChannelModelsResponse, ChannelRouteCandidate, ChannelRouteRejected,
+    CurrentRouteProviderSummary, CurrentRouteResponse, GroupListQuery, HealthCheckResponse,
+    InterfaceKind, ManagementAuthDecision, ManagementAuthError, ProviderListResponse,
+    ProviderSummaryInput, ProxyBody, ProxyChannelModelsReplaceRequest, ProxyChannelPatchRequest,
+    ProxyChannelWriteRequest, ProxyEngine, ProxyRequest, ProxyResult, ProxyServices,
+    RoutableModelList, RouteGroupChannelInput, RouteGroupListResponse, RouteGroupSourceInput,
+    RouteResolveRequest, RouteResolveResponse, TransformedResponseUsageFormat,
+    UpstreamJsonBodySource, UpstreamSseAggregationKind,
 };
 use axum::{
     extract::{Path, Query, State},
@@ -215,7 +217,7 @@ pub async fn list_proxy_providers(
     State(state): State<ProxyState>,
     Path(app_type): Path<String>,
 ) -> Result<Json<ProviderListResponse>, ProxyError> {
-    validate_management_app_type(&app_type)?;
+    validate_management_app_type(&app_type).map_err(management_api_error_to_proxy_error)?;
 
     let providers = state
         .db
@@ -277,7 +279,7 @@ pub async fn list_proxy_app_models(
     Path(app_type): Path<String>,
     Query(query): Query<AppModelListQuery>,
 ) -> Result<Json<RoutableModelList>, ProxyError> {
-    validate_management_app_type(&app_type)?;
+    validate_management_app_type(&app_type).map_err(management_api_error_to_proxy_error)?;
     let app_type = app_type.trim().to_string();
     let app = AppKind::from(app_type.as_str());
     let route_group = query.route_group();
@@ -302,7 +304,7 @@ pub async fn list_all_proxy_channels(
     Query(query): Query<ChannelListQuery>,
 ) -> Result<Json<ChannelListResponse<ProxyChannelRecord>>, ProxyError> {
     let channels = if let Some(app_type) = query.app_type() {
-        validate_management_app_type(&app_type)?;
+        validate_management_app_type(&app_type).map_err(management_api_error_to_proxy_error)?;
         state
             .db
             .list_proxy_channels_for_app(&app_type)
@@ -334,7 +336,8 @@ pub async fn get_proxy_channel(
     State(state): State<ProxyState>,
     Path(channel_id): Path<String>,
 ) -> Result<Json<Value>, ProxyError> {
-    let channel_id = normalize_channel_id_path(channel_id)?;
+    let channel_id =
+        normalize_channel_id_path(channel_id).map_err(management_api_error_to_proxy_error)?;
     let channel = state
         .db
         .get_proxy_channel(&channel_id)
@@ -349,7 +352,8 @@ pub async fn update_proxy_channel(
     Path(channel_id): Path<String>,
     Json(request): Json<ProxyChannelPatchRequest>,
 ) -> Result<Json<Value>, ProxyError> {
-    let channel_id = normalize_channel_id_path(channel_id)?;
+    let channel_id =
+        normalize_channel_id_path(channel_id).map_err(management_api_error_to_proxy_error)?;
     let channel = state
         .db
         .update_proxy_channel(&channel_id, request)
@@ -363,7 +367,8 @@ pub async fn delete_proxy_channel(
     State(state): State<ProxyState>,
     Path(channel_id): Path<String>,
 ) -> Result<Json<ChannelDeleteResponse>, ProxyError> {
-    let channel_id = normalize_channel_id_path(channel_id)?;
+    let channel_id =
+        normalize_channel_id_path(channel_id).map_err(management_api_error_to_proxy_error)?;
     let deleted = state
         .db
         .delete_proxy_channel(&channel_id)
@@ -376,7 +381,8 @@ pub async fn list_proxy_channel_models(
     State(state): State<ProxyState>,
     Path(channel_id): Path<String>,
 ) -> Result<Json<ChannelModelsResponse<ProxyChannelModelRecord>>, ProxyError> {
-    let channel_id = normalize_channel_id_path(channel_id)?;
+    let channel_id =
+        normalize_channel_id_path(channel_id).map_err(management_api_error_to_proxy_error)?;
     if state
         .db
         .get_proxy_channel(&channel_id)
@@ -401,7 +407,8 @@ pub async fn replace_proxy_channel_models(
     Path(channel_id): Path<String>,
     Json(request): Json<ProxyChannelModelsReplaceRequest>,
 ) -> Result<Json<ChannelModelsResponse<ProxyChannelModelRecord>>, ProxyError> {
-    let channel_id = normalize_channel_id_path(channel_id)?;
+    let channel_id =
+        normalize_channel_id_path(channel_id).map_err(management_api_error_to_proxy_error)?;
     let models = state
         .db
         .replace_proxy_channel_models(&channel_id, request.models)
@@ -420,7 +427,7 @@ pub async fn list_proxy_channels(
     Json<AppChannelResponse<ProxyChannelRecord, ChannelRouteCandidate, ChannelRouteRejected>>,
     ProxyError,
 > {
-    validate_management_app_type(&app_type)?;
+    validate_management_app_type(&app_type).map_err(management_api_error_to_proxy_error)?;
     let app_type = app_type.trim().to_string();
 
     if query.has_route_filters() {
@@ -453,7 +460,7 @@ pub async fn list_proxy_groups(
 ) -> Result<Json<RouteGroupListResponse>, ProxyError> {
     let requested_app_type = query.app_type();
     let app_types = if let Some(app_type) = requested_app_type.as_deref() {
-        validate_management_app_type(app_type)?;
+        validate_management_app_type(app_type).map_err(management_api_error_to_proxy_error)?;
         vec![app_type.to_string()]
     } else {
         AppType::all()
@@ -491,7 +498,7 @@ pub async fn get_current_proxy_route(
     State(state): State<ProxyState>,
     Path(app_type): Path<String>,
 ) -> Result<Json<CurrentRouteResponse<ActiveTarget>>, ProxyError> {
-    validate_management_app_type(&app_type)?;
+    validate_management_app_type(&app_type).map_err(management_api_error_to_proxy_error)?;
     let app_type = app_type.trim().to_string();
 
     let active_target = {
@@ -526,7 +533,7 @@ pub async fn preview_proxy_channel_migration(
     State(state): State<ProxyState>,
     Path(app_type): Path<String>,
 ) -> Result<Json<ChannelMigrationPreviewResponse<ProxyChannelRecord>>, ProxyError> {
-    validate_management_app_type(&app_type)?;
+    validate_management_app_type(&app_type).map_err(management_api_error_to_proxy_error)?;
 
     let preview = state
         .db
@@ -546,7 +553,7 @@ pub async fn materialize_proxy_channel_migration(
     State(state): State<ProxyState>,
     Path(app_type): Path<String>,
 ) -> Result<Json<ChannelMigrationMaterializeResponse>, ProxyError> {
-    validate_management_app_type(&app_type)?;
+    validate_management_app_type(&app_type).map_err(management_api_error_to_proxy_error)?;
 
     let result = state
         .db
@@ -569,7 +576,8 @@ pub async fn reset_proxy_channel_breaker(
     State(state): State<ProxyState>,
     Path(channel_id): Path<String>,
 ) -> Result<Json<ChannelHealthResetResponse>, ProxyError> {
-    let channel_id = normalize_channel_id_path(channel_id)?;
+    let channel_id =
+        normalize_channel_id_path(channel_id).map_err(management_api_error_to_proxy_error)?;
     let response = ProxyEngine::new(state.proxy_core_services.clone())
         .reset_channel_health_response(&channel_id)
         .await
@@ -583,11 +591,8 @@ pub async fn resolve_proxy_route(
     State(state): State<ProxyState>,
     Json(request): Json<RouteResolveRequest>,
 ) -> Result<Json<RouteResolveResponse>, ProxyError> {
-    if request.app_type.trim().is_empty() {
-        return Err(ProxyError::InvalidRequest(
-            "appType/app_type cannot be empty".to_string(),
-        ));
-    }
+    validate_route_resolve_app_type(&request.app_type)
+        .map_err(management_api_error_to_proxy_error)?;
 
     let response = state
         .provider_router
@@ -596,27 +601,6 @@ pub async fn resolve_proxy_route(
         .map_err(|e| ProxyError::DatabaseError(e.to_string()))?;
 
     Ok(Json(response))
-}
-
-fn validate_management_app_type(app_type: &str) -> Result<(), ProxyError> {
-    if app_type.trim().is_empty() {
-        Err(ProxyError::InvalidRequest(
-            "app cannot be empty".to_string(),
-        ))
-    } else {
-        Ok(())
-    }
-}
-
-fn normalize_channel_id_path(channel_id: String) -> Result<String, ProxyError> {
-    let channel_id = channel_id.trim().to_string();
-    if channel_id.is_empty() {
-        Err(ProxyError::InvalidRequest(
-            "channel_id cannot be empty".to_string(),
-        ))
-    } else {
-        Ok(channel_id)
-    }
 }
 
 /// GET /v1/models — Codex model list (reachability check)
