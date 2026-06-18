@@ -102,8 +102,8 @@ impl Drop for ActiveConnectionGuard {
 pub struct RequestForwarder {
     /// 共享的 ProviderRouter（持有熔断器状态）
     router: Arc<ProviderRouter>,
-    /// Neutral proxy services used for engine-owned route planning.
-    proxy_core_services: Arc<CcSwitchProxyServices>,
+    /// Neutral proxy services used only when this forwarder still owns attempt planning.
+    proxy_core_services: Option<Arc<CcSwitchProxyServices>>,
     status: Arc<RwLock<ProxyStatus>>,
     current_providers: Arc<RwLock<std::collections::HashMap<String, ActiveTarget>>>,
     events: Arc<ProxyEventBus>,
@@ -187,6 +187,96 @@ impl RequestForwarder {
     pub fn new(
         router: Arc<ProviderRouter>,
         proxy_core_services: Arc<CcSwitchProxyServices>,
+        non_streaming_timeout: u64,
+        status: Arc<RwLock<ProxyStatus>>,
+        current_providers: Arc<RwLock<std::collections::HashMap<String, ActiveTarget>>>,
+        events: Arc<ProxyEventBus>,
+        gemini_shadow: Arc<GeminiShadowStore>,
+        codex_chat_history: Arc<CodexChatHistoryStore>,
+        failover_manager: Arc<FailoverSwitchManager>,
+        app_handle: Option<tauri::AppHandle>,
+        current_provider_id_at_start: String,
+        session_id: String,
+        session_client_provided: bool,
+        streaming_first_byte_timeout: u64,
+        _streaming_idle_timeout: u64,
+        rectifier_config: RectifierConfig,
+        optimizer_config: OptimizerConfig,
+        copilot_optimizer_config: CopilotOptimizerConfig,
+        max_retries: u32,
+    ) -> Self {
+        Self::new_with_optional_proxy_core_services(
+            router,
+            Some(proxy_core_services),
+            non_streaming_timeout,
+            status,
+            current_providers,
+            events,
+            gemini_shadow,
+            codex_chat_history,
+            failover_manager,
+            app_handle,
+            current_provider_id_at_start,
+            session_id,
+            session_client_provided,
+            streaming_first_byte_timeout,
+            _streaming_idle_timeout,
+            rectifier_config,
+            optimizer_config,
+            copilot_optimizer_config,
+            max_retries,
+        )
+    }
+
+    #[allow(dead_code)]
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) fn new_preplanned(
+        router: Arc<ProviderRouter>,
+        non_streaming_timeout: u64,
+        status: Arc<RwLock<ProxyStatus>>,
+        current_providers: Arc<RwLock<std::collections::HashMap<String, ActiveTarget>>>,
+        events: Arc<ProxyEventBus>,
+        gemini_shadow: Arc<GeminiShadowStore>,
+        codex_chat_history: Arc<CodexChatHistoryStore>,
+        failover_manager: Arc<FailoverSwitchManager>,
+        app_handle: Option<tauri::AppHandle>,
+        current_provider_id_at_start: String,
+        session_id: String,
+        session_client_provided: bool,
+        streaming_first_byte_timeout: u64,
+        streaming_idle_timeout: u64,
+        rectifier_config: RectifierConfig,
+        optimizer_config: OptimizerConfig,
+        copilot_optimizer_config: CopilotOptimizerConfig,
+        max_retries: u32,
+    ) -> Self {
+        Self::new_with_optional_proxy_core_services(
+            router,
+            None,
+            non_streaming_timeout,
+            status,
+            current_providers,
+            events,
+            gemini_shadow,
+            codex_chat_history,
+            failover_manager,
+            app_handle,
+            current_provider_id_at_start,
+            session_id,
+            session_client_provided,
+            streaming_first_byte_timeout,
+            streaming_idle_timeout,
+            rectifier_config,
+            optimizer_config,
+            copilot_optimizer_config,
+            max_retries,
+        )
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn new_with_optional_proxy_core_services(
+        router: Arc<ProviderRouter>,
+        proxy_core_services: Option<Arc<CcSwitchProxyServices>>,
         non_streaming_timeout: u64,
         status: Arc<RwLock<ProxyStatus>>,
         current_providers: Arc<RwLock<std::collections::HashMap<String, ActiveTarget>>>,
@@ -603,9 +693,13 @@ impl RequestForwarder {
             interface_kind_for_forward(app_type, endpoint).map(ToString::to_string);
 
         if let Some(interface_kind) = interface_kind {
+            let proxy_core_services = self.proxy_core_services.as_ref().ok_or_else(|| {
+                crate::error::AppError::Config(
+                    "proxy core services are required to build forward attempts".to_string(),
+                )
+            })?;
             let app_kind = AppKind::from(app_type);
-            let materialized_channels = self
-                .proxy_core_services
+            let materialized_channels = proxy_core_services
                 .channels()
                 .list_channels(ChannelQuery {
                     app: &app_kind,
@@ -624,7 +718,7 @@ impl RequestForwarder {
                     .collect());
             }
 
-            let engine = ProxyEngine::new(self.proxy_core_services.clone());
+            let engine = ProxyEngine::new(proxy_core_services.clone());
             let mut proxy_request = ProxyRequest::new(
                 app_kind,
                 method.clone(),
@@ -3064,7 +3158,7 @@ mod tests {
 
         RequestForwarder {
             router: Arc::new(ProviderRouter::new(db.clone())),
-            proxy_core_services: Arc::new(CcSwitchProxyServices::new(db.clone())),
+            proxy_core_services: Some(Arc::new(CcSwitchProxyServices::new(db.clone()))),
             status: Arc::new(RwLock::new(ProxyStatus::default())),
             current_providers: Arc::new(RwLock::new(HashMap::new())),
             events: Arc::new(ProxyEventBus::default()),
@@ -3172,7 +3266,7 @@ mod tests {
 
         let forwarder = RequestForwarder {
             router: Arc::new(ProviderRouter::new(db.clone())),
-            proxy_core_services: Arc::new(CcSwitchProxyServices::new(db.clone())),
+            proxy_core_services: Some(Arc::new(CcSwitchProxyServices::new(db.clone()))),
             status: Arc::new(RwLock::new(ProxyStatus::default())),
             current_providers: Arc::new(RwLock::new(HashMap::new())),
             events: Arc::new(ProxyEventBus::default()),
