@@ -299,6 +299,32 @@ pub struct RoutableModel {
     pub capabilities: ModelCapabilities,
 }
 
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RoutableModelList {
+    pub app_type: String,
+    pub route_group: Option<String>,
+    pub interface_kind: Option<String>,
+    #[serde(default)]
+    pub models: Vec<RoutableModel>,
+}
+
+impl RoutableModelList {
+    pub fn new(
+        app_type: impl Into<String>,
+        route_group: Option<String>,
+        interface_kind: Option<String>,
+        models: Vec<RoutableModel>,
+    ) -> Self {
+        Self {
+            app_type: app_type.into(),
+            route_group,
+            interface_kind,
+            models,
+        }
+    }
+}
+
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ModelCapabilities {

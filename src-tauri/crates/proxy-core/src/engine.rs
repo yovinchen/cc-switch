@@ -1,6 +1,7 @@
 use super::domain::{
     interfaces_compatible, route_group_matches, ChannelQuery, ChannelStatus, InterfaceKind,
-    ProxyRequest, ProxyResult, RoutableModel, RoutePlan, RouteRequest, DEFAULT_ROUTE_GROUP,
+    ProxyRequest, ProxyResult, RoutableModel, RoutableModelList, RoutePlan, RouteRequest,
+    DEFAULT_ROUTE_GROUP,
 };
 use super::error::ProxyCoreResult;
 use super::ports::{
@@ -155,6 +156,22 @@ where
                 .then_with(|| left.channel_id.cmp(&right.channel_id))
         });
         Ok(models)
+    }
+
+    pub async fn list_model_catalog(
+        &self,
+        app: &super::domain::AppKind,
+        app_type: impl Into<String>,
+        group: Option<&str>,
+        inbound_interface: Option<&InterfaceKind>,
+    ) -> ProxyCoreResult<RoutableModelList> {
+        let models = self.list_models(app, group, inbound_interface).await?;
+        Ok(RoutableModelList::new(
+            app_type,
+            group.map(ToString::to_string),
+            inbound_interface.map(|interface| interface.as_str().to_string()),
+            models,
+        ))
     }
 
     pub async fn client_model_catalog(
@@ -654,6 +671,35 @@ mod tests {
         assert_eq!(models.len(), 1);
         assert_eq!(models[0].public_model, "sonnet");
         assert_eq!(models[0].channel_id, "channel-a");
+    }
+
+    #[test]
+    fn list_model_catalog_wraps_route_visible_models() {
+        let services = Arc::new(TestServices::default());
+        let engine = ProxyEngine::new(services);
+
+        let catalog = futures::executor::block_on(engine.list_model_catalog(
+            &AppKind::Claude,
+            "claude",
+            Some(DEFAULT_ROUTE_GROUP),
+            Some(&InterfaceKind::AnthropicMessages),
+        ))
+        .expect("list model catalog");
+
+        assert_eq!(catalog.app_type, "claude");
+        assert_eq!(catalog.route_group.as_deref(), Some(DEFAULT_ROUTE_GROUP));
+        assert_eq!(
+            catalog.interface_kind.as_deref(),
+            Some("anthropic_messages")
+        );
+        assert_eq!(catalog.models.len(), 1);
+        assert_eq!(catalog.models[0].public_model, "sonnet");
+
+        let value = serde_json::to_value(&catalog).expect("serialize catalog");
+        assert_eq!(value["appType"], "claude");
+        assert_eq!(value["routeGroup"], DEFAULT_ROUTE_GROUP);
+        assert_eq!(value["interfaceKind"], "anthropic_messages");
+        assert_eq!(value["models"][0]["publicModel"], "sonnet");
     }
 
     #[test]

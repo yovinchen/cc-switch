@@ -42,6 +42,7 @@ use crate::proxy_core::{
     should_use_claude_transform_streaming, strip_entity_headers_for_rebuilt_body,
     strip_hop_by_hop_response_headers, AppKind, InterfaceKind, ProxyBody, ProxyCoreError,
     ProxyCoreResponse, ProxyEngine, ProxyRequest, ProxyResponseBody, ProxyResult, ProxyServices,
+    RoutableModelList,
 };
 use axum::{
     extract::{Path, Query, State},
@@ -382,24 +383,24 @@ pub async fn list_proxy_app_models(
     State(state): State<ProxyState>,
     Path(app_type): Path<String>,
     Query(query): Query<AppModelListQuery>,
-) -> Result<Json<Value>, ProxyError> {
+) -> Result<Json<RoutableModelList>, ProxyError> {
     validate_management_app_type(&app_type)?;
     let app_type = app_type.trim().to_string();
     let app = AppKind::from(app_type.as_str());
     let route_group = query.route_group();
     let interface_kind = query.interface_kind();
     let engine = ProxyEngine::new(state.proxy_core_services.clone());
-    let models = engine
-        .list_models(&app, route_group.as_deref(), interface_kind.as_ref())
+    let catalog = engine
+        .list_model_catalog(
+            &app,
+            app_type,
+            route_group.as_deref(),
+            interface_kind.as_ref(),
+        )
         .await
         .map_err(proxy_core_error_to_proxy_error)?;
 
-    Ok(Json(json!({
-        "appType": app_type,
-        "routeGroup": route_group,
-        "interfaceKind": interface_kind.as_ref().map(InterfaceKind::as_str),
-        "models": models,
-    })))
+    Ok(Json(catalog))
 }
 
 /// GET /proxy/v1/channels
