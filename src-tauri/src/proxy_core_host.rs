@@ -600,7 +600,7 @@ mod tests {
     use crate::provider::Provider;
     use crate::proxy_core::{
         ChannelOverrides, InterfaceKind, ModelCapabilities, ModelRoute, ProviderKind, ProxyBody,
-        RetryPolicy, UpstreamEndpoint,
+        ProxyEngine, RetryPolicy, UpstreamEndpoint,
     };
     use http::{Method, StatusCode};
 
@@ -768,5 +768,33 @@ mod tests {
         assert_eq!(health.status, "degraded");
         assert_eq!(health.consecutive_failures, 1);
         assert_eq!(health.response_time_ms, Some(123));
+    }
+
+    #[tokio::test]
+    async fn proxy_engine_plans_routes_through_cc_switch_services() {
+        let db = Arc::new(Database::memory().expect("memory db"));
+        save_claude_provider(&db);
+        let services = Arc::new(CcSwitchProxyServices::new(db));
+        let engine = ProxyEngine::new(services);
+        let mut request = ProxyRequest::new(
+            AppKind::Claude,
+            Method::POST,
+            "/v1/messages",
+            InterfaceKind::AnthropicMessages,
+            ProxyBody::Json(json!({})),
+        );
+        request.requested_model = Some("claude-sonnet-4".to_string());
+
+        let plan = engine.plan_route(&request).await.expect("plan route");
+
+        assert_eq!(plan.selection.provider.id, "anthropic-main");
+        assert_eq!(plan.selection.channel.provider_id, "anthropic-main");
+        assert_eq!(
+            plan.selection
+                .model_route
+                .as_ref()
+                .map(|route| route.upstream_model.as_str()),
+            Some("claude-sonnet-4")
+        );
     }
 }

@@ -1,4 +1,4 @@
-use super::domain::{ProxyRequest, ProxyResult};
+use super::domain::{ChannelQuery, ProxyRequest, ProxyResult, RoutePlan, RouteRequest};
 use super::error::{ProxyCoreError, ProxyCoreResult};
 use super::ports::ProxyServices;
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -56,8 +56,43 @@ where
         }
     }
 
+    pub async fn plan_route(&self, request: &ProxyRequest) -> ProxyCoreResult<RoutePlan> {
+        let providers = self
+            .services
+            .providers()
+            .list_providers(&request.app)
+            .await?;
+        let channels = self
+            .services
+            .channels()
+            .list_channels(ChannelQuery {
+                app: &request.app,
+                provider_id: None,
+                model: request.requested_model.as_deref(),
+                group: request.route_group.as_deref(),
+                include_disabled: false,
+            })
+            .await?;
+        let policy = self
+            .services
+            .route_policies()
+            .load_policy(&request.app)
+            .await?;
+
+        self.services
+            .route_resolver()
+            .resolve(RouteRequest {
+                request,
+                providers: &providers,
+                channels: &channels,
+                policy: policy.as_ref(),
+            })
+            .await
+    }
+
     pub async fn handle(&self, _request: ProxyRequest) -> ProxyCoreResult<ProxyResult> {
         self.state.mark_accepted();
+        let _route_plan = self.plan_route(&_request).await?;
         Err(ProxyCoreError::Unsupported(
             "ProxyEngine::handle is not wired to the existing forwarding path yet".to_string(),
         ))
