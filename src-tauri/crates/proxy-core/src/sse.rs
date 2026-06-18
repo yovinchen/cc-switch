@@ -177,6 +177,22 @@ impl SseUsageAccumulator {
     }
 }
 
+pub fn claude_stream_usage_event_filter(data: &str) -> bool {
+    data.contains("\"message_start\"") || data.contains("\"message_delta\"")
+}
+
+pub fn openai_stream_usage_event_filter(data: &str) -> bool {
+    data.contains("\"usage\"")
+}
+
+pub fn codex_stream_usage_event_filter(data: &str) -> bool {
+    data.contains("\"response.completed\"") || data.contains("\"usage\"")
+}
+
+pub fn gemini_stream_usage_event_filter(data: &str) -> bool {
+    data.contains("\"usageMetadata\"")
+}
+
 pub fn responses_sse_to_response_value(body: &str) -> ProxyCoreResult<Value> {
     let mut buffer = body.trim_start_matches('\u{feff}').to_string();
     let mut completed_response: Option<Value> = None;
@@ -995,6 +1011,31 @@ mod tests {
         accumulator.push(json!({"usage":{"input_tokens":1}}));
 
         assert!(accumulator.finish().is_none());
+    }
+
+    #[test]
+    fn stream_usage_event_filters_match_protocol_usage_markers() {
+        assert!(super::claude_stream_usage_event_filter(
+            r#"{"type":"message_delta","usage":{"output_tokens":1}}"#
+        ));
+        assert!(!super::claude_stream_usage_event_filter(
+            r#"{"type":"content_block_delta","delta":{"text":"hi"}}"#
+        ));
+        assert!(super::openai_stream_usage_event_filter(
+            r#"{"choices":[],"usage":{"total_tokens":3}}"#
+        ));
+        assert!(!super::openai_stream_usage_event_filter(
+            r#"{"choices":[{"delta":{"content":"hi"}}]}"#
+        ));
+        assert!(super::codex_stream_usage_event_filter(
+            r#"{"type":"response.completed","response":{"usage":{"total_tokens":3}}}"#
+        ));
+        assert!(super::gemini_stream_usage_event_filter(
+            r#"{"usageMetadata":{"totalTokenCount":3}}"#
+        ));
+        assert!(!super::gemini_stream_usage_event_filter(
+            r#"{"candidates":[{"content":{"parts":[{"text":"hi"}]}}]}"#
+        ));
     }
 
     #[test]

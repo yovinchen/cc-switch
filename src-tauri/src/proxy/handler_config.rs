@@ -4,6 +4,10 @@
 
 use crate::app_config::AppType;
 use crate::proxy::usage::parser::TokenUsage;
+use crate::proxy_core::{
+    claude_stream_usage_event_filter, codex_stream_usage_event_filter,
+    gemini_stream_usage_event_filter, openai_stream_usage_event_filter,
+};
 use serde_json::Value;
 
 /// 使用量解析器类型别名
@@ -33,26 +37,6 @@ pub struct UsageParserConfig {
     pub stream_event_filter: Option<StreamUsageEventFilter>,
     /// 应用类型字符串（用于日志记录）
     pub app_type_str: &'static str,
-}
-
-// ============================================================================
-// 流式 usage 事件预过滤
-// ============================================================================
-
-pub fn claude_stream_usage_event_filter(data: &str) -> bool {
-    data.contains("\"message_start\"") || data.contains("\"message_delta\"")
-}
-
-fn openai_stream_usage_event_filter(data: &str) -> bool {
-    data.contains("\"usage\"")
-}
-
-pub fn codex_stream_usage_event_filter(data: &str) -> bool {
-    data.contains("\"response.completed\"") || data.contains("\"usage\"")
-}
-
-fn gemini_stream_usage_event_filter(data: &str) -> bool {
-    data.contains("\"usageMetadata\"")
 }
 
 // ============================================================================

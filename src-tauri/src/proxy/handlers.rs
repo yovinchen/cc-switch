@@ -11,8 +11,7 @@ use super::{
     error_mapper::{get_error_message, map_proxy_error_to_status},
     forwarder::ActiveConnectionGuard,
     handler_config::{
-        claude_stream_usage_event_filter, codex_stream_usage_event_filter, CLAUDE_PARSER_CONFIG,
-        CODEX_PARSER_CONFIG, GEMINI_PARSER_CONFIG, OPENAI_PARSER_CONFIG,
+        CLAUDE_PARSER_CONFIG, CODEX_PARSER_CONFIG, GEMINI_PARSER_CONFIG, OPENAI_PARSER_CONFIG,
     },
     handler_context::RequestContext,
     providers::{
@@ -38,7 +37,8 @@ use crate::database::{
     ProxyChannelModelsReplaceRequest, ProxyChannelPatchRequest, ProxyChannelWriteRequest,
 };
 use crate::proxy_core::{
-    body_diagnostics_suffix, body_looks_like_sse, strip_entity_headers_for_rebuilt_body,
+    body_diagnostics_suffix, body_looks_like_sse, claude_stream_usage_event_filter,
+    codex_stream_usage_event_filter, strip_entity_headers_for_rebuilt_body,
     strip_hop_by_hop_response_headers, AppKind, InterfaceKind, ProxyBody, ProxyCoreError,
     ProxyCoreResponse, ProxyEngine, ProxyRequest, ProxyResponseBody, ProxyResult, ProxyServices,
 };
