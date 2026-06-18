@@ -58,6 +58,7 @@
 47. `/proxy/v1/health` 的 response contract 已迁入 `proxy-core::HealthCheckResponse`；host 只负责注入当前 RFC3339 时间并返回 typed JSON。
 48. `/proxy/v1/apps/{app}/models` 与 `/proxy/v1/apps/{app}/channels` 的 query DTO 和别名归一化已迁入 `proxy-core::{AppModelListQuery, AppChannelListQuery}`；host handler 只负责 axum query 提取和调用 core/adapter。
 49. `ChannelRouteSource` 的外部 source label 和 `/proxy/v1/apps/{app}/channels` list/route response 组装已迁入 `proxy-core::{ChannelRouteSource::as_str, AppChannelListResponse::from_route_source, AppChannelRouteResponse::from_route_resolve}`；host 不再手写 source 字符串映射。
+50. 管理 API 鉴权策略已迁入 `proxy-core::management_auth`；host middleware 只负责读取 `ProxyConfig`/环境变量/header，并把 core 鉴权错误映射为现有 `ProxyError::AuthError`。
 
 因此，本分支目前已把主要转发入口（Claude Messages、Claude Desktop Messages、Codex Chat Completions、Codex Responses、Codex Responses Compact、Gemini Native）切到 `ProxyEngine`，并开始把管理查询类能力、Codex 客户端模型目录和请求日志写入收敛到 core 可复用接口。HTTP transport 与 response pipeline 仍是宿主层兼容桥；下一阶段需要把响应转换、剩余模型目录生成策略和剩余外部管理 API 继续收敛到独立代理模块边界内。
 
@@ -862,7 +863,7 @@ CC Switch 桌面宿主在 `CcSwitchModelCatalogProvider::load_client_catalog` �
 | `/proxy/v1/apps/{app}/routes/current` | GET | 当前实际 route/provider/channel |
 | `/proxy/v1/events` | GET | SSE 事件流，供外部监控 |
 
-管理接口必须支持鉴权。CC Switch 本地默认可继续监听 `127.0.0.1` 并允许无 token；一旦监听 `0.0.0.0` 或外部宿主启用，应要求 bearer token。
+管理接口必须支持鉴权。CC Switch 本地默认可继续监听 `127.0.0.1` 并允许无 token；一旦监听 `0.0.0.0` 或外部宿主启用，应要求 bearer token。该策略已收敛到 `proxy-core::management_auth`：core 负责 loopback 判定、配置 token/env fallback 优先级和 bearer header 语义；host 负责读取配置、读取 `CC_SWITCH_PROXY_MANAGEMENT_TOKEN`、解析 Axum header 并映射错误。
 
 ## 请求处理流水线
 
