@@ -24,6 +24,7 @@ use axum::{
     Router,
 };
 use hyper_util::rt::TokioIo;
+use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::sync::Arc;
 use tokio::sync::{oneshot, RwLock};
@@ -36,8 +37,8 @@ pub struct ProxyState {
     pub config: Arc<RwLock<ProxyConfig>>,
     pub status: Arc<RwLock<ProxyStatus>>,
     pub start_time: Arc<RwLock<Option<std::time::Instant>>>,
-    /// 每个应用类型当前使用的 provider (app_type -> (provider_id, provider_name))
-    pub current_providers: Arc<RwLock<std::collections::HashMap<String, (String, String)>>>,
+    /// 每个应用类型当前使用的 provider/channel target。
+    pub current_providers: Arc<RwLock<HashMap<String, ActiveTarget>>>,
     /// 共享的 ProviderRouter（持有熔断器状态，跨请求保持）
     pub provider_router: Arc<ProviderRouter>,
     /// Gemini Native shadow state，用于 thoughtSignature / tool call 回放
@@ -75,7 +76,7 @@ impl ProxyServer {
             config: Arc::new(RwLock::new(config.clone())),
             status: Arc::new(RwLock::new(ProxyStatus::default())),
             start_time: Arc::new(RwLock::new(None)),
-            current_providers: Arc::new(RwLock::new(std::collections::HashMap::new())),
+            current_providers: Arc::new(RwLock::new(HashMap::new())),
             provider_router,
             gemini_shadow: Arc::new(GeminiShadowStore::default()),
             codex_chat_history: Arc::new(CodexChatHistoryStore::default()),
@@ -264,14 +265,10 @@ impl ProxyServer {
 
         // 从 current_providers HashMap 获取每个应用类型当前正在使用的 provider
         let current_providers = self.state.current_providers.read().await;
-        status.active_targets = current_providers
-            .iter()
-            .map(|(app_type, (provider_id, provider_name))| ActiveTarget {
-                app_type: app_type.clone(),
-                provider_id: provider_id.clone(),
-                provider_name: provider_name.clone(),
-            })
-            .collect();
+        status.active_targets = current_providers.values().cloned().collect();
+        status
+            .active_targets
+            .sort_by(|left, right| left.app_type.cmp(&right.app_type));
 
         status
     }
@@ -284,7 +281,16 @@ impl ProxyServer {
         let mut current_providers = self.state.current_providers.write().await;
         current_providers.insert(
             app_type.to_string(),
-            (provider_id.to_string(), provider_name.to_string()),
+            ActiveTarget {
+                app_type: app_type.to_string(),
+                provider_id: provider_id.to_string(),
+                provider_name: provider_name.to_string(),
+                channel_id: None,
+                channel_name: None,
+                interface_kind: None,
+                public_model: None,
+                upstream_model: None,
+            },
         );
     }
 
@@ -319,6 +325,10 @@ impl ProxyServer {
             .route(
                 "/proxy/v1/apps/:app/channels",
                 get(handlers::list_proxy_channels),
+            )
+            .route(
+                "/proxy/v1/apps/:app/routes/current",
+                get(handlers::get_current_proxy_route),
             )
             .route(
                 "/proxy/v1/apps/:app/channels/migration/preview",
@@ -516,6 +526,78 @@ mod tests {
         assert_eq!(provider["routeCandidate"], true);
         assert!(provider.get("settingsConfig").is_none());
         assert!(provider.to_string().find("secret-key").is_none());
+    }
+
+    #[tokio::test]
+    async fn current_route_management_route_reports_configured_and_active_channel_target() {
+        let db = Arc::new(Database::memory().expect("memory db"));
+        let provider = Provider::with_id(
+            "a".to_string(),
+            "Provider A".to_string(),
+            json!({
+                "env": {
+                    "ANTHROPIC_BASE_URL": "https://primary.example.com/v1",
+                    "ANTHROPIC_API_KEY": "secret-key"
+                }
+            }),
+            None,
+        );
+        db.save_provider("claude", &provider).unwrap();
+        db.set_current_provider("claude", "a").unwrap();
+
+        let server = ProxyServer::new(ProxyConfig::default(), db, None);
+        let mut router = server.build_router();
+
+        let configured_response = Service::call(
+            &mut router,
+            Request::builder()
+                .method(Method::GET)
+                .uri("/proxy/v1/apps/claude/routes/current")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+        assert_eq!(configured_response.status(), StatusCode::OK);
+        let configured = response_json(configured_response).await;
+        assert_eq!(configured["appType"], "claude");
+        assert_eq!(configured["active"], false);
+        assert!(configured["target"].is_null());
+        assert_eq!(configured["configuredProvider"]["id"], "a");
+        assert!(configured.to_string().find("secret-key").is_none());
+
+        server.state.current_providers.write().await.insert(
+            "claude".to_string(),
+            ActiveTarget {
+                app_type: "claude".to_string(),
+                provider_id: "a".to_string(),
+                provider_name: "Provider A".to_string(),
+                channel_id: Some("channel-a".to_string()),
+                channel_name: Some("Relay A".to_string()),
+                interface_kind: Some("openai_responses".to_string()),
+                public_model: Some("public-sonnet".to_string()),
+                upstream_model: Some("upstream-sonnet".to_string()),
+            },
+        );
+
+        let active_response = Service::call(
+            &mut router,
+            Request::builder()
+                .method(Method::GET)
+                .uri("/proxy/v1/apps/claude/routes/current")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+        assert_eq!(active_response.status(), StatusCode::OK);
+        let active = response_json(active_response).await;
+        assert_eq!(active["active"], true);
+        assert_eq!(active["target"]["providerId"], "a");
+        assert_eq!(active["target"]["channelId"], "channel-a");
+        assert_eq!(active["target"]["interfaceKind"], "openai_responses");
+        assert_eq!(active["target"]["upstreamModel"], "upstream-sonnet");
+        assert!(active.to_string().find("secret-key").is_none());
     }
 
     #[tokio::test]

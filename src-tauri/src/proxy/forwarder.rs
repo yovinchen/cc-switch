@@ -19,7 +19,7 @@ use super::{
     thinking_rectifier::{
         normalize_thinking_type, rectify_anthropic_request, should_rectify_thinking_signature,
     },
-    types::{CopilotOptimizerConfig, OptimizerConfig, ProxyStatus, RectifierConfig},
+    types::{ActiveTarget, CopilotOptimizerConfig, OptimizerConfig, ProxyStatus, RectifierConfig},
     ProxyError,
 };
 use crate::commands::{CodexOAuthState, CopilotAuthState};
@@ -96,7 +96,7 @@ pub struct RequestForwarder {
     /// 共享的 ProviderRouter（持有熔断器状态）
     router: Arc<ProviderRouter>,
     status: Arc<RwLock<ProxyStatus>>,
-    current_providers: Arc<RwLock<std::collections::HashMap<String, (String, String)>>>,
+    current_providers: Arc<RwLock<std::collections::HashMap<String, ActiveTarget>>>,
     gemini_shadow: Arc<GeminiShadowStore>,
     codex_chat_history: Arc<CodexChatHistoryStore>,
     /// 故障转移切换管理器
@@ -178,7 +178,7 @@ impl RequestForwarder {
         router: Arc<ProviderRouter>,
         non_streaming_timeout: u64,
         status: Arc<RwLock<ProxyStatus>>,
-        current_providers: Arc<RwLock<std::collections::HashMap<String, (String, String)>>>,
+        current_providers: Arc<RwLock<std::collections::HashMap<String, ActiveTarget>>>,
         gemini_shadow: Arc<GeminiShadowStore>,
         codex_chat_history: Arc<CodexChatHistoryStore>,
         failover_manager: Arc<FailoverSwitchManager>,
@@ -282,6 +282,24 @@ impl RequestForwarder {
                 );
             }
         });
+    }
+
+    async fn record_active_target(&self, app_type: &str, attempt: &ForwardAttempt) {
+        let provider = attempt.provider();
+        let channel = attempt.channel();
+        let target = ActiveTarget {
+            app_type: app_type.to_string(),
+            provider_id: provider.id.clone(),
+            provider_name: provider.name.clone(),
+            channel_id: channel.map(|channel| channel.channel_id.clone()),
+            channel_name: channel.map(|channel| channel.channel_name.clone()),
+            interface_kind: channel.map(|channel| channel.interface_kind.clone()),
+            public_model: channel.and_then(|channel| channel.public_model.clone()),
+            upstream_model: channel.and_then(|channel| channel.upstream_model.clone()),
+        };
+
+        let mut current_providers = self.current_providers.write().await;
+        current_providers.insert(app_type.to_string(), target);
     }
 
     async fn record_failure_result(
@@ -615,14 +633,8 @@ impl RequestForwarder {
                     self.record_success_result(attempt, app_type_str, used_half_open_permit)
                         .await;
 
-                    // 更新当前应用类型使用的 provider
-                    {
-                        let mut current_providers = self.current_providers.write().await;
-                        current_providers.insert(
-                            app_type_str.to_string(),
-                            (provider.id.clone(), provider.name.clone()),
-                        );
-                    }
+                    // 更新当前应用类型使用的 provider/channel
+                    self.record_active_target(app_type_str, attempt).await;
 
                     // 更新成功统计
                     {
@@ -719,14 +731,7 @@ impl RequestForwarder {
                                     )
                                     .await;
 
-                                    {
-                                        let mut current_providers =
-                                            self.current_providers.write().await;
-                                        current_providers.insert(
-                                            app_type_str.to_string(),
-                                            (provider.id.clone(), provider.name.clone()),
-                                        );
-                                    }
+                                    self.record_active_target(app_type_str, attempt).await;
 
                                     {
                                         let mut status = self.status.write().await;
@@ -862,15 +867,8 @@ impl RequestForwarder {
                                         )
                                         .await;
 
-                                        // 更新当前应用类型使用的 provider
-                                        {
-                                            let mut current_providers =
-                                                self.current_providers.write().await;
-                                            current_providers.insert(
-                                                app_type_str.to_string(),
-                                                (provider.id.clone(), provider.name.clone()),
-                                            );
-                                        }
+                                        // 更新当前应用类型使用的 provider/channel
+                                        self.record_active_target(app_type_str, attempt).await;
 
                                         // 更新成功统计
                                         {
@@ -1026,14 +1024,7 @@ impl RequestForwarder {
                                     )
                                     .await;
 
-                                    {
-                                        let mut current_providers =
-                                            self.current_providers.write().await;
-                                        current_providers.insert(
-                                            app_type_str.to_string(),
-                                            (provider.id.clone(), provider.name.clone()),
-                                        );
-                                    }
+                                    self.record_active_target(app_type_str, attempt).await;
 
                                     {
                                         let mut status = self.status.write().await;

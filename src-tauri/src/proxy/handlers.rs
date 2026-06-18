@@ -316,6 +316,46 @@ pub async fn list_proxy_channels(
     })))
 }
 
+/// GET /proxy/v1/apps/{app}/routes/current
+pub async fn get_current_proxy_route(
+    State(state): State<ProxyState>,
+    Path(app_type): Path<String>,
+) -> Result<Json<Value>, ProxyError> {
+    validate_management_app_type(&app_type)?;
+    let app_type = app_type.trim().to_string();
+
+    let active_target = {
+        let current_providers = state.current_providers.read().await;
+        current_providers.get(&app_type).cloned()
+    };
+
+    let configured_provider = match state
+        .db
+        .get_current_provider(&app_type)
+        .map_err(|e| ProxyError::DatabaseError(e.to_string()))?
+    {
+        Some(provider_id) => state
+            .db
+            .get_provider_by_id(&provider_id, &app_type)
+            .map_err(|e| ProxyError::DatabaseError(e.to_string()))?
+            .map(|provider| {
+                json!({
+                    "id": provider.id,
+                    "name": provider.name,
+                    "category": provider.category,
+                })
+            }),
+        None => None,
+    };
+
+    Ok(Json(json!({
+        "appType": app_type,
+        "active": active_target.is_some(),
+        "target": active_target,
+        "configuredProvider": configured_provider,
+    })))
+}
+
 /// GET /proxy/v1/apps/{app}/channels/migration/preview
 pub async fn preview_proxy_channel_migration(
     State(state): State<ProxyState>,

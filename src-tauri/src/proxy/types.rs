@@ -93,10 +93,21 @@ pub struct ProxyStatus {
 
 /// 活跃的代理目标信息
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct ActiveTarget {
     pub app_type: String, // "Claude" | "Codex" | "Gemini"
     pub provider_name: String,
     pub provider_id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub channel_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub channel_name: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub interface_kind: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub public_model: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub upstream_model: Option<String>,
 }
 
 /// 代理服务器信息

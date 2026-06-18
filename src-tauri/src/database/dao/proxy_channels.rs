@@ -100,6 +100,7 @@ pub(crate) struct ProxyChannelMaterializeResult {
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
+#[allow(dead_code)]
 pub(crate) struct ProxyChannelHealth {
     pub channel_id: String,
     pub status: String,
@@ -719,6 +720,7 @@ impl Database {
         }
     }
 
+    #[allow(dead_code)]
     pub(crate) fn get_proxy_channel_health(
         &self,
         channel_id: &str,
