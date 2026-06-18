@@ -4,6 +4,9 @@
 //! 参考: anthropic-proxy-rs
 
 use crate::proxy::{error::ProxyError, json_canonical::canonical_json_string};
+pub use crate::proxy_core::{
+    is_openai_o_series, resolve_reasoning_effort, supports_reasoning_effort,
+};
 use serde_json::{json, Value};
 
 const ANTHROPIC_BILLING_HEADER_PREFIX: &str = "x-anthropic-billing-header:";
@@ -43,71 +46,6 @@ pub(crate) fn strip_leading_anthropic_billing_header(text: &str) -> &str {
         stripped
     } else {
         rest
-    }
-}
-
-/// Detect OpenAI o-series reasoning models (o1, o3, o4-mini, etc.)
-/// These models require `max_completion_tokens` instead of `max_tokens`.
-pub fn is_openai_o_series(model: &str) -> bool {
-    model.len() > 1
-        && model.starts_with('o')
-        && model.as_bytes().get(1).is_some_and(|b| b.is_ascii_digit())
-}
-
-/// Detect OpenAI models that support reasoning_effort.
-///
-/// Supported families:
-/// - o-series: o1, o3, o4-mini, etc.
-/// - GPT-5+: gpt-5, gpt-5.1, gpt-5.4, gpt-5-codex, etc.
-pub fn supports_reasoning_effort(model: &str) -> bool {
-    is_openai_o_series(model)
-        || model
-            .to_lowercase()
-            .strip_prefix("gpt-")
-            .and_then(|rest| rest.chars().next())
-            .is_some_and(|c| c.is_ascii_digit() && c >= '5')
-}
-
-/// Resolve the appropriate OpenAI `reasoning_effort` from an Anthropic request body.
-///
-/// Priority:
-/// 1. Explicit `output_config.effort` — preserves the user's intent directly.
-///    `low`/`medium`/`high` map 1:1; `max` maps to `xhigh`
-///    (supported by mainstream GPT models). Unknown values are ignored.
-/// 2. Fallback: `thinking.type` + `budget_tokens`:
-///    - `adaptive` → `xhigh` (adaptive = maximum reasoning effort)
-///    - `enabled` with budget → `low` (<4 000) / `medium` (4 000–15 999) / `high` (≥16 000)
-///    - `enabled` without budget → `high` (conservative default)
-///    - `disabled` / absent → `None`
-pub fn resolve_reasoning_effort(body: &Value) -> Option<&'static str> {
-    // --- Priority 1: explicit output_config.effort ---
-    if let Some(effort) = body
-        .pointer("/output_config/effort")
-        .and_then(|v| v.as_str())
-    {
-        return match effort {
-            "low" => Some("low"),
-            "medium" => Some("medium"),
-            "high" => Some("high"),
-            "max" => Some("xhigh"), // OpenAI xhigh = maximum reasoning effort
-            _ => None,              // unknown value — do not inject
-        };
-    }
-
-    // --- Priority 2: thinking.type + budget_tokens fallback ---
-    let thinking = body.get("thinking")?;
-    match thinking.get("type").and_then(|t| t.as_str()) {
-        Some("adaptive") => Some("xhigh"),
-        Some("enabled") => {
-            let budget = thinking.get("budget_tokens").and_then(|b| b.as_u64());
-            match budget {
-                Some(b) if b < 4_000 => Some("low"),
-                Some(b) if b < 16_000 => Some("medium"),
-                Some(_) => Some("high"),
-                None => Some("high"), // enabled but no budget — assume strong reasoning
-            }
-        }
-        _ => None, // disabled or missing
     }
 }
 

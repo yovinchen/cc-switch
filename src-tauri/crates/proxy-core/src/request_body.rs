@@ -37,6 +37,53 @@ pub fn method_allows_upstream_request_body(method: &http::Method) -> bool {
     !matches!(method, &http::Method::GET | &http::Method::HEAD)
 }
 
+pub fn is_openai_o_series(model: &str) -> bool {
+    model.len() > 1
+        && model.starts_with('o')
+        && model.as_bytes().get(1).is_some_and(|byte| byte.is_ascii_digit())
+}
+
+pub fn supports_reasoning_effort(model: &str) -> bool {
+    is_openai_o_series(model)
+        || model
+            .to_lowercase()
+            .strip_prefix("gpt-")
+            .and_then(|rest| rest.chars().next())
+            .is_some_and(|value| value.is_ascii_digit() && value >= '5')
+}
+
+pub fn resolve_reasoning_effort(body: &Value) -> Option<&'static str> {
+    if let Some(effort) = body
+        .pointer("/output_config/effort")
+        .and_then(|value| value.as_str())
+    {
+        return match effort {
+            "low" => Some("low"),
+            "medium" => Some("medium"),
+            "high" => Some("high"),
+            "max" => Some("xhigh"),
+            _ => None,
+        };
+    }
+
+    let thinking = body.get("thinking")?;
+    match thinking.get("type").and_then(|value| value.as_str()) {
+        Some("adaptive") => Some("xhigh"),
+        Some("enabled") => {
+            let budget = thinking
+                .get("budget_tokens")
+                .and_then(|value| value.as_u64());
+            match budget {
+                Some(value) if value < 4_000 => Some("low"),
+                Some(value) if value < 16_000 => Some("medium"),
+                Some(_) => Some("high"),
+                None => Some("high"),
+            }
+        }
+        _ => None,
+    }
+}
+
 pub fn prepare_upstream_request_body_with_report(
     request_body: Value,
 ) -> PreparedUpstreamRequestBody {
@@ -146,8 +193,9 @@ mod tests {
     use super::{
         canonicalize_request_body_value, filter_private_params,
         filter_private_params_with_whitelist, filter_private_params_with_whitelist_report,
-        method_allows_upstream_request_body, prepare_upstream_request_body_with_report,
-        serialize_upstream_request_body,
+        is_openai_o_series, method_allows_upstream_request_body,
+        prepare_upstream_request_body_with_report, resolve_reasoning_effort,
+        serialize_upstream_request_body, supports_reasoning_effort,
     };
     use http::Method;
     use serde_json::json;
@@ -286,6 +334,74 @@ mod tests {
         assert_eq!(
             serialize_upstream_request_body(&Method::POST, &body).unwrap(),
             br#"{"a":1,"b":2}"#.to_vec()
+        );
+    }
+
+    #[test]
+    fn detects_openai_reasoning_model_families() {
+        assert!(is_openai_o_series("o1"));
+        assert!(is_openai_o_series("o3-mini"));
+        assert!(is_openai_o_series("o4-mini"));
+        assert!(!is_openai_o_series("gpt-4o"));
+        assert!(!is_openai_o_series("o"));
+
+        assert!(supports_reasoning_effort("o1"));
+        assert!(supports_reasoning_effort("gpt-5"));
+        assert!(supports_reasoning_effort("gpt-5-codex"));
+        assert!(!supports_reasoning_effort("gpt-4o"));
+        assert!(!supports_reasoning_effort("claude-sonnet-4-6"));
+    }
+
+    #[test]
+    fn resolves_reasoning_effort_from_output_config_first() {
+        assert_eq!(
+            resolve_reasoning_effort(&json!({
+                "output_config": {"effort": "low"},
+                "thinking": {"type": "adaptive"}
+            })),
+            Some("low")
+        );
+        assert_eq!(
+            resolve_reasoning_effort(&json!({"output_config": {"effort": "max"}})),
+            Some("xhigh")
+        );
+        assert_eq!(
+            resolve_reasoning_effort(&json!({"output_config": {"effort": "turbo"}})),
+            None
+        );
+    }
+
+    #[test]
+    fn resolves_reasoning_effort_from_thinking_budget() {
+        assert_eq!(
+            resolve_reasoning_effort(
+                &json!({"thinking": {"type": "enabled", "budget_tokens": 1024}})
+            ),
+            Some("low")
+        );
+        assert_eq!(
+            resolve_reasoning_effort(
+                &json!({"thinking": {"type": "enabled", "budget_tokens": 8000}})
+            ),
+            Some("medium")
+        );
+        assert_eq!(
+            resolve_reasoning_effort(
+                &json!({"thinking": {"type": "enabled", "budget_tokens": 32000}})
+            ),
+            Some("high")
+        );
+        assert_eq!(
+            resolve_reasoning_effort(&json!({"thinking": {"type": "enabled"}})),
+            Some("high")
+        );
+        assert_eq!(
+            resolve_reasoning_effort(&json!({"thinking": {"type": "adaptive"}})),
+            Some("xhigh")
+        );
+        assert_eq!(
+            resolve_reasoning_effort(&json!({"thinking": {"type": "disabled"}})),
+            None
         );
     }
 }
