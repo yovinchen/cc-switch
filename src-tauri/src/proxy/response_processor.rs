@@ -10,9 +10,10 @@ use super::{
     server::ProxyState,
     sse::{strip_sse_field, take_sse_block},
     usage::parser::TokenUsage,
+    usage_sink_bridge::{provider_kind_from_provider, success_usage_record},
     ProxyError,
 };
-use crate::proxy_core::{AppKind, ProviderKind, ProxyServices, UsageRecord, UsageTokens};
+use crate::proxy_core::{ProviderKind, ProxyServices};
 use axum::http::{header::HeaderMap, HeaderName};
 use axum::response::{IntoResponse, Response};
 use bytes::Bytes;
@@ -524,7 +525,7 @@ fn create_usage_collector(
 
     let state = state.clone();
     let provider_id = ctx.provider.id.clone();
-    let provider_kind = provider_kind_from_context(ctx);
+    let provider_kind = provider_kind_from_provider(&ctx.provider);
     let request_model = ctx.request_model.clone();
     // 流式事件缺失模型名时的归因兜底：映射后的出站模型（路由接管真值）优先，
     // 其次才是客户端请求别名
@@ -628,7 +629,7 @@ fn spawn_log_usage(
 
     let state = state.clone();
     let provider_id = ctx.provider.id.clone();
-    let provider_kind = provider_kind_from_context(ctx);
+    let provider_kind = provider_kind_from_provider(&ctx.provider);
     let app_type_str = ctx.app_type_str.to_string();
     let model = model.to_string();
     let request_model = request_model.to_string();
@@ -699,7 +700,7 @@ async fn log_usage_internal(
         usage.cache_creation_tokens
     );
 
-    let record = usage_record_from_parts(
+    let record = success_usage_record(
         provider_id,
         provider_kind,
         app_type,
@@ -721,73 +722,6 @@ async fn log_usage_internal(
         .await
     {
         log::warn!("[USG-001] 记录使用量失败: {e}");
-    }
-}
-
-#[allow(clippy::too_many_arguments)]
-fn usage_record_from_parts(
-    provider_id: &str,
-    provider_kind: Option<ProviderKind>,
-    app_type: &str,
-    model: &str,
-    request_model: &str,
-    outbound_model: &str,
-    usage: TokenUsage,
-    latency_ms: u64,
-    first_token_ms: Option<u64>,
-    is_streaming: bool,
-    status_code: u16,
-    session_id: Option<String>,
-) -> UsageRecord {
-    let response_model = non_empty(model).or_else(|| non_empty(outbound_model));
-    let outbound_model = non_empty(outbound_model).unwrap_or_else(|| request_model.to_string());
-    let request_model = non_empty(request_model).unwrap_or_else(|| outbound_model.clone());
-    let request_id = usage.dedup_request_id();
-    let message_id = usage.message_id.clone();
-
-    UsageRecord {
-        request_id: Some(request_id),
-        message_id,
-        app: AppKind::from(app_type),
-        provider_id: provider_id.to_string(),
-        provider_kind,
-        channel_id: None,
-        channel_name: None,
-        route_group: None,
-        request_model,
-        outbound_model,
-        response_model,
-        pricing_model: None,
-        tokens: UsageTokens {
-            input_tokens: usage.input_tokens as u64,
-            output_tokens: usage.output_tokens as u64,
-            cache_read_tokens: usage.cache_read_tokens as u64,
-            cache_creation_tokens: usage.cache_creation_tokens as u64,
-        },
-        latency_ms,
-        first_token_ms,
-        status_code,
-        error_message: None,
-        session_id,
-        is_streaming,
-        metadata: Value::Object(Default::default()),
-    }
-}
-
-fn provider_kind_from_context(ctx: &RequestContext) -> Option<ProviderKind> {
-    ctx.provider
-        .meta
-        .as_ref()
-        .and_then(|meta| meta.provider_type.as_deref())
-        .map(ProviderKind::from)
-}
-
-fn non_empty(value: &str) -> Option<String> {
-    let value = value.trim();
-    if value.is_empty() {
-        None
-    } else {
-        Some(value.to_string())
     }
 }
 

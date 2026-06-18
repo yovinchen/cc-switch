@@ -1,10 +1,10 @@
 //! Usage Logger - 记录 API 请求使用情况
 
-use super::calculator::{CostBreakdown, CostCalculator, ModelPricing};
+use super::calculator::{CostBreakdown, ModelPricing};
 use super::parser::TokenUsage;
 use crate::database::{Database, PRICING_SOURCE_REQUEST, PRICING_SOURCE_RESPONSE};
 use crate::error::AppError;
-use crate::services::usage_stats::{find_model_pricing_row, is_placeholder_pricing_model};
+use crate::services::usage_stats::find_model_pricing_row;
 use rust_decimal::Decimal;
 use std::str::FromStr;
 
@@ -152,47 +152,6 @@ impl<'a> UsageLogger<'a> {
         self.log_request(&log)
     }
 
-    /// 记录失败的请求（带更多上下文信息）
-    ///
-    /// 相比 log_error，这个方法接受更多参数以提供完整的请求上下文
-    #[allow(clippy::too_many_arguments)]
-    pub fn log_error_with_context(
-        &self,
-        request_id: String,
-        provider_id: String,
-        app_type: String,
-        model: String,
-        status_code: u16,
-        error_message: String,
-        latency_ms: u64,
-        is_streaming: bool,
-        session_id: Option<String>,
-        provider_type: Option<String>,
-    ) -> Result<(), AppError> {
-        let request_model = model.clone();
-        let log = RequestLog {
-            request_id,
-            provider_id,
-            app_type,
-            model,
-            request_model,
-            // 错误行未经过计价，留空（回填的 has_usage 闸门也不会碰全 0 行）
-            pricing_model: String::new(),
-            usage: TokenUsage::default(),
-            cost: None,
-            latency_ms,
-            first_token_ms: None,
-            status_code,
-            error_message: Some(error_message),
-            session_id,
-            provider_type,
-            is_streaming,
-            cost_multiplier: "1.0".to_string(),
-        };
-
-        self.log_request(&log)
-    }
-
     /// 获取模型定价
     pub fn get_model_pricing(&self, model_id: &str) -> Result<Option<ModelPricing>, AppError> {
         let conn = crate::database::lock_conn!(self.db.conn);
@@ -301,65 +260,6 @@ impl<'a> UsageLogger<'a> {
 
         (cost_multiplier, pricing_model_source)
     }
-
-    /// 计算并记录请求
-    #[allow(clippy::too_many_arguments)]
-    pub fn log_with_calculation(
-        &self,
-        request_id: String,
-        provider_id: String,
-        app_type: String,
-        model: String,
-        request_model: String,
-        pricing_model: String,
-        usage: TokenUsage,
-        cost_multiplier: Decimal,
-        latency_ms: u64,
-        first_token_ms: Option<u64>,
-        status_code: u16,
-        session_id: Option<String>,
-        provider_type: Option<String>,
-        is_streaming: bool,
-    ) -> Result<(), AppError> {
-        let pricing = self.get_model_pricing(&pricing_model)?;
-
-        let has_usage = usage.input_tokens > 0
-            || usage.output_tokens > 0
-            || usage.cache_read_tokens > 0
-            || usage.cache_creation_tokens > 0;
-
-        if pricing.is_none() && has_usage && !is_placeholder_pricing_model(&pricing_model) {
-            log::warn!("[USG-002] 模型定价未找到，成本将记录为 0: {pricing_model}");
-        }
-
-        let cost = CostCalculator::try_calculate_for_app(
-            &app_type,
-            &usage,
-            pricing.as_ref(),
-            cost_multiplier,
-        );
-
-        let log = RequestLog {
-            request_id,
-            provider_id,
-            app_type,
-            model,
-            request_model,
-            pricing_model,
-            usage,
-            cost,
-            latency_ms,
-            first_token_ms,
-            status_code,
-            error_message: None,
-            session_id,
-            provider_type,
-            is_streaming,
-            cost_multiplier: cost_multiplier.to_string(),
-        };
-
-        self.log_request(&log)
-    }
 }
 
 #[cfg(test)]
@@ -369,17 +269,6 @@ mod tests {
     #[test]
     fn test_log_request() -> Result<(), AppError> {
         let db = Database::memory()?;
-
-        // 插入测试定价
-        {
-            let conn = crate::database::lock_conn!(db.conn);
-            conn.execute(
-                "INSERT INTO model_pricing (model_id, display_name, input_cost_per_million, output_cost_per_million)
-                 VALUES ('test-model', 'Test Model', '3.0', '15.0')",
-                [],
-            )
-            .unwrap();
-        }
 
         let logger = UsageLogger::new(&db);
 
@@ -392,22 +281,26 @@ mod tests {
             message_id: None,
         };
 
-        logger.log_with_calculation(
-            "req-123".to_string(),
-            "provider-1".to_string(),
-            "claude".to_string(),
-            "test-model".to_string(),
-            "req-model".to_string(),
-            "test-model".to_string(),
+        let log = RequestLog {
+            request_id: "req-123".to_string(),
+            provider_id: "provider-1".to_string(),
+            app_type: "claude".to_string(),
+            model: "test-model".to_string(),
+            request_model: "req-model".to_string(),
+            pricing_model: "test-model".to_string(),
             usage,
-            Decimal::from(1),
-            100,
-            None,
-            200,
-            None,
-            Some("claude".to_string()),
-            false,
-        )?;
+            cost: None,
+            latency_ms: 100,
+            first_token_ms: None,
+            status_code: 200,
+            error_message: None,
+            session_id: None,
+            provider_type: Some("claude".to_string()),
+            is_streaming: false,
+            cost_multiplier: "1".to_string(),
+        };
+
+        logger.log_request(&log)?;
 
         // 验证记录已插入
         let conn = crate::database::lock_conn!(db.conn);

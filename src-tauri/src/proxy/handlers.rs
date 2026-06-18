@@ -33,16 +33,16 @@ use super::{
     sse::{strip_sse_field, take_sse_block},
     types::*,
     usage::parser::TokenUsage,
+    usage_sink_bridge::{error_usage_record, provider_kind_from_provider, success_usage_record},
     ProxyError,
 };
 use crate::app_config::AppType;
 use crate::database::{
     ProxyChannelModelsReplaceRequest, ProxyChannelPatchRequest, ProxyChannelWriteRequest,
-    PRICING_SOURCE_REQUEST,
 };
 use crate::proxy_core::{
     AppKind, InterfaceKind, ProxyBody, ProxyCoreError, ProxyCoreResponse, ProxyEngine,
-    ProxyRequest, ProxyResponseBody, ProxyResult,
+    ProxyRequest, ProxyResponseBody, ProxyResult, ProxyServices,
 };
 use axum::{
     extract::{Path, Query, State},
@@ -1031,6 +1031,7 @@ async fn handle_claude_transform(
         let usage_collector = if usage_logging_enabled(state) {
             let state = state.clone();
             let provider_id = ctx.provider.id.clone();
+            let provider_kind = provider_kind_from_provider(&ctx.provider);
             let request_model = ctx.request_model.clone();
             // 上游/转换层未回显模型时，优先用映射后的出站模型兜底（路由接管真值），
             // 其次才是客户端请求别名。空字符串视为缺失（转换器对无回显上游会合成 ""）。
@@ -1058,6 +1059,7 @@ async fn handle_claude_transform(
                         let latency_ms = start_time.elapsed().as_millis() as u64;
                         let state = state.clone();
                         let provider_id = provider_id.clone();
+                        let provider_kind = provider_kind.clone();
                         let session_id = session_id.clone();
                         let request_model = request_model.clone();
                         let outbound_model = fallback_model.clone();
@@ -1066,6 +1068,7 @@ async fn handle_claude_transform(
                             log_usage(
                                 &state,
                                 &provider_id,
+                                provider_kind,
                                 app_type_str,
                                 &model,
                                 &request_model,
@@ -1208,11 +1211,13 @@ async fn handle_claude_transform(
         tokio::spawn({
             let state = state.clone();
             let provider_id = ctx.provider.id.clone();
+            let provider_kind = provider_kind_from_provider(&ctx.provider);
             let session_id = ctx.session_id.clone();
             async move {
                 log_usage(
                     &state,
                     &provider_id,
+                    provider_kind,
                     app_type_str,
                     &model,
                     &request_model,
@@ -1562,6 +1567,7 @@ async fn handle_codex_chat_to_responses_transform(
         let usage_collector = if usage_logging_enabled(state) {
             let state = state.clone();
             let provider_id = ctx.provider.id.clone();
+            let provider_kind = provider_kind_from_provider(&ctx.provider);
             let request_model = ctx.request_model.clone();
             // 接管/模型覆写场景的归因兜底：出站真值优先于客户端请求别名
             let fallback_model = ctx
@@ -1596,6 +1602,7 @@ async fn handle_codex_chat_to_responses_transform(
 
                     let state = state.clone();
                     let provider_id = provider_id.clone();
+                    let provider_kind = provider_kind.clone();
                     let request_model = request_model.clone();
                     let outbound_model = fallback_model.clone();
                     let session_id = session_id.clone();
@@ -1604,6 +1611,7 @@ async fn handle_codex_chat_to_responses_transform(
                         log_usage(
                             &state,
                             &provider_id,
+                            provider_kind,
                             app_type_str,
                             &model,
                             &request_model,
@@ -1713,12 +1721,14 @@ async fn handle_codex_chat_to_responses_transform(
         tokio::spawn({
             let state = state.clone();
             let provider_id = ctx.provider.id.clone();
+            let provider_kind = provider_kind_from_provider(&ctx.provider);
             let session_id = ctx.session_id.clone();
             let latency_ms = ctx.latency_ms();
             async move {
                 log_usage(
                     &state,
                     &provider_id,
+                    provider_kind,
                     app_type_str,
                     &model,
                     &request_model,
@@ -2648,27 +2658,26 @@ fn log_forward_error(
     is_streaming: bool,
     error: &ProxyError,
 ) {
-    use super::usage::logger::UsageLogger;
-
-    let logger = UsageLogger::new(&state.db);
     let status_code = map_proxy_error_to_status(error);
     let error_message = get_error_message(error);
-    let request_id = uuid::Uuid::new_v4().to_string();
-
-    if let Err(e) = logger.log_error_with_context(
-        request_id,
-        ctx.provider.id.clone(),
-        ctx.app_type_str.to_string(),
-        ctx.request_model.clone(),
+    let record = error_usage_record(
+        &ctx.provider,
+        ctx.app_type_str,
+        &ctx.request_model,
+        ctx.outbound_model.as_deref(),
         status_code,
         error_message,
         ctx.latency_ms(),
         is_streaming,
         Some(ctx.session_id.clone()),
-        None,
-    ) {
-        log::warn!("记录失败请求日志失败: {e}");
-    }
+    );
+
+    let services = state.proxy_core_services.clone();
+    tokio::spawn(async move {
+        if let Err(e) = services.usage_sink().record_usage(record).await {
+            log::warn!("记录失败请求日志失败: {e}");
+        }
+    });
 }
 
 /// 记录请求使用量
@@ -2679,6 +2688,7 @@ fn log_forward_error(
 async fn log_usage(
     state: &ProxyState,
     provider_id: &str,
+    provider_kind: Option<crate::proxy_core::ProviderKind>,
     app_type: &str,
     model: &str,
     request_model: &str,
@@ -2690,40 +2700,31 @@ async fn log_usage(
     status_code: u16,
     session_id: Option<String>,
 ) {
-    use super::usage::logger::UsageLogger;
-
     if !usage_logging_enabled(state) {
         return;
     }
 
-    let logger = UsageLogger::new(&state.db);
-
-    let (multiplier, pricing_model_source) =
-        logger.resolve_pricing_config(provider_id, app_type).await;
-    let pricing_model = if pricing_model_source == PRICING_SOURCE_REQUEST {
-        outbound_model
-    } else {
-        model
-    };
-
-    let request_id = usage.dedup_request_id();
-
-    if let Err(e) = logger.log_with_calculation(
-        request_id,
-        provider_id.to_string(),
-        app_type.to_string(),
-        model.to_string(),
-        request_model.to_string(),
-        pricing_model.to_string(),
+    let record = success_usage_record(
+        provider_id,
+        provider_kind,
+        app_type,
+        model,
+        request_model,
+        outbound_model,
         usage,
-        multiplier,
         latency_ms,
         first_token_ms,
+        is_streaming,
         status_code,
         session_id,
-        None, // provider_type
-        is_streaming,
-    ) {
+    );
+
+    if let Err(e) = state
+        .proxy_core_services
+        .usage_sink()
+        .record_usage(record)
+        .await
+    {
         log::warn!("[USG-001] 记录使用量失败: {e}");
     }
 }
