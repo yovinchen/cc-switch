@@ -32,13 +32,13 @@ use crate::proxy_core::{
     build_terminal_forward_failure_log, build_upstream_auth_headers, categorize_forward_failure,
     is_github_copilot_upstream, resolve_media_prevention_policy,
     resolve_upstream_request_transport_policy, resolved_copilot_dynamic_base_url,
-    should_check_media_retry, should_failover_after_rectifier_retry_failure,
-    should_preserve_exact_request_header_case, should_resolve_copilot_dynamic_endpoint,
-    should_send_anthropic_request_headers, should_trigger_media_retry, split_endpoint_and_query,
-    validate_managed_account_upstream_auth, AppKind, ChannelQuery, CopilotAuthHeaderOverrides,
-    ForwardFailureCategory, ForwardFailureKind, InterfaceKind, MediaRetryInput, ProxyBody,
-    ProxyEngine, ProxyRequest, ProxyServices, UpstreamAuthHeadersInput,
-    UpstreamRequestHeadersInput,
+    should_apply_bedrock_pre_send_optimizer, should_check_media_retry,
+    should_failover_after_rectifier_retry_failure, should_preserve_exact_request_header_case,
+    should_resolve_copilot_dynamic_endpoint, should_send_anthropic_request_headers,
+    should_trigger_media_retry, split_endpoint_and_query, validate_managed_account_upstream_auth,
+    AppKind, ChannelQuery, CopilotAuthHeaderOverrides, ForwardFailureCategory, ForwardFailureKind,
+    InterfaceKind, MediaRetryInput, ProxyBody, ProxyEngine, ProxyRequest, ProxyServices,
+    UpstreamAuthHeadersInput, UpstreamRequestHeadersInput, BEDROCK_OPTIMIZER_ENV_FLAG,
 };
 use crate::proxy_core_host::CcSwitchProxyServices;
 use crate::{app_config::AppType, provider::Provider};
@@ -903,19 +903,21 @@ impl RequestForwarder {
 
             // PRE-SEND 优化器：每个 provider 独立决定是否优化
             // clone body 以避免 Bedrock 优化字段泄漏到非 Bedrock provider（failover 场景）
-            let mut provider_body =
-                if self.optimizer_config.enabled && is_bedrock_provider(provider) {
-                    let mut b = body.clone();
-                    if self.optimizer_config.thinking_optimizer {
-                        super::thinking_optimizer::optimize(&mut b, &self.optimizer_config);
-                    }
-                    if self.optimizer_config.cache_injection {
-                        super::cache_injector::inject(&mut b, &self.optimizer_config);
-                    }
-                    b
-                } else {
-                    body.clone()
-                };
+            let mut provider_body = if should_apply_bedrock_pre_send_optimizer(
+                self.optimizer_config.enabled,
+                provider_bedrock_env_flag(provider),
+            ) {
+                let mut b = body.clone();
+                if self.optimizer_config.thinking_optimizer {
+                    super::thinking_optimizer::optimize(&mut b, &self.optimizer_config);
+                }
+                if self.optimizer_config.cache_injection {
+                    super::cache_injector::inject(&mut b, &self.optimizer_config);
+                }
+                b
+            } else {
+                body.clone()
+            };
 
             attempted_providers += 1;
 
@@ -2398,15 +2400,12 @@ fn extract_error_message(error: &ProxyError) -> Option<String> {
     }
 }
 
-/// 检测 Provider 是否为 Bedrock（通过 CLAUDE_CODE_USE_BEDROCK 环境变量判断）
-fn is_bedrock_provider(provider: &Provider) -> bool {
+fn provider_bedrock_env_flag(provider: &Provider) -> Option<&str> {
     provider
         .settings_config
         .get("env")
-        .and_then(|e| e.get("CLAUDE_CODE_USE_BEDROCK"))
-        .and_then(|v| v.as_str())
-        .map(|v| v == "1")
-        .unwrap_or(false)
+        .and_then(|env| env.get(BEDROCK_OPTIMIZER_ENV_FLAG))
+        .and_then(Value::as_str)
 }
 
 fn forward_failure_kind_from_proxy_error(error: &ProxyError) -> ForwardFailureKind {
@@ -2656,6 +2655,18 @@ mod tests {
             icon_color: None,
             in_failover_queue: false,
         }
+    }
+
+    #[test]
+    fn bedrock_optimizer_env_flag_is_extracted_from_provider_settings() {
+        let mut provider = test_provider_with_type(None);
+        provider.settings_config = json!({
+            "env": {
+                "CLAUDE_CODE_USE_BEDROCK": "1"
+            }
+        });
+
+        assert_eq!(provider_bedrock_env_flag(&provider), Some("1"));
     }
 
     fn test_forwarder(
