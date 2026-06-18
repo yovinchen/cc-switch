@@ -36,6 +36,7 @@
 25. Claude/OpenAI/Codex/Gemini 的 SSE usage 事件预过滤函数已迁入 `proxy-core::sse`；host `handler_config` 只负责把 core 过滤函数挂入各协议 parser 配置。
 26. `TokenUsage` 与 Claude/OpenAI/Codex/Gemini 的 usage JSON 解析器已迁入 `proxy-core::usage`；host `proxy::usage::parser` 仅保留兼容 re-export，随机 request_id 去重兜底继续留在 host `usage_sink_bridge`。
 27. Claude/OpenAI/Codex/Gemini 的流式 usage model extractor 已迁入 `proxy-core::usage`；host `handler_config` 只保留协议 parser 配置表和 app 绑定。
+28. `TokenUsage` 到 `UsageTokens` 的映射、success/error usage record 的 request/outbound/response model 归因规则已迁入 `proxy-core::usage`；host `usage_sink_bridge` 只保留 UUID request_id 兜底、provider meta 到 `ProviderKind` 的适配和错误记录外壳。
 
 因此，本分支目前已把主要转发入口（Claude Messages、Claude Desktop Messages、Codex Chat Completions、Codex Responses、Codex Responses Compact、Gemini Native）切到 `ProxyEngine`，并开始把管理查询类能力、Codex 客户端模型目录和请求日志写入收敛到 core 可复用接口。HTTP transport 与 response pipeline 仍是宿主层兼容桥；下一阶段需要把响应转换、剩余模型目录生成策略和剩余外部管理 API 继续收敛到独立代理模块边界内。
 
@@ -875,7 +876,7 @@ ProxyRequest
   -> ProxyResult
 ```
 
-当前已迁移到 core 的 response pipeline 子能力包括响应头清理、响应体诊断、非流式 body 解压和 SSE 文本/聚合工具：`strip_hop_by_hop_response_headers` 移除 hop-by-hop 头和 `Connection` 点名扩展头，`strip_entity_headers_for_rebuilt_body` 移除重建 body 后失真的实体头，`body_looks_like_sse`/`body_diagnostics_suffix`/`body_snippet` 负责未标记 SSE body 嗅探与错误现场摘要，`get_content_encoding`/`decompress_body` 负责 gzip/x-gzip/deflate/br 的 content-encoding 判定与解压，`strip_sse_field`/`take_sse_block`/`append_utf8_safe` 负责 SSE 字段提取、事件分帧和跨 chunk UTF-8 拼接，`SseEventScanner` 负责流式 data 行扫描、`[DONE]` 判定和可选 JSON parse，`SseUsageAccumulator` 负责 usage 事件缓存、首个被收集事件计时和 finish-once 防重入，`claude_stream_usage_event_filter`/`openai_stream_usage_event_filter`/`codex_stream_usage_event_filter`/`gemini_stream_usage_event_filter` 负责热路径 usage 事件预过滤，`TokenUsage` 及其 Claude/OpenAI/Codex/Gemini usage JSON parser 与 stream model extractor 负责协议用量解析和模型归因，`chat_sse_to_response_value`/`responses_sse_to_response_value` 负责错标 SSE 非流式兜底聚合。body 读取/timeout、未知编码原样透传日志、Axum body 构造和 app-specific 响应转换仍在 host 层，后续应按纯逻辑先行、transport adapter 后置的顺序继续抽离。
+当前已迁移到 core 的 response pipeline 子能力包括响应头清理、响应体诊断、非流式 body 解压和 SSE 文本/聚合工具：`strip_hop_by_hop_response_headers` 移除 hop-by-hop 头和 `Connection` 点名扩展头，`strip_entity_headers_for_rebuilt_body` 移除重建 body 后失真的实体头，`body_looks_like_sse`/`body_diagnostics_suffix`/`body_snippet` 负责未标记 SSE body 嗅探与错误现场摘要，`get_content_encoding`/`decompress_body` 负责 gzip/x-gzip/deflate/br 的 content-encoding 判定与解压，`strip_sse_field`/`take_sse_block`/`append_utf8_safe` 负责 SSE 字段提取、事件分帧和跨 chunk UTF-8 拼接，`SseEventScanner` 负责流式 data 行扫描、`[DONE]` 判定和可选 JSON parse，`SseUsageAccumulator` 负责 usage 事件缓存、首个被收集事件计时和 finish-once 防重入，`claude_stream_usage_event_filter`/`openai_stream_usage_event_filter`/`codex_stream_usage_event_filter`/`gemini_stream_usage_event_filter` 负责热路径 usage 事件预过滤，`TokenUsage` 及其 Claude/OpenAI/Codex/Gemini usage JSON parser 与 stream model extractor 负责协议用量解析和模型归因，`usage_tokens_from_token_usage`/`normalize_usage_models`/`normalize_error_usage_models` 负责 `UsageRecord` 的 token bucket 映射和模型归因规则，`chat_sse_to_response_value`/`responses_sse_to_response_value` 负责错标 SSE 非流式兜底聚合。body 读取/timeout、未知编码原样透传日志、Axum body 构造和 app-specific 响应转换仍在 host 层，后续应按纯逻辑先行、transport adapter 后置的顺序继续抽离。
 
 同一 provider 下多个 channel 的行为必须互相隔离：
 
