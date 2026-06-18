@@ -166,6 +166,106 @@ pub fn build_anthropic_message_delta_event(
     })
 }
 
+/// Extract reasoning text from common Chat-compatible upstream response fields.
+///
+/// Priority: `reasoning_content` > string/object `reasoning` > `reasoning_details`.
+pub fn extract_reasoning_field_text(value: &Value) -> Option<String> {
+    for key in ["reasoning_content", "reasoning"] {
+        if let Some(text) = value.get(key).and_then(Value::as_str) {
+            if !text.is_empty() {
+                return Some(text.to_string());
+            }
+        }
+    }
+
+    if let Some(reasoning) = value.get("reasoning") {
+        for key in ["content", "text", "summary"] {
+            if let Some(text) = reasoning.get(key).and_then(Value::as_str) {
+                if !text.is_empty() {
+                    return Some(text.to_string());
+                }
+            }
+        }
+    }
+
+    if let Some(details) = value.get("reasoning_details") {
+        if let Some(text) = extract_reasoning_details_text(details) {
+            return Some(text);
+        }
+    }
+
+    None
+}
+
+fn extract_reasoning_details_text(value: &Value) -> Option<String> {
+    match value {
+        Value::String(text) => (!text.is_empty()).then(|| text.to_string()),
+        Value::Array(parts) => {
+            let text = parts
+                .iter()
+                .filter_map(extract_reasoning_detail_part_text)
+                .filter(|text| !text.is_empty())
+                .collect::<Vec<_>>()
+                .join("\n\n");
+            (!text.is_empty()).then_some(text)
+        }
+        Value::Object(_) => extract_reasoning_detail_part_text(value),
+        _ => None,
+    }
+}
+
+fn extract_reasoning_detail_part_text(value: &Value) -> Option<String> {
+    for key in ["text", "content", "summary"] {
+        if let Some(text) = value.get(key).and_then(Value::as_str) {
+            if !text.is_empty() {
+                return Some(text.to_string());
+            }
+        }
+    }
+
+    if let Some(parts) = value.get("parts").and_then(Value::as_array) {
+        let text = parts
+            .iter()
+            .filter_map(extract_reasoning_detail_part_text)
+            .filter(|text| !text.is_empty())
+            .collect::<Vec<_>>()
+            .join("\n\n");
+        return (!text.is_empty()).then_some(text);
+    }
+
+    None
+}
+
+pub fn extract_reasoning_summary_text(value: &Value) -> Option<String> {
+    for key in ["reasoning_content", "content", "text"] {
+        if let Some(text) = value.get(key).and_then(Value::as_str) {
+            if !text.is_empty() {
+                return Some(text.to_string());
+            }
+        }
+    }
+
+    let summary = value.get("summary")?;
+    if let Some(text) = summary.as_str() {
+        return (!text.is_empty()).then(|| text.to_string());
+    }
+
+    let parts = summary.as_array()?;
+    let text = parts
+        .iter()
+        .filter_map(|part| {
+            part.get("text")
+                .and_then(Value::as_str)
+                .or_else(|| part.get("content").and_then(Value::as_str))
+                .or_else(|| part.as_str())
+        })
+        .filter(|text| !text.is_empty())
+        .collect::<Vec<_>>()
+        .join("\n\n");
+
+    (!text.is_empty()).then_some(text)
+}
+
 pub fn sanitize_anthropic_tool_use_input(name: &str, input: Value) -> Value {
     if name != "Read" {
         return input;
@@ -487,6 +587,52 @@ mod tests {
         let non_object = build_anthropic_message_delta_event(Some("tool_use"), Some(json!(42)));
         assert_eq!(non_object["usage"]["input_tokens"], 0);
         assert_eq!(non_object["usage"]["output_tokens"], 0);
+    }
+
+    #[test]
+    fn extracts_reasoning_field_text_from_common_shapes() {
+        assert_eq!(
+            extract_reasoning_field_text(&json!({"reasoning_content": "think"})).as_deref(),
+            Some("think")
+        );
+        assert_eq!(
+            extract_reasoning_field_text(&json!({"reasoning": {"summary": "nested"}})).as_deref(),
+            Some("nested")
+        );
+        assert_eq!(
+            extract_reasoning_field_text(&json!({
+                "reasoning_details": [
+                    {"text": "first"},
+                    {"parts": [{"content": "second"}]}
+                ]
+            }))
+            .as_deref(),
+            Some("first\n\nsecond")
+        );
+        assert_eq!(extract_reasoning_field_text(&json!({"reasoning": ""})), None);
+    }
+
+    #[test]
+    fn extracts_reasoning_summary_text_from_response_items() {
+        assert_eq!(
+            extract_reasoning_summary_text(&json!({"summary": "direct"})).as_deref(),
+            Some("direct")
+        );
+        assert_eq!(
+            extract_reasoning_summary_text(&json!({
+                "summary": [
+                    {"text": "first"},
+                    {"content": "second"},
+                    "third"
+                ]
+            }))
+            .as_deref(),
+            Some("first\n\nsecond\n\nthird")
+        );
+        assert_eq!(
+            extract_reasoning_summary_text(&json!({"reasoning_content": "compat"})).as_deref(),
+            Some("compat")
+        );
     }
 
     #[test]

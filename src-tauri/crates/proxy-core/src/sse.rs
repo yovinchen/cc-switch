@@ -1,4 +1,4 @@
-use crate::{ProxyCoreError, ProxyCoreResult};
+use crate::{response_transform::extract_reasoning_field_text, ProxyCoreError, ProxyCoreResult};
 use serde_json::{json, Value};
 use std::{collections::BTreeMap, time::Instant};
 
@@ -603,73 +603,6 @@ fn merge_tool_call_delta(
             _ => {}
         }
     }
-}
-
-fn extract_reasoning_field_text(value: &Value) -> Option<String> {
-    for key in ["reasoning_content", "reasoning"] {
-        if let Some(text) = value.get(key).and_then(|value| value.as_str()) {
-            if !text.is_empty() {
-                return Some(text.to_string());
-            }
-        }
-    }
-
-    if let Some(reasoning) = value.get("reasoning") {
-        for key in ["content", "text", "summary"] {
-            if let Some(text) = reasoning.get(key).and_then(|value| value.as_str()) {
-                if !text.is_empty() {
-                    return Some(text.to_string());
-                }
-            }
-        }
-    }
-
-    if let Some(details) = value.get("reasoning_details") {
-        if let Some(text) = extract_reasoning_details_text(details) {
-            return Some(text);
-        }
-    }
-
-    None
-}
-
-fn extract_reasoning_details_text(value: &Value) -> Option<String> {
-    match value {
-        Value::String(text) => (!text.is_empty()).then(|| text.to_string()),
-        Value::Array(parts) => {
-            let text = parts
-                .iter()
-                .filter_map(extract_reasoning_detail_part_text)
-                .filter(|text| !text.is_empty())
-                .collect::<Vec<_>>()
-                .join("\n\n");
-            (!text.is_empty()).then_some(text)
-        }
-        Value::Object(_) => extract_reasoning_detail_part_text(value),
-        _ => None,
-    }
-}
-
-fn extract_reasoning_detail_part_text(value: &Value) -> Option<String> {
-    for key in ["text", "content", "summary"] {
-        if let Some(text) = value.get(key).and_then(|value| value.as_str()) {
-            if !text.is_empty() {
-                return Some(text.to_string());
-            }
-        }
-    }
-
-    if let Some(parts) = value.get("parts").and_then(|value| value.as_array()) {
-        let text = parts
-            .iter()
-            .filter_map(extract_reasoning_detail_part_text)
-            .filter(|text| !text.is_empty())
-            .collect::<Vec<_>>()
-            .join("\n\n");
-        return (!text.is_empty()).then_some(text);
-    }
-
-    None
 }
 
 #[cfg(test)]
