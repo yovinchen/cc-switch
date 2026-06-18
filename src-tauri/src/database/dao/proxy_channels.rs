@@ -9,10 +9,10 @@ use crate::database::{lock_conn, to_json_string, Database};
 use crate::error::AppError;
 use crate::provider::Provider;
 use crate::proxy_core::{
-    infer_legacy_channel_interface, infer_legacy_model_routes, legacy_channel_priority,
-    stable_channel_id, AppKind, LegacyModelRouteInput, LegacyModelRouteProjection,
-    LegacyProviderProjectionInput, ProxyChannelModelWriteRequest, ProxyChannelPatchRequest,
-    ProxyChannelWriteRequest,
+    build_legacy_channel_projection, infer_legacy_channel_interface, legacy_channel_priority,
+    stable_channel_id, AppKind, LegacyChannelModelProjection, LegacyChannelProjection,
+    LegacyChannelProjectionInput, LegacyModelRouteInput, LegacyProviderProjectionInput,
+    ProxyChannelModelWriteRequest, ProxyChannelPatchRequest, ProxyChannelWriteRequest,
 };
 use rusqlite::{params, Connection, OptionalExtension, Row};
 use serde::{Deserialize, Serialize};
@@ -137,9 +137,7 @@ impl Database {
                 provider.in_failover_queue,
                 current_provider_id.as_deref(),
             );
-            let interface_kind = infer_legacy_channel_interface(app_kind.as_ref(), &projection)
-                .as_str()
-                .to_string();
+            let interface_kind = infer_legacy_channel_interface(app_kind.as_ref(), &projection);
             let primary_base_url = app
                 .as_ref()
                 .map(|app| provider.resolve_usage_credentials(app).0)
@@ -917,79 +915,75 @@ fn build_legacy_channel(
     provider: &Provider,
     projection: &LegacyProviderProjectionInput,
     base_url: String,
-    interface_kind: String,
+    interface_kind: crate::proxy_core::InterfaceKind,
     priority: i64,
     source_kind: ProxyChannelSourceKind,
     source_endpoint_url: Option<String>,
 ) -> ProxyChannelRecord {
-    let id = stable_channel_id(app_type, &provider.id, source_kind.as_str(), &base_url);
-    let models = infer_legacy_model_routes(app, projection)
-        .into_iter()
-        .map(|route| proxy_channel_model_record_from_legacy(&id, route))
-        .collect::<Vec<_>>();
-
-    let mut review_reasons = Vec::new();
-    if base_url.is_empty() {
-        review_reasons.push("missing_base_url".to_string());
-    }
-    if models.is_empty() {
-        review_reasons.push("no_model_mapping_inferred".to_string());
-    }
-
-    let needs_review = !review_reasons.is_empty();
-    let metadata = json!({
-        "migration_source": source_kind.as_str(),
-        "provider_name": provider.name.as_str(),
-        "provider_sort_index": provider.sort_index,
-        "provider_in_failover_queue": provider.in_failover_queue,
-        "needs_review": needs_review,
-        "review_reasons": review_reasons,
-    });
-    let name = match &source_kind {
-        ProxyChannelSourceKind::LegacyPrimary => format!("{} primary", provider.name),
-        ProxyChannelSourceKind::LegacyEndpoint => format!("{} endpoint", provider.name),
-        ProxyChannelSourceKind::Manual => provider.name.clone(),
-    };
-
-    ProxyChannelRecord {
-        id,
-        provider_id: provider.id.clone(),
+    let projection = build_legacy_channel_projection(LegacyChannelProjectionInput {
         app_type: app_type.to_string(),
-        name,
-        status: "enabled".to_string(),
+        app: app.cloned(),
+        provider_id: provider.id.clone(),
+        provider_name: provider.name.clone(),
+        provider_sort_index: provider.sort_index,
+        provider_in_failover_queue: provider.in_failover_queue,
         base_url,
         interface_kind,
-        auth_profile_ref: Some(format!("provider:{app_type}:{}", provider.id)),
-        groups: vec![DEFAULT_GROUP.to_string()],
         priority,
-        weight: 100,
-        retry_policy: json!({}),
-        health_policy: json!({}),
-        header_overrides: json!({}),
-        param_overrides: json!({}),
-        status_code_mapping: json!([]),
-        tags: vec!["legacy".to_string()],
-        metadata,
-        source_kind,
+        source_kind: source_kind.as_str().to_string(),
         source_endpoint_url,
-        models,
-        needs_review,
-        review_reasons,
+        provider_projection: projection.clone(),
+    });
+
+    proxy_channel_record_from_legacy(projection, source_kind)
+}
+
+fn proxy_channel_record_from_legacy(
+    projection: LegacyChannelProjection,
+    source_kind: ProxyChannelSourceKind,
+) -> ProxyChannelRecord {
+    ProxyChannelRecord {
+        id: projection.id,
+        provider_id: projection.provider_id,
+        app_type: projection.app_type,
+        name: projection.name,
+        status: projection.status,
+        base_url: projection.base_url,
+        interface_kind: projection.interface_kind,
+        auth_profile_ref: projection.auth_profile_ref,
+        groups: projection.groups,
+        priority: projection.priority,
+        weight: projection.weight,
+        retry_policy: projection.retry_policy,
+        health_policy: projection.health_policy,
+        header_overrides: projection.header_overrides,
+        param_overrides: projection.param_overrides,
+        status_code_mapping: projection.status_code_mapping,
+        tags: projection.tags,
+        metadata: projection.metadata,
+        source_kind,
+        source_endpoint_url: projection.source_endpoint_url,
+        models: projection
+            .models
+            .into_iter()
+            .map(proxy_channel_model_record_from_legacy)
+            .collect(),
+        needs_review: projection.needs_review,
+        review_reasons: projection.review_reasons,
     }
 }
 
 fn proxy_channel_model_record_from_legacy(
-    channel_id: &str,
-    route: LegacyModelRouteProjection,
+    route: LegacyChannelModelProjection,
 ) -> ProxyChannelModelRecord {
     ProxyChannelModelRecord {
-        channel_id: channel_id.to_string(),
+        channel_id: route.channel_id,
         public_model: route.public_model,
         upstream_model: route.upstream_model,
-        capabilities: json!({}),
-        pricing_model: None,
-        request_overrides: json!({}),
-        response_overrides: json!({}),
+        capabilities: route.capabilities,
+        pricing_model: route.pricing_model,
+        request_overrides: route.request_overrides,
+        response_overrides: route.response_overrides,
     }
 }
 
