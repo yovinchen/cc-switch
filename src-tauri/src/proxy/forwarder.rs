@@ -30,8 +30,8 @@ use crate::commands::{CodexOAuthState, CopilotAuthState};
 use crate::proxy::providers::codex_oauth_auth::CodexOAuthManager;
 use crate::proxy::providers::copilot_auth::CopilotAuthManager;
 use crate::proxy_core::{
-    validate_managed_account_upstream_auth, AppKind, ChannelQuery, InterfaceKind, ProxyBody,
-    ProxyEngine, ProxyRequest, ProxyServices,
+    should_preserve_exact_request_header_case, validate_managed_account_upstream_auth, AppKind,
+    ChannelQuery, InterfaceKind, ProxyBody, ProxyEngine, ProxyRequest, ProxyServices,
 };
 use crate::proxy_core_host::CcSwitchProxyServices;
 use crate::{app_config::AppType, provider::Provider};
@@ -2981,15 +2981,12 @@ fn should_preserve_exact_header_case(
     resolved_claude_api_format: Option<&str>,
     is_copilot: bool,
 ) -> bool {
-    if matches!(adapter_name, "Codex" | "Gemini") {
-        return false;
-    }
-
-    if is_copilot || provider.is_codex_oauth() {
-        return false;
-    }
-
-    matches!(resolved_claude_api_format, None | Some("anthropic"))
+    should_preserve_exact_request_header_case(
+        adapter_name,
+        provider.is_codex_oauth(),
+        is_copilot,
+        resolved_claude_api_format,
+    )
 }
 
 fn is_streaming_request(endpoint: &str, body: &Value, headers: &axum::http::HeaderMap) -> bool {
