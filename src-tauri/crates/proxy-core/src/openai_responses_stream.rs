@@ -643,6 +643,40 @@ mod tests {
             .collect()
     }
 
+    fn collect_stream_output(chunks: Vec<Result<Bytes, io::Error>>) -> String {
+        futures::executor::block_on(async move {
+            let upstream = futures_stream::iter(chunks);
+            let converted = create_openai_responses_to_anthropic_sse_stream(upstream);
+            let chunks: Vec<_> = converted.collect().await;
+
+            chunks
+                .into_iter()
+                .map(|chunk| String::from_utf8_lossy(chunk.unwrap().as_ref()).to_string())
+                .collect()
+        })
+    }
+
+    fn collect_stream_events(input: &str) -> Vec<Value> {
+        let output = collect_stream_output(vec![Ok(Bytes::from(input.as_bytes().to_vec()))]);
+        parse_anthropic_events(&output)
+    }
+
+    fn parse_anthropic_events(output: &str) -> Vec<Value> {
+        output
+            .split("\n\n")
+            .filter_map(|block| {
+                let data = block
+                    .lines()
+                    .find_map(|line| line.strip_prefix("data: "))?;
+                serde_json::from_str::<Value>(data).ok()
+            })
+            .collect()
+    }
+
+    fn event_type(event: &Value) -> Option<&str> {
+        event.get("type").and_then(Value::as_str)
+    }
+
     #[test]
     fn response_created_uses_wrapped_response_object() {
         let output = collect_events(&[(
@@ -660,6 +694,35 @@ mod tests {
         assert!(output.contains("\"id\":\"resp_1\""));
         assert!(output.contains("\"model\":\"gpt-4o\""));
         assert!(output.contains("\"input_tokens\":12"));
+    }
+
+    #[test]
+    fn stream_conversion_with_wrapped_response_events() {
+        let input = concat!(
+            "event: response.created\n",
+            "data: {\"type\":\"response.created\",\"response\":{\"id\":\"resp_1\",\"model\":\"gpt-4o\",\"usage\":{\"input_tokens\":12,\"output_tokens\":0}}}\n\n",
+            "event: response.output_item.added\n",
+            "data: {\"type\":\"response.output_item.added\",\"item\":{\"type\":\"function_call\",\"call_id\":\"call_1\",\"name\":\"get_weather\"}}\n\n",
+            "event: response.function_call_arguments.delta\n",
+            "data: {\"type\":\"response.function_call_arguments.delta\",\"delta\":\"{\\\"city\\\":\\\"Tokyo\\\"}\"}\n\n",
+            "event: response.function_call_arguments.done\n",
+            "data: {\"type\":\"response.function_call_arguments.done\"}\n\n",
+            "event: response.completed\n",
+            "data: {\"type\":\"response.completed\",\"response\":{\"status\":\"completed\",\"usage\":{\"input_tokens\":12,\"output_tokens\":3}}}\n\n"
+        );
+
+        let output = collect_stream_output(vec![Ok(Bytes::from(input.as_bytes().to_vec()))]);
+
+        assert!(output.contains("\"type\":\"message_start\""));
+        assert!(output.contains("\"id\":\"resp_1\""));
+        assert!(output.contains("\"model\":\"gpt-4o\""));
+        assert!(output.contains("\"type\":\"tool_use\""));
+        assert!(output.contains("\"name\":\"get_weather\""));
+        assert!(output.contains("\"type\":\"input_json_delta\""));
+        assert!(output.contains("\"stop_reason\":\"tool_use\""));
+        assert!(output.contains("\"input_tokens\":12"));
+        assert!(output.contains("\"output_tokens\":3"));
+        assert!(output.contains("\"type\":\"message_stop\""));
     }
 
     #[test]
@@ -698,6 +761,62 @@ mod tests {
     }
 
     #[test]
+    fn stream_routes_interleaved_tool_deltas_by_item_id() {
+        let input = concat!(
+            "event: response.created\n",
+            "data: {\"type\":\"response.created\",\"response\":{\"id\":\"resp_2\",\"model\":\"gpt-4o\"}}\n\n",
+            "event: response.output_item.added\n",
+            "data: {\"type\":\"response.output_item.added\",\"item\":{\"id\":\"fc_1\",\"type\":\"function_call\",\"call_id\":\"call_1\",\"name\":\"first_tool\"}}\n\n",
+            "event: response.output_item.added\n",
+            "data: {\"type\":\"response.output_item.added\",\"item\":{\"id\":\"fc_2\",\"type\":\"function_call\",\"call_id\":\"call_2\",\"name\":\"second_tool\"}}\n\n",
+            "event: response.function_call_arguments.delta\n",
+            "data: {\"type\":\"response.function_call_arguments.delta\",\"item_id\":\"fc_2\",\"delta\":\"{\\\"b\\\":2}\"}\n\n",
+            "event: response.function_call_arguments.delta\n",
+            "data: {\"type\":\"response.function_call_arguments.delta\",\"item_id\":\"fc_1\",\"delta\":\"{\\\"a\\\":1}\"}\n\n",
+            "event: response.function_call_arguments.done\n",
+            "data: {\"type\":\"response.function_call_arguments.done\",\"item_id\":\"fc_1\"}\n\n",
+            "event: response.function_call_arguments.done\n",
+            "data: {\"type\":\"response.function_call_arguments.done\",\"item_id\":\"fc_2\"}\n\n",
+            "event: response.completed\n",
+            "data: {\"type\":\"response.completed\",\"response\":{\"status\":\"completed\",\"usage\":{\"input_tokens\":8,\"output_tokens\":4}}}\n\n"
+        );
+
+        let events = collect_stream_events(input);
+        let tool_index_by_call: HashMap<String, u64> = events
+            .iter()
+            .filter(|event| event_type(event) == Some("content_block_start"))
+            .filter_map(|event| {
+                let content_block = event.get("content_block")?;
+                if content_block.get("type").and_then(Value::as_str) != Some("tool_use") {
+                    return None;
+                }
+                Some((
+                    content_block.get("id")?.as_str()?.to_string(),
+                    event.get("index")?.as_u64()?,
+                ))
+            })
+            .collect();
+
+        let delta_indices: Vec<u64> = events
+            .iter()
+            .filter(|event| event_type(event) == Some("content_block_delta"))
+            .filter(|event| {
+                event.pointer("/delta/type").and_then(Value::as_str)
+                    == Some("input_json_delta")
+            })
+            .filter_map(|event| event.get("index").and_then(Value::as_u64))
+            .collect();
+
+        assert_eq!(delta_indices.len(), 2);
+        assert_eq!(delta_indices[0], *tool_index_by_call.get("call_2").unwrap());
+        assert_eq!(delta_indices[1], *tool_index_by_call.get("call_1").unwrap());
+        assert_ne!(
+            tool_index_by_call.get("call_1"),
+            tool_index_by_call.get("call_2")
+        );
+    }
+
+    #[test]
     fn read_tool_done_sanitizes_buffered_empty_pages() {
         let output = collect_events(&[
             (
@@ -722,5 +841,160 @@ mod tests {
             "\"partial_json\":\"{\\\"file_path\\\":\\\"/tmp/demo.py\\\",\\\"limit\\\":2000,\\\"offset\\\":0}"
         ));
         assert!(!output.contains("\\\"pages\\\":\\\"\\\""));
+    }
+
+    #[test]
+    fn stream_read_tool_drops_empty_pages() {
+        let input = concat!(
+            "event: response.created\n",
+            "data: {\"type\":\"response.created\",\"response\":{\"id\":\"resp_read\",\"model\":\"gpt-5.5\"}}\n\n",
+            "event: response.output_item.added\n",
+            "data: {\"type\":\"response.output_item.added\",\"item\":{\"id\":\"fc_read\",\"type\":\"function_call\",\"call_id\":\"call_read\",\"name\":\"Read\"}}\n\n",
+            "event: response.function_call_arguments.delta\n",
+            "data: {\"type\":\"response.function_call_arguments.delta\",\"item_id\":\"fc_read\",\"delta\":\"{\\\"file_path\\\":\\\"/tmp/demo.py\\\",\\\"limit\\\":2000,\\\"offset\\\":0,\\\"pages\\\":\\\"\\\"}\"}\n\n",
+            "event: response.function_call_arguments.done\n",
+            "data: {\"type\":\"response.function_call_arguments.done\",\"item_id\":\"fc_read\",\"arguments\":\"{\\\"file_path\\\":\\\"/tmp/demo.py\\\",\\\"limit\\\":2000,\\\"offset\\\":0,\\\"pages\\\":\\\"\\\"}\"}\n\n",
+            "event: response.completed\n",
+            "data: {\"type\":\"response.completed\",\"response\":{\"status\":\"completed\"}}\n\n"
+        );
+
+        let output = collect_stream_output(vec![Ok(Bytes::from(input.as_bytes().to_vec()))]);
+
+        assert!(output.contains("\"name\":\"Read\""));
+        assert!(output.contains(
+            "\"partial_json\":\"{\\\"file_path\\\":\\\"/tmp/demo.py\\\",\\\"limit\\\":2000,\\\"offset\\\":0}"
+        ));
+        assert!(!output.contains("\\\"pages\\\":\\\"\\\""));
+    }
+
+    #[test]
+    fn stream_read_tool_duplicate_start_preserves_buffered_args() {
+        let input = concat!(
+            "event: response.created\n",
+            "data: {\"type\":\"response.created\",\"response\":{\"id\":\"resp_read\",\"model\":\"gpt-5.5\"}}\n\n",
+            "event: response.output_item.added\n",
+            "data: {\"type\":\"response.output_item.added\",\"item\":{\"id\":\"fc_read\",\"type\":\"function_call\",\"call_id\":\"call_read\",\"name\":\"Read\"}}\n\n",
+            "event: response.function_call_arguments.delta\n",
+            "data: {\"type\":\"response.function_call_arguments.delta\",\"item_id\":\"fc_read\",\"delta\":\"{\\\"file_path\\\":\\\"/tmp/demo.py\\\",\\\"limit\\\":2000,\\\"offset\\\":0,\\\"pages\\\":\\\"\\\"}\"}\n\n",
+            "event: response.output_item.added\n",
+            "data: {\"type\":\"response.output_item.added\",\"item\":{\"id\":\"fc_read\",\"type\":\"function_call\",\"call_id\":\"call_read\",\"name\":\"Read\"}}\n\n",
+            "event: response.function_call_arguments.done\n",
+            "data: {\"type\":\"response.function_call_arguments.done\",\"item_id\":\"fc_read\"}\n\n",
+            "event: response.completed\n",
+            "data: {\"type\":\"response.completed\",\"response\":{\"status\":\"completed\"}}\n\n"
+        );
+
+        let output = collect_stream_output(vec![Ok(Bytes::from(input.as_bytes().to_vec()))]);
+
+        assert_eq!(output.matches("event: content_block_start").count(), 1);
+        assert_eq!(output.matches("event: content_block_stop").count(), 1);
+        assert!(output.contains(
+            "\"partial_json\":\"{\\\"file_path\\\":\\\"/tmp/demo.py\\\",\\\"limit\\\":2000,\\\"offset\\\":0}"
+        ));
+        assert!(!output.contains("\\\"pages\\\":\\\"\\\""));
+    }
+
+    #[test]
+    fn stream_reasoning_delta_emits_thinking_blocks() {
+        let input = concat!(
+            "event: response.created\n",
+            "data: {\"type\":\"response.created\",\"response\":{\"id\":\"resp_r\",\"model\":\"o3\",\"usage\":{\"input_tokens\":5,\"output_tokens\":0}}}\n\n",
+            "event: response.reasoning.delta\n",
+            "data: {\"type\":\"response.reasoning.delta\",\"delta\":\"Let me think...\"}\n\n",
+            "event: response.reasoning.done\n",
+            "data: {\"type\":\"response.reasoning.done\"}\n\n",
+            "event: response.content_part.added\n",
+            "data: {\"type\":\"response.content_part.added\",\"part\":{\"type\":\"output_text\",\"text\":\"\"},\"output_index\":0,\"content_index\":0}\n\n",
+            "event: response.output_text.delta\n",
+            "data: {\"type\":\"response.output_text.delta\",\"delta\":\"42\",\"output_index\":0,\"content_index\":0}\n\n",
+            "event: response.content_part.done\n",
+            "data: {\"type\":\"response.content_part.done\",\"output_index\":0,\"content_index\":0}\n\n",
+            "event: response.completed\n",
+            "data: {\"type\":\"response.completed\",\"response\":{\"status\":\"completed\",\"usage\":{\"input_tokens\":5,\"output_tokens\":10}}}\n\n"
+        );
+
+        let output = collect_stream_output(vec![Ok(Bytes::from(input.as_bytes().to_vec()))]);
+
+        assert!(output.contains("\"type\":\"thinking\""));
+        assert!(output.contains("\"type\":\"thinking_delta\""));
+        assert!(output.contains("\"thinking\":\"Let me think...\""));
+        assert!(output.contains("\"type\":\"text_delta\""));
+        assert!(output.contains("\"text\":\"42\""));
+        assert!(output.contains("\"stop_reason\":\"end_turn\""));
+    }
+
+    #[test]
+    fn stream_text_parts_are_merged_into_one_text_block() {
+        let input = concat!(
+            "event: response.created\n",
+            "data: {\"type\":\"response.created\",\"response\":{\"id\":\"resp_merge\",\"model\":\"gpt-5.4\",\"usage\":{\"input_tokens\":5,\"output_tokens\":0}}}\n\n",
+            "event: response.content_part.added\n",
+            "data: {\"type\":\"response.content_part.added\",\"part\":{\"type\":\"output_text\",\"text\":\"\"},\"output_index\":0,\"content_index\":0}\n\n",
+            "event: response.output_text.delta\n",
+            "data: {\"type\":\"response.output_text.delta\",\"delta\":\"你\",\"output_index\":0,\"content_index\":0}\n\n",
+            "event: response.content_part.done\n",
+            "data: {\"type\":\"response.content_part.done\",\"output_index\":0,\"content_index\":0}\n\n",
+            "event: response.content_part.added\n",
+            "data: {\"type\":\"response.content_part.added\",\"part\":{\"type\":\"output_text\",\"text\":\"\"},\"output_index\":0,\"content_index\":1}\n\n",
+            "event: response.output_text.delta\n",
+            "data: {\"type\":\"response.output_text.delta\",\"delta\":\"好\",\"output_index\":0,\"content_index\":1}\n\n",
+            "event: response.content_part.done\n",
+            "data: {\"type\":\"response.content_part.done\",\"output_index\":0,\"content_index\":1}\n\n",
+            "event: response.output_text.done\n",
+            "data: {\"type\":\"response.output_text.done\",\"output_index\":0,\"content_index\":1}\n\n",
+            "event: response.completed\n",
+            "data: {\"type\":\"response.completed\",\"response\":{\"status\":\"completed\",\"usage\":{\"input_tokens\":5,\"output_tokens\":2}}}\n\n"
+        );
+
+        let events = collect_stream_events(input);
+        let text_starts = events
+            .iter()
+            .filter(|event| event_type(event) == Some("content_block_start"))
+            .filter(|event| {
+                event.pointer("/content_block/type").and_then(Value::as_str) == Some("text")
+            })
+            .count();
+        let text_stops = events
+            .iter()
+            .filter(|event| event_type(event) == Some("content_block_stop"))
+            .count();
+        let text_deltas: Vec<String> = events
+            .iter()
+            .filter(|event| event_type(event) == Some("content_block_delta"))
+            .filter(|event| event.pointer("/delta/type").and_then(Value::as_str) == Some("text_delta"))
+            .filter_map(|event| {
+                event
+                    .pointer("/delta/text")
+                    .and_then(Value::as_str)
+                    .map(ToString::to_string)
+            })
+            .collect();
+
+        assert_eq!(text_starts, 1);
+        assert_eq!(text_stops, 1);
+        assert_eq!(text_deltas, vec!["你".to_string(), "好".to_string()]);
+    }
+
+    #[test]
+    fn stream_preserves_multibyte_text_split_across_chunks() {
+        let full = concat!(
+            "event: response.created\n",
+            "data: {\"type\":\"response.created\",\"response\":{\"id\":\"resp_cn\",\"model\":\"gpt-4o\",\"usage\":{\"input_tokens\":5,\"output_tokens\":0}}}\n\n",
+            "event: response.output_text.delta\n",
+            "data: {\"type\":\"response.output_text.delta\",\"delta\":\"你好世界\"}\n\n",
+            "event: response.completed\n",
+            "data: {\"type\":\"response.completed\",\"response\":{\"status\":\"completed\",\"usage\":{\"input_tokens\":5,\"output_tokens\":4}}}\n\n"
+        );
+        let bytes = full.as_bytes();
+        let ni_start = bytes.windows(3).position(|w| w == "你".as_bytes()).unwrap();
+        let split_point = ni_start + 2;
+
+        let output = collect_stream_output(vec![
+            Ok(Bytes::from(bytes[..split_point].to_vec())),
+            Ok(Bytes::from(bytes[split_point..].to_vec())),
+        ]);
+
+        assert!(output.contains("你好世界"));
+        assert!(!output.contains('\u{FFFD}'));
     }
 }
