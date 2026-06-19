@@ -12,6 +12,18 @@ pub struct ModelMapping {
 }
 
 impl ModelMapping {
+    pub fn from_settings_config(settings_config: &Value) -> Self {
+        let env = settings_config.get("env");
+
+        Self {
+            haiku_model: env_string(env, "ANTHROPIC_DEFAULT_HAIKU_MODEL"),
+            sonnet_model: env_string(env, "ANTHROPIC_DEFAULT_SONNET_MODEL"),
+            opus_model: env_string(env, "ANTHROPIC_DEFAULT_OPUS_MODEL"),
+            fable_model: env_string(env, "ANTHROPIC_DEFAULT_FABLE_MODEL"),
+            default_model: env_string(env, "ANTHROPIC_MODEL"),
+        }
+    }
+
     pub fn has_mapping(&self) -> bool {
         self.haiku_model.is_some()
             || self.sonnet_model.is_some()
@@ -51,6 +63,13 @@ impl ModelMapping {
             .clone()
             .unwrap_or_else(|| original_model.to_string())
     }
+}
+
+fn env_string(env: Option<&Value>, key: &str) -> Option<String> {
+    env.and_then(|env| env.get(key))
+        .and_then(Value::as_str)
+        .filter(|value| !value.is_empty())
+        .map(String::from)
 }
 
 pub fn apply_model_mapping_to_body(
@@ -118,6 +137,38 @@ mod tests {
             fable_model: Some("fable-mapped".to_string()),
             default_model: Some("default-model".to_string()),
         }
+    }
+
+    #[test]
+    fn builds_mapping_from_provider_settings_env() {
+        let mapping = ModelMapping::from_settings_config(&json!({
+            "env": {
+                "ANTHROPIC_MODEL": "default-model",
+                "ANTHROPIC_DEFAULT_HAIKU_MODEL": "haiku-mapped",
+                "ANTHROPIC_DEFAULT_SONNET_MODEL": "sonnet-mapped",
+                "ANTHROPIC_DEFAULT_OPUS_MODEL": "opus-mapped",
+                "ANTHROPIC_DEFAULT_FABLE_MODEL": "fable-mapped"
+            }
+        }));
+
+        assert_eq!(mapping.haiku_model.as_deref(), Some("haiku-mapped"));
+        assert_eq!(mapping.sonnet_model.as_deref(), Some("sonnet-mapped"));
+        assert_eq!(mapping.opus_model.as_deref(), Some("opus-mapped"));
+        assert_eq!(mapping.fable_model.as_deref(), Some("fable-mapped"));
+        assert_eq!(mapping.default_model.as_deref(), Some("default-model"));
+    }
+
+    #[test]
+    fn provider_settings_mapping_ignores_empty_env_values() {
+        let mapping = ModelMapping::from_settings_config(&json!({
+            "env": {
+                "ANTHROPIC_MODEL": "",
+                "ANTHROPIC_DEFAULT_HAIKU_MODEL": "haiku-mapped"
+            }
+        }));
+
+        assert_eq!(mapping.haiku_model.as_deref(), Some("haiku-mapped"));
+        assert_eq!(mapping.default_model, None);
     }
 
     #[test]

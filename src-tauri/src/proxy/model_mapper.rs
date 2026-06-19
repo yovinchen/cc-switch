@@ -6,35 +6,7 @@ use crate::provider::Provider;
 use serde_json::Value;
 
 fn model_mapping_from_provider(provider: &Provider) -> crate::proxy_core::ModelMapping {
-    let env = provider.settings_config.get("env");
-
-    crate::proxy_core::ModelMapping {
-        haiku_model: env
-            .and_then(|e| e.get("ANTHROPIC_DEFAULT_HAIKU_MODEL"))
-            .and_then(|v| v.as_str())
-            .filter(|s| !s.is_empty())
-            .map(String::from),
-        sonnet_model: env
-            .and_then(|e| e.get("ANTHROPIC_DEFAULT_SONNET_MODEL"))
-            .and_then(|v| v.as_str())
-            .filter(|s| !s.is_empty())
-            .map(String::from),
-        opus_model: env
-            .and_then(|e| e.get("ANTHROPIC_DEFAULT_OPUS_MODEL"))
-            .and_then(|v| v.as_str())
-            .filter(|s| !s.is_empty())
-            .map(String::from),
-        fable_model: env
-            .and_then(|e| e.get("ANTHROPIC_DEFAULT_FABLE_MODEL"))
-            .and_then(|v| v.as_str())
-            .filter(|s| !s.is_empty())
-            .map(String::from),
-        default_model: env
-            .and_then(|e| e.get("ANTHROPIC_MODEL"))
-            .and_then(|v| v.as_str())
-            .filter(|s| !s.is_empty())
-            .map(String::from),
-    }
+    crate::proxy_core::ModelMapping::from_settings_config(&provider.settings_config)
 }
 
 /// 对请求体应用模型映射
