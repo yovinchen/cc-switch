@@ -1,18 +1,17 @@
 //! OpenAI Chat Completions SSE → OpenAI Responses SSE conversion.
 
-use super::{
-    codex_chat_common::{
-        extract_reasoning_field_text, split_leading_think_block, strip_leading_think_open_tag,
-    },
-    transform_codex_chat::{
-        chat_usage_to_responses_usage, custom_tool_input_from_chat_arguments,
-        response_id_from_chat_id, response_status_from_finish_reason,
-        response_tool_call_item_from_chat_name, response_tool_call_item_id_from_chat_name,
-        CodexToolContext,
-    },
+use super::codex_chat_common::{
+    extract_reasoning_field_text, split_leading_think_block, strip_leading_think_open_tag,
 };
 use crate::proxy::json_canonical::canonicalize_tool_arguments_str;
 use crate::proxy::sse::{strip_sse_field, take_sse_block};
+#[cfg(test)]
+use crate::proxy_core::build_codex_tool_context_from_request;
+use crate::proxy_core::{
+    chat_usage_to_responses_usage, custom_tool_input_from_chat_arguments, response_id_from_chat_id,
+    response_status_from_finish_reason, response_tool_call_item_from_chat_name,
+    response_tool_call_item_id_from_chat_name, CodexToolContext,
+};
 use bytes::Bytes;
 use futures::stream::{Stream, StreamExt};
 use serde_json::{json, Value};
@@ -1124,8 +1123,7 @@ mod tests {
             "model": "gpt-5.4",
             "tools": [{ "type": "custom", "name": "exec" }]
         });
-        let context =
-            super::super::transform_codex_chat::build_codex_tool_context_from_request(&request);
+        let context = build_codex_tool_context_from_request(&request);
         let output = collect_with_context(
             vec![
                 "data: {\"id\":\"chatcmpl_custom\",\"model\":\"gpt-5.4\",\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":0,\"id\":\"call_custom\",\"type\":\"function\",\"function\":{\"name\":\"exec\"}}]}}]}\n\n",
@@ -1210,8 +1208,7 @@ mod tests {
                 }]
             }]
         });
-        let context =
-            super::super::transform_codex_chat::build_codex_tool_context_from_request(&request);
+        let context = build_codex_tool_context_from_request(&request);
         let output = collect_with_context(
             vec![
                 "data: {\"id\":\"chatcmpl_gmail\",\"model\":\"gpt-5.4\",\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":0,\"id\":\"call_gmail\",\"type\":\"function\",\"function\":{\"name\":\"mcp__codex_apps__gmail___search_emails\"}}]}}]}\n\n",
@@ -1235,8 +1232,7 @@ mod tests {
             "tools": [{"type": "tool_search"}],
             "input": "Search for Gmail tools."
         });
-        let context =
-            super::super::transform_codex_chat::build_codex_tool_context_from_request(&request);
+        let context = build_codex_tool_context_from_request(&request);
         let output = collect_with_context(
             vec![
                 "data: {\"id\":\"chatcmpl_tool_search\",\"model\":\"gpt-5.4\",\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":0,\"id\":\"call_tool_search_1\",\"type\":\"function\",\"function\":{\"name\":\"tool_search\"}}]}}]}\n\n",

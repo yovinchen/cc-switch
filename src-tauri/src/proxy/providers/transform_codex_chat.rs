@@ -7,14 +7,10 @@
 use crate::provider::CodexChatReasoningConfig;
 use crate::proxy::error::ProxyError;
 #[cfg(test)]
-use crate::proxy_core::collapse_system_messages_to_head;
-pub(crate) use crate::proxy_core::{
-    build_codex_tool_context_from_request,
+use crate::proxy_core::{build_codex_tool_context_from_request, collapse_system_messages_to_head};
+use crate::proxy_core::{
     chat_completion_to_response_with_context as build_chat_completion_response_with_context,
-    chat_usage_to_responses_usage, custom_tool_input_from_chat_arguments, response_id_from_chat_id,
-    response_status_from_finish_reason, response_tool_call_item_from_chat_name,
-    response_tool_call_item_id_from_chat_name, responses_to_chat_completions_with_options,
-    CodexChatReasoningOptions, CodexToolContext,
+    responses_to_chat_completions_with_options, CodexChatReasoningOptions, CodexToolContext,
 };
 #[cfg(test)]
 use serde_json::json;

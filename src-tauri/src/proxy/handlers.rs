@@ -1105,7 +1105,7 @@ pub async fn handle_responses(
         .get("stream")
         .and_then(|v| v.as_bool())
         .unwrap_or(false);
-    let codex_tool_context = transform_codex_chat::build_codex_tool_context_from_request(&body);
+    let codex_tool_context = crate::proxy_core::build_codex_tool_context_from_request(&body);
 
     let mut proxy_request = ProxyRequest::new(
         AppKind::from(&AppType::Codex),
@@ -1172,7 +1172,7 @@ pub async fn handle_responses_compact(
         .get("stream")
         .and_then(|v| v.as_bool())
         .unwrap_or(false);
-    let codex_tool_context = transform_codex_chat::build_codex_tool_context_from_request(&body);
+    let codex_tool_context = crate::proxy_core::build_codex_tool_context_from_request(&body);
 
     let mut proxy_request = ProxyRequest::new(
         AppKind::from(&AppType::Codex),
@@ -1219,7 +1219,7 @@ async fn handle_codex_chat_to_responses_transform(
     state: &ProxyState,
     is_stream: bool,
     connection_guard: Option<ActiveConnectionGuard>,
-    tool_context: transform_codex_chat::CodexToolContext,
+    tool_context: crate::proxy_core::CodexToolContext,
 ) -> Result<axum::response::Response, ProxyError> {
     let status = response.status();
 
