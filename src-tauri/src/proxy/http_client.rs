@@ -9,7 +9,7 @@ use std::env;
 use std::sync::RwLock;
 use std::time::Duration;
 
-use crate::proxy_core::{proxy_values_point_to_loopback_port, SYSTEM_PROXY_ENV_KEYS};
+use crate::proxy_core::{SYSTEM_PROXY_ENV_KEYS, proxy_values_point_to_loopback_port};
 
 /// 全局 HTTP 客户端实例
 static GLOBAL_CLIENT: OnceCell<RwLock<Client>> = OnceCell::new();
@@ -273,21 +273,7 @@ fn system_proxy_points_to_loopback() -> bool {
 
 /// 隐藏 URL 中的敏感信息（用于日志）
 pub fn mask_url(url: &str) -> String {
-    if let Ok(parsed) = url::Url::parse(url) {
-        // 隐藏用户名和密码，保留 scheme、host 和端口
-        let host = parsed.host_str().unwrap_or("?");
-        match parsed.port() {
-            Some(port) => format!("{}://{}:{}", parsed.scheme(), host, port),
-            None => format!("{}://{}", parsed.scheme(), host),
-        }
-    } else {
-        // URL 解析失败，返回部分内容
-        if url.len() > 20 {
-            format!("{}...", &url[..20])
-        } else {
-            url.to_string()
-        }
-    }
+    crate::proxy_core::mask_url_for_log(url)
 }
 
 #[cfg(test)]
