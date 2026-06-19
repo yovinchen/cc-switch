@@ -5,7 +5,7 @@
 use crate::error::AppError;
 use crate::proxy::types::*;
 use crate::proxy::CircuitBreakerStats;
-use crate::proxy_core::{CircuitBreakerConfig, ProxyRuntimeStatus};
+use crate::proxy_core::{CircuitBreakerConfig, ProviderHealth, ProxyRuntimeStatus};
 use crate::store::AppState;
 
 /// 启动代理服务器（仅启动服务，不接管 Live 配置）
