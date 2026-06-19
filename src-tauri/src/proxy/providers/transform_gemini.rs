@@ -11,10 +11,11 @@ use crate::proxy_core::{
     build_gemini_generation_config, build_gemini_system_instruction,
     ensure_gemini_function_call_ids,
     extract_anthropic_tool_schema_hints as core_extract_anthropic_tool_schema_hints,
-    extract_gemini_function_call_meta, gemini_shadow_replay_parts,
-    is_synthesized_gemini_tool_call_id, map_gemini_finish_reason_to_anthropic,
-    map_gemini_tool_choice_to_config, normalize_gemini_tool_result_response,
-    rectify_gemini_tool_call_args, rectify_gemini_tool_call_parts, synthesize_gemini_tool_call_id,
+    extract_gemini_function_call_meta, find_matching_gemini_shadow_turn,
+    gemini_shadow_replay_parts, is_synthesized_gemini_tool_call_id,
+    map_gemini_finish_reason_to_anthropic, map_gemini_tool_choice_to_config,
+    normalize_gemini_tool_result_response, rectify_gemini_tool_call_args,
+    rectify_gemini_tool_call_parts, synthesize_gemini_tool_call_id,
 };
 use serde_json::{Value, json};
 use std::collections::{HashMap, HashSet};
@@ -320,11 +321,9 @@ fn convert_messages_to_contents(
                 .checked_sub(shadow_start_index)
                 .filter(|index| *index < effective_shadow_turns.len())
                 .filter(|index| !used_shadow_indices.contains(index));
-            let tool_use_match_index = find_matching_shadow_turn_for_assistant_message(
-                message.get("content"),
-                effective_shadow_turns,
-            )
-            .filter(|index| !used_shadow_indices.contains(index));
+            let tool_use_match_index =
+                find_matching_gemini_shadow_turn(message.get("content"), effective_shadow_turns)
+                    .filter(|index| !used_shadow_indices.contains(index));
             assistant_seen_index += 1;
             let shadow_index = tool_use_match_index.or(positional_shadow_index);
 
@@ -371,83 +370,6 @@ fn convert_messages_to_contents(
     }
 
     Ok(contents)
-}
-
-fn find_matching_shadow_turn_for_assistant_message(
-    content: Option<&Value>,
-    shadow_turns: &[GeminiAssistantTurn],
-) -> Option<usize> {
-    let (tool_use_ids, tool_use_names) = extract_assistant_tool_use_keys(content);
-    if tool_use_ids.is_empty() && tool_use_names.is_empty() {
-        return None;
-    }
-
-    // Prefer exact tool-call id match. With identical tool suffixes across
-    // servers (e.g. `server_a:search` and `server_b:search`) the
-    // normalized-name clause below would otherwise match an earlier shadow
-    // turn whose id is actually wrong for this message, mis-routing replay
-    // state (functionCall id / thoughtSignature) for later tool_result
-    // resolution. Only fall back to name matching when id-based lookup fails
-    // or when the incoming message carries no ids at all.
-    if !tool_use_ids.is_empty() {
-        if let Some(index) = shadow_turns.iter().position(|turn| {
-            turn.tool_calls.iter().any(|tool_call| {
-                tool_call
-                    .id
-                    .as_deref()
-                    .is_some_and(|id| tool_use_ids.contains(id))
-            })
-        }) {
-            return Some(index);
-        }
-    }
-
-    shadow_turns.iter().enumerate().find_map(|(index, turn)| {
-        turn.tool_calls
-            .iter()
-            .any(|tool_call| {
-                tool_use_names.contains(tool_call.name.as_str())
-                    || tool_use_names.contains(normalize_tool_name(&tool_call.name))
-            })
-            .then_some(index)
-    })
-}
-
-fn extract_assistant_tool_use_keys(content: Option<&Value>) -> (HashSet<String>, HashSet<String>) {
-    let mut tool_use_ids = HashSet::new();
-    let mut tool_use_names = HashSet::new();
-    let Some(blocks) = content.and_then(|value| value.as_array()) else {
-        return (tool_use_ids, tool_use_names);
-    };
-
-    for block in blocks {
-        if block.get("type").and_then(|value| value.as_str()) != Some("tool_use") {
-            continue;
-        }
-
-        if let Some(id) = block
-            .get("id")
-            .and_then(|value| value.as_str())
-            .filter(|id| !id.is_empty())
-        {
-            tool_use_ids.insert(id.to_string());
-        }
-
-        if let Some(name) = block
-            .get("name")
-            .and_then(|value| value.as_str())
-            .filter(|name| !name.is_empty())
-        {
-            tool_use_names.insert(name.to_string());
-            tool_use_names.insert(normalize_tool_name(name).to_string());
-        }
-    }
-
-    (tool_use_ids, tool_use_names)
-}
-
-fn normalize_tool_name(name: &str) -> &str {
-    name.rsplit(':').next().unwrap_or(name)
 }
 
 fn convert_message_content_to_parts(

@@ -5,7 +5,7 @@
 //! the main proxy files.
 
 use serde_json::Value;
-use std::collections::{HashMap, VecDeque};
+use std::collections::{HashMap, HashSet, VecDeque};
 use std::sync::{RwLock, RwLockReadGuard, RwLockWriteGuard};
 
 /// Composite key for a Gemini shadow session.
@@ -63,6 +63,82 @@ impl GeminiAssistantTurn {
             tool_calls,
         }
     }
+}
+
+pub fn find_matching_gemini_shadow_turn(
+    content: Option<&Value>,
+    shadow_turns: &[GeminiAssistantTurn],
+) -> Option<usize> {
+    let (tool_use_ids, tool_use_names) = extract_gemini_assistant_tool_use_keys(content);
+    if tool_use_ids.is_empty() && tool_use_names.is_empty() {
+        return None;
+    }
+
+    // Prefer exact tool-call id match. With identical tool suffixes across
+    // servers (e.g. `server_a:search` and `server_b:search`) a name fallback
+    // could otherwise match an earlier shadow turn whose id belongs to a
+    // different request.
+    if !tool_use_ids.is_empty() {
+        if let Some(index) = shadow_turns.iter().position(|turn| {
+            turn.tool_calls.iter().any(|tool_call| {
+                tool_call
+                    .id
+                    .as_deref()
+                    .is_some_and(|id| tool_use_ids.contains(id))
+            })
+        }) {
+            return Some(index);
+        }
+    }
+
+    shadow_turns.iter().enumerate().find_map(|(index, turn)| {
+        turn.tool_calls
+            .iter()
+            .any(|tool_call| {
+                tool_use_names.contains(tool_call.name.as_str())
+                    || tool_use_names.contains(normalize_gemini_tool_name(&tool_call.name))
+            })
+            .then_some(index)
+    })
+}
+
+fn extract_gemini_assistant_tool_use_keys(
+    content: Option<&Value>,
+) -> (HashSet<String>, HashSet<String>) {
+    let mut tool_use_ids = HashSet::new();
+    let mut tool_use_names = HashSet::new();
+    let Some(blocks) = content.and_then(|value| value.as_array()) else {
+        return (tool_use_ids, tool_use_names);
+    };
+
+    for block in blocks {
+        if block.get("type").and_then(|value| value.as_str()) != Some("tool_use") {
+            continue;
+        }
+
+        if let Some(id) = block
+            .get("id")
+            .and_then(|value| value.as_str())
+            .filter(|id| !id.is_empty())
+        {
+            tool_use_ids.insert(id.to_string());
+        }
+
+        if let Some(name) = block
+            .get("name")
+            .and_then(|value| value.as_str())
+            .filter(|name| !name.is_empty())
+        {
+            tool_use_names.insert(name.to_string());
+            tool_use_names.insert(normalize_gemini_tool_name(name).to_string());
+        }
+    }
+
+    (tool_use_ids, tool_use_names)
+}
+
+fn normalize_gemini_tool_name(name: &str) -> &str {
+    name.rsplit(':').next().unwrap_or(name)
 }
 
 /// Session snapshot returned by read APIs.
@@ -393,5 +469,58 @@ mod tests {
         assert_eq!(removed, 1);
         assert!(store.get_session("provider-a", "session-2").is_none());
         assert!(store.get_session("provider-b", "session-3").is_some());
+    }
+
+    #[test]
+    fn shadow_turn_match_prefers_exact_tool_use_id_over_name() {
+        let turns = vec![
+            GeminiAssistantTurn::new(
+                json!({"parts": []}),
+                vec![GeminiToolCallMeta::new(
+                    Some("call-wrong"),
+                    "server_a:search",
+                    json!({}),
+                    None::<String>,
+                )],
+            ),
+            GeminiAssistantTurn::new(
+                json!({"parts": []}),
+                vec![GeminiToolCallMeta::new(
+                    Some("call-right"),
+                    "server_b:search",
+                    json!({}),
+                    None::<String>,
+                )],
+            ),
+        ];
+        let content = json!([
+            {"type": "tool_use", "id": "call-right", "name": "server_a:search", "input": {}}
+        ]);
+
+        assert_eq!(
+            find_matching_gemini_shadow_turn(Some(&content), &turns),
+            Some(1)
+        );
+    }
+
+    #[test]
+    fn shadow_turn_match_falls_back_to_normalized_tool_name() {
+        let turns = vec![GeminiAssistantTurn::new(
+            json!({"parts": []}),
+            vec![GeminiToolCallMeta::new(
+                None::<String>,
+                "server_a:search",
+                json!({}),
+                None::<String>,
+            )],
+        )];
+        let content = json!([
+            {"type": "tool_use", "name": "search", "input": {}}
+        ]);
+
+        assert_eq!(
+            find_matching_gemini_shadow_turn(Some(&content), &turns),
+            Some(0)
+        );
     }
 }
