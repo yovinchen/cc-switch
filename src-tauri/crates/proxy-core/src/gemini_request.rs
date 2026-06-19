@@ -1,6 +1,8 @@
 //! Gemini Native request helpers.
 
+use crate::{is_synthesized_gemini_tool_call_id, normalize_gemini_tool_result_response};
 use serde_json::{Map, Value, json};
+use std::collections::HashMap;
 
 pub const GEMINI_SYSTEM_INSTRUCTION_TYPE_ERROR: &str =
     "Anthropic system must be a string or an array";
@@ -130,10 +132,171 @@ pub fn map_gemini_tool_choice_to_config(
     }
 }
 
+pub fn anthropic_message_content_to_gemini_parts(
+    content: Option<&Value>,
+    role: &str,
+    tool_name_by_id: &mut HashMap<String, String>,
+    thought_signature_by_id: &HashMap<String, String>,
+) -> Result<Vec<Value>, String> {
+    let Some(content) = content else {
+        return Ok(Vec::new());
+    };
+
+    if let Some(text) = content.as_str() {
+        return Ok(vec![json!({ "text": text })]);
+    }
+
+    let Some(blocks) = content.as_array() else {
+        return Err("Anthropic message content must be a string or array".to_string());
+    };
+
+    let mut parts = Vec::new();
+
+    for block in blocks {
+        let block_type = block
+            .get("type")
+            .and_then(|value| value.as_str())
+            .unwrap_or("");
+
+        match block_type {
+            "text" => {
+                if let Some(text) = block.get("text").and_then(|value| value.as_str()) {
+                    parts.push(json!({ "text": text }));
+                }
+            }
+            "image" => {
+                let source = block
+                    .get("source")
+                    .ok_or_else(|| "Gemini image block missing source".to_string())?;
+
+                let source_type = source
+                    .get("type")
+                    .and_then(|value| value.as_str())
+                    .unwrap_or("");
+
+                if source_type != "base64" {
+                    return Err(format!(
+                        "Gemini Native only supports base64 image sources, got `{source_type}`"
+                    ));
+                }
+
+                parts.push(json!({
+                    "inlineData": {
+                        "mimeType": source.get("media_type").and_then(|value| value.as_str()).unwrap_or("image/png"),
+                        "data": source.get("data").and_then(|value| value.as_str()).unwrap_or("")
+                    }
+                }));
+            }
+            "document" => {
+                let source = block
+                    .get("source")
+                    .ok_or_else(|| "Gemini document block missing source".to_string())?;
+
+                let source_type = source
+                    .get("type")
+                    .and_then(|value| value.as_str())
+                    .unwrap_or("");
+
+                if source_type != "base64" {
+                    return Err(format!(
+                        "Gemini Native only supports base64 document sources, got `{source_type}`"
+                    ));
+                }
+
+                parts.push(json!({
+                    "inlineData": {
+                        "mimeType": source.get("media_type").and_then(|value| value.as_str()).unwrap_or("application/pdf"),
+                        "data": source.get("data").and_then(|value| value.as_str()).unwrap_or("")
+                    }
+                }));
+            }
+            "tool_use" => {
+                if role != "assistant" {
+                    return Err("tool_use blocks are only valid in assistant messages".to_string());
+                }
+
+                let id = block
+                    .get("id")
+                    .and_then(|value| value.as_str())
+                    .unwrap_or("");
+                let name = block
+                    .get("name")
+                    .and_then(|value| value.as_str())
+                    .unwrap_or("");
+                if !id.is_empty() && !name.is_empty() {
+                    tool_name_by_id.insert(id.to_string(), name.to_string());
+                }
+
+                // A synthesized id is an internal proxy identifier; Gemini
+                // disambiguates those calls by order, matching its prior
+                // no-id response shape.
+                let mut function_call = json!({
+                    "name": name,
+                    "args": block.get("input").cloned().unwrap_or_else(|| json!({}))
+                });
+                if !id.is_empty() && !is_synthesized_gemini_tool_call_id(id) {
+                    function_call["id"] = json!(id);
+                }
+
+                if let Some(sig) = thought_signature_by_id.get(id) {
+                    function_call["thoughtSignature"] = json!(sig);
+                }
+
+                parts.push(json!({ "functionCall": function_call }));
+            }
+            "tool_result" => {
+                let tool_use_id = block
+                    .get("tool_use_id")
+                    .and_then(|value| value.as_str())
+                    .unwrap_or("");
+                let name = tool_name_by_id
+                    .get(tool_use_id)
+                    .cloned()
+                    .or_else(|| {
+                        blocks.iter().find_map(|block| {
+                            let block_type = block.get("type").and_then(|value| value.as_str())?;
+                            if block_type != "tool_use" {
+                                return None;
+                            }
+                            let id = block.get("id").and_then(|value| value.as_str())?;
+                            if id != tool_use_id {
+                                return None;
+                            }
+                            block
+                                .get("name")
+                                .and_then(|value| value.as_str())
+                                .map(ToString::to_string)
+                        })
+                    })
+                    .ok_or_else(|| {
+                        format!(
+                            "Unable to resolve Gemini functionResponse.name for tool_use_id `{tool_use_id}`"
+                        )
+                    })?;
+
+                let mut function_response = json!({
+                    "name": name,
+                    "response": normalize_gemini_tool_result_response(block.get("content"))
+                });
+                if !tool_use_id.is_empty() && !is_synthesized_gemini_tool_call_id(tool_use_id) {
+                    function_response["id"] = json!(tool_use_id);
+                }
+
+                parts.push(json!({ "functionResponse": function_response }));
+            }
+            "thinking" | "redacted_thinking" => {}
+            _ => {}
+        }
+    }
+
+    Ok(parts)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use serde_json::json;
+    use std::collections::HashMap;
 
     #[test]
     fn builds_gemini_system_instruction_from_top_level_and_message_systems() {
@@ -246,6 +409,74 @@ mod tests {
         assert_eq!(
             map_gemini_tool_choice_to_config(Some(&json!({ "type": "function" }))).unwrap_err(),
             "Unsupported Gemini tool_choice type: function"
+        );
+    }
+
+    #[test]
+    fn converts_anthropic_tool_use_and_result_parts() {
+        let content = json!([
+            { "type": "tool_use", "id": "call_1", "name": "lookup", "input": { "q": "rust" } },
+            { "type": "tool_result", "tool_use_id": "call_1", "content": "ok" }
+        ]);
+        let mut names = HashMap::new();
+        let signatures = HashMap::from([("call_1".to_string(), "sig-1".to_string())]);
+
+        let parts = anthropic_message_content_to_gemini_parts(
+            Some(&content),
+            "assistant",
+            &mut names,
+            &signatures,
+        )
+        .unwrap();
+
+        assert_eq!(parts[0]["functionCall"]["id"], "call_1");
+        assert_eq!(parts[0]["functionCall"]["name"], "lookup");
+        assert_eq!(parts[0]["functionCall"]["args"]["q"], "rust");
+        assert_eq!(parts[0]["functionCall"]["thoughtSignature"], "sig-1");
+        assert_eq!(parts[1]["functionResponse"]["id"], "call_1");
+        assert_eq!(parts[1]["functionResponse"]["name"], "lookup");
+        assert_eq!(parts[1]["functionResponse"]["response"]["content"], "ok");
+        assert_eq!(names.get("call_1").map(String::as_str), Some("lookup"));
+    }
+
+    #[test]
+    fn strips_synthesized_ids_from_gemini_request_parts() {
+        let synth_id = crate::synthesize_gemini_tool_call_id("test-id");
+        let content = json!([
+            { "type": "tool_use", "id": synth_id, "name": "lookup", "input": {} },
+            { "type": "tool_result", "tool_use_id": synth_id, "content": "ok" }
+        ]);
+        let mut names = HashMap::new();
+
+        let parts = anthropic_message_content_to_gemini_parts(
+            Some(&content),
+            "assistant",
+            &mut names,
+            &HashMap::new(),
+        )
+        .unwrap();
+
+        assert!(parts[0]["functionCall"].get("id").is_none());
+        assert!(parts[1]["functionResponse"].get("id").is_none());
+        assert_eq!(parts[1]["functionResponse"]["name"], "lookup");
+    }
+
+    #[test]
+    fn rejects_tool_result_without_resolvable_name() {
+        let content = json!([
+            { "type": "tool_result", "tool_use_id": "call_missing", "content": "ok" }
+        ]);
+        let error = anthropic_message_content_to_gemini_parts(
+            Some(&content),
+            "user",
+            &mut HashMap::new(),
+            &HashMap::new(),
+        )
+        .unwrap_err();
+
+        assert_eq!(
+            error,
+            "Unable to resolve Gemini functionResponse.name for tool_use_id `call_missing`"
         );
     }
 }
