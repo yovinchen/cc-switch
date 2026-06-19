@@ -5,7 +5,7 @@
 use super::hyper_client::ProxyResponse;
 use super::{
     error::ProxyError,
-    error_mapper::forward_failure_kind_from_proxy_error,
+    error_mapper::{forward_failure_kind_from_proxy_error, reqwest_send_error_to_proxy_error},
     events::ProxyEventBus,
     failover_switch::FailoverSwitchManager,
     provider_router::ProviderRouter,
@@ -2195,7 +2195,7 @@ impl RequestForwarder {
             } else {
                 send.await
             };
-            let reqwest_resp = send_result.map_err(map_reqwest_send_error)?;
+            let reqwest_resp = send_result.map_err(reqwest_send_error_to_proxy_error)?;
             ProxyResponse::Reqwest(reqwest_resp)
         } else {
             // HTTP 代理或直连：走 hyper raw write（保持 header 大小写）
@@ -2449,16 +2449,6 @@ fn attempt_event_payload(
         channel,
         error,
     })
-}
-
-fn map_reqwest_send_error(error: reqwest::Error) -> ProxyError {
-    if error.is_timeout() {
-        ProxyError::Timeout(format!("请求超时: {error}"))
-    } else if error.is_connect() {
-        ProxyError::ForwardFailed(format!("连接失败: {error}"))
-    } else {
-        ProxyError::ForwardFailed(error.to_string())
-    }
 }
 
 #[cfg(test)]

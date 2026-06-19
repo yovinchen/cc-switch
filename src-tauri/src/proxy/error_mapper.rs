@@ -112,6 +112,16 @@ pub(crate) fn forward_failure_kind_from_proxy_error(error: &ProxyError) -> Forwa
     }
 }
 
+pub(crate) fn reqwest_send_error_to_proxy_error(error: reqwest::Error) -> ProxyError {
+    if error.is_timeout() {
+        ProxyError::Timeout(format!("请求超时: {error}"))
+    } else if error.is_connect() {
+        ProxyError::ForwardFailed(format!("连接失败: {error}"))
+    } else {
+        ProxyError::ForwardFailed(error.to_string())
+    }
+}
+
 pub(crate) fn management_api_error_to_proxy_error(error: ProxyCoreError) -> ProxyError {
     match error {
         ProxyCoreError::InvalidRequest(message) => ProxyError::InvalidRequest(message),
@@ -373,6 +383,19 @@ mod tests {
             }
             other => panic!("expected upstream failure, got {other:?}"),
         }
+    }
+
+    #[test]
+    fn test_reqwest_send_error_bridge_maps_non_network_errors_to_forward_failed() {
+        let error = reqwest::Client::new()
+            .get("https://example.com")
+            .header("x-bad-header", "\n")
+            .build()
+            .expect_err("invalid header value should fail request build");
+
+        let error = reqwest_send_error_to_proxy_error(error);
+
+        assert!(matches!(error, ProxyError::ForwardFailed(message) if !message.is_empty()));
     }
 
     #[test]
