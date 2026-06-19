@@ -1172,6 +1172,18 @@ impl RouteGroupSourceInput {
                 .collect(),
         )
     }
+
+    pub fn from_channel_specs(
+        app_type: impl Into<String>,
+        source: &ChannelRouteSource,
+        channels: impl IntoIterator<Item = ChannelSpec>,
+    ) -> Self {
+        Self::from_route_source(
+            app_type,
+            source,
+            channels.into_iter().map(|channel| channel.groups),
+        )
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -1271,8 +1283,41 @@ mod tests {
         ProxyChannelWriteRequest, RouteGroupListResponse, RouteGroupSourceInput,
         RouteResolveResponse,
     };
-    use crate::{ProviderKind, ProviderMetadata};
+    use crate::{
+        AppKind, ChannelHealthPolicy, ChannelOverrides, ChannelSpec, ChannelStatus, InterfaceKind,
+        ProviderKind, ProviderMetadata, RetryPolicy, UpstreamEndpoint,
+    };
     use serde_json::json;
+
+    fn route_group_channel_spec(id: &str, app: AppKind, groups: Vec<String>) -> ChannelSpec {
+        ChannelSpec {
+            id: id.to_string(),
+            provider_id: "provider-a".to_string(),
+            app,
+            name: id.to_string(),
+            status: ChannelStatus::Enabled,
+            endpoint: UpstreamEndpoint {
+                base_url: "https://api.example.com".to_string(),
+                path_template: None,
+                api_version: None,
+                timeout_profile: None,
+            },
+            interface: InterfaceKind::AnthropicMessages,
+            auth_profile: None,
+            models: Vec::new(),
+            groups,
+            priority: 0,
+            weight: 100,
+            retry_policy: RetryPolicy::default(),
+            health_policy: ChannelHealthPolicy::default(),
+            overrides: ChannelOverrides::default(),
+            tags: Vec::new(),
+            metadata: json!({}),
+            source_ref: None,
+            needs_review: false,
+            review_reasons: Vec::new(),
+        }
+    }
 
     #[test]
     fn health_check_response_serializes_management_envelope() {
@@ -1859,5 +1904,32 @@ mod tests {
         let value = serde_json::to_value(response).expect("serialize response");
         assert_eq!(value["appType"], "claude");
         assert_eq!(value["groups"][1]["channelCount"], 2);
+    }
+
+    #[test]
+    fn route_group_source_input_projects_from_channel_specs() {
+        let input = RouteGroupSourceInput::from_channel_specs(
+            "claude",
+            &ChannelRouteSource::MaterializedChannels,
+            vec![
+                route_group_channel_spec("channel-a", AppKind::Claude, vec![]),
+                route_group_channel_spec(
+                    "channel-b",
+                    AppKind::Claude,
+                    vec!["beta".to_string(), "paid".to_string()],
+                ),
+            ],
+        );
+        let response =
+            RouteGroupListResponse::from_sources(Some("claude".to_string()), vec![input]);
+
+        assert_eq!(
+            response
+                .groups
+                .iter()
+                .map(|group| (group.name.as_str(), group.channel_count))
+                .collect::<Vec<_>>(),
+            vec![("beta", 1), ("default", 1), ("paid", 1)]
+        );
     }
 }

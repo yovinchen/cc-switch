@@ -63,7 +63,7 @@ use crate::proxy_core::{
     TokenUsage, TransformedResponseUsageFormat, UpstreamJsonBodySource, UpstreamSseAggregationKind,
     CLAUDE_PARSER_CONFIG, CODEX_PARSER_CONFIG, GEMINI_PARSER_CONFIG, OPENAI_PARSER_CONFIG,
 };
-use crate::proxy_core_adapter::ToProxyCoreProviderSpec;
+use crate::proxy_core_adapter::{ToProxyCoreChannelSpec, ToProxyCoreProviderSpec};
 use axum::{
     extract::{Path, Query, State},
     http::StatusCode,
@@ -450,10 +450,12 @@ pub async fn list_proxy_groups(
             .list_channels_for_app(app_type)
             .await
             .map_err(|e| ProxyError::DatabaseError(e.to_string()))?;
-        sources.push(RouteGroupSourceInput::from_route_source(
+        sources.push(RouteGroupSourceInput::from_channel_specs(
             app_type.clone(),
             &source,
-            channels.into_iter().map(|channel| channel.groups),
+            channels
+                .into_iter()
+                .map(|channel| channel.to_proxy_core_channel_spec()),
         ));
     }
 
