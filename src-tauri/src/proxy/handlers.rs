@@ -51,21 +51,21 @@ use crate::proxy_core::{
     strip_endpoint_prefix, transformed_sse_proxy_response,
     transformed_streaming_response_usage_record_with_request_id_fallback,
     validate_claude_desktop_gateway_bearer_header, validate_management_bearer_header,
-    AppChannelListQuery, AppChannelManagementRequest, AppChannelResponse, AppKind, AppListResponse,
-    AppModelCatalogRequest, AppModelListQuery, AppSummaryInput, ChannelDeleteResponse,
-    ChannelHealthResetResponse, ChannelListQuery, ChannelListRequest, ChannelListResponse,
-    ChannelMigrationMaterializeResponse, ChannelMigrationPreviewResponse, ChannelModelRecord,
-    ChannelModelsResponse, ChannelPathRequest, ChannelRecord, ChannelRecordResponse,
-    ChannelRouteCandidate, ChannelRouteRejected, ClaudeDesktopModelListResponse,
-    ClientModelCatalogResponse, CurrentRouteProviderSummaryInput, CurrentRouteResponse,
-    CurrentRouteTarget, GroupListQuery, GroupListRequest, HealthCheckResponse, InterfaceKind,
-    ManagementAppPathRequest, ManagementAuthDecision, ProviderListResponse, ProxyBody,
-    ProxyChannelModelsReplaceRequest, ProxyChannelPatchRequest, ProxyChannelWriteRequest,
-    ProxyEngine, ProxyRequest, ProxyResult, ProxyRuntimeStatus, ProxyServices, ProxyStatusResponse,
-    RoutableModelList, RouteGroupListResponse, RouteResolveManagementRequest, RouteResolveRequest,
-    RouteResolveResponse, TransformedResponseUsageFormat, UpstreamJsonBodySource,
-    UpstreamSseAggregationKind, CLAUDE_PARSER_CONFIG, CODEX_PARSER_CONFIG, GEMINI_PARSER_CONFIG,
-    OPENAI_PARSER_CONFIG,
+    AppChannelListQuery, AppChannelManagementRequest, AppChannelResponse, AppKind, AppListRequest,
+    AppListResponse, AppModelCatalogRequest, AppModelListQuery, AppSummaryInput,
+    ChannelDeleteResponse, ChannelHealthResetResponse, ChannelListQuery, ChannelListRequest,
+    ChannelListResponse, ChannelMigrationMaterializeResponse, ChannelMigrationPreviewResponse,
+    ChannelModelRecord, ChannelModelsResponse, ChannelPathRequest, ChannelRecord,
+    ChannelRecordResponse, ChannelRouteCandidate, ChannelRouteRejected,
+    ClaudeDesktopModelListResponse, ClientModelCatalogResponse, CurrentRouteProviderSummaryInput,
+    CurrentRouteResponse, CurrentRouteTarget, GroupListQuery, GroupListRequest,
+    HealthCheckResponse, InterfaceKind, ManagementAppPathRequest, ManagementAuthDecision,
+    ProviderListResponse, ProxyBody, ProxyChannelModelsReplaceRequest, ProxyChannelPatchRequest,
+    ProxyChannelWriteRequest, ProxyEngine, ProxyRequest, ProxyResult, ProxyRuntimeStatus,
+    ProxyServices, ProxyStatusResponse, RoutableModelList, RouteGroupListResponse,
+    RouteResolveManagementRequest, RouteResolveRequest, RouteResolveResponse,
+    TransformedResponseUsageFormat, UpstreamJsonBodySource, UpstreamSseAggregationKind,
+    CLAUDE_PARSER_CONFIG, CODEX_PARSER_CONFIG, GEMINI_PARSER_CONFIG, OPENAI_PARSER_CONFIG,
 };
 use crate::proxy_core_adapter::{
     ToProxyCoreChannelModelRecord, ToProxyCoreChannelRecord, ToProxyCoreChannelSpec,
@@ -176,6 +176,7 @@ pub async fn require_proxy_management_auth(
 pub async fn list_proxy_apps(
     State(state): State<ProxyState>,
 ) -> Result<Json<AppListResponse>, ProxyError> {
+    let request = AppListRequest::new();
     let mut apps = Vec::new();
 
     for app in AppType::all() {
@@ -207,7 +208,7 @@ pub async fn list_proxy_apps(
         ));
     }
 
-    Ok(Json(AppListResponse::from_app_inputs(apps)))
+    Ok(Json(request.response(apps)))
 }
 
 /// GET /proxy/v1/apps/{app}/providers

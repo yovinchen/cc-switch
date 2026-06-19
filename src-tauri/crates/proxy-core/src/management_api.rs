@@ -2,11 +2,12 @@ use super::domain::{AppKind, ChannelSpec, InterfaceKind, ProviderSpec};
 use super::error::{ProxyCoreError, ProxyCoreResult};
 use super::ports::{
     AppChannelListQuery, AppChannelListResponse, AppChannelResponse, AppChannelRouteResponse,
-    AppModelListQuery, ChannelDeleteResponse, ChannelListQuery, ChannelListResponse,
-    ChannelMigrationMaterializeResponse, ChannelMigrationPreviewResponse, ChannelModelsResponse,
-    ChannelRecordResponse, ChannelRouteCandidate, ChannelRouteRejected, ChannelRouteSource,
-    CurrentRouteProviderSummaryInput, CurrentRouteResponse, GroupListQuery, ProviderListResponse,
-    RouteGroupListResponse, RouteGroupSourceInput, RouteResolveRequest, RouteResolveResponse,
+    AppListResponse, AppModelListQuery, AppSummaryInput, ChannelDeleteResponse, ChannelListQuery,
+    ChannelListResponse, ChannelMigrationMaterializeResponse, ChannelMigrationPreviewResponse,
+    ChannelModelsResponse, ChannelRecordResponse, ChannelRouteCandidate, ChannelRouteRejected,
+    ChannelRouteSource, CurrentRouteProviderSummaryInput, CurrentRouteResponse, GroupListQuery,
+    ProviderListResponse, RouteGroupListResponse, RouteGroupSourceInput, RouteResolveRequest,
+    RouteResolveResponse,
 };
 
 pub fn validate_management_app_type(app_type: &str) -> ProxyCoreResult<()> {
@@ -37,6 +38,19 @@ pub fn normalize_channel_id_path(channel_id: impl AsRef<str>) -> ProxyCoreResult
         ))
     } else {
         Ok(channel_id)
+    }
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct AppListRequest;
+
+impl AppListRequest {
+    pub fn new() -> Self {
+        Self
+    }
+
+    pub fn response(&self, apps: Vec<AppSummaryInput>) -> AppListResponse {
+        AppListResponse::from_app_inputs(apps)
     }
 }
 
@@ -323,15 +337,15 @@ fn normalize_optional_management_app_type(app_type: Option<String>) -> ProxyCore
 #[cfg(test)]
 mod tests {
     use super::{
-        AppChannelManagementRequest, AppModelCatalogRequest, ChannelListRequest,
+        AppChannelManagementRequest, AppListRequest, AppModelCatalogRequest, ChannelListRequest,
         ChannelPathRequest, GroupListRequest, ManagementAppPathRequest,
         RouteResolveManagementRequest, channel_not_found_message, normalize_channel_id_path,
         validate_management_app_type, validate_route_resolve_app_type,
     };
     use crate::{
-        AppChannelListQuery, AppKind, AppModelListQuery, ChannelHealthPolicy, ChannelListQuery,
-        ChannelOverrides, ChannelRouteSource, ChannelSpec, ChannelStatus, GroupListQuery,
-        InterfaceKind, ProviderKind, ProviderMetadata, ProviderSpec, RetryPolicy,
+        AppChannelListQuery, AppKind, AppModelListQuery, AppSummaryInput, ChannelHealthPolicy,
+        ChannelListQuery, ChannelOverrides, ChannelRouteSource, ChannelSpec, ChannelStatus,
+        GroupListQuery, InterfaceKind, ProviderKind, ProviderMetadata, ProviderSpec, RetryPolicy,
         RouteResolveResponse, UpstreamEndpoint,
     };
     use serde_json::json;
@@ -408,6 +422,19 @@ mod tests {
             error.to_string(),
             "invalid proxy request: channel_id cannot be empty"
         );
+    }
+
+    #[test]
+    fn app_list_request_wraps_app_summary_response() {
+        let request = AppListRequest::new();
+
+        let response = request.response(vec![AppSummaryInput::new("claude", true, false, 2, 3)]);
+
+        assert_eq!(response.apps.len(), 1);
+        assert_eq!(response.apps[0].app_type, "claude");
+        assert!(response.apps[0].enabled);
+        assert_eq!(response.apps[0].provider_count, 2);
+        assert_eq!(response.apps[0].channel_count, 3);
     }
 
     #[test]
