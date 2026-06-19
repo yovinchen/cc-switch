@@ -847,7 +847,13 @@ fn extract_visible_text(parts: &[Value]) -> String {
         .collect::<String>()
 }
 
-fn extract_tool_calls(parts: &[Value]) -> Vec<GeminiToolCallMeta> {
+pub fn extract_gemini_function_call_meta<F>(
+    parts: &[Value],
+    mut synthesize_missing_id: Option<F>,
+) -> Vec<GeminiToolCallMeta>
+where
+    F: FnMut() -> String,
+{
     parts
         .iter()
         .filter_map(|part| {
@@ -856,7 +862,8 @@ fn extract_tool_calls(parts: &[Value]) -> Vec<GeminiToolCallMeta> {
                 .get("id")
                 .and_then(|value| value.as_str())
                 .filter(|s| !s.is_empty())
-                .map(ToString::to_string);
+                .map(ToString::to_string)
+                .or_else(|| synthesize_missing_id.as_mut().map(|next| next()));
             Some(GeminiToolCallMeta::new(
                 id,
                 function_call
@@ -873,6 +880,10 @@ fn extract_tool_calls(parts: &[Value]) -> Vec<GeminiToolCallMeta> {
             ))
         })
         .collect()
+}
+
+fn extract_tool_calls(parts: &[Value]) -> Vec<GeminiToolCallMeta> {
+    extract_gemini_function_call_meta(parts, None::<fn() -> String>)
 }
 
 fn extract_text_thought_signature(parts: &[Value]) -> Option<String> {
@@ -923,6 +934,29 @@ mod tests {
         assert_eq!(parts[1]["functionCall"]["id"], "gemini_synth_2");
         assert_eq!(parts[2]["functionCall"]["id"], "call_real");
         assert!(parts[3].get("functionCall").is_none());
+    }
+
+    #[test]
+    fn extracts_gemini_function_call_meta_with_optional_missing_id_synthesis() {
+        let parts = vec![
+            json!({"functionCall": {"name": "first", "args": {"city": "SF"}}}),
+            json!({"functionCall": {"id": "call_real", "name": "second", "args": {"city": "NYC"}}, "thoughtSignature": "sig-tool"}),
+        ];
+
+        let streaming = extract_gemini_function_call_meta(&parts, None::<fn() -> String>);
+
+        assert_eq!(streaming[0].id, None);
+        assert_eq!(streaming[0].name, "first");
+        assert_eq!(streaming[0].args["city"], "SF");
+        assert_eq!(streaming[1].id.as_deref(), Some("call_real"));
+        assert_eq!(streaming[1].thought_signature.as_deref(), Some("sig-tool"));
+
+        let mut counter = 0usize;
+        let non_stream =
+            extract_gemini_function_call_meta(&parts, Some(|| next_synth(&mut counter)));
+
+        assert_eq!(non_stream[0].id.as_deref(), Some("gemini_synth_1"));
+        assert_eq!(non_stream[1].id.as_deref(), Some("call_real"));
     }
 
     fn render_events(events: &[GeminiStreamSseEvent]) -> String {

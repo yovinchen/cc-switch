@@ -6,12 +6,13 @@
 
 use crate::proxy::error::ProxyError;
 use crate::proxy_core::{
-    AnthropicToolSchemaHints, GeminiAssistantTurn, GeminiShadowStore, GeminiToolCallMeta,
+    AnthropicToolSchemaHints, GeminiAssistantTurn, GeminiShadowStore,
     build_anthropic_usage_from_gemini, build_gemini_function_declaration,
     ensure_gemini_function_call_ids,
     extract_anthropic_tool_schema_hints as core_extract_anthropic_tool_schema_hints,
-    is_synthesized_gemini_tool_call_id, map_gemini_finish_reason_to_anthropic,
-    rectify_gemini_tool_call_args, rectify_gemini_tool_call_parts, synthesize_gemini_tool_call_id,
+    extract_gemini_function_call_meta, is_synthesized_gemini_tool_call_id,
+    map_gemini_finish_reason_to_anthropic, rectify_gemini_tool_call_args,
+    rectify_gemini_tool_call_parts, synthesize_gemini_tool_call_id,
 };
 use serde_json::{Map, Value, json};
 use std::collections::{HashMap, HashSet};
@@ -162,8 +163,8 @@ pub fn gemini_to_anthropic_with_shadow_and_hints(
     // `rectified_parts`. Three independent readers — the
     // Anthropic-visible `content[tool_use]` block below, the shadow
     // store's `assistant_content` (cloned from `rectified_parts` further
-    // down), and `extract_tool_call_meta(&rectified_parts)` that populates
-    // `shadow_turn.tool_calls` — must all see the same id. Otherwise the
+    // down), and `extract_gemini_function_call_meta(&rectified_parts)` that
+    // populates `shadow_turn.tool_calls` — must all see the same id. Otherwise the
     // client would receive id A while the shadow stored id B, and the
     // next round's `tool_result(tool_use_id=A)` would fail to resolve
     // through `tool_name_by_id` (which is built from the shadow), raising
@@ -240,7 +241,7 @@ pub fn gemini_to_anthropic_with_shadow_and_hints(
             provider_id,
             session_id,
             shadow_content,
-            extract_tool_call_meta(&rectified_parts),
+            extract_gemini_function_call_meta(&rectified_parts, Some(synthesize_tool_call_id)),
         );
     }
 
@@ -825,39 +826,6 @@ fn merge_tool_names_from_parts(parts: &[Value], tool_name_by_id: &mut HashMap<St
     }
 }
 
-fn extract_tool_call_meta(parts: &[Value]) -> Vec<GeminiToolCallMeta> {
-    parts
-        .iter()
-        .filter_map(|part| {
-            let function_call = part.get("functionCall")?;
-            // Ensure every surfaced tool call carries a distinguishing id.
-            // Gemini 2.x may omit `id` on parallel calls; synthesizing a
-            // unique replacement prevents downstream merge/replay logic from
-            // collapsing distinct calls onto a single empty-string key.
-            let id = function_call
-                .get("id")
-                .and_then(|value| value.as_str())
-                .filter(|s| !s.is_empty())
-                .map(ToString::to_string)
-                .unwrap_or_else(synthesize_tool_call_id);
-            Some(GeminiToolCallMeta::new(
-                Some(id),
-                function_call
-                    .get("name")
-                    .and_then(|value| value.as_str())
-                    .unwrap_or(""),
-                function_call
-                    .get("args")
-                    .cloned()
-                    .unwrap_or_else(|| json!({})),
-                part.get("thoughtSignature")
-                    .or_else(|| part.get("thought_signature"))
-                    .and_then(|value| value.as_str()),
-            ))
-        })
-        .collect()
-}
-
 fn map_tool_choice(tool_choice: Option<&Value>) -> Result<Option<Value>, ProxyError> {
     let Some(tool_choice) = tool_choice else {
         return Ok(None);
@@ -912,6 +880,7 @@ fn map_tool_choice(tool_choice: Option<&Value>) -> Result<Option<Value>, ProxyEr
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::proxy_core::GeminiToolCallMeta;
 
     #[test]
     fn anthropic_to_gemini_maps_system_and_messages() {
