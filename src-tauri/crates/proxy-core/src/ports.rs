@@ -1,9 +1,13 @@
+use super::cache_injector::CacheInjectionConfig;
 use super::domain::{
     AppKind, AuthProfileRef, ChannelAttemptResult, ChannelQuery, ChannelSpec, InterfaceKind,
     ModelRoute, ProviderSpec, ProxyRequest, ProxyResult, RoutePlan, RoutePolicy, RouteRequest,
     UsageRecord, DEFAULT_ROUTE_GROUP,
 };
 use super::error::ProxyCoreResult;
+use super::thinking_budget_rectifier::ThinkingBudgetRectifierConfig;
+use super::thinking_optimizer::ThinkingOptimizerConfig;
+use super::thinking_rectifier::ThinkingSignatureRectifierConfig;
 use futures::future::BoxFuture;
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
@@ -176,6 +180,139 @@ pub struct CopilotOptimizerConfigSpec {
     pub enabled: bool,
     #[serde(default)]
     pub raw: Value,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RectifierConfig {
+    #[serde(default = "default_true")]
+    pub enabled: bool,
+    #[serde(default = "default_true")]
+    pub request_thinking_signature: bool,
+    #[serde(default = "default_true")]
+    pub request_thinking_budget: bool,
+    #[serde(default = "default_true")]
+    pub request_media_fallback: bool,
+    #[serde(default = "default_true")]
+    pub request_media_heuristic: bool,
+}
+
+impl Default for RectifierConfig {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            request_thinking_signature: true,
+            request_thinking_budget: true,
+            request_media_fallback: true,
+            request_media_heuristic: true,
+        }
+    }
+}
+
+impl RectifierConfig {
+    pub fn thinking_signature_core_config(&self) -> ThinkingSignatureRectifierConfig {
+        ThinkingSignatureRectifierConfig {
+            enabled: self.enabled,
+            request_thinking_signature: self.request_thinking_signature,
+        }
+    }
+
+    pub fn thinking_budget_core_config(&self) -> ThinkingBudgetRectifierConfig {
+        ThinkingBudgetRectifierConfig {
+            enabled: self.enabled,
+            request_thinking_budget: self.request_thinking_budget,
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct OptimizerConfig {
+    #[serde(default)]
+    pub enabled: bool,
+    #[serde(default = "default_true")]
+    pub thinking_optimizer: bool,
+    #[serde(default = "default_true")]
+    pub cache_injection: bool,
+    #[serde(default = "default_cache_ttl")]
+    pub cache_ttl: String,
+}
+
+impl Default for OptimizerConfig {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            thinking_optimizer: true,
+            cache_injection: true,
+            cache_ttl: "1h".to_string(),
+        }
+    }
+}
+
+impl OptimizerConfig {
+    pub fn thinking_optimizer_core_config(&self) -> ThinkingOptimizerConfig {
+        ThinkingOptimizerConfig {
+            enabled: self.thinking_optimizer,
+        }
+    }
+
+    pub fn cache_injection_core_config(&self) -> CacheInjectionConfig {
+        CacheInjectionConfig {
+            enabled: self.cache_injection,
+            ttl: self.cache_ttl.clone(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CopilotOptimizerConfig {
+    #[serde(default = "default_true")]
+    pub enabled: bool,
+    #[serde(default = "default_true")]
+    pub request_classification: bool,
+    #[serde(default = "default_true")]
+    pub tool_result_merging: bool,
+    #[serde(default = "default_true")]
+    pub compact_detection: bool,
+    #[serde(default = "default_true")]
+    pub deterministic_request_id: bool,
+    #[serde(default = "default_true")]
+    pub subagent_detection: bool,
+    #[serde(default = "default_true")]
+    pub warmup_downgrade: bool,
+    #[serde(default = "default_warmup_model")]
+    pub warmup_model: String,
+    #[serde(default = "default_true")]
+    pub strip_thinking: bool,
+}
+
+impl Default for CopilotOptimizerConfig {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            request_classification: true,
+            tool_result_merging: true,
+            compact_detection: true,
+            deterministic_request_id: true,
+            subagent_detection: true,
+            warmup_downgrade: true,
+            warmup_model: "gpt-5-mini".to_string(),
+            strip_thinking: true,
+        }
+    }
+}
+
+fn default_true() -> bool {
+    true
+}
+
+fn default_cache_ttl() -> String {
+    "1h".to_string()
+}
+
+fn default_warmup_model() -> String {
+    "gpt-5-mini".to_string()
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
@@ -1563,7 +1700,8 @@ mod tests {
         ProviderSpec, ProviderSummaryInput, ProxyChannelModelWriteRequest,
         ProxyChannelModelsReplaceRequest, ProxyChannelPatchRequest, ProxyChannelWriteRequest,
         ProxyConfig, ProxyRuntimeStatus, ProxyServerInfo, ProxyStatusResponse, ProxyTakeoverStatus,
-        RouteGroupListResponse, RouteGroupSourceInput, RouteResolveResponse,
+        RectifierConfig, RouteGroupListResponse, RouteGroupSourceInput, RouteResolveResponse,
+        CopilotOptimizerConfig, OptimizerConfig,
     };
     use crate::{
         AppKind, ChannelHealthPolicy, ChannelOverrides, ChannelSpec, ChannelStatus, InterfaceKind,
@@ -1979,6 +2117,51 @@ mod tests {
                 "circuitMinRequests": 10
             })
         );
+    }
+
+    #[test]
+    fn rectifier_config_defaults_and_projects_core_configs() {
+        let config: RectifierConfig = serde_json::from_value(json!({}))
+            .expect("deserialize default rectifier config");
+
+        assert_eq!(config, RectifierConfig::default());
+        assert!(config.thinking_signature_core_config().enabled);
+        assert!(
+            config
+                .thinking_signature_core_config()
+                .request_thinking_signature
+        );
+        assert!(config.thinking_budget_core_config().enabled);
+        assert!(config.thinking_budget_core_config().request_thinking_budget);
+    }
+
+    #[test]
+    fn optimizer_config_defaults_and_projects_core_configs() {
+        let config: OptimizerConfig = serde_json::from_value(json!({}))
+            .expect("deserialize default optimizer config");
+
+        assert_eq!(config, OptimizerConfig::default());
+        assert!(!config.enabled);
+        assert!(config.thinking_optimizer_core_config().enabled);
+        assert!(config.cache_injection_core_config().enabled);
+        assert_eq!(config.cache_injection_core_config().ttl, "1h");
+    }
+
+    #[test]
+    fn copilot_optimizer_config_defaults_missing_fields_to_enabled() {
+        let config: CopilotOptimizerConfig = serde_json::from_value(json!({}))
+            .expect("deserialize default copilot optimizer config");
+
+        assert_eq!(config, CopilotOptimizerConfig::default());
+        assert!(config.enabled);
+        assert!(config.request_classification);
+        assert!(config.tool_result_merging);
+        assert!(config.compact_detection);
+        assert!(config.deterministic_request_id);
+        assert!(config.subagent_detection);
+        assert!(config.warmup_downgrade);
+        assert_eq!(config.warmup_model, "gpt-5-mini");
+        assert!(config.strip_thinking);
     }
 
     #[test]
