@@ -794,6 +794,24 @@ impl CurrentRouteProviderSummary {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub struct CurrentRouteTarget {
+    pub app_type: String,
+    pub provider_name: String,
+    pub provider_id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub channel_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub channel_name: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub interface_kind: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub public_model: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub upstream_model: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct CurrentRouteResponse<T> {
     pub app_type: String,
     pub active: bool,
@@ -1329,7 +1347,7 @@ mod tests {
         ChannelMigrationMaterializeInput, ChannelMigrationMaterializeResponse,
         ChannelMigrationPreviewInput, ChannelMigrationPreviewResponse,
         ChannelRouteCandidate, ChannelRouteRejected, ChannelRouteSource, ClientModelCatalogResponse,
-        CurrentRouteProviderSummaryInput, CurrentRouteResponse, GroupListQuery,
+        CurrentRouteProviderSummaryInput, CurrentRouteResponse, CurrentRouteTarget, GroupListQuery,
         HealthCheckResponse, ModelCatalog, ProviderListResponse, ProviderSpec, ProxyStatusResponse,
         ProviderSummaryInput, ProxyChannelModelWriteRequest, ProxyChannelModelsReplaceRequest,
         ProxyChannelPatchRequest, ProxyChannelWriteRequest, RouteGroupListResponse, RouteGroupSourceInput,
@@ -1836,10 +1854,16 @@ mod tests {
     fn current_route_response_serializes_runtime_target_envelope() {
         let response = CurrentRouteResponse::from_inputs(
             "claude",
-            Some(json!({
-                "providerId": "provider-a",
-                "channelId": "channel-a"
-            })),
+            Some(CurrentRouteTarget {
+                app_type: "claude".to_string(),
+                provider_name: "Provider A".to_string(),
+                provider_id: "provider-a".to_string(),
+                channel_id: Some("channel-a".to_string()),
+                channel_name: Some("Relay A".to_string()),
+                interface_kind: Some("openai_responses".to_string()),
+                public_model: Some("public-sonnet".to_string()),
+                upstream_model: Some("upstream-sonnet".to_string()),
+            }),
             Some(CurrentRouteProviderSummaryInput::new(
                 "provider-a",
                 "Provider A",
@@ -1851,9 +1875,14 @@ mod tests {
 
         assert_eq!(value["appType"], "claude");
         assert_eq!(value["active"], true);
+        assert_eq!(value["target"]["appType"], "claude");
         assert_eq!(value["target"]["providerId"], "provider-a");
+        assert_eq!(value["target"]["providerName"], "Provider A");
         assert_eq!(value["configuredProvider"]["id"], "provider-a");
         assert_eq!(value["configuredProvider"]["category"], "aggregator");
+        assert_eq!(value["target"]["interfaceKind"], "openai_responses");
+        assert_eq!(value["target"]["publicModel"], "public-sonnet");
+        assert_eq!(value["target"]["upstreamModel"], "upstream-sonnet");
     }
 
     #[test]

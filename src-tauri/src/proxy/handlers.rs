@@ -59,7 +59,7 @@ use crate::proxy_core::{
     ChannelMigrationPreviewResponse, ChannelModelsResponse, ChannelRecordResponse,
     ChannelRouteCandidate, ChannelRouteRejected, ClaudeDesktopModelListResponse,
     ClientModelCatalogResponse, CurrentRouteProviderSummaryInput, CurrentRouteResponse,
-    GroupListQuery, HealthCheckResponse, InterfaceKind, ManagementAuthDecision,
+    CurrentRouteTarget, GroupListQuery, HealthCheckResponse, InterfaceKind, ManagementAuthDecision,
     ProviderListResponse, ProviderSummaryInput, ProxyBody, ProxyChannelModelsReplaceRequest,
     ProxyChannelPatchRequest, ProxyChannelWriteRequest, ProxyEngine, ProxyRequest, ProxyResult,
     ProxyServices, ProxyStatusResponse, RoutableModelList, RouteGroupListResponse,
@@ -479,7 +479,7 @@ pub async fn list_proxy_groups(
 pub async fn get_current_proxy_route(
     State(state): State<ProxyState>,
     Path(app_type): Path<String>,
-) -> Result<Json<CurrentRouteResponse<ActiveTarget>>, ProxyError> {
+) -> Result<Json<CurrentRouteResponse<CurrentRouteTarget>>, ProxyError> {
     validate_management_app_type(&app_type).map_err(management_api_error_to_proxy_error)?;
     let app = app_type
         .parse::<AppType>()
@@ -489,7 +489,8 @@ pub async fn get_current_proxy_route(
     let active_target = {
         let current_providers = state.current_providers.read().await;
         current_providers.get(&app_type).cloned()
-    };
+    }
+    .map(current_route_target_from_active_target);
 
     let configured_provider = match state
         .db
@@ -513,6 +514,19 @@ pub async fn get_current_proxy_route(
         active_target,
         configured_provider,
     )))
+}
+
+fn current_route_target_from_active_target(target: ActiveTarget) -> CurrentRouteTarget {
+    CurrentRouteTarget {
+        app_type: target.app_type,
+        provider_name: target.provider_name,
+        provider_id: target.provider_id,
+        channel_id: target.channel_id,
+        channel_name: target.channel_name,
+        interface_kind: target.interface_kind,
+        public_model: target.public_model,
+        upstream_model: target.upstream_model,
+    }
 }
 
 /// GET /proxy/v1/apps/{app}/channels/migration/preview
