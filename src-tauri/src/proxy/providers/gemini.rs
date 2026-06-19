@@ -9,32 +9,12 @@
 use super::{AuthInfo, AuthStrategy, ProviderAdapter, ProviderType};
 use crate::provider::Provider;
 use crate::proxy::error::ProxyError;
+use crate::proxy_core::{parse_gemini_oauth_credentials, GeminiOAuthCredentials};
 
 /// Gemini 适配器
 pub struct GeminiAdapter;
 
-/// OAuth 凭证结构
-#[derive(Debug, Clone)]
-#[allow(dead_code)]
-pub struct OAuthCredentials {
-    pub access_token: String,
-    pub refresh_token: Option<String>,
-    pub client_id: Option<String>,
-    pub client_secret: Option<String>,
-}
-
-#[allow(dead_code)]
-impl OAuthCredentials {
-    /// 检查是否需要刷新 token（有 refresh_token 但没有有效的 access_token）
-    pub fn needs_refresh(&self) -> bool {
-        self.refresh_token.is_some() && self.access_token.is_empty()
-    }
-
-    /// 检查是否可以刷新 token
-    pub fn can_refresh(&self) -> bool {
-        self.refresh_token.is_some() && self.client_id.is_some() && self.client_secret.is_some()
-    }
-}
+pub type OAuthCredentials = GeminiOAuthCredentials;
 
 impl GeminiAdapter {
     pub fn new() -> Self {
@@ -48,12 +28,7 @@ impl GeminiAdapter {
     /// - Gemini: 普通 API Key
     pub fn provider_type(&self, provider: &Provider) -> ProviderType {
         if let Some(key) = self.extract_key_raw(provider) {
-            // OAuth access_token 以 ya29. 开头
-            if key.starts_with("ya29.") {
-                return ProviderType::GeminiCli;
-            }
-            // JSON 格式的 OAuth 凭证
-            if key.starts_with('{') {
+            if parse_gemini_oauth_credentials(&key).is_some() {
                 return ProviderType::GeminiCli;
             }
         }
@@ -70,55 +45,7 @@ impl GeminiAdapter {
 
     /// 解析 OAuth 凭证
     pub fn parse_oauth_credentials(&self, key: &str) -> Option<OAuthCredentials> {
-        // 防御性 trim:前端在 input 事件中会 trim,但 JSON 编辑器 / deeplink
-        // 导入 / live 回填等路径会绕过。带前导换行的 oauth_creds.json 粘贴
-        // 是常见场景,此处统一兜底。
-        let key = key.trim();
-
-        // 直接是 access_token
-        if key.starts_with("ya29.") {
-            return Some(OAuthCredentials {
-                access_token: key.to_string(),
-                refresh_token: None,
-                client_id: None,
-                client_secret: None,
-            });
-        }
-
-        // JSON 格式
-        if key.starts_with('{') {
-            if let Ok(json) = serde_json::from_str::<serde_json::Value>(key) {
-                let access_token = json
-                    .get("access_token")
-                    .and_then(|v| v.as_str())
-                    .map(|s| s.to_string())
-                    .unwrap_or_default();
-                let refresh_token = json
-                    .get("refresh_token")
-                    .and_then(|v| v.as_str())
-                    .map(|s| s.to_string());
-                let client_id = json
-                    .get("client_id")
-                    .and_then(|v| v.as_str())
-                    .map(|s| s.to_string());
-                let client_secret = json
-                    .get("client_secret")
-                    .and_then(|v| v.as_str())
-                    .map(|s| s.to_string());
-
-                // 如果有 access_token 或 refresh_token，返回凭证
-                if !access_token.is_empty() || refresh_token.is_some() {
-                    return Some(OAuthCredentials {
-                        access_token,
-                        refresh_token,
-                        client_id,
-                        client_secret,
-                    });
-                }
-            }
-        }
-
-        None
+        parse_gemini_oauth_credentials(key)
     }
 
     /// 从 Provider 配置中提取原始 API Key

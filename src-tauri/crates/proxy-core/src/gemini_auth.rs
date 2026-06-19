@@ -1,0 +1,127 @@
+//! Host-neutral Gemini authentication helpers.
+
+/// Parsed Gemini OAuth credential material.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct GeminiOAuthCredentials {
+    pub access_token: String,
+    pub refresh_token: Option<String>,
+    pub client_id: Option<String>,
+    pub client_secret: Option<String>,
+}
+
+impl GeminiOAuthCredentials {
+    /// Checks whether a refresh is needed because only refresh material exists.
+    pub fn needs_refresh(&self) -> bool {
+        self.refresh_token.is_some() && self.access_token.is_empty()
+    }
+
+    /// Checks whether enough client metadata exists to refresh the token.
+    pub fn can_refresh(&self) -> bool {
+        self.refresh_token.is_some() && self.client_id.is_some() && self.client_secret.is_some()
+    }
+}
+
+/// Parse Gemini CLI OAuth credentials from a pasted access token or JSON blob.
+pub fn parse_gemini_oauth_credentials(key: &str) -> Option<GeminiOAuthCredentials> {
+    let key = key.trim();
+
+    if key.starts_with("ya29.") {
+        return Some(GeminiOAuthCredentials {
+            access_token: key.to_string(),
+            refresh_token: None,
+            client_id: None,
+            client_secret: None,
+        });
+    }
+
+    if !key.starts_with('{') {
+        return None;
+    }
+
+    let json = serde_json::from_str::<serde_json::Value>(key).ok()?;
+    let access_token = json
+        .get("access_token")
+        .and_then(|value| value.as_str())
+        .map(ToString::to_string)
+        .unwrap_or_default();
+    let refresh_token = json
+        .get("refresh_token")
+        .and_then(|value| value.as_str())
+        .map(ToString::to_string);
+    let client_id = json
+        .get("client_id")
+        .and_then(|value| value.as_str())
+        .map(ToString::to_string);
+    let client_secret = json
+        .get("client_secret")
+        .and_then(|value| value.as_str())
+        .map(ToString::to_string);
+
+    if access_token.is_empty() && refresh_token.is_none() {
+        return None;
+    }
+
+    Some(GeminiOAuthCredentials {
+        access_token,
+        refresh_token,
+        client_id,
+        client_secret,
+    })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parses_direct_access_token() {
+        let credentials = parse_gemini_oauth_credentials("ya29.test-access-token").unwrap();
+
+        assert_eq!(credentials.access_token, "ya29.test-access-token");
+        assert_eq!(credentials.refresh_token, None);
+        assert!(!credentials.needs_refresh());
+        assert!(!credentials.can_refresh());
+    }
+
+    #[test]
+    fn parses_json_credentials() {
+        let credentials = parse_gemini_oauth_credentials(
+            r#"{
+                "access_token": "ya29.test",
+                "refresh_token": "1//refresh",
+                "client_id": "client",
+                "client_secret": "secret"
+            }"#,
+        )
+        .unwrap();
+
+        assert_eq!(credentials.access_token, "ya29.test");
+        assert_eq!(credentials.refresh_token.as_deref(), Some("1//refresh"));
+        assert_eq!(credentials.client_id.as_deref(), Some("client"));
+        assert_eq!(credentials.client_secret.as_deref(), Some("secret"));
+        assert!(credentials.can_refresh());
+    }
+
+    #[test]
+    fn treats_refresh_only_json_as_refreshable_material() {
+        let credentials = parse_gemini_oauth_credentials(
+            r#"{
+                "refresh_token": "1//refresh",
+                "client_id": "client",
+                "client_secret": "secret"
+            }"#,
+        )
+        .unwrap();
+
+        assert!(credentials.access_token.is_empty());
+        assert!(credentials.needs_refresh());
+        assert!(credentials.can_refresh());
+    }
+
+    #[test]
+    fn rejects_api_keys_and_invalid_json() {
+        assert!(parse_gemini_oauth_credentials("AIza-api-key").is_none());
+        assert!(parse_gemini_oauth_credentials("invalid-json{").is_none());
+        assert!(parse_gemini_oauth_credentials(r#"{"client_id":"client"}"#).is_none());
+    }
+}
