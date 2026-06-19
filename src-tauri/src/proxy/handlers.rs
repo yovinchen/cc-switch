@@ -68,9 +68,10 @@ use crate::proxy_core::{
     OPENAI_PARSER_CONFIG,
 };
 use crate::proxy_core_adapter::{
-    proxy_app_summary_input, proxy_channel_model_records_to_core, proxy_channel_records_to_core,
-    proxy_channel_specs_to_core, proxy_current_route_provider_summary_input,
-    proxy_providers_to_core_specs, ToProxyCoreChannelRecord, ToProxyCoreRuntimeStatus,
+    proxy_app_summary_input, proxy_channel_model_records_to_core, proxy_channel_record_to_core,
+    proxy_channel_records_to_core, proxy_channel_specs_to_core,
+    proxy_current_route_provider_summary_input, proxy_providers_to_core_specs,
+    proxy_runtime_status_to_core,
 };
 use axum::{
     extract::{Path, Query, State},
@@ -104,7 +105,7 @@ pub async fn get_status(
     let request = ProxyStatusRequest::new();
     let status = state.status.read().await.clone();
     Ok(Json(
-        request.response(status.to_proxy_core_runtime_status()),
+        request.response(proxy_runtime_status_to_core(&status)),
     ))
 }
 
@@ -310,7 +311,7 @@ pub async fn create_proxy_channel(
         .create_proxy_channel(request.clone().into_body())
         .map_err(|e| ProxyError::InvalidRequest(e.to_string()))?;
     Ok(Json(
-        request.record_response(channel.to_proxy_core_channel_record()),
+        request.record_response(proxy_channel_record_to_core(channel)),
     ))
 }
 
@@ -325,7 +326,7 @@ pub async fn get_proxy_channel(
         .db
         .get_proxy_channel(&request.channel_id)
         .map_err(|e| ProxyError::DatabaseError(e.to_string()))?
-        .map(|channel| channel.to_proxy_core_channel_record());
+        .map(proxy_channel_record_to_core);
     Ok(Json(
         request
             .record_response(channel)
@@ -345,7 +346,7 @@ pub async fn update_proxy_channel(
         .db
         .update_proxy_channel(&path_request.channel_id, request)
         .map_err(|e| ProxyError::InvalidRequest(e.to_string()))?
-        .map(|channel| channel.to_proxy_core_channel_record());
+        .map(proxy_channel_record_to_core);
     Ok(Json(
         path_request
             .record_response(channel)

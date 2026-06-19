@@ -236,12 +236,16 @@ impl ToProxyCoreChannelRecord for ProxyChannelRecord {
     }
 }
 
+pub(crate) fn proxy_channel_record_to_core(channel: ProxyChannelRecord) -> ChannelRecord {
+    channel.to_proxy_core_channel_record()
+}
+
 pub(crate) fn proxy_channel_records_to_core(
     channels: Vec<ProxyChannelRecord>,
 ) -> Vec<ChannelRecord> {
     channels
-        .iter()
-        .map(ProxyChannelRecord::to_proxy_core_channel_record)
+        .into_iter()
+        .map(proxy_channel_record_to_core)
         .collect()
 }
 
@@ -270,6 +274,10 @@ impl ToProxyCoreRuntimeStatus for ProxyStatus {
             active_targets: self.active_targets.clone(),
         }
     }
+}
+
+pub(crate) fn proxy_runtime_status_to_core(status: &ProxyStatus) -> ProxyRuntimeStatus {
+    status.to_proxy_core_runtime_status()
 }
 
 fn provider_metadata_without_secrets(provider: &Provider) -> ProviderMetadata {
