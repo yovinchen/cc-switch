@@ -300,9 +300,7 @@ pub async fn list_all_proxy_channels(
             .map_err(|e| ProxyError::DatabaseError(e.to_string()))?
     };
 
-    Ok(Json(ChannelListResponse::new(channel_records_from_host(
-        channels,
-    ))))
+    Ok(Json(request.response(channel_records_from_host(channels))))
 }
 
 /// POST /proxy/v1/channels
@@ -363,14 +361,13 @@ pub async fn delete_proxy_channel(
     State(state): State<ProxyState>,
     Path(channel_id): Path<String>,
 ) -> Result<Json<ChannelDeleteResponse>, ProxyError> {
-    let channel_id = ChannelPathRequest::from_path(channel_id)
-        .map_err(management_api_error_to_proxy_error)?
-        .channel_id;
+    let request =
+        ChannelPathRequest::from_path(channel_id).map_err(management_api_error_to_proxy_error)?;
     let deleted = state
         .db
-        .delete_proxy_channel(&channel_id)
+        .delete_proxy_channel(&request.channel_id)
         .map_err(|e| ProxyError::DatabaseError(e.to_string()))?;
-    Ok(Json(ChannelDeleteResponse::new(channel_id, deleted)))
+    Ok(Json(request.delete_response(deleted)))
 }
 
 /// GET /proxy/v1/channels/{channel_id}/models

@@ -2,9 +2,10 @@ use super::domain::{AppKind, ChannelSpec, InterfaceKind};
 use super::error::{ProxyCoreError, ProxyCoreResult};
 use super::ports::{
     AppChannelListQuery, AppChannelListResponse, AppChannelResponse, AppChannelRouteResponse,
-    AppModelListQuery, ChannelListQuery, ChannelModelsResponse, ChannelRecordResponse,
-    ChannelRouteCandidate, ChannelRouteRejected, ChannelRouteSource, GroupListQuery,
-    RouteGroupListResponse, RouteGroupSourceInput, RouteResolveRequest, RouteResolveResponse,
+    AppModelListQuery, ChannelDeleteResponse, ChannelListQuery, ChannelListResponse,
+    ChannelModelsResponse, ChannelRecordResponse, ChannelRouteCandidate, ChannelRouteRejected,
+    ChannelRouteSource, GroupListQuery, RouteGroupListResponse, RouteGroupSourceInput,
+    RouteResolveRequest, RouteResolveResponse,
 };
 
 pub fn validate_management_app_type(app_type: &str) -> ProxyCoreResult<()> {
@@ -86,6 +87,9 @@ impl ChannelPathRequest {
             .ok_or_else(|| self.channel_not_found_error())
     }
 
+    pub fn delete_response(&self, deleted: bool) -> ChannelDeleteResponse {
+        ChannelDeleteResponse::new(self.channel_id.clone(), deleted)
+    }
 }
 
 pub fn channel_not_found_message(channel_id: impl AsRef<str>) -> String {
@@ -193,6 +197,10 @@ impl ChannelListRequest {
 
     pub fn app_type(&self) -> Option<&str> {
         self.app_type.as_deref()
+    }
+
+    pub fn response<T>(&self, channels: Vec<T>) -> ChannelListResponse<T> {
+        ChannelListResponse::new(channels)
     }
 }
 
@@ -390,6 +398,15 @@ mod tests {
     }
 
     #[test]
+    fn channel_path_request_wraps_delete_response() {
+        let request = ChannelPathRequest::from_path("channel-a").expect("request");
+        let response = request.delete_response(true);
+
+        assert_eq!(response.channel_id, "channel-a");
+        assert!(response.deleted);
+    }
+
+    #[test]
     fn route_resolve_management_request_validates_body_app_type() {
         let request = RouteResolveManagementRequest::from_body(crate::RouteResolveRequest {
             app_type: "codex".to_string(),
@@ -529,6 +546,19 @@ mod tests {
         let error = ChannelListRequest::from_query(blank_query).unwrap_err();
 
         assert_eq!(error.to_string(), "invalid proxy request: app cannot be empty");
+    }
+
+    #[test]
+    fn channel_list_request_wraps_list_response() {
+        let query = serde_json::from_value::<ChannelListQuery>(serde_json::json!({
+            "appType": "claude"
+        }))
+        .expect("query");
+        let request = ChannelListRequest::from_query(query).expect("request");
+
+        let response = request.response(vec!["channel-a", "channel-b"]);
+
+        assert_eq!(response.channels, vec!["channel-a", "channel-b"]);
     }
 
     #[test]
