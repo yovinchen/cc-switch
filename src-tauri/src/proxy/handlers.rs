@@ -69,7 +69,6 @@ use crate::proxy_core_adapter::{
     proxy_app_summary_input, proxy_channel_model_records_to_core, proxy_channel_record_to_core,
     proxy_channel_records_to_core, proxy_channel_specs_to_core,
     proxy_current_route_provider_summary_input, proxy_providers_to_core_specs,
-    proxy_runtime_status_to_core,
 };
 use axum::{
     Json,
@@ -106,9 +105,7 @@ pub async fn get_status(
 ) -> Result<Json<ProxyStatusResponse<ProxyRuntimeStatus>>, ProxyError> {
     let request = ProxyStatusRequest::new();
     let status = state.status.read().await.clone();
-    Ok(Json(
-        request.response(proxy_runtime_status_to_core(&status)),
-    ))
+    Ok(Json(request.response(status)))
 }
 
 /// GET /proxy/v1/events

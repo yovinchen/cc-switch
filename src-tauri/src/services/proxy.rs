@@ -10,11 +10,10 @@ use crate::proxy::server::ProxyServer;
 use crate::proxy::switch_lock::SwitchLockManager;
 use crate::proxy::types::*;
 use crate::proxy_core::{ProxyConfig, ProxyRuntimeStatus, ProxyServerInfo, ProxyTakeoverStatus};
-use crate::proxy_core_adapter::ToProxyCoreRuntimeStatus;
 use crate::services::provider::{
     build_effective_settings_with_common_config, write_live_with_common_config,
 };
-use serde_json::{json, Map, Value};
+use serde_json::{Map, Value, json};
 use std::str::FromStr;
 use std::sync::Arc;
 use tauri::Emitter;
@@ -2527,14 +2526,13 @@ impl ProxyService {
     /// 获取服务器状态
     pub async fn get_status(&self) -> Result<ProxyRuntimeStatus, String> {
         if let Some(server) = self.server.read().await.as_ref() {
-            Ok(server.get_status().await.to_proxy_core_runtime_status())
+            Ok(server.get_status().await)
         } else {
             // 服务器未运行时返回默认状态
             Ok(ProxyStatus {
                 running: false,
                 ..Default::default()
-            }
-            .to_proxy_core_runtime_status())
+            })
         }
     }
 

@@ -360,7 +360,7 @@ impl<T> ProxyStatusResponse<T> {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct ProxyRuntimeStatus {
     pub running: bool,
     pub address: String,

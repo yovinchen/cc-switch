@@ -2,15 +2,13 @@ use crate::app_config::AppType;
 use crate::database::{ProxyChannelModelRecord, ProxyChannelRecord};
 use crate::provider::Provider;
 use crate::proxy::providers::ProviderType;
-use crate::proxy::types::ProxyStatus;
 use crate::proxy_core::{
     AppKind, AppSummaryInput, AuthProfileRef, ChannelHealthPolicy, ChannelModelRecord,
     ChannelOverrides, ChannelRecord, ChannelSpec, ChannelStatus, CurrentRouteProviderSummaryInput,
     InterfaceKind, ModelCapabilities, ModelRoute, ProviderKind, ProviderMetadata, ProviderSpec,
-    ProxyRuntimeStatus, RetryPolicy, RouteResolveChannelInput, RouteResolveModelInput,
-    UpstreamEndpoint,
+    RetryPolicy, RouteResolveChannelInput, RouteResolveModelInput, UpstreamEndpoint,
 };
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
 impl From<&AppType> for AppKind {
     fn from(value: &AppType) -> Self {
@@ -292,37 +290,6 @@ pub(crate) fn proxy_channel_records_to_core(
         .into_iter()
         .map(proxy_channel_record_to_core)
         .collect()
-}
-
-#[allow(dead_code)]
-pub(crate) trait ToProxyCoreRuntimeStatus {
-    fn to_proxy_core_runtime_status(&self) -> ProxyRuntimeStatus;
-}
-
-impl ToProxyCoreRuntimeStatus for ProxyStatus {
-    fn to_proxy_core_runtime_status(&self) -> ProxyRuntimeStatus {
-        ProxyRuntimeStatus {
-            running: self.running,
-            address: self.address.clone(),
-            port: self.port,
-            active_connections: self.active_connections,
-            total_requests: self.total_requests,
-            success_requests: self.success_requests,
-            failed_requests: self.failed_requests,
-            success_rate: self.success_rate,
-            uptime_seconds: self.uptime_seconds,
-            current_provider: self.current_provider.clone(),
-            current_provider_id: self.current_provider_id.clone(),
-            last_request_at: self.last_request_at.clone(),
-            last_error: self.last_error.clone(),
-            failover_count: self.failover_count,
-            active_targets: self.active_targets.clone(),
-        }
-    }
-}
-
-pub(crate) fn proxy_runtime_status_to_core(status: &ProxyStatus) -> ProxyRuntimeStatus {
-    status.to_proxy_core_runtime_status()
 }
 
 fn provider_metadata_without_secrets(provider: &Provider) -> ProviderMetadata {
