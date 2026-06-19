@@ -8,6 +8,7 @@ use crate::gemini_tool_args::{rectify_gemini_tool_call_parts, AnthropicToolSchem
 use crate::response_transform::{
     build_anthropic_message_delta_event, map_gemini_finish_reason_to_anthropic,
 };
+use crate::sse::strip_sse_field;
 use crate::usage::build_anthropic_usage_from_gemini;
 use serde_json::{json, Value};
 use std::collections::HashSet;
@@ -43,6 +44,13 @@ pub struct GeminiStreamChunkOutput {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+pub struct GeminiStreamBlockOutput {
+    pub events: Vec<GeminiStreamSseEvent>,
+    pub rectified_tool_names: Vec<String>,
+    pub done: bool,
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub struct GeminiStreamShadowRecord {
     pub assistant_content: Value,
     pub tool_calls: Vec<GeminiToolCallMeta>,
@@ -73,6 +81,53 @@ pub struct GeminiToAnthropicSseState {
 impl GeminiToAnthropicSseState {
     pub fn new() -> Self {
         Self::default()
+    }
+
+    pub fn handle_sse_block<F>(
+        &mut self,
+        block: &str,
+        tool_schema_hints: Option<&AnthropicToolSchemaHints>,
+        synthesize_tool_call_id: F,
+    ) -> GeminiStreamBlockOutput
+    where
+        F: FnMut() -> String,
+    {
+        let mut output = GeminiStreamBlockOutput {
+            events: Vec::new(),
+            rectified_tool_names: Vec::new(),
+            done: false,
+        };
+
+        if block.trim().is_empty() {
+            return output;
+        }
+
+        let mut data_lines: Vec<String> = Vec::new();
+        for line in block.lines() {
+            if let Some(data) = strip_sse_field(line, "data") {
+                data_lines.push(data.to_string());
+            }
+        }
+
+        if data_lines.is_empty() {
+            return output;
+        }
+
+        let data = data_lines.join("\n");
+        if data.trim() == "[DONE]" {
+            output.done = true;
+            return output;
+        }
+
+        let Ok(chunk_json) = serde_json::from_str::<Value>(&data) else {
+            return output;
+        };
+
+        let chunk_output =
+            self.handle_chunk(&chunk_json, tool_schema_hints, synthesize_tool_call_id);
+        output.events = chunk_output.events;
+        output.rectified_tool_names = chunk_output.rectified_tool_names;
+        output
     }
 
     pub fn handle_chunk<F>(
@@ -805,6 +860,33 @@ mod tests {
         assert!(output.contains("\"text\":\"lo\""));
         assert!(output.contains("\"stop_reason\":\"end_turn\""));
         assert!(output.contains("event: message_stop"));
+    }
+
+    #[test]
+    fn state_handles_sse_blocks_and_done_marker() {
+        let mut state = GeminiToAnthropicSseState::new();
+        let output = state.handle_sse_block(
+            "event: message\ndata: {\"responseId\":\"resp_block\",\"modelVersion\":\"gemini-2.5-pro\",\ndata: \"candidates\":[{\"content\":{\"parts\":[{\"text\":\"Hi\"}]}}]}\n\n",
+            None,
+            || "unused".to_string(),
+        );
+        let rendered = render_events(&output.events);
+
+        assert!(!output.done);
+        assert!(rendered.contains("\"id\":\"resp_block\""));
+        assert!(rendered.contains("\"text\":\"Hi\""));
+
+        let invalid = state.handle_sse_block("data: {not-json}\n\n", None, || "unused".to_string());
+        assert!(!invalid.done);
+        assert!(invalid.events.is_empty());
+
+        let done = state.handle_sse_block("data: [DONE]\n\n", None, || "unused".to_string());
+        assert!(done.done);
+        assert!(done.events.is_empty());
+
+        let empty = state.handle_sse_block(": keepalive\n\n", None, || "unused".to_string());
+        assert!(!empty.done);
+        assert!(empty.events.is_empty());
     }
 
     #[test]

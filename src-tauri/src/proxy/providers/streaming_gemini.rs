@@ -5,7 +5,7 @@
 
 use super::transform_gemini::{synthesize_tool_call_id, AnthropicToolSchemaHints};
 use crate::proxy_core::{
-    append_utf8_safe, strip_sse_field, take_sse_block, GeminiShadowStore, GeminiStreamSseEvent,
+    append_utf8_safe, take_sse_block, GeminiShadowStore, GeminiStreamSseEvent,
     GeminiToAnthropicSseState,
 };
 use bytes::Bytes;
@@ -43,33 +43,8 @@ pub fn create_anthropic_sse_stream_from_gemini<E: std::error::Error + Send + 'st
                     append_utf8_safe(&mut buffer, &mut utf8_remainder, &bytes);
 
                     while let Some(block) = take_sse_block(&mut buffer) {
-                        if block.trim().is_empty() {
-                            continue;
-                        }
-
-                        let mut data_lines: Vec<String> = Vec::new();
-                        for line in block.lines() {
-                            if let Some(data) = strip_sse_field(line, "data") {
-                                data_lines.push(data.to_string());
-                            }
-                        }
-
-                        if data_lines.is_empty() {
-                            continue;
-                        }
-
-                        let data = data_lines.join("\n");
-                        if data.trim() == "[DONE]" {
-                            break;
-                        }
-
-                        let chunk_json: Value = match serde_json::from_str(&data) {
-                            Ok(value) => value,
-                            Err(_) => continue,
-                        };
-
-                        let output = state.handle_chunk(
-                            &chunk_json,
+                        let output = state.handle_sse_block(
+                            &block,
                             tool_schema_hints.as_ref(),
                             synthesize_tool_call_id,
                         );
@@ -78,6 +53,9 @@ pub fn create_anthropic_sse_stream_from_gemini<E: std::error::Error + Send + 'st
                         }
                         for event in output.events {
                             yield Ok(encode_core_event(&event));
+                        }
+                        if output.done {
+                            break;
                         }
                     }
                 }
