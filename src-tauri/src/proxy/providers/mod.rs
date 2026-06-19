@@ -27,6 +27,7 @@ pub mod streaming_gemini;
 pub mod streaming_responses;
 #[cfg(test)]
 pub mod transform;
+#[cfg(test)]
 pub mod transform_codex_chat;
 pub mod transform_gemini;
 #[cfg(test)]
