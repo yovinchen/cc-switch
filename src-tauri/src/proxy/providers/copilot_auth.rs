@@ -24,8 +24,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use tokio::sync::{Mutex, RwLock};
 
-use crate::proxy_core::parse_copilot_models_response_bytes;
-pub use crate::proxy_core::CopilotModel;
+use crate::proxy_core::{parse_copilot_models_response_bytes, CopilotModel};
 
 /// GitHub OAuth 客户端 ID（VS Code）- 用于 github.com
 const GITHUB_CLIENT_ID: &str = "Iv1.b507a08c87ecfe98";
