@@ -69,6 +69,22 @@ impl ProviderKind {
             Self::Custom(value) => value.as_str(),
         }
     }
+
+    pub fn needs_transform(&self) -> bool {
+        matches!(self, Self::GitHubCopilot | Self::CodexOAuth)
+    }
+
+    pub fn default_endpoint(&self) -> Option<&'static str> {
+        match self {
+            Self::Claude | Self::ClaudeAuth => Some("https://api.anthropic.com"),
+            Self::Codex => Some("https://api.openai.com"),
+            Self::Gemini | Self::GeminiCli => Some("https://generativelanguage.googleapis.com"),
+            Self::OpenRouter => Some("https://openrouter.ai/api"),
+            Self::GitHubCopilot => Some("https://api.githubcopilot.com"),
+            Self::CodexOAuth => Some("https://chatgpt.com/backend-api/codex"),
+            Self::Custom(_) => None,
+        }
+    }
 }
 
 impl From<&str> for ProviderKind {
@@ -764,5 +780,71 @@ mod tests {
             Some("openai_responses")
         );
         assert_eq!(codex_api_format_for_interface_kind("gemini_native"), None);
+    }
+
+    #[test]
+    fn provider_kind_reports_transform_requirements() {
+        assert!(!ProviderKind::Claude.needs_transform());
+        assert!(!ProviderKind::ClaudeAuth.needs_transform());
+        assert!(!ProviderKind::Codex.needs_transform());
+        assert!(!ProviderKind::Gemini.needs_transform());
+        assert!(!ProviderKind::GeminiCli.needs_transform());
+        assert!(!ProviderKind::OpenRouter.needs_transform());
+        assert!(ProviderKind::GitHubCopilot.needs_transform());
+        assert!(ProviderKind::CodexOAuth.needs_transform());
+        assert!(!ProviderKind::Custom("custom".to_string()).needs_transform());
+    }
+
+    #[test]
+    fn provider_kind_default_endpoint_matches_known_providers() {
+        assert_eq!(
+            ProviderKind::Claude.default_endpoint(),
+            Some("https://api.anthropic.com")
+        );
+        assert_eq!(
+            ProviderKind::ClaudeAuth.default_endpoint(),
+            Some("https://api.anthropic.com")
+        );
+        assert_eq!(
+            ProviderKind::Codex.default_endpoint(),
+            Some("https://api.openai.com")
+        );
+        assert_eq!(
+            ProviderKind::Gemini.default_endpoint(),
+            Some("https://generativelanguage.googleapis.com")
+        );
+        assert_eq!(
+            ProviderKind::GeminiCli.default_endpoint(),
+            Some("https://generativelanguage.googleapis.com")
+        );
+        assert_eq!(
+            ProviderKind::OpenRouter.default_endpoint(),
+            Some("https://openrouter.ai/api")
+        );
+        assert_eq!(
+            ProviderKind::GitHubCopilot.default_endpoint(),
+            Some("https://api.githubcopilot.com")
+        );
+        assert_eq!(
+            ProviderKind::CodexOAuth.default_endpoint(),
+            Some("https://chatgpt.com/backend-api/codex")
+        );
+        assert_eq!(ProviderKind::Custom("x".to_string()).default_endpoint(), None);
+    }
+
+    #[test]
+    fn provider_kind_parses_common_aliases() {
+        assert_eq!(ProviderKind::from("claude"), ProviderKind::Claude);
+        assert_eq!(ProviderKind::from("claude-auth"), ProviderKind::ClaudeAuth);
+        assert_eq!(ProviderKind::from("gemini-cli"), ProviderKind::GeminiCli);
+        assert_eq!(
+            ProviderKind::from("githubcopilot"),
+            ProviderKind::GitHubCopilot
+        );
+        assert_eq!(ProviderKind::from("codexoauth"), ProviderKind::CodexOAuth);
+        assert_eq!(
+            ProviderKind::from("vendor-x"),
+            ProviderKind::Custom("vendor-x".to_string())
+        );
     }
 }

@@ -32,6 +32,7 @@ pub mod transform_responses;
 
 use crate::app_config::AppType;
 use crate::provider::Provider;
+use crate::proxy_core::ProviderKind;
 use serde::{Deserialize, Serialize};
 
 pub use adapter::ProviderAdapter;
@@ -80,27 +81,15 @@ impl ProviderType {
     /// GitHub Copilot 需要转换（Anthropic → OpenAI 格式）。
     #[allow(dead_code)]
     pub fn needs_transform(&self) -> bool {
-        match self {
-            ProviderType::GitHubCopilot => true,
-            ProviderType::CodexOAuth => true,
-            ProviderType::OpenRouter => false,
-            _ => false,
-        }
+        self.to_provider_kind().needs_transform()
     }
 
     /// 获取默认端点
     #[allow(dead_code)]
     pub fn default_endpoint(&self) -> &'static str {
-        match self {
-            ProviderType::Claude | ProviderType::ClaudeAuth => "https://api.anthropic.com",
-            ProviderType::Codex => "https://api.openai.com",
-            ProviderType::Gemini | ProviderType::GeminiCli => {
-                "https://generativelanguage.googleapis.com"
-            }
-            ProviderType::OpenRouter => "https://openrouter.ai/api",
-            ProviderType::GitHubCopilot => "https://api.githubcopilot.com",
-            ProviderType::CodexOAuth => "https://chatgpt.com/backend-api/codex",
-        }
+        self.to_provider_kind()
+            .default_endpoint()
+            .expect("known provider type has default endpoint")
     }
 
     /// 从 AppType 和 Provider 配置推断供应商类型
@@ -199,6 +188,10 @@ impl ProviderType {
             ProviderType::CodexOAuth => "codex_oauth",
         }
     }
+
+    fn to_provider_kind(self) -> ProviderKind {
+        ProviderKind::from(self.as_str())
+    }
 }
 
 impl std::fmt::Display for ProviderType {
@@ -211,18 +204,16 @@ impl std::str::FromStr for ProviderType {
     type Err = String;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        match s.to_lowercase().as_str() {
-            "claude" => Ok(ProviderType::Claude),
-            "claude_auth" | "claude-auth" => Ok(ProviderType::ClaudeAuth),
-            "codex" => Ok(ProviderType::Codex),
-            "gemini" => Ok(ProviderType::Gemini),
-            "gemini_cli" | "gemini-cli" => Ok(ProviderType::GeminiCli),
-            "openrouter" => Ok(ProviderType::OpenRouter),
-            "github_copilot" | "github-copilot" | "githubcopilot" => {
-                Ok(ProviderType::GitHubCopilot)
-            }
-            "codex_oauth" | "codex-oauth" | "codexoauth" => Ok(ProviderType::CodexOAuth),
-            _ => Err(format!("Invalid provider type: {s}")),
+        match ProviderKind::from(s) {
+            ProviderKind::Claude => Ok(ProviderType::Claude),
+            ProviderKind::ClaudeAuth => Ok(ProviderType::ClaudeAuth),
+            ProviderKind::Codex => Ok(ProviderType::Codex),
+            ProviderKind::Gemini => Ok(ProviderType::Gemini),
+            ProviderKind::GeminiCli => Ok(ProviderType::GeminiCli),
+            ProviderKind::OpenRouter => Ok(ProviderType::OpenRouter),
+            ProviderKind::GitHubCopilot => Ok(ProviderType::GitHubCopilot),
+            ProviderKind::CodexOAuth => Ok(ProviderType::CodexOAuth),
+            ProviderKind::Custom(_) => Err(format!("Invalid provider type: {s}")),
         }
     }
 }
