@@ -243,6 +243,15 @@ pub struct ProxyRuntimeStatus {
     pub active_targets: Vec<CurrentRouteTarget>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
+pub struct ProxyTakeoverStatus {
+    pub claude: bool,
+    pub codex: bool,
+    pub gemini: bool,
+    pub opencode: bool,
+    pub openclaw: bool,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ChannelHealthReset {
@@ -1457,9 +1466,10 @@ mod tests {
         ChannelMigrationPreviewResponse,
         ChannelRouteCandidate, ChannelRouteRejected, ChannelRouteSource, ClientModelCatalogResponse,
         CurrentRouteProviderSummaryInput, CurrentRouteResponse, CurrentRouteTarget, GroupListQuery,
-        HealthCheckResponse, ModelCatalog, ProviderListResponse, ProviderSpec, ProxyRuntimeStatus,
-        ProxyStatusResponse, ProviderSummaryInput, ProxyChannelModelWriteRequest,
-        ProxyChannelModelsReplaceRequest, ProxyChannelPatchRequest, ProxyChannelWriteRequest,
+        HealthCheckResponse, ModelCatalog, ProviderListResponse, ProviderSpec,
+        ProviderSummaryInput, ProxyChannelModelWriteRequest, ProxyChannelModelsReplaceRequest,
+        ProxyChannelPatchRequest, ProxyChannelWriteRequest, ProxyRuntimeStatus,
+        ProxyStatusResponse, ProxyTakeoverStatus,
         RouteGroupListResponse, RouteGroupSourceInput, RouteResolveResponse,
     };
     use crate::{
@@ -1765,6 +1775,30 @@ mod tests {
         assert_eq!(value["active_targets"][0]["appType"], "claude");
         assert_eq!(value["active_targets"][0]["providerName"], "Provider A");
         assert_eq!(value["active_targets"][0]["channelId"], "channel-a");
+    }
+
+    #[test]
+    fn proxy_takeover_status_preserves_tauri_command_shape() {
+        let status = ProxyTakeoverStatus {
+            claude: true,
+            codex: false,
+            gemini: true,
+            opencode: false,
+            openclaw: false,
+        };
+
+        let value = serde_json::to_value(status).expect("serialize takeover status");
+
+        assert_eq!(
+            value,
+            json!({
+                "claude": true,
+                "codex": false,
+                "gemini": true,
+                "opencode": false,
+                "openclaw": false
+            })
+        );
     }
 
     #[test]
