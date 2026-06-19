@@ -8,6 +8,7 @@
 //! - Claude 的格式转换逻辑保留在此文件（用于 OpenRouter 旧接口回退）
 
 use super::{
+    ProxyError,
     error_mapper::{
         claude_desktop_gateway_auth_error_to_proxy_error, codex_proxy_error_json,
         get_error_message, management_api_error_to_proxy_error,
@@ -24,18 +25,31 @@ use super::{
         proxy_core_response_to_axum_response, proxy_core_response_to_proxy_response,
     },
     response_processor::{
-        create_logged_passthrough_stream, process_response, read_decoded_body,
-        usage_logging_enabled, SseUsageCollector,
+        SseUsageCollector, create_logged_passthrough_stream, process_response, read_decoded_body,
+        usage_logging_enabled,
     },
     server::ProxyState,
     usage_sink_bridge::{
         error_usage_record, provider_kind_from_provider, transformed_response_usage_record,
     },
-    ProxyError,
 };
 use crate::app_config::AppType;
 use crate::proxy_core::{
-    append_query_to_endpoint_path,
+    AppChannelListQuery, AppChannelManagementRequest, AppChannelResponse, AppKind, AppListRequest,
+    AppListResponse, AppModelCatalogRequest, AppModelListQuery, CLAUDE_PARSER_CONFIG,
+    CODEX_PARSER_CONFIG, ChannelCreateRequest, ChannelDeleteResponse, ChannelHealthResetResponse,
+    ChannelListQuery, ChannelListRequest, ChannelListResponse, ChannelMigrationMaterializeResponse,
+    ChannelMigrationPreviewResponse, ChannelModelRecord, ChannelModelsResponse, ChannelPathRequest,
+    ChannelRecord, ChannelRecordResponse, ChannelRouteCandidate, ChannelRouteRejected,
+    ClaudeDesktopModelListResponse, ClientModelCatalogResponse, CurrentRouteResponse,
+    CurrentRouteTarget, GEMINI_PARSER_CONFIG, GroupListQuery, GroupListRequest, HealthCheckRequest,
+    HealthCheckResponse, InterfaceKind, ManagementAppPathRequest, ManagementAuthDecision,
+    OPENAI_PARSER_CONFIG, ProviderListResponse, ProxyBody, ProxyChannelModelsReplaceRequest,
+    ProxyChannelPatchRequest, ProxyChannelWriteRequest, ProxyRequest, ProxyResult,
+    ProxyRuntimeStatus, ProxyServices, ProxyStatusRequest, ProxyStatusResponse, RoutableModelList,
+    RouteGroupListResponse, RouteResolveManagementRequest, RouteResolveRequest,
+    RouteResolveResponse, TransformedResponseUsageFormat, UpstreamJsonBodySource,
+    UpstreamSseAggregationKind, append_query_to_endpoint_path,
     chat_completion_to_response_with_context as build_chat_completion_response_with_context,
     claude_api_format_from_metadata, claude_stream_usage_event_filter,
     claude_transform_unlabeled_sse_aggregation, codex_stream_usage_event_filter,
@@ -50,21 +64,6 @@ use crate::proxy_core::{
     strip_endpoint_prefix, transformed_sse_proxy_response,
     transformed_streaming_response_usage_record_with_request_id_fallback,
     validate_claude_desktop_gateway_bearer_header, validate_management_bearer_header,
-    AppChannelListQuery, AppChannelManagementRequest, AppChannelResponse, AppKind, AppListRequest,
-    AppListResponse, AppModelCatalogRequest, AppModelListQuery, ChannelCreateRequest,
-    ChannelDeleteResponse, ChannelHealthResetResponse, ChannelListQuery, ChannelListRequest,
-    ChannelListResponse, ChannelMigrationMaterializeResponse, ChannelMigrationPreviewResponse,
-    ChannelModelRecord, ChannelModelsResponse, ChannelPathRequest, ChannelRecord,
-    ChannelRecordResponse, ChannelRouteCandidate, ChannelRouteRejected,
-    ClaudeDesktopModelListResponse, ClientModelCatalogResponse, CurrentRouteResponse,
-    CurrentRouteTarget, GroupListQuery, GroupListRequest, HealthCheckRequest, HealthCheckResponse,
-    InterfaceKind, ManagementAppPathRequest, ManagementAuthDecision, ProviderListResponse,
-    ProxyBody, ProxyChannelModelsReplaceRequest, ProxyChannelPatchRequest,
-    ProxyChannelWriteRequest, ProxyRequest, ProxyResult, ProxyRuntimeStatus, ProxyServices,
-    ProxyStatusRequest, ProxyStatusResponse, RoutableModelList, RouteGroupListResponse,
-    RouteResolveManagementRequest, RouteResolveRequest, RouteResolveResponse,
-    TransformedResponseUsageFormat, UpstreamJsonBodySource, UpstreamSseAggregationKind,
-    CLAUDE_PARSER_CONFIG, CODEX_PARSER_CONFIG, GEMINI_PARSER_CONFIG, OPENAI_PARSER_CONFIG,
 };
 use crate::proxy_core_adapter::{
     proxy_app_summary_input, proxy_channel_model_records_to_core, proxy_channel_record_to_core,
@@ -73,10 +72,10 @@ use crate::proxy_core_adapter::{
     proxy_runtime_status_to_core,
 };
 use axum::{
+    Json,
     extract::{Path, Query, State},
     http::StatusCode,
     response::sse::{Event, KeepAlive, Sse},
-    Json,
 };
 use bytes::Bytes;
 use http_body_util::BodyExt;
@@ -1462,12 +1461,6 @@ fn responses_sse_to_response_value(body: &str) -> Result<Value, ProxyError> {
         .map_err(response_body_parse_error_to_proxy_error)
 }
 
-#[cfg(test)]
-fn chat_sse_to_response_value(body: &str) -> Result<Value, ProxyError> {
-    crate::proxy_core::chat_sse_to_response_value(body, || uuid::Uuid::new_v4().to_string())
-        .map_err(response_body_parse_error_to_proxy_error)
-}
-
 fn log_forward_error(
     state: &ProxyState,
     ctx: &RequestContext,
@@ -1498,550 +1491,8 @@ fn log_forward_error(
 
 #[cfg(test)]
 mod tests {
-    use super::{
-        chat_sse_to_response_value, codex_proxy_error_json, responses_sse_to_response_value,
-    };
+    use super::codex_proxy_error_json;
     use crate::proxy::ProxyError;
-    use crate::proxy_core::{
-        openai_chat_to_anthropic_message, should_use_claude_transform_streaming,
-    };
-
-    #[test]
-    fn chat_sse_to_response_value_collects_reasoning_alias() {
-        // OpenRouter/Kimi 用 reasoning（字符串），部分网关用对象形态
-        let sse = "data: {\"id\":\"c1\",\"model\":\"kimi-k2.6\",\"choices\":[{\"index\":0,\"delta\":{\"reasoning\":\"think\"},\"finish_reason\":null}]}\n\n\
-data: {\"id\":\"c1\",\"choices\":[{\"index\":0,\"delta\":{\"reasoning\":{\"content\":\"ing\"},\"content\":\"ok\"},\"finish_reason\":\"stop\"}]}\n\n";
-
-        let response = chat_sse_to_response_value(sse).unwrap();
-
-        assert_eq!(
-            response["choices"][0]["message"]["reasoning_content"],
-            "thinking"
-        );
-        assert_eq!(response["choices"][0]["message"]["content"], "ok");
-    }
-
-    #[test]
-    fn chat_sse_to_response_value_collects_reasoning_details() {
-        // MiMo/OpenRouter 等只发 reasoning_details（数组形态）的 provider，
-        // 经公共提取器兜底，不能丢思考内容
-        let sse = "data: {\"id\":\"c1\",\"model\":\"mimo\",\"choices\":[{\"index\":0,\"delta\":{\"reasoning_details\":[{\"type\":\"reasoning.text\",\"text\":\"think\"}]},\"finish_reason\":null}]}\n\n\
-data: {\"id\":\"c1\",\"choices\":[{\"index\":0,\"delta\":{\"reasoning_details\":[{\"type\":\"reasoning.text\",\"text\":\"ing\"}],\"content\":\"ok\"},\"finish_reason\":\"stop\"}]}\n\n";
-
-        let response = chat_sse_to_response_value(sse).unwrap();
-
-        assert_eq!(
-            response["choices"][0]["message"]["reasoning_content"],
-            "thinking"
-        );
-        assert_eq!(response["choices"][0]["message"]["content"], "ok");
-    }
-
-    #[test]
-    fn responses_sse_to_response_value_handles_missing_trailing_blank_line() {
-        // 错标 SSE 兜底/非规范上游：最后的 response.completed 后没有空行分隔
-        let sse = "event: response.completed\n\
-data: {\"type\":\"response.completed\",\"response\":{\"id\":\"resp_tail\",\"status\":\"completed\",\"model\":\"gpt-5.4\",\"output\":[],\"usage\":{\"input_tokens\":3,\"output_tokens\":1}}}\n";
-
-        let response = responses_sse_to_response_value(sse).unwrap();
-
-        assert_eq!(response["id"], "resp_tail");
-    }
-
-    #[test]
-    fn responses_sse_to_response_value_ignores_truncated_trailing_block() {
-        // 截断的残余尾块不能破坏已聚合好的完整响应（codex_oauth 路径复用本函数）
-        let sse = "event: response.completed\n\
-data: {\"type\":\"response.completed\",\"response\":{\"id\":\"resp_ok\",\"status\":\"completed\",\"model\":\"gpt-5.4\",\"output\":[],\"usage\":{\"input_tokens\":3,\"output_tokens\":1}}}\n\
-\n\
-event: response.extra\n\
-data: {\"type\":\"resp";
-
-        let response = responses_sse_to_response_value(sse).unwrap();
-
-        assert_eq!(response["id"], "resp_ok");
-    }
-
-    #[test]
-    fn chat_sse_to_response_value_skips_azure_placeholder_envelope() {
-        // Azure content-filter 前置块带 ""/0 占位，不能冻结 envelope 字段
-        let sse = "data: {\"id\":\"\",\"model\":\"\",\"created\":0,\"object\":\"\",\"choices\":[],\"prompt_filter_results\":[]}\n\n\
-data: {\"id\":\"chatcmpl-real\",\"model\":\"gpt-5.4\",\"created\":42,\"choices\":[{\"index\":0,\"delta\":{\"content\":\"hi\"},\"finish_reason\":\"stop\"}]}\n\n";
-
-        let response = chat_sse_to_response_value(sse).unwrap();
-
-        assert_eq!(response["id"], "chatcmpl-real");
-        assert_eq!(response["model"], "gpt-5.4");
-        assert_eq!(response["created"], 42);
-    }
-
-    #[test]
-    fn chat_sse_to_response_value_tolerates_null_error_field() {
-        // one-api 系网关每个 chunk 都带 "error": null，不能误判为上游错误
-        let sse = "data: {\"id\":\"c1\",\"model\":\"m\",\"error\":null,\"choices\":[{\"index\":0,\"delta\":{\"content\":\"hi\"},\"finish_reason\":\"stop\"}]}\n\n";
-
-        let response = chat_sse_to_response_value(sse).unwrap();
-
-        assert_eq!(response["choices"][0]["message"]["content"], "hi");
-    }
-
-    #[test]
-    fn chat_sse_to_response_value_first_finish_reason_wins() {
-        // kimi-k2.6 等会在 tool_use 后再发带 finish_reason 的尾块，
-        // 尾块 "stop" 不能覆盖先到的 "tool_calls"（对齐 streaming.rs first-wins）
-        let sse = "data: {\"id\":\"c1\",\"model\":\"m\",\"choices\":[{\"index\":0,\"delta\":{\"tool_calls\":[{\"index\":0,\"id\":\"call_1\",\"function\":{\"name\":\"f\",\"arguments\":\"{}\"}}]},\"finish_reason\":\"tool_calls\"}]}\n\n\
-data: {\"id\":\"c1\",\"choices\":[{\"index\":0,\"delta\":{},\"finish_reason\":\"stop\"}]}\n\n";
-
-        let response = chat_sse_to_response_value(sse).unwrap();
-
-        assert_eq!(response["choices"][0]["finish_reason"], "tool_calls");
-    }
-
-    #[test]
-    fn chat_sse_to_response_value_unwraps_message_shaped_fake_stream() {
-        // 假流式中转把完整 chat.completion 包成单个 SSE 事件（message 而非 delta）
-        let sse = "data: {\"id\":\"c1\",\"object\":\"chat.completion\",\"model\":\"m\",\"choices\":[{\"index\":0,\"message\":{\"role\":\"assistant\",\"content\":\"full answer\"},\"finish_reason\":\"stop\"}]}\n\n\
-data: [DONE]\n\n";
-
-        let response = chat_sse_to_response_value(sse).unwrap();
-
-        assert_eq!(response["choices"][0]["message"]["content"], "full answer");
-        assert_eq!(response["choices"][0]["finish_reason"], "stop");
-    }
-
-    #[test]
-    fn chat_sse_to_response_value_message_snapshot_overrides_deltas() {
-        // 混合形态：先发增量再发完整 message 快照时，快照覆盖增量（防双计）
-        let sse = "data: {\"id\":\"c1\",\"model\":\"m\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\"par\"},\"finish_reason\":null}]}\n\n\
-data: {\"id\":\"c1\",\"choices\":[{\"index\":0,\"message\":{\"role\":\"assistant\",\"content\":\"full\"},\"finish_reason\":\"stop\"}]}\n\n";
-
-        let response = chat_sse_to_response_value(sse).unwrap();
-
-        assert_eq!(response["choices"][0]["message"]["content"], "full");
-    }
-
-    #[test]
-    fn chat_sse_to_response_value_backfills_sparse_tool_call_ids() {
-        // index 空洞的空壳被丢弃；缺 id 的按原始 index 回填 tool_call_{idx}
-        let sse = "data: {\"id\":\"c1\",\"model\":\"m\",\"choices\":[{\"index\":0,\"delta\":{\"tool_calls\":[{\"index\":1,\"function\":{\"name\":\"f2\",\"arguments\":\"{}\"}}]},\"finish_reason\":\"tool_calls\"}]}\n\n";
-
-        let response = chat_sse_to_response_value(sse).unwrap();
-
-        let tool_calls = response["choices"][0]["message"]["tool_calls"]
-            .as_array()
-            .unwrap();
-        assert_eq!(tool_calls.len(), 1, "index 0 的空壳应被丢弃");
-        assert_eq!(tool_calls[0]["id"], "tool_call_1");
-        assert_eq!(tool_calls[0]["function"]["name"], "f2");
-    }
-
-    #[test]
-    fn chat_sse_to_response_value_strips_bom_before_parsing() {
-        // 嗅探器接受 BOM，块解析也必须剥掉它，否则首个 data 行静默丢失
-        let sse = "\u{feff}data: {\"id\":\"c1\",\"model\":\"m\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\"hi\"},\"finish_reason\":\"stop\"}]}\n\n";
-
-        let response = chat_sse_to_response_value(sse).unwrap();
-
-        assert_eq!(response["choices"][0]["message"]["content"], "hi");
-    }
-
-    #[test]
-    fn chat_sse_to_response_value_aggregates_text_finish_reason_and_usage() {
-        let sse = "data: {\"id\":\"chatcmpl-1\",\"object\":\"chat.completion.chunk\",\"created\":123,\"model\":\"gpt-5.4\",\"choices\":[{\"index\":0,\"delta\":{\"role\":\"assistant\",\"content\":\"Hel\"},\"finish_reason\":null}]}\n\n\
-data: {\"id\":\"chatcmpl-1\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\"lo\"},\"finish_reason\":null}]}\n\n\
-data: {\"id\":\"chatcmpl-1\",\"choices\":[{\"index\":0,\"delta\":{},\"finish_reason\":\"stop\"}],\"usage\":{\"prompt_tokens\":10,\"completion_tokens\":2,\"total_tokens\":12}}\n\n\
-data: [DONE]\n\n";
-
-        let response = chat_sse_to_response_value(sse).unwrap();
-
-        assert_eq!(response["id"], "chatcmpl-1");
-        assert_eq!(response["object"], "chat.completion");
-        assert_eq!(response["model"], "gpt-5.4");
-        assert_eq!(response["choices"][0]["message"]["role"], "assistant");
-        assert_eq!(response["choices"][0]["message"]["content"], "Hello");
-        assert_eq!(response["choices"][0]["finish_reason"], "stop");
-        assert_eq!(response["usage"]["prompt_tokens"], 10);
-    }
-
-    #[test]
-    fn chat_sse_to_response_value_merges_tool_call_argument_fragments() {
-        let sse = "data: {\"id\":\"c1\",\"model\":\"m\",\"choices\":[{\"index\":0,\"delta\":{\"tool_calls\":[{\"index\":0,\"id\":\"call_1\",\"type\":\"function\",\"function\":{\"name\":\"get_weather\",\"arguments\":\"\"}}]},\"finish_reason\":null}]}\n\n\
-data: {\"id\":\"c1\",\"choices\":[{\"index\":0,\"delta\":{\"tool_calls\":[{\"index\":0,\"function\":{\"arguments\":\"{\\\"city\\\":\"}}]},\"finish_reason\":null}]}\n\n\
-data: {\"id\":\"c1\",\"choices\":[{\"index\":0,\"delta\":{\"tool_calls\":[{\"index\":0,\"function\":{\"arguments\":\"\\\"SF\\\"}\"}}]},\"finish_reason\":\"tool_calls\"}]}\n\n\
-data: [DONE]\n\n";
-
-        let response = chat_sse_to_response_value(sse).unwrap();
-
-        let tool_call = &response["choices"][0]["message"]["tool_calls"][0];
-        assert_eq!(tool_call["id"], "call_1");
-        assert_eq!(tool_call["function"]["name"], "get_weather");
-        assert_eq!(tool_call["function"]["arguments"], "{\"city\":\"SF\"}");
-        assert_eq!(response["choices"][0]["finish_reason"], "tool_calls");
-    }
-
-    #[test]
-    fn chat_sse_to_response_value_collects_reasoning_content() {
-        let sse = "data: {\"id\":\"c1\",\"model\":\"deepseek-r2\",\"choices\":[{\"index\":0,\"delta\":{\"reasoning_content\":\"think\"},\"finish_reason\":null}]}\n\n\
-data: {\"id\":\"c1\",\"choices\":[{\"index\":0,\"delta\":{\"reasoning_content\":\"ing\",\"content\":\"ok\"},\"finish_reason\":\"stop\"}]}\n\n";
-
-        let response = chat_sse_to_response_value(sse).unwrap();
-
-        assert_eq!(
-            response["choices"][0]["message"]["reasoning_content"],
-            "thinking"
-        );
-        assert_eq!(response["choices"][0]["message"]["content"], "ok");
-    }
-
-    #[test]
-    fn chat_sse_to_response_value_handles_missing_trailing_blank_line() {
-        // 非规范上游/半截流：最后一个事件后没有空行分隔
-        let sse = "data: {\"id\":\"c1\",\"model\":\"m\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\"hi\"},\"finish_reason\":\"stop\"}]}\n";
-
-        let response = chat_sse_to_response_value(sse).unwrap();
-
-        assert_eq!(response["choices"][0]["message"]["content"], "hi");
-    }
-
-    #[test]
-    fn chat_sse_to_response_value_handles_crlf_delimiters() {
-        // 真实 HTTP SSE 按规范使用 \r\n\r\n 分隔事件
-        let sse = "data: {\"id\":\"c1\",\"model\":\"m\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\"hi\"},\"finish_reason\":null}]}\r\n\
-\r\n\
-data: {\"id\":\"c1\",\"choices\":[{\"index\":0,\"delta\":{},\"finish_reason\":\"stop\"}]}\r\n\
-\r\n\
-data: [DONE]\r\n\
-\r\n";
-
-        let response = chat_sse_to_response_value(sse).unwrap();
-
-        assert_eq!(response["choices"][0]["message"]["content"], "hi");
-        assert_eq!(response["choices"][0]["finish_reason"], "stop");
-    }
-
-    #[test]
-    fn chat_sse_to_response_value_propagates_upstream_error_event() {
-        let sse = "data: {\"error\":{\"message\":\"rate limited by gateway\",\"code\":429}}\n\n";
-
-        let err = chat_sse_to_response_value(sse).unwrap_err();
-        match err {
-            ProxyError::TransformError(msg) => assert!(msg.contains("rate limited by gateway")),
-            other => panic!("expected TransformError, got {other:?}"),
-        }
-    }
-
-    #[test]
-    fn chat_sse_to_response_value_rejects_truncated_stream() {
-        // 只有内容增量、无 finish_reason 也无 [DONE]：close-delimited 截断不可
-        // 在字节层检测，必须按截断报错而非静默返回半截内容
-        let sse = "data: {\"id\":\"c1\",\"model\":\"m\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\"par\"},\"finish_reason\":null}]}\n\n";
-
-        let err = chat_sse_to_response_value(sse).unwrap_err();
-        match err {
-            ProxyError::TransformError(msg) => assert!(msg.contains("truncated")),
-            other => panic!("expected TransformError, got {other:?}"),
-        }
-    }
-
-    #[test]
-    fn chat_sse_to_response_value_accepts_done_marker_without_finish_reason() {
-        // 非规范上游可能不发 finish_reason 但正常收尾 [DONE]：视为完成
-        let sse = "data: {\"id\":\"c1\",\"model\":\"m\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\"hi\"},\"finish_reason\":null}]}\n\n\
-data: [DONE]\n\n";
-
-        let response = chat_sse_to_response_value(sse).unwrap();
-
-        assert_eq!(response["choices"][0]["message"]["content"], "hi");
-        assert_eq!(
-            response["choices"][0]["finish_reason"],
-            serde_json::Value::Null
-        );
-    }
-
-    #[test]
-    fn chat_sse_to_response_value_rejects_stream_without_chunks() {
-        let err = chat_sse_to_response_value(": keepalive\n\ndata: [DONE]\n\n").unwrap_err();
-        match err {
-            ProxyError::TransformError(msg) => {
-                assert!(msg.contains("No chat completion choices"))
-            }
-            other => panic!("expected TransformError, got {other:?}"),
-        }
-    }
-
-    #[test]
-    fn chat_sse_to_response_value_rejects_choiceless_stream_despite_done() {
-        // metadata/usage-only chunk + [DONE]、全程无 choice payload：
-        // 不能凭 [DONE] 包装成空内容假成功（saw_choice 必须以 choice 为证据）
-        let sse = "data: {\"id\":\"c1\",\"model\":\"m\",\"choices\":[],\"usage\":{\"prompt_tokens\":1,\"completion_tokens\":0,\"total_tokens\":1}}\n\n\
-data: [DONE]\n\n";
-
-        let err = chat_sse_to_response_value(sse).unwrap_err();
-        match err {
-            ProxyError::TransformError(msg) => {
-                assert!(msg.contains("No chat completion choices"), "{msg}")
-            }
-            other => panic!("expected TransformError, got {other:?}"),
-        }
-    }
-
-    #[test]
-    fn chat_sse_to_response_value_huge_tool_call_index_does_not_oom() {
-        // C1：上游可控的巨大 index 不得 densify 数组（旧实现会 OOM 整个进程）；
-        // BTreeMap 只占一个槽，且原始 index 用于回填合成 id
-        let sse = "data: {\"id\":\"c1\",\"model\":\"m\",\"choices\":[{\"index\":0,\"delta\":{\"tool_calls\":[{\"index\":4000000000,\"function\":{\"name\":\"f\",\"arguments\":\"{}\"}}]},\"finish_reason\":\"tool_calls\"}]}\n\n";
-
-        let response = chat_sse_to_response_value(sse).unwrap();
-        let tool_calls = response["choices"][0]["message"]["tool_calls"]
-            .as_array()
-            .unwrap();
-        assert_eq!(tool_calls.len(), 1);
-        assert_eq!(tool_calls[0]["id"], "tool_call_4000000000");
-        assert_eq!(tool_calls[0]["function"]["name"], "f");
-    }
-
-    #[test]
-    fn chat_sse_to_response_value_empty_delta_falls_back_to_message_snapshot() {
-        // C3：同一 choice 同时带空 delta:{} 与完整 message 快照——不能因 delta 键
-        // 存在就短路到空 delta、丢掉 message 内容（finish_reason 还会击穿守卫）
-        let sse = "data: {\"id\":\"c1\",\"model\":\"m\",\"choices\":[{\"index\":0,\"delta\":{},\"message\":{\"role\":\"assistant\",\"content\":\"full answer\"},\"finish_reason\":\"stop\"}]}\n\n\
-data: [DONE]\n\n";
-
-        let response = chat_sse_to_response_value(sse).unwrap();
-        assert_eq!(response["choices"][0]["message"]["content"], "full answer");
-        assert_eq!(response["choices"][0]["finish_reason"], "stop");
-    }
-
-    #[test]
-    fn chat_sse_to_response_value_empty_delta_scaffold_does_not_wipe_real_content() {
-        // C3 反向陷阱：每个 chunk 都带真内容 delta + 空 message 壳时，不能让空
-        // message 触发 clear 抹掉累计内容（delta 非空则优先 delta，不走快照覆盖）
-        let sse = "data: {\"id\":\"c1\",\"model\":\"m\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\"hi\"},\"message\":{},\"finish_reason\":null}]}\n\n\
-data: {\"id\":\"c1\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\" there\"},\"message\":{},\"finish_reason\":\"stop\"}]}\n\n";
-
-        let response = chat_sse_to_response_value(sse).unwrap();
-        assert_eq!(response["choices"][0]["message"]["content"], "hi there");
-    }
-
-    #[test]
-    fn chat_sse_to_response_value_object_form_tool_arguments_preserved() {
-        // C16：message 快照里 arguments 作对象回传时序列化保留，不能丢成空输入
-        let sse = "data: {\"id\":\"c1\",\"model\":\"m\",\"choices\":[{\"index\":0,\"message\":{\"role\":\"assistant\",\"tool_calls\":[{\"id\":\"call_1\",\"type\":\"function\",\"function\":{\"name\":\"get_weather\",\"arguments\":{\"city\":\"SF\"}}}]},\"finish_reason\":\"tool_calls\"}]}\n\n";
-
-        let response = chat_sse_to_response_value(sse).unwrap();
-        let args = response["choices"][0]["message"]["tool_calls"][0]["function"]["arguments"]
-            .as_str()
-            .unwrap();
-        let parsed: serde_json::Value = serde_json::from_str(args).unwrap();
-        assert_eq!(parsed["city"], "SF");
-    }
-
-    #[test]
-    fn chat_sse_to_response_value_collects_refusal() {
-        // C15：delta.refusal 字符串并入可见内容，避免拒绝响应变空消息假成功
-        let sse = "data: {\"id\":\"c1\",\"model\":\"m\",\"choices\":[{\"index\":0,\"delta\":{\"refusal\":\"I can't help with that.\"},\"finish_reason\":\"stop\"}]}\n\n";
-
-        let response = chat_sse_to_response_value(sse).unwrap();
-        assert_eq!(
-            response["choices"][0]["message"]["content"],
-            "I can't help with that."
-        );
-    }
-
-    #[test]
-    fn chat_sse_to_response_value_maps_legacy_function_call() {
-        // C17：legacy function_call → 单个 tool_call，避免 finish_reason
-        // function_call 映射成 tool_use 却零工具块卡死 agent
-        let sse = "data: {\"id\":\"c1\",\"model\":\"m\",\"choices\":[{\"index\":0,\"message\":{\"role\":\"assistant\",\"content\":null,\"function_call\":{\"name\":\"get_weather\",\"arguments\":\"{\\\"city\\\":\\\"SF\\\"}\"}},\"finish_reason\":\"function_call\"}]}\n\n";
-
-        let response = chat_sse_to_response_value(sse).unwrap();
-        let tc = &response["choices"][0]["message"]["tool_calls"][0];
-        assert_eq!(tc["function"]["name"], "get_weather");
-        assert_eq!(tc["function"]["arguments"], "{\"city\":\"SF\"}");
-    }
-
-    #[test]
-    fn chat_sse_to_response_value_event_error_fails_even_after_complete_choice() {
-        // C18：event:error（data 无 error 键）即便跟在完整 choice 后也判失败，
-        // 不能伪装成成功
-        let sse = "data: {\"id\":\"c1\",\"model\":\"m\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\"partial\"},\"finish_reason\":\"stop\"}]}\n\n\
-event: error\n\
-data: {\"message\":\"insufficient_user_quota\",\"code\":429}\n\n";
-
-        let err = chat_sse_to_response_value(sse).unwrap_err();
-        match err {
-            ProxyError::TransformError(msg) => {
-                assert!(msg.contains("insufficient_user_quota"), "{msg}")
-            }
-            other => panic!("expected TransformError, got {other:?}"),
-        }
-    }
-
-    #[test]
-    fn chat_sse_to_response_value_tolerates_empty_error_placeholder() {
-        // C12：error 为空对象 / 空消息等占位形状不得误杀成功流
-        let sse = "data: {\"id\":\"c1\",\"model\":\"m\",\"error\":{},\"choices\":[{\"index\":0,\"delta\":{\"content\":\"hi\"},\"finish_reason\":\"stop\"}]}\n\n";
-
-        let response = chat_sse_to_response_value(sse).unwrap();
-        assert_eq!(response["choices"][0]["message"]["content"], "hi");
-    }
-
-    #[test]
-    fn chat_sse_to_response_value_tolerates_truncated_residual_after_complete() {
-        // C2：完整 finish_reason 块后尾块被掐断（半截 JSON），不能误杀已完整的聚合
-        let sse = "data: {\"id\":\"c1\",\"model\":\"m\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\"hi\"},\"finish_reason\":\"stop\"}]}\n\n\
-data: {\"usage\":{\"prompt_to";
-
-        let response = chat_sse_to_response_value(sse).unwrap();
-        assert_eq!(response["choices"][0]["message"]["content"], "hi");
-    }
-
-    #[test]
-    fn chat_sse_to_response_value_float_zero_does_not_freeze_envelope() {
-        // C14：浮点 0.0 占位的 created 不得冻结 envelope，真值应能覆盖
-        let sse = "data: {\"id\":\"\",\"model\":\"\",\"created\":0.0,\"choices\":[]}\n\n\
-data: {\"id\":\"chatcmpl-real\",\"model\":\"m\",\"created\":42,\"choices\":[{\"index\":0,\"delta\":{\"content\":\"hi\"},\"finish_reason\":\"stop\"}]}\n\n";
-
-        let response = chat_sse_to_response_value(sse).unwrap();
-        assert_eq!(response["created"], 42);
-        assert_eq!(response["id"], "chatcmpl-real");
-    }
-
-    #[test]
-    fn chat_sse_to_response_value_synthesizes_id_when_absent() {
-        // C9：上游无 id 时合成非空唯一 id，避免下游 dedup 退化成常量碰撞覆盖
-        let sse = "data: {\"model\":\"m\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\"hi\"},\"finish_reason\":\"stop\"}]}\n\n";
-
-        let r1 = chat_sse_to_response_value(sse).unwrap();
-        let r2 = chat_sse_to_response_value(sse).unwrap();
-        let id1 = r1["id"].as_str().unwrap();
-        let id2 = r2["id"].as_str().unwrap();
-        assert!(!id1.is_empty());
-        assert_ne!(id1, id2, "两次无 id 聚合应产出不同 id 以避免 dedup 碰撞");
-    }
-
-    #[test]
-    fn chat_sse_to_response_value_accepts_indented_data_lines() {
-        // C4：行首缩进的 data 行（嗅探器宽容接受）也应能被聚合，不静默丢失
-        let sse = "  data: {\"id\":\"c1\",\"model\":\"m\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\"hi\"},\"finish_reason\":\"stop\"}]}\n\n";
-
-        let response = chat_sse_to_response_value(sse).unwrap();
-        assert_eq!(response["choices"][0]["message"]["content"], "hi");
-    }
-
-    #[test]
-    fn responses_sse_completed_then_trailing_failed_keeps_success() {
-        // C8：已拿到 response.completed 后，残余里的完整 response.failed 不得翻车
-        // （codex_oauth 聚合路径复用本函数，此前该尾块被忽略=成功）
-        let sse = "event: response.completed\n\
-data: {\"type\":\"response.completed\",\"response\":{\"id\":\"resp_ok\",\"status\":\"completed\",\"model\":\"gpt-5.4\",\"output\":[]}}\n\n\
-event: response.failed\n\
-data: {\"type\":\"response.failed\",\"response\":{\"error\":{\"message\":\"boom\"}}}\n";
-
-        let response = responses_sse_to_response_value(sse).unwrap();
-        assert_eq!(response["id"], "resp_ok");
-    }
-
-    #[test]
-    fn aggregated_chat_sse_round_trips_through_openai_to_anthropic() {
-        // 全链路：错标 Content-Type 的 SSE 体 → 聚合 → 既有非流转换器 → Anthropic JSON
-        let sse = "data: {\"id\":\"chatcmpl-9\",\"created\":1,\"model\":\"gpt-5.4\",\"choices\":[{\"index\":0,\"delta\":{\"role\":\"assistant\",\"content\":\"Hi\"},\"finish_reason\":null}]}\n\n\
-data: {\"id\":\"chatcmpl-9\",\"choices\":[{\"index\":0,\"delta\":{},\"finish_reason\":\"stop\"}],\"usage\":{\"prompt_tokens\":4,\"completion_tokens\":1,\"total_tokens\":5}}\n\n\
-data: [DONE]\n\n";
-
-        let aggregated = chat_sse_to_response_value(sse).unwrap();
-        let anthropic = openai_chat_to_anthropic_message(&aggregated).unwrap();
-
-        assert_eq!(anthropic["model"], "gpt-5.4");
-        assert_eq!(anthropic["content"][0]["type"], "text");
-        assert_eq!(anthropic["content"][0]["text"], "Hi");
-        assert_eq!(anthropic["stop_reason"], "end_turn");
-    }
-
-    #[test]
-    fn codex_oauth_responses_force_streaming_even_if_client_sent_false() {
-        assert!(should_use_claude_transform_streaming(
-            false,
-            false,
-            "openai_responses",
-            true,
-        ));
-    }
-
-    #[test]
-    fn upstream_sse_response_always_uses_streaming_path() {
-        assert!(should_use_claude_transform_streaming(
-            false,
-            true,
-            "openai_chat",
-            false,
-        ));
-    }
-
-    #[test]
-    fn non_streaming_response_stays_non_streaming_for_regular_openai_responses() {
-        assert!(!should_use_claude_transform_streaming(
-            false,
-            false,
-            "openai_responses",
-            false,
-        ));
-    }
-
-    #[test]
-    fn responses_sse_to_response_value_collects_output_items() {
-        let sse = r#"event: response.output_item.done
-data: {"type":"response.output_item.done","item":{"type":"message","role":"assistant","content":[{"type":"output_text","text":"hello"}]}}
-
-event: response.completed
-data: {"type":"response.completed","response":{"id":"resp_1","status":"completed","model":"gpt-5.4","output":[],"usage":{"input_tokens":10,"output_tokens":2}}}
-
-"#;
-
-        let response = responses_sse_to_response_value(sse).unwrap();
-
-        assert_eq!(response["id"], "resp_1");
-        assert_eq!(response["output"][0]["type"], "message");
-        assert_eq!(response["output"][0]["content"][0]["text"], "hello");
-    }
-
-    #[test]
-    fn responses_sse_to_response_value_handles_crlf_delimiters() {
-        // 真实 HTTP SSE 按规范使用 \r\n\r\n 分隔事件；take_sse_block 必须同时处理两种分隔符，
-        // 否则此路径在任何标准上游（含 Codex OAuth HTTPS 后端）下都会 TransformError。
-        let sse = "event: response.output_item.done\r\n\
-data: {\"type\":\"response.output_item.done\",\"item\":{\"type\":\"message\",\"role\":\"assistant\",\"content\":[{\"type\":\"output_text\",\"text\":\"hi\"}]}}\r\n\
-\r\n\
-event: response.completed\r\n\
-data: {\"type\":\"response.completed\",\"response\":{\"id\":\"resp_crlf\",\"status\":\"completed\",\"model\":\"gpt-5.4\",\"output\":[],\"usage\":{\"input_tokens\":5,\"output_tokens\":1}}}\r\n\
-\r\n";
-
-        let response = responses_sse_to_response_value(sse).unwrap();
-
-        assert_eq!(response["id"], "resp_crlf");
-        assert_eq!(response["output"][0]["type"], "message");
-        assert_eq!(response["output"][0]["content"][0]["text"], "hi");
-    }
-
-    #[test]
-    fn responses_sse_to_response_value_returns_err_on_response_failed() {
-        let sse = "event: response.failed\n\
-data: {\"type\":\"response.failed\",\"response\":{\"error\":{\"message\":\"upstream blew up\"}}}\n\n";
-
-        let err = responses_sse_to_response_value(sse).unwrap_err();
-        match err {
-            ProxyError::TransformError(msg) => assert!(msg.contains("upstream blew up")),
-            other => panic!("expected TransformError, got {other:?}"),
-        }
-    }
-
-    #[test]
-    fn responses_sse_to_response_value_errors_when_no_completed_event() {
-        let sse = "event: response.output_item.done\n\
-data: {\"type\":\"response.output_item.done\",\"item\":{\"type\":\"message\"}}\n\n";
-
-        assert!(responses_sse_to_response_value(sse).is_err());
-    }
 
     #[test]
     fn codex_proxy_forward_error_includes_context_and_cause() {
@@ -2079,8 +1530,6 @@ data: {\"type\":\"response.output_item.done\",\"item\":{\"type\":\"message\"}}\n
 
     #[test]
     fn codex_proxy_413_points_to_upstream_not_local_proxy() {
-        // 模拟上游渠道商 nginx 因 client_max_body_size 返回的 413 HTML 页面
-        // （见 issue #666：长上下文 / 大图 / 大日志撞上游体积上限）
         let error = ProxyError::UpstreamError {
             status: 413,
             body: Some(
@@ -2093,16 +1542,12 @@ data: {\"type\":\"response.output_item.done\",\"item\":{\"type\":\"message\"}}\n
         let body = codex_proxy_error_json("HCAI", "gpt-5.5", "/responses", &error);
 
         let message = body["error"]["message"].as_str().unwrap();
-        // 不再误导成「本地代理失败」
         assert!(!message.contains("CC Switch local proxy failed"));
-        // 明确指向上游 + 体积超限 + 可操作指引
         assert!(message.contains("413"));
         assert!(message.to_lowercase().contains("upstream"));
         assert!(message.contains("/compact"));
-        // 关键：不把整段 nginx HTML 回显给用户
         assert!(!message.contains("<html>"));
         assert!(!message.contains("nginx/1.29.6"));
-        // 结构化字段仍然保留，便于程序化消费 / UI 呈现
         assert_eq!(body["error"]["upstream_status"], 413);
         assert_eq!(body["error"]["provider"], "HCAI");
         assert_eq!(body["error"]["model"], "gpt-5.5");

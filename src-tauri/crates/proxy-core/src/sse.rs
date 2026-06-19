@@ -1,5 +1,5 @@
-use crate::{response_transform::extract_reasoning_field_text, ProxyCoreError, ProxyCoreResult};
-use serde_json::{json, Value};
+use crate::{ProxyCoreError, ProxyCoreResult, response_transform::extract_reasoning_field_text};
+use serde_json::{Value, json};
 use std::{collections::BTreeMap, time::Instant};
 
 #[inline]
@@ -229,7 +229,7 @@ pub fn responses_sse_to_response_value(body: &str) -> ProxyCoreResult<Value> {
             Err(error) => {
                 return Err(sse_aggregation_error(format!(
                     "Failed to parse upstream SSE event: {error}"
-                )))
+                )));
             }
         };
 
@@ -259,9 +259,8 @@ pub fn responses_sse_to_response_value(body: &str) -> ProxyCoreResult<Value> {
     }
     process_block(&buffer, false)?;
 
-    let mut response = completed_response.ok_or_else(|| {
-        sse_aggregation_error("No response.completed event in upstream SSE")
-    })?;
+    let mut response = completed_response
+        .ok_or_else(|| sse_aggregation_error("No response.completed event in upstream SSE"))?;
 
     if !output_items.is_empty() {
         if let Some(obj) = response.as_object_mut() {
@@ -276,10 +275,7 @@ pub fn responses_sse_to_response_value(body: &str) -> ProxyCoreResult<Value> {
     Ok(response)
 }
 
-pub fn chat_sse_to_response_value<F>(
-    body: &str,
-    mut next_missing_id: F,
-) -> ProxyCoreResult<Value>
+pub fn chat_sse_to_response_value<F>(body: &str, mut next_missing_id: F) -> ProxyCoreResult<Value>
 where
     F: FnMut() -> String,
 {
@@ -312,7 +308,7 @@ where
                 Err(error) => {
                     return Err(sse_aggregation_error(format!(
                         "Failed to parse upstream SSE chunk: {error}"
-                    )))
+                    )));
                 }
             };
 
@@ -339,7 +335,10 @@ where
                 (&mut model, "model"),
             ] {
                 if slot.is_null() {
-                    if let Some(value) = chunk.get(key).filter(|value| envelope_value_meaningful(value)) {
+                    if let Some(value) = chunk
+                        .get(key)
+                        .filter(|value| envelope_value_meaningful(value))
+                    {
                         *slot = value.clone();
                     }
                 }
@@ -419,8 +418,9 @@ where
                 for (pos, tool_call) in deltas.iter().enumerate() {
                     merge_tool_call_delta(&mut tool_calls, tool_call, pos);
                 }
-            } else if let Some(function_call) =
-                payload.get("function_call").filter(|value| !value.is_null())
+            } else if let Some(function_call) = payload
+                .get("function_call")
+                .filter(|value| !value.is_null())
             {
                 let synthetic = json!({
                     "index": 0,
@@ -459,7 +459,9 @@ where
     let tool_calls: Vec<Value> = tool_calls
         .into_iter()
         .filter(|(_, tool_call)| {
-            tool_call["id"].as_str().is_some_and(|value| !value.is_empty())
+            tool_call["id"]
+                .as_str()
+                .is_some_and(|value| !value.is_empty())
                 || tool_call["function"]["name"]
                     .as_str()
                     .is_some_and(|value| !value.is_empty())
@@ -607,11 +609,13 @@ fn merge_tool_call_delta(
 
 #[cfg(test)]
 mod tests {
+    use crate::response_transform::openai_chat_to_anthropic_message;
+
     use super::{
-        append_utf8_safe, chat_sse_to_response_value, responses_sse_to_response_value,
-        strip_sse_field, take_sse_block, SseEventScanner, SseUsageAccumulator,
+        SseEventScanner, SseUsageAccumulator, append_utf8_safe, chat_sse_to_response_value,
+        responses_sse_to_response_value, strip_sse_field, take_sse_block,
     };
-    use serde_json::json;
+    use serde_json::{Value, json};
     use std::time::{Duration, Instant};
 
     fn generated_id_factory() -> impl FnMut() -> String {
@@ -858,7 +862,10 @@ mod tests {
 
         assert_eq!(events.len(), 1);
         assert_eq!(events[0].data, "{\"usage\":{\"total_tokens\":3}}");
-        assert_eq!(events[0].parsed.as_ref().unwrap()["usage"]["total_tokens"], 3);
+        assert_eq!(
+            events[0].parsed.as_ref().unwrap()["usage"]["total_tokens"],
+            3
+        );
         assert!(!events[0].done);
     }
 
@@ -1001,6 +1008,77 @@ data: {\"type\":\"response.failed\",\"response\":{\"error\":{\"message\":\"boom\
     }
 
     #[test]
+    fn responses_sse_to_response_value_handles_missing_trailing_blank_line() {
+        let sse = "event: response.completed\n\
+data: {\"type\":\"response.completed\",\"response\":{\"id\":\"resp_tail\",\"status\":\"completed\",\"model\":\"gpt-5.4\",\"output\":[],\"usage\":{\"input_tokens\":3,\"output_tokens\":1}}}\n";
+
+        let response = responses_sse_to_response_value(sse).unwrap();
+
+        assert_eq!(response["id"], "resp_tail");
+    }
+
+    #[test]
+    fn responses_sse_to_response_value_ignores_truncated_trailing_block() {
+        let sse = "event: response.completed\n\
+data: {\"type\":\"response.completed\",\"response\":{\"id\":\"resp_ok\",\"status\":\"completed\",\"model\":\"gpt-5.4\",\"output\":[],\"usage\":{\"input_tokens\":3,\"output_tokens\":1}}}\n\
+\n\
+event: response.extra\n\
+data: {\"type\":\"resp";
+
+        let response = responses_sse_to_response_value(sse).unwrap();
+
+        assert_eq!(response["id"], "resp_ok");
+    }
+
+    #[test]
+    fn responses_sse_to_response_value_handles_crlf_delimiters() {
+        let sse = "event: response.output_item.done\r\n\
+data: {\"type\":\"response.output_item.done\",\"item\":{\"type\":\"message\",\"role\":\"assistant\",\"content\":[{\"type\":\"output_text\",\"text\":\"hi\"}]}}\r\n\
+\r\n\
+event: response.completed\r\n\
+data: {\"type\":\"response.completed\",\"response\":{\"id\":\"resp_crlf\",\"status\":\"completed\",\"model\":\"gpt-5.4\",\"output\":[],\"usage\":{\"input_tokens\":5,\"output_tokens\":1}}}\r\n\
+\r\n";
+
+        let response = responses_sse_to_response_value(sse).unwrap();
+
+        assert_eq!(response["id"], "resp_crlf");
+        assert_eq!(response["output"][0]["type"], "message");
+        assert_eq!(response["output"][0]["content"][0]["text"], "hi");
+    }
+
+    #[test]
+    fn responses_sse_to_response_value_returns_err_on_response_failed() {
+        let sse = "event: response.failed\n\
+data: {\"type\":\"response.failed\",\"response\":{\"error\":{\"message\":\"upstream blew up\"}}}\n\n";
+
+        let error = responses_sse_to_response_value(sse).unwrap_err();
+
+        assert!(error.to_string().contains("upstream blew up"), "{error}");
+    }
+
+    #[test]
+    fn responses_sse_to_response_value_errors_when_no_completed_event() {
+        let sse = "event: response.output_item.done\n\
+data: {\"type\":\"response.output_item.done\",\"item\":{\"type\":\"message\"}}\n\n";
+
+        assert!(responses_sse_to_response_value(sse).is_err());
+    }
+
+    #[test]
+    fn chat_sse_to_response_value_collects_reasoning_alias() {
+        let sse = "data: {\"id\":\"c1\",\"model\":\"kimi-k2.6\",\"choices\":[{\"index\":0,\"delta\":{\"reasoning\":\"think\"},\"finish_reason\":null}]}\n\n\
+data: {\"id\":\"c1\",\"choices\":[{\"index\":0,\"delta\":{\"reasoning\":{\"content\":\"ing\"},\"content\":\"ok\"},\"finish_reason\":\"stop\"}]}\n\n";
+
+        let response = chat_sse_to_response_value(sse, generated_id_factory()).unwrap();
+
+        assert_eq!(
+            response["choices"][0]["message"]["reasoning_content"],
+            "thinking"
+        );
+        assert_eq!(response["choices"][0]["message"]["content"], "ok");
+    }
+
+    #[test]
     fn chat_sse_to_response_value_aggregates_text_finish_reason_and_usage() {
         let sse = "data: {\"id\":\"chatcmpl-1\",\"object\":\"chat.completion.chunk\",\"created\":123,\"model\":\"gpt-5.4\",\"choices\":[{\"index\":0,\"delta\":{\"role\":\"assistant\",\"content\":\"Hel\"},\"finish_reason\":null}]}\n\n\
 data: {\"id\":\"chatcmpl-1\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\"lo\"},\"finish_reason\":null}]}\n\n\
@@ -1078,5 +1156,304 @@ data: {\"message\":\"insufficient_user_quota\",\"code\":429}\n\n";
         let response = chat_sse_to_response_value(sse, generated_id_factory()).unwrap();
 
         assert_eq!(response["id"], "generated-1");
+    }
+
+    #[test]
+    fn chat_sse_to_response_value_skips_azure_placeholder_envelope() {
+        let sse = "data: {\"id\":\"\",\"model\":\"\",\"created\":0,\"object\":\"\",\"choices\":[],\"prompt_filter_results\":[]}\n\n\
+data: {\"id\":\"chatcmpl-real\",\"model\":\"gpt-5.4\",\"created\":42,\"choices\":[{\"index\":0,\"delta\":{\"content\":\"hi\"},\"finish_reason\":\"stop\"}]}\n\n";
+
+        let response = chat_sse_to_response_value(sse, generated_id_factory()).unwrap();
+
+        assert_eq!(response["id"], "chatcmpl-real");
+        assert_eq!(response["model"], "gpt-5.4");
+        assert_eq!(response["created"], 42);
+    }
+
+    #[test]
+    fn chat_sse_to_response_value_tolerates_null_error_field() {
+        let sse = "data: {\"id\":\"c1\",\"model\":\"m\",\"error\":null,\"choices\":[{\"index\":0,\"delta\":{\"content\":\"hi\"},\"finish_reason\":\"stop\"}]}\n\n";
+
+        let response = chat_sse_to_response_value(sse, generated_id_factory()).unwrap();
+
+        assert_eq!(response["choices"][0]["message"]["content"], "hi");
+    }
+
+    #[test]
+    fn chat_sse_to_response_value_first_finish_reason_wins() {
+        let sse = "data: {\"id\":\"c1\",\"model\":\"m\",\"choices\":[{\"index\":0,\"delta\":{\"tool_calls\":[{\"index\":0,\"id\":\"call_1\",\"function\":{\"name\":\"f\",\"arguments\":\"{}\"}}]},\"finish_reason\":\"tool_calls\"}]}\n\n\
+data: {\"id\":\"c1\",\"choices\":[{\"index\":0,\"delta\":{},\"finish_reason\":\"stop\"}]}\n\n";
+
+        let response = chat_sse_to_response_value(sse, generated_id_factory()).unwrap();
+
+        assert_eq!(response["choices"][0]["finish_reason"], "tool_calls");
+    }
+
+    #[test]
+    fn chat_sse_to_response_value_unwraps_message_shaped_fake_stream() {
+        let sse = "data: {\"id\":\"c1\",\"object\":\"chat.completion\",\"model\":\"m\",\"choices\":[{\"index\":0,\"message\":{\"role\":\"assistant\",\"content\":\"full answer\"},\"finish_reason\":\"stop\"}]}\n\n\
+data: [DONE]\n\n";
+
+        let response = chat_sse_to_response_value(sse, generated_id_factory()).unwrap();
+
+        assert_eq!(response["choices"][0]["message"]["content"], "full answer");
+        assert_eq!(response["choices"][0]["finish_reason"], "stop");
+    }
+
+    #[test]
+    fn chat_sse_to_response_value_message_snapshot_overrides_deltas() {
+        let sse = "data: {\"id\":\"c1\",\"model\":\"m\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\"par\"},\"finish_reason\":null}]}\n\n\
+data: {\"id\":\"c1\",\"choices\":[{\"index\":0,\"message\":{\"role\":\"assistant\",\"content\":\"full\"},\"finish_reason\":\"stop\"}]}\n\n";
+
+        let response = chat_sse_to_response_value(sse, generated_id_factory()).unwrap();
+
+        assert_eq!(response["choices"][0]["message"]["content"], "full");
+    }
+
+    #[test]
+    fn chat_sse_to_response_value_backfills_sparse_tool_call_ids() {
+        let sse = "data: {\"id\":\"c1\",\"model\":\"m\",\"choices\":[{\"index\":0,\"delta\":{\"tool_calls\":[{\"index\":1,\"function\":{\"name\":\"f2\",\"arguments\":\"{}\"}}]},\"finish_reason\":\"tool_calls\"}]}\n\n";
+
+        let response = chat_sse_to_response_value(sse, generated_id_factory()).unwrap();
+
+        let tool_calls = response["choices"][0]["message"]["tool_calls"]
+            .as_array()
+            .unwrap();
+        assert_eq!(tool_calls.len(), 1);
+        assert_eq!(tool_calls[0]["id"], "tool_call_1");
+        assert_eq!(tool_calls[0]["function"]["name"], "f2");
+    }
+
+    #[test]
+    fn chat_sse_to_response_value_strips_bom_before_parsing() {
+        let sse = "\u{feff}data: {\"id\":\"c1\",\"model\":\"m\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\"hi\"},\"finish_reason\":\"stop\"}]}\n\n";
+
+        let response = chat_sse_to_response_value(sse, generated_id_factory()).unwrap();
+
+        assert_eq!(response["choices"][0]["message"]["content"], "hi");
+    }
+
+    #[test]
+    fn chat_sse_to_response_value_collects_reasoning_content() {
+        let sse = "data: {\"id\":\"c1\",\"model\":\"deepseek-r2\",\"choices\":[{\"index\":0,\"delta\":{\"reasoning_content\":\"think\"},\"finish_reason\":null}]}\n\n\
+data: {\"id\":\"c1\",\"choices\":[{\"index\":0,\"delta\":{\"reasoning_content\":\"ing\",\"content\":\"ok\"},\"finish_reason\":\"stop\"}]}\n\n";
+
+        let response = chat_sse_to_response_value(sse, generated_id_factory()).unwrap();
+
+        assert_eq!(
+            response["choices"][0]["message"]["reasoning_content"],
+            "thinking"
+        );
+        assert_eq!(response["choices"][0]["message"]["content"], "ok");
+    }
+
+    #[test]
+    fn chat_sse_to_response_value_handles_missing_trailing_blank_line() {
+        let sse = "data: {\"id\":\"c1\",\"model\":\"m\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\"hi\"},\"finish_reason\":\"stop\"}]}\n";
+
+        let response = chat_sse_to_response_value(sse, generated_id_factory()).unwrap();
+
+        assert_eq!(response["choices"][0]["message"]["content"], "hi");
+    }
+
+    #[test]
+    fn chat_sse_to_response_value_handles_crlf_delimiters() {
+        let sse = "data: {\"id\":\"c1\",\"model\":\"m\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\"hi\"},\"finish_reason\":null}]}\r\n\
+\r\n\
+data: {\"id\":\"c1\",\"choices\":[{\"index\":0,\"delta\":{},\"finish_reason\":\"stop\"}]}\r\n\
+\r\n\
+data: [DONE]\r\n\
+\r\n";
+
+        let response = chat_sse_to_response_value(sse, generated_id_factory()).unwrap();
+
+        assert_eq!(response["choices"][0]["message"]["content"], "hi");
+        assert_eq!(response["choices"][0]["finish_reason"], "stop");
+    }
+
+    #[test]
+    fn chat_sse_to_response_value_propagates_upstream_error_event() {
+        let sse = "data: {\"error\":{\"message\":\"rate limited by gateway\",\"code\":429}}\n\n";
+
+        let error = chat_sse_to_response_value(sse, generated_id_factory()).unwrap_err();
+
+        assert!(
+            error.to_string().contains("rate limited by gateway"),
+            "{error}"
+        );
+    }
+
+    #[test]
+    fn chat_sse_to_response_value_accepts_done_marker_without_finish_reason() {
+        let sse = "data: {\"id\":\"c1\",\"model\":\"m\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\"hi\"},\"finish_reason\":null}]}\n\n\
+data: [DONE]\n\n";
+
+        let response = chat_sse_to_response_value(sse, generated_id_factory()).unwrap();
+
+        assert_eq!(response["choices"][0]["message"]["content"], "hi");
+        assert_eq!(response["choices"][0]["finish_reason"], Value::Null);
+    }
+
+    #[test]
+    fn chat_sse_to_response_value_rejects_stream_without_chunks() {
+        let error =
+            chat_sse_to_response_value(": keepalive\n\ndata: [DONE]\n\n", generated_id_factory())
+                .unwrap_err();
+
+        assert!(
+            error.to_string().contains("No chat completion choices"),
+            "{error}"
+        );
+    }
+
+    #[test]
+    fn chat_sse_to_response_value_rejects_choiceless_stream_despite_done() {
+        let sse = "data: {\"id\":\"c1\",\"model\":\"m\",\"choices\":[],\"usage\":{\"prompt_tokens\":1,\"completion_tokens\":0,\"total_tokens\":1}}\n\n\
+data: [DONE]\n\n";
+
+        let error = chat_sse_to_response_value(sse, generated_id_factory()).unwrap_err();
+
+        assert!(
+            error.to_string().contains("No chat completion choices"),
+            "{error}"
+        );
+    }
+
+    #[test]
+    fn chat_sse_to_response_value_huge_tool_call_index_does_not_oom() {
+        let sse = "data: {\"id\":\"c1\",\"model\":\"m\",\"choices\":[{\"index\":0,\"delta\":{\"tool_calls\":[{\"index\":4000000000,\"function\":{\"name\":\"f\",\"arguments\":\"{}\"}}]},\"finish_reason\":\"tool_calls\"}]}\n\n";
+
+        let response = chat_sse_to_response_value(sse, generated_id_factory()).unwrap();
+        let tool_calls = response["choices"][0]["message"]["tool_calls"]
+            .as_array()
+            .unwrap();
+        assert_eq!(tool_calls.len(), 1);
+        assert_eq!(tool_calls[0]["id"], "tool_call_4000000000");
+        assert_eq!(tool_calls[0]["function"]["name"], "f");
+    }
+
+    #[test]
+    fn chat_sse_to_response_value_empty_delta_falls_back_to_message_snapshot() {
+        let sse = "data: {\"id\":\"c1\",\"model\":\"m\",\"choices\":[{\"index\":0,\"delta\":{},\"message\":{\"role\":\"assistant\",\"content\":\"full answer\"},\"finish_reason\":\"stop\"}]}\n\n\
+data: [DONE]\n\n";
+
+        let response = chat_sse_to_response_value(sse, generated_id_factory()).unwrap();
+
+        assert_eq!(response["choices"][0]["message"]["content"], "full answer");
+        assert_eq!(response["choices"][0]["finish_reason"], "stop");
+    }
+
+    #[test]
+    fn chat_sse_to_response_value_empty_delta_scaffold_does_not_wipe_real_content() {
+        let sse = "data: {\"id\":\"c1\",\"model\":\"m\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\"hi\"},\"message\":{},\"finish_reason\":null}]}\n\n\
+data: {\"id\":\"c1\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\" there\"},\"message\":{},\"finish_reason\":\"stop\"}]}\n\n";
+
+        let response = chat_sse_to_response_value(sse, generated_id_factory()).unwrap();
+
+        assert_eq!(response["choices"][0]["message"]["content"], "hi there");
+    }
+
+    #[test]
+    fn chat_sse_to_response_value_object_form_tool_arguments_preserved() {
+        let sse = "data: {\"id\":\"c1\",\"model\":\"m\",\"choices\":[{\"index\":0,\"message\":{\"role\":\"assistant\",\"tool_calls\":[{\"id\":\"call_1\",\"type\":\"function\",\"function\":{\"name\":\"get_weather\",\"arguments\":{\"city\":\"SF\"}}}]},\"finish_reason\":\"tool_calls\"}]}\n\n";
+
+        let response = chat_sse_to_response_value(sse, generated_id_factory()).unwrap();
+        let args = response["choices"][0]["message"]["tool_calls"][0]["function"]["arguments"]
+            .as_str()
+            .unwrap();
+        let parsed: Value = serde_json::from_str(args).unwrap();
+
+        assert_eq!(parsed["city"], "SF");
+    }
+
+    #[test]
+    fn chat_sse_to_response_value_collects_refusal() {
+        let sse = "data: {\"id\":\"c1\",\"model\":\"m\",\"choices\":[{\"index\":0,\"delta\":{\"refusal\":\"I can't help with that.\"},\"finish_reason\":\"stop\"}]}\n\n";
+
+        let response = chat_sse_to_response_value(sse, generated_id_factory()).unwrap();
+
+        assert_eq!(
+            response["choices"][0]["message"]["content"],
+            "I can't help with that."
+        );
+    }
+
+    #[test]
+    fn chat_sse_to_response_value_maps_legacy_function_call() {
+        let sse = "data: {\"id\":\"c1\",\"model\":\"m\",\"choices\":[{\"index\":0,\"message\":{\"role\":\"assistant\",\"content\":null,\"function_call\":{\"name\":\"get_weather\",\"arguments\":\"{\\\"city\\\":\\\"SF\\\"}\"}},\"finish_reason\":\"function_call\"}]}\n\n";
+
+        let response = chat_sse_to_response_value(sse, generated_id_factory()).unwrap();
+        let tool_call = &response["choices"][0]["message"]["tool_calls"][0];
+
+        assert_eq!(tool_call["function"]["name"], "get_weather");
+        assert_eq!(tool_call["function"]["arguments"], "{\"city\":\"SF\"}");
+    }
+
+    #[test]
+    fn chat_sse_to_response_value_tolerates_empty_error_placeholder() {
+        let sse = "data: {\"id\":\"c1\",\"model\":\"m\",\"error\":{},\"choices\":[{\"index\":0,\"delta\":{\"content\":\"hi\"},\"finish_reason\":\"stop\"}]}\n\n";
+
+        let response = chat_sse_to_response_value(sse, generated_id_factory()).unwrap();
+
+        assert_eq!(response["choices"][0]["message"]["content"], "hi");
+    }
+
+    #[test]
+    fn chat_sse_to_response_value_tolerates_truncated_residual_after_complete() {
+        let sse = "data: {\"id\":\"c1\",\"model\":\"m\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\"hi\"},\"finish_reason\":\"stop\"}]}\n\n\
+data: {\"usage\":{\"prompt_to";
+
+        let response = chat_sse_to_response_value(sse, generated_id_factory()).unwrap();
+
+        assert_eq!(response["choices"][0]["message"]["content"], "hi");
+    }
+
+    #[test]
+    fn chat_sse_to_response_value_float_zero_does_not_freeze_envelope() {
+        let sse = "data: {\"id\":\"\",\"model\":\"\",\"created\":0.0,\"choices\":[]}\n\n\
+data: {\"id\":\"chatcmpl-real\",\"model\":\"m\",\"created\":42,\"choices\":[{\"index\":0,\"delta\":{\"content\":\"hi\"},\"finish_reason\":\"stop\"}]}\n\n";
+
+        let response = chat_sse_to_response_value(sse, generated_id_factory()).unwrap();
+
+        assert_eq!(response["created"], 42);
+        assert_eq!(response["id"], "chatcmpl-real");
+    }
+
+    #[test]
+    fn chat_sse_to_response_value_synthesizes_id_when_absent() {
+        let sse = "data: {\"model\":\"m\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\"hi\"},\"finish_reason\":\"stop\"}]}\n\n";
+        let mut next_missing_id = generated_id_factory();
+
+        let first = chat_sse_to_response_value(sse, &mut next_missing_id).unwrap();
+        let second = chat_sse_to_response_value(sse, &mut next_missing_id).unwrap();
+        let first_id = first["id"].as_str().unwrap();
+        let second_id = second["id"].as_str().unwrap();
+
+        assert!(!first_id.is_empty());
+        assert_ne!(first_id, second_id);
+    }
+
+    #[test]
+    fn chat_sse_to_response_value_accepts_indented_data_lines() {
+        let sse = "  data: {\"id\":\"c1\",\"model\":\"m\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\"hi\"},\"finish_reason\":\"stop\"}]}\n\n";
+
+        let response = chat_sse_to_response_value(sse, generated_id_factory()).unwrap();
+
+        assert_eq!(response["choices"][0]["message"]["content"], "hi");
+    }
+
+    #[test]
+    fn aggregated_chat_sse_round_trips_through_openai_to_anthropic() {
+        let sse = "data: {\"id\":\"chatcmpl-9\",\"created\":1,\"model\":\"gpt-5.4\",\"choices\":[{\"index\":0,\"delta\":{\"role\":\"assistant\",\"content\":\"Hi\"},\"finish_reason\":null}]}\n\n\
+data: {\"id\":\"chatcmpl-9\",\"choices\":[{\"index\":0,\"delta\":{},\"finish_reason\":\"stop\"}],\"usage\":{\"prompt_tokens\":4,\"completion_tokens\":1,\"total_tokens\":5}}\n\n\
+data: [DONE]\n\n";
+
+        let aggregated = chat_sse_to_response_value(sse, generated_id_factory()).unwrap();
+        let anthropic = openai_chat_to_anthropic_message(&aggregated).unwrap();
+
+        assert_eq!(anthropic["model"], "gpt-5.4");
+        assert_eq!(anthropic["content"][0]["type"], "text");
+        assert_eq!(anthropic["content"][0]["text"], "Hi");
+        assert_eq!(anthropic["stop_reason"], "end_turn");
     }
 }
