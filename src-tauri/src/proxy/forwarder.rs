@@ -28,16 +28,17 @@ use crate::proxy_core::{
     build_codex_oauth_session_headers, build_request_started_event_payload,
     build_retryable_forward_failure_log, build_terminal_forward_failure_log,
     build_upstream_auth_headers, categorize_forward_failure, classify_copilot_request,
-    contains_image_blocks, interface_kind_for_forward, is_codex_chat_full_endpoint_base,
-    is_github_copilot_upstream, is_openai_o_series, is_socks_proxy_url, is_unsupported_image_error,
-    merge_copilot_tool_results, normalize_thinking_type, prompt_cache_trace_log_message,
-    rectify_anthropic_request, rectify_thinking_budget, replace_image_blocks_with_marker,
-    replace_images_for_text_only_model, request_body_filter_log_message, request_model_for_forward,
-    resolve_claude_forward_api_format, resolve_copilot_deterministic_interaction_id,
-    resolve_copilot_model_against_ids, resolve_copilot_optimizer_session_id,
-    resolve_copilot_request_id_with_fallback, resolve_media_prevention_policy,
-    resolve_upstream_request_transport_policy, resolve_upstream_send_policy,
-    resolved_copilot_dynamic_base_url, responses_to_chat_completions_with_options,
+    claude_transform_endpoint_rewrite_input_from_body, contains_image_blocks,
+    interface_kind_for_forward, is_codex_chat_full_endpoint_base, is_github_copilot_upstream,
+    is_openai_o_series, is_socks_proxy_url, is_unsupported_image_error, merge_copilot_tool_results,
+    normalize_thinking_type, prompt_cache_trace_log_message, rectify_anthropic_request,
+    rectify_thinking_budget, replace_image_blocks_with_marker, replace_images_for_text_only_model,
+    request_body_filter_log_message, request_model_for_forward, resolve_claude_forward_api_format,
+    resolve_copilot_deterministic_interaction_id, resolve_copilot_model_against_ids,
+    resolve_copilot_optimizer_session_id, resolve_copilot_request_id_with_fallback,
+    resolve_media_prevention_policy, resolve_upstream_request_transport_policy,
+    resolve_upstream_send_policy, resolved_copilot_dynamic_base_url,
+    responses_to_chat_completions_with_options, rewrite_claude_transform_endpoint,
     sanitize_copilot_orphan_tool_results, should_apply_bedrock_pre_send_optimizer,
     should_check_media_retry, should_failover_after_rectifier_retry_failure,
     should_preserve_exact_request_header_case, should_rectify_thinking_budget,
@@ -1787,7 +1788,13 @@ impl RequestForwarder {
             let api_format = resolved_claude_api_format
                 .as_deref()
                 .unwrap_or_else(|| super::providers::get_claude_api_format(provider));
-            rewrite_claude_transform_endpoint(endpoint, api_format, is_copilot, &mapped_body)
+            rewrite_claude_transform_endpoint(claude_transform_endpoint_rewrite_input_from_body(
+                endpoint,
+                api_format,
+                is_copilot,
+                &mapped_body,
+            ))
+            .into_parts()
         } else {
             (
                 endpoint.to_string(),
@@ -2456,20 +2463,6 @@ fn attempt_event_payload(
     })
 }
 
-fn rewrite_claude_transform_endpoint(
-    endpoint: &str,
-    api_format: &str,
-    is_copilot: bool,
-    body: &Value,
-) -> (String, Option<String>) {
-    crate::proxy_core::rewrite_claude_transform_endpoint(
-        crate::proxy_core::claude_transform_endpoint_rewrite_input_from_body(
-            endpoint, api_format, is_copilot, body,
-        ),
-    )
-    .into_parts()
-}
-
 fn reject_proxy_placeholder_for_managed_account_upstream(
     url: &str,
     headers: &http::HeaderMap,
@@ -2526,6 +2519,10 @@ mod tests {
     use super::*;
     use crate::database::Database;
     use crate::proxy_core::{canonical_json_string, short_value_hash};
+    use crate::proxy_core::{
+        claude_transform_endpoint_rewrite_input_from_body as transform_endpoint_rewrite_input,
+        rewrite_claude_transform_endpoint as rewrite_transform_endpoint,
+    };
     use axum::http::header::{HeaderValue, ACCEPT};
     use axum::http::HeaderMap;
     use bytes::Bytes;
@@ -3042,12 +3039,14 @@ mod tests {
 
     #[test]
     fn rewrite_claude_transform_endpoint_strips_beta_for_chat_completions() {
-        let (endpoint, passthrough_query) = rewrite_claude_transform_endpoint(
-            "/v1/messages?beta=true&foo=bar",
-            "openai_chat",
-            false,
-            &json!({ "model": "gpt-5.4" }),
-        );
+        let (endpoint, passthrough_query) =
+            rewrite_transform_endpoint(transform_endpoint_rewrite_input(
+                "/v1/messages?beta=true&foo=bar",
+                "openai_chat",
+                false,
+                &json!({ "model": "gpt-5.4" }),
+            ))
+            .into_parts();
 
         assert_eq!(endpoint, "/v1/chat/completions?foo=bar");
         assert_eq!(passthrough_query.as_deref(), Some("foo=bar"));
@@ -3055,12 +3054,14 @@ mod tests {
 
     #[test]
     fn rewrite_claude_transform_endpoint_strips_beta_for_responses() {
-        let (endpoint, passthrough_query) = rewrite_claude_transform_endpoint(
-            "/claude/v1/messages?beta=true&x-id=1",
-            "openai_responses",
-            false,
-            &json!({ "model": "gpt-5.4" }),
-        );
+        let (endpoint, passthrough_query) =
+            rewrite_transform_endpoint(transform_endpoint_rewrite_input(
+                "/claude/v1/messages?beta=true&x-id=1",
+                "openai_responses",
+                false,
+                &json!({ "model": "gpt-5.4" }),
+            ))
+            .into_parts();
 
         assert_eq!(endpoint, "/v1/responses?x-id=1");
         assert_eq!(passthrough_query.as_deref(), Some("x-id=1"));
@@ -3090,12 +3091,14 @@ mod tests {
 
     #[test]
     fn rewrite_claude_transform_endpoint_uses_copilot_path() {
-        let (endpoint, passthrough_query) = rewrite_claude_transform_endpoint(
-            "/v1/messages?beta=true&x-id=1",
-            "anthropic",
-            true,
-            &json!({ "model": "claude-sonnet-4-6" }),
-        );
+        let (endpoint, passthrough_query) =
+            rewrite_transform_endpoint(transform_endpoint_rewrite_input(
+                "/v1/messages?beta=true&x-id=1",
+                "anthropic",
+                true,
+                &json!({ "model": "claude-sonnet-4-6" }),
+            ))
+            .into_parts();
 
         assert_eq!(endpoint, "/chat/completions?x-id=1");
         assert_eq!(passthrough_query.as_deref(), Some("x-id=1"));
@@ -3103,12 +3106,14 @@ mod tests {
 
     #[test]
     fn rewrite_claude_transform_endpoint_uses_copilot_responses_path() {
-        let (endpoint, passthrough_query) = rewrite_claude_transform_endpoint(
-            "/v1/messages?beta=true&x-id=1",
-            "openai_responses",
-            true,
-            &json!({ "model": "gpt-5.4" }),
-        );
+        let (endpoint, passthrough_query) =
+            rewrite_transform_endpoint(transform_endpoint_rewrite_input(
+                "/v1/messages?beta=true&x-id=1",
+                "openai_responses",
+                true,
+                &json!({ "model": "gpt-5.4" }),
+            ))
+            .into_parts();
 
         assert_eq!(endpoint, "/v1/responses?x-id=1");
         assert_eq!(passthrough_query.as_deref(), Some("x-id=1"));
@@ -3116,12 +3121,14 @@ mod tests {
 
     #[test]
     fn rewrite_claude_transform_endpoint_maps_gemini_generate_content() {
-        let (endpoint, passthrough_query) = rewrite_claude_transform_endpoint(
-            "/v1/messages?beta=true&x-id=1",
-            "gemini_native",
-            false,
-            &json!({ "model": "gemini-2.5-pro" }),
-        );
+        let (endpoint, passthrough_query) =
+            rewrite_transform_endpoint(transform_endpoint_rewrite_input(
+                "/v1/messages?beta=true&x-id=1",
+                "gemini_native",
+                false,
+                &json!({ "model": "gemini-2.5-pro" }),
+            ))
+            .into_parts();
 
         assert_eq!(
             endpoint,
@@ -3135,24 +3142,27 @@ mod tests {
     /// `/v1beta/models/models/...` path.
     #[test]
     fn rewrite_claude_transform_endpoint_strips_gemini_model_resource_prefix() {
-        let (endpoint, _) = rewrite_claude_transform_endpoint(
+        let (endpoint, _) = rewrite_transform_endpoint(transform_endpoint_rewrite_input(
             "/v1/messages",
             "gemini_native",
             false,
             &json!({ "model": "models/gemini-2.5-pro" }),
-        );
+        ))
+        .into_parts();
 
         assert_eq!(endpoint, "/v1beta/models/gemini-2.5-pro:generateContent");
     }
 
     #[test]
     fn rewrite_claude_transform_endpoint_maps_gemini_streaming() {
-        let (endpoint, passthrough_query) = rewrite_claude_transform_endpoint(
-            "/v1/messages?beta=true",
-            "gemini_native",
-            false,
-            &json!({ "model": "gemini-2.5-flash", "stream": true }),
-        );
+        let (endpoint, passthrough_query) =
+            rewrite_transform_endpoint(transform_endpoint_rewrite_input(
+                "/v1/messages?beta=true",
+                "gemini_native",
+                false,
+                &json!({ "model": "gemini-2.5-flash", "stream": true }),
+            ))
+            .into_parts();
 
         assert_eq!(
             endpoint,
