@@ -7,7 +7,7 @@ use super::ports::{
     ChannelModelsResponse, ChannelRecordResponse, ChannelRouteCandidate, ChannelRouteRejected,
     ChannelRouteSource, CurrentRouteProviderSummaryInput, CurrentRouteResponse, GroupListQuery,
     HealthCheckResponse, ProviderListResponse, ProxyStatusResponse, RouteGroupListResponse,
-    RouteGroupSourceInput, RouteResolveRequest, RouteResolveResponse,
+    RouteGroupSourceInput, RouteResolveRequest, RouteResolveResponse, ProxyChannelWriteRequest,
 };
 
 pub fn validate_management_app_type(app_type: &str) -> ProxyCoreResult<()> {
@@ -77,6 +77,25 @@ impl ProxyStatusRequest {
 
     pub fn response<T>(&self, status: T) -> ProxyStatusResponse<T> {
         ProxyStatusResponse::new(status)
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct ChannelCreateRequest {
+    request: ProxyChannelWriteRequest,
+}
+
+impl ChannelCreateRequest {
+    pub fn from_body(request: ProxyChannelWriteRequest) -> Self {
+        Self { request }
+    }
+
+    pub fn into_body(self) -> ProxyChannelWriteRequest {
+        self.request
+    }
+
+    pub fn record_response<T>(&self, channel: T) -> ChannelRecordResponse<T> {
+        ChannelRecordResponse::new(channel)
     }
 }
 
@@ -364,15 +383,16 @@ fn normalize_optional_management_app_type(app_type: Option<String>) -> ProxyCore
 mod tests {
     use super::{
         AppChannelManagementRequest, AppListRequest, AppModelCatalogRequest, ChannelListRequest,
-        ChannelPathRequest, GroupListRequest, HealthCheckRequest, ManagementAppPathRequest,
-        ProxyStatusRequest, RouteResolveManagementRequest, channel_not_found_message,
-        normalize_channel_id_path, validate_management_app_type, validate_route_resolve_app_type,
+        ChannelCreateRequest, ChannelPathRequest, GroupListRequest, HealthCheckRequest,
+        ManagementAppPathRequest, ProxyStatusRequest, RouteResolveManagementRequest,
+        channel_not_found_message, normalize_channel_id_path, validate_management_app_type,
+        validate_route_resolve_app_type,
     };
     use crate::{
         AppChannelListQuery, AppKind, AppModelListQuery, AppSummaryInput, ChannelHealthPolicy,
         ChannelListQuery, ChannelOverrides, ChannelRouteSource, ChannelSpec, ChannelStatus,
-        GroupListQuery, InterfaceKind, ProviderKind, ProviderMetadata, ProviderSpec, RetryPolicy,
-        RouteResolveResponse, UpstreamEndpoint,
+        GroupListQuery, InterfaceKind, ProviderKind, ProviderMetadata, ProviderSpec,
+        ProxyChannelWriteRequest, RetryPolicy, RouteResolveResponse, UpstreamEndpoint,
     };
     use serde_json::json;
 
@@ -480,6 +500,25 @@ mod tests {
         let response = request.response("running");
 
         assert_eq!(response.status, "running");
+    }
+
+    #[test]
+    fn channel_create_request_preserves_body_and_wraps_record_response() {
+        let body = ProxyChannelWriteRequest {
+            id: Some("channel-a".to_string()),
+            provider_id: "provider-a".to_string(),
+            app_type: "claude".to_string(),
+            name: "Claude Channel".to_string(),
+            base_url: "https://api.example.com".to_string(),
+            interface_kind: "anthropic_messages".to_string(),
+            ..ProxyChannelWriteRequest::default()
+        };
+        let request = ChannelCreateRequest::from_body(body.clone());
+
+        let response = request.record_response("channel-record");
+
+        assert_eq!(response.channel, "channel-record");
+        assert_eq!(request.into_body().provider_id, body.provider_id);
     }
 
     #[test]

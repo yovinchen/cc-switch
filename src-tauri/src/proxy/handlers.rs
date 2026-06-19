@@ -53,10 +53,10 @@ use crate::proxy_core::{
     validate_claude_desktop_gateway_bearer_header, validate_management_bearer_header,
     AppChannelListQuery, AppChannelManagementRequest, AppChannelResponse, AppKind, AppListRequest,
     AppListResponse, AppModelCatalogRequest, AppModelListQuery, AppSummaryInput,
-    ChannelDeleteResponse, ChannelHealthResetResponse, ChannelListQuery, ChannelListRequest,
-    ChannelListResponse, ChannelMigrationMaterializeResponse, ChannelMigrationPreviewResponse,
-    ChannelModelRecord, ChannelModelsResponse, ChannelPathRequest, ChannelRecord,
-    ChannelRecordResponse, ChannelRouteCandidate, ChannelRouteRejected,
+    ChannelCreateRequest, ChannelDeleteResponse, ChannelHealthResetResponse, ChannelListQuery,
+    ChannelListRequest, ChannelListResponse, ChannelMigrationMaterializeResponse,
+    ChannelMigrationPreviewResponse, ChannelModelRecord, ChannelModelsResponse, ChannelPathRequest,
+    ChannelRecord, ChannelRecordResponse, ChannelRouteCandidate, ChannelRouteRejected,
     ClaudeDesktopModelListResponse, ClientModelCatalogResponse, CurrentRouteProviderSummaryInput,
     CurrentRouteResponse, CurrentRouteTarget, GroupListQuery, GroupListRequest, HealthCheckRequest,
     HealthCheckResponse, InterfaceKind, ManagementAppPathRequest, ManagementAuthDecision,
@@ -308,13 +308,14 @@ pub async fn create_proxy_channel(
     State(state): State<ProxyState>,
     Json(request): Json<ProxyChannelWriteRequest>,
 ) -> Result<Json<ChannelRecordResponse<ChannelRecord>>, ProxyError> {
+    let request = ChannelCreateRequest::from_body(request);
     let channel = state
         .db
-        .create_proxy_channel(request)
+        .create_proxy_channel(request.clone().into_body())
         .map_err(|e| ProxyError::InvalidRequest(e.to_string()))?;
-    Ok(Json(ChannelRecordResponse::new(
-        channel.to_proxy_core_channel_record(),
-    )))
+    Ok(Json(
+        request.record_response(channel.to_proxy_core_channel_record()),
+    ))
 }
 
 /// GET /proxy/v1/channels/{channel_id}
