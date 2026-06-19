@@ -64,6 +64,6 @@ pub trait ProviderAdapter: Send + Sync {
 /// material so a malformed key surfaces as a 401 instead of panicking
 /// the worker via `HeaderValue::from_str(...).unwrap()`.
 pub fn auth_header_value(s: &str) -> Result<http::HeaderValue, ProxyError> {
-    http::HeaderValue::from_str(s)
-        .map_err(|e| ProxyError::AuthError(format!("invalid auth header value: {e}")))
+    crate::proxy_core::auth_header_value(s)
+        .map_err(|error| ProxyError::AuthError(error.to_string()))
 }

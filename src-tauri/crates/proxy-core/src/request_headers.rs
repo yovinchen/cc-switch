@@ -1,3 +1,5 @@
+use crate::{ProxyCoreError, ProxyCoreResult};
+
 const REQUEST_HEADERS_STRIPPED_BEFORE_UPSTREAM: &[&str] = &[
     "content-length",
     "transfer-encoding",
@@ -78,6 +80,15 @@ pub fn should_send_anthropic_request_headers(
     resolved_claude_api_format: Option<&str>,
 ) -> bool {
     adapter_name == "Claude" && matches!(resolved_claude_api_format, Some("anthropic"))
+}
+
+/// Build an HTTP `HeaderValue` from user-provided credential material.
+///
+/// Invalid bytes (control characters, CR/LF, non-ASCII where disallowed by
+/// `http`) become an auth error instead of letting host adapters unwrap/panic.
+pub fn auth_header_value(value: &str) -> ProxyCoreResult<http::HeaderValue> {
+    http::HeaderValue::from_str(value)
+        .map_err(|error| ProxyCoreError::Auth(format!("invalid auth header value: {error}")))
 }
 
 pub fn anthropic_beta_header_value(existing_beta: Option<&str>) -> String {
@@ -358,7 +369,7 @@ fn append_header_from_str(
 #[cfg(test)]
 mod tests {
     use super::{
-        anthropic_beta_header_value, build_codex_oauth_session_headers,
+        anthropic_beta_header_value, auth_header_value, build_codex_oauth_session_headers,
         build_upstream_auth_headers,
         build_upstream_request_headers,
         should_preserve_exact_request_header_case, should_send_anthropic_request_headers,
@@ -366,6 +377,7 @@ mod tests {
         CopilotAuthHeaderOverrides, UpstreamAuthHeadersInput, UpstreamRequestHeadersInput,
         CLAUDE_CODE_BETA, DEFAULT_ANTHROPIC_VERSION,
     };
+    use crate::ProxyCoreError;
     use http::{header, HeaderMap, HeaderName, HeaderValue};
 
     #[test]
@@ -823,5 +835,15 @@ mod tests {
             headers.get("x-codex-window-id"),
             Some(&HeaderValue::from_static("session-123:0"))
         );
+    }
+
+    #[test]
+    fn auth_header_value_rejects_invalid_credential_bytes() {
+        let value = auth_header_value("Bearer sk-valid").expect("valid auth header");
+        assert_eq!(value.to_str().unwrap(), "Bearer sk-valid");
+
+        let error = auth_header_value("Bearer bad\r\nx-evil: 1").expect_err("invalid header");
+        assert!(matches!(error, ProxyCoreError::Auth(_)));
+        assert!(error.to_string().contains("invalid auth header value"));
     }
 }
