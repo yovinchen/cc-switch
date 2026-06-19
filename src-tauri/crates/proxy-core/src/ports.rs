@@ -291,6 +291,32 @@ impl Default for ProxyConfig {
     }
 }
 
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GlobalProxyConfig {
+    pub proxy_enabled: bool,
+    pub listen_address: String,
+    pub listen_port: u16,
+    pub enable_logging: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AppProxyConfig {
+    pub app_type: String,
+    pub enabled: bool,
+    pub auto_failover_enabled: bool,
+    pub max_retries: u32,
+    pub streaming_first_byte_timeout: u32,
+    pub streaming_idle_timeout: u32,
+    pub non_streaming_timeout: u32,
+    pub circuit_failure_threshold: u32,
+    pub circuit_success_threshold: u32,
+    pub circuit_timeout_seconds: u32,
+    pub circuit_error_rate_threshold: f64,
+    pub circuit_min_requests: u32,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ProxyServerInfo {
     pub address: String,
@@ -1526,17 +1552,17 @@ pub enum ProxyCoreEventType {
 mod tests {
     use super::{
         AppChannelListQuery, AppChannelListResponse, AppChannelResponse, AppChannelRouteResponse,
-        AppListResponse, AppModelListQuery, AppSummaryInput, ChannelDeleteResponse,
-        ChannelListQuery, ChannelListResponse, ChannelModelRecord, ChannelModelsResponse,
-        ChannelRecord, ChannelRecordResponse, ChannelMigrationMaterializeInput,
+        AppListResponse, AppModelListQuery, AppProxyConfig, AppSummaryInput, ChannelDeleteResponse,
+        ChannelListQuery, ChannelListResponse, ChannelMigrationMaterializeInput,
         ChannelMigrationMaterializeResponse, ChannelMigrationPreviewInput,
-        ChannelMigrationPreviewResponse,
+        ChannelMigrationPreviewResponse, ChannelModelRecord, ChannelModelsResponse, ChannelRecord,
+        ChannelRecordResponse,
         ChannelRouteCandidate, ChannelRouteRejected, ChannelRouteSource, ClientModelCatalogResponse,
         CurrentRouteProviderSummaryInput, CurrentRouteResponse, CurrentRouteTarget, GroupListQuery,
-        HealthCheckResponse, ModelCatalog, ProviderHealth, ProviderListResponse, ProviderSpec,
-        ProviderSummaryInput, ProxyChannelModelWriteRequest, ProxyChannelModelsReplaceRequest,
-        ProxyChannelPatchRequest, ProxyChannelWriteRequest, ProxyConfig, ProxyRuntimeStatus,
-        ProxyServerInfo, ProxyStatusResponse, ProxyTakeoverStatus,
+        GlobalProxyConfig, HealthCheckResponse, ModelCatalog, ProviderHealth, ProviderListResponse,
+        ProviderSpec, ProviderSummaryInput, ProxyChannelModelWriteRequest,
+        ProxyChannelModelsReplaceRequest, ProxyChannelPatchRequest, ProxyChannelWriteRequest,
+        ProxyConfig, ProxyRuntimeStatus, ProxyServerInfo, ProxyStatusResponse, ProxyTakeoverStatus,
         RouteGroupListResponse, RouteGroupSourceInput, RouteResolveResponse,
     };
     use crate::{
@@ -1893,6 +1919,66 @@ mod tests {
         assert_eq!(config.streaming_first_byte_timeout, 60);
         assert_eq!(config.streaming_idle_timeout, 120);
         assert_eq!(config.non_streaming_timeout, 600);
+    }
+
+    #[test]
+    fn global_proxy_config_preserves_management_command_shape() {
+        let config = GlobalProxyConfig {
+            proxy_enabled: true,
+            listen_address: "127.0.0.1".to_string(),
+            listen_port: 15721,
+            enable_logging: false,
+        };
+
+        let value = serde_json::to_value(config).expect("serialize global proxy config");
+
+        assert_eq!(
+            value,
+            json!({
+                "proxyEnabled": true,
+                "listenAddress": "127.0.0.1",
+                "listenPort": 15721,
+                "enableLogging": false
+            })
+        );
+    }
+
+    #[test]
+    fn app_proxy_config_preserves_management_command_shape() {
+        let config = AppProxyConfig {
+            app_type: "codex".to_string(),
+            enabled: true,
+            auto_failover_enabled: true,
+            max_retries: 4,
+            streaming_first_byte_timeout: 30,
+            streaming_idle_timeout: 120,
+            non_streaming_timeout: 600,
+            circuit_failure_threshold: 4,
+            circuit_success_threshold: 2,
+            circuit_timeout_seconds: 60,
+            circuit_error_rate_threshold: 0.6,
+            circuit_min_requests: 10,
+        };
+
+        let value = serde_json::to_value(config).expect("serialize app proxy config");
+
+        assert_eq!(
+            value,
+            json!({
+                "appType": "codex",
+                "enabled": true,
+                "autoFailoverEnabled": true,
+                "maxRetries": 4,
+                "streamingFirstByteTimeout": 30,
+                "streamingIdleTimeout": 120,
+                "nonStreamingTimeout": 600,
+                "circuitFailureThreshold": 4,
+                "circuitSuccessThreshold": 2,
+                "circuitTimeoutSeconds": 60,
+                "circuitErrorRateThreshold": 0.6,
+                "circuitMinRequests": 10
+            })
+        );
     }
 
     #[test]
