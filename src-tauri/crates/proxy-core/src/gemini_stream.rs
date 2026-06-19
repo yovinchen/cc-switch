@@ -8,7 +8,7 @@ use crate::gemini_tool_args::{rectify_gemini_tool_call_parts, AnthropicToolSchem
 use crate::response_transform::{
     build_anthropic_message_delta_event, map_gemini_finish_reason_to_anthropic,
 };
-use crate::sse::strip_sse_field;
+use crate::sse::{append_utf8_safe, strip_sse_field, take_sse_block};
 use crate::usage::build_anthropic_usage_from_gemini;
 use serde_json::{json, Value};
 use std::collections::HashSet;
@@ -64,6 +64,8 @@ pub struct GeminiStreamFinalOutput {
 
 #[derive(Debug, Default)]
 pub struct GeminiToAnthropicSseState {
+    buffer: String,
+    utf8_remainder: Vec<u8>,
     message_id: Option<String>,
     current_model: Option<String>,
     has_sent_message_start: bool,
@@ -81,6 +83,39 @@ pub struct GeminiToAnthropicSseState {
 impl GeminiToAnthropicSseState {
     pub fn new() -> Self {
         Self::default()
+    }
+
+    pub fn handle_bytes<F>(
+        &mut self,
+        bytes: &[u8],
+        tool_schema_hints: Option<&AnthropicToolSchemaHints>,
+        mut synthesize_tool_call_id: F,
+    ) -> GeminiStreamBlockOutput
+    where
+        F: FnMut() -> String,
+    {
+        let mut output = GeminiStreamBlockOutput {
+            events: Vec::new(),
+            rectified_tool_names: Vec::new(),
+            done: false,
+        };
+
+        append_utf8_safe(&mut self.buffer, &mut self.utf8_remainder, bytes);
+
+        while let Some(block) = take_sse_block(&mut self.buffer) {
+            let block_output =
+                self.handle_sse_block(&block, tool_schema_hints, &mut synthesize_tool_call_id);
+            output.events.extend(block_output.events);
+            output
+                .rectified_tool_names
+                .extend(block_output.rectified_tool_names);
+            if block_output.done {
+                output.done = true;
+                break;
+            }
+        }
+
+        output
     }
 
     pub fn handle_sse_block<F>(
@@ -887,6 +922,40 @@ mod tests {
         let empty = state.handle_sse_block(": keepalive\n\n", None, || "unused".to_string());
         assert!(!empty.done);
         assert!(empty.events.is_empty());
+    }
+
+    #[test]
+    fn state_handles_split_utf8_and_sse_blocks_from_bytes() {
+        let mut state = GeminiToAnthropicSseState::new();
+        let payload = json!({
+            "responseId": "resp_utf8",
+            "modelVersion": "gemini-2.5-pro",
+            "candidates": [{
+                "finishReason": "STOP",
+                "content": {
+                    "parts": [{ "text": "你好，Gemini" }]
+                }
+            }],
+            "usageMetadata": {
+                "promptTokenCount": 4,
+                "totalTokenCount": 8
+            }
+        });
+        let chunk = format!("data: {}\n\n", serde_json::to_string(&payload).unwrap());
+        let split_at = chunk.find("你好").unwrap() + 1;
+        let bytes = chunk.into_bytes();
+
+        let first = state.handle_bytes(&bytes[..split_at], None, || "unused".to_string());
+        assert!(first.events.is_empty());
+
+        let second = state.handle_bytes(&bytes[split_at..], None, || "unused".to_string());
+        let mut events = second.events;
+        events.extend(state.finish().events);
+        let output = render_events(&events);
+
+        assert!(output.contains("你好，Gemini"));
+        assert!(!output.contains('\u{fffd}'));
+        assert!(output.contains("\"stop_reason\":\"end_turn\""));
     }
 
     #[test]

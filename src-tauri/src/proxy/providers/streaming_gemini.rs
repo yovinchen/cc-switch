@@ -4,10 +4,7 @@
 //! SSE events for Claude-compatible clients.
 
 use super::transform_gemini::{synthesize_tool_call_id, AnthropicToolSchemaHints};
-use crate::proxy_core::{
-    append_utf8_safe, take_sse_block, GeminiShadowStore, GeminiStreamSseEvent,
-    GeminiToAnthropicSseState,
-};
+use crate::proxy_core::{GeminiShadowStore, GeminiStreamSseEvent, GeminiToAnthropicSseState};
 use bytes::Bytes;
 use futures::stream::{Stream, StreamExt};
 use serde_json::Value;
@@ -32,31 +29,22 @@ pub fn create_anthropic_sse_stream_from_gemini<E: std::error::Error + Send + 'st
     tool_schema_hints: Option<AnthropicToolSchemaHints>,
 ) -> impl Stream<Item = Result<Bytes, std::io::Error>> + Send {
     async_stream::stream! {
-        let mut buffer = String::new();
-        let mut utf8_remainder = Vec::new();
         let mut state = GeminiToAnthropicSseState::new();
         tokio::pin!(stream);
 
         while let Some(chunk) = stream.next().await {
             match chunk {
                 Ok(bytes) => {
-                    append_utf8_safe(&mut buffer, &mut utf8_remainder, &bytes);
-
-                    while let Some(block) = take_sse_block(&mut buffer) {
-                        let output = state.handle_sse_block(
-                            &block,
-                            tool_schema_hints.as_ref(),
-                            synthesize_tool_call_id,
-                        );
-                        for name in &output.rectified_tool_names {
-                            log::info!("[Claude/Gemini] Rectified tool args for `{name}`");
-                        }
-                        for event in output.events {
-                            yield Ok(encode_core_event(&event));
-                        }
-                        if output.done {
-                            break;
-                        }
+                    let output = state.handle_bytes(
+                        bytes.as_ref(),
+                        tool_schema_hints.as_ref(),
+                        synthesize_tool_call_id,
+                    );
+                    for name in &output.rectified_tool_names {
+                        log::info!("[Claude/Gemini] Rectified tool args for `{name}`");
+                    }
+                    for event in output.events {
+                        yield Ok(encode_core_event(&event));
                     }
                 }
                 Err(error) => {
