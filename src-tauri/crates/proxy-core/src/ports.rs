@@ -253,6 +253,18 @@ pub struct ProxyTakeoverStatus {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ProviderHealth {
+    pub provider_id: String,
+    pub app_type: String,
+    pub is_healthy: bool,
+    pub consecutive_failures: u32,
+    pub last_success_at: Option<String>,
+    pub last_failure_at: Option<String>,
+    pub last_error: Option<String>,
+    pub updated_at: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ChannelHealthReset {
     pub channel_id: String,
@@ -1466,7 +1478,7 @@ mod tests {
         ChannelMigrationPreviewResponse,
         ChannelRouteCandidate, ChannelRouteRejected, ChannelRouteSource, ClientModelCatalogResponse,
         CurrentRouteProviderSummaryInput, CurrentRouteResponse, CurrentRouteTarget, GroupListQuery,
-        HealthCheckResponse, ModelCatalog, ProviderListResponse, ProviderSpec,
+        HealthCheckResponse, ModelCatalog, ProviderHealth, ProviderListResponse, ProviderSpec,
         ProviderSummaryInput, ProxyChannelModelWriteRequest, ProxyChannelModelsReplaceRequest,
         ProxyChannelPatchRequest, ProxyChannelWriteRequest, ProxyRuntimeStatus,
         ProxyStatusResponse, ProxyTakeoverStatus,
@@ -1797,6 +1809,36 @@ mod tests {
                 "gemini": true,
                 "opencode": false,
                 "openclaw": false
+            })
+        );
+    }
+
+    #[test]
+    fn provider_health_preserves_tauri_command_shape() {
+        let health = ProviderHealth {
+            provider_id: "provider-a".to_string(),
+            app_type: "codex".to_string(),
+            is_healthy: false,
+            consecutive_failures: 3,
+            last_success_at: Some("2026-06-18T23:00:00Z".to_string()),
+            last_failure_at: Some("2026-06-19T00:00:00Z".to_string()),
+            last_error: Some("timeout".to_string()),
+            updated_at: "2026-06-19T00:00:01Z".to_string(),
+        };
+
+        let value = serde_json::to_value(health).expect("serialize provider health");
+
+        assert_eq!(
+            value,
+            json!({
+                "provider_id": "provider-a",
+                "app_type": "codex",
+                "is_healthy": false,
+                "consecutive_failures": 3,
+                "last_success_at": "2026-06-18T23:00:00Z",
+                "last_failure_at": "2026-06-19T00:00:00Z",
+                "last_error": "timeout",
+                "updated_at": "2026-06-19T00:00:01Z"
             })
         );
     }

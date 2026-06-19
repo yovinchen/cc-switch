@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-pub use crate::proxy_core::ProxyTakeoverStatus;
+pub use crate::proxy_core::{ProviderHealth, ProxyTakeoverStatus};
 
 /// 代理服务器配置
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -132,19 +132,6 @@ pub enum ApiFormat {
     Claude,
     OpenAI,
     Gemini,
-}
-
-/// Provider健康状态
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ProviderHealth {
-    pub provider_id: String,
-    pub app_type: String,
-    pub is_healthy: bool,
-    pub consecutive_failures: u32,
-    pub last_success_at: Option<String>,
-    pub last_failure_at: Option<String>,
-    pub last_error: Option<String>,
-    pub updated_at: String,
 }
 
 /// Live 配置备份记录
