@@ -58,6 +58,12 @@ pub struct OpenAiCompatibleModelsRequest<'a> {
     pub user_agent_header: Option<(&'static str, &'a http::HeaderValue)>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ModelFetchFailure {
+    Retry { message: String },
+    Fail { message: String },
+}
+
 /// Known Anthropic-compatible subpath suffixes. Keep longest suffixes first so
 /// `/api/anthropic` wins before `/anthropic`.
 const KNOWN_COMPAT_SUFFIXES: &[&str] = &[
@@ -168,6 +174,24 @@ pub fn should_retry_openai_compatible_models_candidate(status: http::StatusCode)
         status,
         http::StatusCode::NOT_FOUND | http::StatusCode::METHOD_NOT_ALLOWED
     )
+}
+
+pub fn openai_compatible_models_failure(
+    status: http::StatusCode,
+    body: impl AsRef<str>,
+) -> ModelFetchFailure {
+    let body = truncate_model_fetch_error_body(body);
+    let message = format!("HTTP {status}: {body}");
+    if should_retry_openai_compatible_models_candidate(status) {
+        ModelFetchFailure::Retry { message }
+    } else {
+        ModelFetchFailure::Fail { message }
+    }
+}
+
+pub fn codex_oauth_models_failure(status: http::StatusCode, body: impl AsRef<str>) -> String {
+    let body = truncate_codex_oauth_models_error_body(body);
+    format!("HTTP {status}: {body}")
 }
 
 pub fn truncate_model_fetch_error_body(body: impl AsRef<str>) -> String {
@@ -879,6 +903,22 @@ mod tests {
     }
 
     #[test]
+    fn openai_compatible_models_failure_preserves_retry_and_fail_messages() {
+        assert_eq!(
+            openai_compatible_models_failure(http::StatusCode::NOT_FOUND, "missing"),
+            ModelFetchFailure::Retry {
+                message: "HTTP 404 Not Found: missing".to_string(),
+            }
+        );
+        assert_eq!(
+            openai_compatible_models_failure(http::StatusCode::UNAUTHORIZED, "bad key"),
+            ModelFetchFailure::Fail {
+                message: "HTTP 401 Unauthorized: bad key".to_string(),
+            }
+        );
+    }
+
+    #[test]
     fn truncate_model_fetch_error_body_preserves_short_body() {
         assert_eq!(truncate_model_fetch_error_body("short error"), "short error");
     }
@@ -902,6 +942,15 @@ mod tests {
 
         assert_eq!(truncated.len(), MODEL_FETCH_ERROR_BODY_MAX_CHARS + 3);
         assert!(truncated.ends_with("..."));
+    }
+
+    #[test]
+    fn codex_oauth_models_failure_uses_legacy_error_body_suffix() {
+        let body = "x".repeat(MODEL_FETCH_ERROR_BODY_MAX_CHARS + 1);
+        let message = codex_oauth_models_failure(http::StatusCode::BAD_GATEWAY, body);
+
+        assert!(message.starts_with("HTTP 502 Bad Gateway: "));
+        assert!(message.ends_with("..."));
     }
 
     #[test]

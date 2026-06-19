@@ -9,8 +9,7 @@ use std::time::Duration;
 
 use crate::proxy_core::{
     build_models_url_candidates, build_openai_compatible_models_request,
-    parse_models_response_bytes, should_retry_openai_compatible_models_candidate,
-    truncate_model_fetch_error_body, FetchedModel,
+    openai_compatible_models_failure, parse_models_response_bytes, FetchedModel, ModelFetchFailure,
 };
 
 /// 获取供应商的可用模型列表
@@ -66,14 +65,14 @@ pub async fn fetch_models(
             return Ok(models);
         }
 
-        if should_retry_openai_compatible_models_candidate(status) {
-            let body = truncate_model_fetch_error_body(response.text().await.unwrap_or_default());
-            last_err = Some(format!("HTTP {status}: {body}"));
-            continue;
+        let body = response.text().await.unwrap_or_default();
+        match openai_compatible_models_failure(status, body) {
+            ModelFetchFailure::Retry { message } => {
+                last_err = Some(message);
+                continue;
+            }
+            ModelFetchFailure::Fail { message } => return Err(message),
         }
-
-        let body = truncate_model_fetch_error_body(response.text().await.unwrap_or_default());
-        return Err(format!("HTTP {status}: {body}"));
     }
 
     Err(format!(

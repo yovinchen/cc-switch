@@ -4,8 +4,8 @@
 //! OpenAI-compatible `/v1/models` endpoint.
 
 use crate::proxy_core::{
-    build_codex_oauth_models_request, parse_codex_oauth_models,
-    truncate_codex_oauth_models_error_body, FetchedModel,
+    build_codex_oauth_models_request, codex_oauth_models_failure, parse_codex_oauth_models,
+    FetchedModel,
 };
 use std::time::Duration;
 
@@ -33,9 +33,8 @@ pub async fn fetch_models_with_token(
 
     let status = response.status();
     if !status.is_success() {
-        let body =
-            truncate_codex_oauth_models_error_body(response.text().await.unwrap_or_default());
-        return Err(format!("HTTP {status}: {body}"));
+        let body = response.text().await.unwrap_or_default();
+        return Err(codex_oauth_models_failure(status, body));
     }
 
     let value: serde_json::Value = response
