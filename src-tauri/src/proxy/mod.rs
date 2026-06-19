@@ -34,7 +34,7 @@ pub(crate) use forwarder::{ForwardError, ForwardResult, RequestForwarder};
 #[allow(unused_imports)]
 pub use provider_router::ProviderRouter;
 #[allow(unused_imports)]
-pub use session::{extract_session_id, ProxySession};
+pub use session::extract_session_id;
 #[allow(unused_imports)]
 pub use types::ProxyStatus;
 
