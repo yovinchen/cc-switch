@@ -2,34 +2,13 @@
 //!
 //! 实现熔断器模式，用于防止向不健康的供应商发送请求
 
-use crate::proxy_core::{log_codes::cb as log_cb, CircuitBreakerConfig};
-use serde::{Deserialize, Serialize};
+use crate::proxy_core::{CircuitBreakerConfig, log_codes::cb as log_cb};
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::Arc;
 use std::time::Instant;
 use tokio::sync::RwLock;
 
-/// 熔断器状态
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum CircuitState {
-    /// 关闭状态 - 正常工作
-    Closed,
-    /// 打开状态 - 熔断激活，拒绝请求
-    Open,
-    /// 半开状态 - 尝试恢复，允许部分请求通过
-    HalfOpen,
-}
-
-impl std::fmt::Display for CircuitState {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            CircuitState::Closed => write!(f, "closed"),
-            CircuitState::Open => write!(f, "open"),
-            CircuitState::HalfOpen => write!(f, "half_open"),
-        }
-    }
-}
+pub use crate::proxy_core::{AllowResult, CircuitBreakerStats, CircuitState};
 
 /// 熔断器实例
 pub struct CircuitBreaker {
@@ -49,16 +28,6 @@ pub struct CircuitBreaker {
     config: Arc<RwLock<CircuitBreakerConfig>>,
     /// 半开状态已放行的请求数（用于限流）
     half_open_requests: Arc<AtomicU32>,
-}
-
-/// 熔断器放行结果
-///
-/// `used_half_open_permit` 表示本次放行是否占用了 HalfOpen 探测名额。
-/// 调用方应在请求结束后把该值传回 `record_success` / `record_failure` 用于正确释放名额。
-#[derive(Debug, Clone, Copy)]
-pub struct AllowResult {
-    pub allowed: bool,
-    pub used_half_open_permit: bool,
 }
 
 impl CircuitBreaker {
@@ -344,17 +313,6 @@ impl CircuitBreaker {
         self.total_requests.store(0, Ordering::SeqCst);
         self.failed_requests.store(0, Ordering::SeqCst);
     }
-}
-
-/// 熔断器统计信息
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct CircuitBreakerStats {
-    pub state: CircuitState,
-    pub consecutive_failures: u32,
-    pub consecutive_successes: u32,
-    pub total_requests: u32,
-    pub failed_requests: u32,
 }
 
 #[cfg(test)]
