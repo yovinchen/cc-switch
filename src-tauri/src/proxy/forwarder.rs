@@ -32,7 +32,7 @@ use crate::proxy_core::{
     is_openai_o_series, is_socks_proxy_url, is_unsupported_image_error, merge_copilot_tool_results,
     normalize_thinking_type, prompt_cache_trace_log_message, rectify_anthropic_request,
     rectify_thinking_budget, replace_image_blocks_with_marker, replace_images_for_text_only_model,
-    request_body_filter_log_message, request_model_for_forward,
+    request_body_filter_log_message, request_model_for_forward, resolve_claude_forward_api_format,
     resolve_copilot_deterministic_interaction_id, resolve_copilot_model_against_ids,
     resolve_copilot_optimizer_session_id, resolve_copilot_request_id_with_fallback,
     resolve_media_prevention_policy, resolve_upstream_request_transport_policy,
@@ -2279,21 +2279,21 @@ impl RequestForwarder {
         body: &Value,
         is_copilot: bool,
     ) -> String {
-        if !is_copilot {
-            return super::providers::get_claude_api_format(provider).to_string();
-        }
-
         let model = body.get("model").and_then(|value| value.as_str());
-        if let Some(model_id) = model {
-            if self
-                .is_copilot_openai_vendor_model(provider, model_id)
-                .await
-            {
-                return "openai_responses".to_string();
+        let copilot_model_vendor = if is_copilot {
+            match model {
+                Some(model_id) => self.copilot_model_vendor(provider, model_id).await,
+                None => None,
             }
-        }
+        } else {
+            None
+        };
 
-        "openai_chat".to_string()
+        resolve_claude_forward_api_format(
+            super::providers::get_claude_api_format(provider),
+            is_copilot,
+            copilot_model_vendor.as_deref(),
+        )
     }
 
     /// 用 Copilot live `/models` 列表确认 model ID 真实可用，找不到时按 family 降级。
@@ -2340,10 +2340,10 @@ impl RequestForwarder {
         }
     }
 
-    async fn is_copilot_openai_vendor_model(&self, provider: &Provider, model_id: &str) -> bool {
+    async fn copilot_model_vendor(&self, provider: &Provider, model_id: &str) -> Option<String> {
         let Some(app_handle) = &self.app_handle else {
             log::debug!("[Copilot] AppHandle unavailable, fallback to chat/completions");
-            return false;
+            return None;
         };
 
         let copilot_state = app_handle.state::<CopilotAuthState>();
@@ -2363,18 +2363,18 @@ impl RequestForwarder {
         };
 
         match vendor_result {
-            Ok(Some(vendor)) => vendor.eq_ignore_ascii_case("openai"),
+            Ok(Some(vendor)) => Some(vendor),
             Ok(None) => {
                 log::debug!(
                     "[Copilot] Model vendor unavailable for {model_id}, fallback to chat/completions"
                 );
-                false
+                None
             }
             Err(err) => {
                 log::warn!(
                     "[Copilot] Failed to resolve model vendor for {model_id}, fallback to chat/completions: {err}"
                 );
-                false
+                None
             }
         }
     }

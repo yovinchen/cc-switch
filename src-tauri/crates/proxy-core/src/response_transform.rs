@@ -1513,6 +1513,22 @@ pub fn resolve_claude_api_format_from_settings(
     )
 }
 
+pub fn resolve_claude_forward_api_format(
+    configured_api_format: &str,
+    is_copilot: bool,
+    copilot_model_vendor: Option<&str>,
+) -> String {
+    if !is_copilot {
+        return configured_api_format.to_string();
+    }
+
+    if copilot_model_vendor.is_some_and(|vendor| vendor.eq_ignore_ascii_case("openai")) {
+        "openai_responses".to_string()
+    } else {
+        "openai_chat".to_string()
+    }
+}
+
 fn normalize_configured_claude_api_format(api_format: &str) -> &'static str {
     match api_format {
         "openai_chat" => "openai_chat",
@@ -5309,6 +5325,30 @@ mod tests {
                 &json!({"api_format": "openai_chat"}),
             ),
             "openai_responses"
+        );
+    }
+
+    #[test]
+    fn resolve_claude_forward_api_format_applies_copilot_vendor_policy() {
+        assert_eq!(
+            resolve_claude_forward_api_format("gemini_native", false, Some("OpenAI")),
+            "gemini_native"
+        );
+        assert_eq!(
+            resolve_claude_forward_api_format("openai_chat", true, Some("OpenAI")),
+            "openai_responses"
+        );
+        assert_eq!(
+            resolve_claude_forward_api_format("openai_responses", true, Some("openai")),
+            "openai_responses"
+        );
+        assert_eq!(
+            resolve_claude_forward_api_format("openai_responses", true, Some("Anthropic")),
+            "openai_chat"
+        );
+        assert_eq!(
+            resolve_claude_forward_api_format("openai_responses", true, None),
+            "openai_chat"
         );
     }
 
