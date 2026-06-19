@@ -3,9 +3,10 @@ use super::error::{ProxyCoreError, ProxyCoreResult};
 use super::ports::{
     AppChannelListQuery, AppChannelListResponse, AppChannelResponse, AppChannelRouteResponse,
     AppModelListQuery, ChannelDeleteResponse, ChannelListQuery, ChannelListResponse,
-    ChannelModelsResponse, ChannelRecordResponse, ChannelRouteCandidate, ChannelRouteRejected,
-    ChannelRouteSource, GroupListQuery, RouteGroupListResponse, RouteGroupSourceInput,
-    RouteResolveRequest, RouteResolveResponse,
+    ChannelMigrationMaterializeResponse, ChannelMigrationPreviewResponse, ChannelModelsResponse,
+    ChannelRecordResponse, ChannelRouteCandidate, ChannelRouteRejected, ChannelRouteSource,
+    CurrentRouteProviderSummaryInput, CurrentRouteResponse, GroupListQuery,
+    RouteGroupListResponse, RouteGroupSourceInput, RouteResolveRequest, RouteResolveResponse,
 };
 
 pub fn validate_management_app_type(app_type: &str) -> ProxyCoreResult<()> {
@@ -50,6 +51,52 @@ impl ManagementAppPathRequest {
         validate_management_app_type(&app_type)?;
 
         Ok(Self { app_type })
+    }
+
+    pub fn current_route_response<T>(
+        &self,
+        active_target: Option<T>,
+        configured_provider: Option<CurrentRouteProviderSummaryInput>,
+    ) -> CurrentRouteResponse<T> {
+        CurrentRouteResponse::from_inputs(
+            self.app_type.clone(),
+            active_target,
+            configured_provider,
+        )
+    }
+
+    pub fn migration_preview_response<T>(
+        &self,
+        channels: Vec<T>,
+        duplicate_count: usize,
+        needs_review_count: usize,
+    ) -> ChannelMigrationPreviewResponse<T> {
+        ChannelMigrationPreviewResponse::new(
+            self.app_type.clone(),
+            channels,
+            duplicate_count,
+            needs_review_count,
+        )
+    }
+
+    pub fn migration_materialize_response(
+        &self,
+        previewed_channels: usize,
+        inserted_channels: usize,
+        inserted_models: usize,
+        inserted_health_rows: usize,
+        duplicate_count: usize,
+        needs_review_count: usize,
+    ) -> ChannelMigrationMaterializeResponse {
+        ChannelMigrationMaterializeResponse::new(
+            self.app_type.clone(),
+            previewed_channels,
+            inserted_channels,
+            inserted_models,
+            inserted_health_rows,
+            duplicate_count,
+            needs_review_count,
+        )
     }
 }
 
@@ -341,6 +388,45 @@ mod tests {
         let request = ManagementAppPathRequest::from_path(" claude ").expect("request");
 
         assert_eq!(request.app_type, "claude");
+    }
+
+    #[test]
+    fn management_app_path_request_wraps_current_route_response() {
+        let request = ManagementAppPathRequest::from_path("claude").expect("request");
+
+        let response = request.current_route_response(Some("target-a"), None);
+
+        assert_eq!(response.app_type, "claude");
+        assert!(response.active);
+        assert_eq!(response.target, Some("target-a"));
+        assert!(response.configured_provider.is_none());
+    }
+
+    #[test]
+    fn management_app_path_request_wraps_migration_preview_response() {
+        let request = ManagementAppPathRequest::from_path("claude").expect("request");
+
+        let response = request.migration_preview_response(vec!["channel-a"], 2, 1);
+
+        assert_eq!(response.app_type, "claude");
+        assert_eq!(response.channels, vec!["channel-a"]);
+        assert_eq!(response.duplicate_count, 2);
+        assert_eq!(response.needs_review_count, 1);
+    }
+
+    #[test]
+    fn management_app_path_request_wraps_migration_materialize_response() {
+        let request = ManagementAppPathRequest::from_path("claude").expect("request");
+
+        let response = request.migration_materialize_response(4, 3, 2, 1, 5, 6);
+
+        assert_eq!(response.app_type, "claude");
+        assert_eq!(response.previewed_channels, 4);
+        assert_eq!(response.inserted_channels, 3);
+        assert_eq!(response.inserted_models, 2);
+        assert_eq!(response.inserted_health_rows, 1);
+        assert_eq!(response.duplicate_count, 5);
+        assert_eq!(response.needs_review_count, 6);
     }
 
     #[test]

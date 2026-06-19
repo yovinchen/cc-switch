@@ -54,8 +54,7 @@ use crate::proxy_core::{
     AppChannelListQuery, AppChannelManagementRequest, AppChannelResponse, AppKind, AppListResponse,
     AppModelCatalogRequest, AppModelListQuery, AppSummaryInput, ChannelDeleteResponse,
     ChannelHealthResetResponse, ChannelListQuery, ChannelListRequest, ChannelListResponse,
-    ChannelMigrationMaterializeInput, ChannelMigrationMaterializeResponse,
-    ChannelMigrationPreviewInput, ChannelMigrationPreviewResponse, ChannelModelRecord,
+    ChannelMigrationMaterializeResponse, ChannelMigrationPreviewResponse, ChannelModelRecord,
     ChannelModelsResponse, ChannelPathRequest, ChannelRecord, ChannelRecordResponse,
     ChannelRouteCandidate, ChannelRouteRejected, ClaudeDesktopModelListResponse,
     ClientModelCatalogResponse, CurrentRouteProviderSummaryInput, CurrentRouteResponse,
@@ -536,8 +535,7 @@ pub async fn get_current_proxy_route(
         None => None,
     };
 
-    Ok(Json(CurrentRouteResponse::from_inputs(
-        request.app_type,
+    Ok(Json(request.current_route_response(
         active_target,
         configured_provider,
     )))
@@ -556,13 +554,10 @@ pub async fn preview_proxy_channel_migration(
         .preview_legacy_proxy_channel_migration(&request.app_type)
         .map_err(|e| ProxyError::DatabaseError(e.to_string()))?;
 
-    Ok(Json(ChannelMigrationPreviewResponse::from_input(
-        ChannelMigrationPreviewInput::new(
-            preview.app_type,
-            channel_records_from_host(preview.channels),
-            preview.duplicate_count,
-            preview.needs_review_count,
-        ),
+    Ok(Json(request.migration_preview_response(
+        channel_records_from_host(preview.channels),
+        preview.duplicate_count,
+        preview.needs_review_count,
     )))
 }
 
@@ -579,16 +574,13 @@ pub async fn materialize_proxy_channel_migration(
         .materialize_legacy_proxy_channels(&request.app_type)
         .map_err(|e| ProxyError::DatabaseError(e.to_string()))?;
 
-    Ok(Json(ChannelMigrationMaterializeResponse::from_input(
-        ChannelMigrationMaterializeInput::new(
-            result.app_type,
-            result.previewed_channels,
-            result.inserted_channels,
-            result.inserted_models,
-            result.inserted_health_rows,
-            result.duplicate_count,
-            result.needs_review_count,
-        ),
+    Ok(Json(request.migration_materialize_response(
+        result.previewed_channels,
+        result.inserted_channels,
+        result.inserted_models,
+        result.inserted_health_rows,
+        result.duplicate_count,
+        result.needs_review_count,
     )))
 }
 
