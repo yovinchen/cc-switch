@@ -24,6 +24,15 @@ pub fn prepare_upstream_request_body(request_body: Value) -> Value {
     prepare_upstream_request_body_with_report(request_body).body
 }
 
+pub fn request_body_filter_log_message(report: &PreparedUpstreamRequestBody) -> Option<String> {
+    (!report.removed_private_keys.is_empty()).then(|| {
+        format!(
+            "[BodyFilter] 过滤私有参数: {:?}",
+            report.removed_private_keys
+        )
+    })
+}
+
 pub fn serialize_upstream_request_body(
     method: &http::Method,
     body: &Value,
@@ -457,9 +466,10 @@ mod tests {
         inject_openai_stream_include_usage, is_openai_o_series,
         map_anthropic_tool_choice_to_openai_chat, map_anthropic_tool_choice_to_openai_responses,
         map_codex_chat_reasoning_effort, method_allows_upstream_request_body,
-        prepare_upstream_request_body_with_report, resolve_codex_provider_upstream_model,
-        resolve_reasoning_effort, serialize_upstream_request_body,
-        strip_leading_anthropic_billing_header, supports_reasoning_effort,
+        prepare_upstream_request_body_with_report, request_body_filter_log_message,
+        resolve_codex_provider_upstream_model, resolve_reasoning_effort,
+        serialize_upstream_request_body, strip_leading_anthropic_billing_header,
+        supports_reasoning_effort,
     };
     use http::Method;
     use serde_json::json;
@@ -572,6 +582,22 @@ mod tests {
         assert_eq!(
             prepared.removed_private_keys,
             vec!["_internal".to_string(), "_private_note".to_string()]
+        );
+    }
+
+    #[test]
+    fn request_body_filter_log_message_reports_removed_private_keys() {
+        let clean = prepare_upstream_request_body_with_report(json!({"model": "gpt-5"}));
+        assert_eq!(request_body_filter_log_message(&clean), None);
+
+        let filtered = prepare_upstream_request_body_with_report(json!({
+            "_internal": "drop",
+            "messages": [{"role": "user", "content": "hi"}]
+        }));
+
+        assert_eq!(
+            request_body_filter_log_message(&filtered).as_deref(),
+            Some(r#"[BodyFilter] 过滤私有参数: ["_internal"]"#)
         );
     }
 

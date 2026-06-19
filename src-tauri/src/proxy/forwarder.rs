@@ -32,13 +32,13 @@ use crate::proxy_core::{
     is_openai_o_series, is_socks_proxy_url, is_unsupported_image_error, merge_copilot_tool_results,
     normalize_thinking_type, rectify_anthropic_request, rectify_thinking_budget,
     replace_image_blocks_with_marker, replace_images_for_text_only_model,
-    request_model_for_forward, resolve_copilot_deterministic_interaction_id,
-    resolve_copilot_model_against_ids, resolve_copilot_optimizer_session_id,
-    resolve_copilot_request_id_with_fallback, resolve_media_prevention_policy,
-    resolve_upstream_request_transport_policy, resolve_upstream_send_policy,
-    resolved_copilot_dynamic_base_url, responses_to_chat_completions_with_options,
-    sanitize_copilot_orphan_tool_results, short_value_hash,
-    should_apply_bedrock_pre_send_optimizer, should_check_media_retry,
+    request_body_filter_log_message, request_model_for_forward,
+    resolve_copilot_deterministic_interaction_id, resolve_copilot_model_against_ids,
+    resolve_copilot_optimizer_session_id, resolve_copilot_request_id_with_fallback,
+    resolve_media_prevention_policy, resolve_upstream_request_transport_policy,
+    resolve_upstream_send_policy, resolved_copilot_dynamic_base_url,
+    responses_to_chat_completions_with_options, sanitize_copilot_orphan_tool_results,
+    short_value_hash, should_apply_bedrock_pre_send_optimizer, should_check_media_retry,
     should_failover_after_rectifier_retry_failure, should_preserve_exact_request_header_case,
     should_rectify_thinking_budget, should_rectify_thinking_signature,
     should_resolve_copilot_dynamic_endpoint, should_send_anthropic_request_headers,
@@ -2510,11 +2510,8 @@ fn map_reqwest_send_error(error: reqwest::Error) -> ProxyError {
 
 fn prepare_upstream_request_body(request_body: Value) -> Value {
     let prepared = crate::proxy_core::prepare_upstream_request_body_with_report(request_body);
-    if !prepared.removed_private_keys.is_empty() {
-        log::debug!(
-            "[BodyFilter] 过滤私有参数: {:?}",
-            prepared.removed_private_keys
-        );
+    if let Some(message) = request_body_filter_log_message(&prepared) {
+        log::debug!("{message}");
     }
     prepared.body
 }
