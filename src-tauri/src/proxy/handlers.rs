@@ -882,33 +882,37 @@ async fn handle_claude_transform(
 
     let body_str = String::from_utf8_lossy(&body_bytes);
 
-    let upstream_response: Value = if aggregate_codex_oauth_responses_sse {
-        responses_sse_to_response_value(&body_str)?
+    // 兜底嗅探（#2234）：部分网关对 stream:false 强制返回 SSE 体，却把
+    // Content-Type 标成 application/json 等，is_sse() 的 header 检查失效。
+    // 此时按 SSE 聚合成单个 JSON 再走既有非流转换器，客户端仍收到
+    // Anthropic JSON，非流语义不变。gemini_native 暂无聚合器，落诊断错误。
+    let response_sse_aggregation = if aggregate_codex_oauth_responses_sse {
+        Some(UpstreamSseAggregationKind::Responses)
     } else {
-        // 兜底嗅探（#2234）：部分网关对 stream:false 强制返回 SSE 体，却把
-        // Content-Type 标成 application/json 等，is_sse() 的 header 检查失效。
-        // 此时按 SSE 聚合成单个 JSON 再走既有非流转换器，客户端仍收到
-        // Anthropic JSON，非流语义不变。gemini_native 暂无聚合器，落诊断错误。
-        let unlabeled_sse_aggregation = claude_transform_unlabeled_sse_aggregation(api_format);
-        let parsed = parse_upstream_json_or_unlabeled_sse(
-            &body_bytes,
-            &response_headers,
-            "Failed to parse upstream response",
-            unlabeled_sse_aggregation,
-            || uuid::Uuid::new_v4().to_string(),
-        )
-        .map_err(|error| {
-            log::error!("[Claude] 解析/聚合上游响应失败: {error}, body: {body_str}");
-            response_body_parse_error_to_proxy_error(error)
-        })?;
+        claude_transform_unlabeled_sse_aggregation(api_format)
+    };
+    let parsed = parse_upstream_json_or_unlabeled_sse(
+        &body_bytes,
+        &response_headers,
+        "Failed to parse upstream response",
+        response_sse_aggregation,
+        || uuid::Uuid::new_v4().to_string(),
+    )
+    .map_err(|error| {
+        log::error!("[Claude] 解析/聚合上游响应失败: {error}, body: {body_str}");
+        response_body_parse_error_to_proxy_error(error)
+    })?;
 
-        if matches!(parsed.source, UpstreamJsonBodySource::UnlabeledSse { .. }) {
+    if matches!(parsed.source, UpstreamJsonBodySource::UnlabeledSse { .. }) {
+        if aggregate_codex_oauth_responses_sse {
+            log::debug!("[Claude] Codex OAuth Responses 非流请求收到 SSE 体，按 Responses 聚合");
+        } else {
             log::warn!(
                 "[Claude] 上游对非流请求返回未标记的 SSE 体（api_format={api_format}），按 SSE 聚合兜底"
             );
         }
-        parsed.value
-    };
+    }
+    let upstream_response: Value = parsed.value;
 
     // 根据 api_format 选择非流式转换器
     let anthropic_response = if api_format == "openai_responses" {
@@ -1454,11 +1458,6 @@ pub async fn handle_gemini(
     let response = proxy_core_response_to_proxy_response(result.response)?;
 
     process_response(response, &ctx, &state, &GEMINI_PARSER_CONFIG, None).await
-}
-
-fn responses_sse_to_response_value(body: &str) -> Result<Value, ProxyError> {
-    crate::proxy_core::responses_sse_to_response_value(body)
-        .map_err(response_body_parse_error_to_proxy_error)
 }
 
 fn log_forward_error(
