@@ -29,9 +29,7 @@ pub(crate) mod usage_sink_bridge;
 
 // 公开导出给外部使用（commands, services等模块需要）
 #[allow(unused_imports)]
-pub use circuit_breaker::{
-    CircuitBreaker, CircuitBreakerConfig, CircuitBreakerStats, CircuitState,
-};
+pub use circuit_breaker::{CircuitBreaker, CircuitBreakerStats, CircuitState};
 #[allow(unused_imports)]
 pub use error::ProxyError;
 pub(crate) use forwarder::{ForwardError, ForwardResult, RequestForwarder};

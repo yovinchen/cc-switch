@@ -2,8 +2,7 @@
 //!
 //! 实现熔断器模式，用于防止向不健康的供应商发送请求
 
-use crate::proxy_core::log_codes::cb as log_cb;
-pub use crate::proxy_core::CircuitBreakerConfig;
+use crate::proxy_core::{log_codes::cb as log_cb, CircuitBreakerConfig};
 use serde::{Deserialize, Serialize};
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::Arc;

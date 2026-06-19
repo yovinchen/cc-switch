@@ -2644,7 +2644,7 @@ impl ProxyService {
     /// 如果代理服务器正在运行，将新配置应用到所有已创建的熔断器实例
     pub async fn update_circuit_breaker_configs(
         &self,
-        config: crate::proxy::CircuitBreakerConfig,
+        config: crate::proxy_core::CircuitBreakerConfig,
     ) -> Result<(), String> {
         if let Some(server) = self.server.read().await.as_ref() {
             server.update_circuit_breaker_configs(config).await;
@@ -2659,7 +2659,7 @@ impl ProxyService {
     pub async fn update_circuit_breaker_config_for_app(
         &self,
         app_type: &str,
-        config: crate::proxy::CircuitBreakerConfig,
+        config: crate::proxy_core::CircuitBreakerConfig,
     ) -> Result<(), String> {
         if let Some(server) = self.server.read().await.as_ref() {
             server

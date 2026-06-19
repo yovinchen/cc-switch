@@ -473,7 +473,7 @@ impl ProxyServer {
     /// 将新配置应用到所有已创建的熔断器实例
     pub async fn update_circuit_breaker_configs(
         &self,
-        config: super::circuit_breaker::CircuitBreakerConfig,
+        config: crate::proxy_core::CircuitBreakerConfig,
     ) {
         self.state.provider_router.update_all_configs(config).await;
     }
@@ -481,7 +481,7 @@ impl ProxyServer {
     pub async fn update_circuit_breaker_config_for_app(
         &self,
         app_type: &str,
-        config: super::circuit_breaker::CircuitBreakerConfig,
+        config: crate::proxy_core::CircuitBreakerConfig,
     ) {
         self.state
             .provider_router

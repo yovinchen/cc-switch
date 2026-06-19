@@ -7,15 +7,13 @@ use crate::database::{Database, ProxyChannelMigrationPreview, ProxyChannelRecord
 use crate::error::AppError;
 use crate::provider::Provider;
 use crate::proxy::channel_routing::resolve_channel_route;
-use crate::proxy::circuit_breaker::{
-    AllowResult, CircuitBreaker, CircuitBreakerConfig, CircuitBreakerStats,
-};
+use crate::proxy::circuit_breaker::{AllowResult, CircuitBreaker, CircuitBreakerStats};
 use crate::proxy_core::{
     app_type_from_circuit_key, channel_circuit_key, channel_circuit_key_prefix,
     circuit_breaker_config_from_app_config, circuit_failure_threshold_from_app_config,
     provider_circuit_key, provider_circuit_key_prefix, reject_unavailable_channel_ids,
-    select_provider_ids, ChannelRouteSource, ProviderSelectionCandidate, ProviderSelectionFailure,
-    ProviderSelectionInput, RouteResolveRequest, RouteResolveResponse,
+    select_provider_ids, ChannelRouteSource, CircuitBreakerConfig, ProviderSelectionCandidate,
+    ProviderSelectionFailure, ProviderSelectionInput, RouteResolveRequest, RouteResolveResponse,
 };
 use std::collections::HashMap;
 use std::str::FromStr;
