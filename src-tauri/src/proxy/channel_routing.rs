@@ -6,22 +6,22 @@
 use crate::database::ProxyChannelRecord;
 use crate::error::AppError;
 use crate::proxy_core::{
-    resolve_channel_route_from_specs as resolve_core_channel_route_from_specs, ChannelRouteSource,
-    ProxyCoreError, RouteResolveRequest, RouteResolveResponse,
+    resolve_channel_route as resolve_core_channel_route, ChannelRouteSource, ProxyCoreError,
+    RouteResolveRequest, RouteResolveResponse,
 };
-use crate::proxy_core_adapter::ToProxyCoreChannelSpec;
+use crate::proxy_core_adapter::proxy_channel_route_inputs_to_core;
 
 pub(crate) fn resolve_channel_route(
     request: RouteResolveRequest,
     channels: Vec<ProxyChannelRecord>,
     source: ChannelRouteSource,
 ) -> Result<RouteResolveResponse, AppError> {
-    let channels = channels.into_iter().map(|channel| {
-        let source_kind = channel.source_kind.as_str().to_string();
-        (channel.to_proxy_core_channel_spec(), source_kind)
-    });
-    resolve_core_channel_route_from_specs(request, channels, source)
-        .map_err(proxy_core_error_to_app_error)
+    resolve_core_channel_route(
+        request,
+        proxy_channel_route_inputs_to_core(channels),
+        source,
+    )
+    .map_err(proxy_core_error_to_app_error)
 }
 
 fn proxy_core_error_to_app_error(error: ProxyCoreError) -> AppError {

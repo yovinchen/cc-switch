@@ -7,7 +7,8 @@ use crate::proxy_core::{
     AppKind, AppSummaryInput, AuthProfileRef, ChannelHealthPolicy, ChannelModelRecord,
     ChannelOverrides, ChannelRecord, ChannelSpec, ChannelStatus, CurrentRouteProviderSummaryInput,
     InterfaceKind, ModelCapabilities, ModelRoute, ProviderKind, ProviderMetadata, ProviderSpec,
-    ProxyRuntimeStatus, RetryPolicy, UpstreamEndpoint,
+    ProxyRuntimeStatus, RetryPolicy, RouteResolveChannelInput, RouteResolveModelInput,
+    UpstreamEndpoint,
 };
 use serde_json::{json, Value};
 
@@ -135,6 +136,50 @@ pub(crate) fn proxy_channel_specs_to_core(
     channels
         .into_iter()
         .map(|channel| channel.to_proxy_core_channel_spec())
+        .collect()
+}
+
+pub(crate) fn proxy_channel_route_inputs_to_core(
+    channels: impl IntoIterator<Item = ProxyChannelRecord>,
+) -> Vec<RouteResolveChannelInput> {
+    channels
+        .into_iter()
+        .map(|channel| {
+            let ProxyChannelRecord {
+                id,
+                provider_id,
+                name,
+                status,
+                base_url,
+                interface_kind,
+                groups,
+                models,
+                priority,
+                weight,
+                source_kind,
+                ..
+            } = channel;
+
+            RouteResolveChannelInput {
+                channel_id: id,
+                provider_id,
+                channel_name: name,
+                status,
+                base_url,
+                interface_kind,
+                groups,
+                models: models
+                    .into_iter()
+                    .map(|model| RouteResolveModelInput {
+                        public_model: model.public_model,
+                        upstream_model: model.upstream_model,
+                    })
+                    .collect(),
+                priority,
+                weight,
+                source_kind: source_kind.as_str().to_string(),
+            }
+        })
         .collect()
 }
 
