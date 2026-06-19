@@ -12,7 +12,8 @@ use crate::proxy::error::ProxyError;
 use crate::proxy_core::{
     build_anthropic_usage_from_openai_responses, canonical_json_string, clean_openai_tool_schema,
     map_anthropic_tool_choice_to_openai_responses, map_openai_responses_stop_reason_to_anthropic,
-    sanitize_anthropic_tool_use_input,
+    resolve_reasoning_effort, sanitize_anthropic_tool_use_input,
+    strip_leading_anthropic_billing_header, supports_reasoning_effort,
 };
 use serde_json::{json, Value};
 
@@ -40,11 +41,11 @@ pub fn anthropic_to_responses(
     // system → instructions (Responses API 使用 instructions 字段)
     if let Some(system) = body.get("system") {
         let instructions = if let Some(text) = system.as_str() {
-            super::transform::strip_leading_anthropic_billing_header(text).to_string()
+            strip_leading_anthropic_billing_header(text).to_string()
         } else if let Some(arr) = system.as_array() {
             arr.iter()
                 .filter_map(|msg| msg.get("text").and_then(|t| t.as_str()))
-                .map(super::transform::strip_leading_anthropic_billing_header)
+                .map(strip_leading_anthropic_billing_header)
                 .filter(|text| !text.is_empty())
                 .collect::<Vec<_>>()
                 .join("\n\n")
@@ -80,8 +81,8 @@ pub fn anthropic_to_responses(
 
     // Map Anthropic thinking → OpenAI Responses reasoning.effort
     if let Some(model_name) = body.get("model").and_then(|m| m.as_str()) {
-        if super::transform::supports_reasoning_effort(model_name) {
-            if let Some(effort) = super::transform::resolve_reasoning_effort(&body) {
+        if supports_reasoning_effort(model_name) {
+            if let Some(effort) = resolve_reasoning_effort(&body) {
                 result["reasoning"] = json!({ "effort": effort });
             }
         }

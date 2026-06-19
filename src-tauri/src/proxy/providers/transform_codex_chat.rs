@@ -10,7 +10,8 @@ use crate::proxy::error::ProxyError;
 use crate::proxy_core::{build_codex_tool_context_from_request, collapse_system_messages_to_head};
 use crate::proxy_core::{
     chat_completion_to_response_with_context as build_chat_completion_response_with_context,
-    responses_to_chat_completions_with_options, CodexChatReasoningOptions, CodexToolContext,
+    is_openai_o_series, responses_to_chat_completions_with_options, supports_reasoning_effort,
+    CodexChatReasoningOptions, CodexToolContext,
 };
 #[cfg(test)]
 use serde_json::json;
@@ -33,8 +34,8 @@ pub fn responses_to_chat_completions_with_reasoning(
     Ok(responses_to_chat_completions_with_options(
         &body,
         reasoning_options.as_ref(),
-        super::transform::is_openai_o_series(model),
-        super::transform::supports_reasoning_effort(model),
+        is_openai_o_series(model),
+        supports_reasoning_effort(model),
     ))
 }
 
