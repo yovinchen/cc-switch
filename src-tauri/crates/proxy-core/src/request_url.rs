@@ -77,7 +77,11 @@ pub fn append_query_to_full_url(base_url: &str, query: Option<&str>) -> String {
 }
 
 pub fn append_query_to_endpoint_path(endpoint: &str, query: Option<&str>) -> String {
-    append_query_to_full_url(endpoint, query)
+    match query {
+        Some(query) if endpoint.contains('?') => format!("{endpoint}&{query}"),
+        Some(query) => format!("{endpoint}?{query}"),
+        None => endpoint.to_string(),
+    }
 }
 
 pub fn strip_endpoint_prefix<'a>(endpoint: &'a str, prefix: Option<&str>) -> &'a str {
@@ -386,6 +390,7 @@ mod tests {
             "/responses?existing=true&x-id=1"
         );
         assert_eq!(append_query_to_endpoint_path("/responses/compact", None), "/responses/compact");
+        assert_eq!(append_query_to_endpoint_path("/responses", Some("")), "/responses?");
     }
 
     #[test]

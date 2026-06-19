@@ -676,11 +676,8 @@ async fn handle_messages_for_app(
     let mut ctx =
         RequestContext::new(&state, &body, &headers, app_type.clone(), tag, app_type_str).await?;
 
-    let raw_endpoint = uri
-        .path_and_query()
-        .map(|path_and_query| path_and_query.as_str())
-        .unwrap_or(uri.path());
-    let endpoint = strip_endpoint_prefix(raw_endpoint, strip_prefix);
+    let raw_endpoint = append_query_to_endpoint_path(uri.path(), uri.query());
+    let endpoint = strip_endpoint_prefix(&raw_endpoint, strip_prefix);
 
     let is_stream = body
         .get("stream")
@@ -1481,10 +1478,7 @@ pub async fn handle_gemini(
         .with_model_from_uri(&uri);
 
     // 提取完整的路径和查询参数
-    let endpoint = uri
-        .path_and_query()
-        .map(|pq| pq.as_str())
-        .unwrap_or(uri.path());
+    let endpoint = append_query_to_endpoint_path(uri.path(), uri.query());
 
     let is_stream = body
         .get("stream")
@@ -1494,11 +1488,11 @@ pub async fn handle_gemini(
     let mut proxy_request = ProxyRequest::new(
         AppKind::from(&AppType::Gemini),
         method,
-        endpoint,
+        &endpoint,
         InterfaceKind::GeminiNative,
         ProxyBody::Json(body),
     );
-    proxy_request.requested_model = extract_gemini_model_from_path(endpoint);
+    proxy_request.requested_model = extract_gemini_model_from_path(&endpoint);
     proxy_request.headers = headers;
     proxy_request.extensions = extensions;
 
