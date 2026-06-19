@@ -9,14 +9,14 @@
 //! a direct (non-proxied) CLI request.
 
 use super::{
-    ProxyError, events::ProxyEventBus, failover_switch::FailoverSwitchManager, handlers,
-    provider_router::ProviderRouter,
-    providers::codex_chat_history::CodexChatHistoryStore,
+    events::ProxyEventBus, failover_switch::FailoverSwitchManager, handlers,
+    provider_router::ProviderRouter, providers::codex_chat_history::CodexChatHistoryStore,
+    ProxyError,
 };
 use crate::database::Database;
 use crate::proxy_core::{
-    CurrentRouteTarget, GeminiShadowStore, ProxyConfig, ProxyEngine,
-    ProxyRuntimeStatus as ProxyStatus, ProxyServerInfo, log_codes::srv as log_srv,
+    log_codes::srv as log_srv, CurrentRouteTarget, GeminiShadowStore, ProxyConfig, ProxyEngine,
+    ProxyRuntimeStatus, ProxyServerInfo,
 };
 use crate::proxy_core_host::{CcSwitchProxyRuntime, CcSwitchProxyServices};
 use axum::{
@@ -37,7 +37,7 @@ use tokio::task::JoinHandle;
 pub struct ProxyState {
     pub db: Arc<Database>,
     pub config: Arc<RwLock<ProxyConfig>>,
-    pub status: Arc<RwLock<ProxyStatus>>,
+    pub status: Arc<RwLock<ProxyRuntimeStatus>>,
     pub start_time: Arc<RwLock<Option<std::time::Instant>>>,
     /// 每个应用类型当前使用的 provider/channel target。
     pub current_providers: Arc<RwLock<HashMap<String, CurrentRouteTarget>>>,
@@ -85,7 +85,7 @@ impl ProxyServer {
         let events = Arc::new(ProxyEventBus::default());
         // 创建故障转移切换管理器
         let failover_manager = Arc::new(FailoverSwitchManager::new(db.clone()));
-        let status = Arc::new(RwLock::new(ProxyStatus::default()));
+        let status = Arc::new(RwLock::new(ProxyRuntimeStatus::default()));
         let current_providers = Arc::new(RwLock::new(HashMap::new()));
         let gemini_shadow = Arc::new(GeminiShadowStore::default());
         let codex_chat_history = Arc::new(CodexChatHistoryStore::default());
@@ -296,7 +296,7 @@ impl ProxyServer {
         }
     }
 
-    pub async fn get_status(&self) -> ProxyStatus {
+    pub async fn get_status(&self) -> ProxyRuntimeStatus {
         let mut status = self.state.status.read().await.clone();
 
         // 计算运行时间

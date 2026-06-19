@@ -49,10 +49,10 @@ use crate::proxy_core::{
     AttemptEventPhase, ChannelQuery, CopilotAuthHeaderOverrides, CopilotOptimizerConfig,
     CurrentRouteTarget, ForwardFailureCategory, ForwardFailureKind, GeminiShadowStore,
     InterfaceKind, MediaRetryInput, OptimizerConfig, PromptCacheTraceLogInput, ProviderAuthInfo,
-    ProviderAuthStrategy, ProviderKind, ProxyBody, ProxyEngine, ProxyRequest,
-    ProxyRuntimeStatus as ProxyStatus, ProxyServices, RectifierConfig, ResolvedChannelAttempt,
-    UpstreamAuthHeadersInput, UpstreamRequestHeadersInput, UpstreamSendPolicyInput,
-    UpstreamTransportKind, UNSUPPORTED_IMAGE_MARKER,
+    ProviderAuthStrategy, ProviderKind, ProxyBody, ProxyEngine, ProxyRequest, ProxyRuntimeStatus,
+    ProxyServices, RectifierConfig, ResolvedChannelAttempt, UpstreamAuthHeadersInput,
+    UpstreamRequestHeadersInput, UpstreamSendPolicyInput, UpstreamTransportKind,
+    UNSUPPORTED_IMAGE_MARKER,
 };
 use crate::proxy_core_host::CcSwitchProxyServices;
 use crate::{app_config::AppType, provider::Provider};
@@ -87,7 +87,7 @@ pub struct ForwardError {
 
 /// 活跃连接 RAII guard
 ///
-/// 构造时把 `ProxyStatus.active_connections` +1；Drop 时在 tokio runtime 上调度
+/// 构造时把 `ProxyRuntimeStatus.active_connections` +1；Drop 时在 tokio runtime 上调度
 /// 一个异步任务执行 -1，从而支持把 guard move 进流式 body future（stream 自然结束
 /// 时 guard 与 future 一起 drop）。
 ///
@@ -96,11 +96,11 @@ pub struct ForwardError {
 /// `active_connections` 计数过早归零。RAII guard 让"减量"由 Rust 类型系统驱动，
 /// 不需要每条出口路径都手动调用。
 pub(crate) struct ActiveConnectionGuard {
-    status: Arc<RwLock<ProxyStatus>>,
+    status: Arc<RwLock<ProxyRuntimeStatus>>,
 }
 
 impl ActiveConnectionGuard {
-    pub(crate) async fn acquire(status: Arc<RwLock<ProxyStatus>>) -> Self {
+    pub(crate) async fn acquire(status: Arc<RwLock<ProxyRuntimeStatus>>) -> Self {
         {
             let mut s = status.write().await;
             s.active_connections = s.active_connections.saturating_add(1);
@@ -129,7 +129,7 @@ pub struct RequestForwarder {
     /// Neutral proxy services used only when this forwarder still owns attempt planning.
     #[allow(dead_code)]
     proxy_core_services: Option<Arc<CcSwitchProxyServices>>,
-    status: Arc<RwLock<ProxyStatus>>,
+    status: Arc<RwLock<ProxyRuntimeStatus>>,
     current_providers: Arc<RwLock<std::collections::HashMap<String, CurrentRouteTarget>>>,
     events: Arc<ProxyEventBus>,
     gemini_shadow: Arc<GeminiShadowStore>,
@@ -235,7 +235,7 @@ impl RequestForwarder {
         router: Arc<ProviderRouter>,
         proxy_core_services: Arc<CcSwitchProxyServices>,
         non_streaming_timeout: u64,
-        status: Arc<RwLock<ProxyStatus>>,
+        status: Arc<RwLock<ProxyRuntimeStatus>>,
         current_providers: Arc<RwLock<std::collections::HashMap<String, CurrentRouteTarget>>>,
         events: Arc<ProxyEventBus>,
         gemini_shadow: Arc<GeminiShadowStore>,
@@ -280,7 +280,7 @@ impl RequestForwarder {
     pub(crate) fn new_preplanned(
         router: Arc<ProviderRouter>,
         non_streaming_timeout: u64,
-        status: Arc<RwLock<ProxyStatus>>,
+        status: Arc<RwLock<ProxyRuntimeStatus>>,
         current_providers: Arc<RwLock<std::collections::HashMap<String, CurrentRouteTarget>>>,
         events: Arc<ProxyEventBus>,
         gemini_shadow: Arc<GeminiShadowStore>,
@@ -325,7 +325,7 @@ impl RequestForwarder {
         router: Arc<ProviderRouter>,
         proxy_core_services: Option<Arc<CcSwitchProxyServices>>,
         non_streaming_timeout: u64,
-        status: Arc<RwLock<ProxyStatus>>,
+        status: Arc<RwLock<ProxyRuntimeStatus>>,
         current_providers: Arc<RwLock<std::collections::HashMap<String, CurrentRouteTarget>>>,
         events: Arc<ProxyEventBus>,
         gemini_shadow: Arc<GeminiShadowStore>,
@@ -2541,7 +2541,7 @@ mod tests {
         RequestForwarder {
             router: Arc::new(ProviderRouter::new(db.clone())),
             proxy_core_services: Some(Arc::new(CcSwitchProxyServices::new(db.clone()))),
-            status: Arc::new(RwLock::new(ProxyStatus::default())),
+            status: Arc::new(RwLock::new(ProxyRuntimeStatus::default())),
             current_providers: Arc::new(RwLock::new(HashMap::new())),
             events: Arc::new(ProxyEventBus::default()),
             gemini_shadow: Arc::new(GeminiShadowStore::new()),
@@ -2649,7 +2649,7 @@ mod tests {
         let forwarder = RequestForwarder {
             router: Arc::new(ProviderRouter::new(db.clone())),
             proxy_core_services: Some(Arc::new(CcSwitchProxyServices::new(db.clone()))),
-            status: Arc::new(RwLock::new(ProxyStatus::default())),
+            status: Arc::new(RwLock::new(ProxyRuntimeStatus::default())),
             current_providers: Arc::new(RwLock::new(HashMap::new())),
             events: Arc::new(ProxyEventBus::default()),
             gemini_shadow: Arc::new(GeminiShadowStore::new()),

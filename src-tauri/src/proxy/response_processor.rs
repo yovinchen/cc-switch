@@ -605,7 +605,7 @@ mod tests {
     use crate::proxy::providers::codex_chat_history::CodexChatHistoryStore;
     use crate::proxy_core::GeminiShadowStore;
     use crate::proxy_core::ProxyConfig;
-    use crate::proxy_core::ProxyRuntimeStatus as ProxyStatus;
+    use crate::proxy_core::ProxyRuntimeStatus;
     use crate::proxy_core_host::CcSwitchProxyServices;
     use rust_decimal::Decimal;
     use std::collections::HashMap;
@@ -676,7 +676,7 @@ mod tests {
         ProxyState {
             db: db.clone(),
             config: Arc::new(RwLock::new(ProxyConfig::default())),
-            status: Arc::new(RwLock::new(ProxyStatus::default())),
+            status: Arc::new(RwLock::new(ProxyRuntimeStatus::default())),
             start_time: Arc::new(RwLock::new(None)),
             current_providers: Arc::new(RwLock::new(HashMap::new())),
             provider_router: Arc::new(ProviderRouter::new(db.clone())),

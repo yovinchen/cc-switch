@@ -18,10 +18,10 @@ use crate::proxy_core::{
     GeminiShadowStore, ModelCatalog, OptimizerConfigSpec, ProviderSource, ProviderSpec,
     ProxyAppConfig, ProxyBody, ProxyConfigSource, ProxyCoreError, ProxyCoreEvent,
     ProxyCoreEventType, ProxyCoreResponse, ProxyCoreResult, ProxyEventSink, ProxyGlobalConfig,
-    ProxyRequest, ProxyResponseBody, ProxyResult, ProxyRuntimeConfig,
-    ProxyRuntimeStatus as ProxyStatus, ProxyServices, RectifierConfigSpec, RoutePlan, RoutePolicy,
-    RoutePolicySource, RouteRequest, RouteResolver, RouteSelection, UsageRecord, UsageSink,
-    CLAUDE_API_FORMAT_METADATA_KEY, DEFAULT_ROUTE_GROUP, SESSION_REQUEST_ID_PREFIX,
+    ProxyRequest, ProxyResponseBody, ProxyResult, ProxyRuntimeConfig, ProxyRuntimeStatus,
+    ProxyServices, RectifierConfigSpec, RoutePlan, RoutePolicy, RoutePolicySource, RouteRequest,
+    RouteResolver, RouteSelection, UsageRecord, UsageSink, CLAUDE_API_FORMAT_METADATA_KEY,
+    DEFAULT_ROUTE_GROUP, SESSION_REQUEST_ID_PREFIX,
 };
 use crate::proxy_core_adapter::extract_proxy_session_id;
 use crate::proxy_core_adapter::{ToProxyCoreChannelSpec, ToProxyCoreProviderSpec};
@@ -40,7 +40,7 @@ const DEFAULT_CHANNEL_FAILURE_THRESHOLD: u32 = 4;
 pub(crate) struct CcSwitchProxyRuntime {
     pub(crate) db: Arc<Database>,
     pub(crate) provider_router: Arc<ProviderRouter>,
-    pub(crate) status: Arc<RwLock<ProxyStatus>>,
+    pub(crate) status: Arc<RwLock<ProxyRuntimeStatus>>,
     pub(crate) current_providers: Arc<RwLock<HashMap<String, CurrentRouteTarget>>>,
     pub(crate) events: Arc<ProxyEventBus>,
     pub(crate) gemini_shadow: Arc<GeminiShadowStore>,
@@ -1035,8 +1035,8 @@ mod tests {
     use crate::provider::Provider;
     use crate::proxy_core::{
         ChannelOverrides, InterfaceKind, ModelCapabilities, ModelRoute, ProviderKind, ProxyBody,
-        ProxyEngine, ProxyResponseBody, ProxyRuntimeStatus as ProxyStatus, RetryPolicy,
-        RouteSelection, UpstreamEndpoint, UsageRecord, UsageTokens,
+        ProxyEngine, ProxyResponseBody, ProxyRuntimeStatus, RetryPolicy, RouteSelection,
+        UpstreamEndpoint, UsageRecord, UsageTokens,
     };
     use bytes::Bytes;
     use futures::StreamExt;
@@ -1169,7 +1169,7 @@ mod tests {
         CcSwitchProxyRuntime {
             db: db.clone(),
             provider_router: Arc::new(ProviderRouter::new(db.clone())),
-            status: Arc::new(RwLock::new(ProxyStatus::default())),
+            status: Arc::new(RwLock::new(ProxyRuntimeStatus::default())),
             current_providers: Arc::new(RwLock::new(std::collections::HashMap::new())),
             events,
             gemini_shadow: Arc::new(GeminiShadowStore::default()),
