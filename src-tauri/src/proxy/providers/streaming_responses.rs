@@ -1,81 +1,18 @@
 //! OpenAI Responses API 流式转换模块
 //!
-//! Host wrapper for Responses API SSE -> Anthropic SSE conversion. The
-//! protocol state machine lives in `proxy-core`; this module keeps only async
-//! stream transport, UTF-8 chunk buffering, SSE block parsing, and JSON parsing.
+//! Compatibility export; byte/SSE transport and protocol state live in
+//! `proxy-core`.
 
-use crate::proxy_core::{
-    append_utf8_safe, strip_sse_field, take_sse_block, OpenAiResponsesToAnthropicSseState,
-};
-use bytes::Bytes;
-use futures::stream::{Stream, StreamExt};
-use serde_json::Value;
-
-pub fn create_anthropic_sse_stream_from_responses<E: std::error::Error + Send + 'static>(
-    stream: impl Stream<Item = Result<Bytes, E>> + Send + 'static,
-) -> impl Stream<Item = Result<Bytes, std::io::Error>> + Send {
-    async_stream::stream! {
-        let mut buffer = String::new();
-        let mut utf8_remainder: Vec<u8> = Vec::new();
-        let mut state = OpenAiResponsesToAnthropicSseState::new();
-
-        tokio::pin!(stream);
-
-        while let Some(chunk) = stream.next().await {
-            match chunk {
-                Ok(bytes) => {
-                    append_utf8_safe(&mut buffer, &mut utf8_remainder, &bytes);
-
-                    while let Some(block) = take_sse_block(&mut buffer) {
-                        if block.trim().is_empty() {
-                            continue;
-                        }
-
-                        let mut event_type: Option<String> = None;
-                        let mut data_parts: Vec<String> = Vec::new();
-
-                        for line in block.lines() {
-                            if let Some(evt) = strip_sse_field(line, "event") {
-                                event_type = Some(evt.trim().to_string());
-                            } else if let Some(data) = strip_sse_field(line, "data") {
-                                data_parts.push(data.to_string());
-                            }
-                        }
-
-                        if data_parts.is_empty() {
-                            continue;
-                        }
-
-                        let data: Value = match serde_json::from_str(&data_parts.join("\n")) {
-                            Ok(value) => value,
-                            Err(_) => continue,
-                        };
-                        let event_name = event_type.as_deref().unwrap_or("");
-                        log::debug!("[Claude/Responses] <<< SSE event: {event_name}");
-
-                        for event in state.handle_event(event_name, &data) {
-                            yield Ok(event);
-                        }
-                    }
-                }
-                Err(e) => {
-                    log::error!("Responses stream error: {e}");
-                    yield Ok(OpenAiResponsesToAnthropicSseState::stream_error_event(
-                        format!("Stream error: {e}"),
-                    ));
-                    break;
-                }
-            }
-        }
-    }
-}
+pub use crate::proxy_core::create_openai_responses_to_anthropic_sse_stream as create_anthropic_sse_stream_from_responses;
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::proxy_core::map_openai_responses_stop_reason_to_anthropic;
+    use crate::proxy_core::{map_openai_responses_stop_reason_to_anthropic, strip_sse_field};
+    use bytes::Bytes;
     use futures::stream;
     use futures::StreamExt;
+    use serde_json::Value;
     use std::collections::HashMap;
 
     #[test]

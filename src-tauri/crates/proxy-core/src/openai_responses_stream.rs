@@ -8,8 +8,14 @@ use crate::{
     usage::build_anthropic_usage_from_openai_responses,
 };
 use bytes::Bytes;
+use futures::{stream as futures_stream, Stream, StreamExt};
 use serde_json::{json, Value};
-use std::collections::{HashMap, HashSet};
+use std::{
+    collections::{HashMap, HashSet, VecDeque},
+    error::Error,
+    io,
+    pin::Pin,
+};
 
 #[derive(Debug, Default)]
 pub struct OpenAiResponsesToAnthropicSseState {
@@ -26,6 +32,100 @@ pub struct OpenAiResponsesToAnthropicSseState {
     tool_name_by_index: HashMap<u32, String>,
     tool_args_by_index: HashMap<u32, String>,
     last_tool_index: Option<u32>,
+}
+
+struct OpenAiResponsesToAnthropicSseStreamContext<S> {
+    stream: Pin<Box<S>>,
+    buffer: String,
+    utf8_remainder: Vec<u8>,
+    state: OpenAiResponsesToAnthropicSseState,
+    pending_events: VecDeque<Bytes>,
+    finished: bool,
+}
+
+/// Convert an OpenAI Responses SSE byte stream into Anthropic SSE bytes.
+///
+/// This owns byte/SSE transport mechanics and delegates protocol conversion to
+/// `OpenAiResponsesToAnthropicSseState`.
+pub fn create_openai_responses_to_anthropic_sse_stream<S, E>(
+    stream: S,
+) -> impl Stream<Item = Result<Bytes, io::Error>> + Send
+where
+    S: Stream<Item = Result<Bytes, E>> + Send + 'static,
+    E: Error + Send + 'static,
+{
+    let context = OpenAiResponsesToAnthropicSseStreamContext {
+        stream: Box::pin(stream),
+        buffer: String::new(),
+        utf8_remainder: Vec::new(),
+        state: OpenAiResponsesToAnthropicSseState::new(),
+        pending_events: VecDeque::new(),
+        finished: false,
+    };
+
+    futures_stream::unfold(context, |mut context| async move {
+        loop {
+            if let Some(event) = context.pending_events.pop_front() {
+                return Some((Ok(event), context));
+            }
+
+            if context.finished {
+                return None;
+            }
+
+            match context.stream.as_mut().next().await {
+                Some(Ok(bytes)) => {
+                    crate::append_utf8_safe(
+                        &mut context.buffer,
+                        &mut context.utf8_remainder,
+                        &bytes,
+                    );
+
+                    while let Some(block) = crate::take_sse_block(&mut context.buffer) {
+                        if block.trim().is_empty() {
+                            continue;
+                        }
+
+                        let mut event_type: Option<String> = None;
+                        let mut data_parts: Vec<String> = Vec::new();
+
+                        for line in block.lines() {
+                            if let Some(event) = crate::strip_sse_field(line, "event") {
+                                event_type = Some(event.trim().to_string());
+                            } else if let Some(data) = crate::strip_sse_field(line, "data") {
+                                data_parts.push(data.to_string());
+                            }
+                        }
+
+                        if data_parts.is_empty() {
+                            continue;
+                        }
+
+                        let Ok(data) = serde_json::from_str::<Value>(&data_parts.join("\n"))
+                        else {
+                            continue;
+                        };
+                        let event_name = event_type.as_deref().unwrap_or("");
+                        context
+                            .pending_events
+                            .extend(context.state.handle_event(event_name, &data));
+                    }
+                }
+                Some(Err(error)) => {
+                    context.finished = true;
+                    return Some((
+                        Ok(OpenAiResponsesToAnthropicSseState::stream_error_event(
+                            format!("Stream error: {error}"),
+                        )),
+                        context,
+                    ));
+                }
+                None => {
+                    return None;
+                }
+            }
+        }
+    })
 }
 
 impl OpenAiResponsesToAnthropicSseState {
