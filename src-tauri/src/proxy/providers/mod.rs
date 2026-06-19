@@ -4,13 +4,11 @@
 //!
 //! ## 模块结构
 //! - `adapter`: 定义 `ProviderAdapter` trait
-//! - `auth`: 认证类型和策略
 //! - `claude`: Claude (Anthropic) 适配器
 //! - `codex`: Codex (OpenAI) 适配器
 //! - `gemini`: Gemini (Google) 适配器
 
 mod adapter;
-mod auth;
 mod claude;
 mod codex;
 pub mod codex_chat_history;
@@ -23,8 +21,8 @@ use crate::provider::Provider;
 use crate::proxy_core::{infer_claude_provider_kind, is_gemini_oauth_key_shape, ProviderKind};
 
 pub use crate::proxy_core::ProviderKind as ProviderType;
+pub use crate::proxy_core::{ProviderAuthInfo as AuthInfo, ProviderAuthStrategy as AuthStrategy};
 pub use adapter::ProviderAdapter;
-pub use auth::{AuthInfo, AuthStrategy};
 pub use claude::{
     get_claude_api_format, normalize_anthropic_messages_for_provider,
     transform_claude_request_for_api_format, ClaudeAdapter,

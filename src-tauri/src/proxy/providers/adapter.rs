@@ -2,7 +2,7 @@
 //!
 //! 定义供应商适配器的统一接口，抽象不同上游供应商的处理逻辑。
 
-use super::auth::AuthInfo;
+use super::AuthInfo;
 use crate::provider::Provider;
 use crate::proxy::error::ProxyError;
 use serde_json::Value;
