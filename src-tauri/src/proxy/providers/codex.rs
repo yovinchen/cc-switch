@@ -9,11 +9,11 @@ use super::{AuthInfo, AuthStrategy, ProviderAdapter};
 use crate::provider::{CodexChatReasoningConfig, Provider};
 use crate::proxy::error::ProxyError;
 use crate::proxy_core::{
-    apply_codex_chat_upstream_model_policy, codex_provider_catalog_model_ids_from_settings,
-    infer_codex_chat_reasoning_profile, is_origin_only_url, normalize_codex_chat_reasoning_profile,
-    resolve_codex_provider_upstream_model, resolve_codex_provider_uses_chat_completions,
-    should_convert_codex_responses_endpoint_to_chat, CodexChatReasoningOptions,
-    CodexChatReasoningProfile,
+    apply_codex_chat_upstream_model_policy, build_codex_upstream_url,
+    codex_provider_catalog_model_ids_from_settings, infer_codex_chat_reasoning_profile,
+    normalize_codex_chat_reasoning_profile, resolve_codex_provider_upstream_model,
+    resolve_codex_provider_uses_chat_completions, should_convert_codex_responses_endpoint_to_chat,
+    CodexChatReasoningOptions, CodexChatReasoningProfile,
 };
 use regex::Regex;
 use serde_json::Value as JsonValue;
@@ -361,35 +361,7 @@ impl ProviderAdapter for CodexAdapter {
     }
 
     fn build_url(&self, base_url: &str, endpoint: &str) -> String {
-        let base_trimmed = base_url.trim_end_matches('/');
-        let endpoint_trimmed = endpoint.trim_start_matches('/');
-
-        // OpenAI/Codex 的 base_url 可能是：
-        // - 纯 origin: https://api.openai.com  (需要自动补 /v1)
-        // - 已含 /v1: https://api.openai.com/v1 (直接拼接)
-        // - 自定义前缀: https://xxx/openai (不添加 /v1，直接拼接)
-
-        // 检查 base_url 是否已经包含 /v1
-        let already_has_v1 = base_trimmed.ends_with("/v1");
-        let origin_only = is_origin_only_url(base_trimmed);
-
-        let mut url = if already_has_v1 {
-            // 已经有 /v1，直接拼接
-            format!("{base_trimmed}/{endpoint_trimmed}")
-        } else if origin_only {
-            // 纯 origin，添加 /v1
-            format!("{base_trimmed}/v1/{endpoint_trimmed}")
-        } else {
-            // 自定义前缀，不添加 /v1，直接拼接
-            format!("{base_trimmed}/{endpoint_trimmed}")
-        };
-
-        // 去除重复的 /v1/v1（可能由 base_url 与 endpoint 都带版本导致）
-        while url.contains("/v1/v1") {
-            url = url.replace("/v1/v1", "/v1");
-        }
-
-        url
+        build_codex_upstream_url(base_url, endpoint)
     }
 
     fn get_auth_headers(
