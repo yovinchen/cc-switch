@@ -4,8 +4,8 @@ use crate::provider::Provider;
 use crate::proxy::providers::ProviderType;
 use crate::proxy_core::{
     AppKind, AuthProfileRef, ChannelHealthPolicy, ChannelModelRecord, ChannelOverrides,
-    ChannelSpec, ChannelStatus, InterfaceKind, ModelCapabilities, ModelRoute, ProviderKind,
-    ProviderMetadata, ProviderSpec, RetryPolicy, UpstreamEndpoint,
+    ChannelRecord, ChannelSpec, ChannelStatus, InterfaceKind, ModelCapabilities, ModelRoute,
+    ProviderKind, ProviderMetadata, ProviderSpec, RetryPolicy, UpstreamEndpoint,
 };
 use serde_json::{json, Value};
 
@@ -139,6 +139,45 @@ impl ToProxyCoreChannelModelRecord for ProxyChannelModelRecord {
             self.channel_id.clone(),
             self.to_proxy_core_model_route(),
         )
+    }
+}
+
+#[allow(dead_code)]
+pub(crate) trait ToProxyCoreChannelRecord {
+    fn to_proxy_core_channel_record(&self) -> ChannelRecord;
+}
+
+impl ToProxyCoreChannelRecord for ProxyChannelRecord {
+    fn to_proxy_core_channel_record(&self) -> ChannelRecord {
+        ChannelRecord {
+            id: self.id.clone(),
+            provider_id: self.provider_id.clone(),
+            app_type: self.app_type.clone(),
+            name: self.name.clone(),
+            status: self.status.clone(),
+            base_url: self.base_url.clone(),
+            interface_kind: self.interface_kind.clone(),
+            auth_profile_ref: self.auth_profile_ref.clone(),
+            groups: self.groups.clone(),
+            priority: self.priority,
+            weight: self.weight,
+            retry_policy: self.retry_policy.clone(),
+            health_policy: self.health_policy.clone(),
+            header_overrides: self.header_overrides.clone(),
+            param_overrides: self.param_overrides.clone(),
+            status_code_mapping: self.status_code_mapping.clone(),
+            tags: self.tags.clone(),
+            metadata: self.metadata.clone(),
+            source_kind: self.source_kind.as_str().to_string(),
+            source_endpoint_url: self.source_endpoint_url.clone(),
+            models: self
+                .models
+                .iter()
+                .map(ProxyChannelModelRecord::to_proxy_core_channel_model_record)
+                .collect(),
+            needs_review: self.needs_review,
+            review_reasons: self.review_reasons.clone(),
+        }
     }
 }
 

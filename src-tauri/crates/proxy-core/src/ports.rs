@@ -1166,6 +1166,45 @@ impl<T> ChannelListResponse<T> {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ChannelRecord {
+    pub id: String,
+    pub provider_id: String,
+    pub app_type: String,
+    pub name: String,
+    pub status: String,
+    pub base_url: String,
+    pub interface_kind: String,
+    pub auth_profile_ref: Option<String>,
+    #[serde(default)]
+    pub groups: Vec<String>,
+    pub priority: i64,
+    pub weight: u32,
+    #[serde(default)]
+    pub retry_policy: Value,
+    #[serde(default)]
+    pub health_policy: Value,
+    #[serde(default)]
+    pub header_overrides: Value,
+    #[serde(default)]
+    pub param_overrides: Value,
+    #[serde(default)]
+    pub status_code_mapping: Value,
+    #[serde(default)]
+    pub tags: Vec<String>,
+    #[serde(default)]
+    pub metadata: Value,
+    pub source_kind: String,
+    pub source_endpoint_url: Option<String>,
+    #[serde(default)]
+    pub models: Vec<ChannelModelRecord>,
+    #[serde(default)]
+    pub needs_review: bool,
+    #[serde(default)]
+    pub review_reasons: Vec<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(transparent)]
 pub struct ChannelRecordResponse<T> {
     pub channel: T,
@@ -1374,8 +1413,9 @@ mod tests {
         AppChannelListQuery, AppChannelListResponse, AppChannelResponse, AppChannelRouteResponse,
         AppListResponse, AppModelListQuery, AppSummaryInput, ChannelDeleteResponse,
         ChannelListQuery, ChannelListResponse, ChannelModelRecord, ChannelModelsResponse,
-        ChannelRecordResponse, ChannelMigrationMaterializeInput, ChannelMigrationMaterializeResponse,
-        ChannelMigrationPreviewInput, ChannelMigrationPreviewResponse,
+        ChannelRecord, ChannelRecordResponse, ChannelMigrationMaterializeInput,
+        ChannelMigrationMaterializeResponse, ChannelMigrationPreviewInput,
+        ChannelMigrationPreviewResponse,
         ChannelRouteCandidate, ChannelRouteRejected, ChannelRouteSource, ClientModelCatalogResponse,
         CurrentRouteProviderSummaryInput, CurrentRouteResponse, CurrentRouteTarget, GroupListQuery,
         HealthCheckResponse, ModelCatalog, ProviderListResponse, ProviderSpec, ProxyStatusResponse,
@@ -2035,20 +2075,53 @@ mod tests {
 
     #[test]
     fn channel_record_response_serializes_as_raw_record() {
-        let response = ChannelRecordResponse::new(json!({
-            "id": "channel-a",
-            "name": "Primary"
-        }));
+        let response = ChannelRecordResponse::new(ChannelRecord {
+            id: "channel-a".to_string(),
+            provider_id: "provider-a".to_string(),
+            app_type: "claude".to_string(),
+            name: "Primary".to_string(),
+            status: "enabled".to_string(),
+            base_url: "https://relay.example.com/v1".to_string(),
+            interface_kind: "openai_responses".to_string(),
+            auth_profile_ref: None,
+            groups: vec!["default".to_string()],
+            priority: 10,
+            weight: 100,
+            retry_policy: json!({}),
+            health_policy: json!({}),
+            header_overrides: json!({}),
+            param_overrides: json!({}),
+            status_code_mapping: json!([]),
+            tags: vec!["paid".to_string()],
+            metadata: json!({"region": "us"}),
+            source_kind: "manual".to_string(),
+            source_endpoint_url: None,
+            models: vec![ChannelModelRecord::from_model_route(
+                "channel-a",
+                ModelRoute {
+                    public_model: "sonnet".to_string(),
+                    upstream_model: "upstream-sonnet".to_string(),
+                    capabilities: ModelCapabilities::default(),
+                    pricing_model: None,
+                    request_overrides: json!({}),
+                    response_overrides: json!({}),
+                },
+            )],
+            needs_review: false,
+            review_reasons: vec![],
+        });
 
         let value = serde_json::to_value(response).expect("serialize response");
 
-        assert_eq!(
-            value,
-            json!({
-                "id": "channel-a",
-                "name": "Primary"
-            })
-        );
+        assert_eq!(value["id"], "channel-a");
+        assert_eq!(value["providerId"], "provider-a");
+        assert_eq!(value["appType"], "claude");
+        assert_eq!(value["authProfileRef"], serde_json::Value::Null);
+        assert_eq!(value["baseUrl"], "https://relay.example.com/v1");
+        assert_eq!(value["interfaceKind"], "openai_responses");
+        assert_eq!(value["sourceKind"], "manual");
+        assert_eq!(value["sourceEndpointUrl"], serde_json::Value::Null);
+        assert_eq!(value["models"][0]["publicModel"], "sonnet");
     }
 
     #[test]

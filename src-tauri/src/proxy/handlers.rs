@@ -56,7 +56,7 @@ use crate::proxy_core::{
     AppModelListQuery, AppSummaryInput, ChannelDeleteResponse, ChannelHealthResetResponse,
     ChannelListQuery, ChannelListResponse, ChannelMigrationMaterializeInput,
     ChannelMigrationMaterializeResponse, ChannelMigrationPreviewInput,
-    ChannelMigrationPreviewResponse, ChannelModelRecord, ChannelModelsResponse,
+    ChannelMigrationPreviewResponse, ChannelModelRecord, ChannelModelsResponse, ChannelRecord,
     ChannelRecordResponse, ChannelRouteCandidate, ChannelRouteRejected,
     ClaudeDesktopModelListResponse, ClientModelCatalogResponse, CurrentRouteProviderSummaryInput,
     CurrentRouteResponse, CurrentRouteTarget, GroupListQuery, HealthCheckResponse, InterfaceKind,
@@ -68,7 +68,8 @@ use crate::proxy_core::{
     CLAUDE_PARSER_CONFIG, CODEX_PARSER_CONFIG, GEMINI_PARSER_CONFIG, OPENAI_PARSER_CONFIG,
 };
 use crate::proxy_core_adapter::{
-    ToProxyCoreChannelModelRecord, ToProxyCoreChannelSpec, ToProxyCoreProviderSpec,
+    ToProxyCoreChannelModelRecord, ToProxyCoreChannelRecord, ToProxyCoreChannelSpec,
+    ToProxyCoreProviderSpec,
 };
 use axum::{
     extract::{Path, Query, State},
@@ -287,7 +288,7 @@ pub async fn list_proxy_app_models(
 pub async fn list_all_proxy_channels(
     State(state): State<ProxyState>,
     Query(query): Query<ChannelListQuery>,
-) -> Result<Json<ChannelListResponse<ProxyChannelRecord>>, ProxyError> {
+) -> Result<Json<ChannelListResponse<ChannelRecord>>, ProxyError> {
     let channels = if let Some(app_type) = query.app_type() {
         validate_management_app_type(&app_type).map_err(management_api_error_to_proxy_error)?;
         state
@@ -301,26 +302,30 @@ pub async fn list_all_proxy_channels(
             .map_err(|e| ProxyError::DatabaseError(e.to_string()))?
     };
 
-    Ok(Json(ChannelListResponse::new(channels)))
+    Ok(Json(ChannelListResponse::new(channel_records_from_host(
+        channels,
+    ))))
 }
 
 /// POST /proxy/v1/channels
 pub async fn create_proxy_channel(
     State(state): State<ProxyState>,
     Json(request): Json<ProxyChannelWriteRequest>,
-) -> Result<Json<ChannelRecordResponse<ProxyChannelRecord>>, ProxyError> {
+) -> Result<Json<ChannelRecordResponse<ChannelRecord>>, ProxyError> {
     let channel = state
         .db
         .create_proxy_channel(request)
         .map_err(|e| ProxyError::InvalidRequest(e.to_string()))?;
-    Ok(Json(ChannelRecordResponse::new(channel)))
+    Ok(Json(ChannelRecordResponse::new(
+        channel.to_proxy_core_channel_record(),
+    )))
 }
 
 /// GET /proxy/v1/channels/{channel_id}
 pub async fn get_proxy_channel(
     State(state): State<ProxyState>,
     Path(channel_id): Path<String>,
-) -> Result<Json<ChannelRecordResponse<ProxyChannelRecord>>, ProxyError> {
+) -> Result<Json<ChannelRecordResponse<ChannelRecord>>, ProxyError> {
     let channel_id =
         normalize_channel_id_path(channel_id).map_err(management_api_error_to_proxy_error)?;
     let channel = state
@@ -328,7 +333,9 @@ pub async fn get_proxy_channel(
         .get_proxy_channel(&channel_id)
         .map_err(|e| ProxyError::DatabaseError(e.to_string()))?
         .ok_or_else(|| ProxyError::InvalidRequest(format!("channel not found: {channel_id}")))?;
-    Ok(Json(ChannelRecordResponse::new(channel)))
+    Ok(Json(ChannelRecordResponse::new(
+        channel.to_proxy_core_channel_record(),
+    )))
 }
 
 /// PATCH /proxy/v1/channels/{channel_id}
@@ -336,7 +343,7 @@ pub async fn update_proxy_channel(
     State(state): State<ProxyState>,
     Path(channel_id): Path<String>,
     Json(request): Json<ProxyChannelPatchRequest>,
-) -> Result<Json<ChannelRecordResponse<ProxyChannelRecord>>, ProxyError> {
+) -> Result<Json<ChannelRecordResponse<ChannelRecord>>, ProxyError> {
     let channel_id =
         normalize_channel_id_path(channel_id).map_err(management_api_error_to_proxy_error)?;
     let channel = state
@@ -344,7 +351,9 @@ pub async fn update_proxy_channel(
         .update_proxy_channel(&channel_id, request)
         .map_err(|e| ProxyError::InvalidRequest(e.to_string()))?
         .ok_or_else(|| ProxyError::InvalidRequest(format!("channel not found: {channel_id}")))?;
-    Ok(Json(ChannelRecordResponse::new(channel)))
+    Ok(Json(ChannelRecordResponse::new(
+        channel.to_proxy_core_channel_record(),
+    )))
 }
 
 /// DELETE /proxy/v1/channels/{channel_id}
@@ -418,13 +427,20 @@ fn channel_model_records_from_host(
         .collect()
 }
 
+fn channel_records_from_host(channels: Vec<ProxyChannelRecord>) -> Vec<ChannelRecord> {
+    channels
+        .iter()
+        .map(ProxyChannelRecord::to_proxy_core_channel_record)
+        .collect()
+}
+
 /// GET /proxy/v1/apps/{app}/channels
 pub async fn list_proxy_channels(
     State(state): State<ProxyState>,
     Path(app_type): Path<String>,
     Query(query): Query<AppChannelListQuery>,
 ) -> Result<
-    Json<AppChannelResponse<ProxyChannelRecord, ChannelRouteCandidate, ChannelRouteRejected>>,
+    Json<AppChannelResponse<ChannelRecord, ChannelRouteCandidate, ChannelRouteRejected>>,
     ProxyError,
 > {
     validate_management_app_type(&app_type).map_err(management_api_error_to_proxy_error)?;
@@ -449,7 +465,11 @@ pub async fn list_proxy_channels(
         .map_err(|e| ProxyError::DatabaseError(e.to_string()))?;
 
     Ok(Json(AppChannelResponse::List(
-        AppChannelListResponse::from_route_source(app_type, &source, channels),
+        AppChannelListResponse::from_route_source(
+            app_type,
+            &source,
+            channel_records_from_host(channels),
+        ),
     )))
 }
 
@@ -550,7 +570,7 @@ fn current_route_target_from_active_target(target: ActiveTarget) -> CurrentRoute
 pub async fn preview_proxy_channel_migration(
     State(state): State<ProxyState>,
     Path(app_type): Path<String>,
-) -> Result<Json<ChannelMigrationPreviewResponse<ProxyChannelRecord>>, ProxyError> {
+) -> Result<Json<ChannelMigrationPreviewResponse<ChannelRecord>>, ProxyError> {
     validate_management_app_type(&app_type).map_err(management_api_error_to_proxy_error)?;
 
     let preview = state
@@ -561,7 +581,7 @@ pub async fn preview_proxy_channel_migration(
     Ok(Json(ChannelMigrationPreviewResponse::from_input(
         ChannelMigrationPreviewInput::new(
             preview.app_type,
-            preview.channels,
+            channel_records_from_host(preview.channels),
             preview.duplicate_count,
             preview.needs_review_count,
         ),
