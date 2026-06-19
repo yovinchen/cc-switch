@@ -1,5 +1,10 @@
 //! Host-neutral Gemini authentication helpers.
 
+use serde_json::Value;
+
+pub const GEMINI_API_KEY_ENV: &str = "GEMINI_API_KEY";
+pub const GOOGLE_GEMINI_BASE_URL_ENV: &str = "GOOGLE_GEMINI_BASE_URL";
+
 /// Parsed Gemini OAuth credential material.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct GeminiOAuthCredentials {
@@ -69,9 +74,46 @@ pub fn parse_gemini_oauth_credentials(key: &str) -> Option<GeminiOAuthCredential
     })
 }
 
+pub fn extract_gemini_api_key_from_settings(settings: &Value) -> Option<String> {
+    if let Some(key) = settings
+        .get("env")
+        .and_then(|env| env.get(GEMINI_API_KEY_ENV))
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|key| !key.is_empty())
+    {
+        return Some(key.to_string());
+    }
+
+    settings
+        .get("apiKey")
+        .or_else(|| settings.get("api_key"))
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|key| !key.is_empty())
+        .map(ToString::to_string)
+}
+
+pub fn extract_gemini_base_url_from_settings(settings: &Value) -> Option<String> {
+    if let Some(url) = settings
+        .get("env")
+        .and_then(|env| env.get(GOOGLE_GEMINI_BASE_URL_ENV))
+        .and_then(Value::as_str)
+    {
+        return Some(url.trim_end_matches('/').to_string());
+    }
+
+    settings
+        .get("base_url")
+        .or_else(|| settings.get("baseURL"))
+        .and_then(Value::as_str)
+        .map(|url| url.trim_end_matches('/').to_string())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serde_json::json;
 
     #[test]
     fn parses_direct_access_token() {
@@ -123,5 +165,69 @@ mod tests {
         assert!(parse_gemini_oauth_credentials("AIza-api-key").is_none());
         assert!(parse_gemini_oauth_credentials("invalid-json{").is_none());
         assert!(parse_gemini_oauth_credentials(r#"{"client_id":"client"}"#).is_none());
+    }
+
+    #[test]
+    fn extracts_gemini_api_key_from_env_before_direct_fields() {
+        let settings = json!({
+            "env": {
+                "GEMINI_API_KEY": " env-key "
+            },
+            "apiKey": "direct-key"
+        });
+
+        assert_eq!(
+            extract_gemini_api_key_from_settings(&settings).as_deref(),
+            Some("env-key")
+        );
+    }
+
+    #[test]
+    fn extracts_gemini_api_key_from_direct_aliases() {
+        assert_eq!(
+            extract_gemini_api_key_from_settings(&json!({ "apiKey": " direct-key " })).as_deref(),
+            Some("direct-key")
+        );
+        assert_eq!(
+            extract_gemini_api_key_from_settings(&json!({ "api_key": " snake-key " })).as_deref(),
+            Some("snake-key")
+        );
+        assert_eq!(
+            extract_gemini_api_key_from_settings(&json!({ "apiKey": "   " })),
+            None
+        );
+    }
+
+    #[test]
+    fn extracts_gemini_base_url_from_env_before_direct_fields() {
+        let settings = json!({
+            "env": {
+                "GOOGLE_GEMINI_BASE_URL": "https://env.example.com/v1beta/"
+            },
+            "base_url": "https://direct.example.com/"
+        });
+
+        assert_eq!(
+            extract_gemini_base_url_from_settings(&settings).as_deref(),
+            Some("https://env.example.com/v1beta")
+        );
+    }
+
+    #[test]
+    fn extracts_gemini_base_url_from_direct_aliases() {
+        assert_eq!(
+            extract_gemini_base_url_from_settings(
+                &json!({ "base_url": "https://snake.example.com/" })
+            )
+            .as_deref(),
+            Some("https://snake.example.com")
+        );
+        assert_eq!(
+            extract_gemini_base_url_from_settings(
+                &json!({ "baseURL": "https://camel.example.com/" })
+            )
+            .as_deref(),
+            Some("https://camel.example.com")
+        );
     }
 }

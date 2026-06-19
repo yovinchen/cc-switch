@@ -9,7 +9,10 @@
 use super::{AuthInfo, AuthStrategy, ProviderAdapter, ProviderType};
 use crate::provider::Provider;
 use crate::proxy::error::ProxyError;
-use crate::proxy_core::{parse_gemini_oauth_credentials, GeminiOAuthCredentials};
+use crate::proxy_core::{
+    extract_gemini_api_key_from_settings, extract_gemini_base_url_from_settings,
+    parse_gemini_oauth_credentials, GeminiOAuthCredentials,
+};
 
 /// Gemini 适配器
 pub struct GeminiAdapter;
@@ -50,31 +53,7 @@ impl GeminiAdapter {
 
     /// 从 Provider 配置中提取原始 API Key
     fn extract_key_raw(&self, provider: &Provider) -> Option<String> {
-        if let Some(env) = provider.settings_config.get("env") {
-            // 使用 GEMINI_API_KEY
-            if let Some(key) = env
-                .get("GEMINI_API_KEY")
-                .and_then(|v| v.as_str())
-                .map(str::trim)
-                .filter(|s| !s.is_empty())
-            {
-                return Some(key.to_string());
-            }
-        }
-
-        // 尝试直接获取
-        if let Some(key) = provider
-            .settings_config
-            .get("apiKey")
-            .or_else(|| provider.settings_config.get("api_key"))
-            .and_then(|v| v.as_str())
-            .map(str::trim)
-            .filter(|s| !s.is_empty())
-        {
-            return Some(key.to_string());
-        }
-
-        None
+        extract_gemini_api_key_from_settings(&provider.settings_config)
     }
 }
 
@@ -90,33 +69,9 @@ impl ProviderAdapter for GeminiAdapter {
     }
 
     fn extract_base_url(&self, provider: &Provider) -> Result<String, ProxyError> {
-        // 从 env 中获取
-        if let Some(env) = provider.settings_config.get("env") {
-            if let Some(url) = env.get("GOOGLE_GEMINI_BASE_URL").and_then(|v| v.as_str()) {
-                return Ok(url.trim_end_matches('/').to_string());
-            }
-        }
-
-        // 尝试直接获取
-        if let Some(url) = provider
-            .settings_config
-            .get("base_url")
-            .and_then(|v| v.as_str())
-        {
-            return Ok(url.trim_end_matches('/').to_string());
-        }
-
-        if let Some(url) = provider
-            .settings_config
-            .get("baseURL")
-            .and_then(|v| v.as_str())
-        {
-            return Ok(url.trim_end_matches('/').to_string());
-        }
-
-        Err(ProxyError::ConfigError(
-            "Gemini Provider 缺少 base_url 配置".to_string(),
-        ))
+        extract_gemini_base_url_from_settings(&provider.settings_config).ok_or_else(|| {
+            ProxyError::ConfigError("Gemini Provider 缺少 base_url 配置".to_string())
+        })
     }
 
     fn extract_auth(&self, provider: &Provider) -> Option<AuthInfo> {
