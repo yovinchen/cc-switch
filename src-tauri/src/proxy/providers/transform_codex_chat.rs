@@ -20,9 +20,9 @@ pub(crate) use crate::proxy_core::{
     append_pending_reasoning, append_unique_pending_reasoning,
     attach_pending_reasoning_to_assistant, attach_reasoning_to_last_assistant,
     backfill_tool_call_reasoning_placeholders, chat_usage_to_responses_usage,
-    custom_tool_input_from_chat_arguments, response_id_from_chat_id,
-    response_status_from_finish_reason, responses_content_to_chat_content,
-    responses_role_to_chat_role,
+    collapse_system_messages_to_head, custom_tool_input_from_chat_arguments,
+    response_id_from_chat_id, response_status_from_finish_reason,
+    responses_content_to_chat_content, responses_instruction_text, responses_role_to_chat_role,
 };
 use crate::proxy_core::{codex_chat_reasoning_requested, map_codex_chat_reasoning_effort};
 use serde_json::{json, Value};
@@ -274,7 +274,7 @@ pub fn responses_to_chat_completions_with_reasoning(
 
     let mut messages = Vec::new();
     if let Some(instructions) = body.get("instructions") {
-        let instructions = instruction_text(instructions);
+        let instructions = responses_instruction_text(instructions);
         if !instructions.is_empty() {
             messages.push(json!({
                 "role": "system",
@@ -442,55 +442,6 @@ fn apply_reasoning_options(
             result["reasoning"] = json!({ "effort": mapped });
         }
         _ => {}
-    }
-}
-
-/// MiniMax 严格要求 messages 中只能首条出现 `role=system`，
-/// 否则返回 `invalid params, chat content has invalid message role: system (2013)`。
-/// 把所有 system 消息合并到首位，避免中间 system（如 Codex 的 `developer` 指令）触发该约束；
-/// 该重排对 OpenAI / DeepSeek 等宽松兼容层也是无损的。
-fn collapse_system_messages_to_head(messages: Vec<Value>) -> Vec<Value> {
-    let mut system_chunks: Vec<String> = Vec::new();
-    let mut rest: Vec<Value> = Vec::with_capacity(messages.len());
-
-    for msg in messages {
-        if msg.get("role").and_then(|v| v.as_str()) == Some("system") {
-            if let Some(text) = msg.get("content").and_then(|v| v.as_str()) {
-                let trimmed = text.trim();
-                if !trimmed.is_empty() {
-                    system_chunks.push(text.to_string());
-                }
-                continue;
-            }
-        }
-        rest.push(msg);
-    }
-
-    let mut out: Vec<Value> = Vec::with_capacity(rest.len() + 1);
-    if !system_chunks.is_empty() {
-        out.push(json!({
-            "role": "system",
-            "content": system_chunks.join("\n\n")
-        }));
-    }
-    out.extend(rest);
-    out
-}
-
-fn instruction_text(value: &Value) -> String {
-    match value {
-        Value::String(s) => s.clone(),
-        Value::Array(parts) => parts
-            .iter()
-            .filter_map(|part| {
-                part.get("text")
-                    .and_then(|v| v.as_str())
-                    .or_else(|| part.as_str())
-            })
-            .filter(|s| !s.is_empty())
-            .collect::<Vec<_>>()
-            .join("\n\n"),
-        other => other.as_str().unwrap_or_default().to_string(),
     }
 }
 

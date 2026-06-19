@@ -476,6 +476,53 @@ pub fn responses_role_to_chat_role(role: &str) -> &'static str {
     }
 }
 
+pub fn responses_instruction_text(value: &Value) -> String {
+    match value {
+        Value::String(s) => s.clone(),
+        Value::Array(parts) => parts
+            .iter()
+            .filter_map(|part| {
+                part.get("text")
+                    .and_then(Value::as_str)
+                    .or_else(|| part.as_str())
+            })
+            .filter(|s| !s.is_empty())
+            .collect::<Vec<_>>()
+            .join("\n\n"),
+        other => other.as_str().unwrap_or_default().to_string(),
+    }
+}
+
+/// MiniMax 严格要求 messages 中只能首条出现 `role=system`。
+/// 将所有 system 消息合并到首位，避免 Codex developer/system 指令出现在中间。
+pub fn collapse_system_messages_to_head(messages: Vec<Value>) -> Vec<Value> {
+    let mut system_chunks: Vec<String> = Vec::new();
+    let mut rest: Vec<Value> = Vec::with_capacity(messages.len());
+
+    for msg in messages {
+        if msg.get("role").and_then(Value::as_str) == Some("system") {
+            if let Some(text) = msg.get("content").and_then(Value::as_str) {
+                let trimmed = text.trim();
+                if !trimmed.is_empty() {
+                    system_chunks.push(text.to_string());
+                }
+                continue;
+            }
+        }
+        rest.push(msg);
+    }
+
+    let mut out: Vec<Value> = Vec::with_capacity(rest.len() + 1);
+    if !system_chunks.is_empty() {
+        out.push(json!({
+            "role": "system",
+            "content": system_chunks.join("\n\n")
+        }));
+    }
+    out.extend(rest);
+    out
+}
+
 pub fn append_pending_reasoning(
     pending_reasoning: &mut Option<String>,
     reasoning: Option<String>,
@@ -1231,6 +1278,44 @@ mod tests {
             message["reasoning_content"],
             Value::String("first\n\nsecond\n\nthird".to_string())
         );
+    }
+
+    #[test]
+    fn extracts_responses_instruction_text() {
+        assert_eq!(
+            responses_instruction_text(&json!("You are concise.")),
+            "You are concise."
+        );
+        assert_eq!(
+            responses_instruction_text(&json!([
+                {"type": "input_text", "text": "first"},
+                "second",
+                {"type": "input_text", "text": ""},
+                {"type": "ignored"}
+            ])),
+            "first\n\nsecond"
+        );
+        assert_eq!(responses_instruction_text(&json!({"text": "ignored"})), "");
+    }
+
+    #[test]
+    fn collapses_system_messages_to_head_preserving_non_system_order() {
+        let input = vec![
+            json!({"role": "system", "content": "S1"}),
+            json!({"role": "user", "content": "U1"}),
+            json!({"role": "assistant", "content": "A1"}),
+            json!({"role": "system", "content": "  "}),
+            json!({"role": "system", "content": "S2"}),
+            json!({"role": "user", "content": "U2"}),
+        ];
+
+        let out = collapse_system_messages_to_head(input);
+
+        assert_eq!(out.len(), 4);
+        assert_eq!(out[0], json!({"role": "system", "content": "S1\n\nS2"}));
+        assert_eq!(out[1]["content"], "U1");
+        assert_eq!(out[2]["content"], "A1");
+        assert_eq!(out[3]["content"], "U2");
     }
 
     #[test]
