@@ -42,22 +42,12 @@ pub fn create_anthropic_sse_stream_from_gemini<E: std::error::Error + Send + 'st
             }
         }
 
-        let final_output = state.finish();
-
-        if let (Some(store), Some(provider_id), Some(session_id)) = (
-            shadow_store.as_ref(),
+        let mut final_output = state.finish();
+        final_output.record_shadow(
+            shadow_store.as_deref(),
             provider_id.as_deref(),
             session_id.as_deref(),
-        ) {
-            if let Some(shadow_record) = final_output.shadow_record {
-                store.record_assistant_turn(
-                    provider_id,
-                    session_id,
-                    shadow_record.assistant_content,
-                    shadow_record.tool_calls,
-                );
-            }
-        }
+        );
 
         for event in final_output.events {
             yield Ok(event.to_sse_bytes());

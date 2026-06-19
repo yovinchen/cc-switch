@@ -3,7 +3,9 @@
 //! These helpers keep Gemini cumulative `content.parts` interpretation in the
 //! host-neutral core while leaving async transport and SSE emission in the host.
 
-use crate::gemini_shadow::GeminiToolCallMeta;
+use crate::gemini_shadow::{
+    GeminiShadowSessionSnapshot, GeminiShadowStore, GeminiToolCallMeta,
+};
 use crate::gemini_tool_args::{rectify_gemini_tool_call_parts, AnthropicToolSchemaHints};
 use crate::response_transform::{
     build_anthropic_message_delta_event, map_gemini_finish_reason_to_anthropic,
@@ -67,6 +69,27 @@ pub struct GeminiStreamShadowRecord {
 pub struct GeminiStreamFinalOutput {
     pub events: Vec<GeminiStreamSseEvent>,
     pub shadow_record: Option<GeminiStreamShadowRecord>,
+}
+
+impl GeminiStreamFinalOutput {
+    pub fn record_shadow(
+        &mut self,
+        shadow_store: Option<&GeminiShadowStore>,
+        provider_id: Option<&str>,
+        session_id: Option<&str>,
+    ) -> Option<GeminiShadowSessionSnapshot> {
+        let shadow_store = shadow_store?;
+        let provider_id = provider_id?;
+        let session_id = session_id?;
+        let shadow_record = self.shadow_record.take()?;
+
+        Some(shadow_store.record_assistant_turn(
+            provider_id,
+            session_id,
+            shadow_record.assistant_content,
+            shadow_record.tool_calls,
+        ))
+    }
 }
 
 #[derive(Debug, Default)]
@@ -1026,6 +1049,48 @@ mod tests {
         let rendered = render_events(&final_output.events);
         assert!(rendered.contains("\"type\":\"tool_use\""));
         assert!(rendered.contains("\"stop_reason\":\"tool_use\""));
+    }
+
+    #[test]
+    fn final_output_records_shadow_when_context_is_available() {
+        let store = GeminiShadowStore::with_limits(8, 4);
+        let mut output = GeminiStreamFinalOutput {
+            events: Vec::new(),
+            shadow_record: Some(GeminiStreamShadowRecord {
+                assistant_content: json!({
+                    "parts": [{ "text": "Hello", "thoughtSignature": "sig-1" }]
+                }),
+                tool_calls: Vec::new(),
+            }),
+        };
+
+        let snapshot =
+            output.record_shadow(Some(&store), Some("provider-a"), Some("session-1"));
+
+        assert!(snapshot.is_some());
+        assert!(output.shadow_record.is_none());
+        assert_eq!(
+            store
+                .latest_assistant_content("provider-a", "session-1")
+                .unwrap()["parts"][0]["thoughtSignature"],
+            "sig-1"
+        );
+    }
+
+    #[test]
+    fn final_output_keeps_shadow_when_context_is_missing() {
+        let mut output = GeminiStreamFinalOutput {
+            events: Vec::new(),
+            shadow_record: Some(GeminiStreamShadowRecord {
+                assistant_content: json!({ "parts": [{ "text": "Hello" }] }),
+                tool_calls: Vec::new(),
+            }),
+        };
+
+        let snapshot = output.record_shadow(None, Some("provider-a"), Some("session-1"));
+
+        assert!(snapshot.is_none());
+        assert!(output.shadow_record.is_some());
     }
 
     #[test]
