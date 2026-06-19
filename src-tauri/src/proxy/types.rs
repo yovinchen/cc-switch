@@ -1,9 +1,10 @@
 use serde::{Deserialize, Serialize};
 
+use crate::proxy_core::CurrentRouteTarget;
+
 pub use crate::proxy_core::{
-    AppProxyConfig, CopilotOptimizerConfig, CurrentRouteTarget as ActiveTarget, GlobalProxyConfig,
-    OptimizerConfig, ProviderHealth, ProxyConfig, ProxyServerInfo, ProxyTakeoverStatus,
-    RectifierConfig,
+    AppProxyConfig, CopilotOptimizerConfig, GlobalProxyConfig, OptimizerConfig, ProviderHealth,
+    ProxyConfig, ProxyServerInfo, ProxyTakeoverStatus, RectifierConfig,
 };
 
 /// 代理服务器状态
@@ -39,7 +40,7 @@ pub struct ProxyStatus {
     pub failover_count: u64,
     /// 当前活跃的代理目标列表
     #[serde(default)]
-    pub active_targets: Vec<ActiveTarget>,
+    pub active_targets: Vec<CurrentRouteTarget>,
 }
 
 /// API 格式类型（预留，当前不需要格式转换）

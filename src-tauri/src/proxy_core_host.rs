@@ -7,20 +7,21 @@ use crate::proxy::hyper_client::ProxyResponse;
 use crate::proxy::provider_router::ProviderRouter;
 use crate::proxy::providers::codex_chat_history::CodexChatHistoryStore;
 use crate::proxy::route_attempt::forward_attempts_from_route_plan;
-use crate::proxy::types::{ActiveTarget, ProxyStatus};
+use crate::proxy::types::ProxyStatus;
 use crate::proxy::usage::{RequestLog, UsageLogger};
 use crate::proxy::RequestForwarder;
 use crate::proxy_core::{
     interfaces_compatible, resolve_usage_record_pricing_models, route_group_matches,
     token_usage_from_usage_record, AppKind, AuthInfo, AuthProfileRef, ChannelAttemptPlan,
     ChannelAttemptResult, ChannelQuery, ChannelSource, ChannelSpec, ChannelStatus,
-    CopilotOptimizerConfigSpec, CostCalculator, ForwardPipeline, GeminiShadowStore, ModelCatalog,
-    OptimizerConfigSpec, ProviderSource, ProviderSpec, ProxyAppConfig, ProxyBody,
-    ProxyConfigSource, ProxyCoreError, ProxyCoreEvent, ProxyCoreEventType, ProxyCoreResponse,
-    ProxyCoreResult, ProxyEventSink, ProxyGlobalConfig, ProxyRequest, ProxyResponseBody,
-    ProxyResult, ProxyRuntimeConfig, ProxyServices, RectifierConfigSpec, RoutePlan, RoutePolicy,
-    RoutePolicySource, RouteRequest, RouteResolver, RouteSelection, UsageRecord, UsageSink,
-    CLAUDE_API_FORMAT_METADATA_KEY, DEFAULT_ROUTE_GROUP, SESSION_REQUEST_ID_PREFIX,
+    CopilotOptimizerConfigSpec, CostCalculator, CurrentRouteTarget, ForwardPipeline,
+    GeminiShadowStore, ModelCatalog, OptimizerConfigSpec, ProviderSource, ProviderSpec,
+    ProxyAppConfig, ProxyBody, ProxyConfigSource, ProxyCoreError, ProxyCoreEvent,
+    ProxyCoreEventType, ProxyCoreResponse, ProxyCoreResult, ProxyEventSink, ProxyGlobalConfig,
+    ProxyRequest, ProxyResponseBody, ProxyResult, ProxyRuntimeConfig, ProxyServices,
+    RectifierConfigSpec, RoutePlan, RoutePolicy, RoutePolicySource, RouteRequest, RouteResolver,
+    RouteSelection, UsageRecord, UsageSink, CLAUDE_API_FORMAT_METADATA_KEY, DEFAULT_ROUTE_GROUP,
+    SESSION_REQUEST_ID_PREFIX,
 };
 use crate::proxy_core_adapter::{ToProxyCoreChannelSpec, ToProxyCoreProviderSpec};
 use crate::services::usage_stats::is_placeholder_pricing_model;
@@ -39,7 +40,7 @@ pub(crate) struct CcSwitchProxyRuntime {
     pub(crate) db: Arc<Database>,
     pub(crate) provider_router: Arc<ProviderRouter>,
     pub(crate) status: Arc<RwLock<ProxyStatus>>,
-    pub(crate) current_providers: Arc<RwLock<HashMap<String, ActiveTarget>>>,
+    pub(crate) current_providers: Arc<RwLock<HashMap<String, CurrentRouteTarget>>>,
     pub(crate) events: Arc<ProxyEventBus>,
     pub(crate) gemini_shadow: Arc<GeminiShadowStore>,
     pub(crate) codex_chat_history: Arc<CodexChatHistoryStore>,

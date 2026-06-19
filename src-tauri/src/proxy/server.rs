@@ -14,7 +14,9 @@ use super::{
     types::*, ProxyError,
 };
 use crate::database::Database;
-use crate::proxy_core::{log_codes::srv as log_srv, GeminiShadowStore, ProxyEngine};
+use crate::proxy_core::{
+    log_codes::srv as log_srv, CurrentRouteTarget, GeminiShadowStore, ProxyEngine,
+};
 use crate::proxy_core_host::{CcSwitchProxyRuntime, CcSwitchProxyServices};
 use axum::{
     extract::DefaultBodyLimit,
@@ -37,7 +39,7 @@ pub struct ProxyState {
     pub status: Arc<RwLock<ProxyStatus>>,
     pub start_time: Arc<RwLock<Option<std::time::Instant>>>,
     /// 每个应用类型当前使用的 provider/channel target。
-    pub current_providers: Arc<RwLock<HashMap<String, ActiveTarget>>>,
+    pub current_providers: Arc<RwLock<HashMap<String, CurrentRouteTarget>>>,
     /// 共享的 ProviderRouter（持有熔断器状态，跨请求保持）
     pub provider_router: Arc<ProviderRouter>,
     /// Host adapter surface for the neutral proxy core contracts.
@@ -319,7 +321,7 @@ impl ProxyServer {
         let mut current_providers = self.state.current_providers.write().await;
         current_providers.insert(
             app_type.to_string(),
-            ActiveTarget {
+            CurrentRouteTarget {
                 app_type: app_type.to_string(),
                 provider_id: provider_id.to_string(),
                 provider_name: provider_name.to_string(),
@@ -733,7 +735,7 @@ mod tests {
 
         server.state.current_providers.write().await.insert(
             "claude".to_string(),
-            ActiveTarget {
+            CurrentRouteTarget {
                 app_type: "claude".to_string(),
                 provider_id: "a".to_string(),
                 provider_name: "Provider A".to_string(),

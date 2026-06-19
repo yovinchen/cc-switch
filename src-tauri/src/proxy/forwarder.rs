@@ -15,7 +15,7 @@ use super::{
         apply_channel_model_override, forward_attempts_from_route_plan, ChannelAttempt,
         ForwardAttempt,
     },
-    types::{ActiveTarget, CopilotOptimizerConfig, OptimizerConfig, ProxyStatus, RectifierConfig},
+    types::{CopilotOptimizerConfig, OptimizerConfig, ProxyStatus, RectifierConfig},
     ProxyError,
 };
 use crate::commands::{CodexOAuthState, CopilotAuthState};
@@ -48,8 +48,8 @@ use crate::proxy_core::{
     strip_copilot_thinking_blocks, strip_one_m_suffix_for_upstream,
     strip_one_m_suffix_for_upstream_from_body, supports_reasoning_effort,
     validate_managed_account_upstream_auth, AppKind, AttemptEventChannel, AttemptEventPayloadInput,
-    AttemptEventPhase, ChannelQuery, CopilotAuthHeaderOverrides, ForwardFailureCategory,
-    ForwardFailureKind, GeminiShadowStore, InterfaceKind, MediaRetryInput,
+    AttemptEventPhase, ChannelQuery, CopilotAuthHeaderOverrides, CurrentRouteTarget,
+    ForwardFailureCategory, ForwardFailureKind, GeminiShadowStore, InterfaceKind, MediaRetryInput,
     PromptCacheTraceLogInput, ProxyBody, ProxyEngine, ProxyRequest, ProxyServices,
     UpstreamAuthHeadersInput, UpstreamRequestHeadersInput, UpstreamSendPolicyInput,
     UpstreamTransportKind, UNSUPPORTED_IMAGE_MARKER,
@@ -130,7 +130,7 @@ pub struct RequestForwarder {
     #[allow(dead_code)]
     proxy_core_services: Option<Arc<CcSwitchProxyServices>>,
     status: Arc<RwLock<ProxyStatus>>,
-    current_providers: Arc<RwLock<std::collections::HashMap<String, ActiveTarget>>>,
+    current_providers: Arc<RwLock<std::collections::HashMap<String, CurrentRouteTarget>>>,
     events: Arc<ProxyEventBus>,
     gemini_shadow: Arc<GeminiShadowStore>,
     codex_chat_history: Arc<CodexChatHistoryStore>,
@@ -236,7 +236,7 @@ impl RequestForwarder {
         proxy_core_services: Arc<CcSwitchProxyServices>,
         non_streaming_timeout: u64,
         status: Arc<RwLock<ProxyStatus>>,
-        current_providers: Arc<RwLock<std::collections::HashMap<String, ActiveTarget>>>,
+        current_providers: Arc<RwLock<std::collections::HashMap<String, CurrentRouteTarget>>>,
         events: Arc<ProxyEventBus>,
         gemini_shadow: Arc<GeminiShadowStore>,
         codex_chat_history: Arc<CodexChatHistoryStore>,
@@ -281,7 +281,7 @@ impl RequestForwarder {
         router: Arc<ProviderRouter>,
         non_streaming_timeout: u64,
         status: Arc<RwLock<ProxyStatus>>,
-        current_providers: Arc<RwLock<std::collections::HashMap<String, ActiveTarget>>>,
+        current_providers: Arc<RwLock<std::collections::HashMap<String, CurrentRouteTarget>>>,
         events: Arc<ProxyEventBus>,
         gemini_shadow: Arc<GeminiShadowStore>,
         codex_chat_history: Arc<CodexChatHistoryStore>,
@@ -326,7 +326,7 @@ impl RequestForwarder {
         proxy_core_services: Option<Arc<CcSwitchProxyServices>>,
         non_streaming_timeout: u64,
         status: Arc<RwLock<ProxyStatus>>,
-        current_providers: Arc<RwLock<std::collections::HashMap<String, ActiveTarget>>>,
+        current_providers: Arc<RwLock<std::collections::HashMap<String, CurrentRouteTarget>>>,
         events: Arc<ProxyEventBus>,
         gemini_shadow: Arc<GeminiShadowStore>,
         codex_chat_history: Arc<CodexChatHistoryStore>,
@@ -448,7 +448,7 @@ impl RequestForwarder {
     ) {
         let provider = attempt.provider();
         let channel = attempt.channel();
-        let target = ActiveTarget {
+        let target = CurrentRouteTarget {
             app_type: app_type.to_string(),
             provider_id: provider.id.clone(),
             provider_name: provider.name.clone(),
