@@ -42,6 +42,39 @@ pub fn is_synthesized_gemini_tool_call_id(id: &str) -> bool {
     id.starts_with(GEMINI_SYNTHESIZED_TOOL_CALL_ID_PREFIX)
 }
 
+/// Extract Gemini replay parts from stored shadow content.
+///
+/// Shadow snapshots keep the Anthropic-visible tool-call id so later
+/// `tool_result` blocks can resolve names. Before replaying those parts to
+/// Gemini upstream, synthesized or empty `functionCall.id` values must be
+/// removed so the proxy's internal ids never leak upstream.
+pub fn gemini_shadow_replay_parts(content: &Value) -> Option<Vec<Value>> {
+    let mut parts = content
+        .get("parts")
+        .and_then(|value| value.as_array())
+        .cloned()
+        .or_else(|| content.as_array().cloned())?;
+
+    for part in &mut parts {
+        let Some(function_call) = part
+            .get_mut("functionCall")
+            .and_then(|value| value.as_object_mut())
+        else {
+            continue;
+        };
+        let drop_id = function_call
+            .get("id")
+            .and_then(|value| value.as_str())
+            .map(|id| id.is_empty() || is_synthesized_gemini_tool_call_id(id))
+            .unwrap_or(true);
+        if drop_id {
+            function_call.remove("id");
+        }
+    }
+
+    Some(parts)
+}
+
 /// Ensure every Gemini `functionCall` part has a non-empty Anthropic-visible id.
 ///
 /// Gemini 2.x may omit ids for parallel tool calls. Writing the generated id
@@ -934,6 +967,35 @@ mod tests {
         assert_eq!(parts[1]["functionCall"]["id"], "gemini_synth_2");
         assert_eq!(parts[2]["functionCall"]["id"], "call_real");
         assert!(parts[3].get("functionCall").is_none());
+    }
+
+    #[test]
+    fn shadow_replay_parts_strip_internal_or_empty_function_call_ids() {
+        let content = json!({
+            "parts": [
+                {"functionCall": {"id": "gemini_synth_1", "name": "first", "args": {}}},
+                {"functionCall": {"id": "", "name": "second", "args": {}}},
+                {"functionCall": {"id": "call_real", "name": "third", "args": {}}},
+                {"text": "visible"}
+            ]
+        });
+
+        let parts = gemini_shadow_replay_parts(&content).expect("parts");
+
+        assert!(parts[0]["functionCall"].get("id").is_none());
+        assert!(parts[1]["functionCall"].get("id").is_none());
+        assert_eq!(parts[2]["functionCall"]["id"], "call_real");
+        assert_eq!(parts[3]["text"], "visible");
+    }
+
+    #[test]
+    fn shadow_replay_parts_accept_raw_part_arrays() {
+        let parts = gemini_shadow_replay_parts(&json!([
+            {"functionCall": {"id": "gemini_synth_2", "name": "first", "args": {}}}
+        ]))
+        .expect("parts");
+
+        assert!(parts[0]["functionCall"].get("id").is_none());
     }
 
     #[test]

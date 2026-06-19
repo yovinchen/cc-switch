@@ -11,10 +11,10 @@ use crate::proxy_core::{
     build_gemini_generation_config, build_gemini_system_instruction,
     ensure_gemini_function_call_ids,
     extract_anthropic_tool_schema_hints as core_extract_anthropic_tool_schema_hints,
-    extract_gemini_function_call_meta, is_synthesized_gemini_tool_call_id,
-    map_gemini_finish_reason_to_anthropic, map_gemini_tool_choice_to_config,
-    normalize_gemini_tool_result_response, rectify_gemini_tool_call_args,
-    rectify_gemini_tool_call_parts, synthesize_gemini_tool_call_id,
+    extract_gemini_function_call_meta, gemini_shadow_replay_parts,
+    is_synthesized_gemini_tool_call_id, map_gemini_finish_reason_to_anthropic,
+    map_gemini_tool_choice_to_config, normalize_gemini_tool_result_response,
+    rectify_gemini_tool_call_args, rectify_gemini_tool_call_parts, synthesize_gemini_tool_call_id,
 };
 use serde_json::{Value, json};
 use std::collections::{HashMap, HashSet};
@@ -333,7 +333,7 @@ fn convert_messages_to_contents(
                 let shadow_turn = &effective_shadow_turns[index];
                 merge_tool_names_from_shadow(shadow_turn, &mut tool_name_by_id);
                 merge_thought_signatures_from_shadow(shadow_turn, &mut thought_signature_by_id);
-                if let Some(parts) = shadow_parts(&shadow_turn.assistant_content) {
+                if let Some(parts) = gemini_shadow_replay_parts(&shadow_turn.assistant_content) {
                     parts
                 } else {
                     convert_message_content_to_parts(
@@ -619,34 +619,6 @@ fn convert_message_content_to_parts(
     Ok(parts)
 }
 
-fn shadow_parts(content: &Value) -> Option<Vec<Value>> {
-    let mut parts = content
-        .get("parts")
-        .and_then(|value| value.as_array())
-        .cloned()
-        .or_else(|| content.as_array().cloned())?;
-    // Strip synthesized ids before these parts are replayed into a Gemini
-    // request body. The shadow store records the Anthropic-facing id so that
-    // a tool_result round-trip can find the tool's name, but sending the
-    // synthetic value as `functionCall.id` upstream would leak an internal
-    // identifier.
-    for part in &mut parts {
-        let Some(function_call) = part.get_mut("functionCall").and_then(|v| v.as_object_mut())
-        else {
-            continue;
-        };
-        let drop_id = function_call
-            .get("id")
-            .and_then(|v| v.as_str())
-            .map(|id| id.is_empty() || is_synthesized_gemini_tool_call_id(id))
-            .unwrap_or(true);
-        if drop_id {
-            function_call.remove("id");
-        }
-    }
-    Some(parts)
-}
-
 pub fn extract_anthropic_tool_schema_hints(body: &Value) -> AnthropicToolSchemaHints {
     core_extract_anthropic_tool_schema_hints(body)
 }
@@ -679,7 +651,7 @@ fn merge_tool_names_from_shadow(
         }
     }
 
-    if let Some(parts) = shadow_parts(&turn.assistant_content) {
+    if let Some(parts) = gemini_shadow_replay_parts(&turn.assistant_content) {
         merge_tool_names_from_parts(&parts, tool_name_by_id);
     }
 }
