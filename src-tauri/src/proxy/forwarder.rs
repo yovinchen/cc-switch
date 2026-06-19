@@ -30,15 +30,15 @@ use crate::proxy_core::{
     build_upstream_auth_headers, categorize_forward_failure, classify_copilot_request,
     contains_image_blocks, interface_kind_for_forward, is_github_copilot_upstream,
     is_openai_o_series, is_socks_proxy_url, is_unsupported_image_error, merge_copilot_tool_results,
-    normalize_thinking_type, rectify_anthropic_request, rectify_thinking_budget,
-    replace_image_blocks_with_marker, replace_images_for_text_only_model,
+    normalize_thinking_type, prompt_cache_trace_log_message, rectify_anthropic_request,
+    rectify_thinking_budget, replace_image_blocks_with_marker, replace_images_for_text_only_model,
     request_body_filter_log_message, request_model_for_forward,
     resolve_copilot_deterministic_interaction_id, resolve_copilot_model_against_ids,
     resolve_copilot_optimizer_session_id, resolve_copilot_request_id_with_fallback,
     resolve_media_prevention_policy, resolve_upstream_request_transport_policy,
     resolve_upstream_send_policy, resolved_copilot_dynamic_base_url,
     responses_to_chat_completions_with_options, sanitize_copilot_orphan_tool_results,
-    short_value_hash, should_apply_bedrock_pre_send_optimizer, should_check_media_retry,
+    should_apply_bedrock_pre_send_optimizer, should_check_media_retry,
     should_failover_after_rectifier_retry_failure, should_preserve_exact_request_header_case,
     should_rectify_thinking_budget, should_rectify_thinking_signature,
     should_resolve_copilot_dynamic_endpoint, should_send_anthropic_request_headers,
@@ -47,8 +47,8 @@ use crate::proxy_core::{
     supports_reasoning_effort, validate_managed_account_upstream_auth, AppKind,
     AttemptEventChannel, AttemptEventPayloadInput, AttemptEventPhase, ChannelQuery,
     CopilotAuthHeaderOverrides, ForwardFailureCategory, ForwardFailureKind, GeminiShadowStore,
-    InterfaceKind, MediaRetryInput, ProxyBody, ProxyEngine, ProxyRequest, ProxyServices,
-    UpstreamAuthHeadersInput, UpstreamRequestHeadersInput, UpstreamSendPolicyInput,
+    InterfaceKind, MediaRetryInput, PromptCacheTraceLogInput, ProxyBody, ProxyEngine, ProxyRequest,
+    ProxyServices, UpstreamAuthHeadersInput, UpstreamRequestHeadersInput, UpstreamSendPolicyInput,
     UpstreamTransportKind, UNSUPPORTED_IMAGE_MARKER,
 };
 use crate::proxy_core_host::CcSwitchProxyServices;
@@ -2528,54 +2528,24 @@ fn log_prompt_cache_trace(
         return;
     }
 
-    let prompt_cache_key = body
-        .get("prompt_cache_key")
-        .and_then(|value| value.as_str())
-        .map(|key| format!("present(len={})", key.len()))
-        .unwrap_or_else(|| "absent".to_string());
-    let store = body
-        .get("store")
-        .map(value_for_log)
-        .unwrap_or_else(|| "absent".to_string());
-    let stream = body
-        .get("stream")
-        .map(value_for_log)
-        .unwrap_or_else(|| "absent".to_string());
-
     log::debug!(
-        "[CacheTrace] app={}, provider={}, endpoint={}, api_format={}, session_client_provided={}, prompt_cache_key={}, store={}, stream={}, instructions_hash={}, tools_hash={}, input_hash={}, include_hash={}, body_hash={}",
-        app_type.as_str(),
-        provider.id,
-        endpoint,
-        api_format.unwrap_or("native"),
-        session_client_provided,
-        prompt_cache_key,
-        store,
-        stream,
-        short_value_hash(body.get("instructions")),
-        short_value_hash(body.get("tools")),
-        short_value_hash(body.get("input")),
-        short_value_hash(body.get("include")),
-        short_value_hash(Some(body)),
+        "{}",
+        prompt_cache_trace_log_message(PromptCacheTraceLogInput {
+            app: app_type.as_str(),
+            provider_id: provider.id.as_str(),
+            endpoint,
+            api_format,
+            body,
+            session_client_provided,
+        })
     );
-}
-
-fn value_for_log(value: &Value) -> String {
-    match value {
-        Value::Bool(value) => value.to_string(),
-        Value::Number(value) => value.to_string(),
-        Value::String(value) => value.clone(),
-        Value::Null => "null".to_string(),
-        Value::Array(values) => format!("array(len={})", values.len()),
-        Value::Object(values) => format!("object(len={})", values.len()),
-    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::database::Database;
-    use crate::proxy_core::canonical_json_string;
+    use crate::proxy_core::{canonical_json_string, short_value_hash};
     use axum::http::header::{HeaderValue, ACCEPT};
     use axum::http::HeaderMap;
     use bytes::Bytes;

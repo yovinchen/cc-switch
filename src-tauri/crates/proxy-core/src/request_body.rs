@@ -1,3 +1,4 @@
+use crate::json_canonical::short_value_hash;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::HashSet;
@@ -20,6 +21,16 @@ pub struct PreparedUpstreamRequestBody {
     pub removed_private_keys: Vec<String>,
 }
 
+#[derive(Debug, Clone, Copy)]
+pub struct PromptCacheTraceLogInput<'a> {
+    pub app: &'a str,
+    pub provider_id: &'a str,
+    pub endpoint: &'a str,
+    pub api_format: Option<&'a str>,
+    pub body: &'a Value,
+    pub session_client_provided: bool,
+}
+
 pub fn prepare_upstream_request_body(request_body: Value) -> Value {
     prepare_upstream_request_body_with_report(request_body).body
 }
@@ -31,6 +42,53 @@ pub fn request_body_filter_log_message(report: &PreparedUpstreamRequestBody) -> 
             report.removed_private_keys
         )
     })
+}
+
+pub fn prompt_cache_trace_log_message(input: PromptCacheTraceLogInput<'_>) -> String {
+    let prompt_cache_key = input
+        .body
+        .get("prompt_cache_key")
+        .and_then(Value::as_str)
+        .map(|key| format!("present(len={})", key.len()))
+        .unwrap_or_else(|| "absent".to_string());
+    let store = input
+        .body
+        .get("store")
+        .map(value_for_log)
+        .unwrap_or_else(|| "absent".to_string());
+    let stream = input
+        .body
+        .get("stream")
+        .map(value_for_log)
+        .unwrap_or_else(|| "absent".to_string());
+
+    format!(
+        "[CacheTrace] app={}, provider={}, endpoint={}, api_format={}, session_client_provided={}, prompt_cache_key={}, store={}, stream={}, instructions_hash={}, tools_hash={}, input_hash={}, include_hash={}, body_hash={}",
+        input.app,
+        input.provider_id,
+        input.endpoint,
+        input.api_format.unwrap_or("native"),
+        input.session_client_provided,
+        prompt_cache_key,
+        store,
+        stream,
+        short_value_hash(input.body.get("instructions")),
+        short_value_hash(input.body.get("tools")),
+        short_value_hash(input.body.get("input")),
+        short_value_hash(input.body.get("include")),
+        short_value_hash(Some(input.body)),
+    )
+}
+
+fn value_for_log(value: &Value) -> String {
+    match value {
+        Value::Bool(value) => value.to_string(),
+        Value::Number(value) => value.to_string(),
+        Value::String(value) => value.clone(),
+        Value::Null => "null".to_string(),
+        Value::Array(values) => format!("array(len={})", values.len()),
+        Value::Object(values) => format!("object(len={})", values.len()),
+    }
 }
 
 pub fn serialize_upstream_request_body(
@@ -466,10 +524,11 @@ mod tests {
         inject_openai_stream_include_usage, is_openai_o_series,
         map_anthropic_tool_choice_to_openai_chat, map_anthropic_tool_choice_to_openai_responses,
         map_codex_chat_reasoning_effort, method_allows_upstream_request_body,
-        prepare_upstream_request_body_with_report, request_body_filter_log_message,
-        resolve_codex_provider_upstream_model, resolve_reasoning_effort,
-        serialize_upstream_request_body, strip_leading_anthropic_billing_header,
-        supports_reasoning_effort,
+        prepare_upstream_request_body_with_report, prompt_cache_trace_log_message,
+        request_body_filter_log_message, resolve_codex_provider_upstream_model,
+        resolve_reasoning_effort, serialize_upstream_request_body,
+        strip_leading_anthropic_billing_header, supports_reasoning_effort,
+        PromptCacheTraceLogInput,
     };
     use http::Method;
     use serde_json::json;
@@ -599,6 +658,42 @@ mod tests {
             request_body_filter_log_message(&filtered).as_deref(),
             Some(r#"[BodyFilter] 过滤私有参数: ["_internal"]"#)
         );
+    }
+
+    #[test]
+    fn prompt_cache_trace_log_message_summarizes_cache_relevant_fields() {
+        let body = json!({
+            "prompt_cache_key": "cache-key",
+            "store": false,
+            "stream": true,
+            "instructions": "Be concise",
+            "tools": [{"type": "function", "name": "lookup"}],
+            "input": [{"role": "user", "content": "hi"}],
+            "include": ["reasoning.encrypted_content"]
+        });
+
+        let message = prompt_cache_trace_log_message(PromptCacheTraceLogInput {
+            app: "Claude",
+            provider_id: "provider-1",
+            endpoint: "/v1/responses",
+            api_format: Some("openai_responses"),
+            body: &body,
+            session_client_provided: true,
+        });
+
+        assert!(message.starts_with("[CacheTrace] app=Claude"), "{message}");
+        assert!(message.contains("provider=provider-1"), "{message}");
+        assert!(message.contains("endpoint=/v1/responses"), "{message}");
+        assert!(message.contains("api_format=openai_responses"), "{message}");
+        assert!(
+            message.contains("session_client_provided=true"),
+            "{message}"
+        );
+        assert!(message.contains("prompt_cache_key=present(len=9)"), "{message}");
+        assert!(message.contains("store=false"), "{message}");
+        assert!(message.contains("stream=true"), "{message}");
+        assert!(message.contains("tools_hash="), "{message}");
+        assert!(message.contains("body_hash="), "{message}");
     }
 
     #[test]
