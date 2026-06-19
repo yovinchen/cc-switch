@@ -3,18 +3,16 @@
 //! These helpers keep Gemini cumulative `content.parts` interpretation and
 //! stream transport conversion in the host-neutral core.
 
-use crate::gemini_shadow::{
-    GeminiShadowSessionSnapshot, GeminiShadowStore, GeminiToolCallMeta,
-};
-use crate::gemini_tool_args::{rectify_gemini_tool_call_parts, AnthropicToolSchemaHints};
+use crate::gemini_shadow::{GeminiShadowSessionSnapshot, GeminiShadowStore, GeminiToolCallMeta};
+use crate::gemini_tool_args::{AnthropicToolSchemaHints, rectify_gemini_tool_call_parts};
 use crate::response_transform::{
     build_anthropic_message_delta_event, map_gemini_finish_reason_to_anthropic,
 };
 use crate::sse::{append_utf8_safe, strip_sse_field, take_sse_block};
 use crate::usage::build_anthropic_usage_from_gemini;
 use bytes::Bytes;
-use futures::{stream as futures_stream, Stream, StreamExt};
-use serde_json::{json, Value};
+use futures::{Stream, StreamExt, stream as futures_stream};
+use serde_json::{Value, json};
 use std::{
     collections::{HashSet, VecDeque},
     error::Error,
@@ -26,6 +24,17 @@ use std::{
 /// Prefix used for Anthropic-visible tool call ids synthesized when Gemini's
 /// `functionCall` omits an id.
 pub const GEMINI_SYNTHESIZED_TOOL_CALL_ID_PREFIX: &str = "gemini_synth_";
+
+/// Build an Anthropic-visible Gemini tool-call id from a host-provided suffix.
+///
+/// The suffix is supplied by the caller so this core helper owns the protocol
+/// shape without taking a dependency on a random id generator.
+pub fn synthesize_gemini_tool_call_id(suffix: impl AsRef<str>) -> String {
+    format!(
+        "{GEMINI_SYNTHESIZED_TOOL_CALL_ID_PREFIX}{}",
+        suffix.as_ref()
+    )
+}
 
 /// Returns true if `id` is an internal Gemini tool-call id synthesized by this
 /// proxy and therefore must not be sent back to Gemini upstream.
@@ -192,12 +201,9 @@ where
                     for name in &output.rectified_tool_names {
                         (context.on_rectified_tool_name)(name);
                     }
-                    context.pending_events.extend(
-                        output
-                            .events
-                            .into_iter()
-                            .map(|event| event.to_sse_bytes()),
-                    );
+                    context
+                        .pending_events
+                        .extend(output.events.into_iter().map(|event| event.to_sse_bytes()));
                 }
                 Some(Err(error)) => {
                     context.finished = true;
@@ -363,7 +369,9 @@ impl GeminiToAnthropicSseState {
             .and_then(|value| value.get("blockReason"))
             .and_then(|value| value.as_str())
         {
-            self.blocked_text = Some(format!("Request blocked by Gemini safety filters: {reason}"));
+            self.blocked_text = Some(format!(
+                "Request blocked by Gemini safety filters: {reason}"
+            ));
         }
 
         let Some(candidate) = chunk_json
@@ -374,7 +382,10 @@ impl GeminiToAnthropicSseState {
             return output;
         };
 
-        if let Some(reason) = candidate.get("finishReason").and_then(|value| value.as_str()) {
+        if let Some(reason) = candidate
+            .get("finishReason")
+            .and_then(|value| value.as_str())
+        {
             self.latest_finish_reason = Some(reason.to_string());
         }
         if let Some(usage) = chunk_json.get("usageMetadata") {
@@ -414,7 +425,9 @@ impl GeminiToAnthropicSseState {
 
         if self.accumulated_text.is_empty() {
             if let Some(blocked_text) = self.blocked_text.clone() {
-                let index = self.text_block_index.unwrap_or_else(|| self.allocate_content_index());
+                let index = self
+                    .text_block_index
+                    .unwrap_or_else(|| self.allocate_content_index());
                 self.text_block_index = Some(index);
                 if !self.open_indices.contains(&index) {
                     events.push(event(
@@ -846,7 +859,16 @@ mod tests {
 
     fn next_synth(counter: &mut usize) -> String {
         *counter += 1;
-        format!("{GEMINI_SYNTHESIZED_TOOL_CALL_ID_PREFIX}{counter}")
+        synthesize_gemini_tool_call_id(counter.to_string())
+    }
+
+    #[test]
+    fn synthesized_tool_call_id_uses_gemini_prefix() {
+        let id = synthesize_gemini_tool_call_id("abc123");
+
+        assert_eq!(id, "gemini_synth_abc123");
+        assert!(is_synthesized_gemini_tool_call_id(&id));
+        assert!(!is_synthesized_gemini_tool_call_id("call_abc123"));
     }
 
     fn render_events(events: &[GeminiStreamSseEvent]) -> String {
@@ -945,7 +967,10 @@ mod tests {
         assert_eq!(update.tool_calls.len(), 1);
         assert_eq!(update.tool_calls[0].id, None);
         assert_eq!(update.tool_calls[0].name, "get_weather");
-        assert_eq!(update.tool_calls[0].thought_signature.as_deref(), Some("sig-tool"));
+        assert_eq!(
+            update.tool_calls[0].thought_signature.as_deref(),
+            Some("sig-tool")
+        );
     }
 
     #[test]
@@ -1019,11 +1044,8 @@ mod tests {
             Some("sig-tool"),
         )];
 
-        let parts = build_gemini_stream_shadow_assistant_parts(
-            Some("Done"),
-            Some("sig-text"),
-            &tool_calls,
-        );
+        let parts =
+            build_gemini_stream_shadow_assistant_parts(Some("Done"), Some("sig-text"), &tool_calls);
 
         assert_eq!(parts[0]["text"], "Done");
         assert_eq!(parts[0]["thoughtSignature"], "sig-text");
@@ -1045,11 +1067,8 @@ mod tests {
             Option::<String>::None,
         );
 
-        let start = gemini_stream_message_start_event(
-            Some("resp_1"),
-            Some("gemini-2.5-pro"),
-            Some(&usage),
-        );
+        let start =
+            gemini_stream_message_start_event(Some("resp_1"), Some("gemini-2.5-pro"), Some(&usage));
         assert_eq!(start["type"], "message_start");
         assert_eq!(start["message"]["id"], "resp_1");
         assert_eq!(start["message"]["usage"]["input_tokens"], 5);
@@ -1091,7 +1110,10 @@ mod tests {
         };
         let encoded = String::from_utf8(event.to_sse_bytes().to_vec()).unwrap();
 
-        assert_eq!(encoded, "event: message_stop\ndata: {\"type\":\"message_stop\"}\n\n");
+        assert_eq!(
+            encoded,
+            "event: message_stop\ndata: {\"type\":\"message_stop\"}\n\n"
+        );
     }
 
     #[test]
@@ -1401,7 +1423,9 @@ mod tests {
         assert!(output.contains("Osaka"));
         assert_eq!(
             output
-                .matches(&format!("\"id\":\"{GEMINI_SYNTHESIZED_TOOL_CALL_ID_PREFIX}"))
+                .matches(&format!(
+                    "\"id\":\"{GEMINI_SYNTHESIZED_TOOL_CALL_ID_PREFIX}"
+                ))
                 .count(),
             2
         );
@@ -1430,7 +1454,9 @@ mod tests {
         assert!(!output.contains("\"id\":\"\""));
         assert_eq!(
             output
-                .matches(&format!("\"id\":\"{GEMINI_SYNTHESIZED_TOOL_CALL_ID_PREFIX}"))
+                .matches(&format!(
+                    "\"id\":\"{GEMINI_SYNTHESIZED_TOOL_CALL_ID_PREFIX}"
+                ))
                 .count(),
             2
         );
@@ -1529,8 +1555,7 @@ mod tests {
             }),
         };
 
-        let snapshot =
-            output.record_shadow(Some(&store), Some("provider-a"), Some("session-1"));
+        let snapshot = output.record_shadow(Some(&store), Some("provider-a"), Some("session-1"));
 
         assert!(snapshot.is_some());
         assert!(output.shadow_record.is_none());

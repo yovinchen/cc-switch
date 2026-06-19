@@ -6,35 +6,19 @@
 
 use crate::proxy::error::ProxyError;
 use crate::proxy_core::{
+    AnthropicToolSchemaHints, GeminiAssistantTurn, GeminiShadowStore, GeminiToolCallMeta,
     build_anthropic_usage_from_gemini, build_gemini_function_declaration,
     extract_anthropic_tool_schema_hints as core_extract_anthropic_tool_schema_hints,
     is_synthesized_gemini_tool_call_id, map_gemini_finish_reason_to_anthropic,
-    rectify_gemini_tool_call_args, rectify_gemini_tool_call_parts, AnthropicToolSchemaHints,
-    GeminiAssistantTurn, GeminiShadowStore, GeminiToolCallMeta,
-    GEMINI_SYNTHESIZED_TOOL_CALL_ID_PREFIX,
+    rectify_gemini_tool_call_args, rectify_gemini_tool_call_parts, synthesize_gemini_tool_call_id,
 };
-use serde_json::{json, Map, Value};
+use serde_json::{Map, Value, json};
 use std::collections::{HashMap, HashSet};
 
-/// Prefix used for Anthropic-visible tool call ids that we synthesize when
-/// Gemini's `functionCall` omits the `id` field (Gemini 2.x parallel calls
-/// often do). The prefix is how downstream request-path code recognizes that
-/// the id is not a real Gemini id and must be stripped before forwarding back
-/// to Gemini as `functionResponse.id`.
-pub(crate) const SYNTHESIZED_ID_PREFIX: &str = GEMINI_SYNTHESIZED_TOOL_CALL_ID_PREFIX;
-
-/// Generate a unique tool-call id that is safe to expose to Anthropic clients
-/// but must not be sent upstream to Gemini. Uses UUID v4 simple encoding
-/// (32 lowercase hex chars) so that any number of parallel calls in the same
-/// response remain distinguishable.
+/// Generate a unique tool-call id suffix for the core Gemini synthesized-id
+/// contract. The host owns randomness; proxy-core owns the visible id shape.
 pub(crate) fn synthesize_tool_call_id() -> String {
-    format!("{SYNTHESIZED_ID_PREFIX}{}", uuid::Uuid::new_v4().simple())
-}
-
-/// Returns true if `id` was produced by [`synthesize_tool_call_id`] and
-/// therefore must be stripped when building Gemini request bodies.
-pub(crate) fn is_synthesized_tool_call_id(id: &str) -> bool {
-    is_synthesized_gemini_tool_call_id(id)
+    synthesize_gemini_tool_call_id(uuid::Uuid::new_v4().simple().to_string())
 }
 
 /// Anthropic 请求 → Gemini 原生请求。
@@ -656,7 +640,7 @@ fn convert_message_content_to_parts(
                     "name": name,
                     "args": block.get("input").cloned().unwrap_or_else(|| json!({}))
                 });
-                if !id.is_empty() && !is_synthesized_tool_call_id(id) {
+                if !id.is_empty() && !is_synthesized_gemini_tool_call_id(id) {
                     function_call["id"] = json!(id);
                 }
 
@@ -705,7 +689,7 @@ fn convert_message_content_to_parts(
                     "name": name,
                     "response": normalize_tool_result_response(block.get("content"))
                 });
-                if !tool_use_id.is_empty() && !is_synthesized_tool_call_id(tool_use_id) {
+                if !tool_use_id.is_empty() && !is_synthesized_gemini_tool_call_id(tool_use_id) {
                     function_response["id"] = json!(tool_use_id);
                 }
 
@@ -759,7 +743,7 @@ fn shadow_parts(content: &Value) -> Option<Vec<Value>> {
         let drop_id = function_call
             .get("id")
             .and_then(|v| v.as_str())
-            .map(|id| id.is_empty() || is_synthesized_tool_call_id(id))
+            .map(|id| id.is_empty() || is_synthesized_gemini_tool_call_id(id))
             .unwrap_or(true);
         if drop_id {
             function_call.remove("id");
@@ -1020,9 +1004,11 @@ mod tests {
             result["tools"][0]["functionDeclarations"][0]["name"],
             "get_weather"
         );
-        assert!(result["tools"][0]["functionDeclarations"][0]
-            .get("parameters")
-            .is_some());
+        assert!(
+            result["tools"][0]["functionDeclarations"][0]
+                .get("parameters")
+                .is_some()
+        );
         assert_eq!(
             result["contents"][0]["parts"][0]["functionCall"]["name"],
             "get_weather"
@@ -1094,9 +1080,11 @@ mod tests {
         });
 
         let error = anthropic_to_gemini(input).unwrap_err();
-        assert!(error
-            .to_string()
-            .contains("Unable to resolve Gemini functionResponse.name"));
+        assert!(
+            error
+                .to_string()
+                .contains("Unable to resolve Gemini functionResponse.name")
+        );
     }
 
     #[test]
@@ -1307,10 +1295,12 @@ mod tests {
         let result = gemini_to_anthropic(input).unwrap();
         assert_eq!(result["stop_reason"], "refusal");
         assert_eq!(result["content"][0]["type"], "text");
-        assert!(result["content"][0]["text"]
-            .as_str()
-            .unwrap()
-            .contains("SAFETY"));
+        assert!(
+            result["content"][0]["text"]
+                .as_str()
+                .unwrap()
+                .contains("SAFETY")
+        );
     }
 
     #[test]
@@ -1635,8 +1625,8 @@ mod tests {
         let result = gemini_to_anthropic(input).unwrap();
         let id0 = result["content"][0]["id"].as_str().unwrap();
         let id1 = result["content"][1]["id"].as_str().unwrap();
-        assert!(is_synthesized_tool_call_id(id0));
-        assert!(is_synthesized_tool_call_id(id1));
+        assert!(is_synthesized_gemini_tool_call_id(id0));
+        assert!(is_synthesized_gemini_tool_call_id(id1));
         assert_ne!(id0, id1, "synthesized ids must be unique per call");
     }
 
@@ -1758,9 +1748,11 @@ mod tests {
                 .unwrap();
         // The assistant message was replayed from shadow; its synthesized id
         // must be absent from the upstream functionCall representation.
-        assert!(result["contents"][0]["parts"][0]["functionCall"]
-            .get("id")
-            .is_none());
+        assert!(
+            result["contents"][0]["parts"][0]["functionCall"]
+                .get("id")
+                .is_none()
+        );
         // And the tool_result round-trip must still resolve the name via the
         // shadow map even when the id is synthesized.
         assert_eq!(
@@ -1813,7 +1805,7 @@ mod tests {
 
         let client_id = response["content"][0]["id"].as_str().unwrap();
         assert!(
-            is_synthesized_tool_call_id(client_id),
+            is_synthesized_gemini_tool_call_id(client_id),
             "client-facing id must be synthesized for no-id Gemini responses"
         );
 
