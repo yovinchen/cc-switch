@@ -13,7 +13,6 @@ use crate::proxy::{
     error::ProxyError,
     json_canonical::{
         canonical_json_string, canonicalize_json_string_if_parseable, canonicalize_tool_arguments,
-        short_sha256_hex,
     },
 };
 pub(crate) use crate::proxy_core::{
@@ -21,9 +20,12 @@ pub(crate) use crate::proxy_core::{
     attach_pending_reasoning_to_assistant, attach_reasoning_to_last_assistant,
     backfill_tool_call_reasoning_placeholders, chat_usage_to_responses_usage,
     collapse_system_messages_to_head, custom_tool_input_from_chat_arguments,
-    response_custom_tool_call_item, response_id_from_chat_id, response_status_from_finish_reason,
-    response_tool_search_call_item, responses_content_to_chat_content, responses_instruction_text,
-    responses_role_to_chat_role,
+    flatten_namespace_tool_name, response_custom_tool_call_item, response_id_from_chat_id,
+    response_status_from_finish_reason, response_tool_search_call_item,
+    responses_content_to_chat_content, responses_custom_tool_call_to_chat_tool_call,
+    responses_custom_tool_to_chat_tool, responses_function_tool_to_chat_tool,
+    responses_instruction_text, responses_role_to_chat_role, responses_tool_name,
+    responses_tool_search_call_to_chat_tool_call, CODEX_TOOL_SEARCH_PROXY_NAME,
 };
 use crate::proxy_core::{codex_chat_reasoning_requested, map_codex_chat_reasoning_effort};
 use serde_json::{json, Value};
@@ -45,12 +47,6 @@ const EXTRA_CHAT_PASSTHROUGH_FIELDS: &[&str] = &[
     "top_logprobs",
     "user",
 ];
-
-const TOOL_SEARCH_PROXY_NAME: &str = "tool_search";
-const CUSTOM_TOOL_INPUT_FIELD: &str = "input";
-const CHAT_TOOL_NAME_MAX_LEN: usize = 64;
-const CUSTOM_TOOL_INPUT_DESCRIPTION: &str = "Raw string input for the original custom tool. Preserve formatting exactly and follow the original tool definition embedded in the description.";
-const CUSTOM_TOOL_PRESERVED_METADATA_HEADING: &str = "Original tool definition:";
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum CodexToolKind {
@@ -143,24 +139,7 @@ impl CodexToolContext {
         let Some(name) = responses_tool_name(tool) else {
             return;
         };
-        let description = json!(responses_custom_tool_description(tool));
-        let chat_tool = json!({
-            "type": "function",
-            "function": {
-                "name": name,
-                "description": description,
-                "parameters": {
-                    "type": "object",
-                    "properties": {
-                        CUSTOM_TOOL_INPUT_FIELD: {
-                            "type": "string",
-                            "description": CUSTOM_TOOL_INPUT_DESCRIPTION
-                        }
-                    },
-                    "required": [CUSTOM_TOOL_INPUT_FIELD]
-                }
-            }
-        });
+        let chat_tool = responses_custom_tool_to_chat_tool(&name, tool);
         let spec = CodexToolSpec {
             kind: CodexToolKind::Custom,
             name: name.clone(),
@@ -173,7 +152,7 @@ impl CodexToolContext {
         let chat_tool = json!({
             "type": "function",
             "function": {
-                "name": TOOL_SEARCH_PROXY_NAME,
+                "name": CODEX_TOOL_SEARCH_PROXY_NAME,
                 "description": "Search and load Codex tools, plugins, connectors, and MCP namespaces for the current task.",
                 "parameters": {
                     "type": "object",
@@ -193,10 +172,10 @@ impl CodexToolContext {
         });
         let spec = CodexToolSpec {
             kind: CodexToolKind::ToolSearch,
-            name: TOOL_SEARCH_PROXY_NAME.to_string(),
+            name: CODEX_TOOL_SEARCH_PROXY_NAME.to_string(),
             namespace: None,
         };
-        self.add_chat_tool(TOOL_SEARCH_PROXY_NAME.to_string(), spec, chat_tool);
+        self.add_chat_tool(CODEX_TOOL_SEARCH_PROXY_NAME.to_string(), spec, chat_tool);
     }
 
     fn add_namespace_tool(&mut self, namespace_tool: &Value) {
@@ -720,88 +699,6 @@ fn collect_tool_search_output_tools(value: &Value, context: &mut CodexToolContex
     }
 }
 
-fn flatten_namespace_tool_name(namespace: &str, name: &str) -> String {
-    let full_name = format!("{namespace}__{name}");
-    if full_name.len() <= CHAT_TOOL_NAME_MAX_LEN {
-        return full_name;
-    }
-
-    let hash = short_sha256_hex(full_name.as_bytes());
-    let suffix = format!("__{hash}");
-    let prefix_len = CHAT_TOOL_NAME_MAX_LEN.saturating_sub(suffix.len());
-    let mut prefix = String::new();
-    for ch in full_name.chars() {
-        if prefix.len() + ch.len_utf8() > prefix_len {
-            break;
-        }
-        prefix.push(ch);
-    }
-    format!("{prefix}{suffix}")
-}
-
-fn responses_tool_name(tool: &Value) -> Option<String> {
-    tool.get("function")
-        .and_then(|function| function.get("name"))
-        .or_else(|| tool.get("name"))
-        .and_then(|v| v.as_str())
-        .map(str::trim)
-        .filter(|value| !value.is_empty())
-        .map(ToString::to_string)
-}
-
-fn responses_custom_tool_description(tool: &Value) -> String {
-    let mut description = String::new();
-    description.push_str(CUSTOM_TOOL_PRESERVED_METADATA_HEADING);
-    description.push_str("\n```json\n");
-    description.push_str(&serialize_tool_definition_for_description(tool));
-    description.push_str("\n```");
-    description
-}
-
-fn serialize_tool_definition_for_description(tool: &Value) -> String {
-    // Keep the embedded definition compact to reduce tool-description token
-    // overhead for chat-only upstreams, while remaining stable across map
-    // storage order.
-    canonical_json_string(tool)
-}
-
-fn responses_function_tool_to_chat_tool(tool: &Value, chat_name: &str) -> Option<Value> {
-    if tool.get("type").and_then(|v| v.as_str()) != Some("function") {
-        return None;
-    }
-
-    if let Some(function) = tool.get("function") {
-        let mut chat_tool = json!({
-            "type": "function",
-            "function": function.clone()
-        });
-        if let Some(obj) = chat_tool
-            .get_mut("function")
-            .and_then(|value| value.as_object_mut())
-        {
-            obj.insert("name".to_string(), json!(chat_name));
-            if let Some(strict) = tool.get("strict").cloned() {
-                obj.entry("strict".to_string()).or_insert(strict);
-            }
-        }
-        return Some(chat_tool);
-    }
-
-    let mut function = json!({
-        "name": chat_name,
-        "description": tool.get("description").cloned().unwrap_or(Value::Null),
-        "parameters": tool.get("parameters").cloned().unwrap_or_else(|| json!({}))
-    });
-    if let Some(strict) = tool.get("strict") {
-        function["strict"] = strict.clone();
-    }
-
-    Some(json!({
-        "type": "function",
-        "function": function
-    }))
-}
-
 fn responses_function_call_to_chat_tool_call(
     item: &Value,
     tool_context: &CodexToolContext,
@@ -826,46 +723,6 @@ fn responses_function_call_to_chat_tool_call(
     })
 }
 
-fn responses_custom_tool_call_to_chat_tool_call(item: &Value) -> Value {
-    let call_id = item
-        .get("call_id")
-        .or_else(|| item.get("id"))
-        .and_then(|v| v.as_str())
-        .unwrap_or("");
-    let name = item.get("name").and_then(|v| v.as_str()).unwrap_or("");
-    let input = item.get("input").cloned().unwrap_or_else(|| json!(""));
-
-    json!({
-        "id": call_id,
-        "type": "function",
-        "function": {
-            "name": name,
-            "arguments": canonical_json_string(&json!({ CUSTOM_TOOL_INPUT_FIELD: input }))
-        }
-    })
-}
-
-fn responses_tool_search_call_to_chat_tool_call(item: &Value) -> Value {
-    let call_id = item
-        .get("call_id")
-        .or_else(|| item.get("id"))
-        .and_then(|v| v.as_str())
-        .unwrap_or("");
-    let arguments = item
-        .get("arguments")
-        .map(canonical_json_string)
-        .unwrap_or_else(|| "{}".to_string());
-
-    json!({
-        "id": call_id,
-        "type": "function",
-        "function": {
-            "name": TOOL_SEARCH_PROXY_NAME,
-            "arguments": arguments
-        }
-    })
-}
-
 fn responses_tool_choice_to_chat(tool_choice: &Value, tool_context: &CodexToolContext) -> Value {
     match tool_choice {
         Value::Object(obj) if obj.get("type").and_then(|v| v.as_str()) == Some("function") => {
@@ -883,7 +740,7 @@ fn responses_tool_choice_to_chat(tool_choice: &Value, tool_context: &CodexToolCo
             json!({
                 "type": "function",
                 "function": {
-                    "name": TOOL_SEARCH_PROXY_NAME
+                    "name": CODEX_TOOL_SEARCH_PROXY_NAME
                 }
             })
         }

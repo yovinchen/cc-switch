@@ -1,9 +1,17 @@
-use crate::UpstreamSseAggregationKind;
+use crate::{
+    json_canonical::{canonical_json_string, short_sha256_hex},
+    UpstreamSseAggregationKind,
+};
 use serde_json::{json, Map, Value};
 
 pub const CLAUDE_API_FORMAT_METADATA_KEY: &str = "claudeApiFormat";
+pub const CODEX_TOOL_SEARCH_PROXY_NAME: &str = "tool_search";
 const THINK_OPEN_TAG: &str = "<think>";
 const THINK_CLOSE_TAG: &str = "</think>";
+const CUSTOM_TOOL_INPUT_FIELD: &str = "input";
+const CUSTOM_TOOL_INPUT_DESCRIPTION: &str = "Raw string input for the original custom tool. Preserve formatting exactly and follow the original tool definition embedded in the description.";
+const CUSTOM_TOOL_PRESERVED_METADATA_HEADING: &str = "Original tool definition:";
+const CHAT_TOOL_NAME_MAX_LEN: usize = 64;
 
 pub fn claude_api_format_from_metadata(metadata: &Value, fallback: &str) -> String {
     metadata
@@ -435,6 +443,146 @@ fn parse_tool_arguments_object(arguments: &str) -> Value {
         .ok()
         .filter(Value::is_object)
         .unwrap_or_else(|| json!({ "query": arguments }))
+}
+
+pub fn flatten_namespace_tool_name(namespace: &str, name: &str) -> String {
+    let full_name = format!("{namespace}__{name}");
+    if full_name.len() <= CHAT_TOOL_NAME_MAX_LEN {
+        return full_name;
+    }
+
+    let hash = short_sha256_hex(full_name.as_bytes());
+    let suffix = format!("__{hash}");
+    let prefix_len = CHAT_TOOL_NAME_MAX_LEN.saturating_sub(suffix.len());
+    let mut prefix = String::new();
+    for ch in full_name.chars() {
+        if prefix.len() + ch.len_utf8() > prefix_len {
+            break;
+        }
+        prefix.push(ch);
+    }
+    format!("{prefix}{suffix}")
+}
+
+pub fn responses_tool_name(tool: &Value) -> Option<String> {
+    tool.get("function")
+        .and_then(|function| function.get("name"))
+        .or_else(|| tool.get("name"))
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(ToString::to_string)
+}
+
+pub fn responses_custom_tool_to_chat_tool(name: &str, tool: &Value) -> Value {
+    let description = json!(responses_custom_tool_description(tool));
+    json!({
+        "type": "function",
+        "function": {
+            "name": name,
+            "description": description,
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    CUSTOM_TOOL_INPUT_FIELD: {
+                        "type": "string",
+                        "description": CUSTOM_TOOL_INPUT_DESCRIPTION
+                    }
+                },
+                "required": [CUSTOM_TOOL_INPUT_FIELD]
+            }
+        }
+    })
+}
+
+fn responses_custom_tool_description(tool: &Value) -> String {
+    let mut description = String::new();
+    description.push_str(CUSTOM_TOOL_PRESERVED_METADATA_HEADING);
+    description.push_str("\n```json\n");
+    description.push_str(&serialize_tool_definition_for_description(tool));
+    description.push_str("\n```");
+    description
+}
+
+fn serialize_tool_definition_for_description(tool: &Value) -> String {
+    canonical_json_string(tool)
+}
+
+pub fn responses_function_tool_to_chat_tool(tool: &Value, chat_name: &str) -> Option<Value> {
+    if tool.get("type").and_then(Value::as_str) != Some("function") {
+        return None;
+    }
+
+    if let Some(function) = tool.get("function") {
+        let mut chat_tool = json!({
+            "type": "function",
+            "function": function.clone()
+        });
+        if let Some(obj) = chat_tool
+            .get_mut("function")
+            .and_then(Value::as_object_mut)
+        {
+            obj.insert("name".to_string(), json!(chat_name));
+            if let Some(strict) = tool.get("strict").cloned() {
+                obj.entry("strict".to_string()).or_insert(strict);
+            }
+        }
+        return Some(chat_tool);
+    }
+
+    let mut function = json!({
+        "name": chat_name,
+        "description": tool.get("description").cloned().unwrap_or(Value::Null),
+        "parameters": tool.get("parameters").cloned().unwrap_or_else(|| json!({}))
+    });
+    if let Some(strict) = tool.get("strict") {
+        function["strict"] = strict.clone();
+    }
+
+    Some(json!({
+        "type": "function",
+        "function": function
+    }))
+}
+
+pub fn responses_custom_tool_call_to_chat_tool_call(item: &Value) -> Value {
+    let call_id = item
+        .get("call_id")
+        .or_else(|| item.get("id"))
+        .and_then(Value::as_str)
+        .unwrap_or("");
+    let name = item.get("name").and_then(Value::as_str).unwrap_or("");
+    let input = item.get("input").cloned().unwrap_or_else(|| json!(""));
+
+    json!({
+        "id": call_id,
+        "type": "function",
+        "function": {
+            "name": name,
+            "arguments": canonical_json_string(&json!({ CUSTOM_TOOL_INPUT_FIELD: input }))
+        }
+    })
+}
+
+pub fn responses_tool_search_call_to_chat_tool_call(item: &Value) -> Value {
+    let call_id = item
+        .get("call_id")
+        .or_else(|| item.get("id"))
+        .and_then(Value::as_str)
+        .unwrap_or("");
+    let arguments = item
+        .get("arguments")
+        .map(canonical_json_string)
+        .unwrap_or_else(|| "{}".to_string());
+
+    json!({
+        "id": call_id,
+        "type": "function",
+        "function": {
+            "name": CODEX_TOOL_SEARCH_PROXY_NAME,
+            "arguments": arguments
+        }
+    })
 }
 
 pub fn chat_usage_to_responses_usage(usage: Option<&Value>) -> Value {
@@ -1343,6 +1491,105 @@ mod tests {
         assert_eq!(custom["name"], "apply_patch");
         assert_eq!(custom["input"], "*** Begin Patch\n*** End Patch");
         assert_eq!(custom["reasoning_content"], "apply edit");
+    }
+
+    #[test]
+    fn maps_codex_responses_tool_definitions_to_chat_tools() {
+        assert_eq!(
+            flatten_namespace_tool_name("mcp__gmail", "search"),
+            "mcp__gmail__search"
+        );
+        let long_name = flatten_namespace_tool_name(
+            "mcp__very_long_namespace_name_that_needs_to_be_shortened",
+            "very_long_tool_name_that_also_needs_hashing",
+        );
+        assert!(long_name.len() <= 64);
+        assert!(long_name.starts_with("mcp__very_long_namespace"));
+
+        assert_eq!(
+            responses_tool_name(&json!({"function": {"name": " lookup "}})).as_deref(),
+            Some("lookup")
+        );
+        assert_eq!(responses_tool_name(&json!({"name": "  "})), None);
+
+        let function_tool = responses_function_tool_to_chat_tool(
+            &json!({
+                "type": "function",
+                "name": "get_weather",
+                "description": "Get weather",
+                "parameters": {"type": "object"},
+                "strict": true
+            }),
+            "weather__get_weather",
+        )
+        .expect("function tool");
+        assert_eq!(function_tool["function"]["name"], "weather__get_weather");
+        assert_eq!(function_tool["function"]["strict"], true);
+
+        let nested_function_tool = responses_function_tool_to_chat_tool(
+            &json!({
+                "type": "function",
+                "function": {
+                    "name": "original",
+                    "description": "Nested shape",
+                    "parameters": {"type": "object"}
+                },
+                "strict": true
+            }),
+            "renamed",
+        )
+        .expect("nested function tool");
+        assert_eq!(nested_function_tool["function"]["name"], "renamed");
+        assert_eq!(nested_function_tool["function"]["strict"], true);
+
+        let custom_tool = responses_custom_tool_to_chat_tool(
+            "apply_patch",
+            &json!({
+                "type": "custom",
+                "name": "apply_patch",
+                "format": {"type": "grammar", "syntax": "lark"}
+            }),
+        );
+        let description = custom_tool["function"]["description"]
+            .as_str()
+            .expect("description");
+        assert!(description.starts_with("Original tool definition:"));
+        assert!(description.contains("\"syntax\":\"lark\""));
+        assert_eq!(
+            custom_tool["function"]["parameters"]["required"][0],
+            CUSTOM_TOOL_INPUT_FIELD
+        );
+    }
+
+    #[test]
+    fn maps_codex_responses_special_tool_calls_to_chat_tool_calls() {
+        let custom = responses_custom_tool_call_to_chat_tool_call(&json!({
+            "type": "custom_tool_call",
+            "call_id": "call_patch",
+            "name": "apply_patch",
+            "input": "*** Begin Patch\n*** End Patch"
+        }));
+        assert_eq!(custom["id"], "call_patch");
+        assert_eq!(custom["function"]["name"], "apply_patch");
+        assert_eq!(
+            custom["function"]["arguments"],
+            r#"{"input":"*** Begin Patch\n*** End Patch"}"#
+        );
+
+        let tool_search = responses_tool_search_call_to_chat_tool_call(&json!({
+            "type": "tool_search_call",
+            "call_id": "call_search",
+            "arguments": {"limit": 10, "query": "gmail"}
+        }));
+        assert_eq!(tool_search["id"], "call_search");
+        assert_eq!(
+            tool_search["function"]["name"],
+            CODEX_TOOL_SEARCH_PROXY_NAME
+        );
+        assert_eq!(
+            tool_search["function"]["arguments"],
+            r#"{"limit":10,"query":"gmail"}"#
+        );
     }
 
     #[test]
