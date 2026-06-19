@@ -9,6 +9,7 @@ use crate::{
     },
     UpstreamSseAggregationKind,
 };
+use bytes::Bytes;
 use serde_json::{json, Map, Value};
 use std::collections::{HashMap, HashSet};
 
@@ -45,6 +46,13 @@ pub struct CodexChatReasoningOptions {
     pub thinking_param: Option<String>,
     pub effort_param: Option<String>,
     pub effort_value_mode: Option<String>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ThinkPrefixDecision {
+    NeedMore,
+    Reasoning,
+    Text,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -921,6 +929,56 @@ pub fn extract_reasoning_summary_text(value: &Value) -> Option<String> {
         .join("\n\n");
 
     (!text.is_empty()).then_some(text)
+}
+
+pub fn chat_delta_reasoning_text(delta: &Value) -> Option<String> {
+    extract_reasoning_field_text(delta)
+}
+
+pub fn leading_think_prefix_decision(buffer: &str) -> ThinkPrefixDecision {
+    let trimmed = buffer.trim_start();
+    if trimmed.is_empty() {
+        return ThinkPrefixDecision::NeedMore;
+    }
+
+    if trimmed.starts_with("<think>") {
+        return ThinkPrefixDecision::Reasoning;
+    }
+
+    if "<think>".starts_with(trimmed) {
+        return ThinkPrefixDecision::NeedMore;
+    }
+
+    ThinkPrefixDecision::Text
+}
+
+pub fn extract_chat_sse_error(value: &Value) -> (String, Option<String>) {
+    let error = value.get("error").unwrap_or(value);
+    let message = error
+        .as_str()
+        .map(ToString::to_string)
+        .or_else(|| {
+            error
+                .get("message")
+                .or_else(|| error.get("detail"))
+                .and_then(Value::as_str)
+                .map(ToString::to_string)
+        })
+        .unwrap_or_else(|| error.to_string());
+    let error_type = error
+        .get("type")
+        .or_else(|| error.get("code"))
+        .and_then(Value::as_str)
+        .map(ToString::to_string);
+
+    (message, error_type)
+}
+
+pub fn sse_event(event: &str, data: Value) -> Bytes {
+    Bytes::from(format!(
+        "event: {event}\ndata: {}\n\n",
+        serde_json::to_string(&data).unwrap_or_default()
+    ))
 }
 
 pub fn codex_response_item_call_id(item: &Value) -> Option<String> {
@@ -2111,6 +2169,43 @@ mod tests {
             assert!(result.get("reasoning_effort").is_none());
             assert!(result.get("thinking").is_none());
         }
+    }
+
+    #[test]
+    fn codex_chat_streaming_helpers_extract_reasoning_and_errors() {
+        assert_eq!(
+            chat_delta_reasoning_text(&json!({"reasoning_content": "think"})).as_deref(),
+            Some("think")
+        );
+
+        assert_eq!(leading_think_prefix_decision(""), ThinkPrefixDecision::NeedMore);
+        assert_eq!(
+            leading_think_prefix_decision("  <thi"),
+            ThinkPrefixDecision::NeedMore
+        );
+        assert_eq!(
+            leading_think_prefix_decision("\n<think>plan"),
+            ThinkPrefixDecision::Reasoning
+        );
+        assert_eq!(
+            leading_think_prefix_decision("answer"),
+            ThinkPrefixDecision::Text
+        );
+
+        assert_eq!(
+            extract_chat_sse_error(&json!({"error": {"message": "bad", "type": "invalid"}})),
+            ("bad".to_string(), Some("invalid".to_string()))
+        );
+        assert_eq!(
+            extract_chat_sse_error(&json!({"detail": "quota", "code": "rate_limit"})),
+            ("quota".to_string(), Some("rate_limit".to_string()))
+        );
+
+        let event = sse_event("response.failed", json!({"type": "response.failed"}));
+        assert_eq!(
+            std::str::from_utf8(&event).unwrap(),
+            "event: response.failed\ndata: {\"type\":\"response.failed\"}\n\n"
+        );
     }
 
     #[test]

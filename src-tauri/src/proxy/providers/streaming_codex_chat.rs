@@ -1,16 +1,16 @@
 //! OpenAI Chat Completions SSE → OpenAI Responses SSE conversion.
 
-use super::codex_chat_common::{
-    extract_reasoning_field_text, split_leading_think_block, strip_leading_think_open_tag,
-};
+use super::codex_chat_common::{split_leading_think_block, strip_leading_think_open_tag};
 use crate::proxy::json_canonical::canonicalize_tool_arguments_str;
 use crate::proxy::sse::{strip_sse_field, take_sse_block};
 #[cfg(test)]
 use crate::proxy_core::build_codex_tool_context_from_request;
 use crate::proxy_core::{
-    chat_usage_to_responses_usage, custom_tool_input_from_chat_arguments, response_id_from_chat_id,
-    response_status_from_finish_reason, response_tool_call_item_from_chat_name,
-    response_tool_call_item_id_from_chat_name, CodexToolContext,
+    chat_delta_reasoning_text, chat_usage_to_responses_usage,
+    custom_tool_input_from_chat_arguments, extract_chat_sse_error, leading_think_prefix_decision,
+    response_id_from_chat_id, response_status_from_finish_reason,
+    response_tool_call_item_from_chat_name, response_tool_call_item_id_from_chat_name, sse_event,
+    CodexToolContext, ThinkPrefixDecision,
 };
 use bytes::Bytes;
 use futures::stream::{Stream, StreamExt};
@@ -862,33 +862,6 @@ impl ChatToResponsesState {
     }
 }
 
-fn chat_delta_reasoning_text(delta: &Value) -> Option<String> {
-    extract_reasoning_field_text(delta)
-}
-
-enum ThinkPrefixDecision {
-    NeedMore,
-    Reasoning,
-    Text,
-}
-
-fn leading_think_prefix_decision(buffer: &str) -> ThinkPrefixDecision {
-    let trimmed = buffer.trim_start();
-    if trimmed.is_empty() {
-        return ThinkPrefixDecision::NeedMore;
-    }
-
-    if trimmed.starts_with("<think>") {
-        return ThinkPrefixDecision::Reasoning;
-    }
-
-    if "<think>".starts_with(trimmed) {
-        return ThinkPrefixDecision::NeedMore;
-    }
-
-    ThinkPrefixDecision::Text
-}
-
 /// Create a stream that converts Chat Completions SSE chunks into Responses SSE events.
 #[allow(dead_code)]
 pub fn create_responses_sse_stream_from_chat<E: std::error::Error + Send + 'static>(
@@ -994,35 +967,6 @@ pub fn create_responses_sse_stream_from_chat_with_context<E: std::error::Error +
             }
         }
     }
-}
-
-fn extract_chat_sse_error(value: &Value) -> (String, Option<String>) {
-    let error = value.get("error").unwrap_or(value);
-    let message = error
-        .as_str()
-        .map(ToString::to_string)
-        .or_else(|| {
-            error
-                .get("message")
-                .or_else(|| error.get("detail"))
-                .and_then(|v| v.as_str())
-                .map(ToString::to_string)
-        })
-        .unwrap_or_else(|| error.to_string());
-    let error_type = error
-        .get("type")
-        .or_else(|| error.get("code"))
-        .and_then(|v| v.as_str())
-        .map(ToString::to_string);
-
-    (message, error_type)
-}
-
-fn sse_event(event: &str, data: Value) -> Bytes {
-    Bytes::from(format!(
-        "event: {event}\ndata: {}\n\n",
-        serde_json::to_string(&data).unwrap_or_default()
-    ))
 }
 
 #[cfg(test)]
