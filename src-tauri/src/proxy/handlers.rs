@@ -58,13 +58,14 @@ use crate::proxy_core::{
     ChannelMigrationMaterializeResponse, ChannelMigrationPreviewInput,
     ChannelMigrationPreviewResponse, ChannelModelsResponse, ChannelRecordResponse,
     ChannelRouteCandidate, ChannelRouteRejected, ClaudeDesktopModelListResponse,
-    CurrentRouteProviderSummaryInput, CurrentRouteResponse, GroupListQuery, HealthCheckResponse,
-    InterfaceKind, ManagementAuthDecision, ProviderListResponse, ProviderSummaryInput, ProxyBody,
-    ProxyChannelModelsReplaceRequest, ProxyChannelPatchRequest, ProxyChannelWriteRequest,
-    ProxyEngine, ProxyRequest, ProxyResult, ProxyServices, RoutableModelList,
-    RouteGroupListResponse, RouteGroupSourceInput, RouteResolveRequest, RouteResolveResponse,
-    TokenUsage, TransformedResponseUsageFormat, UpstreamJsonBodySource, UpstreamSseAggregationKind,
-    CLAUDE_PARSER_CONFIG, CODEX_PARSER_CONFIG, GEMINI_PARSER_CONFIG, OPENAI_PARSER_CONFIG,
+    ClientModelCatalogResponse, CurrentRouteProviderSummaryInput, CurrentRouteResponse,
+    GroupListQuery, HealthCheckResponse, InterfaceKind, ManagementAuthDecision,
+    ProviderListResponse, ProviderSummaryInput, ProxyBody, ProxyChannelModelsReplaceRequest,
+    ProxyChannelPatchRequest, ProxyChannelWriteRequest, ProxyEngine, ProxyRequest, ProxyResult,
+    ProxyServices, RoutableModelList, RouteGroupListResponse, RouteGroupSourceInput,
+    RouteResolveRequest, RouteResolveResponse, TokenUsage, TransformedResponseUsageFormat,
+    UpstreamJsonBodySource, UpstreamSseAggregationKind, CLAUDE_PARSER_CONFIG, CODEX_PARSER_CONFIG,
+    GEMINI_PARSER_CONFIG, OPENAI_PARSER_CONFIG,
 };
 use crate::proxy_core_adapter::{ToProxyCoreChannelSpec, ToProxyCoreProviderSpec};
 use axum::{
@@ -601,12 +602,14 @@ pub async fn resolve_proxy_route(
 /// Only serves the catalog when the live config.toml still references the
 /// cc-switch–owned `model_catalog_json`, using the same path ownership rules as
 /// Codex live-setting import.
-pub async fn handle_models(State(state): State<ProxyState>) -> Result<Json<Value>, ProxyError> {
+pub async fn handle_models(
+    State(state): State<ProxyState>,
+) -> Result<Json<ClientModelCatalogResponse>, ProxyError> {
     let catalog = ProxyEngine::new(state.proxy_core_services.clone())
         .client_model_catalog(&AppKind::Codex)
         .await
         .map_err(proxy_core_error_to_proxy_error)?;
-    Ok(Json(catalog.raw))
+    Ok(Json(ClientModelCatalogResponse::from_catalog(catalog)))
 }
 
 // ============================================================================

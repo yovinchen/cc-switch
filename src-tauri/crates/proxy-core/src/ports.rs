@@ -199,6 +199,18 @@ pub struct ModelCatalog {
     pub raw: Value,
 }
 
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct ClientModelCatalogResponse {
+    pub raw: Value,
+}
+
+impl ClientModelCatalogResponse {
+    pub fn from_catalog(catalog: ModelCatalog) -> Self {
+        Self { raw: catalog.raw }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ChannelHealthReset {
@@ -1304,11 +1316,11 @@ mod tests {
         ChannelListQuery, ChannelListResponse, ChannelModelsResponse, ChannelRecordResponse,
         ChannelMigrationMaterializeInput, ChannelMigrationMaterializeResponse,
         ChannelMigrationPreviewInput, ChannelMigrationPreviewResponse,
-        ChannelRouteCandidate, ChannelRouteRejected, ChannelRouteSource,
+        ChannelRouteCandidate, ChannelRouteRejected, ChannelRouteSource, ClientModelCatalogResponse,
         CurrentRouteProviderSummaryInput, CurrentRouteResponse, GroupListQuery,
-        HealthCheckResponse, ProviderListResponse, ProviderSpec, ProviderSummaryInput,
-        ProxyChannelModelWriteRequest, ProxyChannelModelsReplaceRequest, ProxyChannelPatchRequest,
-        ProxyChannelWriteRequest, RouteGroupListResponse, RouteGroupSourceInput,
+        HealthCheckResponse, ModelCatalog, ProviderListResponse, ProviderSpec,
+        ProviderSummaryInput, ProxyChannelModelWriteRequest, ProxyChannelModelsReplaceRequest,
+        ProxyChannelPatchRequest, ProxyChannelWriteRequest, RouteGroupListResponse, RouteGroupSourceInput,
         RouteResolveResponse,
     };
     use crate::{
@@ -1547,6 +1559,32 @@ mod tests {
         );
 
         assert_eq!(input, AppSummaryInput::new("claude", true, false, 2, 3));
+    }
+
+    #[test]
+    fn client_model_catalog_response_serializes_as_raw_catalog() {
+        let response = ClientModelCatalogResponse::from_catalog(ModelCatalog {
+            provider_id: "codex".to_string(),
+            models: vec!["gpt-5".to_string()],
+            raw: json!({
+                "models": [{
+                    "id": "gpt-5",
+                    "object": "model"
+                }]
+            }),
+        });
+
+        let value = serde_json::to_value(response).expect("serialize response");
+
+        assert_eq!(
+            value,
+            json!({
+                "models": [{
+                    "id": "gpt-5",
+                    "object": "model"
+                }]
+            })
+        );
     }
 
     #[test]
