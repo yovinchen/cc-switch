@@ -1893,14 +1893,19 @@ impl RequestForwarder {
         {
             outbound_model = Some(m.to_string());
         }
-        log_prompt_cache_trace(
-            app_type,
-            provider,
-            &effective_endpoint,
-            resolved_claude_api_format.as_deref(),
-            &filtered_body,
-            self.session_client_provided,
-        );
+        if log::log_enabled!(log::Level::Debug) {
+            log::debug!(
+                "{}",
+                prompt_cache_trace_log_message(PromptCacheTraceLogInput {
+                    app: app_type.as_str(),
+                    provider_id: provider.id.as_str(),
+                    endpoint: &effective_endpoint,
+                    api_format: resolved_claude_api_format.as_deref(),
+                    body: &filtered_body,
+                    session_client_provided: self.session_client_provided,
+                })
+            );
+        }
         let transport_policy = resolve_upstream_request_transport_policy(
             needs_transform,
             codex_responses_to_chat,
@@ -2484,31 +2489,6 @@ fn map_reqwest_send_error(error: reqwest::Error) -> ProxyError {
     } else {
         ProxyError::ForwardFailed(error.to_string())
     }
-}
-
-fn log_prompt_cache_trace(
-    app_type: &AppType,
-    provider: &Provider,
-    endpoint: &str,
-    api_format: Option<&str>,
-    body: &Value,
-    session_client_provided: bool,
-) {
-    if !log::log_enabled!(log::Level::Debug) {
-        return;
-    }
-
-    log::debug!(
-        "{}",
-        prompt_cache_trace_log_message(PromptCacheTraceLogInput {
-            app: app_type.as_str(),
-            provider_id: provider.id.as_str(),
-            endpoint,
-            api_format,
-            body,
-            session_client_provided,
-        })
-    );
 }
 
 #[cfg(test)]
