@@ -1,8 +1,9 @@
 use serde::{Deserialize, Serialize};
 
 pub use crate::proxy_core::{
-    AppProxyConfig, CopilotOptimizerConfig, GlobalProxyConfig, OptimizerConfig, ProviderHealth,
-    ProxyConfig, ProxyServerInfo, ProxyTakeoverStatus, RectifierConfig,
+    AppProxyConfig, CopilotOptimizerConfig, CurrentRouteTarget as ActiveTarget, GlobalProxyConfig,
+    OptimizerConfig, ProviderHealth, ProxyConfig, ProxyServerInfo, ProxyTakeoverStatus,
+    RectifierConfig,
 };
 
 /// 代理服务器状态
@@ -39,25 +40,6 @@ pub struct ProxyStatus {
     /// 当前活跃的代理目标列表
     #[serde(default)]
     pub active_targets: Vec<ActiveTarget>,
-}
-
-/// 活跃的代理目标信息
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct ActiveTarget {
-    pub app_type: String, // "Claude" | "Codex" | "Gemini"
-    pub provider_name: String,
-    pub provider_id: String,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub channel_id: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub channel_name: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub interface_kind: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub public_model: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub upstream_model: Option<String>,
 }
 
 /// API 格式类型（预留，当前不需要格式转换）

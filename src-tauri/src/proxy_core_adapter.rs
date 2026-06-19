@@ -2,12 +2,12 @@ use crate::app_config::AppType;
 use crate::database::{ProxyChannelModelRecord, ProxyChannelRecord};
 use crate::provider::Provider;
 use crate::proxy::providers::ProviderType;
-use crate::proxy::types::{ActiveTarget, ProxyStatus};
+use crate::proxy::types::ProxyStatus;
 use crate::proxy_core::{
     AppKind, AuthProfileRef, ChannelHealthPolicy, ChannelModelRecord, ChannelOverrides,
-    ChannelRecord, ChannelSpec, ChannelStatus, CurrentRouteTarget, InterfaceKind,
-    ModelCapabilities, ModelRoute, ProviderKind, ProviderMetadata, ProviderSpec,
-    ProxyRuntimeStatus, RetryPolicy, UpstreamEndpoint,
+    ChannelRecord, ChannelSpec, ChannelStatus, InterfaceKind, ModelCapabilities, ModelRoute,
+    ProviderKind, ProviderMetadata, ProviderSpec, ProxyRuntimeStatus, RetryPolicy,
+    UpstreamEndpoint,
 };
 use serde_json::{json, Value};
 
@@ -184,26 +184,6 @@ impl ToProxyCoreChannelRecord for ProxyChannelRecord {
 }
 
 #[allow(dead_code)]
-pub(crate) trait ToProxyCoreCurrentRouteTarget {
-    fn to_proxy_core_current_route_target(&self) -> CurrentRouteTarget;
-}
-
-impl ToProxyCoreCurrentRouteTarget for ActiveTarget {
-    fn to_proxy_core_current_route_target(&self) -> CurrentRouteTarget {
-        CurrentRouteTarget {
-            app_type: self.app_type.clone(),
-            provider_name: self.provider_name.clone(),
-            provider_id: self.provider_id.clone(),
-            channel_id: self.channel_id.clone(),
-            channel_name: self.channel_name.clone(),
-            interface_kind: self.interface_kind.clone(),
-            public_model: self.public_model.clone(),
-            upstream_model: self.upstream_model.clone(),
-        }
-    }
-}
-
-#[allow(dead_code)]
 pub(crate) trait ToProxyCoreRuntimeStatus {
     fn to_proxy_core_runtime_status(&self) -> ProxyRuntimeStatus;
 }
@@ -225,11 +205,7 @@ impl ToProxyCoreRuntimeStatus for ProxyStatus {
             last_request_at: self.last_request_at.clone(),
             last_error: self.last_error.clone(),
             failover_count: self.failover_count,
-            active_targets: self
-                .active_targets
-                .iter()
-                .map(ActiveTarget::to_proxy_core_current_route_target)
-                .collect(),
+            active_targets: self.active_targets.clone(),
         }
     }
 }

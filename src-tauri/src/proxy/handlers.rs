@@ -68,7 +68,7 @@ use crate::proxy_core::{
 };
 use crate::proxy_core_adapter::{
     ToProxyCoreChannelModelRecord, ToProxyCoreChannelRecord, ToProxyCoreChannelSpec,
-    ToProxyCoreCurrentRouteTarget, ToProxyCoreProviderSpec, ToProxyCoreRuntimeStatus,
+    ToProxyCoreProviderSpec, ToProxyCoreRuntimeStatus,
 };
 use axum::{
     extract::{Path, Query, State},
@@ -524,8 +524,7 @@ pub async fn get_current_proxy_route(
     let active_target = {
         let current_providers = state.current_providers.read().await;
         current_providers.get(&app_type).cloned()
-    }
-    .map(|target| target.to_proxy_core_current_route_target());
+    };
 
     let configured_provider = match state
         .db
