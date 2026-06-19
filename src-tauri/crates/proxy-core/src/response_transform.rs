@@ -702,6 +702,17 @@ pub fn resolve_claude_responses_prompt_cache_key(
     }
 }
 
+pub fn is_copilot_prompt_cache_provider(
+    meta_provider_type: Option<&str>,
+    settings_config: &Value,
+) -> bool {
+    meta_provider_type == Some("github_copilot")
+        || settings_config
+            .get("baseUrl")
+            .and_then(Value::as_str)
+            .is_some_and(|url| url.contains("githubcopilot.com"))
+}
+
 fn anthropic_messages_to_openai_responses_input(messages: &[Value]) -> Vec<Value> {
     let mut input = Vec::new();
 
@@ -4639,6 +4650,27 @@ mod tests {
         let missing = resolve_claude_responses_prompt_cache_key(&json!({}), None, None, true);
         assert_eq!(missing.key, None);
         assert_eq!(missing.source, ClaudePromptCacheKeySource::None);
+    }
+
+    #[test]
+    fn copilot_prompt_cache_provider_uses_legacy_host_detection_inputs() {
+        assert!(is_copilot_prompt_cache_provider(
+            Some("github_copilot"),
+            &json!({})
+        ));
+        assert!(is_copilot_prompt_cache_provider(
+            None,
+            &json!({"baseUrl": "https://api.githubcopilot.com"})
+        ));
+
+        assert!(!is_copilot_prompt_cache_provider(
+            Some("github-copilot"),
+            &json!({})
+        ));
+        assert!(!is_copilot_prompt_cache_provider(
+            None,
+            &json!({"base_url": "https://api.githubcopilot.com"})
+        ));
     }
 
     #[test]

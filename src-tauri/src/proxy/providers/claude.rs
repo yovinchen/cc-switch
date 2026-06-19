@@ -22,9 +22,10 @@ use crate::proxy_core::{
     build_claude_auth_headers, build_claude_upstream_url, build_copilot_auth_headers,
     claude_api_format_needs_transform, extract_claude_auth_key_from_settings,
     extract_claude_base_url_from_settings, infer_claude_provider_kind,
-    normalize_anthropic_tool_thinking_history, openai_chat_to_anthropic_message,
-    openai_responses_to_anthropic_message, resolve_claude_api_format_from_settings,
-    resolve_claude_responses_prompt_cache_key, should_normalize_anthropic_tool_thinking_history,
+    is_copilot_prompt_cache_provider, normalize_anthropic_tool_thinking_history,
+    openai_chat_to_anthropic_message, openai_responses_to_anthropic_message,
+    resolve_claude_api_format_from_settings, resolve_claude_responses_prompt_cache_key,
+    should_normalize_anthropic_tool_thinking_history,
     should_preserve_reasoning_content_for_openai_chat, ClaudeAuthHeaderKind, ClaudeAuthKey,
     ClaudeAuthKeySource, CopilotAuthHeadersInput,
 };
@@ -80,16 +81,13 @@ pub fn transform_claude_request_for_api_format(
     // Copilot 场景：优先从 metadata.user_id 提取 session ID 作为 cache key
     // 格式: "uuid_sessionId" → 提取 "_" 后面的部分作为 session 标识
     // 同一会话的请求共享 cache key，提升 Copilot 缓存命中率
-    let is_copilot = provider
-        .meta
-        .as_ref()
-        .and_then(|m| m.provider_type.as_deref())
-        == Some("github_copilot")
-        || provider
-            .settings_config
-            .get("baseUrl")
-            .and_then(|v| v.as_str())
-            .is_some_and(|u| u.contains("githubcopilot.com"));
+    let is_copilot = is_copilot_prompt_cache_provider(
+        provider
+            .meta
+            .as_ref()
+            .and_then(|m| m.provider_type.as_deref()),
+        &provider.settings_config,
+    );
     let explicit_cache_key = provider
         .meta
         .as_ref()
