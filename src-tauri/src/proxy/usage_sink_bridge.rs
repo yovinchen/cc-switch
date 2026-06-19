@@ -1,8 +1,7 @@
 use crate::provider::Provider;
-use crate::proxy::usage::parser::TokenUsage;
 use crate::proxy_core::{
     error_usage_record_with_request_id_fallback, success_usage_record_with_request_id_fallback,
-    AppKind, ProviderKind, UsageRecord,
+    AppKind, ProviderKind, TokenUsage, UsageRecord,
 };
 
 #[allow(clippy::too_many_arguments)]

@@ -10,7 +10,6 @@ use crate::proxy::providers::{
 };
 use crate::proxy::route_attempt::forward_attempts_from_route_plan;
 use crate::proxy::types::{ActiveTarget, ProxyStatus};
-use crate::proxy::usage::parser::SESSION_REQUEST_ID_PREFIX;
 use crate::proxy::usage::{CostCalculator, RequestLog, UsageLogger};
 use crate::proxy::RequestForwarder;
 use crate::proxy_core::{
@@ -23,6 +22,7 @@ use crate::proxy_core::{
     ProxyRequest, ProxyResponseBody, ProxyResult, ProxyRuntimeConfig, ProxyServices,
     RectifierConfigSpec, RoutePlan, RoutePolicy, RoutePolicySource, RouteRequest, RouteResolver,
     RouteSelection, UsageRecord, UsageSink, CLAUDE_API_FORMAT_METADATA_KEY, DEFAULT_ROUTE_GROUP,
+    SESSION_REQUEST_ID_PREFIX,
 };
 use crate::proxy_core_adapter::{ToProxyCoreChannelSpec, ToProxyCoreProviderSpec};
 use crate::services::usage_stats::is_placeholder_pricing_model;

@@ -3,9 +3,8 @@
 //! 提供流式和非流式响应的统一处理接口
 
 use super::session::ProxySession;
-use super::usage::parser::TokenUsage;
 use super::ProxyError;
-use crate::proxy_core::{append_utf8_safe, strip_sse_field, take_sse_block};
+use crate::proxy_core::{append_utf8_safe, strip_sse_field, take_sse_block, TokenUsage};
 use bytes::Bytes;
 use futures::stream::{Stream, StreamExt};
 use serde_json::Value;

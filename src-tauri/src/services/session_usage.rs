@@ -12,7 +12,7 @@ use crate::config::get_claude_config_dir;
 use crate::database::{lock_conn, Database};
 use crate::error::AppError;
 use crate::proxy::usage::calculator::{CostCalculator, ModelPricing};
-use crate::proxy::usage::parser::TokenUsage;
+use crate::proxy_core::{TokenUsage, SESSION_REQUEST_ID_PREFIX};
 use crate::services::usage_stats::{
     effective_usage_log_filter, find_model_pricing, should_skip_session_insert, DedupKey,
 };
@@ -334,11 +334,7 @@ fn sync_single_file(db: &Database, file_path: &Path) -> Result<(u32, u32), AppEr
             continue;
         }
 
-        let request_id = format!(
-            "{}{}",
-            crate::proxy::usage::parser::SESSION_REQUEST_ID_PREFIX,
-            msg.message_id
-        );
+        let request_id = format!("{}{}", SESSION_REQUEST_ID_PREFIX, msg.message_id);
 
         match insert_session_log_entry(db, &request_id, msg) {
             Ok(true) => imported += 1,

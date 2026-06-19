@@ -33,7 +33,6 @@ use super::{
     },
     server::ProxyState,
     types::*,
-    usage::parser::TokenUsage,
     usage_sink_bridge::{error_usage_record, provider_kind_from_provider, success_usage_record},
     ProxyError,
 };
@@ -57,7 +56,7 @@ use crate::proxy_core::{
     ProviderSummaryInput, ProxyBody, ProxyChannelModelsReplaceRequest, ProxyChannelPatchRequest,
     ProxyChannelWriteRequest, ProxyEngine, ProxyRequest, ProxyResult, ProxyServices,
     RoutableModelList, RouteGroupChannelInput, RouteGroupListResponse, RouteGroupSourceInput,
-    RouteResolveRequest, RouteResolveResponse, TransformedResponseUsageFormat,
+    RouteResolveRequest, RouteResolveResponse, TokenUsage, TransformedResponseUsageFormat,
     UpstreamJsonBodySource, UpstreamSseAggregationKind, CLAUDE_PARSER_CONFIG, CODEX_PARSER_CONFIG,
     GEMINI_PARSER_CONFIG, OPENAI_PARSER_CONFIG,
 };

@@ -2,7 +2,7 @@
 //!
 //! 使用高精度 Decimal 类型避免浮点数精度问题
 
-use super::parser::TokenUsage;
+use crate::proxy_core::TokenUsage;
 use rust_decimal::Decimal;
 use std::str::FromStr;
 

@@ -7,14 +7,13 @@ use super::{
     handler_context::RequestContext,
     hyper_client::ProxyResponse,
     server::ProxyState,
-    usage::parser::TokenUsage,
     usage_sink_bridge::{provider_kind_from_provider, success_usage_record},
     ProxyError,
 };
 use crate::proxy_core::{
     decode_response_body, get_content_encoding, strip_hop_by_hop_response_headers, ProviderKind,
     ProxyServices, ResponseBodyDecodeStatus, SseEventScanner, SseUsageAccumulator,
-    StreamUsageEventFilter, StreamingTimeoutConfig, UsageParserConfig,
+    StreamUsageEventFilter, StreamingTimeoutConfig, TokenUsage, UsageParserConfig,
 };
 use axum::http::header::HeaderMap;
 use axum::response::{IntoResponse, Response};

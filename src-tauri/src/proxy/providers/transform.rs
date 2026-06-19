@@ -845,7 +845,7 @@ mod tests {
         });
 
         let result = openai_to_anthropic(input).unwrap();
-        let usage = crate::proxy::usage::parser::TokenUsage::from_claude_response(&result)
+        let usage = crate::proxy_core::TokenUsage::from_claude_response(&result)
             .expect("converted Anthropic response should parse usage");
 
         assert_eq!(
@@ -855,7 +855,7 @@ mod tests {
         assert_eq!(
             format!(
                 "{}{}",
-                crate::proxy::usage::parser::SESSION_REQUEST_ID_PREFIX,
+                crate::proxy_core::SESSION_REQUEST_ID_PREFIX,
                 usage.message_id.as_deref().unwrap()
             ),
             "session:chatcmpl-claude-compatible"
