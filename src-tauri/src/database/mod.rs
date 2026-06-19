@@ -38,9 +38,9 @@ pub(crate) use dao::proxy::{
     PRICING_SOURCE_RESPONSE,
 };
 pub(crate) use dao::proxy_channels::ProxyChannelModelRecord;
-pub(crate) use dao::proxy_channels::{
-    ProxyChannelMigrationPreview, ProxyChannelRecord, ProxyChannelSourceKind,
-};
+#[cfg(test)]
+pub(crate) use dao::proxy_channels::ProxyChannelSourceKind;
+pub(crate) use dao::proxy_channels::{ProxyChannelMigrationPreview, ProxyChannelRecord};
 pub use dao::FailoverQueueItem;
 
 use crate::config::get_app_config_dir;

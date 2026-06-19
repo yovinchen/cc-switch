@@ -3,7 +3,7 @@
 //! This is the bridge between the legacy provider router and the channel-based
 //! design. It deliberately does not alter the forwarding path yet.
 
-use crate::database::{ProxyChannelRecord, ProxyChannelSourceKind};
+use crate::database::ProxyChannelRecord;
 use crate::error::AppError;
 use crate::proxy_core::{
     resolve_channel_route as resolve_core_channel_route, ChannelRouteSource, ProxyCoreError,
@@ -38,7 +38,7 @@ fn route_input_from_channel(channel: ProxyChannelRecord) -> RouteResolveChannelI
             .collect(),
         priority: channel.priority,
         weight: channel.weight,
-        source_kind: source_kind_label(&channel.source_kind).to_string(),
+        source_kind: channel.source_kind.as_str().to_string(),
     }
 }
 
@@ -50,18 +50,10 @@ fn proxy_core_error_to_app_error(error: ProxyCoreError) -> AppError {
     }
 }
 
-fn source_kind_label(source_kind: &ProxyChannelSourceKind) -> &'static str {
-    match source_kind {
-        ProxyChannelSourceKind::LegacyPrimary => "legacy_primary",
-        ProxyChannelSourceKind::LegacyEndpoint => "legacy_endpoint",
-        ProxyChannelSourceKind::Manual => "manual",
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::database::{ProxyChannelModelRecord, ProxyChannelRecord};
+    use crate::database::{ProxyChannelModelRecord, ProxyChannelRecord, ProxyChannelSourceKind};
     use crate::proxy_core::DEFAULT_ROUTE_GROUP;
     use serde_json::json;
 

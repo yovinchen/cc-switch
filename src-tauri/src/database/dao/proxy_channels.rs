@@ -38,7 +38,7 @@ pub(crate) enum ProxyChannelSourceKind {
 }
 
 impl ProxyChannelSourceKind {
-    fn as_str(&self) -> &'static str {
+    pub(crate) fn as_str(&self) -> &'static str {
         match self {
             Self::LegacyPrimary => LEGACY_PRIMARY_SOURCE,
             Self::LegacyEndpoint => LEGACY_ENDPOINT_SOURCE,
