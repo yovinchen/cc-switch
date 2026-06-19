@@ -6,7 +6,7 @@ use std::str::FromStr;
 
 use crate::error::AppError;
 use crate::proxy::types::*;
-use crate::proxy_core::ProviderHealth;
+use crate::proxy_core::{GlobalProxyConfig, ProviderHealth};
 use rust_decimal::Decimal;
 
 use super::super::{lock_conn, Database};
