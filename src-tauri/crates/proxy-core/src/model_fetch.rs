@@ -5,9 +5,9 @@ use std::collections::HashSet;
 
 pub const DEFAULT_CODEX_MODEL_CONTEXT_WINDOW: u64 = 128_000;
 pub const MODEL_FETCH_ERROR_BODY_MAX_CHARS: usize = 512;
+pub const MODEL_FETCH_AUTHORIZATION_HEADER: &str = "Authorization";
 pub const CODEX_OAUTH_MODELS_URL: &str = "https://chatgpt.com/backend-api/codex/models";
 pub const CODEX_OAUTH_MODELS_CLIENT_VERSION_QUERY: &str = "client_version";
-pub const CODEX_OAUTH_MODELS_AUTHORIZATION_HEADER: &str = "Authorization";
 pub const CODEX_OAUTH_MODELS_ORIGINATOR_HEADER: &str = "originator";
 pub const CODEX_OAUTH_MODELS_ORIGINATOR: &str = "cc-switch";
 pub const CODEX_OAUTH_MODELS_ACCOUNT_ID_HEADER: &str = "chatgpt-account-id";
@@ -44,6 +44,12 @@ pub struct CodexOAuthModelsRequest<'a> {
     pub authorization_header: (&'static str, String),
     pub originator_header: (&'static str, &'static str),
     pub account_id_header: (&'static str, &'a str),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct OpenAiCompatibleModelsRequest<'a> {
+    pub url: &'a str,
+    pub authorization_header: (&'static str, String),
 }
 
 /// Known Anthropic-compatible subpath suffixes. Keep longest suffixes first so
@@ -138,6 +144,16 @@ pub fn parse_models_response_bytes(body: &[u8]) -> Result<Vec<FetchedModel>, Str
     Ok(models_from_response(response))
 }
 
+pub fn build_openai_compatible_models_request<'a>(
+    url: &'a str,
+    api_key: &str,
+) -> OpenAiCompatibleModelsRequest<'a> {
+    OpenAiCompatibleModelsRequest {
+        url,
+        authorization_header: (MODEL_FETCH_AUTHORIZATION_HEADER, format!("Bearer {api_key}")),
+    }
+}
+
 pub fn truncate_model_fetch_error_body(body: impl AsRef<str>) -> String {
     let body = body.as_ref();
     if body.chars().count() <= MODEL_FETCH_ERROR_BODY_MAX_CHARS {
@@ -168,10 +184,7 @@ pub fn build_codex_oauth_models_request<'a>(
     CodexOAuthModelsRequest {
         url: CODEX_OAUTH_MODELS_URL,
         client_version_query: (CODEX_OAUTH_MODELS_CLIENT_VERSION_QUERY, client_version),
-        authorization_header: (
-            CODEX_OAUTH_MODELS_AUTHORIZATION_HEADER,
-            format!("Bearer {token}"),
-        ),
+        authorization_header: (MODEL_FETCH_AUTHORIZATION_HEADER, format!("Bearer {token}")),
         originator_header: (
             CODEX_OAUTH_MODELS_ORIGINATOR_HEADER,
             CODEX_OAUTH_MODELS_ORIGINATOR,
@@ -801,6 +814,18 @@ mod tests {
     }
 
     #[test]
+    fn build_openai_compatible_models_request_uses_bearer_auth_contract() {
+        let request =
+            build_openai_compatible_models_request("https://api.example.com/v1/models", "sk-test");
+
+        assert_eq!(request.url, "https://api.example.com/v1/models");
+        assert_eq!(
+            request.authorization_header,
+            (MODEL_FETCH_AUTHORIZATION_HEADER, "Bearer sk-test".to_string())
+        );
+    }
+
+    #[test]
     fn truncate_model_fetch_error_body_preserves_short_body() {
         assert_eq!(truncate_model_fetch_error_body("short error"), "short error");
     }
@@ -837,10 +862,7 @@ mod tests {
         );
         assert_eq!(
             request.authorization_header,
-            (
-                CODEX_OAUTH_MODELS_AUTHORIZATION_HEADER,
-                "Bearer token-123".to_string()
-            )
+            (MODEL_FETCH_AUTHORIZATION_HEADER, "Bearer token-123".to_string())
         );
         assert_eq!(
             request.originator_header,

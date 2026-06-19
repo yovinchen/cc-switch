@@ -9,8 +9,8 @@ use reqwest::StatusCode;
 use std::time::Duration;
 
 use crate::proxy_core::{
-    build_models_url_candidates, parse_models_response_bytes, truncate_model_fetch_error_body,
-    FetchedModel,
+    build_models_url_candidates, build_openai_compatible_models_request,
+    parse_models_response_bytes, truncate_model_fetch_error_body, FetchedModel,
 };
 
 const FETCH_TIMEOUT_SECS: u64 = 15;
@@ -35,9 +35,13 @@ pub async fn fetch_models(
 
     for url in &candidates {
         log::debug!("[ModelFetch] Trying endpoint: {url}");
+        let request_plan = build_openai_compatible_models_request(url, api_key);
         let mut request = client
-            .get(url)
-            .header("Authorization", format!("Bearer {api_key}"))
+            .get(request_plan.url)
+            .header(
+                request_plan.authorization_header.0,
+                request_plan.authorization_header.1,
+            )
             .timeout(Duration::from_secs(FETCH_TIMEOUT_SECS));
         // 自定义 User-Agent：部分 /models 端点同样有 UA 白名单（如 Kimi Coding Plan），
         // 与转发 / 检测路径共用同一 UA，避免"代理可用但取模型失败"。
