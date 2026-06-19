@@ -903,7 +903,7 @@ impl RequestForwarder {
             // clone body 以避免 Bedrock 优化字段泄漏到非 Bedrock provider（failover 场景）
             let mut provider_body = if should_apply_bedrock_pre_send_optimizer(
                 self.optimizer_config.enabled,
-                provider_bedrock_env_flag(provider),
+                bedrock_env_flag_from_provider_settings(&provider.settings_config),
             ) {
                 let mut b = body.clone();
                 apply_bedrock_pre_send_optimizers(&mut b, &self.optimizer_config);
@@ -2395,10 +2395,6 @@ fn unsupported_image_error_from_proxy_error(error: &ProxyError) -> bool {
     }
 }
 
-fn provider_bedrock_env_flag(provider: &Provider) -> Option<&str> {
-    bedrock_env_flag_from_provider_settings(&provider.settings_config)
-}
-
 fn apply_bedrock_pre_send_optimizers(body: &mut Value, config: &OptimizerConfig) {
     if config.thinking_optimizer {
         let report =
@@ -2567,7 +2563,10 @@ mod tests {
             }
         });
 
-        assert_eq!(provider_bedrock_env_flag(&provider), Some("1"));
+        assert_eq!(
+            bedrock_env_flag_from_provider_settings(&provider.settings_config),
+            Some("1")
+        );
     }
 
     fn test_forwarder(
