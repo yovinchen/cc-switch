@@ -1,9 +1,10 @@
 //! Gemini Native non-streaming response helpers.
 
 use crate::{
-    AnthropicToolSchemaHints, GeminiToolCallMeta, build_anthropic_usage_from_gemini,
-    ensure_gemini_function_call_ids, extract_gemini_function_call_meta,
-    map_gemini_finish_reason_to_anthropic, rectify_gemini_tool_call_parts,
+    AnthropicToolSchemaHints, GeminiShadowStore, GeminiToolCallMeta,
+    build_anthropic_usage_from_gemini, ensure_gemini_function_call_ids,
+    extract_gemini_function_call_meta, map_gemini_finish_reason_to_anthropic,
+    rectify_gemini_tool_call_parts,
 };
 use serde_json::{Value, json};
 
@@ -146,6 +147,37 @@ where
     })
 }
 
+pub fn gemini_response_to_anthropic_message_with_shadow<F>(
+    body: &Value,
+    shadow_store: Option<&GeminiShadowStore>,
+    provider_id: Option<&str>,
+    session_id: Option<&str>,
+    tool_schema_hints: Option<&AnthropicToolSchemaHints>,
+    synthesize_tool_call_id: F,
+) -> Result<GeminiToAnthropicMessageOutput, String>
+where
+    F: FnMut() -> String,
+{
+    let output =
+        gemini_response_to_anthropic_message(body, tool_schema_hints, synthesize_tool_call_id)?;
+
+    if let (Some(store), Some(provider_id), Some(session_id), Some(shadow_record)) = (
+        shadow_store,
+        provider_id,
+        session_id,
+        output.shadow_record.as_ref(),
+    ) {
+        store.record_assistant_turn(
+            provider_id,
+            session_id,
+            shadow_record.assistant_content.clone(),
+            shadow_record.tool_calls.clone(),
+        );
+    }
+
+    Ok(output)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -234,5 +266,49 @@ mod tests {
             client_id
         );
         assert_eq!(shadow_record.tool_calls[0].id.as_deref(), Some(client_id));
+    }
+
+    #[test]
+    fn response_with_shadow_records_assistant_turn() {
+        let store = GeminiShadowStore::with_limits(8, 4);
+        let input = json!({
+            "responseId": "resp_shadow",
+            "modelVersion": "gemini-2.5-pro",
+            "candidates": [{
+                "finishReason": "STOP",
+                "content": {
+                    "parts": [{
+                        "functionCall": {
+                            "id": "call_1",
+                            "name": "lookup",
+                            "args": { "q": "rust" }
+                        }
+                    }]
+                }
+            }]
+        });
+
+        let output = gemini_response_to_anthropic_message_with_shadow(
+            &input,
+            Some(&store),
+            Some("provider-a"),
+            Some("session-1"),
+            None,
+            || "unused".to_string(),
+        )
+        .unwrap();
+
+        assert_eq!(output.response["content"][0]["id"], "call_1");
+        let snapshot = store
+            .get_session("provider-a", "session-1")
+            .expect("shadow recorded");
+        assert_eq!(
+            snapshot.turns[0].tool_calls[0].id.as_deref(),
+            Some("call_1")
+        );
+        assert_eq!(
+            snapshot.turns[0].assistant_content["parts"][0]["functionCall"]["name"],
+            "lookup"
+        );
     }
 }

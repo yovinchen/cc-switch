@@ -8,7 +8,7 @@ use crate::proxy::error::ProxyError;
 use crate::proxy_core::{
     AnthropicToolSchemaHints, GeminiShadowStore, anthropic_request_to_gemini_request_with_shadow,
     extract_anthropic_tool_schema_hints as core_extract_anthropic_tool_schema_hints,
-    gemini_response_to_anthropic_message, rectify_gemini_tool_call_args,
+    gemini_response_to_anthropic_message_with_shadow, rectify_gemini_tool_call_args,
     synthesize_gemini_tool_call_id,
 };
 use serde_json::Value;
@@ -67,23 +67,18 @@ pub fn gemini_to_anthropic_with_shadow_and_hints(
     session_id: Option<&str>,
     tool_schema_hints: Option<&AnthropicToolSchemaHints>,
 ) -> Result<Value, ProxyError> {
-    let output =
-        gemini_response_to_anthropic_message(&body, tool_schema_hints, synthesize_tool_call_id)
-            .map_err(ProxyError::TransformError)?;
+    let output = gemini_response_to_anthropic_message_with_shadow(
+        &body,
+        shadow_store,
+        provider_id,
+        session_id,
+        tool_schema_hints,
+        synthesize_tool_call_id,
+    )
+    .map_err(ProxyError::TransformError)?;
 
     for name in &output.rectified_tool_names {
         log::info!("[Claude/Gemini] Rectified tool args for `{name}`");
-    }
-
-    if let (Some(store), Some(provider_id), Some(session_id), Some(shadow_record)) =
-        (shadow_store, provider_id, session_id, output.shadow_record)
-    {
-        store.record_assistant_turn(
-            provider_id,
-            session_id,
-            shadow_record.assistant_content,
-            shadow_record.tool_calls,
-        );
     }
 
     Ok(output.response)
