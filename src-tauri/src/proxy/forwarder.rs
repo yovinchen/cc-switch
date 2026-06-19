@@ -1776,7 +1776,7 @@ impl RequestForwarder {
                 .ends_with("/chat/completions");
 
         let url = if matches!(resolved_claude_api_format.as_deref(), Some("gemini_native")) {
-            super::gemini_url::resolve_gemini_native_url(
+            crate::proxy_core::resolve_gemini_native_url(
                 &base_url,
                 &effective_endpoint,
                 is_full_url,
@@ -2421,7 +2421,7 @@ fn rewrite_claude_transform_endpoint(
         // Accept both bare ids (`gemini-2.5-pro`) and the resource-name
         // form (`models/gemini-2.5-pro`) that Gemini SDKs emit. See
         // `normalize_gemini_model_id` for rationale.
-        let model = super::gemini_url::normalize_gemini_model_id(model);
+        let model = crate::proxy_core::normalize_gemini_model_id(model);
         let is_stream = body
             .get("stream")
             .and_then(|value| value.as_bool())
@@ -3220,7 +3220,7 @@ mod tests {
 
     #[test]
     fn build_gemini_native_url_uses_origin_when_base_ends_with_v1beta() {
-        let url = crate::proxy::gemini_url::build_gemini_native_url(
+        let url = crate::proxy_core::build_gemini_native_url(
             "https://generativelanguage.googleapis.com/v1beta",
             "/v1beta/models/gemini-2.5-pro:generateContent",
         );
@@ -3233,7 +3233,7 @@ mod tests {
 
     #[test]
     fn build_gemini_native_url_uses_origin_when_base_already_contains_models_prefix() {
-        let url = crate::proxy::gemini_url::build_gemini_native_url(
+        let url = crate::proxy_core::build_gemini_native_url(
             "https://generativelanguage.googleapis.com/v1beta/models",
             "/v1beta/models/gemini-2.5-flash:streamGenerateContent?alt=sse",
         );
@@ -3246,7 +3246,7 @@ mod tests {
 
     #[test]
     fn resolve_gemini_native_url_keeps_opaque_full_url_as_is() {
-        let url = crate::proxy::gemini_url::resolve_gemini_native_url(
+        let url = crate::proxy_core::resolve_gemini_native_url(
             "https://relay.example/custom/generate-content",
             "/v1beta/models/gemini-2.5-flash:streamGenerateContent?alt=sse",
             true,
