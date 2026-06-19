@@ -374,6 +374,98 @@ pub fn response_function_call_item_with_namespace(
     item
 }
 
+pub fn custom_tool_input_from_chat_arguments(arguments: &str) -> String {
+    if arguments.trim().is_empty() {
+        return String::new();
+    }
+    match serde_json::from_str::<Value>(arguments) {
+        Ok(Value::Object(obj)) => obj
+            .get("input")
+            .and_then(Value::as_str)
+            .unwrap_or(arguments)
+            .to_string(),
+        _ => arguments.to_string(),
+    }
+}
+
+pub fn chat_usage_to_responses_usage(usage: Option<&Value>) -> Value {
+    let Some(usage) = usage.filter(|value| value.is_object() && !value.is_null()) else {
+        return json!({
+            "input_tokens": 0,
+            "output_tokens": 0,
+            "total_tokens": 0,
+            "output_tokens_details": { "reasoning_tokens": 0 }
+        });
+    };
+
+    let input_tokens = usage
+        .get("prompt_tokens")
+        .or_else(|| usage.get("input_tokens"))
+        .and_then(Value::as_u64)
+        .unwrap_or(0);
+    let output_tokens = usage
+        .get("completion_tokens")
+        .or_else(|| usage.get("output_tokens"))
+        .and_then(Value::as_u64)
+        .unwrap_or(0);
+    let total_tokens = usage
+        .get("total_tokens")
+        .and_then(Value::as_u64)
+        .unwrap_or(input_tokens + output_tokens);
+
+    let mut result = json!({
+        "input_tokens": input_tokens,
+        "output_tokens": output_tokens,
+        "total_tokens": total_tokens
+    });
+
+    if let Some(cached) = usage
+        .pointer("/prompt_tokens_details/cached_tokens")
+        .or_else(|| usage.pointer("/input_tokens_details/cached_tokens"))
+        .and_then(Value::as_u64)
+    {
+        result["input_tokens_details"] = json!({ "cached_tokens": cached });
+    }
+
+    if let Some(details) = usage
+        .get("completion_tokens_details")
+        .filter(|value| value.is_object())
+    {
+        let mut details = details.clone();
+        if details.get("reasoning_tokens").is_none() {
+            details["reasoning_tokens"] = json!(0);
+        }
+        result["output_tokens_details"] = details;
+    } else {
+        result["output_tokens_details"] = json!({ "reasoning_tokens": 0 });
+    }
+
+    if let Some(cache_read) = usage.get("cache_read_input_tokens") {
+        result["cache_read_input_tokens"] = cache_read.clone();
+    }
+    if let Some(cache_creation) = usage.get("cache_creation_input_tokens") {
+        result["cache_creation_input_tokens"] = cache_creation.clone();
+    }
+
+    result
+}
+
+pub fn response_id_from_chat_id(id: Option<&str>) -> String {
+    let id = id.unwrap_or("ccswitch");
+    if id.starts_with("resp_") {
+        id.to_string()
+    } else {
+        format!("resp_{id}")
+    }
+}
+
+pub fn response_status_from_finish_reason(finish_reason: Option<&str>) -> &'static str {
+    match finish_reason {
+        Some("length") => "incomplete",
+        _ => "completed",
+    }
+}
+
 pub fn split_leading_think_block(text: &str) -> Option<(String, String)> {
     let leading_ws_len = text.len() - text.trim_start().len();
     let after_ws = &text[leading_ws_len..];
@@ -836,6 +928,51 @@ mod tests {
         let no_reasoning =
             response_function_call_item("fc_2", "completed", "call_2", "read", "{}", None);
         assert!(no_reasoning.get("reasoning_content").is_none());
+    }
+
+    #[test]
+    fn maps_chat_usage_to_responses_usage_shape() {
+        let usage = chat_usage_to_responses_usage(Some(&json!({
+            "prompt_tokens": 4,
+            "completion_tokens": 6,
+            "total_tokens": 10,
+            "prompt_tokens_details": { "cached_tokens": 2 },
+            "completion_tokens_details": { "reasoning_tokens": 3 },
+            "cache_read_input_tokens": 5,
+            "cache_creation_input_tokens": 7
+        })));
+
+        assert_eq!(usage["input_tokens"], 4);
+        assert_eq!(usage["output_tokens"], 6);
+        assert_eq!(usage["total_tokens"], 10);
+        assert_eq!(usage["input_tokens_details"]["cached_tokens"], 2);
+        assert_eq!(usage["output_tokens_details"]["reasoning_tokens"], 3);
+        assert_eq!(usage["cache_read_input_tokens"], 5);
+        assert_eq!(usage["cache_creation_input_tokens"], 7);
+
+        let fallback = chat_usage_to_responses_usage(None);
+        assert_eq!(fallback["input_tokens"], 0);
+        assert_eq!(fallback["output_tokens_details"]["reasoning_tokens"], 0);
+    }
+
+    #[test]
+    fn extracts_custom_tool_input_and_maps_response_identity() {
+        assert_eq!(
+            custom_tool_input_from_chat_arguments(r#"{"input":"run tests","extra":true}"#),
+            "run tests"
+        );
+        assert_eq!(
+            custom_tool_input_from_chat_arguments(r#"{"query":"fallback"}"#),
+            r#"{"query":"fallback"}"#
+        );
+        assert_eq!(custom_tool_input_from_chat_arguments(" plain "), " plain ");
+
+        assert_eq!(response_id_from_chat_id(Some("chatcmpl_1")), "resp_chatcmpl_1");
+        assert_eq!(response_id_from_chat_id(Some("resp_1")), "resp_1");
+        assert_eq!(response_id_from_chat_id(None), "resp_ccswitch");
+        assert_eq!(response_status_from_finish_reason(Some("length")), "incomplete");
+        assert_eq!(response_status_from_finish_reason(Some("stop")), "completed");
+        assert_eq!(response_status_from_finish_reason(None), "completed");
     }
 
     #[test]
