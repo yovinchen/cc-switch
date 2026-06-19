@@ -25,9 +25,11 @@ pub mod streaming;
 pub mod streaming_codex_chat;
 pub mod streaming_gemini;
 pub mod streaming_responses;
+#[cfg(test)]
 pub mod transform;
 pub mod transform_codex_chat;
 pub mod transform_gemini;
+#[cfg(test)]
 pub mod transform_responses;
 
 use crate::app_config::AppType;
