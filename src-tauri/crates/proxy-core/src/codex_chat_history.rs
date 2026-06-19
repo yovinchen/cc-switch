@@ -2,10 +2,23 @@ use crate::response_transform::{
     codex_response_item_call_id as response_item_call_id,
     is_empty_json_value as is_empty_value,
 };
+use crate::sse::strip_sse_field;
 use serde_json::Value;
 use std::collections::{HashMap, HashSet, VecDeque};
 
 pub const CODEX_CHAT_HISTORY_MAX_CACHED_RESPONSES: usize = 512;
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum CodexChatHistorySseRecord {
+    OutputItemDone { item: Value },
+    ResponseCompleted { response: Value },
+}
+
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct CodexChatHistorySseInspection {
+    pub response_id: Option<String>,
+    pub record: Option<CodexChatHistorySseRecord>,
+}
 
 #[derive(Debug, Clone, Default)]
 struct CachedResponse {
@@ -288,6 +301,55 @@ impl CodexChatHistoryState {
     }
 }
 
+pub fn inspect_codex_chat_history_sse_block(
+    block: &str,
+) -> Option<CodexChatHistorySseInspection> {
+    if block.trim().is_empty() {
+        return None;
+    }
+
+    let mut data_parts = Vec::new();
+    for line in block.lines() {
+        if let Some(data) = strip_sse_field(line, "data") {
+            data_parts.push(data.to_string());
+        }
+    }
+
+    let data = data_parts.join("\n");
+    if data.trim().is_empty() || data.trim() == "[DONE]" {
+        return None;
+    }
+
+    let Ok(value) = serde_json::from_str::<Value>(&data) else {
+        return None;
+    };
+
+    let response_id = value
+        .pointer("/response/id")
+        .and_then(|value| value.as_str())
+        .filter(|value| !value.is_empty())
+        .map(ToString::to_string);
+
+    let record = match value.get("type").and_then(|value| value.as_str()) {
+        Some("response.output_item.done") => {
+            value
+                .get("item")
+                .cloned()
+                .map(|item| CodexChatHistorySseRecord::OutputItemDone { item })
+        }
+        Some("response.completed") => value
+            .get("response")
+            .cloned()
+            .map(|response| CodexChatHistorySseRecord::ResponseCompleted { response }),
+        _ => None,
+    };
+
+    Some(CodexChatHistorySseInspection {
+        response_id,
+        record,
+    })
+}
+
 impl CachedLookup {
     fn call(&self, call_id: &str) -> Option<&Value> {
         self.previous
@@ -561,6 +623,55 @@ mod tests {
         assert_eq!(request["input"][1]["type"], "tool_search_call");
         assert_eq!(request["input"][2]["type"], "custom_tool_call_output");
         assert_eq!(request["input"][3]["type"], "tool_search_output");
+    }
+
+    #[test]
+    fn inspects_stream_response_id_and_done_item() {
+        let inspection = inspect_codex_chat_history_sse_block(
+            "event: response.output_item.done\n\
+             data: {\"type\":\"response.output_item.done\",\"response\":{\"id\":\"resp_stream\"},\"item\":{\"type\":\"function_call\",\"call_id\":\"call_1\",\"name\":\"read_file\",\"arguments\":\"{}\"}}\n\n",
+        )
+        .unwrap();
+
+        assert_eq!(inspection.response_id.as_deref(), Some("resp_stream"));
+        assert_eq!(
+            inspection.record,
+            Some(CodexChatHistorySseRecord::OutputItemDone {
+                item: json!({
+                    "type": "function_call",
+                    "call_id": "call_1",
+                    "name": "read_file",
+                    "arguments": "{}"
+                })
+            })
+        );
+    }
+
+    #[test]
+    fn inspects_stream_completed_response_and_ignores_done_marker() {
+        let inspection = inspect_codex_chat_history_sse_block(
+            "event: response.completed\n\
+             data: {\"type\":\"response.completed\",\"response\":{\"id\":\"resp_done\",\"output\":[{\"type\":\"function_call\",\"call_id\":\"call_1\",\"name\":\"read_file\",\"arguments\":\"{}\"}]}}\n\n",
+        )
+        .unwrap();
+
+        assert_eq!(inspection.response_id.as_deref(), Some("resp_done"));
+        assert_eq!(
+            inspection.record,
+            Some(CodexChatHistorySseRecord::ResponseCompleted {
+                response: json!({
+                    "id": "resp_done",
+                    "output": [{
+                        "type": "function_call",
+                        "call_id": "call_1",
+                        "name": "read_file",
+                        "arguments": "{}"
+                    }]
+                })
+            })
+        );
+
+        assert!(inspect_codex_chat_history_sse_block("data: [DONE]\n\n").is_none());
     }
 
     #[test]

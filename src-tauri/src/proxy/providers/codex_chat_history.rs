@@ -1,4 +1,7 @@
-use crate::proxy_core::{append_utf8_safe, strip_sse_field, take_sse_block, CodexChatHistoryState};
+use crate::proxy_core::{
+    append_utf8_safe, inspect_codex_chat_history_sse_block, take_sse_block,
+    CodexChatHistorySseRecord, CodexChatHistoryState,
+};
 use bytes::Bytes;
 use futures::{Stream, StreamExt};
 use serde_json::Value;
@@ -69,46 +72,22 @@ async fn inspect_sse_block(
     current_response_id: &mut Option<String>,
     history: &CodexChatHistoryStore,
 ) {
-    if block.trim().is_empty() {
-        return;
-    }
-
-    let mut data_parts = Vec::new();
-    for line in block.lines() {
-        if let Some(data) = strip_sse_field(line, "data") {
-            data_parts.push(data.to_string());
-        }
-    }
-
-    let data = data_parts.join("\n");
-    if data.trim().is_empty() || data.trim() == "[DONE]" {
-        return;
-    }
-
-    let Ok(value) = serde_json::from_str::<Value>(&data) else {
+    let Some(inspection) = inspect_codex_chat_history_sse_block(block) else {
         return;
     };
 
-    if let Some(response_id) = value
-        .pointer("/response/id")
-        .and_then(|value| value.as_str())
-        .filter(|value| !value.is_empty())
-    {
-        *current_response_id = Some(response_id.to_string());
+    if let Some(response_id) = inspection.response_id {
+        *current_response_id = Some(response_id);
     }
 
-    match value.get("type").and_then(|value| value.as_str()) {
-        Some("response.output_item.done") => {
-            if let Some(item) = value.get("item") {
-                history
-                    .record_call_item(current_response_id.as_deref(), item)
-                    .await;
-            }
+    match inspection.record {
+        Some(CodexChatHistorySseRecord::OutputItemDone { item }) => {
+            history
+                .record_call_item(current_response_id.as_deref(), &item)
+                .await;
         }
-        Some("response.completed") => {
-            if let Some(response) = value.get("response") {
-                history.record_response(response).await;
-            }
+        Some(CodexChatHistorySseRecord::ResponseCompleted { response }) => {
+            history.record_response(&response).await;
         }
         _ => {}
     }
