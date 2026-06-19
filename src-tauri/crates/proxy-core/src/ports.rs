@@ -1124,6 +1124,18 @@ impl<T> ChannelListResponse<T> {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct ChannelRecordResponse<T> {
+    pub channel: T,
+}
+
+impl<T> ChannelRecordResponse<T> {
+    pub fn new(channel: T) -> Self {
+        Self { channel }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ChannelModelsResponse<T> {
     pub channel_id: String,
@@ -1289,7 +1301,7 @@ mod tests {
     use super::{
         AppChannelListQuery, AppChannelListResponse, AppChannelResponse, AppChannelRouteResponse,
         AppListResponse, AppModelListQuery, AppSummaryInput, ChannelDeleteResponse,
-        ChannelListQuery, ChannelListResponse, ChannelModelsResponse,
+        ChannelListQuery, ChannelListResponse, ChannelModelsResponse, ChannelRecordResponse,
         ChannelMigrationMaterializeInput, ChannelMigrationMaterializeResponse,
         ChannelMigrationPreviewInput, ChannelMigrationPreviewResponse,
         ChannelRouteCandidate, ChannelRouteRejected, ChannelRouteSource,
@@ -1892,6 +1904,24 @@ mod tests {
 
         assert_eq!(value["channels"][0]["id"], "channel-a");
         assert_eq!(value["channels"][0]["name"], "Primary");
+    }
+
+    #[test]
+    fn channel_record_response_serializes_as_raw_record() {
+        let response = ChannelRecordResponse::new(json!({
+            "id": "channel-a",
+            "name": "Primary"
+        }));
+
+        let value = serde_json::to_value(response).expect("serialize response");
+
+        assert_eq!(
+            value,
+            json!({
+                "id": "channel-a",
+                "name": "Primary"
+            })
+        );
     }
 
     #[test]
