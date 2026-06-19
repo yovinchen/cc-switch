@@ -102,6 +102,34 @@ pub fn find_matching_gemini_shadow_turn(
     })
 }
 
+pub fn merge_gemini_assistant_tool_use_names(
+    content: Option<&Value>,
+    tool_name_by_id: &mut HashMap<String, String>,
+) {
+    let Some(blocks) = content.and_then(|value| value.as_array()) else {
+        return;
+    };
+
+    for block in blocks {
+        if block.get("type").and_then(|value| value.as_str()) != Some("tool_use") {
+            continue;
+        }
+        let id = block
+            .get("id")
+            .and_then(|value| value.as_str())
+            .unwrap_or("");
+        let name = block
+            .get("name")
+            .and_then(|value| value.as_str())
+            .unwrap_or("");
+        if !id.is_empty() && !name.is_empty() {
+            tool_name_by_id
+                .entry(id.to_string())
+                .or_insert_with(|| name.to_string());
+        }
+    }
+}
+
 fn extract_gemini_assistant_tool_use_keys(
     content: Option<&Value>,
 ) -> (HashSet<String>, HashSet<String>) {
@@ -522,5 +550,25 @@ mod tests {
             find_matching_gemini_shadow_turn(Some(&content), &turns),
             Some(0)
         );
+    }
+
+    #[test]
+    fn assistant_tool_use_name_merge_preserves_existing_names() {
+        let content = json!([
+            {"type": "tool_use", "id": "call_existing", "name": "new_name", "input": {}},
+            {"type": "tool_use", "id": "call_new", "name": "lookup", "input": {}},
+            {"type": "tool_use", "id": "", "name": "skip_empty_id", "input": {}},
+            {"type": "text", "text": "ignore"}
+        ]);
+        let mut names = HashMap::from([("call_existing".to_string(), "existing_name".to_string())]);
+
+        merge_gemini_assistant_tool_use_names(Some(&content), &mut names);
+
+        assert_eq!(
+            names.get("call_existing").map(String::as_str),
+            Some("existing_name")
+        );
+        assert_eq!(names.get("call_new").map(String::as_str), Some("lookup"));
+        assert!(!names.contains_key(""));
     }
 }

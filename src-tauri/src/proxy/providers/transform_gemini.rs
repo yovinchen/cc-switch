@@ -15,9 +15,10 @@ use crate::proxy_core::{
     extract_gemini_function_call_meta, find_matching_gemini_shadow_turn,
     gemini_shadow_replay_parts, is_synthesized_gemini_tool_call_id,
     map_gemini_finish_reason_to_anthropic, map_gemini_tool_choice_to_config,
-    merge_gemini_function_call_names_from_parts, merge_gemini_shadow_thought_signatures,
-    merge_gemini_shadow_tool_names, normalize_gemini_tool_result_response,
-    rectify_gemini_tool_call_args, rectify_gemini_tool_call_parts, synthesize_gemini_tool_call_id,
+    merge_gemini_assistant_tool_use_names, merge_gemini_function_call_names_from_parts,
+    merge_gemini_shadow_thought_signatures, merge_gemini_shadow_tool_names,
+    normalize_gemini_tool_result_response, rectify_gemini_tool_call_args,
+    rectify_gemini_tool_call_parts, synthesize_gemini_tool_call_id,
 };
 use serde_json::{Value, json};
 use std::collections::{HashMap, HashSet};
@@ -288,20 +289,7 @@ fn convert_messages_to_contents(
         if message.get("role").and_then(|v| v.as_str()) != Some("assistant") {
             continue;
         }
-        if let Some(blocks) = message.get("content").and_then(|c| c.as_array()) {
-            for block in blocks {
-                if block.get("type").and_then(|v| v.as_str()) != Some("tool_use") {
-                    continue;
-                }
-                let id = block.get("id").and_then(|v| v.as_str()).unwrap_or("");
-                let name = block.get("name").and_then(|v| v.as_str()).unwrap_or("");
-                if !id.is_empty() && !name.is_empty() {
-                    tool_name_by_id
-                        .entry(id.to_string())
-                        .or_insert_with(|| name.to_string());
-                }
-            }
-        }
+        merge_gemini_assistant_tool_use_names(message.get("content"), &mut tool_name_by_id);
     }
 
     let shadow_start_index = total_assistant_messages.saturating_sub(effective_shadow_turns.len());
