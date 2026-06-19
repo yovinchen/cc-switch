@@ -49,18 +49,18 @@ use crate::proxy_core::{
     rebuilt_json_proxy_response, resolve_management_auth_decision,
     should_aggregate_codex_oauth_responses_sse, should_use_claude_transform_streaming,
     strip_endpoint_prefix, transformed_sse_proxy_response,
-    validate_claude_desktop_gateway_bearer_header, validate_management_app_type,
-    validate_management_bearer_header, validate_route_resolve_app_type, AppChannelListQuery,
-    AppChannelListResponse, AppChannelManagementRequest, AppChannelResponse,
-    AppChannelRouteResponse, AppKind, AppListResponse, AppModelCatalogRequest, AppModelListQuery,
-    AppSummaryInput, ChannelDeleteResponse, ChannelHealthResetResponse, ChannelListQuery,
-    ChannelListRequest, ChannelListResponse, ChannelMigrationMaterializeInput,
-    ChannelMigrationMaterializeResponse, ChannelMigrationPreviewInput,
-    ChannelMigrationPreviewResponse, ChannelModelRecord, ChannelModelsResponse, ChannelPathRequest,
-    ChannelRecord, ChannelRecordResponse, ChannelRouteCandidate, ChannelRouteRejected,
-    ClaudeDesktopModelListResponse, ClientModelCatalogResponse, CurrentRouteProviderSummaryInput,
-    CurrentRouteResponse, CurrentRouteTarget, GroupListQuery, GroupListRequest,
-    HealthCheckResponse, InterfaceKind, ManagementAuthDecision, ProviderListResponse, ProxyBody,
+    validate_claude_desktop_gateway_bearer_header, validate_management_bearer_header,
+    validate_route_resolve_app_type, AppChannelListQuery, AppChannelListResponse,
+    AppChannelManagementRequest, AppChannelResponse, AppChannelRouteResponse, AppKind,
+    AppListResponse, AppModelCatalogRequest, AppModelListQuery, AppSummaryInput,
+    ChannelDeleteResponse, ChannelHealthResetResponse, ChannelListQuery, ChannelListRequest,
+    ChannelListResponse, ChannelMigrationMaterializeInput, ChannelMigrationMaterializeResponse,
+    ChannelMigrationPreviewInput, ChannelMigrationPreviewResponse, ChannelModelRecord,
+    ChannelModelsResponse, ChannelPathRequest, ChannelRecord, ChannelRecordResponse,
+    ChannelRouteCandidate, ChannelRouteRejected, ClaudeDesktopModelListResponse,
+    ClientModelCatalogResponse, CurrentRouteProviderSummaryInput, CurrentRouteResponse,
+    CurrentRouteTarget, GroupListQuery, GroupListRequest, HealthCheckResponse, InterfaceKind,
+    ManagementAppPathRequest, ManagementAuthDecision, ProviderListResponse, ProxyBody,
     ProxyChannelModelsReplaceRequest, ProxyChannelPatchRequest, ProxyChannelWriteRequest,
     ProxyEngine, ProxyRequest, ProxyResult, ProxyRuntimeStatus, ProxyServices, ProxyStatusResponse,
     RoutableModelList, RouteGroupListResponse, RouteGroupSourceInput, RouteResolveRequest,
@@ -216,42 +216,47 @@ pub async fn list_proxy_providers(
     State(state): State<ProxyState>,
     Path(app_type): Path<String>,
 ) -> Result<Json<ProviderListResponse>, ProxyError> {
-    validate_management_app_type(&app_type).map_err(management_api_error_to_proxy_error)?;
-    let app = app_type
+    let request = ManagementAppPathRequest::from_path(app_type)
+        .map_err(management_api_error_to_proxy_error)?;
+    let app = request
+        .app_type
         .parse::<AppType>()
         .map_err(|e| ProxyError::InvalidRequest(e.to_string()))?;
 
     let providers = state
         .db
-        .get_all_providers(&app_type)
+        .get_all_providers(&request.app_type)
         .map_err(|e| ProxyError::DatabaseError(e.to_string()))?;
     let current_provider = state
         .db
-        .get_current_provider(&app_type)
+        .get_current_provider(&request.app_type)
         .map_err(|e| ProxyError::DatabaseError(e.to_string()))?;
     let failover_queue = state
         .db
-        .get_failover_queue(&app_type)
+        .get_failover_queue(&request.app_type)
         .map_err(|e| ProxyError::DatabaseError(e.to_string()))?;
     let failover_ids: Vec<String> = failover_queue
         .into_iter()
         .map(|item| item.provider_id)
         .collect();
 
-    let route_candidate_ids: Vec<String> =
-        match state.provider_router.select_providers(&app_type).await {
-            Ok(selected) => selected.into_iter().map(|provider| provider.id).collect(),
-            Err(crate::error::AppError::NoProvidersConfigured)
-            | Err(crate::error::AppError::AllProvidersCircuitOpen) => Vec::new(),
-            Err(e) => return Err(ProxyError::DatabaseError(e.to_string())),
-        };
+    let route_candidate_ids: Vec<String> = match state
+        .provider_router
+        .select_providers(&request.app_type)
+        .await
+    {
+        Ok(selected) => selected.into_iter().map(|provider| provider.id).collect(),
+        Err(crate::error::AppError::NoProvidersConfigured)
+        | Err(crate::error::AppError::AllProvidersCircuitOpen) => Vec::new(),
+        Err(e) => return Err(ProxyError::DatabaseError(e.to_string())),
+    };
 
     let provider_specs = providers
         .into_values()
         .map(|provider| provider.to_proxy_core_provider_spec(&app));
 
     Ok(Json(ProviderListResponse::from_provider_specs(
-        app_type,
+        request.app_type,
         provider_specs,
         current_provider.as_deref(),
         &failover_ids,
@@ -515,25 +520,26 @@ pub async fn get_current_proxy_route(
     State(state): State<ProxyState>,
     Path(app_type): Path<String>,
 ) -> Result<Json<CurrentRouteResponse<CurrentRouteTarget>>, ProxyError> {
-    validate_management_app_type(&app_type).map_err(management_api_error_to_proxy_error)?;
-    let app = app_type
+    let request = ManagementAppPathRequest::from_path(app_type)
+        .map_err(management_api_error_to_proxy_error)?;
+    let app = request
+        .app_type
         .parse::<AppType>()
         .map_err(|e| ProxyError::InvalidRequest(e.to_string()))?;
-    let app_type = app_type.trim().to_string();
 
     let active_target = {
         let current_providers = state.current_providers.read().await;
-        current_providers.get(&app_type).cloned()
+        current_providers.get(&request.app_type).cloned()
     };
 
     let configured_provider = match state
         .db
-        .get_current_provider(&app_type)
+        .get_current_provider(&request.app_type)
         .map_err(|e| ProxyError::DatabaseError(e.to_string()))?
     {
         Some(provider_id) => state
             .db
-            .get_provider_by_id(&provider_id, &app_type)
+            .get_provider_by_id(&provider_id, &request.app_type)
             .map_err(|e| ProxyError::DatabaseError(e.to_string()))?
             .map(|provider| {
                 CurrentRouteProviderSummaryInput::from_provider_spec(
@@ -544,7 +550,7 @@ pub async fn get_current_proxy_route(
     };
 
     Ok(Json(CurrentRouteResponse::from_inputs(
-        app_type,
+        request.app_type,
         active_target,
         configured_provider,
     )))
@@ -555,11 +561,12 @@ pub async fn preview_proxy_channel_migration(
     State(state): State<ProxyState>,
     Path(app_type): Path<String>,
 ) -> Result<Json<ChannelMigrationPreviewResponse<ChannelRecord>>, ProxyError> {
-    validate_management_app_type(&app_type).map_err(management_api_error_to_proxy_error)?;
+    let request = ManagementAppPathRequest::from_path(app_type)
+        .map_err(management_api_error_to_proxy_error)?;
 
     let preview = state
         .db
-        .preview_legacy_proxy_channel_migration(&app_type)
+        .preview_legacy_proxy_channel_migration(&request.app_type)
         .map_err(|e| ProxyError::DatabaseError(e.to_string()))?;
 
     Ok(Json(ChannelMigrationPreviewResponse::from_input(
@@ -577,11 +584,12 @@ pub async fn materialize_proxy_channel_migration(
     State(state): State<ProxyState>,
     Path(app_type): Path<String>,
 ) -> Result<Json<ChannelMigrationMaterializeResponse>, ProxyError> {
-    validate_management_app_type(&app_type).map_err(management_api_error_to_proxy_error)?;
+    let request = ManagementAppPathRequest::from_path(app_type)
+        .map_err(management_api_error_to_proxy_error)?;
 
     let result = state
         .db
-        .materialize_legacy_proxy_channels(&app_type)
+        .materialize_legacy_proxy_channels(&request.app_type)
         .map_err(|e| ProxyError::DatabaseError(e.to_string()))?;
 
     Ok(Json(ChannelMigrationMaterializeResponse::from_input(

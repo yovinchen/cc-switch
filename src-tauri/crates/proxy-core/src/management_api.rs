@@ -34,6 +34,20 @@ pub fn normalize_channel_id_path(channel_id: impl AsRef<str>) -> ProxyCoreResult
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ManagementAppPathRequest {
+    pub app_type: String,
+}
+
+impl ManagementAppPathRequest {
+    pub fn from_path(app_type: impl AsRef<str>) -> ProxyCoreResult<Self> {
+        let app_type = app_type.as_ref().trim().to_string();
+        validate_management_app_type(&app_type)?;
+
+        Ok(Self { app_type })
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ChannelPathRequest {
     pub channel_id: String,
 }
@@ -143,9 +157,9 @@ fn normalize_optional_management_app_type(app_type: Option<String>) -> ProxyCore
 #[cfg(test)]
 mod tests {
     use super::{
-        AppChannelManagementRequest, ChannelListRequest, ChannelPathRequest, GroupListRequest,
-        normalize_channel_id_path, validate_management_app_type, validate_route_resolve_app_type,
-        AppModelCatalogRequest,
+        AppChannelManagementRequest, AppModelCatalogRequest, ChannelListRequest,
+        ChannelPathRequest, GroupListRequest, ManagementAppPathRequest, normalize_channel_id_path,
+        validate_management_app_type, validate_route_resolve_app_type,
     };
     use crate::{
         AppChannelListQuery, AppKind, AppModelListQuery, ChannelListQuery, GroupListQuery,
@@ -184,6 +198,13 @@ mod tests {
             error.to_string(),
             "invalid proxy request: channel_id cannot be empty"
         );
+    }
+
+    #[test]
+    fn management_app_path_request_normalizes_path_app() {
+        let request = ManagementAppPathRequest::from_path(" claude ").expect("request");
+
+        assert_eq!(request.app_type, "claude");
     }
 
     #[test]
