@@ -5,6 +5,12 @@ use std::collections::HashSet;
 
 pub const DEFAULT_CODEX_MODEL_CONTEXT_WINDOW: u64 = 128_000;
 pub const MODEL_FETCH_ERROR_BODY_MAX_CHARS: usize = 512;
+pub const CODEX_OAUTH_MODELS_URL: &str = "https://chatgpt.com/backend-api/codex/models";
+pub const CODEX_OAUTH_MODELS_CLIENT_VERSION_QUERY: &str = "client_version";
+pub const CODEX_OAUTH_MODELS_AUTHORIZATION_HEADER: &str = "Authorization";
+pub const CODEX_OAUTH_MODELS_ORIGINATOR_HEADER: &str = "originator";
+pub const CODEX_OAUTH_MODELS_ORIGINATOR: &str = "cc-switch";
+pub const CODEX_OAUTH_MODELS_ACCOUNT_ID_HEADER: &str = "chatgpt-account-id";
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
@@ -29,6 +35,15 @@ struct CodexCatalogModelSpec {
     model: String,
     display_name: String,
     context_window: u64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CodexOAuthModelsRequest<'a> {
+    pub url: &'static str,
+    pub client_version_query: (&'static str, &'a str),
+    pub authorization_header: (&'static str, String),
+    pub originator_header: (&'static str, &'static str),
+    pub account_id_header: (&'static str, &'a str),
 }
 
 /// Known Anthropic-compatible subpath suffixes. Keep longest suffixes first so
@@ -142,6 +157,26 @@ pub fn truncate_codex_oauth_models_error_body(body: impl AsRef<str>) -> String {
         let mut truncated: String = body.chars().take(MODEL_FETCH_ERROR_BODY_MAX_CHARS).collect();
         truncated.push_str("...");
         truncated
+    }
+}
+
+pub fn build_codex_oauth_models_request<'a>(
+    token: &'a str,
+    account_id: &'a str,
+    client_version: &'a str,
+) -> CodexOAuthModelsRequest<'a> {
+    CodexOAuthModelsRequest {
+        url: CODEX_OAUTH_MODELS_URL,
+        client_version_query: (CODEX_OAUTH_MODELS_CLIENT_VERSION_QUERY, client_version),
+        authorization_header: (
+            CODEX_OAUTH_MODELS_AUTHORIZATION_HEADER,
+            format!("Bearer {token}"),
+        ),
+        originator_header: (
+            CODEX_OAUTH_MODELS_ORIGINATOR_HEADER,
+            CODEX_OAUTH_MODELS_ORIGINATOR,
+        ),
+        account_id_header: (CODEX_OAUTH_MODELS_ACCOUNT_ID_HEADER, account_id),
     }
 }
 
@@ -789,6 +824,35 @@ mod tests {
 
         assert_eq!(truncated.len(), MODEL_FETCH_ERROR_BODY_MAX_CHARS + 3);
         assert!(truncated.ends_with("..."));
+    }
+
+    #[test]
+    fn build_codex_oauth_models_request_uses_codex_backend_contract() {
+        let request = build_codex_oauth_models_request("token-123", "account-456", "9.8.7");
+
+        assert_eq!(request.url, CODEX_OAUTH_MODELS_URL);
+        assert_eq!(
+            request.client_version_query,
+            (CODEX_OAUTH_MODELS_CLIENT_VERSION_QUERY, "9.8.7")
+        );
+        assert_eq!(
+            request.authorization_header,
+            (
+                CODEX_OAUTH_MODELS_AUTHORIZATION_HEADER,
+                "Bearer token-123".to_string()
+            )
+        );
+        assert_eq!(
+            request.originator_header,
+            (
+                CODEX_OAUTH_MODELS_ORIGINATOR_HEADER,
+                CODEX_OAUTH_MODELS_ORIGINATOR
+            )
+        );
+        assert_eq!(
+            request.account_id_header,
+            (CODEX_OAUTH_MODELS_ACCOUNT_ID_HEADER, "account-456")
+        );
     }
 
     #[test]
