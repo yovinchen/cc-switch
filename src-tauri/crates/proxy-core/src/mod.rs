@@ -45,6 +45,7 @@ pub mod thinking_budget_rectifier;
 pub mod thinking_rectifier;
 pub mod thinking_optimizer;
 pub mod usage;
+pub mod usage_config;
 
 pub use cache_injector::*;
 pub use codex_error::*;
@@ -88,3 +89,4 @@ pub use thinking_budget_rectifier::*;
 pub use thinking_rectifier::*;
 pub use thinking_optimizer::*;
 pub use usage::*;
+pub use usage_config::*;

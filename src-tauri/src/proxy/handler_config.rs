@@ -3,82 +3,11 @@
 //! 定义各 API 处理器的配置结构和使用量解析器
 
 use crate::app_config::AppType;
-use crate::proxy::usage::parser::TokenUsage;
-use crate::proxy_core::{
-    claude_stream_model_extractor, claude_stream_usage_event_filter,
-    codex_auto_stream_model_extractor, codex_stream_usage_event_filter,
-    gemini_stream_model_extractor, gemini_stream_usage_event_filter, openai_stream_model_extractor,
-    openai_stream_usage_event_filter,
-};
-use serde_json::Value;
-
-/// 使用量解析器类型别名
-pub type StreamUsageParser = fn(&[Value]) -> Option<TokenUsage>;
-pub type ResponseUsageParser = fn(&Value) -> Option<TokenUsage>;
-
-/// 模型提取器类型别名
-/// 参数: (流式事件列表, 请求中的模型名称) -> 最终使用的模型名称
-pub type StreamModelExtractor = fn(&[Value], &str) -> String;
-
-/// 流式 usage 事件预过滤器类型别名。
-///
-/// 参数是 SSE `data:` 原始字符串。返回 false 时跳过 JSON parse，避免在
-/// token/chunk 高频路径上解析与 usage 无关的事件。
-pub type StreamUsageEventFilter = fn(&str) -> bool;
-
-/// 各 API 的使用量解析配置
-#[derive(Clone, Copy)]
-pub struct UsageParserConfig {
-    /// 流式响应解析器
-    pub stream_parser: StreamUsageParser,
-    /// 非流式响应解析器
-    pub response_parser: ResponseUsageParser,
-    /// 流式响应中的模型提取器
-    pub model_extractor: StreamModelExtractor,
-    /// 流式 usage 事件预过滤器
-    pub stream_event_filter: Option<StreamUsageEventFilter>,
-    /// 应用类型字符串（用于日志记录）
-    pub app_type_str: &'static str,
-}
-
-// ============================================================================
-// 预定义配置
-// ============================================================================
-
-/// Claude API 解析配置
-pub const CLAUDE_PARSER_CONFIG: UsageParserConfig = UsageParserConfig {
-    stream_parser: TokenUsage::from_claude_stream_events,
-    response_parser: TokenUsage::from_claude_response,
-    model_extractor: claude_stream_model_extractor,
-    stream_event_filter: Some(claude_stream_usage_event_filter),
-    app_type_str: "claude",
-};
-
-/// OpenAI Chat Completions API 解析配置（用于 Codex /v1/chat/completions）
-pub const OPENAI_PARSER_CONFIG: UsageParserConfig = UsageParserConfig {
-    stream_parser: TokenUsage::from_openai_stream_events,
-    response_parser: TokenUsage::from_openai_response,
-    model_extractor: openai_stream_model_extractor,
-    stream_event_filter: Some(openai_stream_usage_event_filter),
-    app_type_str: "codex",
-};
-
-/// Codex 智能解析配置（自动检测 OpenAI 或 Codex 格式）
-pub const CODEX_PARSER_CONFIG: UsageParserConfig = UsageParserConfig {
-    stream_parser: TokenUsage::from_codex_stream_events_auto,
-    response_parser: TokenUsage::from_codex_response_auto,
-    model_extractor: codex_auto_stream_model_extractor,
-    stream_event_filter: Some(codex_stream_usage_event_filter),
-    app_type_str: "codex",
-};
-
-/// Gemini API 解析配置
-pub const GEMINI_PARSER_CONFIG: UsageParserConfig = UsageParserConfig {
-    stream_parser: TokenUsage::from_gemini_stream_chunks,
-    response_parser: TokenUsage::from_gemini_response,
-    model_extractor: gemini_stream_model_extractor,
-    stream_event_filter: Some(gemini_stream_usage_event_filter),
-    app_type_str: "gemini",
+#[allow(unused_imports)]
+pub use crate::proxy_core::{
+    ResponseUsageParser, StreamModelExtractor, StreamUsageEventFilter, StreamUsageParser,
+    UsageParserConfig, CLAUDE_PARSER_CONFIG, CODEX_PARSER_CONFIG, GEMINI_PARSER_CONFIG,
+    OPENAI_PARSER_CONFIG,
 };
 
 // ============================================================================
