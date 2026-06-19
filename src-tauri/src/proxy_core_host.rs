@@ -16,7 +16,7 @@ use crate::proxy_core::{
     ChannelAttemptPlan, ChannelAttemptResult, ChannelQuery, ChannelSource, ChannelSpec,
     ChannelStatus, CopilotOptimizerConfigSpec, CostCalculator, CurrentRouteTarget, ForwardPipeline,
     GeminiShadowStore, ModelCatalog, OptimizerConfigSpec, ProviderSource, ProviderSpec,
-    ProxyAppConfig, ProxyBody, ProxyConfigSource, ProxyCoreError, ProxyCoreEvent,
+    ProxyAppConfig, ProxyConfigSource, ProxyCoreError, ProxyCoreEvent,
     ProxyCoreEventType, ProxyCoreResponse, ProxyCoreResult, ProxyEventSink, ProxyGlobalConfig,
     ProxyRequest, ProxyResponseBody, ProxyResult, ProxyRuntimeConfig, ProxyRuntimeStatus,
     ProxyServices, RectifierConfigSpec, RoutePlan, RoutePolicy, RoutePolicySource, RouteRequest,
@@ -683,7 +683,7 @@ impl CcSwitchProxyRuntime {
             ..
         } = request;
         let app_type = parse_app_type(&app)?;
-        let body = proxy_body_to_json(body)?;
+        let body = body.into_json()?;
         let app_config = self
             .db
             .get_proxy_config_for_app(app_type.as_str())
@@ -787,15 +787,6 @@ fn host_providers_for_plan(
         ));
     }
     Ok(matching)
-}
-
-fn proxy_body_to_json(body: ProxyBody) -> ProxyCoreResult<Value> {
-    match body {
-        ProxyBody::Json(value) => Ok(value),
-        ProxyBody::Empty => Ok(json!({})),
-        ProxyBody::Bytes(bytes) => serde_json::from_slice(&bytes)
-            .map_err(|error| ProxyCoreError::InvalidRequest(format!("invalid JSON body: {error}"))),
-    }
 }
 
 fn forward_result_to_proxy_result(

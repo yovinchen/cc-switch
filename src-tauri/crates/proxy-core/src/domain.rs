@@ -2,8 +2,10 @@ use bytes::Bytes;
 use futures::stream::Stream;
 use http::{HeaderMap, Method, StatusCode};
 use serde::{Deserialize, Serialize};
-use serde_json::Value;
+use serde_json::{json, Value};
 use std::pin::Pin;
+
+use super::error::{ProxyCoreError, ProxyCoreResult};
 
 pub const DEFAULT_ROUTE_GROUP: &str = "default";
 pub const CODEX_OAUTH_CLAUDE_BASE_URL: &str = "https://chatgpt.com/backend-api/codex";
@@ -687,6 +689,18 @@ impl Default for ProxyBody {
     }
 }
 
+impl ProxyBody {
+    pub fn into_json(self) -> ProxyCoreResult<Value> {
+        match self {
+            Self::Json(value) => Ok(value),
+            Self::Empty => Ok(json!({})),
+            Self::Bytes(bytes) => serde_json::from_slice(&bytes).map_err(|error| {
+                ProxyCoreError::InvalidRequest(format!("invalid JSON body: {error}"))
+            }),
+        }
+    }
+}
+
 pub type ProxyByteStream =
     Pin<Box<dyn Stream<Item = Result<Bytes, std::io::Error>> + Send + 'static>>;
 
@@ -846,6 +860,26 @@ mod tests {
             }
             _ => panic!("expected stream body"),
         }
+    }
+
+    #[test]
+    fn proxy_body_into_json_preserves_core_body_contract() {
+        assert_eq!(ProxyBody::Empty.into_json().unwrap(), json!({}));
+        assert_eq!(
+            ProxyBody::Json(json!({"ok": true})).into_json().unwrap(),
+            json!({"ok": true})
+        );
+        assert_eq!(
+            ProxyBody::Bytes(Bytes::from_static(br#"{"model":"x"}"#))
+                .into_json()
+                .unwrap(),
+            json!({"model": "x"})
+        );
+
+        assert!(matches!(
+            ProxyBody::Bytes(Bytes::from_static(b"{bad-json")).into_json(),
+            Err(ProxyCoreError::InvalidRequest(message)) if message.contains("invalid JSON body")
+        ));
     }
 
     #[test]
