@@ -20,8 +20,6 @@ pub mod codex_oauth_auth;
 pub mod copilot_auth;
 mod gemini;
 pub mod models;
-#[cfg(test)]
-pub mod transform;
 pub mod transform_gemini;
 #[cfg(test)]
 pub mod transform_responses;

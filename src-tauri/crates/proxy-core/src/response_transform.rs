@@ -4847,6 +4847,38 @@ mod tests {
     }
 
     #[test]
+    fn converts_anthropic_chat_request_strips_billing_header_and_cache_control() {
+        let input = json!({
+            "model": "glm-5.1",
+            "max_tokens": 1024,
+            "system": [
+                {"type": "text", "text": "x-anthropic-billing-header: cch=a7754;\n\nStable prompt", "cache_control": {"type": "ephemeral"}}
+            ],
+            "messages": [{
+                "role": "user",
+                "content": [
+                    {"type": "text", "text": "Hello", "cache_control": {"type": "ephemeral", "ttl": "5m"}}
+                ]
+            }],
+            "tools": [{
+                "name": "search",
+                "description": "Search the web",
+                "input_schema": {"type": "object"},
+                "cache_control": {"type": "ephemeral"}
+            }]
+        });
+
+        let result = anthropic_to_openai_chat_request(&input, false);
+
+        assert_eq!(result["messages"][0]["content"], "Stable prompt");
+        assert!(result["messages"][0].get("cache_control").is_none());
+        assert_eq!(result["messages"][1]["content"], "Hello");
+        assert!(result["messages"][1].get("cache_control").is_none());
+        assert!(result["tools"][0].get("cache_control").is_none());
+        assert!(result.get("prompt_cache_key").is_none());
+    }
+
+    #[test]
     fn converts_anthropic_tool_use_and_result_to_openai_chat_messages() {
         let input = json!({
             "model": "gpt-4o",
@@ -4901,6 +4933,63 @@ mod tests {
 
         let generic = anthropic_to_openai_chat_request(&input, false);
         assert!(generic["messages"][0].get("reasoning_content").is_none());
+    }
+
+    #[test]
+    fn converts_anthropic_tool_use_reasoning_placeholders_when_requested() {
+        let missing_reasoning = json!({
+            "model": "kimi-k2.6",
+            "messages": [{
+                "role": "assistant",
+                "content": [
+                    {"type": "tool_use", "id": "call_1", "name": "Read", "input": {}}
+                ]
+            }]
+        });
+        let redacted_reasoning = json!({
+            "model": "mimo-v2.5-pro",
+            "messages": [{
+                "role": "assistant",
+                "content": [
+                    {"type": "redacted_thinking", "data": "opaque"},
+                    {"type": "tool_use", "id": "call_2", "name": "Edit", "input": {}}
+                ]
+            }]
+        });
+
+        let missing = anthropic_to_openai_chat_request(&missing_reasoning, true);
+        let redacted = anthropic_to_openai_chat_request(&redacted_reasoning, true);
+
+        assert_eq!(missing["messages"][0]["reasoning_content"], "tool call");
+        assert_eq!(
+            redacted["messages"][0]["reasoning_content"],
+            ANTHROPIC_REDACTED_THINKING_PLACEHOLDER
+        );
+    }
+
+    #[test]
+    fn converts_anthropic_chat_request_maps_reasoning_effort_and_tool_choice() {
+        let input = json!({
+            "model": "gpt-5.4",
+            "max_tokens": 1024,
+            "output_config": {"effort": "max"},
+            "messages": [{"role": "user", "content": "Search"}],
+            "tools": [{
+                "name": "search",
+                "description": "Search the web",
+                "input_schema": {"type": "object", "properties": {}}
+            }],
+            "tool_choice": {"type": "tool", "name": "search"}
+        });
+
+        let result = anthropic_to_openai_chat_request(&input, false);
+
+        assert_eq!(result["max_tokens"], 1024);
+        assert_eq!(result["reasoning_effort"], "xhigh");
+        assert_eq!(
+            result["tool_choice"],
+            json!({"type": "function", "function": {"name": "search"}})
+        );
     }
 
     #[test]
@@ -6037,6 +6126,43 @@ mod tests {
         assert_eq!(result["stop_reason"], "end_turn");
         assert_eq!(result["usage"]["input_tokens"], 10);
         assert_eq!(result["usage"]["output_tokens"], 20);
+    }
+
+    #[test]
+    fn converts_openai_chat_response_preserves_id_for_usage_dedup() {
+        let input = json!({
+            "id": "chatcmpl-claude-compatible",
+            "model": "claude-sonnet-4-5",
+            "choices": [{
+                "message": {"role": "assistant", "content": "Hello"},
+                "finish_reason": "stop"
+            }],
+            "usage": {
+                "prompt_tokens": 100,
+                "completion_tokens": 50,
+                "prompt_tokens_details": {"cached_tokens": 80}
+            }
+        });
+
+        let result = openai_chat_to_anthropic_message(&input).unwrap();
+        let usage = crate::TokenUsage::from_claude_response(&result)
+            .expect("converted Anthropic response should parse usage");
+
+        assert_eq!(result["id"], "chatcmpl-claude-compatible");
+        assert_eq!(result["usage"]["input_tokens"], 20);
+        assert_eq!(result["usage"]["cache_read_input_tokens"], 80);
+        assert_eq!(
+            usage.message_id.as_deref(),
+            Some("chatcmpl-claude-compatible")
+        );
+        assert_eq!(
+            format!(
+                "{}{}",
+                crate::SESSION_REQUEST_ID_PREFIX,
+                usage.message_id.as_deref().unwrap()
+            ),
+            "session:chatcmpl-claude-compatible"
+        );
     }
 
     #[test]
