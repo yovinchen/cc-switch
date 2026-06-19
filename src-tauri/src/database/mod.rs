@@ -46,7 +46,7 @@ pub use dao::FailoverQueueItem;
 use crate::config::get_app_config_dir;
 use crate::error::AppError;
 use rusqlite::{hooks::Action, Connection};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use std::sync::Mutex;
 
 // DAO 方法通过 impl Database 提供，无需额外导出
@@ -59,6 +59,17 @@ pub(crate) const SCHEMA_VERSION: i32 = 12;
 pub(crate) fn to_json_string<T: Serialize>(value: &T) -> Result<String, AppError> {
     serde_json::to_string(value)
         .map_err(|e| AppError::Config(format!("JSON serialization failed: {e}")))
+}
+
+/// Live 配置备份记录
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LiveBackup {
+    /// 应用类型 (claude/codex/gemini)
+    pub app_type: String,
+    /// 原始配置 JSON
+    pub original_config: String,
+    /// 备份时间
+    pub backed_up_at: String,
 }
 
 /// 安全地获取 Mutex 锁，避免 unwrap panic

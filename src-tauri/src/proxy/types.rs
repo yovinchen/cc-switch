@@ -37,14 +37,3 @@ pub struct ProxyStatus {
     #[serde(default)]
     pub active_targets: Vec<CurrentRouteTarget>,
 }
-
-/// Live 配置备份记录
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct LiveBackup {
-    /// 应用类型 (claude/codex/gemini)
-    pub app_type: String,
-    /// 原始配置 JSON
-    pub original_config: String,
-    /// 备份时间
-    pub backed_up_at: String,
-}

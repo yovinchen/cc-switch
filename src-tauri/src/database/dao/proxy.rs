@@ -5,11 +5,10 @@
 use std::str::FromStr;
 
 use crate::error::AppError;
-use crate::proxy::types::*;
 use crate::proxy_core::{AppProxyConfig, GlobalProxyConfig, ProviderHealth, ProxyConfig};
 use rust_decimal::Decimal;
 
-use super::super::{lock_conn, Database};
+use super::super::{Database, LiveBackup, lock_conn};
 
 pub(crate) const PRICING_SOURCE_RESPONSE: &str = "response";
 pub(crate) const PRICING_SOURCE_REQUEST: &str = "request";
