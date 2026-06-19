@@ -2471,32 +2471,10 @@ fn rewrite_claude_transform_endpoint(
     is_copilot: bool,
     body: &Value,
 ) -> (String, Option<String>) {
-    let (gemini_model, gemini_stream) = if api_format == "gemini_native" {
-        let model = body
-            .get("model")
-            .and_then(|value| value.as_str())
-            .unwrap_or("unknown");
-        // Accept both bare ids (`gemini-2.5-pro`) and the resource-name
-        // form (`models/gemini-2.5-pro`) that Gemini SDKs emit. See
-        // `normalize_gemini_model_id` for rationale.
-        let model = crate::proxy_core::normalize_gemini_model_id(model);
-        let is_stream = body
-            .get("stream")
-            .and_then(|value| value.as_bool())
-            .unwrap_or(false);
-        (Some(model), is_stream)
-    } else {
-        (None, false)
-    };
-
     crate::proxy_core::rewrite_claude_transform_endpoint(
-        crate::proxy_core::ClaudeTransformEndpointRewriteInput {
-            endpoint,
-            api_format,
-            is_copilot,
-            gemini_model,
-            gemini_stream,
-        },
+        crate::proxy_core::claude_transform_endpoint_rewrite_input_from_body(
+            endpoint, api_format, is_copilot, body,
+        ),
     )
     .into_parts()
 }

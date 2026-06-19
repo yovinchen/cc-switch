@@ -1,4 +1,4 @@
-use crate::AppKind;
+use crate::{gemini_url::normalize_gemini_model_id, AppKind};
 use serde_json::Value;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -20,6 +20,36 @@ pub struct ClaudeTransformEndpointRewriteInput<'a> {
     pub is_copilot: bool,
     pub gemini_model: Option<&'a str>,
     pub gemini_stream: bool,
+}
+
+pub fn claude_transform_endpoint_rewrite_input_from_body<'a>(
+    endpoint: &'a str,
+    api_format: &'a str,
+    is_copilot: bool,
+    body: &'a Value,
+) -> ClaudeTransformEndpointRewriteInput<'a> {
+    let (gemini_model, gemini_stream) = if api_format == "gemini_native" {
+        let model = body
+            .get("model")
+            .and_then(Value::as_str)
+            .unwrap_or("unknown");
+        let model = normalize_gemini_model_id(model);
+        let is_stream = body
+            .get("stream")
+            .and_then(Value::as_bool)
+            .unwrap_or(false);
+        (Some(model), is_stream)
+    } else {
+        (None, false)
+    };
+
+    ClaudeTransformEndpointRewriteInput {
+        endpoint,
+        api_format,
+        is_copilot,
+        gemini_model,
+        gemini_stream,
+    }
 }
 
 pub fn split_endpoint_and_query(endpoint: &str) -> (&str, Option<&str>) {
@@ -330,7 +360,7 @@ mod tests {
         resolve_codex_provider_uses_chat_completions,
         should_convert_codex_responses_endpoint_to_chat, should_resolve_copilot_dynamic_endpoint,
         split_endpoint_and_query, strip_beta_query, strip_endpoint_prefix, AppKind,
-        ClaudeTransformEndpointRewriteInput,
+        ClaudeTransformEndpointRewriteInput, claude_transform_endpoint_rewrite_input_from_body,
     };
     use serde_json::json;
 
@@ -610,6 +640,24 @@ mod tests {
             "/v1beta/models/gemini-2.5-flash:streamGenerateContent?alt=sse"
         );
         assert_eq!(stream.passthrough_query.as_deref(), Some("alt=sse"));
+    }
+
+    #[test]
+    fn builds_claude_transform_rewrite_input_from_gemini_body() {
+        let body = json!({ "model": "models/gemini-2.5-flash", "stream": true });
+        let input = claude_transform_endpoint_rewrite_input_from_body(
+            "/v1/messages?beta=true",
+            "gemini_native",
+            false,
+            &body,
+        );
+        let rewrite = rewrite_claude_transform_endpoint(input);
+
+        assert_eq!(
+            rewrite.endpoint,
+            "/v1beta/models/gemini-2.5-flash:streamGenerateContent?alt=sse"
+        );
+        assert_eq!(rewrite.passthrough_query.as_deref(), Some("alt=sse"));
     }
 
     #[test]
