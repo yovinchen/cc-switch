@@ -4,7 +4,6 @@
 //! `RectifierConfig` 投影成 core 的中立配置。
 
 use super::types::RectifierConfig;
-use serde_json::Value;
 
 fn budget_rectifier_config(
     config: &RectifierConfig,
@@ -25,14 +24,9 @@ pub fn should_rectify_thinking_budget(
     )
 }
 
-pub fn rectify_thinking_budget(body: &mut Value) -> crate::proxy_core::BudgetRectifyResult {
-    crate::proxy_core::rectify_thinking_budget(body)
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
-    use serde_json::json;
 
     fn config(enabled: bool, request_thinking_budget: bool) -> RectifierConfig {
         RectifierConfig {
@@ -57,23 +51,5 @@ mod tests {
             message,
             &config(true, false)
         ));
-    }
-
-    #[test]
-    fn wrapper_rectifies_request_body() {
-        let mut body = json!({
-            "model": "claude-test",
-            "thinking": { "type": "enabled", "budget_tokens": 512 },
-            "max_tokens": 1024
-        });
-
-        let result = rectify_thinking_budget(&mut body);
-
-        assert!(result.applied);
-        assert_eq!(result.before.thinking_budget_tokens, Some(512));
-        assert_eq!(result.after.thinking_budget_tokens, Some(32000));
-        assert_eq!(result.after.max_tokens, Some(64000));
-        assert_eq!(body["thinking"]["budget_tokens"], 32000);
-        assert_eq!(body["max_tokens"], 64000);
     }
 }
