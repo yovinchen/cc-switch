@@ -6,21 +6,16 @@
 
 use crate::proxy::error::ProxyError;
 use crate::proxy_core::{
-    AnthropicToolSchemaHints, GeminiAssistantTurn, GeminiShadowStore,
-    anthropic_message_content_to_gemini_parts, build_anthropic_usage_from_gemini,
-    build_gemini_function_declaration, build_gemini_generation_config,
-    build_gemini_shadow_thought_signature_map, build_gemini_shadow_tool_name_map,
-    build_gemini_system_instruction, ensure_gemini_function_call_ids,
+    AnthropicToolSchemaHints, GeminiShadowStore, anthropic_messages_to_gemini_contents,
+    build_anthropic_usage_from_gemini, build_gemini_function_declaration,
+    build_gemini_generation_config, build_gemini_system_instruction,
+    ensure_gemini_function_call_ids,
     extract_anthropic_tool_schema_hints as core_extract_anthropic_tool_schema_hints,
-    extract_gemini_function_call_meta, find_matching_gemini_shadow_turn,
-    gemini_shadow_replay_parts, map_gemini_finish_reason_to_anthropic,
-    map_gemini_tool_choice_to_config, merge_gemini_assistant_tool_use_names,
-    merge_gemini_function_call_names_from_parts, merge_gemini_shadow_thought_signatures,
-    merge_gemini_shadow_tool_names, rectify_gemini_tool_call_args, rectify_gemini_tool_call_parts,
-    synthesize_gemini_tool_call_id,
+    extract_gemini_function_call_meta, map_gemini_finish_reason_to_anthropic,
+    map_gemini_tool_choice_to_config, rectify_gemini_tool_call_args,
+    rectify_gemini_tool_call_parts, synthesize_gemini_tool_call_id,
 };
 use serde_json::{Value, json};
-use std::collections::HashSet;
 
 /// Generate a unique tool-call id suffix for the core Gemini synthesized-id
 /// contract. The host owns randomness; proxy-core owns the visible id shape.
@@ -63,7 +58,10 @@ pub fn anthropic_to_gemini_with_shadow(
     }
 
     if let Some(messages) = messages {
-        result["contents"] = json!(convert_messages_to_contents(messages, &shadow_turns)?);
+        result["contents"] = json!(
+            anthropic_messages_to_gemini_contents(messages, &shadow_turns)
+                .map_err(ProxyError::TransformError)?
+        );
     }
 
     if let Some(generation_config) = build_gemini_generation_config(&body) {
@@ -254,114 +252,6 @@ pub fn gemini_to_anthropic_with_shadow_and_hints(
     }
 
     Ok(anthropic_response)
-}
-
-fn convert_messages_to_contents(
-    messages: &[Value],
-    shadow_turns: &[GeminiAssistantTurn],
-) -> Result<Vec<Value>, ProxyError> {
-    let mut contents = Vec::new();
-    let mut used_shadow_indices = HashSet::new();
-    let total_assistant_messages = messages
-        .iter()
-        .filter(|message| message.get("role").and_then(|value| value.as_str()) == Some("assistant"))
-        .count();
-    let effective_shadow_turns = if shadow_turns.len() > total_assistant_messages {
-        &shadow_turns[shadow_turns.len() - total_assistant_messages..]
-    } else {
-        shadow_turns
-    };
-
-    // Build tool name and thought_signature maps from shadow store.
-    // These are used to resolve tool_result→functionResponse names and to
-    // attach thought signatures when replaying tool_use→functionCall.
-    let mut tool_name_by_id = build_gemini_shadow_tool_name_map(shadow_turns);
-    let mut thought_signature_by_id = build_gemini_shadow_thought_signature_map(shadow_turns);
-
-    // Pre-scan all assistant messages in the request body to seed
-    // tool_name_by_id with every tool_use id mentioned in the conversation
-    // history.  This ensures tool_result blocks can always resolve their
-    // function name even when the shadow store has aged out the relevant
-    // turn (e.g. long conversations, session restarts, or concurrent
-    // session churn).
-    for message in messages {
-        if message.get("role").and_then(|v| v.as_str()) != Some("assistant") {
-            continue;
-        }
-        merge_gemini_assistant_tool_use_names(message.get("content"), &mut tool_name_by_id);
-    }
-
-    let shadow_start_index = total_assistant_messages.saturating_sub(effective_shadow_turns.len());
-    let mut assistant_seen_index = 0usize;
-
-    for message in messages {
-        let role = message
-            .get("role")
-            .and_then(|value| value.as_str())
-            .unwrap_or("user");
-        if role == "system" {
-            continue;
-        }
-
-        let gemini_role = if role == "assistant" { "model" } else { "user" };
-
-        let parts = if role == "assistant" {
-            let positional_shadow_index = assistant_seen_index
-                .checked_sub(shadow_start_index)
-                .filter(|index| *index < effective_shadow_turns.len())
-                .filter(|index| !used_shadow_indices.contains(index));
-            let tool_use_match_index =
-                find_matching_gemini_shadow_turn(message.get("content"), effective_shadow_turns)
-                    .filter(|index| !used_shadow_indices.contains(index));
-            assistant_seen_index += 1;
-            let shadow_index = tool_use_match_index.or(positional_shadow_index);
-
-            if let Some(index) = shadow_index {
-                used_shadow_indices.insert(index);
-                let shadow_turn = &effective_shadow_turns[index];
-                merge_gemini_shadow_tool_names(shadow_turn, &mut tool_name_by_id);
-                merge_gemini_shadow_thought_signatures(shadow_turn, &mut thought_signature_by_id);
-                if let Some(parts) = gemini_shadow_replay_parts(&shadow_turn.assistant_content) {
-                    parts
-                } else {
-                    anthropic_message_content_to_gemini_parts(
-                        message.get("content"),
-                        role,
-                        &mut tool_name_by_id,
-                        &thought_signature_by_id,
-                    )
-                    .map_err(ProxyError::TransformError)?
-                }
-            } else {
-                anthropic_message_content_to_gemini_parts(
-                    message.get("content"),
-                    role,
-                    &mut tool_name_by_id,
-                    &thought_signature_by_id,
-                )
-                .map_err(ProxyError::TransformError)?
-            }
-        } else {
-            anthropic_message_content_to_gemini_parts(
-                message.get("content"),
-                role,
-                &mut tool_name_by_id,
-                &thought_signature_by_id,
-            )
-            .map_err(ProxyError::TransformError)?
-        };
-
-        if role == "assistant" {
-            merge_gemini_function_call_names_from_parts(&parts, &mut tool_name_by_id);
-        }
-
-        contents.push(json!({
-            "role": gemini_role,
-            "parts": parts
-        }));
-    }
-
-    Ok(contents)
 }
 
 pub fn extract_anthropic_tool_schema_hints(body: &Value) -> AnthropicToolSchemaHints {

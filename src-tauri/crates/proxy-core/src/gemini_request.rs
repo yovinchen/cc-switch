@@ -1,8 +1,15 @@
 //! Gemini Native request helpers.
 
-use crate::{is_synthesized_gemini_tool_call_id, normalize_gemini_tool_result_response};
+use crate::{
+    GeminiAssistantTurn, build_gemini_shadow_thought_signature_map,
+    build_gemini_shadow_tool_name_map, find_matching_gemini_shadow_turn,
+    gemini_shadow_replay_parts, is_synthesized_gemini_tool_call_id,
+    merge_gemini_assistant_tool_use_names, merge_gemini_function_call_names_from_parts,
+    merge_gemini_shadow_thought_signatures, merge_gemini_shadow_tool_names,
+    normalize_gemini_tool_result_response,
+};
 use serde_json::{Map, Value, json};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 pub const GEMINI_SYSTEM_INSTRUCTION_TYPE_ERROR: &str =
     "Anthropic system must be a string or an array";
@@ -130,6 +137,102 @@ pub fn map_gemini_tool_choice_to_config(
         }
         _ => Ok(None),
     }
+}
+
+pub fn anthropic_messages_to_gemini_contents(
+    messages: &[Value],
+    shadow_turns: &[GeminiAssistantTurn],
+) -> Result<Vec<Value>, String> {
+    let mut contents = Vec::new();
+    let mut used_shadow_indices = HashSet::new();
+    let total_assistant_messages = messages
+        .iter()
+        .filter(|message| message.get("role").and_then(|value| value.as_str()) == Some("assistant"))
+        .count();
+    let effective_shadow_turns = if shadow_turns.len() > total_assistant_messages {
+        &shadow_turns[shadow_turns.len() - total_assistant_messages..]
+    } else {
+        shadow_turns
+    };
+
+    let mut tool_name_by_id = build_gemini_shadow_tool_name_map(shadow_turns);
+    let mut thought_signature_by_id = build_gemini_shadow_thought_signature_map(shadow_turns);
+
+    for message in messages {
+        if message.get("role").and_then(|value| value.as_str()) != Some("assistant") {
+            continue;
+        }
+        merge_gemini_assistant_tool_use_names(message.get("content"), &mut tool_name_by_id);
+    }
+
+    let shadow_start_index = total_assistant_messages.saturating_sub(effective_shadow_turns.len());
+    let mut assistant_seen_index = 0usize;
+
+    for message in messages {
+        let role = message
+            .get("role")
+            .and_then(|value| value.as_str())
+            .unwrap_or("user");
+        if role == "system" {
+            continue;
+        }
+
+        let gemini_role = if role == "assistant" { "model" } else { "user" };
+
+        let parts = if role == "assistant" {
+            let positional_shadow_index = assistant_seen_index
+                .checked_sub(shadow_start_index)
+                .filter(|index| *index < effective_shadow_turns.len())
+                .filter(|index| !used_shadow_indices.contains(index));
+            let tool_use_match_index =
+                find_matching_gemini_shadow_turn(message.get("content"), effective_shadow_turns)
+                    .filter(|index| !used_shadow_indices.contains(index));
+            assistant_seen_index += 1;
+            let shadow_index = tool_use_match_index.or(positional_shadow_index);
+
+            if let Some(index) = shadow_index {
+                used_shadow_indices.insert(index);
+                let shadow_turn = &effective_shadow_turns[index];
+                merge_gemini_shadow_tool_names(shadow_turn, &mut tool_name_by_id);
+                merge_gemini_shadow_thought_signatures(shadow_turn, &mut thought_signature_by_id);
+                if let Some(parts) = gemini_shadow_replay_parts(&shadow_turn.assistant_content) {
+                    parts
+                } else {
+                    anthropic_message_content_to_gemini_parts(
+                        message.get("content"),
+                        role,
+                        &mut tool_name_by_id,
+                        &thought_signature_by_id,
+                    )?
+                }
+            } else {
+                anthropic_message_content_to_gemini_parts(
+                    message.get("content"),
+                    role,
+                    &mut tool_name_by_id,
+                    &thought_signature_by_id,
+                )?
+            }
+        } else {
+            anthropic_message_content_to_gemini_parts(
+                message.get("content"),
+                role,
+                &mut tool_name_by_id,
+                &thought_signature_by_id,
+            )?
+        };
+
+        if role == "assistant" {
+            merge_gemini_function_call_names_from_parts(&parts, &mut tool_name_by_id);
+        }
+
+        contents.push(json!({
+            "role": gemini_role,
+            "parts": parts
+        }));
+    }
+
+    Ok(contents)
 }
 
 pub fn anthropic_message_content_to_gemini_parts(
@@ -295,6 +398,7 @@ pub fn anthropic_message_content_to_gemini_parts(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::GeminiToolCallMeta;
     use serde_json::json;
     use std::collections::HashMap;
 
@@ -478,5 +582,54 @@ mod tests {
             error,
             "Unable to resolve Gemini functionResponse.name for tool_use_id `call_missing`"
         );
+    }
+
+    #[test]
+    fn converts_anthropic_messages_to_contents_with_shadow_replay() {
+        let shadow_turns = vec![GeminiAssistantTurn::new(
+            json!({
+                "parts": [{
+                    "functionCall": {
+                        "id": "call_1",
+                        "name": "Bash",
+                        "args": { "command": "ls" }
+                    },
+                    "thoughtSignature": "sig-1"
+                }]
+            }),
+            vec![GeminiToolCallMeta::new(
+                Some("call_1"),
+                "Bash",
+                json!({ "command": "ls" }),
+                Some("sig-1"),
+            )],
+        )];
+        let messages = vec![
+            json!({
+                "role": "system",
+                "content": "system text"
+            }),
+            json!({
+                "role": "assistant",
+                "content": [
+                    { "type": "tool_use", "id": "call_1", "name": "default_api:Bash", "input": { "command": "ls" } }
+                ]
+            }),
+            json!({
+                "role": "user",
+                "content": [
+                    { "type": "tool_result", "tool_use_id": "call_1", "content": "ok" }
+                ]
+            }),
+        ];
+
+        let contents = anthropic_messages_to_gemini_contents(&messages, &shadow_turns).unwrap();
+
+        assert_eq!(contents.len(), 2);
+        assert_eq!(contents[0]["role"], "model");
+        assert_eq!(contents[0]["parts"][0]["functionCall"]["name"], "Bash");
+        assert_eq!(contents[0]["parts"][0]["thoughtSignature"], "sig-1");
+        assert_eq!(contents[1]["role"], "user");
+        assert_eq!(contents[1]["parts"][0]["functionResponse"]["name"], "Bash");
     }
 }
