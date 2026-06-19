@@ -1780,7 +1780,7 @@ impl RequestForwarder {
         let codex_responses_to_chat = matches!(app_type, AppType::Codex)
             && super::providers::should_convert_codex_responses_to_chat(provider, endpoint);
         let (effective_endpoint, passthrough_query) = if codex_responses_to_chat {
-            rewrite_codex_responses_endpoint_to_chat(endpoint)
+            crate::proxy_core::rewrite_codex_responses_endpoint_to_chat(endpoint).into_parts()
         } else if needs_transform && adapter.name() == "Claude" {
             let api_format = resolved_claude_api_format
                 .as_deref()
@@ -2465,10 +2465,6 @@ fn attempt_event_payload(
     })
 }
 
-fn rewrite_codex_responses_endpoint_to_chat(endpoint: &str) -> (String, Option<String>) {
-    crate::proxy_core::rewrite_codex_responses_endpoint_to_chat(endpoint).into_parts()
-}
-
 fn rewrite_claude_transform_endpoint(
     endpoint: &str,
     api_format: &str,
@@ -3142,7 +3138,8 @@ mod tests {
     #[test]
     fn rewrite_codex_responses_endpoint_to_chat_preserves_query() {
         let (endpoint, passthrough_query) =
-            rewrite_codex_responses_endpoint_to_chat("/v1/responses?foo=bar");
+            crate::proxy_core::rewrite_codex_responses_endpoint_to_chat("/v1/responses?foo=bar")
+                .into_parts();
 
         assert_eq!(endpoint, "/chat/completions?foo=bar");
         assert_eq!(passthrough_query.as_deref(), Some("foo=bar"));
@@ -3151,7 +3148,10 @@ mod tests {
     #[test]
     fn rewrite_codex_responses_compact_endpoint_to_chat_preserves_query() {
         let (endpoint, passthrough_query) =
-            rewrite_codex_responses_endpoint_to_chat("/v1/responses/compact?foo=bar");
+            crate::proxy_core::rewrite_codex_responses_endpoint_to_chat(
+                "/v1/responses/compact?foo=bar",
+            )
+            .into_parts();
 
         assert_eq!(endpoint, "/chat/completions?foo=bar");
         assert_eq!(passthrough_query.as_deref(), Some("foo=bar"));
