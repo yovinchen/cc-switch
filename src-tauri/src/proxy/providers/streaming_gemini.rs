@@ -4,22 +4,10 @@
 //! SSE events for Claude-compatible clients.
 
 use super::transform_gemini::{synthesize_tool_call_id, AnthropicToolSchemaHints};
-use crate::proxy_core::{GeminiShadowStore, GeminiStreamSseEvent, GeminiToAnthropicSseState};
+use crate::proxy_core::{GeminiShadowStore, GeminiToAnthropicSseState};
 use bytes::Bytes;
 use futures::stream::{Stream, StreamExt};
-use serde_json::Value;
 use std::sync::Arc;
-
-fn encode_sse(event_name: &str, payload: &Value) -> Bytes {
-    Bytes::from(format!(
-        "event: {event_name}\ndata: {}\n\n",
-        serde_json::to_string(payload).unwrap_or_default()
-    ))
-}
-
-fn encode_core_event(event: &GeminiStreamSseEvent) -> Bytes {
-    encode_sse(event.event_name, &event.payload)
-}
 
 pub fn create_anthropic_sse_stream_from_gemini<E: std::error::Error + Send + 'static>(
     stream: impl Stream<Item = Result<Bytes, E>> + Send + 'static,
@@ -44,7 +32,7 @@ pub fn create_anthropic_sse_stream_from_gemini<E: std::error::Error + Send + 'st
                         log::info!("[Claude/Gemini] Rectified tool args for `{name}`");
                     }
                     for event in output.events {
-                        yield Ok(encode_core_event(&event));
+                        yield Ok(event.to_sse_bytes());
                     }
                 }
                 Err(error) => {
@@ -72,7 +60,7 @@ pub fn create_anthropic_sse_stream_from_gemini<E: std::error::Error + Send + 'st
         }
 
         for event in final_output.events {
-            yield Ok(encode_core_event(&event));
+            yield Ok(event.to_sse_bytes());
         }
     }
 }

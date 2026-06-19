@@ -10,6 +10,7 @@ use crate::response_transform::{
 };
 use crate::sse::{append_utf8_safe, strip_sse_field, take_sse_block};
 use crate::usage::build_anthropic_usage_from_gemini;
+use bytes::Bytes;
 use serde_json::{json, Value};
 use std::collections::HashSet;
 
@@ -35,6 +36,12 @@ pub struct GeminiStreamPartsUpdate {
 pub struct GeminiStreamSseEvent {
     pub event_name: &'static str,
     pub payload: Value,
+}
+
+impl GeminiStreamSseEvent {
+    pub fn to_sse_bytes(&self) -> Bytes {
+        encode_gemini_stream_sse(self.event_name, &self.payload)
+    }
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -616,6 +623,13 @@ pub fn gemini_stream_message_stop_event() -> Value {
     json!({ "type": "message_stop" })
 }
 
+pub fn encode_gemini_stream_sse(event_name: &str, payload: &Value) -> Bytes {
+    Bytes::from(format!(
+        "event: {event_name}\ndata: {}\n\n",
+        serde_json::to_string(payload).unwrap_or_default()
+    ))
+}
+
 fn event(event_name: &'static str, payload: Value) -> GeminiStreamSseEvent {
     GeminiStreamSseEvent {
         event_name,
@@ -853,6 +867,17 @@ mod tests {
         assert_eq!(message_delta["delta"]["stop_reason"], "tool_use");
 
         assert_eq!(gemini_stream_message_stop_event()["type"], "message_stop");
+    }
+
+    #[test]
+    fn encodes_sse_event_bytes() {
+        let event = GeminiStreamSseEvent {
+            event_name: "message_stop",
+            payload: gemini_stream_message_stop_event(),
+        };
+        let encoded = String::from_utf8(event.to_sse_bytes().to_vec()).unwrap();
+
+        assert_eq!(encoded, "event: message_stop\ndata: {\"type\":\"message_stop\"}\n\n");
     }
 
     #[test]
