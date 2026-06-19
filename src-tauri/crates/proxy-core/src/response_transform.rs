@@ -388,6 +388,55 @@ pub fn custom_tool_input_from_chat_arguments(arguments: &str) -> String {
     }
 }
 
+pub fn response_tool_search_call_item(
+    call_id: &str,
+    status: &str,
+    arguments: &str,
+    reasoning: Option<&str>,
+) -> Value {
+    let parsed_arguments = parse_tool_arguments_object(arguments);
+    let mut item = json!({
+        "type": "tool_search_call",
+        "call_id": call_id,
+        "status": status,
+        "execution": "client",
+        "arguments": parsed_arguments
+    });
+    attach_optional_reasoning_content_field(&mut item, reasoning);
+    item
+}
+
+pub fn response_custom_tool_call_item(
+    item_id: &str,
+    status: &str,
+    call_id: &str,
+    name: &str,
+    arguments: &str,
+    reasoning: Option<&str>,
+) -> Value {
+    let input = custom_tool_input_from_chat_arguments(arguments);
+    let mut item = json!({
+        "id": item_id,
+        "type": "custom_tool_call",
+        "status": status,
+        "call_id": call_id,
+        "name": name,
+        "input": input
+    });
+    attach_optional_reasoning_content_field(&mut item, reasoning);
+    item
+}
+
+fn parse_tool_arguments_object(arguments: &str) -> Value {
+    if arguments.trim().is_empty() {
+        return json!({});
+    }
+    serde_json::from_str::<Value>(arguments)
+        .ok()
+        .filter(Value::is_object)
+        .unwrap_or_else(|| json!({ "query": arguments }))
+}
+
 pub fn chat_usage_to_responses_usage(usage: Option<&Value>) -> Value {
     let Some(usage) = usage.filter(|value| value.is_object() && !value.is_null()) else {
         return json!({
@@ -1253,6 +1302,47 @@ mod tests {
         assert_eq!(response_status_from_finish_reason(Some("length")), "incomplete");
         assert_eq!(response_status_from_finish_reason(Some("stop")), "completed");
         assert_eq!(response_status_from_finish_reason(None), "completed");
+    }
+
+    #[test]
+    fn builds_codex_response_tool_search_and_custom_tool_call_items() {
+        let tool_search = response_tool_search_call_item(
+            "call_search",
+            "completed",
+            r#"{"query":"Gmail search emails","limit":10}"#,
+            Some("look up tool"),
+        );
+        assert_eq!(tool_search["type"], "tool_search_call");
+        assert_eq!(tool_search["execution"], "client");
+        assert_eq!(tool_search["arguments"]["query"], "Gmail search emails");
+        assert_eq!(tool_search["arguments"]["limit"], 10);
+        assert_eq!(tool_search["reasoning_content"], "look up tool");
+
+        let fallback = response_tool_search_call_item(
+            "call_plain",
+            "completed",
+            "Gmail search emails",
+            None,
+        );
+        assert_eq!(fallback["arguments"], json!({"query": "Gmail search emails"}));
+
+        let empty = response_tool_search_call_item("call_empty", "completed", "  ", None);
+        assert_eq!(empty["arguments"], json!({}));
+
+        let custom = response_custom_tool_call_item(
+            "ctc_call_patch",
+            "completed",
+            "call_patch",
+            "apply_patch",
+            r#"{"input":"*** Begin Patch\n*** End Patch"}"#,
+            Some("apply edit"),
+        );
+        assert_eq!(custom["id"], "ctc_call_patch");
+        assert_eq!(custom["type"], "custom_tool_call");
+        assert_eq!(custom["call_id"], "call_patch");
+        assert_eq!(custom["name"], "apply_patch");
+        assert_eq!(custom["input"], "*** Begin Patch\n*** End Patch");
+        assert_eq!(custom["reasoning_content"], "apply edit");
     }
 
     #[test]

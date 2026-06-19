@@ -21,8 +21,9 @@ pub(crate) use crate::proxy_core::{
     attach_pending_reasoning_to_assistant, attach_reasoning_to_last_assistant,
     backfill_tool_call_reasoning_placeholders, chat_usage_to_responses_usage,
     collapse_system_messages_to_head, custom_tool_input_from_chat_arguments,
-    response_id_from_chat_id, response_status_from_finish_reason,
-    responses_content_to_chat_content, responses_instruction_text, responses_role_to_chat_role,
+    response_custom_tool_call_item, response_id_from_chat_id, response_status_from_finish_reason,
+    response_tool_search_call_item, responses_content_to_chat_content, responses_instruction_text,
+    responses_role_to_chat_role,
 };
 use crate::proxy_core::{codex_chat_reasoning_requested, map_codex_chat_reasoning_effort};
 use serde_json::{json, Value};
@@ -1185,55 +1186,6 @@ pub(crate) fn response_tool_call_item_from_chat_name(
             response_function_call_item(item_id, status, call_id, chat_name, arguments, reasoning)
         }
     }
-}
-
-fn response_tool_search_call_item(
-    call_id: &str,
-    status: &str,
-    arguments: &str,
-    reasoning: Option<&str>,
-) -> Value {
-    let parsed_arguments = parse_tool_arguments_object(arguments);
-    let mut item = json!({
-        "type": "tool_search_call",
-        "call_id": call_id,
-        "status": status,
-        "execution": "client",
-        "arguments": parsed_arguments
-    });
-    super::codex_chat_common::attach_optional_reasoning_content_field(&mut item, reasoning);
-    item
-}
-
-fn response_custom_tool_call_item(
-    item_id: &str,
-    status: &str,
-    call_id: &str,
-    name: &str,
-    arguments: &str,
-    reasoning: Option<&str>,
-) -> Value {
-    let input = custom_tool_input_from_chat_arguments(arguments);
-    let mut item = json!({
-        "id": item_id,
-        "type": "custom_tool_call",
-        "status": status,
-        "call_id": call_id,
-        "name": name,
-        "input": input
-    });
-    super::codex_chat_common::attach_optional_reasoning_content_field(&mut item, reasoning);
-    item
-}
-
-fn parse_tool_arguments_object(arguments: &str) -> Value {
-    if arguments.trim().is_empty() {
-        return json!({});
-    }
-    serde_json::from_str::<Value>(arguments)
-        .ok()
-        .filter(|value| value.is_object())
-        .unwrap_or_else(|| json!({ "query": arguments }))
 }
 
 #[cfg(test)]
