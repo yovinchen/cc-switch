@@ -20,9 +20,11 @@ pub mod codex_oauth_auth;
 pub mod copilot_auth;
 mod gemini;
 pub mod models;
+#[cfg(test)]
 pub mod streaming;
 pub mod streaming_codex_chat;
 pub mod streaming_gemini;
+#[cfg(test)]
 pub mod streaming_responses;
 #[cfg(test)]
 pub mod transform;

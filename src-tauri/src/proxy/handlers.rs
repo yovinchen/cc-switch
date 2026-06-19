@@ -18,10 +18,8 @@ use super::{
     handler_context::RequestContext,
     providers::{
         codex_chat_history::record_responses_sse_stream, get_adapter, get_claude_api_format,
-        streaming::create_anthropic_sse_stream,
         streaming_codex_chat::create_responses_sse_stream_from_chat_with_context,
-        streaming_gemini::create_anthropic_sse_stream_from_gemini,
-        streaming_responses::create_anthropic_sse_stream_from_responses, transform_gemini,
+        streaming_gemini::create_anthropic_sse_stream_from_gemini, transform_gemini,
     },
     response_adapter::{
         proxy_core_response_to_axum_response, proxy_core_response_to_proxy_response,
@@ -43,6 +41,8 @@ use crate::proxy_core::{
     chat_completion_to_response_with_context as build_chat_completion_response_with_context,
     claude_api_format_from_metadata, claude_stream_usage_event_filter,
     claude_transform_unlabeled_sse_aggregation, codex_stream_usage_event_filter,
+    create_openai_chat_to_anthropic_sse_stream as create_anthropic_sse_stream,
+    create_openai_responses_to_anthropic_sse_stream as create_anthropic_sse_stream_from_responses,
     extract_gemini_model_from_path, json_proxy_response, openai_chat_to_anthropic_message,
     openai_responses_to_anthropic_message, parse_upstream_json_or_unlabeled_sse,
     rebuilt_json_proxy_response, resolve_management_auth_decision,
