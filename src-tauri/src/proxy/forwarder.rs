@@ -904,12 +904,7 @@ impl RequestForwarder {
                 provider_bedrock_env_flag(provider),
             ) {
                 let mut b = body.clone();
-                if self.optimizer_config.thinking_optimizer {
-                    super::thinking_optimizer::optimize(&mut b, &self.optimizer_config);
-                }
-                if self.optimizer_config.cache_injection {
-                    super::cache_injector::inject(&mut b, &self.optimizer_config);
-                }
+                apply_bedrock_pre_send_optimizers(&mut b, &self.optimizer_config);
                 b
             } else {
                 body.clone()
@@ -2399,6 +2394,24 @@ fn provider_bedrock_env_flag(provider: &Provider) -> Option<&str> {
         .get("env")
         .and_then(|env| env.get(BEDROCK_OPTIMIZER_ENV_FLAG))
         .and_then(Value::as_str)
+}
+
+fn apply_bedrock_pre_send_optimizers(body: &mut Value, config: &OptimizerConfig) {
+    if config.thinking_optimizer {
+        let report =
+            crate::proxy_core::optimize_thinking(body, &config.thinking_optimizer_core_config());
+        if let Some(message) = crate::proxy_core::thinking_optimization_log_message(&report) {
+            log::info!("{message}");
+        }
+    }
+
+    if config.cache_injection {
+        let report =
+            crate::proxy_core::inject_cache_control(body, &config.cache_injection_core_config());
+        if let Some(message) = crate::proxy_core::cache_injection_log_message(&report) {
+            log::info!("{message}");
+        }
+    }
 }
 
 fn forward_failure_kind_from_proxy_error(error: &ProxyError) -> ForwardFailureKind {

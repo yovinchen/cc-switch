@@ -2,7 +2,6 @@
 //!
 //! 提供本地HTTP代理服务，支持多Provider故障转移和请求透传
 
-pub mod cache_injector;
 pub mod channel_routing;
 pub mod circuit_breaker;
 pub mod error;
@@ -25,7 +24,6 @@ pub(crate) mod route_attempt;
 pub(crate) mod server;
 pub mod session;
 pub(crate) mod switch_lock;
-pub mod thinking_optimizer;
 pub(crate) mod types;
 pub mod usage;
 pub(crate) mod usage_sink_bridge;

@@ -142,9 +142,9 @@
 131. Provider env 模型映射（haiku/sonnet/opus/fable/default）与 Claude Code 本地 `[1M]` 上游剥离规则已迁入 `proxy-core::model_mapping`；host `model_mapper` 只负责从 `Provider.settings_config.env` 投影配置和带日志的请求体映射。
 132. cache-sensitive JSON canonical string、tool arguments 空值/结构化规范化和短 SHA-256 trace hash 已迁入 `proxy-core::json_canonical`；host 调用方已改为直接引用 core，`proxy::json_canonical` 兼容模块已删除。
 133. Anthropic thinking `budget_tokens` 1024 约束错误触发判定、budget snapshot/result 和请求体整流规则已迁入 `proxy-core::thinking_budget_rectifier`；host 只负责把 `RectifierConfig` 投影成 core 开关，返回类型直接使用 core result。
-134. Bedrock prompt cache 断点注入、既有 cache_control TTL 升级、system string 转 block、thinking block 跳过规则和 cache 优化日志消息策略已迁入 `proxy-core::cache_injector`；host `cache_injector` 只负责 `OptimizerConfig` 投影和日志输出。
+134. Bedrock prompt cache 断点注入、既有 cache_control TTL 升级、system string 转 block、thinking block 跳过规则和 cache 优化日志消息策略已迁入 `proxy-core::cache_injector`；host `cache_injector` facade 已删除，forwarder 只负责 `OptimizerConfig` 投影和日志输出。
 135. Anthropic thinking signature 错误触发判定、thinking/redacted_thinking block 清理、非 thinking signature 字段剥离和顶层 thinking 兜底删除规则已迁入 `proxy-core::thinking_rectifier`；host 只负责把 `RectifierConfig` 投影成 core 开关，返回类型直接使用 core result。
-136. Bedrock thinking optimizer 的 haiku skip、opus/sonnet adaptive thinking、legacy budget 注入、anthropic_beta 去重规则和 thinking 优化日志消息策略已迁入 `proxy-core::thinking_optimizer`；host 只负责 `OptimizerConfig` 投影和日志输出。
+136. Bedrock thinking optimizer 的 haiku skip、opus/sonnet adaptive thinking、legacy budget 注入、anthropic_beta 去重规则和 thinking 优化日志消息策略已迁入 `proxy-core::thinking_optimizer`；host `thinking_optimizer` facade 已删除，forwarder 只负责 `OptimizerConfig` 投影和日志输出。
 137. 客户端请求格式识别（Claude/Codex/OpenAI/Gemini/Gemini CLI）和 Claude/Codex session id 提取优先级已迁入 `proxy-core::session`；host `session` 只保留 `ProxySession` 生命周期对象和 UUID 生成适配，调用方直接引用 core session 类型。
 138. 代理日志错误码契约（CB/SRV/FWD/FO/RSP/USG）已迁入 `proxy-core::log_codes`；host `log_codes` 兼容模块已删除，调用方统一直接引用 core 日志码。
 139. 媒体图片块检测/替换、text-only 模型启发式、channel/provider model catalog 显式图片能力判断、unsupported image 错误文本识别和 unsupported image marker 常量已迁入 `proxy-core::request_media`；host 调用方直接引用 core，`ProxyError` 只在 forwarder 调用点适配为 status/body 事实。
@@ -232,7 +232,7 @@
 221. `proxy::media_sanitizer` host 模块已删除；forwarder 直接调用 `proxy-core::request_media` 的 text-only 图片替换和 unsupported-image 错误分类，原 host 回归样例迁入 core 测试。
 222. `proxy::handler_context::extract_gemini_model_from_path` host wrapper 已删除；Gemini handler/context 直接引用 `proxy-core::extract_gemini_model_from_path`，路径解析测试保留在 core。
 223. forwarder 内部的 `request_model_for_forward` / `interface_kind_for_forward` host wrapper 已删除；attempt 规划直接把 `AppType` 投影为 `proxy-core::AppKind` 后调用 core request-url helper。
-224. `OptimizerConfig` 到 thinking optimizer/cache injector core config 的字段投影已收敛到 host 配置类型本身；`thinking_optimizer`/`cache_injector` 只保留 body mutation 调用和日志输出，日志消息由 core report helper 生成。
+224. `OptimizerConfig` 到 thinking optimizer/cache injector core config 的字段投影已收敛到 host 配置类型本身；`thinking_optimizer`/`cache_injector` host facade 已删除，forwarder 直接调用 core mutation 与 core report log helper。
 225. Claude/Codex 非流式 handler 的 response JSON 转换已直接调用 `proxy-core::{openai_responses_to_anthropic_message,openai_chat_to_anthropic_message,chat_completion_to_response_with_context}`；host handler 只保留 `ProxyError::TransformError` 映射、日志、history 和 usage 编排。
 226. Claude provider adapter 的非流式 OpenAI/Responses 响应转换已直接调用 `proxy-core::{openai_chat_to_anthropic_message,openai_responses_to_anthropic_message}`；provider 响应转换 wrapper 仅保留测试路径。
 227. Claude provider adapter 的 Anthropic->OpenAI Chat/Responses 请求转换已直接调用 `proxy-core::{anthropic_to_openai_chat_request,anthropic_to_openai_responses_request}`；provider transform wrapper 不再进入生产构建，只作为协议 fixture 测试入口。
