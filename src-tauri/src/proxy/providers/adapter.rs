@@ -4,7 +4,7 @@
 
 use crate::provider::Provider;
 use crate::proxy::error::ProxyError;
-use crate::proxy_core::ProviderAuthInfo as AuthInfo;
+use crate::proxy_core::ProviderAuthInfo;
 use serde_json::Value;
 
 /// 供应商适配器 Trait
@@ -21,7 +21,7 @@ pub trait ProviderAdapter: Send + Sync {
     fn extract_base_url(&self, provider: &Provider) -> Result<String, ProxyError>;
 
     /// 从 Provider 配置中提取认证信息
-    fn extract_auth(&self, provider: &Provider) -> Option<AuthInfo>;
+    fn extract_auth(&self, provider: &Provider) -> Option<ProviderAuthInfo>;
 
     /// 构建请求 URL
     fn build_url(&self, base_url: &str, endpoint: &str) -> String;
@@ -36,7 +36,7 @@ pub trait ProviderAdapter: Send + Sync {
     /// CR/LF), which would otherwise panic inside `HeaderValue::from_str`.
     fn get_auth_headers(
         &self,
-        auth: &AuthInfo,
+        auth: &ProviderAuthInfo,
     ) -> Result<Vec<(http::HeaderName, http::HeaderValue)>, ProxyError>;
 
     /// 是否需要格式转换

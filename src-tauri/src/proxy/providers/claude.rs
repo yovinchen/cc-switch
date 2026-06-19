@@ -28,8 +28,8 @@ use crate::proxy_core::{
     openai_responses_to_anthropic_message, resolve_claude_api_format_from_settings,
     resolve_claude_responses_prompt_cache_key, should_normalize_anthropic_tool_thinking_history,
     should_preserve_reasoning_content_for_openai_chat, ClaudeAuthHeaderKind, ClaudeAuthKey,
-    ClaudeAuthKeySource, CopilotAuthHeadersInput, ProviderAuthInfo as AuthInfo,
-    ProviderAuthStrategy as AuthStrategy, ProviderKind,
+    ClaudeAuthKeySource, CopilotAuthHeadersInput, ProviderAuthInfo, ProviderAuthStrategy,
+    ProviderKind,
 };
 use serde_json::Value;
 
@@ -248,10 +248,10 @@ impl ClaudeAdapter {
     /// - `ANTHROPIC_API_KEY`    → `Anthropic` （发送 `x-api-key`）
     ///
     /// 优先级与 [`extract_key`] 一致；两者都缺时返回 `None` 由调用方决定 fallback。
-    fn infer_anthropic_auth_strategy(source: ClaudeAuthKeySource) -> Option<AuthStrategy> {
+    fn infer_anthropic_auth_strategy(source: ClaudeAuthKeySource) -> Option<ProviderAuthStrategy> {
         match source {
-            ClaudeAuthKeySource::AnthropicAuthToken => Some(AuthStrategy::ClaudeAuth),
-            ClaudeAuthKeySource::AnthropicApiKey => Some(AuthStrategy::Anthropic),
+            ClaudeAuthKeySource::AnthropicAuthToken => Some(ProviderAuthStrategy::ClaudeAuth),
+            ClaudeAuthKeySource::AnthropicApiKey => Some(ProviderAuthStrategy::Anthropic),
             _ => None,
         }
     }
@@ -276,25 +276,25 @@ impl ProviderAdapter for ClaudeAdapter {
         .ok_or_else(|| ProxyError::ConfigError("Claude Provider 缺少 base_url 配置".to_string()))
     }
 
-    fn extract_auth(&self, provider: &Provider) -> Option<AuthInfo> {
+    fn extract_auth(&self, provider: &Provider) -> Option<ProviderAuthInfo> {
         let provider_type = self.provider_type(provider);
 
         // GitHub Copilot 使用特殊的认证策略
         // 实际的 token 会在代理请求时动态获取
         if provider_type == ProviderKind::GitHubCopilot {
             // 返回一个占位符，实际 token 由 CopilotAuthManager 动态提供
-            return Some(AuthInfo::new(
+            return Some(ProviderAuthInfo::new(
                 "copilot_placeholder".to_string(),
-                AuthStrategy::GitHubCopilot,
+                ProviderAuthStrategy::GitHubCopilot,
             ));
         }
 
         // Codex OAuth (ChatGPT Plus/Pro) 同样使用占位符
         // 实际的 access_token 由 CodexOAuthManager 动态提供
         if provider_type == ProviderKind::CodexOAuth {
-            return Some(AuthInfo::new(
+            return Some(ProviderAuthInfo::new(
                 "codex_oauth_placeholder".to_string(),
-                AuthStrategy::CodexOAuth,
+                ProviderAuthStrategy::CodexOAuth,
             ));
         }
 
@@ -317,7 +317,7 @@ impl ProviderAdapter for ClaudeAdapter {
                 // their `~/.gemini/oauth_creds.json`.
                 match super::gemini::GeminiAdapter::new().parse_oauth_credentials(&key) {
                     Some(creds) if !creds.access_token.is_empty() => {
-                        Some(AuthInfo::with_access_token(key, creds.access_token))
+                        Some(ProviderAuthInfo::with_access_token(key, creds.access_token))
                     }
                     Some(_) => {
                         log::warn!(
@@ -326,22 +326,32 @@ impl ProviderAdapter for ClaudeAdapter {
                              ~/.gemini/oauth_creds.json via the gemini CLI to obtain a new token.",
                             provider.id
                         );
-                        Some(AuthInfo::new(key, AuthStrategy::GoogleOAuth))
+                        Some(ProviderAuthInfo::new(
+                            key,
+                            ProviderAuthStrategy::GoogleOAuth,
+                        ))
                     }
-                    None => Some(AuthInfo::new(key, AuthStrategy::GoogleOAuth)),
+                    None => Some(ProviderAuthInfo::new(
+                        key,
+                        ProviderAuthStrategy::GoogleOAuth,
+                    )),
                 }
             }
-            ProviderKind::Gemini => Some(AuthInfo::new(key, AuthStrategy::Google)),
-            ProviderKind::OpenRouter => Some(AuthInfo::new(key, AuthStrategy::Bearer)),
-            ProviderKind::ClaudeAuth => Some(AuthInfo::new(key, AuthStrategy::ClaudeAuth)),
+            ProviderKind::Gemini => Some(ProviderAuthInfo::new(key, ProviderAuthStrategy::Google)),
+            ProviderKind::OpenRouter => {
+                Some(ProviderAuthInfo::new(key, ProviderAuthStrategy::Bearer))
+            }
+            ProviderKind::ClaudeAuth => {
+                Some(ProviderAuthInfo::new(key, ProviderAuthStrategy::ClaudeAuth))
+            }
             _ => {
                 // 按 env 中的变量名推断鉴权策略，对齐 Anthropic SDK 语义：
                 // ANTHROPIC_AUTH_TOKEN → Authorization: Bearer
                 // ANTHROPIC_API_KEY    → x-api-key
                 // 其他来源（apiKey 直填等）默认走 x-api-key（Anthropic 官方协议）。
                 let strategy = Self::infer_anthropic_auth_strategy(auth_key.source)
-                    .unwrap_or(AuthStrategy::Anthropic);
-                Some(AuthInfo::new(key, strategy))
+                    .unwrap_or(ProviderAuthStrategy::Anthropic);
+                Some(ProviderAuthInfo::new(key, strategy))
             }
         }
     }
@@ -352,15 +362,17 @@ impl ProviderAdapter for ClaudeAdapter {
 
     fn get_auth_headers(
         &self,
-        auth: &AuthInfo,
+        auth: &ProviderAuthInfo,
     ) -> Result<Vec<(http::HeaderName, http::HeaderValue)>, ProxyError> {
         let static_kind = match auth.strategy {
-            AuthStrategy::Anthropic => Some(ClaudeAuthHeaderKind::AnthropicApiKey),
-            AuthStrategy::ClaudeAuth | AuthStrategy::Bearer => Some(ClaudeAuthHeaderKind::Bearer),
-            AuthStrategy::Google => Some(ClaudeAuthHeaderKind::GoogleApiKey),
-            AuthStrategy::GoogleOAuth => Some(ClaudeAuthHeaderKind::GoogleOAuth),
-            AuthStrategy::CodexOAuth => Some(ClaudeAuthHeaderKind::CodexOAuth),
-            AuthStrategy::GitHubCopilot => None,
+            ProviderAuthStrategy::Anthropic => Some(ClaudeAuthHeaderKind::AnthropicApiKey),
+            ProviderAuthStrategy::ClaudeAuth | ProviderAuthStrategy::Bearer => {
+                Some(ClaudeAuthHeaderKind::Bearer)
+            }
+            ProviderAuthStrategy::Google => Some(ClaudeAuthHeaderKind::GoogleApiKey),
+            ProviderAuthStrategy::GoogleOAuth => Some(ClaudeAuthHeaderKind::GoogleOAuth),
+            ProviderAuthStrategy::CodexOAuth => Some(ClaudeAuthHeaderKind::CodexOAuth),
+            ProviderAuthStrategy::GitHubCopilot => None,
         };
         if let Some(kind) = static_kind {
             return build_claude_auth_headers(kind, &auth.api_key, auth.access_token.as_deref())
@@ -368,7 +380,7 @@ impl ProviderAdapter for ClaudeAdapter {
         }
 
         Ok(match auth.strategy {
-            AuthStrategy::GitHubCopilot => {
+            ProviderAuthStrategy::GitHubCopilot => {
                 let request_id = uuid::Uuid::new_v4().to_string();
                 build_copilot_auth_headers(CopilotAuthHeadersInput {
                     api_key: &auth.api_key,
@@ -507,7 +519,7 @@ mod tests {
 
         let auth = adapter.extract_auth(&provider).unwrap();
         assert_eq!(auth.api_key, "sk-ant-test-key");
-        assert_eq!(auth.strategy, AuthStrategy::ClaudeAuth);
+        assert_eq!(auth.strategy, ProviderAuthStrategy::ClaudeAuth);
     }
 
     #[test]
@@ -522,7 +534,7 @@ mod tests {
 
         let auth = adapter.extract_auth(&provider).unwrap();
         assert_eq!(auth.api_key, "sk-ant-test-key");
-        assert_eq!(auth.strategy, AuthStrategy::Anthropic);
+        assert_eq!(auth.strategy, ProviderAuthStrategy::Anthropic);
     }
 
     #[test]
@@ -539,7 +551,7 @@ mod tests {
 
         let auth = adapter.extract_auth(&provider).unwrap();
         assert_eq!(auth.api_key, "sk-from-auth-token");
-        assert_eq!(auth.strategy, AuthStrategy::ClaudeAuth);
+        assert_eq!(auth.strategy, ProviderAuthStrategy::ClaudeAuth);
     }
 
     #[test]
@@ -556,13 +568,14 @@ mod tests {
 
         let auth = adapter.extract_auth(&provider).unwrap();
         assert_eq!(auth.api_key, "sk-direct");
-        assert_eq!(auth.strategy, AuthStrategy::Anthropic);
+        assert_eq!(auth.strategy, ProviderAuthStrategy::Anthropic);
     }
 
     #[test]
     fn test_get_auth_headers_anthropic_emits_x_api_key() {
         let adapter = ClaudeAdapter::new();
-        let auth = AuthInfo::new("sk-ant-test".to_string(), AuthStrategy::Anthropic);
+        let auth =
+            ProviderAuthInfo::new("sk-ant-test".to_string(), ProviderAuthStrategy::Anthropic);
 
         let headers = adapter.get_auth_headers(&auth).unwrap();
         assert_eq!(headers.len(), 1);
@@ -573,7 +586,10 @@ mod tests {
     #[test]
     fn test_get_auth_headers_claude_auth_emits_authorization_bearer() {
         let adapter = ClaudeAdapter::new();
-        let auth = AuthInfo::new("sk-relay-test".to_string(), AuthStrategy::ClaudeAuth);
+        let auth = ProviderAuthInfo::new(
+            "sk-relay-test".to_string(),
+            ProviderAuthStrategy::ClaudeAuth,
+        );
 
         let headers = adapter.get_auth_headers(&auth).unwrap();
         assert_eq!(headers.len(), 1);
@@ -584,7 +600,7 @@ mod tests {
     #[test]
     fn test_get_auth_headers_bearer_emits_authorization_bearer() {
         let adapter = ClaudeAdapter::new();
-        let auth = AuthInfo::new("sk-or-test".to_string(), AuthStrategy::Bearer);
+        let auth = ProviderAuthInfo::new("sk-or-test".to_string(), ProviderAuthStrategy::Bearer);
 
         let headers = adapter.get_auth_headers(&auth).unwrap();
         assert_eq!(headers.len(), 1);
@@ -595,7 +611,7 @@ mod tests {
     #[test]
     fn test_get_auth_headers_google_oauth_emits_bearer_and_client_marker() {
         let adapter = ClaudeAdapter::new();
-        let auth = AuthInfo::with_access_token(
+        let auth = ProviderAuthInfo::with_access_token(
             "refresh-token".to_string(),
             "ya29.access-token".to_string(),
         );
@@ -612,7 +628,10 @@ mod tests {
     #[test]
     fn test_get_auth_headers_codex_oauth_emits_originator() {
         let adapter = ClaudeAdapter::new();
-        let auth = AuthInfo::new("chatgpt-token".to_string(), AuthStrategy::CodexOAuth);
+        let auth = ProviderAuthInfo::new(
+            "chatgpt-token".to_string(),
+            ProviderAuthStrategy::CodexOAuth,
+        );
 
         let headers = adapter.get_auth_headers(&auth).unwrap();
 
@@ -626,7 +645,10 @@ mod tests {
     #[test]
     fn test_get_auth_headers_github_copilot_emits_fingerprint_headers() {
         let adapter = ClaudeAdapter::new();
-        let auth = AuthInfo::new("copilot-token".to_string(), AuthStrategy::GitHubCopilot);
+        let auth = ProviderAuthInfo::new(
+            "copilot-token".to_string(),
+            ProviderAuthStrategy::GitHubCopilot,
+        );
 
         let headers = adapter.get_auth_headers(&auth).unwrap();
 
@@ -687,9 +709,9 @@ mod tests {
     fn test_get_auth_headers_rejects_illegal_header_chars() {
         // 用户粘贴含 \r\n 的"脏"key 不能让进程 panic
         let adapter = ClaudeAdapter::new();
-        let auth = AuthInfo::new(
+        let auth = ProviderAuthInfo::new(
             "sk-ant-bad\r\nX-Inject: 1".to_string(),
-            AuthStrategy::Anthropic,
+            ProviderAuthStrategy::Anthropic,
         );
 
         let result = adapter.get_auth_headers(&auth);
@@ -709,7 +731,7 @@ mod tests {
 
         let auth = adapter.extract_auth(&provider).unwrap();
         assert_eq!(auth.api_key, "sk-or-test-key");
-        assert_eq!(auth.strategy, AuthStrategy::Bearer);
+        assert_eq!(auth.strategy, ProviderAuthStrategy::Bearer);
     }
 
     #[test]
@@ -730,7 +752,7 @@ mod tests {
 
         let auth = adapter.extract_auth(&provider).unwrap();
         assert_eq!(auth.api_key, "gemini-test-key");
-        assert_eq!(auth.strategy, AuthStrategy::Google);
+        assert_eq!(auth.strategy, ProviderAuthStrategy::Google);
     }
 
     #[test]
@@ -746,7 +768,7 @@ mod tests {
 
         let auth = adapter.extract_auth(&provider).unwrap();
         assert_eq!(auth.api_key, "sk-proxy-key");
-        assert_eq!(auth.strategy, AuthStrategy::ClaudeAuth);
+        assert_eq!(auth.strategy, ProviderAuthStrategy::ClaudeAuth);
     }
 
     #[test]
@@ -762,12 +784,12 @@ mod tests {
 
         let auth = adapter.extract_auth(&provider).unwrap();
         assert_eq!(auth.api_key, "sk-proxy-key");
-        assert_eq!(auth.strategy, AuthStrategy::ClaudeAuth);
+        assert_eq!(auth.strategy, ProviderAuthStrategy::ClaudeAuth);
     }
 
     /// Regression: a Gemini OAuth credential JSON that carries only a
     /// refresh_token (no active access_token) must not be surfaced as an
-    /// `AuthInfo` whose bearer would be empty. Without the guard, downstream
+    /// `ProviderAuthInfo` whose bearer would be empty. Without the guard, downstream
     /// header injection produces `Authorization: Bearer ` and a deterministic
     /// 401 from upstream.
     #[test]
@@ -794,9 +816,9 @@ mod tests {
         // `Some("")` would win over the raw key and emit `Bearer `.
         assert!(
             auth.access_token.as_deref().is_none_or(|t| !t.is_empty()),
-            "empty access_token leaked into AuthInfo"
+            "empty access_token leaked into ProviderAuthInfo"
         );
-        assert_eq!(auth.strategy, AuthStrategy::GoogleOAuth);
+        assert_eq!(auth.strategy, ProviderAuthStrategy::GoogleOAuth);
     }
 
     /// Companion case: a JSON credential with an empty-string `access_token`
@@ -822,9 +844,9 @@ mod tests {
         let auth = adapter.extract_auth(&provider).unwrap();
         assert!(
             auth.access_token.as_deref().is_none_or(|t| !t.is_empty()),
-            "empty access_token leaked into AuthInfo"
+            "empty access_token leaked into ProviderAuthInfo"
         );
-        assert_eq!(auth.strategy, AuthStrategy::GoogleOAuth);
+        assert_eq!(auth.strategy, ProviderAuthStrategy::GoogleOAuth);
     }
 
     /// Counter-case: a well-formed JSON credential with a non-empty
@@ -848,7 +870,7 @@ mod tests {
 
         let auth = adapter.extract_auth(&provider).unwrap();
         assert_eq!(auth.access_token.as_deref(), Some("ya29.valid"));
-        assert_eq!(auth.strategy, AuthStrategy::GoogleOAuth);
+        assert_eq!(auth.strategy, ProviderAuthStrategy::GoogleOAuth);
     }
 
     /// 回归:从 oauth_creds.json 复制时常带前导换行/空格。未 trim 时
@@ -877,7 +899,7 @@ mod tests {
 
         let auth = adapter.extract_auth(&provider).unwrap();
         assert_eq!(auth.access_token.as_deref(), Some("ya29.valid"));
-        assert_eq!(auth.strategy, AuthStrategy::GoogleOAuth);
+        assert_eq!(auth.strategy, ProviderAuthStrategy::GoogleOAuth);
     }
 
     /// 回归:裸 `ya29.` access_token 若带前导换行,也应被 trim 后识别为
@@ -902,7 +924,7 @@ mod tests {
 
         let auth = adapter.extract_auth(&provider).unwrap();
         assert_eq!(auth.access_token.as_deref(), Some("ya29.raw-token-value"));
-        assert_eq!(auth.strategy, AuthStrategy::GoogleOAuth);
+        assert_eq!(auth.strategy, ProviderAuthStrategy::GoogleOAuth);
     }
 
     #[test]
@@ -1166,7 +1188,7 @@ mod tests {
         }));
 
         let auth = adapter.extract_auth(&copilot).unwrap();
-        assert_eq!(auth.strategy, AuthStrategy::GitHubCopilot);
+        assert_eq!(auth.strategy, ProviderAuthStrategy::GitHubCopilot);
     }
 
     #[test]

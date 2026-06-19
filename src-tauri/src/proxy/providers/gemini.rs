@@ -12,7 +12,7 @@ use crate::proxy::error::ProxyError;
 use crate::proxy_core::{
     build_gemini_auth_headers, build_gemini_upstream_url, extract_gemini_api_key_from_settings,
     extract_gemini_base_url_from_settings, parse_gemini_oauth_credentials, GeminiOAuthCredentials,
-    ProviderAuthInfo as AuthInfo, ProviderAuthStrategy as AuthStrategy, ProviderKind,
+    ProviderAuthInfo, ProviderAuthStrategy, ProviderKind,
 };
 
 /// Gemini 适配器
@@ -38,10 +38,10 @@ impl GeminiAdapter {
     }
 
     /// 检测认证类型
-    pub fn detect_auth_type(&self, provider: &Provider) -> AuthStrategy {
+    pub fn detect_auth_type(&self, provider: &Provider) -> ProviderAuthStrategy {
         match self.provider_type(provider) {
-            ProviderKind::GeminiCli => AuthStrategy::GoogleOAuth,
-            _ => AuthStrategy::Google,
+            ProviderKind::GeminiCli => ProviderAuthStrategy::GoogleOAuth,
+            _ => ProviderAuthStrategy::Google,
         }
     }
 
@@ -73,21 +73,21 @@ impl ProviderAdapter for GeminiAdapter {
         })
     }
 
-    fn extract_auth(&self, provider: &Provider) -> Option<AuthInfo> {
+    fn extract_auth(&self, provider: &Provider) -> Option<ProviderAuthInfo> {
         let key = self.extract_key_raw(provider)?;
         let strategy = self.detect_auth_type(provider);
 
         match strategy {
-            AuthStrategy::GoogleOAuth => {
+            ProviderAuthStrategy::GoogleOAuth => {
                 // 解析 OAuth 凭证
                 if let Some(creds) = self.parse_oauth_credentials(&key) {
-                    Some(AuthInfo::with_access_token(key, creds.access_token))
+                    Some(ProviderAuthInfo::with_access_token(key, creds.access_token))
                 } else {
                     // 回退到普通 API Key
-                    Some(AuthInfo::new(key, AuthStrategy::Google))
+                    Some(ProviderAuthInfo::new(key, ProviderAuthStrategy::Google))
                 }
             }
-            _ => Some(AuthInfo::new(key, AuthStrategy::Google)),
+            _ => Some(ProviderAuthInfo::new(key, ProviderAuthStrategy::Google)),
         }
     }
 
@@ -97,12 +97,12 @@ impl ProviderAdapter for GeminiAdapter {
 
     fn get_auth_headers(
         &self,
-        auth: &AuthInfo,
+        auth: &ProviderAuthInfo,
     ) -> Result<Vec<(http::HeaderName, http::HeaderValue)>, ProxyError> {
         build_gemini_auth_headers(
             &auth.api_key,
             auth.access_token.as_deref(),
-            matches!(auth.strategy, AuthStrategy::GoogleOAuth),
+            matches!(auth.strategy, ProviderAuthStrategy::GoogleOAuth),
         )
         .map_err(|error| ProxyError::AuthError(error.to_string()))
     }
@@ -154,7 +154,7 @@ mod tests {
 
         let auth = adapter.extract_auth(&provider).unwrap();
         assert_eq!(auth.api_key, "AIza-test-key-12345678");
-        assert_eq!(auth.strategy, AuthStrategy::Google);
+        assert_eq!(auth.strategy, ProviderAuthStrategy::Google);
         assert!(auth.access_token.is_none());
     }
 
@@ -168,7 +168,7 @@ mod tests {
         }));
 
         let auth = adapter.extract_auth(&provider).unwrap();
-        assert_eq!(auth.strategy, AuthStrategy::GoogleOAuth);
+        assert_eq!(auth.strategy, ProviderAuthStrategy::GoogleOAuth);
         assert_eq!(
             auth.access_token,
             Some("ya29.test-access-token-12345".to_string())
@@ -185,7 +185,7 @@ mod tests {
         }));
 
         let auth = adapter.extract_auth(&provider).unwrap();
-        assert_eq!(auth.strategy, AuthStrategy::GoogleOAuth);
+        assert_eq!(auth.strategy, ProviderAuthStrategy::GoogleOAuth);
         assert_eq!(auth.access_token, Some("ya29.test-token".to_string()));
     }
 
@@ -299,7 +299,7 @@ mod tests {
     #[test]
     fn test_get_auth_headers_api_key() {
         let adapter = GeminiAdapter::new();
-        let auth = AuthInfo::new("gemini-key".to_string(), AuthStrategy::Google);
+        let auth = ProviderAuthInfo::new("gemini-key".to_string(), ProviderAuthStrategy::Google);
 
         let headers = adapter.get_auth_headers(&auth).unwrap();
 
@@ -311,7 +311,7 @@ mod tests {
     #[test]
     fn test_get_auth_headers_oauth() {
         let adapter = GeminiAdapter::new();
-        let auth = AuthInfo::with_access_token(
+        let auth = ProviderAuthInfo::with_access_token(
             "refresh-token".to_string(),
             "ya29.access-token".to_string(),
         );
@@ -334,7 +334,8 @@ mod tests {
     #[test]
     fn test_get_auth_headers_rejects_illegal_header_chars() {
         let adapter = GeminiAdapter::new();
-        let auth = AuthInfo::new("bad\r\nx-evil: 1".to_string(), AuthStrategy::Google);
+        let auth =
+            ProviderAuthInfo::new("bad\r\nx-evil: 1".to_string(), ProviderAuthStrategy::Google);
 
         let result = adapter.get_auth_headers(&auth);
 

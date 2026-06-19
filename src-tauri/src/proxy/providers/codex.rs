@@ -12,10 +12,9 @@ use crate::proxy_core::{
     apply_codex_chat_upstream_model_policy, build_codex_bearer_auth_headers,
     build_codex_upstream_url, codex_provider_catalog_model_ids_from_settings,
     infer_codex_chat_reasoning_profile, normalize_codex_chat_reasoning_profile,
-    ProviderAuthInfo as AuthInfo, ProviderAuthStrategy as AuthStrategy,
     resolve_codex_provider_upstream_model, resolve_codex_provider_uses_chat_completions,
     should_convert_codex_responses_endpoint_to_chat, CodexChatReasoningOptions,
-    CodexChatReasoningProfile,
+    CodexChatReasoningProfile, ProviderAuthInfo, ProviderAuthStrategy,
 };
 use serde_json::Value as JsonValue;
 use toml::Value as TomlValue;
@@ -342,9 +341,9 @@ impl ProviderAdapter for CodexAdapter {
         ))
     }
 
-    fn extract_auth(&self, provider: &Provider) -> Option<AuthInfo> {
+    fn extract_auth(&self, provider: &Provider) -> Option<ProviderAuthInfo> {
         self.extract_key(provider)
-            .map(|key| AuthInfo::new(key, AuthStrategy::Bearer))
+            .map(|key| ProviderAuthInfo::new(key, ProviderAuthStrategy::Bearer))
     }
 
     fn build_url(&self, base_url: &str, endpoint: &str) -> String {
@@ -353,7 +352,7 @@ impl ProviderAdapter for CodexAdapter {
 
     fn get_auth_headers(
         &self,
-        auth: &AuthInfo,
+        auth: &ProviderAuthInfo,
     ) -> Result<Vec<(http::HeaderName, http::HeaderValue)>, ProxyError> {
         build_codex_bearer_auth_headers(&auth.api_key)
             .map_err(|error| ProxyError::AuthError(error.to_string()))
@@ -405,7 +404,7 @@ mod tests {
 
         let auth = adapter.extract_auth(&provider).unwrap();
         assert_eq!(auth.api_key, "sk-test-key-12345678");
-        assert_eq!(auth.strategy, AuthStrategy::Bearer);
+        assert_eq!(auth.strategy, ProviderAuthStrategy::Bearer);
     }
 
     #[test]
@@ -424,7 +423,7 @@ experimental_bearer_token = "sk-config-key"
 
         let auth = adapter.extract_auth(&provider).unwrap();
         assert_eq!(auth.api_key, "sk-config-key");
-        assert_eq!(auth.strategy, AuthStrategy::Bearer);
+        assert_eq!(auth.strategy, ProviderAuthStrategy::Bearer);
     }
 
     #[test]
@@ -472,7 +471,7 @@ experimental_bearer_token = "sk-config-key"
     #[test]
     fn test_get_auth_headers_emits_bearer_authorization() {
         let adapter = CodexAdapter::new();
-        let auth = AuthInfo::new("sk-codex-test".to_string(), AuthStrategy::Bearer);
+        let auth = ProviderAuthInfo::new("sk-codex-test".to_string(), ProviderAuthStrategy::Bearer);
 
         let headers = adapter.get_auth_headers(&auth).unwrap();
 
@@ -487,7 +486,8 @@ experimental_bearer_token = "sk-config-key"
     #[test]
     fn test_get_auth_headers_rejects_illegal_header_chars() {
         let adapter = CodexAdapter::new();
-        let auth = AuthInfo::new("bad\r\nx-evil: 1".to_string(), AuthStrategy::Bearer);
+        let auth =
+            ProviderAuthInfo::new("bad\r\nx-evil: 1".to_string(), ProviderAuthStrategy::Bearer);
 
         let result = adapter.get_auth_headers(&auth);
 

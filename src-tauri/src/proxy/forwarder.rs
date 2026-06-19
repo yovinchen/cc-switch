@@ -48,11 +48,11 @@ use crate::proxy_core::{
     validate_managed_account_upstream_auth, AppKind, AttemptEventChannel, AttemptEventPayloadInput,
     AttemptEventPhase, ChannelQuery, CopilotAuthHeaderOverrides, CopilotOptimizerConfig,
     CurrentRouteTarget, ForwardFailureCategory, ForwardFailureKind, GeminiShadowStore,
-    InterfaceKind, MediaRetryInput, OptimizerConfig, PromptCacheTraceLogInput, ProxyBody,
-    ProxyEngine, ProxyRequest, ProxyRuntimeStatus as ProxyStatus, ProxyServices,
-    ProviderAuthInfo as AuthInfo, ProviderAuthStrategy as AuthStrategy, ProviderKind,
-    RectifierConfig, ResolvedChannelAttempt, UpstreamAuthHeadersInput, UpstreamRequestHeadersInput,
-    UpstreamSendPolicyInput, UpstreamTransportKind, UNSUPPORTED_IMAGE_MARKER,
+    InterfaceKind, MediaRetryInput, OptimizerConfig, PromptCacheTraceLogInput, ProviderAuthInfo,
+    ProviderAuthStrategy, ProviderKind, ProxyBody, ProxyEngine, ProxyRequest,
+    ProxyRuntimeStatus as ProxyStatus, ProxyServices, RectifierConfig, ResolvedChannelAttempt,
+    UpstreamAuthHeadersInput, UpstreamRequestHeadersInput, UpstreamSendPolicyInput,
+    UpstreamTransportKind, UNSUPPORTED_IMAGE_MARKER,
 };
 use crate::proxy_core_host::CcSwitchProxyServices;
 use crate::{app_config::AppType, provider::Provider};
@@ -1934,7 +1934,7 @@ impl RequestForwarder {
         // 获取认证头（提前准备，用于内联替换）
         let mut auth_headers = if let Some(mut auth) = adapter.extract_auth(provider) {
             // GitHub Copilot 特殊处理：从 CopilotAuthManager 获取真实 token
-            if auth.strategy == AuthStrategy::GitHubCopilot {
+            if auth.strategy == ProviderAuthStrategy::GitHubCopilot {
                 if let Some(app_handle) = &self.app_handle {
                     let copilot_state = app_handle.state::<CopilotAuthState>();
                     let copilot_auth: tokio::sync::RwLockReadGuard<'_, CopilotAuthManager> =
@@ -1960,7 +1960,8 @@ impl RequestForwarder {
 
                     match token_result {
                         Ok(token) => {
-                            auth = AuthInfo::new(token, AuthStrategy::GitHubCopilot);
+                            auth =
+                                ProviderAuthInfo::new(token, ProviderAuthStrategy::GitHubCopilot);
                             log::debug!(
                                 "[Copilot] 成功获取 Copilot token (account={})",
                                 account_id.as_deref().unwrap_or("default")
@@ -1985,7 +1986,7 @@ impl RequestForwarder {
             }
 
             // Codex OAuth 特殊处理：从 CodexOAuthManager 获取真实 access_token
-            if auth.strategy == AuthStrategy::CodexOAuth {
+            if auth.strategy == ProviderAuthStrategy::CodexOAuth {
                 if let Some(app_handle) = &self.app_handle {
                     let codex_state = app_handle.state::<CodexOAuthState>();
                     let codex_auth: tokio::sync::RwLockReadGuard<'_, CodexOAuthManager> =
@@ -2010,7 +2011,7 @@ impl RequestForwarder {
 
                     match token_result {
                         Ok(token) => {
-                            auth = AuthInfo::new(token, AuthStrategy::CodexOAuth);
+                            auth = ProviderAuthInfo::new(token, ProviderAuthStrategy::CodexOAuth);
                             should_send_codex_oauth_session_headers = true;
                             // 解析使用的 account_id（用于注入 ChatGPT-Account-Id header）
                             codex_oauth_account_id = match account_id {

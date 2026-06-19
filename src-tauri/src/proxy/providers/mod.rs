@@ -19,8 +19,7 @@ mod gemini;
 use crate::app_config::AppType;
 use crate::provider::Provider;
 use crate::proxy_core::{
-    infer_claude_provider_kind, is_gemini_oauth_key_shape, ProviderAuthStrategy as AuthStrategy,
-    ProviderKind,
+    infer_claude_provider_kind, is_gemini_oauth_key_shape, ProviderAuthStrategy, ProviderKind,
 };
 
 pub use adapter::ProviderAdapter;
@@ -51,7 +50,7 @@ pub fn provider_kind_from_app_type_and_config(
             let uses_google_oauth = if api_format == "gemini_native" {
                 adapter
                     .extract_auth(provider)
-                    .map(|auth| matches!(auth.strategy, AuthStrategy::GoogleOAuth))
+                    .map(|auth| matches!(auth.strategy, ProviderAuthStrategy::GoogleOAuth))
                     .unwrap_or(false)
             } else {
                 false
