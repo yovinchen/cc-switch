@@ -134,6 +134,17 @@ pub fn truncate_model_fetch_error_body(body: impl AsRef<str>) -> String {
     }
 }
 
+pub fn truncate_codex_oauth_models_error_body(body: impl AsRef<str>) -> String {
+    let body = body.as_ref();
+    if body.chars().count() <= MODEL_FETCH_ERROR_BODY_MAX_CHARS {
+        body.to_string()
+    } else {
+        let mut truncated: String = body.chars().take(MODEL_FETCH_ERROR_BODY_MAX_CHARS).collect();
+        truncated.push_str("...");
+        truncated
+    }
+}
+
 pub fn parse_codex_oauth_models(value: &Value) -> Vec<FetchedModel> {
     let entries = value
         .get("data")
@@ -769,6 +780,15 @@ mod tests {
             MODEL_FETCH_ERROR_BODY_MAX_CHARS + 1
         );
         assert!(truncated.ends_with('\u{2026}'));
+    }
+
+    #[test]
+    fn truncate_codex_oauth_models_error_body_uses_legacy_suffix() {
+        let body = "x".repeat(MODEL_FETCH_ERROR_BODY_MAX_CHARS + 1);
+        let truncated = truncate_codex_oauth_models_error_body(&body);
+
+        assert_eq!(truncated.len(), MODEL_FETCH_ERROR_BODY_MAX_CHARS + 3);
+        assert!(truncated.ends_with("..."));
     }
 
     #[test]
