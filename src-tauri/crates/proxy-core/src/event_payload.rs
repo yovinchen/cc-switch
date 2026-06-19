@@ -1,4 +1,33 @@
+use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
+
+pub const PROXY_EVENTS_CONNECTED_EVENT: &str = "proxy_events_connected";
+pub const PROXY_EVENTS_LAGGED_EVENT: &str = "proxy_events_lagged";
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct ProxyEventEnvelope {
+    pub id: u64,
+    pub event: String,
+    pub timestamp: String,
+    pub payload: Value,
+}
+
+impl ProxyEventEnvelope {
+    pub fn new(
+        id: u64,
+        event: impl Into<String>,
+        timestamp: impl Into<String>,
+        payload: Value,
+    ) -> Self {
+        Self {
+            id,
+            event: event.into(),
+            timestamp: timestamp.into(),
+            payload,
+        }
+    }
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AttemptEventPhase {
@@ -88,11 +117,24 @@ pub fn build_request_started_event_payload(request_id: &str, app_type: &str) -> 
     })
 }
 
+pub fn build_proxy_events_connected_payload(buffer_size: usize) -> Value {
+    json!({
+        "bufferSize": buffer_size,
+    })
+}
+
+pub fn build_proxy_events_lagged_payload(skipped: u64) -> Value {
+    json!({
+        "skipped": skipped,
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::{
-        attempt_event_name, build_attempt_event_payload, build_request_started_event_payload,
-        AttemptEventChannel, AttemptEventPayloadInput, AttemptEventPhase,
+        attempt_event_name, build_attempt_event_payload, build_proxy_events_connected_payload,
+        build_proxy_events_lagged_payload, build_request_started_event_payload,
+        AttemptEventChannel, AttemptEventPayloadInput, AttemptEventPhase, ProxyEventEnvelope,
     };
 
     #[test]
@@ -172,5 +214,34 @@ mod tests {
 
         assert_eq!(payload["requestId"], "req-1");
         assert_eq!(payload["appType"], "claude");
+    }
+
+    #[test]
+    fn proxy_event_envelope_uses_camel_case_contract() {
+        let envelope = ProxyEventEnvelope::new(
+            7,
+            "request_started",
+            "2026-06-19T00:00:00Z",
+            build_request_started_event_payload("req-1", "claude"),
+        );
+
+        let serialized = serde_json::to_value(envelope).expect("serialize envelope");
+
+        assert_eq!(serialized["id"], 7);
+        assert_eq!(serialized["event"], "request_started");
+        assert_eq!(serialized["timestamp"], "2026-06-19T00:00:00Z");
+        assert_eq!(serialized["payload"]["requestId"], "req-1");
+    }
+
+    #[test]
+    fn proxy_event_stream_control_payloads_keep_existing_shape() {
+        assert_eq!(
+            build_proxy_events_connected_payload(256),
+            serde_json::json!({ "bufferSize": 256 })
+        );
+        assert_eq!(
+            build_proxy_events_lagged_payload(3),
+            serde_json::json!({ "skipped": 3 })
+        );
     }
 }

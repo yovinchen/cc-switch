@@ -4,21 +4,16 @@
 //! Keeping it independent from Tauri lets it become the future `ProxyEventSink`
 //! implementation when the forwarding engine is moved behind service ports.
 
-use serde::{Deserialize, Serialize};
-use serde_json::{json, Value};
+pub use crate::proxy_core::ProxyEventEnvelope;
+use crate::proxy_core::{
+    build_proxy_events_connected_payload, build_proxy_events_lagged_payload,
+    PROXY_EVENTS_CONNECTED_EVENT, PROXY_EVENTS_LAGGED_EVENT,
+};
+use serde_json::Value;
 use std::sync::atomic::{AtomicU64, Ordering};
 use tokio::sync::broadcast;
 
 const EVENT_BUFFER_SIZE: usize = 256;
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-#[serde(rename_all = "camelCase")]
-pub struct ProxyEventEnvelope {
-    pub id: u64,
-    pub event: String,
-    pub timestamp: String,
-    pub payload: Value,
-}
 
 #[derive(Debug)]
 pub struct ProxyEventBus {
@@ -49,35 +44,32 @@ impl ProxyEventBus {
 
     pub fn connected_event(&self) -> ProxyEventEnvelope {
         self.envelope(
-            "proxy_events_connected",
-            json!({
-                "bufferSize": EVENT_BUFFER_SIZE,
-            }),
+            PROXY_EVENTS_CONNECTED_EVENT,
+            build_proxy_events_connected_payload(EVENT_BUFFER_SIZE),
         )
     }
 
     pub fn lagged_event(&self, skipped: u64) -> ProxyEventEnvelope {
         self.envelope(
-            "proxy_events_lagged",
-            json!({
-                "skipped": skipped,
-            }),
+            PROXY_EVENTS_LAGGED_EVENT,
+            build_proxy_events_lagged_payload(skipped),
         )
     }
 
     fn envelope(&self, event: impl Into<String>, payload: Value) -> ProxyEventEnvelope {
-        ProxyEventEnvelope {
-            id: self.sequence.fetch_add(1, Ordering::Relaxed) + 1,
-            event: event.into(),
-            timestamp: chrono::Utc::now().to_rfc3339(),
+        ProxyEventEnvelope::new(
+            self.sequence.fetch_add(1, Ordering::Relaxed) + 1,
+            event,
+            chrono::Utc::now().to_rfc3339(),
             payload,
-        }
+        )
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serde_json::json;
 
     #[tokio::test]
     async fn event_bus_broadcasts_ordered_envelopes() {
