@@ -466,6 +466,140 @@ pub fn response_status_from_finish_reason(finish_reason: Option<&str>) -> &'stat
     }
 }
 
+pub fn responses_role_to_chat_role(role: &str) -> &'static str {
+    match role {
+        "system" | "developer" => "system",
+        "assistant" => "assistant",
+        "tool" => "tool",
+        "user" | "latest_reminder" => "user",
+        _ => "user",
+    }
+}
+
+pub fn append_pending_reasoning(
+    pending_reasoning: &mut Option<String>,
+    reasoning: Option<String>,
+) {
+    let Some(reasoning) = reasoning else {
+        return;
+    };
+    let reasoning = reasoning.trim();
+    if reasoning.is_empty() {
+        return;
+    }
+
+    match pending_reasoning {
+        Some(existing) if !existing.is_empty() => {
+            existing.push_str("\n\n");
+            existing.push_str(reasoning);
+        }
+        _ => {
+            *pending_reasoning = Some(reasoning.to_string());
+        }
+    }
+}
+
+pub fn append_unique_pending_reasoning(
+    pending_reasoning: &mut Option<String>,
+    reasoning: Option<String>,
+) {
+    let Some(reasoning) = reasoning else {
+        return;
+    };
+    let reasoning = reasoning.trim();
+    if reasoning.is_empty() {
+        return;
+    }
+
+    match pending_reasoning {
+        Some(existing) if existing.contains(reasoning) => {}
+        Some(existing) if !existing.is_empty() => {
+            existing.push_str("\n\n");
+            existing.push_str(reasoning);
+        }
+        _ => {
+            *pending_reasoning = Some(reasoning.to_string());
+        }
+    }
+}
+
+pub fn attach_pending_reasoning_to_assistant(
+    message: &mut Value,
+    pending_reasoning: &mut Option<String>,
+) {
+    let Some(reasoning) = pending_reasoning.take() else {
+        return;
+    };
+    if reasoning.trim().is_empty() {
+        return;
+    }
+
+    if let Some(obj) = message.as_object_mut() {
+        append_reasoning_content(obj, &reasoning);
+    }
+}
+
+/// Backfill assistant tool-call messages with a non-empty `reasoning_content`.
+pub fn backfill_tool_call_reasoning_placeholders(messages: &mut [Value]) {
+    for message in messages.iter_mut() {
+        let is_assistant_tool_call = message.get("role").and_then(Value::as_str)
+            == Some("assistant")
+            && message
+                .get("tool_calls")
+                .and_then(Value::as_array)
+                .is_some_and(|calls| !calls.is_empty());
+        if is_assistant_tool_call {
+            ensure_tool_call_reasoning_content(message);
+        }
+    }
+}
+
+pub fn ensure_tool_call_reasoning_content(message: &mut Value) {
+    let Some(obj) = message.as_object_mut() else {
+        return;
+    };
+    let has_reasoning = obj
+        .get("reasoning_content")
+        .and_then(Value::as_str)
+        .is_some_and(|text| !text.trim().is_empty());
+    if !has_reasoning {
+        obj.insert(
+            "reasoning_content".to_string(),
+            Value::String("tool call".to_string()),
+        );
+    }
+}
+
+pub fn attach_reasoning_to_last_assistant(
+    messages: &mut [Value],
+    last_assistant_index: Option<usize>,
+    reasoning: &Option<String>,
+) -> bool {
+    let Some(reasoning) = reasoning
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    else {
+        return true;
+    };
+    let Some(index) = last_assistant_index else {
+        return false;
+    };
+    let Some(message) = messages.get_mut(index) else {
+        return false;
+    };
+    if message.get("role").and_then(Value::as_str) != Some("assistant") {
+        return false;
+    }
+
+    if let Some(obj) = message.as_object_mut() {
+        append_reasoning_content(obj, reasoning);
+        return true;
+    }
+
+    false
+}
+
 pub fn split_leading_think_block(text: &str) -> Option<(String, String)> {
     let leading_ws_len = text.len() - text.trim_start().len();
     let after_ws = &text[leading_ws_len..];
@@ -973,6 +1107,66 @@ mod tests {
         assert_eq!(response_status_from_finish_reason(Some("length")), "incomplete");
         assert_eq!(response_status_from_finish_reason(Some("stop")), "completed");
         assert_eq!(response_status_from_finish_reason(None), "completed");
+    }
+
+    #[test]
+    fn maps_responses_roles_and_pending_reasoning_to_chat_messages() {
+        assert_eq!(responses_role_to_chat_role("developer"), "system");
+        assert_eq!(responses_role_to_chat_role("latest_reminder"), "user");
+        assert_eq!(responses_role_to_chat_role("unknown"), "user");
+
+        let mut pending = None;
+        append_pending_reasoning(&mut pending, Some(" first ".to_string()));
+        append_pending_reasoning(&mut pending, Some("second".to_string()));
+        assert_eq!(pending.as_deref(), Some("first\n\nsecond"));
+
+        append_unique_pending_reasoning(&mut pending, Some("second".to_string()));
+        assert_eq!(pending.as_deref(), Some("first\n\nsecond"));
+        append_unique_pending_reasoning(&mut pending, Some("third".to_string()));
+        assert_eq!(pending.as_deref(), Some("first\n\nsecond\n\nthird"));
+
+        let mut message = json!({"role": "assistant", "content": ""});
+        attach_pending_reasoning_to_assistant(&mut message, &mut pending);
+        assert!(pending.is_none());
+        assert_eq!(
+            message["reasoning_content"],
+            Value::String("first\n\nsecond\n\nthird".to_string())
+        );
+    }
+
+    #[test]
+    fn backfills_and_attaches_reasoning_to_last_assistant() {
+        let mut messages = vec![
+            json!({
+                "role": "assistant",
+                "tool_calls": [{"id": "call_1"}]
+            }),
+            json!({
+                "role": "user",
+                "content": "next"
+            }),
+        ];
+
+        backfill_tool_call_reasoning_placeholders(&mut messages);
+        assert_eq!(messages[0]["reasoning_content"], "tool call");
+        assert!(messages[1].get("reasoning_content").is_none());
+
+        let reasoning = Some("real reasoning".to_string());
+        assert!(attach_reasoning_to_last_assistant(
+            &mut messages[..1],
+            Some(0),
+            &reasoning
+        ));
+        assert_eq!(
+            messages[0]["reasoning_content"],
+            Value::String("tool call\n\nreal reasoning".to_string())
+        );
+        assert!(!attach_reasoning_to_last_assistant(
+            &mut messages,
+            Some(1),
+            &reasoning
+        ));
+        assert!(attach_reasoning_to_last_assistant(&mut messages, Some(0), &None));
     }
 
     #[test]

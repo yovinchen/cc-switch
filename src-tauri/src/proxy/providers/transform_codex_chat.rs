@@ -5,9 +5,8 @@
 //! OpenAI-compatible Chat Completions endpoint.
 
 use super::codex_chat_common::{
-    append_reasoning_content, extract_reasoning_field_text, extract_reasoning_summary_text,
-    response_function_call_item, response_function_call_item_with_namespace,
-    split_leading_think_block,
+    extract_reasoning_field_text, extract_reasoning_summary_text, response_function_call_item,
+    response_function_call_item_with_namespace, split_leading_think_block,
 };
 use crate::provider::CodexChatReasoningConfig;
 use crate::proxy::{
@@ -18,8 +17,11 @@ use crate::proxy::{
     },
 };
 pub(crate) use crate::proxy_core::{
-    chat_usage_to_responses_usage, custom_tool_input_from_chat_arguments, response_id_from_chat_id,
-    response_status_from_finish_reason,
+    append_pending_reasoning, append_unique_pending_reasoning,
+    attach_pending_reasoning_to_assistant, attach_reasoning_to_last_assistant,
+    backfill_tool_call_reasoning_placeholders, chat_usage_to_responses_usage,
+    custom_tool_input_from_chat_arguments, response_id_from_chat_id,
+    response_status_from_finish_reason, responses_role_to_chat_role,
 };
 use crate::proxy_core::{codex_chat_reasoning_requested, map_codex_chat_reasoning_effort};
 use serde_json::{json, Value};
@@ -714,16 +716,6 @@ fn responses_message_item_to_chat_message(
     message
 }
 
-fn responses_role_to_chat_role(role: &str) -> &'static str {
-    match role {
-        "system" | "developer" => "system",
-        "assistant" => "assistant",
-        "tool" => "tool",
-        "user" | "latest_reminder" => "user",
-        _ => "user",
-    }
-}
-
 fn update_last_assistant_index(
     messages: &[Value],
     message: &Value,
@@ -738,135 +730,6 @@ fn update_last_assistant_index(
             *last_assistant_index = None;
         }
     }
-}
-
-fn append_pending_reasoning(pending_reasoning: &mut Option<String>, reasoning: Option<String>) {
-    let Some(reasoning) = reasoning else {
-        return;
-    };
-    let reasoning = reasoning.trim();
-    if reasoning.is_empty() {
-        return;
-    }
-
-    match pending_reasoning {
-        Some(existing) if !existing.is_empty() => {
-            existing.push_str("\n\n");
-            existing.push_str(reasoning);
-        }
-        _ => {
-            *pending_reasoning = Some(reasoning.to_string());
-        }
-    }
-}
-
-fn append_unique_pending_reasoning(
-    pending_reasoning: &mut Option<String>,
-    reasoning: Option<String>,
-) {
-    let Some(reasoning) = reasoning else {
-        return;
-    };
-    let reasoning = reasoning.trim();
-    if reasoning.is_empty() {
-        return;
-    }
-
-    match pending_reasoning {
-        Some(existing) if existing.contains(reasoning) => {}
-        Some(existing) if !existing.is_empty() => {
-            existing.push_str("\n\n");
-            existing.push_str(reasoning);
-        }
-        _ => {
-            *pending_reasoning = Some(reasoning.to_string());
-        }
-    }
-}
-
-fn attach_pending_reasoning_to_assistant(
-    message: &mut Value,
-    pending_reasoning: &mut Option<String>,
-) {
-    let Some(reasoning) = pending_reasoning.take() else {
-        return;
-    };
-    if reasoning.trim().is_empty() {
-        return;
-    }
-
-    if let Some(obj) = message.as_object_mut() {
-        append_reasoning_content(obj, &reasoning);
-    }
-}
-
-/// 在所有 input 处理完毕后，对仍缺 `reasoning_content` 的 assistant tool-call 消息补占位。
-/// 必须作为管线末端的最终兜底执行：真实 reasoning 可能以尾随 `reasoning` item 的形式经
-/// `attach_reasoning_to_last_assistant` 回填，过早注入占位会被 `append_reasoning_content`
-/// 追加而污染真实思考。
-fn backfill_tool_call_reasoning_placeholders(messages: &mut [Value]) {
-    for message in messages.iter_mut() {
-        let is_assistant_tool_call = message.get("role").and_then(|value| value.as_str())
-            == Some("assistant")
-            && message
-                .get("tool_calls")
-                .and_then(|value| value.as_array())
-                .is_some_and(|calls| !calls.is_empty());
-        if is_assistant_tool_call {
-            ensure_tool_call_reasoning_content(message);
-        }
-    }
-}
-
-/// kimi/Moonshot、DeepSeek 等 thinking 模型要求每条带 `tool_calls` 的 assistant
-/// 消息都必须携带非空 `reasoning_content`。跨轮历史恢复 miss（如代理重启丢失内存缓存、
-/// call_id 歧义无法恢复、上游某轮未产出思考）时，这里补一个占位，避免上游返回
-/// `reasoning_content is missing in assistant tool call message`。
-/// 与 `transform::anthropic_to_openai_with_reasoning_content` 的占位行为保持对称。
-fn ensure_tool_call_reasoning_content(message: &mut Value) {
-    let Some(obj) = message.as_object_mut() else {
-        return;
-    };
-    let has_reasoning = obj
-        .get("reasoning_content")
-        .and_then(|value| value.as_str())
-        .is_some_and(|text| !text.trim().is_empty());
-    if !has_reasoning {
-        obj.insert(
-            "reasoning_content".to_string(),
-            Value::String("tool call".to_string()),
-        );
-    }
-}
-
-fn attach_reasoning_to_last_assistant(
-    messages: &mut [Value],
-    last_assistant_index: Option<usize>,
-    reasoning: &Option<String>,
-) -> bool {
-    let Some(reasoning) = reasoning
-        .as_deref()
-        .map(str::trim)
-        .filter(|s| !s.is_empty())
-    else {
-        return true;
-    };
-    let Some(index) = last_assistant_index else {
-        return false;
-    };
-    let Some(message) = messages.get_mut(index) else {
-        return false;
-    };
-    if message.get("role").and_then(|v| v.as_str()) != Some("assistant") {
-        return false;
-    }
-
-    if let Some(obj) = message.as_object_mut() {
-        append_reasoning_content(obj, reasoning);
-        return true;
-    }
-
-    false
 }
 
 fn responses_message_reasoning_text(item: &Value) -> Option<String> {
