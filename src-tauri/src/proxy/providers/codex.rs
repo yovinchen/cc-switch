@@ -11,19 +11,13 @@ use crate::proxy::error::ProxyError;
 use crate::proxy_core::{
     apply_codex_chat_upstream_model_policy, build_codex_upstream_url,
     codex_provider_catalog_model_ids_from_settings, infer_codex_chat_reasoning_profile,
-    normalize_codex_chat_reasoning_profile, resolve_codex_provider_upstream_model,
-    resolve_codex_provider_uses_chat_completions, should_convert_codex_responses_endpoint_to_chat,
-    CodexChatReasoningOptions, CodexChatReasoningProfile,
+    is_official_codex_client_user_agent, normalize_codex_chat_reasoning_profile,
+    resolve_codex_provider_upstream_model, resolve_codex_provider_uses_chat_completions,
+    should_convert_codex_responses_endpoint_to_chat, CodexChatReasoningOptions,
+    CodexChatReasoningProfile,
 };
-use regex::Regex;
 use serde_json::Value as JsonValue;
-use std::sync::LazyLock;
 use toml::Value as TomlValue;
-
-/// 官方 Codex 客户端 User-Agent 正则
-#[allow(dead_code)]
-static CODEX_CLIENT_REGEX: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"^(codex_vscode|codex_cli_rs)/[\d.]+").unwrap());
 
 /// Codex 适配器
 pub struct CodexAdapter;
@@ -236,7 +230,7 @@ impl CodexAdapter {
     /// 匹配 User-Agent 模式: `^(codex_vscode|codex_cli_rs)/[\d.]+`
     #[allow(dead_code)]
     pub fn is_official_client(user_agent: &str) -> bool {
-        CODEX_CLIENT_REGEX.is_match(user_agent)
+        is_official_codex_client_user_agent(user_agent)
     }
 
     /// 从 Provider 配置中提取 API Key

@@ -82,6 +82,16 @@ pub fn should_send_anthropic_request_headers(
     adapter_name == "Claude" && matches!(resolved_claude_api_format, Some("anthropic"))
 }
 
+pub fn is_official_codex_client_user_agent(user_agent: &str) -> bool {
+    let version = user_agent
+        .strip_prefix("codex_vscode/")
+        .or_else(|| user_agent.strip_prefix("codex_cli_rs/"));
+
+    version
+        .and_then(|value| value.as_bytes().first())
+        .is_some_and(|byte| byte.is_ascii_digit() || *byte == b'.')
+}
+
 /// Build an HTTP `HeaderValue` from user-provided credential material.
 ///
 /// Invalid bytes (control characters, CR/LF, non-ASCII where disallowed by
@@ -371,7 +381,7 @@ mod tests {
     use super::{
         anthropic_beta_header_value, auth_header_value, build_codex_oauth_session_headers,
         build_upstream_auth_headers,
-        build_upstream_request_headers,
+        build_upstream_request_headers, is_official_codex_client_user_agent,
         should_preserve_exact_request_header_case, should_send_anthropic_request_headers,
         should_skip_copilot_fingerprint_request_header, should_strip_forwarded_request_header,
         CopilotAuthHeaderOverrides, UpstreamAuthHeadersInput, UpstreamRequestHeadersInput,
@@ -440,6 +450,26 @@ mod tests {
             Some("anthropic"),
         ));
         assert_eq!(DEFAULT_ANTHROPIC_VERSION, "2023-06-01");
+    }
+
+    #[test]
+    fn detects_official_codex_client_user_agent_prefixes() {
+        assert!(is_official_codex_client_user_agent(
+            "codex_vscode/1.0.0"
+        ));
+        assert!(is_official_codex_client_user_agent(
+            "codex_cli_rs/0.5.2"
+        ));
+        assert!(is_official_codex_client_user_agent(
+            "codex_vscode/1.0.0 extra"
+        ));
+        assert!(!is_official_codex_client_user_agent("Mozilla/5.0"));
+        assert!(!is_official_codex_client_user_agent(
+            "some codex_vscode/1.0.0"
+        ));
+        assert!(!is_official_codex_client_user_agent("codex_other/1.0.0"));
+        assert!(!is_official_codex_client_user_agent("codex_vscode/"));
+        assert!(!is_official_codex_client_user_agent("codex_cli_rs/x.y.z"));
     }
 
     #[test]
