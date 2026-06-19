@@ -1019,6 +1019,59 @@ pub fn response_tool_call_item_from_chat_name(
     }
 }
 
+pub fn chat_completion_to_response_with_context(
+    body: &Value,
+    tool_context: &CodexToolContext,
+) -> Result<Value, String> {
+    let choices = body
+        .get("choices")
+        .and_then(Value::as_array)
+        .ok_or_else(|| "No choices in chat response".to_string())?;
+    let choice = choices
+        .first()
+        .ok_or_else(|| "Empty choices in chat response".to_string())?;
+    let message = choice
+        .get("message")
+        .ok_or_else(|| "No message in chat choice".to_string())?;
+
+    let response_id = response_id_from_chat_id(body.get("id").and_then(Value::as_str));
+    let model = body.get("model").and_then(Value::as_str).unwrap_or("");
+    let created_at = body.get("created").and_then(Value::as_u64).unwrap_or(0);
+    let finish_reason = choice.get("finish_reason").and_then(Value::as_str);
+
+    let reasoning = chat_reasoning_text(message);
+    let mut output = Vec::new();
+    if let Some(reasoning_item) =
+        chat_reasoning_to_response_output_item(reasoning.as_deref(), &response_id)
+    {
+        output.push(reasoning_item);
+    }
+    if let Some(message_item) = chat_message_to_response_output_item(message, &response_id) {
+        output.push(message_item);
+    }
+    output.extend(chat_tool_calls_to_response_output_items(
+        message,
+        reasoning.as_deref(),
+        tool_context,
+    ));
+
+    let mut response = json!({
+        "id": response_id,
+        "object": "response",
+        "created_at": created_at,
+        "status": response_status_from_finish_reason(finish_reason),
+        "model": model,
+        "output": output,
+        "usage": chat_usage_to_responses_usage(body.get("usage"))
+    });
+
+    if finish_reason == Some("length") {
+        response["incomplete_details"] = json!({ "reason": "max_output_tokens" });
+    }
+
+    Ok(response)
+}
+
 pub fn chat_tool_calls_to_response_output_items(
     message: &Value,
     reasoning: Option<&str>,
@@ -2658,6 +2711,55 @@ mod tests {
         assert_eq!(legacy_items[0]["id"], "fc_call_0");
         assert_eq!(legacy_items[0]["call_id"], "call_0");
         assert_eq!(legacy_items[0]["name"], "legacy_lookup");
+    }
+
+    #[test]
+    fn converts_codex_chat_completion_to_response_with_context() {
+        let context = build_codex_tool_context_from_request(&json!({
+            "tools": [{"type": "custom", "name": "apply_patch"}]
+        }));
+        let response = chat_completion_to_response_with_context(
+            &json!({
+                "id": "chatcmpl_123",
+                "created": 42,
+                "model": "gpt-5.4",
+                "choices": [{
+                    "finish_reason": "length",
+                    "message": {
+                        "role": "assistant",
+                        "content": "Done",
+                        "reasoning_content": "Need edit.",
+                        "tool_calls": [{
+                            "id": "call_patch",
+                            "function": {
+                                "name": "apply_patch",
+                                "arguments": {"input": "*** Begin Patch\n*** End Patch"}
+                            }
+                        }]
+                    }
+                }],
+                "usage": {
+                    "prompt_tokens": 3,
+                    "completion_tokens": 5,
+                    "total_tokens": 8
+                }
+            }),
+            &context,
+        )
+        .expect("response");
+
+        assert_eq!(response["id"], "resp_chatcmpl_123");
+        assert_eq!(response["status"], "incomplete");
+        assert_eq!(response["incomplete_details"]["reason"], "max_output_tokens");
+        assert_eq!(response["output"][0]["type"], "reasoning");
+        assert_eq!(response["output"][1]["type"], "message");
+        assert_eq!(response["output"][2]["type"], "custom_tool_call");
+        assert_eq!(response["usage"]["input_tokens"], 3);
+        assert_eq!(response["usage"]["output_tokens"], 5);
+
+        let error =
+            chat_completion_to_response_with_context(&json!({"choices": []}), &context).unwrap_err();
+        assert_eq!(error, "Empty choices in chat response");
     }
 
     #[test]

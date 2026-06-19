@@ -8,14 +8,13 @@ use crate::provider::CodexChatReasoningConfig;
 use crate::proxy::error::ProxyError;
 pub(crate) use crate::proxy_core::{
     append_responses_input_as_chat_messages, apply_codex_chat_reasoning_options,
-    build_codex_tool_context_from_request, chat_message_to_response_output_item,
-    chat_reasoning_text, chat_reasoning_to_response_output_item,
-    chat_tool_calls_to_response_output_items, chat_usage_to_responses_usage,
-    collapse_system_messages_to_head, custom_tool_input_from_chat_arguments,
-    response_id_from_chat_id, response_status_from_finish_reason,
-    response_tool_call_item_from_chat_name, response_tool_call_item_id_from_chat_name,
-    responses_instruction_text, responses_tool_choice_to_chat_tool_choice,
-    CodexChatReasoningOptions, CodexToolContext,
+    build_codex_tool_context_from_request,
+    chat_completion_to_response_with_context as build_chat_completion_response_with_context,
+    chat_usage_to_responses_usage, collapse_system_messages_to_head,
+    custom_tool_input_from_chat_arguments, response_id_from_chat_id,
+    response_status_from_finish_reason, response_tool_call_item_from_chat_name,
+    response_tool_call_item_id_from_chat_name, responses_instruction_text,
+    responses_tool_choice_to_chat_tool_choice, CodexChatReasoningOptions, CodexToolContext,
 };
 use serde_json::{json, Value};
 
@@ -164,53 +163,8 @@ pub(crate) fn chat_completion_to_response_with_context(
     body: Value,
     tool_context: &CodexToolContext,
 ) -> Result<Value, ProxyError> {
-    let choices = body
-        .get("choices")
-        .and_then(|v| v.as_array())
-        .ok_or_else(|| ProxyError::TransformError("No choices in chat response".to_string()))?;
-    let choice = choices
-        .first()
-        .ok_or_else(|| ProxyError::TransformError("Empty choices in chat response".to_string()))?;
-    let message = choice
-        .get("message")
-        .ok_or_else(|| ProxyError::TransformError("No message in chat choice".to_string()))?;
-
-    let response_id = response_id_from_chat_id(body.get("id").and_then(|v| v.as_str()));
-    let model = body.get("model").and_then(|v| v.as_str()).unwrap_or("");
-    let created_at = body.get("created").and_then(|v| v.as_u64()).unwrap_or(0);
-    let finish_reason = choice.get("finish_reason").and_then(|v| v.as_str());
-
-    let reasoning = chat_reasoning_text(message);
-    let mut output = Vec::new();
-    if let Some(reasoning_item) =
-        chat_reasoning_to_response_output_item(reasoning.as_deref(), &response_id)
-    {
-        output.push(reasoning_item);
-    }
-    if let Some(message_item) = chat_message_to_response_output_item(message, &response_id) {
-        output.push(message_item);
-    }
-    output.extend(chat_tool_calls_to_response_output_items(
-        message,
-        reasoning.as_deref(),
-        tool_context,
-    ));
-
-    let mut response = json!({
-        "id": response_id,
-        "object": "response",
-        "created_at": created_at,
-        "status": response_status_from_finish_reason(finish_reason),
-        "model": model,
-        "output": output,
-        "usage": chat_usage_to_responses_usage(body.get("usage"))
-    });
-
-    if finish_reason == Some("length") {
-        response["incomplete_details"] = json!({ "reason": "max_output_tokens" });
-    }
-
-    Ok(response)
+    build_chat_completion_response_with_context(&body, tool_context)
+        .map_err(ProxyError::TransformError)
 }
 
 #[cfg(test)]
