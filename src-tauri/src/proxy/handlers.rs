@@ -21,8 +21,7 @@ use super::{
         streaming::create_anthropic_sse_stream,
         streaming_codex_chat::create_responses_sse_stream_from_chat_with_context,
         streaming_gemini::create_anthropic_sse_stream_from_gemini,
-        streaming_responses::create_anthropic_sse_stream_from_responses, transform,
-        transform_codex_chat, transform_gemini, transform_responses,
+        streaming_responses::create_anthropic_sse_stream_from_responses, transform_gemini,
     },
     response_adapter::{
         proxy_core_response_to_axum_response, proxy_core_response_to_proxy_response,
@@ -39,9 +38,11 @@ use super::{
 use crate::app_config::AppType;
 use crate::database::{ProxyChannelModelRecord, ProxyChannelRecord};
 use crate::proxy_core::{
+    chat_completion_to_response_with_context as build_chat_completion_response_with_context,
     claude_api_format_from_metadata, claude_stream_usage_event_filter,
     claude_transform_unlabeled_sse_aggregation, codex_stream_usage_event_filter,
     extract_gemini_model_from_path, json_proxy_response, normalize_channel_id_path,
+    openai_chat_to_anthropic_message, openai_responses_to_anthropic_message,
     parse_upstream_json_or_unlabeled_sse, rebuilt_json_proxy_response,
     resolve_management_auth_decision, should_aggregate_codex_oauth_responses_sse,
     should_use_claude_transform_streaming, transformed_response_usage,
@@ -917,7 +918,8 @@ async fn handle_claude_transform(
 
     // 根据 api_format 选择非流式转换器
     let anthropic_response = if api_format == "openai_responses" {
-        transform_responses::responses_to_anthropic(upstream_response)
+        openai_responses_to_anthropic_message(&upstream_response)
+            .map_err(ProxyError::TransformError)
     } else if api_format == "gemini_native" {
         transform_gemini::gemini_to_anthropic_with_shadow_and_hints(
             upstream_response,
@@ -927,7 +929,7 @@ async fn handle_claude_transform(
             tool_schema_hints.as_ref(),
         )
     } else {
-        transform::openai_to_anthropic(upstream_response)
+        openai_chat_to_anthropic_message(&upstream_response).map_err(ProxyError::TransformError)
     }
     .map_err(|e| {
         log::error!("[Claude] 转换响应失败: {e}");
@@ -1339,14 +1341,13 @@ async fn handle_codex_chat_to_responses_transform(
     }
 
     let chat_response = parsed_chat_response.value;
-    let responses_response = transform_codex_chat::chat_completion_to_response_with_context(
-        chat_response,
-        &tool_context,
-    )
-    .map_err(|e| {
-        log::error!("[Codex] Chat → Responses 响应转换失败: {e}");
-        e
-    })?;
+    let responses_response =
+        build_chat_completion_response_with_context(&chat_response, &tool_context)
+            .map_err(ProxyError::TransformError)
+            .map_err(|e| {
+                log::error!("[Codex] Chat → Responses 响应转换失败: {e}");
+                e
+            })?;
     state
         .codex_chat_history
         .record_response(&responses_response)
@@ -1621,10 +1622,11 @@ async fn log_usage(
 mod tests {
     use super::{
         chat_sse_to_response_value, codex_proxy_error_json, responses_sse_to_response_value,
-        transform,
     };
     use crate::proxy::ProxyError;
-    use crate::proxy_core::should_use_claude_transform_streaming;
+    use crate::proxy_core::{
+        openai_chat_to_anthropic_message, should_use_claude_transform_streaming,
+    };
 
     #[test]
     fn chat_sse_to_response_value_collects_reasoning_alias() {
@@ -2070,7 +2072,7 @@ data: {\"id\":\"chatcmpl-9\",\"choices\":[{\"index\":0,\"delta\":{},\"finish_rea
 data: [DONE]\n\n";
 
         let aggregated = chat_sse_to_response_value(sse).unwrap();
-        let anthropic = transform::openai_to_anthropic(aggregated).unwrap();
+        let anthropic = openai_chat_to_anthropic_message(&aggregated).unwrap();
 
         assert_eq!(anthropic["model"], "gpt-5.4");
         assert_eq!(anthropic["content"][0]["type"], "text");
