@@ -4712,6 +4712,48 @@ mod tests {
     }
 
     #[test]
+    fn converts_anthropic_responses_request_strips_cache_control_and_maps_options() {
+        let input = json!({
+            "model": "gpt-5.4",
+            "max_tokens": 1024,
+            "output_config": {"effort": "max"},
+            "system": [
+                {"type": "text", "text": "x-anthropic-billing-header: cch=a7754;\r\n\r\nStable prompt", "cache_control": {"type": "ephemeral"}}
+            ],
+            "messages": [{
+                "role": "user",
+                "content": [
+                    {"type": "text", "text": "Search", "cache_control": {"type": "ephemeral"}}
+                ]
+            }],
+            "tools": [{
+                "name": "search",
+                "description": "Search the web",
+                "input_schema": {"type": "object", "properties": {}},
+                "cache_control": {"type": "ephemeral"}
+            }],
+            "tool_choice": {"type": "tool", "name": "search"}
+        });
+
+        let result =
+            anthropic_to_openai_responses_request(&input, Some("provider-cache-key"), false, false);
+
+        assert_eq!(result["instructions"], "Stable prompt");
+        assert_eq!(result["input"][0]["content"][0]["text"], "Search");
+        assert!(result["input"][0]["content"][0]
+            .get("cache_control")
+            .is_none());
+        assert_eq!(result["tools"][0]["name"], "search");
+        assert!(result["tools"][0].get("cache_control").is_none());
+        assert_eq!(
+            result["tool_choice"],
+            json!({"type": "function", "name": "search"})
+        );
+        assert_eq!(result["reasoning"]["effort"], "xhigh");
+        assert_eq!(result["prompt_cache_key"], "provider-cache-key");
+    }
+
+    #[test]
     fn converts_anthropic_tool_use_and_tool_result_to_openai_responses_items() {
         let input = json!({
             "model": "gpt-4o",

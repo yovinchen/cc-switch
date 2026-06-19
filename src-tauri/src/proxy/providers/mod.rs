@@ -21,8 +21,6 @@ pub mod copilot_auth;
 mod gemini;
 pub mod models;
 pub mod transform_gemini;
-#[cfg(test)]
-pub mod transform_responses;
 
 use crate::app_config::AppType;
 use crate::provider::Provider;
