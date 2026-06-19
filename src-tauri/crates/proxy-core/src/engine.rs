@@ -6,8 +6,8 @@ use super::domain::{
 use super::error::ProxyCoreResult;
 use super::management_api::AppModelCatalogRequest;
 use super::ports::{
-    ChannelHealthReset, ChannelHealthResetResponse, ModelCatalog, ProxyCoreEvent,
-    ProxyCoreEventType, ProxyServices,
+    ChannelHealthReset, ChannelHealthResetResponse, ClientModelCatalogResponse, ModelCatalog,
+    ProxyCoreEvent, ProxyCoreEventType, ProxyServices,
 };
 use serde_json::{json, to_value};
 use std::collections::BTreeMap;
@@ -201,6 +201,15 @@ where
         app: &super::domain::AppKind,
     ) -> ProxyCoreResult<ModelCatalog> {
         self.services.model_catalog().load_client_catalog(app).await
+    }
+
+    pub async fn client_model_catalog_response(
+        &self,
+        app: &super::domain::AppKind,
+    ) -> ProxyCoreResult<ClientModelCatalogResponse> {
+        self.client_model_catalog(app)
+            .await
+            .map(ClientModelCatalogResponse::from_catalog)
     }
 
     pub async fn reset_channel_health(
@@ -772,6 +781,18 @@ mod tests {
         assert_eq!(catalog.provider_id, "codex");
         assert_eq!(catalog.models, ["gpt-5"]);
         assert_eq!(catalog.raw, json!({"models": [{"id": "gpt-5"}]}));
+    }
+
+    #[test]
+    fn client_model_catalog_response_wraps_catalog_raw_payload() {
+        let services = Arc::new(TestServices::default());
+        let engine = ProxyEngine::new(services);
+
+        let response =
+            futures::executor::block_on(engine.client_model_catalog_response(&AppKind::Codex))
+                .expect("client model catalog response");
+
+        assert_eq!(response.raw, json!({"models": [{"id": "gpt-5"}]}));
     }
 
     #[test]

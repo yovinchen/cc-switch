@@ -630,11 +630,11 @@ pub async fn resolve_proxy_route(
 pub async fn handle_models(
     State(state): State<ProxyState>,
 ) -> Result<Json<ClientModelCatalogResponse>, ProxyError> {
-    let catalog = ProxyEngine::new(state.proxy_core_services.clone())
-        .client_model_catalog(&AppKind::Codex)
+    let response = ProxyEngine::new(state.proxy_core_services.clone())
+        .client_model_catalog_response(&AppKind::Codex)
         .await
         .map_err(proxy_core_error_to_proxy_error)?;
-    Ok(Json(ClientModelCatalogResponse::from_catalog(catalog)))
+    Ok(Json(response))
 }
 
 // ============================================================================
