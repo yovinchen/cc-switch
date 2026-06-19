@@ -220,7 +220,12 @@ impl RequestForwarder {
             request_media_fallback: self.rectifier_config.request_media_fallback,
             already_retried,
             body_has_images: contains_image_blocks(provider_body),
-            unsupported_image_error: unsupported_image_error_from_proxy_error(error),
+            unsupported_image_error: match error {
+                ProxyError::UpstreamError { status, body } => {
+                    is_unsupported_image_error(*status, body.as_deref())
+                }
+                _ => false,
+            },
         })
     }
 
@@ -2401,15 +2406,6 @@ fn extract_error_message(error: &ProxyError) -> Option<String> {
     match error {
         ProxyError::UpstreamError { body, .. } => body.clone(),
         _ => Some(error.to_string()),
-    }
-}
-
-fn unsupported_image_error_from_proxy_error(error: &ProxyError) -> bool {
-    match error {
-        ProxyError::UpstreamError { status, body } => {
-            is_unsupported_image_error(*status, body.as_deref())
-        }
-        _ => false,
     }
 }
 
