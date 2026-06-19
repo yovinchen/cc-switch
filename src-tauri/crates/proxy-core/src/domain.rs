@@ -103,6 +103,52 @@ impl From<&str> for ProviderKind {
     }
 }
 
+pub fn infer_claude_provider_kind(
+    api_format: &str,
+    uses_google_oauth: bool,
+    meta_provider_type: Option<&str>,
+    base_url: Option<&str>,
+    settings_config: &Value,
+) -> ProviderKind {
+    if api_format == "gemini_native" {
+        return if uses_google_oauth {
+            ProviderKind::GeminiCli
+        } else {
+            ProviderKind::Gemini
+        };
+    }
+
+    match meta_provider_type {
+        Some("github_copilot") => return ProviderKind::GitHubCopilot,
+        Some("codex_oauth") => return ProviderKind::CodexOAuth,
+        _ => {}
+    }
+
+    if let Some(base_url) = base_url {
+        if base_url.contains("githubcopilot.com") {
+            return ProviderKind::GitHubCopilot;
+        }
+        if base_url.contains("openrouter.ai") {
+            return ProviderKind::OpenRouter;
+        }
+    }
+
+    if settings_config
+        .get("auth_mode")
+        .and_then(Value::as_str)
+        == Some("bearer_only")
+        || settings_config
+            .get("env")
+            .and_then(|env| env.get("AUTH_MODE"))
+            .and_then(Value::as_str)
+            == Some("bearer_only")
+    {
+        return ProviderKind::ClaudeAuth;
+    }
+
+    ProviderKind::Claude
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(transparent)]
 pub struct AuthProfileRef(pub String);
@@ -830,6 +876,62 @@ mod tests {
             Some("https://chatgpt.com/backend-api/codex")
         );
         assert_eq!(ProviderKind::Custom("x".to_string()).default_endpoint(), None);
+    }
+
+    #[test]
+    fn infers_claude_provider_kind_from_host_neutral_facts() {
+        assert_eq!(
+            infer_claude_provider_kind(
+                "gemini_native",
+                false,
+                Some("github_copilot"),
+                Some("https://api.githubcopilot.com"),
+                &Value::Null,
+            ),
+            ProviderKind::Gemini
+        );
+        assert_eq!(
+            infer_claude_provider_kind("gemini_native", true, None, None, &Value::Null),
+            ProviderKind::GeminiCli
+        );
+        assert_eq!(
+            infer_claude_provider_kind(
+                "anthropic",
+                false,
+                Some("github_copilot"),
+                Some("https://api.anthropic.com"),
+                &Value::Null,
+            ),
+            ProviderKind::GitHubCopilot
+        );
+        assert_eq!(
+            infer_claude_provider_kind("anthropic", false, Some("codex_oauth"), None, &Value::Null),
+            ProviderKind::CodexOAuth
+        );
+        assert_eq!(
+            infer_claude_provider_kind(
+                "anthropic",
+                false,
+                None,
+                Some("https://openrouter.ai/api"),
+                &Value::Null,
+            ),
+            ProviderKind::OpenRouter
+        );
+        assert_eq!(
+            infer_claude_provider_kind(
+                "anthropic",
+                false,
+                None,
+                Some("https://proxy.example.com"),
+                &serde_json::json!({"env": {"AUTH_MODE": "bearer_only"}}),
+            ),
+            ProviderKind::ClaudeAuth
+        );
+        assert_eq!(
+            infer_claude_provider_kind("anthropic", false, None, None, &Value::Null),
+            ProviderKind::Claude
+        );
     }
 
     #[test]

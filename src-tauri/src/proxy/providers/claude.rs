@@ -19,10 +19,10 @@ use crate::provider::Provider;
 use crate::proxy::error::ProxyError;
 use crate::proxy_core::{
     anthropic_to_openai_chat_request, anthropic_to_openai_responses_request,
-    claude_api_format_needs_transform, normalize_anthropic_tool_thinking_history,
-    openai_chat_to_anthropic_message, openai_responses_to_anthropic_message,
-    resolve_claude_api_format_from_settings, resolve_claude_responses_prompt_cache_key,
-    should_normalize_anthropic_tool_thinking_history,
+    claude_api_format_needs_transform, infer_claude_provider_kind,
+    normalize_anthropic_tool_thinking_history, openai_chat_to_anthropic_message,
+    openai_responses_to_anthropic_message, resolve_claude_api_format_from_settings,
+    resolve_claude_responses_prompt_cache_key, should_normalize_anthropic_tool_thinking_history,
     should_preserve_reasoning_content_for_openai_chat,
 };
 use serde_json::Value;
@@ -160,37 +160,24 @@ impl ClaudeAdapter {
     /// - ClaudeAuth: auth_mode 为 bearer_only
     /// - Claude: 默认 Anthropic 官方
     pub fn provider_type(&self, provider: &Provider) -> ProviderType {
-        // 检测 Gemini Native 格式
-        if self.get_api_format(provider) == "gemini_native" {
-            return match self.extract_key(provider) {
-                Some(key) if key.starts_with("ya29.") || key.starts_with('{') => {
-                    ProviderType::GeminiCli
-                }
-                _ => ProviderType::Gemini,
-            };
-        }
+        let api_format = self.get_api_format(provider);
+        let uses_google_oauth = self
+            .extract_key(provider)
+            .map(|key| key.starts_with("ya29.") || key.starts_with('{'))
+            .unwrap_or(false);
+        let meta_provider_type = provider
+            .meta
+            .as_ref()
+            .and_then(|meta| meta.provider_type.as_deref());
+        let base_url = self.extract_base_url(provider).ok();
 
-        // 检测 Codex OAuth (ChatGPT Plus/Pro)
-        if self.is_codex_oauth(provider) {
-            return ProviderType::CodexOAuth;
-        }
-
-        // 检测 GitHub Copilot
-        if self.is_github_copilot(provider) {
-            return ProviderType::GitHubCopilot;
-        }
-
-        // 检测 OpenRouter
-        if self.is_openrouter(provider) {
-            return ProviderType::OpenRouter;
-        }
-
-        // 检测 ClaudeAuth (仅 Bearer 认证)
-        if self.is_bearer_only_mode(provider) {
-            return ProviderType::ClaudeAuth;
-        }
-
-        ProviderType::Claude
+        ProviderType::from_provider_kind(infer_claude_provider_kind(
+            api_format,
+            uses_google_oauth,
+            meta_provider_type,
+            base_url.as_deref(),
+            &provider.settings_config,
+        ))
     }
 
     /// 检测是否为 Codex OAuth 供应商（ChatGPT Plus/Pro 反代）
@@ -203,33 +190,6 @@ impl ClaudeAdapter {
         false
     }
 
-    /// 检测是否为 GitHub Copilot 供应商
-    fn is_github_copilot(&self, provider: &Provider) -> bool {
-        // 方式1: 检查 meta.provider_type
-        if let Some(meta) = provider.meta.as_ref() {
-            if meta.provider_type.as_deref() == Some("github_copilot") {
-                return true;
-            }
-        }
-
-        // 方式2: 检查 base_url（兼容旧数据的 fallback，后续应优先依赖 providerType）
-        if let Ok(base_url) = self.extract_base_url(provider) {
-            if base_url.contains("githubcopilot.com") {
-                return true;
-            }
-        }
-
-        false
-    }
-
-    /// 检测是否使用 OpenRouter
-    fn is_openrouter(&self, provider: &Provider) -> bool {
-        if let Ok(base_url) = self.extract_base_url(provider) {
-            return base_url.contains("openrouter.ai");
-        }
-        false
-    }
-
     /// 获取 API 格式
     ///
     /// 从 provider.meta.api_format 读取格式设置：
@@ -238,31 +198,6 @@ impl ClaudeAdapter {
     /// - "openai_responses": OpenAI Responses API 格式，需要格式转换
     fn get_api_format(&self, provider: &Provider) -> &'static str {
         get_claude_api_format(provider)
-    }
-
-    /// 检测是否为仅 Bearer 认证模式
-    fn is_bearer_only_mode(&self, provider: &Provider) -> bool {
-        // 检查 settings_config 中的 auth_mode
-        if let Some(auth_mode) = provider
-            .settings_config
-            .get("auth_mode")
-            .and_then(|v| v.as_str())
-        {
-            if auth_mode == "bearer_only" {
-                return true;
-            }
-        }
-
-        // 检查 env 中的 AUTH_MODE
-        if let Some(env) = provider.settings_config.get("env") {
-            if let Some(auth_mode) = env.get("AUTH_MODE").and_then(|v| v.as_str()) {
-                if auth_mode == "bearer_only" {
-                    return true;
-                }
-            }
-        }
-
-        false
     }
 
     /// 从 Provider 配置中提取 API Key
@@ -613,13 +548,11 @@ impl ProviderAdapter for ClaudeAdapter {
     }
 
     fn needs_transform(&self, provider: &Provider) -> bool {
-        // GitHub Copilot 总是需要格式转换 (Anthropic → OpenAI)
-        if self.is_github_copilot(provider) {
-            return true;
-        }
-
-        // Codex OAuth 总是需要格式转换 (Anthropic → OpenAI Responses API)
-        if self.is_codex_oauth(provider) {
+        // GitHub Copilot / Codex OAuth 总是需要格式转换
+        if matches!(
+            self.provider_type(provider),
+            ProviderType::GitHubCopilot | ProviderType::CodexOAuth
+        ) {
             return true;
         }
 
