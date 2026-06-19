@@ -6,8 +6,8 @@ use super::ports::{
     ChannelListResponse, ChannelMigrationMaterializeResponse, ChannelMigrationPreviewResponse,
     ChannelModelsResponse, ChannelRecordResponse, ChannelRouteCandidate, ChannelRouteRejected,
     ChannelRouteSource, CurrentRouteProviderSummaryInput, CurrentRouteResponse, GroupListQuery,
-    ProviderListResponse, RouteGroupListResponse, RouteGroupSourceInput, RouteResolveRequest,
-    RouteResolveResponse,
+    HealthCheckResponse, ProviderListResponse, ProxyStatusResponse, RouteGroupListResponse,
+    RouteGroupSourceInput, RouteResolveRequest, RouteResolveResponse,
 };
 
 pub fn validate_management_app_type(app_type: &str) -> ProxyCoreResult<()> {
@@ -51,6 +51,32 @@ impl AppListRequest {
 
     pub fn response(&self, apps: Vec<AppSummaryInput>) -> AppListResponse {
         AppListResponse::from_app_inputs(apps)
+    }
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct HealthCheckRequest;
+
+impl HealthCheckRequest {
+    pub fn new() -> Self {
+        Self
+    }
+
+    pub fn response(&self, timestamp: impl Into<String>) -> HealthCheckResponse {
+        HealthCheckResponse::healthy(timestamp)
+    }
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct ProxyStatusRequest;
+
+impl ProxyStatusRequest {
+    pub fn new() -> Self {
+        Self
+    }
+
+    pub fn response<T>(&self, status: T) -> ProxyStatusResponse<T> {
+        ProxyStatusResponse::new(status)
     }
 }
 
@@ -338,9 +364,9 @@ fn normalize_optional_management_app_type(app_type: Option<String>) -> ProxyCore
 mod tests {
     use super::{
         AppChannelManagementRequest, AppListRequest, AppModelCatalogRequest, ChannelListRequest,
-        ChannelPathRequest, GroupListRequest, ManagementAppPathRequest,
-        RouteResolveManagementRequest, channel_not_found_message, normalize_channel_id_path,
-        validate_management_app_type, validate_route_resolve_app_type,
+        ChannelPathRequest, GroupListRequest, HealthCheckRequest, ManagementAppPathRequest,
+        ProxyStatusRequest, RouteResolveManagementRequest, channel_not_found_message,
+        normalize_channel_id_path, validate_management_app_type, validate_route_resolve_app_type,
     };
     use crate::{
         AppChannelListQuery, AppKind, AppModelListQuery, AppSummaryInput, ChannelHealthPolicy,
@@ -435,6 +461,25 @@ mod tests {
         assert!(response.apps[0].enabled);
         assert_eq!(response.apps[0].provider_count, 2);
         assert_eq!(response.apps[0].channel_count, 3);
+    }
+
+    #[test]
+    fn health_check_request_wraps_healthy_response() {
+        let request = HealthCheckRequest::new();
+
+        let response = request.response("2026-06-19T00:00:00Z");
+
+        assert_eq!(response.status, "healthy");
+        assert_eq!(response.timestamp, "2026-06-19T00:00:00Z");
+    }
+
+    #[test]
+    fn proxy_status_request_wraps_status_response() {
+        let request = ProxyStatusRequest::new();
+
+        let response = request.response("running");
+
+        assert_eq!(response.status, "running");
     }
 
     #[test]

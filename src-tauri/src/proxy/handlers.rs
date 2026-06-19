@@ -58,14 +58,15 @@ use crate::proxy_core::{
     ChannelModelRecord, ChannelModelsResponse, ChannelPathRequest, ChannelRecord,
     ChannelRecordResponse, ChannelRouteCandidate, ChannelRouteRejected,
     ClaudeDesktopModelListResponse, ClientModelCatalogResponse, CurrentRouteProviderSummaryInput,
-    CurrentRouteResponse, CurrentRouteTarget, GroupListQuery, GroupListRequest,
+    CurrentRouteResponse, CurrentRouteTarget, GroupListQuery, GroupListRequest, HealthCheckRequest,
     HealthCheckResponse, InterfaceKind, ManagementAppPathRequest, ManagementAuthDecision,
     ProviderListResponse, ProxyBody, ProxyChannelModelsReplaceRequest, ProxyChannelPatchRequest,
     ProxyChannelWriteRequest, ProxyEngine, ProxyRequest, ProxyResult, ProxyRuntimeStatus,
-    ProxyServices, ProxyStatusResponse, RoutableModelList, RouteGroupListResponse,
-    RouteResolveManagementRequest, RouteResolveRequest, RouteResolveResponse,
-    TransformedResponseUsageFormat, UpstreamJsonBodySource, UpstreamSseAggregationKind,
-    CLAUDE_PARSER_CONFIG, CODEX_PARSER_CONFIG, GEMINI_PARSER_CONFIG, OPENAI_PARSER_CONFIG,
+    ProxyServices, ProxyStatusRequest, ProxyStatusResponse, RoutableModelList,
+    RouteGroupListResponse, RouteResolveManagementRequest, RouteResolveRequest,
+    RouteResolveResponse, TransformedResponseUsageFormat, UpstreamJsonBodySource,
+    UpstreamSseAggregationKind, CLAUDE_PARSER_CONFIG, CODEX_PARSER_CONFIG, GEMINI_PARSER_CONFIG,
+    OPENAI_PARSER_CONFIG,
 };
 use crate::proxy_core_adapter::{
     ToProxyCoreChannelModelRecord, ToProxyCoreChannelRecord, ToProxyCoreChannelSpec,
@@ -89,11 +90,10 @@ use std::time::Duration;
 
 /// 健康检查
 pub async fn health_check() -> (StatusCode, Json<HealthCheckResponse>) {
+    let request = HealthCheckRequest::new();
     (
         StatusCode::OK,
-        Json(HealthCheckResponse::healthy(
-            chrono::Utc::now().to_rfc3339(),
-        )),
+        Json(request.response(chrono::Utc::now().to_rfc3339())),
     )
 }
 
@@ -101,10 +101,11 @@ pub async fn health_check() -> (StatusCode, Json<HealthCheckResponse>) {
 pub async fn get_status(
     State(state): State<ProxyState>,
 ) -> Result<Json<ProxyStatusResponse<ProxyRuntimeStatus>>, ProxyError> {
+    let request = ProxyStatusRequest::new();
     let status = state.status.read().await.clone();
-    Ok(Json(ProxyStatusResponse::new(
-        status.to_proxy_core_runtime_status(),
-    )))
+    Ok(Json(
+        request.response(status.to_proxy_core_runtime_status()),
+    ))
 }
 
 /// GET /proxy/v1/events
