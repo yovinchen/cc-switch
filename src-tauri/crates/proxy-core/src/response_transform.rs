@@ -17,6 +17,7 @@ pub const CLAUDE_API_FORMAT_METADATA_KEY: &str = "claudeApiFormat";
 pub const CODEX_TOOL_SEARCH_PROXY_NAME: &str = "tool_search";
 pub const ANTHROPIC_TOOL_THINKING_PLACEHOLDER: &str = "tool call";
 pub const ANTHROPIC_REDACTED_THINKING_PLACEHOLDER: &str = "[redacted thinking]";
+pub const DEEPSEEK_OFFICIAL_ANTHROPIC_URL: &str = "https://api.deepseek.com/anthropic";
 const THINK_OPEN_TAG: &str = "<think>";
 const THINK_CLOSE_TAG: &str = "</think>";
 const CUSTOM_TOOL_INPUT_FIELD: &str = "input";
@@ -794,6 +795,13 @@ pub fn should_normalize_anthropic_tool_thinking_history(
 }
 
 fn settings_config_reasoning_vendor_endpoint(settings_config: &Value) -> bool {
+    settings_config_endpoint_candidates(settings_config)
+    .into_iter()
+    .flatten()
+    .any(is_reasoning_vendor_identifier)
+}
+
+fn settings_config_endpoint_candidates(settings_config: &Value) -> [Option<&str>; 4] {
     [
         settings_config
             .get("env")
@@ -803,9 +811,13 @@ fn settings_config_reasoning_vendor_endpoint(settings_config: &Value) -> bool {
         settings_config.get("baseURL").and_then(Value::as_str),
         settings_config.get("apiEndpoint").and_then(Value::as_str),
     ]
-    .into_iter()
-    .flatten()
-    .any(is_reasoning_vendor_identifier)
+}
+
+pub fn is_deepseek_official_anthropic_endpoint(settings_config: &Value) -> bool {
+    settings_config_endpoint_candidates(settings_config)
+        .into_iter()
+        .flatten()
+        .any(|url| url.trim_end_matches('/') == DEEPSEEK_OFFICIAL_ANTHROPIC_URL)
 }
 
 /// Normalize Anthropic-compatible tool-call history for providers that reject
@@ -880,6 +892,44 @@ pub fn normalize_anthropic_tool_thinking_history(body: &mut Value) -> bool {
             );
             changed = true;
         }
+    }
+
+    changed
+}
+
+pub fn normalize_deepseek_thinking_disabled_strip_effort(
+    body: &mut Value,
+    settings_config: &Value,
+) -> bool {
+    if !is_deepseek_official_anthropic_endpoint(settings_config) {
+        return false;
+    }
+
+    let thinking_type = body
+        .get("thinking")
+        .and_then(|thinking| thinking.get("type"))
+        .and_then(Value::as_str);
+
+    if thinking_type != Some("disabled") {
+        return false;
+    }
+
+    let mut changed = false;
+
+    if let Some(output_config) = body
+        .get_mut("output_config")
+        .and_then(Value::as_object_mut)
+    {
+        changed |= output_config.remove("effort").is_some();
+        if output_config.is_empty() {
+            if let Some(body) = body.as_object_mut() {
+                body.remove("output_config");
+            }
+        }
+    }
+
+    if let Some(body) = body.as_object_mut() {
+        changed |= body.remove("reasoning_effort").is_some();
     }
 
     changed
@@ -2566,6 +2616,90 @@ mod tests {
         );
         assert_eq!(body["messages"][2]["content"][0]["thinking"], "Need the file.");
         assert!(body["messages"][2]["content"][0].get("signature").is_none());
+    }
+
+    #[test]
+    fn detects_deepseek_official_anthropic_endpoint_from_settings_config() {
+        assert!(is_deepseek_official_anthropic_endpoint(&json!({
+            "env": {"ANTHROPIC_BASE_URL": "https://api.deepseek.com/anthropic/"}
+        })));
+        assert!(is_deepseek_official_anthropic_endpoint(&json!({
+            "base_url": "https://api.deepseek.com/anthropic"
+        })));
+        assert!(is_deepseek_official_anthropic_endpoint(&json!({
+            "baseURL": "https://api.deepseek.com/anthropic"
+        })));
+        assert!(is_deepseek_official_anthropic_endpoint(&json!({
+            "apiEndpoint": "https://api.deepseek.com/anthropic"
+        })));
+        assert!(!is_deepseek_official_anthropic_endpoint(&json!({
+            "env": {"ANTHROPIC_BASE_URL": "https://api.anthropic.com"}
+        })));
+    }
+
+    #[test]
+    fn deepseek_thinking_disabled_strips_conflicting_effort_fields() {
+        let settings = json!({
+            "env": {"ANTHROPIC_BASE_URL": "https://api.deepseek.com/anthropic"}
+        });
+        let mut body = json!({
+            "model": "deepseek-v4-pro",
+            "thinking": {"type": "disabled"},
+            "output_config": {"effort": "max"},
+            "reasoning_effort": "high"
+        });
+
+        assert!(normalize_deepseek_thinking_disabled_strip_effort(
+            &mut body,
+            &settings
+        ));
+        assert!(body.get("output_config").is_none());
+        assert!(body.get("reasoning_effort").is_none());
+        assert_eq!(body["thinking"]["type"], "disabled");
+    }
+
+    #[test]
+    fn deepseek_thinking_disabled_keeps_other_output_config_fields() {
+        let settings = json!({"base_url": "https://api.deepseek.com/anthropic"});
+        let mut body = json!({
+            "thinking": {"type": "disabled"},
+            "output_config": {"effort": "max", "temperature": 0.5}
+        });
+
+        assert!(normalize_deepseek_thinking_disabled_strip_effort(
+            &mut body,
+            &settings
+        ));
+        assert_eq!(body["output_config"]["temperature"], 0.5);
+        assert!(body["output_config"].get("effort").is_none());
+    }
+
+    #[test]
+    fn deepseek_thinking_disabled_ignores_other_endpoints_or_thinking_modes() {
+        let mut body = json!({
+            "thinking": {"type": "disabled"},
+            "output_config": {"effort": "max"}
+        });
+        let original = body.clone();
+
+        assert!(!normalize_deepseek_thinking_disabled_strip_effort(
+            &mut body,
+            &json!({"base_url": "https://api.anthropic.com"})
+        ));
+        assert_eq!(body, original);
+
+        let settings = json!({"base_url": "https://api.deepseek.com/anthropic"});
+        let mut enabled = json!({
+            "thinking": {"type": "enabled"},
+            "output_config": {"effort": "max"}
+        });
+        let original = enabled.clone();
+
+        assert!(!normalize_deepseek_thinking_disabled_strip_effort(
+            &mut enabled,
+            &settings
+        ));
+        assert_eq!(enabled, original);
     }
 
     #[test]

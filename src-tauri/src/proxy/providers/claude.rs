@@ -63,24 +63,6 @@ pub fn normalize_anthropic_tool_thinking_history_for_provider(
     normalize_anthropic_tool_thinking_history(body)
 }
 
-/// DeepSeek official Anthropic-compatible endpoint URL
-const DEEPSEEK_OFFICIAL_ANTHROPIC_URL: &str = "https://api.deepseek.com/anthropic";
-
-/// Check whether the provider is configured to use DeepSeek's official
-/// Anthropic-compatible endpoint.
-fn is_deepseek_official_anthropic_endpoint(provider: &Provider) -> bool {
-    let settings = &provider.settings_config;
-    let base_url = settings
-        .get("env")
-        .and_then(|env| env.get("ANTHROPIC_BASE_URL"))
-        .and_then(|v| v.as_str())
-        .or_else(|| settings.get("base_url").and_then(|v| v.as_str()))
-        .or_else(|| settings.get("baseURL").and_then(|v| v.as_str()))
-        .or_else(|| settings.get("apiEndpoint").and_then(|v| v.as_str()));
-
-    base_url.map(|u| u.trim_end_matches('/')) == Some(DEEPSEEK_OFFICIAL_ANTHROPIC_URL)
-}
-
 /// DeepSeek's official Anthropic-compatible endpoint treats
 /// `thinking: { type: "disabled" }` and effort parameters (`output_config.effort`
 /// or `reasoning_effort`) as mutually exclusive, returning HTTP 400:
@@ -98,40 +80,10 @@ pub fn normalize_deepseek_thinking_disabled_strip_effort(
     body: &mut Value,
     provider: &Provider,
 ) -> bool {
-    if !is_deepseek_official_anthropic_endpoint(provider) {
-        return false;
-    }
-
-    let thinking_type = body
-        .get("thinking")
-        .and_then(|t| t.get("type"))
-        .and_then(|t| t.as_str());
-
-    if thinking_type != Some("disabled") {
-        return false;
-    }
-
-    let mut changed = false;
-
-    // Remove output_config.effort (Anthropic format)
-    if let Some(oc) = body
-        .get_mut("output_config")
-        .and_then(|v| v.as_object_mut())
-    {
-        changed |= oc.remove("effort").is_some();
-        // Clean up empty output_config
-        if oc.is_empty() {
-            body.as_object_mut().unwrap().remove("output_config");
-        }
-    }
-
-    // Remove reasoning_effort (OpenAI format, may be present in passthrough)
-    if body.get("reasoning_effort").is_some() {
-        body.as_object_mut().unwrap().remove("reasoning_effort");
-        changed = true;
-    }
-
-    changed
+    crate::proxy_core::normalize_deepseek_thinking_disabled_strip_effort(
+        body,
+        &provider.settings_config,
+    )
 }
 
 pub fn normalize_anthropic_messages_for_provider(
