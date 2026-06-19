@@ -9,12 +9,12 @@
 //! - usage 字段命名与 Anthropic 一致 (input_tokens/output_tokens)
 
 use crate::proxy::error::ProxyError;
+#[cfg(test)]
+use crate::proxy_core::build_anthropic_usage_from_openai_responses;
 use crate::proxy_core::{
-    apply_codex_oauth_responses_request_contract, build_anthropic_usage_from_openai_responses,
-    canonical_json_string, clean_openai_tool_schema, map_anthropic_tool_choice_to_openai_responses,
-    map_openai_responses_stop_reason_to_anthropic, resolve_reasoning_effort,
-    sanitize_anthropic_tool_use_input, strip_leading_anthropic_billing_header,
-    supports_reasoning_effort,
+    apply_codex_oauth_responses_request_contract, canonical_json_string, clean_openai_tool_schema,
+    map_anthropic_tool_choice_to_openai_responses, openai_responses_to_anthropic_message,
+    resolve_reasoning_effort, strip_leading_anthropic_billing_header, supports_reasoning_effort,
 };
 use serde_json::{json, Value};
 
@@ -292,108 +292,7 @@ fn convert_messages_to_input(messages: &[Value]) -> Result<Vec<Value>, ProxyErro
 
 /// OpenAI Responses 响应 → Anthropic 响应
 pub fn responses_to_anthropic(body: Value) -> Result<Value, ProxyError> {
-    let output = body
-        .get("output")
-        .and_then(|o| o.as_array())
-        .ok_or_else(|| ProxyError::TransformError("No output in response".to_string()))?;
-
-    let mut content = Vec::new();
-
-    let mut has_tool_use = false;
-    for item in output {
-        let item_type = item.get("type").and_then(|t| t.as_str()).unwrap_or("");
-
-        match item_type {
-            "message" => {
-                if let Some(msg_content) = item.get("content").and_then(|c| c.as_array()) {
-                    for block in msg_content {
-                        let block_type = block.get("type").and_then(|t| t.as_str()).unwrap_or("");
-                        if block_type == "output_text" {
-                            if let Some(text) = block.get("text").and_then(|t| t.as_str()) {
-                                if !text.is_empty() {
-                                    content.push(json!({"type": "text", "text": text}));
-                                }
-                            }
-                        } else if block_type == "refusal" {
-                            if let Some(refusal) = block.get("refusal").and_then(|t| t.as_str()) {
-                                if !refusal.is_empty() {
-                                    content.push(json!({"type": "text", "text": refusal}));
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-
-            "function_call" => {
-                let call_id = item.get("call_id").and_then(|i| i.as_str()).unwrap_or("");
-                let name = item.get("name").and_then(|n| n.as_str()).unwrap_or("");
-                let args_str = item
-                    .get("arguments")
-                    .and_then(|a| a.as_str())
-                    .unwrap_or("{}");
-                let input: Value = serde_json::from_str(args_str).unwrap_or(json!({}));
-                let input = sanitize_anthropic_tool_use_input(name, input);
-
-                content.push(json!({
-                    "type": "tool_use",
-                    "id": call_id,
-                    "name": name,
-                    "input": input
-                }));
-                has_tool_use = true;
-            }
-
-            "reasoning" => {
-                // 映射 reasoning summary → thinking block
-                if let Some(summary) = item.get("summary").and_then(|s| s.as_array()) {
-                    let thinking_text: String = summary
-                        .iter()
-                        .filter_map(|s| {
-                            if s.get("type").and_then(|t| t.as_str()) == Some("summary_text") {
-                                s.get("text").and_then(|t| t.as_str())
-                            } else {
-                                None
-                            }
-                        })
-                        .collect::<Vec<_>>()
-                        .join("");
-
-                    if !thinking_text.is_empty() {
-                        content.push(json!({
-                            "type": "thinking",
-                            "thinking": thinking_text
-                        }));
-                    }
-                }
-            }
-
-            _ => {}
-        }
-    }
-
-    // status → stop_reason
-    let stop_reason = map_openai_responses_stop_reason_to_anthropic(
-        body.get("status").and_then(|s| s.as_str()),
-        has_tool_use,
-        body.pointer("/incomplete_details/reason")
-            .and_then(|r| r.as_str()),
-    );
-
-    let usage_json = build_anthropic_usage_from_openai_responses(body.get("usage"));
-
-    let result = json!({
-        "id": body.get("id").and_then(|i| i.as_str()).unwrap_or(""),
-        "type": "message",
-        "role": "assistant",
-        "content": content,
-        "model": body.get("model").and_then(|m| m.as_str()).unwrap_or(""),
-        "stop_reason": stop_reason,
-        "stop_sequence": null,
-        "usage": usage_json
-    });
-
-    Ok(result)
+    openai_responses_to_anthropic_message(&body).map_err(ProxyError::TransformError)
 }
 
 #[cfg(test)]

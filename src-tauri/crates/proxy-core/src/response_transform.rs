@@ -7,6 +7,7 @@ use crate::{
         codex_chat_reasoning_requested, inject_openai_stream_include_usage,
         map_codex_chat_reasoning_effort,
     },
+    usage::build_anthropic_usage_from_openai_responses,
     UpstreamSseAggregationKind,
 };
 use bytes::Bytes;
@@ -1152,6 +1153,105 @@ pub fn map_openai_responses_stop_reason_to_anthropic(
         "incomplete" => "end_turn",
         _ => "end_turn",
     })
+}
+
+pub fn openai_responses_to_anthropic_message(body: &Value) -> Result<Value, String> {
+    let output = body
+        .get("output")
+        .and_then(Value::as_array)
+        .ok_or_else(|| "No output in response".to_string())?;
+
+    let mut content = Vec::new();
+    let mut has_tool_use = false;
+
+    for item in output {
+        let item_type = item.get("type").and_then(Value::as_str).unwrap_or("");
+
+        match item_type {
+            "message" => {
+                if let Some(msg_content) = item.get("content").and_then(Value::as_array) {
+                    for block in msg_content {
+                        let block_type = block.get("type").and_then(Value::as_str).unwrap_or("");
+                        if block_type == "output_text" {
+                            if let Some(text) = block.get("text").and_then(Value::as_str) {
+                                if !text.is_empty() {
+                                    content.push(json!({"type": "text", "text": text}));
+                                }
+                            }
+                        } else if block_type == "refusal" {
+                            if let Some(refusal) = block.get("refusal").and_then(Value::as_str) {
+                                if !refusal.is_empty() {
+                                    content.push(json!({"type": "text", "text": refusal}));
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            "function_call" => {
+                let call_id = item.get("call_id").and_then(Value::as_str).unwrap_or("");
+                let name = item.get("name").and_then(Value::as_str).unwrap_or("");
+                let args_str = item
+                    .get("arguments")
+                    .and_then(Value::as_str)
+                    .unwrap_or("{}");
+                let input: Value = serde_json::from_str(args_str).unwrap_or(json!({}));
+                let input = sanitize_anthropic_tool_use_input(name, input);
+
+                content.push(json!({
+                    "type": "tool_use",
+                    "id": call_id,
+                    "name": name,
+                    "input": input
+                }));
+                has_tool_use = true;
+            }
+            "reasoning" => {
+                if let Some(summary) = item.get("summary").and_then(Value::as_array) {
+                    let thinking_text = summary
+                        .iter()
+                        .filter_map(|summary_item| {
+                            if summary_item.get("type").and_then(Value::as_str)
+                                == Some("summary_text")
+                            {
+                                summary_item.get("text").and_then(Value::as_str)
+                            } else {
+                                None
+                            }
+                        })
+                        .collect::<Vec<_>>()
+                        .join("");
+
+                    if !thinking_text.is_empty() {
+                        content.push(json!({
+                            "type": "thinking",
+                            "thinking": thinking_text
+                        }));
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+
+    let stop_reason = map_openai_responses_stop_reason_to_anthropic(
+        body.get("status").and_then(Value::as_str),
+        has_tool_use,
+        body.pointer("/incomplete_details/reason")
+            .and_then(Value::as_str),
+    );
+    let usage_json = build_anthropic_usage_from_openai_responses(body.get("usage"));
+
+    Ok(json!({
+        "id": body.get("id").and_then(Value::as_str).unwrap_or(""),
+        "type": "message",
+        "role": "assistant",
+        "content": content,
+        "model": body.get("model").and_then(Value::as_str).unwrap_or(""),
+        "stop_reason": stop_reason,
+        "stop_sequence": null,
+        "usage": usage_json
+    }))
 }
 
 pub fn map_openai_chat_finish_reason_to_anthropic(
@@ -3065,6 +3165,75 @@ mod tests {
         assert_eq!(
             map_openai_responses_stop_reason_to_anthropic(None, true, Some("max_tokens")),
             None
+        );
+    }
+
+    #[test]
+    fn converts_openai_responses_message_to_anthropic_message() {
+        let input = json!({
+            "id": "resp_123",
+            "status": "completed",
+            "model": "gpt-4o",
+            "output": [{
+                "type": "message",
+                "content": [{"type": "output_text", "text": "Hello"}]
+            }],
+            "usage": {"input_tokens": 10, "output_tokens": 20}
+        });
+
+        let result = openai_responses_to_anthropic_message(&input).unwrap();
+
+        assert_eq!(result["id"], "resp_123");
+        assert_eq!(result["content"][0], json!({"type": "text", "text": "Hello"}));
+        assert_eq!(result["stop_reason"], "end_turn");
+        assert_eq!(result["usage"]["input_tokens"], 10);
+        assert_eq!(result["usage"]["output_tokens"], 20);
+    }
+
+    #[test]
+    fn converts_openai_responses_function_call_to_anthropic_tool_use() {
+        let input = json!({
+            "id": "resp_tool",
+            "status": "completed",
+            "model": "gpt-5.5",
+            "output": [{
+                "type": "function_call",
+                "call_id": "call_read",
+                "name": "Read",
+                "arguments": "{\"file_path\":\"/tmp/demo.py\",\"pages\":\"\"}"
+            }]
+        });
+
+        let result = openai_responses_to_anthropic_message(&input).unwrap();
+
+        assert_eq!(result["content"][0]["type"], "tool_use");
+        assert_eq!(result["content"][0]["id"], "call_read");
+        assert_eq!(result["content"][0]["name"], "Read");
+        assert_eq!(result["content"][0]["input"]["file_path"], "/tmp/demo.py");
+        assert!(result["content"][0]["input"].get("pages").is_none());
+        assert_eq!(result["stop_reason"], "tool_use");
+    }
+
+    #[test]
+    fn converts_openai_responses_reasoning_summary_to_anthropic_thinking() {
+        let input = json!({
+            "id": "resp_reasoning",
+            "status": "completed",
+            "model": "gpt-4o",
+            "output": [{
+                "type": "reasoning",
+                "summary": [
+                    {"type": "summary_text", "text": "Think"},
+                    {"type": "summary_text", "text": " now"}
+                ]
+            }]
+        });
+
+        let result = openai_responses_to_anthropic_message(&input).unwrap();
+
+        assert_eq!(
+            result["content"][0],
+            json!({"type": "thinking", "thinking": "Think now"})
         );
     }
 
