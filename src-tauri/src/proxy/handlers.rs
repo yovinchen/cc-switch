@@ -183,12 +183,16 @@ pub async fn list_proxy_apps(
             .list_proxy_channels_for_app(app_type)
             .map_err(|e| ProxyError::DatabaseError(e.to_string()))?;
 
-        apps.push(AppSummaryInput::new(
+        apps.push(AppSummaryInput::from_specs(
             app_type,
             config.enabled,
             config.auto_failover_enabled,
-            providers.len(),
-            channels.len(),
+            providers
+                .into_values()
+                .map(|provider| provider.to_proxy_core_provider_spec(&app)),
+            channels
+                .into_iter()
+                .map(|channel| channel.to_proxy_core_channel_spec()),
         ));
     }
 

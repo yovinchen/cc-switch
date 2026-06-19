@@ -423,6 +423,22 @@ impl AppSummaryInput {
             channel_count,
         }
     }
+
+    pub fn from_specs(
+        app_type: impl Into<String>,
+        enabled: bool,
+        auto_failover_enabled: bool,
+        providers: impl IntoIterator<Item = ProviderSpec>,
+        channels: impl IntoIterator<Item = ChannelSpec>,
+    ) -> Self {
+        Self::new(
+            app_type,
+            enabled,
+            auto_failover_enabled,
+            providers.into_iter().count(),
+            channels.into_iter().count(),
+        )
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -1319,6 +1335,16 @@ mod tests {
         }
     }
 
+    fn app_summary_provider_spec(id: &str) -> ProviderSpec {
+        ProviderSpec {
+            id: id.to_string(),
+            name: id.to_string(),
+            kind: ProviderKind::OpenRouter,
+            account_ref: None,
+            metadata: ProviderMetadata::default(),
+        }
+    }
+
     #[test]
     fn health_check_response_serializes_management_envelope() {
         let response = HealthCheckResponse::healthy("2026-06-18T00:00:00+00:00");
@@ -1489,6 +1515,26 @@ mod tests {
                 }]
             })
         );
+    }
+
+    #[test]
+    fn app_summary_input_counts_provider_and_channel_specs() {
+        let input = AppSummaryInput::from_specs(
+            "claude",
+            true,
+            false,
+            vec![
+                app_summary_provider_spec("provider-a"),
+                app_summary_provider_spec("provider-b"),
+            ],
+            vec![
+                route_group_channel_spec("channel-a", AppKind::Claude, vec![]),
+                route_group_channel_spec("channel-b", AppKind::Claude, vec![]),
+                route_group_channel_spec("channel-c", AppKind::Claude, vec![]),
+            ],
+        );
+
+        assert_eq!(input, AppSummaryInput::new("claude", true, false, 2, 3));
     }
 
     #[test]
