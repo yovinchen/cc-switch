@@ -9,7 +9,6 @@
 //! - `codex`: Codex (OpenAI) 适配器
 //! - `gemini`: Gemini (Google) 适配器
 //! - `models`: API 数据模型
-//! - `transform`: 格式转换
 
 mod adapter;
 mod auth;
@@ -20,7 +19,6 @@ pub mod codex_oauth_auth;
 pub mod copilot_auth;
 mod gemini;
 pub mod models;
-pub mod transform_gemini;
 
 use crate::app_config::AppType;
 use crate::provider::Provider;
