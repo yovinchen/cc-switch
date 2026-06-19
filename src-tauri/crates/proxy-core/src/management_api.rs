@@ -1,6 +1,6 @@
 use super::domain::{AppKind, InterfaceKind};
 use super::error::{ProxyCoreError, ProxyCoreResult};
-use super::ports::AppModelListQuery;
+use super::ports::{AppModelListQuery, ChannelListQuery, GroupListQuery};
 
 pub fn validate_management_app_type(app_type: &str) -> ProxyCoreResult<()> {
     if app_type.trim().is_empty() {
@@ -58,13 +58,57 @@ impl AppModelCatalogRequest {
     }
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ChannelListRequest {
+    pub app_type: Option<String>,
+}
+
+impl ChannelListRequest {
+    pub fn from_query(query: ChannelListQuery) -> ProxyCoreResult<Self> {
+        Ok(Self {
+            app_type: normalize_optional_management_app_type(query.app_type())?,
+        })
+    }
+
+    pub fn app_type(&self) -> Option<&str> {
+        self.app_type.as_deref()
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct GroupListRequest {
+    pub app_type: Option<String>,
+}
+
+impl GroupListRequest {
+    pub fn from_query(query: GroupListQuery) -> ProxyCoreResult<Self> {
+        Ok(Self {
+            app_type: normalize_optional_management_app_type(query.app_type())?,
+        })
+    }
+
+    pub fn app_type(&self) -> Option<&str> {
+        self.app_type.as_deref()
+    }
+}
+
+fn normalize_optional_management_app_type(app_type: Option<String>) -> ProxyCoreResult<Option<String>> {
+    if let Some(app_type) = app_type {
+        validate_management_app_type(&app_type)?;
+        Ok(Some(app_type))
+    } else {
+        Ok(None)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::{
+        ChannelListRequest, GroupListRequest,
         normalize_channel_id_path, validate_management_app_type, validate_route_resolve_app_type,
         AppModelCatalogRequest,
     };
-    use crate::{AppModelListQuery, AppKind, InterfaceKind};
+    use crate::{AppKind, AppModelListQuery, ChannelListQuery, GroupListQuery, InterfaceKind};
 
     #[test]
     fn validate_management_app_type_rejects_blank_values() {
@@ -115,5 +159,33 @@ mod tests {
         assert_eq!(request.app_type, "claude");
         assert_eq!(request.route_group.as_deref(), Some("beta"));
         assert_eq!(request.interface_kind, Some(InterfaceKind::OpenAiResponses));
+    }
+
+    #[test]
+    fn channel_list_request_validates_optional_app_filter() {
+        let query = serde_json::from_value::<ChannelListQuery>(serde_json::json!({
+            "appType": " claude "
+        }))
+        .expect("query");
+        let request = ChannelListRequest::from_query(query).expect("request");
+
+        assert_eq!(request.app_type(), Some("claude"));
+
+        let blank_query = serde_json::from_value::<ChannelListQuery>(serde_json::json!({
+            "appType": " "
+        }))
+        .expect("query");
+        let error = ChannelListRequest::from_query(blank_query).unwrap_err();
+
+        assert_eq!(error.to_string(), "invalid proxy request: app cannot be empty");
+    }
+
+    #[test]
+    fn group_list_request_preserves_absent_app_filter() {
+        let query = serde_json::from_value::<GroupListQuery>(serde_json::json!({}))
+            .expect("query");
+        let request = GroupListRequest::from_query(query).expect("request");
+
+        assert_eq!(request.app_type(), None);
     }
 }
