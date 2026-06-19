@@ -12,9 +12,10 @@ use super::{
 };
 use crate::proxy_core::{
     decode_response_body, get_content_encoding, resolve_usage_response_model,
-    strip_hop_by_hop_response_headers, ProviderKind, ProxyServices, ResponseBodyDecodeStatus,
-    SseEventScanner, SseUsageAccumulator, StreamUsageEventFilter, StreamingTimeoutConfig,
-    TokenUsage, UsageParserConfig,
+    streaming_response_usage_record_with_request_id_fallback, strip_hop_by_hop_response_headers,
+    AppKind, ProviderKind, ProxyServices, ResponseBodyDecodeStatus, SseEventScanner,
+    SseUsageAccumulator, StreamUsageEventFilter, StreamingTimeoutConfig, TokenUsage,
+    UsageParserConfig, UsageRecord,
 };
 use axum::http::header::HeaderMap;
 use axum::response::{IntoResponse, Response};
@@ -399,65 +400,33 @@ fn create_usage_collector(
         start_time,
         parser_config.stream_event_filter,
         move |events, first_token_ms| {
-            if let Some(usage) = stream_parser(&events) {
-                let model = model_extractor(&events, &fallback_model);
-                let latency_ms = start_time.elapsed().as_millis() as u64;
+            let latency_ms = start_time.elapsed().as_millis() as u64;
+            let output = streaming_response_usage_record_with_request_id_fallback(
+                &events,
+                stream_parser,
+                model_extractor,
+                &provider_id,
+                provider_kind.clone(),
+                AppKind::from(app_type_str),
+                &request_model,
+                &fallback_model,
+                &fallback_model,
+                latency_ms,
+                first_token_ms,
+                status_code,
+                Some(session_id.clone()),
+                || uuid::Uuid::new_v4().to_string(),
+            );
 
-                let state = state.clone();
-                let provider_id = provider_id.clone();
-                let provider_kind = provider_kind.clone();
-                let session_id = session_id.clone();
-                let request_model = request_model.clone();
-                let outbound_model = fallback_model.clone();
-
-                tokio::spawn(async move {
-                    log_usage_internal(
-                        &state,
-                        &provider_id,
-                        provider_kind,
-                        app_type_str,
-                        &model,
-                        &request_model,
-                        &outbound_model,
-                        usage,
-                        latency_ms,
-                        first_token_ms,
-                        true, // is_streaming
-                        status_code,
-                        Some(session_id),
-                    )
-                    .await;
-                });
-            } else {
-                let model = model_extractor(&events, &fallback_model);
-                let latency_ms = start_time.elapsed().as_millis() as u64;
-                let state = state.clone();
-                let provider_id = provider_id.clone();
-                let provider_kind = provider_kind.clone();
-                let session_id = session_id.clone();
-                let request_model = request_model.clone();
-                let outbound_model = fallback_model.clone();
-
-                tokio::spawn(async move {
-                    log_usage_internal(
-                        &state,
-                        &provider_id,
-                        provider_kind,
-                        app_type_str,
-                        &model,
-                        &request_model,
-                        &outbound_model,
-                        TokenUsage::default(),
-                        latency_ms,
-                        first_token_ms,
-                        true, // is_streaming
-                        status_code,
-                        Some(session_id),
-                    )
-                    .await;
-                });
+            if !output.usage_found {
                 log::debug!("[{tag}] 流式响应缺少 usage 统计，跳过消费记录");
             }
+
+            let state = state.clone();
+            let record = output.record;
+            tokio::spawn(async move {
+                record_usage_internal(&state, record).await;
+            });
         },
     ))
 }
@@ -521,6 +490,36 @@ pub(crate) fn usage_logging_enabled(state: &ProxyState) -> bool {
         .unwrap_or(true)
 }
 
+async fn record_usage_internal(state: &ProxyState, record: UsageRecord) {
+    log::debug!(
+        "[{}] 记录请求日志: provider={}, model={}, streaming={}, status={}, latency_ms={}, first_token_ms={:?}, session={}, input={}, output={}, cache_read={}, cache_creation={}",
+        record.app.as_str(),
+        record.provider_id,
+        record
+            .response_model
+            .as_deref()
+            .unwrap_or(record.outbound_model.as_str()),
+        record.is_streaming,
+        record.status_code,
+        record.latency_ms,
+        record.first_token_ms,
+        record.session_id.as_deref().unwrap_or("none"),
+        record.tokens.input_tokens,
+        record.tokens.output_tokens,
+        record.tokens.cache_read_tokens,
+        record.tokens.cache_creation_tokens
+    );
+
+    if let Err(e) = state
+        .proxy_core_services
+        .usage_sink()
+        .record_usage(record)
+        .await
+    {
+        log::warn!("[USG-001] 记录使用量失败: {e}");
+    }
+}
+
 /// 内部使用量记录函数
 ///
 /// `outbound_model` 是「按请求计价」模式的锚点：实际发往上游的模型
@@ -543,15 +542,6 @@ async fn log_usage_internal(
     status_code: u16,
     session_id: Option<String>,
 ) {
-    log::debug!(
-        "[{app_type}] 记录请求日志: provider={provider_id}, model={model}, streaming={is_streaming}, status={status_code}, latency_ms={latency_ms}, first_token_ms={first_token_ms:?}, session={}, input={}, output={}, cache_read={}, cache_creation={}",
-        session_id.as_deref().unwrap_or("none"),
-        usage.input_tokens,
-        usage.output_tokens,
-        usage.cache_read_tokens,
-        usage.cache_creation_tokens
-    );
-
     let record = success_usage_record(
         provider_id,
         provider_kind,
@@ -567,14 +557,7 @@ async fn log_usage_internal(
         session_id,
     );
 
-    if let Err(e) = state
-        .proxy_core_services
-        .usage_sink()
-        .record_usage(record)
-        .await
-    {
-        log::warn!("[USG-001] 记录使用量失败: {e}");
-    }
+    record_usage_internal(state, record).await;
 }
 
 /// 创建带日志记录和超时控制的透传流

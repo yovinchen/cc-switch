@@ -745,6 +745,12 @@ pub struct TransformedResponseUsage {
     pub outbound_model: String,
 }
 
+#[derive(Debug, Clone)]
+pub struct StreamingResponseUsageRecord {
+    pub record: UsageRecord,
+    pub usage_found: bool,
+}
+
 pub fn transformed_response_usage(
     body: &Value,
     format: TransformedResponseUsageFormat,
@@ -801,6 +807,50 @@ pub fn transformed_response_usage_record_with_request_id_fallback(
         session_id,
         request_id_fallback,
     ))
+}
+
+#[allow(clippy::too_many_arguments)]
+pub fn streaming_response_usage_record_with_request_id_fallback(
+    events: &[Value],
+    stream_parser: fn(&[Value]) -> Option<TokenUsage>,
+    model_extractor: fn(&[Value], &str) -> String,
+    provider_id: &str,
+    provider_kind: Option<ProviderKind>,
+    app: AppKind,
+    request_model: &str,
+    outbound_model: &str,
+    fallback_model: &str,
+    latency_ms: u64,
+    first_token_ms: Option<u64>,
+    status_code: u16,
+    session_id: Option<String>,
+    request_id_fallback: impl FnOnce() -> String,
+) -> StreamingResponseUsageRecord {
+    let usage = stream_parser(events);
+    let usage_found = usage.is_some();
+    let usage = usage.unwrap_or_default();
+    let response_model = model_extractor(events, fallback_model);
+
+    let record = success_usage_record_with_request_id_fallback(
+        provider_id,
+        provider_kind,
+        app,
+        &response_model,
+        request_model,
+        outbound_model,
+        usage,
+        latency_ms,
+        first_token_ms,
+        true,
+        status_code,
+        session_id,
+        request_id_fallback,
+    );
+
+    StreamingResponseUsageRecord {
+        record,
+        usage_found,
+    }
 }
 
 pub fn resolve_usage_response_model(
@@ -1024,7 +1074,31 @@ fn u64_to_u32_saturating(value: u64) -> u32 {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use serde_json::json;
+    use serde_json::{json, Value};
+
+    fn parsed_stream_usage(_events: &[Value]) -> Option<TokenUsage> {
+        Some(TokenUsage {
+            input_tokens: 3,
+            output_tokens: 5,
+            cache_read_tokens: 7,
+            cache_creation_tokens: 11,
+            model: None,
+            message_id: Some("msg_1".to_string()),
+        })
+    }
+
+    fn missing_stream_usage(_events: &[Value]) -> Option<TokenUsage> {
+        None
+    }
+
+    fn extracted_stream_model(events: &[Value], fallback: &str) -> String {
+        events
+            .first()
+            .and_then(|event| event.get("model"))
+            .and_then(Value::as_str)
+            .unwrap_or(fallback)
+            .to_string()
+    }
 
     #[test]
     fn builds_anthropic_usage_from_openai_responses_defaults() {
@@ -2112,6 +2186,75 @@ mod tests {
         );
 
         assert!(record.is_none());
+    }
+
+    #[test]
+    fn test_streaming_response_usage_record_builds_success_record_from_events() {
+        let output = streaming_response_usage_record_with_request_id_fallback(
+            &[json!({"model": "stream-response-model"})],
+            parsed_stream_usage,
+            extracted_stream_model,
+            "provider-a",
+            Some(crate::ProviderKind::OpenRouter),
+            crate::AppKind::Claude,
+            "request-model",
+            "outbound-model",
+            "fallback-model",
+            123,
+            Some(45),
+            200,
+            Some("session-1".to_string()),
+            || "request-1".to_string(),
+        );
+
+        assert!(output.usage_found);
+        assert_eq!(output.record.request_id.as_deref(), Some("session:msg_1"));
+        assert_eq!(output.record.message_id.as_deref(), Some("msg_1"));
+        assert_eq!(output.record.provider_id, "provider-a");
+        assert_eq!(output.record.provider_kind, Some(crate::ProviderKind::OpenRouter));
+        assert_eq!(output.record.app, crate::AppKind::Claude);
+        assert_eq!(output.record.request_model, "request-model");
+        assert_eq!(output.record.outbound_model, "outbound-model");
+        assert_eq!(
+            output.record.response_model.as_deref(),
+            Some("stream-response-model")
+        );
+        assert_eq!(output.record.tokens.input_tokens, 3);
+        assert_eq!(output.record.tokens.cache_read_tokens, 7);
+        assert_eq!(output.record.latency_ms, 123);
+        assert_eq!(output.record.first_token_ms, Some(45));
+        assert_eq!(output.record.status_code, 200);
+        assert!(output.record.is_streaming);
+    }
+
+    #[test]
+    fn test_streaming_response_usage_record_preserves_missing_usage_zero_record() {
+        let output = streaming_response_usage_record_with_request_id_fallback(
+            &[json!({})],
+            missing_stream_usage,
+            extracted_stream_model,
+            "provider-a",
+            None,
+            crate::AppKind::Codex,
+            "request-model",
+            "outbound-model",
+            "fallback-model",
+            123,
+            Some(45),
+            200,
+            None,
+            || "request-1".to_string(),
+        );
+
+        assert!(!output.usage_found);
+        assert_eq!(output.record.request_id.as_deref(), Some("request-1"));
+        assert_eq!(
+            output.record.response_model.as_deref(),
+            Some("fallback-model")
+        );
+        assert_eq!(output.record.tokens.input_tokens, 0);
+        assert_eq!(output.record.tokens.output_tokens, 0);
+        assert!(output.record.is_streaming);
     }
 
     #[test]
