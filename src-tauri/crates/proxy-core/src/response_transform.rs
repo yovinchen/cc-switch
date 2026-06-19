@@ -1,7 +1,7 @@
 use crate::{
     json_canonical::{
         canonical_json_string, canonicalize_json_string_if_parseable, canonicalize_tool_arguments,
-        short_sha256_hex,
+        canonicalize_tool_arguments_str, short_sha256_hex,
     },
     request_body::{
         clean_openai_tool_schema, codex_chat_reasoning_requested,
@@ -17,7 +17,7 @@ use crate::{
 };
 use bytes::Bytes;
 use serde_json::{json, Map, Value};
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeMap, HashMap, HashSet};
 
 pub const CLAUDE_API_FORMAT_METADATA_KEY: &str = "claudeApiFormat";
 pub const CODEX_TOOL_SEARCH_PROXY_NAME: &str = "tool_search";
@@ -2418,6 +2418,674 @@ pub fn codex_chat_stream_failed_event(
     )
 }
 
+#[derive(Debug, Default)]
+struct CodexChatStreamTextItemState {
+    output_index: Option<u32>,
+    item_id: String,
+    text: String,
+    added: bool,
+    done: bool,
+}
+
+#[derive(Debug, Default)]
+struct CodexChatStreamReasoningItemState {
+    output_index: Option<u32>,
+    item_id: String,
+    text: String,
+    added: bool,
+    done: bool,
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+enum CodexChatStreamInlineThinkMode {
+    #[default]
+    Detecting,
+    Reasoning,
+    Text,
+}
+
+#[derive(Debug, Default)]
+struct CodexChatStreamInlineThinkState {
+    mode: CodexChatStreamInlineThinkMode,
+    buffer: String,
+}
+
+#[derive(Debug, Default)]
+struct CodexChatStreamToolCallState {
+    output_index: Option<u32>,
+    item_id: String,
+    call_id: String,
+    name: String,
+    arguments: String,
+    reasoning_content: String,
+    added: bool,
+    done: bool,
+}
+
+#[derive(Debug)]
+pub struct CodexChatToResponsesState {
+    response_started: bool,
+    completed: bool,
+    response_id: String,
+    model: String,
+    created_at: u64,
+    next_output_index: u32,
+    text: CodexChatStreamTextItemState,
+    reasoning: CodexChatStreamReasoningItemState,
+    inline_think: CodexChatStreamInlineThinkState,
+    tools: BTreeMap<usize, CodexChatStreamToolCallState>,
+    output_items: Vec<(u32, Value)>,
+    latest_usage: Option<Value>,
+    finish_reason: Option<String>,
+    tool_context: CodexToolContext,
+}
+
+impl Default for CodexChatToResponsesState {
+    fn default() -> Self {
+        Self {
+            response_started: false,
+            completed: false,
+            response_id: "resp_ccswitch".to_string(),
+            model: String::new(),
+            created_at: 0,
+            next_output_index: 0,
+            text: CodexChatStreamTextItemState::default(),
+            reasoning: CodexChatStreamReasoningItemState::default(),
+            inline_think: CodexChatStreamInlineThinkState::default(),
+            tools: BTreeMap::new(),
+            output_items: Vec::new(),
+            latest_usage: None,
+            finish_reason: None,
+            tool_context: CodexToolContext::default(),
+        }
+    }
+}
+
+impl CodexChatToResponsesState {
+    pub fn with_tool_context(tool_context: CodexToolContext) -> Self {
+        Self {
+            tool_context,
+            ..Self::default()
+        }
+    }
+
+    pub fn handle_chat_chunk(&mut self, chunk: &Value) -> Vec<Bytes> {
+        let mut events = Vec::new();
+
+        if let Some(id) = chunk.get("id").and_then(|v| v.as_str()) {
+            self.response_id = response_id_from_chat_id(Some(id));
+        }
+        if let Some(model) = chunk.get("model").and_then(|v| v.as_str()) {
+            if !model.is_empty() {
+                self.model = model.to_string();
+            }
+        }
+        if let Some(created) = chunk.get("created").and_then(|v| v.as_u64()) {
+            self.created_at = created;
+        }
+
+        events.extend(self.ensure_response_started());
+
+        if let Some(usage) = chunk.get("usage").filter(|v| !v.is_null()) {
+            self.latest_usage = Some(chat_usage_to_responses_usage(Some(usage)));
+        }
+
+        let Some(choice) = chunk
+            .get("choices")
+            .and_then(|v| v.as_array())
+            .and_then(|choices| choices.first())
+        else {
+            return events;
+        };
+
+        if let Some(delta) = choice.get("delta") {
+            if let Some(reasoning) = chat_delta_reasoning_text(delta) {
+                events.extend(self.push_reasoning_delta(&reasoning));
+                self.append_reasoning_to_active_tools(&reasoning);
+            }
+
+            if let Some(content) = delta.get("content").and_then(|v| v.as_str()) {
+                if !content.is_empty() {
+                    events.extend(self.push_content_delta(content));
+                }
+            }
+
+            if let Some(tool_calls) = delta.get("tool_calls").and_then(|v| v.as_array()) {
+                events.extend(self.flush_inline_think_at_boundary());
+                let reasoning_for_tool_call = self.current_reasoning_text();
+                events.extend(self.finalize_reasoning());
+                for tool_call in tool_calls {
+                    events.extend(
+                        self.push_tool_call_delta(tool_call, reasoning_for_tool_call.as_deref()),
+                    );
+                }
+            }
+        }
+
+        if let Some(finish_reason) = choice.get("finish_reason").and_then(|v| v.as_str()) {
+            self.finish_reason = Some(finish_reason.to_string());
+        }
+
+        events
+    }
+
+    pub fn finalize(&mut self) -> Vec<Bytes> {
+        if self.completed {
+            return Vec::new();
+        }
+
+        let mut events = self.ensure_response_started();
+        events.extend(self.flush_inline_think_at_boundary());
+        events.extend(self.finalize_reasoning());
+        events.extend(self.finalize_text());
+        events.extend(self.finalize_tools());
+
+        let status = response_status_from_finish_reason(self.finish_reason.as_deref());
+        let mut response = self.base_response(status, self.completed_output_items());
+        if status == "incomplete" {
+            response["incomplete_details"] = json!({ "reason": "max_output_tokens" });
+        }
+
+        events.push(codex_chat_stream_completed_event(response));
+        self.completed = true;
+        events
+    }
+
+    pub fn failed_event(&mut self, message: String, error_type: Option<String>) -> Bytes {
+        self.completed = true;
+        let response = self.base_response("failed", self.completed_output_items());
+        codex_chat_stream_failed_event(response, message, error_type.as_deref())
+    }
+
+    pub fn has_substantive_output(&self) -> bool {
+        !self.text.text.trim().is_empty()
+            || !self.reasoning.text.trim().is_empty()
+            || !self.inline_think.buffer.trim().is_empty()
+            || !self.output_items.is_empty()
+            || self.tools.values().any(|state| {
+                state.added
+                    || !state.call_id.trim().is_empty()
+                    || !state.name.trim().is_empty()
+                    || !state.arguments.trim().is_empty()
+                    || !state.reasoning_content.trim().is_empty()
+            })
+    }
+
+    pub fn is_completed(&self) -> bool {
+        self.completed
+    }
+
+    pub fn has_finish_reason(&self) -> bool {
+        self.finish_reason.is_some()
+    }
+
+    pub fn set_finish_reason(&mut self, finish_reason: impl Into<String>) {
+        self.finish_reason = Some(finish_reason.into());
+    }
+
+    fn push_content_delta(&mut self, delta: &str) -> Vec<Bytes> {
+        match self.inline_think.mode {
+            CodexChatStreamInlineThinkMode::Text => {
+                let mut events = self.finalize_reasoning();
+                events.extend(self.push_text_delta(delta));
+                events
+            }
+            CodexChatStreamInlineThinkMode::Detecting => {
+                self.inline_think.buffer.push_str(delta);
+                match leading_think_prefix_decision(&self.inline_think.buffer) {
+                    ThinkPrefixDecision::NeedMore => Vec::new(),
+                    ThinkPrefixDecision::Reasoning => {
+                        self.inline_think.mode = CodexChatStreamInlineThinkMode::Reasoning;
+                        self.drain_complete_inline_think()
+                    }
+                    ThinkPrefixDecision::Text => {
+                        self.inline_think.mode = CodexChatStreamInlineThinkMode::Text;
+                        let text = std::mem::take(&mut self.inline_think.buffer);
+                        let mut events = self.finalize_reasoning();
+                        events.extend(self.push_text_delta(&text));
+                        events
+                    }
+                }
+            }
+            CodexChatStreamInlineThinkMode::Reasoning => {
+                self.inline_think.buffer.push_str(delta);
+                self.drain_complete_inline_think()
+            }
+        }
+    }
+
+    fn drain_complete_inline_think(&mut self) -> Vec<Bytes> {
+        let Some((reasoning, answer)) = split_leading_think_block(&self.inline_think.buffer) else {
+            return Vec::new();
+        };
+
+        self.inline_think.mode = CodexChatStreamInlineThinkMode::Text;
+        self.inline_think.buffer.clear();
+
+        let mut events = Vec::new();
+        if !reasoning.is_empty() {
+            events.extend(self.push_reasoning_delta(&reasoning));
+            events.extend(self.finalize_reasoning());
+        }
+        if !answer.is_empty() {
+            events.extend(self.push_text_delta(&answer));
+        }
+
+        events
+    }
+
+    fn flush_inline_think_at_boundary(&mut self) -> Vec<Bytes> {
+        match self.inline_think.mode {
+            CodexChatStreamInlineThinkMode::Text => Vec::new(),
+            CodexChatStreamInlineThinkMode::Detecting => {
+                self.inline_think.mode = CodexChatStreamInlineThinkMode::Text;
+                let text = std::mem::take(&mut self.inline_think.buffer);
+                if text.is_empty() {
+                    Vec::new()
+                } else {
+                    let mut events = self.finalize_reasoning();
+                    events.extend(self.push_text_delta(&text));
+                    events
+                }
+            }
+            CodexChatStreamInlineThinkMode::Reasoning => {
+                let buffered = std::mem::take(&mut self.inline_think.buffer);
+                self.inline_think.mode = CodexChatStreamInlineThinkMode::Text;
+                if let Some((reasoning, answer)) = split_leading_think_block(&buffered) {
+                    let mut events = Vec::new();
+                    if !reasoning.is_empty() {
+                        events.extend(self.push_reasoning_delta(&reasoning));
+                        events.extend(self.finalize_reasoning());
+                    }
+                    if !answer.is_empty() {
+                        events.extend(self.push_text_delta(&answer));
+                    }
+                    return events;
+                }
+
+                let reasoning = strip_leading_think_open_tag(&buffered).unwrap_or(buffered);
+                if reasoning.is_empty() {
+                    Vec::new()
+                } else {
+                    let mut events = self.push_reasoning_delta(&reasoning);
+                    events.extend(self.finalize_reasoning());
+                    events
+                }
+            }
+        }
+    }
+
+    fn ensure_response_started(&mut self) -> Vec<Bytes> {
+        if self.response_started {
+            return Vec::new();
+        }
+
+        self.response_started = true;
+        let response = self.base_response("in_progress", Vec::new());
+
+        codex_chat_stream_started_events(response)
+    }
+
+    fn push_reasoning_delta(&mut self, delta: &str) -> Vec<Bytes> {
+        let mut events = Vec::new();
+
+        if !self.reasoning.added {
+            let output_index = self.next_output_index();
+            let item_id = format!("rs_{}", self.response_id);
+            self.reasoning.output_index = Some(output_index);
+            self.reasoning.item_id = item_id.clone();
+            self.reasoning.added = true;
+
+            events.push(codex_chat_stream_output_item_added_event(
+                output_index,
+                codex_chat_stream_reasoning_in_progress_item(&item_id),
+            ));
+            events.push(codex_chat_stream_reasoning_summary_part_added_event(
+                &self.reasoning.item_id,
+                output_index,
+            ));
+        }
+
+        self.reasoning.text.push_str(delta);
+        let output_index = self.reasoning.output_index.unwrap_or(0);
+        events.push(codex_chat_stream_reasoning_summary_text_delta_event(
+            &self.reasoning.item_id,
+            output_index,
+            delta,
+        ));
+
+        events
+    }
+
+    fn push_text_delta(&mut self, delta: &str) -> Vec<Bytes> {
+        let mut events = Vec::new();
+
+        if !self.text.added {
+            let output_index = self.next_output_index();
+            let item_id = format!("{}_msg", self.response_id);
+            self.text.output_index = Some(output_index);
+            self.text.item_id = item_id.clone();
+            self.text.added = true;
+
+            events.push(codex_chat_stream_output_item_added_event(
+                output_index,
+                codex_chat_stream_text_in_progress_item(&item_id),
+            ));
+            events.push(codex_chat_stream_content_part_added_event(
+                &self.text.item_id,
+                output_index,
+            ));
+        }
+
+        self.text.text.push_str(delta);
+        let output_index = self.text.output_index.unwrap_or(0);
+        events.push(codex_chat_stream_output_text_delta_event(
+            &self.text.item_id,
+            output_index,
+            delta,
+        ));
+
+        events
+    }
+
+    fn current_reasoning_text(&self) -> Option<String> {
+        (!self.reasoning.text.trim().is_empty()).then(|| self.reasoning.text.trim().to_string())
+    }
+
+    fn push_tool_call_delta(&mut self, tool_call: &Value, reasoning: Option<&str>) -> Vec<Bytes> {
+        let chat_index = tool_call.get("index").and_then(|v| v.as_u64()).unwrap_or(0) as usize;
+        let id_delta = tool_call
+            .get("id")
+            .and_then(|v| v.as_str())
+            .map(str::to_string);
+        let function = tool_call.get("function").unwrap_or(&Value::Null);
+        let name_delta = function
+            .get("name")
+            .and_then(|v| v.as_str())
+            .map(str::to_string);
+        let args_delta = function
+            .get("arguments")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string();
+
+        let mut should_add = false;
+        let mut output_index = None;
+        let mut item_id = String::new();
+        let mut pending_arguments = String::new();
+        let current_name: String;
+
+        {
+            let state = self.tools.entry(chat_index).or_default();
+            if let Some(id) = id_delta {
+                state.call_id = id;
+            }
+            if let Some(name) = name_delta {
+                state.name = name;
+            }
+            if !args_delta.is_empty() {
+                state.arguments.push_str(&args_delta);
+            }
+            if state.reasoning_content.is_empty() {
+                if let Some(reasoning) = reasoning.map(str::trim).filter(|value| !value.is_empty())
+                {
+                    state.reasoning_content = reasoning.to_string();
+                }
+            }
+
+            if !state.added && (!state.call_id.is_empty() || !state.name.is_empty()) {
+                should_add = true;
+                pending_arguments = state.arguments.clone();
+            } else if state.added {
+                output_index = state.output_index;
+                item_id = state.item_id.clone();
+            }
+            current_name = state.name.clone();
+        }
+
+        let is_custom_tool = self.tool_context.is_custom_tool_chat_name(&current_name);
+        let mut events = Vec::new();
+
+        if should_add {
+            let assigned = self.next_output_index();
+            let Some(state) = self.tools.get_mut(&chat_index) else {
+                return events;
+            };
+            state.added = true;
+            if state.call_id.is_empty() {
+                state.call_id = format!("call_{chat_index}");
+            }
+            if state.name.is_empty() {
+                state.name = "unknown_tool".to_string();
+            }
+            state.output_index = Some(assigned);
+            let is_custom_tool = self.tool_context.is_custom_tool_chat_name(&state.name);
+            state.item_id = response_tool_call_item_id_from_chat_name(
+                &state.call_id,
+                &state.name,
+                &self.tool_context,
+            );
+            item_id = state.item_id.clone();
+
+            let item = response_tool_call_item_from_chat_name(
+                &item_id,
+                "in_progress",
+                &state.call_id,
+                &state.name,
+                "",
+                Some(&state.reasoning_content),
+                &self.tool_context,
+            );
+
+            events.push(codex_chat_stream_output_item_added_event(assigned, item));
+
+            if !pending_arguments.is_empty() && !is_custom_tool {
+                events.push(codex_chat_stream_function_call_arguments_delta_event(
+                    &state.item_id,
+                    assigned,
+                    &pending_arguments,
+                ));
+            }
+        } else if !args_delta.is_empty() && !is_custom_tool {
+            if let Some(output_index) = output_index {
+                events.push(codex_chat_stream_function_call_arguments_delta_event(
+                    &item_id,
+                    output_index,
+                    &args_delta,
+                ));
+            }
+        }
+
+        events
+    }
+
+    fn append_reasoning_to_active_tools(&mut self, delta: &str) {
+        if delta.trim().is_empty() {
+            return;
+        }
+
+        for state in self.tools.values_mut().filter(|state| !state.done) {
+            if state.reasoning_content.is_empty() {
+                state.reasoning_content = delta.trim_start().to_string();
+            } else {
+                state.reasoning_content.push_str(delta);
+            }
+        }
+    }
+
+    fn finalize_reasoning(&mut self) -> Vec<Bytes> {
+        if !self.reasoning.added || self.reasoning.done {
+            return Vec::new();
+        }
+
+        let output_index = self.reasoning.output_index.unwrap_or(0);
+        let item_id = self.reasoning.item_id.clone();
+        let text = self.reasoning.text.clone();
+        let item = codex_chat_stream_reasoning_completed_item(&item_id, &text);
+        self.output_items.push((output_index, item.clone()));
+        self.reasoning.done = true;
+
+        vec![
+            codex_chat_stream_reasoning_summary_text_done_event(
+                &self.reasoning.item_id,
+                output_index,
+                &self.reasoning.text,
+            ),
+            codex_chat_stream_reasoning_summary_part_done_event(
+                &self.reasoning.item_id,
+                output_index,
+                &self.reasoning.text,
+            ),
+            codex_chat_stream_output_item_done_event(output_index, item),
+        ]
+    }
+
+    fn finalize_text(&mut self) -> Vec<Bytes> {
+        if !self.text.added || self.text.done {
+            return Vec::new();
+        }
+
+        let output_index = self.text.output_index.unwrap_or(0);
+        let item = codex_chat_stream_text_completed_item(&self.text.item_id, &self.text.text);
+        self.output_items.push((output_index, item.clone()));
+        self.text.done = true;
+
+        vec![
+            codex_chat_stream_output_text_done_event(
+                &self.text.item_id,
+                output_index,
+                &self.text.text,
+            ),
+            codex_chat_stream_content_part_done_event(
+                &self.text.item_id,
+                output_index,
+                &self.text.text,
+            ),
+            codex_chat_stream_output_item_done_event(output_index, item),
+        ]
+    }
+
+    fn finalize_tools(&mut self) -> Vec<Bytes> {
+        let mut events = Vec::new();
+        let keys: Vec<usize> = self.tools.keys().copied().collect();
+
+        for key in keys {
+            let mut add_event: Option<Bytes> = None;
+            if self.tools.get(&key).map(|state| state.done).unwrap_or(true) {
+                continue;
+            }
+
+            if self
+                .tools
+                .get(&key)
+                .map(|state| !state.added && !state.done)
+                .unwrap_or(false)
+            {
+                let assigned = self.next_output_index();
+                let Some(state) = self.tools.get_mut(&key) else {
+                    continue;
+                };
+                state.added = true;
+                if state.call_id.is_empty() {
+                    state.call_id = format!("call_{key}");
+                }
+                if state.name.is_empty() {
+                    state.name = "unknown_tool".to_string();
+                }
+                state.output_index = Some(assigned);
+                state.item_id = response_tool_call_item_id_from_chat_name(
+                    &state.call_id,
+                    &state.name,
+                    &self.tool_context,
+                );
+                let item = response_tool_call_item_from_chat_name(
+                    &state.item_id,
+                    "in_progress",
+                    &state.call_id,
+                    &state.name,
+                    "",
+                    Some(&state.reasoning_content),
+                    &self.tool_context,
+                );
+                add_event = Some(codex_chat_stream_output_item_added_event(assigned, item));
+            }
+
+            if let Some(event) = add_event {
+                events.push(event);
+            }
+
+            let Some(state) = self.tools.get_mut(&key) else {
+                continue;
+            };
+            let output_index = state.output_index.unwrap_or(0);
+            let arguments = canonicalize_tool_arguments_str(&state.arguments);
+            let is_custom_tool = self.tool_context.is_custom_tool_chat_name(&state.name);
+            let item = response_tool_call_item_from_chat_name(
+                &state.item_id,
+                "completed",
+                &state.call_id,
+                &state.name,
+                &arguments,
+                Some(&state.reasoning_content),
+                &self.tool_context,
+            );
+            state.done = true;
+            self.output_items.push((output_index, item.clone()));
+
+            if is_custom_tool {
+                let input = custom_tool_input_from_chat_arguments(&arguments);
+                if !input.is_empty() {
+                    events.push(codex_chat_stream_custom_tool_call_input_delta_event(
+                        &state.item_id,
+                        output_index,
+                        &input,
+                    ));
+                }
+                events.push(codex_chat_stream_custom_tool_call_input_done_event(
+                    &state.item_id,
+                    output_index,
+                    &input,
+                ));
+            } else {
+                events.push(codex_chat_stream_function_call_arguments_done_event(
+                    &state.item_id,
+                    output_index,
+                    &arguments,
+                ));
+            }
+            events.push(codex_chat_stream_output_item_done_event(output_index, item));
+        }
+
+        events
+    }
+
+    fn completed_output_items(&self) -> Vec<Value> {
+        let mut output_items = self.output_items.clone();
+        output_items.sort_by_key(|(output_index, _)| *output_index);
+        output_items
+            .into_iter()
+            .map(|(_, item)| item)
+            .collect::<Vec<_>>()
+    }
+
+    fn base_response(&self, status: &str, output: Vec<Value>) -> Value {
+        codex_chat_stream_response(
+            &self.response_id,
+            self.created_at,
+            status,
+            &self.model,
+            output,
+            self.latest_usage.as_ref(),
+        )
+    }
+
+    fn next_output_index(&mut self) -> u32 {
+        let index = self.next_output_index;
+        self.next_output_index += 1;
+        index
+    }
+}
+
 pub fn sse_event(event: &str, data: Value) -> Bytes {
     Bytes::from(format!(
         "event: {event}\ndata: {}\n\n",
@@ -4168,6 +4836,37 @@ mod tests {
         assert!(combined.contains("\"delta\":\"ls\""));
         assert!(combined.contains("event: response.custom_tool_call_input.done"));
         assert!(combined.contains("\"input\":\"ls -la\""));
+    }
+
+    #[test]
+    fn codex_chat_to_responses_state_handles_text_chunk_and_finalize() {
+        let mut state = CodexChatToResponsesState::default();
+
+        let events = state.handle_chat_chunk(&json!({
+            "id": "chatcmpl_1",
+            "created": 123,
+            "model": "gpt-5",
+            "choices": [{
+                "delta": { "content": "partial" }
+            }]
+        }));
+        let event_bytes = events.concat();
+        let events = std::str::from_utf8(&event_bytes).expect("events utf8");
+
+        assert!(events.contains("event: response.created"));
+        assert!(events.contains("event: response.output_text.delta"));
+        assert!(state.has_substantive_output());
+        assert!(!state.has_finish_reason());
+
+        state.set_finish_reason("length");
+        let completed = state.finalize();
+        let completed_bytes = completed.concat();
+        let completed = std::str::from_utf8(&completed_bytes).expect("completed utf8");
+
+        assert!(state.is_completed());
+        assert!(completed.contains("event: response.completed"));
+        assert!(completed.contains("\"status\":\"incomplete\""));
+        assert!(completed.contains("\"incomplete_details\":{\"reason\":\"max_output_tokens\"}"));
     }
 
     #[test]
