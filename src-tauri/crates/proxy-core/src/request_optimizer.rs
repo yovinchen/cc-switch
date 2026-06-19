@@ -24,6 +24,13 @@ pub fn provider_declares_bedrock(use_bedrock_env: Option<&str>) -> bool {
     matches!(use_bedrock_env, Some("1"))
 }
 
+pub fn bedrock_env_flag_from_provider_settings(settings: &Value) -> Option<&str> {
+    settings
+        .get("env")
+        .and_then(|env| env.get(BEDROCK_OPTIMIZER_ENV_FLAG))
+        .and_then(Value::as_str)
+}
+
 pub fn should_apply_bedrock_pre_send_optimizer(
     optimizer_enabled: bool,
     use_bedrock_env: Option<&str>,
@@ -554,8 +561,9 @@ fn uuid_v4_string_from_hash(hash: &[u8]) -> String {
 mod tests {
     use super::{
         apply_copilot_warmup_model_override, classify_copilot_request, merge_copilot_tool_results,
-        parse_session_from_user_id, provider_declares_bedrock, sanitize_copilot_orphan_tool_results,
-        resolve_copilot_optimizer_session_id, should_apply_bedrock_pre_send_optimizer,
+        bedrock_env_flag_from_provider_settings, parse_session_from_user_id,
+        provider_declares_bedrock, resolve_copilot_optimizer_session_id,
+        sanitize_copilot_orphan_tool_results, should_apply_bedrock_pre_send_optimizer,
         resolve_copilot_deterministic_interaction_id, resolve_copilot_deterministic_request_id,
         resolve_copilot_request_id_with_fallback, resolve_copilot_warmup_model_override,
         strip_copilot_thinking_blocks,
@@ -570,6 +578,28 @@ mod tests {
         assert!(!provider_declares_bedrock(Some("true")));
         assert!(!provider_declares_bedrock(Some("")));
         assert!(!provider_declares_bedrock(None));
+    }
+
+    #[test]
+    fn bedrock_env_flag_is_projected_from_provider_settings() {
+        let settings = json!({
+            "env": {
+                "CLAUDE_CODE_USE_BEDROCK": "1"
+            }
+        });
+
+        assert_eq!(
+            bedrock_env_flag_from_provider_settings(&settings),
+            Some("1")
+        );
+        assert_eq!(
+            bedrock_env_flag_from_provider_settings(&json!({ "env": {} })),
+            None
+        );
+        assert_eq!(
+            bedrock_env_flag_from_provider_settings(&json!({ "CLAUDE_CODE_USE_BEDROCK": "1" })),
+            None
+        );
     }
 
     #[test]

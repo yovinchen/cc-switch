@@ -24,13 +24,14 @@ use crate::proxy::providers::copilot_auth::CopilotAuthManager;
 use crate::proxy_core::append_query_to_full_url;
 use crate::proxy_core::{
     apply_copilot_model_normalization, apply_copilot_warmup_model_override, attempt_event_name,
-    build_attempt_event_payload, build_codex_oauth_session_headers,
-    build_request_started_event_payload, build_retryable_forward_failure_log,
-    build_terminal_forward_failure_log, build_upstream_auth_headers, categorize_forward_failure,
-    classify_copilot_request, contains_image_blocks, interface_kind_for_forward,
-    is_github_copilot_upstream, is_openai_o_series, is_socks_proxy_url, is_unsupported_image_error,
-    merge_copilot_tool_results, normalize_thinking_type, rectify_anthropic_request,
-    rectify_thinking_budget, replace_image_blocks_with_marker, replace_images_for_text_only_model,
+    bedrock_env_flag_from_provider_settings, build_attempt_event_payload,
+    build_codex_oauth_session_headers, build_request_started_event_payload,
+    build_retryable_forward_failure_log, build_terminal_forward_failure_log,
+    build_upstream_auth_headers, categorize_forward_failure, classify_copilot_request,
+    contains_image_blocks, interface_kind_for_forward, is_github_copilot_upstream,
+    is_openai_o_series, is_socks_proxy_url, is_unsupported_image_error, merge_copilot_tool_results,
+    normalize_thinking_type, rectify_anthropic_request, rectify_thinking_budget,
+    replace_image_blocks_with_marker, replace_images_for_text_only_model,
     request_model_for_forward, resolve_copilot_deterministic_interaction_id,
     resolve_copilot_model_against_ids, resolve_copilot_optimizer_session_id,
     resolve_copilot_request_id_with_fallback, resolve_media_prevention_policy,
@@ -48,7 +49,7 @@ use crate::proxy_core::{
     CopilotAuthHeaderOverrides, ForwardFailureCategory, ForwardFailureKind, GeminiShadowStore,
     InterfaceKind, MediaRetryInput, ProxyBody, ProxyEngine, ProxyRequest, ProxyServices,
     UpstreamAuthHeadersInput, UpstreamRequestHeadersInput, UpstreamSendPolicyInput,
-    UpstreamTransportKind, BEDROCK_OPTIMIZER_ENV_FLAG, UNSUPPORTED_IMAGE_MARKER,
+    UpstreamTransportKind, UNSUPPORTED_IMAGE_MARKER,
 };
 use crate::proxy_core_host::CcSwitchProxyServices;
 use crate::{app_config::AppType, provider::Provider};
@@ -2397,11 +2398,7 @@ fn unsupported_image_error_from_proxy_error(error: &ProxyError) -> bool {
 }
 
 fn provider_bedrock_env_flag(provider: &Provider) -> Option<&str> {
-    provider
-        .settings_config
-        .get("env")
-        .and_then(|env| env.get(BEDROCK_OPTIMIZER_ENV_FLAG))
-        .and_then(Value::as_str)
+    bedrock_env_flag_from_provider_settings(&provider.settings_config)
 }
 
 fn apply_bedrock_pre_send_optimizers(body: &mut Value, config: &OptimizerConfig) {
