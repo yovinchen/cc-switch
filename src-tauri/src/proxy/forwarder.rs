@@ -1121,7 +1121,10 @@ impl RequestForwarder {
                     }
 
                     if is_anthropic_provider {
-                        let error_message = extract_error_message(&e);
+                        let error_message = match &e {
+                            ProxyError::UpstreamError { body, .. } => body.clone(),
+                            _ => Some(e.to_string()),
+                        };
                         if should_rectify_thinking_signature(
                             error_message.as_deref(),
                             &self.rectifier_config.thinking_signature_core_config(),
@@ -1272,7 +1275,10 @@ impl RequestForwarder {
 
                     // 检测是否需要触发 budget 整流器（仅 Claude/ClaudeAuth 供应商）
                     if is_anthropic_provider {
-                        let error_message = extract_error_message(&e);
+                        let error_message = match &e {
+                            ProxyError::UpstreamError { body, .. } => body.clone(),
+                            _ => Some(e.to_string()),
+                        };
                         if should_rectify_thinking_budget(
                             error_message.as_deref(),
                             &self.rectifier_config.thinking_budget_core_config(),
@@ -2398,14 +2404,6 @@ impl RequestForwarder {
                 None
             }
         }
-    }
-}
-
-/// 从 ProxyError 中提取错误消息
-fn extract_error_message(error: &ProxyError) -> Option<String> {
-    match error {
-        ProxyError::UpstreamError { body, .. } => body.clone(),
-        _ => Some(error.to_string()),
     }
 }
 
