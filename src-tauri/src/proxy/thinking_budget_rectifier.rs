@@ -6,10 +6,6 @@
 use super::types::RectifierConfig;
 use serde_json::Value;
 
-pub type BudgetRectifyResult = crate::proxy_core::BudgetRectifyResult;
-#[allow(dead_code)]
-pub type BudgetRectifySnapshot = crate::proxy_core::BudgetRectifySnapshot;
-
 fn budget_rectifier_config(
     config: &RectifierConfig,
 ) -> crate::proxy_core::ThinkingBudgetRectifierConfig {
@@ -29,7 +25,7 @@ pub fn should_rectify_thinking_budget(
     )
 }
 
-pub fn rectify_thinking_budget(body: &mut Value) -> BudgetRectifyResult {
+pub fn rectify_thinking_budget(body: &mut Value) -> crate::proxy_core::BudgetRectifyResult {
     crate::proxy_core::rectify_thinking_budget(body)
 }
 

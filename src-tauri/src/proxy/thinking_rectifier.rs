@@ -6,8 +6,6 @@
 use super::types::RectifierConfig;
 use serde_json::Value;
 
-pub type RectifyResult = crate::proxy_core::RectifyResult;
-
 fn signature_rectifier_config(
     config: &RectifierConfig,
 ) -> crate::proxy_core::ThinkingSignatureRectifierConfig {
@@ -27,7 +25,7 @@ pub fn should_rectify_thinking_signature(
     )
 }
 
-pub fn rectify_anthropic_request(body: &mut Value) -> RectifyResult {
+pub fn rectify_anthropic_request(body: &mut Value) -> crate::proxy_core::RectifyResult {
     crate::proxy_core::rectify_anthropic_request(body)
 }
 
