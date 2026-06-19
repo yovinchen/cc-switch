@@ -1,5 +1,5 @@
 use crate::{
-    json_canonical::{canonical_json_string, short_sha256_hex},
+    json_canonical::{canonical_json_string, canonicalize_tool_arguments, short_sha256_hex},
     UpstreamSseAggregationKind,
 };
 use serde_json::{json, Map, Value};
@@ -543,6 +543,24 @@ pub fn responses_function_tool_to_chat_tool(tool: &Value, chat_name: &str) -> Op
         "type": "function",
         "function": function
     }))
+}
+
+pub fn responses_function_call_to_chat_tool_call(item: &Value, chat_name: &str) -> Value {
+    let call_id = item
+        .get("call_id")
+        .or_else(|| item.get("id"))
+        .and_then(Value::as_str)
+        .unwrap_or("");
+    let arguments = canonicalize_tool_arguments(item.get("arguments"));
+
+    json!({
+        "id": call_id,
+        "type": "function",
+        "function": {
+            "name": chat_name,
+            "arguments": arguments
+        }
+    })
 }
 
 pub fn responses_custom_tool_call_to_chat_tool_call(item: &Value) -> Value {
@@ -1563,6 +1581,19 @@ mod tests {
 
     #[test]
     fn maps_codex_responses_special_tool_calls_to_chat_tool_calls() {
+        let function = responses_function_call_to_chat_tool_call(
+            &json!({
+                "type": "function_call",
+                "call_id": "call_lookup",
+                "name": "lookup",
+                "arguments": {"b": 2, "a": 1}
+            }),
+            "namespace__lookup",
+        );
+        assert_eq!(function["id"], "call_lookup");
+        assert_eq!(function["function"]["name"], "namespace__lookup");
+        assert_eq!(function["function"]["arguments"], r#"{"a":1,"b":2}"#);
+
         let custom = responses_custom_tool_call_to_chat_tool_call(&json!({
             "type": "custom_tool_call",
             "call_id": "call_patch",

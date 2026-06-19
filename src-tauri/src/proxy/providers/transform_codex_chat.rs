@@ -23,9 +23,11 @@ pub(crate) use crate::proxy_core::{
     flatten_namespace_tool_name, response_custom_tool_call_item, response_id_from_chat_id,
     response_status_from_finish_reason, response_tool_search_call_item,
     responses_content_to_chat_content, responses_custom_tool_call_to_chat_tool_call,
-    responses_custom_tool_to_chat_tool, responses_function_tool_to_chat_tool,
-    responses_instruction_text, responses_role_to_chat_role, responses_tool_name,
-    responses_tool_search_call_to_chat_tool_call, CODEX_TOOL_SEARCH_PROXY_NAME,
+    responses_custom_tool_to_chat_tool,
+    responses_function_call_to_chat_tool_call as build_responses_function_call_chat_tool_call,
+    responses_function_tool_to_chat_tool, responses_instruction_text, responses_role_to_chat_role,
+    responses_tool_name, responses_tool_search_call_to_chat_tool_call,
+    CODEX_TOOL_SEARCH_PROXY_NAME,
 };
 use crate::proxy_core::{codex_chat_reasoning_requested, map_codex_chat_reasoning_effort};
 use serde_json::{json, Value};
@@ -703,24 +705,10 @@ fn responses_function_call_to_chat_tool_call(
     item: &Value,
     tool_context: &CodexToolContext,
 ) -> Value {
-    let call_id = item
-        .get("call_id")
-        .or_else(|| item.get("id"))
-        .and_then(|v| v.as_str())
-        .unwrap_or("");
     let name = item.get("name").and_then(|v| v.as_str()).unwrap_or("");
     let namespace = item.get("namespace").and_then(|v| v.as_str());
     let chat_name = tool_context.chat_name_for_response_function(name, namespace);
-    let arguments = canonicalize_tool_arguments(item.get("arguments"));
-
-    json!({
-        "id": call_id,
-        "type": "function",
-        "function": {
-            "name": chat_name,
-            "arguments": arguments
-        }
-    })
+    build_responses_function_call_chat_tool_call(item, &chat_name)
 }
 
 fn responses_tool_choice_to_chat(tool_choice: &Value, tool_context: &CodexToolContext) -> Value {
