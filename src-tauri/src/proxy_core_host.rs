@@ -554,7 +554,10 @@ impl crate::proxy_core::ModelCatalogProvider for CcSwitchModelCatalogProvider {
                 AppKind::Codex => load_codex_client_model_catalog_raw(),
                 _ => json!({"models": []}),
             };
-            Ok(model_catalog_from_raw(app.as_str(), raw))
+            Ok(crate::proxy_core::client_model_catalog_from_raw(
+                app.as_str(),
+                raw,
+            ))
         })
     }
 }
@@ -1100,36 +1103,6 @@ fn load_codex_client_model_catalog_raw() -> Value {
     }
 }
 
-fn model_catalog_from_raw(provider_id: &str, raw: Value) -> ModelCatalog {
-    let mut models = Vec::new();
-    collect_client_catalog_models(&raw, &mut models);
-    models.sort();
-    models.dedup();
-    ModelCatalog {
-        provider_id: provider_id.to_string(),
-        models,
-        raw,
-    }
-}
-
-fn collect_client_catalog_models(value: &Value, models: &mut Vec<String>) {
-    let Some(catalog_models) = value.get("models").and_then(Value::as_array) else {
-        return;
-    };
-
-    for entry in catalog_models {
-        if let Some(model) = entry.as_str().or_else(|| {
-            entry
-                .get("model")
-                .or_else(|| entry.get("id"))
-                .or_else(|| entry.get("name"))
-                .and_then(Value::as_str)
-        }) {
-            push_model(models, model);
-        }
-    }
-}
-
 fn push_model(models: &mut Vec<String>, model: &str) {
     let model = model.trim();
     if !model.is_empty() {
@@ -1358,7 +1331,7 @@ mod tests {
 
     #[test]
     fn model_catalog_from_raw_extracts_supported_client_model_ids() {
-        let catalog = model_catalog_from_raw(
+        let catalog = crate::proxy_core::client_model_catalog_from_raw(
             "codex",
             json!({
                 "models": [
