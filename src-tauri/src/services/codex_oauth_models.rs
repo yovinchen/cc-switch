@@ -9,6 +9,5 @@ pub async fn fetch_models_with_token(
     token: &str,
     account_id: &str,
 ) -> Result<Vec<FetchedModel>, String> {
-    crate::proxy::model_fetch_transport::fetch_codex_oauth_models_with_token(token, account_id)
-        .await
+    super::model_fetch_transport::fetch_codex_oauth_models_with_token(token, account_id).await
 }

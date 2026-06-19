@@ -12,7 +12,6 @@ pub mod handler_context;
 mod handlers;
 pub mod http_client;
 pub mod hyper_client;
-pub(crate) mod model_fetch_transport;
 pub mod provider_router;
 pub mod providers;
 pub(crate) mod response_adapter;

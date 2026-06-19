@@ -1,12 +1,12 @@
-//! Model catalog HTTP transport for the CC Switch proxy host.
+//! Model catalog HTTP transport for CC Switch services.
 //!
 //! `proxy-core` owns request planning and response parsing. This module owns
 //! the concrete reqwest execution against the shared proxy HTTP client.
 
 use crate::proxy_core::{
-    fetch_codex_oauth_models_with_transport, fetch_openai_compatible_models_with_transport,
     CodexOAuthModelsRequest, CodexOAuthModelsTransport, FetchedModel, ModelFetchHttpResponse,
     OpenAiCompatibleModelsRequest, OpenAiCompatibleModelsTransport,
+    fetch_codex_oauth_models_with_transport, fetch_openai_compatible_models_with_transport,
 };
 use futures::future::BoxFuture;
 use reqwest::header::HeaderValue;

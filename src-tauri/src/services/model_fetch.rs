@@ -18,7 +18,7 @@ pub async fn fetch_models(
     models_url_override: Option<&str>,
     user_agent: Option<HeaderValue>,
 ) -> Result<Vec<FetchedModel>, String> {
-    crate::proxy::model_fetch_transport::fetch_openai_compatible_models(
+    super::model_fetch_transport::fetch_openai_compatible_models(
         base_url,
         api_key,
         is_full_url,
