@@ -72,6 +72,13 @@ pub trait OpenAiCompatibleModelsTransport: Send + Sync {
     ) -> BoxFuture<'a, Result<ModelFetchHttpResponse, String>>;
 }
 
+pub trait CodexOAuthModelsTransport: Send + Sync {
+    fn send_codex_oauth_models_request<'a>(
+        &'a self,
+        request: CodexOAuthModelsRequest<'a>,
+    ) -> BoxFuture<'a, Result<ModelFetchHttpResponse, String>>;
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ModelFetchFailure {
     Retry { message: String },
@@ -304,6 +311,29 @@ pub fn build_codex_oauth_models_request<'a>(
         ),
         account_id_header: (CODEX_OAUTH_MODELS_ACCOUNT_ID_HEADER, account_id),
     }
+}
+
+pub async fn fetch_codex_oauth_models_with_transport<T>(
+    token: &str,
+    account_id: &str,
+    client_version: &str,
+    transport: &T,
+) -> Result<Vec<FetchedModel>, String>
+where
+    T: CodexOAuthModelsTransport + ?Sized,
+{
+    let request = build_codex_oauth_models_request(token, account_id, client_version);
+    let response = transport.send_codex_oauth_models_request(request).await?;
+
+    if !response.status.is_success() {
+        let body = String::from_utf8_lossy(&response.body);
+        return Err(codex_oauth_models_failure(response.status, body.as_ref()));
+    }
+
+    let value: Value = serde_json::from_slice(&response.body)
+        .map_err(|e| format!("Failed to parse response: {e}"))?;
+
+    Ok(parse_codex_oauth_models(&value))
 }
 
 pub fn parse_codex_oauth_models(value: &Value) -> Vec<FetchedModel> {
@@ -699,12 +729,28 @@ mod tests {
         responses: Mutex<VecDeque<Result<ModelFetchHttpResponse, String>>>,
     }
 
+    #[derive(Default)]
+    struct FakeCodexOAuthModelsTransport {
+        requests: Mutex<Vec<FakeCodexOAuthModelsRequest>>,
+        responses: Mutex<VecDeque<Result<ModelFetchHttpResponse, String>>>,
+    }
+
     #[derive(Clone, Debug, PartialEq, Eq)]
     struct FakeOpenAiCompatibleModelsRequest {
         url: String,
         timeout_secs: u64,
         authorization_header: (&'static str, String),
         user_agent_header: Option<(&'static str, String)>,
+    }
+
+    #[derive(Clone, Debug, PartialEq, Eq)]
+    struct FakeCodexOAuthModelsRequest {
+        url: String,
+        timeout_secs: u64,
+        client_version_query: (&'static str, String),
+        authorization_header: (&'static str, String),
+        originator_header: (&'static str, &'static str),
+        account_id_header: (&'static str, String),
     }
 
     impl FakeOpenAiCompatibleModelsTransport {
@@ -716,6 +762,19 @@ mod tests {
         }
 
         fn requests(&self) -> Vec<FakeOpenAiCompatibleModelsRequest> {
+            self.requests.lock().expect("requests").clone()
+        }
+    }
+
+    impl FakeCodexOAuthModelsTransport {
+        fn new(responses: impl IntoIterator<Item = Result<ModelFetchHttpResponse, String>>) -> Self {
+            Self {
+                requests: Mutex::new(Vec::new()),
+                responses: Mutex::new(responses.into_iter().collect()),
+            }
+        }
+
+        fn requests(&self) -> Vec<FakeCodexOAuthModelsRequest> {
             self.requests.lock().expect("requests").clone()
         }
     }
@@ -739,6 +798,41 @@ mod tests {
                         user_agent_header: request.user_agent_header.and_then(|(header, value)| {
                             value.to_str().ok().map(|value| (header, value.to_string()))
                         }),
+                    });
+                self.responses
+                    .lock()
+                    .expect("responses")
+                    .pop_front()
+                    .unwrap_or_else(|| Err("no fake response".to_string()))
+            })
+        }
+    }
+
+    impl CodexOAuthModelsTransport for FakeCodexOAuthModelsTransport {
+        fn send_codex_oauth_models_request<'a>(
+            &'a self,
+            request: CodexOAuthModelsRequest<'a>,
+        ) -> BoxFuture<'a, Result<ModelFetchHttpResponse, String>> {
+            Box::pin(async move {
+                self.requests
+                    .lock()
+                    .expect("requests")
+                    .push(FakeCodexOAuthModelsRequest {
+                        url: request.url.to_string(),
+                        timeout_secs: request.timeout_secs,
+                        client_version_query: (
+                            request.client_version_query.0,
+                            request.client_version_query.1.to_string(),
+                        ),
+                        authorization_header: (
+                            request.authorization_header.0,
+                            request.authorization_header.1,
+                        ),
+                        originator_header: request.originator_header,
+                        account_id_header: (
+                            request.account_id_header.0,
+                            request.account_id_header.1.to_string(),
+                        ),
                     });
                 self.responses
                     .lock()
@@ -1259,6 +1353,106 @@ mod tests {
             request.account_id_header,
             (CODEX_OAUTH_MODELS_ACCOUNT_ID_HEADER, "account-456")
         );
+    }
+
+    #[test]
+    fn fetch_codex_oauth_models_with_transport_sends_core_request_plan() {
+        let transport = FakeCodexOAuthModelsTransport::new([Ok(model_fetch_response(
+            http::StatusCode::OK,
+            br#"{"data":[{"id":"gpt-5.4","owned_by":"openai"}]}"#.to_vec(),
+        ))]);
+
+        let models = futures::executor::block_on(fetch_codex_oauth_models_with_transport(
+            "token-123",
+            "account-456",
+            "9.8.7",
+            &transport,
+        ))
+        .unwrap();
+
+        assert_eq!(
+            models,
+            vec![FetchedModel {
+                id: "gpt-5.4".to_string(),
+                owned_by: Some("openai".to_string()),
+            }]
+        );
+        assert_eq!(
+            transport.requests(),
+            vec![FakeCodexOAuthModelsRequest {
+                url: CODEX_OAUTH_MODELS_URL.to_string(),
+                timeout_secs: CODEX_OAUTH_MODELS_TIMEOUT_SECS,
+                client_version_query: (
+                    CODEX_OAUTH_MODELS_CLIENT_VERSION_QUERY,
+                    "9.8.7".to_string()
+                ),
+                authorization_header: (
+                    MODEL_FETCH_AUTHORIZATION_HEADER,
+                    "Bearer token-123".to_string()
+                ),
+                originator_header: (
+                    CODEX_OAUTH_MODELS_ORIGINATOR_HEADER,
+                    CODEX_OAUTH_MODELS_ORIGINATOR
+                ),
+                account_id_header: (
+                    CODEX_OAUTH_MODELS_ACCOUNT_ID_HEADER,
+                    "account-456".to_string()
+                ),
+            }]
+        );
+    }
+
+    #[test]
+    fn fetch_codex_oauth_models_with_transport_maps_http_failures() {
+        let transport = FakeCodexOAuthModelsTransport::new([Ok(model_fetch_response(
+            http::StatusCode::FORBIDDEN,
+            "not allowed",
+        ))]);
+
+        let err = futures::executor::block_on(fetch_codex_oauth_models_with_transport(
+            "token-123",
+            "account-456",
+            "9.8.7",
+            &transport,
+        ))
+        .unwrap_err();
+
+        assert_eq!(err, "HTTP 403 Forbidden: not allowed");
+    }
+
+    #[test]
+    fn fetch_codex_oauth_models_with_transport_propagates_transport_errors() {
+        let transport =
+            FakeCodexOAuthModelsTransport::new([Err("Request failed: offline".to_string())]);
+
+        let err = futures::executor::block_on(fetch_codex_oauth_models_with_transport(
+            "token-123",
+            "account-456",
+            "9.8.7",
+            &transport,
+        ))
+        .unwrap_err();
+
+        assert_eq!(err, "Request failed: offline");
+        assert_eq!(transport.requests().len(), 1);
+    }
+
+    #[test]
+    fn fetch_codex_oauth_models_with_transport_maps_parse_failures() {
+        let transport = FakeCodexOAuthModelsTransport::new([Ok(model_fetch_response(
+            http::StatusCode::OK,
+            "not json",
+        ))]);
+
+        let err = futures::executor::block_on(fetch_codex_oauth_models_with_transport(
+            "token-123",
+            "account-456",
+            "9.8.7",
+            &transport,
+        ))
+        .unwrap_err();
+
+        assert!(err.starts_with("Failed to parse response: "));
     }
 
     #[test]
