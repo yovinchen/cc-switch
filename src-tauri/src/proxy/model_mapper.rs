@@ -25,19 +25,6 @@ pub fn apply_model_mapping(
     (body, original, mapped)
 }
 
-pub fn strip_one_m_suffix_for_upstream_from_body(body: Value) -> Value {
-    let model_change = body.get("model").and_then(Value::as_str).and_then(|model| {
-        let stripped = crate::proxy_core::strip_one_m_suffix_for_upstream(model);
-        (stripped != model).then(|| (model.to_string(), stripped.to_string()))
-    });
-    let body = crate::proxy_core::strip_one_m_suffix_for_upstream_from_body(body);
-
-    if let Some((model, stripped)) = model_change {
-        log::debug!("[ModelMapper] 去除本地 1M 标记: {model} → {stripped}");
-    }
-    body
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -228,13 +215,6 @@ mod tests {
     }
 
     #[test]
-    fn strips_one_m_suffix_before_upstream() {
-        let body = json!({"model": "deepseek-v4-pro[1M]"});
-        let result = strip_one_m_suffix_for_upstream_from_body(body);
-        assert_eq!(result["model"], "deepseek-v4-pro");
-    }
-
-    #[test]
     fn strips_one_m_suffix_after_mapping() {
         let mut provider = create_provider_with_mapping();
         provider.settings_config = json!({
@@ -245,15 +225,8 @@ mod tests {
 
         let body = json!({"model": "claude-sonnet-4-6"});
         let (mapped, _, _) = apply_model_mapping(body, &provider);
-        let result = strip_one_m_suffix_for_upstream_from_body(mapped);
+        let result = crate::proxy_core::strip_one_m_suffix_for_upstream_from_body(mapped);
 
-        assert_eq!(result["model"], "deepseek-v4-pro");
-    }
-
-    #[test]
-    fn keeps_model_without_one_m_suffix() {
-        let body = json!({"model": "deepseek-v4-pro"});
-        let result = strip_one_m_suffix_for_upstream_from_body(body);
         assert_eq!(result["model"], "deepseek-v4-pro");
     }
 }

@@ -41,6 +41,7 @@ use crate::proxy_core::{
     should_failover_after_rectifier_retry_failure, should_preserve_exact_request_header_case,
     should_resolve_copilot_dynamic_endpoint, should_send_anthropic_request_headers,
     should_trigger_media_retry, split_endpoint_and_query, strip_copilot_thinking_blocks,
+    strip_one_m_suffix_for_upstream, strip_one_m_suffix_for_upstream_from_body,
     validate_managed_account_upstream_auth, AppKind, AttemptEventChannel, AttemptEventPayloadInput,
     AttemptEventPhase, ChannelQuery, CopilotAuthHeaderOverrides, ForwardFailureCategory,
     ForwardFailureKind, InterfaceKind, MediaRetryInput, ProxyBody, ProxyEngine, ProxyRequest,
@@ -1623,8 +1624,18 @@ impl RequestForwarder {
             self.apply_copilot_live_model_resolution(provider, &mut mapped_body)
                 .await;
         } else {
-            mapped_body =
-                super::model_mapper::strip_one_m_suffix_for_upstream_from_body(mapped_body);
+            let one_m_model_change =
+                mapped_body
+                    .get("model")
+                    .and_then(Value::as_str)
+                    .and_then(|model| {
+                        let stripped = strip_one_m_suffix_for_upstream(model);
+                        (stripped != model).then(|| (model.to_string(), stripped.to_string()))
+                    });
+            mapped_body = strip_one_m_suffix_for_upstream_from_body(mapped_body);
+            if let Some((model, stripped)) = one_m_model_change {
+                log::debug!("[ModelMapper] 去除本地 1M 标记: {model} → {stripped}");
+            }
         }
 
         // --- Copilot 优化器：分类 + 请求体优化（在格式转换之前执行） ---
