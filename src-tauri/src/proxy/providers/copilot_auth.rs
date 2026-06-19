@@ -27,15 +27,11 @@ use tokio::sync::{Mutex, RwLock};
 use crate::proxy_core::{
     copilot_api_base, copilot_github_client_id, copilot_github_device_code_url,
     copilot_github_oauth_token_url, copilot_github_user_url, copilot_token_url, copilot_usage_url,
-    default_copilot_github_domain, is_copilot_ghes_domain, parse_copilot_models_response_bytes,
-    CopilotModel, COPILOT_PUBLIC_GITHUB_DOMAIN,
+    is_copilot_ghes_domain, parse_copilot_models_response_bytes, CopilotModel,
+    COPILOT_PUBLIC_GITHUB_DOMAIN,
 };
 
 const DEFAULT_GITHUB_DOMAIN: &str = COPILOT_PUBLIC_GITHUB_DOMAIN;
-
-fn default_github_domain() -> String {
-    default_copilot_github_domain()
-}
 
 /// Token 刷新提前量（秒）
 const TOKEN_REFRESH_BUFFER_SECONDS: i64 = 60;
@@ -229,7 +225,7 @@ pub struct GitHubAccount {
     /// 认证时间戳
     pub authenticated_at: i64,
     /// GitHub 域名（github.com 或 GHES 域名）
-    #[serde(default = "default_github_domain")]
+    #[serde(default = "crate::proxy_core::default_copilot_github_domain")]
     pub github_domain: String,
 }
 
@@ -275,7 +271,7 @@ struct GitHubAccountData {
     /// 认证时间戳
     pub authenticated_at: i64,
     /// GitHub 域名（github.com 或 GHES 域名）
-    #[serde(default = "default_github_domain")]
+    #[serde(default = "crate::proxy_core::default_copilot_github_domain")]
     pub github_domain: String,
 }
 
