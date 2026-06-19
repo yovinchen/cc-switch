@@ -9,7 +9,7 @@
 //! - Codex: 从 headers 中的 `session_id` / `x-session-id` 或 `metadata.session_id` 提取
 //! - 其他: 生成新的 UUID
 
-use crate::proxy_core::{ClientFormat, SessionIdResult};
+use crate::proxy_core::{proxy_session_request_metadata, ClientFormat, SessionIdResult};
 use axum::http::HeaderMap;
 use std::time::Instant;
 use uuid::Uuid;
@@ -49,25 +49,7 @@ impl ProxySession {
         user_agent: Option<&str>,
         body: Option<&serde_json::Value>,
     ) -> Self {
-        // 检测客户端格式
-        let mut client_format = ClientFormat::from_path(request_url);
-        if client_format == ClientFormat::Unknown {
-            if let Some(body) = body {
-                client_format = ClientFormat::from_body(body);
-            }
-        }
-
-        // 检测是否为流式请求
-        let is_streaming = body
-            .and_then(|b| b.get("stream"))
-            .and_then(|v| v.as_bool())
-            .unwrap_or(false);
-
-        // 提取模型名称
-        let model = body
-            .and_then(|b| b.get("model"))
-            .and_then(|v| v.as_str())
-            .map(|s| s.to_string());
+        let metadata = proxy_session_request_metadata(request_url, body);
 
         Self {
             session_id: Uuid::new_v4().to_string(),
@@ -75,10 +57,10 @@ impl ProxySession {
             method: method.to_string(),
             request_url: request_url.to_string(),
             user_agent: user_agent.map(|s| s.to_string()),
-            client_format,
+            client_format: metadata.client_format,
             provider_id: None,
-            model,
-            is_streaming,
+            model: metadata.model,
+            is_streaming: metadata.is_streaming,
         }
     }
 

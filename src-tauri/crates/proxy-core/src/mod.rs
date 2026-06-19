@@ -106,7 +106,8 @@ pub use response_timeout::*;
 pub use response_transform::*;
 pub use route_resolve::*;
 pub use session::{
-    extract_session_id_with_generator, ClientFormat, SessionIdResult, SessionIdSource,
+    extract_session_id_with_generator, proxy_session_request_metadata, ClientFormat,
+    ProxySessionRequestMetadata, SessionIdResult, SessionIdSource,
 };
 pub use sse::*;
 pub use thinking_budget_rectifier::*;

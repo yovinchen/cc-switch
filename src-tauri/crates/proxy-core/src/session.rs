@@ -75,6 +75,41 @@ impl std::fmt::Display for ClientFormat {
     }
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ProxySessionRequestMetadata {
+    pub client_format: ClientFormat,
+    pub model: Option<String>,
+    pub is_streaming: bool,
+}
+
+pub fn proxy_session_request_metadata(
+    request_url: &str,
+    body: Option<&Value>,
+) -> ProxySessionRequestMetadata {
+    let mut client_format = ClientFormat::from_path(request_url);
+    if client_format == ClientFormat::Unknown {
+        if let Some(body) = body {
+            client_format = ClientFormat::from_body(body);
+        }
+    }
+
+    let is_streaming = body
+        .and_then(|body| body.get("stream"))
+        .and_then(Value::as_bool)
+        .unwrap_or(false);
+
+    let model = body
+        .and_then(|body| body.get("model"))
+        .and_then(Value::as_str)
+        .map(ToString::to_string);
+
+    ProxySessionRequestMetadata {
+        client_format,
+        model,
+        is_streaming,
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SessionIdSource {
     MetadataUserId,
@@ -288,6 +323,34 @@ mod tests {
         assert_eq!(ClientFormat::Gemini.as_str(), "gemini");
         assert_eq!(ClientFormat::GeminiCli.as_str(), "gemini_cli");
         assert_eq!(ClientFormat::Unknown.as_str(), "unknown");
+    }
+
+    #[test]
+    fn proxy_session_metadata_uses_path_format_model_and_stream_flag() {
+        let body = json!({
+            "model": "claude-3-5-sonnet",
+            "messages": [{"role": "user", "content": "Hello"}],
+            "stream": true
+        });
+
+        let metadata = proxy_session_request_metadata("/v1/messages", Some(&body));
+
+        assert_eq!(metadata.client_format, ClientFormat::Claude);
+        assert_eq!(metadata.model, Some("claude-3-5-sonnet".to_string()));
+        assert!(metadata.is_streaming);
+    }
+
+    #[test]
+    fn proxy_session_metadata_uses_body_format_when_path_unknown() {
+        let body = json!({
+            "contents": [{"parts": [{"text": "Hello"}]}]
+        });
+
+        let metadata = proxy_session_request_metadata("/custom/path", Some(&body));
+
+        assert_eq!(metadata.client_format, ClientFormat::Gemini);
+        assert_eq!(metadata.model, None);
+        assert!(!metadata.is_streaming);
     }
 
     #[test]
