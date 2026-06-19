@@ -38,7 +38,7 @@ pub use provider_router::ProviderRouter;
 #[allow(unused_imports)]
 pub use session::{extract_session_id, ProxySession};
 #[allow(unused_imports)]
-pub use types::{ProxyConfig, ProxyServerInfo, ProxyStatus};
+pub use types::{ProxyConfig, ProxyStatus};
 
 // 内部模块间共享（供子模块使用）
 // 注意：这个导出用于模块内部，编译器可能警告未使用但实际被子模块使用
