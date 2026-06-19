@@ -8,9 +8,9 @@ use reqwest::header::{HeaderValue, USER_AGENT};
 use reqwest::StatusCode;
 use std::time::Duration;
 
-pub use crate::proxy_core::FetchedModel;
 use crate::proxy_core::{
     build_models_url_candidates, parse_models_response_bytes, truncate_model_fetch_error_body,
+    FetchedModel,
 };
 
 const FETCH_TIMEOUT_SECS: u64 = 15;
