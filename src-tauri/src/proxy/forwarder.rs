@@ -15,8 +15,6 @@ use super::{
         apply_channel_model_override, forward_attempts_from_route_plan, ChannelAttempt,
         ForwardAttempt,
     },
-    thinking_budget_rectifier::should_rectify_thinking_budget,
-    thinking_rectifier::should_rectify_thinking_signature,
     types::{ActiveTarget, CopilotOptimizerConfig, OptimizerConfig, ProxyStatus, RectifierConfig},
     ProxyError,
 };
@@ -39,6 +37,7 @@ use crate::proxy_core::{
     sanitize_copilot_orphan_tool_results, short_value_hash,
     should_apply_bedrock_pre_send_optimizer, should_check_media_retry,
     should_failover_after_rectifier_retry_failure, should_preserve_exact_request_header_case,
+    should_rectify_thinking_budget, should_rectify_thinking_signature,
     should_resolve_copilot_dynamic_endpoint, should_send_anthropic_request_headers,
     should_trigger_media_retry, split_endpoint_and_query, strip_copilot_thinking_blocks,
     strip_one_m_suffix_for_upstream, strip_one_m_suffix_for_upstream_from_body,
@@ -1117,7 +1116,7 @@ impl RequestForwarder {
                         let error_message = extract_error_message(&e);
                         if should_rectify_thinking_signature(
                             error_message.as_deref(),
-                            &self.rectifier_config,
+                            &self.rectifier_config.thinking_signature_core_config(),
                         ) {
                             // 已经重试过：直接返回错误（不可重试客户端错误）
                             if rectifier_retried {
@@ -1268,7 +1267,7 @@ impl RequestForwarder {
                         let error_message = extract_error_message(&e);
                         if should_rectify_thinking_budget(
                             error_message.as_deref(),
-                            &self.rectifier_config,
+                            &self.rectifier_config.thinking_budget_core_config(),
                         ) {
                             // 已经重试过：直接返回错误（不可重试客户端错误）
                             if budget_rectifier_retried {

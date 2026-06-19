@@ -264,6 +264,26 @@ impl Default for RectifierConfig {
     }
 }
 
+impl RectifierConfig {
+    pub(crate) fn thinking_signature_core_config(
+        &self,
+    ) -> crate::proxy_core::ThinkingSignatureRectifierConfig {
+        crate::proxy_core::ThinkingSignatureRectifierConfig {
+            enabled: self.enabled,
+            request_thinking_signature: self.request_thinking_signature,
+        }
+    }
+
+    pub(crate) fn thinking_budget_core_config(
+        &self,
+    ) -> crate::proxy_core::ThinkingBudgetRectifierConfig {
+        crate::proxy_core::ThinkingBudgetRectifierConfig {
+            enabled: self.enabled,
+            request_thinking_budget: self.request_thinking_budget,
+        }
+    }
+}
+
 /// 请求优化器配置
 ///
 /// 存储在 settings 表中，key = "optimizer_config"
@@ -477,6 +497,64 @@ mod tests {
         assert!(config.enabled);
         assert!(config.request_thinking_signature);
         assert!(config.request_thinking_budget);
+    }
+
+    #[test]
+    fn test_rectifier_config_projects_signature_core_detection() {
+        let message = Some("messages.1.content.0: Invalid `signature` in `thinking` block");
+
+        let config = RectifierConfig::default();
+        assert!(crate::proxy_core::should_rectify_thinking_signature(
+            message,
+            &config.thinking_signature_core_config()
+        ));
+
+        let config = RectifierConfig {
+            enabled: false,
+            ..RectifierConfig::default()
+        };
+        assert!(!crate::proxy_core::should_rectify_thinking_signature(
+            message,
+            &config.thinking_signature_core_config()
+        ));
+
+        let config = RectifierConfig {
+            request_thinking_signature: false,
+            ..RectifierConfig::default()
+        };
+        assert!(!crate::proxy_core::should_rectify_thinking_signature(
+            message,
+            &config.thinking_signature_core_config()
+        ));
+    }
+
+    #[test]
+    fn test_rectifier_config_projects_budget_core_detection() {
+        let message = Some("thinking.budget_tokens: Input should be greater than or equal to 1024");
+
+        let config = RectifierConfig::default();
+        assert!(crate::proxy_core::should_rectify_thinking_budget(
+            message,
+            &config.thinking_budget_core_config()
+        ));
+
+        let config = RectifierConfig {
+            enabled: false,
+            ..RectifierConfig::default()
+        };
+        assert!(!crate::proxy_core::should_rectify_thinking_budget(
+            message,
+            &config.thinking_budget_core_config()
+        ));
+
+        let config = RectifierConfig {
+            request_thinking_budget: false,
+            ..RectifierConfig::default()
+        };
+        assert!(!crate::proxy_core::should_rectify_thinking_budget(
+            message,
+            &config.thinking_budget_core_config()
+        ));
     }
 
     #[test]
