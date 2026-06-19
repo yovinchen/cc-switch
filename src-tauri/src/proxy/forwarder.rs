@@ -27,15 +27,15 @@ use crate::proxy_core::{
     build_attempt_event_payload, build_codex_oauth_session_headers,
     build_request_started_event_payload, build_retryable_forward_failure_log,
     build_terminal_forward_failure_log, build_upstream_auth_headers, categorize_forward_failure,
-    classify_copilot_request, contains_image_blocks, is_github_copilot_upstream,
-    is_socks_proxy_url, is_unsupported_image_error, merge_copilot_tool_results,
-    normalize_thinking_type, rectify_anthropic_request, rectify_thinking_budget,
-    replace_image_blocks_with_marker, replace_images_for_text_only_model,
-    resolve_copilot_deterministic_interaction_id, resolve_copilot_model_against_ids,
-    resolve_copilot_optimizer_session_id, resolve_copilot_request_id_with_fallback,
-    resolve_media_prevention_policy, resolve_upstream_request_transport_policy,
-    resolve_upstream_send_policy, resolved_copilot_dynamic_base_url,
-    sanitize_copilot_orphan_tool_results, short_value_hash,
+    classify_copilot_request, contains_image_blocks, interface_kind_for_forward,
+    is_github_copilot_upstream, is_socks_proxy_url, is_unsupported_image_error,
+    merge_copilot_tool_results, normalize_thinking_type, rectify_anthropic_request,
+    rectify_thinking_budget, replace_image_blocks_with_marker, replace_images_for_text_only_model,
+    request_model_for_forward, resolve_copilot_deterministic_interaction_id,
+    resolve_copilot_model_against_ids, resolve_copilot_optimizer_session_id,
+    resolve_copilot_request_id_with_fallback, resolve_media_prevention_policy,
+    resolve_upstream_request_transport_policy, resolve_upstream_send_policy,
+    resolved_copilot_dynamic_base_url, sanitize_copilot_orphan_tool_results, short_value_hash,
     should_apply_bedrock_pre_send_optimizer, should_check_media_retry,
     should_failover_after_rectifier_retry_failure, should_preserve_exact_request_header_case,
     should_rectify_thinking_budget, should_rectify_thinking_signature,
@@ -708,9 +708,10 @@ impl RequestForwarder {
         body: &Value,
         providers: Vec<Provider>,
     ) -> Result<Vec<ForwardAttempt>, crate::error::AppError> {
-        let requested_model = request_model_for_forward(app_type, endpoint, body);
+        let app_kind = AppKind::from(app_type);
+        let requested_model = request_model_for_forward(&app_kind, endpoint, body);
         let interface_kind =
-            interface_kind_for_forward(app_type, endpoint).map(ToString::to_string);
+            interface_kind_for_forward(&app_kind, endpoint).map(ToString::to_string);
 
         if let Some(interface_kind) = interface_kind {
             let proxy_core_services = self.proxy_core_services.as_ref().ok_or_else(|| {
@@ -2473,18 +2474,6 @@ fn rewrite_claude_transform_endpoint(
     .into_parts()
 }
 
-#[allow(dead_code)]
-fn request_model_for_forward(app_type: &AppType, endpoint: &str, body: &Value) -> Option<String> {
-    let app_kind = AppKind::from(app_type);
-    crate::proxy_core::request_model_for_forward(&app_kind, endpoint, body)
-}
-
-#[allow(dead_code)]
-fn interface_kind_for_forward(app_type: &AppType, endpoint: &str) -> Option<&'static str> {
-    let app_kind = AppKind::from(app_type);
-    crate::proxy_core::interface_kind_for_forward(&app_kind, endpoint)
-}
-
 fn reject_proxy_placeholder_for_managed_account_upstream(
     url: &str,
     headers: &http::HeaderMap,
@@ -3220,22 +3209,25 @@ mod tests {
     #[test]
     fn route_request_model_and_interface_follow_inbound_shape() {
         let body = json!({ "model": "gpt-5.4" });
+        let codex_app = AppKind::from(&AppType::Codex);
+        let gemini_app = AppKind::from(&AppType::Gemini);
+        let claude_app = AppKind::from(&AppType::Claude);
 
         assert_eq!(
-            request_model_for_forward(&AppType::Codex, "/v1/responses", &body).as_deref(),
+            request_model_for_forward(&codex_app, "/v1/responses", &body).as_deref(),
             Some("gpt-5.4")
         );
         assert_eq!(
-            interface_kind_for_forward(&AppType::Codex, "/v1/responses?stream=1"),
+            interface_kind_for_forward(&codex_app, "/v1/responses?stream=1"),
             Some("openai_responses")
         );
         assert_eq!(
-            interface_kind_for_forward(&AppType::Codex, "/v1/chat/completions"),
+            interface_kind_for_forward(&codex_app, "/v1/chat/completions"),
             Some("openai_chat_completions")
         );
         assert_eq!(
             request_model_for_forward(
-                &AppType::Gemini,
+                &gemini_app,
                 "/v1beta/models/gemini-2.0-flash:generateContent",
                 &json!({})
             )
@@ -3243,7 +3235,7 @@ mod tests {
             Some("gemini-2.0-flash")
         );
         assert_eq!(
-            interface_kind_for_forward(&AppType::Claude, "/v1/messages"),
+            interface_kind_for_forward(&claude_app, "/v1/messages"),
             Some("anthropic_messages")
         );
     }
