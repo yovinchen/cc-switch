@@ -1,6 +1,6 @@
 use super::domain::{AppKind, InterfaceKind};
 use super::error::{ProxyCoreError, ProxyCoreResult};
-use super::ports::{AppModelListQuery, ChannelListQuery, GroupListQuery};
+use super::ports::{AppChannelListQuery, AppModelListQuery, ChannelListQuery, GroupListQuery, RouteResolveRequest};
 
 pub fn validate_management_app_type(app_type: &str) -> ProxyCoreResult<()> {
     if app_type.trim().is_empty() {
@@ -58,6 +58,32 @@ impl AppModelCatalogRequest {
     }
 }
 
+#[derive(Debug, Clone)]
+pub struct AppChannelManagementRequest {
+    pub app_type: String,
+    pub route_request: Option<RouteResolveRequest>,
+}
+
+impl AppChannelManagementRequest {
+    pub fn from_parts(
+        app_type: impl AsRef<str>,
+        query: AppChannelListQuery,
+    ) -> ProxyCoreResult<Self> {
+        let app_type = app_type.as_ref().trim().to_string();
+        validate_management_app_type(&app_type)?;
+        let route_request = if query.has_route_filters() {
+            Some(query.into_route_request(app_type.clone()))
+        } else {
+            None
+        };
+
+        Ok(Self {
+            app_type,
+            route_request,
+        })
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ChannelListRequest {
     pub app_type: Option<String>,
@@ -104,11 +130,14 @@ fn normalize_optional_management_app_type(app_type: Option<String>) -> ProxyCore
 #[cfg(test)]
 mod tests {
     use super::{
-        ChannelListRequest, GroupListRequest,
+        AppChannelManagementRequest, ChannelListRequest, GroupListRequest,
         normalize_channel_id_path, validate_management_app_type, validate_route_resolve_app_type,
         AppModelCatalogRequest,
     };
-    use crate::{AppKind, AppModelListQuery, ChannelListQuery, GroupListQuery, InterfaceKind};
+    use crate::{
+        AppChannelListQuery, AppKind, AppModelListQuery, ChannelListQuery, GroupListQuery,
+        InterfaceKind,
+    };
 
     #[test]
     fn validate_management_app_type_rejects_blank_values() {
@@ -159,6 +188,40 @@ mod tests {
         assert_eq!(request.app_type, "claude");
         assert_eq!(request.route_group.as_deref(), Some("beta"));
         assert_eq!(request.interface_kind, Some(InterfaceKind::OpenAiResponses));
+    }
+
+    #[test]
+    fn app_channel_management_request_builds_route_request_when_filters_exist() {
+        let query = serde_json::from_value::<AppChannelListQuery>(serde_json::json!({
+            "model": "sonnet",
+            "group": "beta",
+            "interface": "openai_responses"
+        }))
+        .expect("query");
+
+        let request =
+            AppChannelManagementRequest::from_parts(" claude ", query).expect("request");
+        let route_request = request.route_request.expect("route request");
+
+        assert_eq!(request.app_type, "claude");
+        assert_eq!(route_request.app_type, "claude");
+        assert_eq!(route_request.requested_model.as_deref(), Some("sonnet"));
+        assert_eq!(
+            route_request.interface_kind.as_deref(),
+            Some("openai_responses")
+        );
+        assert_eq!(route_request.route_group.as_deref(), Some("beta"));
+    }
+
+    #[test]
+    fn app_channel_management_request_keeps_plain_list_when_no_filters_exist() {
+        let query = serde_json::from_value::<AppChannelListQuery>(serde_json::json!({}))
+            .expect("query");
+
+        let request = AppChannelManagementRequest::from_parts("claude", query).expect("request");
+
+        assert_eq!(request.app_type, "claude");
+        assert!(request.route_request.is_none());
     }
 
     #[test]

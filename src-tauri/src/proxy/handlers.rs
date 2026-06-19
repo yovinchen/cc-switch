@@ -51,21 +51,22 @@ use crate::proxy_core::{
     should_use_claude_transform_streaming, strip_endpoint_prefix, transformed_sse_proxy_response,
     validate_claude_desktop_gateway_bearer_header, validate_management_app_type,
     validate_management_bearer_header, validate_route_resolve_app_type, AppChannelListQuery,
-    AppChannelListResponse, AppChannelResponse, AppChannelRouteResponse, AppKind, AppListResponse,
-    AppModelCatalogRequest, AppModelListQuery, AppSummaryInput, ChannelDeleteResponse,
-    ChannelHealthResetResponse, ChannelListQuery, ChannelListRequest, ChannelListResponse,
-    ChannelMigrationMaterializeInput, ChannelMigrationMaterializeResponse,
-    ChannelMigrationPreviewInput, ChannelMigrationPreviewResponse, ChannelModelRecord,
-    ChannelModelsResponse, ChannelRecord, ChannelRecordResponse, ChannelRouteCandidate,
-    ChannelRouteRejected, ClaudeDesktopModelListResponse, ClientModelCatalogResponse,
-    CurrentRouteProviderSummaryInput, CurrentRouteResponse, CurrentRouteTarget, GroupListQuery,
-    GroupListRequest, HealthCheckResponse, InterfaceKind, ManagementAuthDecision,
-    ProviderListResponse, ProxyBody, ProxyChannelModelsReplaceRequest, ProxyChannelPatchRequest,
-    ProxyChannelWriteRequest, ProxyEngine, ProxyRequest, ProxyResult, ProxyRuntimeStatus,
-    ProxyServices, ProxyStatusResponse, RoutableModelList, RouteGroupListResponse,
-    RouteGroupSourceInput, RouteResolveRequest, RouteResolveResponse, TokenUsage,
-    TransformedResponseUsageFormat, UpstreamJsonBodySource, UpstreamSseAggregationKind,
-    CLAUDE_PARSER_CONFIG, CODEX_PARSER_CONFIG, GEMINI_PARSER_CONFIG, OPENAI_PARSER_CONFIG,
+    AppChannelListResponse, AppChannelManagementRequest, AppChannelResponse,
+    AppChannelRouteResponse, AppKind, AppListResponse, AppModelCatalogRequest, AppModelListQuery,
+    AppSummaryInput, ChannelDeleteResponse, ChannelHealthResetResponse, ChannelListQuery,
+    ChannelListRequest, ChannelListResponse, ChannelMigrationMaterializeInput,
+    ChannelMigrationMaterializeResponse, ChannelMigrationPreviewInput,
+    ChannelMigrationPreviewResponse, ChannelModelRecord, ChannelModelsResponse, ChannelRecord,
+    ChannelRecordResponse, ChannelRouteCandidate, ChannelRouteRejected,
+    ClaudeDesktopModelListResponse, ClientModelCatalogResponse, CurrentRouteProviderSummaryInput,
+    CurrentRouteResponse, CurrentRouteTarget, GroupListQuery, GroupListRequest,
+    HealthCheckResponse, InterfaceKind, ManagementAuthDecision, ProviderListResponse, ProxyBody,
+    ProxyChannelModelsReplaceRequest, ProxyChannelPatchRequest, ProxyChannelWriteRequest,
+    ProxyEngine, ProxyRequest, ProxyResult, ProxyRuntimeStatus, ProxyServices, ProxyStatusResponse,
+    RoutableModelList, RouteGroupListResponse, RouteGroupSourceInput, RouteResolveRequest,
+    RouteResolveResponse, TokenUsage, TransformedResponseUsageFormat, UpstreamJsonBodySource,
+    UpstreamSseAggregationKind, CLAUDE_PARSER_CONFIG, CODEX_PARSER_CONFIG, GEMINI_PARSER_CONFIG,
+    OPENAI_PARSER_CONFIG,
 };
 use crate::proxy_core_adapter::{
     ToProxyCoreChannelModelRecord, ToProxyCoreChannelRecord, ToProxyCoreChannelSpec,
@@ -435,13 +436,13 @@ pub async fn list_proxy_channels(
     Json<AppChannelResponse<ChannelRecord, ChannelRouteCandidate, ChannelRouteRejected>>,
     ProxyError,
 > {
-    validate_management_app_type(&app_type).map_err(management_api_error_to_proxy_error)?;
-    let app_type = app_type.trim().to_string();
+    let request = AppChannelManagementRequest::from_parts(app_type, query)
+        .map_err(management_api_error_to_proxy_error)?;
 
-    if query.has_route_filters() {
+    if let Some(route_request) = request.route_request {
         let response = state
             .provider_router
-            .resolve_channel_route_dry_run(query.into_route_request(app_type))
+            .resolve_channel_route_dry_run(route_request)
             .await
             .map_err(|e| ProxyError::DatabaseError(e.to_string()))?;
 
@@ -452,13 +453,13 @@ pub async fn list_proxy_channels(
 
     let (channels, source) = state
         .provider_router
-        .list_channels_for_app(&app_type)
+        .list_channels_for_app(&request.app_type)
         .await
         .map_err(|e| ProxyError::DatabaseError(e.to_string()))?;
 
     Ok(Json(AppChannelResponse::List(
         AppChannelListResponse::from_route_source(
-            app_type,
+            request.app_type,
             &source,
             channel_records_from_host(channels),
         ),
