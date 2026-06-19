@@ -7,7 +7,8 @@ use crate::app_config::AppType;
 use crate::provider::{Provider, ProviderMeta};
 use crate::proxy_core::{
     apply_channel_route_model_override, claude_api_format_for_interface_kind,
-    codex_api_format_for_interface_kind, ChannelRouteCandidate, RoutePlan,
+    codex_api_format_for_interface_kind, route_candidate_from_selection, ChannelRouteCandidate,
+    RoutePlan, DEFAULT_ROUTE_GROUP,
 };
 use serde_json::{Map, Value};
 use std::collections::HashMap;
@@ -63,25 +64,8 @@ impl ForwardAttempt {
         provider: &Provider,
         selection: &crate::proxy_core::RouteSelection,
     ) -> Self {
-        let candidate = ChannelRouteCandidate {
-            channel_id: selection.channel.id.clone(),
-            provider_id: selection.channel.provider_id.clone(),
-            channel_name: selection.channel.name.clone(),
-            base_url: selection.channel.endpoint.base_url.clone(),
-            interface_kind: selection.channel.interface.as_str().to_string(),
-            public_model: selection
-                .model_route
-                .as_ref()
-                .map(|route| route.public_model.clone()),
-            upstream_model: selection
-                .model_route
-                .as_ref()
-                .map(|route| route.upstream_model.clone()),
-            route_group: "default".to_string(),
-            priority: selection.channel.priority,
-            weight: selection.channel.weight,
-            source_kind: "proxy_core".to_string(),
-        };
+        let candidate =
+            route_candidate_from_selection(selection, DEFAULT_ROUTE_GROUP, "proxy_core");
 
         Self::from_channel(app_type, provider, candidate)
     }

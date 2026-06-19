@@ -1,4 +1,4 @@
-use super::domain::DEFAULT_ROUTE_GROUP;
+use super::domain::{RouteSelection, DEFAULT_ROUTE_GROUP};
 use super::error::{ProxyCoreError, ProxyCoreResult};
 use super::ports::{
     ChannelRouteCandidate, ChannelRouteRejected, ChannelRouteSource, RouteResolveRequest,
@@ -24,6 +24,32 @@ pub struct RouteResolveChannelInput {
     pub priority: i64,
     pub weight: u32,
     pub source_kind: String,
+}
+
+pub fn route_candidate_from_selection(
+    selection: &RouteSelection,
+    route_group: impl Into<String>,
+    source_kind: impl Into<String>,
+) -> ChannelRouteCandidate {
+    ChannelRouteCandidate {
+        channel_id: selection.channel.id.clone(),
+        provider_id: selection.channel.provider_id.clone(),
+        channel_name: selection.channel.name.clone(),
+        base_url: selection.channel.endpoint.base_url.clone(),
+        interface_kind: selection.channel.interface.as_str().to_string(),
+        public_model: selection
+            .model_route
+            .as_ref()
+            .map(|route| route.public_model.clone()),
+        upstream_model: selection
+            .model_route
+            .as_ref()
+            .map(|route| route.upstream_model.clone()),
+        route_group: route_group.into(),
+        priority: selection.channel.priority,
+        weight: selection.channel.weight,
+        source_kind: source_kind.into(),
+    }
 }
 
 pub fn resolve_channel_route(
@@ -192,6 +218,11 @@ fn interfaces_compatible(requested: &str, channel: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::{
+        AppKind, ChannelOverrides, ChannelSpec, ChannelStatus, InterfaceKind, ModelCapabilities,
+        ModelRoute, ProviderKind, ProviderMetadata, ProviderSpec, RouteSelection, UpstreamEndpoint,
+    };
+    use serde_json::json;
 
     fn channel(
         channel_id: &str,
@@ -215,6 +246,74 @@ mod tests {
             weight: 100,
             source_kind: "manual".to_string(),
         }
+    }
+
+    fn selection() -> RouteSelection {
+        let model_route = ModelRoute {
+            public_model: "sonnet-public".to_string(),
+            upstream_model: "upstream-sonnet".to_string(),
+            capabilities: ModelCapabilities::default(),
+            pricing_model: None,
+            request_overrides: json!({}),
+            response_overrides: json!({}),
+        };
+
+        RouteSelection {
+            provider: ProviderSpec {
+                id: "provider-a".to_string(),
+                name: "Provider A".to_string(),
+                kind: ProviderKind::Claude,
+                account_ref: None,
+                metadata: ProviderMetadata::default(),
+            },
+            channel: ChannelSpec {
+                id: "channel-a".to_string(),
+                provider_id: "provider-a".to_string(),
+                app: AppKind::Claude,
+                name: "Channel A".to_string(),
+                status: ChannelStatus::Enabled,
+                endpoint: UpstreamEndpoint {
+                    base_url: "https://relay.example.com/v1".to_string(),
+                    path_template: None,
+                    api_version: None,
+                    timeout_profile: None,
+                },
+                interface: InterfaceKind::OpenAiResponses,
+                auth_profile: None,
+                models: vec![model_route.clone()],
+                groups: vec![DEFAULT_ROUTE_GROUP.to_string()],
+                priority: 50,
+                weight: 20,
+                retry_policy: Default::default(),
+                health_policy: Default::default(),
+                overrides: ChannelOverrides::default(),
+                tags: Vec::new(),
+                metadata: json!({}),
+                source_ref: None,
+                needs_review: false,
+                review_reasons: Vec::new(),
+            },
+            model_route: Some(model_route),
+            inbound_interface: InterfaceKind::AnthropicMessages,
+            outbound_interface: InterfaceKind::OpenAiResponses,
+        }
+    }
+
+    #[test]
+    fn maps_route_selection_to_channel_route_candidate() {
+        let candidate = route_candidate_from_selection(&selection(), "paid", "proxy_core");
+
+        assert_eq!(candidate.channel_id, "channel-a");
+        assert_eq!(candidate.provider_id, "provider-a");
+        assert_eq!(candidate.channel_name, "Channel A");
+        assert_eq!(candidate.base_url, "https://relay.example.com/v1");
+        assert_eq!(candidate.interface_kind, "openai_responses");
+        assert_eq!(candidate.public_model.as_deref(), Some("sonnet-public"));
+        assert_eq!(candidate.upstream_model.as_deref(), Some("upstream-sonnet"));
+        assert_eq!(candidate.route_group, "paid");
+        assert_eq!(candidate.priority, 50);
+        assert_eq!(candidate.weight, 20);
+        assert_eq!(candidate.source_kind, "proxy_core");
     }
 
     #[test]
