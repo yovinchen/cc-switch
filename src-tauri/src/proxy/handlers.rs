@@ -48,10 +48,10 @@ use crate::proxy_core::{
     validate_claude_desktop_gateway_bearer_header, validate_management_app_type,
     validate_management_bearer_header, validate_route_resolve_app_type, AppChannelListQuery,
     AppChannelListResponse, AppChannelResponse, AppChannelRouteResponse, AppKind, AppListResponse,
-    AppModelListQuery, AppSummary, ChannelDeleteResponse, ChannelHealthResetResponse,
+    AppModelListQuery, AppSummaryInput, ChannelDeleteResponse, ChannelHealthResetResponse,
     ChannelListQuery, ChannelListResponse, ChannelMigrationMaterializeResponse,
     ChannelMigrationPreviewResponse, ChannelModelsResponse, ChannelRouteCandidate,
-    ChannelRouteRejected, CurrentRouteProviderSummary, CurrentRouteResponse, GroupListQuery,
+    ChannelRouteRejected, CurrentRouteProviderSummaryInput, CurrentRouteResponse, GroupListQuery,
     HealthCheckResponse, InterfaceKind, ManagementAuthDecision, ProviderListResponse,
     ProviderSummaryInput, ProxyBody, ProxyChannelModelsReplaceRequest, ProxyChannelPatchRequest,
     ProxyChannelWriteRequest, ProxyEngine, ProxyRequest, ProxyResult, ProxyServices,
@@ -179,7 +179,7 @@ pub async fn list_proxy_apps(
             .list_proxy_channels_for_app(app_type)
             .map_err(|e| ProxyError::DatabaseError(e.to_string()))?;
 
-        apps.push(AppSummary::new(
+        apps.push(AppSummaryInput::new(
             app_type,
             config.enabled,
             config.auto_failover_enabled,
@@ -188,7 +188,7 @@ pub async fn list_proxy_apps(
         ));
     }
 
-    Ok(Json(AppListResponse::new(apps)))
+    Ok(Json(AppListResponse::from_app_inputs(apps)))
 }
 
 /// GET /proxy/v1/apps/{app}/providers
@@ -495,12 +495,12 @@ pub async fn get_current_proxy_route(
             .get_provider_by_id(&provider_id, &app_type)
             .map_err(|e| ProxyError::DatabaseError(e.to_string()))?
             .map(|provider| {
-                CurrentRouteProviderSummary::new(provider.id, provider.name, provider.category)
+                CurrentRouteProviderSummaryInput::new(provider.id, provider.name, provider.category)
             }),
         None => None,
     };
 
-    Ok(Json(CurrentRouteResponse::new(
+    Ok(Json(CurrentRouteResponse::from_inputs(
         app_type,
         active_target,
         configured_provider,

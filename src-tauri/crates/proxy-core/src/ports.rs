@@ -399,6 +399,34 @@ fn empty_array_value() -> Value {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub struct AppSummaryInput {
+    pub app_type: String,
+    pub enabled: bool,
+    pub auto_failover_enabled: bool,
+    pub provider_count: usize,
+    pub channel_count: usize,
+}
+
+impl AppSummaryInput {
+    pub fn new(
+        app_type: impl Into<String>,
+        enabled: bool,
+        auto_failover_enabled: bool,
+        provider_count: usize,
+        channel_count: usize,
+    ) -> Self {
+        Self {
+            app_type: app_type.into(),
+            enabled,
+            auto_failover_enabled,
+            provider_count,
+            channel_count,
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct AppSummary {
     pub app_type: String,
     pub enabled: bool,
@@ -423,6 +451,16 @@ impl AppSummary {
             channel_count,
         }
     }
+
+    pub fn from_input(input: AppSummaryInput) -> Self {
+        Self::new(
+            input.app_type,
+            input.enabled,
+            input.auto_failover_enabled,
+            input.provider_count,
+            input.channel_count,
+        )
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -434,6 +472,10 @@ pub struct AppListResponse {
 impl AppListResponse {
     pub fn new(apps: Vec<AppSummary>) -> Self {
         Self { apps }
+    }
+
+    pub fn from_app_inputs(inputs: impl IntoIterator<Item = AppSummaryInput>) -> Self {
+        Self::new(inputs.into_iter().map(AppSummary::from_input).collect())
     }
 }
 
@@ -618,6 +660,24 @@ impl AppChannelRouteResponse<ChannelRouteCandidate, ChannelRouteRejected> {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub struct CurrentRouteProviderSummaryInput {
+    pub id: String,
+    pub name: String,
+    pub category: Option<String>,
+}
+
+impl CurrentRouteProviderSummaryInput {
+    pub fn new(id: impl Into<String>, name: impl Into<String>, category: Option<String>) -> Self {
+        Self {
+            id: id.into(),
+            name: name.into(),
+            category,
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct CurrentRouteProviderSummary {
     pub id: String,
     pub name: String,
@@ -631,6 +691,10 @@ impl CurrentRouteProviderSummary {
             name: name.into(),
             category,
         }
+    }
+
+    pub fn from_input(input: CurrentRouteProviderSummaryInput) -> Self {
+        Self::new(input.id, input.name, input.category)
     }
 }
 
@@ -656,6 +720,18 @@ impl<T> CurrentRouteResponse<T> {
             target,
             configured_provider,
         }
+    }
+
+    pub fn from_inputs(
+        app_type: impl Into<String>,
+        target: Option<T>,
+        configured_provider: Option<CurrentRouteProviderSummaryInput>,
+    ) -> Self {
+        Self::new(
+            app_type,
+            target,
+            configured_provider.map(CurrentRouteProviderSummary::from_input),
+        )
     }
 }
 
@@ -1035,10 +1111,11 @@ pub enum ProxyCoreEventType {
 mod tests {
     use super::{
         AppChannelListQuery, AppChannelListResponse, AppChannelResponse, AppChannelRouteResponse,
-        AppListResponse, AppModelListQuery, AppSummary, ChannelDeleteResponse, ChannelListQuery,
-        ChannelListResponse, ChannelModelsResponse, ChannelMigrationMaterializeResponse,
-        ChannelMigrationPreviewResponse, ChannelRouteCandidate, ChannelRouteRejected,
-        ChannelRouteSource, CurrentRouteProviderSummary, CurrentRouteResponse, GroupListQuery,
+        AppListResponse, AppModelListQuery, AppSummaryInput, ChannelDeleteResponse,
+        ChannelListQuery, ChannelListResponse, ChannelModelsResponse,
+        ChannelMigrationMaterializeResponse, ChannelMigrationPreviewResponse,
+        ChannelRouteCandidate, ChannelRouteRejected, ChannelRouteSource,
+        CurrentRouteProviderSummaryInput, CurrentRouteResponse, GroupListQuery,
         HealthCheckResponse, ProviderListResponse, ProviderSummaryInput,
         ProxyChannelModelWriteRequest, ProxyChannelModelsReplaceRequest, ProxyChannelPatchRequest,
         ProxyChannelWriteRequest, RouteGroupChannelInput, RouteGroupListResponse,
@@ -1199,7 +1276,8 @@ mod tests {
 
     #[test]
     fn app_list_response_serializes_management_envelope() {
-        let response = AppListResponse::new(vec![AppSummary::new("claude", true, false, 2, 3)]);
+        let response =
+            AppListResponse::from_app_inputs(vec![AppSummaryInput::new("claude", true, false, 2, 3)]);
 
         let value = serde_json::to_value(response).expect("serialize response");
 
@@ -1360,13 +1438,13 @@ mod tests {
 
     #[test]
     fn current_route_response_serializes_runtime_target_envelope() {
-        let response = CurrentRouteResponse::new(
+        let response = CurrentRouteResponse::from_inputs(
             "claude",
             Some(json!({
                 "providerId": "provider-a",
                 "channelId": "channel-a"
             })),
-            Some(CurrentRouteProviderSummary::new(
+            Some(CurrentRouteProviderSummaryInput::new(
                 "provider-a",
                 "Provider A",
                 Some("aggregator".to_string()),
@@ -1385,7 +1463,7 @@ mod tests {
     #[test]
     fn current_route_response_serializes_inactive_target_as_null() {
         let response: CurrentRouteResponse<serde_json::Value> =
-            CurrentRouteResponse::new("claude", None, None);
+            CurrentRouteResponse::from_inputs("claude", None, None);
 
         let value = serde_json::to_value(response).expect("serialize response");
 
