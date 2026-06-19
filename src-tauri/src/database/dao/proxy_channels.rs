@@ -330,45 +330,12 @@ impl Database {
             )
             .map_err(|e| AppError::Database(e.to_string()))?;
 
-        let mut channels = Vec::new();
         let rows = stmt
-            .query_map([app_type], |row| {
-                let source_kind = match row.get::<_, String>(18)?.as_str() {
-                    LEGACY_PRIMARY_SOURCE => ProxyChannelSourceKind::LegacyPrimary,
-                    LEGACY_ENDPOINT_SOURCE => ProxyChannelSourceKind::LegacyEndpoint,
-                    _ => ProxyChannelSourceKind::Manual,
-                };
-                Ok(ProxyChannelRecord {
-                    id: row.get(0)?,
-                    provider_id: row.get(1)?,
-                    app_type: row.get(2)?,
-                    name: row.get(3)?,
-                    status: row.get(4)?,
-                    base_url: row.get(5)?,
-                    interface_kind: row.get(6)?,
-                    auth_profile_ref: row.get(7)?,
-                    groups: parse_json_or_default(row.get::<_, String>(8)?.as_str()),
-                    priority: row.get(9)?,
-                    weight: row.get::<_, i64>(10)?.max(0) as u32,
-                    retry_policy: parse_json_or_default(row.get::<_, String>(11)?.as_str()),
-                    health_policy: parse_json_or_default(row.get::<_, String>(12)?.as_str()),
-                    header_overrides: parse_json_or_default(row.get::<_, String>(13)?.as_str()),
-                    param_overrides: parse_json_or_default(row.get::<_, String>(14)?.as_str()),
-                    status_code_mapping: parse_json_or_default(row.get::<_, String>(15)?.as_str()),
-                    tags: parse_json_or_default(row.get::<_, String>(16)?.as_str()),
-                    metadata: parse_json_or_default(row.get::<_, String>(17)?.as_str()),
-                    source_kind,
-                    source_endpoint_url: row.get(19)?,
-                    models: Vec::new(),
-                    needs_review: false,
-                    review_reasons: Vec::new(),
-                })
-            })
+            .query_map([app_type], map_proxy_channel_row)
             .map_err(|e| AppError::Database(e.to_string()))?;
-
-        for row in rows {
-            channels.push(row.map_err(|e| AppError::Database(e.to_string()))?);
-        }
+        let mut channels = rows
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(|e| AppError::Database(e.to_string()))?;
 
         for channel in &mut channels {
             channel.models = list_proxy_channel_models_on_conn(&conn, &channel.id)?;
