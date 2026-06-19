@@ -1748,7 +1748,7 @@ impl RequestForwarder {
             }
         }
         let needs_transform = match resolved_claude_api_format.as_deref() {
-            Some(api_format) => super::providers::claude_api_format_needs_transform(api_format),
+            Some(api_format) => crate::proxy_core::claude_api_format_needs_transform(api_format),
             None => adapter.needs_transform(provider),
         };
         let codex_responses_to_chat = matches!(app_type, AppType::Codex)

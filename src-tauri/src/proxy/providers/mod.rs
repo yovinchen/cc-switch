@@ -35,8 +35,6 @@ use crate::app_config::AppType;
 use crate::provider::Provider;
 use serde::{Deserialize, Serialize};
 
-// 公开导出
-pub use crate::proxy_core::claude_api_format_needs_transform;
 pub use adapter::ProviderAdapter;
 pub use auth::{AuthInfo, AuthStrategy};
 pub use claude::{
