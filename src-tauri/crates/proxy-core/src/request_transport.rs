@@ -1,9 +1,18 @@
 use http::HeaderMap;
 use serde_json::Value;
+use std::net::IpAddr;
 use std::time::Duration;
 
 pub const DEFAULT_UPSTREAM_SEND_TIMEOUT: Duration = Duration::from_secs(600);
 pub const STREAMING_REQWEST_REQUEST_TIMEOUT: Duration = Duration::from_secs(24 * 60 * 60);
+pub const SYSTEM_PROXY_ENV_KEYS: [&str; 6] = [
+    "HTTP_PROXY",
+    "http_proxy",
+    "HTTPS_PROXY",
+    "https_proxy",
+    "ALL_PROXY",
+    "all_proxy",
+];
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct UpstreamRequestTransportPolicy {
@@ -77,6 +86,74 @@ pub fn is_socks_proxy_url(upstream_proxy_url: Option<&str>) -> bool {
         .unwrap_or(false)
 }
 
+pub fn proxy_url_points_to_loopback_port(value: &str, loopback_port: u16) -> bool {
+    let Some((host, port)) = parse_proxy_authority(value) else {
+        return false;
+    };
+
+    port == Some(loopback_port) && proxy_host_is_loopback(&host)
+}
+
+pub fn proxy_values_point_to_loopback_port<I, V>(values: I, loopback_port: u16) -> bool
+where
+    I: IntoIterator<Item = V>,
+    V: AsRef<str>,
+{
+    values.into_iter().any(|value| {
+        let value = value.as_ref().trim();
+        !value.is_empty() && proxy_url_points_to_loopback_port(value, loopback_port)
+    })
+}
+
+fn proxy_host_is_loopback(host: &str) -> bool {
+    if host.eq_ignore_ascii_case("localhost") {
+        return true;
+    }
+
+    host.parse::<IpAddr>()
+        .map(|ip| ip.is_loopback())
+        .unwrap_or(false)
+}
+
+fn parse_proxy_authority(value: &str) -> Option<(String, Option<u16>)> {
+    let trimmed = value.trim();
+    if trimmed.is_empty() {
+        return None;
+    }
+
+    let without_scheme = trimmed
+        .split_once("://")
+        .map(|(_, rest)| rest)
+        .unwrap_or(trimmed);
+    let authority_without_userinfo = without_scheme
+        .split(['/', '?', '#'])
+        .next()
+        .unwrap_or_default()
+        .trim();
+    let authority = authority_without_userinfo
+        .rsplit_once('@')
+        .map(|(_, host_port)| host_port)
+        .unwrap_or(authority_without_userinfo)
+        .trim();
+
+    if authority.is_empty() {
+        return None;
+    }
+
+    if let Some(rest) = authority.strip_prefix('[') {
+        let (host, rest) = rest.split_once(']')?;
+        let port = rest.strip_prefix(':').and_then(|value| value.parse().ok());
+        return Some((host.to_string(), port));
+    }
+
+    let (host, port) = match authority.rsplit_once(':') {
+        Some((host, port)) if !host.contains(':') => (host, port.parse().ok()),
+        _ => (authority, None),
+    };
+
+    Some((host.to_string(), port))
+}
+
 pub fn resolve_upstream_send_policy(input: UpstreamSendPolicyInput) -> UpstreamSendPolicy {
     let base_timeout = if input.non_streaming_timeout.is_zero() {
         DEFAULT_UPSTREAM_SEND_TIMEOUT
@@ -121,10 +198,10 @@ pub fn resolve_upstream_send_policy(input: UpstreamSendPolicyInput) -> UpstreamS
 #[cfg(test)]
 mod tests {
     use super::{
-        is_socks_proxy_url, is_streaming_upstream_request,
-        resolve_upstream_request_transport_policy, resolve_upstream_send_policy,
-        UpstreamSendPolicyInput, UpstreamTransportKind, DEFAULT_UPSTREAM_SEND_TIMEOUT,
-        STREAMING_REQWEST_REQUEST_TIMEOUT,
+        is_socks_proxy_url, is_streaming_upstream_request, proxy_url_points_to_loopback_port,
+        proxy_values_point_to_loopback_port, resolve_upstream_request_transport_policy,
+        resolve_upstream_send_policy, UpstreamSendPolicyInput, UpstreamTransportKind,
+        DEFAULT_UPSTREAM_SEND_TIMEOUT, STREAMING_REQWEST_REQUEST_TIMEOUT,
     };
     use http::{header::ACCEPT, HeaderMap, HeaderValue};
     use serde_json::json;
@@ -220,6 +297,50 @@ mod tests {
         assert!(is_socks_proxy_url(Some("socks5://127.0.0.1:1080")));
         assert!(!is_socks_proxy_url(Some("http://127.0.0.1:8080")));
         assert!(!is_socks_proxy_url(None));
+    }
+
+    #[test]
+    fn loopback_proxy_detection_requires_matching_local_port() {
+        assert!(proxy_url_points_to_loopback_port(
+            "http://127.0.0.1:15721",
+            15721
+        ));
+        assert!(proxy_url_points_to_loopback_port(
+            "socks5://localhost:15721",
+            15721
+        ));
+        assert!(proxy_url_points_to_loopback_port("127.0.0.1:15721", 15721));
+        assert!(proxy_url_points_to_loopback_port("[::1]:15721", 15721));
+        assert!(proxy_url_points_to_loopback_port(
+            "http://user:pass@127.0.0.1:15721",
+            15721
+        ));
+
+        assert!(!proxy_url_points_to_loopback_port(
+            "http://127.0.0.1:7890",
+            15721
+        ));
+        assert!(!proxy_url_points_to_loopback_port(
+            "socks5://localhost:1080",
+            15721
+        ));
+        assert!(!proxy_url_points_to_loopback_port(
+            "http://192.168.1.10:15721",
+            15721
+        ));
+        assert!(!proxy_url_points_to_loopback_port("", 15721));
+    }
+
+    #[test]
+    fn loopback_proxy_detection_scans_trimmed_values() {
+        assert!(proxy_values_point_to_loopback_port(
+            ["", " http://127.0.0.1:15721 "],
+            15721
+        ));
+        assert!(!proxy_values_point_to_loopback_port(
+            ["", "http://127.0.0.1:7890", "http://10.0.0.2:15721"],
+            15721
+        ));
     }
 
     #[test]
