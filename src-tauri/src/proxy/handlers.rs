@@ -51,22 +51,22 @@ use crate::proxy_core::{
     strip_endpoint_prefix, transformed_sse_proxy_response,
     transformed_streaming_response_usage_record_with_request_id_fallback,
     validate_claude_desktop_gateway_bearer_header, validate_management_bearer_header,
-    AppChannelListQuery, AppChannelListResponse, AppChannelManagementRequest, AppChannelResponse,
-    AppChannelRouteResponse, AppKind, AppListResponse, AppModelCatalogRequest, AppModelListQuery,
-    AppSummaryInput, ChannelDeleteResponse, ChannelHealthResetResponse, ChannelListQuery,
-    ChannelListRequest, ChannelListResponse, ChannelMigrationMaterializeInput,
-    ChannelMigrationMaterializeResponse, ChannelMigrationPreviewInput,
-    ChannelMigrationPreviewResponse, ChannelModelRecord, ChannelModelsResponse, ChannelPathRequest,
-    ChannelRecord, ChannelRecordResponse, ChannelRouteCandidate, ChannelRouteRejected,
-    ClaudeDesktopModelListResponse, ClientModelCatalogResponse, CurrentRouteProviderSummaryInput,
-    CurrentRouteResponse, CurrentRouteTarget, GroupListQuery, GroupListRequest,
-    HealthCheckResponse, InterfaceKind, ManagementAppPathRequest, ManagementAuthDecision,
-    ProviderListResponse, ProxyBody, ProxyChannelModelsReplaceRequest, ProxyChannelPatchRequest,
-    ProxyChannelWriteRequest, ProxyEngine, ProxyRequest, ProxyResult, ProxyRuntimeStatus,
-    ProxyServices, ProxyStatusResponse, RoutableModelList, RouteGroupListResponse,
-    RouteResolveManagementRequest, RouteResolveRequest, RouteResolveResponse,
-    TransformedResponseUsageFormat, UpstreamJsonBodySource, UpstreamSseAggregationKind,
-    CLAUDE_PARSER_CONFIG, CODEX_PARSER_CONFIG, GEMINI_PARSER_CONFIG, OPENAI_PARSER_CONFIG,
+    AppChannelListQuery, AppChannelManagementRequest, AppChannelResponse, AppKind, AppListResponse,
+    AppModelCatalogRequest, AppModelListQuery, AppSummaryInput, ChannelDeleteResponse,
+    ChannelHealthResetResponse, ChannelListQuery, ChannelListRequest, ChannelListResponse,
+    ChannelMigrationMaterializeInput, ChannelMigrationMaterializeResponse,
+    ChannelMigrationPreviewInput, ChannelMigrationPreviewResponse, ChannelModelRecord,
+    ChannelModelsResponse, ChannelPathRequest, ChannelRecord, ChannelRecordResponse,
+    ChannelRouteCandidate, ChannelRouteRejected, ClaudeDesktopModelListResponse,
+    ClientModelCatalogResponse, CurrentRouteProviderSummaryInput, CurrentRouteResponse,
+    CurrentRouteTarget, GroupListQuery, GroupListRequest, HealthCheckResponse, InterfaceKind,
+    ManagementAppPathRequest, ManagementAuthDecision, ProviderListResponse, ProxyBody,
+    ProxyChannelModelsReplaceRequest, ProxyChannelPatchRequest, ProxyChannelWriteRequest,
+    ProxyEngine, ProxyRequest, ProxyResult, ProxyRuntimeStatus, ProxyServices, ProxyStatusResponse,
+    RoutableModelList, RouteGroupListResponse, RouteResolveManagementRequest, RouteResolveRequest,
+    RouteResolveResponse, TransformedResponseUsageFormat, UpstreamJsonBodySource,
+    UpstreamSseAggregationKind, CLAUDE_PARSER_CONFIG, CODEX_PARSER_CONFIG, GEMINI_PARSER_CONFIG,
+    OPENAI_PARSER_CONFIG,
 };
 use crate::proxy_core_adapter::{
     ToProxyCoreChannelModelRecord, ToProxyCoreChannelRecord, ToProxyCoreChannelSpec,
@@ -452,16 +452,14 @@ pub async fn list_proxy_channels(
     let request = AppChannelManagementRequest::from_parts(app_type, query)
         .map_err(management_api_error_to_proxy_error)?;
 
-    if let Some(route_request) = request.route_request {
+    if let Some(route_request) = request.route_request.clone() {
         let response = state
             .provider_router
             .resolve_channel_route_dry_run(route_request)
             .await
             .map_err(|e| ProxyError::DatabaseError(e.to_string()))?;
 
-        return Ok(Json(AppChannelResponse::Route(
-            AppChannelRouteResponse::from_route_resolve(response),
-        )));
+        return Ok(Json(request.route_response(response)));
     }
 
     let (channels, source) = state
@@ -470,12 +468,9 @@ pub async fn list_proxy_channels(
         .await
         .map_err(|e| ProxyError::DatabaseError(e.to_string()))?;
 
-    Ok(Json(AppChannelResponse::List(
-        AppChannelListResponse::from_route_source(
-            request.app_type,
-            &source,
-            channel_records_from_host(channels),
-        ),
+    Ok(Json(request.list_response(
+        &source,
+        channel_records_from_host(channels),
     )))
 }
 

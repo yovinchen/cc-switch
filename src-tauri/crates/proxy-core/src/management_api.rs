@@ -1,9 +1,10 @@
 use super::domain::{AppKind, ChannelSpec, InterfaceKind};
 use super::error::{ProxyCoreError, ProxyCoreResult};
 use super::ports::{
-    AppChannelListQuery, AppModelListQuery, ChannelListQuery, ChannelModelsResponse,
-    ChannelRecordResponse, ChannelRouteSource, GroupListQuery, RouteGroupListResponse,
-    RouteGroupSourceInput, RouteResolveRequest,
+    AppChannelListQuery, AppChannelListResponse, AppChannelResponse, AppChannelRouteResponse,
+    AppModelListQuery, ChannelListQuery, ChannelModelsResponse, ChannelRecordResponse,
+    ChannelRouteCandidate, ChannelRouteRejected, ChannelRouteSource, GroupListQuery,
+    RouteGroupListResponse, RouteGroupSourceInput, RouteResolveRequest, RouteResolveResponse,
 };
 
 pub fn validate_management_app_type(app_type: &str) -> ProxyCoreResult<()> {
@@ -157,6 +158,25 @@ impl AppChannelManagementRequest {
             route_request,
         })
     }
+
+    pub fn list_response<T>(
+        &self,
+        source: &ChannelRouteSource,
+        channels: Vec<T>,
+    ) -> AppChannelResponse<T, ChannelRouteCandidate, ChannelRouteRejected> {
+        AppChannelResponse::List(AppChannelListResponse::from_route_source(
+            self.app_type.clone(),
+            source,
+            channels,
+        ))
+    }
+
+    pub fn route_response<T>(
+        &self,
+        response: RouteResolveResponse,
+    ) -> AppChannelResponse<T, ChannelRouteCandidate, ChannelRouteRejected> {
+        AppChannelResponse::Route(AppChannelRouteResponse::from_route_resolve(response))
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -240,7 +260,7 @@ mod tests {
     use crate::{
         AppChannelListQuery, AppKind, AppModelListQuery, ChannelHealthPolicy, ChannelListQuery,
         ChannelOverrides, ChannelRouteSource, ChannelSpec, ChannelStatus, GroupListQuery,
-        InterfaceKind, RetryPolicy, UpstreamEndpoint,
+        InterfaceKind, RetryPolicy, RouteResolveResponse, UpstreamEndpoint,
     };
     use serde_json::json;
 
@@ -444,6 +464,52 @@ mod tests {
 
         assert_eq!(request.app_type, "claude");
         assert!(request.route_request.is_none());
+    }
+
+    #[test]
+    fn app_channel_management_request_builds_list_response() {
+        let query = serde_json::from_value::<AppChannelListQuery>(serde_json::json!({}))
+            .expect("query");
+        let request = AppChannelManagementRequest::from_parts("claude", query).expect("request");
+
+        let response = request.list_response(&ChannelRouteSource::MaterializedChannels, vec![
+            "channel-a",
+        ]);
+        let value = serde_json::to_value(response).expect("serialize response");
+
+        assert_eq!(value["appType"], "claude");
+        assert_eq!(value["source"], "materialized_channels");
+        assert_eq!(value["channels"][0], "channel-a");
+        assert!(value.get("rejected").is_none());
+    }
+
+    #[test]
+    fn app_channel_management_request_builds_route_response() {
+        let query = serde_json::from_value::<AppChannelListQuery>(serde_json::json!({
+            "model": "sonnet"
+        }))
+        .expect("query");
+        let request = AppChannelManagementRequest::from_parts("claude", query).expect("request");
+
+        let response: crate::AppChannelResponse<&str, _, _> =
+            request.route_response(RouteResolveResponse {
+                app_type: "claude".to_string(),
+                requested_model: Some("sonnet".to_string()),
+                interface_kind: Some("anthropic_messages".to_string()),
+                route_group: "default".to_string(),
+                source: ChannelRouteSource::LegacyProjection,
+                candidates: Vec::new(),
+                rejected: Vec::new(),
+            });
+        let value = serde_json::to_value(response).expect("serialize response");
+
+        assert_eq!(value["appType"], "claude");
+        assert_eq!(value["source"], "legacy_projection");
+        assert_eq!(value["requestedModel"], "sonnet");
+        assert_eq!(value["interfaceKind"], "anthropic_messages");
+        assert_eq!(value["routeGroup"], "default");
+        assert_eq!(value["channels"], json!([]));
+        assert_eq!(value["rejected"], json!([]));
     }
 
     #[test]
