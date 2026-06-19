@@ -11,10 +11,9 @@ use crate::proxy::circuit_breaker::{
     AllowResult, CircuitBreaker, CircuitBreakerConfig, CircuitBreakerStats,
 };
 use crate::proxy_core::{
-    reject_unavailable_route_candidates, ChannelRouteSource, RouteResolveRequest,
-    RouteResolveResponse,
+    reject_unavailable_channel_ids, ChannelRouteSource, RouteResolveRequest, RouteResolveResponse,
 };
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::str::FromStr;
 use std::sync::Arc;
 use tokio::sync::RwLock;
@@ -143,7 +142,16 @@ impl ProviderRouter {
     ) -> Result<RouteResolveResponse, AppError> {
         let (channels, source) = self.list_channels_for_app(&request.app_type).await?;
         let mut response = resolve_channel_route(request, channels, source)?;
-        let mut unavailable_channel_ids = HashSet::new();
+        let unavailable_channel_ids = self.unavailable_route_candidate_ids(&response).await;
+        reject_unavailable_channel_ids(&mut response, unavailable_channel_ids);
+        Ok(response)
+    }
+
+    async fn unavailable_route_candidate_ids(
+        &self,
+        response: &RouteResolveResponse,
+    ) -> Vec<String> {
+        let mut unavailable_channel_ids = Vec::new();
 
         for candidate in &response.candidates {
             let circuit_key = channel_circuit_key(&response.app_type, &candidate.channel_id);
@@ -153,14 +161,11 @@ impl ProviderRouter {
             };
 
             if !is_available {
-                unavailable_channel_ids.insert(candidate.channel_id.clone());
+                unavailable_channel_ids.push(candidate.channel_id.clone());
             }
         }
 
-        reject_unavailable_route_candidates(&mut response, |candidate| {
-            unavailable_channel_ids.contains(&candidate.channel_id)
-        });
-        Ok(response)
+        unavailable_channel_ids
     }
 
     /// 请求执行前获取熔断器“放行许可”

@@ -4,6 +4,7 @@ use super::ports::{
     ChannelRouteCandidate, ChannelRouteRejected, ChannelRouteSource, RouteResolveRequest,
     RouteResolveResponse,
 };
+use std::collections::HashSet;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RouteResolveModelInput {
@@ -220,6 +221,23 @@ pub fn reject_unavailable_route_candidates(
     }
 
     response.candidates = available;
+}
+
+pub fn reject_unavailable_channel_ids<I, S>(
+    response: &mut RouteResolveResponse,
+    unavailable_channel_ids: I,
+) where
+    I: IntoIterator<Item = S>,
+    S: AsRef<str>,
+{
+    let unavailable_channel_ids: HashSet<String> = unavailable_channel_ids
+        .into_iter()
+        .map(|channel_id| channel_id.as_ref().to_string())
+        .collect();
+
+    reject_unavailable_route_candidates(response, |candidate| {
+        unavailable_channel_ids.contains(&candidate.channel_id)
+    });
 }
 
 fn normalize_required(value: &str, field: &str) -> ProxyCoreResult<String> {
@@ -489,9 +507,7 @@ mod tests {
         )
         .expect("resolve route");
 
-        reject_unavailable_route_candidates(&mut response, |candidate| {
-            candidate.channel_id == "blocked"
-        });
+        reject_unavailable_channel_ids(&mut response, ["blocked"]);
 
         assert_eq!(response.candidates.len(), 1);
         assert_eq!(response.candidates[0].channel_id, "open");
