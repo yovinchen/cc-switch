@@ -110,15 +110,21 @@ pub fn model_mapping_log_message(original: Option<&str>, mapped: Option<&str>) -
 }
 
 pub fn strip_one_m_suffix_for_upstream(model: &str) -> &str {
+    if !has_one_m_suffix_for_upstream(model) {
+        return model;
+    }
+
+    let trimmed = model.trim_end();
+    let marker = ONE_M_CONTEXT_MARKER.as_bytes();
+    trimmed[..trimmed.len() - marker.len()].trim_end()
+}
+
+pub fn has_one_m_suffix_for_upstream(model: &str) -> bool {
     let trimmed = model.trim_end();
     let marker = ONE_M_CONTEXT_MARKER.as_bytes();
     let bytes = trimmed.as_bytes();
-    if bytes.len() >= marker.len()
+    bytes.len() >= marker.len()
         && bytes[bytes.len() - marker.len()..].eq_ignore_ascii_case(marker)
-    {
-        return trimmed[..trimmed.len() - marker.len()].trim_end();
-    }
-    model
 }
 
 pub fn strip_one_m_suffix_for_upstream_from_body(mut body: Value) -> Value {
@@ -275,6 +281,13 @@ mod tests {
             strip_one_m_suffix_for_upstream("deepseek-v4-pro"),
             "deepseek-v4-pro"
         );
+    }
+
+    #[test]
+    fn detects_one_m_suffix_before_upstream() {
+        assert!(has_one_m_suffix_for_upstream("deepseek-v4-pro[1M]"));
+        assert!(has_one_m_suffix_for_upstream("deepseek-v4-pro [1m]  "));
+        assert!(!has_one_m_suffix_for_upstream("deepseek-v4-pro"));
     }
 
     #[test]

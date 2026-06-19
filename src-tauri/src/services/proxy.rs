@@ -267,14 +267,18 @@ impl ProxyService {
         };
 
         let mut client_model = takeover_model.to_string();
-        if supports_one_m && Self::has_claude_one_m_marker(upstream_model) {
+        if supports_one_m && crate::proxy_core::has_one_m_suffix_for_upstream(upstream_model) {
             client_model.push_str(CLAUDE_ONE_M_MARKER_FOR_CLIENT);
         }
         fields.push((model_key, client_model));
 
         let display_name = Self::claude_env_string(env, name_key)
             .map(str::to_string)
-            .unwrap_or_else(|| Self::strip_claude_one_m_marker(upstream_model));
+            .unwrap_or_else(|| {
+                crate::proxy_core::strip_one_m_suffix_for_upstream(upstream_model)
+                    .trim()
+                    .to_string()
+            });
         if !display_name.is_empty() {
             fields.push((name_key, display_name));
         }
@@ -285,19 +289,6 @@ impl ProxyService {
             .and_then(Value::as_str)
             .map(str::trim)
             .filter(|value| !value.is_empty())
-    }
-
-    fn has_claude_one_m_marker(model: &str) -> bool {
-        model
-            .trim_end()
-            .to_ascii_lowercase()
-            .ends_with(crate::claude_desktop_config::ONE_M_CONTEXT_MARKER)
-    }
-
-    fn strip_claude_one_m_marker(model: &str) -> String {
-        crate::proxy_core::strip_one_m_suffix_for_upstream(model)
-            .trim()
-            .to_string()
     }
 
     fn claude_provider_with_effective_settings(
