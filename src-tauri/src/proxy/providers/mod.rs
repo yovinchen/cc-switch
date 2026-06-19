@@ -8,7 +8,6 @@
 //! - `claude`: Claude (Anthropic) 适配器
 //! - `codex`: Codex (OpenAI) 适配器
 //! - `gemini`: Gemini (Google) 适配器
-//! - `models`: API 数据模型
 
 mod adapter;
 mod auth;
@@ -18,7 +17,6 @@ pub mod codex_chat_history;
 pub mod codex_oauth_auth;
 pub mod copilot_auth;
 mod gemini;
-pub mod models;
 
 use crate::app_config::AppType;
 use crate::provider::Provider;
