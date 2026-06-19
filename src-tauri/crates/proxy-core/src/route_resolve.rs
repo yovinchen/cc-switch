@@ -1,4 +1,4 @@
-use super::domain::{RouteSelection, DEFAULT_ROUTE_GROUP};
+use super::domain::{ChannelSpec, ModelRoute, RouteSelection, DEFAULT_ROUTE_GROUP};
 use super::error::{ProxyCoreError, ProxyCoreResult};
 use super::ports::{
     ChannelRouteCandidate, ChannelRouteRejected, ChannelRouteSource, RouteResolveRequest,
@@ -9,6 +9,15 @@ use super::ports::{
 pub struct RouteResolveModelInput {
     pub public_model: String,
     pub upstream_model: String,
+}
+
+impl RouteResolveModelInput {
+    pub fn from_model_route(model: ModelRoute) -> Self {
+        Self {
+            public_model: model.public_model,
+            upstream_model: model.upstream_model,
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -24,6 +33,28 @@ pub struct RouteResolveChannelInput {
     pub priority: i64,
     pub weight: u32,
     pub source_kind: String,
+}
+
+impl RouteResolveChannelInput {
+    pub fn from_channel_spec(channel: ChannelSpec, source_kind: impl Into<String>) -> Self {
+        Self {
+            channel_id: channel.id,
+            provider_id: channel.provider_id,
+            channel_name: channel.name,
+            status: channel.status.as_str().to_string(),
+            base_url: channel.endpoint.base_url,
+            interface_kind: channel.interface.as_str().to_string(),
+            groups: channel.groups,
+            models: channel
+                .models
+                .into_iter()
+                .map(RouteResolveModelInput::from_model_route)
+                .collect(),
+            priority: channel.priority,
+            weight: channel.weight,
+            source_kind: source_kind.into(),
+        }
+    }
 }
 
 pub fn route_candidate_from_selection(
@@ -314,6 +345,28 @@ mod tests {
         assert_eq!(candidate.priority, 50);
         assert_eq!(candidate.weight, 20);
         assert_eq!(candidate.source_kind, "proxy_core");
+    }
+
+    #[test]
+    fn builds_route_input_from_channel_spec() {
+        let input = RouteResolveChannelInput::from_channel_spec(
+            selection().channel,
+            "legacy_endpoint",
+        );
+
+        assert_eq!(input.channel_id, "channel-a");
+        assert_eq!(input.provider_id, "provider-a");
+        assert_eq!(input.channel_name, "Channel A");
+        assert_eq!(input.status, "enabled");
+        assert_eq!(input.base_url, "https://relay.example.com/v1");
+        assert_eq!(input.interface_kind, "openai_responses");
+        assert_eq!(input.groups, vec![DEFAULT_ROUTE_GROUP.to_string()]);
+        assert_eq!(input.models.len(), 1);
+        assert_eq!(input.models[0].public_model, "sonnet-public");
+        assert_eq!(input.models[0].upstream_model, "upstream-sonnet");
+        assert_eq!(input.priority, 50);
+        assert_eq!(input.weight, 20);
+        assert_eq!(input.source_kind, "legacy_endpoint");
     }
 
     #[test]

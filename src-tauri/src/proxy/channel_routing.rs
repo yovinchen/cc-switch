@@ -7,8 +7,9 @@ use crate::database::ProxyChannelRecord;
 use crate::error::AppError;
 use crate::proxy_core::{
     resolve_channel_route as resolve_core_channel_route, ChannelRouteSource, ProxyCoreError,
-    RouteResolveChannelInput, RouteResolveModelInput, RouteResolveRequest, RouteResolveResponse,
+    RouteResolveChannelInput, RouteResolveRequest, RouteResolveResponse,
 };
+use crate::proxy_core_adapter::ToProxyCoreChannelSpec;
 
 pub(crate) fn resolve_channel_route(
     request: RouteResolveRequest,
@@ -20,26 +21,8 @@ pub(crate) fn resolve_channel_route(
 }
 
 fn route_input_from_channel(channel: ProxyChannelRecord) -> RouteResolveChannelInput {
-    RouteResolveChannelInput {
-        channel_id: channel.id,
-        provider_id: channel.provider_id,
-        channel_name: channel.name,
-        status: channel.status,
-        base_url: channel.base_url,
-        interface_kind: channel.interface_kind,
-        groups: channel.groups,
-        models: channel
-            .models
-            .into_iter()
-            .map(|model| RouteResolveModelInput {
-                public_model: model.public_model,
-                upstream_model: model.upstream_model,
-            })
-            .collect(),
-        priority: channel.priority,
-        weight: channel.weight,
-        source_kind: channel.source_kind.as_str().to_string(),
-    }
+    let source_kind = channel.source_kind.as_str().to_string();
+    RouteResolveChannelInput::from_channel_spec(channel.to_proxy_core_channel_spec(), source_kind)
 }
 
 fn proxy_core_error_to_app_error(error: ProxyCoreError) -> AppError {
