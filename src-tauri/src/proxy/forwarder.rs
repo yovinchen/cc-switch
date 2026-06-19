@@ -2121,11 +2121,11 @@ impl RequestForwarder {
         // 获取全局代理 URL
         let upstream_proxy_url: Option<String> = super::http_client::get_current_proxy_url();
 
-        let preserve_exact_header_case = should_preserve_exact_header_case(
+        let preserve_exact_header_case = should_preserve_exact_request_header_case(
             adapter.name(),
-            provider,
-            resolved_claude_api_format.as_deref(),
+            provider.is_codex_oauth(),
             is_copilot,
+            resolved_claude_api_format.as_deref(),
         );
         let send_policy = resolve_upstream_send_policy(UpstreamSendPolicyInput {
             is_socks_proxy: is_socks_proxy_url(upstream_proxy_url.as_deref()),
@@ -2480,20 +2480,6 @@ fn reject_proxy_placeholder_for_managed_account_upstream(
 ) -> Result<(), ProxyError> {
     validate_managed_account_upstream_auth(url, headers)
         .map_err(|error| ProxyError::AuthError(error.to_string()))
-}
-
-fn should_preserve_exact_header_case(
-    adapter_name: &str,
-    provider: &Provider,
-    resolved_claude_api_format: Option<&str>,
-    is_copilot: bool,
-) -> bool {
-    should_preserve_exact_request_header_case(
-        adapter_name,
-        provider.is_codex_oauth(),
-        is_copilot,
-        resolved_claude_api_format,
-    )
 }
 
 fn map_reqwest_send_error(error: reqwest::Error) -> ProxyError {
@@ -3010,23 +2996,29 @@ mod tests {
     fn exact_header_case_preserved_for_native_claude_only() {
         let provider = test_provider_with_type(None);
 
-        assert!(should_preserve_exact_header_case(
+        assert!(should_preserve_exact_request_header_case(
             "Claude",
-            &provider,
+            provider.is_codex_oauth(),
+            false,
             Some("anthropic"),
-            false
         ));
-        assert!(!should_preserve_exact_header_case(
+        assert!(!should_preserve_exact_request_header_case(
             "Claude",
-            &provider,
+            provider.is_codex_oauth(),
+            false,
             Some("openai_responses"),
-            false
         ));
-        assert!(!should_preserve_exact_header_case(
-            "Codex", &provider, None, false
+        assert!(!should_preserve_exact_request_header_case(
+            "Codex",
+            provider.is_codex_oauth(),
+            false,
+            None
         ));
-        assert!(!should_preserve_exact_header_case(
-            "Gemini", &provider, None, false
+        assert!(!should_preserve_exact_request_header_case(
+            "Gemini",
+            provider.is_codex_oauth(),
+            false,
+            None
         ));
     }
 
@@ -3035,17 +3027,17 @@ mod tests {
         let codex_oauth = test_provider_with_type(Some("codex_oauth"));
         let copilot = test_provider_with_type(Some("github_copilot"));
 
-        assert!(!should_preserve_exact_header_case(
+        assert!(!should_preserve_exact_request_header_case(
             "Claude",
-            &codex_oauth,
+            codex_oauth.is_codex_oauth(),
+            false,
             Some("openai_responses"),
-            false
         ));
-        assert!(!should_preserve_exact_header_case(
+        assert!(!should_preserve_exact_request_header_case(
             "Claude",
-            &copilot,
+            copilot.is_codex_oauth(),
+            true,
             Some("openai_chat"),
-            true
         ));
     }
 
