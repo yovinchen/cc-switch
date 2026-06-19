@@ -62,10 +62,10 @@ use crate::proxy_core::{
     GroupListQuery, HealthCheckResponse, InterfaceKind, ManagementAuthDecision,
     ProviderListResponse, ProviderSummaryInput, ProxyBody, ProxyChannelModelsReplaceRequest,
     ProxyChannelPatchRequest, ProxyChannelWriteRequest, ProxyEngine, ProxyRequest, ProxyResult,
-    ProxyServices, RoutableModelList, RouteGroupListResponse, RouteGroupSourceInput,
-    RouteResolveRequest, RouteResolveResponse, TokenUsage, TransformedResponseUsageFormat,
-    UpstreamJsonBodySource, UpstreamSseAggregationKind, CLAUDE_PARSER_CONFIG, CODEX_PARSER_CONFIG,
-    GEMINI_PARSER_CONFIG, OPENAI_PARSER_CONFIG,
+    ProxyServices, ProxyStatusResponse, RoutableModelList, RouteGroupListResponse,
+    RouteGroupSourceInput, RouteResolveRequest, RouteResolveResponse, TokenUsage,
+    TransformedResponseUsageFormat, UpstreamJsonBodySource, UpstreamSseAggregationKind,
+    CLAUDE_PARSER_CONFIG, CODEX_PARSER_CONFIG, GEMINI_PARSER_CONFIG, OPENAI_PARSER_CONFIG,
 };
 use crate::proxy_core_adapter::{ToProxyCoreChannelSpec, ToProxyCoreProviderSpec};
 use axum::{
@@ -95,9 +95,11 @@ pub async fn health_check() -> (StatusCode, Json<HealthCheckResponse>) {
 }
 
 /// 获取服务状态
-pub async fn get_status(State(state): State<ProxyState>) -> Result<Json<ProxyStatus>, ProxyError> {
+pub async fn get_status(
+    State(state): State<ProxyState>,
+) -> Result<Json<ProxyStatusResponse<ProxyStatus>>, ProxyError> {
     let status = state.status.read().await.clone();
-    Ok(Json(status))
+    Ok(Json(ProxyStatusResponse::new(status)))
 }
 
 /// GET /proxy/v1/events

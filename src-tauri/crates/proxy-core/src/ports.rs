@@ -212,6 +212,18 @@ impl ClientModelCatalogResponse {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct ProxyStatusResponse<T> {
+    pub status: T,
+}
+
+impl<T> ProxyStatusResponse<T> {
+    pub fn new(status: T) -> Self {
+        Self { status }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ChannelHealthReset {
     pub channel_id: String,
@@ -1318,7 +1330,7 @@ mod tests {
         ChannelMigrationPreviewInput, ChannelMigrationPreviewResponse,
         ChannelRouteCandidate, ChannelRouteRejected, ChannelRouteSource, ClientModelCatalogResponse,
         CurrentRouteProviderSummaryInput, CurrentRouteResponse, GroupListQuery,
-        HealthCheckResponse, ModelCatalog, ProviderListResponse, ProviderSpec,
+        HealthCheckResponse, ModelCatalog, ProviderListResponse, ProviderSpec, ProxyStatusResponse,
         ProviderSummaryInput, ProxyChannelModelWriteRequest, ProxyChannelModelsReplaceRequest,
         ProxyChannelPatchRequest, ProxyChannelWriteRequest, RouteGroupListResponse, RouteGroupSourceInput,
         RouteResolveResponse,
@@ -1583,6 +1595,24 @@ mod tests {
                     "id": "gpt-5",
                     "object": "model"
                 }]
+            })
+        );
+    }
+
+    #[test]
+    fn proxy_status_response_serializes_as_raw_status() {
+        let response = ProxyStatusResponse::new(json!({
+            "running": true,
+            "activeConnections": 2
+        }));
+
+        let value = serde_json::to_value(response).expect("serialize response");
+
+        assert_eq!(
+            value,
+            json!({
+                "running": true,
+                "activeConnections": 2
             })
         );
     }
