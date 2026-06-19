@@ -4,6 +4,7 @@ use super::domain::{
     DEFAULT_ROUTE_GROUP,
 };
 use super::error::ProxyCoreResult;
+use super::management_api::AppModelCatalogRequest;
 use super::ports::{
     ChannelHealthReset, ChannelHealthResetResponse, ModelCatalog, ProxyCoreEvent,
     ProxyCoreEventType, ProxyServices,
@@ -173,6 +174,26 @@ where
             inbound_interface.map(|interface| interface.as_str().to_string()),
             models,
         ))
+    }
+
+    pub async fn list_model_catalog_for_request(
+        &self,
+        request: AppModelCatalogRequest,
+    ) -> ProxyCoreResult<RoutableModelList> {
+        let AppModelCatalogRequest {
+            app,
+            app_type,
+            route_group,
+            interface_kind,
+        } = request;
+
+        self.list_model_catalog(
+            &app,
+            app_type,
+            route_group.as_deref(),
+            interface_kind.as_ref(),
+        )
+        .await
     }
 
     pub async fn client_model_catalog(
@@ -710,6 +731,33 @@ mod tests {
         assert_eq!(value["routeGroup"], DEFAULT_ROUTE_GROUP);
         assert_eq!(value["interfaceKind"], "anthropic_messages");
         assert_eq!(value["models"][0]["publicModel"], "sonnet");
+    }
+
+    #[test]
+    fn list_model_catalog_accepts_management_request() {
+        let services = Arc::new(TestServices::default());
+        let engine = ProxyEngine::new(services);
+        let request = AppModelCatalogRequest::from_parts(
+            " claude ",
+            serde_json::from_value(json!({
+                "group": " default ",
+                "interface": "anthropic_messages"
+            }))
+            .expect("query"),
+        )
+        .expect("catalog request");
+
+        let catalog =
+            futures::executor::block_on(engine.list_model_catalog_for_request(request))
+                .expect("catalog");
+
+        assert_eq!(catalog.app_type, "claude");
+        assert_eq!(catalog.route_group.as_deref(), Some(DEFAULT_ROUTE_GROUP));
+        assert_eq!(
+            catalog.interface_kind.as_deref(),
+            Some("anthropic_messages")
+        );
+        assert_eq!(catalog.models.len(), 1);
     }
 
     #[test]

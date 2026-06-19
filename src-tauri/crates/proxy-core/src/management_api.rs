@@ -1,4 +1,6 @@
+use super::domain::{AppKind, InterfaceKind};
 use super::error::{ProxyCoreError, ProxyCoreResult};
+use super::ports::AppModelListQuery;
 
 pub fn validate_management_app_type(app_type: &str) -> ProxyCoreResult<()> {
     if app_type.trim().is_empty() {
@@ -31,11 +33,38 @@ pub fn normalize_channel_id_path(channel_id: impl AsRef<str>) -> ProxyCoreResult
     }
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AppModelCatalogRequest {
+    pub app: AppKind,
+    pub app_type: String,
+    pub route_group: Option<String>,
+    pub interface_kind: Option<InterfaceKind>,
+}
+
+impl AppModelCatalogRequest {
+    pub fn from_parts(
+        app_type: impl AsRef<str>,
+        query: AppModelListQuery,
+    ) -> ProxyCoreResult<Self> {
+        let app_type = app_type.as_ref().trim().to_string();
+        validate_management_app_type(&app_type)?;
+
+        Ok(Self {
+            app: AppKind::from(app_type.as_str()),
+            app_type,
+            route_group: query.route_group(),
+            interface_kind: query.interface_kind(),
+        })
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::{
         normalize_channel_id_path, validate_management_app_type, validate_route_resolve_app_type,
+        AppModelCatalogRequest,
     };
+    use crate::{AppModelListQuery, AppKind, InterfaceKind};
 
     #[test]
     fn validate_management_app_type_rejects_blank_values() {
@@ -69,5 +98,22 @@ mod tests {
             error.to_string(),
             "invalid proxy request: channel_id cannot be empty"
         );
+    }
+
+    #[test]
+    fn app_model_catalog_request_normalizes_path_and_query_aliases() {
+        let query = serde_json::from_value::<AppModelListQuery>(serde_json::json!({
+            "group": " beta ",
+            "interface": "openai-responses"
+        }))
+        .expect("query");
+
+        let request =
+            AppModelCatalogRequest::from_parts(" claude ", query).expect("catalog request");
+
+        assert_eq!(request.app, AppKind::Claude);
+        assert_eq!(request.app_type, "claude");
+        assert_eq!(request.route_group.as_deref(), Some("beta"));
+        assert_eq!(request.interface_kind, Some(InterfaceKind::OpenAiResponses));
     }
 }
