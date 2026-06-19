@@ -6,7 +6,6 @@ use super::hyper_client::ProxyResponse;
 use super::{
     events::ProxyEventBus,
     failover_switch::FailoverSwitchManager,
-    json_canonical::short_value_hash,
     provider_router::ProviderRouter,
     providers::{
         codex_chat_history::CodexChatHistoryStore, gemini_shadow::GeminiShadowStore, get_adapter,
@@ -36,7 +35,7 @@ use crate::proxy_core::{
     resolve_copilot_deterministic_interaction_id, resolve_copilot_optimizer_session_id,
     resolve_copilot_request_id_with_fallback, resolve_media_prevention_policy,
     resolve_upstream_request_transport_policy, resolve_upstream_send_policy,
-    resolved_copilot_dynamic_base_url, sanitize_copilot_orphan_tool_results,
+    resolved_copilot_dynamic_base_url, sanitize_copilot_orphan_tool_results, short_value_hash,
     should_apply_bedrock_pre_send_optimizer, should_check_media_retry,
     should_failover_after_rectifier_retry_failure, should_preserve_exact_request_header_case,
     should_resolve_copilot_dynamic_endpoint, should_send_anthropic_request_headers,
@@ -2558,6 +2557,7 @@ fn value_for_log(value: &Value) -> String {
 mod tests {
     use super::*;
     use crate::database::Database;
+    use crate::proxy_core::canonical_json_string;
     use axum::http::header::{HeaderValue, ACCEPT};
     use axum::http::HeaderMap;
     use bytes::Bytes;
@@ -2807,10 +2807,7 @@ mod tests {
             ]
         });
 
-        assert_eq!(
-            crate::proxy::json_canonical::canonical_json_string(&left),
-            crate::proxy::json_canonical::canonical_json_string(&right)
-        );
+        assert_eq!(canonical_json_string(&left), canonical_json_string(&right));
         assert_eq!(
             short_value_hash(Some(&left)),
             short_value_hash(Some(&right))

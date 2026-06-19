@@ -8,9 +8,9 @@
 //! - system prompt 使用 `instructions` 字段而非 system role message
 //! - usage 字段命名与 Anthropic 一致 (input_tokens/output_tokens)
 
-use crate::proxy::{error::ProxyError, json_canonical::canonical_json_string};
+use crate::proxy::error::ProxyError;
 use crate::proxy_core::{
-    build_anthropic_usage_from_openai_responses, clean_openai_tool_schema,
+    build_anthropic_usage_from_openai_responses, canonical_json_string, clean_openai_tool_schema,
     map_anthropic_tool_choice_to_openai_responses, map_openai_responses_stop_reason_to_anthropic,
     sanitize_anthropic_tool_use_input,
 };
