@@ -11,7 +11,6 @@ pub(crate) mod failover_switch;
 mod forwarder;
 pub mod handler_context;
 mod handlers;
-mod health;
 pub mod http_client;
 pub mod hyper_client;
 pub(crate) mod model_fetch_transport;
