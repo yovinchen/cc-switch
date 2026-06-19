@@ -5,18 +5,12 @@
 
 use super::transform_gemini::{synthesize_tool_call_id, AnthropicToolSchemaHints};
 use crate::proxy_core::{
-    analyze_gemini_stream_parts, append_utf8_safe, build_gemini_stream_shadow_assistant_parts,
-    gemini_stream_content_block_stop_event, gemini_stream_message_delta_event,
-    gemini_stream_message_start_event, gemini_stream_message_stop_event,
-    gemini_stream_text_block_start_event, gemini_stream_text_delta_event,
-    gemini_stream_tool_block_start_event, gemini_stream_tool_input_delta_event,
-    merge_gemini_tool_call_snapshots, strip_sse_field, take_sse_block, GeminiShadowStore,
-    GeminiToolCallMeta,
+    append_utf8_safe, strip_sse_field, take_sse_block, GeminiShadowStore, GeminiStreamSseEvent,
+    GeminiToAnthropicSseState,
 };
 use bytes::Bytes;
 use futures::stream::{Stream, StreamExt};
-use serde_json::{json, Value};
-use std::collections::HashSet;
+use serde_json::Value;
 use std::sync::Arc;
 
 fn encode_sse(event_name: &str, payload: &Value) -> Bytes {
@@ -24,6 +18,10 @@ fn encode_sse(event_name: &str, payload: &Value) -> Bytes {
         "event: {event_name}\ndata: {}\n\n",
         serde_json::to_string(payload).unwrap_or_default()
     ))
+}
+
+fn encode_core_event(event: &GeminiStreamSseEvent) -> Bytes {
+    encode_sse(event.event_name, &event.payload)
 }
 
 pub fn create_anthropic_sse_stream_from_gemini<E: std::error::Error + Send + 'static>(
@@ -36,18 +34,7 @@ pub fn create_anthropic_sse_stream_from_gemini<E: std::error::Error + Send + 'st
     async_stream::stream! {
         let mut buffer = String::new();
         let mut utf8_remainder = Vec::new();
-        let mut message_id: Option<String> = None;
-        let mut current_model: Option<String> = None;
-        let mut has_sent_message_start = false;
-        let mut accumulated_text = String::new();
-        let mut text_block_index: Option<u32> = None;
-        let mut next_content_index: u32 = 0;
-        let mut open_indices: HashSet<u32> = HashSet::new();
-        let mut tool_call_snapshots: Vec<GeminiToolCallMeta> = Vec::new();
-        let mut text_thought_signature: Option<String> = None;
-        let mut latest_usage: Option<Value> = None;
-        let mut latest_finish_reason: Option<String> = None;
-        let mut blocked_text: Option<String> = None;
+        let mut state = GeminiToAnthropicSseState::new();
         tokio::pin!(stream);
 
         while let Some(chunk) = stream.next().await {
@@ -81,101 +68,16 @@ pub fn create_anthropic_sse_stream_from_gemini<E: std::error::Error + Send + 'st
                             Err(_) => continue,
                         };
 
-                        if message_id.is_none() {
-                            message_id = chunk_json
-                                .get("responseId")
-                                .and_then(|value| value.as_str())
-                                .map(ToString::to_string);
+                        let output = state.handle_chunk(
+                            &chunk_json,
+                            tool_schema_hints.as_ref(),
+                            synthesize_tool_call_id,
+                        );
+                        for name in &output.rectified_tool_names {
+                            log::info!("[Claude/Gemini] Rectified tool args for `{name}`");
                         }
-                        if current_model.is_none() {
-                            current_model = chunk_json
-                                .get("modelVersion")
-                                .and_then(|value| value.as_str())
-                                .map(ToString::to_string);
-                        }
-                        if latest_usage.is_none() {
-                            latest_usage = chunk_json.get("usageMetadata").cloned();
-                        }
-
-                        if !has_sent_message_start {
-                            let event = gemini_stream_message_start_event(
-                                message_id.as_deref(),
-                                current_model.as_deref(),
-                                chunk_json.get("usageMetadata"),
-                            );
-                            yield Ok(encode_sse("message_start", &event));
-                            has_sent_message_start = true;
-                        }
-
-                        if let Some(reason) = chunk_json
-                            .get("promptFeedback")
-                            .and_then(|value| value.get("blockReason"))
-                            .and_then(|value| value.as_str())
-                        {
-                            blocked_text = Some(format!("Request blocked by Gemini safety filters: {reason}"));
-                        }
-
-                        if let Some(candidate) = chunk_json
-                            .get("candidates")
-                            .and_then(|value| value.as_array())
-                            .and_then(|value| value.first())
-                        {
-                            if let Some(reason) = candidate.get("finishReason").and_then(|value| value.as_str()) {
-                                latest_finish_reason = Some(reason.to_string());
-                            }
-                            if let Some(usage) = chunk_json.get("usageMetadata") {
-                                latest_usage = Some(usage.clone());
-                            }
-                            if let Some(parts) = candidate
-                                .get("content")
-                                .and_then(|value| value.get("parts"))
-                                .and_then(|value| value.as_array())
-                            {
-                                let parts_update = analyze_gemini_stream_parts(parts, tool_schema_hints.as_ref());
-                                for name in &parts_update.rectified_tool_names {
-                                    log::info!("[Claude/Gemini] Rectified tool args for `{name}`");
-                                }
-                                if let Some(signature) = parts_update.text_thought_signature {
-                                    text_thought_signature = Some(signature);
-                                }
-                                merge_gemini_tool_call_snapshots(
-                                    &mut tool_call_snapshots,
-                                    parts_update.tool_calls,
-                                    synthesize_tool_call_id,
-                                );
-                                let visible_text = parts_update.visible_text;
-                                if !visible_text.is_empty() {
-                                    let is_cumulative = visible_text.starts_with(&accumulated_text);
-                                    let delta = if is_cumulative {
-                                        visible_text[accumulated_text.len()..].to_string()
-                                    } else {
-                                        visible_text.clone()
-                                    };
-
-                                    if !delta.is_empty() {
-                                        let index = *text_block_index.get_or_insert_with(|| {
-                                            let assigned = next_content_index;
-                                            next_content_index += 1;
-                                            assigned
-                                        });
-
-                                        if !open_indices.contains(&index) {
-                                            let start_event = gemini_stream_text_block_start_event(index);
-                                            yield Ok(encode_sse("content_block_start", &start_event));
-                                            open_indices.insert(index);
-                                        }
-
-                                        let delta_event =
-                                            gemini_stream_text_delta_event(index, delta.as_str());
-                                        yield Ok(encode_sse("content_block_delta", &delta_event));
-                                        if is_cumulative {
-                                            accumulated_text = visible_text;
-                                        } else {
-                                            accumulated_text.push_str(&delta);
-                                        }
-                                    }
-                                }
-                            }
+                        for event in output.events {
+                            yield Ok(encode_core_event(&event));
                         }
                     }
                 }
@@ -186,119 +88,26 @@ pub fn create_anthropic_sse_stream_from_gemini<E: std::error::Error + Send + 'st
             }
         }
 
-        if !has_sent_message_start {
-            let event = gemini_stream_message_start_event(
-                message_id.as_deref(),
-                current_model.as_deref(),
-                latest_usage.as_ref(),
-            );
-            yield Ok(encode_sse("message_start", &event));
-        }
-
-        if accumulated_text.is_empty() {
-            if let Some(blocked_text) = blocked_text.clone() {
-                let index = *text_block_index.get_or_insert_with(|| {
-                    let assigned = next_content_index;
-                    next_content_index += 1;
-                    assigned
-                });
-
-                if !open_indices.contains(&index) {
-                    let start_event = gemini_stream_text_block_start_event(index);
-                    yield Ok(encode_sse("content_block_start", &start_event));
-                    open_indices.insert(index);
-                }
-
-                let delta_event = gemini_stream_text_delta_event(index, blocked_text);
-                yield Ok(encode_sse("content_block_delta", &delta_event));
-            }
-        }
-
-        if let Some(index) = text_block_index {
-            if open_indices.remove(&index) {
-                let stop_event = gemini_stream_content_block_stop_event(index);
-                yield Ok(encode_sse("content_block_stop", &stop_event));
-            }
-        }
+        let final_output = state.finish();
 
         if let (Some(store), Some(provider_id), Some(session_id)) = (
             shadow_store.as_ref(),
             provider_id.as_deref(),
             session_id.as_deref(),
         ) {
-            let tool_calls = tool_call_snapshots.clone();
-            let shadow_text = if accumulated_text.is_empty() {
-                blocked_text.as_deref()
-            } else {
-                Some(accumulated_text.as_str())
-            };
-            let shadow_parts = build_gemini_stream_shadow_assistant_parts(
-                shadow_text,
-                text_thought_signature.as_deref(),
-                &tool_calls,
-            );
-            if !shadow_parts.is_empty() {
+            if let Some(shadow_record) = final_output.shadow_record {
                 store.record_assistant_turn(
                     provider_id,
                     session_id,
-                    json!({ "parts": shadow_parts }),
-                    tool_calls.clone(),
+                    shadow_record.assistant_content,
+                    shadow_record.tool_calls,
                 );
             }
         }
 
-        // ------------------------------------------------------------------
-        // Known trade-off: tool-call ordering vs. interleaved text.
-        //
-        // We emit all `tool_use` blocks *after* the final text
-        // `content_block_stop` above. If Gemini returns parts interleaved
-        // like `[text_a, functionCall_1, text_b, functionCall_2]`, the
-        // Anthropic-facing stream reorders them into `[text(a+b),
-        // tool_use_1, tool_use_2]`, whereas `gemini_to_anthropic_with_shadow_and_hints`
-        // (non-streaming) preserves the original part order.
-        //
-        // This is intentional given the current design:
-        //   1. Gemini `streamGenerateContent?alt=sse` delivers each chunk as
-        //      a *cumulative* snapshot of `content.parts`. Emitting a
-        //      `tool_use` content block on first observation would require
-        //      closing the still-accumulating text block, then re-opening a
-        //      new text block when more text arrives — producing many
-        //      fragmented content blocks per message.
-        //   2. Anthropic clients we target (claude-code and similar) consume
-        //      a message's tool calls by scanning for `tool_use` blocks and
-        //      do not depend on strict text ↔ tool interleaving for
-        //      correctness of tool execution or result routing.
-        //
-        // If a future client requires strict part-order fidelity in the
-        // streaming path, the fix is to track each part's original index,
-        // segment the accumulated text into multiple content blocks at
-        // tool-call boundaries, and flush in original order.
-        // ------------------------------------------------------------------
-        let tool_calls = tool_call_snapshots;
-        for tool_call in &tool_calls {
-            let index = next_content_index;
-            next_content_index += 1;
-
-            let start_event = gemini_stream_tool_block_start_event(index, tool_call);
-            yield Ok(encode_sse("content_block_start", &start_event));
-
-            let delta_event = gemini_stream_tool_input_delta_event(index, &tool_call.args);
-            yield Ok(encode_sse("content_block_delta", &delta_event));
-
-            let stop_event = gemini_stream_content_block_stop_event(index);
-            yield Ok(encode_sse("content_block_stop", &stop_event));
+        for event in final_output.events {
+            yield Ok(encode_core_event(&event));
         }
-
-        let message_delta = gemini_stream_message_delta_event(
-            latest_finish_reason.as_deref(),
-            !tool_calls.is_empty(),
-            blocked_text.is_some(),
-            latest_usage.as_ref(),
-        );
-        yield Ok(encode_sse("message_delta", &message_delta));
-
-        let message_stop = gemini_stream_message_stop_event();
-        yield Ok(encode_sse("message_stop", &message_stop));
     }
 }
 
@@ -307,6 +116,7 @@ mod tests {
     use super::*;
     use crate::proxy::providers::transform_gemini::anthropic_to_gemini_with_shadow;
     use crate::proxy_core::GeminiShadowStore;
+    use serde_json::json;
     use std::sync::Arc;
 
     fn collect_stream_output(chunks: Vec<&str>) -> String {

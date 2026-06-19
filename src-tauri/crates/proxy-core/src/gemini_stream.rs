@@ -10,6 +10,7 @@ use crate::response_transform::{
 };
 use crate::usage::build_anthropic_usage_from_gemini;
 use serde_json::{json, Value};
+use std::collections::HashSet;
 
 /// Prefix used for Anthropic-visible tool call ids synthesized when Gemini's
 /// `functionCall` omits an id.
@@ -27,6 +28,296 @@ pub struct GeminiStreamPartsUpdate {
     pub text_thought_signature: Option<String>,
     pub tool_calls: Vec<GeminiToolCallMeta>,
     pub rectified_tool_names: Vec<String>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct GeminiStreamSseEvent {
+    pub event_name: &'static str,
+    pub payload: Value,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct GeminiStreamChunkOutput {
+    pub events: Vec<GeminiStreamSseEvent>,
+    pub rectified_tool_names: Vec<String>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct GeminiStreamShadowRecord {
+    pub assistant_content: Value,
+    pub tool_calls: Vec<GeminiToolCallMeta>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct GeminiStreamFinalOutput {
+    pub events: Vec<GeminiStreamSseEvent>,
+    pub shadow_record: Option<GeminiStreamShadowRecord>,
+}
+
+#[derive(Debug, Default)]
+pub struct GeminiToAnthropicSseState {
+    message_id: Option<String>,
+    current_model: Option<String>,
+    has_sent_message_start: bool,
+    accumulated_text: String,
+    text_block_index: Option<u32>,
+    next_content_index: u32,
+    open_indices: HashSet<u32>,
+    tool_call_snapshots: Vec<GeminiToolCallMeta>,
+    text_thought_signature: Option<String>,
+    latest_usage: Option<Value>,
+    latest_finish_reason: Option<String>,
+    blocked_text: Option<String>,
+}
+
+impl GeminiToAnthropicSseState {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    pub fn handle_chunk<F>(
+        &mut self,
+        chunk_json: &Value,
+        tool_schema_hints: Option<&AnthropicToolSchemaHints>,
+        synthesize_tool_call_id: F,
+    ) -> GeminiStreamChunkOutput
+    where
+        F: FnMut() -> String,
+    {
+        let mut output = GeminiStreamChunkOutput {
+            events: Vec::new(),
+            rectified_tool_names: Vec::new(),
+        };
+
+        if self.message_id.is_none() {
+            self.message_id = chunk_json
+                .get("responseId")
+                .and_then(|value| value.as_str())
+                .map(ToString::to_string);
+        }
+        if self.current_model.is_none() {
+            self.current_model = chunk_json
+                .get("modelVersion")
+                .and_then(|value| value.as_str())
+                .map(ToString::to_string);
+        }
+        if self.latest_usage.is_none() {
+            self.latest_usage = chunk_json.get("usageMetadata").cloned();
+        }
+
+        self.ensure_message_start(chunk_json.get("usageMetadata"), &mut output.events);
+
+        if let Some(reason) = chunk_json
+            .get("promptFeedback")
+            .and_then(|value| value.get("blockReason"))
+            .and_then(|value| value.as_str())
+        {
+            self.blocked_text = Some(format!("Request blocked by Gemini safety filters: {reason}"));
+        }
+
+        let Some(candidate) = chunk_json
+            .get("candidates")
+            .and_then(|value| value.as_array())
+            .and_then(|value| value.first())
+        else {
+            return output;
+        };
+
+        if let Some(reason) = candidate.get("finishReason").and_then(|value| value.as_str()) {
+            self.latest_finish_reason = Some(reason.to_string());
+        }
+        if let Some(usage) = chunk_json.get("usageMetadata") {
+            self.latest_usage = Some(usage.clone());
+        }
+
+        let Some(parts) = candidate
+            .get("content")
+            .and_then(|value| value.get("parts"))
+            .and_then(|value| value.as_array())
+        else {
+            return output;
+        };
+
+        let parts_update = analyze_gemini_stream_parts(parts, tool_schema_hints);
+        output.rectified_tool_names = parts_update.rectified_tool_names;
+
+        if let Some(signature) = parts_update.text_thought_signature {
+            self.text_thought_signature = Some(signature);
+        }
+        merge_gemini_tool_call_snapshots(
+            &mut self.tool_call_snapshots,
+            parts_update.tool_calls,
+            synthesize_tool_call_id,
+        );
+
+        self.push_visible_text(parts_update.visible_text, &mut output.events);
+        output
+    }
+
+    pub fn finish(mut self) -> GeminiStreamFinalOutput {
+        let mut events = Vec::new();
+
+        if !self.has_sent_message_start {
+            self.ensure_message_start(self.latest_usage.clone().as_ref(), &mut events);
+        }
+
+        if self.accumulated_text.is_empty() {
+            if let Some(blocked_text) = self.blocked_text.clone() {
+                let index = self.text_block_index.unwrap_or_else(|| self.allocate_content_index());
+                self.text_block_index = Some(index);
+                if !self.open_indices.contains(&index) {
+                    events.push(event(
+                        "content_block_start",
+                        gemini_stream_text_block_start_event(index),
+                    ));
+                    self.open_indices.insert(index);
+                }
+                events.push(event(
+                    "content_block_delta",
+                    gemini_stream_text_delta_event(index, blocked_text),
+                ));
+            }
+        }
+
+        if let Some(index) = self.text_block_index {
+            if self.open_indices.remove(&index) {
+                events.push(event(
+                    "content_block_stop",
+                    gemini_stream_content_block_stop_event(index),
+                ));
+            }
+        }
+
+        let tool_calls = std::mem::take(&mut self.tool_call_snapshots);
+        let shadow_record = self.build_shadow_record(&tool_calls);
+
+        // Known trade-off: Gemini's cumulative stream may interleave text and
+        // tool calls, but we emit all `tool_use` blocks after the final text
+        // block. Target Anthropic-compatible clients consume tool calls by
+        // scanning blocks and do not depend on strict text/tool interleaving.
+        for tool_call in &tool_calls {
+            let index = self.allocate_content_index();
+            events.push(event(
+                "content_block_start",
+                gemini_stream_tool_block_start_event(index, tool_call),
+            ));
+            events.push(event(
+                "content_block_delta",
+                gemini_stream_tool_input_delta_event(index, &tool_call.args),
+            ));
+            events.push(event(
+                "content_block_stop",
+                gemini_stream_content_block_stop_event(index),
+            ));
+        }
+
+        events.push(event(
+            "message_delta",
+            gemini_stream_message_delta_event(
+                self.latest_finish_reason.as_deref(),
+                !tool_calls.is_empty(),
+                self.blocked_text.is_some(),
+                self.latest_usage.as_ref(),
+            ),
+        ));
+        events.push(event("message_stop", gemini_stream_message_stop_event()));
+
+        GeminiStreamFinalOutput {
+            events,
+            shadow_record,
+        }
+    }
+
+    fn ensure_message_start(
+        &mut self,
+        usage: Option<&Value>,
+        events: &mut Vec<GeminiStreamSseEvent>,
+    ) {
+        if self.has_sent_message_start {
+            return;
+        }
+
+        events.push(event(
+            "message_start",
+            gemini_stream_message_start_event(
+                self.message_id.as_deref(),
+                self.current_model.as_deref(),
+                usage,
+            ),
+        ));
+        self.has_sent_message_start = true;
+    }
+
+    fn push_visible_text(&mut self, visible_text: String, events: &mut Vec<GeminiStreamSseEvent>) {
+        if visible_text.is_empty() {
+            return;
+        }
+
+        let is_cumulative = visible_text.starts_with(&self.accumulated_text);
+        let delta = if is_cumulative {
+            visible_text[self.accumulated_text.len()..].to_string()
+        } else {
+            visible_text.clone()
+        };
+
+        if delta.is_empty() {
+            return;
+        }
+
+        let index = self
+            .text_block_index
+            .unwrap_or_else(|| self.allocate_content_index());
+        self.text_block_index = Some(index);
+
+        if !self.open_indices.contains(&index) {
+            events.push(event(
+                "content_block_start",
+                gemini_stream_text_block_start_event(index),
+            ));
+            self.open_indices.insert(index);
+        }
+
+        events.push(event(
+            "content_block_delta",
+            gemini_stream_text_delta_event(index, delta.as_str()),
+        ));
+
+        if is_cumulative {
+            self.accumulated_text = visible_text;
+        } else {
+            self.accumulated_text.push_str(&delta);
+        }
+    }
+
+    fn build_shadow_record(
+        &self,
+        tool_calls: &[GeminiToolCallMeta],
+    ) -> Option<GeminiStreamShadowRecord> {
+        let shadow_text = if self.accumulated_text.is_empty() {
+            self.blocked_text.as_deref()
+        } else {
+            Some(self.accumulated_text.as_str())
+        };
+        let shadow_parts = build_gemini_stream_shadow_assistant_parts(
+            shadow_text,
+            self.text_thought_signature.as_deref(),
+            tool_calls,
+        );
+        if shadow_parts.is_empty() {
+            return None;
+        }
+
+        Some(GeminiStreamShadowRecord {
+            assistant_content: json!({ "parts": shadow_parts }),
+            tool_calls: tool_calls.to_vec(),
+        })
+    }
+
+    fn allocate_content_index(&mut self) -> u32 {
+        let assigned = self.next_content_index;
+        self.next_content_index += 1;
+        assigned
+    }
 }
 
 pub fn analyze_gemini_stream_parts(
@@ -235,6 +526,13 @@ pub fn gemini_stream_message_stop_event() -> Value {
     json!({ "type": "message_stop" })
 }
 
+fn event(event_name: &'static str, payload: Value) -> GeminiStreamSseEvent {
+    GeminiStreamSseEvent {
+        event_name,
+        payload,
+    }
+}
+
 fn extract_visible_text(parts: &[Value]) -> String {
     parts
         .iter()
@@ -291,6 +589,20 @@ mod tests {
     fn next_synth(counter: &mut usize) -> String {
         *counter += 1;
         format!("{GEMINI_SYNTHESIZED_TOOL_CALL_ID_PREFIX}{counter}")
+    }
+
+    fn render_events(events: &[GeminiStreamSseEvent]) -> String {
+        events
+            .iter()
+            .map(|event| {
+                format!(
+                    "event: {}\ndata: {}\n\n",
+                    event.event_name,
+                    serde_json::to_string(&event.payload).unwrap()
+                )
+            })
+            .collect::<Vec<_>>()
+            .join("")
     }
 
     #[test]
@@ -451,5 +763,117 @@ mod tests {
         assert_eq!(message_delta["delta"]["stop_reason"], "tool_use");
 
         assert_eq!(gemini_stream_message_stop_event()["type"], "message_stop");
+    }
+
+    #[test]
+    fn state_emits_cumulative_text_deltas_and_final_stop() {
+        let mut state = GeminiToAnthropicSseState::new();
+        let first = state.handle_chunk(
+            &json!({
+                "responseId": "resp_1",
+                "modelVersion": "gemini-2.5-pro",
+                "candidates": [{
+                    "content": { "parts": [{ "text": "Hel" }] }
+                }],
+                "usageMetadata": { "promptTokenCount": 10, "totalTokenCount": 13 }
+            }),
+            None,
+            || "unused".to_string(),
+        );
+        let second = state.handle_chunk(
+            &json!({
+                "responseId": "resp_1",
+                "modelVersion": "gemini-2.5-pro",
+                "candidates": [{
+                    "finishReason": "STOP",
+                    "content": { "parts": [{ "text": "Hello" }] }
+                }],
+                "usageMetadata": { "promptTokenCount": 10, "totalTokenCount": 15 }
+            }),
+            None,
+            || "unused".to_string(),
+        );
+        let final_output = state.finish();
+        let mut events = first.events;
+        events.extend(second.events);
+        events.extend(final_output.events);
+        let output = render_events(&events);
+
+        assert!(output.contains("\"id\":\"resp_1\""));
+        assert!(output.contains("\"model\":\"gemini-2.5-pro\""));
+        assert!(output.contains("\"text\":\"Hel\""));
+        assert!(output.contains("\"text\":\"lo\""));
+        assert!(output.contains("\"stop_reason\":\"end_turn\""));
+        assert!(output.contains("event: message_stop"));
+    }
+
+    #[test]
+    fn state_records_shadow_before_tool_events() {
+        let mut state = GeminiToAnthropicSseState::new();
+        let mut counter = 0;
+        let chunk_output = state.handle_chunk(
+            &json!({
+                "responseId": "resp_tool",
+                "modelVersion": "gemini-2.5-pro",
+                "candidates": [{
+                    "finishReason": "STOP",
+                    "content": {
+                        "parts": [{
+                            "functionCall": {
+                                "name": "Bash",
+                                "args": { "command": "git status" }
+                            },
+                            "thoughtSignature": "sig-tool"
+                        }]
+                    }
+                }],
+                "usageMetadata": { "promptTokenCount": 5, "totalTokenCount": 8 }
+            }),
+            None,
+            || next_synth(&mut counter),
+        );
+        let final_output = state.finish();
+
+        assert_eq!(chunk_output.events[0].event_name, "message_start");
+        let shadow_record = final_output
+            .shadow_record
+            .expect("tool call must be shadow-recorded");
+        assert_eq!(
+            shadow_record.assistant_content["parts"][0]["functionCall"]["name"],
+            "Bash"
+        );
+        assert_eq!(
+            shadow_record.assistant_content["parts"][0]["thoughtSignature"],
+            "sig-tool"
+        );
+
+        let rendered = render_events(&final_output.events);
+        assert!(rendered.contains("\"type\":\"tool_use\""));
+        assert!(rendered.contains("\"stop_reason\":\"tool_use\""));
+    }
+
+    #[test]
+    fn state_emits_blocked_prompt_text_when_no_content_arrives() {
+        let mut state = GeminiToAnthropicSseState::new();
+        state.handle_chunk(
+            &json!({
+                "responseId": "resp_blocked",
+                "modelVersion": "gemini-2.5-pro",
+                "promptFeedback": { "blockReason": "SAFETY" },
+                "usageMetadata": { "promptTokenCount": 3, "totalTokenCount": 3 }
+            }),
+            None,
+            || "unused".to_string(),
+        );
+
+        let final_output = state.finish();
+        let output = render_events(&final_output.events);
+
+        assert!(output.contains("Request blocked by Gemini safety filters: SAFETY"));
+        assert!(output.contains("\"stop_reason\":\"refusal\""));
+        assert_eq!(
+            final_output.shadow_record.unwrap().assistant_content["parts"][0]["text"],
+            "Request blocked by Gemini safety filters: SAFETY"
+        );
     }
 }
