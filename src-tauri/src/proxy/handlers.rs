@@ -46,7 +46,7 @@ use crate::proxy_core::{
     openai_chat_to_anthropic_message, openai_responses_to_anthropic_message,
     parse_upstream_json_or_unlabeled_sse, rebuilt_json_proxy_response,
     resolve_management_auth_decision, should_aggregate_codex_oauth_responses_sse,
-    should_use_claude_transform_streaming, transformed_response_usage,
+    should_use_claude_transform_streaming, strip_endpoint_prefix, transformed_response_usage,
     transformed_sse_proxy_response, validate_claude_desktop_gateway_bearer_header,
     validate_management_app_type, validate_management_bearer_header,
     validate_route_resolve_app_type, AppChannelListQuery, AppChannelListResponse,
@@ -680,9 +680,7 @@ async fn handle_messages_for_app(
         .path_and_query()
         .map(|path_and_query| path_and_query.as_str())
         .unwrap_or(uri.path());
-    let endpoint = strip_prefix
-        .and_then(|prefix| raw_endpoint.strip_prefix(prefix))
-        .unwrap_or(raw_endpoint);
+    let endpoint = strip_endpoint_prefix(raw_endpoint, strip_prefix);
 
     let is_stream = body
         .get("stream")

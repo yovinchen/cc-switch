@@ -80,6 +80,12 @@ pub fn append_query_to_endpoint_path(endpoint: &str, query: Option<&str>) -> Str
     append_query_to_full_url(endpoint, query)
 }
 
+pub fn strip_endpoint_prefix<'a>(endpoint: &'a str, prefix: Option<&str>) -> &'a str {
+    prefix
+        .and_then(|prefix| endpoint.strip_prefix(prefix))
+        .unwrap_or(endpoint)
+}
+
 pub fn is_github_copilot_upstream(provider_type: Option<&str>, base_url: &str) -> bool {
     matches!(provider_type, Some("github_copilot")) || base_url.contains("githubcopilot.com")
 }
@@ -319,7 +325,8 @@ mod tests {
         rewrite_claude_transform_endpoint, rewrite_codex_responses_endpoint_to_chat,
         resolve_codex_provider_uses_chat_completions,
         should_convert_codex_responses_endpoint_to_chat, should_resolve_copilot_dynamic_endpoint,
-        split_endpoint_and_query, strip_beta_query, AppKind, ClaudeTransformEndpointRewriteInput,
+        split_endpoint_and_query, strip_beta_query, strip_endpoint_prefix, AppKind,
+        ClaudeTransformEndpointRewriteInput,
     };
     use serde_json::json;
 
@@ -379,6 +386,19 @@ mod tests {
             "/responses?existing=true&x-id=1"
         );
         assert_eq!(append_query_to_endpoint_path("/responses/compact", None), "/responses/compact");
+    }
+
+    #[test]
+    fn strip_endpoint_prefix_preserves_suffix_and_query() {
+        assert_eq!(
+            strip_endpoint_prefix("/claude-desktop/v1/messages?x-id=1", Some("/claude-desktop")),
+            "/v1/messages?x-id=1"
+        );
+        assert_eq!(
+            strip_endpoint_prefix("/v1/messages?x-id=1", Some("/claude-desktop")),
+            "/v1/messages?x-id=1"
+        );
+        assert_eq!(strip_endpoint_prefix("/v1/messages", None), "/v1/messages");
     }
 
     #[test]
