@@ -8,14 +8,16 @@ use crate::proxy::error::ProxyError;
 use crate::proxy_core::{
     AnthropicToolSchemaHints, GeminiAssistantTurn, GeminiShadowStore,
     build_anthropic_usage_from_gemini, build_gemini_function_declaration,
-    build_gemini_generation_config, build_gemini_system_instruction,
+    build_gemini_generation_config, build_gemini_shadow_thought_signature_map,
+    build_gemini_shadow_tool_name_map, build_gemini_system_instruction,
     ensure_gemini_function_call_ids,
     extract_anthropic_tool_schema_hints as core_extract_anthropic_tool_schema_hints,
     extract_gemini_function_call_meta, find_matching_gemini_shadow_turn,
     gemini_shadow_replay_parts, is_synthesized_gemini_tool_call_id,
     map_gemini_finish_reason_to_anthropic, map_gemini_tool_choice_to_config,
-    normalize_gemini_tool_result_response, rectify_gemini_tool_call_args,
-    rectify_gemini_tool_call_parts, synthesize_gemini_tool_call_id,
+    merge_gemini_function_call_names_from_parts, merge_gemini_shadow_thought_signatures,
+    merge_gemini_shadow_tool_names, normalize_gemini_tool_result_response,
+    rectify_gemini_tool_call_args, rectify_gemini_tool_call_parts, synthesize_gemini_tool_call_id,
 };
 use serde_json::{Value, json};
 use std::collections::{HashMap, HashSet};
@@ -273,8 +275,8 @@ fn convert_messages_to_contents(
     // Build tool name and thought_signature maps from shadow store.
     // These are used to resolve tool_result→functionResponse names and to
     // attach thought signatures when replaying tool_use→functionCall.
-    let mut tool_name_by_id = build_tool_name_map_from_shadow_turns(shadow_turns);
-    let mut thought_signature_by_id = build_thought_signature_map_from_shadow_turns(shadow_turns);
+    let mut tool_name_by_id = build_gemini_shadow_tool_name_map(shadow_turns);
+    let mut thought_signature_by_id = build_gemini_shadow_thought_signature_map(shadow_turns);
 
     // Pre-scan all assistant messages in the request body to seed
     // tool_name_by_id with every tool_use id mentioned in the conversation
@@ -330,8 +332,8 @@ fn convert_messages_to_contents(
             if let Some(index) = shadow_index {
                 used_shadow_indices.insert(index);
                 let shadow_turn = &effective_shadow_turns[index];
-                merge_tool_names_from_shadow(shadow_turn, &mut tool_name_by_id);
-                merge_thought_signatures_from_shadow(shadow_turn, &mut thought_signature_by_id);
+                merge_gemini_shadow_tool_names(shadow_turn, &mut tool_name_by_id);
+                merge_gemini_shadow_thought_signatures(shadow_turn, &mut thought_signature_by_id);
                 if let Some(parts) = gemini_shadow_replay_parts(&shadow_turn.assistant_content) {
                     parts
                 } else {
@@ -360,7 +362,7 @@ fn convert_messages_to_contents(
         };
 
         if role == "assistant" {
-            merge_tool_names_from_parts(&parts, &mut tool_name_by_id);
+            merge_gemini_function_call_names_from_parts(&parts, &mut tool_name_by_id);
         }
 
         contents.push(json!({
@@ -375,8 +377,8 @@ fn convert_messages_to_contents(
 fn convert_message_content_to_parts(
     content: Option<&Value>,
     role: &str,
-    tool_name_by_id: &mut std::collections::HashMap<String, String>,
-    thought_signature_by_id: &std::collections::HashMap<String, String>,
+    tool_name_by_id: &mut HashMap<String, String>,
+    thought_signature_by_id: &HashMap<String, String>,
 ) -> Result<Vec<Value>, ProxyError> {
     let Some(content) = content else {
         return Ok(Vec::new());
@@ -561,69 +563,6 @@ pub fn rectify_tool_call_args(
     tool_schema_hints: Option<&AnthropicToolSchemaHints>,
 ) -> bool {
     rectify_gemini_tool_call_args(tool_name, args, tool_schema_hints)
-}
-
-fn merge_tool_names_from_shadow(
-    turn: &GeminiAssistantTurn,
-    tool_name_by_id: &mut HashMap<String, String>,
-) {
-    for tool_call in &turn.tool_calls {
-        if let Some(id) = &tool_call.id {
-            tool_name_by_id.insert(id.clone(), tool_call.name.clone());
-        }
-    }
-
-    if let Some(parts) = gemini_shadow_replay_parts(&turn.assistant_content) {
-        merge_tool_names_from_parts(&parts, tool_name_by_id);
-    }
-}
-
-fn build_tool_name_map_from_shadow_turns(
-    shadow_turns: &[GeminiAssistantTurn],
-) -> HashMap<String, String> {
-    let mut tool_name_by_id = HashMap::new();
-    for turn in shadow_turns {
-        merge_tool_names_from_shadow(turn, &mut tool_name_by_id);
-    }
-    tool_name_by_id
-}
-
-fn build_thought_signature_map_from_shadow_turns(
-    shadow_turns: &[GeminiAssistantTurn],
-) -> HashMap<String, String> {
-    let mut thought_signature_by_id = HashMap::new();
-    for turn in shadow_turns {
-        merge_thought_signatures_from_shadow(turn, &mut thought_signature_by_id);
-    }
-    thought_signature_by_id
-}
-
-fn merge_thought_signatures_from_shadow(
-    turn: &GeminiAssistantTurn,
-    thought_signature_by_id: &mut HashMap<String, String>,
-) {
-    for tool_call in &turn.tool_calls {
-        if let (Some(id), Some(sig)) = (&tool_call.id, &tool_call.thought_signature) {
-            thought_signature_by_id.insert(id.clone(), sig.clone());
-        }
-    }
-}
-
-fn merge_tool_names_from_parts(parts: &[Value], tool_name_by_id: &mut HashMap<String, String>) {
-    for part in parts {
-        let Some(function_call) = part.get("functionCall") else {
-            continue;
-        };
-        let Some(id) = function_call.get("id").and_then(|value| value.as_str()) else {
-            continue;
-        };
-        let Some(name) = function_call.get("name").and_then(|value| value.as_str()) else {
-            continue;
-        };
-        if !id.is_empty() && !name.is_empty() {
-            tool_name_by_id.insert(id.to_string(), name.to_string());
-        }
-    }
 }
 
 #[cfg(test)]

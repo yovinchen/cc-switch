@@ -3,7 +3,9 @@
 //! These helpers keep Gemini cumulative `content.parts` interpretation and
 //! stream transport conversion in the host-neutral core.
 
-use crate::gemini_shadow::{GeminiShadowSessionSnapshot, GeminiShadowStore, GeminiToolCallMeta};
+use crate::gemini_shadow::{
+    GeminiAssistantTurn, GeminiShadowSessionSnapshot, GeminiShadowStore, GeminiToolCallMeta,
+};
 use crate::gemini_tool_args::{AnthropicToolSchemaHints, rectify_gemini_tool_call_parts};
 use crate::response_transform::{
     build_anthropic_message_delta_event, map_gemini_finish_reason_to_anthropic,
@@ -14,7 +16,7 @@ use bytes::Bytes;
 use futures::{Stream, StreamExt, stream as futures_stream};
 use serde_json::{Value, json};
 use std::{
-    collections::{HashSet, VecDeque},
+    collections::{HashMap, HashSet, VecDeque},
     error::Error,
     io,
     pin::Pin,
@@ -73,6 +75,72 @@ pub fn gemini_shadow_replay_parts(content: &Value) -> Option<Vec<Value>> {
     }
 
     Some(parts)
+}
+
+pub fn merge_gemini_function_call_names_from_parts(
+    parts: &[Value],
+    tool_name_by_id: &mut HashMap<String, String>,
+) {
+    for part in parts {
+        let Some(function_call) = part.get("functionCall") else {
+            continue;
+        };
+        let Some(id) = function_call.get("id").and_then(|value| value.as_str()) else {
+            continue;
+        };
+        let Some(name) = function_call.get("name").and_then(|value| value.as_str()) else {
+            continue;
+        };
+        if !id.is_empty() && !name.is_empty() {
+            tool_name_by_id.insert(id.to_string(), name.to_string());
+        }
+    }
+}
+
+pub fn merge_gemini_shadow_tool_names(
+    turn: &GeminiAssistantTurn,
+    tool_name_by_id: &mut HashMap<String, String>,
+) {
+    for tool_call in &turn.tool_calls {
+        if let Some(id) = &tool_call.id {
+            tool_name_by_id.insert(id.clone(), tool_call.name.clone());
+        }
+    }
+
+    if let Some(parts) = gemini_shadow_replay_parts(&turn.assistant_content) {
+        merge_gemini_function_call_names_from_parts(&parts, tool_name_by_id);
+    }
+}
+
+pub fn build_gemini_shadow_tool_name_map(
+    shadow_turns: &[GeminiAssistantTurn],
+) -> HashMap<String, String> {
+    let mut tool_name_by_id = HashMap::new();
+    for turn in shadow_turns {
+        merge_gemini_shadow_tool_names(turn, &mut tool_name_by_id);
+    }
+    tool_name_by_id
+}
+
+pub fn merge_gemini_shadow_thought_signatures(
+    turn: &GeminiAssistantTurn,
+    thought_signature_by_id: &mut HashMap<String, String>,
+) {
+    for tool_call in &turn.tool_calls {
+        if let (Some(id), Some(sig)) = (&tool_call.id, &tool_call.thought_signature) {
+            thought_signature_by_id.insert(id.clone(), sig.clone());
+        }
+    }
+}
+
+pub fn build_gemini_shadow_thought_signature_map(
+    shadow_turns: &[GeminiAssistantTurn],
+) -> HashMap<String, String> {
+    let mut thought_signature_by_id = HashMap::new();
+    for turn in shadow_turns {
+        merge_gemini_shadow_thought_signatures(turn, &mut thought_signature_by_id);
+    }
+    thought_signature_by_id
 }
 
 /// Ensure every Gemini `functionCall` part has a non-empty Anthropic-visible id.
@@ -996,6 +1064,60 @@ mod tests {
         .expect("parts");
 
         assert!(parts[0]["functionCall"].get("id").is_none());
+    }
+
+    #[test]
+    fn shadow_tool_name_map_uses_metadata_and_replay_parts() {
+        let turn = GeminiAssistantTurn::new(
+            json!({
+                "parts": [
+                    {"functionCall": {"id": "call_from_parts", "name": "from_parts", "args": {}}},
+                    {"functionCall": {"id": "gemini_synth_1", "name": "internal", "args": {}}}
+                ]
+            }),
+            vec![GeminiToolCallMeta::new(
+                Some("call_from_meta"),
+                "from_meta",
+                json!({}),
+                None::<String>,
+            )],
+        );
+
+        let names = build_gemini_shadow_tool_name_map(&[turn]);
+
+        assert_eq!(
+            names.get("call_from_meta").map(String::as_str),
+            Some("from_meta")
+        );
+        assert_eq!(
+            names.get("call_from_parts").map(String::as_str),
+            Some("from_parts")
+        );
+        assert!(!names.contains_key("gemini_synth_1"));
+    }
+
+    #[test]
+    fn shadow_thought_signature_map_uses_tool_call_metadata() {
+        let turn = GeminiAssistantTurn::new(
+            json!({"parts": []}),
+            vec![
+                GeminiToolCallMeta::new(Some("call_sig"), "with_sig", json!({}), Some("sig-1")),
+                GeminiToolCallMeta::new(
+                    Some("call_no_sig"),
+                    "without_sig",
+                    json!({}),
+                    None::<String>,
+                ),
+            ],
+        );
+
+        let signatures = build_gemini_shadow_thought_signature_map(&[turn]);
+
+        assert_eq!(
+            signatures.get("call_sig").map(String::as_str),
+            Some("sig-1")
+        );
+        assert!(!signatures.contains_key("call_no_sig"));
     }
 
     #[test]
