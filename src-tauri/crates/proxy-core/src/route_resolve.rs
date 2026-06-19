@@ -1,6 +1,6 @@
 use super::domain::{
     claude_api_format_for_interface_kind, codex_api_format_for_interface_kind, AppKind,
-    ChannelSpec, ModelRoute, RouteSelection, DEFAULT_ROUTE_GROUP,
+    ChannelSpec, ModelRoute, ResolvedChannelAttempt, RouteSelection, DEFAULT_ROUTE_GROUP,
 };
 use super::error::{ProxyCoreError, ProxyCoreResult};
 use super::ports::{
@@ -84,6 +84,19 @@ pub fn route_candidate_from_selection(
         priority: selection.channel.priority,
         weight: selection.channel.weight,
         source_kind: source_kind.into(),
+    }
+}
+
+pub fn resolved_channel_attempt_from_candidate(
+    candidate: ChannelRouteCandidate,
+) -> ResolvedChannelAttempt {
+    ResolvedChannelAttempt {
+        channel_id: candidate.channel_id,
+        channel_name: candidate.channel_name,
+        base_url: candidate.base_url,
+        interface_kind: candidate.interface_kind,
+        public_model: candidate.public_model,
+        upstream_model: candidate.upstream_model,
     }
 }
 
@@ -464,6 +477,34 @@ mod tests {
         assert_eq!(candidate.priority, 50);
         assert_eq!(candidate.weight, 20);
         assert_eq!(candidate.source_kind, "proxy_core");
+    }
+
+    #[test]
+    fn maps_route_candidate_to_resolved_channel_attempt() {
+        let attempt = resolved_channel_attempt_from_candidate(route_candidate_from_selection(
+            &selection(),
+            "paid",
+            "proxy_core",
+        ));
+
+        assert_eq!(attempt.channel_id, "channel-a");
+        assert_eq!(attempt.channel_name, "Channel A");
+        assert_eq!(attempt.base_url, "https://relay.example.com/v1");
+        assert_eq!(attempt.interface_kind, "openai_responses");
+        assert_eq!(attempt.public_model.as_deref(), Some("sonnet-public"));
+        assert_eq!(attempt.upstream_model.as_deref(), Some("upstream-sonnet"));
+
+        assert_eq!(
+            serde_json::to_value(&attempt).expect("serialize channel attempt"),
+            json!({
+                "channelId": "channel-a",
+                "channelName": "Channel A",
+                "baseUrl": "https://relay.example.com/v1",
+                "interfaceKind": "openai_responses",
+                "publicModel": "sonnet-public",
+                "upstreamModel": "upstream-sonnet"
+            })
+        );
     }
 
     #[test]

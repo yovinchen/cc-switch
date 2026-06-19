@@ -1511,7 +1511,7 @@ mod tests {
             ),
             claude_api_format: None,
             outbound_model: None,
-            selected_channel: Some(crate::proxy::route_attempt::ChannelAttempt {
+            selected_channel: Some(crate::proxy_core::ResolvedChannelAttempt {
                 channel_id: "channel-b".to_string(),
                 channel_name: "Channel B".to_string(),
                 base_url: "https://fallback.example.com/v1".to_string(),

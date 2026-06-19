@@ -558,6 +558,19 @@ pub struct ChannelAttemptResult {
     pub error_code: Option<String>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ResolvedChannelAttempt {
+    pub channel_id: String,
+    pub channel_name: String,
+    pub base_url: String,
+    pub interface_kind: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub public_model: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub upstream_model: Option<String>,
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RouteGroup {
