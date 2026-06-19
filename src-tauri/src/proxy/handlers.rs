@@ -56,10 +56,10 @@ use crate::proxy_core::{
     HealthCheckResponse, InterfaceKind, ManagementAuthDecision, ProviderListResponse,
     ProviderSummaryInput, ProxyBody, ProxyChannelModelsReplaceRequest, ProxyChannelPatchRequest,
     ProxyChannelWriteRequest, ProxyEngine, ProxyRequest, ProxyResult, ProxyServices,
-    RoutableModelList, RouteGroupChannelInput, RouteGroupListResponse, RouteGroupSourceInput,
-    RouteResolveRequest, RouteResolveResponse, TokenUsage, TransformedResponseUsageFormat,
-    UpstreamJsonBodySource, UpstreamSseAggregationKind, CLAUDE_PARSER_CONFIG, CODEX_PARSER_CONFIG,
-    GEMINI_PARSER_CONFIG, OPENAI_PARSER_CONFIG,
+    RoutableModelList, RouteGroupListResponse, RouteGroupSourceInput, RouteResolveRequest,
+    RouteResolveResponse, TokenUsage, TransformedResponseUsageFormat, UpstreamJsonBodySource,
+    UpstreamSseAggregationKind, CLAUDE_PARSER_CONFIG, CODEX_PARSER_CONFIG, GEMINI_PARSER_CONFIG,
+    OPENAI_PARSER_CONFIG,
 };
 use axum::{
     extract::{Path, Query, State},
@@ -457,13 +457,10 @@ pub async fn list_proxy_groups(
             .list_channels_for_app(app_type)
             .await
             .map_err(|e| ProxyError::DatabaseError(e.to_string()))?;
-        sources.push(RouteGroupSourceInput::new(
+        sources.push(RouteGroupSourceInput::from_route_source(
             app_type.clone(),
-            source.as_str(),
-            channels
-                .into_iter()
-                .map(|channel| RouteGroupChannelInput::new(channel.groups))
-                .collect(),
+            &source,
+            channels.into_iter().map(|channel| channel.groups),
         ));
     }
 

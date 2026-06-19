@@ -1103,6 +1103,21 @@ impl RouteGroupSourceInput {
             channels,
         }
     }
+
+    pub fn from_route_source(
+        app_type: impl Into<String>,
+        source: &ChannelRouteSource,
+        channel_groups: impl IntoIterator<Item = Vec<String>>,
+    ) -> Self {
+        Self::new(
+            app_type,
+            source.as_str(),
+            channel_groups
+                .into_iter()
+                .map(RouteGroupChannelInput::new)
+                .collect(),
+        )
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -1199,8 +1214,8 @@ mod tests {
         CurrentRouteProviderSummaryInput, CurrentRouteResponse, GroupListQuery,
         HealthCheckResponse, ProviderListResponse, ProviderSummaryInput,
         ProxyChannelModelWriteRequest, ProxyChannelModelsReplaceRequest, ProxyChannelPatchRequest,
-        ProxyChannelWriteRequest, RouteGroupChannelInput, RouteGroupListResponse,
-        RouteGroupSourceInput, RouteResolveResponse,
+        ProxyChannelWriteRequest, RouteGroupListResponse, RouteGroupSourceInput,
+        RouteResolveResponse,
     };
     use serde_json::json;
 
@@ -1681,21 +1696,15 @@ mod tests {
         let response = RouteGroupListResponse::from_sources(
             Some("claude".to_string()),
             vec![
-                RouteGroupSourceInput::new(
+                RouteGroupSourceInput::from_route_source(
                     "claude",
-                    "materialized_channels",
-                    vec![
-                        RouteGroupChannelInput::new(vec![]),
-                        RouteGroupChannelInput::new(vec!["beta".to_string()]),
-                    ],
+                    &ChannelRouteSource::MaterializedChannels,
+                    vec![vec![], vec!["beta".to_string()]],
                 ),
-                RouteGroupSourceInput::new(
+                RouteGroupSourceInput::from_route_source(
                     "codex",
-                    "legacy_projection",
-                    vec![RouteGroupChannelInput::new(vec![
-                        "default".to_string(),
-                        "paid".to_string(),
-                    ])],
+                    &ChannelRouteSource::LegacyProjection,
+                    vec![vec!["default".to_string(), "paid".to_string()]],
                 ),
             ],
         );
