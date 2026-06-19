@@ -4,8 +4,10 @@ use crate::{
         short_sha256_hex,
     },
     request_body::{
-        codex_chat_reasoning_requested, inject_openai_stream_include_usage,
-        map_codex_chat_reasoning_effort,
+        clean_openai_tool_schema, codex_chat_reasoning_requested,
+        inject_openai_stream_include_usage, map_anthropic_tool_choice_to_openai_responses,
+        map_codex_chat_reasoning_effort, resolve_reasoning_effort,
+        strip_leading_anthropic_billing_header, supports_reasoning_effort,
     },
     usage::build_anthropic_usage_from_openai_responses,
     UpstreamSseAggregationKind,
@@ -525,6 +527,214 @@ pub fn apply_codex_oauth_responses_request_contract(
 
         obj.insert("stream".to_string(), json!(true));
     }
+}
+
+pub fn anthropic_to_openai_responses_request(
+    body: &Value,
+    cache_key: Option<&str>,
+    is_codex_oauth: bool,
+    codex_fast_mode: bool,
+) -> Value {
+    let mut result = json!({});
+
+    if let Some(model) = body.get("model").and_then(Value::as_str) {
+        result["model"] = json!(model);
+    }
+
+    if let Some(system) = body.get("system") {
+        let instructions = if let Some(text) = system.as_str() {
+            strip_leading_anthropic_billing_header(text).to_string()
+        } else if let Some(arr) = system.as_array() {
+            arr.iter()
+                .filter_map(|msg| msg.get("text").and_then(Value::as_str))
+                .map(strip_leading_anthropic_billing_header)
+                .filter(|text| !text.is_empty())
+                .collect::<Vec<_>>()
+                .join("\n\n")
+        } else {
+            String::new()
+        };
+        if !instructions.is_empty() {
+            result["instructions"] = json!(instructions);
+        }
+    }
+
+    if let Some(messages) = body.get("messages").and_then(Value::as_array) {
+        result["input"] = json!(anthropic_messages_to_openai_responses_input(messages));
+    }
+
+    if let Some(max_tokens) = body.get("max_tokens") {
+        result["max_output_tokens"] = max_tokens.clone();
+    }
+
+    for passthrough in ["temperature", "top_p", "stream"] {
+        if let Some(value) = body.get(passthrough) {
+            result[passthrough] = value.clone();
+        }
+    }
+
+    if let Some(model) = body.get("model").and_then(Value::as_str) {
+        if supports_reasoning_effort(model) {
+            if let Some(effort) = resolve_reasoning_effort(body) {
+                result["reasoning"] = json!({ "effort": effort });
+            }
+        }
+    }
+
+    if let Some(tools) = body.get("tools").and_then(Value::as_array) {
+        let response_tools: Vec<Value> = tools
+            .iter()
+            .filter(|tool| tool.get("type").and_then(Value::as_str) != Some("BatchTool"))
+            .map(|tool| {
+                json!({
+                    "type": "function",
+                    "name": tool.get("name").and_then(Value::as_str).unwrap_or(""),
+                    "description": tool.get("description"),
+                    "parameters": clean_openai_tool_schema(
+                        tool.get("input_schema").cloned().unwrap_or(json!({}))
+                    )
+                })
+            })
+            .collect();
+
+        if !response_tools.is_empty() {
+            result["tools"] = json!(response_tools);
+        }
+    }
+
+    if let Some(tool_choice) = body.get("tool_choice") {
+        result["tool_choice"] = map_anthropic_tool_choice_to_openai_responses(tool_choice);
+    }
+
+    if let Some(key) = cache_key {
+        result["prompt_cache_key"] = json!(key);
+    }
+
+    if is_codex_oauth {
+        apply_codex_oauth_responses_request_contract(&mut result, body, codex_fast_mode);
+    }
+
+    result
+}
+
+fn anthropic_messages_to_openai_responses_input(messages: &[Value]) -> Vec<Value> {
+    let mut input = Vec::new();
+
+    for message in messages {
+        let role = message
+            .get("role")
+            .and_then(Value::as_str)
+            .unwrap_or("user");
+        let content = message.get("content");
+
+        match content {
+            Some(Value::String(text)) => {
+                let content_type = if role == "assistant" {
+                    "output_text"
+                } else {
+                    "input_text"
+                };
+                input.push(json!({
+                    "role": role,
+                    "content": [{ "type": content_type, "text": text }]
+                }));
+            }
+            Some(Value::Array(blocks)) => {
+                let mut message_content = Vec::new();
+
+                for block in blocks {
+                    let block_type = block.get("type").and_then(Value::as_str).unwrap_or("");
+
+                    match block_type {
+                        "text" => {
+                            if let Some(text) = block.get("text").and_then(Value::as_str) {
+                                let content_type = if role == "assistant" {
+                                    "output_text"
+                                } else {
+                                    "input_text"
+                                };
+                                message_content
+                                    .push(json!({ "type": content_type, "text": text }));
+                            }
+                        }
+                        "image" => {
+                            if let Some(source) = block.get("source") {
+                                let media_type = source
+                                    .get("media_type")
+                                    .and_then(Value::as_str)
+                                    .unwrap_or("image/png");
+                                let data =
+                                    source.get("data").and_then(Value::as_str).unwrap_or("");
+                                message_content.push(json!({
+                                    "type": "input_image",
+                                    "image_url": format!("data:{media_type};base64,{data}")
+                                }));
+                            }
+                        }
+                        "tool_use" => {
+                            if !message_content.is_empty() {
+                                input.push(json!({
+                                    "role": role,
+                                    "content": message_content.clone()
+                                }));
+                                message_content.clear();
+                            }
+
+                            let id = block.get("id").and_then(Value::as_str).unwrap_or("");
+                            let name = block.get("name").and_then(Value::as_str).unwrap_or("");
+                            let arguments = block.get("input").cloned().unwrap_or(json!({}));
+
+                            input.push(json!({
+                                "type": "function_call",
+                                "call_id": id,
+                                "name": name,
+                                "arguments": canonical_json_string(&arguments)
+                            }));
+                        }
+                        "tool_result" => {
+                            if !message_content.is_empty() {
+                                input.push(json!({
+                                    "role": role,
+                                    "content": message_content.clone()
+                                }));
+                                message_content.clear();
+                            }
+
+                            let call_id = block
+                                .get("tool_use_id")
+                                .and_then(Value::as_str)
+                                .unwrap_or("");
+                            let output = match block.get("content") {
+                                Some(Value::String(value)) => value.clone(),
+                                Some(value) => canonical_json_string(value),
+                                None => String::new(),
+                            };
+
+                            input.push(json!({
+                                "type": "function_call_output",
+                                "call_id": call_id,
+                                "output": output
+                            }));
+                        }
+                        "thinking" => {}
+                        _ => {}
+                    }
+                }
+
+                if !message_content.is_empty() {
+                    input.push(json!({
+                        "role": role,
+                        "content": message_content
+                    }));
+                }
+            }
+            _ => {
+                input.push(json!({ "role": role }));
+            }
+        }
+    }
+
+    input
 }
 
 pub fn responses_to_chat_completions_with_options(
@@ -2705,6 +2915,121 @@ mod tests {
         assert_eq!(result["tools"], json!([]));
         assert_eq!(result["parallel_tool_calls"], false);
         assert_eq!(result["stream"], true);
+    }
+
+    #[test]
+    fn converts_anthropic_message_to_openai_responses_request() {
+        let input = json!({
+            "model": "gpt-4o",
+            "max_tokens": 1024,
+            "messages": [{"role": "user", "content": "Hello"}],
+            "temperature": 0.2,
+            "top_p": 0.9
+        });
+
+        let result = anthropic_to_openai_responses_request(&input, None, false, false);
+
+        assert_eq!(result["model"], "gpt-4o");
+        assert_eq!(result["max_output_tokens"], 1024);
+        assert_eq!(result["input"][0]["role"], "user");
+        assert_eq!(result["input"][0]["content"][0]["type"], "input_text");
+        assert_eq!(result["input"][0]["content"][0]["text"], "Hello");
+        assert_eq!(result["temperature"], 0.2);
+        assert_eq!(result["top_p"], 0.9);
+        assert!(result.get("stop_sequences").is_none());
+    }
+
+    #[test]
+    fn converts_anthropic_tool_use_and_tool_result_to_openai_responses_items() {
+        let input = json!({
+            "model": "gpt-4o",
+            "messages": [
+                {
+                    "role": "assistant",
+                    "content": [
+                        {"type": "text", "text": "Calling tool"},
+                        {"type": "tool_use", "id": "call_1", "name": "get_weather", "input": {"location": "Tokyo"}}
+                    ]
+                },
+                {
+                    "role": "user",
+                    "content": [
+                        {"type": "tool_result", "tool_use_id": "call_1", "content": {"temperature": 22}}
+                    ]
+                }
+            ]
+        });
+
+        let result = anthropic_to_openai_responses_request(&input, None, false, false);
+
+        assert_eq!(result["input"][0]["role"], "assistant");
+        assert_eq!(result["input"][1]["type"], "function_call");
+        assert_eq!(result["input"][1]["call_id"], "call_1");
+        assert_eq!(result["input"][1]["name"], "get_weather");
+        assert_eq!(result["input"][1]["arguments"], "{\"location\":\"Tokyo\"}");
+        assert_eq!(result["input"][2]["type"], "function_call_output");
+        assert_eq!(result["input"][2]["call_id"], "call_1");
+        assert_eq!(result["input"][2]["output"], "{\"temperature\":22}");
+    }
+
+    #[test]
+    fn converts_anthropic_image_and_tools_to_openai_responses_request() {
+        let input = json!({
+            "model": "gpt-4o",
+            "messages": [{
+                "role": "user",
+                "content": [{
+                    "type": "image",
+                    "source": {"media_type": "image/jpeg", "data": "abc123"}
+                }]
+            }],
+            "tools": [{
+                "type": "custom",
+                "name": "ignored"
+            }, {
+                "type": "function",
+                "name": "search",
+                "description": "Search",
+                "input_schema": {"type": "object", "properties": {"url": {"type": "string", "format": "uri"}}}
+            }]
+        });
+
+        let result = anthropic_to_openai_responses_request(&input, Some("cache-key"), false, false);
+
+        assert_eq!(
+            result["input"][0]["content"][0]["image_url"],
+            "data:image/jpeg;base64,abc123"
+        );
+        assert_eq!(result["tools"][0]["name"], "ignored");
+        assert_eq!(result["tools"][1]["name"], "search");
+        assert!(result["tools"][1]["parameters"]["properties"]["url"]
+            .get("format")
+            .is_none());
+        assert_eq!(result["prompt_cache_key"], "cache-key");
+    }
+
+    #[test]
+    fn converts_anthropic_to_openai_responses_with_codex_oauth_contract() {
+        let input = json!({
+            "model": "gpt-5",
+            "max_tokens": 1024,
+            "temperature": 0.2,
+            "top_p": 0.9,
+            "stream": false,
+            "messages": [{"role": "user", "content": "Hello"}]
+        });
+
+        let result = anthropic_to_openai_responses_request(&input, None, true, true);
+
+        assert_eq!(result["store"], false);
+        assert_eq!(result["service_tier"], "priority");
+        assert_eq!(result["include"], json!(["reasoning.encrypted_content"]));
+        assert!(result.get("max_output_tokens").is_none());
+        assert!(result.get("temperature").is_none());
+        assert!(result.get("top_p").is_none());
+        assert_eq!(result["stream"], true);
+        assert_eq!(result["tools"], json!([]));
+        assert_eq!(result["parallel_tool_calls"], false);
     }
 
     #[test]
