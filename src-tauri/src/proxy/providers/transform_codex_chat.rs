@@ -19,10 +19,9 @@ pub(crate) use crate::proxy_core::{
     responses_client_tool_output_to_chat_tool_message, responses_content_to_chat_content,
     responses_custom_tool_call_to_chat_tool_call,
     responses_function_call_output_to_chat_tool_message,
-    responses_function_call_to_chat_tool_call as build_responses_function_call_chat_tool_call,
-    responses_instruction_text, responses_role_to_chat_role,
-    responses_tool_choice_to_chat_function_selector, responses_tool_search_call_to_chat_tool_call,
-    CodexChatReasoningOptions, CodexToolContext, CODEX_TOOL_SEARCH_PROXY_NAME,
+    responses_function_call_to_chat_tool_call_with_context, responses_instruction_text,
+    responses_role_to_chat_role, responses_tool_choice_to_chat_tool_choice,
+    responses_tool_search_call_to_chat_tool_call, CodexChatReasoningOptions, CodexToolContext,
 };
 use serde_json::{json, Value};
 
@@ -114,7 +113,8 @@ pub fn responses_to_chat_completions_with_reasoning(
     }
 
     if let Some(tool_choice) = body.get("tool_choice") {
-        result["tool_choice"] = responses_tool_choice_to_chat(tool_choice, &tool_context);
+        result["tool_choice"] =
+            responses_tool_choice_to_chat_tool_choice(tool_choice, &tool_context);
     }
 
     for key in EXTRA_CHAT_PASSTHROUGH_FIELDS {
@@ -221,7 +221,7 @@ fn append_responses_item_as_chat_message(
     match item_type {
         Some("function_call") => {
             append_unique_pending_reasoning(pending_reasoning, responses_item_reasoning_text(item));
-            pending_tool_calls.push(responses_function_call_to_chat_tool_call(
+            pending_tool_calls.push(responses_function_call_to_chat_tool_call_with_context(
                 item,
                 tool_context,
             ));
@@ -391,35 +391,6 @@ fn responses_item_reasoning_text(item: &Value) -> Option<String> {
 
 fn responses_reasoning_item_text(item: &Value) -> Option<String> {
     extract_reasoning_summary_text(item)
-}
-
-fn responses_function_call_to_chat_tool_call(
-    item: &Value,
-    tool_context: &CodexToolContext,
-) -> Value {
-    let name = item.get("name").and_then(|v| v.as_str()).unwrap_or("");
-    let namespace = item.get("namespace").and_then(|v| v.as_str());
-    let chat_name = tool_context.chat_name_for_response_function(name, namespace);
-    build_responses_function_call_chat_tool_call(item, &chat_name)
-}
-
-fn responses_tool_choice_to_chat(tool_choice: &Value, tool_context: &CodexToolContext) -> Value {
-    match tool_choice {
-        Value::Object(obj) if obj.get("type").and_then(|v| v.as_str()) == Some("function") => {
-            let name = obj.get("name").and_then(|v| v.as_str()).unwrap_or("");
-            let namespace = obj.get("namespace").and_then(|v| v.as_str());
-            let chat_name = tool_context.chat_name_for_response_function(name, namespace);
-            responses_tool_choice_to_chat_function_selector(&chat_name)
-        }
-        Value::Object(obj) if obj.get("type").and_then(|v| v.as_str()) == Some("tool_search") => {
-            responses_tool_choice_to_chat_function_selector(CODEX_TOOL_SEARCH_PROXY_NAME)
-        }
-        Value::Object(obj) if obj.get("type").and_then(|v| v.as_str()) == Some("custom") => {
-            let name = obj.get("name").and_then(|v| v.as_str()).unwrap_or("");
-            responses_tool_choice_to_chat_function_selector(name)
-        }
-        _ => tool_choice.clone(),
-    }
 }
 
 /// Convert a non-streaming Chat Completions response into a Responses response.

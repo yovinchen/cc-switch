@@ -915,6 +915,16 @@ pub fn responses_function_call_to_chat_tool_call(item: &Value, chat_name: &str) 
     })
 }
 
+pub fn responses_function_call_to_chat_tool_call_with_context(
+    item: &Value,
+    tool_context: &CodexToolContext,
+) -> Value {
+    let name = item.get("name").and_then(Value::as_str).unwrap_or("");
+    let namespace = item.get("namespace").and_then(Value::as_str);
+    let chat_name = tool_context.chat_name_for_response_function(name, namespace);
+    responses_function_call_to_chat_tool_call(item, &chat_name)
+}
+
 pub fn responses_tool_choice_to_chat_function_selector(chat_name: &str) -> Value {
     json!({
         "type": "function",
@@ -922,6 +932,28 @@ pub fn responses_tool_choice_to_chat_function_selector(chat_name: &str) -> Value
             "name": chat_name
         }
     })
+}
+
+pub fn responses_tool_choice_to_chat_tool_choice(
+    tool_choice: &Value,
+    tool_context: &CodexToolContext,
+) -> Value {
+    match tool_choice {
+        Value::Object(obj) if obj.get("type").and_then(Value::as_str) == Some("function") => {
+            let name = obj.get("name").and_then(Value::as_str).unwrap_or("");
+            let namespace = obj.get("namespace").and_then(Value::as_str);
+            let chat_name = tool_context.chat_name_for_response_function(name, namespace);
+            responses_tool_choice_to_chat_function_selector(&chat_name)
+        }
+        Value::Object(obj) if obj.get("type").and_then(Value::as_str) == Some("tool_search") => {
+            responses_tool_choice_to_chat_function_selector(CODEX_TOOL_SEARCH_PROXY_NAME)
+        }
+        Value::Object(obj) if obj.get("type").and_then(Value::as_str) == Some("custom") => {
+            let name = obj.get("name").and_then(Value::as_str).unwrap_or("");
+            responses_tool_choice_to_chat_function_selector(name)
+        }
+        _ => tool_choice.clone(),
+    }
 }
 
 pub fn responses_function_call_output_to_chat_tool_message(item: &Value) -> Value {
@@ -2302,6 +2334,62 @@ mod tests {
         assert_eq!(
             tool_search["function"]["arguments"],
             r#"{"limit":10,"query":"gmail"}"#
+        );
+    }
+
+    #[test]
+    fn maps_codex_responses_contextual_tool_names_to_chat() {
+        let context = build_codex_tool_context_from_request(&json!({
+            "tools": [
+                {"type": "tool_search"},
+                {"type": "custom", "name": "apply_patch"},
+                {
+                    "type": "namespace",
+                    "name": "mcp__svc",
+                    "tools": [{
+                        "type": "function",
+                        "name": "lookup",
+                        "parameters": {"type": "object"}
+                    }]
+                }
+            ]
+        }));
+
+        let function = responses_function_call_to_chat_tool_call_with_context(
+            &json!({
+                "type": "function_call",
+                "call_id": "call_lookup",
+                "namespace": "mcp__svc",
+                "name": "lookup",
+                "arguments": {"query": "mail"}
+            }),
+            &context,
+        );
+        assert_eq!(function["function"]["name"], "mcp__svc__lookup");
+
+        let function_choice = responses_tool_choice_to_chat_tool_choice(
+            &json!({"type": "function", "namespace": "mcp__svc", "name": "lookup"}),
+            &context,
+        );
+        assert_eq!(function_choice["function"]["name"], "mcp__svc__lookup");
+
+        let custom_choice = responses_tool_choice_to_chat_tool_choice(
+            &json!({"type": "custom", "name": "apply_patch"}),
+            &context,
+        );
+        assert_eq!(custom_choice["function"]["name"], "apply_patch");
+
+        let tool_search_choice =
+            responses_tool_choice_to_chat_tool_choice(&json!({"type": "tool_search"}), &context);
+        assert_eq!(
+            tool_search_choice["function"]["name"],
+            CODEX_TOOL_SEARCH_PROXY_NAME
+        );
+
+        let unknown_choice = json!({"type": "allowed_tools", "mode": "auto"});
+        assert_eq!(
+            responses_tool_choice_to_chat_tool_choice(&unknown_choice, &context),
+            unknown_choice
         );
     }
 
