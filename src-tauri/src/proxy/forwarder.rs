@@ -15,8 +15,7 @@ use super::{
         apply_channel_model_override, forward_attempts_from_route_plan, ChannelAttempt,
         ForwardAttempt,
     },
-    types::ProxyStatus,
-    ProxyError,
+    ProxyError, ProxyStatus,
 };
 use crate::commands::{CodexOAuthState, CopilotAuthState};
 use crate::proxy::providers::codex_oauth_auth::CodexOAuthManager;

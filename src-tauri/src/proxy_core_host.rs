@@ -7,7 +7,7 @@ use crate::proxy::hyper_client::ProxyResponse;
 use crate::proxy::provider_router::ProviderRouter;
 use crate::proxy::providers::codex_chat_history::CodexChatHistoryStore;
 use crate::proxy::route_attempt::forward_attempts_from_route_plan;
-use crate::proxy::types::ProxyStatus;
+use crate::proxy::ProxyStatus;
 use crate::proxy::usage::{RequestLog, UsageLogger};
 use crate::proxy::RequestForwarder;
 use crate::proxy_core::{
@@ -1058,7 +1058,7 @@ fn load_codex_client_model_catalog_raw() -> Value {
 mod tests {
     use super::*;
     use crate::provider::Provider;
-    use crate::proxy::types::ProxyStatus;
+    use crate::proxy::ProxyStatus;
     use crate::proxy_core::{
         ChannelOverrides, InterfaceKind, ModelCapabilities, ModelRoute, ProviderKind, ProxyBody,
         ProxyEngine, ProxyResponseBody, RetryPolicy, RouteSelection, UpstreamEndpoint, UsageRecord,
