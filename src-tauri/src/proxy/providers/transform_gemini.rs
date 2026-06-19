@@ -8,13 +8,13 @@ use crate::proxy::error::ProxyError;
 use crate::proxy_core::{
     AnthropicToolSchemaHints, GeminiAssistantTurn, GeminiShadowStore,
     build_anthropic_usage_from_gemini, build_gemini_function_declaration,
-    ensure_gemini_function_call_ids,
+    build_gemini_generation_config, ensure_gemini_function_call_ids,
     extract_anthropic_tool_schema_hints as core_extract_anthropic_tool_schema_hints,
     extract_gemini_function_call_meta, is_synthesized_gemini_tool_call_id,
     map_gemini_finish_reason_to_anthropic, normalize_gemini_tool_result_response,
     rectify_gemini_tool_call_args, rectify_gemini_tool_call_parts, synthesize_gemini_tool_call_id,
 };
-use serde_json::{Map, Value, json};
+use serde_json::{Value, json};
 use std::collections::{HashMap, HashSet};
 
 /// Generate a unique tool-call id suffix for the core Gemini synthesized-id
@@ -60,7 +60,7 @@ pub fn anthropic_to_gemini_with_shadow(
         result["contents"] = json!(convert_messages_to_contents(messages, &shadow_turns)?);
     }
 
-    if let Some(generation_config) = build_generation_config(&body) {
+    if let Some(generation_config) = build_gemini_generation_config(&body) {
         result["generationConfig"] = generation_config;
     }
 
@@ -301,29 +301,6 @@ fn collect_system_texts(value: &Value, texts: &mut Vec<String>) -> Result<(), Pr
     );
 
     Ok(())
-}
-
-fn build_generation_config(body: &Value) -> Option<Value> {
-    let mut config = Map::new();
-
-    if let Some(value) = body.get("max_tokens") {
-        config.insert("maxOutputTokens".to_string(), value.clone());
-    }
-    if let Some(value) = body.get("temperature") {
-        config.insert("temperature".to_string(), value.clone());
-    }
-    if let Some(value) = body.get("top_p") {
-        config.insert("topP".to_string(), value.clone());
-    }
-    if let Some(value) = body.get("stop_sequences") {
-        config.insert("stopSequences".to_string(), value.clone());
-    }
-
-    if config.is_empty() {
-        None
-    } else {
-        Some(Value::Object(config))
-    }
 }
 
 fn convert_messages_to_contents(
