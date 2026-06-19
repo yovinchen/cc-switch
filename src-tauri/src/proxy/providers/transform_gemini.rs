@@ -280,10 +280,6 @@ pub fn gemini_to_anthropic_with_shadow_and_hints(
     Ok(anthropic_response)
 }
 
-pub fn extract_gemini_model(body: &Value) -> Option<&str> {
-    body.get("model").and_then(|value| value.as_str())
-}
-
 fn build_system_instruction(
     system: Option<&Value>,
     messages: Option<&[Value]>,

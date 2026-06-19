@@ -2455,8 +2455,10 @@ fn rewrite_claude_transform_endpoint(
     body: &Value,
 ) -> (String, Option<String>) {
     let (gemini_model, gemini_stream) = if api_format == "gemini_native" {
-        let model =
-            super::providers::transform_gemini::extract_gemini_model(body).unwrap_or("unknown");
+        let model = body
+            .get("model")
+            .and_then(|value| value.as_str())
+            .unwrap_or("unknown");
         // Accept both bare ids (`gemini-2.5-pro`) and the resource-name
         // form (`models/gemini-2.5-pro`) that Gemini SDKs emit. See
         // `normalize_gemini_model_id` for rationale.
