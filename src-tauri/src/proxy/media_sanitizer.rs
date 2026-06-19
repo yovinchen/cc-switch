@@ -22,14 +22,6 @@ pub fn replace_images_for_text_only_model(
     )
 }
 
-pub fn contains_image_blocks(body: &Value) -> bool {
-    crate::proxy_core::contains_image_blocks(body)
-}
-
-pub fn replace_image_blocks_with_marker(body: &mut Value) -> usize {
-    crate::proxy_core::replace_image_blocks_with_marker(body)
-}
-
 pub fn is_unsupported_image_error(error: &ProxyError) -> bool {
     let ProxyError::UpstreamError { status, body } = error else {
         return false;
@@ -338,8 +330,8 @@ mod tests {
             }]
         });
 
-        assert!(contains_image_blocks(&body));
-        let count = replace_image_blocks_with_marker(&mut body);
+        assert!(crate::proxy_core::contains_image_blocks(&body));
+        let count = crate::proxy_core::replace_image_blocks_with_marker(&mut body);
 
         assert_eq!(count, 1);
         assert_eq!(
@@ -364,7 +356,7 @@ mod tests {
             }]
         });
 
-        let count = replace_image_blocks_with_marker(&mut body);
+        let count = crate::proxy_core::replace_image_blocks_with_marker(&mut body);
 
         assert_eq!(count, 1);
         assert_eq!(
@@ -411,7 +403,7 @@ mod tests {
             }]
         });
 
-        let count = replace_image_blocks_with_marker(&mut body);
+        let count = crate::proxy_core::replace_image_blocks_with_marker(&mut body);
 
         assert_eq!(count, 1);
         let block = &body["messages"][0]["content"][0];

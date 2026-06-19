@@ -29,13 +29,14 @@ use crate::proxy_core::{
     build_attempt_event_payload, build_codex_oauth_session_headers,
     build_request_started_event_payload, build_retryable_forward_failure_log,
     build_terminal_forward_failure_log, build_upstream_auth_headers, categorize_forward_failure,
-    classify_copilot_request, is_github_copilot_upstream, is_socks_proxy_url,
-    merge_copilot_tool_results, normalize_thinking_type, rectify_anthropic_request,
-    rectify_thinking_budget, resolve_copilot_deterministic_interaction_id,
-    resolve_copilot_model_against_ids, resolve_copilot_optimizer_session_id,
-    resolve_copilot_request_id_with_fallback, resolve_media_prevention_policy,
-    resolve_upstream_request_transport_policy, resolve_upstream_send_policy,
-    resolved_copilot_dynamic_base_url, sanitize_copilot_orphan_tool_results, short_value_hash,
+    classify_copilot_request, contains_image_blocks, is_github_copilot_upstream,
+    is_socks_proxy_url, merge_copilot_tool_results, normalize_thinking_type,
+    rectify_anthropic_request, rectify_thinking_budget, replace_image_blocks_with_marker,
+    resolve_copilot_deterministic_interaction_id, resolve_copilot_model_against_ids,
+    resolve_copilot_optimizer_session_id, resolve_copilot_request_id_with_fallback,
+    resolve_media_prevention_policy, resolve_upstream_request_transport_policy,
+    resolve_upstream_send_policy, resolved_copilot_dynamic_base_url,
+    sanitize_copilot_orphan_tool_results, short_value_hash,
     should_apply_bedrock_pre_send_optimizer, should_check_media_retry,
     should_failover_after_rectifier_retry_failure, should_preserve_exact_request_header_case,
     should_resolve_copilot_dynamic_endpoint, should_send_anthropic_request_headers,
@@ -211,7 +212,7 @@ impl RequestForwarder {
             rectifier_enabled: self.rectifier_config.enabled,
             request_media_fallback: self.rectifier_config.request_media_fallback,
             already_retried,
-            body_has_images: super::media_sanitizer::contains_image_blocks(provider_body),
+            body_has_images: contains_image_blocks(provider_body),
             unsupported_image_error: super::media_sanitizer::is_unsupported_image_error(error),
         })
     }
@@ -1006,10 +1007,7 @@ impl RequestForwarder {
                         &e,
                     ) {
                         let mut media_body = provider_body.clone();
-                        let replaced_images =
-                            super::media_sanitizer::replace_image_blocks_with_marker(
-                                &mut media_body,
-                            );
+                        let replaced_images = replace_image_blocks_with_marker(&mut media_body);
 
                         if replaced_images > 0 {
                             let _ = std::mem::replace(&mut media_rectifier_retried, true);
