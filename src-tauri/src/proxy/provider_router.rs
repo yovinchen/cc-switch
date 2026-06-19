@@ -6,15 +6,16 @@ use crate::app_config::AppType;
 use crate::database::{Database, ProxyChannelMigrationPreview, ProxyChannelRecord};
 use crate::error::AppError;
 use crate::provider::Provider;
-use crate::proxy::channel_routing::resolve_channel_route;
 use crate::proxy::circuit_breaker::{AllowResult, CircuitBreaker, CircuitBreakerStats};
 use crate::proxy_core::{
+    ChannelRouteSource, CircuitBreakerConfig, ProviderSelectionCandidate, ProviderSelectionFailure,
+    ProviderSelectionInput, ProxyCoreError, RouteResolveRequest, RouteResolveResponse,
     app_type_from_circuit_key, channel_circuit_key, channel_circuit_key_prefix,
     circuit_breaker_config_from_app_config, circuit_failure_threshold_from_app_config,
     provider_circuit_key, provider_circuit_key_prefix, reject_unavailable_channel_ids,
-    select_provider_ids, ChannelRouteSource, CircuitBreakerConfig, ProviderSelectionCandidate,
-    ProviderSelectionFailure, ProviderSelectionInput, RouteResolveRequest, RouteResolveResponse,
+    resolve_channel_route as resolve_core_channel_route, select_provider_ids,
 };
+use crate::proxy_core_adapter::proxy_channel_route_inputs_to_core;
 use std::collections::HashMap;
 use std::str::FromStr;
 use std::sync::Arc;
@@ -160,7 +161,12 @@ impl ProviderRouter {
         request: RouteResolveRequest,
     ) -> Result<RouteResolveResponse, AppError> {
         let (channels, source) = self.list_channels_for_app(&request.app_type).await?;
-        let mut response = resolve_channel_route(request, channels, source)?;
+        let mut response = resolve_core_channel_route(
+            request,
+            proxy_channel_route_inputs_to_core(channels),
+            source,
+        )
+        .map_err(proxy_core_error_to_app_error)?;
         let unavailable_channel_ids = self.unavailable_route_candidate_ids(&response).await;
         reject_unavailable_channel_ids(&mut response, unavailable_channel_ids);
         Ok(response)
@@ -427,6 +433,14 @@ impl ProviderRouter {
     async fn failure_threshold_for_app(&self, app_type: &str, fallback: u32) -> u32 {
         let app_config = self.db.get_proxy_config_for_app(app_type).await.ok();
         circuit_failure_threshold_from_app_config(app_config.as_ref(), fallback)
+    }
+}
+
+fn proxy_core_error_to_app_error(error: ProxyCoreError) -> AppError {
+    match error {
+        ProxyCoreError::Config(message) => AppError::Config(message),
+        ProxyCoreError::InvalidRequest(message) => AppError::InvalidInput(message),
+        other => AppError::Message(other.to_string()),
     }
 }
 
