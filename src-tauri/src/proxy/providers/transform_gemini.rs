@@ -7,9 +7,7 @@
 use crate::proxy::error::ProxyError;
 use crate::proxy_core::{
     AnthropicToolSchemaHints, GeminiShadowStore, anthropic_request_to_gemini_request_with_shadow,
-    extract_anthropic_tool_schema_hints as core_extract_anthropic_tool_schema_hints,
-    gemini_response_to_anthropic_message_with_shadow, rectify_gemini_tool_call_args,
-    synthesize_gemini_tool_call_id,
+    gemini_response_to_anthropic_message_with_shadow, synthesize_gemini_tool_call_id,
 };
 use serde_json::Value;
 
@@ -84,23 +82,12 @@ pub fn gemini_to_anthropic_with_shadow_and_hints(
     Ok(output.response)
 }
 
-pub fn extract_anthropic_tool_schema_hints(body: &Value) -> AnthropicToolSchemaHints {
-    core_extract_anthropic_tool_schema_hints(body)
-}
-
-#[allow(dead_code)]
-pub fn rectify_tool_call_args(
-    tool_name: &str,
-    args: &mut Value,
-    tool_schema_hints: Option<&AnthropicToolSchemaHints>,
-) -> bool {
-    rectify_gemini_tool_call_args(tool_name, args, tool_schema_hints)
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::proxy_core::{GeminiToolCallMeta, is_synthesized_gemini_tool_call_id};
+    use crate::proxy_core::{
+        GeminiToolCallMeta, extract_anthropic_tool_schema_hints, is_synthesized_gemini_tool_call_id,
+    };
     use serde_json::json;
 
     #[test]

@@ -57,11 +57,11 @@ use crate::proxy_core::{
     create_gemini_to_anthropic_sse_stream_with_callbacks as create_anthropic_sse_stream_from_gemini,
     create_openai_chat_to_anthropic_sse_stream as create_anthropic_sse_stream,
     create_openai_responses_to_anthropic_sse_stream as create_anthropic_sse_stream_from_responses,
-    extract_gemini_model_from_path, json_proxy_response, openai_chat_to_anthropic_message,
-    openai_responses_to_anthropic_message, parse_upstream_json_or_unlabeled_sse,
-    rebuilt_json_proxy_response, resolve_management_auth_decision,
-    should_aggregate_codex_oauth_responses_sse, should_use_claude_transform_streaming,
-    strip_endpoint_prefix, transformed_sse_proxy_response,
+    extract_anthropic_tool_schema_hints, extract_gemini_model_from_path, json_proxy_response,
+    openai_chat_to_anthropic_message, openai_responses_to_anthropic_message,
+    parse_upstream_json_or_unlabeled_sse, rebuilt_json_proxy_response,
+    resolve_management_auth_decision, should_aggregate_codex_oauth_responses_sse,
+    should_use_claude_transform_streaming, strip_endpoint_prefix, transformed_sse_proxy_response,
     transformed_streaming_response_usage_record_with_request_id_fallback,
     validate_claude_desktop_gateway_bearer_header, validate_management_bearer_header,
 };
@@ -786,7 +786,7 @@ async fn handle_claude_transform(
             is_codex_oauth,
         )
     };
-    let tool_schema_hints = transform_gemini::extract_anthropic_tool_schema_hints(original_body);
+    let tool_schema_hints = extract_anthropic_tool_schema_hints(original_body);
     let tool_schema_hints = (!tool_schema_hints.is_empty()).then_some(tool_schema_hints);
 
     if use_streaming {
