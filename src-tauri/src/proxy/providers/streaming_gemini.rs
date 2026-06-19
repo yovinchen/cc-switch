@@ -5,10 +5,13 @@
 
 use super::transform_gemini::{synthesize_tool_call_id, AnthropicToolSchemaHints};
 use crate::proxy_core::{
-    analyze_gemini_stream_parts, append_utf8_safe, build_anthropic_message_delta_event,
-    build_anthropic_usage_from_gemini, build_gemini_stream_shadow_assistant_parts,
-    map_gemini_finish_reason_to_anthropic, merge_gemini_tool_call_snapshots, strip_sse_field,
-    take_sse_block, GeminiShadowStore, GeminiToolCallMeta,
+    analyze_gemini_stream_parts, append_utf8_safe, build_gemini_stream_shadow_assistant_parts,
+    gemini_stream_content_block_stop_event, gemini_stream_message_delta_event,
+    gemini_stream_message_start_event, gemini_stream_message_stop_event,
+    gemini_stream_text_block_start_event, gemini_stream_text_delta_event,
+    gemini_stream_tool_block_start_event, gemini_stream_tool_input_delta_event,
+    merge_gemini_tool_call_snapshots, strip_sse_field, take_sse_block, GeminiShadowStore,
+    GeminiToolCallMeta,
 };
 use bytes::Bytes;
 use futures::stream::{Stream, StreamExt};
@@ -95,16 +98,11 @@ pub fn create_anthropic_sse_stream_from_gemini<E: std::error::Error + Send + 'st
                         }
 
                         if !has_sent_message_start {
-                            let event = json!({
-                                "type": "message_start",
-                                "message": {
-                                    "id": message_id.clone().unwrap_or_default(),
-                                    "type": "message",
-                                    "role": "assistant",
-                                    "model": current_model.clone().unwrap_or_default(),
-                                    "usage": build_anthropic_usage_from_gemini(chunk_json.get("usageMetadata"))
-                                }
-                            });
+                            let event = gemini_stream_message_start_event(
+                                message_id.as_deref(),
+                                current_model.as_deref(),
+                                chunk_json.get("usageMetadata"),
+                            );
                             yield Ok(encode_sse("message_start", &event));
                             has_sent_message_start = true;
                         }
@@ -162,26 +160,13 @@ pub fn create_anthropic_sse_stream_from_gemini<E: std::error::Error + Send + 'st
                                         });
 
                                         if !open_indices.contains(&index) {
-                                            let start_event = json!({
-                                                "type": "content_block_start",
-                                                "index": index,
-                                                "content_block": {
-                                                    "type": "text",
-                                                    "text": ""
-                                                }
-                                            });
+                                            let start_event = gemini_stream_text_block_start_event(index);
                                             yield Ok(encode_sse("content_block_start", &start_event));
                                             open_indices.insert(index);
                                         }
 
-                                        let delta_event = json!({
-                                            "type": "content_block_delta",
-                                            "index": index,
-                                            "delta": {
-                                                "type": "text_delta",
-                                                "text": delta
-                                            }
-                                        });
+                                        let delta_event =
+                                            gemini_stream_text_delta_event(index, delta.as_str());
                                         yield Ok(encode_sse("content_block_delta", &delta_event));
                                         if is_cumulative {
                                             accumulated_text = visible_text;
@@ -202,16 +187,11 @@ pub fn create_anthropic_sse_stream_from_gemini<E: std::error::Error + Send + 'st
         }
 
         if !has_sent_message_start {
-            let event = json!({
-                "type": "message_start",
-                "message": {
-                    "id": message_id.clone().unwrap_or_default(),
-                    "type": "message",
-                    "role": "assistant",
-                    "model": current_model.clone().unwrap_or_default(),
-                    "usage": build_anthropic_usage_from_gemini(latest_usage.as_ref())
-                }
-            });
+            let event = gemini_stream_message_start_event(
+                message_id.as_deref(),
+                current_model.as_deref(),
+                latest_usage.as_ref(),
+            );
             yield Ok(encode_sse("message_start", &event));
         }
 
@@ -224,36 +204,19 @@ pub fn create_anthropic_sse_stream_from_gemini<E: std::error::Error + Send + 'st
                 });
 
                 if !open_indices.contains(&index) {
-                    let start_event = json!({
-                        "type": "content_block_start",
-                        "index": index,
-                        "content_block": {
-                            "type": "text",
-                            "text": ""
-                        }
-                    });
+                    let start_event = gemini_stream_text_block_start_event(index);
                     yield Ok(encode_sse("content_block_start", &start_event));
                     open_indices.insert(index);
                 }
 
-                let delta_event = json!({
-                    "type": "content_block_delta",
-                    "index": index,
-                    "delta": {
-                        "type": "text_delta",
-                        "text": blocked_text
-                    }
-                });
+                let delta_event = gemini_stream_text_delta_event(index, blocked_text);
                 yield Ok(encode_sse("content_block_delta", &delta_event));
             }
         }
 
         if let Some(index) = text_block_index {
             if open_indices.remove(&index) {
-                let stop_event = json!({
-                    "type": "content_block_stop",
-                    "index": index
-                });
+                let stop_event = gemini_stream_content_block_stop_event(index);
                 yield Ok(encode_sse("content_block_stop", &stop_event));
             }
         }
@@ -316,44 +279,25 @@ pub fn create_anthropic_sse_stream_from_gemini<E: std::error::Error + Send + 'st
             let index = next_content_index;
             next_content_index += 1;
 
-            let start_event = json!({
-                "type": "content_block_start",
-                "index": index,
-                "content_block": {
-                    "type": "tool_use",
-                    "id": tool_call.id.clone().unwrap_or_default(),
-                    "name": tool_call.name
-                }
-            });
+            let start_event = gemini_stream_tool_block_start_event(index, tool_call);
             yield Ok(encode_sse("content_block_start", &start_event));
 
-            let delta_event = json!({
-                "type": "content_block_delta",
-                "index": index,
-                "delta": {
-                    "type": "input_json_delta",
-                    "partial_json": serde_json::to_string(&tool_call.args).unwrap_or_else(|_| "{}".to_string())
-                }
-            });
+            let delta_event = gemini_stream_tool_input_delta_event(index, &tool_call.args);
             yield Ok(encode_sse("content_block_delta", &delta_event));
 
-            let stop_event = json!({
-                "type": "content_block_stop",
-                "index": index
-            });
+            let stop_event = gemini_stream_content_block_stop_event(index);
             yield Ok(encode_sse("content_block_stop", &stop_event));
         }
 
-        let stop_reason = map_gemini_finish_reason_to_anthropic(
+        let message_delta = gemini_stream_message_delta_event(
             latest_finish_reason.as_deref(),
             !tool_calls.is_empty(),
             blocked_text.is_some(),
+            latest_usage.as_ref(),
         );
-        let usage = build_anthropic_usage_from_gemini(latest_usage.as_ref());
-        let message_delta = build_anthropic_message_delta_event(Some(stop_reason), Some(usage));
         yield Ok(encode_sse("message_delta", &message_delta));
 
-        let message_stop = json!({ "type": "message_stop" });
+        let message_stop = gemini_stream_message_stop_event();
         yield Ok(encode_sse("message_stop", &message_stop));
     }
 }

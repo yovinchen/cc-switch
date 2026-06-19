@@ -5,6 +5,10 @@
 
 use crate::gemini_shadow::GeminiToolCallMeta;
 use crate::gemini_tool_args::{rectify_gemini_tool_call_parts, AnthropicToolSchemaHints};
+use crate::response_transform::{
+    build_anthropic_message_delta_event, map_gemini_finish_reason_to_anthropic,
+};
+use crate::usage::build_anthropic_usage_from_gemini;
 use serde_json::{json, Value};
 
 /// Prefix used for Anthropic-visible tool call ids synthesized when Gemini's
@@ -144,6 +148,91 @@ pub fn build_gemini_stream_shadow_assistant_parts(
     }
 
     parts
+}
+
+pub fn gemini_stream_message_start_event(
+    message_id: Option<&str>,
+    model: Option<&str>,
+    usage: Option<&Value>,
+) -> Value {
+    json!({
+        "type": "message_start",
+        "message": {
+            "id": message_id.unwrap_or_default(),
+            "type": "message",
+            "role": "assistant",
+            "model": model.unwrap_or_default(),
+            "usage": build_anthropic_usage_from_gemini(usage)
+        }
+    })
+}
+
+pub fn gemini_stream_text_block_start_event(index: u32) -> Value {
+    json!({
+        "type": "content_block_start",
+        "index": index,
+        "content_block": {
+            "type": "text",
+            "text": ""
+        }
+    })
+}
+
+pub fn gemini_stream_text_delta_event(index: u32, text: impl Into<String>) -> Value {
+    json!({
+        "type": "content_block_delta",
+        "index": index,
+        "delta": {
+            "type": "text_delta",
+            "text": text.into()
+        }
+    })
+}
+
+pub fn gemini_stream_content_block_stop_event(index: u32) -> Value {
+    json!({
+        "type": "content_block_stop",
+        "index": index
+    })
+}
+
+pub fn gemini_stream_tool_block_start_event(index: u32, tool_call: &GeminiToolCallMeta) -> Value {
+    json!({
+        "type": "content_block_start",
+        "index": index,
+        "content_block": {
+            "type": "tool_use",
+            "id": tool_call.id.clone().unwrap_or_default(),
+            "name": tool_call.name.as_str()
+        }
+    })
+}
+
+pub fn gemini_stream_tool_input_delta_event(index: u32, args: &Value) -> Value {
+    json!({
+        "type": "content_block_delta",
+        "index": index,
+        "delta": {
+            "type": "input_json_delta",
+            "partial_json": serde_json::to_string(args).unwrap_or_else(|_| "{}".to_string())
+        }
+    })
+}
+
+pub fn gemini_stream_message_delta_event(
+    latest_finish_reason: Option<&str>,
+    has_tool_calls: bool,
+    blocked: bool,
+    usage: Option<&Value>,
+) -> Value {
+    let stop_reason =
+        map_gemini_finish_reason_to_anthropic(latest_finish_reason, has_tool_calls, blocked);
+    let usage = build_anthropic_usage_from_gemini(usage);
+    build_anthropic_message_delta_event(Some(stop_reason), Some(usage))
+}
+
+pub fn gemini_stream_message_stop_event() -> Value {
+    json!({ "type": "message_stop" })
 }
 
 fn extract_visible_text(parts: &[Value]) -> String {
@@ -311,5 +400,56 @@ mod tests {
         assert_eq!(parts[1]["functionCall"]["id"], "call_1");
         assert_eq!(parts[1]["functionCall"]["args"]["command"], "git status");
         assert_eq!(parts[1]["thoughtSignature"], "sig-tool");
+    }
+
+    #[test]
+    fn builds_anthropic_sse_event_payloads() {
+        let usage = json!({
+            "promptTokenCount": 5,
+            "totalTokenCount": 8
+        });
+        let tool_call = GeminiToolCallMeta::new(
+            Some("call_1"),
+            "Bash",
+            json!({ "command": "git status" }),
+            Option::<String>::None,
+        );
+
+        let start = gemini_stream_message_start_event(
+            Some("resp_1"),
+            Some("gemini-2.5-pro"),
+            Some(&usage),
+        );
+        assert_eq!(start["type"], "message_start");
+        assert_eq!(start["message"]["id"], "resp_1");
+        assert_eq!(start["message"]["usage"]["input_tokens"], 5);
+
+        let text_start = gemini_stream_text_block_start_event(0);
+        assert_eq!(text_start["content_block"]["type"], "text");
+
+        let text_delta = gemini_stream_text_delta_event(0, "hello");
+        assert_eq!(text_delta["delta"]["type"], "text_delta");
+        assert_eq!(text_delta["delta"]["text"], "hello");
+
+        let tool_start = gemini_stream_tool_block_start_event(1, &tool_call);
+        assert_eq!(tool_start["content_block"]["type"], "tool_use");
+        assert_eq!(tool_start["content_block"]["id"], "call_1");
+
+        let tool_delta = gemini_stream_tool_input_delta_event(1, &tool_call.args);
+        assert_eq!(tool_delta["delta"]["type"], "input_json_delta");
+        assert_eq!(
+            tool_delta["delta"]["partial_json"],
+            r#"{"command":"git status"}"#
+        );
+
+        let stop = gemini_stream_content_block_stop_event(1);
+        assert_eq!(stop["type"], "content_block_stop");
+
+        let message_delta =
+            gemini_stream_message_delta_event(Some("STOP"), true, false, Some(&usage));
+        assert_eq!(message_delta["type"], "message_delta");
+        assert_eq!(message_delta["delta"]["stop_reason"], "tool_use");
+
+        assert_eq!(gemini_stream_message_stop_event()["type"], "message_stop");
     }
 }
