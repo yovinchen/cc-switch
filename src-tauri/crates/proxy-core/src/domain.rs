@@ -88,6 +88,12 @@ impl ProviderKind {
     }
 }
 
+impl std::fmt::Display for ProviderKind {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.as_str())
+    }
+}
+
 impl From<&str> for ProviderKind {
     fn from(value: &str) -> Self {
         match normalize_token(value).as_str() {
@@ -100,6 +106,17 @@ impl From<&str> for ProviderKind {
             "github_copilot" | "github-copilot" | "githubcopilot" => Self::GitHubCopilot,
             "codex_oauth" | "codex-oauth" | "codexoauth" => Self::CodexOAuth,
             _ => Self::Custom(value.trim().to_string()),
+        }
+    }
+}
+
+impl std::str::FromStr for ProviderKind {
+    type Err = String;
+
+    fn from_str(value: &str) -> Result<Self, Self::Err> {
+        match ProviderKind::from(value) {
+            Self::Custom(_) => Err(format!("Invalid provider kind: {value}")),
+            known => Ok(known),
         }
     }
 }
@@ -1007,6 +1024,28 @@ mod tests {
         assert_eq!(
             ProviderKind::from("vendor-x"),
             ProviderKind::Custom("vendor-x".to_string())
+        );
+    }
+
+    #[test]
+    fn provider_kind_from_str_accepts_known_aliases_and_rejects_custom() {
+        assert_eq!(
+            "claude".parse::<ProviderKind>().unwrap(),
+            ProviderKind::Claude
+        );
+        assert_eq!(
+            "github-copilot".parse::<ProviderKind>().unwrap(),
+            ProviderKind::GitHubCopilot
+        );
+        assert!("vendor-x".parse::<ProviderKind>().is_err());
+    }
+
+    #[test]
+    fn provider_kind_display_uses_external_label() {
+        assert_eq!(ProviderKind::ClaudeAuth.to_string(), "claude_auth");
+        assert_eq!(
+            ProviderKind::Custom("vendor-x".to_string()).to_string(),
+            "vendor-x"
         );
     }
 }

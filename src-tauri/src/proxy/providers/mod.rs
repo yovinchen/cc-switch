@@ -20,14 +20,14 @@ mod gemini;
 
 use crate::app_config::AppType;
 use crate::provider::Provider;
-use crate::proxy_core::{infer_claude_provider_kind, is_gemini_oauth_key_shape, ProviderKind};
+use crate::proxy_core::{ProviderKind, infer_claude_provider_kind, is_gemini_oauth_key_shape};
 use serde::{Deserialize, Serialize};
 
 pub use adapter::ProviderAdapter;
 pub use auth::{AuthInfo, AuthStrategy};
 pub use claude::{
-    get_claude_api_format, normalize_anthropic_messages_for_provider,
-    transform_claude_request_for_api_format, ClaudeAdapter,
+    ClaudeAdapter, get_claude_api_format, normalize_anthropic_messages_for_provider,
+    transform_claude_request_for_api_format,
 };
 pub use codex::CodexAdapter;
 pub use codex::{
@@ -173,17 +173,7 @@ impl std::str::FromStr for ProviderType {
     type Err = String;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        match ProviderKind::from(s) {
-            ProviderKind::Claude => Ok(ProviderType::Claude),
-            ProviderKind::ClaudeAuth => Ok(ProviderType::ClaudeAuth),
-            ProviderKind::Codex => Ok(ProviderType::Codex),
-            ProviderKind::Gemini => Ok(ProviderType::Gemini),
-            ProviderKind::GeminiCli => Ok(ProviderType::GeminiCli),
-            ProviderKind::OpenRouter => Ok(ProviderType::OpenRouter),
-            ProviderKind::GitHubCopilot => Ok(ProviderType::GitHubCopilot),
-            ProviderKind::CodexOAuth => Ok(ProviderType::CodexOAuth),
-            ProviderKind::Custom(_) => Err(format!("Invalid provider type: {s}")),
-        }
+        s.parse::<ProviderKind>().map(Self::from_provider_kind)
     }
 }
 
