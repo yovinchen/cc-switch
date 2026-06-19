@@ -581,8 +581,11 @@ impl ProviderAdapter for ClaudeAdapter {
         &self,
         auth: &AuthInfo,
     ) -> Result<Vec<(http::HeaderName, http::HeaderValue)>, ProxyError> {
-        use super::adapter::auth_header_value as hv;
         use http::{HeaderName, HeaderValue};
+        let hv = |value: &str| {
+            crate::proxy_core::auth_header_value(value)
+                .map_err(|error| ProxyError::AuthError(error.to_string()))
+        };
         // 注意：anthropic-version 由 forwarder.rs 统一处理（透传客户端值或设置默认值）
         let bearer = format!("Bearer {}", auth.api_key);
         Ok(match auth.strategy {

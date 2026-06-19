@@ -232,8 +232,11 @@ impl ProviderAdapter for GeminiAdapter {
         &self,
         auth: &AuthInfo,
     ) -> Result<Vec<(http::HeaderName, http::HeaderValue)>, ProxyError> {
-        use super::adapter::auth_header_value as hv;
         use http::{HeaderName, HeaderValue};
+        let hv = |value: &str| {
+            crate::proxy_core::auth_header_value(value)
+                .map_err(|error| ProxyError::AuthError(error.to_string()))
+        };
         Ok(match auth.strategy {
             AuthStrategy::GoogleOAuth => {
                 let token = auth.access_token.as_ref().unwrap_or(&auth.api_key);

@@ -396,11 +396,11 @@ impl ProviderAdapter for CodexAdapter {
         &self,
         auth: &AuthInfo,
     ) -> Result<Vec<(http::HeaderName, http::HeaderValue)>, ProxyError> {
-        use super::adapter::auth_header_value;
         let bearer = format!("Bearer {}", auth.api_key);
         Ok(vec![(
             http::HeaderName::from_static("authorization"),
-            auth_header_value(&bearer)?,
+            crate::proxy_core::auth_header_value(&bearer)
+                .map_err(|error| ProxyError::AuthError(error.to_string()))?,
         )])
     }
 }
