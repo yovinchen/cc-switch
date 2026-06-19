@@ -5,12 +5,22 @@ use crate::proxy_core::build_codex_tool_context_from_request;
 use crate::proxy_core::{
     append_utf8_safe, canonicalize_tool_arguments_str, chat_delta_reasoning_text,
     chat_usage_to_responses_usage, codex_chat_stream_completed_event,
-    codex_chat_stream_failed_event, codex_chat_stream_response, codex_chat_stream_started_events,
-    custom_tool_input_from_chat_arguments, extract_chat_sse_error, leading_think_prefix_decision,
-    response_id_from_chat_id, response_status_from_finish_reason,
-    response_tool_call_item_from_chat_name, response_tool_call_item_id_from_chat_name,
-    split_leading_think_block, sse_event, strip_leading_think_open_tag, strip_sse_field,
-    take_sse_block, CodexToolContext, ThinkPrefixDecision,
+    codex_chat_stream_content_part_added_event, codex_chat_stream_content_part_done_event,
+    codex_chat_stream_failed_event, codex_chat_stream_output_item_added_event,
+    codex_chat_stream_output_item_done_event, codex_chat_stream_output_text_delta_event,
+    codex_chat_stream_output_text_done_event, codex_chat_stream_reasoning_completed_item,
+    codex_chat_stream_reasoning_in_progress_item,
+    codex_chat_stream_reasoning_summary_part_added_event,
+    codex_chat_stream_reasoning_summary_part_done_event,
+    codex_chat_stream_reasoning_summary_text_delta_event,
+    codex_chat_stream_reasoning_summary_text_done_event, codex_chat_stream_response,
+    codex_chat_stream_started_events, codex_chat_stream_text_completed_item,
+    codex_chat_stream_text_in_progress_item, custom_tool_input_from_chat_arguments,
+    extract_chat_sse_error, leading_think_prefix_decision, response_id_from_chat_id,
+    response_status_from_finish_reason, response_tool_call_item_from_chat_name,
+    response_tool_call_item_id_from_chat_name, split_leading_think_block, sse_event,
+    strip_leading_think_open_tag, strip_sse_field, take_sse_block, CodexToolContext,
+    ThinkPrefixDecision,
 };
 use bytes::Bytes;
 use futures::stream::{Stream, StreamExt};
@@ -281,45 +291,22 @@ impl ChatToResponsesState {
             self.reasoning.item_id = item_id.clone();
             self.reasoning.added = true;
 
-            events.push(sse_event(
-                "response.output_item.added",
-                json!({
-                    "type": "response.output_item.added",
-                    "output_index": output_index,
-                    "item": {
-                        "id": item_id,
-                        "type": "reasoning",
-                        "status": "in_progress",
-                        "summary": []
-                    }
-                }),
+            events.push(codex_chat_stream_output_item_added_event(
+                output_index,
+                codex_chat_stream_reasoning_in_progress_item(&item_id),
             ));
-            events.push(sse_event(
-                "response.reasoning_summary_part.added",
-                json!({
-                    "type": "response.reasoning_summary_part.added",
-                    "item_id": self.reasoning.item_id,
-                    "output_index": output_index,
-                    "summary_index": 0,
-                    "part": {
-                        "type": "summary_text",
-                        "text": ""
-                    }
-                }),
+            events.push(codex_chat_stream_reasoning_summary_part_added_event(
+                &self.reasoning.item_id,
+                output_index,
             ));
         }
 
         self.reasoning.text.push_str(delta);
         let output_index = self.reasoning.output_index.unwrap_or(0);
-        events.push(sse_event(
-            "response.reasoning_summary_text.delta",
-            json!({
-                "type": "response.reasoning_summary_text.delta",
-                "item_id": self.reasoning.item_id,
-                "output_index": output_index,
-                "summary_index": 0,
-                "delta": delta
-            }),
+        events.push(codex_chat_stream_reasoning_summary_text_delta_event(
+            &self.reasoning.item_id,
+            output_index,
+            delta,
         ));
 
         events
@@ -335,47 +322,22 @@ impl ChatToResponsesState {
             self.text.item_id = item_id.clone();
             self.text.added = true;
 
-            events.push(sse_event(
-                "response.output_item.added",
-                json!({
-                    "type": "response.output_item.added",
-                    "output_index": output_index,
-                    "item": {
-                        "id": item_id,
-                        "type": "message",
-                        "status": "in_progress",
-                        "role": "assistant",
-                        "content": []
-                    }
-                }),
+            events.push(codex_chat_stream_output_item_added_event(
+                output_index,
+                codex_chat_stream_text_in_progress_item(&item_id),
             ));
-            events.push(sse_event(
-                "response.content_part.added",
-                json!({
-                    "type": "response.content_part.added",
-                    "item_id": self.text.item_id,
-                    "output_index": output_index,
-                    "content_index": 0,
-                    "part": {
-                        "type": "output_text",
-                        "text": "",
-                        "annotations": []
-                    }
-                }),
+            events.push(codex_chat_stream_content_part_added_event(
+                &self.text.item_id,
+                output_index,
             ));
         }
 
         self.text.text.push_str(delta);
         let output_index = self.text.output_index.unwrap_or(0);
-        events.push(sse_event(
-            "response.output_text.delta",
-            json!({
-                "type": "response.output_text.delta",
-                "item_id": self.text.item_id,
-                "output_index": output_index,
-                "content_index": 0,
-                "delta": delta
-            }),
+        events.push(codex_chat_stream_output_text_delta_event(
+            &self.text.item_id,
+            output_index,
+            delta,
         ));
 
         events
@@ -565,49 +527,22 @@ impl ChatToResponsesState {
         let output_index = self.reasoning.output_index.unwrap_or(0);
         let item_id = self.reasoning.item_id.clone();
         let text = self.reasoning.text.clone();
-        let item = json!({
-            "id": item_id,
-            "type": "reasoning",
-            "summary": [{
-                "type": "summary_text",
-                "text": text
-            }]
-        });
+        let item = codex_chat_stream_reasoning_completed_item(&item_id, &text);
         self.output_items.push((output_index, item.clone()));
         self.reasoning.done = true;
 
         vec![
-            sse_event(
-                "response.reasoning_summary_text.done",
-                json!({
-                    "type": "response.reasoning_summary_text.done",
-                    "item_id": self.reasoning.item_id,
-                    "output_index": output_index,
-                    "summary_index": 0,
-                    "text": self.reasoning.text
-                }),
+            codex_chat_stream_reasoning_summary_text_done_event(
+                &self.reasoning.item_id,
+                output_index,
+                &self.reasoning.text,
             ),
-            sse_event(
-                "response.reasoning_summary_part.done",
-                json!({
-                    "type": "response.reasoning_summary_part.done",
-                    "item_id": self.reasoning.item_id,
-                    "output_index": output_index,
-                    "summary_index": 0,
-                    "part": {
-                        "type": "summary_text",
-                        "text": self.reasoning.text
-                    }
-                }),
+            codex_chat_stream_reasoning_summary_part_done_event(
+                &self.reasoning.item_id,
+                output_index,
+                &self.reasoning.text,
             ),
-            sse_event(
-                "response.output_item.done",
-                json!({
-                    "type": "response.output_item.done",
-                    "output_index": output_index,
-                    "item": item
-                }),
-            ),
+            codex_chat_stream_output_item_done_event(output_index, item),
         ]
     }
 
@@ -617,53 +552,22 @@ impl ChatToResponsesState {
         }
 
         let output_index = self.text.output_index.unwrap_or(0);
-        let item = json!({
-            "id": self.text.item_id,
-            "type": "message",
-            "status": "completed",
-            "role": "assistant",
-            "content": [{
-                "type": "output_text",
-                "text": self.text.text,
-                "annotations": []
-            }]
-        });
+        let item = codex_chat_stream_text_completed_item(&self.text.item_id, &self.text.text);
         self.output_items.push((output_index, item.clone()));
         self.text.done = true;
 
         vec![
-            sse_event(
-                "response.output_text.done",
-                json!({
-                    "type": "response.output_text.done",
-                    "item_id": self.text.item_id,
-                    "output_index": output_index,
-                    "content_index": 0,
-                    "text": self.text.text
-                }),
+            codex_chat_stream_output_text_done_event(
+                &self.text.item_id,
+                output_index,
+                &self.text.text,
             ),
-            sse_event(
-                "response.content_part.done",
-                json!({
-                    "type": "response.content_part.done",
-                    "item_id": self.text.item_id,
-                    "output_index": output_index,
-                    "content_index": 0,
-                    "part": {
-                        "type": "output_text",
-                        "text": self.text.text,
-                        "annotations": []
-                    }
-                }),
+            codex_chat_stream_content_part_done_event(
+                &self.text.item_id,
+                output_index,
+                &self.text.text,
             ),
-            sse_event(
-                "response.output_item.done",
-                json!({
-                    "type": "response.output_item.done",
-                    "output_index": output_index,
-                    "item": item
-                }),
-            ),
+            codex_chat_stream_output_item_done_event(output_index, item),
         ]
     }
 

@@ -2123,6 +2123,217 @@ pub fn codex_chat_stream_completed_event(response: Value) -> Bytes {
     )
 }
 
+pub fn codex_chat_stream_output_item_added_event(output_index: u32, item: Value) -> Bytes {
+    sse_event(
+        "response.output_item.added",
+        json!({
+            "type": "response.output_item.added",
+            "output_index": output_index,
+            "item": item
+        }),
+    )
+}
+
+pub fn codex_chat_stream_output_item_done_event(output_index: u32, item: Value) -> Bytes {
+    sse_event(
+        "response.output_item.done",
+        json!({
+            "type": "response.output_item.done",
+            "output_index": output_index,
+            "item": item
+        }),
+    )
+}
+
+pub fn codex_chat_stream_reasoning_in_progress_item(item_id: &str) -> Value {
+    json!({
+        "id": item_id,
+        "type": "reasoning",
+        "status": "in_progress",
+        "summary": []
+    })
+}
+
+pub fn codex_chat_stream_reasoning_completed_item(item_id: &str, text: &str) -> Value {
+    json!({
+        "id": item_id,
+        "type": "reasoning",
+        "summary": [{
+            "type": "summary_text",
+            "text": text
+        }]
+    })
+}
+
+pub fn codex_chat_stream_reasoning_summary_part_added_event(
+    item_id: &str,
+    output_index: u32,
+) -> Bytes {
+    sse_event(
+        "response.reasoning_summary_part.added",
+        json!({
+            "type": "response.reasoning_summary_part.added",
+            "item_id": item_id,
+            "output_index": output_index,
+            "summary_index": 0,
+            "part": {
+                "type": "summary_text",
+                "text": ""
+            }
+        }),
+    )
+}
+
+pub fn codex_chat_stream_reasoning_summary_text_delta_event(
+    item_id: &str,
+    output_index: u32,
+    delta: &str,
+) -> Bytes {
+    sse_event(
+        "response.reasoning_summary_text.delta",
+        json!({
+            "type": "response.reasoning_summary_text.delta",
+            "item_id": item_id,
+            "output_index": output_index,
+            "summary_index": 0,
+            "delta": delta
+        }),
+    )
+}
+
+pub fn codex_chat_stream_reasoning_summary_text_done_event(
+    item_id: &str,
+    output_index: u32,
+    text: &str,
+) -> Bytes {
+    sse_event(
+        "response.reasoning_summary_text.done",
+        json!({
+            "type": "response.reasoning_summary_text.done",
+            "item_id": item_id,
+            "output_index": output_index,
+            "summary_index": 0,
+            "text": text
+        }),
+    )
+}
+
+pub fn codex_chat_stream_reasoning_summary_part_done_event(
+    item_id: &str,
+    output_index: u32,
+    text: &str,
+) -> Bytes {
+    sse_event(
+        "response.reasoning_summary_part.done",
+        json!({
+            "type": "response.reasoning_summary_part.done",
+            "item_id": item_id,
+            "output_index": output_index,
+            "summary_index": 0,
+            "part": {
+                "type": "summary_text",
+                "text": text
+            }
+        }),
+    )
+}
+
+pub fn codex_chat_stream_text_in_progress_item(item_id: &str) -> Value {
+    json!({
+        "id": item_id,
+        "type": "message",
+        "status": "in_progress",
+        "role": "assistant",
+        "content": []
+    })
+}
+
+pub fn codex_chat_stream_text_completed_item(item_id: &str, text: &str) -> Value {
+    json!({
+        "id": item_id,
+        "type": "message",
+        "status": "completed",
+        "role": "assistant",
+        "content": [{
+            "type": "output_text",
+            "text": text,
+            "annotations": []
+        }]
+    })
+}
+
+pub fn codex_chat_stream_content_part_added_event(item_id: &str, output_index: u32) -> Bytes {
+    sse_event(
+        "response.content_part.added",
+        json!({
+            "type": "response.content_part.added",
+            "item_id": item_id,
+            "output_index": output_index,
+            "content_index": 0,
+            "part": {
+                "type": "output_text",
+                "text": "",
+                "annotations": []
+            }
+        }),
+    )
+}
+
+pub fn codex_chat_stream_output_text_delta_event(
+    item_id: &str,
+    output_index: u32,
+    delta: &str,
+) -> Bytes {
+    sse_event(
+        "response.output_text.delta",
+        json!({
+            "type": "response.output_text.delta",
+            "item_id": item_id,
+            "output_index": output_index,
+            "content_index": 0,
+            "delta": delta
+        }),
+    )
+}
+
+pub fn codex_chat_stream_output_text_done_event(
+    item_id: &str,
+    output_index: u32,
+    text: &str,
+) -> Bytes {
+    sse_event(
+        "response.output_text.done",
+        json!({
+            "type": "response.output_text.done",
+            "item_id": item_id,
+            "output_index": output_index,
+            "content_index": 0,
+            "text": text
+        }),
+    )
+}
+
+pub fn codex_chat_stream_content_part_done_event(
+    item_id: &str,
+    output_index: u32,
+    text: &str,
+) -> Bytes {
+    sse_event(
+        "response.content_part.done",
+        json!({
+            "type": "response.content_part.done",
+            "item_id": item_id,
+            "output_index": output_index,
+            "content_index": 0,
+            "part": {
+                "type": "output_text",
+                "text": text,
+                "annotations": []
+            }
+        }),
+    )
+}
+
 pub fn codex_chat_stream_failed_event(
     mut response: Value,
     message: impl Into<String>,
@@ -3804,6 +4015,70 @@ mod tests {
         assert!(completed.starts_with("event: response.completed\n"));
         assert!(completed.contains("\"type\":\"response.completed\""));
         assert!(completed.contains("\"status\":\"completed\""));
+    }
+
+    #[test]
+    fn codex_chat_stream_reasoning_item_events_use_responses_shape() {
+        let in_progress = codex_chat_stream_reasoning_in_progress_item("rs_resp_1");
+        assert_eq!(in_progress["type"], "reasoning");
+        assert_eq!(in_progress["status"], "in_progress");
+        assert_eq!(in_progress["summary"], json!([]));
+
+        let completed = codex_chat_stream_reasoning_completed_item("rs_resp_1", "plan");
+        assert_eq!(completed["summary"][0]["type"], "summary_text");
+        assert_eq!(completed["summary"][0]["text"], "plan");
+
+        let added = codex_chat_stream_output_item_added_event(0, in_progress);
+        let part_added = codex_chat_stream_reasoning_summary_part_added_event("rs_resp_1", 0);
+        let delta = codex_chat_stream_reasoning_summary_text_delta_event("rs_resp_1", 0, "pl");
+        let text_done = codex_chat_stream_reasoning_summary_text_done_event("rs_resp_1", 0, "plan");
+        let part_done = codex_chat_stream_reasoning_summary_part_done_event("rs_resp_1", 0, "plan");
+        let item_done = codex_chat_stream_output_item_done_event(0, completed);
+
+        let combined = [added, part_added, delta, text_done, part_done, item_done].concat();
+        let combined = std::str::from_utf8(&combined).expect("events utf8");
+
+        assert!(combined.contains("event: response.output_item.added"));
+        assert!(combined.contains("event: response.reasoning_summary_part.added"));
+        assert!(combined.contains("event: response.reasoning_summary_text.delta"));
+        assert!(combined.contains("event: response.reasoning_summary_text.done"));
+        assert!(combined.contains("event: response.reasoning_summary_part.done"));
+        assert!(combined.contains("event: response.output_item.done"));
+        assert!(combined.contains("\"item_id\":\"rs_resp_1\""));
+    }
+
+    #[test]
+    fn codex_chat_stream_text_item_events_use_responses_shape() {
+        let in_progress = codex_chat_stream_text_in_progress_item("resp_1_msg");
+        assert_eq!(in_progress["type"], "message");
+        assert_eq!(in_progress["status"], "in_progress");
+        assert_eq!(in_progress["role"], "assistant");
+        assert_eq!(in_progress["content"], json!([]));
+
+        let completed = codex_chat_stream_text_completed_item("resp_1_msg", "hello");
+        assert_eq!(completed["status"], "completed");
+        assert_eq!(completed["content"][0]["type"], "output_text");
+        assert_eq!(completed["content"][0]["text"], "hello");
+        assert_eq!(completed["content"][0]["annotations"], json!([]));
+
+        let added = codex_chat_stream_output_item_added_event(1, in_progress);
+        let part_added = codex_chat_stream_content_part_added_event("resp_1_msg", 1);
+        let delta = codex_chat_stream_output_text_delta_event("resp_1_msg", 1, "he");
+        let text_done = codex_chat_stream_output_text_done_event("resp_1_msg", 1, "hello");
+        let part_done = codex_chat_stream_content_part_done_event("resp_1_msg", 1, "hello");
+        let item_done = codex_chat_stream_output_item_done_event(1, completed);
+
+        let combined = [added, part_added, delta, text_done, part_done, item_done].concat();
+        let combined = std::str::from_utf8(&combined).expect("events utf8");
+
+        assert!(combined.contains("event: response.output_item.added"));
+        assert!(combined.contains("event: response.content_part.added"));
+        assert!(combined.contains("event: response.output_text.delta"));
+        assert!(combined.contains("event: response.output_text.done"));
+        assert!(combined.contains("event: response.content_part.done"));
+        assert!(combined.contains("event: response.output_item.done"));
+        assert!(combined.contains("\"item_id\":\"resp_1_msg\""));
+        assert!(combined.contains("\"content_index\":0"));
     }
 
     #[test]
