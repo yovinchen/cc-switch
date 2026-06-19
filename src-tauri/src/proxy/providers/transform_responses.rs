@@ -8,14 +8,16 @@
 //! - system prompt 使用 `instructions` 字段而非 system role message
 //! - usage 字段命名与 Anthropic 一致 (input_tokens/output_tokens)
 
+#[cfg(test)]
 use crate::proxy::error::ProxyError;
-use crate::proxy_core::anthropic_to_openai_responses_request;
 #[cfg(test)]
-use crate::proxy_core::build_anthropic_usage_from_openai_responses;
-#[cfg(test)]
-use crate::proxy_core::openai_responses_to_anthropic_message;
+use crate::proxy_core::{
+    anthropic_to_openai_responses_request, build_anthropic_usage_from_openai_responses,
+    openai_responses_to_anthropic_message,
+};
 #[cfg(test)]
 use serde_json::json;
+#[cfg(test)]
 use serde_json::Value;
 
 /// Anthropic 请求 → OpenAI Responses 请求
@@ -26,6 +28,7 @@ use serde_json::Value;
 /// 以便在无服务端状态下保持多轮 reasoning 上下文。
 /// `codex_fast_mode`: 仅在 `is_codex_oauth` 为 true 时生效，控制是否注入
 /// `service_tier = "priority"`。
+#[cfg(test)]
 pub fn anthropic_to_responses(
     body: Value,
     cache_key: Option<&str>,

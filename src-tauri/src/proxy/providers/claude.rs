@@ -18,6 +18,7 @@ use super::{AuthInfo, AuthStrategy, ProviderAdapter, ProviderType};
 use crate::provider::Provider;
 use crate::proxy::error::ProxyError;
 use crate::proxy_core::{
+    anthropic_to_openai_chat_request, anthropic_to_openai_responses_request,
     claude_api_format_needs_transform, normalize_anthropic_tool_thinking_history,
     openai_chat_to_anthropic_message, openai_responses_to_anthropic_message,
     resolve_claude_api_format, should_normalize_anthropic_tool_thinking_history,
@@ -168,20 +169,17 @@ pub fn transform_claude_request_for_api_format(
             // Codex OAuth (ChatGPT Plus/Pro 反代) 需要在请求体里强制 store: false
             // + include: ["reasoning.encrypted_content"]，由 transform 层统一处理。
             let codex_fast_mode = provider.codex_fast_mode_enabled();
-            super::transform_responses::anthropic_to_responses(
-                body,
+            Ok(anthropic_to_openai_responses_request(
+                &body,
                 cache_key,
                 is_codex_oauth,
                 codex_fast_mode,
-            )
+            ))
         }
         "openai_chat" => {
             let preserve_reasoning_content =
                 should_preserve_reasoning_content_for_openai_chat(&provider.settings_config, &body);
-            let mut result = super::transform::anthropic_to_openai_with_reasoning_content(
-                body,
-                preserve_reasoning_content,
-            )?;
+            let mut result = anthropic_to_openai_chat_request(&body, preserve_reasoning_content);
             // Inject prompt_cache_key only if explicitly configured in meta
             if let Some(key) = provider
                 .meta

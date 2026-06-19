@@ -3,21 +3,23 @@
 //! 实现 Anthropic ↔ OpenAI 格式转换，用于 OpenRouter 支持
 //! 参考: anthropic-proxy-rs
 
+#[cfg(test)]
 use crate::proxy::error::ProxyError;
-use crate::proxy_core::anthropic_to_openai_chat_request;
 #[cfg(test)]
-use crate::proxy_core::openai_chat_to_anthropic_message;
-#[cfg(test)]
-use crate::proxy_core::{is_openai_o_series, resolve_reasoning_effort, supports_reasoning_effort};
+use crate::proxy_core::{
+    anthropic_to_openai_chat_request, is_openai_o_series, openai_chat_to_anthropic_message,
+    resolve_reasoning_effort, supports_reasoning_effort,
+};
 #[cfg(test)]
 use serde_json::json;
+#[cfg(test)]
 use serde_json::Value;
 
 /// Anthropic 请求 → OpenAI Chat Completions 请求
 ///
 /// 转换工具库 API：当前无生产调用方（连通性检查不再发真实请求，曾是其唯一 crate 内
 /// 消费者），但保留其转换逻辑与下方测试套件，供代理转换路径复用 / 未来接线。
-#[allow(dead_code)]
+#[cfg(test)]
 pub fn anthropic_to_openai(body: Value) -> Result<Value, ProxyError> {
     anthropic_to_openai_with_reasoning_content(body, false)
 }
@@ -27,6 +29,7 @@ pub fn anthropic_to_openai(body: Value) -> Result<Value, ProxyError> {
 /// `preserve_reasoning_content` 仅用于明确需要 Moonshot/Kimi/DeepSeek
 /// `reasoning_content` 兼容字段的 provider。默认转换保持通用 OpenAI-compatible
 /// 请求体，避免向严格后端发送未知字段。
+#[cfg(test)]
 pub fn anthropic_to_openai_with_reasoning_content(
     body: Value,
     preserve_reasoning_content: bool,
