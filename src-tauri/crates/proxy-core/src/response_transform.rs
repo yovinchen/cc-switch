@@ -53,6 +53,29 @@ pub struct CodexChatReasoningOptions {
     pub effort_value_mode: Option<String>,
 }
 
+impl CodexChatReasoningOptions {
+    pub fn from_profile(profile: &CodexChatReasoningProfile) -> Self {
+        Self {
+            supports_thinking: profile.supports_thinking,
+            supports_effort: profile.supports_effort,
+            thinking_param: profile.thinking_param.clone(),
+            effort_param: profile.effort_param.clone(),
+            effort_value_mode: profile.effort_value_mode.clone(),
+        }
+    }
+}
+
+/// Provider-neutral Codex Responses -> Chat Completions reasoning profile.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct CodexChatReasoningProfile {
+    pub supports_thinking: Option<bool>,
+    pub supports_effort: Option<bool>,
+    pub thinking_param: Option<String>,
+    pub effort_param: Option<String>,
+    pub effort_value_mode: Option<String>,
+    pub output_format: Option<String>,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ThinkPrefixDecision {
     NeedMore,
@@ -325,6 +348,144 @@ pub fn apply_codex_chat_reasoning_options(
         }
         _ => {}
     }
+}
+
+pub fn normalize_codex_chat_reasoning_profile(
+    mut profile: CodexChatReasoningProfile,
+) -> CodexChatReasoningProfile {
+    if profile.supports_effort.unwrap_or(false) && profile.supports_thinking.is_none() {
+        profile.supports_thinking = Some(true);
+    }
+    profile
+}
+
+pub fn infer_codex_chat_reasoning_profile(
+    provider_name: &str,
+    base_url: &str,
+    model: &str,
+) -> Option<CodexChatReasoningProfile> {
+    let name = provider_name.to_ascii_lowercase();
+    let base_url = base_url.to_ascii_lowercase();
+    let model = model.to_ascii_lowercase();
+
+    // Aggregator platforms decide the reasoning wire shape independently from
+    // the hosted model vendor, so platform rules must run before model rules.
+    if let Some(profile) = infer_codex_chat_aggregator_reasoning_profile(&name, &base_url) {
+        return Some(profile);
+    }
+
+    let haystack = format!("{name} {base_url} {model}");
+
+    if haystack.contains("deepseek") {
+        return Some(CodexChatReasoningProfile {
+            supports_thinking: Some(true),
+            supports_effort: Some(true),
+            thinking_param: Some("thinking".to_string()),
+            effort_param: Some("reasoning_effort".to_string()),
+            effort_value_mode: Some("deepseek".to_string()),
+            output_format: Some("reasoning_content".to_string()),
+        });
+    }
+
+    // StepFun exposes reasoning effort only on step-3.5-flash-2603.
+    if haystack.contains("stepfun") || haystack.contains("step-3.5-flash-2603") {
+        return Some(CodexChatReasoningProfile {
+            supports_thinking: Some(true),
+            supports_effort: Some(model.contains("2603")),
+            thinking_param: Some("none".to_string()),
+            effort_param: Some("reasoning_effort".to_string()),
+            effort_value_mode: Some("low_high".to_string()),
+            output_format: Some("reasoning".to_string()),
+        });
+    }
+
+    if haystack.contains("kimi") || haystack.contains("moonshot") {
+        return Some(CodexChatReasoningProfile {
+            supports_thinking: Some(true),
+            supports_effort: Some(false),
+            thinking_param: Some("thinking".to_string()),
+            effort_param: Some("none".to_string()),
+            effort_value_mode: None,
+            output_format: Some("reasoning_content".to_string()),
+        });
+    }
+
+    if haystack.contains("glm") || haystack.contains("zhipu") || haystack.contains("z.ai") {
+        return Some(CodexChatReasoningProfile {
+            supports_thinking: Some(true),
+            supports_effort: Some(false),
+            thinking_param: Some("thinking".to_string()),
+            effort_param: Some("none".to_string()),
+            effort_value_mode: None,
+            output_format: Some("reasoning_content".to_string()),
+        });
+    }
+
+    if haystack.contains("qwen") || haystack.contains("dashscope") || haystack.contains("bailian") {
+        return Some(CodexChatReasoningProfile {
+            supports_thinking: Some(true),
+            supports_effort: Some(false),
+            thinking_param: Some("enable_thinking".to_string()),
+            effort_param: Some("none".to_string()),
+            effort_value_mode: None,
+            output_format: Some("reasoning_content".to_string()),
+        });
+    }
+
+    if haystack.contains("minimax") {
+        return Some(CodexChatReasoningProfile {
+            supports_thinking: Some(true),
+            supports_effort: Some(false),
+            thinking_param: Some("reasoning_split".to_string()),
+            effort_param: Some("none".to_string()),
+            effort_value_mode: None,
+            output_format: Some("reasoning_details".to_string()),
+        });
+    }
+
+    if haystack.contains("mimo") {
+        return Some(CodexChatReasoningProfile {
+            supports_thinking: Some(true),
+            supports_effort: Some(false),
+            thinking_param: Some("thinking".to_string()),
+            effort_param: Some("none".to_string()),
+            effort_value_mode: None,
+            output_format: Some("reasoning_content".to_string()),
+        });
+    }
+
+    None
+}
+
+fn infer_codex_chat_aggregator_reasoning_profile(
+    name: &str,
+    base_url: &str,
+) -> Option<CodexChatReasoningProfile> {
+    let platform = format!("{name} {base_url}");
+
+    if platform.contains("openrouter") {
+        return Some(CodexChatReasoningProfile {
+            supports_thinking: Some(false),
+            supports_effort: Some(true),
+            thinking_param: Some("none".to_string()),
+            effort_param: Some("reasoning.effort".to_string()),
+            effort_value_mode: Some("openrouter".to_string()),
+            output_format: Some("auto".to_string()),
+        });
+    }
+
+    if platform.contains("siliconflow") {
+        return Some(CodexChatReasoningProfile {
+            supports_thinking: Some(true),
+            supports_effort: Some(false),
+            thinking_param: Some("enable_thinking".to_string()),
+            effort_param: Some("none".to_string()),
+            effort_value_mode: None,
+            output_format: Some("reasoning_content".to_string()),
+        });
+    }
+
+    None
 }
 
 pub fn responses_to_chat_completions_with_options(
@@ -2279,6 +2440,80 @@ mod tests {
         apply_codex_chat_reasoning_options(&mut result, &body, None, true);
 
         assert_eq!(result["reasoning_effort"], "high");
+    }
+
+    #[test]
+    fn codex_chat_reasoning_profile_normalizes_effort_as_thinking_support() {
+        let profile = normalize_codex_chat_reasoning_profile(CodexChatReasoningProfile {
+            supports_effort: Some(true),
+            ..Default::default()
+        });
+
+        assert_eq!(profile.supports_thinking, Some(true));
+    }
+
+    #[test]
+    fn codex_chat_reasoning_options_project_from_profile() {
+        let profile = CodexChatReasoningProfile {
+            supports_thinking: Some(true),
+            supports_effort: Some(true),
+            thinking_param: Some("thinking".to_string()),
+            effort_param: Some("reasoning_effort".to_string()),
+            effort_value_mode: Some("deepseek".to_string()),
+            output_format: Some("reasoning_content".to_string()),
+        };
+
+        let options = CodexChatReasoningOptions::from_profile(&profile);
+
+        assert_eq!(options.supports_thinking, Some(true));
+        assert_eq!(options.supports_effort, Some(true));
+        assert_eq!(options.thinking_param.as_deref(), Some("thinking"));
+        assert_eq!(options.effort_param.as_deref(), Some("reasoning_effort"));
+        assert_eq!(options.effort_value_mode.as_deref(), Some("deepseek"));
+    }
+
+    #[test]
+    fn codex_chat_reasoning_profile_infers_deepseek_effort_support() {
+        let profile = infer_codex_chat_reasoning_profile(
+            "DeepSeek",
+            "https://api.deepseek.com",
+            "deepseek-v4-pro",
+        )
+        .unwrap();
+
+        assert_eq!(profile.supports_thinking, Some(true));
+        assert_eq!(profile.supports_effort, Some(true));
+        assert_eq!(profile.effort_value_mode.as_deref(), Some("deepseek"));
+        assert_eq!(profile.output_format.as_deref(), Some("reasoning_content"));
+    }
+
+    #[test]
+    fn codex_chat_reasoning_profile_prefers_openrouter_platform_over_model_vendor() {
+        let profile = infer_codex_chat_reasoning_profile(
+            "OpenRouter",
+            "https://openrouter.ai/api/v1",
+            "deepseek/deepseek-chat-v3.1",
+        )
+        .unwrap();
+
+        assert_eq!(profile.thinking_param.as_deref(), Some("none"));
+        assert_eq!(profile.effort_param.as_deref(), Some("reasoning.effort"));
+        assert_eq!(profile.effort_value_mode.as_deref(), Some("openrouter"));
+        assert_eq!(profile.supports_effort, Some(true));
+    }
+
+    #[test]
+    fn codex_chat_reasoning_profile_prefers_siliconflow_platform_over_model_vendor() {
+        let profile = infer_codex_chat_reasoning_profile(
+            "SiliconFlow",
+            "https://api.siliconflow.cn/v1",
+            "MiniMaxAI/MiniMax-M2.7",
+        )
+        .unwrap();
+
+        assert_eq!(profile.thinking_param.as_deref(), Some("enable_thinking"));
+        assert_eq!(profile.supports_effort, Some(false));
+        assert_eq!(profile.output_format.as_deref(), Some("reasoning_content"));
     }
 
     #[test]

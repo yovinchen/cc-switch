@@ -1809,11 +1809,11 @@ impl RequestForwarder {
                 );
             }
             super::providers::apply_codex_chat_upstream_model(provider, &mut mapped_body);
-            let reasoning_config =
-                super::providers::resolve_codex_chat_reasoning_config(provider, &mapped_body);
+            let reasoning_options =
+                super::providers::resolve_codex_chat_reasoning_options(provider, &mapped_body);
             super::providers::transform_codex_chat::responses_to_chat_completions_with_reasoning(
                 mapped_body,
-                reasoning_config.as_ref(),
+                reasoning_options.as_ref(),
             )?
         } else if needs_transform {
             if adapter.name() == "Claude" {

@@ -9,8 +9,9 @@ use super::{AuthInfo, AuthStrategy, ProviderAdapter};
 use crate::provider::{CodexChatReasoningConfig, Provider};
 use crate::proxy::error::ProxyError;
 use crate::proxy_core::{
-    is_origin_only_url, resolve_codex_provider_uses_chat_completions,
-    should_convert_codex_responses_endpoint_to_chat,
+    infer_codex_chat_reasoning_profile, is_origin_only_url, normalize_codex_chat_reasoning_profile,
+    resolve_codex_provider_uses_chat_completions, should_convert_codex_responses_endpoint_to_chat,
+    CodexChatReasoningOptions, CodexChatReasoningProfile,
 };
 use regex::Regex;
 use serde_json::Value as JsonValue;
@@ -135,41 +136,43 @@ pub fn apply_codex_chat_upstream_model(
     Some(upstream_model)
 }
 
+#[cfg(test)]
 pub fn resolve_codex_chat_reasoning_config(
     provider: &Provider,
     body: &JsonValue,
 ) -> Option<CodexChatReasoningConfig> {
+    resolve_codex_chat_reasoning_profile(provider, body)
+        .map(codex_chat_reasoning_config_from_profile)
+}
+
+pub fn resolve_codex_chat_reasoning_options(
+    provider: &Provider,
+    body: &JsonValue,
+) -> Option<CodexChatReasoningOptions> {
+    resolve_codex_chat_reasoning_profile(provider, body)
+        .map(|profile| CodexChatReasoningOptions::from_profile(&profile))
+}
+
+fn resolve_codex_chat_reasoning_profile(
+    provider: &Provider,
+    body: &JsonValue,
+) -> Option<CodexChatReasoningProfile> {
     if let Some(config) = provider
         .meta
         .as_ref()
         .and_then(|meta| meta.codex_chat_reasoning.clone())
     {
-        return Some(normalize_codex_chat_reasoning_config(config));
+        return Some(normalize_codex_chat_reasoning_profile(
+            codex_chat_reasoning_profile_from_config(config),
+        ));
     }
 
-    infer_codex_chat_reasoning_config(provider, body)
-}
-
-fn normalize_codex_chat_reasoning_config(
-    mut config: CodexChatReasoningConfig,
-) -> CodexChatReasoningConfig {
-    if config.supports_effort.unwrap_or(false) && config.supports_thinking.is_none() {
-        config.supports_thinking = Some(true);
-    }
-    config
-}
-
-fn infer_codex_chat_reasoning_config(
-    provider: &Provider,
-    body: &JsonValue,
-) -> Option<CodexChatReasoningConfig> {
     let model = body
         .get("model")
         .and_then(|value| value.as_str())
         .map(ToString::to_string)
         .or_else(|| codex_provider_upstream_model(provider))
-        .unwrap_or_default()
-        .to_ascii_lowercase();
+        .unwrap_or_default();
     let base_url = provider
         .settings_config
         .get("base_url")
@@ -183,142 +186,36 @@ fn infer_codex_chat_reasoning_config(
                 .and_then(|v| v.as_str())
                 .and_then(extract_codex_base_url_from_toml)
         })
-        .unwrap_or_default()
-        .to_ascii_lowercase();
-    let name = provider.name.to_ascii_lowercase();
+        .unwrap_or_default();
 
-    // 平台优先：聚合 / 托管平台的 reasoning 接口由平台的推理框架决定，而非模型官方实现，
-    // 因此先按平台标识（仅 name + base_url，不含 model 名）判定并覆盖模型规则。
-    if let Some(config) = infer_aggregator_platform_config(&name, &base_url) {
-        return Some(config);
-    }
-
-    let haystack = format!("{name} {base_url} {model}");
-
-    if haystack.contains("deepseek") {
-        return Some(CodexChatReasoningConfig {
-            supports_thinking: Some(true),
-            supports_effort: Some(true),
-            thinking_param: Some("thinking".to_string()),
-            effort_param: Some("reasoning_effort".to_string()),
-            effort_value_mode: Some("deepseek".to_string()),
-            output_format: Some("reasoning_content".to_string()),
-        });
-    }
-
-    // StepFun：仅 step-3.5-flash-2603 这一版支持 reasoning effort（low/high 两档），
-    // 其余 step 模型不暴露 effort，故 supports_effort 仅对含 "2603" 的模型置真。
-    // 第二个 OR 分支覆盖「经中转/聚合跑该模型、但平台 name/base_url 不含 stepfun」的情况。
-    if haystack.contains("stepfun") || haystack.contains("step-3.5-flash-2603") {
-        return Some(CodexChatReasoningConfig {
-            supports_thinking: Some(true),
-            supports_effort: Some(model.contains("2603")),
-            thinking_param: Some("none".to_string()),
-            effort_param: Some("reasoning_effort".to_string()),
-            effort_value_mode: Some("low_high".to_string()),
-            output_format: Some("reasoning".to_string()),
-        });
-    }
-
-    if haystack.contains("kimi") || haystack.contains("moonshot") {
-        return Some(CodexChatReasoningConfig {
-            supports_thinking: Some(true),
-            supports_effort: Some(false),
-            thinking_param: Some("thinking".to_string()),
-            effort_param: Some("none".to_string()),
-            effort_value_mode: None,
-            output_format: Some("reasoning_content".to_string()),
-        });
-    }
-
-    if haystack.contains("glm") || haystack.contains("zhipu") || haystack.contains("z.ai") {
-        return Some(CodexChatReasoningConfig {
-            supports_thinking: Some(true),
-            supports_effort: Some(false),
-            thinking_param: Some("thinking".to_string()),
-            effort_param: Some("none".to_string()),
-            effort_value_mode: None,
-            output_format: Some("reasoning_content".to_string()),
-        });
-    }
-
-    if haystack.contains("qwen") || haystack.contains("dashscope") || haystack.contains("bailian") {
-        return Some(CodexChatReasoningConfig {
-            supports_thinking: Some(true),
-            supports_effort: Some(false),
-            thinking_param: Some("enable_thinking".to_string()),
-            effort_param: Some("none".to_string()),
-            effort_value_mode: None,
-            output_format: Some("reasoning_content".to_string()),
-        });
-    }
-
-    if haystack.contains("minimax") {
-        return Some(CodexChatReasoningConfig {
-            supports_thinking: Some(true),
-            supports_effort: Some(false),
-            thinking_param: Some("reasoning_split".to_string()),
-            effort_param: Some("none".to_string()),
-            effort_value_mode: None,
-            output_format: Some("reasoning_details".to_string()),
-        });
-    }
-
-    if haystack.contains("mimo") {
-        return Some(CodexChatReasoningConfig {
-            supports_thinking: Some(true),
-            supports_effort: Some(false),
-            thinking_param: Some("thinking".to_string()),
-            effort_param: Some("none".to_string()),
-            effort_value_mode: None,
-            output_format: Some("reasoning_content".to_string()),
-        });
-    }
-
-    None
+    infer_codex_chat_reasoning_profile(&provider.name, &base_url, &model)
 }
 
-/// 聚合 / 托管平台的 reasoning 接口由平台决定：同一个模型在不同平台参数可能完全不同
-/// （DeepSeek 官方用 `thinking:{type}`、SiliconFlow 用 `enable_thinking`、
-/// OpenRouter 用原生 `reasoning:{effort}` 对象）。仅以平台标识（name / base_url）判定，
-/// 绝不掺入 model 名——model 名属于模型厂商，会把托管平台误判成模型官方接口。
-fn infer_aggregator_platform_config(
-    name: &str,
-    base_url: &str,
-) -> Option<CodexChatReasoningConfig> {
-    let platform = format!("{name} {base_url}");
-
-    // OpenRouter：用原生归一化对象 `reasoning: { effort }`（由 OpenRouter 翻译成各底层
-    // 模型的正确推理参数，比顶层 OpenAI 别名 reasoning_effort 覆盖面更全）。effort 走
-    // "openrouter" 值映射：枚举为 xhigh|high|medium|low|minimal，无 max——max 会触发
-    // `400 reasoning_effort: Invalid option`（见 openclaw#77350），故钳到 xhigh。
-    // 安全降级：不发 `thinking:{type}`（OpenRouter 不认该字段），避免误配导致请求被拒。
-    if platform.contains("openrouter") {
-        return Some(CodexChatReasoningConfig {
-            supports_thinking: Some(false),
-            supports_effort: Some(true),
-            thinking_param: Some("none".to_string()),
-            effort_param: Some("reasoning.effort".to_string()),
-            effort_value_mode: Some("openrouter".to_string()),
-            output_format: Some("auto".to_string()),
-        });
+fn codex_chat_reasoning_profile_from_config(
+    config: CodexChatReasoningConfig,
+) -> CodexChatReasoningProfile {
+    CodexChatReasoningProfile {
+        supports_thinking: config.supports_thinking,
+        supports_effort: config.supports_effort,
+        thinking_param: config.thinking_param,
+        effort_param: config.effort_param,
+        effort_value_mode: config.effort_value_mode,
+        output_format: config.output_format,
     }
+}
 
-    // SiliconFlow：平台级统一 `enable_thinking`，思维回传 reasoning_content。
-    // 安全降级：不按 reasoning_effort 发 effort（平台用 thinking_budget 控制深度，
-    // 发 reasoning_effort 反而可能不被接受）。
-    if platform.contains("siliconflow") {
-        return Some(CodexChatReasoningConfig {
-            supports_thinking: Some(true),
-            supports_effort: Some(false),
-            thinking_param: Some("enable_thinking".to_string()),
-            effort_param: Some("none".to_string()),
-            effort_value_mode: None,
-            output_format: Some("reasoning_content".to_string()),
-        });
+#[cfg(test)]
+fn codex_chat_reasoning_config_from_profile(
+    profile: CodexChatReasoningProfile,
+) -> CodexChatReasoningConfig {
+    CodexChatReasoningConfig {
+        supports_thinking: profile.supports_thinking,
+        supports_effort: profile.supports_effort,
+        thinking_param: profile.thinking_param,
+        effort_param: profile.effort_param,
+        effort_value_mode: profile.effort_value_mode,
+        output_format: profile.output_format,
     }
-
-    None
 }
 
 fn extract_codex_wire_api_from_toml(config_text: &str) -> Option<String> {

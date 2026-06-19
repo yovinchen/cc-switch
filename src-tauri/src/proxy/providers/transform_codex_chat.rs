@@ -4,7 +4,6 @@
 //! Responses API, while the selected upstream provider only exposes an
 //! OpenAI-compatible Chat Completions endpoint.
 
-use crate::provider::CodexChatReasoningConfig;
 use crate::proxy::error::ProxyError;
 #[cfg(test)]
 use crate::proxy_core::{build_codex_tool_context_from_request, collapse_system_messages_to_head};
@@ -27,28 +26,15 @@ pub fn responses_to_chat_completions(body: Value) -> Result<Value, ProxyError> {
 /// using provider-declared Codex Chat reasoning capabilities when available.
 pub fn responses_to_chat_completions_with_reasoning(
     body: Value,
-    reasoning_config: Option<&CodexChatReasoningConfig>,
+    reasoning_options: Option<&CodexChatReasoningOptions>,
 ) -> Result<Value, ProxyError> {
     let model = body.get("model").and_then(|v| v.as_str()).unwrap_or("");
-    let reasoning_options = reasoning_config.map(codex_chat_reasoning_options_from_provider);
     Ok(responses_to_chat_completions_with_options(
         &body,
-        reasoning_options.as_ref(),
+        reasoning_options,
         is_openai_o_series(model),
         supports_reasoning_effort(model),
     ))
-}
-
-fn codex_chat_reasoning_options_from_provider(
-    config: &CodexChatReasoningConfig,
-) -> CodexChatReasoningOptions {
-    CodexChatReasoningOptions {
-        supports_thinking: config.supports_thinking,
-        supports_effort: config.supports_effort,
-        thinking_param: config.thinking_param.clone(),
-        effort_param: config.effort_param.clone(),
-        effort_value_mode: config.effort_value_mode.clone(),
-    }
 }
 
 /// Convert a non-streaming Chat Completions response into a Responses response.
@@ -421,13 +407,12 @@ mod tests {
             "input": "hello",
             "reasoning": {"effort": "xhigh"}
         });
-        let config = CodexChatReasoningConfig {
+        let config = CodexChatReasoningOptions {
             supports_thinking: Some(true),
             supports_effort: Some(true),
             thinking_param: Some("thinking".to_string()),
             effort_param: Some("reasoning_effort".to_string()),
             effort_value_mode: Some("deepseek".to_string()),
-            output_format: Some("reasoning_content".to_string()),
         };
 
         let result = responses_to_chat_completions_with_reasoning(input, Some(&config)).unwrap();
@@ -439,14 +424,13 @@ mod tests {
     #[test]
     fn responses_request_to_chat_maps_openrouter_to_native_reasoning_object() {
         // OpenRouter 平台形态：原生 reasoning:{effort} 对象 + "openrouter" 值映射
-        // （与 infer_aggregator_platform_config 推断出的配置保持一致）。
-        let config = CodexChatReasoningConfig {
+        // （与 core 推断出的 CodexChatReasoningProfile 保持一致）。
+        let config = CodexChatReasoningOptions {
             supports_thinking: Some(false),
             supports_effort: Some(true),
             thinking_param: Some("none".to_string()),
             effort_param: Some("reasoning.effort".to_string()),
             effort_value_mode: Some("openrouter".to_string()),
-            output_format: Some("auto".to_string()),
         };
 
         // max 不在 OpenRouter 枚举内（见 openclaw#77350），必须钳成 xhigh，
@@ -481,13 +465,12 @@ mod tests {
         // OpenRouter 原生 reasoning 对象支持显式关闭：effort=none 应忠实转发为
         // {"reasoning":{"effort":"none"}}，而非被吞掉——否则默认开思考的模型无法关闭，
         // 带来行为与成本偏差。
-        let config = CodexChatReasoningConfig {
+        let config = CodexChatReasoningOptions {
             supports_thinking: Some(false),
             supports_effort: Some(true),
             thinking_param: Some("none".to_string()),
             effort_param: Some("reasoning.effort".to_string()),
             effort_value_mode: Some("openrouter".to_string()),
-            output_format: Some("auto".to_string()),
         };
 
         let input = json!({
@@ -508,13 +491,12 @@ mod tests {
         // 对照：顶层 reasoning_effort 平台（DeepSeek/OpenAI 风格）的 effort 枚举不含 none，
         // 显式 none 不应透传成 reasoning_effort:"none"（会被上游拒），仅走 thinking 关闭路径。
         // 锁定「none 透传仅限 reasoning.effort 形态」的边界，防止回归。
-        let config = CodexChatReasoningConfig {
+        let config = CodexChatReasoningOptions {
             supports_thinking: Some(true),
             supports_effort: Some(true),
             thinking_param: Some("thinking".to_string()),
             effort_param: Some("reasoning_effort".to_string()),
             effort_value_mode: Some("deepseek".to_string()),
-            output_format: Some("reasoning_content".to_string()),
         };
 
         let input = json!({
@@ -537,13 +519,12 @@ mod tests {
             "input": "hello",
             "reasoning": {"effort": "high"}
         });
-        let config = CodexChatReasoningConfig {
+        let config = CodexChatReasoningOptions {
             supports_thinking: Some(true),
             supports_effort: Some(false),
             thinking_param: Some("thinking".to_string()),
             effort_param: Some("none".to_string()),
             effort_value_mode: None,
-            output_format: Some("reasoning_content".to_string()),
         };
 
         let result = responses_to_chat_completions_with_reasoning(input, Some(&config)).unwrap();
@@ -559,13 +540,12 @@ mod tests {
             "input": "hello",
             "reasoning": {"effort": "medium"}
         });
-        let config = CodexChatReasoningConfig {
+        let config = CodexChatReasoningOptions {
             supports_thinking: Some(true),
             supports_effort: Some(false),
             thinking_param: Some("enable_thinking".to_string()),
             effort_param: Some("none".to_string()),
             effort_value_mode: None,
-            output_format: Some("reasoning_content".to_string()),
         };
 
         let result = responses_to_chat_completions_with_reasoning(input, Some(&config)).unwrap();
