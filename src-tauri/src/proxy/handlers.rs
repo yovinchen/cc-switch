@@ -64,10 +64,9 @@ use crate::proxy_core::{
     ProviderListResponse, ProxyBody, ProxyChannelModelsReplaceRequest, ProxyChannelPatchRequest,
     ProxyChannelWriteRequest, ProxyEngine, ProxyRequest, ProxyResult, ProxyRuntimeStatus,
     ProxyServices, ProxyStatusResponse, RoutableModelList, RouteGroupListResponse,
-    RouteGroupSourceInput, RouteResolveManagementRequest, RouteResolveRequest,
-    RouteResolveResponse, TransformedResponseUsageFormat, UpstreamJsonBodySource,
-    UpstreamSseAggregationKind, CLAUDE_PARSER_CONFIG, CODEX_PARSER_CONFIG, GEMINI_PARSER_CONFIG,
-    OPENAI_PARSER_CONFIG,
+    RouteResolveManagementRequest, RouteResolveRequest, RouteResolveResponse,
+    TransformedResponseUsageFormat, UpstreamJsonBodySource, UpstreamSseAggregationKind,
+    CLAUDE_PARSER_CONFIG, CODEX_PARSER_CONFIG, GEMINI_PARSER_CONFIG, OPENAI_PARSER_CONFIG,
 };
 use crate::proxy_core_adapter::{
     ToProxyCoreChannelModelRecord, ToProxyCoreChannelRecord, ToProxyCoreChannelSpec,
@@ -487,14 +486,7 @@ pub async fn list_proxy_groups(
 ) -> Result<Json<RouteGroupListResponse>, ProxyError> {
     let request =
         GroupListRequest::from_query(query).map_err(management_api_error_to_proxy_error)?;
-    let app_types = if let Some(app_type) = request.app_type() {
-        vec![app_type.to_string()]
-    } else {
-        AppType::all()
-            .into_iter()
-            .map(|app| app.as_str().to_string())
-            .collect()
-    };
+    let app_types = request.app_scope(AppType::all().map(|app| app.as_str().to_string()));
 
     let mut sources = Vec::new();
 
@@ -504,19 +496,18 @@ pub async fn list_proxy_groups(
             .list_channels_for_app(app_type)
             .await
             .map_err(|e| ProxyError::DatabaseError(e.to_string()))?;
-        sources.push(RouteGroupSourceInput::from_channel_specs(
-            app_type.clone(),
-            &source,
-            channels
-                .into_iter()
-                .map(|channel| channel.to_proxy_core_channel_spec()),
-        ));
+        sources.push(
+            request.source_input(
+                app_type.clone(),
+                &source,
+                channels
+                    .into_iter()
+                    .map(|channel| channel.to_proxy_core_channel_spec()),
+            ),
+        );
     }
 
-    Ok(Json(RouteGroupListResponse::from_sources(
-        request.app_type,
-        sources,
-    )))
+    Ok(Json(request.response(sources)))
 }
 
 /// GET /proxy/v1/apps/{app}/routes/current

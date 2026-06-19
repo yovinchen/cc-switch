@@ -1,8 +1,9 @@
-use super::domain::{AppKind, InterfaceKind};
+use super::domain::{AppKind, ChannelSpec, InterfaceKind};
 use super::error::{ProxyCoreError, ProxyCoreResult};
 use super::ports::{
     AppChannelListQuery, AppModelListQuery, ChannelListQuery, ChannelModelsResponse,
-    ChannelRecordResponse, GroupListQuery, RouteResolveRequest,
+    ChannelRecordResponse, ChannelRouteSource, GroupListQuery, RouteGroupListResponse,
+    RouteGroupSourceInput, RouteResolveRequest,
 };
 
 pub fn validate_management_app_type(app_type: &str) -> ProxyCoreResult<()> {
@@ -190,6 +191,33 @@ impl GroupListRequest {
     pub fn app_type(&self) -> Option<&str> {
         self.app_type.as_deref()
     }
+
+    pub fn app_scope<I, S>(&self, all_app_types: I) -> Vec<String>
+    where
+        I: IntoIterator<Item = S>,
+        S: Into<String>,
+    {
+        match &self.app_type {
+            Some(app_type) => vec![app_type.clone()],
+            None => all_app_types.into_iter().map(Into::into).collect(),
+        }
+    }
+
+    pub fn source_input(
+        &self,
+        app_type: impl Into<String>,
+        source: &ChannelRouteSource,
+        channels: impl IntoIterator<Item = ChannelSpec>,
+    ) -> RouteGroupSourceInput {
+        RouteGroupSourceInput::from_channel_specs(app_type, source, channels)
+    }
+
+    pub fn response(
+        &self,
+        sources: impl IntoIterator<Item = RouteGroupSourceInput>,
+    ) -> RouteGroupListResponse {
+        RouteGroupListResponse::from_sources(self.app_type.clone(), sources)
+    }
 }
 
 fn normalize_optional_management_app_type(app_type: Option<String>) -> ProxyCoreResult<Option<String>> {
@@ -210,9 +238,41 @@ mod tests {
         validate_management_app_type, validate_route_resolve_app_type,
     };
     use crate::{
-        AppChannelListQuery, AppKind, AppModelListQuery, ChannelListQuery, GroupListQuery,
-        InterfaceKind,
+        AppChannelListQuery, AppKind, AppModelListQuery, ChannelHealthPolicy, ChannelListQuery,
+        ChannelOverrides, ChannelRouteSource, ChannelSpec, ChannelStatus, GroupListQuery,
+        InterfaceKind, RetryPolicy, UpstreamEndpoint,
     };
+    use serde_json::json;
+
+    fn channel_spec(id: &str, app: AppKind, groups: Vec<String>) -> ChannelSpec {
+        ChannelSpec {
+            id: id.to_string(),
+            provider_id: "provider-a".to_string(),
+            app,
+            name: id.to_string(),
+            status: ChannelStatus::Enabled,
+            endpoint: UpstreamEndpoint {
+                base_url: "https://api.example.com".to_string(),
+                path_template: None,
+                api_version: None,
+                timeout_profile: None,
+            },
+            interface: InterfaceKind::AnthropicMessages,
+            auth_profile: None,
+            models: Vec::new(),
+            groups,
+            priority: 0,
+            weight: 100,
+            retry_policy: RetryPolicy::default(),
+            health_policy: ChannelHealthPolicy::default(),
+            overrides: ChannelOverrides::default(),
+            tags: Vec::new(),
+            metadata: json!({}),
+            source_ref: None,
+            needs_review: false,
+            review_reasons: Vec::new(),
+        }
+    }
 
     #[test]
     fn validate_management_app_type_rejects_blank_values() {
@@ -412,5 +472,57 @@ mod tests {
         let request = GroupListRequest::from_query(query).expect("request");
 
         assert_eq!(request.app_type(), None);
+    }
+
+    #[test]
+    fn group_list_request_builds_app_scope_from_filter_or_host_apps() {
+        let query = serde_json::from_value::<GroupListQuery>(serde_json::json!({}))
+            .expect("query");
+        let request = GroupListRequest::from_query(query).expect("request");
+
+        assert_eq!(
+            request.app_scope(["claude", "codex", "custom"]),
+            vec![
+                "claude".to_string(),
+                "codex".to_string(),
+                "custom".to_string()
+            ]
+        );
+
+        let query = serde_json::from_value::<GroupListQuery>(serde_json::json!({
+            "appType": " codex "
+        }))
+        .expect("query");
+        let request = GroupListRequest::from_query(query).expect("request");
+
+        assert_eq!(request.app_scope(["claude", "codex"]), vec!["codex"]);
+    }
+
+    #[test]
+    fn group_list_request_wraps_sources_into_route_group_response() {
+        let query = serde_json::from_value::<GroupListQuery>(serde_json::json!({
+            "appType": "claude"
+        }))
+        .expect("query");
+        let request = GroupListRequest::from_query(query).expect("request");
+
+        let response = request.response(vec![request.source_input(
+            "claude",
+            &ChannelRouteSource::MaterializedChannels,
+            vec![
+                channel_spec("channel-a", AppKind::Claude, vec![]),
+                channel_spec("channel-b", AppKind::Claude, vec!["beta".to_string()]),
+            ],
+        )]);
+
+        assert_eq!(response.app_type.as_deref(), Some("claude"));
+        assert_eq!(response.sources, vec!["materialized_channels"]);
+        assert_eq!(response.groups.len(), 2);
+        assert_eq!(response.groups[0].name, "beta");
+        assert_eq!(response.groups[0].app_types, vec!["claude"]);
+        assert_eq!(response.groups[0].channel_count, 1);
+        assert_eq!(response.groups[1].name, "default");
+        assert_eq!(response.groups[1].app_types, vec!["claude"]);
+        assert_eq!(response.groups[1].channel_count, 1);
     }
 }
