@@ -17,13 +17,12 @@
 use super::{AuthInfo, AuthStrategy, ProviderAdapter, ProviderType};
 use crate::provider::Provider;
 use crate::proxy::error::ProxyError;
-use crate::proxy_core::{claude_api_format_needs_transform, resolve_claude_api_format};
-use serde_json::{json, Value};
-
-const ANTHROPIC_THINKING_PLACEHOLDER: &str = "tool call";
-const ANTHROPIC_REDACTED_THINKING_PLACEHOLDER: &str = "[redacted thinking]";
-// Keep hints lowercase; matching lowercases only the input value.
-const REASONING_VENDOR_HINTS: &[&str] = &["moonshot", "kimi", "deepseek", "mimo", "xiaomimimo"];
+use crate::proxy_core::{
+    claude_api_format_needs_transform, normalize_anthropic_tool_thinking_history,
+    resolve_claude_api_format, should_normalize_anthropic_tool_thinking_history,
+    should_preserve_reasoning_content_for_openai_chat,
+};
+use serde_json::Value;
 
 /// 获取 Claude 供应商的 API 格式
 ///
@@ -42,45 +41,6 @@ pub fn get_claude_api_format(provider: &Provider) -> &'static str {
     )
 }
 
-fn is_reasoning_vendor_identifier(value: &str) -> bool {
-    let value = value.to_ascii_lowercase();
-    REASONING_VENDOR_HINTS
-        .iter()
-        .any(|hint| value.contains(hint))
-}
-
-fn should_normalize_anthropic_tool_thinking_history(
-    provider: &Provider,
-    body: &Value,
-    api_format: &str,
-) -> bool {
-    if api_format.trim() != "anthropic" {
-        return false;
-    }
-
-    if body
-        .get("model")
-        .and_then(|m| m.as_str())
-        .is_some_and(is_reasoning_vendor_identifier)
-    {
-        return true;
-    }
-
-    let settings = &provider.settings_config;
-    [
-        settings
-            .get("env")
-            .and_then(|env| env.get("ANTHROPIC_BASE_URL"))
-            .and_then(|v| v.as_str()),
-        settings.get("base_url").and_then(|v| v.as_str()),
-        settings.get("baseURL").and_then(|v| v.as_str()),
-        settings.get("apiEndpoint").and_then(|v| v.as_str()),
-    ]
-    .into_iter()
-    .flatten()
-    .any(is_reasoning_vendor_identifier)
-}
-
 /// DeepSeek's Anthropic-compatible endpoint requires thinking history to be
 /// replayed on every assistant turn that contains tool_use. Some Anthropic SDK
 /// clients keep the tool history but drop or redact the thinking block, which
@@ -92,7 +52,11 @@ pub fn normalize_anthropic_tool_thinking_history_for_provider(
     provider: &Provider,
     api_format: &str,
 ) -> bool {
-    if !should_normalize_anthropic_tool_thinking_history(provider, body, api_format) {
+    if !should_normalize_anthropic_tool_thinking_history(
+        &provider.settings_config,
+        body,
+        api_format,
+    ) {
         return false;
     }
 
@@ -185,102 +149,6 @@ pub fn normalize_anthropic_messages_for_provider(
     changed
 }
 
-fn normalize_anthropic_tool_thinking_history(body: &mut Value) -> bool {
-    let Some(messages) = body.get_mut("messages").and_then(Value::as_array_mut) else {
-        return false;
-    };
-
-    let mut changed = false;
-    for message in messages {
-        if message.get("role").and_then(Value::as_str) != Some("assistant") {
-            continue;
-        }
-
-        let Some(content) = message.get_mut("content").and_then(Value::as_array_mut) else {
-            continue;
-        };
-        if !content
-            .iter()
-            .any(|block| block.get("type").and_then(Value::as_str) == Some("tool_use"))
-        {
-            continue;
-        }
-
-        let mut has_thinking = false;
-        for block in content.iter_mut() {
-            match block.get("type").and_then(Value::as_str) {
-                Some("thinking") => {
-                    let has_non_empty_thinking = block
-                        .get("thinking")
-                        .and_then(Value::as_str)
-                        .is_some_and(|text| !text.trim().is_empty());
-                    if let Some(obj) = block.as_object_mut() {
-                        if obj.remove("signature").is_some() {
-                            changed = true;
-                        }
-                        if !has_non_empty_thinking {
-                            obj.insert(
-                                "thinking".to_string(),
-                                json!(ANTHROPIC_THINKING_PLACEHOLDER),
-                            );
-                            changed = true;
-                        }
-                    }
-                    has_thinking = true;
-                }
-                Some("redacted_thinking") => {
-                    *block = json!({
-                        "type": "thinking",
-                        "thinking": ANTHROPIC_REDACTED_THINKING_PLACEHOLDER
-                    });
-                    has_thinking = true;
-                    changed = true;
-                }
-                _ => {}
-            }
-        }
-
-        if !has_thinking {
-            content.insert(
-                0,
-                json!({
-                    "type": "thinking",
-                    "thinking": ANTHROPIC_THINKING_PLACEHOLDER
-                }),
-            );
-            changed = true;
-        }
-    }
-
-    changed
-}
-
-fn should_preserve_reasoning_content_for_openai_chat(provider: &Provider, body: &Value) -> bool {
-    if body
-        .get("model")
-        .and_then(|m| m.as_str())
-        .is_some_and(is_reasoning_vendor_identifier)
-    {
-        return true;
-    }
-
-    let settings = &provider.settings_config;
-    let base_urls = [
-        settings
-            .get("env")
-            .and_then(|env| env.get("ANTHROPIC_BASE_URL"))
-            .and_then(|v| v.as_str()),
-        settings.get("base_url").and_then(|v| v.as_str()),
-        settings.get("baseURL").and_then(|v| v.as_str()),
-        settings.get("apiEndpoint").and_then(|v| v.as_str()),
-    ];
-
-    base_urls
-        .into_iter()
-        .flatten()
-        .any(is_reasoning_vendor_identifier)
-}
-
 pub fn transform_claude_request_for_api_format(
     body: serde_json::Value,
     provider: &Provider,
@@ -356,7 +224,7 @@ pub fn transform_claude_request_for_api_format(
         }
         "openai_chat" => {
             let preserve_reasoning_content =
-                should_preserve_reasoning_content_for_openai_chat(provider, &body);
+                should_preserve_reasoning_content_for_openai_chat(&provider.settings_config, &body);
             let mut result = super::transform::anthropic_to_openai_with_reasoning_content(
                 body,
                 preserve_reasoning_content,
@@ -2068,7 +1936,10 @@ mod tests {
         assert!(changed);
         let content = body["messages"][0]["content"].as_array().unwrap();
         assert_eq!(content[0]["type"], "thinking");
-        assert_eq!(content[0]["thinking"], ANTHROPIC_THINKING_PLACEHOLDER);
+        assert_eq!(
+            content[0]["thinking"],
+            crate::proxy_core::ANTHROPIC_TOOL_THINKING_PLACEHOLDER
+        );
         assert_eq!(content[1]["type"], "text");
         assert_eq!(content[2]["type"], "tool_use");
     }
@@ -2159,7 +2030,10 @@ mod tests {
         assert!(changed);
         let content = body["messages"][0]["content"].as_array().unwrap();
         assert_eq!(content[0]["type"], "thinking");
-        assert_eq!(content[0]["thinking"], ANTHROPIC_THINKING_PLACEHOLDER);
+        assert_eq!(
+            content[0]["thinking"],
+            crate::proxy_core::ANTHROPIC_TOOL_THINKING_PLACEHOLDER
+        );
         assert_eq!(content[1]["type"], "tool_use");
     }
 
@@ -2193,7 +2067,7 @@ mod tests {
         assert_eq!(content[0]["type"], "thinking");
         assert_eq!(
             content[0]["thinking"],
-            ANTHROPIC_REDACTED_THINKING_PLACEHOLDER
+            crate::proxy_core::ANTHROPIC_REDACTED_THINKING_PLACEHOLDER
         );
         assert!(content[0].get("data").is_none());
     }
