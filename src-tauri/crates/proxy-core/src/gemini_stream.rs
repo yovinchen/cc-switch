@@ -863,6 +863,66 @@ mod tests {
             .join("")
     }
 
+    fn collect_stream_output(chunks: Vec<&str>) -> String {
+        collect_stream_output_with_options(chunks, None, None, None, None)
+    }
+
+    fn collect_stream_output_with_shadow(
+        chunks: Vec<&str>,
+        store: Arc<GeminiShadowStore>,
+        provider_id: &str,
+        session_id: &str,
+    ) -> String {
+        collect_stream_output_with_options(
+            chunks,
+            Some(store),
+            Some(provider_id.to_string()),
+            Some(session_id.to_string()),
+            None,
+        )
+    }
+
+    fn collect_stream_output_with_hints(
+        chunks: Vec<&str>,
+        hints: AnthropicToolSchemaHints,
+    ) -> String {
+        collect_stream_output_with_options(chunks, None, None, None, Some(hints))
+    }
+
+    fn collect_stream_output_with_options(
+        chunks: Vec<&str>,
+        shadow_store: Option<Arc<GeminiShadowStore>>,
+        provider_id: Option<String>,
+        session_id: Option<String>,
+        tool_schema_hints: Option<AnthropicToolSchemaHints>,
+    ) -> String {
+        let owned_chunks: Vec<String> = chunks.into_iter().map(ToString::to_string).collect();
+        let stream = futures_stream::iter(
+            owned_chunks
+                .into_iter()
+                .map(|chunk| Ok::<Bytes, io::Error>(Bytes::from(chunk))),
+        );
+        let mut counter = 0;
+        let converted = create_gemini_to_anthropic_sse_stream(
+            stream,
+            shadow_store,
+            provider_id,
+            session_id,
+            tool_schema_hints,
+            move || next_synth(&mut counter),
+        );
+
+        futures::executor::block_on(async move {
+            converted
+                .collect::<Vec<_>>()
+                .await
+                .into_iter()
+                .map(|item| String::from_utf8(item.unwrap().to_vec()).unwrap())
+                .collect::<Vec<_>>()
+                .join("")
+        })
+    }
+
     #[test]
     fn analyzes_visible_text_signature_and_tool_calls() {
         let parts = vec![
@@ -1190,6 +1250,225 @@ mod tests {
             .expect("shadow turn must be recorded");
         assert_eq!(shadow["parts"][0]["functionCall"]["name"], "Bash");
         assert_eq!(shadow["parts"][0]["thoughtSignature"], "sig-tool");
+    }
+
+    #[test]
+    fn stream_wrapper_records_tool_shadow_before_tool_events_are_drained() {
+        let store = Arc::new(GeminiShadowStore::with_limits(8, 4));
+        let chunks = vec![
+            "data: {\"responseId\":\"resp_tool_shadow\",\"modelVersion\":\"gemini-2.5-pro\",\"candidates\":[{\"finishReason\":\"STOP\",\"content\":{\"parts\":[{\"functionCall\":{\"id\":\"call_1\",\"name\":\"Bash\",\"args\":{\"command\":\"ls -R\"}},\"thoughtSignature\":\"sig-tool-1\"}]}}],\"usageMetadata\":{\"promptTokenCount\":5,\"totalTokenCount\":8}}\n\n".to_string(),
+        ];
+        let stream = futures_stream::iter(
+            chunks
+                .into_iter()
+                .map(|chunk| Ok::<Bytes, io::Error>(Bytes::from(chunk))),
+        );
+        let mut counter = 0;
+        let mut converted = Box::pin(create_gemini_to_anthropic_sse_stream(
+            stream,
+            Some(store.clone()),
+            Some("provider-a".to_string()),
+            Some("session-1".to_string()),
+            None,
+            move || next_synth(&mut counter),
+        ));
+
+        futures::executor::block_on(async {
+            while let Some(item) = converted.next().await {
+                let event = String::from_utf8(item.unwrap().to_vec()).unwrap();
+                if event.contains("\"type\":\"tool_use\"") {
+                    break;
+                }
+            }
+        });
+
+        let shadow = store
+            .latest_assistant_content("provider-a", "session-1")
+            .unwrap();
+        assert_eq!(shadow["parts"][0]["functionCall"]["name"], "Bash");
+        assert_eq!(shadow["parts"][0]["thoughtSignature"], "sig-tool-1");
+    }
+
+    #[test]
+    fn stream_wrapper_converts_text_stream() {
+        let output = collect_stream_output(vec![
+            "data: {\"responseId\":\"resp_1\",\"modelVersion\":\"gemini-2.5-pro\",\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"Hel\"}]}}],\"usageMetadata\":{\"promptTokenCount\":10,\"totalTokenCount\":13}}\n\n",
+            "data: {\"responseId\":\"resp_1\",\"modelVersion\":\"gemini-2.5-pro\",\"candidates\":[{\"finishReason\":\"STOP\",\"content\":{\"parts\":[{\"text\":\"Hello\"}]}}],\"usageMetadata\":{\"promptTokenCount\":10,\"totalTokenCount\":15}}\n\n",
+        ]);
+
+        assert!(output.contains("event: message_start"));
+        assert!(output.contains("\"type\":\"text_delta\""));
+        assert!(output.contains("\"text\":\"Hel\""));
+        assert!(output.contains("\"text\":\"lo\""));
+        assert!(output.contains("\"stop_reason\":\"end_turn\""));
+        assert!(output.contains("event: message_stop"));
+    }
+
+    #[test]
+    fn stream_wrapper_handles_crlf_delimited_blocks() {
+        let output = collect_stream_output(vec![
+            "data: {\"responseId\":\"resp_3\",\"modelVersion\":\"gemini-2.5-pro\",\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"Hi\"}]}}],\"usageMetadata\":{\"promptTokenCount\":4,\"totalTokenCount\":6}}\r\n\r\n",
+            "data: {\"responseId\":\"resp_3\",\"modelVersion\":\"gemini-2.5-pro\",\"candidates\":[{\"finishReason\":\"STOP\",\"content\":{\"parts\":[{\"text\":\"Hi there\"}]}}],\"usageMetadata\":{\"promptTokenCount\":4,\"totalTokenCount\":9}}\r\n\r\n",
+        ]);
+
+        assert!(output.contains("event: message_start"));
+        assert!(output.contains("\"type\":\"text_delta\""));
+        assert!(output.contains("\"text\":\"Hi\""));
+        assert!(output.contains("\"text\":\" there\""));
+        assert!(output.contains("event: message_stop"));
+    }
+
+    #[test]
+    fn stream_wrapper_records_full_text_shadow_across_delta_chunks() {
+        let store = Arc::new(GeminiShadowStore::with_limits(8, 4));
+        let output = collect_stream_output_with_shadow(
+            vec![
+                "data: {\"responseId\":\"resp_4\",\"modelVersion\":\"gemini-2.5-pro\",\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"Hel\"}]}}],\"usageMetadata\":{\"promptTokenCount\":4,\"totalTokenCount\":6}}\n\n",
+                "data: {\"responseId\":\"resp_4\",\"modelVersion\":\"gemini-2.5-pro\",\"candidates\":[{\"finishReason\":\"STOP\",\"content\":{\"parts\":[{\"text\":\"lo\"},{\"text\":\"\",\"thoughtSignature\":\"sig-1\"}]}}],\"usageMetadata\":{\"promptTokenCount\":4,\"totalTokenCount\":8}}\n\n",
+            ],
+            store.clone(),
+            "provider-a",
+            "session-1",
+        );
+
+        assert!(output.contains("\"text\":\"Hel\""));
+        assert!(output.contains("\"text\":\"lo\""));
+
+        let shadow = store
+            .latest_assistant_content("provider-a", "session-1")
+            .unwrap();
+        assert_eq!(shadow["parts"][0]["text"], "Hello");
+        assert_eq!(shadow["parts"][0]["thoughtSignature"], "sig-1");
+    }
+
+    #[test]
+    fn stream_wrapper_rectifies_skill_args_from_nested_parameters() {
+        let payload = json!({
+            "responseId": "resp_6",
+            "modelVersion": "gemini-2.5-pro",
+            "candidates": [{
+                "finishReason": "STOP",
+                "content": {
+                    "parts": [{
+                        "functionCall": {
+                            "id": "call_1",
+                            "name": "Skill",
+                            "args": {
+                                "name": "git-commit",
+                                "parameters": {
+                                    "args": ["详细分析内容 编写提交信息 分多次提交代码"]
+                                }
+                            }
+                        }
+                    }]
+                }
+            }],
+            "usageMetadata": {
+                "promptTokenCount": 5,
+                "totalTokenCount": 8
+            }
+        });
+        let input = format!("data: {}\n\n", serde_json::to_string(&payload).unwrap());
+        let hints = crate::gemini_tool_args::extract_anthropic_tool_schema_hints(&json!({
+            "tools": [{
+                "name": "Skill",
+                "input_schema": {
+                    "type": "object",
+                    "properties": {
+                        "skill": { "type": "string" },
+                        "args": { "type": "string" }
+                    },
+                    "required": ["skill"]
+                }
+            }]
+        }));
+
+        let output = collect_stream_output_with_hints(vec![input.as_str()], hints);
+
+        assert!(output.contains("git-commit"));
+        assert!(output.contains("详细分析内容 编写提交信息 分多次提交代码"));
+        assert!(!output.contains("\\\"parameters\\\""));
+    }
+
+    #[test]
+    fn stream_wrapper_preserves_parallel_same_name_no_id_calls() {
+        let output = collect_stream_output(vec![
+            "data: {\"responseId\":\"r1\",\"modelVersion\":\"gemini-2.5-pro\",\"candidates\":[{\"finishReason\":\"STOP\",\"content\":{\"parts\":[{\"functionCall\":{\"name\":\"get_weather\",\"args\":{\"city\":\"Tokyo\"}}},{\"functionCall\":{\"name\":\"get_weather\",\"args\":{\"city\":\"Osaka\"}}}]}}],\"usageMetadata\":{\"promptTokenCount\":5,\"totalTokenCount\":8}}\n\n",
+        ]);
+
+        assert_eq!(output.matches("\"type\":\"tool_use\"").count(), 2);
+        assert!(output.contains("Tokyo"));
+        assert!(output.contains("Osaka"));
+        assert_eq!(
+            output
+                .matches(&format!("\"id\":\"{GEMINI_SYNTHESIZED_TOOL_CALL_ID_PREFIX}"))
+                .count(),
+            2
+        );
+    }
+
+    #[test]
+    fn stream_wrapper_reuses_synthesized_id_across_cumulative_chunks() {
+        let output = collect_stream_output(vec![
+            "data: {\"responseId\":\"r2\",\"modelVersion\":\"gemini-2.5-pro\",\"candidates\":[{\"content\":{\"parts\":[{\"functionCall\":{\"name\":\"get_weather\",\"args\":{\"city\":\"Tokyo\"}}}]}}],\"usageMetadata\":{\"promptTokenCount\":4,\"totalTokenCount\":6}}\n\n",
+            "data: {\"responseId\":\"r2\",\"modelVersion\":\"gemini-2.5-pro\",\"candidates\":[{\"finishReason\":\"STOP\",\"content\":{\"parts\":[{\"functionCall\":{\"name\":\"get_weather\",\"args\":{\"city\":\"Tokyo\",\"units\":\"c\"}}}]}}],\"usageMetadata\":{\"promptTokenCount\":4,\"totalTokenCount\":9}}\n\n",
+        ]);
+
+        assert_eq!(output.matches("\"type\":\"tool_use\"").count(), 1);
+        assert!(output.contains("\"units\\\":\\\"c\\\""));
+    }
+
+    #[test]
+    fn stream_wrapper_treats_empty_ids_as_missing() {
+        let output = collect_stream_output(vec![
+            "data: {\"responseId\":\"r3\",\"modelVersion\":\"gemini-2.5-pro\",\"candidates\":[{\"finishReason\":\"STOP\",\"content\":{\"parts\":[{\"functionCall\":{\"id\":\"\",\"name\":\"get_weather\",\"args\":{\"city\":\"Tokyo\"}}},{\"functionCall\":{\"id\":\"\",\"name\":\"get_weather\",\"args\":{\"city\":\"Osaka\"}}}]}}],\"usageMetadata\":{\"promptTokenCount\":5,\"totalTokenCount\":8}}\n\n",
+        ]);
+
+        assert_eq!(output.matches("\"type\":\"tool_use\"").count(), 2);
+        assert!(output.contains("Tokyo"));
+        assert!(output.contains("Osaka"));
+        assert!(!output.contains("\"id\":\"\""));
+        assert_eq!(
+            output
+                .matches(&format!("\"id\":\"{GEMINI_SYNTHESIZED_TOOL_CALL_ID_PREFIX}"))
+                .count(),
+            2
+        );
+    }
+
+    #[test]
+    fn stream_wrapper_merges_real_id_upgrade_into_synthesized_snapshot() {
+        let output = collect_stream_output(vec![
+            "data: {\"responseId\":\"rupg\",\"modelVersion\":\"gemini-2.5-pro\",\"candidates\":[{\"content\":{\"parts\":[{\"functionCall\":{\"name\":\"get_weather\",\"args\":{\"city\":\"Tokyo\"}}}]}}],\"usageMetadata\":{\"promptTokenCount\":4,\"totalTokenCount\":6}}\n\n",
+            "data: {\"responseId\":\"rupg\",\"modelVersion\":\"gemini-2.5-pro\",\"candidates\":[{\"finishReason\":\"STOP\",\"content\":{\"parts\":[{\"functionCall\":{\"id\":\"real_id_abc\",\"name\":\"get_weather\",\"args\":{\"city\":\"Tokyo\",\"units\":\"c\"}}}]}}],\"usageMetadata\":{\"promptTokenCount\":4,\"totalTokenCount\":9}}\n\n",
+        ]);
+
+        assert_eq!(output.matches("\"type\":\"tool_use\"").count(), 1);
+        assert!(output.contains("\"id\":\"real_id_abc\""));
+        assert!(!output.contains(&format!(
+            "\"id\":\"{GEMINI_SYNTHESIZED_TOOL_CALL_ID_PREFIX}"
+        )));
+        assert!(output.contains("units"));
+    }
+
+    #[test]
+    fn stream_wrapper_preserves_thought_signature_when_later_chunk_omits_it() {
+        let store = Arc::new(GeminiShadowStore::with_limits(8, 4));
+        collect_stream_output_with_shadow(
+            vec![
+                "data: {\"responseId\":\"rsig\",\"modelVersion\":\"gemini-2.5-pro\",\"candidates\":[{\"content\":{\"parts\":[{\"functionCall\":{\"id\":\"call_1\",\"name\":\"get_weather\",\"args\":{\"city\":\"Tokyo\"}},\"thoughtSignature\":\"sig-keep\"}]}}],\"usageMetadata\":{\"promptTokenCount\":4,\"totalTokenCount\":6}}\n\n",
+                "data: {\"responseId\":\"rsig\",\"modelVersion\":\"gemini-2.5-pro\",\"candidates\":[{\"finishReason\":\"STOP\",\"content\":{\"parts\":[{\"functionCall\":{\"id\":\"call_1\",\"name\":\"get_weather\",\"args\":{\"city\":\"Tokyo\",\"units\":\"c\"}}}]}}],\"usageMetadata\":{\"promptTokenCount\":4,\"totalTokenCount\":9}}\n\n",
+            ],
+            store.clone(),
+            "provider-sig",
+            "session-sig",
+        );
+
+        let shadow = store
+            .latest_assistant_content("provider-sig", "session-sig")
+            .expect("shadow turn must be recorded");
+        assert_eq!(shadow["parts"][0]["functionCall"]["id"], "call_1");
+        assert_eq!(shadow["parts"][0]["thoughtSignature"], "sig-keep");
     }
 
     #[test]

@@ -21,8 +21,6 @@ pub mod copilot_auth;
 mod gemini;
 pub mod models;
 #[cfg(test)]
-pub mod streaming_gemini;
-#[cfg(test)]
 pub mod transform;
 #[cfg(test)]
 pub mod transform_codex_chat;
