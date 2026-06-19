@@ -11,9 +11,10 @@ use super::{
 use crate::proxy_core::{
     decode_response_body, get_content_encoding,
     non_streaming_response_usage_record_with_request_id_fallback,
-    streaming_response_usage_record_with_request_id_fallback, strip_hop_by_hop_response_headers,
-    AppKind, ProxyServices, ResponseBodyDecodeStatus, SseEventScanner, SseUsageAccumulator,
-    StreamUsageEventFilter, StreamingTimeoutConfig, UsageParserConfig, UsageRecord,
+    streaming_response_usage_record_with_optional_outbound_model,
+    strip_hop_by_hop_response_headers, AppKind, ProxyServices, ResponseBodyDecodeStatus,
+    SseEventScanner, SseUsageAccumulator, StreamUsageEventFilter, StreamingTimeoutConfig,
+    UsageParserConfig, UsageRecord,
 };
 #[cfg(test)]
 use crate::proxy_core::{ProviderKind, TokenUsage};
@@ -349,12 +350,6 @@ fn create_usage_collector(
     let provider_id = ctx.provider.id.clone();
     let provider_kind = provider_kind_from_provider(&ctx.provider);
     let request_model = ctx.request_model.clone();
-    // 流式事件缺失模型名时的归因兜底：映射后的出站模型（路由接管真值）优先，
-    // 其次才是客户端请求别名
-    let fallback_model = ctx
-        .outbound_model
-        .clone()
-        .unwrap_or_else(|| ctx.request_model.clone());
     // 用 ctx 的 app_type 而不是 parser_config 的：Claude Desktop 流式透传复用
     // CLAUDE_PARSER_CONFIG（app_type_str="claude"），按 parser_config 记账会把
     // claude-desktop 的行错记到 claude 名下，导致供应商计价覆盖解析不到。
@@ -364,13 +359,14 @@ fn create_usage_collector(
     let stream_parser = parser_config.stream_parser;
     let model_extractor = parser_config.model_extractor;
     let session_id = ctx.session_id.clone();
+    let outbound_model = ctx.outbound_model.clone();
 
     Some(SseUsageCollector::new(
         start_time,
         parser_config.stream_event_filter,
         move |events, first_token_ms| {
             let latency_ms = start_time.elapsed().as_millis() as u64;
-            let output = streaming_response_usage_record_with_request_id_fallback(
+            let output = streaming_response_usage_record_with_optional_outbound_model(
                 &events,
                 stream_parser,
                 model_extractor,
@@ -378,8 +374,7 @@ fn create_usage_collector(
                 provider_kind.clone(),
                 AppKind::from(app_type_str),
                 &request_model,
-                &fallback_model,
-                &fallback_model,
+                outbound_model.as_deref(),
                 latency_ms,
                 first_token_ms,
                 status_code,

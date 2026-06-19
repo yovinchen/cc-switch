@@ -860,6 +860,41 @@ pub fn streaming_response_usage_record_with_request_id_fallback(
 }
 
 #[allow(clippy::too_many_arguments)]
+pub fn streaming_response_usage_record_with_optional_outbound_model(
+    events: &[Value],
+    stream_parser: fn(&[Value]) -> Option<TokenUsage>,
+    model_extractor: fn(&[Value], &str) -> String,
+    provider_id: &str,
+    provider_kind: Option<ProviderKind>,
+    app: AppKind,
+    request_model: &str,
+    outbound_model: Option<&str>,
+    latency_ms: u64,
+    first_token_ms: Option<u64>,
+    status_code: u16,
+    session_id: Option<String>,
+    request_id_fallback: impl FnOnce() -> String,
+) -> StreamingResponseUsageRecord {
+    let models = normalize_usage_models(None, request_model, outbound_model);
+    streaming_response_usage_record_with_request_id_fallback(
+        events,
+        stream_parser,
+        model_extractor,
+        provider_id,
+        provider_kind,
+        app,
+        &models.request_model,
+        &models.outbound_model,
+        &models.outbound_model,
+        latency_ms,
+        first_token_ms,
+        status_code,
+        session_id,
+        request_id_fallback,
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
 pub fn non_streaming_response_usage_record_with_request_id_fallback(
     body: Option<&Value>,
     response_parser: fn(&Value) -> Option<TokenUsage>,
@@ -2297,6 +2332,54 @@ mod tests {
         assert_eq!(output.record.first_token_ms, Some(45));
         assert_eq!(output.record.status_code, 200);
         assert!(output.record.is_streaming);
+    }
+
+    #[test]
+    fn test_streaming_response_usage_record_resolves_optional_outbound_model() {
+        let output = streaming_response_usage_record_with_optional_outbound_model(
+            &[json!({})],
+            missing_stream_usage,
+            extracted_stream_model,
+            "provider-a",
+            None,
+            crate::AppKind::Claude,
+            "request-model",
+            Some("upstream-model"),
+            123,
+            None,
+            200,
+            None,
+            || "request-1".to_string(),
+        );
+
+        assert_eq!(output.record.request_model, "request-model");
+        assert_eq!(output.record.outbound_model, "upstream-model");
+        assert_eq!(
+            output.record.response_model.as_deref(),
+            Some("upstream-model")
+        );
+
+        let fallback = streaming_response_usage_record_with_optional_outbound_model(
+            &[json!({})],
+            missing_stream_usage,
+            extracted_stream_model,
+            "provider-a",
+            None,
+            crate::AppKind::Claude,
+            "request-model",
+            None,
+            123,
+            None,
+            200,
+            None,
+            || "request-2".to_string(),
+        );
+
+        assert_eq!(fallback.record.outbound_model, "request-model");
+        assert_eq!(
+            fallback.record.response_model.as_deref(),
+            Some("request-model")
+        );
     }
 
     #[test]
