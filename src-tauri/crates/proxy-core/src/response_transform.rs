@@ -563,6 +563,15 @@ pub fn responses_function_call_to_chat_tool_call(item: &Value, chat_name: &str) 
     })
 }
 
+pub fn responses_tool_choice_to_chat_function_selector(chat_name: &str) -> Value {
+    json!({
+        "type": "function",
+        "function": {
+            "name": chat_name
+        }
+    })
+}
+
 pub fn responses_custom_tool_call_to_chat_tool_call(item: &Value) -> Value {
     let call_id = item
         .get("call_id")
@@ -1593,6 +1602,10 @@ mod tests {
         assert_eq!(function["id"], "call_lookup");
         assert_eq!(function["function"]["name"], "namespace__lookup");
         assert_eq!(function["function"]["arguments"], r#"{"a":1,"b":2}"#);
+
+        let tool_choice = responses_tool_choice_to_chat_function_selector("namespace__lookup");
+        assert_eq!(tool_choice["type"], "function");
+        assert_eq!(tool_choice["function"]["name"], "namespace__lookup");
 
         let custom = responses_custom_tool_call_to_chat_tool_call(&json!({
             "type": "custom_tool_call",

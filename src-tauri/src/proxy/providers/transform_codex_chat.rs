@@ -26,8 +26,8 @@ pub(crate) use crate::proxy_core::{
     responses_custom_tool_to_chat_tool,
     responses_function_call_to_chat_tool_call as build_responses_function_call_chat_tool_call,
     responses_function_tool_to_chat_tool, responses_instruction_text, responses_role_to_chat_role,
-    responses_tool_name, responses_tool_search_call_to_chat_tool_call,
-    CODEX_TOOL_SEARCH_PROXY_NAME,
+    responses_tool_choice_to_chat_function_selector, responses_tool_name,
+    responses_tool_search_call_to_chat_tool_call, CODEX_TOOL_SEARCH_PROXY_NAME,
 };
 use crate::proxy_core::{codex_chat_reasoning_requested, map_codex_chat_reasoning_effort};
 use serde_json::{json, Value};
@@ -717,29 +717,14 @@ fn responses_tool_choice_to_chat(tool_choice: &Value, tool_context: &CodexToolCo
             let name = obj.get("name").and_then(|v| v.as_str()).unwrap_or("");
             let namespace = obj.get("namespace").and_then(|v| v.as_str());
             let chat_name = tool_context.chat_name_for_response_function(name, namespace);
-            json!({
-                "type": "function",
-                "function": {
-                    "name": chat_name
-                }
-            })
+            responses_tool_choice_to_chat_function_selector(&chat_name)
         }
         Value::Object(obj) if obj.get("type").and_then(|v| v.as_str()) == Some("tool_search") => {
-            json!({
-                "type": "function",
-                "function": {
-                    "name": CODEX_TOOL_SEARCH_PROXY_NAME
-                }
-            })
+            responses_tool_choice_to_chat_function_selector(CODEX_TOOL_SEARCH_PROXY_NAME)
         }
         Value::Object(obj) if obj.get("type").and_then(|v| v.as_str()) == Some("custom") => {
             let name = obj.get("name").and_then(|v| v.as_str()).unwrap_or("");
-            json!({
-                "type": "function",
-                "function": {
-                    "name": name
-                }
-            })
+            responses_tool_choice_to_chat_function_selector(name)
         }
         _ => tool_choice.clone(),
     }
