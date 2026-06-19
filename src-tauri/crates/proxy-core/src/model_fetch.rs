@@ -1,3 +1,23 @@
+use serde::{Deserialize, Serialize};
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct FetchedModel {
+    pub id: String,
+    pub owned_by: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct ModelsResponse {
+    data: Option<Vec<ModelEntry>>,
+}
+
+#[derive(Debug, Deserialize)]
+struct ModelEntry {
+    id: String,
+    owned_by: Option<String>,
+}
+
 /// Known Anthropic-compatible subpath suffixes. Keep longest suffixes first so
 /// `/api/anthropic` wins before `/anthropic`.
 const KNOWN_COMPAT_SUFFIXES: &[&str] = &[
@@ -83,6 +103,25 @@ pub fn build_models_url_candidates(
     }
 
     Ok(unique)
+}
+
+pub fn parse_models_response_bytes(body: &[u8]) -> Result<Vec<FetchedModel>, String> {
+    let response: ModelsResponse = serde_json::from_slice(body).map_err(|e| e.to_string())?;
+    Ok(models_from_response(response))
+}
+
+fn models_from_response(response: ModelsResponse) -> Vec<FetchedModel> {
+    let mut models: Vec<FetchedModel> = response
+        .data
+        .unwrap_or_default()
+        .into_iter()
+        .map(|model| FetchedModel {
+            id: model.id,
+            owned_by: model.owned_by,
+        })
+        .collect();
+    models.sort_by(|a, b| a.id.cmp(&b.id));
+    models
 }
 
 fn strip_compat_suffix(base_url: &str) -> Option<&str> {
@@ -310,5 +349,32 @@ mod tests {
     fn test_candidates_deduplicate() {
         let c = build_models_url_candidates("https://host.example.com", false, None).unwrap();
         assert_eq!(c.len(), 1);
+    }
+
+    #[test]
+    fn test_parse_models_response() {
+        let json = r#"{"object":"list","data":[{"id":"gpt-4","object":"model","owned_by":"openai"},{"id":"claude-3-sonnet","object":"model","owned_by":"anthropic"}]}"#;
+        let data = parse_models_response_bytes(json.as_bytes()).unwrap();
+        assert_eq!(data.len(), 2);
+        assert_eq!(data[0].id, "claude-3-sonnet");
+        assert_eq!(data[0].owned_by.as_deref(), Some("anthropic"));
+        assert_eq!(data[1].id, "gpt-4");
+        assert_eq!(data[1].owned_by.as_deref(), Some("openai"));
+    }
+
+    #[test]
+    fn test_parse_models_response_no_owned_by() {
+        let json = r#"{"object":"list","data":[{"id":"my-model","object":"model"}]}"#;
+        let data = parse_models_response_bytes(json.as_bytes()).unwrap();
+        assert_eq!(data[0].id, "my-model");
+        assert!(data[0].owned_by.is_none());
+    }
+
+    #[test]
+    fn test_parse_models_response_empty_data() {
+        let json = r#"{"object":"list","data":[]}"#;
+        assert!(parse_models_response_bytes(json.as_bytes())
+            .unwrap()
+            .is_empty());
     }
 }

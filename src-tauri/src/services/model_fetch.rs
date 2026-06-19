@@ -6,30 +6,10 @@
 
 use reqwest::header::{HeaderValue, USER_AGENT};
 use reqwest::StatusCode;
-use serde::{Deserialize, Serialize};
 use std::time::Duration;
 
-use crate::proxy_core::build_models_url_candidates;
-
-/// 获取到的模型信息
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct FetchedModel {
-    pub id: String,
-    pub owned_by: Option<String>,
-}
-
-/// OpenAI 兼容的 /v1/models 响应格式
-#[derive(Debug, Deserialize)]
-struct ModelsResponse {
-    data: Option<Vec<ModelEntry>>,
-}
-
-#[derive(Debug, Deserialize)]
-struct ModelEntry {
-    id: String,
-    owned_by: Option<String>,
-}
+pub use crate::proxy_core::FetchedModel;
+use crate::proxy_core::{build_models_url_candidates, parse_models_response_bytes};
 
 const FETCH_TIMEOUT_SECS: u64 = 15;
 
@@ -75,22 +55,12 @@ pub async fn fetch_models(
         let status = response.status();
 
         if status.is_success() {
-            let resp: ModelsResponse = response
-                .json()
+            let body = response
+                .bytes()
                 .await
                 .map_err(|e| format!("Failed to parse response: {e}"))?;
-
-            let mut models: Vec<FetchedModel> = resp
-                .data
-                .unwrap_or_default()
-                .into_iter()
-                .map(|m| FetchedModel {
-                    id: m.id,
-                    owned_by: m.owned_by,
-                })
-                .collect();
-
-            models.sort_by(|a, b| a.id.cmp(&b.id));
+            let models = parse_models_response_bytes(&body)
+                .map_err(|e| format!("Failed to parse response: {e}"))?;
             return Ok(models);
         }
 
@@ -118,37 +88,5 @@ fn truncate_body(body: String) -> String {
         let mut s: String = body.chars().take(ERROR_BODY_MAX_CHARS).collect();
         s.push('…');
         s
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_parse_response() {
-        let json = r#"{"object":"list","data":[{"id":"gpt-4","object":"model","owned_by":"openai"},{"id":"claude-3-sonnet","object":"model","owned_by":"anthropic"}]}"#;
-        let resp: ModelsResponse = serde_json::from_str(json).unwrap();
-        let data = resp.data.unwrap();
-        assert_eq!(data.len(), 2);
-        assert_eq!(data[0].id, "gpt-4");
-        assert_eq!(data[0].owned_by.as_deref(), Some("openai"));
-        assert_eq!(data[1].id, "claude-3-sonnet");
-    }
-
-    #[test]
-    fn test_parse_response_no_owned_by() {
-        let json = r#"{"object":"list","data":[{"id":"my-model","object":"model"}]}"#;
-        let resp: ModelsResponse = serde_json::from_str(json).unwrap();
-        let data = resp.data.unwrap();
-        assert_eq!(data[0].id, "my-model");
-        assert!(data[0].owned_by.is_none());
-    }
-
-    #[test]
-    fn test_parse_response_empty_data() {
-        let json = r#"{"object":"list","data":[]}"#;
-        let resp: ModelsResponse = serde_json::from_str(json).unwrap();
-        assert!(resp.data.unwrap().is_empty());
     }
 }
