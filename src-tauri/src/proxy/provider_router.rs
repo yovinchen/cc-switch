@@ -11,6 +11,7 @@ use crate::proxy::circuit_breaker::{
     AllowResult, CircuitBreaker, CircuitBreakerConfig, CircuitBreakerStats,
 };
 use crate::proxy_core::{
+    circuit_breaker_config_from_app_config, circuit_failure_threshold_from_app_config,
     reject_unavailable_channel_ids, select_provider_ids, ChannelRouteSource,
     ProviderSelectionCandidate, ProviderSelectionFailure, ProviderSelectionInput,
     RouteResolveRequest, RouteResolveResponse,
@@ -410,16 +411,8 @@ impl ProviderRouter {
         let app_type = app_type_from_circuit_key(key);
 
         // 按应用独立读取熔断器配置
-        let config = match self.db.get_proxy_config_for_app(app_type).await {
-            Ok(app_config) => crate::proxy::circuit_breaker::CircuitBreakerConfig {
-                failure_threshold: app_config.circuit_failure_threshold,
-                success_threshold: app_config.circuit_success_threshold,
-                timeout_seconds: app_config.circuit_timeout_seconds as u64,
-                error_rate_threshold: app_config.circuit_error_rate_threshold,
-                min_requests: app_config.circuit_min_requests,
-            },
-            Err(_) => crate::proxy::circuit_breaker::CircuitBreakerConfig::default(),
-        };
+        let app_config = self.db.get_proxy_config_for_app(app_type).await.ok();
+        let config = circuit_breaker_config_from_app_config(app_config.as_ref());
 
         let breaker = Arc::new(CircuitBreaker::new(config));
         breakers.insert(key.to_string(), breaker.clone());
@@ -433,10 +426,8 @@ impl ProviderRouter {
     }
 
     async fn failure_threshold_for_app(&self, app_type: &str, fallback: u32) -> u32 {
-        match self.db.get_proxy_config_for_app(app_type).await {
-            Ok(app_config) => app_config.circuit_failure_threshold,
-            Err(_) => fallback,
-        }
+        let app_config = self.db.get_proxy_config_for_app(app_type).await.ok();
+        circuit_failure_threshold_from_app_config(app_config.as_ref(), fallback)
     }
 }
 
