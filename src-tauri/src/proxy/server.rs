@@ -9,14 +9,14 @@
 //! a direct (non-proxied) CLI request.
 
 use super::{
-    ProxyError, ProxyStatus, events::ProxyEventBus, failover_switch::FailoverSwitchManager,
-    handlers, provider_router::ProviderRouter,
+    ProxyError, events::ProxyEventBus, failover_switch::FailoverSwitchManager, handlers,
+    provider_router::ProviderRouter,
     providers::codex_chat_history::CodexChatHistoryStore,
 };
 use crate::database::Database;
 use crate::proxy_core::{
-    CurrentRouteTarget, GeminiShadowStore, ProxyConfig, ProxyEngine, ProxyServerInfo,
-    log_codes::srv as log_srv,
+    CurrentRouteTarget, GeminiShadowStore, ProxyConfig, ProxyEngine,
+    ProxyRuntimeStatus as ProxyStatus, ProxyServerInfo, log_codes::srv as log_srv,
 };
 use crate::proxy_core_host::{CcSwitchProxyRuntime, CcSwitchProxyServices};
 use axum::{

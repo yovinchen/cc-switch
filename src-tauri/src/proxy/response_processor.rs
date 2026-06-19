@@ -603,9 +603,9 @@ mod tests {
     use crate::proxy::failover_switch::FailoverSwitchManager;
     use crate::proxy::provider_router::ProviderRouter;
     use crate::proxy::providers::codex_chat_history::CodexChatHistoryStore;
-    use crate::proxy::ProxyStatus;
     use crate::proxy_core::GeminiShadowStore;
     use crate::proxy_core::ProxyConfig;
+    use crate::proxy_core::ProxyRuntimeStatus as ProxyStatus;
     use crate::proxy_core_host::CcSwitchProxyServices;
     use rust_decimal::Decimal;
     use std::collections::HashMap;

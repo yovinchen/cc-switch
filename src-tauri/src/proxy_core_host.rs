@@ -7,7 +7,6 @@ use crate::proxy::hyper_client::ProxyResponse;
 use crate::proxy::provider_router::ProviderRouter;
 use crate::proxy::providers::codex_chat_history::CodexChatHistoryStore;
 use crate::proxy::route_attempt::forward_attempts_from_route_plan;
-use crate::proxy::ProxyStatus;
 use crate::proxy::usage::{RequestLog, UsageLogger};
 use crate::proxy::RequestForwarder;
 use crate::proxy_core::{
@@ -19,9 +18,9 @@ use crate::proxy_core::{
     ProxyAppConfig, ProxyBody, ProxyConfigSource, ProxyCoreError, ProxyCoreEvent,
     ProxyCoreEventType, ProxyCoreResponse, ProxyCoreResult, ProxyEventSink, ProxyGlobalConfig,
     ProxyRequest, ProxyResponseBody, ProxyResult, ProxyRuntimeConfig, ProxyServices,
-    RectifierConfigSpec, RoutePlan, RoutePolicy, RoutePolicySource, RouteRequest, RouteResolver,
-    RouteSelection, UsageRecord, UsageSink, CLAUDE_API_FORMAT_METADATA_KEY, DEFAULT_ROUTE_GROUP,
-    SESSION_REQUEST_ID_PREFIX,
+    ProxyRuntimeStatus as ProxyStatus, RectifierConfigSpec, RoutePlan, RoutePolicy,
+    RoutePolicySource, RouteRequest, RouteResolver, RouteSelection, UsageRecord, UsageSink,
+    CLAUDE_API_FORMAT_METADATA_KEY, DEFAULT_ROUTE_GROUP, SESSION_REQUEST_ID_PREFIX,
 };
 use crate::proxy_core_adapter::{ToProxyCoreChannelSpec, ToProxyCoreProviderSpec};
 use crate::proxy_core_adapter::extract_proxy_session_id;
@@ -1059,11 +1058,10 @@ fn load_codex_client_model_catalog_raw() -> Value {
 mod tests {
     use super::*;
     use crate::provider::Provider;
-    use crate::proxy::ProxyStatus;
     use crate::proxy_core::{
         ChannelOverrides, InterfaceKind, ModelCapabilities, ModelRoute, ProviderKind, ProxyBody,
-        ProxyEngine, ProxyResponseBody, RetryPolicy, RouteSelection, UpstreamEndpoint, UsageRecord,
-        UsageTokens,
+        ProxyEngine, ProxyResponseBody, ProxyRuntimeStatus as ProxyStatus, RetryPolicy,
+        RouteSelection, UpstreamEndpoint, UsageRecord, UsageTokens,
     };
     use bytes::Bytes;
     use futures::StreamExt;
