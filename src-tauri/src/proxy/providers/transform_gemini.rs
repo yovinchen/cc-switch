@@ -6,14 +6,11 @@
 
 use crate::proxy::error::ProxyError;
 use crate::proxy_core::{
-    AnthropicToolSchemaHints, GeminiShadowStore, anthropic_messages_to_gemini_contents,
-    build_anthropic_usage_from_gemini, build_gemini_function_declaration,
-    build_gemini_generation_config, build_gemini_system_instruction,
-    ensure_gemini_function_call_ids,
+    AnthropicToolSchemaHints, GeminiShadowStore, anthropic_request_to_gemini_request,
+    build_anthropic_usage_from_gemini, ensure_gemini_function_call_ids,
     extract_anthropic_tool_schema_hints as core_extract_anthropic_tool_schema_hints,
     extract_gemini_function_call_meta, map_gemini_finish_reason_to_anthropic,
-    map_gemini_tool_choice_to_config, rectify_gemini_tool_call_args,
-    rectify_gemini_tool_call_parts, synthesize_gemini_tool_call_id,
+    rectify_gemini_tool_call_args, rectify_gemini_tool_call_parts, synthesize_gemini_tool_call_id,
 };
 use serde_json::{Value, json};
 
@@ -38,7 +35,6 @@ pub fn anthropic_to_gemini_with_shadow(
     provider_id: Option<&str>,
     session_id: Option<&str>,
 ) -> Result<Value, ProxyError> {
-    let mut result = json!({});
     let shadow_turns = shadow_store
         .zip(provider_id)
         .zip(session_id)
@@ -46,57 +42,7 @@ pub fn anthropic_to_gemini_with_shadow(
         .map(|snapshot| snapshot.turns)
         .unwrap_or_default();
 
-    let messages = body.get("messages").and_then(|value| value.as_array());
-
-    let system_instruction = build_gemini_system_instruction(
-        body.get("system"),
-        messages.map(|messages| messages.as_slice()),
-    )
-    .map_err(|message| ProxyError::TransformError(message.to_string()))?;
-    if let Some(system) = system_instruction {
-        result["systemInstruction"] = system;
-    }
-
-    if let Some(messages) = messages {
-        result["contents"] = json!(
-            anthropic_messages_to_gemini_contents(messages, &shadow_turns)
-                .map_err(ProxyError::TransformError)?
-        );
-    }
-
-    if let Some(generation_config) = build_gemini_generation_config(&body) {
-        result["generationConfig"] = generation_config;
-    }
-
-    if let Some(tools) = body.get("tools").and_then(|value| value.as_array()) {
-        let function_declarations: Vec<Value> = tools
-            .iter()
-            .filter(|tool| tool.get("type").and_then(|value| value.as_str()) != Some("BatchTool"))
-            .map(|tool| {
-                build_gemini_function_declaration(
-                    tool.get("name")
-                        .and_then(|value| value.as_str())
-                        .unwrap_or(""),
-                    tool.get("description").and_then(|value| value.as_str()),
-                    tool.get("input_schema")
-                        .cloned()
-                        .unwrap_or_else(|| json!({})),
-                )
-            })
-            .collect();
-
-        if !function_declarations.is_empty() {
-            result["tools"] = json!([{ "functionDeclarations": function_declarations }]);
-        }
-    }
-
-    if let Some(tool_config) = map_gemini_tool_choice_to_config(body.get("tool_choice"))
-        .map_err(ProxyError::TransformError)?
-    {
-        result["toolConfig"] = tool_config;
-    }
-
-    Ok(result)
+    anthropic_request_to_gemini_request(&body, &shadow_turns).map_err(ProxyError::TransformError)
 }
 
 /// Convenience wrapper over [`gemini_to_anthropic_with_shadow_and_hints`]

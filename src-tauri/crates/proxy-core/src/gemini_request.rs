@@ -1,12 +1,12 @@
 //! Gemini Native request helpers.
 
 use crate::{
-    GeminiAssistantTurn, build_gemini_shadow_thought_signature_map,
-    build_gemini_shadow_tool_name_map, find_matching_gemini_shadow_turn,
-    gemini_shadow_replay_parts, is_synthesized_gemini_tool_call_id,
-    merge_gemini_assistant_tool_use_names, merge_gemini_function_call_names_from_parts,
-    merge_gemini_shadow_thought_signatures, merge_gemini_shadow_tool_names,
-    normalize_gemini_tool_result_response,
+    GeminiAssistantTurn, build_gemini_function_declaration,
+    build_gemini_shadow_thought_signature_map, build_gemini_shadow_tool_name_map,
+    find_matching_gemini_shadow_turn, gemini_shadow_replay_parts,
+    is_synthesized_gemini_tool_call_id, merge_gemini_assistant_tool_use_names,
+    merge_gemini_function_call_names_from_parts, merge_gemini_shadow_thought_signatures,
+    merge_gemini_shadow_tool_names, normalize_gemini_tool_result_response,
 };
 use serde_json::{Map, Value, json};
 use std::collections::{HashMap, HashSet};
@@ -137,6 +137,62 @@ pub fn map_gemini_tool_choice_to_config(
         }
         _ => Ok(None),
     }
+}
+
+pub fn anthropic_request_to_gemini_request(
+    body: &Value,
+    shadow_turns: &[GeminiAssistantTurn],
+) -> Result<Value, String> {
+    let mut result = json!({});
+    let messages = body.get("messages").and_then(|value| value.as_array());
+
+    if let Some(system) = build_gemini_system_instruction(
+        body.get("system"),
+        messages.map(|messages| messages.as_slice()),
+    )
+    .map_err(|message| message.to_string())?
+    {
+        result["systemInstruction"] = system;
+    }
+
+    if let Some(messages) = messages {
+        result["contents"] = json!(anthropic_messages_to_gemini_contents(
+            messages,
+            shadow_turns
+        )?);
+    }
+
+    if let Some(generation_config) = build_gemini_generation_config(body) {
+        result["generationConfig"] = generation_config;
+    }
+
+    if let Some(tools) = body.get("tools").and_then(|value| value.as_array()) {
+        let function_declarations: Vec<Value> = tools
+            .iter()
+            .filter(|tool| tool.get("type").and_then(|value| value.as_str()) != Some("BatchTool"))
+            .map(|tool| {
+                build_gemini_function_declaration(
+                    tool.get("name")
+                        .and_then(|value| value.as_str())
+                        .unwrap_or(""),
+                    tool.get("description").and_then(|value| value.as_str()),
+                    tool.get("input_schema")
+                        .cloned()
+                        .unwrap_or_else(|| json!({})),
+                )
+            })
+            .collect();
+
+        if !function_declarations.is_empty() {
+            result["tools"] = json!([{ "functionDeclarations": function_declarations }]);
+        }
+    }
+
+    if let Some(tool_config) = map_gemini_tool_choice_to_config(body.get("tool_choice"))? {
+        result["toolConfig"] = tool_config;
+    }
+
+    Ok(result)
 }
 
 pub fn anthropic_messages_to_gemini_contents(
@@ -513,6 +569,51 @@ mod tests {
         assert_eq!(
             map_gemini_tool_choice_to_config(Some(&json!({ "type": "function" }))).unwrap_err(),
             "Unsupported Gemini tool_choice type: function"
+        );
+    }
+
+    #[test]
+    fn builds_anthropic_request_to_gemini_request_envelope() {
+        let body = json!({
+            "model": "gemini-2.5-pro",
+            "system": "You are helpful.",
+            "messages": [
+                { "role": "user", "content": "Hello" }
+            ],
+            "max_tokens": 128,
+            "tools": [
+                {
+                    "name": "lookup",
+                    "description": "Lookup data",
+                    "input_schema": { "type": "object", "properties": { "q": { "type": "string" } } }
+                },
+                { "type": "BatchTool", "name": "batch_skip" }
+            ],
+            "tool_choice": { "type": "tool", "name": "lookup" }
+        });
+
+        let result = anthropic_request_to_gemini_request(&body, &[]).unwrap();
+
+        assert_eq!(
+            result["systemInstruction"]["parts"][0]["text"],
+            "You are helpful."
+        );
+        assert_eq!(result["contents"][0]["role"], "user");
+        assert_eq!(result["generationConfig"]["maxOutputTokens"], 128);
+        assert_eq!(
+            result["tools"][0]["functionDeclarations"]
+                .as_array()
+                .unwrap()
+                .len(),
+            1
+        );
+        assert_eq!(
+            result["tools"][0]["functionDeclarations"][0]["name"],
+            "lookup"
+        );
+        assert_eq!(
+            result["toolConfig"]["functionCallingConfig"]["allowedFunctionNames"][0],
+            "lookup"
         );
     }
 
