@@ -24,80 +24,21 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use tokio::sync::{Mutex, RwLock};
 
-use crate::proxy_core::{parse_copilot_models_response_bytes, CopilotModel};
+use crate::proxy_core::{
+    copilot_api_base, copilot_github_client_id, copilot_github_device_code_url,
+    copilot_github_oauth_token_url, copilot_github_user_url, copilot_token_url, copilot_usage_url,
+    default_copilot_github_domain, is_copilot_ghes_domain, parse_copilot_models_response_bytes,
+    CopilotModel, COPILOT_PUBLIC_GITHUB_DOMAIN,
+};
 
-/// GitHub OAuth 客户端 ID（VS Code）- 用于 github.com
-const GITHUB_CLIENT_ID: &str = "Iv1.b507a08c87ecfe98";
-
-/// GitHub OAuth 客户端 ID（与 OpenCode 相同）- 在所有 GHES Copilot 实例上预注册
-const GITHUB_CLIENT_ID_GHES: &str = "Ov23li8tweQw6odWQebz";
-
-/// 默认 GitHub 域名
-const DEFAULT_GITHUB_DOMAIN: &str = "github.com";
-
-/// 根据域名选择 OAuth 客户端 ID
-fn github_client_id(domain: &str) -> &'static str {
-    if domain == DEFAULT_GITHUB_DOMAIN {
-        GITHUB_CLIENT_ID
-    } else {
-        GITHUB_CLIENT_ID_GHES
-    }
-}
+const DEFAULT_GITHUB_DOMAIN: &str = COPILOT_PUBLIC_GITHUB_DOMAIN;
 
 fn default_github_domain() -> String {
-    DEFAULT_GITHUB_DOMAIN.to_string()
-}
-
-/// GitHub 设备码 URL
-fn github_device_code_url(domain: &str) -> String {
-    format!("https://{domain}/login/device/code")
-}
-
-/// GitHub OAuth Token URL
-fn github_oauth_token_url(domain: &str) -> String {
-    format!("https://{domain}/login/oauth/access_token")
-}
-
-/// GitHub API 基础 URL（github.com 用 api.github.com，GHES 用 {domain}/api/v3）
-fn github_api_base(domain: &str) -> String {
-    if domain == DEFAULT_GITHUB_DOMAIN {
-        "https://api.github.com".to_string()
-    } else {
-        format!("https://{domain}/api/v3")
-    }
-}
-
-/// Copilot Token URL
-fn copilot_token_url(domain: &str) -> String {
-    format!("{}/copilot_internal/v2/token", github_api_base(domain))
-}
-
-/// GitHub User API URL
-fn github_user_url(domain: &str) -> String {
-    format!("{}/user", github_api_base(domain))
-}
-
-/// Copilot 使用量 API URL
-fn copilot_usage_url(domain: &str) -> String {
-    format!("{}/copilot_internal/user", github_api_base(domain))
-}
-
-/// Copilot API 基础地址（github.com 用 api.githubcopilot.com，GHES 用 copilot-api.{domain}）
-fn copilot_api_base(domain: &str) -> String {
-    if domain == DEFAULT_GITHUB_DOMAIN {
-        "https://api.githubcopilot.com".to_string()
-    } else {
-        format!("https://copilot-api.{domain}")
-    }
+    default_copilot_github_domain()
 }
 
 /// Token 刷新提前量（秒）
 const TOKEN_REFRESH_BUFFER_SECONDS: i64 = 60;
-
-/// 判断是否为 GitHub Enterprise Server（非 github.com）
-fn is_ghes(domain: &str) -> bool {
-    domain != DEFAULT_GITHUB_DOMAIN
-}
 
 /// 归一化 GitHub 域名（SSOT）：
 /// - 小写化
@@ -553,11 +494,11 @@ impl CopilotAuthManager {
 
         let response = self
             .http_client
-            .post(github_device_code_url(&domain))
+            .post(copilot_github_device_code_url(&domain))
             .header("Accept", "application/json")
             .header("User-Agent", COPILOT_USER_AGENT)
             .form(&[
-                ("client_id", github_client_id(&domain)),
+                ("client_id", copilot_github_client_id(&domain)),
                 ("scope", "read:user"),
             ])
             .send()
@@ -598,11 +539,11 @@ impl CopilotAuthManager {
 
         let response = self
             .http_client
-            .post(github_oauth_token_url(&domain))
+            .post(copilot_github_oauth_token_url(&domain))
             .header("Accept", "application/json")
             .header("User-Agent", COPILOT_USER_AGENT)
             .form(&[
-                ("client_id", github_client_id(&domain)),
+                ("client_id", copilot_github_client_id(&domain)),
                 ("device_code", device_code),
                 ("grant_type", "urn:ietf:params:oauth:grant-type:device_code"),
             ])
@@ -643,7 +584,7 @@ impl CopilotAuthManager {
 
         // GHES 无需换取 Copilot Token，直接使用 OAuth token 作为 Bearer
         // 参考 OpenCode 的实现：GHE Copilot 直接用 OAuth token 调用 copilot-api.{domain}
-        if !is_ghes(&domain) {
+        if !is_copilot_ghes_domain(&domain) {
             // github.com：验证 Copilot 订阅（获取 Copilot Token）
             self.fetch_copilot_token_with_github_token(
                 &access_token,
@@ -675,7 +616,7 @@ impl CopilotAuthManager {
 
         // GHES 账号直接使用 GitHub OAuth token，无需 Copilot token 交换
         let domain = self.get_account_domain(account_id).await;
-        if is_ghes(&domain) {
+        if is_copilot_ghes_domain(&domain) {
             let accounts = self.accounts.read().await;
             return accounts
                 .get(account_id)
@@ -1253,7 +1194,7 @@ impl CopilotAuthManager {
     ) -> Result<GitHubUser, CopilotAuthError> {
         let response = self
             .http_client
-            .get(github_user_url(domain))
+            .get(copilot_github_user_url(domain))
             .header("Authorization", format!("token {github_token}"))
             .header("User-Agent", COPILOT_USER_AGENT)
             .header("Editor-Version", COPILOT_EDITOR_VERSION)

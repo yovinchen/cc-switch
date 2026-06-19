@@ -99,6 +99,11 @@ pub fn parse_copilot_models_response_bytes(body: &[u8]) -> Result<Vec<CopilotMod
 ///
 /// This strips `http://`/`https://`, path, query, and fragment portions, lowercases
 /// the host, preserves ports, and rejects userinfo.
+pub const COPILOT_PUBLIC_GITHUB_DOMAIN: &str = "github.com";
+
+const COPILOT_GITHUB_CLIENT_ID: &str = "Iv1.b507a08c87ecfe98";
+const COPILOT_GHES_CLIENT_ID: &str = "Ov23li8tweQw6odWQebz";
+
 pub fn normalize_github_domain(raw: &str) -> Result<String, String> {
     let s = raw.trim();
     let s = s
@@ -114,6 +119,58 @@ pub fn normalize_github_domain(raw: &str) -> Result<String, String> {
         return Err(raw.to_string());
     }
     Ok(normalized)
+}
+
+pub fn default_copilot_github_domain() -> String {
+    COPILOT_PUBLIC_GITHUB_DOMAIN.to_string()
+}
+
+pub fn copilot_github_client_id(domain: &str) -> &'static str {
+    if domain == COPILOT_PUBLIC_GITHUB_DOMAIN {
+        COPILOT_GITHUB_CLIENT_ID
+    } else {
+        COPILOT_GHES_CLIENT_ID
+    }
+}
+
+pub fn is_copilot_ghes_domain(domain: &str) -> bool {
+    domain != COPILOT_PUBLIC_GITHUB_DOMAIN
+}
+
+pub fn copilot_github_device_code_url(domain: &str) -> String {
+    format!("https://{domain}/login/device/code")
+}
+
+pub fn copilot_github_oauth_token_url(domain: &str) -> String {
+    format!("https://{domain}/login/oauth/access_token")
+}
+
+pub fn copilot_github_api_base(domain: &str) -> String {
+    if domain == COPILOT_PUBLIC_GITHUB_DOMAIN {
+        "https://api.github.com".to_string()
+    } else {
+        format!("https://{domain}/api/v3")
+    }
+}
+
+pub fn copilot_token_url(domain: &str) -> String {
+    format!("{}/copilot_internal/v2/token", copilot_github_api_base(domain))
+}
+
+pub fn copilot_github_user_url(domain: &str) -> String {
+    format!("{}/user", copilot_github_api_base(domain))
+}
+
+pub fn copilot_usage_url(domain: &str) -> String {
+    format!("{}/copilot_internal/user", copilot_github_api_base(domain))
+}
+
+pub fn copilot_api_base(domain: &str) -> String {
+    if domain == COPILOT_PUBLIC_GITHUB_DOMAIN {
+        "https://api.githubcopilot.com".to_string()
+    } else {
+        format!("https://copilot-api.{domain}")
+    }
 }
 
 /// Build a stable Copilot account id.
@@ -424,6 +481,45 @@ mod tests {
         assert!(normalize_github_domain("user@company.ghe.com").is_err());
         assert!(normalize_github_domain("").is_err());
         assert!(normalize_github_domain("   ").is_err());
+    }
+
+    #[test]
+    fn copilot_github_urls_use_public_and_ghes_bases() {
+        assert_eq!(default_copilot_github_domain(), "github.com");
+        assert_eq!(
+            copilot_github_client_id("github.com"),
+            COPILOT_GITHUB_CLIENT_ID
+        );
+        assert_eq!(
+            copilot_github_client_id("company.ghe.com"),
+            COPILOT_GHES_CLIENT_ID
+        );
+        assert!(!is_copilot_ghes_domain("github.com"));
+        assert!(is_copilot_ghes_domain("company.ghe.com"));
+        assert_eq!(
+            copilot_github_device_code_url("company.ghe.com"),
+            "https://company.ghe.com/login/device/code"
+        );
+        assert_eq!(
+            copilot_github_oauth_token_url("company.ghe.com"),
+            "https://company.ghe.com/login/oauth/access_token"
+        );
+        assert_eq!(
+            copilot_github_user_url("github.com"),
+            "https://api.github.com/user"
+        );
+        assert_eq!(
+            copilot_token_url("company.ghe.com"),
+            "https://company.ghe.com/api/v3/copilot_internal/v2/token"
+        );
+        assert_eq!(
+            copilot_usage_url("company.ghe.com"),
+            "https://company.ghe.com/api/v3/copilot_internal/user"
+        );
+        assert_eq!(
+            copilot_api_base("company.ghe.com"),
+            "https://copilot-api.company.ghe.com"
+        );
     }
 
     #[test]
