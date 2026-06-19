@@ -31,8 +31,9 @@ use crate::proxy_core::{
     claude_transform_endpoint_rewrite_input_from_body, contains_image_blocks,
     interface_kind_for_forward, is_codex_chat_full_endpoint_base, is_github_copilot_upstream,
     is_openai_o_series, is_socks_proxy_url, is_unsupported_image_error, merge_copilot_tool_results,
-    normalize_thinking_type, prompt_cache_trace_log_message, rectify_anthropic_request,
-    rectify_thinking_budget, replace_image_blocks_with_marker, replace_images_for_text_only_model,
+    normalize_thinking_type, prepare_upstream_request_body_with_report,
+    prompt_cache_trace_log_message, rectify_anthropic_request, rectify_thinking_budget,
+    replace_image_blocks_with_marker, replace_images_for_text_only_model,
     request_body_filter_log_message, request_model_for_forward, resolve_claude_forward_api_format,
     resolve_copilot_deterministic_interaction_id, resolve_copilot_model_against_ids,
     resolve_copilot_optimizer_session_id, resolve_copilot_request_id_with_fallback,
@@ -1879,7 +1880,11 @@ impl RequestForwarder {
 
         // 过滤私有参数（以 `_` 开头的字段），防止内部信息泄露到上游
         // 默认使用空白名单，过滤所有 _ 前缀字段
-        let filtered_body = prepare_upstream_request_body(request_body);
+        let prepared_body = prepare_upstream_request_body_with_report(request_body);
+        if let Some(message) = request_body_filter_log_message(&prepared_body) {
+            log::debug!("{message}");
+        }
+        let filtered_body = prepared_body.body;
         // 出站 body 定稿后刷新真值（覆盖 Codex chat 上游模型覆写、转换层模型改写）
         if let Some(m) = filtered_body
             .get("model")
@@ -2481,14 +2486,6 @@ fn map_reqwest_send_error(error: reqwest::Error) -> ProxyError {
     }
 }
 
-fn prepare_upstream_request_body(request_body: Value) -> Value {
-    let prepared = crate::proxy_core::prepare_upstream_request_body_with_report(request_body);
-    if let Some(message) = request_body_filter_log_message(&prepared) {
-        log::debug!("{message}");
-    }
-    prepared.body
-}
-
 fn log_prompt_cache_trace(
     app_type: &AppType,
     provider: &Provider,
@@ -2806,7 +2803,7 @@ mod tests {
             "a": 2
         });
 
-        let prepared = prepare_upstream_request_body(body);
+        let prepared = prepare_upstream_request_body_with_report(body).body;
 
         assert!(prepared.get("_internal").is_none());
         assert!(prepared["tools"][0]["parameters"]["properties"]
