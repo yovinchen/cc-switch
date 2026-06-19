@@ -6,6 +6,7 @@ use serde_json::Value;
 use std::pin::Pin;
 
 pub const DEFAULT_ROUTE_GROUP: &str = "default";
+pub const CODEX_OAUTH_CLAUDE_BASE_URL: &str = "https://chatgpt.com/backend-api/codex";
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -147,6 +148,29 @@ pub fn infer_claude_provider_kind(
     }
 
     ProviderKind::Claude
+}
+
+pub fn extract_claude_base_url_from_settings(
+    is_codex_oauth: bool,
+    settings_config: &Value,
+) -> Option<String> {
+    if is_codex_oauth {
+        return Some(CODEX_OAUTH_CLAUDE_BASE_URL.to_string());
+    }
+
+    [
+        settings_config
+            .get("env")
+            .and_then(|env| env.get("ANTHROPIC_BASE_URL"))
+            .and_then(Value::as_str),
+        settings_config.get("base_url").and_then(Value::as_str),
+        settings_config.get("baseURL").and_then(Value::as_str),
+        settings_config.get("apiEndpoint").and_then(Value::as_str),
+    ]
+    .into_iter()
+    .flatten()
+    .next()
+    .map(|url| url.trim_end_matches('/').to_string())
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -932,6 +956,42 @@ mod tests {
             infer_claude_provider_kind("anthropic", false, None, None, &Value::Null),
             ProviderKind::Claude
         );
+    }
+
+    #[test]
+    fn extracts_claude_base_url_from_settings() {
+        let settings = serde_json::json!({
+            "env": {
+                "ANTHROPIC_BASE_URL": "https://env.example.com/v1///",
+            },
+            "base_url": "https://direct.example.com/v1",
+        });
+        assert_eq!(
+            extract_claude_base_url_from_settings(false, &settings).as_deref(),
+            Some("https://env.example.com/v1")
+        );
+
+        assert_eq!(
+            extract_claude_base_url_from_settings(
+                false,
+                &serde_json::json!({"baseURL": "https://camel.example.com/"})
+            )
+            .as_deref(),
+            Some("https://camel.example.com")
+        );
+        assert_eq!(
+            extract_claude_base_url_from_settings(
+                false,
+                &serde_json::json!({"apiEndpoint": "https://endpoint.example.com///"})
+            )
+            .as_deref(),
+            Some("https://endpoint.example.com")
+        );
+        assert_eq!(
+            extract_claude_base_url_from_settings(true, &Value::Null).as_deref(),
+            Some(CODEX_OAUTH_CLAUDE_BASE_URL)
+        );
+        assert_eq!(extract_claude_base_url_from_settings(false, &Value::Null), None);
     }
 
     #[test]

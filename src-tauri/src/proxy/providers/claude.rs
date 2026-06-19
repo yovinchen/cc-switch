@@ -19,10 +19,11 @@ use crate::provider::Provider;
 use crate::proxy::error::ProxyError;
 use crate::proxy_core::{
     anthropic_to_openai_chat_request, anthropic_to_openai_responses_request,
-    claude_api_format_needs_transform, infer_claude_provider_kind,
-    normalize_anthropic_tool_thinking_history, openai_chat_to_anthropic_message,
-    openai_responses_to_anthropic_message, resolve_claude_api_format_from_settings,
-    resolve_claude_responses_prompt_cache_key, should_normalize_anthropic_tool_thinking_history,
+    claude_api_format_needs_transform, extract_claude_base_url_from_settings,
+    infer_claude_provider_kind, normalize_anthropic_tool_thinking_history,
+    openai_chat_to_anthropic_message, openai_responses_to_anthropic_message,
+    resolve_claude_api_format_from_settings, resolve_claude_responses_prompt_cache_key,
+    should_normalize_anthropic_tool_thinking_history,
     should_preserve_reasoning_content_for_openai_chat,
 };
 use serde_json::Value;
@@ -311,46 +312,11 @@ impl ProviderAdapter for ClaudeAdapter {
     }
 
     fn extract_base_url(&self, provider: &Provider) -> Result<String, ProxyError> {
-        // Codex OAuth: 强制使用 ChatGPT 后端 API 端点（忽略用户配置的 base_url）
-        if self.is_codex_oauth(provider) {
-            return Ok("https://chatgpt.com/backend-api/codex".to_string());
-        }
-
-        // 1. 从 env 中获取
-        if let Some(env) = provider.settings_config.get("env") {
-            if let Some(url) = env.get("ANTHROPIC_BASE_URL").and_then(|v| v.as_str()) {
-                return Ok(url.trim_end_matches('/').to_string());
-            }
-        }
-
-        // 2. 尝试直接获取
-        if let Some(url) = provider
-            .settings_config
-            .get("base_url")
-            .and_then(|v| v.as_str())
-        {
-            return Ok(url.trim_end_matches('/').to_string());
-        }
-
-        if let Some(url) = provider
-            .settings_config
-            .get("baseURL")
-            .and_then(|v| v.as_str())
-        {
-            return Ok(url.trim_end_matches('/').to_string());
-        }
-
-        if let Some(url) = provider
-            .settings_config
-            .get("apiEndpoint")
-            .and_then(|v| v.as_str())
-        {
-            return Ok(url.trim_end_matches('/').to_string());
-        }
-
-        Err(ProxyError::ConfigError(
-            "Claude Provider 缺少 base_url 配置".to_string(),
-        ))
+        extract_claude_base_url_from_settings(
+            self.is_codex_oauth(provider),
+            &provider.settings_config,
+        )
+        .ok_or_else(|| ProxyError::ConfigError("Claude Provider 缺少 base_url 配置".to_string()))
     }
 
     fn extract_auth(&self, provider: &Provider) -> Option<AuthInfo> {
