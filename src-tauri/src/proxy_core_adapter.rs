@@ -4,10 +4,10 @@ use crate::provider::Provider;
 use crate::proxy::providers::ProviderType;
 use crate::proxy::types::ProxyStatus;
 use crate::proxy_core::{
-    AppKind, AuthProfileRef, ChannelHealthPolicy, ChannelModelRecord, ChannelOverrides,
-    ChannelRecord, ChannelSpec, ChannelStatus, InterfaceKind, ModelCapabilities, ModelRoute,
-    ProviderKind, ProviderMetadata, ProviderSpec, ProxyRuntimeStatus, RetryPolicy,
-    UpstreamEndpoint,
+    AppKind, AppSummaryInput, AuthProfileRef, ChannelHealthPolicy, ChannelModelRecord,
+    ChannelOverrides, ChannelRecord, ChannelSpec, ChannelStatus, CurrentRouteProviderSummaryInput,
+    InterfaceKind, ModelCapabilities, ModelRoute, ProviderKind, ProviderMetadata, ProviderSpec,
+    ProxyRuntimeStatus, RetryPolicy, UpstreamEndpoint,
 };
 use serde_json::{json, Value};
 
@@ -60,6 +60,25 @@ impl ToProxyCoreProviderSpec for Provider {
     }
 }
 
+pub(crate) fn proxy_providers_to_core_specs(
+    app_type: &AppType,
+    providers: impl IntoIterator<Item = Provider>,
+) -> Vec<ProviderSpec> {
+    providers
+        .into_iter()
+        .map(|provider| provider.to_proxy_core_provider_spec(app_type))
+        .collect()
+}
+
+pub(crate) fn proxy_current_route_provider_summary_input(
+    provider: Provider,
+    app_type: &AppType,
+) -> CurrentRouteProviderSummaryInput {
+    CurrentRouteProviderSummaryInput::from_provider_spec(
+        provider.to_proxy_core_provider_spec(app_type),
+    )
+}
+
 #[allow(dead_code)]
 pub(crate) trait ToProxyCoreChannelSpec {
     fn to_proxy_core_channel_spec(&self) -> ChannelSpec;
@@ -108,6 +127,31 @@ impl ToProxyCoreChannelSpec for ProxyChannelRecord {
             review_reasons: self.review_reasons.clone(),
         }
     }
+}
+
+pub(crate) fn proxy_channel_specs_to_core(
+    channels: impl IntoIterator<Item = ProxyChannelRecord>,
+) -> Vec<ChannelSpec> {
+    channels
+        .into_iter()
+        .map(|channel| channel.to_proxy_core_channel_spec())
+        .collect()
+}
+
+pub(crate) fn proxy_app_summary_input(
+    app_type: &AppType,
+    enabled: bool,
+    auto_failover_enabled: bool,
+    providers: impl IntoIterator<Item = Provider>,
+    channels: impl IntoIterator<Item = ProxyChannelRecord>,
+) -> AppSummaryInput {
+    AppSummaryInput::from_specs(
+        app_type.as_str(),
+        enabled,
+        auto_failover_enabled,
+        proxy_providers_to_core_specs(app_type, providers),
+        proxy_channel_specs_to_core(channels),
+    )
 }
 
 #[allow(dead_code)]

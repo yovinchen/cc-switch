@@ -51,15 +51,15 @@ use crate::proxy_core::{
     transformed_streaming_response_usage_record_with_request_id_fallback,
     validate_claude_desktop_gateway_bearer_header, validate_management_bearer_header,
     AppChannelListQuery, AppChannelManagementRequest, AppChannelResponse, AppKind, AppListRequest,
-    AppListResponse, AppModelCatalogRequest, AppModelListQuery, AppSummaryInput,
-    ChannelCreateRequest, ChannelDeleteResponse, ChannelHealthResetResponse, ChannelListQuery,
-    ChannelListRequest, ChannelListResponse, ChannelMigrationMaterializeResponse,
-    ChannelMigrationPreviewResponse, ChannelModelRecord, ChannelModelsResponse, ChannelPathRequest,
-    ChannelRecord, ChannelRecordResponse, ChannelRouteCandidate, ChannelRouteRejected,
-    ClaudeDesktopModelListResponse, ClientModelCatalogResponse, CurrentRouteProviderSummaryInput,
-    CurrentRouteResponse, CurrentRouteTarget, GroupListQuery, GroupListRequest, HealthCheckRequest,
-    HealthCheckResponse, InterfaceKind, ManagementAppPathRequest, ManagementAuthDecision,
-    ProviderListResponse, ProxyBody, ProxyChannelModelsReplaceRequest, ProxyChannelPatchRequest,
+    AppListResponse, AppModelCatalogRequest, AppModelListQuery, ChannelCreateRequest,
+    ChannelDeleteResponse, ChannelHealthResetResponse, ChannelListQuery, ChannelListRequest,
+    ChannelListResponse, ChannelMigrationMaterializeResponse, ChannelMigrationPreviewResponse,
+    ChannelModelRecord, ChannelModelsResponse, ChannelPathRequest, ChannelRecord,
+    ChannelRecordResponse, ChannelRouteCandidate, ChannelRouteRejected,
+    ClaudeDesktopModelListResponse, ClientModelCatalogResponse, CurrentRouteResponse,
+    CurrentRouteTarget, GroupListQuery, GroupListRequest, HealthCheckRequest, HealthCheckResponse,
+    InterfaceKind, ManagementAppPathRequest, ManagementAuthDecision, ProviderListResponse,
+    ProxyBody, ProxyChannelModelsReplaceRequest, ProxyChannelPatchRequest,
     ProxyChannelWriteRequest, ProxyEngine, ProxyRequest, ProxyResult, ProxyRuntimeStatus,
     ProxyServices, ProxyStatusRequest, ProxyStatusResponse, RoutableModelList,
     RouteGroupListResponse, RouteResolveManagementRequest, RouteResolveRequest,
@@ -68,8 +68,9 @@ use crate::proxy_core::{
     OPENAI_PARSER_CONFIG,
 };
 use crate::proxy_core_adapter::{
-    proxy_channel_model_records_to_core, proxy_channel_records_to_core, ToProxyCoreChannelRecord,
-    ToProxyCoreChannelSpec, ToProxyCoreProviderSpec, ToProxyCoreRuntimeStatus,
+    proxy_app_summary_input, proxy_channel_model_records_to_core, proxy_channel_records_to_core,
+    proxy_channel_specs_to_core, proxy_current_route_provider_summary_input,
+    proxy_providers_to_core_specs, ToProxyCoreChannelRecord, ToProxyCoreRuntimeStatus,
 };
 use axum::{
     extract::{Path, Query, State},
@@ -195,16 +196,12 @@ pub async fn list_proxy_apps(
             .list_proxy_channels_for_app(app_type)
             .map_err(|e| ProxyError::DatabaseError(e.to_string()))?;
 
-        apps.push(AppSummaryInput::from_specs(
-            app_type,
+        apps.push(proxy_app_summary_input(
+            &app,
             config.enabled,
             config.auto_failover_enabled,
-            providers
-                .into_values()
-                .map(|provider| provider.to_proxy_core_provider_spec(&app)),
-            channels
-                .into_iter()
-                .map(|channel| channel.to_proxy_core_channel_spec()),
+            providers.into_values(),
+            channels,
         ));
     }
 
@@ -251,9 +248,7 @@ pub async fn list_proxy_providers(
         Err(e) => return Err(ProxyError::DatabaseError(e.to_string())),
     };
 
-    let provider_specs = providers
-        .into_values()
-        .map(|provider| provider.to_proxy_core_provider_spec(&app));
+    let provider_specs = proxy_providers_to_core_specs(&app, providers.into_values());
 
     Ok(Json(request.provider_list_response(
         provider_specs,
@@ -474,15 +469,11 @@ pub async fn list_proxy_groups(
             .list_channels_for_app(app_type)
             .await
             .map_err(|e| ProxyError::DatabaseError(e.to_string()))?;
-        sources.push(
-            request.source_input(
-                app_type.clone(),
-                &source,
-                channels
-                    .into_iter()
-                    .map(|channel| channel.to_proxy_core_channel_spec()),
-            ),
-        );
+        sources.push(request.source_input(
+            app_type.clone(),
+            &source,
+            proxy_channel_specs_to_core(channels),
+        ));
     }
 
     Ok(Json(request.response(sources)))
@@ -514,11 +505,7 @@ pub async fn get_current_proxy_route(
             .db
             .get_provider_by_id(&provider_id, &request.app_type)
             .map_err(|e| ProxyError::DatabaseError(e.to_string()))?
-            .map(|provider| {
-                CurrentRouteProviderSummaryInput::from_provider_spec(
-                    provider.to_proxy_core_provider_spec(&app),
-                )
-            }),
+            .map(|provider| proxy_current_route_provider_summary_input(provider, &app)),
         None => None,
     };
 
