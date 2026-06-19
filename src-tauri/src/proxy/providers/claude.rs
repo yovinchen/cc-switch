@@ -14,7 +14,7 @@
 //! - **OpenRouter**: 已支持 Claude Code 兼容接口，默认透传
 //! - **GitHubCopilot**: GitHub Copilot (OAuth + Copilot Token)
 
-use super::{AuthInfo, AuthStrategy, ProviderAdapter, ProviderType};
+use super::{AuthInfo, AuthStrategy, ProviderAdapter};
 use crate::provider::Provider;
 use crate::proxy::error::ProxyError;
 use crate::proxy_core::{
@@ -28,7 +28,7 @@ use crate::proxy_core::{
     openai_responses_to_anthropic_message, resolve_claude_api_format_from_settings,
     resolve_claude_responses_prompt_cache_key, should_normalize_anthropic_tool_thinking_history,
     should_preserve_reasoning_content_for_openai_chat, ClaudeAuthHeaderKind, ClaudeAuthKey,
-    ClaudeAuthKeySource, CopilotAuthHeadersInput,
+    ClaudeAuthKeySource, CopilotAuthHeadersInput, ProviderKind,
 };
 use serde_json::Value;
 
@@ -166,7 +166,7 @@ impl ClaudeAdapter {
     /// - OpenRouter: base_url 包含 openrouter.ai
     /// - ClaudeAuth: auth_mode 为 bearer_only
     /// - Claude: 默认 Anthropic 官方
-    pub fn provider_type(&self, provider: &Provider) -> ProviderType {
+    pub fn provider_type(&self, provider: &Provider) -> ProviderKind {
         let api_format = self.get_api_format(provider);
         let uses_google_oauth = self
             .extract_key(provider)
@@ -280,7 +280,7 @@ impl ProviderAdapter for ClaudeAdapter {
 
         // GitHub Copilot 使用特殊的认证策略
         // 实际的 token 会在代理请求时动态获取
-        if provider_type == ProviderType::GitHubCopilot {
+        if provider_type == ProviderKind::GitHubCopilot {
             // 返回一个占位符，实际 token 由 CopilotAuthManager 动态提供
             return Some(AuthInfo::new(
                 "copilot_placeholder".to_string(),
@@ -290,7 +290,7 @@ impl ProviderAdapter for ClaudeAdapter {
 
         // Codex OAuth (ChatGPT Plus/Pro) 同样使用占位符
         // 实际的 access_token 由 CodexOAuthManager 动态提供
-        if provider_type == ProviderType::CodexOAuth {
+        if provider_type == ProviderKind::CodexOAuth {
             return Some(AuthInfo::new(
                 "codex_oauth_placeholder".to_string(),
                 AuthStrategy::CodexOAuth,
@@ -301,7 +301,7 @@ impl ProviderAdapter for ClaudeAdapter {
         let key = auth_key.key;
 
         match provider_type {
-            ProviderType::GeminiCli => {
+            ProviderKind::GeminiCli => {
                 // Parse stored OAuth JSON and only attach access_token when
                 // it's actually usable. `parse_oauth_credentials` accepts
                 // refresh-token-only JSON (which is legitimate before the
@@ -330,9 +330,9 @@ impl ProviderAdapter for ClaudeAdapter {
                     None => Some(AuthInfo::new(key, AuthStrategy::GoogleOAuth)),
                 }
             }
-            ProviderType::Gemini => Some(AuthInfo::new(key, AuthStrategy::Google)),
-            ProviderType::OpenRouter => Some(AuthInfo::new(key, AuthStrategy::Bearer)),
-            ProviderType::ClaudeAuth => Some(AuthInfo::new(key, AuthStrategy::ClaudeAuth)),
+            ProviderKind::Gemini => Some(AuthInfo::new(key, AuthStrategy::Google)),
+            ProviderKind::OpenRouter => Some(AuthInfo::new(key, AuthStrategy::Bearer)),
+            ProviderKind::ClaudeAuth => Some(AuthInfo::new(key, AuthStrategy::ClaudeAuth)),
             _ => {
                 // 按 env 中的变量名推断鉴权策略，对齐 Anthropic SDK 语义：
                 // ANTHROPIC_AUTH_TOKEN → Authorization: Bearer
@@ -388,7 +388,7 @@ impl ProviderAdapter for ClaudeAdapter {
         // GitHub Copilot / Codex OAuth 总是需要格式转换
         if matches!(
             self.provider_type(provider),
-            ProviderType::GitHubCopilot | ProviderType::CodexOAuth
+            ProviderKind::GitHubCopilot | ProviderKind::CodexOAuth
         ) {
             return true;
         }
@@ -851,7 +851,7 @@ mod tests {
     }
 
     /// 回归:从 oauth_creds.json 复制时常带前导换行/空格。未 trim 时
-    /// `starts_with('{')` 会落空,导致误分类为 `ProviderType::Gemini`,再
+    /// `starts_with('{')` 会落空,导致误分类为 `ProviderKind::Gemini`,再
     /// 以 raw JSON 当 `x-goog-api-key` 发出去触发 401。trim 应在 provider
     /// 类型判定和 OAuth 解析前统一生效。
     #[test]
@@ -872,7 +872,7 @@ mod tests {
             },
         );
 
-        assert_eq!(adapter.provider_type(&provider), ProviderType::GeminiCli);
+        assert_eq!(adapter.provider_type(&provider), ProviderKind::GeminiCli);
 
         let auth = adapter.extract_auth(&provider).unwrap();
         assert_eq!(auth.access_token.as_deref(), Some("ya29.valid"));
@@ -897,7 +897,7 @@ mod tests {
             },
         );
 
-        assert_eq!(adapter.provider_type(&provider), ProviderType::GeminiCli);
+        assert_eq!(adapter.provider_type(&provider), ProviderKind::GeminiCli);
 
         let auth = adapter.extract_auth(&provider).unwrap();
         assert_eq!(auth.access_token.as_deref(), Some("ya29.raw-token-value"));
@@ -915,7 +915,7 @@ mod tests {
                 "ANTHROPIC_AUTH_TOKEN": "sk-ant-test"
             }
         }));
-        assert_eq!(adapter.provider_type(&anthropic), ProviderType::Claude);
+        assert_eq!(adapter.provider_type(&anthropic), ProviderKind::Claude);
 
         // OpenRouter
         let openrouter = create_provider(json!({
@@ -924,7 +924,7 @@ mod tests {
                 "OPENROUTER_API_KEY": "sk-or-test"
             }
         }));
-        assert_eq!(adapter.provider_type(&openrouter), ProviderType::OpenRouter);
+        assert_eq!(adapter.provider_type(&openrouter), ProviderKind::OpenRouter);
 
         // ClaudeAuth
         let claude_auth = create_provider(json!({
@@ -936,7 +936,7 @@ mod tests {
         }));
         assert_eq!(
             adapter.provider_type(&claude_auth),
-            ProviderType::ClaudeAuth
+            ProviderKind::ClaudeAuth
         );
     }
 
@@ -1085,7 +1085,7 @@ mod tests {
         assert!(adapter.needs_transform(&gemini_native_provider));
         assert_eq!(
             adapter.provider_type(&gemini_native_provider),
-            ProviderType::Gemini
+            ProviderKind::Gemini
         );
 
         // meta takes precedence over legacy settings_config fields
@@ -1129,7 +1129,7 @@ mod tests {
                 "ANTHROPIC_BASE_URL": "https://api.githubcopilot.com"
             }
         }));
-        assert_eq!(adapter.provider_type(&copilot), ProviderType::GitHubCopilot);
+        assert_eq!(adapter.provider_type(&copilot), ProviderKind::GitHubCopilot);
     }
 
     #[test]
@@ -1150,7 +1150,7 @@ mod tests {
         );
         assert_eq!(
             adapter.provider_type(&copilot_meta),
-            ProviderType::GitHubCopilot
+            ProviderKind::GitHubCopilot
         );
     }
 

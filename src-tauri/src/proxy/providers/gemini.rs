@@ -6,12 +6,13 @@
 //! - **Gemini**: API Key 认证 (x-goog-api-key)
 //! - **GeminiCli**: OAuth Bearer 认证 (用于 Gemini CLI)
 
-use super::{AuthInfo, AuthStrategy, ProviderAdapter, ProviderType};
+use super::{AuthInfo, AuthStrategy, ProviderAdapter};
 use crate::provider::Provider;
 use crate::proxy::error::ProxyError;
 use crate::proxy_core::{
     build_gemini_auth_headers, build_gemini_upstream_url, extract_gemini_api_key_from_settings,
     extract_gemini_base_url_from_settings, parse_gemini_oauth_credentials, GeminiOAuthCredentials,
+    ProviderKind,
 };
 
 /// Gemini 适配器
@@ -29,19 +30,19 @@ impl GeminiAdapter {
     /// 根据 API Key 格式检测：
     /// - GeminiCli: access_token (ya29. 开头) 或 JSON 格式凭证
     /// - Gemini: 普通 API Key
-    pub fn provider_type(&self, provider: &Provider) -> ProviderType {
+    pub fn provider_type(&self, provider: &Provider) -> ProviderKind {
         if let Some(key) = self.extract_key_raw(provider) {
             if parse_gemini_oauth_credentials(&key).is_some() {
-                return ProviderType::GeminiCli;
+                return ProviderKind::GeminiCli;
             }
         }
-        ProviderType::Gemini
+        ProviderKind::Gemini
     }
 
     /// 检测认证类型
     pub fn detect_auth_type(&self, provider: &Provider) -> AuthStrategy {
         match self.provider_type(provider) {
-            ProviderType::GeminiCli => AuthStrategy::GoogleOAuth,
+            ProviderKind::GeminiCli => AuthStrategy::GoogleOAuth,
             _ => AuthStrategy::Google,
         }
     }
@@ -202,7 +203,7 @@ mod tests {
         }));
         assert_eq!(
             adapter.provider_type(&api_key_provider),
-            ProviderType::Gemini
+            ProviderKind::Gemini
         );
 
         // OAuth access_token
@@ -213,7 +214,7 @@ mod tests {
         }));
         assert_eq!(
             adapter.provider_type(&oauth_provider),
-            ProviderType::GeminiCli
+            ProviderKind::GeminiCli
         );
 
         // OAuth JSON
@@ -224,7 +225,7 @@ mod tests {
         }));
         assert_eq!(
             adapter.provider_type(&oauth_json_provider),
-            ProviderType::GeminiCli
+            ProviderKind::GeminiCli
         );
     }
 
