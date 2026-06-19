@@ -3,7 +3,10 @@ use crate::{
         canonical_json_string, canonicalize_json_string_if_parseable, canonicalize_tool_arguments,
         short_sha256_hex,
     },
-    request_body::{codex_chat_reasoning_requested, map_codex_chat_reasoning_effort},
+    request_body::{
+        codex_chat_reasoning_requested, inject_openai_stream_include_usage,
+        map_codex_chat_reasoning_effort,
+    },
     UpstreamSseAggregationKind,
 };
 use serde_json::{json, Map, Value};
@@ -17,6 +20,22 @@ const CUSTOM_TOOL_INPUT_FIELD: &str = "input";
 const CUSTOM_TOOL_INPUT_DESCRIPTION: &str = "Raw string input for the original custom tool. Preserve formatting exactly and follow the original tool definition embedded in the description.";
 const CUSTOM_TOOL_PRESERVED_METADATA_HEADING: &str = "Original tool definition:";
 const CHAT_TOOL_NAME_MAX_LEN: usize = 64;
+const EXTRA_CHAT_PASSTHROUGH_FIELDS: &[&str] = &[
+    "frequency_penalty",
+    "logit_bias",
+    "logprobs",
+    "metadata",
+    "n",
+    "parallel_tool_calls",
+    "presence_penalty",
+    "response_format",
+    "seed",
+    "service_tier",
+    "stop",
+    "stream_options",
+    "top_logprobs",
+    "user",
+];
 
 /// Provider-neutral Codex Responses -> Chat Completions reasoning capability hints.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -293,6 +312,97 @@ pub fn apply_codex_chat_reasoning_options(
         }
         _ => {}
     }
+}
+
+pub fn responses_to_chat_completions_with_options(
+    body: &Value,
+    reasoning_config: Option<&CodexChatReasoningOptions>,
+    is_openai_o_series_model: bool,
+    supports_native_reasoning_effort: bool,
+) -> Value {
+    let mut result = json!({});
+    let tool_context = build_codex_tool_context_from_request(body);
+
+    if let Some(model) = body.get("model") {
+        result["model"] = model.clone();
+    }
+
+    let mut messages = Vec::new();
+    if let Some(instructions) = body.get("instructions") {
+        let instructions = responses_instruction_text(instructions);
+        if !instructions.is_empty() {
+            messages.push(json!({
+                "role": "system",
+                "content": instructions
+            }));
+        }
+    }
+
+    if let Some(input) = body.get("input") {
+        append_responses_input_as_chat_messages(input, &mut messages, &tool_context);
+    }
+    let messages = collapse_system_messages_to_head(messages);
+    result["messages"] = json!(messages);
+
+    if let Some(max_tokens) = body.get("max_output_tokens") {
+        if is_openai_o_series_model {
+            result["max_completion_tokens"] = max_tokens.clone();
+        } else {
+            result["max_tokens"] = max_tokens.clone();
+        }
+    }
+    if let Some(max_tokens) = body.get("max_tokens") {
+        result["max_tokens"] = max_tokens.clone();
+    }
+    if let Some(max_tokens) = body.get("max_completion_tokens") {
+        result["max_completion_tokens"] = max_tokens.clone();
+    }
+
+    for key in ["temperature", "top_p", "stream"] {
+        if let Some(value) = body.get(key) {
+            result[key] = value.clone();
+        }
+    }
+
+    apply_codex_chat_reasoning_options(
+        &mut result,
+        body,
+        reasoning_config,
+        supports_native_reasoning_effort,
+    );
+
+    let tools = tool_context.chat_tools();
+    if !tools.is_empty() {
+        result["tools"] = json!(tools);
+    }
+
+    if let Some(tool_choice) = body.get("tool_choice") {
+        result["tool_choice"] =
+            responses_tool_choice_to_chat_tool_choice(tool_choice, &tool_context);
+    }
+
+    for key in EXTRA_CHAT_PASSTHROUGH_FIELDS {
+        if let Some(value) = body.get(*key) {
+            result[*key] = value.clone();
+        }
+    }
+
+    // Strict OpenAI-compatible upstreams (vLLM, enterprise gateways) reject
+    // requests that carry tool_choice or parallel_tool_calls without a non-empty
+    // tools array. Drop both fields when tools ended up absent or empty after
+    // conversion to avoid 503/400 from such providers.
+    let has_tools = result
+        .get("tools")
+        .is_some_and(|value| value.as_array().is_some_and(|array| !array.is_empty()));
+    if !has_tools {
+        if let Some(obj) = result.as_object_mut() {
+            obj.remove("tool_choice");
+            obj.remove("parallel_tool_calls");
+        }
+    }
+
+    inject_openai_stream_include_usage(&mut result);
+    result
 }
 
 pub fn append_responses_input_as_chat_messages(
@@ -2913,6 +3023,85 @@ mod tests {
         assert_eq!(messages[2]["role"], "tool");
         assert_eq!(messages[2]["tool_call_id"], "call_weather");
         assert_eq!(messages[2]["content"], "Sunny");
+    }
+
+    #[test]
+    fn converts_codex_responses_request_to_chat_with_options() {
+        let request = json!({
+            "model": "gpt-5.4",
+            "instructions": "You are concise.",
+            "input": [
+                {
+                    "role": "user",
+                    "content": [{"type": "input_text", "text": "Weather?"}]
+                },
+                {
+                    "type": "function_call",
+                    "call_id": "call_weather",
+                    "name": "get_weather",
+                    "arguments": {"city": "Tokyo"}
+                },
+                {
+                    "type": "function_call_output",
+                    "call_id": "call_weather",
+                    "output": "Sunny"
+                }
+            ],
+            "tools": [{
+                "type": "function",
+                "name": "get_weather",
+                "description": "Get weather",
+                "parameters": {"type": "object"},
+                "strict": true
+            }],
+            "tool_choice": {"type": "function", "name": "get_weather"},
+            "max_output_tokens": 100,
+            "reasoning": {"effort": "high"},
+            "stream": true,
+            "parallel_tool_calls": true
+        });
+
+        let result = responses_to_chat_completions_with_options(&request, None, false, true);
+
+        assert_eq!(result["model"], "gpt-5.4");
+        assert_eq!(result["messages"][0]["role"], "system");
+        assert_eq!(result["messages"][1]["content"], "Weather?");
+        assert_eq!(
+            result["messages"][2]["tool_calls"][0]["function"]["arguments"],
+            r#"{"city":"Tokyo"}"#
+        );
+        assert_eq!(result["messages"][3]["role"], "tool");
+        assert_eq!(result["tools"][0]["function"]["name"], "get_weather");
+        assert_eq!(result["tool_choice"]["function"]["name"], "get_weather");
+        assert_eq!(result["max_tokens"], 100);
+        assert_eq!(result["reasoning_effort"], "high");
+        assert_eq!(result["stream_options"]["include_usage"], true);
+        assert_eq!(result["parallel_tool_calls"], true);
+
+        let o_series = responses_to_chat_completions_with_options(
+            &json!({"model": "o4-mini", "max_output_tokens": 7}),
+            None,
+            true,
+            false,
+        );
+        assert_eq!(o_series["max_completion_tokens"], 7);
+        assert!(o_series.get("max_tokens").is_none());
+    }
+
+    #[test]
+    fn codex_responses_request_to_chat_drops_tool_fields_without_tools() {
+        let request = json!({
+            "model": "gpt-5.4",
+            "input": "hello",
+            "tool_choice": {"type": "function", "name": "missing_tool"},
+            "parallel_tool_calls": true
+        });
+
+        let result = responses_to_chat_completions_with_options(&request, None, false, false);
+
+        assert!(result.get("tools").is_none());
+        assert!(result.get("tool_choice").is_none());
+        assert!(result.get("parallel_tool_calls").is_none());
     }
 
     #[test]

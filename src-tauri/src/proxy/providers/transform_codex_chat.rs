@@ -6,34 +6,19 @@
 
 use crate::provider::CodexChatReasoningConfig;
 use crate::proxy::error::ProxyError;
+#[cfg(test)]
+use crate::proxy_core::collapse_system_messages_to_head;
 pub(crate) use crate::proxy_core::{
-    append_responses_input_as_chat_messages, apply_codex_chat_reasoning_options,
     build_codex_tool_context_from_request,
     chat_completion_to_response_with_context as build_chat_completion_response_with_context,
-    chat_usage_to_responses_usage, collapse_system_messages_to_head,
-    custom_tool_input_from_chat_arguments, response_id_from_chat_id,
+    chat_usage_to_responses_usage, custom_tool_input_from_chat_arguments, response_id_from_chat_id,
     response_status_from_finish_reason, response_tool_call_item_from_chat_name,
-    response_tool_call_item_id_from_chat_name, responses_instruction_text,
-    responses_tool_choice_to_chat_tool_choice, CodexChatReasoningOptions, CodexToolContext,
+    response_tool_call_item_id_from_chat_name, responses_to_chat_completions_with_options,
+    CodexChatReasoningOptions, CodexToolContext,
 };
-use serde_json::{json, Value};
-
-const EXTRA_CHAT_PASSTHROUGH_FIELDS: &[&str] = &[
-    "frequency_penalty",
-    "logit_bias",
-    "logprobs",
-    "metadata",
-    "n",
-    "parallel_tool_calls",
-    "presence_penalty",
-    "response_format",
-    "seed",
-    "service_tier",
-    "stop",
-    "stream_options",
-    "top_logprobs",
-    "user",
-];
+#[cfg(test)]
+use serde_json::json;
+use serde_json::Value;
 
 /// Convert an OpenAI Responses request into an OpenAI Chat Completions request.
 #[allow(dead_code)]
@@ -47,96 +32,14 @@ pub fn responses_to_chat_completions_with_reasoning(
     body: Value,
     reasoning_config: Option<&CodexChatReasoningConfig>,
 ) -> Result<Value, ProxyError> {
-    let mut result = json!({});
-    let tool_context = build_codex_tool_context_from_request(&body);
-
-    if let Some(model) = body.get("model") {
-        result["model"] = model.clone();
-    }
-
-    let mut messages = Vec::new();
-    if let Some(instructions) = body.get("instructions") {
-        let instructions = responses_instruction_text(instructions);
-        if !instructions.is_empty() {
-            messages.push(json!({
-                "role": "system",
-                "content": instructions
-            }));
-        }
-    }
-
-    if let Some(input) = body.get("input") {
-        append_responses_input_as_chat_messages(input, &mut messages, &tool_context);
-    }
-    let messages = collapse_system_messages_to_head(messages);
-    result["messages"] = json!(messages);
-
     let model = body.get("model").and_then(|v| v.as_str()).unwrap_or("");
-    if let Some(max_tokens) = body.get("max_output_tokens") {
-        if super::transform::is_openai_o_series(model) {
-            result["max_completion_tokens"] = max_tokens.clone();
-        } else {
-            result["max_tokens"] = max_tokens.clone();
-        }
-    }
-    if let Some(max_tokens) = body.get("max_tokens") {
-        result["max_tokens"] = max_tokens.clone();
-    }
-    if let Some(max_tokens) = body.get("max_completion_tokens") {
-        result["max_completion_tokens"] = max_tokens.clone();
-    }
-
-    for key in ["temperature", "top_p", "stream"] {
-        if let Some(value) = body.get(key) {
-            result[key] = value.clone();
-        }
-    }
-
     let reasoning_options = reasoning_config.map(codex_chat_reasoning_options_from_provider);
-    apply_codex_chat_reasoning_options(
-        &mut result,
+    Ok(responses_to_chat_completions_with_options(
         &body,
         reasoning_options.as_ref(),
+        super::transform::is_openai_o_series(model),
         super::transform::supports_reasoning_effort(model),
-    );
-
-    let tools = tool_context.chat_tools();
-    if !tools.is_empty() {
-        result["tools"] = json!(tools);
-    }
-
-    if let Some(tool_choice) = body.get("tool_choice") {
-        result["tool_choice"] =
-            responses_tool_choice_to_chat_tool_choice(tool_choice, &tool_context);
-    }
-
-    for key in EXTRA_CHAT_PASSTHROUGH_FIELDS {
-        if let Some(value) = body.get(*key) {
-            result[*key] = value.clone();
-        }
-    }
-
-    // Strict OpenAI-compatible upstreams (vLLM, enterprise gateways) reject
-    // requests that carry tool_choice or parallel_tool_calls without a non-empty
-    // tools array. Drop both fields when tools ended up absent or empty after
-    // conversion to avoid 503/400 from such providers.
-    let has_tools = result
-        .get("tools")
-        .is_some_and(|v| v.as_array().is_some_and(|a| !a.is_empty()));
-    if !has_tools {
-        if let Some(obj) = result.as_object_mut() {
-            obj.remove("tool_choice");
-            obj.remove("parallel_tool_calls");
-        }
-    }
-    // OpenAI 兼容上游在流式下默认不在 SSE 里返回 usage，必须显式声明
-    // include_usage 才会在末尾吐 usage chunk。Codex CLI 用 Responses 协议、
-    // 自身不带 stream_options，缺这一注入会导致 kimi/MiniMax 等第三方流式请求的
-    // token/成本/缓存命中率全部漏记（input/output/cache 全为 0）。
-    // 与 Claude→openai_chat 路径共用同一 helper，保证两个客户端方向一致。
-    crate::proxy_core::inject_openai_stream_include_usage(&mut result);
-
-    Ok(result)
+    ))
 }
 
 fn codex_chat_reasoning_options_from_provider(
