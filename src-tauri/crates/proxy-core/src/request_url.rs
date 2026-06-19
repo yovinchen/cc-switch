@@ -1,4 +1,4 @@
-use crate::{gemini_url::normalize_gemini_model_id, AppKind};
+use crate::{gemini_url::normalize_gemini_model_id, AppKind, CODEX_OAUTH_CLAUDE_BASE_URL};
 use serde_json::Value;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -118,6 +118,24 @@ pub fn strip_endpoint_prefix<'a>(endpoint: &'a str, prefix: Option<&str>) -> &'a
     prefix
         .and_then(|prefix| endpoint.strip_prefix(prefix))
         .unwrap_or(endpoint)
+}
+
+pub fn build_claude_upstream_url(base_url: &str, endpoint: &str) -> String {
+    if base_url == CODEX_OAUTH_CLAUDE_BASE_URL {
+        return format!("{CODEX_OAUTH_CLAUDE_BASE_URL}/responses");
+    }
+
+    let mut url = format!(
+        "{}/{}",
+        base_url.trim_end_matches('/'),
+        endpoint.trim_start_matches('/')
+    );
+
+    while url.contains("/v1/v1") {
+        url = url.replace("/v1/v1", "/v1");
+    }
+
+    url
 }
 
 pub fn is_github_copilot_upstream(provider_type: Option<&str>, base_url: &str) -> bool {
@@ -353,15 +371,16 @@ fn is_openai_compatible_custom_app(value: &str) -> bool {
 mod tests {
     use super::{
         append_query_to_endpoint_path, append_query_to_full_url, extract_gemini_model_from_path,
-        interface_kind_for_forward, is_codex_chat_completions_url, is_codex_chat_wire_api,
-        is_codex_responses_endpoint, is_github_copilot_upstream, is_origin_only_url,
-        merge_query_params, request_model_for_forward, resolved_copilot_dynamic_base_url,
-        rewrite_claude_transform_endpoint, rewrite_codex_responses_endpoint_to_chat,
-        resolve_codex_provider_uses_chat_completions,
+        build_claude_upstream_url, interface_kind_for_forward, is_codex_chat_completions_url,
+        is_codex_chat_wire_api, is_codex_responses_endpoint, is_github_copilot_upstream,
+        is_origin_only_url, merge_query_params, request_model_for_forward,
+        resolved_copilot_dynamic_base_url, rewrite_claude_transform_endpoint,
+        rewrite_codex_responses_endpoint_to_chat, resolve_codex_provider_uses_chat_completions,
         should_convert_codex_responses_endpoint_to_chat, should_resolve_copilot_dynamic_endpoint,
         split_endpoint_and_query, strip_beta_query, strip_endpoint_prefix, AppKind,
         ClaudeTransformEndpointRewriteInput, claude_transform_endpoint_rewrite_input_from_body,
     };
+    use crate::CODEX_OAUTH_CLAUDE_BASE_URL;
     use serde_json::json;
 
     #[test]
@@ -434,6 +453,26 @@ mod tests {
             "/v1/messages?x-id=1"
         );
         assert_eq!(strip_endpoint_prefix("/v1/messages", None), "/v1/messages");
+    }
+
+    #[test]
+    fn builds_claude_upstream_url_with_legacy_join_semantics() {
+        assert_eq!(
+            build_claude_upstream_url("https://api.anthropic.com", "/v1/messages"),
+            "https://api.anthropic.com/v1/messages"
+        );
+        assert_eq!(
+            build_claude_upstream_url("https://api.anthropic.com/", "v1/messages?foo=bar"),
+            "https://api.anthropic.com/v1/messages?foo=bar"
+        );
+        assert_eq!(
+            build_claude_upstream_url("https://relay.example.com/v1", "/v1/messages"),
+            "https://relay.example.com/v1/messages"
+        );
+        assert_eq!(
+            build_claude_upstream_url(CODEX_OAUTH_CLAUDE_BASE_URL, "/v1/messages"),
+            "https://chatgpt.com/backend-api/codex/responses"
+        );
     }
 
     #[test]

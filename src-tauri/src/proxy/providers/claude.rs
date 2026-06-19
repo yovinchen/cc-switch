@@ -19,11 +19,12 @@ use crate::provider::Provider;
 use crate::proxy::error::ProxyError;
 use crate::proxy_core::{
     anthropic_to_openai_chat_request, anthropic_to_openai_responses_request,
-    claude_api_format_needs_transform, extract_claude_auth_key_from_settings,
-    extract_claude_base_url_from_settings, infer_claude_provider_kind,
-    normalize_anthropic_tool_thinking_history, openai_chat_to_anthropic_message,
-    openai_responses_to_anthropic_message, resolve_claude_api_format_from_settings,
-    resolve_claude_responses_prompt_cache_key, should_normalize_anthropic_tool_thinking_history,
+    build_claude_upstream_url, claude_api_format_needs_transform,
+    extract_claude_auth_key_from_settings, extract_claude_base_url_from_settings,
+    infer_claude_provider_kind, normalize_anthropic_tool_thinking_history,
+    openai_chat_to_anthropic_message, openai_responses_to_anthropic_message,
+    resolve_claude_api_format_from_settings, resolve_claude_responses_prompt_cache_key,
+    should_normalize_anthropic_tool_thinking_history,
     should_preserve_reasoning_content_for_openai_chat, ClaudeAuthKey, ClaudeAuthKeySource,
 };
 use serde_json::Value;
@@ -340,31 +341,7 @@ impl ProviderAdapter for ClaudeAdapter {
     }
 
     fn build_url(&self, base_url: &str, endpoint: &str) -> String {
-        // Codex OAuth: 所有请求统一走 /responses 端点
-        if base_url == "https://chatgpt.com/backend-api/codex" {
-            let _ = endpoint; // 忽略原始 endpoint
-            return "https://chatgpt.com/backend-api/codex/responses".to_string();
-        }
-
-        // NOTE:
-        // 过去 OpenRouter 只有 OpenAI Chat Completions 兼容接口，需要把 Claude 的 `/v1/messages`
-        // 映射到 `/v1/chat/completions`，并做 Anthropic ↔ OpenAI 的格式转换。
-        //
-        // 现在 OpenRouter 已推出 Claude Code 兼容接口，因此默认直接透传 endpoint。
-        // 如需回退旧逻辑，可在 forwarder 中根据 needs_transform 改写 endpoint。
-        //
-        let mut base = format!(
-            "{}/{}",
-            base_url.trim_end_matches('/'),
-            endpoint.trim_start_matches('/')
-        );
-
-        // 去除重复的 /v1/v1（可能由 base_url 与 endpoint 都带版本导致）
-        while base.contains("/v1/v1") {
-            base = base.replace("/v1/v1", "/v1");
-        }
-
-        base
+        build_claude_upstream_url(base_url, endpoint)
     }
 
     fn get_auth_headers(
