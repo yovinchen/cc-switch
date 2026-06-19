@@ -1,6 +1,7 @@
 use crate::app_config::AppType;
 use crate::database::Database;
 use crate::error::AppError;
+use crate::proxy::error_mapper::forward_error_to_core_error;
 use crate::proxy::events::ProxyEventBus;
 use crate::proxy::failover_switch::FailoverSwitchManager;
 use crate::proxy::hyper_client::ProxyResponse;
@@ -17,13 +18,13 @@ use crate::proxy_core::{
     GeminiShadowStore, ModelCatalog, OptimizerConfigSpec, ProviderSource, ProviderSpec,
     ProxyAppConfig, ProxyBody, ProxyConfigSource, ProxyCoreError, ProxyCoreEvent,
     ProxyCoreEventType, ProxyCoreResponse, ProxyCoreResult, ProxyEventSink, ProxyGlobalConfig,
-    ProxyRequest, ProxyResponseBody, ProxyResult, ProxyRuntimeConfig, ProxyServices,
-    ProxyRuntimeStatus as ProxyStatus, RectifierConfigSpec, RoutePlan, RoutePolicy,
+    ProxyRequest, ProxyResponseBody, ProxyResult, ProxyRuntimeConfig,
+    ProxyRuntimeStatus as ProxyStatus, ProxyServices, RectifierConfigSpec, RoutePlan, RoutePolicy,
     RoutePolicySource, RouteRequest, RouteResolver, RouteSelection, UsageRecord, UsageSink,
     CLAUDE_API_FORMAT_METADATA_KEY, DEFAULT_ROUTE_GROUP, SESSION_REQUEST_ID_PREFIX,
 };
-use crate::proxy_core_adapter::{ToProxyCoreChannelSpec, ToProxyCoreProviderSpec};
 use crate::proxy_core_adapter::extract_proxy_session_id;
+use crate::proxy_core_adapter::{ToProxyCoreChannelSpec, ToProxyCoreProviderSpec};
 use crate::services::usage_stats::is_placeholder_pricing_model;
 use bytes::Bytes;
 use futures::{future::BoxFuture, Stream, StreamExt};
@@ -750,7 +751,7 @@ impl CcSwitchProxyRuntime {
                 &app_type, method, &endpoint, body, headers, extensions, attempts,
             )
             .await
-            .map_err(forward_error_to_core)?;
+            .map_err(forward_error_to_core_error)?;
         Ok(forward_result_to_proxy_result(result, plan))
     }
 }
@@ -906,32 +907,6 @@ where
         while let Some(chunk) = stream.next().await {
             yield chunk;
         }
-    }
-}
-
-fn forward_error_to_core(error: crate::proxy::ForwardError) -> ProxyCoreError {
-    let message = error.error.to_string();
-    match error.error {
-        crate::proxy::ProxyError::NoAvailableProvider
-        | crate::proxy::ProxyError::AllProvidersCircuitOpen
-        | crate::proxy::ProxyError::NoProvidersConfigured
-        | crate::proxy::ProxyError::ProviderUnhealthy(_)
-        | crate::proxy::ProxyError::MaxRetriesExceeded => ProxyCoreError::Unavailable(message),
-        crate::proxy::ProxyError::ConfigError(_) => ProxyCoreError::Config(message),
-        crate::proxy::ProxyError::AuthError(_) => ProxyCoreError::Auth(message),
-        crate::proxy::ProxyError::InvalidRequest(_) => ProxyCoreError::InvalidRequest(message),
-        crate::proxy::ProxyError::DatabaseError(_) => ProxyCoreError::Internal(message),
-        crate::proxy::ProxyError::ForwardFailed(_)
-        | crate::proxy::ProxyError::UpstreamError { .. }
-        | crate::proxy::ProxyError::Timeout(_)
-        | crate::proxy::ProxyError::StreamIdleTimeout(_) => ProxyCoreError::Upstream(message),
-        crate::proxy::ProxyError::TransformError(_) => ProxyCoreError::Internal(message),
-        crate::proxy::ProxyError::AlreadyRunning
-        | crate::proxy::ProxyError::NotRunning
-        | crate::proxy::ProxyError::BindFailed(_)
-        | crate::proxy::ProxyError::StopTimeout
-        | crate::proxy::ProxyError::StopFailed(_)
-        | crate::proxy::ProxyError::Internal(_) => ProxyCoreError::Internal(message),
     }
 }
 

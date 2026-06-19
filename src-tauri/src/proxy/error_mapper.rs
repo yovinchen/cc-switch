@@ -2,7 +2,7 @@
 //!
 //! 将 ProxyError 映射到合适的 HTTP 状态码，用于日志记录和手动构建错误响应
 
-use super::ProxyError;
+use super::{ForwardError, ProxyError};
 use crate::proxy::error::proxy_error_status_kind;
 use crate::proxy_core::{
     codex_proxy_error_code, proxy_error_http_status_code, ClaudeDesktopGatewayAuthError,
@@ -61,6 +61,36 @@ pub(crate) fn proxy_core_error_to_proxy_error(error: ProxyCoreError) -> ProxyErr
             ProxyError::Internal(message)
         }
     }
+}
+
+pub(crate) fn proxy_error_to_core_error(error: ProxyError) -> ProxyCoreError {
+    let message = error.to_string();
+    match error {
+        ProxyError::NoAvailableProvider
+        | ProxyError::AllProvidersCircuitOpen
+        | ProxyError::NoProvidersConfigured
+        | ProxyError::ProviderUnhealthy(_)
+        | ProxyError::MaxRetriesExceeded => ProxyCoreError::Unavailable(message),
+        ProxyError::ConfigError(_) => ProxyCoreError::Config(message),
+        ProxyError::AuthError(_) => ProxyCoreError::Auth(message),
+        ProxyError::InvalidRequest(_) => ProxyCoreError::InvalidRequest(message),
+        ProxyError::ForwardFailed(_)
+        | ProxyError::UpstreamError { .. }
+        | ProxyError::Timeout(_)
+        | ProxyError::StreamIdleTimeout(_) => ProxyCoreError::Upstream(message),
+        ProxyError::AlreadyRunning
+        | ProxyError::NotRunning
+        | ProxyError::BindFailed(_)
+        | ProxyError::StopTimeout
+        | ProxyError::StopFailed(_)
+        | ProxyError::DatabaseError(_)
+        | ProxyError::TransformError(_)
+        | ProxyError::Internal(_) => ProxyCoreError::Internal(message),
+    }
+}
+
+pub(crate) fn forward_error_to_core_error(error: ForwardError) -> ProxyCoreError {
+    proxy_error_to_core_error(error.error)
 }
 
 pub(crate) fn management_api_error_to_proxy_error(error: ProxyCoreError) -> ProxyError {
@@ -237,6 +267,44 @@ mod tests {
             proxy_core_error_to_proxy_error(ProxyCoreError::Internal("bad".to_string())),
             ProxyError::Internal(_)
         ));
+    }
+
+    #[test]
+    fn test_proxy_error_bridge_maps_categories_to_core() {
+        assert!(matches!(
+            proxy_error_to_core_error(ProxyError::NoProvidersConfigured),
+            ProxyCoreError::Unavailable(_)
+        ));
+        assert!(matches!(
+            proxy_error_to_core_error(ProxyError::ConfigError("bad".to_string())),
+            ProxyCoreError::Config(_)
+        ));
+        assert!(matches!(
+            proxy_error_to_core_error(ProxyError::AuthError("bad".to_string())),
+            ProxyCoreError::Auth(_)
+        ));
+        assert!(matches!(
+            proxy_error_to_core_error(ProxyError::InvalidRequest("bad".to_string())),
+            ProxyCoreError::InvalidRequest(_)
+        ));
+        assert!(matches!(
+            proxy_error_to_core_error(ProxyError::Timeout("slow".to_string())),
+            ProxyCoreError::Upstream(_)
+        ));
+        assert!(matches!(
+            proxy_error_to_core_error(ProxyError::TransformError("bad body".to_string())),
+            ProxyCoreError::Internal(_)
+        ));
+    }
+
+    #[test]
+    fn test_forward_error_bridge_uses_proxy_error_category() {
+        let error = forward_error_to_core_error(ForwardError {
+            error: ProxyError::ForwardFailed("connection refused".to_string()),
+            provider: None,
+        });
+
+        assert!(matches!(error, ProxyCoreError::Upstream(_)));
     }
 
     #[test]
