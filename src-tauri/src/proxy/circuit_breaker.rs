@@ -2,13 +2,13 @@
 //!
 //! 实现熔断器模式，用于防止向不健康的供应商发送请求
 
-use crate::proxy_core::{CircuitBreakerConfig, log_codes::cb as log_cb};
+use crate::proxy_core::{
+    AllowResult, CircuitBreakerConfig, CircuitBreakerStats, CircuitState, log_codes::cb as log_cb,
+};
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::Arc;
 use std::time::Instant;
 use tokio::sync::RwLock;
-
-pub use crate::proxy_core::{AllowResult, CircuitBreakerStats, CircuitState};
 
 /// 熔断器实例
 pub struct CircuitBreaker {
