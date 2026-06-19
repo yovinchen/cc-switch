@@ -204,9 +204,9 @@
 193. Anthropic Messages 到 OpenAI Responses 请求体的 JSON 组装已迁入 `proxy-core::response_transform::anthropic_to_openai_responses_request`，包括 system/instructions 归一化、billing header strip、messages 到 input 遍历、tool_use/tool_result 提升、图片 data URL、max_tokens/temperature/top_p/stream/tool_choice/tools/cache key 映射、reasoning effort 映射以及 Codex OAuth contract 应用；生产 Claude adapter 直接调用 core，host `transform_responses::anthropic_to_responses` 仅保留测试入口。
 194. Anthropic Messages 到 OpenAI Chat Completions 请求体的 JSON 组装已迁入 `proxy-core::response_transform::anthropic_to_openai_chat_request`，包括 system message 合并、billing header strip、text/image/tool_use/tool_result/thinking/redacted_thinking 消息转换、o-series `max_completion_tokens`、reasoning_effort、tools/tool_choice 和可选 `reasoning_content` 兼容字段；生产 Claude adapter 直接调用 core，host `transform::anthropic_to_openai_with_reasoning_content` 仅保留测试入口。
 195. OpenAI Chat Completions 非流式响应到 Anthropic message 的 JSON 组装已迁入 `proxy-core::response_transform::openai_chat_to_anthropic_message`，包括 choices/message 校验、`reasoning_content` 到 thinking、文本/refusal content parts、tool_calls 和 legacy function_call 到 tool_use、finish_reason 到 stop_reason 以及 usage shape 映射；生产 handler/adapter 直接调用 core，host `transform::openai_to_anthropic` 仅保留测试入口与 `ProxyError::TransformError` 映射。
-196. 模型目录拉取的 URL 候选生成策略已迁入 `proxy-core::model_fetch::build_models_url_candidates`，包括 full URL 反推 `/v1/models`、版本段 `/vN` 处理、override 优先、已知 Anthropic-compatible 子路径剥离和顺序去重；host `services::model_fetch` 只负责 API key 校验、User-Agent 注入、HTTP 请求和错误体截断。
-197. OpenAI-compatible `/models` 响应 DTO、`FetchedModel` 外部契约和响应解析/排序已迁入 `proxy-core::model_fetch::{FetchedModel,parse_models_response_bytes}`；host `services::model_fetch` 保留 `FetchedModel` re-export 兼容既有 command/service 调用路径，但不再维护模型目录协议结构。
-198. Codex OAuth/ChatGPT 后端模型目录的 JSON shape 兼容解析已迁入 `proxy-core::model_fetch::parse_codex_oauth_models`，包括 `data`/`models`/`items`/顶层数组/`models` map、多字段模型 id 识别、默认 `Codex` owner、fallback key 和排序去重；host `services::codex_oauth_models` 只负责 access token/account header、HTTP 请求和错误体截断。
+196. 模型目录拉取的 URL 候选生成策略已迁入 `proxy-core::model_fetch::build_models_url_candidates`，包括 full URL 反推 `/v1/models`、版本段 `/vN` 处理、override 优先、已知 Anthropic-compatible 子路径剥离和顺序去重；host `services::model_fetch` 只负责 reqwest transport、日志、timeout 设置和 body 读取。
+197. OpenAI-compatible `/models` 响应 DTO、`FetchedModel` 外部契约和响应解析/排序已迁入 `proxy-core::model_fetch::{FetchedModel,parse_models_response_bytes}`；命令层直接引用 core DTO，host service 不再维护模型目录协议结构或 DTO re-export。
+198. Codex OAuth/ChatGPT 后端模型目录的 JSON shape 兼容解析已迁入 `proxy-core::model_fetch::parse_codex_oauth_models`，包括 `data`/`models`/`items`/顶层数组/`models` map、多字段模型 id 识别、默认 `Codex` owner、fallback key 和排序去重；host `services::codex_oauth_models` 只负责 reqwest transport、query/header 注入、timeout 设置和 body 读取。
 199. GitHub Copilot live `/models` 的可选模型 DTO 与响应过滤解析已迁入 `proxy-core::copilot_model_map::{CopilotModel,parse_copilot_models_response_bytes}`；host `copilot_auth` 保留账号缓存、token、endpoint 解析和 HTTP 请求，命令层直接引用 core DTO。
 200. Copilot OAuth/GHES 域名输入规范化已迁入 `proxy-core::copilot_model_map::normalize_github_domain`，包括协议剥离、path/query/fragment 剥离、小写化、端口保留和 userinfo/空值拒绝；host `copilot_auth` 只把 core 字符串错误映射为 `CopilotAuthError::InvalidDomain`。
 201. Copilot 多账号复合账号 ID 生成规则已迁入 `proxy-core::copilot_model_map::copilot_composite_account_id`，保留 github.com 数字 ID 的向后兼容语义，同时对 GHES 账号使用 `domain:user_id` 防止不同实例的用户 ID 冲突；host `copilot_auth` 只保留同名 wrapper 兼容既有调用点。
@@ -224,8 +224,8 @@
 213. 非流式响应 usage 归因的模型优先级已迁入 `proxy-core::usage::resolve_usage_response_model`；host `response_processor` 只负责 JSON 解析、日志任务调度和 Axum response 构造，不再内联 `usage.model -> body.model -> outbound -> request` 回退链。
 214. Channel route 选中后的请求体 model override 规则已迁入 `proxy-core::request_body::apply_channel_route_model_override`；host `route_attempt` 只负责从 `ForwardAttempt` 提取 public/upstream model 并保留原 debug 日志，provider settings/meta 覆写仍留在宿主适配层。
 215. `RouteSelection -> ChannelRouteCandidate` 的 core DTO 映射已迁入 `proxy-core::route_resolve::route_candidate_from_selection`；host `route_attempt` 不再手写 channel/provider/model/interface/priority 字段复制，只负责把 candidate 包装回当前 `ForwardAttempt`。
-216. 模型目录 HTTP 拉取错误体截断策略已迁入 `proxy-core::model_fetch::truncate_model_fetch_error_body`；host `services::model_fetch` 只负责请求发送、状态码分支和错误文案拼接，不再持有 404/405 HTML body 截断长度规则。
-217. Codex OAuth 模型目录 HTTP 错误体截断策略已迁入 `proxy-core::model_fetch::truncate_codex_oauth_models_error_body`，保留历史 `"..."` 后缀；host `services::codex_oauth_models` 只负责 access token/account header、HTTP 请求和 JSON 解析入口。
+216. 模型目录 HTTP 拉取错误体截断策略已迁入 `proxy-core::model_fetch::truncate_model_fetch_error_body`；host `services::model_fetch` 不再持有 404/405 HTML body 截断长度规则或错误文案拼接。
+217. Codex OAuth 模型目录 HTTP 错误体截断策略已迁入 `proxy-core::model_fetch::truncate_codex_oauth_models_error_body`，保留历史 `"..."` 后缀；host `services::codex_oauth_models` 不再持有失败响应截断和 JSON 解析入口。
 218. `services::model_fetch::FetchedModel` host re-export 已删除；模型目录命令层直接引用 `proxy-core::FetchedModel`，host service 不再作为 core 模型目录 DTO 的二次出口。
 219. `proxy::providers::copilot_auth::CopilotModel` host re-export 已删除；Copilot 命令层直接引用 `proxy-core::CopilotModel`，host `copilot_auth` 只保留认证、账号缓存、endpoint/cache 和 HTTP 拉取流程。
 220. thinking signature/budget rectifier 的错误命中判断 wrapper 已删除；forwarder 直接调用 `proxy-core::{should_rectify_thinking_signature,should_rectify_thinking_budget}`，host `RectifierConfig` 仅负责投影 core 中立配置。
@@ -240,8 +240,8 @@
 229. `providers::transform` 与 `providers::transform_responses` 模块声明已限制为 `#[cfg(test)]`；生产构建不再编译 OpenAI Chat/Responses 的旧 provider facade，协议回归由测试模块继续覆盖。
 230. Codex Responses->Chat 上游请求转换已从 forwarder 直接调用 `proxy-core::responses_to_chat_completions_with_options`，模型能力判定也直接使用 core helper；`providers::transform_codex_chat` 已限制为 `#[cfg(test)]` fixture 模块。
 231. Gemini Native endpoint rewrite 的 request model 读取已在 forwarder 直接从请求体提取，并删除 `transform_gemini::extract_gemini_model` 纯 passthrough helper；Gemini transform 模块继续只保留实际协议转换与 shadow 状态维护。
-232. Codex OAuth/ChatGPT 后端模型目录的请求契约已迁入 `proxy-core::model_fetch::build_codex_oauth_models_request`，包括 backend URL、`client_version` query、Bearer header、`originator` 和 `chatgpt-account-id` header；host `services::codex_oauth_models` 只负责 HTTP 发送、timeout 和响应 JSON 解析入口。
-233. OpenAI-compatible `/models` 单次候选请求的 Bearer auth header 契约已迁入 `proxy-core::model_fetch::build_openai_compatible_models_request`；host `services::model_fetch` 继续负责候选循环、HTTP 发送和错误文案拼接。
+232. Codex OAuth/ChatGPT 后端模型目录的请求契约已迁入 `proxy-core::model_fetch::build_codex_oauth_models_request`，包括 backend URL、`client_version` query、Bearer header、`originator` 和 `chatgpt-account-id` header；host `services::codex_oauth_models` 只负责按 core request plan 发送 HTTP。
+233. OpenAI-compatible `/models` 单次候选请求的 Bearer auth header 契约已迁入 `proxy-core::model_fetch::build_openai_compatible_models_request`；host `services::model_fetch` 只负责按 core request plan 发送 HTTP。
 234. Claude adapter 的 DeepSeek thinking-disabled 生产 wrapper 已删除；`normalize_anthropic_messages_for_provider` 直接调用 core mutation，provider-specific 回归样例保留在 host 测试中。
 235. Claude adapter 的 Anthropic tool-thinking history 生产 wrapper 已删除；`normalize_anthropic_messages_for_provider` 直接调用 core gate/mutation，provider-specific 回归样例保留在 host 测试中。
 236. Claude Desktop gateway `/v1/models` 的 response DTO 与 envelope 构造已迁入 `proxy-core::claude_desktop_gateway_auth`；host 只负责鉴权、provider 选择和 route 推断。
@@ -251,7 +251,7 @@
 240. Claude/Gemini handler 的原始 endpoint path/query 构造已统一走 `proxy-core::request_url::append_query_to_endpoint_path`，并保留旧 handler 对空 query 的 `?` 语义。
 241. Codex Responses->Chat endpoint rewrite 的 host passthrough wrapper 已删除；forwarder 生产路径和回归测试都直接消费 `proxy-core::request_url::rewrite_codex_responses_endpoint_to_chat`。
 242. OpenAI-compatible `/models` 请求计划中的可选 User-Agent header 契约已迁入 `proxy-core::model_fetch::OpenAiCompatibleModelsRequest`；host `services::model_fetch` 只负责 reqwest 发送。
-243. OpenAI-compatible 与 Codex OAuth 模型目录请求的 timeout，以及 OpenAI-compatible 候选端点的 404/405 回退判定已迁入 `proxy-core::model_fetch` request plan / retry policy；host 只负责按计划设置 reqwest timeout 并拼接错误体。
+243. OpenAI-compatible 与 Codex OAuth 模型目录请求的 timeout，以及 OpenAI-compatible 候选端点的 404/405 回退判定已迁入 `proxy-core::model_fetch` request plan / retry policy；host 只负责按计划设置 reqwest timeout 并读取 response body。
 244. 模型目录失败响应的 retry/fail 决策和 `HTTP {status}: {body}` 错误格式已迁入 `proxy-core::model_fetch::{openai_compatible_models_failure,codex_oauth_models_failure}`；host 只读取 response body。
 245. OpenAI-compatible 模型目录拉取的 API key 空值校验已迁入 `proxy-core::model_fetch::validate_openai_compatible_models_api_key`；host 不再持有请求前校验文案。
 246. OpenAI-compatible 模型目录拉取的候选端点编排已迁入 `proxy-core::model_fetch::fetch_openai_compatible_models_with_transport`，并通过 `OpenAiCompatibleModelsTransport` 端口隔离实际 HTTP；host `services::model_fetch` 只实现 reqwest transport、日志、timeout 设置和 body 读取。
