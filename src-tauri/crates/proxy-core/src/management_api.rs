@@ -34,6 +34,19 @@ pub fn normalize_channel_id_path(channel_id: impl AsRef<str>) -> ProxyCoreResult
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ChannelPathRequest {
+    pub channel_id: String,
+}
+
+impl ChannelPathRequest {
+    pub fn from_path(channel_id: impl AsRef<str>) -> ProxyCoreResult<Self> {
+        Ok(Self {
+            channel_id: normalize_channel_id_path(channel_id)?,
+        })
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AppModelCatalogRequest {
     pub app: AppKind,
     pub app_type: String,
@@ -130,7 +143,7 @@ fn normalize_optional_management_app_type(app_type: Option<String>) -> ProxyCore
 #[cfg(test)]
 mod tests {
     use super::{
-        AppChannelManagementRequest, ChannelListRequest, GroupListRequest,
+        AppChannelManagementRequest, ChannelListRequest, ChannelPathRequest, GroupListRequest,
         normalize_channel_id_path, validate_management_app_type, validate_route_resolve_app_type,
         AppModelCatalogRequest,
     };
@@ -171,6 +184,13 @@ mod tests {
             error.to_string(),
             "invalid proxy request: channel_id cannot be empty"
         );
+    }
+
+    #[test]
+    fn channel_path_request_normalizes_path_id() {
+        let request = ChannelPathRequest::from_path(" channel-a ").expect("request");
+
+        assert_eq!(request.channel_id, "channel-a");
     }
 
     #[test]

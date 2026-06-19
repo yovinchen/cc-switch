@@ -44,11 +44,11 @@ use crate::proxy_core::{
     chat_completion_to_response_with_context as build_chat_completion_response_with_context,
     claude_api_format_from_metadata, claude_stream_usage_event_filter,
     claude_transform_unlabeled_sse_aggregation, codex_stream_usage_event_filter,
-    extract_gemini_model_from_path, json_proxy_response, normalize_channel_id_path,
-    openai_chat_to_anthropic_message, openai_responses_to_anthropic_message,
-    parse_upstream_json_or_unlabeled_sse, rebuilt_json_proxy_response,
-    resolve_management_auth_decision, should_aggregate_codex_oauth_responses_sse,
-    should_use_claude_transform_streaming, strip_endpoint_prefix, transformed_sse_proxy_response,
+    extract_gemini_model_from_path, json_proxy_response, openai_chat_to_anthropic_message,
+    openai_responses_to_anthropic_message, parse_upstream_json_or_unlabeled_sse,
+    rebuilt_json_proxy_response, resolve_management_auth_decision,
+    should_aggregate_codex_oauth_responses_sse, should_use_claude_transform_streaming,
+    strip_endpoint_prefix, transformed_sse_proxy_response,
     validate_claude_desktop_gateway_bearer_header, validate_management_app_type,
     validate_management_bearer_header, validate_route_resolve_app_type, AppChannelListQuery,
     AppChannelListResponse, AppChannelManagementRequest, AppChannelResponse,
@@ -56,8 +56,8 @@ use crate::proxy_core::{
     AppSummaryInput, ChannelDeleteResponse, ChannelHealthResetResponse, ChannelListQuery,
     ChannelListRequest, ChannelListResponse, ChannelMigrationMaterializeInput,
     ChannelMigrationMaterializeResponse, ChannelMigrationPreviewInput,
-    ChannelMigrationPreviewResponse, ChannelModelRecord, ChannelModelsResponse, ChannelRecord,
-    ChannelRecordResponse, ChannelRouteCandidate, ChannelRouteRejected,
+    ChannelMigrationPreviewResponse, ChannelModelRecord, ChannelModelsResponse, ChannelPathRequest,
+    ChannelRecord, ChannelRecordResponse, ChannelRouteCandidate, ChannelRouteRejected,
     ClaudeDesktopModelListResponse, ClientModelCatalogResponse, CurrentRouteProviderSummaryInput,
     CurrentRouteResponse, CurrentRouteTarget, GroupListQuery, GroupListRequest,
     HealthCheckResponse, InterfaceKind, ManagementAuthDecision, ProviderListResponse, ProxyBody,
@@ -319,8 +319,9 @@ pub async fn get_proxy_channel(
     State(state): State<ProxyState>,
     Path(channel_id): Path<String>,
 ) -> Result<Json<ChannelRecordResponse<ChannelRecord>>, ProxyError> {
-    let channel_id =
-        normalize_channel_id_path(channel_id).map_err(management_api_error_to_proxy_error)?;
+    let channel_id = ChannelPathRequest::from_path(channel_id)
+        .map_err(management_api_error_to_proxy_error)?
+        .channel_id;
     let channel = state
         .db
         .get_proxy_channel(&channel_id)
@@ -337,8 +338,9 @@ pub async fn update_proxy_channel(
     Path(channel_id): Path<String>,
     Json(request): Json<ProxyChannelPatchRequest>,
 ) -> Result<Json<ChannelRecordResponse<ChannelRecord>>, ProxyError> {
-    let channel_id =
-        normalize_channel_id_path(channel_id).map_err(management_api_error_to_proxy_error)?;
+    let channel_id = ChannelPathRequest::from_path(channel_id)
+        .map_err(management_api_error_to_proxy_error)?
+        .channel_id;
     let channel = state
         .db
         .update_proxy_channel(&channel_id, request)
@@ -354,8 +356,9 @@ pub async fn delete_proxy_channel(
     State(state): State<ProxyState>,
     Path(channel_id): Path<String>,
 ) -> Result<Json<ChannelDeleteResponse>, ProxyError> {
-    let channel_id =
-        normalize_channel_id_path(channel_id).map_err(management_api_error_to_proxy_error)?;
+    let channel_id = ChannelPathRequest::from_path(channel_id)
+        .map_err(management_api_error_to_proxy_error)?
+        .channel_id;
     let deleted = state
         .db
         .delete_proxy_channel(&channel_id)
@@ -368,8 +371,9 @@ pub async fn list_proxy_channel_models(
     State(state): State<ProxyState>,
     Path(channel_id): Path<String>,
 ) -> Result<Json<ChannelModelsResponse<ChannelModelRecord>>, ProxyError> {
-    let channel_id =
-        normalize_channel_id_path(channel_id).map_err(management_api_error_to_proxy_error)?;
+    let channel_id = ChannelPathRequest::from_path(channel_id)
+        .map_err(management_api_error_to_proxy_error)?
+        .channel_id;
     if state
         .db
         .get_proxy_channel(&channel_id)
@@ -397,8 +401,9 @@ pub async fn replace_proxy_channel_models(
     Path(channel_id): Path<String>,
     Json(request): Json<ProxyChannelModelsReplaceRequest>,
 ) -> Result<Json<ChannelModelsResponse<ChannelModelRecord>>, ProxyError> {
-    let channel_id =
-        normalize_channel_id_path(channel_id).map_err(management_api_error_to_proxy_error)?;
+    let channel_id = ChannelPathRequest::from_path(channel_id)
+        .map_err(management_api_error_to_proxy_error)?
+        .channel_id;
     let models = state
         .db
         .replace_proxy_channel_models(&channel_id, request.models)
@@ -597,8 +602,9 @@ pub async fn reset_proxy_channel_breaker(
     State(state): State<ProxyState>,
     Path(channel_id): Path<String>,
 ) -> Result<Json<ChannelHealthResetResponse>, ProxyError> {
-    let channel_id =
-        normalize_channel_id_path(channel_id).map_err(management_api_error_to_proxy_error)?;
+    let channel_id = ChannelPathRequest::from_path(channel_id)
+        .map_err(management_api_error_to_proxy_error)?
+        .channel_id;
     let response = ProxyEngine::new(state.proxy_core_services.clone())
         .reset_channel_health_response(&channel_id)
         .await
