@@ -27,12 +27,13 @@ use crate::proxy::providers::codex_oauth_auth::CodexOAuthManager;
 use crate::proxy::providers::copilot_auth::CopilotAuthManager;
 use crate::proxy_core::append_query_to_full_url;
 use crate::proxy_core::{
-    apply_copilot_warmup_model_override, attempt_event_name, build_attempt_event_payload,
-    build_codex_oauth_session_headers, build_request_started_event_payload,
-    build_retryable_forward_failure_log, build_terminal_forward_failure_log,
-    build_upstream_auth_headers, categorize_forward_failure, classify_copilot_request,
-    is_github_copilot_upstream, is_socks_proxy_url, merge_copilot_tool_results,
-    resolve_copilot_deterministic_interaction_id, resolve_copilot_optimizer_session_id,
+    apply_copilot_model_normalization, apply_copilot_warmup_model_override, attempt_event_name,
+    build_attempt_event_payload, build_codex_oauth_session_headers,
+    build_request_started_event_payload, build_retryable_forward_failure_log,
+    build_terminal_forward_failure_log, build_upstream_auth_headers, categorize_forward_failure,
+    classify_copilot_request, is_github_copilot_upstream, is_socks_proxy_url,
+    merge_copilot_tool_results, resolve_copilot_deterministic_interaction_id,
+    resolve_copilot_model_against_ids, resolve_copilot_optimizer_session_id,
     resolve_copilot_request_id_with_fallback, resolve_media_prevention_policy,
     resolve_upstream_request_transport_policy, resolve_upstream_send_policy,
     resolved_copilot_dynamic_base_url, sanitize_copilot_orphan_tool_results, short_value_hash,
@@ -1609,8 +1610,19 @@ impl RequestForwarder {
         apply_channel_model_override(&mut mapped_body, attempt);
 
         if is_copilot {
-            mapped_body =
-                super::providers::copilot_model_map::apply_copilot_model_normalization(mapped_body);
+            let original_model = mapped_body
+                .get("model")
+                .and_then(|value| value.as_str())
+                .map(ToString::to_string);
+            mapped_body = apply_copilot_model_normalization(mapped_body);
+            if let (Some(original), Some(normalized)) = (
+                original_model.as_deref(),
+                mapped_body.get("model").and_then(|value| value.as_str()),
+            ) {
+                if original != normalized {
+                    log::debug!("[CopilotNormalizer] {original} -> {normalized}");
+                }
+            }
             self.apply_copilot_live_model_resolution(provider, &mut mapped_body)
                 .await;
         } else {
@@ -2298,9 +2310,10 @@ impl RequestForwarder {
             }
         };
 
-        if let Some(resolved) =
-            super::providers::copilot_model_map::resolve_against_models(&model_id, &models)
-        {
+        if let Some(resolved) = resolve_copilot_model_against_ids(
+            &model_id,
+            models.iter().map(|model| model.id.as_str()),
+        ) {
             log::info!("[Copilot] live-model resolve: {model_id} → {resolved}");
             body["model"] = serde_json::Value::String(resolved);
         }
