@@ -5,8 +5,9 @@
 #[cfg(test)]
 use super::usage_sink_bridge::success_usage_record;
 use super::{
-    forwarder::ActiveConnectionGuard, handler_context::RequestContext, hyper_client::ProxyResponse,
-    server::ProxyState, usage_sink_bridge::provider_kind_from_provider, ProxyError,
+    error::ProxyError, forwarder::ActiveConnectionGuard, handler_context::RequestContext,
+    hyper_client::ProxyResponse, server::ProxyState,
+    usage_sink_bridge::provider_kind_from_provider,
 };
 use crate::proxy_core::{
     decode_response_body, get_content_encoding,

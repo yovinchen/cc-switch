@@ -4,7 +4,7 @@
 //! Supports HTTP CONNECT tunneling through upstream proxies.
 //! Falls back to hyper-util Client (title-case headers) when raw write is not feasible.
 
-use super::ProxyError;
+use super::error::ProxyError;
 use bytes::Bytes;
 use futures::{stream::Stream, StreamExt};
 use http_body_util::BodyExt;

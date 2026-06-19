@@ -8,7 +8,7 @@
 //! - Claude 的格式转换逻辑保留在此文件（用于 OpenRouter 旧接口回退）
 
 use super::{
-    ProxyError,
+    error::ProxyError,
     error_mapper::{
         claude_desktop_gateway_auth_error_to_proxy_error, codex_proxy_error_json,
         get_error_message, management_api_error_to_proxy_error,
@@ -1500,7 +1500,7 @@ fn log_forward_error(
 #[cfg(test)]
 mod tests {
     use super::codex_proxy_error_json;
-    use crate::proxy::ProxyError;
+    use crate::proxy::error::ProxyError;
 
     #[test]
     fn codex_proxy_forward_error_includes_context_and_cause() {

@@ -9,9 +9,8 @@
 //! a direct (non-proxied) CLI request.
 
 use super::{
-    events::ProxyEventBus, failover_switch::FailoverSwitchManager, handlers,
+    error::ProxyError, events::ProxyEventBus, failover_switch::FailoverSwitchManager, handlers,
     provider_router::ProviderRouter, providers::codex_chat_history::CodexChatHistoryStore,
-    ProxyError,
 };
 use crate::database::Database;
 use crate::proxy_core::{

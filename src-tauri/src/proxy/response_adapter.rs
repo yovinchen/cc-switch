@@ -1,4 +1,4 @@
-use super::{hyper_client::ProxyResponse, ProxyError};
+use super::{error::ProxyError, hyper_client::ProxyResponse};
 use crate::proxy_core::{ProxyCoreResponse, ProxyResponseBody};
 use bytes::Bytes;
 

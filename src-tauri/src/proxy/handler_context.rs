@@ -4,7 +4,7 @@
 
 use crate::app_config::AppType;
 use crate::provider::Provider;
-use crate::proxy::{ProxyError, forwarder::RequestForwarder, server::ProxyState};
+use crate::proxy::{error::ProxyError, forwarder::RequestForwarder, server::ProxyState};
 use crate::proxy_core::{
     AppKind, AppProxyConfig, CopilotOptimizerConfig, OptimizerConfig, ProxyServices,
     RectifierConfig, ResponseRuntimePolicy, ResponseTimeoutConfig, StreamingTimeoutConfig,

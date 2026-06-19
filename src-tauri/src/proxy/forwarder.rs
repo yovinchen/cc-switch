@@ -4,6 +4,7 @@
 
 use super::hyper_client::ProxyResponse;
 use super::{
+    error::ProxyError,
     events::ProxyEventBus,
     failover_switch::FailoverSwitchManager,
     provider_router::ProviderRouter,
@@ -14,7 +15,6 @@ use super::{
     route_attempt::{
         apply_channel_model_override, forward_attempts_from_route_plan, ForwardAttempt,
     },
-    ProxyError,
 };
 use crate::commands::{CodexOAuthState, CopilotAuthState};
 use crate::proxy::providers::codex_oauth_auth::CodexOAuthManager;

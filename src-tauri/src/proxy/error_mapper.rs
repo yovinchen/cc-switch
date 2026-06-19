@@ -2,7 +2,7 @@
 //!
 //! 将 ProxyError 映射到合适的 HTTP 状态码，用于日志记录和手动构建错误响应
 
-use super::{ForwardError, ProxyError};
+use super::{error::ProxyError, ForwardError};
 use crate::proxy::error::proxy_error_status_kind;
 use crate::proxy_core::{
     codex_proxy_error_code, proxy_error_http_status_code, ClaudeDesktopGatewayAuthError,
