@@ -18,7 +18,6 @@ use super::{AuthInfo, AuthStrategy, ProviderAdapter, ProviderType};
 use crate::provider::Provider;
 use crate::proxy::error::ProxyError;
 use crate::proxy_core::{
-    ClaudeAuthHeaderKind, ClaudeAuthKey, ClaudeAuthKeySource, CopilotAuthHeadersInput,
     anthropic_request_to_gemini_request_with_shadow, anthropic_to_openai_chat_request,
     anthropic_to_openai_responses_request, build_claude_auth_headers, build_claude_upstream_url,
     build_copilot_auth_headers, claude_api_format_needs_transform,
@@ -28,7 +27,8 @@ use crate::proxy_core::{
     normalize_anthropic_tool_thinking_history, openai_chat_to_anthropic_message,
     openai_responses_to_anthropic_message, resolve_claude_api_format_from_settings,
     resolve_claude_responses_prompt_cache_key, should_normalize_anthropic_tool_thinking_history,
-    should_preserve_reasoning_content_for_openai_chat,
+    should_preserve_reasoning_content_for_openai_chat, ClaudeAuthHeaderKind, ClaudeAuthKey,
+    ClaudeAuthKeySource, CopilotAuthHeadersInput,
 };
 use serde_json::Value;
 
@@ -178,13 +178,13 @@ impl ClaudeAdapter {
             .and_then(|meta| meta.provider_type.as_deref());
         let base_url = self.extract_base_url(provider).ok();
 
-        ProviderType::from_provider_kind(infer_claude_provider_kind(
+        infer_claude_provider_kind(
             api_format,
             uses_google_oauth,
             meta_provider_type,
             base_url.as_deref(),
             &provider.settings_config,
-        ))
+        )
     }
 
     /// 检测是否为 Codex OAuth 供应商（ChatGPT Plus/Pro 反代）

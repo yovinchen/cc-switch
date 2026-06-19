@@ -1,16 +1,15 @@
 use crate::app_config::AppType;
 use crate::database::{ProxyChannelModelRecord, ProxyChannelRecord};
 use crate::provider::Provider;
-use crate::proxy::providers::ProviderType;
+use crate::proxy::providers::provider_kind_from_app_type_and_config;
 use crate::proxy_core::{
     AppKind, AppSummaryInput, AuthProfileRef, ChannelHealthPolicy, ChannelModelRecord,
     ChannelOverrides, ChannelRecord, ChannelSpec, ChannelStatus, CurrentRouteProviderSummaryInput,
-    InterfaceKind, ModelCapabilities, ModelRoute, ProviderKind, ProviderMetadata, ProviderSpec,
-    RetryPolicy, RouteResolveChannelInput, RouteResolveModelInput, SessionIdResult,
-    UpstreamEndpoint,
+    InterfaceKind, ModelCapabilities, ModelRoute, ProviderMetadata, ProviderSpec, RetryPolicy,
+    RouteResolveChannelInput, RouteResolveModelInput, SessionIdResult, UpstreamEndpoint,
 };
 use http::HeaderMap;
-use serde_json::{Value, json};
+use serde_json::{json, Value};
 use uuid::Uuid;
 
 impl From<&AppType> for AppKind {
@@ -27,21 +26,6 @@ impl From<&AppType> for AppKind {
     }
 }
 
-impl From<ProviderType> for ProviderKind {
-    fn from(value: ProviderType) -> Self {
-        match value {
-            ProviderType::Claude => Self::Claude,
-            ProviderType::ClaudeAuth => Self::ClaudeAuth,
-            ProviderType::Codex => Self::Codex,
-            ProviderType::Gemini => Self::Gemini,
-            ProviderType::GeminiCli => Self::GeminiCli,
-            ProviderType::OpenRouter => Self::OpenRouter,
-            ProviderType::GitHubCopilot => Self::GitHubCopilot,
-            ProviderType::CodexOAuth => Self::CodexOAuth,
-        }
-    }
-}
-
 #[allow(dead_code)]
 pub(crate) trait ToProxyCoreProviderSpec {
     fn to_proxy_core_provider_spec(&self, app_type: &AppType) -> ProviderSpec;
@@ -49,7 +33,7 @@ pub(crate) trait ToProxyCoreProviderSpec {
 
 impl ToProxyCoreProviderSpec for Provider {
     fn to_proxy_core_provider_spec(&self, app_type: &AppType) -> ProviderSpec {
-        let kind = ProviderKind::from(ProviderType::from_app_type_and_config(app_type, self));
+        let kind = provider_kind_from_app_type_and_config(app_type, self);
         let metadata = provider_metadata_without_secrets(self);
 
         ProviderSpec {
@@ -363,7 +347,7 @@ mod tests {
     use super::*;
     use crate::database::ProxyChannelSourceKind;
     use crate::provider::{AuthBinding, AuthBindingSource, ProviderMeta};
-    use crate::proxy_core::SessionIdSource;
+    use crate::proxy_core::{ProviderKind, SessionIdSource};
 
     #[test]
     fn app_type_conversion_preserves_known_and_custom_names() {

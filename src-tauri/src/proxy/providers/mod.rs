@@ -20,14 +20,14 @@ mod gemini;
 
 use crate::app_config::AppType;
 use crate::provider::Provider;
-use crate::proxy_core::{ProviderKind, infer_claude_provider_kind, is_gemini_oauth_key_shape};
-use serde::{Deserialize, Serialize};
+use crate::proxy_core::{infer_claude_provider_kind, is_gemini_oauth_key_shape, ProviderKind};
 
+pub use crate::proxy_core::ProviderKind as ProviderType;
 pub use adapter::ProviderAdapter;
 pub use auth::{AuthInfo, AuthStrategy};
 pub use claude::{
-    ClaudeAdapter, get_claude_api_format, normalize_anthropic_messages_for_provider,
-    transform_claude_request_for_api_format,
+    get_claude_api_format, normalize_anthropic_messages_for_provider,
+    transform_claude_request_for_api_format, ClaudeAdapter,
 };
 pub use codex::CodexAdapter;
 pub use codex::{
@@ -36,144 +36,57 @@ pub use codex::{
 };
 pub use gemini::GeminiAdapter;
 
-/// 供应商类型枚举
+/// 从 AppType 和 Provider 配置推断供应商类型。
 ///
-/// 区分不同供应商的具体实现方式，决定认证和请求处理逻辑。
-/// 比 AppType 更细粒度，支持同一 AppType 下的多种变体。
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum ProviderType {
-    /// Anthropic 官方 API (x-api-key + anthropic-version)
-    Claude,
-    /// Claude 中转服务 (仅 Bearer 认证，无 x-api-key)
-    ClaudeAuth,
-    /// OpenAI Codex Response API
-    Codex,
-    /// Google Gemini API (x-goog-api-key)
-    Gemini,
-    /// Google Gemini CLI (OAuth Bearer)
-    GeminiCli,
-    /// OpenRouter（已支持 Claude Code 兼容接口，默认透传；保留旧转换逻辑备用）
-    OpenRouter,
-    /// GitHub Copilot (OAuth + Copilot Token，需要 Anthropic ↔ OpenAI 转换)
-    GitHubCopilot,
-    /// OpenAI Codex (ChatGPT Plus/Pro OAuth，需要 Anthropic ↔ Responses API 转换)
-    CodexOAuth,
-}
+/// 供应商类型契约由 `proxy-core::ProviderKind` 维护；host 这里只保留读取
+/// desktop Provider 配置并投影到 core kind 的适配逻辑。
+#[allow(dead_code)]
+pub fn provider_kind_from_app_type_and_config(
+    app_type: &AppType,
+    provider: &Provider,
+) -> ProviderKind {
+    match app_type {
+        AppType::Claude | AppType::ClaudeDesktop => {
+            let adapter = ClaudeAdapter::new();
+            let api_format = get_claude_api_format(provider);
+            let uses_google_oauth = if api_format == "gemini_native" {
+                adapter
+                    .extract_auth(provider)
+                    .map(|auth| matches!(auth.strategy, AuthStrategy::GoogleOAuth))
+                    .unwrap_or(false)
+            } else {
+                false
+            };
+            let base_url = adapter.extract_base_url(provider).ok();
+            let meta_provider_type = provider
+                .meta
+                .as_ref()
+                .and_then(|meta| meta.provider_type.as_deref());
 
-impl ProviderType {
-    /// 是否需要格式转换
-    ///
-    /// 过去 OpenRouter 需要将 Anthropic 格式转换为 OpenAI 格式；
-    /// 现在默认关闭转换（因为 OpenRouter 已支持 Claude Code 兼容接口）。
-    /// GitHub Copilot 需要转换（Anthropic → OpenAI 格式）。
-    #[allow(dead_code)]
-    pub fn needs_transform(&self) -> bool {
-        self.to_provider_kind().needs_transform()
-    }
-
-    /// 获取默认端点
-    #[allow(dead_code)]
-    pub fn default_endpoint(&self) -> &'static str {
-        self.to_provider_kind()
-            .default_endpoint()
-            .expect("known provider type has default endpoint")
-    }
-
-    /// 从 AppType 和 Provider 配置推断供应商类型
-    ///
-    /// 根据配置中的 base_url、auth_mode、api_key 格式等信息推断具体的供应商类型
-    #[allow(dead_code)]
-    pub fn from_app_type_and_config(app_type: &AppType, provider: &Provider) -> Self {
-        match app_type {
-            AppType::Claude | AppType::ClaudeDesktop => {
-                let adapter = ClaudeAdapter::new();
-                let api_format = get_claude_api_format(provider);
-                let uses_google_oauth = if api_format == "gemini_native" {
-                    adapter
-                        .extract_auth(provider)
-                        .map(|auth| matches!(auth.strategy, AuthStrategy::GoogleOAuth))
-                        .unwrap_or(false)
-                } else {
-                    false
-                };
-                let base_url = adapter.extract_base_url(provider).ok();
-                let meta_provider_type = provider
-                    .meta
-                    .as_ref()
-                    .and_then(|meta| meta.provider_type.as_deref());
-
-                ProviderType::from_provider_kind(infer_claude_provider_kind(
-                    api_format,
-                    uses_google_oauth,
-                    meta_provider_type,
-                    base_url.as_deref(),
-                    &provider.settings_config,
-                ))
-            }
-            AppType::Codex => ProviderType::Codex,
-            AppType::Gemini => {
-                // 检测是否为 CLI 模式（OAuth）
-                let adapter = GeminiAdapter::new();
-                if let Some(auth) = adapter.extract_auth(provider) {
-                    let key = &auth.api_key;
-                    if is_gemini_oauth_key_shape(key) {
-                        return ProviderType::GeminiCli;
-                    }
+            infer_claude_provider_kind(
+                api_format,
+                uses_google_oauth,
+                meta_provider_type,
+                base_url.as_deref(),
+                &provider.settings_config,
+            )
+        }
+        AppType::Codex => ProviderKind::Codex,
+        AppType::Gemini => {
+            // 检测是否为 CLI 模式（OAuth）
+            let adapter = GeminiAdapter::new();
+            if let Some(auth) = adapter.extract_auth(provider) {
+                let key = &auth.api_key;
+                if is_gemini_oauth_key_shape(key) {
+                    return ProviderKind::GeminiCli;
                 }
-                ProviderType::Gemini
             }
-            AppType::OpenCode | AppType::OpenClaw | AppType::Hermes => {
-                // These apps don't support proxy, fallback to Codex-like type
-                ProviderType::Codex
-            }
+            ProviderKind::Gemini
         }
-    }
-
-    fn from_provider_kind(kind: ProviderKind) -> Self {
-        match kind {
-            ProviderKind::Claude => ProviderType::Claude,
-            ProviderKind::ClaudeAuth => ProviderType::ClaudeAuth,
-            ProviderKind::Codex => ProviderType::Codex,
-            ProviderKind::Gemini => ProviderType::Gemini,
-            ProviderKind::GeminiCli => ProviderType::GeminiCli,
-            ProviderKind::OpenRouter => ProviderType::OpenRouter,
-            ProviderKind::GitHubCopilot => ProviderType::GitHubCopilot,
-            ProviderKind::CodexOAuth => ProviderType::CodexOAuth,
-            ProviderKind::Custom(_) => ProviderType::Claude,
+        AppType::OpenCode | AppType::OpenClaw | AppType::Hermes => {
+            // These apps don't support proxy, fallback to Codex-like type
+            ProviderKind::Codex
         }
-    }
-
-    /// 转换为字符串表示
-    pub fn as_str(&self) -> &'static str {
-        match self {
-            ProviderType::Claude => "claude",
-            ProviderType::ClaudeAuth => "claude_auth",
-            ProviderType::Codex => "codex",
-            ProviderType::Gemini => "gemini",
-            ProviderType::GeminiCli => "gemini_cli",
-            ProviderType::OpenRouter => "openrouter",
-            ProviderType::GitHubCopilot => "github_copilot",
-            ProviderType::CodexOAuth => "codex_oauth",
-        }
-    }
-
-    fn to_provider_kind(self) -> ProviderKind {
-        ProviderKind::from(self.as_str())
-    }
-}
-
-impl std::fmt::Display for ProviderType {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.as_str())
-    }
-}
-
-impl std::str::FromStr for ProviderType {
-    type Err = String;
-
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        s.parse::<ProviderKind>().map(Self::from_provider_kind)
     }
 }
 
@@ -201,6 +114,7 @@ pub fn get_adapter_for_provider_type(provider_type: &ProviderType) -> Box<dyn Pr
         | ProviderType::CodexOAuth => Box::new(ClaudeAdapter::new()),
         ProviderType::Codex => Box::new(CodexAdapter::new()),
         ProviderType::Gemini | ProviderType::GeminiCli => Box::new(GeminiAdapter::new()),
+        ProviderType::Custom(_) => Box::new(ClaudeAdapter::new()),
     }
 }
 
@@ -241,31 +155,31 @@ mod tests {
     fn test_provider_type_default_endpoint() {
         assert_eq!(
             ProviderType::Claude.default_endpoint(),
-            "https://api.anthropic.com"
+            Some("https://api.anthropic.com")
         );
         assert_eq!(
             ProviderType::ClaudeAuth.default_endpoint(),
-            "https://api.anthropic.com"
+            Some("https://api.anthropic.com")
         );
         assert_eq!(
             ProviderType::Codex.default_endpoint(),
-            "https://api.openai.com"
+            Some("https://api.openai.com")
         );
         assert_eq!(
             ProviderType::Gemini.default_endpoint(),
-            "https://generativelanguage.googleapis.com"
+            Some("https://generativelanguage.googleapis.com")
         );
         assert_eq!(
             ProviderType::GeminiCli.default_endpoint(),
-            "https://generativelanguage.googleapis.com"
+            Some("https://generativelanguage.googleapis.com")
         );
         assert_eq!(
             ProviderType::OpenRouter.default_endpoint(),
-            "https://openrouter.ai/api"
+            Some("https://openrouter.ai/api")
         );
         assert_eq!(
             ProviderType::GitHubCopilot.default_endpoint(),
-            "https://api.githubcopilot.com"
+            Some("https://api.githubcopilot.com")
         );
     }
 
@@ -357,7 +271,7 @@ mod tests {
             }
         }));
 
-        let provider_type = ProviderType::from_app_type_and_config(&AppType::Claude, &provider);
+        let provider_type = provider_kind_from_app_type_and_config(&AppType::Claude, &provider);
         assert_eq!(provider_type, ProviderType::Claude);
     }
 
@@ -370,7 +284,7 @@ mod tests {
             }
         }));
 
-        let provider_type = ProviderType::from_app_type_and_config(&AppType::Claude, &provider);
+        let provider_type = provider_kind_from_app_type_and_config(&AppType::Claude, &provider);
         assert_eq!(provider_type, ProviderType::OpenRouter);
     }
 
@@ -384,7 +298,7 @@ mod tests {
             "auth_mode": "bearer_only"
         }));
 
-        let provider_type = ProviderType::from_app_type_and_config(&AppType::Claude, &provider);
+        let provider_type = provider_kind_from_app_type_and_config(&AppType::Claude, &provider);
         assert_eq!(provider_type, ProviderType::ClaudeAuth);
     }
 
@@ -396,7 +310,7 @@ mod tests {
             }
         }));
 
-        let provider_type = ProviderType::from_app_type_and_config(&AppType::Codex, &provider);
+        let provider_type = provider_kind_from_app_type_and_config(&AppType::Codex, &provider);
         assert_eq!(provider_type, ProviderType::Codex);
     }
 
@@ -408,7 +322,7 @@ mod tests {
             }
         }));
 
-        let provider_type = ProviderType::from_app_type_and_config(&AppType::Gemini, &provider);
+        let provider_type = provider_kind_from_app_type_and_config(&AppType::Gemini, &provider);
         assert_eq!(provider_type, ProviderType::Gemini);
     }
 
@@ -420,7 +334,7 @@ mod tests {
             }
         }));
 
-        let provider_type = ProviderType::from_app_type_and_config(&AppType::Gemini, &provider);
+        let provider_type = provider_kind_from_app_type_and_config(&AppType::Gemini, &provider);
         assert_eq!(provider_type, ProviderType::GeminiCli);
     }
 
@@ -432,7 +346,7 @@ mod tests {
             }
         }));
 
-        let provider_type = ProviderType::from_app_type_and_config(&AppType::Gemini, &provider);
+        let provider_type = provider_kind_from_app_type_and_config(&AppType::Gemini, &provider);
         assert_eq!(provider_type, ProviderType::GeminiCli);
     }
 

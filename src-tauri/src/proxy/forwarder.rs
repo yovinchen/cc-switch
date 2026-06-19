@@ -8,8 +8,9 @@ use super::{
     failover_switch::FailoverSwitchManager,
     provider_router::ProviderRouter,
     providers::{
-        codex_chat_history::CodexChatHistoryStore, get_adapter, AuthInfo, AuthStrategy,
-        ProviderAdapter, ProviderType,
+        codex_chat_history::CodexChatHistoryStore, get_adapter,
+        provider_kind_from_app_type_and_config, AuthInfo, AuthStrategy, ProviderAdapter,
+        ProviderType,
     },
     route_attempt::{
         apply_channel_model_override, forward_attempts_from_route_plan, ForwardAttempt,
@@ -49,9 +50,9 @@ use crate::proxy_core::{
     AttemptEventPhase, ChannelQuery, CopilotAuthHeaderOverrides, CopilotOptimizerConfig,
     CurrentRouteTarget, ForwardFailureCategory, ForwardFailureKind, GeminiShadowStore,
     InterfaceKind, MediaRetryInput, OptimizerConfig, PromptCacheTraceLogInput, ProxyBody,
-    ProxyEngine, ProxyRequest, ProxyServices, RectifierConfig, UpstreamAuthHeadersInput,
-    UpstreamRequestHeadersInput, UpstreamSendPolicyInput, UpstreamTransportKind,
-    ResolvedChannelAttempt, UNSUPPORTED_IMAGE_MARKER,
+    ProxyEngine, ProxyRequest, ProxyServices, RectifierConfig, ResolvedChannelAttempt,
+    UpstreamAuthHeadersInput, UpstreamRequestHeadersInput, UpstreamSendPolicyInput,
+    UpstreamTransportKind, UNSUPPORTED_IMAGE_MARKER,
 };
 use crate::proxy_core_host::CcSwitchProxyServices;
 use crate::{app_config::AppType, provider::Provider};
@@ -1000,7 +1001,7 @@ impl RequestForwarder {
                 }
                 Err(e) => {
                     // 检测是否需要触发整流器（仅 Claude/ClaudeAuth 供应商）
-                    let provider_type = ProviderType::from_app_type_and_config(app_type, provider);
+                    let provider_type = provider_kind_from_app_type_and_config(app_type, provider);
                     let is_anthropic_provider = matches!(
                         provider_type,
                         ProviderType::Claude | ProviderType::ClaudeAuth
