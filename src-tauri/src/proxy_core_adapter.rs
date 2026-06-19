@@ -3,9 +3,9 @@ use crate::database::{ProxyChannelModelRecord, ProxyChannelRecord};
 use crate::provider::Provider;
 use crate::proxy::providers::ProviderType;
 use crate::proxy_core::{
-    AppKind, AuthProfileRef, ChannelHealthPolicy, ChannelOverrides, ChannelSpec, ChannelStatus,
-    InterfaceKind, ModelCapabilities, ModelRoute, ProviderKind, ProviderMetadata, ProviderSpec,
-    RetryPolicy, UpstreamEndpoint,
+    AppKind, AuthProfileRef, ChannelHealthPolicy, ChannelModelRecord, ChannelOverrides,
+    ChannelSpec, ChannelStatus, InterfaceKind, ModelCapabilities, ModelRoute, ProviderKind,
+    ProviderMetadata, ProviderSpec, RetryPolicy, UpstreamEndpoint,
 };
 use serde_json::{json, Value};
 
@@ -125,6 +125,20 @@ impl ToProxyCoreModelRoute for ProxyChannelModelRecord {
             request_overrides: object_or_empty(self.request_overrides.clone()),
             response_overrides: object_or_empty(self.response_overrides.clone()),
         }
+    }
+}
+
+#[allow(dead_code)]
+pub(crate) trait ToProxyCoreChannelModelRecord {
+    fn to_proxy_core_channel_model_record(&self) -> ChannelModelRecord;
+}
+
+impl ToProxyCoreChannelModelRecord for ProxyChannelModelRecord {
+    fn to_proxy_core_channel_model_record(&self) -> ChannelModelRecord {
+        ChannelModelRecord::from_model_route(
+            self.channel_id.clone(),
+            self.to_proxy_core_model_route(),
+        )
     }
 }
 

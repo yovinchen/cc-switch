@@ -1,7 +1,7 @@
 use super::domain::{
     AppKind, AuthProfileRef, ChannelAttemptResult, ChannelQuery, ChannelSpec, InterfaceKind,
-    ProviderSpec, ProxyRequest, ProxyResult, RoutePlan, RoutePolicy, RouteRequest, UsageRecord,
-    DEFAULT_ROUTE_GROUP,
+    ModelRoute, ProviderSpec, ProxyRequest, ProxyResult, RoutePlan, RoutePolicy, RouteRequest,
+    UsageRecord, DEFAULT_ROUTE_GROUP,
 };
 use super::error::ProxyCoreResult;
 use futures::future::BoxFuture;
@@ -1179,6 +1179,36 @@ impl<T> ChannelRecordResponse<T> {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub struct ChannelModelRecord {
+    pub channel_id: String,
+    pub public_model: String,
+    pub upstream_model: String,
+    #[serde(default)]
+    pub capabilities: Value,
+    #[serde(default)]
+    pub pricing_model: Option<String>,
+    #[serde(default)]
+    pub request_overrides: Value,
+    #[serde(default)]
+    pub response_overrides: Value,
+}
+
+impl ChannelModelRecord {
+    pub fn from_model_route(channel_id: impl Into<String>, route: ModelRoute) -> Self {
+        Self {
+            channel_id: channel_id.into(),
+            public_model: route.public_model,
+            upstream_model: route.upstream_model,
+            capabilities: route.capabilities.raw,
+            pricing_model: route.pricing_model,
+            request_overrides: route.request_overrides,
+            response_overrides: route.response_overrides,
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct ChannelModelsResponse<T> {
     pub channel_id: String,
     pub models: Vec<T>,
@@ -1343,8 +1373,8 @@ mod tests {
     use super::{
         AppChannelListQuery, AppChannelListResponse, AppChannelResponse, AppChannelRouteResponse,
         AppListResponse, AppModelListQuery, AppSummaryInput, ChannelDeleteResponse,
-        ChannelListQuery, ChannelListResponse, ChannelModelsResponse, ChannelRecordResponse,
-        ChannelMigrationMaterializeInput, ChannelMigrationMaterializeResponse,
+        ChannelListQuery, ChannelListResponse, ChannelModelRecord, ChannelModelsResponse,
+        ChannelRecordResponse, ChannelMigrationMaterializeInput, ChannelMigrationMaterializeResponse,
         ChannelMigrationPreviewInput, ChannelMigrationPreviewResponse,
         ChannelRouteCandidate, ChannelRouteRejected, ChannelRouteSource, ClientModelCatalogResponse,
         CurrentRouteProviderSummaryInput, CurrentRouteResponse, CurrentRouteTarget, GroupListQuery,
@@ -1355,7 +1385,7 @@ mod tests {
     };
     use crate::{
         AppKind, ChannelHealthPolicy, ChannelOverrides, ChannelSpec, ChannelStatus, InterfaceKind,
-        ProviderKind, ProviderMetadata, RetryPolicy, UpstreamEndpoint,
+        ModelCapabilities, ModelRoute, ProviderKind, ProviderMetadata, RetryPolicy, UpstreamEndpoint,
     };
     use serde_json::json;
 
@@ -2025,17 +2055,31 @@ mod tests {
     fn channel_models_response_serializes_management_envelope() {
         let response = ChannelModelsResponse::new(
             "channel-a",
-            vec![json!({
-                "publicModel": "sonnet",
-                "upstreamModel": "upstream-sonnet"
-            })],
+            vec![ChannelModelRecord::from_model_route(
+                "channel-a",
+                ModelRoute {
+                    public_model: "sonnet".to_string(),
+                    upstream_model: "upstream-sonnet".to_string(),
+                    capabilities: ModelCapabilities {
+                        raw: json!({"toolUse": true}),
+                    },
+                    pricing_model: None,
+                    request_overrides: json!({"temperature": 0.2}),
+                    response_overrides: json!({"strip": ["metadata"]}),
+                },
+            )],
         );
 
         let value = serde_json::to_value(response).expect("serialize response");
 
         assert_eq!(value["channelId"], "channel-a");
+        assert_eq!(value["models"][0]["channelId"], "channel-a");
         assert_eq!(value["models"][0]["publicModel"], "sonnet");
         assert_eq!(value["models"][0]["upstreamModel"], "upstream-sonnet");
+        assert_eq!(value["models"][0]["capabilities"]["toolUse"], true);
+        assert!(value["models"][0]["pricingModel"].is_null());
+        assert_eq!(value["models"][0]["requestOverrides"]["temperature"], 0.2);
+        assert_eq!(value["models"][0]["responseOverrides"]["strip"][0], "metadata");
     }
 
     #[test]

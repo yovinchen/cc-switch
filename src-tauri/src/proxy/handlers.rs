@@ -56,18 +56,20 @@ use crate::proxy_core::{
     AppModelListQuery, AppSummaryInput, ChannelDeleteResponse, ChannelHealthResetResponse,
     ChannelListQuery, ChannelListResponse, ChannelMigrationMaterializeInput,
     ChannelMigrationMaterializeResponse, ChannelMigrationPreviewInput,
-    ChannelMigrationPreviewResponse, ChannelModelsResponse, ChannelRecordResponse,
-    ChannelRouteCandidate, ChannelRouteRejected, ClaudeDesktopModelListResponse,
-    ClientModelCatalogResponse, CurrentRouteProviderSummaryInput, CurrentRouteResponse,
-    CurrentRouteTarget, GroupListQuery, HealthCheckResponse, InterfaceKind, ManagementAuthDecision,
-    ProviderListResponse, ProviderSummaryInput, ProxyBody, ProxyChannelModelsReplaceRequest,
-    ProxyChannelPatchRequest, ProxyChannelWriteRequest, ProxyEngine, ProxyRequest, ProxyResult,
-    ProxyServices, ProxyStatusResponse, RoutableModelList, RouteGroupListResponse,
-    RouteGroupSourceInput, RouteResolveRequest, RouteResolveResponse, TokenUsage,
-    TransformedResponseUsageFormat, UpstreamJsonBodySource, UpstreamSseAggregationKind,
+    ChannelMigrationPreviewResponse, ChannelModelRecord, ChannelModelsResponse,
+    ChannelRecordResponse, ChannelRouteCandidate, ChannelRouteRejected,
+    ClaudeDesktopModelListResponse, ClientModelCatalogResponse, CurrentRouteProviderSummaryInput,
+    CurrentRouteResponse, CurrentRouteTarget, GroupListQuery, HealthCheckResponse, InterfaceKind,
+    ManagementAuthDecision, ProviderListResponse, ProviderSummaryInput, ProxyBody,
+    ProxyChannelModelsReplaceRequest, ProxyChannelPatchRequest, ProxyChannelWriteRequest,
+    ProxyEngine, ProxyRequest, ProxyResult, ProxyServices, ProxyStatusResponse, RoutableModelList,
+    RouteGroupListResponse, RouteGroupSourceInput, RouteResolveRequest, RouteResolveResponse,
+    TokenUsage, TransformedResponseUsageFormat, UpstreamJsonBodySource, UpstreamSseAggregationKind,
     CLAUDE_PARSER_CONFIG, CODEX_PARSER_CONFIG, GEMINI_PARSER_CONFIG, OPENAI_PARSER_CONFIG,
 };
-use crate::proxy_core_adapter::{ToProxyCoreChannelSpec, ToProxyCoreProviderSpec};
+use crate::proxy_core_adapter::{
+    ToProxyCoreChannelModelRecord, ToProxyCoreChannelSpec, ToProxyCoreProviderSpec,
+};
 use axum::{
     extract::{Path, Query, State},
     http::StatusCode,
@@ -363,7 +365,7 @@ pub async fn delete_proxy_channel(
 pub async fn list_proxy_channel_models(
     State(state): State<ProxyState>,
     Path(channel_id): Path<String>,
-) -> Result<Json<ChannelModelsResponse<ProxyChannelModelRecord>>, ProxyError> {
+) -> Result<Json<ChannelModelsResponse<ChannelModelRecord>>, ProxyError> {
     let channel_id =
         normalize_channel_id_path(channel_id).map_err(management_api_error_to_proxy_error)?;
     if state
@@ -381,7 +383,10 @@ pub async fn list_proxy_channel_models(
         .db
         .list_proxy_channel_models(&channel_id)
         .map_err(|e| ProxyError::DatabaseError(e.to_string()))?;
-    Ok(Json(ChannelModelsResponse::new(channel_id, models)))
+    Ok(Json(ChannelModelsResponse::new(
+        channel_id,
+        channel_model_records_from_host(models),
+    )))
 }
 
 /// PUT /proxy/v1/channels/{channel_id}/models
@@ -389,7 +394,7 @@ pub async fn replace_proxy_channel_models(
     State(state): State<ProxyState>,
     Path(channel_id): Path<String>,
     Json(request): Json<ProxyChannelModelsReplaceRequest>,
-) -> Result<Json<ChannelModelsResponse<ProxyChannelModelRecord>>, ProxyError> {
+) -> Result<Json<ChannelModelsResponse<ChannelModelRecord>>, ProxyError> {
     let channel_id =
         normalize_channel_id_path(channel_id).map_err(management_api_error_to_proxy_error)?;
     let models = state
@@ -398,7 +403,19 @@ pub async fn replace_proxy_channel_models(
         .map_err(|e| ProxyError::InvalidRequest(e.to_string()))?
         .ok_or_else(|| ProxyError::InvalidRequest(format!("channel not found: {channel_id}")))?;
 
-    Ok(Json(ChannelModelsResponse::new(channel_id, models)))
+    Ok(Json(ChannelModelsResponse::new(
+        channel_id,
+        channel_model_records_from_host(models),
+    )))
+}
+
+fn channel_model_records_from_host(
+    models: Vec<ProxyChannelModelRecord>,
+) -> Vec<ChannelModelRecord> {
+    models
+        .iter()
+        .map(ProxyChannelModelRecord::to_proxy_core_channel_model_record)
+        .collect()
 }
 
 /// GET /proxy/v1/apps/{app}/channels
