@@ -9,7 +9,8 @@ use std::time::Duration;
 
 use crate::proxy_core::{
     build_models_url_candidates, build_openai_compatible_models_request,
-    openai_compatible_models_failure, parse_models_response_bytes, FetchedModel, ModelFetchFailure,
+    openai_compatible_models_failure, parse_models_response_bytes,
+    validate_openai_compatible_models_api_key, FetchedModel, ModelFetchFailure,
 };
 
 /// 获取供应商的可用模型列表
@@ -22,9 +23,7 @@ pub async fn fetch_models(
     models_url_override: Option<&str>,
     user_agent: Option<HeaderValue>,
 ) -> Result<Vec<FetchedModel>, String> {
-    if api_key.is_empty() {
-        return Err("API Key is required to fetch models".to_string());
-    }
+    validate_openai_compatible_models_api_key(api_key)?;
 
     let candidates = build_models_url_candidates(base_url, is_full_url, models_url_override)?;
     let client = crate::proxy::http_client::get();

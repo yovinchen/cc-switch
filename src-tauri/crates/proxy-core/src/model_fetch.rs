@@ -156,6 +156,14 @@ pub fn parse_models_response_bytes(body: &[u8]) -> Result<Vec<FetchedModel>, Str
     Ok(models_from_response(response))
 }
 
+pub fn validate_openai_compatible_models_api_key(api_key: &str) -> Result<(), String> {
+    if api_key.trim().is_empty() {
+        Err("API Key is required to fetch models".to_string())
+    } else {
+        Ok(())
+    }
+}
+
 pub fn build_openai_compatible_models_request<'a>(
     url: &'a str,
     api_key: &str,
@@ -852,6 +860,15 @@ mod tests {
         assert!(parse_models_response_bytes(json.as_bytes())
             .unwrap()
             .is_empty());
+    }
+
+    #[test]
+    fn validate_openai_compatible_models_api_key_rejects_blank_values() {
+        assert!(validate_openai_compatible_models_api_key("sk-test").is_ok());
+        assert_eq!(
+            validate_openai_compatible_models_api_key(" ").unwrap_err(),
+            "API Key is required to fetch models"
+        );
     }
 
     #[test]
