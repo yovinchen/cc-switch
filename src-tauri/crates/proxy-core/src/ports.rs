@@ -723,6 +723,11 @@ impl CurrentRouteProviderSummaryInput {
             category,
         }
     }
+
+    pub fn from_provider_spec(spec: ProviderSpec) -> Self {
+        let raw = spec.metadata.raw.as_object();
+        Self::new(spec.id, spec.name, string_value(raw, "category"))
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -1526,6 +1531,33 @@ mod tests {
         });
 
         assert!(input.provider_type.is_none());
+    }
+
+    #[test]
+    fn current_route_provider_summary_input_projects_from_provider_spec_metadata() {
+        let input = CurrentRouteProviderSummaryInput::from_provider_spec(ProviderSpec {
+            id: "provider-a".to_string(),
+            name: "Provider A".to_string(),
+            kind: ProviderKind::OpenRouter,
+            account_ref: None,
+            metadata: ProviderMetadata {
+                labels: Vec::new(),
+                raw: json!({
+                    "category": "aggregator",
+                    "sortIndex": 7,
+                    "providerType": "openai_compatible"
+                }),
+            },
+        });
+
+        assert_eq!(
+            input,
+            CurrentRouteProviderSummaryInput::new(
+                "provider-a",
+                "Provider A",
+                Some("aggregator".to_string()),
+            )
+        );
     }
 
     #[test]
