@@ -20,7 +20,6 @@ const CONFIG_FILE: &str = "claude_desktop_config.json";
 const CONFIG_LIBRARY_DIR: &str = "configLibrary";
 const GATEWAY_TOKEN_SETTING_KEY: &str = "claude_desktop_gateway_token";
 const CLAUDE_DESKTOP_PROXY_PREFIX: &str = "/claude-desktop";
-const DEFAULT_CREATED_AT: &str = "2024-01-01T00:00:00Z";
 const MIMO_REDACTED_THINKING_PLACEHOLDER: &str = "[redacted thinking]";
 const MIMO_TOOL_CALL_THINKING_PLACEHOLDER: &str = "tool call";
 
@@ -642,40 +641,20 @@ fn next_catalog_safe_route_id(
     }
 }
 
-pub fn model_list_response(provider: &Provider) -> Result<Value, AppError> {
+pub fn model_list_response(
+    provider: &Provider,
+) -> Result<crate::proxy_core::ClaudeDesktopModelListResponse, AppError> {
     let routes = proxy_model_routes(provider)?;
-    let data: Vec<Value> = routes
-        .iter()
-        .map(|route| {
-            let model_id = route.route_id.clone();
-            let mut item = json!({
-                "type": "model",
-                "id": model_id,
-                "created_at": DEFAULT_CREATED_AT,
-            });
-            if route.supports_1m {
-                item["supports1m"] = json!(true);
-            }
-            item
-        })
-        .collect();
-    let first_id = data
-        .first()
-        .and_then(|item| item.get("id"))
-        .and_then(Value::as_str)
-        .map(str::to_string);
-    let last_id = data
-        .last()
-        .and_then(|item| item.get("id"))
-        .and_then(Value::as_str)
-        .map(str::to_string);
-
-    Ok(json!({
-        "data": data,
-        "has_more": false,
-        "first_id": first_id,
-        "last_id": last_id,
-    }))
+    Ok(
+        crate::proxy_core::ClaudeDesktopModelListResponse::from_routes(routes.into_iter().map(
+            |route| {
+                crate::proxy_core::ClaudeDesktopModelRouteInput::new(
+                    route.route_id,
+                    route.supports_1m,
+                )
+            },
+        )),
+    )
 }
 
 pub fn map_proxy_request_model(mut body: Value, provider: &Provider) -> Result<Value, AppError> {
@@ -1613,7 +1592,8 @@ mod tests {
         .expect("map route");
         assert_eq!(mapped["model"], json!("kimi-k2"));
 
-        let models = model_list_response(&provider).expect("model list");
+        let models =
+            serde_json::to_value(model_list_response(&provider).expect("model list")).unwrap();
         assert_eq!(models["data"][0]["id"], json!("claude-sonnet-4-6"));
         assert_eq!(models["data"][0]["supports1m"], json!(true));
 

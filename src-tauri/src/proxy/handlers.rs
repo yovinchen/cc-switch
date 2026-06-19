@@ -53,9 +53,9 @@ use crate::proxy_core::{
     AppSummaryInput, ChannelDeleteResponse, ChannelHealthResetResponse, ChannelListQuery,
     ChannelListResponse, ChannelMigrationMaterializeInput, ChannelMigrationMaterializeResponse,
     ChannelMigrationPreviewInput, ChannelMigrationPreviewResponse, ChannelModelsResponse,
-    ChannelRouteCandidate, ChannelRouteRejected, CurrentRouteProviderSummaryInput,
-    CurrentRouteResponse, GroupListQuery, HealthCheckResponse, InterfaceKind,
-    ManagementAuthDecision, ProviderListResponse, ProviderSummaryInput, ProxyBody,
+    ChannelRouteCandidate, ChannelRouteRejected, ClaudeDesktopModelListResponse,
+    CurrentRouteProviderSummaryInput, CurrentRouteResponse, GroupListQuery, HealthCheckResponse,
+    InterfaceKind, ManagementAuthDecision, ProviderListResponse, ProviderSummaryInput, ProxyBody,
     ProxyChannelModelsReplaceRequest, ProxyChannelPatchRequest, ProxyChannelWriteRequest,
     ProxyEngine, ProxyRequest, ProxyResult, ProxyServices, RoutableModelList,
     RouteGroupListResponse, RouteGroupSourceInput, RouteResolveRequest, RouteResolveResponse,
@@ -638,7 +638,7 @@ pub async fn handle_claude_desktop_messages(
 pub async fn handle_claude_desktop_models(
     State(state): State<ProxyState>,
     headers: axum::http::HeaderMap,
-) -> Result<Json<Value>, ProxyError> {
+) -> Result<Json<ClaudeDesktopModelListResponse>, ProxyError> {
     validate_claude_desktop_gateway_auth(&state, &headers)?;
     let providers = state
         .provider_router
