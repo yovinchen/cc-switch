@@ -95,6 +95,27 @@ pub fn parse_copilot_models_response_bytes(body: &[u8]) -> Result<Vec<CopilotMod
         .collect())
 }
 
+/// Normalize a GitHub or GHES domain entered for Copilot OAuth.
+///
+/// This strips `http://`/`https://`, path, query, and fragment portions, lowercases
+/// the host, preserves ports, and rejects userinfo.
+pub fn normalize_github_domain(raw: &str) -> Result<String, String> {
+    let s = raw.trim();
+    let s = s
+        .strip_prefix("https://")
+        .or_else(|| s.strip_prefix("http://"))
+        .unwrap_or(s);
+    let host = s.split(&['/', '?', '#'][..]).next().unwrap_or(s);
+    if host.contains('@') {
+        return Err(raw.to_string());
+    }
+    let normalized = host.to_lowercase();
+    if normalized.is_empty() {
+        return Err(raw.to_string());
+    }
+    Ok(normalized)
+}
+
 fn ends_with_ascii_ci(haystack: &[u8], needle: &[u8]) -> bool {
     haystack.len() >= needle.len()
         && haystack[haystack.len() - needle.len()..].eq_ignore_ascii_case(needle)
@@ -371,6 +392,25 @@ mod tests {
                 model_picker_enabled: true,
             }]
         );
+    }
+
+    #[test]
+    fn github_domain_normalization_handles_ghes_inputs() {
+        assert_eq!(
+            normalize_github_domain("https://Company.GHE.Com/api/v3?foo=bar").unwrap(),
+            "company.ghe.com"
+        );
+        assert_eq!(
+            normalize_github_domain("company.ghe.com:8443/").unwrap(),
+            "company.ghe.com:8443"
+        );
+    }
+
+    #[test]
+    fn github_domain_normalization_rejects_userinfo_and_empty_values() {
+        assert!(normalize_github_domain("user@company.ghe.com").is_err());
+        assert!(normalize_github_domain("").is_err());
+        assert!(normalize_github_domain("   ").is_err());
     }
 
     fn model(id: &str) -> String {

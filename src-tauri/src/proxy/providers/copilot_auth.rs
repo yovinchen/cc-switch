@@ -107,23 +107,8 @@ fn is_ghes(domain: &str) -> bool {
 /// - 拒绝包含 userinfo（@）的输入
 /// - 保留端口号（如有）
 fn normalize_github_domain(raw: &str) -> Result<String, CopilotAuthError> {
-    let s = raw.trim();
-    // 剥离协议
-    let s = s
-        .strip_prefix("https://")
-        .or_else(|| s.strip_prefix("http://"))
-        .unwrap_or(s);
-    // 取 host 部分（到第一个 / 或 ? 或 #）
-    let host = s.split(&['/', '?', '#'][..]).next().unwrap_or(s);
-    // 拒绝 userinfo
-    if host.contains('@') {
-        return Err(CopilotAuthError::InvalidDomain(raw.to_string()));
-    }
-    let normalized = host.to_lowercase();
-    if normalized.is_empty() {
-        return Err(CopilotAuthError::InvalidDomain(raw.to_string()));
-    }
-    Ok(normalized)
+    crate::proxy_core::normalize_github_domain(raw)
+        .map_err(|_| CopilotAuthError::InvalidDomain(raw.to_string()))
 }
 
 /// 生成复合账号 ID，确保不同 GHES 实例的 user ID 不会冲突。
