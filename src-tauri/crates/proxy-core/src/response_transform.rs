@@ -1019,6 +1019,89 @@ pub fn response_tool_call_item_from_chat_name(
     }
 }
 
+pub fn chat_tool_calls_to_response_output_items(
+    message: &Value,
+    reasoning: Option<&str>,
+    tool_context: &CodexToolContext,
+) -> Vec<Value> {
+    let mut output = Vec::new();
+
+    if let Some(tool_calls) = message.get("tool_calls").and_then(Value::as_array) {
+        for (index, tool_call) in tool_calls.iter().enumerate() {
+            output.push(chat_tool_call_to_response_item(
+                tool_call,
+                index,
+                reasoning,
+                tool_context,
+            ));
+        }
+    } else if let Some(function_call) = message.get("function_call") {
+        output.push(chat_legacy_function_call_to_response_item(
+            function_call,
+            reasoning,
+            tool_context,
+        ));
+    }
+
+    output
+}
+
+fn chat_tool_call_to_response_item(
+    tool_call: &Value,
+    index: usize,
+    reasoning: Option<&str>,
+    tool_context: &CodexToolContext,
+) -> Value {
+    let call_id = tool_call
+        .get("id")
+        .and_then(Value::as_str)
+        .filter(|value| !value.is_empty())
+        .map(ToString::to_string)
+        .unwrap_or_else(|| format!("call_{index}"));
+    let function = tool_call.get("function").unwrap_or(&Value::Null);
+    let name = function.get("name").and_then(Value::as_str).unwrap_or("");
+    let arguments = canonicalize_tool_arguments(function.get("arguments"));
+
+    let item_id = response_tool_call_item_id_from_chat_name(&call_id, name, tool_context);
+    response_tool_call_item_from_chat_name(
+        &item_id,
+        "completed",
+        &call_id,
+        name,
+        &arguments,
+        reasoning,
+        tool_context,
+    )
+}
+
+fn chat_legacy_function_call_to_response_item(
+    function_call: &Value,
+    reasoning: Option<&str>,
+    tool_context: &CodexToolContext,
+) -> Value {
+    let call_id = function_call
+        .get("id")
+        .and_then(Value::as_str)
+        .filter(|value| !value.is_empty())
+        .unwrap_or("call_0");
+    let name = function_call
+        .get("name")
+        .and_then(Value::as_str)
+        .unwrap_or("");
+    let arguments = canonicalize_tool_arguments(function_call.get("arguments"));
+
+    let item_id = response_tool_call_item_id_from_chat_name(call_id, name, tool_context);
+    response_tool_call_item_from_chat_name(
+        &item_id,
+        "completed",
+        call_id,
+        name,
+        &arguments,
+        reasoning,
+        tool_context,
+    )
+}
+
 fn parse_tool_arguments_object(arguments: &str) -> Value {
     if arguments.trim().is_empty() {
         return json!({});
@@ -2519,6 +2602,62 @@ mod tests {
         );
         assert_eq!(fallback["type"], "function_call");
         assert_eq!(fallback["name"], "unknown_tool");
+    }
+
+    #[test]
+    fn maps_codex_chat_tool_calls_to_response_output_items() {
+        let context = build_codex_tool_context_from_request(&json!({
+            "tools": [{"type": "custom", "name": "apply_patch"}]
+        }));
+
+        let custom_items = chat_tool_calls_to_response_output_items(
+            &json!({
+                "tool_calls": [{
+                    "id": "call_patch",
+                    "function": {
+                        "name": "apply_patch",
+                        "arguments": {"input": "*** Begin Patch\n*** End Patch"}
+                    }
+                }]
+            }),
+            Some("edit"),
+            &context,
+        );
+        assert_eq!(custom_items[0]["id"], "ctc_call_patch");
+        assert_eq!(custom_items[0]["type"], "custom_tool_call");
+        assert_eq!(custom_items[0]["input"], "*** Begin Patch\n*** End Patch");
+        assert_eq!(custom_items[0]["reasoning_content"], "edit");
+
+        let fallback_items = chat_tool_calls_to_response_output_items(
+            &json!({
+                "tool_calls": [{
+                    "function": {
+                        "name": "lookup",
+                        "arguments": {"b": 2, "a": 1}
+                    }
+                }]
+            }),
+            None,
+            &context,
+        );
+        assert_eq!(fallback_items[0]["id"], "fc_call_0");
+        assert_eq!(fallback_items[0]["call_id"], "call_0");
+        assert_eq!(fallback_items[0]["name"], "lookup");
+        assert_eq!(fallback_items[0]["arguments"], r#"{"a":1,"b":2}"#);
+
+        let legacy_items = chat_tool_calls_to_response_output_items(
+            &json!({
+                "function_call": {
+                    "name": "legacy_lookup",
+                    "arguments": {"query": "mail"}
+                }
+            }),
+            None,
+            &context,
+        );
+        assert_eq!(legacy_items[0]["id"], "fc_call_0");
+        assert_eq!(legacy_items[0]["call_id"], "call_0");
+        assert_eq!(legacy_items[0]["name"], "legacy_lookup");
     }
 
     #[test]

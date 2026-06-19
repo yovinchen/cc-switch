@@ -5,11 +5,12 @@
 //! OpenAI-compatible Chat Completions endpoint.
 
 use crate::provider::CodexChatReasoningConfig;
-use crate::proxy::{error::ProxyError, json_canonical::canonicalize_tool_arguments};
+use crate::proxy::error::ProxyError;
 pub(crate) use crate::proxy_core::{
     append_responses_input_as_chat_messages, apply_codex_chat_reasoning_options,
     build_codex_tool_context_from_request, chat_message_to_response_output_item,
-    chat_reasoning_text, chat_reasoning_to_response_output_item, chat_usage_to_responses_usage,
+    chat_reasoning_text, chat_reasoning_to_response_output_item,
+    chat_tool_calls_to_response_output_items, chat_usage_to_responses_usage,
     collapse_system_messages_to_head, custom_tool_input_from_chat_arguments,
     response_id_from_chat_id, response_status_from_finish_reason,
     response_tool_call_item_from_chat_name, response_tool_call_item_id_from_chat_name,
@@ -210,89 +211,6 @@ pub(crate) fn chat_completion_to_response_with_context(
     }
 
     Ok(response)
-}
-
-fn chat_tool_calls_to_response_output_items(
-    message: &Value,
-    reasoning: Option<&str>,
-    tool_context: &CodexToolContext,
-) -> Vec<Value> {
-    let mut output = Vec::new();
-
-    if let Some(tool_calls) = message.get("tool_calls").and_then(|v| v.as_array()) {
-        for (index, tool_call) in tool_calls.iter().enumerate() {
-            output.push(chat_tool_call_to_response_item(
-                tool_call,
-                index,
-                reasoning,
-                tool_context,
-            ));
-        }
-    } else if let Some(function_call) = message.get("function_call") {
-        output.push(chat_legacy_function_call_to_response_item(
-            function_call,
-            reasoning,
-            tool_context,
-        ));
-    }
-
-    output
-}
-
-fn chat_tool_call_to_response_item(
-    tool_call: &Value,
-    index: usize,
-    reasoning: Option<&str>,
-    tool_context: &CodexToolContext,
-) -> Value {
-    let call_id = tool_call
-        .get("id")
-        .and_then(|v| v.as_str())
-        .filter(|v| !v.is_empty())
-        .map(ToString::to_string)
-        .unwrap_or_else(|| format!("call_{index}"));
-    let function = tool_call.get("function").unwrap_or(&Value::Null);
-    let name = function.get("name").and_then(|v| v.as_str()).unwrap_or("");
-    let arguments = canonicalize_tool_arguments(function.get("arguments"));
-
-    let item_id = response_tool_call_item_id_from_chat_name(&call_id, name, tool_context);
-    response_tool_call_item_from_chat_name(
-        &item_id,
-        "completed",
-        &call_id,
-        name,
-        &arguments,
-        reasoning,
-        tool_context,
-    )
-}
-
-fn chat_legacy_function_call_to_response_item(
-    function_call: &Value,
-    reasoning: Option<&str>,
-    tool_context: &CodexToolContext,
-) -> Value {
-    let call_id = function_call
-        .get("id")
-        .and_then(|v| v.as_str())
-        .filter(|v| !v.is_empty())
-        .unwrap_or("call_0");
-    let name = function_call
-        .get("name")
-        .and_then(|v| v.as_str())
-        .unwrap_or("");
-    let arguments = canonicalize_tool_arguments(function_call.get("arguments"));
-
-    let item_id = response_tool_call_item_id_from_chat_name(call_id, name, tool_context);
-    response_tool_call_item_from_chat_name(
-        &item_id,
-        "completed",
-        call_id,
-        name,
-        &arguments,
-        reasoning,
-        tool_context,
-    )
 }
 
 #[cfg(test)]
