@@ -2116,7 +2116,8 @@ impl RequestForwarder {
         let body_bytes = crate::proxy_core::serialize_upstream_request_body(method, &filtered_body)
             .map_err(|e| ProxyError::Internal(format!("Failed to serialize request body: {e}")))?;
 
-        reject_proxy_placeholder_for_managed_account_upstream(&url, &ordered_headers)?;
+        validate_managed_account_upstream_auth(&url, &ordered_headers)
+            .map_err(|error| ProxyError::AuthError(error.to_string()))?;
 
         // 输出请求信息日志
         let tag = adapter.name();
@@ -2473,14 +2474,6 @@ fn attempt_event_payload(
     })
 }
 
-fn reject_proxy_placeholder_for_managed_account_upstream(
-    url: &str,
-    headers: &http::HeaderMap,
-) -> Result<(), ProxyError> {
-    validate_managed_account_upstream_auth(url, headers)
-        .map_err(|error| ProxyError::AuthError(error.to_string()))
-}
-
 fn map_reqwest_send_error(error: reqwest::Error) -> ProxyError {
     if error.is_timeout() {
         ProxyError::Timeout(format!("请求超时: {error}"))
@@ -2495,6 +2488,7 @@ fn map_reqwest_send_error(error: reqwest::Error) -> ProxyError {
 mod tests {
     use super::*;
     use crate::database::Database;
+    use crate::proxy_core::ManagedAccountAuthError;
     use crate::proxy_core::{canonical_json_string, short_value_hash};
     use crate::proxy_core::{
         claude_transform_endpoint_rewrite_input_from_body as transform_endpoint_rewrite_input,
@@ -2918,16 +2912,13 @@ mod tests {
             HeaderValue::from_static("Bearer PROXY_MANAGED"),
         );
 
-        let err = reject_proxy_placeholder_for_managed_account_upstream(
+        let err = validate_managed_account_upstream_auth(
             "https://api.githubcopilot.com/chat/completions",
             &headers,
         )
         .expect_err("placeholder should be rejected before upstream");
 
-        assert!(matches!(
-            err,
-            ProxyError::AuthError(message) if message.contains("PROXY_MANAGED")
-        ));
+        assert_eq!(err, ManagedAccountAuthError::PlaceholderForwarded);
     }
 
     #[test]
@@ -2938,16 +2929,13 @@ mod tests {
             HeaderValue::from_static("Bearer PROXY_MANAGED"),
         );
 
-        let err = reject_proxy_placeholder_for_managed_account_upstream(
+        let err = validate_managed_account_upstream_auth(
             "https://chatgpt.com/backend-api/codex/responses",
             &headers,
         )
         .expect_err("placeholder should be rejected before upstream");
 
-        assert!(matches!(
-            err,
-            ProxyError::AuthError(message) if message.contains("PROXY_MANAGED")
-        ));
+        assert_eq!(err, ManagedAccountAuthError::PlaceholderForwarded);
     }
 
     #[test]
@@ -2958,11 +2946,8 @@ mod tests {
             HeaderValue::from_static("Bearer PROXY_MANAGED"),
         );
 
-        reject_proxy_placeholder_for_managed_account_upstream(
-            "https://api.example.com/v1/messages",
-            &headers,
-        )
-        .expect("guard is scoped to managed-account upstreams");
+        validate_managed_account_upstream_auth("https://api.example.com/v1/messages", &headers)
+            .expect("guard is scoped to managed-account upstreams");
     }
 
     #[test]
