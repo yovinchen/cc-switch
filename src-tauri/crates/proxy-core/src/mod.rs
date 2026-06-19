@@ -19,6 +19,7 @@ pub mod gemini_schema;
 pub mod gemini_url;
 pub mod json_canonical;
 pub mod legacy_projection;
+pub mod log_codes;
 pub mod management_api;
 pub mod managed_account_auth;
 pub mod management_auth;
