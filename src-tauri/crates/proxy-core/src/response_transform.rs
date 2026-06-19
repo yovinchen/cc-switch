@@ -6,6 +6,7 @@ use crate::{
     UpstreamSseAggregationKind,
 };
 use serde_json::{json, Map, Value};
+use std::collections::{HashMap, HashSet};
 
 pub const CLAUDE_API_FORMAT_METADATA_KEY: &str = "claudeApiFormat";
 pub const CODEX_TOOL_SEARCH_PROXY_NAME: &str = "tool_search";
@@ -15,6 +16,214 @@ const CUSTOM_TOOL_INPUT_FIELD: &str = "input";
 const CUSTOM_TOOL_INPUT_DESCRIPTION: &str = "Raw string input for the original custom tool. Preserve formatting exactly and follow the original tool definition embedded in the description.";
 const CUSTOM_TOOL_PRESERVED_METADATA_HEADING: &str = "Original tool definition:";
 const CHAT_TOOL_NAME_MAX_LEN: usize = 64;
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum CodexToolKind {
+    Function,
+    Namespace,
+    Custom,
+    ToolSearch,
+}
+
+#[derive(Debug, Clone)]
+pub struct CodexToolSpec {
+    pub kind: CodexToolKind,
+    pub name: String,
+    pub namespace: Option<String>,
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct CodexToolContext {
+    chat_tools: Vec<Value>,
+    seen_chat_names: HashSet<String>,
+    chat_name_to_spec: HashMap<String, CodexToolSpec>,
+    namespace_name_to_chat_name: HashMap<(String, String), String>,
+}
+
+impl CodexToolContext {
+    pub fn chat_tools(&self) -> &[Value] {
+        &self.chat_tools
+    }
+
+    pub fn lookup_chat_name(&self, chat_name: &str) -> Option<&CodexToolSpec> {
+        self.chat_name_to_spec.get(chat_name)
+    }
+
+    pub fn is_custom_tool_chat_name(&self, chat_name: &str) -> bool {
+        self.lookup_chat_name(chat_name)
+            .is_some_and(|spec| matches!(&spec.kind, CodexToolKind::Custom))
+    }
+
+    pub fn chat_name_for_response_function(&self, name: &str, namespace: Option<&str>) -> String {
+        if let Some(namespace) = namespace.filter(|value| !value.is_empty()) {
+            if let Some(chat_name) = self
+                .namespace_name_to_chat_name
+                .get(&(namespace.to_string(), name.to_string()))
+            {
+                return chat_name.clone();
+            }
+            return flatten_namespace_tool_name(namespace, name);
+        }
+
+        name.to_string()
+    }
+
+    fn add_chat_tool(&mut self, chat_name: String, spec: CodexToolSpec, chat_tool: Value) {
+        if chat_name.trim().is_empty() || self.seen_chat_names.contains(&chat_name) {
+            return;
+        }
+        self.seen_chat_names.insert(chat_name.clone());
+        if let Some(namespace) = spec.namespace.as_ref() {
+            self.namespace_name_to_chat_name
+                .insert((namespace.clone(), spec.name.clone()), chat_name.clone());
+        }
+        self.chat_name_to_spec.insert(chat_name, spec);
+        self.chat_tools.push(chat_tool);
+    }
+
+    fn add_function_tool(&mut self, tool: &Value, namespace: Option<&str>) {
+        let Some(original_name) = responses_tool_name(tool) else {
+            return;
+        };
+        let chat_name = namespace
+            .map(|namespace| flatten_namespace_tool_name(namespace, &original_name))
+            .unwrap_or_else(|| original_name.clone());
+
+        let Some(chat_tool) = responses_function_tool_to_chat_tool(tool, &chat_name) else {
+            return;
+        };
+        let spec = CodexToolSpec {
+            kind: if namespace.is_some() {
+                CodexToolKind::Namespace
+            } else {
+                CodexToolKind::Function
+            },
+            name: original_name,
+            namespace: namespace.map(ToString::to_string),
+        };
+        self.add_chat_tool(chat_name, spec, chat_tool);
+    }
+
+    fn add_custom_tool(&mut self, tool: &Value) {
+        let Some(name) = responses_tool_name(tool) else {
+            return;
+        };
+        let chat_tool = responses_custom_tool_to_chat_tool(&name, tool);
+        let spec = CodexToolSpec {
+            kind: CodexToolKind::Custom,
+            name: name.clone(),
+            namespace: None,
+        };
+        self.add_chat_tool(name, spec, chat_tool);
+    }
+
+    fn add_tool_search_tool(&mut self) {
+        let chat_tool = json!({
+            "type": "function",
+            "function": {
+                "name": CODEX_TOOL_SEARCH_PROXY_NAME,
+                "description": "Search and load Codex tools, plugins, connectors, and MCP namespaces for the current task.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "query": {
+                            "type": "string",
+                            "description": "Search query for tools or connectors to load."
+                        },
+                        "limit": {
+                            "type": "integer",
+                            "description": "Maximum number of tool groups to return."
+                        }
+                    },
+                    "required": ["query"]
+                }
+            }
+        });
+        let spec = CodexToolSpec {
+            kind: CodexToolKind::ToolSearch,
+            name: CODEX_TOOL_SEARCH_PROXY_NAME.to_string(),
+            namespace: None,
+        };
+        self.add_chat_tool(CODEX_TOOL_SEARCH_PROXY_NAME.to_string(), spec, chat_tool);
+    }
+
+    fn add_namespace_tool(&mut self, namespace_tool: &Value) {
+        let Some(namespace) = namespace_tool.get("name").and_then(Value::as_str) else {
+            return;
+        };
+        let Some(children) = namespace_tool
+            .get("tools")
+            .or_else(|| namespace_tool.get("children"))
+            .and_then(Value::as_array)
+        else {
+            return;
+        };
+
+        for child in children {
+            if child.get("type").and_then(Value::as_str) == Some("function") {
+                self.add_function_tool(child, Some(namespace));
+            }
+        }
+    }
+
+    fn add_response_tool(&mut self, tool: &Value) {
+        match tool {
+            Value::String(name) => {
+                self.add_custom_tool(&json!({
+                    "type": "custom",
+                    "name": name
+                }));
+            }
+            Value::Object(_) => match tool.get("type").and_then(Value::as_str) {
+                Some("function") => self.add_function_tool(tool, None),
+                Some("custom") => self.add_custom_tool(tool),
+                Some("tool_search") => self.add_tool_search_tool(),
+                Some("namespace") => self.add_namespace_tool(tool),
+                _ => {}
+            },
+            _ => {}
+        }
+    }
+}
+
+pub fn build_codex_tool_context_from_request(body: &Value) -> CodexToolContext {
+    let mut context = CodexToolContext::default();
+
+    if let Some(tools) = body.get("tools").and_then(Value::as_array) {
+        for tool in tools {
+            context.add_response_tool(tool);
+        }
+    }
+
+    if let Some(input) = body.get("input") {
+        collect_tool_search_output_tools(input, &mut context);
+    }
+
+    context
+}
+
+fn collect_tool_search_output_tools(value: &Value, context: &mut CodexToolContext) {
+    match value {
+        Value::Array(items) => {
+            for item in items {
+                collect_tool_search_output_tools(item, context);
+            }
+        }
+        Value::Object(obj) => {
+            if obj.get("type").and_then(Value::as_str) == Some("tool_search_output") {
+                if let Some(tools) = obj.get("tools").and_then(Value::as_array) {
+                    for tool in tools {
+                        context.add_response_tool(tool);
+                    }
+                }
+            }
+            for value in obj.values() {
+                collect_tool_search_output_tools(value, context);
+            }
+        }
+        _ => {}
+    }
+}
 
 pub fn claude_api_format_from_metadata(metadata: &Value, fallback: &str) -> String {
     metadata
@@ -1725,6 +1934,57 @@ mod tests {
         assert_eq!(
             custom_tool["function"]["parameters"]["required"][0],
             CUSTOM_TOOL_INPUT_FIELD
+        );
+    }
+
+    #[test]
+    fn builds_codex_tool_context_from_request_tools_and_tool_search_output() {
+        let context = build_codex_tool_context_from_request(&json!({
+            "tools": [
+                {"type": "function", "name": "get_weather", "parameters": {"type": "object"}},
+                {"type": "custom", "name": "apply_patch"},
+                {"type": "tool_search"}
+            ],
+            "input": [{
+                "type": "tool_search_output",
+                "call_id": "call_tool_search_1",
+                "tools": [{
+                    "type": "namespace",
+                    "name": "mcp__codex_apps__gmail",
+                    "tools": [{
+                        "type": "function",
+                        "name": "_search_emails",
+                        "parameters": {"type": "object"}
+                    }]
+                }]
+            }]
+        }));
+
+        let tool_names = context
+            .chat_tools()
+            .iter()
+            .filter_map(|tool| tool.pointer("/function/name").and_then(Value::as_str))
+            .collect::<Vec<_>>();
+        assert!(tool_names.contains(&"get_weather"));
+        assert!(tool_names.contains(&"apply_patch"));
+        assert!(tool_names.contains(&CODEX_TOOL_SEARCH_PROXY_NAME));
+        assert!(tool_names.contains(&"mcp__codex_apps__gmail___search_emails"));
+
+        assert!(context.is_custom_tool_chat_name("apply_patch"));
+        assert_eq!(
+            context
+                .lookup_chat_name("mcp__codex_apps__gmail___search_emails")
+                .expect("namespace spec")
+                .namespace
+                .as_deref(),
+            Some("mcp__codex_apps__gmail")
+        );
+        assert_eq!(
+            context.chat_name_for_response_function(
+                "_search_emails",
+                Some("mcp__codex_apps__gmail")
+            ),
+            "mcp__codex_apps__gmail___search_emails"
         );
     }
 
