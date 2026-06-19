@@ -36,17 +36,6 @@ const DEFAULT_GITHUB_DOMAIN: &str = COPILOT_PUBLIC_GITHUB_DOMAIN;
 /// Token 刷新提前量（秒）
 const TOKEN_REFRESH_BUFFER_SECONDS: i64 = 60;
 
-/// 归一化 GitHub 域名（SSOT）：
-/// - 小写化
-/// - 剥离协议（https:// http://）
-/// - 剥离尾斜杠、path、query、fragment
-/// - 拒绝包含 userinfo（@）的输入
-/// - 保留端口号（如有）
-fn normalize_github_domain(raw: &str) -> Result<String, CopilotAuthError> {
-    crate::proxy_core::normalize_github_domain(raw)
-        .map_err(|_| CopilotAuthError::InvalidDomain(raw.to_string()))
-}
-
 /// Copilot API Header 常量
 pub const COPILOT_EDITOR_VERSION: &str = "vscode/1.110.1";
 pub const COPILOT_PLUGIN_VERSION: &str = "copilot-chat/0.38.2";
@@ -483,7 +472,8 @@ impl CopilotAuthManager {
         github_domain: Option<&str>,
     ) -> Result<GitHubDeviceCodeResponse, CopilotAuthError> {
         let domain = match github_domain {
-            Some(d) => normalize_github_domain(d)?,
+            Some(d) => crate::proxy_core::normalize_github_domain(d)
+                .map_err(|_| CopilotAuthError::InvalidDomain(d.to_string()))?,
             None => DEFAULT_GITHUB_DOMAIN.to_string(),
         };
         log::info!("[CopilotAuth] 启动设备码流程 (domain: {domain})");
@@ -528,7 +518,8 @@ impl CopilotAuthManager {
         github_domain: Option<&str>,
     ) -> Result<Option<GitHubAccount>, CopilotAuthError> {
         let domain = match github_domain {
-            Some(d) => normalize_github_domain(d)?,
+            Some(d) => crate::proxy_core::normalize_github_domain(d)
+                .map_err(|_| CopilotAuthError::InvalidDomain(d.to_string()))?,
             None => DEFAULT_GITHUB_DOMAIN.to_string(),
         };
         log::debug!("[CopilotAuth] 轮询 OAuth Token (domain: {domain})");
@@ -1399,6 +1390,7 @@ impl CopilotAuthManager {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::proxy_core::normalize_github_domain as core_normalize_github_domain;
     use tempfile::tempdir;
 
     #[test]
@@ -1876,64 +1868,86 @@ mod tests {
         }
     }
 
+    #[tokio::test]
+    async fn test_start_device_flow_rejects_invalid_github_domain_before_network() {
+        let temp_dir = tempdir().unwrap();
+        let manager = CopilotAuthManager::new(temp_dir.path().to_path_buf());
+
+        let err = manager
+            .start_device_flow(Some("user@company.ghe.com"))
+            .await
+            .expect_err("invalid domain should be rejected before network");
+
+        match err {
+            CopilotAuthError::InvalidDomain(domain) => assert_eq!(domain, "user@company.ghe.com"),
+            other => panic!("期望 InvalidDomain 错误，实际: {other:?}"),
+        }
+    }
+
     #[test]
     fn test_normalize_github_domain() {
         // 基本用法
-        assert_eq!(normalize_github_domain("github.com").unwrap(), "github.com");
         assert_eq!(
-            normalize_github_domain("company.ghe.com").unwrap(),
+            core_normalize_github_domain("github.com").unwrap(),
+            "github.com"
+        );
+        assert_eq!(
+            core_normalize_github_domain("company.ghe.com").unwrap(),
             "company.ghe.com"
         );
 
         // 剥离协议
         assert_eq!(
-            normalize_github_domain("https://company.ghe.com").unwrap(),
+            core_normalize_github_domain("https://company.ghe.com").unwrap(),
             "company.ghe.com"
         );
         assert_eq!(
-            normalize_github_domain("http://company.ghe.com").unwrap(),
+            core_normalize_github_domain("http://company.ghe.com").unwrap(),
             "company.ghe.com"
         );
 
         // 小写化
-        assert_eq!(normalize_github_domain("GitHub.COM").unwrap(), "github.com");
         assert_eq!(
-            normalize_github_domain("Company.GHE.Com").unwrap(),
+            core_normalize_github_domain("GitHub.COM").unwrap(),
+            "github.com"
+        );
+        assert_eq!(
+            core_normalize_github_domain("Company.GHE.Com").unwrap(),
             "company.ghe.com"
         );
 
         // 剥离尾斜杠和 path
         assert_eq!(
-            normalize_github_domain("company.ghe.com/").unwrap(),
+            core_normalize_github_domain("company.ghe.com/").unwrap(),
             "company.ghe.com"
         );
         assert_eq!(
-            normalize_github_domain("company.ghe.com/api/v3").unwrap(),
+            core_normalize_github_domain("company.ghe.com/api/v3").unwrap(),
             "company.ghe.com"
         );
 
         // 剥离 query 和 fragment
         assert_eq!(
-            normalize_github_domain("company.ghe.com?foo=bar").unwrap(),
+            core_normalize_github_domain("company.ghe.com?foo=bar").unwrap(),
             "company.ghe.com"
         );
         assert_eq!(
-            normalize_github_domain("company.ghe.com#section").unwrap(),
+            core_normalize_github_domain("company.ghe.com#section").unwrap(),
             "company.ghe.com"
         );
 
         // 保留端口
         assert_eq!(
-            normalize_github_domain("company.ghe.com:8443").unwrap(),
+            core_normalize_github_domain("company.ghe.com:8443").unwrap(),
             "company.ghe.com:8443"
         );
 
         // 拒绝 userinfo
-        assert!(normalize_github_domain("user@company.ghe.com").is_err());
+        assert!(core_normalize_github_domain("user@company.ghe.com").is_err());
 
         // 拒绝空输入
-        assert!(normalize_github_domain("").is_err());
-        assert!(normalize_github_domain("   ").is_err());
+        assert!(core_normalize_github_domain("").is_err());
+        assert!(core_normalize_github_domain("   ").is_err());
     }
 
     #[test]
