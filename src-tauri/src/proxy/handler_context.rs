@@ -8,12 +8,13 @@ use crate::proxy::{
     extract_session_id,
     forwarder::RequestForwarder,
     server::ProxyState,
-    types::{CopilotOptimizerConfig, OptimizerConfig, RectifierConfig},
+    types::{CopilotOptimizerConfig, OptimizerConfig},
     ProxyError,
 };
 use crate::proxy_core::{
     extract_gemini_model_from_path, resolve_response_runtime_policy, AppKind, AppProxyConfig,
-    ProxyServices, ResponseRuntimePolicy, ResponseTimeoutConfig, StreamingTimeoutConfig,
+    ProxyServices, RectifierConfig, ResponseRuntimePolicy, ResponseTimeoutConfig,
+    StreamingTimeoutConfig,
 };
 use axum::http::HeaderMap;
 use std::time::Instant;

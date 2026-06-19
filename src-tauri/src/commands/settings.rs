@@ -1,5 +1,6 @@
 #![allow(non_snake_case)]
 
+use crate::proxy_core::RectifierConfig;
 use tauri::AppHandle;
 use tauri_plugin_updater::UpdaterExt;
 
@@ -591,7 +592,7 @@ pub async fn get_auto_launch_status() -> Result<bool, String> {
 #[tauri::command]
 pub async fn get_rectifier_config(
     state: tauri::State<'_, crate::AppState>,
-) -> Result<crate::proxy::types::RectifierConfig, String> {
+) -> Result<RectifierConfig, String> {
     state.db.get_rectifier_config().map_err(|e| e.to_string())
 }
 
@@ -599,7 +600,7 @@ pub async fn get_rectifier_config(
 #[tauri::command]
 pub async fn set_rectifier_config(
     state: tauri::State<'_, crate::AppState>,
-    config: crate::proxy::types::RectifierConfig,
+    config: RectifierConfig,
 ) -> Result<bool, String> {
     state
         .db

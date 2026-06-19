@@ -2,9 +2,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::proxy_core::CurrentRouteTarget;
 
-pub use crate::proxy_core::{
-    CopilotOptimizerConfig, OptimizerConfig, ProxyConfig, RectifierConfig,
-};
+pub use crate::proxy_core::{CopilotOptimizerConfig, OptimizerConfig, ProxyConfig};
 
 /// 代理服务器状态
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -113,6 +111,7 @@ impl LogConfig {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::proxy_core::RectifierConfig;
 
     #[test]
     fn test_rectifier_config_default_enabled() {

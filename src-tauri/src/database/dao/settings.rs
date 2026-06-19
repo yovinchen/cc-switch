@@ -4,6 +4,7 @@
 
 use crate::database::{lock_conn, Database};
 use crate::error::AppError;
+use crate::proxy_core::RectifierConfig;
 use rusqlite::params;
 
 impl Database {
@@ -241,19 +242,16 @@ impl Database {
     /// 获取整流器配置
     ///
     /// 返回整流器配置，如果不存在则返回默认值（全部开启）
-    pub fn get_rectifier_config(&self) -> Result<crate::proxy::types::RectifierConfig, AppError> {
+    pub fn get_rectifier_config(&self) -> Result<RectifierConfig, AppError> {
         match self.get_setting("rectifier_config")? {
             Some(json) => serde_json::from_str(&json)
                 .map_err(|e| AppError::Database(format!("解析整流器配置失败: {e}"))),
-            None => Ok(crate::proxy::types::RectifierConfig::default()),
+            None => Ok(RectifierConfig::default()),
         }
     }
 
     /// 更新整流器配置
-    pub fn set_rectifier_config(
-        &self,
-        config: &crate::proxy::types::RectifierConfig,
-    ) -> Result<(), AppError> {
+    pub fn set_rectifier_config(&self, config: &RectifierConfig) -> Result<(), AppError> {
         let json = serde_json::to_string(config)
             .map_err(|e| AppError::Database(format!("序列化整流器配置失败: {e}")))?;
         self.set_setting("rectifier_config", &json)
