@@ -1487,6 +1487,21 @@ pub fn resolve_claude_api_format(
     }
 }
 
+pub fn resolve_claude_api_format_from_settings(
+    provider_type: Option<&str>,
+    meta_api_format: Option<&str>,
+    settings_config: &Value,
+) -> &'static str {
+    resolve_claude_api_format(
+        provider_type,
+        meta_api_format,
+        settings_config
+            .get("api_format")
+            .and_then(Value::as_str),
+        settings_config.get("openrouter_compat_mode"),
+    )
+}
+
 fn normalize_configured_claude_api_format(api_format: &str) -> &'static str {
     match api_format {
         "openai_chat" => "openai_chat",
@@ -5224,6 +5239,45 @@ mod tests {
             "openai_chat"
         );
         assert_eq!(resolve_claude_api_format(None, None, None, None), "anthropic");
+    }
+
+    #[test]
+    fn resolve_claude_api_format_from_settings_projects_legacy_settings() {
+        assert_eq!(
+            resolve_claude_api_format_from_settings(
+                None,
+                Some("openai_responses"),
+                &json!({
+                    "api_format": "openai_chat",
+                    "openrouter_compat_mode": true,
+                }),
+            ),
+            "openai_responses"
+        );
+        assert_eq!(
+            resolve_claude_api_format_from_settings(
+                None,
+                None,
+                &json!({"api_format": "openai_chat"}),
+            ),
+            "openai_chat"
+        );
+        assert_eq!(
+            resolve_claude_api_format_from_settings(
+                None,
+                None,
+                &json!({"openrouter_compat_mode": "true"}),
+            ),
+            "openai_chat"
+        );
+        assert_eq!(
+            resolve_claude_api_format_from_settings(
+                Some("codex_oauth"),
+                Some("anthropic"),
+                &json!({"api_format": "openai_chat"}),
+            ),
+            "openai_responses"
+        );
     }
 
     #[test]
