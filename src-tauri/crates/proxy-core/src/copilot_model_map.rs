@@ -8,7 +8,33 @@
 //! `resolve_copilot_model_against_ids` 用 `/models` live 列表做精确匹配，找不到时
 //! 按 family（haiku/sonnet/opus）+ 最高版本号 fallback。
 
+use serde::{Deserialize, Serialize};
 use serde_json::Value;
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct CopilotModel {
+    /// Model ID accepted by the Copilot API.
+    pub id: String,
+    /// Human-readable model name.
+    pub name: String,
+    /// Upstream vendor label.
+    pub vendor: String,
+    /// Whether the model should be shown in model selectors.
+    pub model_picker_enabled: bool,
+}
+
+#[derive(Debug, Deserialize)]
+struct CopilotModelsResponse {
+    data: Vec<CopilotModelsResponseItem>,
+}
+
+#[derive(Debug, Deserialize)]
+struct CopilotModelsResponseItem {
+    id: String,
+    name: String,
+    vendor: String,
+    model_picker_enabled: bool,
+}
 
 /// 归一化客户端 model ID 为 Copilot upstream 接受的形式。
 /// 返回 `None` 表示无需变换（已归一化、非 Claude 4.x 系列、或空输入）。
@@ -51,6 +77,22 @@ pub fn apply_copilot_model_normalization(mut body: Value) -> Value {
         body["model"] = Value::String(normalized);
     }
     body
+}
+
+pub fn parse_copilot_models_response_bytes(body: &[u8]) -> Result<Vec<CopilotModel>, String> {
+    let response: CopilotModelsResponse =
+        serde_json::from_slice(body).map_err(|e| e.to_string())?;
+    Ok(response
+        .data
+        .into_iter()
+        .filter(|model| model.model_picker_enabled)
+        .map(|model| CopilotModel {
+            id: model.id,
+            name: model.name,
+            vendor: model.vendor,
+            model_picker_enabled: model.model_picker_enabled,
+        })
+        .collect())
 }
 
 fn ends_with_ascii_ci(haystack: &[u8], needle: &[u8]) -> bool {
@@ -298,6 +340,37 @@ mod tests {
         let body = json!({"messages": []});
         let out = apply_copilot_model_normalization(body);
         assert!(out.get("model").is_none());
+    }
+
+    #[test]
+    fn parse_copilot_models_filters_picker_disabled_models() {
+        let body = br#"{
+            "data": [
+                {
+                    "id": "gpt-5.4",
+                    "name": "GPT-5.4",
+                    "vendor": "OpenAI",
+                    "model_picker_enabled": true
+                },
+                {
+                    "id": "internal-preview",
+                    "name": "Internal Preview",
+                    "vendor": "GitHub",
+                    "model_picker_enabled": false
+                }
+            ]
+        }"#;
+
+        let models = parse_copilot_models_response_bytes(body).unwrap();
+        assert_eq!(
+            models,
+            vec![CopilotModel {
+                id: "gpt-5.4".to_string(),
+                name: "GPT-5.4".to_string(),
+                vendor: "OpenAI".to_string(),
+                model_picker_enabled: true,
+            }]
+        );
     }
 
     fn model(id: &str) -> String {

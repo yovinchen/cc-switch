@@ -24,6 +24,9 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use tokio::sync::{Mutex, RwLock};
 
+use crate::proxy_core::parse_copilot_models_response_bytes;
+pub use crate::proxy_core::CopilotModel;
+
 /// GitHub OAuth 客户端 ID（VS Code）- 用于 github.com
 const GITHUB_CLIENT_ID: &str = "Iv1.b507a08c87ecfe98";
 
@@ -186,34 +189,6 @@ pub struct QuotaDetail {
     pub percent_remaining: f64,
     /// 是否无限
     pub unlimited: bool,
-}
-
-/// Copilot 可用模型
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct CopilotModel {
-    /// 模型 ID（用于 API 调用）
-    pub id: String,
-    /// 模型显示名称
-    pub name: String,
-    /// 模型供应商
-    pub vendor: String,
-    /// 是否在模型选择器中显示
-    pub model_picker_enabled: bool,
-}
-
-/// Copilot Models API 响应
-#[derive(Debug, Deserialize)]
-struct CopilotModelsResponse {
-    data: Vec<CopilotModelsResponseItem>,
-}
-
-/// Copilot Models API 响应项
-#[derive(Debug, Deserialize)]
-struct CopilotModelsResponseItem {
-    id: String,
-    name: String,
-    vendor: String,
-    model_picker_enabled: bool,
 }
 
 /// Copilot 认证错误
@@ -852,22 +827,12 @@ impl CopilotAuthManager {
             )));
         }
 
-        let models_response: CopilotModelsResponse = response
-            .json()
+        let body = response
+            .bytes()
             .await
             .map_err(|e| CopilotAuthError::ParseError(e.to_string()))?;
-
-        let models: Vec<CopilotModel> = models_response
-            .data
-            .into_iter()
-            .filter(|m| m.model_picker_enabled)
-            .map(|m| CopilotModel {
-                id: m.id,
-                name: m.name,
-                vendor: m.vendor,
-                model_picker_enabled: m.model_picker_enabled,
-            })
-            .collect();
+        let models =
+            parse_copilot_models_response_bytes(&body).map_err(CopilotAuthError::ParseError)?;
 
         log::info!("[CopilotAuth] 获取到 {} 个可用模型", models.len());
 
