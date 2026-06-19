@@ -2,9 +2,10 @@
 //!
 //! 提供键值对形式的通用设置存储。
 
-use crate::database::{lock_conn, Database};
+use crate::database::{Database, lock_conn};
 use crate::error::AppError;
 use crate::proxy_core::{CopilotOptimizerConfig, OptimizerConfig, RectifierConfig};
+use crate::settings::LogConfig;
 use rusqlite::params;
 
 impl Database {
@@ -303,16 +304,16 @@ impl Database {
     // --- 日志配置 ---
 
     /// 获取日志配置
-    pub fn get_log_config(&self) -> Result<crate::proxy::types::LogConfig, AppError> {
+    pub fn get_log_config(&self) -> Result<LogConfig, AppError> {
         match self.get_setting("log_config")? {
             Some(json) => serde_json::from_str(&json)
                 .map_err(|e| AppError::Database(format!("解析日志配置失败: {e}"))),
-            None => Ok(crate::proxy::types::LogConfig::default()),
+            None => Ok(LogConfig::default()),
         }
     }
 
     /// 更新日志配置
-    pub fn set_log_config(&self, config: &crate::proxy::types::LogConfig) -> Result<(), AppError> {
+    pub fn set_log_config(&self, config: &LogConfig) -> Result<(), AppError> {
         let json = serde_json::to_string(config)
             .map_err(|e| AppError::Database(format!("序列化日志配置失败: {e}")))?;
         self.set_setting("log_config", &json)

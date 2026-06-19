@@ -1,6 +1,7 @@
 #![allow(non_snake_case)]
 
 use crate::proxy_core::{CopilotOptimizerConfig, OptimizerConfig, RectifierConfig};
+use crate::settings::LogConfig;
 use tauri::AppHandle;
 use tauri_plugin_updater::UpdaterExt;
 
@@ -665,9 +666,7 @@ pub async fn set_copilot_optimizer_config(
 
 /// 获取日志配置
 #[tauri::command]
-pub async fn get_log_config(
-    state: tauri::State<'_, crate::AppState>,
-) -> Result<crate::proxy::types::LogConfig, String> {
+pub async fn get_log_config(state: tauri::State<'_, crate::AppState>) -> Result<LogConfig, String> {
     state.db.get_log_config().map_err(|e| e.to_string())
 }
 
@@ -675,7 +674,7 @@ pub async fn get_log_config(
 #[tauri::command]
 pub async fn set_log_config(
     state: tauri::State<'_, crate::AppState>,
-    config: crate::proxy::types::LogConfig,
+    config: LogConfig,
 ) -> Result<bool, String> {
     state
         .db
