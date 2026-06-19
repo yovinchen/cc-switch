@@ -76,6 +76,10 @@ pub fn append_query_to_full_url(base_url: &str, query: Option<&str>) -> String {
     }
 }
 
+pub fn append_query_to_endpoint_path(endpoint: &str, query: Option<&str>) -> String {
+    append_query_to_full_url(endpoint, query)
+}
+
 pub fn is_github_copilot_upstream(provider_type: Option<&str>, base_url: &str) -> bool {
     matches!(provider_type, Some("github_copilot")) || base_url.contains("githubcopilot.com")
 }
@@ -308,13 +312,14 @@ fn is_openai_compatible_custom_app(value: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::{
-        append_query_to_full_url, extract_gemini_model_from_path, interface_kind_for_forward,
-        is_codex_chat_completions_url, is_codex_chat_wire_api, is_codex_responses_endpoint,
-        is_github_copilot_upstream, is_origin_only_url, merge_query_params, request_model_for_forward,
-        resolved_copilot_dynamic_base_url, rewrite_claude_transform_endpoint,
-        rewrite_codex_responses_endpoint_to_chat, should_convert_codex_responses_endpoint_to_chat,
-        should_resolve_copilot_dynamic_endpoint, split_endpoint_and_query, strip_beta_query,
-        AppKind, ClaudeTransformEndpointRewriteInput, resolve_codex_provider_uses_chat_completions,
+        append_query_to_endpoint_path, append_query_to_full_url, extract_gemini_model_from_path,
+        interface_kind_for_forward, is_codex_chat_completions_url, is_codex_chat_wire_api,
+        is_codex_responses_endpoint, is_github_copilot_upstream, is_origin_only_url,
+        merge_query_params, request_model_for_forward, resolved_copilot_dynamic_base_url,
+        rewrite_claude_transform_endpoint, rewrite_codex_responses_endpoint_to_chat,
+        resolve_codex_provider_uses_chat_completions,
+        should_convert_codex_responses_endpoint_to_chat, should_resolve_copilot_dynamic_endpoint,
+        split_endpoint_and_query, strip_beta_query, AppKind, ClaudeTransformEndpointRewriteInput,
     };
     use serde_json::json;
 
@@ -361,6 +366,19 @@ mod tests {
             append_query_to_full_url("https://relay.example/api", None),
             "https://relay.example/api"
         );
+    }
+
+    #[test]
+    fn append_query_to_endpoint_path_preserves_client_query() {
+        assert_eq!(
+            append_query_to_endpoint_path("/responses", Some("stream=false&x-id=1")),
+            "/responses?stream=false&x-id=1"
+        );
+        assert_eq!(
+            append_query_to_endpoint_path("/responses?existing=true", Some("x-id=1")),
+            "/responses?existing=true&x-id=1"
+        );
+        assert_eq!(append_query_to_endpoint_path("/responses/compact", None), "/responses/compact");
     }
 
     #[test]

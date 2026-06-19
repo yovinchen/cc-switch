@@ -38,6 +38,7 @@ use super::{
 use crate::app_config::AppType;
 use crate::database::{ProxyChannelModelRecord, ProxyChannelRecord};
 use crate::proxy_core::{
+    append_query_to_endpoint_path,
     chat_completion_to_response_with_context as build_chat_completion_response_with_context,
     claude_api_format_from_metadata, claude_stream_usage_event_filter,
     claude_transform_unlabeled_sse_aggregation, codex_stream_usage_event_filter,
@@ -984,13 +985,6 @@ async fn handle_claude_transform(
     proxy_core_response_to_axum_response(response, "[Claude] 构建响应失败")
 }
 
-fn endpoint_with_query(uri: &axum::http::Uri, endpoint: &str) -> String {
-    match uri.query() {
-        Some(query) => format!("{endpoint}?{query}"),
-        None => endpoint.to_string(),
-    }
-}
-
 fn apply_proxy_result_to_context(
     state: &ProxyState,
     ctx: &mut RequestContext,
@@ -1046,7 +1040,7 @@ pub async fn handle_chat_completions(
 
     let mut ctx =
         RequestContext::new(&state, &body, &headers, AppType::Codex, "Codex", "codex").await?;
-    let endpoint = endpoint_with_query(&uri, "/chat/completions");
+    let endpoint = append_query_to_endpoint_path("/chat/completions", uri.query());
 
     let is_stream = body
         .get("stream")
@@ -1100,7 +1094,7 @@ pub async fn handle_responses(
 
     let mut ctx =
         RequestContext::new(&state, &body, &headers, AppType::Codex, "Codex", "codex").await?;
-    let endpoint = endpoint_with_query(&uri, "/responses");
+    let endpoint = append_query_to_endpoint_path("/responses", uri.query());
 
     let is_stream = body
         .get("stream")
@@ -1167,7 +1161,7 @@ pub async fn handle_responses_compact(
 
     let mut ctx =
         RequestContext::new(&state, &body, &headers, AppType::Codex, "Codex", "codex").await?;
-    let endpoint = endpoint_with_query(&uri, "/responses/compact");
+    let endpoint = append_query_to_endpoint_path("/responses/compact", uri.query());
 
     let is_stream = body
         .get("stream")
@@ -1436,7 +1430,7 @@ async fn handle_codex_chat_error_response(
 /// 这里没有上游响应可参照，只产出一个 `application/json` 错误体。状态码走
 /// `map_proxy_error_to_status`，该函数已与 `ProxyError::into_response` 对齐。
 ///
-/// 注意：`endpoint` 经 `endpoint_with_query` 可能携带 query（如 `?beta=true`）并被
+/// 注意：`endpoint` 经 core endpoint query helper 可能携带 query（如 `?beta=true`）并被
 /// 原样写入错误体。当前 Codex 端点不在 query 里放凭证，故安全；若将来复用到
 /// query 携带密钥的端点（如 Gemini 的 `?key=`），需先脱敏再回显。
 fn build_codex_proxy_error_response(
