@@ -12,13 +12,13 @@ use super::{
     events::ProxyEventBus,
     failover_switch::FailoverSwitchManager,
     handlers,
-    log_codes::srv as log_srv,
     provider_router::ProviderRouter,
     providers::{codex_chat_history::CodexChatHistoryStore, gemini_shadow::GeminiShadowStore},
     types::*,
     ProxyError,
 };
 use crate::database::Database;
+use crate::proxy_core::log_codes::srv as log_srv;
 use crate::proxy_core_host::{CcSwitchProxyRuntime, CcSwitchProxyServices};
 use axum::{
     extract::DefaultBodyLimit,

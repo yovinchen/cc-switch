@@ -2,8 +2,8 @@
 //!
 //! 实现熔断器模式，用于防止向不健康的供应商发送请求
 
-use super::log_codes::cb as log_cb;
 use super::types::AppProxyConfig;
+use crate::proxy_core::log_codes::cb as log_cb;
 use serde::{Deserialize, Serialize};
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::Arc;
