@@ -19,13 +19,14 @@ use crate::provider::Provider;
 use crate::proxy::error::ProxyError;
 use crate::proxy_core::{
     anthropic_to_openai_chat_request, anthropic_to_openai_responses_request,
-    build_claude_upstream_url, claude_api_format_needs_transform,
+    build_claude_auth_headers, build_claude_upstream_url, claude_api_format_needs_transform,
     extract_claude_auth_key_from_settings, extract_claude_base_url_from_settings,
     infer_claude_provider_kind, normalize_anthropic_tool_thinking_history,
     openai_chat_to_anthropic_message, openai_responses_to_anthropic_message,
     resolve_claude_api_format_from_settings, resolve_claude_responses_prompt_cache_key,
     should_normalize_anthropic_tool_thinking_history,
-    should_preserve_reasoning_content_for_openai_chat, ClaudeAuthKey, ClaudeAuthKeySource,
+    should_preserve_reasoning_content_for_openai_chat, ClaudeAuthHeaderKind, ClaudeAuthKey,
+    ClaudeAuthKeySource,
 };
 use serde_json::Value;
 
@@ -348,6 +349,19 @@ impl ProviderAdapter for ClaudeAdapter {
         &self,
         auth: &AuthInfo,
     ) -> Result<Vec<(http::HeaderName, http::HeaderValue)>, ProxyError> {
+        let static_kind = match auth.strategy {
+            AuthStrategy::Anthropic => Some(ClaudeAuthHeaderKind::AnthropicApiKey),
+            AuthStrategy::ClaudeAuth | AuthStrategy::Bearer => Some(ClaudeAuthHeaderKind::Bearer),
+            AuthStrategy::Google => Some(ClaudeAuthHeaderKind::GoogleApiKey),
+            AuthStrategy::GoogleOAuth => Some(ClaudeAuthHeaderKind::GoogleOAuth),
+            AuthStrategy::CodexOAuth => Some(ClaudeAuthHeaderKind::CodexOAuth),
+            AuthStrategy::GitHubCopilot => None,
+        };
+        if let Some(kind) = static_kind {
+            return build_claude_auth_headers(kind, &auth.api_key, auth.access_token.as_deref())
+                .map_err(|error| ProxyError::AuthError(error.to_string()));
+        }
+
         use http::{HeaderName, HeaderValue};
         let hv = |value: &str| {
             crate::proxy_core::auth_header_value(value)
@@ -356,40 +370,6 @@ impl ProviderAdapter for ClaudeAdapter {
         // 注意：anthropic-version 由 forwarder.rs 统一处理（透传客户端值或设置默认值）
         let bearer = format!("Bearer {}", auth.api_key);
         Ok(match auth.strategy {
-            AuthStrategy::Anthropic => {
-                vec![(HeaderName::from_static("x-api-key"), hv(&auth.api_key)?)]
-            }
-            AuthStrategy::ClaudeAuth | AuthStrategy::Bearer => {
-                vec![(HeaderName::from_static("authorization"), hv(&bearer)?)]
-            }
-            AuthStrategy::Google => vec![(
-                HeaderName::from_static("x-goog-api-key"),
-                hv(&auth.api_key)?,
-            )],
-            AuthStrategy::GoogleOAuth => {
-                let token = auth.access_token.as_ref().unwrap_or(&auth.api_key);
-                vec![
-                    (
-                        HeaderName::from_static("authorization"),
-                        hv(&format!("Bearer {token}"))?,
-                    ),
-                    (
-                        HeaderName::from_static("x-goog-api-client"),
-                        HeaderValue::from_static("GeminiCLI/1.0"),
-                    ),
-                ]
-            }
-            AuthStrategy::CodexOAuth => {
-                // 注意：bearer token 由 forwarder 动态注入到 auth.api_key
-                // ChatGPT-Account-Id 由 forwarder 注入额外 header
-                vec![
-                    (HeaderName::from_static("authorization"), hv(&bearer)?),
-                    (
-                        HeaderName::from_static("originator"),
-                        HeaderValue::from_static("cc-switch"),
-                    ),
-                ]
-            }
             AuthStrategy::GitHubCopilot => {
                 // 生成请求追踪 ID
                 let request_id = uuid::Uuid::new_v4().to_string();
@@ -437,6 +417,7 @@ impl ProviderAdapter for ClaudeAdapter {
                     (HeaderName::from_static("x-agent-task-id"), hv(&request_id)?),
                 ]
             }
+            _ => unreachable!("static auth strategies are delegated to proxy-core"),
         })
     }
 
@@ -636,6 +617,37 @@ mod tests {
         assert_eq!(headers.len(), 1);
         assert_eq!(headers[0].0.as_str(), "authorization");
         assert_eq!(headers[0].1.to_str().unwrap(), "Bearer sk-or-test");
+    }
+
+    #[test]
+    fn test_get_auth_headers_google_oauth_emits_bearer_and_client_marker() {
+        let adapter = ClaudeAdapter::new();
+        let auth = AuthInfo::with_access_token(
+            "refresh-token".to_string(),
+            "ya29.access-token".to_string(),
+        );
+
+        let headers = adapter.get_auth_headers(&auth).unwrap();
+
+        assert_eq!(headers.len(), 2);
+        assert_eq!(headers[0].0.as_str(), "authorization");
+        assert_eq!(headers[0].1.to_str().unwrap(), "Bearer ya29.access-token");
+        assert_eq!(headers[1].0.as_str(), "x-goog-api-client");
+        assert_eq!(headers[1].1.to_str().unwrap(), "GeminiCLI/1.0");
+    }
+
+    #[test]
+    fn test_get_auth_headers_codex_oauth_emits_originator() {
+        let adapter = ClaudeAdapter::new();
+        let auth = AuthInfo::new("chatgpt-token".to_string(), AuthStrategy::CodexOAuth);
+
+        let headers = adapter.get_auth_headers(&auth).unwrap();
+
+        assert_eq!(headers.len(), 2);
+        assert_eq!(headers[0].0.as_str(), "authorization");
+        assert_eq!(headers[0].1.to_str().unwrap(), "Bearer chatgpt-token");
+        assert_eq!(headers[1].0.as_str(), "originator");
+        assert_eq!(headers[1].1.to_str().unwrap(), "cc-switch");
     }
 
     #[test]

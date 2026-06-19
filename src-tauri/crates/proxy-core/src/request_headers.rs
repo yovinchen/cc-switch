@@ -75,6 +75,15 @@ pub struct CopilotAuthHeaderOverrides<'a> {
     pub interaction_id: Option<&'a str>,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ClaudeAuthHeaderKind {
+    AnthropicApiKey,
+    Bearer,
+    GoogleApiKey,
+    GoogleOAuth,
+    CodexOAuth,
+}
+
 pub fn should_send_anthropic_request_headers(
     adapter_name: &str,
     resolved_claude_api_format: Option<&str>,
@@ -134,6 +143,30 @@ pub fn build_gemini_auth_headers(
         http::HeaderName::from_static("x-goog-api-key"),
         auth_header_value(api_key)?,
     )])
+}
+
+pub fn build_claude_auth_headers(
+    kind: ClaudeAuthHeaderKind,
+    api_key: &str,
+    access_token: Option<&str>,
+) -> ProxyCoreResult<Vec<(http::HeaderName, http::HeaderValue)>> {
+    match kind {
+        ClaudeAuthHeaderKind::AnthropicApiKey => Ok(vec![(
+            http::HeaderName::from_static("x-api-key"),
+            auth_header_value(api_key)?,
+        )]),
+        ClaudeAuthHeaderKind::Bearer => build_codex_bearer_auth_headers(api_key),
+        ClaudeAuthHeaderKind::GoogleApiKey => build_gemini_auth_headers(api_key, None, false),
+        ClaudeAuthHeaderKind::GoogleOAuth => build_gemini_auth_headers(api_key, access_token, true),
+        ClaudeAuthHeaderKind::CodexOAuth => {
+            let mut headers = build_codex_bearer_auth_headers(api_key)?;
+            headers.push((
+                http::HeaderName::from_static("originator"),
+                http::HeaderValue::from_static("cc-switch"),
+            ));
+            Ok(headers)
+        }
+    }
 }
 
 pub fn anthropic_beta_header_value(existing_beta: Option<&str>) -> String {
@@ -414,13 +447,14 @@ fn append_header_from_str(
 #[cfg(test)]
 mod tests {
     use super::{
-        anthropic_beta_header_value, auth_header_value, build_codex_bearer_auth_headers,
-        build_codex_oauth_session_headers, build_gemini_auth_headers, build_upstream_auth_headers,
-        build_upstream_request_headers, is_official_codex_client_user_agent,
+        anthropic_beta_header_value, auth_header_value, build_claude_auth_headers,
+        build_codex_bearer_auth_headers, build_codex_oauth_session_headers,
+        build_gemini_auth_headers, build_upstream_auth_headers, build_upstream_request_headers,
+        is_official_codex_client_user_agent,
         should_preserve_exact_request_header_case, should_send_anthropic_request_headers,
         should_skip_copilot_fingerprint_request_header, should_strip_forwarded_request_header,
-        CopilotAuthHeaderOverrides, UpstreamAuthHeadersInput, UpstreamRequestHeadersInput,
-        CLAUDE_CODE_BETA, DEFAULT_ANTHROPIC_VERSION,
+        ClaudeAuthHeaderKind, CopilotAuthHeaderOverrides, UpstreamAuthHeadersInput,
+        UpstreamRequestHeadersInput, CLAUDE_CODE_BETA, DEFAULT_ANTHROPIC_VERSION,
     };
     use crate::ProxyCoreError;
     use http::{header, HeaderMap, HeaderName, HeaderValue};
@@ -553,6 +587,66 @@ mod tests {
 
         let oauth_error = build_gemini_auth_headers("refresh", Some("bad\r\nx-evil: 1"), true)
             .expect_err("invalid token");
+        assert!(matches!(oauth_error, ProxyCoreError::Auth(_)));
+    }
+
+    #[test]
+    fn builds_claude_static_auth_headers() {
+        let anthropic =
+            build_claude_auth_headers(ClaudeAuthHeaderKind::AnthropicApiKey, "sk-ant", None)
+                .unwrap();
+        assert_eq!(anthropic[0].0.as_str(), "x-api-key");
+        assert_eq!(anthropic[0].1, HeaderValue::from_static("sk-ant"));
+
+        let bearer =
+            build_claude_auth_headers(ClaudeAuthHeaderKind::Bearer, "sk-relay", None).unwrap();
+        assert_eq!(bearer[0].0.as_str(), "authorization");
+        assert_eq!(bearer[0].1, HeaderValue::from_static("Bearer sk-relay"));
+
+        let google =
+            build_claude_auth_headers(ClaudeAuthHeaderKind::GoogleApiKey, "gemini-key", None)
+                .unwrap();
+        assert_eq!(google[0].0.as_str(), "x-goog-api-key");
+        assert_eq!(google[0].1, HeaderValue::from_static("gemini-key"));
+
+        let google_oauth = build_claude_auth_headers(
+            ClaudeAuthHeaderKind::GoogleOAuth,
+            "refresh-token",
+            Some("ya29.access-token"),
+        )
+        .unwrap();
+        assert_eq!(google_oauth[0].0.as_str(), "authorization");
+        assert_eq!(
+            google_oauth[0].1,
+            HeaderValue::from_static("Bearer ya29.access-token")
+        );
+        assert_eq!(google_oauth[1].0.as_str(), "x-goog-api-client");
+
+        let codex =
+            build_claude_auth_headers(ClaudeAuthHeaderKind::CodexOAuth, "chatgpt-token", None)
+                .unwrap();
+        assert_eq!(codex[0].0.as_str(), "authorization");
+        assert_eq!(codex[0].1, HeaderValue::from_static("Bearer chatgpt-token"));
+        assert_eq!(codex[1].0.as_str(), "originator");
+        assert_eq!(codex[1].1, HeaderValue::from_static("cc-switch"));
+    }
+
+    #[test]
+    fn rejects_invalid_claude_static_auth_header_values() {
+        let anthropic_error = build_claude_auth_headers(
+            ClaudeAuthHeaderKind::AnthropicApiKey,
+            "bad\r\nx-evil: 1",
+            None,
+        )
+        .expect_err("invalid anthropic key");
+        assert!(matches!(anthropic_error, ProxyCoreError::Auth(_)));
+
+        let oauth_error = build_claude_auth_headers(
+            ClaudeAuthHeaderKind::GoogleOAuth,
+            "refresh",
+            Some("bad\r\nx-evil: 1"),
+        )
+        .expect_err("invalid oauth token");
         assert!(matches!(oauth_error, ProxyCoreError::Auth(_)));
     }
 
