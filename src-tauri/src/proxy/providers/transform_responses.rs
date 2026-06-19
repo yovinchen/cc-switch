@@ -9,11 +9,11 @@
 //! - usage 字段命名与 Anthropic 一致 (input_tokens/output_tokens)
 
 use crate::proxy::error::ProxyError;
+use crate::proxy_core::anthropic_to_openai_responses_request;
 #[cfg(test)]
 use crate::proxy_core::build_anthropic_usage_from_openai_responses;
-use crate::proxy_core::{
-    anthropic_to_openai_responses_request, openai_responses_to_anthropic_message,
-};
+#[cfg(test)]
+use crate::proxy_core::openai_responses_to_anthropic_message;
 #[cfg(test)]
 use serde_json::json;
 use serde_json::Value;
@@ -41,6 +41,7 @@ pub fn anthropic_to_responses(
 }
 
 /// OpenAI Responses 响应 → Anthropic 响应
+#[cfg(test)]
 pub fn responses_to_anthropic(body: Value) -> Result<Value, ProxyError> {
     openai_responses_to_anthropic_message(&body).map_err(ProxyError::TransformError)
 }

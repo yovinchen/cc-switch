@@ -19,6 +19,7 @@ use crate::provider::Provider;
 use crate::proxy::error::ProxyError;
 use crate::proxy_core::{
     claude_api_format_needs_transform, normalize_anthropic_tool_thinking_history,
+    openai_chat_to_anthropic_message, openai_responses_to_anthropic_message,
     resolve_claude_api_format, should_normalize_anthropic_tool_thinking_history,
     should_preserve_reasoning_content_for_openai_chat,
 };
@@ -712,9 +713,9 @@ impl ProviderAdapter for ClaudeAdapter {
         if body.get("candidates").is_some() || body.get("promptFeedback").is_some() {
             super::transform_gemini::gemini_to_anthropic(body)
         } else if body.get("output").is_some() {
-            super::transform_responses::responses_to_anthropic(body)
+            openai_responses_to_anthropic_message(&body).map_err(ProxyError::TransformError)
         } else {
-            super::transform::openai_to_anthropic(body)
+            openai_chat_to_anthropic_message(&body).map_err(ProxyError::TransformError)
         }
     }
 }

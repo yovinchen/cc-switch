@@ -4,7 +4,9 @@
 //! 参考: anthropic-proxy-rs
 
 use crate::proxy::error::ProxyError;
-use crate::proxy_core::{anthropic_to_openai_chat_request, openai_chat_to_anthropic_message};
+use crate::proxy_core::anthropic_to_openai_chat_request;
+#[cfg(test)]
+use crate::proxy_core::openai_chat_to_anthropic_message;
 #[cfg(test)]
 use crate::proxy_core::{is_openai_o_series, resolve_reasoning_effort, supports_reasoning_effort};
 #[cfg(test)]
@@ -36,6 +38,7 @@ pub fn anthropic_to_openai_with_reasoning_content(
 }
 
 /// OpenAI 响应 → Anthropic 响应
+#[cfg(test)]
 pub fn openai_to_anthropic(body: Value) -> Result<Value, ProxyError> {
     openai_chat_to_anthropic_message(&body).map_err(ProxyError::TransformError)
 }
