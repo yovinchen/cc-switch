@@ -1,7 +1,7 @@
 //! Gemini Native request helpers.
 
 use crate::{
-    GeminiAssistantTurn, build_gemini_function_declaration,
+    GeminiAssistantTurn, GeminiShadowStore, build_gemini_function_declaration,
     build_gemini_shadow_thought_signature_map, build_gemini_shadow_tool_name_map,
     find_matching_gemini_shadow_turn, gemini_shadow_replay_parts,
     is_synthesized_gemini_tool_call_id, merge_gemini_assistant_tool_use_names,
@@ -193,6 +193,22 @@ pub fn anthropic_request_to_gemini_request(
     }
 
     Ok(result)
+}
+
+pub fn anthropic_request_to_gemini_request_with_shadow(
+    body: &Value,
+    shadow_store: Option<&GeminiShadowStore>,
+    provider_id: Option<&str>,
+    session_id: Option<&str>,
+) -> Result<Value, String> {
+    let shadow_turns = shadow_store
+        .zip(provider_id)
+        .zip(session_id)
+        .and_then(|((store, provider_id), session_id)| store.get_session(provider_id, session_id))
+        .map(|snapshot| snapshot.turns)
+        .unwrap_or_default();
+
+    anthropic_request_to_gemini_request(body, &shadow_turns)
 }
 
 pub fn anthropic_messages_to_gemini_contents(
@@ -614,6 +630,46 @@ mod tests {
         assert_eq!(
             result["toolConfig"]["functionCallingConfig"]["allowedFunctionNames"][0],
             "lookup"
+        );
+    }
+
+    #[test]
+    fn request_to_gemini_with_shadow_resolves_tool_result_names() {
+        let store = GeminiShadowStore::with_limits(8, 4);
+        store.record_assistant_turn(
+            "provider-a",
+            "session-1",
+            json!({
+                "parts": [{
+                    "functionCall": {
+                        "id": "call_1",
+                        "name": "get_weather",
+                        "args": { "city": "Tokyo" }
+                    }
+                }]
+            }),
+            vec![],
+        );
+        let body = json!({
+            "messages": [{
+                "role": "user",
+                "content": [
+                    { "type": "tool_result", "tool_use_id": "call_1", "content": "Sunny" }
+                ]
+            }]
+        });
+
+        let result = anthropic_request_to_gemini_request_with_shadow(
+            &body,
+            Some(&store),
+            Some("provider-a"),
+            Some("session-1"),
+        )
+        .unwrap();
+
+        assert_eq!(
+            result["contents"][0]["parts"][0]["functionResponse"]["name"],
+            "get_weather"
         );
     }
 

@@ -6,7 +6,7 @@
 
 use crate::proxy::error::ProxyError;
 use crate::proxy_core::{
-    AnthropicToolSchemaHints, GeminiShadowStore, anthropic_request_to_gemini_request,
+    AnthropicToolSchemaHints, GeminiShadowStore, anthropic_request_to_gemini_request_with_shadow,
     extract_anthropic_tool_schema_hints as core_extract_anthropic_tool_schema_hints,
     gemini_response_to_anthropic_message, rectify_gemini_tool_call_args,
     synthesize_gemini_tool_call_id,
@@ -34,14 +34,8 @@ pub fn anthropic_to_gemini_with_shadow(
     provider_id: Option<&str>,
     session_id: Option<&str>,
 ) -> Result<Value, ProxyError> {
-    let shadow_turns = shadow_store
-        .zip(provider_id)
-        .zip(session_id)
-        .and_then(|((store, provider_id), session_id)| store.get_session(provider_id, session_id))
-        .map(|snapshot| snapshot.turns)
-        .unwrap_or_default();
-
-    anthropic_request_to_gemini_request(&body, &shadow_turns).map_err(ProxyError::TransformError)
+    anthropic_request_to_gemini_request_with_shadow(&body, shadow_store, provider_id, session_id)
+        .map_err(ProxyError::TransformError)
 }
 
 /// Convenience wrapper over [`gemini_to_anthropic_with_shadow_and_hints`]
