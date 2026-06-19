@@ -223,6 +223,26 @@ impl<T> ProxyStatusResponse<T> {
     }
 }
 
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ProxyRuntimeStatus {
+    pub running: bool,
+    pub address: String,
+    pub port: u16,
+    pub active_connections: usize,
+    pub total_requests: u64,
+    pub success_requests: u64,
+    pub failed_requests: u64,
+    pub success_rate: f32,
+    pub uptime_seconds: u64,
+    pub current_provider: Option<String>,
+    pub current_provider_id: Option<String>,
+    pub last_request_at: Option<String>,
+    pub last_error: Option<String>,
+    pub failover_count: u64,
+    #[serde(default)]
+    pub active_targets: Vec<CurrentRouteTarget>,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ChannelHealthReset {
@@ -1418,10 +1438,10 @@ mod tests {
         ChannelMigrationPreviewResponse,
         ChannelRouteCandidate, ChannelRouteRejected, ChannelRouteSource, ClientModelCatalogResponse,
         CurrentRouteProviderSummaryInput, CurrentRouteResponse, CurrentRouteTarget, GroupListQuery,
-        HealthCheckResponse, ModelCatalog, ProviderListResponse, ProviderSpec, ProxyStatusResponse,
-        ProviderSummaryInput, ProxyChannelModelWriteRequest, ProxyChannelModelsReplaceRequest,
-        ProxyChannelPatchRequest, ProxyChannelWriteRequest, RouteGroupListResponse, RouteGroupSourceInput,
-        RouteResolveResponse,
+        HealthCheckResponse, ModelCatalog, ProviderListResponse, ProviderSpec, ProxyRuntimeStatus,
+        ProxyStatusResponse, ProviderSummaryInput, ProxyChannelModelWriteRequest,
+        ProxyChannelModelsReplaceRequest, ProxyChannelPatchRequest, ProxyChannelWriteRequest,
+        RouteGroupListResponse, RouteGroupSourceInput, RouteResolveResponse,
     };
     use crate::{
         AppKind, ChannelHealthPolicy, ChannelOverrides, ChannelSpec, ChannelStatus, InterfaceKind,
@@ -1689,20 +1709,43 @@ mod tests {
 
     #[test]
     fn proxy_status_response_serializes_as_raw_status() {
-        let response = ProxyStatusResponse::new(json!({
-            "running": true,
-            "activeConnections": 2
-        }));
+        let response = ProxyStatusResponse::new(ProxyRuntimeStatus {
+            running: true,
+            address: "127.0.0.1".to_string(),
+            port: 15721,
+            active_connections: 2,
+            total_requests: 5,
+            success_requests: 4,
+            failed_requests: 1,
+            success_rate: 80.0,
+            uptime_seconds: 30,
+            current_provider: Some("Provider A".to_string()),
+            current_provider_id: Some("provider-a".to_string()),
+            last_request_at: None,
+            last_error: None,
+            failover_count: 1,
+            active_targets: vec![CurrentRouteTarget {
+                app_type: "claude".to_string(),
+                provider_name: "Provider A".to_string(),
+                provider_id: "provider-a".to_string(),
+                channel_id: Some("channel-a".to_string()),
+                channel_name: None,
+                interface_kind: None,
+                public_model: None,
+                upstream_model: None,
+            }],
+        });
 
         let value = serde_json::to_value(response).expect("serialize response");
 
-        assert_eq!(
-            value,
-            json!({
-                "running": true,
-                "activeConnections": 2
-            })
-        );
+        assert_eq!(value["running"], true);
+        assert_eq!(value["active_connections"], 2);
+        assert_eq!(value["total_requests"], 5);
+        assert_eq!(value["current_provider"], "Provider A");
+        assert!(value["last_request_at"].is_null());
+        assert_eq!(value["active_targets"][0]["appType"], "claude");
+        assert_eq!(value["active_targets"][0]["providerName"], "Provider A");
+        assert_eq!(value["active_targets"][0]["channelId"], "channel-a");
     }
 
     #[test]

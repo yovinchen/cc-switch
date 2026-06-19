@@ -31,7 +31,6 @@ use super::{
         usage_logging_enabled, SseUsageCollector,
     },
     server::ProxyState,
-    types::*,
     usage_sink_bridge::{
         error_usage_record, provider_kind_from_provider, success_usage_record,
         transformed_response_usage_record,
@@ -62,14 +61,15 @@ use crate::proxy_core::{
     CurrentRouteResponse, CurrentRouteTarget, GroupListQuery, HealthCheckResponse, InterfaceKind,
     ManagementAuthDecision, ProviderListResponse, ProviderSummaryInput, ProxyBody,
     ProxyChannelModelsReplaceRequest, ProxyChannelPatchRequest, ProxyChannelWriteRequest,
-    ProxyEngine, ProxyRequest, ProxyResult, ProxyServices, ProxyStatusResponse, RoutableModelList,
-    RouteGroupListResponse, RouteGroupSourceInput, RouteResolveRequest, RouteResolveResponse,
-    TokenUsage, TransformedResponseUsageFormat, UpstreamJsonBodySource, UpstreamSseAggregationKind,
-    CLAUDE_PARSER_CONFIG, CODEX_PARSER_CONFIG, GEMINI_PARSER_CONFIG, OPENAI_PARSER_CONFIG,
+    ProxyEngine, ProxyRequest, ProxyResult, ProxyRuntimeStatus, ProxyServices, ProxyStatusResponse,
+    RoutableModelList, RouteGroupListResponse, RouteGroupSourceInput, RouteResolveRequest,
+    RouteResolveResponse, TokenUsage, TransformedResponseUsageFormat, UpstreamJsonBodySource,
+    UpstreamSseAggregationKind, CLAUDE_PARSER_CONFIG, CODEX_PARSER_CONFIG, GEMINI_PARSER_CONFIG,
+    OPENAI_PARSER_CONFIG,
 };
 use crate::proxy_core_adapter::{
     ToProxyCoreChannelModelRecord, ToProxyCoreChannelRecord, ToProxyCoreChannelSpec,
-    ToProxyCoreProviderSpec,
+    ToProxyCoreCurrentRouteTarget, ToProxyCoreProviderSpec, ToProxyCoreRuntimeStatus,
 };
 use axum::{
     extract::{Path, Query, State},
@@ -100,9 +100,11 @@ pub async fn health_check() -> (StatusCode, Json<HealthCheckResponse>) {
 /// 获取服务状态
 pub async fn get_status(
     State(state): State<ProxyState>,
-) -> Result<Json<ProxyStatusResponse<ProxyStatus>>, ProxyError> {
+) -> Result<Json<ProxyStatusResponse<ProxyRuntimeStatus>>, ProxyError> {
     let status = state.status.read().await.clone();
-    Ok(Json(ProxyStatusResponse::new(status)))
+    Ok(Json(ProxyStatusResponse::new(
+        status.to_proxy_core_runtime_status(),
+    )))
 }
 
 /// GET /proxy/v1/events
@@ -527,7 +529,7 @@ pub async fn get_current_proxy_route(
         let current_providers = state.current_providers.read().await;
         current_providers.get(&app_type).cloned()
     }
-    .map(current_route_target_from_active_target);
+    .map(|target| target.to_proxy_core_current_route_target());
 
     let configured_provider = match state
         .db
@@ -551,19 +553,6 @@ pub async fn get_current_proxy_route(
         active_target,
         configured_provider,
     )))
-}
-
-fn current_route_target_from_active_target(target: ActiveTarget) -> CurrentRouteTarget {
-    CurrentRouteTarget {
-        app_type: target.app_type,
-        provider_name: target.provider_name,
-        provider_id: target.provider_id,
-        channel_id: target.channel_id,
-        channel_name: target.channel_name,
-        interface_kind: target.interface_kind,
-        public_model: target.public_model,
-        upstream_model: target.upstream_model,
-    }
 }
 
 /// GET /proxy/v1/apps/{app}/channels/migration/preview
