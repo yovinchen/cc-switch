@@ -3,8 +3,8 @@
 //! Converts Gemini `streamGenerateContent?alt=sse` chunks into Anthropic-style
 //! SSE events for Claude-compatible clients.
 
-use super::transform_gemini::{synthesize_tool_call_id, AnthropicToolSchemaHints};
-use crate::proxy_core::{GeminiShadowStore, GeminiToAnthropicSseState};
+use super::transform_gemini::synthesize_tool_call_id;
+use crate::proxy_core::{AnthropicToolSchemaHints, GeminiShadowStore, GeminiToAnthropicSseState};
 use bytes::Bytes;
 use futures::stream::{Stream, StreamExt};
 use std::sync::Arc;

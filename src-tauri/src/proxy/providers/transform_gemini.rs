@@ -9,11 +9,10 @@ use crate::proxy_core::{
     build_anthropic_usage_from_gemini, build_gemini_function_declaration,
     extract_anthropic_tool_schema_hints as core_extract_anthropic_tool_schema_hints,
     is_synthesized_gemini_tool_call_id, map_gemini_finish_reason_to_anthropic,
-    rectify_gemini_tool_call_args, rectify_gemini_tool_call_parts, GeminiAssistantTurn,
-    GeminiShadowStore, GeminiToolCallMeta, GEMINI_SYNTHESIZED_TOOL_CALL_ID_PREFIX,
+    rectify_gemini_tool_call_args, rectify_gemini_tool_call_parts, AnthropicToolSchemaHints,
+    GeminiAssistantTurn, GeminiShadowStore, GeminiToolCallMeta,
+    GEMINI_SYNTHESIZED_TOOL_CALL_ID_PREFIX,
 };
-#[allow(unused_imports)]
-pub use crate::proxy_core::{AnthropicToolSchemaHint, AnthropicToolSchemaHints};
 use serde_json::{json, Map, Value};
 use std::collections::{HashMap, HashSet};
 
