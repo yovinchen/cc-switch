@@ -41,25 +41,25 @@ use crate::database::{ProxyChannelModelRecord, ProxyChannelRecord};
 use crate::proxy_core::{
     claude_api_format_from_metadata, claude_stream_usage_event_filter,
     claude_transform_unlabeled_sse_aggregation, codex_stream_usage_event_filter,
-    json_proxy_response, normalize_channel_id_path, parse_upstream_json_or_unlabeled_sse,
-    rebuilt_json_proxy_response, resolve_management_auth_decision,
-    should_aggregate_codex_oauth_responses_sse, should_use_claude_transform_streaming,
-    transformed_response_usage, transformed_sse_proxy_response,
-    validate_claude_desktop_gateway_bearer_header, validate_management_app_type,
-    validate_management_bearer_header, validate_route_resolve_app_type, AppChannelListQuery,
-    AppChannelListResponse, AppChannelResponse, AppChannelRouteResponse, AppKind, AppListResponse,
-    AppModelListQuery, AppSummaryInput, ChannelDeleteResponse, ChannelHealthResetResponse,
-    ChannelListQuery, ChannelListResponse, ChannelMigrationMaterializeInput,
-    ChannelMigrationMaterializeResponse, ChannelMigrationPreviewInput,
-    ChannelMigrationPreviewResponse, ChannelModelsResponse, ChannelRouteCandidate,
-    ChannelRouteRejected, CurrentRouteProviderSummaryInput, CurrentRouteResponse, GroupListQuery,
-    HealthCheckResponse, InterfaceKind, ManagementAuthDecision, ProviderListResponse,
-    ProviderSummaryInput, ProxyBody, ProxyChannelModelsReplaceRequest, ProxyChannelPatchRequest,
-    ProxyChannelWriteRequest, ProxyEngine, ProxyRequest, ProxyResult, ProxyServices,
-    RoutableModelList, RouteGroupListResponse, RouteGroupSourceInput, RouteResolveRequest,
-    RouteResolveResponse, TokenUsage, TransformedResponseUsageFormat, UpstreamJsonBodySource,
-    UpstreamSseAggregationKind, CLAUDE_PARSER_CONFIG, CODEX_PARSER_CONFIG, GEMINI_PARSER_CONFIG,
-    OPENAI_PARSER_CONFIG,
+    extract_gemini_model_from_path, json_proxy_response, normalize_channel_id_path,
+    parse_upstream_json_or_unlabeled_sse, rebuilt_json_proxy_response,
+    resolve_management_auth_decision, should_aggregate_codex_oauth_responses_sse,
+    should_use_claude_transform_streaming, transformed_response_usage,
+    transformed_sse_proxy_response, validate_claude_desktop_gateway_bearer_header,
+    validate_management_app_type, validate_management_bearer_header,
+    validate_route_resolve_app_type, AppChannelListQuery, AppChannelListResponse,
+    AppChannelResponse, AppChannelRouteResponse, AppKind, AppListResponse, AppModelListQuery,
+    AppSummaryInput, ChannelDeleteResponse, ChannelHealthResetResponse, ChannelListQuery,
+    ChannelListResponse, ChannelMigrationMaterializeInput, ChannelMigrationMaterializeResponse,
+    ChannelMigrationPreviewInput, ChannelMigrationPreviewResponse, ChannelModelsResponse,
+    ChannelRouteCandidate, ChannelRouteRejected, CurrentRouteProviderSummaryInput,
+    CurrentRouteResponse, GroupListQuery, HealthCheckResponse, InterfaceKind,
+    ManagementAuthDecision, ProviderListResponse, ProviderSummaryInput, ProxyBody,
+    ProxyChannelModelsReplaceRequest, ProxyChannelPatchRequest, ProxyChannelWriteRequest,
+    ProxyEngine, ProxyRequest, ProxyResult, ProxyServices, RoutableModelList,
+    RouteGroupListResponse, RouteGroupSourceInput, RouteResolveRequest, RouteResolveResponse,
+    TokenUsage, TransformedResponseUsageFormat, UpstreamJsonBodySource, UpstreamSseAggregationKind,
+    CLAUDE_PARSER_CONFIG, CODEX_PARSER_CONFIG, GEMINI_PARSER_CONFIG, OPENAI_PARSER_CONFIG,
 };
 use axum::{
     extract::{Path, Query, State},
@@ -1505,8 +1505,7 @@ pub async fn handle_gemini(
         InterfaceKind::GeminiNative,
         ProxyBody::Json(body),
     );
-    proxy_request.requested_model =
-        super::handler_context::extract_gemini_model_from_path(endpoint);
+    proxy_request.requested_model = extract_gemini_model_from_path(endpoint);
     proxy_request.headers = headers;
     proxy_request.extensions = extensions;
 

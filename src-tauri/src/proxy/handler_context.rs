@@ -12,8 +12,8 @@ use crate::proxy::{
     ProxyError,
 };
 use crate::proxy_core::{
-    resolve_response_timeout_config, AppKind, ProxyServices, ResponseTimeoutConfig,
-    StreamingTimeoutConfig,
+    extract_gemini_model_from_path, resolve_response_timeout_config, AppKind, ProxyServices,
+    ResponseTimeoutConfig, StreamingTimeoutConfig,
 };
 use axum::http::HeaderMap;
 use std::time::Instant;
@@ -284,92 +284,5 @@ impl RequestContext {
     #[inline]
     pub fn body_timeout_duration(&self) -> std::time::Duration {
         self.response_timeout_config().body_timeout_duration()
-    }
-}
-
-/// Pull the Gemini model name out of an API path.
-///
-/// Accepts forms like `/v1beta/models/gemini-pro:generateContent`,
-/// `/v1/models/gemini-1.5-flash`, `gemini/v1beta/models/<model>:streamGenerateContent`.
-/// Returns `None` when no `models/<name>` segment is present.
-pub(crate) fn extract_gemini_model_from_path(endpoint: &str) -> Option<String> {
-    crate::proxy_core::extract_gemini_model_from_path(endpoint)
-}
-
-#[cfg(test)]
-mod tests {
-    use super::extract_gemini_model_from_path;
-
-    #[test]
-    fn extract_model_with_action() {
-        assert_eq!(
-            extract_gemini_model_from_path("/v1beta/models/gemini-pro:generateContent").as_deref(),
-            Some("gemini-pro"),
-        );
-    }
-
-    #[test]
-    fn extract_model_with_dotted_version() {
-        assert_eq!(
-            extract_gemini_model_from_path("/v1beta/models/gemini-1.5-flash:streamGenerateContent")
-                .as_deref(),
-            Some("gemini-1.5-flash"),
-        );
-    }
-
-    #[test]
-    fn extract_model_without_action() {
-        assert_eq!(
-            extract_gemini_model_from_path("/v1/models/gemini-1.5-pro").as_deref(),
-            Some("gemini-1.5-pro"),
-        );
-    }
-
-    #[test]
-    fn extract_model_with_proxy_prefix() {
-        assert_eq!(
-            extract_gemini_model_from_path("/gemini/v1beta/models/gemini-2.0-flash:countTokens")
-                .as_deref(),
-            Some("gemini-2.0-flash"),
-        );
-    }
-
-    #[test]
-    fn extract_model_with_query_string() {
-        assert_eq!(
-            extract_gemini_model_from_path("/v1beta/models/gemini-pro:generateContent?key=abc")
-                .as_deref(),
-            Some("gemini-pro"),
-        );
-    }
-
-    #[test]
-    fn extract_model_missing_segment() {
-        assert_eq!(extract_gemini_model_from_path("/v1beta/operations"), None);
-    }
-
-    #[test]
-    fn extract_model_trailing_models_segment() {
-        // `/v1beta/models` (list endpoint) has no following segment → None.
-        assert_eq!(extract_gemini_model_from_path("/v1beta/models"), None);
-    }
-
-    #[test]
-    fn extract_model_get_with_query_only() {
-        // GET /v1beta/models/<id>?key=... 无 action verb，仅靠 ':' 拆分会把 query 带进 model 名。
-        // 修复后应该把 query 剥掉。
-        assert_eq!(
-            extract_gemini_model_from_path("/v1beta/models/gemini-pro?key=abc").as_deref(),
-            Some("gemini-pro"),
-        );
-    }
-
-    #[test]
-    fn extract_model_get_with_proxy_prefix_and_query() {
-        assert_eq!(
-            extract_gemini_model_from_path("/gemini/v1beta/models/gemini-2.0-flash?key=abc")
-                .as_deref(),
-            Some("gemini-2.0-flash"),
-        );
     }
 }
