@@ -4,7 +4,7 @@
 //! 主要面向第三方聚合站（硅基流动、OpenRouter 等），以及把 Anthropic
 //! 协议挂在兼容子路径上的官方供应商（DeepSeek、Kimi、智谱 GLM 等）。
 
-use reqwest::header::{HeaderValue, USER_AGENT};
+use reqwest::header::HeaderValue;
 use reqwest::StatusCode;
 use std::time::Duration;
 
@@ -35,7 +35,8 @@ pub async fn fetch_models(
 
     for url in &candidates {
         log::debug!("[ModelFetch] Trying endpoint: {url}");
-        let request_plan = build_openai_compatible_models_request(url, api_key);
+        let request_plan =
+            build_openai_compatible_models_request(url, api_key, user_agent.as_ref());
         let mut request = client
             .get(request_plan.url)
             .header(
@@ -45,8 +46,8 @@ pub async fn fetch_models(
             .timeout(Duration::from_secs(FETCH_TIMEOUT_SECS));
         // 自定义 User-Agent：部分 /models 端点同样有 UA 白名单（如 Kimi Coding Plan），
         // 与转发 / 检测路径共用同一 UA，避免"代理可用但取模型失败"。
-        if let Some(ua) = &user_agent {
-            request = request.header(USER_AGENT, ua.clone());
+        if let Some((header, value)) = request_plan.user_agent_header {
+            request = request.header(header, value.clone());
         }
         let response = match request.send().await {
             Ok(r) => r,

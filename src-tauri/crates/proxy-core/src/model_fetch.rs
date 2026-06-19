@@ -6,6 +6,7 @@ use std::collections::HashSet;
 pub const DEFAULT_CODEX_MODEL_CONTEXT_WINDOW: u64 = 128_000;
 pub const MODEL_FETCH_ERROR_BODY_MAX_CHARS: usize = 512;
 pub const MODEL_FETCH_AUTHORIZATION_HEADER: &str = "Authorization";
+pub const MODEL_FETCH_USER_AGENT_HEADER: &str = "User-Agent";
 pub const CODEX_OAUTH_MODELS_URL: &str = "https://chatgpt.com/backend-api/codex/models";
 pub const CODEX_OAUTH_MODELS_CLIENT_VERSION_QUERY: &str = "client_version";
 pub const CODEX_OAUTH_MODELS_ORIGINATOR_HEADER: &str = "originator";
@@ -50,6 +51,7 @@ pub struct CodexOAuthModelsRequest<'a> {
 pub struct OpenAiCompatibleModelsRequest<'a> {
     pub url: &'a str,
     pub authorization_header: (&'static str, String),
+    pub user_agent_header: Option<(&'static str, &'a http::HeaderValue)>,
 }
 
 /// Known Anthropic-compatible subpath suffixes. Keep longest suffixes first so
@@ -147,10 +149,12 @@ pub fn parse_models_response_bytes(body: &[u8]) -> Result<Vec<FetchedModel>, Str
 pub fn build_openai_compatible_models_request<'a>(
     url: &'a str,
     api_key: &str,
+    user_agent: Option<&'a http::HeaderValue>,
 ) -> OpenAiCompatibleModelsRequest<'a> {
     OpenAiCompatibleModelsRequest {
         url,
         authorization_header: (MODEL_FETCH_AUTHORIZATION_HEADER, format!("Bearer {api_key}")),
+        user_agent_header: user_agent.map(|value| (MODEL_FETCH_USER_AGENT_HEADER, value)),
     }
 }
 
@@ -815,13 +819,32 @@ mod tests {
 
     #[test]
     fn build_openai_compatible_models_request_uses_bearer_auth_contract() {
-        let request =
-            build_openai_compatible_models_request("https://api.example.com/v1/models", "sk-test");
+        let request = build_openai_compatible_models_request(
+            "https://api.example.com/v1/models",
+            "sk-test",
+            None,
+        );
 
         assert_eq!(request.url, "https://api.example.com/v1/models");
         assert_eq!(
             request.authorization_header,
             (MODEL_FETCH_AUTHORIZATION_HEADER, "Bearer sk-test".to_string())
+        );
+        assert!(request.user_agent_header.is_none());
+    }
+
+    #[test]
+    fn build_openai_compatible_models_request_preserves_custom_user_agent_contract() {
+        let user_agent = http::HeaderValue::from_static("cc-switch-test");
+        let request = build_openai_compatible_models_request(
+            "https://api.example.com/v1/models",
+            "sk-test",
+            Some(&user_agent),
+        );
+
+        assert_eq!(
+            request.user_agent_header,
+            Some((MODEL_FETCH_USER_AGENT_HEADER, &user_agent))
         );
     }
 
