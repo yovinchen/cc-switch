@@ -770,6 +770,19 @@ pub fn transformed_response_usage(
     })
 }
 
+pub fn resolve_usage_response_model(
+    usage_model: Option<&str>,
+    response_body_model: Option<&str>,
+    request_model: &str,
+    outbound_model: Option<&str>,
+) -> String {
+    let response_model = usage_model
+        .and_then(non_empty_model)
+        .or_else(|| response_body_model.and_then(non_empty_model));
+    let models = normalize_usage_models(response_model.as_deref(), request_model, outbound_model);
+    models.response_model.unwrap_or(models.outbound_model)
+}
+
 pub fn usage_tokens_from_token_usage(usage: &TokenUsage) -> UsageTokens {
     UsageTokens {
         input_tokens: usage.input_tokens as u64,
@@ -1866,6 +1879,37 @@ mod tests {
         assert_eq!(models.response_model.as_deref(), Some("upstream-model"));
         assert_eq!(models.request_model, "request-model");
         assert_eq!(models.outbound_model, "upstream-model");
+    }
+
+    #[test]
+    fn test_resolve_usage_response_model_prefers_usage_then_body() {
+        assert_eq!(
+            resolve_usage_response_model(
+                Some(" usage-model "),
+                Some("body-model"),
+                "request-model",
+                Some("outbound-model"),
+            ),
+            "usage-model"
+        );
+
+        assert_eq!(
+            resolve_usage_response_model(None, Some(" body-model "), "request-model", None),
+            "body-model"
+        );
+    }
+
+    #[test]
+    fn test_resolve_usage_response_model_falls_back_to_outbound_then_request() {
+        assert_eq!(
+            resolve_usage_response_model(None, None, "request-model", Some(" outbound-model ")),
+            "outbound-model"
+        );
+
+        assert_eq!(
+            resolve_usage_response_model(None, Some(" "), "request-model", None),
+            "request-model"
+        );
     }
 
     #[test]

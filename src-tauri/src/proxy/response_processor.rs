@@ -11,9 +11,10 @@ use super::{
     ProxyError,
 };
 use crate::proxy_core::{
-    decode_response_body, get_content_encoding, strip_hop_by_hop_response_headers, ProviderKind,
-    ProxyServices, ResponseBodyDecodeStatus, SseEventScanner, SseUsageAccumulator,
-    StreamUsageEventFilter, StreamingTimeoutConfig, TokenUsage, UsageParserConfig,
+    decode_response_body, get_content_encoding, resolve_usage_response_model,
+    strip_hop_by_hop_response_headers, ProviderKind, ProxyServices, ResponseBodyDecodeStatus,
+    SseEventScanner, SseUsageAccumulator, StreamUsageEventFilter, StreamingTimeoutConfig,
+    TokenUsage, UsageParserConfig,
 };
 use axum::http::header::HeaderMap;
 use axum::response::{IntoResponse, Response};
@@ -166,23 +167,17 @@ pub async fn handle_non_streaming(
     // 解析并记录使用量。关闭 usage logging 时直接跳过，避免非流式响应整包 JSON parse。
     if usage_logging_enabled(state) {
         if let Ok(json_value) = serde_json::from_slice::<Value>(&body_bytes) {
+            let response_body_model = json_value.get("model").and_then(|model| model.as_str());
             // 解析使用量
             if let Some(usage) = (parser_config.response_parser)(&json_value) {
                 // 归因优先级：usage 解析出的模型 → 响应 model 字段 → 映射后的出站
                 // 模型（路由接管真值）→ 客户端请求模型。空字符串视为缺失。
-                let model = usage
-                    .model
-                    .clone()
-                    .filter(|m| !m.is_empty())
-                    .or_else(|| {
-                        json_value
-                            .get("model")
-                            .and_then(|m| m.as_str())
-                            .filter(|m| !m.is_empty())
-                            .map(str::to_string)
-                    })
-                    .or_else(|| ctx.outbound_model.clone())
-                    .unwrap_or_else(|| ctx.request_model.clone());
+                let model = resolve_usage_response_model(
+                    usage.model.as_deref(),
+                    response_body_model,
+                    &ctx.request_model,
+                    ctx.outbound_model.as_deref(),
+                );
 
                 spawn_log_usage(
                     state,
@@ -194,13 +189,12 @@ pub async fn handle_non_streaming(
                     false,
                 );
             } else {
-                let model = json_value
-                    .get("model")
-                    .and_then(|m| m.as_str())
-                    .filter(|m| !m.is_empty())
-                    .map(str::to_string)
-                    .or_else(|| ctx.outbound_model.clone())
-                    .unwrap_or_else(|| ctx.request_model.clone());
+                let model = resolve_usage_response_model(
+                    None,
+                    response_body_model,
+                    &ctx.request_model,
+                    ctx.outbound_model.as_deref(),
+                );
                 spawn_log_usage(
                     state,
                     ctx,
@@ -221,11 +215,17 @@ pub async fn handle_non_streaming(
                 ctx.tag,
                 body_bytes.len()
             );
+            let model = resolve_usage_response_model(
+                None,
+                None,
+                &ctx.request_model,
+                ctx.outbound_model.as_deref(),
+            );
             spawn_log_usage(
                 state,
                 ctx,
                 TokenUsage::default(),
-                ctx.outbound_model.as_deref().unwrap_or(&ctx.request_model),
+                &model,
                 &ctx.request_model,
                 status.as_u16(),
                 false,
