@@ -6,8 +6,8 @@
 use crate::app_config::AppType;
 use crate::provider::{Provider, ProviderMeta};
 use crate::proxy_core::{
-    claude_api_format_for_interface_kind, codex_api_format_for_interface_kind,
-    ChannelRouteCandidate, RoutePlan,
+    apply_channel_route_model_override, claude_api_format_for_interface_kind,
+    codex_api_format_for_interface_kind, ChannelRouteCandidate, RoutePlan,
 };
 use serde_json::{Map, Value};
 use std::collections::HashMap;
@@ -129,28 +129,22 @@ pub(crate) fn apply_channel_model_override(body: &mut Value, attempt: &ForwardAt
     let Some(channel) = attempt.channel() else {
         return;
     };
-    let Some(upstream_model) = channel.upstream_model.as_deref() else {
-        return;
-    };
     let Some(current_model) = body.get("model").and_then(Value::as_str) else {
         return;
     };
+    let current_model = current_model.to_string();
 
-    let should_override = channel
-        .public_model
-        .as_deref()
-        .map(|public_model| current_model == public_model)
-        .unwrap_or(false)
-        || current_model == upstream_model;
-
-    if should_override && current_model != upstream_model {
+    if let Some(upstream_model) = apply_channel_route_model_override(
+        body,
+        channel.public_model.as_deref(),
+        channel.upstream_model.as_deref(),
+    ) {
         log::debug!(
             "[ChannelRoute] model override via channel {}: {} -> {}",
             channel.channel_id,
             current_model,
             upstream_model
         );
-        body["model"] = Value::String(upstream_model.to_string());
     }
 }
 

@@ -159,6 +159,29 @@ pub fn apply_codex_chat_upstream_model_policy(
     Some(upstream_model.to_string())
 }
 
+pub fn apply_channel_route_model_override(
+    body: &mut Value,
+    public_model: Option<&str>,
+    upstream_model: Option<&str>,
+) -> Option<String> {
+    let upstream_model = upstream_model.map(str::trim).filter(|model| !model.is_empty())?;
+    let current_model = body.get("model").and_then(Value::as_str)?;
+
+    let should_override = public_model
+        .map(str::trim)
+        .filter(|model| !model.is_empty())
+        .map(|public_model| current_model == public_model)
+        .unwrap_or(false)
+        || current_model == upstream_model;
+
+    if should_override && current_model != upstream_model {
+        body["model"] = Value::String(upstream_model.to_string());
+        Some(upstream_model.to_string())
+    } else {
+        None
+    }
+}
+
 pub fn map_codex_chat_reasoning_effort(
     effort: &str,
     mode: Option<&str>,
@@ -427,8 +450,8 @@ fn matches_schema_name_map(key: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::{
-        apply_codex_chat_upstream_model_policy, canonicalize_request_body_value,
-        clean_openai_tool_schema, codex_chat_reasoning_requested,
+        apply_channel_route_model_override, apply_codex_chat_upstream_model_policy,
+        canonicalize_request_body_value, clean_openai_tool_schema, codex_chat_reasoning_requested,
         codex_provider_catalog_model_ids_from_settings, filter_private_params,
         filter_private_params_with_whitelist, filter_private_params_with_whitelist_report,
         inject_openai_stream_include_usage, is_openai_o_series,
@@ -740,6 +763,40 @@ mod tests {
 
         assert!(selected.is_none());
         assert_eq!(body["model"], "client-placeholder");
+    }
+
+    #[test]
+    fn channel_route_model_override_rewrites_public_model() {
+        let mut body = json!({"model": "sonnet-public"});
+        let selected = apply_channel_route_model_override(
+            &mut body,
+            Some("sonnet-public"),
+            Some("upstream-sonnet"),
+        );
+
+        assert_eq!(selected.as_deref(), Some("upstream-sonnet"));
+        assert_eq!(body["model"], "upstream-sonnet");
+    }
+
+    #[test]
+    fn channel_route_model_override_skips_unmatched_or_already_upstream_model() {
+        let mut unrelated = json!({"model": "other-model"});
+        let selected = apply_channel_route_model_override(
+            &mut unrelated,
+            Some("sonnet-public"),
+            Some("upstream-sonnet"),
+        );
+        assert!(selected.is_none());
+        assert_eq!(unrelated["model"], "other-model");
+
+        let mut already_upstream = json!({"model": "upstream-sonnet"});
+        let selected = apply_channel_route_model_override(
+            &mut already_upstream,
+            Some("sonnet-public"),
+            Some("upstream-sonnet"),
+        );
+        assert!(selected.is_none());
+        assert_eq!(already_upstream["model"], "upstream-sonnet");
     }
 
     #[test]
