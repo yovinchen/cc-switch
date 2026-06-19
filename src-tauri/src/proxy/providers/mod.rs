@@ -18,9 +18,11 @@ mod gemini;
 
 use crate::app_config::AppType;
 use crate::provider::Provider;
-use crate::proxy_core::{infer_claude_provider_kind, is_gemini_oauth_key_shape, ProviderKind};
+use crate::proxy_core::{
+    infer_claude_provider_kind, is_gemini_oauth_key_shape, ProviderAuthStrategy as AuthStrategy,
+    ProviderKind,
+};
 
-pub use crate::proxy_core::{ProviderAuthInfo as AuthInfo, ProviderAuthStrategy as AuthStrategy};
 pub use adapter::ProviderAdapter;
 pub use claude::{
     get_claude_api_format, normalize_anthropic_messages_for_provider,

@@ -6,13 +6,13 @@
 //! - **Gemini**: API Key 认证 (x-goog-api-key)
 //! - **GeminiCli**: OAuth Bearer 认证 (用于 Gemini CLI)
 
-use super::{AuthInfo, AuthStrategy, ProviderAdapter};
+use super::ProviderAdapter;
 use crate::provider::Provider;
 use crate::proxy::error::ProxyError;
 use crate::proxy_core::{
     build_gemini_auth_headers, build_gemini_upstream_url, extract_gemini_api_key_from_settings,
     extract_gemini_base_url_from_settings, parse_gemini_oauth_credentials, GeminiOAuthCredentials,
-    ProviderKind,
+    ProviderAuthInfo as AuthInfo, ProviderAuthStrategy as AuthStrategy, ProviderKind,
 };
 
 /// Gemini 适配器

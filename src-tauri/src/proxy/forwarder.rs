@@ -9,7 +9,7 @@ use super::{
     provider_router::ProviderRouter,
     providers::{
         codex_chat_history::CodexChatHistoryStore, get_adapter,
-        provider_kind_from_app_type_and_config, AuthInfo, AuthStrategy, ProviderAdapter,
+        provider_kind_from_app_type_and_config, ProviderAdapter,
     },
     route_attempt::{
         apply_channel_model_override, forward_attempts_from_route_plan, ForwardAttempt,
@@ -49,7 +49,8 @@ use crate::proxy_core::{
     AttemptEventPhase, ChannelQuery, CopilotAuthHeaderOverrides, CopilotOptimizerConfig,
     CurrentRouteTarget, ForwardFailureCategory, ForwardFailureKind, GeminiShadowStore,
     InterfaceKind, MediaRetryInput, OptimizerConfig, PromptCacheTraceLogInput, ProxyBody,
-    ProxyEngine, ProxyRequest, ProxyRuntimeStatus as ProxyStatus, ProxyServices, ProviderKind,
+    ProxyEngine, ProxyRequest, ProxyRuntimeStatus as ProxyStatus, ProxyServices,
+    ProviderAuthInfo as AuthInfo, ProviderAuthStrategy as AuthStrategy, ProviderKind,
     RectifierConfig, ResolvedChannelAttempt, UpstreamAuthHeadersInput, UpstreamRequestHeadersInput,
     UpstreamSendPolicyInput, UpstreamTransportKind, UNSUPPORTED_IMAGE_MARKER,
 };

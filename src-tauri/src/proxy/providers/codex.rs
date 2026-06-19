@@ -5,13 +5,14 @@
 //! ## 客户端检测
 //! 支持检测官方 Codex 客户端 (codex_vscode, codex_cli_rs)
 
-use super::{AuthInfo, AuthStrategy, ProviderAdapter};
+use super::ProviderAdapter;
 use crate::provider::{CodexChatReasoningConfig, Provider};
 use crate::proxy::error::ProxyError;
 use crate::proxy_core::{
     apply_codex_chat_upstream_model_policy, build_codex_bearer_auth_headers,
     build_codex_upstream_url, codex_provider_catalog_model_ids_from_settings,
     infer_codex_chat_reasoning_profile, normalize_codex_chat_reasoning_profile,
+    ProviderAuthInfo as AuthInfo, ProviderAuthStrategy as AuthStrategy,
     resolve_codex_provider_upstream_model, resolve_codex_provider_uses_chat_completions,
     should_convert_codex_responses_endpoint_to_chat, CodexChatReasoningOptions,
     CodexChatReasoningProfile,

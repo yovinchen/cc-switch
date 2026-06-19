@@ -14,7 +14,7 @@
 //! - **OpenRouter**: 已支持 Claude Code 兼容接口，默认透传
 //! - **GitHubCopilot**: GitHub Copilot (OAuth + Copilot Token)
 
-use super::{AuthInfo, AuthStrategy, ProviderAdapter};
+use super::ProviderAdapter;
 use crate::provider::Provider;
 use crate::proxy::error::ProxyError;
 use crate::proxy_core::{
@@ -28,7 +28,8 @@ use crate::proxy_core::{
     openai_responses_to_anthropic_message, resolve_claude_api_format_from_settings,
     resolve_claude_responses_prompt_cache_key, should_normalize_anthropic_tool_thinking_history,
     should_preserve_reasoning_content_for_openai_chat, ClaudeAuthHeaderKind, ClaudeAuthKey,
-    ClaudeAuthKeySource, CopilotAuthHeadersInput, ProviderKind,
+    ClaudeAuthKeySource, CopilotAuthHeadersInput, ProviderAuthInfo as AuthInfo,
+    ProviderAuthStrategy as AuthStrategy, ProviderKind,
 };
 use serde_json::Value;
 
