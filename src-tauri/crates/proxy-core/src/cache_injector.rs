@@ -117,6 +117,31 @@ pub fn inject_cache_control(
     report
 }
 
+pub fn cache_injection_log_message(report: &CacheInjectionReport) -> Option<String> {
+    if !report.enabled {
+        return None;
+    }
+
+    if report.budget_exhausted {
+        return if report.existing > 0 {
+            Some(format!(
+                "[OPT] cache: ttl-upgrade({}->{},existing={})",
+                report.existing, report.ttl, report.existing
+            ))
+        } else {
+            Some(format!("[OPT] cache: no-op(existing={})", report.existing))
+        };
+    }
+
+    Some(format!(
+        "[OPT] cache: {}bp({},{},pre={})",
+        report.injected.len(),
+        report.injected.join("+"),
+        report.ttl,
+        report.existing,
+    ))
+}
+
 fn make_cache_control(ttl: &str) -> Value {
     if ttl == "5m" {
         json!({"type": "ephemeral"})
@@ -201,6 +226,40 @@ mod tests {
             enabled: true,
             ttl: "1h".to_string(),
         }
+    }
+
+    #[test]
+    fn log_message_matches_cache_injection_report() {
+        assert_eq!(
+            cache_injection_log_message(&CacheInjectionReport {
+                enabled: true,
+                existing: 1,
+                ttl: "1h".to_string(),
+                injected: vec!["tools".to_string(), "system".to_string()],
+                budget_exhausted: false,
+            })
+            .as_deref(),
+            Some("[OPT] cache: 2bp(tools+system,1h,pre=1)")
+        );
+        assert_eq!(
+            cache_injection_log_message(&CacheInjectionReport {
+                enabled: true,
+                existing: 4,
+                ttl: "5m".to_string(),
+                injected: Vec::new(),
+                budget_exhausted: true,
+            })
+            .as_deref(),
+            Some("[OPT] cache: ttl-upgrade(4->5m,existing=4)")
+        );
+        assert!(cache_injection_log_message(&CacheInjectionReport {
+            enabled: false,
+            existing: 0,
+            ttl: "1h".to_string(),
+            injected: Vec::new(),
+            budget_exhausted: false,
+        })
+        .is_none());
     }
 
     #[test]

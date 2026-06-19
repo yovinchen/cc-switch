@@ -102,6 +102,21 @@ pub fn optimize_thinking(
     }
 }
 
+pub fn thinking_optimization_log_message(report: &ThinkingOptimizationReport) -> Option<String> {
+    match report.path {
+        ThinkingOptimizationPath::Disabled | ThinkingOptimizationPath::MissingModel => None,
+        ThinkingOptimizationPath::SkipHaiku => Some("[OPT] thinking: skip(haiku)".to_string()),
+        ThinkingOptimizationPath::Adaptive => report
+            .model
+            .as_deref()
+            .map(|model| format!("[OPT] thinking: adaptive({model})")),
+        ThinkingOptimizationPath::Legacy => report
+            .model
+            .as_deref()
+            .map(|model| format!("[OPT] thinking: legacy({model})")),
+    }
+}
+
 fn uses_adaptive_thinking(model: &str) -> bool {
     let normalized = model.replace('.', "-");
     ["opus-4-8", "opus-4-7", "opus-4-6", "sonnet-4-6"]
@@ -137,6 +152,39 @@ mod tests {
 
     fn disabled_config() -> ThinkingOptimizerConfig {
         ThinkingOptimizerConfig { enabled: false }
+    }
+
+    #[test]
+    fn log_message_matches_optimization_path() {
+        assert_eq!(
+            thinking_optimization_log_message(&ThinkingOptimizationReport {
+                path: ThinkingOptimizationPath::Adaptive,
+                model: Some("anthropic.claude-opus-4-6".to_string()),
+            })
+            .as_deref(),
+            Some("[OPT] thinking: adaptive(anthropic.claude-opus-4-6)")
+        );
+        assert_eq!(
+            thinking_optimization_log_message(&ThinkingOptimizationReport {
+                path: ThinkingOptimizationPath::Legacy,
+                model: Some("anthropic.claude-sonnet-4-5".to_string()),
+            })
+            .as_deref(),
+            Some("[OPT] thinking: legacy(anthropic.claude-sonnet-4-5)")
+        );
+        assert_eq!(
+            thinking_optimization_log_message(&ThinkingOptimizationReport {
+                path: ThinkingOptimizationPath::SkipHaiku,
+                model: Some("anthropic.claude-haiku".to_string()),
+            })
+            .as_deref(),
+            Some("[OPT] thinking: skip(haiku)")
+        );
+        assert!(thinking_optimization_log_message(&ThinkingOptimizationReport {
+            path: ThinkingOptimizationPath::Disabled,
+            model: None,
+        })
+        .is_none());
     }
 
     #[test]

@@ -10,22 +10,8 @@ pub fn optimize(body: &mut Value, config: &OptimizerConfig) {
     let report =
         crate::proxy_core::optimize_thinking(body, &config.thinking_optimizer_core_config());
 
-    match report.path {
-        crate::proxy_core::ThinkingOptimizationPath::Disabled
-        | crate::proxy_core::ThinkingOptimizationPath::MissingModel => {}
-        crate::proxy_core::ThinkingOptimizationPath::SkipHaiku => {
-            log::info!("[OPT] thinking: skip(haiku)");
-        }
-        crate::proxy_core::ThinkingOptimizationPath::Adaptive => {
-            if let Some(model) = report.model {
-                log::info!("[OPT] thinking: adaptive({model})");
-            }
-        }
-        crate::proxy_core::ThinkingOptimizationPath::Legacy => {
-            if let Some(model) = report.model {
-                log::info!("[OPT] thinking: legacy({model})");
-            }
-        }
+    if let Some(message) = crate::proxy_core::thinking_optimization_log_message(&report) {
+        log::info!("{message}");
     }
 }
 

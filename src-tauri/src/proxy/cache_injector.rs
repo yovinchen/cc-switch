@@ -9,31 +9,9 @@ use serde_json::Value;
 pub fn inject(body: &mut Value, config: &OptimizerConfig) {
     let report =
         crate::proxy_core::inject_cache_control(body, &config.cache_injection_core_config());
-    if !report.enabled {
-        return;
+    if let Some(message) = crate::proxy_core::cache_injection_log_message(&report) {
+        log::info!("{message}");
     }
-
-    if report.budget_exhausted {
-        if report.existing > 0 {
-            log::info!(
-                "[OPT] cache: ttl-upgrade({}->{},existing={})",
-                report.existing,
-                report.ttl,
-                report.existing
-            );
-        } else {
-            log::info!("[OPT] cache: no-op(existing={})", report.existing);
-        }
-        return;
-    }
-
-    log::info!(
-        "[OPT] cache: {}bp({},{},pre={})",
-        report.injected.len(),
-        report.injected.join("+"),
-        report.ttl,
-        report.existing,
-    );
 }
 
 #[cfg(test)]
