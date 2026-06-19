@@ -1,8 +1,10 @@
 use crate::provider::Provider;
 use crate::proxy_core::{
     error_usage_record_with_request_id_fallback, success_usage_record_with_request_id_fallback,
-    AppKind, ProviderKind, TokenUsage, UsageRecord,
+    transformed_response_usage_record_with_request_id_fallback, AppKind, ProviderKind, TokenUsage,
+    TransformedResponseUsageFormat, UsageRecord,
 };
+use serde_json::Value;
 
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn success_usage_record(
@@ -63,6 +65,33 @@ pub(crate) fn error_usage_record(
     )
 }
 
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn transformed_response_usage_record(
+    body: &Value,
+    format: TransformedResponseUsageFormat,
+    provider: &Provider,
+    app_type: &str,
+    request_model: &str,
+    outbound_model: Option<&str>,
+    latency_ms: u64,
+    status_code: u16,
+    session_id: Option<String>,
+) -> Option<UsageRecord> {
+    transformed_response_usage_record_with_request_id_fallback(
+        body,
+        format,
+        &provider.id,
+        provider_kind_from_provider(provider),
+        AppKind::from(app_type),
+        request_model,
+        outbound_model,
+        latency_ms,
+        status_code,
+        session_id,
+        || uuid::Uuid::new_v4().to_string(),
+    )
+}
+
 pub(crate) fn provider_kind_from_provider(provider: &Provider) -> Option<ProviderKind> {
     provider
         .meta
@@ -75,7 +104,7 @@ pub(crate) fn provider_kind_from_provider(provider: &Provider) -> Option<Provide
 mod tests {
     use super::*;
     use crate::provider::{Provider, ProviderMeta};
-    use crate::proxy_core::ProviderKind;
+    use crate::proxy_core::{AppKind, ProviderKind};
     use serde_json::json;
 
     #[test]
@@ -146,5 +175,51 @@ mod tests {
         assert_eq!(record.status_code, 502);
         assert_eq!(record.error_message.as_deref(), Some("upstream failed"));
         assert_eq!(record.tokens.input_tokens, 0);
+    }
+
+    #[test]
+    fn transformed_response_record_adapts_host_provider_and_app() {
+        let mut provider = Provider::with_id(
+            "provider-a".to_string(),
+            "Provider A".to_string(),
+            json!({}),
+            None,
+        );
+        provider.meta = Some(ProviderMeta {
+            provider_type: Some("github_copilot".to_string()),
+            ..ProviderMeta::default()
+        });
+
+        let record = transformed_response_usage_record(
+            &json!({
+                "id": "msg_1",
+                "model": "claude-response-model",
+                "usage": {
+                    "input_tokens": 3,
+                    "output_tokens": 5
+                }
+            }),
+            TransformedResponseUsageFormat::Claude,
+            &provider,
+            "claude-desktop",
+            "request-model",
+            Some("outbound-model"),
+            123,
+            200,
+            Some("session-1".to_string()),
+        )
+        .expect("usage record");
+
+        assert_eq!(record.app, AppKind::ClaudeDesktop);
+        assert_eq!(record.provider_id, "provider-a");
+        assert_eq!(record.provider_kind, Some(ProviderKind::GitHubCopilot));
+        assert_eq!(
+            record.response_model.as_deref(),
+            Some("claude-response-model")
+        );
+        assert_eq!(record.request_model, "request-model");
+        assert_eq!(record.outbound_model, "outbound-model");
+        assert_eq!(record.tokens.input_tokens, 3);
+        assert!(!record.is_streaming);
     }
 }

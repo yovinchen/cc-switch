@@ -770,6 +770,39 @@ pub fn transformed_response_usage(
     })
 }
 
+#[allow(clippy::too_many_arguments)]
+pub fn transformed_response_usage_record_with_request_id_fallback(
+    body: &Value,
+    format: TransformedResponseUsageFormat,
+    provider_id: &str,
+    provider_kind: Option<ProviderKind>,
+    app: AppKind,
+    request_model: &str,
+    outbound_model: Option<&str>,
+    latency_ms: u64,
+    status_code: u16,
+    session_id: Option<String>,
+    request_id_fallback: impl FnOnce() -> String,
+) -> Option<UsageRecord> {
+    let usage = transformed_response_usage(body, format, request_model, outbound_model)?;
+
+    Some(success_usage_record_with_request_id_fallback(
+        provider_id,
+        provider_kind,
+        app,
+        &usage.response_model,
+        &usage.request_model,
+        &usage.outbound_model,
+        usage.usage,
+        latency_ms,
+        None,
+        false,
+        status_code,
+        session_id,
+        request_id_fallback,
+    ))
+}
+
 pub fn resolve_usage_response_model(
     usage_model: Option<&str>,
     response_body_model: Option<&str>,
@@ -2008,6 +2041,77 @@ mod tests {
         );
 
         assert!(usage.is_none());
+    }
+
+    #[test]
+    fn test_transformed_response_usage_record_builds_non_streaming_success_record() {
+        let response = json!({
+            "id": "msg_1",
+            "model": "claude-response-model",
+            "usage": {
+                "input_tokens": 3,
+                "output_tokens": 5
+            }
+        });
+
+        let record = transformed_response_usage_record_with_request_id_fallback(
+            &response,
+            TransformedResponseUsageFormat::Claude,
+            "provider-a",
+            Some(crate::ProviderKind::GitHubCopilot),
+            crate::AppKind::ClaudeDesktop,
+            "request-model",
+            Some("outbound-model"),
+            123,
+            200,
+            Some("session-1".to_string()),
+            || "request-1".to_string(),
+        )
+        .expect("usage record");
+
+        assert_eq!(record.request_id.as_deref(), Some("session:msg_1"));
+        assert_eq!(record.message_id.as_deref(), Some("msg_1"));
+        assert_eq!(record.app, crate::AppKind::ClaudeDesktop);
+        assert_eq!(record.provider_id, "provider-a");
+        assert_eq!(record.provider_kind, Some(crate::ProviderKind::GitHubCopilot));
+        assert_eq!(record.request_model, "request-model");
+        assert_eq!(record.outbound_model, "outbound-model");
+        assert_eq!(record.response_model.as_deref(), Some("claude-response-model"));
+        assert_eq!(record.tokens.input_tokens, 3);
+        assert_eq!(record.tokens.output_tokens, 5);
+        assert_eq!(record.latency_ms, 123);
+        assert_eq!(record.first_token_ms, None);
+        assert_eq!(record.status_code, 200);
+        assert_eq!(record.session_id.as_deref(), Some("session-1"));
+        assert!(!record.is_streaming);
+    }
+
+    #[test]
+    fn test_transformed_response_usage_record_skips_zero_usage_without_fallback() {
+        let response = json!({
+            "model": "o3",
+            "usage": {
+                "input_tokens": 0,
+                "output_tokens": 0,
+                "total_tokens": 0
+            }
+        });
+
+        let record = transformed_response_usage_record_with_request_id_fallback(
+            &response,
+            TransformedResponseUsageFormat::CodexAuto,
+            "provider-a",
+            None,
+            crate::AppKind::Codex,
+            "request-model",
+            None,
+            123,
+            200,
+            None,
+            || panic!("request id fallback should not run when usage is skipped"),
+        );
+
+        assert!(record.is_none());
     }
 
     #[test]

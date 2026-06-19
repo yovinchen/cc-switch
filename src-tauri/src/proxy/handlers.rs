@@ -32,7 +32,10 @@ use super::{
     },
     server::ProxyState,
     types::*,
-    usage_sink_bridge::{error_usage_record, provider_kind_from_provider, success_usage_record},
+    usage_sink_bridge::{
+        error_usage_record, provider_kind_from_provider, success_usage_record,
+        transformed_response_usage_record,
+    },
     ProxyError,
 };
 use crate::app_config::AppType;
@@ -46,17 +49,17 @@ use crate::proxy_core::{
     openai_chat_to_anthropic_message, openai_responses_to_anthropic_message,
     parse_upstream_json_or_unlabeled_sse, rebuilt_json_proxy_response,
     resolve_management_auth_decision, should_aggregate_codex_oauth_responses_sse,
-    should_use_claude_transform_streaming, strip_endpoint_prefix, transformed_response_usage,
-    transformed_sse_proxy_response, validate_claude_desktop_gateway_bearer_header,
-    validate_management_app_type, validate_management_bearer_header,
-    validate_route_resolve_app_type, AppChannelListQuery, AppChannelListResponse,
-    AppChannelResponse, AppChannelRouteResponse, AppKind, AppListResponse, AppModelListQuery,
-    AppSummaryInput, ChannelDeleteResponse, ChannelHealthResetResponse, ChannelListQuery,
-    ChannelListResponse, ChannelMigrationMaterializeInput, ChannelMigrationMaterializeResponse,
-    ChannelMigrationPreviewInput, ChannelMigrationPreviewResponse, ChannelModelsResponse,
-    ChannelRouteCandidate, ChannelRouteRejected, ClaudeDesktopModelListResponse,
-    CurrentRouteProviderSummaryInput, CurrentRouteResponse, GroupListQuery, HealthCheckResponse,
-    InterfaceKind, ManagementAuthDecision, ProviderListResponse, ProviderSummaryInput, ProxyBody,
+    should_use_claude_transform_streaming, strip_endpoint_prefix, transformed_sse_proxy_response,
+    validate_claude_desktop_gateway_bearer_header, validate_management_app_type,
+    validate_management_bearer_header, validate_route_resolve_app_type, AppChannelListQuery,
+    AppChannelListResponse, AppChannelResponse, AppChannelRouteResponse, AppKind, AppListResponse,
+    AppModelListQuery, AppSummaryInput, ChannelDeleteResponse, ChannelHealthResetResponse,
+    ChannelListQuery, ChannelListResponse, ChannelMigrationMaterializeInput,
+    ChannelMigrationMaterializeResponse, ChannelMigrationPreviewInput,
+    ChannelMigrationPreviewResponse, ChannelModelsResponse, ChannelRouteCandidate,
+    ChannelRouteRejected, ClaudeDesktopModelListResponse, CurrentRouteProviderSummaryInput,
+    CurrentRouteResponse, GroupListQuery, HealthCheckResponse, InterfaceKind,
+    ManagementAuthDecision, ProviderListResponse, ProviderSummaryInput, ProxyBody,
     ProxyChannelModelsReplaceRequest, ProxyChannelPatchRequest, ProxyChannelWriteRequest,
     ProxyEngine, ProxyRequest, ProxyResult, ProxyServices, RoutableModelList,
     RouteGroupListResponse, RouteGroupSourceInput, RouteResolveRequest, RouteResolveResponse,
@@ -934,43 +937,25 @@ async fn handle_claude_transform(
         e
     })?;
 
-    if let Some(usage) = transformed_response_usage(
-        &anthropic_response,
-        TransformedResponseUsageFormat::Claude,
-        &ctx.request_model,
-        ctx.outbound_model.as_deref(),
-    ) {
-        let latency_ms = ctx.latency_ms();
-
-        let model = usage.response_model;
-        let request_model = usage.request_model;
-        let outbound_model = usage.outbound_model;
-        let token_usage = usage.usage;
-        let app_type_str = ctx.app_type_str;
-        tokio::spawn({
-            let state = state.clone();
-            let provider_id = ctx.provider.id.clone();
-            let provider_kind = provider_kind_from_provider(&ctx.provider);
-            let session_id = ctx.session_id.clone();
-            async move {
-                log_usage(
-                    &state,
-                    &provider_id,
-                    provider_kind,
-                    app_type_str,
-                    &model,
-                    &request_model,
-                    &outbound_model,
-                    token_usage,
-                    latency_ms,
-                    None,
-                    false,
-                    status.as_u16(),
-                    Some(session_id),
-                )
-                .await;
-            }
-        });
+    if usage_logging_enabled(state) {
+        if let Some(record) = transformed_response_usage_record(
+            &anthropic_response,
+            TransformedResponseUsageFormat::Claude,
+            &ctx.provider,
+            ctx.app_type_str,
+            &ctx.request_model,
+            ctx.outbound_model.as_deref(),
+            ctx.latency_ms(),
+            status.as_u16(),
+            Some(ctx.session_id.clone()),
+        ) {
+            let services = state.proxy_core_services.clone();
+            tokio::spawn(async move {
+                if let Err(e) = services.usage_sink().record_usage(record).await {
+                    log::warn!("[USG-001] 记录使用量失败: {e}");
+                }
+            });
+        }
     }
 
     let response = rebuilt_json_proxy_response(status, response_headers, anthropic_response)
@@ -1344,42 +1329,25 @@ async fn handle_codex_chat_to_responses_transform(
         .record_response(&responses_response)
         .await;
 
-    if let Some(usage) = transformed_response_usage(
-        &responses_response,
-        TransformedResponseUsageFormat::CodexAuto,
-        &ctx.request_model,
-        ctx.outbound_model.as_deref(),
-    ) {
-        let model = usage.response_model;
-        let request_model = usage.request_model;
-        let outbound_model = usage.outbound_model;
-        let token_usage = usage.usage;
-        let app_type_str = ctx.app_type_str;
-        tokio::spawn({
-            let state = state.clone();
-            let provider_id = ctx.provider.id.clone();
-            let provider_kind = provider_kind_from_provider(&ctx.provider);
-            let session_id = ctx.session_id.clone();
-            let latency_ms = ctx.latency_ms();
-            async move {
-                log_usage(
-                    &state,
-                    &provider_id,
-                    provider_kind,
-                    app_type_str,
-                    &model,
-                    &request_model,
-                    &outbound_model,
-                    token_usage,
-                    latency_ms,
-                    None,
-                    false,
-                    status.as_u16(),
-                    Some(session_id),
-                )
-                .await;
-            }
-        });
+    if usage_logging_enabled(state) {
+        if let Some(record) = transformed_response_usage_record(
+            &responses_response,
+            TransformedResponseUsageFormat::CodexAuto,
+            &ctx.provider,
+            ctx.app_type_str,
+            &ctx.request_model,
+            ctx.outbound_model.as_deref(),
+            ctx.latency_ms(),
+            status.as_u16(),
+            Some(ctx.session_id.clone()),
+        ) {
+            let services = state.proxy_core_services.clone();
+            tokio::spawn(async move {
+                if let Err(e) = services.usage_sink().record_usage(record).await {
+                    log::warn!("[USG-001] 记录使用量失败: {e}");
+                }
+            });
+        }
     }
 
     let response = rebuilt_json_proxy_response(status, response_headers, responses_response)
