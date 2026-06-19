@@ -131,7 +131,7 @@ pub fn transform_claude_request_for_api_format(
         metadata
             .and_then(|m| m.get("user_id"))
             .and_then(|v| v.as_str())
-            .and_then(super::super::session::parse_session_from_user_id)
+            .and_then(crate::proxy_core::session::parse_session_from_user_id)
             .or_else(|| {
                 metadata
                     .and_then(|m| m.get("session_id"))

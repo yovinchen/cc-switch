@@ -104,10 +104,6 @@ pub fn extract_session_id(
     })
 }
 
-pub(super) fn parse_session_from_user_id(user_id: &str) -> Option<String> {
-    crate::proxy_core::session::parse_session_from_user_id(user_id)
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -336,25 +332,5 @@ mod tests {
         assert!(!result.session_id.is_empty());
         assert_eq!(result.source, SessionIdSource::Generated);
         assert!(!result.client_provided);
-    }
-
-    #[test]
-    fn test_parse_session_from_user_id() {
-        assert_eq!(
-            parse_session_from_user_id("user_john_session_abc123"),
-            Some("abc123".to_string())
-        );
-        assert_eq!(
-            parse_session_from_user_id("my_app_session_xyz789"),
-            Some("xyz789".to_string())
-        );
-        // 注意: "_session_" 是分隔符，所以下面的字符串会匹配
-        assert_eq!(
-            parse_session_from_user_id("no_session_marker"),
-            Some("marker".to_string())
-        );
-        // 没有 "_session_" 分隔符的情况
-        assert_eq!(parse_session_from_user_id("user_john_abc123"), None);
-        assert_eq!(parse_session_from_user_id("_session_"), None);
     }
 }
