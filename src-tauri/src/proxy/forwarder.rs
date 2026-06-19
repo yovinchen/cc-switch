@@ -44,7 +44,7 @@ use crate::proxy_core::{
     AttemptEventPhase, ChannelQuery, CopilotAuthHeaderOverrides, ForwardFailureCategory,
     ForwardFailureKind, InterfaceKind, MediaRetryInput, ProxyBody, ProxyEngine, ProxyRequest,
     ProxyServices, UpstreamAuthHeadersInput, UpstreamRequestHeadersInput, UpstreamSendPolicyInput,
-    UpstreamTransportKind, BEDROCK_OPTIMIZER_ENV_FLAG,
+    UpstreamTransportKind, BEDROCK_OPTIMIZER_ENV_FLAG, UNSUPPORTED_IMAGE_MARKER,
 };
 use crate::proxy_core_host::CcSwitchProxyServices;
 use crate::{app_config::AppType, provider::Provider};
@@ -178,7 +178,7 @@ impl RequestForwarder {
             let model = body.get("model").and_then(Value::as_str).unwrap_or("");
             log::info!(
                 "[Media] Replaced {replaced_images} image block(s) with {} for text-only provider={}, model={}",
-                super::media_sanitizer::UNSUPPORTED_IMAGE_MARKER,
+                UNSUPPORTED_IMAGE_MARKER,
                 provider.id,
                 model
             );
@@ -1021,7 +1021,7 @@ impl RequestForwarder {
                                 "[{app_type_str}] [Media] Upstream rejected image input; retrying provider={} model={} with {replaced_images} image block(s) replaced by {}",
                                 provider.id,
                                 model,
-                                super::media_sanitizer::UNSUPPORTED_IMAGE_MARKER
+                                UNSUPPORTED_IMAGE_MARKER
                             );
 
                             match self

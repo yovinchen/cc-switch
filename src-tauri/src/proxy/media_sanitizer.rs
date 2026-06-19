@@ -2,8 +2,6 @@ use crate::provider::Provider;
 use crate::proxy::error::ProxyError;
 use serde_json::Value;
 
-pub use crate::proxy_core::UNSUPPORTED_IMAGE_MARKER;
-
 /// Replace image blocks before sending when the routed model is text-only.
 ///
 /// Two paths, both reached only when the caller's media-fallback switch is on:
@@ -44,6 +42,7 @@ pub fn is_unsupported_image_error(error: &ProxyError) -> bool {
 mod tests {
     use super::*;
     use crate::provider::Provider;
+    use crate::proxy_core::UNSUPPORTED_IMAGE_MARKER;
     use serde_json::json;
 
     fn provider(settings_config: Value) -> Provider {
