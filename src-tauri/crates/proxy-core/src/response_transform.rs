@@ -655,6 +655,45 @@ pub fn response_tool_call_item_id(call_id: &str, is_custom_tool: bool) -> String
     }
 }
 
+pub fn response_tool_call_item_id_from_chat_name(
+    call_id: &str,
+    chat_name: &str,
+    tool_context: &CodexToolContext,
+) -> String {
+    response_tool_call_item_id(call_id, tool_context.is_custom_tool_chat_name(chat_name))
+}
+
+pub fn response_tool_call_item_from_chat_name(
+    item_id: &str,
+    status: &str,
+    call_id: &str,
+    chat_name: &str,
+    arguments: &str,
+    reasoning: Option<&str>,
+    tool_context: &CodexToolContext,
+) -> Value {
+    match tool_context.lookup_chat_name(chat_name) {
+        Some(spec) if spec.kind == CodexToolKind::ToolSearch => {
+            response_tool_search_call_item(call_id, status, arguments, reasoning)
+        }
+        Some(spec) if spec.kind == CodexToolKind::Custom => response_custom_tool_call_item(
+            item_id, status, call_id, &spec.name, arguments, reasoning,
+        ),
+        Some(spec) => response_function_call_item_with_namespace(
+            item_id,
+            status,
+            call_id,
+            &spec.name,
+            spec.namespace.as_deref(),
+            arguments,
+            reasoning,
+        ),
+        None => {
+            response_function_call_item(item_id, status, call_id, chat_name, arguments, reasoning)
+        }
+    }
+}
+
 fn parse_tool_arguments_object(arguments: &str) -> Value {
     if arguments.trim().is_empty() {
         return json!({});
@@ -1986,6 +2025,62 @@ mod tests {
             ),
             "mcp__codex_apps__gmail___search_emails"
         );
+
+        let custom_id = response_tool_call_item_id_from_chat_name(
+            "call_patch",
+            "apply_patch",
+            &context,
+        );
+        assert_eq!(custom_id, "ctc_call_patch");
+        let custom_item = response_tool_call_item_from_chat_name(
+            &custom_id,
+            "completed",
+            "call_patch",
+            "apply_patch",
+            r#"{"input":"patch"}"#,
+            Some("edit"),
+            &context,
+        );
+        assert_eq!(custom_item["type"], "custom_tool_call");
+        assert_eq!(custom_item["input"], "patch");
+        assert_eq!(custom_item["reasoning_content"], "edit");
+
+        let tool_search = response_tool_call_item_from_chat_name(
+            "fc_call_search",
+            "completed",
+            "call_search",
+            CODEX_TOOL_SEARCH_PROXY_NAME,
+            r#"{"query":"gmail"}"#,
+            None,
+            &context,
+        );
+        assert_eq!(tool_search["type"], "tool_search_call");
+        assert_eq!(tool_search["arguments"]["query"], "gmail");
+
+        let namespace_item = response_tool_call_item_from_chat_name(
+            "fc_call_gmail",
+            "completed",
+            "call_gmail",
+            "mcp__codex_apps__gmail___search_emails",
+            r#"{"query":"in:inbox"}"#,
+            None,
+            &context,
+        );
+        assert_eq!(namespace_item["type"], "function_call");
+        assert_eq!(namespace_item["namespace"], "mcp__codex_apps__gmail");
+        assert_eq!(namespace_item["name"], "_search_emails");
+
+        let fallback = response_tool_call_item_from_chat_name(
+            "fc_call_unknown",
+            "completed",
+            "call_unknown",
+            "unknown_tool",
+            "{}",
+            None,
+            &context,
+        );
+        assert_eq!(fallback["type"], "function_call");
+        assert_eq!(fallback["name"], "unknown_tool");
     }
 
     #[test]
