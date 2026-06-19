@@ -4,7 +4,7 @@
 
 use crate::database::{lock_conn, Database};
 use crate::error::AppError;
-use crate::proxy_core::{OptimizerConfig, RectifierConfig};
+use crate::proxy_core::{CopilotOptimizerConfig, OptimizerConfig, RectifierConfig};
 use rusqlite::params;
 
 impl Database {
@@ -282,20 +282,18 @@ impl Database {
     /// 获取 Copilot 优化器配置
     ///
     /// 返回配置，如果不存在则返回默认值（默认开启）
-    pub fn get_copilot_optimizer_config(
-        &self,
-    ) -> Result<crate::proxy::types::CopilotOptimizerConfig, AppError> {
+    pub fn get_copilot_optimizer_config(&self) -> Result<CopilotOptimizerConfig, AppError> {
         match self.get_setting("copilot_optimizer_config")? {
             Some(json) => serde_json::from_str(&json)
                 .map_err(|e| AppError::Database(format!("解析 Copilot 优化器配置失败: {e}"))),
-            None => Ok(crate::proxy::types::CopilotOptimizerConfig::default()),
+            None => Ok(CopilotOptimizerConfig::default()),
         }
     }
 
     /// 更新 Copilot 优化器配置
     pub fn set_copilot_optimizer_config(
         &self,
-        config: &crate::proxy::types::CopilotOptimizerConfig,
+        config: &CopilotOptimizerConfig,
     ) -> Result<(), AppError> {
         let json = serde_json::to_string(config)
             .map_err(|e| AppError::Database(format!("序列化 Copilot 优化器配置失败: {e}")))?;

@@ -15,7 +15,7 @@ use super::{
         apply_channel_model_override, forward_attempts_from_route_plan, ChannelAttempt,
         ForwardAttempt,
     },
-    types::{CopilotOptimizerConfig, ProxyStatus},
+    types::ProxyStatus,
     ProxyError,
 };
 use crate::commands::{CodexOAuthState, CopilotAuthState};
@@ -48,11 +48,12 @@ use crate::proxy_core::{
     strip_copilot_thinking_blocks, strip_one_m_suffix_for_upstream,
     strip_one_m_suffix_for_upstream_from_body, supports_reasoning_effort,
     validate_managed_account_upstream_auth, AppKind, AttemptEventChannel, AttemptEventPayloadInput,
-    AttemptEventPhase, ChannelQuery, CopilotAuthHeaderOverrides, CurrentRouteTarget,
-    ForwardFailureCategory, ForwardFailureKind, GeminiShadowStore, InterfaceKind, MediaRetryInput,
-    OptimizerConfig, PromptCacheTraceLogInput, ProxyBody, ProxyEngine, ProxyRequest, ProxyServices,
-    RectifierConfig, UpstreamAuthHeadersInput, UpstreamRequestHeadersInput,
-    UpstreamSendPolicyInput, UpstreamTransportKind, UNSUPPORTED_IMAGE_MARKER,
+    AttemptEventPhase, ChannelQuery, CopilotAuthHeaderOverrides, CopilotOptimizerConfig,
+    CurrentRouteTarget, ForwardFailureCategory, ForwardFailureKind, GeminiShadowStore,
+    InterfaceKind, MediaRetryInput, OptimizerConfig, PromptCacheTraceLogInput, ProxyBody,
+    ProxyEngine, ProxyRequest, ProxyServices, RectifierConfig, UpstreamAuthHeadersInput,
+    UpstreamRequestHeadersInput, UpstreamSendPolicyInput, UpstreamTransportKind,
+    UNSUPPORTED_IMAGE_MARKER,
 };
 use crate::proxy_core_host::CcSwitchProxyServices;
 use crate::{app_config::AppType, provider::Provider};

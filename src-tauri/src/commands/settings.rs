@@ -1,6 +1,6 @@
 #![allow(non_snake_case)]
 
-use crate::proxy_core::{OptimizerConfig, RectifierConfig};
+use crate::proxy_core::{CopilotOptimizerConfig, OptimizerConfig, RectifierConfig};
 use tauri::AppHandle;
 use tauri_plugin_updater::UpdaterExt;
 
@@ -643,7 +643,7 @@ pub async fn set_optimizer_config(
 #[tauri::command]
 pub async fn get_copilot_optimizer_config(
     state: tauri::State<'_, crate::AppState>,
-) -> Result<crate::proxy::types::CopilotOptimizerConfig, String> {
+) -> Result<CopilotOptimizerConfig, String> {
     state
         .db
         .get_copilot_optimizer_config()
@@ -654,7 +654,7 @@ pub async fn get_copilot_optimizer_config(
 #[tauri::command]
 pub async fn set_copilot_optimizer_config(
     state: tauri::State<'_, crate::AppState>,
-    config: crate::proxy::types::CopilotOptimizerConfig,
+    config: CopilotOptimizerConfig,
 ) -> Result<bool, String> {
     state
         .db
