@@ -18,7 +18,6 @@ use super::{
     handler_context::RequestContext,
     providers::{
         codex_chat_history::record_responses_sse_stream, get_adapter, get_claude_api_format,
-        streaming_codex_chat::create_responses_sse_stream_from_chat_with_context,
         streaming_gemini::create_anthropic_sse_stream_from_gemini, transform_gemini,
     },
     response_adapter::{
@@ -41,6 +40,7 @@ use crate::proxy_core::{
     chat_completion_to_response_with_context as build_chat_completion_response_with_context,
     claude_api_format_from_metadata, claude_stream_usage_event_filter,
     claude_transform_unlabeled_sse_aggregation, codex_stream_usage_event_filter,
+    create_codex_chat_to_responses_sse_stream_with_context as create_responses_sse_stream_from_chat_with_context,
     create_openai_chat_to_anthropic_sse_stream as create_anthropic_sse_stream,
     create_openai_responses_to_anthropic_sse_stream as create_anthropic_sse_stream_from_responses,
     extract_gemini_model_from_path, json_proxy_response, openai_chat_to_anthropic_message,
