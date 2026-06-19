@@ -34,7 +34,6 @@ use super::{
     ProxyError,
 };
 use crate::app_config::AppType;
-use crate::database::{ProxyChannelModelRecord, ProxyChannelRecord};
 use crate::proxy_core::{
     append_query_to_endpoint_path,
     chat_completion_to_response_with_context as build_chat_completion_response_with_context,
@@ -69,8 +68,8 @@ use crate::proxy_core::{
     OPENAI_PARSER_CONFIG,
 };
 use crate::proxy_core_adapter::{
-    ToProxyCoreChannelModelRecord, ToProxyCoreChannelRecord, ToProxyCoreChannelSpec,
-    ToProxyCoreProviderSpec, ToProxyCoreRuntimeStatus,
+    proxy_channel_model_records_to_core, proxy_channel_records_to_core, ToProxyCoreChannelRecord,
+    ToProxyCoreChannelSpec, ToProxyCoreProviderSpec, ToProxyCoreRuntimeStatus,
 };
 use axum::{
     extract::{Path, Query, State},
@@ -300,7 +299,9 @@ pub async fn list_all_proxy_channels(
             .map_err(|e| ProxyError::DatabaseError(e.to_string()))?
     };
 
-    Ok(Json(request.response(channel_records_from_host(channels))))
+    Ok(Json(
+        request.response(proxy_channel_records_to_core(channels)),
+    ))
 }
 
 /// POST /proxy/v1/channels
@@ -396,7 +397,7 @@ pub async fn list_proxy_channel_models(
     };
     Ok(Json(
         request
-            .models_response(models.map(channel_model_records_from_host))
+            .models_response(models.map(proxy_channel_model_records_to_core))
             .map_err(management_api_error_to_proxy_error)?,
     ))
 }
@@ -413,29 +414,13 @@ pub async fn replace_proxy_channel_models(
         .db
         .replace_proxy_channel_models(&path_request.channel_id, request.models)
         .map_err(|e| ProxyError::InvalidRequest(e.to_string()))?
-        .map(channel_model_records_from_host);
+        .map(proxy_channel_model_records_to_core);
 
     Ok(Json(
         path_request
             .models_response(models)
             .map_err(management_api_error_to_proxy_error)?,
     ))
-}
-
-fn channel_model_records_from_host(
-    models: Vec<ProxyChannelModelRecord>,
-) -> Vec<ChannelModelRecord> {
-    models
-        .iter()
-        .map(ProxyChannelModelRecord::to_proxy_core_channel_model_record)
-        .collect()
-}
-
-fn channel_records_from_host(channels: Vec<ProxyChannelRecord>) -> Vec<ChannelRecord> {
-    channels
-        .iter()
-        .map(ProxyChannelRecord::to_proxy_core_channel_record)
-        .collect()
 }
 
 /// GET /proxy/v1/apps/{app}/channels
@@ -468,7 +453,7 @@ pub async fn list_proxy_channels(
 
     Ok(Json(request.list_response(
         &source,
-        channel_records_from_host(channels),
+        proxy_channel_records_to_core(channels),
     )))
 }
 
@@ -557,7 +542,7 @@ pub async fn preview_proxy_channel_migration(
         .map_err(|e| ProxyError::DatabaseError(e.to_string()))?;
 
     Ok(Json(request.migration_preview_response(
-        channel_records_from_host(preview.channels),
+        proxy_channel_records_to_core(preview.channels),
         preview.duplicate_count,
         preview.needs_review_count,
     )))

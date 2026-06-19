@@ -144,6 +144,15 @@ impl ToProxyCoreChannelModelRecord for ProxyChannelModelRecord {
     }
 }
 
+pub(crate) fn proxy_channel_model_records_to_core(
+    models: Vec<ProxyChannelModelRecord>,
+) -> Vec<ChannelModelRecord> {
+    models
+        .iter()
+        .map(ProxyChannelModelRecord::to_proxy_core_channel_model_record)
+        .collect()
+}
+
 #[allow(dead_code)]
 pub(crate) trait ToProxyCoreChannelRecord {
     fn to_proxy_core_channel_record(&self) -> ChannelRecord;
@@ -181,6 +190,15 @@ impl ToProxyCoreChannelRecord for ProxyChannelRecord {
             review_reasons: self.review_reasons.clone(),
         }
     }
+}
+
+pub(crate) fn proxy_channel_records_to_core(
+    channels: Vec<ProxyChannelRecord>,
+) -> Vec<ChannelRecord> {
+    channels
+        .iter()
+        .map(ProxyChannelRecord::to_proxy_core_channel_record)
+        .collect()
 }
 
 #[allow(dead_code)]
