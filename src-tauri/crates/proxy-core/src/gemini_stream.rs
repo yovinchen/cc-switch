@@ -1,7 +1,7 @@
 //! Gemini Native streaming state helpers.
 //!
-//! These helpers keep Gemini cumulative `content.parts` interpretation in the
-//! host-neutral core while leaving async transport and SSE emission in the host.
+//! These helpers keep Gemini cumulative `content.parts` interpretation and
+//! stream transport conversion in the host-neutral core.
 
 use crate::gemini_shadow::{
     GeminiShadowSessionSnapshot, GeminiShadowStore, GeminiToolCallMeta,
@@ -13,8 +13,15 @@ use crate::response_transform::{
 use crate::sse::{append_utf8_safe, strip_sse_field, take_sse_block};
 use crate::usage::build_anthropic_usage_from_gemini;
 use bytes::Bytes;
+use futures::{stream as futures_stream, Stream, StreamExt};
 use serde_json::{json, Value};
-use std::collections::HashSet;
+use std::{
+    collections::{HashSet, VecDeque},
+    error::Error,
+    io,
+    pin::Pin,
+    sync::Arc,
+};
 
 /// Prefix used for Anthropic-visible tool call ids synthesized when Gemini's
 /// `functionCall` omits an id.
@@ -71,6 +78,19 @@ pub struct GeminiStreamFinalOutput {
     pub shadow_record: Option<GeminiStreamShadowRecord>,
 }
 
+struct GeminiToAnthropicSseStreamContext<S, F, R> {
+    stream: Pin<Box<S>>,
+    state: GeminiToAnthropicSseState,
+    pending_events: VecDeque<Bytes>,
+    shadow_store: Option<Arc<GeminiShadowStore>>,
+    provider_id: Option<String>,
+    session_id: Option<String>,
+    tool_schema_hints: Option<AnthropicToolSchemaHints>,
+    synthesize_tool_call_id: F,
+    on_rectified_tool_name: R,
+    finished: bool,
+}
+
 impl GeminiStreamFinalOutput {
     pub fn record_shadow(
         &mut self,
@@ -90,6 +110,117 @@ impl GeminiStreamFinalOutput {
             shadow_record.tool_calls,
         ))
     }
+}
+
+/// Convert a Gemini `streamGenerateContent?alt=sse` byte stream into
+/// Anthropic-compatible SSE bytes.
+///
+/// The host provides the synthesized tool-call id generator so the core crate
+/// does not need an entropy or UUID dependency.
+pub fn create_gemini_to_anthropic_sse_stream<S, E, F>(
+    stream: S,
+    shadow_store: Option<Arc<GeminiShadowStore>>,
+    provider_id: Option<String>,
+    session_id: Option<String>,
+    tool_schema_hints: Option<AnthropicToolSchemaHints>,
+    synthesize_tool_call_id: F,
+) -> impl Stream<Item = Result<Bytes, io::Error>> + Send
+where
+    S: Stream<Item = Result<Bytes, E>> + Send + 'static,
+    E: Error + Send + 'static,
+    F: FnMut() -> String + Send + 'static,
+{
+    create_gemini_to_anthropic_sse_stream_with_callbacks(
+        stream,
+        shadow_store,
+        provider_id,
+        session_id,
+        tool_schema_hints,
+        synthesize_tool_call_id,
+        |_| {},
+    )
+}
+
+/// Convert a Gemini SSE byte stream and notify the host when tool-call args are
+/// rectified from Anthropic tool schema hints.
+pub fn create_gemini_to_anthropic_sse_stream_with_callbacks<S, E, F, R>(
+    stream: S,
+    shadow_store: Option<Arc<GeminiShadowStore>>,
+    provider_id: Option<String>,
+    session_id: Option<String>,
+    tool_schema_hints: Option<AnthropicToolSchemaHints>,
+    synthesize_tool_call_id: F,
+    on_rectified_tool_name: R,
+) -> impl Stream<Item = Result<Bytes, io::Error>> + Send
+where
+    S: Stream<Item = Result<Bytes, E>> + Send + 'static,
+    E: Error + Send + 'static,
+    F: FnMut() -> String + Send + 'static,
+    R: FnMut(&str) + Send + 'static,
+{
+    let context = GeminiToAnthropicSseStreamContext {
+        stream: Box::pin(stream),
+        state: GeminiToAnthropicSseState::new(),
+        pending_events: VecDeque::new(),
+        shadow_store,
+        provider_id,
+        session_id,
+        tool_schema_hints,
+        synthesize_tool_call_id,
+        on_rectified_tool_name,
+        finished: false,
+    };
+
+    futures_stream::unfold(context, |mut context| async move {
+        loop {
+            if let Some(event) = context.pending_events.pop_front() {
+                return Some((Ok(event), context));
+            }
+
+            if context.finished {
+                return None;
+            }
+
+            match context.stream.as_mut().next().await {
+                Some(Ok(bytes)) => {
+                    let output = context.state.handle_bytes(
+                        bytes.as_ref(),
+                        context.tool_schema_hints.as_ref(),
+                        &mut context.synthesize_tool_call_id,
+                    );
+
+                    for name in &output.rectified_tool_names {
+                        (context.on_rectified_tool_name)(name);
+                    }
+                    context.pending_events.extend(
+                        output
+                            .events
+                            .into_iter()
+                            .map(|event| event.to_sse_bytes()),
+                    );
+                }
+                Some(Err(error)) => {
+                    context.finished = true;
+                    return Some((Err(io::Error::other(error.to_string())), context));
+                }
+                None => {
+                    context.finished = true;
+                    let mut final_output = std::mem::take(&mut context.state).finish();
+                    final_output.record_shadow(
+                        context.shadow_store.as_deref(),
+                        context.provider_id.as_deref(),
+                        context.session_id.as_deref(),
+                    );
+                    context.pending_events.extend(
+                        final_output
+                            .events
+                            .into_iter()
+                            .map(|event| event.to_sse_bytes()),
+                    );
+                }
+            }
+        }
+    })
 }
 
 #[derive(Debug, Default)]
@@ -1004,6 +1135,61 @@ mod tests {
         assert!(output.contains("你好，Gemini"));
         assert!(!output.contains('\u{fffd}'));
         assert!(output.contains("\"stop_reason\":\"end_turn\""));
+    }
+
+    #[test]
+    fn stream_wrapper_converts_records_shadow_and_notifies_rectifier() {
+        let store = Arc::new(GeminiShadowStore::with_limits(8, 4));
+        let rectified_names = Arc::new(std::sync::Mutex::new(Vec::new()));
+        let rectified_sink = Arc::clone(&rectified_names);
+        let stream = futures::stream::iter(vec![Ok::<Bytes, io::Error>(Bytes::from_static(
+            br#"data: {"responseId":"resp_stream","modelVersion":"gemini-2.5-pro","candidates":[{"finishReason":"STOP","content":{"parts":[{"functionCall":{"id":"","name":"Bash","args":{"args":"git status"}},"thoughtSignature":"sig-tool"}]}}],"usageMetadata":{"promptTokenCount":5,"totalTokenCount":8}}"#,
+        ))]);
+        let stream = stream.chain(futures::stream::iter(vec![Ok::<Bytes, io::Error>(
+            Bytes::from_static(b"\n\n"),
+        )]));
+        let hints = crate::gemini_tool_args::extract_anthropic_tool_schema_hints(&json!({
+            "tools": [{
+                "name": "Bash",
+                "input_schema": {
+                    "type": "object",
+                    "properties": {
+                        "command": { "type": "string" }
+                    },
+                    "required": ["command"]
+                }
+            }]
+        }));
+        let mut counter = 0;
+        let converted = create_gemini_to_anthropic_sse_stream_with_callbacks(
+            stream,
+            Some(store.clone()),
+            Some("provider-a".to_string()),
+            Some("session-1".to_string()),
+            Some(hints),
+            move || next_synth(&mut counter),
+            move |name| rectified_sink.lock().unwrap().push(name.to_string()),
+        );
+
+        let output = futures::executor::block_on(async move {
+            converted
+                .collect::<Vec<_>>()
+                .await
+                .into_iter()
+                .map(|item| String::from_utf8(item.unwrap().to_vec()).unwrap())
+                .collect::<Vec<_>>()
+                .join("")
+        });
+
+        assert!(output.contains("event: message_start"));
+        assert!(output.contains("\"type\":\"tool_use\""));
+        assert!(output.contains("\"partial_json\":\"{\\\"command\\\":\\\"git status\\\"}\""));
+        assert_eq!(rectified_names.lock().unwrap().as_slice(), ["Bash"]);
+        let shadow = store
+            .latest_assistant_content("provider-a", "session-1")
+            .expect("shadow turn must be recorded");
+        assert_eq!(shadow["parts"][0]["functionCall"]["name"], "Bash");
+        assert_eq!(shadow["parts"][0]["thoughtSignature"], "sig-tool");
     }
 
     #[test]

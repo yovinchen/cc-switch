@@ -18,7 +18,7 @@ use super::{
     handler_context::RequestContext,
     providers::{
         codex_chat_history::record_responses_sse_stream, get_adapter, get_claude_api_format,
-        streaming_gemini::create_anthropic_sse_stream_from_gemini, transform_gemini,
+        transform_gemini,
     },
     response_adapter::{
         proxy_core_response_to_axum_response, proxy_core_response_to_proxy_response,
@@ -41,6 +41,7 @@ use crate::proxy_core::{
     claude_api_format_from_metadata, claude_stream_usage_event_filter,
     claude_transform_unlabeled_sse_aggregation, codex_stream_usage_event_filter,
     create_codex_chat_to_responses_sse_stream_with_context as create_responses_sse_stream_from_chat_with_context,
+    create_gemini_to_anthropic_sse_stream_with_callbacks as create_anthropic_sse_stream_from_gemini,
     create_openai_chat_to_anthropic_sse_stream as create_anthropic_sse_stream,
     create_openai_responses_to_anthropic_sse_stream as create_anthropic_sse_stream_from_responses,
     extract_gemini_model_from_path, json_proxy_response, openai_chat_to_anthropic_message,
@@ -849,6 +850,8 @@ async fn handle_claude_transform(
                 Some(ctx.provider.id.clone()),
                 Some(ctx.session_id.clone()),
                 tool_schema_hints.clone(),
+                transform_gemini::synthesize_tool_call_id,
+                |name| log::info!("[Claude/Gemini] Rectified tool args for `{name}`"),
             )))
         } else {
             Box::new(Box::pin(create_anthropic_sse_stream(stream)))

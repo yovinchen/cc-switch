@@ -4,55 +4,31 @@
 //! SSE events for Claude-compatible clients.
 
 use super::transform_gemini::synthesize_tool_call_id;
-use crate::proxy_core::{AnthropicToolSchemaHints, GeminiShadowStore, GeminiToAnthropicSseState};
+use crate::proxy_core::{AnthropicToolSchemaHints, GeminiShadowStore};
 use bytes::Bytes;
-use futures::stream::{Stream, StreamExt};
+use futures::stream::Stream;
 use std::sync::Arc;
 
-pub fn create_anthropic_sse_stream_from_gemini<E: std::error::Error + Send + 'static>(
-    stream: impl Stream<Item = Result<Bytes, E>> + Send + 'static,
+pub fn create_anthropic_sse_stream_from_gemini<S, E>(
+    stream: S,
     shadow_store: Option<Arc<GeminiShadowStore>>,
     provider_id: Option<String>,
     session_id: Option<String>,
     tool_schema_hints: Option<AnthropicToolSchemaHints>,
-) -> impl Stream<Item = Result<Bytes, std::io::Error>> + Send {
-    async_stream::stream! {
-        let mut state = GeminiToAnthropicSseState::new();
-        tokio::pin!(stream);
-
-        while let Some(chunk) = stream.next().await {
-            match chunk {
-                Ok(bytes) => {
-                    let output = state.handle_bytes(
-                        bytes.as_ref(),
-                        tool_schema_hints.as_ref(),
-                        synthesize_tool_call_id,
-                    );
-                    for name in &output.rectified_tool_names {
-                        log::info!("[Claude/Gemini] Rectified tool args for `{name}`");
-                    }
-                    for event in output.events {
-                        yield Ok(event.to_sse_bytes());
-                    }
-                }
-                Err(error) => {
-                    yield Err(std::io::Error::other(error.to_string()));
-                    return;
-                }
-            }
-        }
-
-        let mut final_output = state.finish();
-        final_output.record_shadow(
-            shadow_store.as_deref(),
-            provider_id.as_deref(),
-            session_id.as_deref(),
-        );
-
-        for event in final_output.events {
-            yield Ok(event.to_sse_bytes());
-        }
-    }
+) -> impl Stream<Item = Result<Bytes, std::io::Error>> + Send
+where
+    S: Stream<Item = Result<Bytes, E>> + Send + 'static,
+    E: std::error::Error + Send + 'static,
+{
+    crate::proxy_core::create_gemini_to_anthropic_sse_stream_with_callbacks(
+        stream,
+        shadow_store,
+        provider_id,
+        session_id,
+        tool_schema_hints,
+        synthesize_tool_call_id,
+        |name| log::info!("[Claude/Gemini] Rectified tool args for `{name}`"),
+    )
 }
 
 #[cfg(test)]
@@ -60,6 +36,7 @@ mod tests {
     use super::*;
     use crate::proxy::providers::transform_gemini::anthropic_to_gemini_with_shadow;
     use crate::proxy_core::GeminiShadowStore;
+    use futures::StreamExt;
     use serde_json::json;
     use std::sync::Arc;
 
