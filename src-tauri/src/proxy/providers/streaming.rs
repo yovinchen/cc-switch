@@ -2,10 +2,10 @@
 //!
 //! 实现 OpenAI SSE → Anthropic SSE 格式转换
 
-use crate::proxy::sse::{strip_sse_field, take_sse_block};
 use crate::proxy_core::{
-    build_anthropic_message_delta_event, build_anthropic_usage_from_openai_chat_tokens,
-    map_openai_chat_finish_reason_to_anthropic,
+    append_utf8_safe, build_anthropic_message_delta_event,
+    build_anthropic_usage_from_openai_chat_tokens, map_openai_chat_finish_reason_to_anthropic,
+    strip_sse_field, take_sse_block,
 };
 use bytes::Bytes;
 use futures::stream::{Stream, StreamExt};
@@ -143,7 +143,7 @@ pub fn create_anthropic_sse_stream<E: std::error::Error + Send + 'static>(
         while let Some(chunk) = stream.next().await {
             match chunk {
                 Ok(bytes) => {
-                    crate::proxy::sse::append_utf8_safe(&mut buffer, &mut utf8_remainder, &bytes);
+                    append_utf8_safe(&mut buffer, &mut utf8_remainder, &bytes);
 
                     while let Some(line) = take_sse_block(&mut buffer) {
                         if line.trim().is_empty() {

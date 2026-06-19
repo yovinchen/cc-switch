@@ -8,10 +8,10 @@
 //!
 //! 与 Chat Completions 的 delta chunk 模型完全不同，需要独立的状态机处理。
 
-use crate::proxy::sse::{strip_sse_field, take_sse_block};
 use crate::proxy_core::{
-    build_anthropic_message_delta_event, build_anthropic_usage_from_openai_responses,
-    map_openai_responses_stop_reason_to_anthropic, sanitize_anthropic_tool_use_input_json,
+    append_utf8_safe, build_anthropic_message_delta_event,
+    build_anthropic_usage_from_openai_responses, map_openai_responses_stop_reason_to_anthropic,
+    sanitize_anthropic_tool_use_input_json, strip_sse_field, take_sse_block,
 };
 use bytes::Bytes;
 use futures::stream::{Stream, StreamExt};
@@ -124,7 +124,7 @@ pub fn create_anthropic_sse_stream_from_responses<E: std::error::Error + Send + 
         while let Some(chunk) = stream.next().await {
             match chunk {
                 Ok(bytes) => {
-                    crate::proxy::sse::append_utf8_safe(&mut buffer, &mut utf8_remainder, &bytes);
+                    append_utf8_safe(&mut buffer, &mut utf8_remainder, &bytes);
 
                     // SSE 事件由 \n\n 分隔
                     while let Some(block) = take_sse_block(&mut buffer) {

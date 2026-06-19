@@ -1,15 +1,14 @@
 //! OpenAI Chat Completions SSE → OpenAI Responses SSE conversion.
 
-use crate::proxy::sse::{strip_sse_field, take_sse_block};
 #[cfg(test)]
 use crate::proxy_core::build_codex_tool_context_from_request;
 use crate::proxy_core::{
-    canonicalize_tool_arguments_str, chat_delta_reasoning_text, chat_usage_to_responses_usage,
-    custom_tool_input_from_chat_arguments, extract_chat_sse_error, leading_think_prefix_decision,
-    response_id_from_chat_id, response_status_from_finish_reason,
+    append_utf8_safe, canonicalize_tool_arguments_str, chat_delta_reasoning_text,
+    chat_usage_to_responses_usage, custom_tool_input_from_chat_arguments, extract_chat_sse_error,
+    leading_think_prefix_decision, response_id_from_chat_id, response_status_from_finish_reason,
     response_tool_call_item_from_chat_name, response_tool_call_item_id_from_chat_name,
-    split_leading_think_block, sse_event, strip_leading_think_open_tag, CodexToolContext,
-    ThinkPrefixDecision,
+    split_leading_think_block, sse_event, strip_leading_think_open_tag, strip_sse_field,
+    take_sse_block, CodexToolContext, ThinkPrefixDecision,
 };
 use bytes::Bytes;
 use futures::stream::{Stream, StreamExt};
@@ -886,7 +885,7 @@ pub fn create_responses_sse_stream_from_chat_with_context<E: std::error::Error +
         while let Some(chunk) = stream.next().await {
             match chunk {
                 Ok(bytes) => {
-                    crate::proxy::sse::append_utf8_safe(&mut buffer, &mut utf8_remainder, &bytes);
+                    append_utf8_safe(&mut buffer, &mut utf8_remainder, &bytes);
 
                     while let Some(block) = take_sse_block(&mut buffer) {
                         if block.trim().is_empty() {

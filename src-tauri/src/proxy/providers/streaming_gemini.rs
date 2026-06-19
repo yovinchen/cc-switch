@@ -8,10 +8,9 @@ use super::transform_gemini::{
     is_synthesized_tool_call_id, rectify_tool_call_parts, synthesize_tool_call_id,
     AnthropicToolSchemaHints,
 };
-use crate::proxy::sse::{append_utf8_safe, strip_sse_field, take_sse_block};
 use crate::proxy_core::{
-    build_anthropic_message_delta_event, build_anthropic_usage_from_gemini,
-    map_gemini_finish_reason_to_anthropic,
+    append_utf8_safe, build_anthropic_message_delta_event, build_anthropic_usage_from_gemini,
+    map_gemini_finish_reason_to_anthropic, strip_sse_field, take_sse_block,
 };
 use bytes::Bytes;
 use futures::stream::{Stream, StreamExt};
