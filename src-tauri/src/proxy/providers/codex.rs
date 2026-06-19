@@ -9,12 +9,12 @@ use super::{AuthInfo, AuthStrategy, ProviderAdapter};
 use crate::provider::{CodexChatReasoningConfig, Provider};
 use crate::proxy::error::ProxyError;
 use crate::proxy_core::{
-    apply_codex_chat_upstream_model_policy, build_codex_upstream_url,
-    codex_provider_catalog_model_ids_from_settings, infer_codex_chat_reasoning_profile,
-    is_official_codex_client_user_agent, normalize_codex_chat_reasoning_profile,
-    resolve_codex_provider_upstream_model, resolve_codex_provider_uses_chat_completions,
-    should_convert_codex_responses_endpoint_to_chat, CodexChatReasoningOptions,
-    CodexChatReasoningProfile,
+    apply_codex_chat_upstream_model_policy, build_codex_bearer_auth_headers,
+    build_codex_upstream_url, codex_provider_catalog_model_ids_from_settings,
+    infer_codex_chat_reasoning_profile, is_official_codex_client_user_agent,
+    normalize_codex_chat_reasoning_profile, resolve_codex_provider_upstream_model,
+    resolve_codex_provider_uses_chat_completions, should_convert_codex_responses_endpoint_to_chat,
+    CodexChatReasoningOptions, CodexChatReasoningProfile,
 };
 use serde_json::Value as JsonValue;
 use toml::Value as TomlValue;
@@ -362,12 +362,8 @@ impl ProviderAdapter for CodexAdapter {
         &self,
         auth: &AuthInfo,
     ) -> Result<Vec<(http::HeaderName, http::HeaderValue)>, ProxyError> {
-        let bearer = format!("Bearer {}", auth.api_key);
-        Ok(vec![(
-            http::HeaderName::from_static("authorization"),
-            crate::proxy_core::auth_header_value(&bearer)
-                .map_err(|error| ProxyError::AuthError(error.to_string()))?,
-        )])
+        build_codex_bearer_auth_headers(&auth.api_key)
+            .map_err(|error| ProxyError::AuthError(error.to_string()))
     }
 }
 
@@ -477,6 +473,31 @@ experimental_bearer_token = "sk-config-key"
         // base_url 已包含 /v1，endpoint 也包含 /v1
         let url = adapter.build_url("https://www.packyapi.com/v1", "/v1/responses");
         assert_eq!(url, "https://www.packyapi.com/v1/responses");
+    }
+
+    #[test]
+    fn test_get_auth_headers_emits_bearer_authorization() {
+        let adapter = CodexAdapter::new();
+        let auth = AuthInfo::new("sk-codex-test".to_string(), AuthStrategy::Bearer);
+
+        let headers = adapter.get_auth_headers(&auth).unwrap();
+
+        assert_eq!(headers.len(), 1);
+        assert_eq!(headers[0].0.as_str(), "authorization");
+        assert_eq!(
+            headers[0].1,
+            http::HeaderValue::from_static("Bearer sk-codex-test")
+        );
+    }
+
+    #[test]
+    fn test_get_auth_headers_rejects_illegal_header_chars() {
+        let adapter = CodexAdapter::new();
+        let auth = AuthInfo::new("bad\r\nx-evil: 1".to_string(), AuthStrategy::Bearer);
+
+        let result = adapter.get_auth_headers(&auth);
+
+        assert!(matches!(result, Err(ProxyError::AuthError(_))));
     }
 
     // 官方客户端检测测试

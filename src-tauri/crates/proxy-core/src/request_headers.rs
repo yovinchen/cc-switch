@@ -101,6 +101,16 @@ pub fn auth_header_value(value: &str) -> ProxyCoreResult<http::HeaderValue> {
         .map_err(|error| ProxyCoreError::Auth(format!("invalid auth header value: {error}")))
 }
 
+pub fn build_codex_bearer_auth_headers(
+    api_key: &str,
+) -> ProxyCoreResult<Vec<(http::HeaderName, http::HeaderValue)>> {
+    let bearer = format!("Bearer {api_key}");
+    Ok(vec![(
+        http::HeaderName::from_static("authorization"),
+        auth_header_value(&bearer)?,
+    )])
+}
+
 pub fn anthropic_beta_header_value(existing_beta: Option<&str>) -> String {
     match existing_beta {
         Some(value) if value.contains(CLAUDE_CODE_BETA) => value.to_string(),
@@ -379,8 +389,8 @@ fn append_header_from_str(
 #[cfg(test)]
 mod tests {
     use super::{
-        anthropic_beta_header_value, auth_header_value, build_codex_oauth_session_headers,
-        build_upstream_auth_headers,
+        anthropic_beta_header_value, auth_header_value, build_codex_bearer_auth_headers,
+        build_codex_oauth_session_headers, build_upstream_auth_headers,
         build_upstream_request_headers, is_official_codex_client_user_agent,
         should_preserve_exact_request_header_case, should_send_anthropic_request_headers,
         should_skip_copilot_fingerprint_request_header, should_strip_forwarded_request_header,
@@ -470,6 +480,19 @@ mod tests {
         assert!(!is_official_codex_client_user_agent("codex_other/1.0.0"));
         assert!(!is_official_codex_client_user_agent("codex_vscode/"));
         assert!(!is_official_codex_client_user_agent("codex_cli_rs/x.y.z"));
+    }
+
+    #[test]
+    fn builds_codex_bearer_auth_headers() {
+        let headers = build_codex_bearer_auth_headers("sk-codex-test").unwrap();
+
+        assert_eq!(headers.len(), 1);
+        assert_eq!(headers[0].0.as_str(), "authorization");
+        assert_eq!(headers[0].1, HeaderValue::from_static("Bearer sk-codex-test"));
+
+        let error =
+            build_codex_bearer_auth_headers("bad\r\nx-evil: 1").expect_err("invalid header");
+        assert!(matches!(error, ProxyCoreError::Auth(_)));
     }
 
     #[test]
