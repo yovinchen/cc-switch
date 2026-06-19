@@ -18,18 +18,23 @@ use super::{AuthInfo, AuthStrategy, ProviderAdapter, ProviderType};
 use crate::provider::Provider;
 use crate::proxy::error::ProxyError;
 use crate::proxy_core::{
-    anthropic_to_openai_chat_request, anthropic_to_openai_responses_request,
-    build_claude_auth_headers, build_claude_upstream_url, build_copilot_auth_headers,
-    claude_api_format_needs_transform, extract_claude_auth_key_from_settings,
-    extract_claude_base_url_from_settings, infer_claude_provider_kind,
+    ClaudeAuthHeaderKind, ClaudeAuthKey, ClaudeAuthKeySource, CopilotAuthHeadersInput,
+    anthropic_request_to_gemini_request_with_shadow, anthropic_to_openai_chat_request,
+    anthropic_to_openai_responses_request, build_claude_auth_headers, build_claude_upstream_url,
+    build_copilot_auth_headers, claude_api_format_needs_transform,
+    extract_claude_auth_key_from_settings, extract_claude_base_url_from_settings,
+    gemini_response_to_anthropic_message, infer_claude_provider_kind,
     is_copilot_prompt_cache_provider, is_gemini_oauth_key_shape,
     normalize_anthropic_tool_thinking_history, openai_chat_to_anthropic_message,
     openai_responses_to_anthropic_message, resolve_claude_api_format_from_settings,
     resolve_claude_responses_prompt_cache_key, should_normalize_anthropic_tool_thinking_history,
-    should_preserve_reasoning_content_for_openai_chat, ClaudeAuthHeaderKind, ClaudeAuthKey,
-    ClaudeAuthKeySource, CopilotAuthHeadersInput,
+    should_preserve_reasoning_content_for_openai_chat,
 };
 use serde_json::Value;
+
+fn synthesize_gemini_tool_call_id_with_uuid() -> String {
+    crate::proxy_core::synthesize_gemini_tool_call_id(uuid::Uuid::new_v4().simple().to_string())
+}
 
 /// 获取 Claude 供应商的 API 格式
 ///
@@ -134,12 +139,13 @@ pub fn transform_claude_request_for_api_format(
             crate::proxy_core::inject_openai_stream_include_usage(&mut result);
             Ok(result)
         }
-        "gemini_native" => super::transform_gemini::anthropic_to_gemini_with_shadow(
-            body,
+        "gemini_native" => anthropic_request_to_gemini_request_with_shadow(
+            &body,
             shadow_store,
             Some(&provider.id),
             session_id,
-        ),
+        )
+        .map_err(ProxyError::TransformError),
         _ => Ok(body),
     }
 }
@@ -415,7 +421,16 @@ impl ProviderAdapter for ClaudeAdapter {
         // Responses API always returns "output" while Chat Completions returns "choices".
         // This is safe because the two formats are structurally disjoint.
         if body.get("candidates").is_some() || body.get("promptFeedback").is_some() {
-            super::transform_gemini::gemini_to_anthropic(body)
+            let output = gemini_response_to_anthropic_message(
+                &body,
+                None,
+                synthesize_gemini_tool_call_id_with_uuid,
+            )
+            .map_err(ProxyError::TransformError)?;
+            for name in &output.rectified_tool_names {
+                log::info!("[Claude/Gemini] Rectified tool args for `{name}`");
+            }
+            Ok(output.response)
         } else if body.get("output").is_some() {
             openai_responses_to_anthropic_message(&body).map_err(ProxyError::TransformError)
         } else {

@@ -37,17 +37,16 @@ pub fn anthropic_to_gemini_with_shadow(
 }
 
 /// Convenience wrapper over [`gemini_to_anthropic_with_shadow_and_hints`]
-/// with no shadow store or schema hints. Used by the shared
-/// `ProviderAdapter::transform_response` path and by tests.
+/// with no shadow store or schema hints. Production response paths call
+/// `proxy-core` directly; this remains as a compatibility/test helper.
 #[allow(dead_code)] // kept as public API for non-streaming transform paths
 pub fn gemini_to_anthropic(body: Value) -> Result<Value, ProxyError> {
     gemini_to_anthropic_with_shadow(body, None, None, None)
 }
 
 /// Convenience wrapper for callers that have a shadow store but no tool
-/// schema hints. Production call sites funnel through
-/// [`gemini_to_anthropic_with_shadow_and_hints`] directly; this helper exists
-/// for test ergonomics and future external callers.
+/// schema hints. Production response paths call `proxy-core` directly; this
+/// helper exists for test ergonomics and future external callers.
 #[allow(dead_code)] // kept as public API for shadow-only transform paths
 pub fn gemini_to_anthropic_with_shadow(
     body: Value,

@@ -19,7 +19,6 @@ use super::{
     handler_context::RequestContext,
     providers::{
         codex_chat_history::record_responses_sse_stream, get_adapter, get_claude_api_format,
-        transform_gemini,
     },
     response_adapter::{
         proxy_core_response_to_axum_response, proxy_core_response_to_proxy_response,
@@ -57,7 +56,8 @@ use crate::proxy_core::{
     create_gemini_to_anthropic_sse_stream_with_callbacks as create_anthropic_sse_stream_from_gemini,
     create_openai_chat_to_anthropic_sse_stream as create_anthropic_sse_stream,
     create_openai_responses_to_anthropic_sse_stream as create_anthropic_sse_stream_from_responses,
-    extract_anthropic_tool_schema_hints, extract_gemini_model_from_path, json_proxy_response,
+    extract_anthropic_tool_schema_hints, extract_gemini_model_from_path,
+    gemini_response_to_anthropic_message_with_shadow, json_proxy_response,
     openai_chat_to_anthropic_message, openai_responses_to_anthropic_message,
     parse_upstream_json_or_unlabeled_sse, rebuilt_json_proxy_response,
     resolve_management_auth_decision, should_aggregate_codex_oauth_responses_sse,
@@ -82,6 +82,10 @@ use http_body_util::BodyExt;
 use serde_json::Value;
 use std::convert::Infallible;
 use std::time::Duration;
+
+fn synthesize_gemini_tool_call_id_with_uuid() -> String {
+    crate::proxy_core::synthesize_gemini_tool_call_id(uuid::Uuid::new_v4().simple().to_string())
+}
 
 // ============================================================================
 // 健康检查和状态查询（简单端点）
@@ -803,7 +807,7 @@ async fn handle_claude_transform(
                 Some(ctx.provider.id.clone()),
                 Some(ctx.session_id.clone()),
                 tool_schema_hints.clone(),
-                transform_gemini::synthesize_tool_call_id,
+                synthesize_gemini_tool_call_id_with_uuid,
                 |name| log::info!("[Claude/Gemini] Rectified tool args for `{name}`"),
             )))
         } else {
@@ -919,13 +923,21 @@ async fn handle_claude_transform(
         openai_responses_to_anthropic_message(&upstream_response)
             .map_err(ProxyError::TransformError)
     } else if api_format == "gemini_native" {
-        transform_gemini::gemini_to_anthropic_with_shadow_and_hints(
-            upstream_response,
+        gemini_response_to_anthropic_message_with_shadow(
+            &upstream_response,
             Some(state.gemini_shadow.as_ref()),
             Some(&ctx.provider.id),
             Some(&ctx.session_id),
             tool_schema_hints.as_ref(),
+            synthesize_gemini_tool_call_id_with_uuid,
         )
+        .map(|output| {
+            for name in &output.rectified_tool_names {
+                log::info!("[Claude/Gemini] Rectified tool args for `{name}`");
+            }
+            output.response
+        })
+        .map_err(ProxyError::TransformError)
     } else {
         openai_chat_to_anthropic_message(&upstream_response).map_err(ProxyError::TransformError)
     }
