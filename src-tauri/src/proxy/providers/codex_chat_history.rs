@@ -1,5 +1,7 @@
-use super::codex_chat_common::{is_empty_value, response_item_call_id};
 use crate::proxy::sse::{append_utf8_safe, strip_sse_field, take_sse_block};
+use crate::proxy_core::{
+    codex_response_item_call_id as response_item_call_id, is_empty_json_value as is_empty_value,
+};
 use bytes::Bytes;
 use futures::{Stream, StreamExt};
 use serde_json::Value;
