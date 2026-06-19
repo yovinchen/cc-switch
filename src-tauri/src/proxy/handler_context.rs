@@ -5,15 +5,12 @@
 use crate::app_config::AppType;
 use crate::provider::Provider;
 use crate::proxy::{
-    extract_session_id,
-    forwarder::RequestForwarder,
-    server::ProxyState,
-    types::{CopilotOptimizerConfig, OptimizerConfig},
-    ProxyError,
+    extract_session_id, forwarder::RequestForwarder, server::ProxyState,
+    types::CopilotOptimizerConfig, ProxyError,
 };
 use crate::proxy_core::{
     extract_gemini_model_from_path, resolve_response_runtime_policy, AppKind, AppProxyConfig,
-    ProxyServices, RectifierConfig, ResponseRuntimePolicy, ResponseTimeoutConfig,
+    OptimizerConfig, ProxyServices, RectifierConfig, ResponseRuntimePolicy, ResponseTimeoutConfig,
     StreamingTimeoutConfig,
 };
 use axum::http::HeaderMap;

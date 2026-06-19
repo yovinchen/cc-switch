@@ -4,7 +4,7 @@
 
 use crate::database::{lock_conn, Database};
 use crate::error::AppError;
-use crate::proxy_core::RectifierConfig;
+use crate::proxy_core::{OptimizerConfig, RectifierConfig};
 use rusqlite::params;
 
 impl Database {
@@ -262,19 +262,16 @@ impl Database {
     /// 获取优化器配置
     ///
     /// 返回优化器配置，如果不存在则返回默认值（默认关闭）
-    pub fn get_optimizer_config(&self) -> Result<crate::proxy::types::OptimizerConfig, AppError> {
+    pub fn get_optimizer_config(&self) -> Result<OptimizerConfig, AppError> {
         match self.get_setting("optimizer_config")? {
             Some(json) => serde_json::from_str(&json)
                 .map_err(|e| AppError::Database(format!("解析优化器配置失败: {e}"))),
-            None => Ok(crate::proxy::types::OptimizerConfig::default()),
+            None => Ok(OptimizerConfig::default()),
         }
     }
 
     /// 更新优化器配置
-    pub fn set_optimizer_config(
-        &self,
-        config: &crate::proxy::types::OptimizerConfig,
-    ) -> Result<(), AppError> {
+    pub fn set_optimizer_config(&self, config: &OptimizerConfig) -> Result<(), AppError> {
         let json = serde_json::to_string(config)
             .map_err(|e| AppError::Database(format!("序列化优化器配置失败: {e}")))?;
         self.set_setting("optimizer_config", &json)

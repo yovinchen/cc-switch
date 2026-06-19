@@ -1,6 +1,6 @@
 #![allow(non_snake_case)]
 
-use crate::proxy_core::RectifierConfig;
+use crate::proxy_core::{OptimizerConfig, RectifierConfig};
 use tauri::AppHandle;
 use tauri_plugin_updater::UpdaterExt;
 
@@ -613,7 +613,7 @@ pub async fn set_rectifier_config(
 #[tauri::command]
 pub async fn get_optimizer_config(
     state: tauri::State<'_, crate::AppState>,
-) -> Result<crate::proxy::types::OptimizerConfig, String> {
+) -> Result<OptimizerConfig, String> {
     state.db.get_optimizer_config().map_err(|e| e.to_string())
 }
 
@@ -621,7 +621,7 @@ pub async fn get_optimizer_config(
 #[tauri::command]
 pub async fn set_optimizer_config(
     state: tauri::State<'_, crate::AppState>,
-    config: crate::proxy::types::OptimizerConfig,
+    config: OptimizerConfig,
 ) -> Result<bool, String> {
     // Validate cache_ttl: only allow known values
     match config.cache_ttl.as_str() {
