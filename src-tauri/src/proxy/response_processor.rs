@@ -2,21 +2,21 @@
 //!
 //! 统一处理流式和非流式 API 响应
 
+#[cfg(test)]
+use super::usage_sink_bridge::success_usage_record;
 use super::{
-    forwarder::ActiveConnectionGuard,
-    handler_context::RequestContext,
-    hyper_client::ProxyResponse,
-    server::ProxyState,
-    usage_sink_bridge::{provider_kind_from_provider, success_usage_record},
-    ProxyError,
+    forwarder::ActiveConnectionGuard, handler_context::RequestContext, hyper_client::ProxyResponse,
+    server::ProxyState, usage_sink_bridge::provider_kind_from_provider, ProxyError,
 };
 use crate::proxy_core::{
-    decode_response_body, get_content_encoding, resolve_usage_response_model,
+    decode_response_body, get_content_encoding,
+    non_streaming_response_usage_record_with_request_id_fallback,
     streaming_response_usage_record_with_request_id_fallback, strip_hop_by_hop_response_headers,
-    AppKind, ProviderKind, ProxyServices, ResponseBodyDecodeStatus, SseEventScanner,
-    SseUsageAccumulator, StreamUsageEventFilter, StreamingTimeoutConfig, TokenUsage,
-    UsageParserConfig, UsageRecord,
+    AppKind, ProxyServices, ResponseBodyDecodeStatus, SseEventScanner, SseUsageAccumulator,
+    StreamUsageEventFilter, StreamingTimeoutConfig, UsageParserConfig, UsageRecord,
 };
+#[cfg(test)]
+use crate::proxy_core::{ProviderKind, TokenUsage};
 use axum::http::header::HeaderMap;
 use axum::response::{IntoResponse, Response};
 use bytes::Bytes;
@@ -167,71 +167,40 @@ pub async fn handle_non_streaming(
 
     // 解析并记录使用量。关闭 usage logging 时直接跳过，避免非流式响应整包 JSON parse。
     if usage_logging_enabled(state) {
-        if let Ok(json_value) = serde_json::from_slice::<Value>(&body_bytes) {
-            let response_body_model = json_value.get("model").and_then(|model| model.as_str());
-            // 解析使用量
-            if let Some(usage) = (parser_config.response_parser)(&json_value) {
-                // 归因优先级：usage 解析出的模型 → 响应 model 字段 → 映射后的出站
-                // 模型（路由接管真值）→ 客户端请求模型。空字符串视为缺失。
-                let model = resolve_usage_response_model(
-                    usage.model.as_deref(),
-                    response_body_model,
-                    &ctx.request_model,
-                    ctx.outbound_model.as_deref(),
-                );
-
-                spawn_log_usage(
-                    state,
-                    ctx,
-                    usage,
-                    &model,
-                    &ctx.request_model,
-                    status.as_u16(),
-                    false,
-                );
-            } else {
-                let model = resolve_usage_response_model(
-                    None,
-                    response_body_model,
-                    &ctx.request_model,
-                    ctx.outbound_model.as_deref(),
-                );
-                spawn_log_usage(
-                    state,
-                    ctx,
-                    TokenUsage::default(),
-                    &model,
-                    &ctx.request_model,
-                    status.as_u16(),
-                    false,
-                );
+        let json_value = match serde_json::from_slice::<Value>(&body_bytes) {
+            Ok(json_value) => Some(json_value),
+            Err(_) => {
                 log::debug!(
-                    "[{}] 未能解析 usage 信息，跳过记录",
-                    parser_config.app_type_str
+                    "[{}] <<< 响应 (非 JSON): {} bytes",
+                    ctx.tag,
+                    body_bytes.len()
                 );
+                None
             }
-        } else {
+        };
+
+        let output = non_streaming_response_usage_record_with_request_id_fallback(
+            json_value.as_ref(),
+            parser_config.response_parser,
+            &ctx.provider.id,
+            provider_kind_from_provider(&ctx.provider),
+            AppKind::from(ctx.app_type_str),
+            &ctx.request_model,
+            ctx.outbound_model.as_deref(),
+            ctx.latency_ms(),
+            status.as_u16(),
+            Some(ctx.session_id.clone()),
+            || uuid::Uuid::new_v4().to_string(),
+        );
+
+        if json_value.is_some() && !output.usage_found {
             log::debug!(
-                "[{}] <<< 响应 (非 JSON): {} bytes",
-                ctx.tag,
-                body_bytes.len()
-            );
-            let model = resolve_usage_response_model(
-                None,
-                None,
-                &ctx.request_model,
-                ctx.outbound_model.as_deref(),
-            );
-            spawn_log_usage(
-                state,
-                ctx,
-                TokenUsage::default(),
-                &model,
-                &ctx.request_model,
-                status.as_u16(),
-                false,
+                "[{}] 未能解析 usage 信息，跳过记录",
+                parser_config.app_type_str
             );
         }
+
+        spawn_record_usage(state, output.record);
     } else {
         log::debug!("[{}] usage logging 已关闭，跳过非流式 usage 解析", ctx.tag);
     }
@@ -422,64 +391,9 @@ fn create_usage_collector(
                 log::debug!("[{tag}] 流式响应缺少 usage 统计，跳过消费记录");
             }
 
-            let state = state.clone();
-            let record = output.record;
-            tokio::spawn(async move {
-                record_usage_internal(&state, record).await;
-            });
+            spawn_record_usage(&state, output.record);
         },
     ))
-}
-
-/// 异步记录使用量
-fn spawn_log_usage(
-    state: &ProxyState,
-    ctx: &RequestContext,
-    usage: TokenUsage,
-    model: &str,
-    request_model: &str,
-    status_code: u16,
-    is_streaming: bool,
-) {
-    // Check enable_logging before spawning the log task
-    if let Ok(config) = state.config.try_read() {
-        if !config.enable_logging {
-            return;
-        }
-    }
-
-    let state = state.clone();
-    let provider_id = ctx.provider.id.clone();
-    let provider_kind = provider_kind_from_provider(&ctx.provider);
-    let app_type_str = ctx.app_type_str.to_string();
-    let model = model.to_string();
-    let request_model = request_model.to_string();
-    // 「按请求计价」模式的锚点：映射后的出站模型，无映射时等于 request_model
-    let outbound_model = ctx
-        .outbound_model
-        .clone()
-        .unwrap_or_else(|| ctx.request_model.clone());
-    let latency_ms = ctx.latency_ms();
-    let session_id = ctx.session_id.clone();
-
-    tokio::spawn(async move {
-        log_usage_internal(
-            &state,
-            &provider_id,
-            provider_kind,
-            &app_type_str,
-            &model,
-            &request_model,
-            &outbound_model,
-            usage,
-            latency_ms,
-            None,
-            is_streaming,
-            status_code,
-            Some(session_id),
-        )
-        .await;
-    });
 }
 
 pub(crate) fn usage_logging_enabled(state: &ProxyState) -> bool {
@@ -488,6 +402,13 @@ pub(crate) fn usage_logging_enabled(state: &ProxyState) -> bool {
         .try_read()
         .map(|config| config.enable_logging)
         .unwrap_or(true)
+}
+
+fn spawn_record_usage(state: &ProxyState, record: UsageRecord) {
+    let state = state.clone();
+    tokio::spawn(async move {
+        record_usage_internal(&state, record).await;
+    });
 }
 
 async fn record_usage_internal(state: &ProxyState, record: UsageRecord) {
@@ -527,6 +448,7 @@ async fn record_usage_internal(state: &ProxyState, record: UsageRecord) {
 /// 「按代理发出的请求计价、不信任上游回显」，接管场景下发出的请求模型是
 /// 映射后的 Y 而非客户端别名 X，按 X 计价会用错定价表行。
 #[allow(clippy::too_many_arguments)]
+#[cfg(test)]
 async fn log_usage_internal(
     state: &ProxyState,
     provider_id: &str,

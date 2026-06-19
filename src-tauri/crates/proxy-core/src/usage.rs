@@ -751,6 +751,12 @@ pub struct StreamingResponseUsageRecord {
     pub usage_found: bool,
 }
 
+#[derive(Debug, Clone)]
+pub struct NonStreamingResponseUsageRecord {
+    pub record: UsageRecord,
+    pub usage_found: bool,
+}
+
 pub fn transformed_response_usage(
     body: &Value,
     format: TransformedResponseUsageFormat,
@@ -848,6 +854,54 @@ pub fn streaming_response_usage_record_with_request_id_fallback(
     );
 
     StreamingResponseUsageRecord {
+        record,
+        usage_found,
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
+pub fn non_streaming_response_usage_record_with_request_id_fallback(
+    body: Option<&Value>,
+    response_parser: fn(&Value) -> Option<TokenUsage>,
+    provider_id: &str,
+    provider_kind: Option<ProviderKind>,
+    app: AppKind,
+    request_model: &str,
+    outbound_model: Option<&str>,
+    latency_ms: u64,
+    status_code: u16,
+    session_id: Option<String>,
+    request_id_fallback: impl FnOnce() -> String,
+) -> NonStreamingResponseUsageRecord {
+    let body_model = body.and_then(response_body_model);
+    let usage = body.and_then(response_parser);
+    let usage_found = usage.is_some();
+    let usage = usage.unwrap_or_default();
+    let response_model = resolve_usage_response_model(
+        usage.model.as_deref(),
+        body_model.as_deref(),
+        request_model,
+        outbound_model,
+    );
+    let outbound_model = outbound_model.unwrap_or(request_model);
+
+    let record = success_usage_record_with_request_id_fallback(
+        provider_id,
+        provider_kind,
+        app,
+        &response_model,
+        request_model,
+        outbound_model,
+        usage,
+        latency_ms,
+        None,
+        false,
+        status_code,
+        session_id,
+        request_id_fallback,
+    );
+
+    NonStreamingResponseUsageRecord {
         record,
         usage_found,
     }
@@ -1098,6 +1152,24 @@ mod tests {
             .and_then(Value::as_str)
             .unwrap_or(fallback)
             .to_string()
+    }
+
+    fn parsed_response_usage(body: &Value) -> Option<TokenUsage> {
+        Some(TokenUsage {
+            input_tokens: 13,
+            output_tokens: 21,
+            cache_read_tokens: 0,
+            cache_creation_tokens: 0,
+            model: body
+                .get("usage_model")
+                .and_then(Value::as_str)
+                .map(str::to_string),
+            message_id: Some("msg_2".to_string()),
+        })
+    }
+
+    fn missing_response_usage(_body: &Value) -> Option<TokenUsage> {
+        None
     }
 
     #[test]
@@ -2255,6 +2327,89 @@ mod tests {
         assert_eq!(output.record.tokens.input_tokens, 0);
         assert_eq!(output.record.tokens.output_tokens, 0);
         assert!(output.record.is_streaming);
+    }
+
+    #[test]
+    fn test_non_streaming_response_usage_record_prefers_usage_model() {
+        let output = non_streaming_response_usage_record_with_request_id_fallback(
+            Some(&json!({
+                "model": "body-model",
+                "usage_model": "usage-model"
+            })),
+            parsed_response_usage,
+            "provider-a",
+            Some(crate::ProviderKind::Claude),
+            crate::AppKind::ClaudeDesktop,
+            "request-model",
+            Some("outbound-model"),
+            123,
+            200,
+            Some("session-1".to_string()),
+            || "request-1".to_string(),
+        );
+
+        assert!(output.usage_found);
+        assert_eq!(output.record.request_id.as_deref(), Some("session:msg_2"));
+        assert_eq!(output.record.message_id.as_deref(), Some("msg_2"));
+        assert_eq!(output.record.app, crate::AppKind::ClaudeDesktop);
+        assert_eq!(output.record.provider_id, "provider-a");
+        assert_eq!(output.record.request_model, "request-model");
+        assert_eq!(output.record.outbound_model, "outbound-model");
+        assert_eq!(output.record.response_model.as_deref(), Some("usage-model"));
+        assert_eq!(output.record.tokens.input_tokens, 13);
+        assert_eq!(output.record.tokens.output_tokens, 21);
+        assert_eq!(output.record.first_token_ms, None);
+        assert!(!output.record.is_streaming);
+    }
+
+    #[test]
+    fn test_non_streaming_response_usage_record_uses_body_model_without_usage() {
+        let output = non_streaming_response_usage_record_with_request_id_fallback(
+            Some(&json!({"model": "body-model"})),
+            missing_response_usage,
+            "provider-a",
+            None,
+            crate::AppKind::Codex,
+            "request-model",
+            Some("outbound-model"),
+            123,
+            200,
+            None,
+            || "request-1".to_string(),
+        );
+
+        assert!(!output.usage_found);
+        assert_eq!(output.record.request_id.as_deref(), Some("request-1"));
+        assert_eq!(output.record.response_model.as_deref(), Some("body-model"));
+        assert_eq!(output.record.outbound_model, "outbound-model");
+        assert_eq!(output.record.tokens.input_tokens, 0);
+        assert!(!output.record.is_streaming);
+    }
+
+    #[test]
+    fn test_non_streaming_response_usage_record_handles_non_json_body() {
+        let output = non_streaming_response_usage_record_with_request_id_fallback(
+            None,
+            missing_response_usage,
+            "provider-a",
+            None,
+            crate::AppKind::Gemini,
+            "request-model",
+            None,
+            123,
+            200,
+            None,
+            || "request-1".to_string(),
+        );
+
+        assert!(!output.usage_found);
+        assert_eq!(
+            output.record.response_model.as_deref(),
+            Some("request-model")
+        );
+        assert_eq!(output.record.outbound_model, "request-model");
+        assert_eq!(output.record.tokens.output_tokens, 0);
+        assert!(!output.record.is_streaming);
     }
 
     #[test]
