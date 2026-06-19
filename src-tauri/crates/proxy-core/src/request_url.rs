@@ -293,6 +293,13 @@ pub fn is_codex_chat_completions_url(value: &str) -> bool {
         .ends_with("/chat/completions")
 }
 
+pub fn is_codex_chat_full_endpoint_base(
+    codex_responses_to_chat: bool,
+    base_url: &str,
+) -> bool {
+    codex_responses_to_chat && is_codex_chat_completions_url(base_url)
+}
+
 /// `scheme://host` 之后没有路径段的纯 origin 形式。
 pub fn is_origin_only_url(value: &str) -> bool {
     let trimmed = value.trim_end_matches('/');
@@ -391,9 +398,10 @@ mod tests {
     use super::{
         append_query_to_endpoint_path, append_query_to_full_url, extract_gemini_model_from_path,
         build_claude_upstream_url, build_codex_upstream_url, interface_kind_for_forward,
-        is_codex_chat_completions_url, is_codex_chat_wire_api, is_codex_responses_endpoint,
-        is_github_copilot_upstream, is_origin_only_url, merge_query_params,
-        request_model_for_forward, resolved_copilot_dynamic_base_url,
+        is_codex_chat_completions_url, is_codex_chat_full_endpoint_base,
+        is_codex_chat_wire_api, is_codex_responses_endpoint, is_github_copilot_upstream,
+        is_origin_only_url, merge_query_params, request_model_for_forward,
+        resolved_copilot_dynamic_base_url,
         rewrite_claude_transform_endpoint, rewrite_codex_responses_endpoint_to_chat,
         resolve_codex_provider_uses_chat_completions, should_convert_codex_responses_endpoint_to_chat,
         should_resolve_copilot_dynamic_endpoint, split_endpoint_and_query, strip_beta_query,
@@ -545,6 +553,18 @@ mod tests {
             "https://relay.example.com/v1/chat/completions/"
         ));
         assert!(!is_codex_chat_completions_url(
+            "https://relay.example.com/v1/responses"
+        ));
+        assert!(is_codex_chat_full_endpoint_base(
+            true,
+            "https://relay.example.com/v1/chat/completions/"
+        ));
+        assert!(!is_codex_chat_full_endpoint_base(
+            false,
+            "https://relay.example.com/v1/chat/completions/"
+        ));
+        assert!(!is_codex_chat_full_endpoint_base(
+            true,
             "https://relay.example.com/v1/responses"
         ));
     }

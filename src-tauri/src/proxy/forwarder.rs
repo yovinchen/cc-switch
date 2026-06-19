@@ -28,27 +28,28 @@ use crate::proxy_core::{
     build_codex_oauth_session_headers, build_request_started_event_payload,
     build_retryable_forward_failure_log, build_terminal_forward_failure_log,
     build_upstream_auth_headers, categorize_forward_failure, classify_copilot_request,
-    contains_image_blocks, interface_kind_for_forward, is_github_copilot_upstream,
-    is_openai_o_series, is_socks_proxy_url, is_unsupported_image_error, merge_copilot_tool_results,
-    normalize_thinking_type, prompt_cache_trace_log_message, rectify_anthropic_request,
-    rectify_thinking_budget, replace_image_blocks_with_marker, replace_images_for_text_only_model,
-    request_body_filter_log_message, request_model_for_forward, resolve_claude_forward_api_format,
-    resolve_copilot_deterministic_interaction_id, resolve_copilot_model_against_ids,
-    resolve_copilot_optimizer_session_id, resolve_copilot_request_id_with_fallback,
-    resolve_media_prevention_policy, resolve_upstream_request_transport_policy,
-    resolve_upstream_send_policy, resolved_copilot_dynamic_base_url,
-    responses_to_chat_completions_with_options, sanitize_copilot_orphan_tool_results,
-    should_apply_bedrock_pre_send_optimizer, should_check_media_retry,
-    should_failover_after_rectifier_retry_failure, should_preserve_exact_request_header_case,
-    should_rectify_thinking_budget, should_rectify_thinking_signature,
-    should_resolve_copilot_dynamic_endpoint, should_send_anthropic_request_headers,
-    should_trigger_media_retry, split_endpoint_and_query, strip_copilot_thinking_blocks,
-    strip_one_m_suffix_for_upstream, strip_one_m_suffix_for_upstream_from_body,
-    supports_reasoning_effort, validate_managed_account_upstream_auth, AppKind,
-    AttemptEventChannel, AttemptEventPayloadInput, AttemptEventPhase, ChannelQuery,
-    CopilotAuthHeaderOverrides, ForwardFailureCategory, ForwardFailureKind, GeminiShadowStore,
-    InterfaceKind, MediaRetryInput, PromptCacheTraceLogInput, ProxyBody, ProxyEngine, ProxyRequest,
-    ProxyServices, UpstreamAuthHeadersInput, UpstreamRequestHeadersInput, UpstreamSendPolicyInput,
+    contains_image_blocks, interface_kind_for_forward, is_codex_chat_full_endpoint_base,
+    is_github_copilot_upstream, is_openai_o_series, is_socks_proxy_url, is_unsupported_image_error,
+    merge_copilot_tool_results, normalize_thinking_type, prompt_cache_trace_log_message,
+    rectify_anthropic_request, rectify_thinking_budget, replace_image_blocks_with_marker,
+    replace_images_for_text_only_model, request_body_filter_log_message, request_model_for_forward,
+    resolve_claude_forward_api_format, resolve_copilot_deterministic_interaction_id,
+    resolve_copilot_model_against_ids, resolve_copilot_optimizer_session_id,
+    resolve_copilot_request_id_with_fallback, resolve_media_prevention_policy,
+    resolve_upstream_request_transport_policy, resolve_upstream_send_policy,
+    resolved_copilot_dynamic_base_url, responses_to_chat_completions_with_options,
+    sanitize_copilot_orphan_tool_results, should_apply_bedrock_pre_send_optimizer,
+    should_check_media_retry, should_failover_after_rectifier_retry_failure,
+    should_preserve_exact_request_header_case, should_rectify_thinking_budget,
+    should_rectify_thinking_signature, should_resolve_copilot_dynamic_endpoint,
+    should_send_anthropic_request_headers, should_trigger_media_retry, split_endpoint_and_query,
+    strip_copilot_thinking_blocks, strip_one_m_suffix_for_upstream,
+    strip_one_m_suffix_for_upstream_from_body, supports_reasoning_effort,
+    validate_managed_account_upstream_auth, AppKind, AttemptEventChannel, AttemptEventPayloadInput,
+    AttemptEventPhase, ChannelQuery, CopilotAuthHeaderOverrides, ForwardFailureCategory,
+    ForwardFailureKind, GeminiShadowStore, InterfaceKind, MediaRetryInput,
+    PromptCacheTraceLogInput, ProxyBody, ProxyEngine, ProxyRequest, ProxyServices,
+    UpstreamAuthHeadersInput, UpstreamRequestHeadersInput, UpstreamSendPolicyInput,
     UpstreamTransportKind, UNSUPPORTED_IMAGE_MARKER,
 };
 use crate::proxy_core_host::CcSwitchProxyServices;
@@ -1796,11 +1797,8 @@ impl RequestForwarder {
             )
         };
 
-        let codex_chat_base_is_full_endpoint = codex_responses_to_chat
-            && base_url
-                .trim_end_matches('/')
-                .to_ascii_lowercase()
-                .ends_with("/chat/completions");
+        let codex_chat_base_is_full_endpoint =
+            is_codex_chat_full_endpoint_base(codex_responses_to_chat, &base_url);
 
         let url = if matches!(resolved_claude_api_format.as_deref(), Some("gemini_native")) {
             crate::proxy_core::resolve_gemini_native_url(
