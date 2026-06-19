@@ -8,8 +8,9 @@ use crate::proxy::error::ProxyError;
 use crate::proxy_core::{
     build_anthropic_usage_from_gemini, build_gemini_function_declaration,
     extract_anthropic_tool_schema_hints as core_extract_anthropic_tool_schema_hints,
-    map_gemini_finish_reason_to_anthropic, rectify_gemini_tool_call_args,
-    rectify_gemini_tool_call_parts, GeminiAssistantTurn, GeminiShadowStore, GeminiToolCallMeta,
+    is_synthesized_gemini_tool_call_id, map_gemini_finish_reason_to_anthropic,
+    rectify_gemini_tool_call_args, rectify_gemini_tool_call_parts, GeminiAssistantTurn,
+    GeminiShadowStore, GeminiToolCallMeta, GEMINI_SYNTHESIZED_TOOL_CALL_ID_PREFIX,
 };
 #[allow(unused_imports)]
 pub use crate::proxy_core::{AnthropicToolSchemaHint, AnthropicToolSchemaHints};
@@ -21,7 +22,7 @@ use std::collections::{HashMap, HashSet};
 /// often do). The prefix is how downstream request-path code recognizes that
 /// the id is not a real Gemini id and must be stripped before forwarding back
 /// to Gemini as `functionResponse.id`.
-pub(crate) const SYNTHESIZED_ID_PREFIX: &str = "gemini_synth_";
+pub(crate) const SYNTHESIZED_ID_PREFIX: &str = GEMINI_SYNTHESIZED_TOOL_CALL_ID_PREFIX;
 
 /// Generate a unique tool-call id that is safe to expose to Anthropic clients
 /// but must not be sent upstream to Gemini. Uses UUID v4 simple encoding
@@ -34,7 +35,7 @@ pub(crate) fn synthesize_tool_call_id() -> String {
 /// Returns true if `id` was produced by [`synthesize_tool_call_id`] and
 /// therefore must be stripped when building Gemini request bodies.
 pub(crate) fn is_synthesized_tool_call_id(id: &str) -> bool {
-    id.starts_with(SYNTHESIZED_ID_PREFIX)
+    is_synthesized_gemini_tool_call_id(id)
 }
 
 /// Anthropic 请求 → Gemini 原生请求。

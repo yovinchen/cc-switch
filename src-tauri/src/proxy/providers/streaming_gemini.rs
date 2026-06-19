@@ -3,215 +3,18 @@
 //! Converts Gemini `streamGenerateContent?alt=sse` chunks into Anthropic-style
 //! SSE events for Claude-compatible clients.
 
-use super::transform_gemini::{
-    is_synthesized_tool_call_id, rectify_tool_call_parts, synthesize_tool_call_id,
-    AnthropicToolSchemaHints,
-};
+use super::transform_gemini::{synthesize_tool_call_id, AnthropicToolSchemaHints};
 use crate::proxy_core::{
-    append_utf8_safe, build_anthropic_message_delta_event, build_anthropic_usage_from_gemini,
-    map_gemini_finish_reason_to_anthropic, strip_sse_field, take_sse_block, GeminiShadowStore,
-    GeminiToolCallMeta,
+    analyze_gemini_stream_parts, append_utf8_safe, build_anthropic_message_delta_event,
+    build_anthropic_usage_from_gemini, build_gemini_stream_shadow_assistant_parts,
+    map_gemini_finish_reason_to_anthropic, merge_gemini_tool_call_snapshots, strip_sse_field,
+    take_sse_block, GeminiShadowStore, GeminiToolCallMeta,
 };
 use bytes::Bytes;
 use futures::stream::{Stream, StreamExt};
 use serde_json::{json, Value};
 use std::collections::HashSet;
 use std::sync::Arc;
-
-fn extract_visible_text(parts: &[Value]) -> String {
-    parts
-        .iter()
-        .filter(|part| part.get("thought").and_then(|value| value.as_bool()) != Some(true))
-        .filter_map(|part| part.get("text").and_then(|value| value.as_str()))
-        .collect::<String>()
-}
-
-fn extract_tool_calls(
-    parts: &[Value],
-    tool_schema_hints: Option<&AnthropicToolSchemaHints>,
-) -> Vec<GeminiToolCallMeta> {
-    let mut rectified_parts = parts.to_vec();
-    rectify_tool_call_parts(&mut rectified_parts, tool_schema_hints);
-
-    rectified_parts
-        .iter()
-        .filter_map(|part| {
-            let function_call = part.get("functionCall")?;
-            // Treat an explicit empty-string id as equivalent to a missing
-            // one. Some Gemini relays serialize absent ids as `"id": ""`;
-            // without this filter the `Some("")` value would flow into
-            // `merge_tool_call_snapshots`, match itself across chunks, and
-            // collapse parallel no-id calls into a single snapshot with an
-            // empty-string tool_use id.
-            let id = function_call
-                .get("id")
-                .and_then(|value| value.as_str())
-                .filter(|s| !s.is_empty())
-                .map(ToString::to_string);
-            Some(GeminiToolCallMeta::new(
-                id,
-                function_call
-                    .get("name")
-                    .and_then(|value| value.as_str())
-                    .unwrap_or(""),
-                function_call
-                    .get("args")
-                    .cloned()
-                    .unwrap_or_else(|| json!({})),
-                part.get("thoughtSignature")
-                    .or_else(|| part.get("thought_signature"))
-                    .and_then(|value| value.as_str()),
-            ))
-        })
-        .collect()
-}
-
-fn extract_text_thought_signature(parts: &[Value]) -> Option<String> {
-    parts
-        .iter()
-        .filter(|part| part.get("text").is_some() && part.get("functionCall").is_none())
-        .filter_map(|part| {
-            part.get("thoughtSignature")
-                .or_else(|| part.get("thought_signature"))
-                .and_then(|value| value.as_str())
-        })
-        .next_back()
-        .map(ToString::to_string)
-}
-
-fn merge_tool_call_snapshots(
-    tool_call_snapshots: &mut Vec<GeminiToolCallMeta>,
-    incoming: Vec<GeminiToolCallMeta>,
-) {
-    // Gemini's `streamGenerateContent?alt=sse` delivers each chunk as the
-    // cumulative snapshot of `content.parts`. For the same tool call across
-    // chunks we therefore need to map an incoming entry back to whichever
-    // snapshot entry it describes:
-    //
-    // 1. If both sides carry a genuine Gemini id, match by id.
-    // 2. Otherwise match by position in the cumulative `parts` array — this
-    //    is how parallel no-id calls stay distinguishable.
-    //
-    // A previous implementation fell back to matching by `name`, which silently
-    // merged two parallel calls to the same function into one entry (losing
-    // the first call's args). That fallback is removed here.
-    for (position, mut tool_call) in incoming.into_iter().enumerate() {
-        // Treat an empty-string id as "missing" throughout this function.
-        // `extract_tool_calls` already filters `""` at the source, but upstream
-        // callers that build `GeminiToolCallMeta` by hand (tests, future code)
-        // could still send `Some("")` — collapsing it here keeps the invariant
-        // local to this merge step.
-        if tool_call.id.as_deref() == Some("") {
-            tool_call.id = None;
-        }
-
-        let existing_index = match tool_call.id.as_deref() {
-            Some(incoming_id) => tool_call_snapshots
-                .iter()
-                .position(|existing| existing.id.as_deref() == Some(incoming_id))
-                .or_else(|| {
-                    // Fallback for the "synth -> real id upgrade" case:
-                    // Gemini's cumulative stream may deliver the first chunk
-                    // of a tool call without an id (we synthesize one) and
-                    // then upgrade it to a genuine id on a later chunk. A
-                    // pure id-match would miss the existing synthesized
-                    // snapshot and push a second entry, yielding duplicate
-                    // `tool_use` content blocks at stream end. If the
-                    // same-position slot currently holds a synthesized id,
-                    // merge into it — `or(preserved_id)` below will keep
-                    // the real id, dropping the synthesized one.
-                    tool_call_snapshots
-                        .get(position)
-                        .filter(|existing| {
-                            matches!(
-                                existing.id.as_deref(),
-                                Some(id) if is_synthesized_tool_call_id(id)
-                            )
-                        })
-                        .map(|_| position)
-                }),
-            None => tool_call_snapshots
-                .get(position)
-                .filter(|existing| match existing.id.as_deref() {
-                    // Only merge into a positional match when the prior
-                    // snapshot was itself id-less (or we synthesized one).
-                    // A snapshot with a genuine Gemini id at this index is
-                    // treated as a different call — the incoming entry gets
-                    // its own synthesized id below.
-                    Some(id) => is_synthesized_tool_call_id(id),
-                    None => true,
-                })
-                .map(|_| position),
-        };
-
-        if let Some(index) = existing_index {
-            // Preserve any synthesized id assigned on a previous chunk so the
-            // Anthropic-visible id stays stable across the whole stream.
-            // When incoming carries a real Gemini id and the slot holds a
-            // synthesized one, `Some(real).or(Some(synth)) == Some(real)`
-            // so the upgrade wins naturally.
-            let preserved_id = tool_call_snapshots[index].id.clone();
-            tool_call.id = tool_call.id.or(preserved_id);
-
-            // Preserve `thought_signature` across chunks. Gemini's cumulative
-            // stream may include `thoughtSignature` on one chunk and omit it
-            // on a subsequent cumulative snapshot of the same part, even
-            // though the signature still belongs to the call. A blind
-            // overwrite would drop it, so the shadow turn we record (and
-            // later replay) would be missing `thoughtSignature` and the
-            // upstream would reject the follow-up for invalid signature.
-            if tool_call.thought_signature.is_none() {
-                tool_call
-                    .thought_signature
-                    .clone_from(&tool_call_snapshots[index].thought_signature);
-            }
-        }
-        if tool_call.id.is_none() {
-            tool_call.id = Some(synthesize_tool_call_id());
-        }
-
-        match existing_index {
-            Some(index) => tool_call_snapshots[index] = tool_call,
-            None => tool_call_snapshots.push(tool_call),
-        }
-    }
-}
-
-fn build_shadow_assistant_parts(
-    text: Option<&str>,
-    text_thought_signature: Option<&str>,
-    tool_calls: &[GeminiToolCallMeta],
-) -> Vec<Value> {
-    let mut parts = Vec::new();
-
-    if text.filter(|text| !text.is_empty()).is_some() || text_thought_signature.is_some() {
-        let mut part = json!({
-            "text": text.unwrap_or("")
-        });
-        if let Some(signature) = text_thought_signature {
-            part["thoughtSignature"] = json!(signature);
-        }
-        parts.push(part);
-    }
-
-    for tool_call in tool_calls {
-        let mut part = json!({
-            "functionCall": {
-                "id": tool_call.id.clone().unwrap_or_default(),
-                "name": tool_call.name,
-                "args": tool_call.args
-            }
-        });
-
-        if let Some(signature) = &tool_call.thought_signature {
-            part["thoughtSignature"] = json!(signature);
-        }
-
-        parts.push(part);
-    }
-
-    parts
-}
 
 fn encode_sse(event_name: &str, payload: &Value) -> Bytes {
     Bytes::from(format!(
@@ -330,16 +133,19 @@ pub fn create_anthropic_sse_stream_from_gemini<E: std::error::Error + Send + 'st
                                 .and_then(|value| value.get("parts"))
                                 .and_then(|value| value.as_array())
                             {
-                                let mut rectified_parts = parts.clone();
-                                rectify_tool_call_parts(&mut rectified_parts, tool_schema_hints.as_ref());
-                                if let Some(signature) = extract_text_thought_signature(parts) {
+                                let parts_update = analyze_gemini_stream_parts(parts, tool_schema_hints.as_ref());
+                                for name in &parts_update.rectified_tool_names {
+                                    log::info!("[Claude/Gemini] Rectified tool args for `{name}`");
+                                }
+                                if let Some(signature) = parts_update.text_thought_signature {
                                     text_thought_signature = Some(signature);
                                 }
-                                merge_tool_call_snapshots(
+                                merge_gemini_tool_call_snapshots(
                                     &mut tool_call_snapshots,
-                                    extract_tool_calls(&rectified_parts, tool_schema_hints.as_ref()),
+                                    parts_update.tool_calls,
+                                    synthesize_tool_call_id,
                                 );
-                                let visible_text = extract_visible_text(&rectified_parts);
+                                let visible_text = parts_update.visible_text;
                                 if !visible_text.is_empty() {
                                     let is_cumulative = visible_text.starts_with(&accumulated_text);
                                     let delta = if is_cumulative {
@@ -463,7 +269,7 @@ pub fn create_anthropic_sse_stream_from_gemini<E: std::error::Error + Send + 'st
             } else {
                 Some(accumulated_text.as_str())
             };
-            let shadow_parts = build_shadow_assistant_parts(
+            let shadow_parts = build_gemini_stream_shadow_assistant_parts(
                 shadow_text,
                 text_thought_signature.as_deref(),
                 &tool_calls,
