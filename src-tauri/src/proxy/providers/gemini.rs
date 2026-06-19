@@ -18,8 +18,6 @@ use crate::proxy_core::{
 /// Gemini 适配器
 pub struct GeminiAdapter;
 
-pub type OAuthCredentials = GeminiOAuthCredentials;
-
 impl GeminiAdapter {
     pub fn new() -> Self {
         Self
@@ -48,7 +46,7 @@ impl GeminiAdapter {
     }
 
     /// 解析 OAuth 凭证
-    pub fn parse_oauth_credentials(&self, key: &str) -> Option<OAuthCredentials> {
+    pub fn parse_oauth_credentials(&self, key: &str) -> Option<GeminiOAuthCredentials> {
         parse_gemini_oauth_credentials(key)
     }
 
