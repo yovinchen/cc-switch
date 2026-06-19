@@ -15,9 +15,6 @@
 //! - `_session_token`: 会话令牌
 //! - `_client_version`: 客户端版本
 
-#[cfg(test)]
-use serde_json::Value;
-
 /// 过滤私有参数（以 `_` 开头的字段）
 ///
 /// 递归遍历 JSON 结构，移除所有以下划线开头的字段。
@@ -38,10 +35,8 @@ use serde_json::Value;
 /// let output = filter_private_params(input);
 /// // output 中不包含 _internal_id 和 _token
 /// ```
-#[cfg(test)]
-pub fn filter_private_params(body: Value) -> Value {
-    crate::proxy_core::filter_private_params(body)
-}
+#[allow(unused_imports)]
+pub use crate::proxy_core::filter_private_params;
 
 /// 过滤私有参数（支持白名单）
 ///
@@ -65,10 +60,8 @@ pub fn filter_private_params(body: Value) -> Value {
 /// let output = filter_private_params_with_whitelist(input, &["_metadata"]);
 /// // output 包含 _metadata，不包含 _internal_id
 /// ```
-#[cfg(test)]
-pub fn filter_private_params_with_whitelist(body: Value, whitelist: &[String]) -> Value {
-    crate::proxy_core::filter_private_params_with_whitelist(body, whitelist)
-}
+#[allow(unused_imports)]
+pub use crate::proxy_core::filter_private_params_with_whitelist;
 
 #[cfg(test)]
 mod tests {
