@@ -531,17 +531,10 @@ impl crate::proxy_core::ModelCatalogProvider for CcSwitchModelCatalogProvider {
                 .db
                 .get_provider_by_id(provider_id, app.as_str())
                 .map_err(|error| app_error("load model catalog", error))?;
-            let mut models = Vec::new();
-            if let Some(provider) = provider {
-                collect_models_from_value(&provider.settings_config, &mut models);
-            }
-            models.sort();
-            models.dedup();
-            Ok(ModelCatalog {
-                provider_id: provider_id.to_string(),
-                models,
-                raw: Value::Object(Default::default()),
-            })
+            Ok(crate::proxy_core::provider_model_catalog_from_settings(
+                provider_id,
+                provider.as_ref().map(|provider| &provider.settings_config),
+            ))
         })
     }
 
@@ -1045,42 +1038,6 @@ fn channel_matches_query(channel: &ChannelSpec, query: &ChannelQuery<'_>) -> boo
     true
 }
 
-fn collect_models_from_value(value: &Value, models: &mut Vec<String>) {
-    if let Some(model) = value.get("model").and_then(Value::as_str) {
-        push_model(models, model);
-    }
-    if let Some(env) = value.get("env").and_then(Value::as_object) {
-        for key in [
-            "ANTHROPIC_MODEL",
-            "ANTHROPIC_SMALL_FAST_MODEL",
-            "ANTHROPIC_DEFAULT_HAIKU_MODEL",
-            "ANTHROPIC_DEFAULT_SONNET_MODEL",
-            "ANTHROPIC_DEFAULT_OPUS_MODEL",
-            "GEMINI_MODEL",
-        ] {
-            if let Some(model) = env.get(key).and_then(Value::as_str) {
-                push_model(models, model);
-            }
-        }
-    }
-    if let Some(catalog_models) = value
-        .get("modelCatalog")
-        .and_then(|catalog| catalog.get("models"))
-        .and_then(Value::as_array)
-    {
-        for entry in catalog_models {
-            if let Some(model) = entry
-                .get("model")
-                .or_else(|| entry.get("id"))
-                .or_else(|| entry.get("name"))
-                .and_then(Value::as_str)
-            {
-                push_model(models, model);
-            }
-        }
-    }
-}
-
 fn load_codex_client_model_catalog_raw() -> Value {
     let generated_path = crate::codex_config::get_codex_model_catalog_path();
     let active_catalog_path = match crate::codex_config::read_codex_config_text() {
@@ -1100,13 +1057,6 @@ fn load_codex_client_model_catalog_raw() -> Value {
             );
         }
         json!({"models": []})
-    }
-}
-
-fn push_model(models: &mut Vec<String>, model: &str) {
-    let model = model.trim();
-    if !model.is_empty() {
-        models.push(model.to_string());
     }
 }
 

@@ -161,6 +161,23 @@ pub fn client_model_catalog_from_raw(provider_id: impl Into<String>, raw: Value)
     }
 }
 
+pub fn provider_model_catalog_from_settings(
+    provider_id: impl Into<String>,
+    settings: Option<&Value>,
+) -> ModelCatalog {
+    let mut models = Vec::new();
+    if let Some(settings) = settings {
+        collect_provider_settings_models(settings, &mut models);
+    }
+    models.sort();
+    models.dedup();
+    ModelCatalog {
+        provider_id: provider_id.into(),
+        models,
+        raw: Value::Object(Default::default()),
+    }
+}
+
 pub fn build_codex_model_catalog_from_settings(
     settings: &Value,
     default_context_window: u64,
@@ -298,6 +315,44 @@ fn collect_client_catalog_models(value: &Value, models: &mut Vec<String>) {
                 .and_then(Value::as_str)
         }) {
             push_model(models, model);
+        }
+    }
+}
+
+fn collect_provider_settings_models(value: &Value, models: &mut Vec<String>) {
+    if let Some(model) = value.get("model").and_then(Value::as_str) {
+        push_model(models, model);
+    }
+
+    if let Some(env) = value.get("env").and_then(Value::as_object) {
+        for key in [
+            "ANTHROPIC_MODEL",
+            "ANTHROPIC_SMALL_FAST_MODEL",
+            "ANTHROPIC_DEFAULT_HAIKU_MODEL",
+            "ANTHROPIC_DEFAULT_SONNET_MODEL",
+            "ANTHROPIC_DEFAULT_OPUS_MODEL",
+            "GEMINI_MODEL",
+        ] {
+            if let Some(model) = env.get(key).and_then(Value::as_str) {
+                push_model(models, model);
+            }
+        }
+    }
+
+    if let Some(catalog_models) = value
+        .get("modelCatalog")
+        .and_then(|catalog| catalog.get("models"))
+        .and_then(Value::as_array)
+    {
+        for entry in catalog_models {
+            if let Some(model) = entry
+                .get("model")
+                .or_else(|| entry.get("id"))
+                .or_else(|| entry.get("name"))
+                .and_then(Value::as_str)
+            {
+                push_model(models, model);
+            }
         }
     }
 }
@@ -773,6 +828,52 @@ mod tests {
             ]
         );
         assert_eq!(catalog.raw, raw);
+    }
+
+    #[test]
+    fn provider_model_catalog_from_settings_summarizes_provider_sources() {
+        let settings = json!({
+            "model": " claude-sonnet-4 ",
+            "env": {
+                "ANTHROPIC_MODEL": "claude-opus-4",
+                "ANTHROPIC_SMALL_FAST_MODEL": "",
+                "GEMINI_MODEL": "gemini-2.5-pro",
+                "IGNORED_MODEL": "ignored"
+            },
+            "modelCatalog": {
+                "models": [
+                    { "model": "deepseek-v4" },
+                    { "id": "kimi-k2" },
+                    { "name": "qwen3" },
+                    { "model": "claude-sonnet-4" }
+                ]
+            }
+        });
+
+        let catalog = provider_model_catalog_from_settings("provider-a", Some(&settings));
+
+        assert_eq!(catalog.provider_id, "provider-a");
+        assert_eq!(
+            catalog.models,
+            vec![
+                "claude-opus-4".to_string(),
+                "claude-sonnet-4".to_string(),
+                "deepseek-v4".to_string(),
+                "gemini-2.5-pro".to_string(),
+                "kimi-k2".to_string(),
+                "qwen3".to_string()
+            ]
+        );
+        assert_eq!(catalog.raw, json!({}));
+    }
+
+    #[test]
+    fn provider_model_catalog_from_settings_handles_missing_provider() {
+        let catalog = provider_model_catalog_from_settings("missing", None);
+
+        assert_eq!(catalog.provider_id, "missing");
+        assert!(catalog.models.is_empty());
+        assert_eq!(catalog.raw, json!({}));
     }
 
     #[test]
