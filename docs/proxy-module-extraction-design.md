@@ -256,7 +256,7 @@
 245. OpenAI-compatible 模型目录拉取的 API key 空值校验已迁入 `proxy-core::model_fetch::validate_openai_compatible_models_api_key`；host 不再持有请求前校验文案。
 246. OpenAI-compatible 模型目录拉取的候选端点编排已迁入 `proxy-core::model_fetch::fetch_openai_compatible_models_with_transport`，并通过 `OpenAiCompatibleModelsTransport` 端口隔离实际 HTTP；host `services::model_fetch` 只实现 reqwest transport、日志、timeout 设置和 body 读取。
 247. Codex OAuth 模型目录拉取的 backend 请求编排、HTTP 失败映射、JSON parse 和模型抽取已迁入 `proxy-core::model_fetch::fetch_codex_oauth_models_with_transport`，并通过 `CodexOAuthModelsTransport` 端口隔离实际 HTTP；host `services::codex_oauth_models` 只实现 reqwest transport、query/header 注入、timeout 设置和 body 读取。
-248. `/proxy/v1/apps/{app}/providers` 的 provider summary 输入投影已迁入 `proxy-core::ProviderSummaryInput::from_provider_spec`；host handler 只把宿主 `Provider` 适配为脱敏 `ProviderSpec`，不再手写 category/sortIndex/icon/providerType 字段抽取。
+248. `/proxy/v1/apps/{app}/providers` 的 provider summary 输入投影与列表 response 组装已迁入 `proxy-core::ProviderListResponse::from_provider_specs`；host handler 只把宿主 `Provider` 适配为脱敏 `ProviderSpec` 并提供 current/failover/routeCandidate 事实，不再手写 category/sortIndex/icon/providerType 字段抽取。
 249. `/proxy/v1/apps/{app}/routes/current` 的 configured provider summary 输入投影已迁入 `proxy-core::CurrentRouteProviderSummaryInput::from_provider_spec`；host handler 只负责读取当前 provider 并适配为脱敏 `ProviderSpec`。
 250. `/proxy/v1/apps/{app}/routes/current` 的 active target response contract 已迁入 `proxy-core::CurrentRouteTarget`；host handler 只把 runtime `ActiveTarget` 显式适配为 core DTO，外部字段仍覆盖 app/provider/channel/interface/publicModel/upstreamModel。
 251. `/proxy/v1/groups` 的 route group source 输入投影已迁入 `proxy-core::RouteGroupSourceInput::from_channel_specs`；host handler 只把宿主 channel record 适配为中立 `ChannelSpec`，不再直接抽取 DB record 的 `groups` 字段。

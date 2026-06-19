@@ -59,13 +59,12 @@ use crate::proxy_core::{
     ChannelRecordResponse, ChannelRouteCandidate, ChannelRouteRejected,
     ClaudeDesktopModelListResponse, ClientModelCatalogResponse, CurrentRouteProviderSummaryInput,
     CurrentRouteResponse, CurrentRouteTarget, GroupListQuery, HealthCheckResponse, InterfaceKind,
-    ManagementAuthDecision, ProviderListResponse, ProviderSummaryInput, ProxyBody,
-    ProxyChannelModelsReplaceRequest, ProxyChannelPatchRequest, ProxyChannelWriteRequest,
-    ProxyEngine, ProxyRequest, ProxyResult, ProxyRuntimeStatus, ProxyServices, ProxyStatusResponse,
-    RoutableModelList, RouteGroupListResponse, RouteGroupSourceInput, RouteResolveRequest,
-    RouteResolveResponse, TokenUsage, TransformedResponseUsageFormat, UpstreamJsonBodySource,
-    UpstreamSseAggregationKind, CLAUDE_PARSER_CONFIG, CODEX_PARSER_CONFIG, GEMINI_PARSER_CONFIG,
-    OPENAI_PARSER_CONFIG,
+    ManagementAuthDecision, ProviderListResponse, ProxyBody, ProxyChannelModelsReplaceRequest,
+    ProxyChannelPatchRequest, ProxyChannelWriteRequest, ProxyEngine, ProxyRequest, ProxyResult,
+    ProxyRuntimeStatus, ProxyServices, ProxyStatusResponse, RoutableModelList,
+    RouteGroupListResponse, RouteGroupSourceInput, RouteResolveRequest, RouteResolveResponse,
+    TokenUsage, TransformedResponseUsageFormat, UpstreamJsonBodySource, UpstreamSseAggregationKind,
+    CLAUDE_PARSER_CONFIG, CODEX_PARSER_CONFIG, GEMINI_PARSER_CONFIG, OPENAI_PARSER_CONFIG,
 };
 use crate::proxy_core_adapter::{
     ToProxyCoreChannelModelRecord, ToProxyCoreChannelRecord, ToProxyCoreChannelSpec,
@@ -245,16 +244,13 @@ pub async fn list_proxy_providers(
             Err(e) => return Err(ProxyError::DatabaseError(e.to_string())),
         };
 
-    let provider_inputs = providers
+    let provider_specs = providers
         .into_values()
-        .map(|provider| {
-            ProviderSummaryInput::from_provider_spec(provider.to_proxy_core_provider_spec(&app))
-        })
-        .collect();
+        .map(|provider| provider.to_proxy_core_provider_spec(&app));
 
-    Ok(Json(ProviderListResponse::from_provider_inputs(
+    Ok(Json(ProviderListResponse::from_provider_specs(
         app_type,
-        provider_inputs,
+        provider_specs,
         current_provider.as_deref(),
         &failover_ids,
         &route_candidate_ids,

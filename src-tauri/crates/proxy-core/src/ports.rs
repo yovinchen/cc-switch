@@ -664,6 +664,25 @@ impl ProviderListResponse {
                 .collect(),
         )
     }
+
+    pub fn from_provider_specs(
+        app_type: impl Into<String>,
+        providers: impl IntoIterator<Item = ProviderSpec>,
+        current_provider: Option<&str>,
+        failover_provider_ids: &[String],
+        route_candidate_ids: &[String],
+    ) -> Self {
+        Self::from_provider_inputs(
+            app_type,
+            providers
+                .into_iter()
+                .map(ProviderSummaryInput::from_provider_spec)
+                .collect(),
+            current_provider,
+            failover_provider_ids,
+            route_candidate_ids,
+        )
+    }
 }
 
 fn contains_provider_id(provider_ids: &[String], provider_id: &str) -> bool {
@@ -1833,6 +1852,43 @@ mod tests {
         });
 
         assert!(input.provider_type.is_none());
+    }
+
+    #[test]
+    fn provider_list_response_projects_provider_specs() {
+        let response = ProviderListResponse::from_provider_specs(
+            "claude",
+            vec![ProviderSpec {
+                id: "provider-a".to_string(),
+                name: "Provider A".to_string(),
+                kind: ProviderKind::OpenRouter,
+                account_ref: None,
+                metadata: ProviderMetadata {
+                    labels: vec![],
+                    raw: json!({
+                        "category": "aggregator",
+                        "sortIndex": 3,
+                        "icon": "openrouter",
+                        "providerType": "openai_compatible",
+                        "apiKey": "must-not-leak"
+                    }),
+                },
+            }],
+            Some("provider-a"),
+            &["provider-a".to_string()],
+            &["provider-a".to_string()],
+        );
+
+        let value = serde_json::to_value(response).expect("serialize response");
+
+        assert_eq!(value["appType"], "claude");
+        assert_eq!(value["providers"][0]["id"], "provider-a");
+        assert_eq!(value["providers"][0]["category"], "aggregator");
+        assert_eq!(value["providers"][0]["sortIndex"], 3);
+        assert_eq!(value["providers"][0]["current"], true);
+        assert_eq!(value["providers"][0]["inFailoverQueue"], true);
+        assert_eq!(value["providers"][0]["routeCandidate"], true);
+        assert!(value["providers"][0].get("apiKey").is_none());
     }
 
     #[test]
