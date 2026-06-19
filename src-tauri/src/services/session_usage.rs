@@ -11,8 +11,7 @@
 use crate::config::get_claude_config_dir;
 use crate::database::{lock_conn, Database};
 use crate::error::AppError;
-use crate::proxy::usage::calculator::{CostCalculator, ModelPricing};
-use crate::proxy_core::{TokenUsage, SESSION_REQUEST_ID_PREFIX};
+use crate::proxy_core::{CostCalculator, ModelPricing, TokenUsage, SESSION_REQUEST_ID_PREFIX};
 use crate::services::usage_stats::{
     effective_usage_log_filter, find_model_pricing, should_skip_session_insert, DedupKey,
 };

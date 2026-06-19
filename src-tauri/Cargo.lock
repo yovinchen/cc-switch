@@ -814,6 +814,7 @@ dependencies = [
  "flate2",
  "futures",
  "http",
+ "rust_decimal",
  "serde",
  "serde_json",
  "sha2",

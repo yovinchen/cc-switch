@@ -8,13 +8,13 @@ use crate::proxy::provider_router::ProviderRouter;
 use crate::proxy::providers::codex_chat_history::CodexChatHistoryStore;
 use crate::proxy::route_attempt::forward_attempts_from_route_plan;
 use crate::proxy::types::{ActiveTarget, ProxyStatus};
-use crate::proxy::usage::{CostCalculator, RequestLog, UsageLogger};
+use crate::proxy::usage::{RequestLog, UsageLogger};
 use crate::proxy::RequestForwarder;
 use crate::proxy_core::{
     interfaces_compatible, resolve_usage_record_pricing_models, route_group_matches,
     token_usage_from_usage_record, AppKind, AuthInfo, AuthProfileRef, ChannelAttemptPlan,
     ChannelAttemptResult, ChannelQuery, ChannelSource, ChannelSpec, ChannelStatus,
-    CopilotOptimizerConfigSpec, ForwardPipeline, GeminiShadowStore, ModelCatalog,
+    CopilotOptimizerConfigSpec, CostCalculator, ForwardPipeline, GeminiShadowStore, ModelCatalog,
     OptimizerConfigSpec, ProviderSource, ProviderSpec, ProxyAppConfig, ProxyBody,
     ProxyConfigSource, ProxyCoreError, ProxyCoreEvent, ProxyCoreEventType, ProxyCoreResponse,
     ProxyCoreResult, ProxyEventSink, ProxyGlobalConfig, ProxyRequest, ProxyResponseBody,
