@@ -9,7 +9,6 @@ use crate::proxy_core::{
 };
 use std::time::Duration;
 
-const CODEX_OAUTH_FETCH_TIMEOUT_SECS: u64 = 15;
 const CODEX_OAUTH_CLIENT_VERSION: &str = env!("CARGO_PKG_VERSION");
 
 pub async fn fetch_models_with_token(
@@ -27,7 +26,7 @@ pub async fn fetch_models_with_token(
         )
         .header(request.originator_header.0, request.originator_header.1)
         .header(request.account_id_header.0, request.account_id_header.1)
-        .timeout(Duration::from_secs(CODEX_OAUTH_FETCH_TIMEOUT_SECS))
+        .timeout(Duration::from_secs(request.timeout_secs))
         .send()
         .await
         .map_err(|e| format!("Request failed: {e}"))?;

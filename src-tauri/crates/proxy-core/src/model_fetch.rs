@@ -5,6 +5,8 @@ use std::collections::HashSet;
 
 pub const DEFAULT_CODEX_MODEL_CONTEXT_WINDOW: u64 = 128_000;
 pub const MODEL_FETCH_ERROR_BODY_MAX_CHARS: usize = 512;
+pub const OPENAI_COMPATIBLE_MODELS_TIMEOUT_SECS: u64 = 15;
+pub const CODEX_OAUTH_MODELS_TIMEOUT_SECS: u64 = 15;
 pub const MODEL_FETCH_AUTHORIZATION_HEADER: &str = "Authorization";
 pub const MODEL_FETCH_USER_AGENT_HEADER: &str = "User-Agent";
 pub const CODEX_OAUTH_MODELS_URL: &str = "https://chatgpt.com/backend-api/codex/models";
@@ -41,6 +43,7 @@ struct CodexCatalogModelSpec {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CodexOAuthModelsRequest<'a> {
     pub url: &'static str,
+    pub timeout_secs: u64,
     pub client_version_query: (&'static str, &'a str),
     pub authorization_header: (&'static str, String),
     pub originator_header: (&'static str, &'static str),
@@ -50,6 +53,7 @@ pub struct CodexOAuthModelsRequest<'a> {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct OpenAiCompatibleModelsRequest<'a> {
     pub url: &'a str,
+    pub timeout_secs: u64,
     pub authorization_header: (&'static str, String),
     pub user_agent_header: Option<(&'static str, &'a http::HeaderValue)>,
 }
@@ -153,9 +157,17 @@ pub fn build_openai_compatible_models_request<'a>(
 ) -> OpenAiCompatibleModelsRequest<'a> {
     OpenAiCompatibleModelsRequest {
         url,
+        timeout_secs: OPENAI_COMPATIBLE_MODELS_TIMEOUT_SECS,
         authorization_header: (MODEL_FETCH_AUTHORIZATION_HEADER, format!("Bearer {api_key}")),
         user_agent_header: user_agent.map(|value| (MODEL_FETCH_USER_AGENT_HEADER, value)),
     }
+}
+
+pub fn should_retry_openai_compatible_models_candidate(status: http::StatusCode) -> bool {
+    matches!(
+        status,
+        http::StatusCode::NOT_FOUND | http::StatusCode::METHOD_NOT_ALLOWED
+    )
 }
 
 pub fn truncate_model_fetch_error_body(body: impl AsRef<str>) -> String {
@@ -187,6 +199,7 @@ pub fn build_codex_oauth_models_request<'a>(
 ) -> CodexOAuthModelsRequest<'a> {
     CodexOAuthModelsRequest {
         url: CODEX_OAUTH_MODELS_URL,
+        timeout_secs: CODEX_OAUTH_MODELS_TIMEOUT_SECS,
         client_version_query: (CODEX_OAUTH_MODELS_CLIENT_VERSION_QUERY, client_version),
         authorization_header: (MODEL_FETCH_AUTHORIZATION_HEADER, format!("Bearer {token}")),
         originator_header: (
@@ -830,6 +843,7 @@ mod tests {
             request.authorization_header,
             (MODEL_FETCH_AUTHORIZATION_HEADER, "Bearer sk-test".to_string())
         );
+        assert_eq!(request.timeout_secs, OPENAI_COMPATIBLE_MODELS_TIMEOUT_SECS);
         assert!(request.user_agent_header.is_none());
     }
 
@@ -846,6 +860,22 @@ mod tests {
             request.user_agent_header,
             Some((MODEL_FETCH_USER_AGENT_HEADER, &user_agent))
         );
+    }
+
+    #[test]
+    fn retry_openai_compatible_models_candidate_only_for_discovery_misses() {
+        assert!(should_retry_openai_compatible_models_candidate(
+            http::StatusCode::NOT_FOUND
+        ));
+        assert!(should_retry_openai_compatible_models_candidate(
+            http::StatusCode::METHOD_NOT_ALLOWED
+        ));
+        assert!(!should_retry_openai_compatible_models_candidate(
+            http::StatusCode::UNAUTHORIZED
+        ));
+        assert!(!should_retry_openai_compatible_models_candidate(
+            http::StatusCode::INTERNAL_SERVER_ERROR
+        ));
     }
 
     #[test]
@@ -879,6 +909,7 @@ mod tests {
         let request = build_codex_oauth_models_request("token-123", "account-456", "9.8.7");
 
         assert_eq!(request.url, CODEX_OAUTH_MODELS_URL);
+        assert_eq!(request.timeout_secs, CODEX_OAUTH_MODELS_TIMEOUT_SECS);
         assert_eq!(
             request.client_version_query,
             (CODEX_OAUTH_MODELS_CLIENT_VERSION_QUERY, "9.8.7")

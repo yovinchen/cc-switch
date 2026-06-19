@@ -5,15 +5,13 @@
 //! 协议挂在兼容子路径上的官方供应商（DeepSeek、Kimi、智谱 GLM 等）。
 
 use reqwest::header::HeaderValue;
-use reqwest::StatusCode;
 use std::time::Duration;
 
 use crate::proxy_core::{
     build_models_url_candidates, build_openai_compatible_models_request,
-    parse_models_response_bytes, truncate_model_fetch_error_body, FetchedModel,
+    parse_models_response_bytes, should_retry_openai_compatible_models_candidate,
+    truncate_model_fetch_error_body, FetchedModel,
 };
-
-const FETCH_TIMEOUT_SECS: u64 = 15;
 
 /// 获取供应商的可用模型列表
 ///
@@ -43,7 +41,7 @@ pub async fn fetch_models(
                 request_plan.authorization_header.0,
                 request_plan.authorization_header.1,
             )
-            .timeout(Duration::from_secs(FETCH_TIMEOUT_SECS));
+            .timeout(Duration::from_secs(request_plan.timeout_secs));
         // 自定义 User-Agent：部分 /models 端点同样有 UA 白名单（如 Kimi Coding Plan），
         // 与转发 / 检测路径共用同一 UA，避免"代理可用但取模型失败"。
         if let Some((header, value)) = request_plan.user_agent_header {
@@ -68,7 +66,7 @@ pub async fn fetch_models(
             return Ok(models);
         }
 
-        if status == StatusCode::NOT_FOUND || status == StatusCode::METHOD_NOT_ALLOWED {
+        if should_retry_openai_compatible_models_candidate(status) {
             let body = truncate_model_fetch_error_body(response.text().await.unwrap_or_default());
             last_err = Some(format!("HTTP {status}: {body}"));
             continue;
