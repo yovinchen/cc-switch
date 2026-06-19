@@ -9,13 +9,14 @@ use super::{AuthInfo, AuthStrategy, ProviderAdapter};
 use crate::provider::{CodexChatReasoningConfig, Provider};
 use crate::proxy::error::ProxyError;
 use crate::proxy_core::{
+    apply_codex_chat_upstream_model_policy, codex_provider_catalog_model_ids_from_settings,
     infer_codex_chat_reasoning_profile, is_origin_only_url, normalize_codex_chat_reasoning_profile,
-    resolve_codex_provider_uses_chat_completions, should_convert_codex_responses_endpoint_to_chat,
-    CodexChatReasoningOptions, CodexChatReasoningProfile,
+    resolve_codex_provider_upstream_model, resolve_codex_provider_uses_chat_completions,
+    should_convert_codex_responses_endpoint_to_chat, CodexChatReasoningOptions,
+    CodexChatReasoningProfile,
 };
 use regex::Regex;
 use serde_json::Value as JsonValue;
-use std::collections::HashSet;
 use std::sync::LazyLock;
 use toml::Value as TomlValue;
 
@@ -75,38 +76,16 @@ pub fn should_convert_codex_responses_to_chat(provider: &Provider, endpoint: &st
 
 /// Extract the real upstream model configured for a Codex provider.
 pub fn codex_provider_upstream_model(provider: &Provider) -> Option<String> {
-    provider
+    let settings_model = provider
         .settings_config
         .get("model")
-        .and_then(|v| v.as_str())
-        .map(str::trim)
-        .filter(|model| !model.is_empty())
-        .map(ToString::to_string)
-        .or_else(|| {
-            provider
-                .settings_config
-                .get("config")
-                .and_then(|v| v.as_str())
-                .and_then(extract_codex_model_from_toml)
-        })
-}
-
-fn codex_provider_catalog_model_ids(provider: &Provider) -> HashSet<String> {
-    provider
+        .and_then(|v| v.as_str());
+    let config_model = provider
         .settings_config
-        .get("modelCatalog")
-        .and_then(|catalog| catalog.get("models"))
-        .and_then(|models| models.as_array())
-        .map(|models| {
-            models
-                .iter()
-                .filter_map(|model| model.get("model").and_then(|value| value.as_str()))
-                .map(str::trim)
-                .filter(|model| !model.is_empty())
-                .map(ToString::to_string)
-                .collect()
-        })
-        .unwrap_or_default()
+        .get("config")
+        .and_then(|v| v.as_str())
+        .and_then(extract_codex_model_from_toml);
+    resolve_codex_provider_upstream_model(settings_model, config_model.as_deref())
 }
 
 /// For Codex Chat providers, ensure the request uses the configured upstream
@@ -119,21 +98,15 @@ pub fn apply_codex_chat_upstream_model(
         return None;
     }
 
-    let catalog_model_ids = codex_provider_catalog_model_ids(provider);
-    if let Some(request_model) = body
-        .get("model")
-        .and_then(|value| value.as_str())
-        .map(str::trim)
-        .filter(|model| !model.is_empty())
-    {
-        if catalog_model_ids.contains(request_model) {
-            return Some(request_model.to_string());
-        }
-    }
-
-    let upstream_model = codex_provider_upstream_model(provider)?;
-    body["model"] = JsonValue::String(upstream_model.clone());
-    Some(upstream_model)
+    let catalog_model_ids =
+        codex_provider_catalog_model_ids_from_settings(&provider.settings_config);
+    let upstream_model = codex_provider_upstream_model(provider);
+    apply_codex_chat_upstream_model_policy(
+        body,
+        true,
+        upstream_model.as_deref(),
+        &catalog_model_ids,
+    )
 }
 
 #[cfg(test)]

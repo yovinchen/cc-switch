@@ -100,6 +100,65 @@ pub fn codex_chat_reasoning_requested(body: &Value) -> Option<bool> {
     body.get("reasoning").map(|value| !value.is_null())
 }
 
+pub fn resolve_codex_provider_upstream_model(
+    settings_model: Option<&str>,
+    config_model: Option<&str>,
+) -> Option<String> {
+    settings_model
+        .map(str::trim)
+        .filter(|model| !model.is_empty())
+        .map(ToString::to_string)
+        .or_else(|| {
+            config_model
+                .map(str::trim)
+                .filter(|model| !model.is_empty())
+                .map(ToString::to_string)
+        })
+}
+
+pub fn codex_provider_catalog_model_ids_from_settings(settings_config: &Value) -> HashSet<String> {
+    settings_config
+        .get("modelCatalog")
+        .and_then(|catalog| catalog.get("models"))
+        .and_then(Value::as_array)
+        .map(|models| {
+            models
+                .iter()
+                .filter_map(|model| model.get("model").and_then(Value::as_str))
+                .map(str::trim)
+                .filter(|model| !model.is_empty())
+                .map(ToString::to_string)
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+pub fn apply_codex_chat_upstream_model_policy(
+    body: &mut Value,
+    uses_chat_completions: bool,
+    upstream_model: Option<&str>,
+    catalog_model_ids: &HashSet<String>,
+) -> Option<String> {
+    if !uses_chat_completions {
+        return None;
+    }
+
+    if let Some(request_model) = body
+        .get("model")
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|model| !model.is_empty())
+    {
+        if catalog_model_ids.contains(request_model) {
+            return Some(request_model.to_string());
+        }
+    }
+
+    let upstream_model = upstream_model.map(str::trim).filter(|model| !model.is_empty())?;
+    body["model"] = Value::String(upstream_model.to_string());
+    Some(upstream_model.to_string())
+}
+
 pub fn map_codex_chat_reasoning_effort(
     effort: &str,
     mode: Option<&str>,
@@ -368,17 +427,20 @@ fn matches_schema_name_map(key: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::{
-        canonicalize_request_body_value, clean_openai_tool_schema, filter_private_params,
+        apply_codex_chat_upstream_model_policy, canonicalize_request_body_value,
+        clean_openai_tool_schema, codex_chat_reasoning_requested,
+        codex_provider_catalog_model_ids_from_settings, filter_private_params,
         filter_private_params_with_whitelist, filter_private_params_with_whitelist_report,
-        inject_openai_stream_include_usage, is_openai_o_series, map_codex_chat_reasoning_effort,
-        method_allows_upstream_request_body, map_anthropic_tool_choice_to_openai_chat,
-        map_anthropic_tool_choice_to_openai_responses, prepare_upstream_request_body_with_report,
+        inject_openai_stream_include_usage, is_openai_o_series,
+        map_anthropic_tool_choice_to_openai_chat, map_anthropic_tool_choice_to_openai_responses,
+        map_codex_chat_reasoning_effort, method_allows_upstream_request_body,
+        prepare_upstream_request_body_with_report, resolve_codex_provider_upstream_model,
         resolve_reasoning_effort, serialize_upstream_request_body,
         strip_leading_anthropic_billing_header, supports_reasoning_effort,
-        codex_chat_reasoning_requested,
     };
     use http::Method;
     use serde_json::json;
+    use std::collections::HashSet;
 
     #[test]
     fn filters_private_fields_recursively_but_preserves_schema_property_names() {
@@ -600,6 +662,84 @@ mod tests {
             Some(false)
         );
         assert_eq!(codex_chat_reasoning_requested(&json!({})), None);
+    }
+
+    #[test]
+    fn resolves_codex_upstream_model_preferring_settings_model() {
+        assert_eq!(
+            resolve_codex_provider_upstream_model(
+                Some(" deepseek-v4-flash "),
+                Some("kimi-k2")
+            )
+            .as_deref(),
+            Some("deepseek-v4-flash")
+        );
+        assert_eq!(
+            resolve_codex_provider_upstream_model(Some(" "), Some(" kimi-k2 ")).as_deref(),
+            Some("kimi-k2")
+        );
+        assert!(resolve_codex_provider_upstream_model(None, Some(" ")).is_none());
+    }
+
+    #[test]
+    fn extracts_codex_catalog_model_ids_from_settings() {
+        let ids = codex_provider_catalog_model_ids_from_settings(&json!({
+            "modelCatalog": {
+                "models": [
+                    { "model": "deepseek-v4-flash" },
+                    { "model": "  " },
+                    { "id": "not-used-for-codex-chat-selection" },
+                    { "model": "kimi-k2" }
+                ]
+            }
+        }));
+
+        assert_eq!(
+            ids,
+            HashSet::from(["deepseek-v4-flash".to_string(), "kimi-k2".to_string()])
+        );
+    }
+
+    #[test]
+    fn applies_codex_chat_upstream_model_when_required() {
+        let mut body = json!({"model": "client-placeholder", "input": "ping"});
+        let selected = apply_codex_chat_upstream_model_policy(
+            &mut body,
+            true,
+            Some("deepseek-v4-flash"),
+            &HashSet::new(),
+        );
+
+        assert_eq!(selected.as_deref(), Some("deepseek-v4-flash"));
+        assert_eq!(body["model"], "deepseek-v4-flash");
+    }
+
+    #[test]
+    fn keeps_codex_catalog_model_selection_for_chat_provider() {
+        let mut body = json!({"model": "kimi-k2", "input": "ping"});
+        let selected = apply_codex_chat_upstream_model_policy(
+            &mut body,
+            true,
+            Some("deepseek-v4-flash"),
+            &HashSet::from(["kimi-k2".to_string()]),
+        );
+
+        assert_eq!(selected.as_deref(), Some("kimi-k2"));
+        assert_eq!(body["model"], "kimi-k2");
+    }
+
+    #[test]
+    fn skips_codex_upstream_model_policy_for_responses_provider() {
+        let mut body = json!({"model": "client-placeholder", "input": "ping"});
+        let selected = apply_codex_chat_upstream_model_policy(
+            &mut body,
+            false,
+            Some("deepseek-v4-flash"),
+            &HashSet::new(),
+        );
+
+        assert!(selected.is_none());
+        assert_eq!(body["model"], "client-placeholder");
     }
 
     #[test]
