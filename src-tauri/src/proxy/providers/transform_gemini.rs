@@ -8,7 +8,8 @@ use crate::proxy::error::ProxyError;
 use crate::proxy_core::{
     AnthropicToolSchemaHints, GeminiAssistantTurn, GeminiShadowStore,
     build_anthropic_usage_from_gemini, build_gemini_function_declaration,
-    build_gemini_generation_config, ensure_gemini_function_call_ids,
+    build_gemini_generation_config, build_gemini_system_instruction,
+    ensure_gemini_function_call_ids,
     extract_anthropic_tool_schema_hints as core_extract_anthropic_tool_schema_hints,
     extract_gemini_function_call_meta, is_synthesized_gemini_tool_call_id,
     map_gemini_finish_reason_to_anthropic, normalize_gemini_tool_result_response,
@@ -48,10 +49,11 @@ pub fn anthropic_to_gemini_with_shadow(
 
     let messages = body.get("messages").and_then(|value| value.as_array());
 
-    let system_instruction = build_system_instruction(
+    let system_instruction = build_gemini_system_instruction(
         body.get("system"),
         messages.map(|messages| messages.as_slice()),
-    )?;
+    )
+    .map_err(|message| ProxyError::TransformError(message.to_string()))?;
     if let Some(system) = system_instruction {
         result["systemInstruction"] = system;
     }
@@ -246,61 +248,6 @@ pub fn gemini_to_anthropic_with_shadow_and_hints(
     }
 
     Ok(anthropic_response)
-}
-
-fn build_system_instruction(
-    system: Option<&Value>,
-    messages: Option<&[Value]>,
-) -> Result<Option<Value>, ProxyError> {
-    let mut texts = Vec::new();
-
-    if let Some(system) = system {
-        collect_system_texts(system, &mut texts)?;
-    }
-
-    if let Some(messages) = messages {
-        for message in messages {
-            if message.get("role").and_then(|value| value.as_str()) != Some("system") {
-                continue;
-            }
-            if let Some(content) = message.get("content") {
-                collect_system_texts(content, &mut texts)?;
-            }
-        }
-    }
-
-    if texts.is_empty() {
-        return Ok(None);
-    }
-
-    Ok(Some(json!({
-        "parts": [{ "text": texts.join("\n\n") }]
-    })))
-}
-
-fn collect_system_texts(value: &Value, texts: &mut Vec<String>) -> Result<(), ProxyError> {
-    if let Some(text) = value.as_str() {
-        if !text.is_empty() {
-            texts.push(text.to_string());
-        }
-        return Ok(());
-    }
-
-    let Some(blocks) = value.as_array() else {
-        return Err(ProxyError::TransformError(
-            "Anthropic system must be a string or an array".to_string(),
-        ));
-    };
-
-    texts.extend(
-        blocks
-            .iter()
-            .filter_map(|block| block.get("text").and_then(|value| value.as_str()))
-            .filter(|text| !text.is_empty())
-            .map(ToString::to_string),
-    );
-
-    Ok(())
 }
 
 fn convert_messages_to_contents(
