@@ -12,8 +12,9 @@ use crate::proxy_core::{
     ensure_gemini_function_call_ids,
     extract_anthropic_tool_schema_hints as core_extract_anthropic_tool_schema_hints,
     extract_gemini_function_call_meta, is_synthesized_gemini_tool_call_id,
-    map_gemini_finish_reason_to_anthropic, normalize_gemini_tool_result_response,
-    rectify_gemini_tool_call_args, rectify_gemini_tool_call_parts, synthesize_gemini_tool_call_id,
+    map_gemini_finish_reason_to_anthropic, map_gemini_tool_choice_to_config,
+    normalize_gemini_tool_result_response, rectify_gemini_tool_call_args,
+    rectify_gemini_tool_call_parts, synthesize_gemini_tool_call_id,
 };
 use serde_json::{Value, json};
 use std::collections::{HashMap, HashSet};
@@ -88,7 +89,9 @@ pub fn anthropic_to_gemini_with_shadow(
         }
     }
 
-    if let Some(tool_config) = map_tool_choice(body.get("tool_choice"))? {
+    if let Some(tool_config) = map_gemini_tool_choice_to_config(body.get("tool_choice"))
+        .map_err(ProxyError::TransformError)?
+    {
         result["toolConfig"] = tool_config;
     }
 
@@ -726,57 +729,6 @@ fn merge_tool_names_from_parts(parts: &[Value], tool_name_by_id: &mut HashMap<St
         if !id.is_empty() && !name.is_empty() {
             tool_name_by_id.insert(id.to_string(), name.to_string());
         }
-    }
-}
-
-fn map_tool_choice(tool_choice: Option<&Value>) -> Result<Option<Value>, ProxyError> {
-    let Some(tool_choice) = tool_choice else {
-        return Ok(None);
-    };
-
-    match tool_choice {
-        Value::String(choice) => Ok(match choice.as_str() {
-            "auto" => Some(json!({
-                "functionCallingConfig": { "mode": "AUTO" }
-            })),
-            "none" => Some(json!({
-                "functionCallingConfig": { "mode": "NONE" }
-            })),
-            other => {
-                return Err(ProxyError::TransformError(format!(
-                    "Unsupported Gemini tool_choice string: {other}"
-                )));
-            }
-        }),
-        Value::Object(object) => {
-            let Some(choice_type) = object.get("type").and_then(|value| value.as_str()) else {
-                return Ok(None);
-            };
-
-            let config = match choice_type {
-                "auto" => json!({ "mode": "AUTO" }),
-                "none" => json!({ "mode": "NONE" }),
-                "any" => json!({ "mode": "ANY" }),
-                "tool" => {
-                    let name = object
-                        .get("name")
-                        .and_then(|value| value.as_str())
-                        .unwrap_or("");
-                    json!({
-                        "mode": "ANY",
-                        "allowedFunctionNames": [name]
-                    })
-                }
-                other => {
-                    return Err(ProxyError::TransformError(format!(
-                        "Unsupported Gemini tool_choice type: {other}"
-                    )));
-                }
-            };
-
-            Ok(Some(json!({ "functionCallingConfig": config })))
-        }
-        _ => Ok(None),
     }
 }
 

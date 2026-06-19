@@ -81,6 +81,55 @@ pub fn build_gemini_generation_config(body: &Value) -> Option<Value> {
     }
 }
 
+pub fn map_gemini_tool_choice_to_config(
+    tool_choice: Option<&Value>,
+) -> Result<Option<Value>, String> {
+    let Some(tool_choice) = tool_choice else {
+        return Ok(None);
+    };
+
+    match tool_choice {
+        Value::String(choice) => Ok(match choice.as_str() {
+            "auto" => Some(json!({
+                "functionCallingConfig": { "mode": "AUTO" }
+            })),
+            "none" => Some(json!({
+                "functionCallingConfig": { "mode": "NONE" }
+            })),
+            other => {
+                return Err(format!("Unsupported Gemini tool_choice string: {other}"));
+            }
+        }),
+        Value::Object(object) => {
+            let Some(choice_type) = object.get("type").and_then(|value| value.as_str()) else {
+                return Ok(None);
+            };
+
+            let config = match choice_type {
+                "auto" => json!({ "mode": "AUTO" }),
+                "none" => json!({ "mode": "NONE" }),
+                "any" => json!({ "mode": "ANY" }),
+                "tool" => {
+                    let name = object
+                        .get("name")
+                        .and_then(|value| value.as_str())
+                        .unwrap_or("");
+                    json!({
+                        "mode": "ANY",
+                        "allowedFunctionNames": [name]
+                    })
+                }
+                other => {
+                    return Err(format!("Unsupported Gemini tool_choice type: {other}"));
+                }
+            };
+
+            Ok(Some(json!({ "functionCallingConfig": config })))
+        }
+        _ => Ok(None),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -151,6 +200,52 @@ mod tests {
         assert_eq!(
             build_gemini_generation_config(&json!({ "model": "x" })),
             None
+        );
+    }
+
+    #[test]
+    fn maps_gemini_tool_choice_to_function_calling_config() {
+        assert_eq!(
+            map_gemini_tool_choice_to_config(Some(&json!("auto"))).unwrap(),
+            Some(json!({ "functionCallingConfig": { "mode": "AUTO" } }))
+        );
+        assert_eq!(
+            map_gemini_tool_choice_to_config(Some(&json!("none"))).unwrap(),
+            Some(json!({ "functionCallingConfig": { "mode": "NONE" } }))
+        );
+        assert_eq!(
+            map_gemini_tool_choice_to_config(Some(&json!({ "type": "any" }))).unwrap(),
+            Some(json!({ "functionCallingConfig": { "mode": "ANY" } }))
+        );
+        assert_eq!(
+            map_gemini_tool_choice_to_config(Some(&json!({
+                "type": "tool",
+                "name": "get_weather"
+            })))
+            .unwrap(),
+            Some(json!({
+                "functionCallingConfig": {
+                    "mode": "ANY",
+                    "allowedFunctionNames": ["get_weather"]
+                }
+            }))
+        );
+        assert_eq!(map_gemini_tool_choice_to_config(None).unwrap(), None);
+        assert_eq!(
+            map_gemini_tool_choice_to_config(Some(&json!({ "name": "missing_type" }))).unwrap(),
+            None
+        );
+    }
+
+    #[test]
+    fn rejects_unsupported_gemini_tool_choice_values() {
+        assert_eq!(
+            map_gemini_tool_choice_to_config(Some(&json!("required"))).unwrap_err(),
+            "Unsupported Gemini tool_choice string: required"
+        );
+        assert_eq!(
+            map_gemini_tool_choice_to_config(Some(&json!({ "type": "function" }))).unwrap_err(),
+            "Unsupported Gemini tool_choice type: function"
         );
     }
 }
