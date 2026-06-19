@@ -14,6 +14,45 @@ pub struct CodexProxyErrorContext<'a> {
     pub upstream_body: Option<&'a str>,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CodexProxyErrorKind {
+    ForwardFailed,
+    Timeout,
+    NoAvailableProvider,
+    AllProvidersCircuitOpen,
+    NoProvidersConfigured,
+    MaxRetriesExceeded,
+    ProviderUnhealthy,
+    ConfigError,
+    TransformError,
+    InvalidRequest,
+    AuthError,
+    UpstreamError,
+    DatabaseError,
+    InternalError,
+    ProxyError,
+}
+
+pub fn codex_proxy_error_code(kind: CodexProxyErrorKind) -> &'static str {
+    match kind {
+        CodexProxyErrorKind::ForwardFailed => "cc_switch_forward_failed",
+        CodexProxyErrorKind::Timeout => "cc_switch_timeout",
+        CodexProxyErrorKind::NoAvailableProvider => "cc_switch_no_available_provider",
+        CodexProxyErrorKind::AllProvidersCircuitOpen => "cc_switch_all_providers_circuit_open",
+        CodexProxyErrorKind::NoProvidersConfigured => "cc_switch_no_providers_configured",
+        CodexProxyErrorKind::MaxRetriesExceeded => "cc_switch_max_retries_exceeded",
+        CodexProxyErrorKind::ProviderUnhealthy => "cc_switch_provider_unhealthy",
+        CodexProxyErrorKind::ConfigError => "cc_switch_config_error",
+        CodexProxyErrorKind::TransformError => "cc_switch_transform_error",
+        CodexProxyErrorKind::InvalidRequest => "cc_switch_invalid_request",
+        CodexProxyErrorKind::AuthError => "cc_switch_auth_error",
+        CodexProxyErrorKind::UpstreamError => "cc_switch_upstream_error",
+        CodexProxyErrorKind::DatabaseError => "cc_switch_database_error",
+        CodexProxyErrorKind::InternalError => "cc_switch_internal_error",
+        CodexProxyErrorKind::ProxyError => "cc_switch_proxy_error",
+    }
+}
+
 pub fn codex_proxy_error_json(ctx: CodexProxyErrorContext<'_>) -> Value {
     let parsed_upstream_body = ctx.upstream_body.map(|body| {
         serde_json::from_str::<Value>(body).unwrap_or_else(|_| Value::String(body.to_string()))
@@ -232,6 +271,64 @@ fn raw_error_body_preview(body: &[u8], max_bytes: usize) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn codex_proxy_error_code_preserves_host_contract_values() {
+        let cases = [
+            (
+                CodexProxyErrorKind::ForwardFailed,
+                "cc_switch_forward_failed",
+            ),
+            (CodexProxyErrorKind::Timeout, "cc_switch_timeout"),
+            (
+                CodexProxyErrorKind::NoAvailableProvider,
+                "cc_switch_no_available_provider",
+            ),
+            (
+                CodexProxyErrorKind::AllProvidersCircuitOpen,
+                "cc_switch_all_providers_circuit_open",
+            ),
+            (
+                CodexProxyErrorKind::NoProvidersConfigured,
+                "cc_switch_no_providers_configured",
+            ),
+            (
+                CodexProxyErrorKind::MaxRetriesExceeded,
+                "cc_switch_max_retries_exceeded",
+            ),
+            (
+                CodexProxyErrorKind::ProviderUnhealthy,
+                "cc_switch_provider_unhealthy",
+            ),
+            (CodexProxyErrorKind::ConfigError, "cc_switch_config_error"),
+            (
+                CodexProxyErrorKind::TransformError,
+                "cc_switch_transform_error",
+            ),
+            (
+                CodexProxyErrorKind::InvalidRequest,
+                "cc_switch_invalid_request",
+            ),
+            (CodexProxyErrorKind::AuthError, "cc_switch_auth_error"),
+            (
+                CodexProxyErrorKind::UpstreamError,
+                "cc_switch_upstream_error",
+            ),
+            (
+                CodexProxyErrorKind::DatabaseError,
+                "cc_switch_database_error",
+            ),
+            (
+                CodexProxyErrorKind::InternalError,
+                "cc_switch_internal_error",
+            ),
+            (CodexProxyErrorKind::ProxyError, "cc_switch_proxy_error"),
+        ];
+
+        for (kind, expected) in cases {
+            assert_eq!(codex_proxy_error_code(kind), expected);
+        }
+    }
 
     #[test]
     fn codex_proxy_forward_error_includes_context_and_cause() {

@@ -4,7 +4,8 @@
 
 use super::ProxyError;
 use crate::proxy_core::{
-    ClaudeDesktopGatewayAuthError, CodexProxyErrorContext, ManagementAuthError, ProxyCoreError,
+    codex_proxy_error_code, ClaudeDesktopGatewayAuthError, CodexProxyErrorContext,
+    CodexProxyErrorKind, ManagementAuthError, ProxyCoreError,
 };
 use serde_json::Value;
 
@@ -143,33 +144,33 @@ pub(crate) fn codex_proxy_error_json(
         request_model,
         endpoint,
         fallback_message: &get_error_message(error),
-        fallback_code: codex_proxy_error_code(error),
+        fallback_code: codex_proxy_error_code(codex_proxy_error_kind(error)),
         upstream_status,
         upstream_body,
     })
 }
 
-fn codex_proxy_error_code(error: &ProxyError) -> &'static str {
+fn codex_proxy_error_kind(error: &ProxyError) -> CodexProxyErrorKind {
     match error {
-        ProxyError::ForwardFailed(_) => "cc_switch_forward_failed",
-        ProxyError::Timeout(_) | ProxyError::StreamIdleTimeout(_) => "cc_switch_timeout",
-        ProxyError::NoAvailableProvider => "cc_switch_no_available_provider",
-        ProxyError::AllProvidersCircuitOpen => "cc_switch_all_providers_circuit_open",
-        ProxyError::NoProvidersConfigured => "cc_switch_no_providers_configured",
-        ProxyError::MaxRetriesExceeded => "cc_switch_max_retries_exceeded",
-        ProxyError::ProviderUnhealthy(_) => "cc_switch_provider_unhealthy",
-        ProxyError::ConfigError(_) => "cc_switch_config_error",
-        ProxyError::TransformError(_) => "cc_switch_transform_error",
-        ProxyError::InvalidRequest(_) => "cc_switch_invalid_request",
-        ProxyError::AuthError(_) => "cc_switch_auth_error",
-        ProxyError::UpstreamError { .. } => "cc_switch_upstream_error",
-        ProxyError::DatabaseError(_) => "cc_switch_database_error",
-        ProxyError::Internal(_) => "cc_switch_internal_error",
+        ProxyError::ForwardFailed(_) => CodexProxyErrorKind::ForwardFailed,
+        ProxyError::Timeout(_) | ProxyError::StreamIdleTimeout(_) => CodexProxyErrorKind::Timeout,
+        ProxyError::NoAvailableProvider => CodexProxyErrorKind::NoAvailableProvider,
+        ProxyError::AllProvidersCircuitOpen => CodexProxyErrorKind::AllProvidersCircuitOpen,
+        ProxyError::NoProvidersConfigured => CodexProxyErrorKind::NoProvidersConfigured,
+        ProxyError::MaxRetriesExceeded => CodexProxyErrorKind::MaxRetriesExceeded,
+        ProxyError::ProviderUnhealthy(_) => CodexProxyErrorKind::ProviderUnhealthy,
+        ProxyError::ConfigError(_) => CodexProxyErrorKind::ConfigError,
+        ProxyError::TransformError(_) => CodexProxyErrorKind::TransformError,
+        ProxyError::InvalidRequest(_) => CodexProxyErrorKind::InvalidRequest,
+        ProxyError::AuthError(_) => CodexProxyErrorKind::AuthError,
+        ProxyError::UpstreamError { .. } => CodexProxyErrorKind::UpstreamError,
+        ProxyError::DatabaseError(_) => CodexProxyErrorKind::DatabaseError,
+        ProxyError::Internal(_) => CodexProxyErrorKind::InternalError,
         ProxyError::AlreadyRunning
         | ProxyError::NotRunning
         | ProxyError::BindFailed(_)
         | ProxyError::StopTimeout
-        | ProxyError::StopFailed(_) => "cc_switch_proxy_error",
+        | ProxyError::StopFailed(_) => CodexProxyErrorKind::ProxyError,
     }
 }
 
