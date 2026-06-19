@@ -10,7 +10,7 @@ use super::{AuthInfo, AuthStrategy, ProviderAdapter, ProviderType};
 use crate::provider::Provider;
 use crate::proxy::error::ProxyError;
 use crate::proxy_core::{
-    build_gemini_upstream_url, extract_gemini_api_key_from_settings,
+    build_gemini_auth_headers, build_gemini_upstream_url, extract_gemini_api_key_from_settings,
     extract_gemini_base_url_from_settings, parse_gemini_oauth_credentials, GeminiOAuthCredentials,
 };
 
@@ -100,30 +100,12 @@ impl ProviderAdapter for GeminiAdapter {
         &self,
         auth: &AuthInfo,
     ) -> Result<Vec<(http::HeaderName, http::HeaderValue)>, ProxyError> {
-        use http::{HeaderName, HeaderValue};
-        let hv = |value: &str| {
-            crate::proxy_core::auth_header_value(value)
-                .map_err(|error| ProxyError::AuthError(error.to_string()))
-        };
-        Ok(match auth.strategy {
-            AuthStrategy::GoogleOAuth => {
-                let token = auth.access_token.as_ref().unwrap_or(&auth.api_key);
-                vec![
-                    (
-                        HeaderName::from_static("authorization"),
-                        hv(&format!("Bearer {token}"))?,
-                    ),
-                    (
-                        HeaderName::from_static("x-goog-api-client"),
-                        HeaderValue::from_static("GeminiCLI/1.0"),
-                    ),
-                ]
-            }
-            _ => vec![(
-                HeaderName::from_static("x-goog-api-key"),
-                hv(&auth.api_key)?,
-            )],
-        })
+        build_gemini_auth_headers(
+            &auth.api_key,
+            auth.access_token.as_deref(),
+            matches!(auth.strategy, AuthStrategy::GoogleOAuth),
+        )
+        .map_err(|error| ProxyError::AuthError(error.to_string()))
     }
 }
 
@@ -313,5 +295,50 @@ mod tests {
         let adapter = GeminiAdapter::new();
         assert!(adapter.parse_oauth_credentials("AIza-api-key").is_none());
         assert!(adapter.parse_oauth_credentials("invalid-json{").is_none());
+    }
+
+    #[test]
+    fn test_get_auth_headers_api_key() {
+        let adapter = GeminiAdapter::new();
+        let auth = AuthInfo::new("gemini-key".to_string(), AuthStrategy::Google);
+
+        let headers = adapter.get_auth_headers(&auth).unwrap();
+
+        assert_eq!(headers.len(), 1);
+        assert_eq!(headers[0].0.as_str(), "x-goog-api-key");
+        assert_eq!(headers[0].1, http::HeaderValue::from_static("gemini-key"));
+    }
+
+    #[test]
+    fn test_get_auth_headers_oauth() {
+        let adapter = GeminiAdapter::new();
+        let auth = AuthInfo::with_access_token(
+            "refresh-token".to_string(),
+            "ya29.access-token".to_string(),
+        );
+
+        let headers = adapter.get_auth_headers(&auth).unwrap();
+
+        assert_eq!(headers.len(), 2);
+        assert_eq!(headers[0].0.as_str(), "authorization");
+        assert_eq!(
+            headers[0].1,
+            http::HeaderValue::from_static("Bearer ya29.access-token")
+        );
+        assert_eq!(headers[1].0.as_str(), "x-goog-api-client");
+        assert_eq!(
+            headers[1].1,
+            http::HeaderValue::from_static("GeminiCLI/1.0")
+        );
+    }
+
+    #[test]
+    fn test_get_auth_headers_rejects_illegal_header_chars() {
+        let adapter = GeminiAdapter::new();
+        let auth = AuthInfo::new("bad\r\nx-evil: 1".to_string(), AuthStrategy::Google);
+
+        let result = adapter.get_auth_headers(&auth);
+
+        assert!(matches!(result, Err(ProxyError::AuthError(_))));
     }
 }

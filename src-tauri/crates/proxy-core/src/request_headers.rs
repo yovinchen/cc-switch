@@ -111,6 +111,31 @@ pub fn build_codex_bearer_auth_headers(
     )])
 }
 
+pub fn build_gemini_auth_headers(
+    api_key: &str,
+    access_token: Option<&str>,
+    use_oauth: bool,
+) -> ProxyCoreResult<Vec<(http::HeaderName, http::HeaderValue)>> {
+    if use_oauth {
+        let token = access_token.unwrap_or(api_key);
+        return Ok(vec![
+            (
+                http::HeaderName::from_static("authorization"),
+                auth_header_value(&format!("Bearer {token}"))?,
+            ),
+            (
+                http::HeaderName::from_static("x-goog-api-client"),
+                http::HeaderValue::from_static("GeminiCLI/1.0"),
+            ),
+        ]);
+    }
+
+    Ok(vec![(
+        http::HeaderName::from_static("x-goog-api-key"),
+        auth_header_value(api_key)?,
+    )])
+}
+
 pub fn anthropic_beta_header_value(existing_beta: Option<&str>) -> String {
     match existing_beta {
         Some(value) if value.contains(CLAUDE_CODE_BETA) => value.to_string(),
@@ -390,7 +415,7 @@ fn append_header_from_str(
 mod tests {
     use super::{
         anthropic_beta_header_value, auth_header_value, build_codex_bearer_auth_headers,
-        build_codex_oauth_session_headers, build_upstream_auth_headers,
+        build_codex_oauth_session_headers, build_gemini_auth_headers, build_upstream_auth_headers,
         build_upstream_request_headers, is_official_codex_client_user_agent,
         should_preserve_exact_request_header_case, should_send_anthropic_request_headers,
         should_skip_copilot_fingerprint_request_header, should_strip_forwarded_request_header,
@@ -493,6 +518,42 @@ mod tests {
         let error =
             build_codex_bearer_auth_headers("bad\r\nx-evil: 1").expect_err("invalid header");
         assert!(matches!(error, ProxyCoreError::Auth(_)));
+    }
+
+    #[test]
+    fn builds_gemini_auth_headers_for_api_key_and_oauth() {
+        let api_key_headers = build_gemini_auth_headers("gemini-key", None, false).unwrap();
+        assert_eq!(api_key_headers.len(), 1);
+        assert_eq!(api_key_headers[0].0.as_str(), "x-goog-api-key");
+        assert_eq!(api_key_headers[0].1, HeaderValue::from_static("gemini-key"));
+
+        let oauth_headers =
+            build_gemini_auth_headers("refresh-token", Some("ya29.access-token"), true).unwrap();
+        assert_eq!(oauth_headers.len(), 2);
+        assert_eq!(oauth_headers[0].0.as_str(), "authorization");
+        assert_eq!(
+            oauth_headers[0].1,
+            HeaderValue::from_static("Bearer ya29.access-token")
+        );
+        assert_eq!(oauth_headers[1].0.as_str(), "x-goog-api-client");
+        assert_eq!(oauth_headers[1].1, HeaderValue::from_static("GeminiCLI/1.0"));
+
+        let fallback_headers = build_gemini_auth_headers("ya29.raw-token", None, true).unwrap();
+        assert_eq!(
+            fallback_headers[0].1,
+            HeaderValue::from_static("Bearer ya29.raw-token")
+        );
+    }
+
+    #[test]
+    fn rejects_invalid_gemini_auth_header_values() {
+        let api_key_error =
+            build_gemini_auth_headers("bad\r\nx-evil: 1", None, false).expect_err("invalid key");
+        assert!(matches!(api_key_error, ProxyCoreError::Auth(_)));
+
+        let oauth_error = build_gemini_auth_headers("refresh", Some("bad\r\nx-evil: 1"), true)
+            .expect_err("invalid token");
+        assert!(matches!(oauth_error, ProxyCoreError::Auth(_)));
     }
 
     #[test]
