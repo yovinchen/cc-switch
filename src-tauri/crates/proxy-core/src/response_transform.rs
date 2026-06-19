@@ -488,6 +488,44 @@ fn infer_codex_chat_aggregator_reasoning_profile(
     None
 }
 
+pub fn apply_codex_oauth_responses_request_contract(
+    result: &mut Value,
+    source_body: &Value,
+    codex_fast_mode: bool,
+) {
+    result["store"] = json!(false);
+    if codex_fast_mode {
+        result["service_tier"] = json!("priority");
+    }
+
+    const REASONING_MARKER: &str = "reasoning.encrypted_content";
+    let mut includes: Vec<Value> = source_body
+        .get("include")
+        .and_then(|value| value.as_array())
+        .cloned()
+        .unwrap_or_default();
+    if !includes
+        .iter()
+        .any(|value| value.as_str() == Some(REASONING_MARKER))
+    {
+        includes.push(json!(REASONING_MARKER));
+    }
+    result["include"] = json!(includes);
+
+    if let Some(obj) = result.as_object_mut() {
+        obj.remove("max_output_tokens");
+        obj.remove("temperature");
+        obj.remove("top_p");
+
+        obj.entry("instructions".to_string()).or_insert(json!(""));
+        obj.entry("tools".to_string()).or_insert(json!([]));
+        obj.entry("parallel_tool_calls".to_string())
+            .or_insert(json!(false));
+
+        obj.insert("stream".to_string(), json!(true));
+    }
+}
+
 pub fn responses_to_chat_completions_with_options(
     body: &Value,
     reasoning_config: Option<&CodexChatReasoningOptions>,
@@ -2514,6 +2552,59 @@ mod tests {
         assert_eq!(profile.thinking_param.as_deref(), Some("enable_thinking"));
         assert_eq!(profile.supports_effort, Some(false));
         assert_eq!(profile.output_format.as_deref(), Some("reasoning_content"));
+    }
+
+    #[test]
+    fn codex_oauth_responses_contract_sets_store_include_and_fast_tier() {
+        let source = json!({
+            "include": ["existing"]
+        });
+        let mut result = json!({
+            "model": "gpt-5"
+        });
+
+        apply_codex_oauth_responses_request_contract(&mut result, &source, true);
+
+        assert_eq!(result["store"], false);
+        assert_eq!(result["service_tier"], "priority");
+        assert_eq!(
+            result["include"],
+            json!(["existing", "reasoning.encrypted_content"])
+        );
+    }
+
+    #[test]
+    fn codex_oauth_responses_contract_deduplicates_reasoning_include() {
+        let source = json!({
+            "include": ["reasoning.encrypted_content"]
+        });
+        let mut result = json!({});
+
+        apply_codex_oauth_responses_request_contract(&mut result, &source, false);
+
+        assert_eq!(result["include"], json!(["reasoning.encrypted_content"]));
+        assert!(result.get("service_tier").is_none());
+    }
+
+    #[test]
+    fn codex_oauth_responses_contract_strips_unsupported_fields_and_defaults_required() {
+        let source = json!({});
+        let mut result = json!({
+            "max_output_tokens": 1024,
+            "temperature": 0.2,
+            "top_p": 0.9,
+            "stream": false
+        });
+
+        apply_codex_oauth_responses_request_contract(&mut result, &source, false);
+
+        assert!(result.get("max_output_tokens").is_none());
+        assert!(result.get("temperature").is_none());
+        assert!(result.get("top_p").is_none());
+        assert_eq!(result["instructions"], "");
+        assert_eq!(result["tools"], json!([]));
+        assert_eq!(result["parallel_tool_calls"], false);
+        assert_eq!(result["stream"], true);
     }
 
     #[test]

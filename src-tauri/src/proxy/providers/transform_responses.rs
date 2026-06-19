@@ -10,10 +10,11 @@
 
 use crate::proxy::error::ProxyError;
 use crate::proxy_core::{
-    build_anthropic_usage_from_openai_responses, canonical_json_string, clean_openai_tool_schema,
-    map_anthropic_tool_choice_to_openai_responses, map_openai_responses_stop_reason_to_anthropic,
-    resolve_reasoning_effort, sanitize_anthropic_tool_use_input,
-    strip_leading_anthropic_billing_header, supports_reasoning_effort,
+    apply_codex_oauth_responses_request_contract, build_anthropic_usage_from_openai_responses,
+    canonical_json_string, clean_openai_tool_schema, map_anthropic_tool_choice_to_openai_responses,
+    map_openai_responses_stop_reason_to_anthropic, resolve_reasoning_effort,
+    sanitize_anthropic_tool_use_input, strip_leading_anthropic_billing_header,
+    supports_reasoning_effort,
 };
 use serde_json::{json, Value};
 
@@ -141,42 +142,7 @@ pub fn anthropic_to_responses(
     // - stream: 必须永远 true（codex-rs 硬编码 true，且 cc-switch 的
     //   SSE 解析层只处理流式响应，强制覆盖避免客户端误传 false）
     if is_codex_oauth {
-        result["store"] = json!(false);
-        if codex_fast_mode {
-            result["service_tier"] = json!("priority");
-        }
-
-        const REASONING_MARKER: &str = "reasoning.encrypted_content";
-        let mut includes: Vec<Value> = body
-            .get("include")
-            .and_then(|v| v.as_array())
-            .cloned()
-            .unwrap_or_default();
-        if !includes
-            .iter()
-            .any(|v| v.as_str() == Some(REASONING_MARKER))
-        {
-            includes.push(json!(REASONING_MARKER));
-        }
-        result["include"] = json!(includes);
-
-        if let Some(obj) = result.as_object_mut() {
-            // —— 删除 ChatGPT 反代不接受的字段 ——
-            obj.remove("max_output_tokens");
-            obj.remove("temperature");
-            obj.remove("top_p");
-
-            // —— 兜底必填字段（or_insert：客户端送了什么就保留，否则注入默认值）——
-            obj.entry("instructions".to_string()).or_insert(json!(""));
-            obj.entry("tools".to_string()).or_insert(json!([]));
-            obj.entry("parallel_tool_calls".to_string())
-                .or_insert(json!(false));
-
-            // —— 强制覆盖 stream = true ——
-            // 即便客户端误传 stream:false 也要覆盖，因为 codex-rs 永远 true，
-            // 且 cc-switch SSE 解析层只支持流式响应。
-            obj.insert("stream".to_string(), json!(true));
-        }
+        apply_codex_oauth_responses_request_contract(&mut result, &body, codex_fast_mode);
     }
 
     Ok(result)
