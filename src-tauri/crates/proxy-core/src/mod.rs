@@ -5,6 +5,7 @@
 //! depending on these neutral domain types and service ports.
 
 pub mod cache_injector;
+pub mod claude_auth;
 pub mod codex_chat_history;
 pub mod codex_error;
 pub mod claude_desktop_gateway_auth;
@@ -60,6 +61,7 @@ pub mod usage;
 pub mod usage_config;
 
 pub use cache_injector::*;
+pub use claude_auth::*;
 pub use codex_chat_history::*;
 pub use codex_error::*;
 pub use claude_desktop_gateway_auth::*;

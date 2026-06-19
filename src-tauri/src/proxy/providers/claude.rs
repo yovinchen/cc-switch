@@ -19,12 +19,12 @@ use crate::provider::Provider;
 use crate::proxy::error::ProxyError;
 use crate::proxy_core::{
     anthropic_to_openai_chat_request, anthropic_to_openai_responses_request,
-    claude_api_format_needs_transform, extract_claude_base_url_from_settings,
-    infer_claude_provider_kind, normalize_anthropic_tool_thinking_history,
-    openai_chat_to_anthropic_message, openai_responses_to_anthropic_message,
-    resolve_claude_api_format_from_settings, resolve_claude_responses_prompt_cache_key,
-    should_normalize_anthropic_tool_thinking_history,
-    should_preserve_reasoning_content_for_openai_chat,
+    claude_api_format_needs_transform, extract_claude_auth_key_from_settings,
+    extract_claude_base_url_from_settings, infer_claude_provider_kind,
+    normalize_anthropic_tool_thinking_history, openai_chat_to_anthropic_message,
+    openai_responses_to_anthropic_message, resolve_claude_api_format_from_settings,
+    resolve_claude_responses_prompt_cache_key, should_normalize_anthropic_tool_thinking_history,
+    should_preserve_reasoning_content_for_openai_chat, ClaudeAuthKey, ClaudeAuthKeySource,
 };
 use serde_json::Value;
 
@@ -203,73 +203,35 @@ impl ClaudeAdapter {
 
     /// 从 Provider 配置中提取 API Key
     fn extract_key(&self, provider: &Provider) -> Option<String> {
-        if let Some(env) = provider.settings_config.get("env") {
-            // Anthropic 标准 key
-            if let Some(key) = env
-                .get("ANTHROPIC_AUTH_TOKEN")
-                .and_then(|v| v.as_str())
-                .map(str::trim)
-                .filter(|s| !s.is_empty())
-            {
+        self.extract_auth_key(provider).map(|auth_key| auth_key.key)
+    }
+
+    fn extract_auth_key(&self, provider: &Provider) -> Option<ClaudeAuthKey> {
+        let auth_key = extract_claude_auth_key_from_settings(&provider.settings_config);
+        match auth_key.as_ref().map(|auth_key| auth_key.source) {
+            Some(ClaudeAuthKeySource::AnthropicAuthToken) => {
                 log::debug!("[Claude] 使用 ANTHROPIC_AUTH_TOKEN");
-                return Some(key.to_string());
             }
-            if let Some(key) = env
-                .get("ANTHROPIC_API_KEY")
-                .and_then(|v| v.as_str())
-                .map(str::trim)
-                .filter(|s| !s.is_empty())
-            {
+            Some(ClaudeAuthKeySource::AnthropicApiKey) => {
                 log::debug!("[Claude] 使用 ANTHROPIC_API_KEY");
-                return Some(key.to_string());
             }
-            // OpenRouter key
-            if let Some(key) = env
-                .get("OPENROUTER_API_KEY")
-                .and_then(|v| v.as_str())
-                .map(str::trim)
-                .filter(|s| !s.is_empty())
-            {
+            Some(ClaudeAuthKeySource::OpenRouterApiKey) => {
                 log::debug!("[Claude] 使用 OPENROUTER_API_KEY");
-                return Some(key.to_string());
             }
-            // 备选 OpenAI key (用于 OpenRouter)
-            if let Some(key) = env
-                .get("OPENAI_API_KEY")
-                .and_then(|v| v.as_str())
-                .map(str::trim)
-                .filter(|s| !s.is_empty())
-            {
+            Some(ClaudeAuthKeySource::OpenAiApiKey) => {
                 log::debug!("[Claude] 使用 OPENAI_API_KEY");
-                return Some(key.to_string());
             }
-            // Gemini Native key
-            if let Some(key) = env
-                .get("GEMINI_API_KEY")
-                .and_then(|v| v.as_str())
-                .map(str::trim)
-                .filter(|s| !s.is_empty())
-            {
+            Some(ClaudeAuthKeySource::GeminiApiKey) => {
                 log::debug!("[Claude] 使用 GEMINI_API_KEY");
-                return Some(key.to_string());
+            }
+            Some(ClaudeAuthKeySource::DirectApiKey) => {
+                log::debug!("[Claude] 使用 apiKey/api_key");
+            }
+            None => {
+                log::warn!("[Claude] 未找到有效的 API Key");
             }
         }
-
-        // 尝试直接获取
-        if let Some(key) = provider
-            .settings_config
-            .get("apiKey")
-            .or_else(|| provider.settings_config.get("api_key"))
-            .and_then(|v| v.as_str())
-            .map(str::trim)
-            .filter(|s| !s.is_empty())
-        {
-            log::debug!("[Claude] 使用 apiKey/api_key");
-            return Some(key.to_string());
-        }
-
-        log::warn!("[Claude] 未找到有效的 API Key");
-        None
+        auth_key
     }
 
     /// 根据 env 中填写的变量名推断 Anthropic 默认走哪种鉴权策略。
@@ -279,24 +241,12 @@ impl ClaudeAdapter {
     /// - `ANTHROPIC_API_KEY`    → `Anthropic` （发送 `x-api-key`）
     ///
     /// 优先级与 [`extract_key`] 一致；两者都缺时返回 `None` 由调用方决定 fallback。
-    fn infer_anthropic_auth_strategy(&self, provider: &Provider) -> Option<AuthStrategy> {
-        let env = provider.settings_config.get("env")?;
-
-        let has_value = |key: &str| -> bool {
-            env.get(key)
-                .and_then(|v| v.as_str())
-                .map(str::trim)
-                .filter(|s| !s.is_empty())
-                .is_some()
-        };
-
-        if has_value("ANTHROPIC_AUTH_TOKEN") {
-            return Some(AuthStrategy::ClaudeAuth);
+    fn infer_anthropic_auth_strategy(source: ClaudeAuthKeySource) -> Option<AuthStrategy> {
+        match source {
+            ClaudeAuthKeySource::AnthropicAuthToken => Some(AuthStrategy::ClaudeAuth),
+            ClaudeAuthKeySource::AnthropicApiKey => Some(AuthStrategy::Anthropic),
+            _ => None,
         }
-        if has_value("ANTHROPIC_API_KEY") {
-            return Some(AuthStrategy::Anthropic);
-        }
-        None
     }
 }
 
@@ -341,7 +291,8 @@ impl ProviderAdapter for ClaudeAdapter {
             ));
         }
 
-        let key = self.extract_key(provider)?;
+        let auth_key = self.extract_auth_key(provider)?;
+        let key = auth_key.key;
 
         match provider_type {
             ProviderType::GeminiCli => {
@@ -381,8 +332,7 @@ impl ProviderAdapter for ClaudeAdapter {
                 // ANTHROPIC_AUTH_TOKEN → Authorization: Bearer
                 // ANTHROPIC_API_KEY    → x-api-key
                 // 其他来源（apiKey 直填等）默认走 x-api-key（Anthropic 官方协议）。
-                let strategy = self
-                    .infer_anthropic_auth_strategy(provider)
+                let strategy = Self::infer_anthropic_auth_strategy(auth_key.source)
                     .unwrap_or(AuthStrategy::Anthropic);
                 Some(AuthInfo::new(key, strategy))
             }
