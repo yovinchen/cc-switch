@@ -8,6 +8,7 @@ use crate::proxy::error::ProxyError;
 use crate::proxy_core::{
     AnthropicToolSchemaHints, GeminiAssistantTurn, GeminiShadowStore, GeminiToolCallMeta,
     build_anthropic_usage_from_gemini, build_gemini_function_declaration,
+    ensure_gemini_function_call_ids,
     extract_anthropic_tool_schema_hints as core_extract_anthropic_tool_schema_hints,
     is_synthesized_gemini_tool_call_id, map_gemini_finish_reason_to_anthropic,
     rectify_gemini_tool_call_args, rectify_gemini_tool_call_parts, synthesize_gemini_tool_call_id,
@@ -169,20 +170,7 @@ pub fn gemini_to_anthropic_with_shadow_and_hints(
     // `Unable to resolve Gemini functionResponse.name`. Streaming path
     // already has this single-source-of-truth property via
     // `tool_call_snapshots`.
-    for part in rectified_parts.iter_mut() {
-        let Some(function_call) = part.get_mut("functionCall").and_then(|v| v.as_object_mut())
-        else {
-            continue;
-        };
-        let needs_synth = function_call
-            .get("id")
-            .and_then(|v| v.as_str())
-            .map(|s| s.is_empty())
-            .unwrap_or(true);
-        if needs_synth {
-            function_call.insert("id".to_string(), json!(synthesize_tool_call_id()));
-        }
-    }
+    ensure_gemini_function_call_ids(&mut rectified_parts, synthesize_tool_call_id);
 
     let mut content = Vec::new();
     let mut has_tool_use = false;

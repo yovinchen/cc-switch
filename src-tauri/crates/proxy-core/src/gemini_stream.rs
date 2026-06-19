@@ -42,6 +42,41 @@ pub fn is_synthesized_gemini_tool_call_id(id: &str) -> bool {
     id.starts_with(GEMINI_SYNTHESIZED_TOOL_CALL_ID_PREFIX)
 }
 
+/// Ensure every Gemini `functionCall` part has a non-empty Anthropic-visible id.
+///
+/// Gemini 2.x may omit ids for parallel tool calls. Writing the generated id
+/// back into the parts makes the client-visible response, shadow replay state,
+/// and extracted tool-call metadata share one id source.
+pub fn ensure_gemini_function_call_ids<F>(
+    parts: &mut [Value],
+    mut synthesize_tool_call_id: F,
+) -> usize
+where
+    F: FnMut() -> String,
+{
+    let mut inserted = 0usize;
+
+    for part in parts {
+        let Some(function_call) = part
+            .get_mut("functionCall")
+            .and_then(|value| value.as_object_mut())
+        else {
+            continue;
+        };
+        let needs_synth = function_call
+            .get("id")
+            .and_then(|value| value.as_str())
+            .map(str::is_empty)
+            .unwrap_or(true);
+        if needs_synth {
+            function_call.insert("id".to_string(), json!(synthesize_tool_call_id()));
+            inserted += 1;
+        }
+    }
+
+    inserted
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct GeminiStreamPartsUpdate {
     pub visible_text: String,
@@ -869,6 +904,25 @@ mod tests {
         assert_eq!(id, "gemini_synth_abc123");
         assert!(is_synthesized_gemini_tool_call_id(&id));
         assert!(!is_synthesized_gemini_tool_call_id("call_abc123"));
+    }
+
+    #[test]
+    fn ensures_missing_gemini_function_call_ids_without_overwriting_real_ids() {
+        let mut parts = vec![
+            json!({"functionCall": {"name": "first", "args": {}}}),
+            json!({"functionCall": {"id": "", "name": "second", "args": {}}}),
+            json!({"functionCall": {"id": "call_real", "name": "third", "args": {}}}),
+            json!({"text": "visible"}),
+        ];
+        let mut counter = 0usize;
+
+        let inserted = ensure_gemini_function_call_ids(&mut parts, || next_synth(&mut counter));
+
+        assert_eq!(inserted, 2);
+        assert_eq!(parts[0]["functionCall"]["id"], "gemini_synth_1");
+        assert_eq!(parts[1]["functionCall"]["id"], "gemini_synth_2");
+        assert_eq!(parts[2]["functionCall"]["id"], "call_real");
+        assert!(parts[3].get("functionCall").is_none());
     }
 
     fn render_events(events: &[GeminiStreamSseEvent]) -> String {
