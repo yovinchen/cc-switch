@@ -60,12 +60,11 @@ use crate::proxy_core::{
     CurrentRouteTarget, GroupListQuery, GroupListRequest, HealthCheckRequest, HealthCheckResponse,
     InterfaceKind, ManagementAppPathRequest, ManagementAuthDecision, ProviderListResponse,
     ProxyBody, ProxyChannelModelsReplaceRequest, ProxyChannelPatchRequest,
-    ProxyChannelWriteRequest, ProxyEngine, ProxyRequest, ProxyResult, ProxyRuntimeStatus,
-    ProxyServices, ProxyStatusRequest, ProxyStatusResponse, RoutableModelList,
-    RouteGroupListResponse, RouteResolveManagementRequest, RouteResolveRequest,
-    RouteResolveResponse, TransformedResponseUsageFormat, UpstreamJsonBodySource,
-    UpstreamSseAggregationKind, CLAUDE_PARSER_CONFIG, CODEX_PARSER_CONFIG, GEMINI_PARSER_CONFIG,
-    OPENAI_PARSER_CONFIG,
+    ProxyChannelWriteRequest, ProxyRequest, ProxyResult, ProxyRuntimeStatus, ProxyServices,
+    ProxyStatusRequest, ProxyStatusResponse, RoutableModelList, RouteGroupListResponse,
+    RouteResolveManagementRequest, RouteResolveRequest, RouteResolveResponse,
+    TransformedResponseUsageFormat, UpstreamJsonBodySource, UpstreamSseAggregationKind,
+    CLAUDE_PARSER_CONFIG, CODEX_PARSER_CONFIG, GEMINI_PARSER_CONFIG, OPENAI_PARSER_CONFIG,
 };
 use crate::proxy_core_adapter::{
     proxy_app_summary_input, proxy_channel_model_records_to_core, proxy_channel_record_to_core,
@@ -267,7 +266,7 @@ pub async fn list_proxy_app_models(
 ) -> Result<Json<RoutableModelList>, ProxyError> {
     let request = AppModelCatalogRequest::from_parts(app_type, query)
         .map_err(management_api_error_to_proxy_error)?;
-    let engine = ProxyEngine::new(state.proxy_core_services.clone());
+    let engine = state.proxy_engine();
     let catalog = engine
         .list_model_catalog_for_request(request)
         .await
@@ -567,7 +566,8 @@ pub async fn reset_proxy_channel_breaker(
     let channel_id = ChannelPathRequest::from_path(channel_id)
         .map_err(management_api_error_to_proxy_error)?
         .channel_id;
-    let response = ProxyEngine::new(state.proxy_core_services.clone())
+    let response = state
+        .proxy_engine()
         .reset_channel_health_response(&channel_id)
         .await
         .map_err(proxy_core_error_to_proxy_error)?;
@@ -606,7 +606,8 @@ pub async fn resolve_proxy_route(
 pub async fn handle_models(
     State(state): State<ProxyState>,
 ) -> Result<Json<ClientModelCatalogResponse>, ProxyError> {
-    let response = ProxyEngine::new(state.proxy_core_services.clone())
+    let response = state
+        .proxy_engine()
         .client_model_catalog_response(&AppKind::Codex)
         .await
         .map_err(proxy_core_error_to_proxy_error)?;
@@ -704,7 +705,7 @@ async fn handle_messages_for_app(
     proxy_request.headers = headers;
     proxy_request.extensions = extensions;
 
-    let engine = ProxyEngine::new(state.proxy_core_services.clone());
+    let engine = state.proxy_engine();
     let result = match engine.handle(proxy_request).await {
         Ok(result) => result,
         Err(error) => {
@@ -1033,7 +1034,7 @@ pub async fn handle_chat_completions(
     proxy_request.headers = headers;
     proxy_request.extensions = extensions;
 
-    let engine = ProxyEngine::new(state.proxy_core_services.clone());
+    let engine = state.proxy_engine();
     let result = match engine.handle(proxy_request).await {
         Ok(result) => result,
         Err(error) => {
@@ -1088,7 +1089,7 @@ pub async fn handle_responses(
     proxy_request.headers = headers;
     proxy_request.extensions = extensions;
 
-    let engine = ProxyEngine::new(state.proxy_core_services.clone());
+    let engine = state.proxy_engine();
     let result = match engine.handle(proxy_request).await {
         Ok(result) => result,
         Err(error) => {
@@ -1155,7 +1156,7 @@ pub async fn handle_responses_compact(
     proxy_request.headers = headers;
     proxy_request.extensions = extensions;
 
-    let engine = ProxyEngine::new(state.proxy_core_services.clone());
+    let engine = state.proxy_engine();
     let result = match engine.handle(proxy_request).await {
         Ok(result) => result,
         Err(error) => {
@@ -1440,7 +1441,7 @@ pub async fn handle_gemini(
     proxy_request.headers = headers;
     proxy_request.extensions = extensions;
 
-    let engine = ProxyEngine::new(state.proxy_core_services.clone());
+    let engine = state.proxy_engine();
     let result = match engine.handle(proxy_request).await {
         Ok(result) => result,
         Err(error) => {

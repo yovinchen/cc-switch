@@ -14,7 +14,7 @@ use super::{
     types::*, ProxyError,
 };
 use crate::database::Database;
-use crate::proxy_core::{log_codes::srv as log_srv, GeminiShadowStore};
+use crate::proxy_core::{log_codes::srv as log_srv, GeminiShadowStore, ProxyEngine};
 use crate::proxy_core_host::{CcSwitchProxyRuntime, CcSwitchProxyServices};
 use axum::{
     extract::DefaultBodyLimit,
@@ -54,6 +54,12 @@ pub struct ProxyState {
     pub failover_manager: Arc<FailoverSwitchManager>,
     /// 代理事件总线，供外部 SSE 监控和未来 ProxyEventSink 使用。
     pub events: Arc<ProxyEventBus>,
+}
+
+impl ProxyState {
+    pub(crate) fn proxy_engine(&self) -> ProxyEngine<CcSwitchProxyServices> {
+        ProxyEngine::new(self.proxy_core_services.clone())
+    }
 }
 
 /// 代理HTTP服务器
