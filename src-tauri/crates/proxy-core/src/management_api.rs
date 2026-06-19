@@ -60,6 +60,19 @@ impl ChannelPathRequest {
     }
 }
 
+#[derive(Debug, Clone)]
+pub struct RouteResolveManagementRequest {
+    pub request: RouteResolveRequest,
+}
+
+impl RouteResolveManagementRequest {
+    pub fn from_body(request: RouteResolveRequest) -> ProxyCoreResult<Self> {
+        validate_route_resolve_app_type(&request.app_type)?;
+
+        Ok(Self { request })
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AppModelCatalogRequest {
     pub app: AppKind,
@@ -158,8 +171,8 @@ fn normalize_optional_management_app_type(app_type: Option<String>) -> ProxyCore
 mod tests {
     use super::{
         AppChannelManagementRequest, AppModelCatalogRequest, ChannelListRequest,
-        ChannelPathRequest, GroupListRequest, ManagementAppPathRequest, normalize_channel_id_path,
-        validate_management_app_type, validate_route_resolve_app_type,
+        ChannelPathRequest, GroupListRequest, ManagementAppPathRequest, RouteResolveManagementRequest,
+        normalize_channel_id_path, validate_management_app_type, validate_route_resolve_app_type,
     };
     use crate::{
         AppChannelListQuery, AppKind, AppModelListQuery, ChannelListQuery, GroupListQuery,
@@ -212,6 +225,32 @@ mod tests {
         let request = ChannelPathRequest::from_path(" channel-a ").expect("request");
 
         assert_eq!(request.channel_id, "channel-a");
+    }
+
+    #[test]
+    fn route_resolve_management_request_validates_body_app_type() {
+        let request = RouteResolveManagementRequest::from_body(crate::RouteResolveRequest {
+            app_type: "codex".to_string(),
+            requested_model: None,
+            interface_kind: None,
+            route_group: None,
+        })
+        .expect("request");
+
+        assert_eq!(request.request.app_type, "codex");
+
+        let error = RouteResolveManagementRequest::from_body(crate::RouteResolveRequest {
+            app_type: String::new(),
+            requested_model: None,
+            interface_kind: None,
+            route_group: None,
+        })
+        .unwrap_err();
+
+        assert_eq!(
+            error.to_string(),
+            "invalid proxy request: appType/app_type cannot be empty"
+        );
     }
 
     #[test]
