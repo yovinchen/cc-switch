@@ -49,7 +49,8 @@ use crate::proxy_core::{
     validate_management_bearer_header, validate_route_resolve_app_type, AppChannelListQuery,
     AppChannelListResponse, AppChannelResponse, AppChannelRouteResponse, AppKind, AppListResponse,
     AppModelListQuery, AppSummaryInput, ChannelDeleteResponse, ChannelHealthResetResponse,
-    ChannelListQuery, ChannelListResponse, ChannelMigrationMaterializeResponse,
+    ChannelListQuery, ChannelListResponse, ChannelMigrationMaterializeInput,
+    ChannelMigrationMaterializeResponse, ChannelMigrationPreviewInput,
     ChannelMigrationPreviewResponse, ChannelModelsResponse, ChannelRouteCandidate,
     ChannelRouteRejected, CurrentRouteProviderSummaryInput, CurrentRouteResponse, GroupListQuery,
     HealthCheckResponse, InterfaceKind, ManagementAuthDecision, ProviderListResponse,
@@ -519,11 +520,13 @@ pub async fn preview_proxy_channel_migration(
         .preview_legacy_proxy_channel_migration(&app_type)
         .map_err(|e| ProxyError::DatabaseError(e.to_string()))?;
 
-    Ok(Json(ChannelMigrationPreviewResponse::new(
-        preview.app_type,
-        preview.channels,
-        preview.duplicate_count,
-        preview.needs_review_count,
+    Ok(Json(ChannelMigrationPreviewResponse::from_input(
+        ChannelMigrationPreviewInput::new(
+            preview.app_type,
+            preview.channels,
+            preview.duplicate_count,
+            preview.needs_review_count,
+        ),
     )))
 }
 
@@ -539,14 +542,16 @@ pub async fn materialize_proxy_channel_migration(
         .materialize_legacy_proxy_channels(&app_type)
         .map_err(|e| ProxyError::DatabaseError(e.to_string()))?;
 
-    Ok(Json(ChannelMigrationMaterializeResponse::new(
-        result.app_type,
-        result.previewed_channels,
-        result.inserted_channels,
-        result.inserted_models,
-        result.inserted_health_rows,
-        result.duplicate_count,
-        result.needs_review_count,
+    Ok(Json(ChannelMigrationMaterializeResponse::from_input(
+        ChannelMigrationMaterializeInput::new(
+            result.app_type,
+            result.previewed_channels,
+            result.inserted_channels,
+            result.inserted_models,
+            result.inserted_health_rows,
+            result.duplicate_count,
+            result.needs_review_count,
+        ),
     )))
 }
 

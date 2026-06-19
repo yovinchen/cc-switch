@@ -737,6 +737,31 @@ impl<T> CurrentRouteResponse<T> {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub struct ChannelMigrationPreviewInput<T> {
+    pub app_type: String,
+    pub channels: Vec<T>,
+    pub duplicate_count: usize,
+    pub needs_review_count: usize,
+}
+
+impl<T> ChannelMigrationPreviewInput<T> {
+    pub fn new(
+        app_type: impl Into<String>,
+        channels: Vec<T>,
+        duplicate_count: usize,
+        needs_review_count: usize,
+    ) -> Self {
+        Self {
+            app_type: app_type.into(),
+            channels,
+            duplicate_count,
+            needs_review_count,
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct ChannelMigrationPreviewResponse<T> {
     pub app_type: String,
     pub channels: Vec<T>,
@@ -754,6 +779,49 @@ impl<T> ChannelMigrationPreviewResponse<T> {
         Self {
             app_type: app_type.into(),
             channels,
+            duplicate_count,
+            needs_review_count,
+        }
+    }
+
+    pub fn from_input(input: ChannelMigrationPreviewInput<T>) -> Self {
+        Self::new(
+            input.app_type,
+            input.channels,
+            input.duplicate_count,
+            input.needs_review_count,
+        )
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ChannelMigrationMaterializeInput {
+    pub app_type: String,
+    pub previewed_channels: usize,
+    pub inserted_channels: usize,
+    pub inserted_models: usize,
+    pub inserted_health_rows: usize,
+    pub duplicate_count: usize,
+    pub needs_review_count: usize,
+}
+
+impl ChannelMigrationMaterializeInput {
+    pub fn new(
+        app_type: impl Into<String>,
+        previewed_channels: usize,
+        inserted_channels: usize,
+        inserted_models: usize,
+        inserted_health_rows: usize,
+        duplicate_count: usize,
+        needs_review_count: usize,
+    ) -> Self {
+        Self {
+            app_type: app_type.into(),
+            previewed_channels,
+            inserted_channels,
+            inserted_models,
+            inserted_health_rows,
             duplicate_count,
             needs_review_count,
         }
@@ -791,6 +859,18 @@ impl ChannelMigrationMaterializeResponse {
             duplicate_count,
             needs_review_count,
         }
+    }
+
+    pub fn from_input(input: ChannelMigrationMaterializeInput) -> Self {
+        Self::new(
+            input.app_type,
+            input.previewed_channels,
+            input.inserted_channels,
+            input.inserted_models,
+            input.inserted_health_rows,
+            input.duplicate_count,
+            input.needs_review_count,
+        )
     }
 }
 
@@ -1113,7 +1193,8 @@ mod tests {
         AppChannelListQuery, AppChannelListResponse, AppChannelResponse, AppChannelRouteResponse,
         AppListResponse, AppModelListQuery, AppSummaryInput, ChannelDeleteResponse,
         ChannelListQuery, ChannelListResponse, ChannelModelsResponse,
-        ChannelMigrationMaterializeResponse, ChannelMigrationPreviewResponse,
+        ChannelMigrationMaterializeInput, ChannelMigrationMaterializeResponse,
+        ChannelMigrationPreviewInput, ChannelMigrationPreviewResponse,
         ChannelRouteCandidate, ChannelRouteRejected, ChannelRouteSource,
         CurrentRouteProviderSummaryInput, CurrentRouteResponse, GroupListQuery,
         HealthCheckResponse, ProviderListResponse, ProviderSummaryInput,
@@ -1475,7 +1556,8 @@ mod tests {
 
     #[test]
     fn channel_migration_preview_response_serializes_management_envelope() {
-        let response = ChannelMigrationPreviewResponse::new(
+        let response = ChannelMigrationPreviewResponse::from_input(
+            ChannelMigrationPreviewInput::new(
             "claude",
             vec![json!({
                 "id": "channel-a",
@@ -1483,7 +1565,7 @@ mod tests {
             })],
             1,
             0,
-        );
+        ));
 
         let value = serde_json::to_value(response).expect("serialize response");
 
@@ -1495,8 +1577,9 @@ mod tests {
 
     #[test]
     fn channel_migration_materialize_response_serializes_management_envelope() {
-        let response =
-            ChannelMigrationMaterializeResponse::new("claude", 2, 1, 3, 1, 1, 0);
+        let response = ChannelMigrationMaterializeResponse::from_input(
+            ChannelMigrationMaterializeInput::new("claude", 2, 1, 3, 1, 1, 0),
+        );
 
         let value = serde_json::to_value(response).expect("serialize response");
 
