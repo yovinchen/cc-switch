@@ -601,6 +601,107 @@ pub fn responses_client_tool_output_to_chat_tool_message(item: &Value) -> Value 
     })
 }
 
+pub fn chat_reasoning_text(message: &Value) -> Option<String> {
+    if let Some(reasoning) = extract_reasoning_field_text(message) {
+        return Some(reasoning);
+    }
+
+    if let Some(content) = message.get("content").and_then(Value::as_str) {
+        if let Some((reasoning, _answer)) = split_leading_think_block(content) {
+            if !reasoning.is_empty() {
+                return Some(reasoning);
+            }
+        }
+    }
+
+    None
+}
+
+pub fn chat_reasoning_to_response_output_item(
+    reasoning: Option<&str>,
+    response_id: &str,
+) -> Option<Value> {
+    let reasoning = reasoning?;
+    if reasoning.is_empty() {
+        return None;
+    }
+
+    Some(json!({
+        "id": format!("rs_{response_id}"),
+        "type": "reasoning",
+        "summary": [{
+            "type": "summary_text",
+            "text": reasoning
+        }]
+    }))
+}
+
+pub fn chat_message_to_response_output_item(message: &Value, response_id: &str) -> Option<Value> {
+    let mut content = Vec::new();
+
+    if let Some(text) = message.get("content").and_then(Value::as_str) {
+        let text = split_leading_think_block(text)
+            .map(|(_reasoning, answer)| answer)
+            .unwrap_or_else(|| text.to_string());
+        if !text.is_empty() {
+            content.push(json!({
+                "type": "output_text",
+                "text": text,
+                "annotations": []
+            }));
+        }
+    } else if let Some(parts) = message.get("content").and_then(Value::as_array) {
+        for part in parts {
+            let part_type = part.get("type").and_then(Value::as_str).unwrap_or("");
+            match part_type {
+                "text" | "output_text" => {
+                    if let Some(text) = part.get("text").and_then(Value::as_str) {
+                        if !text.is_empty() {
+                            content.push(json!({
+                                "type": "output_text",
+                                "text": text,
+                                "annotations": []
+                            }));
+                        }
+                    }
+                }
+                "refusal" => {
+                    if let Some(text) = part.get("refusal").and_then(Value::as_str) {
+                        if !text.is_empty() {
+                            content.push(json!({
+                                "type": "refusal",
+                                "refusal": text
+                            }));
+                        }
+                    }
+                }
+                _ => {}
+            }
+        }
+    }
+
+    if let Some(refusal) = message.get("refusal").and_then(Value::as_str) {
+        if !refusal.is_empty() {
+            content.push(json!({
+                "type": "refusal",
+                "refusal": refusal
+            }));
+        }
+    }
+
+    if content.is_empty() {
+        return None;
+    }
+
+    Some(json!({
+        "id": format!("{response_id}_msg"),
+        "type": "message",
+        "status": "completed",
+        "role": "assistant",
+        "content": content
+    }))
+}
+
 pub fn responses_custom_tool_call_to_chat_tool_call(item: &Value) -> Value {
     let call_id = item
         .get("call_id")
@@ -1695,6 +1796,56 @@ mod tests {
             client_output["content"],
             r#"{"call_id":"call_search","status":"completed","tools":[{"name":"search_docs","type":"function"}],"type":"tool_search_output"}"#
         );
+    }
+
+    #[test]
+    fn maps_chat_assistant_reasoning_and_message_to_responses_items() {
+        let message = json!({
+            "role": "assistant",
+            "reasoning_content": "inspect state",
+            "content": "done"
+        });
+        assert_eq!(
+            chat_reasoning_text(&message).as_deref(),
+            Some("inspect state")
+        );
+
+        let inline = json!({
+            "role": "assistant",
+            "content": "<think>plan</think>\n\nanswer"
+        });
+        assert_eq!(chat_reasoning_text(&inline).as_deref(), Some("plan"));
+
+        let reasoning_item =
+            chat_reasoning_to_response_output_item(Some("inspect state"), "resp_1")
+                .expect("reasoning item");
+        assert_eq!(reasoning_item["id"], "rs_resp_1");
+        assert_eq!(reasoning_item["type"], "reasoning");
+        assert_eq!(reasoning_item["summary"][0]["text"], "inspect state");
+        assert!(chat_reasoning_to_response_output_item(Some(""), "resp_1").is_none());
+
+        let message_item =
+            chat_message_to_response_output_item(&inline, "resp_1").expect("message item");
+        assert_eq!(message_item["id"], "resp_1_msg");
+        assert_eq!(message_item["role"], "assistant");
+        assert_eq!(message_item["content"][0]["type"], "output_text");
+        assert_eq!(message_item["content"][0]["text"], "answer");
+
+        let parts = chat_message_to_response_output_item(
+            &json!({
+                "role": "assistant",
+                "content": [
+                    {"type": "text", "text": "hello"},
+                    {"type": "refusal", "refusal": "no"}
+                ],
+                "refusal": "top-level refusal"
+            }),
+            "resp_2",
+        )
+        .expect("parts message");
+        assert_eq!(parts["content"][0]["text"], "hello");
+        assert_eq!(parts["content"][1]["refusal"], "no");
+        assert_eq!(parts["content"][2]["refusal"], "top-level refusal");
     }
 
     #[test]

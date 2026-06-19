@@ -6,14 +6,15 @@
 
 use super::codex_chat_common::{
     extract_reasoning_field_text, extract_reasoning_summary_text, response_function_call_item,
-    response_function_call_item_with_namespace, split_leading_think_block,
+    response_function_call_item_with_namespace,
 };
 use crate::provider::CodexChatReasoningConfig;
 use crate::proxy::{error::ProxyError, json_canonical::canonicalize_tool_arguments};
 pub(crate) use crate::proxy_core::{
     append_pending_reasoning, append_unique_pending_reasoning,
     attach_pending_reasoning_to_assistant, attach_reasoning_to_last_assistant,
-    backfill_tool_call_reasoning_placeholders, chat_usage_to_responses_usage,
+    backfill_tool_call_reasoning_placeholders, chat_message_to_response_output_item,
+    chat_reasoning_text, chat_reasoning_to_response_output_item, chat_usage_to_responses_usage,
     collapse_system_messages_to_head, custom_tool_input_from_chat_arguments,
     flatten_namespace_tool_name, response_custom_tool_call_item, response_id_from_chat_id,
     response_status_from_finish_reason, response_tool_search_call_item,
@@ -769,107 +770,6 @@ pub(crate) fn chat_completion_to_response_with_context(
     }
 
     Ok(response)
-}
-
-fn chat_reasoning_to_response_output_item(
-    reasoning: Option<&str>,
-    response_id: &str,
-) -> Option<Value> {
-    let reasoning = reasoning?;
-    if reasoning.is_empty() {
-        return None;
-    }
-
-    Some(json!({
-        "id": format!("rs_{response_id}"),
-        "type": "reasoning",
-        "summary": [{
-            "type": "summary_text",
-            "text": reasoning
-        }]
-    }))
-}
-
-fn chat_reasoning_text(message: &Value) -> Option<String> {
-    if let Some(reasoning) = extract_reasoning_field_text(message) {
-        return Some(reasoning);
-    }
-
-    if let Some(content) = message.get("content").and_then(|v| v.as_str()) {
-        if let Some((reasoning, _answer)) = split_leading_think_block(content) {
-            if !reasoning.is_empty() {
-                return Some(reasoning);
-            }
-        }
-    }
-
-    None
-}
-
-fn chat_message_to_response_output_item(message: &Value, response_id: &str) -> Option<Value> {
-    let mut content = Vec::new();
-
-    if let Some(text) = message.get("content").and_then(|v| v.as_str()) {
-        let text = split_leading_think_block(text)
-            .map(|(_reasoning, answer)| answer)
-            .unwrap_or_else(|| text.to_string());
-        if !text.is_empty() {
-            content.push(json!({
-                "type": "output_text",
-                "text": text,
-                "annotations": []
-            }));
-        }
-    } else if let Some(parts) = message.get("content").and_then(|v| v.as_array()) {
-        for part in parts {
-            let part_type = part.get("type").and_then(|v| v.as_str()).unwrap_or("");
-            match part_type {
-                "text" | "output_text" => {
-                    if let Some(text) = part.get("text").and_then(|v| v.as_str()) {
-                        if !text.is_empty() {
-                            content.push(json!({
-                                "type": "output_text",
-                                "text": text,
-                                "annotations": []
-                            }));
-                        }
-                    }
-                }
-                "refusal" => {
-                    if let Some(text) = part.get("refusal").and_then(|v| v.as_str()) {
-                        if !text.is_empty() {
-                            content.push(json!({
-                                "type": "refusal",
-                                "refusal": text
-                            }));
-                        }
-                    }
-                }
-                _ => {}
-            }
-        }
-    }
-
-    if let Some(refusal) = message.get("refusal").and_then(|v| v.as_str()) {
-        if !refusal.is_empty() {
-            content.push(json!({
-                "type": "refusal",
-                "refusal": refusal
-            }));
-        }
-    }
-
-    if content.is_empty() {
-        return None;
-    }
-
-    Some(json!({
-        "id": format!("{response_id}_msg"),
-        "type": "message",
-        "status": "completed",
-        "role": "assistant",
-        "content": content
-    }))
 }
 
 fn chat_tool_calls_to_response_output_items(
