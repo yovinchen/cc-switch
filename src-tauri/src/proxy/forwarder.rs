@@ -5,6 +5,7 @@
 use super::hyper_client::ProxyResponse;
 use super::{
     error::ProxyError,
+    error_mapper::forward_failure_kind_from_proxy_error,
     events::ProxyEventBus,
     failover_switch::FailoverSwitchManager,
     provider_router::ProviderRouter,
@@ -47,12 +48,11 @@ use crate::proxy_core::{
     strip_one_m_suffix_for_upstream_from_body, supports_reasoning_effort,
     validate_managed_account_upstream_auth, AppKind, AttemptEventChannel, AttemptEventPayloadInput,
     AttemptEventPhase, ChannelQuery, CopilotAuthHeaderOverrides, CopilotOptimizerConfig,
-    CurrentRouteTarget, ForwardFailureCategory, ForwardFailureKind, GeminiShadowStore,
-    InterfaceKind, MediaRetryInput, OptimizerConfig, PromptCacheTraceLogInput, ProviderAuthInfo,
-    ProviderAuthStrategy, ProviderKind, ProxyBody, ProxyEngine, ProxyRequest, ProxyRuntimeStatus,
-    ProxyServices, RectifierConfig, ResolvedChannelAttempt, UpstreamAuthHeadersInput,
-    UpstreamRequestHeadersInput, UpstreamSendPolicyInput, UpstreamTransportKind,
-    UNSUPPORTED_IMAGE_MARKER,
+    CurrentRouteTarget, ForwardFailureCategory, GeminiShadowStore, InterfaceKind, MediaRetryInput,
+    OptimizerConfig, PromptCacheTraceLogInput, ProviderAuthInfo, ProviderAuthStrategy,
+    ProviderKind, ProxyBody, ProxyEngine, ProxyRequest, ProxyRuntimeStatus, ProxyServices,
+    RectifierConfig, ResolvedChannelAttempt, UpstreamAuthHeadersInput, UpstreamRequestHeadersInput,
+    UpstreamSendPolicyInput, UpstreamTransportKind, UNSUPPORTED_IMAGE_MARKER,
 };
 use crate::proxy_core_host::CcSwitchProxyServices;
 use crate::{app_config::AppType, provider::Provider};
@@ -2423,24 +2423,6 @@ fn apply_bedrock_pre_send_optimizers(body: &mut Value, config: &OptimizerConfig)
         if let Some(message) = crate::proxy_core::cache_injection_log_message(&report) {
             log::info!("{message}");
         }
-    }
-}
-
-fn forward_failure_kind_from_proxy_error(error: &ProxyError) -> ForwardFailureKind {
-    match error {
-        ProxyError::UpstreamError { status, body } => ForwardFailureKind::Upstream {
-            status: *status,
-            body: body.clone(),
-        },
-        ProxyError::Timeout(message) => ForwardFailureKind::Timeout(message.clone()),
-        ProxyError::ForwardFailed(message) => ForwardFailureKind::ForwardFailed(message.clone()),
-        ProxyError::TransformError(message) => ForwardFailureKind::TransformError(message.clone()),
-        ProxyError::ConfigError(message) => ForwardFailureKind::ConfigError(message.clone()),
-        ProxyError::AuthError(message) => ForwardFailureKind::AuthError(message.clone()),
-        ProxyError::ProviderUnhealthy(_) | ProxyError::StreamIdleTimeout(_) => {
-            ForwardFailureKind::RetryableOther(error.to_string())
-        }
-        _ => ForwardFailureKind::Other(error.to_string()),
     }
 }
 

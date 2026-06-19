@@ -6,7 +6,8 @@ use super::{error::ProxyError, ForwardError};
 use crate::proxy::error::proxy_error_status_kind;
 use crate::proxy_core::{
     codex_proxy_error_code, proxy_error_http_status_code, ClaudeDesktopGatewayAuthError,
-    CodexProxyErrorContext, CodexProxyErrorKind, ManagementAuthError, ProxyCoreError,
+    CodexProxyErrorContext, CodexProxyErrorKind, ForwardFailureKind, ManagementAuthError,
+    ProxyCoreError,
 };
 use serde_json::Value;
 
@@ -91,6 +92,24 @@ pub(crate) fn proxy_error_to_core_error(error: ProxyError) -> ProxyCoreError {
 
 pub(crate) fn forward_error_to_core_error(error: ForwardError) -> ProxyCoreError {
     proxy_error_to_core_error(error.error)
+}
+
+pub(crate) fn forward_failure_kind_from_proxy_error(error: &ProxyError) -> ForwardFailureKind {
+    match error {
+        ProxyError::UpstreamError { status, body } => ForwardFailureKind::Upstream {
+            status: *status,
+            body: body.clone(),
+        },
+        ProxyError::Timeout(message) => ForwardFailureKind::Timeout(message.clone()),
+        ProxyError::ForwardFailed(message) => ForwardFailureKind::ForwardFailed(message.clone()),
+        ProxyError::TransformError(message) => ForwardFailureKind::TransformError(message.clone()),
+        ProxyError::ConfigError(message) => ForwardFailureKind::ConfigError(message.clone()),
+        ProxyError::AuthError(message) => ForwardFailureKind::AuthError(message.clone()),
+        ProxyError::ProviderUnhealthy(_) | ProxyError::StreamIdleTimeout(_) => {
+            ForwardFailureKind::RetryableOther(error.to_string())
+        }
+        _ => ForwardFailureKind::Other(error.to_string()),
+    }
 }
 
 pub(crate) fn management_api_error_to_proxy_error(error: ProxyCoreError) -> ProxyError {
@@ -305,6 +324,55 @@ mod tests {
         });
 
         assert!(matches!(error, ProxyCoreError::Upstream(_)));
+    }
+
+    #[test]
+    fn test_proxy_error_bridge_maps_forward_failure_kind() {
+        assert!(matches!(
+            forward_failure_kind_from_proxy_error(&ProxyError::Timeout("slow".to_string())),
+            ForwardFailureKind::Timeout(message) if message == "slow"
+        ));
+        assert!(matches!(
+            forward_failure_kind_from_proxy_error(&ProxyError::ForwardFailed(
+                "connection reset".to_string()
+            )),
+            ForwardFailureKind::ForwardFailed(message) if message == "connection reset"
+        ));
+        assert!(matches!(
+            forward_failure_kind_from_proxy_error(&ProxyError::AuthError("bad token".to_string())),
+            ForwardFailureKind::AuthError(message) if message == "bad token"
+        ));
+        assert!(matches!(
+            forward_failure_kind_from_proxy_error(&ProxyError::ProviderUnhealthy(
+                "half-open".to_string()
+            )),
+            ForwardFailureKind::RetryableOther(_)
+        ));
+        assert!(matches!(
+            forward_failure_kind_from_proxy_error(&ProxyError::DatabaseError(
+                "write failed".to_string()
+            )),
+            ForwardFailureKind::Other(_)
+        ));
+    }
+
+    #[test]
+    fn test_proxy_error_bridge_preserves_upstream_failure_details() {
+        let failure = forward_failure_kind_from_proxy_error(&ProxyError::UpstreamError {
+            status: 429,
+            body: Some(r#"{"error":{"message":"rate limit"}}"#.to_string()),
+        });
+
+        match failure {
+            ForwardFailureKind::Upstream { status, body } => {
+                assert_eq!(status, 429);
+                assert_eq!(
+                    body.as_deref(),
+                    Some(r#"{"error":{"message":"rate limit"}}"#)
+                );
+            }
+            other => panic!("expected upstream failure, got {other:?}"),
+        }
     }
 
     #[test]
