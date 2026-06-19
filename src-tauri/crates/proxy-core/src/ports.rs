@@ -1693,19 +1693,19 @@ mod tests {
         ChannelListQuery, ChannelListResponse, ChannelMigrationMaterializeInput,
         ChannelMigrationMaterializeResponse, ChannelMigrationPreviewInput,
         ChannelMigrationPreviewResponse, ChannelModelRecord, ChannelModelsResponse, ChannelRecord,
-        ChannelRecordResponse,
-        ChannelRouteCandidate, ChannelRouteRejected, ChannelRouteSource, ClientModelCatalogResponse,
-        CurrentRouteProviderSummaryInput, CurrentRouteResponse, CurrentRouteTarget, GroupListQuery,
-        GlobalProxyConfig, HealthCheckResponse, ModelCatalog, ProviderHealth, ProviderListResponse,
+        ChannelRecordResponse, ChannelRouteCandidate, ChannelRouteRejected, ChannelRouteSource,
+        ClientModelCatalogResponse, CopilotOptimizerConfig, CurrentRouteProviderSummaryInput,
+        CurrentRouteResponse, CurrentRouteTarget, GlobalProxyConfig, GroupListQuery,
+        HealthCheckResponse, ModelCatalog, OptimizerConfig, ProviderHealth, ProviderListResponse,
         ProviderSpec, ProviderSummaryInput, ProxyChannelModelWriteRequest,
         ProxyChannelModelsReplaceRequest, ProxyChannelPatchRequest, ProxyChannelWriteRequest,
         ProxyConfig, ProxyRuntimeStatus, ProxyServerInfo, ProxyStatusResponse, ProxyTakeoverStatus,
         RectifierConfig, RouteGroupListResponse, RouteGroupSourceInput, RouteResolveResponse,
-        CopilotOptimizerConfig, OptimizerConfig,
     };
     use crate::{
         AppKind, ChannelHealthPolicy, ChannelOverrides, ChannelSpec, ChannelStatus, InterfaceKind,
-        ModelCapabilities, ModelRoute, ProviderKind, ProviderMetadata, RetryPolicy, UpstreamEndpoint,
+        ModelCapabilities, ModelRoute, ProviderKind, ProviderMetadata, RetryPolicy,
+        UpstreamEndpoint,
     };
     use serde_json::json;
 
@@ -2120,19 +2120,113 @@ mod tests {
     }
 
     #[test]
-    fn rectifier_config_defaults_and_projects_core_configs() {
-        let config: RectifierConfig = serde_json::from_value(json!({}))
-            .expect("deserialize default rectifier config");
+    fn rectifier_config_defaults_all_controls_enabled() {
+        let config = RectifierConfig::default();
+
+        assert!(config.enabled);
+        assert!(config.request_thinking_signature);
+        assert!(config.request_thinking_budget);
+        assert!(config.request_media_fallback);
+        assert!(config.request_media_heuristic);
+    }
+
+    #[test]
+    fn rectifier_config_missing_fields_default_to_enabled() {
+        let config: RectifierConfig =
+            serde_json::from_value(json!({})).expect("deserialize default rectifier config");
 
         assert_eq!(config, RectifierConfig::default());
-        assert!(config.thinking_signature_core_config().enabled);
-        assert!(
-            config
-                .thinking_signature_core_config()
-                .request_thinking_signature
-        );
-        assert!(config.thinking_budget_core_config().enabled);
-        assert!(config.thinking_budget_core_config().request_thinking_budget);
+        assert!(config.enabled);
+        assert!(config.request_thinking_signature);
+        assert!(config.request_thinking_budget);
+        assert!(config.request_media_fallback);
+        assert!(config.request_media_heuristic);
+    }
+
+    #[test]
+    fn rectifier_config_partial_fields_preserve_explicit_false() {
+        let config: RectifierConfig =
+            serde_json::from_value(json!({"enabled": true, "requestThinkingSignature": false}))
+                .expect("deserialize partial rectifier config");
+
+        assert!(config.enabled);
+        assert!(!config.request_thinking_signature);
+        assert!(config.request_thinking_budget);
+        assert!(config.request_media_fallback);
+        assert!(config.request_media_heuristic);
+    }
+
+    #[test]
+    fn rectifier_config_media_fields_preserve_explicit_false() {
+        let config: RectifierConfig = serde_json::from_value(json!({
+            "requestMediaFallback": false,
+            "requestMediaHeuristic": false
+        }))
+        .expect("deserialize media rectifier config");
+
+        assert!(!config.request_media_fallback);
+        assert!(!config.request_media_heuristic);
+        assert!(config.enabled);
+        assert!(config.request_thinking_signature);
+        assert!(config.request_thinking_budget);
+    }
+
+    #[test]
+    fn rectifier_config_projects_signature_detection_controls() {
+        let message = Some("messages.1.content.0: Invalid `signature` in `thinking` block");
+
+        let config = RectifierConfig::default();
+        assert!(crate::should_rectify_thinking_signature(
+            message,
+            &config.thinking_signature_core_config()
+        ));
+
+        let config = RectifierConfig {
+            enabled: false,
+            ..RectifierConfig::default()
+        };
+        assert!(!crate::should_rectify_thinking_signature(
+            message,
+            &config.thinking_signature_core_config()
+        ));
+
+        let config = RectifierConfig {
+            request_thinking_signature: false,
+            ..RectifierConfig::default()
+        };
+        assert!(!crate::should_rectify_thinking_signature(
+            message,
+            &config.thinking_signature_core_config()
+        ));
+    }
+
+    #[test]
+    fn rectifier_config_projects_budget_detection_controls() {
+        let message = Some("thinking.budget_tokens: Input should be greater than or equal to 1024");
+
+        let config = RectifierConfig::default();
+        assert!(crate::should_rectify_thinking_budget(
+            message,
+            &config.thinking_budget_core_config()
+        ));
+
+        let config = RectifierConfig {
+            enabled: false,
+            ..RectifierConfig::default()
+        };
+        assert!(!crate::should_rectify_thinking_budget(
+            message,
+            &config.thinking_budget_core_config()
+        ));
+
+        let config = RectifierConfig {
+            request_thinking_budget: false,
+            ..RectifierConfig::default()
+        };
+        assert!(!crate::should_rectify_thinking_budget(
+            message,
+            &config.thinking_budget_core_config()
+        ));
     }
 
     #[test]
