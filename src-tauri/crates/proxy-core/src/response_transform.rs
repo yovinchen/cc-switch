@@ -2068,6 +2068,52 @@ pub fn extract_chat_sse_error(value: &Value) -> (String, Option<String>) {
     (message, error_type)
 }
 
+pub fn codex_chat_stream_response(
+    response_id: &str,
+    created_at: u64,
+    status: &str,
+    model: &str,
+    output: Vec<Value>,
+    latest_usage: Option<&Value>,
+) -> Value {
+    json!({
+        "id": response_id,
+        "object": "response",
+        "created_at": created_at,
+        "status": status,
+        "model": model,
+        "output": output,
+        "usage": latest_usage.cloned().unwrap_or_else(|| {
+            json!({
+                "input_tokens": 0,
+                "output_tokens": 0,
+                "total_tokens": 0,
+                "output_tokens_details": { "reasoning_tokens": 0 }
+            })
+        })
+    })
+}
+
+pub fn codex_chat_stream_failed_event(
+    mut response: Value,
+    message: impl Into<String>,
+    error_type: Option<&str>,
+) -> Bytes {
+    let mut error = json!({ "message": message.into() });
+    if let Some(error_type) = error_type.filter(|value| !value.is_empty()) {
+        error["type"] = json!(error_type);
+    }
+    response["error"] = error;
+
+    sse_event(
+        "response.failed",
+        json!({
+            "type": "response.failed",
+            "response": response
+        }),
+    )
+}
+
 pub fn sse_event(event: &str, data: Value) -> Bytes {
     Bytes::from(format!(
         "event: {event}\ndata: {}\n\n",
@@ -3641,6 +3687,57 @@ mod tests {
             std::str::from_utf8(&event).unwrap(),
             "event: response.failed\ndata: {\"type\":\"response.failed\"}\n\n"
         );
+    }
+
+    #[test]
+    fn codex_chat_stream_response_uses_default_usage_when_missing() {
+        let response = codex_chat_stream_response(
+            "resp_1",
+            123,
+            "in_progress",
+            "gpt-5",
+            vec![json!({"id": "msg_1", "type": "message"})],
+            None,
+        );
+
+        assert_eq!(response["id"], "resp_1");
+        assert_eq!(response["created_at"], 123);
+        assert_eq!(response["status"], "in_progress");
+        assert_eq!(response["model"], "gpt-5");
+        assert_eq!(response["output"][0]["id"], "msg_1");
+        assert_eq!(response["usage"]["input_tokens"], 0);
+        assert_eq!(response["usage"]["output_tokens_details"]["reasoning_tokens"], 0);
+    }
+
+    #[test]
+    fn codex_chat_stream_failed_event_wraps_error_in_response_envelope() {
+        let response = codex_chat_stream_response(
+            "resp_1",
+            123,
+            "failed",
+            "gpt-5",
+            Vec::new(),
+            Some(&json!({
+                "input_tokens": 1,
+                "output_tokens": 2,
+                "total_tokens": 3,
+                "output_tokens_details": { "reasoning_tokens": 0 }
+            })),
+        );
+
+        let event = codex_chat_stream_failed_event(
+            response,
+            "quota exceeded",
+            Some("rate_limit_exceeded"),
+        );
+        let event = std::str::from_utf8(&event).expect("event utf8");
+
+        assert!(event.starts_with("event: response.failed\n"));
+        assert!(event.contains("\"type\":\"response.failed\""));
+        assert!(event.contains("\"status\":\"failed\""));
+        assert!(event.contains("\"message\":\"quota exceeded\""));
+        assert!(event.contains("\"type\":\"rate_limit_exceeded\""));
+        assert!(event.contains("\"total_tokens\":3"));
     }
 
     #[test]

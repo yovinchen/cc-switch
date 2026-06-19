@@ -4,8 +4,9 @@
 use crate::proxy_core::build_codex_tool_context_from_request;
 use crate::proxy_core::{
     append_utf8_safe, canonicalize_tool_arguments_str, chat_delta_reasoning_text,
-    chat_usage_to_responses_usage, custom_tool_input_from_chat_arguments, extract_chat_sse_error,
-    leading_think_prefix_decision, response_id_from_chat_id, response_status_from_finish_reason,
+    chat_usage_to_responses_usage, codex_chat_stream_failed_event, codex_chat_stream_response,
+    custom_tool_input_from_chat_arguments, extract_chat_sse_error, leading_think_prefix_decision,
+    response_id_from_chat_id, response_status_from_finish_reason,
     response_tool_call_item_from_chat_name, response_tool_call_item_id_from_chat_name,
     split_leading_think_block, sse_event, strip_leading_think_open_tag, strip_sse_field,
     take_sse_block, CodexToolContext, ThinkPrefixDecision,
@@ -816,22 +817,14 @@ impl ChatToResponsesState {
     }
 
     fn base_response(&self, status: &str, output: Vec<Value>) -> Value {
-        json!({
-            "id": self.response_id,
-            "object": "response",
-            "created_at": self.created_at,
-            "status": status,
-            "model": self.model,
-            "output": output,
-            "usage": self.latest_usage.clone().unwrap_or_else(|| {
-                json!({
-                    "input_tokens": 0,
-                    "output_tokens": 0,
-                    "total_tokens": 0,
-                    "output_tokens_details": { "reasoning_tokens": 0 }
-                })
-            })
-        })
+        codex_chat_stream_response(
+            &self.response_id,
+            self.created_at,
+            status,
+            &self.model,
+            output,
+            self.latest_usage.as_ref(),
+        )
     }
 
     fn next_output_index(&mut self) -> u32 {
@@ -842,21 +835,8 @@ impl ChatToResponsesState {
 
     fn failed_event(&mut self, message: String, error_type: Option<String>) -> Bytes {
         self.completed = true;
-        let mut error = json!({ "message": message });
-        if let Some(error_type) = error_type.filter(|value| !value.is_empty()) {
-            error["type"] = json!(error_type);
-        }
-
-        let mut response = self.base_response("failed", self.completed_output_items());
-        response["error"] = error;
-
-        sse_event(
-            "response.failed",
-            json!({
-                "type": "response.failed",
-                "response": response
-            }),
-        )
+        let response = self.base_response("failed", self.completed_output_items());
+        codex_chat_stream_failed_event(response, message, error_type.as_deref())
     }
 }
 
