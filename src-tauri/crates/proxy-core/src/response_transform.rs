@@ -438,6 +438,14 @@ pub fn response_custom_tool_call_item(
     item
 }
 
+pub fn response_tool_call_item_id(call_id: &str, is_custom_tool: bool) -> String {
+    if is_custom_tool {
+        format!("ctc_{call_id}")
+    } else {
+        format!("fc_{call_id}")
+    }
+}
+
 fn parse_tool_arguments_object(arguments: &str) -> Value {
     if arguments.trim().is_empty() {
         return json!({});
@@ -1607,6 +1615,8 @@ mod tests {
         assert_eq!(response_status_from_finish_reason(Some("length")), "incomplete");
         assert_eq!(response_status_from_finish_reason(Some("stop")), "completed");
         assert_eq!(response_status_from_finish_reason(None), "completed");
+        assert_eq!(response_tool_call_item_id("call_1", false), "fc_call_1");
+        assert_eq!(response_tool_call_item_id("call_1", true), "ctc_call_1");
     }
 
     #[test]

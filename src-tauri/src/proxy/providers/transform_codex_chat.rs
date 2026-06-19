@@ -17,7 +17,7 @@ pub(crate) use crate::proxy_core::{
     chat_reasoning_text, chat_reasoning_to_response_output_item, chat_usage_to_responses_usage,
     collapse_system_messages_to_head, custom_tool_input_from_chat_arguments,
     flatten_namespace_tool_name, response_custom_tool_call_item, response_id_from_chat_id,
-    response_status_from_finish_reason, response_tool_search_call_item,
+    response_status_from_finish_reason, response_tool_call_item_id, response_tool_search_call_item,
     responses_client_tool_output_to_chat_tool_message, responses_content_to_chat_content,
     responses_custom_tool_call_to_chat_tool_call, responses_custom_tool_to_chat_tool,
     responses_function_call_output_to_chat_tool_message,
@@ -860,11 +860,7 @@ pub(crate) fn response_tool_call_item_id_from_chat_name(
     chat_name: &str,
     tool_context: &CodexToolContext,
 ) -> String {
-    if tool_context.is_custom_tool_chat_name(chat_name) {
-        format!("ctc_{call_id}")
-    } else {
-        format!("fc_{call_id}")
-    }
+    response_tool_call_item_id(call_id, tool_context.is_custom_tool_chat_name(chat_name))
 }
 
 pub(crate) fn response_tool_call_item_from_chat_name(
