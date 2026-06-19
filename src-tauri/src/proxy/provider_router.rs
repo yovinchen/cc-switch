@@ -11,10 +11,11 @@ use crate::proxy::circuit_breaker::{
     AllowResult, CircuitBreaker, CircuitBreakerConfig, CircuitBreakerStats,
 };
 use crate::proxy_core::{
+    app_type_from_circuit_key, channel_circuit_key, channel_circuit_key_prefix,
     circuit_breaker_config_from_app_config, circuit_failure_threshold_from_app_config,
-    reject_unavailable_channel_ids, select_provider_ids, ChannelRouteSource,
-    ProviderSelectionCandidate, ProviderSelectionFailure, ProviderSelectionInput,
-    RouteResolveRequest, RouteResolveResponse,
+    provider_circuit_key, provider_circuit_key_prefix, reject_unavailable_channel_ids,
+    select_provider_ids, ChannelRouteSource, ProviderSelectionCandidate, ProviderSelectionFailure,
+    ProviderSelectionInput, RouteResolveRequest, RouteResolveResponse,
 };
 use std::collections::HashMap;
 use std::str::FromStr;
@@ -81,7 +82,7 @@ impl ProviderRouter {
                 continue;
             };
 
-            let circuit_key = format!("{app_type}:{}", provider.id);
+            let circuit_key = provider_circuit_key(app_type, &provider.id);
             let breaker = self.get_or_create_circuit_breaker(&circuit_key).await;
             candidates.push(ProviderSelectionCandidate::new(
                 provider_id,
@@ -197,7 +198,7 @@ impl ProviderRouter {
     /// 注意：调用方必须在请求结束后通过 `record_result()` 释放 HalfOpen 名额，
     /// 否则会导致该 Provider 长时间无法进入探测状态。
     pub async fn allow_provider_request(&self, provider_id: &str, app_type: &str) -> AllowResult {
-        let circuit_key = format!("{app_type}:{provider_id}");
+        let circuit_key = provider_circuit_key(app_type, provider_id);
         let breaker = self.get_or_create_circuit_breaker(&circuit_key).await;
         breaker.allow_request().await
     }
@@ -222,7 +223,7 @@ impl ProviderRouter {
         let failure_threshold = self.failure_threshold_for_app(app_type, 5).await;
 
         // 2. 更新熔断器状态
-        let circuit_key = format!("{app_type}:{provider_id}");
+        let circuit_key = provider_circuit_key(app_type, provider_id);
         let breaker = self.get_or_create_circuit_breaker(&circuit_key).await;
 
         if success {
@@ -288,7 +289,7 @@ impl ProviderRouter {
 
     /// 重置指定供应商的熔断器
     pub async fn reset_provider_breaker(&self, provider_id: &str, app_type: &str) {
-        let circuit_key = format!("{app_type}:{provider_id}");
+        let circuit_key = provider_circuit_key(app_type, provider_id);
         self.reset_circuit_breaker(&circuit_key).await;
     }
 
@@ -316,7 +317,7 @@ impl ProviderRouter {
         if !used_half_open_permit {
             return;
         }
-        let circuit_key = format!("{app_type}:{provider_id}");
+        let circuit_key = provider_circuit_key(app_type, provider_id);
         let breaker = self.get_or_create_circuit_breaker(&circuit_key).await;
         breaker.release_half_open_permit();
     }
@@ -346,8 +347,8 @@ impl ProviderRouter {
 
     /// 更新指定应用已创建熔断器的配置（热更新）
     pub async fn update_app_configs(&self, app_type: &str, config: CircuitBreakerConfig) {
-        let provider_prefix = format!("{app_type}:");
-        let channel_prefix = format!("channel:{app_type}:");
+        let provider_prefix = provider_circuit_key_prefix(app_type);
+        let channel_prefix = channel_circuit_key_prefix(app_type);
         let breakers = self.circuit_breakers.read().await;
         for (key, breaker) in breakers.iter() {
             if key.starts_with(&provider_prefix) || key.starts_with(&channel_prefix) {
@@ -363,7 +364,7 @@ impl ProviderRouter {
         provider_id: &str,
         app_type: &str,
     ) -> Option<CircuitBreakerStats> {
-        let circuit_key = format!("{app_type}:{provider_id}");
+        let circuit_key = provider_circuit_key(app_type, provider_id);
         let breakers = self.circuit_breakers.read().await;
 
         if let Some(breaker) = breakers.get(&circuit_key) {
@@ -431,10 +432,6 @@ impl ProviderRouter {
     }
 }
 
-fn channel_circuit_key(app_type: &str, channel_id: &str) -> String {
-    format!("channel:{app_type}:{channel_id}")
-}
-
 fn provider_selection_failure_to_app_error(
     app_type: &str,
     error: ProviderSelectionFailure,
@@ -449,12 +446,6 @@ fn provider_selection_failure_to_app_error(
             AppError::NoProvidersConfigured
         }
     }
-}
-
-fn app_type_from_circuit_key(key: &str) -> &str {
-    key.strip_prefix("channel:")
-        .and_then(|rest| rest.split(':').next())
-        .unwrap_or_else(|| key.split(':').next().unwrap_or("claude"))
 }
 
 #[cfg(test)]
