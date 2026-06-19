@@ -4,7 +4,6 @@
 //! `RectifierConfig` 投影成 core 的中立配置。
 
 use super::types::RectifierConfig;
-use serde_json::Value;
 
 fn signature_rectifier_config(
     config: &RectifierConfig,
@@ -25,18 +24,9 @@ pub fn should_rectify_thinking_signature(
     )
 }
 
-pub fn rectify_anthropic_request(body: &mut Value) -> crate::proxy_core::RectifyResult {
-    crate::proxy_core::rectify_anthropic_request(body)
-}
-
-pub fn normalize_thinking_type(body: Value) -> Value {
-    crate::proxy_core::normalize_thinking_type(body)
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
-    use serde_json::json;
 
     fn config(enabled: bool, request_thinking_signature: bool) -> RectifierConfig {
         RectifierConfig {
@@ -64,42 +54,5 @@ mod tests {
             message,
             &config(true, false)
         ));
-    }
-
-    #[test]
-    fn wrapper_rectifies_request_body() {
-        let mut body = json!({
-            "model": "claude-test",
-            "messages": [{
-                "role": "assistant",
-                "content": [
-                    { "type": "thinking", "thinking": "t", "signature": "sig" },
-                    { "type": "text", "text": "hello", "signature": "sig_text" }
-                ]
-            }]
-        });
-
-        let result = rectify_anthropic_request(&mut body);
-
-        assert!(result.applied);
-        assert_eq!(result.removed_thinking_blocks, 1);
-        assert_eq!(result.removed_signature_fields, 1);
-        let content = body["messages"][0]["content"].as_array().unwrap();
-        assert_eq!(content.len(), 1);
-        assert_eq!(content[0]["type"], "text");
-        assert!(content[0].get("signature").is_none());
-    }
-
-    #[test]
-    fn wrapper_preserves_normalize_thinking_type_behavior() {
-        let body = json!({
-            "model": "claude-test",
-            "thinking": { "type": "adaptive", "budget_tokens": 5000 }
-        });
-
-        let result = normalize_thinking_type(body);
-
-        assert_eq!(result["thinking"]["type"], "adaptive");
-        assert_eq!(result["thinking"]["budget_tokens"], 5000);
     }
 }
