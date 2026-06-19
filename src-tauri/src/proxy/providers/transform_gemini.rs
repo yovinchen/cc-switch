@@ -4,11 +4,11 @@
 //! and Gemini `GenerateContentResponse` payloads back to Anthropic Messages
 //! responses for Claude-compatible clients.
 
-use super::gemini_shadow::{GeminiAssistantTurn, GeminiShadowStore, GeminiToolCallMeta};
 use crate::proxy::error::ProxyError;
 use crate::proxy_core::{
     build_anthropic_usage_from_gemini, build_gemini_function_declaration,
-    map_gemini_finish_reason_to_anthropic,
+    map_gemini_finish_reason_to_anthropic, GeminiAssistantTurn, GeminiShadowStore,
+    GeminiToolCallMeta,
 };
 use serde_json::{json, Map, Value};
 use std::collections::{HashMap, HashSet};

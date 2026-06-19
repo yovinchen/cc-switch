@@ -19,7 +19,6 @@ pub mod codex_chat_history;
 pub mod codex_oauth_auth;
 pub mod copilot_auth;
 mod gemini;
-pub mod gemini_shadow;
 pub mod models;
 pub mod streaming;
 pub mod streaming_codex_chat;

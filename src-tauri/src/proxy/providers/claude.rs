@@ -73,7 +73,7 @@ pub fn transform_claude_request_for_api_format(
     provider: &Provider,
     api_format: &str,
     session_id: Option<&str>,
-    shadow_store: Option<&super::gemini_shadow::GeminiShadowStore>,
+    shadow_store: Option<&crate::proxy_core::GeminiShadowStore>,
 ) -> Result<serde_json::Value, ProxyError> {
     let is_codex_oauth = provider.is_codex_oauth();
 

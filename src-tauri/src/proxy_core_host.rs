@@ -5,9 +5,7 @@ use crate::proxy::events::ProxyEventBus;
 use crate::proxy::failover_switch::FailoverSwitchManager;
 use crate::proxy::hyper_client::ProxyResponse;
 use crate::proxy::provider_router::ProviderRouter;
-use crate::proxy::providers::{
-    codex_chat_history::CodexChatHistoryStore, gemini_shadow::GeminiShadowStore,
-};
+use crate::proxy::providers::codex_chat_history::CodexChatHistoryStore;
 use crate::proxy::route_attempt::forward_attempts_from_route_plan;
 use crate::proxy::types::{ActiveTarget, ProxyStatus};
 use crate::proxy::usage::{CostCalculator, RequestLog, UsageLogger};
@@ -16,13 +14,13 @@ use crate::proxy_core::{
     interfaces_compatible, resolve_usage_record_pricing_models, route_group_matches,
     token_usage_from_usage_record, AppKind, AuthInfo, AuthProfileRef, ChannelAttemptPlan,
     ChannelAttemptResult, ChannelQuery, ChannelSource, ChannelSpec, ChannelStatus,
-    CopilotOptimizerConfigSpec, ForwardPipeline, ModelCatalog, OptimizerConfigSpec, ProviderSource,
-    ProviderSpec, ProxyAppConfig, ProxyBody, ProxyConfigSource, ProxyCoreError, ProxyCoreEvent,
-    ProxyCoreEventType, ProxyCoreResponse, ProxyCoreResult, ProxyEventSink, ProxyGlobalConfig,
-    ProxyRequest, ProxyResponseBody, ProxyResult, ProxyRuntimeConfig, ProxyServices,
-    RectifierConfigSpec, RoutePlan, RoutePolicy, RoutePolicySource, RouteRequest, RouteResolver,
-    RouteSelection, UsageRecord, UsageSink, CLAUDE_API_FORMAT_METADATA_KEY, DEFAULT_ROUTE_GROUP,
-    SESSION_REQUEST_ID_PREFIX,
+    CopilotOptimizerConfigSpec, ForwardPipeline, GeminiShadowStore, ModelCatalog,
+    OptimizerConfigSpec, ProviderSource, ProviderSpec, ProxyAppConfig, ProxyBody,
+    ProxyConfigSource, ProxyCoreError, ProxyCoreEvent, ProxyCoreEventType, ProxyCoreResponse,
+    ProxyCoreResult, ProxyEventSink, ProxyGlobalConfig, ProxyRequest, ProxyResponseBody,
+    ProxyResult, ProxyRuntimeConfig, ProxyServices, RectifierConfigSpec, RoutePlan, RoutePolicy,
+    RoutePolicySource, RouteRequest, RouteResolver, RouteSelection, UsageRecord, UsageSink,
+    CLAUDE_API_FORMAT_METADATA_KEY, DEFAULT_ROUTE_GROUP, SESSION_REQUEST_ID_PREFIX,
 };
 use crate::proxy_core_adapter::{ToProxyCoreChannelSpec, ToProxyCoreProviderSpec};
 use crate::services::usage_stats::is_placeholder_pricing_model;

@@ -8,8 +8,8 @@ use super::{
     failover_switch::FailoverSwitchManager,
     provider_router::ProviderRouter,
     providers::{
-        codex_chat_history::CodexChatHistoryStore, gemini_shadow::GeminiShadowStore, get_adapter,
-        AuthInfo, AuthStrategy, ProviderAdapter, ProviderType,
+        codex_chat_history::CodexChatHistoryStore, get_adapter, AuthInfo, AuthStrategy,
+        ProviderAdapter, ProviderType,
     },
     route_attempt::{
         apply_channel_model_override, forward_attempts_from_route_plan, ChannelAttempt,
@@ -45,10 +45,10 @@ use crate::proxy_core::{
     strip_one_m_suffix_for_upstream, strip_one_m_suffix_for_upstream_from_body,
     supports_reasoning_effort, validate_managed_account_upstream_auth, AppKind,
     AttemptEventChannel, AttemptEventPayloadInput, AttemptEventPhase, ChannelQuery,
-    CopilotAuthHeaderOverrides, ForwardFailureCategory, ForwardFailureKind, InterfaceKind,
-    MediaRetryInput, ProxyBody, ProxyEngine, ProxyRequest, ProxyServices, UpstreamAuthHeadersInput,
-    UpstreamRequestHeadersInput, UpstreamSendPolicyInput, UpstreamTransportKind,
-    BEDROCK_OPTIMIZER_ENV_FLAG, UNSUPPORTED_IMAGE_MARKER,
+    CopilotAuthHeaderOverrides, ForwardFailureCategory, ForwardFailureKind, GeminiShadowStore,
+    InterfaceKind, MediaRetryInput, ProxyBody, ProxyEngine, ProxyRequest, ProxyServices,
+    UpstreamAuthHeadersInput, UpstreamRequestHeadersInput, UpstreamSendPolicyInput,
+    UpstreamTransportKind, BEDROCK_OPTIMIZER_ENV_FLAG, UNSUPPORTED_IMAGE_MARKER,
 };
 use crate::proxy_core_host::CcSwitchProxyServices;
 use crate::{app_config::AppType, provider::Provider};

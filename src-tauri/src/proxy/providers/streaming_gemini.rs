@@ -3,14 +3,14 @@
 //! Converts Gemini `streamGenerateContent?alt=sse` chunks into Anthropic-style
 //! SSE events for Claude-compatible clients.
 
-use super::gemini_shadow::{GeminiShadowStore, GeminiToolCallMeta};
 use super::transform_gemini::{
     is_synthesized_tool_call_id, rectify_tool_call_parts, synthesize_tool_call_id,
     AnthropicToolSchemaHints,
 };
 use crate::proxy_core::{
     append_utf8_safe, build_anthropic_message_delta_event, build_anthropic_usage_from_gemini,
-    map_gemini_finish_reason_to_anthropic, strip_sse_field, take_sse_block,
+    map_gemini_finish_reason_to_anthropic, strip_sse_field, take_sse_block, GeminiShadowStore,
+    GeminiToolCallMeta,
 };
 use bytes::Bytes;
 use futures::stream::{Stream, StreamExt};
@@ -555,8 +555,8 @@ pub fn create_anthropic_sse_stream_from_gemini<E: std::error::Error + Send + 'st
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::proxy::providers::gemini_shadow::GeminiShadowStore;
     use crate::proxy::providers::transform_gemini::anthropic_to_gemini_with_shadow;
+    use crate::proxy_core::GeminiShadowStore;
     use std::sync::Arc;
 
     fn collect_stream_output(chunks: Vec<&str>) -> String {

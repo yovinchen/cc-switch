@@ -240,17 +240,15 @@ impl GeminiShadowStore {
     }
 
     fn read_inner(&self) -> RwLockReadGuard<'_, GeminiShadowInner> {
-        self.inner.read().unwrap_or_else(|poisoned| {
-            log::warn!("[GeminiShadow] recovering poisoned read lock");
-            poisoned.into_inner()
-        })
+        self.inner
+            .read()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
     }
 
     fn write_inner(&self) -> RwLockWriteGuard<'_, GeminiShadowInner> {
-        self.inner.write().unwrap_or_else(|poisoned| {
-            log::warn!("[GeminiShadow] recovering poisoned write lock");
-            poisoned.into_inner()
-        })
+        self.inner
+            .write()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
     }
 
     fn snapshot_session(
