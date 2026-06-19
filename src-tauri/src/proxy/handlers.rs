@@ -254,8 +254,7 @@ pub async fn list_proxy_providers(
         .into_values()
         .map(|provider| provider.to_proxy_core_provider_spec(&app));
 
-    Ok(Json(ProviderListResponse::from_provider_specs(
-        request.app_type,
+    Ok(Json(request.provider_list_response(
         provider_specs,
         current_provider.as_deref(),
         &failover_ids,

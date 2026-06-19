@@ -1,11 +1,11 @@
-use super::domain::{AppKind, ChannelSpec, InterfaceKind};
+use super::domain::{AppKind, ChannelSpec, InterfaceKind, ProviderSpec};
 use super::error::{ProxyCoreError, ProxyCoreResult};
 use super::ports::{
     AppChannelListQuery, AppChannelListResponse, AppChannelResponse, AppChannelRouteResponse,
     AppModelListQuery, ChannelDeleteResponse, ChannelListQuery, ChannelListResponse,
     ChannelMigrationMaterializeResponse, ChannelMigrationPreviewResponse, ChannelModelsResponse,
     ChannelRecordResponse, ChannelRouteCandidate, ChannelRouteRejected, ChannelRouteSource,
-    CurrentRouteProviderSummaryInput, CurrentRouteResponse, GroupListQuery,
+    CurrentRouteProviderSummaryInput, CurrentRouteResponse, GroupListQuery, ProviderListResponse,
     RouteGroupListResponse, RouteGroupSourceInput, RouteResolveRequest, RouteResolveResponse,
 };
 
@@ -62,6 +62,22 @@ impl ManagementAppPathRequest {
             self.app_type.clone(),
             active_target,
             configured_provider,
+        )
+    }
+
+    pub fn provider_list_response(
+        &self,
+        providers: impl IntoIterator<Item = ProviderSpec>,
+        current_provider: Option<&str>,
+        failover_provider_ids: &[String],
+        route_candidate_ids: &[String],
+    ) -> ProviderListResponse {
+        ProviderListResponse::from_provider_specs(
+            self.app_type.clone(),
+            providers,
+            current_provider,
+            failover_provider_ids,
+            route_candidate_ids,
         )
     }
 
@@ -315,9 +331,20 @@ mod tests {
     use crate::{
         AppChannelListQuery, AppKind, AppModelListQuery, ChannelHealthPolicy, ChannelListQuery,
         ChannelOverrides, ChannelRouteSource, ChannelSpec, ChannelStatus, GroupListQuery,
-        InterfaceKind, RetryPolicy, RouteResolveResponse, UpstreamEndpoint,
+        InterfaceKind, ProviderKind, ProviderMetadata, ProviderSpec, RetryPolicy,
+        RouteResolveResponse, UpstreamEndpoint,
     };
     use serde_json::json;
+
+    fn provider_spec(id: &str) -> ProviderSpec {
+        ProviderSpec {
+            id: id.to_string(),
+            name: format!("{id} Provider"),
+            kind: ProviderKind::Claude,
+            account_ref: None,
+            metadata: ProviderMetadata::default(),
+        }
+    }
 
     fn channel_spec(id: &str, app: AppKind, groups: Vec<String>) -> ChannelSpec {
         ChannelSpec {
@@ -400,6 +427,29 @@ mod tests {
         assert!(response.active);
         assert_eq!(response.target, Some("target-a"));
         assert!(response.configured_provider.is_none());
+    }
+
+    #[test]
+    fn management_app_path_request_wraps_provider_list_response() {
+        let request = ManagementAppPathRequest::from_path("claude").expect("request");
+        let failover_ids = vec!["provider-b".to_string()];
+        let route_candidate_ids = vec!["provider-a".to_string()];
+
+        let response = request.provider_list_response(
+            vec![provider_spec("provider-a"), provider_spec("provider-b")],
+            Some("provider-a"),
+            &failover_ids,
+            &route_candidate_ids,
+        );
+
+        assert_eq!(response.app_type, "claude");
+        assert_eq!(response.providers.len(), 2);
+        assert!(response.providers[0].current);
+        assert!(response.providers[0].route_candidate);
+        assert!(!response.providers[0].in_failover_queue);
+        assert!(!response.providers[1].current);
+        assert!(!response.providers[1].route_candidate);
+        assert!(response.providers[1].in_failover_queue);
     }
 
     #[test]
