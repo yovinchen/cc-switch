@@ -19,14 +19,14 @@ use crate::provider::Provider;
 use crate::proxy::error::ProxyError;
 use crate::proxy_core::{
     anthropic_to_openai_chat_request, anthropic_to_openai_responses_request,
-    build_claude_auth_headers, build_claude_upstream_url, claude_api_format_needs_transform,
-    extract_claude_auth_key_from_settings, extract_claude_base_url_from_settings,
-    infer_claude_provider_kind, normalize_anthropic_tool_thinking_history,
-    openai_chat_to_anthropic_message, openai_responses_to_anthropic_message,
-    resolve_claude_api_format_from_settings, resolve_claude_responses_prompt_cache_key,
-    should_normalize_anthropic_tool_thinking_history,
+    build_claude_auth_headers, build_claude_upstream_url, build_copilot_auth_headers,
+    claude_api_format_needs_transform, extract_claude_auth_key_from_settings,
+    extract_claude_base_url_from_settings, infer_claude_provider_kind,
+    normalize_anthropic_tool_thinking_history, openai_chat_to_anthropic_message,
+    openai_responses_to_anthropic_message, resolve_claude_api_format_from_settings,
+    resolve_claude_responses_prompt_cache_key, should_normalize_anthropic_tool_thinking_history,
     should_preserve_reasoning_content_for_openai_chat, ClaudeAuthHeaderKind, ClaudeAuthKey,
-    ClaudeAuthKeySource,
+    ClaudeAuthKeySource, CopilotAuthHeadersInput,
 };
 use serde_json::Value;
 
@@ -362,60 +362,19 @@ impl ProviderAdapter for ClaudeAdapter {
                 .map_err(|error| ProxyError::AuthError(error.to_string()));
         }
 
-        use http::{HeaderName, HeaderValue};
-        let hv = |value: &str| {
-            crate::proxy_core::auth_header_value(value)
-                .map_err(|error| ProxyError::AuthError(error.to_string()))
-        };
-        // 注意：anthropic-version 由 forwarder.rs 统一处理（透传客户端值或设置默认值）
-        let bearer = format!("Bearer {}", auth.api_key);
         Ok(match auth.strategy {
             AuthStrategy::GitHubCopilot => {
-                // 生成请求追踪 ID
                 let request_id = uuid::Uuid::new_v4().to_string();
-                vec![
-                    (HeaderName::from_static("authorization"), hv(&bearer)?),
-                    (
-                        HeaderName::from_static("editor-version"),
-                        HeaderValue::from_static(super::copilot_auth::COPILOT_EDITOR_VERSION),
-                    ),
-                    (
-                        HeaderName::from_static("editor-plugin-version"),
-                        HeaderValue::from_static(super::copilot_auth::COPILOT_PLUGIN_VERSION),
-                    ),
-                    (
-                        HeaderName::from_static("copilot-integration-id"),
-                        HeaderValue::from_static(super::copilot_auth::COPILOT_INTEGRATION_ID),
-                    ),
-                    (
-                        HeaderName::from_static("user-agent"),
-                        HeaderValue::from_static(super::copilot_auth::COPILOT_USER_AGENT),
-                    ),
-                    (
-                        HeaderName::from_static("x-github-api-version"),
-                        HeaderValue::from_static(super::copilot_auth::COPILOT_API_VERSION),
-                    ),
-                    // 26-04-01新增的copilot关键 headers
-                    (
-                        HeaderName::from_static("openai-intent"),
-                        HeaderValue::from_static("conversation-agent"),
-                    ),
-                    (
-                        HeaderName::from_static("x-initiator"),
-                        HeaderValue::from_static("user"),
-                    ),
-                    (
-                        HeaderName::from_static("x-interaction-type"),
-                        HeaderValue::from_static("conversation-agent"),
-                    ),
-                    // x-interaction-id 由 forwarder 按需注入（仅在有 session 时）
-                    (
-                        HeaderName::from_static("x-vscode-user-agent-library-version"),
-                        HeaderValue::from_static("electron-fetch"),
-                    ),
-                    (HeaderName::from_static("x-request-id"), hv(&request_id)?),
-                    (HeaderName::from_static("x-agent-task-id"), hv(&request_id)?),
-                ]
+                build_copilot_auth_headers(CopilotAuthHeadersInput {
+                    api_key: &auth.api_key,
+                    request_id: &request_id,
+                    editor_version: super::copilot_auth::COPILOT_EDITOR_VERSION,
+                    editor_plugin_version: super::copilot_auth::COPILOT_PLUGIN_VERSION,
+                    integration_id: super::copilot_auth::COPILOT_INTEGRATION_ID,
+                    user_agent: super::copilot_auth::COPILOT_USER_AGENT,
+                    github_api_version: super::copilot_auth::COPILOT_API_VERSION,
+                })
+                .map_err(|error| ProxyError::AuthError(error.to_string()))?
             }
             _ => unreachable!("static auth strategies are delegated to proxy-core"),
         })
@@ -648,6 +607,66 @@ mod tests {
         assert_eq!(headers[0].1.to_str().unwrap(), "Bearer chatgpt-token");
         assert_eq!(headers[1].0.as_str(), "originator");
         assert_eq!(headers[1].1.to_str().unwrap(), "cc-switch");
+    }
+
+    #[test]
+    fn test_get_auth_headers_github_copilot_emits_fingerprint_headers() {
+        let adapter = ClaudeAdapter::new();
+        let auth = AuthInfo::new("copilot-token".to_string(), AuthStrategy::GitHubCopilot);
+
+        let headers = adapter.get_auth_headers(&auth).unwrap();
+
+        let pairs: Vec<(&str, &str)> = headers
+            .iter()
+            .map(|(name, value)| (name.as_str(), value.to_str().unwrap()))
+            .collect();
+        assert_eq!(pairs[0], ("authorization", "Bearer copilot-token"));
+        assert_eq!(
+            pairs[1],
+            (
+                "editor-version",
+                crate::proxy::providers::copilot_auth::COPILOT_EDITOR_VERSION,
+            )
+        );
+        assert_eq!(
+            pairs[2],
+            (
+                "editor-plugin-version",
+                crate::proxy::providers::copilot_auth::COPILOT_PLUGIN_VERSION,
+            )
+        );
+        assert_eq!(
+            pairs[3],
+            (
+                "copilot-integration-id",
+                crate::proxy::providers::copilot_auth::COPILOT_INTEGRATION_ID,
+            )
+        );
+        assert_eq!(
+            pairs[4],
+            (
+                "user-agent",
+                crate::proxy::providers::copilot_auth::COPILOT_USER_AGENT,
+            )
+        );
+        assert_eq!(
+            pairs[5],
+            (
+                "x-github-api-version",
+                crate::proxy::providers::copilot_auth::COPILOT_API_VERSION,
+            )
+        );
+        assert_eq!(pairs[6], ("openai-intent", "conversation-agent"));
+        assert_eq!(pairs[7], ("x-initiator", "user"));
+        assert_eq!(pairs[8], ("x-interaction-type", "conversation-agent"));
+        assert_eq!(
+            pairs[9],
+            ("x-vscode-user-agent-library-version", "electron-fetch")
+        );
+        assert_eq!(pairs[10].0, "x-request-id");
+        assert_eq!(pairs[11].0, "x-agent-task-id");
+        assert_eq!(pairs[10].1, pairs[11].1);
+        uuid::Uuid::parse_str(pairs[10].1).expect("request id should be a UUID");
     }
 
     #[test]

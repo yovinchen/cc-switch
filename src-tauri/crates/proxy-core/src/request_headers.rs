@@ -75,6 +75,16 @@ pub struct CopilotAuthHeaderOverrides<'a> {
     pub interaction_id: Option<&'a str>,
 }
 
+pub struct CopilotAuthHeadersInput<'a> {
+    pub api_key: &'a str,
+    pub request_id: &'a str,
+    pub editor_version: &'a str,
+    pub editor_plugin_version: &'a str,
+    pub integration_id: &'a str,
+    pub user_agent: &'a str,
+    pub github_api_version: &'a str,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ClaudeAuthHeaderKind {
     AnthropicApiKey,
@@ -167,6 +177,62 @@ pub fn build_claude_auth_headers(
             Ok(headers)
         }
     }
+}
+
+pub fn build_copilot_auth_headers(
+    input: CopilotAuthHeadersInput<'_>,
+) -> ProxyCoreResult<Vec<(http::HeaderName, http::HeaderValue)>> {
+    let bearer = format!("Bearer {}", input.api_key);
+    Ok(vec![
+        (
+            http::HeaderName::from_static("authorization"),
+            auth_header_value(&bearer)?,
+        ),
+        (
+            http::HeaderName::from_static("editor-version"),
+            auth_header_value(input.editor_version)?,
+        ),
+        (
+            http::HeaderName::from_static("editor-plugin-version"),
+            auth_header_value(input.editor_plugin_version)?,
+        ),
+        (
+            http::HeaderName::from_static("copilot-integration-id"),
+            auth_header_value(input.integration_id)?,
+        ),
+        (
+            http::HeaderName::from_static("user-agent"),
+            auth_header_value(input.user_agent)?,
+        ),
+        (
+            http::HeaderName::from_static("x-github-api-version"),
+            auth_header_value(input.github_api_version)?,
+        ),
+        (
+            http::HeaderName::from_static("openai-intent"),
+            http::HeaderValue::from_static("conversation-agent"),
+        ),
+        (
+            http::HeaderName::from_static("x-initiator"),
+            http::HeaderValue::from_static("user"),
+        ),
+        (
+            http::HeaderName::from_static("x-interaction-type"),
+            http::HeaderValue::from_static("conversation-agent"),
+        ),
+        (
+            http::HeaderName::from_static("x-vscode-user-agent-library-version"),
+            http::HeaderValue::from_static("electron-fetch"),
+        ),
+        (
+            http::HeaderName::from_static("x-request-id"),
+            auth_header_value(input.request_id)?,
+        ),
+        (
+            http::HeaderName::from_static("x-agent-task-id"),
+            auth_header_value(input.request_id)?,
+        ),
+    ])
 }
 
 pub fn anthropic_beta_header_value(existing_beta: Option<&str>) -> String {
@@ -449,12 +515,13 @@ mod tests {
     use super::{
         anthropic_beta_header_value, auth_header_value, build_claude_auth_headers,
         build_codex_bearer_auth_headers, build_codex_oauth_session_headers,
-        build_gemini_auth_headers, build_upstream_auth_headers, build_upstream_request_headers,
-        is_official_codex_client_user_agent,
+        build_copilot_auth_headers, build_gemini_auth_headers, build_upstream_auth_headers,
+        build_upstream_request_headers, is_official_codex_client_user_agent,
         should_preserve_exact_request_header_case, should_send_anthropic_request_headers,
         should_skip_copilot_fingerprint_request_header, should_strip_forwarded_request_header,
-        ClaudeAuthHeaderKind, CopilotAuthHeaderOverrides, UpstreamAuthHeadersInput,
-        UpstreamRequestHeadersInput, CLAUDE_CODE_BETA, DEFAULT_ANTHROPIC_VERSION,
+        ClaudeAuthHeaderKind, CopilotAuthHeaderOverrides, CopilotAuthHeadersInput,
+        UpstreamAuthHeadersInput, UpstreamRequestHeadersInput, CLAUDE_CODE_BETA,
+        DEFAULT_ANTHROPIC_VERSION,
     };
     use crate::ProxyCoreError;
     use http::{header, HeaderMap, HeaderName, HeaderValue};
@@ -648,6 +715,59 @@ mod tests {
         )
         .expect_err("invalid oauth token");
         assert!(matches!(oauth_error, ProxyCoreError::Auth(_)));
+    }
+
+    #[test]
+    fn builds_copilot_auth_headers_with_request_ids() {
+        let headers = build_copilot_auth_headers(CopilotAuthHeadersInput {
+            api_key: "copilot-token",
+            request_id: "request-123",
+            editor_version: "vscode/1.110.1",
+            editor_plugin_version: "copilot-chat/0.38.2",
+            integration_id: "vscode-chat",
+            user_agent: "GitHubCopilotChat/0.38.2",
+            github_api_version: "2025-10-01",
+        })
+        .unwrap();
+
+        let pairs: Vec<(&str, &str)> = headers
+            .iter()
+            .map(|(name, value)| (name.as_str(), value.to_str().unwrap()))
+            .collect();
+
+        assert_eq!(
+            pairs,
+            vec![
+                ("authorization", "Bearer copilot-token"),
+                ("editor-version", "vscode/1.110.1"),
+                ("editor-plugin-version", "copilot-chat/0.38.2"),
+                ("copilot-integration-id", "vscode-chat"),
+                ("user-agent", "GitHubCopilotChat/0.38.2"),
+                ("x-github-api-version", "2025-10-01"),
+                ("openai-intent", "conversation-agent"),
+                ("x-initiator", "user"),
+                ("x-interaction-type", "conversation-agent"),
+                ("x-vscode-user-agent-library-version", "electron-fetch"),
+                ("x-request-id", "request-123"),
+                ("x-agent-task-id", "request-123"),
+            ]
+        );
+    }
+
+    #[test]
+    fn rejects_invalid_copilot_auth_header_values() {
+        let error = build_copilot_auth_headers(CopilotAuthHeadersInput {
+            api_key: "copilot-token",
+            request_id: "bad\r\nx-evil: 1",
+            editor_version: "vscode/1.110.1",
+            editor_plugin_version: "copilot-chat/0.38.2",
+            integration_id: "vscode-chat",
+            user_agent: "GitHubCopilotChat/0.38.2",
+            github_api_version: "2025-10-01",
+        })
+        .expect_err("invalid request id");
+
+        assert!(matches!(error, ProxyCoreError::Auth(_)));
     }
 
     #[test]
