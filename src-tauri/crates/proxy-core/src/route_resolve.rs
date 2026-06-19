@@ -178,6 +178,27 @@ pub fn resolve_channel_route(
     })
 }
 
+pub fn resolve_channel_route_from_specs<I, S>(
+    request: RouteResolveRequest,
+    channels: I,
+    source: ChannelRouteSource,
+) -> ProxyCoreResult<RouteResolveResponse>
+where
+    I: IntoIterator<Item = (ChannelSpec, S)>,
+    S: Into<String>,
+{
+    resolve_channel_route(
+        request,
+        channels
+            .into_iter()
+            .map(|(channel, source_kind)| {
+                RouteResolveChannelInput::from_channel_spec(channel, source_kind)
+            })
+            .collect(),
+        source,
+    )
+}
+
 pub fn reject_unavailable_route_candidates(
     response: &mut RouteResolveResponse,
     mut is_unavailable: impl FnMut(&ChannelRouteCandidate) -> bool,
@@ -388,6 +409,29 @@ mod tests {
 
         assert_eq!(response.candidates.len(), 2);
         assert_eq!(response.candidates[0].channel_id, "high");
+        assert_eq!(
+            response.candidates[0].upstream_model.as_deref(),
+            Some("upstream-sonnet")
+        );
+    }
+
+    #[test]
+    fn resolves_channel_route_from_channel_specs() {
+        let response = resolve_channel_route_from_specs(
+            RouteResolveRequest {
+                app_type: "claude".to_string(),
+                requested_model: Some("sonnet-public".to_string()),
+                interface_kind: Some("anthropic_messages".to_string()),
+                route_group: Some(DEFAULT_ROUTE_GROUP.to_string()),
+            },
+            vec![(selection().channel, "manual")],
+            ChannelRouteSource::MaterializedChannels,
+        )
+        .expect("resolve route");
+
+        assert_eq!(response.candidates.len(), 1);
+        assert_eq!(response.candidates[0].channel_id, "channel-a");
+        assert_eq!(response.candidates[0].source_kind, "manual");
         assert_eq!(
             response.candidates[0].upstream_model.as_deref(),
             Some("upstream-sonnet")
