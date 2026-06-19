@@ -9,12 +9,11 @@ use reqwest::StatusCode;
 use std::time::Duration;
 
 pub use crate::proxy_core::FetchedModel;
-use crate::proxy_core::{build_models_url_candidates, parse_models_response_bytes};
+use crate::proxy_core::{
+    build_models_url_candidates, parse_models_response_bytes, truncate_model_fetch_error_body,
+};
 
 const FETCH_TIMEOUT_SECS: u64 = 15;
-
-/// 404/405 响应体截断长度：避免把几十 KB HTML 404 页整页保留到错误串里。
-const ERROR_BODY_MAX_CHARS: usize = 512;
 
 /// 获取供应商的可用模型列表
 ///
@@ -65,12 +64,12 @@ pub async fn fetch_models(
         }
 
         if status == StatusCode::NOT_FOUND || status == StatusCode::METHOD_NOT_ALLOWED {
-            let body = truncate_body(response.text().await.unwrap_or_default());
+            let body = truncate_model_fetch_error_body(response.text().await.unwrap_or_default());
             last_err = Some(format!("HTTP {status}: {body}"));
             continue;
         }
 
-        let body = truncate_body(response.text().await.unwrap_or_default());
+        let body = truncate_model_fetch_error_body(response.text().await.unwrap_or_default());
         return Err(format!("HTTP {status}: {body}"));
     }
 
@@ -78,15 +77,4 @@ pub async fn fetch_models(
         "All candidates failed: {}",
         last_err.unwrap_or_else(|| "no candidates".to_string())
     ))
-}
-
-/// 截断响应体到 [`ERROR_BODY_MAX_CHARS`] 字符，避免 HTML 404 页占用错误串。
-fn truncate_body(body: String) -> String {
-    if body.chars().count() <= ERROR_BODY_MAX_CHARS {
-        body
-    } else {
-        let mut s: String = body.chars().take(ERROR_BODY_MAX_CHARS).collect();
-        s.push('…');
-        s
-    }
 }

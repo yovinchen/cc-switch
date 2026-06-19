@@ -4,6 +4,7 @@ use serde_json::{json, Value};
 use std::collections::HashSet;
 
 pub const DEFAULT_CODEX_MODEL_CONTEXT_WINDOW: u64 = 128_000;
+pub const MODEL_FETCH_ERROR_BODY_MAX_CHARS: usize = 512;
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
@@ -120,6 +121,17 @@ pub fn build_models_url_candidates(
 pub fn parse_models_response_bytes(body: &[u8]) -> Result<Vec<FetchedModel>, String> {
     let response: ModelsResponse = serde_json::from_slice(body).map_err(|e| e.to_string())?;
     Ok(models_from_response(response))
+}
+
+pub fn truncate_model_fetch_error_body(body: impl AsRef<str>) -> String {
+    let body = body.as_ref();
+    if body.chars().count() <= MODEL_FETCH_ERROR_BODY_MAX_CHARS {
+        body.to_string()
+    } else {
+        let mut truncated: String = body.chars().take(MODEL_FETCH_ERROR_BODY_MAX_CHARS).collect();
+        truncated.push('\u{2026}');
+        truncated
+    }
 }
 
 pub fn parse_codex_oauth_models(value: &Value) -> Vec<FetchedModel> {
@@ -740,6 +752,23 @@ mod tests {
         assert!(parse_models_response_bytes(json.as_bytes())
             .unwrap()
             .is_empty());
+    }
+
+    #[test]
+    fn truncate_model_fetch_error_body_preserves_short_body() {
+        assert_eq!(truncate_model_fetch_error_body("short error"), "short error");
+    }
+
+    #[test]
+    fn truncate_model_fetch_error_body_limits_by_chars() {
+        let body = "错".repeat(MODEL_FETCH_ERROR_BODY_MAX_CHARS + 10);
+        let truncated = truncate_model_fetch_error_body(&body);
+
+        assert_eq!(
+            truncated.chars().count(),
+            MODEL_FETCH_ERROR_BODY_MAX_CHARS + 1
+        );
+        assert!(truncated.ends_with('\u{2026}'));
     }
 
     #[test]
