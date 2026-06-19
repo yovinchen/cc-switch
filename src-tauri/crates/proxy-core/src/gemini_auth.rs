@@ -74,6 +74,11 @@ pub fn parse_gemini_oauth_credentials(key: &str) -> Option<GeminiOAuthCredential
     })
 }
 
+pub fn is_gemini_oauth_key_shape(key: &str) -> bool {
+    let key = key.trim();
+    key.starts_with("ya29.") || key.starts_with('{')
+}
+
 pub fn extract_gemini_api_key_from_settings(settings: &Value) -> Option<String> {
     if let Some(key) = settings
         .get("env")
@@ -165,6 +170,15 @@ mod tests {
         assert!(parse_gemini_oauth_credentials("AIza-api-key").is_none());
         assert!(parse_gemini_oauth_credentials("invalid-json{").is_none());
         assert!(parse_gemini_oauth_credentials(r#"{"client_id":"client"}"#).is_none());
+    }
+
+    #[test]
+    fn detects_oauth_key_shape_with_legacy_lightweight_rules() {
+        assert!(is_gemini_oauth_key_shape(" ya29.raw-token\n"));
+        assert!(is_gemini_oauth_key_shape(" {invalid-json"));
+
+        assert!(!is_gemini_oauth_key_shape("AIza-api-key"));
+        assert!(!is_gemini_oauth_key_shape("invalid-json{"));
     }
 
     #[test]

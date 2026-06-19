@@ -22,10 +22,10 @@ use crate::proxy_core::{
     build_claude_auth_headers, build_claude_upstream_url, build_copilot_auth_headers,
     claude_api_format_needs_transform, extract_claude_auth_key_from_settings,
     extract_claude_base_url_from_settings, infer_claude_provider_kind,
-    is_copilot_prompt_cache_provider, normalize_anthropic_tool_thinking_history,
-    openai_chat_to_anthropic_message, openai_responses_to_anthropic_message,
-    resolve_claude_api_format_from_settings, resolve_claude_responses_prompt_cache_key,
-    should_normalize_anthropic_tool_thinking_history,
+    is_copilot_prompt_cache_provider, is_gemini_oauth_key_shape,
+    normalize_anthropic_tool_thinking_history, openai_chat_to_anthropic_message,
+    openai_responses_to_anthropic_message, resolve_claude_api_format_from_settings,
+    resolve_claude_responses_prompt_cache_key, should_normalize_anthropic_tool_thinking_history,
     should_preserve_reasoning_content_for_openai_chat, ClaudeAuthHeaderKind, ClaudeAuthKey,
     ClaudeAuthKeySource, CopilotAuthHeadersInput,
 };
@@ -164,7 +164,7 @@ impl ClaudeAdapter {
         let api_format = self.get_api_format(provider);
         let uses_google_oauth = self
             .extract_key(provider)
-            .map(|key| key.starts_with("ya29.") || key.starts_with('{'))
+            .map(|key| is_gemini_oauth_key_shape(&key))
             .unwrap_or(false);
         let meta_provider_type = provider
             .meta

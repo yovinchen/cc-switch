@@ -38,7 +38,7 @@ pub mod transform_responses;
 
 use crate::app_config::AppType;
 use crate::provider::Provider;
-use crate::proxy_core::{infer_claude_provider_kind, ProviderKind};
+use crate::proxy_core::{infer_claude_provider_kind, is_gemini_oauth_key_shape, ProviderKind};
 use serde::{Deserialize, Serialize};
 
 pub use adapter::ProviderAdapter;
@@ -135,12 +135,7 @@ impl ProviderType {
                 let adapter = GeminiAdapter::new();
                 if let Some(auth) = adapter.extract_auth(provider) {
                     let key = &auth.api_key;
-                    // OAuth access_token 以 ya29. 开头
-                    if key.starts_with("ya29.") {
-                        return ProviderType::GeminiCli;
-                    }
-                    // JSON 格式的 OAuth 凭证
-                    if key.starts_with('{') {
+                    if is_gemini_oauth_key_shape(key) {
                         return ProviderType::GeminiCli;
                     }
                 }
