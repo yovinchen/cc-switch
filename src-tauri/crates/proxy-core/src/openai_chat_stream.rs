@@ -731,6 +731,37 @@ mod tests {
             .collect()
     }
 
+    fn collect_stream_output(chunks: Vec<Result<Bytes, io::Error>>) -> String {
+        futures::executor::block_on(async move {
+            let upstream = futures_stream::iter(chunks);
+            let converted = create_openai_chat_to_anthropic_sse_stream(upstream);
+            let chunks: Vec<_> = converted.collect().await;
+
+            chunks
+                .into_iter()
+                .map(|chunk| String::from_utf8_lossy(chunk.unwrap().as_ref()).to_string())
+                .collect()
+        })
+    }
+
+    fn collect_stream_events(input: &str) -> Vec<Value> {
+        let output = collect_stream_output(vec![Ok(Bytes::from(input.as_bytes().to_vec()))]);
+
+        output
+            .split("\n\n")
+            .filter_map(|block| {
+                let data = block
+                    .lines()
+                    .find_map(|line| line.strip_prefix("data: "))?;
+                serde_json::from_str::<Value>(data).ok()
+            })
+            .collect()
+    }
+
+    fn event_type(event: &Value) -> Option<&str> {
+        event.get("type").and_then(Value::as_str)
+    }
+
     #[test]
     fn routes_tool_call_deltas_by_index() {
         let events = collect_events(
@@ -759,6 +790,169 @@ mod tests {
 
         assert_eq!(tool_indices.len(), 2);
         assert_ne!(tool_indices.get("call_0"), tool_indices.get("call_1"));
+    }
+
+    #[test]
+    fn stream_routes_tool_call_deltas_by_index() {
+        let input = concat!(
+            "data: {\"id\":\"chatcmpl_1\",\"model\":\"gpt-4o\",\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":0,\"id\":\"call_0\",\"type\":\"function\",\"function\":{\"name\":\"first_tool\"}}]}}]}\n\n",
+            "data: {\"id\":\"chatcmpl_1\",\"model\":\"gpt-4o\",\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":1,\"id\":\"call_1\",\"type\":\"function\",\"function\":{\"name\":\"second_tool\"}}]}}]}\n\n",
+            "data: {\"id\":\"chatcmpl_1\",\"model\":\"gpt-4o\",\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":1,\"function\":{\"arguments\":\"{\\\"b\\\":2}\"}}]}}]}\n\n",
+            "data: {\"id\":\"chatcmpl_1\",\"model\":\"gpt-4o\",\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":0,\"function\":{\"arguments\":\"{\\\"a\\\":1}\"}}]}}]}\n\n",
+            "data: {\"id\":\"chatcmpl_1\",\"model\":\"gpt-4o\",\"choices\":[{\"delta\":{},\"finish_reason\":\"tool_calls\"}],\"usage\":{\"prompt_tokens\":8,\"completion_tokens\":4}}\n\n",
+            "data: [DONE]\n\n"
+        );
+
+        let events = collect_stream_events(input);
+
+        let tool_indices: HashMap<String, u64> = events
+            .iter()
+            .filter(|event| event_type(event) == Some("content_block_start"))
+            .filter(|event| {
+                event.pointer("/content_block/type").and_then(Value::as_str) == Some("tool_use")
+            })
+            .filter_map(|event| {
+                Some((
+                    event.pointer("/content_block/id")?.as_str()?.to_string(),
+                    event.get("index")?.as_u64()?,
+                ))
+            })
+            .collect();
+
+        assert_eq!(tool_indices.len(), 2);
+
+        let deltas: Vec<(u64, String)> = events
+            .iter()
+            .filter(|event| event_type(event) == Some("content_block_delta"))
+            .filter(|event| {
+                event.pointer("/delta/type").and_then(Value::as_str)
+                    == Some("input_json_delta")
+            })
+            .filter_map(|event| {
+                Some((
+                    event.get("index")?.as_u64()?,
+                    event.pointer("/delta/partial_json")?.as_str()?.to_string(),
+                ))
+            })
+            .collect();
+
+        assert_eq!(deltas.len(), 2);
+        let second_idx = deltas
+            .iter()
+            .find_map(|(index, payload)| (payload == "{\"b\":2}").then_some(*index))
+            .unwrap();
+        let first_idx = deltas
+            .iter()
+            .find_map(|(index, payload)| (payload == "{\"a\":1}").then_some(*index))
+            .unwrap();
+
+        assert_eq!(second_idx, *tool_indices.get("call_1").unwrap());
+        assert_eq!(first_idx, *tool_indices.get("call_0").unwrap());
+        assert!(events.iter().any(|event| {
+            event_type(event) == Some("message_delta")
+                && event.pointer("/delta/stop_reason").and_then(Value::as_str) == Some("tool_use")
+        }));
+    }
+
+    #[test]
+    fn stream_delays_tool_start_until_id_and_name_are_ready() {
+        let input = concat!(
+            "data: {\"id\":\"chatcmpl_2\",\"model\":\"gpt-4o\",\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":0,\"function\":{\"arguments\":\"{\\\"a\\\":\"}}]}}]}\n\n",
+            "data: {\"id\":\"chatcmpl_2\",\"model\":\"gpt-4o\",\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":0,\"id\":\"call_0\",\"type\":\"function\",\"function\":{\"name\":\"first_tool\"}}]}}]}\n\n",
+            "data: {\"id\":\"chatcmpl_2\",\"model\":\"gpt-4o\",\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":0,\"function\":{\"arguments\":\"1}\"}}]}}]}\n\n",
+            "data: {\"id\":\"chatcmpl_2\",\"model\":\"gpt-4o\",\"choices\":[{\"delta\":{},\"finish_reason\":\"tool_calls\"}],\"usage\":{\"prompt_tokens\":6,\"completion_tokens\":2}}\n\n",
+            "data: [DONE]\n\n"
+        );
+
+        let events = collect_stream_events(input);
+        let starts: Vec<&Value> = events
+            .iter()
+            .filter(|event| event_type(event) == Some("content_block_start"))
+            .filter(|event| {
+                event.pointer("/content_block/type").and_then(Value::as_str) == Some("tool_use")
+            })
+            .collect();
+
+        assert_eq!(starts.len(), 1);
+        assert_eq!(
+            starts[0].pointer("/content_block/id").and_then(Value::as_str),
+            Some("call_0")
+        );
+        assert_eq!(
+            starts[0]
+                .pointer("/content_block/name")
+                .and_then(Value::as_str),
+            Some("first_tool")
+        );
+
+        let deltas: Vec<&str> = events
+            .iter()
+            .filter(|event| event_type(event) == Some("content_block_delta"))
+            .filter(|event| {
+                event.pointer("/delta/type").and_then(Value::as_str)
+                    == Some("input_json_delta")
+            })
+            .filter_map(|event| event.pointer("/delta/partial_json").and_then(Value::as_str))
+            .collect();
+
+        assert!(deltas.contains(&"{\"a\":"));
+        assert!(deltas.contains(&"1}"));
+    }
+
+    #[test]
+    fn stream_preserves_multibyte_text_split_across_chunks() {
+        let full = concat!(
+            "data: {\"id\":\"chatcmpl_3\",\"model\":\"gpt-4o\",\"choices\":[{\"delta\":{\"content\":\"你好\"}}]}\n\n",
+            "data: {\"id\":\"chatcmpl_3\",\"model\":\"gpt-4o\",\"choices\":[{\"delta\":{},\"finish_reason\":\"stop\"}],\"usage\":{\"prompt_tokens\":5,\"completion_tokens\":2}}\n\n",
+            "data: [DONE]\n\n"
+        );
+        let bytes = full.as_bytes();
+        let ni_start = bytes.windows(3).position(|w| w == "你".as_bytes()).unwrap();
+        let split_point = ni_start + 1;
+
+        let output = collect_stream_output(vec![
+            Ok(Bytes::from(bytes[..split_point].to_vec())),
+            Ok(Bytes::from(bytes[split_point..].to_vec())),
+        ]);
+
+        assert!(output.contains("你好"));
+        assert!(!output.contains('\u{FFFD}'));
+    }
+
+    #[test]
+    fn duplicate_finish_reason_emits_only_one_terminal_delta() {
+        let input = concat!(
+            "data: {\"id\":\"chatcmpl_dup\",\"model\":\"gpt-4o\",\"choices\":[{\"delta\":{},\"finish_reason\":\"tool_calls\"}]}\n\n",
+            "data: {\"id\":\"chatcmpl_dup\",\"model\":\"gpt-4o\",\"choices\":[{\"delta\":{},\"finish_reason\":\"tool_calls\"}],\"usage\":{\"prompt_tokens\":10,\"completion_tokens\":5}}\n\n",
+            "data: [DONE]\n\n"
+        );
+
+        let events = collect_stream_events(input);
+        let message_deltas: Vec<&Value> = events
+            .iter()
+            .filter(|event| event_type(event) == Some("message_delta"))
+            .collect();
+
+        assert_eq!(message_deltas.len(), 1);
+        assert_eq!(
+            message_deltas[0]
+                .pointer("/usage/input_tokens")
+                .and_then(Value::as_u64),
+            Some(10)
+        );
+        assert_eq!(
+            message_deltas[0]
+                .pointer("/usage/output_tokens")
+                .and_then(Value::as_u64),
+            Some(5)
+        );
+        assert_eq!(
+            events
+                .iter()
+                .filter(|event| event_type(event) == Some("message_stop"))
+                .count(),
+            1
+        );
     }
 
     #[test]
@@ -793,6 +987,171 @@ mod tests {
     }
 
     #[test]
+    fn usage_only_stream_chunk_after_finish_updates_pending_delta() {
+        let input = concat!(
+            "data: {\"id\":\"chatcmpl_split\",\"model\":\"glm-5.1\",\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":0,\"id\":\"tool-0924\",\"type\":\"function\",\"function\":{\"name\":\"Bash\",\"arguments\":\"{\\\"command\\\":\\\"pwd\\\"}\"}}]}}]}\n\n",
+            "data: {\"id\":\"chatcmpl_split\",\"model\":\"glm-5.1\",\"choices\":[{\"delta\":{},\"finish_reason\":\"tool_calls\"}]}\n\n",
+            "data: {\"choices\":[],\"usage\":{\"prompt_tokens\":13312,\"completion_tokens\":79,\"prompt_tokens_details\":{\"cached_tokens\":100}}}\n\n",
+            "data: [DONE]\n\n"
+        );
+
+        let events = collect_stream_events(input);
+        let message_deltas: Vec<&Value> = events
+            .iter()
+            .filter(|event| event_type(event) == Some("message_delta"))
+            .collect();
+
+        assert_eq!(message_deltas.len(), 1);
+        let message_delta = message_deltas[0];
+        assert_eq!(
+            message_delta
+                .pointer("/delta/stop_reason")
+                .and_then(Value::as_str),
+            Some("tool_use")
+        );
+        assert_eq!(
+            message_delta
+                .pointer("/usage/input_tokens")
+                .and_then(Value::as_u64),
+            Some(13212)
+        );
+        assert_eq!(
+            message_delta
+                .pointer("/usage/output_tokens")
+                .and_then(Value::as_u64),
+            Some(79)
+        );
+        assert_eq!(
+            message_delta
+                .pointer("/usage/cache_read_input_tokens")
+                .and_then(Value::as_u64),
+            Some(100)
+        );
+    }
+
+    #[test]
+    fn usage_chunk_subtracts_cache_buckets_from_input() {
+        let input = concat!(
+            "data: {\"id\":\"chatcmpl_cc\",\"model\":\"glm-5.1\",\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":0,\"id\":\"tool-1\",\"type\":\"function\",\"function\":{\"name\":\"Bash\",\"arguments\":\"{\\\"command\\\":\\\"pwd\\\"}\"}}]}}]}\n\n",
+            "data: {\"id\":\"chatcmpl_cc\",\"model\":\"glm-5.1\",\"choices\":[{\"delta\":{},\"finish_reason\":\"tool_calls\"}]}\n\n",
+            "data: {\"choices\":[],\"usage\":{\"prompt_tokens\":1000,\"completion_tokens\":50,\"prompt_tokens_details\":{\"cached_tokens\":600},\"cache_creation_input_tokens\":300}}\n\n",
+            "data: [DONE]\n\n"
+        );
+
+        let events = collect_stream_events(input);
+        let message_delta = events
+            .iter()
+            .find(|event| event_type(event) == Some("message_delta"))
+            .expect("message_delta");
+
+        assert_eq!(
+            message_delta
+                .pointer("/usage/input_tokens")
+                .and_then(Value::as_u64),
+            Some(100)
+        );
+        assert_eq!(
+            message_delta
+                .pointer("/usage/cache_read_input_tokens")
+                .and_then(Value::as_u64),
+            Some(600)
+        );
+        assert_eq!(
+            message_delta
+                .pointer("/usage/cache_creation_input_tokens")
+                .and_then(Value::as_u64),
+            Some(300)
+        );
+    }
+
+    #[test]
+    fn usage_chunk_clamps_fresh_input_when_cache_exceeds_prompt() {
+        let input = concat!(
+            "data: {\"id\":\"chatcmpl_uf\",\"model\":\"glm-5.1\",\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":0,\"id\":\"tool-1\",\"type\":\"function\",\"function\":{\"name\":\"Bash\",\"arguments\":\"{\\\"command\\\":\\\"pwd\\\"}\"}}]}}]}\n\n",
+            "data: {\"id\":\"chatcmpl_uf\",\"model\":\"glm-5.1\",\"choices\":[{\"delta\":{},\"finish_reason\":\"tool_calls\"}]}\n\n",
+            "data: {\"choices\":[],\"usage\":{\"prompt_tokens\":100,\"completion_tokens\":50,\"prompt_tokens_details\":{\"cached_tokens\":80},\"cache_creation_input_tokens\":50}}\n\n",
+            "data: [DONE]\n\n"
+        );
+
+        let events = collect_stream_events(input);
+        let message_delta = events
+            .iter()
+            .find(|event| event_type(event) == Some("message_delta"))
+            .expect("message_delta");
+
+        assert_eq!(
+            message_delta
+                .pointer("/usage/input_tokens")
+                .and_then(Value::as_u64),
+            Some(0)
+        );
+        assert_eq!(
+            message_delta
+                .pointer("/usage/cache_read_input_tokens")
+                .and_then(Value::as_u64),
+            Some(80)
+        );
+        assert_eq!(
+            message_delta
+                .pointer("/usage/cache_creation_input_tokens")
+                .and_then(Value::as_u64),
+            Some(50)
+        );
+    }
+
+    #[test]
+    fn message_delta_includes_zero_usage_when_stream_has_no_usage() {
+        let input = concat!(
+            "data: {\"id\":\"chatcmpl_no_usage\",\"model\":\"gpt-5.5\",\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":0,\"id\":\"call_0\",\"type\":\"function\",\"function\":{\"name\":\"get_time\",\"arguments\":\"{}\"}}]}}]}\n\n",
+            "data: {\"id\":\"chatcmpl_no_usage\",\"model\":\"gpt-5.5\",\"choices\":[{\"delta\":{},\"finish_reason\":\"tool_calls\"}]}\n\n",
+            "data: [DONE]\n\n"
+        );
+
+        let events = collect_stream_events(input);
+        let message_deltas: Vec<&Value> = events
+            .iter()
+            .filter(|event| event_type(event) == Some("message_delta"))
+            .collect();
+
+        assert_eq!(message_deltas.len(), 1);
+        let message_delta = message_deltas[0];
+        assert_eq!(
+            message_delta
+                .pointer("/delta/stop_reason")
+                .and_then(Value::as_str),
+            Some("tool_use")
+        );
+        assert_eq!(
+            message_delta
+                .pointer("/usage/input_tokens")
+                .and_then(Value::as_u64),
+            Some(0)
+        );
+        assert_eq!(
+            message_delta
+                .pointer("/usage/output_tokens")
+                .and_then(Value::as_u64),
+            Some(0)
+        );
+    }
+
+    #[test]
+    fn stream_finalizes_after_finish_when_done_is_missing() {
+        let input = concat!(
+            "data: {\"id\":\"chatcmpl_no_done\",\"model\":\"gpt-4o\",\"choices\":[{\"delta\":{\"content\":\"hello\"}}]}\n\n",
+            "data: {\"id\":\"chatcmpl_no_done\",\"model\":\"gpt-4o\",\"choices\":[{\"delta\":{},\"finish_reason\":\"stop\"}]}\n\n"
+        );
+
+        let events = collect_stream_events(input);
+
+        assert!(events.iter().any(|event| {
+            event_type(event) == Some("message_delta")
+                && event.pointer("/delta/stop_reason").and_then(Value::as_str) == Some("end_turn")
+        }));
+        assert_eq!(events.last().and_then(|event| event_type(event)), Some("message_stop"));
+    }
+
+    #[test]
     fn stream_end_without_finish_reason_does_not_emit_success_terminal_events() {
         let events = collect_events(
             &[r#"{"id":"chatcmpl_truncated","model":"gpt-4o","choices":[{"delta":{"content":"hello"}}]}"#],
@@ -805,5 +1164,42 @@ mod tests {
         assert!(!events
             .iter()
             .any(|event| event.get("type").and_then(Value::as_str) == Some("message_stop")));
+    }
+
+    #[test]
+    fn byte_stream_end_without_finish_reason_does_not_emit_success_terminal_events() {
+        let input = "data: {\"id\":\"chatcmpl_truncated\",\"model\":\"gpt-4o\",\"choices\":[{\"delta\":{\"content\":\"hello\"}}]}\n\n";
+
+        let events = collect_stream_events(input);
+
+        assert!(!events
+            .iter()
+            .any(|event| event_type(event) == Some("message_delta")));
+        assert!(!events
+            .iter()
+            .any(|event| event_type(event) == Some("message_stop")));
+    }
+
+    #[test]
+    fn stream_error_does_not_emit_success_terminal_events() {
+        let output = collect_stream_output(vec![Err(io::Error::other("upstream disconnected"))]);
+
+        let events: Vec<Value> = output
+            .split("\n\n")
+            .filter_map(|block| {
+                let data = block
+                    .lines()
+                    .find_map(|line| line.strip_prefix("data: "))?;
+                serde_json::from_str::<Value>(data).ok()
+            })
+            .collect();
+
+        assert!(events.iter().any(|event| event_type(event) == Some("error")));
+        assert!(!events
+            .iter()
+            .any(|event| event_type(event) == Some("message_delta")));
+        assert!(!events
+            .iter()
+            .any(|event| event_type(event) == Some("message_stop")));
     }
 }
