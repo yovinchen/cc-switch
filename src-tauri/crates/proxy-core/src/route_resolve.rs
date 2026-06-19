@@ -121,6 +121,29 @@ pub fn resolve_channel_route(
     })
 }
 
+pub fn reject_unavailable_route_candidates(
+    response: &mut RouteResolveResponse,
+    mut is_unavailable: impl FnMut(&ChannelRouteCandidate) -> bool,
+) {
+    let candidates = std::mem::take(&mut response.candidates);
+    let mut available = Vec::with_capacity(candidates.len());
+
+    for candidate in candidates {
+        if is_unavailable(&candidate) {
+            response.rejected.push(ChannelRouteRejected {
+                channel_id: candidate.channel_id,
+                provider_id: candidate.provider_id,
+                channel_name: candidate.channel_name,
+                reasons: vec!["circuit_open".to_string()],
+            });
+        } else {
+            available.push(candidate);
+        }
+    }
+
+    response.candidates = available;
+}
+
 fn normalize_required(value: &str, field: &str) -> ProxyCoreResult<String> {
     let normalized = value.trim();
     if normalized.is_empty() {
@@ -251,5 +274,35 @@ mod tests {
             .reasons
             .iter()
             .any(|reason| reason == "interface_mismatch:openai_responses->gemini_native"));
+    }
+
+    #[test]
+    fn rejects_unavailable_candidates_as_circuit_open() {
+        let mut response = resolve_channel_route(
+            RouteResolveRequest {
+                app_type: "claude".to_string(),
+                requested_model: Some("sonnet".to_string()),
+                interface_kind: Some("anthropic_messages".to_string()),
+                route_group: None,
+            },
+            vec![
+                channel("open", "openai_responses", "sonnet", 10),
+                channel("blocked", "openai_responses", "sonnet", 100),
+            ],
+            ChannelRouteSource::MaterializedChannels,
+        )
+        .expect("resolve route");
+
+        reject_unavailable_route_candidates(&mut response, |candidate| {
+            candidate.channel_id == "blocked"
+        });
+
+        assert_eq!(response.candidates.len(), 1);
+        assert_eq!(response.candidates[0].channel_id, "open");
+        assert_eq!(response.rejected.len(), 1);
+        assert_eq!(response.rejected[0].channel_id, "blocked");
+        assert_eq!(response.rejected[0].provider_id, "provider-blocked");
+        assert_eq!(response.rejected[0].channel_name, "Channel blocked");
+        assert_eq!(response.rejected[0].reasons, vec!["circuit_open"]);
     }
 }

@@ -11,9 +11,10 @@ use crate::proxy::circuit_breaker::{
     AllowResult, CircuitBreaker, CircuitBreakerConfig, CircuitBreakerStats,
 };
 use crate::proxy_core::{
-    ChannelRouteRejected, ChannelRouteSource, RouteResolveRequest, RouteResolveResponse,
+    reject_unavailable_route_candidates, ChannelRouteSource, RouteResolveRequest,
+    RouteResolveResponse,
 };
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::str::FromStr;
 use std::sync::Arc;
 use tokio::sync::RwLock;
@@ -142,29 +143,23 @@ impl ProviderRouter {
     ) -> Result<RouteResolveResponse, AppError> {
         let (channels, source) = self.list_channels_for_app(&request.app_type).await?;
         let mut response = resolve_channel_route(request, channels, source)?;
-        let candidates = std::mem::take(&mut response.candidates);
-        let mut available = Vec::with_capacity(candidates.len());
+        let mut unavailable_channel_ids = HashSet::new();
 
-        for candidate in candidates {
+        for candidate in &response.candidates {
             let circuit_key = channel_circuit_key(&response.app_type, &candidate.channel_id);
             let is_available = match self.get_existing_circuit_breaker(&circuit_key).await {
                 Some(breaker) => breaker.is_available().await,
                 None => true,
             };
 
-            if is_available {
-                available.push(candidate);
-            } else {
-                response.rejected.push(ChannelRouteRejected {
-                    channel_id: candidate.channel_id,
-                    provider_id: candidate.provider_id,
-                    channel_name: candidate.channel_name,
-                    reasons: vec!["circuit_open".to_string()],
-                });
+            if !is_available {
+                unavailable_channel_ids.insert(candidate.channel_id.clone());
             }
         }
 
-        response.candidates = available;
+        reject_unavailable_route_candidates(&mut response, |candidate| {
+            unavailable_channel_ids.contains(&candidate.channel_id)
+        });
         Ok(response)
     }
 
