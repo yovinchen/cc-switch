@@ -111,12 +111,6 @@ fn normalize_github_domain(raw: &str) -> Result<String, CopilotAuthError> {
         .map_err(|_| CopilotAuthError::InvalidDomain(raw.to_string()))
 }
 
-/// 生成复合账号 ID，确保不同 GHES 实例的 user ID 不会冲突。
-/// github.com 账号保持原格式（向后兼容），GHES 账号使用 `domain:user_id` 格式。
-fn composite_account_id(domain: &str, user_id: u64) -> String {
-    crate::proxy_core::copilot_composite_account_id(domain, user_id)
-}
-
 /// Copilot API Header 常量
 pub const COPILOT_EDITOR_VERSION: &str = "vscode/1.110.1";
 pub const COPILOT_PLUGIN_VERSION: &str = "copilot-chat/0.38.2";
@@ -302,7 +296,7 @@ pub struct GitHubAccount {
 impl From<&GitHubAccountData> for GitHubAccount {
     fn from(data: &GitHubAccountData) -> Self {
         GitHubAccount {
-            id: composite_account_id(&data.github_domain, data.user.id),
+            id: crate::proxy_core::copilot_composite_account_id(&data.github_domain, data.user.id),
             login: data.user.login.clone(),
             avatar_url: data.user.avatar_url.clone(),
             authenticated_at: data.authenticated_at,
@@ -487,7 +481,7 @@ impl CopilotAuthManager {
         user: GitHubUser,
         github_domain: String,
     ) -> Result<GitHubAccount, CopilotAuthError> {
-        let account_id = composite_account_id(&github_domain, user.id);
+        let account_id = crate::proxy_core::copilot_composite_account_id(&github_domain, user.id);
         let now = chrono::Utc::now().timestamp();
 
         let account_data = GitHubAccountData {
@@ -1392,7 +1386,10 @@ impl CopilotAuthManager {
                 .await
             {
                 Ok(user) => {
-                    let account_id = composite_account_id(DEFAULT_GITHUB_DOMAIN, user.id);
+                    let account_id = crate::proxy_core::copilot_composite_account_id(
+                        DEFAULT_GITHUB_DOMAIN,
+                        user.id,
+                    );
 
                     // 尝试获取 Copilot token 验证订阅
                     if let Err(e) = self
@@ -2001,24 +1998,6 @@ mod tests {
         // 拒绝空输入
         assert!(normalize_github_domain("").is_err());
         assert!(normalize_github_domain("   ").is_err());
-    }
-
-    #[test]
-    fn test_composite_account_id() {
-        // github.com 保持原格式（向后兼容）
-        assert_eq!(composite_account_id("github.com", 12345), "12345");
-
-        // GHES 使用复合格式
-        assert_eq!(
-            composite_account_id("company.ghe.com", 12345),
-            "company.ghe.com:12345"
-        );
-
-        // 不同 GHES 实例，相同 user ID，不冲突
-        assert_ne!(
-            composite_account_id("a.ghe.com", 1),
-            composite_account_id("b.ghe.com", 1)
-        );
     }
 
     #[test]
