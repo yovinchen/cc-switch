@@ -136,7 +136,7 @@ pub async fn stream_proxy_events(
     )
 }
 
-fn proxy_event_to_sse(event: crate::proxy::events::ProxyEventEnvelope) -> Event {
+fn proxy_event_to_sse(event: crate::proxy_core::ProxyEventEnvelope) -> Event {
     let data = serde_json::to_string(&event).unwrap_or_else(|_| "{}".to_string());
     Event::default()
         .id(event.id.to_string())

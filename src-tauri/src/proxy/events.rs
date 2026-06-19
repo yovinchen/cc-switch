@@ -4,9 +4,8 @@
 //! Keeping it independent from Tauri lets it become the future `ProxyEventSink`
 //! implementation when the forwarding engine is moved behind service ports.
 
-pub use crate::proxy_core::ProxyEventEnvelope;
 use crate::proxy_core::{
-    build_proxy_events_connected_payload, build_proxy_events_lagged_payload,
+    build_proxy_events_connected_payload, build_proxy_events_lagged_payload, ProxyEventEnvelope,
     PROXY_EVENTS_CONNECTED_EVENT, PROXY_EVENTS_LAGGED_EVENT,
 };
 use serde_json::Value;
