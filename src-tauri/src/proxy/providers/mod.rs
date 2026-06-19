@@ -22,8 +22,6 @@ mod gemini;
 pub mod models;
 #[cfg(test)]
 pub mod transform;
-#[cfg(test)]
-pub mod transform_codex_chat;
 pub mod transform_gemini;
 #[cfg(test)]
 pub mod transform_responses;

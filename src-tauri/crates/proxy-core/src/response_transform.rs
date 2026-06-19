@@ -6872,9 +6872,38 @@ mod tests {
     #[test]
     fn codex_responses_request_to_chat_drops_tool_fields_without_tools() {
         let request = json!({
+            "model": "qwen3-7-max",
+            "tool_choice": "auto",
+            "input": "hi"
+        });
+
+        let result = responses_to_chat_completions_with_options(&request, None, false, false);
+
+        assert!(result.get("tools").is_none());
+        assert!(result.get("tool_choice").is_none());
+        assert_eq!(result["model"], "qwen3-7-max");
+    }
+
+    #[test]
+    fn codex_responses_request_to_chat_drops_tool_fields_when_tools_empty() {
+        let request = json!({
             "model": "gpt-5.4",
-            "input": "hello",
-            "tool_choice": {"type": "function", "name": "missing_tool"},
+            "tools": [],
+            "tool_choice": "auto",
+            "input": "hi"
+        });
+
+        let result = responses_to_chat_completions_with_options(&request, None, false, false);
+
+        assert!(result.get("tools").is_none());
+        assert!(result.get("tool_choice").is_none());
+    }
+
+    #[test]
+    fn codex_responses_request_to_chat_drops_parallel_tool_calls_without_tools() {
+        let request = json!({
+            "model": "gpt-5.4",
+            "tool_choice": "auto",
             "parallel_tool_calls": true
         });
 
@@ -6883,6 +6912,106 @@ mod tests {
         assert!(result.get("tools").is_none());
         assert!(result.get("tool_choice").is_none());
         assert!(result.get("parallel_tool_calls").is_none());
+    }
+
+    #[test]
+    fn codex_responses_request_to_chat_drops_tool_fields_when_all_tools_filtered() {
+        let request = json!({
+            "model": "gpt-5.4",
+            "tools": [{"type": "function"}],
+            "tool_choice": "auto",
+            "input": "hi"
+        });
+
+        let result = responses_to_chat_completions_with_options(&request, None, false, false);
+
+        assert!(result.get("tools").is_none());
+        assert!(result.get("tool_choice").is_none());
+    }
+
+    #[test]
+    fn codex_responses_request_to_chat_keeps_tool_fields_when_tools_present() {
+        let request = json!({
+            "model": "gpt-5.4",
+            "tools": [{
+                "type": "function",
+                "name": "get_weather",
+                "description": "Get weather",
+                "parameters": {"type": "object"}
+            }],
+            "tool_choice": "auto",
+            "parallel_tool_calls": true,
+            "input": "hi"
+        });
+
+        let result = responses_to_chat_completions_with_options(&request, None, false, false);
+
+        assert_eq!(result["tool_choice"], "auto");
+        assert_eq!(result["parallel_tool_calls"], true);
+        assert_eq!(result["tools"][0]["function"]["name"], "get_weather");
+    }
+
+    #[test]
+    fn codex_responses_request_to_chat_maps_function_tool_choice_when_tools_present() {
+        let request = json!({
+            "model": "gpt-5.4",
+            "tools": [{
+                "type": "function",
+                "name": "get_weather",
+                "description": "Get weather",
+                "parameters": {"type": "object"}
+            }],
+            "tool_choice": {"type": "function", "name": "get_weather"},
+            "input": "hi"
+        });
+
+        let result = responses_to_chat_completions_with_options(&request, None, false, false);
+
+        assert_eq!(result["tool_choice"]["type"], "function");
+        assert_eq!(result["tool_choice"]["function"]["name"], "get_weather");
+    }
+
+    #[test]
+    fn codex_responses_request_to_chat_drops_tool_choice_none_without_tools() {
+        let request = json!({
+            "model": "gpt-5.4",
+            "tool_choice": "none",
+            "input": "hi"
+        });
+
+        let result = responses_to_chat_completions_with_options(&request, None, false, false);
+
+        assert!(result.get("tool_choice").is_none());
+    }
+
+    #[test]
+    fn codex_responses_request_to_chat_keeps_tool_search_discovered_tools() {
+        let request = json!({
+            "model": "gpt-5.4",
+            "tool_choice": "auto",
+            "input": [{
+                "type": "tool_search_output",
+                "call_id": "call_ts_1",
+                "status": "completed",
+                "execution": "client",
+                "tools": [{
+                    "type": "function",
+                    "name": "search_docs",
+                    "description": "Search documentation.",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "query": {"type": "string"}
+                        }
+                    }
+                }]
+            }]
+        });
+
+        let result = responses_to_chat_completions_with_options(&request, None, false, false);
+
+        assert_eq!(result["tool_choice"], "auto");
+        assert_eq!(result["tools"][0]["function"]["name"], "search_docs");
     }
 
     #[test]
