@@ -32,8 +32,7 @@ use super::{
     },
     server::ProxyState,
     usage_sink_bridge::{
-        error_usage_record, provider_kind_from_provider, success_usage_record,
-        transformed_response_usage_record,
+        error_usage_record, provider_kind_from_provider, transformed_response_usage_record,
     },
     ProxyError,
 };
@@ -49,6 +48,7 @@ use crate::proxy_core::{
     rebuilt_json_proxy_response, resolve_management_auth_decision,
     should_aggregate_codex_oauth_responses_sse, should_use_claude_transform_streaming,
     strip_endpoint_prefix, transformed_sse_proxy_response,
+    transformed_streaming_response_usage_record_with_request_id_fallback,
     validate_claude_desktop_gateway_bearer_header, validate_management_bearer_header,
     AppChannelListQuery, AppChannelListResponse, AppChannelManagementRequest, AppChannelResponse,
     AppChannelRouteResponse, AppKind, AppListResponse, AppModelCatalogRequest, AppModelListQuery,
@@ -64,7 +64,7 @@ use crate::proxy_core::{
     ProxyChannelWriteRequest, ProxyEngine, ProxyRequest, ProxyResult, ProxyRuntimeStatus,
     ProxyServices, ProxyStatusResponse, RoutableModelList, RouteGroupListResponse,
     RouteGroupSourceInput, RouteResolveManagementRequest, RouteResolveRequest,
-    RouteResolveResponse, TokenUsage, TransformedResponseUsageFormat, UpstreamJsonBodySource,
+    RouteResolveResponse, TransformedResponseUsageFormat, UpstreamJsonBodySource,
     UpstreamSseAggregationKind, CLAUDE_PARSER_CONFIG, CODEX_PARSER_CONFIG, GEMINI_PARSER_CONFIG,
     OPENAI_PARSER_CONFIG,
 };
@@ -856,16 +856,11 @@ async fn handle_claude_transform(
 
         // 创建使用量收集器；关闭 usage logging 时不要再解析转换后的 SSE。
         let usage_collector = if usage_logging_enabled(state) {
-            let state = state.clone();
+            let services = state.proxy_core_services.clone();
             let provider_id = ctx.provider.id.clone();
             let provider_kind = provider_kind_from_provider(&ctx.provider);
             let request_model = ctx.request_model.clone();
-            // 上游/转换层未回显模型时，优先用映射后的出站模型兜底（路由接管真值），
-            // 其次才是客户端请求别名。空字符串视为缺失（转换器对无回显上游会合成 ""）。
-            let fallback_model = ctx
-                .outbound_model
-                .clone()
-                .unwrap_or_else(|| ctx.request_model.clone());
+            let outbound_model = ctx.outbound_model.clone();
             let status_code = status.as_u16();
             let start_time = ctx.start_time;
             let session_id = ctx.session_id.clone();
@@ -877,41 +872,33 @@ async fn handle_claude_transform(
                 start_time,
                 Some(claude_stream_usage_event_filter),
                 move |events, first_token_ms| {
-                    if let Some(usage) = TokenUsage::from_claude_stream_events(&events) {
-                        let model = usage
-                            .model
-                            .clone()
-                            .filter(|m| !m.is_empty())
-                            .unwrap_or_else(|| fallback_model.clone());
-                        let latency_ms = start_time.elapsed().as_millis() as u64;
-                        let state = state.clone();
-                        let provider_id = provider_id.clone();
-                        let provider_kind = provider_kind.clone();
-                        let session_id = session_id.clone();
-                        let request_model = request_model.clone();
-                        let outbound_model = fallback_model.clone();
-
-                        tokio::spawn(async move {
-                            log_usage(
-                                &state,
-                                &provider_id,
-                                provider_kind,
-                                app_type_str,
-                                &model,
-                                &request_model,
-                                &outbound_model,
-                                usage,
-                                latency_ms,
-                                first_token_ms,
-                                true,
-                                status_code,
-                                Some(session_id),
-                            )
-                            .await;
-                        });
-                    } else {
+                    let latency_ms = start_time.elapsed().as_millis() as u64;
+                    let Some(record) =
+                        transformed_streaming_response_usage_record_with_request_id_fallback(
+                            &events,
+                            TransformedResponseUsageFormat::Claude,
+                            &provider_id,
+                            provider_kind.clone(),
+                            AppKind::from(app_type_str),
+                            &request_model,
+                            outbound_model.as_deref(),
+                            latency_ms,
+                            first_token_ms,
+                            status_code,
+                            Some(session_id.clone()),
+                            || uuid::Uuid::new_v4().to_string(),
+                        )
+                    else {
                         log::debug!("[Claude] OpenRouter 流式响应缺少 usage 统计，跳过消费记录");
-                    }
+                        return;
+                    };
+
+                    let services = services.clone();
+                    tokio::spawn(async move {
+                        if let Err(e) = services.usage_sink().record_usage(record).await {
+                            log::warn!("[USG-001] 记录使用量失败: {e}");
+                        }
+                    });
                 },
             ))
         } else {
@@ -1263,65 +1250,46 @@ async fn handle_codex_chat_to_responses_transform(
         let sse_stream = record_responses_sse_stream(sse_stream, state.codex_chat_history.clone());
 
         let usage_collector = if usage_logging_enabled(state) {
-            let state = state.clone();
+            let services = state.proxy_core_services.clone();
             let provider_id = ctx.provider.id.clone();
             let provider_kind = provider_kind_from_provider(&ctx.provider);
             let request_model = ctx.request_model.clone();
-            // 接管/模型覆写场景的归因兜底：出站真值优先于客户端请求别名
-            let fallback_model = ctx
-                .outbound_model
-                .clone()
-                .unwrap_or_else(|| ctx.request_model.clone());
+            let outbound_model = ctx.outbound_model.clone();
             let app_type_str = ctx.app_type_str;
             let start_time = ctx.start_time;
             let session_id = ctx.session_id.clone();
+            let status_code = status.as_u16();
 
             Some(SseUsageCollector::new(
                 start_time,
                 Some(codex_stream_usage_event_filter),
                 move |events, first_token_ms| {
-                    let usage =
-                        TokenUsage::from_codex_stream_events_auto(&events).unwrap_or_default();
-                    // 上游遵守 OpenAI 语义省略 usage 时，Chat→Responses 转换器会合成一个
-                    // 全 0 的 response.completed，from_codex_response 对 input/output 字段
-                    // 存在（哪怕=0）即返回 Some。缺 nonzero 闸门会让全 0 usage 也被写入：
-                    // message_id=None → host request_id 退化为随机 UUID，无法去重，每笔
-                    // 请求插入一条无意义空行、虚增请求数。对齐 Claude transform handler 的 skip。
-                    if !usage.has_billable_tokens() {
-                        log::debug!("[Codex] 流式响应 usage 全 0 或缺失，跳过消费记录");
-                        return;
-                    }
-                    let model = usage
-                        .model
-                        .clone()
-                        .filter(|m| !m.is_empty())
-                        .unwrap_or_else(|| fallback_model.clone());
                     let latency_ms = start_time.elapsed().as_millis() as u64;
-
-                    let state = state.clone();
-                    let provider_id = provider_id.clone();
-                    let provider_kind = provider_kind.clone();
-                    let request_model = request_model.clone();
-                    let outbound_model = fallback_model.clone();
-                    let session_id = session_id.clone();
-
-                    tokio::spawn(async move {
-                        log_usage(
-                            &state,
+                    let Some(record) =
+                        transformed_streaming_response_usage_record_with_request_id_fallback(
+                            &events,
+                            TransformedResponseUsageFormat::CodexAuto,
                             &provider_id,
-                            provider_kind,
-                            app_type_str,
-                            &model,
+                            provider_kind.clone(),
+                            AppKind::from(app_type_str),
                             &request_model,
-                            &outbound_model,
-                            usage,
+                            outbound_model.as_deref(),
                             latency_ms,
                             first_token_ms,
-                            true,
-                            status.as_u16(),
-                            Some(session_id),
+                            status_code,
+                            Some(session_id.clone()),
+                            || uuid::Uuid::new_v4().to_string(),
                         )
-                        .await;
+                    else {
+                        log::debug!("[Codex] 流式响应 usage 全 0 或缺失，跳过消费记录");
+                        return;
+                    };
+
+                    let services = services.clone();
+                    tokio::spawn(async move {
+                        if let Err(e) = services.usage_sink().record_usage(record).await {
+                            log::warn!("[USG-001] 记录使用量失败: {e}");
+                        }
                     });
                 },
             ))
@@ -1543,10 +1511,6 @@ fn chat_sse_to_response_value(body: &str) -> Result<Value, ProxyError> {
         .map_err(response_body_parse_error_to_proxy_error)
 }
 
-// ============================================================================
-// 使用量记录（保留用于 Claude 转换逻辑）
-// ============================================================================
-
 fn log_forward_error(
     state: &ProxyState,
     ctx: &RequestContext,
@@ -1573,55 +1537,6 @@ fn log_forward_error(
             log::warn!("记录失败请求日志失败: {e}");
         }
     });
-}
-
-/// 记录请求使用量
-///
-/// `outbound_model` 是「按请求计价」模式的锚点：实际发往上游的模型
-/// （路由接管映射后的真值，无映射时等于 request_model）。
-#[allow(clippy::too_many_arguments)]
-async fn log_usage(
-    state: &ProxyState,
-    provider_id: &str,
-    provider_kind: Option<crate::proxy_core::ProviderKind>,
-    app_type: &str,
-    model: &str,
-    request_model: &str,
-    outbound_model: &str,
-    usage: TokenUsage,
-    latency_ms: u64,
-    first_token_ms: Option<u64>,
-    is_streaming: bool,
-    status_code: u16,
-    session_id: Option<String>,
-) {
-    if !usage_logging_enabled(state) {
-        return;
-    }
-
-    let record = success_usage_record(
-        provider_id,
-        provider_kind,
-        app_type,
-        model,
-        request_model,
-        outbound_model,
-        usage,
-        latency_ms,
-        first_token_ms,
-        is_streaming,
-        status_code,
-        session_id,
-    );
-
-    if let Err(e) = state
-        .proxy_core_services
-        .usage_sink()
-        .record_usage(record)
-        .await
-    {
-        log::warn!("[USG-001] 记录使用量失败: {e}");
-    }
 }
 
 #[cfg(test)]

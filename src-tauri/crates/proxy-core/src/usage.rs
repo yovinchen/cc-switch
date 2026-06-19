@@ -782,6 +782,40 @@ pub fn transformed_response_usage(
     })
 }
 
+pub fn transformed_streaming_response_usage(
+    events: &[Value],
+    format: TransformedResponseUsageFormat,
+    request_model: &str,
+    outbound_model: Option<&str>,
+) -> Option<TransformedResponseUsage> {
+    let (stream_parser, model_extractor): (
+        fn(&[Value]) -> Option<TokenUsage>,
+        fn(&[Value], &str) -> String,
+    ) = match format {
+        TransformedResponseUsageFormat::Claude => (
+            TokenUsage::from_claude_stream_events,
+            claude_stream_model_extractor,
+        ),
+        TransformedResponseUsageFormat::CodexAuto => (
+            TokenUsage::from_codex_stream_events_auto,
+            codex_auto_stream_model_extractor,
+        ),
+    };
+
+    let usage = stream_parser(events).filter(TokenUsage::has_billable_tokens)?;
+    let outbound_model = outbound_model
+        .map(str::to_string)
+        .unwrap_or_else(|| request_model.to_string());
+    let response_model = model_extractor(events, &outbound_model);
+
+    Some(TransformedResponseUsage {
+        usage,
+        response_model,
+        request_model: request_model.to_string(),
+        outbound_model,
+    })
+}
+
 #[allow(clippy::too_many_arguments)]
 pub fn transformed_response_usage_record_with_request_id_fallback(
     body: &Value,
@@ -809,6 +843,40 @@ pub fn transformed_response_usage_record_with_request_id_fallback(
         latency_ms,
         None,
         false,
+        status_code,
+        session_id,
+        request_id_fallback,
+    ))
+}
+
+#[allow(clippy::too_many_arguments)]
+pub fn transformed_streaming_response_usage_record_with_request_id_fallback(
+    events: &[Value],
+    format: TransformedResponseUsageFormat,
+    provider_id: &str,
+    provider_kind: Option<ProviderKind>,
+    app: AppKind,
+    request_model: &str,
+    outbound_model: Option<&str>,
+    latency_ms: u64,
+    first_token_ms: Option<u64>,
+    status_code: u16,
+    session_id: Option<String>,
+    request_id_fallback: impl FnOnce() -> String,
+) -> Option<UsageRecord> {
+    let usage = transformed_streaming_response_usage(events, format, request_model, outbound_model)?;
+
+    Some(success_usage_record_with_request_id_fallback(
+        provider_id,
+        provider_kind,
+        app,
+        &usage.response_model,
+        &usage.request_model,
+        &usage.outbound_model,
+        usage.usage,
+        latency_ms,
+        first_token_ms,
+        true,
         status_code,
         session_id,
         request_id_fallback,
@@ -2293,6 +2361,156 @@ mod tests {
         );
 
         assert!(record.is_none());
+    }
+
+    #[test]
+    fn test_transformed_streaming_response_usage_record_builds_claude_record() {
+        let events = vec![
+            json!({
+                "type": "message_start",
+                "message": {
+                    "id": "msg_stream_1",
+                    "model": "claude-stream-model",
+                    "usage": {
+                        "input_tokens": 3,
+                        "cache_read_input_tokens": 7
+                    }
+                }
+            }),
+            json!({
+                "type": "message_delta",
+                "usage": {
+                    "output_tokens": 5
+                }
+            }),
+        ];
+
+        let record = transformed_streaming_response_usage_record_with_request_id_fallback(
+            &events,
+            TransformedResponseUsageFormat::Claude,
+            "provider-a",
+            Some(crate::ProviderKind::OpenRouter),
+            crate::AppKind::ClaudeDesktop,
+            "request-model",
+            Some("outbound-model"),
+            123,
+            Some(45),
+            200,
+            Some("session-1".to_string()),
+            || "request-1".to_string(),
+        )
+        .expect("streaming usage record");
+
+        assert_eq!(record.request_id.as_deref(), Some("session:msg_stream_1"));
+        assert_eq!(record.message_id.as_deref(), Some("msg_stream_1"));
+        assert_eq!(record.provider_id, "provider-a");
+        assert_eq!(record.provider_kind, Some(crate::ProviderKind::OpenRouter));
+        assert_eq!(record.app, crate::AppKind::ClaudeDesktop);
+        assert_eq!(record.request_model, "request-model");
+        assert_eq!(record.outbound_model, "outbound-model");
+        assert_eq!(record.response_model.as_deref(), Some("claude-stream-model"));
+        assert_eq!(record.tokens.input_tokens, 3);
+        assert_eq!(record.tokens.output_tokens, 5);
+        assert_eq!(record.tokens.cache_read_tokens, 7);
+        assert_eq!(record.first_token_ms, Some(45));
+        assert!(record.is_streaming);
+    }
+
+    #[test]
+    fn test_transformed_streaming_response_usage_record_skips_missing_claude_usage() {
+        let record = transformed_streaming_response_usage_record_with_request_id_fallback(
+            &[json!({"type": "message_start", "message": {"id": "msg_1"}})],
+            TransformedResponseUsageFormat::Claude,
+            "provider-a",
+            None,
+            crate::AppKind::Claude,
+            "request-model",
+            Some("outbound-model"),
+            123,
+            None,
+            200,
+            None,
+            || panic!("request id fallback should not run when usage is skipped"),
+        );
+
+        assert!(record.is_none());
+    }
+
+    #[test]
+    fn test_transformed_streaming_response_usage_record_skips_zero_codex_usage() {
+        let events = vec![json!({
+            "type": "response.completed",
+            "response": {
+                "model": "o3",
+                "usage": {
+                    "input_tokens": 0,
+                    "output_tokens": 0,
+                    "total_tokens": 0
+                }
+            }
+        })];
+
+        let record = transformed_streaming_response_usage_record_with_request_id_fallback(
+            &events,
+            TransformedResponseUsageFormat::CodexAuto,
+            "provider-a",
+            None,
+            crate::AppKind::Codex,
+            "request-model",
+            Some("outbound-model"),
+            123,
+            None,
+            200,
+            None,
+            || panic!("request id fallback should not run when usage is skipped"),
+        );
+
+        assert!(record.is_none());
+    }
+
+    #[test]
+    fn test_transformed_streaming_response_usage_record_builds_codex_record() {
+        let events = vec![json!({
+            "type": "response.completed",
+            "response": {
+                "id": "resp_1",
+                "model": "o3",
+                "usage": {
+                    "input_tokens": 11,
+                    "output_tokens": 13,
+                    "input_tokens_details": {
+                        "cached_tokens": 5
+                    }
+                }
+            }
+        })];
+
+        let record = transformed_streaming_response_usage_record_with_request_id_fallback(
+            &events,
+            TransformedResponseUsageFormat::CodexAuto,
+            "provider-a",
+            None,
+            crate::AppKind::Codex,
+            "request-model",
+            Some("outbound-model"),
+            123,
+            Some(45),
+            200,
+            Some("session-1".to_string()),
+            || "request-1".to_string(),
+        )
+        .expect("streaming usage record");
+
+        assert_eq!(record.request_id.as_deref(), Some("request-1"));
+        assert_eq!(record.app, crate::AppKind::Codex);
+        assert_eq!(record.request_model, "request-model");
+        assert_eq!(record.outbound_model, "outbound-model");
+        assert_eq!(record.response_model.as_deref(), Some("o3"));
+        assert_eq!(record.tokens.input_tokens, 11);
+        assert_eq!(record.tokens.output_tokens, 13);
+        assert_eq!(record.tokens.cache_read_tokens, 5);
+        assert_eq!(record.first_token_ms, Some(45));
+        assert!(record.is_streaming);
     }
 
     #[test]

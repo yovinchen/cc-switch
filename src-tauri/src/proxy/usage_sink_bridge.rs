@@ -1,11 +1,14 @@
 use crate::provider::Provider;
 use crate::proxy_core::{
-    error_usage_record_with_request_id_fallback, success_usage_record_with_request_id_fallback,
-    transformed_response_usage_record_with_request_id_fallback, AppKind, ProviderKind, TokenUsage,
+    error_usage_record_with_request_id_fallback,
+    transformed_response_usage_record_with_request_id_fallback, AppKind, ProviderKind,
     TransformedResponseUsageFormat, UsageRecord,
 };
+#[cfg(test)]
+use crate::proxy_core::{success_usage_record_with_request_id_fallback, TokenUsage};
 use serde_json::Value;
 
+#[cfg(test)]
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn success_usage_record(
     provider_id: &str,
