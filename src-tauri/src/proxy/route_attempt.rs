@@ -6,8 +6,8 @@
 use crate::app_config::AppType;
 use crate::provider::{Provider, ProviderMeta};
 use crate::proxy_core::{
-    apply_channel_route_model_override, claude_api_format_for_interface_kind,
-    codex_api_format_for_interface_kind, route_candidate_from_selection, ChannelRouteCandidate,
+    apply_channel_route_model_override, channel_provider_override_plan,
+    route_candidate_from_selection, AppKind, ChannelProviderSettingTarget, ChannelRouteCandidate,
     RoutePlan, DEFAULT_ROUTE_GROUP,
 };
 use serde_json::{Map, Value};
@@ -137,51 +137,24 @@ fn apply_channel_provider_overrides(
     provider: &mut Provider,
     candidate: &ChannelRouteCandidate,
 ) {
-    match app_type {
-        AppType::Claude | AppType::ClaudeDesktop => {
-            set_env_value(
-                &mut provider.settings_config,
-                "ANTHROPIC_BASE_URL",
-                &candidate.base_url,
-            );
-            if let Some(upstream_model) = candidate.upstream_model.as_deref() {
-                set_env_value(
-                    &mut provider.settings_config,
-                    "ANTHROPIC_MODEL",
-                    upstream_model,
-                );
-            }
+    let plan = channel_provider_override_plan(&AppKind::from(app_type), candidate);
 
-            if let Some(api_format) =
-                claude_api_format_for_interface_kind(&candidate.interface_kind)
-            {
-                provider
-                    .meta
-                    .get_or_insert_with(ProviderMeta::default)
-                    .api_format = Some(api_format.to_string());
+    for setting in plan.settings {
+        match setting.target {
+            ChannelProviderSettingTarget::Env => {
+                set_env_value(&mut provider.settings_config, setting.key, &setting.value);
+            }
+            ChannelProviderSettingTarget::Root => {
+                set_object_value(&mut provider.settings_config, setting.key, &setting.value);
             }
         }
-        AppType::Codex | AppType::OpenCode | AppType::OpenClaw | AppType::Hermes => {
-            set_object_value(
-                &mut provider.settings_config,
-                "base_url",
-                &candidate.base_url,
-            );
-            if let Some(api_format) = codex_api_format_for_interface_kind(&candidate.interface_kind)
-            {
-                provider
-                    .meta
-                    .get_or_insert_with(ProviderMeta::default)
-                    .api_format = Some(api_format.to_string());
-            }
-        }
-        AppType::Gemini => {
-            set_env_value(
-                &mut provider.settings_config,
-                "GOOGLE_GEMINI_BASE_URL",
-                &candidate.base_url,
-            );
-        }
+    }
+
+    if let Some(api_format) = plan.api_format {
+        provider
+            .meta
+            .get_or_insert_with(ProviderMeta::default)
+            .api_format = Some(api_format);
     }
 }
 
@@ -377,6 +350,42 @@ mod tests {
                 .get("api_key")
                 .and_then(Value::as_str),
             Some("keep-key")
+        );
+        assert_eq!(
+            attempt
+                .provider()
+                .meta
+                .as_ref()
+                .and_then(|meta| meta.api_format.as_deref()),
+            Some("openai_chat")
+        );
+    }
+
+    #[test]
+    fn channel_attempt_overrides_opencode_like_codex() {
+        let provider = Provider::with_id(
+            "p1".to_string(),
+            "Provider".to_string(),
+            json!({
+                "base_url": "https://old.example.com/v1",
+                "api_key": "keep-key"
+            }),
+            None,
+        );
+
+        let attempt = ForwardAttempt::from_channel(
+            &AppType::OpenCode,
+            &provider,
+            candidate("openai_chat_completions"),
+        );
+
+        assert_eq!(
+            attempt
+                .provider()
+                .settings_config
+                .get("base_url")
+                .and_then(Value::as_str),
+            Some("https://relay.example.com/v1")
         );
         assert_eq!(
             attempt

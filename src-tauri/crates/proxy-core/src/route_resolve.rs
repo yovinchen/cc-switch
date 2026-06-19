@@ -1,4 +1,7 @@
-use super::domain::{ChannelSpec, ModelRoute, RouteSelection, DEFAULT_ROUTE_GROUP};
+use super::domain::{
+    claude_api_format_for_interface_kind, codex_api_format_for_interface_kind, AppKind,
+    ChannelSpec, ModelRoute, RouteSelection, DEFAULT_ROUTE_GROUP,
+};
 use super::error::{ProxyCoreError, ProxyCoreResult};
 use super::ports::{
     ChannelRouteCandidate, ChannelRouteRejected, ChannelRouteSource, RouteResolveRequest,
@@ -82,6 +85,83 @@ pub fn route_candidate_from_selection(
         weight: selection.channel.weight,
         source_kind: source_kind.into(),
     }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ChannelProviderSettingTarget {
+    Env,
+    Root,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ChannelProviderSettingOverride {
+    pub target: ChannelProviderSettingTarget,
+    pub key: &'static str,
+    pub value: String,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct ChannelProviderOverridePlan {
+    pub settings: Vec<ChannelProviderSettingOverride>,
+    pub api_format: Option<String>,
+}
+
+pub fn channel_provider_override_plan(
+    app: &AppKind,
+    candidate: &ChannelRouteCandidate,
+) -> ChannelProviderOverridePlan {
+    let mut plan = ChannelProviderOverridePlan::default();
+
+    match app {
+        AppKind::Claude | AppKind::ClaudeDesktop => {
+            plan.settings.push(ChannelProviderSettingOverride {
+                target: ChannelProviderSettingTarget::Env,
+                key: "ANTHROPIC_BASE_URL",
+                value: candidate.base_url.clone(),
+            });
+            if let Some(upstream_model) = candidate.upstream_model.as_deref() {
+                plan.settings.push(ChannelProviderSettingOverride {
+                    target: ChannelProviderSettingTarget::Env,
+                    key: "ANTHROPIC_MODEL",
+                    value: upstream_model.to_string(),
+                });
+            }
+            plan.api_format =
+                claude_api_format_for_interface_kind(&candidate.interface_kind).map(str::to_string);
+        }
+        AppKind::Codex => {
+            plan.settings.push(ChannelProviderSettingOverride {
+                target: ChannelProviderSettingTarget::Root,
+                key: "base_url",
+                value: candidate.base_url.clone(),
+            });
+            plan.api_format =
+                codex_api_format_for_interface_kind(&candidate.interface_kind).map(str::to_string);
+        }
+        AppKind::Custom(name) if is_openai_compatible_app_name(name) => {
+            plan.settings.push(ChannelProviderSettingOverride {
+                target: ChannelProviderSettingTarget::Root,
+                key: "base_url",
+                value: candidate.base_url.clone(),
+            });
+            plan.api_format =
+                codex_api_format_for_interface_kind(&candidate.interface_kind).map(str::to_string);
+        }
+        AppKind::Gemini => {
+            plan.settings.push(ChannelProviderSettingOverride {
+                target: ChannelProviderSettingTarget::Env,
+                key: "GOOGLE_GEMINI_BASE_URL",
+                value: candidate.base_url.clone(),
+            });
+        }
+        AppKind::Custom(_) => {}
+    }
+
+    plan
+}
+
+fn is_openai_compatible_app_name(name: &str) -> bool {
+    matches!(name, "opencode" | "openclaw" | "hermes")
 }
 
 pub fn resolve_channel_route(
@@ -406,6 +486,73 @@ mod tests {
         assert_eq!(input.priority, 50);
         assert_eq!(input.weight, 20);
         assert_eq!(input.source_kind, "legacy_endpoint");
+    }
+
+    #[test]
+    fn channel_provider_override_plan_sets_claude_env_and_api_format() {
+        let candidate =
+            route_candidate_from_selection(&selection(), DEFAULT_ROUTE_GROUP, "proxy_core");
+
+        let plan = channel_provider_override_plan(&AppKind::Claude, &candidate);
+
+        assert_eq!(
+            plan.settings,
+            vec![
+                ChannelProviderSettingOverride {
+                    target: ChannelProviderSettingTarget::Env,
+                    key: "ANTHROPIC_BASE_URL",
+                    value: "https://relay.example.com/v1".to_string(),
+                },
+                ChannelProviderSettingOverride {
+                    target: ChannelProviderSettingTarget::Env,
+                    key: "ANTHROPIC_MODEL",
+                    value: "upstream-sonnet".to_string(),
+                },
+            ]
+        );
+        assert_eq!(plan.api_format.as_deref(), Some("openai_responses"));
+    }
+
+    #[test]
+    fn channel_provider_override_plan_sets_codex_root_base_url_and_api_format() {
+        let candidate =
+            route_candidate_from_selection(&selection(), DEFAULT_ROUTE_GROUP, "proxy_core");
+
+        let plan = channel_provider_override_plan(&AppKind::Codex, &candidate);
+
+        assert_eq!(
+            plan.settings,
+            vec![ChannelProviderSettingOverride {
+                target: ChannelProviderSettingTarget::Root,
+                key: "base_url",
+                value: "https://relay.example.com/v1".to_string(),
+            }]
+        );
+        assert_eq!(plan.api_format.as_deref(), Some("openai_responses"));
+
+        let opencode_plan = channel_provider_override_plan(
+            &AppKind::Custom("opencode".to_string()),
+            &candidate,
+        );
+        assert_eq!(opencode_plan, plan);
+    }
+
+    #[test]
+    fn channel_provider_override_plan_sets_gemini_env_without_api_format() {
+        let candidate =
+            route_candidate_from_selection(&selection(), DEFAULT_ROUTE_GROUP, "proxy_core");
+
+        let plan = channel_provider_override_plan(&AppKind::Gemini, &candidate);
+
+        assert_eq!(
+            plan.settings,
+            vec![ChannelProviderSettingOverride {
+                target: ChannelProviderSettingTarget::Env,
+                key: "GOOGLE_GEMINI_BASE_URL",
+                value: "https://relay.example.com/v1".to_string(),
+            }]
+        );
+        assert_eq!(plan.api_format, None);
     }
 
     #[test]
