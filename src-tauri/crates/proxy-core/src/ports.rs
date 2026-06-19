@@ -244,6 +244,54 @@ pub struct ProxyRuntimeStatus {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ProxyConfig {
+    pub listen_address: String,
+    pub listen_port: u16,
+    pub max_retries: u8,
+    pub request_timeout: u64,
+    pub enable_logging: bool,
+    #[serde(default)]
+    pub live_takeover_active: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub management_auth_token: Option<String>,
+    #[serde(default = "default_streaming_first_byte_timeout")]
+    pub streaming_first_byte_timeout: u64,
+    #[serde(default = "default_streaming_idle_timeout")]
+    pub streaming_idle_timeout: u64,
+    #[serde(default = "default_non_streaming_timeout")]
+    pub non_streaming_timeout: u64,
+}
+
+fn default_streaming_first_byte_timeout() -> u64 {
+    60
+}
+
+fn default_streaming_idle_timeout() -> u64 {
+    120
+}
+
+fn default_non_streaming_timeout() -> u64 {
+    600
+}
+
+impl Default for ProxyConfig {
+    fn default() -> Self {
+        Self {
+            listen_address: "127.0.0.1".to_string(),
+            listen_port: 15721,
+            max_retries: 3,
+            request_timeout: 600,
+            enable_logging: true,
+            live_takeover_active: false,
+            management_auth_token: None,
+            streaming_first_byte_timeout: 60,
+            streaming_idle_timeout: 120,
+            non_streaming_timeout: 600,
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ProxyServerInfo {
     pub address: String,
     pub port: u16,
@@ -1487,8 +1535,8 @@ mod tests {
         CurrentRouteProviderSummaryInput, CurrentRouteResponse, CurrentRouteTarget, GroupListQuery,
         HealthCheckResponse, ModelCatalog, ProviderHealth, ProviderListResponse, ProviderSpec,
         ProviderSummaryInput, ProxyChannelModelWriteRequest, ProxyChannelModelsReplaceRequest,
-        ProxyChannelPatchRequest, ProxyChannelWriteRequest, ProxyRuntimeStatus, ProxyServerInfo,
-        ProxyStatusResponse, ProxyTakeoverStatus,
+        ProxyChannelPatchRequest, ProxyChannelWriteRequest, ProxyConfig, ProxyRuntimeStatus,
+        ProxyServerInfo, ProxyStatusResponse, ProxyTakeoverStatus,
         RouteGroupListResponse, RouteGroupSourceInput, RouteResolveResponse,
     };
     use crate::{
@@ -1794,6 +1842,57 @@ mod tests {
         assert_eq!(value["active_targets"][0]["appType"], "claude");
         assert_eq!(value["active_targets"][0]["providerName"], "Provider A");
         assert_eq!(value["active_targets"][0]["channelId"], "channel-a");
+    }
+
+    #[test]
+    fn proxy_config_default_preserves_legacy_values() {
+        let config = ProxyConfig::default();
+
+        assert_eq!(config.listen_address, "127.0.0.1");
+        assert_eq!(config.listen_port, 15721);
+        assert_eq!(config.max_retries, 3);
+        assert_eq!(config.request_timeout, 600);
+        assert!(config.enable_logging);
+        assert!(!config.live_takeover_active);
+        assert_eq!(config.management_auth_token, None);
+        assert_eq!(config.streaming_first_byte_timeout, 60);
+        assert_eq!(config.streaming_idle_timeout, 120);
+        assert_eq!(config.non_streaming_timeout, 600);
+    }
+
+    #[test]
+    fn proxy_config_serde_preserves_legacy_command_contract() {
+        let value = serde_json::to_value(ProxyConfig::default()).expect("serialize proxy config");
+
+        assert_eq!(value["listen_address"], "127.0.0.1");
+        assert_eq!(value["listen_port"], 15721);
+        assert_eq!(value["max_retries"], 3);
+        assert_eq!(value["request_timeout"], 600);
+        assert_eq!(value["enable_logging"], true);
+        assert_eq!(value["live_takeover_active"], false);
+        assert_eq!(value["streaming_first_byte_timeout"], 60);
+        assert_eq!(value["streaming_idle_timeout"], 120);
+        assert_eq!(value["non_streaming_timeout"], 600);
+        assert!(value.get("management_auth_token").is_none());
+    }
+
+    #[test]
+    fn proxy_config_deserializes_old_payload_with_timeout_defaults() {
+        let config: ProxyConfig = serde_json::from_value(json!({
+            "listen_address": "127.0.0.1",
+            "listen_port": 15721,
+            "max_retries": 2,
+            "request_timeout": 600,
+            "enable_logging": false
+        }))
+        .expect("deserialize legacy proxy config");
+
+        assert!(!config.enable_logging);
+        assert!(!config.live_takeover_active);
+        assert_eq!(config.management_auth_token, None);
+        assert_eq!(config.streaming_first_byte_timeout, 60);
+        assert_eq!(config.streaming_idle_timeout, 120);
+        assert_eq!(config.non_streaming_timeout, 600);
     }
 
     #[test]
