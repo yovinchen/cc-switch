@@ -9,12 +9,7 @@ use super::codex_chat_common::{
     response_function_call_item_with_namespace, split_leading_think_block,
 };
 use crate::provider::CodexChatReasoningConfig;
-use crate::proxy::{
-    error::ProxyError,
-    json_canonical::{
-        canonical_json_string, canonicalize_json_string_if_parseable, canonicalize_tool_arguments,
-    },
-};
+use crate::proxy::{error::ProxyError, json_canonical::canonicalize_tool_arguments};
 pub(crate) use crate::proxy_core::{
     append_pending_reasoning, append_unique_pending_reasoning,
     attach_pending_reasoning_to_assistant, attach_reasoning_to_last_assistant,
@@ -22,8 +17,9 @@ pub(crate) use crate::proxy_core::{
     collapse_system_messages_to_head, custom_tool_input_from_chat_arguments,
     flatten_namespace_tool_name, response_custom_tool_call_item, response_id_from_chat_id,
     response_status_from_finish_reason, response_tool_search_call_item,
-    responses_content_to_chat_content, responses_custom_tool_call_to_chat_tool_call,
-    responses_custom_tool_to_chat_tool,
+    responses_client_tool_output_to_chat_tool_message, responses_content_to_chat_content,
+    responses_custom_tool_call_to_chat_tool_call, responses_custom_tool_to_chat_tool,
+    responses_function_call_output_to_chat_tool_message,
     responses_function_call_to_chat_tool_call as build_responses_function_call_chat_tool_call,
     responses_function_tool_to_chat_tool, responses_instruction_text, responses_role_to_chat_role,
     responses_tool_choice_to_chat_function_selector, responses_tool_name,
@@ -510,17 +506,7 @@ fn append_responses_item_as_chat_message(
                 pending_reasoning,
                 last_assistant_index,
             );
-            let call_id = item.get("call_id").and_then(|v| v.as_str()).unwrap_or("");
-            let output = match item.get("output") {
-                Some(Value::String(s)) => canonicalize_json_string_if_parseable(s),
-                Some(v) => canonical_json_string(v),
-                None => String::new(),
-            };
-            messages.push(json!({
-                "role": "tool",
-                "tool_call_id": call_id,
-                "content": output
-            }));
+            messages.push(responses_function_call_output_to_chat_tool_message(item));
         }
         Some("custom_tool_call_output") | Some("tool_search_output") => {
             flush_pending_tool_calls(
@@ -529,13 +515,7 @@ fn append_responses_item_as_chat_message(
                 pending_reasoning,
                 last_assistant_index,
             );
-            let call_id = item.get("call_id").and_then(|v| v.as_str()).unwrap_or("");
-            let output = canonical_json_string(item);
-            messages.push(json!({
-                "role": "tool",
-                "tool_call_id": call_id,
-                "content": output
-            }));
+            messages.push(responses_client_tool_output_to_chat_tool_message(item));
         }
         Some("reasoning") => {
             let reasoning = responses_reasoning_item_text(item);

@@ -1,5 +1,8 @@
 use crate::{
-    json_canonical::{canonical_json_string, canonicalize_tool_arguments, short_sha256_hex},
+    json_canonical::{
+        canonical_json_string, canonicalize_json_string_if_parseable, canonicalize_tool_arguments,
+        short_sha256_hex,
+    },
     UpstreamSseAggregationKind,
 };
 use serde_json::{json, Map, Value};
@@ -569,6 +572,32 @@ pub fn responses_tool_choice_to_chat_function_selector(chat_name: &str) -> Value
         "function": {
             "name": chat_name
         }
+    })
+}
+
+pub fn responses_function_call_output_to_chat_tool_message(item: &Value) -> Value {
+    let call_id = item.get("call_id").and_then(Value::as_str).unwrap_or("");
+    let output = match item.get("output") {
+        Some(Value::String(s)) => canonicalize_json_string_if_parseable(s),
+        Some(v) => canonical_json_string(v),
+        None => String::new(),
+    };
+
+    json!({
+        "role": "tool",
+        "tool_call_id": call_id,
+        "content": output
+    })
+}
+
+pub fn responses_client_tool_output_to_chat_tool_message(item: &Value) -> Value {
+    let call_id = item.get("call_id").and_then(Value::as_str).unwrap_or("");
+    let output = canonical_json_string(item);
+
+    json!({
+        "role": "tool",
+        "tool_call_id": call_id,
+        "content": output
     })
 }
 
@@ -1633,6 +1662,38 @@ mod tests {
         assert_eq!(
             tool_search["function"]["arguments"],
             r#"{"limit":10,"query":"gmail"}"#
+        );
+    }
+
+    #[test]
+    fn maps_codex_responses_tool_outputs_to_chat_tool_messages() {
+        let json_output = responses_function_call_output_to_chat_tool_message(&json!({
+            "type": "function_call_output",
+            "call_id": "call_lookup",
+            "output": "{ \"z\": true, \"a\": [2, 1] }"
+        }));
+        assert_eq!(json_output["role"], "tool");
+        assert_eq!(json_output["tool_call_id"], "call_lookup");
+        assert_eq!(json_output["content"], r#"{"a":[2,1],"z":true}"#);
+
+        let text_output = responses_function_call_output_to_chat_tool_message(&json!({
+            "type": "function_call_output",
+            "call_id": "call_read",
+            "output": "plain text result"
+        }));
+        assert_eq!(text_output["content"], "plain text result");
+
+        let client_output = responses_client_tool_output_to_chat_tool_message(&json!({
+            "type": "tool_search_output",
+            "call_id": "call_search",
+            "status": "completed",
+            "tools": [{"name": "search_docs", "type": "function"}]
+        }));
+        assert_eq!(client_output["role"], "tool");
+        assert_eq!(client_output["tool_call_id"], "call_search");
+        assert_eq!(
+            client_output["content"],
+            r#"{"call_id":"call_search","status":"completed","tools":[{"name":"search_docs","type":"function"}],"type":"tool_search_output"}"#
         );
     }
 
