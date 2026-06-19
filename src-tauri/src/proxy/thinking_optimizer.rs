@@ -5,17 +5,10 @@
 use super::types::OptimizerConfig;
 use serde_json::Value;
 
-fn thinking_optimizer_config(
-    config: &OptimizerConfig,
-) -> crate::proxy_core::ThinkingOptimizerConfig {
-    crate::proxy_core::ThinkingOptimizerConfig {
-        enabled: config.thinking_optimizer,
-    }
-}
-
 /// 根据模型类型自动优化 thinking 配置
 pub fn optimize(body: &mut Value, config: &OptimizerConfig) {
-    let report = crate::proxy_core::optimize_thinking(body, &thinking_optimizer_config(config));
+    let report =
+        crate::proxy_core::optimize_thinking(body, &config.thinking_optimizer_core_config());
 
     match report.path {
         crate::proxy_core::ThinkingOptimizationPath::Disabled

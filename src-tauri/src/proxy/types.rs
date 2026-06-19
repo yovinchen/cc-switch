@@ -320,6 +320,23 @@ impl Default for OptimizerConfig {
     }
 }
 
+impl OptimizerConfig {
+    pub(crate) fn thinking_optimizer_core_config(
+        &self,
+    ) -> crate::proxy_core::ThinkingOptimizerConfig {
+        crate::proxy_core::ThinkingOptimizerConfig {
+            enabled: self.thinking_optimizer,
+        }
+    }
+
+    pub(crate) fn cache_injection_core_config(&self) -> crate::proxy_core::CacheInjectionConfig {
+        crate::proxy_core::CacheInjectionConfig {
+            enabled: self.cache_injection,
+            ttl: self.cache_ttl.clone(),
+        }
+    }
+}
+
 /// Copilot 优化器配置
 ///
 /// 存储在 settings 表中，key = "copilot_optimizer_config"

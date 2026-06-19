@@ -5,16 +5,10 @@
 use super::types::OptimizerConfig;
 use serde_json::Value;
 
-fn cache_injection_config(config: &OptimizerConfig) -> crate::proxy_core::CacheInjectionConfig {
-    crate::proxy_core::CacheInjectionConfig {
-        enabled: config.cache_injection,
-        ttl: config.cache_ttl.clone(),
-    }
-}
-
 /// 在请求体关键位置注入 cache_control 断点
 pub fn inject(body: &mut Value, config: &OptimizerConfig) {
-    let report = crate::proxy_core::inject_cache_control(body, &cache_injection_config(config));
+    let report =
+        crate::proxy_core::inject_cache_control(body, &config.cache_injection_core_config());
     if !report.enabled {
         return;
     }
