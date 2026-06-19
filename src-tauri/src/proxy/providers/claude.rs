@@ -65,29 +65,6 @@ pub fn normalize_anthropic_tool_thinking_history_for_provider(
     normalize_anthropic_tool_thinking_history(body)
 }
 
-/// DeepSeek's official Anthropic-compatible endpoint treats
-/// `thinking: { type: "disabled" }` and effort parameters (`output_config.effort`
-/// or `reasoning_effort`) as mutually exclusive, returning HTTP 400:
-/// "thinking options type cannot be disabled when reasoning_effort is set".
-/// This breaks Claude Code 2.1.166+ Workflow/Dynamic Workflow features.
-///
-/// Rather than overriding Claude Code's intentional `thinking: disabled` for
-/// sub-agents, we respect that decision and remove the conflicting effort
-/// parameters instead. `thinking: disabled` means "don't output thinking
-/// blocks", which is the correct behavior for sub-agents that don't need
-/// to display reasoning to the user.
-///
-/// <https://github.com/deepseek-ai/DeepSeek-V3/issues/1397>
-pub fn normalize_deepseek_thinking_disabled_strip_effort(
-    body: &mut Value,
-    provider: &Provider,
-) -> bool {
-    crate::proxy_core::normalize_deepseek_thinking_disabled_strip_effort(
-        body,
-        &provider.settings_config,
-    )
-}
-
 pub fn normalize_anthropic_messages_for_provider(
     body: &mut Value,
     provider: &Provider,
@@ -99,7 +76,10 @@ pub fn normalize_anthropic_messages_for_provider(
 
     let mut changed =
         normalize_anthropic_tool_thinking_history_for_provider(body, provider, api_format);
-    changed |= normalize_deepseek_thinking_disabled_strip_effort(body, provider);
+    changed |= crate::proxy_core::normalize_deepseek_thinking_disabled_strip_effort(
+        body,
+        &provider.settings_config,
+    );
     changed
 }
 
@@ -2096,6 +2076,16 @@ mod tests {
                 "ANTHROPIC_API_KEY": "test-key"
             }
         }))
+    }
+
+    fn normalize_deepseek_thinking_disabled_strip_effort(
+        body: &mut Value,
+        provider: &Provider,
+    ) -> bool {
+        crate::proxy_core::normalize_deepseek_thinking_disabled_strip_effort(
+            body,
+            &provider.settings_config,
+        )
     }
 
     #[test]
