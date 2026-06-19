@@ -7,12 +7,11 @@
 use crate::proxy::error::ProxyError;
 use crate::proxy_core::{
     AnthropicToolSchemaHints, GeminiShadowStore, anthropic_request_to_gemini_request,
-    build_anthropic_usage_from_gemini, ensure_gemini_function_call_ids,
     extract_anthropic_tool_schema_hints as core_extract_anthropic_tool_schema_hints,
-    extract_gemini_function_call_meta, map_gemini_finish_reason_to_anthropic,
-    rectify_gemini_tool_call_args, rectify_gemini_tool_call_parts, synthesize_gemini_tool_call_id,
+    gemini_response_to_anthropic_message, rectify_gemini_tool_call_args,
+    synthesize_gemini_tool_call_id,
 };
-use serde_json::{Value, json};
+use serde_json::Value;
 
 /// Generate a unique tool-call id suffix for the core Gemini synthesized-id
 /// contract. The host owns randomness; proxy-core owns the visible id shape.
@@ -74,143 +73,30 @@ pub fn gemini_to_anthropic_with_shadow_and_hints(
     session_id: Option<&str>,
     tool_schema_hints: Option<&AnthropicToolSchemaHints>,
 ) -> Result<Value, ProxyError> {
-    if let Some(block_reason) = body
-        .get("promptFeedback")
-        .and_then(|value| value.get("blockReason"))
-        .and_then(|value| value.as_str())
+    let output =
+        gemini_response_to_anthropic_message(&body, tool_schema_hints, synthesize_tool_call_id)
+            .map_err(ProxyError::TransformError)?;
+
+    for name in &output.rectified_tool_names {
+        log::info!("[Claude/Gemini] Rectified tool args for `{name}`");
+    }
+
+    if let (Some(store), Some(provider_id), Some(session_id), Some(shadow_record)) =
+        (shadow_store, provider_id, session_id, output.shadow_record)
     {
-        let text = format!("Request blocked by Gemini safety filters: {block_reason}");
-        return Ok(json!({
-            "id": body.get("responseId").and_then(|value| value.as_str()).unwrap_or(""),
-            "type": "message",
-            "role": "assistant",
-            "content": [{ "type": "text", "text": text }],
-            "model": body.get("modelVersion").and_then(|value| value.as_str()).unwrap_or(""),
-            "stop_reason": "refusal",
-            "stop_sequence": Value::Null,
-            "usage": build_anthropic_usage_from_gemini(body.get("usageMetadata"))
-        }));
-    }
-
-    let candidate = body
-        .get("candidates")
-        .and_then(|value| value.as_array())
-        .and_then(|value| value.first())
-        .ok_or_else(|| {
-            ProxyError::TransformError("No candidates in Gemini response".to_string())
-        })?;
-
-    let parts = candidate
-        .get("content")
-        .and_then(|value| value.get("parts"))
-        .and_then(|value| value.as_array())
-        .cloned()
-        .unwrap_or_default();
-
-    let mut rectified_parts = parts.clone();
-    rectify_tool_call_parts(&mut rectified_parts, tool_schema_hints);
-
-    // Pre-pass: for every `functionCall` that lacks an id (or carries an
-    // empty-string id), synthesize one and write it back into
-    // `rectified_parts`. Three independent readers — the
-    // Anthropic-visible `content[tool_use]` block below, the shadow
-    // store's `assistant_content` (cloned from `rectified_parts` further
-    // down), and `extract_gemini_function_call_meta(&rectified_parts)` that
-    // populates `shadow_turn.tool_calls` — must all see the same id. Otherwise the
-    // client would receive id A while the shadow stored id B, and the
-    // next round's `tool_result(tool_use_id=A)` would fail to resolve
-    // through `tool_name_by_id` (which is built from the shadow), raising
-    // `Unable to resolve Gemini functionResponse.name`. Streaming path
-    // already has this single-source-of-truth property via
-    // `tool_call_snapshots`.
-    ensure_gemini_function_call_ids(&mut rectified_parts, synthesize_tool_call_id);
-
-    let mut content = Vec::new();
-    let mut has_tool_use = false;
-
-    for part in &rectified_parts {
-        if part.get("thought").and_then(|value| value.as_bool()) == Some(true) {
-            continue;
-        }
-
-        if let Some(text) = part.get("text").and_then(|value| value.as_str()) {
-            if !text.is_empty() {
-                content.push(json!({
-                    "type": "text",
-                    "text": text
-                }));
-            }
-            continue;
-        }
-
-        if let Some(function_call) = part.get("functionCall") {
-            has_tool_use = true;
-            let id = function_call
-                .get("id")
-                .and_then(|value| value.as_str())
-                .filter(|s| !s.is_empty())
-                .map(ToString::to_string)
-                .unwrap_or_else(synthesize_tool_call_id);
-            content.push(json!({
-                "type": "tool_use",
-                "id": id,
-                "name": function_call.get("name").and_then(|value| value.as_str()).unwrap_or(""),
-                "input": function_call.get("args").cloned().unwrap_or_else(|| json!({}))
-            }));
-        }
-    }
-
-    let stop_reason = json!(map_gemini_finish_reason_to_anthropic(
-        candidate
-            .get("finishReason")
-            .and_then(|value| value.as_str()),
-        has_tool_use,
-        false,
-    ));
-
-    let anthropic_response = json!({
-        "id": body.get("responseId").and_then(|value| value.as_str()).unwrap_or(""),
-        "type": "message",
-        "role": "assistant",
-        "content": content,
-        "model": body.get("modelVersion").and_then(|value| value.as_str()).unwrap_or(""),
-        "stop_reason": stop_reason,
-        "stop_sequence": Value::Null,
-        "usage": build_anthropic_usage_from_gemini(body.get("usageMetadata"))
-    });
-
-    if let (Some(store), Some(provider_id), Some(session_id), Some(content)) = (
-        shadow_store,
-        provider_id,
-        session_id,
-        candidate.get("content"),
-    ) {
-        let mut shadow_content = content.clone();
-        if let Some(parts_value) = shadow_content.get_mut("parts") {
-            *parts_value = json!(rectified_parts.clone());
-        }
         store.record_assistant_turn(
             provider_id,
             session_id,
-            shadow_content,
-            extract_gemini_function_call_meta(&rectified_parts, Some(synthesize_tool_call_id)),
+            shadow_record.assistant_content,
+            shadow_record.tool_calls,
         );
     }
 
-    Ok(anthropic_response)
+    Ok(output.response)
 }
 
 pub fn extract_anthropic_tool_schema_hints(body: &Value) -> AnthropicToolSchemaHints {
     core_extract_anthropic_tool_schema_hints(body)
-}
-
-pub fn rectify_tool_call_parts(
-    parts: &mut [Value],
-    tool_schema_hints: Option<&AnthropicToolSchemaHints>,
-) {
-    for name in rectify_gemini_tool_call_parts(parts, tool_schema_hints) {
-        log::info!("[Claude/Gemini] Rectified tool args for `{name}`");
-    }
 }
 
 #[allow(dead_code)]
@@ -226,6 +112,7 @@ pub fn rectify_tool_call_args(
 mod tests {
     use super::*;
     use crate::proxy_core::{GeminiToolCallMeta, is_synthesized_gemini_tool_call_id};
+    use serde_json::json;
 
     #[test]
     fn anthropic_to_gemini_maps_system_and_messages() {
