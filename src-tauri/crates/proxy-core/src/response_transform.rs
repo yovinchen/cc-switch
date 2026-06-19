@@ -10,7 +10,9 @@ use crate::{
         map_codex_chat_reasoning_effort, resolve_reasoning_effort,
         strip_leading_anthropic_billing_header, supports_reasoning_effort,
     },
-    usage::build_anthropic_usage_from_openai_responses,
+    usage::{
+        build_anthropic_usage_from_openai_chat, build_anthropic_usage_from_openai_responses,
+    },
     UpstreamSseAggregationKind,
 };
 use bytes::Bytes;
@@ -1730,6 +1732,132 @@ pub fn openai_responses_to_anthropic_message(body: &Value) -> Result<Value, Stri
             .and_then(Value::as_str),
     );
     let usage_json = build_anthropic_usage_from_openai_responses(body.get("usage"));
+
+    Ok(json!({
+        "id": body.get("id").and_then(Value::as_str).unwrap_or(""),
+        "type": "message",
+        "role": "assistant",
+        "content": content,
+        "model": body.get("model").and_then(Value::as_str).unwrap_or(""),
+        "stop_reason": stop_reason,
+        "stop_sequence": null,
+        "usage": usage_json
+    }))
+}
+
+pub fn openai_chat_to_anthropic_message(body: &Value) -> Result<Value, String> {
+    let choices = body
+        .get("choices")
+        .and_then(Value::as_array)
+        .ok_or_else(|| "No choices in response".to_string())?;
+    let choice = choices
+        .first()
+        .ok_or_else(|| "Empty choices array".to_string())?;
+    let message = choice
+        .get("message")
+        .ok_or_else(|| "No message in choice".to_string())?;
+
+    let mut content = Vec::new();
+    let mut has_tool_use = false;
+
+    if let Some(reasoning_content) = message.get("reasoning_content").and_then(Value::as_str) {
+        if !reasoning_content.is_empty() {
+            content.push(json!({"type": "thinking", "thinking": reasoning_content}));
+        }
+    }
+
+    if let Some(message_content) = message.get("content") {
+        if let Some(text) = message_content.as_str() {
+            if !text.is_empty() {
+                content.push(json!({"type": "text", "text": text}));
+            }
+        } else if let Some(parts) = message_content.as_array() {
+            for part in parts {
+                let part_type = part.get("type").and_then(Value::as_str).unwrap_or("");
+                match part_type {
+                    "text" | "output_text" => {
+                        if let Some(text) = part.get("text").and_then(Value::as_str) {
+                            if !text.is_empty() {
+                                content.push(json!({"type": "text", "text": text}));
+                            }
+                        }
+                    }
+                    "refusal" => {
+                        if let Some(refusal) = part.get("refusal").and_then(Value::as_str) {
+                            if !refusal.is_empty() {
+                                content.push(json!({"type": "text", "text": refusal}));
+                            }
+                        }
+                    }
+                    _ => {}
+                }
+            }
+        }
+    }
+
+    if let Some(refusal) = message.get("refusal").and_then(Value::as_str) {
+        if !refusal.is_empty() {
+            content.push(json!({"type": "text", "text": refusal}));
+        }
+    }
+
+    if let Some(tool_calls) = message.get("tool_calls").and_then(Value::as_array) {
+        has_tool_use = !tool_calls.is_empty();
+        for tool_call in tool_calls {
+            let id = tool_call.get("id").and_then(Value::as_str).unwrap_or("");
+            let empty_obj = json!({});
+            let function = tool_call.get("function").unwrap_or(&empty_obj);
+            let name = function.get("name").and_then(Value::as_str).unwrap_or("");
+            let args_str = function
+                .get("arguments")
+                .and_then(Value::as_str)
+                .unwrap_or("{}");
+            let input: Value = serde_json::from_str(args_str).unwrap_or(json!({}));
+
+            content.push(json!({
+                "type": "tool_use",
+                "id": id,
+                "name": name,
+                "input": input
+            }));
+        }
+    }
+
+    if !has_tool_use {
+        if let Some(function_call) = message.get("function_call") {
+            let id = function_call
+                .get("id")
+                .and_then(Value::as_str)
+                .unwrap_or("");
+            let name = function_call
+                .get("name")
+                .and_then(Value::as_str)
+                .unwrap_or("");
+            let has_arguments = function_call.get("arguments").is_some();
+
+            let input = match function_call.get("arguments") {
+                Some(Value::String(value)) => serde_json::from_str(value).unwrap_or(json!({})),
+                Some(value @ Value::Object(_)) | Some(value @ Value::Array(_)) => value.clone(),
+                _ => json!({}),
+            };
+
+            if !name.is_empty() || has_arguments {
+                content.push(json!({
+                    "type": "tool_use",
+                    "id": id,
+                    "name": name,
+                    "input": input
+                }));
+                has_tool_use = true;
+            }
+        }
+    }
+
+    let stop_reason = map_openai_chat_finish_reason_to_anthropic(
+        choice.get("finish_reason").and_then(Value::as_str),
+        has_tool_use,
+    );
+    let usage_json = build_anthropic_usage_from_openai_chat(body.get("usage"));
 
     Ok(json!({
         "id": body.get("id").and_then(Value::as_str).unwrap_or(""),
@@ -3974,6 +4102,111 @@ mod tests {
             map_openai_chat_finish_reason_to_anthropic(None, false),
             None
         );
+    }
+
+    #[test]
+    fn converts_openai_chat_message_to_anthropic_message() {
+        let input = json!({
+            "id": "chatcmpl_123",
+            "model": "gpt-4o",
+            "choices": [{
+                "message": {"role": "assistant", "content": "Hello"},
+                "finish_reason": "stop"
+            }],
+            "usage": {"prompt_tokens": 10, "completion_tokens": 20}
+        });
+
+        let result = openai_chat_to_anthropic_message(&input).unwrap();
+
+        assert_eq!(result["id"], "chatcmpl_123");
+        assert_eq!(result["content"][0], json!({"type": "text", "text": "Hello"}));
+        assert_eq!(result["stop_reason"], "end_turn");
+        assert_eq!(result["usage"]["input_tokens"], 10);
+        assert_eq!(result["usage"]["output_tokens"], 20);
+    }
+
+    #[test]
+    fn converts_openai_chat_tool_calls_to_anthropic_tool_use() {
+        let input = json!({
+            "id": "chatcmpl_tool",
+            "model": "gpt-4o",
+            "choices": [{
+                "message": {
+                    "role": "assistant",
+                    "content": null,
+                    "tool_calls": [{
+                        "id": "call_1",
+                        "type": "function",
+                        "function": {"name": "search", "arguments": "{\"query\":\"rust\"}"}
+                    }]
+                },
+                "finish_reason": "tool_calls"
+            }]
+        });
+
+        let result = openai_chat_to_anthropic_message(&input).unwrap();
+
+        assert_eq!(result["content"][0]["type"], "tool_use");
+        assert_eq!(result["content"][0]["id"], "call_1");
+        assert_eq!(result["content"][0]["name"], "search");
+        assert_eq!(result["content"][0]["input"]["query"], "rust");
+        assert_eq!(result["stop_reason"], "tool_use");
+    }
+
+    #[test]
+    fn converts_openai_chat_reasoning_and_content_parts_to_anthropic_content() {
+        let input = json!({
+            "id": "chatcmpl_reasoning",
+            "model": "deepseek-v4-pro",
+            "choices": [{
+                "message": {
+                    "role": "assistant",
+                    "reasoning_content": "inspect state",
+                    "content": [
+                        {"type": "output_text", "text": "Answer"},
+                        {"type": "refusal", "refusal": "No"}
+                    ]
+                },
+                "finish_reason": "stop"
+            }]
+        });
+
+        let result = openai_chat_to_anthropic_message(&input).unwrap();
+
+        assert_eq!(
+            result["content"][0],
+            json!({"type": "thinking", "thinking": "inspect state"})
+        );
+        assert_eq!(result["content"][1], json!({"type": "text", "text": "Answer"}));
+        assert_eq!(result["content"][2], json!({"type": "text", "text": "No"}));
+    }
+
+    #[test]
+    fn converts_openai_chat_legacy_function_call_to_anthropic_tool_use() {
+        let input = json!({
+            "id": "chatcmpl_legacy",
+            "model": "gpt-4o",
+            "choices": [{
+                "message": {
+                    "role": "assistant",
+                    "content": null,
+                    "function_call": {
+                        "id": "legacy_1",
+                        "name": "lookup",
+                        "arguments": "{\"id\":42}"
+                    }
+                },
+                "finish_reason": "function_call"
+            }]
+        });
+
+        let result = openai_chat_to_anthropic_message(&input).unwrap();
+
+        assert_eq!(result["content"][0]["type"], "tool_use");
+        assert_eq!(result["content"][0]["id"], "legacy_1");
+        assert_eq!(result["content"][0]["name"], "lookup");
+        assert_eq!(result["content"][0]["input"]["id"], 42);
+        assert_eq!(result["stop_reason"], "tool_use");
     }
 
     #[test]

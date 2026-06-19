@@ -4,13 +4,12 @@
 //! 参考: anthropic-proxy-rs
 
 use crate::proxy::error::ProxyError;
-use crate::proxy_core::{
-    anthropic_to_openai_chat_request, build_anthropic_usage_from_openai_chat,
-    map_openai_chat_finish_reason_to_anthropic,
-};
+use crate::proxy_core::{anthropic_to_openai_chat_request, openai_chat_to_anthropic_message};
 #[cfg(test)]
 use crate::proxy_core::{is_openai_o_series, resolve_reasoning_effort, supports_reasoning_effort};
-use serde_json::{json, Value};
+#[cfg(test)]
+use serde_json::json;
+use serde_json::Value;
 
 /// Anthropic 请求 → OpenAI Chat Completions 请求
 ///
@@ -38,140 +37,7 @@ pub fn anthropic_to_openai_with_reasoning_content(
 
 /// OpenAI 响应 → Anthropic 响应
 pub fn openai_to_anthropic(body: Value) -> Result<Value, ProxyError> {
-    let choices = body
-        .get("choices")
-        .and_then(|c| c.as_array())
-        .ok_or_else(|| ProxyError::TransformError("No choices in response".to_string()))?;
-
-    let choice = choices
-        .first()
-        .ok_or_else(|| ProxyError::TransformError("Empty choices array".to_string()))?;
-
-    let message = choice
-        .get("message")
-        .ok_or_else(|| ProxyError::TransformError("No message in choice".to_string()))?;
-
-    let mut content = Vec::new();
-    let mut has_tool_use = false;
-
-    // DeepSeek provider 会把思考内容放在 message.reasoning_content。
-    if let Some(reasoning_content) = message.get("reasoning_content").and_then(|r| r.as_str()) {
-        if !reasoning_content.is_empty() {
-            content.push(json!({"type": "thinking", "thinking": reasoning_content}));
-        }
-    }
-
-    // 文本/拒绝内容
-    if let Some(msg_content) = message.get("content") {
-        if let Some(text) = msg_content.as_str() {
-            if !text.is_empty() {
-                content.push(json!({"type": "text", "text": text}));
-            }
-        } else if let Some(parts) = msg_content.as_array() {
-            for part in parts {
-                let part_type = part.get("type").and_then(|t| t.as_str()).unwrap_or("");
-                match part_type {
-                    "text" | "output_text" => {
-                        if let Some(text) = part.get("text").and_then(|t| t.as_str()) {
-                            if !text.is_empty() {
-                                content.push(json!({"type": "text", "text": text}));
-                            }
-                        }
-                    }
-                    "refusal" => {
-                        if let Some(refusal) = part.get("refusal").and_then(|r| r.as_str()) {
-                            if !refusal.is_empty() {
-                                content.push(json!({"type": "text", "text": refusal}));
-                            }
-                        }
-                    }
-                    _ => {}
-                }
-            }
-        }
-    }
-    // Some providers put refusal at message-level.
-    if let Some(refusal) = message.get("refusal").and_then(|r| r.as_str()) {
-        if !refusal.is_empty() {
-            content.push(json!({"type": "text", "text": refusal}));
-        }
-    }
-
-    // 工具调用（tool_calls）
-    if let Some(tool_calls) = message.get("tool_calls").and_then(|t| t.as_array()) {
-        if !tool_calls.is_empty() {
-            has_tool_use = true;
-        }
-        for tc in tool_calls {
-            let id = tc.get("id").and_then(|i| i.as_str()).unwrap_or("");
-            let empty_obj = json!({});
-            let func = tc.get("function").unwrap_or(&empty_obj);
-            let name = func.get("name").and_then(|n| n.as_str()).unwrap_or("");
-            let args_str = func
-                .get("arguments")
-                .and_then(|a| a.as_str())
-                .unwrap_or("{}");
-            let input: Value = serde_json::from_str(args_str).unwrap_or(json!({}));
-
-            content.push(json!({
-                "type": "tool_use",
-                "id": id,
-                "name": name,
-                "input": input
-            }));
-        }
-    }
-    // 兼容旧格式（function_call）
-    if !has_tool_use {
-        if let Some(function_call) = message.get("function_call") {
-            let id = function_call
-                .get("id")
-                .and_then(|i| i.as_str())
-                .unwrap_or("");
-            let name = function_call
-                .get("name")
-                .and_then(|n| n.as_str())
-                .unwrap_or("");
-            let has_arguments = function_call.get("arguments").is_some();
-
-            let input = match function_call.get("arguments") {
-                Some(Value::String(s)) => serde_json::from_str(s).unwrap_or(json!({})),
-                Some(v @ Value::Object(_)) | Some(v @ Value::Array(_)) => v.clone(),
-                _ => json!({}),
-            };
-
-            if !name.is_empty() || has_arguments {
-                content.push(json!({
-                    "type": "tool_use",
-                    "id": id,
-                    "name": name,
-                    "input": input
-                }));
-                has_tool_use = true;
-            }
-        }
-    }
-
-    // 映射 finish_reason → stop_reason
-    let stop_reason = map_openai_chat_finish_reason_to_anthropic(
-        choice.get("finish_reason").and_then(|r| r.as_str()),
-        has_tool_use,
-    );
-
-    let usage_json = build_anthropic_usage_from_openai_chat(body.get("usage"));
-
-    let result = json!({
-        "id": body.get("id").and_then(|i| i.as_str()).unwrap_or(""),
-        "type": "message",
-        "role": "assistant",
-        "content": content,
-        "model": body.get("model").and_then(|m| m.as_str()).unwrap_or(""),
-        "stop_reason": stop_reason,
-        "stop_sequence": null,
-        "usage": usage_json
-    });
-
-    Ok(result)
+    openai_chat_to_anthropic_message(&body).map_err(ProxyError::TransformError)
 }
 
 #[cfg(test)]
