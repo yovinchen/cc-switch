@@ -4,7 +4,8 @@
 use crate::proxy_core::build_codex_tool_context_from_request;
 use crate::proxy_core::{
     append_utf8_safe, canonicalize_tool_arguments_str, chat_delta_reasoning_text,
-    chat_usage_to_responses_usage, codex_chat_stream_failed_event, codex_chat_stream_response,
+    chat_usage_to_responses_usage, codex_chat_stream_completed_event,
+    codex_chat_stream_failed_event, codex_chat_stream_response, codex_chat_stream_started_events,
     custom_tool_input_from_chat_arguments, extract_chat_sse_error, leading_think_prefix_decision,
     response_id_from_chat_id, response_status_from_finish_reason,
     response_tool_call_item_from_chat_name, response_tool_call_item_id_from_chat_name,
@@ -267,22 +268,7 @@ impl ChatToResponsesState {
         self.response_started = true;
         let response = self.base_response("in_progress", Vec::new());
 
-        vec![
-            sse_event(
-                "response.created",
-                json!({
-                    "type": "response.created",
-                    "response": response
-                }),
-            ),
-            sse_event(
-                "response.in_progress",
-                json!({
-                    "type": "response.in_progress",
-                    "response": self.base_response("in_progress", Vec::new())
-                }),
-            ),
-        ]
+        codex_chat_stream_started_events(response)
     }
 
     fn push_reasoning_delta(&mut self, delta: &str) -> Vec<Bytes> {
@@ -566,13 +552,7 @@ impl ChatToResponsesState {
             response["incomplete_details"] = json!({ "reason": "max_output_tokens" });
         }
 
-        events.push(sse_event(
-            "response.completed",
-            json!({
-                "type": "response.completed",
-                "response": response
-            }),
-        ));
+        events.push(codex_chat_stream_completed_event(response));
         self.completed = true;
         events
     }

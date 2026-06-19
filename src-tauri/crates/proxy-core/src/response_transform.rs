@@ -2094,6 +2094,35 @@ pub fn codex_chat_stream_response(
     })
 }
 
+pub fn codex_chat_stream_started_events(response: Value) -> Vec<Bytes> {
+    vec![
+        sse_event(
+            "response.created",
+            json!({
+                "type": "response.created",
+                "response": response.clone()
+            }),
+        ),
+        sse_event(
+            "response.in_progress",
+            json!({
+                "type": "response.in_progress",
+                "response": response
+            }),
+        ),
+    ]
+}
+
+pub fn codex_chat_stream_completed_event(response: Value) -> Bytes {
+    sse_event(
+        "response.completed",
+        json!({
+            "type": "response.completed",
+            "response": response
+        }),
+    )
+}
+
 pub fn codex_chat_stream_failed_event(
     mut response: Value,
     message: impl Into<String>,
@@ -3738,6 +3767,43 @@ mod tests {
         assert!(event.contains("\"message\":\"quota exceeded\""));
         assert!(event.contains("\"type\":\"rate_limit_exceeded\""));
         assert!(event.contains("\"total_tokens\":3"));
+    }
+
+    #[test]
+    fn codex_chat_stream_lifecycle_events_wrap_response_envelopes() {
+        let response = codex_chat_stream_response(
+            "resp_1",
+            123,
+            "in_progress",
+            "gpt-5",
+            Vec::new(),
+            None,
+        );
+
+        let events = codex_chat_stream_started_events(response);
+        let created = std::str::from_utf8(&events[0]).expect("created event utf8");
+        let in_progress = std::str::from_utf8(&events[1]).expect("in_progress event utf8");
+
+        assert!(created.starts_with("event: response.created\n"));
+        assert!(created.contains("\"type\":\"response.created\""));
+        assert!(created.contains("\"status\":\"in_progress\""));
+        assert!(in_progress.starts_with("event: response.in_progress\n"));
+        assert!(in_progress.contains("\"type\":\"response.in_progress\""));
+        assert!(in_progress.contains("\"id\":\"resp_1\""));
+
+        let completed = codex_chat_stream_completed_event(codex_chat_stream_response(
+            "resp_1",
+            123,
+            "completed",
+            "gpt-5",
+            Vec::new(),
+            None,
+        ));
+        let completed = std::str::from_utf8(&completed).expect("completed event utf8");
+
+        assert!(completed.starts_with("event: response.completed\n"));
+        assert!(completed.contains("\"type\":\"response.completed\""));
+        assert!(completed.contains("\"status\":\"completed\""));
     }
 
     #[test]
