@@ -9,7 +9,7 @@ use crate::provider::Provider;
 use crate::proxy::server::ProxyServer;
 use crate::proxy::switch_lock::SwitchLockManager;
 use crate::proxy::types::*;
-use crate::proxy_core::{ProxyRuntimeStatus, ProxyServerInfo, ProxyTakeoverStatus};
+use crate::proxy_core::{ProxyConfig, ProxyRuntimeStatus, ProxyServerInfo, ProxyTakeoverStatus};
 use crate::proxy_core_adapter::ToProxyCoreRuntimeStatus;
 use crate::services::provider::{
     build_effective_settings_with_common_config, write_live_with_common_config,

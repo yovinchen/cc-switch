@@ -104,7 +104,7 @@ mod tests {
     use crate::provider::ProviderMeta;
     #[cfg(any(target_os = "macos", windows))]
     use crate::provider::{ClaudeDesktopMode, ClaudeDesktopModelRoute};
-    use crate::proxy::types::ProxyConfig;
+    use crate::proxy_core::ProxyConfig;
     use crate::store::AppState;
     use serde_json::json;
     use serial_test::serial;

@@ -1318,7 +1318,7 @@ mod tests {
     }
 
     fn set_proxy_port(db: &Database, port: u16) {
-        let mut config = crate::proxy::types::ProxyConfig::default();
+        let mut config = crate::proxy_core::ProxyConfig::default();
         config.listen_port = port;
         futures::executor::block_on(db.update_proxy_config(config)).expect("update proxy config");
     }

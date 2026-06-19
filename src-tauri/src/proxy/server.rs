@@ -15,7 +15,8 @@ use super::{
 };
 use crate::database::Database;
 use crate::proxy_core::{
-    log_codes::srv as log_srv, CurrentRouteTarget, GeminiShadowStore, ProxyEngine, ProxyServerInfo,
+    log_codes::srv as log_srv, CurrentRouteTarget, GeminiShadowStore, ProxyConfig, ProxyEngine,
+    ProxyServerInfo,
 };
 use crate::proxy_core_host::{CcSwitchProxyRuntime, CcSwitchProxyServices};
 use axum::{
