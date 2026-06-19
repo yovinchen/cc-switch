@@ -3,9 +3,10 @@
 //! 将 ProxyError 映射到合适的 HTTP 状态码，用于日志记录和手动构建错误响应
 
 use super::ProxyError;
+use crate::proxy::error::proxy_error_status_kind;
 use crate::proxy_core::{
-    codex_proxy_error_code, ClaudeDesktopGatewayAuthError, CodexProxyErrorContext,
-    CodexProxyErrorKind, ManagementAuthError, ProxyCoreError,
+    codex_proxy_error_code, proxy_error_http_status_code, ClaudeDesktopGatewayAuthError,
+    CodexProxyErrorContext, CodexProxyErrorKind, ManagementAuthError, ProxyCoreError,
 };
 use serde_json::Value;
 
@@ -22,50 +23,7 @@ use serde_json::Value;
 /// - 转换错误：422 Unprocessable Entity
 /// - 其他错误：500 Internal Server Error
 pub fn map_proxy_error_to_status(error: &ProxyError) -> u16 {
-    match error {
-        // 服务状态错误：与 IntoResponse 保持一致
-        ProxyError::AlreadyRunning => 409,
-        ProxyError::NotRunning => 503,
-
-        // 上游错误：使用实际状态码
-        ProxyError::UpstreamError { status, .. } => *status,
-
-        // 超时错误：504 Gateway Timeout
-        ProxyError::Timeout(_) | ProxyError::StreamIdleTimeout(_) => 504,
-
-        // 转发失败/连接失败：502 Bad Gateway
-        ProxyError::ForwardFailed(_) => 502,
-
-        // 无可用 Provider：503 Service Unavailable
-        ProxyError::NoAvailableProvider => 503,
-
-        // 所有供应商已熔断：503 Service Unavailable
-        ProxyError::AllProvidersCircuitOpen => 503,
-
-        // 未配置供应商：503 Service Unavailable
-        ProxyError::NoProvidersConfigured => 503,
-
-        // 重试耗尽：503 Service Unavailable
-        ProxyError::MaxRetriesExceeded => 503,
-
-        // Provider 不健康：503 Service Unavailable
-        ProxyError::ProviderUnhealthy(_) => 503,
-
-        // 配置错误/无效请求：400 Bad Request
-        ProxyError::ConfigError(_) | ProxyError::InvalidRequest(_) => 400,
-
-        // 认证错误：401 Unauthorized
-        ProxyError::AuthError(_) => 401,
-
-        // 数据库错误：500 Internal Server Error
-        ProxyError::DatabaseError(_) => 500,
-
-        // 转换错误：422 Unprocessable Entity
-        ProxyError::TransformError(_) => 422,
-
-        // 其他未知错误：500 Internal Server Error
-        _ => 500,
-    }
+    proxy_error_http_status_code(proxy_error_status_kind(error))
 }
 
 /// 将 ProxyError 转换为用户友好的错误消息
@@ -226,6 +184,13 @@ mod tests {
         assert_eq!(
             map_proxy_error_to_status(&ProxyError::StreamIdleTimeout(30)),
             504
+        );
+        assert_eq!(
+            map_proxy_error_to_status(&ProxyError::UpstreamError {
+                status: 42,
+                body: None
+            }),
+            502
         );
     }
 

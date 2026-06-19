@@ -1,3 +1,4 @@
+use crate::proxy_core::{proxy_error_http_status_code, ProxyErrorStatusKind};
 use axum::{
     http::StatusCode,
     response::{IntoResponse, Response},
@@ -83,8 +84,7 @@ impl IntoResponse for ProxyError {
                 status: upstream_status,
                 body: upstream_body,
             } => {
-                let http_status =
-                    StatusCode::from_u16(*upstream_status).unwrap_or(StatusCode::BAD_GATEWAY);
+                let http_status = status_code_from_proxy_error(&self, StatusCode::BAD_GATEWAY);
 
                 // 尝试解析上游响应体为 JSON，如果失败则包装为字符串
                 let error_body = if let Some(body_str) = upstream_body {
@@ -112,52 +112,9 @@ impl IntoResponse for ProxyError {
                 (http_status, error_body)
             }
             _ => {
-                let (http_status, message) = match &self {
-                    ProxyError::AlreadyRunning => (StatusCode::CONFLICT, self.to_string()),
-                    ProxyError::NotRunning => (StatusCode::SERVICE_UNAVAILABLE, self.to_string()),
-                    ProxyError::BindFailed(_) => {
-                        (StatusCode::INTERNAL_SERVER_ERROR, self.to_string())
-                    }
-                    ProxyError::StopTimeout => {
-                        (StatusCode::INTERNAL_SERVER_ERROR, self.to_string())
-                    }
-                    ProxyError::StopFailed(_) => {
-                        (StatusCode::INTERNAL_SERVER_ERROR, self.to_string())
-                    }
-                    ProxyError::ForwardFailed(_) => (StatusCode::BAD_GATEWAY, self.to_string()),
-                    ProxyError::NoAvailableProvider => {
-                        (StatusCode::SERVICE_UNAVAILABLE, self.to_string())
-                    }
-                    ProxyError::AllProvidersCircuitOpen => {
-                        (StatusCode::SERVICE_UNAVAILABLE, self.to_string())
-                    }
-                    ProxyError::NoProvidersConfigured => {
-                        (StatusCode::SERVICE_UNAVAILABLE, self.to_string())
-                    }
-                    ProxyError::ProviderUnhealthy(_) => {
-                        (StatusCode::SERVICE_UNAVAILABLE, self.to_string())
-                    }
-                    ProxyError::MaxRetriesExceeded => {
-                        (StatusCode::SERVICE_UNAVAILABLE, self.to_string())
-                    }
-                    ProxyError::DatabaseError(_) => {
-                        (StatusCode::INTERNAL_SERVER_ERROR, self.to_string())
-                    }
-                    ProxyError::ConfigError(_) => (StatusCode::BAD_REQUEST, self.to_string()),
-                    ProxyError::TransformError(_) => {
-                        (StatusCode::UNPROCESSABLE_ENTITY, self.to_string())
-                    }
-                    ProxyError::InvalidRequest(_) => (StatusCode::BAD_REQUEST, self.to_string()),
-                    ProxyError::Timeout(_) => (StatusCode::GATEWAY_TIMEOUT, self.to_string()),
-                    ProxyError::StreamIdleTimeout(_) => {
-                        (StatusCode::GATEWAY_TIMEOUT, self.to_string())
-                    }
-                    ProxyError::AuthError(_) => (StatusCode::UNAUTHORIZED, self.to_string()),
-                    ProxyError::Internal(_) => {
-                        (StatusCode::INTERNAL_SERVER_ERROR, self.to_string())
-                    }
-                    ProxyError::UpstreamError { .. } => unreachable!(),
-                };
+                let http_status =
+                    status_code_from_proxy_error(&self, StatusCode::INTERNAL_SERVER_ERROR);
+                let message = self.to_string();
 
                 let error_body = json!({
                     "error": {
@@ -172,6 +129,36 @@ impl IntoResponse for ProxyError {
 
         (status, Json(body)).into_response()
     }
+}
+
+pub(crate) fn proxy_error_status_kind(error: &ProxyError) -> ProxyErrorStatusKind {
+    match error {
+        ProxyError::AlreadyRunning => ProxyErrorStatusKind::AlreadyRunning,
+        ProxyError::NotRunning => ProxyErrorStatusKind::NotRunning,
+        ProxyError::BindFailed(_) => ProxyErrorStatusKind::BindFailed,
+        ProxyError::StopTimeout => ProxyErrorStatusKind::StopTimeout,
+        ProxyError::StopFailed(_) => ProxyErrorStatusKind::StopFailed,
+        ProxyError::ForwardFailed(_) => ProxyErrorStatusKind::ForwardFailed,
+        ProxyError::NoAvailableProvider => ProxyErrorStatusKind::NoAvailableProvider,
+        ProxyError::AllProvidersCircuitOpen => ProxyErrorStatusKind::AllProvidersCircuitOpen,
+        ProxyError::NoProvidersConfigured => ProxyErrorStatusKind::NoProvidersConfigured,
+        ProxyError::ProviderUnhealthy(_) => ProxyErrorStatusKind::ProviderUnhealthy,
+        ProxyError::UpstreamError { status, .. } => ProxyErrorStatusKind::UpstreamError(*status),
+        ProxyError::MaxRetriesExceeded => ProxyErrorStatusKind::MaxRetriesExceeded,
+        ProxyError::DatabaseError(_) => ProxyErrorStatusKind::DatabaseError,
+        ProxyError::ConfigError(_) => ProxyErrorStatusKind::ConfigError,
+        ProxyError::TransformError(_) => ProxyErrorStatusKind::TransformError,
+        ProxyError::InvalidRequest(_) => ProxyErrorStatusKind::InvalidRequest,
+        ProxyError::Timeout(_) => ProxyErrorStatusKind::Timeout,
+        ProxyError::StreamIdleTimeout(_) => ProxyErrorStatusKind::StreamIdleTimeout,
+        ProxyError::AuthError(_) => ProxyErrorStatusKind::AuthError,
+        ProxyError::Internal(_) => ProxyErrorStatusKind::Internal,
+    }
+}
+
+fn status_code_from_proxy_error(error: &ProxyError, fallback: StatusCode) -> StatusCode {
+    StatusCode::from_u16(proxy_error_http_status_code(proxy_error_status_kind(error)))
+        .unwrap_or(fallback)
 }
 
 /// 错误分类
@@ -202,5 +189,28 @@ pub fn categorize_error(error: &reqwest::Error) -> ErrorCategory {
         }
     } else {
         ErrorCategory::Retryable
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn proxy_error_into_response_uses_shared_status_contract() {
+        let response = ProxyError::ForwardFailed("dns lookup failed".to_string()).into_response();
+
+        assert_eq!(response.status(), StatusCode::BAD_GATEWAY);
+    }
+
+    #[test]
+    fn invalid_upstream_status_falls_back_to_bad_gateway_response() {
+        let response = (ProxyError::UpstreamError {
+            status: 42,
+            body: None,
+        })
+        .into_response();
+
+        assert_eq!(response.status(), StatusCode::BAD_GATEWAY);
     }
 }
