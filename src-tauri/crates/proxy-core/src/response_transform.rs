@@ -16,8 +16,14 @@ use crate::{
     UpstreamSseAggregationKind,
 };
 use bytes::Bytes;
+use futures::{stream as futures_stream, Stream, StreamExt};
 use serde_json::{json, Map, Value};
-use std::collections::{BTreeMap, HashMap, HashSet};
+use std::{
+    collections::{BTreeMap, HashMap, HashSet, VecDeque},
+    error::Error,
+    io,
+    pin::Pin,
+};
 
 pub const CLAUDE_API_FORMAT_METADATA_KEY: &str = "claudeApiFormat";
 pub const CODEX_TOOL_SEARCH_PROXY_NAME: &str = "tool_search";
@@ -2478,6 +2484,136 @@ pub struct CodexChatToResponsesState {
     latest_usage: Option<Value>,
     finish_reason: Option<String>,
     tool_context: CodexToolContext,
+}
+
+struct CodexChatToResponsesSseStreamContext<S> {
+    stream: Pin<Box<S>>,
+    buffer: String,
+    utf8_remainder: Vec<u8>,
+    state: CodexChatToResponsesState,
+    pending_events: VecDeque<Bytes>,
+    finished: bool,
+}
+
+pub fn create_codex_chat_to_responses_sse_stream<S, E>(
+    stream: S,
+) -> impl Stream<Item = Result<Bytes, io::Error>> + Send
+where
+    S: Stream<Item = Result<Bytes, E>> + Send + 'static,
+    E: Error + Send + 'static,
+{
+    create_codex_chat_to_responses_sse_stream_with_context(stream, CodexToolContext::default())
+}
+
+/// Convert an OpenAI Chat Completions SSE byte stream into Codex Responses SSE bytes.
+///
+/// The transport wrapper owns UTF-8 safe byte buffering, SSE block/data parsing,
+/// upstream error bridging, and end-of-stream finalization. Protocol conversion
+/// remains in `CodexChatToResponsesState`.
+pub fn create_codex_chat_to_responses_sse_stream_with_context<S, E>(
+    stream: S,
+    tool_context: CodexToolContext,
+) -> impl Stream<Item = Result<Bytes, io::Error>> + Send
+where
+    S: Stream<Item = Result<Bytes, E>> + Send + 'static,
+    E: Error + Send + 'static,
+{
+    let context = CodexChatToResponsesSseStreamContext {
+        stream: Box::pin(stream),
+        buffer: String::new(),
+        utf8_remainder: Vec::new(),
+        state: CodexChatToResponsesState::with_tool_context(tool_context),
+        pending_events: VecDeque::new(),
+        finished: false,
+    };
+
+    futures_stream::unfold(context, |mut context| async move {
+        loop {
+            if let Some(event) = context.pending_events.pop_front() {
+                return Some((Ok(event), context));
+            }
+
+            if context.finished {
+                return None;
+            }
+
+            match context.stream.as_mut().next().await {
+                Some(Ok(bytes)) => {
+                    crate::append_utf8_safe(
+                        &mut context.buffer,
+                        &mut context.utf8_remainder,
+                        &bytes,
+                    );
+
+                    while let Some(block) = crate::take_sse_block(&mut context.buffer) {
+                        if block.trim().is_empty() {
+                            continue;
+                        }
+
+                        let mut event_name: Option<String> = None;
+                        let mut data_parts: Vec<String> = Vec::new();
+                        for line in block.lines() {
+                            if let Some(event) = crate::strip_sse_field(line, "event") {
+                                event_name = Some(event.trim().to_string());
+                            }
+                            if let Some(data) = crate::strip_sse_field(line, "data") {
+                                data_parts.push(data.to_string());
+                            }
+                        }
+
+                        if data_parts.is_empty() {
+                            continue;
+                        }
+
+                        let data = data_parts.join("\n");
+                        if data.trim() == "[DONE]" {
+                            context.pending_events.extend(context.state.finalize());
+                            continue;
+                        }
+
+                        let Ok(chunk) = serde_json::from_str::<Value>(&data) else {
+                            continue;
+                        };
+
+                        if event_name.as_deref() == Some("error") || chunk.get("error").is_some() {
+                            let (message, error_type) = extract_chat_sse_error(&chunk);
+                            context
+                                .pending_events
+                                .push_back(context.state.failed_event(message, error_type));
+                            context.finished = true;
+                            break;
+                        }
+
+                        context
+                            .pending_events
+                            .extend(context.state.handle_chat_chunk(&chunk));
+                    }
+                }
+                Some(Err(error)) => {
+                    context.pending_events.push_back(context.state.failed_event(
+                        format!("Stream error: {error}"),
+                        Some("stream_error".to_string()),
+                    ));
+                    context.finished = true;
+                }
+                None => {
+                    context.finished = true;
+                    if context.state.is_completed() || context.state.has_finish_reason() {
+                        context.pending_events.extend(context.state.finalize());
+                    } else if context.state.has_substantive_output() {
+                        context.state.set_finish_reason("length");
+                        context.pending_events.extend(context.state.finalize());
+                    } else {
+                        context.pending_events.push_back(context.state.failed_event(
+                            "Upstream Chat Completions stream ended before sending finish_reason"
+                                .to_string(),
+                            Some("stream_truncated".to_string()),
+                        ));
+                    }
+                }
+            }
+        }
+    })
 }
 
 impl Default for CodexChatToResponsesState {

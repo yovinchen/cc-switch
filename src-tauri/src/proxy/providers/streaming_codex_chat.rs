@@ -1,123 +1,14 @@
 //! OpenAI Chat Completions SSE → OpenAI Responses SSE conversion.
 
 #[cfg(test)]
-use crate::proxy_core::build_codex_tool_context_from_request;
-use crate::proxy_core::{
-    append_utf8_safe, extract_chat_sse_error, strip_sse_field, take_sse_block,
-    CodexChatToResponsesState, CodexToolContext,
-};
+pub use crate::proxy_core::create_codex_chat_to_responses_sse_stream as create_responses_sse_stream_from_chat;
+pub use crate::proxy_core::create_codex_chat_to_responses_sse_stream_with_context as create_responses_sse_stream_from_chat_with_context;
+#[cfg(test)]
+use crate::proxy_core::{build_codex_tool_context_from_request, CodexToolContext};
+#[cfg(test)]
 use bytes::Bytes;
-use futures::stream::{Stream, StreamExt};
 #[cfg(test)]
 use serde_json::json;
-use serde_json::Value;
-
-/// Create a stream that converts Chat Completions SSE chunks into Responses SSE events.
-#[allow(dead_code)]
-pub fn create_responses_sse_stream_from_chat<E: std::error::Error + Send + 'static>(
-    stream: impl Stream<Item = Result<Bytes, E>> + Send + 'static,
-) -> impl Stream<Item = Result<Bytes, std::io::Error>> + Send {
-    create_responses_sse_stream_from_chat_with_context(stream, CodexToolContext::default())
-}
-
-/// Create a stream that converts Chat Completions SSE chunks into Responses SSE
-/// events while restoring Codex tool namespace/custom/tool_search metadata.
-pub fn create_responses_sse_stream_from_chat_with_context<E: std::error::Error + Send + 'static>(
-    stream: impl Stream<Item = Result<Bytes, E>> + Send + 'static,
-    tool_context: CodexToolContext,
-) -> impl Stream<Item = Result<Bytes, std::io::Error>> + Send {
-    async_stream::stream! {
-        let mut buffer = String::new();
-        let mut utf8_remainder: Vec<u8> = Vec::new();
-        let mut state = CodexChatToResponsesState::with_tool_context(tool_context);
-        let mut stream_failed = false;
-
-        tokio::pin!(stream);
-
-        while let Some(chunk) = stream.next().await {
-            match chunk {
-                Ok(bytes) => {
-                    append_utf8_safe(&mut buffer, &mut utf8_remainder, &bytes);
-
-                    while let Some(block) = take_sse_block(&mut buffer) {
-                        if block.trim().is_empty() {
-                            continue;
-                        }
-
-                        let mut event_name: Option<String> = None;
-                        let mut data_parts: Vec<String> = Vec::new();
-                        for line in block.lines() {
-                            if let Some(event) = strip_sse_field(line, "event") {
-                                event_name = Some(event.trim().to_string());
-                            }
-                            if let Some(data) = strip_sse_field(line, "data") {
-                                data_parts.push(data.to_string());
-                            }
-                        }
-
-                        if data_parts.is_empty() {
-                            continue;
-                        }
-
-                        let data = data_parts.join("\n");
-                        if data.trim() == "[DONE]" {
-                            for event in state.finalize() {
-                                yield Ok(event);
-                            }
-                            continue;
-                        }
-
-                        let chunk: Value = match serde_json::from_str(&data) {
-                            Ok(value) => value,
-                            Err(_) => continue,
-                        };
-
-                        if event_name.as_deref() == Some("error") || chunk.get("error").is_some() {
-                            let (message, error_type) = extract_chat_sse_error(&chunk);
-                            yield Ok(state.failed_event(message, error_type));
-                            stream_failed = true;
-                            break;
-                        }
-
-                        for event in state.handle_chat_chunk(&chunk) {
-                            yield Ok(event);
-                        }
-                    }
-
-                    if stream_failed {
-                        break;
-                    }
-                }
-                Err(e) => {
-                    yield Ok(state.failed_event(
-                        format!("Stream error: {e}"),
-                        Some("stream_error".to_string()),
-                    ));
-                    stream_failed = true;
-                    break;
-                }
-            }
-        }
-
-        if !stream_failed {
-            if state.is_completed() || state.has_finish_reason() {
-                for event in state.finalize() {
-                    yield Ok(event);
-                }
-            } else if state.has_substantive_output() {
-                state.set_finish_reason("length");
-                for event in state.finalize() {
-                    yield Ok(event);
-                }
-            } else {
-                yield Ok(state.failed_event(
-                    "Upstream Chat Completions stream ended before sending finish_reason".to_string(),
-                    Some("stream_truncated".to_string()),
-                ));
-            }
-        }
-    }
-}
 
 #[cfg(test)]
 mod tests {
