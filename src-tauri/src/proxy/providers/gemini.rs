@@ -10,8 +10,8 @@ use super::{AuthInfo, AuthStrategy, ProviderAdapter, ProviderType};
 use crate::provider::Provider;
 use crate::proxy::error::ProxyError;
 use crate::proxy_core::{
-    extract_gemini_api_key_from_settings, extract_gemini_base_url_from_settings,
-    parse_gemini_oauth_credentials, GeminiOAuthCredentials,
+    build_gemini_upstream_url, extract_gemini_api_key_from_settings,
+    extract_gemini_base_url_from_settings, parse_gemini_oauth_credentials, GeminiOAuthCredentials,
 };
 
 /// Gemini 适配器
@@ -93,21 +93,7 @@ impl ProviderAdapter for GeminiAdapter {
     }
 
     fn build_url(&self, base_url: &str, endpoint: &str) -> String {
-        let base_trimmed = base_url.trim_end_matches('/');
-        let endpoint_trimmed = endpoint.trim_start_matches('/');
-
-        let mut url = format!("{base_trimmed}/{endpoint_trimmed}");
-
-        // 处理 /v1beta 路径去重
-        let version_patterns = ["/v1beta", "/v1"];
-        for pattern in &version_patterns {
-            let duplicate = format!("{pattern}{pattern}");
-            if url.contains(&duplicate) {
-                url = url.replace(&duplicate, pattern);
-            }
-        }
-
-        url
+        build_gemini_upstream_url(base_url, endpoint)
     }
 
     fn get_auth_headers(

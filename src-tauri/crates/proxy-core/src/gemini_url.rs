@@ -66,6 +66,22 @@ pub fn build_gemini_native_url(base_url: &str, endpoint: &str) -> String {
     url
 }
 
+pub fn build_gemini_upstream_url(base_url: &str, endpoint: &str) -> String {
+    let base_trimmed = base_url.trim_end_matches('/');
+    let endpoint_trimmed = endpoint.trim_start_matches('/');
+
+    let mut url = format!("{base_trimmed}/{endpoint_trimmed}");
+
+    for pattern in ["/v1beta", "/v1"] {
+        let duplicate = format!("{pattern}{pattern}");
+        if url.contains(&duplicate) {
+            url = url.replace(&duplicate, pattern);
+        }
+    }
+
+    url
+}
+
 fn should_normalize_gemini_full_url(base_url: &str) -> bool {
     let base_url = base_url
         .split_once('#')
@@ -280,7 +296,10 @@ fn merge_queries(base_query: Option<&str>, endpoint_query: Option<&str>) -> Opti
 
 #[cfg(test)]
 mod tests {
-    use super::{build_gemini_native_url, normalize_gemini_model_id, resolve_gemini_native_url};
+    use super::{
+        build_gemini_native_url, build_gemini_upstream_url, normalize_gemini_model_id,
+        resolve_gemini_native_url,
+    };
 
     #[test]
     fn strips_version_root_for_official_base() {
@@ -292,6 +311,31 @@ mod tests {
         assert_eq!(
             url,
             "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-pro:generateContent"
+        );
+    }
+
+    #[test]
+    fn builds_gemini_upstream_url_with_version_dedup() {
+        assert_eq!(
+            build_gemini_upstream_url(
+                "https://generativelanguage.googleapis.com/v1beta",
+                "/v1beta/models/gemini-pro:generateContent"
+            ),
+            "https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent"
+        );
+        assert_eq!(
+            build_gemini_upstream_url(
+                "https://generativelanguage.googleapis.com/v1beta",
+                "/models/gemini-pro:generateContent"
+            ),
+            "https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent"
+        );
+        assert_eq!(
+            build_gemini_upstream_url(
+                "https://generativelanguage.googleapis.com/v1",
+                "/v1/models/gemini-pro:generateContent"
+            ),
+            "https://generativelanguage.googleapis.com/v1/models/gemini-pro:generateContent"
         );
     }
 
