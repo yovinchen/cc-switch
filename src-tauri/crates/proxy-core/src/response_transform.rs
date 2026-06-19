@@ -3,6 +3,7 @@ use crate::{
         canonical_json_string, canonicalize_json_string_if_parseable, canonicalize_tool_arguments,
         short_sha256_hex,
     },
+    request_body::{codex_chat_reasoning_requested, map_codex_chat_reasoning_effort},
     UpstreamSseAggregationKind,
 };
 use serde_json::{json, Map, Value};
@@ -16,6 +17,16 @@ const CUSTOM_TOOL_INPUT_FIELD: &str = "input";
 const CUSTOM_TOOL_INPUT_DESCRIPTION: &str = "Raw string input for the original custom tool. Preserve formatting exactly and follow the original tool definition embedded in the description.";
 const CUSTOM_TOOL_PRESERVED_METADATA_HEADING: &str = "Original tool definition:";
 const CHAT_TOOL_NAME_MAX_LEN: usize = 64;
+
+/// Provider-neutral Codex Responses -> Chat Completions reasoning capability hints.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct CodexChatReasoningOptions {
+    pub supports_thinking: Option<bool>,
+    pub supports_effort: Option<bool>,
+    pub thinking_param: Option<String>,
+    pub effort_param: Option<String>,
+    pub effort_value_mode: Option<String>,
+}
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum CodexToolKind {
@@ -200,6 +211,88 @@ pub fn build_codex_tool_context_from_request(body: &Value) -> CodexToolContext {
     }
 
     context
+}
+
+pub fn apply_codex_chat_reasoning_options(
+    result: &mut Value,
+    body: &Value,
+    config: Option<&CodexChatReasoningOptions>,
+    supports_native_reasoning_effort: bool,
+) {
+    let Some(config) = config else {
+        if supports_native_reasoning_effort {
+            if let Some(effort) = body.pointer("/reasoning/effort") {
+                result["reasoning_effort"] = effort.clone();
+            }
+        }
+        return;
+    };
+
+    let supports_effort = config.supports_effort.unwrap_or(false);
+    let supports_thinking = config.supports_thinking.unwrap_or(false) || supports_effort;
+    let Some(reasoning_enabled) = codex_chat_reasoning_requested(body) else {
+        return;
+    };
+
+    if supports_thinking {
+        match config
+            .thinking_param
+            .as_deref()
+            .unwrap_or("thinking")
+            .trim()
+            .to_ascii_lowercase()
+            .as_str()
+        {
+            "thinking" => {
+                result["thinking"] = json!({
+                    "type": if reasoning_enabled { "enabled" } else { "disabled" }
+                });
+            }
+            "enable_thinking" => {
+                result["enable_thinking"] = json!(reasoning_enabled);
+            }
+            "reasoning_split" => {
+                result["reasoning_split"] = json!(reasoning_enabled);
+            }
+            _ => {}
+        }
+    }
+
+    let effort_param = config
+        .effort_param
+        .as_deref()
+        .unwrap_or("reasoning_effort")
+        .trim()
+        .to_ascii_lowercase();
+
+    if !reasoning_enabled {
+        if effort_param == "reasoning.effort" {
+            result["reasoning"] = json!({ "effort": "none" });
+        }
+        return;
+    }
+
+    if !supports_effort {
+        return;
+    }
+
+    let Some(effort) = body.pointer("/reasoning/effort").and_then(Value::as_str) else {
+        return;
+    };
+    let Some(mapped) = map_codex_chat_reasoning_effort(effort, config.effort_value_mode.as_deref())
+    else {
+        return;
+    };
+
+    match effort_param.as_str() {
+        "reasoning_effort" => {
+            result["reasoning_effort"] = json!(mapped);
+        }
+        "reasoning.effort" => {
+            result["reasoning"] = json!({ "effort": mapped });
+        }
+        _ => {}
+    }
 }
 
 fn collect_tool_search_output_tools(value: &Value, context: &mut CodexToolContext) {
@@ -1427,6 +1520,87 @@ mod tests {
             Value::String(value.to_string()),
         );
         Value::Object(metadata)
+    }
+
+    #[test]
+    fn codex_chat_reasoning_options_pass_native_effort_without_provider_config() {
+        let body = json!({
+            "model": "o4-mini",
+            "reasoning": {"effort": "high"}
+        });
+        let mut result = json!({});
+
+        apply_codex_chat_reasoning_options(&mut result, &body, None, true);
+
+        assert_eq!(result["reasoning_effort"], "high");
+    }
+
+    #[test]
+    fn codex_chat_reasoning_options_map_deepseek_effort_and_thinking() {
+        let body = json!({
+            "model": "deepseek-reasoner",
+            "reasoning": {"effort": "xhigh"}
+        });
+        let config = CodexChatReasoningOptions {
+            supports_thinking: Some(true),
+            supports_effort: Some(true),
+            thinking_param: Some("thinking".to_string()),
+            effort_param: Some("reasoning_effort".to_string()),
+            effort_value_mode: Some("deepseek".to_string()),
+        };
+        let mut result = json!({});
+
+        apply_codex_chat_reasoning_options(&mut result, &body, Some(&config), false);
+
+        assert_eq!(result["thinking"]["type"], "enabled");
+        assert_eq!(result["reasoning_effort"], "max");
+        assert!(result.get("reasoning").is_none());
+    }
+
+    #[test]
+    fn codex_chat_reasoning_options_map_openrouter_native_effort() {
+        let body = json!({
+            "model": "openai/gpt-5",
+            "reasoning": {"effort": "max"}
+        });
+        let config = CodexChatReasoningOptions {
+            supports_thinking: Some(false),
+            supports_effort: Some(true),
+            thinking_param: Some("none".to_string()),
+            effort_param: Some("reasoning.effort".to_string()),
+            effort_value_mode: Some("openrouter".to_string()),
+        };
+        let mut result = json!({});
+
+        apply_codex_chat_reasoning_options(&mut result, &body, Some(&config), false);
+
+        assert_eq!(result["reasoning"]["effort"], "xhigh");
+        assert!(result.get("reasoning_effort").is_none());
+        assert!(result.get("thinking").is_none());
+    }
+
+    #[test]
+    fn codex_chat_reasoning_options_preserve_openrouter_explicit_none() {
+        let config = CodexChatReasoningOptions {
+            supports_thinking: Some(false),
+            supports_effort: Some(true),
+            thinking_param: Some("none".to_string()),
+            effort_param: Some("reasoning.effort".to_string()),
+            effort_value_mode: Some("openrouter".to_string()),
+        };
+
+        for body in [
+            json!({"reasoning": {"effort": "none"}}),
+            json!({"reasoning": null}),
+        ] {
+            let mut result = json!({});
+
+            apply_codex_chat_reasoning_options(&mut result, &body, Some(&config), false);
+
+            assert_eq!(result["reasoning"]["effort"], "none");
+            assert!(result.get("reasoning_effort").is_none());
+            assert!(result.get("thinking").is_none());
+        }
     }
 
     #[test]

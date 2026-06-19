@@ -8,7 +8,7 @@ use super::codex_chat_common::{extract_reasoning_field_text, extract_reasoning_s
 use crate::provider::CodexChatReasoningConfig;
 use crate::proxy::{error::ProxyError, json_canonical::canonicalize_tool_arguments};
 pub(crate) use crate::proxy_core::{
-    append_pending_reasoning, append_unique_pending_reasoning,
+    append_pending_reasoning, append_unique_pending_reasoning, apply_codex_chat_reasoning_options,
     attach_pending_reasoning_to_assistant, attach_reasoning_to_last_assistant,
     backfill_tool_call_reasoning_placeholders, build_codex_tool_context_from_request,
     chat_message_to_response_output_item, chat_reasoning_text,
@@ -22,9 +22,8 @@ pub(crate) use crate::proxy_core::{
     responses_function_call_to_chat_tool_call as build_responses_function_call_chat_tool_call,
     responses_instruction_text, responses_role_to_chat_role,
     responses_tool_choice_to_chat_function_selector, responses_tool_search_call_to_chat_tool_call,
-    CodexToolContext, CODEX_TOOL_SEARCH_PROXY_NAME,
+    CodexChatReasoningOptions, CodexToolContext, CODEX_TOOL_SEARCH_PROXY_NAME,
 };
-use crate::proxy_core::{codex_chat_reasoning_requested, map_codex_chat_reasoning_effort};
 use serde_json::{json, Value};
 
 const EXTRA_CHAT_PASSTHROUGH_FIELDS: &[&str] = &[
@@ -101,7 +100,13 @@ pub fn responses_to_chat_completions_with_reasoning(
         }
     }
 
-    apply_reasoning_options(&mut result, &body, model, reasoning_config);
+    let reasoning_options = reasoning_config.map(codex_chat_reasoning_options_from_provider);
+    apply_codex_chat_reasoning_options(
+        &mut result,
+        &body,
+        reasoning_options.as_ref(),
+        super::transform::supports_reasoning_effort(model),
+    );
 
     let tools = tool_context.chat_tools();
     if !tools.is_empty() {
@@ -141,98 +146,15 @@ pub fn responses_to_chat_completions_with_reasoning(
     Ok(result)
 }
 
-fn apply_reasoning_options(
-    result: &mut Value,
-    body: &Value,
-    model: &str,
-    config: Option<&CodexChatReasoningConfig>,
-) {
-    let Some(config) = config else {
-        if super::transform::supports_reasoning_effort(model) {
-            if let Some(effort) = body.pointer("/reasoning/effort") {
-                result["reasoning_effort"] = effort.clone();
-            }
-        }
-        return;
-    };
-
-    let supports_effort = config.supports_effort.unwrap_or(false);
-    let supports_thinking = config.supports_thinking.unwrap_or(false) || supports_effort;
-    let Some(reasoning_enabled) = codex_chat_reasoning_requested(body) else {
-        return;
-    };
-
-    if supports_thinking {
-        match config
-            .thinking_param
-            .as_deref()
-            .unwrap_or("thinking")
-            .trim()
-            .to_ascii_lowercase()
-            .as_str()
-        {
-            "thinking" => {
-                result["thinking"] = json!({
-                    "type": if reasoning_enabled { "enabled" } else { "disabled" }
-                });
-            }
-            "enable_thinking" => {
-                result["enable_thinking"] = json!(reasoning_enabled);
-            }
-            "reasoning_split" => {
-                result["reasoning_split"] = json!(reasoning_enabled);
-            }
-            _ => {}
-        }
-    }
-
-    // effort_param 在 early return 之前算出：reasoning.effort 形态的「显式关闭」分支要用到。
-    let effort_param = config
-        .effort_param
-        .as_deref()
-        .unwrap_or("reasoning_effort")
-        .trim()
-        .to_ascii_lowercase();
-
-    if !reasoning_enabled {
-        // OpenRouter 原生 reasoning.effort 支持显式 "none"（语义：彻底关闭推理）。
-        // 上游显式发 effort=none/off/disabled（或 reasoning=null）时 reasoning_enabled 为 false，
-        // 直接 return 会丢失关闭意图——OpenRouter 部分模型默认开思考，不带字段无法关闭，
-        // 造成行为与成本偏差；故对该形态忠实转发 {"reasoning":{"effort":"none"}}。
-        // 顶层 reasoning_effort 平台的枚举不含 none，仍走上方 thinking 关闭路径、不发 effort。
-        // 注意：完全不带 reasoning 字段时 reasoning_requested 返回 None 已提前 return，
-        // 不会走到这里，故只有上游「显式」表达关闭才透传 none。
-        if effort_param == "reasoning.effort" {
-            result["reasoning"] = json!({ "effort": "none" });
-        }
-        return;
-    }
-
-    if !supports_effort {
-        return;
-    }
-
-    let Some(effort) = body.pointer("/reasoning/effort").and_then(|v| v.as_str()) else {
-        return;
-    };
-    let Some(mapped) = map_codex_chat_reasoning_effort(effort, config.effort_value_mode.as_deref())
-    else {
-        return;
-    };
-
-    match effort_param.as_str() {
-        // OpenAI 风格顶层字段（DeepSeek 官方、OpenAI o-series 等）。
-        "reasoning_effort" => {
-            result["reasoning_effort"] = json!(mapped);
-        }
-        // OpenRouter 原生归一化对象：reasoning.effort 会被 OpenRouter 翻译成各底层模型
-        // （OpenAI/Grok/Gemini/Anthropic）的正确推理参数，覆盖面比顶层 OpenAI 别名更全。
-        // 本转换从空对象构造、不残留原始 reasoning 对象，故不会出现 reasoning 与
-        // reasoning_effort 并存触发 400 的情况（参见 openclaw#24119）。
-        "reasoning.effort" => {
-            result["reasoning"] = json!({ "effort": mapped });
-        }
-        _ => {}
+fn codex_chat_reasoning_options_from_provider(
+    config: &CodexChatReasoningConfig,
+) -> CodexChatReasoningOptions {
+    CodexChatReasoningOptions {
+        supports_thinking: config.supports_thinking,
+        supports_effort: config.supports_effort,
+        thinking_param: config.thinking_param.clone(),
+        effort_param: config.effort_param.clone(),
+        effort_value_mode: config.effort_value_mode.clone(),
     }
 }
 
