@@ -9,11 +9,10 @@
 //! - Codex: 从 headers 中的 `session_id` / `x-session-id` 或 `metadata.session_id` 提取
 //! - 其他: 生成新的 UUID
 
+use crate::proxy_core::{ClientFormat, SessionIdResult};
 use axum::http::HeaderMap;
 use std::time::Instant;
 use uuid::Uuid;
-
-pub use crate::proxy_core::{ClientFormat, SessionIdResult, SessionIdSource};
 
 /// 代理会话
 ///
@@ -112,6 +111,7 @@ pub(super) fn parse_session_from_user_id(user_id: &str) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::proxy_core::SessionIdSource;
     use serde_json::json;
 
     #[test]

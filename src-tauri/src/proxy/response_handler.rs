@@ -4,7 +4,9 @@
 
 use super::session::ProxySession;
 use super::ProxyError;
-use crate::proxy_core::{append_utf8_safe, strip_sse_field, take_sse_block, TokenUsage};
+use crate::proxy_core::{
+    append_utf8_safe, strip_sse_field, take_sse_block, ClientFormat, TokenUsage,
+};
 use bytes::Bytes;
 use futures::stream::{Stream, StreamExt};
 use serde_json::Value;
@@ -131,9 +133,9 @@ impl StreamHandler {
         let events = self.get_events().await;
 
         match session.client_format {
-            super::session::ClientFormat::Claude => TokenUsage::from_claude_stream_events(&events),
-            super::session::ClientFormat::Codex => TokenUsage::from_codex_stream_events(&events),
-            super::session::ClientFormat::Gemini | super::session::ClientFormat::GeminiCli => {
+            ClientFormat::Claude => TokenUsage::from_claude_stream_events(&events),
+            ClientFormat::Codex => TokenUsage::from_codex_stream_events(&events),
+            ClientFormat::Gemini | ClientFormat::GeminiCli => {
                 TokenUsage::from_gemini_stream_chunks(&events)
             }
             _ => None,
@@ -158,12 +160,12 @@ impl NonStreamHandler {
             .map_err(|e| ProxyError::TransformError(format!("Failed to parse response: {e}")))?;
 
         let usage = match session.client_format {
-            super::session::ClientFormat::Claude => TokenUsage::from_claude_response(&json),
-            super::session::ClientFormat::Codex => TokenUsage::from_codex_response_adjusted(&json),
-            super::session::ClientFormat::Gemini | super::session::ClientFormat::GeminiCli => {
+            ClientFormat::Claude => TokenUsage::from_claude_response(&json),
+            ClientFormat::Codex => TokenUsage::from_codex_response_adjusted(&json),
+            ClientFormat::Gemini | ClientFormat::GeminiCli => {
                 TokenUsage::from_gemini_response(&json)
             }
-            super::session::ClientFormat::OpenAI => TokenUsage::from_openrouter_response(&json),
+            ClientFormat::OpenAI => TokenUsage::from_openrouter_response(&json),
             _ => None,
         };
 

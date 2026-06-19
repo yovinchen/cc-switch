@@ -5,9 +5,6 @@
 pub mod calculator;
 pub mod logger;
 
-// 仅导出内部使用的类型,避免未使用警告
-#[allow(unused_imports)]
-pub use crate::proxy_core::{ApiType, TokenUsage};
 #[allow(unused_imports)]
 pub use calculator::{CostBreakdown, CostCalculator, ModelPricing};
 #[allow(unused_imports)]
