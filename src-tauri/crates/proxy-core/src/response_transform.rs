@@ -600,6 +600,105 @@ pub fn attach_reasoning_to_last_assistant(
     false
 }
 
+pub fn responses_content_to_chat_content(_role: &str, content: &Value) -> Value {
+    if content.is_null() || content.is_string() {
+        return content.clone();
+    }
+
+    let Some(parts) = content.as_array() else {
+        return content.clone();
+    };
+
+    let mut chat_parts: Vec<Value> = Vec::new();
+    let mut has_non_text_part = false;
+
+    for part in parts {
+        let part_type = part.get("type").and_then(Value::as_str).unwrap_or("");
+        match part_type {
+            "input_text" | "output_text" | "text" => {
+                if let Some(text) = part.get("text").and_then(Value::as_str) {
+                    if !text.is_empty() {
+                        chat_parts.push(json!({
+                            "type": "text",
+                            "text": text
+                        }));
+                    }
+                }
+            }
+            "refusal" => {
+                if let Some(text) = part.get("refusal").and_then(Value::as_str) {
+                    if !text.is_empty() {
+                        chat_parts.push(json!({
+                            "type": "text",
+                            "text": text
+                        }));
+                    }
+                }
+            }
+            "input_image" => {
+                if let Some(image_url) = part.get("image_url") {
+                    let image_url = if image_url.is_object() {
+                        image_url.clone()
+                    } else {
+                        json!({ "url": image_url.as_str().unwrap_or_default() })
+                    };
+                    chat_parts.push(json!({
+                        "type": "image_url",
+                        "image_url": image_url
+                    }));
+                    has_non_text_part = true;
+                }
+            }
+            "input_file" => {
+                if let Some(file) = responses_input_file_to_chat_file(part) {
+                    chat_parts.push(json!({
+                        "type": "file",
+                        "file": file
+                    }));
+                    has_non_text_part = true;
+                }
+            }
+            "input_audio" => {
+                if let Some(input_audio) = part.get("input_audio") {
+                    chat_parts.push(json!({
+                        "type": "input_audio",
+                        "input_audio": input_audio.clone()
+                    }));
+                    has_non_text_part = true;
+                }
+            }
+            _ => {}
+        }
+    }
+
+    if !has_non_text_part {
+        return Value::String(
+            chat_parts
+                .iter()
+                .filter_map(|part| part.get("text").and_then(Value::as_str))
+                .collect::<Vec<_>>()
+                .join("\n"),
+        );
+    }
+
+    Value::Array(chat_parts)
+}
+
+fn responses_input_file_to_chat_file(part: &Value) -> Option<Value> {
+    let mut file = serde_json::Map::new();
+    let has_supported_file_ref = part.get("file_id").is_some() || part.get("file_data").is_some();
+    if !has_supported_file_ref {
+        return None;
+    }
+
+    for key in ["file_id", "file_data", "filename"] {
+        if let Some(value) = part.get(key) {
+            file.insert(key.to_string(), value.clone());
+        }
+    }
+    Some(Value::Object(file))
+}
+
 pub fn split_leading_think_block(text: &str) -> Option<(String, String)> {
     let leading_ws_len = text.len() - text.trim_start().len();
     let after_ws = &text[leading_ws_len..];
@@ -1132,6 +1231,101 @@ mod tests {
             message["reasoning_content"],
             Value::String("first\n\nsecond\n\nthird".to_string())
         );
+    }
+
+    #[test]
+    fn maps_responses_content_text_parts_to_chat_text() {
+        let content = responses_content_to_chat_content(
+            "user",
+            &json!([
+                {"type": "input_text", "text": "hello"},
+                {"type": "output_text", "text": "world"},
+                {"type": "text", "text": ""},
+                {"type": "refusal", "refusal": "no"}
+            ]),
+        );
+
+        assert_eq!(content, Value::String("hello\nworld\nno".to_string()));
+    }
+
+    #[test]
+    fn maps_responses_content_media_parts_to_chat_parts() {
+        let content = responses_content_to_chat_content(
+            "user",
+            &json!([
+                {"type": "input_text", "text": "see attachments"},
+                {"type": "input_image", "image_url": "data:image/png;base64,abc"},
+                {
+                    "type": "input_file",
+                    "file_id": "file_123",
+                    "file_url": "https://example.com/spec.pdf",
+                    "filename": "spec.pdf"
+                },
+                {
+                    "type": "input_audio",
+                    "input_audio": {
+                        "data": "UklGRg==",
+                        "format": "wav"
+                    }
+                }
+            ]),
+        );
+        let parts = content.as_array().expect("content parts");
+
+        assert_eq!(parts[0], json!({"type": "text", "text": "see attachments"}));
+        assert_eq!(
+            parts[1],
+            json!({
+                "type": "image_url",
+                "image_url": {"url": "data:image/png;base64,abc"}
+            })
+        );
+        assert_eq!(
+            parts[2],
+            json!({
+                "type": "file",
+                "file": {
+                    "file_id": "file_123",
+                    "filename": "spec.pdf"
+                }
+            })
+        );
+        assert_eq!(
+            parts[3],
+            json!({
+                "type": "input_audio",
+                "input_audio": {
+                    "data": "UklGRg==",
+                    "format": "wav"
+                }
+            })
+        );
+    }
+
+    #[test]
+    fn drops_unsupported_responses_input_file_url_only_parts() {
+        let text_only = responses_content_to_chat_content(
+            "user",
+            &json!([
+                {"type": "input_text", "text": "summarize url"},
+                {
+                    "type": "input_file",
+                    "file_url": "https://example.com/spec.pdf"
+                }
+            ]),
+        );
+        assert_eq!(text_only, Value::String("summarize url".to_string()));
+
+        let file_only = responses_content_to_chat_content(
+            "user",
+            &json!([
+                {
+                    "type": "input_file",
+                    "file_url": "https://example.com/spec.pdf"
+                }
+            ]),
+        );
+        assert_eq!(file_only, Value::String(String::new()));
     }
 
     #[test]

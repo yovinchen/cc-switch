@@ -21,7 +21,8 @@ pub(crate) use crate::proxy_core::{
     attach_pending_reasoning_to_assistant, attach_reasoning_to_last_assistant,
     backfill_tool_call_reasoning_placeholders, chat_usage_to_responses_usage,
     custom_tool_input_from_chat_arguments, response_id_from_chat_id,
-    response_status_from_finish_reason, responses_role_to_chat_role,
+    response_status_from_finish_reason, responses_content_to_chat_content,
+    responses_role_to_chat_role,
 };
 use crate::proxy_core::{codex_chat_reasoning_requested, map_codex_chat_reasoning_effort};
 use serde_json::{json, Value};
@@ -742,105 +743,6 @@ fn responses_item_reasoning_text(item: &Value) -> Option<String> {
 
 fn responses_reasoning_item_text(item: &Value) -> Option<String> {
     extract_reasoning_summary_text(item)
-}
-
-fn responses_content_to_chat_content(_role: &str, content: &Value) -> Value {
-    if content.is_null() || content.is_string() {
-        return content.clone();
-    }
-
-    let Some(parts) = content.as_array() else {
-        return content.clone();
-    };
-
-    let mut chat_parts: Vec<Value> = Vec::new();
-    let mut has_non_text_part = false;
-
-    for part in parts {
-        let part_type = part.get("type").and_then(|v| v.as_str()).unwrap_or("");
-        match part_type {
-            "input_text" | "output_text" | "text" => {
-                if let Some(text) = part.get("text").and_then(|v| v.as_str()) {
-                    if !text.is_empty() {
-                        chat_parts.push(json!({
-                            "type": "text",
-                            "text": text
-                        }));
-                    }
-                }
-            }
-            "refusal" => {
-                if let Some(text) = part.get("refusal").and_then(|v| v.as_str()) {
-                    if !text.is_empty() {
-                        chat_parts.push(json!({
-                            "type": "text",
-                            "text": text
-                        }));
-                    }
-                }
-            }
-            "input_image" => {
-                if let Some(image_url) = part.get("image_url") {
-                    let image_url = if image_url.is_object() {
-                        image_url.clone()
-                    } else {
-                        json!({ "url": image_url.as_str().unwrap_or_default() })
-                    };
-                    chat_parts.push(json!({
-                        "type": "image_url",
-                        "image_url": image_url
-                    }));
-                    has_non_text_part = true;
-                }
-            }
-            "input_file" => {
-                if let Some(file) = responses_input_file_to_chat_file(part) {
-                    chat_parts.push(json!({
-                        "type": "file",
-                        "file": file
-                    }));
-                    has_non_text_part = true;
-                }
-            }
-            "input_audio" => {
-                if let Some(input_audio) = part.get("input_audio") {
-                    chat_parts.push(json!({
-                        "type": "input_audio",
-                        "input_audio": input_audio.clone()
-                    }));
-                    has_non_text_part = true;
-                }
-            }
-            _ => {}
-        }
-    }
-
-    if !has_non_text_part {
-        return Value::String(
-            chat_parts
-                .iter()
-                .filter_map(|part| part.get("text").and_then(|v| v.as_str()))
-                .collect::<Vec<_>>()
-                .join("\n"),
-        );
-    }
-
-    Value::Array(chat_parts)
-}
-
-fn responses_input_file_to_chat_file(part: &Value) -> Option<Value> {
-    let mut file = serde_json::Map::new();
-    let has_supported_file_ref = part.get("file_id").is_some() || part.get("file_data").is_some();
-    if !has_supported_file_ref {
-        return None;
-    }
-
-    for key in ["file_id", "file_data", "filename"] {
-        if let Some(value) = part.get(key) {
-            file.insert(key.to_string(), value.clone());
-        }
-    }
-    Some(Value::Object(file))
 }
 
 fn collect_tool_search_output_tools(value: &Value, context: &mut CodexToolContext) {
