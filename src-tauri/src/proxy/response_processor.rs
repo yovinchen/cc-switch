@@ -10,7 +10,7 @@ use super::{
 };
 use crate::proxy_core::{
     decode_response_body, get_content_encoding,
-    non_streaming_response_usage_record_with_request_id_fallback,
+    non_streaming_response_usage_record_with_request_id_fallback, response_headers_log_summary,
     streaming_response_usage_record_with_optional_outbound_model,
     strip_hop_by_hop_response_headers, AppKind, ProxyServices, ResponseBodyDecodeStatus,
     SseEventScanner, SseUsageAccumulator, StreamUsageEventFilter, StreamingTimeoutConfig,
@@ -55,7 +55,7 @@ pub(crate) async fn read_decoded_body(
         "[{tag}] 已接收上游响应体: status={}, bytes={}, headers={}",
         status.as_u16(),
         raw_bytes.len(),
-        format_headers(&headers)
+        response_headers_log_summary(&headers)
     );
 
     let decoded = decode_response_body(&mut headers, &raw_bytes);
@@ -98,7 +98,7 @@ pub async fn handle_streaming(
         "[{}] 已接收上游流式响应: status={}, headers={}",
         ctx.tag,
         status.as_u16(),
-        format_headers(response.headers())
+        response_headers_log_summary(response.headers())
     );
     // 检查流式响应是否被压缩（SSE 通常不压缩，如果压缩则 SSE 解析会失败）
     if let Some(encoding) = get_content_encoding(response.headers()) {
@@ -592,17 +592,6 @@ pub fn create_logged_passthrough_stream(
             guard.disarm();
         }
     }
-}
-
-fn format_headers(headers: &HeaderMap) -> String {
-    headers
-        .iter()
-        .map(|(key, value)| {
-            let value_str = value.to_str().unwrap_or("<non-utf8>");
-            format!("{key}={value_str}")
-        })
-        .collect::<Vec<_>>()
-        .join(", ")
 }
 
 #[cfg(test)]

@@ -28,6 +28,17 @@ pub fn body_diagnostics_suffix(headers: &HeaderMap, body: &str) -> String {
     )
 }
 
+pub fn response_headers_log_summary(headers: &HeaderMap) -> String {
+    headers
+        .iter()
+        .map(|(key, value)| {
+            let value_str = value.to_str().unwrap_or("<non-utf8>");
+            format!("{key}={value_str}")
+        })
+        .collect::<Vec<_>>()
+        .join(", ")
+}
+
 /// Append body diagnostics to an upstream SSE aggregation fallback error message.
 pub fn aggregate_fallback_diagnostics_message(
     base_message: &str,
@@ -123,6 +134,21 @@ mod tests {
         assert!(suffix.contains("content-type: <none>"), "{suffix}");
         assert!(suffix.contains("content-encoding: <none>"), "{suffix}");
         assert!(suffix.contains("Bad Gateway"), "{suffix}");
+    }
+
+    #[test]
+    fn response_headers_log_summary_formats_header_pairs() {
+        let mut headers = HeaderMap::new();
+        headers.insert("content-type", "application/json".parse().unwrap());
+        headers.insert(
+            "x-binary",
+            http::HeaderValue::from_bytes(&[0xff, b'a']).unwrap(),
+        );
+
+        let summary = response_headers_log_summary(&headers);
+
+        assert!(summary.contains("content-type=application/json"), "{summary}");
+        assert!(summary.contains("x-binary=<non-utf8>"), "{summary}");
     }
 
     #[test]
