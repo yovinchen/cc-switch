@@ -295,6 +295,238 @@ pub fn apply_codex_chat_reasoning_options(
     }
 }
 
+pub fn append_responses_input_as_chat_messages(
+    input: &Value,
+    messages: &mut Vec<Value>,
+    tool_context: &CodexToolContext,
+) {
+    let mut pending_tool_calls = Vec::new();
+    let mut pending_reasoning: Option<String> = None;
+    let mut last_assistant_index: Option<usize> = None;
+
+    match input {
+        Value::String(text) => {
+            messages.push(json!({
+                "role": "user",
+                "content": text
+            }));
+        }
+        Value::Array(items) => {
+            for item in items {
+                append_responses_item_as_chat_message(
+                    item,
+                    messages,
+                    &mut pending_tool_calls,
+                    &mut pending_reasoning,
+                    &mut last_assistant_index,
+                    tool_context,
+                );
+            }
+        }
+        Value::Object(_) => {
+            append_responses_item_as_chat_message(
+                input,
+                messages,
+                &mut pending_tool_calls,
+                &mut pending_reasoning,
+                &mut last_assistant_index,
+                tool_context,
+            );
+        }
+        _ => {}
+    }
+
+    flush_pending_tool_calls(
+        messages,
+        &mut pending_tool_calls,
+        &mut pending_reasoning,
+        &mut last_assistant_index,
+    );
+    backfill_tool_call_reasoning_placeholders(messages);
+}
+
+fn append_responses_item_as_chat_message(
+    item: &Value,
+    messages: &mut Vec<Value>,
+    pending_tool_calls: &mut Vec<Value>,
+    pending_reasoning: &mut Option<String>,
+    last_assistant_index: &mut Option<usize>,
+    tool_context: &CodexToolContext,
+) {
+    let item_type = item.get("type").and_then(Value::as_str);
+    match item_type {
+        Some("function_call") => {
+            append_unique_pending_reasoning(pending_reasoning, responses_item_reasoning_text(item));
+            pending_tool_calls.push(responses_function_call_to_chat_tool_call_with_context(
+                item,
+                tool_context,
+            ));
+        }
+        Some("custom_tool_call") => {
+            append_unique_pending_reasoning(pending_reasoning, responses_item_reasoning_text(item));
+            pending_tool_calls.push(responses_custom_tool_call_to_chat_tool_call(item));
+        }
+        Some("tool_search_call") => {
+            append_unique_pending_reasoning(pending_reasoning, responses_item_reasoning_text(item));
+            pending_tool_calls.push(responses_tool_search_call_to_chat_tool_call(item));
+        }
+        Some("function_call_output") => {
+            flush_pending_tool_calls(
+                messages,
+                pending_tool_calls,
+                pending_reasoning,
+                last_assistant_index,
+            );
+            messages.push(responses_function_call_output_to_chat_tool_message(item));
+        }
+        Some("custom_tool_call_output") | Some("tool_search_output") => {
+            flush_pending_tool_calls(
+                messages,
+                pending_tool_calls,
+                pending_reasoning,
+                last_assistant_index,
+            );
+            messages.push(responses_client_tool_output_to_chat_tool_message(item));
+        }
+        Some("reasoning") => {
+            let reasoning = responses_reasoning_item_text(item);
+            let attached_to_previous = pending_tool_calls.is_empty()
+                && attach_reasoning_to_last_assistant(messages, *last_assistant_index, &reasoning);
+            if !attached_to_previous {
+                append_pending_reasoning(pending_reasoning, reasoning);
+            }
+        }
+        Some("input_text" | "input_image" | "input_file" | "input_audio") => {
+            flush_pending_tool_calls(
+                messages,
+                pending_tool_calls,
+                pending_reasoning,
+                last_assistant_index,
+            );
+            let role = item
+                .get("role")
+                .and_then(Value::as_str)
+                .map(responses_role_to_chat_role)
+                .unwrap_or("user");
+            let message = json!({
+                "role": role,
+                "content": responses_content_to_chat_content(role, &Value::Array(vec![item.clone()]))
+            });
+            if role == "assistant" {
+                let mut message = message;
+                attach_pending_reasoning_to_assistant(&mut message, pending_reasoning);
+                update_last_assistant_index(messages, &message, last_assistant_index);
+                messages.push(message);
+                return;
+            } else if pending_reasoning.is_some() {
+                pending_reasoning.take();
+            }
+            update_last_assistant_index(messages, &message, last_assistant_index);
+            messages.push(message);
+        }
+        Some("message") | None => {
+            flush_pending_tool_calls(
+                messages,
+                pending_tool_calls,
+                pending_reasoning,
+                last_assistant_index,
+            );
+            if item.get("role").is_some() || item.get("content").is_some() {
+                let message = responses_message_item_to_chat_message(item, pending_reasoning);
+                update_last_assistant_index(messages, &message, last_assistant_index);
+                messages.push(message);
+            }
+        }
+        _ => {
+            flush_pending_tool_calls(
+                messages,
+                pending_tool_calls,
+                pending_reasoning,
+                last_assistant_index,
+            );
+            if item.get("role").is_some() || item.get("content").is_some() {
+                let message = responses_message_item_to_chat_message(item, pending_reasoning);
+                update_last_assistant_index(messages, &message, last_assistant_index);
+                messages.push(message);
+            }
+        }
+    }
+}
+
+fn flush_pending_tool_calls(
+    messages: &mut Vec<Value>,
+    pending_tool_calls: &mut Vec<Value>,
+    pending_reasoning: &mut Option<String>,
+    last_assistant_index: &mut Option<usize>,
+) {
+    if pending_tool_calls.is_empty() {
+        return;
+    }
+
+    let mut message = json!({
+        "role": "assistant",
+        "content": null,
+        "tool_calls": std::mem::take(pending_tool_calls)
+    });
+    attach_pending_reasoning_to_assistant(&mut message, pending_reasoning);
+    *last_assistant_index = Some(messages.len());
+    messages.push(message);
+}
+
+fn responses_message_item_to_chat_message(
+    item: &Value,
+    pending_reasoning: &mut Option<String>,
+) -> Value {
+    let role = item.get("role").and_then(Value::as_str).unwrap_or("user");
+    let chat_role = responses_role_to_chat_role(role);
+    let content = item
+        .get("content")
+        .map(|value| responses_content_to_chat_content(chat_role, value))
+        .unwrap_or(Value::Null);
+
+    let mut message = json!({
+        "role": chat_role,
+        "content": content
+    });
+
+    if chat_role == "assistant" {
+        append_pending_reasoning(pending_reasoning, responses_message_reasoning_text(item));
+        attach_pending_reasoning_to_assistant(&mut message, pending_reasoning);
+    } else if pending_reasoning.is_some() {
+        pending_reasoning.take();
+    }
+
+    message
+}
+
+fn update_last_assistant_index(
+    messages: &[Value],
+    message: &Value,
+    last_assistant_index: &mut Option<usize>,
+) {
+    match message.get("role").and_then(Value::as_str) {
+        Some("assistant") => {
+            *last_assistant_index = Some(messages.len());
+        }
+        Some("tool") => {}
+        _ => {
+            *last_assistant_index = None;
+        }
+    }
+}
+
+fn responses_message_reasoning_text(item: &Value) -> Option<String> {
+    responses_item_reasoning_text(item)
+}
+
+fn responses_item_reasoning_text(item: &Value) -> Option<String> {
+    extract_reasoning_field_text(item)
+}
+
+fn responses_reasoning_item_text(item: &Value) -> Option<String> {
+    extract_reasoning_summary_text(item)
+}
+
 fn collect_tool_search_output_tools(value: &Value, context: &mut CodexToolContext) {
     match value {
         Value::Array(items) => {
@@ -2391,6 +2623,55 @@ mod tests {
             responses_tool_choice_to_chat_tool_choice(&unknown_choice, &context),
             unknown_choice
         );
+    }
+
+    #[test]
+    fn appends_codex_responses_input_as_chat_messages() {
+        let request = json!({
+            "tools": [{
+                "type": "function",
+                "name": "lookup_weather",
+                "parameters": {"type": "object"}
+            }],
+            "input": [
+                {
+                    "role": "user",
+                    "content": [{"type": "input_text", "text": "Weather?"}]
+                },
+                {
+                    "type": "reasoning",
+                    "summary": [{"text": "Need current weather."}]
+                },
+                {
+                    "type": "function_call",
+                    "call_id": "call_weather",
+                    "name": "lookup_weather",
+                    "arguments": {"city": "Tokyo"}
+                },
+                {
+                    "type": "function_call_output",
+                    "call_id": "call_weather",
+                    "output": "Sunny"
+                }
+            ]
+        });
+        let context = build_codex_tool_context_from_request(&request);
+        let mut messages = Vec::new();
+
+        append_responses_input_as_chat_messages(&request["input"], &mut messages, &context);
+
+        assert_eq!(messages.len(), 3);
+        assert_eq!(messages[0]["role"], "user");
+        assert_eq!(messages[0]["content"], "Weather?");
+        assert_eq!(messages[1]["role"], "assistant");
+        assert_eq!(
+            messages[1]["tool_calls"][0]["function"]["name"],
+            "lookup_weather"
+        );
+        assert_eq!(messages[1]["reasoning_content"], "Need current weather.");
+        assert_eq!(messages[2]["role"], "tool");
+        assert_eq!(messages[2]["tool_call_id"], "call_weather");
+        assert_eq!(messages[2]["content"], "Sunny");
     }
 
     #[test]
