@@ -1,16 +1,15 @@
 //! OpenAI Chat Completions SSE → OpenAI Responses SSE conversion.
 
-use super::codex_chat_common::{split_leading_think_block, strip_leading_think_open_tag};
-use crate::proxy::json_canonical::canonicalize_tool_arguments_str;
 use crate::proxy::sse::{strip_sse_field, take_sse_block};
 #[cfg(test)]
 use crate::proxy_core::build_codex_tool_context_from_request;
 use crate::proxy_core::{
-    chat_delta_reasoning_text, chat_usage_to_responses_usage,
+    canonicalize_tool_arguments_str, chat_delta_reasoning_text, chat_usage_to_responses_usage,
     custom_tool_input_from_chat_arguments, extract_chat_sse_error, leading_think_prefix_decision,
     response_id_from_chat_id, response_status_from_finish_reason,
-    response_tool_call_item_from_chat_name, response_tool_call_item_id_from_chat_name, sse_event,
-    CodexToolContext, ThinkPrefixDecision,
+    response_tool_call_item_from_chat_name, response_tool_call_item_id_from_chat_name,
+    split_leading_think_block, sse_event, strip_leading_think_open_tag, CodexToolContext,
+    ThinkPrefixDecision,
 };
 use bytes::Bytes;
 use futures::stream::{Stream, StreamExt};
