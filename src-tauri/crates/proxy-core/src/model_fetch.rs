@@ -1,4 +1,5 @@
 use crate::ports::ModelCatalog;
+use futures::future::BoxFuture;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::collections::HashSet;
@@ -56,6 +57,19 @@ pub struct OpenAiCompatibleModelsRequest<'a> {
     pub timeout_secs: u64,
     pub authorization_header: (&'static str, String),
     pub user_agent_header: Option<(&'static str, &'a http::HeaderValue)>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ModelFetchHttpResponse {
+    pub status: http::StatusCode,
+    pub body: Vec<u8>,
+}
+
+pub trait OpenAiCompatibleModelsTransport: Send + Sync {
+    fn send_openai_compatible_models_request<'a>(
+        &'a self,
+        request: OpenAiCompatibleModelsRequest<'a>,
+    ) -> BoxFuture<'a, Result<ModelFetchHttpResponse, String>>;
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -151,6 +165,49 @@ pub fn build_models_url_candidates(
     Ok(unique)
 }
 
+pub async fn fetch_openai_compatible_models_with_transport<T>(
+    base_url: &str,
+    api_key: &str,
+    is_full_url: bool,
+    models_url_override: Option<&str>,
+    user_agent: Option<&http::HeaderValue>,
+    transport: &T,
+) -> Result<Vec<FetchedModel>, String>
+where
+    T: OpenAiCompatibleModelsTransport + ?Sized,
+{
+    validate_openai_compatible_models_api_key(api_key)?;
+
+    let candidates = build_models_url_candidates(base_url, is_full_url, models_url_override)?;
+    let mut last_err: Option<String> = None;
+
+    for url in &candidates {
+        let request = build_openai_compatible_models_request(url, api_key, user_agent);
+        let response = transport
+            .send_openai_compatible_models_request(request)
+            .await?;
+
+        if response.status.is_success() {
+            let models = parse_models_response_bytes(&response.body)
+                .map_err(|e| format!("Failed to parse response: {e}"))?;
+            return Ok(models);
+        }
+
+        let body = String::from_utf8_lossy(&response.body);
+        match openai_compatible_models_failure(response.status, body.as_ref()) {
+            ModelFetchFailure::Retry { message } => {
+                last_err = Some(message);
+                continue;
+            }
+            ModelFetchFailure::Fail { message } => return Err(message),
+        }
+    }
+
+    Err(openai_compatible_models_all_candidates_failed(
+        last_err.as_deref(),
+    ))
+}
+
 pub fn parse_models_response_bytes(body: &[u8]) -> Result<Vec<FetchedModel>, String> {
     let response: ModelsResponse = serde_json::from_slice(body).map_err(|e| e.to_string())?;
     Ok(models_from_response(response))
@@ -200,6 +257,13 @@ pub fn openai_compatible_models_failure(
 pub fn codex_oauth_models_failure(status: http::StatusCode, body: impl AsRef<str>) -> String {
     let body = truncate_codex_oauth_models_error_body(body);
     format!("HTTP {status}: {body}")
+}
+
+pub fn openai_compatible_models_all_candidates_failed(last_err: Option<&str>) -> String {
+    format!(
+        "All candidates failed: {}",
+        last_err.unwrap_or("no candidates")
+    )
 }
 
 pub fn truncate_model_fetch_error_body(body: impl AsRef<str>) -> String {
@@ -626,6 +690,74 @@ fn ends_with_version_segment(url: &str) -> bool {
 mod tests {
     use super::*;
     use serde_json::json;
+    use std::collections::VecDeque;
+    use std::sync::Mutex;
+
+    #[derive(Default)]
+    struct FakeOpenAiCompatibleModelsTransport {
+        requests: Mutex<Vec<FakeOpenAiCompatibleModelsRequest>>,
+        responses: Mutex<VecDeque<Result<ModelFetchHttpResponse, String>>>,
+    }
+
+    #[derive(Clone, Debug, PartialEq, Eq)]
+    struct FakeOpenAiCompatibleModelsRequest {
+        url: String,
+        timeout_secs: u64,
+        authorization_header: (&'static str, String),
+        user_agent_header: Option<(&'static str, String)>,
+    }
+
+    impl FakeOpenAiCompatibleModelsTransport {
+        fn new(responses: impl IntoIterator<Item = Result<ModelFetchHttpResponse, String>>) -> Self {
+            Self {
+                requests: Mutex::new(Vec::new()),
+                responses: Mutex::new(responses.into_iter().collect()),
+            }
+        }
+
+        fn requests(&self) -> Vec<FakeOpenAiCompatibleModelsRequest> {
+            self.requests.lock().expect("requests").clone()
+        }
+    }
+
+    impl OpenAiCompatibleModelsTransport for FakeOpenAiCompatibleModelsTransport {
+        fn send_openai_compatible_models_request<'a>(
+            &'a self,
+            request: OpenAiCompatibleModelsRequest<'a>,
+        ) -> BoxFuture<'a, Result<ModelFetchHttpResponse, String>> {
+            Box::pin(async move {
+                self.requests
+                    .lock()
+                    .expect("requests")
+                    .push(FakeOpenAiCompatibleModelsRequest {
+                        url: request.url.to_string(),
+                        timeout_secs: request.timeout_secs,
+                        authorization_header: (
+                            request.authorization_header.0,
+                            request.authorization_header.1,
+                        ),
+                        user_agent_header: request.user_agent_header.and_then(|(header, value)| {
+                            value.to_str().ok().map(|value| (header, value.to_string()))
+                        }),
+                    });
+                self.responses
+                    .lock()
+                    .expect("responses")
+                    .pop_front()
+                    .unwrap_or_else(|| Err("no fake response".to_string()))
+            })
+        }
+    }
+
+    fn model_fetch_response(
+        status: http::StatusCode,
+        body: impl AsRef<[u8]>,
+    ) -> ModelFetchHttpResponse {
+        ModelFetchHttpResponse {
+            status,
+            body: body.as_ref().to_vec(),
+        }
+    }
 
     #[test]
     fn test_candidates_plain_root() {
@@ -932,6 +1064,138 @@ mod tests {
             ModelFetchFailure::Fail {
                 message: "HTTP 401 Unauthorized: bad key".to_string(),
             }
+        );
+    }
+
+    #[test]
+    fn fetch_openai_compatible_models_with_transport_sends_core_request_plan() {
+        let user_agent = http::HeaderValue::from_static("cc-switch-test");
+        let transport = FakeOpenAiCompatibleModelsTransport::new([Ok(model_fetch_response(
+            http::StatusCode::OK,
+            br#"{"data":[{"id":"gpt-4o","owned_by":"openai"}]}"#.to_vec(),
+        ))]);
+
+        let models = futures::executor::block_on(fetch_openai_compatible_models_with_transport(
+            "https://api.example.com",
+            "sk-test",
+            false,
+            None,
+            Some(&user_agent),
+            &transport,
+        ))
+        .unwrap();
+
+        assert_eq!(
+            models,
+            vec![FetchedModel {
+                id: "gpt-4o".to_string(),
+                owned_by: Some("openai".to_string()),
+            }]
+        );
+        assert_eq!(
+            transport.requests(),
+            vec![FakeOpenAiCompatibleModelsRequest {
+                url: "https://api.example.com/v1/models".to_string(),
+                timeout_secs: OPENAI_COMPATIBLE_MODELS_TIMEOUT_SECS,
+                authorization_header: (
+                    MODEL_FETCH_AUTHORIZATION_HEADER,
+                    "Bearer sk-test".to_string()
+                ),
+                user_agent_header: Some((
+                    MODEL_FETCH_USER_AGENT_HEADER,
+                    "cc-switch-test".to_string()
+                )),
+            }]
+        );
+    }
+
+    #[test]
+    fn fetch_openai_compatible_models_with_transport_retries_discovery_misses() {
+        let transport = FakeOpenAiCompatibleModelsTransport::new([
+            Ok(model_fetch_response(http::StatusCode::NOT_FOUND, "missing")),
+            Ok(model_fetch_response(
+                http::StatusCode::OK,
+                br#"{"data":[{"id":"deepseek-chat"}]}"#.to_vec(),
+            )),
+        ]);
+
+        let models = futures::executor::block_on(fetch_openai_compatible_models_with_transport(
+            "https://api.deepseek.com/anthropic",
+            "sk-test",
+            false,
+            None,
+            None,
+            &transport,
+        ))
+        .unwrap();
+
+        assert_eq!(models[0].id, "deepseek-chat");
+        let requests = transport.requests();
+        assert_eq!(requests.len(), 2);
+        assert_eq!(
+            requests
+                .iter()
+                .map(|request| request.url.as_str())
+                .collect::<Vec<_>>(),
+            vec![
+                "https://api.deepseek.com/anthropic/v1/models",
+                "https://api.deepseek.com/v1/models",
+            ]
+        );
+    }
+
+    #[test]
+    fn fetch_openai_compatible_models_with_transport_stops_on_non_retry_failure() {
+        let transport = FakeOpenAiCompatibleModelsTransport::new([
+            Ok(model_fetch_response(http::StatusCode::UNAUTHORIZED, "bad key")),
+            Ok(model_fetch_response(
+                http::StatusCode::OK,
+                br#"{"data":[{"id":"should-not-fetch"}]}"#.to_vec(),
+            )),
+        ]);
+
+        let err = futures::executor::block_on(fetch_openai_compatible_models_with_transport(
+            "https://api.deepseek.com/anthropic",
+            "sk-test",
+            false,
+            None,
+            None,
+            &transport,
+        ))
+        .unwrap_err();
+
+        assert_eq!(err, "HTTP 401 Unauthorized: bad key");
+        assert_eq!(transport.requests().len(), 1);
+    }
+
+    #[test]
+    fn fetch_openai_compatible_models_with_transport_propagates_transport_errors() {
+        let transport =
+            FakeOpenAiCompatibleModelsTransport::new([Err("Request failed: offline".to_string())]);
+
+        let err = futures::executor::block_on(fetch_openai_compatible_models_with_transport(
+            "https://api.deepseek.com/anthropic",
+            "sk-test",
+            false,
+            None,
+            None,
+            &transport,
+        ))
+        .unwrap_err();
+
+        assert_eq!(err, "Request failed: offline");
+        assert_eq!(transport.requests().len(), 1);
+    }
+
+    #[test]
+    fn openai_compatible_models_all_candidates_failed_uses_last_retry_error() {
+        assert_eq!(
+            openai_compatible_models_all_candidates_failed(Some("HTTP 404 Not Found: missing")),
+            "All candidates failed: HTTP 404 Not Found: missing"
+        );
+        assert_eq!(
+            openai_compatible_models_all_candidates_failed(None),
+            "All candidates failed: no candidates"
         );
     }
 
