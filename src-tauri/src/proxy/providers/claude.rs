@@ -43,28 +43,6 @@ pub fn get_claude_api_format(provider: &Provider) -> &'static str {
     )
 }
 
-/// DeepSeek's Anthropic-compatible endpoint requires thinking history to be
-/// replayed on every assistant turn that contains tool_use. Some Anthropic SDK
-/// clients keep the tool history but drop or redact the thinking block, which
-/// makes DeepSeek reject the next request with `content[].thinking ... must be
-/// passed back`. Normalize only the narrow tool-call history shape for
-/// providers known to require plain `thinking` blocks.
-pub fn normalize_anthropic_tool_thinking_history_for_provider(
-    body: &mut Value,
-    provider: &Provider,
-    api_format: &str,
-) -> bool {
-    if !should_normalize_anthropic_tool_thinking_history(
-        &provider.settings_config,
-        body,
-        api_format,
-    ) {
-        return false;
-    }
-
-    normalize_anthropic_tool_thinking_history(body)
-}
-
 pub fn normalize_anthropic_messages_for_provider(
     body: &mut Value,
     provider: &Provider,
@@ -74,8 +52,15 @@ pub fn normalize_anthropic_messages_for_provider(
         return false;
     }
 
-    let mut changed =
-        normalize_anthropic_tool_thinking_history_for_provider(body, provider, api_format);
+    let mut changed = if should_normalize_anthropic_tool_thinking_history(
+        &provider.settings_config,
+        body,
+        api_format,
+    ) {
+        normalize_anthropic_tool_thinking_history(body)
+    } else {
+        false
+    };
     changed |= crate::proxy_core::normalize_deepseek_thinking_disabled_strip_effort(
         body,
         &provider.settings_config,
@@ -1840,6 +1825,22 @@ mod tests {
         let msg = &transformed["messages"][0];
         assert_eq!(msg["reasoning_content"], "I should call the tool.");
         assert!(msg.get("tool_calls").is_some());
+    }
+
+    fn normalize_anthropic_tool_thinking_history_for_provider(
+        body: &mut Value,
+        provider: &Provider,
+        api_format: &str,
+    ) -> bool {
+        if !should_normalize_anthropic_tool_thinking_history(
+            &provider.settings_config,
+            body,
+            api_format,
+        ) {
+            return false;
+        }
+
+        normalize_anthropic_tool_thinking_history(body)
     }
 
     #[test]
