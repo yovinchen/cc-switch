@@ -9,7 +9,9 @@ use std::env;
 use std::sync::RwLock;
 use std::time::Duration;
 
-use crate::proxy_core::{SYSTEM_PROXY_ENV_KEYS, proxy_values_point_to_loopback_port};
+use crate::proxy_core::{
+    mask_url_for_log, proxy_values_point_to_loopback_port, SYSTEM_PROXY_ENV_KEYS,
+};
 
 /// 全局 HTTP 客户端实例
 static GLOBAL_CLIENT: OnceCell<RwLock<Client>> = OnceCell::new();
@@ -60,7 +62,7 @@ pub fn init(proxy_url: Option<&str>) -> Result<(), String> {
         log::warn!(
             "[GlobalProxy] [GP-003] Already initialized, updating instead: {}",
             effective_url
-                .map(mask_url)
+                .map(mask_url_for_log)
                 .unwrap_or_else(|| "direct connection".to_string())
         );
         // 已初始化，改用 apply_proxy 更新
@@ -73,7 +75,7 @@ pub fn init(proxy_url: Option<&str>) -> Result<(), String> {
     log::info!(
         "[GlobalProxy] Initialized: {}",
         effective_url
-            .map(mask_url)
+            .map(mask_url_for_log)
             .unwrap_or_else(|| "direct connection".to_string())
     );
 
@@ -132,7 +134,7 @@ pub fn apply_proxy(proxy_url: Option<&str>) -> Result<(), String> {
     log::info!(
         "[GlobalProxy] Applied: {}",
         effective_url
-            .map(mask_url)
+            .map(mask_url_for_log)
             .unwrap_or_else(|| "direct connection".to_string())
     );
 
@@ -176,7 +178,7 @@ pub fn update_proxy(proxy_url: Option<&str>) -> Result<(), String> {
     log::info!(
         "[GlobalProxy] Updated: {}",
         effective_url
-            .map(mask_url)
+            .map(mask_url_for_log)
             .unwrap_or_else(|| "direct connection".to_string())
     );
 
@@ -230,21 +232,21 @@ fn build_client(proxy_url: Option<&str>) -> Result<Client, String> {
     if let Some(url) = proxy_url {
         // 先验证 URL 格式和 scheme
         let parsed = url::Url::parse(url)
-            .map_err(|e| format!("Invalid proxy URL '{}': {}", mask_url(url), e))?;
+            .map_err(|e| format!("Invalid proxy URL '{}': {}", mask_url_for_log(url), e))?;
 
         let scheme = parsed.scheme();
         if !["http", "https", "socks5", "socks5h"].contains(&scheme) {
             return Err(format!(
                 "Invalid proxy scheme '{}' in URL '{}'. Supported: http, https, socks5, socks5h",
                 scheme,
-                mask_url(url)
+                mask_url_for_log(url)
             ));
         }
 
         let proxy = reqwest::Proxy::all(url)
-            .map_err(|e| format!("Invalid proxy URL '{}': {}", mask_url(url), e))?;
+            .map_err(|e| format!("Invalid proxy URL '{}': {}", mask_url_for_log(url), e))?;
         builder = builder.proxy(proxy);
-        log::debug!("[GlobalProxy] Proxy configured: {}", mask_url(url));
+        log::debug!("[GlobalProxy] Proxy configured: {}", mask_url_for_log(url));
     } else {
         // 未设置全局代理时，让 reqwest 自动检测系统代理（环境变量）
         // 若系统代理指向本机，禁用系统代理避免自环
@@ -271,11 +273,6 @@ fn system_proxy_points_to_loopback() -> bool {
     proxy_values_point_to_loopback_port(proxy_values, proxy_port)
 }
 
-/// 隐藏 URL 中的敏感信息（用于日志）
-pub fn mask_url(url: &str) -> String {
-    crate::proxy_core::mask_url_for_log(url)
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -285,28 +282,6 @@ mod tests {
     fn env_lock() -> &'static Mutex<()> {
         static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
         LOCK.get_or_init(|| Mutex::new(()))
-    }
-
-    #[test]
-    fn test_mask_url() {
-        assert_eq!(mask_url("http://127.0.0.1:7890"), "http://127.0.0.1:7890");
-        assert_eq!(
-            mask_url("http://user:pass@127.0.0.1:7890"),
-            "http://127.0.0.1:7890"
-        );
-        assert_eq!(
-            mask_url("socks5://admin:secret@proxy.example.com:1080"),
-            "socks5://proxy.example.com:1080"
-        );
-        // 无端口的 URL 不应显示 ":?"
-        assert_eq!(
-            mask_url("http://proxy.example.com"),
-            "http://proxy.example.com"
-        );
-        assert_eq!(
-            mask_url("https://user:pass@proxy.example.com"),
-            "https://proxy.example.com"
-        );
     }
 
     #[test]
