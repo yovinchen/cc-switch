@@ -4,7 +4,6 @@
 
 use super::{
     forwarder::ActiveConnectionGuard,
-    handler_config::{StreamUsageEventFilter, UsageParserConfig},
     handler_context::RequestContext,
     hyper_client::ProxyResponse,
     server::ProxyState,
@@ -15,7 +14,7 @@ use super::{
 use crate::proxy_core::{
     decode_response_body, get_content_encoding, strip_hop_by_hop_response_headers, ProviderKind,
     ProxyServices, ResponseBodyDecodeStatus, SseEventScanner, SseUsageAccumulator,
-    StreamingTimeoutConfig,
+    StreamUsageEventFilter, StreamingTimeoutConfig, UsageParserConfig,
 };
 use axum::http::header::HeaderMap;
 use axum::response::{IntoResponse, Response};

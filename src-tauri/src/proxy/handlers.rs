@@ -15,9 +15,6 @@ use super::{
         proxy_core_error_to_proxy_error, response_body_parse_error_to_proxy_error,
     },
     forwarder::ActiveConnectionGuard,
-    handler_config::{
-        CLAUDE_PARSER_CONFIG, CODEX_PARSER_CONFIG, GEMINI_PARSER_CONFIG, OPENAI_PARSER_CONFIG,
-    },
     handler_context::RequestContext,
     providers::{
         codex_chat_history::record_responses_sse_stream, get_adapter, get_claude_api_format,
@@ -61,7 +58,8 @@ use crate::proxy_core::{
     ProxyChannelWriteRequest, ProxyEngine, ProxyRequest, ProxyResult, ProxyServices,
     RoutableModelList, RouteGroupChannelInput, RouteGroupListResponse, RouteGroupSourceInput,
     RouteResolveRequest, RouteResolveResponse, TransformedResponseUsageFormat,
-    UpstreamJsonBodySource, UpstreamSseAggregationKind,
+    UpstreamJsonBodySource, UpstreamSseAggregationKind, CLAUDE_PARSER_CONFIG, CODEX_PARSER_CONFIG,
+    GEMINI_PARSER_CONFIG, OPENAI_PARSER_CONFIG,
 };
 use axum::{
     extract::{Path, Query, State},
