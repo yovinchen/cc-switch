@@ -1596,8 +1596,16 @@ impl RequestForwarder {
             crate::claude_desktop_config::map_proxy_request_model(body.clone(), provider)
                 .map_err(|e| ProxyError::InvalidRequest(e.to_string()))?
         } else {
-            let (mapped_body, _original_model, _mapped_model) =
-                super::model_mapper::apply_model_mapping(body.clone(), provider);
+            let mapping =
+                crate::proxy_core::ModelMapping::from_settings_config(&provider.settings_config);
+            let (mapped_body, original_model, mapped_model) =
+                crate::proxy_core::apply_model_mapping_to_body(body.clone(), &mapping);
+            if let Some(message) = crate::proxy_core::model_mapping_log_message(
+                original_model.as_deref(),
+                mapped_model.as_deref(),
+            ) {
+                log::debug!("{message}");
+            }
             mapped_body
         };
 

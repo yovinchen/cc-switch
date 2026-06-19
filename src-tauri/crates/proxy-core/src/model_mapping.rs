@@ -100,6 +100,15 @@ pub fn apply_model_mapping_to_body(
     (body, original_model, None)
 }
 
+pub fn model_mapping_log_message(original: Option<&str>, mapped: Option<&str>) -> Option<String> {
+    match (original, mapped) {
+        (Some(original), Some(mapped)) => {
+            Some(format!("[ModelMapper] 模型映射: {original} \u{2192} {mapped}"))
+        }
+        _ => None,
+    }
+}
+
 pub fn strip_one_m_suffix_for_upstream(model: &str) -> &str {
     let trimmed = model.trim_end();
     let marker = ONE_M_CONTEXT_MARKER.as_bytes();
@@ -197,6 +206,16 @@ mod tests {
     }
 
     #[test]
+    fn maps_fable_to_default_when_specific_mappings_are_missing() {
+        let mapping = ModelMapping {
+            default_model: Some("default-model".to_string()),
+            ..ModelMapping::default()
+        };
+
+        assert_eq!(mapping.map_model("claude-fable-5"), "default-model");
+    }
+
+    #[test]
     fn preserves_original_without_mapping() {
         let mapping = ModelMapping::default();
         let body = json!({"model": "claude-sonnet-4-5"});
@@ -217,6 +236,29 @@ mod tests {
         assert_eq!(result["model"], "sonnet-mapped");
         assert_eq!(original.as_deref(), Some("Claude-SONNET-4-5"));
         assert_eq!(mapped.as_deref(), Some("sonnet-mapped"));
+    }
+
+    #[test]
+    fn body_mapping_ignores_thinking_fields() {
+        let body = json!({
+            "model": "claude-sonnet-4-5",
+            "thinking": {"type": "adaptive"}
+        });
+
+        let (result, _original, mapped) = apply_model_mapping_to_body(body, &mapping());
+
+        assert_eq!(result["model"], "sonnet-mapped");
+        assert_eq!(result["thinking"]["type"], "adaptive");
+        assert_eq!(mapped.as_deref(), Some("sonnet-mapped"));
+    }
+
+    #[test]
+    fn log_message_matches_mapping_result() {
+        assert_eq!(
+            model_mapping_log_message(Some("claude-sonnet"), Some("sonnet-mapped")).as_deref(),
+            Some("[ModelMapper] \u{6A21}\u{578B}\u{6620}\u{5C04}: claude-sonnet \u{2192} sonnet-mapped")
+        );
+        assert!(model_mapping_log_message(Some("claude-sonnet"), None).is_none());
     }
 
     #[test]
