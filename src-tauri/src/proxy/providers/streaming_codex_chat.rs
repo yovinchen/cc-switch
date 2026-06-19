@@ -6,10 +6,13 @@ use crate::proxy_core::{
     append_utf8_safe, canonicalize_tool_arguments_str, chat_delta_reasoning_text,
     chat_usage_to_responses_usage, codex_chat_stream_completed_event,
     codex_chat_stream_content_part_added_event, codex_chat_stream_content_part_done_event,
-    codex_chat_stream_failed_event, codex_chat_stream_output_item_added_event,
-    codex_chat_stream_output_item_done_event, codex_chat_stream_output_text_delta_event,
-    codex_chat_stream_output_text_done_event, codex_chat_stream_reasoning_completed_item,
-    codex_chat_stream_reasoning_in_progress_item,
+    codex_chat_stream_custom_tool_call_input_delta_event,
+    codex_chat_stream_custom_tool_call_input_done_event, codex_chat_stream_failed_event,
+    codex_chat_stream_function_call_arguments_delta_event,
+    codex_chat_stream_function_call_arguments_done_event,
+    codex_chat_stream_output_item_added_event, codex_chat_stream_output_item_done_event,
+    codex_chat_stream_output_text_delta_event, codex_chat_stream_output_text_done_event,
+    codex_chat_stream_reasoning_completed_item, codex_chat_stream_reasoning_in_progress_item,
     codex_chat_stream_reasoning_summary_part_added_event,
     codex_chat_stream_reasoning_summary_part_done_event,
     codex_chat_stream_reasoning_summary_text_delta_event,
@@ -18,7 +21,7 @@ use crate::proxy_core::{
     codex_chat_stream_text_in_progress_item, custom_tool_input_from_chat_arguments,
     extract_chat_sse_error, leading_think_prefix_decision, response_id_from_chat_id,
     response_status_from_finish_reason, response_tool_call_item_from_chat_name,
-    response_tool_call_item_id_from_chat_name, split_leading_think_block, sse_event,
+    response_tool_call_item_id_from_chat_name, split_leading_think_block,
     strip_leading_think_open_tag, strip_sse_field, take_sse_block, CodexToolContext,
     ThinkPrefixDecision,
 };
@@ -432,36 +435,21 @@ impl ChatToResponsesState {
                 &self.tool_context,
             );
 
-            events.push(sse_event(
-                "response.output_item.added",
-                json!({
-                    "type": "response.output_item.added",
-                    "output_index": assigned,
-                    "item": item
-                }),
-            ));
+            events.push(codex_chat_stream_output_item_added_event(assigned, item));
 
             if !pending_arguments.is_empty() && !is_custom_tool {
-                events.push(sse_event(
-                    "response.function_call_arguments.delta",
-                    json!({
-                        "type": "response.function_call_arguments.delta",
-                        "item_id": state.item_id,
-                        "output_index": assigned,
-                        "delta": pending_arguments
-                    }),
+                events.push(codex_chat_stream_function_call_arguments_delta_event(
+                    &state.item_id,
+                    assigned,
+                    &pending_arguments,
                 ));
             }
         } else if !args_delta.is_empty() && !is_custom_tool {
             if let Some(output_index) = output_index {
-                events.push(sse_event(
-                    "response.function_call_arguments.delta",
-                    json!({
-                        "type": "response.function_call_arguments.delta",
-                        "item_id": item_id,
-                        "output_index": output_index,
-                        "delta": args_delta
-                    }),
+                events.push(codex_chat_stream_function_call_arguments_delta_event(
+                    &item_id,
+                    output_index,
+                    &args_delta,
                 ));
             }
         }
@@ -613,14 +601,7 @@ impl ChatToResponsesState {
                     Some(&state.reasoning_content),
                     &self.tool_context,
                 );
-                add_event = Some(sse_event(
-                    "response.output_item.added",
-                    json!({
-                        "type": "response.output_item.added",
-                        "output_index": assigned,
-                        "item": item
-                    }),
-                ));
+                add_event = Some(codex_chat_stream_output_item_added_event(assigned, item));
             }
 
             if let Some(event) = add_event {
@@ -648,44 +629,25 @@ impl ChatToResponsesState {
             if is_custom_tool {
                 let input = custom_tool_input_from_chat_arguments(&arguments);
                 if !input.is_empty() {
-                    events.push(sse_event(
-                        "response.custom_tool_call_input.delta",
-                        json!({
-                            "type": "response.custom_tool_call_input.delta",
-                            "item_id": state.item_id,
-                            "output_index": output_index,
-                            "delta": input.clone()
-                        }),
+                    events.push(codex_chat_stream_custom_tool_call_input_delta_event(
+                        &state.item_id,
+                        output_index,
+                        &input,
                     ));
                 }
-                events.push(sse_event(
-                    "response.custom_tool_call_input.done",
-                    json!({
-                        "type": "response.custom_tool_call_input.done",
-                        "item_id": state.item_id,
-                        "output_index": output_index,
-                        "input": input
-                    }),
+                events.push(codex_chat_stream_custom_tool_call_input_done_event(
+                    &state.item_id,
+                    output_index,
+                    &input,
                 ));
             } else {
-                events.push(sse_event(
-                    "response.function_call_arguments.done",
-                    json!({
-                        "type": "response.function_call_arguments.done",
-                        "item_id": state.item_id,
-                        "output_index": output_index,
-                        "arguments": arguments
-                    }),
+                events.push(codex_chat_stream_function_call_arguments_done_event(
+                    &state.item_id,
+                    output_index,
+                    &arguments,
                 ));
             }
-            events.push(sse_event(
-                "response.output_item.done",
-                json!({
-                    "type": "response.output_item.done",
-                    "output_index": output_index,
-                    "item": item
-                }),
-            ));
+            events.push(codex_chat_stream_output_item_done_event(output_index, item));
         }
 
         events

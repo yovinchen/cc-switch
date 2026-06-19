@@ -2334,6 +2334,70 @@ pub fn codex_chat_stream_content_part_done_event(
     )
 }
 
+pub fn codex_chat_stream_function_call_arguments_delta_event(
+    item_id: &str,
+    output_index: u32,
+    delta: &str,
+) -> Bytes {
+    sse_event(
+        "response.function_call_arguments.delta",
+        json!({
+            "type": "response.function_call_arguments.delta",
+            "item_id": item_id,
+            "output_index": output_index,
+            "delta": delta
+        }),
+    )
+}
+
+pub fn codex_chat_stream_function_call_arguments_done_event(
+    item_id: &str,
+    output_index: u32,
+    arguments: &str,
+) -> Bytes {
+    sse_event(
+        "response.function_call_arguments.done",
+        json!({
+            "type": "response.function_call_arguments.done",
+            "item_id": item_id,
+            "output_index": output_index,
+            "arguments": arguments
+        }),
+    )
+}
+
+pub fn codex_chat_stream_custom_tool_call_input_delta_event(
+    item_id: &str,
+    output_index: u32,
+    delta: &str,
+) -> Bytes {
+    sse_event(
+        "response.custom_tool_call_input.delta",
+        json!({
+            "type": "response.custom_tool_call_input.delta",
+            "item_id": item_id,
+            "output_index": output_index,
+            "delta": delta
+        }),
+    )
+}
+
+pub fn codex_chat_stream_custom_tool_call_input_done_event(
+    item_id: &str,
+    output_index: u32,
+    input: &str,
+) -> Bytes {
+    sse_event(
+        "response.custom_tool_call_input.done",
+        json!({
+            "type": "response.custom_tool_call_input.done",
+            "item_id": item_id,
+            "output_index": output_index,
+            "input": input
+        }),
+    )
+}
+
 pub fn codex_chat_stream_failed_event(
     mut response: Value,
     message: impl Into<String>,
@@ -4079,6 +4143,31 @@ mod tests {
         assert!(combined.contains("event: response.output_item.done"));
         assert!(combined.contains("\"item_id\":\"resp_1_msg\""));
         assert!(combined.contains("\"content_index\":0"));
+    }
+
+    #[test]
+    fn codex_chat_stream_tool_argument_events_use_responses_shape() {
+        let function_delta =
+            codex_chat_stream_function_call_arguments_delta_event("fc_call_1", 2, "{\"a\":");
+        let function_done =
+            codex_chat_stream_function_call_arguments_done_event("fc_call_1", 2, "{\"a\":1}");
+        let custom_delta =
+            codex_chat_stream_custom_tool_call_input_delta_event("ctc_call_2", 3, "ls");
+        let custom_done =
+            codex_chat_stream_custom_tool_call_input_done_event("ctc_call_2", 3, "ls -la");
+
+        let combined = [function_delta, function_done, custom_delta, custom_done].concat();
+        let combined = std::str::from_utf8(&combined).expect("events utf8");
+
+        assert!(combined.contains("event: response.function_call_arguments.delta"));
+        assert!(combined.contains("\"type\":\"response.function_call_arguments.delta\""));
+        assert!(combined.contains("\"delta\":\"{\\\"a\\\":\""));
+        assert!(combined.contains("event: response.function_call_arguments.done"));
+        assert!(combined.contains("\"arguments\":\"{\\\"a\\\":1}\""));
+        assert!(combined.contains("event: response.custom_tool_call_input.delta"));
+        assert!(combined.contains("\"delta\":\"ls\""));
+        assert!(combined.contains("event: response.custom_tool_call_input.done"));
+        assert!(combined.contains("\"input\":\"ls -la\""));
     }
 
     #[test]
