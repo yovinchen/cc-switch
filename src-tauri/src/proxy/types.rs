@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-pub use crate::proxy_core::{ProviderHealth, ProxyTakeoverStatus};
+pub use crate::proxy_core::{ProviderHealth, ProxyServerInfo, ProxyTakeoverStatus};
 
 /// 代理服务器配置
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -115,14 +115,6 @@ pub struct ActiveTarget {
     pub public_model: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub upstream_model: Option<String>,
-}
-
-/// 代理服务器信息
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ProxyServerInfo {
-    pub address: String,
-    pub port: u16,
-    pub started_at: String,
 }
 
 /// API 格式类型（预留，当前不需要格式转换）

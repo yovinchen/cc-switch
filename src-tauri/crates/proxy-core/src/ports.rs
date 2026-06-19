@@ -243,6 +243,13 @@ pub struct ProxyRuntimeStatus {
     pub active_targets: Vec<CurrentRouteTarget>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ProxyServerInfo {
+    pub address: String,
+    pub port: u16,
+    pub started_at: String,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
 pub struct ProxyTakeoverStatus {
     pub claude: bool,
@@ -1480,7 +1487,7 @@ mod tests {
         CurrentRouteProviderSummaryInput, CurrentRouteResponse, CurrentRouteTarget, GroupListQuery,
         HealthCheckResponse, ModelCatalog, ProviderHealth, ProviderListResponse, ProviderSpec,
         ProviderSummaryInput, ProxyChannelModelWriteRequest, ProxyChannelModelsReplaceRequest,
-        ProxyChannelPatchRequest, ProxyChannelWriteRequest, ProxyRuntimeStatus,
+        ProxyChannelPatchRequest, ProxyChannelWriteRequest, ProxyRuntimeStatus, ProxyServerInfo,
         ProxyStatusResponse, ProxyTakeoverStatus,
         RouteGroupListResponse, RouteGroupSourceInput, RouteResolveResponse,
     };
@@ -1787,6 +1794,26 @@ mod tests {
         assert_eq!(value["active_targets"][0]["appType"], "claude");
         assert_eq!(value["active_targets"][0]["providerName"], "Provider A");
         assert_eq!(value["active_targets"][0]["channelId"], "channel-a");
+    }
+
+    #[test]
+    fn proxy_server_info_preserves_tauri_command_shape() {
+        let info = ProxyServerInfo {
+            address: "127.0.0.1".to_string(),
+            port: 15721,
+            started_at: "2026-06-19T00:00:00Z".to_string(),
+        };
+
+        let value = serde_json::to_value(info).expect("serialize proxy server info");
+
+        assert_eq!(
+            value,
+            json!({
+                "address": "127.0.0.1",
+                "port": 15721,
+                "started_at": "2026-06-19T00:00:00Z"
+            })
+        );
     }
 
     #[test]
