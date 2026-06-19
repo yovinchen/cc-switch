@@ -147,7 +147,7 @@
 136. Bedrock thinking optimizer 的 haiku skip、opus/sonnet adaptive thinking、legacy budget 注入和 anthropic_beta 去重规则已迁入 `proxy-core::thinking_optimizer`；host 只负责 `OptimizerConfig` 投影和原日志格式。
 137. 客户端请求格式识别（Claude/Codex/OpenAI/Gemini/Gemini CLI）和 Claude/Codex session id 提取优先级已迁入 `proxy-core::session`；host `session` 只保留 `ProxySession` 生命周期对象和 UUID 生成适配，调用方直接引用 core session 类型。
 138. 代理日志错误码契约（CB/SRV/FWD/FO/RSP/USG）已迁入 `proxy-core::log_codes`；host `log_codes` 兼容模块已删除，调用方统一直接引用 core 日志码。
-139. 媒体图片块检测/替换、text-only 模型启发式、channel/provider model catalog 显式图片能力判断、unsupported image 错误文本识别和 unsupported image marker 常量已迁入 `proxy-core::request_media`；host `media_sanitizer` 仅保留 `Provider.settings_config` 与 `ProxyError` 适配。
+139. 媒体图片块检测/替换、text-only 模型启发式、channel/provider model catalog 显式图片能力判断、unsupported image 错误文本识别和 unsupported image marker 常量已迁入 `proxy-core::request_media`；host 调用方直接引用 core，`ProxyError` 只在 forwarder 调用点适配为 status/body 事实。
 140. 请求体私有字段递归过滤和白名单过滤已迁入 `proxy-core::request_body`；host `body_filter` 兼容模块已删除，调用方统一使用 core 的 request body helper。
 141. Claude/OpenAI/Codex/Gemini usage parser 配置表、流式模型提取器绑定和 SSE usage 事件预过滤器绑定已迁入 `proxy-core::usage_config`；host 调用方已直接引用 core parser config/type，`handler_config` 兼容模块已删除。
 142. Codex Chat/Responses 兼容所需的 reasoning_content 拼接、Responses function_call item 组装和 namespace/reasoning 附加规则已迁入 `proxy-core::response_transform`；host 非流式、streaming 与 history 调用方已直接引用 core helper。
@@ -217,7 +217,7 @@
 206. provider kind 的默认 endpoint 与 transform requirement 策略已迁入 `proxy-core::domain::ProviderKind::{default_endpoint,needs_transform}`，host `ProviderType` 仅作为适配器选择枚举并委托 core 处理稳定 provider kind 语义。
 207. thinking signature rectifier 的 request body mutation 纯 facade 已删除；forwarder 直接调用 `proxy-core::{rectify_anthropic_request,normalize_thinking_type}`，host `thinking_rectifier` 只保留 `RectifierConfig` 到 core config 的投影和错误触发判断兼容入口。
 208. thinking budget rectifier 的 request body mutation 纯 facade 已删除；forwarder 直接调用 `proxy-core::rectify_thinking_budget`，host `thinking_budget_rectifier` 只保留 `RectifierConfig` 到 core config 的投影和错误触发判断兼容入口。
-209. media fallback 的图片检测与无条件 marker 替换纯 facade 已删除；forwarder 直接调用 `proxy-core::{contains_image_blocks,replace_image_blocks_with_marker}`，host `media_sanitizer` 只保留 Provider settings 投影和 `ProxyError` 到 core error classifier 的映射。
+209. media fallback 的图片检测与无条件 marker 替换纯 facade 已删除；forwarder 直接调用 `proxy-core::{contains_image_blocks,replace_image_blocks_with_marker}`，图片降级规则继续向 core 收敛。
 210. `[1M]` 本地模型能力标记的上游剥离纯 facade 已删除；forwarder 直接调用 `proxy-core::{strip_one_m_suffix_for_upstream,strip_one_m_suffix_for_upstream_from_body}`，host `model_mapper` 只保留 Provider settings 到 core `ModelMapping` 的投影和映射日志。
 211. session user_id 解析纯 facade 已删除；Copilot/Claude provider 会话缓存键直接调用 `proxy-core::session::parse_session_from_user_id`，host `session` 只保留 HeaderMap/UUID generator 到 core session extraction 的适配入口。
 212. Copilot 多账号复合 ID 纯 facade 已删除；`copilot_auth` 的账号持久化、OAuth 完成和 legacy 迁移路径直接调用 `proxy-core::copilot_composite_account_id`，host 只保留 GitHub 域名错误映射、文件存储和 HTTP 认证流程。
@@ -229,6 +229,7 @@
 218. `services::model_fetch::FetchedModel` host re-export 已删除；模型目录命令层直接引用 `proxy-core::FetchedModel`，host service 不再作为 core 模型目录 DTO 的二次出口。
 219. `proxy::providers::copilot_auth::CopilotModel` host re-export 已删除；Copilot 命令层直接引用 `proxy-core::CopilotModel`，host `copilot_auth` 只保留认证、账号缓存、endpoint/cache 和 HTTP 拉取流程。
 220. thinking signature/budget rectifier 的错误命中判断 wrapper 已删除；forwarder 直接调用 `proxy-core::{should_rectify_thinking_signature,should_rectify_thinking_budget}`，host `RectifierConfig` 仅负责投影 core 中立配置。
+221. `proxy::media_sanitizer` host 模块已删除；forwarder 直接调用 `proxy-core::request_media` 的 text-only 图片替换和 unsupported-image 错误分类，原 host 回归样例迁入 core 测试。
 
 因此，本分支目前已把主要转发入口（Claude Messages、Claude Desktop Messages、Codex Chat Completions、Codex Responses、Codex Responses Compact、Gemini Native）切到 `ProxyEngine`，并开始把管理查询类能力、Codex 客户端模型目录、legacy channel 投影构造、channel 写请求规范化、channel source label single-source、channel dry-run circuit-open response mutation、channel DAO row mapping single-source、管理 API input factory、migration response input factory、route group source factory、托管账号上游安全保护、请求头 transport 策略、请求 header strip policy、provider auth header value validation、Anthropic request header policy、Copilot fingerprint header policy、Codex OAuth session header 构造、ordered request header assembly、upstream auth header finalization、Copilot endpoint selection、forward failure log policy、provider failure retry classification、rectifier retry failover classification、thinking budget/signature rectifier、thinking rectifier result alias deletion、Claude reasoning vendor transform gates、DeepSeek thinking-disabled compatibility、Codex Chat reasoning profile inference、Codex OAuth Responses request contract、OpenAI Responses to Anthropic message assembly、Anthropic Messages to OpenAI Responses request assembly、Anthropic Messages to OpenAI Chat request assembly、OpenAI Chat to Anthropic message assembly、模型目录候选 URL 策略、模型目录响应解析、Codex OAuth 模型目录解析、Copilot live 模型目录解析、Copilot OAuth/GHES 域名规范化、Copilot 多账号复合 ID、Copilot model map host facade 删除、media fallback gate policy、media image downgrade/content detection、media unsupported marker re-export deletion、session/usage core type re-export deletion、model mapper string helper re-export deletion、model mapping settings projection、request body private-field filtering、usage parser configuration、Codex Chat response item assembly、Codex Chat to Responses identity/usage/non-stream response mapping、Codex Responses to Chat request envelope/input traversal/reasoning carryover/reasoning option application、Codex Responses content to Chat content mapping、Codex Responses instructions/system message normalization、Codex Chat tool_search/custom call item assembly、Codex Responses tool definition to Chat tool mapping、Codex Responses function_call to Chat tool_call mapping、Codex Responses tool_choice to Chat function selector mapping、Codex Responses context-aware tool name resolution、Codex Responses tool output to Chat tool message mapping、Codex Chat tool_calls output traversal、Codex Chat assistant message/reasoning output item mapping、Codex Chat tool_call item id prefix policy、Codex tool context indexing/discovery、Codex Chat tool_call spec dispatch、Codex streaming direct core builder usage、Codex Chat SSE helper policy、Codex streaming canonical/think helper direct core usage、Codex Chat history helper direct core usage、host canonical JSON facade deletion、host SSE facade deletion、host Gemini URL facade deletion、host body filter facade deletion、host log code facade deletion、host handler config facade deletion、host usage parser facade deletion、provider Claude transform gate re-export deletion、host Copilot optimizer wrapper deletion、transform core helper re-export deletion、Bedrock optimizer gate/thinking/cache injection policy、session identity extraction、proxy log code contract、usage request-id/model fallback policy、success/error usage record construction、transformed response usage attribution、SSE aggregate fallback diagnostics、非流式 JSON/SSE 解析兜底策略、Codex Chat 上游错误体归一化、Codex proxy error body 分类、转换响应 header 重建策略、转换后 JSON/SSE neutral response 构造、host response transport/error adapter、response parse error adapter、Copilot optimizer session/deterministic ID/fallback/warmup/classification policy、Copilot warmup model body override、Copilot thinking-strip/orphan-sanitize/tool-result-merge mutation、Copilot optimizer production call site、upstream send transport policy、proxy event payload contracts、上游请求体准备/发送策略、上游请求 transport policy、上游请求 URL/query helper、endpoint rewrite policy、route hint inference、Provider env 模型映射、canonical JSON/tool argument 规范化和请求日志写入收敛到 core 可复用接口。app-specific streaming 状态机与实际模型目录 HTTP 拉取仍是宿主层兼容桥；下一阶段需要把剩余 response runtime 编排、模型目录拉取端口和剩余外部管理 API 继续收敛到独立代理模块边界内。
 
@@ -275,7 +276,7 @@
 | 响应处理 | `response_processor.rs` | 流式/非流式响应透传、解压、用量收集、日志落库 |
 | 故障转移 | `provider_router.rs`, `circuit_breaker.rs`, `failover_switch.rs` | provider 选择、熔断状态、故障转移后切换当前 provider |
 | 用量 | `usage/*` | token 解析、计价、请求日志写入 |
-| 工具能力 | `media_sanitizer.rs`, `thinking_*`, `cache_injector.rs` | 请求前/错误后修正、优化；私有字段过滤已进入 `proxy-core::request_body` |
+| 工具能力 | `thinking_optimizer.rs`, `cache_injector.rs` | 请求前/错误后优化日志与宿主配置投影；私有字段过滤和 media fallback 已进入 `proxy-core` |
 
 ### 关键耦合点
 
@@ -538,7 +539,7 @@ src-tauri/
         middleware/
           request_body.rs
           cache_injector.rs
-          media_sanitizer.rs
+          request_media.rs
           thinking_budget_rectifier.rs
           thinking_optimizer.rs
           thinking_rectifier.rs

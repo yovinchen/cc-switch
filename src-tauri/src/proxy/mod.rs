@@ -15,7 +15,6 @@ mod handlers;
 mod health;
 pub mod http_client;
 pub mod hyper_client;
-pub mod media_sanitizer;
 pub mod model_mapper;
 pub mod provider_router;
 pub mod providers;

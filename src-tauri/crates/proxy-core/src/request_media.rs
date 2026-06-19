@@ -529,6 +529,178 @@ mod tests {
     }
 
     #[test]
+    fn unknown_models_keep_images_without_explicit_capability() {
+        let mut body = json!({
+            "model": "unknown-model",
+            "messages": [{
+                "role": "user",
+                "content": [
+                    { "type": "image", "source": { "type": "base64", "media_type": "image/png", "data": "abc" } }
+                ]
+            }]
+        });
+
+        let count = replace_images_for_text_only_model(&mut body, &json!({}), true);
+
+        assert_eq!(count, 0);
+        assert_eq!(body["messages"][0]["content"][0]["type"], "image");
+    }
+
+    #[test]
+    fn curated_text_only_models_replace_chat_image_url_blocks() {
+        let mut body = json!({
+            "model": "deepseek-v4-flash",
+            "messages": [{
+                "role": "user",
+                "content": [
+                    { "type": "text", "text": "look" },
+                    { "type": "image_url", "image_url": { "url": "data:image/png;base64,abc" } }
+                ]
+            }]
+        });
+
+        let count = replace_images_for_text_only_model(&mut body, &json!({}), true);
+
+        assert_eq!(count, 1);
+        assert_eq!(body["messages"][0]["content"][1]["type"], "text");
+        assert_eq!(
+            body["messages"][0]["content"][1]["text"],
+            UNSUPPORTED_IMAGE_MARKER
+        );
+    }
+
+    #[test]
+    fn curated_text_only_models_replace_responses_input_images() {
+        let mut body = json!({
+            "model": "deepseek-v4-flash",
+            "input": [{
+                "role": "user",
+                "content": [
+                    { "type": "input_text", "text": "look" },
+                    { "type": "input_image", "image_url": "data:image/png;base64,abc" }
+                ]
+            }]
+        });
+
+        let count = replace_images_for_text_only_model(&mut body, &json!({}), true);
+
+        assert_eq!(count, 1);
+        assert_eq!(body["input"][0]["content"][1]["type"], "input_text");
+        assert_eq!(
+            body["input"][0]["content"][1]["text"],
+            UNSUPPORTED_IMAGE_MARKER
+        );
+    }
+
+    #[test]
+    fn explicit_capabilities_can_override_curated_model_assumptions() {
+        let settings = json!({
+            "modelCatalog": {
+                "models": [
+                    { "model": "deepseek-v4-pro", "modalities": { "input": ["text", "image"] } }
+                ]
+            }
+        });
+        let mut body = json!({
+            "model": "deepseek-v4-pro",
+            "messages": [{
+                "role": "user",
+                "content": [
+                    { "type": "image", "source": { "type": "base64", "media_type": "image/png", "data": "abc" } }
+                ]
+            }]
+        });
+
+        let count = replace_images_for_text_only_model(&mut body, &settings, true);
+
+        assert_eq!(count, 0);
+        assert_eq!(body["messages"][0]["content"][0]["type"], "image");
+    }
+
+    #[test]
+    fn explicit_text_capability_can_override_visual_model_ids() {
+        let settings = json!({
+            "models": [
+                { "id": "gpt-4o", "input": ["text"] }
+            ]
+        });
+        let mut body = json!({
+            "model": "gpt-4o",
+            "messages": [{
+                "role": "user",
+                "content": [
+                    { "type": "image", "source": { "type": "base64", "media_type": "image/png", "data": "abc" } }
+                ]
+            }]
+        });
+
+        let count = replace_images_for_text_only_model(&mut body, &settings, true);
+
+        assert_eq!(count, 1);
+        assert_eq!(
+            body["messages"][0]["content"][0]["text"],
+            UNSUPPORTED_IMAGE_MARKER
+        );
+    }
+
+    #[test]
+    fn curated_model_list_distinguishes_known_text_only_and_multimodal_ids() {
+        let mut mimo_pro = json!({
+            "model": "xiaomi-mimo-token-plan/mimo-v2.5-pro",
+            "messages": [{
+                "role": "user",
+                "content": [
+                    { "type": "image", "source": { "type": "base64", "media_type": "image/png", "data": "abc" } }
+                ]
+            }]
+        });
+        let mut mimo_multimodal = json!({
+            "model": "xiaomi-mimo-token-plan/mimo-v2.5",
+            "messages": [{
+                "role": "user",
+                "content": [
+                    { "type": "image", "source": { "type": "base64", "media_type": "image/png", "data": "abc" } }
+                ]
+            }]
+        });
+        let mut kimi_multimodal = json!({
+            "model": "kimi/kimi-k2.6",
+            "messages": [{
+                "role": "user",
+                "content": [
+                    { "type": "image", "source": { "type": "base64", "media_type": "image/png", "data": "abc" } }
+                ]
+            }]
+        });
+        let mut qwen_coder = json!({
+            "model": "therouter/qwen/qwen3-coder-480b",
+            "messages": [{
+                "role": "user",
+                "content": [
+                    { "type": "image", "source": { "type": "base64", "media_type": "image/png", "data": "abc" } }
+                ]
+            }]
+        });
+
+        assert_eq!(
+            replace_images_for_text_only_model(&mut mimo_pro, &json!({}), true),
+            1
+        );
+        assert_eq!(
+            replace_images_for_text_only_model(&mut mimo_multimodal, &json!({}), true),
+            0
+        );
+        assert_eq!(
+            replace_images_for_text_only_model(&mut kimi_multimodal, &json!({}), true),
+            0
+        );
+        assert_eq!(
+            replace_images_for_text_only_model(&mut qwen_coder, &json!({}), true),
+            1
+        );
+    }
+
+    #[test]
     fn marker_replacement_preserves_cache_control_and_nested_blocks() {
         let mut body = json!({
             "messages": [{
@@ -568,6 +740,12 @@ mod tests {
         assert!(!is_unsupported_image_error(
             500,
             Some(r#"{"error":{"message":"This model does not support image input"}}"#)
+        ));
+        assert!(is_unsupported_image_error(
+            400,
+            Some(
+                r#"{"error":{"message":"Failed to deserialize: unknown variant image_url, expected text"}}"#
+            )
         ));
     }
 }

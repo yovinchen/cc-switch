@@ -28,8 +28,9 @@ use crate::proxy_core::{
     build_request_started_event_payload, build_retryable_forward_failure_log,
     build_terminal_forward_failure_log, build_upstream_auth_headers, categorize_forward_failure,
     classify_copilot_request, contains_image_blocks, is_github_copilot_upstream,
-    is_socks_proxy_url, merge_copilot_tool_results, normalize_thinking_type,
-    rectify_anthropic_request, rectify_thinking_budget, replace_image_blocks_with_marker,
+    is_socks_proxy_url, is_unsupported_image_error, merge_copilot_tool_results,
+    normalize_thinking_type, rectify_anthropic_request, rectify_thinking_budget,
+    replace_image_blocks_with_marker, replace_images_for_text_only_model,
     resolve_copilot_deterministic_interaction_id, resolve_copilot_model_against_ids,
     resolve_copilot_optimizer_session_id, resolve_copilot_request_id_with_fallback,
     resolve_media_prevention_policy, resolve_upstream_request_transport_policy,
@@ -170,9 +171,9 @@ impl RequestForwarder {
         if !policy.should_attempt {
             return 0;
         }
-        let replaced_images = super::media_sanitizer::replace_images_for_text_only_model(
+        let replaced_images = replace_images_for_text_only_model(
             body,
-            provider,
+            &provider.settings_config,
             policy.allow_heuristic,
         );
         if replaced_images > 0 {
@@ -213,7 +214,7 @@ impl RequestForwarder {
             request_media_fallback: self.rectifier_config.request_media_fallback,
             already_retried,
             body_has_images: contains_image_blocks(provider_body),
-            unsupported_image_error: super::media_sanitizer::is_unsupported_image_error(error),
+            unsupported_image_error: unsupported_image_error_from_proxy_error(error),
         })
     }
 
@@ -2374,6 +2375,15 @@ fn extract_error_message(error: &ProxyError) -> Option<String> {
     }
 }
 
+fn unsupported_image_error_from_proxy_error(error: &ProxyError) -> bool {
+    match error {
+        ProxyError::UpstreamError { status, body } => {
+            is_unsupported_image_error(*status, body.as_deref())
+        }
+        _ => false,
+    }
+}
+
 fn provider_bedrock_env_flag(provider: &Provider) -> Option<&str> {
     provider
         .settings_config
@@ -3348,7 +3358,7 @@ mod tests {
     }
 
     // ===== P3: forwarder 层 media 开关回归测试 =====
-    // 验证 gate 在 forwarder 这一层的"接线"，而非 media_sanitizer 纯函数本身。
+    // 验证 gate 在 forwarder 这一层的"接线"，而非 request_media 纯函数本身。
 
     fn forwarder_with_rectifier(config: RectifierConfig) -> RequestForwarder {
         let mut fwd = test_forwarder(Duration::from_secs(1), Duration::from_secs(1));
