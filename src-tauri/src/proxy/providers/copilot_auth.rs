@@ -114,11 +114,7 @@ fn normalize_github_domain(raw: &str) -> Result<String, CopilotAuthError> {
 /// 生成复合账号 ID，确保不同 GHES 实例的 user ID 不会冲突。
 /// github.com 账号保持原格式（向后兼容），GHES 账号使用 `domain:user_id` 格式。
 fn composite_account_id(domain: &str, user_id: u64) -> String {
-    if domain == DEFAULT_GITHUB_DOMAIN {
-        user_id.to_string()
-    } else {
-        format!("{}:{}", domain, user_id)
-    }
+    crate::proxy_core::copilot_composite_account_id(domain, user_id)
 }
 
 /// Copilot API Header 常量

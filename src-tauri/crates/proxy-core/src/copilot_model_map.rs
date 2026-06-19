@@ -116,6 +116,19 @@ pub fn normalize_github_domain(raw: &str) -> Result<String, String> {
     Ok(normalized)
 }
 
+/// Build a stable Copilot account id.
+///
+/// Public github.com accounts keep their historical numeric id. GHES accounts
+/// include the normalized domain so the same user id from different instances
+/// cannot collide.
+pub fn copilot_composite_account_id(domain: &str, user_id: u64) -> String {
+    if domain == "github.com" {
+        user_id.to_string()
+    } else {
+        format!("{domain}:{user_id}")
+    }
+}
+
 fn ends_with_ascii_ci(haystack: &[u8], needle: &[u8]) -> bool {
     haystack.len() >= needle.len()
         && haystack[haystack.len() - needle.len()..].eq_ignore_ascii_case(needle)
@@ -411,6 +424,23 @@ mod tests {
         assert!(normalize_github_domain("user@company.ghe.com").is_err());
         assert!(normalize_github_domain("").is_err());
         assert!(normalize_github_domain("   ").is_err());
+    }
+
+    #[test]
+    fn copilot_composite_account_id_preserves_public_github_ids() {
+        assert_eq!(copilot_composite_account_id("github.com", 12345), "12345");
+    }
+
+    #[test]
+    fn copilot_composite_account_id_namespaces_ghes_ids() {
+        assert_eq!(
+            copilot_composite_account_id("company.ghe.com", 12345),
+            "company.ghe.com:12345"
+        );
+        assert_ne!(
+            copilot_composite_account_id("a.ghe.com", 1),
+            copilot_composite_account_id("b.ghe.com", 1)
+        );
     }
 
     fn model(id: &str) -> String {
