@@ -1,71 +1,14 @@
-//! OpenAI Chat Completions SSE -> Anthropic SSE host wrapper.
+//! OpenAI Chat Completions SSE -> Anthropic SSE compatibility export.
 //!
-//! The protocol state machine lives in `proxy-core`; this module keeps only
-//! async stream transport, UTF-8 chunk buffering, and SSE block parsing.
+//! The stream transport and protocol state machine live in `proxy-core`.
 
-use crate::proxy_core::{
-    append_utf8_safe, strip_sse_field, take_sse_block, OpenAiChatToAnthropicSseState,
-};
-use bytes::Bytes;
-use futures::stream::{Stream, StreamExt};
-
-/// 创建 Anthropic SSE 流
-pub fn create_anthropic_sse_stream<E: std::error::Error + Send + 'static>(
-    stream: impl Stream<Item = Result<Bytes, E>> + Send + 'static,
-) -> impl Stream<Item = Result<Bytes, std::io::Error>> + Send {
-    async_stream::stream! {
-        let mut buffer = String::new();
-        let mut utf8_remainder: Vec<u8> = Vec::new();
-        let mut state = OpenAiChatToAnthropicSseState::new();
-        let mut stream_ended_with_error = false;
-
-        tokio::pin!(stream);
-
-        while let Some(chunk) = stream.next().await {
-            match chunk {
-                Ok(bytes) => {
-                    append_utf8_safe(&mut buffer, &mut utf8_remainder, &bytes);
-
-                    while let Some(line) = take_sse_block(&mut buffer) {
-                        if line.trim().is_empty() {
-                            continue;
-                        }
-
-                        for l in line.lines() {
-                            if let Some(data) = strip_sse_field(l, "data") {
-                                if data.trim() == "[DONE]" {
-                                    log::debug!("[Claude/OpenRouter] <<< OpenAI SSE: [DONE]");
-                                }
-                                for event in state.handle_data(data) {
-                                    yield Ok(event);
-                                }
-                            }
-                        }
-                    }
-                }
-                Err(e) => {
-                    log::error!("Stream error: {e}");
-                    stream_ended_with_error = true;
-                    yield Ok(OpenAiChatToAnthropicSseState::stream_error_event(
-                        format!("Stream error: {e}"),
-                    ));
-                    break;
-                }
-            }
-        }
-
-        if !stream_ended_with_error {
-            for event in state.finish() {
-                yield Ok(event);
-            }
-        }
-    }
-}
+pub use crate::proxy_core::create_openai_chat_to_anthropic_sse_stream as create_anthropic_sse_stream;
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::proxy_core::map_openai_chat_finish_reason_to_anthropic;
+    use crate::proxy_core::{map_openai_chat_finish_reason_to_anthropic, strip_sse_field};
+    use bytes::Bytes;
     use futures::stream;
     use futures::StreamExt;
     use serde_json::Value;

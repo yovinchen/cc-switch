@@ -7,9 +7,15 @@ use crate::{
     usage::build_anthropic_usage_from_openai_chat_tokens,
 };
 use bytes::Bytes;
+use futures::{stream as futures_stream, Stream, StreamExt};
 use serde::Deserialize;
 use serde_json::{json, Value};
-use std::collections::{HashMap, HashSet};
+use std::{
+    collections::{HashMap, HashSet, VecDeque},
+    error::Error,
+    io,
+    pin::Pin,
+};
 
 const INFINITE_WHITESPACE_THRESHOLD: usize = 500;
 
@@ -104,6 +110,83 @@ pub struct OpenAiChatToAnthropicSseState {
     current_non_tool_block_index: Option<u32>,
     tool_blocks_by_index: HashMap<usize, ToolBlockState>,
     open_tool_block_indices: HashSet<u32>,
+}
+
+struct OpenAiChatToAnthropicSseStreamContext<S> {
+    stream: Pin<Box<S>>,
+    buffer: String,
+    utf8_remainder: Vec<u8>,
+    state: OpenAiChatToAnthropicSseState,
+    pending_events: VecDeque<Bytes>,
+    finished: bool,
+}
+
+/// Convert an OpenAI Chat Completions SSE byte stream into Anthropic SSE bytes.
+///
+/// This owns only byte/SSE transport mechanics; protocol decisions remain in
+/// `OpenAiChatToAnthropicSseState`.
+pub fn create_openai_chat_to_anthropic_sse_stream<S, E>(
+    stream: S,
+) -> impl Stream<Item = Result<Bytes, io::Error>> + Send
+where
+    S: Stream<Item = Result<Bytes, E>> + Send + 'static,
+    E: Error + Send + 'static,
+{
+    let context = OpenAiChatToAnthropicSseStreamContext {
+        stream: Box::pin(stream),
+        buffer: String::new(),
+        utf8_remainder: Vec::new(),
+        state: OpenAiChatToAnthropicSseState::new(),
+        pending_events: VecDeque::new(),
+        finished: false,
+    };
+
+    futures_stream::unfold(context, |mut context| async move {
+        loop {
+            if let Some(event) = context.pending_events.pop_front() {
+                return Some((Ok(event), context));
+            }
+
+            if context.finished {
+                return None;
+            }
+
+            match context.stream.as_mut().next().await {
+                Some(Ok(bytes)) => {
+                    crate::append_utf8_safe(
+                        &mut context.buffer,
+                        &mut context.utf8_remainder,
+                        &bytes,
+                    );
+
+                    while let Some(block) = crate::take_sse_block(&mut context.buffer) {
+                        if block.trim().is_empty() {
+                            continue;
+                        }
+
+                        for line in block.lines() {
+                            if let Some(data) = crate::strip_sse_field(line, "data") {
+                                context.pending_events.extend(context.state.handle_data(data));
+                            }
+                        }
+                    }
+                }
+                Some(Err(error)) => {
+                    context.finished = true;
+                    return Some((
+                        Ok(OpenAiChatToAnthropicSseState::stream_error_event(format!(
+                            "Stream error: {error}"
+                        ))),
+                        context,
+                    ));
+                }
+                None => {
+                    context.finished = true;
+                    context.pending_events.extend(context.state.finish());
+                }
+            }
+        }
+    })
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
