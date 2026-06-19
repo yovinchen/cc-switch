@@ -6,9 +6,12 @@ use crate::proxy_core::{
     AppKind, AppSummaryInput, AuthProfileRef, ChannelHealthPolicy, ChannelModelRecord,
     ChannelOverrides, ChannelRecord, ChannelSpec, ChannelStatus, CurrentRouteProviderSummaryInput,
     InterfaceKind, ModelCapabilities, ModelRoute, ProviderKind, ProviderMetadata, ProviderSpec,
-    RetryPolicy, RouteResolveChannelInput, RouteResolveModelInput, UpstreamEndpoint,
+    RetryPolicy, RouteResolveChannelInput, RouteResolveModelInput, SessionIdResult,
+    UpstreamEndpoint,
 };
+use http::HeaderMap;
 use serde_json::{Value, json};
+use uuid::Uuid;
 
 impl From<&AppType> for AppKind {
     fn from(value: &AppType) -> Self {
@@ -292,6 +295,16 @@ pub(crate) fn proxy_channel_records_to_core(
         .collect()
 }
 
+pub(crate) fn extract_proxy_session_id(
+    headers: &HeaderMap,
+    body: &Value,
+    client_format: &str,
+) -> SessionIdResult {
+    crate::proxy_core::extract_session_id_with_generator(headers, body, client_format, || {
+        Uuid::new_v4().to_string()
+    })
+}
+
 fn provider_metadata_without_secrets(provider: &Provider) -> ProviderMetadata {
     let mut labels = Vec::new();
     if provider.in_failover_queue {
@@ -350,6 +363,7 @@ mod tests {
     use super::*;
     use crate::database::ProxyChannelSourceKind;
     use crate::provider::{AuthBinding, AuthBindingSource, ProviderMeta};
+    use crate::proxy_core::SessionIdSource;
 
     #[test]
     fn app_type_conversion_preserves_known_and_custom_names() {
@@ -363,6 +377,21 @@ mod tests {
             AppKind::from(&AppType::OpenClaw),
             AppKind::Custom("openclaw".to_string())
         );
+    }
+
+    #[test]
+    fn host_session_adapter_generates_uuid_when_core_needs_new_session_id() {
+        let headers = HeaderMap::new();
+        let body = json!({
+            "model": "claude-3-5-sonnet",
+            "messages": [{"role": "user", "content": "Hello"}]
+        });
+
+        let result = extract_proxy_session_id(&headers, &body, "claude");
+
+        uuid::Uuid::parse_str(&result.session_id).expect("generated session id should be a UUID");
+        assert_eq!(result.source, SessionIdSource::Generated);
+        assert!(!result.client_provided);
     }
 
     #[test]

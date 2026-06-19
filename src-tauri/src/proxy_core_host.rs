@@ -24,6 +24,7 @@ use crate::proxy_core::{
     SESSION_REQUEST_ID_PREFIX,
 };
 use crate::proxy_core_adapter::{ToProxyCoreChannelSpec, ToProxyCoreProviderSpec};
+use crate::proxy_core_adapter::extract_proxy_session_id;
 use crate::services::usage_stats::is_placeholder_pricing_model;
 use bytes::Bytes;
 use futures::{future::BoxFuture, Stream, StreamExt};
@@ -699,7 +700,7 @@ impl CcSwitchProxyRuntime {
                     .flatten()
             })
             .unwrap_or_default();
-        let session_result = crate::proxy::extract_session_id(&headers, &body, app_type.as_str());
+        let session_result = extract_proxy_session_id(&headers, &body, app_type.as_str());
         let providers = host_providers_for_plan(&self.db, &app_type, &plan)?;
         let attempts = forward_attempts_from_route_plan(&app_type, &providers, &plan);
         if attempts.is_empty() {

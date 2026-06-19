@@ -4,14 +4,13 @@
 
 use crate::app_config::AppType;
 use crate::provider::Provider;
-use crate::proxy::{
-    extract_session_id, forwarder::RequestForwarder, server::ProxyState, ProxyError,
-};
+use crate::proxy::{ProxyError, forwarder::RequestForwarder, server::ProxyState};
 use crate::proxy_core::{
-    extract_gemini_model_from_path, resolve_response_runtime_policy, AppKind, AppProxyConfig,
-    CopilotOptimizerConfig, OptimizerConfig, ProxyServices, RectifierConfig, ResponseRuntimePolicy,
-    ResponseTimeoutConfig, StreamingTimeoutConfig,
+    AppKind, AppProxyConfig, CopilotOptimizerConfig, OptimizerConfig, ProxyServices,
+    RectifierConfig, ResponseRuntimePolicy, ResponseTimeoutConfig, StreamingTimeoutConfig,
+    extract_gemini_model_from_path, resolve_response_runtime_policy,
 };
+use crate::proxy_core_adapter::extract_proxy_session_id;
 use axum::http::HeaderMap;
 use std::time::Instant;
 
@@ -124,7 +123,7 @@ impl RequestContext {
             .to_string();
 
         // 提取 Session ID
-        let session_result = extract_session_id(headers, body, app_type_str);
+        let session_result = extract_proxy_session_id(headers, body, app_type_str);
         let session_id = session_result.session_id.clone();
 
         log::debug!(

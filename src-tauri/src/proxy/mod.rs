@@ -18,7 +18,6 @@ pub(crate) mod response_adapter;
 pub mod response_processor;
 pub(crate) mod route_attempt;
 pub(crate) mod server;
-pub mod session;
 pub(crate) mod switch_lock;
 pub mod usage;
 pub(crate) mod usage_sink_bridge;
@@ -33,5 +32,3 @@ pub use error::ProxyError;
 pub(crate) use forwarder::{ForwardError, ForwardResult, RequestForwarder};
 #[allow(unused_imports)]
 pub use provider_router::ProviderRouter;
-#[allow(unused_imports)]
-pub use session::extract_session_id;
