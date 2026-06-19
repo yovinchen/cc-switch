@@ -4,7 +4,7 @@ use crate::proxy_core::CurrentRouteTarget;
 
 pub use crate::proxy_core::{
     AppProxyConfig, CopilotOptimizerConfig, GlobalProxyConfig, OptimizerConfig, ProxyConfig,
-    ProxyTakeoverStatus, RectifierConfig,
+    RectifierConfig,
 };
 
 /// 代理服务器状态
