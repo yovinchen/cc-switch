@@ -21,7 +21,8 @@ use crate::proxy_core::{
     anthropic_to_openai_chat_request, anthropic_to_openai_responses_request,
     claude_api_format_needs_transform, normalize_anthropic_tool_thinking_history,
     openai_chat_to_anthropic_message, openai_responses_to_anthropic_message,
-    resolve_claude_api_format, should_normalize_anthropic_tool_thinking_history,
+    resolve_claude_api_format, resolve_claude_responses_prompt_cache_key,
+    should_normalize_anthropic_tool_thinking_history,
     should_preserve_reasoning_content_for_openai_chat,
 };
 use serde_json::Value;
@@ -90,53 +91,30 @@ pub fn transform_claude_request_for_api_format(
             .get("baseUrl")
             .and_then(|v| v.as_str())
             .is_some_and(|u| u.contains("githubcopilot.com"));
-    let session_cache_key: Option<String> = if is_copilot {
-        let metadata = body.get("metadata");
-        // Session 提取优先级（与 forwarder 和 session.rs 统一）：
-        //   1. metadata.user_id 中的 _session_ 后缀
-        //   2. metadata.session_id（直接字段）
-        metadata
-            .and_then(|m| m.get("user_id"))
-            .and_then(|v| v.as_str())
-            .and_then(crate::proxy_core::session::parse_session_from_user_id)
-            .or_else(|| {
-                metadata
-                    .and_then(|m| m.get("session_id"))
-                    .and_then(|v| v.as_str())
-                    .filter(|s| !s.is_empty())
-                    .map(|s| s.to_string())
-            })
-    } else {
-        session_id
-            .map(str::trim)
-            .filter(|s| !s.is_empty())
-            .map(ToString::to_string)
-    };
-
     let explicit_cache_key = provider
         .meta
         .as_ref()
         .and_then(|m| m.prompt_cache_key.as_deref());
-    let (cache_key, cache_key_source) = if let Some(key) = explicit_cache_key {
-        (Some(key), "explicit")
-    } else if let Some(key) = session_cache_key.as_deref() {
-        (Some(key), "session")
-    } else {
-        (None, "none")
-    };
+    let cache_key_resolution = resolve_claude_responses_prompt_cache_key(
+        &body,
+        explicit_cache_key,
+        session_id,
+        is_copilot,
+    );
     match api_format {
         "openai_responses" => {
             log::debug!(
                 "[Cache] OpenAI Responses prompt_cache_key source={cache_key_source}, provider={}, codex_oauth={is_codex_oauth}, has_key={}",
                 provider.id,
-                cache_key.is_some()
+                cache_key_resolution.key.is_some(),
+                cache_key_source = cache_key_resolution.source.as_str()
             );
             // Codex OAuth (ChatGPT Plus/Pro 反代) 需要在请求体里强制 store: false
             // + include: ["reasoning.encrypted_content"]，由 transform 层统一处理。
             let codex_fast_mode = provider.codex_fast_mode_enabled();
             Ok(anthropic_to_openai_responses_request(
                 &body,
-                cache_key,
+                cache_key_resolution.key.as_deref(),
                 is_codex_oauth,
                 codex_fast_mode,
             ))

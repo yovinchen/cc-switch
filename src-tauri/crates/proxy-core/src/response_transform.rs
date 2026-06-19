@@ -10,6 +10,7 @@ use crate::{
         map_codex_chat_reasoning_effort, resolve_reasoning_effort,
         strip_leading_anthropic_billing_header, supports_reasoning_effort,
     },
+    session::parse_session_from_user_id,
     usage::{
         build_anthropic_usage_from_openai_chat, build_anthropic_usage_from_openai_responses,
     },
@@ -54,6 +55,29 @@ const EXTRA_CHAT_PASSTHROUGH_FIELDS: &[&str] = &[
     "top_logprobs",
     "user",
 ];
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ClaudePromptCacheKeySource {
+    Explicit,
+    Session,
+    None,
+}
+
+impl ClaudePromptCacheKeySource {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Explicit => "explicit",
+            Self::Session => "session",
+            Self::None => "none",
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ClaudePromptCacheKeyResolution {
+    pub key: Option<String>,
+    pub source: ClaudePromptCacheKeySource,
+}
 
 /// Provider-neutral Codex Responses -> Chat Completions reasoning capability hints.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -624,6 +648,58 @@ pub fn anthropic_to_openai_responses_request(
     }
 
     result
+}
+
+pub fn resolve_claude_responses_prompt_cache_key(
+    body: &Value,
+    explicit_cache_key: Option<&str>,
+    session_id: Option<&str>,
+    is_copilot: bool,
+) -> ClaudePromptCacheKeyResolution {
+    if let Some(key) = explicit_cache_key
+        .map(str::trim)
+        .filter(|key| !key.is_empty())
+    {
+        return ClaudePromptCacheKeyResolution {
+            key: Some(key.to_string()),
+            source: ClaudePromptCacheKeySource::Explicit,
+        };
+    }
+
+    let session_key = if is_copilot {
+        body.get("metadata")
+            .and_then(|metadata| {
+                metadata
+                    .get("user_id")
+                    .and_then(Value::as_str)
+                    .and_then(parse_session_from_user_id)
+                    .or_else(|| {
+                        metadata
+                            .get("session_id")
+                            .and_then(Value::as_str)
+                            .map(str::trim)
+                            .filter(|session| !session.is_empty())
+                            .map(ToString::to_string)
+                    })
+            })
+    } else {
+        session_id
+            .map(str::trim)
+            .filter(|session| !session.is_empty())
+            .map(ToString::to_string)
+    };
+
+    if let Some(key) = session_key {
+        ClaudePromptCacheKeyResolution {
+            key: Some(key),
+            source: ClaudePromptCacheKeySource::Session,
+        }
+    } else {
+        ClaudePromptCacheKeyResolution {
+            key: None,
+            source: ClaudePromptCacheKeySource::None,
+        }
+    }
 }
 
 fn anthropic_messages_to_openai_responses_input(messages: &[Value]) -> Vec<Value> {
@@ -4476,6 +4552,78 @@ mod tests {
         assert_eq!(result["tools"], json!([]));
         assert_eq!(result["parallel_tool_calls"], false);
         assert_eq!(result["stream"], true);
+    }
+
+    #[test]
+    fn claude_responses_prompt_cache_key_prefers_explicit_key() {
+        let body = json!({
+            "metadata": {
+                "user_id": "user_session_from_metadata",
+                "session_id": "metadata-session"
+            }
+        });
+
+        let resolved = resolve_claude_responses_prompt_cache_key(
+            &body,
+            Some(" explicit-cache "),
+            Some("session-123"),
+            true,
+        );
+
+        assert_eq!(resolved.key.as_deref(), Some("explicit-cache"));
+        assert_eq!(resolved.source, ClaudePromptCacheKeySource::Explicit);
+    }
+
+    #[test]
+    fn claude_responses_prompt_cache_key_uses_non_copilot_session() {
+        let body = json!({
+            "metadata": {
+                "user_id": "user_session_ignored",
+                "session_id": "also-ignored"
+            }
+        });
+
+        let resolved =
+            resolve_claude_responses_prompt_cache_key(&body, None, Some(" session-123 "), false);
+
+        assert_eq!(resolved.key.as_deref(), Some("session-123"));
+        assert_eq!(resolved.source, ClaudePromptCacheKeySource::Session);
+    }
+
+    #[test]
+    fn claude_responses_prompt_cache_key_uses_copilot_user_id_session() {
+        let body = json!({
+            "metadata": {
+                "user_id": "user_42_session_metadata-session",
+                "session_id": "fallback-session"
+            }
+        });
+
+        let resolved =
+            resolve_claude_responses_prompt_cache_key(&body, None, Some("ignored"), true);
+
+        assert_eq!(resolved.key.as_deref(), Some("metadata-session"));
+        assert_eq!(resolved.source, ClaudePromptCacheKeySource::Session);
+    }
+
+    #[test]
+    fn claude_responses_prompt_cache_key_falls_back_to_copilot_metadata_session_id() {
+        let body = json!({
+            "metadata": {
+                "user_id": "without-marker",
+                "session_id": " metadata-session "
+            }
+        });
+
+        let resolved =
+            resolve_claude_responses_prompt_cache_key(&body, None, Some("ignored"), true);
+
+        assert_eq!(resolved.key.as_deref(), Some("metadata-session"));
+        assert_eq!(resolved.source, ClaudePromptCacheKeySource::Session);
+
+        let missing = resolve_claude_responses_prompt_cache_key(&json!({}), None, None, true);
+        assert_eq!(missing.key, None);
+        assert_eq!(missing.source, ClaudePromptCacheKeySource::None);
     }
 
     #[test]
