@@ -479,9 +479,7 @@ impl crate::proxy_core::ChannelHealthStore for CcSwitchHealthStore {
                 .db
                 .get_proxy_channel_app_type(channel_id)
                 .map_err(|error| app_error("lookup channel app", error))?
-                .ok_or_else(|| {
-                    ProxyCoreError::InvalidRequest(format!("channel not found: {channel_id}"))
-                })?;
+                .ok_or_else(|| crate::proxy_core::channel_not_found_error(channel_id))?;
             self.router
                 .reset_channel_breaker(channel_id, &app_type)
                 .await

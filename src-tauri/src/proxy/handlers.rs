@@ -325,17 +325,18 @@ pub async fn get_proxy_channel(
     State(state): State<ProxyState>,
     Path(channel_id): Path<String>,
 ) -> Result<Json<ChannelRecordResponse<ChannelRecord>>, ProxyError> {
-    let channel_id = ChannelPathRequest::from_path(channel_id)
-        .map_err(management_api_error_to_proxy_error)?
-        .channel_id;
+    let request =
+        ChannelPathRequest::from_path(channel_id).map_err(management_api_error_to_proxy_error)?;
     let channel = state
         .db
-        .get_proxy_channel(&channel_id)
+        .get_proxy_channel(&request.channel_id)
         .map_err(|e| ProxyError::DatabaseError(e.to_string()))?
-        .ok_or_else(|| ProxyError::InvalidRequest(format!("channel not found: {channel_id}")))?;
-    Ok(Json(ChannelRecordResponse::new(
-        channel.to_proxy_core_channel_record(),
-    )))
+        .map(|channel| channel.to_proxy_core_channel_record());
+    Ok(Json(
+        request
+            .record_response(channel)
+            .map_err(management_api_error_to_proxy_error)?,
+    ))
 }
 
 /// PATCH /proxy/v1/channels/{channel_id}
@@ -344,17 +345,18 @@ pub async fn update_proxy_channel(
     Path(channel_id): Path<String>,
     Json(request): Json<ProxyChannelPatchRequest>,
 ) -> Result<Json<ChannelRecordResponse<ChannelRecord>>, ProxyError> {
-    let channel_id = ChannelPathRequest::from_path(channel_id)
-        .map_err(management_api_error_to_proxy_error)?
-        .channel_id;
+    let path_request =
+        ChannelPathRequest::from_path(channel_id).map_err(management_api_error_to_proxy_error)?;
     let channel = state
         .db
-        .update_proxy_channel(&channel_id, request)
+        .update_proxy_channel(&path_request.channel_id, request)
         .map_err(|e| ProxyError::InvalidRequest(e.to_string()))?
-        .ok_or_else(|| ProxyError::InvalidRequest(format!("channel not found: {channel_id}")))?;
-    Ok(Json(ChannelRecordResponse::new(
-        channel.to_proxy_core_channel_record(),
-    )))
+        .map(|channel| channel.to_proxy_core_channel_record());
+    Ok(Json(
+        path_request
+            .record_response(channel)
+            .map_err(management_api_error_to_proxy_error)?,
+    ))
 }
 
 /// DELETE /proxy/v1/channels/{channel_id}
@@ -377,28 +379,29 @@ pub async fn list_proxy_channel_models(
     State(state): State<ProxyState>,
     Path(channel_id): Path<String>,
 ) -> Result<Json<ChannelModelsResponse<ChannelModelRecord>>, ProxyError> {
-    let channel_id = ChannelPathRequest::from_path(channel_id)
-        .map_err(management_api_error_to_proxy_error)?
-        .channel_id;
-    if state
+    let request =
+        ChannelPathRequest::from_path(channel_id).map_err(management_api_error_to_proxy_error)?;
+    let channel_exists = state
         .db
-        .get_proxy_channel(&channel_id)
+        .get_proxy_channel(&request.channel_id)
         .map_err(|e| ProxyError::DatabaseError(e.to_string()))?
-        .is_none()
-    {
-        return Err(ProxyError::InvalidRequest(format!(
-            "channel not found: {channel_id}"
-        )));
-    }
+        .is_some();
 
-    let models = state
-        .db
-        .list_proxy_channel_models(&channel_id)
-        .map_err(|e| ProxyError::DatabaseError(e.to_string()))?;
-    Ok(Json(ChannelModelsResponse::new(
-        channel_id,
-        channel_model_records_from_host(models),
-    )))
+    let models = if channel_exists {
+        Some(
+            state
+                .db
+                .list_proxy_channel_models(&request.channel_id)
+                .map_err(|e| ProxyError::DatabaseError(e.to_string()))?,
+        )
+    } else {
+        None
+    };
+    Ok(Json(
+        request
+            .models_response(models.map(channel_model_records_from_host))
+            .map_err(management_api_error_to_proxy_error)?,
+    ))
 }
 
 /// PUT /proxy/v1/channels/{channel_id}/models
@@ -407,19 +410,19 @@ pub async fn replace_proxy_channel_models(
     Path(channel_id): Path<String>,
     Json(request): Json<ProxyChannelModelsReplaceRequest>,
 ) -> Result<Json<ChannelModelsResponse<ChannelModelRecord>>, ProxyError> {
-    let channel_id = ChannelPathRequest::from_path(channel_id)
-        .map_err(management_api_error_to_proxy_error)?
-        .channel_id;
+    let path_request =
+        ChannelPathRequest::from_path(channel_id).map_err(management_api_error_to_proxy_error)?;
     let models = state
         .db
-        .replace_proxy_channel_models(&channel_id, request.models)
+        .replace_proxy_channel_models(&path_request.channel_id, request.models)
         .map_err(|e| ProxyError::InvalidRequest(e.to_string()))?
-        .ok_or_else(|| ProxyError::InvalidRequest(format!("channel not found: {channel_id}")))?;
+        .map(channel_model_records_from_host);
 
-    Ok(Json(ChannelModelsResponse::new(
-        channel_id,
-        channel_model_records_from_host(models),
-    )))
+    Ok(Json(
+        path_request
+            .models_response(models)
+            .map_err(management_api_error_to_proxy_error)?,
+    ))
 }
 
 fn channel_model_records_from_host(

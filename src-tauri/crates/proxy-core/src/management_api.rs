@@ -1,6 +1,9 @@
 use super::domain::{AppKind, InterfaceKind};
 use super::error::{ProxyCoreError, ProxyCoreResult};
-use super::ports::{AppChannelListQuery, AppModelListQuery, ChannelListQuery, GroupListQuery, RouteResolveRequest};
+use super::ports::{
+    AppChannelListQuery, AppModelListQuery, ChannelListQuery, ChannelModelsResponse,
+    ChannelRecordResponse, GroupListQuery, RouteResolveRequest,
+};
 
 pub fn validate_management_app_type(app_type: &str) -> ProxyCoreResult<()> {
     if app_type.trim().is_empty() {
@@ -58,6 +61,37 @@ impl ChannelPathRequest {
             channel_id: normalize_channel_id_path(channel_id)?,
         })
     }
+
+    pub fn channel_not_found_error(&self) -> ProxyCoreError {
+        channel_not_found_error(&self.channel_id)
+    }
+
+    pub fn record_response<T>(
+        &self,
+        channel: Option<T>,
+    ) -> ProxyCoreResult<ChannelRecordResponse<T>> {
+        channel
+            .map(ChannelRecordResponse::new)
+            .ok_or_else(|| self.channel_not_found_error())
+    }
+
+    pub fn models_response<T>(
+        &self,
+        models: Option<Vec<T>>,
+    ) -> ProxyCoreResult<ChannelModelsResponse<T>> {
+        models
+            .map(|models| ChannelModelsResponse::new(self.channel_id.clone(), models))
+            .ok_or_else(|| self.channel_not_found_error())
+    }
+
+}
+
+pub fn channel_not_found_message(channel_id: impl AsRef<str>) -> String {
+    format!("channel not found: {}", channel_id.as_ref())
+}
+
+pub fn channel_not_found_error(channel_id: impl AsRef<str>) -> ProxyCoreError {
+    ProxyCoreError::InvalidRequest(channel_not_found_message(channel_id))
 }
 
 #[derive(Debug, Clone)]
@@ -171,8 +205,9 @@ fn normalize_optional_management_app_type(app_type: Option<String>) -> ProxyCore
 mod tests {
     use super::{
         AppChannelManagementRequest, AppModelCatalogRequest, ChannelListRequest,
-        ChannelPathRequest, GroupListRequest, ManagementAppPathRequest, RouteResolveManagementRequest,
-        normalize_channel_id_path, validate_management_app_type, validate_route_resolve_app_type,
+        ChannelPathRequest, GroupListRequest, ManagementAppPathRequest,
+        RouteResolveManagementRequest, channel_not_found_message, normalize_channel_id_path,
+        validate_management_app_type, validate_route_resolve_app_type,
     };
     use crate::{
         AppChannelListQuery, AppKind, AppModelListQuery, ChannelListQuery, GroupListQuery,
@@ -225,6 +260,53 @@ mod tests {
         let request = ChannelPathRequest::from_path(" channel-a ").expect("request");
 
         assert_eq!(request.channel_id, "channel-a");
+    }
+
+    #[test]
+    fn channel_path_request_centralizes_not_found_message() {
+        let request = ChannelPathRequest::from_path(" channel-a ").expect("request");
+
+        assert_eq!(
+            channel_not_found_message(&request.channel_id),
+            "channel not found: channel-a"
+        );
+        assert_eq!(
+            request.channel_not_found_error().to_string(),
+            "invalid proxy request: channel not found: channel-a"
+        );
+    }
+
+    #[test]
+    fn channel_path_request_wraps_optional_record_response() {
+        let request = ChannelPathRequest::from_path("channel-a").expect("request");
+        let response = request
+            .record_response(Some("record-a"))
+            .expect("record response");
+
+        assert_eq!(response.channel, "record-a");
+
+        let error = request.record_response::<&str>(None).unwrap_err();
+        assert_eq!(
+            error.to_string(),
+            "invalid proxy request: channel not found: channel-a"
+        );
+    }
+
+    #[test]
+    fn channel_path_request_wraps_models_response() {
+        let request = ChannelPathRequest::from_path("channel-a").expect("request");
+
+        let response = request
+            .models_response(Some(vec!["sonnet"]))
+            .expect("models response");
+        assert_eq!(response.channel_id, "channel-a");
+        assert_eq!(response.models, vec!["sonnet"]);
+
+        let error = request.models_response::<&str>(None).unwrap_err();
+        assert_eq!(
+            error.to_string(),
+            "invalid proxy request: channel not found: channel-a"
+        );
     }
 
     #[test]
