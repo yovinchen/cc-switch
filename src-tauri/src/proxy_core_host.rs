@@ -12,9 +12,9 @@ use crate::proxy::usage::{RequestLog, UsageLogger};
 use crate::proxy::RequestForwarder;
 use crate::proxy_core::{
     interfaces_compatible, resolve_usage_record_pricing_models, route_group_matches,
-    token_usage_from_usage_record, AppKind, AuthInfo, AuthProfileRef, ChannelAttemptPlan,
-    ChannelAttemptResult, ChannelQuery, ChannelSource, ChannelSpec, ChannelStatus,
-    CopilotOptimizerConfigSpec, CostCalculator, CurrentRouteTarget, ForwardPipeline,
+    token_usage_from_usage_record, AppKind, AppProxyConfig, AuthInfo, AuthProfileRef,
+    ChannelAttemptPlan, ChannelAttemptResult, ChannelQuery, ChannelSource, ChannelSpec,
+    ChannelStatus, CopilotOptimizerConfigSpec, CostCalculator, CurrentRouteTarget, ForwardPipeline,
     GeminiShadowStore, ModelCatalog, OptimizerConfigSpec, ProviderSource, ProviderSpec,
     ProxyAppConfig, ProxyBody, ProxyConfigSource, ProxyCoreError, ProxyCoreEvent,
     ProxyCoreEventType, ProxyCoreResponse, ProxyCoreResult, ProxyEventSink, ProxyGlobalConfig,
@@ -996,10 +996,7 @@ fn usage_request_id(record: &UsageRecord) -> String {
         .unwrap_or_else(|| uuid::Uuid::new_v4().to_string())
 }
 
-fn app_config_raw(
-    config: crate::proxy::types::AppProxyConfig,
-    current_provider_id: Option<String>,
-) -> Value {
+fn app_config_raw(config: AppProxyConfig, current_provider_id: Option<String>) -> Value {
     let mut raw = serde_json::to_value(config).unwrap_or_else(|_| json!({}));
     if let Value::Object(object) = &mut raw {
         object.insert(

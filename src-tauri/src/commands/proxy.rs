@@ -6,8 +6,8 @@ use crate::error::AppError;
 use crate::proxy::types::*;
 use crate::proxy::CircuitBreakerStats;
 use crate::proxy_core::{
-    CircuitBreakerConfig, GlobalProxyConfig, ProviderHealth, ProxyRuntimeStatus, ProxyServerInfo,
-    ProxyTakeoverStatus,
+    AppProxyConfig, CircuitBreakerConfig, GlobalProxyConfig, ProviderHealth, ProxyRuntimeStatus,
+    ProxyServerInfo, ProxyTakeoverStatus,
 };
 use crate::store::AppState;
 

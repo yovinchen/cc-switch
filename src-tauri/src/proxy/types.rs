@@ -3,7 +3,7 @@ use serde::{Deserialize, Serialize};
 use crate::proxy_core::CurrentRouteTarget;
 
 pub use crate::proxy_core::{
-    AppProxyConfig, CopilotOptimizerConfig, OptimizerConfig, ProxyConfig, RectifierConfig,
+    CopilotOptimizerConfig, OptimizerConfig, ProxyConfig, RectifierConfig,
 };
 
 /// 代理服务器状态
