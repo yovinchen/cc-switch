@@ -7,19 +7,14 @@
 use crate::proxy::error::ProxyError;
 use crate::proxy_core::{
     build_anthropic_usage_from_gemini, build_gemini_function_declaration,
-    map_gemini_finish_reason_to_anthropic, GeminiAssistantTurn, GeminiShadowStore,
-    GeminiToolCallMeta,
+    extract_anthropic_tool_schema_hints as core_extract_anthropic_tool_schema_hints,
+    map_gemini_finish_reason_to_anthropic, rectify_gemini_tool_call_args,
+    rectify_gemini_tool_call_parts, GeminiAssistantTurn, GeminiShadowStore, GeminiToolCallMeta,
 };
+#[allow(unused_imports)]
+pub use crate::proxy_core::{AnthropicToolSchemaHint, AnthropicToolSchemaHints};
 use serde_json::{json, Map, Value};
 use std::collections::{HashMap, HashSet};
-
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
-pub struct AnthropicToolSchemaHint {
-    expected_keys: Vec<String>,
-    required_keys: Vec<String>,
-}
-
-pub type AnthropicToolSchemaHints = HashMap<String, AnthropicToolSchemaHint>;
 
 /// Prefix used for Anthropic-visible tool call ids that we synthesize when
 /// Gemini's `functionCall` omits the `id` field (Gemini 2.x parallel calls
@@ -774,178 +769,25 @@ fn shadow_parts(content: &Value) -> Option<Vec<Value>> {
 }
 
 pub fn extract_anthropic_tool_schema_hints(body: &Value) -> AnthropicToolSchemaHints {
-    body.get("tools")
-        .and_then(|value| value.as_array())
-        .into_iter()
-        .flatten()
-        .filter_map(|tool| {
-            let name = tool.get("name").and_then(|value| value.as_str())?;
-            let input_schema = tool
-                .get("input_schema")
-                .and_then(|value| value.as_object())?;
-            let properties = input_schema
-                .get("properties")
-                .and_then(|value| value.as_object())?;
-            if properties.is_empty() {
-                return None;
-            }
-
-            let expected_keys = properties.keys().cloned().collect::<Vec<_>>();
-            let required_keys = input_schema
-                .get("required")
-                .and_then(|value| value.as_array())
-                .map(|values| {
-                    values
-                        .iter()
-                        .filter_map(|value| value.as_str().map(ToString::to_string))
-                        .collect::<Vec<_>>()
-                })
-                .unwrap_or_default();
-
-            Some((
-                name.to_string(),
-                AnthropicToolSchemaHint {
-                    expected_keys,
-                    required_keys,
-                },
-            ))
-        })
-        .collect()
+    core_extract_anthropic_tool_schema_hints(body)
 }
 
 pub fn rectify_tool_call_parts(
     parts: &mut [Value],
     tool_schema_hints: Option<&AnthropicToolSchemaHints>,
 ) {
-    for part in parts {
-        let Some(function_call) = part
-            .get_mut("functionCall")
-            .and_then(|value| value.as_object_mut())
-        else {
-            continue;
-        };
-        let Some(name) = function_call
-            .get("name")
-            .and_then(|value| value.as_str())
-            .map(ToString::to_string)
-        else {
-            continue;
-        };
-        let Some(args) = function_call.get_mut("args") else {
-            continue;
-        };
-
-        if rectify_tool_call_args(&name, args, tool_schema_hints) {
-            log::info!("[Claude/Gemini] Rectified tool args for `{name}`");
-        }
+    for name in rectify_gemini_tool_call_parts(parts, tool_schema_hints) {
+        log::info!("[Claude/Gemini] Rectified tool args for `{name}`");
     }
 }
 
+#[allow(dead_code)]
 pub fn rectify_tool_call_args(
     tool_name: &str,
     args: &mut Value,
     tool_schema_hints: Option<&AnthropicToolSchemaHints>,
 ) -> bool {
-    let Some(tool_schema_hints) = tool_schema_hints else {
-        return false;
-    };
-    let Some(hint) = tool_schema_hints.get(tool_name) else {
-        return false;
-    };
-    let Some(args_object) = args.as_object_mut() else {
-        return false;
-    };
-    if args_object.is_empty() || hint.expected_keys.is_empty() {
-        return false;
-    }
-    let mut changed = false;
-
-    if hint.expected_keys.iter().any(|key| key == "skill") && !args_object.contains_key("skill") {
-        if let Some(value) = args_object.remove("name") {
-            args_object.insert("skill".to_string(), value);
-            changed = true;
-        }
-    }
-
-    let expects_parameters_key = hint.expected_keys.iter().any(|key| key == "parameters");
-    if !expects_parameters_key {
-        let extracted_parameters = args_object
-            .get("parameters")
-            .and_then(|value| value.as_object())
-            .map(|parameters_object| {
-                hint.expected_keys
-                    .iter()
-                    .filter_map(|expected_key| {
-                        if args_object.contains_key(expected_key) {
-                            return None;
-                        }
-                        let value = parameters_object.get(expected_key)?;
-                        let normalized_value = match value {
-                            Value::Array(values) if values.len() == 1 => values[0].clone(),
-                            _ => value.clone(),
-                        };
-                        Some((expected_key.clone(), normalized_value))
-                    })
-                    .collect::<Vec<_>>()
-            })
-            .unwrap_or_default();
-
-        if !extracted_parameters.is_empty() {
-            for (expected_key, normalized_value) in extracted_parameters {
-                args_object.insert(expected_key, normalized_value);
-            }
-            args_object.remove("parameters");
-            changed = true;
-        }
-    }
-
-    if hint
-        .required_keys
-        .iter()
-        .all(|key| args_object.contains_key(key.as_str()))
-    {
-        return changed;
-    }
-
-    let expected_key_set = hint
-        .expected_keys
-        .iter()
-        .map(String::as_str)
-        .collect::<HashSet<_>>();
-    let unexpected_keys = args_object
-        .keys()
-        .filter(|key| !expected_key_set.contains(key.as_str()))
-        .cloned()
-        .collect::<Vec<_>>();
-    if unexpected_keys.len() != 1 {
-        return false;
-    }
-
-    let target_key = hint
-        .required_keys
-        .iter()
-        .find(|key| !args_object.contains_key(key.as_str()))
-        .cloned()
-        .or_else(|| {
-            if hint.expected_keys.len() == 1 && args_object.len() == 1 {
-                hint.expected_keys.first().cloned()
-            } else {
-                None
-            }
-        });
-    let Some(target_key) = target_key else {
-        return false;
-    };
-    if args_object.contains_key(&target_key) {
-        return false;
-    }
-
-    let source_key = &unexpected_keys[0];
-    let Some(value) = args_object.remove(source_key) else {
-        return false;
-    };
-    args_object.insert(target_key, value);
-    true
+    rectify_gemini_tool_call_args(tool_name, args, tool_schema_hints)
 }
 
 fn merge_tool_names_from_shadow(
