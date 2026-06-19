@@ -5,6 +5,7 @@
 use crate::error::AppError;
 use crate::proxy::types::*;
 use crate::proxy::{CircuitBreakerConfig, CircuitBreakerStats};
+use crate::proxy_core::ProxyRuntimeStatus;
 use crate::store::AppState;
 
 /// 启动代理服务器（仅启动服务，不接管 Live 配置）
@@ -62,7 +63,9 @@ pub async fn set_proxy_takeover_for_app(
 
 /// 获取代理服务器状态
 #[tauri::command]
-pub async fn get_proxy_status(state: tauri::State<'_, AppState>) -> Result<ProxyStatus, String> {
+pub async fn get_proxy_status(
+    state: tauri::State<'_, AppState>,
+) -> Result<ProxyRuntimeStatus, String> {
     state.proxy_service.get_status().await
 }
 

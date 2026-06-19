@@ -266,7 +266,7 @@
 255. 通用非流式响应的 JSON body/model/usage parser 到 `UsageRecord` 的组装已迁入 `proxy-core::non_streaming_response_usage_record_with_request_id_fallback`；host `response_processor` 只负责整包读取、JSON parse 成败诊断和异步 `UsageSink` 写入。
 256. `/proxy/v1/channels` POST、`/proxy/v1/channels/{channel_id}` GET/PATCH 的单条 channel record response payload 已迁入 `proxy-core::ChannelRecord` 并通过透明 `ChannelRecordResponse<T>` 返回；host 继续负责 DB CRUD，但外部 JSON 仍保持原始 channel record 形状。
 257. Codex 兼容 `/v1/models` 的 raw catalog response contract 已迁入透明 `proxy-core::ClientModelCatalogResponse`；host handler 只负责调用 `ProxyEngine::client_model_catalog`，外部 JSON 仍保持 Codex 原始 catalog 形状。
-258. `/proxy/v1/status` 的运行态 status response payload 已迁入 `proxy-core::ProxyRuntimeStatus` 并通过透明 `ProxyStatusResponse<T>` 返回；host 继续维护 runtime counter，但 HTTP handler 只做 host status 到 core DTO 的适配，外部 JSON 仍保持 snake_case status 字段和 active target 字段。
+258. `/proxy/v1/status` 与 Tauri `get_proxy_status` 的运行态 status response payload 已迁入 `proxy-core::ProxyRuntimeStatus`，HTTP 侧通过透明 `ProxyStatusResponse<T>` 返回；host 继续维护 runtime counter，但对外入口只做 host status 到 core DTO 的适配，外部 JSON 仍保持 snake_case status 字段和 active target 字段。
 259. `/proxy/v1/channels/{channel_id}/models` 的 response payload 已迁入 `proxy-core::ChannelModelRecord`；host handler 只把 DB `ProxyChannelModelRecord` 通过 `ModelRoute` 适配为 core DTO，保留 public/upstream/capabilities/pricing/overrides 字段。
 260. `/proxy/v1/channels`、`/proxy/v1/apps/{app}/channels` 和 migration preview 的 channel record payload 已迁入 `proxy-core::ChannelRecord`；host handler 只把 DB `ProxyChannelRecord` 逐字段适配为 core DTO，保留 sourceKind/sourceEndpointUrl/models/review 字段。
 

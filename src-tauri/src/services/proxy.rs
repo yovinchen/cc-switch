@@ -9,6 +9,8 @@ use crate::provider::Provider;
 use crate::proxy::server::ProxyServer;
 use crate::proxy::switch_lock::SwitchLockManager;
 use crate::proxy::types::*;
+use crate::proxy_core::ProxyRuntimeStatus;
+use crate::proxy_core_adapter::ToProxyCoreRuntimeStatus;
 use crate::services::provider::{
     build_effective_settings_with_common_config, write_live_with_common_config,
 };
@@ -2523,15 +2525,16 @@ impl ProxyService {
     // ==================== 原有方法 ====================
 
     /// 获取服务器状态
-    pub async fn get_status(&self) -> Result<ProxyStatus, String> {
+    pub async fn get_status(&self) -> Result<ProxyRuntimeStatus, String> {
         if let Some(server) = self.server.read().await.as_ref() {
-            Ok(server.get_status().await)
+            Ok(server.get_status().await.to_proxy_core_runtime_status())
         } else {
             // 服务器未运行时返回默认状态
             Ok(ProxyStatus {
                 running: false,
                 ..Default::default()
-            })
+            }
+            .to_proxy_core_runtime_status())
         }
     }
 
