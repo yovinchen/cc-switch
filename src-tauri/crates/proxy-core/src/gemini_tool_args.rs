@@ -1,6 +1,6 @@
-//! Gemini Native tool-call argument rectification.
+//! Gemini Native tool-call argument and result helpers.
 
-use serde_json::Value;
+use serde_json::{Value, json};
 use std::collections::{HashMap, HashSet};
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -190,6 +190,27 @@ pub fn rectify_gemini_tool_call_args(
     true
 }
 
+pub fn normalize_gemini_tool_result_response(content: Option<&Value>) -> Value {
+    match content {
+        Some(Value::String(text)) => json!({ "content": text }),
+        Some(Value::Array(blocks)) => {
+            let texts: Vec<&str> = blocks
+                .iter()
+                .filter(|block| block.get("type").and_then(|value| value.as_str()) == Some("text"))
+                .filter_map(|block| block.get("text").and_then(|value| value.as_str()))
+                .collect();
+
+            if texts.is_empty() {
+                json!({ "content": Value::Array(blocks.clone()) })
+            } else {
+                json!({ "content": texts.join("\n") })
+            }
+        }
+        Some(value) => json!({ "content": value.clone() }),
+        None => json!({ "content": "" }),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -240,7 +261,11 @@ mod tests {
             }
         });
 
-        assert!(rectify_gemini_tool_call_args("Skill", &mut args, Some(&hints)));
+        assert!(rectify_gemini_tool_call_args(
+            "Skill",
+            &mut args,
+            Some(&hints)
+        ));
         assert_eq!(args["skill"], "git-commit");
         assert_eq!(args["args"], "详细分析内容 编写提交信息 分多次提交代码");
         assert!(args.get("parameters").is_none());
@@ -275,5 +300,36 @@ mod tests {
             vec!["Lookup".to_string()]
         );
         assert_eq!(parts[0]["functionCall"]["args"]["query"], "weather");
+    }
+
+    #[test]
+    fn normalizes_gemini_tool_result_response_content_shapes() {
+        assert_eq!(
+            normalize_gemini_tool_result_response(Some(&json!("ok"))),
+            json!({ "content": "ok" })
+        );
+        assert_eq!(
+            normalize_gemini_tool_result_response(Some(&json!([
+                { "type": "text", "text": "line 1" },
+                { "type": "image", "source": { "type": "base64", "data": "abc" } },
+                { "type": "text", "text": "line 2" }
+            ]))),
+            json!({ "content": "line 1\nline 2" })
+        );
+
+        let image_only =
+            json!([{ "type": "image", "source": { "type": "base64", "data": "abc" } }]);
+        assert_eq!(
+            normalize_gemini_tool_result_response(Some(&image_only)),
+            json!({ "content": image_only })
+        );
+        assert_eq!(
+            normalize_gemini_tool_result_response(Some(&json!({ "ok": true }))),
+            json!({ "content": { "ok": true } })
+        );
+        assert_eq!(
+            normalize_gemini_tool_result_response(None),
+            json!({ "content": "" })
+        );
     }
 }

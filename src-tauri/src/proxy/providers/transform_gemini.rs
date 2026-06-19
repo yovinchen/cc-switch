@@ -11,8 +11,8 @@ use crate::proxy_core::{
     ensure_gemini_function_call_ids,
     extract_anthropic_tool_schema_hints as core_extract_anthropic_tool_schema_hints,
     extract_gemini_function_call_meta, is_synthesized_gemini_tool_call_id,
-    map_gemini_finish_reason_to_anthropic, rectify_gemini_tool_call_args,
-    rectify_gemini_tool_call_parts, synthesize_gemini_tool_call_id,
+    map_gemini_finish_reason_to_anthropic, normalize_gemini_tool_result_response,
+    rectify_gemini_tool_call_args, rectify_gemini_tool_call_parts, synthesize_gemini_tool_call_id,
 };
 use serde_json::{Map, Value, json};
 use std::collections::{HashMap, HashSet};
@@ -676,7 +676,7 @@ fn convert_message_content_to_parts(
                 // See `tool_use` above: synthesized ids must not leak upstream.
                 let mut function_response = json!({
                     "name": name,
-                    "response": normalize_tool_result_response(block.get("content"))
+                    "response": normalize_gemini_tool_result_response(block.get("content"))
                 });
                 if !tool_use_id.is_empty() && !is_synthesized_gemini_tool_call_id(tool_use_id) {
                     function_response["id"] = json!(tool_use_id);
@@ -690,27 +690,6 @@ fn convert_message_content_to_parts(
     }
 
     Ok(parts)
-}
-
-fn normalize_tool_result_response(content: Option<&Value>) -> Value {
-    match content {
-        Some(Value::String(text)) => json!({ "content": text }),
-        Some(Value::Array(blocks)) => {
-            let texts: Vec<&str> = blocks
-                .iter()
-                .filter(|block| block.get("type").and_then(|value| value.as_str()) == Some("text"))
-                .filter_map(|block| block.get("text").and_then(|value| value.as_str()))
-                .collect();
-
-            if texts.is_empty() {
-                json!({ "content": Value::Array(blocks.clone()) })
-            } else {
-                json!({ "content": texts.join("\n") })
-            }
-        }
-        Some(value) => json!({ "content": value.clone() }),
-        None => json!({ "content": "" }),
-    }
 }
 
 fn shadow_parts(content: &Value) -> Option<Vec<Value>> {
