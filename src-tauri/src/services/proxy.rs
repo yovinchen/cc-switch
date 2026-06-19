@@ -295,7 +295,7 @@ impl ProxyService {
     }
 
     fn strip_claude_one_m_marker(model: &str) -> String {
-        crate::proxy::model_mapper::strip_one_m_suffix_for_upstream(model)
+        crate::proxy_core::strip_one_m_suffix_for_upstream(model)
             .trim()
             .to_string()
     }

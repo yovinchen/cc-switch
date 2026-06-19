@@ -53,12 +53,6 @@ pub fn apply_model_mapping(
     (body, original, mapped)
 }
 
-/// Claude Code 通过 `[1M]` 后缀声明 100 万上下文能力；上游 API
-/// 通常不接受这个本地能力标记，转发前需要剥离。
-pub fn strip_one_m_suffix_for_upstream(model: &str) -> &str {
-    crate::proxy_core::strip_one_m_suffix_for_upstream(model)
-}
-
 pub fn strip_one_m_suffix_for_upstream_from_body(body: Value) -> Value {
     let model_change = body.get("model").and_then(Value::as_str).and_then(|model| {
         let stripped = crate::proxy_core::strip_one_m_suffix_for_upstream(model);
