@@ -21,16 +21,17 @@ use crate::commands::{CodexOAuthState, CopilotAuthState};
 use crate::proxy::providers::codex_oauth_auth::CodexOAuthManager;
 use crate::proxy::providers::copilot_auth::CopilotAuthManager;
 use crate::proxy_core::{
-    append_query_to_full_url, apply_copilot_model_normalization,
+    append_query_to_full_url, apply_bedrock_pre_send_optimizers,
+    apply_copilot_model_normalization,
     apply_copilot_warmup_model_override, attempt_event_name,
     bedrock_env_flag_from_provider_settings, build_attempt_event_payload,
     build_codex_oauth_session_headers, build_request_started_event_payload,
     build_retryable_forward_failure_log, build_terminal_forward_failure_log,
-    build_upstream_auth_headers, categorize_forward_failure, classify_copilot_request,
-    claude_transform_endpoint_rewrite_input_from_body, contains_image_blocks,
-    interface_kind_for_forward, is_codex_chat_full_endpoint_base, is_github_copilot_upstream,
-    is_openai_o_series, is_socks_proxy_url, is_unsupported_image_error, merge_copilot_tool_results,
-    normalize_thinking_type, prepare_upstream_request_body_with_report,
+    build_upstream_auth_headers, cache_injection_log_message, categorize_forward_failure,
+    classify_copilot_request, claude_transform_endpoint_rewrite_input_from_body,
+    contains_image_blocks, interface_kind_for_forward, is_codex_chat_full_endpoint_base,
+    is_github_copilot_upstream, is_openai_o_series, is_socks_proxy_url, is_unsupported_image_error,
+    merge_copilot_tool_results, normalize_thinking_type, prepare_upstream_request_body_with_report,
     prompt_cache_trace_log_message, rectify_anthropic_request, rectify_thinking_budget,
     replace_image_blocks_with_marker, replace_images_for_text_only_model,
     request_body_filter_log_message, request_model_for_forward, resolve_claude_forward_api_format,
@@ -46,13 +47,14 @@ use crate::proxy_core::{
     should_send_anthropic_request_headers, should_trigger_media_retry, split_endpoint_and_query,
     strip_copilot_thinking_blocks, strip_one_m_suffix_for_upstream,
     strip_one_m_suffix_for_upstream_from_body, supports_reasoning_effort,
-    validate_managed_account_upstream_auth, AppKind, AttemptEventChannel, AttemptEventPayloadInput,
-    AttemptEventPhase, ChannelQuery, CopilotAuthHeaderOverrides, CopilotOptimizerConfig,
-    CurrentRouteTarget, ForwardFailureCategory, GeminiShadowStore, InterfaceKind, MediaRetryInput,
-    OptimizerConfig, PromptCacheTraceLogInput, ProviderAuthInfo, ProviderAuthStrategy,
-    ProviderKind, ProxyBody, ProxyEngine, ProxyRequest, ProxyRuntimeStatus, ProxyServices,
-    RectifierConfig, ResolvedChannelAttempt, UpstreamAuthHeadersInput, UpstreamRequestHeadersInput,
-    UpstreamSendPolicyInput, UpstreamTransportKind, UNSUPPORTED_IMAGE_MARKER,
+    thinking_optimization_log_message, validate_managed_account_upstream_auth, AppKind,
+    AttemptEventChannel, AttemptEventPayloadInput, AttemptEventPhase, ChannelQuery,
+    CopilotAuthHeaderOverrides, CopilotOptimizerConfig, CurrentRouteTarget, ForwardFailureCategory,
+    GeminiShadowStore, InterfaceKind, MediaRetryInput, OptimizerConfig, PromptCacheTraceLogInput,
+    ProviderAuthInfo, ProviderAuthStrategy, ProviderKind, ProxyBody, ProxyEngine, ProxyRequest,
+    ProxyRuntimeStatus, ProxyServices, RectifierConfig, ResolvedChannelAttempt,
+    UpstreamAuthHeadersInput, UpstreamRequestHeadersInput, UpstreamSendPolicyInput,
+    UpstreamTransportKind, UNSUPPORTED_IMAGE_MARKER,
 };
 use crate::proxy_core_host::CcSwitchProxyServices;
 use crate::{app_config::AppType, provider::Provider};
@@ -913,7 +915,17 @@ impl RequestForwarder {
                 bedrock_env_flag_from_provider_settings(&provider.settings_config),
             ) {
                 let mut b = body.clone();
-                apply_bedrock_pre_send_optimizers(&mut b, &self.optimizer_config);
+                let report = apply_bedrock_pre_send_optimizers(&mut b, &self.optimizer_config);
+                if let Some(message) = report
+                    .thinking
+                    .as_ref()
+                    .and_then(thinking_optimization_log_message)
+                {
+                    log::info!("{message}");
+                }
+                if let Some(message) = report.cache.as_ref().and_then(cache_injection_log_message) {
+                    log::info!("{message}");
+                }
                 b
             } else {
                 body.clone()
@@ -2404,24 +2416,6 @@ impl RequestForwarder {
                 );
                 None
             }
-        }
-    }
-}
-
-fn apply_bedrock_pre_send_optimizers(body: &mut Value, config: &OptimizerConfig) {
-    if config.thinking_optimizer {
-        let report =
-            crate::proxy_core::optimize_thinking(body, &config.thinking_optimizer_core_config());
-        if let Some(message) = crate::proxy_core::thinking_optimization_log_message(&report) {
-            log::info!("{message}");
-        }
-    }
-
-    if config.cache_injection {
-        let report =
-            crate::proxy_core::inject_cache_control(body, &config.cache_injection_core_config());
-        if let Some(message) = crate::proxy_core::cache_injection_log_message(&report) {
-            log::info!("{message}");
         }
     }
 }

@@ -1,5 +1,8 @@
 use std::collections::HashSet;
 
+use crate::cache_injector::{CacheInjectionReport, inject_cache_control};
+use crate::ports::OptimizerConfig;
+use crate::thinking_optimizer::{ThinkingOptimizationReport, optimize_thinking};
 use http::HeaderMap;
 use serde_json::Value;
 use sha2::{Digest, Sha256};
@@ -20,6 +23,12 @@ pub struct CopilotWarmupModelOverrideResult {
     pub applied_model: Option<String>,
 }
 
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct BedrockPreSendOptimizationReport {
+    pub thinking: Option<ThinkingOptimizationReport>,
+    pub cache: Option<CacheInjectionReport>,
+}
+
 pub fn provider_declares_bedrock(use_bedrock_env: Option<&str>) -> bool {
     matches!(use_bedrock_env, Some("1"))
 }
@@ -36,6 +45,24 @@ pub fn should_apply_bedrock_pre_send_optimizer(
     use_bedrock_env: Option<&str>,
 ) -> bool {
     optimizer_enabled && provider_declares_bedrock(use_bedrock_env)
+}
+
+pub fn apply_bedrock_pre_send_optimizers(
+    body: &mut Value,
+    config: &OptimizerConfig,
+) -> BedrockPreSendOptimizationReport {
+    if !config.enabled {
+        return BedrockPreSendOptimizationReport::default();
+    }
+
+    let thinking = config
+        .thinking_optimizer
+        .then(|| optimize_thinking(body, &config.thinking_optimizer_core_config()));
+    let cache = config
+        .cache_injection
+        .then(|| inject_cache_control(body, &config.cache_injection_core_config()));
+
+    BedrockPreSendOptimizationReport { thinking, cache }
 }
 
 pub fn resolve_copilot_warmup_model_override<'a>(
@@ -559,8 +586,11 @@ fn uuid_v4_string_from_hash(hash: &[u8]) -> String {
 
 #[cfg(test)]
 mod tests {
+    use crate::ports::OptimizerConfig;
+
     use super::{
-        apply_copilot_warmup_model_override, classify_copilot_request, merge_copilot_tool_results,
+        apply_bedrock_pre_send_optimizers, apply_copilot_warmup_model_override,
+        classify_copilot_request, merge_copilot_tool_results,
         bedrock_env_flag_from_provider_settings, parse_session_from_user_id,
         provider_declares_bedrock, resolve_copilot_optimizer_session_id,
         sanitize_copilot_orphan_tool_results, should_apply_bedrock_pre_send_optimizer,
@@ -608,6 +638,66 @@ mod tests {
         assert!(!should_apply_bedrock_pre_send_optimizer(false, Some("1")));
         assert!(!should_apply_bedrock_pre_send_optimizer(true, Some("0")));
         assert!(!should_apply_bedrock_pre_send_optimizer(true, None));
+    }
+
+    #[test]
+    fn bedrock_pre_send_optimizer_applies_enabled_mutations_and_reports() {
+        let mut body = json!({
+            "model": "anthropic.claude-opus-4-6-20250514-v1:0",
+            "max_tokens": 16384,
+            "tools": [{"name": "tool1"}],
+            "system": [{"type": "text", "text": "sys prompt"}],
+            "messages": [
+                {"role": "user", "content": [{"type": "text", "text": "hi"}]},
+                {"role": "assistant", "content": [
+                    {"type": "text", "text": "hello"}
+                ]}
+            ]
+        });
+        let config = OptimizerConfig {
+            enabled: true,
+            thinking_optimizer: true,
+            cache_injection: true,
+            cache_ttl: "1h".to_string(),
+        };
+
+        let report = apply_bedrock_pre_send_optimizers(&mut body, &config);
+
+        assert!(report.thinking.is_some());
+        let cache_report = report.cache.as_ref().expect("cache should run");
+        assert_eq!(
+            cache_report.injected,
+            vec!["tools".to_string(), "system".to_string(), "msgs".to_string()]
+        );
+        assert_eq!(body["thinking"]["type"], "adaptive");
+        assert_eq!(body["output_config"]["effort"], "max");
+        assert!(body["tools"][0].get("cache_control").is_some());
+        assert!(body["system"][0].get("cache_control").is_some());
+        assert!(
+            body["messages"][1]["content"][0]
+                .get("cache_control")
+                .is_some()
+        );
+    }
+
+    #[test]
+    fn bedrock_pre_send_optimizer_respects_global_switch() {
+        let original = json!({
+            "model": "anthropic.claude-opus-4-6-20250514-v1:0",
+            "messages": [{"role": "user", "content": "hello"}]
+        });
+        let mut body = original.clone();
+        let config = OptimizerConfig {
+            enabled: false,
+            thinking_optimizer: true,
+            cache_injection: true,
+            cache_ttl: "1h".to_string(),
+        };
+
+        let report = apply_bedrock_pre_send_optimizers(&mut body, &config);
+
+        assert_eq!(report, Default::default());
+        assert_eq!(body, original);
     }
 
     #[test]
