@@ -17,7 +17,6 @@ pub mod hyper_client;
 pub mod provider_router;
 pub mod providers;
 pub(crate) mod response_adapter;
-pub mod response_handler;
 pub mod response_processor;
 pub(crate) mod route_attempt;
 pub(crate) mod server;
@@ -37,8 +36,6 @@ pub use error::ProxyError;
 pub(crate) use forwarder::{ForwardError, ForwardResult, RequestForwarder};
 #[allow(unused_imports)]
 pub use provider_router::ProviderRouter;
-#[allow(unused_imports)]
-pub use response_handler::{NonStreamHandler, ResponseType, StreamHandler};
 #[allow(unused_imports)]
 pub use session::{extract_session_id, ProxySession};
 #[allow(unused_imports)]
