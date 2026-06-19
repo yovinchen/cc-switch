@@ -15,6 +15,12 @@ pub struct ResponseTimeoutConfig {
     pub streaming: StreamingTimeoutConfig,
 }
 
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct ResponseRuntimePolicy {
+    pub timeout: ResponseTimeoutConfig,
+    pub max_retries: u32,
+}
+
 impl ResponseTimeoutConfig {
     pub fn body_timeout_duration(self) -> Duration {
         if self.non_streaming_timeout > 0 {
@@ -22,6 +28,24 @@ impl ResponseTimeoutConfig {
         } else {
             Duration::ZERO
         }
+    }
+}
+
+pub fn resolve_response_runtime_policy(
+    auto_failover_enabled: bool,
+    max_retries: u32,
+    non_streaming_timeout: u64,
+    streaming_first_byte_timeout: u64,
+    streaming_idle_timeout: u64,
+) -> ResponseRuntimePolicy {
+    ResponseRuntimePolicy {
+        timeout: resolve_response_timeout_config(
+            auto_failover_enabled,
+            non_streaming_timeout,
+            streaming_first_byte_timeout,
+            streaming_idle_timeout,
+        ),
+        max_retries: resolve_failover_max_retries(auto_failover_enabled, max_retries),
     }
 }
 
@@ -41,6 +65,14 @@ pub fn resolve_response_timeout_config(
         }
     } else {
         ResponseTimeoutConfig::default()
+    }
+}
+
+pub fn resolve_failover_max_retries(auto_failover_enabled: bool, max_retries: u32) -> u32 {
+    if auto_failover_enabled {
+        max_retries
+    } else {
+        0
     }
 }
 
@@ -74,5 +106,23 @@ mod tests {
         assert_eq!(config.streaming.first_byte_timeout, 0);
         assert_eq!(config.streaming.idle_timeout, 0);
         assert_eq!(config.body_timeout_duration(), Duration::ZERO);
+    }
+
+    #[test]
+    fn resolve_response_runtime_policy_uses_failover_values_when_enabled() {
+        let policy = resolve_response_runtime_policy(true, 3, 600, 60, 120);
+
+        assert_eq!(policy.max_retries, 3);
+        assert_eq!(policy.timeout.non_streaming_timeout, 600);
+        assert_eq!(policy.timeout.streaming.first_byte_timeout, 60);
+        assert_eq!(policy.timeout.streaming.idle_timeout, 120);
+    }
+
+    #[test]
+    fn resolve_response_runtime_policy_disables_retry_and_timeout_when_failover_disabled() {
+        let policy = resolve_response_runtime_policy(false, 3, 600, 60, 120);
+
+        assert_eq!(policy.max_retries, 0);
+        assert_eq!(policy.timeout, ResponseTimeoutConfig::default());
     }
 }

@@ -12,8 +12,8 @@ use crate::proxy::{
     ProxyError,
 };
 use crate::proxy_core::{
-    extract_gemini_model_from_path, resolve_response_timeout_config, AppKind, ProxyServices,
-    ResponseTimeoutConfig, StreamingTimeoutConfig,
+    extract_gemini_model_from_path, resolve_response_runtime_policy, AppKind, ProxyServices,
+    ResponseRuntimePolicy, ResponseTimeoutConfig, StreamingTimeoutConfig,
 };
 use axum::http::HeaderMap;
 use std::time::Instant;
@@ -205,24 +205,18 @@ impl RequestContext {
     /// 使用共享的 ProviderRouter，确保熔断器状态跨请求保持
     ///
     /// 配置生效规则：
-    /// - 故障转移开启：超时配置正常生效（0 表示禁用超时）
-    /// - 故障转移关闭：超时配置不生效（全部传入 0）
+    /// - 故障转移开启：超时和 retry 配置正常生效（0 表示禁用超时）
+    /// - 故障转移关闭：超时和 retry 配置不生效（全部传入 0）
     #[allow(dead_code)]
     pub fn create_forwarder(&self, state: &ProxyState) -> RequestForwarder {
-        let timeout_config = self.response_timeout_config();
+        let runtime_policy = self.response_runtime_policy();
+        let timeout_config = runtime_policy.timeout;
         if !self.app_config.auto_failover_enabled {
             log::debug!(
-                "[{}] Failover disabled, timeout configs are bypassed",
+                "[{}] Failover disabled, timeout/retry configs are bypassed",
                 self.tag
             );
         }
-
-        // 故障转移关闭时强制 max_retries=0（仅尝试 1 个 provider），与「不超时 + 不切换」语义一致。
-        let max_retries = if self.app_config.auto_failover_enabled {
-            self.app_config.max_retries
-        } else {
-            0
-        };
 
         RequestForwarder::new(
             state.provider_router.clone(),
@@ -243,7 +237,7 @@ impl RequestContext {
             self.rectifier_config.clone(),
             self.optimizer_config.clone(),
             self.copilot_optimizer_config.clone(),
-            max_retries,
+            runtime_policy.max_retries,
         )
     }
 
@@ -273,8 +267,14 @@ impl RequestContext {
 
     #[inline]
     pub fn response_timeout_config(&self) -> ResponseTimeoutConfig {
-        resolve_response_timeout_config(
+        self.response_runtime_policy().timeout
+    }
+
+    #[inline]
+    pub fn response_runtime_policy(&self) -> ResponseRuntimePolicy {
+        resolve_response_runtime_policy(
             self.app_config.auto_failover_enabled,
+            self.app_config.max_retries,
             self.app_config.non_streaming_timeout as u64,
             self.app_config.streaming_first_byte_timeout as u64,
             self.app_config.streaming_idle_timeout as u64,
