@@ -506,6 +506,41 @@ pub struct ProviderSummaryInput {
     pub provider_type: Option<String>,
 }
 
+impl ProviderSummaryInput {
+    pub fn new(
+        id: impl Into<String>,
+        name: impl Into<String>,
+        category: Option<String>,
+        sort_index: Option<usize>,
+        icon: Option<String>,
+        icon_color: Option<String>,
+        provider_type: Option<String>,
+    ) -> Self {
+        Self {
+            id: id.into(),
+            name: name.into(),
+            category,
+            sort_index,
+            icon,
+            icon_color,
+            provider_type,
+        }
+    }
+
+    pub fn from_provider_spec(spec: ProviderSpec) -> Self {
+        let raw = spec.metadata.raw.as_object();
+        Self::new(
+            spec.id,
+            spec.name,
+            string_value(raw, "category"),
+            usize_value(raw, "sortIndex"),
+            string_value(raw, "icon"),
+            string_value(raw, "iconColor"),
+            string_value(raw, "providerType"),
+        )
+    }
+}
+
 impl ProviderSummary {
     pub fn from_input(
         input: ProviderSummaryInput,
@@ -575,6 +610,20 @@ fn contains_provider_id(provider_ids: &[String], provider_id: &str) -> bool {
     provider_ids
         .iter()
         .any(|candidate| candidate.as_str() == provider_id)
+}
+
+fn string_value(raw: Option<&Map<String, Value>>, key: &str) -> Option<String> {
+    raw.and_then(|raw| raw.get(key))
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(str::to_string)
+}
+
+fn usize_value(raw: Option<&Map<String, Value>>, key: &str) -> Option<usize> {
+    raw.and_then(|raw| raw.get(key))
+        .and_then(Value::as_u64)
+        .and_then(|value| usize::try_from(value).ok())
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -1212,11 +1261,12 @@ mod tests {
         ChannelMigrationPreviewInput, ChannelMigrationPreviewResponse,
         ChannelRouteCandidate, ChannelRouteRejected, ChannelRouteSource,
         CurrentRouteProviderSummaryInput, CurrentRouteResponse, GroupListQuery,
-        HealthCheckResponse, ProviderListResponse, ProviderSummaryInput,
+        HealthCheckResponse, ProviderListResponse, ProviderSpec, ProviderSummaryInput,
         ProxyChannelModelWriteRequest, ProxyChannelModelsReplaceRequest, ProxyChannelPatchRequest,
         ProxyChannelWriteRequest, RouteGroupListResponse, RouteGroupSourceInput,
         RouteResolveResponse,
     };
+    use crate::{ProviderKind, ProviderMetadata};
     use serde_json::json;
 
     #[test]
@@ -1429,6 +1479,53 @@ mod tests {
                 }]
             })
         );
+    }
+
+    #[test]
+    fn provider_summary_input_projects_from_provider_spec_metadata() {
+        let input = ProviderSummaryInput::from_provider_spec(ProviderSpec {
+            id: "provider-a".to_string(),
+            name: "Provider A".to_string(),
+            kind: ProviderKind::OpenRouter,
+            account_ref: None,
+            metadata: ProviderMetadata {
+                labels: vec!["aggregator".to_string()],
+                raw: json!({
+                    "category": "aggregator",
+                    "sortIndex": 7,
+                    "icon": "openrouter",
+                    "iconColor": "#111111",
+                    "providerType": "openai_compatible",
+                    "apiKey": "must-not-leak"
+                }),
+            },
+        });
+
+        assert_eq!(
+            input,
+            ProviderSummaryInput::new(
+                "provider-a",
+                "Provider A",
+                Some("aggregator".to_string()),
+                Some(7),
+                Some("openrouter".to_string()),
+                Some("#111111".to_string()),
+                Some("openai_compatible".to_string()),
+            )
+        );
+    }
+
+    #[test]
+    fn provider_summary_input_preserves_missing_provider_type() {
+        let input = ProviderSummaryInput::from_provider_spec(ProviderSpec {
+            id: "provider-a".to_string(),
+            name: "Provider A".to_string(),
+            kind: ProviderKind::GitHubCopilot,
+            account_ref: None,
+            metadata: ProviderMetadata::default(),
+        });
+
+        assert!(input.provider_type.is_none());
     }
 
     #[test]

@@ -63,6 +63,7 @@ use crate::proxy_core::{
     TokenUsage, TransformedResponseUsageFormat, UpstreamJsonBodySource, UpstreamSseAggregationKind,
     CLAUDE_PARSER_CONFIG, CODEX_PARSER_CONFIG, GEMINI_PARSER_CONFIG, OPENAI_PARSER_CONFIG,
 };
+use crate::proxy_core_adapter::ToProxyCoreProviderSpec;
 use axum::{
     extract::{Path, Query, State},
     http::StatusCode,
@@ -200,6 +201,9 @@ pub async fn list_proxy_providers(
     Path(app_type): Path<String>,
 ) -> Result<Json<ProviderListResponse>, ProxyError> {
     validate_management_app_type(&app_type).map_err(management_api_error_to_proxy_error)?;
+    let app = app_type
+        .parse::<AppType>()
+        .map_err(|e| ProxyError::InvalidRequest(e.to_string()))?;
 
     let providers = state
         .db
@@ -229,20 +233,7 @@ pub async fn list_proxy_providers(
     let provider_inputs = providers
         .into_values()
         .map(|provider| {
-            let provider_type = provider
-                .meta
-                .as_ref()
-                .and_then(|meta| meta.provider_type.clone());
-
-            ProviderSummaryInput {
-                id: provider.id,
-                name: provider.name,
-                category: provider.category,
-                sort_index: provider.sort_index,
-                icon: provider.icon,
-                icon_color: provider.icon_color,
-                provider_type,
-            }
+            ProviderSummaryInput::from_provider_spec(provider.to_proxy_core_provider_spec(&app))
         })
         .collect();
 
