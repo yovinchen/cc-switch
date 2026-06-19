@@ -11,10 +11,10 @@ use crate::proxy::error::ProxyError;
 use crate::proxy_core::{
     apply_codex_chat_upstream_model_policy, build_codex_bearer_auth_headers,
     build_codex_upstream_url, codex_provider_catalog_model_ids_from_settings,
-    infer_codex_chat_reasoning_profile, is_official_codex_client_user_agent,
-    normalize_codex_chat_reasoning_profile, resolve_codex_provider_upstream_model,
-    resolve_codex_provider_uses_chat_completions, should_convert_codex_responses_endpoint_to_chat,
-    CodexChatReasoningOptions, CodexChatReasoningProfile,
+    infer_codex_chat_reasoning_profile, normalize_codex_chat_reasoning_profile,
+    resolve_codex_provider_upstream_model, resolve_codex_provider_uses_chat_completions,
+    should_convert_codex_responses_endpoint_to_chat, CodexChatReasoningOptions,
+    CodexChatReasoningProfile,
 };
 use serde_json::Value as JsonValue;
 use toml::Value as TomlValue;
@@ -225,14 +225,6 @@ impl CodexAdapter {
         Self
     }
 
-    /// 检测是否为官方 Codex 客户端
-    ///
-    /// 匹配 User-Agent 模式: `^(codex_vscode|codex_cli_rs)/[\d.]+`
-    #[allow(dead_code)]
-    pub fn is_official_client(user_agent: &str) -> bool {
-        is_official_codex_client_user_agent(user_agent)
-    }
-
     /// 从 Provider 配置中提取 API Key
     fn extract_key(&self, provider: &Provider) -> Option<String> {
         // 1. 尝试从 env 中获取
@@ -370,6 +362,7 @@ impl ProviderAdapter for CodexAdapter {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::proxy_core::is_official_codex_client_user_agent;
     use serde_json::json;
 
     fn create_provider(config: serde_json::Value) -> Provider {
@@ -503,31 +496,35 @@ experimental_bearer_token = "sk-config-key"
     // 官方客户端检测测试
     #[test]
     fn test_is_official_client_vscode() {
-        assert!(CodexAdapter::is_official_client("codex_vscode/1.0.0"));
-        assert!(CodexAdapter::is_official_client("codex_vscode/2.3.4"));
-        assert!(CodexAdapter::is_official_client("codex_vscode/0.1"));
+        assert!(is_official_codex_client_user_agent("codex_vscode/1.0.0"));
+        assert!(is_official_codex_client_user_agent("codex_vscode/2.3.4"));
+        assert!(is_official_codex_client_user_agent("codex_vscode/0.1"));
     }
 
     #[test]
     fn test_is_official_client_cli() {
-        assert!(CodexAdapter::is_official_client("codex_cli_rs/1.0.0"));
-        assert!(CodexAdapter::is_official_client("codex_cli_rs/0.5.2"));
+        assert!(is_official_codex_client_user_agent("codex_cli_rs/1.0.0"));
+        assert!(is_official_codex_client_user_agent("codex_cli_rs/0.5.2"));
     }
 
     #[test]
     fn test_is_not_official_client() {
-        assert!(!CodexAdapter::is_official_client("Mozilla/5.0"));
-        assert!(!CodexAdapter::is_official_client("curl/7.68.0"));
-        assert!(!CodexAdapter::is_official_client("python-requests/2.25.1"));
-        assert!(!CodexAdapter::is_official_client("codex_other/1.0.0"));
-        assert!(!CodexAdapter::is_official_client(""));
+        assert!(!is_official_codex_client_user_agent("Mozilla/5.0"));
+        assert!(!is_official_codex_client_user_agent("curl/7.68.0"));
+        assert!(!is_official_codex_client_user_agent(
+            "python-requests/2.25.1"
+        ));
+        assert!(!is_official_codex_client_user_agent("codex_other/1.0.0"));
+        assert!(!is_official_codex_client_user_agent(""));
     }
 
     #[test]
     fn test_is_official_client_partial_match() {
         // 必须从开头匹配
-        assert!(!CodexAdapter::is_official_client("some codex_vscode/1.0.0"));
-        assert!(!CodexAdapter::is_official_client(
+        assert!(!is_official_codex_client_user_agent(
+            "some codex_vscode/1.0.0"
+        ));
+        assert!(!is_official_codex_client_user_agent(
             "prefix_codex_cli_rs/1.0.0"
         ));
     }
