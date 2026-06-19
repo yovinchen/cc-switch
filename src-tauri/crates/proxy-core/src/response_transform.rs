@@ -1,5 +1,5 @@
 use crate::UpstreamSseAggregationKind;
-use serde_json::{json, Value};
+use serde_json::{json, Map, Value};
 
 pub const CLAUDE_API_FORMAT_METADATA_KEY: &str = "claudeApiFormat";
 const THINK_OPEN_TAG: &str = "<think>";
@@ -285,6 +285,93 @@ pub fn is_empty_json_value(value: &Value) -> bool {
         Value::Object(value) => value.is_empty(),
         _ => false,
     }
+}
+
+pub fn append_reasoning_content(message: &mut Map<String, Value>, reasoning: &str) -> bool {
+    let reasoning = reasoning.trim();
+    if reasoning.is_empty() {
+        return false;
+    }
+
+    match message.get_mut("reasoning_content") {
+        Some(Value::String(existing)) if !existing.is_empty() => {
+            existing.push_str("\n\n");
+            existing.push_str(reasoning);
+        }
+        _ => {
+            message.insert(
+                "reasoning_content".to_string(),
+                Value::String(reasoning.to_string()),
+            );
+        }
+    }
+    true
+}
+
+pub fn attach_reasoning_content_field(item: &mut Value, reasoning: &str) -> bool {
+    let reasoning = reasoning.trim();
+    if reasoning.is_empty() {
+        return false;
+    }
+
+    if let Some(obj) = item.as_object_mut() {
+        obj.insert(
+            "reasoning_content".to_string(),
+            Value::String(reasoning.to_string()),
+        );
+        return true;
+    }
+
+    false
+}
+
+pub fn attach_optional_reasoning_content_field(
+    item: &mut Value,
+    reasoning: Option<&str>,
+) -> bool {
+    let Some(reasoning) = reasoning else {
+        return false;
+    };
+    attach_reasoning_content_field(item, reasoning)
+}
+
+pub fn response_function_call_item(
+    item_id: &str,
+    status: &str,
+    call_id: &str,
+    name: &str,
+    arguments: &str,
+    reasoning: Option<&str>,
+) -> Value {
+    let mut item = json!({
+        "id": item_id,
+        "type": "function_call",
+        "status": status,
+        "call_id": call_id,
+        "name": name,
+        "arguments": arguments
+    });
+    attach_optional_reasoning_content_field(&mut item, reasoning);
+    item
+}
+
+pub fn response_function_call_item_with_namespace(
+    item_id: &str,
+    status: &str,
+    call_id: &str,
+    name: &str,
+    namespace: Option<&str>,
+    arguments: &str,
+    reasoning: Option<&str>,
+) -> Value {
+    let mut item =
+        response_function_call_item(item_id, status, call_id, name, arguments, reasoning);
+    if let Some(namespace) = namespace.filter(|value| !value.is_empty()) {
+        if let Some(obj) = item.as_object_mut() {
+            obj.insert("namespace".to_string(), json!(namespace));
+        }
+    }
+    item
 }
 
 pub fn split_leading_think_block(text: &str) -> Option<(String, String)> {
@@ -708,6 +795,47 @@ mod tests {
         assert!(is_empty_json_value(&json!({})));
         assert!(!is_empty_json_value(&json!(0)));
         assert!(!is_empty_json_value(&json!("text")));
+    }
+
+    #[test]
+    fn appends_reasoning_content_without_overwriting_existing_text() {
+        let mut message = json!({"reasoning_content": "first"})
+            .as_object()
+            .expect("object")
+            .clone();
+
+        assert!(append_reasoning_content(&mut message, " second "));
+        assert_eq!(
+            message["reasoning_content"],
+            Value::String("first\n\nsecond".to_string())
+        );
+        assert!(!append_reasoning_content(&mut message, "   "));
+    }
+
+    #[test]
+    fn builds_codex_response_function_call_items() {
+        let item = response_function_call_item_with_namespace(
+            "fc_1",
+            "completed",
+            "call_1",
+            "shell",
+            Some("tools"),
+            r#"{"cmd":"pwd"}"#,
+            Some("plan"),
+        );
+
+        assert_eq!(item["id"], "fc_1");
+        assert_eq!(item["type"], "function_call");
+        assert_eq!(item["status"], "completed");
+        assert_eq!(item["call_id"], "call_1");
+        assert_eq!(item["name"], "shell");
+        assert_eq!(item["namespace"], "tools");
+        assert_eq!(item["arguments"], r#"{"cmd":"pwd"}"#);
+        assert_eq!(item["reasoning_content"], "plan");
+
+        let no_reasoning =
+            response_function_call_item("fc_2", "completed", "call_2", "read", "{}", None);
+        assert!(no_reasoning.get("reasoning_content").is_none());
     }
 
     #[test]
