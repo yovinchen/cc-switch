@@ -1,7 +1,8 @@
 use super::{error::ProxyError, hyper_client::ProxyResponse};
 use crate::proxy_core::{
-    ProxyCoreResponse, ProxyEventEnvelope, ProxyTransportResponse, ProxyTransportResponseBody,
+    ProxyCoreResponse, ProxyTransportResponse, ProxyTransportResponseBody,
 };
+use crate::proxy_core_adapter::{proxy_event_envelope_to_sse_spec, ProxyEventEnvelope};
 use axum::response::sse::Event;
 use bytes::Bytes;
 
@@ -70,7 +71,7 @@ pub(crate) fn proxy_core_response_to_axum_response_with_error_message(
 }
 
 pub(crate) fn proxy_event_envelope_to_axum_sse_event(event: ProxyEventEnvelope) -> Event {
-    let spec = event.to_sse_spec();
+    let spec = proxy_event_envelope_to_sse_spec(&event);
     Event::default()
         .id(spec.id)
         .event(spec.event)
@@ -80,7 +81,8 @@ pub(crate) fn proxy_event_envelope_to_axum_sse_event(event: ProxyEventEnvelope) 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::proxy_core::{ProxyCoreResponse, ProxyEventEnvelope, ProxyResponseBody};
+    use crate::proxy_core::{ProxyCoreResponse, ProxyResponseBody};
+    use crate::proxy_core_adapter::ProxyEventEnvelope;
     use axum::response::{IntoResponse, sse::Sse};
     use http::StatusCode;
     use http_body_util::BodyExt as _;

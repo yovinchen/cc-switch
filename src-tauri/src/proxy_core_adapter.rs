@@ -181,6 +181,8 @@ pub(crate) type ProxyConfig = crate::proxy_core::ProxyConfig;
 pub(crate) type ProxyRuntimeStatus = crate::proxy_core::ProxyRuntimeStatus;
 pub(crate) type ProxyServerInfo = crate::proxy_core::ProxyServerInfo;
 pub(crate) type ProxyTakeoverStatus = crate::proxy_core::ProxyTakeoverStatus;
+pub(crate) type ProxyEventEnvelope = crate::proxy_core::ProxyEventEnvelope;
+pub(crate) type ProxyEventSseSpec = crate::proxy_core::ProxyEventSseSpec;
 pub(crate) type GlobalProxyConfig = crate::proxy_core::GlobalProxyConfig;
 pub(crate) type AppProxyConfig = crate::proxy_core::AppProxyConfig;
 pub(crate) type ProviderHealth = crate::proxy_core::ProviderHealth;
@@ -228,6 +230,25 @@ pub(crate) type ProviderSelectionInput = crate::proxy_core::ProviderSelectionInp
 pub(crate) type ProxyCoreError = crate::proxy_core::ProxyCoreError;
 pub(crate) type RouteResolveRequest = crate::proxy_core::RouteResolveRequest;
 pub(crate) type RouteResolveResponse = crate::proxy_core::RouteResolveResponse;
+
+pub(crate) const PROXY_EVENTS_CONNECTED_EVENT: &str =
+    crate::proxy_core::PROXY_EVENTS_CONNECTED_EVENT;
+pub(crate) const PROXY_EVENTS_LAGGED_EVENT: &str =
+    crate::proxy_core::PROXY_EVENTS_LAGGED_EVENT;
+
+pub(crate) fn build_proxy_events_connected_payload(buffer_size: usize) -> Value {
+    crate::proxy_core::build_proxy_events_connected_payload(buffer_size)
+}
+
+pub(crate) fn build_proxy_events_lagged_payload(skipped: u64) -> Value {
+    crate::proxy_core::build_proxy_events_lagged_payload(skipped)
+}
+
+pub(crate) fn proxy_event_envelope_to_sse_spec(
+    event: &ProxyEventEnvelope,
+) -> ProxyEventSseSpec {
+    event.to_sse_spec()
+}
 
 pub(crate) fn circuit_breaker_config_from_app_config(
     config: Option<&AppProxyConfig>,
@@ -1410,6 +1431,26 @@ mod tests {
         assert!(response.candidates.is_empty());
         assert_eq!(response.rejected.len(), 1);
         assert_eq!(response.rejected[0].reasons, vec!["circuit_open"]);
+    }
+
+    #[test]
+    fn proxy_event_adapter_projects_event_stream_contracts() {
+        assert_eq!(PROXY_EVENTS_CONNECTED_EVENT, "proxy_events_connected");
+        assert_eq!(PROXY_EVENTS_LAGGED_EVENT, "proxy_events_lagged");
+        assert_eq!(build_proxy_events_connected_payload(256)["bufferSize"], 256);
+        assert_eq!(build_proxy_events_lagged_payload(3)["skipped"], 3);
+
+        let envelope = ProxyEventEnvelope::new(
+            42,
+            "request_started",
+            "2026-06-20T00:00:00Z",
+            json!({"provider": "relay-a"}),
+        );
+        let spec = proxy_event_envelope_to_sse_spec(&envelope);
+
+        assert_eq!(spec.id, "42");
+        assert_eq!(spec.event, "request_started");
+        assert!(spec.data.contains("\"provider\":\"relay-a\""));
     }
 
     #[test]
