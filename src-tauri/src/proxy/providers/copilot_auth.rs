@@ -24,14 +24,11 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use tokio::sync::{Mutex, RwLock};
 
-use crate::proxy_core::{
-    copilot_api_base, copilot_github_client_id, copilot_github_device_code_url,
-    copilot_github_oauth_token_url, copilot_github_user_url, copilot_token_url, copilot_usage_url,
-    parse_copilot_models_response_bytes, CopilotModel,
-};
 use crate::proxy_core_adapter::{
-    copilot_composite_account_id, is_copilot_ghes_domain, normalize_github_domain,
-    COPILOT_PUBLIC_GITHUB_DOMAIN,
+    copilot_api_base, copilot_composite_account_id, copilot_github_client_id,
+    copilot_github_device_code_url, copilot_github_oauth_token_url, copilot_github_user_url,
+    copilot_token_url, copilot_usage_url, is_copilot_ghes_domain, normalize_github_domain,
+    parse_copilot_models_response_bytes, CopilotModel, COPILOT_PUBLIC_GITHUB_DOMAIN,
 };
 
 const DEFAULT_GITHUB_DOMAIN: &str = COPILOT_PUBLIC_GITHUB_DOMAIN;

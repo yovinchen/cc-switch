@@ -48,6 +48,42 @@ pub(crate) fn copilot_composite_account_id(domain: &str, user_id: u64) -> String
     crate::proxy_core::copilot_composite_account_id(domain, user_id)
 }
 
+pub(crate) type CopilotModel = crate::proxy_core::CopilotModel;
+
+pub(crate) fn parse_copilot_models_response_bytes(
+    body: &[u8],
+) -> Result<Vec<CopilotModel>, String> {
+    crate::proxy_core::parse_copilot_models_response_bytes(body)
+}
+
+pub(crate) fn copilot_github_client_id(domain: &str) -> &'static str {
+    crate::proxy_core::copilot_github_client_id(domain)
+}
+
+pub(crate) fn copilot_github_device_code_url(domain: &str) -> String {
+    crate::proxy_core::copilot_github_device_code_url(domain)
+}
+
+pub(crate) fn copilot_github_oauth_token_url(domain: &str) -> String {
+    crate::proxy_core::copilot_github_oauth_token_url(domain)
+}
+
+pub(crate) fn copilot_github_user_url(domain: &str) -> String {
+    crate::proxy_core::copilot_github_user_url(domain)
+}
+
+pub(crate) fn copilot_token_url(domain: &str) -> String {
+    crate::proxy_core::copilot_token_url(domain)
+}
+
+pub(crate) fn copilot_usage_url(domain: &str) -> String {
+    crate::proxy_core::copilot_usage_url(domain)
+}
+
+pub(crate) fn copilot_api_base(domain: &str) -> String {
+    crate::proxy_core::copilot_api_base(domain)
+}
+
 impl From<&AppType> for AppKind {
     fn from(value: &AppType) -> Self {
         match value {
@@ -806,6 +842,66 @@ mod tests {
             copilot_composite_account_id("company.ghe.com", 12345),
             "company.ghe.com:12345"
         );
+    }
+
+    #[test]
+    fn copilot_transport_adapter_projects_urls_and_model_parsing() {
+        assert_eq!(
+            copilot_github_client_id("github.com"),
+            "Iv1.b507a08c87ecfe98"
+        );
+        assert_eq!(
+            copilot_github_client_id("company.ghe.com"),
+            "Ov23li8tweQw6odWQebz"
+        );
+        assert_eq!(
+            copilot_github_device_code_url("company.ghe.com"),
+            "https://company.ghe.com/login/device/code"
+        );
+        assert_eq!(
+            copilot_github_oauth_token_url("company.ghe.com"),
+            "https://company.ghe.com/login/oauth/access_token"
+        );
+        assert_eq!(
+            copilot_github_user_url("github.com"),
+            "https://api.github.com/user"
+        );
+        assert_eq!(
+            copilot_token_url("company.ghe.com"),
+            "https://company.ghe.com/api/v3/copilot_internal/v2/token"
+        );
+        assert_eq!(
+            copilot_usage_url("company.ghe.com"),
+            "https://company.ghe.com/api/v3/copilot_internal/user"
+        );
+        assert_eq!(
+            copilot_api_base("company.ghe.com"),
+            "https://copilot-api.company.ghe.com"
+        );
+
+        let models = parse_copilot_models_response_bytes(
+            br#"{
+            "data": [
+                {
+                    "id": "gpt-5.4",
+                    "name": "GPT-5.4",
+                    "vendor": "OpenAI",
+                    "model_picker_enabled": true
+                },
+                {
+                    "id": "hidden",
+                    "name": "Hidden",
+                    "vendor": "GitHub",
+                    "model_picker_enabled": false
+                }
+            ]
+        }"#,
+        )
+        .unwrap();
+
+        assert_eq!(models.len(), 1);
+        assert_eq!(models[0].id, "gpt-5.4");
+        assert_eq!(models[0].vendor, "OpenAI");
     }
 
     #[test]
