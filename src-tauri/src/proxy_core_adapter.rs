@@ -4,13 +4,19 @@ use crate::database::{ProxyChannelModelRecord, ProxyChannelRecord};
 use crate::provider::{Provider, ProviderMeta};
 use crate::proxy::providers::provider_kind_from_app_type_and_config;
 use crate::proxy::usage::RequestLog;
-use crate::proxy_core::{
-    AppSummaryInput, ChannelHealthPolicy, ChannelOverrides, ChannelReachabilityInput,
-    ChannelReachabilityResult, ChannelReachabilityStatus, ClaudeDesktopModelRouteInput,
-    CodexChatErrorNormalization, CurrentRouteProviderSummaryInput, ModelCapabilities,
-    ModelRoute, ProviderMetadata, RouteResolveChannelInput, RouteResolveModelInput,
-    SessionIdResult, UpstreamEndpoint, UpstreamRequestTransportPolicy, UpstreamSendPolicy,
+use crate::proxy_core::api::auth::ClaudeDesktopModelRouteInput;
+use crate::proxy_core::api::domain::{
+    ChannelHealthPolicy, ChannelOverrides, ModelCapabilities, ModelRoute, ProviderMetadata,
+    UpstreamEndpoint,
 };
+use crate::proxy_core::api::management::{
+    AppSummaryInput, ChannelReachabilityInput, ChannelReachabilityResult,
+    ChannelReachabilityStatus, CurrentRouteProviderSummaryInput,
+};
+use crate::proxy_core::api::routing::{RouteResolveChannelInput, RouteResolveModelInput};
+use crate::proxy_core::api::session::SessionIdResult;
+use crate::proxy_core::api::transforms::CodexChatErrorNormalization;
+use crate::proxy_core::api::transport::{UpstreamRequestTransportPolicy, UpstreamSendPolicy};
 use crate::services::usage_stats::is_placeholder_pricing_model;
 use crate::services::stream_check::{HealthStatus, StreamCheckResult};
 use bytes::Bytes;
@@ -21,11 +27,13 @@ use serde_json::{Value, json};
 use uuid::Uuid;
 
 pub(crate) fn synthesize_gemini_tool_call_id_with_uuid() -> String {
-    crate::proxy_core::synthesize_gemini_tool_call_id(Uuid::new_v4().simple().to_string())
+    crate::proxy_core::api::transforms::synthesize_gemini_tool_call_id(
+        Uuid::new_v4().simple().to_string(),
+    )
 }
 
 pub(crate) type ClaudeDesktopGatewayAuthError =
-    crate::proxy_core::ClaudeDesktopGatewayAuthError;
+    crate::proxy_core::api::auth::ClaudeDesktopGatewayAuthError;
 
 pub(crate) type ProxyErrorStatusKind =
     crate::proxy_core::api::errors::ProxyErrorStatusKind;
@@ -34,23 +42,29 @@ pub(crate) fn validate_claude_desktop_gateway_bearer_header(
     headers: &HeaderMap,
     expected_token: &str,
 ) -> Result<(), ClaudeDesktopGatewayAuthError> {
-    crate::proxy_core::validate_claude_desktop_gateway_bearer_header(headers, expected_token)
+    crate::proxy_core::api::auth::validate_claude_desktop_gateway_bearer_header(
+        headers,
+        expected_token,
+    )
 }
 
 pub(crate) fn proxy_error_http_status_code(kind: ProxyErrorStatusKind) -> u16 {
-    crate::proxy_core::proxy_error_http_status_code(kind)
+    crate::proxy_core::api::errors::proxy_error_http_status_code(kind)
 }
 
 pub(crate) const SYSTEM_PROXY_ENV_KEYS: [&str; 6] =
-    crate::proxy_core::SYSTEM_PROXY_ENV_KEYS;
+    crate::proxy_core::api::transport::SYSTEM_PROXY_ENV_KEYS;
 
 pub(crate) fn mask_url_for_log(url: &str) -> String {
-    crate::proxy_core::mask_url_for_log(url)
+    crate::proxy_core::api::security::mask_url_for_log(url)
 }
 
 #[cfg(test)]
 pub(crate) fn proxy_url_points_to_loopback_port(value: &str, loopback_port: u16) -> bool {
-    crate::proxy_core::proxy_url_points_to_loopback_port(value, loopback_port)
+    crate::proxy_core::api::transport::proxy_url_points_to_loopback_port(
+        value,
+        loopback_port,
+    )
 }
 
 pub(crate) fn proxy_values_point_to_loopback_port<I, V>(
@@ -61,26 +75,29 @@ where
     I: IntoIterator<Item = V>,
     V: AsRef<str>,
 {
-    crate::proxy_core::proxy_values_point_to_loopback_port(values, loopback_port)
+    crate::proxy_core::api::transport::proxy_values_point_to_loopback_port(
+        values,
+        loopback_port,
+    )
 }
 
 pub(crate) const COPILOT_PUBLIC_GITHUB_DOMAIN: &str =
-    crate::proxy_core::COPILOT_PUBLIC_GITHUB_DOMAIN;
+    crate::proxy_core::api::model_catalog::COPILOT_PUBLIC_GITHUB_DOMAIN;
 
 pub(crate) fn default_copilot_github_domain() -> String {
-    crate::proxy_core::default_copilot_github_domain()
+    crate::proxy_core::api::model_catalog::default_copilot_github_domain()
 }
 
 pub(crate) fn normalize_github_domain(raw: &str) -> Result<String, String> {
-    crate::proxy_core::normalize_github_domain(raw)
+    crate::proxy_core::api::model_catalog::normalize_github_domain(raw)
 }
 
 pub(crate) fn is_copilot_ghes_domain(domain: &str) -> bool {
-    crate::proxy_core::is_copilot_ghes_domain(domain)
+    crate::proxy_core::api::model_catalog::is_copilot_ghes_domain(domain)
 }
 
 pub(crate) fn copilot_composite_account_id(domain: &str, user_id: u64) -> String {
-    crate::proxy_core::copilot_composite_account_id(domain, user_id)
+    crate::proxy_core::api::model_catalog::copilot_composite_account_id(domain, user_id)
 }
 
 pub(crate) type CopilotModel = crate::proxy_core::api::model_catalog::CopilotModel;
@@ -88,35 +105,35 @@ pub(crate) type CopilotModel = crate::proxy_core::api::model_catalog::CopilotMod
 pub(crate) fn parse_copilot_models_response_bytes(
     body: &[u8],
 ) -> Result<Vec<CopilotModel>, String> {
-    crate::proxy_core::parse_copilot_models_response_bytes(body)
+    crate::proxy_core::api::model_catalog::parse_copilot_models_response_bytes(body)
 }
 
 pub(crate) fn copilot_github_client_id(domain: &str) -> &'static str {
-    crate::proxy_core::copilot_github_client_id(domain)
+    crate::proxy_core::api::model_catalog::copilot_github_client_id(domain)
 }
 
 pub(crate) fn copilot_github_device_code_url(domain: &str) -> String {
-    crate::proxy_core::copilot_github_device_code_url(domain)
+    crate::proxy_core::api::model_catalog::copilot_github_device_code_url(domain)
 }
 
 pub(crate) fn copilot_github_oauth_token_url(domain: &str) -> String {
-    crate::proxy_core::copilot_github_oauth_token_url(domain)
+    crate::proxy_core::api::model_catalog::copilot_github_oauth_token_url(domain)
 }
 
 pub(crate) fn copilot_github_user_url(domain: &str) -> String {
-    crate::proxy_core::copilot_github_user_url(domain)
+    crate::proxy_core::api::model_catalog::copilot_github_user_url(domain)
 }
 
 pub(crate) fn copilot_token_url(domain: &str) -> String {
-    crate::proxy_core::copilot_token_url(domain)
+    crate::proxy_core::api::model_catalog::copilot_token_url(domain)
 }
 
 pub(crate) fn copilot_usage_url(domain: &str) -> String {
-    crate::proxy_core::copilot_usage_url(domain)
+    crate::proxy_core::api::model_catalog::copilot_usage_url(domain)
 }
 
 pub(crate) fn copilot_api_base(domain: &str) -> String {
-    crate::proxy_core::copilot_api_base(domain)
+    crate::proxy_core::api::model_catalog::copilot_api_base(domain)
 }
 
 pub(crate) type FetchedModel = crate::proxy_core::api::model_catalog::FetchedModel;
@@ -141,7 +158,7 @@ pub(crate) async fn fetch_openai_compatible_models_with_transport<T>(
 where
     T: OpenAiCompatibleModelsTransport + ?Sized,
 {
-    crate::proxy_core::fetch_openai_compatible_models_with_transport(
+    crate::proxy_core::api::model_catalog::fetch_openai_compatible_models_with_transport(
         base_url,
         api_key,
         is_full_url,
@@ -161,7 +178,7 @@ pub(crate) async fn fetch_codex_oauth_models_with_transport<T>(
 where
     T: CodexOAuthModelsTransport + ?Sized,
 {
-    crate::proxy_core::fetch_codex_oauth_models_with_transport(
+    crate::proxy_core::api::model_catalog::fetch_codex_oauth_models_with_transport(
         token,
         account_id,
         client_version,
@@ -192,7 +209,7 @@ pub(crate) type ProxyServerInfo = crate::proxy_core::api::ports::ProxyServerInfo
 pub(crate) type ProxyTakeoverStatus =
     crate::proxy_core::api::ports::ProxyTakeoverStatus;
 pub(crate) type ClaudeDesktopModelListResponse =
-    crate::proxy_core::ClaudeDesktopModelListResponse;
+    crate::proxy_core::api::auth::ClaudeDesktopModelListResponse;
 pub(crate) type ProxyCoreResponse =
     crate::proxy_core::api::transport::ProxyCoreResponse;
 pub(crate) type ProxyCoreResult<T> = crate::proxy_core::api::errors::ProxyCoreResult<T>;
@@ -204,15 +221,15 @@ pub(crate) type ProxyEventEnvelope =
 pub(crate) type ProxyEventSseSpec =
     crate::proxy_core::api::events::ProxyEventSseSpec;
 pub(crate) type CodexChatHistorySseInspection =
-    crate::proxy_core::CodexChatHistorySseInspection;
+    crate::proxy_core::api::transforms::CodexChatHistorySseInspection;
 pub(crate) type CodexChatHistorySseRecord =
-    crate::proxy_core::CodexChatHistorySseRecord;
+    crate::proxy_core::api::transforms::CodexChatHistorySseRecord;
 pub(crate) type CodexChatHistoryState =
     crate::proxy_core::api::transforms::CodexChatHistoryState;
 pub(crate) type CodexChatReasoningOptions =
-    crate::proxy_core::CodexChatReasoningOptions;
+    crate::proxy_core::api::transforms::CodexChatReasoningOptions;
 pub(crate) type CodexChatReasoningProfile =
-    crate::proxy_core::CodexChatReasoningProfile;
+    crate::proxy_core::api::transforms::CodexChatReasoningProfile;
 pub(crate) type CodexToolContext =
     crate::proxy_core::api::transforms::CodexToolContext;
 pub(crate) type ProxyResponseBody =
@@ -247,7 +264,7 @@ pub(crate) type CurrentRouteTarget =
 pub(crate) type GeminiShadowStore =
     crate::proxy_core::api::transforms::GeminiShadowStore;
 pub(crate) type GeminiToAnthropicMessageOutput =
-    crate::proxy_core::GeminiToAnthropicMessageOutput;
+    crate::proxy_core::api::transforms::GeminiToAnthropicMessageOutput;
 pub(crate) type AnthropicToolSchemaHints =
     crate::proxy_core::api::transforms::AnthropicToolSchemaHints;
 pub(crate) type AuthProfileRef = crate::proxy_core::api::domain::AuthProfileRef;
@@ -259,11 +276,11 @@ pub(crate) type ClaudeAuthKey = crate::proxy_core::api::auth::ClaudeAuthKey;
 pub(crate) type ClaudeAuthKeySource =
     crate::proxy_core::api::auth::ClaudeAuthKeySource;
 pub(crate) type ClaudePromptCacheKeyResolution =
-    crate::proxy_core::ClaudePromptCacheKeyResolution;
+    crate::proxy_core::api::transforms::ClaudePromptCacheKeyResolution;
 pub(crate) type CopilotAuthHeadersInput<'a> =
-    crate::proxy_core::CopilotAuthHeadersInput<'a>;
+    crate::proxy_core::api::transport::CopilotAuthHeadersInput<'a>;
 pub(crate) type CopilotAuthHeaderOverrides<'a> =
-    crate::proxy_core::CopilotAuthHeaderOverrides<'a>;
+    crate::proxy_core::api::transport::CopilotAuthHeaderOverrides<'a>;
 pub(crate) type ResponseRuntimePolicy =
     crate::proxy_core::api::config::ResponseRuntimePolicy;
 pub(crate) type ResponseTimeoutConfig =
@@ -419,7 +436,7 @@ pub(crate) type ResolvedChannelAttempt =
 pub(crate) type RoutePlan = crate::proxy_core::api::routing::RoutePlan;
 pub(crate) type RouteSelection = crate::proxy_core::api::routing::RouteSelection;
 pub(crate) type CodexProxyErrorContext<'a> =
-    crate::proxy_core::CodexProxyErrorContext<'a>;
+    crate::proxy_core::api::transforms::CodexProxyErrorContext<'a>;
 pub(crate) type CodexProxyErrorKind =
     crate::proxy_core::api::transforms::CodexProxyErrorKind;
 pub(crate) type ForwardFailureKind =
@@ -524,18 +541,18 @@ pub(crate) use crate::proxy_core::api::auth::ManagedAccountAuthError;
 pub(crate) use crate::proxy_core::api::transforms::{canonical_json_string, short_value_hash};
 
 pub(crate) const SESSION_REQUEST_ID_PREFIX: &str =
-    crate::proxy_core::SESSION_REQUEST_ID_PREFIX;
+    crate::proxy_core::api::usage::SESSION_REQUEST_ID_PREFIX;
 pub(crate) const PROXY_EVENTS_CONNECTED_EVENT: &str =
-    crate::proxy_core::PROXY_EVENTS_CONNECTED_EVENT;
+    crate::proxy_core::api::events::PROXY_EVENTS_CONNECTED_EVENT;
 pub(crate) const PROXY_EVENTS_LAGGED_EVENT: &str =
-    crate::proxy_core::PROXY_EVENTS_LAGGED_EVENT;
+    crate::proxy_core::api::events::PROXY_EVENTS_LAGGED_EVENT;
 
 pub(crate) fn build_proxy_events_connected_payload(buffer_size: usize) -> Value {
-    crate::proxy_core::build_proxy_events_connected_payload(buffer_size)
+    crate::proxy_core::api::events::build_proxy_events_connected_payload(buffer_size)
 }
 
 pub(crate) fn build_proxy_events_lagged_payload(skipped: u64) -> Value {
-    crate::proxy_core::build_proxy_events_lagged_payload(skipped)
+    crate::proxy_core::api::events::build_proxy_events_lagged_payload(skipped)
 }
 
 pub(crate) fn proxy_event_envelope_to_sse_spec(
@@ -549,28 +566,28 @@ pub(crate) fn append_utf8_safe(
     remainder: &mut Vec<u8>,
     new_bytes: &[u8],
 ) {
-    crate::proxy_core::append_utf8_safe(buffer, remainder, new_bytes);
+    crate::proxy_core::api::transforms::append_utf8_safe(buffer, remainder, new_bytes);
 }
 
 pub(crate) fn take_sse_block(buffer: &mut String) -> Option<String> {
-    crate::proxy_core::take_sse_block(buffer)
+    crate::proxy_core::api::transforms::take_sse_block(buffer)
 }
 
 pub(crate) fn inspect_codex_chat_history_sse_block(
     block: &str,
 ) -> Option<CodexChatHistorySseInspection> {
-    crate::proxy_core::inspect_codex_chat_history_sse_block(block)
+    crate::proxy_core::api::transforms::inspect_codex_chat_history_sse_block(block)
 }
 
 pub(crate) fn build_codex_upstream_url(base_url: &str, endpoint: &str) -> String {
-    crate::proxy_core::build_codex_upstream_url(base_url, endpoint)
+    crate::proxy_core::api::transport::build_codex_upstream_url(base_url, endpoint)
 }
 
 pub(crate) fn should_convert_codex_responses_endpoint_to_chat(
     provider_uses_chat_completions: bool,
     endpoint: &str,
 ) -> bool {
-    crate::proxy_core::should_convert_codex_responses_endpoint_to_chat(
+    crate::proxy_core::api::transport::should_convert_codex_responses_endpoint_to_chat(
         provider_uses_chat_completions,
         endpoint,
     )
@@ -582,7 +599,7 @@ pub(crate) fn resolve_codex_provider_uses_chat_completions(
     base_url: Option<&str>,
     config_base_url: Option<&str>,
 ) -> bool {
-    crate::proxy_core::resolve_codex_provider_uses_chat_completions(
+    crate::proxy_core::api::transport::resolve_codex_provider_uses_chat_completions(
         api_format,
         wire_api,
         base_url,
@@ -593,20 +610,25 @@ pub(crate) fn resolve_codex_provider_uses_chat_completions(
 pub(crate) fn build_codex_bearer_auth_headers(
     api_key: &str,
 ) -> Result<Vec<(http::HeaderName, http::HeaderValue)>, ProxyCoreError> {
-    crate::proxy_core::build_codex_bearer_auth_headers(api_key)
+    crate::proxy_core::api::transport::build_codex_bearer_auth_headers(api_key)
 }
 
 pub(crate) fn resolve_codex_provider_upstream_model(
     settings_model: Option<&str>,
     config_model: Option<&str>,
 ) -> Option<String> {
-    crate::proxy_core::resolve_codex_provider_upstream_model(settings_model, config_model)
+    crate::proxy_core::api::transport::resolve_codex_provider_upstream_model(
+        settings_model,
+        config_model,
+    )
 }
 
 pub(crate) fn codex_provider_catalog_model_ids_from_settings(
     settings_config: &Value,
 ) -> std::collections::HashSet<String> {
-    crate::proxy_core::codex_provider_catalog_model_ids_from_settings(settings_config)
+    crate::proxy_core::api::transport::codex_provider_catalog_model_ids_from_settings(
+        settings_config,
+    )
 }
 
 pub(crate) fn apply_codex_chat_upstream_model_policy(
@@ -615,7 +637,7 @@ pub(crate) fn apply_codex_chat_upstream_model_policy(
     upstream_model: Option<&str>,
     catalog_model_ids: &std::collections::HashSet<String>,
 ) -> Option<String> {
-    crate::proxy_core::apply_codex_chat_upstream_model_policy(
+    crate::proxy_core::api::transport::apply_codex_chat_upstream_model_policy(
         body,
         uses_chat_completions,
         upstream_model,
@@ -628,7 +650,7 @@ pub(crate) fn infer_codex_chat_reasoning_profile(
     base_url: &str,
     model: &str,
 ) -> Option<CodexChatReasoningProfile> {
-    crate::proxy_core::infer_codex_chat_reasoning_profile(
+    crate::proxy_core::api::transforms::infer_codex_chat_reasoning_profile(
         provider_name,
         base_url,
         model,
@@ -638,7 +660,7 @@ pub(crate) fn infer_codex_chat_reasoning_profile(
 pub(crate) fn normalize_codex_chat_reasoning_profile(
     profile: CodexChatReasoningProfile,
 ) -> CodexChatReasoningProfile {
-    crate::proxy_core::normalize_codex_chat_reasoning_profile(profile)
+    crate::proxy_core::api::transforms::normalize_codex_chat_reasoning_profile(profile)
 }
 
 pub(crate) fn resolve_response_runtime_policy(
@@ -648,7 +670,7 @@ pub(crate) fn resolve_response_runtime_policy(
     streaming_first_byte_timeout: u64,
     streaming_idle_timeout: u64,
 ) -> ResponseRuntimePolicy {
-    crate::proxy_core::resolve_response_runtime_policy(
+    crate::proxy_core::api::transport::resolve_response_runtime_policy(
         auto_failover_enabled,
         max_retries,
         non_streaming_timeout,
@@ -658,25 +680,25 @@ pub(crate) fn resolve_response_runtime_policy(
 }
 
 pub(crate) fn extract_gemini_model_from_path(endpoint: &str) -> Option<String> {
-    crate::proxy_core::extract_gemini_model_from_path(endpoint)
+    crate::proxy_core::api::transport::extract_gemini_model_from_path(endpoint)
 }
 
 pub(crate) fn extract_gemini_api_key_from_settings(settings: &Value) -> Option<String> {
-    crate::proxy_core::extract_gemini_api_key_from_settings(settings)
+    crate::proxy_core::api::auth::extract_gemini_api_key_from_settings(settings)
 }
 
 pub(crate) fn extract_gemini_base_url_from_settings(settings: &Value) -> Option<String> {
-    crate::proxy_core::extract_gemini_base_url_from_settings(settings)
+    crate::proxy_core::api::auth::extract_gemini_base_url_from_settings(settings)
 }
 
 pub(crate) fn parse_gemini_oauth_credentials(
     key: &str,
 ) -> Option<GeminiOAuthCredentials> {
-    crate::proxy_core::parse_gemini_oauth_credentials(key)
+    crate::proxy_core::api::auth::parse_gemini_oauth_credentials(key)
 }
 
 pub(crate) fn build_gemini_upstream_url(base_url: &str, endpoint: &str) -> String {
-    crate::proxy_core::build_gemini_upstream_url(base_url, endpoint)
+    crate::proxy_core::api::transforms::build_gemini_upstream_url(base_url, endpoint)
 }
 
 pub(crate) fn build_gemini_auth_headers(
@@ -684,11 +706,11 @@ pub(crate) fn build_gemini_auth_headers(
     access_token: Option<&str>,
     use_oauth: bool,
 ) -> Result<Vec<(http::HeaderName, http::HeaderValue)>, ProxyCoreError> {
-    crate::proxy_core::build_gemini_auth_headers(api_key, access_token, use_oauth)
+    crate::proxy_core::api::transport::build_gemini_auth_headers(api_key, access_token, use_oauth)
 }
 
 pub(crate) fn claude_api_format_from_metadata(metadata: &Value, fallback: &str) -> String {
-    crate::proxy_core::claude_api_format_from_metadata(metadata, fallback)
+    crate::proxy_core::api::transforms::claude_api_format_from_metadata(metadata, fallback)
 }
 
 pub(crate) fn resolve_claude_api_format_from_settings(
@@ -696,7 +718,7 @@ pub(crate) fn resolve_claude_api_format_from_settings(
     meta_api_format: Option<&str>,
     settings_config: &Value,
 ) -> &'static str {
-    crate::proxy_core::resolve_claude_api_format_from_settings(
+    crate::proxy_core::api::transforms::resolve_claude_api_format_from_settings(
         provider_type,
         meta_api_format,
         settings_config,
@@ -710,7 +732,7 @@ pub(crate) fn infer_claude_provider_kind(
     base_url: Option<&str>,
     settings_config: &Value,
 ) -> ProviderKind {
-    crate::proxy_core::infer_claude_provider_kind(
+    crate::proxy_core::api::domain::infer_claude_provider_kind(
         api_format,
         uses_google_oauth,
         meta_provider_type,
@@ -720,14 +742,17 @@ pub(crate) fn infer_claude_provider_kind(
 }
 
 pub(crate) fn is_gemini_oauth_key_shape(key: &str) -> bool {
-    crate::proxy_core::is_gemini_oauth_key_shape(key)
+    crate::proxy_core::api::auth::is_gemini_oauth_key_shape(key)
 }
 
 pub(crate) fn is_copilot_prompt_cache_provider(
     meta_provider_type: Option<&str>,
     settings_config: &Value,
 ) -> bool {
-    crate::proxy_core::is_copilot_prompt_cache_provider(meta_provider_type, settings_config)
+    crate::proxy_core::api::transforms::is_copilot_prompt_cache_provider(
+        meta_provider_type,
+        settings_config,
+    )
 }
 
 pub(crate) fn resolve_claude_responses_prompt_cache_key(
@@ -736,7 +761,7 @@ pub(crate) fn resolve_claude_responses_prompt_cache_key(
     session_id: Option<&str>,
     is_copilot: bool,
 ) -> ClaudePromptCacheKeyResolution {
-    crate::proxy_core::resolve_claude_responses_prompt_cache_key(
+    crate::proxy_core::api::transforms::resolve_claude_responses_prompt_cache_key(
         body,
         explicit_cache_key,
         session_id,
@@ -747,21 +772,21 @@ pub(crate) fn resolve_claude_responses_prompt_cache_key(
 pub(crate) fn extract_claude_auth_key_from_settings(
     settings_config: &Value,
 ) -> Option<ClaudeAuthKey> {
-    crate::proxy_core::extract_claude_auth_key_from_settings(settings_config)
+    crate::proxy_core::api::auth::extract_claude_auth_key_from_settings(settings_config)
 }
 
 pub(crate) fn extract_claude_base_url_from_settings(
     is_codex_oauth: bool,
     settings_config: &Value,
 ) -> Option<String> {
-    crate::proxy_core::extract_claude_base_url_from_settings(
+    crate::proxy_core::api::domain::extract_claude_base_url_from_settings(
         is_codex_oauth,
         settings_config,
     )
 }
 
 pub(crate) fn build_claude_upstream_url(base_url: &str, endpoint: &str) -> String {
-    crate::proxy_core::build_claude_upstream_url(base_url, endpoint)
+    crate::proxy_core::api::transport::build_claude_upstream_url(base_url, endpoint)
 }
 
 pub(crate) fn build_claude_auth_headers(
@@ -769,13 +794,13 @@ pub(crate) fn build_claude_auth_headers(
     api_key: &str,
     access_token: Option<&str>,
 ) -> Result<Vec<(http::HeaderName, http::HeaderValue)>, ProxyCoreError> {
-    crate::proxy_core::build_claude_auth_headers(kind, api_key, access_token)
+    crate::proxy_core::api::transport::build_claude_auth_headers(kind, api_key, access_token)
 }
 
 pub(crate) fn build_copilot_auth_headers(
     input: CopilotAuthHeadersInput<'_>,
 ) -> Result<Vec<(http::HeaderName, http::HeaderValue)>, ProxyCoreError> {
-    crate::proxy_core::build_copilot_auth_headers(input)
+    crate::proxy_core::api::transport::build_copilot_auth_headers(input)
 }
 
 pub(crate) fn anthropic_to_openai_responses_request(
@@ -784,7 +809,7 @@ pub(crate) fn anthropic_to_openai_responses_request(
     is_codex_oauth: bool,
     codex_fast_mode: bool,
 ) -> Value {
-    crate::proxy_core::anthropic_to_openai_responses_request(
+    crate::proxy_core::api::transforms::anthropic_to_openai_responses_request(
         body,
         cache_key,
         is_codex_oauth,
@@ -796,7 +821,10 @@ pub(crate) fn anthropic_to_openai_chat_request(
     body: &Value,
     preserve_reasoning_content: bool,
 ) -> Value {
-    crate::proxy_core::anthropic_to_openai_chat_request(body, preserve_reasoning_content)
+    crate::proxy_core::api::transforms::anthropic_to_openai_chat_request(
+        body,
+        preserve_reasoning_content,
+    )
 }
 
 pub(crate) fn anthropic_request_to_gemini_request_with_shadow(
@@ -805,7 +833,7 @@ pub(crate) fn anthropic_request_to_gemini_request_with_shadow(
     provider_id: Option<&str>,
     session_id: Option<&str>,
 ) -> Result<Value, String> {
-    crate::proxy_core::anthropic_request_to_gemini_request_with_shadow(
+    crate::proxy_core::api::transforms::anthropic_request_to_gemini_request_with_shadow(
         body,
         shadow_store,
         provider_id,

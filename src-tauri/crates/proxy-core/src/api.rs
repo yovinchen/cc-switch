@@ -58,14 +58,16 @@ pub mod management {
     pub use crate::management_api::*;
     pub use crate::ports::{
         plan_channel_test, AppChannelListQuery, AppChannelResponse, AppListResponse,
-        AppModelListQuery, ChannelDeleteResponse, ChannelHealthResetResponse, ChannelListQuery,
-        ChannelListResponse, ChannelMigrationMaterializeResponse,
+        AppModelListQuery, AppSummaryInput, ChannelDeleteResponse, ChannelHealthResetResponse,
+        ChannelListQuery, ChannelListResponse, ChannelMigrationMaterializeResponse,
         ChannelMigrationPreviewResponse, ChannelModelRecord, ChannelModelsResponse,
+        ChannelReachabilityInput, ChannelReachabilityResult, ChannelReachabilityStatus,
         ChannelRecord, ChannelRecordResponse, ChannelRouteRejected, ChannelRouteSource,
-        ChannelTestPlan, ChannelTestResponse, CurrentRouteResponse, GroupListQuery,
-        HealthCheckResponse, ProviderListResponse, ProxyChannelModelWriteRequest,
-        ProxyChannelModelsReplaceRequest, ProxyChannelPatchRequest, ProxyChannelTestRequest,
-        ProxyChannelWriteRequest, ProxyStatusResponse, RouteGroupListResponse,
+        ChannelTestPlan, ChannelTestResponse, CurrentRouteProviderSummaryInput,
+        CurrentRouteResponse, GroupListQuery, HealthCheckResponse, ProviderListResponse,
+        ProxyChannelModelWriteRequest, ProxyChannelModelsReplaceRequest, ProxyChannelPatchRequest,
+        ProxyChannelTestRequest, ProxyChannelWriteRequest, ProxyStatusResponse,
+        RouteGroupListResponse,
         RouteResolveRequest, RouteResolveResponse,
     };
 }
