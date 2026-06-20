@@ -794,6 +794,73 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn proxy_server_runtime_smoke_exposes_versioned_management_api() {
+        let db = Arc::new(Database::memory().expect("memory db"));
+        let config = ProxyConfig {
+            listen_address: "127.0.0.1".to_string(),
+            listen_port: 0,
+            ..ProxyConfig::default()
+        };
+        let server = ProxyServer::new(config, db, None);
+        let info = server.start().await.expect("start proxy server");
+        let client = reqwest::Client::builder()
+            .no_proxy()
+            .build()
+            .expect("reqwest client");
+        let base_url = format!("http://127.0.0.1:{}", info.port);
+
+        let smoke = async {
+            let health_response = client
+                .get(format!("{base_url}/proxy/v1/health"))
+                .send()
+                .await
+                .map_err(|error| error.to_string())?;
+            if health_response.status() != StatusCode::OK {
+                return Err(format!(
+                    "unexpected health status: {}",
+                    health_response.status()
+                ));
+            }
+            let health = health_response
+                .json::<Value>()
+                .await
+                .map_err(|error| error.to_string())?;
+            if health["status"] != "healthy" {
+                return Err(format!("unexpected health body: {health}"));
+            }
+
+            let status_response = client
+                .get(format!("{base_url}/proxy/v1/status"))
+                .send()
+                .await
+                .map_err(|error| error.to_string())?;
+            if status_response.status() != StatusCode::OK {
+                return Err(format!(
+                    "unexpected status response: {}",
+                    status_response.status()
+                ));
+            }
+            let status = status_response
+                .json::<Value>()
+                .await
+                .map_err(|error| error.to_string())?;
+            if status["running"] != true {
+                return Err(format!("unexpected status body: {status}"));
+            }
+            if status["port"].as_u64() != Some(u64::from(info.port)) {
+                return Err(format!("status did not report actual port: {status}"));
+            }
+
+            Ok::<(), String>(())
+        }
+        .await;
+        let stop = server.stop().await;
+
+        assert!(stop.is_ok(), "stop proxy server: {stop:?}");
+        smoke.expect("runtime management smoke");
+    }
+
+    #[tokio::test]
     async fn app_channel_management_route_applies_route_filters() {
         let db = Arc::new(Database::memory().expect("memory db"));
         let provider = Provider::with_id(
