@@ -21,6 +21,13 @@ impl ChannelRequestValidationError {
             message: format!("{field} cannot be empty"),
         }
     }
+
+    fn invalid(field: &str, message: impl Into<String>) -> Self {
+        Self {
+            field: field.to_string(),
+            message: message.into(),
+        }
+    }
 }
 
 impl fmt::Display for ChannelRequestValidationError {
@@ -41,6 +48,7 @@ pub fn validate_proxy_channel_write_request_fields(
         return Err(ChannelRequestValidationError::required("baseUrl"));
     }
     normalize_required_channel_string(&request.interface_kind, "interfaceKind")?;
+    validate_optional_channel_auth_profile_ref(request.auth_profile_ref.as_deref())?;
     for model in &request.models {
         validate_proxy_channel_model_write_request_fields(model)?;
     }
@@ -96,6 +104,45 @@ pub fn normalize_optional_channel_string(value: String) -> Option<String> {
     }
 }
 
+pub fn validate_optional_channel_auth_profile_ref(
+    auth_profile_ref: Option<&str>,
+) -> Result<(), ChannelRequestValidationError> {
+    let Some(auth_profile_ref) = auth_profile_ref.map(str::trim).filter(|value| !value.is_empty())
+    else {
+        return Ok(());
+    };
+
+    if let Some(key_ref) = auth_profile_ref.strip_prefix("channel-key:") {
+        return validate_auth_profile_part(key_ref).map_err(|_| invalid_auth_profile_ref());
+    }
+
+    if let Some(provider_ref) = auth_profile_ref.strip_prefix("provider:") {
+        let mut parts = provider_ref.splitn(2, ':');
+        let app = parts.next().unwrap_or_default();
+        let provider_id = parts.next().unwrap_or_default();
+        return validate_auth_profile_part(app)
+            .and_then(|_| validate_auth_profile_part(provider_id))
+            .map_err(|_| invalid_auth_profile_ref());
+    }
+
+    Err(invalid_auth_profile_ref())
+}
+
+fn validate_auth_profile_part(value: &str) -> Result<(), ()> {
+    if value.trim().is_empty() {
+        Err(())
+    } else {
+        Ok(())
+    }
+}
+
+fn invalid_auth_profile_ref() -> ChannelRequestValidationError {
+    ChannelRequestValidationError::invalid(
+        "authProfileRef",
+        "authProfileRef must be provider:<app>:<providerId> or channel-key:<keyRef>",
+    )
+}
+
 pub fn normalize_channel_base_url(value: &str) -> String {
     value.trim().trim_end_matches('/').to_string()
 }
@@ -136,7 +183,8 @@ mod tests {
     use super::{
         channel_array_or_default, channel_object_or_default, normalize_channel_base_url,
         normalize_channel_groups, normalize_optional_channel_string,
-        normalize_required_channel_string, validate_proxy_channel_model_write_request_fields,
+        normalize_required_channel_string, validate_optional_channel_auth_profile_ref,
+        validate_proxy_channel_model_write_request_fields,
         validate_proxy_channel_key_patch_request_fields,
         validate_proxy_channel_key_write_request_fields, validate_proxy_channel_write_request_fields,
     };
@@ -188,6 +236,35 @@ mod tests {
     }
 
     #[test]
+    fn auth_profile_ref_validation_accepts_supported_profiles_and_rejects_empty_parts() {
+        validate_optional_channel_auth_profile_ref(None).unwrap();
+        validate_optional_channel_auth_profile_ref(Some(" ")).unwrap();
+        validate_optional_channel_auth_profile_ref(Some(" channel-key:primary ")).unwrap();
+        validate_optional_channel_auth_profile_ref(Some(" provider:claude:provider-a ")).unwrap();
+
+        let message =
+            "authProfileRef must be provider:<app>:<providerId> or channel-key:<keyRef>";
+        assert_eq!(
+            validate_optional_channel_auth_profile_ref(Some("channel-key: "))
+                .unwrap_err()
+                .message,
+            message
+        );
+        assert_eq!(
+            validate_optional_channel_auth_profile_ref(Some("provider:claude: "))
+                .unwrap_err()
+                .message,
+            message
+        );
+        assert_eq!(
+            validate_optional_channel_auth_profile_ref(Some("vault:primary"))
+                .unwrap_err()
+                .message,
+            message
+        );
+    }
+
+    #[test]
     fn json_defaults_preserve_expected_container_types() {
         assert_eq!(channel_object_or_default(json!({"owner": "ops"})), json!({"owner": "ops"}));
         assert_eq!(channel_object_or_default(json!(["not", "object"])), json!({}));
@@ -203,6 +280,7 @@ mod tests {
             name: "Relay".to_string(),
             base_url: "https://relay.example.com/v1/".to_string(),
             interface_kind: "openai_responses".to_string(),
+            auth_profile_ref: Some("channel-key:primary".to_string()),
             models: vec![ProxyChannelModelWriteRequest {
                 public_model: "sonnet".to_string(),
                 upstream_model: "claude-sonnet-4".to_string(),

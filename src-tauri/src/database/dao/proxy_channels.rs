@@ -15,6 +15,7 @@ use crate::proxy_core_adapter::{
     normalize_channel_groups as normalized_groups,
     normalize_optional_channel_string as normalize_optional_string,
     normalize_required_channel_string, stable_channel_id,
+    validate_optional_channel_auth_profile_ref,
     validate_proxy_channel_key_patch_request_fields,
     validate_proxy_channel_model_write_request_fields, validate_proxy_channel_write_request_fields,
     ChannelRequestValidationError, LegacyChannelModelProjection, LegacyChannelProjection,
@@ -425,7 +426,7 @@ impl Database {
                 normalize_required_string(&request.status, "status")?,
                 normalize_base_url(&request.base_url),
                 normalize_required_string(&request.interface_kind, "interfaceKind")?,
-                request.auth_profile_ref,
+                request.auth_profile_ref.and_then(normalize_optional_string),
                 to_json_string(&normalized_groups(request.groups))?,
                 request.priority,
                 request.weight as i64,
@@ -484,6 +485,8 @@ impl Database {
             current.interface_kind = normalize_required_string(&interface_kind, "interfaceKind")?;
         }
         if let Some(auth_profile_ref) = patch.auth_profile_ref {
+            validate_optional_channel_auth_profile_ref(Some(&auth_profile_ref))
+                .map_err(channel_request_error_to_app_error)?;
             current.auth_profile_ref = normalize_optional_string(auth_profile_ref);
         }
         if let Some(groups) = patch.groups {
@@ -1502,6 +1505,7 @@ mod tests {
                 name: "Manual Relay".to_string(),
                 base_url: "https://manual.example.com/v1/".to_string(),
                 interface_kind: "openai_responses".to_string(),
+                auth_profile_ref: Some(" channel-key:primary ".to_string()),
                 priority: 77,
                 models: vec![ProxyChannelModelWriteRequest {
                     public_model: "sonnet-public".to_string(),
@@ -1515,6 +1519,7 @@ mod tests {
 
         assert_eq!(created.source_kind, ProxyChannelSourceKind::Manual);
         assert_eq!(created.base_url, "https://manual.example.com/v1");
+        assert_eq!(created.auth_profile_ref.as_deref(), Some("channel-key:primary"));
         assert_eq!(created.groups, vec!["default".to_string()]);
         assert_eq!(created.models.len(), 1);
 
@@ -1540,6 +1545,21 @@ mod tests {
         assert_eq!(patched.status, "disabled");
         assert_eq!(patched.weight, 25);
         assert_eq!(patched.metadata["owner"], "ops");
+
+        let invalid_auth_profile = db
+            .update_proxy_channel(
+                &created.id,
+                ProxyChannelPatchRequest {
+                    auth_profile_ref: Some("channel-key: ".to_string()),
+                    ..Default::default()
+                },
+            )
+            .expect_err("reject empty channel key auth profile");
+        assert!(matches!(
+            invalid_auth_profile,
+            AppError::InvalidInput(message)
+                if message == "authProfileRef must be provider:<app>:<providerId> or channel-key:<keyRef>"
+        ));
 
         let replaced_models = db
             .replace_proxy_channel_models(

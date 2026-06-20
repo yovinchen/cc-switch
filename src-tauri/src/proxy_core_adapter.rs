@@ -1025,6 +1025,12 @@ pub(crate) fn validate_proxy_channel_model_write_request_fields(
     crate::proxy_core::api::routing::validate_proxy_channel_model_write_request_fields(model)
 }
 
+pub(crate) fn validate_optional_channel_auth_profile_ref(
+    auth_profile_ref: Option<&str>,
+) -> Result<(), ChannelRequestValidationError> {
+    crate::proxy_core::api::routing::validate_optional_channel_auth_profile_ref(auth_profile_ref)
+}
+
 pub(crate) fn validate_proxy_channel_key_patch_request_fields(
     request: &ProxyChannelKeyPatchRequest,
 ) -> Result<(), ChannelRequestValidationError> {

@@ -1203,6 +1203,30 @@ mod tests {
         let server = ProxyServer::new(ProxyConfig::default(), db.clone(), None);
         let mut router = server.build_router();
 
+        let invalid_create_response = Service::call(
+            &mut router,
+            json_request(
+                Method::POST,
+                "/proxy/v1/channels",
+                json!({
+                    "providerId": "a",
+                    "appType": "claude",
+                    "name": "Invalid Auth Relay",
+                    "baseUrl": "https://invalid-auth.example.com/v1",
+                    "interfaceKind": "openai_responses",
+                    "authProfileRef": "channel-key:"
+                }),
+            ),
+        )
+        .await
+        .unwrap();
+        assert_eq!(invalid_create_response.status(), StatusCode::BAD_REQUEST);
+        let invalid_create = response_json(invalid_create_response).await;
+        assert_eq!(
+            invalid_create["error"]["message"],
+            "无效的请求: 无效输入: authProfileRef must be provider:<app>:<providerId> or channel-key:<keyRef>"
+        );
+
         let create_response = Service::call(
             &mut router,
             json_request(
