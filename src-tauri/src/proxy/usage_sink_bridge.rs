@@ -6,16 +6,15 @@ use crate::proxy::{
     response_processor::SseUsageCollector,
     server::ProxyState,
 };
-use crate::proxy_core::{
+use crate::proxy_core_adapter::{
     error_usage_record_with_request_id_fallback,
     transformed_response_usage_record_with_request_id_fallback,
-    transformed_streaming_response_usage_record_with_request_id_fallback, AppKind, ProviderKind,
-    ProxyServices, StreamUsageEventFilter, TransformedResponseUsageFormat, UsageRecord,
+    transformed_streaming_response_usage_record_with_request_id_fallback,
+    ProxyCoreAppKind as AppKind, ProviderKind, ProxyServices, StreamUsageEventFilter,
+    TransformedResponseUsageFormat, UsageRecord,
 };
 #[cfg(test)]
-use crate::proxy_core::success_usage_record_with_request_id_fallback;
-#[cfg(test)]
-use crate::proxy_core_adapter::TokenUsage;
+use crate::proxy_core_adapter::{success_usage_record_with_request_id_fallback, TokenUsage};
 use serde_json::Value;
 
 #[cfg(test)]
@@ -239,7 +238,7 @@ fn spawn_usage_record<S>(
 mod tests {
     use super::*;
     use crate::provider::{Provider, ProviderMeta};
-    use crate::proxy_core::{AppKind, ProviderKind};
+    use crate::proxy_core_adapter::{ProviderKind, ProxyCoreAppKind as AppKind};
     use serde_json::json;
 
     #[test]

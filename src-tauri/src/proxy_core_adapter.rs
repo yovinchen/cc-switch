@@ -15,7 +15,7 @@ use crate::proxy_core::{
     RouteResolveChannelInput, RouteResolveModelInput, SessionIdResult, UpstreamEndpoint,
     UpstreamRequestHeadersInput,
     UpstreamRequestTransportPolicy, UpstreamSendPolicy, UpstreamSendPolicyInput,
-    UsageRecord, DEFAULT_ROUTE_GROUP,
+    DEFAULT_ROUTE_GROUP,
 };
 use crate::services::usage_stats::is_placeholder_pricing_model;
 use crate::services::stream_check::{HealthStatus, StreamCheckResult};
@@ -204,6 +204,10 @@ pub(crate) type CostBreakdown = crate::proxy_core::CostBreakdown;
 pub(crate) type CostCalculator = crate::proxy_core::CostCalculator;
 pub(crate) type ModelPricing = crate::proxy_core::ModelPricing;
 pub(crate) type TokenUsage = crate::proxy_core::TokenUsage;
+pub(crate) type UsageRecord = crate::proxy_core::UsageRecord;
+pub(crate) type StreamUsageEventFilter = crate::proxy_core::StreamUsageEventFilter;
+pub(crate) type TransformedResponseUsageFormat =
+    crate::proxy_core::TransformedResponseUsageFormat;
 pub(crate) type CurrentRouteTarget = crate::proxy_core::CurrentRouteTarget;
 pub(crate) type GeminiShadowStore = crate::proxy_core::GeminiShadowStore;
 pub(crate) type GeminiToAnthropicMessageOutput =
@@ -1236,6 +1240,129 @@ pub(crate) fn build_gemini_native_url(base_url: &str, endpoint: &str) -> String 
 pub(crate) struct UsageRequestLogProjection {
     pub(crate) log: RequestLog,
     pub(crate) missing_pricing_model: Option<String>,
+}
+
+#[cfg(test)]
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn success_usage_record_with_request_id_fallback(
+    provider_id: &str,
+    provider_kind: Option<ProviderKind>,
+    app: AppKind,
+    response_model: &str,
+    request_model: &str,
+    outbound_model: &str,
+    usage: TokenUsage,
+    latency_ms: u64,
+    first_token_ms: Option<u64>,
+    is_streaming: bool,
+    status_code: u16,
+    session_id: Option<String>,
+    request_id_fallback: impl FnOnce() -> String,
+) -> UsageRecord {
+    crate::proxy_core::success_usage_record_with_request_id_fallback(
+        provider_id,
+        provider_kind,
+        app,
+        response_model,
+        request_model,
+        outbound_model,
+        usage,
+        latency_ms,
+        first_token_ms,
+        is_streaming,
+        status_code,
+        session_id,
+        request_id_fallback,
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn error_usage_record_with_request_id_fallback(
+    provider_id: &str,
+    provider_kind: Option<ProviderKind>,
+    app: AppKind,
+    request_model: &str,
+    outbound_model: Option<&str>,
+    status_code: u16,
+    error_message: String,
+    latency_ms: u64,
+    is_streaming: bool,
+    session_id: Option<String>,
+    request_id_fallback: impl FnOnce() -> String,
+) -> UsageRecord {
+    crate::proxy_core::error_usage_record_with_request_id_fallback(
+        provider_id,
+        provider_kind,
+        app,
+        request_model,
+        outbound_model,
+        status_code,
+        error_message,
+        latency_ms,
+        is_streaming,
+        session_id,
+        request_id_fallback,
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn transformed_response_usage_record_with_request_id_fallback(
+    body: &Value,
+    format: TransformedResponseUsageFormat,
+    provider_id: &str,
+    provider_kind: Option<ProviderKind>,
+    app: AppKind,
+    request_model: &str,
+    outbound_model: Option<&str>,
+    latency_ms: u64,
+    status_code: u16,
+    session_id: Option<String>,
+    request_id_fallback: impl FnOnce() -> String,
+) -> Option<UsageRecord> {
+    crate::proxy_core::transformed_response_usage_record_with_request_id_fallback(
+        body,
+        format,
+        provider_id,
+        provider_kind,
+        app,
+        request_model,
+        outbound_model,
+        latency_ms,
+        status_code,
+        session_id,
+        request_id_fallback,
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn transformed_streaming_response_usage_record_with_request_id_fallback(
+    events: &[Value],
+    format: TransformedResponseUsageFormat,
+    provider_id: &str,
+    provider_kind: Option<ProviderKind>,
+    app: AppKind,
+    request_model: &str,
+    outbound_model: Option<&str>,
+    latency_ms: u64,
+    first_token_ms: Option<u64>,
+    status_code: u16,
+    session_id: Option<String>,
+    request_id_fallback: impl FnOnce() -> String,
+) -> Option<UsageRecord> {
+    crate::proxy_core::transformed_streaming_response_usage_record_with_request_id_fallback(
+        events,
+        format,
+        provider_id,
+        provider_kind,
+        app,
+        request_model,
+        outbound_model,
+        latency_ms,
+        first_token_ms,
+        status_code,
+        session_id,
+        request_id_fallback,
+    )
 }
 
 pub(crate) fn usage_record_pricing_model(
