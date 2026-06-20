@@ -8,15 +8,14 @@
 use super::ProviderAdapter;
 use crate::provider::{CodexChatReasoningConfig, Provider};
 use crate::proxy::error::ProxyError;
-use crate::proxy_core::{
+use crate::proxy_core_adapter::{
     apply_codex_chat_upstream_model_policy, build_codex_bearer_auth_headers,
     build_codex_upstream_url, codex_provider_catalog_model_ids_from_settings,
     infer_codex_chat_reasoning_profile, normalize_codex_chat_reasoning_profile,
     resolve_codex_provider_upstream_model, resolve_codex_provider_uses_chat_completions,
     should_convert_codex_responses_endpoint_to_chat, CodexChatReasoningOptions,
-    CodexChatReasoningProfile,
+    CodexChatReasoningProfile, ProviderAuthInfo, ProviderAuthStrategy,
 };
-use crate::proxy_core_adapter::{ProviderAuthInfo, ProviderAuthStrategy};
 use serde_json::Value as JsonValue;
 use toml::Value as TomlValue;
 

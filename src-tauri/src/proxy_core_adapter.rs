@@ -190,6 +190,10 @@ pub(crate) type CodexChatHistorySseInspection =
 pub(crate) type CodexChatHistorySseRecord =
     crate::proxy_core::CodexChatHistorySseRecord;
 pub(crate) type CodexChatHistoryState = crate::proxy_core::CodexChatHistoryState;
+pub(crate) type CodexChatReasoningOptions =
+    crate::proxy_core::CodexChatReasoningOptions;
+pub(crate) type CodexChatReasoningProfile =
+    crate::proxy_core::CodexChatReasoningProfile;
 #[cfg(test)]
 pub(crate) type ProxyResponseBody = crate::proxy_core::ProxyResponseBody;
 pub(crate) type ProxyTransportResponse = crate::proxy_core::ProxyTransportResponse;
@@ -307,6 +311,85 @@ pub(crate) fn inspect_codex_chat_history_sse_block(
     block: &str,
 ) -> Option<CodexChatHistorySseInspection> {
     crate::proxy_core::inspect_codex_chat_history_sse_block(block)
+}
+
+pub(crate) fn build_codex_upstream_url(base_url: &str, endpoint: &str) -> String {
+    crate::proxy_core::build_codex_upstream_url(base_url, endpoint)
+}
+
+pub(crate) fn should_convert_codex_responses_endpoint_to_chat(
+    provider_uses_chat_completions: bool,
+    endpoint: &str,
+) -> bool {
+    crate::proxy_core::should_convert_codex_responses_endpoint_to_chat(
+        provider_uses_chat_completions,
+        endpoint,
+    )
+}
+
+pub(crate) fn resolve_codex_provider_uses_chat_completions(
+    api_format: Option<&str>,
+    wire_api: Option<&str>,
+    base_url: Option<&str>,
+    config_base_url: Option<&str>,
+) -> bool {
+    crate::proxy_core::resolve_codex_provider_uses_chat_completions(
+        api_format,
+        wire_api,
+        base_url,
+        config_base_url,
+    )
+}
+
+pub(crate) fn build_codex_bearer_auth_headers(
+    api_key: &str,
+) -> Result<Vec<(http::HeaderName, http::HeaderValue)>, ProxyCoreError> {
+    crate::proxy_core::build_codex_bearer_auth_headers(api_key)
+}
+
+pub(crate) fn resolve_codex_provider_upstream_model(
+    settings_model: Option<&str>,
+    config_model: Option<&str>,
+) -> Option<String> {
+    crate::proxy_core::resolve_codex_provider_upstream_model(settings_model, config_model)
+}
+
+pub(crate) fn codex_provider_catalog_model_ids_from_settings(
+    settings_config: &Value,
+) -> std::collections::HashSet<String> {
+    crate::proxy_core::codex_provider_catalog_model_ids_from_settings(settings_config)
+}
+
+pub(crate) fn apply_codex_chat_upstream_model_policy(
+    body: &mut Value,
+    uses_chat_completions: bool,
+    upstream_model: Option<&str>,
+    catalog_model_ids: &std::collections::HashSet<String>,
+) -> Option<String> {
+    crate::proxy_core::apply_codex_chat_upstream_model_policy(
+        body,
+        uses_chat_completions,
+        upstream_model,
+        catalog_model_ids,
+    )
+}
+
+pub(crate) fn infer_codex_chat_reasoning_profile(
+    provider_name: &str,
+    base_url: &str,
+    model: &str,
+) -> Option<CodexChatReasoningProfile> {
+    crate::proxy_core::infer_codex_chat_reasoning_profile(
+        provider_name,
+        base_url,
+        model,
+    )
+}
+
+pub(crate) fn normalize_codex_chat_reasoning_profile(
+    profile: CodexChatReasoningProfile,
+) -> CodexChatReasoningProfile {
+    crate::proxy_core::normalize_codex_chat_reasoning_profile(profile)
 }
 
 pub(crate) fn resolve_response_runtime_policy(
@@ -1629,6 +1712,73 @@ mod tests {
         assert_eq!(state.enrich_request(&mut request), 1);
         assert_eq!(request["input"][0]["type"], "function_call");
         assert_eq!(request["input"][0]["reasoning_content"], "Need context.");
+    }
+
+    #[test]
+    fn codex_provider_adapter_projects_chat_policy_headers_and_reasoning() {
+        assert!(resolve_codex_provider_uses_chat_completions(
+            Some("openai_chat"),
+            None,
+            None,
+            None
+        ));
+        assert!(should_convert_codex_responses_endpoint_to_chat(
+            true,
+            "/v1/responses"
+        ));
+        assert_eq!(
+            build_codex_upstream_url("https://api.openai.com", "/chat/completions"),
+            "https://api.openai.com/v1/chat/completions"
+        );
+
+        let headers = build_codex_bearer_auth_headers("sk-test").expect("bearer header");
+        assert_eq!(headers[0].0.as_str(), "authorization");
+        assert_eq!(
+            headers[0].1,
+            http::HeaderValue::from_static("Bearer sk-test")
+        );
+
+        assert_eq!(
+            resolve_codex_provider_upstream_model(Some(" upstream-model "), None).as_deref(),
+            Some("upstream-model")
+        );
+        let catalog_model_ids = codex_provider_catalog_model_ids_from_settings(&json!({
+            "modelCatalog": {
+                "models": [{"model": "catalog-model"}]
+            }
+        }));
+        assert!(catalog_model_ids.contains("catalog-model"));
+        let mut body = json!({"model": "client-model"});
+        assert_eq!(
+            apply_codex_chat_upstream_model_policy(
+                &mut body,
+                true,
+                Some("upstream-model"),
+                &catalog_model_ids,
+            )
+            .as_deref(),
+            Some("upstream-model")
+        );
+        assert_eq!(body["model"], "upstream-model");
+
+        let profile = normalize_codex_chat_reasoning_profile(CodexChatReasoningProfile {
+            supports_effort: Some(true),
+            effort_param: Some("reasoning_effort".to_string()),
+            ..CodexChatReasoningProfile::default()
+        });
+        assert_eq!(profile.supports_thinking, Some(true));
+        let options = CodexChatReasoningOptions::from_profile(&profile);
+        assert_eq!(options.supports_effort, Some(true));
+        assert_eq!(
+            infer_codex_chat_reasoning_profile(
+                "DeepSeek Relay",
+                "https://api.deepseek.com",
+                "deepseek-chat",
+            )
+            .expect("deepseek reasoning profile")
+            .supports_effort,
+            Some(true)
+        );
     }
 
     #[test]
