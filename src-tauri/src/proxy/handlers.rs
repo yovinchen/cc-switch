@@ -56,12 +56,13 @@ use crate::proxy_core::{
     ChannelTestPlan, ChannelTestResponse, ClaudeDesktopModelListResponse,
     ClientModelCatalogResponse, CurrentRouteResponse, CurrentRouteSource, CurrentRouteTarget,
     GroupListChannelSource, GroupListQuery, GroupListRequest, HealthCheckRequest,
-    HealthCheckResponse, InterfaceKind, ManagementAppPathRequest, ManagementAuthDecision,
-    ProviderListResponse, ProviderListSource, ProxyBody, ProxyChannelModelsReplaceRequest,
-    ProxyChannelPatchRequest, ProxyChannelTestRequest, ProxyChannelWriteRequest, ProxyRequest,
-    ProxyRuntimeStatus, ProxyStatusRequest, ProxyStatusResponse, RoutableModelList,
-    RouteGroupListResponse, RouteResolveManagementRequest, RouteResolveRequest,
-    RouteResolveResponse, TransformedResponseUsageFormat,
+    HealthCheckResponse, HealthCheckSource, InterfaceKind, ManagementAppPathRequest,
+    ManagementAuthDecision, ProviderListResponse, ProviderListSource, ProxyBody,
+    ProxyChannelModelsReplaceRequest, ProxyChannelPatchRequest, ProxyChannelTestRequest,
+    ProxyChannelWriteRequest, ProxyRequest, ProxyRuntimeStatus, ProxyStatusRequest,
+    ProxyStatusResponse, ProxyStatusSource, RoutableModelList, RouteGroupListResponse,
+    RouteResolveManagementRequest, RouteResolveRequest, RouteResolveResponse,
+    TransformedResponseUsageFormat,
     UnlabeledSseFallbackLogContext, UnlabeledSseFallbackLogLevel, UpstreamSseAggregationKind,
     CLAUDE_PARSER_CONFIG, CODEX_PARSER_CONFIG, GEMINI_PARSER_CONFIG, OPENAI_PARSER_CONFIG,
 };
@@ -94,7 +95,9 @@ pub async fn health_check() -> (StatusCode, Json<HealthCheckResponse>) {
     let request = HealthCheckRequest::new();
     (
         StatusCode::OK,
-        Json(request.response(chrono::Utc::now().to_rfc3339())),
+        Json(request.response_from_source(HealthCheckSource::new(
+            chrono::Utc::now().to_rfc3339(),
+        ))),
     )
 }
 
@@ -104,7 +107,9 @@ pub async fn get_status(
 ) -> Result<Json<ProxyStatusResponse<ProxyRuntimeStatus>>, ProxyError> {
     let request = ProxyStatusRequest::new();
     let status = state.status.read().await.clone();
-    Ok(Json(request.response(status)))
+    Ok(Json(
+        request.response_from_source(ProxyStatusSource::new(status)),
+    ))
 }
 
 /// GET /proxy/v1/events

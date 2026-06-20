@@ -73,6 +73,19 @@ impl AppListRequest {
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct HealthCheckRequest;
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct HealthCheckSource {
+    pub timestamp: String,
+}
+
+impl HealthCheckSource {
+    pub fn new(timestamp: impl Into<String>) -> Self {
+        Self {
+            timestamp: timestamp.into(),
+        }
+    }
+}
+
 impl HealthCheckRequest {
     pub fn new() -> Self {
         Self
@@ -81,10 +94,25 @@ impl HealthCheckRequest {
     pub fn response(&self, timestamp: impl Into<String>) -> HealthCheckResponse {
         HealthCheckResponse::healthy(timestamp)
     }
+
+    pub fn response_from_source(&self, source: HealthCheckSource) -> HealthCheckResponse {
+        self.response(source.timestamp)
+    }
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct ProxyStatusRequest;
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ProxyStatusSource<T> {
+    pub status: T,
+}
+
+impl<T> ProxyStatusSource<T> {
+    pub fn new(status: T) -> Self {
+        Self { status }
+    }
+}
 
 impl ProxyStatusRequest {
     pub fn new() -> Self {
@@ -93,6 +121,10 @@ impl ProxyStatusRequest {
 
     pub fn response<T>(&self, status: T) -> ProxyStatusResponse<T> {
         ProxyStatusResponse::new(status)
+    }
+
+    pub fn response_from_source<T>(&self, source: ProxyStatusSource<T>) -> ProxyStatusResponse<T> {
+        self.response(source.status)
     }
 }
 
@@ -713,8 +745,8 @@ mod tests {
         ChannelMigrationMaterializeSource,
         ChannelMigrationPreviewSource, ChannelDeleteSource, ChannelModelsSource,
         ChannelPathRequest, ChannelRecordSource, CurrentRouteSource, GroupListChannelSource,
-        GroupListRequest, HealthCheckRequest, ManagementAppPathRequest, ProviderListSource,
-        ProxyStatusRequest,
+        GroupListRequest, HealthCheckRequest, HealthCheckSource, ManagementAppPathRequest,
+        ProviderListSource, ProxyStatusRequest, ProxyStatusSource,
         RouteResolveManagementRequest, channel_not_found_message, normalize_channel_id_path,
         validate_management_app_type, validate_route_resolve_app_type,
     };
@@ -820,7 +852,8 @@ mod tests {
     fn health_check_request_wraps_healthy_response() {
         let request = HealthCheckRequest::new();
 
-        let response = request.response("2026-06-19T00:00:00Z");
+        let response =
+            request.response_from_source(HealthCheckSource::new("2026-06-19T00:00:00Z"));
 
         assert_eq!(response.status, "healthy");
         assert_eq!(response.timestamp, "2026-06-19T00:00:00Z");
@@ -830,7 +863,7 @@ mod tests {
     fn proxy_status_request_wraps_status_response() {
         let request = ProxyStatusRequest::new();
 
-        let response = request.response("running");
+        let response = request.response_from_source(ProxyStatusSource::new("running"));
 
         assert_eq!(response.status, "running");
     }
