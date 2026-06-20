@@ -511,6 +511,25 @@ fn migration_v12_to_v13_adds_request_log_channel_attribution() {
 }
 
 #[test]
+fn migration_v13_to_v14_creates_proxy_channel_keys() {
+    let conn = Connection::open_in_memory().expect("open memory db");
+    Database::set_user_version(&conn, 13).expect("set user_version=13");
+
+    Database::apply_schema_migrations_on_conn(&conn).expect("apply migrations");
+
+    let channel_id = get_column_info(&conn, "proxy_channel_keys", "channel_id");
+    assert_eq!(channel_id.r#type, "TEXT");
+    assert_eq!(channel_id.notnull, 1);
+    let key_value = get_column_info(&conn, "proxy_channel_keys", "key_value");
+    assert_eq!(key_value.r#type, "TEXT");
+    assert_eq!(key_value.notnull, 1);
+    assert_eq!(
+        Database::get_user_version(&conn).expect("version after migration"),
+        SCHEMA_VERSION
+    );
+}
+
+#[test]
 fn schema_create_tables_repairs_legacy_proxy_config_singleton_to_per_app() {
     let conn = Connection::open_in_memory().expect("open memory db");
 

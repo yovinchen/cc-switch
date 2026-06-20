@@ -123,6 +123,19 @@ pub(crate) struct ProxyChannelHealth {
     pub updated_at: i64,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct ProxyChannelKeyRecord {
+    pub channel_id: String,
+    pub key_ref: String,
+    #[serde(skip_serializing)]
+    pub key_value: String,
+    pub status: String,
+    pub priority: i64,
+    pub weight: u32,
+    pub last_failure_at: Option<i64>,
+}
+
 impl Database {
     pub(crate) fn preview_legacy_proxy_channel_migration(
         &self,
@@ -569,6 +582,70 @@ impl Database {
         Ok(Some(list_proxy_channel_models_on_conn(&conn, channel_id)?))
     }
 
+    #[allow(dead_code)]
+    pub(crate) fn upsert_proxy_channel_key(
+        &self,
+        channel_id: &str,
+        key_ref: &str,
+        key_value: &str,
+        status: &str,
+        priority: i64,
+        weight: u32,
+    ) -> Result<ProxyChannelKeyRecord, AppError> {
+        let conn = lock_conn!(self.conn);
+        if get_proxy_channel_on_conn(&conn, channel_id)?.is_none() {
+            return Err(AppError::InvalidInput(format!(
+                "channel not found: {channel_id}"
+            )));
+        }
+
+        let key_ref = normalize_required_string(key_ref, "keyRef")?;
+        let key_value = normalize_required_string(key_value, "keyValue")?;
+        let status = normalize_required_string(status, "status")?;
+        let now = chrono::Utc::now().timestamp_millis();
+        conn.execute(
+            "INSERT INTO proxy_channel_keys (
+                channel_id, key_ref, key_value, status, priority, weight, created_at, updated_at
+            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
+            ON CONFLICT(channel_id, key_ref) DO UPDATE SET
+                key_value = excluded.key_value,
+                status = excluded.status,
+                priority = excluded.priority,
+                weight = excluded.weight,
+                updated_at = excluded.updated_at",
+            params![
+                channel_id,
+                &key_ref,
+                &key_value,
+                &status,
+                priority,
+                weight as i64,
+                now,
+                now,
+            ],
+        )
+        .map_err(|e| AppError::Database(format!("写入 proxy channel key 失败: {e}")))?;
+
+        get_proxy_channel_key_on_conn(&conn, channel_id, &key_ref)?
+            .ok_or_else(|| AppError::Database("channel key could not be reloaded".to_string()))
+    }
+
+    pub(crate) fn get_enabled_proxy_channel_key(
+        &self,
+        channel_id: &str,
+        key_ref: &str,
+    ) -> Result<Option<ProxyChannelKeyRecord>, AppError> {
+        let conn = lock_conn!(self.conn);
+        let Some(key) = get_proxy_channel_key_on_conn(&conn, channel_id, key_ref)? else {
+            return Ok(None);
+        };
+        if key.status == "enabled" {
+            Ok(Some(key))
+        } else {
+            Ok(None)
+        }
+    }
+
     pub(crate) fn get_proxy_channel_app_type(
         &self,
         channel_id: &str,
@@ -698,6 +775,32 @@ impl Database {
         .map_err(|e| AppError::Database(format!("重置 proxy channel health 失败: {e}")))?;
         Ok(())
     }
+}
+
+fn get_proxy_channel_key_on_conn(
+    conn: &Connection,
+    channel_id: &str,
+    key_ref: &str,
+) -> Result<Option<ProxyChannelKeyRecord>, AppError> {
+    conn.query_row(
+        "SELECT channel_id, key_ref, key_value, status, priority, weight, last_failure_at
+         FROM proxy_channel_keys
+         WHERE channel_id = ?1 AND key_ref = ?2",
+        params![channel_id, key_ref],
+        |row| {
+            Ok(ProxyChannelKeyRecord {
+                channel_id: row.get(0)?,
+                key_ref: row.get(1)?,
+                key_value: row.get(2)?,
+                status: row.get(3)?,
+                priority: row.get(4)?,
+                weight: row.get::<_, i64>(5)?.max(0) as u32,
+                last_failure_at: row.get(6)?,
+            })
+        },
+    )
+    .optional()
+    .map_err(|e| AppError::Database(e.to_string()))
 }
 
 fn list_proxy_channel_models_on_conn(
@@ -1355,6 +1458,59 @@ mod tests {
         assert!(!db
             .delete_proxy_channel(&created.id)
             .expect("delete missing channel"));
+    }
+
+    #[test]
+    fn channel_key_storage_reads_enabled_keys_without_serializing_secret() {
+        let db = Database::memory().expect("memory db");
+        save_claude_provider(&db);
+        let created = db
+            .create_proxy_channel(ProxyChannelWriteRequest {
+                provider_id: "anthropic-main".to_string(),
+                app_type: "claude".to_string(),
+                name: "Manual Relay".to_string(),
+                base_url: "https://manual-key.example.com/v1".to_string(),
+                interface_kind: "anthropic_messages".to_string(),
+                ..Default::default()
+            })
+            .expect("create manual channel");
+
+        let key = db
+            .upsert_proxy_channel_key(
+                &created.id,
+                "primary",
+                "sk-channel-secret",
+                "enabled",
+                10,
+                80,
+            )
+            .expect("upsert channel key");
+
+        assert_eq!(key.key_value, "sk-channel-secret");
+        assert_eq!(key.weight, 80);
+        assert_eq!(
+            db.get_enabled_proxy_channel_key(&created.id, "primary")
+                .expect("read enabled key")
+                .as_ref()
+                .map(|key| key.key_value.as_str()),
+            Some("sk-channel-secret")
+        );
+        let serialized = serde_json::to_value(&key).expect("serialize key");
+        assert!(serialized.get("keyValue").is_none());
+
+        db.upsert_proxy_channel_key(
+            &created.id,
+            "primary",
+            "sk-channel-secret",
+            "disabled",
+            10,
+            80,
+        )
+        .expect("disable channel key");
+        assert!(db
+            .get_enabled_proxy_channel_key(&created.id, "primary")
+            .expect("read disabled key")
+            .is_none());
     }
 
     #[test]

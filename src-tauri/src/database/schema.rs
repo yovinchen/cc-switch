@@ -459,6 +459,11 @@ impl Database {
                         Self::migrate_v12_to_v13(conn)?;
                         Self::set_user_version(conn, 13)?;
                     }
+                    13 => {
+                        log::info!("迁移数据库从 v13 到 v14（代理 channel key 存储预留）");
+                        Self::migrate_v13_to_v14(conn)?;
+                        Self::set_user_version(conn, 14)?;
+                    }
                     _ => {
                         return Err(AppError::Database(format!(
                             "未知的数据库版本 {version}，无法迁移到 {SCHEMA_VERSION}"
@@ -1307,6 +1312,16 @@ impl Database {
         Ok(())
     }
 
+    /// v13 -> v14：预留每个 channel 独立 key 存储。
+    ///
+    /// 运行时可以通过 `auth_profile_ref = channel-key:<key_ref>` 选择同一 channel
+    /// 下的启用 key；管理响应仍不输出 key_value，避免把密钥暴露给普通查询接口。
+    fn migrate_v13_to_v14(conn: &Connection) -> Result<(), AppError> {
+        Self::create_proxy_channel_key_tables_on_conn(conn)?;
+        log::info!("v13 -> v14 迁移完成：已创建代理 channel key 表");
+        Ok(())
+    }
+
     fn add_request_log_channel_columns_if_missing(conn: &Connection) -> Result<(), AppError> {
         if !Self::table_exists(conn, "proxy_request_logs")? {
             return Ok(());
@@ -1401,6 +1416,32 @@ impl Database {
                 ON proxy_channel_health(status, consecutive_failures);",
         )
         .map_err(|e| AppError::Database(format!("创建 proxy channel 表失败: {e}")))?;
+        Self::create_proxy_channel_key_tables_on_conn(conn)?;
+        Ok(())
+    }
+
+    pub(crate) fn create_proxy_channel_key_tables_on_conn(
+        conn: &Connection,
+    ) -> Result<(), AppError> {
+        conn.execute_batch(
+            "CREATE TABLE IF NOT EXISTS proxy_channel_keys (
+                channel_id TEXT NOT NULL,
+                key_ref TEXT NOT NULL,
+                key_value TEXT NOT NULL,
+                status TEXT NOT NULL DEFAULT 'enabled',
+                priority INTEGER NOT NULL DEFAULT 0,
+                weight INTEGER NOT NULL DEFAULT 100,
+                last_failure_at INTEGER,
+                created_at INTEGER NOT NULL,
+                updated_at INTEGER NOT NULL,
+                PRIMARY KEY (channel_id, key_ref),
+                FOREIGN KEY (channel_id) REFERENCES proxy_channels(id) ON DELETE CASCADE
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_proxy_channel_keys_lookup
+                ON proxy_channel_keys(channel_id, status, priority DESC, weight DESC);",
+        )
+        .map_err(|e| AppError::Database(format!("创建 proxy channel key 表失败: {e}")))?;
         Ok(())
     }
 
