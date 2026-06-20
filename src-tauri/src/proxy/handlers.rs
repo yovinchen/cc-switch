@@ -200,8 +200,8 @@ pub async fn list_proxy_apps(
             &app,
             config.enabled,
             config.auto_failover_enabled,
-            providers.into_values(),
-            channels,
+            providers.len(),
+            channels.len(),
         ));
     }
 

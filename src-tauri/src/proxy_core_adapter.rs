@@ -1185,15 +1185,6 @@ pub(crate) fn proxy_channel_record_to_core_spec(channel: &ProxyChannelRecord) ->
     channel.to_proxy_core_channel_spec()
 }
 
-pub(crate) fn proxy_channel_specs_to_core(
-    channels: impl IntoIterator<Item = ProxyChannelRecord>,
-) -> Vec<ChannelSpec> {
-    channels
-        .into_iter()
-        .map(|channel| channel.to_proxy_core_channel_spec())
-        .collect()
-}
-
 pub(crate) fn proxy_channel_group_inputs_to_core(
     channels: impl IntoIterator<Item = ProxyChannelRecord>,
 ) -> Vec<GroupListChannelRecordInput> {
@@ -1251,15 +1242,15 @@ pub(crate) fn proxy_app_summary_input(
     app_type: &AppType,
     enabled: bool,
     auto_failover_enabled: bool,
-    providers: impl IntoIterator<Item = Provider>,
-    channels: impl IntoIterator<Item = ProxyChannelRecord>,
+    provider_count: usize,
+    channel_count: usize,
 ) -> AppSummaryInput {
-    AppSummaryInput::from_specs(
+    AppSummaryInput::new(
         app_type.as_str(),
         enabled,
         auto_failover_enabled,
-        proxy_providers_to_core_specs(app_type, providers),
-        proxy_channel_specs_to_core(channels),
+        provider_count,
+        channel_count,
     )
 }
 
