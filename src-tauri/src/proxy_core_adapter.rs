@@ -1117,15 +1117,7 @@ pub(crate) fn validate_proxy_channel_key_patch_request_fields(
 
 impl From<&AppType> for AppKind {
     fn from(value: &AppType) -> Self {
-        match value {
-            AppType::Claude => Self::Claude,
-            AppType::ClaudeDesktop => Self::ClaudeDesktop,
-            AppType::Codex => Self::Codex,
-            AppType::Gemini => Self::Gemini,
-            AppType::OpenCode | AppType::OpenClaw | AppType::Hermes => {
-                Self::Custom(value.as_str().to_string())
-            }
-        }
+        Self::from(value.as_str())
     }
 }
 
