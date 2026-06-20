@@ -1804,7 +1804,7 @@ impl RequestForwarder {
         let codex_responses_to_chat = matches!(app_type, AppType::Codex)
             && super::providers::should_convert_codex_responses_to_chat(provider, endpoint);
         let (effective_endpoint, passthrough_query) = if codex_responses_to_chat {
-            crate::proxy_core::rewrite_codex_responses_endpoint_to_chat(endpoint).into_parts()
+            crate::proxy_core_adapter::rewrite_codex_responses_endpoint_to_chat(endpoint)
         } else if needs_transform && adapter.name() == "Claude" {
             let api_format = resolved_claude_api_format
                 .as_deref()
@@ -1829,7 +1829,7 @@ impl RequestForwarder {
             is_codex_chat_full_endpoint_base(codex_responses_to_chat, &base_url);
 
         let url = if matches!(resolved_claude_api_format.as_deref(), Some("gemini_native")) {
-            crate::proxy_core::resolve_gemini_native_url(
+            crate::proxy_core_adapter::resolve_gemini_native_url(
                 &base_url,
                 &effective_endpoint,
                 is_full_url,
@@ -2990,8 +2990,9 @@ mod tests {
     #[test]
     fn rewrite_codex_responses_endpoint_to_chat_preserves_query() {
         let (endpoint, passthrough_query) =
-            crate::proxy_core::rewrite_codex_responses_endpoint_to_chat("/v1/responses?foo=bar")
-                .into_parts();
+            crate::proxy_core_adapter::rewrite_codex_responses_endpoint_to_chat(
+                "/v1/responses?foo=bar",
+            );
 
         assert_eq!(endpoint, "/chat/completions?foo=bar");
         assert_eq!(passthrough_query.as_deref(), Some("foo=bar"));
@@ -3000,10 +3001,9 @@ mod tests {
     #[test]
     fn rewrite_codex_responses_compact_endpoint_to_chat_preserves_query() {
         let (endpoint, passthrough_query) =
-            crate::proxy_core::rewrite_codex_responses_endpoint_to_chat(
+            crate::proxy_core_adapter::rewrite_codex_responses_endpoint_to_chat(
                 "/v1/responses/compact?foo=bar",
-            )
-            .into_parts();
+            );
 
         assert_eq!(endpoint, "/chat/completions?foo=bar");
         assert_eq!(passthrough_query.as_deref(), Some("foo=bar"));
@@ -3134,7 +3134,7 @@ mod tests {
 
     #[test]
     fn build_gemini_native_url_uses_origin_when_base_ends_with_v1beta() {
-        let url = crate::proxy_core::build_gemini_native_url(
+        let url = crate::proxy_core_adapter::build_gemini_native_url(
             "https://generativelanguage.googleapis.com/v1beta",
             "/v1beta/models/gemini-2.5-pro:generateContent",
         );
@@ -3147,7 +3147,7 @@ mod tests {
 
     #[test]
     fn build_gemini_native_url_uses_origin_when_base_already_contains_models_prefix() {
-        let url = crate::proxy_core::build_gemini_native_url(
+        let url = crate::proxy_core_adapter::build_gemini_native_url(
             "https://generativelanguage.googleapis.com/v1beta/models",
             "/v1beta/models/gemini-2.5-flash:streamGenerateContent?alt=sse",
         );
@@ -3160,7 +3160,7 @@ mod tests {
 
     #[test]
     fn resolve_gemini_native_url_keeps_opaque_full_url_as_is() {
-        let url = crate::proxy_core::resolve_gemini_native_url(
+        let url = crate::proxy_core_adapter::resolve_gemini_native_url(
             "https://relay.example/custom/generate-content",
             "/v1beta/models/gemini-2.5-flash:streamGenerateContent?alt=sse",
             true,

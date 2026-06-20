@@ -362,6 +362,25 @@ pub(crate) fn apply_provider_model_mapping(
     ModelMappingProjection { body, log_message }
 }
 
+pub(crate) fn rewrite_codex_responses_endpoint_to_chat(
+    endpoint: &str,
+) -> (String, Option<String>) {
+    crate::proxy_core::rewrite_codex_responses_endpoint_to_chat(endpoint).into_parts()
+}
+
+pub(crate) fn resolve_gemini_native_url(
+    base_url: &str,
+    endpoint: &str,
+    is_full_url: bool,
+) -> String {
+    crate::proxy_core::resolve_gemini_native_url(base_url, endpoint, is_full_url)
+}
+
+#[cfg(test)]
+pub(crate) fn build_gemini_native_url(base_url: &str, endpoint: &str) -> String {
+    crate::proxy_core::build_gemini_native_url(base_url, endpoint)
+}
+
 pub(crate) struct UsageRequestLogProjection {
     pub(crate) log: RequestLog,
     pub(crate) missing_pricing_model: Option<String>,
@@ -917,6 +936,30 @@ mod tests {
             Some("unknown")
         );
         assert!(unchanged.log_message.is_none());
+    }
+
+    #[test]
+    fn upstream_url_adapter_projects_codex_and_gemini_url_rules() {
+        let (endpoint, passthrough_query) =
+            rewrite_codex_responses_endpoint_to_chat("/v1/responses?foo=bar");
+        assert_eq!(endpoint, "/chat/completions?foo=bar");
+        assert_eq!(passthrough_query.as_deref(), Some("foo=bar"));
+
+        assert_eq!(
+            build_gemini_native_url(
+                "https://generativelanguage.googleapis.com/v1beta",
+                "/v1beta/models/gemini-2.5-pro:generateContent",
+            ),
+            "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-pro:generateContent"
+        );
+        assert_eq!(
+            resolve_gemini_native_url(
+                "https://relay.example/custom/generate-content",
+                "/v1beta/models/gemini-2.5-flash:streamGenerateContent?alt=sse",
+                true,
+            ),
+            "https://relay.example/custom/generate-content?alt=sse"
+        );
     }
 
     #[test]
