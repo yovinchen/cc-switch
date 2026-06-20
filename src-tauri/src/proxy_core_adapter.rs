@@ -1,18 +1,19 @@
 use crate::app_config::AppType;
 use crate::claude_desktop_config::ResolvedModelRoute;
 use crate::database::{ProxyChannelModelRecord, ProxyChannelRecord};
-use crate::provider::Provider;
-use crate::proxy::usage::RequestLog;
+use crate::provider::{Provider, ProviderMeta};
 use crate::proxy::providers::provider_kind_from_app_type_and_config;
+use crate::proxy::usage::RequestLog;
 use crate::proxy_core::{
     AppKind, AppSummaryInput, AuthProfileRef, ChannelHealthPolicy, ChannelModelRecord,
+    ChannelRouteCandidate,
     ChannelOverrides, ChannelReachabilityInput, ChannelReachabilityResult,
     ChannelReachabilityStatus, ChannelRecord, ChannelSpec, ChannelStatus,
     ClaudeDesktopModelListResponse, ClaudeDesktopModelRouteInput,
     CostCalculator, CurrentRouteProviderSummaryInput, InterfaceKind, ModelCapabilities,
     ModelCatalog, ModelPricing, ModelRoute, ProviderMetadata, ProviderSpec, RetryPolicy,
-    RoutePlan, RouteResolveChannelInput, RouteResolveModelInput, RouteSelection, SessionIdResult,
-    UpstreamEndpoint, UsageRecord,
+    ResolvedChannelAttempt, RoutePlan, RouteResolveChannelInput, RouteResolveModelInput,
+    RouteSelection, SessionIdResult, UpstreamEndpoint, UsageRecord, DEFAULT_ROUTE_GROUP,
 };
 use crate::services::usage_stats::is_placeholder_pricing_model;
 use crate::services::stream_check::{HealthStatus, StreamCheckResult};
@@ -285,6 +286,50 @@ pub(crate) fn route_selection_from_parts(
         model_route,
         inbound_interface,
         outbound_interface,
+    }
+}
+
+pub(crate) fn channel_route_candidate_from_selection(
+    selection: &RouteSelection,
+) -> ChannelRouteCandidate {
+    crate::proxy_core::route_candidate_from_selection(
+        selection,
+        DEFAULT_ROUTE_GROUP,
+        "proxy_core",
+    )
+}
+
+pub(crate) fn resolved_channel_attempt_from_candidate(
+    candidate: ChannelRouteCandidate,
+) -> ResolvedChannelAttempt {
+    crate::proxy_core::resolved_channel_attempt_from_candidate(candidate)
+}
+
+pub(crate) fn apply_channel_route_model_override(
+    body: &mut Value,
+    public_model: Option<&str>,
+    upstream_model: Option<&str>,
+) -> Option<String> {
+    crate::proxy_core::apply_channel_route_model_override(body, public_model, upstream_model)
+}
+
+pub(crate) fn apply_channel_provider_overrides(
+    app_type: &AppType,
+    provider: &mut Provider,
+    candidate: &ChannelRouteCandidate,
+) {
+    let plan =
+        crate::proxy_core::channel_provider_override_plan(&AppKind::from(app_type), candidate);
+    crate::proxy_core::apply_channel_provider_settings_overrides(
+        &mut provider.settings_config,
+        &plan,
+    );
+
+    if let Some(api_format) = plan.api_format {
+        provider
+            .meta
+            .get_or_insert_with(ProviderMeta::default)
+            .api_format = Some(api_format);
     }
 }
 
@@ -754,9 +799,7 @@ mod tests {
             vec!["provider-a".to_string(), "provider-b".to_string()]
         );
         assert_eq!(
-            route_selection_for_forward_result(&plan, Some("ch-b"), "provider-a")
-                .channel
-                .id,
+            route_selection_for_forward_result(&plan, Some("ch-b"), "provider-a").channel.id,
             "ch-b"
         );
         assert_eq!(
@@ -764,6 +807,25 @@ mod tests {
                 .outbound_interface,
             InterfaceKind::OpenAiChatCompletions
         );
+        let selected = route_selection_for_forward_result(&plan, Some("ch-b"), "provider-a");
+        let candidate = channel_route_candidate_from_selection(&selected);
+        assert_eq!(candidate.channel_id, "ch-b");
+        assert_eq!(candidate.route_group, "default");
+        assert_eq!(candidate.source_kind, "proxy_core");
+        let resolved = resolved_channel_attempt_from_candidate(candidate);
+        assert_eq!(resolved.channel_id, "ch-b");
+
+        let mut body = json!({"model": "sonnet-public"});
+        assert_eq!(
+            apply_channel_route_model_override(
+                &mut body,
+                Some("sonnet-public"),
+                Some("upstream-sonnet")
+            )
+            .as_deref(),
+            Some("upstream-sonnet")
+        );
+        assert_eq!(body.get("model").and_then(Value::as_str), Some("upstream-sonnet"));
     }
 
     #[test]

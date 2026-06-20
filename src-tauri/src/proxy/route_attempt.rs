@@ -4,14 +4,8 @@
 //! materialized channels to become the live routing unit.
 
 use crate::app_config::AppType;
-use crate::provider::{Provider, ProviderMeta};
-use crate::proxy_core::{
-    apply_channel_provider_settings_overrides, apply_channel_route_model_override,
-    channel_provider_override_plan,
-    resolved_channel_attempt_from_candidate, route_candidate_from_selection, AppKind,
-    ChannelRouteCandidate, ResolvedChannelAttempt, RoutePlan,
-    DEFAULT_ROUTE_GROUP,
-};
+use crate::provider::Provider;
+use crate::proxy_core::{ChannelRouteCandidate, ResolvedChannelAttempt, RoutePlan};
 use serde_json::Value;
 use std::collections::HashMap;
 
@@ -36,11 +30,17 @@ impl ForwardAttempt {
         candidate: ChannelRouteCandidate,
     ) -> Self {
         let mut provider = provider.clone();
-        apply_channel_provider_overrides(app_type, &mut provider, &candidate);
+        crate::proxy_core_adapter::apply_channel_provider_overrides(
+            app_type,
+            &mut provider,
+            &candidate,
+        );
 
         Self {
             provider,
-            channel: Some(resolved_channel_attempt_from_candidate(candidate)),
+            channel: Some(crate::proxy_core_adapter::resolved_channel_attempt_from_candidate(
+                candidate,
+            )),
         }
     }
 
@@ -49,8 +49,7 @@ impl ForwardAttempt {
         provider: &Provider,
         selection: &crate::proxy_core::RouteSelection,
     ) -> Self {
-        let candidate =
-            route_candidate_from_selection(selection, DEFAULT_ROUTE_GROUP, "proxy_core");
+        let candidate = crate::proxy_core_adapter::channel_route_candidate_from_selection(selection);
 
         Self::from_channel(app_type, provider, candidate)
     }
@@ -103,7 +102,7 @@ pub(crate) fn apply_channel_model_override(body: &mut Value, attempt: &ForwardAt
     };
     let current_model = current_model.to_string();
 
-    if let Some(upstream_model) = apply_channel_route_model_override(
+    if let Some(upstream_model) = crate::proxy_core_adapter::apply_channel_route_model_override(
         body,
         channel.public_model.as_deref(),
         channel.upstream_model.as_deref(),
@@ -114,22 +113,6 @@ pub(crate) fn apply_channel_model_override(body: &mut Value, attempt: &ForwardAt
             current_model,
             upstream_model
         );
-    }
-}
-
-fn apply_channel_provider_overrides(
-    app_type: &AppType,
-    provider: &mut Provider,
-    candidate: &ChannelRouteCandidate,
-) {
-    let plan = channel_provider_override_plan(&AppKind::from(app_type), candidate);
-    apply_channel_provider_settings_overrides(&mut provider.settings_config, &plan);
-
-    if let Some(api_format) = plan.api_format {
-        provider
-            .meta
-            .get_or_insert_with(ProviderMeta::default)
-            .api_format = Some(api_format);
     }
 }
 
