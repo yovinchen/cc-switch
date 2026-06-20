@@ -402,6 +402,25 @@ pub(crate) fn provider_account_ref(
     crate::proxy_core::api::domain::provider_account_ref(provider_type, managed_account_id)
 }
 
+pub(crate) fn extract_openclaw_stream_check_base_url(settings_config: &Value) -> Option<String> {
+    crate::proxy_core::api::domain::extract_openclaw_stream_check_base_url(settings_config)
+}
+
+pub(crate) fn extract_hermes_stream_check_base_url(settings_config: &Value) -> Option<String> {
+    crate::proxy_core::api::domain::extract_hermes_stream_check_base_url(settings_config)
+}
+
+pub(crate) fn extract_opencode_stream_check_npm(settings_config: &Value) -> Option<String> {
+    crate::proxy_core::api::domain::extract_opencode_stream_check_npm(settings_config)
+}
+
+pub(crate) fn resolve_opencode_stream_check_base_url(
+    settings_config: &Value,
+    npm: Option<&str>,
+) -> Option<String> {
+    crate::proxy_core::api::domain::resolve_opencode_stream_check_base_url(settings_config, npm)
+}
+
 pub(crate) fn parse_auth_profile_ref(value: &str) -> Option<AuthProfileRefKind> {
     crate::proxy_core::api::domain::parse_auth_profile_ref(value)
 }

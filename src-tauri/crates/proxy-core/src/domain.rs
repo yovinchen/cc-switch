@@ -189,6 +189,45 @@ pub fn extract_claude_base_url_from_settings(
     .map(|url| url.trim_end_matches('/').to_string())
 }
 
+pub fn extract_openclaw_stream_check_base_url(settings_config: &Value) -> Option<String> {
+    trimmed_non_empty_setting(settings_config.get("baseUrl"))
+}
+
+pub fn extract_hermes_stream_check_base_url(settings_config: &Value) -> Option<String> {
+    trimmed_non_empty_setting(settings_config.get("base_url"))
+}
+
+pub fn extract_opencode_stream_check_npm(settings_config: &Value) -> Option<String> {
+    trimmed_non_empty_setting(settings_config.get("npm"))
+}
+
+pub fn resolve_opencode_stream_check_base_url(
+    settings_config: &Value,
+    npm: Option<&str>,
+) -> Option<String> {
+    settings_config
+        .get("options")
+        .and_then(|options| trimmed_non_empty_setting(options.get("baseURL")))
+        .or_else(|| opencode_default_base_url_for_npm(npm).map(ToString::to_string))
+}
+
+pub fn opencode_default_base_url_for_npm(npm: Option<&str>) -> Option<&'static str> {
+    match npm {
+        Some("@ai-sdk/openai") => Some("https://api.openai.com/v1"),
+        Some("@ai-sdk/anthropic") => Some("https://api.anthropic.com"),
+        Some("@ai-sdk/google") => Some("https://generativelanguage.googleapis.com"),
+        _ => None,
+    }
+}
+
+fn trimmed_non_empty_setting(value: Option<&Value>) -> Option<String> {
+    value
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(ToString::to_string)
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(transparent)]
 pub struct AuthProfileRef(pub String);
@@ -1991,6 +2030,61 @@ mod tests {
         );
         assert_eq!(
             extract_claude_base_url_from_settings(false, &Value::Null),
+            None
+        );
+    }
+
+    #[test]
+    fn extracts_stream_check_base_urls_from_settings() {
+        assert_eq!(
+            extract_openclaw_stream_check_base_url(&serde_json::json!({
+                "baseUrl": " https://openclaw.example.com/v1 "
+            }))
+            .as_deref(),
+            Some("https://openclaw.example.com/v1")
+        );
+        assert_eq!(
+            extract_openclaw_stream_check_base_url(&serde_json::json!({"baseUrl": "   "})),
+            None
+        );
+        assert_eq!(
+            extract_hermes_stream_check_base_url(&serde_json::json!({
+                "base_url": " https://hermes.example.com "
+            }))
+            .as_deref(),
+            Some("https://hermes.example.com")
+        );
+        assert_eq!(
+            extract_opencode_stream_check_npm(&serde_json::json!({
+                "npm": " @ai-sdk/openai "
+            }))
+            .as_deref(),
+            Some("@ai-sdk/openai")
+        );
+        assert_eq!(
+            resolve_opencode_stream_check_base_url(
+                &serde_json::json!({
+                    "npm": "@ai-sdk/openai",
+                    "options": { "baseURL": " https://proxy.example.com/v1 " }
+                }),
+                Some("@ai-sdk/openai"),
+            )
+            .as_deref(),
+            Some("https://proxy.example.com/v1")
+        );
+        assert_eq!(
+            resolve_opencode_stream_check_base_url(
+                &serde_json::json!({"npm": "@ai-sdk/anthropic", "options": {}}),
+                Some("@ai-sdk/anthropic"),
+            )
+            .as_deref(),
+            Some("https://api.anthropic.com")
+        );
+        assert_eq!(
+            resolve_opencode_stream_check_base_url(
+                &serde_json::json!({"npm": "@ai-sdk/openai-compatible", "options": {}}),
+                Some("@ai-sdk/openai-compatible"),
+            ),
             None
         );
     }

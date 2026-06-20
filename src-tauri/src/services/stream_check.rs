@@ -25,7 +25,9 @@ use crate::error::AppError;
 use crate::provider::Provider;
 use crate::proxy::providers::{get_adapter, ClaudeAdapter, ProviderAdapter};
 use crate::proxy_core_adapter::{
-    channel_reachability_status_from_latency, should_retry_channel_reachability_failure,
+    channel_reachability_status_from_latency, extract_hermes_stream_check_base_url,
+    extract_opencode_stream_check_npm, extract_openclaw_stream_check_base_url,
+    resolve_opencode_stream_check_base_url, should_retry_channel_reachability_failure,
 };
 
 pub use crate::proxy_core_adapter::{
@@ -151,7 +153,7 @@ impl StreamCheckService {
             // 累加模式应用的 settings_config 结构与 Claude/Codex/Gemini 不同，
             // 不走 adapter，直接按各自约定提取 base_url。
             AppType::OpenCode => {
-                let npm = Self::extract_opencode_npm(provider);
+                let npm = extract_opencode_stream_check_npm(&provider.settings_config);
                 Self::resolve_opencode_base_url(provider, npm.as_deref())
             }
             AppType::OpenClaw => Self::extract_openclaw_base_url(provider),
@@ -261,36 +263,24 @@ impl StreamCheckService {
 
     /// OpenClaw: `{ baseUrl, apiKey, api, ... }`（camelCase）
     fn extract_openclaw_base_url(provider: &Provider) -> Result<String, AppError> {
-        provider
-            .settings_config
-            .get("baseUrl")
-            .and_then(|v| v.as_str())
-            .map(|s| s.trim().to_string())
-            .filter(|s| !s.is_empty())
-            .ok_or_else(|| {
-                AppError::localized(
-                    "openclaw_base_url_missing",
-                    "OpenClaw 供应商缺少 baseUrl",
-                    "OpenClaw provider is missing `baseUrl`",
-                )
-            })
+        extract_openclaw_stream_check_base_url(&provider.settings_config).ok_or_else(|| {
+            AppError::localized(
+                "openclaw_base_url_missing",
+                "OpenClaw 供应商缺少 baseUrl",
+                "OpenClaw provider is missing `baseUrl`",
+            )
+        })
     }
 
     /// Hermes: `{ base_url, api_key, api_mode }`（snake_case）
     fn extract_hermes_base_url(provider: &Provider) -> Result<String, AppError> {
-        provider
-            .settings_config
-            .get("base_url")
-            .and_then(|v| v.as_str())
-            .map(|s| s.trim().to_string())
-            .filter(|s| !s.is_empty())
-            .ok_or_else(|| {
-                AppError::localized(
-                    "hermes_base_url_missing",
-                    "Hermes 供应商缺少 base_url",
-                    "Hermes provider is missing `base_url`",
-                )
-            })
+        extract_hermes_stream_check_base_url(&provider.settings_config).ok_or_else(|| {
+            AppError::localized(
+                "hermes_base_url_missing",
+                "Hermes 供应商缺少 base_url",
+                "Hermes provider is missing `base_url`",
+            )
+        })
     }
 
     /// OpenCode: `{ npm, options: { baseURL, apiKey }, ... }`
@@ -301,43 +291,13 @@ impl StreamCheckService {
         provider: &Provider,
         npm: Option<&str>,
     ) -> Result<String, AppError> {
-        if let Some(explicit) = Self::extract_opencode_base_url(provider) {
-            return Ok(explicit);
-        }
-
-        let fallback = match npm {
-            Some("@ai-sdk/openai") => Some("https://api.openai.com/v1"),
-            Some("@ai-sdk/anthropic") => Some("https://api.anthropic.com"),
-            Some("@ai-sdk/google") => Some("https://generativelanguage.googleapis.com"),
-            _ => None,
-        };
-
-        fallback.map(|s| s.to_string()).ok_or_else(|| {
+        resolve_opencode_stream_check_base_url(&provider.settings_config, npm).ok_or_else(|| {
             AppError::localized(
                 "opencode_base_url_missing",
                 "OpenCode 供应商缺少 options.baseURL，且当前 SDK 包没有默认端点",
                 "OpenCode provider is missing `options.baseURL` and the SDK package has no default endpoint",
             )
         })
-    }
-
-    fn extract_opencode_base_url(provider: &Provider) -> Option<String> {
-        provider
-            .settings_config
-            .get("options")
-            .and_then(|v| v.get("baseURL"))
-            .and_then(|v| v.as_str())
-            .map(|s| s.trim().to_string())
-            .filter(|s| !s.is_empty())
-    }
-
-    fn extract_opencode_npm(provider: &Provider) -> Option<String> {
-        provider
-            .settings_config
-            .get("npm")
-            .and_then(|v| v.as_str())
-            .map(|s| s.trim().to_string())
-            .filter(|s| !s.is_empty())
     }
 }
 
@@ -510,6 +470,18 @@ mod tests {
         assert_eq!(
             StreamCheckService::extract_openclaw_base_url(&p2).unwrap(),
             "https://api.deepseek.com/v1"
+        );
+    }
+
+    #[test]
+    fn test_extract_hermes_base_url_missing_errors() {
+        let p = make_provider(serde_json::json!({ "api_key": "k", "api_mode": "openai" }));
+        assert!(StreamCheckService::extract_hermes_base_url(&p).is_err());
+
+        let p2 = make_provider(serde_json::json!({ "base_url": "https://hermes.example.com" }));
+        assert_eq!(
+            StreamCheckService::extract_hermes_base_url(&p2).unwrap(),
+            "https://hermes.example.com"
         );
     }
 
