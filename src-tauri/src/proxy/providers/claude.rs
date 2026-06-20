@@ -31,11 +31,8 @@ use crate::proxy_core::{
     ClaudeAuthKeySource, CopilotAuthHeadersInput, ProviderAuthInfo, ProviderAuthStrategy,
     ProviderKind,
 };
+use crate::proxy_core_adapter::synthesize_gemini_tool_call_id_with_uuid;
 use serde_json::Value;
-
-fn synthesize_gemini_tool_call_id_with_uuid() -> String {
-    crate::proxy_core::synthesize_gemini_tool_call_id(uuid::Uuid::new_v4().simple().to_string())
-}
 
 /// 获取 Claude 供应商的 API 格式
 ///

@@ -69,6 +69,7 @@ use crate::proxy_core_adapter::{
     proxy_app_summary_input, proxy_channel_model_records_to_core, proxy_channel_record_to_core,
     proxy_channel_records_to_core, proxy_channel_specs_to_core,
     proxy_current_route_provider_summary_input, proxy_providers_to_core_specs,
+    synthesize_gemini_tool_call_id_with_uuid,
 };
 use axum::{
     Json,
@@ -81,10 +82,6 @@ use http_body_util::BodyExt;
 use serde_json::Value;
 use std::convert::Infallible;
 use std::time::Duration;
-
-fn synthesize_gemini_tool_call_id_with_uuid() -> String {
-    crate::proxy_core::synthesize_gemini_tool_call_id(uuid::Uuid::new_v4().simple().to_string())
-}
 
 // ============================================================================
 // 健康检查和状态查询（简单端点）

@@ -12,6 +12,10 @@ use http::HeaderMap;
 use serde_json::{json, Value};
 use uuid::Uuid;
 
+pub(crate) fn synthesize_gemini_tool_call_id_with_uuid() -> String {
+    crate::proxy_core::synthesize_gemini_tool_call_id(Uuid::new_v4().simple().to_string())
+}
+
 impl From<&AppType> for AppKind {
     fn from(value: &AppType) -> Self {
         match value {
@@ -347,7 +351,7 @@ mod tests {
     use super::*;
     use crate::database::ProxyChannelSourceKind;
     use crate::provider::{AuthBinding, AuthBindingSource, ProviderMeta};
-    use crate::proxy_core::{ProviderKind, SessionIdSource};
+    use crate::proxy_core::{ProviderKind, SessionIdSource, GEMINI_SYNTHESIZED_TOOL_CALL_ID_PREFIX};
 
     #[test]
     fn app_type_conversion_preserves_known_and_custom_names() {
@@ -376,6 +380,14 @@ mod tests {
         uuid::Uuid::parse_str(&result.session_id).expect("generated session id should be a UUID");
         assert_eq!(result.source, SessionIdSource::Generated);
         assert!(!result.client_provided);
+    }
+
+    #[test]
+    fn gemini_tool_call_id_adapter_uses_core_prefix_contract() {
+        let id = synthesize_gemini_tool_call_id_with_uuid();
+
+        assert!(id.starts_with(GEMINI_SYNTHESIZED_TOOL_CALL_ID_PREFIX));
+        assert!(id.len() > GEMINI_SYNTHESIZED_TOOL_CALL_ID_PREFIX.len());
     }
 
     #[test]
