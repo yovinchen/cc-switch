@@ -21,9 +21,9 @@ use crate::proxy_core::{
     non_streaming_response_usage_record_from_body_with_request_id_fallback,
     passthrough_bytes_proxy_response, passthrough_stream_proxy_response,
     response_headers_log_summary, streaming_response_usage_record_with_optional_outbound_model,
-    AppKind, ProxyServices, ResponseBodyDecodeStatus, SseEventScanner, SsePassthroughEventKind,
-    SseUsageAccumulator, StreamUsageEventFilter, StreamingTimeoutConfig, StreamingTimeoutPhase,
-    UsageParserConfig, UsageRecord,
+    AppKind, ProxyServices, ResponseBodyDecodeLogLevel, SseEventScanner,
+    SsePassthroughEventKind, SseUsageAccumulator, StreamUsageEventFilter, StreamingTimeoutConfig,
+    StreamingTimeoutPhase, UsageParserConfig, UsageRecord,
 };
 #[cfg(test)]
 use crate::proxy_core::{ProviderKind, TokenUsage};
@@ -63,16 +63,10 @@ pub(crate) async fn read_decoded_body(
     );
 
     let decoded = decode_response_body(&mut headers, &raw_bytes);
-    if let Some(encoding) = decoded.status.content_encoding() {
-        log::debug!("[{tag}] 解压非流式响应: content-encoding={encoding}");
-        match &decoded.status {
-            ResponseBodyDecodeStatus::UnsupportedEncoding { encoding } => {
-                log::warn!("未知的 content-encoding: {encoding}，跳过解压");
-            }
-            ResponseBodyDecodeStatus::DecodeFailed { encoding, error } => {
-                log::warn!("[{tag}] 解压失败 ({encoding}): {error}，使用原始数据");
-            }
-            ResponseBodyDecodeStatus::NotEncoded | ResponseBodyDecodeStatus::Decoded { .. } => {}
+    if let Some(event) = decoded.status.log_event() {
+        match event.level() {
+            ResponseBodyDecodeLogLevel::Debug => log::debug!("{}", event.message(tag)),
+            ResponseBodyDecodeLogLevel::Warn => log::warn!("{}", event.message(tag)),
         }
     }
 

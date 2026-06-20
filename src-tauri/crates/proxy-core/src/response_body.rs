@@ -20,6 +20,64 @@ impl ResponseBodyDecodeStatus {
             | Self::DecodeFailed { encoding, .. } => Some(encoding),
         }
     }
+
+    pub fn log_event(&self) -> Option<ResponseBodyDecodeLogEvent> {
+        match self {
+            Self::NotEncoded => None,
+            Self::Decoded { encoding } => Some(ResponseBodyDecodeLogEvent::Decoded {
+                encoding: encoding.clone(),
+            }),
+            Self::UnsupportedEncoding { encoding } => {
+                Some(ResponseBodyDecodeLogEvent::UnsupportedEncoding {
+                    encoding: encoding.clone(),
+                })
+            }
+            Self::DecodeFailed { encoding, error } => {
+                Some(ResponseBodyDecodeLogEvent::DecodeFailed {
+                    encoding: encoding.clone(),
+                    error: error.clone(),
+                })
+            }
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ResponseBodyDecodeLogLevel {
+    Debug,
+    Warn,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ResponseBodyDecodeLogEvent {
+    Decoded { encoding: String },
+    UnsupportedEncoding { encoding: String },
+    DecodeFailed { encoding: String, error: String },
+}
+
+impl ResponseBodyDecodeLogEvent {
+    pub fn level(&self) -> ResponseBodyDecodeLogLevel {
+        match self {
+            Self::Decoded { .. } => ResponseBodyDecodeLogLevel::Debug,
+            Self::UnsupportedEncoding { .. } | Self::DecodeFailed { .. } => {
+                ResponseBodyDecodeLogLevel::Warn
+            }
+        }
+    }
+
+    pub fn message(&self, tag: &str) -> String {
+        match self {
+            Self::Decoded { encoding } => {
+                format!("[{tag}] 解压非流式响应: content-encoding={encoding}")
+            }
+            Self::UnsupportedEncoding { encoding } => {
+                format!("未知的 content-encoding: {encoding}，跳过解压")
+            }
+            Self::DecodeFailed { encoding, error } => {
+                format!("[{tag}] 解压失败 ({encoding}): {error}，使用原始数据")
+            }
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -107,7 +165,8 @@ pub fn get_content_encoding(headers: &HeaderMap) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::{
-        decode_response_body, decompress_body, get_content_encoding, ResponseBodyDecodeStatus,
+        decode_response_body, decompress_body, get_content_encoding, ResponseBodyDecodeLogLevel,
+        ResponseBodyDecodeStatus,
     };
     use http::{
         header::{CONTENT_ENCODING, CONTENT_LENGTH, CONTENT_TYPE, TRANSFER_ENCODING},
@@ -131,6 +190,45 @@ mod tests {
 
         headers.insert("content-encoding", HeaderValue::from_static(""));
         assert_eq!(get_content_encoding(&headers), None);
+    }
+
+    #[test]
+    fn response_body_decode_status_projects_log_events() {
+        let decoded = ResponseBodyDecodeStatus::Decoded {
+            encoding: "gzip".to_string(),
+        }
+        .log_event()
+        .expect("decoded log event");
+        assert_eq!(decoded.level(), ResponseBodyDecodeLogLevel::Debug);
+        assert_eq!(
+            decoded.message("REQ-1"),
+            "[REQ-1] 解压非流式响应: content-encoding=gzip"
+        );
+
+        let unsupported = ResponseBodyDecodeStatus::UnsupportedEncoding {
+            encoding: "zstd".to_string(),
+        }
+        .log_event()
+        .expect("unsupported log event");
+        assert_eq!(unsupported.level(), ResponseBodyDecodeLogLevel::Warn);
+        assert_eq!(
+            unsupported.message("REQ-1"),
+            "未知的 content-encoding: zstd，跳过解压"
+        );
+
+        let failed = ResponseBodyDecodeStatus::DecodeFailed {
+            encoding: "gzip".to_string(),
+            error: "invalid gzip".to_string(),
+        }
+        .log_event()
+        .expect("failed log event");
+        assert_eq!(failed.level(), ResponseBodyDecodeLogLevel::Warn);
+        assert_eq!(
+            failed.message("REQ-1"),
+            "[REQ-1] 解压失败 (gzip): invalid gzip，使用原始数据"
+        );
+
+        assert_eq!(ResponseBodyDecodeStatus::NotEncoded.log_event(), None);
     }
 
     #[test]
