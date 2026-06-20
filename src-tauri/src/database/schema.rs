@@ -195,12 +195,15 @@ impl Database {
             cache_read_cost_usd TEXT NOT NULL DEFAULT '0', cache_creation_cost_usd TEXT NOT NULL DEFAULT '0',
             total_cost_usd TEXT NOT NULL DEFAULT '0', latency_ms INTEGER NOT NULL, first_token_ms INTEGER,
             duration_ms INTEGER, status_code INTEGER NOT NULL, error_message TEXT, session_id TEXT,
-            provider_type TEXT, is_streaming INTEGER NOT NULL DEFAULT 0,
+            provider_type TEXT, channel_id TEXT, channel_name TEXT, route_group TEXT,
+            is_streaming INTEGER NOT NULL DEFAULT 0,
             cost_multiplier TEXT NOT NULL DEFAULT '1.0', created_at INTEGER NOT NULL,
             data_source TEXT NOT NULL DEFAULT 'proxy'
         )", []).map_err(|e| AppError::Database(e.to_string()))?;
 
         conn.execute("CREATE INDEX IF NOT EXISTS idx_request_logs_provider ON proxy_request_logs(provider_id, app_type)", [])
+            .map_err(|e| AppError::Database(e.to_string()))?;
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_request_logs_channel ON proxy_request_logs(app_type, channel_id, created_at)", [])
             .map_err(|e| AppError::Database(e.to_string()))?;
         conn.execute("CREATE INDEX IF NOT EXISTS idx_request_logs_created_at ON proxy_request_logs(created_at)", [])
             .map_err(|e| AppError::Database(e.to_string()))?;
@@ -451,6 +454,11 @@ impl Database {
                         Self::migrate_v11_to_v12(conn)?;
                         Self::set_user_version(conn, 12)?;
                     }
+                    12 => {
+                        log::info!("迁移数据库从 v12 到 v13（请求日志保留代理 channel 归因）");
+                        Self::migrate_v12_to_v13(conn)?;
+                        Self::set_user_version(conn, 13)?;
+                    }
                     _ => {
                         return Err(AppError::Database(format!(
                             "未知的数据库版本 {version}，无法迁移到 {SCHEMA_VERSION}"
@@ -627,7 +635,8 @@ impl Database {
             cache_read_cost_usd TEXT NOT NULL DEFAULT '0', cache_creation_cost_usd TEXT NOT NULL DEFAULT '0',
             total_cost_usd TEXT NOT NULL DEFAULT '0', latency_ms INTEGER NOT NULL, first_token_ms INTEGER,
             duration_ms INTEGER, status_code INTEGER NOT NULL, error_message TEXT, session_id TEXT,
-            provider_type TEXT, is_streaming INTEGER NOT NULL DEFAULT 0,
+            provider_type TEXT, channel_id TEXT, channel_name TEXT, route_group TEXT,
+            is_streaming INTEGER NOT NULL DEFAULT 0,
             cost_multiplier TEXT NOT NULL DEFAULT '1.0', created_at INTEGER NOT NULL
         )", [])?;
 
@@ -647,6 +656,7 @@ impl Database {
         )?;
         Self::add_column_if_missing(conn, "proxy_request_logs", "first_token_ms", "INTEGER")?;
         Self::add_column_if_missing(conn, "proxy_request_logs", "duration_ms", "INTEGER")?;
+        Self::add_request_log_channel_columns_if_missing(conn)?;
 
         // model_pricing 表
         conn.execute(
@@ -1284,6 +1294,44 @@ impl Database {
     fn migrate_v11_to_v12(conn: &Connection) -> Result<(), AppError> {
         Self::create_proxy_channel_tables_on_conn(conn)?;
         log::info!("v11 -> v12 迁移完成：已创建代理 channel 路由迁移表");
+        Ok(())
+    }
+
+    /// v12 -> v13：请求明细保留代理 channel 归因。
+    ///
+    /// channel 表在 v12 已成为路由迁移落点；明细日志同步保存选中 channel，
+    /// 让每个中转地址、模型映射和 route group 可审计。
+    fn migrate_v12_to_v13(conn: &Connection) -> Result<(), AppError> {
+        Self::add_request_log_channel_columns_if_missing(conn)?;
+        log::info!("v12 -> v13 迁移完成：proxy_request_logs 已保留 channel 归因字段");
+        Ok(())
+    }
+
+    fn add_request_log_channel_columns_if_missing(conn: &Connection) -> Result<(), AppError> {
+        if !Self::table_exists(conn, "proxy_request_logs")? {
+            return Ok(());
+        }
+        Self::add_column_if_missing(conn, "proxy_request_logs", "channel_id", "TEXT")?;
+        Self::add_column_if_missing(conn, "proxy_request_logs", "channel_name", "TEXT")?;
+        Self::add_column_if_missing(conn, "proxy_request_logs", "route_group", "TEXT")?;
+        Self::create_request_log_channel_index_if_supported(conn)
+    }
+
+    fn create_request_log_channel_index_if_supported(conn: &Connection) -> Result<(), AppError> {
+        if !Self::table_exists(conn, "proxy_request_logs")? {
+            return Ok(());
+        }
+        for column in ["app_type", "channel_id", "created_at"] {
+            if !Self::has_column(conn, "proxy_request_logs", column)? {
+                return Ok(());
+            }
+        }
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_request_logs_channel
+             ON proxy_request_logs(app_type, channel_id, created_at)",
+            [],
+        )
+        .map_err(|e| AppError::Database(format!("创建请求日志 channel 索引失败: {e}")))?;
         Ok(())
     }
 

@@ -29,6 +29,10 @@ pub struct RequestLog {
     pub session_id: Option<String>,
     /// 供应商类型 (claude, claude_auth, codex, gemini, gemini_cli, openrouter)
     pub provider_type: Option<String>,
+    /// Materialized proxy channel selected for this request, when routing used the extracted proxy module.
+    pub channel_id: Option<String>,
+    pub channel_name: Option<String>,
+    pub route_group: Option<String>,
     /// 是否为流式请求
     pub is_streaming: bool,
     /// 成本倍数
@@ -76,8 +80,8 @@ impl<'a> UsageLogger<'a> {
                 input_tokens, output_tokens, cache_read_tokens, cache_creation_tokens,
                 input_cost_usd, output_cost_usd, cache_read_cost_usd, cache_creation_cost_usd, total_cost_usd,
                 latency_ms, first_token_ms, status_code, error_message, session_id,
-                provider_type, is_streaming, cost_multiplier, created_at
-            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21, ?22, ?23, ?24)",
+                provider_type, channel_id, channel_name, route_group, is_streaming, cost_multiplier, created_at
+            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21, ?22, ?23, ?24, ?25, ?26, ?27)",
             rusqlite::params![
                 log.request_id,
                 log.provider_id,
@@ -100,6 +104,9 @@ impl<'a> UsageLogger<'a> {
                 log.error_message,
                 log.session_id,
                 log.provider_type,
+                log.channel_id,
+                log.channel_name,
+                log.route_group,
                 log.is_streaming as i64,
                 log.cost_multiplier,
                 created_at,
@@ -257,6 +264,9 @@ mod tests {
             error_message: None,
             session_id: None,
             provider_type: Some("claude".to_string()),
+            channel_id: Some("channel-1".to_string()),
+            channel_name: Some("Relay One".to_string()),
+            route_group: Some("default".to_string()),
             is_streaming: false,
             cost_multiplier: "1".to_string(),
         };
@@ -265,15 +275,33 @@ mod tests {
 
         // 验证记录已插入
         let conn = crate::database::lock_conn!(db.conn);
-        let (count, request_model): (i64, String) = conn
+        let (count, request_model, channel_id, channel_name, route_group): (
+            i64,
+            String,
+            String,
+            String,
+            String,
+        ) = conn
             .query_row(
-                "SELECT COUNT(*), request_model FROM proxy_request_logs WHERE request_id = 'req-123'",
+                "SELECT COUNT(*), request_model, channel_id, channel_name, route_group
+                 FROM proxy_request_logs WHERE request_id = 'req-123'",
                 [],
-                |row| Ok((row.get(0)?, row.get(1)?)),
+                |row| {
+                    Ok((
+                        row.get(0)?,
+                        row.get(1)?,
+                        row.get(2)?,
+                        row.get(3)?,
+                        row.get(4)?,
+                    ))
+                },
             )
             .unwrap();
         assert_eq!(count, 1);
         assert_eq!(request_model, "req-model");
+        assert_eq!(channel_id, "channel-1");
+        assert_eq!(channel_name, "Relay One");
+        assert_eq!(route_group, "default");
         Ok(())
     }
 }

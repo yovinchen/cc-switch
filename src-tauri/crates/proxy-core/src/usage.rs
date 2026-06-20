@@ -6,7 +6,9 @@
 //! - Codex API (非流式和流式)
 //! - Gemini API (非流式和流式)
 
-use crate::domain::{AppKind, ProviderKind, UsageRecord, UsageTokens};
+use crate::domain::{
+    AppKind, ProviderKind, RouteSelection, UsageRecord, UsageTokens, DEFAULT_ROUTE_GROUP,
+};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 
@@ -722,6 +724,39 @@ pub struct UsageModelAttribution {
     pub request_model: String,
     pub outbound_model: String,
     pub response_model: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct UsageRouteContext {
+    pub channel_id: String,
+    pub channel_name: String,
+    pub route_group: String,
+}
+
+pub fn usage_route_context_from_selection(selection: &RouteSelection) -> UsageRouteContext {
+    UsageRouteContext {
+        channel_id: selection.channel.id.clone(),
+        channel_name: selection.channel.name.clone(),
+        route_group: selection
+            .channel
+            .groups
+            .first()
+            .filter(|group| !group.trim().is_empty())
+            .cloned()
+            .unwrap_or_else(|| DEFAULT_ROUTE_GROUP.to_string()),
+    }
+}
+
+pub fn usage_record_with_route_context(
+    mut record: UsageRecord,
+    route: Option<&UsageRouteContext>,
+) -> UsageRecord {
+    if let Some(route) = route {
+        record.channel_id = Some(route.channel_id.clone());
+        record.channel_name = Some(route.channel_name.clone());
+        record.route_group = Some(route.route_group.clone());
+    }
+    record
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -3023,6 +3058,52 @@ mod tests {
         assert_eq!(usage.cache_creation_tokens, 11);
         assert_eq!(usage.model.as_deref(), Some("response-model"));
         assert_eq!(usage.message_id.as_deref(), Some("msg-1"));
+    }
+
+    #[test]
+    fn usage_record_with_route_context_projects_channel_fields() {
+        let record = UsageRecord {
+            request_id: Some("req-1".to_string()),
+            message_id: None,
+            app: crate::domain::AppKind::Claude,
+            provider_id: "provider-1".to_string(),
+            provider_kind: None,
+            channel_id: None,
+            channel_name: None,
+            route_group: None,
+            request_model: "request-model".to_string(),
+            outbound_model: "outbound-model".to_string(),
+            response_model: Some("response-model".to_string()),
+            pricing_model: None,
+            tokens: UsageTokens {
+                input_tokens: 1,
+                output_tokens: 2,
+                cache_read_tokens: 0,
+                cache_creation_tokens: 0,
+            },
+            latency_ms: 1,
+            first_token_ms: None,
+            status_code: 200,
+            error_message: None,
+            session_id: None,
+            is_streaming: false,
+            metadata: Value::Object(Default::default()),
+        };
+        let context = UsageRouteContext {
+            channel_id: "channel-a".to_string(),
+            channel_name: "Relay A".to_string(),
+            route_group: "default".to_string(),
+        };
+
+        let projected = usage_record_with_route_context(record.clone(), Some(&context));
+        assert_eq!(projected.channel_id.as_deref(), Some("channel-a"));
+        assert_eq!(projected.channel_name.as_deref(), Some("Relay A"));
+        assert_eq!(projected.route_group.as_deref(), Some("default"));
+
+        let unchanged = usage_record_with_route_context(record, None);
+        assert!(unchanged.channel_id.is_none());
+        assert!(unchanged.channel_name.is_none());
+        assert!(unchanged.route_group.is_none());
     }
 
     #[test]

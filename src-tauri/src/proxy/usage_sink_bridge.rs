@@ -10,8 +10,8 @@ use crate::proxy_core_adapter::{
     error_usage_record_with_request_id_fallback,
     transformed_response_usage_record_with_request_id_fallback,
     transformed_streaming_response_usage_record_with_request_id_fallback,
-    ProxyCoreAppKind as AppKind, ProviderKind, ProxyServices, StreamUsageEventFilter,
-    TransformedResponseUsageFormat, UsageRecord,
+    usage_record_with_route_context, ProviderKind, ProxyCoreAppKind as AppKind, ProxyServices,
+    StreamUsageEventFilter, TransformedResponseUsageFormat, UsageRecord,
 };
 #[cfg(test)]
 use crate::proxy_core_adapter::{success_usage_record_with_request_id_fallback, TokenUsage};
@@ -94,6 +94,7 @@ pub(crate) fn record_forward_error_usage(
         is_streaming,
         Some(ctx.session_id.clone()),
     );
+    let record = usage_record_with_route_context(record, ctx.usage_route_context.as_ref());
 
     let services = state.proxy_core_services.clone();
     spawn_usage_record(services, record, "记录失败请求日志失败");
@@ -151,6 +152,7 @@ pub(crate) fn record_transformed_response_usage(
         return;
     };
 
+    let record = usage_record_with_route_context(record, ctx.usage_route_context.as_ref());
     let services = state.proxy_core_services.clone();
     spawn_usage_record(services, record, "[USG-001] 记录使用量失败");
 }
@@ -174,6 +176,7 @@ pub(crate) fn transformed_streaming_usage_collector(
     let app_type_str = ctx.app_type_str;
     let start_time = ctx.start_time;
     let session_id = ctx.session_id.clone();
+    let usage_route_context = ctx.usage_route_context.clone();
 
     Some(SseUsageCollector::new(
         start_time,
@@ -198,6 +201,7 @@ pub(crate) fn transformed_streaming_usage_collector(
                 return;
             };
 
+            let record = usage_record_with_route_context(record, usage_route_context.as_ref());
             let services = services.clone();
             spawn_usage_record(services, record, "[USG-001] 记录使用量失败");
         },

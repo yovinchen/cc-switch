@@ -21,9 +21,10 @@ use crate::proxy_core_adapter::{
     non_streaming_response_usage_record_from_body_with_request_id_fallback,
     passthrough_bytes_proxy_response, passthrough_stream_proxy_response,
     response_headers_log_summary, streaming_response_usage_record_with_optional_outbound_model,
-    ProxyCoreAppKind as AppKind, ProxyServices, ResponseBodyDecodeLogLevel, SseEventScanner,
-    SsePassthroughEventKind, SseUsageAccumulator, StreamUsageEventFilter, StreamingTimeoutConfig,
-    StreamingTimeoutPhase, UsageParserConfig, UsageRecord,
+    usage_record_with_route_context, ProxyCoreAppKind as AppKind, ProxyServices,
+    ResponseBodyDecodeLogLevel, SseEventScanner, SsePassthroughEventKind, SseUsageAccumulator,
+    StreamUsageEventFilter, StreamingTimeoutConfig, StreamingTimeoutPhase, UsageParserConfig,
+    UsageRecord,
 };
 #[cfg(test)]
 use crate::proxy_core_adapter::{ProviderKind, TokenUsage};
@@ -176,7 +177,10 @@ pub async fn handle_non_streaming(
             log::debug!("{}", event.message(ctx.tag, parser_config.app_type_str));
         }
 
-        spawn_record_usage(state, output.record);
+        spawn_record_usage(
+            state,
+            usage_record_with_route_context(output.record, ctx.usage_route_context.as_ref()),
+        );
     } else {
         log::debug!("[{}] usage logging 已关闭，跳过非流式 usage 解析", ctx.tag);
     }
@@ -327,6 +331,7 @@ fn create_usage_collector(
     let model_extractor = parser_config.model_extractor;
     let session_id = ctx.session_id.clone();
     let outbound_model = ctx.outbound_model.clone();
+    let usage_route_context = ctx.usage_route_context.clone();
 
     Some(SseUsageCollector::new(
         start_time,
@@ -353,7 +358,10 @@ fn create_usage_collector(
                 log::debug!("{message}");
             }
 
-            spawn_record_usage(&state, output.record);
+            spawn_record_usage(
+                &state,
+                usage_record_with_route_context(output.record, usage_route_context.as_ref()),
+            );
         },
     ))
 }

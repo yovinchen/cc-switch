@@ -201,6 +201,7 @@ fn schema_migration_adds_missing_columns_for_providers() {
         ("proxy_channels", "interface_kind"),
         ("proxy_channel_models", "upstream_model"),
         ("proxy_channel_health", "consecutive_failures"),
+        ("proxy_request_logs", "channel_id"),
         ("mcp_servers", "enabled_gemini"),
         ("prompts", "updated_at"),
         ("skills", "installed_at"),
@@ -459,6 +460,50 @@ fn migration_v10_to_v11_rebuilds_rollups_with_request_model_dimension() {
     )
     .expect("insert row with same model but different request_model");
 
+    assert_eq!(
+        Database::get_user_version(&conn).expect("version after migration"),
+        SCHEMA_VERSION
+    );
+}
+
+#[test]
+fn migration_v12_to_v13_adds_request_log_channel_attribution() {
+    let conn = Connection::open_in_memory().expect("open memory db");
+    conn.execute_batch(
+        r#"
+        CREATE TABLE proxy_request_logs (
+            request_id TEXT PRIMARY KEY,
+            provider_id TEXT NOT NULL,
+            app_type TEXT NOT NULL,
+            model TEXT NOT NULL,
+            latency_ms INTEGER NOT NULL,
+            status_code INTEGER NOT NULL,
+            created_at INTEGER NOT NULL
+        );
+        INSERT INTO proxy_request_logs
+            (request_id, provider_id, app_type, model, latency_ms, status_code, created_at)
+        VALUES ('req-legacy', 'p1', 'claude', 'sonnet', 12, 200, 1710000000);
+        "#,
+    )
+    .expect("seed v12 request logs");
+
+    Database::set_user_version(&conn, 12).expect("set user_version=12");
+    Database::apply_schema_migrations_on_conn(&conn).expect("apply migrations");
+
+    for column in ["channel_id", "channel_name", "route_group"] {
+        let info = get_column_info(&conn, "proxy_request_logs", column);
+        assert_eq!(info.r#type, "TEXT");
+        assert_eq!(info.notnull, 0);
+    }
+
+    let legacy_count: i64 = conn
+        .query_row(
+            "SELECT COUNT(*) FROM proxy_request_logs WHERE request_id = 'req-legacy'",
+            [],
+            |row| row.get(0),
+        )
+        .expect("legacy row count");
+    assert_eq!(legacy_count, 1);
     assert_eq!(
         Database::get_user_version(&conn).expect("version after migration"),
         SCHEMA_VERSION

@@ -254,6 +254,7 @@ pub(crate) type CostCalculator = crate::proxy_core::api::usage::CostCalculator;
 pub(crate) type ModelPricing = crate::proxy_core::api::usage::ModelPricing;
 pub(crate) type TokenUsage = crate::proxy_core::api::usage::TokenUsage;
 pub(crate) type UsageRecord = crate::proxy_core::api::usage::UsageRecord;
+pub(crate) type UsageRouteContext = crate::proxy_core::api::usage::UsageRouteContext;
 #[cfg(test)]
 pub(crate) type UsageTokens = crate::proxy_core::api::usage::UsageTokens;
 pub(crate) type NonStreamingResponseUsageRecord =
@@ -1771,6 +1772,17 @@ pub(crate) fn usage_record_pricing_model(
         .pricing_model
 }
 
+pub(crate) fn usage_route_context_from_selection(selection: &RouteSelection) -> UsageRouteContext {
+    crate::proxy_core::api::usage::usage_route_context_from_selection(selection)
+}
+
+pub(crate) fn usage_record_with_route_context(
+    record: UsageRecord,
+    route: Option<&UsageRouteContext>,
+) -> UsageRecord {
+    crate::proxy_core::api::usage::usage_record_with_route_context(record, route)
+}
+
 pub(crate) fn usage_record_to_request_log(
     record: &UsageRecord,
     pricing_model_source: &str,
@@ -1813,6 +1825,9 @@ pub(crate) fn usage_record_to_request_log(
                 .provider_kind
                 .as_ref()
                 .map(|provider_kind| provider_kind.as_str().to_string()),
+            channel_id: record.channel_id.clone(),
+            channel_name: record.channel_name.clone(),
+            route_group: record.route_group.clone(),
             is_streaming: record.is_streaming,
             cost_multiplier: multiplier.to_string(),
         },
@@ -3503,6 +3518,9 @@ mod tests {
         assert_eq!(projection.log.usage.input_tokens, 1_000);
         assert!(projection.log.cost.is_some());
         assert_eq!(projection.log.provider_type.as_deref(), Some("claude"));
+        assert_eq!(projection.log.channel_id.as_deref(), Some("channel-a"));
+        assert_eq!(projection.log.channel_name.as_deref(), Some("Channel A"));
+        assert_eq!(projection.log.route_group.as_deref(), Some("default"));
         assert!(projection.log.is_streaming);
         assert_eq!(projection.log.cost_multiplier, "2");
         assert!(projection.missing_pricing_model.is_none());

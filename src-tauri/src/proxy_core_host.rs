@@ -1399,6 +1399,9 @@ mod tests {
             i64,
             Option<String>,
             Option<String>,
+            Option<String>,
+            Option<String>,
+            Option<String>,
             i64,
             String,
         ) = conn
@@ -1416,6 +1419,9 @@ mod tests {
                     status_code,
                     session_id,
                     provider_type,
+                    channel_id,
+                    channel_name,
+                    route_group,
                     is_streaming,
                     total_cost_usd
                  FROM proxy_request_logs
@@ -1437,6 +1443,9 @@ mod tests {
                         row.get(11)?,
                         row.get(12)?,
                         row.get(13)?,
+                        row.get(14)?,
+                        row.get(15)?,
+                        row.get(16)?,
                     ))
                 },
             )
@@ -1454,8 +1463,11 @@ mod tests {
         assert_eq!(row.9, 200);
         assert_eq!(row.10.as_deref(), Some("session-a"));
         assert_eq!(row.11.as_deref(), Some("claude"));
-        assert_eq!(row.12, 1);
-        assert_ne!(row.13, "0");
+        assert_eq!(row.12.as_deref(), Some("channel-a"));
+        assert_eq!(row.13.as_deref(), Some("Channel A"));
+        assert_eq!(row.14.as_deref(), Some(DEFAULT_ROUTE_GROUP));
+        assert_eq!(row.15, 1);
+        assert_ne!(row.16, "0");
         Ok(())
     }
 

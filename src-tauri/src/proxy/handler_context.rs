@@ -10,9 +10,10 @@ use crate::proxy::{
 };
 use crate::proxy_core_adapter::{
     claude_api_format_from_metadata, extract_gemini_model_from_path, extract_proxy_session_id,
-    resolve_response_runtime_policy, AppProxyConfig, CopilotOptimizerConfig, OptimizerConfig,
-    ProxyCoreAppKind as AppKind, ProxyResult, ProxyServices, RectifierConfig,
-    ResponseRuntimePolicy, ResponseTimeoutConfig, StreamingTimeoutConfig,
+    resolve_response_runtime_policy, usage_route_context_from_selection, AppProxyConfig,
+    CopilotOptimizerConfig, OptimizerConfig, ProxyCoreAppKind as AppKind, ProxyResult,
+    ProxyServices, RectifierConfig, ResponseRuntimePolicy, ResponseTimeoutConfig,
+    StreamingTimeoutConfig, UsageRouteContext,
 };
 use axum::http::HeaderMap;
 use std::time::Instant;
@@ -49,6 +50,8 @@ pub struct RequestContext {
     /// usage 归因的兜底顺序：上游响应回显 → outbound_model → request_model。
     /// 不能直接用 request_model 兜底：接管场景下它是映射前的客户端别名。
     pub outbound_model: Option<String>,
+    /// 选中的代理 channel，用于 usage 明细归因。
+    pub usage_route_context: Option<UsageRouteContext>,
     /// 日志标签（如 "Claude"、"Codex"、"Gemini"）
     pub tag: &'static str,
     /// 应用类型字符串（如 "claude"、"codex"、"gemini"）
@@ -173,6 +176,7 @@ impl RequestContext {
             current_provider_id,
             request_model,
             outbound_model: None,
+            usage_route_context: None,
             tag,
             app_type_str,
             app_type,
@@ -205,6 +209,7 @@ impl RequestContext {
         result: &ProxyResult,
     ) -> Result<(), ProxyError> {
         self.outbound_model = result.outbound_model.clone();
+        self.usage_route_context = Some(usage_route_context_from_selection(&result.selected_route));
         let provider_id = result.selected_route.provider.id.as_str();
         let Some(provider) = state
             .db
