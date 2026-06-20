@@ -1,4 +1,4 @@
-use crate::proxy_core::{
+use crate::proxy_core_adapter::{
     append_utf8_safe, inspect_codex_chat_history_sse_block, take_sse_block,
     CodexChatHistorySseRecord, CodexChatHistoryState,
 };

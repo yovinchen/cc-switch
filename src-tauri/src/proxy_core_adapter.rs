@@ -185,6 +185,11 @@ pub(crate) type ProxyEngine<S> = crate::proxy_core::ProxyEngine<S>;
 pub(crate) type ProxyResult = crate::proxy_core::ProxyResult;
 pub(crate) type ProxyEventEnvelope = crate::proxy_core::ProxyEventEnvelope;
 pub(crate) type ProxyEventSseSpec = crate::proxy_core::ProxyEventSseSpec;
+pub(crate) type CodexChatHistorySseInspection =
+    crate::proxy_core::CodexChatHistorySseInspection;
+pub(crate) type CodexChatHistorySseRecord =
+    crate::proxy_core::CodexChatHistorySseRecord;
+pub(crate) type CodexChatHistoryState = crate::proxy_core::CodexChatHistoryState;
 #[cfg(test)]
 pub(crate) type ProxyResponseBody = crate::proxy_core::ProxyResponseBody;
 pub(crate) type ProxyTransportResponse = crate::proxy_core::ProxyTransportResponse;
@@ -283,6 +288,24 @@ pub(crate) fn proxy_event_envelope_to_sse_spec(
     event: &ProxyEventEnvelope,
 ) -> ProxyEventSseSpec {
     event.to_sse_spec()
+}
+
+pub(crate) fn append_utf8_safe(
+    buffer: &mut String,
+    remainder: &mut Vec<u8>,
+    new_bytes: &[u8],
+) {
+    crate::proxy_core::append_utf8_safe(buffer, remainder, new_bytes);
+}
+
+pub(crate) fn take_sse_block(buffer: &mut String) -> Option<String> {
+    crate::proxy_core::take_sse_block(buffer)
+}
+
+pub(crate) fn inspect_codex_chat_history_sse_block(
+    block: &str,
+) -> Option<CodexChatHistorySseInspection> {
+    crate::proxy_core::inspect_codex_chat_history_sse_block(block)
 }
 
 pub(crate) fn resolve_response_runtime_policy(
@@ -1530,6 +1553,55 @@ mod tests {
         assert_eq!(spec.id, "42");
         assert_eq!(spec.event, "request_started");
         assert!(spec.data.contains("\"provider\":\"relay-a\""));
+    }
+
+    #[test]
+    fn codex_chat_history_adapter_projects_sse_and_state_helpers() {
+        let mut buffer = String::new();
+        let mut remainder = Vec::new();
+        append_utf8_safe(
+            &mut buffer,
+            &mut remainder,
+            br#"data: {"type":"response.output_item.done","response":{"id":"resp_1"},"item":{"type":"function_call","call_id":"call_1","name":"read_file","arguments":"{}"}}"#,
+        );
+        append_utf8_safe(&mut buffer, &mut remainder, b"\n\n");
+
+        let block = take_sse_block(&mut buffer).expect("sse block");
+        let inspection = inspect_codex_chat_history_sse_block(&block).expect("inspection");
+        assert_eq!(inspection.response_id.as_deref(), Some("resp_1"));
+        match inspection.record {
+            Some(CodexChatHistorySseRecord::OutputItemDone { item }) => {
+                assert_eq!(item["call_id"], "call_1");
+            }
+            other => panic!("unexpected inspection record: {other:?}"),
+        }
+
+        let mut state = CodexChatHistoryState::default();
+        assert_eq!(
+            state.record_response(&json!({
+                "id": "resp_1",
+                "output": [{
+                    "type": "function_call",
+                    "call_id": "call_1",
+                    "name": "read_file",
+                    "arguments": "{}",
+                    "reasoning_content": "Need context."
+                }]
+            })),
+            1
+        );
+        let mut request = json!({
+            "previous_response_id": "resp_1",
+            "input": [{
+                "type": "function_call_output",
+                "call_id": "call_1",
+                "output": "ok"
+            }]
+        });
+
+        assert_eq!(state.enrich_request(&mut request), 1);
+        assert_eq!(request["input"][0]["type"], "function_call");
+        assert_eq!(request["input"][0]["reasoning_content"], "Need context.");
     }
 
     #[test]
