@@ -376,6 +376,10 @@ pub(crate) fn resolve_gemini_native_url(
     crate::proxy_core::resolve_gemini_native_url(base_url, endpoint, is_full_url)
 }
 
+pub(crate) fn claude_api_format_needs_transform(api_format: &str) -> bool {
+    crate::proxy_core::claude_api_format_needs_transform(api_format)
+}
+
 #[cfg(test)]
 pub(crate) fn build_gemini_native_url(base_url: &str, endpoint: &str) -> String {
     crate::proxy_core::build_gemini_native_url(base_url, endpoint)
@@ -960,6 +964,15 @@ mod tests {
             ),
             "https://relay.example/custom/generate-content?alt=sse"
         );
+    }
+
+    #[test]
+    fn claude_api_format_adapter_projects_transform_gate() {
+        assert!(!claude_api_format_needs_transform("anthropic"));
+        assert!(claude_api_format_needs_transform("openai_chat"));
+        assert!(claude_api_format_needs_transform("openai_responses"));
+        assert!(claude_api_format_needs_transform("gemini_native"));
+        assert!(!claude_api_format_needs_transform("unknown"));
     }
 
     #[test]
