@@ -1,11 +1,17 @@
 use crate::provider::Provider;
+use crate::proxy::{
+    error::ProxyError,
+    error_mapper::{get_error_message, map_proxy_error_to_status},
+    handler_context::RequestContext,
+    server::ProxyState,
+};
 use crate::proxy_core::{
+    AppKind, ProviderKind, ProxyServices, TransformedResponseUsageFormat, UsageRecord,
     error_usage_record_with_request_id_fallback,
-    transformed_response_usage_record_with_request_id_fallback, AppKind, ProviderKind,
-    TransformedResponseUsageFormat, UsageRecord,
+    transformed_response_usage_record_with_request_id_fallback,
 };
 #[cfg(test)]
-use crate::proxy_core::{success_usage_record_with_request_id_fallback, TokenUsage};
+use crate::proxy_core::{TokenUsage, success_usage_record_with_request_id_fallback};
 use serde_json::Value;
 
 #[cfg(test)]
@@ -66,6 +72,32 @@ pub(crate) fn error_usage_record(
         session_id,
         || uuid::Uuid::new_v4().to_string(),
     )
+}
+
+pub(crate) fn record_forward_error_usage(
+    state: &ProxyState,
+    ctx: &RequestContext,
+    is_streaming: bool,
+    error: &ProxyError,
+) {
+    let record = error_usage_record(
+        &ctx.provider,
+        ctx.app_type_str,
+        &ctx.request_model,
+        ctx.outbound_model.as_deref(),
+        map_proxy_error_to_status(error),
+        get_error_message(error),
+        ctx.latency_ms(),
+        is_streaming,
+        Some(ctx.session_id.clone()),
+    );
+
+    let services = state.proxy_core_services.clone();
+    tokio::spawn(async move {
+        if let Err(e) = services.usage_sink().record_usage(record).await {
+            log::warn!("记录失败请求日志失败: {e}");
+        }
+    });
 }
 
 #[allow(clippy::too_many_arguments)]

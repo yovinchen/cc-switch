@@ -11,9 +11,9 @@ use super::{
     auth_adapter::validate_claude_desktop_gateway_auth,
     error::ProxyError,
     error_mapper::{
-        codex_proxy_error_response, get_error_message, management_api_error_to_proxy_error,
-        management_auth_error_to_proxy_error, map_proxy_error_to_status,
-        proxy_core_error_to_proxy_error, response_body_parse_error_to_proxy_error,
+        codex_proxy_error_response, management_api_error_to_proxy_error,
+        management_auth_error_to_proxy_error, proxy_core_error_to_proxy_error,
+        response_body_parse_error_to_proxy_error,
     },
     forwarder::ActiveConnectionGuard,
     handler_context::RequestContext,
@@ -28,7 +28,7 @@ use super::{
     },
     server::ProxyState,
     usage_sink_bridge::{
-        error_usage_record, provider_kind_from_provider, transformed_response_usage_record,
+        provider_kind_from_provider, record_forward_error_usage, transformed_response_usage_record,
     },
 };
 use crate::app_config::AppType;
@@ -756,7 +756,7 @@ async fn handle_messages_for_app(
         Ok(result) => result,
         Err(error) => {
             let error = proxy_core_error_to_proxy_error(error);
-            log_forward_error(&state, &ctx, is_stream, &error);
+            record_forward_error_usage(&state, &ctx, is_stream, &error);
             return Err(error);
         }
     };
@@ -1061,7 +1061,7 @@ pub async fn handle_chat_completions(
         Ok(result) => result,
         Err(error) => {
             let error = proxy_core_error_to_proxy_error(error);
-            log_forward_error(&state, &ctx, is_stream, &error);
+            record_forward_error_usage(&state, &ctx, is_stream, &error);
             return build_codex_proxy_error_response(&ctx, &endpoint, &error);
         }
     };
@@ -1116,7 +1116,7 @@ pub async fn handle_responses(
         Ok(result) => result,
         Err(error) => {
             let error = proxy_core_error_to_proxy_error(error);
-            log_forward_error(&state, &ctx, is_stream, &error);
+            record_forward_error_usage(&state, &ctx, is_stream, &error);
             return build_codex_proxy_error_response(&ctx, &endpoint, &error);
         }
     };
@@ -1183,7 +1183,7 @@ pub async fn handle_responses_compact(
         Ok(result) => result,
         Err(error) => {
             let error = proxy_core_error_to_proxy_error(error);
-            log_forward_error(&state, &ctx, is_stream, &error);
+            record_forward_error_usage(&state, &ctx, is_stream, &error);
             return build_codex_proxy_error_response(&ctx, &endpoint, &error);
         }
     };
@@ -1471,7 +1471,7 @@ pub async fn handle_gemini(
         Ok(result) => result,
         Err(error) => {
             let error = proxy_core_error_to_proxy_error(error);
-            log_forward_error(&state, &ctx, is_stream, &error);
+            record_forward_error_usage(&state, &ctx, is_stream, &error);
             return Err(error);
         }
     };
@@ -1480,34 +1480,6 @@ pub async fn handle_gemini(
     let response = proxy_core_response_to_proxy_response(result.response)?;
 
     process_response(response, &ctx, &state, &GEMINI_PARSER_CONFIG, None).await
-}
-
-fn log_forward_error(
-    state: &ProxyState,
-    ctx: &RequestContext,
-    is_streaming: bool,
-    error: &ProxyError,
-) {
-    let status_code = map_proxy_error_to_status(error);
-    let error_message = get_error_message(error);
-    let record = error_usage_record(
-        &ctx.provider,
-        ctx.app_type_str,
-        &ctx.request_model,
-        ctx.outbound_model.as_deref(),
-        status_code,
-        error_message,
-        ctx.latency_ms(),
-        is_streaming,
-        Some(ctx.session_id.clone()),
-    );
-
-    let services = state.proxy_core_services.clone();
-    tokio::spawn(async move {
-        if let Err(e) = services.usage_sink().record_usage(record).await {
-            log::warn!("记录失败请求日志失败: {e}");
-        }
-    });
 }
 
 #[cfg(test)]
