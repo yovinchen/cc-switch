@@ -812,7 +812,8 @@ mod tests {
         ProxyCoreInterfaceKind as InterfaceKind,
         ProxyCoreModelCapabilities as ModelCapabilities, ProxyCoreModelRoute as ModelRoute,
         ProxyCoreUpstreamEndpoint as UpstreamEndpoint, ProxyCoreEventType, ProxyEngine,
-        ProxyResponseBody, ProxyRuntimeStatus, ResolvedChannelAttempt, RetryPolicy,
+        ProxyChannelModelWriteRequest, ProxyChannelWriteRequest, ProxyResponseBody,
+        ProxyRuntimeStatus, ResolvedChannelAttempt, RetryPolicy, RouteResolveRequest,
         RouteSelection, UsageRecord, UsageTokens,
     };
     use bytes::Bytes;
@@ -862,6 +863,32 @@ mod tests {
             .expect("save provider");
         db.set_current_provider("claude", "anthropic-main")
             .expect("set current provider");
+    }
+
+    fn create_materialized_channel(
+        db: &Database,
+        id: &str,
+        priority: i64,
+        weight: u32,
+        upstream_model: &str,
+    ) {
+        db.create_proxy_channel(ProxyChannelWriteRequest {
+            id: Some(id.to_string()),
+            provider_id: "anthropic-main".to_string(),
+            app_type: "claude".to_string(),
+            name: id.to_string(),
+            base_url: format!("https://{id}.example.com/v1"),
+            interface_kind: "openai_responses".to_string(),
+            priority,
+            weight,
+            models: vec![ProxyChannelModelWriteRequest {
+                public_model: "sonnet-public".to_string(),
+                upstream_model: upstream_model.to_string(),
+                ..ProxyChannelModelWriteRequest::default()
+            }],
+            ..ProxyChannelWriteRequest::default()
+        })
+        .expect("create materialized channel");
     }
 
     fn provider_spec(id: &str) -> ProviderSpec {
@@ -1488,5 +1515,61 @@ mod tests {
             .await
             .expect("materialized plan");
         assert_eq!(plan.selection.channel.provider_id, "anthropic-main");
+    }
+
+    #[tokio::test]
+    async fn route_dry_run_matches_proxy_engine_materialized_plan_order() {
+        let db = Arc::new(Database::memory().expect("memory db"));
+        save_claude_provider(&db);
+        create_materialized_channel(&db, "channel-low", 10, 100, "upstream-low");
+        create_materialized_channel(&db, "channel-high", 100, 20, "upstream-high");
+
+        let router = ProviderRouter::new(db.clone());
+        let dry_run = router
+            .resolve_channel_route_dry_run(RouteResolveRequest {
+                app_type: "claude".to_string(),
+                requested_model: Some("sonnet-public".to_string()),
+                interface_kind: Some("anthropic_messages".to_string()),
+                route_group: None,
+            })
+            .await
+            .expect("dry-run route");
+
+        let services = Arc::new(CcSwitchProxyServices::new(db));
+        let engine = ProxyEngine::new(services);
+        let mut request = ProxyRequest::new(
+            AppKind::Claude,
+            Method::POST,
+            "/v1/messages",
+            InterfaceKind::AnthropicMessages,
+            ProxyBody::Json(json!({ "model": "sonnet-public", "messages": [] })),
+        );
+        request.requested_model = Some("sonnet-public".to_string());
+
+        let plan = engine
+            .plan_materialized_route(&request)
+            .await
+            .expect("materialized plan");
+        let plan_channel_ids = plan
+            .selections
+            .iter()
+            .map(|selection| selection.channel.id.as_str())
+            .collect::<Vec<_>>();
+        let dry_run_channel_ids = dry_run
+            .candidates
+            .iter()
+            .map(|candidate| candidate.channel_id.as_str())
+            .collect::<Vec<_>>();
+
+        assert_eq!(dry_run_channel_ids, vec!["channel-high", "channel-low"]);
+        assert_eq!(plan_channel_ids, dry_run_channel_ids);
+        assert_eq!(plan.selection.channel.id, "channel-high");
+        assert_eq!(
+            plan.selection
+                .model_route
+                .as_ref()
+                .map(|route| route.upstream_model.as_str()),
+            Some("upstream-high")
+        );
     }
 }
