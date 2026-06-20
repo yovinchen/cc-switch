@@ -1288,6 +1288,153 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn proxy_server_runtime_smoke_materializes_channel_migration() {
+        let db = Arc::new(Database::memory().expect("memory db"));
+        let provider = Provider::with_id(
+            "runtime-legacy".to_string(),
+            "Runtime Legacy".to_string(),
+            json!({
+                "env": {
+                    "ANTHROPIC_BASE_URL": "https://legacy-runtime.example.com/v1",
+                    "ANTHROPIC_MODEL": "legacy-sonnet",
+                    "ANTHROPIC_API_KEY": "legacy-secret"
+                }
+            }),
+            None,
+        );
+        db.save_provider("claude", &provider).unwrap();
+
+        let config = ProxyConfig {
+            listen_address: "127.0.0.1".to_string(),
+            listen_port: 0,
+            ..ProxyConfig::default()
+        };
+        let server = ProxyServer::new(config, db, None);
+        let info = server.start().await.expect("start proxy server");
+        let client = reqwest::Client::builder()
+            .no_proxy()
+            .build()
+            .expect("reqwest client");
+        let base_url = format!("http://127.0.0.1:{}", info.port);
+
+        let smoke = async {
+            let preview_response = client
+                .get(format!(
+                    "{base_url}/proxy/v1/apps/claude/channels/migration/preview"
+                ))
+                .send()
+                .await
+                .map_err(|error| error.to_string())?;
+            if preview_response.status() != StatusCode::OK {
+                return Err(format!(
+                    "unexpected migration preview status: {}",
+                    preview_response.status()
+                ));
+            }
+            let preview = preview_response
+                .json::<Value>()
+                .await
+                .map_err(|error| error.to_string())?;
+            if preview["appType"] != "claude"
+                || preview["channels"].as_array().map(Vec::len) != Some(1)
+                || preview["channels"][0]["providerId"] != "runtime-legacy"
+                || preview["channels"][0]["baseUrl"] != "https://legacy-runtime.example.com/v1"
+                || preview["channels"][0]["models"].as_array().map(Vec::len) != Some(1)
+                || preview["channels"][0]["models"][0]["publicModel"] != "legacy-sonnet"
+                || preview.to_string().contains("legacy-secret")
+            {
+                return Err(format!("unexpected migration preview body: {preview}"));
+            }
+
+            let materialize_response = client
+                .post(format!(
+                    "{base_url}/proxy/v1/apps/claude/channels/migration/materialize"
+                ))
+                .send()
+                .await
+                .map_err(|error| error.to_string())?;
+            if materialize_response.status() != StatusCode::OK {
+                return Err(format!(
+                    "unexpected migration materialize status: {}",
+                    materialize_response.status()
+                ));
+            }
+            let materialize = materialize_response
+                .json::<Value>()
+                .await
+                .map_err(|error| error.to_string())?;
+            if materialize["appType"] != "claude"
+                || materialize["previewedChannels"] != 1
+                || materialize["insertedChannels"] != 1
+                || materialize["insertedModels"] != 1
+                || materialize["insertedHealthRows"] != 1
+            {
+                return Err(format!(
+                    "unexpected migration materialize body: {materialize}"
+                ));
+            }
+
+            let channels_response = client
+                .get(format!("{base_url}/proxy/v1/apps/claude/channels"))
+                .send()
+                .await
+                .map_err(|error| error.to_string())?;
+            if channels_response.status() != StatusCode::OK {
+                return Err(format!(
+                    "unexpected migrated channels status: {}",
+                    channels_response.status()
+                ));
+            }
+            let channels = channels_response
+                .json::<Value>()
+                .await
+                .map_err(|error| error.to_string())?;
+            if channels["source"] != "materialized_channels"
+                || channels["channels"].as_array().map(Vec::len) != Some(1)
+                || channels["channels"][0]["providerId"] != "runtime-legacy"
+                || channels["channels"][0]["baseUrl"] != "https://legacy-runtime.example.com/v1"
+                || channels["channels"][0]["models"][0]["publicModel"] != "legacy-sonnet"
+            {
+                return Err(format!("unexpected migrated channels body: {channels}"));
+            }
+
+            let second_materialize_response = client
+                .post(format!(
+                    "{base_url}/proxy/v1/apps/claude/channels/migration/materialize"
+                ))
+                .send()
+                .await
+                .map_err(|error| error.to_string())?;
+            if second_materialize_response.status() != StatusCode::OK {
+                return Err(format!(
+                    "unexpected second materialize status: {}",
+                    second_materialize_response.status()
+                ));
+            }
+            let second_materialize = second_materialize_response
+                .json::<Value>()
+                .await
+                .map_err(|error| error.to_string())?;
+            if second_materialize["previewedChannels"] != 1
+                || second_materialize["insertedChannels"] != 0
+                || second_materialize["insertedModels"] != 0
+                || second_materialize["insertedHealthRows"] != 0
+            {
+                return Err(format!(
+                    "unexpected idempotent materialize body: {second_materialize}"
+                ));
+            }
+
+            Ok::<(), String>(())
+        }
+        .await;
+        let stop = server.stop().await;
+
+        assert!(stop.is_ok(), "stop proxy server: {stop:?}");
+        smoke.expect("runtime migration smoke");
+    }
+
+    #[tokio::test]
     async fn app_channel_management_route_applies_route_filters() {
         let db = Arc::new(Database::memory().expect("memory db"));
         let provider = Provider::with_id(
