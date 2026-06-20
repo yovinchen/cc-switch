@@ -256,7 +256,23 @@ pub(crate) mod server_log_codes {
 }
 
 pub(crate) type ProxyCoreAppKind = crate::proxy_core::AppKind;
+#[cfg(test)]
+pub(crate) type ProxyCoreChannelOverrides = crate::proxy_core::ChannelOverrides;
+#[cfg(test)]
+pub(crate) type ProxyCoreChannelSpec = crate::proxy_core::ChannelSpec;
+#[cfg(test)]
+pub(crate) type ProxyCoreChannelStatus = crate::proxy_core::ChannelStatus;
 pub(crate) type ProxyCoreInterfaceKind = crate::proxy_core::InterfaceKind;
+#[cfg(test)]
+pub(crate) type ProxyCoreModelCapabilities = crate::proxy_core::ModelCapabilities;
+#[cfg(test)]
+pub(crate) type ProxyCoreModelRoute = crate::proxy_core::ModelRoute;
+#[cfg(test)]
+pub(crate) type ProxyCoreProviderMetadata = crate::proxy_core::ProviderMetadata;
+#[cfg(test)]
+pub(crate) type ProxyCoreProviderSpec = crate::proxy_core::ProviderSpec;
+#[cfg(test)]
+pub(crate) type ProxyCoreUpstreamEndpoint = crate::proxy_core::UpstreamEndpoint;
 pub(crate) type ChannelRequestValidationError =
     crate::proxy_core::ChannelRequestValidationError;
 pub(crate) type ChannelRouteSource = crate::proxy_core::ChannelRouteSource;
