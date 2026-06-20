@@ -9,12 +9,11 @@
 use super::ProviderAdapter;
 use crate::provider::Provider;
 use crate::proxy::error::ProxyError;
-use crate::proxy_core::{
+use crate::proxy_core_adapter::{
     build_gemini_auth_headers, build_gemini_upstream_url, extract_gemini_api_key_from_settings,
     extract_gemini_base_url_from_settings, parse_gemini_oauth_credentials, GeminiOAuthCredentials,
-    ProviderKind,
+    ProviderAuthInfo, ProviderAuthStrategy, ProviderKind,
 };
-use crate::proxy_core_adapter::{ProviderAuthInfo, ProviderAuthStrategy};
 
 /// Gemini 适配器
 pub struct GeminiAdapter;

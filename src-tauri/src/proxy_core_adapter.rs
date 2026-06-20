@@ -201,6 +201,7 @@ pub(crate) type ModelPricing = crate::proxy_core::ModelPricing;
 pub(crate) type TokenUsage = crate::proxy_core::TokenUsage;
 pub(crate) type CurrentRouteTarget = crate::proxy_core::CurrentRouteTarget;
 pub(crate) type GeminiShadowStore = crate::proxy_core::GeminiShadowStore;
+pub(crate) type GeminiOAuthCredentials = crate::proxy_core::GeminiOAuthCredentials;
 pub(crate) type ResponseRuntimePolicy = crate::proxy_core::ResponseRuntimePolicy;
 pub(crate) type ResponseTimeoutConfig = crate::proxy_core::ResponseTimeoutConfig;
 pub(crate) type StreamingTimeoutConfig = crate::proxy_core::StreamingTimeoutConfig;
@@ -326,6 +327,32 @@ pub(crate) fn resolve_response_runtime_policy(
 
 pub(crate) fn extract_gemini_model_from_path(endpoint: &str) -> Option<String> {
     crate::proxy_core::extract_gemini_model_from_path(endpoint)
+}
+
+pub(crate) fn extract_gemini_api_key_from_settings(settings: &Value) -> Option<String> {
+    crate::proxy_core::extract_gemini_api_key_from_settings(settings)
+}
+
+pub(crate) fn extract_gemini_base_url_from_settings(settings: &Value) -> Option<String> {
+    crate::proxy_core::extract_gemini_base_url_from_settings(settings)
+}
+
+pub(crate) fn parse_gemini_oauth_credentials(
+    key: &str,
+) -> Option<GeminiOAuthCredentials> {
+    crate::proxy_core::parse_gemini_oauth_credentials(key)
+}
+
+pub(crate) fn build_gemini_upstream_url(base_url: &str, endpoint: &str) -> String {
+    crate::proxy_core::build_gemini_upstream_url(base_url, endpoint)
+}
+
+pub(crate) fn build_gemini_auth_headers(
+    api_key: &str,
+    access_token: Option<&str>,
+    use_oauth: bool,
+) -> Result<Vec<(http::HeaderName, http::HeaderValue)>, ProxyCoreError> {
+    crate::proxy_core::build_gemini_auth_headers(api_key, access_token, use_oauth)
 }
 
 pub(crate) fn claude_api_format_from_metadata(metadata: &Value, fallback: &str) -> String {
@@ -1651,6 +1678,55 @@ mod tests {
         assert_eq!(
             claude_api_format_from_metadata(&json!({"apiFormat": " "}), "anthropic"),
             "anthropic"
+        );
+    }
+
+    #[test]
+    fn gemini_provider_adapter_projects_auth_settings_and_url_helpers() {
+        let settings = json!({
+            "env": {
+                "GEMINI_API_KEY": " ya29.access-token ",
+                "GOOGLE_GEMINI_BASE_URL": "https://generativelanguage.googleapis.com/v1beta/"
+            }
+        });
+        assert_eq!(
+            extract_gemini_api_key_from_settings(&settings).as_deref(),
+            Some("ya29.access-token")
+        );
+        assert_eq!(
+            extract_gemini_base_url_from_settings(&settings).as_deref(),
+            Some("https://generativelanguage.googleapis.com/v1beta")
+        );
+
+        let creds = parse_gemini_oauth_credentials("ya29.access-token")
+            .expect("direct oauth token should parse");
+        assert_eq!(creds.access_token, "ya29.access-token");
+        assert!(!creds.needs_refresh());
+        assert_eq!(
+            build_gemini_upstream_url(
+                "https://generativelanguage.googleapis.com/v1beta",
+                "/v1beta/models/gemini-pro:generateContent",
+            ),
+            "https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent"
+        );
+
+        let oauth_headers = build_gemini_auth_headers(
+            "refresh-token",
+            Some("ya29.access-token"),
+            true,
+        )
+        .expect("oauth headers");
+        assert_eq!(oauth_headers[0].0.as_str(), "authorization");
+        assert_eq!(
+            oauth_headers[0].1,
+            http::HeaderValue::from_static("Bearer ya29.access-token")
+        );
+        let api_key_headers =
+            build_gemini_auth_headers("AIza-api-key", None, false).expect("api key headers");
+        assert_eq!(api_key_headers[0].0.as_str(), "x-goog-api-key");
+        assert_eq!(
+            api_key_headers[0].1,
+            http::HeaderValue::from_static("AIza-api-key")
         );
     }
 
