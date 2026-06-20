@@ -45,7 +45,9 @@ pub mod events {
 
 pub mod management {
     pub use crate::management_api::*;
-    pub use crate::ports::HealthCheckResponse;
+    pub use crate::ports::{
+        ChannelModelRecord, ChannelRecord, ChannelRouteSource, HealthCheckResponse,
+    };
 }
 
 pub mod model_catalog {

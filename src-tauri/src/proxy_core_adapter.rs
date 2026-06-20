@@ -178,18 +178,20 @@ pub(crate) type CopilotOptimizerConfigSpec =
 
 pub(crate) type ProxyConfig = crate::proxy_core::ProxyConfig;
 pub(crate) type ProxyRuntimeStatus = crate::proxy_core::ProxyRuntimeStatus;
-pub(crate) type ProxyRuntimeConfig = crate::proxy_core::ProxyRuntimeConfig;
-pub(crate) type ProxyGlobalConfig = crate::proxy_core::ProxyGlobalConfig;
-pub(crate) type ProxyAppConfig = crate::proxy_core::ProxyAppConfig;
+pub(crate) type ProxyRuntimeConfig =
+    crate::proxy_core::api::config::ProxyRuntimeConfig;
+pub(crate) type ProxyGlobalConfig = crate::proxy_core::api::config::ProxyGlobalConfig;
+pub(crate) type ProxyAppConfig = crate::proxy_core::api::config::ProxyAppConfig;
 pub(crate) type ProxyServerInfo = crate::proxy_core::ProxyServerInfo;
 pub(crate) type ProxyTakeoverStatus = crate::proxy_core::ProxyTakeoverStatus;
 pub(crate) type ClaudeDesktopModelListResponse =
     crate::proxy_core::ClaudeDesktopModelListResponse;
-pub(crate) type ProxyCoreResponse = crate::proxy_core::ProxyCoreResponse;
+pub(crate) type ProxyCoreResponse =
+    crate::proxy_core::api::transport::ProxyCoreResponse;
 pub(crate) type ProxyCoreResult<T> = crate::proxy_core::ProxyCoreResult<T>;
-pub(crate) type ProxyEngine<S> = crate::proxy_core::ProxyEngine<S>;
-pub(crate) type ProxyResult = crate::proxy_core::ProxyResult;
-pub(crate) type ProxyCoreEvent = crate::proxy_core::ProxyCoreEvent;
+pub(crate) type ProxyEngine<S> = crate::proxy_core::api::engine::ProxyEngine<S>;
+pub(crate) type ProxyResult = crate::proxy_core::api::transport::ProxyResult;
+pub(crate) type ProxyCoreEvent = crate::proxy_core::api::events::ProxyCoreEvent;
 pub(crate) type ProxyEventEnvelope = crate::proxy_core::ProxyEventEnvelope;
 pub(crate) type ProxyEventSseSpec = crate::proxy_core::ProxyEventSseSpec;
 pub(crate) type CodexChatHistorySseInspection =
@@ -202,65 +204,85 @@ pub(crate) type CodexChatReasoningOptions =
 pub(crate) type CodexChatReasoningProfile =
     crate::proxy_core::CodexChatReasoningProfile;
 pub(crate) type CodexToolContext = crate::proxy_core::CodexToolContext;
-pub(crate) type ProxyResponseBody = crate::proxy_core::ProxyResponseBody;
-pub(crate) type ProxyTransportResponse = crate::proxy_core::ProxyTransportResponse;
+pub(crate) type ProxyResponseBody =
+    crate::proxy_core::api::transport::ProxyResponseBody;
+pub(crate) type ProxyTransportResponse =
+    crate::proxy_core::api::transport::ProxyTransportResponse;
 pub(crate) type ProxyTransportResponseBody =
-    crate::proxy_core::ProxyTransportResponseBody;
-pub(crate) type ResponseBodyDecode = crate::proxy_core::ResponseBodyDecode;
+    crate::proxy_core::api::transport::ProxyTransportResponseBody;
+pub(crate) type ResponseBodyDecode =
+    crate::proxy_core::api::transport::ResponseBodyDecode;
 pub(crate) type ResponseBodyDecodeLogLevel =
-    crate::proxy_core::ResponseBodyDecodeLogLevel;
-pub(crate) type CostBreakdown = crate::proxy_core::CostBreakdown;
-pub(crate) type CostCalculator = crate::proxy_core::CostCalculator;
-pub(crate) type ModelPricing = crate::proxy_core::ModelPricing;
-pub(crate) type TokenUsage = crate::proxy_core::TokenUsage;
-pub(crate) type UsageRecord = crate::proxy_core::UsageRecord;
+    crate::proxy_core::api::transport::ResponseBodyDecodeLogLevel;
+pub(crate) type CostBreakdown = crate::proxy_core::api::usage::CostBreakdown;
+pub(crate) type CostCalculator = crate::proxy_core::api::usage::CostCalculator;
+pub(crate) type ModelPricing = crate::proxy_core::api::usage::ModelPricing;
+pub(crate) type TokenUsage = crate::proxy_core::api::usage::TokenUsage;
+pub(crate) type UsageRecord = crate::proxy_core::api::usage::UsageRecord;
 #[cfg(test)]
-pub(crate) type UsageTokens = crate::proxy_core::UsageTokens;
+pub(crate) type UsageTokens = crate::proxy_core::api::usage::UsageTokens;
 pub(crate) type NonStreamingResponseUsageRecord =
-    crate::proxy_core::NonStreamingResponseUsageRecord;
+    crate::proxy_core::api::usage::NonStreamingResponseUsageRecord;
 pub(crate) type StreamingResponseUsageRecord =
-    crate::proxy_core::StreamingResponseUsageRecord;
-pub(crate) type UsageParserConfig = crate::proxy_core::UsageParserConfig;
-pub(crate) type StreamUsageEventFilter = crate::proxy_core::StreamUsageEventFilter;
+    crate::proxy_core::api::usage::StreamingResponseUsageRecord;
+pub(crate) type UsageParserConfig =
+    crate::proxy_core::api::usage::UsageParserConfig;
+pub(crate) type StreamUsageEventFilter =
+    crate::proxy_core::api::usage::StreamUsageEventFilter;
 pub(crate) type TransformedResponseUsageFormat =
-    crate::proxy_core::TransformedResponseUsageFormat;
-pub(crate) type CurrentRouteTarget = crate::proxy_core::CurrentRouteTarget;
+    crate::proxy_core::api::usage::TransformedResponseUsageFormat;
+pub(crate) type CurrentRouteTarget =
+    crate::proxy_core::api::ports::CurrentRouteTarget;
 pub(crate) type GeminiShadowStore = crate::proxy_core::GeminiShadowStore;
 pub(crate) type GeminiToAnthropicMessageOutput =
     crate::proxy_core::GeminiToAnthropicMessageOutput;
 pub(crate) type AnthropicToolSchemaHints = crate::proxy_core::AnthropicToolSchemaHints;
-pub(crate) type AuthProfileRef = crate::proxy_core::AuthProfileRef;
-pub(crate) type GeminiOAuthCredentials = crate::proxy_core::GeminiOAuthCredentials;
-pub(crate) type ClaudeAuthHeaderKind = crate::proxy_core::ClaudeAuthHeaderKind;
-pub(crate) type ClaudeAuthKey = crate::proxy_core::ClaudeAuthKey;
-pub(crate) type ClaudeAuthKeySource = crate::proxy_core::ClaudeAuthKeySource;
+pub(crate) type AuthProfileRef = crate::proxy_core::api::domain::AuthProfileRef;
+pub(crate) type GeminiOAuthCredentials =
+    crate::proxy_core::api::auth::GeminiOAuthCredentials;
+pub(crate) type ClaudeAuthHeaderKind =
+    crate::proxy_core::api::transport::ClaudeAuthHeaderKind;
+pub(crate) type ClaudeAuthKey = crate::proxy_core::api::auth::ClaudeAuthKey;
+pub(crate) type ClaudeAuthKeySource =
+    crate::proxy_core::api::auth::ClaudeAuthKeySource;
 pub(crate) type ClaudePromptCacheKeyResolution =
     crate::proxy_core::ClaudePromptCacheKeyResolution;
 pub(crate) type CopilotAuthHeadersInput<'a> =
     crate::proxy_core::CopilotAuthHeadersInput<'a>;
 pub(crate) type CopilotAuthHeaderOverrides<'a> =
     crate::proxy_core::CopilotAuthHeaderOverrides<'a>;
-pub(crate) type ResponseRuntimePolicy = crate::proxy_core::ResponseRuntimePolicy;
-pub(crate) type ResponseTimeoutConfig = crate::proxy_core::ResponseTimeoutConfig;
-pub(crate) type StreamingTimeoutConfig = crate::proxy_core::StreamingTimeoutConfig;
-pub(crate) type StreamingTimeoutPhase = crate::proxy_core::StreamingTimeoutPhase;
-pub(crate) type SseEventScanner = crate::proxy_core::SseEventScanner;
-pub(crate) type SsePassthroughEventKind = crate::proxy_core::SsePassthroughEventKind;
-pub(crate) type SseUsageAccumulator = crate::proxy_core::SseUsageAccumulator;
+pub(crate) type ResponseRuntimePolicy =
+    crate::proxy_core::api::config::ResponseRuntimePolicy;
+pub(crate) type ResponseTimeoutConfig =
+    crate::proxy_core::api::config::ResponseTimeoutConfig;
+pub(crate) type StreamingTimeoutConfig =
+    crate::proxy_core::api::config::StreamingTimeoutConfig;
+pub(crate) type StreamingTimeoutPhase =
+    crate::proxy_core::api::transport::StreamingTimeoutPhase;
+pub(crate) type SseEventScanner =
+    crate::proxy_core::api::transforms::SseEventScanner;
+pub(crate) type SsePassthroughEventKind =
+    crate::proxy_core::api::transforms::SsePassthroughEventKind;
+pub(crate) type SseUsageAccumulator =
+    crate::proxy_core::api::transforms::SseUsageAccumulator;
 pub(crate) type GlobalProxyConfig = crate::proxy_core::GlobalProxyConfig;
-pub(crate) type AppProxyConfig = crate::proxy_core::AppProxyConfig;
+pub(crate) type AppProxyConfig = crate::proxy_core::api::config::AppProxyConfig;
 pub(crate) type ProviderHealth = crate::proxy_core::ProviderHealth;
-pub(crate) type ProviderKind = crate::proxy_core::ProviderKind;
-pub(crate) type ProviderAuthInfo = crate::proxy_core::ProviderAuthInfo;
-pub(crate) type ProviderAuthStrategy = crate::proxy_core::ProviderAuthStrategy;
-pub(crate) type AuthInfo = crate::proxy_core::AuthInfo;
+pub(crate) type ProviderKind = crate::proxy_core::api::domain::ProviderKind;
+pub(crate) type ProviderAuthInfo =
+    crate::proxy_core::api::auth::ProviderAuthInfo;
+pub(crate) type ProviderAuthStrategy =
+    crate::proxy_core::api::auth::ProviderAuthStrategy;
+pub(crate) type AuthInfo = crate::proxy_core::api::ports::AuthInfo;
 pub(crate) type AttemptEventChannel<'a> = crate::proxy_core::AttemptEventChannel<'a>;
 pub(crate) type AttemptEventPayloadInput<'a> =
     crate::proxy_core::AttemptEventPayloadInput<'a>;
 pub(crate) type AttemptEventPhase = crate::proxy_core::AttemptEventPhase;
-pub(crate) type ChannelAttemptPlan = crate::proxy_core::ChannelAttemptPlan;
-pub(crate) type ChannelAttemptResult = crate::proxy_core::ChannelAttemptResult;
-pub(crate) type ChannelQuery<'a> = crate::proxy_core::ChannelQuery<'a>;
+pub(crate) type ChannelAttemptPlan =
+    crate::proxy_core::api::ports::ChannelAttemptPlan;
+pub(crate) type ChannelAttemptResult =
+    crate::proxy_core::api::ports::ChannelAttemptResult;
+pub(crate) type ChannelQuery<'a> = crate::proxy_core::api::routing::ChannelQuery<'a>;
 pub(crate) type ForwardFailureCategory = crate::proxy_core::ForwardFailureCategory;
 pub(crate) type MediaRetryInput<'a> = crate::proxy_core::MediaRetryInput<'a>;
 pub(crate) type PromptCacheTraceLogInput<'a> =
@@ -294,24 +316,27 @@ pub(crate) mod server_log_codes {
     pub(crate) const CONN_ERR: &str = crate::proxy_core::log_codes::srv::CONN_ERR;
 }
 
-pub(crate) type ProxyCoreAppKind = crate::proxy_core::AppKind;
+pub(crate) type ProxyCoreAppKind = crate::proxy_core::api::domain::AppKind;
 #[cfg(test)]
 pub(crate) type ProxyCoreChannelOverrides = crate::proxy_core::ChannelOverrides;
-pub(crate) type ChannelSpec = crate::proxy_core::ChannelSpec;
+pub(crate) type ChannelSpec = crate::proxy_core::api::routing::ChannelSpec;
 #[cfg(test)]
-pub(crate) type ProxyCoreChannelSpec = crate::proxy_core::ChannelSpec;
-pub(crate) type ChannelStatus = crate::proxy_core::ChannelStatus;
+pub(crate) type ProxyCoreChannelSpec =
+    crate::proxy_core::api::routing::ChannelSpec;
+pub(crate) type ChannelStatus = crate::proxy_core::api::routing::ChannelStatus;
 #[cfg(test)]
-pub(crate) type ProxyCoreChannelStatus = crate::proxy_core::ChannelStatus;
-pub(crate) type ProxyCoreInterfaceKind = crate::proxy_core::InterfaceKind;
+pub(crate) type ProxyCoreChannelStatus =
+    crate::proxy_core::api::routing::ChannelStatus;
+pub(crate) type ProxyCoreInterfaceKind =
+    crate::proxy_core::api::routing::InterfaceKind;
 #[cfg(test)]
 pub(crate) type ProxyCoreModelCapabilities = crate::proxy_core::ModelCapabilities;
 #[cfg(test)]
 pub(crate) type ProxyCoreModelRoute = crate::proxy_core::ModelRoute;
-pub(crate) type ModelCatalog = crate::proxy_core::ModelCatalog;
+pub(crate) type ModelCatalog = crate::proxy_core::api::model_catalog::ModelCatalog;
 #[cfg(test)]
 pub(crate) type ProxyCoreProviderMetadata = crate::proxy_core::ProviderMetadata;
-pub(crate) type ProviderSpec = crate::proxy_core::ProviderSpec;
+pub(crate) type ProviderSpec = crate::proxy_core::api::domain::ProviderSpec;
 #[cfg(test)]
 pub(crate) type ProxyCoreProviderSpec = crate::proxy_core::ProviderSpec;
 #[cfg(test)]
@@ -324,10 +349,12 @@ pub(crate) type UpstreamSendPolicyInput = crate::proxy_core::UpstreamSendPolicyI
 pub(crate) type UpstreamTransportKind = crate::proxy_core::UpstreamTransportKind;
 pub(crate) type ChannelRequestValidationError =
     crate::proxy_core::ChannelRequestValidationError;
-pub(crate) type ChannelRouteSource = crate::proxy_core::ChannelRouteSource;
-pub(crate) type ChannelRecord = crate::proxy_core::ChannelRecord;
-pub(crate) type ChannelModelRecord = crate::proxy_core::ChannelModelRecord;
-pub(crate) type InterfaceKind = crate::proxy_core::InterfaceKind;
+pub(crate) type ChannelRouteSource =
+    crate::proxy_core::api::management::ChannelRouteSource;
+pub(crate) type ChannelRecord = crate::proxy_core::api::management::ChannelRecord;
+pub(crate) type ChannelModelRecord =
+    crate::proxy_core::api::management::ChannelModelRecord;
+pub(crate) type InterfaceKind = crate::proxy_core::api::routing::InterfaceKind;
 pub(crate) type LegacyChannelModelProjection =
     crate::proxy_core::LegacyChannelModelProjection;
 pub(crate) type LegacyChannelProjection = crate::proxy_core::LegacyChannelProjection;
@@ -347,14 +374,16 @@ pub(crate) type ProviderSelectionInput = crate::proxy_core::ProviderSelectionInp
 pub(crate) type ProxyCoreError = crate::proxy_core::ProxyCoreError;
 #[cfg(test)]
 pub(crate) type ProxyCoreEventType = crate::proxy_core::ProxyCoreEventType;
-pub(crate) type AppKind = crate::proxy_core::AppKind;
+pub(crate) type AppKind = crate::proxy_core::api::domain::AppKind;
 pub(crate) type RetryPolicy = crate::proxy_core::RetryPolicy;
 pub(crate) type RouteResolveRequest = crate::proxy_core::RouteResolveRequest;
 pub(crate) type RouteResolveResponse = crate::proxy_core::RouteResolveResponse;
-pub(crate) type ChannelRouteCandidate = crate::proxy_core::ChannelRouteCandidate;
-pub(crate) type ResolvedChannelAttempt = crate::proxy_core::ResolvedChannelAttempt;
-pub(crate) type RoutePlan = crate::proxy_core::RoutePlan;
-pub(crate) type RouteSelection = crate::proxy_core::RouteSelection;
+pub(crate) type ChannelRouteCandidate =
+    crate::proxy_core::api::routing::ChannelRouteCandidate;
+pub(crate) type ResolvedChannelAttempt =
+    crate::proxy_core::api::routing::ResolvedChannelAttempt;
+pub(crate) type RoutePlan = crate::proxy_core::api::routing::RoutePlan;
+pub(crate) type RouteSelection = crate::proxy_core::api::routing::RouteSelection;
 pub(crate) type CodexProxyErrorContext<'a> =
     crate::proxy_core::CodexProxyErrorContext<'a>;
 pub(crate) type CodexProxyErrorKind = crate::proxy_core::CodexProxyErrorKind;
