@@ -1199,11 +1199,11 @@ pub(crate) fn claude_desktop_model_routes_to_core_response(
 }
 
 pub(crate) fn codex_default_model_context_window() -> u64 {
-    crate::proxy_core::DEFAULT_CODEX_MODEL_CONTEXT_WINDOW
+    crate::proxy_core::api::model_catalog::DEFAULT_CODEX_MODEL_CONTEXT_WINDOW
 }
 
 pub(crate) fn codex_settings_have_model_catalog_specs(settings: &Value) -> bool {
-    crate::proxy_core::has_codex_model_catalog_specs(settings)
+    crate::proxy_core::api::model_catalog::has_codex_model_catalog_specs(settings)
 }
 
 pub(crate) fn codex_model_catalog_from_settings(
@@ -1211,7 +1211,7 @@ pub(crate) fn codex_model_catalog_from_settings(
     default_context_window: u64,
     template: &Value,
 ) -> Option<Value> {
-    crate::proxy_core::build_codex_model_catalog_from_settings(
+    crate::proxy_core::api::model_catalog::build_codex_model_catalog_from_settings(
         settings,
         default_context_window,
         template,
@@ -1222,22 +1222,28 @@ pub(crate) fn simplify_codex_model_catalog(
     catalog_text: &str,
     default_context_window: u64,
 ) -> Option<Value> {
-    crate::proxy_core::simplify_codex_model_catalog(catalog_text, default_context_window)
+    crate::proxy_core::api::model_catalog::simplify_codex_model_catalog(
+        catalog_text,
+        default_context_window,
+    )
 }
 
 pub(crate) fn provider_model_catalog_from_settings(
     provider_id: &str,
     settings: Option<&Value>,
 ) -> ModelCatalog {
-    crate::proxy_core::provider_model_catalog_from_settings(provider_id, settings)
+    crate::proxy_core::api::model_catalog::provider_model_catalog_from_settings(
+        provider_id,
+        settings,
+    )
 }
 
 pub(crate) fn client_model_catalog_from_raw(app: &AppKind, raw: Value) -> ModelCatalog {
-    crate::proxy_core::client_model_catalog_from_raw(app.as_str(), raw)
+    crate::proxy_core::api::model_catalog::client_model_catalog_from_raw(app.as_str(), raw)
 }
 
 pub(crate) fn route_plan_provider_ids(plan: &RoutePlan) -> Vec<String> {
-    crate::proxy_core::route_plan_provider_ids(plan)
+    crate::proxy_core::api::routing::route_plan_provider_ids(plan)
 }
 
 pub(crate) fn route_selection_for_forward_result(
@@ -1245,18 +1251,22 @@ pub(crate) fn route_selection_for_forward_result(
     selected_channel_id: Option<&str>,
     provider_id: &str,
 ) -> RouteSelection {
-    crate::proxy_core::select_route_for_forward_result(plan, selected_channel_id, provider_id)
+    crate::proxy_core::api::routing::select_route_for_forward_result(
+        plan,
+        selected_channel_id,
+        provider_id,
+    )
 }
 
 pub(crate) fn route_group_matches(groups: &[String], requested_group: &str) -> bool {
-    crate::proxy_core::route_group_matches(groups, requested_group)
+    crate::proxy_core::api::routing::route_group_matches(groups, requested_group)
 }
 
 pub(crate) fn route_interfaces_compatible(
     requested: &InterfaceKind,
     channel: &InterfaceKind,
 ) -> bool {
-    crate::proxy_core::interfaces_compatible(requested, channel)
+    crate::proxy_core::api::routing::interfaces_compatible(requested, channel)
 }
 
 pub(crate) fn route_selection_from_parts(
@@ -1278,7 +1288,7 @@ pub(crate) fn route_selection_from_parts(
 pub(crate) fn channel_route_candidate_from_selection(
     selection: &RouteSelection,
 ) -> ChannelRouteCandidate {
-    crate::proxy_core::route_candidate_from_selection(
+    crate::proxy_core::api::routing::route_candidate_from_selection(
         selection,
         DEFAULT_ROUTE_GROUP,
         "proxy_core",
@@ -1288,29 +1298,27 @@ pub(crate) fn channel_route_candidate_from_selection(
 pub(crate) fn resolved_channel_attempt_from_candidate(
     candidate: ChannelRouteCandidate,
 ) -> ResolvedChannelAttempt {
-    crate::proxy_core::resolved_channel_attempt_from_candidate(candidate)
+    crate::proxy_core::api::routing::resolved_channel_attempt_from_candidate(candidate)
 }
 
-pub(crate) fn proxy_core_error_is_unavailable(
-    error: &crate::proxy_core::ProxyCoreError,
-) -> bool {
-    matches!(error, crate::proxy_core::ProxyCoreError::Unavailable(_))
+pub(crate) fn proxy_core_error_is_unavailable(error: &ProxyCoreError) -> bool {
+    matches!(error, ProxyCoreError::Unavailable(_))
 }
 
 pub(crate) fn codex_proxy_error_code(kind: CodexProxyErrorKind) -> &'static str {
-    crate::proxy_core::codex_proxy_error_code(kind)
+    crate::proxy_core::api::transforms::codex_proxy_error_code(kind)
 }
 
 #[cfg(test)]
 pub(crate) fn codex_proxy_error_json(ctx: CodexProxyErrorContext<'_>) -> Value {
-    crate::proxy_core::codex_proxy_error_json(ctx)
+    crate::proxy_core::api::transforms::codex_proxy_error_json(ctx)
 }
 
 pub(crate) fn codex_proxy_error_response(
     status: ProxyErrorStatusKind,
     ctx: CodexProxyErrorContext<'_>,
 ) -> ProxyCoreResult<ProxyCoreResponse> {
-    crate::proxy_core::codex_proxy_error_response(status, ctx)
+    crate::proxy_core::api::transforms::codex_proxy_error_response(status, ctx)
 }
 
 pub(crate) fn apply_channel_route_model_override(
@@ -1318,7 +1326,11 @@ pub(crate) fn apply_channel_route_model_override(
     public_model: Option<&str>,
     upstream_model: Option<&str>,
 ) -> Option<String> {
-    crate::proxy_core::apply_channel_route_model_override(body, public_model, upstream_model)
+    crate::proxy_core::api::transport::apply_channel_route_model_override(
+        body,
+        public_model,
+        upstream_model,
+    )
 }
 
 pub(crate) fn apply_channel_provider_overrides(
@@ -1326,9 +1338,11 @@ pub(crate) fn apply_channel_provider_overrides(
     provider: &mut Provider,
     candidate: &ChannelRouteCandidate,
 ) {
-    let plan =
-        crate::proxy_core::channel_provider_override_plan(&AppKind::from(app_type), candidate);
-    crate::proxy_core::apply_channel_provider_settings_overrides(
+    let plan = crate::proxy_core::api::routing::channel_provider_override_plan(
+        &AppKind::from(app_type),
+        candidate,
+    );
+    crate::proxy_core::api::routing::apply_channel_provider_settings_overrides(
         &mut provider.settings_config,
         &plan,
     );
@@ -1342,11 +1356,11 @@ pub(crate) fn apply_channel_provider_overrides(
 }
 
 pub(crate) fn codex_tool_context_from_request(body: &Value) -> CodexToolContext {
-    crate::proxy_core::build_codex_tool_context_from_request(body)
+    crate::proxy_core::api::transforms::build_codex_tool_context_from_request(body)
 }
 
 pub(crate) fn normalize_codex_chat_error_body(body: &[u8]) -> CodexChatErrorNormalization {
-    crate::proxy_core::normalize_codex_chat_error_body(body)
+    crate::proxy_core::api::transforms::normalize_codex_chat_error_body(body)
 }
 
 pub(crate) fn should_normalize_anthropic_tool_thinking_history(
@@ -1354,7 +1368,7 @@ pub(crate) fn should_normalize_anthropic_tool_thinking_history(
     body: &Value,
     api_format: &str,
 ) -> bool {
-    crate::proxy_core::should_normalize_anthropic_tool_thinking_history(
+    crate::proxy_core::api::transforms::should_normalize_anthropic_tool_thinking_history(
         settings_config,
         body,
         api_format,
@@ -1362,28 +1376,31 @@ pub(crate) fn should_normalize_anthropic_tool_thinking_history(
 }
 
 pub(crate) fn normalize_anthropic_tool_thinking_history(body: &mut Value) -> bool {
-    crate::proxy_core::normalize_anthropic_tool_thinking_history(body)
+    crate::proxy_core::api::transforms::normalize_anthropic_tool_thinking_history(body)
 }
 
 pub(crate) fn normalize_deepseek_thinking_disabled_strip_effort(
     body: &mut Value,
     settings_config: &Value,
 ) -> bool {
-    crate::proxy_core::normalize_deepseek_thinking_disabled_strip_effort(body, settings_config)
+    crate::proxy_core::api::transforms::normalize_deepseek_thinking_disabled_strip_effort(
+        body,
+        settings_config,
+    )
 }
 
 pub(crate) fn inject_openai_stream_include_usage(body: &mut Value) {
-    crate::proxy_core::inject_openai_stream_include_usage(body);
+    crate::proxy_core::api::transport::inject_openai_stream_include_usage(body);
 }
 
 #[cfg(test)]
 pub(crate) fn anthropic_tool_thinking_placeholder() -> &'static str {
-    crate::proxy_core::ANTHROPIC_TOOL_THINKING_PLACEHOLDER
+    crate::proxy_core::api::transforms::ANTHROPIC_TOOL_THINKING_PLACEHOLDER
 }
 
 #[cfg(test)]
 pub(crate) fn anthropic_redacted_thinking_placeholder() -> &'static str {
-    crate::proxy_core::ANTHROPIC_REDACTED_THINKING_PLACEHOLDER
+    crate::proxy_core::api::transforms::ANTHROPIC_REDACTED_THINKING_PLACEHOLDER
 }
 
 pub(crate) struct ModelMappingProjection {
@@ -1395,10 +1412,11 @@ pub(crate) fn apply_provider_model_mapping(
     body: Value,
     provider_settings: &Value,
 ) -> ModelMappingProjection {
-    let mapping = crate::proxy_core::ModelMapping::from_settings_config(provider_settings);
+    let mapping =
+        crate::proxy_core::api::model_catalog::ModelMapping::from_settings_config(provider_settings);
     let (body, original_model, mapped_model) =
-        crate::proxy_core::apply_model_mapping_to_body(body, &mapping);
-    let log_message = crate::proxy_core::model_mapping_log_message(
+        crate::proxy_core::api::model_catalog::apply_model_mapping_to_body(body, &mapping);
+    let log_message = crate::proxy_core::api::model_catalog::model_mapping_log_message(
         original_model.as_deref(),
         mapped_model.as_deref(),
     );

@@ -100,7 +100,8 @@ pub mod routing {
     pub use crate::channel_request::*;
     pub use crate::domain::{
         ChannelQuery, ChannelSpec, ChannelStatus, InterfaceKind, ResolvedChannelAttempt, RoutePlan,
-        RoutePolicy, RouteRequest, RouteSelection, DEFAULT_ROUTE_GROUP,
+        RoutePolicy, RouteRequest, RouteSelection, DEFAULT_ROUTE_GROUP, interfaces_compatible,
+        route_group_matches, route_plan_provider_ids, select_route_for_forward_result,
     };
     pub use crate::legacy_projection::*;
     pub use crate::ports::ChannelRouteCandidate;
