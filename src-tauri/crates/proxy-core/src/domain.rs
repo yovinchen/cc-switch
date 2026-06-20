@@ -472,6 +472,123 @@ pub struct ModelRoute {
     pub response_overrides: Value,
 }
 
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ModelRouteInput {
+    pub public_model: String,
+    pub upstream_model: String,
+    #[serde(default)]
+    pub capabilities: Value,
+    #[serde(default)]
+    pub pricing_model: Option<String>,
+    #[serde(default)]
+    pub request_overrides: Value,
+    #[serde(default)]
+    pub response_overrides: Value,
+}
+
+pub fn model_route_from_input(input: ModelRouteInput) -> ModelRoute {
+    ModelRoute {
+        public_model: input.public_model,
+        upstream_model: input.upstream_model,
+        capabilities: ModelCapabilities {
+            raw: crate::channel_request::channel_object_or_default(input.capabilities),
+        },
+        pricing_model: input.pricing_model,
+        request_overrides: crate::channel_request::channel_object_or_default(
+            input.request_overrides,
+        ),
+        response_overrides: crate::channel_request::channel_object_or_default(
+            input.response_overrides,
+        ),
+    }
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ChannelSpecInput {
+    pub id: String,
+    pub provider_id: String,
+    pub app_type: String,
+    pub name: String,
+    pub status: String,
+    pub base_url: String,
+    pub interface_kind: String,
+    #[serde(default)]
+    pub auth_profile_ref: Option<String>,
+    #[serde(default)]
+    pub models: Vec<ModelRouteInput>,
+    #[serde(default)]
+    pub groups: Vec<String>,
+    pub priority: i64,
+    pub weight: u32,
+    #[serde(default)]
+    pub retry_policy: Value,
+    #[serde(default)]
+    pub health_policy: Value,
+    #[serde(default)]
+    pub header_overrides: Value,
+    #[serde(default)]
+    pub param_overrides: Value,
+    #[serde(default)]
+    pub status_code_mapping: Value,
+    #[serde(default)]
+    pub tags: Vec<String>,
+    #[serde(default)]
+    pub metadata: Value,
+    #[serde(default)]
+    pub source_ref: Option<String>,
+    #[serde(default)]
+    pub needs_review: bool,
+    #[serde(default)]
+    pub review_reasons: Vec<String>,
+}
+
+pub fn channel_spec_from_input(input: ChannelSpecInput) -> ChannelSpec {
+    ChannelSpec {
+        id: input.id,
+        provider_id: input.provider_id,
+        app: AppKind::from(input.app_type.as_str()),
+        name: input.name,
+        status: ChannelStatus::from_storage(&input.status),
+        endpoint: UpstreamEndpoint {
+            base_url: input.base_url,
+            path_template: None,
+            api_version: None,
+            timeout_profile: None,
+        },
+        interface: InterfaceKind::from_storage(&input.interface_kind),
+        auth_profile: input.auth_profile_ref.map(AuthProfileRef::new),
+        models: input
+            .models
+            .into_iter()
+            .map(model_route_from_input)
+            .collect(),
+        groups: input.groups,
+        priority: input.priority,
+        weight: input.weight,
+        retry_policy: RetryPolicy {
+            raw: crate::channel_request::channel_object_or_default(input.retry_policy),
+        },
+        health_policy: ChannelHealthPolicy {
+            raw: crate::channel_request::channel_object_or_default(input.health_policy),
+        },
+        overrides: ChannelOverrides {
+            headers: crate::channel_request::channel_object_or_default(input.header_overrides),
+            params: crate::channel_request::channel_object_or_default(input.param_overrides),
+            status_code_mapping: crate::channel_request::channel_array_or_default(
+                input.status_code_mapping,
+            ),
+            model_mapping: Value::Object(Default::default()),
+        },
+        tags: input.tags,
+        metadata: crate::channel_request::channel_object_or_default(input.metadata),
+        source_ref: input.source_ref,
+        needs_review: input.needs_review,
+        review_reasons: input.review_reasons,
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RoutableModel {
@@ -1237,6 +1354,86 @@ mod tests {
         );
         assert_eq!(provider_account_ref(None, Some("acct-1")), None);
         assert_eq!(provider_account_ref(Some("github_copilot"), None), None);
+    }
+
+    #[test]
+    fn model_route_input_builds_route_with_object_defaults() {
+        let route = model_route_from_input(ModelRouteInput {
+            public_model: "sonnet".to_string(),
+            upstream_model: "anthropic/sonnet".to_string(),
+            capabilities: json!(["not", "object"]),
+            pricing_model: Some("standard".to_string()),
+            request_overrides: json!({"temperature": 0.2}),
+            response_overrides: json!("not-object"),
+        });
+
+        assert_eq!(route.public_model, "sonnet");
+        assert_eq!(route.upstream_model, "anthropic/sonnet");
+        assert_eq!(route.capabilities.raw, json!({}));
+        assert_eq!(route.pricing_model.as_deref(), Some("standard"));
+        assert_eq!(route.request_overrides, json!({"temperature": 0.2}));
+        assert_eq!(route.response_overrides, json!({}));
+    }
+
+    #[test]
+    fn channel_spec_input_builds_spec_with_core_defaults() {
+        let spec = channel_spec_from_input(ChannelSpecInput {
+            id: "ch-1".to_string(),
+            provider_id: "provider-1".to_string(),
+            app_type: "claude".to_string(),
+            name: "Relay A".to_string(),
+            status: "enabled".to_string(),
+            base_url: "https://relay.example.com/v1".to_string(),
+            interface_kind: "openai_chat_completions".to_string(),
+            auth_profile_ref: Some("provider:claude:provider-1".to_string()),
+            models: vec![ModelRouteInput {
+                public_model: "sonnet".to_string(),
+                upstream_model: "anthropic/sonnet".to_string(),
+                capabilities: json!({"tools": true}),
+                pricing_model: None,
+                request_overrides: json!({}),
+                response_overrides: json!({}),
+            }],
+            groups: vec!["default".to_string(), "paid".to_string()],
+            priority: 50,
+            weight: 80,
+            retry_policy: json!({"maxAttempts": 2}),
+            health_policy: json!("not-object"),
+            header_overrides: json!({"x-test": "1"}),
+            param_overrides: json!("not-object"),
+            status_code_mapping: json!({"not": "array"}),
+            tags: vec!["manual".to_string()],
+            metadata: json!(["not", "object"]),
+            source_ref: Some("https://relay.example.com/v1".to_string()),
+            needs_review: true,
+            review_reasons: vec!["missing-auth".to_string()],
+        });
+
+        assert_eq!(spec.id, "ch-1");
+        assert_eq!(spec.provider_id, "provider-1");
+        assert_eq!(spec.app, AppKind::Claude);
+        assert_eq!(spec.status, ChannelStatus::Enabled);
+        assert_eq!(spec.endpoint.base_url, "https://relay.example.com/v1");
+        assert_eq!(spec.interface, InterfaceKind::OpenAiChatCompletions);
+        assert_eq!(
+            spec.auth_profile.as_ref().map(|value| value.0.as_str()),
+            Some("provider:claude:provider-1")
+        );
+        assert_eq!(spec.models.len(), 1);
+        assert_eq!(spec.models[0].public_model, "sonnet");
+        assert_eq!(spec.groups, vec!["default".to_string(), "paid".to_string()]);
+        assert_eq!(spec.retry_policy.raw, json!({"maxAttempts": 2}));
+        assert_eq!(spec.health_policy.raw, json!({}));
+        assert_eq!(spec.overrides.headers, json!({"x-test": "1"}));
+        assert_eq!(spec.overrides.params, json!({}));
+        assert_eq!(spec.overrides.status_code_mapping, json!([]));
+        assert_eq!(spec.metadata, json!({}));
+        assert_eq!(
+            spec.source_ref.as_deref(),
+            Some("https://relay.example.com/v1")
+        );
+        assert!(spec.needs_review);
+        assert_eq!(spec.review_reasons, vec!["missing-auth".to_string()]);
     }
 
     #[test]

@@ -6,9 +6,10 @@ use crate::proxy::providers::provider_kind_from_app_type_and_config;
 use crate::proxy::usage::RequestLog;
 use crate::proxy_core::api::auth::ClaudeDesktopModelRouteInput;
 use crate::proxy_core::api::domain::{
-    ChannelHealthPolicy, ChannelOverrides, ModelCapabilities, ModelRoute, ProviderMetadata,
-    ProviderMetadataInput, UpstreamEndpoint,
+    ChannelSpecInput, ModelRoute, ModelRouteInput, ProviderMetadata, ProviderMetadataInput,
 };
+#[cfg(test)]
+use crate::proxy_core::api::domain::{ChannelHealthPolicy, ChannelOverrides, UpstreamEndpoint};
 use crate::proxy_core::api::management::{
     AppSummaryInput, ChannelReachabilityInput, ChannelReachabilityResult,
     CurrentRouteProviderSummaryInput,
@@ -365,6 +366,7 @@ pub(crate) type ChannelSpec = crate::proxy_core::api::routing::ChannelSpec;
 #[cfg(test)]
 pub(crate) type ProxyCoreChannelSpec =
     crate::proxy_core::api::routing::ChannelSpec;
+#[cfg(test)]
 pub(crate) type ChannelStatus = crate::proxy_core::api::routing::ChannelStatus;
 #[cfg(test)]
 pub(crate) type ProxyCoreChannelStatus =
@@ -394,6 +396,14 @@ pub(crate) fn provider_account_ref(
     managed_account_id: Option<&str>,
 ) -> Option<String> {
     crate::proxy_core::api::domain::provider_account_ref(provider_type, managed_account_id)
+}
+
+pub(crate) fn model_route_from_input(input: ModelRouteInput) -> ModelRoute {
+    crate::proxy_core::api::domain::model_route_from_input(input)
+}
+
+pub(crate) fn channel_spec_from_input(input: ChannelSpecInput) -> ChannelSpec {
+    crate::proxy_core::api::domain::channel_spec_from_input(input)
 }
 
 #[cfg(test)]
@@ -449,6 +459,7 @@ pub(crate) type ProxyCoreError = crate::proxy_core::api::errors::ProxyCoreError;
 #[cfg(test)]
 pub(crate) type ProxyCoreEventType = crate::proxy_core::api::events::ProxyCoreEventType;
 pub(crate) type AppKind = crate::proxy_core::api::domain::AppKind;
+#[cfg(test)]
 pub(crate) type RetryPolicy = crate::proxy_core::api::domain::RetryPolicy;
 pub(crate) type RouteResolveRequest =
     crate::proxy_core::api::management::RouteResolveRequest;
@@ -1113,46 +1124,34 @@ pub(crate) trait ToProxyCoreChannelSpec {
 
 impl ToProxyCoreChannelSpec for ProxyChannelRecord {
     fn to_proxy_core_channel_spec(&self) -> ChannelSpec {
-        ChannelSpec {
+        channel_spec_from_input(ChannelSpecInput {
             id: self.id.clone(),
             provider_id: self.provider_id.clone(),
-            app: AppKind::from(self.app_type.as_str()),
+            app_type: self.app_type.clone(),
             name: self.name.clone(),
-            status: ChannelStatus::from_storage(&self.status),
-            endpoint: UpstreamEndpoint {
-                base_url: self.base_url.clone(),
-                path_template: None,
-                api_version: None,
-                timeout_profile: None,
-            },
-            interface: InterfaceKind::from_storage(&self.interface_kind),
-            auth_profile: self.auth_profile_ref.clone().map(AuthProfileRef::new),
+            status: self.status.clone(),
+            base_url: self.base_url.clone(),
+            interface_kind: self.interface_kind.clone(),
+            auth_profile_ref: self.auth_profile_ref.clone(),
             models: self
                 .models
                 .iter()
-                .map(ProxyChannelModelRecord::to_proxy_core_model_route)
+                .map(ProxyChannelModelRecord::to_proxy_core_model_route_input)
                 .collect(),
             groups: self.groups.clone(),
             priority: self.priority,
             weight: self.weight,
-            retry_policy: RetryPolicy {
-                raw: channel_object_or_default(self.retry_policy.clone()),
-            },
-            health_policy: ChannelHealthPolicy {
-                raw: channel_object_or_default(self.health_policy.clone()),
-            },
-            overrides: ChannelOverrides {
-                headers: channel_object_or_default(self.header_overrides.clone()),
-                params: channel_object_or_default(self.param_overrides.clone()),
-                status_code_mapping: channel_array_or_default(self.status_code_mapping.clone()),
-                model_mapping: Value::Object(Default::default()),
-            },
+            retry_policy: self.retry_policy.clone(),
+            health_policy: self.health_policy.clone(),
+            header_overrides: self.header_overrides.clone(),
+            param_overrides: self.param_overrides.clone(),
+            status_code_mapping: self.status_code_mapping.clone(),
             tags: self.tags.clone(),
-            metadata: channel_object_or_default(self.metadata.clone()),
+            metadata: self.metadata.clone(),
             source_ref: self.source_endpoint_url.clone(),
             needs_review: self.needs_review,
             review_reasons: self.review_reasons.clone(),
-        }
+        })
     }
 }
 
@@ -1927,15 +1926,19 @@ pub(crate) trait ToProxyCoreModelRoute {
 
 impl ToProxyCoreModelRoute for ProxyChannelModelRecord {
     fn to_proxy_core_model_route(&self) -> ModelRoute {
-        ModelRoute {
+        model_route_from_input(self.to_proxy_core_model_route_input())
+    }
+}
+
+impl ProxyChannelModelRecord {
+    fn to_proxy_core_model_route_input(&self) -> ModelRouteInput {
+        ModelRouteInput {
             public_model: self.public_model.clone(),
             upstream_model: self.upstream_model.clone(),
-            capabilities: ModelCapabilities {
-                raw: channel_object_or_default(self.capabilities.clone()),
-            },
+            capabilities: self.capabilities.clone(),
             pricing_model: self.pricing_model.clone(),
-            request_overrides: channel_object_or_default(self.request_overrides.clone()),
-            response_overrides: channel_object_or_default(self.response_overrides.clone()),
+            request_overrides: self.request_overrides.clone(),
+            response_overrides: self.response_overrides.clone(),
         }
     }
 }
