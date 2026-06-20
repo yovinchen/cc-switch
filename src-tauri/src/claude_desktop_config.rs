@@ -645,16 +645,7 @@ pub fn model_list_response(
     provider: &Provider,
 ) -> Result<crate::proxy_core::ClaudeDesktopModelListResponse, AppError> {
     let routes = proxy_model_routes(provider)?;
-    Ok(
-        crate::proxy_core::ClaudeDesktopModelListResponse::from_routes(routes.into_iter().map(
-            |route| {
-                crate::proxy_core::ClaudeDesktopModelRouteInput::new(
-                    route.route_id,
-                    route.supports_1m,
-                )
-            },
-        )),
-    )
+    Ok(crate::proxy_core_adapter::claude_desktop_model_routes_to_core_response(routes))
 }
 
 pub fn map_proxy_request_model(mut body: Value, provider: &Provider) -> Result<Value, AppError> {

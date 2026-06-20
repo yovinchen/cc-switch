@@ -1,4 +1,5 @@
 use crate::app_config::AppType;
+use crate::claude_desktop_config::ResolvedModelRoute;
 use crate::database::{ProxyChannelModelRecord, ProxyChannelRecord};
 use crate::provider::Provider;
 use crate::proxy::providers::provider_kind_from_app_type_and_config;
@@ -6,6 +7,7 @@ use crate::proxy_core::{
     AppKind, AppSummaryInput, AuthProfileRef, ChannelHealthPolicy, ChannelModelRecord,
     ChannelOverrides, ChannelReachabilityInput, ChannelReachabilityResult,
     ChannelReachabilityStatus, ChannelRecord, ChannelSpec, ChannelStatus,
+    ClaudeDesktopModelListResponse, ClaudeDesktopModelRouteInput,
     CurrentRouteProviderSummaryInput, InterfaceKind, ModelCapabilities, ModelRoute,
     ProviderMetadata, ProviderSpec, RetryPolicy, RouteResolveChannelInput, RouteResolveModelInput,
     SessionIdResult, UpstreamEndpoint,
@@ -192,6 +194,16 @@ pub(crate) fn proxy_app_summary_input(
         auto_failover_enabled,
         proxy_providers_to_core_specs(app_type, providers),
         proxy_channel_specs_to_core(channels),
+    )
+}
+
+pub(crate) fn claude_desktop_model_routes_to_core_response(
+    routes: impl IntoIterator<Item = ResolvedModelRoute>,
+) -> ClaudeDesktopModelListResponse {
+    ClaudeDesktopModelListResponse::from_routes(
+        routes
+            .into_iter()
+            .map(|route| ClaudeDesktopModelRouteInput::new(route.route_id, route.supports_1m)),
     )
 }
 
@@ -398,6 +410,23 @@ mod tests {
             AppKind::from(&AppType::OpenClaw),
             AppKind::Custom("openclaw".to_string())
         );
+    }
+
+    #[test]
+    fn claude_desktop_model_routes_to_core_response_preserves_route_contract() {
+        let response =
+            claude_desktop_model_routes_to_core_response([ResolvedModelRoute {
+                route_id: "claude-sonnet-4-6".to_string(),
+                upstream_model: "anthropic/claude-sonnet-4-6".to_string(),
+                label_override: None,
+                supports_1m: true,
+            }]);
+
+        assert_eq!(response.data.len(), 1);
+        assert_eq!(response.data[0].id, "claude-sonnet-4-6");
+        assert!(response.data[0].supports_1m);
+        assert_eq!(response.first_id.as_deref(), Some("claude-sonnet-4-6"));
+        assert_eq!(response.last_id.as_deref(), Some("claude-sonnet-4-6"));
     }
 
     #[test]
