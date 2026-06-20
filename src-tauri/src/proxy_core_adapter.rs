@@ -437,68 +437,91 @@ pub(crate) use crate::proxy_core::api::routing::{
     RoutePolicy, RouteRequest, DEFAULT_ROUTE_GROUP,
 };
 pub(crate) use crate::proxy_core::api::transforms::CLAUDE_API_FORMAT_METADATA_KEY;
-pub(crate) use crate::proxy_core::{
-    append_query_to_endpoint_path, chat_completion_to_response_with_context,
-    claude_stream_usage_event_filter, claude_transform_unlabeled_sse_aggregation,
-    codex_stream_usage_event_filter, create_codex_chat_to_responses_sse_stream_with_context,
+pub(crate) use crate::proxy_core::api::auth::{
+    resolve_management_auth_decision, validate_management_bearer_header, ManagementAuthDecision,
+};
+pub(crate) use crate::proxy_core::api::management::{
+    plan_channel_test, AppChannelListQuery, AppChannelListSource, AppChannelManagementPlan,
+    AppChannelManagementRequest, AppChannelResponse, AppListRequest, AppListResponse,
+    AppListSource, AppModelCatalogRequest, AppModelListQuery, ChannelCreateRequest,
+    ChannelCreateSource, ChannelDeleteResponse, ChannelDeleteSource, ChannelHealthResetResponse,
+    ChannelHealthResetSource, ChannelListPlan, ChannelListQuery, ChannelListRequest,
+    ChannelListResponse, ChannelListSource, ChannelMigrationMaterializeResponse,
+    ChannelMigrationMaterializeSource, ChannelMigrationPreviewResponse,
+    ChannelMigrationPreviewSource, ChannelModelsResponse, ChannelModelsSource,
+    ChannelPathRequest, ChannelRecordResponse, ChannelRecordSource, ChannelRouteRejected,
+    ChannelTestPlan, ChannelTestResponse, CurrentRouteResponse, CurrentRouteSource,
+    GroupListChannelSource, GroupListQuery, GroupListRequest, HealthCheckRequest,
+    HealthCheckResponse, HealthCheckSource, ManagementAppPathRequest, ProviderListResponse,
+    ProviderListSource, ProxyChannelModelsReplaceRequest, ProxyChannelTestRequest,
+    ProxyStatusRequest, ProxyStatusResponse, ProxyStatusSource, RouteGroupListResponse,
+    RouteResolveManagementRequest,
+};
+pub(crate) use crate::proxy_core::api::model_catalog::{
+    ClientModelCatalogResponse, RoutableModelList,
+};
+pub(crate) use crate::proxy_core::api::transforms::{
+    chat_completion_to_response_with_context, claude_stream_usage_event_filter,
+    claude_transform_unlabeled_sse_aggregation, codex_stream_usage_event_filter,
+    create_codex_chat_to_responses_sse_stream_with_context,
     create_gemini_to_anthropic_sse_stream_with_callbacks,
     create_openai_chat_to_anthropic_sse_stream,
     create_openai_responses_to_anthropic_sse_stream, extract_anthropic_tool_schema_hints,
-    gemini_response_to_anthropic_message_with_shadow, parse_upstream_json_or_unlabeled_sse,
-    plan_channel_test, rebuilt_json_proxy_response, resolve_management_auth_decision,
+    gemini_response_to_anthropic_message_with_shadow,
     should_aggregate_codex_oauth_responses_sse, should_use_claude_transform_streaming,
-    strip_endpoint_prefix, transformed_sse_proxy_response, validate_management_bearer_header,
-    AppChannelListQuery, AppChannelListSource, AppChannelManagementPlan,
-    AppChannelManagementRequest, AppChannelResponse, AppListRequest, AppListResponse,
-    AppListSource, AppModelCatalogRequest, AppModelListQuery, ChannelCreateRequest,
-    ChannelCreateSource, ChannelDeleteResponse, ChannelDeleteSource,
-    ChannelHealthResetResponse, ChannelHealthResetSource, ChannelListPlan, ChannelListQuery,
-    ChannelListRequest, ChannelListResponse, ChannelListSource,
-    ChannelMigrationMaterializeResponse, ChannelMigrationMaterializeSource,
-    ChannelMigrationPreviewResponse, ChannelMigrationPreviewSource, ChannelModelsResponse,
-    ChannelModelsSource, ChannelPathRequest, ChannelRecordResponse, ChannelRecordSource,
-    ChannelRouteRejected, ChannelTestPlan, ChannelTestResponse, ClientModelCatalogResponse,
-    CurrentRouteResponse, CurrentRouteSource, GroupListChannelSource, GroupListQuery,
-    GroupListRequest, HealthCheckRequest, HealthCheckResponse, HealthCheckSource,
-    ManagementAppPathRequest, ManagementAuthDecision, ProviderListResponse, ProviderListSource,
-    ProxyBody, ProxyChannelModelsReplaceRequest, ProxyChannelTestRequest, ProxyRequest,
-    ProxyStatusRequest, ProxyStatusResponse, ProxyStatusSource, RoutableModelList,
-    RouteGroupListResponse, RouteResolveManagementRequest, UnlabeledSseFallbackLogContext,
-    UnlabeledSseFallbackLogLevel, UpstreamSseAggregationKind, CLAUDE_PARSER_CONFIG,
-    CODEX_PARSER_CONFIG, GEMINI_PARSER_CONFIG, OPENAI_PARSER_CONFIG,
 };
-pub(crate) use crate::proxy_core::{
+pub(crate) use crate::proxy_core::api::transport::{
+    append_query_to_endpoint_path, parse_upstream_json_or_unlabeled_sse,
+    rebuilt_json_proxy_response, strip_endpoint_prefix, transformed_sse_proxy_response, ProxyBody,
+    ProxyRequest, UnlabeledSseFallbackLogContext, UnlabeledSseFallbackLogLevel,
+    UpstreamSseAggregationKind,
+};
+pub(crate) use crate::proxy_core::api::usage::{
+    CLAUDE_PARSER_CONFIG, CODEX_PARSER_CONFIG, GEMINI_PARSER_CONFIG, OPENAI_PARSER_CONFIG,
+};
+pub(crate) use crate::proxy_core::api::auth::validate_managed_account_upstream_auth;
+pub(crate) use crate::proxy_core::api::config::{
+    cache_injection_log_message, normalize_thinking_type, rectify_anthropic_request,
+    rectify_thinking_budget, should_rectify_thinking_budget, should_rectify_thinking_signature,
+    thinking_optimization_log_message,
+};
+pub(crate) use crate::proxy_core::api::events::{
+    attempt_event_name, build_attempt_event_payload, build_request_started_event_payload,
+};
+pub(crate) use crate::proxy_core::api::model_catalog::{
+    apply_copilot_model_normalization, resolve_copilot_model_against_ids,
+    strip_one_m_suffix_for_upstream, strip_one_m_suffix_for_upstream_from_body,
+};
+pub(crate) use crate::proxy_core::api::transforms::{
+    resolve_claude_forward_api_format, responses_to_chat_completions_with_options,
+};
+pub(crate) use crate::proxy_core::api::transport::{
     append_query_to_full_url, apply_bedrock_pre_send_optimizers,
-    apply_copilot_model_normalization, apply_copilot_warmup_model_override, attempt_event_name,
-    bedrock_env_flag_from_provider_settings, build_attempt_event_payload,
-    build_codex_oauth_session_headers, build_request_started_event_payload,
-    build_retryable_forward_failure_log, build_terminal_forward_failure_log,
-    build_upstream_auth_headers, cache_injection_log_message, categorize_forward_failure,
+    apply_copilot_warmup_model_override, bedrock_env_flag_from_provider_settings,
+    build_codex_oauth_session_headers, build_retryable_forward_failure_log,
+    build_terminal_forward_failure_log, build_upstream_auth_headers, categorize_forward_failure,
     classify_copilot_request, claude_transform_endpoint_rewrite_input_from_body,
     contains_image_blocks, interface_kind_for_forward, is_codex_chat_full_endpoint_base,
     is_github_copilot_upstream, is_openai_o_series, is_unsupported_image_error,
-    merge_copilot_tool_results, normalize_thinking_type,
+    merge_copilot_tool_results,
     prepare_upstream_request_body_with_report, prompt_cache_trace_log_message,
-    rectify_anthropic_request, rectify_thinking_budget, replace_image_blocks_with_marker,
-    replace_images_for_text_only_model, request_body_filter_log_message, request_model_for_forward,
-    resolve_claude_forward_api_format, resolve_copilot_deterministic_interaction_id,
-    resolve_copilot_model_against_ids, resolve_copilot_optimizer_session_id,
-    resolve_copilot_request_id_with_fallback, resolve_media_prevention_policy,
-    resolved_copilot_dynamic_base_url, responses_to_chat_completions_with_options,
-    rewrite_claude_transform_endpoint, sanitize_copilot_orphan_tool_results,
-    should_apply_bedrock_pre_send_optimizer, should_check_media_retry,
-    should_failover_after_rectifier_retry_failure, should_preserve_exact_request_header_case,
-    should_rectify_thinking_budget, should_rectify_thinking_signature,
-    should_resolve_copilot_dynamic_endpoint, should_send_anthropic_request_headers,
-    should_trigger_media_retry, split_endpoint_and_query, strip_copilot_thinking_blocks,
-    strip_one_m_suffix_for_upstream, strip_one_m_suffix_for_upstream_from_body,
-    supports_reasoning_effort, thinking_optimization_log_message,
-    validate_managed_account_upstream_auth, UNSUPPORTED_IMAGE_MARKER,
+    replace_image_blocks_with_marker, replace_images_for_text_only_model,
+    request_body_filter_log_message, request_model_for_forward,
+    resolve_copilot_deterministic_interaction_id,
+    resolve_copilot_optimizer_session_id, resolve_copilot_request_id_with_fallback,
+    resolve_media_prevention_policy, resolved_copilot_dynamic_base_url,
+    sanitize_copilot_orphan_tool_results, should_apply_bedrock_pre_send_optimizer,
+    should_check_media_retry, should_failover_after_rectifier_retry_failure,
+    should_preserve_exact_request_header_case, should_resolve_copilot_dynamic_endpoint,
+    should_send_anthropic_request_headers, should_trigger_media_retry, split_endpoint_and_query,
+    strip_copilot_thinking_blocks, supports_reasoning_effort,
+    UNSUPPORTED_IMAGE_MARKER,
+    rewrite_claude_transform_endpoint,
 };
 #[cfg(test)]
-pub(crate) use crate::proxy_core::{
-    canonical_json_string, short_value_hash, ManagedAccountAuthError,
-};
+pub(crate) use crate::proxy_core::api::auth::ManagedAccountAuthError;
+#[cfg(test)]
+pub(crate) use crate::proxy_core::api::transforms::{canonical_json_string, short_value_hash};
 
 pub(crate) const SESSION_REQUEST_ID_PREFIX: &str =
     crate::proxy_core::SESSION_REQUEST_ID_PREFIX;

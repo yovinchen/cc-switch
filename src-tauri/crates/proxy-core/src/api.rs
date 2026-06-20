@@ -25,9 +25,16 @@ pub mod config {
     pub use crate::response_timeout::{
         ResponseRuntimePolicy, ResponseTimeoutConfig, StreamingTimeoutConfig,
     };
-    pub use crate::thinking_budget_rectifier::ThinkingBudgetRectifierConfig;
-    pub use crate::thinking_optimizer::ThinkingOptimizerConfig;
-    pub use crate::thinking_rectifier::ThinkingSignatureRectifierConfig;
+    pub use crate::thinking_budget_rectifier::{
+        rectify_thinking_budget, should_rectify_thinking_budget, ThinkingBudgetRectifierConfig,
+    };
+    pub use crate::thinking_optimizer::{
+        thinking_optimization_log_message, ThinkingOptimizerConfig,
+    };
+    pub use crate::thinking_rectifier::{
+        normalize_thinking_type, rectify_anthropic_request, should_rectify_thinking_signature,
+        ThinkingSignatureRectifierConfig,
+    };
 }
 
 pub mod domain {
@@ -50,14 +57,22 @@ pub mod events {
 pub mod management {
     pub use crate::management_api::*;
     pub use crate::ports::{
-        ChannelModelRecord, ChannelRecord, ChannelRouteSource, HealthCheckResponse,
-        ProxyChannelModelWriteRequest, ProxyChannelPatchRequest, ProxyChannelWriteRequest,
+        plan_channel_test, AppChannelListQuery, AppChannelResponse, AppListResponse,
+        AppModelListQuery, ChannelDeleteResponse, ChannelHealthResetResponse, ChannelListQuery,
+        ChannelListResponse, ChannelMigrationMaterializeResponse,
+        ChannelMigrationPreviewResponse, ChannelModelRecord, ChannelModelsResponse,
+        ChannelRecord, ChannelRecordResponse, ChannelRouteRejected, ChannelRouteSource,
+        ChannelTestPlan, ChannelTestResponse, CurrentRouteResponse, GroupListQuery,
+        HealthCheckResponse, ProviderListResponse, ProxyChannelModelWriteRequest,
+        ProxyChannelModelsReplaceRequest, ProxyChannelPatchRequest, ProxyChannelTestRequest,
+        ProxyChannelWriteRequest, ProxyStatusResponse, RouteGroupListResponse,
         RouteResolveRequest, RouteResolveResponse,
     };
 }
 
 pub mod model_catalog {
     pub use crate::copilot_model_map::*;
+    pub use crate::domain::RoutableModelList;
     pub use crate::model_fetch::*;
     pub use crate::model_mapping::*;
     pub use crate::ports::{ClientModelCatalogResponse, ModelCatalog};
