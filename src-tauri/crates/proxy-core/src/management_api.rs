@@ -123,6 +123,53 @@ impl<T> CurrentRouteSource<T> {
     }
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ChannelMigrationPreviewSource<T> {
+    pub channels: Vec<T>,
+    pub duplicate_count: usize,
+    pub needs_review_count: usize,
+}
+
+impl<T> ChannelMigrationPreviewSource<T> {
+    pub fn new(channels: Vec<T>, duplicate_count: usize, needs_review_count: usize) -> Self {
+        Self {
+            channels,
+            duplicate_count,
+            needs_review_count,
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ChannelMigrationMaterializeSource {
+    pub previewed_channels: usize,
+    pub inserted_channels: usize,
+    pub inserted_models: usize,
+    pub inserted_health_rows: usize,
+    pub duplicate_count: usize,
+    pub needs_review_count: usize,
+}
+
+impl ChannelMigrationMaterializeSource {
+    pub fn new(
+        previewed_channels: usize,
+        inserted_channels: usize,
+        inserted_models: usize,
+        inserted_health_rows: usize,
+        duplicate_count: usize,
+        needs_review_count: usize,
+    ) -> Self {
+        Self {
+            previewed_channels,
+            inserted_channels,
+            inserted_models,
+            inserted_health_rows,
+            duplicate_count,
+            needs_review_count,
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct ProviderListSource {
     pub providers: Vec<ProviderSpec>,
@@ -216,6 +263,17 @@ impl ManagementAppPathRequest {
         )
     }
 
+    pub fn migration_preview_response_from_source<T>(
+        &self,
+        source: ChannelMigrationPreviewSource<T>,
+    ) -> ChannelMigrationPreviewResponse<T> {
+        self.migration_preview_response(
+            source.channels,
+            source.duplicate_count,
+            source.needs_review_count,
+        )
+    }
+
     pub fn migration_materialize_response(
         &self,
         previewed_channels: usize,
@@ -233,6 +291,20 @@ impl ManagementAppPathRequest {
             inserted_health_rows,
             duplicate_count,
             needs_review_count,
+        )
+    }
+
+    pub fn migration_materialize_response_from_source(
+        &self,
+        source: ChannelMigrationMaterializeSource,
+    ) -> ChannelMigrationMaterializeResponse {
+        self.migration_materialize_response(
+            source.previewed_channels,
+            source.inserted_channels,
+            source.inserted_models,
+            source.inserted_health_rows,
+            source.duplicate_count,
+            source.needs_review_count,
         )
     }
 }
@@ -523,8 +595,9 @@ mod tests {
     use super::{
         AppChannelListSource, AppChannelManagementPlan, AppChannelManagementRequest,
         AppListRequest, AppModelCatalogRequest, ChannelListRequest, ChannelCreateRequest,
-        ChannelPathRequest, CurrentRouteSource, GroupListChannelSource, GroupListRequest,
-        HealthCheckRequest, ManagementAppPathRequest, ProviderListSource, ProxyStatusRequest,
+        ChannelMigrationMaterializeSource, ChannelMigrationPreviewSource, ChannelPathRequest,
+        CurrentRouteSource, GroupListChannelSource, GroupListRequest, HealthCheckRequest,
+        ManagementAppPathRequest, ProviderListSource, ProxyStatusRequest,
         RouteResolveManagementRequest, channel_not_found_message, normalize_channel_id_path,
         validate_management_app_type, validate_route_resolve_app_type,
     };
@@ -711,7 +784,9 @@ mod tests {
     fn management_app_path_request_wraps_migration_preview_response() {
         let request = ManagementAppPathRequest::from_path("claude").expect("request");
 
-        let response = request.migration_preview_response(vec!["channel-a"], 2, 1);
+        let response = request.migration_preview_response_from_source(
+            ChannelMigrationPreviewSource::new(vec!["channel-a"], 2, 1),
+        );
 
         assert_eq!(response.app_type, "claude");
         assert_eq!(response.channels, vec!["channel-a"]);
@@ -723,7 +798,9 @@ mod tests {
     fn management_app_path_request_wraps_migration_materialize_response() {
         let request = ManagementAppPathRequest::from_path("claude").expect("request");
 
-        let response = request.migration_materialize_response(4, 3, 2, 1, 5, 6);
+        let response = request.migration_materialize_response_from_source(
+            ChannelMigrationMaterializeSource::new(4, 3, 2, 1, 5, 6),
+        );
 
         assert_eq!(response.app_type, "claude");
         assert_eq!(response.previewed_channels, 4);
