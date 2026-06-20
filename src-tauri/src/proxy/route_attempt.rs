@@ -126,7 +126,7 @@ pub(crate) fn apply_channel_model_override(body: &mut Value, attempt: &ForwardAt
 mod tests {
     use super::*;
     use crate::proxy_core_adapter::{
-        ChannelRouteCandidate, ProviderKind, ProxyCoreAppKind as AppKind,
+        AuthProfileRef, ChannelRouteCandidate, ProviderKind, ProxyCoreAppKind as AppKind,
         ProxyCoreChannelOverrides as ChannelOverrides, ProxyCoreChannelSpec as ChannelSpec,
         ProxyCoreChannelStatus as ChannelStatus, ProxyCoreInterfaceKind as InterfaceKind,
         ProxyCoreModelCapabilities as ModelCapabilities, ProxyCoreModelRoute as ModelRoute,
@@ -379,6 +379,7 @@ mod tests {
     fn channel_attempt_carries_header_and_param_overrides() {
         let provider = Provider::with_id("p1".to_string(), "Provider".to_string(), json!({}), None);
         let mut selection = route_selection("p1", "ch_override");
+        selection.channel.auth_profile = Some(AuthProfileRef::new("channel-key:manual-relay"));
         selection.channel.overrides = ChannelOverrides {
             headers: json!({ "x-relay-profile": "manual" }),
             params: json!({ "api-version": "2026-06-20" }),
@@ -388,6 +389,10 @@ mod tests {
         let attempt = ForwardAttempt::from_core_selection(&AppType::Claude, &provider, &selection);
         let channel = attempt.channel().expect("channel attempt");
 
+        assert_eq!(
+            channel.auth_profile_ref.as_deref(),
+            Some("channel-key:manual-relay")
+        );
         assert_eq!(channel.header_overrides["x-relay-profile"], "manual");
         assert_eq!(channel.param_overrides["api-version"], "2026-06-20");
     }

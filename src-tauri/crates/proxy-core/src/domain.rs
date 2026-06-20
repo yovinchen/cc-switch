@@ -627,6 +627,8 @@ pub struct ResolvedChannelAttempt {
     pub base_url: String,
     pub interface_kind: String,
     #[serde(skip_serializing_if = "Option::is_none")]
+    pub auth_profile_ref: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub public_model: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub upstream_model: Option<String>,

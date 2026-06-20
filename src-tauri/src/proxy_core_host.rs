@@ -1293,6 +1293,7 @@ mod tests {
                 channel_name: "Channel B".to_string(),
                 base_url: "https://fallback.example.com/v1".to_string(),
                 interface_kind: "openai_responses".to_string(),
+                auth_profile_ref: None,
                 public_model: Some("sonnet".to_string()),
                 upstream_model: Some("upstream-sonnet".to_string()),
                 header_overrides: json!({}),

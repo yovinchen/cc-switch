@@ -96,6 +96,7 @@ pub fn resolved_channel_attempt_from_candidate(
         channel_name: candidate.channel_name,
         base_url: candidate.base_url,
         interface_kind: candidate.interface_kind,
+        auth_profile_ref: None,
         public_model: candidate.public_model,
         upstream_model: candidate.upstream_model,
         header_overrides: Value::Object(Default::default()),
@@ -111,6 +112,11 @@ pub fn resolved_channel_attempt_from_selection(
         channel_name: selection.channel.name.clone(),
         base_url: selection.channel.endpoint.base_url.clone(),
         interface_kind: selection.channel.interface.as_str().to_string(),
+        auth_profile_ref: selection
+            .channel
+            .auth_profile
+            .as_ref()
+            .map(|auth_profile| auth_profile.0.clone()),
         public_model: selection
             .model_route
             .as_ref()
@@ -441,8 +447,9 @@ fn interfaces_compatible(requested: &str, channel: &str) -> bool {
 mod tests {
     use super::*;
     use crate::domain::{
-        AppKind, ChannelOverrides, ChannelSpec, ChannelStatus, InterfaceKind, ModelCapabilities,
-        ModelRoute, ProviderKind, ProviderMetadata, ProviderSpec, RouteSelection, UpstreamEndpoint,
+        AppKind, AuthProfileRef, ChannelOverrides, ChannelSpec, ChannelStatus, InterfaceKind,
+        ModelCapabilities, ModelRoute, ProviderKind, ProviderMetadata, ProviderSpec,
+        RouteSelection, UpstreamEndpoint,
     };
     use serde_json::json;
 
@@ -550,6 +557,7 @@ mod tests {
         assert_eq!(attempt.channel_name, "Channel A");
         assert_eq!(attempt.base_url, "https://relay.example.com/v1");
         assert_eq!(attempt.interface_kind, "openai_responses");
+        assert!(attempt.auth_profile_ref.is_none());
         assert_eq!(attempt.public_model.as_deref(), Some("sonnet-public"));
         assert_eq!(attempt.upstream_model.as_deref(), Some("upstream-sonnet"));
 
@@ -561,8 +569,23 @@ mod tests {
                 "baseUrl": "https://relay.example.com/v1",
                 "interfaceKind": "openai_responses",
                 "publicModel": "sonnet-public",
-                "upstreamModel": "upstream-sonnet"
+                "upstreamModel": "upstream-sonnet",
+                "headerOverrides": {},
+                "paramOverrides": {}
             })
+        );
+    }
+
+    #[test]
+    fn maps_route_selection_to_resolved_channel_attempt_with_auth_profile() {
+        let mut selection = selection();
+        selection.channel.auth_profile = Some(AuthProfileRef::new("channel-key:relay-a"));
+
+        let attempt = resolved_channel_attempt_from_selection(&selection);
+
+        assert_eq!(
+            attempt.auth_profile_ref.as_deref(),
+            Some("channel-key:relay-a")
         );
     }
 
