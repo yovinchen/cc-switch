@@ -27,6 +27,10 @@ impl ProxyEventEnvelope {
             payload,
         }
     }
+
+    pub fn sse_data_json(&self) -> String {
+        serde_json::to_string(self).unwrap_or_else(|_| "{}".to_string())
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -231,6 +235,23 @@ mod tests {
         assert_eq!(serialized["event"], "request_started");
         assert_eq!(serialized["timestamp"], "2026-06-19T00:00:00Z");
         assert_eq!(serialized["payload"]["requestId"], "req-1");
+    }
+
+    #[test]
+    fn proxy_event_envelope_sse_data_serializes_envelope() {
+        let envelope = ProxyEventEnvelope::new(
+            7,
+            "proxy_events_connected",
+            "2026-06-19T00:00:00Z",
+            build_proxy_events_connected_payload(256),
+        );
+
+        let serialized: serde_json::Value =
+            serde_json::from_str(&envelope.sse_data_json()).expect("serialize envelope");
+
+        assert_eq!(serialized["id"], 7);
+        assert_eq!(serialized["event"], "proxy_events_connected");
+        assert_eq!(serialized["payload"]["bufferSize"], 256);
     }
 
     #[test]
