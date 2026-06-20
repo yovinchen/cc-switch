@@ -181,6 +181,7 @@ pub(crate) type ProxyRuntimeStatus = crate::proxy_core::ProxyRuntimeStatus;
 pub(crate) type ProxyServerInfo = crate::proxy_core::ProxyServerInfo;
 pub(crate) type ProxyTakeoverStatus = crate::proxy_core::ProxyTakeoverStatus;
 pub(crate) type ProxyCoreResponse = crate::proxy_core::ProxyCoreResponse;
+pub(crate) type ProxyCoreResult<T> = crate::proxy_core::ProxyCoreResult<T>;
 pub(crate) type ProxyEngine<S> = crate::proxy_core::ProxyEngine<S>;
 pub(crate) type ProxyResult = crate::proxy_core::ProxyResult;
 pub(crate) type ProxyEventEnvelope = crate::proxy_core::ProxyEventEnvelope;
@@ -282,6 +283,11 @@ pub(crate) type ChannelRouteCandidate = crate::proxy_core::ChannelRouteCandidate
 pub(crate) type ResolvedChannelAttempt = crate::proxy_core::ResolvedChannelAttempt;
 pub(crate) type RoutePlan = crate::proxy_core::RoutePlan;
 pub(crate) type RouteSelection = crate::proxy_core::RouteSelection;
+pub(crate) type CodexProxyErrorContext<'a> =
+    crate::proxy_core::CodexProxyErrorContext<'a>;
+pub(crate) type CodexProxyErrorKind = crate::proxy_core::CodexProxyErrorKind;
+pub(crate) type ForwardFailureKind = crate::proxy_core::ForwardFailureKind;
+pub(crate) type ManagementAuthError = crate::proxy_core::ManagementAuthError;
 pub(crate) use crate::proxy_core::ProxyServices;
 
 pub(crate) const SESSION_REQUEST_ID_PREFIX: &str =
@@ -1020,6 +1026,22 @@ pub(crate) fn proxy_core_error_is_unavailable(
     error: &crate::proxy_core::ProxyCoreError,
 ) -> bool {
     matches!(error, crate::proxy_core::ProxyCoreError::Unavailable(_))
+}
+
+pub(crate) fn codex_proxy_error_code(kind: CodexProxyErrorKind) -> &'static str {
+    crate::proxy_core::codex_proxy_error_code(kind)
+}
+
+#[cfg(test)]
+pub(crate) fn codex_proxy_error_json(ctx: CodexProxyErrorContext<'_>) -> Value {
+    crate::proxy_core::codex_proxy_error_json(ctx)
+}
+
+pub(crate) fn codex_proxy_error_response(
+    status: ProxyErrorStatusKind,
+    ctx: CodexProxyErrorContext<'_>,
+) -> ProxyCoreResult<ProxyCoreResponse> {
+    crate::proxy_core::codex_proxy_error_response(status, ctx)
 }
 
 pub(crate) fn apply_channel_route_model_override(
@@ -2593,6 +2615,46 @@ mod tests {
             Some("upstream-sonnet")
         );
         assert_eq!(body.get("model").and_then(Value::as_str), Some("upstream-sonnet"));
+    }
+
+    #[test]
+    fn error_mapper_adapter_projects_error_contracts() {
+        assert_eq!(
+            codex_proxy_error_code(CodexProxyErrorKind::ForwardFailed),
+            "cc_switch_forward_failed"
+        );
+        let json_body = codex_proxy_error_json(CodexProxyErrorContext {
+            provider_name: "Relay",
+            request_model: "model-a",
+            endpoint: "/responses",
+            fallback_message: "failed",
+            fallback_code: "cc_switch_forward_failed",
+            upstream_status: None,
+            upstream_body: None,
+        });
+        assert_eq!(json_body["error"]["provider"], "Relay");
+
+        let response = codex_proxy_error_response(
+            ProxyErrorStatusKind::AuthError,
+            CodexProxyErrorContext {
+                provider_name: "Relay",
+                request_model: "model-a",
+                endpoint: "/responses",
+                fallback_message: "bad token",
+                fallback_code: "cc_switch_auth_error",
+                upstream_status: None,
+                upstream_body: None,
+            },
+        )
+        .expect("codex error response");
+        assert_eq!(response.status.as_u16(), 401);
+
+        let failure = ForwardFailureKind::Timeout("slow".to_string());
+        assert!(matches!(failure, ForwardFailureKind::Timeout(message) if message == "slow"));
+        assert_eq!(
+            ManagementAuthError::MissingBearerToken.message(),
+            "Missing management bearer token"
+        );
     }
 
     #[test]

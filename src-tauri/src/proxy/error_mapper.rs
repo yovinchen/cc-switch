@@ -4,13 +4,15 @@
 
 use super::{error::ProxyError, ForwardError};
 use crate::proxy::error::proxy_error_status_kind;
-use crate::proxy_core::{
-    codex_proxy_error_code, codex_proxy_error_response as core_codex_proxy_error_response,
-    CodexProxyErrorContext, CodexProxyErrorKind, ForwardFailureKind, ManagementAuthError,
-    ProxyCoreError, ProxyCoreResponse, ProxyCoreResult,
-};
 use crate::proxy_core_adapter::{
-    proxy_error_http_status_code, ClaudeDesktopGatewayAuthError,
+    codex_proxy_error_code, codex_proxy_error_response as core_codex_proxy_error_response,
+    proxy_error_http_status_code, ClaudeDesktopGatewayAuthError, CodexProxyErrorContext,
+    CodexProxyErrorKind, ForwardFailureKind, ManagementAuthError, ProxyCoreError,
+    ProxyCoreResponse, ProxyCoreResult,
+};
+#[cfg(test)]
+use crate::proxy_core_adapter::{
+    codex_proxy_error_json as core_codex_proxy_error_json, ProxyResponseBody,
 };
 #[cfg(test)]
 use serde_json::Value;
@@ -161,7 +163,7 @@ pub(crate) fn codex_proxy_error_json(
         ProxyError::UpstreamError { status, body } => (Some(*status), body.as_deref()),
         _ => (None, None),
     };
-    crate::proxy_core::codex_proxy_error_json(CodexProxyErrorContext {
+    core_codex_proxy_error_json(CodexProxyErrorContext {
         provider_name,
         request_model,
         endpoint,
@@ -515,7 +517,7 @@ mod tests {
         assert_eq!(response.status.as_u16(), 401);
 
         let body = match response.body {
-            crate::proxy_core::ProxyResponseBody::Bytes(body) => body,
+            ProxyResponseBody::Bytes(body) => body,
             other => panic!("expected bytes body, got {other:?}"),
         };
         let value: Value = serde_json::from_slice(&body).expect("json body");
