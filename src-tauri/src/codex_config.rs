@@ -558,14 +558,14 @@ fn codex_model_catalog_from_settings(
     settings: &Value,
     config_text: &str,
 ) -> Result<Option<Value>, AppError> {
-    if !crate::proxy_core::has_codex_model_catalog_specs(settings) {
+    if !crate::proxy_core_adapter::codex_settings_have_model_catalog_specs(settings) {
         return Ok(None);
     }
 
     let default_context_window = extract_codex_top_level_u64(config_text, "model_context_window")
-        .unwrap_or(crate::proxy_core::DEFAULT_CODEX_MODEL_CONTEXT_WINDOW);
+        .unwrap_or_else(crate::proxy_core_adapter::codex_default_model_context_window);
     let template = load_codex_model_catalog_template()?;
-    Ok(crate::proxy_core::build_codex_model_catalog_from_settings(
+    Ok(crate::proxy_core_adapter::codex_model_catalog_from_settings(
         settings,
         default_context_window,
         &template,
@@ -655,8 +655,8 @@ pub fn read_codex_model_catalog_simplified_from_live() -> Result<Option<Value>, 
         return Ok(None);
     };
     let default_context_window = extract_codex_top_level_u64(&config_text, "model_context_window")
-        .unwrap_or(crate::proxy_core::DEFAULT_CODEX_MODEL_CONTEXT_WINDOW);
-    Ok(crate::proxy_core::simplify_codex_model_catalog(
+        .unwrap_or_else(crate::proxy_core_adapter::codex_default_model_context_window);
+    Ok(crate::proxy_core_adapter::simplify_codex_model_catalog(
         &catalog_text,
         default_context_window,
     ))

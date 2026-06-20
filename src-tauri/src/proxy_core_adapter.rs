@@ -207,6 +207,33 @@ pub(crate) fn claude_desktop_model_routes_to_core_response(
     )
 }
 
+pub(crate) fn codex_default_model_context_window() -> u64 {
+    crate::proxy_core::DEFAULT_CODEX_MODEL_CONTEXT_WINDOW
+}
+
+pub(crate) fn codex_settings_have_model_catalog_specs(settings: &Value) -> bool {
+    crate::proxy_core::has_codex_model_catalog_specs(settings)
+}
+
+pub(crate) fn codex_model_catalog_from_settings(
+    settings: &Value,
+    default_context_window: u64,
+    template: &Value,
+) -> Option<Value> {
+    crate::proxy_core::build_codex_model_catalog_from_settings(
+        settings,
+        default_context_window,
+        template,
+    )
+}
+
+pub(crate) fn simplify_codex_model_catalog(
+    catalog_text: &str,
+    default_context_window: u64,
+) -> Option<Value> {
+    crate::proxy_core::simplify_codex_model_catalog(catalog_text, default_context_window)
+}
+
 #[allow(dead_code)]
 pub(crate) trait ToProxyCoreModelRoute {
     fn to_proxy_core_model_route(&self) -> ModelRoute;
@@ -427,6 +454,55 @@ mod tests {
         assert!(response.data[0].supports_1m);
         assert_eq!(response.first_id.as_deref(), Some("claude-sonnet-4-6"));
         assert_eq!(response.last_id.as_deref(), Some("claude-sonnet-4-6"));
+    }
+
+    #[test]
+    fn codex_catalog_adapter_builds_and_simplifies_model_catalog() {
+        let settings = json!({
+            "modelCatalog": {
+                "models": [
+                    {
+                        "model": "kimi-k2",
+                        "displayName": "Kimi K2",
+                        "contextWindow": "64000"
+                    }
+                ]
+            }
+        });
+        let template = json!({
+            "slug": "gpt-5.5",
+            "display_name": "GPT-5.5",
+            "context_window": 272000,
+            "model_messages": {"base": "template"}
+        });
+
+        assert!(codex_settings_have_model_catalog_specs(&settings));
+        assert_eq!(codex_default_model_context_window(), 128_000);
+
+        let catalog = codex_model_catalog_from_settings(&settings, 128_000, &template)
+            .expect("catalog");
+        let models = catalog
+            .get("models")
+            .and_then(Value::as_array)
+            .expect("models");
+        assert_eq!(models[0].get("slug").and_then(Value::as_str), Some("kimi-k2"));
+        assert_eq!(
+            models[0].get("context_window").and_then(Value::as_u64),
+            Some(64_000)
+        );
+
+        let simplified = simplify_codex_model_catalog(&catalog.to_string(), 128_000)
+            .expect("simplified catalog");
+        assert_eq!(
+            simplified["models"][0].get("model").and_then(Value::as_str),
+            Some("kimi-k2")
+        );
+        assert_eq!(
+            simplified["models"][0]
+                .get("displayName")
+                .and_then(Value::as_str),
+            Some("Kimi K2")
+        );
     }
 
     #[test]
