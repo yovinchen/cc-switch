@@ -1,5 +1,8 @@
 use super::{error::ProxyError, hyper_client::ProxyResponse};
-use crate::proxy_core::{ProxyCoreResponse, ProxyTransportResponse, ProxyTransportResponseBody};
+use crate::proxy_core::{
+    ProxyCoreResponse, ProxyEventEnvelope, ProxyTransportResponse, ProxyTransportResponseBody,
+};
+use axum::response::sse::Event;
 use bytes::Bytes;
 
 pub(crate) fn proxy_core_response_to_proxy_response(
@@ -66,12 +69,23 @@ pub(crate) fn proxy_core_response_to_axum_response_with_error_message(
     })
 }
 
+pub(crate) fn proxy_event_envelope_to_axum_sse_event(event: ProxyEventEnvelope) -> Event {
+    let spec = event.to_sse_spec();
+    Event::default()
+        .id(spec.id)
+        .event(spec.event)
+        .data(spec.data)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::proxy_core::{ProxyCoreResponse, ProxyResponseBody};
+    use crate::proxy_core::{ProxyCoreResponse, ProxyEventEnvelope, ProxyResponseBody};
+    use axum::response::{IntoResponse, sse::Sse};
     use http::StatusCode;
     use http_body_util::BodyExt as _;
+    use serde_json::json;
+    use std::convert::Infallible;
 
     #[tokio::test]
     async fn proxy_core_response_bridge_preserves_stream_body() {
@@ -109,5 +123,25 @@ mod tests {
         );
         let body = response.into_body().collect().await.unwrap().to_bytes();
         assert_eq!(body, Bytes::from_static(b"ok"));
+    }
+
+    #[tokio::test]
+    async fn proxy_event_envelope_bridge_serializes_sse_fields() {
+        let event = proxy_event_envelope_to_axum_sse_event(ProxyEventEnvelope::new(
+            42,
+            "request_started",
+            "2026-06-20T00:00:00Z",
+            json!({"provider": "relay-a"}),
+        ));
+
+        let response =
+            Sse::new(futures::stream::once(async { Ok::<_, Infallible>(event) })).into_response();
+        let body = response.into_body().collect().await.unwrap().to_bytes();
+        let text = String::from_utf8(body.to_vec()).expect("sse body");
+
+        assert!(text.contains("id: 42\n"), "{text}");
+        assert!(text.contains("event: request_started\n"), "{text}");
+        assert!(text.contains("\"provider\":\"relay-a\""), "{text}");
+        assert!(text.ends_with("\n\n"), "{text}");
     }
 }

@@ -21,6 +21,7 @@ use super::{
         codex_chat_history::record_responses_sse_stream, get_adapter, get_claude_api_format,
     },
     response_adapter::{
+        proxy_event_envelope_to_axum_sse_event,
         proxy_core_response_to_axum_response, proxy_core_response_to_proxy_response,
     },
     response_processor::{
@@ -117,13 +118,13 @@ pub async fn stream_proxy_events(
     let events = state.events.clone();
 
     let stream = async_stream::stream! {
-        yield Ok(proxy_event_to_sse(events.connected_event()));
+        yield Ok(proxy_event_envelope_to_axum_sse_event(events.connected_event()));
 
         loop {
             match receiver.recv().await {
-                Ok(event) => yield Ok(proxy_event_to_sse(event)),
+                Ok(event) => yield Ok(proxy_event_envelope_to_axum_sse_event(event)),
                 Err(tokio::sync::broadcast::error::RecvError::Lagged(skipped)) => {
-                    yield Ok(proxy_event_to_sse(events.lagged_event(skipped)));
+                    yield Ok(proxy_event_envelope_to_axum_sse_event(events.lagged_event(skipped)));
                 }
                 Err(tokio::sync::broadcast::error::RecvError::Closed) => break,
             }
@@ -135,14 +136,6 @@ pub async fn stream_proxy_events(
             .interval(Duration::from_secs(15))
             .text("keep-alive"),
     )
-}
-
-fn proxy_event_to_sse(event: crate::proxy_core::ProxyEventEnvelope) -> Event {
-    let spec = event.to_sse_spec();
-    Event::default()
-        .id(spec.id)
-        .event(spec.event)
-        .data(spec.data)
 }
 
 /// Management API auth middleware.
