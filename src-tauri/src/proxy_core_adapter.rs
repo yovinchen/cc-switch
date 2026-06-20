@@ -14,7 +14,12 @@ use crate::proxy_core::api::management::{
     AppSummaryInput, ChannelReachabilityInput, ChannelReachabilityResult,
     CurrentRouteProviderSummaryInput,
 };
-use crate::proxy_core::api::routing::{RouteResolveChannelInput, RouteResolveModelInput};
+use crate::proxy_core::api::routing::{
+    route_resolve_channel_input_from_record, RouteResolveChannelInput,
+    RouteResolveChannelRecordInput, RouteResolveModelRecordInput,
+};
+#[cfg(test)]
+use crate::proxy_core::api::routing::RouteResolveModelInput;
 use crate::proxy_core::api::session::SessionIdResult;
 use crate::proxy_core::api::transforms::CodexChatErrorNormalization;
 use crate::proxy_core::api::transport::{UpstreamRequestTransportPolicy, UpstreamSendPolicy};
@@ -1210,7 +1215,7 @@ pub(crate) fn proxy_channel_route_inputs_to_core(
                 ..
             } = channel;
 
-            RouteResolveChannelInput {
+            route_resolve_channel_input_from_record(RouteResolveChannelRecordInput {
                 channel_id: id,
                 provider_id,
                 channel_name: name,
@@ -1220,7 +1225,7 @@ pub(crate) fn proxy_channel_route_inputs_to_core(
                 groups,
                 models: models
                     .into_iter()
-                    .map(|model| RouteResolveModelInput {
+                    .map(|model| RouteResolveModelRecordInput {
                         public_model: model.public_model,
                         upstream_model: model.upstream_model,
                     })
@@ -1228,7 +1233,7 @@ pub(crate) fn proxy_channel_route_inputs_to_core(
                 priority,
                 weight,
                 source_kind: source_kind.as_str().to_string(),
-            }
+            })
         })
         .collect()
 }

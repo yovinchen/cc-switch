@@ -16,6 +16,21 @@ pub struct RouteResolveModelInput {
     pub upstream_model: String,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RouteResolveModelRecordInput {
+    pub public_model: String,
+    pub upstream_model: String,
+}
+
+pub fn route_resolve_model_input_from_record(
+    input: RouteResolveModelRecordInput,
+) -> RouteResolveModelInput {
+    RouteResolveModelInput {
+        public_model: input.public_model,
+        upstream_model: input.upstream_model,
+    }
+}
+
 impl RouteResolveModelInput {
     pub fn from_model_route(model: ModelRoute) -> Self {
         Self {
@@ -38,6 +53,43 @@ pub struct RouteResolveChannelInput {
     pub priority: i64,
     pub weight: u32,
     pub source_kind: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RouteResolveChannelRecordInput {
+    pub channel_id: String,
+    pub provider_id: String,
+    pub channel_name: String,
+    pub status: String,
+    pub base_url: String,
+    pub interface_kind: String,
+    pub groups: Vec<String>,
+    pub models: Vec<RouteResolveModelRecordInput>,
+    pub priority: i64,
+    pub weight: u32,
+    pub source_kind: String,
+}
+
+pub fn route_resolve_channel_input_from_record(
+    input: RouteResolveChannelRecordInput,
+) -> RouteResolveChannelInput {
+    RouteResolveChannelInput {
+        channel_id: input.channel_id,
+        provider_id: input.provider_id,
+        channel_name: input.channel_name,
+        status: input.status,
+        base_url: input.base_url,
+        interface_kind: input.interface_kind,
+        groups: input.groups,
+        models: input
+            .models
+            .into_iter()
+            .map(route_resolve_model_input_from_record)
+            .collect(),
+        priority: input.priority,
+        weight: input.weight,
+        source_kind: input.source_kind,
+    }
 }
 
 impl RouteResolveChannelInput {
@@ -769,6 +821,36 @@ mod tests {
             response.candidates[0].upstream_model.as_deref(),
             Some("upstream-sonnet")
         );
+    }
+
+    #[test]
+    fn route_resolve_channel_record_input_builds_candidate_input() {
+        let input = route_resolve_channel_input_from_record(RouteResolveChannelRecordInput {
+            channel_id: "channel-a".to_string(),
+            provider_id: "provider-a".to_string(),
+            channel_name: "Primary".to_string(),
+            status: "enabled".to_string(),
+            base_url: "https://relay.example.com/v1".to_string(),
+            interface_kind: "openai_responses".to_string(),
+            groups: vec![DEFAULT_ROUTE_GROUP.to_string()],
+            models: vec![RouteResolveModelRecordInput {
+                public_model: "sonnet".to_string(),
+                upstream_model: "upstream-sonnet".to_string(),
+            }],
+            priority: 20,
+            weight: 80,
+            source_kind: "manual".to_string(),
+        });
+
+        assert_eq!(input.channel_id, "channel-a");
+        assert_eq!(input.provider_id, "provider-a");
+        assert_eq!(input.status, "enabled");
+        assert_eq!(input.groups, vec![DEFAULT_ROUTE_GROUP.to_string()]);
+        assert_eq!(input.models.len(), 1);
+        assert_eq!(input.models[0].public_model, "sonnet");
+        assert_eq!(input.models[0].upstream_model, "upstream-sonnet");
+        assert_eq!(input.priority, 20);
+        assert_eq!(input.source_kind, "manual");
     }
 
     #[test]
