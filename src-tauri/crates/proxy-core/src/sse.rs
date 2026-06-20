@@ -1,5 +1,5 @@
-use crate::{ProxyCoreError, ProxyCoreResult, response_transform::extract_reasoning_field_text};
-use serde_json::{Value, json};
+use crate::{response_transform::extract_reasoning_field_text, ProxyCoreError, ProxyCoreResult};
+use serde_json::{json, Value};
 use std::{collections::BTreeMap, time::Instant};
 
 #[inline]
@@ -84,6 +84,20 @@ pub struct SseDataEvent {
     pub done: bool,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SsePassthroughEventKind {
+    Done,
+    Collect,
+    Data,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct SsePassthroughEvent {
+    pub data: String,
+    pub parsed: Option<Value>,
+    pub kind: SsePassthroughEventKind,
+}
+
 #[derive(Debug, Default)]
 pub struct SseEventScanner {
     buffer: String,
@@ -124,6 +138,33 @@ impl SseEventScanner {
             }
         }
         events
+    }
+
+    pub fn push_passthrough_bytes<F>(
+        &mut self,
+        bytes: &[u8],
+        should_collect: F,
+    ) -> Vec<SsePassthroughEvent>
+    where
+        F: FnMut(&str) -> bool,
+    {
+        self.push_bytes(bytes, should_collect)
+            .into_iter()
+            .map(|event| {
+                let kind = if event.done {
+                    SsePassthroughEventKind::Done
+                } else if event.parsed.is_some() {
+                    SsePassthroughEventKind::Collect
+                } else {
+                    SsePassthroughEventKind::Data
+                };
+                SsePassthroughEvent {
+                    data: event.data,
+                    parsed: event.parsed,
+                    kind,
+                }
+            })
+            .collect()
     }
 }
 
@@ -612,10 +653,11 @@ mod tests {
     use crate::response_transform::openai_chat_to_anthropic_message;
 
     use super::{
-        SseEventScanner, SseUsageAccumulator, append_utf8_safe, chat_sse_to_response_value,
-        responses_sse_to_response_value, strip_sse_field, take_sse_block,
+        append_utf8_safe, chat_sse_to_response_value, responses_sse_to_response_value,
+        strip_sse_field, take_sse_block, SseEventScanner, SsePassthroughEventKind,
+        SseUsageAccumulator,
     };
-    use serde_json::{Value, json};
+    use serde_json::{json, Value};
     use std::time::{Duration, Instant};
 
     fn generated_id_factory() -> impl FnMut() -> String {
@@ -667,6 +709,39 @@ mod tests {
             Some("data: {\"ok\":true}".to_string())
         );
         assert_eq!(buffer, "rest");
+    }
+
+    #[test]
+    fn push_passthrough_bytes_marks_collectable_json_events() {
+        let mut scanner = SseEventScanner::new();
+
+        let events = scanner.push_passthrough_bytes(b"data: {\"usage\":true}\n\n", |_| true);
+
+        assert_eq!(events.len(), 1);
+        assert_eq!(events[0].kind, SsePassthroughEventKind::Collect);
+        assert_eq!(events[0].parsed, Some(json!({"usage": true})));
+    }
+
+    #[test]
+    fn push_passthrough_bytes_marks_non_collectable_events_as_data() {
+        let mut scanner = SseEventScanner::new();
+
+        let events = scanner.push_passthrough_bytes(b"data: {\"usage\":true}\n\n", |_| false);
+
+        assert_eq!(events.len(), 1);
+        assert_eq!(events[0].kind, SsePassthroughEventKind::Data);
+        assert!(events[0].parsed.is_none());
+    }
+
+    #[test]
+    fn push_passthrough_bytes_marks_done_events() {
+        let mut scanner = SseEventScanner::new();
+
+        let events = scanner.push_passthrough_bytes(b"data: [DONE]\n\n", |_| true);
+
+        assert_eq!(events.len(), 1);
+        assert_eq!(events[0].kind, SsePassthroughEventKind::Done);
+        assert!(events[0].parsed.is_none());
     }
 
     #[test]

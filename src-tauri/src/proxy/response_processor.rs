@@ -21,9 +21,9 @@ use crate::proxy_core::{
     non_streaming_response_usage_record_from_body_with_request_id_fallback,
     passthrough_bytes_proxy_response, passthrough_stream_proxy_response,
     response_headers_log_summary, streaming_response_usage_record_with_optional_outbound_model,
-    AppKind, ProxyServices, ResponseBodyDecodeStatus, SseEventScanner, SseUsageAccumulator,
-    StreamUsageEventFilter, StreamingTimeoutConfig, StreamingTimeoutPhase, UsageParserConfig,
-    UsageRecord,
+    AppKind, ProxyServices, ResponseBodyDecodeStatus, SseEventScanner, SsePassthroughEventKind,
+    SseUsageAccumulator, StreamUsageEventFilter, StreamingTimeoutConfig, StreamingTimeoutPhase,
+    UsageParserConfig, UsageRecord,
 };
 #[cfg(test)]
 use crate::proxy_core::{ProviderKind, TokenUsage};
@@ -517,7 +517,7 @@ pub fn create_logged_passthrough_stream(
                     }
                     is_first_chunk = false;
                     if inspect_sse_events {
-                        let events = sse_scanner.push_bytes(&bytes, |data| {
+                        let events = sse_scanner.push_passthrough_bytes(&bytes, |data| {
                             collector
                                 .as_ref()
                                 .map(|collector| collector.should_collect(data))
@@ -525,22 +525,23 @@ pub fn create_logged_passthrough_stream(
                         });
 
                         for event in events {
-                            if event.done {
-                                log::debug!("[{tag}] <<< SSE: [DONE]");
-                                continue;
-                            }
-
-                            let collected = match (&collector, event.parsed) {
-                                (Some(collector), Some(json_value)) => {
-                                    collector.push(json_value).await;
-                                    true
+                            match event.kind {
+                                SsePassthroughEventKind::Done => {
+                                    log::debug!("[{tag}] <<< SSE: [DONE]");
                                 }
-                                _ => false,
-                            };
-                            if collected {
-                                log::debug!("[{tag}] <<< SSE 事件: {}", event.data);
-                            } else {
-                                log::debug!("[{tag}] <<< SSE 数据: {}", event.data);
+                                SsePassthroughEventKind::Collect => {
+                                    if let (Some(collector), Some(json_value)) =
+                                        (&collector, event.parsed)
+                                    {
+                                        collector.push(json_value).await;
+                                        log::debug!("[{tag}] <<< SSE 事件: {}", event.data);
+                                    } else {
+                                        log::debug!("[{tag}] <<< SSE 数据: {}", event.data);
+                                    }
+                                }
+                                SsePassthroughEventKind::Data => {
+                                    log::debug!("[{tag}] <<< SSE 数据: {}", event.data);
+                                }
                             }
                         }
                     }
