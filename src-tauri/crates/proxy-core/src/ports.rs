@@ -770,6 +770,148 @@ impl ChannelTestResponse {
     }
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ChannelTestPlan {
+    Probe(ChannelTestContext),
+    Failure(ChannelTestResponse),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ChannelTestContext {
+    pub channel_id: String,
+    pub provider_id: String,
+    pub app_type: String,
+    pub channel_name: String,
+    pub base_url: String,
+    pub interface_kind: String,
+    pub model: Option<String>,
+    pub model_available: Option<bool>,
+}
+
+impl ChannelTestContext {
+    pub fn from_channel(channel: &ChannelSpec, request: &ProxyChannelTestRequest) -> Self {
+        let model = request.requested_model().map(str::to_string);
+        let model_available = model
+            .as_deref()
+            .map(|requested_model| channel_test_model_matches(channel, requested_model));
+
+        Self {
+            channel_id: channel.id.clone(),
+            provider_id: channel.provider_id.clone(),
+            app_type: channel.app.as_str().to_string(),
+            channel_name: channel.name.clone(),
+            base_url: channel.endpoint.base_url.clone(),
+            interface_kind: channel.interface.as_str().to_string(),
+            model,
+            model_available,
+        }
+    }
+
+    pub fn failure_response(
+        &self,
+        message: impl Into<String>,
+        tested_at: i64,
+    ) -> ChannelTestResponse {
+        let message = message.into();
+        ChannelTestResponse::from_input(ChannelTestInput {
+            channel_id: self.channel_id.clone(),
+            provider_id: self.provider_id.clone(),
+            app_type: self.app_type.clone(),
+            channel_name: self.channel_name.clone(),
+            base_url: self.base_url.clone(),
+            interface_kind: self.interface_kind.clone(),
+            model: self.model.clone(),
+            model_available: self.model_available,
+            success: false,
+            status: "failed".to_string(),
+            message: message.clone(),
+            latency_ms: None,
+            http_status: None,
+            tested_at,
+            retry_count: 0,
+            failure_reason: Some(message),
+        })
+    }
+
+    pub fn reachability_response(
+        &self,
+        result: ChannelReachabilityResult,
+    ) -> ChannelTestResponse {
+        let success = result.success && self.model_available != Some(false);
+        let failure_reason = (!success).then(|| result.message.clone());
+        ChannelTestResponse::from_input(ChannelTestInput {
+            channel_id: self.channel_id.clone(),
+            provider_id: self.provider_id.clone(),
+            app_type: self.app_type.clone(),
+            channel_name: self.channel_name.clone(),
+            base_url: self.base_url.clone(),
+            interface_kind: self.interface_kind.clone(),
+            model: self.model.clone(),
+            model_available: self.model_available,
+            success,
+            status: result.status,
+            message: result.message,
+            latency_ms: result.latency_ms,
+            http_status: result.http_status,
+            tested_at: result.tested_at,
+            retry_count: result.retry_count,
+            failure_reason,
+        })
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ChannelReachabilityResult {
+    pub success: bool,
+    pub status: String,
+    pub message: String,
+    pub latency_ms: Option<u64>,
+    pub http_status: Option<u16>,
+    pub tested_at: i64,
+    pub retry_count: u32,
+}
+
+pub fn plan_channel_test(
+    channel: &ChannelSpec,
+    request: &ProxyChannelTestRequest,
+    tested_at: i64,
+) -> ChannelTestPlan {
+    let context = ChannelTestContext::from_channel(channel, request);
+
+    if let Some(requested_interface) = request.requested_interface() {
+        let requested = InterfaceKind::from_storage(requested_interface);
+        let actual = context.interface_kind.as_str();
+        if requested.as_str() != actual {
+            return ChannelTestPlan::Failure(context.failure_response(
+                format!(
+                    "interface not available on channel: requested {}, actual {}",
+                    requested.as_str(),
+                    actual
+                ),
+                tested_at,
+            ));
+        }
+    }
+
+    if context.model_available == Some(false) {
+        return ChannelTestPlan::Failure(context.failure_response(
+            format!(
+                "model not mapped on channel: {}",
+                context.model.as_deref().unwrap_or_default()
+            ),
+            tested_at,
+        ));
+    }
+
+    ChannelTestPlan::Probe(context)
+}
+
+fn channel_test_model_matches(channel: &ChannelSpec, requested_model: &str) -> bool {
+    channel.models.iter().any(|model| {
+        model.public_model == requested_model || model.upstream_model == requested_model
+    })
+}
+
 fn default_channel_status() -> String {
     "enabled".to_string()
 }
@@ -1840,15 +1982,16 @@ mod tests {
         ChannelMigrationMaterializeInput, ChannelMigrationMaterializeResponse,
         ChannelMigrationPreviewInput, ChannelMigrationPreviewResponse, ChannelModelRecord,
         ChannelModelsResponse, ChannelRecord, ChannelRecordResponse, ChannelRouteCandidate,
-        ChannelRouteRejected, ChannelRouteSource, ChannelTestInput, ChannelTestResponse,
-        ClientModelCatalogResponse, CopilotOptimizerConfig, CurrentRouteProviderSummaryInput,
-        CurrentRouteResponse, CurrentRouteTarget, GlobalProxyConfig, GroupListQuery,
-        HealthCheckResponse, ModelCatalog, OptimizerConfig, ProviderHealth, ProviderListResponse,
-        ProviderSpec, ProviderSummaryInput, ProxyChannelModelWriteRequest,
-        ProxyChannelModelsReplaceRequest, ProxyChannelPatchRequest, ProxyChannelTestRequest,
-        ProxyChannelWriteRequest, ProxyConfig, ProxyCoreEvent, ProxyCoreEventType,
-        ProxyRuntimeStatus, ProxyServerInfo, ProxyStatusResponse, ProxyTakeoverStatus,
-        RectifierConfig, RouteGroupListResponse, RouteGroupSourceInput, RouteResolveResponse,
+        ChannelReachabilityResult, ChannelRouteRejected, ChannelRouteSource, ChannelTestInput,
+        ChannelTestPlan, ChannelTestResponse, ClientModelCatalogResponse,
+        CopilotOptimizerConfig, CurrentRouteProviderSummaryInput, CurrentRouteResponse,
+        CurrentRouteTarget, GlobalProxyConfig, GroupListQuery, HealthCheckResponse, ModelCatalog,
+        OptimizerConfig, ProviderHealth, ProviderListResponse, ProviderSpec,
+        ProviderSummaryInput, ProxyChannelModelWriteRequest, ProxyChannelModelsReplaceRequest,
+        ProxyChannelPatchRequest, ProxyChannelTestRequest, ProxyChannelWriteRequest, ProxyConfig,
+        ProxyCoreEvent, ProxyCoreEventType, ProxyRuntimeStatus, ProxyServerInfo,
+        ProxyStatusResponse, ProxyTakeoverStatus, RectifierConfig, RouteGroupListResponse,
+        RouteGroupSourceInput, RouteResolveResponse, plan_channel_test,
     };
     use crate::{
         AppKind, ChannelHealthPolicy, ChannelOverrides, ChannelSpec, ChannelStatus, InterfaceKind,
@@ -1885,6 +2028,27 @@ mod tests {
             needs_review: false,
             review_reasons: Vec::new(),
         }
+    }
+
+    fn channel_test_channel_spec() -> ChannelSpec {
+        let mut channel = route_group_channel_spec(
+            "channel-a",
+            AppKind::Claude,
+            vec!["default".to_string()],
+        );
+        channel.provider_id = "provider-a".to_string();
+        channel.name = "Primary".to_string();
+        channel.endpoint.base_url = "https://relay.example.com/v1".to_string();
+        channel.interface = InterfaceKind::AnthropicMessages;
+        channel.models = vec![ModelRoute {
+            public_model: "sonnet".to_string(),
+            upstream_model: "claude-sonnet".to_string(),
+            capabilities: ModelCapabilities::default(),
+            pricing_model: None,
+            request_overrides: json!({}),
+            response_overrides: json!({}),
+        }];
+        channel
     }
 
     fn app_summary_provider_spec(id: &str) -> ProviderSpec {
@@ -2103,6 +2267,82 @@ mod tests {
         assert_eq!(value["status"], "operational");
         assert_eq!(value["latencyMs"], 123);
         assert_eq!(value["httpStatus"], 401);
+    }
+
+    #[test]
+    fn channel_test_plan_rejects_unavailable_interface_before_probe() {
+        let channel = channel_test_channel_spec();
+        let request: ProxyChannelTestRequest = serde_json::from_value(json!({
+            "interfaceKind": "openai_responses"
+        }))
+        .expect("deserialize request");
+
+        let response = match plan_channel_test(&channel, &request, 1_771_000_000) {
+            ChannelTestPlan::Failure(response) => response,
+            ChannelTestPlan::Probe(_) => panic!("expected preflight failure"),
+        };
+
+        assert!(!response.success);
+        assert_eq!(response.status, "failed");
+        assert_eq!(response.interface_kind, "anthropic_messages");
+        assert!(response
+            .failure_reason
+            .as_deref()
+            .unwrap()
+            .contains("interface not available"));
+    }
+
+    #[test]
+    fn channel_test_plan_rejects_unmapped_model_before_probe() {
+        let channel = channel_test_channel_spec();
+        let request: ProxyChannelTestRequest = serde_json::from_value(json!({
+            "model": "missing-model"
+        }))
+        .expect("deserialize request");
+
+        let response = match plan_channel_test(&channel, &request, 1_771_000_000) {
+            ChannelTestPlan::Failure(response) => response,
+            ChannelTestPlan::Probe(_) => panic!("expected preflight failure"),
+        };
+
+        assert_eq!(response.model.as_deref(), Some("missing-model"));
+        assert_eq!(response.model_available, Some(false));
+        assert!(response
+            .failure_reason
+            .as_deref()
+            .unwrap()
+            .contains("model not mapped"));
+    }
+
+    #[test]
+    fn channel_test_context_wraps_reachability_result() {
+        let channel = channel_test_channel_spec();
+        let request: ProxyChannelTestRequest = serde_json::from_value(json!({
+            "model": "sonnet",
+            "interfaceKind": "anthropic_messages"
+        }))
+        .expect("deserialize request");
+
+        let context = match plan_channel_test(&channel, &request, 1_771_000_000) {
+            ChannelTestPlan::Probe(context) => context,
+            ChannelTestPlan::Failure(response) => {
+                panic!("unexpected preflight failure: {:?}", response.failure_reason)
+            }
+        };
+        let response = context.reachability_response(ChannelReachabilityResult {
+            success: true,
+            status: "operational".to_string(),
+            message: "Reachable".to_string(),
+            latency_ms: Some(23),
+            http_status: Some(401),
+            tested_at: 1_771_000_001,
+            retry_count: 1,
+        });
+
+        assert!(response.success);
+        assert_eq!(response.model_available, Some(true));
+        assert_eq!(response.latency_ms, Some(23));
+        assert_eq!(response.failure_reason, None);
     }
 
     #[test]

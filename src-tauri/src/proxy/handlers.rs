@@ -33,7 +33,6 @@ use super::{
     },
 };
 use crate::app_config::AppType;
-use crate::database::ProxyChannelRecord as HostProxyChannelRecord;
 use crate::proxy_core::{
     append_query_to_endpoint_path,
     chat_completion_to_response_with_context as build_chat_completion_response_with_context,
@@ -55,22 +54,23 @@ use crate::proxy_core::{
     AppListResponse, AppModelCatalogRequest, AppModelListQuery, ChannelCreateRequest,
     ChannelDeleteResponse, ChannelHealthResetResponse, ChannelListQuery, ChannelListRequest,
     ChannelListResponse, ChannelMigrationMaterializeResponse, ChannelMigrationPreviewResponse,
-    ChannelModelRecord, ChannelModelsResponse, ChannelPathRequest, ChannelRecord,
-    ChannelRecordResponse, ChannelRouteCandidate, ChannelRouteRejected, ChannelTestInput,
-    ChannelTestResponse, ClaudeDesktopModelListResponse, ClientModelCatalogResponse,
-    CurrentRouteResponse, CurrentRouteTarget, GroupListQuery, GroupListRequest, HealthCheckRequest,
-    HealthCheckResponse, InterfaceKind, ManagementAppPathRequest, ManagementAuthDecision,
-    ProviderListResponse, ProxyBody, ProxyChannelModelsReplaceRequest, ProxyChannelPatchRequest,
-    ProxyChannelTestRequest, ProxyChannelWriteRequest, ProxyRequest, ProxyResult,
-    ProxyRuntimeStatus, ProxyServices, ProxyStatusRequest, ProxyStatusResponse, RoutableModelList,
-    RouteGroupListResponse, RouteResolveManagementRequest, RouteResolveRequest,
-    RouteResolveResponse, TransformedResponseUsageFormat, UpstreamJsonBodySource,
-    UpstreamSseAggregationKind, CLAUDE_PARSER_CONFIG, CODEX_PARSER_CONFIG, GEMINI_PARSER_CONFIG,
-    OPENAI_PARSER_CONFIG,
+    ChannelModelRecord, ChannelModelsResponse, ChannelPathRequest, ChannelReachabilityResult,
+    ChannelRecord, ChannelRecordResponse, ChannelRouteCandidate, ChannelRouteRejected,
+    ChannelTestPlan, ChannelTestResponse, ClaudeDesktopModelListResponse,
+    ClientModelCatalogResponse, CurrentRouteResponse, CurrentRouteTarget, GroupListQuery,
+    GroupListRequest, HealthCheckRequest, HealthCheckResponse, InterfaceKind,
+    ManagementAppPathRequest, ManagementAuthDecision, ProviderListResponse, ProxyBody,
+    ProxyChannelModelsReplaceRequest, ProxyChannelPatchRequest, ProxyChannelTestRequest,
+    ProxyChannelWriteRequest, ProxyRequest, ProxyResult, ProxyRuntimeStatus, ProxyServices,
+    ProxyStatusRequest, ProxyStatusResponse, RoutableModelList, RouteGroupListResponse,
+    RouteResolveManagementRequest, RouteResolveRequest, RouteResolveResponse,
+    TransformedResponseUsageFormat, UpstreamJsonBodySource, UpstreamSseAggregationKind,
+    CLAUDE_PARSER_CONFIG, CODEX_PARSER_CONFIG, GEMINI_PARSER_CONFIG, OPENAI_PARSER_CONFIG,
+    plan_channel_test,
 };
 use crate::proxy_core_adapter::{
     proxy_app_summary_input, proxy_channel_model_records_to_core, proxy_channel_record_to_core,
-    proxy_channel_records_to_core, proxy_channel_specs_to_core,
+    proxy_channel_records_to_core, proxy_channel_specs_to_core, ToProxyCoreChannelSpec,
     proxy_current_route_provider_summary_input, proxy_providers_to_core_specs,
     synthesize_gemini_tool_call_id_with_uuid,
 };
@@ -434,43 +434,14 @@ pub async fn test_proxy_channel(
         .map_err(|e| ProxyError::DatabaseError(e.to_string()))?
         .ok_or_else(|| proxy_core_error_to_proxy_error(path_request.channel_not_found_error()))?;
 
-    let requested_model = request.requested_model().map(str::to_string);
-    let model_available = requested_model
-        .as_deref()
-        .map(|model| channel_model_matches(&channel, model));
-
-    if let Some(requested_interface) = request.requested_interface() {
-        let requested = InterfaceKind::from_storage(requested_interface);
-        let actual = InterfaceKind::from_storage(&channel.interface_kind);
-        if requested.as_str() != actual.as_str() {
-            return Ok(Json(path_request.test_response(
-                channel_test_failure_input(
-                    &channel,
-                    requested_model,
-                    model_available,
-                    format!(
-                        "interface not available on channel: requested {}, actual {}",
-                        requested.as_str(),
-                        actual.as_str()
-                    ),
-                ),
-            )));
-        }
-    }
-
-    if model_available == Some(false) {
-        return Ok(Json(path_request.test_response(
-            channel_test_failure_input(
-                &channel,
-                requested_model.clone(),
-                model_available,
-                format!(
-                    "model not mapped on channel: {}",
-                    requested_model.as_deref().unwrap_or_default()
-                ),
-            ),
-        )));
-    }
+    let channel_test_context = match plan_channel_test(
+        &channel.to_proxy_core_channel_spec(),
+        &request,
+        chrono::Utc::now().timestamp(),
+    ) {
+        ChannelTestPlan::Probe(context) => context,
+        ChannelTestPlan::Failure(response) => return Ok(Json(response)),
+    };
 
     let app_type = AppType::from_str(&channel.app_type)
         .map_err(|error| ProxyError::InvalidRequest(error.to_string()))?;
@@ -498,12 +469,11 @@ pub async fn test_proxy_channel(
     .await
     .map_err(|e| ProxyError::Internal(e.to_string()))?;
 
-    Ok(Json(path_request.test_response(channel_test_result_input(
-        &channel,
-        requested_model,
-        model_available,
-        result,
-    ))))
+    Ok(Json(
+        channel_test_context.reachability_response(channel_reachability_result_from_stream_check(
+            result,
+        )),
+    ))
 }
 
 /// GET /proxy/v1/apps/{app}/channels
@@ -663,67 +633,17 @@ pub async fn reset_proxy_channel_breaker(
     Ok(Json(response))
 }
 
-fn channel_model_matches(channel: &HostProxyChannelRecord, requested_model: &str) -> bool {
-    channel.models.iter().any(|model| {
-        model.public_model == requested_model || model.upstream_model == requested_model
-    })
-}
-
-fn channel_test_failure_input(
-    channel: &HostProxyChannelRecord,
-    requested_model: Option<String>,
-    model_available: Option<bool>,
-    message: String,
-) -> ChannelTestInput {
-    ChannelTestInput {
-        channel_id: channel.id.clone(),
-        provider_id: channel.provider_id.clone(),
-        app_type: channel.app_type.clone(),
-        channel_name: channel.name.clone(),
-        base_url: channel.base_url.clone(),
-        interface_kind: InterfaceKind::from_storage(&channel.interface_kind)
-            .as_str()
-            .to_string(),
-        model: requested_model,
-        model_available,
-        success: false,
-        status: "failed".to_string(),
-        message: message.clone(),
-        latency_ms: None,
-        http_status: None,
-        tested_at: chrono::Utc::now().timestamp(),
-        retry_count: 0,
-        failure_reason: Some(message),
-    }
-}
-
-fn channel_test_result_input(
-    channel: &HostProxyChannelRecord,
-    requested_model: Option<String>,
-    model_available: Option<bool>,
+fn channel_reachability_result_from_stream_check(
     result: StreamCheckResult,
-) -> ChannelTestInput {
-    let success = result.success && model_available != Some(false);
-    let failure_reason = (!success).then(|| result.message.clone());
-    ChannelTestInput {
-        channel_id: channel.id.clone(),
-        provider_id: channel.provider_id.clone(),
-        app_type: channel.app_type.clone(),
-        channel_name: channel.name.clone(),
-        base_url: channel.base_url.clone(),
-        interface_kind: InterfaceKind::from_storage(&channel.interface_kind)
-            .as_str()
-            .to_string(),
-        model: requested_model,
-        model_available,
-        success,
+) -> ChannelReachabilityResult {
+    ChannelReachabilityResult {
+        success: result.success,
         status: health_status_as_str(&result.status).to_string(),
         message: result.message,
         latency_ms: result.response_time_ms,
         http_status: result.http_status,
         tested_at: result.tested_at,
         retry_count: result.retry_count,
-        failure_reason,
     }
 }
 
