@@ -1579,7 +1579,7 @@ pub(crate) fn success_usage_record_with_request_id_fallback(
     session_id: Option<String>,
     request_id_fallback: impl FnOnce() -> String,
 ) -> UsageRecord {
-    crate::proxy_core::success_usage_record_with_request_id_fallback(
+    crate::proxy_core::api::usage::success_usage_record_with_request_id_fallback(
         provider_id,
         provider_kind,
         app,
@@ -1610,7 +1610,7 @@ pub(crate) fn error_usage_record_with_request_id_fallback(
     session_id: Option<String>,
     request_id_fallback: impl FnOnce() -> String,
 ) -> UsageRecord {
-    crate::proxy_core::error_usage_record_with_request_id_fallback(
+    crate::proxy_core::api::usage::error_usage_record_with_request_id_fallback(
         provider_id,
         provider_kind,
         app,
@@ -1639,7 +1639,7 @@ pub(crate) fn transformed_response_usage_record_with_request_id_fallback(
     session_id: Option<String>,
     request_id_fallback: impl FnOnce() -> String,
 ) -> Option<UsageRecord> {
-    crate::proxy_core::transformed_response_usage_record_with_request_id_fallback(
+    crate::proxy_core::api::usage::transformed_response_usage_record_with_request_id_fallback(
         body,
         format,
         provider_id,
@@ -1669,7 +1669,7 @@ pub(crate) fn transformed_streaming_response_usage_record_with_request_id_fallba
     session_id: Option<String>,
     request_id_fallback: impl FnOnce() -> String,
 ) -> Option<UsageRecord> {
-    crate::proxy_core::transformed_streaming_response_usage_record_with_request_id_fallback(
+    crate::proxy_core::api::usage::transformed_streaming_response_usage_record_with_request_id_fallback(
         events,
         format,
         provider_id,
@@ -1701,7 +1701,7 @@ pub(crate) fn streaming_response_usage_record_with_optional_outbound_model(
     session_id: Option<String>,
     request_id_fallback: impl FnOnce() -> String,
 ) -> StreamingResponseUsageRecord {
-    crate::proxy_core::streaming_response_usage_record_with_optional_outbound_model(
+    crate::proxy_core::api::usage::streaming_response_usage_record_with_optional_outbound_model(
         events,
         stream_parser,
         model_extractor,
@@ -1732,7 +1732,7 @@ pub(crate) fn non_streaming_response_usage_record_from_body_with_request_id_fall
     session_id: Option<String>,
     request_id_fallback: impl FnOnce() -> String,
 ) -> NonStreamingResponseUsageRecord {
-    crate::proxy_core::non_streaming_response_usage_record_from_body_with_request_id_fallback(
+    crate::proxy_core::api::usage::non_streaming_response_usage_record_from_body_with_request_id_fallback(
         body,
         response_parser,
         provider_id,
@@ -1751,7 +1751,7 @@ pub(crate) fn usage_record_pricing_model(
     record: &UsageRecord,
     pricing_model_source: &str,
 ) -> String {
-    crate::proxy_core::resolve_usage_record_pricing_models(record, pricing_model_source)
+    crate::proxy_core::api::usage::resolve_usage_record_pricing_models(record, pricing_model_source)
         .pricing_model
 }
 
@@ -1764,8 +1764,11 @@ pub(crate) fn usage_record_to_request_log(
 ) -> UsageRequestLogProjection {
     let app_type = record.app.as_str().to_string();
     let model_selection =
-        crate::proxy_core::resolve_usage_record_pricing_models(record, pricing_model_source);
-    let usage = crate::proxy_core::token_usage_from_usage_record(record);
+        crate::proxy_core::api::usage::resolve_usage_record_pricing_models(
+            record,
+            pricing_model_source,
+        );
+    let usage = crate::proxy_core::api::usage::token_usage_from_usage_record(record);
     let missing_pricing_model = (pricing.is_none()
         && record.tokens.has_billable_tokens()
         && !is_placeholder_pricing_model(&model_selection.pricing_model))
@@ -1774,7 +1777,7 @@ pub(crate) fn usage_record_to_request_log(
 
     UsageRequestLogProjection {
         log: RequestLog {
-            request_id: crate::proxy_core::usage_record_request_id_with_fallback(
+            request_id: crate::proxy_core::api::usage::usage_record_request_id_with_fallback(
                 record,
                 fallback_request_id,
             ),
@@ -1809,14 +1812,16 @@ pub(crate) fn claude_takeover_client_model_for_upstream(
     upstream_model: &str,
 ) -> String {
     let mut client_model = takeover_model.to_string();
-    if supports_one_m && crate::proxy_core::has_one_m_suffix_for_upstream(upstream_model) {
+    if supports_one_m
+        && crate::proxy_core::api::model_catalog::has_one_m_suffix_for_upstream(upstream_model)
+    {
         client_model.push_str(CLAUDE_ONE_M_MARKER_FOR_CLIENT);
     }
     client_model
 }
 
 pub(crate) fn claude_takeover_default_display_name(upstream_model: &str) -> String {
-    crate::proxy_core::strip_one_m_suffix_for_upstream(upstream_model)
+    crate::proxy_core::api::model_catalog::strip_one_m_suffix_for_upstream(upstream_model)
         .trim()
         .to_string()
 }
