@@ -30,7 +30,7 @@ use super::{
     },
 };
 use crate::app_config::AppType;
-use crate::proxy_core::{
+use crate::proxy_core_adapter::{
     append_query_to_endpoint_path, AppChannelListSource, AppChannelManagementPlan,
     chat_completion_to_response_with_context as build_chat_completion_response_with_context,
     claude_stream_usage_event_filter, claude_transform_unlabeled_sse_aggregation,
@@ -56,7 +56,7 @@ use crate::proxy_core::{
     ChannelRecordResponse, ChannelRecordSource, ChannelRouteCandidate, ChannelRouteRejected,
     ChannelTestPlan, ChannelTestResponse, ClaudeDesktopModelListResponse,
     ClientModelCatalogResponse, CurrentRouteResponse, CurrentRouteSource, CurrentRouteTarget,
-    GroupListChannelSource, GroupListQuery, GroupListRequest, HealthCheckRequest,
+    CodexToolContext, GroupListChannelSource, GroupListQuery, GroupListRequest, HealthCheckRequest,
     HealthCheckResponse, HealthCheckSource, InterfaceKind, ManagementAppPathRequest,
     ManagementAuthDecision, ProviderListResponse, ProviderListSource, ProxyBody,
     ProxyChannelModelsReplaceRequest, ProxyChannelPatchRequest, ProxyChannelTestRequest,
@@ -1176,7 +1176,7 @@ async fn handle_codex_chat_to_responses_transform(
     state: &ProxyState,
     is_stream: bool,
     connection_guard: Option<ActiveConnectionGuard>,
-    tool_context: crate::proxy_core::CodexToolContext,
+    tool_context: CodexToolContext,
 ) -> Result<axum::response::Response, ProxyError> {
     let status = response.status();
 

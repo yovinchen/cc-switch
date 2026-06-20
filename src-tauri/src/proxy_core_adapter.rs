@@ -5,14 +5,12 @@ use crate::provider::{Provider, ProviderMeta};
 use crate::proxy::providers::provider_kind_from_app_type_and_config;
 use crate::proxy::usage::RequestLog;
 use crate::proxy_core::{
-    AppKind, AppSummaryInput, AuthProfileRef, ChannelHealthPolicy, ChannelModelRecord,
-    ChannelOverrides, ChannelReachabilityInput, ChannelReachabilityResult,
-    ChannelReachabilityStatus, ChannelRecord, ChannelSpec, ChannelStatus,
-    ClaudeDesktopModelRouteInput, CodexChatErrorNormalization, CodexToolContext,
-    CurrentRouteProviderSummaryInput, InterfaceKind, ModelCapabilities,
-    ModelCatalog, ModelRoute, ProviderMetadata, ProviderSpec, RetryPolicy,
-    RouteResolveChannelInput, RouteResolveModelInput, SessionIdResult, UpstreamEndpoint,
-    UpstreamRequestHeadersInput,
+    AppSummaryInput, AuthProfileRef, ChannelHealthPolicy, ChannelOverrides,
+    ChannelReachabilityInput, ChannelReachabilityResult, ChannelReachabilityStatus,
+    ChannelSpec, ChannelStatus, ClaudeDesktopModelRouteInput, CodexChatErrorNormalization,
+    CurrentRouteProviderSummaryInput, ModelCapabilities, ModelCatalog, ModelRoute,
+    ProviderMetadata, ProviderSpec, RetryPolicy, RouteResolveChannelInput,
+    RouteResolveModelInput, SessionIdResult, UpstreamEndpoint, UpstreamRequestHeadersInput,
     UpstreamRequestTransportPolicy, UpstreamSendPolicy, UpstreamSendPolicyInput,
     DEFAULT_ROUTE_GROUP,
 };
@@ -198,6 +196,7 @@ pub(crate) type CodexChatReasoningOptions =
     crate::proxy_core::CodexChatReasoningOptions;
 pub(crate) type CodexChatReasoningProfile =
     crate::proxy_core::CodexChatReasoningProfile;
+pub(crate) type CodexToolContext = crate::proxy_core::CodexToolContext;
 #[cfg(test)]
 pub(crate) type ProxyResponseBody = crate::proxy_core::ProxyResponseBody;
 pub(crate) type ProxyTransportResponse = crate::proxy_core::ProxyTransportResponse;
@@ -295,6 +294,9 @@ pub(crate) type ProxyCoreUpstreamEndpoint = crate::proxy_core::UpstreamEndpoint;
 pub(crate) type ChannelRequestValidationError =
     crate::proxy_core::ChannelRequestValidationError;
 pub(crate) type ChannelRouteSource = crate::proxy_core::ChannelRouteSource;
+pub(crate) type ChannelRecord = crate::proxy_core::ChannelRecord;
+pub(crate) type ChannelModelRecord = crate::proxy_core::ChannelModelRecord;
+pub(crate) type InterfaceKind = crate::proxy_core::InterfaceKind;
 pub(crate) type LegacyChannelModelProjection =
     crate::proxy_core::LegacyChannelModelProjection;
 pub(crate) type LegacyChannelProjection = crate::proxy_core::LegacyChannelProjection;
@@ -312,6 +314,7 @@ pub(crate) type ProviderSelectionCandidate =
 pub(crate) type ProviderSelectionFailure = crate::proxy_core::ProviderSelectionFailure;
 pub(crate) type ProviderSelectionInput = crate::proxy_core::ProviderSelectionInput;
 pub(crate) type ProxyCoreError = crate::proxy_core::ProxyCoreError;
+pub(crate) type AppKind = crate::proxy_core::AppKind;
 pub(crate) type RouteResolveRequest = crate::proxy_core::RouteResolveRequest;
 pub(crate) type RouteResolveResponse = crate::proxy_core::RouteResolveResponse;
 pub(crate) type ChannelRouteCandidate = crate::proxy_core::ChannelRouteCandidate;
@@ -324,6 +327,36 @@ pub(crate) type CodexProxyErrorKind = crate::proxy_core::CodexProxyErrorKind;
 pub(crate) type ForwardFailureKind = crate::proxy_core::ForwardFailureKind;
 pub(crate) type ManagementAuthError = crate::proxy_core::ManagementAuthError;
 pub(crate) use crate::proxy_core::ProxyServices;
+pub(crate) use crate::proxy_core::{
+    append_query_to_endpoint_path, chat_completion_to_response_with_context,
+    claude_stream_usage_event_filter, claude_transform_unlabeled_sse_aggregation,
+    codex_stream_usage_event_filter, create_codex_chat_to_responses_sse_stream_with_context,
+    create_gemini_to_anthropic_sse_stream_with_callbacks,
+    create_openai_chat_to_anthropic_sse_stream,
+    create_openai_responses_to_anthropic_sse_stream, extract_anthropic_tool_schema_hints,
+    gemini_response_to_anthropic_message_with_shadow, parse_upstream_json_or_unlabeled_sse,
+    plan_channel_test, rebuilt_json_proxy_response, resolve_management_auth_decision,
+    should_aggregate_codex_oauth_responses_sse, should_use_claude_transform_streaming,
+    strip_endpoint_prefix, transformed_sse_proxy_response, validate_management_bearer_header,
+    AppChannelListQuery, AppChannelListSource, AppChannelManagementPlan,
+    AppChannelManagementRequest, AppChannelResponse, AppListRequest, AppListResponse,
+    AppListSource, AppModelCatalogRequest, AppModelListQuery, ChannelCreateRequest,
+    ChannelCreateSource, ChannelDeleteResponse, ChannelDeleteSource,
+    ChannelHealthResetResponse, ChannelHealthResetSource, ChannelListPlan, ChannelListQuery,
+    ChannelListRequest, ChannelListResponse, ChannelListSource,
+    ChannelMigrationMaterializeResponse, ChannelMigrationMaterializeSource,
+    ChannelMigrationPreviewResponse, ChannelMigrationPreviewSource, ChannelModelsResponse,
+    ChannelModelsSource, ChannelPathRequest, ChannelRecordResponse, ChannelRecordSource,
+    ChannelRouteRejected, ChannelTestPlan, ChannelTestResponse, ClientModelCatalogResponse,
+    CurrentRouteResponse, CurrentRouteSource, GroupListChannelSource, GroupListQuery,
+    GroupListRequest, HealthCheckRequest, HealthCheckResponse, HealthCheckSource,
+    ManagementAppPathRequest, ManagementAuthDecision, ProviderListResponse, ProviderListSource,
+    ProxyBody, ProxyChannelModelsReplaceRequest, ProxyChannelTestRequest, ProxyRequest,
+    ProxyStatusRequest, ProxyStatusResponse, ProxyStatusSource, RoutableModelList,
+    RouteGroupListResponse, RouteResolveManagementRequest, UnlabeledSseFallbackLogContext,
+    UnlabeledSseFallbackLogLevel, UpstreamSseAggregationKind, CLAUDE_PARSER_CONFIG,
+    CODEX_PARSER_CONFIG, GEMINI_PARSER_CONFIG, OPENAI_PARSER_CONFIG,
+};
 
 pub(crate) const SESSION_REQUEST_ID_PREFIX: &str =
     crate::proxy_core::SESSION_REQUEST_ID_PREFIX;
