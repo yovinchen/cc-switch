@@ -551,15 +551,17 @@ pub fn route_selection_from_parts(
     }
 }
 
-pub fn route_plan_provider_ids(plan: &RoutePlan) -> Vec<String> {
-    let selections = if plan.selections.is_empty() {
+pub fn route_plan_selections(plan: &RoutePlan) -> &[RouteSelection] {
+    if plan.selections.is_empty() {
         std::slice::from_ref(&plan.selection)
     } else {
         plan.selections.as_slice()
-    };
+    }
+}
 
+pub fn route_plan_provider_ids(plan: &RoutePlan) -> Vec<String> {
     let mut provider_ids = Vec::new();
-    for selection in selections {
+    for selection in route_plan_selections(plan) {
         let provider_id = &selection.channel.provider_id;
         if !provider_ids.iter().any(|id| id == provider_id) {
             provider_ids.push(provider_id.clone());
@@ -573,14 +575,8 @@ pub fn select_route_for_forward_result(
     selected_channel_id: Option<&str>,
     provider_id: &str,
 ) -> RouteSelection {
-    let selections = if plan.selections.is_empty() {
-        std::slice::from_ref(&plan.selection)
-    } else {
-        plan.selections.as_slice()
-    };
-
     if let Some(channel_id) = selected_channel_id {
-        if let Some(selection) = selections
+        if let Some(selection) = route_plan_selections(plan)
             .iter()
             .find(|selection| selection.channel.id == channel_id)
         {
@@ -588,7 +584,7 @@ pub fn select_route_for_forward_result(
         }
     }
 
-    selections
+    route_plan_selections(plan)
         .iter()
         .find(|selection| {
             selection.provider.id == provider_id || selection.channel.provider_id == provider_id
@@ -1283,6 +1279,8 @@ mod tests {
             attempts: Vec::new(),
         };
 
+        assert_eq!(route_plan_selections(&plan).len(), 1);
+        assert_eq!(route_plan_selections(&plan)[0].channel.id, "channel-a");
         assert_eq!(route_plan_provider_ids(&plan), vec!["provider-a"]);
     }
 

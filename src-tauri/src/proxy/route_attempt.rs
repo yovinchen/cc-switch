@@ -8,6 +8,7 @@ use crate::provider::Provider;
 use crate::proxy_core_adapter::{
     apply_channel_provider_overrides, apply_channel_route_model_override,
     channel_route_candidate_from_selection, resolved_channel_attempt_from_selection,
+    route_plan_selections,
     ResolvedChannelAttempt, RoutePlan, RouteSelection,
 };
 use serde_json::Value;
@@ -95,13 +96,7 @@ pub(crate) fn forward_attempts_from_route_plan(
         .map(|provider| (provider.id.as_str(), provider))
         .collect();
 
-    let selections = if plan.selections.is_empty() {
-        std::slice::from_ref(&plan.selection)
-    } else {
-        plan.selections.as_slice()
-    };
-
-    selections
+    route_plan_selections(plan)
         .iter()
         .filter_map(|selection| {
             providers_by_id

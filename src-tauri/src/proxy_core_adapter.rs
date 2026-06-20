@@ -1273,6 +1273,10 @@ pub(crate) fn route_plan_provider_ids(plan: &RoutePlan) -> Vec<String> {
     crate::proxy_core::api::routing::route_plan_provider_ids(plan)
 }
 
+pub(crate) fn route_plan_selections(plan: &RoutePlan) -> &[RouteSelection] {
+    crate::proxy_core::api::routing::route_plan_selections(plan)
+}
+
 pub(crate) fn route_selection_for_forward_result(
     plan: &RoutePlan,
     selected_channel_id: Option<&str>,
