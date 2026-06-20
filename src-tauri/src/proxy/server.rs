@@ -804,6 +804,19 @@ mod tests {
     #[tokio::test]
     async fn proxy_server_runtime_smoke_exposes_versioned_management_api() {
         let db = Arc::new(Database::memory().expect("memory db"));
+        let provider = Provider::with_id(
+            "runtime-provider".to_string(),
+            "Runtime Provider".to_string(),
+            json!({
+                "env": {
+                    "ANTHROPIC_BASE_URL": "https://runtime.example.com/v1",
+                    "ANTHROPIC_API_KEY": "provider-secret"
+                }
+            }),
+            None,
+        );
+        db.save_provider("claude", &provider).unwrap();
+
         let config = ProxyConfig {
             listen_address: "127.0.0.1".to_string(),
             listen_port: 0,
@@ -857,6 +870,118 @@ mod tests {
             }
             if status["port"].as_u64() != Some(u64::from(info.port)) {
                 return Err(format!("status did not report actual port: {status}"));
+            }
+
+            let create_response = client
+                .post(format!("{base_url}/proxy/v1/channels"))
+                .json(&json!({
+                    "providerId": "runtime-provider",
+                    "appType": "claude",
+                    "name": "Runtime Relay",
+                    "baseUrl": "https://runtime-relay.example.com/v1",
+                    "interfaceKind": "openai_responses",
+                    "authProfileRef": "channel-key:primary",
+                    "models": [{
+                        "publicModel": "runtime-public",
+                        "upstreamModel": "runtime-upstream"
+                    }]
+                }))
+                .send()
+                .await
+                .map_err(|error| error.to_string())?;
+            if create_response.status() != StatusCode::OK {
+                return Err(format!(
+                    "unexpected create channel status: {}",
+                    create_response.status()
+                ));
+            }
+            let created = create_response
+                .json::<Value>()
+                .await
+                .map_err(|error| error.to_string())?;
+            let channel_id = created["id"]
+                .as_str()
+                .ok_or_else(|| format!("created channel missing id: {created}"))?;
+            if created["authProfileRef"] != "channel-key:primary" {
+                return Err(format!("unexpected created channel body: {created}"));
+            }
+
+            let upsert_key_response = client
+                .put(format!("{base_url}/proxy/v1/channels/{channel_id}/keys/primary"))
+                .json(&json!({
+                    "keyValue": "sk-runtime-channel",
+                    "status": "enabled",
+                    "priority": 50,
+                    "weight": 60
+                }))
+                .send()
+                .await
+                .map_err(|error| error.to_string())?;
+            if upsert_key_response.status() != StatusCode::OK {
+                return Err(format!(
+                    "unexpected upsert key status: {}",
+                    upsert_key_response.status()
+                ));
+            }
+            let upserted_key = upsert_key_response
+                .json::<Value>()
+                .await
+                .map_err(|error| error.to_string())?;
+            if upserted_key["keyRef"] != "primary"
+                || upserted_key["priority"] != 50
+                || upserted_key["weight"] != 60
+                || upserted_key.get("keyValue").is_some()
+                || upserted_key.to_string().contains("sk-runtime-channel")
+            {
+                return Err(format!("unexpected upsert key body: {upserted_key}"));
+            }
+
+            let list_keys_response = client
+                .get(format!("{base_url}/proxy/v1/channels/{channel_id}/keys"))
+                .send()
+                .await
+                .map_err(|error| error.to_string())?;
+            if list_keys_response.status() != StatusCode::OK {
+                return Err(format!(
+                    "unexpected list keys status: {}",
+                    list_keys_response.status()
+                ));
+            }
+            let keys = list_keys_response
+                .json::<Value>()
+                .await
+                .map_err(|error| error.to_string())?;
+            if keys["keys"].as_array().map(Vec::len) != Some(1)
+                || keys["keys"][0]["keyRef"] != "primary"
+                || keys.to_string().contains("sk-runtime-channel")
+            {
+                return Err(format!("unexpected list keys body: {keys}"));
+            }
+
+            let patch_key_response = client
+                .patch(format!("{base_url}/proxy/v1/channels/{channel_id}/keys/primary"))
+                .json(&json!({
+                    "status": "disabled",
+                    "weight": 10
+                }))
+                .send()
+                .await
+                .map_err(|error| error.to_string())?;
+            if patch_key_response.status() != StatusCode::OK {
+                return Err(format!(
+                    "unexpected patch key status: {}",
+                    patch_key_response.status()
+                ));
+            }
+            let patched_key = patch_key_response
+                .json::<Value>()
+                .await
+                .map_err(|error| error.to_string())?;
+            if patched_key["status"] != "disabled"
+                || patched_key["weight"] != 10
+                || patched_key.to_string().contains("sk-runtime-channel")
+            {
+                return Err(format!("unexpected patch key body: {patched_key}"));
             }
 
             Ok::<(), String>(())
