@@ -904,6 +904,7 @@ async fn handle_claude_transform(
             let status_code = status.as_u16();
             let start_time = ctx.start_time;
             let session_id = ctx.session_id.clone();
+            let usage_format = TransformedResponseUsageFormat::Claude;
             // 用 ctx 的 app_type：Claude Desktop 网关也走此转换路径，硬编码
             // "claude" 会把 claude-desktop 的行错记到 claude 名下
             let app_type_str = ctx.app_type_str;
@@ -916,7 +917,7 @@ async fn handle_claude_transform(
                     let Some(record) =
                         transformed_streaming_response_usage_record_with_request_id_fallback(
                             &events,
-                            TransformedResponseUsageFormat::Claude,
+                            usage_format,
                             &provider_id,
                             provider_kind.clone(),
                             AppKind::from(app_type_str),
@@ -929,7 +930,7 @@ async fn handle_claude_transform(
                             || uuid::Uuid::new_v4().to_string(),
                         )
                     else {
-                        log::debug!("[Claude] OpenRouter 流式响应缺少 usage 统计，跳过消费记录");
+                        log::debug!("{}", usage_format.missing_streaming_usage_log_message());
                         return;
                     };
 
@@ -1311,6 +1312,7 @@ async fn handle_codex_chat_to_responses_transform(
             let start_time = ctx.start_time;
             let session_id = ctx.session_id.clone();
             let status_code = status.as_u16();
+            let usage_format = TransformedResponseUsageFormat::CodexAuto;
 
             Some(SseUsageCollector::new(
                 start_time,
@@ -1320,7 +1322,7 @@ async fn handle_codex_chat_to_responses_transform(
                     let Some(record) =
                         transformed_streaming_response_usage_record_with_request_id_fallback(
                             &events,
-                            TransformedResponseUsageFormat::CodexAuto,
+                            usage_format,
                             &provider_id,
                             provider_kind.clone(),
                             AppKind::from(app_type_str),
@@ -1333,7 +1335,7 @@ async fn handle_codex_chat_to_responses_transform(
                             || uuid::Uuid::new_v4().to_string(),
                         )
                     else {
-                        log::debug!("[Codex] 流式响应 usage 全 0 或缺失，跳过消费记录");
+                        log::debug!("{}", usage_format.missing_streaming_usage_log_message());
                         return;
                     };
 

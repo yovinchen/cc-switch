@@ -737,6 +737,15 @@ pub enum TransformedResponseUsageFormat {
     CodexAuto,
 }
 
+impl TransformedResponseUsageFormat {
+    pub fn missing_streaming_usage_log_message(self) -> &'static str {
+        match self {
+            Self::Claude => "[Claude] OpenRouter 流式响应缺少 usage 统计，跳过消费记录",
+            Self::CodexAuto => "[Codex] 流式响应 usage 全 0 或缺失，跳过消费记录",
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct TransformedResponseUsage {
     pub usage: TokenUsage,
@@ -2556,6 +2565,18 @@ mod tests {
         );
 
         assert!(record.is_none());
+    }
+
+    #[test]
+    fn transformed_response_usage_format_reports_missing_streaming_usage_message() {
+        assert_eq!(
+            TransformedResponseUsageFormat::Claude.missing_streaming_usage_log_message(),
+            "[Claude] OpenRouter 流式响应缺少 usage 统计，跳过消费记录"
+        );
+        assert_eq!(
+            TransformedResponseUsageFormat::CodexAuto.missing_streaming_usage_log_message(),
+            "[Codex] 流式响应 usage 全 0 或缺失，跳过消费记录"
+        );
     }
 
     #[test]
