@@ -967,6 +967,64 @@ mod tests {
                 return Err(format!("unexpected created channel body: {created}"));
             }
 
+            let app_channels_response = client
+                .get(format!("{base_url}/proxy/v1/apps/claude/channels"))
+                .send()
+                .await
+                .map_err(|error| error.to_string())?;
+            if app_channels_response.status() != StatusCode::OK {
+                return Err(format!(
+                    "unexpected app channels status: {}",
+                    app_channels_response.status()
+                ));
+            }
+            let app_channels = app_channels_response
+                .json::<Value>()
+                .await
+                .map_err(|error| error.to_string())?;
+            if app_channels["source"] != "materialized_channels"
+                || app_channels["channels"].as_array().map(Vec::len) != Some(1)
+                || app_channels["channels"][0]["id"] != channel_id
+                || app_channels["channels"][0]["models"].as_array().map(Vec::len) != Some(1)
+                || app_channels["channels"][0]["models"][0]["publicModel"] != "runtime-public"
+                || app_channels.get("rejected").is_some()
+            {
+                return Err(format!("unexpected app channels body: {app_channels}"));
+            }
+
+            let filtered_channels_response = client
+                .get(format!(
+                    "{base_url}/proxy/v1/apps/claude/channels?requestedModel=runtime-public&interfaceKind=anthropic_messages"
+                ))
+                .send()
+                .await
+                .map_err(|error| error.to_string())?;
+            if filtered_channels_response.status() != StatusCode::OK {
+                return Err(format!(
+                    "unexpected filtered channels status: {}",
+                    filtered_channels_response.status()
+                ));
+            }
+            let filtered_channels = filtered_channels_response
+                .json::<Value>()
+                .await
+                .map_err(|error| error.to_string())?;
+            if filtered_channels["requestedModel"] != "runtime-public"
+                || filtered_channels["interfaceKind"] != "anthropic_messages"
+                || filtered_channels["routeGroup"] != "default"
+                || filtered_channels["source"] != "materialized_channels"
+                || filtered_channels["channels"].as_array().map(Vec::len) != Some(1)
+                || filtered_channels["channels"][0]["channelId"] != channel_id
+                || filtered_channels["channels"][0]["upstreamModel"] != "runtime-upstream"
+                || !filtered_channels["rejected"]
+                    .as_array()
+                    .is_some_and(Vec::is_empty)
+            {
+                return Err(format!(
+                    "unexpected filtered channels body: {filtered_channels}"
+                ));
+            }
+
             let groups_response = client
                 .get(format!("{base_url}/proxy/v1/groups?appType=claude"))
                 .send()
