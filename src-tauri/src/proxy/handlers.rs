@@ -47,8 +47,9 @@ use crate::proxy_core::{
     strip_endpoint_prefix, transformed_sse_proxy_response, validate_management_bearer_header,
     AppChannelListQuery, AppChannelManagementRequest, AppChannelResponse, AppKind, AppListRequest,
     AppListResponse, AppModelCatalogRequest, AppModelListQuery, ChannelCreateRequest,
-    ChannelDeleteResponse, ChannelHealthResetResponse, ChannelListQuery, ChannelListRequest,
-    ChannelListResponse, ChannelMigrationMaterializeResponse, ChannelMigrationPreviewResponse,
+    ChannelDeleteResponse, ChannelHealthResetResponse, ChannelListPlan, ChannelListQuery,
+    ChannelListRequest, ChannelListResponse, ChannelListSource,
+    ChannelMigrationMaterializeResponse, ChannelMigrationPreviewResponse,
     ChannelMigrationMaterializeSource, ChannelMigrationPreviewSource, ChannelModelRecord,
     ChannelModelsResponse, ChannelPathRequest, ChannelRecord, ChannelRecordResponse,
     ChannelRouteCandidate, ChannelRouteRejected, ChannelTestPlan, ChannelTestResponse,
@@ -273,21 +274,20 @@ pub async fn list_all_proxy_channels(
 ) -> Result<Json<ChannelListResponse<ChannelRecord>>, ProxyError> {
     let request =
         ChannelListRequest::from_query(query).map_err(management_api_error_to_proxy_error)?;
-    let channels = if let Some(app_type) = request.app_type() {
-        state
+    let channels = match request.plan() {
+        ChannelListPlan::App { app_type } => state
             .db
-            .list_proxy_channels_for_app(app_type)
-            .map_err(|e| ProxyError::DatabaseError(e.to_string()))?
-    } else {
-        state
+            .list_proxy_channels_for_app(&app_type)
+            .map_err(|e| ProxyError::DatabaseError(e.to_string()))?,
+        ChannelListPlan::All => state
             .db
             .list_all_proxy_channels()
-            .map_err(|e| ProxyError::DatabaseError(e.to_string()))?
+            .map_err(|e| ProxyError::DatabaseError(e.to_string()))?,
     };
 
-    Ok(Json(
-        request.response(proxy_channel_records_to_core(channels)),
-    ))
+    Ok(Json(request.response_from_source(ChannelListSource::new(
+        proxy_channel_records_to_core(channels),
+    ))))
 }
 
 /// POST /proxy/v1/channels

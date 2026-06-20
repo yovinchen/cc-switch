@@ -489,6 +489,23 @@ pub struct ChannelListRequest {
     pub app_type: Option<String>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ChannelListPlan {
+    App { app_type: String },
+    All,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ChannelListSource<T> {
+    pub channels: Vec<T>,
+}
+
+impl<T> ChannelListSource<T> {
+    pub fn new(channels: Vec<T>) -> Self {
+        Self { channels }
+    }
+}
+
 impl ChannelListRequest {
     pub fn from_query(query: ChannelListQuery) -> ProxyCoreResult<Self> {
         Ok(Self {
@@ -500,8 +517,21 @@ impl ChannelListRequest {
         self.app_type.as_deref()
     }
 
+    pub fn plan(&self) -> ChannelListPlan {
+        match &self.app_type {
+            Some(app_type) => ChannelListPlan::App {
+                app_type: app_type.clone(),
+            },
+            None => ChannelListPlan::All,
+        }
+    }
+
     pub fn response<T>(&self, channels: Vec<T>) -> ChannelListResponse<T> {
         ChannelListResponse::new(channels)
+    }
+
+    pub fn response_from_source<T>(&self, source: ChannelListSource<T>) -> ChannelListResponse<T> {
+        self.response(source.channels)
     }
 }
 
@@ -594,10 +624,11 @@ fn normalize_optional_management_app_type(app_type: Option<String>) -> ProxyCore
 mod tests {
     use super::{
         AppChannelListSource, AppChannelManagementPlan, AppChannelManagementRequest,
-        AppListRequest, AppModelCatalogRequest, ChannelListRequest, ChannelCreateRequest,
-        ChannelMigrationMaterializeSource, ChannelMigrationPreviewSource, ChannelPathRequest,
-        CurrentRouteSource, GroupListChannelSource, GroupListRequest, HealthCheckRequest,
-        ManagementAppPathRequest, ProviderListSource, ProxyStatusRequest,
+        AppListRequest, AppModelCatalogRequest, ChannelCreateRequest, ChannelListPlan,
+        ChannelListRequest, ChannelListSource, ChannelMigrationMaterializeSource,
+        ChannelMigrationPreviewSource, ChannelPathRequest, CurrentRouteSource,
+        GroupListChannelSource, GroupListRequest, HealthCheckRequest, ManagementAppPathRequest,
+        ProviderListSource, ProxyStatusRequest,
         RouteResolveManagementRequest, channel_not_found_message, normalize_channel_id_path,
         validate_management_app_type, validate_route_resolve_app_type,
     };
@@ -1051,6 +1082,26 @@ mod tests {
     }
 
     #[test]
+    fn channel_list_request_plans_app_or_all_queries() {
+        let app_query = serde_json::from_value::<ChannelListQuery>(serde_json::json!({
+            "appType": "claude"
+        }))
+        .expect("query");
+        let app_request = ChannelListRequest::from_query(app_query).expect("request");
+        let all_query =
+            serde_json::from_value::<ChannelListQuery>(serde_json::json!({})).expect("query");
+        let all_request = ChannelListRequest::from_query(all_query).expect("request");
+
+        assert_eq!(
+            app_request.plan(),
+            ChannelListPlan::App {
+                app_type: "claude".to_string()
+            }
+        );
+        assert_eq!(all_request.plan(), ChannelListPlan::All);
+    }
+
+    #[test]
     fn channel_list_request_wraps_list_response() {
         let query = serde_json::from_value::<ChannelListQuery>(serde_json::json!({
             "appType": "claude"
@@ -1058,7 +1109,8 @@ mod tests {
         .expect("query");
         let request = ChannelListRequest::from_query(query).expect("request");
 
-        let response = request.response(vec!["channel-a", "channel-b"]);
+        let response =
+            request.response_from_source(ChannelListSource::new(vec!["channel-a", "channel-b"]));
 
         assert_eq!(response.channels, vec!["channel-a", "channel-b"]);
     }
