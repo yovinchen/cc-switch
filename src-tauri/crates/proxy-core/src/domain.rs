@@ -229,6 +229,72 @@ impl Default for ProviderMetadata {
     }
 }
 
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ProviderMetadataInput {
+    #[serde(default)]
+    pub website_url: Option<String>,
+    #[serde(default)]
+    pub category: Option<String>,
+    #[serde(default)]
+    pub sort_index: Option<usize>,
+    #[serde(default)]
+    pub notes: Option<String>,
+    #[serde(default)]
+    pub icon: Option<String>,
+    #[serde(default)]
+    pub icon_color: Option<String>,
+    #[serde(default)]
+    pub in_failover_queue: bool,
+    #[serde(default)]
+    pub provider_type: Option<String>,
+    #[serde(default)]
+    pub api_format: Option<String>,
+    #[serde(default)]
+    pub auth_binding: Option<Value>,
+    #[serde(default)]
+    pub endpoint_auto_select: Option<bool>,
+    #[serde(default)]
+    pub custom_endpoint_count: usize,
+}
+
+pub fn provider_metadata_from_input(input: ProviderMetadataInput) -> ProviderMetadata {
+    let mut labels = Vec::new();
+    if input.in_failover_queue {
+        labels.push("failover".to_string());
+    }
+    if let Some(category) = input.category.as_deref() {
+        labels.push(category.to_string());
+    }
+
+    ProviderMetadata {
+        labels,
+        raw: json!({
+            "websiteUrl": input.website_url,
+            "category": input.category,
+            "sortIndex": input.sort_index,
+            "notes": input.notes,
+            "icon": input.icon,
+            "iconColor": input.icon_color,
+            "inFailoverQueue": input.in_failover_queue,
+            "providerType": input.provider_type,
+            "apiFormat": input.api_format,
+            "authBinding": input.auth_binding,
+            "endpointAutoSelect": input.endpoint_auto_select,
+            "customEndpointCount": input.custom_endpoint_count,
+        }),
+    }
+}
+
+pub fn provider_account_ref(
+    provider_type: Option<&str>,
+    managed_account_id: Option<&str>,
+) -> Option<String> {
+    provider_type
+        .zip(managed_account_id)
+        .map(|(provider_type, account_id)| format!("{provider_type}:{account_id}"))
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ChannelStatus {
@@ -1113,6 +1179,64 @@ mod tests {
             selections,
             attempts: Vec::new(),
         }
+    }
+
+    #[test]
+    fn provider_metadata_input_builds_sanitized_raw_and_labels() {
+        let metadata = provider_metadata_from_input(ProviderMetadataInput {
+            website_url: Some("https://provider.example".to_string()),
+            category: Some("aggregator".to_string()),
+            sort_index: Some(7),
+            notes: Some("operator note".to_string()),
+            icon: Some("provider-icon".to_string()),
+            icon_color: Some("#123456".to_string()),
+            in_failover_queue: true,
+            provider_type: Some("github_copilot".to_string()),
+            api_format: Some("openai_responses".to_string()),
+            auth_binding: Some(json!({
+                "source": "managed_account",
+                "authProvider": "github_copilot",
+                "accountId": "acct-1"
+            })),
+            endpoint_auto_select: Some(true),
+            custom_endpoint_count: 2,
+        });
+
+        assert_eq!(
+            metadata.labels,
+            vec!["failover".to_string(), "aggregator".to_string()]
+        );
+        assert_eq!(
+            metadata.raw["websiteUrl"],
+            json!("https://provider.example")
+        );
+        assert_eq!(metadata.raw["category"], json!("aggregator"));
+        assert_eq!(metadata.raw["sortIndex"], json!(7));
+        assert_eq!(metadata.raw["iconColor"], json!("#123456"));
+        assert_eq!(metadata.raw["providerType"], json!("github_copilot"));
+        assert_eq!(metadata.raw["apiFormat"], json!("openai_responses"));
+        assert_eq!(metadata.raw["endpointAutoSelect"], json!(true));
+        assert_eq!(metadata.raw["customEndpointCount"], json!(2));
+        assert_eq!(
+            metadata.raw["authBinding"],
+            json!({
+                "source": "managed_account",
+                "authProvider": "github_copilot",
+                "accountId": "acct-1"
+            })
+        );
+        assert!(metadata.raw.get("apiKey").is_none());
+        assert!(metadata.raw.get("settingsConfig").is_none());
+    }
+
+    #[test]
+    fn provider_account_ref_requires_provider_type_and_account() {
+        assert_eq!(
+            provider_account_ref(Some("github_copilot"), Some("acct-1")),
+            Some("github_copilot:acct-1".to_string())
+        );
+        assert_eq!(provider_account_ref(None, Some("acct-1")), None);
+        assert_eq!(provider_account_ref(Some("github_copilot"), None), None);
     }
 
     #[test]

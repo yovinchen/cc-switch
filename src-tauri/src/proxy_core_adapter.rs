@@ -7,7 +7,7 @@ use crate::proxy::usage::RequestLog;
 use crate::proxy_core::api::auth::ClaudeDesktopModelRouteInput;
 use crate::proxy_core::api::domain::{
     ChannelHealthPolicy, ChannelOverrides, ModelCapabilities, ModelRoute, ProviderMetadata,
-    UpstreamEndpoint,
+    ProviderMetadataInput, UpstreamEndpoint,
 };
 use crate::proxy_core::api::management::{
     AppSummaryInput, ChannelReachabilityInput, ChannelReachabilityResult,
@@ -384,6 +384,18 @@ pub(crate) type ProviderSpec = crate::proxy_core::api::domain::ProviderSpec;
 #[cfg(test)]
 pub(crate) type ProxyCoreProviderSpec =
     crate::proxy_core::api::domain::ProviderSpec;
+
+pub(crate) fn provider_metadata_from_input(input: ProviderMetadataInput) -> ProviderMetadata {
+    crate::proxy_core::api::domain::provider_metadata_from_input(input)
+}
+
+pub(crate) fn provider_account_ref(
+    provider_type: Option<&str>,
+    managed_account_id: Option<&str>,
+) -> Option<String> {
+    crate::proxy_core::api::domain::provider_account_ref(provider_type, managed_account_id)
+}
+
 #[cfg(test)]
 pub(crate) type ProxyCoreUpstreamEndpoint =
     crate::proxy_core::api::domain::UpstreamEndpoint;
@@ -2091,39 +2103,33 @@ fn stream_check_health_status_to_channel_reachability(
 }
 
 fn provider_metadata_without_secrets(provider: &Provider) -> ProviderMetadata {
-    let mut labels = Vec::new();
-    if provider.in_failover_queue {
-        labels.push("failover".to_string());
-    }
-    if let Some(category) = provider.category.as_deref() {
-        labels.push(category.to_string());
-    }
-
     let meta = provider.meta.as_ref();
-    let raw = json!({
-        "websiteUrl": provider.website_url,
-        "category": provider.category,
-        "sortIndex": provider.sort_index,
-        "notes": provider.notes,
-        "icon": provider.icon,
-        "iconColor": provider.icon_color,
-        "inFailoverQueue": provider.in_failover_queue,
-        "providerType": meta.and_then(|meta| meta.provider_type.clone()),
-        "apiFormat": meta.and_then(|meta| meta.api_format.clone()),
-        "authBinding": meta.and_then(|meta| meta.auth_binding.as_ref()).map(|binding| json!(binding)),
-        "endpointAutoSelect": meta.and_then(|meta| meta.endpoint_auto_select),
-        "customEndpointCount": meta.map(|meta| meta.custom_endpoints.len()).unwrap_or(0),
-    });
-
-    ProviderMetadata { labels, raw }
+    provider_metadata_from_input(ProviderMetadataInput {
+        website_url: provider.website_url.clone(),
+        category: provider.category.clone(),
+        sort_index: provider.sort_index,
+        notes: provider.notes.clone(),
+        icon: provider.icon.clone(),
+        icon_color: provider.icon_color.clone(),
+        in_failover_queue: provider.in_failover_queue,
+        provider_type: meta.and_then(|meta| meta.provider_type.clone()),
+        api_format: meta.and_then(|meta| meta.api_format.clone()),
+        auth_binding: meta
+            .and_then(|meta| meta.auth_binding.as_ref())
+            .map(|binding| json!(binding)),
+        endpoint_auto_select: meta.and_then(|meta| meta.endpoint_auto_select),
+        custom_endpoint_count: meta
+            .map(|meta| meta.custom_endpoints.len())
+            .unwrap_or(0),
+    })
 }
 
 fn account_ref(provider: &Provider) -> Option<String> {
     provider.meta.as_ref().and_then(|meta| {
-        meta.provider_type.as_deref().and_then(|provider_type| {
-            meta.managed_account_id_for(provider_type)
-                .map(|account_id| format!("{provider_type}:{account_id}"))
-        })
+        let provider_type = meta.provider_type.as_deref();
+        let account_id =
+            provider_type.and_then(|provider_type| meta.managed_account_id_for(provider_type));
+        provider_account_ref(provider_type, account_id.as_deref())
     })
 }
 
