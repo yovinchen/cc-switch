@@ -5,7 +5,11 @@
 
 use crate::app_config::AppType;
 use crate::provider::Provider;
-use crate::proxy_core::{ChannelRouteCandidate, ResolvedChannelAttempt, RoutePlan};
+use crate::proxy_core_adapter::{
+    apply_channel_provider_overrides, apply_channel_route_model_override,
+    channel_route_candidate_from_selection, resolved_channel_attempt_from_candidate,
+    ChannelRouteCandidate, ResolvedChannelAttempt, RoutePlan, RouteSelection,
+};
 use serde_json::Value;
 use std::collections::HashMap;
 
@@ -30,26 +34,20 @@ impl ForwardAttempt {
         candidate: ChannelRouteCandidate,
     ) -> Self {
         let mut provider = provider.clone();
-        crate::proxy_core_adapter::apply_channel_provider_overrides(
-            app_type,
-            &mut provider,
-            &candidate,
-        );
+        apply_channel_provider_overrides(app_type, &mut provider, &candidate);
 
         Self {
             provider,
-            channel: Some(crate::proxy_core_adapter::resolved_channel_attempt_from_candidate(
-                candidate,
-            )),
+            channel: Some(resolved_channel_attempt_from_candidate(candidate)),
         }
     }
 
     pub(crate) fn from_core_selection(
         app_type: &AppType,
         provider: &Provider,
-        selection: &crate::proxy_core::RouteSelection,
+        selection: &RouteSelection,
     ) -> Self {
-        let candidate = crate::proxy_core_adapter::channel_route_candidate_from_selection(selection);
+        let candidate = channel_route_candidate_from_selection(selection);
 
         Self::from_channel(app_type, provider, candidate)
     }
@@ -102,7 +100,7 @@ pub(crate) fn apply_channel_model_override(body: &mut Value, attempt: &ForwardAt
     };
     let current_model = current_model.to_string();
 
-    if let Some(upstream_model) = crate::proxy_core_adapter::apply_channel_route_model_override(
+    if let Some(upstream_model) = apply_channel_route_model_override(
         body,
         channel.public_model.as_deref(),
         channel.upstream_model.as_deref(),
@@ -121,9 +119,9 @@ mod tests {
     use super::*;
     use crate::proxy_core::{
         AppKind, ChannelOverrides, ChannelSpec, ChannelStatus, InterfaceKind, ModelCapabilities,
-        ModelRoute, ProviderKind, ProviderMetadata, ProviderSpec, RoutePlan, RouteSelection,
-        UpstreamEndpoint,
+        ModelRoute, ProviderKind, ProviderMetadata, ProviderSpec, UpstreamEndpoint,
     };
+    use crate::proxy_core_adapter::{ChannelRouteCandidate, RoutePlan, RouteSelection};
     use serde_json::json;
 
     fn candidate(interface_kind: &str) -> ChannelRouteCandidate {

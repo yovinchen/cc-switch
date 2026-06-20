@@ -6,15 +6,14 @@ use crate::proxy::providers::provider_kind_from_app_type_and_config;
 use crate::proxy::usage::RequestLog;
 use crate::proxy_core::{
     AppKind, AppSummaryInput, AuthProfileRef, ChannelHealthPolicy, ChannelModelRecord,
-    ChannelRouteCandidate,
     ChannelOverrides, ChannelReachabilityInput, ChannelReachabilityResult,
     ChannelReachabilityStatus, ChannelRecord, ChannelSpec, ChannelStatus,
     ClaudeDesktopModelListResponse, ClaudeDesktopModelRouteInput, CodexChatErrorNormalization,
     CodexToolContext,
     CostCalculator, CurrentRouteProviderSummaryInput, InterfaceKind, ModelCapabilities,
     ModelCatalog, ModelPricing, ModelRoute, ProviderMetadata, ProviderSpec, RetryPolicy,
-    ResolvedChannelAttempt, RoutePlan, RouteResolveChannelInput, RouteResolveModelInput,
-    RouteSelection, SessionIdResult, UpstreamEndpoint, UpstreamRequestHeadersInput,
+    RouteResolveChannelInput, RouteResolveModelInput, SessionIdResult, UpstreamEndpoint,
+    UpstreamRequestHeadersInput,
     UpstreamRequestTransportPolicy, UpstreamSendPolicy, UpstreamSendPolicyInput,
     UsageRecord, DEFAULT_ROUTE_GROUP,
 };
@@ -236,6 +235,10 @@ pub(crate) type ProviderSelectionInput = crate::proxy_core::ProviderSelectionInp
 pub(crate) type ProxyCoreError = crate::proxy_core::ProxyCoreError;
 pub(crate) type RouteResolveRequest = crate::proxy_core::RouteResolveRequest;
 pub(crate) type RouteResolveResponse = crate::proxy_core::RouteResolveResponse;
+pub(crate) type ChannelRouteCandidate = crate::proxy_core::ChannelRouteCandidate;
+pub(crate) type ResolvedChannelAttempt = crate::proxy_core::ResolvedChannelAttempt;
+pub(crate) type RoutePlan = crate::proxy_core::RoutePlan;
+pub(crate) type RouteSelection = crate::proxy_core::RouteSelection;
 
 pub(crate) const PROXY_EVENTS_CONNECTED_EVENT: &str =
     crate::proxy_core::PROXY_EVENTS_CONNECTED_EVENT;
