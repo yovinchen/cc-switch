@@ -29,6 +29,16 @@ pub(crate) fn synthesize_gemini_tool_call_id_with_uuid() -> String {
     crate::proxy_core::synthesize_gemini_tool_call_id(Uuid::new_v4().simple().to_string())
 }
 
+pub(crate) type ClaudeDesktopGatewayAuthError =
+    crate::proxy_core::ClaudeDesktopGatewayAuthError;
+
+pub(crate) fn validate_claude_desktop_gateway_bearer_header(
+    headers: &HeaderMap,
+    expected_token: &str,
+) -> Result<(), ClaudeDesktopGatewayAuthError> {
+    crate::proxy_core::validate_claude_desktop_gateway_bearer_header(headers, expected_token)
+}
+
 pub(crate) const COPILOT_PUBLIC_GITHUB_DOMAIN: &str =
     crate::proxy_core::COPILOT_PUBLIC_GITHUB_DOMAIN;
 
@@ -824,6 +834,28 @@ mod tests {
         assert_eq!(
             AppKind::from(&AppType::OpenClaw),
             AppKind::Custom("openclaw".to_string())
+        );
+    }
+
+    #[test]
+    fn claude_desktop_gateway_auth_adapter_projects_bearer_validation() {
+        let mut headers = HeaderMap::new();
+        headers.insert(
+            http::header::AUTHORIZATION,
+            http::HeaderValue::from_static("Bearer gateway-token"),
+        );
+
+        validate_claude_desktop_gateway_bearer_header(&headers, "gateway-token")
+            .expect("valid bearer");
+
+        assert_eq!(
+            validate_claude_desktop_gateway_bearer_header(&HeaderMap::new(), "gateway-token")
+                .unwrap_err(),
+            ClaudeDesktopGatewayAuthError::MissingAuthorizationHeader
+        );
+        assert_eq!(
+            validate_claude_desktop_gateway_bearer_header(&headers, "wrong-token").unwrap_err(),
+            ClaudeDesktopGatewayAuthError::InvalidToken
         );
     }
 
