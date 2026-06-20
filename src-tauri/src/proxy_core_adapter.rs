@@ -181,6 +181,7 @@ pub(crate) type ProxyRuntimeStatus = crate::proxy_core::ProxyRuntimeStatus;
 pub(crate) type ProxyServerInfo = crate::proxy_core::ProxyServerInfo;
 pub(crate) type ProxyTakeoverStatus = crate::proxy_core::ProxyTakeoverStatus;
 pub(crate) type ProxyCoreResponse = crate::proxy_core::ProxyCoreResponse;
+pub(crate) type ProxyResult = crate::proxy_core::ProxyResult;
 pub(crate) type ProxyEventEnvelope = crate::proxy_core::ProxyEventEnvelope;
 pub(crate) type ProxyEventSseSpec = crate::proxy_core::ProxyEventSseSpec;
 #[cfg(test)]
@@ -192,6 +193,9 @@ pub(crate) type CostBreakdown = crate::proxy_core::CostBreakdown;
 pub(crate) type CostCalculator = crate::proxy_core::CostCalculator;
 pub(crate) type ModelPricing = crate::proxy_core::ModelPricing;
 pub(crate) type TokenUsage = crate::proxy_core::TokenUsage;
+pub(crate) type ResponseRuntimePolicy = crate::proxy_core::ResponseRuntimePolicy;
+pub(crate) type ResponseTimeoutConfig = crate::proxy_core::ResponseTimeoutConfig;
+pub(crate) type StreamingTimeoutConfig = crate::proxy_core::StreamingTimeoutConfig;
 pub(crate) type GlobalProxyConfig = crate::proxy_core::GlobalProxyConfig;
 pub(crate) type AppProxyConfig = crate::proxy_core::AppProxyConfig;
 pub(crate) type ProviderHealth = crate::proxy_core::ProviderHealth;
@@ -243,6 +247,7 @@ pub(crate) type ChannelRouteCandidate = crate::proxy_core::ChannelRouteCandidate
 pub(crate) type ResolvedChannelAttempt = crate::proxy_core::ResolvedChannelAttempt;
 pub(crate) type RoutePlan = crate::proxy_core::RoutePlan;
 pub(crate) type RouteSelection = crate::proxy_core::RouteSelection;
+pub(crate) use crate::proxy_core::ProxyServices;
 
 pub(crate) const SESSION_REQUEST_ID_PREFIX: &str =
     crate::proxy_core::SESSION_REQUEST_ID_PREFIX;
@@ -263,6 +268,30 @@ pub(crate) fn proxy_event_envelope_to_sse_spec(
     event: &ProxyEventEnvelope,
 ) -> ProxyEventSseSpec {
     event.to_sse_spec()
+}
+
+pub(crate) fn resolve_response_runtime_policy(
+    auto_failover_enabled: bool,
+    max_retries: u32,
+    non_streaming_timeout: u64,
+    streaming_first_byte_timeout: u64,
+    streaming_idle_timeout: u64,
+) -> ResponseRuntimePolicy {
+    crate::proxy_core::resolve_response_runtime_policy(
+        auto_failover_enabled,
+        max_retries,
+        non_streaming_timeout,
+        streaming_first_byte_timeout,
+        streaming_idle_timeout,
+    )
+}
+
+pub(crate) fn extract_gemini_model_from_path(endpoint: &str) -> Option<String> {
+    crate::proxy_core::extract_gemini_model_from_path(endpoint)
+}
+
+pub(crate) fn claude_api_format_from_metadata(metadata: &Value, fallback: &str) -> String {
+    crate::proxy_core::claude_api_format_from_metadata(metadata, fallback)
 }
 
 pub(crate) fn circuit_breaker_config_from_app_config(
@@ -1486,6 +1515,36 @@ mod tests {
             }
             _ => panic!("expected buffered bytes transport body"),
         }
+    }
+
+    #[test]
+    fn handler_context_adapter_projects_runtime_and_model_helpers() {
+        let disabled_policy = resolve_response_runtime_policy(false, 3, 600, 60, 120);
+        assert_eq!(disabled_policy.max_retries, 0);
+        assert_eq!(disabled_policy.timeout, ResponseTimeoutConfig::default());
+
+        let enabled_policy = resolve_response_runtime_policy(true, 3, 600, 60, 120);
+        assert_eq!(enabled_policy.max_retries, 3);
+        assert_eq!(enabled_policy.timeout.non_streaming_timeout, 600);
+        assert_eq!(enabled_policy.timeout.streaming.first_byte_timeout, 60);
+        assert_eq!(enabled_policy.timeout.streaming.idle_timeout, 120);
+
+        assert_eq!(
+            extract_gemini_model_from_path("/v1beta/models/gemini-pro:generateContent")
+                .as_deref(),
+            Some("gemini-pro")
+        );
+        assert_eq!(
+            claude_api_format_from_metadata(
+                &json!({"claudeApiFormat": "openai_chat"}),
+                "anthropic"
+            ),
+            "openai_chat"
+        );
+        assert_eq!(
+            claude_api_format_from_metadata(&json!({"apiFormat": " "}), "anthropic"),
+            "anthropic"
+        );
     }
 
     #[test]

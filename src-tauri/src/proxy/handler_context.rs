@@ -8,13 +8,12 @@ use crate::proxy::{
     error::ProxyError, forwarder::RequestForwarder, providers::get_claude_api_format,
     route_attempt::ForwardAttempt, server::ProxyState,
 };
-use crate::proxy_core::{
-    AppKind, AppProxyConfig, CopilotOptimizerConfig, OptimizerConfig, ProxyResult, ProxyServices,
-    RectifierConfig, ResponseRuntimePolicy, ResponseTimeoutConfig, StreamingTimeoutConfig,
-    claude_api_format_from_metadata, extract_gemini_model_from_path,
-    resolve_response_runtime_policy,
+use crate::proxy_core_adapter::{
+    claude_api_format_from_metadata, extract_gemini_model_from_path, extract_proxy_session_id,
+    resolve_response_runtime_policy, AppProxyConfig, CopilotOptimizerConfig, OptimizerConfig,
+    ProxyCoreAppKind as AppKind, ProxyResult, ProxyServices, RectifierConfig,
+    ResponseRuntimePolicy, ResponseTimeoutConfig, StreamingTimeoutConfig,
 };
-use crate::proxy_core_adapter::extract_proxy_session_id;
 use axum::http::HeaderMap;
 use std::time::Instant;
 
