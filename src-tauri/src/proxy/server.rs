@@ -988,7 +988,28 @@ mod tests {
                     "name": "Manual Relay",
                     "baseUrl": "https://manual.example.com/v1/",
                     "interfaceKind": "openai_responses",
+                    "authProfileRef": "channel-key:manual-relay",
                     "priority": 80,
+                    "weight": 40,
+                    "healthPolicy": {
+                        "mode": "http",
+                        "path": "/healthz",
+                        "intervalSeconds": 30
+                    },
+                    "headerOverrides": {
+                        "x-relay-profile": "manual"
+                    },
+                    "paramOverrides": {
+                        "api-version": "2026-06-20"
+                    },
+                    "statusCodeMapping": [{
+                        "from": 429,
+                        "to": "rate_limited"
+                    }],
+                    "tags": ["manual", "relay"],
+                    "metadata": {
+                        "owner": "integration-test"
+                    },
                     "models": [{
                         "publicModel": "sonnet-public",
                         "upstreamModel": "upstream-sonnet"
@@ -1002,7 +1023,41 @@ mod tests {
         let created = response_json(create_response).await;
         let channel_id = created["id"].as_str().unwrap().to_string();
         assert_eq!(created["baseUrl"], "https://manual.example.com/v1");
+        assert_eq!(created["authProfileRef"], "channel-key:manual-relay");
+        assert_eq!(created["priority"], 80);
+        assert_eq!(created["weight"], 40);
+        assert_eq!(created["healthPolicy"]["mode"], "http");
+        assert_eq!(created["healthPolicy"]["path"], "/healthz");
+        assert_eq!(created["headerOverrides"]["x-relay-profile"], "manual");
+        assert_eq!(created["paramOverrides"]["api-version"], "2026-06-20");
+        assert_eq!(created["statusCodeMapping"][0]["from"], 429);
+        assert_eq!(created["tags"][0], "manual");
+        assert_eq!(created["metadata"]["owner"], "integration-test");
         assert_eq!(created["models"].as_array().unwrap().len(), 1);
+
+        let route_response = Service::call(
+            &mut router,
+            json_request(
+                Method::POST,
+                "/proxy/v1/route/resolve",
+                json!({
+                    "appType": "claude",
+                    "requestedModel": "sonnet-public",
+                    "interfaceKind": "openai_responses"
+                }),
+            ),
+        )
+        .await
+        .unwrap();
+        assert_eq!(route_response.status(), StatusCode::OK);
+        let route = response_json(route_response).await;
+        let candidate = &route["candidates"].as_array().unwrap()[0];
+        assert_eq!(candidate["channelId"], channel_id);
+        assert_eq!(candidate["providerId"], "a");
+        assert_eq!(candidate["priority"], 80);
+        assert_eq!(candidate["weight"], 40);
+        assert_eq!(candidate["publicModel"], "sonnet-public");
+        assert_eq!(candidate["upstreamModel"], "upstream-sonnet");
 
         let list_response = Service::call(
             &mut router,
@@ -1017,6 +1072,30 @@ mod tests {
         assert_eq!(list_response.status(), StatusCode::OK);
         let list = response_json(list_response).await;
         assert_eq!(list["channels"].as_array().unwrap().len(), 1);
+        assert_eq!(
+            list["channels"][0]["headerOverrides"]["x-relay-profile"],
+            "manual"
+        );
+        assert_eq!(
+            list["channels"][0]["paramOverrides"]["api-version"],
+            "2026-06-20"
+        );
+
+        let get_response = Service::call(
+            &mut router,
+            Request::builder()
+                .method(Method::GET)
+                .uri(format!("/proxy/v1/channels/{channel_id}"))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+        assert_eq!(get_response.status(), StatusCode::OK);
+        let fetched = response_json(get_response).await;
+        assert_eq!(fetched["authProfileRef"], "channel-key:manual-relay");
+        assert_eq!(fetched["healthPolicy"]["intervalSeconds"], 30);
+        assert_eq!(fetched["statusCodeMapping"][0]["to"], "rate_limited");
 
         let patch_response = Service::call(
             &mut router,
