@@ -4,7 +4,7 @@
 
 use crate::database::{Database, lock_conn};
 use crate::error::AppError;
-use crate::proxy_core::{CopilotOptimizerConfig, OptimizerConfig, RectifierConfig};
+use crate::proxy_core_adapter::{CopilotOptimizerConfig, OptimizerConfig, RectifierConfig};
 use crate::settings::LogConfig;
 use rusqlite::params;
 

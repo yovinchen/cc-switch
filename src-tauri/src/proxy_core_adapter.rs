@@ -125,6 +125,10 @@ pub(crate) fn copilot_api_base(domain: &str) -> String {
 
 pub(crate) type FetchedModel = crate::proxy_core::FetchedModel;
 
+pub(crate) type RectifierConfig = crate::proxy_core::RectifierConfig;
+pub(crate) type OptimizerConfig = crate::proxy_core::OptimizerConfig;
+pub(crate) type CopilotOptimizerConfig = crate::proxy_core::CopilotOptimizerConfig;
+
 impl From<&AppType> for AppKind {
     fn from(value: &AppType) -> Self {
         match value {
@@ -951,6 +955,33 @@ mod tests {
                 "id": "gpt-5.4",
                 "ownedBy": "openai"
             })
+        );
+    }
+
+    #[test]
+    fn settings_config_adapter_preserves_frontend_contracts() {
+        assert_eq!(
+            serde_json::to_value(RectifierConfig::default()).expect("rectifier"),
+            json!({
+                "enabled": true,
+                "requestThinkingSignature": true,
+                "requestThinkingBudget": true,
+                "requestMediaFallback": true,
+                "requestMediaHeuristic": true
+            })
+        );
+        assert_eq!(
+            serde_json::to_value(OptimizerConfig::default()).expect("optimizer"),
+            json!({
+                "enabled": false,
+                "thinkingOptimizer": true,
+                "cacheInjection": true,
+                "cacheTtl": "1h"
+            })
+        );
+        assert_eq!(
+            CopilotOptimizerConfig::default().warmup_model,
+            "gpt-5-mini"
         );
     }
 
