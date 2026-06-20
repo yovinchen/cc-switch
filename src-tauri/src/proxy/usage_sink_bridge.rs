@@ -3,15 +3,17 @@ use crate::proxy::{
     error::ProxyError,
     error_mapper::{get_error_message, map_proxy_error_to_status},
     handler_context::RequestContext,
+    response_processor::SseUsageCollector,
     server::ProxyState,
 };
 use crate::proxy_core::{
-    AppKind, ProviderKind, ProxyServices, TransformedResponseUsageFormat, UsageRecord,
     error_usage_record_with_request_id_fallback,
     transformed_response_usage_record_with_request_id_fallback,
+    transformed_streaming_response_usage_record_with_request_id_fallback, AppKind, ProviderKind,
+    ProxyServices, StreamUsageEventFilter, TransformedResponseUsageFormat, UsageRecord,
 };
 #[cfg(test)]
-use crate::proxy_core::{TokenUsage, success_usage_record_with_request_id_fallback};
+use crate::proxy_core::{success_usage_record_with_request_id_fallback, TokenUsage};
 use serde_json::Value;
 
 #[cfg(test)]
@@ -48,7 +50,7 @@ pub(crate) fn success_usage_record(
 }
 
 #[allow(clippy::too_many_arguments)]
-pub(crate) fn error_usage_record(
+fn error_usage_record(
     provider: &Provider,
     app_type: &str,
     request_model: &str,
@@ -93,15 +95,11 @@ pub(crate) fn record_forward_error_usage(
     );
 
     let services = state.proxy_core_services.clone();
-    tokio::spawn(async move {
-        if let Err(e) = services.usage_sink().record_usage(record).await {
-            log::warn!("记录失败请求日志失败: {e}");
-        }
-    });
+    spawn_usage_record(services, record, "记录失败请求日志失败");
 }
 
 #[allow(clippy::too_many_arguments)]
-pub(crate) fn transformed_response_usage_record(
+fn transformed_response_usage_record(
     body: &Value,
     format: TransformedResponseUsageFormat,
     provider: &Provider,
@@ -127,12 +125,112 @@ pub(crate) fn transformed_response_usage_record(
     )
 }
 
+pub(crate) fn record_transformed_response_usage(
+    state: &ProxyState,
+    ctx: &RequestContext,
+    body: &Value,
+    format: TransformedResponseUsageFormat,
+    status_code: u16,
+) {
+    if !usage_logging_enabled(state) {
+        return;
+    }
+
+    let Some(record) = transformed_response_usage_record(
+        body,
+        format,
+        &ctx.provider,
+        ctx.app_type_str,
+        &ctx.request_model,
+        ctx.outbound_model.as_deref(),
+        ctx.latency_ms(),
+        status_code,
+        Some(ctx.session_id.clone()),
+    ) else {
+        return;
+    };
+
+    let services = state.proxy_core_services.clone();
+    spawn_usage_record(services, record, "[USG-001] 记录使用量失败");
+}
+
+pub(crate) fn transformed_streaming_usage_collector(
+    state: &ProxyState,
+    ctx: &RequestContext,
+    status_code: u16,
+    usage_format: TransformedResponseUsageFormat,
+    stream_event_filter: StreamUsageEventFilter,
+) -> Option<SseUsageCollector> {
+    if !usage_logging_enabled(state) {
+        return None;
+    }
+
+    let services = state.proxy_core_services.clone();
+    let provider_id = ctx.provider.id.clone();
+    let provider_kind = provider_kind_from_provider(&ctx.provider);
+    let request_model = ctx.request_model.clone();
+    let outbound_model = ctx.outbound_model.clone();
+    let app_type_str = ctx.app_type_str;
+    let start_time = ctx.start_time;
+    let session_id = ctx.session_id.clone();
+
+    Some(SseUsageCollector::new(
+        start_time,
+        Some(stream_event_filter),
+        move |events, first_token_ms| {
+            let latency_ms = start_time.elapsed().as_millis() as u64;
+            let Some(record) = transformed_streaming_response_usage_record_with_request_id_fallback(
+                &events,
+                usage_format,
+                &provider_id,
+                provider_kind.clone(),
+                AppKind::from(app_type_str),
+                &request_model,
+                outbound_model.as_deref(),
+                latency_ms,
+                first_token_ms,
+                status_code,
+                Some(session_id.clone()),
+                || uuid::Uuid::new_v4().to_string(),
+            ) else {
+                log::debug!("{}", usage_format.missing_streaming_usage_log_message());
+                return;
+            };
+
+            let services = services.clone();
+            spawn_usage_record(services, record, "[USG-001] 记录使用量失败");
+        },
+    ))
+}
+
 pub(crate) fn provider_kind_from_provider(provider: &Provider) -> Option<ProviderKind> {
     provider
         .meta
         .as_ref()
         .and_then(|meta| meta.provider_type.as_deref())
         .map(ProviderKind::from)
+}
+
+fn usage_logging_enabled(state: &ProxyState) -> bool {
+    state
+        .config
+        .try_read()
+        .map(|config| config.enable_logging)
+        .unwrap_or(true)
+}
+
+fn spawn_usage_record<S>(
+    services: std::sync::Arc<S>,
+    record: UsageRecord,
+    warning_prefix: &'static str,
+) where
+    S: ProxyServices + Send + Sync + 'static,
+{
+    tokio::spawn(async move {
+        if let Err(e) = services.usage_sink().record_usage(record).await {
+            log::warn!("{warning_prefix}: {e}");
+        }
+    });
 }
 
 #[cfg(test)]

@@ -19,16 +19,14 @@ use super::{
     handler_context::RequestContext,
     providers::{codex_chat_history::record_responses_sse_stream, get_adapter},
     response_adapter::{
-        proxy_event_envelope_to_axum_sse_event,
         proxy_core_response_to_axum_response, proxy_core_response_to_proxy_response,
+        proxy_event_envelope_to_axum_sse_event,
     },
-    response_processor::{
-        create_logged_passthrough_stream, process_response, read_decoded_body,
-        usage_logging_enabled, SseUsageCollector,
-    },
+    response_processor::{create_logged_passthrough_stream, process_response, read_decoded_body},
     server::ProxyState,
     usage_sink_bridge::{
-        provider_kind_from_provider, record_forward_error_usage, transformed_response_usage_record,
+        record_forward_error_usage, record_transformed_response_usage,
+        transformed_streaming_usage_collector,
     },
 };
 use crate::app_config::AppType;
@@ -43,12 +41,10 @@ use crate::proxy_core::{
     create_openai_responses_to_anthropic_sse_stream as create_anthropic_sse_stream_from_responses,
     extract_anthropic_tool_schema_hints, extract_gemini_model_from_path,
     gemini_response_to_anthropic_message_with_shadow, openai_chat_to_anthropic_message,
-    openai_responses_to_anthropic_message, parse_upstream_json_or_unlabeled_sse,
+    openai_responses_to_anthropic_message, parse_upstream_json_or_unlabeled_sse, plan_channel_test,
     rebuilt_json_proxy_response, resolve_management_auth_decision,
     should_aggregate_codex_oauth_responses_sse, should_use_claude_transform_streaming,
-    strip_endpoint_prefix, transformed_sse_proxy_response,
-    transformed_streaming_response_usage_record_with_request_id_fallback,
-    validate_management_bearer_header,
+    strip_endpoint_prefix, transformed_sse_proxy_response, validate_management_bearer_header,
     AppChannelListQuery, AppChannelManagementRequest, AppChannelResponse, AppKind, AppListRequest,
     AppListResponse, AppModelCatalogRequest, AppModelListQuery, ChannelCreateRequest,
     ChannelDeleteResponse, ChannelHealthResetResponse, ChannelListQuery, ChannelListRequest,
@@ -56,15 +52,15 @@ use crate::proxy_core::{
     ChannelModelRecord, ChannelModelsResponse, ChannelPathRequest, ChannelRecord,
     ChannelRecordResponse, ChannelRouteCandidate, ChannelRouteRejected, ChannelTestPlan,
     ChannelTestResponse, ClaudeDesktopModelListResponse, ClientModelCatalogResponse,
-    CurrentRouteResponse, CurrentRouteTarget, GroupListQuery, GroupListRequest,
-    HealthCheckRequest, HealthCheckResponse, InterfaceKind, ManagementAppPathRequest,
-    ManagementAuthDecision, ProviderListResponse, ProxyBody, ProxyChannelModelsReplaceRequest,
-    ProxyChannelPatchRequest, ProxyChannelTestRequest, ProxyChannelWriteRequest, ProxyRequest,
-    ProxyRuntimeStatus, ProxyServices, ProxyStatusRequest, ProxyStatusResponse, RoutableModelList,
-    RouteGroupListResponse, RouteResolveManagementRequest, RouteResolveRequest,
-    RouteResolveResponse, TransformedResponseUsageFormat, UnlabeledSseFallbackLogContext,
-    UnlabeledSseFallbackLogLevel, UpstreamSseAggregationKind, CLAUDE_PARSER_CONFIG,
-    CODEX_PARSER_CONFIG, GEMINI_PARSER_CONFIG, OPENAI_PARSER_CONFIG, plan_channel_test,
+    CurrentRouteResponse, CurrentRouteTarget, GroupListQuery, GroupListRequest, HealthCheckRequest,
+    HealthCheckResponse, InterfaceKind, ManagementAppPathRequest, ManagementAuthDecision,
+    ProviderListResponse, ProxyBody, ProxyChannelModelsReplaceRequest, ProxyChannelPatchRequest,
+    ProxyChannelTestRequest, ProxyChannelWriteRequest, ProxyRequest, ProxyRuntimeStatus,
+    ProxyStatusRequest, ProxyStatusResponse, RoutableModelList, RouteGroupListResponse,
+    RouteResolveManagementRequest, RouteResolveRequest, RouteResolveResponse,
+    TransformedResponseUsageFormat, UnlabeledSseFallbackLogContext, UnlabeledSseFallbackLogLevel,
+    UpstreamSseAggregationKind, CLAUDE_PARSER_CONFIG, CODEX_PARSER_CONFIG, GEMINI_PARSER_CONFIG,
+    OPENAI_PARSER_CONFIG,
 };
 use crate::proxy_core_adapter::{
     proxy_app_summary_input, proxy_channel_model_records_to_core, proxy_channel_record_to_core,
@@ -848,56 +844,13 @@ async fn handle_claude_transform(
         };
 
         // 创建使用量收集器；关闭 usage logging 时不要再解析转换后的 SSE。
-        let usage_collector = if usage_logging_enabled(state) {
-            let services = state.proxy_core_services.clone();
-            let provider_id = ctx.provider.id.clone();
-            let provider_kind = provider_kind_from_provider(&ctx.provider);
-            let request_model = ctx.request_model.clone();
-            let outbound_model = ctx.outbound_model.clone();
-            let status_code = status.as_u16();
-            let start_time = ctx.start_time;
-            let session_id = ctx.session_id.clone();
-            let usage_format = TransformedResponseUsageFormat::Claude;
-            // 用 ctx 的 app_type：Claude Desktop 网关也走此转换路径，硬编码
-            // "claude" 会把 claude-desktop 的行错记到 claude 名下
-            let app_type_str = ctx.app_type_str;
-
-            Some(SseUsageCollector::new(
-                start_time,
-                Some(claude_stream_usage_event_filter),
-                move |events, first_token_ms| {
-                    let latency_ms = start_time.elapsed().as_millis() as u64;
-                    let Some(record) =
-                        transformed_streaming_response_usage_record_with_request_id_fallback(
-                            &events,
-                            usage_format,
-                            &provider_id,
-                            provider_kind.clone(),
-                            AppKind::from(app_type_str),
-                            &request_model,
-                            outbound_model.as_deref(),
-                            latency_ms,
-                            first_token_ms,
-                            status_code,
-                            Some(session_id.clone()),
-                            || uuid::Uuid::new_v4().to_string(),
-                        )
-                    else {
-                        log::debug!("{}", usage_format.missing_streaming_usage_log_message());
-                        return;
-                    };
-
-                    let services = services.clone();
-                    tokio::spawn(async move {
-                        if let Err(e) = services.usage_sink().record_usage(record).await {
-                            log::warn!("[USG-001] 记录使用量失败: {e}");
-                        }
-                    });
-                },
-            ))
-        } else {
-            None
-        };
+        let usage_collector = transformed_streaming_usage_collector(
+            state,
+            ctx,
+            status.as_u16(),
+            TransformedResponseUsageFormat::Claude,
+            claude_stream_usage_event_filter,
+        );
 
         // 获取流式超时配置
         let timeout_config = ctx.streaming_timeout_config();
@@ -984,26 +937,13 @@ async fn handle_claude_transform(
         e
     })?;
 
-    if usage_logging_enabled(state) {
-        if let Some(record) = transformed_response_usage_record(
-            &anthropic_response,
-            TransformedResponseUsageFormat::Claude,
-            &ctx.provider,
-            ctx.app_type_str,
-            &ctx.request_model,
-            ctx.outbound_model.as_deref(),
-            ctx.latency_ms(),
-            status.as_u16(),
-            Some(ctx.session_id.clone()),
-        ) {
-            let services = state.proxy_core_services.clone();
-            tokio::spawn(async move {
-                if let Err(e) = services.usage_sink().record_usage(record).await {
-                    log::warn!("[USG-001] 记录使用量失败: {e}");
-                }
-            });
-        }
-    }
+    record_transformed_response_usage(
+        state,
+        ctx,
+        &anthropic_response,
+        TransformedResponseUsageFormat::Claude,
+        status.as_u16(),
+    );
 
     let response = rebuilt_json_proxy_response(status, response_headers, anthropic_response)
         .map_err(|error| {
@@ -1228,54 +1168,13 @@ async fn handle_codex_chat_to_responses_transform(
         let sse_stream = create_responses_sse_stream_from_chat_with_context(stream, tool_context);
         let sse_stream = record_responses_sse_stream(sse_stream, state.codex_chat_history.clone());
 
-        let usage_collector = if usage_logging_enabled(state) {
-            let services = state.proxy_core_services.clone();
-            let provider_id = ctx.provider.id.clone();
-            let provider_kind = provider_kind_from_provider(&ctx.provider);
-            let request_model = ctx.request_model.clone();
-            let outbound_model = ctx.outbound_model.clone();
-            let app_type_str = ctx.app_type_str;
-            let start_time = ctx.start_time;
-            let session_id = ctx.session_id.clone();
-            let status_code = status.as_u16();
-            let usage_format = TransformedResponseUsageFormat::CodexAuto;
-
-            Some(SseUsageCollector::new(
-                start_time,
-                Some(codex_stream_usage_event_filter),
-                move |events, first_token_ms| {
-                    let latency_ms = start_time.elapsed().as_millis() as u64;
-                    let Some(record) =
-                        transformed_streaming_response_usage_record_with_request_id_fallback(
-                            &events,
-                            usage_format,
-                            &provider_id,
-                            provider_kind.clone(),
-                            AppKind::from(app_type_str),
-                            &request_model,
-                            outbound_model.as_deref(),
-                            latency_ms,
-                            first_token_ms,
-                            status_code,
-                            Some(session_id.clone()),
-                            || uuid::Uuid::new_v4().to_string(),
-                        )
-                    else {
-                        log::debug!("{}", usage_format.missing_streaming_usage_log_message());
-                        return;
-                    };
-
-                    let services = services.clone();
-                    tokio::spawn(async move {
-                        if let Err(e) = services.usage_sink().record_usage(record).await {
-                            log::warn!("[USG-001] 记录使用量失败: {e}");
-                        }
-                    });
-                },
-            ))
-        } else {
-            None
-        };
+        let usage_collector = transformed_streaming_usage_collector(
+            state,
+            ctx,
+            status.as_u16(),
+            TransformedResponseUsageFormat::CodexAuto,
+            codex_stream_usage_event_filter,
+        );
 
         let logged_stream = create_logged_passthrough_stream(
             sse_stream,
@@ -1330,26 +1229,13 @@ async fn handle_codex_chat_to_responses_transform(
         .record_response(&responses_response)
         .await;
 
-    if usage_logging_enabled(state) {
-        if let Some(record) = transformed_response_usage_record(
-            &responses_response,
-            TransformedResponseUsageFormat::CodexAuto,
-            &ctx.provider,
-            ctx.app_type_str,
-            &ctx.request_model,
-            ctx.outbound_model.as_deref(),
-            ctx.latency_ms(),
-            status.as_u16(),
-            Some(ctx.session_id.clone()),
-        ) {
-            let services = state.proxy_core_services.clone();
-            tokio::spawn(async move {
-                if let Err(e) = services.usage_sink().record_usage(record).await {
-                    log::warn!("[USG-001] 记录使用量失败: {e}");
-                }
-            });
-        }
-    }
+    record_transformed_response_usage(
+        state,
+        ctx,
+        &responses_response,
+        TransformedResponseUsageFormat::CodexAuto,
+        status.as_u16(),
+    );
 
     let response = rebuilt_json_proxy_response(status, response_headers, responses_response)
         .map_err(|error| {
