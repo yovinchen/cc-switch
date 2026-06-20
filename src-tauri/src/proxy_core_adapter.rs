@@ -9,8 +9,8 @@ use crate::proxy_core::{
     ChannelReachabilityStatus, ChannelRecord, ChannelSpec, ChannelStatus,
     ClaudeDesktopModelListResponse, ClaudeDesktopModelRouteInput,
     CurrentRouteProviderSummaryInput, InterfaceKind, ModelCapabilities, ModelRoute,
-    ProviderMetadata, ProviderSpec, RetryPolicy, RouteResolveChannelInput, RouteResolveModelInput,
-    SessionIdResult, UpstreamEndpoint,
+    ModelCatalog, ProviderMetadata, ProviderSpec, RetryPolicy, RouteResolveChannelInput,
+    RouteResolveModelInput, SessionIdResult, UpstreamEndpoint,
 };
 use crate::services::stream_check::{HealthStatus, StreamCheckResult};
 use http::HeaderMap;
@@ -232,6 +232,17 @@ pub(crate) fn simplify_codex_model_catalog(
     default_context_window: u64,
 ) -> Option<Value> {
     crate::proxy_core::simplify_codex_model_catalog(catalog_text, default_context_window)
+}
+
+pub(crate) fn provider_model_catalog_from_settings(
+    provider_id: &str,
+    settings: Option<&Value>,
+) -> ModelCatalog {
+    crate::proxy_core::provider_model_catalog_from_settings(provider_id, settings)
+}
+
+pub(crate) fn client_model_catalog_from_raw(app: &AppKind, raw: Value) -> ModelCatalog {
+    crate::proxy_core::client_model_catalog_from_raw(app.as_str(), raw)
 }
 
 const CLAUDE_ONE_M_MARKER_FOR_CLIENT: &str = "[1M]";
@@ -522,6 +533,51 @@ mod tests {
                 .get("displayName")
                 .and_then(Value::as_str),
             Some("Kimi K2")
+        );
+    }
+
+    #[test]
+    fn model_catalog_adapter_projects_provider_settings_and_client_raw() {
+        let settings = json!({
+            "model": " claude-sonnet-4 ",
+            "env": {
+                "ANTHROPIC_MODEL": "claude-opus-4"
+            },
+            "modelCatalog": {
+                "models": [
+                    {"model": "deepseek-v4"},
+                    {"id": "kimi-k2"}
+                ]
+            }
+        });
+
+        let provider_catalog =
+            provider_model_catalog_from_settings("provider-a", Some(&settings));
+        assert_eq!(provider_catalog.provider_id, "provider-a");
+        assert_eq!(
+            provider_catalog.models,
+            vec![
+                "claude-opus-4".to_string(),
+                "claude-sonnet-4".to_string(),
+                "deepseek-v4".to_string(),
+                "kimi-k2".to_string()
+            ]
+        );
+
+        let client_catalog = client_model_catalog_from_raw(
+            &AppKind::Codex,
+            json!({
+                "models": [
+                    {"id": " gpt-5 "},
+                    {"model": "o4-mini"},
+                    {"id": "gpt-5"}
+                ]
+            }),
+        );
+        assert_eq!(client_catalog.provider_id, "codex");
+        assert_eq!(
+            client_catalog.models,
+            vec!["gpt-5".to_string(), "o4-mini".to_string()]
         );
     }
 

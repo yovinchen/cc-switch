@@ -530,7 +530,7 @@ impl crate::proxy_core::ModelCatalogProvider for CcSwitchModelCatalogProvider {
                 .db
                 .get_provider_by_id(provider_id, app.as_str())
                 .map_err(|error| app_error("load model catalog", error))?;
-            Ok(crate::proxy_core::provider_model_catalog_from_settings(
+            Ok(crate::proxy_core_adapter::provider_model_catalog_from_settings(
                 provider_id,
                 provider.as_ref().map(|provider| &provider.settings_config),
             ))
@@ -546,10 +546,7 @@ impl crate::proxy_core::ModelCatalogProvider for CcSwitchModelCatalogProvider {
                 AppKind::Codex => load_codex_client_model_catalog_raw(),
                 _ => json!({"models": []}),
             };
-            Ok(crate::proxy_core::client_model_catalog_from_raw(
-                app.as_str(),
-                raw,
-            ))
+            Ok(crate::proxy_core_adapter::client_model_catalog_from_raw(app, raw))
         })
     }
 }
@@ -1132,8 +1129,8 @@ mod tests {
 
     #[test]
     fn model_catalog_from_raw_extracts_supported_client_model_ids() {
-        let catalog = crate::proxy_core::client_model_catalog_from_raw(
-            "codex",
+        let catalog = crate::proxy_core_adapter::client_model_catalog_from_raw(
+            &AppKind::Codex,
             json!({
                 "models": [
                     {"id": " gpt-5 "},
