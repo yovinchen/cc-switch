@@ -646,16 +646,15 @@ pub async fn resolve_proxy_route(
     Json(request): Json<RouteResolveRequest>,
 ) -> Result<Json<RouteResolveResponse>, ProxyError> {
     let request = RouteResolveManagementRequest::from_body(request)
-        .map_err(management_api_error_to_proxy_error)?
-        .request;
+        .map_err(management_api_error_to_proxy_error)?;
 
     let response = state
         .provider_router
-        .resolve_channel_route_dry_run(request)
+        .resolve_channel_route_dry_run(request.request.clone())
         .await
         .map_err(|e| ProxyError::DatabaseError(e.to_string()))?;
 
-    Ok(Json(response))
+    Ok(Json(request.response_from_resolution(response)))
 }
 
 /// GET /v1/models — Codex model list (reachability check)

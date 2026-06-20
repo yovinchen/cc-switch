@@ -487,6 +487,10 @@ impl RouteResolveManagementRequest {
 
         Ok(Self { request })
     }
+
+    pub fn response_from_resolution(&self, response: RouteResolveResponse) -> RouteResolveResponse {
+        response
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -1082,6 +1086,32 @@ mod tests {
             error.to_string(),
             "invalid proxy request: appType/app_type cannot be empty"
         );
+    }
+
+    #[test]
+    fn route_resolve_management_request_wraps_resolution_response() {
+        let request = RouteResolveManagementRequest::from_body(crate::RouteResolveRequest {
+            app_type: "claude".to_string(),
+            requested_model: Some("sonnet".to_string()),
+            interface_kind: None,
+            route_group: None,
+        })
+        .expect("request");
+        let response = RouteResolveResponse {
+            app_type: "claude".to_string(),
+            requested_model: Some("sonnet".to_string()),
+            interface_kind: None,
+            route_group: "default".to_string(),
+            source: ChannelRouteSource::LegacyProjection,
+            candidates: Vec::new(),
+            rejected: Vec::new(),
+        };
+
+        let response = request.response_from_resolution(response);
+
+        assert_eq!(response.app_type, "claude");
+        assert_eq!(response.requested_model.as_deref(), Some("sonnet"));
+        assert_eq!(response.route_group, "default");
     }
 
     #[test]
