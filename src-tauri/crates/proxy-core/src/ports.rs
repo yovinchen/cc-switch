@@ -1854,6 +1854,79 @@ pub struct ChannelRecord {
     pub review_reasons: Vec<String>,
 }
 
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ChannelRecordInput {
+    pub id: String,
+    pub provider_id: String,
+    pub app_type: String,
+    pub name: String,
+    pub status: String,
+    pub base_url: String,
+    pub interface_kind: String,
+    #[serde(default)]
+    pub auth_profile_ref: Option<String>,
+    #[serde(default)]
+    pub groups: Vec<String>,
+    pub priority: i64,
+    pub weight: u32,
+    #[serde(default)]
+    pub retry_policy: Value,
+    #[serde(default)]
+    pub health_policy: Value,
+    #[serde(default)]
+    pub header_overrides: Value,
+    #[serde(default)]
+    pub param_overrides: Value,
+    #[serde(default)]
+    pub status_code_mapping: Value,
+    #[serde(default)]
+    pub tags: Vec<String>,
+    #[serde(default)]
+    pub metadata: Value,
+    pub source_kind: String,
+    #[serde(default)]
+    pub source_endpoint_url: Option<String>,
+    #[serde(default)]
+    pub models: Vec<ChannelModelRecordInput>,
+    #[serde(default)]
+    pub needs_review: bool,
+    #[serde(default)]
+    pub review_reasons: Vec<String>,
+}
+
+pub fn channel_record_from_input(input: ChannelRecordInput) -> ChannelRecord {
+    ChannelRecord {
+        id: input.id,
+        provider_id: input.provider_id,
+        app_type: input.app_type,
+        name: input.name,
+        status: input.status,
+        base_url: input.base_url,
+        interface_kind: input.interface_kind,
+        auth_profile_ref: input.auth_profile_ref,
+        groups: input.groups,
+        priority: input.priority,
+        weight: input.weight,
+        retry_policy: input.retry_policy,
+        health_policy: input.health_policy,
+        header_overrides: input.header_overrides,
+        param_overrides: input.param_overrides,
+        status_code_mapping: input.status_code_mapping,
+        tags: input.tags,
+        metadata: input.metadata,
+        source_kind: input.source_kind,
+        source_endpoint_url: input.source_endpoint_url,
+        models: input
+            .models
+            .into_iter()
+            .map(channel_model_record_from_input)
+            .collect(),
+        needs_review: input.needs_review,
+        review_reasons: input.review_reasons,
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(transparent)]
 pub struct ChannelRecordResponse<T> {
@@ -1937,6 +2010,34 @@ pub struct ChannelModelRecord {
     pub request_overrides: Value,
     #[serde(default)]
     pub response_overrides: Value,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ChannelModelRecordInput {
+    pub channel_id: String,
+    pub public_model: String,
+    pub upstream_model: String,
+    #[serde(default)]
+    pub capabilities: Value,
+    #[serde(default)]
+    pub pricing_model: Option<String>,
+    #[serde(default)]
+    pub request_overrides: Value,
+    #[serde(default)]
+    pub response_overrides: Value,
+}
+
+pub fn channel_model_record_from_input(input: ChannelModelRecordInput) -> ChannelModelRecord {
+    ChannelModelRecord {
+        channel_id: input.channel_id,
+        public_model: input.public_model,
+        upstream_model: input.upstream_model,
+        capabilities: input.capabilities,
+        pricing_model: input.pricing_model,
+        request_overrides: input.request_overrides,
+        response_overrides: input.response_overrides,
+    }
 }
 
 impl ChannelModelRecord {
@@ -2154,15 +2255,16 @@ impl ProxyCoreEvent {
 mod tests {
     use super::{
         AppChannelListQuery, AppChannelListResponse, AppChannelResponse, AppChannelRouteResponse,
-        app_proxy_config_raw, AppListResponse, AppModelListQuery, AppProxyConfig, AppSummaryInput,
-        channel_reachability_status_from_latency, ChannelDeleteResponse, ChannelListQuery,
-        ChannelListResponse, ChannelReachabilityInput,
-        ChannelMigrationMaterializeInput, ChannelMigrationMaterializeResponse,
-        ChannelMigrationPreviewInput, ChannelMigrationPreviewResponse, ChannelModelRecord,
-        ChannelModelsResponse, ChannelRecord, ChannelRecordResponse, ChannelRouteCandidate,
-        ChannelReachabilityResult, ChannelReachabilityStatus, ChannelRouteRejected,
-        ChannelRouteSource, ChannelTestInput, ChannelTestPlan, ChannelTestResponse,
-        ClientModelCatalogResponse, should_retry_channel_reachability_failure,
+        app_proxy_config_raw, channel_model_record_from_input, AppListResponse, AppModelListQuery,
+        AppProxyConfig, AppSummaryInput, channel_reachability_status_from_latency,
+        channel_record_from_input, ChannelDeleteResponse, ChannelListQuery, ChannelListResponse,
+        ChannelReachabilityInput, ChannelMigrationMaterializeInput,
+        ChannelMigrationMaterializeResponse, ChannelMigrationPreviewInput,
+        ChannelMigrationPreviewResponse, ChannelModelRecord, ChannelModelRecordInput,
+        ChannelModelsResponse, ChannelRecord, ChannelRecordInput, ChannelRecordResponse,
+        ChannelRouteCandidate, ChannelReachabilityResult, ChannelReachabilityStatus,
+        ChannelRouteRejected, ChannelRouteSource, ChannelTestInput, ChannelTestPlan,
+        ChannelTestResponse, ClientModelCatalogResponse, should_retry_channel_reachability_failure,
         CopilotOptimizerConfig, CurrentRouteProviderSummaryInput, CurrentRouteResponse,
         CurrentRouteTarget, GlobalProxyConfig, GroupListQuery, HealthCheckResponse, ModelCatalog,
         OptimizerConfig, ProviderHealth, ProviderListResponse, ProviderSpec,
@@ -3421,6 +3523,72 @@ mod tests {
         assert_eq!(value["insertedHealthRows"], 1);
         assert_eq!(value["duplicateCount"], 1);
         assert_eq!(value["needsReviewCount"], 0);
+    }
+
+    #[test]
+    fn channel_record_input_builds_management_record_contract() {
+        let record = channel_record_from_input(ChannelRecordInput {
+            id: "ch-1".to_string(),
+            provider_id: "provider-1".to_string(),
+            app_type: "claude".to_string(),
+            name: "Relay A".to_string(),
+            status: "enabled".to_string(),
+            base_url: "https://relay.example.com/v1".to_string(),
+            interface_kind: "openai_responses".to_string(),
+            auth_profile_ref: Some("channel-key:primary".to_string()),
+            groups: vec!["default".to_string(), "beta".to_string()],
+            priority: 10,
+            weight: 80,
+            retry_policy: json!({"maxAttempts": 2}),
+            health_policy: json!({"mode": "http"}),
+            header_overrides: json!({"x-relay": "1"}),
+            param_overrides: json!({"api-version": "2026-06-20"}),
+            status_code_mapping: json!([{"from": 429, "to": "rate_limited"}]),
+            tags: vec!["manual".to_string()],
+            metadata: json!({"owner": "ops"}),
+            source_kind: "manual".to_string(),
+            source_endpoint_url: Some("https://relay.example.com/v1".to_string()),
+            models: vec![ChannelModelRecordInput {
+                channel_id: "ch-1".to_string(),
+                public_model: "sonnet".to_string(),
+                upstream_model: "anthropic/sonnet".to_string(),
+                capabilities: json!({"tools": true}),
+                pricing_model: Some("standard".to_string()),
+                request_overrides: json!({"temperature": 0.2}),
+                response_overrides: json!({}),
+            }],
+            needs_review: true,
+            review_reasons: vec!["missing-auth".to_string()],
+        });
+
+        assert_eq!(record.id, "ch-1");
+        assert_eq!(
+            record.auth_profile_ref.as_deref(),
+            Some("channel-key:primary")
+        );
+        assert_eq!(
+            record.groups,
+            vec!["default".to_string(), "beta".to_string()]
+        );
+        assert_eq!(record.retry_policy, json!({"maxAttempts": 2}));
+        assert_eq!(record.status_code_mapping[0]["to"], "rate_limited");
+        assert_eq!(record.models.len(), 1);
+        assert_eq!(record.models[0].public_model, "sonnet");
+        assert_eq!(record.models[0].capabilities, json!({"tools": true}));
+        assert!(record.needs_review);
+        assert_eq!(record.review_reasons, vec!["missing-auth".to_string()]);
+
+        let model = channel_model_record_from_input(ChannelModelRecordInput {
+            channel_id: "ch-2".to_string(),
+            public_model: "haiku".to_string(),
+            upstream_model: "anthropic/haiku".to_string(),
+            capabilities: json!({}),
+            pricing_model: None,
+            request_overrides: json!({}),
+            response_overrides: json!({}),
+        });
+        assert_eq!(model.channel_id, "ch-2");
+        assert_eq!(model.public_model, "haiku");
     }
 
     #[test]

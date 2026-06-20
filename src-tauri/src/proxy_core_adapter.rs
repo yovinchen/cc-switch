@@ -428,6 +428,21 @@ pub(crate) type ChannelKeyRecord =
     crate::proxy_core::api::management::ChannelKeyRecord;
 pub(crate) type ChannelModelRecord =
     crate::proxy_core::api::management::ChannelModelRecord;
+pub(crate) type ChannelModelRecordInput =
+    crate::proxy_core::api::management::ChannelModelRecordInput;
+pub(crate) type ChannelRecordInput =
+    crate::proxy_core::api::management::ChannelRecordInput;
+
+pub(crate) fn channel_model_record_from_input(
+    input: ChannelModelRecordInput,
+) -> ChannelModelRecord {
+    crate::proxy_core::api::management::channel_model_record_from_input(input)
+}
+
+pub(crate) fn channel_record_from_input(input: ChannelRecordInput) -> ChannelRecord {
+    crate::proxy_core::api::management::channel_record_from_input(input)
+}
+
 pub(crate) type InterfaceKind = crate::proxy_core::api::routing::InterfaceKind;
 pub(crate) type LegacyChannelModelProjection =
     crate::proxy_core::api::routing::LegacyChannelModelProjection;
@@ -1950,10 +1965,21 @@ pub(crate) trait ToProxyCoreChannelModelRecord {
 
 impl ToProxyCoreChannelModelRecord for ProxyChannelModelRecord {
     fn to_proxy_core_channel_model_record(&self) -> ChannelModelRecord {
-        ChannelModelRecord::from_model_route(
-            self.channel_id.clone(),
-            self.to_proxy_core_model_route(),
-        )
+        channel_model_record_from_input(self.to_proxy_core_channel_model_record_input())
+    }
+}
+
+impl ProxyChannelModelRecord {
+    fn to_proxy_core_channel_model_record_input(&self) -> ChannelModelRecordInput {
+        ChannelModelRecordInput {
+            channel_id: self.channel_id.clone(),
+            public_model: self.public_model.clone(),
+            upstream_model: self.upstream_model.clone(),
+            capabilities: self.capabilities.clone(),
+            pricing_model: self.pricing_model.clone(),
+            request_overrides: self.request_overrides.clone(),
+            response_overrides: self.response_overrides.clone(),
+        }
     }
 }
 
@@ -1973,7 +1999,7 @@ pub(crate) trait ToProxyCoreChannelRecord {
 
 impl ToProxyCoreChannelRecord for ProxyChannelRecord {
     fn to_proxy_core_channel_record(&self) -> ChannelRecord {
-        ChannelRecord {
+        channel_record_from_input(ChannelRecordInput {
             id: self.id.clone(),
             provider_id: self.provider_id.clone(),
             app_type: self.app_type.clone(),
@@ -1997,11 +2023,11 @@ impl ToProxyCoreChannelRecord for ProxyChannelRecord {
             models: self
                 .models
                 .iter()
-                .map(ProxyChannelModelRecord::to_proxy_core_channel_model_record)
+                .map(ProxyChannelModelRecord::to_proxy_core_channel_model_record_input)
                 .collect(),
             needs_review: self.needs_review,
             review_reasons: self.review_reasons.clone(),
-        }
+        })
     }
 }
 
