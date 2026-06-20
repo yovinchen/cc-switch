@@ -15,7 +15,7 @@ use crate::proxy_core::{
     streaming_response_usage_record_with_optional_outbound_model,
     strip_hop_by_hop_response_headers, AppKind, ProxyServices, ResponseBodyDecodeStatus,
     SseEventScanner, SseUsageAccumulator, StreamUsageEventFilter, StreamingTimeoutConfig,
-    UsageParserConfig, UsageRecord,
+    StreamingTimeoutPhase, UsageParserConfig, UsageRecord,
 };
 #[cfg(test)]
 use crate::proxy_core::{ProviderKind, TokenUsage};
@@ -495,27 +495,16 @@ pub fn create_logged_passthrough_stream(
             collector.is_some() || log::log_enabled!(log::Level::Debug);
         let mut is_first_chunk = true;
 
-        // 超时配置
-        let first_byte_timeout = if timeout_config.first_byte_timeout > 0 {
-            Some(Duration::from_secs(timeout_config.first_byte_timeout))
-        } else {
-            None
-        };
-        let idle_timeout = if timeout_config.idle_timeout > 0 {
-            Some(Duration::from_secs(timeout_config.idle_timeout))
-        } else {
-            None
-        };
-
         tokio::pin!(stream);
 
         loop {
             // 选择超时时间：首字节超时或静默期超时
-            let timeout_duration = if is_first_chunk {
-                first_byte_timeout
+            let timeout_phase = if is_first_chunk {
+                StreamingTimeoutPhase::FirstByte
             } else {
-                idle_timeout
+                StreamingTimeoutPhase::Idle
             };
+            let timeout_duration = timeout_config.duration_for_phase(timeout_phase);
 
             let chunk_result = match timeout_duration {
                 Some(duration) => {

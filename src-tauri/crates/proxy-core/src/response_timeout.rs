@@ -8,6 +8,22 @@ pub struct StreamingTimeoutConfig {
     pub idle_timeout: u64,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum StreamingTimeoutPhase {
+    FirstByte,
+    Idle,
+}
+
+impl StreamingTimeoutConfig {
+    pub fn duration_for_phase(self, phase: StreamingTimeoutPhase) -> Option<Duration> {
+        let seconds = match phase {
+            StreamingTimeoutPhase::FirstByte => self.first_byte_timeout,
+            StreamingTimeoutPhase::Idle => self.idle_timeout,
+        };
+        (seconds > 0).then(|| Duration::from_secs(seconds))
+    }
+}
+
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct ResponseTimeoutConfig {
     /// Non-streaming body timeout in seconds. `0` disables the timeout.
@@ -106,6 +122,40 @@ mod tests {
         assert_eq!(config.streaming.first_byte_timeout, 0);
         assert_eq!(config.streaming.idle_timeout, 0);
         assert_eq!(config.body_timeout_duration(), Duration::ZERO);
+    }
+
+    #[test]
+    fn streaming_timeout_duration_selects_first_byte_and_idle_phases() {
+        let config = StreamingTimeoutConfig {
+            first_byte_timeout: 5,
+            idle_timeout: 30,
+        };
+
+        assert_eq!(
+            config.duration_for_phase(StreamingTimeoutPhase::FirstByte),
+            Some(Duration::from_secs(5))
+        );
+        assert_eq!(
+            config.duration_for_phase(StreamingTimeoutPhase::Idle),
+            Some(Duration::from_secs(30))
+        );
+    }
+
+    #[test]
+    fn streaming_timeout_duration_disables_zero_values_by_phase() {
+        let config = StreamingTimeoutConfig {
+            first_byte_timeout: 0,
+            idle_timeout: 30,
+        };
+
+        assert_eq!(
+            config.duration_for_phase(StreamingTimeoutPhase::FirstByte),
+            None
+        );
+        assert_eq!(
+            config.duration_for_phase(StreamingTimeoutPhase::Idle),
+            Some(Duration::from_secs(30))
+        );
     }
 
     #[test]
