@@ -454,6 +454,22 @@ pub struct AppProxyConfig {
     pub circuit_min_requests: u32,
 }
 
+pub fn app_proxy_config_raw(
+    config: AppProxyConfig,
+    current_provider_id: Option<String>,
+) -> Value {
+    let mut raw = serde_json::to_value(config).unwrap_or_else(|_| serde_json::json!({}));
+    if let Value::Object(object) = &mut raw {
+        object.insert(
+            "currentProviderId".to_string(),
+            current_provider_id
+                .map(Value::String)
+                .unwrap_or(Value::Null),
+        );
+    }
+    raw
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ProxyServerInfo {
     pub address: String,
@@ -1689,8 +1705,8 @@ pub enum ProxyCoreEventType {
 mod tests {
     use super::{
         AppChannelListQuery, AppChannelListResponse, AppChannelResponse, AppChannelRouteResponse,
-        AppListResponse, AppModelListQuery, AppProxyConfig, AppSummaryInput, ChannelDeleteResponse,
-        ChannelListQuery, ChannelListResponse, ChannelMigrationMaterializeInput,
+        app_proxy_config_raw, AppListResponse, AppModelListQuery, AppProxyConfig, AppSummaryInput,
+        ChannelDeleteResponse, ChannelListQuery, ChannelListResponse, ChannelMigrationMaterializeInput,
         ChannelMigrationMaterializeResponse, ChannelMigrationPreviewInput,
         ChannelMigrationPreviewResponse, ChannelModelRecord, ChannelModelsResponse, ChannelRecord,
         ChannelRecordResponse, ChannelRouteCandidate, ChannelRouteRejected, ChannelRouteSource,
@@ -1707,7 +1723,7 @@ mod tests {
         ModelCapabilities, ModelRoute, ProviderKind, ProviderMetadata, RetryPolicy,
         UpstreamEndpoint,
     };
-    use serde_json::json;
+    use serde_json::{json, Value};
 
     fn route_group_channel_spec(id: &str, app: AppKind, groups: Vec<String>) -> ChannelSpec {
         ChannelSpec {
@@ -2117,6 +2133,37 @@ mod tests {
                 "circuitMinRequests": 10
             })
         );
+    }
+
+    #[test]
+    fn app_proxy_config_raw_includes_current_provider_id() {
+        let config = AppProxyConfig {
+            app_type: "codex".to_string(),
+            enabled: true,
+            auto_failover_enabled: true,
+            max_retries: 4,
+            streaming_first_byte_timeout: 30,
+            streaming_idle_timeout: 120,
+            non_streaming_timeout: 600,
+            circuit_failure_threshold: 4,
+            circuit_success_threshold: 2,
+            circuit_timeout_seconds: 60,
+            circuit_error_rate_threshold: 0.6,
+            circuit_min_requests: 10,
+        };
+
+        let raw = app_proxy_config_raw(config.clone(), Some("provider-1".to_string()));
+
+        assert_eq!(
+            raw.get("currentProviderId").and_then(Value::as_str),
+            Some("provider-1")
+        );
+        assert_eq!(raw.get("appType").and_then(Value::as_str), Some("codex"));
+
+        let raw_without_provider = app_proxy_config_raw(config, None);
+        assert!(raw_without_provider
+            .get("currentProviderId")
+            .is_some_and(Value::is_null));
     }
 
     #[test]

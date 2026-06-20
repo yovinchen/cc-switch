@@ -11,8 +11,8 @@ use crate::proxy::route_attempt::forward_attempts_from_route_plan;
 use crate::proxy::usage::{RequestLog, UsageLogger};
 use crate::proxy::RequestForwarder;
 use crate::proxy_core::{
-    channel_matches_query, interfaces_compatible, resolve_usage_record_pricing_models,
-    route_group_matches, token_usage_from_usage_record, AppKind, AppProxyConfig, AuthInfo, AuthProfileRef,
+    app_proxy_config_raw, channel_matches_query, interfaces_compatible, resolve_usage_record_pricing_models,
+    route_group_matches, token_usage_from_usage_record, AppKind, AuthInfo, AuthProfileRef,
     ChannelAttemptPlan, ChannelAttemptResult, ChannelQuery, ChannelSource, ChannelSpec,
     ChannelStatus, CopilotOptimizerConfigSpec, CostCalculator, CurrentRouteTarget, ForwardPipeline,
     GeminiShadowStore, ModelCatalog, OptimizerConfigSpec, ProviderSource, ProviderSpec,
@@ -206,7 +206,7 @@ impl ProxyConfigSource for CcSwitchConfigSource {
             let current_provider_id = app_type
                 .as_ref()
                 .and_then(crate::settings::get_current_provider);
-            let raw = app_config_raw(config.clone(), current_provider_id);
+            let raw = app_proxy_config_raw(config.clone(), current_provider_id);
 
             Ok(ProxyAppConfig {
                 app: Some(app.clone()),
@@ -960,19 +960,6 @@ fn usage_request_id(record: &UsageRecord) -> String {
                 .map(|message_id| format!("{SESSION_REQUEST_ID_PREFIX}{message_id}"))
         })
         .unwrap_or_else(|| uuid::Uuid::new_v4().to_string())
-}
-
-fn app_config_raw(config: AppProxyConfig, current_provider_id: Option<String>) -> Value {
-    let mut raw = serde_json::to_value(config).unwrap_or_else(|_| json!({}));
-    if let Value::Object(object) = &mut raw {
-        object.insert(
-            "currentProviderId".to_string(),
-            current_provider_id
-                .map(Value::String)
-                .unwrap_or(Value::Null),
-        );
-    }
-    raw
 }
 
 fn load_codex_client_model_catalog_raw() -> Value {
