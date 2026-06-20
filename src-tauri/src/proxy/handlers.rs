@@ -52,8 +52,8 @@ use crate::proxy_core::{
     ChannelModelRecord, ChannelModelsResponse, ChannelPathRequest, ChannelRecord,
     ChannelRecordResponse, ChannelRouteCandidate, ChannelRouteRejected, ChannelTestPlan,
     ChannelTestResponse, ClaudeDesktopModelListResponse, ClientModelCatalogResponse,
-    CurrentRouteResponse, CurrentRouteTarget, GroupListChannelSource, GroupListQuery,
-    GroupListRequest, HealthCheckRequest, HealthCheckResponse, InterfaceKind,
+    CurrentRouteResponse, CurrentRouteSource, CurrentRouteTarget, GroupListChannelSource,
+    GroupListQuery, GroupListRequest, HealthCheckRequest, HealthCheckResponse, InterfaceKind,
     ManagementAppPathRequest, ManagementAuthDecision, ProviderListResponse, ProviderListSource,
     ProxyBody, ProxyChannelModelsReplaceRequest, ProxyChannelPatchRequest, ProxyChannelTestRequest,
     ProxyChannelWriteRequest, ProxyRequest, ProxyRuntimeStatus, ProxyStatusRequest,
@@ -555,10 +555,12 @@ pub async fn get_current_proxy_route(
         None => None,
     };
 
-    Ok(Json(request.current_route_response(
-        active_target,
-        configured_provider,
-    )))
+    Ok(Json(
+        request.current_route_response_from_source(CurrentRouteSource::new(
+            active_target,
+            configured_provider,
+        )),
+    ))
 }
 
 /// GET /proxy/v1/apps/{app}/channels/migration/preview

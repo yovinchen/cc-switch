@@ -105,6 +105,24 @@ pub struct ManagementAppPathRequest {
     pub app_type: String,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CurrentRouteSource<T> {
+    pub active_target: Option<T>,
+    pub configured_provider: Option<CurrentRouteProviderSummaryInput>,
+}
+
+impl<T> CurrentRouteSource<T> {
+    pub fn new(
+        active_target: Option<T>,
+        configured_provider: Option<CurrentRouteProviderSummaryInput>,
+    ) -> Self {
+        Self {
+            active_target,
+            configured_provider,
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct ProviderListSource {
     pub providers: Vec<ProviderSpec>,
@@ -147,6 +165,13 @@ impl ManagementAppPathRequest {
             active_target,
             configured_provider,
         )
+    }
+
+    pub fn current_route_response_from_source<T>(
+        &self,
+        source: CurrentRouteSource<T>,
+    ) -> CurrentRouteResponse<T> {
+        self.current_route_response(source.active_target, source.configured_provider)
     }
 
     pub fn provider_list_response(
@@ -498,8 +523,8 @@ mod tests {
     use super::{
         AppChannelListSource, AppChannelManagementPlan, AppChannelManagementRequest,
         AppListRequest, AppModelCatalogRequest, ChannelListRequest, ChannelCreateRequest,
-        ChannelPathRequest, GroupListChannelSource, GroupListRequest, HealthCheckRequest,
-        ManagementAppPathRequest, ProviderListSource, ProxyStatusRequest,
+        ChannelPathRequest, CurrentRouteSource, GroupListChannelSource, GroupListRequest,
+        HealthCheckRequest, ManagementAppPathRequest, ProviderListSource, ProxyStatusRequest,
         RouteResolveManagementRequest, channel_not_found_message, normalize_channel_id_path,
         validate_management_app_type, validate_route_resolve_app_type,
     };
@@ -648,7 +673,10 @@ mod tests {
     fn management_app_path_request_wraps_current_route_response() {
         let request = ManagementAppPathRequest::from_path("claude").expect("request");
 
-        let response = request.current_route_response(Some("target-a"), None);
+        let response = request.current_route_response_from_source(CurrentRouteSource::new(
+            Some("target-a"),
+            None,
+        ));
 
         assert_eq!(response.app_type, "claude");
         assert!(response.active);
