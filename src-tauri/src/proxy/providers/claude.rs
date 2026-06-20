@@ -20,18 +20,22 @@ use crate::proxy::error::ProxyError;
 use crate::proxy_core::{
     anthropic_request_to_gemini_request_with_shadow, anthropic_to_openai_chat_request,
     anthropic_to_openai_responses_request, build_claude_auth_headers, build_claude_upstream_url,
-    build_copilot_auth_headers, claude_api_format_needs_transform,
-    extract_claude_auth_key_from_settings, extract_claude_base_url_from_settings,
+    build_copilot_auth_headers, extract_claude_auth_key_from_settings,
+    extract_claude_base_url_from_settings,
     gemini_response_to_anthropic_message, infer_claude_provider_kind,
     is_copilot_prompt_cache_provider, is_gemini_oauth_key_shape,
-    normalize_anthropic_tool_thinking_history, openai_chat_to_anthropic_message,
-    openai_responses_to_anthropic_message, resolve_claude_api_format_from_settings,
-    resolve_claude_responses_prompt_cache_key, should_normalize_anthropic_tool_thinking_history,
+    openai_chat_to_anthropic_message, openai_responses_to_anthropic_message,
+    resolve_claude_api_format_from_settings, resolve_claude_responses_prompt_cache_key,
     should_preserve_reasoning_content_for_openai_chat, ClaudeAuthHeaderKind, ClaudeAuthKey,
     ClaudeAuthKeySource, CopilotAuthHeadersInput, ProviderAuthInfo, ProviderAuthStrategy,
     ProviderKind,
 };
-use crate::proxy_core_adapter::synthesize_gemini_tool_call_id_with_uuid;
+use crate::proxy_core_adapter::{
+    claude_api_format_needs_transform, inject_openai_stream_include_usage,
+    normalize_anthropic_tool_thinking_history,
+    normalize_deepseek_thinking_disabled_strip_effort,
+    should_normalize_anthropic_tool_thinking_history, synthesize_gemini_tool_call_id_with_uuid,
+};
 use serde_json::Value;
 
 /// 获取 Claude 供应商的 API 格式
@@ -65,7 +69,7 @@ pub fn normalize_anthropic_messages_for_provider(
     } else {
         false
     };
-    changed |= crate::proxy_core::normalize_deepseek_thinking_disabled_strip_effort(
+    changed |= normalize_deepseek_thinking_disabled_strip_effort(
         body,
         &provider.settings_config,
     );
@@ -134,7 +138,7 @@ pub fn transform_claude_request_for_api_format(
             // 流式请求必须注入 stream_options.include_usage，否则 OpenAI 兼容上游
             // 不在 SSE 末尾吐 usage → 转换出的 Anthropic message_delta 全 0 →
             // 整笔 input/output/cache 漏记（与 Codex Responses→Chat 路径同源）。
-            crate::proxy_core::inject_openai_stream_include_usage(&mut result);
+            inject_openai_stream_include_usage(&mut result);
             Ok(result)
         }
         "gemini_native" => anthropic_request_to_gemini_request_with_shadow(
@@ -1737,7 +1741,7 @@ mod tests {
         assert_eq!(content[0]["type"], "thinking");
         assert_eq!(
             content[0]["thinking"],
-            crate::proxy_core::ANTHROPIC_TOOL_THINKING_PLACEHOLDER
+            crate::proxy_core_adapter::anthropic_tool_thinking_placeholder()
         );
         assert_eq!(content[1]["type"], "text");
         assert_eq!(content[2]["type"], "tool_use");
@@ -1831,7 +1835,7 @@ mod tests {
         assert_eq!(content[0]["type"], "thinking");
         assert_eq!(
             content[0]["thinking"],
-            crate::proxy_core::ANTHROPIC_TOOL_THINKING_PLACEHOLDER
+            crate::proxy_core_adapter::anthropic_tool_thinking_placeholder()
         );
         assert_eq!(content[1]["type"], "tool_use");
     }
@@ -1866,7 +1870,7 @@ mod tests {
         assert_eq!(content[0]["type"], "thinking");
         assert_eq!(
             content[0]["thinking"],
-            crate::proxy_core::ANTHROPIC_REDACTED_THINKING_PLACEHOLDER
+            crate::proxy_core_adapter::anthropic_redacted_thinking_placeholder()
         );
         assert!(content[0].get("data").is_none());
     }
@@ -1947,7 +1951,7 @@ mod tests {
         body: &mut Value,
         provider: &Provider,
     ) -> bool {
-        crate::proxy_core::normalize_deepseek_thinking_disabled_strip_effort(
+        crate::proxy_core_adapter::normalize_deepseek_thinking_disabled_strip_effort(
             body,
             &provider.settings_config,
         )

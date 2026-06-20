@@ -350,6 +350,43 @@ pub(crate) fn normalize_codex_chat_error_body(body: &[u8]) -> CodexChatErrorNorm
     crate::proxy_core::normalize_codex_chat_error_body(body)
 }
 
+pub(crate) fn should_normalize_anthropic_tool_thinking_history(
+    settings_config: &Value,
+    body: &Value,
+    api_format: &str,
+) -> bool {
+    crate::proxy_core::should_normalize_anthropic_tool_thinking_history(
+        settings_config,
+        body,
+        api_format,
+    )
+}
+
+pub(crate) fn normalize_anthropic_tool_thinking_history(body: &mut Value) -> bool {
+    crate::proxy_core::normalize_anthropic_tool_thinking_history(body)
+}
+
+pub(crate) fn normalize_deepseek_thinking_disabled_strip_effort(
+    body: &mut Value,
+    settings_config: &Value,
+) -> bool {
+    crate::proxy_core::normalize_deepseek_thinking_disabled_strip_effort(body, settings_config)
+}
+
+pub(crate) fn inject_openai_stream_include_usage(body: &mut Value) {
+    crate::proxy_core::inject_openai_stream_include_usage(body);
+}
+
+#[cfg(test)]
+pub(crate) fn anthropic_tool_thinking_placeholder() -> &'static str {
+    crate::proxy_core::ANTHROPIC_TOOL_THINKING_PLACEHOLDER
+}
+
+#[cfg(test)]
+pub(crate) fn anthropic_redacted_thinking_placeholder() -> &'static str {
+    crate::proxy_core::ANTHROPIC_REDACTED_THINKING_PLACEHOLDER
+}
+
 pub(crate) struct ModelMappingProjection {
     pub(crate) body: Value,
     pub(crate) log_message: Option<String>,
@@ -984,6 +1021,54 @@ mod tests {
         let normalized = normalize_codex_chat_error_body(b"Unauthorized");
         assert!(normalized.non_json_body_log_message().is_some());
         assert!(normalized.response_error.get("error").is_some());
+    }
+
+    #[test]
+    fn claude_body_normalization_adapter_projects_stream_and_thinking_rules() {
+        let mut stream_body = json!({"stream": true});
+        inject_openai_stream_include_usage(&mut stream_body);
+        assert_eq!(stream_body["stream_options"]["include_usage"], true);
+
+        let settings = json!({
+            "env": {
+                "ANTHROPIC_BASE_URL": "https://api.deepseek.com/anthropic"
+            }
+        });
+        let mut disabled_body = json!({
+            "model": "deepseek-v4-pro",
+            "thinking": {"type": "disabled"},
+            "output_config": {"effort": "high", "temperature": 0.2},
+            "reasoning_effort": "high"
+        });
+
+        assert!(normalize_deepseek_thinking_disabled_strip_effort(
+            &mut disabled_body,
+            &settings
+        ));
+        assert!(disabled_body.get("reasoning_effort").is_none());
+        assert!(disabled_body["output_config"].get("effort").is_none());
+        assert_eq!(disabled_body["output_config"]["temperature"], json!(0.2));
+
+        let mut tool_body = json!({
+            "model": "deepseek-v4-pro",
+            "messages": [{
+                "role": "assistant",
+                "content": [
+                    {"type": "tool_use", "id": "call_1", "name": "read_file", "input": {}}
+                ]
+            }]
+        });
+
+        assert!(should_normalize_anthropic_tool_thinking_history(
+            &settings,
+            &tool_body,
+            "anthropic"
+        ));
+        assert!(normalize_anthropic_tool_thinking_history(&mut tool_body));
+        assert_eq!(
+            tool_body["messages"][0]["content"][0]["thinking"],
+            anthropic_tool_thinking_placeholder()
+        );
     }
 
     #[test]
