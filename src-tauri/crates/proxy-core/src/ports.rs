@@ -1875,6 +1875,24 @@ impl<T> ChannelKeyRecordResponse<T> {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub struct ChannelKeyDeleteResponse {
+    pub channel_id: String,
+    pub key_ref: String,
+    pub deleted: bool,
+}
+
+impl ChannelKeyDeleteResponse {
+    pub fn new(channel_id: impl Into<String>, key_ref: impl Into<String>, deleted: bool) -> Self {
+        Self {
+            channel_id: channel_id.into(),
+            key_ref: key_ref.into(),
+            deleted,
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct ChannelKeysResponse<T> {
     pub channel_id: String,
     pub keys: Vec<T>,

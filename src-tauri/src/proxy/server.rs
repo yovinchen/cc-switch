@@ -364,7 +364,9 @@ impl ProxyServer {
             )
             .route(
                 "/proxy/v1/channels/:channel_id/keys/:key_ref",
-                put(handlers::upsert_proxy_channel_key).patch(handlers::update_proxy_channel_key),
+                put(handlers::upsert_proxy_channel_key)
+                    .patch(handlers::update_proxy_channel_key)
+                    .delete(handlers::delete_proxy_channel_key),
             )
             .route(
                 "/proxy/v1/channels/:channel_id/models",
@@ -984,6 +986,30 @@ mod tests {
                 return Err(format!("unexpected patch key body: {patched_key}"));
             }
 
+            let delete_key_response = client
+                .delete(format!(
+                    "{base_url}/proxy/v1/channels/{channel_id}/keys/primary"
+                ))
+                .send()
+                .await
+                .map_err(|error| error.to_string())?;
+            if delete_key_response.status() != StatusCode::OK {
+                return Err(format!(
+                    "unexpected delete key status: {}",
+                    delete_key_response.status()
+                ));
+            }
+            let deleted_key = delete_key_response
+                .json::<Value>()
+                .await
+                .map_err(|error| error.to_string())?;
+            if deleted_key["channelId"] != channel_id
+                || deleted_key["keyRef"] != "primary"
+                || deleted_key["deleted"] != true
+            {
+                return Err(format!("unexpected delete key body: {deleted_key}"));
+            }
+
             Ok::<(), String>(())
         }
         .await;
@@ -1362,6 +1388,36 @@ mod tests {
             .get_enabled_proxy_channel_key(&channel_id, "primary")
             .unwrap()
             .is_none());
+
+        let delete_key_response = Service::call(
+            &mut router,
+            Request::builder()
+                .method(Method::DELETE)
+                .uri(format!("/proxy/v1/channels/{channel_id}/keys/primary"))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+        assert_eq!(delete_key_response.status(), StatusCode::OK);
+        let deleted_key = response_json(delete_key_response).await;
+        assert_eq!(deleted_key["channelId"], channel_id);
+        assert_eq!(deleted_key["keyRef"], "primary");
+        assert_eq!(deleted_key["deleted"], true);
+
+        let list_keys_after_delete_response = Service::call(
+            &mut router,
+            Request::builder()
+                .method(Method::GET)
+                .uri(format!("/proxy/v1/channels/{channel_id}/keys"))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+        assert_eq!(list_keys_after_delete_response.status(), StatusCode::OK);
+        let keys_after_delete = response_json(list_keys_after_delete_response).await;
+        assert!(keys_after_delete["keys"].as_array().unwrap().is_empty());
 
         let patch_response = Service::call(
             &mut router,

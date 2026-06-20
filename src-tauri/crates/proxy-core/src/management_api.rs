@@ -3,8 +3,8 @@ use super::error::{ProxyCoreError, ProxyCoreResult};
 use super::ports::{
     AppChannelListQuery, AppChannelListResponse, AppChannelResponse, AppChannelRouteResponse,
     AppListResponse, AppModelListQuery, AppSummaryInput, ChannelDeleteResponse,
-    ChannelHealthResetResponse, ChannelKeyRecordResponse, ChannelKeysResponse, ChannelListQuery,
-    ChannelListResponse,
+    ChannelHealthResetResponse, ChannelKeyDeleteResponse, ChannelKeyRecordResponse,
+    ChannelKeysResponse, ChannelListQuery, ChannelListResponse,
     ChannelMigrationMaterializeResponse, ChannelMigrationPreviewResponse, ChannelModelsResponse,
     ChannelRecordResponse, ChannelRouteCandidate, ChannelRouteRejected, ChannelRouteSource,
     ChannelTestInput, ChannelTestResponse, CurrentRouteProviderSummaryInput,
@@ -432,6 +432,17 @@ impl<T> ChannelKeyRecordSource<T> {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ChannelKeyDeleteSource {
+    pub deleted: bool,
+}
+
+impl ChannelKeyDeleteSource {
+    pub fn new(deleted: bool) -> Self {
+        Self { deleted }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ChannelDeleteSource {
     pub deleted: bool,
 }
@@ -559,6 +570,17 @@ impl ChannelKeyPathRequest {
         source: ChannelKeyRecordSource<T>,
     ) -> ProxyCoreResult<ChannelKeyRecordResponse<T>> {
         self.record_response(source.key)
+    }
+
+    pub fn delete_response(&self, deleted: bool) -> ChannelKeyDeleteResponse {
+        ChannelKeyDeleteResponse::new(self.channel_id.clone(), self.key_ref.clone(), deleted)
+    }
+
+    pub fn delete_response_from_source(
+        &self,
+        source: ChannelKeyDeleteSource,
+    ) -> ChannelKeyDeleteResponse {
+        self.delete_response(source.deleted)
     }
 }
 
@@ -868,15 +890,15 @@ mod tests {
     use super::{
         AppChannelListSource, AppChannelManagementPlan, AppChannelManagementRequest,
         AppListRequest, AppListSource, AppModelCatalogRequest, ChannelCreateRequest,
-        ChannelCreateSource, ChannelDeleteSource, ChannelHealthResetSource, ChannelKeyPathRequest,
-        ChannelKeyRecordSource, ChannelKeysSource, ChannelListPlan, ChannelListRequest,
-        ChannelListSource, ChannelMigrationMaterializeSource, ChannelMigrationPreviewSource,
-        ChannelModelsSource, ChannelPathRequest, ChannelRecordSource, CurrentRouteSource,
-        GroupListChannelSource, GroupListRequest, HealthCheckRequest, HealthCheckSource,
-        ManagementAppPathRequest, ProviderListSource, ProxyStatusRequest, ProxyStatusSource,
-        RouteResolveManagementRequest, channel_key_not_found_message, channel_not_found_message,
-        normalize_channel_id_path, normalize_channel_key_ref_path, validate_management_app_type,
-        validate_route_resolve_app_type,
+        ChannelCreateSource, ChannelDeleteSource, ChannelHealthResetSource,
+        ChannelKeyDeleteSource, ChannelKeyPathRequest, ChannelKeyRecordSource, ChannelKeysSource,
+        ChannelListPlan, ChannelListRequest, ChannelListSource, ChannelMigrationMaterializeSource,
+        ChannelMigrationPreviewSource, ChannelModelsSource, ChannelPathRequest,
+        ChannelRecordSource, CurrentRouteSource, GroupListChannelSource, GroupListRequest,
+        HealthCheckRequest, HealthCheckSource, ManagementAppPathRequest, ProviderListSource,
+        ProxyStatusRequest, ProxyStatusSource, RouteResolveManagementRequest,
+        channel_key_not_found_message, channel_not_found_message, normalize_channel_id_path,
+        normalize_channel_key_ref_path, validate_management_app_type, validate_route_resolve_app_type,
     };
     use crate::domain::{
         AppKind, ChannelHealthPolicy, ChannelOverrides, ChannelSpec, ChannelStatus,
@@ -1211,6 +1233,11 @@ mod tests {
             error.to_string(),
             "invalid proxy request: channel key not found: channel-a/primary"
         );
+
+        let deleted = request.delete_response_from_source(ChannelKeyDeleteSource::new(true));
+        assert_eq!(deleted.channel_id, "channel-a");
+        assert_eq!(deleted.key_ref, "primary");
+        assert!(deleted.deleted);
     }
 
     #[test]

@@ -57,8 +57,9 @@ pub mod management {
     pub use crate::ports::{
         plan_channel_test, AppChannelListQuery, AppChannelResponse, AppListResponse,
         AppModelListQuery, AppSummaryInput, ChannelDeleteResponse, ChannelHealthResetResponse,
-        ChannelKeyRecord, ChannelKeyRecordResponse, ChannelKeysResponse, ChannelListQuery,
-        ChannelListResponse, ChannelMigrationMaterializeResponse,
+        ChannelKeyDeleteResponse, ChannelKeyRecord, ChannelKeyRecordResponse,
+        ChannelKeysResponse, ChannelListQuery, ChannelListResponse,
+        ChannelMigrationMaterializeResponse,
         ChannelMigrationPreviewResponse, ChannelModelRecord, ChannelModelsResponse,
         ChannelReachabilityInput, ChannelReachabilityResult, ChannelReachabilityStatus,
         ChannelRecord, ChannelRecordResponse, ChannelRouteRejected, ChannelRouteSource,

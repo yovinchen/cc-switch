@@ -49,9 +49,10 @@ use crate::proxy_core_adapter::{
     AppChannelManagementRequest, AppChannelResponse, AppKind, AppListRequest, AppListResponse,
     AppListSource, AppModelCatalogRequest, AppModelListQuery, ChannelCreateRequest,
     ChannelCreateSource, ChannelDeleteResponse, ChannelDeleteSource, ChannelHealthResetResponse,
-    ChannelHealthResetSource, ChannelKeyPathRequest, ChannelKeyRecord, ChannelKeyRecordResponse,
-    ChannelKeyRecordSource, ChannelKeysResponse, ChannelKeysSource, ChannelListPlan,
-    ChannelListQuery, ChannelListRequest, ChannelListResponse, ChannelListSource,
+    ChannelHealthResetSource, ChannelKeyDeleteResponse, ChannelKeyDeleteSource,
+    ChannelKeyPathRequest, ChannelKeyRecord, ChannelKeyRecordResponse, ChannelKeyRecordSource,
+    ChannelKeysResponse, ChannelKeysSource, ChannelListPlan, ChannelListQuery, ChannelListRequest,
+    ChannelListResponse, ChannelListSource,
     ChannelMigrationMaterializeResponse, ChannelMigrationMaterializeSource,
     ChannelMigrationPreviewResponse, ChannelMigrationPreviewSource, ChannelModelRecord,
     ChannelModelsResponse, ChannelModelsSource, ChannelPathRequest, ChannelRecord,
@@ -435,6 +436,23 @@ pub async fn update_proxy_channel_key(
         path_request
             .record_response_from_source(ChannelKeyRecordSource::new(key))
             .map_err(management_api_error_to_proxy_error)?,
+    ))
+}
+
+/// DELETE /proxy/v1/channels/{channel_id}/keys/{key_ref}
+pub async fn delete_proxy_channel_key(
+    State(state): State<ProxyState>,
+    Path((channel_id, key_ref)): Path<(String, String)>,
+) -> Result<Json<ChannelKeyDeleteResponse>, ProxyError> {
+    let path_request = ChannelKeyPathRequest::from_path(channel_id, key_ref)
+        .map_err(management_api_error_to_proxy_error)?;
+    let deleted = state
+        .db
+        .delete_proxy_channel_key(&path_request.channel_id, &path_request.key_ref)
+        .map_err(|e| ProxyError::DatabaseError(e.to_string()))?;
+
+    Ok(Json(
+        path_request.delete_response_from_source(ChannelKeyDeleteSource::new(deleted)),
     ))
 }
 

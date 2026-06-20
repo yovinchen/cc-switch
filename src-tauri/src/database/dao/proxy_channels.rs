@@ -691,6 +691,21 @@ impl Database {
         get_proxy_channel_key_on_conn(&conn, channel_id, key_ref)
     }
 
+    pub(crate) fn delete_proxy_channel_key(
+        &self,
+        channel_id: &str,
+        key_ref: &str,
+    ) -> Result<bool, AppError> {
+        let conn = lock_conn!(self.conn);
+        let deleted = conn
+            .execute(
+                "DELETE FROM proxy_channel_keys WHERE channel_id = ?1 AND key_ref = ?2",
+                params![channel_id, key_ref],
+            )
+            .map_err(|e| AppError::Database(format!("删除 proxy channel key 失败: {e}")))?;
+        Ok(deleted > 0)
+    }
+
     pub(crate) fn get_enabled_proxy_channel_key(
         &self,
         channel_id: &str,
@@ -1640,6 +1655,18 @@ mod tests {
             )
             .expect("patch missing key")
             .is_none());
+
+        assert!(db
+            .delete_proxy_channel_key(&created.id, "primary")
+            .expect("delete channel key"));
+        assert!(!db
+            .delete_proxy_channel_key(&created.id, "primary")
+            .expect("delete missing channel key"));
+        assert!(db
+            .list_proxy_channel_keys(&created.id)
+            .expect("list keys after delete")
+            .expect("channel exists")
+            .is_empty());
 
         db.upsert_proxy_channel_key(
             &created.id,
