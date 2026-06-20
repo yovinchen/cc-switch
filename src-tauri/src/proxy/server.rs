@@ -1091,6 +1091,36 @@ mod tests {
                 ));
             }
 
+            let rejected_channels_response = client
+                .get(format!(
+                    "{base_url}/proxy/v1/apps/claude/channels?model=missing-runtime&group=default"
+                ))
+                .send()
+                .await
+                .map_err(|error| error.to_string())?;
+            if rejected_channels_response.status() != StatusCode::OK {
+                return Err(format!(
+                    "unexpected rejected channels status: {}",
+                    rejected_channels_response.status()
+                ));
+            }
+            let rejected_channels = rejected_channels_response
+                .json::<Value>()
+                .await
+                .map_err(|error| error.to_string())?;
+            if rejected_channels["requestedModel"] != "missing-runtime"
+                || rejected_channels["routeGroup"] != "default"
+                || rejected_channels["source"] != "materialized_channels"
+                || rejected_channels["channels"].as_array().map(Vec::len) != Some(0)
+                || rejected_channels["rejected"].as_array().map(Vec::len) != Some(1)
+                || rejected_channels["rejected"][0]["channelId"] != channel_id
+                || rejected_channels["rejected"][0]["reasons"].as_array().is_none()
+            {
+                return Err(format!(
+                    "unexpected rejected channels body: {rejected_channels}"
+                ));
+            }
+
             let app_models_response = client
                 .get(format!(
                     "{base_url}/proxy/v1/apps/claude/models?group=default&interface=anthropic_messages"
