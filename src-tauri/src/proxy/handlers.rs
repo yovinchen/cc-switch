@@ -10,7 +10,7 @@
 use super::{
     error::ProxyError,
     error_mapper::{
-        claude_desktop_gateway_auth_error_to_proxy_error, codex_proxy_error_json,
+        claude_desktop_gateway_auth_error_to_proxy_error, codex_proxy_error_response,
         get_error_message, management_api_error_to_proxy_error,
         management_auth_error_to_proxy_error, map_proxy_error_to_status,
         proxy_core_error_to_proxy_error, response_body_parse_error_to_proxy_error,
@@ -57,11 +57,11 @@ use crate::proxy_core::{
     create_openai_chat_to_anthropic_sse_stream as create_anthropic_sse_stream,
     create_openai_responses_to_anthropic_sse_stream as create_anthropic_sse_stream_from_responses,
     extract_anthropic_tool_schema_hints, extract_gemini_model_from_path,
-    gemini_response_to_anthropic_message_with_shadow, json_proxy_response,
-    openai_chat_to_anthropic_message, openai_responses_to_anthropic_message,
-    parse_upstream_json_or_unlabeled_sse, rebuilt_json_proxy_response,
-    resolve_management_auth_decision, should_aggregate_codex_oauth_responses_sse,
-    should_use_claude_transform_streaming, strip_endpoint_prefix, transformed_sse_proxy_response,
+    gemini_response_to_anthropic_message_with_shadow, openai_chat_to_anthropic_message,
+    openai_responses_to_anthropic_message, parse_upstream_json_or_unlabeled_sse,
+    rebuilt_json_proxy_response, resolve_management_auth_decision,
+    should_aggregate_codex_oauth_responses_sse, should_use_claude_transform_streaming,
+    strip_endpoint_prefix, transformed_sse_proxy_response,
     transformed_streaming_response_usage_record_with_request_id_fallback,
     validate_claude_desktop_gateway_bearer_header, validate_management_bearer_header,
 };
@@ -1377,7 +1377,7 @@ async fn handle_codex_chat_error_response(
 ///
 /// 与 `handle_codex_chat_error_response`（处理上游真实错误响应、复制上游头）不同，
 /// 这里没有上游响应可参照，只产出一个 `application/json` 错误体。状态码走
-/// `map_proxy_error_to_status`，该函数已与 `ProxyError::into_response` 对齐。
+/// host error adapter 仍负责把 `ProxyError` 映射成 core status kind/context。
 ///
 /// 注意：`endpoint` 经 core endpoint query helper 可能携带 query（如 `?beta=true`）并被
 /// 原样写入错误体。当前 Codex 端点不在 query 里放凭证，故安全；若将来复用到
@@ -1387,13 +1387,12 @@ fn build_codex_proxy_error_response(
     endpoint: &str,
     error: &ProxyError,
 ) -> Result<axum::response::Response, ProxyError> {
-    let status = StatusCode::from_u16(map_proxy_error_to_status(error))
-        .unwrap_or(StatusCode::INTERNAL_SERVER_ERROR);
-    let body = codex_proxy_error_json(&ctx.provider.name, &ctx.request_model, endpoint, error);
-    let response = json_proxy_response(status, body).map_err(|error| {
-        log::error!("[Codex] 构造代理错误响应失败: {error}");
-        proxy_core_error_to_proxy_error(error)
-    })?;
+    let response =
+        codex_proxy_error_response(&ctx.provider.name, &ctx.request_model, endpoint, error)
+            .map_err(|error| {
+                log::error!("[Codex] 构造代理错误响应失败: {error}");
+                proxy_core_error_to_proxy_error(error)
+            })?;
 
     proxy_core_response_to_axum_response(response, "[Codex] 构建代理错误响应失败")
 }
@@ -1496,8 +1495,8 @@ fn log_forward_error(
 
 #[cfg(test)]
 mod tests {
-    use super::codex_proxy_error_json;
     use crate::proxy::error::ProxyError;
+    use crate::proxy::error_mapper::codex_proxy_error_json;
 
     #[test]
     fn codex_proxy_forward_error_includes_context_and_cause() {

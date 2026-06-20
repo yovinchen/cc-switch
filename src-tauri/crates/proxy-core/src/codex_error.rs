@@ -1,3 +1,8 @@
+use crate::{
+    json_proxy_response, proxy_error_http_status_code, ProxyCoreResponse, ProxyCoreResult,
+    ProxyErrorStatusKind,
+};
+use http::StatusCode;
 use serde_json::{json, Value};
 
 const CODEX_ERROR_MESSAGE_LIMIT: usize = 1800;
@@ -146,7 +151,10 @@ pub fn codex_proxy_error_json(ctx: CodexProxyErrorContext<'_>) -> Value {
         "model".to_string(),
         Value::String(ctx.request_model.to_string()),
     );
-    error_obj.insert("endpoint".to_string(), Value::String(ctx.endpoint.to_string()));
+    error_obj.insert(
+        "endpoint".to_string(),
+        Value::String(ctx.endpoint.to_string()),
+    );
     if let Some(status) = upstream_status {
         error_obj.insert(
             "upstream_status".to_string(),
@@ -155,6 +163,15 @@ pub fn codex_proxy_error_json(ctx: CodexProxyErrorContext<'_>) -> Value {
     }
 
     body
+}
+
+pub fn codex_proxy_error_response(
+    status_kind: ProxyErrorStatusKind,
+    ctx: CodexProxyErrorContext<'_>,
+) -> ProxyCoreResult<ProxyCoreResponse> {
+    let status = StatusCode::from_u16(proxy_error_http_status_code(status_kind))
+        .unwrap_or(StatusCode::INTERNAL_SERVER_ERROR);
+    json_proxy_response(status, codex_proxy_error_json(ctx))
 }
 
 pub fn codex_upstream_error_to_response_error(body: Option<&Value>) -> Value {
@@ -351,6 +368,35 @@ mod tests {
         assert_eq!(body["error"]["code"], "cc_switch_forward_failed");
         assert_eq!(body["error"]["provider"], "DeepSeek");
         assert_eq!(body["error"]["model"], "deepseek-chat");
+    }
+
+    #[test]
+    fn codex_proxy_error_response_builds_json_response_with_status() {
+        let response = codex_proxy_error_response(
+            ProxyErrorStatusKind::AuthError,
+            CodexProxyErrorContext {
+                provider_name: "DeepSeek",
+                request_model: "deepseek-chat",
+                endpoint: "/responses",
+                fallback_message: "bad token",
+                fallback_code: "cc_switch_auth_error",
+                upstream_status: None,
+                upstream_body: None,
+            },
+        )
+        .expect("response");
+
+        assert_eq!(response.status, StatusCode::UNAUTHORIZED);
+
+        let body = match response.body {
+            crate::ProxyResponseBody::Bytes(body) => body,
+            other => panic!("expected bytes body, got {other:?}"),
+        };
+        let value: Value = serde_json::from_slice(&body).expect("json body");
+
+        assert_eq!(value["error"]["code"], "cc_switch_auth_error");
+        assert_eq!(value["error"]["provider"], "DeepSeek");
+        assert_eq!(value["error"]["model"], "deepseek-chat");
     }
 
     #[test]

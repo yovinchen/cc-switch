@@ -5,10 +5,12 @@
 use super::{error::ProxyError, ForwardError};
 use crate::proxy::error::proxy_error_status_kind;
 use crate::proxy_core::{
-    codex_proxy_error_code, proxy_error_http_status_code, ClaudeDesktopGatewayAuthError,
-    CodexProxyErrorContext, CodexProxyErrorKind, ForwardFailureKind, ManagementAuthError,
-    ProxyCoreError,
+    codex_proxy_error_code, codex_proxy_error_response as core_codex_proxy_error_response,
+    proxy_error_http_status_code, ClaudeDesktopGatewayAuthError, CodexProxyErrorContext,
+    CodexProxyErrorKind, ForwardFailureKind, ManagementAuthError, ProxyCoreError,
+    ProxyCoreResponse, ProxyCoreResult,
 };
+#[cfg(test)]
 use serde_json::Value;
 
 /// 将 ProxyError 映射到 HTTP 状态码
@@ -146,6 +148,7 @@ pub(crate) fn response_body_parse_error_to_proxy_error(error: ProxyCoreError) ->
     }
 }
 
+#[cfg(test)]
 pub(crate) fn codex_proxy_error_json(
     provider_name: &str,
     request_model: &str,
@@ -165,6 +168,30 @@ pub(crate) fn codex_proxy_error_json(
         upstream_status,
         upstream_body,
     })
+}
+
+pub(crate) fn codex_proxy_error_response(
+    provider_name: &str,
+    request_model: &str,
+    endpoint: &str,
+    error: &ProxyError,
+) -> ProxyCoreResult<ProxyCoreResponse> {
+    let (upstream_status, upstream_body) = match error {
+        ProxyError::UpstreamError { status, body } => (Some(*status), body.as_deref()),
+        _ => (None, None),
+    };
+    core_codex_proxy_error_response(
+        proxy_error_status_kind(error),
+        CodexProxyErrorContext {
+            provider_name,
+            request_model,
+            endpoint,
+            fallback_message: &get_error_message(error),
+            fallback_code: codex_proxy_error_code(codex_proxy_error_kind(error)),
+            upstream_status,
+            upstream_body,
+        },
+    )
 }
 
 fn codex_proxy_error_kind(error: &ProxyError) -> CodexProxyErrorKind {
@@ -471,5 +498,28 @@ mod tests {
         assert!(message.contains("413"));
         assert!(message.to_lowercase().contains("upstream"));
         assert_eq!(body["error"]["endpoint"], "/responses");
+    }
+
+    #[test]
+    fn test_codex_proxy_error_response_maps_host_status_and_body() {
+        let response = codex_proxy_error_response(
+            "DeepSeek",
+            "deepseek-chat",
+            "/responses",
+            &ProxyError::AuthError("bad token".to_string()),
+        )
+        .expect("response");
+
+        assert_eq!(response.status.as_u16(), 401);
+
+        let body = match response.body {
+            crate::proxy_core::ProxyResponseBody::Bytes(body) => body,
+            other => panic!("expected bytes body, got {other:?}"),
+        };
+        let value: Value = serde_json::from_slice(&body).expect("json body");
+
+        assert_eq!(value["error"]["code"], "cc_switch_auth_error");
+        assert_eq!(value["error"]["provider"], "DeepSeek");
+        assert_eq!(value["error"]["model"], "deepseek-chat");
     }
 }
