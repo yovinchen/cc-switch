@@ -42,8 +42,6 @@ const CLAUDE_MODEL_OVERRIDE_ENV_KEYS: [&str; 9] = [
 const CLAUDE_TAKEOVER_HAIKU_MODEL: &str = "claude-haiku-4-5";
 const CLAUDE_TAKEOVER_SONNET_MODEL: &str = "claude-sonnet-4-6";
 const CLAUDE_TAKEOVER_OPUS_MODEL: &str = "claude-opus-4-8";
-// 写给 Claude Code 时沿用文档示例的大写形式；解析侧大小写不敏感。
-const CLAUDE_ONE_M_MARKER_FOR_CLIENT: &str = "[1M]";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum ClaudeTakeoverAuthPolicy {
@@ -266,18 +264,19 @@ impl ProxyService {
             return;
         };
 
-        let mut client_model = takeover_model.to_string();
-        if supports_one_m && crate::proxy_core::has_one_m_suffix_for_upstream(upstream_model) {
-            client_model.push_str(CLAUDE_ONE_M_MARKER_FOR_CLIENT);
-        }
-        fields.push((model_key, client_model));
+        fields.push((
+            model_key,
+            crate::proxy_core_adapter::claude_takeover_client_model_for_upstream(
+                takeover_model,
+                supports_one_m,
+                upstream_model,
+            ),
+        ));
 
         let display_name = Self::claude_env_string(env, name_key)
             .map(str::to_string)
             .unwrap_or_else(|| {
-                crate::proxy_core::strip_one_m_suffix_for_upstream(upstream_model)
-                    .trim()
-                    .to_string()
+                crate::proxy_core_adapter::claude_takeover_default_display_name(upstream_model)
             });
         if !display_name.is_empty() {
             fields.push((name_key, display_name));
