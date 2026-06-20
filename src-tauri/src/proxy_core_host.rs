@@ -8,24 +8,22 @@ use crate::proxy::hyper_client::ProxyResponse;
 use crate::proxy::provider_router::ProviderRouter;
 use crate::proxy::providers::codex_chat_history::CodexChatHistoryStore;
 use crate::proxy::route_attempt::forward_attempts_from_route_plan;
-use crate::proxy::usage::{RequestLog, UsageLogger};
+use crate::proxy::usage::UsageLogger;
 use crate::proxy::RequestForwarder;
 use crate::proxy_core::{
     app_proxy_config_raw, channel_matches_query, interfaces_compatible,
-    resolve_usage_record_pricing_models, route_group_matches, token_usage_from_usage_record,
-    usage_record_request_id_with_fallback, AppKind, AuthInfo, AuthProfileRef, ChannelAttemptPlan,
+    route_group_matches, AppKind, AuthInfo, AuthProfileRef, ChannelAttemptPlan,
     ChannelAttemptResult, ChannelQuery, ChannelSource, ChannelSpec, ChannelStatus,
-    CopilotOptimizerConfigSpec, CostCalculator, CurrentRouteTarget, ForwardPipeline,
-    GeminiShadowStore, ModelCatalog, OptimizerConfigSpec, ProviderSource, ProviderSpec,
-    ProxyAppConfig, ProxyConfigSource, ProxyCoreError, ProxyCoreEvent, ProxyCoreResponse,
-    ProxyCoreResult, ProxyEventSink, ProxyGlobalConfig, ProxyRequest, ProxyResponseBody,
-    ProxyResult, ProxyRuntimeConfig, ProxyRuntimeStatus, ProxyServices, RectifierConfigSpec,
-    RoutePlan, RoutePolicy, RoutePolicySource, RouteRequest, RouteResolver, RouteSelection,
-    UsageRecord, UsageSink, CLAUDE_API_FORMAT_METADATA_KEY, DEFAULT_ROUTE_GROUP,
+    CopilotOptimizerConfigSpec, CurrentRouteTarget, ForwardPipeline, GeminiShadowStore,
+    ModelCatalog, OptimizerConfigSpec, ProviderSource, ProviderSpec, ProxyAppConfig,
+    ProxyConfigSource, ProxyCoreError, ProxyCoreEvent, ProxyCoreResponse, ProxyCoreResult,
+    ProxyEventSink, ProxyGlobalConfig, ProxyRequest, ProxyResponseBody, ProxyResult,
+    ProxyRuntimeConfig, ProxyRuntimeStatus, ProxyServices, RectifierConfigSpec, RoutePlan,
+    RoutePolicy, RoutePolicySource, RouteRequest, RouteResolver, RouteSelection, UsageRecord,
+    UsageSink, CLAUDE_API_FORMAT_METADATA_KEY, DEFAULT_ROUTE_GROUP,
 };
 use crate::proxy_core_adapter::extract_proxy_session_id;
 use crate::proxy_core_adapter::{ToProxyCoreChannelSpec, ToProxyCoreProviderSpec};
-use crate::services::usage_stats::is_placeholder_pricing_model;
 use bytes::Bytes;
 use futures::{future::BoxFuture, Stream, StreamExt};
 use serde_json::{json, Map, Value};
@@ -563,55 +561,30 @@ impl UsageSink for CcSwitchUsageSink {
             let (multiplier, pricing_model_source) = logger
                 .resolve_pricing_config(&record.provider_id, &app_type)
                 .await;
-            let model_selection =
-                resolve_usage_record_pricing_models(&record, &pricing_model_source);
-            let usage = token_usage_from_usage_record(&record);
+            let pricing_model = crate::proxy_core_adapter::usage_record_pricing_model(
+                &record,
+                &pricing_model_source,
+            );
             let pricing = logger
-                .get_model_pricing(&model_selection.pricing_model)
+                .get_model_pricing(&pricing_model)
                 .map_err(|error| usage_error("load model pricing", error))?;
+            let projection = crate::proxy_core_adapter::usage_record_to_request_log(
+                &record,
+                &pricing_model_source,
+                pricing.as_ref(),
+                multiplier,
+                || uuid::Uuid::new_v4().to_string(),
+            );
 
-            if pricing.is_none()
-                && record.tokens.has_billable_tokens()
-                && !is_placeholder_pricing_model(&model_selection.pricing_model)
-            {
+            if let Some(pricing_model) = projection.missing_pricing_model.as_ref() {
                 log::warn!(
                     "[USG-002] 模型定价未找到，成本将记录为 0: {}",
-                    model_selection.pricing_model
+                    pricing_model
                 );
             }
 
-            let cost = CostCalculator::try_calculate_for_app(
-                &app_type,
-                &usage,
-                pricing.as_ref(),
-                multiplier,
-            );
-            let log = RequestLog {
-                request_id: usage_record_request_id_with_fallback(&record, || {
-                    uuid::Uuid::new_v4().to_string()
-                }),
-                provider_id: record.provider_id.clone(),
-                app_type,
-                model: model_selection.response_model,
-                request_model: record.request_model.clone(),
-                pricing_model: model_selection.pricing_model,
-                usage,
-                cost,
-                latency_ms: record.latency_ms,
-                first_token_ms: record.first_token_ms,
-                status_code: record.status_code,
-                error_message: record.error_message.clone(),
-                session_id: record.session_id.clone(),
-                provider_type: record
-                    .provider_kind
-                    .as_ref()
-                    .map(|provider_kind| provider_kind.as_str().to_string()),
-                is_streaming: record.is_streaming,
-                cost_multiplier: multiplier.to_string(),
-            };
-
             logger
-                .log_request(&log)
+                .log_request(&projection.log)
                 .map_err(|error| usage_error("record usage", error))
         })
     }

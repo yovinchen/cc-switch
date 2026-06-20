@@ -2,18 +2,22 @@ use crate::app_config::AppType;
 use crate::claude_desktop_config::ResolvedModelRoute;
 use crate::database::{ProxyChannelModelRecord, ProxyChannelRecord};
 use crate::provider::Provider;
+use crate::proxy::usage::RequestLog;
 use crate::proxy::providers::provider_kind_from_app_type_and_config;
 use crate::proxy_core::{
     AppKind, AppSummaryInput, AuthProfileRef, ChannelHealthPolicy, ChannelModelRecord,
     ChannelOverrides, ChannelReachabilityInput, ChannelReachabilityResult,
     ChannelReachabilityStatus, ChannelRecord, ChannelSpec, ChannelStatus,
     ClaudeDesktopModelListResponse, ClaudeDesktopModelRouteInput,
-    CurrentRouteProviderSummaryInput, InterfaceKind, ModelCapabilities, ModelRoute,
-    ModelCatalog, ProviderMetadata, ProviderSpec, RetryPolicy, RouteResolveChannelInput,
-    RouteResolveModelInput, RoutePlan, RouteSelection, SessionIdResult, UpstreamEndpoint,
+    CostCalculator, CurrentRouteProviderSummaryInput, InterfaceKind, ModelCapabilities,
+    ModelCatalog, ModelPricing, ModelRoute, ProviderMetadata, ProviderSpec, RetryPolicy,
+    RoutePlan, RouteResolveChannelInput, RouteResolveModelInput, RouteSelection, SessionIdResult,
+    UpstreamEndpoint, UsageRecord,
 };
+use crate::services::usage_stats::is_placeholder_pricing_model;
 use crate::services::stream_check::{HealthStatus, StreamCheckResult};
 use http::HeaderMap;
+use rust_decimal::Decimal;
 use serde_json::{Value, json};
 use uuid::Uuid;
 
@@ -255,6 +259,65 @@ pub(crate) fn route_selection_for_forward_result(
     provider_id: &str,
 ) -> RouteSelection {
     crate::proxy_core::select_route_for_forward_result(plan, selected_channel_id, provider_id)
+}
+
+pub(crate) struct UsageRequestLogProjection {
+    pub(crate) log: RequestLog,
+    pub(crate) missing_pricing_model: Option<String>,
+}
+
+pub(crate) fn usage_record_pricing_model(
+    record: &UsageRecord,
+    pricing_model_source: &str,
+) -> String {
+    crate::proxy_core::resolve_usage_record_pricing_models(record, pricing_model_source)
+        .pricing_model
+}
+
+pub(crate) fn usage_record_to_request_log(
+    record: &UsageRecord,
+    pricing_model_source: &str,
+    pricing: Option<&ModelPricing>,
+    multiplier: Decimal,
+    fallback_request_id: impl FnOnce() -> String,
+) -> UsageRequestLogProjection {
+    let app_type = record.app.as_str().to_string();
+    let model_selection =
+        crate::proxy_core::resolve_usage_record_pricing_models(record, pricing_model_source);
+    let usage = crate::proxy_core::token_usage_from_usage_record(record);
+    let missing_pricing_model = (pricing.is_none()
+        && record.tokens.has_billable_tokens()
+        && !is_placeholder_pricing_model(&model_selection.pricing_model))
+    .then(|| model_selection.pricing_model.clone());
+    let cost = CostCalculator::try_calculate_for_app(&app_type, &usage, pricing, multiplier);
+
+    UsageRequestLogProjection {
+        log: RequestLog {
+            request_id: crate::proxy_core::usage_record_request_id_with_fallback(
+                record,
+                fallback_request_id,
+            ),
+            provider_id: record.provider_id.clone(),
+            app_type,
+            model: model_selection.response_model,
+            request_model: record.request_model.clone(),
+            pricing_model: model_selection.pricing_model,
+            usage,
+            cost,
+            latency_ms: record.latency_ms,
+            first_token_ms: record.first_token_ms,
+            status_code: record.status_code,
+            error_message: record.error_message.clone(),
+            session_id: record.session_id.clone(),
+            provider_type: record
+                .provider_kind
+                .as_ref()
+                .map(|provider_kind| provider_kind.as_str().to_string()),
+            is_streaming: record.is_streaming,
+            cost_multiplier: multiplier.to_string(),
+        },
+        missing_pricing_model,
+    }
 }
 
 const CLAUDE_ONE_M_MARKER_FOR_CLIENT: &str = "[1M]";
@@ -670,6 +733,77 @@ mod tests {
                 .id,
             "ch-b"
         );
+    }
+
+    #[test]
+    fn usage_record_adapter_builds_request_log_and_missing_pricing_signal() {
+        let record = UsageRecord {
+            request_id: Some("req-usage-1".to_string()),
+            message_id: Some("msg-usage-1".to_string()),
+            app: AppKind::Claude,
+            provider_id: "provider-a".to_string(),
+            provider_kind: Some(ProviderKind::Claude),
+            channel_id: Some("channel-a".to_string()),
+            channel_name: Some("Channel A".to_string()),
+            route_group: Some("default".to_string()),
+            request_model: "public-sonnet".to_string(),
+            outbound_model: "upstream-sonnet".to_string(),
+            response_model: Some("upstream-sonnet".to_string()),
+            pricing_model: None,
+            tokens: crate::proxy_core::UsageTokens {
+                input_tokens: 1_000,
+                output_tokens: 500,
+                cache_read_tokens: 0,
+                cache_creation_tokens: 0,
+            },
+            latency_ms: 42,
+            first_token_ms: Some(7),
+            status_code: 200,
+            error_message: None,
+            session_id: Some("session-a".to_string()),
+            is_streaming: true,
+            metadata: json!({}),
+        };
+        let pricing =
+            ModelPricing::from_strings("3.0", "15.0", "0.3", "3.75").expect("pricing");
+        assert_eq!(
+            usage_record_pricing_model(&record, "response"),
+            "upstream-sonnet"
+        );
+
+        let projection = usage_record_to_request_log(
+            &record,
+            "response",
+            Some(&pricing),
+            Decimal::new(2, 0),
+            || "fallback".to_string(),
+        );
+
+        assert_eq!(projection.log.request_id, "req-usage-1");
+        assert_eq!(projection.log.provider_id, "provider-a");
+        assert_eq!(projection.log.app_type, "claude");
+        assert_eq!(projection.log.model, "upstream-sonnet");
+        assert_eq!(projection.log.request_model, "public-sonnet");
+        assert_eq!(projection.log.pricing_model, "upstream-sonnet");
+        assert_eq!(projection.log.usage.input_tokens, 1_000);
+        assert!(projection.log.cost.is_some());
+        assert_eq!(projection.log.provider_type.as_deref(), Some("claude"));
+        assert!(projection.log.is_streaming);
+        assert_eq!(projection.log.cost_multiplier, "2");
+        assert!(projection.missing_pricing_model.is_none());
+
+        let missing_pricing = usage_record_to_request_log(
+            &record,
+            "response",
+            None,
+            Decimal::new(1, 0),
+            || "fallback".to_string(),
+        );
+        assert_eq!(
+            missing_pricing.missing_pricing_model.as_deref(),
+            Some("upstream-sonnet")
+        );
+        assert!(missing_pricing.log.cost.is_none());
     }
 
     #[test]
