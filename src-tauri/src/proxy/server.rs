@@ -908,6 +908,32 @@ mod tests {
                 return Err(format!("unexpected created channel body: {created}"));
             }
 
+            let groups_response = client
+                .get(format!("{base_url}/proxy/v1/groups?appType=claude"))
+                .send()
+                .await
+                .map_err(|error| error.to_string())?;
+            if groups_response.status() != StatusCode::OK {
+                return Err(format!(
+                    "unexpected groups status: {}",
+                    groups_response.status()
+                ));
+            }
+            let groups = groups_response
+                .json::<Value>()
+                .await
+                .map_err(|error| error.to_string())?;
+            if groups["appType"] != "claude"
+                || groups["sources"].as_array().map(Vec::len) != Some(1)
+                || groups["sources"][0] != "materialized_channels"
+                || groups["groups"].as_array().map(Vec::len) != Some(1)
+                || groups["groups"][0]["name"] != "default"
+                || groups["groups"][0]["channelCount"] != 1
+                || groups["groups"][0]["appTypes"][0] != "claude"
+            {
+                return Err(format!("unexpected groups body: {groups}"));
+            }
+
             let route_response = client
                 .post(format!("{base_url}/proxy/v1/route/resolve"))
                 .json(&json!({
@@ -937,7 +963,9 @@ mod tests {
             }
 
             let upsert_key_response = client
-                .put(format!("{base_url}/proxy/v1/channels/{channel_id}/keys/primary"))
+                .put(format!(
+                    "{base_url}/proxy/v1/channels/{channel_id}/keys/primary"
+                ))
                 .json(&json!({
                     "keyValue": "sk-runtime-channel",
                     "status": "enabled",
@@ -989,7 +1017,9 @@ mod tests {
             }
 
             let patch_key_response = client
-                .patch(format!("{base_url}/proxy/v1/channels/{channel_id}/keys/primary"))
+                .patch(format!(
+                    "{base_url}/proxy/v1/channels/{channel_id}/keys/primary"
+                ))
                 .json(&json!({
                     "status": "disabled",
                     "weight": 10
