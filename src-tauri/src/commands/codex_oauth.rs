@@ -86,5 +86,5 @@ pub async fn get_codex_oauth_models(
         .await
         .map_err(|e| format!("Codex OAuth token unavailable: {e}"))?;
 
-    crate::services::codex_oauth_models::fetch_models_with_token(&token, &id).await
+    crate::services::model_fetch_transport::fetch_codex_oauth_models_with_token(&token, &id).await
 }
