@@ -434,6 +434,7 @@ pub(crate) type ChannelRouteSource =
 pub(crate) type ChannelRecord = crate::proxy_core::api::management::ChannelRecord;
 pub type ChannelReachabilityStatus =
     crate::proxy_core::api::management::ChannelReachabilityStatus;
+pub type StreamCheckConfig = crate::proxy_core::api::management::StreamCheckConfig;
 pub(crate) type ChannelKeyRecord =
     crate::proxy_core::api::management::ChannelKeyRecord;
 pub(crate) type ChannelKeyRecordInput =

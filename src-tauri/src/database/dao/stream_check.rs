@@ -72,3 +72,44 @@ impl Database {
         self.set_setting("stream_check_config", &json)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn stream_check_config_round_trips_core_contract() {
+        let db = Database::memory().expect("memory db");
+
+        assert_eq!(
+            db.get_stream_check_config().expect("default config"),
+            StreamCheckConfig::default()
+        );
+
+        let config = StreamCheckConfig {
+            timeout_secs: 12,
+            max_retries: 3,
+            degraded_threshold_ms: 2500,
+        };
+        db.save_stream_check_config(&config).expect("save config");
+
+        assert_eq!(
+            db.get_stream_check_config().expect("saved config"),
+            config
+        );
+        assert_eq!(
+            serde_json::from_str::<serde_json::Value>(
+                &db.get_setting("stream_check_config")
+                    .expect("read setting")
+                    .expect("setting exists")
+            )
+            .expect("parse saved json"),
+            json!({
+                "timeoutSecs": 12,
+                "maxRetries": 3,
+                "degradedThresholdMs": 2500
+            })
+        );
+    }
+}

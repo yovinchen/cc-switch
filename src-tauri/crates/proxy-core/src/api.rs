@@ -71,7 +71,7 @@ pub mod management {
         HealthCheckResponse, ProviderListResponse, ProviderSummaryInput, ProxyChannelKeyPatchRequest,
         ProxyChannelKeyWriteRequest, ProxyChannelModelWriteRequest,
         ProxyChannelModelsReplaceRequest, ProxyChannelPatchRequest, ProxyChannelTestRequest,
-        ProxyChannelWriteRequest, ProxyStatusResponse, RouteGroupListResponse,
+        ProxyChannelWriteRequest, ProxyStatusResponse, RouteGroupListResponse, StreamCheckConfig,
         RouteResolveRequest, RouteResolveResponse,
     };
 }

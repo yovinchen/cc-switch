@@ -29,32 +29,9 @@ use crate::proxy_core_adapter::{
     channel_reachability_status_from_latency, should_retry_channel_reachability_failure,
 };
 
-pub use crate::proxy_core_adapter::ChannelReachabilityStatus as HealthStatus;
-
-/// 连通性检查配置
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct StreamCheckConfig {
-    /// 单次探测超时（秒）
-    pub timeout_secs: u64,
-    /// 超时类失败的最大重试次数
-    pub max_retries: u32,
-    /// 降级阈值（毫秒）：可达但 TTFB 超过该值判定为"较慢"
-    pub degraded_threshold_ms: u64,
-}
-
-impl Default for StreamCheckConfig {
-    fn default() -> Self {
-        // 可达性探测打的是 base_url 的小请求（仅读响应头），不等待模型生成，故超时远小于
-        // 旧的真实请求检查（45s → 8s）；降级阈值沿用旧尺度 6000ms——探测 TTFB 一般远低于
-        // 此，仅在确实很慢时才标"较慢"，避免把 1 秒多的正常延迟误判为降级。
-        Self {
-            timeout_secs: 8,
-            max_retries: 1,
-            degraded_threshold_ms: 6000,
-        }
-    }
-}
+pub use crate::proxy_core_adapter::{
+    ChannelReachabilityStatus as HealthStatus, StreamCheckConfig,
+};
 
 /// 连通性检查结果
 #[derive(Debug, Clone, Serialize, Deserialize)]

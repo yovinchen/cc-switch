@@ -967,6 +967,24 @@ pub fn should_retry_channel_reachability_failure(message: &str) -> bool {
     lower.contains("timeout") || lower.contains("abort") || lower.contains("timed out")
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct StreamCheckConfig {
+    pub timeout_secs: u64,
+    pub max_retries: u32,
+    pub degraded_threshold_ms: u64,
+}
+
+impl Default for StreamCheckConfig {
+    fn default() -> Self {
+        Self {
+            timeout_secs: 8,
+            max_retries: 1,
+            degraded_threshold_ms: 6000,
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ChannelReachabilityInput {
     pub success: bool,
@@ -2297,7 +2315,7 @@ mod tests {
         ProxyChannelPatchRequest, ProxyChannelTestRequest, ProxyChannelWriteRequest, ProxyConfig,
         ProxyCoreEvent, ProxyCoreEventType, ProxyRuntimeStatus, ProxyServerInfo,
         ProxyStatusResponse, ProxyTakeoverStatus, RectifierConfig, RouteGroupListResponse,
-        RouteGroupSourceInput, RouteResolveResponse, plan_channel_test,
+        RouteGroupSourceInput, RouteResolveResponse, StreamCheckConfig, plan_channel_test,
     };
     use crate::domain::{
         AppKind, ChannelHealthPolicy, ChannelOverrides, ChannelSpec, ChannelStatus, InterfaceKind,
@@ -2703,6 +2721,14 @@ mod tests {
             "Connection failed: dns error"
         ));
         assert!(!should_retry_channel_reachability_failure("Reachable"));
+        assert_eq!(
+            serde_json::to_value(StreamCheckConfig::default()).expect("serialize config"),
+            json!({
+                "timeoutSecs": 8,
+                "maxRetries": 1,
+                "degradedThresholdMs": 6000
+            })
+        );
 
         let result = ChannelReachabilityResult::from_input(ChannelReachabilityInput {
             success: false,
