@@ -11,8 +11,7 @@ use crate::proxy_core::api::domain::{
 #[cfg(test)]
 use crate::proxy_core::api::domain::{ChannelHealthPolicy, ChannelOverrides, UpstreamEndpoint};
 use crate::proxy_core::api::management::{
-    AppSummaryInput, ChannelReachabilityInput, ChannelReachabilityResult,
-    CurrentRouteProviderSummaryInput,
+    AppSummaryInput, ChannelReachabilityResult, CurrentRouteProviderSummaryInput,
 };
 use crate::proxy_core::api::routing::{
     route_resolve_channel_input_from_record, RouteResolveChannelInput,
@@ -2114,15 +2113,7 @@ pub(crate) fn extract_proxy_session_id(
 pub(crate) fn stream_check_result_to_channel_reachability(
     result: StreamCheckResult,
 ) -> ChannelReachabilityResult {
-    ChannelReachabilityResult::from_input(ChannelReachabilityInput {
-        success: result.success,
-        status: result.status,
-        message: result.message,
-        latency_ms: result.response_time_ms,
-        http_status: result.http_status,
-        tested_at: result.tested_at,
-        retry_count: result.retry_count,
-    })
+    crate::proxy_core::api::management::channel_reachability_result_from_stream_check_result(result)
 }
 
 pub(crate) fn channel_reachability_status_from_latency(

@@ -1028,6 +1028,20 @@ impl ChannelReachabilityResult {
     }
 }
 
+pub fn channel_reachability_result_from_stream_check_result(
+    result: StreamCheckResult,
+) -> ChannelReachabilityResult {
+    ChannelReachabilityResult::from_input(ChannelReachabilityInput {
+        success: result.success,
+        status: result.status,
+        message: result.message,
+        latency_ms: result.response_time_ms,
+        http_status: result.http_status,
+        tested_at: result.tested_at,
+        retry_count: result.retry_count,
+    })
+}
+
 pub fn plan_channel_test(
     channel: &ChannelSpec,
     request: &ProxyChannelTestRequest,
@@ -2315,7 +2329,8 @@ impl ProxyCoreEvent {
 mod tests {
     use super::{
         AppChannelListQuery, AppChannelListResponse, AppChannelResponse, AppChannelRouteResponse,
-        app_proxy_config_raw, channel_model_record_from_input, AppListResponse, AppModelListQuery,
+        app_proxy_config_raw, channel_model_record_from_input,
+        channel_reachability_result_from_stream_check_result, AppListResponse, AppModelListQuery,
         AppProxyConfig, AppSummaryInput, channel_key_record_from_input,
         channel_reachability_status_from_latency, channel_record_from_input, ChannelDeleteResponse,
         ChannelKeyRecordInput, ChannelListQuery, ChannelListResponse, ChannelReachabilityInput,
@@ -2748,19 +2763,19 @@ mod tests {
                 "degradedThresholdMs": 6000
             })
         );
+        let stream_check = StreamCheckResult {
+            status: ChannelReachabilityStatus::Degraded,
+            success: true,
+            message: "Reachable".to_string(),
+            response_time_ms: Some(6100),
+            http_status: Some(403),
+            model_used: String::new(),
+            tested_at: 1_771_000_000,
+            retry_count: 1,
+            error_category: None,
+        };
         assert_eq!(
-            serde_json::to_value(StreamCheckResult {
-                status: ChannelReachabilityStatus::Degraded,
-                success: true,
-                message: "Reachable".to_string(),
-                response_time_ms: Some(6100),
-                http_status: Some(403),
-                model_used: String::new(),
-                tested_at: 1_771_000_000,
-                retry_count: 1,
-                error_category: None,
-            })
-            .expect("serialize stream check result"),
+            serde_json::to_value(stream_check.clone()).expect("serialize stream check result"),
             json!({
                 "status": "degraded",
                 "success": true,
@@ -2772,6 +2787,14 @@ mod tests {
                 "retryCount": 1
             })
         );
+        let reachability =
+            channel_reachability_result_from_stream_check_result(stream_check);
+        assert_eq!(reachability.status, "degraded");
+        assert_eq!(reachability.message, "Reachable");
+        assert_eq!(reachability.latency_ms, Some(6100));
+        assert_eq!(reachability.http_status, Some(403));
+        assert_eq!(reachability.tested_at, 1_771_000_000);
+        assert_eq!(reachability.retry_count, 1);
 
         let result = ChannelReachabilityResult::from_input(ChannelReachabilityInput {
             success: false,
