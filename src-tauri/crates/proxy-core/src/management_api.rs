@@ -5,12 +5,13 @@ use super::ports::{
     AppListResponse, AppModelListQuery, AppSummaryInput, ChannelDeleteResponse,
     ChannelHealthResetResponse, ChannelKeyDeleteResponse, ChannelKeyRecordResponse,
     ChannelKeysResponse, ChannelListQuery, ChannelListResponse,
-    ChannelMigrationMaterializeResponse, ChannelMigrationPreviewResponse, ChannelModelsResponse,
+    ChannelMigrationMaterializeInput, ChannelMigrationMaterializeResponse,
+    ChannelMigrationPreviewInput, ChannelMigrationPreviewResponse, ChannelModelsResponse,
     ChannelRecordResponse, ChannelRouteCandidate, ChannelRouteRejected, ChannelRouteSource,
-    ChannelTestInput, ChannelTestResponse, CurrentRouteProviderSummaryInput,
-    CurrentRouteResponse, GroupListQuery, HealthCheckResponse, ProviderListResponse,
-    ProviderSummaryInput, ProxyChannelWriteRequest, ProxyStatusResponse, RouteGroupListResponse,
-    RouteGroupSourceInput, RouteResolveRequest, RouteResolveResponse,
+    ChannelTestInput, ChannelTestResponse, CurrentRouteProviderSummaryInput, CurrentRouteResponse,
+    GroupListQuery, HealthCheckResponse, ProviderListResponse, ProviderSummaryInput,
+    ProxyChannelWriteRequest, ProxyStatusResponse, RouteGroupListResponse, RouteGroupSourceInput,
+    RouteResolveRequest, RouteResolveResponse,
 };
 
 pub fn validate_management_app_type(app_type: &str) -> ProxyCoreResult<()> {
@@ -205,6 +206,14 @@ impl<T> ChannelMigrationPreviewSource<T> {
             needs_review_count,
         }
     }
+
+    pub fn from_input(input: ChannelMigrationPreviewInput<T>) -> Self {
+        Self::new(
+            input.channels,
+            input.duplicate_count,
+            input.needs_review_count,
+        )
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -234,6 +243,17 @@ impl ChannelMigrationMaterializeSource {
             duplicate_count,
             needs_review_count,
         }
+    }
+
+    pub fn from_input(input: ChannelMigrationMaterializeInput) -> Self {
+        Self::new(
+            input.previewed_channels,
+            input.inserted_channels,
+            input.inserted_models,
+            input.inserted_health_rows,
+            input.duplicate_count,
+            input.needs_review_count,
+        )
     }
 }
 
@@ -955,8 +975,9 @@ mod tests {
     };
     use crate::ports::{
         AppChannelListQuery, AppModelListQuery, AppSummaryInput, ChannelListQuery,
-        ChannelRouteSource, ChannelTestInput, GroupListQuery, ProviderSummaryInput,
-        ProxyChannelWriteRequest, RouteResolveResponse,
+        ChannelMigrationMaterializeInput, ChannelMigrationPreviewInput, ChannelRouteSource,
+        ChannelTestInput, GroupListQuery, ProviderSummaryInput, ProxyChannelWriteRequest,
+        RouteResolveResponse,
     };
     use serde_json::json;
 
@@ -1167,7 +1188,12 @@ mod tests {
         let request = ManagementAppPathRequest::from_path("claude").expect("request");
 
         let response = request.migration_preview_response_from_source(
-            ChannelMigrationPreviewSource::new(vec!["channel-a"], 2, 1),
+            ChannelMigrationPreviewSource::from_input(ChannelMigrationPreviewInput::new(
+                "claude",
+                vec!["channel-a"],
+                2,
+                1,
+            )),
         );
 
         assert_eq!(response.app_type, "claude");
@@ -1181,7 +1207,9 @@ mod tests {
         let request = ManagementAppPathRequest::from_path("claude").expect("request");
 
         let response = request.migration_materialize_response_from_source(
-            ChannelMigrationMaterializeSource::new(4, 3, 2, 1, 5, 6),
+            ChannelMigrationMaterializeSource::from_input(ChannelMigrationMaterializeInput::new(
+                "claude", 4, 3, 2, 1, 5, 6,
+            )),
         );
 
         assert_eq!(response.app_type, "claude");

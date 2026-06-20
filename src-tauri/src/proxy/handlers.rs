@@ -52,10 +52,10 @@ use crate::proxy_core_adapter::{
     ChannelHealthResetSource, ChannelKeyDeleteResponse, ChannelKeyDeleteSource,
     ChannelKeyPathRequest, ChannelKeyRecord, ChannelKeyRecordResponse, ChannelKeyRecordSource,
     ChannelKeysResponse, ChannelKeysSource, ChannelListPlan, ChannelListQuery, ChannelListRequest,
-    ChannelListResponse, ChannelListSource,
+    ChannelListResponse, ChannelListSource, ChannelMigrationMaterializeInput,
     ChannelMigrationMaterializeResponse, ChannelMigrationMaterializeSource,
-    ChannelMigrationPreviewResponse, ChannelMigrationPreviewSource, ChannelModelRecord,
-    ChannelModelsResponse, ChannelModelsSource, ChannelPathRequest, ChannelRecord,
+    ChannelMigrationPreviewInput, ChannelMigrationPreviewResponse, ChannelMigrationPreviewSource,
+    ChannelModelRecord, ChannelModelsResponse, ChannelModelsSource, ChannelPathRequest, ChannelRecord,
     ChannelRecordResponse, ChannelRecordSource, ChannelRouteCandidate, ChannelRouteRejected,
     ChannelTestPlan, ChannelTestResponse, ClaudeDesktopModelListResponse,
     ClientModelCatalogResponse, CodexToolContext, CurrentRouteResponse, CurrentRouteSource,
@@ -672,11 +672,12 @@ pub async fn preview_proxy_channel_migration(
         .map_err(|e| ProxyError::DatabaseError(e.to_string()))?;
 
     Ok(Json(request.migration_preview_response_from_source(
-        ChannelMigrationPreviewSource::new(
+        ChannelMigrationPreviewSource::from_input(ChannelMigrationPreviewInput::new(
+            request.app_type.clone(),
             proxy_channel_records_to_core(preview.channels),
             preview.duplicate_count,
             preview.needs_review_count,
-        ),
+        )),
     )))
 }
 
@@ -694,14 +695,15 @@ pub async fn materialize_proxy_channel_migration(
         .map_err(|e| ProxyError::DatabaseError(e.to_string()))?;
 
     Ok(Json(request.migration_materialize_response_from_source(
-        ChannelMigrationMaterializeSource::new(
+        ChannelMigrationMaterializeSource::from_input(ChannelMigrationMaterializeInput::new(
+            request.app_type.clone(),
             result.previewed_channels,
             result.inserted_channels,
             result.inserted_models,
             result.inserted_health_rows,
             result.duplicate_count,
             result.needs_review_count,
-        ),
+        )),
     )))
 }
 
