@@ -20,6 +20,71 @@ pub enum UpstreamJsonBodySource {
     },
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum UnlabeledSseFallbackLogLevel {
+    Debug,
+    Warn,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct UnlabeledSseFallbackLogEvent {
+    pub level: UnlabeledSseFallbackLogLevel,
+    pub message: String,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum UnlabeledSseFallbackLogContext<'a> {
+    Claude {
+        api_format: &'a str,
+        codex_oauth_responses_aggregation: bool,
+    },
+    CodexChat,
+}
+
+impl UpstreamJsonBodySource {
+    pub fn unlabeled_sse_fallback_log_event(
+        self,
+        context: UnlabeledSseFallbackLogContext<'_>,
+    ) -> Option<UnlabeledSseFallbackLogEvent> {
+        match (self, context) {
+            (
+                Self::UnlabeledSse {
+                    aggregation: UpstreamSseAggregationKind::Responses,
+                },
+                UnlabeledSseFallbackLogContext::Claude {
+                    codex_oauth_responses_aggregation: true,
+                    ..
+                },
+            ) => Some(UnlabeledSseFallbackLogEvent {
+                level: UnlabeledSseFallbackLogLevel::Debug,
+                message:
+                    "[Claude] Codex OAuth Responses 非流请求收到 SSE 体，按 Responses 聚合"
+                        .to_string(),
+            }),
+            (
+                Self::UnlabeledSse { .. },
+                UnlabeledSseFallbackLogContext::Claude { api_format, .. },
+            ) => Some(UnlabeledSseFallbackLogEvent {
+                level: UnlabeledSseFallbackLogLevel::Warn,
+                message: format!(
+                    "[Claude] 上游对非流请求返回未标记的 SSE 体（api_format={api_format}），按 SSE 聚合兜底"
+                ),
+            }),
+            (
+                Self::UnlabeledSse {
+                    aggregation: UpstreamSseAggregationKind::ChatCompletions,
+                },
+                UnlabeledSseFallbackLogContext::CodexChat,
+            ) => Some(UnlabeledSseFallbackLogEvent {
+                level: UnlabeledSseFallbackLogLevel::Warn,
+                message: "[Codex] 上游对非流请求返回未标记的 SSE 体，按 Chat SSE 聚合兜底"
+                    .to_string(),
+            }),
+            _ => None,
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct UpstreamJsonBody {
     pub value: Value,
@@ -165,6 +230,58 @@ data: {\"type\":\"response.completed\",\"response\":{\"id\":\"resp_1\",\"status\
             }
         );
         assert_eq!(parsed.value["id"], "resp_1");
+    }
+
+    #[test]
+    fn unlabeled_sse_fallback_log_event_matches_host_contracts() {
+        let claude_responses = UpstreamJsonBodySource::UnlabeledSse {
+            aggregation: UpstreamSseAggregationKind::Responses,
+        }
+        .unlabeled_sse_fallback_log_event(UnlabeledSseFallbackLogContext::Claude {
+            api_format: "openai_responses",
+            codex_oauth_responses_aggregation: true,
+        })
+        .expect("claude responses log event");
+
+        assert_eq!(
+            claude_responses.level,
+            UnlabeledSseFallbackLogLevel::Debug
+        );
+        assert_eq!(
+            claude_responses.message,
+            "[Claude] Codex OAuth Responses 非流请求收到 SSE 体，按 Responses 聚合"
+        );
+
+        let claude_fallback = UpstreamJsonBodySource::UnlabeledSse {
+            aggregation: UpstreamSseAggregationKind::ChatCompletions,
+        }
+        .unlabeled_sse_fallback_log_event(UnlabeledSseFallbackLogContext::Claude {
+            api_format: "openai_chat",
+            codex_oauth_responses_aggregation: false,
+        })
+        .expect("claude fallback log event");
+
+        assert_eq!(claude_fallback.level, UnlabeledSseFallbackLogLevel::Warn);
+        assert_eq!(
+            claude_fallback.message,
+            "[Claude] 上游对非流请求返回未标记的 SSE 体（api_format=openai_chat），按 SSE 聚合兜底"
+        );
+
+        let codex_fallback = UpstreamJsonBodySource::UnlabeledSse {
+            aggregation: UpstreamSseAggregationKind::ChatCompletions,
+        }
+        .unlabeled_sse_fallback_log_event(UnlabeledSseFallbackLogContext::CodexChat)
+        .expect("codex fallback log event");
+
+        assert_eq!(codex_fallback.level, UnlabeledSseFallbackLogLevel::Warn);
+        assert_eq!(
+            codex_fallback.message,
+            "[Codex] 上游对非流请求返回未标记的 SSE 体，按 Chat SSE 聚合兜底"
+        );
+
+        assert!(UpstreamJsonBodySource::Json
+            .unlabeled_sse_fallback_log_event(UnlabeledSseFallbackLogContext::CodexChat)
+            .is_none());
     }
 
     #[test]

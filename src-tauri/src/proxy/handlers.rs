@@ -65,7 +65,8 @@ use crate::proxy_core::{
     ProxyChannelWriteRequest, ProxyRequest, ProxyResult, ProxyRuntimeStatus, ProxyServices,
     ProxyStatusRequest, ProxyStatusResponse, RoutableModelList, RouteGroupListResponse,
     RouteResolveManagementRequest, RouteResolveRequest, RouteResolveResponse,
-    TransformedResponseUsageFormat, UpstreamJsonBodySource, UpstreamSseAggregationKind,
+    TransformedResponseUsageFormat, UnlabeledSseFallbackLogContext,
+    UnlabeledSseFallbackLogLevel, UpstreamSseAggregationKind,
     CLAUDE_PARSER_CONFIG, CODEX_PARSER_CONFIG, GEMINI_PARSER_CONFIG, OPENAI_PARSER_CONFIG,
     plan_channel_test,
 };
@@ -988,13 +989,17 @@ async fn handle_claude_transform(
         response_body_parse_error_to_proxy_error(error)
     })?;
 
-    if matches!(parsed.source, UpstreamJsonBodySource::UnlabeledSse { .. }) {
-        if aggregate_codex_oauth_responses_sse {
-            log::debug!("[Claude] Codex OAuth Responses 非流请求收到 SSE 体，按 Responses 聚合");
-        } else {
-            log::warn!(
-                "[Claude] 上游对非流请求返回未标记的 SSE 体（api_format={api_format}），按 SSE 聚合兜底"
-            );
+    if let Some(event) =
+        parsed
+            .source
+            .unlabeled_sse_fallback_log_event(UnlabeledSseFallbackLogContext::Claude {
+                api_format,
+                codex_oauth_responses_aggregation: aggregate_codex_oauth_responses_sse,
+            })
+    {
+        match event.level {
+            UnlabeledSseFallbackLogLevel::Debug => log::debug!("{}", event.message),
+            UnlabeledSseFallbackLogLevel::Warn => log::warn!("{}", event.message),
         }
     }
     let upstream_response: Value = parsed.value;
@@ -1381,11 +1386,14 @@ async fn handle_codex_chat_to_responses_transform(
         response_body_parse_error_to_proxy_error(error)
     })?;
 
-    if matches!(
-        parsed_chat_response.source,
-        UpstreamJsonBodySource::UnlabeledSse { .. }
-    ) {
-        log::warn!("[Codex] 上游对非流请求返回未标记的 SSE 体，按 Chat SSE 聚合兜底");
+    if let Some(event) = parsed_chat_response
+        .source
+        .unlabeled_sse_fallback_log_event(UnlabeledSseFallbackLogContext::CodexChat)
+    {
+        match event.level {
+            UnlabeledSseFallbackLogLevel::Debug => log::debug!("{}", event.message),
+            UnlabeledSseFallbackLogLevel::Warn => log::warn!("{}", event.message),
+        }
     }
 
     let chat_response = parsed_chat_response.value;
