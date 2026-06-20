@@ -4,6 +4,7 @@
 
 use crate::proxy_core_adapter::{
     circuit_breaker_failure_decision, circuit_breaker_log_codes as log_cb,
+    half_open_probe_allow_result, should_close_half_open_after_success,
     should_transition_open_to_half_open, AllowResult, CircuitBreakerConfig,
     CircuitBreakerFailureDecision, CircuitBreakerStats, CircuitState,
 };
@@ -151,7 +152,7 @@ impl CircuitBreaker {
         if state == CircuitState::HalfOpen {
             let successes = self.consecutive_successes.fetch_add(1, Ordering::SeqCst) + 1;
 
-            if successes >= config.success_threshold {
+            if should_close_half_open_after_success(successes, config.success_threshold) {
                 drop(config); // 释放读锁再转换状态
                 log::info!(
                     "[{}] 熔断器 HalfOpen → Closed (恢复正常)",
@@ -246,20 +247,14 @@ impl CircuitBreaker {
         // 半开状态限流：只允许有限请求通过进行探测
         let max_half_open_requests = 1u32;
         let current = self.half_open_requests.fetch_add(1, Ordering::SeqCst);
+        let result = half_open_probe_allow_result(current, max_half_open_requests);
 
-        if current < max_half_open_requests {
-            AllowResult {
-                allowed: true,
-                used_half_open_permit: true,
-            }
-        } else {
+        if !result.allowed {
             // 超过限额，回退计数，拒绝请求
             self.half_open_requests.fetch_sub(1, Ordering::SeqCst);
-            AllowResult {
-                allowed: false,
-                used_half_open_permit: false,
-            }
         }
+
+        result
     }
 
     /// 仅释放 HalfOpen permit，不影响健康统计

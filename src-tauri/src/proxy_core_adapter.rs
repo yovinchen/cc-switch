@@ -1307,6 +1307,20 @@ pub(crate) fn should_transition_open_to_half_open(
     )
 }
 
+pub(crate) fn should_close_half_open_after_success(
+    consecutive_successes: u32,
+    success_threshold: u32,
+) -> bool {
+    crate::proxy_core::api::config::should_close_half_open_after_success(
+        consecutive_successes,
+        success_threshold,
+    )
+}
+
+pub(crate) fn half_open_probe_allow_result(current_requests: u32, max_requests: u32) -> AllowResult {
+    crate::proxy_core::api::config::half_open_probe_allow_result(current_requests, max_requests)
+}
+
 pub(crate) fn circuit_breaker_failure_decision(
     state: CircuitState,
     consecutive_failures: u32,

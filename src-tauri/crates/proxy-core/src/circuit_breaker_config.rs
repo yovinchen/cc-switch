@@ -29,7 +29,7 @@ impl std::fmt::Display for CircuitState {
     }
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct AllowResult {
     pub allowed: bool,
     pub used_half_open_permit: bool,
@@ -99,6 +99,20 @@ pub fn should_transition_open_to_half_open(
     open_elapsed_seconds.is_some_and(|elapsed| elapsed >= timeout_seconds)
 }
 
+pub fn should_close_half_open_after_success(
+    consecutive_successes: u32,
+    success_threshold: u32,
+) -> bool {
+    consecutive_successes >= success_threshold
+}
+
+pub fn half_open_probe_allow_result(current_requests: u32, max_requests: u32) -> AllowResult {
+    AllowResult {
+        allowed: current_requests < max_requests,
+        used_half_open_permit: current_requests < max_requests,
+    }
+}
+
 pub fn circuit_breaker_failure_decision(
     state: CircuitState,
     consecutive_failures: u32,
@@ -132,9 +146,9 @@ pub fn circuit_breaker_failure_decision(
 mod tests {
     use super::{
         circuit_breaker_config_from_app_config, circuit_breaker_failure_decision,
-        circuit_failure_threshold_from_app_config, should_transition_open_to_half_open,
-        AllowResult, CircuitBreakerConfig, CircuitBreakerFailureDecision, CircuitBreakerStats,
-        CircuitState,
+        circuit_failure_threshold_from_app_config, half_open_probe_allow_result,
+        should_close_half_open_after_success, should_transition_open_to_half_open, AllowResult,
+        CircuitBreakerConfig, CircuitBreakerFailureDecision, CircuitBreakerStats, CircuitState,
     };
     use crate::ports::AppProxyConfig;
     use serde_json::json;
@@ -241,6 +255,28 @@ mod tests {
         assert!(!should_transition_open_to_half_open(Some(59), 60));
         assert!(should_transition_open_to_half_open(Some(60), 60));
         assert!(should_transition_open_to_half_open(Some(61), 60));
+    }
+
+    #[test]
+    fn half_open_success_and_probe_rules_preserve_runtime_policy() {
+        assert!(!should_close_half_open_after_success(1, 2));
+        assert!(should_close_half_open_after_success(2, 2));
+        assert!(should_close_half_open_after_success(3, 2));
+
+        assert_eq!(
+            half_open_probe_allow_result(0, 1),
+            AllowResult {
+                allowed: true,
+                used_half_open_permit: true,
+            }
+        );
+        assert_eq!(
+            half_open_probe_allow_result(1, 1),
+            AllowResult {
+                allowed: false,
+                used_half_open_permit: false,
+            }
+        );
     }
 
     #[test]
