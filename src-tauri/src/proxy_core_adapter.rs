@@ -139,6 +139,96 @@ pub(crate) type ProviderHealth = crate::proxy_core::ProviderHealth;
 pub(crate) type CircuitBreakerConfig = crate::proxy_core::CircuitBreakerConfig;
 pub(crate) type CircuitBreakerStats = crate::proxy_core::CircuitBreakerStats;
 
+pub(crate) type ProxyCoreAppKind = crate::proxy_core::AppKind;
+pub(crate) type ProxyCoreInterfaceKind = crate::proxy_core::InterfaceKind;
+pub(crate) type ChannelRequestValidationError =
+    crate::proxy_core::ChannelRequestValidationError;
+pub(crate) type LegacyChannelModelProjection =
+    crate::proxy_core::LegacyChannelModelProjection;
+pub(crate) type LegacyChannelProjection = crate::proxy_core::LegacyChannelProjection;
+pub(crate) type LegacyChannelProjectionInput =
+    crate::proxy_core::LegacyChannelProjectionInput;
+pub(crate) type LegacyModelRouteInput = crate::proxy_core::LegacyModelRouteInput;
+pub(crate) type LegacyProviderProjectionInput =
+    crate::proxy_core::LegacyProviderProjectionInput;
+pub(crate) type ProxyChannelModelWriteRequest =
+    crate::proxy_core::ProxyChannelModelWriteRequest;
+pub(crate) type ProxyChannelPatchRequest = crate::proxy_core::ProxyChannelPatchRequest;
+pub(crate) type ProxyChannelWriteRequest = crate::proxy_core::ProxyChannelWriteRequest;
+
+pub(crate) fn stable_channel_id(
+    app_type: &str,
+    provider_id: &str,
+    source_kind: &str,
+    base_url: &str,
+) -> String {
+    crate::proxy_core::stable_channel_id(app_type, provider_id, source_kind, base_url)
+}
+
+pub(crate) fn legacy_channel_priority(
+    provider_id: &str,
+    in_failover_queue: bool,
+    current_provider_id: Option<&str>,
+) -> i64 {
+    crate::proxy_core::legacy_channel_priority(
+        provider_id,
+        in_failover_queue,
+        current_provider_id,
+    )
+}
+
+pub(crate) fn infer_legacy_channel_interface(
+    app: Option<&ProxyCoreAppKind>,
+    provider: &LegacyProviderProjectionInput,
+) -> ProxyCoreInterfaceKind {
+    crate::proxy_core::infer_legacy_channel_interface(app, provider)
+}
+
+pub(crate) fn build_legacy_channel_projection(
+    input: LegacyChannelProjectionInput,
+) -> LegacyChannelProjection {
+    crate::proxy_core::build_legacy_channel_projection(input)
+}
+
+pub(crate) fn normalize_required_channel_string(
+    value: &str,
+    field: &str,
+) -> Result<String, ChannelRequestValidationError> {
+    crate::proxy_core::normalize_required_channel_string(value, field)
+}
+
+pub(crate) fn normalize_optional_channel_string(value: String) -> Option<String> {
+    crate::proxy_core::normalize_optional_channel_string(value)
+}
+
+pub(crate) fn normalize_channel_base_url(value: &str) -> String {
+    crate::proxy_core::normalize_channel_base_url(value)
+}
+
+pub(crate) fn normalize_channel_groups(groups: Vec<String>) -> Vec<String> {
+    crate::proxy_core::normalize_channel_groups(groups)
+}
+
+pub(crate) fn channel_object_or_default(value: Value) -> Value {
+    crate::proxy_core::channel_object_or_default(value)
+}
+
+pub(crate) fn channel_array_or_default(value: Value) -> Value {
+    crate::proxy_core::channel_array_or_default(value)
+}
+
+pub(crate) fn validate_proxy_channel_write_request_fields(
+    request: &ProxyChannelWriteRequest,
+) -> Result<(), ChannelRequestValidationError> {
+    crate::proxy_core::validate_proxy_channel_write_request_fields(request)
+}
+
+pub(crate) fn validate_proxy_channel_model_write_request_fields(
+    model: &ProxyChannelModelWriteRequest,
+) -> Result<(), ChannelRequestValidationError> {
+    crate::proxy_core::validate_proxy_channel_model_write_request_fields(model)
+}
+
 impl From<&AppType> for AppKind {
     fn from(value: &AppType) -> Self {
         match value {
@@ -1037,6 +1127,73 @@ mod tests {
             .and_then(Value::as_bool),
             Some(true)
         );
+    }
+
+    #[test]
+    fn proxy_channel_dao_adapter_projects_validation_and_legacy_projection() {
+        assert_eq!(
+            normalize_channel_base_url(" https://api.example.com/v1/ "),
+            "https://api.example.com/v1"
+        );
+        assert_eq!(
+            normalize_channel_groups(vec![
+                "default".to_string(),
+                " ".to_string(),
+                "beta".to_string(),
+                "default".to_string()
+            ]),
+            vec!["beta".to_string(), "default".to_string()]
+        );
+        assert_eq!(
+            stable_channel_id("Claude", "Provider A", "legacy_primary", "https://api.example.com"),
+            "legacy-claude-provider-a-legacy-primary-fcc8db014bbc"
+        );
+
+        let request = ProxyChannelWriteRequest {
+            provider_id: "provider-a".to_string(),
+            app_type: "claude".to_string(),
+            name: "Provider A primary".to_string(),
+            base_url: "https://api.example.com/v1".to_string(),
+            interface_kind: "anthropic_messages".to_string(),
+            models: vec![ProxyChannelModelWriteRequest {
+                public_model: "claude-sonnet-4-6".to_string(),
+                upstream_model: "anthropic/claude-sonnet-4-6".to_string(),
+                ..ProxyChannelModelWriteRequest::default()
+            }],
+            ..ProxyChannelWriteRequest::default()
+        };
+        validate_proxy_channel_write_request_fields(&request).expect("valid channel request");
+
+        let provider_projection = LegacyProviderProjectionInput {
+            env: std::collections::BTreeMap::from([(
+                "ANTHROPIC_MODEL".to_string(),
+                "claude-sonnet-4-6".to_string(),
+            )]),
+            ..LegacyProviderProjectionInput::default()
+        };
+        let interface =
+            infer_legacy_channel_interface(Some(&ProxyCoreAppKind::Claude), &provider_projection);
+        assert_eq!(interface, ProxyCoreInterfaceKind::AnthropicMessages);
+
+        let projection = build_legacy_channel_projection(LegacyChannelProjectionInput {
+            app_type: "claude".to_string(),
+            app: Some(ProxyCoreAppKind::Claude),
+            provider_id: "provider-a".to_string(),
+            provider_name: "Provider A".to_string(),
+            provider_sort_index: Some(1),
+            provider_in_failover_queue: false,
+            base_url: "https://api.example.com/v1".to_string(),
+            interface_kind: interface,
+            priority: legacy_channel_priority("provider-a", false, Some("provider-a")),
+            source_kind: "legacy_primary".to_string(),
+            source_endpoint_url: None,
+            provider_projection,
+        });
+
+        assert_eq!(projection.priority, 100);
+        assert_eq!(projection.interface_kind, "anthropic_messages");
+        assert_eq!(projection.models.len(), 1);
+        assert!(!projection.needs_review);
     }
 
     #[test]

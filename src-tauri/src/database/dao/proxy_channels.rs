@@ -8,7 +8,7 @@ use crate::app_config::AppType;
 use crate::database::{lock_conn, to_json_string, Database};
 use crate::error::AppError;
 use crate::provider::Provider;
-use crate::proxy_core::{
+use crate::proxy_core_adapter::{
     build_legacy_channel_projection, channel_array_or_default as array_or_default,
     channel_object_or_default as object_or_default, infer_legacy_channel_interface,
     legacy_channel_priority, normalize_channel_base_url as normalize_base_url,
@@ -16,8 +16,9 @@ use crate::proxy_core::{
     normalize_optional_channel_string as normalize_optional_string,
     normalize_required_channel_string, stable_channel_id,
     validate_proxy_channel_model_write_request_fields, validate_proxy_channel_write_request_fields,
-    AppKind, ChannelRequestValidationError, LegacyChannelModelProjection, LegacyChannelProjection,
+    ChannelRequestValidationError, LegacyChannelModelProjection, LegacyChannelProjection,
     LegacyChannelProjectionInput, LegacyModelRouteInput, LegacyProviderProjectionInput,
+    ProxyCoreAppKind as AppKind, ProxyCoreInterfaceKind as InterfaceKind,
     ProxyChannelModelWriteRequest, ProxyChannelPatchRequest, ProxyChannelWriteRequest,
 };
 use rusqlite::{params, Connection, OptionalExtension, Row};
@@ -887,7 +888,7 @@ fn build_legacy_channel(
     provider: &Provider,
     projection: &LegacyProviderProjectionInput,
     base_url: String,
-    interface_kind: crate::proxy_core::InterfaceKind,
+    interface_kind: InterfaceKind,
     priority: i64,
     source_kind: ProxyChannelSourceKind,
     source_endpoint_url: Option<String>,
