@@ -70,7 +70,7 @@ use crate::proxy_core::{
 };
 use crate::proxy_core_adapter::{
     proxy_app_summary_input, proxy_channel_model_records_to_core, proxy_channel_record_to_core,
-    proxy_channel_records_to_core, proxy_channel_specs_to_core, ToProxyCoreChannelSpec,
+    proxy_channel_record_to_core_spec, proxy_channel_records_to_core, proxy_channel_specs_to_core,
     proxy_current_route_provider_summary_input, proxy_providers_to_core_specs,
     synthesize_gemini_tool_call_id_with_uuid,
 };
@@ -435,7 +435,7 @@ pub async fn test_proxy_channel(
         .ok_or_else(|| proxy_core_error_to_proxy_error(path_request.channel_not_found_error()))?;
 
     let channel_test_context = match plan_channel_test(
-        &channel.to_proxy_core_channel_spec(),
+        &proxy_channel_record_to_core_spec(&channel),
         &request,
         chrono::Utc::now().timestamp(),
     ) {

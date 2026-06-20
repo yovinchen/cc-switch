@@ -119,6 +119,10 @@ impl ToProxyCoreChannelSpec for ProxyChannelRecord {
     }
 }
 
+pub(crate) fn proxy_channel_record_to_core_spec(channel: &ProxyChannelRecord) -> ChannelSpec {
+    channel.to_proxy_core_channel_spec()
+}
+
 pub(crate) fn proxy_channel_specs_to_core(
     channels: impl IntoIterator<Item = ProxyChannelRecord>,
 ) -> Vec<ChannelSpec> {
