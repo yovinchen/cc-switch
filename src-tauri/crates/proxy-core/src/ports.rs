@@ -676,6 +676,100 @@ pub struct ProxyChannelModelsReplaceRequest {
     pub models: Vec<ProxyChannelModelWriteRequest>,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct ProxyChannelTestRequest {
+    #[serde(default)]
+    pub model: Option<String>,
+    #[serde(default)]
+    pub interface_kind: Option<String>,
+}
+
+impl ProxyChannelTestRequest {
+    pub fn requested_model(&self) -> Option<&str> {
+        self.model
+            .as_deref()
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+    }
+
+    pub fn requested_interface(&self) -> Option<&str> {
+        self.interface_kind
+            .as_deref()
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ChannelTestInput {
+    pub channel_id: String,
+    pub provider_id: String,
+    pub app_type: String,
+    pub channel_name: String,
+    pub base_url: String,
+    pub interface_kind: String,
+    pub model: Option<String>,
+    pub model_available: Option<bool>,
+    pub success: bool,
+    pub status: String,
+    pub message: String,
+    pub latency_ms: Option<u64>,
+    pub http_status: Option<u16>,
+    pub tested_at: i64,
+    pub retry_count: u32,
+    pub failure_reason: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ChannelTestResponse {
+    pub channel_id: String,
+    pub provider_id: String,
+    pub app_type: String,
+    pub channel_name: String,
+    pub base_url: String,
+    pub interface_kind: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub model: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub model_available: Option<bool>,
+    pub success: bool,
+    pub status: String,
+    pub message: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub latency_ms: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub http_status: Option<u16>,
+    pub tested_at: i64,
+    pub retry_count: u32,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub failure_reason: Option<String>,
+}
+
+impl ChannelTestResponse {
+    pub fn from_input(input: ChannelTestInput) -> Self {
+        Self {
+            channel_id: input.channel_id,
+            provider_id: input.provider_id,
+            app_type: input.app_type,
+            channel_name: input.channel_name,
+            base_url: input.base_url,
+            interface_kind: input.interface_kind,
+            model: input.model,
+            model_available: input.model_available,
+            success: input.success,
+            status: input.status,
+            message: input.message,
+            latency_ms: input.latency_ms,
+            http_status: input.http_status,
+            tested_at: input.tested_at,
+            retry_count: input.retry_count,
+            failure_reason: input.failure_reason,
+        }
+    }
+}
+
 fn default_channel_status() -> String {
     "enabled".to_string()
 }
@@ -1742,18 +1836,19 @@ mod tests {
     use super::{
         AppChannelListQuery, AppChannelListResponse, AppChannelResponse, AppChannelRouteResponse,
         app_proxy_config_raw, AppListResponse, AppModelListQuery, AppProxyConfig, AppSummaryInput,
-        ChannelDeleteResponse, ChannelListQuery, ChannelListResponse, ChannelMigrationMaterializeInput,
-        ChannelMigrationMaterializeResponse, ChannelMigrationPreviewInput,
-        ChannelMigrationPreviewResponse, ChannelModelRecord, ChannelModelsResponse, ChannelRecord,
-        ChannelRecordResponse, ChannelRouteCandidate, ChannelRouteRejected, ChannelRouteSource,
+        ChannelDeleteResponse, ChannelListQuery, ChannelListResponse,
+        ChannelMigrationMaterializeInput, ChannelMigrationMaterializeResponse,
+        ChannelMigrationPreviewInput, ChannelMigrationPreviewResponse, ChannelModelRecord,
+        ChannelModelsResponse, ChannelRecord, ChannelRecordResponse, ChannelRouteCandidate,
+        ChannelRouteRejected, ChannelRouteSource, ChannelTestInput, ChannelTestResponse,
         ClientModelCatalogResponse, CopilotOptimizerConfig, CurrentRouteProviderSummaryInput,
         CurrentRouteResponse, CurrentRouteTarget, GlobalProxyConfig, GroupListQuery,
         HealthCheckResponse, ModelCatalog, OptimizerConfig, ProviderHealth, ProviderListResponse,
         ProviderSpec, ProviderSummaryInput, ProxyChannelModelWriteRequest,
-        ProxyChannelModelsReplaceRequest, ProxyChannelPatchRequest, ProxyChannelWriteRequest,
-        ProxyConfig, ProxyCoreEvent, ProxyCoreEventType, ProxyRuntimeStatus, ProxyServerInfo,
-        ProxyStatusResponse, ProxyTakeoverStatus, RectifierConfig, RouteGroupListResponse,
-        RouteGroupSourceInput, RouteResolveResponse,
+        ProxyChannelModelsReplaceRequest, ProxyChannelPatchRequest, ProxyChannelTestRequest,
+        ProxyChannelWriteRequest, ProxyConfig, ProxyCoreEvent, ProxyCoreEventType,
+        ProxyRuntimeStatus, ProxyServerInfo, ProxyStatusResponse, ProxyTakeoverStatus,
+        RectifierConfig, RouteGroupListResponse, RouteGroupSourceInput, RouteResolveResponse,
     };
     use crate::{
         AppKind, ChannelHealthPolicy, ChannelOverrides, ChannelSpec, ChannelStatus, InterfaceKind,
@@ -1951,6 +2046,63 @@ mod tests {
         assert_eq!(value["models"][0]["publicModel"], "sonnet");
         assert_eq!(value["models"][0]["upstreamModel"], "claude-sonnet");
         assert_eq!(value["models"][0]["capabilities"]["toolUse"], true);
+    }
+
+    #[test]
+    fn proxy_channel_test_request_normalizes_optional_filters() {
+        let request: ProxyChannelTestRequest = serde_json::from_value(json!({
+            "model": " sonnet ",
+            "interfaceKind": " openai_responses "
+        }))
+        .expect("deserialize request");
+
+        assert_eq!(request.requested_model(), Some("sonnet"));
+        assert_eq!(request.requested_interface(), Some("openai_responses"));
+
+        let blank: ProxyChannelTestRequest = serde_json::from_value(json!({
+            "model": " ",
+            "interfaceKind": ""
+        }))
+        .expect("deserialize blank request");
+
+        assert_eq!(blank.requested_model(), None);
+        assert_eq!(blank.requested_interface(), None);
+    }
+
+    #[test]
+    fn channel_test_response_serializes_management_contract() {
+        let response = ChannelTestResponse::from_input(ChannelTestInput {
+            channel_id: "ch_1".to_string(),
+            provider_id: "provider-a".to_string(),
+            app_type: "claude".to_string(),
+            channel_name: "Primary".to_string(),
+            base_url: "https://upstream.example.com/v1".to_string(),
+            interface_kind: "anthropic_messages".to_string(),
+            model: Some("sonnet".to_string()),
+            model_available: Some(true),
+            success: true,
+            status: "operational".to_string(),
+            message: "Reachable".to_string(),
+            latency_ms: Some(123),
+            http_status: Some(401),
+            tested_at: 1_771_000_000,
+            retry_count: 1,
+            failure_reason: None,
+        });
+
+        let value = serde_json::to_value(response).expect("serialize response");
+
+        assert_eq!(value["channelId"], "ch_1");
+        assert_eq!(value["providerId"], "provider-a");
+        assert_eq!(value["appType"], "claude");
+        assert_eq!(value["channelName"], "Primary");
+        assert_eq!(value["interfaceKind"], "anthropic_messages");
+        assert_eq!(value["model"], "sonnet");
+        assert_eq!(value["modelAvailable"], true);
+        assert_eq!(value["success"], true);
+        assert_eq!(value["status"], "operational");
+        assert_eq!(value["latencyMs"], 123);
+        assert_eq!(value["httpStatus"], 401);
     }
 
     #[test]

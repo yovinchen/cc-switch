@@ -5,9 +5,10 @@ use super::ports::{
     AppListResponse, AppModelListQuery, AppSummaryInput, ChannelDeleteResponse, ChannelListQuery,
     ChannelListResponse, ChannelMigrationMaterializeResponse, ChannelMigrationPreviewResponse,
     ChannelModelsResponse, ChannelRecordResponse, ChannelRouteCandidate, ChannelRouteRejected,
-    ChannelRouteSource, CurrentRouteProviderSummaryInput, CurrentRouteResponse, GroupListQuery,
-    HealthCheckResponse, ProviderListResponse, ProxyStatusResponse, RouteGroupListResponse,
-    RouteGroupSourceInput, RouteResolveRequest, RouteResolveResponse, ProxyChannelWriteRequest,
+    ChannelRouteSource, ChannelTestInput, ChannelTestResponse, CurrentRouteProviderSummaryInput,
+    CurrentRouteResponse, GroupListQuery, HealthCheckResponse, ProviderListResponse,
+    ProxyChannelWriteRequest, ProxyStatusResponse, RouteGroupListResponse, RouteGroupSourceInput,
+    RouteResolveRequest, RouteResolveResponse,
 };
 
 pub fn validate_management_app_type(app_type: &str) -> ProxyCoreResult<()> {
@@ -212,6 +213,10 @@ impl ChannelPathRequest {
     pub fn delete_response(&self, deleted: bool) -> ChannelDeleteResponse {
         ChannelDeleteResponse::new(self.channel_id.clone(), deleted)
     }
+
+    pub fn test_response(&self, input: ChannelTestInput) -> ChannelTestResponse {
+        ChannelTestResponse::from_input(input)
+    }
 }
 
 pub fn channel_not_found_message(channel_id: impl AsRef<str>) -> String {
@@ -391,8 +396,9 @@ mod tests {
     use crate::{
         AppChannelListQuery, AppKind, AppModelListQuery, AppSummaryInput, ChannelHealthPolicy,
         ChannelListQuery, ChannelOverrides, ChannelRouteSource, ChannelSpec, ChannelStatus,
-        GroupListQuery, InterfaceKind, ProviderKind, ProviderMetadata, ProviderSpec,
-        ProxyChannelWriteRequest, RetryPolicy, RouteResolveResponse, UpstreamEndpoint,
+        ChannelTestInput, GroupListQuery, InterfaceKind, ProviderKind, ProviderMetadata,
+        ProviderSpec, ProxyChannelWriteRequest, RetryPolicy, RouteResolveResponse,
+        UpstreamEndpoint,
     };
     use serde_json::json;
 
@@ -651,6 +657,33 @@ mod tests {
 
         assert_eq!(response.channel_id, "channel-a");
         assert!(response.deleted);
+    }
+
+    #[test]
+    fn channel_path_request_wraps_test_response() {
+        let request = ChannelPathRequest::from_path("channel-a").expect("request");
+        let response = request.test_response(ChannelTestInput {
+            channel_id: request.channel_id.clone(),
+            provider_id: "provider-a".to_string(),
+            app_type: "claude".to_string(),
+            channel_name: "Primary".to_string(),
+            base_url: "https://api.example.com".to_string(),
+            interface_kind: "anthropic_messages".to_string(),
+            model: None,
+            model_available: None,
+            success: true,
+            status: "operational".to_string(),
+            message: "Reachable".to_string(),
+            latency_ms: Some(12),
+            http_status: Some(401),
+            tested_at: 1_771_000_000,
+            retry_count: 0,
+            failure_reason: None,
+        });
+
+        assert_eq!(response.channel_id, "channel-a");
+        assert_eq!(response.provider_id, "provider-a");
+        assert_eq!(response.http_status, Some(401));
     }
 
     #[test]

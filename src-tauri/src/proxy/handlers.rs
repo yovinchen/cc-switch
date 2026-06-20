@@ -24,8 +24,8 @@ use super::{
         proxy_core_response_to_axum_response, proxy_core_response_to_proxy_response,
     },
     response_processor::{
-        SseUsageCollector, create_logged_passthrough_stream, process_response, read_decoded_body,
-        usage_logging_enabled,
+        create_logged_passthrough_stream, process_response, read_decoded_body,
+        usage_logging_enabled, SseUsageCollector,
     },
     server::ProxyState,
     usage_sink_bridge::{
@@ -33,22 +33,9 @@ use super::{
     },
 };
 use crate::app_config::AppType;
+use crate::database::ProxyChannelRecord as HostProxyChannelRecord;
 use crate::proxy_core::{
-    AppChannelListQuery, AppChannelManagementRequest, AppChannelResponse, AppKind, AppListRequest,
-    AppListResponse, AppModelCatalogRequest, AppModelListQuery, CLAUDE_PARSER_CONFIG,
-    CODEX_PARSER_CONFIG, ChannelCreateRequest, ChannelDeleteResponse, ChannelHealthResetResponse,
-    ChannelListQuery, ChannelListRequest, ChannelListResponse, ChannelMigrationMaterializeResponse,
-    ChannelMigrationPreviewResponse, ChannelModelRecord, ChannelModelsResponse, ChannelPathRequest,
-    ChannelRecord, ChannelRecordResponse, ChannelRouteCandidate, ChannelRouteRejected,
-    ClaudeDesktopModelListResponse, ClientModelCatalogResponse, CurrentRouteResponse,
-    CurrentRouteTarget, GEMINI_PARSER_CONFIG, GroupListQuery, GroupListRequest, HealthCheckRequest,
-    HealthCheckResponse, InterfaceKind, ManagementAppPathRequest, ManagementAuthDecision,
-    OPENAI_PARSER_CONFIG, ProviderListResponse, ProxyBody, ProxyChannelModelsReplaceRequest,
-    ProxyChannelPatchRequest, ProxyChannelWriteRequest, ProxyRequest, ProxyResult,
-    ProxyRuntimeStatus, ProxyServices, ProxyStatusRequest, ProxyStatusResponse, RoutableModelList,
-    RouteGroupListResponse, RouteResolveManagementRequest, RouteResolveRequest,
-    RouteResolveResponse, TransformedResponseUsageFormat, UpstreamJsonBodySource,
-    UpstreamSseAggregationKind, append_query_to_endpoint_path,
+    append_query_to_endpoint_path,
     chat_completion_to_response_with_context as build_chat_completion_response_with_context,
     claude_api_format_from_metadata, claude_stream_usage_event_filter,
     claude_transform_unlabeled_sse_aggregation, codex_stream_usage_event_filter,
@@ -64,6 +51,22 @@ use crate::proxy_core::{
     strip_endpoint_prefix, transformed_sse_proxy_response,
     transformed_streaming_response_usage_record_with_request_id_fallback,
     validate_claude_desktop_gateway_bearer_header, validate_management_bearer_header,
+    AppChannelListQuery, AppChannelManagementRequest, AppChannelResponse, AppKind, AppListRequest,
+    AppListResponse, AppModelCatalogRequest, AppModelListQuery, ChannelCreateRequest,
+    ChannelDeleteResponse, ChannelHealthResetResponse, ChannelListQuery, ChannelListRequest,
+    ChannelListResponse, ChannelMigrationMaterializeResponse, ChannelMigrationPreviewResponse,
+    ChannelModelRecord, ChannelModelsResponse, ChannelPathRequest, ChannelRecord,
+    ChannelRecordResponse, ChannelRouteCandidate, ChannelRouteRejected, ChannelTestInput,
+    ChannelTestResponse, ClaudeDesktopModelListResponse, ClientModelCatalogResponse,
+    CurrentRouteResponse, CurrentRouteTarget, GroupListQuery, GroupListRequest, HealthCheckRequest,
+    HealthCheckResponse, InterfaceKind, ManagementAppPathRequest, ManagementAuthDecision,
+    ProviderListResponse, ProxyBody, ProxyChannelModelsReplaceRequest, ProxyChannelPatchRequest,
+    ProxyChannelTestRequest, ProxyChannelWriteRequest, ProxyRequest, ProxyResult,
+    ProxyRuntimeStatus, ProxyServices, ProxyStatusRequest, ProxyStatusResponse, RoutableModelList,
+    RouteGroupListResponse, RouteResolveManagementRequest, RouteResolveRequest,
+    RouteResolveResponse, TransformedResponseUsageFormat, UpstreamJsonBodySource,
+    UpstreamSseAggregationKind, CLAUDE_PARSER_CONFIG, CODEX_PARSER_CONFIG, GEMINI_PARSER_CONFIG,
+    OPENAI_PARSER_CONFIG,
 };
 use crate::proxy_core_adapter::{
     proxy_app_summary_input, proxy_channel_model_records_to_core, proxy_channel_record_to_core,
@@ -71,16 +74,18 @@ use crate::proxy_core_adapter::{
     proxy_current_route_provider_summary_input, proxy_providers_to_core_specs,
     synthesize_gemini_tool_call_id_with_uuid,
 };
+use crate::services::stream_check::{HealthStatus, StreamCheckResult, StreamCheckService};
 use axum::{
-    Json,
     extract::{Path, Query, State},
     http::StatusCode,
     response::sse::{Event, KeepAlive, Sse},
+    Json,
 };
 use bytes::Bytes;
 use http_body_util::BodyExt;
 use serde_json::Value;
 use std::convert::Infallible;
+use std::str::FromStr;
 use std::time::Duration;
 
 // ============================================================================
@@ -415,6 +420,92 @@ pub async fn replace_proxy_channel_models(
     ))
 }
 
+/// POST /proxy/v1/channels/{channel_id}/test
+pub async fn test_proxy_channel(
+    State(state): State<ProxyState>,
+    Path(channel_id): Path<String>,
+    Json(request): Json<ProxyChannelTestRequest>,
+) -> Result<Json<ChannelTestResponse>, ProxyError> {
+    let path_request =
+        ChannelPathRequest::from_path(channel_id).map_err(management_api_error_to_proxy_error)?;
+    let channel = state
+        .db
+        .get_proxy_channel(&path_request.channel_id)
+        .map_err(|e| ProxyError::DatabaseError(e.to_string()))?
+        .ok_or_else(|| proxy_core_error_to_proxy_error(path_request.channel_not_found_error()))?;
+
+    let requested_model = request.requested_model().map(str::to_string);
+    let model_available = requested_model
+        .as_deref()
+        .map(|model| channel_model_matches(&channel, model));
+
+    if let Some(requested_interface) = request.requested_interface() {
+        let requested = InterfaceKind::from_storage(requested_interface);
+        let actual = InterfaceKind::from_storage(&channel.interface_kind);
+        if requested.as_str() != actual.as_str() {
+            return Ok(Json(path_request.test_response(
+                channel_test_failure_input(
+                    &channel,
+                    requested_model,
+                    model_available,
+                    format!(
+                        "interface not available on channel: requested {}, actual {}",
+                        requested.as_str(),
+                        actual.as_str()
+                    ),
+                ),
+            )));
+        }
+    }
+
+    if model_available == Some(false) {
+        return Ok(Json(path_request.test_response(
+            channel_test_failure_input(
+                &channel,
+                requested_model.clone(),
+                model_available,
+                format!(
+                    "model not mapped on channel: {}",
+                    requested_model.as_deref().unwrap_or_default()
+                ),
+            ),
+        )));
+    }
+
+    let app_type = AppType::from_str(&channel.app_type)
+        .map_err(|error| ProxyError::InvalidRequest(error.to_string()))?;
+    let provider = state
+        .db
+        .get_provider_by_id(&channel.provider_id, &channel.app_type)
+        .map_err(|e| ProxyError::DatabaseError(e.to_string()))?
+        .ok_or_else(|| {
+            ProxyError::ConfigError(format!(
+                "provider not found for channel {}: {}",
+                channel.id, channel.provider_id
+            ))
+        })?;
+    let config = state
+        .db
+        .get_stream_check_config()
+        .map_err(|e| ProxyError::DatabaseError(e.to_string()))?;
+
+    let result = StreamCheckService::check_with_retry(
+        &app_type,
+        &provider,
+        &config,
+        Some(channel.base_url.clone()),
+    )
+    .await
+    .map_err(|e| ProxyError::Internal(e.to_string()))?;
+
+    Ok(Json(path_request.test_response(channel_test_result_input(
+        &channel,
+        requested_model,
+        model_available,
+        result,
+    ))))
+}
+
 /// GET /proxy/v1/apps/{app}/channels
 pub async fn list_proxy_channels(
     State(state): State<ProxyState>,
@@ -570,6 +661,78 @@ pub async fn reset_proxy_channel_breaker(
         .map_err(proxy_core_error_to_proxy_error)?;
 
     Ok(Json(response))
+}
+
+fn channel_model_matches(channel: &HostProxyChannelRecord, requested_model: &str) -> bool {
+    channel.models.iter().any(|model| {
+        model.public_model == requested_model || model.upstream_model == requested_model
+    })
+}
+
+fn channel_test_failure_input(
+    channel: &HostProxyChannelRecord,
+    requested_model: Option<String>,
+    model_available: Option<bool>,
+    message: String,
+) -> ChannelTestInput {
+    ChannelTestInput {
+        channel_id: channel.id.clone(),
+        provider_id: channel.provider_id.clone(),
+        app_type: channel.app_type.clone(),
+        channel_name: channel.name.clone(),
+        base_url: channel.base_url.clone(),
+        interface_kind: InterfaceKind::from_storage(&channel.interface_kind)
+            .as_str()
+            .to_string(),
+        model: requested_model,
+        model_available,
+        success: false,
+        status: "failed".to_string(),
+        message: message.clone(),
+        latency_ms: None,
+        http_status: None,
+        tested_at: chrono::Utc::now().timestamp(),
+        retry_count: 0,
+        failure_reason: Some(message),
+    }
+}
+
+fn channel_test_result_input(
+    channel: &HostProxyChannelRecord,
+    requested_model: Option<String>,
+    model_available: Option<bool>,
+    result: StreamCheckResult,
+) -> ChannelTestInput {
+    let success = result.success && model_available != Some(false);
+    let failure_reason = (!success).then(|| result.message.clone());
+    ChannelTestInput {
+        channel_id: channel.id.clone(),
+        provider_id: channel.provider_id.clone(),
+        app_type: channel.app_type.clone(),
+        channel_name: channel.name.clone(),
+        base_url: channel.base_url.clone(),
+        interface_kind: InterfaceKind::from_storage(&channel.interface_kind)
+            .as_str()
+            .to_string(),
+        model: requested_model,
+        model_available,
+        success,
+        status: health_status_as_str(&result.status).to_string(),
+        message: result.message,
+        latency_ms: result.response_time_ms,
+        http_status: result.http_status,
+        tested_at: result.tested_at,
+        retry_count: result.retry_count,
+        failure_reason,
+    }
+}
+
+fn health_status_as_str(status: &HealthStatus) -> &'static str {
+    match status {
+        HealthStatus::Operational => "operational",
+        HealthStatus::Degraded => "degraded",
+        HealthStatus::Failed => "failed",
+    }
 }
 
 /// POST /proxy/v1/route/resolve

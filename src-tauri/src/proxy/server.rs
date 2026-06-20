@@ -364,6 +364,10 @@ impl ProxyServer {
                     .put(handlers::replace_proxy_channel_models),
             )
             .route(
+                "/proxy/v1/channels/:channel_id/test",
+                post(handlers::test_proxy_channel),
+            )
+            .route(
                 "/proxy/v1/apps/:app/channels",
                 get(handlers::list_proxy_channels),
             )
@@ -1069,6 +1073,31 @@ mod tests {
         assert_eq!(get_models_response.status(), StatusCode::OK);
         let models = response_json(get_models_response).await;
         assert_eq!(models["models"][0]["upstreamModel"], "upstream-haiku");
+
+        let test_response = Service::call(
+            &mut router,
+            json_request(
+                Method::POST,
+                &format!("/proxy/v1/channels/{channel_id}/test"),
+                json!({
+                    "model": "missing-model",
+                    "interfaceKind": "openai_responses"
+                }),
+            ),
+        )
+        .await
+        .unwrap();
+        assert_eq!(test_response.status(), StatusCode::OK);
+        let test_result = response_json(test_response).await;
+        assert_eq!(test_result["channelId"], channel_id);
+        assert_eq!(test_result["providerId"], "a");
+        assert_eq!(test_result["model"], "missing-model");
+        assert_eq!(test_result["modelAvailable"], false);
+        assert_eq!(test_result["success"], false);
+        assert!(test_result["failureReason"]
+            .as_str()
+            .unwrap()
+            .contains("model not mapped"));
 
         let delete_response = Service::call(
             &mut router,
