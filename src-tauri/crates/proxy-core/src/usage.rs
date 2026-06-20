@@ -755,6 +755,7 @@ pub struct StreamingResponseUsageRecord {
 pub struct NonStreamingResponseUsageRecord {
     pub record: UsageRecord,
     pub usage_found: bool,
+    pub body_was_json: bool,
 }
 
 pub fn transformed_response_usage(
@@ -1007,7 +1008,38 @@ pub fn non_streaming_response_usage_record_with_request_id_fallback(
     NonStreamingResponseUsageRecord {
         record,
         usage_found,
+        body_was_json: body.is_some(),
     }
+}
+
+#[allow(clippy::too_many_arguments)]
+pub fn non_streaming_response_usage_record_from_body_with_request_id_fallback(
+    body: &[u8],
+    response_parser: fn(&Value) -> Option<TokenUsage>,
+    provider_id: &str,
+    provider_kind: Option<ProviderKind>,
+    app: AppKind,
+    request_model: &str,
+    outbound_model: Option<&str>,
+    latency_ms: u64,
+    status_code: u16,
+    session_id: Option<String>,
+    request_id_fallback: impl FnOnce() -> String,
+) -> NonStreamingResponseUsageRecord {
+    let json_value = serde_json::from_slice::<Value>(body).ok();
+    non_streaming_response_usage_record_with_request_id_fallback(
+        json_value.as_ref(),
+        response_parser,
+        provider_id,
+        provider_kind,
+        app,
+        request_model,
+        outbound_model,
+        latency_ms,
+        status_code,
+        session_id,
+        request_id_fallback,
+    )
 }
 
 pub fn resolve_usage_response_model(
@@ -2669,6 +2701,7 @@ mod tests {
         );
 
         assert!(output.usage_found);
+        assert!(output.body_was_json);
         assert_eq!(output.record.request_id.as_deref(), Some("session:msg_2"));
         assert_eq!(output.record.message_id.as_deref(), Some("msg_2"));
         assert_eq!(output.record.app, crate::AppKind::ClaudeDesktop);
@@ -2699,6 +2732,7 @@ mod tests {
         );
 
         assert!(!output.usage_found);
+        assert!(output.body_was_json);
         assert_eq!(output.record.request_id.as_deref(), Some("request-1"));
         assert_eq!(output.record.response_model.as_deref(), Some("body-model"));
         assert_eq!(output.record.outbound_model, "outbound-model");
@@ -2723,6 +2757,7 @@ mod tests {
         );
 
         assert!(!output.usage_found);
+        assert!(!output.body_was_json);
         assert_eq!(
             output.record.response_model.as_deref(),
             Some("request-model")
@@ -2730,6 +2765,54 @@ mod tests {
         assert_eq!(output.record.outbound_model, "request-model");
         assert_eq!(output.record.tokens.output_tokens, 0);
         assert!(!output.record.is_streaming);
+    }
+
+    #[test]
+    fn test_non_streaming_response_usage_record_from_body_parses_json_body() {
+        let output = non_streaming_response_usage_record_from_body_with_request_id_fallback(
+            br#"{"model":"body-model","usage_model":"usage-model"}"#,
+            parsed_response_usage,
+            "provider-a",
+            Some(crate::ProviderKind::Claude),
+            crate::AppKind::Claude,
+            "request-model",
+            Some("outbound-model"),
+            123,
+            200,
+            None,
+            || "request-1".to_string(),
+        );
+
+        assert!(output.body_was_json);
+        assert!(output.usage_found);
+        assert_eq!(output.record.response_model.as_deref(), Some("usage-model"));
+        assert_eq!(output.record.tokens.input_tokens, 13);
+        assert_eq!(output.record.outbound_model, "outbound-model");
+    }
+
+    #[test]
+    fn test_non_streaming_response_usage_record_from_body_marks_non_json() {
+        let output = non_streaming_response_usage_record_from_body_with_request_id_fallback(
+            b"not json",
+            parsed_response_usage,
+            "provider-a",
+            None,
+            crate::AppKind::Codex,
+            "request-model",
+            None,
+            123,
+            502,
+            None,
+            || "request-1".to_string(),
+        );
+
+        assert!(!output.body_was_json);
+        assert!(!output.usage_found);
+        assert_eq!(
+            output.record.response_model.as_deref(),
+            Some("request-model")
+        );
+        assert_eq!(output.record.status_code, 502);
     }
 
     #[test]

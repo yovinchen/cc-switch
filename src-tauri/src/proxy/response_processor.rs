@@ -11,8 +11,8 @@ use super::{
 };
 use crate::proxy_core::{
     decode_response_body, get_content_encoding, non_streaming_body_timeout_message,
-    non_streaming_response_usage_record_with_request_id_fallback, response_headers_log_summary,
-    streaming_response_usage_record_with_optional_outbound_model,
+    non_streaming_response_usage_record_from_body_with_request_id_fallback,
+    response_headers_log_summary, streaming_response_usage_record_with_optional_outbound_model,
     strip_hop_by_hop_response_headers, AppKind, ProxyServices, ResponseBodyDecodeStatus,
     SseEventScanner, SseUsageAccumulator, StreamUsageEventFilter, StreamingTimeoutConfig,
     StreamingTimeoutPhase, UsageParserConfig, UsageRecord,
@@ -164,20 +164,8 @@ pub async fn handle_non_streaming(
 
     // 解析并记录使用量。关闭 usage logging 时直接跳过，避免非流式响应整包 JSON parse。
     if usage_logging_enabled(state) {
-        let json_value = match serde_json::from_slice::<Value>(&body_bytes) {
-            Ok(json_value) => Some(json_value),
-            Err(_) => {
-                log::debug!(
-                    "[{}] <<< 响应 (非 JSON): {} bytes",
-                    ctx.tag,
-                    body_bytes.len()
-                );
-                None
-            }
-        };
-
-        let output = non_streaming_response_usage_record_with_request_id_fallback(
-            json_value.as_ref(),
+        let output = non_streaming_response_usage_record_from_body_with_request_id_fallback(
+            &body_bytes,
             parser_config.response_parser,
             &ctx.provider.id,
             provider_kind_from_provider(&ctx.provider),
@@ -190,7 +178,13 @@ pub async fn handle_non_streaming(
             || uuid::Uuid::new_v4().to_string(),
         );
 
-        if json_value.is_some() && !output.usage_found {
+        if !output.body_was_json {
+            log::debug!(
+                "[{}] <<< 响应 (非 JSON): {} bytes",
+                ctx.tag,
+                body_bytes.len()
+            );
+        } else if !output.usage_found {
             log::debug!(
                 "[{}] 未能解析 usage 信息，跳过记录",
                 parser_config.app_type_str
