@@ -72,6 +72,10 @@ pub mod management {
     };
 }
 
+pub mod logging {
+    pub use crate::log_codes::{cb, fwd, fo, rsp, srv, usg};
+}
+
 pub mod model_catalog {
     pub use crate::copilot_model_map::*;
     pub use crate::domain::RoutableModelList;
@@ -212,5 +216,6 @@ mod tests {
         assert!(!runtime.privacy_filter_enabled);
         assert_eq!(event_payload["bufferSize"], 16);
         assert_eq!(routing::DEFAULT_ROUTE_GROUP, "default");
+        assert_eq!(logging::cb::MANUAL_RESET, "CB-006");
     }
 }

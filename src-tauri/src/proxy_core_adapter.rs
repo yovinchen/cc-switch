@@ -330,26 +330,25 @@ pub(crate) type CircuitState = crate::proxy_core::api::config::CircuitState;
 
 pub(crate) mod circuit_breaker_log_codes {
     pub(crate) const OPEN_TO_HALF_OPEN: &str =
-        crate::proxy_core::log_codes::cb::OPEN_TO_HALF_OPEN;
+        crate::proxy_core::api::logging::cb::OPEN_TO_HALF_OPEN;
     pub(crate) const HALF_OPEN_TO_CLOSED: &str =
-        crate::proxy_core::log_codes::cb::HALF_OPEN_TO_CLOSED;
+        crate::proxy_core::api::logging::cb::HALF_OPEN_TO_CLOSED;
     pub(crate) const HALF_OPEN_PROBE_FAILED: &str =
-        crate::proxy_core::log_codes::cb::HALF_OPEN_PROBE_FAILED;
+        crate::proxy_core::api::logging::cb::HALF_OPEN_PROBE_FAILED;
     pub(crate) const TRIGGERED_FAILURES: &str =
-        crate::proxy_core::log_codes::cb::TRIGGERED_FAILURES;
+        crate::proxy_core::api::logging::cb::TRIGGERED_FAILURES;
     pub(crate) const TRIGGERED_ERROR_RATE: &str =
-        crate::proxy_core::log_codes::cb::TRIGGERED_ERROR_RATE;
-    pub(crate) const MANUAL_RESET: &str =
-        crate::proxy_core::log_codes::cb::MANUAL_RESET;
+        crate::proxy_core::api::logging::cb::TRIGGERED_ERROR_RATE;
+    pub(crate) const MANUAL_RESET: &str = crate::proxy_core::api::logging::cb::MANUAL_RESET;
 }
 
 pub(crate) mod server_log_codes {
-    pub(crate) const STARTED: &str = crate::proxy_core::log_codes::srv::STARTED;
-    pub(crate) const STOPPED: &str = crate::proxy_core::log_codes::srv::STOPPED;
-    pub(crate) const STOP_TIMEOUT: &str = crate::proxy_core::log_codes::srv::STOP_TIMEOUT;
-    pub(crate) const TASK_ERROR: &str = crate::proxy_core::log_codes::srv::TASK_ERROR;
-    pub(crate) const ACCEPT_ERR: &str = crate::proxy_core::log_codes::srv::ACCEPT_ERR;
-    pub(crate) const CONN_ERR: &str = crate::proxy_core::log_codes::srv::CONN_ERR;
+    pub(crate) const STARTED: &str = crate::proxy_core::api::logging::srv::STARTED;
+    pub(crate) const STOPPED: &str = crate::proxy_core::api::logging::srv::STOPPED;
+    pub(crate) const STOP_TIMEOUT: &str = crate::proxy_core::api::logging::srv::STOP_TIMEOUT;
+    pub(crate) const TASK_ERROR: &str = crate::proxy_core::api::logging::srv::TASK_ERROR;
+    pub(crate) const ACCEPT_ERR: &str = crate::proxy_core::api::logging::srv::ACCEPT_ERR;
+    pub(crate) const CONN_ERR: &str = crate::proxy_core::api::logging::srv::CONN_ERR;
 }
 
 pub(crate) type ProxyCoreAppKind = crate::proxy_core::api::domain::AppKind;
@@ -1926,9 +1925,12 @@ pub(crate) fn extract_proxy_session_id(
     body: &Value,
     client_format: &str,
 ) -> SessionIdResult {
-    crate::proxy_core::extract_session_id_with_generator(headers, body, client_format, || {
-        Uuid::new_v4().to_string()
-    })
+    crate::proxy_core::api::session::extract_session_id_with_generator(
+        headers,
+        body,
+        client_format,
+        || Uuid::new_v4().to_string(),
+    )
 }
 
 pub(crate) fn stream_check_result_to_channel_reachability(
@@ -2013,10 +2015,10 @@ mod tests {
     use super::*;
     use crate::database::ProxyChannelSourceKind;
     use crate::provider::{AuthBinding, AuthBindingSource, ProviderMeta};
-    use crate::proxy_core::{
-        GEMINI_SYNTHESIZED_TOOL_CALL_ID_PREFIX, ProxyCoreError, SessionIdSource,
-        UpstreamTransportKind,
-    };
+    use crate::proxy_core::api::errors::ProxyCoreError;
+    use crate::proxy_core::api::session::SessionIdSource;
+    use crate::proxy_core::api::transforms::GEMINI_SYNTHESIZED_TOOL_CALL_ID_PREFIX;
+    use crate::proxy_core::api::transport::UpstreamTransportKind;
 
     #[test]
     fn app_type_conversion_preserves_known_and_custom_names() {
@@ -3460,7 +3462,7 @@ mod tests {
             outbound_model: "upstream-sonnet".to_string(),
             response_model: Some("upstream-sonnet".to_string()),
             pricing_model: None,
-            tokens: crate::proxy_core::UsageTokens {
+            tokens: crate::proxy_core::api::usage::UsageTokens {
                 input_tokens: 1_000,
                 output_tokens: 500,
                 cache_read_tokens: 0,
