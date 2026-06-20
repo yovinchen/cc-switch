@@ -1950,7 +1950,8 @@ impl RequestForwarder {
         let mut should_send_codex_oauth_session_headers = false;
 
         // 获取认证头（提前准备，用于内联替换）
-        let mut auth_headers = if let Some(mut auth) = adapter.extract_auth(provider) {
+        let auth_provider = attempt.auth_provider();
+        let mut auth_headers = if let Some(mut auth) = adapter.extract_auth(auth_provider) {
             // GitHub Copilot 特殊处理：从 CopilotAuthManager 获取真实 token
             if auth.strategy == ProviderAuthStrategy::GitHubCopilot {
                 if let Some(app_handle) = &self.app_handle {
@@ -1959,7 +1960,7 @@ impl RequestForwarder {
                         copilot_state.0.read().await;
 
                     // 从 provider.meta 获取关联的 GitHub 账号 ID（多账号支持）
-                    let account_id = provider
+                    let account_id = auth_provider
                         .meta
                         .as_ref()
                         .and_then(|m| m.managed_account_id_for("github_copilot"));
@@ -2011,7 +2012,7 @@ impl RequestForwarder {
                         codex_state.0.read().await;
 
                     // 从 provider.meta 获取关联的 ChatGPT 账号 ID
-                    let account_id = provider
+                    let account_id = auth_provider
                         .meta
                         .as_ref()
                         .and_then(|m| m.managed_account_id_for("codex_oauth"));

@@ -7,7 +7,7 @@ use crate::proxy::failover_switch::FailoverSwitchManager;
 use crate::proxy::hyper_client::ProxyResponse;
 use crate::proxy::provider_router::ProviderRouter;
 use crate::proxy::providers::codex_chat_history::CodexChatHistoryStore;
-use crate::proxy::route_attempt::forward_attempts_from_route_plan;
+use crate::proxy::route_attempt::{forward_attempts_from_route_plan, ForwardAttempt};
 use crate::proxy::usage::UsageLogger;
 use crate::proxy::RequestForwarder;
 use crate::proxy_core_adapter::{
@@ -28,6 +28,7 @@ use crate::proxy_core_adapter::{
 };
 use bytes::Bytes;
 use futures::{future::BoxFuture, Stream, StreamExt};
+use indexmap::IndexMap;
 use serde_json::{json, Map, Value};
 use std::collections::HashMap;
 use std::str::FromStr;
@@ -594,8 +595,13 @@ impl CcSwitchProxyRuntime {
             })
             .unwrap_or_default();
         let session_result = extract_proxy_session_id(&headers, &body, app_type.as_str());
-        let providers = host_providers_for_plan(&self.db, &app_type, &plan)?;
-        let attempts = forward_attempts_from_route_plan(&app_type, &providers, &plan);
+        let all_providers = self
+            .db
+            .get_all_providers(app_type.as_str())
+            .map_err(|error| app_error("load host providers", error))?;
+        let providers = host_providers_for_plan(&all_providers, &plan)?;
+        let mut attempts = forward_attempts_from_route_plan(&app_type, &providers, &plan);
+        apply_channel_auth_profile_providers(&app_type, &all_providers, &mut attempts);
         if attempts.is_empty() {
             return Err(ProxyCoreError::Unavailable(
                 "route plan has no matching host providers".to_string(),
@@ -650,13 +656,9 @@ impl CcSwitchProxyRuntime {
 }
 
 fn host_providers_for_plan(
-    db: &Database,
-    app_type: &AppType,
+    providers: &IndexMap<String, crate::provider::Provider>,
     plan: &RoutePlan,
 ) -> ProxyCoreResult<Vec<crate::provider::Provider>> {
-    let providers = db
-        .get_all_providers(app_type.as_str())
-        .map_err(|error| app_error("load host providers", error))?;
     let provider_ids = crate::proxy_core_adapter::route_plan_provider_ids(plan);
 
     let matching: Vec<_> = provider_ids
@@ -669,6 +671,48 @@ fn host_providers_for_plan(
         ));
     }
     Ok(matching)
+}
+
+fn apply_channel_auth_profile_providers(
+    app_type: &AppType,
+    providers: &IndexMap<String, crate::provider::Provider>,
+    attempts: &mut [ForwardAttempt],
+) {
+    for attempt in attempts {
+        let Some(auth_profile_ref) = attempt
+            .channel()
+            .and_then(|channel| channel.auth_profile_ref.as_deref())
+        else {
+            continue;
+        };
+        let Some(provider_id) =
+            provider_auth_profile_provider_id(auth_profile_ref, app_type.as_str())
+        else {
+            continue;
+        };
+        let Some(provider) = providers.get(provider_id).cloned() else {
+            log::warn!(
+                "[{}] channel auth profile references missing provider: {}",
+                app_type.as_str(),
+                auth_profile_ref
+            );
+            continue;
+        };
+        attempt.set_auth_provider(provider);
+    }
+}
+
+fn provider_auth_profile_provider_id<'a>(
+    auth_profile_ref: &'a str,
+    app_type: &str,
+) -> Option<&'a str> {
+    let mut parts = auth_profile_ref.splitn(3, ':');
+    match (parts.next(), parts.next(), parts.next()) {
+        (Some("provider"), Some(profile_app), Some(provider_id)) if profile_app == app_type => {
+            Some(provider_id)
+        }
+        _ => None,
+    }
 }
 
 fn forward_result_to_proxy_result(
@@ -954,6 +998,74 @@ mod tests {
             selections: Vec::new(),
             attempts: Vec::new(),
         }
+    }
+
+    #[test]
+    fn channel_provider_auth_profile_sets_auth_provider_without_changing_route_provider() {
+        let route_provider = Provider::with_id(
+            "route-provider".to_string(),
+            "Route Provider".to_string(),
+            json!({ "env": { "ANTHROPIC_API_KEY": "route-key" } }),
+            None,
+        );
+        let auth_provider = Provider::with_id(
+            "auth-provider".to_string(),
+            "Auth Provider".to_string(),
+            json!({ "env": { "ANTHROPIC_API_KEY": "auth-key" } }),
+            None,
+        );
+        let mut providers = IndexMap::new();
+        providers.insert(route_provider.id.clone(), route_provider);
+        providers.insert(auth_provider.id.clone(), auth_provider);
+        let mut plan = route_plan("route-provider", "channel-auth");
+        plan.selection.channel.auth_profile =
+            Some(AuthProfileRef::new("provider:claude:auth-provider"));
+
+        let route_providers = host_providers_for_plan(&providers, &plan).expect("route providers");
+        let mut attempts =
+            forward_attempts_from_route_plan(&AppType::Claude, &route_providers, &plan);
+        apply_channel_auth_profile_providers(&AppType::Claude, &providers, &mut attempts);
+
+        assert_eq!(attempts.len(), 1);
+        assert_eq!(attempts[0].provider().id, "route-provider");
+        assert_eq!(attempts[0].auth_provider().id, "auth-provider");
+        assert_eq!(
+            attempts[0]
+                .auth_provider()
+                .settings_config
+                .pointer("/env/ANTHROPIC_API_KEY")
+                .and_then(Value::as_str),
+            Some("auth-key")
+        );
+    }
+
+    #[test]
+    fn channel_auth_profile_ignores_unknown_or_cross_app_refs() {
+        let route_provider = Provider::with_id(
+            "route-provider".to_string(),
+            "Route Provider".to_string(),
+            json!({ "env": { "ANTHROPIC_API_KEY": "route-key" } }),
+            None,
+        );
+        let mut providers = IndexMap::new();
+        providers.insert(route_provider.id.clone(), route_provider);
+        let mut plan = route_plan("route-provider", "channel-auth");
+        plan.selection.channel.auth_profile =
+            Some(AuthProfileRef::new("provider:codex:auth-provider"));
+
+        let route_providers = host_providers_for_plan(&providers, &plan).expect("route providers");
+        let mut attempts =
+            forward_attempts_from_route_plan(&AppType::Claude, &route_providers, &plan);
+        apply_channel_auth_profile_providers(&AppType::Claude, &providers, &mut attempts);
+
+        assert_eq!(attempts[0].provider().id, "route-provider");
+        assert_eq!(attempts[0].auth_provider().id, "route-provider");
+
+        plan.selection.channel.auth_profile = Some(AuthProfileRef::new("channel-key:manual"));
+        let mut attempts =
+            forward_attempts_from_route_plan(&AppType::Claude, &route_providers, &plan);
+        apply_channel_auth_profile_providers(&AppType::Claude, &providers, &mut attempts);
+        assert_eq!(attempts[0].auth_provider().id, "route-provider");
     }
 
     fn proxy_request() -> ProxyRequest {

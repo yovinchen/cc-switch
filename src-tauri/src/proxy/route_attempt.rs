@@ -16,6 +16,7 @@ use std::collections::HashMap;
 #[derive(Debug, Clone)]
 pub(crate) struct ForwardAttempt {
     provider: Provider,
+    auth_provider: Option<Provider>,
     channel: Option<ResolvedChannelAttempt>,
 }
 
@@ -24,6 +25,7 @@ impl ForwardAttempt {
     pub(crate) fn from_provider(provider: Provider) -> Self {
         Self {
             provider,
+            auth_provider: None,
             channel: None,
         }
     }
@@ -39,6 +41,7 @@ impl ForwardAttempt {
 
         Self {
             provider,
+            auth_provider: None,
             channel: Some(
                 crate::proxy_core_adapter::resolved_channel_attempt_from_candidate(candidate),
             ),
@@ -56,12 +59,21 @@ impl ForwardAttempt {
 
         Self {
             provider,
+            auth_provider: None,
             channel: Some(resolved_channel_attempt_from_selection(selection)),
         }
     }
 
     pub(crate) fn provider(&self) -> &Provider {
         &self.provider
+    }
+
+    pub(crate) fn auth_provider(&self) -> &Provider {
+        self.auth_provider.as_ref().unwrap_or(&self.provider)
+    }
+
+    pub(crate) fn set_auth_provider(&mut self, provider: Provider) {
+        self.auth_provider = Some(provider);
     }
 
     pub(crate) fn channel(&self) -> Option<&ResolvedChannelAttempt> {
@@ -395,6 +407,35 @@ mod tests {
         );
         assert_eq!(channel.header_overrides["x-relay-profile"], "manual");
         assert_eq!(channel.param_overrides["api-version"], "2026-06-20");
+    }
+
+    #[test]
+    fn channel_attempt_can_use_separate_auth_provider() {
+        let provider = Provider::with_id("p1".to_string(), "Provider".to_string(), json!({}), None);
+        let auth_provider = Provider::with_id(
+            "auth-provider".to_string(),
+            "Auth Provider".to_string(),
+            json!({ "env": { "ANTHROPIC_API_KEY": "auth-key" } }),
+            None,
+        );
+        let mut attempt = ForwardAttempt::from_core_selection(
+            &AppType::Claude,
+            &provider,
+            &route_selection("p1", "ch_auth"),
+        );
+
+        attempt.set_auth_provider(auth_provider);
+
+        assert_eq!(attempt.provider().id, "p1");
+        assert_eq!(attempt.auth_provider().id, "auth-provider");
+        assert_eq!(
+            attempt
+                .auth_provider()
+                .settings_config
+                .pointer("/env/ANTHROPIC_API_KEY")
+                .and_then(Value::as_str),
+            Some("auth-key")
+        );
     }
 
     #[test]
