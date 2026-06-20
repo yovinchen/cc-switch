@@ -1136,19 +1136,19 @@ impl ToProxyCoreChannelSpec for ProxyChannelRecord {
             priority: self.priority,
             weight: self.weight,
             retry_policy: RetryPolicy {
-                raw: object_or_empty(self.retry_policy.clone()),
+                raw: channel_object_or_default(self.retry_policy.clone()),
             },
             health_policy: ChannelHealthPolicy {
-                raw: object_or_empty(self.health_policy.clone()),
+                raw: channel_object_or_default(self.health_policy.clone()),
             },
             overrides: ChannelOverrides {
-                headers: object_or_empty(self.header_overrides.clone()),
-                params: object_or_empty(self.param_overrides.clone()),
-                status_code_mapping: array_or_empty(self.status_code_mapping.clone()),
+                headers: channel_object_or_default(self.header_overrides.clone()),
+                params: channel_object_or_default(self.param_overrides.clone()),
+                status_code_mapping: channel_array_or_default(self.status_code_mapping.clone()),
                 model_mapping: Value::Object(Default::default()),
             },
             tags: self.tags.clone(),
-            metadata: object_or_empty(self.metadata.clone()),
+            metadata: channel_object_or_default(self.metadata.clone()),
             source_ref: self.source_endpoint_url.clone(),
             needs_review: self.needs_review,
             review_reasons: self.review_reasons.clone(),
@@ -1948,11 +1948,11 @@ impl ToProxyCoreModelRoute for ProxyChannelModelRecord {
             public_model: self.public_model.clone(),
             upstream_model: self.upstream_model.clone(),
             capabilities: ModelCapabilities {
-                raw: object_or_empty(self.capabilities.clone()),
+                raw: channel_object_or_default(self.capabilities.clone()),
             },
             pricing_model: self.pricing_model.clone(),
-            request_overrides: object_or_empty(self.request_overrides.clone()),
-            response_overrides: object_or_empty(self.response_overrides.clone()),
+            request_overrides: channel_object_or_default(self.request_overrides.clone()),
+            response_overrides: channel_object_or_default(self.response_overrides.clone()),
         }
     }
 }
@@ -2131,22 +2131,6 @@ fn account_ref(provider: &Provider) -> Option<String> {
             provider_type.and_then(|provider_type| meta.managed_account_id_for(provider_type));
         provider_account_ref(provider_type, account_id.as_deref())
     })
-}
-
-fn object_or_empty(value: Value) -> Value {
-    if value.is_object() {
-        value
-    } else {
-        Value::Object(Default::default())
-    }
-}
-
-fn array_or_empty(value: Value) -> Value {
-    if value.is_array() {
-        value
-    } else {
-        Value::Array(Vec::new())
-    }
 }
 
 #[cfg(test)]
