@@ -272,6 +272,22 @@ pub(crate) fn route_interfaces_compatible(
     crate::proxy_core::interfaces_compatible(requested, channel)
 }
 
+pub(crate) fn route_selection_from_parts(
+    provider: ProviderSpec,
+    channel: ChannelSpec,
+    model_route: Option<ModelRoute>,
+    inbound_interface: InterfaceKind,
+) -> RouteSelection {
+    let outbound_interface = channel.interface.clone();
+    RouteSelection {
+        provider,
+        channel,
+        model_route,
+        inbound_interface,
+        outbound_interface,
+    }
+}
+
 pub(crate) struct UsageRequestLogProjection {
     pub(crate) log: RequestLog,
     pub(crate) missing_pricing_model: Option<String>,
@@ -714,13 +730,12 @@ mod tests {
                 review_reasons: Vec::new(),
             };
 
-            RouteSelection {
+            route_selection_from_parts(
                 provider,
                 channel,
-                model_route: None,
-                inbound_interface: InterfaceKind::OpenAiChatCompletions,
-                outbound_interface: InterfaceKind::OpenAiChatCompletions,
-            }
+                None,
+                InterfaceKind::OpenAiChatCompletions,
+            )
         }
 
         let primary = selection("ch-a", "provider-a");
@@ -743,6 +758,11 @@ mod tests {
                 .channel
                 .id,
             "ch-b"
+        );
+        assert_eq!(
+            route_selection_for_forward_result(&plan, Some("ch-b"), "provider-a")
+                .outbound_interface,
+            InterfaceKind::OpenAiChatCompletions
         );
     }
 

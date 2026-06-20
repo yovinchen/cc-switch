@@ -410,13 +410,12 @@ impl RouteResolver for CcSwitchRouteResolver {
                     continue;
                 };
 
-                selections.push(crate::proxy_core::RouteSelection {
+                selections.push(crate::proxy_core_adapter::route_selection_from_parts(
                     provider,
-                    channel: channel.clone(),
+                    channel.clone(),
                     model_route,
-                    inbound_interface: request.request.inbound_interface.clone(),
-                    outbound_interface: channel.interface.clone(),
-                });
+                    request.request.inbound_interface.clone(),
+                ));
             }
 
             selections.sort_by(|left, right| {
