@@ -11,7 +11,7 @@ use crate::proxy_core::api::domain::{
 };
 use crate::proxy_core::api::management::{
     AppSummaryInput, ChannelReachabilityInput, ChannelReachabilityResult,
-    ChannelReachabilityStatus, CurrentRouteProviderSummaryInput,
+    CurrentRouteProviderSummaryInput,
 };
 use crate::proxy_core::api::routing::{RouteResolveChannelInput, RouteResolveModelInput};
 use crate::proxy_core::api::session::SessionIdResult;
@@ -400,6 +400,8 @@ pub(crate) type ChannelRequestValidationError =
 pub(crate) type ChannelRouteSource =
     crate::proxy_core::api::management::ChannelRouteSource;
 pub(crate) type ChannelRecord = crate::proxy_core::api::management::ChannelRecord;
+pub(crate) type ChannelReachabilityStatus =
+    crate::proxy_core::api::management::ChannelReachabilityStatus;
 pub(crate) type ChannelKeyRecord =
     crate::proxy_core::api::management::ChannelKeyRecord;
 pub(crate) type ChannelModelRecord =
@@ -2016,6 +2018,20 @@ pub(crate) fn stream_check_result_to_channel_reachability(
         tested_at: result.tested_at,
         retry_count: result.retry_count,
     })
+}
+
+pub(crate) fn channel_reachability_status_from_latency(
+    latency_ms: u64,
+    degraded_threshold_ms: u64,
+) -> ChannelReachabilityStatus {
+    crate::proxy_core::api::management::channel_reachability_status_from_latency(
+        latency_ms,
+        degraded_threshold_ms,
+    )
+}
+
+pub(crate) fn should_retry_channel_reachability_failure(message: &str) -> bool {
+    crate::proxy_core::api::management::should_retry_channel_reachability_failure(message)
 }
 
 fn stream_check_health_status_to_channel_reachability(

@@ -25,6 +25,10 @@ use crate::app_config::AppType;
 use crate::error::AppError;
 use crate::provider::Provider;
 use crate::proxy::providers::{get_adapter, ClaudeAdapter, ProviderAdapter};
+use crate::proxy_core_adapter::{
+    channel_reachability_status_from_latency, should_retry_channel_reachability_failure,
+    ChannelReachabilityStatus,
+};
 
 /// 健康状态枚举
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -277,16 +281,15 @@ impl StreamCheckService {
     }
 
     fn determine_status(latency_ms: u64, threshold: u64) -> HealthStatus {
-        if latency_ms <= threshold {
-            HealthStatus::Operational
-        } else {
-            HealthStatus::Degraded
+        match channel_reachability_status_from_latency(latency_ms, threshold) {
+            ChannelReachabilityStatus::Operational => HealthStatus::Operational,
+            ChannelReachabilityStatus::Degraded => HealthStatus::Degraded,
+            ChannelReachabilityStatus::Failed => HealthStatus::Failed,
         }
     }
 
     fn should_retry(msg: &str) -> bool {
-        let lower = msg.to_lowercase();
-        lower.contains("timeout") || lower.contains("abort") || lower.contains("timed out")
+        should_retry_channel_reachability_failure(msg)
     }
 
     fn map_request_error(e: reqwest::Error) -> AppError {

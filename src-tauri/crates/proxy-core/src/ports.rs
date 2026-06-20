@@ -950,6 +950,22 @@ impl ChannelReachabilityStatus {
     }
 }
 
+pub fn channel_reachability_status_from_latency(
+    latency_ms: u64,
+    degraded_threshold_ms: u64,
+) -> ChannelReachabilityStatus {
+    if latency_ms <= degraded_threshold_ms {
+        ChannelReachabilityStatus::Operational
+    } else {
+        ChannelReachabilityStatus::Degraded
+    }
+}
+
+pub fn should_retry_channel_reachability_failure(message: &str) -> bool {
+    let lower = message.to_lowercase();
+    lower.contains("timeout") || lower.contains("abort") || lower.contains("timed out")
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ChannelReachabilityInput {
     pub success: bool,
@@ -2139,13 +2155,14 @@ mod tests {
     use super::{
         AppChannelListQuery, AppChannelListResponse, AppChannelResponse, AppChannelRouteResponse,
         app_proxy_config_raw, AppListResponse, AppModelListQuery, AppProxyConfig, AppSummaryInput,
-        ChannelDeleteResponse, ChannelListQuery, ChannelListResponse, ChannelReachabilityInput,
+        channel_reachability_status_from_latency, ChannelDeleteResponse, ChannelListQuery,
+        ChannelListResponse, ChannelReachabilityInput,
         ChannelMigrationMaterializeInput, ChannelMigrationMaterializeResponse,
         ChannelMigrationPreviewInput, ChannelMigrationPreviewResponse, ChannelModelRecord,
         ChannelModelsResponse, ChannelRecord, ChannelRecordResponse, ChannelRouteCandidate,
         ChannelReachabilityResult, ChannelReachabilityStatus, ChannelRouteRejected,
         ChannelRouteSource, ChannelTestInput, ChannelTestPlan, ChannelTestResponse,
-        ClientModelCatalogResponse,
+        ClientModelCatalogResponse, should_retry_channel_reachability_failure,
         CopilotOptimizerConfig, CurrentRouteProviderSummaryInput, CurrentRouteResponse,
         CurrentRouteTarget, GlobalProxyConfig, GroupListQuery, HealthCheckResponse, ModelCatalog,
         OptimizerConfig, ProviderHealth, ProviderListResponse, ProviderSpec,
@@ -2539,6 +2556,21 @@ mod tests {
         assert_eq!(ChannelReachabilityStatus::Operational.as_str(), "operational");
         assert_eq!(ChannelReachabilityStatus::Degraded.as_str(), "degraded");
         assert_eq!(ChannelReachabilityStatus::Failed.as_str(), "failed");
+        assert_eq!(
+            channel_reachability_status_from_latency(1_500, 1_500),
+            ChannelReachabilityStatus::Operational
+        );
+        assert_eq!(
+            channel_reachability_status_from_latency(1_501, 1_500),
+            ChannelReachabilityStatus::Degraded
+        );
+        assert!(should_retry_channel_reachability_failure("Request timeout"));
+        assert!(should_retry_channel_reachability_failure("request timed out"));
+        assert!(should_retry_channel_reachability_failure("connection abort"));
+        assert!(!should_retry_channel_reachability_failure(
+            "Connection failed: dns error"
+        ));
+        assert!(!should_retry_channel_reachability_failure("Reachable"));
 
         let result = ChannelReachabilityResult::from_input(ChannelReachabilityInput {
             success: false,

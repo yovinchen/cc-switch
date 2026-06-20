@@ -55,10 +55,11 @@ pub mod events {
 pub mod management {
     pub use crate::management_api::*;
     pub use crate::ports::{
-        plan_channel_test, AppChannelListQuery, AppChannelResponse, AppListResponse,
-        AppModelListQuery, AppSummaryInput, ChannelDeleteResponse, ChannelHealthResetResponse,
-        ChannelKeyDeleteResponse, ChannelKeyRecord, ChannelKeyRecordResponse,
-        ChannelKeysResponse, ChannelListQuery, ChannelListResponse,
+        channel_reachability_status_from_latency, plan_channel_test,
+        should_retry_channel_reachability_failure, AppChannelListQuery, AppChannelResponse,
+        AppListResponse, AppModelListQuery, AppSummaryInput, ChannelDeleteResponse,
+        ChannelHealthResetResponse, ChannelKeyDeleteResponse, ChannelKeyRecord,
+        ChannelKeyRecordResponse, ChannelKeysResponse, ChannelListQuery, ChannelListResponse,
         ChannelMigrationMaterializeResponse,
         ChannelMigrationPreviewResponse, ChannelModelRecord, ChannelModelsResponse,
         ChannelReachabilityInput, ChannelReachabilityResult, ChannelReachabilityStatus,
