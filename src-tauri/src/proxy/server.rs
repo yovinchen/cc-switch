@@ -13,11 +13,10 @@ use super::{
     provider_router::ProviderRouter, providers::codex_chat_history::CodexChatHistoryStore,
 };
 use crate::database::Database;
-use crate::proxy_core::{
-    log_codes::srv as log_srv, CurrentRouteTarget, GeminiShadowStore, ProxyConfig, ProxyEngine,
-    ProxyRuntimeStatus, ProxyServerInfo,
+use crate::proxy_core_adapter::{
+    server_log_codes as log_srv, CircuitBreakerConfig, CurrentRouteTarget, GeminiShadowStore,
+    ProxyConfig, ProxyEngine, ProxyRuntimeStatus, ProxyServerInfo,
 };
-use crate::proxy_core_adapter::CircuitBreakerConfig;
 use crate::proxy_core_host::{CcSwitchProxyRuntime, CcSwitchProxyServices};
 use axum::{
     extract::DefaultBodyLimit,
@@ -506,7 +505,7 @@ impl ProxyServer {
 mod tests {
     use super::*;
     use crate::provider::Provider;
-    use crate::proxy_core::RouteResolveRequest;
+    use crate::proxy_core_adapter::RouteResolveRequest;
     use axum::{
         body::{to_bytes, Body},
         http::{Method, Request, StatusCode},

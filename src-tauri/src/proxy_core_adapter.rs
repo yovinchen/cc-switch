@@ -181,6 +181,7 @@ pub(crate) type ProxyRuntimeStatus = crate::proxy_core::ProxyRuntimeStatus;
 pub(crate) type ProxyServerInfo = crate::proxy_core::ProxyServerInfo;
 pub(crate) type ProxyTakeoverStatus = crate::proxy_core::ProxyTakeoverStatus;
 pub(crate) type ProxyCoreResponse = crate::proxy_core::ProxyCoreResponse;
+pub(crate) type ProxyEngine<S> = crate::proxy_core::ProxyEngine<S>;
 pub(crate) type ProxyResult = crate::proxy_core::ProxyResult;
 pub(crate) type ProxyEventEnvelope = crate::proxy_core::ProxyEventEnvelope;
 pub(crate) type ProxyEventSseSpec = crate::proxy_core::ProxyEventSseSpec;
@@ -193,6 +194,8 @@ pub(crate) type CostBreakdown = crate::proxy_core::CostBreakdown;
 pub(crate) type CostCalculator = crate::proxy_core::CostCalculator;
 pub(crate) type ModelPricing = crate::proxy_core::ModelPricing;
 pub(crate) type TokenUsage = crate::proxy_core::TokenUsage;
+pub(crate) type CurrentRouteTarget = crate::proxy_core::CurrentRouteTarget;
+pub(crate) type GeminiShadowStore = crate::proxy_core::GeminiShadowStore;
 pub(crate) type ResponseRuntimePolicy = crate::proxy_core::ResponseRuntimePolicy;
 pub(crate) type ResponseTimeoutConfig = crate::proxy_core::ResponseTimeoutConfig;
 pub(crate) type StreamingTimeoutConfig = crate::proxy_core::StreamingTimeoutConfig;
@@ -217,6 +220,15 @@ pub(crate) mod circuit_breaker_log_codes {
         crate::proxy_core::log_codes::cb::TRIGGERED_ERROR_RATE;
     pub(crate) const MANUAL_RESET: &str =
         crate::proxy_core::log_codes::cb::MANUAL_RESET;
+}
+
+pub(crate) mod server_log_codes {
+    pub(crate) const STARTED: &str = crate::proxy_core::log_codes::srv::STARTED;
+    pub(crate) const STOPPED: &str = crate::proxy_core::log_codes::srv::STOPPED;
+    pub(crate) const STOP_TIMEOUT: &str = crate::proxy_core::log_codes::srv::STOP_TIMEOUT;
+    pub(crate) const TASK_ERROR: &str = crate::proxy_core::log_codes::srv::TASK_ERROR;
+    pub(crate) const ACCEPT_ERR: &str = crate::proxy_core::log_codes::srv::ACCEPT_ERR;
+    pub(crate) const CONN_ERR: &str = crate::proxy_core::log_codes::srv::CONN_ERR;
 }
 
 pub(crate) type ProxyCoreAppKind = crate::proxy_core::AppKind;
@@ -1544,6 +1556,38 @@ mod tests {
         assert_eq!(
             claude_api_format_from_metadata(&json!({"apiFormat": " "}), "anthropic"),
             "anthropic"
+        );
+    }
+
+    #[test]
+    fn proxy_server_adapter_projects_runtime_contracts() {
+        assert_eq!(server_log_codes::STARTED, "SRV-001");
+        assert_eq!(server_log_codes::STOPPED, "SRV-002");
+        assert_eq!(server_log_codes::ACCEPT_ERR, "SRV-005");
+        let _shadow_store = GeminiShadowStore::default();
+
+        let target = CurrentRouteTarget {
+            app_type: "claude".to_string(),
+            provider_id: "provider-a".to_string(),
+            provider_name: "Provider A".to_string(),
+            channel_id: Some("channel-a".to_string()),
+            channel_name: Some("Channel A".to_string()),
+            interface_kind: Some("anthropic_messages".to_string()),
+            public_model: Some("sonnet-public".to_string()),
+            upstream_model: Some("upstream-sonnet".to_string()),
+        };
+        assert_eq!(
+            serde_json::to_value(target).expect("serialize target"),
+            json!({
+                "appType": "claude",
+                "providerId": "provider-a",
+                "providerName": "Provider A",
+                "channelId": "channel-a",
+                "channelName": "Channel A",
+                "interfaceKind": "anthropic_messages",
+                "publicModel": "sonnet-public",
+                "upstreamModel": "upstream-sonnet"
+            })
         );
     }
 
