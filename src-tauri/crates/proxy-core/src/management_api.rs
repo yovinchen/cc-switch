@@ -45,6 +45,17 @@ pub fn normalize_channel_id_path(channel_id: impl AsRef<str>) -> ProxyCoreResult
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct AppListRequest;
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AppListSource {
+    pub apps: Vec<AppSummaryInput>,
+}
+
+impl AppListSource {
+    pub fn new(apps: Vec<AppSummaryInput>) -> Self {
+        Self { apps }
+    }
+}
+
 impl AppListRequest {
     pub fn new() -> Self {
         Self
@@ -52,6 +63,10 @@ impl AppListRequest {
 
     pub fn response(&self, apps: Vec<AppSummaryInput>) -> AppListResponse {
         AppListResponse::from_app_inputs(apps)
+    }
+
+    pub fn response_from_source(&self, source: AppListSource) -> AppListResponse {
+        self.response(source.apps)
     }
 }
 
@@ -624,7 +639,7 @@ fn normalize_optional_management_app_type(app_type: Option<String>) -> ProxyCore
 mod tests {
     use super::{
         AppChannelListSource, AppChannelManagementPlan, AppChannelManagementRequest,
-        AppListRequest, AppModelCatalogRequest, ChannelCreateRequest, ChannelListPlan,
+        AppListRequest, AppListSource, AppModelCatalogRequest, ChannelCreateRequest, ChannelListPlan,
         ChannelListRequest, ChannelListSource, ChannelMigrationMaterializeSource,
         ChannelMigrationPreviewSource, ChannelPathRequest, CurrentRouteSource,
         GroupListChannelSource, GroupListRequest, HealthCheckRequest, ManagementAppPathRequest,
@@ -719,7 +734,9 @@ mod tests {
     fn app_list_request_wraps_app_summary_response() {
         let request = AppListRequest::new();
 
-        let response = request.response(vec![AppSummaryInput::new("claude", true, false, 2, 3)]);
+        let response = request.response_from_source(AppListSource::new(vec![
+            AppSummaryInput::new("claude", true, false, 2, 3),
+        ]));
 
         assert_eq!(response.apps.len(), 1);
         assert_eq!(response.apps[0].app_type, "claude");

@@ -46,7 +46,7 @@ use crate::proxy_core::{
     should_aggregate_codex_oauth_responses_sse, should_use_claude_transform_streaming,
     strip_endpoint_prefix, transformed_sse_proxy_response, validate_management_bearer_header,
     AppChannelListQuery, AppChannelManagementRequest, AppChannelResponse, AppKind, AppListRequest,
-    AppListResponse, AppModelCatalogRequest, AppModelListQuery, ChannelCreateRequest,
+    AppListResponse, AppListSource, AppModelCatalogRequest, AppModelListQuery, ChannelCreateRequest,
     ChannelDeleteResponse, ChannelHealthResetResponse, ChannelListPlan, ChannelListQuery,
     ChannelListRequest, ChannelListResponse, ChannelListSource,
     ChannelMigrationMaterializeResponse, ChannelMigrationPreviewResponse,
@@ -195,7 +195,7 @@ pub async fn list_proxy_apps(
         ));
     }
 
-    Ok(Json(request.response(apps)))
+    Ok(Json(request.response_from_source(AppListSource::new(apps))))
 }
 
 /// GET /proxy/v1/apps/{app}/providers
