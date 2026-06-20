@@ -181,8 +181,14 @@ pub(crate) type ProxyConfig = crate::proxy_core::ProxyConfig;
 pub(crate) type ProxyRuntimeStatus = crate::proxy_core::ProxyRuntimeStatus;
 pub(crate) type ProxyServerInfo = crate::proxy_core::ProxyServerInfo;
 pub(crate) type ProxyTakeoverStatus = crate::proxy_core::ProxyTakeoverStatus;
+pub(crate) type ProxyCoreResponse = crate::proxy_core::ProxyCoreResponse;
 pub(crate) type ProxyEventEnvelope = crate::proxy_core::ProxyEventEnvelope;
 pub(crate) type ProxyEventSseSpec = crate::proxy_core::ProxyEventSseSpec;
+#[cfg(test)]
+pub(crate) type ProxyResponseBody = crate::proxy_core::ProxyResponseBody;
+pub(crate) type ProxyTransportResponse = crate::proxy_core::ProxyTransportResponse;
+pub(crate) type ProxyTransportResponseBody =
+    crate::proxy_core::ProxyTransportResponseBody;
 pub(crate) type GlobalProxyConfig = crate::proxy_core::GlobalProxyConfig;
 pub(crate) type AppProxyConfig = crate::proxy_core::AppProxyConfig;
 pub(crate) type ProviderHealth = crate::proxy_core::ProviderHealth;
@@ -1451,6 +1457,26 @@ mod tests {
         assert_eq!(spec.id, "42");
         assert_eq!(spec.event, "request_started");
         assert!(spec.data.contains("\"provider\":\"relay-a\""));
+    }
+
+    #[test]
+    fn proxy_response_adapter_projects_transport_body_contracts() {
+        let response = ProxyCoreResponse::with_body(
+            http::StatusCode::CREATED,
+            HeaderMap::new(),
+            ProxyResponseBody::json(json!({"ok": true})),
+        );
+        let transport = response
+            .into_transport_response()
+            .expect("transport response");
+
+        assert_eq!(transport.status, http::StatusCode::CREATED);
+        match transport.body {
+            ProxyTransportResponseBody::Bytes(body) => {
+                assert_eq!(body.as_ref(), br#"{"ok":true}"#);
+            }
+            _ => panic!("expected buffered bytes transport body"),
+        }
     }
 
     #[test]
