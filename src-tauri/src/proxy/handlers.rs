@@ -31,7 +31,7 @@ use super::{
 };
 use crate::app_config::AppType;
 use crate::proxy_core_adapter::{
-    append_query_to_endpoint_path, AppChannelListSource, AppChannelManagementPlan,
+    append_query_to_endpoint_path,
     chat_completion_to_response_with_context as build_chat_completion_response_with_context,
     claude_stream_usage_event_filter, claude_transform_unlabeled_sse_aggregation,
     codex_stream_usage_event_filter,
@@ -45,30 +45,34 @@ use crate::proxy_core_adapter::{
     rebuilt_json_proxy_response, resolve_management_auth_decision,
     should_aggregate_codex_oauth_responses_sse, should_use_claude_transform_streaming,
     strip_endpoint_prefix, transformed_sse_proxy_response, validate_management_bearer_header,
-    AppChannelListQuery, AppChannelManagementRequest, AppChannelResponse, AppKind, AppListRequest,
-    AppListResponse, AppListSource, AppModelCatalogRequest, AppModelListQuery, ChannelCreateRequest,
+    AppChannelListQuery, AppChannelListSource, AppChannelManagementPlan,
+    AppChannelManagementRequest, AppChannelResponse, AppKind, AppListRequest, AppListResponse,
+    AppListSource, AppModelCatalogRequest, AppModelListQuery, ChannelCreateRequest,
     ChannelCreateSource, ChannelDeleteResponse, ChannelDeleteSource, ChannelHealthResetResponse,
-    ChannelHealthResetSource, ChannelListPlan, ChannelListQuery, ChannelListRequest,
-    ChannelListResponse, ChannelListSource,
-    ChannelMigrationMaterializeResponse, ChannelMigrationPreviewResponse,
-    ChannelMigrationMaterializeSource, ChannelMigrationPreviewSource, ChannelModelRecord,
+    ChannelHealthResetSource, ChannelKeyPathRequest, ChannelKeyRecord, ChannelKeyRecordResponse,
+    ChannelKeyRecordSource, ChannelKeysResponse, ChannelKeysSource, ChannelListPlan,
+    ChannelListQuery, ChannelListRequest, ChannelListResponse, ChannelListSource,
+    ChannelMigrationMaterializeResponse, ChannelMigrationMaterializeSource,
+    ChannelMigrationPreviewResponse, ChannelMigrationPreviewSource, ChannelModelRecord,
     ChannelModelsResponse, ChannelModelsSource, ChannelPathRequest, ChannelRecord,
     ChannelRecordResponse, ChannelRecordSource, ChannelRouteCandidate, ChannelRouteRejected,
     ChannelTestPlan, ChannelTestResponse, ClaudeDesktopModelListResponse,
-    ClientModelCatalogResponse, CurrentRouteResponse, CurrentRouteSource, CurrentRouteTarget,
-    CodexToolContext, GroupListChannelSource, GroupListQuery, GroupListRequest, HealthCheckRequest,
-    HealthCheckResponse, HealthCheckSource, InterfaceKind, ManagementAppPathRequest,
-    ManagementAuthDecision, ProviderListResponse, ProviderListSource, ProxyBody,
+    ClientModelCatalogResponse, CodexToolContext, CurrentRouteResponse, CurrentRouteSource,
+    CurrentRouteTarget, GroupListChannelSource, GroupListQuery, GroupListRequest,
+    HealthCheckRequest, HealthCheckResponse, HealthCheckSource, InterfaceKind,
+    ManagementAppPathRequest, ManagementAuthDecision, ProviderListResponse, ProviderListSource,
+    ProxyBody, ProxyChannelKeyPatchRequest, ProxyChannelKeyWriteRequest,
     ProxyChannelModelsReplaceRequest, ProxyChannelPatchRequest, ProxyChannelTestRequest,
     ProxyChannelWriteRequest, ProxyRequest, ProxyRuntimeStatus, ProxyStatusRequest,
     ProxyStatusResponse, ProxyStatusSource, RoutableModelList, RouteGroupListResponse,
     RouteResolveManagementRequest, RouteResolveRequest, RouteResolveResponse,
-    TransformedResponseUsageFormat,
-    UnlabeledSseFallbackLogContext, UnlabeledSseFallbackLogLevel, UpstreamSseAggregationKind,
-    CLAUDE_PARSER_CONFIG, CODEX_PARSER_CONFIG, GEMINI_PARSER_CONFIG, OPENAI_PARSER_CONFIG,
+    TransformedResponseUsageFormat, UnlabeledSseFallbackLogContext, UnlabeledSseFallbackLogLevel,
+    UpstreamSseAggregationKind, CLAUDE_PARSER_CONFIG, CODEX_PARSER_CONFIG, GEMINI_PARSER_CONFIG,
+    OPENAI_PARSER_CONFIG,
 };
 use crate::proxy_core_adapter::{
-    proxy_app_summary_input, proxy_channel_model_records_to_core, proxy_channel_record_to_core,
+    proxy_app_summary_input, proxy_channel_key_record_to_core, proxy_channel_key_records_to_core,
+    proxy_channel_model_records_to_core, proxy_channel_record_to_core,
     proxy_channel_record_to_core_spec, proxy_channel_records_to_core, proxy_channel_specs_to_core,
     proxy_current_route_provider_summary_input, proxy_providers_to_core_specs,
     stream_check_result_to_channel_reachability, synthesize_gemini_tool_call_id_with_uuid,
@@ -96,9 +100,7 @@ pub async fn health_check() -> (StatusCode, Json<HealthCheckResponse>) {
     let request = HealthCheckRequest::new();
     (
         StatusCode::OK,
-        Json(request.response_from_source(HealthCheckSource::new(
-            chrono::Utc::now().to_rfc3339(),
-        ))),
+        Json(request.response_from_source(HealthCheckSource::new(chrono::Utc::now().to_rfc3339()))),
     )
 }
 
@@ -307,11 +309,9 @@ pub async fn create_proxy_channel(
         .db
         .create_proxy_channel(request.clone().into_body())
         .map_err(|e| ProxyError::InvalidRequest(e.to_string()))?;
-    Ok(Json(
-        request.record_response_from_source(ChannelCreateSource::new(proxy_channel_record_to_core(
-            channel,
-        ))),
-    ))
+    Ok(Json(request.record_response_from_source(
+        ChannelCreateSource::new(proxy_channel_record_to_core(channel)),
+    )))
 }
 
 /// GET /proxy/v1/channels/{channel_id}
@@ -364,8 +364,77 @@ pub async fn delete_proxy_channel(
         .db
         .delete_proxy_channel(&request.channel_id)
         .map_err(|e| ProxyError::DatabaseError(e.to_string()))?;
+    Ok(Json(request.delete_response_from_source(
+        ChannelDeleteSource::new(deleted),
+    )))
+}
+
+/// GET /proxy/v1/channels/{channel_id}/keys
+pub async fn list_proxy_channel_keys(
+    State(state): State<ProxyState>,
+    Path(channel_id): Path<String>,
+) -> Result<Json<ChannelKeysResponse<ChannelKeyRecord>>, ProxyError> {
+    let request =
+        ChannelPathRequest::from_path(channel_id).map_err(management_api_error_to_proxy_error)?;
+    let keys = state
+        .db
+        .list_proxy_channel_keys(&request.channel_id)
+        .map_err(|e| ProxyError::DatabaseError(e.to_string()))?
+        .map(proxy_channel_key_records_to_core);
+
     Ok(Json(
-        request.delete_response_from_source(ChannelDeleteSource::new(deleted)),
+        request
+            .keys_response_from_source(ChannelKeysSource::new(keys))
+            .map_err(management_api_error_to_proxy_error)?,
+    ))
+}
+
+/// PUT /proxy/v1/channels/{channel_id}/keys/{key_ref}
+pub async fn upsert_proxy_channel_key(
+    State(state): State<ProxyState>,
+    Path((channel_id, key_ref)): Path<(String, String)>,
+    Json(request): Json<ProxyChannelKeyWriteRequest>,
+) -> Result<Json<ChannelKeyRecordResponse<ChannelKeyRecord>>, ProxyError> {
+    let path_request = ChannelKeyPathRequest::from_path(channel_id, key_ref)
+        .map_err(management_api_error_to_proxy_error)?;
+    let key = state
+        .db
+        .upsert_proxy_channel_key(
+            &path_request.channel_id,
+            &path_request.key_ref,
+            &request.key_value,
+            &request.status,
+            request.priority,
+            request.weight,
+        )
+        .map_err(|e| ProxyError::InvalidRequest(e.to_string()))
+        .map(proxy_channel_key_record_to_core)?;
+
+    Ok(Json(
+        path_request
+            .record_response_from_source(ChannelKeyRecordSource::new(Some(key)))
+            .map_err(management_api_error_to_proxy_error)?,
+    ))
+}
+
+/// PATCH /proxy/v1/channels/{channel_id}/keys/{key_ref}
+pub async fn update_proxy_channel_key(
+    State(state): State<ProxyState>,
+    Path((channel_id, key_ref)): Path<(String, String)>,
+    Json(request): Json<ProxyChannelKeyPatchRequest>,
+) -> Result<Json<ChannelKeyRecordResponse<ChannelKeyRecord>>, ProxyError> {
+    let path_request = ChannelKeyPathRequest::from_path(channel_id, key_ref)
+        .map_err(management_api_error_to_proxy_error)?;
+    let key = state
+        .db
+        .update_proxy_channel_key(&path_request.channel_id, &path_request.key_ref, request)
+        .map_err(|e| ProxyError::InvalidRequest(e.to_string()))?
+        .map(proxy_channel_key_record_to_core);
+
+    Ok(Json(
+        path_request
+            .record_response_from_source(ChannelKeyRecordSource::new(key))
+            .map_err(management_api_error_to_proxy_error)?,
     ))
 }
 
@@ -502,12 +571,9 @@ pub async fn list_proxy_channels(
                 .await
                 .map_err(|e| ProxyError::DatabaseError(e.to_string()))?;
 
-            Ok(Json(
-                request.response_from_list_source(AppChannelListSource::new(
-                    source,
-                    proxy_channel_records_to_core(channels),
-                )),
-            ))
+            Ok(Json(request.response_from_list_source(
+                AppChannelListSource::new(source, proxy_channel_records_to_core(channels)),
+            )))
         }
     }
 }
@@ -569,12 +635,9 @@ pub async fn get_current_proxy_route(
         None => None,
     };
 
-    Ok(Json(
-        request.current_route_response_from_source(CurrentRouteSource::new(
-            active_target,
-            configured_provider,
-        )),
-    ))
+    Ok(Json(request.current_route_response_from_source(
+        CurrentRouteSource::new(active_target, configured_provider),
+    )))
 }
 
 /// GET /proxy/v1/apps/{app}/channels/migration/preview
@@ -637,9 +700,9 @@ pub async fn reset_proxy_channel_breaker(
         .await
         .map_err(proxy_core_error_to_proxy_error)?;
 
-    Ok(Json(
-        request.health_reset_response_from_source(ChannelHealthResetSource::new(response)),
-    ))
+    Ok(Json(request.health_reset_response_from_source(
+        ChannelHealthResetSource::new(response),
+    )))
 }
 
 /// POST /proxy/v1/route/resolve

@@ -15,11 +15,12 @@ use crate::proxy_core_adapter::{
     normalize_channel_groups as normalized_groups,
     normalize_optional_channel_string as normalize_optional_string,
     normalize_required_channel_string, stable_channel_id,
+    validate_proxy_channel_key_patch_request_fields,
     validate_proxy_channel_model_write_request_fields, validate_proxy_channel_write_request_fields,
     ChannelRequestValidationError, LegacyChannelModelProjection, LegacyChannelProjection,
     LegacyChannelProjectionInput, LegacyModelRouteInput, LegacyProviderProjectionInput,
-    ProxyCoreAppKind as AppKind, ProxyCoreInterfaceKind as InterfaceKind,
-    ProxyChannelModelWriteRequest, ProxyChannelPatchRequest, ProxyChannelWriteRequest,
+    ProxyChannelKeyPatchRequest, ProxyChannelModelWriteRequest, ProxyChannelPatchRequest,
+    ProxyChannelWriteRequest, ProxyCoreAppKind as AppKind, ProxyCoreInterfaceKind as InterfaceKind,
 };
 use rusqlite::{params, Connection, OptionalExtension, Row};
 use serde::{Deserialize, Serialize};
@@ -582,7 +583,6 @@ impl Database {
         Ok(Some(list_proxy_channel_models_on_conn(&conn, channel_id)?))
     }
 
-    #[allow(dead_code)]
     pub(crate) fn upsert_proxy_channel_key(
         &self,
         channel_id: &str,
@@ -628,6 +628,67 @@ impl Database {
 
         get_proxy_channel_key_on_conn(&conn, channel_id, &key_ref)?
             .ok_or_else(|| AppError::Database("channel key could not be reloaded".to_string()))
+    }
+
+    pub(crate) fn list_proxy_channel_keys(
+        &self,
+        channel_id: &str,
+    ) -> Result<Option<Vec<ProxyChannelKeyRecord>>, AppError> {
+        let conn = lock_conn!(self.conn);
+        if get_proxy_channel_on_conn(&conn, channel_id)?.is_none() {
+            return Ok(None);
+        }
+        Ok(Some(list_proxy_channel_keys_on_conn(&conn, channel_id)?))
+    }
+
+    pub(crate) fn update_proxy_channel_key(
+        &self,
+        channel_id: &str,
+        key_ref: &str,
+        patch: ProxyChannelKeyPatchRequest,
+    ) -> Result<Option<ProxyChannelKeyRecord>, AppError> {
+        validate_proxy_channel_key_patch_request_fields(&patch)
+            .map_err(channel_request_error_to_app_error)?;
+        let conn = lock_conn!(self.conn);
+        let Some(mut current) = get_proxy_channel_key_on_conn(&conn, channel_id, key_ref)? else {
+            return Ok(None);
+        };
+
+        if let Some(key_value) = patch.key_value {
+            current.key_value = normalize_required_string(&key_value, "keyValue")?;
+        }
+        if let Some(status) = patch.status {
+            current.status = normalize_required_string(&status, "status")?;
+        }
+        if let Some(priority) = patch.priority {
+            current.priority = priority;
+        }
+        if let Some(weight) = patch.weight {
+            current.weight = weight;
+        }
+
+        let now = chrono::Utc::now().timestamp_millis();
+        conn.execute(
+            "UPDATE proxy_channel_keys SET
+                key_value = ?1,
+                status = ?2,
+                priority = ?3,
+                weight = ?4,
+                updated_at = ?5
+             WHERE channel_id = ?6 AND key_ref = ?7",
+            params![
+                current.key_value,
+                current.status,
+                current.priority,
+                current.weight as i64,
+                now,
+                channel_id,
+                key_ref,
+            ],
+        )
+        .map_err(|e| AppError::Database(format!("更新 proxy channel key 失败: {e}")))?;
+
+        get_proxy_channel_key_on_conn(&conn, channel_id, key_ref)
     }
 
     pub(crate) fn get_enabled_proxy_channel_key(
@@ -801,6 +862,37 @@ fn get_proxy_channel_key_on_conn(
     )
     .optional()
     .map_err(|e| AppError::Database(e.to_string()))
+}
+
+fn list_proxy_channel_keys_on_conn(
+    conn: &Connection,
+    channel_id: &str,
+) -> Result<Vec<ProxyChannelKeyRecord>, AppError> {
+    let mut stmt = conn
+        .prepare(
+            "SELECT channel_id, key_ref, status, priority, weight, last_failure_at
+             FROM proxy_channel_keys
+             WHERE channel_id = ?1
+             ORDER BY priority DESC, weight DESC, key_ref ASC",
+        )
+        .map_err(|e| AppError::Database(e.to_string()))?;
+
+    let rows = stmt
+        .query_map([channel_id], |row| {
+            Ok(ProxyChannelKeyRecord {
+                channel_id: row.get(0)?,
+                key_ref: row.get(1)?,
+                key_value: String::new(),
+                status: row.get(2)?,
+                priority: row.get(3)?,
+                weight: row.get::<_, i64>(4)?.max(0) as u32,
+                last_failure_at: row.get(5)?,
+            })
+        })
+        .map_err(|e| AppError::Database(e.to_string()))?;
+
+    rows.collect::<Result<Vec<_>, _>>()
+        .map_err(|e| AppError::Database(e.to_string()))
 }
 
 fn list_proxy_channel_models_on_conn(
@@ -1497,6 +1589,57 @@ mod tests {
         );
         let serialized = serde_json::to_value(&key).expect("serialize key");
         assert!(serialized.get("keyValue").is_none());
+
+        let listed = db
+            .list_proxy_channel_keys(&created.id)
+            .expect("list channel keys")
+            .expect("channel exists");
+        assert_eq!(listed.len(), 1);
+        assert_eq!(listed[0].key_ref, "primary");
+        assert_eq!(listed[0].key_value, "");
+        assert_eq!(listed[0].status, "enabled");
+        assert_eq!(listed[0].priority, 10);
+        assert_eq!(listed[0].weight, 80);
+        let listed_serialized = serde_json::to_value(&listed[0]).expect("serialize listed key");
+        assert!(listed_serialized.get("keyValue").is_none());
+
+        let patched = db
+            .update_proxy_channel_key(
+                &created.id,
+                "primary",
+                ProxyChannelKeyPatchRequest {
+                    key_value: Some("sk-rotated-secret".to_string()),
+                    status: Some("disabled".to_string()),
+                    priority: Some(5),
+                    weight: Some(20),
+                },
+            )
+            .expect("patch channel key")
+            .expect("patched channel key");
+        assert_eq!(patched.key_value, "sk-rotated-secret");
+        assert_eq!(patched.status, "disabled");
+        assert_eq!(patched.priority, 5);
+        assert_eq!(patched.weight, 20);
+        assert!(db
+            .get_enabled_proxy_channel_key(&created.id, "primary")
+            .expect("read patched disabled key")
+            .is_none());
+
+        assert!(db
+            .list_proxy_channel_keys("missing-channel")
+            .expect("list missing channel keys")
+            .is_none());
+        assert!(db
+            .update_proxy_channel_key(
+                &created.id,
+                "missing",
+                ProxyChannelKeyPatchRequest {
+                    status: Some("disabled".to_string()),
+                    ..Default::default()
+                },
+            )
+            .expect("patch missing key")
+            .is_none());
 
         db.upsert_proxy_channel_key(
             &created.id,

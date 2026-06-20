@@ -1,6 +1,6 @@
 use crate::app_config::AppType;
 use crate::claude_desktop_config::ResolvedModelRoute;
-use crate::database::{ProxyChannelModelRecord, ProxyChannelRecord};
+use crate::database::{ProxyChannelKeyRecord, ProxyChannelModelRecord, ProxyChannelRecord};
 use crate::provider::{Provider, ProviderMeta};
 use crate::proxy::providers::provider_kind_from_app_type_and_config;
 use crate::proxy::usage::RequestLog;
@@ -400,6 +400,8 @@ pub(crate) type ChannelRequestValidationError =
 pub(crate) type ChannelRouteSource =
     crate::proxy_core::api::management::ChannelRouteSource;
 pub(crate) type ChannelRecord = crate::proxy_core::api::management::ChannelRecord;
+pub(crate) type ChannelKeyRecord =
+    crate::proxy_core::api::management::ChannelKeyRecord;
 pub(crate) type ChannelModelRecord =
     crate::proxy_core::api::management::ChannelModelRecord;
 pub(crate) type InterfaceKind = crate::proxy_core::api::routing::InterfaceKind;
@@ -415,6 +417,10 @@ pub(crate) type LegacyProviderProjectionInput =
     crate::proxy_core::api::routing::LegacyProviderProjectionInput;
 pub(crate) type ProxyChannelModelWriteRequest =
     crate::proxy_core::api::management::ProxyChannelModelWriteRequest;
+pub(crate) type ProxyChannelKeyPatchRequest =
+    crate::proxy_core::api::management::ProxyChannelKeyPatchRequest;
+pub(crate) type ProxyChannelKeyWriteRequest =
+    crate::proxy_core::api::management::ProxyChannelKeyWriteRequest;
 pub(crate) type ProxyChannelPatchRequest =
     crate::proxy_core::api::management::ProxyChannelPatchRequest;
 pub(crate) type ProxyChannelWriteRequest =
@@ -467,11 +473,12 @@ pub(crate) use crate::proxy_core::api::management::{
     AppChannelManagementRequest, AppChannelResponse, AppListRequest, AppListResponse,
     AppListSource, AppModelCatalogRequest, AppModelListQuery, ChannelCreateRequest,
     ChannelCreateSource, ChannelDeleteResponse, ChannelDeleteSource, ChannelHealthResetResponse,
-    ChannelHealthResetSource, ChannelListPlan, ChannelListQuery, ChannelListRequest,
-    ChannelListResponse, ChannelListSource, ChannelMigrationMaterializeResponse,
-    ChannelMigrationMaterializeSource, ChannelMigrationPreviewResponse,
-    ChannelMigrationPreviewSource, ChannelModelsResponse, ChannelModelsSource,
-    ChannelPathRequest, ChannelRecordResponse, ChannelRecordSource, ChannelRouteRejected,
+    ChannelHealthResetSource, ChannelKeyPathRequest, ChannelKeyRecordResponse,
+    ChannelKeyRecordSource, ChannelKeysResponse, ChannelKeysSource, ChannelListPlan,
+    ChannelListQuery, ChannelListRequest, ChannelListResponse, ChannelListSource,
+    ChannelMigrationMaterializeResponse, ChannelMigrationMaterializeSource,
+    ChannelMigrationPreviewResponse, ChannelMigrationPreviewSource, ChannelModelsResponse,
+    ChannelModelsSource, ChannelPathRequest, ChannelRecordResponse, ChannelRecordSource, ChannelRouteRejected,
     ChannelTestPlan, ChannelTestResponse, CurrentRouteResponse, CurrentRouteSource,
     GroupListChannelSource, GroupListQuery, GroupListRequest, HealthCheckRequest,
     HealthCheckResponse, HealthCheckSource, ManagementAppPathRequest, ProviderListResponse,
@@ -1015,6 +1022,12 @@ pub(crate) fn validate_proxy_channel_model_write_request_fields(
     model: &ProxyChannelModelWriteRequest,
 ) -> Result<(), ChannelRequestValidationError> {
     crate::proxy_core::api::routing::validate_proxy_channel_model_write_request_fields(model)
+}
+
+pub(crate) fn validate_proxy_channel_key_patch_request_fields(
+    request: &ProxyChannelKeyPatchRequest,
+) -> Result<(), ChannelRequestValidationError> {
+    crate::proxy_core::api::routing::validate_proxy_channel_key_patch_request_fields(request)
 }
 
 impl From<&AppType> for AppKind {
@@ -1949,6 +1962,25 @@ pub(crate) fn proxy_channel_records_to_core(
     channels
         .into_iter()
         .map(proxy_channel_record_to_core)
+        .collect()
+}
+
+pub(crate) fn proxy_channel_key_record_to_core(key: ProxyChannelKeyRecord) -> ChannelKeyRecord {
+    ChannelKeyRecord {
+        channel_id: key.channel_id,
+        key_ref: key.key_ref,
+        status: key.status,
+        priority: key.priority,
+        weight: key.weight,
+        last_failure_at: key.last_failure_at,
+    }
+}
+
+pub(crate) fn proxy_channel_key_records_to_core(
+    keys: Vec<ProxyChannelKeyRecord>,
+) -> Vec<ChannelKeyRecord> {
+    keys.into_iter()
+        .map(proxy_channel_key_record_to_core)
         .collect()
 }
 

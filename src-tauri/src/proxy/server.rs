@@ -21,7 +21,7 @@ use crate::proxy_core_host::{CcSwitchProxyRuntime, CcSwitchProxyServices};
 use axum::{
     extract::DefaultBodyLimit,
     middleware,
-    routing::{any, get, post},
+    routing::{any, get, post, put},
     Router,
 };
 use hyper_util::rt::TokioIo;
@@ -357,6 +357,14 @@ impl ProxyServer {
                 get(handlers::get_proxy_channel)
                     .patch(handlers::update_proxy_channel)
                     .delete(handlers::delete_proxy_channel),
+            )
+            .route(
+                "/proxy/v1/channels/:channel_id/keys",
+                get(handlers::list_proxy_channel_keys),
+            )
+            .route(
+                "/proxy/v1/channels/:channel_id/keys/:key_ref",
+                put(handlers::upsert_proxy_channel_key).patch(handlers::update_proxy_channel_key),
             )
             .route(
                 "/proxy/v1/channels/:channel_id/models",
@@ -1163,6 +1171,72 @@ mod tests {
         assert_eq!(fetched["authProfileRef"], "channel-key:manual-relay");
         assert_eq!(fetched["healthPolicy"]["intervalSeconds"], 30);
         assert_eq!(fetched["statusCodeMapping"][0]["to"], "rate_limited");
+
+        let upsert_key_response = Service::call(
+            &mut router,
+            json_request(
+                Method::PUT,
+                &format!("/proxy/v1/channels/{channel_id}/keys/primary"),
+                json!({
+                    "keyValue": "sk-channel-secret",
+                    "status": "enabled",
+                    "priority": 10,
+                    "weight": 80
+                }),
+            ),
+        )
+        .await
+        .unwrap();
+        assert_eq!(upsert_key_response.status(), StatusCode::OK);
+        let upserted_key = response_json(upsert_key_response).await;
+        assert_eq!(upserted_key["channelId"], channel_id);
+        assert_eq!(upserted_key["keyRef"], "primary");
+        assert_eq!(upserted_key["status"], "enabled");
+        assert_eq!(upserted_key["priority"], 10);
+        assert_eq!(upserted_key["weight"], 80);
+        assert!(upserted_key.get("keyValue").is_none());
+        assert!(upserted_key.to_string().find("sk-channel-secret").is_none());
+
+        let list_keys_response = Service::call(
+            &mut router,
+            Request::builder()
+                .method(Method::GET)
+                .uri(format!("/proxy/v1/channels/{channel_id}/keys"))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+        assert_eq!(list_keys_response.status(), StatusCode::OK);
+        let keys = response_json(list_keys_response).await;
+        assert_eq!(keys["channelId"], channel_id);
+        assert_eq!(keys["keys"].as_array().unwrap().len(), 1);
+        assert_eq!(keys["keys"][0]["keyRef"], "primary");
+        assert!(keys["keys"][0].get("keyValue").is_none());
+        assert!(keys.to_string().find("sk-channel-secret").is_none());
+
+        let patch_key_response = Service::call(
+            &mut router,
+            json_request(
+                Method::PATCH,
+                &format!("/proxy/v1/channels/{channel_id}/keys/primary"),
+                json!({
+                    "status": "disabled",
+                    "weight": 20
+                }),
+            ),
+        )
+        .await
+        .unwrap();
+        assert_eq!(patch_key_response.status(), StatusCode::OK);
+        let patched_key = response_json(patch_key_response).await;
+        assert_eq!(patched_key["status"], "disabled");
+        assert_eq!(patched_key["weight"], 20);
+        assert!(patched_key.get("keyValue").is_none());
+        assert!(db
+            .get_enabled_proxy_channel_key(&channel_id, "primary")
+            .unwrap()
+            .is_none());
 
         let patch_response = Service::call(
             &mut router,

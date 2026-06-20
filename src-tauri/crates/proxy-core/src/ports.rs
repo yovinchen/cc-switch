@@ -654,6 +654,42 @@ pub struct ProxyChannelPatchRequest {
     pub metadata: Option<Value>,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ProxyChannelKeyWriteRequest {
+    pub key_value: String,
+    #[serde(default = "default_channel_status")]
+    pub status: String,
+    #[serde(default)]
+    pub priority: i64,
+    #[serde(default = "default_channel_weight")]
+    pub weight: u32,
+}
+
+impl Default for ProxyChannelKeyWriteRequest {
+    fn default() -> Self {
+        Self {
+            key_value: String::new(),
+            status: default_channel_status(),
+            priority: 0,
+            weight: default_channel_weight(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct ProxyChannelKeyPatchRequest {
+    #[serde(default)]
+    pub key_value: Option<String>,
+    #[serde(default)]
+    pub status: Option<String>,
+    #[serde(default)]
+    pub priority: Option<i64>,
+    #[serde(default)]
+    pub weight: Option<u32>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct ProxyChannelModelWriteRequest {
@@ -1811,6 +1847,45 @@ pub struct ChannelRecordResponse<T> {
 impl<T> ChannelRecordResponse<T> {
     pub fn new(channel: T) -> Self {
         Self { channel }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ChannelKeyRecord {
+    pub channel_id: String,
+    pub key_ref: String,
+    pub status: String,
+    pub priority: i64,
+    pub weight: u32,
+    pub last_failure_at: Option<i64>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct ChannelKeyRecordResponse<T> {
+    pub key: T,
+}
+
+impl<T> ChannelKeyRecordResponse<T> {
+    pub fn new(key: T) -> Self {
+        Self { key }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ChannelKeysResponse<T> {
+    pub channel_id: String,
+    pub keys: Vec<T>,
+}
+
+impl<T> ChannelKeysResponse<T> {
+    pub fn new(channel_id: impl Into<String>, keys: Vec<T>) -> Self {
+        Self {
+            channel_id: channel_id.into(),
+            keys,
+        }
     }
 }
 

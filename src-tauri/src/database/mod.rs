@@ -40,7 +40,9 @@ pub(crate) use dao::proxy::{
 pub(crate) use dao::proxy_channels::ProxyChannelModelRecord;
 #[cfg(test)]
 pub(crate) use dao::proxy_channels::ProxyChannelSourceKind;
-pub(crate) use dao::proxy_channels::{ProxyChannelMigrationPreview, ProxyChannelRecord};
+pub(crate) use dao::proxy_channels::{
+    ProxyChannelKeyRecord, ProxyChannelMigrationPreview, ProxyChannelRecord,
+};
 pub use dao::FailoverQueueItem;
 
 use crate::config::get_app_config_dir;

@@ -3,7 +3,8 @@ use super::error::{ProxyCoreError, ProxyCoreResult};
 use super::ports::{
     AppChannelListQuery, AppChannelListResponse, AppChannelResponse, AppChannelRouteResponse,
     AppListResponse, AppModelListQuery, AppSummaryInput, ChannelDeleteResponse,
-    ChannelHealthResetResponse, ChannelListQuery, ChannelListResponse,
+    ChannelHealthResetResponse, ChannelKeyRecordResponse, ChannelKeysResponse, ChannelListQuery,
+    ChannelListResponse,
     ChannelMigrationMaterializeResponse, ChannelMigrationPreviewResponse, ChannelModelsResponse,
     ChannelRecordResponse, ChannelRouteCandidate, ChannelRouteRejected, ChannelRouteSource,
     ChannelTestInput, ChannelTestResponse, CurrentRouteProviderSummaryInput,
@@ -381,6 +382,12 @@ pub struct ChannelPathRequest {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ChannelKeyPathRequest {
+    pub channel_id: String,
+    pub key_ref: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ChannelRecordSource<T> {
     pub channel: Option<T>,
 }
@@ -399,6 +406,28 @@ pub struct ChannelModelsSource<T> {
 impl<T> ChannelModelsSource<T> {
     pub fn new(models: Option<Vec<T>>) -> Self {
         Self { models }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ChannelKeysSource<T> {
+    pub keys: Option<Vec<T>>,
+}
+
+impl<T> ChannelKeysSource<T> {
+    pub fn new(keys: Option<Vec<T>>) -> Self {
+        Self { keys }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ChannelKeyRecordSource<T> {
+    pub key: Option<T>,
+}
+
+impl<T> ChannelKeyRecordSource<T> {
+    pub fn new(key: Option<T>) -> Self {
+        Self { key }
     }
 }
 
@@ -475,6 +504,21 @@ impl ChannelPathRequest {
         self.delete_response(source.deleted)
     }
 
+    pub fn keys_response<T>(
+        &self,
+        keys: Option<Vec<T>>,
+    ) -> ProxyCoreResult<ChannelKeysResponse<T>> {
+        keys.map(|keys| ChannelKeysResponse::new(self.channel_id.clone(), keys))
+            .ok_or_else(|| self.channel_not_found_error())
+    }
+
+    pub fn keys_response_from_source<T>(
+        &self,
+        source: ChannelKeysSource<T>,
+    ) -> ProxyCoreResult<ChannelKeysResponse<T>> {
+        self.keys_response(source.keys)
+    }
+
     pub fn health_reset_response_from_source(
         &self,
         source: ChannelHealthResetSource,
@@ -487,12 +531,72 @@ impl ChannelPathRequest {
     }
 }
 
+impl ChannelKeyPathRequest {
+    pub fn from_path(
+        channel_id: impl AsRef<str>,
+        key_ref: impl AsRef<str>,
+    ) -> ProxyCoreResult<Self> {
+        Ok(Self {
+            channel_id: normalize_channel_id_path(channel_id)?,
+            key_ref: normalize_channel_key_ref_path(key_ref)?,
+        })
+    }
+
+    pub fn key_not_found_error(&self) -> ProxyCoreError {
+        channel_key_not_found_error(&self.channel_id, &self.key_ref)
+    }
+
+    pub fn record_response<T>(
+        &self,
+        key: Option<T>,
+    ) -> ProxyCoreResult<ChannelKeyRecordResponse<T>> {
+        key.map(ChannelKeyRecordResponse::new)
+            .ok_or_else(|| self.key_not_found_error())
+    }
+
+    pub fn record_response_from_source<T>(
+        &self,
+        source: ChannelKeyRecordSource<T>,
+    ) -> ProxyCoreResult<ChannelKeyRecordResponse<T>> {
+        self.record_response(source.key)
+    }
+}
+
 pub fn channel_not_found_message(channel_id: impl AsRef<str>) -> String {
     format!("channel not found: {}", channel_id.as_ref())
 }
 
 pub fn channel_not_found_error(channel_id: impl AsRef<str>) -> ProxyCoreError {
     ProxyCoreError::InvalidRequest(channel_not_found_message(channel_id))
+}
+
+pub fn normalize_channel_key_ref_path(key_ref: impl AsRef<str>) -> ProxyCoreResult<String> {
+    let key_ref = key_ref.as_ref().trim().to_string();
+    if key_ref.is_empty() {
+        Err(ProxyCoreError::InvalidRequest(
+            "key_ref cannot be empty".to_string(),
+        ))
+    } else {
+        Ok(key_ref)
+    }
+}
+
+pub fn channel_key_not_found_message(
+    channel_id: impl AsRef<str>,
+    key_ref: impl AsRef<str>,
+) -> String {
+    format!(
+        "channel key not found: {}/{}",
+        channel_id.as_ref(),
+        key_ref.as_ref()
+    )
+}
+
+pub fn channel_key_not_found_error(
+    channel_id: impl AsRef<str>,
+    key_ref: impl AsRef<str>,
+) -> ProxyCoreError {
+    ProxyCoreError::InvalidRequest(channel_key_not_found_message(channel_id, key_ref))
 }
 
 #[derive(Debug, Clone)]
@@ -764,14 +868,15 @@ mod tests {
     use super::{
         AppChannelListSource, AppChannelManagementPlan, AppChannelManagementRequest,
         AppListRequest, AppListSource, AppModelCatalogRequest, ChannelCreateRequest,
-        ChannelCreateSource, ChannelListPlan, ChannelListRequest, ChannelListSource,
-        ChannelMigrationMaterializeSource,
-        ChannelMigrationPreviewSource, ChannelDeleteSource, ChannelHealthResetSource,
+        ChannelCreateSource, ChannelDeleteSource, ChannelHealthResetSource, ChannelKeyPathRequest,
+        ChannelKeyRecordSource, ChannelKeysSource, ChannelListPlan, ChannelListRequest,
+        ChannelListSource, ChannelMigrationMaterializeSource, ChannelMigrationPreviewSource,
         ChannelModelsSource, ChannelPathRequest, ChannelRecordSource, CurrentRouteSource,
         GroupListChannelSource, GroupListRequest, HealthCheckRequest, HealthCheckSource,
         ManagementAppPathRequest, ProviderListSource, ProxyStatusRequest, ProxyStatusSource,
-        RouteResolveManagementRequest, channel_not_found_message, normalize_channel_id_path,
-        validate_management_app_type, validate_route_resolve_app_type,
+        RouteResolveManagementRequest, channel_key_not_found_message, channel_not_found_message,
+        normalize_channel_id_path, normalize_channel_key_ref_path, validate_management_app_type,
+        validate_route_resolve_app_type,
     };
     use crate::domain::{
         AppKind, ChannelHealthPolicy, ChannelOverrides, ChannelSpec, ChannelStatus,
@@ -1045,6 +1150,66 @@ mod tests {
         assert_eq!(
             error.to_string(),
             "invalid proxy request: channel not found: channel-a"
+        );
+    }
+
+    #[test]
+    fn normalize_channel_key_ref_path_trims_and_rejects_blank_values() {
+        assert_eq!(
+            normalize_channel_key_ref_path(" primary ").expect("normalize key ref"),
+            "primary"
+        );
+
+        let error = normalize_channel_key_ref_path(" ").unwrap_err();
+
+        assert_eq!(
+            error.to_string(),
+            "invalid proxy request: key_ref cannot be empty"
+        );
+    }
+
+    #[test]
+    fn channel_path_request_wraps_keys_response() {
+        let request = ChannelPathRequest::from_path("channel-a").expect("request");
+
+        let response = request
+            .keys_response_from_source(ChannelKeysSource::new(Some(vec!["primary"])))
+            .expect("keys response");
+        assert_eq!(response.channel_id, "channel-a");
+        assert_eq!(response.keys, vec!["primary"]);
+
+        let error = request
+            .keys_response_from_source(ChannelKeysSource::<&str>::new(None))
+            .unwrap_err();
+        assert_eq!(
+            error.to_string(),
+            "invalid proxy request: channel not found: channel-a"
+        );
+    }
+
+    #[test]
+    fn channel_key_path_request_wraps_optional_key_response() {
+        let request =
+            ChannelKeyPathRequest::from_path(" channel-a ", " primary ").expect("request");
+
+        assert_eq!(request.channel_id, "channel-a");
+        assert_eq!(request.key_ref, "primary");
+        assert_eq!(
+            channel_key_not_found_message(&request.channel_id, &request.key_ref),
+            "channel key not found: channel-a/primary"
+        );
+
+        let response = request
+            .record_response_from_source(ChannelKeyRecordSource::new(Some("key-record")))
+            .expect("key response");
+        assert_eq!(response.key, "key-record");
+
+        let error = request
+            .record_response_from_source(ChannelKeyRecordSource::<&str>::new(None))
+            .unwrap_err();
+        assert_eq!(
+            error.to_string(),
+            "invalid proxy request: channel key not found: channel-a/primary"
         );
     }
 

@@ -1,5 +1,8 @@
 use super::domain::DEFAULT_ROUTE_GROUP;
-use super::ports::{ProxyChannelModelWriteRequest, ProxyChannelWriteRequest};
+use super::ports::{
+    ProxyChannelKeyPatchRequest, ProxyChannelKeyWriteRequest, ProxyChannelModelWriteRequest,
+    ProxyChannelWriteRequest,
+};
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 use std::fmt;
@@ -49,6 +52,26 @@ pub fn validate_proxy_channel_model_write_request_fields(
 ) -> Result<(), ChannelRequestValidationError> {
     normalize_required_channel_string(&model.public_model, "publicModel")?;
     normalize_required_channel_string(&model.upstream_model, "upstreamModel")?;
+    Ok(())
+}
+
+pub fn validate_proxy_channel_key_write_request_fields(
+    request: &ProxyChannelKeyWriteRequest,
+) -> Result<(), ChannelRequestValidationError> {
+    normalize_required_channel_string(&request.key_value, "keyValue")?;
+    normalize_required_channel_string(&request.status, "status")?;
+    Ok(())
+}
+
+pub fn validate_proxy_channel_key_patch_request_fields(
+    request: &ProxyChannelKeyPatchRequest,
+) -> Result<(), ChannelRequestValidationError> {
+    if let Some(key_value) = request.key_value.as_deref() {
+        normalize_required_channel_string(key_value, "keyValue")?;
+    }
+    if let Some(status) = request.status.as_deref() {
+        normalize_required_channel_string(status, "status")?;
+    }
     Ok(())
 }
 
@@ -114,9 +137,13 @@ mod tests {
         channel_array_or_default, channel_object_or_default, normalize_channel_base_url,
         normalize_channel_groups, normalize_optional_channel_string,
         normalize_required_channel_string, validate_proxy_channel_model_write_request_fields,
-        validate_proxy_channel_write_request_fields,
+        validate_proxy_channel_key_patch_request_fields,
+        validate_proxy_channel_key_write_request_fields, validate_proxy_channel_write_request_fields,
     };
-    use crate::ports::{ProxyChannelModelWriteRequest, ProxyChannelWriteRequest};
+    use crate::ports::{
+        ProxyChannelKeyPatchRequest, ProxyChannelKeyWriteRequest, ProxyChannelModelWriteRequest,
+        ProxyChannelWriteRequest,
+    };
     use serde_json::json;
 
     #[test]
@@ -219,6 +246,34 @@ mod tests {
             .unwrap_err()
             .message,
             "upstreamModel cannot be empty"
+        );
+    }
+
+    #[test]
+    fn channel_key_request_validation_checks_secret_and_status() {
+        validate_proxy_channel_key_write_request_fields(&ProxyChannelKeyWriteRequest {
+            key_value: " sk-live ".to_string(),
+            ..Default::default()
+        })
+        .unwrap();
+
+        assert_eq!(
+            validate_proxy_channel_key_write_request_fields(&ProxyChannelKeyWriteRequest {
+                key_value: " ".to_string(),
+                ..Default::default()
+            })
+            .unwrap_err()
+            .message,
+            "keyValue cannot be empty"
+        );
+        assert_eq!(
+            validate_proxy_channel_key_patch_request_fields(&ProxyChannelKeyPatchRequest {
+                status: Some(" ".to_string()),
+                ..Default::default()
+            })
+            .unwrap_err()
+            .message,
+            "status cannot be empty"
         );
     }
 }
