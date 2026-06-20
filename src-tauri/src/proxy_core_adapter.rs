@@ -4,12 +4,15 @@ use crate::provider::Provider;
 use crate::proxy::providers::provider_kind_from_app_type_and_config;
 use crate::proxy_core::{
     AppKind, AppSummaryInput, AuthProfileRef, ChannelHealthPolicy, ChannelModelRecord,
-    ChannelOverrides, ChannelRecord, ChannelSpec, ChannelStatus, CurrentRouteProviderSummaryInput,
-    InterfaceKind, ModelCapabilities, ModelRoute, ProviderMetadata, ProviderSpec, RetryPolicy,
-    RouteResolveChannelInput, RouteResolveModelInput, SessionIdResult, UpstreamEndpoint,
+    ChannelOverrides, ChannelReachabilityInput, ChannelReachabilityResult,
+    ChannelReachabilityStatus, ChannelRecord, ChannelSpec, ChannelStatus,
+    CurrentRouteProviderSummaryInput, InterfaceKind, ModelCapabilities, ModelRoute,
+    ProviderMetadata, ProviderSpec, RetryPolicy, RouteResolveChannelInput, RouteResolveModelInput,
+    SessionIdResult, UpstreamEndpoint,
 };
+use crate::services::stream_check::{HealthStatus, StreamCheckResult};
 use http::HeaderMap;
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use uuid::Uuid;
 
 pub(crate) fn synthesize_gemini_tool_call_id_with_uuid() -> String {
@@ -297,6 +300,30 @@ pub(crate) fn extract_proxy_session_id(
     })
 }
 
+pub(crate) fn stream_check_result_to_channel_reachability(
+    result: StreamCheckResult,
+) -> ChannelReachabilityResult {
+    ChannelReachabilityResult::from_input(ChannelReachabilityInput {
+        success: result.success,
+        status: stream_check_health_status_to_channel_reachability(&result.status),
+        message: result.message,
+        latency_ms: result.response_time_ms,
+        http_status: result.http_status,
+        tested_at: result.tested_at,
+        retry_count: result.retry_count,
+    })
+}
+
+fn stream_check_health_status_to_channel_reachability(
+    status: &HealthStatus,
+) -> ChannelReachabilityStatus {
+    match status {
+        HealthStatus::Operational => ChannelReachabilityStatus::Operational,
+        HealthStatus::Degraded => ChannelReachabilityStatus::Degraded,
+        HealthStatus::Failed => ChannelReachabilityStatus::Failed,
+    }
+}
+
 fn provider_metadata_without_secrets(provider: &Provider) -> ProviderMetadata {
     let mut labels = Vec::new();
     if provider.in_failover_queue {
@@ -355,7 +382,9 @@ mod tests {
     use super::*;
     use crate::database::ProxyChannelSourceKind;
     use crate::provider::{AuthBinding, AuthBindingSource, ProviderMeta};
-    use crate::proxy_core::{ProviderKind, SessionIdSource, GEMINI_SYNTHESIZED_TOOL_CALL_ID_PREFIX};
+    use crate::proxy_core::{
+        GEMINI_SYNTHESIZED_TOOL_CALL_ID_PREFIX, ProviderKind, SessionIdSource,
+    };
 
     #[test]
     fn app_type_conversion_preserves_known_and_custom_names() {
@@ -392,6 +421,59 @@ mod tests {
 
         assert!(id.starts_with(GEMINI_SYNTHESIZED_TOOL_CALL_ID_PREFIX));
         assert!(id.len() > GEMINI_SYNTHESIZED_TOOL_CALL_ID_PREFIX.len());
+    }
+
+    #[test]
+    fn stream_check_adapter_preserves_reachability_fields() {
+        let result = StreamCheckResult {
+            status: HealthStatus::Degraded,
+            success: true,
+            message: "slow but reachable".to_string(),
+            response_time_ms: Some(6100),
+            http_status: Some(200),
+            model_used: String::new(),
+            tested_at: 1_797_000_000,
+            retry_count: 1,
+            error_category: None,
+        };
+
+        let reachability = stream_check_result_to_channel_reachability(result);
+
+        assert!(reachability.success);
+        assert_eq!(
+            reachability.status,
+            ChannelReachabilityStatus::Degraded.as_str()
+        );
+        assert_eq!(reachability.message, "slow but reachable");
+        assert_eq!(reachability.latency_ms, Some(6100));
+        assert_eq!(reachability.http_status, Some(200));
+        assert_eq!(reachability.tested_at, 1_797_000_000);
+        assert_eq!(reachability.retry_count, 1);
+
+        for (health_status, reachability_status) in [
+            (
+                HealthStatus::Operational,
+                ChannelReachabilityStatus::Operational,
+            ),
+            (HealthStatus::Failed, ChannelReachabilityStatus::Failed),
+        ] {
+            let result = StreamCheckResult {
+                status: health_status,
+                success: false,
+                message: String::new(),
+                response_time_ms: None,
+                http_status: None,
+                model_used: String::new(),
+                tested_at: 0,
+                retry_count: 0,
+                error_category: None,
+            };
+
+            assert_eq!(
+                stream_check_result_to_channel_reachability(result).status,
+                reachability_status.as_str()
+            );
+        }
     }
 
     #[test]

@@ -54,29 +54,26 @@ use crate::proxy_core::{
     AppListResponse, AppModelCatalogRequest, AppModelListQuery, ChannelCreateRequest,
     ChannelDeleteResponse, ChannelHealthResetResponse, ChannelListQuery, ChannelListRequest,
     ChannelListResponse, ChannelMigrationMaterializeResponse, ChannelMigrationPreviewResponse,
-    ChannelModelRecord, ChannelModelsResponse, ChannelPathRequest, ChannelReachabilityInput,
-    ChannelReachabilityResult, ChannelReachabilityStatus, ChannelRecord, ChannelRecordResponse,
-    ChannelRouteCandidate, ChannelRouteRejected, ChannelTestPlan, ChannelTestResponse,
-    ClaudeDesktopModelListResponse,
-    ClientModelCatalogResponse, CurrentRouteResponse, CurrentRouteTarget, GroupListQuery,
-    GroupListRequest, HealthCheckRequest, HealthCheckResponse, InterfaceKind,
-    ManagementAppPathRequest, ManagementAuthDecision, ProviderListResponse, ProxyBody,
-    ProxyChannelModelsReplaceRequest, ProxyChannelPatchRequest, ProxyChannelTestRequest,
-    ProxyChannelWriteRequest, ProxyRequest, ProxyResult, ProxyRuntimeStatus, ProxyServices,
-    ProxyStatusRequest, ProxyStatusResponse, RoutableModelList, RouteGroupListResponse,
-    RouteResolveManagementRequest, RouteResolveRequest, RouteResolveResponse,
-    TransformedResponseUsageFormat, UnlabeledSseFallbackLogContext,
-    UnlabeledSseFallbackLogLevel, UpstreamSseAggregationKind,
-    CLAUDE_PARSER_CONFIG, CODEX_PARSER_CONFIG, GEMINI_PARSER_CONFIG, OPENAI_PARSER_CONFIG,
-    plan_channel_test,
+    ChannelModelRecord, ChannelModelsResponse, ChannelPathRequest, ChannelRecord,
+    ChannelRecordResponse, ChannelRouteCandidate, ChannelRouteRejected, ChannelTestPlan,
+    ChannelTestResponse, ClaudeDesktopModelListResponse, ClientModelCatalogResponse,
+    CurrentRouteResponse, CurrentRouteTarget, GroupListQuery, GroupListRequest,
+    HealthCheckRequest, HealthCheckResponse, InterfaceKind, ManagementAppPathRequest,
+    ManagementAuthDecision, ProviderListResponse, ProxyBody, ProxyChannelModelsReplaceRequest,
+    ProxyChannelPatchRequest, ProxyChannelTestRequest, ProxyChannelWriteRequest, ProxyRequest,
+    ProxyResult, ProxyRuntimeStatus, ProxyServices, ProxyStatusRequest, ProxyStatusResponse,
+    RoutableModelList, RouteGroupListResponse, RouteResolveManagementRequest, RouteResolveRequest,
+    RouteResolveResponse, TransformedResponseUsageFormat, UnlabeledSseFallbackLogContext,
+    UnlabeledSseFallbackLogLevel, UpstreamSseAggregationKind, CLAUDE_PARSER_CONFIG,
+    CODEX_PARSER_CONFIG, GEMINI_PARSER_CONFIG, OPENAI_PARSER_CONFIG, plan_channel_test,
 };
 use crate::proxy_core_adapter::{
     proxy_app_summary_input, proxy_channel_model_records_to_core, proxy_channel_record_to_core,
     proxy_channel_record_to_core_spec, proxy_channel_records_to_core, proxy_channel_specs_to_core,
     proxy_current_route_provider_summary_input, proxy_providers_to_core_specs,
-    synthesize_gemini_tool_call_id_with_uuid,
+    stream_check_result_to_channel_reachability, synthesize_gemini_tool_call_id_with_uuid,
 };
-use crate::services::stream_check::{HealthStatus, StreamCheckResult, StreamCheckService};
+use crate::services::stream_check::StreamCheckService;
 use axum::{
     extract::{Path, Query, State},
     http::StatusCode,
@@ -471,11 +468,9 @@ pub async fn test_proxy_channel(
     .await
     .map_err(|e| ProxyError::Internal(e.to_string()))?;
 
-    Ok(Json(
-        channel_test_context.reachability_response(channel_reachability_result_from_stream_check(
-            result,
-        )),
-    ))
+    Ok(Json(channel_test_context.reachability_response(
+        stream_check_result_to_channel_reachability(result),
+    )))
 }
 
 /// GET /proxy/v1/apps/{app}/channels
@@ -633,30 +628,6 @@ pub async fn reset_proxy_channel_breaker(
         .map_err(proxy_core_error_to_proxy_error)?;
 
     Ok(Json(response))
-}
-
-fn channel_reachability_result_from_stream_check(
-    result: StreamCheckResult,
-) -> ChannelReachabilityResult {
-    ChannelReachabilityResult::from_input(ChannelReachabilityInput {
-        success: result.success,
-        status: channel_reachability_status_from_health_status(&result.status),
-        message: result.message,
-        latency_ms: result.response_time_ms,
-        http_status: result.http_status,
-        tested_at: result.tested_at,
-        retry_count: result.retry_count,
-    })
-}
-
-fn channel_reachability_status_from_health_status(
-    status: &HealthStatus,
-) -> ChannelReachabilityStatus {
-    match status {
-        HealthStatus::Operational => ChannelReachabilityStatus::Operational,
-        HealthStatus::Degraded => ChannelReachabilityStatus::Degraded,
-        HealthStatus::Failed => ChannelReachabilityStatus::Failed,
-    }
 }
 
 /// POST /proxy/v1/route/resolve
