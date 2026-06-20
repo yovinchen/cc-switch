@@ -17,6 +17,7 @@ use crate::proxy_core::{
     log_codes::srv as log_srv, CurrentRouteTarget, GeminiShadowStore, ProxyConfig, ProxyEngine,
     ProxyRuntimeStatus, ProxyServerInfo,
 };
+use crate::proxy_core_adapter::CircuitBreakerConfig;
 use crate::proxy_core_host::{CcSwitchProxyRuntime, CcSwitchProxyServices};
 use axum::{
     extract::DefaultBodyLimit,
@@ -477,17 +478,14 @@ impl ProxyServer {
     /// 热更新熔断器配置
     ///
     /// 将新配置应用到所有已创建的熔断器实例
-    pub async fn update_circuit_breaker_configs(
-        &self,
-        config: crate::proxy_core::CircuitBreakerConfig,
-    ) {
+    pub async fn update_circuit_breaker_configs(&self, config: CircuitBreakerConfig) {
         self.state.provider_router.update_all_configs(config).await;
     }
 
     pub async fn update_circuit_breaker_config_for_app(
         &self,
         app_type: &str,
-        config: crate::proxy_core::CircuitBreakerConfig,
+        config: CircuitBreakerConfig,
     ) {
         self.state
             .provider_router

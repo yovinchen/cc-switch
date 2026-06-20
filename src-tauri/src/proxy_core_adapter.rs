@@ -184,13 +184,31 @@ pub(crate) type ProxyTakeoverStatus = crate::proxy_core::ProxyTakeoverStatus;
 pub(crate) type GlobalProxyConfig = crate::proxy_core::GlobalProxyConfig;
 pub(crate) type AppProxyConfig = crate::proxy_core::AppProxyConfig;
 pub(crate) type ProviderHealth = crate::proxy_core::ProviderHealth;
+pub(crate) type AllowResult = crate::proxy_core::AllowResult;
 pub(crate) type CircuitBreakerConfig = crate::proxy_core::CircuitBreakerConfig;
 pub(crate) type CircuitBreakerStats = crate::proxy_core::CircuitBreakerStats;
+pub(crate) type CircuitState = crate::proxy_core::CircuitState;
+
+pub(crate) mod circuit_breaker_log_codes {
+    pub(crate) const OPEN_TO_HALF_OPEN: &str =
+        crate::proxy_core::log_codes::cb::OPEN_TO_HALF_OPEN;
+    pub(crate) const HALF_OPEN_TO_CLOSED: &str =
+        crate::proxy_core::log_codes::cb::HALF_OPEN_TO_CLOSED;
+    pub(crate) const HALF_OPEN_PROBE_FAILED: &str =
+        crate::proxy_core::log_codes::cb::HALF_OPEN_PROBE_FAILED;
+    pub(crate) const TRIGGERED_FAILURES: &str =
+        crate::proxy_core::log_codes::cb::TRIGGERED_FAILURES;
+    pub(crate) const TRIGGERED_ERROR_RATE: &str =
+        crate::proxy_core::log_codes::cb::TRIGGERED_ERROR_RATE;
+    pub(crate) const MANUAL_RESET: &str =
+        crate::proxy_core::log_codes::cb::MANUAL_RESET;
+}
 
 pub(crate) type ProxyCoreAppKind = crate::proxy_core::AppKind;
 pub(crate) type ProxyCoreInterfaceKind = crate::proxy_core::InterfaceKind;
 pub(crate) type ChannelRequestValidationError =
     crate::proxy_core::ChannelRequestValidationError;
+pub(crate) type ChannelRouteSource = crate::proxy_core::ChannelRouteSource;
 pub(crate) type LegacyChannelModelProjection =
     crate::proxy_core::LegacyChannelModelProjection;
 pub(crate) type LegacyChannelProjection = crate::proxy_core::LegacyChannelProjection;
@@ -203,6 +221,70 @@ pub(crate) type ProxyChannelModelWriteRequest =
     crate::proxy_core::ProxyChannelModelWriteRequest;
 pub(crate) type ProxyChannelPatchRequest = crate::proxy_core::ProxyChannelPatchRequest;
 pub(crate) type ProxyChannelWriteRequest = crate::proxy_core::ProxyChannelWriteRequest;
+pub(crate) type ProviderSelectionCandidate =
+    crate::proxy_core::ProviderSelectionCandidate;
+pub(crate) type ProviderSelectionFailure = crate::proxy_core::ProviderSelectionFailure;
+pub(crate) type ProviderSelectionInput = crate::proxy_core::ProviderSelectionInput;
+pub(crate) type ProxyCoreError = crate::proxy_core::ProxyCoreError;
+pub(crate) type RouteResolveRequest = crate::proxy_core::RouteResolveRequest;
+pub(crate) type RouteResolveResponse = crate::proxy_core::RouteResolveResponse;
+
+pub(crate) fn circuit_breaker_config_from_app_config(
+    config: Option<&AppProxyConfig>,
+) -> CircuitBreakerConfig {
+    crate::proxy_core::circuit_breaker_config_from_app_config(config)
+}
+
+pub(crate) fn circuit_failure_threshold_from_app_config(
+    config: Option<&AppProxyConfig>,
+    fallback: u32,
+) -> u32 {
+    crate::proxy_core::circuit_failure_threshold_from_app_config(config, fallback)
+}
+
+pub(crate) fn provider_circuit_key(app_type: &str, provider_id: &str) -> String {
+    crate::proxy_core::provider_circuit_key(app_type, provider_id)
+}
+
+pub(crate) fn channel_circuit_key(app_type: &str, channel_id: &str) -> String {
+    crate::proxy_core::channel_circuit_key(app_type, channel_id)
+}
+
+pub(crate) fn provider_circuit_key_prefix(app_type: &str) -> String {
+    crate::proxy_core::provider_circuit_key_prefix(app_type)
+}
+
+pub(crate) fn channel_circuit_key_prefix(app_type: &str) -> String {
+    crate::proxy_core::channel_circuit_key_prefix(app_type)
+}
+
+pub(crate) fn app_type_from_circuit_key(key: &str) -> &str {
+    crate::proxy_core::app_type_from_circuit_key(key)
+}
+
+pub(crate) fn select_provider_ids(
+    input: ProviderSelectionInput,
+) -> Result<Vec<String>, ProviderSelectionFailure> {
+    crate::proxy_core::select_provider_ids(input)
+}
+
+pub(crate) fn resolve_channel_route(
+    request: RouteResolveRequest,
+    channels: Vec<RouteResolveChannelInput>,
+    source: ChannelRouteSource,
+) -> Result<RouteResolveResponse, ProxyCoreError> {
+    crate::proxy_core::resolve_channel_route(request, channels, source)
+}
+
+pub(crate) fn reject_unavailable_channel_ids<I, S>(
+    response: &mut RouteResolveResponse,
+    unavailable_channel_ids: I,
+) where
+    I: IntoIterator<Item = S>,
+    S: AsRef<str>,
+{
+    crate::proxy_core::reject_unavailable_channel_ids(response, unavailable_channel_ids);
+}
 
 pub(crate) fn stable_channel_id(
     app_type: &str,
@@ -1243,6 +1325,91 @@ mod tests {
             .and_then(Value::as_bool),
             Some(true)
         );
+    }
+
+    #[test]
+    fn circuit_and_route_adapter_projects_provider_router_contracts() {
+        assert_eq!(circuit_breaker_log_codes::OPEN_TO_HALF_OPEN, "CB-001");
+        assert_eq!(
+            circuit_breaker_log_codes::HALF_OPEN_TO_CLOSED,
+            "CB-002"
+        );
+        assert_eq!(provider_circuit_key("claude", "provider-a"), "claude:provider-a");
+        assert_eq!(
+            channel_circuit_key("claude", "channel-a"),
+            "channel:claude:channel-a"
+        );
+        assert_eq!(
+            app_type_from_circuit_key("channel:claude:channel-a"),
+            "claude"
+        );
+        assert_eq!(CircuitState::HalfOpen.to_string(), "half_open");
+
+        let allow_result = AllowResult {
+            allowed: true,
+            used_half_open_permit: true,
+        };
+        assert!(allow_result.allowed);
+        assert!(allow_result.used_half_open_permit);
+
+        let stats = CircuitBreakerStats {
+            state: CircuitState::Open,
+            consecutive_failures: 4,
+            consecutive_successes: 0,
+            total_requests: 10,
+            failed_requests: 6,
+        };
+        assert_eq!(
+            serde_json::to_value(stats).expect("serialize circuit stats"),
+            json!({
+                "state": "open",
+                "consecutiveFailures": 4,
+                "consecutiveSuccesses": 0,
+                "totalRequests": 10,
+                "failedRequests": 6
+            })
+        );
+
+        let selected = select_provider_ids(ProviderSelectionInput::failover(vec![
+            ProviderSelectionCandidate::new("missing", false, true),
+            ProviderSelectionCandidate::new("provider-b", true, true),
+            ProviderSelectionCandidate::new("provider-a", true, false),
+        ]))
+        .expect("selected provider ids");
+        assert_eq!(selected, vec!["provider-b"]);
+
+        let mut response = resolve_channel_route(
+            RouteResolveRequest {
+                app_type: "claude".to_string(),
+                requested_model: Some("claude-sonnet-4".to_string()),
+                interface_kind: Some("anthropic_messages".to_string()),
+                route_group: None,
+            },
+            vec![RouteResolveChannelInput {
+                channel_id: "channel-a".to_string(),
+                provider_id: "provider-a".to_string(),
+                channel_name: "Provider A".to_string(),
+                status: "enabled".to_string(),
+                base_url: "https://api.example.com/v1".to_string(),
+                interface_kind: "anthropic_messages".to_string(),
+                groups: vec!["default".to_string()],
+                models: vec![RouteResolveModelInput {
+                    public_model: "claude-sonnet-4".to_string(),
+                    upstream_model: "upstream-sonnet".to_string(),
+                }],
+                priority: 100,
+                weight: 1,
+                source_kind: "legacy_provider".to_string(),
+            }],
+            ChannelRouteSource::MaterializedChannels,
+        )
+        .expect("route response");
+        assert_eq!(response.candidates.len(), 1);
+
+        reject_unavailable_channel_ids(&mut response, ["channel-a"]);
+        assert!(response.candidates.is_empty());
+        assert_eq!(response.rejected.len(), 1);
+        assert_eq!(response.rejected[0].reasons, vec!["circuit_open"]);
     }
 
     #[test]

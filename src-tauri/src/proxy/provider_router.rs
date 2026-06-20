@@ -7,16 +7,15 @@ use crate::database::{Database, ProxyChannelMigrationPreview, ProxyChannelRecord
 use crate::error::AppError;
 use crate::provider::Provider;
 use crate::proxy::circuit_breaker::CircuitBreaker;
-use crate::proxy_core::{
-    AllowResult, ChannelRouteSource, CircuitBreakerConfig, CircuitBreakerStats,
-    ProviderSelectionCandidate, ProviderSelectionFailure, ProviderSelectionInput, ProxyCoreError,
-    RouteResolveRequest, RouteResolveResponse, app_type_from_circuit_key, channel_circuit_key,
-    channel_circuit_key_prefix, circuit_breaker_config_from_app_config,
-    circuit_failure_threshold_from_app_config, provider_circuit_key, provider_circuit_key_prefix,
+use crate::proxy_core_adapter::{
+    app_type_from_circuit_key, channel_circuit_key, channel_circuit_key_prefix,
+    circuit_breaker_config_from_app_config, circuit_failure_threshold_from_app_config,
+    provider_circuit_key, provider_circuit_key_prefix, proxy_channel_route_inputs_to_core,
     reject_unavailable_channel_ids, resolve_channel_route as resolve_core_channel_route,
-    select_provider_ids,
+    select_provider_ids, AllowResult, ChannelRouteSource, CircuitBreakerConfig,
+    CircuitBreakerStats, ProviderSelectionCandidate, ProviderSelectionFailure,
+    ProviderSelectionInput, ProxyCoreError, RouteResolveRequest, RouteResolveResponse,
 };
-use crate::proxy_core_adapter::proxy_channel_route_inputs_to_core;
 use std::collections::HashMap;
 use std::str::FromStr;
 use std::sync::Arc;
@@ -465,7 +464,7 @@ fn provider_selection_failure_to_app_error(
 mod tests {
     use super::*;
     use crate::database::Database;
-    use crate::proxy_core::{ChannelRouteSource, CircuitState, RouteResolveRequest};
+    use crate::proxy_core_adapter::{ChannelRouteSource, CircuitState, RouteResolveRequest};
     use crate::settings::CustomEndpoint;
     use serde_json::json;
     use serial_test::serial;
