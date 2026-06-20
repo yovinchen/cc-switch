@@ -54,8 +54,8 @@ use crate::proxy_core::{
     ChannelTestResponse, ClaudeDesktopModelListResponse, ClientModelCatalogResponse,
     CurrentRouteResponse, CurrentRouteTarget, GroupListChannelSource, GroupListQuery,
     GroupListRequest, HealthCheckRequest, HealthCheckResponse, InterfaceKind,
-    ManagementAppPathRequest, ManagementAuthDecision, ProviderListResponse, ProxyBody,
-    ProxyChannelModelsReplaceRequest, ProxyChannelPatchRequest, ProxyChannelTestRequest,
+    ManagementAppPathRequest, ManagementAuthDecision, ProviderListResponse, ProviderListSource,
+    ProxyBody, ProxyChannelModelsReplaceRequest, ProxyChannelPatchRequest, ProxyChannelTestRequest,
     ProxyChannelWriteRequest, ProxyRequest, ProxyRuntimeStatus, ProxyStatusRequest,
     ProxyStatusResponse, RoutableModelList, RouteGroupListResponse, RouteResolveManagementRequest,
     RouteResolveRequest, RouteResolveResponse, TransformedResponseUsageFormat,
@@ -238,11 +238,13 @@ pub async fn list_proxy_providers(
 
     let provider_specs = proxy_providers_to_core_specs(&app, providers.into_values());
 
-    Ok(Json(request.provider_list_response(
-        provider_specs,
-        current_provider.as_deref(),
-        &failover_ids,
-        &route_candidate_ids,
+    Ok(Json(request.provider_list_response_from_source(
+        ProviderListSource::new(
+            provider_specs,
+            current_provider,
+            failover_ids,
+            route_candidate_ids,
+        ),
     )))
 }
 

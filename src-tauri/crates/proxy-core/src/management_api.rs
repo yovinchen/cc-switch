@@ -105,6 +105,30 @@ pub struct ManagementAppPathRequest {
     pub app_type: String,
 }
 
+#[derive(Debug, Clone, PartialEq)]
+pub struct ProviderListSource {
+    pub providers: Vec<ProviderSpec>,
+    pub current_provider: Option<String>,
+    pub failover_provider_ids: Vec<String>,
+    pub route_candidate_ids: Vec<String>,
+}
+
+impl ProviderListSource {
+    pub fn new(
+        providers: impl IntoIterator<Item = ProviderSpec>,
+        current_provider: Option<String>,
+        failover_provider_ids: Vec<String>,
+        route_candidate_ids: Vec<String>,
+    ) -> Self {
+        Self {
+            providers: providers.into_iter().collect(),
+            current_provider,
+            failover_provider_ids,
+            route_candidate_ids,
+        }
+    }
+}
+
 impl ManagementAppPathRequest {
     pub fn from_path(app_type: impl AsRef<str>) -> ProxyCoreResult<Self> {
         let app_type = app_type.as_ref().trim().to_string();
@@ -138,6 +162,18 @@ impl ManagementAppPathRequest {
             current_provider,
             failover_provider_ids,
             route_candidate_ids,
+        )
+    }
+
+    pub fn provider_list_response_from_source(
+        &self,
+        source: ProviderListSource,
+    ) -> ProviderListResponse {
+        self.provider_list_response(
+            source.providers,
+            source.current_provider.as_deref(),
+            &source.failover_provider_ids,
+            &source.route_candidate_ids,
         )
     }
 
@@ -421,7 +457,7 @@ mod tests {
     use super::{
         AppChannelManagementRequest, AppListRequest, AppModelCatalogRequest, ChannelListRequest,
         ChannelCreateRequest, ChannelPathRequest, GroupListChannelSource, GroupListRequest,
-        HealthCheckRequest, ManagementAppPathRequest, ProxyStatusRequest,
+        HealthCheckRequest, ManagementAppPathRequest, ProviderListSource, ProxyStatusRequest,
         RouteResolveManagementRequest, channel_not_found_message, normalize_channel_id_path,
         validate_management_app_type, validate_route_resolve_app_type,
     };
@@ -584,12 +620,12 @@ mod tests {
         let failover_ids = vec!["provider-b".to_string()];
         let route_candidate_ids = vec!["provider-a".to_string()];
 
-        let response = request.provider_list_response(
+        let response = request.provider_list_response_from_source(ProviderListSource::new(
             vec![provider_spec("provider-a"), provider_spec("provider-b")],
-            Some("provider-a"),
-            &failover_ids,
-            &route_candidate_ids,
-        );
+            Some("provider-a".to_string()),
+            failover_ids,
+            route_candidate_ids,
+        ));
 
         assert_eq!(response.app_type, "claude");
         assert_eq!(response.providers.len(), 2);
