@@ -631,6 +631,30 @@ pub fn interfaces_compatible(requested: &InterfaceKind, channel: &InterfaceKind)
     )
 }
 
+pub fn channel_matches_query(channel: &ChannelSpec, query: &ChannelQuery<'_>) -> bool {
+    if !query.include_disabled && channel.status != ChannelStatus::Enabled {
+        return false;
+    }
+    if let Some(provider_id) = query.provider_id {
+        if channel.provider_id != provider_id {
+            return false;
+        }
+    }
+    if let Some(group) = query.group {
+        if !route_group_matches(&channel.groups, group) {
+            return false;
+        }
+    }
+    if let Some(model) = query.model {
+        return channel
+            .models
+            .iter()
+            .any(|route| route.public_model == model || route.upstream_model == model);
+    }
+
+    true
+}
+
 #[derive(Debug)]
 pub struct RouteRequest<'a> {
     pub request: &'a ProxyRequest,
@@ -845,6 +869,43 @@ mod tests {
     use super::*;
     use futures::StreamExt;
 
+    fn test_channel(status: ChannelStatus) -> ChannelSpec {
+        ChannelSpec {
+            id: "ch_1".to_string(),
+            provider_id: "p1".to_string(),
+            app: AppKind::Claude,
+            name: "Relay".to_string(),
+            status,
+            endpoint: UpstreamEndpoint {
+                base_url: "https://relay.example.com/v1".to_string(),
+                path_template: None,
+                api_version: None,
+                timeout_profile: None,
+            },
+            interface: InterfaceKind::AnthropicMessages,
+            auth_profile: None,
+            models: vec![ModelRoute {
+                public_model: "sonnet-public".to_string(),
+                upstream_model: "upstream-sonnet".to_string(),
+                capabilities: ModelCapabilities::default(),
+                pricing_model: None,
+                request_overrides: json!({}),
+                response_overrides: json!({}),
+            }],
+            groups: vec!["default".to_string()],
+            priority: 100,
+            weight: 1,
+            retry_policy: RetryPolicy::default(),
+            health_policy: ChannelHealthPolicy::default(),
+            overrides: ChannelOverrides::default(),
+            tags: Vec::new(),
+            metadata: json!({}),
+            source_ref: None,
+            needs_review: false,
+            review_reasons: Vec::new(),
+        }
+    }
+
     #[test]
     fn response_body_can_hold_stream_without_host_transport_types() {
         let stream = futures::stream::iter(vec![Ok(Bytes::from_static(b"chunk"))]);
@@ -860,6 +921,57 @@ mod tests {
             }
             _ => panic!("expected stream body"),
         }
+    }
+
+    #[test]
+    fn channel_query_matches_status_provider_group_and_model() {
+        let app = AppKind::Claude;
+        let channel = test_channel(ChannelStatus::Enabled);
+
+        assert!(channel_matches_query(
+            &channel,
+            &ChannelQuery {
+                app: &app,
+                provider_id: Some("p1"),
+                model: Some("sonnet-public"),
+                group: Some("default"),
+                include_disabled: false,
+                allow_legacy_projection: false,
+            },
+        ));
+        assert!(channel_matches_query(
+            &channel,
+            &ChannelQuery {
+                app: &app,
+                provider_id: Some("p1"),
+                model: Some("upstream-sonnet"),
+                group: Some("default"),
+                include_disabled: false,
+                allow_legacy_projection: false,
+            },
+        ));
+        assert!(!channel_matches_query(
+            &channel,
+            &ChannelQuery {
+                app: &app,
+                provider_id: Some("other"),
+                model: Some("sonnet-public"),
+                group: Some("default"),
+                include_disabled: false,
+                allow_legacy_projection: false,
+            },
+        ));
+        assert!(!channel_matches_query(
+            &test_channel(ChannelStatus::ManuallyDisabled),
+            &ChannelQuery {
+                app: &app,
+                provider_id: None,
+                model: None,
+                group: None,
+                include_disabled: false,
+                allow_legacy_projection: false,
+            },
+        ));
     }
 
     #[test]

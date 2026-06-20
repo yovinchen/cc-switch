@@ -11,8 +11,8 @@ use crate::proxy::route_attempt::forward_attempts_from_route_plan;
 use crate::proxy::usage::{RequestLog, UsageLogger};
 use crate::proxy::RequestForwarder;
 use crate::proxy_core::{
-    interfaces_compatible, resolve_usage_record_pricing_models, route_group_matches,
-    token_usage_from_usage_record, AppKind, AppProxyConfig, AuthInfo, AuthProfileRef,
+    channel_matches_query, interfaces_compatible, resolve_usage_record_pricing_models,
+    route_group_matches, token_usage_from_usage_record, AppKind, AppProxyConfig, AuthInfo, AuthProfileRef,
     ChannelAttemptPlan, ChannelAttemptResult, ChannelQuery, ChannelSource, ChannelSpec,
     ChannelStatus, CopilotOptimizerConfigSpec, CostCalculator, CurrentRouteTarget, ForwardPipeline,
     GeminiShadowStore, ModelCatalog, OptimizerConfigSpec, ProviderSource, ProviderSpec,
@@ -973,29 +973,6 @@ fn app_config_raw(config: AppProxyConfig, current_provider_id: Option<String>) -
         );
     }
     raw
-}
-
-fn channel_matches_query(channel: &ChannelSpec, query: &ChannelQuery<'_>) -> bool {
-    if !query.include_disabled && channel.status != ChannelStatus::Enabled {
-        return false;
-    }
-    if let Some(provider_id) = query.provider_id {
-        if channel.provider_id != provider_id {
-            return false;
-        }
-    }
-    if let Some(group) = query.group {
-        if !route_group_matches(&channel.groups, group) {
-            return false;
-        }
-    }
-    if let Some(model) = query.model {
-        return channel
-            .models
-            .iter()
-            .any(|route| route.public_model == model || route.upstream_model == model);
-    }
-    true
 }
 
 fn load_codex_client_model_catalog_raw() -> Value {
