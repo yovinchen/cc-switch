@@ -4,6 +4,7 @@
 //! traffic still uses the existing proxy module, while new code can start
 //! depending on these neutral domain types and service ports.
 
+pub mod api;
 pub mod cache_injector;
 pub mod claude_auth;
 pub mod codex_chat_history;

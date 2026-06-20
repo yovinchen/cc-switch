@@ -1,0 +1,185 @@
+//! Stable integration surface for the extracted proxy module.
+//!
+//! The crate root still exposes the historical flat exports for compatibility.
+//! New host adapters and external integrations should prefer these grouped
+//! modules so the public contract can stabilize without depending on the
+//! internal file layout.
+
+pub mod auth {
+    pub use crate::claude_auth::*;
+    pub use crate::claude_desktop_gateway_auth::*;
+    pub use crate::gemini_auth::*;
+    pub use crate::managed_account_auth::*;
+    pub use crate::management_auth::*;
+    pub use crate::provider_auth::*;
+}
+
+pub mod config {
+    pub use crate::cache_injector::*;
+    pub use crate::circuit_breaker_config::*;
+    pub use crate::circuit_breaker_key::*;
+    pub use crate::ports::{
+        AppProxyConfig, CopilotOptimizerConfigSpec, OptimizerConfigSpec, ProxyAppConfig,
+        ProxyGlobalConfig, ProxyRuntimeConfig, RectifierConfigSpec,
+    };
+    pub use crate::response_timeout::{
+        ResponseRuntimePolicy, ResponseTimeoutConfig, StreamingTimeoutConfig,
+    };
+    pub use crate::thinking_budget_rectifier::ThinkingBudgetRectifierConfig;
+    pub use crate::thinking_optimizer::ThinkingOptimizerConfig;
+    pub use crate::thinking_rectifier::ThinkingSignatureRectifierConfig;
+}
+
+pub mod domain {
+    pub use crate::domain::*;
+}
+
+pub mod engine {
+    pub use crate::engine::{ProxyCoreStatus, ProxyEngine, ProxyRuntimeState};
+}
+
+pub mod events {
+    pub use crate::event_payload::*;
+    pub use crate::ports::{ProxyCoreEvent, ProxyCoreEventType};
+}
+
+pub mod management {
+    pub use crate::management_api::*;
+    pub use crate::ports::HealthCheckResponse;
+}
+
+pub mod model_catalog {
+    pub use crate::copilot_model_map::*;
+    pub use crate::model_fetch::*;
+    pub use crate::model_mapping::*;
+    pub use crate::ports::{ClientModelCatalogResponse, ModelCatalog};
+}
+
+pub mod ports {
+    pub use crate::domain::{ChannelAttemptPlan, ChannelAttemptResult};
+    pub use crate::ports::{
+        AuthInfo, AuthProvider, ChannelHealthReset, ChannelHealthResetResponse, ChannelHealthStore,
+        ChannelModelRecord, ChannelSource, CurrentRouteTarget, ForwardPipeline, ModelCatalog,
+        ModelCatalogProvider, ProviderSource, ProxyAppConfig, ProxyConfigSource, ProxyCoreEvent,
+        ProxyCoreEventType, ProxyGlobalConfig, ProxyRuntimeConfig, ProxyServices,
+        RoutePolicySource, RouteResolver, UsageSink,
+    };
+}
+
+pub mod routing {
+    pub use crate::channel_identity::*;
+    pub use crate::channel_request::*;
+    pub use crate::domain::{
+        ChannelQuery, ChannelSpec, ChannelStatus, InterfaceKind, ResolvedChannelAttempt, RoutePlan,
+        RoutePolicy, RouteRequest, RouteSelection, DEFAULT_ROUTE_GROUP,
+    };
+    pub use crate::legacy_projection::*;
+    pub use crate::ports::ChannelRouteCandidate;
+    pub use crate::provider_selection::*;
+    pub use crate::route_resolve::*;
+}
+
+pub mod security {
+    pub use crate::secret::*;
+}
+
+pub mod session {
+    pub use crate::session::{
+        extract_session_id_with_generator, proxy_session_request_metadata, ClientFormat,
+        ProxySessionRequestMetadata, SessionIdResult, SessionIdSource,
+    };
+}
+
+pub mod transport {
+    pub use crate::domain::{
+        ProxyBody, ProxyCoreResponse, ProxyRequest, ProxyResponseBody, ProxyResult,
+        ProxyTransportResponse, ProxyTransportResponseBody,
+    };
+    pub use crate::forward_failure::*;
+    pub use crate::request_body::*;
+    pub use crate::request_headers::*;
+    pub use crate::request_media::*;
+    pub use crate::request_optimizer::*;
+    pub use crate::request_transport::*;
+    pub use crate::request_url::*;
+    pub use crate::response_body::*;
+    pub use crate::response_build::*;
+    pub use crate::response_diagnostics::*;
+    pub use crate::response_headers::*;
+    pub use crate::response_parse::*;
+    pub use crate::response_timeout::*;
+}
+
+pub mod transforms {
+    pub use crate::codex_chat_history::*;
+    pub use crate::codex_error::*;
+    pub use crate::gemini_request::*;
+    pub use crate::gemini_response::*;
+    pub use crate::gemini_schema::*;
+    pub use crate::gemini_shadow::*;
+    pub use crate::gemini_stream::*;
+    pub use crate::gemini_tool_args::*;
+    pub use crate::gemini_url::*;
+    pub use crate::json_canonical::*;
+    pub use crate::openai_chat_stream::*;
+    pub use crate::openai_responses_stream::*;
+    pub use crate::response_transform::*;
+    pub use crate::sse::*;
+}
+
+pub mod usage {
+    pub use crate::cost::*;
+    pub use crate::domain::{UsageRecord, UsageTokens};
+    pub use crate::usage::*;
+    pub use crate::usage_config::*;
+}
+
+pub mod prelude {
+    pub use super::auth::{ProviderAuthInfo, ProviderAuthStrategy};
+    pub use super::config::{ProxyRuntimeConfig, ResponseRuntimePolicy};
+    pub use super::domain::{
+        AppKind, AuthProfileRef, InterfaceKind, ModelRoute, ProviderKind, ProviderSpec,
+        ProxyRequest, ProxyResult, RoutePlan, RouteSelection,
+    };
+    pub use super::engine::ProxyEngine;
+    pub use super::events::{ProxyCoreEvent, ProxyCoreEventType};
+    pub use super::ports::CurrentRouteTarget;
+    pub use super::ports::{
+        AuthProvider, ChannelHealthStore, ChannelSource, ForwardPipeline, ModelCatalogProvider,
+        ProviderSource, ProxyConfigSource, ProxyServices, RoutePolicySource, RouteResolver,
+        UsageSink,
+    };
+    pub use super::routing::{ChannelQuery, ChannelSpec, DEFAULT_ROUTE_GROUP};
+    pub use super::transport::{
+        ProxyBody, ProxyCoreResponse, ProxyResponseBody, ProxyTransportResponse,
+        ProxyTransportResponseBody,
+    };
+    pub use super::usage::{TokenUsage, UsageRecord};
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn grouped_public_api_exposes_integration_contracts() {
+        let app = domain::AppKind::from("claude");
+        let request = management::HealthCheckRequest::new();
+        let body = transport::ProxyBody::Empty;
+        let runtime = config::ProxyRuntimeConfig::default();
+        let event_payload = events::build_proxy_events_connected_payload(16);
+
+        assert_eq!(app.as_str(), "claude");
+        assert_eq!(
+            request.response_from_source(management::HealthCheckSource::new("now")),
+            management::HealthCheckResponse {
+                status: "healthy".to_string(),
+                timestamp: "now".to_string()
+            }
+        );
+        assert_eq!(body.into_json().expect("json body"), serde_json::json!({}));
+        assert!(!runtime.privacy_filter_enabled);
+        assert_eq!(event_payload["bufferSize"], 16);
+        assert_eq!(routing::DEFAULT_ROUTE_GROUP, "default");
+    }
+}
