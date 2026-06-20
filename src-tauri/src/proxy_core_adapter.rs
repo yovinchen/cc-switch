@@ -19,7 +19,9 @@ use crate::proxy_core::{
 };
 use crate::services::usage_stats::is_placeholder_pricing_model;
 use crate::services::stream_check::{HealthStatus, StreamCheckResult};
-use http::HeaderMap;
+use bytes::Bytes;
+use futures::Stream;
+use http::{HeaderMap, StatusCode};
 use rust_decimal::Decimal;
 use serde_json::{Value, json};
 use uuid::Uuid;
@@ -200,11 +202,19 @@ pub(crate) type ProxyResponseBody = crate::proxy_core::ProxyResponseBody;
 pub(crate) type ProxyTransportResponse = crate::proxy_core::ProxyTransportResponse;
 pub(crate) type ProxyTransportResponseBody =
     crate::proxy_core::ProxyTransportResponseBody;
+pub(crate) type ResponseBodyDecode = crate::proxy_core::ResponseBodyDecode;
+pub(crate) type ResponseBodyDecodeLogLevel =
+    crate::proxy_core::ResponseBodyDecodeLogLevel;
 pub(crate) type CostBreakdown = crate::proxy_core::CostBreakdown;
 pub(crate) type CostCalculator = crate::proxy_core::CostCalculator;
 pub(crate) type ModelPricing = crate::proxy_core::ModelPricing;
 pub(crate) type TokenUsage = crate::proxy_core::TokenUsage;
 pub(crate) type UsageRecord = crate::proxy_core::UsageRecord;
+pub(crate) type NonStreamingResponseUsageRecord =
+    crate::proxy_core::NonStreamingResponseUsageRecord;
+pub(crate) type StreamingResponseUsageRecord =
+    crate::proxy_core::StreamingResponseUsageRecord;
+pub(crate) type UsageParserConfig = crate::proxy_core::UsageParserConfig;
 pub(crate) type StreamUsageEventFilter = crate::proxy_core::StreamUsageEventFilter;
 pub(crate) type TransformedResponseUsageFormat =
     crate::proxy_core::TransformedResponseUsageFormat;
@@ -224,6 +234,10 @@ pub(crate) type CopilotAuthHeadersInput<'a> =
 pub(crate) type ResponseRuntimePolicy = crate::proxy_core::ResponseRuntimePolicy;
 pub(crate) type ResponseTimeoutConfig = crate::proxy_core::ResponseTimeoutConfig;
 pub(crate) type StreamingTimeoutConfig = crate::proxy_core::StreamingTimeoutConfig;
+pub(crate) type StreamingTimeoutPhase = crate::proxy_core::StreamingTimeoutPhase;
+pub(crate) type SseEventScanner = crate::proxy_core::SseEventScanner;
+pub(crate) type SsePassthroughEventKind = crate::proxy_core::SsePassthroughEventKind;
+pub(crate) type SseUsageAccumulator = crate::proxy_core::SseUsageAccumulator;
 pub(crate) type GlobalProxyConfig = crate::proxy_core::GlobalProxyConfig;
 pub(crate) type AppProxyConfig = crate::proxy_core::AppProxyConfig;
 pub(crate) type ProviderHealth = crate::proxy_core::ProviderHealth;
@@ -1227,6 +1241,54 @@ pub(crate) fn resolve_upstream_send_policy(
     crate::proxy_core::resolve_upstream_send_policy(input)
 }
 
+pub(crate) fn response_headers_log_summary(headers: &HeaderMap) -> String {
+    crate::proxy_core::response_headers_log_summary(headers)
+}
+
+pub(crate) fn get_content_encoding(headers: &HeaderMap) -> Option<String> {
+    crate::proxy_core::get_content_encoding(headers)
+}
+
+pub(crate) fn decode_response_body(
+    headers: &mut HeaderMap,
+    raw_body: &[u8],
+) -> ResponseBodyDecode {
+    crate::proxy_core::decode_response_body(headers, raw_body)
+}
+
+#[cfg(test)]
+pub(crate) fn decompress_body(
+    content_encoding: &str,
+    body: &[u8],
+) -> Result<Option<Vec<u8>>, std::io::Error> {
+    crate::proxy_core::decompress_body(content_encoding, body)
+}
+
+#[cfg(test)]
+pub(crate) fn strip_sse_field<'a>(line: &'a str, field: &str) -> Option<&'a str> {
+    crate::proxy_core::strip_sse_field(line, field)
+}
+
+pub(crate) fn non_streaming_body_timeout_message(timeout: std::time::Duration) -> String {
+    crate::proxy_core::non_streaming_body_timeout_message(timeout)
+}
+
+pub(crate) fn passthrough_bytes_proxy_response(
+    status: StatusCode,
+    headers: HeaderMap,
+    body: impl Into<Bytes>,
+) -> ProxyCoreResponse {
+    crate::proxy_core::passthrough_bytes_proxy_response(status, headers, body)
+}
+
+pub(crate) fn passthrough_stream_proxy_response(
+    status: StatusCode,
+    headers: HeaderMap,
+    stream: impl Stream<Item = Result<Bytes, std::io::Error>> + Send + 'static,
+) -> ProxyCoreResponse {
+    crate::proxy_core::passthrough_stream_proxy_response(status, headers, stream)
+}
+
 #[cfg(test)]
 pub(crate) fn is_official_codex_client_user_agent(user_agent: &str) -> bool {
     crate::proxy_core::is_official_codex_client_user_agent(user_agent)
@@ -1359,6 +1421,68 @@ pub(crate) fn transformed_streaming_response_usage_record_with_request_id_fallba
         outbound_model,
         latency_ms,
         first_token_ms,
+        status_code,
+        session_id,
+        request_id_fallback,
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn streaming_response_usage_record_with_optional_outbound_model(
+    events: &[Value],
+    stream_parser: fn(&[Value]) -> Option<TokenUsage>,
+    model_extractor: fn(&[Value], &str) -> String,
+    provider_id: &str,
+    provider_kind: Option<ProviderKind>,
+    app: AppKind,
+    request_model: &str,
+    outbound_model: Option<&str>,
+    latency_ms: u64,
+    first_token_ms: Option<u64>,
+    status_code: u16,
+    session_id: Option<String>,
+    request_id_fallback: impl FnOnce() -> String,
+) -> StreamingResponseUsageRecord {
+    crate::proxy_core::streaming_response_usage_record_with_optional_outbound_model(
+        events,
+        stream_parser,
+        model_extractor,
+        provider_id,
+        provider_kind,
+        app,
+        request_model,
+        outbound_model,
+        latency_ms,
+        first_token_ms,
+        status_code,
+        session_id,
+        request_id_fallback,
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn non_streaming_response_usage_record_from_body_with_request_id_fallback(
+    body: &[u8],
+    response_parser: fn(&Value) -> Option<TokenUsage>,
+    provider_id: &str,
+    provider_kind: Option<ProviderKind>,
+    app: AppKind,
+    request_model: &str,
+    outbound_model: Option<&str>,
+    latency_ms: u64,
+    status_code: u16,
+    session_id: Option<String>,
+    request_id_fallback: impl FnOnce() -> String,
+) -> NonStreamingResponseUsageRecord {
+    crate::proxy_core::non_streaming_response_usage_record_from_body_with_request_id_fallback(
+        body,
+        response_parser,
+        provider_id,
+        provider_kind,
+        app,
+        request_model,
+        outbound_model,
+        latency_ms,
         status_code,
         session_id,
         request_id_fallback,

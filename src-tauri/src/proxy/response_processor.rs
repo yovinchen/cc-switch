@@ -16,17 +16,17 @@ use super::{
     server::ProxyState,
     usage_sink_bridge::provider_kind_from_provider,
 };
-use crate::proxy_core::{
+use crate::proxy_core_adapter::{
     decode_response_body, get_content_encoding, non_streaming_body_timeout_message,
     non_streaming_response_usage_record_from_body_with_request_id_fallback,
     passthrough_bytes_proxy_response, passthrough_stream_proxy_response,
     response_headers_log_summary, streaming_response_usage_record_with_optional_outbound_model,
-    AppKind, ProxyServices, ResponseBodyDecodeLogLevel, SseEventScanner,
+    ProxyCoreAppKind as AppKind, ProxyServices, ResponseBodyDecodeLogLevel, SseEventScanner,
     SsePassthroughEventKind, SseUsageAccumulator, StreamUsageEventFilter, StreamingTimeoutConfig,
     StreamingTimeoutPhase, UsageParserConfig, UsageRecord,
 };
 #[cfg(test)]
-use crate::proxy_core::{ProviderKind, TokenUsage};
+use crate::proxy_core_adapter::{ProviderKind, TokenUsage};
 use axum::http::header::HeaderMap;
 use axum::response::{IntoResponse, Response};
 use bytes::Bytes;
@@ -554,9 +554,9 @@ mod tests {
     use crate::proxy::failover_switch::FailoverSwitchManager;
     use crate::proxy::provider_router::ProviderRouter;
     use crate::proxy::providers::codex_chat_history::CodexChatHistoryStore;
-    use crate::proxy_core::GeminiShadowStore;
-    use crate::proxy_core::ProxyConfig;
-    use crate::proxy_core::ProxyRuntimeStatus;
+    use crate::proxy_core_adapter::{
+        decompress_body, strip_sse_field, GeminiShadowStore, ProxyConfig, ProxyRuntimeStatus,
+    };
     use crate::proxy_core_host::CcSwitchProxyServices;
     use rust_decimal::Decimal;
     use std::collections::HashMap;
@@ -573,9 +573,7 @@ mod tests {
         std::io::Write::write_all(&mut encoder, payload).unwrap();
         let compressed = encoder.finish().unwrap();
 
-        let decompressed = crate::proxy_core::decompress_body("deflate", &compressed)
-            .unwrap()
-            .unwrap();
+        let decompressed = decompress_body("deflate", &compressed).unwrap().unwrap();
         assert_eq!(decompressed, payload);
     }
 
@@ -588,9 +586,7 @@ mod tests {
         std::io::Write::write_all(&mut encoder, payload).unwrap();
         let compressed = encoder.finish().unwrap();
 
-        let decompressed = crate::proxy_core::decompress_body("deflate", &compressed)
-            .unwrap()
-            .unwrap();
+        let decompressed = decompress_body("deflate", &compressed).unwrap().unwrap();
         assert_eq!(decompressed, payload);
     }
 
@@ -598,29 +594,29 @@ mod tests {
     fn decompress_body_unknown_encoding_returns_none_to_keep_headers() {
         // 未知编码必须返回 None（而非伪装成"已解码"），否则 content-encoding
         // 头被剥掉，下游诊断会把压缩字节误报成明文
-        let result = crate::proxy_core::decompress_body("zstd", b"\x28\xb5\x2f\xfd").unwrap();
+        let result = decompress_body("zstd", b"\x28\xb5\x2f\xfd").unwrap();
         assert!(result.is_none());
     }
 
     #[test]
     fn test_strip_sse_field_accepts_optional_space() {
         assert_eq!(
-            crate::proxy_core::strip_sse_field("data: {\"ok\":true}", "data"),
+            strip_sse_field("data: {\"ok\":true}", "data"),
             Some("{\"ok\":true}")
         );
         assert_eq!(
-            crate::proxy_core::strip_sse_field("data:{\"ok\":true}", "data"),
+            strip_sse_field("data:{\"ok\":true}", "data"),
             Some("{\"ok\":true}")
         );
         assert_eq!(
-            crate::proxy_core::strip_sse_field("event: message_start", "event"),
+            strip_sse_field("event: message_start", "event"),
             Some("message_start")
         );
         assert_eq!(
-            crate::proxy_core::strip_sse_field("event:message_start", "event"),
+            strip_sse_field("event:message_start", "event"),
             Some("message_start")
         );
-        assert_eq!(crate::proxy_core::strip_sse_field("id:1", "data"), None);
+        assert_eq!(strip_sse_field("id:1", "data"), None);
     }
 
     fn build_state(db: Arc<Database>) -> ProxyState {
