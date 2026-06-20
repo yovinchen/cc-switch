@@ -985,6 +985,24 @@ impl Default for StreamCheckConfig {
     }
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct StreamCheckResult {
+    pub status: ChannelReachabilityStatus,
+    pub success: bool,
+    pub message: String,
+    pub response_time_ms: Option<u64>,
+    pub http_status: Option<u16>,
+    /// Preserved for the historical stream_check_logs schema. Reachability
+    /// probes do not exercise a model, so host probes usually set this to "".
+    pub model_used: String,
+    pub tested_at: i64,
+    pub retry_count: u32,
+    /// Fine-grained error category retained for response compatibility.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub error_category: Option<String>,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ChannelReachabilityInput {
     pub success: bool,
@@ -2315,7 +2333,8 @@ mod tests {
         ProxyChannelPatchRequest, ProxyChannelTestRequest, ProxyChannelWriteRequest, ProxyConfig,
         ProxyCoreEvent, ProxyCoreEventType, ProxyRuntimeStatus, ProxyServerInfo,
         ProxyStatusResponse, ProxyTakeoverStatus, RectifierConfig, RouteGroupListResponse,
-        RouteGroupSourceInput, RouteResolveResponse, StreamCheckConfig, plan_channel_test,
+        RouteGroupSourceInput, RouteResolveResponse, StreamCheckConfig, StreamCheckResult,
+        plan_channel_test,
     };
     use crate::domain::{
         AppKind, ChannelHealthPolicy, ChannelOverrides, ChannelSpec, ChannelStatus, InterfaceKind,
@@ -2727,6 +2746,30 @@ mod tests {
                 "timeoutSecs": 8,
                 "maxRetries": 1,
                 "degradedThresholdMs": 6000
+            })
+        );
+        assert_eq!(
+            serde_json::to_value(StreamCheckResult {
+                status: ChannelReachabilityStatus::Degraded,
+                success: true,
+                message: "Reachable".to_string(),
+                response_time_ms: Some(6100),
+                http_status: Some(403),
+                model_used: String::new(),
+                tested_at: 1_771_000_000,
+                retry_count: 1,
+                error_category: None,
+            })
+            .expect("serialize stream check result"),
+            json!({
+                "status": "degraded",
+                "success": true,
+                "message": "Reachable",
+                "responseTimeMs": 6100,
+                "httpStatus": 403,
+                "modelUsed": "",
+                "testedAt": 1771000000,
+                "retryCount": 1
             })
         );
 

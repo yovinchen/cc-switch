@@ -72,7 +72,7 @@ pub mod management {
         ProxyChannelKeyWriteRequest, ProxyChannelModelWriteRequest,
         ProxyChannelModelsReplaceRequest, ProxyChannelPatchRequest, ProxyChannelTestRequest,
         ProxyChannelWriteRequest, ProxyStatusResponse, RouteGroupListResponse, StreamCheckConfig,
-        RouteResolveRequest, RouteResolveResponse,
+        StreamCheckResult, RouteResolveRequest, RouteResolveResponse,
     };
 }
 

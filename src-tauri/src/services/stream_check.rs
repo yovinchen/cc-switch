@@ -18,7 +18,6 @@
 
 use reqwest::header::HeaderValue;
 use reqwest::Client;
-use serde::{Deserialize, Serialize};
 use std::time::Instant;
 
 use crate::app_config::AppType;
@@ -30,26 +29,8 @@ use crate::proxy_core_adapter::{
 };
 
 pub use crate::proxy_core_adapter::{
-    ChannelReachabilityStatus as HealthStatus, StreamCheckConfig,
+    ChannelReachabilityStatus as HealthStatus, StreamCheckConfig, StreamCheckResult,
 };
-
-/// 连通性检查结果
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct StreamCheckResult {
-    pub status: HealthStatus,
-    pub success: bool,
-    pub message: String,
-    pub response_time_ms: Option<u64>,
-    pub http_status: Option<u16>,
-    /// 保留字段以兼容 `stream_check_logs` 表结构；连通性检查恒为空串。
-    pub model_used: String,
-    pub tested_at: i64,
-    pub retry_count: u32,
-    /// 细粒度错误分类；连通性检查不再细分，恒为 None。
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub error_category: Option<String>,
-}
 
 /// 连通性检查服务
 pub struct StreamCheckService;

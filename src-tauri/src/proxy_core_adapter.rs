@@ -24,7 +24,6 @@ use crate::proxy_core::api::session::SessionIdResult;
 use crate::proxy_core::api::transforms::CodexChatErrorNormalization;
 use crate::proxy_core::api::transport::{UpstreamRequestTransportPolicy, UpstreamSendPolicy};
 use crate::services::usage_stats::is_placeholder_pricing_model;
-use crate::services::stream_check::StreamCheckResult;
 use bytes::Bytes;
 use futures::Stream;
 use http::{HeaderMap, StatusCode};
@@ -435,6 +434,7 @@ pub(crate) type ChannelRecord = crate::proxy_core::api::management::ChannelRecor
 pub type ChannelReachabilityStatus =
     crate::proxy_core::api::management::ChannelReachabilityStatus;
 pub type StreamCheckConfig = crate::proxy_core::api::management::StreamCheckConfig;
+pub type StreamCheckResult = crate::proxy_core::api::management::StreamCheckResult;
 pub(crate) type ChannelKeyRecord =
     crate::proxy_core::api::management::ChannelKeyRecord;
 pub(crate) type ChannelKeyRecordInput =
