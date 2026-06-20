@@ -7,6 +7,7 @@ use super::ports::{
     ChannelRouteCandidate, ChannelRouteRejected, ChannelRouteSource, RouteResolveRequest,
     RouteResolveResponse,
 };
+use serde_json::{Map, Value};
 use std::collections::HashSet;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -171,6 +172,41 @@ pub fn channel_provider_override_plan(
     }
 
     plan
+}
+
+pub fn apply_channel_provider_settings_overrides(
+    settings: &mut Value,
+    plan: &ChannelProviderOverridePlan,
+) {
+    for setting in &plan.settings {
+        match setting.target {
+            ChannelProviderSettingTarget::Env => {
+                set_env_value(settings, setting.key, &setting.value);
+            }
+            ChannelProviderSettingTarget::Root => {
+                set_object_value(settings, setting.key, &setting.value);
+            }
+        }
+    }
+}
+
+fn set_env_value(settings: &mut Value, key: &str, value: &str) {
+    let root = ensure_object(settings);
+    let env = root
+        .entry("env")
+        .or_insert_with(|| Value::Object(Map::new()));
+    ensure_object(env).insert(key.to_string(), Value::String(value.to_string()));
+}
+
+fn set_object_value(settings: &mut Value, key: &str, value: &str) {
+    ensure_object(settings).insert(key.to_string(), Value::String(value.to_string()));
+}
+
+fn ensure_object(value: &mut Value) -> &mut Map<String, Value> {
+    if !value.is_object() {
+        *value = Value::Object(Map::new());
+    }
+    value.as_object_mut().expect("value forced to object")
 }
 
 fn is_openai_compatible_app_name(name: &str) -> bool {
@@ -552,6 +588,49 @@ mod tests {
             ]
         );
         assert_eq!(plan.api_format.as_deref(), Some("openai_responses"));
+    }
+
+    #[test]
+    fn channel_provider_settings_overrides_update_env_and_preserve_existing_values() {
+        let candidate =
+            route_candidate_from_selection(&selection(), DEFAULT_ROUTE_GROUP, "proxy_core");
+        let plan = channel_provider_override_plan(&AppKind::Claude, &candidate);
+        let mut settings = serde_json::json!({
+            "env": {
+                "ANTHROPIC_API_KEY": "keep-key",
+                "ANTHROPIC_BASE_URL": "https://old.example.com/v1"
+            }
+        });
+
+        apply_channel_provider_settings_overrides(&mut settings, &plan);
+
+        assert_eq!(
+            settings.pointer("/env/ANTHROPIC_BASE_URL").and_then(Value::as_str),
+            Some("https://relay.example.com/v1")
+        );
+        assert_eq!(
+            settings.pointer("/env/ANTHROPIC_MODEL").and_then(Value::as_str),
+            Some("upstream-sonnet")
+        );
+        assert_eq!(
+            settings.pointer("/env/ANTHROPIC_API_KEY").and_then(Value::as_str),
+            Some("keep-key")
+        );
+    }
+
+    #[test]
+    fn channel_provider_settings_overrides_update_root_and_coerce_non_object() {
+        let candidate =
+            route_candidate_from_selection(&selection(), DEFAULT_ROUTE_GROUP, "proxy_core");
+        let plan = channel_provider_override_plan(&AppKind::Codex, &candidate);
+        let mut settings = Value::Null;
+
+        apply_channel_provider_settings_overrides(&mut settings, &plan);
+
+        assert_eq!(
+            settings.get("base_url").and_then(Value::as_str),
+            Some("https://relay.example.com/v1")
+        );
     }
 
     #[test]

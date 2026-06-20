@@ -6,12 +6,13 @@
 use crate::app_config::AppType;
 use crate::provider::{Provider, ProviderMeta};
 use crate::proxy_core::{
-    apply_channel_route_model_override, channel_provider_override_plan,
+    apply_channel_provider_settings_overrides, apply_channel_route_model_override,
+    channel_provider_override_plan,
     resolved_channel_attempt_from_candidate, route_candidate_from_selection, AppKind,
-    ChannelProviderSettingTarget, ChannelRouteCandidate, ResolvedChannelAttempt, RoutePlan,
+    ChannelRouteCandidate, ResolvedChannelAttempt, RoutePlan,
     DEFAULT_ROUTE_GROUP,
 };
-use serde_json::{Map, Value};
+use serde_json::Value;
 use std::collections::HashMap;
 
 #[derive(Debug, Clone)]
@@ -122,17 +123,7 @@ fn apply_channel_provider_overrides(
     candidate: &ChannelRouteCandidate,
 ) {
     let plan = channel_provider_override_plan(&AppKind::from(app_type), candidate);
-
-    for setting in plan.settings {
-        match setting.target {
-            ChannelProviderSettingTarget::Env => {
-                set_env_value(&mut provider.settings_config, setting.key, &setting.value);
-            }
-            ChannelProviderSettingTarget::Root => {
-                set_object_value(&mut provider.settings_config, setting.key, &setting.value);
-            }
-        }
-    }
+    apply_channel_provider_settings_overrides(&mut provider.settings_config, &plan);
 
     if let Some(api_format) = plan.api_format {
         provider
@@ -140,25 +131,6 @@ fn apply_channel_provider_overrides(
             .get_or_insert_with(ProviderMeta::default)
             .api_format = Some(api_format);
     }
-}
-
-fn set_env_value(settings: &mut Value, key: &str, value: &str) {
-    let root = ensure_object(settings);
-    let env = root
-        .entry("env")
-        .or_insert_with(|| Value::Object(Map::new()));
-    ensure_object(env).insert(key.to_string(), Value::String(value.to_string()));
-}
-
-fn set_object_value(settings: &mut Value, key: &str, value: &str) {
-    ensure_object(settings).insert(key.to_string(), Value::String(value.to_string()));
-}
-
-fn ensure_object(value: &mut Value) -> &mut Map<String, Value> {
-    if !value.is_object() {
-        *value = Value::Object(Map::new());
-    }
-    value.as_object_mut().expect("value forced to object")
 }
 
 #[cfg(test)]
