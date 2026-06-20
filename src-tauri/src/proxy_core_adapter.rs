@@ -310,8 +310,6 @@ pub(crate) type AttemptEventPayloadInput<'a> =
     crate::proxy_core::api::events::AttemptEventPayloadInput<'a>;
 pub(crate) type AttemptEventPhase =
     crate::proxy_core::api::events::AttemptEventPhase;
-pub(crate) type ChannelAttemptPlan =
-    crate::proxy_core::api::ports::ChannelAttemptPlan;
 pub(crate) type ChannelAttemptResult =
     crate::proxy_core::api::ports::ChannelAttemptResult;
 pub(crate) type ChannelQuery<'a> = crate::proxy_core::api::routing::ChannelQuery<'a>;
@@ -1257,31 +1255,10 @@ pub(crate) fn route_selection_for_forward_result(
     )
 }
 
-pub(crate) fn route_group_matches(groups: &[String], requested_group: &str) -> bool {
-    crate::proxy_core::api::routing::route_group_matches(groups, requested_group)
-}
-
-pub(crate) fn route_interfaces_compatible(
-    requested: &InterfaceKind,
-    channel: &InterfaceKind,
-) -> bool {
-    crate::proxy_core::api::routing::interfaces_compatible(requested, channel)
-}
-
-pub(crate) fn route_selection_from_parts(
-    provider: ProviderSpec,
-    channel: ChannelSpec,
-    model_route: Option<ModelRoute>,
-    inbound_interface: InterfaceKind,
-) -> RouteSelection {
-    let outbound_interface = channel.interface.clone();
-    RouteSelection {
-        provider,
-        channel,
-        model_route,
-        inbound_interface,
-        outbound_interface,
-    }
+pub(crate) fn route_plan_from_request(
+    request: RouteRequest<'_>,
+) -> ProxyCoreResult<RoutePlan> {
+    crate::proxy_core::api::routing::build_route_plan(request)
 }
 
 pub(crate) fn channel_route_candidate_from_selection(
@@ -3090,7 +3067,7 @@ mod tests {
                 review_reasons: Vec::new(),
             };
 
-            route_selection_from_parts(
+            crate::proxy_core::api::routing::route_selection_from_parts(
                 provider,
                 channel,
                 None,
@@ -3187,21 +3164,6 @@ mod tests {
             ManagementAuthError::MissingBearerToken.message(),
             "Missing management bearer token"
         );
-    }
-
-    #[test]
-    fn route_predicate_adapter_projects_group_and_interface_rules() {
-        assert!(route_group_matches(&[], "default"));
-        assert!(route_group_matches(&["paid".to_string()], "paid"));
-        assert!(!route_group_matches(&["paid".to_string()], "default"));
-        assert!(route_interfaces_compatible(
-            &InterfaceKind::OpenAiResponses,
-            &InterfaceKind::OpenAiResponses
-        ));
-        assert!(!route_interfaces_compatible(
-            &InterfaceKind::GeminiNative,
-            &InterfaceKind::OpenAiResponses
-        ));
     }
 
     #[test]

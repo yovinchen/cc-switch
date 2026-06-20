@@ -12,9 +12,9 @@ use crate::proxy::usage::UsageLogger;
 use crate::proxy::RequestForwarder;
 use crate::proxy_core_adapter::{
     app_proxy_config_raw, channel_matches_query, AppKind, AuthInfo, AuthProfileRef,
-    ChannelAttemptPlan, ChannelAttemptResult, ChannelQuery, ChannelSource, ChannelSpec,
+    ChannelAttemptResult, ChannelQuery, ChannelSource, ChannelSpec,
     channel_not_found_error, AuthProvider, ChannelHealthReset, ChannelHealthStore,
-    ChannelStatus, CopilotOptimizerConfigSpec, CurrentRouteTarget, ForwardPipeline,
+    CopilotOptimizerConfigSpec, CurrentRouteTarget, ForwardPipeline,
     GeminiShadowStore, ModelCatalog, ModelCatalogProvider, OptimizerConfigSpec,
     ProviderSource, ProviderSpec, ProxyAppConfig, ProxyConfigSource, ProxyCoreError,
     ProxyCoreEvent, ProxyCoreResponse, ProxyCoreResult, ProxyEventSink, ProxyGlobalConfig,
@@ -365,91 +365,7 @@ impl RouteResolver for CcSwitchRouteResolver {
         &'a self,
         request: RouteRequest<'a>,
     ) -> BoxFuture<'a, ProxyCoreResult<RoutePlan>> {
-        Box::pin(async move {
-            let mut selections = Vec::new();
-            let requested_group = request
-                .request
-                .route_group
-                .as_deref()
-                .unwrap_or(DEFAULT_ROUTE_GROUP);
-            let requested_model = request.request.requested_model.as_deref();
-
-            for channel in request.channels {
-                if channel.status != ChannelStatus::Enabled {
-                    continue;
-                }
-                if !crate::proxy_core_adapter::route_group_matches(
-                    &channel.groups,
-                    requested_group,
-                ) {
-                    continue;
-                }
-                if !crate::proxy_core_adapter::route_interfaces_compatible(
-                    &request.request.inbound_interface,
-                    &channel.interface,
-                ) {
-                    continue;
-                }
-
-                let model_route = match requested_model {
-                    Some(model) => channel
-                        .models
-                        .iter()
-                        .find(|route| route.public_model == model || route.upstream_model == model)
-                        .cloned(),
-                    None => channel.models.first().cloned(),
-                };
-                if requested_model.is_some() && model_route.is_none() {
-                    continue;
-                }
-
-                let Some(provider) = request
-                    .providers
-                    .iter()
-                    .find(|provider| provider.id == channel.provider_id)
-                    .cloned()
-                else {
-                    continue;
-                };
-
-                selections.push(crate::proxy_core_adapter::route_selection_from_parts(
-                    provider,
-                    channel.clone(),
-                    model_route,
-                    request.request.inbound_interface.clone(),
-                ));
-            }
-
-            selections.sort_by(|left, right| {
-                right
-                    .channel
-                    .priority
-                    .cmp(&left.channel.priority)
-                    .then_with(|| right.channel.weight.cmp(&left.channel.weight))
-                    .then_with(|| left.channel.name.cmp(&right.channel.name))
-                    .then_with(|| left.channel.id.cmp(&right.channel.id))
-            });
-
-            let selection = selections
-                .first()
-                .cloned()
-                .ok_or_else(|| ProxyCoreError::Unavailable("no routable channel".to_string()))?;
-            let attempts = selections
-                .iter()
-                .map(|selection| ChannelAttemptPlan {
-                    channel_id: selection.channel.id.clone(),
-                    provider_id: selection.channel.provider_id.clone(),
-                    priority: selection.channel.priority,
-                    weight: selection.channel.weight,
-                })
-                .collect();
-
-            Ok(RoutePlan {
-                selection,
-                selections,
-                attempts,
-            })
-        })
+        Box::pin(async move { crate::proxy_core_adapter::route_plan_from_request(request) })
     }
 }
 
@@ -892,7 +808,7 @@ mod tests {
     use super::*;
     use crate::provider::Provider;
     use crate::proxy_core_adapter::{
-        ProviderKind, ProxyBody, ProxyCoreChannelOverrides as ChannelOverrides,
+        ChannelStatus, ProviderKind, ProxyBody, ProxyCoreChannelOverrides as ChannelOverrides,
         ProxyCoreInterfaceKind as InterfaceKind,
         ProxyCoreModelCapabilities as ModelCapabilities, ProxyCoreModelRoute as ModelRoute,
         ProxyCoreUpstreamEndpoint as UpstreamEndpoint, ProxyCoreEventType, ProxyEngine,

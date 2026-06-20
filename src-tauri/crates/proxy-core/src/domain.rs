@@ -538,6 +538,22 @@ pub struct RoutePlan {
     pub attempts: Vec<ChannelAttemptPlan>,
 }
 
+pub fn route_selection_from_parts(
+    provider: ProviderSpec,
+    channel: ChannelSpec,
+    model_route: Option<ModelRoute>,
+    inbound_interface: InterfaceKind,
+) -> RouteSelection {
+    let outbound_interface = channel.interface.clone();
+    RouteSelection {
+        provider,
+        channel,
+        model_route,
+        inbound_interface,
+        outbound_interface,
+    }
+}
+
 pub fn route_plan_provider_ids(plan: &RoutePlan) -> Vec<String> {
     let selections = if plan.selections.is_empty() {
         std::slice::from_ref(&plan.selection)
@@ -707,6 +723,86 @@ pub struct RouteRequest<'a> {
     pub providers: &'a [ProviderSpec],
     pub channels: &'a [ChannelSpec],
     pub policy: Option<&'a RoutePolicy>,
+}
+
+pub fn build_route_plan(request: RouteRequest<'_>) -> ProxyCoreResult<RoutePlan> {
+    let mut selections = Vec::new();
+    let requested_group = request
+        .request
+        .route_group
+        .as_deref()
+        .unwrap_or(DEFAULT_ROUTE_GROUP);
+    let requested_model = request.request.requested_model.as_deref();
+
+    for channel in request.channels {
+        if channel.status != ChannelStatus::Enabled {
+            continue;
+        }
+        if !route_group_matches(&channel.groups, requested_group) {
+            continue;
+        }
+        if !interfaces_compatible(&request.request.inbound_interface, &channel.interface) {
+            continue;
+        }
+
+        let model_route = match requested_model {
+            Some(model) => channel
+                .models
+                .iter()
+                .find(|route| route.public_model == model || route.upstream_model == model)
+                .cloned(),
+            None => channel.models.first().cloned(),
+        };
+        if requested_model.is_some() && model_route.is_none() {
+            continue;
+        }
+
+        let Some(provider) = request
+            .providers
+            .iter()
+            .find(|provider| provider.id == channel.provider_id)
+            .cloned()
+        else {
+            continue;
+        };
+
+        selections.push(route_selection_from_parts(
+            provider,
+            channel.clone(),
+            model_route,
+            request.request.inbound_interface.clone(),
+        ));
+    }
+
+    selections.sort_by(|left, right| {
+        right
+            .channel
+            .priority
+            .cmp(&left.channel.priority)
+            .then_with(|| right.channel.weight.cmp(&left.channel.weight))
+            .then_with(|| left.channel.name.cmp(&right.channel.name))
+            .then_with(|| left.channel.id.cmp(&right.channel.id))
+    });
+
+    let selection = selections
+        .first()
+        .cloned()
+        .ok_or_else(|| ProxyCoreError::Unavailable("no routable channel".to_string()))?;
+    let attempts = selections
+        .iter()
+        .map(|selection| ChannelAttemptPlan {
+            channel_id: selection.channel.id.clone(),
+            provider_id: selection.channel.provider_id.clone(),
+            priority: selection.channel.priority,
+            weight: selection.channel.weight,
+        })
+        .collect();
+
+    Ok(RoutePlan {
+        selection,
+        selections,
+        attempts,
+    })
 }
 
 #[derive(Debug)]
@@ -1016,6 +1112,110 @@ mod tests {
             selections,
             attempts: Vec::new(),
         }
+    }
+
+    #[test]
+    fn build_route_plan_filters_channels_and_orders_attempts() {
+        fn channel(
+            id: &str,
+            provider_id: &str,
+            status: ChannelStatus,
+            priority: i64,
+            weight: u32,
+        ) -> ChannelSpec {
+            let mut channel = test_channel(status);
+            channel.id = id.to_string();
+            channel.name = id.to_string();
+            channel.provider_id = provider_id.to_string();
+            channel.priority = priority;
+            channel.weight = weight;
+            channel
+        }
+
+        let providers = vec![
+            test_provider("provider-a"),
+            test_provider("provider-b"),
+            test_provider("provider-c"),
+        ];
+        let mut wrong_group = channel(
+            "channel-wrong-group",
+            "provider-a",
+            ChannelStatus::Enabled,
+            500,
+            1,
+        );
+        wrong_group.groups = vec!["paid".to_string()];
+        let mut wrong_interface = channel(
+            "channel-wrong-interface",
+            "provider-a",
+            ChannelStatus::Enabled,
+            500,
+            1,
+        );
+        wrong_interface.interface = InterfaceKind::Embeddings;
+        let mut wrong_model = channel(
+            "channel-wrong-model",
+            "provider-a",
+            ChannelStatus::Enabled,
+            500,
+            1,
+        );
+        wrong_model.models[0].public_model = "other-public".to_string();
+        wrong_model.models[0].upstream_model = "other-upstream".to_string();
+        let channels = vec![
+            channel("channel-low", "provider-a", ChannelStatus::Enabled, 10, 10),
+            channel("channel-high", "provider-b", ChannelStatus::Enabled, 100, 10),
+            channel("channel-heavier", "provider-c", ChannelStatus::Enabled, 100, 20),
+            channel(
+                "channel-disabled",
+                "provider-a",
+                ChannelStatus::ManuallyDisabled,
+                500,
+                1,
+            ),
+            channel(
+                "channel-missing-provider",
+                "provider-missing",
+                ChannelStatus::Enabled,
+                500,
+                1,
+            ),
+            wrong_group,
+            wrong_interface,
+            wrong_model,
+        ];
+        let mut proxy_request = ProxyRequest::new(
+            AppKind::Claude,
+            Method::POST,
+            "/v1/messages",
+            InterfaceKind::AnthropicMessages,
+            ProxyBody::Empty,
+        );
+        proxy_request.requested_model = Some("sonnet-public".to_string());
+
+        let plan = build_route_plan(RouteRequest {
+            request: &proxy_request,
+            providers: &providers,
+            channels: &channels,
+            policy: None,
+        })
+        .expect("route plan");
+
+        assert_eq!(plan.selection.channel.id, "channel-heavier");
+        assert_eq!(
+            plan.selections
+                .iter()
+                .map(|selection| selection.channel.id.as_str())
+                .collect::<Vec<_>>(),
+            vec!["channel-heavier", "channel-high", "channel-low"]
+        );
+        assert_eq!(
+            plan.attempts
+                .iter()
+                .map(|attempt| attempt.channel_id.as_str())
+                .collect::<Vec<_>>(),
+            vec!["channel-heavier", "channel-high", "channel-low"]
+        );
     }
 
     #[test]

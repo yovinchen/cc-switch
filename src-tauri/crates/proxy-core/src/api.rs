@@ -1,9 +1,7 @@
 //! Stable integration surface for the extracted proxy module.
 //!
-//! The crate root still exposes the historical flat exports for compatibility.
-//! New host adapters and external integrations should prefer these grouped
-//! modules so the public contract can stabilize without depending on the
-//! internal file layout.
+//! Host adapters and external integrations should depend on these grouped
+//! modules rather than the internal file layout.
 
 pub mod auth {
     pub use crate::claude_auth::*;
@@ -105,7 +103,8 @@ pub mod routing {
     pub use crate::domain::{
         ChannelQuery, ChannelSpec, ChannelStatus, InterfaceKind, ResolvedChannelAttempt, RoutePlan,
         RoutePolicy, RouteRequest, RouteSelection, DEFAULT_ROUTE_GROUP, interfaces_compatible,
-        route_group_matches, route_plan_provider_ids, select_route_for_forward_result,
+        build_route_plan, route_group_matches, route_plan_provider_ids, route_selection_from_parts,
+        select_route_for_forward_result,
     };
     pub use crate::legacy_projection::*;
     pub use crate::ports::ChannelRouteCandidate;
