@@ -538,6 +538,52 @@ pub struct RoutePlan {
     pub attempts: Vec<ChannelAttemptPlan>,
 }
 
+pub fn route_plan_provider_ids(plan: &RoutePlan) -> Vec<String> {
+    let selections = if plan.selections.is_empty() {
+        std::slice::from_ref(&plan.selection)
+    } else {
+        plan.selections.as_slice()
+    };
+
+    let mut provider_ids = Vec::new();
+    for selection in selections {
+        let provider_id = &selection.channel.provider_id;
+        if !provider_ids.iter().any(|id| id == provider_id) {
+            provider_ids.push(provider_id.clone());
+        }
+    }
+    provider_ids
+}
+
+pub fn select_route_for_forward_result(
+    plan: &RoutePlan,
+    selected_channel_id: Option<&str>,
+    provider_id: &str,
+) -> RouteSelection {
+    let selections = if plan.selections.is_empty() {
+        std::slice::from_ref(&plan.selection)
+    } else {
+        plan.selections.as_slice()
+    };
+
+    if let Some(channel_id) = selected_channel_id {
+        if let Some(selection) = selections
+            .iter()
+            .find(|selection| selection.channel.id == channel_id)
+        {
+            return selection.clone();
+        }
+    }
+
+    selections
+        .iter()
+        .find(|selection| {
+            selection.provider.id == provider_id || selection.channel.provider_id == provider_id
+        })
+        .cloned()
+        .unwrap_or_else(|| plan.selection.clone())
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ChannelAttemptPlan {
@@ -904,6 +950,103 @@ mod tests {
             needs_review: false,
             review_reasons: Vec::new(),
         }
+    }
+
+    fn test_provider(id: &str) -> ProviderSpec {
+        ProviderSpec {
+            id: id.to_string(),
+            name: format!("{id} Provider"),
+            kind: ProviderKind::Claude,
+            account_ref: None,
+            metadata: ProviderMetadata::default(),
+        }
+    }
+
+    fn test_route_selection(provider_id: &str, channel_id: &str) -> RouteSelection {
+        let mut channel = test_channel(ChannelStatus::Enabled);
+        channel.id = channel_id.to_string();
+        channel.provider_id = provider_id.to_string();
+        RouteSelection {
+            provider: test_provider(provider_id),
+            channel,
+            model_route: None,
+            inbound_interface: InterfaceKind::AnthropicMessages,
+            outbound_interface: InterfaceKind::AnthropicMessages,
+        }
+    }
+
+    fn test_route_plan(selections: Vec<RouteSelection>) -> RoutePlan {
+        RoutePlan {
+            selection: selections
+                .first()
+                .cloned()
+                .unwrap_or_else(|| test_route_selection("provider-a", "channel-a")),
+            selections,
+            attempts: Vec::new(),
+        }
+    }
+
+    #[test]
+    fn route_plan_provider_ids_uses_primary_selection_when_no_attempt_list_exists() {
+        let plan = RoutePlan {
+            selection: test_route_selection("provider-a", "channel-a"),
+            selections: Vec::new(),
+            attempts: Vec::new(),
+        };
+
+        assert_eq!(route_plan_provider_ids(&plan), vec!["provider-a"]);
+    }
+
+    #[test]
+    fn route_plan_provider_ids_dedupes_in_selection_order() {
+        let plan = test_route_plan(vec![
+            test_route_selection("provider-a", "channel-a"),
+            test_route_selection("provider-b", "channel-b"),
+            test_route_selection("provider-a", "channel-c"),
+        ]);
+
+        assert_eq!(
+            route_plan_provider_ids(&plan),
+            vec!["provider-a", "provider-b"]
+        );
+    }
+
+    #[test]
+    fn select_route_for_forward_result_prefers_selected_channel_id() {
+        let plan = test_route_plan(vec![
+            test_route_selection("provider-a", "channel-a"),
+            test_route_selection("provider-a", "channel-b"),
+        ]);
+
+        let selection = select_route_for_forward_result(&plan, Some("channel-b"), "provider-a");
+
+        assert_eq!(selection.channel.id, "channel-b");
+    }
+
+    #[test]
+    fn select_route_for_forward_result_falls_back_to_provider_id() {
+        let plan = test_route_plan(vec![
+            test_route_selection("provider-a", "channel-a"),
+            test_route_selection("provider-b", "channel-b"),
+        ]);
+
+        let selection =
+            select_route_for_forward_result(&plan, Some("missing-channel"), "provider-b");
+
+        assert_eq!(selection.channel.id, "channel-b");
+    }
+
+    #[test]
+    fn select_route_for_forward_result_falls_back_to_primary_selection() {
+        let plan = test_route_plan(vec![
+            test_route_selection("provider-a", "channel-a"),
+            test_route_selection("provider-b", "channel-b"),
+        ]);
+
+        let selection =
+            select_route_for_forward_result(&plan, Some("missing-channel"), "provider-c");
+
+        assert_eq!(selection.channel.id, "channel-a");
     }
 
     #[test]

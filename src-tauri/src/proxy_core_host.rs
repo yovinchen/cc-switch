@@ -11,18 +11,18 @@ use crate::proxy::route_attempt::forward_attempts_from_route_plan;
 use crate::proxy::usage::{RequestLog, UsageLogger};
 use crate::proxy::RequestForwarder;
 use crate::proxy_core::{
-    app_proxy_config_raw, channel_matches_query, interfaces_compatible, resolve_usage_record_pricing_models,
-    route_group_matches, token_usage_from_usage_record, usage_record_request_id_with_fallback, AppKind,
-    AuthInfo, AuthProfileRef, ChannelAttemptPlan, ChannelAttemptResult, ChannelQuery,
-    ChannelSource, ChannelSpec, ChannelStatus, CopilotOptimizerConfigSpec, CostCalculator,
-    CurrentRouteTarget, ForwardPipeline,
+    app_proxy_config_raw, channel_matches_query, interfaces_compatible,
+    resolve_usage_record_pricing_models, route_group_matches, route_plan_provider_ids,
+    select_route_for_forward_result, token_usage_from_usage_record,
+    usage_record_request_id_with_fallback, AppKind, AuthInfo, AuthProfileRef, ChannelAttemptPlan,
+    ChannelAttemptResult, ChannelQuery, ChannelSource, ChannelSpec, ChannelStatus,
+    CopilotOptimizerConfigSpec, CostCalculator, CurrentRouteTarget, ForwardPipeline,
     GeminiShadowStore, ModelCatalog, OptimizerConfigSpec, ProviderSource, ProviderSpec,
-    ProxyAppConfig, ProxyConfigSource, ProxyCoreError, ProxyCoreEvent,
-    ProxyCoreResponse, ProxyCoreResult, ProxyEventSink, ProxyGlobalConfig,
-    ProxyRequest, ProxyResponseBody, ProxyResult, ProxyRuntimeConfig, ProxyRuntimeStatus,
-    ProxyServices, RectifierConfigSpec, RoutePlan, RoutePolicy, RoutePolicySource, RouteRequest,
-    RouteResolver, RouteSelection, UsageRecord, UsageSink, CLAUDE_API_FORMAT_METADATA_KEY,
-    DEFAULT_ROUTE_GROUP,
+    ProxyAppConfig, ProxyConfigSource, ProxyCoreError, ProxyCoreEvent, ProxyCoreResponse,
+    ProxyCoreResult, ProxyEventSink, ProxyGlobalConfig, ProxyRequest, ProxyResponseBody,
+    ProxyResult, ProxyRuntimeConfig, ProxyRuntimeStatus, ProxyServices, RectifierConfigSpec,
+    RoutePlan, RoutePolicy, RoutePolicySource, RouteRequest, RouteResolver, RouteSelection,
+    UsageRecord, UsageSink, CLAUDE_API_FORMAT_METADATA_KEY, DEFAULT_ROUTE_GROUP,
 };
 use crate::proxy_core_adapter::extract_proxy_session_id;
 use crate::proxy_core_adapter::{ToProxyCoreChannelSpec, ToProxyCoreProviderSpec};
@@ -765,22 +765,11 @@ fn host_providers_for_plan(
     let providers = db
         .get_all_providers(app_type.as_str())
         .map_err(|error| app_error("load host providers", error))?;
-    let mut provider_ids = Vec::new();
-    let selections = if plan.selections.is_empty() {
-        std::slice::from_ref(&plan.selection)
-    } else {
-        plan.selections.as_slice()
-    };
-    for selection in selections {
-        let provider_id = selection.channel.provider_id.as_str();
-        if !provider_ids.contains(&provider_id) {
-            provider_ids.push(provider_id);
-        }
-    }
+    let provider_ids = route_plan_provider_ids(plan);
 
     let matching: Vec<_> = provider_ids
         .into_iter()
-        .filter_map(|provider_id| providers.get(provider_id).cloned())
+        .filter_map(|provider_id| providers.get(&provider_id).cloned())
         .collect();
     if matching.is_empty() {
         return Err(ProxyCoreError::Unavailable(
@@ -823,29 +812,14 @@ fn selected_route_for_forward_result(
     result: &crate::proxy::ForwardResult,
     plan: &RoutePlan,
 ) -> RouteSelection {
-    let selections = if plan.selections.is_empty() {
-        std::slice::from_ref(&plan.selection)
-    } else {
-        plan.selections.as_slice()
-    };
-
-    if let Some(channel) = result.selected_channel.as_ref() {
-        if let Some(selection) = selections
-            .iter()
-            .find(|selection| selection.channel.id == channel.channel_id)
-        {
-            return selection.clone();
-        }
-    }
-
-    selections
-        .iter()
-        .find(|selection| {
-            selection.provider.id == result.provider.id
-                || selection.channel.provider_id == result.provider.id
-        })
-        .cloned()
-        .unwrap_or_else(|| plan.selection.clone())
+    select_route_for_forward_result(
+        plan,
+        result
+            .selected_channel
+            .as_ref()
+            .map(|channel| channel.channel_id.as_str()),
+        &result.provider.id,
+    )
 }
 
 fn proxy_response_to_core_response<G>(
