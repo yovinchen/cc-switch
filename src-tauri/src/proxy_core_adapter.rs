@@ -129,6 +129,16 @@ pub(crate) type RectifierConfig = crate::proxy_core::RectifierConfig;
 pub(crate) type OptimizerConfig = crate::proxy_core::OptimizerConfig;
 pub(crate) type CopilotOptimizerConfig = crate::proxy_core::CopilotOptimizerConfig;
 
+pub(crate) type ProxyConfig = crate::proxy_core::ProxyConfig;
+pub(crate) type ProxyRuntimeStatus = crate::proxy_core::ProxyRuntimeStatus;
+pub(crate) type ProxyServerInfo = crate::proxy_core::ProxyServerInfo;
+pub(crate) type ProxyTakeoverStatus = crate::proxy_core::ProxyTakeoverStatus;
+pub(crate) type GlobalProxyConfig = crate::proxy_core::GlobalProxyConfig;
+pub(crate) type AppProxyConfig = crate::proxy_core::AppProxyConfig;
+pub(crate) type ProviderHealth = crate::proxy_core::ProviderHealth;
+pub(crate) type CircuitBreakerConfig = crate::proxy_core::CircuitBreakerConfig;
+pub(crate) type CircuitBreakerStats = crate::proxy_core::CircuitBreakerStats;
+
 impl From<&AppType> for AppKind {
     fn from(value: &AppType) -> Self {
         match value {
@@ -982,6 +992,50 @@ mod tests {
         assert_eq!(
             CopilotOptimizerConfig::default().warmup_model,
             "gpt-5-mini"
+        );
+    }
+
+    #[test]
+    fn proxy_config_adapter_preserves_management_contracts() {
+        let proxy_config = serde_json::to_value(ProxyConfig::default()).expect("proxy config");
+        assert_eq!(
+            proxy_config.get("listen_address").and_then(Value::as_str),
+            Some("127.0.0.1")
+        );
+        assert_eq!(
+            proxy_config
+                .get("streaming_first_byte_timeout")
+                .and_then(Value::as_u64),
+            Some(60)
+        );
+
+        let app_config = AppProxyConfig {
+            app_type: "claude".to_string(),
+            enabled: true,
+            auto_failover_enabled: true,
+            max_retries: 3,
+            streaming_first_byte_timeout: 60,
+            streaming_idle_timeout: 120,
+            non_streaming_timeout: 600,
+            circuit_failure_threshold: 4,
+            circuit_success_threshold: 2,
+            circuit_timeout_seconds: 60,
+            circuit_error_rate_threshold: 0.6,
+            circuit_min_requests: 10,
+        };
+
+        assert_eq!(CircuitBreakerConfig::from(&app_config), CircuitBreakerConfig::default());
+        assert_eq!(
+            serde_json::to_value(GlobalProxyConfig {
+                proxy_enabled: true,
+                listen_address: "127.0.0.1".to_string(),
+                listen_port: 15721,
+                enable_logging: true,
+            })
+            .expect("global proxy config")
+            .get("proxyEnabled")
+            .and_then(Value::as_bool),
+            Some(true)
         );
     }
 

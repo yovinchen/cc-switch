@@ -3,7 +3,7 @@
 //! 提供前端调用的 API 接口
 
 use crate::error::AppError;
-use crate::proxy_core::{
+use crate::proxy_core_adapter::{
     AppProxyConfig, CircuitBreakerConfig, CircuitBreakerStats, GlobalProxyConfig, ProviderHealth,
     ProxyConfig, ProxyRuntimeStatus, ProxyServerInfo, ProxyTakeoverStatus,
 };

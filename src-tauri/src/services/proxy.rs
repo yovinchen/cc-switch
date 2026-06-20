@@ -8,7 +8,9 @@ use crate::database::Database;
 use crate::provider::Provider;
 use crate::proxy::server::ProxyServer;
 use crate::proxy::switch_lock::SwitchLockManager;
-use crate::proxy_core::{ProxyConfig, ProxyRuntimeStatus, ProxyServerInfo, ProxyTakeoverStatus};
+use crate::proxy_core_adapter::{
+    CircuitBreakerConfig, ProxyConfig, ProxyRuntimeStatus, ProxyServerInfo, ProxyTakeoverStatus,
+};
 use crate::services::provider::{
     build_effective_settings_with_common_config, write_live_with_common_config,
 };
@@ -2640,7 +2642,7 @@ impl ProxyService {
     /// 如果代理服务器正在运行，将新配置应用到所有已创建的熔断器实例
     pub async fn update_circuit_breaker_configs(
         &self,
-        config: crate::proxy_core::CircuitBreakerConfig,
+        config: CircuitBreakerConfig,
     ) -> Result<(), String> {
         if let Some(server) = self.server.read().await.as_ref() {
             server.update_circuit_breaker_configs(config).await;
@@ -2655,7 +2657,7 @@ impl ProxyService {
     pub async fn update_circuit_breaker_config_for_app(
         &self,
         app_type: &str,
-        config: crate::proxy_core::CircuitBreakerConfig,
+        config: CircuitBreakerConfig,
     ) -> Result<(), String> {
         if let Some(server) = self.server.read().await.as_ref() {
             server
