@@ -75,13 +75,13 @@ where
 
             match context.stream.as_mut().next().await {
                 Some(Ok(bytes)) => {
-                    crate::append_utf8_safe(
+                    crate::sse::append_utf8_safe(
                         &mut context.buffer,
                         &mut context.utf8_remainder,
                         &bytes,
                     );
 
-                    while let Some(block) = crate::take_sse_block(&mut context.buffer) {
+                    while let Some(block) = crate::sse::take_sse_block(&mut context.buffer) {
                         if block.trim().is_empty() {
                             continue;
                         }
@@ -90,9 +90,9 @@ where
                         let mut data_parts: Vec<String> = Vec::new();
 
                         for line in block.lines() {
-                            if let Some(event) = crate::strip_sse_field(line, "event") {
+                            if let Some(event) = crate::sse::strip_sse_field(line, "event") {
                                 event_type = Some(event.trim().to_string());
-                            } else if let Some(data) = crate::strip_sse_field(line, "data") {
+                            } else if let Some(data) = crate::sse::strip_sse_field(line, "data") {
                                 data_parts.push(data.to_string());
                             }
                         }

@@ -417,7 +417,7 @@ fn interfaces_compatible(requested: &str, channel: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{
+    use crate::domain::{
         AppKind, ChannelOverrides, ChannelSpec, ChannelStatus, InterfaceKind, ModelCapabilities,
         ModelRoute, ProviderKind, ProviderMetadata, ProviderSpec, RouteSelection, UpstreamEndpoint,
     };

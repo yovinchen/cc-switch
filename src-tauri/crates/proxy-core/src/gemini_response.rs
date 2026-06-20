@@ -1,10 +1,11 @@
 //! Gemini Native non-streaming response helpers.
 
 use crate::{
-    AnthropicToolSchemaHints, GeminiShadowStore, GeminiToolCallMeta,
-    build_anthropic_usage_from_gemini, ensure_gemini_function_call_ids,
-    extract_gemini_function_call_meta, map_gemini_finish_reason_to_anthropic,
-    rectify_gemini_tool_call_parts,
+    gemini_shadow::{GeminiShadowStore, GeminiToolCallMeta},
+    gemini_stream::{ensure_gemini_function_call_ids, extract_gemini_function_call_meta},
+    gemini_tool_args::{rectify_gemini_tool_call_parts, AnthropicToolSchemaHints},
+    response_transform::map_gemini_finish_reason_to_anthropic,
+    usage::build_anthropic_usage_from_gemini,
 };
 use serde_json::{Value, json};
 
@@ -181,11 +182,11 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::is_synthesized_gemini_tool_call_id;
+    use crate::gemini_stream::is_synthesized_gemini_tool_call_id;
 
     fn next_synth(counter: &mut usize) -> String {
         *counter += 1;
-        crate::synthesize_gemini_tool_call_id(counter.to_string())
+        crate::gemini_stream::synthesize_gemini_tool_call_id(counter.to_string())
     }
 
     #[test]

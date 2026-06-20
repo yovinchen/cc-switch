@@ -6,7 +6,7 @@
 //! - Codex API (非流式和流式)
 //! - Gemini API (非流式和流式)
 
-use crate::{AppKind, ProviderKind, UsageRecord, UsageTokens};
+use crate::domain::{AppKind, ProviderKind, UsageRecord, UsageTokens};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 
@@ -2406,8 +2406,8 @@ mod tests {
             &response,
             TransformedResponseUsageFormat::Claude,
             "provider-a",
-            Some(crate::ProviderKind::GitHubCopilot),
-            crate::AppKind::ClaudeDesktop,
+            Some(crate::domain::ProviderKind::GitHubCopilot),
+            crate::domain::AppKind::ClaudeDesktop,
             "request-model",
             Some("outbound-model"),
             123,
@@ -2419,9 +2419,9 @@ mod tests {
 
         assert_eq!(record.request_id.as_deref(), Some("session:msg_1"));
         assert_eq!(record.message_id.as_deref(), Some("msg_1"));
-        assert_eq!(record.app, crate::AppKind::ClaudeDesktop);
+        assert_eq!(record.app, crate::domain::AppKind::ClaudeDesktop);
         assert_eq!(record.provider_id, "provider-a");
-        assert_eq!(record.provider_kind, Some(crate::ProviderKind::GitHubCopilot));
+        assert_eq!(record.provider_kind, Some(crate::domain::ProviderKind::GitHubCopilot));
         assert_eq!(record.request_model, "request-model");
         assert_eq!(record.outbound_model, "outbound-model");
         assert_eq!(record.response_model.as_deref(), Some("claude-response-model"));
@@ -2450,7 +2450,7 @@ mod tests {
             TransformedResponseUsageFormat::CodexAuto,
             "provider-a",
             None,
-            crate::AppKind::Codex,
+            crate::domain::AppKind::Codex,
             "request-model",
             None,
             123,
@@ -2488,8 +2488,8 @@ mod tests {
             &events,
             TransformedResponseUsageFormat::Claude,
             "provider-a",
-            Some(crate::ProviderKind::OpenRouter),
-            crate::AppKind::ClaudeDesktop,
+            Some(crate::domain::ProviderKind::OpenRouter),
+            crate::domain::AppKind::ClaudeDesktop,
             "request-model",
             Some("outbound-model"),
             123,
@@ -2503,8 +2503,8 @@ mod tests {
         assert_eq!(record.request_id.as_deref(), Some("session:msg_stream_1"));
         assert_eq!(record.message_id.as_deref(), Some("msg_stream_1"));
         assert_eq!(record.provider_id, "provider-a");
-        assert_eq!(record.provider_kind, Some(crate::ProviderKind::OpenRouter));
-        assert_eq!(record.app, crate::AppKind::ClaudeDesktop);
+        assert_eq!(record.provider_kind, Some(crate::domain::ProviderKind::OpenRouter));
+        assert_eq!(record.app, crate::domain::AppKind::ClaudeDesktop);
         assert_eq!(record.request_model, "request-model");
         assert_eq!(record.outbound_model, "outbound-model");
         assert_eq!(record.response_model.as_deref(), Some("claude-stream-model"));
@@ -2522,7 +2522,7 @@ mod tests {
             TransformedResponseUsageFormat::Claude,
             "provider-a",
             None,
-            crate::AppKind::Claude,
+            crate::domain::AppKind::Claude,
             "request-model",
             Some("outbound-model"),
             123,
@@ -2554,7 +2554,7 @@ mod tests {
             TransformedResponseUsageFormat::CodexAuto,
             "provider-a",
             None,
-            crate::AppKind::Codex,
+            crate::domain::AppKind::Codex,
             "request-model",
             Some("outbound-model"),
             123,
@@ -2601,7 +2601,7 @@ mod tests {
             TransformedResponseUsageFormat::CodexAuto,
             "provider-a",
             None,
-            crate::AppKind::Codex,
+            crate::domain::AppKind::Codex,
             "request-model",
             Some("outbound-model"),
             123,
@@ -2613,7 +2613,7 @@ mod tests {
         .expect("streaming usage record");
 
         assert_eq!(record.request_id.as_deref(), Some("request-1"));
-        assert_eq!(record.app, crate::AppKind::Codex);
+        assert_eq!(record.app, crate::domain::AppKind::Codex);
         assert_eq!(record.request_model, "request-model");
         assert_eq!(record.outbound_model, "outbound-model");
         assert_eq!(record.response_model.as_deref(), Some("o3"));
@@ -2631,8 +2631,8 @@ mod tests {
             parsed_stream_usage,
             extracted_stream_model,
             "provider-a",
-            Some(crate::ProviderKind::OpenRouter),
-            crate::AppKind::Claude,
+            Some(crate::domain::ProviderKind::OpenRouter),
+            crate::domain::AppKind::Claude,
             "request-model",
             "outbound-model",
             "fallback-model",
@@ -2647,8 +2647,8 @@ mod tests {
         assert_eq!(output.record.request_id.as_deref(), Some("session:msg_1"));
         assert_eq!(output.record.message_id.as_deref(), Some("msg_1"));
         assert_eq!(output.record.provider_id, "provider-a");
-        assert_eq!(output.record.provider_kind, Some(crate::ProviderKind::OpenRouter));
-        assert_eq!(output.record.app, crate::AppKind::Claude);
+        assert_eq!(output.record.provider_kind, Some(crate::domain::ProviderKind::OpenRouter));
+        assert_eq!(output.record.app, crate::domain::AppKind::Claude);
         assert_eq!(output.record.request_model, "request-model");
         assert_eq!(output.record.outbound_model, "outbound-model");
         assert_eq!(
@@ -2671,7 +2671,7 @@ mod tests {
             extracted_stream_model,
             "provider-a",
             None,
-            crate::AppKind::Claude,
+            crate::domain::AppKind::Claude,
             "request-model",
             Some("upstream-model"),
             123,
@@ -2694,7 +2694,7 @@ mod tests {
             extracted_stream_model,
             "provider-a",
             None,
-            crate::AppKind::Claude,
+            crate::domain::AppKind::Claude,
             "request-model",
             None,
             123,
@@ -2719,7 +2719,7 @@ mod tests {
             extracted_stream_model,
             "provider-a",
             None,
-            crate::AppKind::Codex,
+            crate::domain::AppKind::Codex,
             "request-model",
             "outbound-model",
             "fallback-model",
@@ -2749,7 +2749,7 @@ mod tests {
             extracted_stream_model,
             "provider-a",
             None,
-            crate::AppKind::Codex,
+            crate::domain::AppKind::Codex,
             "request-model",
             "outbound-model",
             "fallback-model",
@@ -2771,7 +2771,7 @@ mod tests {
             extracted_stream_model,
             "provider-a",
             None,
-            crate::AppKind::Codex,
+            crate::domain::AppKind::Codex,
             "request-model",
             "outbound-model",
             "fallback-model",
@@ -2794,8 +2794,8 @@ mod tests {
             })),
             parsed_response_usage,
             "provider-a",
-            Some(crate::ProviderKind::Claude),
-            crate::AppKind::ClaudeDesktop,
+            Some(crate::domain::ProviderKind::Claude),
+            crate::domain::AppKind::ClaudeDesktop,
             "request-model",
             Some("outbound-model"),
             123,
@@ -2808,7 +2808,7 @@ mod tests {
         assert!(output.body_was_json);
         assert_eq!(output.record.request_id.as_deref(), Some("session:msg_2"));
         assert_eq!(output.record.message_id.as_deref(), Some("msg_2"));
-        assert_eq!(output.record.app, crate::AppKind::ClaudeDesktop);
+        assert_eq!(output.record.app, crate::domain::AppKind::ClaudeDesktop);
         assert_eq!(output.record.provider_id, "provider-a");
         assert_eq!(output.record.request_model, "request-model");
         assert_eq!(output.record.outbound_model, "outbound-model");
@@ -2826,7 +2826,7 @@ mod tests {
             missing_response_usage,
             "provider-a",
             None,
-            crate::AppKind::Codex,
+            crate::domain::AppKind::Codex,
             "request-model",
             Some("outbound-model"),
             123,
@@ -2851,7 +2851,7 @@ mod tests {
             missing_response_usage,
             "provider-a",
             None,
-            crate::AppKind::Gemini,
+            crate::domain::AppKind::Gemini,
             "request-model",
             None,
             123,
@@ -2877,8 +2877,8 @@ mod tests {
             br#"{"model":"body-model","usage_model":"usage-model"}"#,
             parsed_response_usage,
             "provider-a",
-            Some(crate::ProviderKind::Claude),
-            crate::AppKind::Claude,
+            Some(crate::domain::ProviderKind::Claude),
+            crate::domain::AppKind::Claude,
             "request-model",
             Some("outbound-model"),
             123,
@@ -2901,7 +2901,7 @@ mod tests {
             parsed_response_usage,
             "provider-a",
             None,
-            crate::AppKind::Codex,
+            crate::domain::AppKind::Codex,
             "request-model",
             None,
             123,
@@ -2926,7 +2926,7 @@ mod tests {
             parsed_response_usage,
             "provider-a",
             None,
-            crate::AppKind::Codex,
+            crate::domain::AppKind::Codex,
             "request-model",
             None,
             123,
@@ -2950,7 +2950,7 @@ mod tests {
             missing_response_usage,
             "provider-a",
             None,
-            crate::AppKind::Codex,
+            crate::domain::AppKind::Codex,
             "request-model",
             None,
             123,
@@ -2973,7 +2973,7 @@ mod tests {
             parsed_response_usage,
             "provider-a",
             None,
-            crate::AppKind::Codex,
+            crate::domain::AppKind::Codex,
             "request-model",
             None,
             123,
@@ -2990,7 +2990,7 @@ mod tests {
         let record = UsageRecord {
             request_id: None,
             message_id: Some("msg-1".to_string()),
-            app: crate::AppKind::Claude,
+            app: crate::domain::AppKind::Claude,
             provider_id: "provider-1".to_string(),
             provider_kind: None,
             channel_id: None,
@@ -3055,7 +3055,7 @@ mod tests {
         UsageRecord {
             request_id: request_id.map(str::to_string),
             message_id: message_id.map(str::to_string),
-            app: crate::AppKind::Codex,
+            app: crate::domain::AppKind::Codex,
             provider_id: "provider-1".to_string(),
             provider_kind: None,
             channel_id: None,
@@ -3124,8 +3124,8 @@ mod tests {
 
         let record = success_usage_record_with_request_id_fallback(
             "provider-a",
-            Some(crate::ProviderKind::GitHubCopilot),
-            crate::AppKind::Claude,
+            Some(crate::domain::ProviderKind::GitHubCopilot),
+            crate::domain::AppKind::Claude,
             "response-model",
             "request-model",
             "upstream-model",
@@ -3140,8 +3140,8 @@ mod tests {
 
         assert_eq!(record.request_id.as_deref(), Some("session:msg-1"));
         assert_eq!(record.provider_id, "provider-a");
-        assert_eq!(record.provider_kind, Some(crate::ProviderKind::GitHubCopilot));
-        assert_eq!(record.app, crate::AppKind::Claude);
+        assert_eq!(record.provider_kind, Some(crate::domain::ProviderKind::GitHubCopilot));
+        assert_eq!(record.app, crate::domain::AppKind::Claude);
         assert_eq!(record.message_id.as_deref(), Some("msg-1"));
         assert_eq!(record.request_model, "request-model");
         assert_eq!(record.outbound_model, "upstream-model");
@@ -3159,8 +3159,8 @@ mod tests {
     fn test_error_usage_record_builder_uses_zero_tokens_and_fallback_id() {
         let record = error_usage_record_with_request_id_fallback(
             "provider-a",
-            Some(crate::ProviderKind::CodexOAuth),
-            crate::AppKind::Codex,
+            Some(crate::domain::ProviderKind::CodexOAuth),
+            crate::domain::AppKind::Codex,
             "client-model",
             Some("upstream-model"),
             502,
@@ -3173,8 +3173,8 @@ mod tests {
 
         assert_eq!(record.request_id.as_deref(), Some("error-id"));
         assert_eq!(record.provider_id, "provider-a");
-        assert_eq!(record.provider_kind, Some(crate::ProviderKind::CodexOAuth));
-        assert_eq!(record.app, crate::AppKind::Codex);
+        assert_eq!(record.provider_kind, Some(crate::domain::ProviderKind::CodexOAuth));
+        assert_eq!(record.app, crate::domain::AppKind::Codex);
         assert_eq!(record.request_model, "client-model");
         assert_eq!(record.outbound_model, "upstream-model");
         assert_eq!(record.response_model, None);
@@ -3194,7 +3194,7 @@ mod tests {
         let mut record = UsageRecord {
             request_id: None,
             message_id: None,
-            app: crate::AppKind::Codex,
+            app: crate::domain::AppKind::Codex,
             provider_id: "provider-1".to_string(),
             provider_kind: None,
             channel_id: None,

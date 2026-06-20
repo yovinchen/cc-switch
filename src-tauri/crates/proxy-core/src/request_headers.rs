@@ -1,4 +1,4 @@
-use crate::{ProxyCoreError, ProxyCoreResult};
+use crate::error::{ProxyCoreError, ProxyCoreResult};
 
 const REQUEST_HEADERS_STRIPPED_BEFORE_UPSTREAM: &[&str] = &[
     "content-length",
@@ -523,7 +523,7 @@ mod tests {
         UpstreamAuthHeadersInput, UpstreamRequestHeadersInput, CLAUDE_CODE_BETA,
         DEFAULT_ANTHROPIC_VERSION,
     };
-    use crate::ProxyCoreError;
+    use crate::error::ProxyCoreError;
     use http::{header, HeaderMap, HeaderName, HeaderValue};
 
     #[test]

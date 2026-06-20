@@ -1,6 +1,7 @@
 use crate::{
-    json_proxy_response, proxy_error_http_status_code, ProxyCoreResponse, ProxyCoreResult,
-    ProxyErrorStatusKind,
+    domain::ProxyCoreResponse,
+    error::{proxy_error_http_status_code, ProxyCoreResult, ProxyErrorStatusKind},
+    response_build::json_proxy_response,
 };
 use http::StatusCode;
 use serde_json::{json, Value};
@@ -397,7 +398,7 @@ mod tests {
         assert_eq!(response.status, StatusCode::UNAUTHORIZED);
 
         let body = match response.body {
-            crate::ProxyResponseBody::Bytes(body) => body,
+            crate::domain::ProxyResponseBody::Bytes(body) => body,
             other => panic!("expected bytes body, got {other:?}"),
         };
         let value: Value = serde_json::from_slice(&body).expect("json body");

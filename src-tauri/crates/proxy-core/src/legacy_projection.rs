@@ -315,7 +315,7 @@ mod tests {
         legacy_channel_priority, push_model_route, LegacyChannelProjectionInput,
         LegacyModelRouteInput, LegacyModelRouteProjection, LegacyProviderProjectionInput,
     };
-    use crate::{AppKind, InterfaceKind};
+    use crate::domain::{AppKind, InterfaceKind};
 
     #[test]
     fn infer_claude_interface_from_api_format_aliases() {

@@ -1,7 +1,10 @@
 use crate::{
-    prepare_rebuilt_json_response_headers, strip_hop_by_hop_response_headers,
-    transformed_sse_response_headers, ProxyCoreError, ProxyCoreResponse, ProxyCoreResult,
-    ProxyResponseBody,
+    domain::{ProxyCoreResponse, ProxyResponseBody},
+    error::{ProxyCoreError, ProxyCoreResult},
+    response_headers::{
+        prepare_rebuilt_json_response_headers, strip_hop_by_hop_response_headers,
+        transformed_sse_response_headers,
+    },
 };
 use bytes::Bytes;
 use futures::Stream;

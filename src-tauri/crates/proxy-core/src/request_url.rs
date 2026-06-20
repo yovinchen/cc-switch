@@ -1,4 +1,7 @@
-use crate::{gemini_url::normalize_gemini_model_id, AppKind, CODEX_OAUTH_CLAUDE_BASE_URL};
+use crate::{
+    domain::{AppKind, CODEX_OAUTH_CLAUDE_BASE_URL},
+    gemini_url::normalize_gemini_model_id,
+};
 use serde_json::Value;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -408,7 +411,7 @@ mod tests {
         strip_endpoint_prefix, AppKind,
         ClaudeTransformEndpointRewriteInput, claude_transform_endpoint_rewrite_input_from_body,
     };
-    use crate::CODEX_OAUTH_CLAUDE_BASE_URL;
+    use crate::domain::CODEX_OAUTH_CLAUDE_BASE_URL;
     use serde_json::json;
 
     #[test]

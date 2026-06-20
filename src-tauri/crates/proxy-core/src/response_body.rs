@@ -1,7 +1,7 @@
 use http::HeaderMap;
 use std::io::Read;
 
-use crate::strip_entity_headers_for_rebuilt_body;
+use crate::response_headers::strip_entity_headers_for_rebuilt_body;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ResponseBodyDecodeStatus {

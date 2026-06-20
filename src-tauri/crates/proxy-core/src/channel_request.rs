@@ -116,7 +116,7 @@ mod tests {
         normalize_required_channel_string, validate_proxy_channel_model_write_request_fields,
         validate_proxy_channel_write_request_fields,
     };
-    use crate::{ProxyChannelModelWriteRequest, ProxyChannelWriteRequest};
+    use crate::ports::{ProxyChannelModelWriteRequest, ProxyChannelWriteRequest};
     use serde_json::json;
 
     #[test]

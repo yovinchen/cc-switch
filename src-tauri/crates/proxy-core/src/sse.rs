@@ -1,4 +1,7 @@
-use crate::{response_transform::extract_reasoning_field_text, ProxyCoreError, ProxyCoreResult};
+use crate::{
+    error::{ProxyCoreError, ProxyCoreResult},
+    response_transform::extract_reasoning_field_text,
+};
 use serde_json::{json, Value};
 use std::{collections::BTreeMap, time::Instant};
 

@@ -2062,7 +2062,7 @@ mod tests {
         ProxyStatusResponse, ProxyTakeoverStatus, RectifierConfig, RouteGroupListResponse,
         RouteGroupSourceInput, RouteResolveResponse, plan_channel_test,
     };
-    use crate::{
+    use crate::domain::{
         AppKind, ChannelHealthPolicy, ChannelOverrides, ChannelSpec, ChannelStatus, InterfaceKind,
         ModelCapabilities, ModelRoute, ProviderKind, ProviderMetadata, RetryPolicy,
         UpstreamEndpoint,
@@ -2804,7 +2804,7 @@ mod tests {
         let message = Some("messages.1.content.0: Invalid `signature` in `thinking` block");
 
         let config = RectifierConfig::default();
-        assert!(crate::should_rectify_thinking_signature(
+        assert!(crate::thinking_rectifier::should_rectify_thinking_signature(
             message,
             &config.thinking_signature_core_config()
         ));
@@ -2813,7 +2813,7 @@ mod tests {
             enabled: false,
             ..RectifierConfig::default()
         };
-        assert!(!crate::should_rectify_thinking_signature(
+        assert!(!crate::thinking_rectifier::should_rectify_thinking_signature(
             message,
             &config.thinking_signature_core_config()
         ));
@@ -2822,7 +2822,7 @@ mod tests {
             request_thinking_signature: false,
             ..RectifierConfig::default()
         };
-        assert!(!crate::should_rectify_thinking_signature(
+        assert!(!crate::thinking_rectifier::should_rectify_thinking_signature(
             message,
             &config.thinking_signature_core_config()
         ));
@@ -2833,7 +2833,7 @@ mod tests {
         let message = Some("thinking.budget_tokens: Input should be greater than or equal to 1024");
 
         let config = RectifierConfig::default();
-        assert!(crate::should_rectify_thinking_budget(
+        assert!(crate::thinking_budget_rectifier::should_rectify_thinking_budget(
             message,
             &config.thinking_budget_core_config()
         ));
@@ -2842,7 +2842,7 @@ mod tests {
             enabled: false,
             ..RectifierConfig::default()
         };
-        assert!(!crate::should_rectify_thinking_budget(
+        assert!(!crate::thinking_budget_rectifier::should_rectify_thinking_budget(
             message,
             &config.thinking_budget_core_config()
         ));
@@ -2851,7 +2851,7 @@ mod tests {
             request_thinking_budget: false,
             ..RectifierConfig::default()
         };
-        assert!(!crate::should_rectify_thinking_budget(
+        assert!(!crate::thinking_budget_rectifier::should_rectify_thinking_budget(
             message,
             &config.thinking_budget_core_config()
         ));

@@ -14,7 +14,7 @@ use crate::{
     usage::{
         build_anthropic_usage_from_openai_chat, build_anthropic_usage_from_openai_responses,
     },
-    UpstreamSseAggregationKind,
+    response_parse::UpstreamSseAggregationKind,
 };
 use bytes::Bytes;
 use futures::{stream as futures_stream, Stream, StreamExt};
@@ -2657,13 +2657,13 @@ where
 
             match context.stream.as_mut().next().await {
                 Some(Ok(bytes)) => {
-                    crate::append_utf8_safe(
+                    crate::sse::append_utf8_safe(
                         &mut context.buffer,
                         &mut context.utf8_remainder,
                         &bytes,
                     );
 
-                    while let Some(block) = crate::take_sse_block(&mut context.buffer) {
+                    while let Some(block) = crate::sse::take_sse_block(&mut context.buffer) {
                         if block.trim().is_empty() {
                             continue;
                         }
@@ -2671,10 +2671,10 @@ where
                         let mut event_name: Option<String> = None;
                         let mut data_parts: Vec<String> = Vec::new();
                         for line in block.lines() {
-                            if let Some(event) = crate::strip_sse_field(line, "event") {
+                            if let Some(event) = crate::sse::strip_sse_field(line, "event") {
                                 event_name = Some(event.trim().to_string());
                             }
-                            if let Some(data) = crate::strip_sse_field(line, "data") {
+                            if let Some(data) = crate::sse::strip_sse_field(line, "data") {
                                 data_parts.push(data.to_string());
                             }
                         }
@@ -6187,7 +6187,7 @@ mod tests {
         });
 
         let result = openai_chat_to_anthropic_message(&input).unwrap();
-        let usage = crate::TokenUsage::from_claude_response(&result)
+        let usage = crate::usage::TokenUsage::from_claude_response(&result)
             .expect("converted Anthropic response should parse usage");
 
         assert_eq!(result["id"], "chatcmpl-claude-compatible");
@@ -6200,7 +6200,7 @@ mod tests {
         assert_eq!(
             format!(
                 "{}{}",
-                crate::SESSION_REQUEST_ID_PREFIX,
+                crate::usage::SESSION_REQUEST_ID_PREFIX,
                 usage.message_id.as_deref().unwrap()
             ),
             "session:chatcmpl-claude-compatible"

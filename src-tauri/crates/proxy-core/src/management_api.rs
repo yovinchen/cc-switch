@@ -773,12 +773,15 @@ mod tests {
         RouteResolveManagementRequest, channel_not_found_message, normalize_channel_id_path,
         validate_management_app_type, validate_route_resolve_app_type,
     };
-    use crate::{
-        AppChannelListQuery, AppKind, AppModelListQuery, AppSummaryInput, ChannelHealthPolicy,
-        ChannelListQuery, ChannelOverrides, ChannelRouteSource, ChannelSpec, ChannelStatus,
-        ChannelTestInput, GroupListQuery, InterfaceKind, ProviderKind, ProviderMetadata,
-        ProviderSpec, ProxyChannelWriteRequest, RetryPolicy, RouteResolveResponse,
+    use crate::domain::{
+        AppKind, ChannelHealthPolicy, ChannelOverrides, ChannelSpec, ChannelStatus,
+        InterfaceKind, ProviderKind, ProviderMetadata, ProviderSpec, RetryPolicy,
         UpstreamEndpoint,
+    };
+    use crate::ports::{
+        AppChannelListQuery, AppModelListQuery, AppSummaryInput, ChannelListQuery,
+        ChannelRouteSource, ChannelTestInput, GroupListQuery, ProxyChannelWriteRequest,
+        RouteResolveResponse,
     };
     use serde_json::json;
 
@@ -1058,7 +1061,7 @@ mod tests {
     fn channel_path_request_wraps_health_reset_response() {
         let request = ChannelPathRequest::from_path("channel-a").expect("request");
         let response = request.health_reset_response_from_source(ChannelHealthResetSource::new(
-            crate::ChannelHealthResetResponse {
+            crate::ports::ChannelHealthResetResponse {
                 channel_id: "channel-a".to_string(),
                 app_type: "claude".to_string(),
                 reset: true,
@@ -1099,7 +1102,7 @@ mod tests {
 
     #[test]
     fn route_resolve_management_request_validates_body_app_type() {
-        let request = RouteResolveManagementRequest::from_body(crate::RouteResolveRequest {
+        let request = RouteResolveManagementRequest::from_body(crate::ports::RouteResolveRequest {
             app_type: "codex".to_string(),
             requested_model: None,
             interface_kind: None,
@@ -1109,7 +1112,7 @@ mod tests {
 
         assert_eq!(request.request.app_type, "codex");
 
-        let error = RouteResolveManagementRequest::from_body(crate::RouteResolveRequest {
+        let error = RouteResolveManagementRequest::from_body(crate::ports::RouteResolveRequest {
             app_type: String::new(),
             requested_model: None,
             interface_kind: None,
@@ -1125,7 +1128,7 @@ mod tests {
 
     #[test]
     fn route_resolve_management_request_wraps_resolution_response() {
-        let request = RouteResolveManagementRequest::from_body(crate::RouteResolveRequest {
+        let request = RouteResolveManagementRequest::from_body(crate::ports::RouteResolveRequest {
             app_type: "claude".to_string(),
             requested_model: Some("sonnet".to_string()),
             interface_kind: None,
@@ -1232,7 +1235,7 @@ mod tests {
         .expect("query");
         let request = AppChannelManagementRequest::from_parts("claude", query).expect("request");
 
-        let response: crate::AppChannelResponse<&str, _, _> =
+        let response: crate::ports::AppChannelResponse<&str, _, _> =
             request.response_from_route_resolution(RouteResolveResponse {
                 app_type: "claude".to_string(),
                 requested_model: Some("sonnet".to_string()),

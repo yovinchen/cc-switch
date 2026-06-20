@@ -1,12 +1,18 @@
 //! Gemini Native request helpers.
 
 use crate::{
-    GeminiAssistantTurn, GeminiShadowStore, build_gemini_function_declaration,
-    build_gemini_shadow_thought_signature_map, build_gemini_shadow_tool_name_map,
-    find_matching_gemini_shadow_turn, gemini_shadow_replay_parts,
-    is_synthesized_gemini_tool_call_id, merge_gemini_assistant_tool_use_names,
-    merge_gemini_function_call_names_from_parts, merge_gemini_shadow_thought_signatures,
-    merge_gemini_shadow_tool_names, normalize_gemini_tool_result_response,
+    gemini_schema::build_gemini_function_declaration,
+    gemini_shadow::{
+        find_matching_gemini_shadow_turn, merge_gemini_assistant_tool_use_names,
+        GeminiAssistantTurn, GeminiShadowStore,
+    },
+    gemini_stream::{
+        build_gemini_shadow_thought_signature_map, build_gemini_shadow_tool_name_map,
+        gemini_shadow_replay_parts, is_synthesized_gemini_tool_call_id,
+        merge_gemini_function_call_names_from_parts, merge_gemini_shadow_thought_signatures,
+        merge_gemini_shadow_tool_names,
+    },
+    gemini_tool_args::normalize_gemini_tool_result_response,
 };
 use serde_json::{Map, Value, json};
 use std::collections::{HashMap, HashSet};
@@ -470,7 +476,7 @@ pub fn anthropic_message_content_to_gemini_parts(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::GeminiToolCallMeta;
+    use crate::gemini_shadow::GeminiToolCallMeta;
     use serde_json::json;
     use std::collections::HashMap;
 
@@ -702,7 +708,7 @@ mod tests {
 
     #[test]
     fn strips_synthesized_ids_from_gemini_request_parts() {
-        let synth_id = crate::synthesize_gemini_tool_call_id("test-id");
+        let synth_id = crate::gemini_stream::synthesize_gemini_tool_call_id("test-id");
         let content = json!([
             { "type": "tool_use", "id": synth_id, "name": "lookup", "input": {} },
             { "type": "tool_result", "tool_use_id": synth_id, "content": "ok" }

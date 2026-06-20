@@ -153,19 +153,19 @@ where
 
             match context.stream.as_mut().next().await {
                 Some(Ok(bytes)) => {
-                    crate::append_utf8_safe(
+                    crate::sse::append_utf8_safe(
                         &mut context.buffer,
                         &mut context.utf8_remainder,
                         &bytes,
                     );
 
-                    while let Some(block) = crate::take_sse_block(&mut context.buffer) {
+                    while let Some(block) = crate::sse::take_sse_block(&mut context.buffer) {
                         if block.trim().is_empty() {
                             continue;
                         }
 
                         for line in block.lines() {
-                            if let Some(data) = crate::strip_sse_field(line, "data") {
+                            if let Some(data) = crate::sse::strip_sse_field(line, "data") {
                                 context.pending_events.extend(context.state.handle_data(data));
                             }
                         }

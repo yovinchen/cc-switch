@@ -1,7 +1,10 @@
 use crate::{
-    aggregate_fallback_diagnostics_message, body_looks_like_sse, chat_sse_to_response_value,
-    responses_sse_to_response_value, upstream_body_parse_error_message, ProxyCoreError,
-    ProxyCoreResult,
+    error::{ProxyCoreError, ProxyCoreResult},
+    response_diagnostics::{
+        aggregate_fallback_diagnostics_message, body_looks_like_sse,
+        upstream_body_parse_error_message,
+    },
+    sse::{chat_sse_to_response_value, responses_sse_to_response_value},
 };
 use http::HeaderMap;
 use serde_json::Value;
