@@ -261,6 +261,17 @@ pub(crate) fn route_selection_for_forward_result(
     crate::proxy_core::select_route_for_forward_result(plan, selected_channel_id, provider_id)
 }
 
+pub(crate) fn route_group_matches(groups: &[String], requested_group: &str) -> bool {
+    crate::proxy_core::route_group_matches(groups, requested_group)
+}
+
+pub(crate) fn route_interfaces_compatible(
+    requested: &InterfaceKind,
+    channel: &InterfaceKind,
+) -> bool {
+    crate::proxy_core::interfaces_compatible(requested, channel)
+}
+
 pub(crate) struct UsageRequestLogProjection {
     pub(crate) log: RequestLog,
     pub(crate) missing_pricing_model: Option<String>,
@@ -733,6 +744,21 @@ mod tests {
                 .id,
             "ch-b"
         );
+    }
+
+    #[test]
+    fn route_predicate_adapter_projects_group_and_interface_rules() {
+        assert!(route_group_matches(&[], "default"));
+        assert!(route_group_matches(&["paid".to_string()], "paid"));
+        assert!(!route_group_matches(&["paid".to_string()], "default"));
+        assert!(route_interfaces_compatible(
+            &InterfaceKind::OpenAiResponses,
+            &InterfaceKind::OpenAiResponses
+        ));
+        assert!(!route_interfaces_compatible(
+            &InterfaceKind::GeminiNative,
+            &InterfaceKind::OpenAiResponses
+        ));
     }
 
     #[test]

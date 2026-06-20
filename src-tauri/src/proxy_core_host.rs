@@ -11,9 +11,9 @@ use crate::proxy::route_attempt::forward_attempts_from_route_plan;
 use crate::proxy::usage::UsageLogger;
 use crate::proxy::RequestForwarder;
 use crate::proxy_core::{
-    app_proxy_config_raw, channel_matches_query, interfaces_compatible,
-    route_group_matches, AppKind, AuthInfo, AuthProfileRef, ChannelAttemptPlan,
-    ChannelAttemptResult, ChannelQuery, ChannelSource, ChannelSpec, ChannelStatus,
+    app_proxy_config_raw, channel_matches_query, AppKind, AuthInfo, AuthProfileRef,
+    ChannelAttemptPlan, ChannelAttemptResult, ChannelQuery, ChannelSource, ChannelSpec,
+    ChannelStatus,
     CopilotOptimizerConfigSpec, CurrentRouteTarget, ForwardPipeline, GeminiShadowStore,
     ModelCatalog, OptimizerConfigSpec, ProviderSource, ProviderSpec, ProxyAppConfig,
     ProxyConfigSource, ProxyCoreError, ProxyCoreEvent, ProxyCoreResponse, ProxyCoreResult,
@@ -376,10 +376,16 @@ impl RouteResolver for CcSwitchRouteResolver {
                 if channel.status != ChannelStatus::Enabled {
                     continue;
                 }
-                if !route_group_matches(&channel.groups, requested_group) {
+                if !crate::proxy_core_adapter::route_group_matches(
+                    &channel.groups,
+                    requested_group,
+                ) {
                     continue;
                 }
-                if !interfaces_compatible(&request.request.inbound_interface, &channel.interface) {
+                if !crate::proxy_core_adapter::route_interfaces_compatible(
+                    &request.request.inbound_interface,
+                    &channel.interface,
+                ) {
                     continue;
                 }
 
