@@ -1904,26 +1904,20 @@ pub(crate) fn usage_record_to_request_log(
     }
 }
 
-const CLAUDE_ONE_M_MARKER_FOR_CLIENT: &str = "[1M]";
-
 pub(crate) fn claude_takeover_client_model_for_upstream(
     takeover_model: &str,
     supports_one_m: bool,
     upstream_model: &str,
 ) -> String {
-    let mut client_model = takeover_model.to_string();
-    if supports_one_m
-        && crate::proxy_core::api::model_catalog::has_one_m_suffix_for_upstream(upstream_model)
-    {
-        client_model.push_str(CLAUDE_ONE_M_MARKER_FOR_CLIENT);
-    }
-    client_model
+    crate::proxy_core::api::model_catalog::claude_takeover_client_model_for_upstream(
+        takeover_model,
+        supports_one_m,
+        upstream_model,
+    )
 }
 
 pub(crate) fn claude_takeover_default_display_name(upstream_model: &str) -> String {
-    crate::proxy_core::api::model_catalog::strip_one_m_suffix_for_upstream(upstream_model)
-        .trim()
-        .to_string()
+    crate::proxy_core::api::model_catalog::claude_takeover_default_display_name(upstream_model)
 }
 
 #[allow(dead_code)]

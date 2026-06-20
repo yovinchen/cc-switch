@@ -1,5 +1,6 @@
 use serde_json::Value;
 
+const CLAUDE_ONE_M_MARKER_FOR_CLIENT: &str = "[1M]";
 const ONE_M_CONTEXT_MARKER: &str = "[1m]";
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -153,6 +154,24 @@ pub fn strip_one_m_suffix_for_upstream_from_body(mut body: Value) -> Value {
         body["model"] = Value::String(stripped.to_string());
     }
     body
+}
+
+pub fn claude_takeover_client_model_for_upstream(
+    takeover_model: &str,
+    supports_one_m: bool,
+    upstream_model: &str,
+) -> String {
+    let mut client_model = takeover_model.to_string();
+    if supports_one_m && has_one_m_suffix_for_upstream(upstream_model) {
+        client_model.push_str(CLAUDE_ONE_M_MARKER_FOR_CLIENT);
+    }
+    client_model
+}
+
+pub fn claude_takeover_default_display_name(upstream_model: &str) -> String {
+    strip_one_m_suffix_for_upstream(upstream_model)
+        .trim()
+        .to_string()
 }
 
 #[cfg(test)]
@@ -340,5 +359,29 @@ mod tests {
         let result = strip_one_m_suffix_for_upstream_from_body(body);
 
         assert_eq!(result["model"], "deepseek-v4-pro");
+    }
+
+    #[test]
+    fn claude_takeover_projects_client_model_and_display_name() {
+        assert_eq!(
+            claude_takeover_client_model_for_upstream(
+                "claude-sonnet-4-6",
+                true,
+                "deepseek-v4-pro[1M]"
+            ),
+            "claude-sonnet-4-6[1M]"
+        );
+        assert_eq!(
+            claude_takeover_client_model_for_upstream(
+                "claude-haiku-4-5",
+                false,
+                "deepseek-v4-flash[1M]"
+            ),
+            "claude-haiku-4-5"
+        );
+        assert_eq!(
+            claude_takeover_default_display_name("deepseek-v4-ultra [1m]  "),
+            "deepseek-v4-ultra"
+        );
     }
 }
