@@ -1701,6 +1701,42 @@ pub enum ProxyCoreEventType {
     Custom(String),
 }
 
+impl ProxyCoreEventType {
+    pub fn event_name(&self) -> String {
+        match self {
+            Self::RouteSelected => "route_selected".to_string(),
+            Self::AttemptStarted => "attempt_started".to_string(),
+            Self::AttemptSucceeded => "attempt_succeeded".to_string(),
+            Self::AttemptFailed => "attempt_failed".to_string(),
+            Self::BreakerOpened => "breaker_opened".to_string(),
+            Self::BreakerClosed => "breaker_closed".to_string(),
+            Self::UsageRecorded => "usage_recorded".to_string(),
+            Self::Custom(value) => value.clone(),
+        }
+    }
+}
+
+impl ProxyCoreEvent {
+    pub fn into_event_payload(self) -> Value {
+        let mut payload = if self.payload.is_object() {
+            self.payload
+        } else {
+            serde_json::json!({ "data": self.payload })
+        };
+
+        if let Value::Object(object) = &mut payload {
+            if let Some(request_id) = self.request_id {
+                object.insert("requestId".to_string(), Value::String(request_id));
+            }
+            if let Some(channel_id) = self.channel_id {
+                object.insert("channelId".to_string(), Value::String(channel_id));
+            }
+        }
+
+        payload
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::{
@@ -1715,8 +1751,9 @@ mod tests {
         HealthCheckResponse, ModelCatalog, OptimizerConfig, ProviderHealth, ProviderListResponse,
         ProviderSpec, ProviderSummaryInput, ProxyChannelModelWriteRequest,
         ProxyChannelModelsReplaceRequest, ProxyChannelPatchRequest, ProxyChannelWriteRequest,
-        ProxyConfig, ProxyRuntimeStatus, ProxyServerInfo, ProxyStatusResponse, ProxyTakeoverStatus,
-        RectifierConfig, RouteGroupListResponse, RouteGroupSourceInput, RouteResolveResponse,
+        ProxyConfig, ProxyCoreEvent, ProxyCoreEventType, ProxyRuntimeStatus, ProxyServerInfo,
+        ProxyStatusResponse, ProxyTakeoverStatus, RectifierConfig, RouteGroupListResponse,
+        RouteGroupSourceInput, RouteResolveResponse,
     };
     use crate::{
         AppKind, ChannelHealthPolicy, ChannelOverrides, ChannelSpec, ChannelStatus, InterfaceKind,
@@ -2164,6 +2201,37 @@ mod tests {
         assert!(raw_without_provider
             .get("currentProviderId")
             .is_some_and(Value::is_null));
+    }
+
+    #[test]
+    fn proxy_core_event_builds_external_name_and_payload() {
+        assert_eq!(ProxyCoreEventType::RouteSelected.event_name(), "route_selected");
+        assert_eq!(
+            ProxyCoreEventType::Custom("custom.event".to_string()).event_name(),
+            "custom.event"
+        );
+
+        let payload = ProxyCoreEvent {
+            event_type: ProxyCoreEventType::RouteSelected,
+            request_id: Some("req-1".to_string()),
+            channel_id: Some("ch-1".to_string()),
+            payload: json!({"attemptCount": 2}),
+        }
+        .into_event_payload();
+
+        assert_eq!(payload["requestId"], "req-1");
+        assert_eq!(payload["channelId"], "ch-1");
+        assert_eq!(payload["attemptCount"], 2);
+
+        let payload = ProxyCoreEvent {
+            event_type: ProxyCoreEventType::UsageRecorded,
+            request_id: None,
+            channel_id: None,
+            payload: json!("done"),
+        }
+        .into_event_payload();
+
+        assert_eq!(payload, json!({"data": "done"}));
     }
 
     #[test]

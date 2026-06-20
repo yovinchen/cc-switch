@@ -17,7 +17,7 @@ use crate::proxy_core::{
     ChannelStatus, CopilotOptimizerConfigSpec, CostCalculator, CurrentRouteTarget, ForwardPipeline,
     GeminiShadowStore, ModelCatalog, OptimizerConfigSpec, ProviderSource, ProviderSpec,
     ProxyAppConfig, ProxyConfigSource, ProxyCoreError, ProxyCoreEvent,
-    ProxyCoreEventType, ProxyCoreResponse, ProxyCoreResult, ProxyEventSink, ProxyGlobalConfig,
+    ProxyCoreResponse, ProxyCoreResult, ProxyEventSink, ProxyGlobalConfig,
     ProxyRequest, ProxyResponseBody, ProxyResult, ProxyRuntimeConfig, ProxyRuntimeStatus,
     ProxyServices, RectifierConfigSpec, RoutePlan, RoutePolicy, RoutePolicySource, RouteRequest,
     RouteResolver, RouteSelection, UsageRecord, UsageSink, CLAUDE_API_FORMAT_METADATA_KEY,
@@ -627,10 +627,8 @@ impl ProxyEventSink for CcSwitchEventSink {
     fn emit_event<'a>(&'a self, event: ProxyCoreEvent) -> BoxFuture<'a, ProxyCoreResult<()>> {
         Box::pin(async move {
             if let Some(events) = self.events.as_ref() {
-                events.emit(
-                    proxy_core_event_name(&event.event_type),
-                    proxy_core_payload(event),
-                );
+                let event_name = event.event_type.event_name();
+                events.emit(event_name, event.into_event_payload());
             }
             Ok(())
         })
@@ -901,38 +899,6 @@ where
     }
 }
 
-fn proxy_core_event_name(event_type: &ProxyCoreEventType) -> String {
-    match event_type {
-        ProxyCoreEventType::RouteSelected => "route_selected".to_string(),
-        ProxyCoreEventType::AttemptStarted => "attempt_started".to_string(),
-        ProxyCoreEventType::AttemptSucceeded => "attempt_succeeded".to_string(),
-        ProxyCoreEventType::AttemptFailed => "attempt_failed".to_string(),
-        ProxyCoreEventType::BreakerOpened => "breaker_opened".to_string(),
-        ProxyCoreEventType::BreakerClosed => "breaker_closed".to_string(),
-        ProxyCoreEventType::UsageRecorded => "usage_recorded".to_string(),
-        ProxyCoreEventType::Custom(value) => value.clone(),
-    }
-}
-
-fn proxy_core_payload(event: ProxyCoreEvent) -> Value {
-    let mut payload = if event.payload.is_object() {
-        event.payload
-    } else {
-        json!({ "data": event.payload })
-    };
-
-    if let Value::Object(object) = &mut payload {
-        if let Some(request_id) = event.request_id {
-            object.insert("requestId".to_string(), Value::String(request_id));
-        }
-        if let Some(channel_id) = event.channel_id {
-            object.insert("channelId".to_string(), Value::String(channel_id));
-        }
-    }
-
-    payload
-}
-
 fn parse_app_type(app: &AppKind) -> ProxyCoreResult<AppType> {
     AppType::from_str(app.as_str())
         .map_err(|error| ProxyCoreError::Config(format!("unsupported app kind: {error}")))
@@ -987,6 +953,7 @@ fn load_codex_client_model_catalog_raw() -> Value {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::proxy_core::ProxyCoreEventType;
     use crate::provider::Provider;
     use crate::proxy_core::{
         ChannelOverrides, InterfaceKind, ModelCapabilities, ModelRoute, ProviderKind, ProxyBody,
