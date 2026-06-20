@@ -102,11 +102,28 @@ pub fn apply_model_mapping_to_body(
 
 pub fn model_mapping_log_message(original: Option<&str>, mapped: Option<&str>) -> Option<String> {
     match (original, mapped) {
-        (Some(original), Some(mapped)) => {
-            Some(format!("[ModelMapper] 模型映射: {original} \u{2192} {mapped}"))
-        }
+        (Some(original), Some(mapped)) => Some(format!(
+            "[ModelMapper] 模型映射: {original} \u{2192} {mapped}"
+        )),
         _ => None,
     }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct ModelMappingProjection {
+    pub body: Value,
+    pub log_message: Option<String>,
+}
+
+pub fn apply_provider_model_mapping(
+    body: Value,
+    provider_settings: &Value,
+) -> ModelMappingProjection {
+    let mapping = ModelMapping::from_settings_config(provider_settings);
+    let (body, original_model, mapped_model) = apply_model_mapping_to_body(body, &mapping);
+    let log_message = model_mapping_log_message(original_model.as_deref(), mapped_model.as_deref());
+
+    ModelMappingProjection { body, log_message }
 }
 
 pub fn strip_one_m_suffix_for_upstream(model: &str) -> &str {
@@ -123,8 +140,7 @@ pub fn has_one_m_suffix_for_upstream(model: &str) -> bool {
     let trimmed = model.trim_end();
     let marker = ONE_M_CONTEXT_MARKER.as_bytes();
     let bytes = trimmed.as_bytes();
-    bytes.len() >= marker.len()
-        && bytes[bytes.len() - marker.len()..].eq_ignore_ascii_case(marker)
+    bytes.len() >= marker.len() && bytes[bytes.len() - marker.len()..].eq_ignore_ascii_case(marker)
 }
 
 pub fn strip_one_m_suffix_for_upstream_from_body(mut body: Value) -> Value {
@@ -265,6 +281,34 @@ mod tests {
             Some("[ModelMapper] \u{6A21}\u{578B}\u{6620}\u{5C04}: claude-sonnet \u{2192} sonnet-mapped")
         );
         assert!(model_mapping_log_message(Some("claude-sonnet"), None).is_none());
+    }
+
+    #[test]
+    fn provider_model_mapping_projects_body_and_log_message() {
+        let projection = apply_provider_model_mapping(
+            json!({"model": "claude-sonnet", "messages": []}),
+            &json!({
+                "env": {
+                    "ANTHROPIC_DEFAULT_SONNET_MODEL": "sonnet-mapped"
+                }
+            }),
+        );
+
+        assert_eq!(
+            projection.body.get("model").and_then(Value::as_str),
+            Some("sonnet-mapped")
+        );
+        assert_eq!(
+            projection.log_message.as_deref(),
+            Some("[ModelMapper] \u{6A21}\u{578B}\u{6620}\u{5C04}: claude-sonnet \u{2192} sonnet-mapped")
+        );
+
+        let unchanged = apply_provider_model_mapping(json!({"model": "unknown"}), &json!({}));
+        assert_eq!(
+            unchanged.body.get("model").and_then(Value::as_str),
+            Some("unknown")
+        );
+        assert!(unchanged.log_message.is_none());
     }
 
     #[test]

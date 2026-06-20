@@ -1496,25 +1496,14 @@ pub(crate) fn anthropic_redacted_thinking_placeholder() -> &'static str {
     crate::proxy_core::api::transforms::ANTHROPIC_REDACTED_THINKING_PLACEHOLDER
 }
 
-pub(crate) struct ModelMappingProjection {
-    pub(crate) body: Value,
-    pub(crate) log_message: Option<String>,
-}
+pub(crate) type ModelMappingProjection =
+    crate::proxy_core::api::model_catalog::ModelMappingProjection;
 
 pub(crate) fn apply_provider_model_mapping(
     body: Value,
     provider_settings: &Value,
 ) -> ModelMappingProjection {
-    let mapping =
-        crate::proxy_core::api::model_catalog::ModelMapping::from_settings_config(provider_settings);
-    let (body, original_model, mapped_model) =
-        crate::proxy_core::api::model_catalog::apply_model_mapping_to_body(body, &mapping);
-    let log_message = crate::proxy_core::api::model_catalog::model_mapping_log_message(
-        original_model.as_deref(),
-        mapped_model.as_deref(),
-    );
-
-    ModelMappingProjection { body, log_message }
+    crate::proxy_core::api::model_catalog::apply_provider_model_mapping(body, provider_settings)
 }
 
 pub(crate) fn rewrite_codex_responses_endpoint_to_chat(
