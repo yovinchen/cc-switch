@@ -39,6 +39,29 @@ pub(crate) fn validate_claude_desktop_gateway_bearer_header(
     crate::proxy_core::validate_claude_desktop_gateway_bearer_header(headers, expected_token)
 }
 
+pub(crate) const SYSTEM_PROXY_ENV_KEYS: [&str; 6] =
+    crate::proxy_core::SYSTEM_PROXY_ENV_KEYS;
+
+pub(crate) fn mask_url_for_log(url: &str) -> String {
+    crate::proxy_core::mask_url_for_log(url)
+}
+
+#[cfg(test)]
+pub(crate) fn proxy_url_points_to_loopback_port(value: &str, loopback_port: u16) -> bool {
+    crate::proxy_core::proxy_url_points_to_loopback_port(value, loopback_port)
+}
+
+pub(crate) fn proxy_values_point_to_loopback_port<I, V>(
+    values: I,
+    loopback_port: u16,
+) -> bool
+where
+    I: IntoIterator<Item = V>,
+    V: AsRef<str>,
+{
+    crate::proxy_core::proxy_values_point_to_loopback_port(values, loopback_port)
+}
+
 pub(crate) const COPILOT_PUBLIC_GITHUB_DOMAIN: &str =
     crate::proxy_core::COPILOT_PUBLIC_GITHUB_DOMAIN;
 
@@ -857,6 +880,37 @@ mod tests {
             validate_claude_desktop_gateway_bearer_header(&headers, "wrong-token").unwrap_err(),
             ClaudeDesktopGatewayAuthError::InvalidToken
         );
+    }
+
+    #[test]
+    fn global_proxy_adapter_projects_masking_and_loopback_policy() {
+        assert_eq!(
+            SYSTEM_PROXY_ENV_KEYS,
+            [
+                "HTTP_PROXY",
+                "http_proxy",
+                "HTTPS_PROXY",
+                "https_proxy",
+                "ALL_PROXY",
+                "all_proxy"
+            ]
+        );
+        assert_eq!(
+            mask_url_for_log("http://user:pass@127.0.0.1:7890"),
+            "http://127.0.0.1:7890"
+        );
+        assert!(proxy_url_points_to_loopback_port(
+            "socks5://localhost:15721",
+            15721
+        ));
+        assert!(!proxy_url_points_to_loopback_port(
+            "http://127.0.0.1:7890",
+            15721
+        ));
+        assert!(proxy_values_point_to_loopback_port(
+            ["", " http://127.0.0.1:15721 "],
+            15721
+        ));
     }
 
     #[test]

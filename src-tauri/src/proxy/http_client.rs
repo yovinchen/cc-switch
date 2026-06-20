@@ -9,7 +9,7 @@ use std::env;
 use std::sync::RwLock;
 use std::time::Duration;
 
-use crate::proxy_core::{
+use crate::proxy_core_adapter::{
     mask_url_for_log, proxy_values_point_to_loopback_port, SYSTEM_PROXY_ENV_KEYS,
 };
 
@@ -276,7 +276,7 @@ fn system_proxy_points_to_loopback() -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::proxy_core::proxy_url_points_to_loopback_port;
+    use crate::proxy_core_adapter::proxy_url_points_to_loopback_port;
     use std::sync::{Mutex, OnceLock};
 
     fn env_lock() -> &'static Mutex<()> {
