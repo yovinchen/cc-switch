@@ -426,6 +426,8 @@ pub(crate) type ChannelReachabilityStatus =
     crate::proxy_core::api::management::ChannelReachabilityStatus;
 pub(crate) type ChannelKeyRecord =
     crate::proxy_core::api::management::ChannelKeyRecord;
+pub(crate) type ChannelKeyRecordInput =
+    crate::proxy_core::api::management::ChannelKeyRecordInput;
 pub(crate) type ChannelModelRecord =
     crate::proxy_core::api::management::ChannelModelRecord;
 pub(crate) type ChannelModelRecordInput =
@@ -437,6 +439,10 @@ pub(crate) fn channel_model_record_from_input(
     input: ChannelModelRecordInput,
 ) -> ChannelModelRecord {
     crate::proxy_core::api::management::channel_model_record_from_input(input)
+}
+
+pub(crate) fn channel_key_record_from_input(input: ChannelKeyRecordInput) -> ChannelKeyRecord {
+    crate::proxy_core::api::management::channel_key_record_from_input(input)
 }
 
 pub(crate) fn channel_record_from_input(input: ChannelRecordInput) -> ChannelRecord {
@@ -2045,14 +2051,14 @@ pub(crate) fn proxy_channel_records_to_core(
 }
 
 pub(crate) fn proxy_channel_key_record_to_core(key: ProxyChannelKeyRecord) -> ChannelKeyRecord {
-    ChannelKeyRecord {
+    channel_key_record_from_input(ChannelKeyRecordInput {
         channel_id: key.channel_id,
         key_ref: key.key_ref,
         status: key.status,
         priority: key.priority,
         weight: key.weight,
         last_failure_at: key.last_failure_at,
-    }
+    })
 }
 
 pub(crate) fn proxy_channel_key_records_to_core(

@@ -1950,6 +1950,29 @@ pub struct ChannelKeyRecord {
     pub last_failure_at: Option<i64>,
 }
 
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ChannelKeyRecordInput {
+    pub channel_id: String,
+    pub key_ref: String,
+    pub status: String,
+    pub priority: i64,
+    pub weight: u32,
+    #[serde(default)]
+    pub last_failure_at: Option<i64>,
+}
+
+pub fn channel_key_record_from_input(input: ChannelKeyRecordInput) -> ChannelKeyRecord {
+    ChannelKeyRecord {
+        channel_id: input.channel_id,
+        key_ref: input.key_ref,
+        status: input.status,
+        priority: input.priority,
+        weight: input.weight,
+        last_failure_at: input.last_failure_at,
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(transparent)]
 pub struct ChannelKeyRecordResponse<T> {
@@ -2256,9 +2279,10 @@ mod tests {
     use super::{
         AppChannelListQuery, AppChannelListResponse, AppChannelResponse, AppChannelRouteResponse,
         app_proxy_config_raw, channel_model_record_from_input, AppListResponse, AppModelListQuery,
-        AppProxyConfig, AppSummaryInput, channel_reachability_status_from_latency,
-        channel_record_from_input, ChannelDeleteResponse, ChannelListQuery, ChannelListResponse,
-        ChannelReachabilityInput, ChannelMigrationMaterializeInput,
+        AppProxyConfig, AppSummaryInput, channel_key_record_from_input,
+        channel_reachability_status_from_latency, channel_record_from_input, ChannelDeleteResponse,
+        ChannelKeyRecordInput, ChannelListQuery, ChannelListResponse, ChannelReachabilityInput,
+        ChannelMigrationMaterializeInput,
         ChannelMigrationMaterializeResponse, ChannelMigrationPreviewInput,
         ChannelMigrationPreviewResponse, ChannelModelRecord, ChannelModelRecordInput,
         ChannelModelsResponse, ChannelRecord, ChannelRecordInput, ChannelRecordResponse,
@@ -3589,6 +3613,25 @@ mod tests {
         });
         assert_eq!(model.channel_id, "ch-2");
         assert_eq!(model.public_model, "haiku");
+    }
+
+    #[test]
+    fn channel_key_record_input_builds_management_key_contract() {
+        let record = channel_key_record_from_input(ChannelKeyRecordInput {
+            channel_id: "ch-1".to_string(),
+            key_ref: "primary".to_string(),
+            status: "enabled".to_string(),
+            priority: 5,
+            weight: 60,
+            last_failure_at: Some(1_771_000_003),
+        });
+
+        assert_eq!(record.channel_id, "ch-1");
+        assert_eq!(record.key_ref, "primary");
+        assert_eq!(record.status, "enabled");
+        assert_eq!(record.priority, 5);
+        assert_eq!(record.weight, 60);
+        assert_eq!(record.last_failure_at, Some(1_771_000_003));
     }
 
     #[test]
