@@ -1433,6 +1433,10 @@ pub(crate) fn build_upstream_request_headers(
     crate::proxy_core::api::transport::build_upstream_request_headers(input)
 }
 
+pub(crate) fn upstream_host_header_from_url(url: &str) -> Option<String> {
+    crate::proxy_core::api::transport::upstream_host_header_from_url(url)
+}
+
 pub(crate) fn serialize_upstream_request_body(
     method: &http::Method,
     body: &Value,

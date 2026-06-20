@@ -325,6 +325,12 @@ pub fn should_preserve_exact_request_header_case(
     matches!(resolved_claude_api_format, None | Some("anthropic"))
 }
 
+pub fn upstream_host_header_from_url(url: &str) -> Option<String> {
+    url.parse::<http::Uri>()
+        .ok()
+        .and_then(|uri| uri.authority().map(|authority| authority.to_string()))
+}
+
 pub fn build_upstream_request_headers(input: UpstreamRequestHeadersInput<'_>) -> http::HeaderMap {
     let mut ordered_headers = http::HeaderMap::new();
     let mut saw_auth = false;
@@ -519,9 +525,9 @@ mod tests {
         build_upstream_request_headers, is_official_codex_client_user_agent,
         should_preserve_exact_request_header_case, should_send_anthropic_request_headers,
         should_skip_copilot_fingerprint_request_header, should_strip_forwarded_request_header,
-        ClaudeAuthHeaderKind, CopilotAuthHeaderOverrides, CopilotAuthHeadersInput,
-        UpstreamAuthHeadersInput, UpstreamRequestHeadersInput, CLAUDE_CODE_BETA,
-        DEFAULT_ANTHROPIC_VERSION,
+        upstream_host_header_from_url, ClaudeAuthHeaderKind, CopilotAuthHeaderOverrides,
+        CopilotAuthHeadersInput, UpstreamAuthHeadersInput, UpstreamRequestHeadersInput,
+        CLAUDE_CODE_BETA, DEFAULT_ANTHROPIC_VERSION,
     };
     use crate::error::ProxyCoreError;
     use http::{header, HeaderMap, HeaderName, HeaderValue};
@@ -1089,6 +1095,19 @@ mod tests {
             headers.get(header::CONTENT_TYPE),
             Some(&HeaderValue::from_static("application/json"))
         );
+    }
+
+    #[test]
+    fn extracts_upstream_host_header_from_absolute_url() {
+        assert_eq!(
+            upstream_host_header_from_url("https://api.example.com/v1/messages").as_deref(),
+            Some("api.example.com")
+        );
+        assert_eq!(
+            upstream_host_header_from_url("https://api.example.com:8443/v1/messages").as_deref(),
+            Some("api.example.com:8443")
+        );
+        assert_eq!(upstream_host_header_from_url("/v1/messages"), None);
     }
 
     #[test]

@@ -2102,10 +2102,7 @@ impl RequestForwarder {
         }
 
         // 预计算上游 host 值（用于在原位替换 host header）
-        let upstream_host = url
-            .parse::<http::Uri>()
-            .ok()
-            .and_then(|u| u.authority().map(|a| a.to_string()));
+        let upstream_host = crate::proxy_core_adapter::upstream_host_header_from_url(&url);
 
         let should_send_anthropic_headers = should_send_anthropic_request_headers(
             adapter.name(),
