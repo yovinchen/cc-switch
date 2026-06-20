@@ -12,8 +12,7 @@ use crate::proxy::usage::{RequestLog, UsageLogger};
 use crate::proxy::RequestForwarder;
 use crate::proxy_core::{
     app_proxy_config_raw, channel_matches_query, interfaces_compatible,
-    resolve_usage_record_pricing_models, route_group_matches, route_plan_provider_ids,
-    select_route_for_forward_result, token_usage_from_usage_record,
+    resolve_usage_record_pricing_models, route_group_matches, token_usage_from_usage_record,
     usage_record_request_id_with_fallback, AppKind, AuthInfo, AuthProfileRef, ChannelAttemptPlan,
     ChannelAttemptResult, ChannelQuery, ChannelSource, ChannelSpec, ChannelStatus,
     CopilotOptimizerConfigSpec, CostCalculator, CurrentRouteTarget, ForwardPipeline,
@@ -762,7 +761,7 @@ fn host_providers_for_plan(
     let providers = db
         .get_all_providers(app_type.as_str())
         .map_err(|error| app_error("load host providers", error))?;
-    let provider_ids = route_plan_provider_ids(plan);
+    let provider_ids = crate::proxy_core_adapter::route_plan_provider_ids(plan);
 
     let matching: Vec<_> = provider_ids
         .into_iter()
@@ -809,7 +808,7 @@ fn selected_route_for_forward_result(
     result: &crate::proxy::ForwardResult,
     plan: &RoutePlan,
 ) -> RouteSelection {
-    select_route_for_forward_result(
+    crate::proxy_core_adapter::route_selection_for_forward_result(
         plan,
         result
             .selected_channel

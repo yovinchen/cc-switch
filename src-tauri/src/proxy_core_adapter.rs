@@ -10,7 +10,7 @@ use crate::proxy_core::{
     ClaudeDesktopModelListResponse, ClaudeDesktopModelRouteInput,
     CurrentRouteProviderSummaryInput, InterfaceKind, ModelCapabilities, ModelRoute,
     ModelCatalog, ProviderMetadata, ProviderSpec, RetryPolicy, RouteResolveChannelInput,
-    RouteResolveModelInput, SessionIdResult, UpstreamEndpoint,
+    RouteResolveModelInput, RoutePlan, RouteSelection, SessionIdResult, UpstreamEndpoint,
 };
 use crate::services::stream_check::{HealthStatus, StreamCheckResult};
 use http::HeaderMap;
@@ -243,6 +243,18 @@ pub(crate) fn provider_model_catalog_from_settings(
 
 pub(crate) fn client_model_catalog_from_raw(app: &AppKind, raw: Value) -> ModelCatalog {
     crate::proxy_core::client_model_catalog_from_raw(app.as_str(), raw)
+}
+
+pub(crate) fn route_plan_provider_ids(plan: &RoutePlan) -> Vec<String> {
+    crate::proxy_core::route_plan_provider_ids(plan)
+}
+
+pub(crate) fn route_selection_for_forward_result(
+    plan: &RoutePlan,
+    selected_channel_id: Option<&str>,
+    provider_id: &str,
+) -> RouteSelection {
+    crate::proxy_core::select_route_for_forward_result(plan, selected_channel_id, provider_id)
 }
 
 const CLAUDE_ONE_M_MARKER_FOR_CLIENT: &str = "[1M]";
@@ -578,6 +590,85 @@ mod tests {
         assert_eq!(
             client_catalog.models,
             vec!["gpt-5".to_string(), "o4-mini".to_string()]
+        );
+    }
+
+    #[test]
+    fn route_plan_adapter_projects_provider_ids_and_forward_selection() {
+        fn selection(channel_id: &str, provider_id: &str) -> RouteSelection {
+            let provider = ProviderSpec {
+                id: provider_id.to_string(),
+                name: provider_id.to_string(),
+                kind: ProviderKind::Claude,
+                account_ref: None,
+                metadata: ProviderMetadata::default(),
+            };
+            let channel = ChannelSpec {
+                id: channel_id.to_string(),
+                provider_id: provider_id.to_string(),
+                app: AppKind::Claude,
+                name: channel_id.to_string(),
+                status: ChannelStatus::Enabled,
+                endpoint: UpstreamEndpoint {
+                    base_url: "https://api.example.com".to_string(),
+                    path_template: None,
+                    api_version: None,
+                    timeout_profile: None,
+                },
+                interface: InterfaceKind::OpenAiChatCompletions,
+                auth_profile: None,
+                models: Vec::new(),
+                groups: vec!["default".to_string()],
+                priority: 0,
+                weight: 100,
+                retry_policy: RetryPolicy {
+                    raw: Value::Object(Default::default()),
+                },
+                health_policy: ChannelHealthPolicy {
+                    raw: Value::Object(Default::default()),
+                },
+                overrides: ChannelOverrides {
+                    headers: Value::Object(Default::default()),
+                    params: Value::Object(Default::default()),
+                    status_code_mapping: Value::Array(Vec::new()),
+                    model_mapping: Value::Object(Default::default()),
+                },
+                tags: Vec::new(),
+                metadata: Value::Object(Default::default()),
+                source_ref: None,
+                needs_review: false,
+                review_reasons: Vec::new(),
+            };
+
+            RouteSelection {
+                provider,
+                channel,
+                model_route: None,
+                inbound_interface: InterfaceKind::OpenAiChatCompletions,
+                outbound_interface: InterfaceKind::OpenAiChatCompletions,
+            }
+        }
+
+        let primary = selection("ch-a", "provider-a");
+        let plan = RoutePlan {
+            selection: primary.clone(),
+            selections: vec![
+                primary,
+                selection("ch-b", "provider-b"),
+                selection("ch-c", "provider-a"),
+            ],
+            attempts: Vec::new(),
+        };
+
+        assert_eq!(
+            route_plan_provider_ids(&plan),
+            vec!["provider-a".to_string(), "provider-b".to_string()]
+        );
+        assert_eq!(
+            route_selection_for_forward_result(&plan, Some("ch-b"), "provider-a")
+                .channel
+                .id,
+            "ch-b"
         );
     }
 
