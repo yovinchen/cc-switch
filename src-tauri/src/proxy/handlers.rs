@@ -72,9 +72,9 @@ use crate::proxy_core_adapter::{
     OPENAI_PARSER_CONFIG,
 };
 use crate::proxy_core_adapter::{
-    proxy_app_summary_input, proxy_channel_key_record_to_core, proxy_channel_key_records_to_core,
-    proxy_channel_model_records_to_core, proxy_channel_record_to_core,
-    proxy_channel_record_to_core_spec, proxy_channel_records_to_core, proxy_channel_specs_to_core,
+    proxy_app_summary_input, proxy_channel_group_inputs_to_core, proxy_channel_key_record_to_core,
+    proxy_channel_key_records_to_core, proxy_channel_model_records_to_core,
+    proxy_channel_record_to_core, proxy_channel_record_to_core_spec, proxy_channel_records_to_core,
     proxy_current_route_provider_summary_input, proxy_providers_to_core_specs,
     stream_check_result_to_channel_reachability, synthesize_gemini_tool_call_id_with_uuid,
 };
@@ -613,10 +613,10 @@ pub async fn list_proxy_groups(
             .list_channels_for_app(app_type)
             .await
             .map_err(|e| ProxyError::DatabaseError(e.to_string()))?;
-        sources.push(GroupListChannelSource::new(
+        sources.push(GroupListChannelSource::from_record_inputs(
             app_type.clone(),
             source,
-            proxy_channel_specs_to_core(channels),
+            proxy_channel_group_inputs_to_core(channels),
         ));
     }
 

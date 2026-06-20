@@ -534,11 +534,11 @@ pub(crate) use crate::proxy_core::api::management::{
     ChannelModelsSource, ChannelPathRequest, ChannelRecordResponse, ChannelRecordSource,
     ChannelRouteRejected,
     ChannelTestPlan, ChannelTestResponse, CurrentRouteResponse, CurrentRouteSource,
-    GroupListChannelSource, GroupListQuery, GroupListRequest, HealthCheckRequest,
-    HealthCheckResponse, HealthCheckSource, ManagementAppPathRequest, ProviderListResponse,
-    ProviderListSource, ProxyChannelModelsReplaceRequest, ProxyChannelTestRequest,
-    ProxyStatusRequest, ProxyStatusResponse, ProxyStatusSource, RouteGroupListResponse,
-    RouteResolveManagementRequest,
+    GroupListChannelRecordInput, GroupListChannelSource, GroupListQuery, GroupListRequest,
+    HealthCheckRequest, HealthCheckResponse, HealthCheckSource, ManagementAppPathRequest,
+    ProviderListResponse, ProviderListSource, ProxyChannelModelsReplaceRequest,
+    ProxyChannelTestRequest, ProxyStatusRequest, ProxyStatusResponse, ProxyStatusSource,
+    RouteGroupListResponse, RouteResolveManagementRequest,
 };
 pub(crate) use crate::proxy_core::api::model_catalog::{
     ClientModelCatalogResponse, RoutableModelList,
@@ -1191,6 +1191,15 @@ pub(crate) fn proxy_channel_specs_to_core(
     channels
         .into_iter()
         .map(|channel| channel.to_proxy_core_channel_spec())
+        .collect()
+}
+
+pub(crate) fn proxy_channel_group_inputs_to_core(
+    channels: impl IntoIterator<Item = ProxyChannelRecord>,
+) -> Vec<GroupListChannelRecordInput> {
+    channels
+        .into_iter()
+        .map(|channel| GroupListChannelRecordInput::new(channel.groups))
         .collect()
 }
 

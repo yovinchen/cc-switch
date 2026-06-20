@@ -805,11 +805,22 @@ pub struct GroupListRequest {
     pub app_type: Option<String>,
 }
 
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct GroupListChannelRecordInput {
+    pub groups: Vec<String>,
+}
+
+impl GroupListChannelRecordInput {
+    pub fn new(groups: Vec<String>) -> Self {
+        Self { groups }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct GroupListChannelSource {
     pub app_type: String,
     pub source: ChannelRouteSource,
-    pub channels: Vec<ChannelSpec>,
+    pub channel_groups: Vec<Vec<String>>,
 }
 
 impl GroupListChannelSource {
@@ -818,10 +829,30 @@ impl GroupListChannelSource {
         source: ChannelRouteSource,
         channels: Vec<ChannelSpec>,
     ) -> Self {
+        Self::from_channel_specs(app_type, source, channels)
+    }
+
+    pub fn from_channel_specs(
+        app_type: impl Into<String>,
+        source: ChannelRouteSource,
+        channels: impl IntoIterator<Item = ChannelSpec>,
+    ) -> Self {
         Self {
             app_type: app_type.into(),
             source,
-            channels,
+            channel_groups: channels.into_iter().map(|channel| channel.groups).collect(),
+        }
+    }
+
+    pub fn from_record_inputs(
+        app_type: impl Into<String>,
+        source: ChannelRouteSource,
+        records: impl IntoIterator<Item = GroupListChannelRecordInput>,
+    ) -> Self {
+        Self {
+            app_type: app_type.into(),
+            source,
+            channel_groups: records.into_iter().map(|record| record.groups).collect(),
         }
     }
 }
@@ -852,9 +883,9 @@ impl GroupListRequest {
         &self,
         app_type: impl Into<String>,
         source: &ChannelRouteSource,
-        channels: impl IntoIterator<Item = ChannelSpec>,
+        channel_groups: impl IntoIterator<Item = Vec<String>>,
     ) -> RouteGroupSourceInput {
-        RouteGroupSourceInput::from_channel_specs(app_type, source, channels)
+        RouteGroupSourceInput::from_route_source(app_type, source, channel_groups)
     }
 
     pub fn response(
@@ -871,7 +902,7 @@ impl GroupListRequest {
         self.response(
             sources
                 .into_iter()
-                .map(|source| self.source_input(source.app_type, &source.source, source.channels)),
+                .map(|source| self.source_input(source.app_type, &source.source, source.channel_groups)),
         )
     }
 }
@@ -894,9 +925,10 @@ mod tests {
         ChannelKeyDeleteSource, ChannelKeyPathRequest, ChannelKeyRecordSource, ChannelKeysSource,
         ChannelListPlan, ChannelListRequest, ChannelListSource, ChannelMigrationMaterializeSource,
         ChannelMigrationPreviewSource, ChannelModelsSource, ChannelPathRequest,
-        ChannelRecordSource, CurrentRouteSource, GroupListChannelSource, GroupListRequest,
-        HealthCheckRequest, HealthCheckSource, ManagementAppPathRequest, ProviderListSource,
-        ProxyStatusRequest, ProxyStatusSource, RouteResolveManagementRequest,
+        ChannelRecordSource, CurrentRouteSource, GroupListChannelRecordInput,
+        GroupListChannelSource, GroupListRequest, HealthCheckRequest, HealthCheckSource,
+        ManagementAppPathRequest, ProviderListSource, ProxyStatusRequest, ProxyStatusSource,
+        RouteResolveManagementRequest,
         channel_key_not_found_message, channel_not_found_message, normalize_channel_id_path,
         normalize_channel_key_ref_path, validate_management_app_type, validate_route_resolve_app_type,
     };
@@ -1560,5 +1592,36 @@ mod tests {
         assert_eq!(response.groups[1].name, "default");
         assert_eq!(response.groups[1].app_types, vec!["claude"]);
         assert_eq!(response.groups[1].channel_count, 1);
+    }
+
+    #[test]
+    fn group_list_request_wraps_record_group_inputs() {
+        let query = serde_json::from_value::<GroupListQuery>(serde_json::json!({
+            "appType": "claude"
+        }))
+        .expect("query");
+        let request = GroupListRequest::from_query(query).expect("request");
+
+        let response = request.response_from_channel_sources(vec![
+            GroupListChannelSource::from_record_inputs(
+                "claude",
+                ChannelRouteSource::MaterializedChannels,
+                vec![
+                    GroupListChannelRecordInput::new(vec![]),
+                    GroupListChannelRecordInput::new(vec![
+                        "default".to_string(),
+                        "beta".to_string(),
+                    ]),
+                ],
+            ),
+        ]);
+
+        assert_eq!(response.app_type.as_deref(), Some("claude"));
+        assert_eq!(response.sources, vec!["materialized_channels"]);
+        assert_eq!(response.groups.len(), 2);
+        assert_eq!(response.groups[0].name, "beta");
+        assert_eq!(response.groups[0].channel_count, 1);
+        assert_eq!(response.groups[1].name, "default");
+        assert_eq!(response.groups[1].channel_count, 2);
     }
 }
