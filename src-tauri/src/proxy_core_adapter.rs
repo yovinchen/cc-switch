@@ -206,6 +206,13 @@ pub(crate) type TokenUsage = crate::proxy_core::TokenUsage;
 pub(crate) type CurrentRouteTarget = crate::proxy_core::CurrentRouteTarget;
 pub(crate) type GeminiShadowStore = crate::proxy_core::GeminiShadowStore;
 pub(crate) type GeminiOAuthCredentials = crate::proxy_core::GeminiOAuthCredentials;
+pub(crate) type ClaudeAuthHeaderKind = crate::proxy_core::ClaudeAuthHeaderKind;
+pub(crate) type ClaudeAuthKey = crate::proxy_core::ClaudeAuthKey;
+pub(crate) type ClaudeAuthKeySource = crate::proxy_core::ClaudeAuthKeySource;
+pub(crate) type ClaudePromptCacheKeyResolution =
+    crate::proxy_core::ClaudePromptCacheKeyResolution;
+pub(crate) type CopilotAuthHeadersInput<'a> =
+    crate::proxy_core::CopilotAuthHeadersInput<'a>;
 pub(crate) type ResponseRuntimePolicy = crate::proxy_core::ResponseRuntimePolicy;
 pub(crate) type ResponseTimeoutConfig = crate::proxy_core::ResponseTimeoutConfig;
 pub(crate) type StreamingTimeoutConfig = crate::proxy_core::StreamingTimeoutConfig;
@@ -442,6 +449,18 @@ pub(crate) fn claude_api_format_from_metadata(metadata: &Value, fallback: &str) 
     crate::proxy_core::claude_api_format_from_metadata(metadata, fallback)
 }
 
+pub(crate) fn resolve_claude_api_format_from_settings(
+    provider_type: Option<&str>,
+    meta_api_format: Option<&str>,
+    settings_config: &Value,
+) -> &'static str {
+    crate::proxy_core::resolve_claude_api_format_from_settings(
+        provider_type,
+        meta_api_format,
+        settings_config,
+    )
+}
+
 pub(crate) fn infer_claude_provider_kind(
     api_format: &str,
     uses_google_oauth: bool,
@@ -460,6 +479,61 @@ pub(crate) fn infer_claude_provider_kind(
 
 pub(crate) fn is_gemini_oauth_key_shape(key: &str) -> bool {
     crate::proxy_core::is_gemini_oauth_key_shape(key)
+}
+
+pub(crate) fn is_copilot_prompt_cache_provider(
+    meta_provider_type: Option<&str>,
+    settings_config: &Value,
+) -> bool {
+    crate::proxy_core::is_copilot_prompt_cache_provider(meta_provider_type, settings_config)
+}
+
+pub(crate) fn resolve_claude_responses_prompt_cache_key(
+    body: &Value,
+    explicit_cache_key: Option<&str>,
+    session_id: Option<&str>,
+    is_copilot: bool,
+) -> ClaudePromptCacheKeyResolution {
+    crate::proxy_core::resolve_claude_responses_prompt_cache_key(
+        body,
+        explicit_cache_key,
+        session_id,
+        is_copilot,
+    )
+}
+
+pub(crate) fn extract_claude_auth_key_from_settings(
+    settings_config: &Value,
+) -> Option<ClaudeAuthKey> {
+    crate::proxy_core::extract_claude_auth_key_from_settings(settings_config)
+}
+
+pub(crate) fn extract_claude_base_url_from_settings(
+    is_codex_oauth: bool,
+    settings_config: &Value,
+) -> Option<String> {
+    crate::proxy_core::extract_claude_base_url_from_settings(
+        is_codex_oauth,
+        settings_config,
+    )
+}
+
+pub(crate) fn build_claude_upstream_url(base_url: &str, endpoint: &str) -> String {
+    crate::proxy_core::build_claude_upstream_url(base_url, endpoint)
+}
+
+pub(crate) fn build_claude_auth_headers(
+    kind: ClaudeAuthHeaderKind,
+    api_key: &str,
+    access_token: Option<&str>,
+) -> Result<Vec<(http::HeaderName, http::HeaderValue)>, ProxyCoreError> {
+    crate::proxy_core::build_claude_auth_headers(kind, api_key, access_token)
+}
+
+pub(crate) fn build_copilot_auth_headers(
+    input: CopilotAuthHeadersInput<'_>,
+) -> Result<Vec<(http::HeaderName, http::HeaderValue)>, ProxyCoreError> {
+    crate::proxy_core::build_copilot_auth_headers(input)
 }
 
 pub(crate) fn circuit_breaker_config_from_app_config(
@@ -1878,6 +1952,67 @@ mod tests {
             api_key_headers[0].1,
             http::HeaderValue::from_static("AIza-api-key")
         );
+    }
+
+    #[test]
+    fn claude_provider_adapter_projects_config_auth_url_and_cache_helpers() {
+        let settings = json!({
+            "env": {
+                "ANTHROPIC_AUTH_TOKEN": " claude-token ",
+                "ANTHROPIC_BASE_URL": "https://api.anthropic.com/v1/"
+            }
+        });
+        assert_eq!(
+            resolve_claude_api_format_from_settings(None, Some("openai_chat"), &settings),
+            "openai_chat"
+        );
+        let auth_key = extract_claude_auth_key_from_settings(&settings)
+            .expect("anthropic auth token");
+        assert_eq!(auth_key.key, "claude-token");
+        assert_eq!(auth_key.source, ClaudeAuthKeySource::AnthropicAuthToken);
+        assert_eq!(
+            extract_claude_base_url_from_settings(false, &settings).as_deref(),
+            Some("https://api.anthropic.com/v1")
+        );
+        assert_eq!(
+            build_claude_upstream_url("https://api.anthropic.com/v1", "/v1/messages"),
+            "https://api.anthropic.com/v1/messages"
+        );
+
+        let bearer_headers =
+            build_claude_auth_headers(ClaudeAuthHeaderKind::Bearer, "claude-token", None)
+                .expect("bearer headers");
+        assert_eq!(bearer_headers[0].0.as_str(), "authorization");
+        assert_eq!(
+            bearer_headers[0].1,
+            http::HeaderValue::from_static("Bearer claude-token")
+        );
+        let copilot_headers = build_copilot_auth_headers(CopilotAuthHeadersInput {
+            api_key: "copilot-token",
+            request_id: "request-1",
+            editor_version: "vscode/1",
+            editor_plugin_version: "plugin/1",
+            integration_id: "integration-1",
+            user_agent: "copilot-test",
+            github_api_version: "2022-11-28",
+        })
+        .expect("copilot headers");
+        assert!(copilot_headers
+            .iter()
+            .any(|(name, value)| name.as_str() == "x-request-id" && value == "request-1"));
+
+        assert!(is_copilot_prompt_cache_provider(
+            Some("github_copilot"),
+            &json!({})
+        ));
+        let cache_key = resolve_claude_responses_prompt_cache_key(
+            &json!({"metadata": {"session_id": "session-1"}}),
+            None,
+            Some("fallback-session"),
+            true,
+        );
+        assert_eq!(cache_key.key.as_deref(), Some("session-1"));
+        assert_eq!(cache_key.source.as_str(), "session");
     }
 
     #[test]
