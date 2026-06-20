@@ -124,6 +124,54 @@ pub(crate) fn copilot_api_base(domain: &str) -> String {
 }
 
 pub(crate) type FetchedModel = crate::proxy_core::FetchedModel;
+pub(crate) type CodexOAuthModelsRequest<'a> =
+    crate::proxy_core::CodexOAuthModelsRequest<'a>;
+pub(crate) type OpenAiCompatibleModelsRequest<'a> =
+    crate::proxy_core::OpenAiCompatibleModelsRequest<'a>;
+pub(crate) type ModelFetchHttpResponse = crate::proxy_core::ModelFetchHttpResponse;
+pub(crate) use crate::proxy_core::{
+    CodexOAuthModelsTransport, OpenAiCompatibleModelsTransport,
+};
+
+pub(crate) async fn fetch_openai_compatible_models_with_transport<T>(
+    base_url: &str,
+    api_key: &str,
+    is_full_url: bool,
+    models_url_override: Option<&str>,
+    user_agent: Option<&http::HeaderValue>,
+    transport: &T,
+) -> Result<Vec<FetchedModel>, String>
+where
+    T: OpenAiCompatibleModelsTransport + ?Sized,
+{
+    crate::proxy_core::fetch_openai_compatible_models_with_transport(
+        base_url,
+        api_key,
+        is_full_url,
+        models_url_override,
+        user_agent,
+        transport,
+    )
+    .await
+}
+
+pub(crate) async fn fetch_codex_oauth_models_with_transport<T>(
+    token: &str,
+    account_id: &str,
+    client_version: &str,
+    transport: &T,
+) -> Result<Vec<FetchedModel>, String>
+where
+    T: CodexOAuthModelsTransport + ?Sized,
+{
+    crate::proxy_core::fetch_codex_oauth_models_with_transport(
+        token,
+        account_id,
+        client_version,
+        transport,
+    )
+    .await
+}
 
 pub(crate) type RectifierConfig = crate::proxy_core::RectifierConfig;
 pub(crate) type OptimizerConfig = crate::proxy_core::OptimizerConfig;
@@ -1056,6 +1104,74 @@ mod tests {
                 "ownedBy": "openai"
             })
         );
+    }
+
+    #[test]
+    fn model_fetch_transport_adapter_projects_core_planning_and_parsing() {
+        struct StaticTransport;
+
+        impl OpenAiCompatibleModelsTransport for StaticTransport {
+            fn send_openai_compatible_models_request<'a>(
+                &'a self,
+                request: OpenAiCompatibleModelsRequest<'a>,
+            ) -> futures::future::BoxFuture<'a, Result<ModelFetchHttpResponse, String>> {
+                Box::pin(async move {
+                    assert_eq!(request.url, "https://api.example.com/v1/models");
+                    assert_eq!(
+                        request.authorization_header.1,
+                        "Bearer provider-token"
+                    );
+                    Ok(ModelFetchHttpResponse {
+                        status: http::StatusCode::OK,
+                        body: br#"{"data":[{"id":"model-a","owned_by":"vendor-a"}]}"#.to_vec(),
+                    })
+                })
+            }
+        }
+
+        impl CodexOAuthModelsTransport for StaticTransport {
+            fn send_codex_oauth_models_request<'a>(
+                &'a self,
+                request: CodexOAuthModelsRequest<'a>,
+            ) -> futures::future::BoxFuture<'a, Result<ModelFetchHttpResponse, String>> {
+                Box::pin(async move {
+                    assert_eq!(request.account_id_header.1, "account-a");
+                    assert_eq!(request.authorization_header.1, "Bearer oauth-token");
+                    Ok(ModelFetchHttpResponse {
+                        status: http::StatusCode::OK,
+                        body: br#"{"data":[{"model":"codex-mini","display_name":"Codex Mini"}]}"#
+                            .to_vec(),
+                    })
+                })
+            }
+        }
+
+        let transport = StaticTransport;
+        let openai_models = futures::executor::block_on(
+            fetch_openai_compatible_models_with_transport(
+                "https://api.example.com",
+                "provider-token",
+                false,
+                None,
+                None,
+                &transport,
+            ),
+        )
+        .expect("openai-compatible models");
+        assert_eq!(openai_models[0].id, "model-a");
+        assert_eq!(openai_models[0].owned_by.as_deref(), Some("vendor-a"));
+
+        let codex_models = futures::executor::block_on(
+            fetch_codex_oauth_models_with_transport(
+                "oauth-token",
+                "account-a",
+                "3.16.3",
+                &transport,
+            ),
+        )
+        .expect("codex oauth models");
+        assert_eq!(codex_models[0].id, "codex-mini");
+        assert_eq!(codex_models[0].owned_by.as_deref(), Some("Codex"));
     }
 
     #[test]
