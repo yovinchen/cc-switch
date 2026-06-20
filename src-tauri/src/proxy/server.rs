@@ -1048,11 +1048,18 @@ mod tests {
                 .json::<Value>()
                 .await
                 .map_err(|error| error.to_string())?;
+            let runtime_channel = app_channels["channels"]
+                .as_array()
+                .and_then(|channels| channels.iter().find(|channel| channel["id"] == channel_id));
             if app_channels["source"] != "materialized_channels"
                 || app_channels["channels"].as_array().map(Vec::len) != Some(1)
-                || app_channels["channels"][0]["id"] != channel_id
-                || app_channels["channels"][0]["models"].as_array().map(Vec::len) != Some(1)
-                || app_channels["channels"][0]["models"][0]["publicModel"] != "runtime-public"
+                || runtime_channel
+                    .and_then(|channel| channel["models"].as_array())
+                    .map(Vec::len)
+                    != Some(1)
+                || runtime_channel.is_none_or(|channel| {
+                    channel["models"][0]["publicModel"] != "runtime-public"
+                })
                 || app_channels.get("rejected").is_some()
             {
                 return Err(format!("unexpected app channels body: {app_channels}"));
@@ -1148,6 +1155,39 @@ mod tests {
                 return Err(format!("unexpected app models body: {app_models}"));
             }
 
+            let beta_create_response = client
+                .post(format!("{base_url}/proxy/v1/channels"))
+                .json(&json!({
+                    "providerId": "runtime-provider",
+                    "appType": "claude",
+                    "name": "Beta Relay",
+                    "baseUrl": "https://beta-relay.example.com/v1",
+                    "interfaceKind": "anthropic_messages",
+                    "groups": ["beta"],
+                    "models": [{
+                        "publicModel": "beta-public",
+                        "upstreamModel": "beta-upstream"
+                    }]
+                }))
+                .send()
+                .await
+                .map_err(|error| error.to_string())?;
+            if beta_create_response.status() != StatusCode::OK {
+                return Err(format!(
+                    "unexpected beta channel status: {}",
+                    beta_create_response.status()
+                ));
+            }
+            let beta_created = beta_create_response
+                .json::<Value>()
+                .await
+                .map_err(|error| error.to_string())?;
+            if beta_created["groups"].as_array().map(Vec::len) != Some(1)
+                || beta_created["groups"][0] != "beta"
+            {
+                return Err(format!("unexpected beta channel body: {beta_created}"));
+            }
+
             let groups_response = client
                 .get(format!("{base_url}/proxy/v1/groups?appType=claude"))
                 .send()
@@ -1163,13 +1203,22 @@ mod tests {
                 .json::<Value>()
                 .await
                 .map_err(|error| error.to_string())?;
+            let default_group = groups["groups"]
+                .as_array()
+                .and_then(|groups| groups.iter().find(|group| group["name"] == "default"));
+            let beta_group = groups["groups"]
+                .as_array()
+                .and_then(|groups| groups.iter().find(|group| group["name"] == "beta"));
             if groups["appType"] != "claude"
                 || groups["sources"].as_array().map(Vec::len) != Some(1)
                 || groups["sources"][0] != "materialized_channels"
-                || groups["groups"].as_array().map(Vec::len) != Some(1)
-                || groups["groups"][0]["name"] != "default"
-                || groups["groups"][0]["channelCount"] != 1
-                || groups["groups"][0]["appTypes"][0] != "claude"
+                || groups["groups"].as_array().map(Vec::len) != Some(2)
+                || default_group.is_none_or(|group| {
+                    group["channelCount"] != 1 || group["appTypes"][0] != "claude"
+                })
+                || beta_group.is_none_or(|group| {
+                    group["channelCount"] != 1 || group["appTypes"][0] != "claude"
+                })
             {
                 return Err(format!("unexpected groups body: {groups}"));
             }
