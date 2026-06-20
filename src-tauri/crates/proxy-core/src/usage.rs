@@ -1043,6 +1043,25 @@ pub fn usage_request_id_with_fallback(
         .unwrap_or_else(fallback)
 }
 
+pub fn usage_record_request_id_with_fallback(
+    record: &UsageRecord,
+    fallback: impl FnOnce() -> String,
+) -> String {
+    record
+        .request_id
+        .as_ref()
+        .filter(|value| !value.trim().is_empty())
+        .cloned()
+        .or_else(|| {
+            record
+                .message_id
+                .as_ref()
+                .filter(|value| !value.trim().is_empty())
+                .map(|message_id| format!("{SESSION_REQUEST_ID_PREFIX}{message_id}"))
+        })
+        .unwrap_or_else(fallback)
+}
+
 #[allow(clippy::too_many_arguments)]
 pub fn success_usage_record_with_request_id_fallback(
     provider_id: &str,
@@ -2772,6 +2791,69 @@ mod tests {
 
         assert_eq!(
             usage_request_id_with_fallback(&usage, || "fallback".to_string()),
+            "fallback"
+        );
+    }
+
+    fn usage_record_for_request_id(
+        request_id: Option<&str>,
+        message_id: Option<&str>,
+    ) -> UsageRecord {
+        UsageRecord {
+            request_id: request_id.map(str::to_string),
+            message_id: message_id.map(str::to_string),
+            app: crate::AppKind::Codex,
+            provider_id: "provider-1".to_string(),
+            provider_kind: None,
+            channel_id: None,
+            channel_name: None,
+            route_group: None,
+            request_model: "request-model".to_string(),
+            outbound_model: "outbound-model".to_string(),
+            response_model: Some("response-model".to_string()),
+            pricing_model: None,
+            tokens: UsageTokens {
+                input_tokens: 1,
+                output_tokens: 2,
+                cache_read_tokens: 0,
+                cache_creation_tokens: 0,
+            },
+            latency_ms: 1,
+            first_token_ms: None,
+            status_code: 200,
+            error_message: None,
+            session_id: None,
+            is_streaming: false,
+            metadata: Value::Object(Default::default()),
+        }
+    }
+
+    #[test]
+    fn test_usage_record_request_id_prefers_explicit_request_id() {
+        let record = usage_record_for_request_id(Some("req-1"), Some("msg-1"));
+
+        assert_eq!(
+            usage_record_request_id_with_fallback(&record, || "fallback".to_string()),
+            "req-1"
+        );
+    }
+
+    #[test]
+    fn test_usage_record_request_id_uses_message_id_when_request_id_blank() {
+        let record = usage_record_for_request_id(Some("   "), Some("msg-1"));
+
+        assert_eq!(
+            usage_record_request_id_with_fallback(&record, || "fallback".to_string()),
+            "session:msg-1"
+        );
+    }
+
+    #[test]
+    fn test_usage_record_request_id_uses_host_fallback_without_ids() {
+        let record = usage_record_for_request_id(None, Some("   "));
+
+        assert_eq!(
+            usage_record_request_id_with_fallback(&record, || "fallback".to_string()),
             "fallback"
         );
     }

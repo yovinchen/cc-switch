@@ -12,16 +12,17 @@ use crate::proxy::usage::{RequestLog, UsageLogger};
 use crate::proxy::RequestForwarder;
 use crate::proxy_core::{
     app_proxy_config_raw, channel_matches_query, interfaces_compatible, resolve_usage_record_pricing_models,
-    route_group_matches, token_usage_from_usage_record, AppKind, AuthInfo, AuthProfileRef,
-    ChannelAttemptPlan, ChannelAttemptResult, ChannelQuery, ChannelSource, ChannelSpec,
-    ChannelStatus, CopilotOptimizerConfigSpec, CostCalculator, CurrentRouteTarget, ForwardPipeline,
+    route_group_matches, token_usage_from_usage_record, usage_record_request_id_with_fallback, AppKind,
+    AuthInfo, AuthProfileRef, ChannelAttemptPlan, ChannelAttemptResult, ChannelQuery,
+    ChannelSource, ChannelSpec, ChannelStatus, CopilotOptimizerConfigSpec, CostCalculator,
+    CurrentRouteTarget, ForwardPipeline,
     GeminiShadowStore, ModelCatalog, OptimizerConfigSpec, ProviderSource, ProviderSpec,
     ProxyAppConfig, ProxyConfigSource, ProxyCoreError, ProxyCoreEvent,
     ProxyCoreResponse, ProxyCoreResult, ProxyEventSink, ProxyGlobalConfig,
     ProxyRequest, ProxyResponseBody, ProxyResult, ProxyRuntimeConfig, ProxyRuntimeStatus,
     ProxyServices, RectifierConfigSpec, RoutePlan, RoutePolicy, RoutePolicySource, RouteRequest,
     RouteResolver, RouteSelection, UsageRecord, UsageSink, CLAUDE_API_FORMAT_METADATA_KEY,
-    DEFAULT_ROUTE_GROUP, SESSION_REQUEST_ID_PREFIX,
+    DEFAULT_ROUTE_GROUP,
 };
 use crate::proxy_core_adapter::extract_proxy_session_id;
 use crate::proxy_core_adapter::{ToProxyCoreChannelSpec, ToProxyCoreProviderSpec};
@@ -590,7 +591,9 @@ impl UsageSink for CcSwitchUsageSink {
                 multiplier,
             );
             let log = RequestLog {
-                request_id: usage_request_id(&record),
+                request_id: usage_record_request_id_with_fallback(&record, || {
+                    uuid::Uuid::new_v4().to_string()
+                }),
                 provider_id: record.provider_id.clone(),
                 app_type,
                 model: model_selection.response_model,
@@ -910,22 +913,6 @@ fn app_error(context: &str, error: AppError) -> ProxyCoreError {
 
 fn usage_error(context: &str, error: AppError) -> ProxyCoreError {
     ProxyCoreError::Internal(format!("{context}: {error}"))
-}
-
-fn usage_request_id(record: &UsageRecord) -> String {
-    record
-        .request_id
-        .as_ref()
-        .filter(|value| !value.trim().is_empty())
-        .cloned()
-        .or_else(|| {
-            record
-                .message_id
-                .as_ref()
-                .filter(|value| !value.trim().is_empty())
-                .map(|message_id| format!("{SESSION_REQUEST_ID_PREFIX}{message_id}"))
-        })
-        .unwrap_or_else(|| uuid::Uuid::new_v4().to_string())
 }
 
 fn load_codex_client_model_catalog_raw() -> Value {
