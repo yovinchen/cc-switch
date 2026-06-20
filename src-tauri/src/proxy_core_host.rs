@@ -10,20 +10,22 @@ use crate::proxy::providers::codex_chat_history::CodexChatHistoryStore;
 use crate::proxy::route_attempt::forward_attempts_from_route_plan;
 use crate::proxy::usage::UsageLogger;
 use crate::proxy::RequestForwarder;
-use crate::proxy_core::{
+use crate::proxy_core_adapter::{
     app_proxy_config_raw, channel_matches_query, AppKind, AuthInfo, AuthProfileRef,
     ChannelAttemptPlan, ChannelAttemptResult, ChannelQuery, ChannelSource, ChannelSpec,
-    ChannelStatus,
-    CopilotOptimizerConfigSpec, CurrentRouteTarget, ForwardPipeline, GeminiShadowStore,
-    ModelCatalog, OptimizerConfigSpec, ProviderSource, ProviderSpec, ProxyAppConfig,
-    ProxyConfigSource, ProxyCoreError, ProxyCoreEvent, ProxyCoreResponse, ProxyCoreResult,
-    ProxyEventSink, ProxyGlobalConfig, ProxyRequest, ProxyResponseBody, ProxyResult,
-    ProxyRuntimeConfig, ProxyRuntimeStatus, ProxyServices, RectifierConfigSpec, RoutePlan,
-    RoutePolicy, RoutePolicySource, RouteRequest, RouteResolver, RouteSelection, UsageRecord,
-    UsageSink, CLAUDE_API_FORMAT_METADATA_KEY, DEFAULT_ROUTE_GROUP,
+    channel_not_found_error, AuthProvider, ChannelHealthReset, ChannelHealthStore,
+    ChannelStatus, CopilotOptimizerConfigSpec, CurrentRouteTarget, ForwardPipeline,
+    GeminiShadowStore, ModelCatalog, ModelCatalogProvider, OptimizerConfigSpec,
+    ProviderSource, ProviderSpec, ProxyAppConfig, ProxyConfigSource, ProxyCoreError,
+    ProxyCoreEvent, ProxyCoreResponse, ProxyCoreResult, ProxyEventSink, ProxyGlobalConfig,
+    ProxyRequest, ProxyResponseBody, ProxyResult, ProxyRuntimeConfig, ProxyRuntimeStatus,
+    ProxyServices, RectifierConfigSpec, RoutePlan, RoutePolicy, RoutePolicySource,
+    RouteRequest, RouteResolver, RouteSelection, UsageRecord, UsageSink,
+    CLAUDE_API_FORMAT_METADATA_KEY, DEFAULT_ROUTE_GROUP,
 };
-use crate::proxy_core_adapter::extract_proxy_session_id;
-use crate::proxy_core_adapter::{ToProxyCoreChannelSpec, ToProxyCoreProviderSpec};
+use crate::proxy_core_adapter::{
+    extract_proxy_session_id, ToProxyCoreChannelSpec, ToProxyCoreProviderSpec,
+};
 use bytes::Bytes;
 use futures::{future::BoxFuture, Stream, StreamExt};
 use serde_json::{json, Map, Value};
@@ -143,15 +145,15 @@ impl ProxyServices for CcSwitchProxyServices {
         &self.route_resolver
     }
 
-    fn health_store(&self) -> &(dyn crate::proxy_core::ChannelHealthStore + Send + Sync) {
+    fn health_store(&self) -> &(dyn ChannelHealthStore + Send + Sync) {
         &self.health_store
     }
 
-    fn auth_provider(&self) -> &(dyn crate::proxy_core::AuthProvider + Send + Sync) {
+    fn auth_provider(&self) -> &(dyn AuthProvider + Send + Sync) {
         &self.auth_provider
     }
 
-    fn model_catalog(&self) -> &(dyn crate::proxy_core::ModelCatalogProvider + Send + Sync) {
+    fn model_catalog(&self) -> &(dyn ModelCatalogProvider + Send + Sync) {
         &self.model_catalog
     }
 
@@ -457,7 +459,7 @@ struct CcSwitchHealthStore {
     router: Arc<ProviderRouter>,
 }
 
-impl crate::proxy_core::ChannelHealthStore for CcSwitchHealthStore {
+impl ChannelHealthStore for CcSwitchHealthStore {
     fn record_attempt<'a>(
         &'a self,
         result: ChannelAttemptResult,
@@ -478,18 +480,18 @@ impl crate::proxy_core::ChannelHealthStore for CcSwitchHealthStore {
     fn reset_channel<'a>(
         &'a self,
         channel_id: &'a str,
-    ) -> BoxFuture<'a, ProxyCoreResult<crate::proxy_core::ChannelHealthReset>> {
+    ) -> BoxFuture<'a, ProxyCoreResult<ChannelHealthReset>> {
         Box::pin(async move {
             let app_type = self
                 .db
                 .get_proxy_channel_app_type(channel_id)
                 .map_err(|error| app_error("lookup channel app", error))?
-                .ok_or_else(|| crate::proxy_core::channel_not_found_error(channel_id))?;
+                .ok_or_else(|| channel_not_found_error(channel_id))?;
             self.router
                 .reset_channel_breaker(channel_id, &app_type)
                 .await
                 .map_err(|error| app_error("reset channel health", error))?;
-            Ok(crate::proxy_core::ChannelHealthReset {
+            Ok(ChannelHealthReset {
                 channel_id: channel_id.to_string(),
                 app: AppKind::from(app_type.as_str()),
             })
@@ -500,7 +502,7 @@ impl crate::proxy_core::ChannelHealthStore for CcSwitchHealthStore {
 #[derive(Clone, Default)]
 struct CcSwitchAuthProvider;
 
-impl crate::proxy_core::AuthProvider for CcSwitchAuthProvider {
+impl AuthProvider for CcSwitchAuthProvider {
     fn resolve_auth<'a>(
         &'a self,
         auth_profile: Option<&'a AuthProfileRef>,
@@ -521,7 +523,7 @@ struct CcSwitchModelCatalogProvider {
     db: Arc<Database>,
 }
 
-impl crate::proxy_core::ModelCatalogProvider for CcSwitchModelCatalogProvider {
+impl ModelCatalogProvider for CcSwitchModelCatalogProvider {
     fn load_catalog<'a>(
         &'a self,
         app: &'a AppKind,
@@ -888,12 +890,14 @@ fn load_codex_client_model_catalog_raw() -> Value {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::proxy_core::ProxyCoreEventType;
     use crate::provider::Provider;
-    use crate::proxy_core::{
-        ChannelOverrides, InterfaceKind, ModelCapabilities, ModelRoute, ProviderKind, ProxyBody,
-        ProxyEngine, ProxyResponseBody, ProxyRuntimeStatus, RetryPolicy, RouteSelection,
-        UpstreamEndpoint, UsageRecord, UsageTokens,
+    use crate::proxy_core_adapter::{
+        ProviderKind, ProxyBody, ProxyCoreChannelOverrides as ChannelOverrides,
+        ProxyCoreInterfaceKind as InterfaceKind,
+        ProxyCoreModelCapabilities as ModelCapabilities, ProxyCoreModelRoute as ModelRoute,
+        ProxyCoreUpstreamEndpoint as UpstreamEndpoint, ProxyCoreEventType, ProxyEngine,
+        ProxyResponseBody, ProxyRuntimeStatus, ResolvedChannelAttempt, RetryPolicy,
+        RouteSelection, UsageRecord, UsageTokens,
     };
     use bytes::Bytes;
     use futures::StreamExt;
@@ -1341,7 +1345,7 @@ mod tests {
             ),
             claude_api_format: None,
             outbound_model: None,
-            selected_channel: Some(crate::proxy_core::ResolvedChannelAttempt {
+            selected_channel: Some(ResolvedChannelAttempt {
                 channel_id: "channel-b".to_string(),
                 channel_name: "Channel B".to_string(),
                 base_url: "https://fallback.example.com/v1".to_string(),
