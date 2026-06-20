@@ -712,13 +712,7 @@ fn apply_channel_auth_profile_providers(
             .get_enabled_proxy_channel_key(&channel_id, key_ref)
             .map_err(|error| app_error("load channel auth key", error))?
         else {
-            log::warn!(
-                "[{}] channel auth profile references missing or disabled key: channel_id={}, key_ref={}",
-                app_type.as_str(),
-                channel_id,
-                key_ref
-            );
-            continue;
+            return Err(channel_key_auth_error(&channel_id, key_ref));
         };
         attempt.set_auth_provider(channel_key_auth_provider(
             app_type,
@@ -734,6 +728,12 @@ fn channel_key_auth_profile_key_ref(auth_profile_ref: &str) -> Option<&str> {
         .strip_prefix("channel-key:")
         .map(str::trim)
         .filter(|key_ref| !key_ref.is_empty())
+}
+
+fn channel_key_auth_error(channel_id: &str, key_ref: &str) -> ProxyCoreError {
+    ProxyCoreError::Auth(format!(
+        "channel auth profile references missing or disabled key: channel_id={channel_id}, key_ref={key_ref}"
+    ))
 }
 
 fn channel_key_auth_provider(
@@ -1152,7 +1152,7 @@ mod tests {
     }
 
     #[test]
-    fn channel_auth_profile_ignores_unknown_or_cross_app_refs() {
+    fn channel_auth_profile_ignores_unknown_or_cross_app_provider_refs() {
         let route_provider = Provider::with_id(
             "route-provider".to_string(),
             "Route Provider".to_string(),
@@ -1174,13 +1174,38 @@ mod tests {
 
         assert_eq!(attempts[0].provider().id, "route-provider");
         assert_eq!(attempts[0].auth_provider().id, "route-provider");
+    }
 
+    #[test]
+    fn channel_key_auth_profile_fails_closed_for_missing_key() {
+        let route_provider = Provider::with_id(
+            "route-provider".to_string(),
+            "Route Provider".to_string(),
+            json!({ "env": { "ANTHROPIC_API_KEY": "route-key" } }),
+            None,
+        );
+        let mut providers = IndexMap::new();
+        providers.insert(route_provider.id.clone(), route_provider);
+        let mut plan = route_plan("route-provider", "channel-auth");
         plan.selection.channel.auth_profile = Some(AuthProfileRef::new("channel-key:manual"));
+        let route_providers = host_providers_for_plan(&providers, &plan).expect("route providers");
         let mut attempts =
             forward_attempts_from_route_plan(&AppType::Claude, &route_providers, &plan);
-        apply_channel_auth_profile_providers(&db, &AppType::Claude, &providers, &mut attempts)
-            .expect("apply missing channel key profile");
-        assert_eq!(attempts[0].auth_provider().id, "route-provider");
+        let db = Database::memory().expect("memory db");
+        let error = apply_channel_auth_profile_providers(
+            &db,
+            &AppType::Claude,
+            &providers,
+            &mut attempts,
+        )
+        .unwrap_err();
+
+        assert!(matches!(
+            error,
+            ProxyCoreError::Auth(message)
+                if message.contains("channel_id=channel-auth")
+                    && message.contains("key_ref=manual")
+        ));
     }
 
     #[test]
@@ -1236,6 +1261,31 @@ mod tests {
                 .and_then(Value::as_str),
             Some("sk-channel-key")
         );
+
+        db.upsert_proxy_channel_key(
+            "channel-auth-key",
+            "primary",
+            "sk-channel-key",
+            "disabled",
+            10,
+            100,
+        )
+        .expect("disable channel key");
+        let mut attempts =
+            forward_attempts_from_route_plan(&AppType::Claude, &route_providers, &plan);
+        let error = apply_channel_auth_profile_providers(
+            &db,
+            &AppType::Claude,
+            &providers,
+            &mut attempts,
+        )
+        .unwrap_err();
+        assert!(matches!(
+            error,
+            ProxyCoreError::Auth(message)
+                if message.contains("channel_id=channel-auth-key")
+                    && message.contains("key_ref=primary")
+        ));
     }
 
     fn proxy_request() -> ProxyRequest {
