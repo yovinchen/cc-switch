@@ -52,15 +52,15 @@ use crate::proxy_core::{
     ChannelModelRecord, ChannelModelsResponse, ChannelPathRequest, ChannelRecord,
     ChannelRecordResponse, ChannelRouteCandidate, ChannelRouteRejected, ChannelTestPlan,
     ChannelTestResponse, ClaudeDesktopModelListResponse, ClientModelCatalogResponse,
-    CurrentRouteResponse, CurrentRouteTarget, GroupListQuery, GroupListRequest, HealthCheckRequest,
-    HealthCheckResponse, InterfaceKind, ManagementAppPathRequest, ManagementAuthDecision,
-    ProviderListResponse, ProxyBody, ProxyChannelModelsReplaceRequest, ProxyChannelPatchRequest,
-    ProxyChannelTestRequest, ProxyChannelWriteRequest, ProxyRequest, ProxyRuntimeStatus,
-    ProxyStatusRequest, ProxyStatusResponse, RoutableModelList, RouteGroupListResponse,
-    RouteResolveManagementRequest, RouteResolveRequest, RouteResolveResponse,
-    TransformedResponseUsageFormat, UnlabeledSseFallbackLogContext, UnlabeledSseFallbackLogLevel,
-    UpstreamSseAggregationKind, CLAUDE_PARSER_CONFIG, CODEX_PARSER_CONFIG, GEMINI_PARSER_CONFIG,
-    OPENAI_PARSER_CONFIG,
+    CurrentRouteResponse, CurrentRouteTarget, GroupListChannelSource, GroupListQuery,
+    GroupListRequest, HealthCheckRequest, HealthCheckResponse, InterfaceKind,
+    ManagementAppPathRequest, ManagementAuthDecision, ProviderListResponse, ProxyBody,
+    ProxyChannelModelsReplaceRequest, ProxyChannelPatchRequest, ProxyChannelTestRequest,
+    ProxyChannelWriteRequest, ProxyRequest, ProxyRuntimeStatus, ProxyStatusRequest,
+    ProxyStatusResponse, RoutableModelList, RouteGroupListResponse, RouteResolveManagementRequest,
+    RouteResolveRequest, RouteResolveResponse, TransformedResponseUsageFormat,
+    UnlabeledSseFallbackLogContext, UnlabeledSseFallbackLogLevel, UpstreamSseAggregationKind,
+    CLAUDE_PARSER_CONFIG, CODEX_PARSER_CONFIG, GEMINI_PARSER_CONFIG, OPENAI_PARSER_CONFIG,
 };
 use crate::proxy_core_adapter::{
     proxy_app_summary_input, proxy_channel_model_records_to_core, proxy_channel_record_to_core,
@@ -511,14 +511,14 @@ pub async fn list_proxy_groups(
             .list_channels_for_app(app_type)
             .await
             .map_err(|e| ProxyError::DatabaseError(e.to_string()))?;
-        sources.push(request.source_input(
+        sources.push(GroupListChannelSource::new(
             app_type.clone(),
-            &source,
+            source,
             proxy_channel_specs_to_core(channels),
         ));
     }
 
-    Ok(Json(request.response(sources)))
+    Ok(Json(request.response_from_channel_sources(sources)))
 }
 
 /// GET /proxy/v1/apps/{app}/routes/current

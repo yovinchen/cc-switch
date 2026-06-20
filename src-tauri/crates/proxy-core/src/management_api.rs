@@ -336,6 +336,27 @@ pub struct GroupListRequest {
     pub app_type: Option<String>,
 }
 
+#[derive(Debug, Clone, PartialEq)]
+pub struct GroupListChannelSource {
+    pub app_type: String,
+    pub source: ChannelRouteSource,
+    pub channels: Vec<ChannelSpec>,
+}
+
+impl GroupListChannelSource {
+    pub fn new(
+        app_type: impl Into<String>,
+        source: ChannelRouteSource,
+        channels: Vec<ChannelSpec>,
+    ) -> Self {
+        Self {
+            app_type: app_type.into(),
+            source,
+            channels,
+        }
+    }
+}
+
 impl GroupListRequest {
     pub fn from_query(query: GroupListQuery) -> ProxyCoreResult<Self> {
         Ok(Self {
@@ -373,6 +394,17 @@ impl GroupListRequest {
     ) -> RouteGroupListResponse {
         RouteGroupListResponse::from_sources(self.app_type.clone(), sources)
     }
+
+    pub fn response_from_channel_sources(
+        &self,
+        sources: impl IntoIterator<Item = GroupListChannelSource>,
+    ) -> RouteGroupListResponse {
+        self.response(
+            sources
+                .into_iter()
+                .map(|source| self.source_input(source.app_type, &source.source, source.channels)),
+        )
+    }
 }
 
 fn normalize_optional_management_app_type(app_type: Option<String>) -> ProxyCoreResult<Option<String>> {
@@ -388,10 +420,10 @@ fn normalize_optional_management_app_type(app_type: Option<String>) -> ProxyCore
 mod tests {
     use super::{
         AppChannelManagementRequest, AppListRequest, AppModelCatalogRequest, ChannelListRequest,
-        ChannelCreateRequest, ChannelPathRequest, GroupListRequest, HealthCheckRequest,
-        ManagementAppPathRequest, ProxyStatusRequest, RouteResolveManagementRequest,
-        channel_not_found_message, normalize_channel_id_path, validate_management_app_type,
-        validate_route_resolve_app_type,
+        ChannelCreateRequest, ChannelPathRequest, GroupListChannelSource, GroupListRequest,
+        HealthCheckRequest, ManagementAppPathRequest, ProxyStatusRequest,
+        RouteResolveManagementRequest, channel_not_found_message, normalize_channel_id_path,
+        validate_management_app_type, validate_route_resolve_app_type,
     };
     use crate::{
         AppChannelListQuery, AppKind, AppModelListQuery, AppSummaryInput, ChannelHealthPolicy,
@@ -882,9 +914,9 @@ mod tests {
         .expect("query");
         let request = GroupListRequest::from_query(query).expect("request");
 
-        let response = request.response(vec![request.source_input(
+        let response = request.response_from_channel_sources(vec![GroupListChannelSource::new(
             "claude",
-            &ChannelRouteSource::MaterializedChannels,
+            ChannelRouteSource::MaterializedChannels,
             vec![
                 channel_spec("channel-a", AppKind::Claude, vec![]),
                 channel_spec("channel-b", AppKind::Claude, vec!["beta".to_string()]),
