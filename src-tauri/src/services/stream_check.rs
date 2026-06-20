@@ -27,17 +27,9 @@ use crate::provider::Provider;
 use crate::proxy::providers::{get_adapter, ClaudeAdapter, ProviderAdapter};
 use crate::proxy_core_adapter::{
     channel_reachability_status_from_latency, should_retry_channel_reachability_failure,
-    ChannelReachabilityStatus,
 };
 
-/// 健康状态枚举
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-#[serde(rename_all = "lowercase")]
-pub enum HealthStatus {
-    Operational,
-    Degraded,
-    Failed,
-}
+pub use crate::proxy_core_adapter::ChannelReachabilityStatus as HealthStatus;
 
 /// 连通性检查配置
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -281,11 +273,7 @@ impl StreamCheckService {
     }
 
     fn determine_status(latency_ms: u64, threshold: u64) -> HealthStatus {
-        match channel_reachability_status_from_latency(latency_ms, threshold) {
-            ChannelReachabilityStatus::Operational => HealthStatus::Operational,
-            ChannelReachabilityStatus::Degraded => HealthStatus::Degraded,
-            ChannelReachabilityStatus::Failed => HealthStatus::Failed,
-        }
+        channel_reachability_status_from_latency(latency_ms, threshold)
     }
 
     fn should_retry(msg: &str) -> bool {

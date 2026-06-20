@@ -24,7 +24,7 @@ use crate::proxy_core::api::session::SessionIdResult;
 use crate::proxy_core::api::transforms::CodexChatErrorNormalization;
 use crate::proxy_core::api::transport::{UpstreamRequestTransportPolicy, UpstreamSendPolicy};
 use crate::services::usage_stats::is_placeholder_pricing_model;
-use crate::services::stream_check::{HealthStatus, StreamCheckResult};
+use crate::services::stream_check::StreamCheckResult;
 use bytes::Bytes;
 use futures::Stream;
 use http::{HeaderMap, StatusCode};
@@ -432,7 +432,7 @@ pub(crate) type ChannelRequestValidationError =
 pub(crate) type ChannelRouteSource =
     crate::proxy_core::api::management::ChannelRouteSource;
 pub(crate) type ChannelRecord = crate::proxy_core::api::management::ChannelRecord;
-pub(crate) type ChannelReachabilityStatus =
+pub type ChannelReachabilityStatus =
     crate::proxy_core::api::management::ChannelReachabilityStatus;
 pub(crate) type ChannelKeyRecord =
     crate::proxy_core::api::management::ChannelKeyRecord;
@@ -2115,7 +2115,7 @@ pub(crate) fn stream_check_result_to_channel_reachability(
 ) -> ChannelReachabilityResult {
     ChannelReachabilityResult::from_input(ChannelReachabilityInput {
         success: result.success,
-        status: stream_check_health_status_to_channel_reachability(&result.status),
+        status: result.status,
         message: result.message,
         latency_ms: result.response_time_ms,
         http_status: result.http_status,
@@ -2136,16 +2136,6 @@ pub(crate) fn channel_reachability_status_from_latency(
 
 pub(crate) fn should_retry_channel_reachability_failure(message: &str) -> bool {
     crate::proxy_core::api::management::should_retry_channel_reachability_failure(message)
-}
-
-fn stream_check_health_status_to_channel_reachability(
-    status: &HealthStatus,
-) -> ChannelReachabilityStatus {
-    match status {
-        HealthStatus::Operational => ChannelReachabilityStatus::Operational,
-        HealthStatus::Degraded => ChannelReachabilityStatus::Degraded,
-        HealthStatus::Failed => ChannelReachabilityStatus::Failed,
-    }
 }
 
 fn provider_metadata_without_secrets(provider: &Provider) -> ProviderMetadata {
@@ -3726,7 +3716,7 @@ mod tests {
     #[test]
     fn stream_check_adapter_preserves_reachability_fields() {
         let result = StreamCheckResult {
-            status: HealthStatus::Degraded,
+            status: ChannelReachabilityStatus::Degraded,
             success: true,
             message: "slow but reachable".to_string(),
             response_time_ms: Some(6100),
@@ -3752,10 +3742,13 @@ mod tests {
 
         for (health_status, reachability_status) in [
             (
-                HealthStatus::Operational,
+                ChannelReachabilityStatus::Operational,
                 ChannelReachabilityStatus::Operational,
             ),
-            (HealthStatus::Failed, ChannelReachabilityStatus::Failed),
+            (
+                ChannelReachabilityStatus::Failed,
+                ChannelReachabilityStatus::Failed,
+            ),
         ] {
             let result = StreamCheckResult {
                 status: health_status,

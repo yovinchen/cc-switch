@@ -933,7 +933,8 @@ pub struct ChannelReachabilityResult {
     pub retry_count: u32,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
 pub enum ChannelReachabilityStatus {
     Operational,
     Degraded,
@@ -2682,6 +2683,11 @@ mod tests {
         assert_eq!(ChannelReachabilityStatus::Operational.as_str(), "operational");
         assert_eq!(ChannelReachabilityStatus::Degraded.as_str(), "degraded");
         assert_eq!(ChannelReachabilityStatus::Failed.as_str(), "failed");
+        assert_eq!(
+            serde_json::to_value(ChannelReachabilityStatus::Operational)
+                .expect("serialize status"),
+            json!("operational")
+        );
         assert_eq!(
             channel_reachability_status_from_latency(1_500, 1_500),
             ChannelReachabilityStatus::Operational
