@@ -648,7 +648,7 @@ mod tests {
     #[tokio::test]
     async fn management_apps_and_providers_return_sanitized_summaries() {
         let db = Arc::new(Database::memory().expect("memory db"));
-        let provider = Provider::with_id(
+        let mut provider = Provider::with_id(
             "a".to_string(),
             "Provider A".to_string(),
             json!({
@@ -659,6 +659,7 @@ mod tests {
             }),
             None,
         );
+        provider.category = Some("aggregator".to_string());
         db.save_provider("claude", &provider).unwrap();
         db.set_current_provider("claude", "a").unwrap();
 
@@ -700,6 +701,7 @@ mod tests {
         let provider = &providers["providers"].as_array().unwrap()[0];
         assert_eq!(provider["id"], "a");
         assert_eq!(provider["name"], "Provider A");
+        assert_eq!(provider["category"], "aggregator");
         assert_eq!(provider["current"], true);
         assert_eq!(provider["routeCandidate"], true);
         assert!(provider.get("settingsConfig").is_none());
@@ -709,7 +711,7 @@ mod tests {
     #[tokio::test]
     async fn current_route_management_route_reports_configured_and_active_channel_target() {
         let db = Arc::new(Database::memory().expect("memory db"));
-        let provider = Provider::with_id(
+        let mut provider = Provider::with_id(
             "a".to_string(),
             "Provider A".to_string(),
             json!({
@@ -720,6 +722,7 @@ mod tests {
             }),
             None,
         );
+        provider.category = Some("aggregator".to_string());
         db.save_provider("claude", &provider).unwrap();
         db.set_current_provider("claude", "a").unwrap();
 
@@ -742,6 +745,10 @@ mod tests {
         assert_eq!(configured["active"], false);
         assert!(configured["target"].is_null());
         assert_eq!(configured["configuredProvider"]["id"], "a");
+        assert_eq!(configured["configuredProvider"]["category"], "aggregator");
+        assert!(configured["configuredProvider"]
+            .get("settingsConfig")
+            .is_none());
         assert!(configured.to_string().find("secret-key").is_none());
 
         server.state.current_providers.write().await.insert(
@@ -806,7 +813,7 @@ mod tests {
     #[tokio::test]
     async fn proxy_server_runtime_smoke_exposes_versioned_management_api() {
         let db = Arc::new(Database::memory().expect("memory db"));
-        let provider = Provider::with_id(
+        let mut provider = Provider::with_id(
             "runtime-provider".to_string(),
             "Runtime Provider".to_string(),
             json!({
@@ -817,6 +824,7 @@ mod tests {
             }),
             None,
         );
+        provider.category = Some("aggregator".to_string());
         db.save_provider("claude", &provider).unwrap();
         db.set_current_provider("claude", "runtime-provider")
             .unwrap();
@@ -925,6 +933,7 @@ mod tests {
                     format!("providers response missing runtime provider: {providers}")
                 })?;
             if runtime_provider["name"] != "Runtime Provider"
+                || runtime_provider["category"] != "aggregator"
                 || runtime_provider["current"] != true
                 || runtime_provider["routeCandidate"] != true
                 || runtime_provider.get("settingsConfig").is_some()
@@ -952,6 +961,10 @@ mod tests {
                 || configured_route["active"] != false
                 || !configured_route["target"].is_null()
                 || configured_route["configuredProvider"]["id"] != "runtime-provider"
+                || configured_route["configuredProvider"]["category"] != "aggregator"
+                || configured_route["configuredProvider"]
+                    .get("settingsConfig")
+                    .is_some()
                 || configured_route.to_string().contains("provider-secret")
             {
                 return Err(format!(
