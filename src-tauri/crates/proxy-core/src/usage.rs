@@ -751,11 +751,50 @@ pub struct StreamingResponseUsageRecord {
     pub usage_found: bool,
 }
 
+impl StreamingResponseUsageRecord {
+    pub fn missing_usage_log_message(&self, tag: &str) -> Option<String> {
+        if self.usage_found {
+            None
+        } else {
+            Some(format!("[{tag}] 流式响应缺少 usage 统计，跳过消费记录"))
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct NonStreamingResponseUsageRecord {
     pub record: UsageRecord,
     pub usage_found: bool,
     pub body_was_json: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum NonStreamingResponseUsageLogEvent {
+    NonJsonBody { body_len: usize },
+    MissingUsage,
+}
+
+impl NonStreamingResponseUsageLogEvent {
+    pub fn message(&self, tag: &str, app_type_str: &str) -> String {
+        match self {
+            Self::NonJsonBody { body_len } => {
+                format!("[{tag}] <<< 响应 (非 JSON): {body_len} bytes")
+            }
+            Self::MissingUsage => format!("[{app_type_str}] 未能解析 usage 信息，跳过记录"),
+        }
+    }
+}
+
+impl NonStreamingResponseUsageRecord {
+    pub fn log_event(&self, body_len: usize) -> Option<NonStreamingResponseUsageLogEvent> {
+        if !self.body_was_json {
+            Some(NonStreamingResponseUsageLogEvent::NonJsonBody { body_len })
+        } else if !self.usage_found {
+            Some(NonStreamingResponseUsageLogEvent::MissingUsage)
+        } else {
+            None
+        }
+    }
 }
 
 pub fn transformed_response_usage(
@@ -2682,6 +2721,50 @@ mod tests {
     }
 
     #[test]
+    fn streaming_response_usage_record_reports_missing_usage_for_host_log() {
+        let output = streaming_response_usage_record_with_request_id_fallback(
+            &[json!({})],
+            missing_stream_usage,
+            extracted_stream_model,
+            "provider-a",
+            None,
+            crate::AppKind::Codex,
+            "request-model",
+            "outbound-model",
+            "fallback-model",
+            123,
+            Some(45),
+            200,
+            None,
+            || "request-1".to_string(),
+        );
+
+        assert_eq!(
+            output.missing_usage_log_message("REQ-1").as_deref(),
+            Some("[REQ-1] 流式响应缺少 usage 统计，跳过消费记录")
+        );
+
+        let output = streaming_response_usage_record_with_request_id_fallback(
+            &[json!({"model": "stream-response-model"})],
+            parsed_stream_usage,
+            extracted_stream_model,
+            "provider-a",
+            None,
+            crate::AppKind::Codex,
+            "request-model",
+            "outbound-model",
+            "fallback-model",
+            123,
+            Some(45),
+            200,
+            None,
+            || "request-2".to_string(),
+        );
+
+        assert!(output.missing_usage_log_message("REQ-1").is_none());
+    }
+
+    #[test]
     fn test_non_streaming_response_usage_record_prefers_usage_model() {
         let output = non_streaming_response_usage_record_with_request_id_fallback(
             Some(&json!({
@@ -2813,6 +2896,72 @@ mod tests {
             Some("request-model")
         );
         assert_eq!(output.record.status_code, 502);
+    }
+
+    #[test]
+    fn non_streaming_response_usage_record_reports_host_log_event() {
+        let non_json = non_streaming_response_usage_record_from_body_with_request_id_fallback(
+            b"not json",
+            parsed_response_usage,
+            "provider-a",
+            None,
+            crate::AppKind::Codex,
+            "request-model",
+            None,
+            123,
+            502,
+            None,
+            || "request-1".to_string(),
+        );
+
+        let event = non_json.log_event(8).expect("non-json log event");
+        assert_eq!(
+            event,
+            NonStreamingResponseUsageLogEvent::NonJsonBody { body_len: 8 }
+        );
+        assert_eq!(
+            event.message("REQ-1", "codex"),
+            "[REQ-1] <<< 响应 (非 JSON): 8 bytes"
+        );
+
+        let missing_usage = non_streaming_response_usage_record_with_request_id_fallback(
+            Some(&json!({"model": "body-model"})),
+            missing_response_usage,
+            "provider-a",
+            None,
+            crate::AppKind::Codex,
+            "request-model",
+            None,
+            123,
+            200,
+            None,
+            || "request-2".to_string(),
+        );
+
+        let event = missing_usage
+            .log_event(22)
+            .expect("missing usage log event");
+        assert_eq!(event, NonStreamingResponseUsageLogEvent::MissingUsage);
+        assert_eq!(
+            event.message("REQ-1", "codex"),
+            "[codex] 未能解析 usage 信息，跳过记录"
+        );
+
+        let with_usage = non_streaming_response_usage_record_with_request_id_fallback(
+            Some(&json!({"usage_model": "usage-model"})),
+            parsed_response_usage,
+            "provider-a",
+            None,
+            crate::AppKind::Codex,
+            "request-model",
+            None,
+            123,
+            200,
+            None,
+            || "request-3".to_string(),
+        );
+
+        assert!(with_usage.log_event(33).is_none());
     }
 
     #[test]

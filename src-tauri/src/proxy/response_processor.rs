@@ -172,17 +172,8 @@ pub async fn handle_non_streaming(
             || uuid::Uuid::new_v4().to_string(),
         );
 
-        if !output.body_was_json {
-            log::debug!(
-                "[{}] <<< 响应 (非 JSON): {} bytes",
-                ctx.tag,
-                body_bytes.len()
-            );
-        } else if !output.usage_found {
-            log::debug!(
-                "[{}] 未能解析 usage 信息，跳过记录",
-                parser_config.app_type_str
-            );
+        if let Some(event) = output.log_event(body_bytes.len()) {
+            log::debug!("{}", event.message(ctx.tag, parser_config.app_type_str));
         }
 
         spawn_record_usage(state, output.record);
@@ -358,8 +349,8 @@ fn create_usage_collector(
                 || uuid::Uuid::new_v4().to_string(),
             );
 
-            if !output.usage_found {
-                log::debug!("[{tag}] 流式响应缺少 usage 统计，跳过消费记录");
+            if let Some(message) = output.missing_usage_log_message(tag) {
+                log::debug!("{message}");
             }
 
             spawn_record_usage(&state, output.record);
