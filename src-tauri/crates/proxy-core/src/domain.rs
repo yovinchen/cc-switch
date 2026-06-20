@@ -781,6 +781,12 @@ pub enum ProxyResponseBody {
     Stream(ProxyByteStream),
 }
 
+pub enum ProxyTransportResponseBody {
+    Empty,
+    Bytes(Bytes),
+    Stream(ProxyByteStream),
+}
+
 impl ProxyResponseBody {
     pub fn bytes(body: impl Into<Bytes>) -> Self {
         Self::Bytes(body.into())
@@ -796,6 +802,18 @@ impl ProxyResponseBody {
 
     pub fn is_stream(&self) -> bool {
         matches!(self, Self::Stream(_))
+    }
+
+    pub fn into_transport_body(self) -> Result<ProxyTransportResponseBody, String> {
+        match self {
+            Self::Empty => Ok(ProxyTransportResponseBody::Empty),
+            Self::Json(value) => serde_json::to_vec(&value)
+                .map(Bytes::from)
+                .map(ProxyTransportResponseBody::Bytes)
+                .map_err(|error| format!("Failed to serialize proxy core response: {error}")),
+            Self::Bytes(body) => Ok(ProxyTransportResponseBody::Bytes(body)),
+            Self::Stream(stream) => Ok(ProxyTransportResponseBody::Stream(stream)),
+        }
     }
 }
 
@@ -826,6 +844,12 @@ pub struct ProxyCoreResponse {
     pub body: ProxyResponseBody,
 }
 
+pub struct ProxyTransportResponse {
+    pub status: StatusCode,
+    pub headers: HeaderMap,
+    pub body: ProxyTransportResponseBody,
+}
+
 impl ProxyCoreResponse {
     pub fn empty(status: StatusCode) -> Self {
         Self {
@@ -841,6 +865,14 @@ impl ProxyCoreResponse {
             headers,
             body,
         }
+    }
+
+    pub fn into_transport_response(self) -> Result<ProxyTransportResponse, String> {
+        Ok(ProxyTransportResponse {
+            status: self.status,
+            headers: self.headers,
+            body: self.body.into_transport_body()?,
+        })
     }
 }
 
@@ -983,6 +1015,45 @@ mod tests {
                 .unwrap_or_else(|| test_route_selection("provider-a", "channel-a")),
             selections,
             attempts: Vec::new(),
+        }
+    }
+
+    #[test]
+    fn proxy_core_response_serializes_json_for_transport() {
+        let response = ProxyCoreResponse::with_body(
+            StatusCode::CREATED,
+            HeaderMap::new(),
+            ProxyResponseBody::json(json!({"ok": true})),
+        );
+
+        let response = response.into_transport_response().expect("transport response");
+
+        assert_eq!(response.status, StatusCode::CREATED);
+        match response.body {
+            ProxyTransportResponseBody::Bytes(body) => {
+                assert_eq!(body, Bytes::from_static(br#"{"ok":true}"#))
+            }
+            _ => panic!("expected bytes body"),
+        }
+    }
+
+    #[test]
+    fn proxy_response_body_keeps_stream_for_transport() {
+        let stream = futures::stream::once(async {
+            Ok::<_, std::io::Error>(Bytes::from_static(b"chunk"))
+        });
+        let body = ProxyResponseBody::stream(stream)
+            .into_transport_body()
+            .expect("transport body");
+
+        match body {
+            ProxyTransportResponseBody::Stream(mut stream) => {
+                let chunk = futures::executor::block_on(stream.next())
+                    .expect("stream item")
+                    .expect("stream chunk");
+                assert_eq!(chunk, Bytes::from_static(b"chunk"));
+            }
+            _ => panic!("expected stream body"),
         }
     }
 

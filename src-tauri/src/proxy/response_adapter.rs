@@ -1,26 +1,25 @@
 use super::{error::ProxyError, hyper_client::ProxyResponse};
-use crate::proxy_core::{ProxyCoreResponse, ProxyResponseBody};
+use crate::proxy_core::{ProxyCoreResponse, ProxyTransportResponse, ProxyTransportResponseBody};
 use bytes::Bytes;
 
 pub(crate) fn proxy_core_response_to_proxy_response(
     response: ProxyCoreResponse,
 ) -> Result<ProxyResponse, ProxyError> {
-    let ProxyCoreResponse {
+    let response = response
+        .into_transport_response()
+        .map_err(ProxyError::Internal)?;
+    let ProxyTransportResponse {
         status,
         headers,
         body,
     } = response;
 
     let response = match body {
-        ProxyResponseBody::Empty => ProxyResponse::buffered(status, headers, Bytes::new()),
-        ProxyResponseBody::Json(value) => {
-            let body = serde_json::to_vec(&value).map_err(|error| {
-                ProxyError::Internal(format!("Failed to serialize proxy core response: {error}"))
-            })?;
-            ProxyResponse::buffered(status, headers, Bytes::from(body))
+        ProxyTransportResponseBody::Empty => ProxyResponse::buffered(status, headers, Bytes::new()),
+        ProxyTransportResponseBody::Bytes(body) => ProxyResponse::buffered(status, headers, body),
+        ProxyTransportResponseBody::Stream(stream) => {
+            ProxyResponse::streamed(status, headers, stream)
         }
-        ProxyResponseBody::Bytes(body) => ProxyResponse::buffered(status, headers, body),
-        ProxyResponseBody::Stream(stream) => ProxyResponse::streamed(status, headers, stream),
     };
 
     Ok(response)
@@ -42,21 +41,18 @@ pub(crate) fn proxy_core_response_to_axum_response_with_error_message(
     build_error_context: &str,
     build_error_message: &str,
 ) -> Result<axum::response::Response, ProxyError> {
-    let ProxyCoreResponse {
+    let response = response
+        .into_transport_response()
+        .map_err(ProxyError::Internal)?;
+    let ProxyTransportResponse {
         status,
         headers,
         body,
     } = response;
     let body = match body {
-        ProxyResponseBody::Empty => axum::body::Body::from(Bytes::new()),
-        ProxyResponseBody::Bytes(body) => axum::body::Body::from(body),
-        ProxyResponseBody::Json(value) => {
-            let body = serde_json::to_vec(&value).map_err(|error| {
-                ProxyError::Internal(format!("Failed to serialize proxy core response: {error}"))
-            })?;
-            axum::body::Body::from(body)
-        }
-        ProxyResponseBody::Stream(stream) => axum::body::Body::from_stream(stream),
+        ProxyTransportResponseBody::Empty => axum::body::Body::from(Bytes::new()),
+        ProxyTransportResponseBody::Bytes(body) => axum::body::Body::from(body),
+        ProxyTransportResponseBody::Stream(stream) => axum::body::Body::from_stream(stream),
     };
 
     let mut builder = axum::response::Response::builder().status(status);
