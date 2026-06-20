@@ -4,11 +4,15 @@
 
 use crate::app_config::AppType;
 use crate::provider::Provider;
-use crate::proxy::{error::ProxyError, forwarder::RequestForwarder, server::ProxyState};
+use crate::proxy::{
+    error::ProxyError, forwarder::RequestForwarder, providers::get_claude_api_format,
+    route_attempt::ForwardAttempt, server::ProxyState,
+};
 use crate::proxy_core::{
-    AppKind, AppProxyConfig, CopilotOptimizerConfig, OptimizerConfig, ProxyServices,
+    AppKind, AppProxyConfig, CopilotOptimizerConfig, OptimizerConfig, ProxyResult, ProxyServices,
     RectifierConfig, ResponseRuntimePolicy, ResponseTimeoutConfig, StreamingTimeoutConfig,
-    extract_gemini_model_from_path, resolve_response_runtime_policy,
+    claude_api_format_from_metadata, extract_gemini_model_from_path,
+    resolve_response_runtime_policy,
 };
 use crate::proxy_core_adapter::extract_proxy_session_id;
 use axum::http::HeaderMap;
@@ -194,6 +198,34 @@ impl RequestContext {
             extract_gemini_model_from_path(endpoint).unwrap_or_else(|| "unknown".to_string());
 
         self
+    }
+
+    pub fn apply_proxy_result(
+        &mut self,
+        state: &ProxyState,
+        result: &ProxyResult,
+    ) -> Result<(), ProxyError> {
+        self.outbound_model = result.outbound_model.clone();
+        let provider_id = result.selected_route.provider.id.as_str();
+        let Some(provider) = state
+            .db
+            .get_provider_by_id(provider_id, self.app_type_str)
+            .map_err(|error| ProxyError::DatabaseError(error.to_string()))?
+        else {
+            return Err(ProxyError::ConfigError(format!(
+                "selected provider is missing from host database: {provider_id}"
+            )));
+        };
+
+        self.provider =
+            ForwardAttempt::from_core_selection(&self.app_type, &provider, &result.selected_route)
+                .provider()
+                .clone();
+        Ok(())
+    }
+
+    pub fn claude_api_format_for_proxy_result(&self, result: &ProxyResult) -> String {
+        claude_api_format_from_metadata(&result.metadata, get_claude_api_format(&self.provider))
     }
 
     /// 创建 RequestForwarder

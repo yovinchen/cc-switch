@@ -17,9 +17,7 @@ use super::{
     },
     forwarder::ActiveConnectionGuard,
     handler_context::RequestContext,
-    providers::{
-        codex_chat_history::record_responses_sse_stream, get_adapter, get_claude_api_format,
-    },
+    providers::{codex_chat_history::record_responses_sse_stream, get_adapter},
     response_adapter::{
         proxy_event_envelope_to_axum_sse_event,
         proxy_core_response_to_axum_response, proxy_core_response_to_proxy_response,
@@ -37,8 +35,8 @@ use crate::app_config::AppType;
 use crate::proxy_core::{
     append_query_to_endpoint_path,
     chat_completion_to_response_with_context as build_chat_completion_response_with_context,
-    claude_api_format_from_metadata, claude_stream_usage_event_filter,
-    claude_transform_unlabeled_sse_aggregation, codex_stream_usage_event_filter,
+    claude_stream_usage_event_filter, claude_transform_unlabeled_sse_aggregation,
+    codex_stream_usage_event_filter,
     create_codex_chat_to_responses_sse_stream_with_context as create_responses_sse_stream_from_chat_with_context,
     create_gemini_to_anthropic_sse_stream_with_callbacks as create_anthropic_sse_stream_from_gemini,
     create_openai_chat_to_anthropic_sse_stream as create_anthropic_sse_stream,
@@ -62,8 +60,8 @@ use crate::proxy_core::{
     HealthCheckRequest, HealthCheckResponse, InterfaceKind, ManagementAppPathRequest,
     ManagementAuthDecision, ProviderListResponse, ProxyBody, ProxyChannelModelsReplaceRequest,
     ProxyChannelPatchRequest, ProxyChannelTestRequest, ProxyChannelWriteRequest, ProxyRequest,
-    ProxyResult, ProxyRuntimeStatus, ProxyServices, ProxyStatusRequest, ProxyStatusResponse,
-    RoutableModelList, RouteGroupListResponse, RouteResolveManagementRequest, RouteResolveRequest,
+    ProxyRuntimeStatus, ProxyServices, ProxyStatusRequest, ProxyStatusResponse, RoutableModelList,
+    RouteGroupListResponse, RouteResolveManagementRequest, RouteResolveRequest,
     RouteResolveResponse, TransformedResponseUsageFormat, UnlabeledSseFallbackLogContext,
     UnlabeledSseFallbackLogLevel, UpstreamSseAggregationKind, CLAUDE_PARSER_CONFIG,
     CODEX_PARSER_CONFIG, GEMINI_PARSER_CONFIG, OPENAI_PARSER_CONFIG, plan_channel_test,
@@ -763,8 +761,8 @@ async fn handle_messages_for_app(
         }
     };
 
-    apply_proxy_result_to_context(&state, &mut ctx, &result)?;
-    let api_format = proxy_result_claude_api_format(&result, &ctx);
+    ctx.apply_proxy_result(&state, &result)?;
+    let api_format = ctx.claude_api_format_for_proxy_result(&result);
     let response = proxy_core_response_to_proxy_response(result.response)?;
 
     // 检查是否需要格式转换（OpenRouter 等中转服务）
@@ -1026,37 +1024,6 @@ async fn handle_claude_transform(
     proxy_core_response_to_axum_response(response, "[Claude] 构建响应失败")
 }
 
-fn apply_proxy_result_to_context(
-    state: &ProxyState,
-    ctx: &mut RequestContext,
-    result: &ProxyResult,
-) -> Result<(), ProxyError> {
-    ctx.outbound_model = result.outbound_model.clone();
-    let provider_id = result.selected_route.provider.id.as_str();
-    let Some(provider) = state
-        .db
-        .get_provider_by_id(provider_id, ctx.app_type_str)
-        .map_err(|error| ProxyError::DatabaseError(error.to_string()))?
-    else {
-        return Err(ProxyError::ConfigError(format!(
-            "selected provider is missing from host database: {provider_id}"
-        )));
-    };
-
-    ctx.provider = super::route_attempt::ForwardAttempt::from_core_selection(
-        &ctx.app_type,
-        &provider,
-        &result.selected_route,
-    )
-    .provider()
-    .clone();
-    Ok(())
-}
-
-fn proxy_result_claude_api_format(result: &ProxyResult, ctx: &RequestContext) -> String {
-    claude_api_format_from_metadata(&result.metadata, get_claude_api_format(&ctx.provider))
-}
-
 // ============================================================================
 // Codex API 处理器
 // ============================================================================
@@ -1109,7 +1076,7 @@ pub async fn handle_chat_completions(
         }
     };
 
-    apply_proxy_result_to_context(&state, &mut ctx, &result)?;
+    ctx.apply_proxy_result(&state, &result)?;
     let response = proxy_core_response_to_proxy_response(result.response)?;
 
     process_response(response, &ctx, &state, &OPENAI_PARSER_CONFIG, None).await
@@ -1164,7 +1131,7 @@ pub async fn handle_responses(
         }
     };
 
-    apply_proxy_result_to_context(&state, &mut ctx, &result)?;
+    ctx.apply_proxy_result(&state, &result)?;
     let response = proxy_core_response_to_proxy_response(result.response)?;
 
     if super::providers::should_convert_codex_responses_to_chat(&ctx.provider, &endpoint) {
@@ -1231,7 +1198,7 @@ pub async fn handle_responses_compact(
         }
     };
 
-    apply_proxy_result_to_context(&state, &mut ctx, &result)?;
+    ctx.apply_proxy_result(&state, &result)?;
     let response = proxy_core_response_to_proxy_response(result.response)?;
 
     if super::providers::should_convert_codex_responses_to_chat(&ctx.provider, &endpoint) {
@@ -1519,7 +1486,7 @@ pub async fn handle_gemini(
         }
     };
 
-    apply_proxy_result_to_context(&state, &mut ctx, &result)?;
+    ctx.apply_proxy_result(&state, &result)?;
     let response = proxy_core_response_to_proxy_response(result.response)?;
 
     process_response(response, &ctx, &state, &GEMINI_PARSER_CONFIG, None).await
