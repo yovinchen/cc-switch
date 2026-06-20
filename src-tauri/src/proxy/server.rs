@@ -908,6 +908,34 @@ mod tests {
                 return Err(format!("unexpected created channel body: {created}"));
             }
 
+            let route_response = client
+                .post(format!("{base_url}/proxy/v1/route/resolve"))
+                .json(&json!({
+                    "appType": "claude",
+                    "requestedModel": "runtime-public",
+                    "interfaceKind": "anthropic_messages"
+                }))
+                .send()
+                .await
+                .map_err(|error| error.to_string())?;
+            if route_response.status() != StatusCode::OK {
+                return Err(format!(
+                    "unexpected route resolve status: {}",
+                    route_response.status()
+                ));
+            }
+            let route = route_response
+                .json::<Value>()
+                .await
+                .map_err(|error| error.to_string())?;
+            if route["source"] != "materialized_channels"
+                || route["candidates"].as_array().map(Vec::len) != Some(1)
+                || route["candidates"][0]["channelId"] != channel_id
+                || route["candidates"][0]["upstreamModel"] != "runtime-upstream"
+            {
+                return Err(format!("unexpected route resolve body: {route}"));
+            }
+
             let upsert_key_response = client
                 .put(format!("{base_url}/proxy/v1/channels/{channel_id}/keys/primary"))
                 .json(&json!({
