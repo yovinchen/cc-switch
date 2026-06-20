@@ -237,6 +237,14 @@ pub struct CodexChatErrorNormalization {
     pub non_json_body_preview: Option<String>,
 }
 
+impl CodexChatErrorNormalization {
+    pub fn non_json_body_log_message(&self) -> Option<String> {
+        self.non_json_body_preview
+            .as_ref()
+            .map(|preview| format!("[Codex] Chat 错误响应不是合法 JSON，按文本透传: {preview}"))
+    }
+}
+
 /// Normalize an upstream Chat Completions error body into the OpenAI Responses
 /// error envelope used by Codex clients.
 pub fn normalize_codex_chat_error_body(body: &[u8]) -> CodexChatErrorNormalization {
@@ -469,6 +477,7 @@ mod tests {
         assert_eq!(normalized.response_error["error"]["message"], "bad role");
         assert_eq!(normalized.response_error["error"]["code"], 2013);
         assert_eq!(normalized.non_json_body_preview, None);
+        assert!(normalized.non_json_body_log_message().is_none());
     }
 
     #[test]
@@ -482,6 +491,10 @@ mod tests {
         assert_eq!(
             normalized.non_json_body_preview.as_deref(),
             Some("Unauthorized")
+        );
+        assert_eq!(
+            normalized.non_json_body_log_message().as_deref(),
+            Some("[Codex] Chat 错误响应不是合法 JSON，按文本透传: Unauthorized")
         );
     }
 

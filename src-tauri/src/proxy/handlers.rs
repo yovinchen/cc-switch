@@ -1454,8 +1454,8 @@ async fn handle_codex_chat_error_response(
         read_decoded_body(response, ctx.tag, ctx.body_timeout_duration()).await?;
 
     let normalized_error = crate::proxy_core::normalize_codex_chat_error_body(&body_bytes);
-    if let Some(preview) = normalized_error.non_json_body_preview.as_deref() {
-        log::warn!("[Codex] Chat 错误响应不是合法 JSON，按文本透传: {preview}");
+    if let Some(message) = normalized_error.non_json_body_log_message() {
+        log::warn!("{message}");
     }
     let responses_error = normalized_error.response_error;
 
