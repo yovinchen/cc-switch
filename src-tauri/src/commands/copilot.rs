@@ -6,7 +6,7 @@ use crate::proxy::providers::copilot_auth::{
     CopilotAuthManager, CopilotAuthStatus, CopilotUsageResponse, GitHubAccount,
     GitHubDeviceCodeResponse,
 };
-use crate::proxy_core::CopilotModel;
+use crate::proxy_core_adapter::CopilotModel;
 use std::sync::Arc;
 use tauri::State;
 use tokio::sync::RwLock;
