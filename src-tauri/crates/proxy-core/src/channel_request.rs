@@ -1,4 +1,4 @@
-use super::domain::DEFAULT_ROUTE_GROUP;
+use super::domain::{parse_auth_profile_ref, DEFAULT_ROUTE_GROUP};
 use super::ports::{
     ProxyChannelKeyPatchRequest, ProxyChannelKeyWriteRequest, ProxyChannelModelWriteRequest,
     ProxyChannelWriteRequest,
@@ -112,27 +112,9 @@ pub fn validate_optional_channel_auth_profile_ref(
         return Ok(());
     };
 
-    if let Some(key_ref) = auth_profile_ref.strip_prefix("channel-key:") {
-        return validate_auth_profile_part(key_ref).map_err(|_| invalid_auth_profile_ref());
-    }
-
-    if let Some(provider_ref) = auth_profile_ref.strip_prefix("provider:") {
-        let mut parts = provider_ref.splitn(2, ':');
-        let app = parts.next().unwrap_or_default();
-        let provider_id = parts.next().unwrap_or_default();
-        return validate_auth_profile_part(app)
-            .and_then(|_| validate_auth_profile_part(provider_id))
-            .map_err(|_| invalid_auth_profile_ref());
-    }
-
-    Err(invalid_auth_profile_ref())
-}
-
-fn validate_auth_profile_part(value: &str) -> Result<(), ()> {
-    if value.trim().is_empty() {
-        Err(())
-    } else {
-        Ok(())
+    match parse_auth_profile_ref(auth_profile_ref) {
+        Some(_) => Ok(()),
+        None => Err(invalid_auth_profile_ref()),
     }
 }
 

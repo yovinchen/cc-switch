@@ -282,6 +282,7 @@ pub(crate) type GeminiToAnthropicMessageOutput =
 pub(crate) type AnthropicToolSchemaHints =
     crate::proxy_core::api::transforms::AnthropicToolSchemaHints;
 pub(crate) type AuthProfileRef = crate::proxy_core::api::domain::AuthProfileRef;
+pub(crate) type AuthProfileRefKind = crate::proxy_core::api::domain::AuthProfileRefKind;
 pub(crate) type GeminiOAuthCredentials =
     crate::proxy_core::api::auth::GeminiOAuthCredentials;
 pub(crate) type ClaudeAuthHeaderKind =
@@ -401,6 +402,10 @@ pub(crate) fn provider_account_ref(
     managed_account_id: Option<&str>,
 ) -> Option<String> {
     crate::proxy_core::api::domain::provider_account_ref(provider_type, managed_account_id)
+}
+
+pub(crate) fn parse_auth_profile_ref(value: &str) -> Option<AuthProfileRefKind> {
+    crate::proxy_core::api::domain::parse_auth_profile_ref(value)
 }
 
 pub(crate) fn model_route_from_input(input: ModelRouteInput) -> ModelRoute {

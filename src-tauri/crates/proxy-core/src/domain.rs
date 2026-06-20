@@ -193,10 +193,50 @@ pub fn extract_claude_base_url_from_settings(
 #[serde(transparent)]
 pub struct AuthProfileRef(pub String);
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum AuthProfileRefKind {
+    Provider {
+        app_type: String,
+        provider_id: String,
+    },
+    ChannelKey {
+        key_ref: String,
+    },
+}
+
 impl AuthProfileRef {
     pub fn new(value: impl Into<String>) -> Self {
         Self(value.into())
     }
+
+    pub fn kind(&self) -> Option<AuthProfileRefKind> {
+        parse_auth_profile_ref(&self.0)
+    }
+}
+
+pub fn parse_auth_profile_ref(value: &str) -> Option<AuthProfileRefKind> {
+    if let Some(key_ref) = value.strip_prefix("channel-key:") {
+        let key_ref = key_ref.trim();
+        return (!key_ref.is_empty()).then(|| AuthProfileRefKind::ChannelKey {
+            key_ref: key_ref.to_string(),
+        });
+    }
+
+    if let Some(provider_ref) = value.strip_prefix("provider:") {
+        let mut parts = provider_ref.splitn(2, ':');
+        let app_type = parts.next().unwrap_or_default();
+        let provider_id = parts.next().unwrap_or_default();
+        if app_type.trim().is_empty() || provider_id.trim().is_empty() {
+            return None;
+        }
+
+        return Some(AuthProfileRefKind::Provider {
+            app_type: app_type.to_string(),
+            provider_id: provider_id.to_string(),
+        });
+    }
+
+    None
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -1354,6 +1394,34 @@ mod tests {
         );
         assert_eq!(provider_account_ref(None, Some("acct-1")), None);
         assert_eq!(provider_account_ref(Some("github_copilot"), None), None);
+    }
+
+    #[test]
+    fn auth_profile_ref_parser_preserves_host_runtime_semantics() {
+        assert_eq!(
+            parse_auth_profile_ref("channel-key: primary "),
+            Some(AuthProfileRefKind::ChannelKey {
+                key_ref: "primary".to_string()
+            })
+        );
+        assert_eq!(
+            parse_auth_profile_ref("provider:claude:provider-a"),
+            Some(AuthProfileRefKind::Provider {
+                app_type: "claude".to_string(),
+                provider_id: "provider-a".to_string()
+            })
+        );
+        assert_eq!(
+            parse_auth_profile_ref("provider:claude: provider-a"),
+            Some(AuthProfileRefKind::Provider {
+                app_type: "claude".to_string(),
+                provider_id: " provider-a".to_string()
+            })
+        );
+        assert_eq!(parse_auth_profile_ref(" channel-key:primary"), None);
+        assert_eq!(parse_auth_profile_ref("channel-key: "), None);
+        assert_eq!(parse_auth_profile_ref("provider:claude:"), None);
+        assert_eq!(parse_auth_profile_ref("vault:primary"), None);
     }
 
     #[test]

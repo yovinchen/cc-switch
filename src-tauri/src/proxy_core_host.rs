@@ -12,9 +12,9 @@ use crate::proxy::usage::UsageLogger;
 use crate::proxy::RequestForwarder;
 use crate::proxy_core_adapter::{
     app_proxy_config_raw, channel_matches_query, AppKind, AuthInfo, AuthProfileRef,
-    ChannelAttemptResult, ChannelQuery, ChannelSource, ChannelSpec, ClaudeAuthKeySource,
-    channel_not_found_error, AuthProvider, ChannelHealthReset, ChannelHealthStore,
-    CopilotOptimizerConfigSpec, CurrentRouteTarget, ForwardPipeline,
+    AuthProfileRefKind, ChannelAttemptResult, ChannelQuery, ChannelSource, ChannelSpec,
+    ClaudeAuthKeySource, channel_not_found_error, AuthProvider, ChannelHealthReset,
+    ChannelHealthStore, CopilotOptimizerConfigSpec, CurrentRouteTarget, ForwardPipeline,
     GeminiShadowStore, ModelCatalog, ModelCatalogProvider, OptimizerConfigSpec,
     ProviderSource, ProviderSpec, ProxyAppConfig, ProxyConfigSource, ProxyCoreError,
     ProxyCoreEvent, ProxyCoreResponse, ProxyCoreResult, ProxyEventSink, ProxyGlobalConfig,
@@ -24,8 +24,8 @@ use crate::proxy_core_adapter::{
     CLAUDE_API_FORMAT_METADATA_KEY, DEFAULT_ROUTE_GROUP,
 };
 use crate::proxy_core_adapter::{
-    extract_claude_auth_key_from_settings, extract_proxy_session_id, ToProxyCoreChannelSpec,
-    ToProxyCoreProviderSpec,
+    extract_claude_auth_key_from_settings, extract_proxy_session_id, parse_auth_profile_ref,
+    ToProxyCoreChannelSpec, ToProxyCoreProviderSpec,
 };
 use bytes::Bytes;
 use futures::{future::BoxFuture, Stream, StreamExt};
@@ -687,47 +687,44 @@ fn apply_channel_auth_profile_providers(
         else {
             continue;
         };
-        if let Some(provider_id) =
-            provider_auth_profile_provider_id(auth_profile_ref, app_type.as_str())
-        {
-            let Some(provider) = providers.get(provider_id).cloned() else {
-                log::warn!(
-                    "[{}] channel auth profile references missing provider: {}",
-                    app_type.as_str(),
-                    auth_profile_ref
-                );
+        match parse_auth_profile_ref(auth_profile_ref) {
+            Some(AuthProfileRefKind::Provider {
+                app_type: profile_app,
+                provider_id,
+            }) if profile_app == app_type.as_str() => {
+                let Some(provider) = providers.get(&provider_id).cloned() else {
+                    log::warn!(
+                        "[{}] channel auth profile references missing provider: {}",
+                        app_type.as_str(),
+                        auth_profile_ref
+                    );
+                    continue;
+                };
+                attempt.set_auth_provider(provider);
+            }
+            Some(AuthProfileRefKind::ChannelKey { key_ref }) => {
+                let Some(channel_id) = attempt.channel().map(|channel| channel.channel_id.clone())
+                else {
+                    continue;
+                };
+                let Some(key) = db
+                    .get_enabled_proxy_channel_key(&channel_id, &key_ref)
+                    .map_err(|error| app_error("load channel auth key", error))?
+                else {
+                    return Err(channel_key_auth_error(&channel_id, &key_ref));
+                };
+                attempt.set_auth_provider(channel_key_auth_provider(
+                    app_type,
+                    attempt.provider(),
+                    &key.key_value,
+                ));
+            }
+            Some(AuthProfileRefKind::Provider { .. }) | None => {
                 continue;
-            };
-            attempt.set_auth_provider(provider);
-            continue;
+            }
         }
-
-        let Some(key_ref) = channel_key_auth_profile_key_ref(auth_profile_ref) else {
-            continue;
-        };
-        let Some(channel_id) = attempt.channel().map(|channel| channel.channel_id.clone()) else {
-            continue;
-        };
-        let Some(key) = db
-            .get_enabled_proxy_channel_key(&channel_id, key_ref)
-            .map_err(|error| app_error("load channel auth key", error))?
-        else {
-            return Err(channel_key_auth_error(&channel_id, key_ref));
-        };
-        attempt.set_auth_provider(channel_key_auth_provider(
-            app_type,
-            attempt.provider(),
-            &key.key_value,
-        ));
     }
     Ok(())
-}
-
-fn channel_key_auth_profile_key_ref(auth_profile_ref: &str) -> Option<&str> {
-    auth_profile_ref
-        .strip_prefix("channel-key:")
-        .map(str::trim)
-        .filter(|key_ref| !key_ref.is_empty())
 }
 
 fn channel_key_auth_error(channel_id: &str, key_ref: &str) -> ProxyCoreError {
@@ -810,19 +807,6 @@ fn ensure_object(value: &mut Value) -> &mut Map<String, Value> {
         *value = Value::Object(Map::new());
     }
     value.as_object_mut().expect("value is object")
-}
-
-fn provider_auth_profile_provider_id<'a>(
-    auth_profile_ref: &'a str,
-    app_type: &str,
-) -> Option<&'a str> {
-    let mut parts = auth_profile_ref.splitn(3, ':');
-    match (parts.next(), parts.next(), parts.next()) {
-        (Some("provider"), Some(profile_app), Some(provider_id)) if profile_app == app_type => {
-            Some(provider_id)
-        }
-        _ => None,
-    }
 }
 
 fn forward_result_to_proxy_result(
@@ -1171,6 +1155,38 @@ mod tests {
         let db = Database::memory().expect("memory db");
         apply_channel_auth_profile_providers(&db, &AppType::Claude, &providers, &mut attempts)
             .expect("apply cross-app profile");
+
+        assert_eq!(attempts[0].provider().id, "route-provider");
+        assert_eq!(attempts[0].auth_provider().id, "route-provider");
+    }
+
+    #[test]
+    fn channel_provider_auth_profile_preserves_provider_id_spacing() {
+        let route_provider = Provider::with_id(
+            "route-provider".to_string(),
+            "Route Provider".to_string(),
+            json!({ "env": { "ANTHROPIC_API_KEY": "route-key" } }),
+            None,
+        );
+        let auth_provider = Provider::with_id(
+            "auth-provider".to_string(),
+            "Auth Provider".to_string(),
+            json!({ "env": { "ANTHROPIC_API_KEY": "auth-key" } }),
+            None,
+        );
+        let mut providers = IndexMap::new();
+        providers.insert(route_provider.id.clone(), route_provider);
+        providers.insert(auth_provider.id.clone(), auth_provider);
+        let mut plan = route_plan("route-provider", "channel-auth");
+        plan.selection.channel.auth_profile =
+            Some(AuthProfileRef::new("provider:claude: auth-provider"));
+
+        let route_providers = host_providers_for_plan(&providers, &plan).expect("route providers");
+        let mut attempts =
+            forward_attempts_from_route_plan(&AppType::Claude, &route_providers, &plan);
+        let db = Database::memory().expect("memory db");
+        apply_channel_auth_profile_providers(&db, &AppType::Claude, &providers, &mut attempts)
+            .expect("apply spaced provider profile");
 
         assert_eq!(attempts[0].provider().id, "route-provider");
         assert_eq!(attempts[0].auth_provider().id, "route-provider");
