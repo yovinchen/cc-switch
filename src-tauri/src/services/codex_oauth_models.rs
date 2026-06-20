@@ -3,7 +3,7 @@
 //! ChatGPT Codex exposes models through a backend endpoint that is not an
 //! OpenAI-compatible `/v1/models` endpoint.
 
-use crate::proxy_core::FetchedModel;
+use crate::proxy_core_adapter::FetchedModel;
 
 pub async fn fetch_models_with_token(
     token: &str,

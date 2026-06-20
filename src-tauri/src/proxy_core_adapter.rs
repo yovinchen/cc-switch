@@ -117,6 +117,8 @@ pub(crate) fn copilot_api_base(domain: &str) -> String {
     crate::proxy_core::copilot_api_base(domain)
 }
 
+pub(crate) type FetchedModel = crate::proxy_core::FetchedModel;
+
 impl From<&AppType> for AppKind {
     fn from(value: &AppType) -> Self {
         match value {
@@ -911,6 +913,23 @@ mod tests {
             ["", " http://127.0.0.1:15721 "],
             15721
         ));
+    }
+
+    #[test]
+    fn fetched_model_adapter_preserves_frontend_contract() {
+        let value = serde_json::to_value(FetchedModel {
+            id: "gpt-5.4".to_string(),
+            owned_by: Some("openai".to_string()),
+        })
+        .expect("serialize fetched model");
+
+        assert_eq!(
+            value,
+            json!({
+                "id": "gpt-5.4",
+                "ownedBy": "openai"
+            })
+        );
     }
 
     #[test]

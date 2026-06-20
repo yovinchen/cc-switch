@@ -2,7 +2,7 @@
 //!
 //! 提供 Tauri 命令，供前端在供应商表单中获取可用模型列表。
 
-use crate::proxy_core::FetchedModel;
+use crate::proxy_core_adapter::FetchedModel;
 use crate::services::model_fetch;
 
 /// 获取供应商的可用模型列表

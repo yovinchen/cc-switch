@@ -4,10 +4,11 @@
 //! the concrete reqwest execution against the shared proxy HTTP client.
 
 use crate::proxy_core::{
-    CodexOAuthModelsRequest, CodexOAuthModelsTransport, FetchedModel, ModelFetchHttpResponse,
+    CodexOAuthModelsRequest, CodexOAuthModelsTransport, ModelFetchHttpResponse,
     OpenAiCompatibleModelsRequest, OpenAiCompatibleModelsTransport,
     fetch_codex_oauth_models_with_transport, fetch_openai_compatible_models_with_transport,
 };
+use crate::proxy_core_adapter::FetchedModel;
 use futures::future::BoxFuture;
 use reqwest::header::HeaderValue;
 use std::time::Duration;

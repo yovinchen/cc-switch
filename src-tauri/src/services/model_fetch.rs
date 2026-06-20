@@ -6,7 +6,7 @@
 
 use reqwest::header::HeaderValue;
 
-use crate::proxy_core::FetchedModel;
+use crate::proxy_core_adapter::FetchedModel;
 
 /// 获取供应商的可用模型列表
 ///
