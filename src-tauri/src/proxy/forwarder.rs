@@ -2113,7 +2113,7 @@ impl RequestForwarder {
 
         // 预计算 anthropic-beta 值（仅 Claude）
         let anthropic_beta_value = if should_send_anthropic_headers {
-            Some(crate::proxy_core::anthropic_beta_header_value(
+            Some(crate::proxy_core_adapter::anthropic_beta_header_value(
                 headers
                     .get("anthropic-beta")
                     .and_then(|beta| beta.to_str().ok()),
@@ -2123,7 +2123,7 @@ impl RequestForwarder {
         };
 
         let ordered_headers =
-            crate::proxy_core::build_upstream_request_headers(UpstreamRequestHeadersInput {
+            crate::proxy_core_adapter::build_upstream_request_headers(UpstreamRequestHeadersInput {
                 inbound_headers: headers,
                 upstream_host: upstream_host.as_deref(),
                 auth_headers: &auth_headers,
@@ -2136,8 +2136,11 @@ impl RequestForwarder {
                 ensure_json_content_type: true,
             });
 
-        let body_bytes = crate::proxy_core::serialize_upstream_request_body(method, &filtered_body)
-            .map_err(|e| ProxyError::Internal(format!("Failed to serialize request body: {e}")))?;
+        let body_bytes =
+            crate::proxy_core_adapter::serialize_upstream_request_body(method, &filtered_body)
+                .map_err(|e| {
+                    ProxyError::Internal(format!("Failed to serialize request body: {e}"))
+                })?;
 
         validate_managed_account_upstream_auth(&url, &ordered_headers)
             .map_err(|error| ProxyError::AuthError(error.to_string()))?;

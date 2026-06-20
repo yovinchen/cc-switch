@@ -14,7 +14,8 @@ use crate::proxy_core::{
     CostCalculator, CurrentRouteProviderSummaryInput, InterfaceKind, ModelCapabilities,
     ModelCatalog, ModelPricing, ModelRoute, ProviderMetadata, ProviderSpec, RetryPolicy,
     ResolvedChannelAttempt, RoutePlan, RouteResolveChannelInput, RouteResolveModelInput,
-    RouteSelection, SessionIdResult, UpstreamEndpoint, UsageRecord, DEFAULT_ROUTE_GROUP,
+    RouteSelection, SessionIdResult, UpstreamEndpoint, UpstreamRequestHeadersInput, UsageRecord,
+    DEFAULT_ROUTE_GROUP,
 };
 use crate::services::usage_stats::is_placeholder_pricing_model;
 use crate::services::stream_check::{HealthStatus, StreamCheckResult};
@@ -378,6 +379,23 @@ pub(crate) fn resolve_gemini_native_url(
 
 pub(crate) fn claude_api_format_needs_transform(api_format: &str) -> bool {
     crate::proxy_core::claude_api_format_needs_transform(api_format)
+}
+
+pub(crate) fn anthropic_beta_header_value(existing_beta: Option<&str>) -> String {
+    crate::proxy_core::anthropic_beta_header_value(existing_beta)
+}
+
+pub(crate) fn build_upstream_request_headers(
+    input: UpstreamRequestHeadersInput<'_>,
+) -> HeaderMap {
+    crate::proxy_core::build_upstream_request_headers(input)
+}
+
+pub(crate) fn serialize_upstream_request_body(
+    method: &http::Method,
+    body: &Value,
+) -> serde_json::Result<Vec<u8>> {
+    crate::proxy_core::serialize_upstream_request_body(method, body)
 }
 
 #[cfg(test)]
@@ -973,6 +991,72 @@ mod tests {
         assert!(claude_api_format_needs_transform("openai_responses"));
         assert!(claude_api_format_needs_transform("gemini_native"));
         assert!(!claude_api_format_needs_transform("unknown"));
+    }
+
+    #[test]
+    fn upstream_request_adapter_projects_headers_and_body_serialization() {
+        let mut inbound_headers = HeaderMap::new();
+        inbound_headers.insert(http::header::HOST, http::HeaderValue::from_static("local"));
+        inbound_headers.insert(
+            http::header::ACCEPT_ENCODING,
+            http::HeaderValue::from_static("gzip"),
+        );
+
+        let auth_headers = [(
+            http::header::AUTHORIZATION,
+            http::HeaderValue::from_static("Bearer token"),
+        )];
+        let anthropic_beta = anthropic_beta_header_value(Some("other-beta"));
+        let headers = build_upstream_request_headers(UpstreamRequestHeadersInput {
+            inbound_headers: &inbound_headers,
+            upstream_host: Some("upstream.example"),
+            auth_headers: &auth_headers,
+            force_identity_encoding: true,
+            custom_user_agent: None,
+            is_copilot: false,
+            should_send_anthropic_headers: true,
+            anthropic_beta_value: Some(&anthropic_beta),
+            codex_oauth_session_headers: &[],
+            ensure_json_content_type: true,
+        });
+
+        assert_eq!(
+            headers.get(http::header::HOST).and_then(|value| value.to_str().ok()),
+            Some("upstream.example")
+        );
+        assert_eq!(
+            headers
+                .get(http::header::AUTHORIZATION)
+                .and_then(|value| value.to_str().ok()),
+            Some("Bearer token")
+        );
+        assert_eq!(
+            headers
+                .get(http::header::ACCEPT_ENCODING)
+                .and_then(|value| value.to_str().ok()),
+            Some("identity")
+        );
+        assert_eq!(
+            headers
+                .get("anthropic-beta")
+                .and_then(|value| value.to_str().ok()),
+            Some("claude-code-20250219,other-beta")
+        );
+        assert_eq!(
+            headers
+                .get(http::header::CONTENT_TYPE)
+                .and_then(|value| value.to_str().ok()),
+            Some("application/json")
+        );
+
+        assert!(serialize_upstream_request_body(&http::Method::GET, &json!({"model": "x"}))
+            .unwrap()
+            .is_empty());
+        assert_eq!(
+            serialize_upstream_request_body(&http::Method::POST, &json!({"model": "x"}))
+                .unwrap(),
+            br#"{"model":"x"}"#
+        );
     }
 
     #[test]
