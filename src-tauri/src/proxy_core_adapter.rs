@@ -307,6 +307,12 @@ pub(crate) fn resolved_channel_attempt_from_candidate(
     crate::proxy_core::resolved_channel_attempt_from_candidate(candidate)
 }
 
+pub(crate) fn proxy_core_error_is_unavailable(
+    error: &crate::proxy_core::ProxyCoreError,
+) -> bool {
+    matches!(error, crate::proxy_core::ProxyCoreError::Unavailable(_))
+}
+
 pub(crate) fn apply_channel_route_model_override(
     body: &mut Value,
     public_model: Option<&str>,
@@ -670,7 +676,7 @@ mod tests {
     use crate::database::ProxyChannelSourceKind;
     use crate::provider::{AuthBinding, AuthBindingSource, ProviderMeta};
     use crate::proxy_core::{
-        GEMINI_SYNTHESIZED_TOOL_CALL_ID_PREFIX, ProviderKind, SessionIdSource,
+        GEMINI_SYNTHESIZED_TOOL_CALL_ID_PREFIX, ProviderKind, ProxyCoreError, SessionIdSource,
     };
 
     #[test]
@@ -884,6 +890,12 @@ mod tests {
         assert_eq!(candidate.source_kind, "proxy_core");
         let resolved = resolved_channel_attempt_from_candidate(candidate);
         assert_eq!(resolved.channel_id, "ch-b");
+        assert!(proxy_core_error_is_unavailable(
+            &ProxyCoreError::Unavailable("missing provider".to_string())
+        ));
+        assert!(!proxy_core_error_is_unavailable(&ProxyCoreError::Config(
+            "invalid route".to_string()
+        )));
 
         let mut body = json!({"model": "sonnet-public"});
         assert_eq!(

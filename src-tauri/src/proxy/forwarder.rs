@@ -767,7 +767,9 @@ impl RequestForwarder {
                     let attempts = forward_attempts_from_route_plan(app_type, &providers, &plan);
                     return Ok(attempts);
                 }
-                Err(crate::proxy_core::ProxyCoreError::Unavailable(_)) => {
+                Err(error)
+                    if crate::proxy_core_adapter::proxy_core_error_is_unavailable(&error) =>
+                {
                     return Ok(Vec::new());
                 }
                 Err(error) => {
