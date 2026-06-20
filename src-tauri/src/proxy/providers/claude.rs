@@ -27,13 +27,12 @@ use crate::proxy_core::{
     openai_chat_to_anthropic_message, openai_responses_to_anthropic_message,
     resolve_claude_api_format_from_settings, resolve_claude_responses_prompt_cache_key,
     should_preserve_reasoning_content_for_openai_chat, ClaudeAuthHeaderKind, ClaudeAuthKey,
-    ClaudeAuthKeySource, CopilotAuthHeadersInput, ProviderAuthInfo, ProviderAuthStrategy,
-    ProviderKind,
+    ClaudeAuthKeySource, CopilotAuthHeadersInput, ProviderKind,
 };
 use crate::proxy_core_adapter::{
     claude_api_format_needs_transform, inject_openai_stream_include_usage,
     normalize_anthropic_tool_thinking_history,
-    normalize_deepseek_thinking_disabled_strip_effort,
+    normalize_deepseek_thinking_disabled_strip_effort, ProviderAuthInfo, ProviderAuthStrategy,
     should_normalize_anthropic_tool_thinking_history, synthesize_gemini_tool_call_id_with_uuid,
 };
 use serde_json::Value;

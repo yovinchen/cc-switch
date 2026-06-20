@@ -14,8 +14,9 @@ use crate::proxy_core::{
     infer_codex_chat_reasoning_profile, normalize_codex_chat_reasoning_profile,
     resolve_codex_provider_upstream_model, resolve_codex_provider_uses_chat_completions,
     should_convert_codex_responses_endpoint_to_chat, CodexChatReasoningOptions,
-    CodexChatReasoningProfile, ProviderAuthInfo, ProviderAuthStrategy,
+    CodexChatReasoningProfile,
 };
+use crate::proxy_core_adapter::{ProviderAuthInfo, ProviderAuthStrategy};
 use serde_json::Value as JsonValue;
 use toml::Value as TomlValue;
 

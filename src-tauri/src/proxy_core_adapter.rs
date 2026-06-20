@@ -202,6 +202,8 @@ pub(crate) type StreamingTimeoutConfig = crate::proxy_core::StreamingTimeoutConf
 pub(crate) type GlobalProxyConfig = crate::proxy_core::GlobalProxyConfig;
 pub(crate) type AppProxyConfig = crate::proxy_core::AppProxyConfig;
 pub(crate) type ProviderHealth = crate::proxy_core::ProviderHealth;
+pub(crate) type ProviderAuthInfo = crate::proxy_core::ProviderAuthInfo;
+pub(crate) type ProviderAuthStrategy = crate::proxy_core::ProviderAuthStrategy;
 pub(crate) type AllowResult = crate::proxy_core::AllowResult;
 pub(crate) type CircuitBreakerConfig = crate::proxy_core::CircuitBreakerConfig;
 pub(crate) type CircuitBreakerStats = crate::proxy_core::CircuitBreakerStats;
@@ -1588,6 +1590,25 @@ mod tests {
                 "publicModel": "sonnet-public",
                 "upstreamModel": "upstream-sonnet"
             })
+        );
+    }
+
+    #[test]
+    fn provider_auth_adapter_projects_strategy_contracts() {
+        let bearer =
+            ProviderAuthInfo::new("provider-token".to_string(), ProviderAuthStrategy::Bearer);
+        assert_eq!(bearer.strategy, ProviderAuthStrategy::Bearer);
+        assert_eq!(bearer.masked_key(), "prov...oken");
+        assert!(bearer.access_token.is_none());
+
+        let oauth = ProviderAuthInfo::with_access_token(
+            "refresh-token".to_string(),
+            "ya29.access-token-12345".to_string(),
+        );
+        assert_eq!(oauth.strategy, ProviderAuthStrategy::GoogleOAuth);
+        assert_eq!(
+            oauth.masked_access_token(),
+            Some("ya29...2345".to_string())
         );
     }
 
