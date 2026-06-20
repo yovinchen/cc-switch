@@ -329,6 +329,39 @@ pub struct ChannelPathRequest {
     pub channel_id: String,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ChannelRecordSource<T> {
+    pub channel: Option<T>,
+}
+
+impl<T> ChannelRecordSource<T> {
+    pub fn new(channel: Option<T>) -> Self {
+        Self { channel }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ChannelModelsSource<T> {
+    pub models: Option<Vec<T>>,
+}
+
+impl<T> ChannelModelsSource<T> {
+    pub fn new(models: Option<Vec<T>>) -> Self {
+        Self { models }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ChannelDeleteSource {
+    pub deleted: bool,
+}
+
+impl ChannelDeleteSource {
+    pub fn new(deleted: bool) -> Self {
+        Self { deleted }
+    }
+}
+
 impl ChannelPathRequest {
     pub fn from_path(channel_id: impl AsRef<str>) -> ProxyCoreResult<Self> {
         Ok(Self {
@@ -349,6 +382,13 @@ impl ChannelPathRequest {
             .ok_or_else(|| self.channel_not_found_error())
     }
 
+    pub fn record_response_from_source<T>(
+        &self,
+        source: ChannelRecordSource<T>,
+    ) -> ProxyCoreResult<ChannelRecordResponse<T>> {
+        self.record_response(source.channel)
+    }
+
     pub fn models_response<T>(
         &self,
         models: Option<Vec<T>>,
@@ -358,8 +398,19 @@ impl ChannelPathRequest {
             .ok_or_else(|| self.channel_not_found_error())
     }
 
+    pub fn models_response_from_source<T>(
+        &self,
+        source: ChannelModelsSource<T>,
+    ) -> ProxyCoreResult<ChannelModelsResponse<T>> {
+        self.models_response(source.models)
+    }
+
     pub fn delete_response(&self, deleted: bool) -> ChannelDeleteResponse {
         ChannelDeleteResponse::new(self.channel_id.clone(), deleted)
+    }
+
+    pub fn delete_response_from_source(&self, source: ChannelDeleteSource) -> ChannelDeleteResponse {
+        self.delete_response(source.deleted)
     }
 
     pub fn test_response(&self, input: ChannelTestInput) -> ChannelTestResponse {
@@ -641,9 +692,10 @@ mod tests {
         AppChannelListSource, AppChannelManagementPlan, AppChannelManagementRequest,
         AppListRequest, AppListSource, AppModelCatalogRequest, ChannelCreateRequest, ChannelListPlan,
         ChannelListRequest, ChannelListSource, ChannelMigrationMaterializeSource,
-        ChannelMigrationPreviewSource, ChannelPathRequest, CurrentRouteSource,
-        GroupListChannelSource, GroupListRequest, HealthCheckRequest, ManagementAppPathRequest,
-        ProviderListSource, ProxyStatusRequest,
+        ChannelMigrationPreviewSource, ChannelDeleteSource, ChannelModelsSource,
+        ChannelPathRequest, ChannelRecordSource, CurrentRouteSource, GroupListChannelSource,
+        GroupListRequest, HealthCheckRequest, ManagementAppPathRequest, ProviderListSource,
+        ProxyStatusRequest,
         RouteResolveManagementRequest, channel_not_found_message, normalize_channel_id_path,
         validate_management_app_type, validate_route_resolve_app_type,
     };
@@ -884,12 +936,14 @@ mod tests {
     fn channel_path_request_wraps_optional_record_response() {
         let request = ChannelPathRequest::from_path("channel-a").expect("request");
         let response = request
-            .record_response(Some("record-a"))
+            .record_response_from_source(ChannelRecordSource::new(Some("record-a")))
             .expect("record response");
 
         assert_eq!(response.channel, "record-a");
 
-        let error = request.record_response::<&str>(None).unwrap_err();
+        let error = request
+            .record_response_from_source(ChannelRecordSource::<&str>::new(None))
+            .unwrap_err();
         assert_eq!(
             error.to_string(),
             "invalid proxy request: channel not found: channel-a"
@@ -901,12 +955,14 @@ mod tests {
         let request = ChannelPathRequest::from_path("channel-a").expect("request");
 
         let response = request
-            .models_response(Some(vec!["sonnet"]))
+            .models_response_from_source(ChannelModelsSource::new(Some(vec!["sonnet"])))
             .expect("models response");
         assert_eq!(response.channel_id, "channel-a");
         assert_eq!(response.models, vec!["sonnet"]);
 
-        let error = request.models_response::<&str>(None).unwrap_err();
+        let error = request
+            .models_response_from_source(ChannelModelsSource::<&str>::new(None))
+            .unwrap_err();
         assert_eq!(
             error.to_string(),
             "invalid proxy request: channel not found: channel-a"
@@ -916,7 +972,7 @@ mod tests {
     #[test]
     fn channel_path_request_wraps_delete_response() {
         let request = ChannelPathRequest::from_path("channel-a").expect("request");
-        let response = request.delete_response(true);
+        let response = request.delete_response_from_source(ChannelDeleteSource::new(true));
 
         assert_eq!(response.channel_id, "channel-a");
         assert!(response.deleted);

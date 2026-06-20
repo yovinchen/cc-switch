@@ -47,20 +47,21 @@ use crate::proxy_core::{
     strip_endpoint_prefix, transformed_sse_proxy_response, validate_management_bearer_header,
     AppChannelListQuery, AppChannelManagementRequest, AppChannelResponse, AppKind, AppListRequest,
     AppListResponse, AppListSource, AppModelCatalogRequest, AppModelListQuery, ChannelCreateRequest,
-    ChannelDeleteResponse, ChannelHealthResetResponse, ChannelListPlan, ChannelListQuery,
-    ChannelListRequest, ChannelListResponse, ChannelListSource,
+    ChannelDeleteResponse, ChannelDeleteSource, ChannelHealthResetResponse, ChannelListPlan,
+    ChannelListQuery, ChannelListRequest, ChannelListResponse, ChannelListSource,
     ChannelMigrationMaterializeResponse, ChannelMigrationPreviewResponse,
     ChannelMigrationMaterializeSource, ChannelMigrationPreviewSource, ChannelModelRecord,
-    ChannelModelsResponse, ChannelPathRequest, ChannelRecord, ChannelRecordResponse,
-    ChannelRouteCandidate, ChannelRouteRejected, ChannelTestPlan, ChannelTestResponse,
-    ClaudeDesktopModelListResponse, ClientModelCatalogResponse, CurrentRouteResponse,
-    CurrentRouteSource, CurrentRouteTarget, GroupListChannelSource, GroupListQuery,
-    GroupListRequest, HealthCheckRequest, HealthCheckResponse, InterfaceKind,
-    ManagementAppPathRequest, ManagementAuthDecision, ProviderListResponse, ProviderListSource,
-    ProxyBody, ProxyChannelModelsReplaceRequest, ProxyChannelPatchRequest, ProxyChannelTestRequest,
-    ProxyChannelWriteRequest, ProxyRequest, ProxyRuntimeStatus, ProxyStatusRequest,
-    ProxyStatusResponse, RoutableModelList, RouteGroupListResponse, RouteResolveManagementRequest,
-    RouteResolveRequest, RouteResolveResponse, TransformedResponseUsageFormat,
+    ChannelModelsResponse, ChannelModelsSource, ChannelPathRequest, ChannelRecord,
+    ChannelRecordResponse, ChannelRecordSource, ChannelRouteCandidate, ChannelRouteRejected,
+    ChannelTestPlan, ChannelTestResponse, ClaudeDesktopModelListResponse,
+    ClientModelCatalogResponse, CurrentRouteResponse, CurrentRouteSource, CurrentRouteTarget,
+    GroupListChannelSource, GroupListQuery, GroupListRequest, HealthCheckRequest,
+    HealthCheckResponse, InterfaceKind, ManagementAppPathRequest, ManagementAuthDecision,
+    ProviderListResponse, ProviderListSource, ProxyBody, ProxyChannelModelsReplaceRequest,
+    ProxyChannelPatchRequest, ProxyChannelTestRequest, ProxyChannelWriteRequest, ProxyRequest,
+    ProxyRuntimeStatus, ProxyStatusRequest, ProxyStatusResponse, RoutableModelList,
+    RouteGroupListResponse, RouteResolveManagementRequest, RouteResolveRequest,
+    RouteResolveResponse, TransformedResponseUsageFormat,
     UnlabeledSseFallbackLogContext, UnlabeledSseFallbackLogLevel, UpstreamSseAggregationKind,
     CLAUDE_PARSER_CONFIG, CODEX_PARSER_CONFIG, GEMINI_PARSER_CONFIG, OPENAI_PARSER_CONFIG,
 };
@@ -319,7 +320,7 @@ pub async fn get_proxy_channel(
         .map(proxy_channel_record_to_core);
     Ok(Json(
         request
-            .record_response(channel)
+            .record_response_from_source(ChannelRecordSource::new(channel))
             .map_err(management_api_error_to_proxy_error)?,
     ))
 }
@@ -339,7 +340,7 @@ pub async fn update_proxy_channel(
         .map(proxy_channel_record_to_core);
     Ok(Json(
         path_request
-            .record_response(channel)
+            .record_response_from_source(ChannelRecordSource::new(channel))
             .map_err(management_api_error_to_proxy_error)?,
     ))
 }
@@ -355,7 +356,9 @@ pub async fn delete_proxy_channel(
         .db
         .delete_proxy_channel(&request.channel_id)
         .map_err(|e| ProxyError::DatabaseError(e.to_string()))?;
-    Ok(Json(request.delete_response(deleted)))
+    Ok(Json(
+        request.delete_response_from_source(ChannelDeleteSource::new(deleted)),
+    ))
 }
 
 /// GET /proxy/v1/channels/{channel_id}/models
@@ -383,7 +386,9 @@ pub async fn list_proxy_channel_models(
     };
     Ok(Json(
         request
-            .models_response(models.map(proxy_channel_model_records_to_core))
+            .models_response_from_source(ChannelModelsSource::new(
+                models.map(proxy_channel_model_records_to_core),
+            ))
             .map_err(management_api_error_to_proxy_error)?,
     ))
 }
@@ -404,7 +409,7 @@ pub async fn replace_proxy_channel_models(
 
     Ok(Json(
         path_request
-            .models_response(models)
+            .models_response_from_source(ChannelModelsSource::new(models))
             .map_err(management_api_error_to_proxy_error)?,
     ))
 }
