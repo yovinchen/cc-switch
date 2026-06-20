@@ -30,6 +30,18 @@ pub(crate) fn proxy_core_response_to_axum_response(
     response: ProxyCoreResponse,
     build_error_context: &str,
 ) -> Result<axum::response::Response, ProxyError> {
+    proxy_core_response_to_axum_response_with_error_message(
+        response,
+        build_error_context,
+        "Failed to build response",
+    )
+}
+
+pub(crate) fn proxy_core_response_to_axum_response_with_error_message(
+    response: ProxyCoreResponse,
+    build_error_context: &str,
+    build_error_message: &str,
+) -> Result<axum::response::Response, ProxyError> {
     let ProxyCoreResponse {
         status,
         headers,
@@ -54,7 +66,7 @@ pub(crate) fn proxy_core_response_to_axum_response(
 
     builder.body(body).map_err(|error| {
         log::error!("{build_error_context}: {error}");
-        ProxyError::Internal(format!("Failed to build response: {error}"))
+        ProxyError::Internal(format!("{build_error_message}: {error}"))
     })
 }
 

@@ -5,17 +5,25 @@
 #[cfg(test)]
 use super::usage_sink_bridge::success_usage_record;
 use super::{
-    error::ProxyError, forwarder::ActiveConnectionGuard, handler_context::RequestContext,
-    hyper_client::ProxyResponse, server::ProxyState,
+    error::ProxyError,
+    forwarder::ActiveConnectionGuard,
+    handler_context::RequestContext,
+    hyper_client::ProxyResponse,
+    response_adapter::{
+        proxy_core_response_to_axum_response,
+        proxy_core_response_to_axum_response_with_error_message,
+    },
+    server::ProxyState,
     usage_sink_bridge::provider_kind_from_provider,
 };
 use crate::proxy_core::{
     decode_response_body, get_content_encoding, non_streaming_body_timeout_message,
     non_streaming_response_usage_record_from_body_with_request_id_fallback,
+    passthrough_bytes_proxy_response, passthrough_stream_proxy_response,
     response_headers_log_summary, streaming_response_usage_record_with_optional_outbound_model,
-    strip_hop_by_hop_response_headers, AppKind, ProxyServices, ResponseBodyDecodeStatus,
-    SseEventScanner, SseUsageAccumulator, StreamUsageEventFilter, StreamingTimeoutConfig,
-    StreamingTimeoutPhase, UsageParserConfig, UsageRecord,
+    AppKind, ProxyServices, ResponseBodyDecodeStatus, SseEventScanner, SseUsageAccumulator,
+    StreamUsageEventFilter, StreamingTimeoutConfig, StreamingTimeoutPhase, UsageParserConfig,
+    UsageRecord,
 };
 #[cfg(test)]
 use crate::proxy_core::{ProviderKind, TokenUsage};
@@ -105,17 +113,8 @@ pub async fn handle_streaming(
         );
     }
 
-    let mut response_headers = response.headers().clone();
-    strip_hop_by_hop_response_headers(&mut response_headers);
-
-    let mut builder = axum::response::Response::builder().status(status);
-
-    // 复制响应头
-    for (key, value) in &response_headers {
-        builder = builder.header(key, value);
-    }
-
     // 创建字节流
+    let response_headers = response.headers().clone();
     let stream = response.bytes_stream();
 
     // 创建使用量收集器；关闭 usage logging 时不要在流式热路径上解析每个 SSE event。
@@ -133,13 +132,15 @@ pub async fn handle_streaming(
         connection_guard,
     );
 
-    let body = axum::body::Body::from_stream(logged_stream);
-    match builder.body(body) {
-        Ok(resp) => resp,
-        Err(e) => {
-            log::error!("[{}] 构建流式响应失败: {e}", ctx.tag);
-            ProxyError::Internal(format!("Failed to build streaming response: {e}")).into_response()
-        }
+    let response = passthrough_stream_proxy_response(status, response_headers, logged_stream);
+    let build_error_context = format!("[{}] 构建流式响应失败", ctx.tag);
+    match proxy_core_response_to_axum_response_with_error_message(
+        response,
+        &build_error_context,
+        "Failed to build streaming response",
+    ) {
+        Ok(response) => response,
+        Err(e) => e.into_response(),
     }
 }
 
@@ -152,9 +153,8 @@ pub async fn handle_non_streaming(
     // guard 在函数 scope 内持有，整包响应读取完成后随函数返回一并 drop
     _connection_guard: Option<ActiveConnectionGuard>,
 ) -> Result<Response, ProxyError> {
-    let (mut response_headers, status, body_bytes) =
+    let (response_headers, status, body_bytes) =
         read_decoded_body(response, ctx.tag, ctx.body_timeout_duration()).await?;
-    strip_hop_by_hop_response_headers(&mut response_headers);
 
     log::debug!(
         "[{}] 上游响应体内容: {}",
@@ -196,17 +196,9 @@ pub async fn handle_non_streaming(
         log::debug!("[{}] usage logging 已关闭，跳过非流式 usage 解析", ctx.tag);
     }
 
-    // 构建响应
-    let mut builder = axum::response::Response::builder().status(status);
-    for (key, value) in response_headers.iter() {
-        builder = builder.header(key, value);
-    }
-
-    let body = axum::body::Body::from(body_bytes);
-    builder.body(body).map_err(|e| {
-        log::error!("[{}] 构建响应失败: {e}", ctx.tag);
-        ProxyError::Internal(format!("Failed to build response: {e}"))
-    })
+    let response = passthrough_bytes_proxy_response(status, response_headers, body_bytes);
+    let build_error_context = format!("[{}] 构建响应失败", ctx.tag);
+    proxy_core_response_to_axum_response(response, &build_error_context)
 }
 
 /// 通用响应处理入口

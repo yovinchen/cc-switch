@@ -1,6 +1,7 @@
 use crate::{
-    prepare_rebuilt_json_response_headers, transformed_sse_response_headers, ProxyCoreError,
-    ProxyCoreResponse, ProxyCoreResult, ProxyResponseBody,
+    prepare_rebuilt_json_response_headers, strip_hop_by_hop_response_headers,
+    transformed_sse_response_headers, ProxyCoreError, ProxyCoreResponse, ProxyCoreResult,
+    ProxyResponseBody,
 };
 use bytes::Bytes;
 use futures::Stream;
@@ -22,6 +23,28 @@ pub fn json_proxy_response(status: StatusCode, body: Value) -> ProxyCoreResult<P
     let mut headers = HeaderMap::new();
     prepare_rebuilt_json_response_headers(&mut headers);
     json_proxy_response_with_headers(status, headers, body)
+}
+
+/// Build a host-neutral response for an upstream byte body that should be
+/// passed through after hop-by-hop response headers are removed.
+pub fn passthrough_bytes_proxy_response(
+    status: StatusCode,
+    mut headers: HeaderMap,
+    body: impl Into<Bytes>,
+) -> ProxyCoreResponse {
+    strip_hop_by_hop_response_headers(&mut headers);
+    ProxyCoreResponse::with_body(status, headers, ProxyResponseBody::bytes(body))
+}
+
+/// Build a host-neutral response for an upstream byte stream that should be
+/// passed through after hop-by-hop response headers are removed.
+pub fn passthrough_stream_proxy_response(
+    status: StatusCode,
+    mut headers: HeaderMap,
+    stream: impl Stream<Item = Result<Bytes, std::io::Error>> + Send + 'static,
+) -> ProxyCoreResponse {
+    strip_hop_by_hop_response_headers(&mut headers);
+    ProxyCoreResponse::with_body(status, headers, ProxyResponseBody::stream(stream))
 }
 
 fn json_proxy_response_with_headers(
@@ -54,7 +77,7 @@ pub fn transformed_sse_proxy_response(
 mod tests {
     use super::*;
     use futures::StreamExt as _;
-    use http::{header, HeaderValue};
+    use http::{header, HeaderName, HeaderValue};
     use serde_json::json;
 
     #[test]
@@ -102,6 +125,68 @@ mod tests {
                 assert_eq!(body, Bytes::from_static(br#"{"error":"upstream"}"#))
             }
             other => panic!("expected bytes body, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn passthrough_bytes_response_strips_hop_by_hop_headers_and_preserves_body() {
+        let mut headers = HeaderMap::new();
+        let keep_alive = HeaderName::from_static("keep-alive");
+        headers.insert(header::CONNECTION, HeaderValue::from_static("keep-alive"));
+        headers.insert(keep_alive.clone(), HeaderValue::from_static("timeout=5"));
+        headers.insert(header::CONTENT_LENGTH, HeaderValue::from_static("2"));
+        headers.insert(header::CONTENT_TYPE, HeaderValue::from_static("text/plain"));
+
+        let response = passthrough_bytes_proxy_response(
+            StatusCode::ACCEPTED,
+            headers,
+            Bytes::from_static(b"ok"),
+        );
+
+        assert_eq!(response.status, StatusCode::ACCEPTED);
+        assert!(!response.headers.contains_key(header::CONNECTION));
+        assert!(!response.headers.contains_key(keep_alive));
+        assert_eq!(
+            response.headers.get(header::CONTENT_LENGTH),
+            Some(&HeaderValue::from_static("2"))
+        );
+        assert_eq!(
+            response.headers.get(header::CONTENT_TYPE),
+            Some(&HeaderValue::from_static("text/plain"))
+        );
+
+        match response.body {
+            ProxyResponseBody::Bytes(body) => assert_eq!(body, Bytes::from_static(b"ok")),
+            other => panic!("expected bytes body, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn passthrough_stream_response_strips_connection_listed_headers() {
+        let mut headers = HeaderMap::new();
+        headers.insert(header::CONNECTION, HeaderValue::from_static("x-debug"));
+        headers.insert("x-debug", HeaderValue::from_static("1"));
+        headers.insert("x-keep", HeaderValue::from_static("yes"));
+        let stream =
+            futures::stream::once(async { Ok::<_, std::io::Error>(Bytes::from_static(b"chunk")) });
+
+        let response = passthrough_stream_proxy_response(StatusCode::OK, headers, stream);
+
+        assert!(!response.headers.contains_key(header::CONNECTION));
+        assert!(!response.headers.contains_key("x-debug"));
+        assert_eq!(
+            response.headers.get("x-keep"),
+            Some(&HeaderValue::from_static("yes"))
+        );
+
+        match response.body {
+            ProxyResponseBody::Stream(mut stream) => {
+                let chunk = futures::executor::block_on(stream.next())
+                    .expect("stream item")
+                    .expect("stream chunk");
+                assert_eq!(chunk, Bytes::from_static(b"chunk"));
+            }
+            other => panic!("expected stream body, got {other:?}"),
         }
     }
 
