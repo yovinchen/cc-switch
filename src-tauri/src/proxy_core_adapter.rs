@@ -842,11 +842,11 @@ pub(crate) fn anthropic_request_to_gemini_request_with_shadow(
 }
 
 pub(crate) fn openai_responses_to_anthropic_message(body: &Value) -> Result<Value, String> {
-    crate::proxy_core::openai_responses_to_anthropic_message(body)
+    crate::proxy_core::api::transforms::openai_responses_to_anthropic_message(body)
 }
 
 pub(crate) fn openai_chat_to_anthropic_message(body: &Value) -> Result<Value, String> {
-    crate::proxy_core::openai_chat_to_anthropic_message(body)
+    crate::proxy_core::api::transforms::openai_chat_to_anthropic_message(body)
 }
 
 pub(crate) fn gemini_response_to_anthropic_message<F>(
@@ -857,7 +857,7 @@ pub(crate) fn gemini_response_to_anthropic_message<F>(
 where
     F: FnMut() -> String,
 {
-    crate::proxy_core::gemini_response_to_anthropic_message(
+    crate::proxy_core::api::transforms::gemini_response_to_anthropic_message(
         body,
         tool_schema_hints,
         synthesize_tool_call_id,
@@ -868,7 +868,7 @@ pub(crate) fn should_preserve_reasoning_content_for_openai_chat(
     settings_config: &Value,
     body: &Value,
 ) -> bool {
-    crate::proxy_core::should_preserve_reasoning_content_for_openai_chat(
+    crate::proxy_core::api::transforms::should_preserve_reasoning_content_for_openai_chat(
         settings_config,
         body,
     )
@@ -877,40 +877,40 @@ pub(crate) fn should_preserve_reasoning_content_for_openai_chat(
 pub(crate) fn circuit_breaker_config_from_app_config(
     config: Option<&AppProxyConfig>,
 ) -> CircuitBreakerConfig {
-    crate::proxy_core::circuit_breaker_config_from_app_config(config)
+    crate::proxy_core::api::config::circuit_breaker_config_from_app_config(config)
 }
 
 pub(crate) fn circuit_failure_threshold_from_app_config(
     config: Option<&AppProxyConfig>,
     fallback: u32,
 ) -> u32 {
-    crate::proxy_core::circuit_failure_threshold_from_app_config(config, fallback)
+    crate::proxy_core::api::config::circuit_failure_threshold_from_app_config(config, fallback)
 }
 
 pub(crate) fn provider_circuit_key(app_type: &str, provider_id: &str) -> String {
-    crate::proxy_core::provider_circuit_key(app_type, provider_id)
+    crate::proxy_core::api::config::provider_circuit_key(app_type, provider_id)
 }
 
 pub(crate) fn channel_circuit_key(app_type: &str, channel_id: &str) -> String {
-    crate::proxy_core::channel_circuit_key(app_type, channel_id)
+    crate::proxy_core::api::config::channel_circuit_key(app_type, channel_id)
 }
 
 pub(crate) fn provider_circuit_key_prefix(app_type: &str) -> String {
-    crate::proxy_core::provider_circuit_key_prefix(app_type)
+    crate::proxy_core::api::config::provider_circuit_key_prefix(app_type)
 }
 
 pub(crate) fn channel_circuit_key_prefix(app_type: &str) -> String {
-    crate::proxy_core::channel_circuit_key_prefix(app_type)
+    crate::proxy_core::api::config::channel_circuit_key_prefix(app_type)
 }
 
 pub(crate) fn app_type_from_circuit_key(key: &str) -> &str {
-    crate::proxy_core::app_type_from_circuit_key(key)
+    crate::proxy_core::api::config::app_type_from_circuit_key(key)
 }
 
 pub(crate) fn select_provider_ids(
     input: ProviderSelectionInput,
 ) -> Result<Vec<String>, ProviderSelectionFailure> {
-    crate::proxy_core::select_provider_ids(input)
+    crate::proxy_core::api::routing::select_provider_ids(input)
 }
 
 pub(crate) fn resolve_channel_route(
@@ -918,7 +918,7 @@ pub(crate) fn resolve_channel_route(
     channels: Vec<RouteResolveChannelInput>,
     source: ChannelRouteSource,
 ) -> Result<RouteResolveResponse, ProxyCoreError> {
-    crate::proxy_core::resolve_channel_route(request, channels, source)
+    crate::proxy_core::api::routing::resolve_channel_route(request, channels, source)
 }
 
 pub(crate) fn reject_unavailable_channel_ids<I, S>(
@@ -928,7 +928,10 @@ pub(crate) fn reject_unavailable_channel_ids<I, S>(
     I: IntoIterator<Item = S>,
     S: AsRef<str>,
 {
-    crate::proxy_core::reject_unavailable_channel_ids(response, unavailable_channel_ids);
+    crate::proxy_core::api::routing::reject_unavailable_channel_ids(
+        response,
+        unavailable_channel_ids,
+    );
 }
 
 pub(crate) fn stable_channel_id(
@@ -937,7 +940,12 @@ pub(crate) fn stable_channel_id(
     source_kind: &str,
     base_url: &str,
 ) -> String {
-    crate::proxy_core::stable_channel_id(app_type, provider_id, source_kind, base_url)
+    crate::proxy_core::api::routing::stable_channel_id(
+        app_type,
+        provider_id,
+        source_kind,
+        base_url,
+    )
 }
 
 pub(crate) fn legacy_channel_priority(
@@ -945,7 +953,7 @@ pub(crate) fn legacy_channel_priority(
     in_failover_queue: bool,
     current_provider_id: Option<&str>,
 ) -> i64 {
-    crate::proxy_core::legacy_channel_priority(
+    crate::proxy_core::api::routing::legacy_channel_priority(
         provider_id,
         in_failover_queue,
         current_provider_id,
@@ -956,52 +964,52 @@ pub(crate) fn infer_legacy_channel_interface(
     app: Option<&ProxyCoreAppKind>,
     provider: &LegacyProviderProjectionInput,
 ) -> ProxyCoreInterfaceKind {
-    crate::proxy_core::infer_legacy_channel_interface(app, provider)
+    crate::proxy_core::api::routing::infer_legacy_channel_interface(app, provider)
 }
 
 pub(crate) fn build_legacy_channel_projection(
     input: LegacyChannelProjectionInput,
 ) -> LegacyChannelProjection {
-    crate::proxy_core::build_legacy_channel_projection(input)
+    crate::proxy_core::api::routing::build_legacy_channel_projection(input)
 }
 
 pub(crate) fn normalize_required_channel_string(
     value: &str,
     field: &str,
 ) -> Result<String, ChannelRequestValidationError> {
-    crate::proxy_core::normalize_required_channel_string(value, field)
+    crate::proxy_core::api::routing::normalize_required_channel_string(value, field)
 }
 
 pub(crate) fn normalize_optional_channel_string(value: String) -> Option<String> {
-    crate::proxy_core::normalize_optional_channel_string(value)
+    crate::proxy_core::api::routing::normalize_optional_channel_string(value)
 }
 
 pub(crate) fn normalize_channel_base_url(value: &str) -> String {
-    crate::proxy_core::normalize_channel_base_url(value)
+    crate::proxy_core::api::routing::normalize_channel_base_url(value)
 }
 
 pub(crate) fn normalize_channel_groups(groups: Vec<String>) -> Vec<String> {
-    crate::proxy_core::normalize_channel_groups(groups)
+    crate::proxy_core::api::routing::normalize_channel_groups(groups)
 }
 
 pub(crate) fn channel_object_or_default(value: Value) -> Value {
-    crate::proxy_core::channel_object_or_default(value)
+    crate::proxy_core::api::routing::channel_object_or_default(value)
 }
 
 pub(crate) fn channel_array_or_default(value: Value) -> Value {
-    crate::proxy_core::channel_array_or_default(value)
+    crate::proxy_core::api::routing::channel_array_or_default(value)
 }
 
 pub(crate) fn validate_proxy_channel_write_request_fields(
     request: &ProxyChannelWriteRequest,
 ) -> Result<(), ChannelRequestValidationError> {
-    crate::proxy_core::validate_proxy_channel_write_request_fields(request)
+    crate::proxy_core::api::routing::validate_proxy_channel_write_request_fields(request)
 }
 
 pub(crate) fn validate_proxy_channel_model_write_request_fields(
     model: &ProxyChannelModelWriteRequest,
 ) -> Result<(), ChannelRequestValidationError> {
-    crate::proxy_core::validate_proxy_channel_model_write_request_fields(model)
+    crate::proxy_core::api::routing::validate_proxy_channel_model_write_request_fields(model)
 }
 
 impl From<&AppType> for AppKind {
