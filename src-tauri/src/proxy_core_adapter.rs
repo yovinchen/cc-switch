@@ -29,6 +29,25 @@ pub(crate) fn synthesize_gemini_tool_call_id_with_uuid() -> String {
     crate::proxy_core::synthesize_gemini_tool_call_id(Uuid::new_v4().simple().to_string())
 }
 
+pub(crate) const COPILOT_PUBLIC_GITHUB_DOMAIN: &str =
+    crate::proxy_core::COPILOT_PUBLIC_GITHUB_DOMAIN;
+
+pub(crate) fn default_copilot_github_domain() -> String {
+    crate::proxy_core::default_copilot_github_domain()
+}
+
+pub(crate) fn normalize_github_domain(raw: &str) -> Result<String, String> {
+    crate::proxy_core::normalize_github_domain(raw)
+}
+
+pub(crate) fn is_copilot_ghes_domain(domain: &str) -> bool {
+    crate::proxy_core::is_copilot_ghes_domain(domain)
+}
+
+pub(crate) fn copilot_composite_account_id(domain: &str, user_id: u64) -> String {
+    crate::proxy_core::copilot_composite_account_id(domain, user_id)
+}
+
 impl From<&AppType> for AppKind {
     fn from(value: &AppType) -> Self {
         match value {
@@ -769,6 +788,23 @@ mod tests {
         assert_eq!(
             AppKind::from(&AppType::OpenClaw),
             AppKind::Custom("openclaw".to_string())
+        );
+    }
+
+    #[test]
+    fn copilot_account_adapter_projects_domain_and_composite_id_rules() {
+        assert_eq!(COPILOT_PUBLIC_GITHUB_DOMAIN, "github.com");
+        assert_eq!(default_copilot_github_domain(), "github.com");
+        assert_eq!(
+            normalize_github_domain("https://Company.GHE.Com/api/v3?foo=bar").unwrap(),
+            "company.ghe.com"
+        );
+        assert!(!is_copilot_ghes_domain("github.com"));
+        assert!(is_copilot_ghes_domain("company.ghe.com"));
+        assert_eq!(copilot_composite_account_id("github.com", 12345), "12345");
+        assert_eq!(
+            copilot_composite_account_id("company.ghe.com", 12345),
+            "company.ghe.com:12345"
         );
     }
 
