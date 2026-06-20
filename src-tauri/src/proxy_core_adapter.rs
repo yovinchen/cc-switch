@@ -441,6 +441,11 @@ pub(crate) fn resolve_upstream_send_policy(
 }
 
 #[cfg(test)]
+pub(crate) fn is_official_codex_client_user_agent(user_agent: &str) -> bool {
+    crate::proxy_core::is_official_codex_client_user_agent(user_agent)
+}
+
+#[cfg(test)]
 pub(crate) fn build_gemini_native_url(base_url: &str, endpoint: &str) -> String {
     crate::proxy_core::build_gemini_native_url(base_url, endpoint)
 }
@@ -1145,6 +1150,16 @@ mod tests {
             send_policy.streaming_header_timeout,
             Some(std::time::Duration::from_secs(1))
         );
+    }
+
+    #[test]
+    fn codex_user_agent_adapter_projects_official_client_policy() {
+        assert!(is_official_codex_client_user_agent("codex_vscode/1.0.0"));
+        assert!(is_official_codex_client_user_agent("codex_cli_rs/0.5.2"));
+        assert!(!is_official_codex_client_user_agent("Mozilla/5.0"));
+        assert!(!is_official_codex_client_user_agent(
+            "prefix_codex_cli_rs/1.0.0"
+        ));
     }
 
     #[test]

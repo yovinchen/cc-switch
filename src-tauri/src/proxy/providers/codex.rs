@@ -362,7 +362,7 @@ impl ProviderAdapter for CodexAdapter {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::proxy_core::is_official_codex_client_user_agent;
+    use crate::proxy_core_adapter::is_official_codex_client_user_agent;
     use serde_json::json;
 
     fn create_provider(config: serde_json::Value) -> Provider {
