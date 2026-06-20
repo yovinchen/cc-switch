@@ -48,7 +48,8 @@ use crate::proxy_core::{
     AppChannelListQuery, AppChannelManagementRequest, AppChannelResponse, AppKind, AppListRequest,
     AppListResponse, AppListSource, AppModelCatalogRequest, AppModelListQuery, ChannelCreateRequest,
     ChannelCreateSource, ChannelDeleteResponse, ChannelDeleteSource, ChannelHealthResetResponse,
-    ChannelListPlan, ChannelListQuery, ChannelListRequest, ChannelListResponse, ChannelListSource,
+    ChannelHealthResetSource, ChannelListPlan, ChannelListQuery, ChannelListRequest,
+    ChannelListResponse, ChannelListSource,
     ChannelMigrationMaterializeResponse, ChannelMigrationPreviewResponse,
     ChannelMigrationMaterializeSource, ChannelMigrationPreviewSource, ChannelModelRecord,
     ChannelModelsResponse, ChannelModelsSource, ChannelPathRequest, ChannelRecord,
@@ -628,16 +629,17 @@ pub async fn reset_proxy_channel_breaker(
     State(state): State<ProxyState>,
     Path(channel_id): Path<String>,
 ) -> Result<Json<ChannelHealthResetResponse>, ProxyError> {
-    let channel_id = ChannelPathRequest::from_path(channel_id)
-        .map_err(management_api_error_to_proxy_error)?
-        .channel_id;
+    let request =
+        ChannelPathRequest::from_path(channel_id).map_err(management_api_error_to_proxy_error)?;
     let response = state
         .proxy_engine()
-        .reset_channel_health_response(&channel_id)
+        .reset_channel_health_response(&request.channel_id)
         .await
         .map_err(proxy_core_error_to_proxy_error)?;
 
-    Ok(Json(response))
+    Ok(Json(
+        request.health_reset_response_from_source(ChannelHealthResetSource::new(response)),
+    ))
 }
 
 /// POST /proxy/v1/route/resolve

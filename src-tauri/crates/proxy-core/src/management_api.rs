@@ -2,10 +2,11 @@ use super::domain::{AppKind, ChannelSpec, InterfaceKind, ProviderSpec};
 use super::error::{ProxyCoreError, ProxyCoreResult};
 use super::ports::{
     AppChannelListQuery, AppChannelListResponse, AppChannelResponse, AppChannelRouteResponse,
-    AppListResponse, AppModelListQuery, AppSummaryInput, ChannelDeleteResponse, ChannelListQuery,
-    ChannelListResponse, ChannelMigrationMaterializeResponse, ChannelMigrationPreviewResponse,
-    ChannelModelsResponse, ChannelRecordResponse, ChannelRouteCandidate, ChannelRouteRejected,
-    ChannelRouteSource, ChannelTestInput, ChannelTestResponse, CurrentRouteProviderSummaryInput,
+    AppListResponse, AppModelListQuery, AppSummaryInput, ChannelDeleteResponse,
+    ChannelHealthResetResponse, ChannelListQuery, ChannelListResponse,
+    ChannelMigrationMaterializeResponse, ChannelMigrationPreviewResponse, ChannelModelsResponse,
+    ChannelRecordResponse, ChannelRouteCandidate, ChannelRouteRejected, ChannelRouteSource,
+    ChannelTestInput, ChannelTestResponse, CurrentRouteProviderSummaryInput,
     CurrentRouteResponse, GroupListQuery, HealthCheckResponse, ProviderListResponse,
     ProxyChannelWriteRequest, ProxyStatusResponse, RouteGroupListResponse, RouteGroupSourceInput,
     RouteResolveRequest, RouteResolveResponse,
@@ -412,6 +413,17 @@ impl ChannelDeleteSource {
     }
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ChannelHealthResetSource {
+    pub response: ChannelHealthResetResponse,
+}
+
+impl ChannelHealthResetSource {
+    pub fn new(response: ChannelHealthResetResponse) -> Self {
+        Self { response }
+    }
+}
+
 impl ChannelPathRequest {
     pub fn from_path(channel_id: impl AsRef<str>) -> ProxyCoreResult<Self> {
         Ok(Self {
@@ -461,6 +473,13 @@ impl ChannelPathRequest {
 
     pub fn delete_response_from_source(&self, source: ChannelDeleteSource) -> ChannelDeleteResponse {
         self.delete_response(source.deleted)
+    }
+
+    pub fn health_reset_response_from_source(
+        &self,
+        source: ChannelHealthResetSource,
+    ) -> ChannelHealthResetResponse {
+        source.response
     }
 
     pub fn test_response(&self, input: ChannelTestInput) -> ChannelTestResponse {
@@ -747,10 +766,10 @@ mod tests {
         AppListRequest, AppListSource, AppModelCatalogRequest, ChannelCreateRequest,
         ChannelCreateSource, ChannelListPlan, ChannelListRequest, ChannelListSource,
         ChannelMigrationMaterializeSource,
-        ChannelMigrationPreviewSource, ChannelDeleteSource, ChannelModelsSource,
-        ChannelPathRequest, ChannelRecordSource, CurrentRouteSource, GroupListChannelSource,
-        GroupListRequest, HealthCheckRequest, HealthCheckSource, ManagementAppPathRequest,
-        ProviderListSource, ProxyStatusRequest, ProxyStatusSource,
+        ChannelMigrationPreviewSource, ChannelDeleteSource, ChannelHealthResetSource,
+        ChannelModelsSource, ChannelPathRequest, ChannelRecordSource, CurrentRouteSource,
+        GroupListChannelSource, GroupListRequest, HealthCheckRequest, HealthCheckSource,
+        ManagementAppPathRequest, ProviderListSource, ProxyStatusRequest, ProxyStatusSource,
         RouteResolveManagementRequest, channel_not_found_message, normalize_channel_id_path,
         validate_management_app_type, validate_route_resolve_app_type,
     };
@@ -1033,6 +1052,22 @@ mod tests {
 
         assert_eq!(response.channel_id, "channel-a");
         assert!(response.deleted);
+    }
+
+    #[test]
+    fn channel_path_request_wraps_health_reset_response() {
+        let request = ChannelPathRequest::from_path("channel-a").expect("request");
+        let response = request.health_reset_response_from_source(ChannelHealthResetSource::new(
+            crate::ChannelHealthResetResponse {
+                channel_id: "channel-a".to_string(),
+                app_type: "claude".to_string(),
+                reset: true,
+            },
+        ));
+
+        assert_eq!(response.channel_id, "channel-a");
+        assert_eq!(response.app_type, "claude");
+        assert!(response.reset);
     }
 
     #[test]
