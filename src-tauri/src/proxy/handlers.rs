@@ -431,18 +431,15 @@ pub async fn test_proxy_channel(
         ChannelTestPlan::Failure(response) => return Ok(Json(response)),
     };
 
-    let app_type = AppType::from_str(&channel.app_type)
+    let probe_request = channel_test_context.probe_request();
+
+    let app_type = AppType::from_str(&probe_request.app_type)
         .map_err(|error| ProxyError::InvalidRequest(error.to_string()))?;
     let provider = state
         .db
-        .get_provider_by_id(&channel.provider_id, &channel.app_type)
+        .get_provider_by_id(&probe_request.provider_id, &probe_request.app_type)
         .map_err(|e| ProxyError::DatabaseError(e.to_string()))?
-        .ok_or_else(|| {
-            ProxyError::ConfigError(format!(
-                "provider not found for channel {}: {}",
-                channel.id, channel.provider_id
-            ))
-        })?;
+        .ok_or_else(|| ProxyError::ConfigError(probe_request.provider_not_found_message()))?;
     let config = state
         .db
         .get_stream_check_config()
@@ -452,7 +449,7 @@ pub async fn test_proxy_channel(
         &app_type,
         &provider,
         &config,
-        Some(channel.base_url.clone()),
+        Some(probe_request.base_url.clone()),
     )
     .await
     .map_err(|e| ProxyError::Internal(e.to_string()))?;

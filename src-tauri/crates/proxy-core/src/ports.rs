@@ -788,6 +788,23 @@ pub struct ChannelTestContext {
     pub model_available: Option<bool>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ChannelTestProbeRequest {
+    pub channel_id: String,
+    pub provider_id: String,
+    pub app_type: String,
+    pub base_url: String,
+}
+
+impl ChannelTestProbeRequest {
+    pub fn provider_not_found_message(&self) -> String {
+        format!(
+            "provider not found for channel {}: {}",
+            self.channel_id, self.provider_id
+        )
+    }
+}
+
 impl ChannelTestContext {
     pub fn from_channel(channel: &ChannelSpec, request: &ProxyChannelTestRequest) -> Self {
         let model = request.requested_model().map(str::to_string);
@@ -804,6 +821,15 @@ impl ChannelTestContext {
             interface_kind: channel.interface.as_str().to_string(),
             model,
             model_available,
+        }
+    }
+
+    pub fn probe_request(&self) -> ChannelTestProbeRequest {
+        ChannelTestProbeRequest {
+            channel_id: self.channel_id.clone(),
+            provider_id: self.provider_id.clone(),
+            app_type: self.app_type.clone(),
+            base_url: self.base_url.clone(),
         }
     }
 
@@ -2386,6 +2412,33 @@ mod tests {
         assert_eq!(response.model_available, Some(true));
         assert_eq!(response.latency_ms, Some(23));
         assert_eq!(response.failure_reason, None);
+    }
+
+    #[test]
+    fn channel_test_context_exposes_probe_request() {
+        let channel = channel_test_channel_spec();
+        let request: ProxyChannelTestRequest = serde_json::from_value(json!({
+            "model": "sonnet",
+            "interfaceKind": "anthropic_messages"
+        }))
+        .expect("deserialize request");
+
+        let context = match plan_channel_test(&channel, &request, 1_771_000_000) {
+            ChannelTestPlan::Probe(context) => context,
+            ChannelTestPlan::Failure(response) => {
+                panic!("unexpected preflight failure: {:?}", response.failure_reason)
+            }
+        };
+        let probe = context.probe_request();
+
+        assert_eq!(probe.channel_id, "channel-a");
+        assert_eq!(probe.provider_id, "provider-a");
+        assert_eq!(probe.app_type, "claude");
+        assert_eq!(probe.base_url, "https://relay.example.com/v1");
+        assert_eq!(
+            probe.provider_not_found_message(),
+            "provider not found for channel channel-a: provider-a"
+        );
     }
 
     #[test]
