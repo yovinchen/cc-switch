@@ -1025,6 +1025,33 @@ mod tests {
                 ));
             }
 
+            let app_models_response = client
+                .get(format!(
+                    "{base_url}/proxy/v1/apps/claude/models?group=default&interface=anthropic_messages"
+                ))
+                .send()
+                .await
+                .map_err(|error| error.to_string())?;
+            if app_models_response.status() != StatusCode::OK {
+                return Err(format!(
+                    "unexpected app models status: {}",
+                    app_models_response.status()
+                ));
+            }
+            let app_models = app_models_response
+                .json::<Value>()
+                .await
+                .map_err(|error| error.to_string())?;
+            if app_models["routeGroup"] != "default"
+                || app_models["interfaceKind"] != "anthropic_messages"
+                || app_models["models"].as_array().map(Vec::len) != Some(1)
+                || app_models["models"][0]["publicModel"] != "runtime-public"
+                || app_models["models"][0]["upstreamModel"] != "runtime-upstream"
+                || app_models["models"][0]["channelName"] != "Runtime Relay"
+            {
+                return Err(format!("unexpected app models body: {app_models}"));
+            }
+
             let groups_response = client
                 .get(format!("{base_url}/proxy/v1/groups?appType=claude"))
                 .send()
