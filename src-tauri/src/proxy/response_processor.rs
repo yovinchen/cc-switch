@@ -519,24 +519,15 @@ pub fn create_logged_passthrough_stream(
                         });
 
                         for event in events {
-                            match event.kind {
-                                SsePassthroughEventKind::Done => {
-                                    log::debug!("[{tag}] <<< SSE: [DONE]");
-                                }
-                                SsePassthroughEventKind::Collect => {
-                                    if let (Some(collector), Some(json_value)) =
-                                        (&collector, event.parsed)
-                                    {
-                                        collector.push(json_value).await;
-                                        log::debug!("[{tag}] <<< SSE 事件: {}", event.data);
-                                    } else {
-                                        log::debug!("[{tag}] <<< SSE 数据: {}", event.data);
-                                    }
-                                }
-                                SsePassthroughEventKind::Data => {
-                                    log::debug!("[{tag}] <<< SSE 数据: {}", event.data);
+                            let log_message = event.log_message(tag);
+                            if event.kind == SsePassthroughEventKind::Collect {
+                                if let (Some(collector), Some(json_value)) =
+                                    (&collector, event.parsed)
+                                {
+                                    collector.push(json_value).await;
                                 }
                             }
+                            log::debug!("{log_message}");
                         }
                     }
 

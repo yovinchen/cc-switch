@@ -98,6 +98,20 @@ pub struct SsePassthroughEvent {
     pub kind: SsePassthroughEventKind,
 }
 
+impl SsePassthroughEvent {
+    pub fn log_message(&self, tag: &str) -> String {
+        match self.kind {
+            SsePassthroughEventKind::Done => format!("[{tag}] <<< SSE: [DONE]"),
+            SsePassthroughEventKind::Collect if self.parsed.is_some() => {
+                format!("[{tag}] <<< SSE 事件: {}", self.data)
+            }
+            SsePassthroughEventKind::Collect | SsePassthroughEventKind::Data => {
+                format!("[{tag}] <<< SSE 数据: {}", self.data)
+            }
+        }
+    }
+}
+
 #[derive(Debug, Default)]
 pub struct SseEventScanner {
     buffer: String,
@@ -720,6 +734,10 @@ mod tests {
         assert_eq!(events.len(), 1);
         assert_eq!(events[0].kind, SsePassthroughEventKind::Collect);
         assert_eq!(events[0].parsed, Some(json!({"usage": true})));
+        assert_eq!(
+            events[0].log_message("REQ-1"),
+            "[REQ-1] <<< SSE 事件: {\"usage\":true}"
+        );
     }
 
     #[test]
@@ -731,6 +749,10 @@ mod tests {
         assert_eq!(events.len(), 1);
         assert_eq!(events[0].kind, SsePassthroughEventKind::Data);
         assert!(events[0].parsed.is_none());
+        assert_eq!(
+            events[0].log_message("REQ-1"),
+            "[REQ-1] <<< SSE 数据: {\"usage\":true}"
+        );
     }
 
     #[test]
@@ -742,6 +764,7 @@ mod tests {
         assert_eq!(events.len(), 1);
         assert_eq!(events[0].kind, SsePassthroughEventKind::Done);
         assert!(events[0].parsed.is_none());
+        assert_eq!(events[0].log_message("REQ-1"), "[REQ-1] <<< SSE: [DONE]");
     }
 
     #[test]
