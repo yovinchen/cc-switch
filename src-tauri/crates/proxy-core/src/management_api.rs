@@ -9,8 +9,8 @@ use super::ports::{
     ChannelRecordResponse, ChannelRouteCandidate, ChannelRouteRejected, ChannelRouteSource,
     ChannelTestInput, ChannelTestResponse, CurrentRouteProviderSummaryInput,
     CurrentRouteResponse, GroupListQuery, HealthCheckResponse, ProviderListResponse,
-    ProxyChannelWriteRequest, ProxyStatusResponse, RouteGroupListResponse, RouteGroupSourceInput,
-    RouteResolveRequest, RouteResolveResponse,
+    ProviderSummaryInput, ProxyChannelWriteRequest, ProxyStatusResponse, RouteGroupListResponse,
+    RouteGroupSourceInput, RouteResolveRequest, RouteResolveResponse,
 };
 
 pub fn validate_management_app_type(app_type: &str) -> ProxyCoreResult<()> {
@@ -239,7 +239,7 @@ impl ChannelMigrationMaterializeSource {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct ProviderListSource {
-    pub providers: Vec<ProviderSpec>,
+    pub providers: Vec<ProviderSummaryInput>,
     pub current_provider: Option<String>,
     pub failover_provider_ids: Vec<String>,
     pub route_candidate_ids: Vec<String>,
@@ -247,7 +247,7 @@ pub struct ProviderListSource {
 
 impl ProviderListSource {
     pub fn new(
-        providers: impl IntoIterator<Item = ProviderSpec>,
+        providers: impl IntoIterator<Item = ProviderSummaryInput>,
         current_provider: Option<String>,
         failover_provider_ids: Vec<String>,
         route_candidate_ids: Vec<String>,
@@ -258,6 +258,22 @@ impl ProviderListSource {
             failover_provider_ids,
             route_candidate_ids,
         }
+    }
+
+    pub fn from_provider_specs(
+        providers: impl IntoIterator<Item = ProviderSpec>,
+        current_provider: Option<String>,
+        failover_provider_ids: Vec<String>,
+        route_candidate_ids: Vec<String>,
+    ) -> Self {
+        Self::new(
+            providers
+                .into_iter()
+                .map(ProviderSummaryInput::from_provider_spec),
+            current_provider,
+            failover_provider_ids,
+            route_candidate_ids,
+        )
     }
 }
 
@@ -290,14 +306,14 @@ impl ManagementAppPathRequest {
 
     pub fn provider_list_response(
         &self,
-        providers: impl IntoIterator<Item = ProviderSpec>,
+        providers: impl IntoIterator<Item = ProviderSummaryInput>,
         current_provider: Option<&str>,
         failover_provider_ids: &[String],
         route_candidate_ids: &[String],
     ) -> ProviderListResponse {
-        ProviderListResponse::from_provider_specs(
+        ProviderListResponse::from_provider_inputs(
             self.app_type.clone(),
-            providers,
+            providers.into_iter().collect(),
             current_provider,
             failover_provider_ids,
             route_candidate_ids,
@@ -939,8 +955,8 @@ mod tests {
     };
     use crate::ports::{
         AppChannelListQuery, AppModelListQuery, AppSummaryInput, ChannelListQuery,
-        ChannelRouteSource, ChannelTestInput, GroupListQuery, ProxyChannelWriteRequest,
-        RouteResolveResponse,
+        ChannelRouteSource, ChannelTestInput, GroupListQuery, ProviderSummaryInput,
+        ProxyChannelWriteRequest, RouteResolveResponse,
     };
     use serde_json::json;
 
@@ -1101,7 +1117,7 @@ mod tests {
         let failover_ids = vec!["provider-b".to_string()];
         let route_candidate_ids = vec!["provider-a".to_string()];
 
-        let response = request.provider_list_response_from_source(ProviderListSource::new(
+        let response = request.provider_list_response_from_source(ProviderListSource::from_provider_specs(
             vec![provider_spec("provider-a"), provider_spec("provider-b")],
             Some("provider-a".to_string()),
             failover_ids,
@@ -1116,6 +1132,34 @@ mod tests {
         assert!(!response.providers[1].current);
         assert!(!response.providers[1].route_candidate);
         assert!(response.providers[1].in_failover_queue);
+    }
+
+    #[test]
+    fn management_app_path_request_wraps_provider_summary_inputs() {
+        let request = ManagementAppPathRequest::from_path("claude").expect("request");
+
+        let response = request.provider_list_response_from_source(ProviderListSource::new(
+            vec![ProviderSummaryInput::new(
+                "provider-a",
+                "Provider A",
+                Some("aggregator".to_string()),
+                Some(1),
+                Some("openrouter".to_string()),
+                Some("#111111".to_string()),
+                Some("openai_compatible".to_string()),
+            )],
+            Some("provider-a".to_string()),
+            vec![],
+            vec!["provider-a".to_string()],
+        ));
+
+        assert_eq!(response.providers.len(), 1);
+        assert_eq!(response.providers[0].id, "provider-a");
+        assert_eq!(response.providers[0].category.as_deref(), Some("aggregator"));
+        assert_eq!(response.providers[0].sort_index, Some(1));
+        assert_eq!(response.providers[0].provider_type.as_deref(), Some("openai_compatible"));
+        assert!(response.providers[0].current);
+        assert!(response.providers[0].route_candidate);
     }
 
     #[test]

@@ -537,8 +537,8 @@ pub(crate) use crate::proxy_core::api::management::{
     GroupListChannelRecordInput, GroupListChannelSource, GroupListQuery, GroupListRequest,
     HealthCheckRequest, HealthCheckResponse, HealthCheckSource, ManagementAppPathRequest,
     ProviderListResponse, ProviderListSource, ProxyChannelModelsReplaceRequest,
-    ProxyChannelTestRequest, ProxyStatusRequest, ProxyStatusResponse, ProxyStatusSource,
-    RouteGroupListResponse, RouteResolveManagementRequest,
+    ProviderSummaryInput, ProxyChannelTestRequest, ProxyStatusRequest, ProxyStatusResponse,
+    ProxyStatusSource, RouteGroupListResponse, RouteResolveManagementRequest,
 };
 pub(crate) use crate::proxy_core::api::model_catalog::{
     ClientModelCatalogResponse, RoutableModelList,
@@ -1124,13 +1124,33 @@ impl ToProxyCoreProviderSpec for Provider {
     }
 }
 
-pub(crate) fn proxy_providers_to_core_specs(
-    app_type: &AppType,
+pub(crate) fn proxy_provider_summary_inputs_to_core(
     providers: impl IntoIterator<Item = Provider>,
-) -> Vec<ProviderSpec> {
+) -> Vec<ProviderSummaryInput> {
     providers
         .into_iter()
-        .map(|provider| provider.to_proxy_core_provider_spec(app_type))
+        .map(|provider| {
+            let Provider {
+                id,
+                name,
+                category,
+                sort_index,
+                meta,
+                icon,
+                icon_color,
+                ..
+            } = provider;
+
+            ProviderSummaryInput::new(
+                id,
+                name,
+                category,
+                sort_index,
+                icon,
+                icon_color,
+                meta.and_then(|meta| meta.provider_type),
+            )
+        })
         .collect()
 }
 
