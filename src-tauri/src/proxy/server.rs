@@ -818,6 +818,8 @@ mod tests {
             None,
         );
         db.save_provider("claude", &provider).unwrap();
+        db.set_current_provider("claude", "runtime-provider")
+            .unwrap();
 
         let config = ProxyConfig {
             listen_address: "127.0.0.1".to_string(),
@@ -872,6 +874,63 @@ mod tests {
             }
             if status["port"].as_u64() != Some(u64::from(info.port)) {
                 return Err(format!("status did not report actual port: {status}"));
+            }
+
+            let apps_response = client
+                .get(format!("{base_url}/proxy/v1/apps"))
+                .send()
+                .await
+                .map_err(|error| error.to_string())?;
+            if apps_response.status() != StatusCode::OK {
+                return Err(format!(
+                    "unexpected apps status: {}",
+                    apps_response.status()
+                ));
+            }
+            let apps = apps_response
+                .json::<Value>()
+                .await
+                .map_err(|error| error.to_string())?;
+            let claude_app = apps["apps"]
+                .as_array()
+                .and_then(|apps| apps.iter().find(|app| app["appType"] == "claude"))
+                .ok_or_else(|| format!("apps response missing claude app: {apps}"))?;
+            if claude_app["providerCount"] != 1 {
+                return Err(format!("unexpected claude app summary: {claude_app}"));
+            }
+
+            let providers_response = client
+                .get(format!("{base_url}/proxy/v1/apps/claude/providers"))
+                .send()
+                .await
+                .map_err(|error| error.to_string())?;
+            if providers_response.status() != StatusCode::OK {
+                return Err(format!(
+                    "unexpected providers status: {}",
+                    providers_response.status()
+                ));
+            }
+            let providers = providers_response
+                .json::<Value>()
+                .await
+                .map_err(|error| error.to_string())?;
+            let runtime_provider = providers["providers"]
+                .as_array()
+                .and_then(|providers| {
+                    providers
+                        .iter()
+                        .find(|provider| provider["id"] == "runtime-provider")
+                })
+                .ok_or_else(|| {
+                    format!("providers response missing runtime provider: {providers}")
+                })?;
+            if runtime_provider["name"] != "Runtime Provider"
+                || runtime_provider["current"] != true
+                || runtime_provider["routeCandidate"] != true
+                || runtime_provider.get("settingsConfig").is_some()
+                || runtime_provider.to_string().contains("provider-secret")
+            {
+                return Err(format!("unexpected provider summary: {runtime_provider}"));
             }
 
             let create_response = client
