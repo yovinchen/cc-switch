@@ -304,7 +304,25 @@ impl AppModelCatalogRequest {
 #[derive(Debug, Clone)]
 pub struct AppChannelManagementRequest {
     pub app_type: String,
-    pub route_request: Option<RouteResolveRequest>,
+    route_request: Option<RouteResolveRequest>,
+}
+
+#[derive(Debug, Clone)]
+pub enum AppChannelManagementPlan {
+    Route(RouteResolveRequest),
+    List { app_type: String },
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AppChannelListSource<T> {
+    pub source: ChannelRouteSource,
+    pub channels: Vec<T>,
+}
+
+impl<T> AppChannelListSource<T> {
+    pub fn new(source: ChannelRouteSource, channels: Vec<T>) -> Self {
+        Self { source, channels }
+    }
 }
 
 impl AppChannelManagementRequest {
@@ -326,6 +344,15 @@ impl AppChannelManagementRequest {
         })
     }
 
+    pub fn plan(&self) -> AppChannelManagementPlan {
+        match &self.route_request {
+            Some(route_request) => AppChannelManagementPlan::Route(route_request.clone()),
+            None => AppChannelManagementPlan::List {
+                app_type: self.app_type.clone(),
+            },
+        }
+    }
+
     pub fn list_response<T>(
         &self,
         source: &ChannelRouteSource,
@@ -338,11 +365,25 @@ impl AppChannelManagementRequest {
         ))
     }
 
+    pub fn response_from_list_source<T>(
+        &self,
+        source: AppChannelListSource<T>,
+    ) -> AppChannelResponse<T, ChannelRouteCandidate, ChannelRouteRejected> {
+        self.list_response(&source.source, source.channels)
+    }
+
     pub fn route_response<T>(
         &self,
         response: RouteResolveResponse,
     ) -> AppChannelResponse<T, ChannelRouteCandidate, ChannelRouteRejected> {
         AppChannelResponse::Route(AppChannelRouteResponse::from_route_resolve(response))
+    }
+
+    pub fn response_from_route_resolution<T>(
+        &self,
+        response: RouteResolveResponse,
+    ) -> AppChannelResponse<T, ChannelRouteCandidate, ChannelRouteRejected> {
+        self.route_response(response)
     }
 }
 
@@ -455,9 +496,10 @@ fn normalize_optional_management_app_type(app_type: Option<String>) -> ProxyCore
 #[cfg(test)]
 mod tests {
     use super::{
-        AppChannelManagementRequest, AppListRequest, AppModelCatalogRequest, ChannelListRequest,
-        ChannelCreateRequest, ChannelPathRequest, GroupListChannelSource, GroupListRequest,
-        HealthCheckRequest, ManagementAppPathRequest, ProviderListSource, ProxyStatusRequest,
+        AppChannelListSource, AppChannelManagementPlan, AppChannelManagementRequest,
+        AppListRequest, AppModelCatalogRequest, ChannelListRequest, ChannelCreateRequest,
+        ChannelPathRequest, GroupListChannelSource, GroupListRequest, HealthCheckRequest,
+        ManagementAppPathRequest, ProviderListSource, ProxyStatusRequest,
         RouteResolveManagementRequest, channel_not_found_message, normalize_channel_id_path,
         validate_management_app_type, validate_route_resolve_app_type,
     };
@@ -808,7 +850,10 @@ mod tests {
 
         let request =
             AppChannelManagementRequest::from_parts(" claude ", query).expect("request");
-        let route_request = request.route_request.expect("route request");
+        let route_request = match request.plan() {
+            AppChannelManagementPlan::Route(route_request) => route_request,
+            AppChannelManagementPlan::List { .. } => panic!("expected route plan"),
+        };
 
         assert_eq!(request.app_type, "claude");
         assert_eq!(route_request.app_type, "claude");
@@ -828,7 +873,10 @@ mod tests {
         let request = AppChannelManagementRequest::from_parts("claude", query).expect("request");
 
         assert_eq!(request.app_type, "claude");
-        assert!(request.route_request.is_none());
+        match request.plan() {
+            AppChannelManagementPlan::List { app_type } => assert_eq!(app_type, "claude"),
+            AppChannelManagementPlan::Route(_) => panic!("expected list plan"),
+        }
     }
 
     #[test]
@@ -837,9 +885,10 @@ mod tests {
             .expect("query");
         let request = AppChannelManagementRequest::from_parts("claude", query).expect("request");
 
-        let response = request.list_response(&ChannelRouteSource::MaterializedChannels, vec![
-            "channel-a",
-        ]);
+        let response = request.response_from_list_source(AppChannelListSource::new(
+            ChannelRouteSource::MaterializedChannels,
+            vec!["channel-a"],
+        ));
         let value = serde_json::to_value(response).expect("serialize response");
 
         assert_eq!(value["appType"], "claude");
@@ -857,7 +906,7 @@ mod tests {
         let request = AppChannelManagementRequest::from_parts("claude", query).expect("request");
 
         let response: crate::AppChannelResponse<&str, _, _> =
-            request.route_response(RouteResolveResponse {
+            request.response_from_route_resolution(RouteResolveResponse {
                 app_type: "claude".to_string(),
                 requested_model: Some("sonnet".to_string()),
                 interface_kind: Some("anthropic_messages".to_string()),

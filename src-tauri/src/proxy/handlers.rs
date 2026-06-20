@@ -31,7 +31,7 @@ use super::{
 };
 use crate::app_config::AppType;
 use crate::proxy_core::{
-    append_query_to_endpoint_path,
+    append_query_to_endpoint_path, AppChannelListSource, AppChannelManagementPlan,
     chat_completion_to_response_with_context as build_chat_completion_response_with_context,
     claude_stream_usage_event_filter, claude_transform_unlabeled_sse_aggregation,
     codex_stream_usage_event_filter,
@@ -474,26 +474,31 @@ pub async fn list_proxy_channels(
     let request = AppChannelManagementRequest::from_parts(app_type, query)
         .map_err(management_api_error_to_proxy_error)?;
 
-    if let Some(route_request) = request.route_request.clone() {
-        let response = state
-            .provider_router
-            .resolve_channel_route_dry_run(route_request)
-            .await
-            .map_err(|e| ProxyError::DatabaseError(e.to_string()))?;
+    match request.plan() {
+        AppChannelManagementPlan::Route(route_request) => {
+            let response = state
+                .provider_router
+                .resolve_channel_route_dry_run(route_request)
+                .await
+                .map_err(|e| ProxyError::DatabaseError(e.to_string()))?;
 
-        return Ok(Json(request.route_response(response)));
+            Ok(Json(request.response_from_route_resolution(response)))
+        }
+        AppChannelManagementPlan::List { app_type } => {
+            let (channels, source) = state
+                .provider_router
+                .list_channels_for_app(&app_type)
+                .await
+                .map_err(|e| ProxyError::DatabaseError(e.to_string()))?;
+
+            Ok(Json(
+                request.response_from_list_source(AppChannelListSource::new(
+                    source,
+                    proxy_channel_records_to_core(channels),
+                )),
+            ))
+        }
     }
-
-    let (channels, source) = state
-        .provider_router
-        .list_channels_for_app(&request.app_type)
-        .await
-        .map_err(|e| ProxyError::DatabaseError(e.to_string()))?;
-
-    Ok(Json(request.list_response(
-        &source,
-        proxy_channel_records_to_core(channels),
-    )))
 }
 
 /// GET /proxy/v1/groups
