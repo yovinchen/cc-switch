@@ -38,6 +38,10 @@ pub mod engine {
     pub use crate::engine::{ProxyCoreStatus, ProxyEngine, ProxyRuntimeState};
 }
 
+pub mod errors {
+    pub use crate::error::*;
+}
+
 pub mod events {
     pub use crate::event_payload::*;
     pub use crate::ports::{ProxyCoreEvent, ProxyCoreEventType};
@@ -47,6 +51,8 @@ pub mod management {
     pub use crate::management_api::*;
     pub use crate::ports::{
         ChannelModelRecord, ChannelRecord, ChannelRouteSource, HealthCheckResponse,
+        ProxyChannelModelWriteRequest, ProxyChannelPatchRequest, ProxyChannelWriteRequest,
+        RouteResolveRequest, RouteResolveResponse,
     };
 }
 
@@ -60,11 +66,15 @@ pub mod model_catalog {
 pub mod ports {
     pub use crate::domain::{ChannelAttemptPlan, ChannelAttemptResult};
     pub use crate::ports::{
-        AuthInfo, AuthProvider, ChannelHealthReset, ChannelHealthResetResponse, ChannelHealthStore,
-        ChannelModelRecord, ChannelSource, CurrentRouteTarget, ForwardPipeline, ModelCatalog,
-        ModelCatalogProvider, ProviderSource, ProxyAppConfig, ProxyConfigSource, ProxyCoreEvent,
-        ProxyCoreEventType, ProxyGlobalConfig, ProxyRuntimeConfig, ProxyServices,
-        RoutePolicySource, RouteResolver, UsageSink,
+        AppProxyConfig, AuthInfo, AuthProvider, ChannelHealthReset, ChannelHealthResetResponse,
+        ChannelHealthStore, ChannelModelRecord, ChannelSource, CopilotOptimizerConfig,
+        CopilotOptimizerConfigSpec, CurrentRouteTarget, ForwardPipeline, GlobalProxyConfig,
+        ModelCatalog, ModelCatalogProvider, OptimizerConfig, OptimizerConfigSpec,
+        app_proxy_config_raw, ProviderHealth, ProviderSource, ProxyAppConfig, ProxyConfig,
+        ProxyConfigSource, ProxyCoreEvent, ProxyCoreEventType, ProxyEventSink,
+        ProxyGlobalConfig, ProxyRuntimeConfig, ProxyRuntimeStatus, ProxyServerInfo, ProxyServices,
+        ProxyTakeoverStatus,
+        RectifierConfig, RectifierConfigSpec, RoutePolicySource, RouteResolver, UsageSink,
     };
 }
 
@@ -144,6 +154,7 @@ pub mod prelude {
         ProxyRequest, ProxyResult, RoutePlan, RouteSelection,
     };
     pub use super::engine::ProxyEngine;
+    pub use super::errors::{ProxyCoreError, ProxyCoreResult};
     pub use super::events::{ProxyCoreEvent, ProxyCoreEventType};
     pub use super::ports::CurrentRouteTarget;
     pub use super::ports::{
