@@ -54,9 +54,10 @@ use crate::proxy_core::{
     AppListResponse, AppModelCatalogRequest, AppModelListQuery, ChannelCreateRequest,
     ChannelDeleteResponse, ChannelHealthResetResponse, ChannelListQuery, ChannelListRequest,
     ChannelListResponse, ChannelMigrationMaterializeResponse, ChannelMigrationPreviewResponse,
-    ChannelModelRecord, ChannelModelsResponse, ChannelPathRequest, ChannelReachabilityResult,
-    ChannelRecord, ChannelRecordResponse, ChannelRouteCandidate, ChannelRouteRejected,
-    ChannelTestPlan, ChannelTestResponse, ClaudeDesktopModelListResponse,
+    ChannelModelRecord, ChannelModelsResponse, ChannelPathRequest, ChannelReachabilityInput,
+    ChannelReachabilityResult, ChannelReachabilityStatus, ChannelRecord, ChannelRecordResponse,
+    ChannelRouteCandidate, ChannelRouteRejected, ChannelTestPlan, ChannelTestResponse,
+    ClaudeDesktopModelListResponse,
     ClientModelCatalogResponse, CurrentRouteResponse, CurrentRouteTarget, GroupListQuery,
     GroupListRequest, HealthCheckRequest, HealthCheckResponse, InterfaceKind,
     ManagementAppPathRequest, ManagementAuthDecision, ProviderListResponse, ProxyBody,
@@ -636,22 +637,24 @@ pub async fn reset_proxy_channel_breaker(
 fn channel_reachability_result_from_stream_check(
     result: StreamCheckResult,
 ) -> ChannelReachabilityResult {
-    ChannelReachabilityResult {
+    ChannelReachabilityResult::from_input(ChannelReachabilityInput {
         success: result.success,
-        status: health_status_as_str(&result.status).to_string(),
+        status: channel_reachability_status_from_health_status(&result.status),
         message: result.message,
         latency_ms: result.response_time_ms,
         http_status: result.http_status,
         tested_at: result.tested_at,
         retry_count: result.retry_count,
-    }
+    })
 }
 
-fn health_status_as_str(status: &HealthStatus) -> &'static str {
+fn channel_reachability_status_from_health_status(
+    status: &HealthStatus,
+) -> ChannelReachabilityStatus {
     match status {
-        HealthStatus::Operational => "operational",
-        HealthStatus::Degraded => "degraded",
-        HealthStatus::Failed => "failed",
+        HealthStatus::Operational => ChannelReachabilityStatus::Operational,
+        HealthStatus::Degraded => ChannelReachabilityStatus::Degraded,
+        HealthStatus::Failed => ChannelReachabilityStatus::Failed,
     }
 }
 

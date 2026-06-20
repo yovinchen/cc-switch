@@ -823,7 +823,7 @@ impl ChannelTestContext {
             model: self.model.clone(),
             model_available: self.model_available,
             success: false,
-            status: "failed".to_string(),
+            status: ChannelReachabilityStatus::Failed.as_str().to_string(),
             message: message.clone(),
             latency_ms: None,
             http_status: None,
@@ -869,6 +869,48 @@ pub struct ChannelReachabilityResult {
     pub http_status: Option<u16>,
     pub tested_at: i64,
     pub retry_count: u32,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ChannelReachabilityStatus {
+    Operational,
+    Degraded,
+    Failed,
+}
+
+impl ChannelReachabilityStatus {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Operational => "operational",
+            Self::Degraded => "degraded",
+            Self::Failed => "failed",
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ChannelReachabilityInput {
+    pub success: bool,
+    pub status: ChannelReachabilityStatus,
+    pub message: String,
+    pub latency_ms: Option<u64>,
+    pub http_status: Option<u16>,
+    pub tested_at: i64,
+    pub retry_count: u32,
+}
+
+impl ChannelReachabilityResult {
+    pub fn from_input(input: ChannelReachabilityInput) -> Self {
+        Self {
+            success: input.success,
+            status: input.status.as_str().to_string(),
+            message: input.message,
+            latency_ms: input.latency_ms,
+            http_status: input.http_status,
+            tested_at: input.tested_at,
+            retry_count: input.retry_count,
+        }
+    }
 }
 
 pub fn plan_channel_test(
@@ -1978,12 +2020,13 @@ mod tests {
     use super::{
         AppChannelListQuery, AppChannelListResponse, AppChannelResponse, AppChannelRouteResponse,
         app_proxy_config_raw, AppListResponse, AppModelListQuery, AppProxyConfig, AppSummaryInput,
-        ChannelDeleteResponse, ChannelListQuery, ChannelListResponse,
+        ChannelDeleteResponse, ChannelListQuery, ChannelListResponse, ChannelReachabilityInput,
         ChannelMigrationMaterializeInput, ChannelMigrationMaterializeResponse,
         ChannelMigrationPreviewInput, ChannelMigrationPreviewResponse, ChannelModelRecord,
         ChannelModelsResponse, ChannelRecord, ChannelRecordResponse, ChannelRouteCandidate,
-        ChannelReachabilityResult, ChannelRouteRejected, ChannelRouteSource, ChannelTestInput,
-        ChannelTestPlan, ChannelTestResponse, ClientModelCatalogResponse,
+        ChannelReachabilityResult, ChannelReachabilityStatus, ChannelRouteRejected,
+        ChannelRouteSource, ChannelTestInput, ChannelTestPlan, ChannelTestResponse,
+        ClientModelCatalogResponse,
         CopilotOptimizerConfig, CurrentRouteProviderSummaryInput, CurrentRouteResponse,
         CurrentRouteTarget, GlobalProxyConfig, GroupListQuery, HealthCheckResponse, ModelCatalog,
         OptimizerConfig, ProviderHealth, ProviderListResponse, ProviderSpec,
@@ -2343,6 +2386,31 @@ mod tests {
         assert_eq!(response.model_available, Some(true));
         assert_eq!(response.latency_ms, Some(23));
         assert_eq!(response.failure_reason, None);
+    }
+
+    #[test]
+    fn channel_reachability_result_status_contract_mapping() {
+        assert_eq!(ChannelReachabilityStatus::Operational.as_str(), "operational");
+        assert_eq!(ChannelReachabilityStatus::Degraded.as_str(), "degraded");
+        assert_eq!(ChannelReachabilityStatus::Failed.as_str(), "failed");
+
+        let result = ChannelReachabilityResult::from_input(ChannelReachabilityInput {
+            success: false,
+            status: ChannelReachabilityStatus::Degraded,
+            message: "Slow response".to_string(),
+            latency_ms: Some(1_250),
+            http_status: Some(429),
+            tested_at: 1_771_000_002,
+            retry_count: 2,
+        });
+
+        assert!(!result.success);
+        assert_eq!(result.status, "degraded");
+        assert_eq!(result.message, "Slow response");
+        assert_eq!(result.latency_ms, Some(1_250));
+        assert_eq!(result.http_status, Some(429));
+        assert_eq!(result.tested_at, 1_771_000_002);
+        assert_eq!(result.retry_count, 2);
     }
 
     #[test]
