@@ -13,7 +13,9 @@ use crate::proxy_core::{
     ProxyServices, StreamUsageEventFilter, TransformedResponseUsageFormat, UsageRecord,
 };
 #[cfg(test)]
-use crate::proxy_core::{success_usage_record_with_request_id_fallback, TokenUsage};
+use crate::proxy_core::success_usage_record_with_request_id_fallback;
+#[cfg(test)]
+use crate::proxy_core_adapter::TokenUsage;
 use serde_json::Value;
 
 #[cfg(test)]

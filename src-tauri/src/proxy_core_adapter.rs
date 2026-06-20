@@ -10,8 +10,8 @@ use crate::proxy_core::{
     ChannelReachabilityStatus, ChannelRecord, ChannelSpec, ChannelStatus,
     ClaudeDesktopModelListResponse, ClaudeDesktopModelRouteInput, CodexChatErrorNormalization,
     CodexToolContext,
-    CostCalculator, CurrentRouteProviderSummaryInput, InterfaceKind, ModelCapabilities,
-    ModelCatalog, ModelPricing, ModelRoute, ProviderMetadata, ProviderSpec, RetryPolicy,
+    CurrentRouteProviderSummaryInput, InterfaceKind, ModelCapabilities,
+    ModelCatalog, ModelRoute, ProviderMetadata, ProviderSpec, RetryPolicy,
     RouteResolveChannelInput, RouteResolveModelInput, SessionIdResult, UpstreamEndpoint,
     UpstreamRequestHeadersInput,
     UpstreamRequestTransportPolicy, UpstreamSendPolicy, UpstreamSendPolicyInput,
@@ -188,6 +188,10 @@ pub(crate) type ProxyResponseBody = crate::proxy_core::ProxyResponseBody;
 pub(crate) type ProxyTransportResponse = crate::proxy_core::ProxyTransportResponse;
 pub(crate) type ProxyTransportResponseBody =
     crate::proxy_core::ProxyTransportResponseBody;
+pub(crate) type CostBreakdown = crate::proxy_core::CostBreakdown;
+pub(crate) type CostCalculator = crate::proxy_core::CostCalculator;
+pub(crate) type ModelPricing = crate::proxy_core::ModelPricing;
+pub(crate) type TokenUsage = crate::proxy_core::TokenUsage;
 pub(crate) type GlobalProxyConfig = crate::proxy_core::GlobalProxyConfig;
 pub(crate) type AppProxyConfig = crate::proxy_core::AppProxyConfig;
 pub(crate) type ProviderHealth = crate::proxy_core::ProviderHealth;
@@ -240,6 +244,8 @@ pub(crate) type ResolvedChannelAttempt = crate::proxy_core::ResolvedChannelAttem
 pub(crate) type RoutePlan = crate::proxy_core::RoutePlan;
 pub(crate) type RouteSelection = crate::proxy_core::RouteSelection;
 
+pub(crate) const SESSION_REQUEST_ID_PREFIX: &str =
+    crate::proxy_core::SESSION_REQUEST_ID_PREFIX;
 pub(crate) const PROXY_EVENTS_CONNECTED_EVENT: &str =
     crate::proxy_core::PROXY_EVENTS_CONNECTED_EVENT;
 pub(crate) const PROXY_EVENTS_LAGGED_EVENT: &str =

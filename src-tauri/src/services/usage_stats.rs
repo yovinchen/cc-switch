@@ -4,7 +4,7 @@
 
 use crate::database::{lock_conn, Database};
 use crate::error::AppError;
-use crate::proxy_core::ModelPricing;
+use crate::proxy_core_adapter::ModelPricing;
 use crate::services::sql_helpers::fresh_input_sql;
 use chrono::{Local, NaiveDate, TimeZone, Timelike};
 use rusqlite::{params, Connection, OptionalExtension};

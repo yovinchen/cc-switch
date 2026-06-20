@@ -2,7 +2,7 @@
 
 use crate::database::{Database, PRICING_SOURCE_REQUEST, PRICING_SOURCE_RESPONSE};
 use crate::error::AppError;
-use crate::proxy_core::{CostBreakdown, ModelPricing, TokenUsage};
+use crate::proxy_core_adapter::{CostBreakdown, ModelPricing, TokenUsage};
 use crate::services::usage_stats::find_model_pricing_row;
 use rust_decimal::Decimal;
 use std::str::FromStr;
