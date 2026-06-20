@@ -13,6 +13,13 @@ pub struct ProxyEventEnvelope {
     pub payload: Value,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ProxyEventSseSpec {
+    pub id: String,
+    pub event: String,
+    pub data: String,
+}
+
 impl ProxyEventEnvelope {
     pub fn new(
         id: u64,
@@ -30,6 +37,14 @@ impl ProxyEventEnvelope {
 
     pub fn sse_data_json(&self) -> String {
         serde_json::to_string(self).unwrap_or_else(|_| "{}".to_string())
+    }
+
+    pub fn to_sse_spec(&self) -> ProxyEventSseSpec {
+        ProxyEventSseSpec {
+            id: self.id.to_string(),
+            event: self.event.clone(),
+            data: self.sse_data_json(),
+        }
     }
 }
 
@@ -252,6 +267,25 @@ mod tests {
         assert_eq!(serialized["id"], 7);
         assert_eq!(serialized["event"], "proxy_events_connected");
         assert_eq!(serialized["payload"]["bufferSize"], 256);
+    }
+
+    #[test]
+    fn proxy_event_envelope_builds_neutral_sse_spec() {
+        let envelope = ProxyEventEnvelope::new(
+            7,
+            "proxy_events_connected",
+            "2026-06-19T00:00:00Z",
+            build_proxy_events_connected_payload(256),
+        );
+
+        let spec = envelope.to_sse_spec();
+        let data: serde_json::Value =
+            serde_json::from_str(&spec.data).expect("serialize SSE data");
+
+        assert_eq!(spec.id, "7");
+        assert_eq!(spec.event, "proxy_events_connected");
+        assert_eq!(data["id"], 7);
+        assert_eq!(data["payload"]["bufferSize"], 256);
     }
 
     #[test]

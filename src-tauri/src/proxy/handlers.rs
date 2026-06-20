@@ -140,11 +140,11 @@ pub async fn stream_proxy_events(
 }
 
 fn proxy_event_to_sse(event: crate::proxy_core::ProxyEventEnvelope) -> Event {
-    let data = event.sse_data_json();
+    let spec = event.to_sse_spec();
     Event::default()
-        .id(event.id.to_string())
-        .event(event.event)
-        .data(data)
+        .id(spec.id)
+        .event(spec.event)
+        .data(spec.data)
 }
 
 /// Management API auth middleware.
