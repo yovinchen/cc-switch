@@ -8,10 +8,10 @@
 //! - Claude 的格式转换逻辑保留在此文件（用于 OpenRouter 旧接口回退）
 
 use super::{
+    auth_adapter::validate_claude_desktop_gateway_auth,
     error::ProxyError,
     error_mapper::{
-        claude_desktop_gateway_auth_error_to_proxy_error, codex_proxy_error_response,
-        get_error_message, management_api_error_to_proxy_error,
+        codex_proxy_error_response, get_error_message, management_api_error_to_proxy_error,
         management_auth_error_to_proxy_error, map_proxy_error_to_status,
         proxy_core_error_to_proxy_error, response_body_parse_error_to_proxy_error,
     },
@@ -48,7 +48,7 @@ use crate::proxy_core::{
     should_aggregate_codex_oauth_responses_sse, should_use_claude_transform_streaming,
     strip_endpoint_prefix, transformed_sse_proxy_response,
     transformed_streaming_response_usage_record_with_request_id_fallback,
-    validate_claude_desktop_gateway_bearer_header, validate_management_bearer_header,
+    validate_management_bearer_header,
     AppChannelListQuery, AppChannelManagementRequest, AppChannelResponse, AppKind, AppListRequest,
     AppListResponse, AppModelCatalogRequest, AppModelListQuery, ChannelCreateRequest,
     ChannelDeleteResponse, ChannelHealthResetResponse, ChannelListQuery, ChannelListRequest,
@@ -785,16 +785,6 @@ async fn handle_messages_for_app(
 
     // 通用响应处理（透传模式）
     process_response(response, &ctx, &state, &CLAUDE_PARSER_CONFIG, None).await
-}
-
-fn validate_claude_desktop_gateway_auth(
-    state: &ProxyState,
-    headers: &axum::http::HeaderMap,
-) -> Result<(), ProxyError> {
-    let expected = crate::claude_desktop_config::get_or_create_gateway_token(state.db.as_ref())
-        .map_err(|e| ProxyError::AuthError(e.to_string()))?;
-    validate_claude_desktop_gateway_bearer_header(headers, &expected)
-        .map_err(claude_desktop_gateway_auth_error_to_proxy_error)
 }
 
 /// Claude 格式转换处理（独有逻辑）
