@@ -8,9 +8,8 @@ use crate::proxy_core::{
     AppSummaryInput, ChannelHealthPolicy, ChannelOverrides, ChannelReachabilityInput,
     ChannelReachabilityResult, ChannelReachabilityStatus, ClaudeDesktopModelRouteInput,
     CodexChatErrorNormalization, CurrentRouteProviderSummaryInput, ModelCapabilities,
-    ModelRoute, ProviderMetadata, RouteResolveChannelInput,
-    RouteResolveModelInput, SessionIdResult, UpstreamEndpoint, UpstreamRequestHeadersInput,
-    UpstreamRequestTransportPolicy, UpstreamSendPolicy, UpstreamSendPolicyInput,
+    ModelRoute, ProviderMetadata, RouteResolveChannelInput, RouteResolveModelInput,
+    SessionIdResult, UpstreamEndpoint, UpstreamRequestTransportPolicy, UpstreamSendPolicy,
 };
 use crate::services::usage_stats::is_placeholder_pricing_model;
 use crate::services::stream_check::{HealthStatus, StreamCheckResult};
@@ -239,6 +238,8 @@ pub(crate) type ClaudePromptCacheKeyResolution =
     crate::proxy_core::ClaudePromptCacheKeyResolution;
 pub(crate) type CopilotAuthHeadersInput<'a> =
     crate::proxy_core::CopilotAuthHeadersInput<'a>;
+pub(crate) type CopilotAuthHeaderOverrides<'a> =
+    crate::proxy_core::CopilotAuthHeaderOverrides<'a>;
 pub(crate) type ResponseRuntimePolicy = crate::proxy_core::ResponseRuntimePolicy;
 pub(crate) type ResponseTimeoutConfig = crate::proxy_core::ResponseTimeoutConfig;
 pub(crate) type StreamingTimeoutConfig = crate::proxy_core::StreamingTimeoutConfig;
@@ -253,9 +254,17 @@ pub(crate) type ProviderKind = crate::proxy_core::ProviderKind;
 pub(crate) type ProviderAuthInfo = crate::proxy_core::ProviderAuthInfo;
 pub(crate) type ProviderAuthStrategy = crate::proxy_core::ProviderAuthStrategy;
 pub(crate) type AuthInfo = crate::proxy_core::AuthInfo;
+pub(crate) type AttemptEventChannel<'a> = crate::proxy_core::AttemptEventChannel<'a>;
+pub(crate) type AttemptEventPayloadInput<'a> =
+    crate::proxy_core::AttemptEventPayloadInput<'a>;
+pub(crate) type AttemptEventPhase = crate::proxy_core::AttemptEventPhase;
 pub(crate) type ChannelAttemptPlan = crate::proxy_core::ChannelAttemptPlan;
 pub(crate) type ChannelAttemptResult = crate::proxy_core::ChannelAttemptResult;
 pub(crate) type ChannelQuery<'a> = crate::proxy_core::ChannelQuery<'a>;
+pub(crate) type ForwardFailureCategory = crate::proxy_core::ForwardFailureCategory;
+pub(crate) type MediaRetryInput<'a> = crate::proxy_core::MediaRetryInput<'a>;
+pub(crate) type PromptCacheTraceLogInput<'a> =
+    crate::proxy_core::PromptCacheTraceLogInput<'a>;
 pub(crate) type AllowResult = crate::proxy_core::AllowResult;
 pub(crate) type CircuitBreakerConfig = crate::proxy_core::CircuitBreakerConfig;
 pub(crate) type CircuitBreakerStats = crate::proxy_core::CircuitBreakerStats;
@@ -307,6 +316,12 @@ pub(crate) type ProviderSpec = crate::proxy_core::ProviderSpec;
 pub(crate) type ProxyCoreProviderSpec = crate::proxy_core::ProviderSpec;
 #[cfg(test)]
 pub(crate) type ProxyCoreUpstreamEndpoint = crate::proxy_core::UpstreamEndpoint;
+pub(crate) type UpstreamAuthHeadersInput<'a> =
+    crate::proxy_core::UpstreamAuthHeadersInput<'a>;
+pub(crate) type UpstreamRequestHeadersInput<'a> =
+    crate::proxy_core::UpstreamRequestHeadersInput<'a>;
+pub(crate) type UpstreamSendPolicyInput = crate::proxy_core::UpstreamSendPolicyInput;
+pub(crate) type UpstreamTransportKind = crate::proxy_core::UpstreamTransportKind;
 pub(crate) type ChannelRequestValidationError =
     crate::proxy_core::ChannelRequestValidationError;
 pub(crate) type ChannelRouteSource = crate::proxy_core::ChannelRouteSource;
@@ -382,6 +397,38 @@ pub(crate) use crate::proxy_core::{
     RouteGroupListResponse, RouteResolveManagementRequest, UnlabeledSseFallbackLogContext,
     UnlabeledSseFallbackLogLevel, UpstreamSseAggregationKind, CLAUDE_PARSER_CONFIG,
     CODEX_PARSER_CONFIG, GEMINI_PARSER_CONFIG, OPENAI_PARSER_CONFIG,
+};
+pub(crate) use crate::proxy_core::{
+    append_query_to_full_url, apply_bedrock_pre_send_optimizers,
+    apply_copilot_model_normalization, apply_copilot_warmup_model_override, attempt_event_name,
+    bedrock_env_flag_from_provider_settings, build_attempt_event_payload,
+    build_codex_oauth_session_headers, build_request_started_event_payload,
+    build_retryable_forward_failure_log, build_terminal_forward_failure_log,
+    build_upstream_auth_headers, cache_injection_log_message, categorize_forward_failure,
+    classify_copilot_request, claude_transform_endpoint_rewrite_input_from_body,
+    contains_image_blocks, interface_kind_for_forward, is_codex_chat_full_endpoint_base,
+    is_github_copilot_upstream, is_openai_o_series, is_unsupported_image_error,
+    merge_copilot_tool_results, normalize_thinking_type,
+    prepare_upstream_request_body_with_report, prompt_cache_trace_log_message,
+    rectify_anthropic_request, rectify_thinking_budget, replace_image_blocks_with_marker,
+    replace_images_for_text_only_model, request_body_filter_log_message, request_model_for_forward,
+    resolve_claude_forward_api_format, resolve_copilot_deterministic_interaction_id,
+    resolve_copilot_model_against_ids, resolve_copilot_optimizer_session_id,
+    resolve_copilot_request_id_with_fallback, resolve_media_prevention_policy,
+    resolved_copilot_dynamic_base_url, responses_to_chat_completions_with_options,
+    rewrite_claude_transform_endpoint, sanitize_copilot_orphan_tool_results,
+    should_apply_bedrock_pre_send_optimizer, should_check_media_retry,
+    should_failover_after_rectifier_retry_failure, should_preserve_exact_request_header_case,
+    should_rectify_thinking_budget, should_rectify_thinking_signature,
+    should_resolve_copilot_dynamic_endpoint, should_send_anthropic_request_headers,
+    should_trigger_media_retry, split_endpoint_and_query, strip_copilot_thinking_blocks,
+    strip_one_m_suffix_for_upstream, strip_one_m_suffix_for_upstream_from_body,
+    supports_reasoning_effort, thinking_optimization_log_message,
+    validate_managed_account_upstream_auth, UNSUPPORTED_IMAGE_MARKER,
+};
+#[cfg(test)]
+pub(crate) use crate::proxy_core::{
+    canonical_json_string, short_value_hash, ManagedAccountAuthError,
 };
 
 pub(crate) const SESSION_REQUEST_ID_PREFIX: &str =

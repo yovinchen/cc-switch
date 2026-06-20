@@ -20,7 +20,7 @@ use super::{
 use crate::commands::{CodexOAuthState, CopilotAuthState};
 use crate::proxy::providers::codex_oauth_auth::CodexOAuthManager;
 use crate::proxy::providers::copilot_auth::CopilotAuthManager;
-use crate::proxy_core::{
+use crate::proxy_core_adapter::{
     append_query_to_full_url, apply_bedrock_pre_send_optimizers,
     apply_copilot_model_normalization,
     apply_copilot_warmup_model_override, attempt_event_name,
@@ -2456,9 +2456,10 @@ fn attempt_event_payload(
 mod tests {
     use super::*;
     use crate::database::Database;
-    use crate::proxy_core::ManagedAccountAuthError;
-    use crate::proxy_core::{canonical_json_string, short_value_hash};
-    use crate::proxy_core::{
+    use crate::proxy_core_adapter::ManagedAccountAuthError;
+    use crate::proxy_core_adapter::{canonical_json_string, short_value_hash};
+    use crate::proxy_core_adapter::{
+        ChannelRouteCandidate,
         claude_transform_endpoint_rewrite_input_from_body as transform_endpoint_rewrite_input,
         rewrite_claude_transform_endpoint as rewrite_transform_endpoint,
     };
@@ -2541,7 +2542,7 @@ mod tests {
         let attempt = ForwardAttempt::from_channel(
             &AppType::Claude,
             &provider,
-            crate::proxy_core::ChannelRouteCandidate {
+            ChannelRouteCandidate {
                 channel_id: "channel-a".to_string(),
                 provider_id: provider.id.clone(),
                 channel_name: "Relay A".to_string(),
