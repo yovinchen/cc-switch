@@ -1623,17 +1623,14 @@ impl RequestForwarder {
             crate::claude_desktop_config::map_proxy_request_model(body.clone(), provider)
                 .map_err(|e| ProxyError::InvalidRequest(e.to_string()))?
         } else {
-            let mapping =
-                crate::proxy_core::ModelMapping::from_settings_config(&provider.settings_config);
-            let (mapped_body, original_model, mapped_model) =
-                crate::proxy_core::apply_model_mapping_to_body(body.clone(), &mapping);
-            if let Some(message) = crate::proxy_core::model_mapping_log_message(
-                original_model.as_deref(),
-                mapped_model.as_deref(),
-            ) {
+            let projection = crate::proxy_core_adapter::apply_provider_model_mapping(
+                body.clone(),
+                &provider.settings_config,
+            );
+            if let Some(message) = projection.log_message {
                 log::debug!("{message}");
             }
-            mapped_body
+            projection.body
         };
 
         // 与 CCH 对齐：请求前不做 thinking 主动改写（仅保留兼容入口）

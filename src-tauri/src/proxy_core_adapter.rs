@@ -342,6 +342,26 @@ pub(crate) fn normalize_codex_chat_error_body(body: &[u8]) -> CodexChatErrorNorm
     crate::proxy_core::normalize_codex_chat_error_body(body)
 }
 
+pub(crate) struct ModelMappingProjection {
+    pub(crate) body: Value,
+    pub(crate) log_message: Option<String>,
+}
+
+pub(crate) fn apply_provider_model_mapping(
+    body: Value,
+    provider_settings: &Value,
+) -> ModelMappingProjection {
+    let mapping = crate::proxy_core::ModelMapping::from_settings_config(provider_settings);
+    let (body, original_model, mapped_model) =
+        crate::proxy_core::apply_model_mapping_to_body(body, &mapping);
+    let log_message = crate::proxy_core::model_mapping_log_message(
+        original_model.as_deref(),
+        mapped_model.as_deref(),
+    );
+
+    ModelMappingProjection { body, log_message }
+}
+
 pub(crate) struct UsageRequestLogProjection {
     pub(crate) log: RequestLog,
     pub(crate) missing_pricing_model: Option<String>,
@@ -869,6 +889,34 @@ mod tests {
         let normalized = normalize_codex_chat_error_body(b"Unauthorized");
         assert!(normalized.non_json_body_log_message().is_some());
         assert!(normalized.response_error.get("error").is_some());
+    }
+
+    #[test]
+    fn model_mapping_adapter_projects_body_and_log_message() {
+        let projection = apply_provider_model_mapping(
+            json!({"model": "claude-sonnet", "messages": []}),
+            &json!({
+                "env": {
+                    "ANTHROPIC_DEFAULT_SONNET_MODEL": "sonnet-mapped"
+                }
+            }),
+        );
+
+        assert_eq!(
+            projection.body.get("model").and_then(Value::as_str),
+            Some("sonnet-mapped")
+        );
+        assert_eq!(
+            projection.log_message.as_deref(),
+            Some("[ModelMapper] 模型映射: claude-sonnet \u{2192} sonnet-mapped")
+        );
+
+        let unchanged = apply_provider_model_mapping(json!({"model": "unknown"}), &json!({}));
+        assert_eq!(
+            unchanged.body.get("model").and_then(Value::as_str),
+            Some("unknown")
+        );
+        assert!(unchanged.log_message.is_none());
     }
 
     #[test]
