@@ -9,7 +9,8 @@ use crate::proxy_core::{
     ChannelRouteCandidate,
     ChannelOverrides, ChannelReachabilityInput, ChannelReachabilityResult,
     ChannelReachabilityStatus, ChannelRecord, ChannelSpec, ChannelStatus,
-    ClaudeDesktopModelListResponse, ClaudeDesktopModelRouteInput,
+    ClaudeDesktopModelListResponse, ClaudeDesktopModelRouteInput, CodexChatErrorNormalization,
+    CodexToolContext,
     CostCalculator, CurrentRouteProviderSummaryInput, InterfaceKind, ModelCapabilities,
     ModelCatalog, ModelPricing, ModelRoute, ProviderMetadata, ProviderSpec, RetryPolicy,
     ResolvedChannelAttempt, RoutePlan, RouteResolveChannelInput, RouteResolveModelInput,
@@ -331,6 +332,14 @@ pub(crate) fn apply_channel_provider_overrides(
             .get_or_insert_with(ProviderMeta::default)
             .api_format = Some(api_format);
     }
+}
+
+pub(crate) fn codex_tool_context_from_request(body: &Value) -> CodexToolContext {
+    crate::proxy_core::build_codex_tool_context_from_request(body)
+}
+
+pub(crate) fn normalize_codex_chat_error_body(body: &[u8]) -> CodexChatErrorNormalization {
+    crate::proxy_core::normalize_codex_chat_error_body(body)
 }
 
 pub(crate) struct UsageRequestLogProjection {
@@ -841,6 +850,25 @@ mod tests {
             &InterfaceKind::GeminiNative,
             &InterfaceKind::OpenAiResponses
         ));
+    }
+
+    #[test]
+    fn codex_handler_adapter_projects_tool_context_and_chat_error() {
+        let context = codex_tool_context_from_request(&json!({
+            "tools": [
+                {
+                    "type": "custom",
+                    "name": "apply_patch"
+                }
+            ]
+        }));
+
+        assert_eq!(context.chat_tools().len(), 1);
+        assert!(context.is_custom_tool_chat_name("apply_patch"));
+
+        let normalized = normalize_codex_chat_error_body(b"Unauthorized");
+        assert!(normalized.non_json_body_log_message().is_some());
+        assert!(normalized.response_error.get("error").is_some());
     }
 
     #[test]

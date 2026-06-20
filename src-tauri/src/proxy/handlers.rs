@@ -1062,7 +1062,7 @@ pub async fn handle_responses(
         .get("stream")
         .and_then(|v| v.as_bool())
         .unwrap_or(false);
-    let codex_tool_context = crate::proxy_core::build_codex_tool_context_from_request(&body);
+    let codex_tool_context = crate::proxy_core_adapter::codex_tool_context_from_request(&body);
 
     let mut proxy_request = ProxyRequest::new(
         AppKind::from(&AppType::Codex),
@@ -1129,7 +1129,7 @@ pub async fn handle_responses_compact(
         .get("stream")
         .and_then(|v| v.as_bool())
         .unwrap_or(false);
-    let codex_tool_context = crate::proxy_core::build_codex_tool_context_from_request(&body);
+    let codex_tool_context = crate::proxy_core_adapter::codex_tool_context_from_request(&body);
 
     let mut proxy_request = ProxyRequest::new(
         AppKind::from(&AppType::Codex),
@@ -1284,7 +1284,7 @@ async fn handle_codex_chat_error_response(
     let (response_headers, _status, body_bytes) =
         read_decoded_body(response, ctx.tag, ctx.body_timeout_duration()).await?;
 
-    let normalized_error = crate::proxy_core::normalize_codex_chat_error_body(&body_bytes);
+    let normalized_error = crate::proxy_core_adapter::normalize_codex_chat_error_body(&body_bytes);
     if let Some(message) = normalized_error.non_json_body_log_message() {
         log::warn!("{message}");
     }
