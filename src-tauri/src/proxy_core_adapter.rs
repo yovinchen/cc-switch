@@ -456,6 +456,8 @@ pub(crate) type ForwardFailureKind =
     crate::proxy_core::api::transport::ForwardFailureKind;
 pub(crate) type ManagementAuthError =
     crate::proxy_core::api::auth::ManagementAuthError;
+pub(crate) type CircuitBreakerFailureDecision =
+    crate::proxy_core::api::config::CircuitBreakerFailureDecision;
 pub(crate) use crate::proxy_core::api::management::channel_not_found_error;
 pub(crate) use crate::proxy_core::api::ports::{
     app_proxy_config_raw, AuthProvider, ChannelHealthReset, ChannelHealthStore, ChannelSource,
@@ -1293,6 +1295,32 @@ pub(crate) fn route_plan_from_request(
     request: RouteRequest<'_>,
 ) -> ProxyCoreResult<RoutePlan> {
     crate::proxy_core::api::routing::build_route_plan(request)
+}
+
+pub(crate) fn should_transition_open_to_half_open(
+    open_elapsed_seconds: Option<u64>,
+    timeout_seconds: u64,
+) -> bool {
+    crate::proxy_core::api::config::should_transition_open_to_half_open(
+        open_elapsed_seconds,
+        timeout_seconds,
+    )
+}
+
+pub(crate) fn circuit_breaker_failure_decision(
+    state: CircuitState,
+    consecutive_failures: u32,
+    total_requests: u32,
+    failed_requests: u32,
+    config: &CircuitBreakerConfig,
+) -> CircuitBreakerFailureDecision {
+    crate::proxy_core::api::config::circuit_breaker_failure_decision(
+        state,
+        consecutive_failures,
+        total_requests,
+        failed_requests,
+        config,
+    )
 }
 
 pub(crate) fn forward_failure_kind_from_proxy_status(

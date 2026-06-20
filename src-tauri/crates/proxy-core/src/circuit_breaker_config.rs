@@ -45,6 +45,14 @@ pub struct CircuitBreakerStats {
     pub failed_requests: u32,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum CircuitBreakerFailureDecision {
+    KeepCurrent,
+    OpenFromHalfOpenProbeFailure,
+    OpenFromFailureThreshold { failures: u32 },
+    OpenFromErrorRate { error_rate: f64 },
+}
+
 impl From<&AppProxyConfig> for CircuitBreakerConfig {
     fn from(config: &AppProxyConfig) -> Self {
         Self {
@@ -84,11 +92,49 @@ pub fn circuit_failure_threshold_from_app_config(
         .unwrap_or(fallback)
 }
 
+pub fn should_transition_open_to_half_open(
+    open_elapsed_seconds: Option<u64>,
+    timeout_seconds: u64,
+) -> bool {
+    open_elapsed_seconds.is_some_and(|elapsed| elapsed >= timeout_seconds)
+}
+
+pub fn circuit_breaker_failure_decision(
+    state: CircuitState,
+    consecutive_failures: u32,
+    total_requests: u32,
+    failed_requests: u32,
+    config: &CircuitBreakerConfig,
+) -> CircuitBreakerFailureDecision {
+    match state {
+        CircuitState::HalfOpen => CircuitBreakerFailureDecision::OpenFromHalfOpenProbeFailure,
+        CircuitState::Closed => {
+            if consecutive_failures >= config.failure_threshold {
+                CircuitBreakerFailureDecision::OpenFromFailureThreshold {
+                    failures: consecutive_failures,
+                }
+            } else if total_requests >= config.min_requests {
+                let error_rate = failed_requests as f64 / total_requests as f64;
+                if error_rate >= config.error_rate_threshold {
+                    CircuitBreakerFailureDecision::OpenFromErrorRate { error_rate }
+                } else {
+                    CircuitBreakerFailureDecision::KeepCurrent
+                }
+            } else {
+                CircuitBreakerFailureDecision::KeepCurrent
+            }
+        }
+        CircuitState::Open => CircuitBreakerFailureDecision::KeepCurrent,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::{
-        AllowResult, CircuitBreakerConfig, CircuitBreakerStats, CircuitState,
-        circuit_breaker_config_from_app_config, circuit_failure_threshold_from_app_config,
+        circuit_breaker_config_from_app_config, circuit_breaker_failure_decision,
+        circuit_failure_threshold_from_app_config, should_transition_open_to_half_open,
+        AllowResult, CircuitBreakerConfig, CircuitBreakerFailureDecision, CircuitBreakerStats,
+        CircuitState,
     };
     use crate::ports::AppProxyConfig;
     use serde_json::json;
@@ -187,5 +233,45 @@ mod tests {
 
         assert!(result.allowed);
         assert!(result.used_half_open_permit);
+    }
+
+    #[test]
+    fn open_timeout_transition_requires_elapsed_timeout() {
+        assert!(!should_transition_open_to_half_open(None, 60));
+        assert!(!should_transition_open_to_half_open(Some(59), 60));
+        assert!(should_transition_open_to_half_open(Some(60), 60));
+        assert!(should_transition_open_to_half_open(Some(61), 60));
+    }
+
+    #[test]
+    fn failure_decision_preserves_circuit_breaker_open_rules() {
+        let config = CircuitBreakerConfig {
+            failure_threshold: 4,
+            success_threshold: 2,
+            timeout_seconds: 60,
+            error_rate_threshold: 0.6,
+            min_requests: 10,
+        };
+
+        assert_eq!(
+            circuit_breaker_failure_decision(CircuitState::HalfOpen, 1, 1, 1, &config),
+            CircuitBreakerFailureDecision::OpenFromHalfOpenProbeFailure
+        );
+        assert_eq!(
+            circuit_breaker_failure_decision(CircuitState::Closed, 4, 4, 4, &config),
+            CircuitBreakerFailureDecision::OpenFromFailureThreshold { failures: 4 }
+        );
+        assert_eq!(
+            circuit_breaker_failure_decision(CircuitState::Closed, 2, 10, 6, &config),
+            CircuitBreakerFailureDecision::OpenFromErrorRate { error_rate: 0.6 }
+        );
+        assert_eq!(
+            circuit_breaker_failure_decision(CircuitState::Closed, 2, 9, 9, &config),
+            CircuitBreakerFailureDecision::KeepCurrent
+        );
+        assert_eq!(
+            circuit_breaker_failure_decision(CircuitState::Open, 10, 10, 10, &config),
+            CircuitBreakerFailureDecision::KeepCurrent
+        );
     }
 }

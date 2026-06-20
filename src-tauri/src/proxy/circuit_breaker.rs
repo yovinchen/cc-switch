@@ -3,8 +3,9 @@
 //! 实现熔断器模式，用于防止向不健康的供应商发送请求
 
 use crate::proxy_core_adapter::{
-    circuit_breaker_log_codes as log_cb, AllowResult, CircuitBreakerConfig, CircuitBreakerStats,
-    CircuitState,
+    circuit_breaker_failure_decision, circuit_breaker_log_codes as log_cb,
+    should_transition_open_to_half_open, AllowResult, CircuitBreakerConfig,
+    CircuitBreakerFailureDecision, CircuitBreakerStats, CircuitState,
 };
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::Arc;
@@ -67,7 +68,10 @@ impl CircuitBreaker {
             CircuitState::Closed | CircuitState::HalfOpen => true,
             CircuitState::Open => {
                 if let Some(opened_at) = *self.last_opened_at.read().await {
-                    if opened_at.elapsed().as_secs() >= config.timeout_seconds {
+                    if should_transition_open_to_half_open(
+                        Some(opened_at.elapsed().as_secs()),
+                        config.timeout_seconds,
+                    ) {
                         drop(config); // 释放读锁再转换状态
                         log::info!(
                             "[{}] 熔断器 Open → HalfOpen (超时恢复)",
@@ -95,7 +99,10 @@ impl CircuitBreaker {
                 let config = self.config.read().await;
                 // 检查是否应该尝试半开
                 if let Some(opened_at) = *self.last_opened_at.read().await {
-                    if opened_at.elapsed().as_secs() >= config.timeout_seconds {
+                    if should_transition_open_to_half_open(
+                        Some(opened_at.elapsed().as_secs()),
+                        config.timeout_seconds,
+                    ) {
                         drop(config); // 释放读锁再转换状态
                         log::info!(
                             "[{}] 熔断器 Open → HalfOpen (超时恢复)",
@@ -173,8 +180,14 @@ impl CircuitBreaker {
         self.consecutive_successes.store(0, Ordering::SeqCst);
 
         // 检查是否应该打开熔断器
-        match state {
-            CircuitState::HalfOpen => {
+        match circuit_breaker_failure_decision(
+            state,
+            failures,
+            self.total_requests.load(Ordering::SeqCst),
+            self.failed_requests.load(Ordering::SeqCst),
+            &config,
+        ) {
+            CircuitBreakerFailureDecision::OpenFromHalfOpenProbeFailure => {
                 // HalfOpen 状态下失败，立即转为 Open
                 log::warn!(
                     "[{}] 熔断器 HalfOpen 探测失败 → Open",
@@ -183,36 +196,24 @@ impl CircuitBreaker {
                 drop(config);
                 self.transition_to_open().await;
             }
-            CircuitState::Closed => {
-                // 检查连续失败次数
-                if failures >= config.failure_threshold {
-                    log::warn!(
-                        "[{}] 熔断器触发: 连续失败 {failures} 次 → Open",
-                        log_cb::TRIGGERED_FAILURES
-                    );
-                    drop(config); // 释放读锁再转换状态
-                    self.transition_to_open().await;
-                } else {
-                    // 检查错误率
-                    let total = self.total_requests.load(Ordering::SeqCst);
-                    let failed = self.failed_requests.load(Ordering::SeqCst);
-
-                    if total >= config.min_requests {
-                        let error_rate = failed as f64 / total as f64;
-
-                        if error_rate >= config.error_rate_threshold {
-                            log::warn!(
-                                "[{}] 熔断器触发: 错误率 {:.1}% → Open",
-                                log_cb::TRIGGERED_ERROR_RATE,
-                                error_rate * 100.0
-                            );
-                            drop(config); // 释放读锁再转换状态
-                            self.transition_to_open().await;
-                        }
-                    }
-                }
+            CircuitBreakerFailureDecision::OpenFromFailureThreshold { failures } => {
+                log::warn!(
+                    "[{}] 熔断器触发: 连续失败 {failures} 次 → Open",
+                    log_cb::TRIGGERED_FAILURES
+                );
+                drop(config); // 释放读锁再转换状态
+                self.transition_to_open().await;
             }
-            _ => {}
+            CircuitBreakerFailureDecision::OpenFromErrorRate { error_rate } => {
+                log::warn!(
+                    "[{}] 熔断器触发: 错误率 {:.1}% → Open",
+                    log_cb::TRIGGERED_ERROR_RATE,
+                    error_rate * 100.0
+                );
+                drop(config); // 释放读锁再转换状态
+                self.transition_to_open().await;
+            }
+            CircuitBreakerFailureDecision::KeepCurrent => {}
         }
     }
 
