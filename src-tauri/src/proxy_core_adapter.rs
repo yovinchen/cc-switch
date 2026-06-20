@@ -202,6 +202,7 @@ pub(crate) type StreamingTimeoutConfig = crate::proxy_core::StreamingTimeoutConf
 pub(crate) type GlobalProxyConfig = crate::proxy_core::GlobalProxyConfig;
 pub(crate) type AppProxyConfig = crate::proxy_core::AppProxyConfig;
 pub(crate) type ProviderHealth = crate::proxy_core::ProviderHealth;
+pub(crate) type ProviderKind = crate::proxy_core::ProviderKind;
 pub(crate) type ProviderAuthInfo = crate::proxy_core::ProviderAuthInfo;
 pub(crate) type ProviderAuthStrategy = crate::proxy_core::ProviderAuthStrategy;
 pub(crate) type AllowResult = crate::proxy_core::AllowResult;
@@ -306,6 +307,26 @@ pub(crate) fn extract_gemini_model_from_path(endpoint: &str) -> Option<String> {
 
 pub(crate) fn claude_api_format_from_metadata(metadata: &Value, fallback: &str) -> String {
     crate::proxy_core::claude_api_format_from_metadata(metadata, fallback)
+}
+
+pub(crate) fn infer_claude_provider_kind(
+    api_format: &str,
+    uses_google_oauth: bool,
+    meta_provider_type: Option<&str>,
+    base_url: Option<&str>,
+    settings_config: &Value,
+) -> ProviderKind {
+    crate::proxy_core::infer_claude_provider_kind(
+        api_format,
+        uses_google_oauth,
+        meta_provider_type,
+        base_url,
+        settings_config,
+    )
+}
+
+pub(crate) fn is_gemini_oauth_key_shape(key: &str) -> bool {
+    crate::proxy_core::is_gemini_oauth_key_shape(key)
 }
 
 pub(crate) fn circuit_breaker_config_from_app_config(
@@ -1163,7 +1184,7 @@ mod tests {
     use crate::database::ProxyChannelSourceKind;
     use crate::provider::{AuthBinding, AuthBindingSource, ProviderMeta};
     use crate::proxy_core::{
-        GEMINI_SYNTHESIZED_TOOL_CALL_ID_PREFIX, ProviderKind, ProxyCoreError, SessionIdSource,
+        GEMINI_SYNTHESIZED_TOOL_CALL_ID_PREFIX, ProxyCoreError, SessionIdSource,
         UpstreamTransportKind,
     };
 
@@ -1610,6 +1631,29 @@ mod tests {
             oauth.masked_access_token(),
             Some("ya29...2345".to_string())
         );
+    }
+
+    #[test]
+    fn provider_kind_adapter_projects_inference_helpers() {
+        assert_eq!(
+            infer_claude_provider_kind("gemini_native", true, None, None, &json!({})),
+            ProviderKind::GeminiCli
+        );
+        assert_eq!(
+            infer_claude_provider_kind(
+                "anthropic",
+                false,
+                Some("github_copilot"),
+                Some("https://example.com"),
+                &json!({})
+            ),
+            ProviderKind::GitHubCopilot
+        );
+        assert!(is_gemini_oauth_key_shape(" ya29.access-token "));
+        assert!(is_gemini_oauth_key_shape(
+            r#"{"access_token":"ya29.access-token"}"#
+        ));
+        assert!(!is_gemini_oauth_key_shape("AIza-api-key"));
     }
 
     #[test]
