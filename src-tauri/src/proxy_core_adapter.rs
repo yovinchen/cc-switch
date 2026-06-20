@@ -8,8 +8,7 @@ use crate::proxy_core::{
     AppKind, AppSummaryInput, AuthProfileRef, ChannelHealthPolicy, ChannelModelRecord,
     ChannelOverrides, ChannelReachabilityInput, ChannelReachabilityResult,
     ChannelReachabilityStatus, ChannelRecord, ChannelSpec, ChannelStatus,
-    ClaudeDesktopModelListResponse, ClaudeDesktopModelRouteInput, CodexChatErrorNormalization,
-    CodexToolContext,
+    ClaudeDesktopModelRouteInput, CodexChatErrorNormalization, CodexToolContext,
     CurrentRouteProviderSummaryInput, InterfaceKind, ModelCapabilities,
     ModelCatalog, ModelRoute, ProviderMetadata, ProviderSpec, RetryPolicy,
     RouteResolveChannelInput, RouteResolveModelInput, SessionIdResult, UpstreamEndpoint,
@@ -182,6 +181,8 @@ pub(crate) type ProxyConfig = crate::proxy_core::ProxyConfig;
 pub(crate) type ProxyRuntimeStatus = crate::proxy_core::ProxyRuntimeStatus;
 pub(crate) type ProxyServerInfo = crate::proxy_core::ProxyServerInfo;
 pub(crate) type ProxyTakeoverStatus = crate::proxy_core::ProxyTakeoverStatus;
+pub(crate) type ClaudeDesktopModelListResponse =
+    crate::proxy_core::ClaudeDesktopModelListResponse;
 pub(crate) type ProxyCoreResponse = crate::proxy_core::ProxyCoreResponse;
 pub(crate) type ProxyCoreResult<T> = crate::proxy_core::ProxyCoreResult<T>;
 pub(crate) type ProxyEngine<S> = crate::proxy_core::ProxyEngine<S>;

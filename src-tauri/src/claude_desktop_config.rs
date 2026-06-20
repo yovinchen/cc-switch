@@ -10,6 +10,7 @@ use crate::database::Database;
 use crate::database::CLAUDE_DESKTOP_OFFICIAL_PROVIDER_ID;
 use crate::error::AppError;
 use crate::provider::{ClaudeDesktopMode, Provider};
+use crate::proxy_core_adapter::ClaudeDesktopModelListResponse;
 
 pub const PROFILE_ID: &str = "00000000-0000-4000-8000-000000157210";
 pub const PROFILE_NAME: &str = "CC Switch";
@@ -643,7 +644,7 @@ fn next_catalog_safe_route_id(
 
 pub fn model_list_response(
     provider: &Provider,
-) -> Result<crate::proxy_core::ClaudeDesktopModelListResponse, AppError> {
+) -> Result<ClaudeDesktopModelListResponse, AppError> {
     let routes = proxy_model_routes(provider)?;
     Ok(crate::proxy_core_adapter::claude_desktop_model_routes_to_core_response(routes))
 }
@@ -1290,6 +1291,7 @@ mod tests {
     use super::*;
     use crate::database::Database;
     use crate::provider::{ClaudeDesktopModelRoute, ProviderMeta};
+    use crate::proxy_core_adapter::ProxyConfig;
     use serde_json::json;
     use tempfile::TempDir;
 
@@ -1309,7 +1311,7 @@ mod tests {
     }
 
     fn set_proxy_port(db: &Database, port: u16) {
-        let mut config = crate::proxy_core::ProxyConfig::default();
+        let mut config = ProxyConfig::default();
         config.listen_port = port;
         futures::executor::block_on(db.update_proxy_config(config)).expect("update proxy config");
     }
