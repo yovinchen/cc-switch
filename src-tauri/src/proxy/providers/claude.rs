@@ -17,22 +17,19 @@
 use super::ProviderAdapter;
 use crate::provider::Provider;
 use crate::proxy::error::ProxyError;
-use crate::proxy_core::{
-    anthropic_request_to_gemini_request_with_shadow, anthropic_to_openai_chat_request,
-    anthropic_to_openai_responses_request, gemini_response_to_anthropic_message,
-    openai_chat_to_anthropic_message, openai_responses_to_anthropic_message,
-    should_preserve_reasoning_content_for_openai_chat,
-};
 use crate::proxy_core_adapter::{
-    build_claude_auth_headers, build_claude_upstream_url, build_copilot_auth_headers,
-    claude_api_format_needs_transform, extract_claude_auth_key_from_settings,
-    extract_claude_base_url_from_settings, infer_claude_provider_kind,
+    anthropic_request_to_gemini_request_with_shadow, anthropic_to_openai_chat_request,
+    anthropic_to_openai_responses_request, build_claude_auth_headers, build_claude_upstream_url,
+    build_copilot_auth_headers, claude_api_format_needs_transform,
+    extract_claude_auth_key_from_settings, extract_claude_base_url_from_settings,
+    gemini_response_to_anthropic_message, infer_claude_provider_kind,
     inject_openai_stream_include_usage, is_copilot_prompt_cache_provider,
     is_gemini_oauth_key_shape, normalize_anthropic_tool_thinking_history,
-    normalize_deepseek_thinking_disabled_strip_effort, resolve_claude_api_format_from_settings,
-    resolve_claude_responses_prompt_cache_key, ClaudeAuthHeaderKind, ClaudeAuthKey,
-    ClaudeAuthKeySource, CopilotAuthHeadersInput, GeminiShadowStore, ProviderAuthInfo,
-    ProviderAuthStrategy, ProviderKind,
+    normalize_deepseek_thinking_disabled_strip_effort, openai_chat_to_anthropic_message,
+    openai_responses_to_anthropic_message, resolve_claude_api_format_from_settings,
+    resolve_claude_responses_prompt_cache_key, should_preserve_reasoning_content_for_openai_chat,
+    ClaudeAuthHeaderKind, ClaudeAuthKey, ClaudeAuthKeySource, CopilotAuthHeadersInput,
+    GeminiShadowStore, ProviderAuthInfo, ProviderAuthStrategy, ProviderKind,
     should_normalize_anthropic_tool_thinking_history, synthesize_gemini_tool_call_id_with_uuid,
 };
 use serde_json::Value;

@@ -205,6 +205,9 @@ pub(crate) type ModelPricing = crate::proxy_core::ModelPricing;
 pub(crate) type TokenUsage = crate::proxy_core::TokenUsage;
 pub(crate) type CurrentRouteTarget = crate::proxy_core::CurrentRouteTarget;
 pub(crate) type GeminiShadowStore = crate::proxy_core::GeminiShadowStore;
+pub(crate) type GeminiToAnthropicMessageOutput =
+    crate::proxy_core::GeminiToAnthropicMessageOutput;
+pub(crate) type AnthropicToolSchemaHints = crate::proxy_core::AnthropicToolSchemaHints;
 pub(crate) type GeminiOAuthCredentials = crate::proxy_core::GeminiOAuthCredentials;
 pub(crate) type ClaudeAuthHeaderKind = crate::proxy_core::ClaudeAuthHeaderKind;
 pub(crate) type ClaudeAuthKey = crate::proxy_core::ClaudeAuthKey;
@@ -534,6 +537,74 @@ pub(crate) fn build_copilot_auth_headers(
     input: CopilotAuthHeadersInput<'_>,
 ) -> Result<Vec<(http::HeaderName, http::HeaderValue)>, ProxyCoreError> {
     crate::proxy_core::build_copilot_auth_headers(input)
+}
+
+pub(crate) fn anthropic_to_openai_responses_request(
+    body: &Value,
+    cache_key: Option<&str>,
+    is_codex_oauth: bool,
+    codex_fast_mode: bool,
+) -> Value {
+    crate::proxy_core::anthropic_to_openai_responses_request(
+        body,
+        cache_key,
+        is_codex_oauth,
+        codex_fast_mode,
+    )
+}
+
+pub(crate) fn anthropic_to_openai_chat_request(
+    body: &Value,
+    preserve_reasoning_content: bool,
+) -> Value {
+    crate::proxy_core::anthropic_to_openai_chat_request(body, preserve_reasoning_content)
+}
+
+pub(crate) fn anthropic_request_to_gemini_request_with_shadow(
+    body: &Value,
+    shadow_store: Option<&GeminiShadowStore>,
+    provider_id: Option<&str>,
+    session_id: Option<&str>,
+) -> Result<Value, String> {
+    crate::proxy_core::anthropic_request_to_gemini_request_with_shadow(
+        body,
+        shadow_store,
+        provider_id,
+        session_id,
+    )
+}
+
+pub(crate) fn openai_responses_to_anthropic_message(body: &Value) -> Result<Value, String> {
+    crate::proxy_core::openai_responses_to_anthropic_message(body)
+}
+
+pub(crate) fn openai_chat_to_anthropic_message(body: &Value) -> Result<Value, String> {
+    crate::proxy_core::openai_chat_to_anthropic_message(body)
+}
+
+pub(crate) fn gemini_response_to_anthropic_message<F>(
+    body: &Value,
+    tool_schema_hints: Option<&AnthropicToolSchemaHints>,
+    synthesize_tool_call_id: F,
+) -> Result<GeminiToAnthropicMessageOutput, String>
+where
+    F: FnMut() -> String,
+{
+    crate::proxy_core::gemini_response_to_anthropic_message(
+        body,
+        tool_schema_hints,
+        synthesize_tool_call_id,
+    )
+}
+
+pub(crate) fn should_preserve_reasoning_content_for_openai_chat(
+    settings_config: &Value,
+    body: &Value,
+) -> bool {
+    crate::proxy_core::should_preserve_reasoning_content_for_openai_chat(
+        settings_config,
+        body,
+    )
 }
 
 pub(crate) fn circuit_breaker_config_from_app_config(
@@ -2013,6 +2084,80 @@ mod tests {
         );
         assert_eq!(cache_key.key.as_deref(), Some("session-1"));
         assert_eq!(cache_key.source.as_str(), "session");
+    }
+
+    #[test]
+    fn claude_transform_adapter_projects_request_and_response_facades() {
+        let anthropic_body = json!({
+            "model": "claude-sonnet",
+            "max_tokens": 128,
+            "messages": [{"role": "user", "content": "Hello"}]
+        });
+        let chat_request = anthropic_to_openai_chat_request(&anthropic_body, false);
+        assert_eq!(chat_request["model"], "claude-sonnet");
+        assert_eq!(chat_request["messages"][0]["role"], "user");
+
+        let responses_request =
+            anthropic_to_openai_responses_request(&anthropic_body, Some("cache-1"), false, false);
+        assert_eq!(responses_request["model"], "claude-sonnet");
+        assert_eq!(responses_request["prompt_cache_key"], "cache-1");
+
+        let gemini_request = anthropic_request_to_gemini_request_with_shadow(
+            &anthropic_body,
+            None,
+            Some("provider-a"),
+            Some("session-a"),
+        )
+        .expect("gemini request");
+        assert_eq!(gemini_request["contents"][0]["role"], "user");
+
+        let chat_response = openai_chat_to_anthropic_message(&json!({
+            "id": "chatcmpl_1",
+            "model": "chat-model",
+            "choices": [{
+                "message": {"role": "assistant", "content": "Hi"},
+                "finish_reason": "stop"
+            }],
+            "usage": {"prompt_tokens": 1, "completion_tokens": 2}
+        }))
+        .expect("chat response");
+        assert_eq!(chat_response["content"][0]["text"], "Hi");
+
+        let responses_response = openai_responses_to_anthropic_message(&json!({
+            "id": "resp_1",
+            "model": "responses-model",
+            "status": "completed",
+            "output": [{
+                "type": "message",
+                "content": [{"type": "output_text", "text": "Done"}]
+            }],
+            "usage": {"input_tokens": 1, "output_tokens": 2}
+        }))
+        .expect("responses response");
+        assert_eq!(responses_response["content"][0]["text"], "Done");
+
+        let gemini_output = gemini_response_to_anthropic_message(
+            &json!({
+                "responseId": "gemini_1",
+                "candidates": [{
+                    "content": {
+                        "role": "model",
+                        "parts": [{"text": "Gemini hi"}]
+                    },
+                    "finishReason": "STOP"
+                }],
+                "usageMetadata": {"promptTokenCount": 1, "candidatesTokenCount": 2}
+            }),
+            None,
+            || "toolu_test".to_string(),
+        )
+        .expect("gemini response");
+        assert_eq!(gemini_output.response["content"][0]["text"], "Gemini hi");
+
+        assert!(should_preserve_reasoning_content_for_openai_chat(
+            &json!({}),
+            &json!({"model": "deepseek-v4-pro"})
+        ));
     }
 
     #[test]
