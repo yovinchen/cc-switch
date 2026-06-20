@@ -24,7 +24,7 @@ impl Database {
                 provider_id,
                 provider_name,
                 app_type,
-                format!("{:?}", result.status).to_lowercase(),
+                result.status.as_str(),
                 result.success,
                 result.message,
                 result.response_time_ms.map(|t| t as i64),
@@ -76,6 +76,7 @@ impl Database {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::services::stream_check::HealthStatus;
     use serde_json::json;
 
     #[test]
@@ -111,5 +112,35 @@ mod tests {
                 "degradedThresholdMs": 2500
             })
         );
+    }
+
+    #[test]
+    fn stream_check_log_status_uses_core_contract() {
+        let db = Database::memory().expect("memory db");
+        let result = StreamCheckResult {
+            status: HealthStatus::Degraded,
+            success: true,
+            message: "Reachable".to_string(),
+            response_time_ms: Some(6100),
+            http_status: Some(403),
+            model_used: String::new(),
+            tested_at: 1_771_000_000,
+            retry_count: 1,
+            error_category: None,
+        };
+
+        db.save_stream_check_log("provider-a", "Provider A", "opencode", &result)
+            .expect("save log");
+
+        let status = {
+            let conn = db.conn.lock().expect("lock conn");
+            conn.query_row(
+                "SELECT status FROM stream_check_logs WHERE provider_id = ?1",
+                ["provider-a"],
+                |row| row.get::<_, String>(0),
+            )
+            .expect("read status")
+        };
+        assert_eq!(status, "degraded");
     }
 }
