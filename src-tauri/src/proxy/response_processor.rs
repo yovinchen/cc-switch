@@ -10,7 +10,7 @@ use super::{
     usage_sink_bridge::provider_kind_from_provider,
 };
 use crate::proxy_core::{
-    decode_response_body, get_content_encoding,
+    decode_response_body, get_content_encoding, non_streaming_body_timeout_message,
     non_streaming_response_usage_record_with_request_id_fallback, response_headers_log_summary,
     streaming_response_usage_record_with_optional_outbound_model,
     strip_hop_by_hop_response_headers, AppKind, ProxyServices, ResponseBodyDecodeStatus,
@@ -44,12 +44,7 @@ pub(crate) async fn read_decoded_body(
     } else {
         tokio::time::timeout(body_timeout, response.bytes())
             .await
-            .map_err(|_| {
-                ProxyError::Timeout(format!(
-                    "响应体读取超时: {}s（上游发完响应头后 body 未到达）",
-                    body_timeout.as_secs()
-                ))
-            })??
+            .map_err(|_| ProxyError::Timeout(non_streaming_body_timeout_message(body_timeout)))??
     };
 
     log::debug!(
@@ -513,9 +508,12 @@ pub fn create_logged_passthrough_stream(
                         Ok(None) => None, // 流结束
                         Err(_) => {
                             // 超时
-                            let timeout_type = if is_first_chunk { "首字节" } else { "静默期" };
-                            log::error!("[{tag}] 流式响应{}超时 ({}秒)", timeout_type, duration.as_secs());
-                            yield Err(std::io::Error::other(format!("流式响应{timeout_type}超时")));
+                            log::error!(
+                                "[{tag}] {} ({}秒)",
+                                timeout_phase.timeout_message(),
+                                duration.as_secs()
+                            );
+                            yield Err(std::io::Error::other(timeout_phase.timeout_message()));
                             break;
                         }
                     }

@@ -24,6 +24,19 @@ impl StreamingTimeoutConfig {
     }
 }
 
+impl StreamingTimeoutPhase {
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::FirstByte => "首字节",
+            Self::Idle => "静默期",
+        }
+    }
+
+    pub fn timeout_message(self) -> String {
+        format!("流式响应{}超时", self.label())
+    }
+}
+
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct ResponseTimeoutConfig {
     /// Non-streaming body timeout in seconds. `0` disables the timeout.
@@ -45,6 +58,13 @@ impl ResponseTimeoutConfig {
             Duration::ZERO
         }
     }
+}
+
+pub fn non_streaming_body_timeout_message(timeout: Duration) -> String {
+    format!(
+        "响应体读取超时: {}s（上游发完响应头后 body 未到达）",
+        timeout.as_secs()
+    )
 }
 
 pub fn resolve_response_runtime_policy(
@@ -155,6 +175,28 @@ mod tests {
         assert_eq!(
             config.duration_for_phase(StreamingTimeoutPhase::Idle),
             Some(Duration::from_secs(30))
+        );
+    }
+
+    #[test]
+    fn streaming_timeout_phase_labels_and_messages_match_host_contract() {
+        assert_eq!(StreamingTimeoutPhase::FirstByte.label(), "首字节");
+        assert_eq!(StreamingTimeoutPhase::Idle.label(), "静默期");
+        assert_eq!(
+            StreamingTimeoutPhase::FirstByte.timeout_message(),
+            "流式响应首字节超时"
+        );
+        assert_eq!(
+            StreamingTimeoutPhase::Idle.timeout_message(),
+            "流式响应静默期超时"
+        );
+    }
+
+    #[test]
+    fn non_streaming_body_timeout_message_matches_host_contract() {
+        assert_eq!(
+            non_streaming_body_timeout_message(Duration::from_secs(45)),
+            "响应体读取超时: 45s（上游发完响应头后 body 未到达）"
         );
     }
 
