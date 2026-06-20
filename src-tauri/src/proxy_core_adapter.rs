@@ -52,6 +52,13 @@ pub(crate) fn proxy_error_http_status_code(kind: ProxyErrorStatusKind) -> u16 {
     crate::proxy_core::api::errors::proxy_error_http_status_code(kind)
 }
 
+pub(crate) fn proxy_core_error_from_status_kind(
+    kind: ProxyErrorStatusKind,
+    message: impl Into<String>,
+) -> ProxyCoreError {
+    crate::proxy_core::api::errors::proxy_core_error_from_status_kind(kind, message)
+}
+
 pub(crate) const SYSTEM_PROXY_ENV_KEYS: [&str; 6] =
     crate::proxy_core::api::transport::SYSTEM_PROXY_ENV_KEYS;
 
@@ -1259,6 +1266,18 @@ pub(crate) fn route_plan_from_request(
     request: RouteRequest<'_>,
 ) -> ProxyCoreResult<RoutePlan> {
     crate::proxy_core::api::routing::build_route_plan(request)
+}
+
+pub(crate) fn forward_failure_kind_from_proxy_status(
+    kind: ProxyErrorStatusKind,
+    message: impl Into<String>,
+    upstream_body: Option<String>,
+) -> ForwardFailureKind {
+    crate::proxy_core::api::transport::forward_failure_kind_from_proxy_status(
+        kind,
+        message,
+        upstream_body,
+    )
 }
 
 pub(crate) fn channel_route_candidate_from_selection(

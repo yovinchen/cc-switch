@@ -74,6 +74,35 @@ pub fn proxy_error_http_status_code(kind: ProxyErrorStatusKind) -> u16 {
     }
 }
 
+pub fn proxy_core_error_from_status_kind(
+    kind: ProxyErrorStatusKind,
+    message: impl Into<String>,
+) -> ProxyCoreError {
+    let message = message.into();
+    match kind {
+        ProxyErrorStatusKind::NoAvailableProvider
+        | ProxyErrorStatusKind::AllProvidersCircuitOpen
+        | ProxyErrorStatusKind::NoProvidersConfigured
+        | ProxyErrorStatusKind::ProviderUnhealthy
+        | ProxyErrorStatusKind::MaxRetriesExceeded => ProxyCoreError::Unavailable(message),
+        ProxyErrorStatusKind::ConfigError => ProxyCoreError::Config(message),
+        ProxyErrorStatusKind::AuthError => ProxyCoreError::Auth(message),
+        ProxyErrorStatusKind::InvalidRequest => ProxyCoreError::InvalidRequest(message),
+        ProxyErrorStatusKind::ForwardFailed
+        | ProxyErrorStatusKind::UpstreamError(_)
+        | ProxyErrorStatusKind::Timeout
+        | ProxyErrorStatusKind::StreamIdleTimeout => ProxyCoreError::Upstream(message),
+        ProxyErrorStatusKind::AlreadyRunning
+        | ProxyErrorStatusKind::NotRunning
+        | ProxyErrorStatusKind::BindFailed
+        | ProxyErrorStatusKind::StopTimeout
+        | ProxyErrorStatusKind::StopFailed
+        | ProxyErrorStatusKind::DatabaseError
+        | ProxyErrorStatusKind::TransformError
+        | ProxyErrorStatusKind::Internal => ProxyCoreError::Internal(message),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -114,5 +143,33 @@ mod tests {
             proxy_error_http_status_code(ProxyErrorStatusKind::UpstreamError(42)),
             StatusCode::BAD_GATEWAY.as_u16()
         );
+    }
+
+    #[test]
+    fn proxy_status_kind_maps_to_core_error_categories() {
+        assert!(matches!(
+            proxy_core_error_from_status_kind(ProxyErrorStatusKind::NoProvidersConfigured, "none"),
+            ProxyCoreError::Unavailable(_)
+        ));
+        assert!(matches!(
+            proxy_core_error_from_status_kind(ProxyErrorStatusKind::ConfigError, "bad"),
+            ProxyCoreError::Config(_)
+        ));
+        assert!(matches!(
+            proxy_core_error_from_status_kind(ProxyErrorStatusKind::AuthError, "bad"),
+            ProxyCoreError::Auth(_)
+        ));
+        assert!(matches!(
+            proxy_core_error_from_status_kind(ProxyErrorStatusKind::InvalidRequest, "bad"),
+            ProxyCoreError::InvalidRequest(_)
+        ));
+        assert!(matches!(
+            proxy_core_error_from_status_kind(ProxyErrorStatusKind::Timeout, "slow"),
+            ProxyCoreError::Upstream(_)
+        ));
+        assert!(matches!(
+            proxy_core_error_from_status_kind(ProxyErrorStatusKind::TransformError, "bad body"),
+            ProxyCoreError::Internal(_)
+        ));
     }
 }

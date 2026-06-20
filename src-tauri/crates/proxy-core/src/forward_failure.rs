@@ -1,5 +1,7 @@
 use serde_json::Value;
 
+use crate::error::ProxyErrorStatusKind;
+
 pub const PROVIDER_FAILED_RETRY: &str = "FWD-001";
 pub const ALL_PROVIDERS_FAILED: &str = "FWD-002";
 pub const SINGLE_PROVIDER_FAILED: &str = "FWD-003";
@@ -28,6 +30,29 @@ pub enum ForwardFailureCategory {
     NonRetryable,
 }
 
+pub fn forward_failure_kind_from_proxy_status(
+    kind: ProxyErrorStatusKind,
+    message: impl Into<String>,
+    upstream_body: Option<String>,
+) -> ForwardFailureKind {
+    let message = message.into();
+    match kind {
+        ProxyErrorStatusKind::UpstreamError(status) => ForwardFailureKind::Upstream {
+            status,
+            body: upstream_body,
+        },
+        ProxyErrorStatusKind::Timeout => ForwardFailureKind::Timeout(message),
+        ProxyErrorStatusKind::ForwardFailed => ForwardFailureKind::ForwardFailed(message),
+        ProxyErrorStatusKind::TransformError => ForwardFailureKind::TransformError(message),
+        ProxyErrorStatusKind::ConfigError => ForwardFailureKind::ConfigError(message),
+        ProxyErrorStatusKind::AuthError => ForwardFailureKind::AuthError(message),
+        ProxyErrorStatusKind::ProviderUnhealthy | ProxyErrorStatusKind::StreamIdleTimeout => {
+            ForwardFailureKind::RetryableOther(message)
+        }
+        _ => ForwardFailureKind::Other(message),
+    }
+}
+
 pub fn categorize_forward_failure(failure: &ForwardFailureKind) -> ForwardFailureCategory {
     match failure {
         ForwardFailureKind::Timeout(_)
@@ -37,9 +62,7 @@ pub fn categorize_forward_failure(failure: &ForwardFailureKind) -> ForwardFailur
         | ForwardFailureKind::AuthError(_)
         | ForwardFailureKind::RetryableOther(_) => ForwardFailureCategory::Retryable,
         ForwardFailureKind::Upstream { status, .. } => match *status {
-            400 | 405 | 406 | 413 | 414 | 415 | 422 | 501 => {
-                ForwardFailureCategory::NonRetryable
-            }
+            400 | 405 | 406 | 413 | 414 | 415 | 422 | 501 => ForwardFailureCategory::NonRetryable,
             _ => ForwardFailureCategory::Retryable,
         },
         ForwardFailureKind::Other(_) => ForwardFailureCategory::NonRetryable,
@@ -177,10 +200,12 @@ fn extract_json_error_message(body: &Value) -> Option<String> {
 mod tests {
     use super::{
         build_retryable_forward_failure_log, build_terminal_forward_failure_log,
-        categorize_forward_failure, should_failover_after_rectifier_retry_failure,
-        summarize_text_for_log, summarize_upstream_body_for_log, ForwardFailureCategory,
-        ForwardFailureKind, ALL_PROVIDERS_FAILED, PROVIDER_FAILED_RETRY, SINGLE_PROVIDER_FAILED,
+        categorize_forward_failure, forward_failure_kind_from_proxy_status,
+        should_failover_after_rectifier_retry_failure, summarize_text_for_log,
+        summarize_upstream_body_for_log, ForwardFailureCategory, ForwardFailureKind,
+        ALL_PROVIDERS_FAILED, PROVIDER_FAILED_RETRY, SINGLE_PROVIDER_FAILED,
     };
+    use crate::error::ProxyErrorStatusKind;
     use serde_json::json;
 
     #[test]
@@ -300,6 +325,67 @@ mod tests {
             categorize_forward_failure(&failure),
             ForwardFailureCategory::NonRetryable
         );
+    }
+
+    #[test]
+    fn proxy_status_kind_maps_to_forward_failure_kind() {
+        assert!(matches!(
+            forward_failure_kind_from_proxy_status(
+                ProxyErrorStatusKind::Timeout,
+                "slow",
+                None
+            ),
+            ForwardFailureKind::Timeout(message) if message == "slow"
+        ));
+        assert!(matches!(
+            forward_failure_kind_from_proxy_status(
+                ProxyErrorStatusKind::ForwardFailed,
+                "connection reset",
+                None
+            ),
+            ForwardFailureKind::ForwardFailed(message) if message == "connection reset"
+        ));
+        assert!(matches!(
+            forward_failure_kind_from_proxy_status(
+                ProxyErrorStatusKind::AuthError,
+                "bad token",
+                None
+            ),
+            ForwardFailureKind::AuthError(message) if message == "bad token"
+        ));
+        assert!(matches!(
+            forward_failure_kind_from_proxy_status(
+                ProxyErrorStatusKind::ProviderUnhealthy,
+                "half-open",
+                None
+            ),
+            ForwardFailureKind::RetryableOther(message) if message == "half-open"
+        ));
+        assert!(matches!(
+            forward_failure_kind_from_proxy_status(
+                ProxyErrorStatusKind::DatabaseError,
+                "write failed",
+                None
+            ),
+            ForwardFailureKind::Other(message) if message == "write failed"
+        ));
+
+        let failure = forward_failure_kind_from_proxy_status(
+            ProxyErrorStatusKind::UpstreamError(429),
+            "ignored",
+            Some(r#"{"error":{"message":"rate limit"}}"#.to_string()),
+        );
+
+        match failure {
+            ForwardFailureKind::Upstream { status, body } => {
+                assert_eq!(status, 429);
+                assert_eq!(
+                    body.as_deref(),
+                    Some(r#"{"error":{"message":"rate limit"}}"#)
+                );
+            }
+            other => panic!("expected upstream failure, got {other:?}"),
+        }
     }
 
     #[test]

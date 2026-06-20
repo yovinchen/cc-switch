@@ -6,6 +6,7 @@ use super::{error::ProxyError, ForwardError};
 use crate::proxy::error::proxy_error_status_kind;
 use crate::proxy_core_adapter::{
     codex_proxy_error_code, codex_proxy_error_response as core_codex_proxy_error_response,
+    forward_failure_kind_from_proxy_status, proxy_core_error_from_status_kind,
     proxy_error_http_status_code, ClaudeDesktopGatewayAuthError, CodexProxyErrorContext,
     CodexProxyErrorKind, ForwardFailureKind, ManagementAuthError, ProxyCoreError,
     ProxyCoreResponse, ProxyCoreResult,
@@ -71,29 +72,9 @@ pub(crate) fn proxy_core_error_to_proxy_error(error: ProxyCoreError) -> ProxyErr
 }
 
 pub(crate) fn proxy_error_to_core_error(error: ProxyError) -> ProxyCoreError {
+    let kind = proxy_error_status_kind(&error);
     let message = error.to_string();
-    match error {
-        ProxyError::NoAvailableProvider
-        | ProxyError::AllProvidersCircuitOpen
-        | ProxyError::NoProvidersConfigured
-        | ProxyError::ProviderUnhealthy(_)
-        | ProxyError::MaxRetriesExceeded => ProxyCoreError::Unavailable(message),
-        ProxyError::ConfigError(_) => ProxyCoreError::Config(message),
-        ProxyError::AuthError(_) => ProxyCoreError::Auth(message),
-        ProxyError::InvalidRequest(_) => ProxyCoreError::InvalidRequest(message),
-        ProxyError::ForwardFailed(_)
-        | ProxyError::UpstreamError { .. }
-        | ProxyError::Timeout(_)
-        | ProxyError::StreamIdleTimeout(_) => ProxyCoreError::Upstream(message),
-        ProxyError::AlreadyRunning
-        | ProxyError::NotRunning
-        | ProxyError::BindFailed(_)
-        | ProxyError::StopTimeout
-        | ProxyError::StopFailed(_)
-        | ProxyError::DatabaseError(_)
-        | ProxyError::TransformError(_)
-        | ProxyError::Internal(_) => ProxyCoreError::Internal(message),
-    }
+    proxy_core_error_from_status_kind(kind, message)
 }
 
 pub(crate) fn forward_error_to_core_error(error: ForwardError) -> ProxyCoreError {
@@ -101,20 +82,25 @@ pub(crate) fn forward_error_to_core_error(error: ForwardError) -> ProxyCoreError
 }
 
 pub(crate) fn forward_failure_kind_from_proxy_error(error: &ProxyError) -> ForwardFailureKind {
+    let upstream_body = match error {
+        ProxyError::UpstreamError { body, .. } => body.clone(),
+        _ => None,
+    };
+    forward_failure_kind_from_proxy_status(
+        proxy_error_status_kind(error),
+        forward_failure_message(error),
+        upstream_body,
+    )
+}
+
+fn forward_failure_message(error: &ProxyError) -> String {
     match error {
-        ProxyError::UpstreamError { status, body } => ForwardFailureKind::Upstream {
-            status: *status,
-            body: body.clone(),
-        },
-        ProxyError::Timeout(message) => ForwardFailureKind::Timeout(message.clone()),
-        ProxyError::ForwardFailed(message) => ForwardFailureKind::ForwardFailed(message.clone()),
-        ProxyError::TransformError(message) => ForwardFailureKind::TransformError(message.clone()),
-        ProxyError::ConfigError(message) => ForwardFailureKind::ConfigError(message.clone()),
-        ProxyError::AuthError(message) => ForwardFailureKind::AuthError(message.clone()),
-        ProxyError::ProviderUnhealthy(_) | ProxyError::StreamIdleTimeout(_) => {
-            ForwardFailureKind::RetryableOther(error.to_string())
-        }
-        _ => ForwardFailureKind::Other(error.to_string()),
+        ProxyError::Timeout(message)
+        | ProxyError::ForwardFailed(message)
+        | ProxyError::TransformError(message)
+        | ProxyError::ConfigError(message)
+        | ProxyError::AuthError(message) => message.clone(),
+        _ => error.to_string(),
     }
 }
 
