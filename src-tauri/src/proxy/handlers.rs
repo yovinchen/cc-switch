@@ -47,8 +47,8 @@ use crate::proxy_core::{
     strip_endpoint_prefix, transformed_sse_proxy_response, validate_management_bearer_header,
     AppChannelListQuery, AppChannelManagementRequest, AppChannelResponse, AppKind, AppListRequest,
     AppListResponse, AppListSource, AppModelCatalogRequest, AppModelListQuery, ChannelCreateRequest,
-    ChannelDeleteResponse, ChannelDeleteSource, ChannelHealthResetResponse, ChannelListPlan,
-    ChannelListQuery, ChannelListRequest, ChannelListResponse, ChannelListSource,
+    ChannelCreateSource, ChannelDeleteResponse, ChannelDeleteSource, ChannelHealthResetResponse,
+    ChannelListPlan, ChannelListQuery, ChannelListRequest, ChannelListResponse, ChannelListSource,
     ChannelMigrationMaterializeResponse, ChannelMigrationPreviewResponse,
     ChannelMigrationMaterializeSource, ChannelMigrationPreviewSource, ChannelModelRecord,
     ChannelModelsResponse, ChannelModelsSource, ChannelPathRequest, ChannelRecord,
@@ -302,7 +302,9 @@ pub async fn create_proxy_channel(
         .create_proxy_channel(request.clone().into_body())
         .map_err(|e| ProxyError::InvalidRequest(e.to_string()))?;
     Ok(Json(
-        request.record_response(proxy_channel_record_to_core(channel)),
+        request.record_response_from_source(ChannelCreateSource::new(proxy_channel_record_to_core(
+            channel,
+        ))),
     ))
 }
 

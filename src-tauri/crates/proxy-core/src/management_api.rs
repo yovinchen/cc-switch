@@ -101,6 +101,17 @@ pub struct ChannelCreateRequest {
     request: ProxyChannelWriteRequest,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ChannelCreateSource<T> {
+    pub channel: T,
+}
+
+impl<T> ChannelCreateSource<T> {
+    pub fn new(channel: T) -> Self {
+        Self { channel }
+    }
+}
+
 impl ChannelCreateRequest {
     pub fn from_body(request: ProxyChannelWriteRequest) -> Self {
         Self { request }
@@ -112,6 +123,13 @@ impl ChannelCreateRequest {
 
     pub fn record_response<T>(&self, channel: T) -> ChannelRecordResponse<T> {
         ChannelRecordResponse::new(channel)
+    }
+
+    pub fn record_response_from_source<T>(
+        &self,
+        source: ChannelCreateSource<T>,
+    ) -> ChannelRecordResponse<T> {
+        self.record_response(source.channel)
     }
 }
 
@@ -690,8 +708,9 @@ fn normalize_optional_management_app_type(app_type: Option<String>) -> ProxyCore
 mod tests {
     use super::{
         AppChannelListSource, AppChannelManagementPlan, AppChannelManagementRequest,
-        AppListRequest, AppListSource, AppModelCatalogRequest, ChannelCreateRequest, ChannelListPlan,
-        ChannelListRequest, ChannelListSource, ChannelMigrationMaterializeSource,
+        AppListRequest, AppListSource, AppModelCatalogRequest, ChannelCreateRequest,
+        ChannelCreateSource, ChannelListPlan, ChannelListRequest, ChannelListSource,
+        ChannelMigrationMaterializeSource,
         ChannelMigrationPreviewSource, ChannelDeleteSource, ChannelModelsSource,
         ChannelPathRequest, ChannelRecordSource, CurrentRouteSource, GroupListChannelSource,
         GroupListRequest, HealthCheckRequest, ManagementAppPathRequest, ProviderListSource,
@@ -829,7 +848,8 @@ mod tests {
         };
         let request = ChannelCreateRequest::from_body(body.clone());
 
-        let response = request.record_response("channel-record");
+        let response =
+            request.record_response_from_source(ChannelCreateSource::new("channel-record"));
 
         assert_eq!(response.channel, "channel-record");
         assert_eq!(request.into_body().provider_id, body.provider_id);
