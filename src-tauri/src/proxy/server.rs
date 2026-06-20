@@ -1397,6 +1397,10 @@ mod tests {
             {
                 return Err(format!("unexpected migrated channels body: {channels}"));
             }
+            let channel_id = channels["channels"][0]["id"]
+                .as_str()
+                .ok_or_else(|| format!("migrated channel missing id: {channels}"))?
+                .to_string();
 
             let second_materialize_response = client
                 .post(format!(
@@ -1422,6 +1426,92 @@ mod tests {
             {
                 return Err(format!(
                     "unexpected idempotent materialize body: {second_materialize}"
+                ));
+            }
+
+            let mut proxy_config = server
+                .state
+                .db
+                .get_proxy_config_for_app("claude")
+                .await
+                .map_err(|error| error.to_string())?;
+            proxy_config.circuit_failure_threshold = 1;
+            proxy_config.circuit_timeout_seconds = 60;
+            server
+                .state
+                .db
+                .update_proxy_config_for_app(proxy_config)
+                .await
+                .map_err(|error| error.to_string())?;
+            server
+                .state
+                .provider_router
+                .record_channel_result(
+                    &channel_id,
+                    "claude",
+                    false,
+                    false,
+                    Some("runtime migration reset smoke".to_string()),
+                    Some(123),
+                )
+                .await
+                .map_err(|error| error.to_string())?;
+
+            let blocked = server
+                .state
+                .provider_router
+                .resolve_channel_route_dry_run(RouteResolveRequest {
+                    app_type: "claude".to_string(),
+                    requested_model: Some("legacy-sonnet".to_string()),
+                    interface_kind: Some("anthropic_messages".to_string()),
+                    route_group: None,
+                })
+                .await
+                .map_err(|error| error.to_string())?;
+            if !blocked.candidates.is_empty() {
+                return Err(format!(
+                    "expected channel breaker to block route: {blocked:?}"
+                ));
+            }
+
+            let reset_response = client
+                .post(format!(
+                    "{base_url}/proxy/v1/channels/{channel_id}/breakers/reset"
+                ))
+                .send()
+                .await
+                .map_err(|error| error.to_string())?;
+            if reset_response.status() != StatusCode::OK {
+                return Err(format!(
+                    "unexpected breaker reset status: {}",
+                    reset_response.status()
+                ));
+            }
+            let reset = reset_response
+                .json::<Value>()
+                .await
+                .map_err(|error| error.to_string())?;
+            if reset["channelId"] != channel_id
+                || reset["appType"] != "claude"
+                || reset["reset"] != true
+            {
+                return Err(format!("unexpected breaker reset body: {reset}"));
+            }
+
+            let recovered = server
+                .state
+                .provider_router
+                .resolve_channel_route_dry_run(RouteResolveRequest {
+                    app_type: "claude".to_string(),
+                    requested_model: Some("legacy-sonnet".to_string()),
+                    interface_kind: Some("anthropic_messages".to_string()),
+                    route_group: None,
+                })
+                .await
+                .map_err(|error| error.to_string())?;
+            if recovered.candidates.len() != 1 || recovered.candidates[0].channel_id != channel_id {
+                return Err(format!(
+                    "expected reset channel route recovery: {recovered:?}"
                 ));
             }
 
