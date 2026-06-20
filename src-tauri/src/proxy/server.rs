@@ -933,6 +933,32 @@ mod tests {
                 return Err(format!("unexpected provider summary: {runtime_provider}"));
             }
 
+            let configured_route_response = client
+                .get(format!("{base_url}/proxy/v1/apps/claude/routes/current"))
+                .send()
+                .await
+                .map_err(|error| error.to_string())?;
+            if configured_route_response.status() != StatusCode::OK {
+                return Err(format!(
+                    "unexpected configured current route status: {}",
+                    configured_route_response.status()
+                ));
+            }
+            let configured_route = configured_route_response
+                .json::<Value>()
+                .await
+                .map_err(|error| error.to_string())?;
+            if configured_route["appType"] != "claude"
+                || configured_route["active"] != false
+                || !configured_route["target"].is_null()
+                || configured_route["configuredProvider"]["id"] != "runtime-provider"
+                || configured_route.to_string().contains("provider-secret")
+            {
+                return Err(format!(
+                    "unexpected configured current route body: {configured_route}"
+                ));
+            }
+
             let create_response = client
                 .post(format!("{base_url}/proxy/v1/channels"))
                 .json(&json!({
@@ -965,6 +991,46 @@ mod tests {
                 .ok_or_else(|| format!("created channel missing id: {created}"))?;
             if created["authProfileRef"] != "channel-key:primary" {
                 return Err(format!("unexpected created channel body: {created}"));
+            }
+
+            server.state.current_providers.write().await.insert(
+                "claude".to_string(),
+                CurrentRouteTarget {
+                    app_type: "claude".to_string(),
+                    provider_id: "runtime-provider".to_string(),
+                    provider_name: "Runtime Provider".to_string(),
+                    channel_id: Some(channel_id.to_string()),
+                    channel_name: Some("Runtime Relay".to_string()),
+                    interface_kind: Some("openai_responses".to_string()),
+                    public_model: Some("runtime-public".to_string()),
+                    upstream_model: Some("runtime-upstream".to_string()),
+                },
+            );
+
+            let active_route_response = client
+                .get(format!("{base_url}/proxy/v1/apps/claude/routes/current"))
+                .send()
+                .await
+                .map_err(|error| error.to_string())?;
+            if active_route_response.status() != StatusCode::OK {
+                return Err(format!(
+                    "unexpected active current route status: {}",
+                    active_route_response.status()
+                ));
+            }
+            let active_route = active_route_response
+                .json::<Value>()
+                .await
+                .map_err(|error| error.to_string())?;
+            if active_route["active"] != true
+                || active_route["target"]["providerId"] != "runtime-provider"
+                || active_route["target"]["channelId"] != channel_id
+                || active_route["target"]["interfaceKind"] != "openai_responses"
+                || active_route["target"]["publicModel"] != "runtime-public"
+                || active_route["target"]["upstreamModel"] != "runtime-upstream"
+                || active_route.to_string().contains("provider-secret")
+            {
+                return Err(format!("unexpected active current route body: {active_route}"));
             }
 
             let app_channels_response = client
