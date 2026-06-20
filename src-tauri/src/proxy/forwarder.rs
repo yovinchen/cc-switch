@@ -30,15 +30,14 @@ use crate::proxy_core::{
     build_upstream_auth_headers, cache_injection_log_message, categorize_forward_failure,
     classify_copilot_request, claude_transform_endpoint_rewrite_input_from_body,
     contains_image_blocks, interface_kind_for_forward, is_codex_chat_full_endpoint_base,
-    is_github_copilot_upstream, is_openai_o_series, is_socks_proxy_url, is_unsupported_image_error,
+    is_github_copilot_upstream, is_openai_o_series, is_unsupported_image_error,
     merge_copilot_tool_results, normalize_thinking_type, prepare_upstream_request_body_with_report,
     prompt_cache_trace_log_message, rectify_anthropic_request, rectify_thinking_budget,
     replace_image_blocks_with_marker, replace_images_for_text_only_model,
     request_body_filter_log_message, request_model_for_forward, resolve_claude_forward_api_format,
     resolve_copilot_deterministic_interaction_id, resolve_copilot_model_against_ids,
     resolve_copilot_optimizer_session_id, resolve_copilot_request_id_with_fallback,
-    resolve_media_prevention_policy, resolve_upstream_request_transport_policy,
-    resolve_upstream_send_policy, resolved_copilot_dynamic_base_url,
+    resolve_media_prevention_policy, resolved_copilot_dynamic_base_url,
     responses_to_chat_completions_with_options, rewrite_claude_transform_endpoint,
     sanitize_copilot_orphan_tool_results, should_apply_bedrock_pre_send_optimizer,
     should_check_media_retry, should_failover_after_rectifier_retry_failure,
@@ -1930,7 +1929,7 @@ impl RequestForwarder {
                 })
             );
         }
-        let transport_policy = resolve_upstream_request_transport_policy(
+        let transport_policy = crate::proxy_core_adapter::resolve_upstream_request_transport_policy(
             needs_transform,
             codex_responses_to_chat,
             &effective_endpoint,
@@ -2173,13 +2172,17 @@ impl RequestForwarder {
             is_copilot,
             resolved_claude_api_format.as_deref(),
         );
-        let send_policy = resolve_upstream_send_policy(UpstreamSendPolicyInput {
-            is_socks_proxy: is_socks_proxy_url(upstream_proxy_url.as_deref()),
-            preserve_exact_header_case,
-            request_is_streaming,
-            non_streaming_timeout: self.non_streaming_timeout,
-            streaming_first_byte_timeout: self.streaming_first_byte_timeout,
-        });
+        let send_policy = crate::proxy_core_adapter::resolve_upstream_send_policy(
+            UpstreamSendPolicyInput {
+                is_socks_proxy: crate::proxy_core_adapter::is_socks_proxy_url(
+                    upstream_proxy_url.as_deref(),
+                ),
+                preserve_exact_header_case,
+                request_is_streaming,
+                non_streaming_timeout: self.non_streaming_timeout,
+                streaming_first_byte_timeout: self.streaming_first_byte_timeout,
+            },
+        );
 
         // 发送请求
         let response = if matches!(send_policy.transport, UpstreamTransportKind::PooledReqwest) {
@@ -2188,7 +2191,7 @@ impl RequestForwarder {
             log::debug!(
                 "[Forwarder] Using pooled reqwest client (preserve_exact_header_case={}, socks_proxy={})",
                 preserve_exact_header_case,
-                is_socks_proxy_url(upstream_proxy_url.as_deref())
+                crate::proxy_core_adapter::is_socks_proxy_url(upstream_proxy_url.as_deref())
             );
             let client = super::http_client::get();
             let mut request = client.request(method.clone(), &url);
@@ -3180,7 +3183,7 @@ mod tests {
     fn force_identity_for_stream_flag_requests() {
         let headers = HeaderMap::new();
 
-        let policy = resolve_upstream_request_transport_policy(
+        let policy = crate::proxy_core_adapter::resolve_upstream_request_transport_policy(
             false,
             false,
             "/v1/responses",
@@ -3195,7 +3198,7 @@ mod tests {
     fn force_identity_for_gemini_stream_endpoints() {
         let headers = HeaderMap::new();
 
-        let policy = resolve_upstream_request_transport_policy(
+        let policy = crate::proxy_core_adapter::resolve_upstream_request_transport_policy(
             false,
             false,
             "/v1beta/models/gemini-2.5-pro:streamGenerateContent?alt=sse",
@@ -3210,7 +3213,7 @@ mod tests {
     fn streaming_request_detects_gemini_sse_without_body_stream_flag() {
         let headers = HeaderMap::new();
 
-        assert!(crate::proxy_core::is_streaming_upstream_request(
+        assert!(crate::proxy_core_adapter::is_streaming_upstream_request(
             "/v1beta/models/gemini-2.5-pro:streamGenerateContent?alt=sse",
             &json!({ "model": "gemini-2.5-pro" }),
             &headers
@@ -3222,7 +3225,7 @@ mod tests {
         let mut headers = HeaderMap::new();
         headers.insert(ACCEPT, HeaderValue::from_static("text/event-stream"));
 
-        let policy = resolve_upstream_request_transport_policy(
+        let policy = crate::proxy_core_adapter::resolve_upstream_request_transport_policy(
             false,
             false,
             "/v1/responses",
@@ -3237,7 +3240,7 @@ mod tests {
     fn non_streaming_requests_allow_automatic_compression() {
         let headers = HeaderMap::new();
 
-        let policy = resolve_upstream_request_transport_policy(
+        let policy = crate::proxy_core_adapter::resolve_upstream_request_transport_policy(
             false,
             false,
             "/v1/responses",

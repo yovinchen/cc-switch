@@ -14,8 +14,9 @@ use crate::proxy_core::{
     CostCalculator, CurrentRouteProviderSummaryInput, InterfaceKind, ModelCapabilities,
     ModelCatalog, ModelPricing, ModelRoute, ProviderMetadata, ProviderSpec, RetryPolicy,
     ResolvedChannelAttempt, RoutePlan, RouteResolveChannelInput, RouteResolveModelInput,
-    RouteSelection, SessionIdResult, UpstreamEndpoint, UpstreamRequestHeadersInput, UsageRecord,
-    DEFAULT_ROUTE_GROUP,
+    RouteSelection, SessionIdResult, UpstreamEndpoint, UpstreamRequestHeadersInput,
+    UpstreamRequestTransportPolicy, UpstreamSendPolicy, UpstreamSendPolicyInput,
+    UsageRecord, DEFAULT_ROUTE_GROUP,
 };
 use crate::services::usage_stats::is_placeholder_pricing_model;
 use crate::services::stream_check::{HealthStatus, StreamCheckResult};
@@ -404,6 +405,41 @@ pub(crate) fn serialize_upstream_request_body(
     crate::proxy_core::serialize_upstream_request_body(method, body)
 }
 
+pub(crate) fn resolve_upstream_request_transport_policy(
+    needs_transform: bool,
+    codex_responses_to_chat: bool,
+    endpoint: &str,
+    body: &Value,
+    headers: &HeaderMap,
+) -> UpstreamRequestTransportPolicy {
+    crate::proxy_core::resolve_upstream_request_transport_policy(
+        needs_transform,
+        codex_responses_to_chat,
+        endpoint,
+        body,
+        headers,
+    )
+}
+
+#[cfg(test)]
+pub(crate) fn is_streaming_upstream_request(
+    endpoint: &str,
+    body: &Value,
+    headers: &HeaderMap,
+) -> bool {
+    crate::proxy_core::is_streaming_upstream_request(endpoint, body, headers)
+}
+
+pub(crate) fn is_socks_proxy_url(upstream_proxy_url: Option<&str>) -> bool {
+    crate::proxy_core::is_socks_proxy_url(upstream_proxy_url)
+}
+
+pub(crate) fn resolve_upstream_send_policy(
+    input: UpstreamSendPolicyInput,
+) -> UpstreamSendPolicy {
+    crate::proxy_core::resolve_upstream_send_policy(input)
+}
+
 #[cfg(test)]
 pub(crate) fn build_gemini_native_url(base_url: &str, endpoint: &str) -> String {
     crate::proxy_core::build_gemini_native_url(base_url, endpoint)
@@ -677,6 +713,7 @@ mod tests {
     use crate::provider::{AuthBinding, AuthBindingSource, ProviderMeta};
     use crate::proxy_core::{
         GEMINI_SYNTHESIZED_TOOL_CALL_ID_PREFIX, ProviderKind, ProxyCoreError, SessionIdSource,
+        UpstreamTransportKind,
     };
 
     #[test]
@@ -1068,6 +1105,45 @@ mod tests {
             serialize_upstream_request_body(&http::Method::POST, &json!({"model": "x"}))
                 .unwrap(),
             br#"{"model":"x"}"#
+        );
+    }
+
+    #[test]
+    fn upstream_transport_adapter_projects_request_and_send_policy() {
+        let mut headers = HeaderMap::new();
+        headers.insert(
+            http::header::ACCEPT,
+            http::HeaderValue::from_static("text/event-stream"),
+        );
+
+        let request_policy = resolve_upstream_request_transport_policy(
+            false,
+            false,
+            "/v1/responses",
+            &json!({"model": "gpt-5"}),
+            &headers,
+        );
+        assert!(request_policy.is_streaming_request);
+        assert!(request_policy.force_identity_encoding);
+        assert!(is_streaming_upstream_request(
+            "/v1beta/models/gemini-2.5-pro:streamGenerateContent?alt=sse",
+            &json!({"model": "gemini-2.5-pro"}),
+            &HeaderMap::new()
+        ));
+        assert!(is_socks_proxy_url(Some("socks5://127.0.0.1:1080")));
+
+        let send_policy = resolve_upstream_send_policy(UpstreamSendPolicyInput {
+            is_socks_proxy: true,
+            preserve_exact_header_case: true,
+            request_is_streaming: true,
+            non_streaming_timeout: std::time::Duration::from_secs(5),
+            streaming_first_byte_timeout: std::time::Duration::from_secs(1),
+        });
+
+        assert_eq!(send_policy.transport, UpstreamTransportKind::PooledReqwest);
+        assert_eq!(
+            send_policy.streaming_header_timeout,
+            Some(std::time::Duration::from_secs(1))
         );
     }
 
