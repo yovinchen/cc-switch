@@ -630,7 +630,7 @@ pub async fn get_current_proxy_route(
 ) -> Result<Json<CurrentRouteResponse<CurrentRouteTarget>>, ProxyError> {
     let request = ManagementAppPathRequest::from_path(app_type)
         .map_err(management_api_error_to_proxy_error)?;
-    let app = request
+    request
         .app_type
         .parse::<AppType>()
         .map_err(|e| ProxyError::InvalidRequest(e.to_string()))?;
@@ -649,7 +649,7 @@ pub async fn get_current_proxy_route(
             .db
             .get_provider_by_id(&provider_id, &request.app_type)
             .map_err(|e| ProxyError::DatabaseError(e.to_string()))?
-            .map(|provider| proxy_current_route_provider_summary_input(provider, &app)),
+            .map(proxy_current_route_provider_summary_input),
         None => None,
     };
 

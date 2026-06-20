@@ -1156,11 +1156,8 @@ pub(crate) fn proxy_provider_summary_inputs_to_core(
 
 pub(crate) fn proxy_current_route_provider_summary_input(
     provider: Provider,
-    app_type: &AppType,
 ) -> CurrentRouteProviderSummaryInput {
-    CurrentRouteProviderSummaryInput::from_provider_spec(
-        provider.to_proxy_core_provider_spec(app_type),
-    )
+    CurrentRouteProviderSummaryInput::new(provider.id, provider.name, provider.category)
 }
 
 #[allow(dead_code)]
