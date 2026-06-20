@@ -153,10 +153,7 @@ pub fn infer_claude_provider_kind(
         }
     }
 
-    if settings_config
-        .get("auth_mode")
-        .and_then(Value::as_str)
-        == Some("bearer_only")
+    if settings_config.get("auth_mode").and_then(Value::as_str) == Some("bearer_only")
         || settings_config
             .get("env")
             .and_then(|env| env.get("AUTH_MODE"))
@@ -633,6 +630,10 @@ pub struct ResolvedChannelAttempt {
     pub public_model: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub upstream_model: Option<String>,
+    #[serde(default)]
+    pub header_overrides: Value,
+    #[serde(default)]
+    pub param_overrides: Value,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -892,7 +893,9 @@ impl ProxyResponseBody {
         Self::Json(body)
     }
 
-    pub fn stream(stream: impl Stream<Item = Result<Bytes, std::io::Error>> + Send + 'static) -> Self {
+    pub fn stream(
+        stream: impl Stream<Item = Result<Bytes, std::io::Error>> + Send + 'static,
+    ) -> Self {
         Self::Stream(Box::pin(stream))
     }
 
@@ -1164,8 +1167,20 @@ mod tests {
         wrong_model.models[0].upstream_model = "other-upstream".to_string();
         let channels = vec![
             channel("channel-low", "provider-a", ChannelStatus::Enabled, 10, 10),
-            channel("channel-high", "provider-b", ChannelStatus::Enabled, 100, 10),
-            channel("channel-heavier", "provider-c", ChannelStatus::Enabled, 100, 20),
+            channel(
+                "channel-high",
+                "provider-b",
+                ChannelStatus::Enabled,
+                100,
+                10,
+            ),
+            channel(
+                "channel-heavier",
+                "provider-c",
+                ChannelStatus::Enabled,
+                100,
+                20,
+            ),
             channel(
                 "channel-disabled",
                 "provider-a",
@@ -1226,7 +1241,9 @@ mod tests {
             ProxyResponseBody::json(json!({"ok": true})),
         );
 
-        let response = response.into_transport_response().expect("transport response");
+        let response = response
+            .into_transport_response()
+            .expect("transport response");
 
         assert_eq!(response.status, StatusCode::CREATED);
         match response.body {
@@ -1239,9 +1256,8 @@ mod tests {
 
     #[test]
     fn proxy_response_body_keeps_stream_for_transport() {
-        let stream = futures::stream::once(async {
-            Ok::<_, std::io::Error>(Bytes::from_static(b"chunk"))
-        });
+        let stream =
+            futures::stream::once(async { Ok::<_, std::io::Error>(Bytes::from_static(b"chunk")) });
         let body = ProxyResponseBody::stream(stream)
             .into_transport_body()
             .expect("transport body");
@@ -1489,7 +1505,10 @@ mod tests {
             ProviderKind::CodexOAuth.default_endpoint(),
             Some("https://chatgpt.com/backend-api/codex")
         );
-        assert_eq!(ProviderKind::Custom("x".to_string()).default_endpoint(), None);
+        assert_eq!(
+            ProviderKind::Custom("x".to_string()).default_endpoint(),
+            None
+        );
     }
 
     #[test]
@@ -1581,7 +1600,10 @@ mod tests {
             extract_claude_base_url_from_settings(true, &Value::Null).as_deref(),
             Some(CODEX_OAUTH_CLAUDE_BASE_URL)
         );
-        assert_eq!(extract_claude_base_url_from_settings(false, &Value::Null), None);
+        assert_eq!(
+            extract_claude_base_url_from_settings(false, &Value::Null),
+            None
+        );
     }
 
     #[test]

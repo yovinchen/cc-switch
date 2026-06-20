@@ -7,8 +7,8 @@ use crate::app_config::AppType;
 use crate::provider::Provider;
 use crate::proxy_core_adapter::{
     apply_channel_provider_overrides, apply_channel_route_model_override,
-    channel_route_candidate_from_selection, resolved_channel_attempt_from_candidate,
-    ChannelRouteCandidate, ResolvedChannelAttempt, RoutePlan, RouteSelection,
+    channel_route_candidate_from_selection, resolved_channel_attempt_from_selection,
+    ResolvedChannelAttempt, RoutePlan, RouteSelection,
 };
 use serde_json::Value;
 use std::collections::HashMap;
@@ -28,17 +28,20 @@ impl ForwardAttempt {
         }
     }
 
+    #[cfg(test)]
     pub(crate) fn from_channel(
         app_type: &AppType,
         provider: &Provider,
-        candidate: ChannelRouteCandidate,
+        candidate: crate::proxy_core_adapter::ChannelRouteCandidate,
     ) -> Self {
         let mut provider = provider.clone();
         apply_channel_provider_overrides(app_type, &mut provider, &candidate);
 
         Self {
             provider,
-            channel: Some(resolved_channel_attempt_from_candidate(candidate)),
+            channel: Some(
+                crate::proxy_core_adapter::resolved_channel_attempt_from_candidate(candidate),
+            ),
         }
     }
 
@@ -48,8 +51,13 @@ impl ForwardAttempt {
         selection: &RouteSelection,
     ) -> Self {
         let candidate = channel_route_candidate_from_selection(selection);
+        let mut provider = provider.clone();
+        apply_channel_provider_overrides(app_type, &mut provider, &candidate);
 
-        Self::from_channel(app_type, provider, candidate)
+        Self {
+            provider,
+            channel: Some(resolved_channel_attempt_from_selection(selection)),
+        }
     }
 
     pub(crate) fn provider(&self) -> &Provider {
@@ -365,6 +373,23 @@ mod tests {
                 .and_then(Value::as_str),
             Some("https://ch_matching.example.com/v1")
         );
+    }
+
+    #[test]
+    fn channel_attempt_carries_header_and_param_overrides() {
+        let provider = Provider::with_id("p1".to_string(), "Provider".to_string(), json!({}), None);
+        let mut selection = route_selection("p1", "ch_override");
+        selection.channel.overrides = ChannelOverrides {
+            headers: json!({ "x-relay-profile": "manual" }),
+            params: json!({ "api-version": "2026-06-20" }),
+            ..ChannelOverrides::default()
+        };
+
+        let attempt = ForwardAttempt::from_core_selection(&AppType::Claude, &provider, &selection);
+        let channel = attempt.channel().expect("channel attempt");
+
+        assert_eq!(channel.header_overrides["x-relay-profile"], "manual");
+        assert_eq!(channel.param_overrides["api-version"], "2026-06-20");
     }
 
     #[test]

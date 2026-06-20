@@ -1,4 +1,5 @@
 use crate::error::{ProxyCoreError, ProxyCoreResult};
+use serde_json::Value;
 
 const REQUEST_HEADERS_STRIPPED_BEFORE_UPSTREAM: &[&str] = &[
     "content-length",
@@ -52,6 +53,7 @@ pub struct UpstreamRequestHeadersInput<'a> {
     pub inbound_headers: &'a http::HeaderMap,
     pub upstream_host: Option<&'a str>,
     pub auth_headers: &'a [(http::HeaderName, http::HeaderValue)],
+    pub channel_header_overrides: Option<&'a Value>,
     pub force_identity_encoding: bool,
     pub custom_user_agent: Option<&'a http::HeaderValue>,
     pub is_copilot: bool,
@@ -453,6 +455,8 @@ pub fn build_upstream_request_headers(input: UpstreamRequestHeadersInput<'_>) ->
         ordered_headers.insert(name.clone(), value.clone());
     }
 
+    apply_channel_header_overrides(&mut ordered_headers, input.channel_header_overrides);
+
     if input.ensure_json_content_type && !ordered_headers.contains_key(http::header::CONTENT_TYPE) {
         ordered_headers.insert(
             http::header::CONTENT_TYPE,
@@ -461,6 +465,49 @@ pub fn build_upstream_request_headers(input: UpstreamRequestHeadersInput<'_>) ->
     }
 
     ordered_headers
+}
+
+pub fn apply_channel_header_overrides(
+    headers: &mut http::HeaderMap,
+    header_overrides: Option<&Value>,
+) {
+    let Some(overrides) = header_overrides.and_then(Value::as_object) else {
+        return;
+    };
+
+    for (name, value) in overrides {
+        let name = name.trim();
+        if !is_channel_header_override_allowed(name) {
+            continue;
+        }
+        let Ok(name) = http::HeaderName::from_bytes(name.as_bytes()) else {
+            continue;
+        };
+        let Some(value) = scalar_header_value(value) else {
+            continue;
+        };
+        let Ok(value) = http::HeaderValue::from_str(&value) else {
+            continue;
+        };
+
+        headers.insert(name, value);
+    }
+}
+
+fn is_channel_header_override_allowed(name: &str) -> bool {
+    !name.is_empty()
+        && !name.eq_ignore_ascii_case("host")
+        && !is_upstream_auth_header(name)
+        && !should_strip_forwarded_request_header(name)
+}
+
+fn scalar_header_value(value: &Value) -> Option<String> {
+    match value {
+        Value::String(value) => Some(value.clone()),
+        Value::Number(value) => Some(value.to_string()),
+        Value::Bool(value) => Some(value.to_string()),
+        Value::Null | Value::Array(_) | Value::Object(_) => None,
+    }
 }
 
 fn is_upstream_auth_header(name: &str) -> bool {
@@ -531,6 +578,7 @@ mod tests {
     };
     use crate::error::ProxyCoreError;
     use http::{header, HeaderMap, HeaderName, HeaderValue};
+    use serde_json::json;
 
     #[test]
     fn preserves_exact_header_case_for_native_claude_or_unknown_claude_format() {
@@ -596,12 +644,8 @@ mod tests {
 
     #[test]
     fn detects_official_codex_client_user_agent_prefixes() {
-        assert!(is_official_codex_client_user_agent(
-            "codex_vscode/1.0.0"
-        ));
-        assert!(is_official_codex_client_user_agent(
-            "codex_cli_rs/0.5.2"
-        ));
+        assert!(is_official_codex_client_user_agent("codex_vscode/1.0.0"));
+        assert!(is_official_codex_client_user_agent("codex_cli_rs/0.5.2"));
         assert!(is_official_codex_client_user_agent(
             "codex_vscode/1.0.0 extra"
         ));
@@ -620,7 +664,10 @@ mod tests {
 
         assert_eq!(headers.len(), 1);
         assert_eq!(headers[0].0.as_str(), "authorization");
-        assert_eq!(headers[0].1, HeaderValue::from_static("Bearer sk-codex-test"));
+        assert_eq!(
+            headers[0].1,
+            HeaderValue::from_static("Bearer sk-codex-test")
+        );
 
         let error =
             build_codex_bearer_auth_headers("bad\r\nx-evil: 1").expect_err("invalid header");
@@ -643,7 +690,10 @@ mod tests {
             HeaderValue::from_static("Bearer ya29.access-token")
         );
         assert_eq!(oauth_headers[1].0.as_str(), "x-goog-api-client");
-        assert_eq!(oauth_headers[1].1, HeaderValue::from_static("GeminiCLI/1.0"));
+        assert_eq!(
+            oauth_headers[1].1,
+            HeaderValue::from_static("GeminiCLI/1.0")
+        );
 
         let fallback_headers = build_gemini_auth_headers("ya29.raw-token", None, true).unwrap();
         assert_eq!(
@@ -1071,6 +1121,7 @@ mod tests {
             inbound_headers: &inbound,
             upstream_host: Some("api.example.com"),
             auth_headers: &auth_headers,
+            channel_header_overrides: None,
             force_identity_encoding: false,
             custom_user_agent: None,
             is_copilot: false,
@@ -1088,12 +1139,68 @@ mod tests {
             headers.get(header::AUTHORIZATION),
             Some(&HeaderValue::from_static("Bearer upstream"))
         );
-        assert_eq!(headers.get("x-keep"), Some(&HeaderValue::from_static("keep")));
+        assert_eq!(
+            headers.get("x-keep"),
+            Some(&HeaderValue::from_static("keep"))
+        );
         assert!(headers.get(header::CONTENT_LENGTH).is_none());
         assert!(headers.get("x-request-id").is_none());
         assert_eq!(
             headers.get(header::CONTENT_TYPE),
             Some(&HeaderValue::from_static("application/json"))
+        );
+    }
+
+    #[test]
+    fn channel_header_overrides_apply_without_overriding_auth_or_host() {
+        let mut inbound = HeaderMap::new();
+        inbound.insert("host", HeaderValue::from_static("localhost:3456"));
+        inbound.insert("authorization", HeaderValue::from_static("Bearer inbound"));
+        inbound.insert("x-keep", HeaderValue::from_static("keep"));
+        let auth_headers = vec![(
+            HeaderName::from_static("authorization"),
+            HeaderValue::from_static("Bearer upstream"),
+        )];
+        let overrides = json!({
+            "host": "evil.example.com",
+            "authorization": "Bearer evil",
+            "x-api-key": "evil-key",
+            "x-request-id": "trace-override",
+            "x-relay-profile": "manual",
+            "content-type": "application/x-ndjson"
+        });
+
+        let headers = build_upstream_request_headers(UpstreamRequestHeadersInput {
+            inbound_headers: &inbound,
+            upstream_host: Some("api.example.com"),
+            auth_headers: &auth_headers,
+            channel_header_overrides: Some(&overrides),
+            force_identity_encoding: false,
+            custom_user_agent: None,
+            is_copilot: false,
+            should_send_anthropic_headers: false,
+            anthropic_beta_value: None,
+            codex_oauth_session_headers: &[],
+            ensure_json_content_type: true,
+        });
+
+        assert_eq!(
+            headers.get(header::HOST),
+            Some(&HeaderValue::from_static("api.example.com"))
+        );
+        assert_eq!(
+            headers.get(header::AUTHORIZATION),
+            Some(&HeaderValue::from_static("Bearer upstream"))
+        );
+        assert!(headers.get("x-api-key").is_none());
+        assert!(headers.get("x-request-id").is_none());
+        assert_eq!(
+            headers.get("x-relay-profile"),
+            Some(&HeaderValue::from_static("manual"))
+        );
+        assert_eq!(
+            headers.get(header::CONTENT_TYPE),
+            Some(&HeaderValue::from_static("application/x-ndjson"))
         );
     }
 
@@ -1123,6 +1230,7 @@ mod tests {
             inbound_headers: &inbound,
             upstream_host: None,
             auth_headers: &[],
+            channel_header_overrides: None,
             force_identity_encoding: true,
             custom_user_agent: Some(&custom_user_agent),
             is_copilot: false,
@@ -1162,6 +1270,7 @@ mod tests {
             inbound_headers: &inbound,
             upstream_host: None,
             auth_headers: &[],
+            channel_header_overrides: None,
             force_identity_encoding: false,
             custom_user_agent: Some(&HeaderValue::from_static("ignored-for-copilot")),
             is_copilot: true,
@@ -1173,7 +1282,10 @@ mod tests {
 
         assert!(headers.get(header::USER_AGENT).is_none());
         assert!(headers.get("x-agent-task-id").is_none());
-        assert_eq!(headers.get("x-safe"), Some(&HeaderValue::from_static("safe")));
+        assert_eq!(
+            headers.get("x-safe"),
+            Some(&HeaderValue::from_static("safe"))
+        );
         assert_eq!(
             headers.get("session_id"),
             Some(&HeaderValue::from_static("session-123"))

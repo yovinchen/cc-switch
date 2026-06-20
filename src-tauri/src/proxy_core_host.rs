@@ -1268,6 +1268,8 @@ mod tests {
                 interface_kind: "openai_responses".to_string(),
                 public_model: Some("sonnet".to_string()),
                 upstream_model: Some("upstream-sonnet".to_string()),
+                header_overrides: json!({}),
+                param_overrides: json!({}),
             }),
             connection_guard: None,
         };

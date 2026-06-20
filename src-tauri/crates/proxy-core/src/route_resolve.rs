@@ -98,6 +98,29 @@ pub fn resolved_channel_attempt_from_candidate(
         interface_kind: candidate.interface_kind,
         public_model: candidate.public_model,
         upstream_model: candidate.upstream_model,
+        header_overrides: Value::Object(Default::default()),
+        param_overrides: Value::Object(Default::default()),
+    }
+}
+
+pub fn resolved_channel_attempt_from_selection(
+    selection: &RouteSelection,
+) -> ResolvedChannelAttempt {
+    ResolvedChannelAttempt {
+        channel_id: selection.channel.id.clone(),
+        channel_name: selection.channel.name.clone(),
+        base_url: selection.channel.endpoint.base_url.clone(),
+        interface_kind: selection.channel.interface.as_str().to_string(),
+        public_model: selection
+            .model_route
+            .as_ref()
+            .map(|route| route.public_model.clone()),
+        upstream_model: selection
+            .model_route
+            .as_ref()
+            .map(|route| route.upstream_model.clone()),
+        header_overrides: selection.channel.overrides.headers.clone(),
+        param_overrides: selection.channel.overrides.params.clone(),
     }
 }
 
@@ -545,10 +568,8 @@ mod tests {
 
     #[test]
     fn builds_route_input_from_channel_spec() {
-        let input = RouteResolveChannelInput::from_channel_spec(
-            selection().channel,
-            "legacy_endpoint",
-        );
+        let input =
+            RouteResolveChannelInput::from_channel_spec(selection().channel, "legacy_endpoint");
 
         assert_eq!(input.channel_id, "channel-a");
         assert_eq!(input.provider_id, "provider-a");
@@ -605,15 +626,21 @@ mod tests {
         apply_channel_provider_settings_overrides(&mut settings, &plan);
 
         assert_eq!(
-            settings.pointer("/env/ANTHROPIC_BASE_URL").and_then(Value::as_str),
+            settings
+                .pointer("/env/ANTHROPIC_BASE_URL")
+                .and_then(Value::as_str),
             Some("https://relay.example.com/v1")
         );
         assert_eq!(
-            settings.pointer("/env/ANTHROPIC_MODEL").and_then(Value::as_str),
+            settings
+                .pointer("/env/ANTHROPIC_MODEL")
+                .and_then(Value::as_str),
             Some("upstream-sonnet")
         );
         assert_eq!(
-            settings.pointer("/env/ANTHROPIC_API_KEY").and_then(Value::as_str),
+            settings
+                .pointer("/env/ANTHROPIC_API_KEY")
+                .and_then(Value::as_str),
             Some("keep-key")
         );
     }
@@ -650,10 +677,8 @@ mod tests {
         );
         assert_eq!(plan.api_format.as_deref(), Some("openai_responses"));
 
-        let opencode_plan = channel_provider_override_plan(
-            &AppKind::Custom("opencode".to_string()),
-            &candidate,
-        );
+        let opencode_plan =
+            channel_provider_override_plan(&AppKind::Custom("opencode".to_string()), &candidate);
         assert_eq!(opencode_plan, plan);
     }
 

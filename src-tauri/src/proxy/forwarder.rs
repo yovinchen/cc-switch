@@ -1831,7 +1831,7 @@ impl RequestForwarder {
         let codex_chat_base_is_full_endpoint =
             is_codex_chat_full_endpoint_base(codex_responses_to_chat, &base_url);
 
-        let url = if matches!(resolved_claude_api_format.as_deref(), Some("gemini_native")) {
+        let mut url = if matches!(resolved_claude_api_format.as_deref(), Some("gemini_native")) {
             crate::proxy_core_adapter::resolve_gemini_native_url(
                 &base_url,
                 &effective_endpoint,
@@ -1842,6 +1842,12 @@ impl RequestForwarder {
         } else {
             adapter.build_url(&base_url, &effective_endpoint)
         };
+        if let Some(channel) = attempt.channel() {
+            url = crate::proxy_core_adapter::apply_channel_param_overrides_to_url(
+                &url,
+                &channel.param_overrides,
+            );
+        }
 
         // 记录映射后的出站模型名（此时 mapped_body 已完成接管映射 / [1m] 剥离 /
         // Copilot 归一化）。格式转换后若 body 仍带 model 字段会在下方刷新覆盖；
@@ -2125,6 +2131,9 @@ impl RequestForwarder {
                 inbound_headers: headers,
                 upstream_host: upstream_host.as_deref(),
                 auth_headers: &auth_headers,
+                channel_header_overrides: attempt
+                    .channel()
+                    .map(|channel| &channel.header_overrides),
                 force_identity_encoding,
                 custom_user_agent: custom_user_agent.as_ref(),
                 is_copilot,

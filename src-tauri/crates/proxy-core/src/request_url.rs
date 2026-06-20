@@ -3,6 +3,7 @@ use crate::{
     gemini_url::normalize_gemini_model_id,
 };
 use serde_json::Value;
+use std::fmt::Write as _;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct EndpointRewrite {
@@ -37,10 +38,7 @@ pub fn claude_transform_endpoint_rewrite_input_from_body<'a>(
             .and_then(Value::as_str)
             .unwrap_or("unknown");
         let model = normalize_gemini_model_id(model);
-        let is_stream = body
-            .get("stream")
-            .and_then(Value::as_bool)
-            .unwrap_or(false);
+        let is_stream = body.get("stream").and_then(Value::as_bool).unwrap_or(false);
         (Some(model), is_stream)
     } else {
         (None, false)
@@ -107,6 +105,86 @@ pub fn append_query_to_full_url(base_url: &str, query: Option<&str>) -> String {
         }
         _ => base_url.to_string(),
     }
+}
+
+pub fn apply_channel_param_overrides_to_url(url: &str, param_overrides: &Value) -> String {
+    let override_pairs = channel_param_override_pairs(param_overrides);
+    if override_pairs.is_empty() {
+        return url.to_string();
+    }
+
+    let (base, existing_query) = split_endpoint_and_query(url);
+    let override_keys = override_pairs
+        .iter()
+        .map(|(key, _)| key.as_str())
+        .collect::<Vec<_>>();
+    let mut params = existing_query
+        .into_iter()
+        .flat_map(|query| query.split('&'))
+        .filter(|pair| !pair.is_empty())
+        .filter(|pair| {
+            let existing_key = pair.split_once('=').map_or(*pair, |(key, _)| key);
+            !override_keys.iter().any(|key| *key == existing_key)
+        })
+        .map(ToString::to_string)
+        .collect::<Vec<_>>();
+
+    params.extend(
+        override_pairs
+            .into_iter()
+            .map(|(key, value)| format!("{key}={value}")),
+    );
+
+    if params.is_empty() {
+        base.to_string()
+    } else {
+        format!("{base}?{}", params.join("&"))
+    }
+}
+
+fn channel_param_override_pairs(param_overrides: &Value) -> Vec<(String, String)> {
+    param_overrides
+        .as_object()
+        .into_iter()
+        .flat_map(|params| params.iter())
+        .filter_map(|(key, value)| {
+            let key = key.trim();
+            if key.is_empty() {
+                return None;
+            }
+
+            scalar_query_value(value).map(|value| {
+                (
+                    percent_encode_query_component(key),
+                    percent_encode_query_component(&value),
+                )
+            })
+        })
+        .collect()
+}
+
+fn scalar_query_value(value: &Value) -> Option<String> {
+    match value {
+        Value::String(value) => Some(value.clone()),
+        Value::Number(value) => Some(value.to_string()),
+        Value::Bool(value) => Some(value.to_string()),
+        Value::Null | Value::Array(_) | Value::Object(_) => None,
+    }
+}
+
+fn percent_encode_query_component(value: &str) -> String {
+    let mut encoded = String::with_capacity(value.len());
+    for byte in value.as_bytes() {
+        match *byte {
+            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'.' | b'_' | b'~' => {
+                encoded.push(*byte as char);
+            }
+            byte => {
+                let _ = write!(encoded, "%{byte:02X}");
+            }
+        }
+    }
+    encoded
 }
 
 pub fn append_query_to_endpoint_path(endpoint: &str, query: Option<&str>) -> String {
@@ -296,10 +374,7 @@ pub fn is_codex_chat_completions_url(value: &str) -> bool {
         .ends_with("/chat/completions")
 }
 
-pub fn is_codex_chat_full_endpoint_base(
-    codex_responses_to_chat: bool,
-    base_url: &str,
-) -> bool {
+pub fn is_codex_chat_full_endpoint_base(codex_responses_to_chat: bool, base_url: &str) -> bool {
     codex_responses_to_chat && is_codex_chat_completions_url(base_url)
 }
 
@@ -350,11 +425,7 @@ pub fn resolve_codex_provider_uses_chat_completions(
         .unwrap_or(false)
 }
 
-pub fn request_model_for_forward(
-    app: &AppKind,
-    endpoint: &str,
-    body: &Value,
-) -> Option<String> {
+pub fn request_model_for_forward(app: &AppKind, endpoint: &str, body: &Value) -> Option<String> {
     if matches!(app, AppKind::Gemini) {
         return extract_gemini_model_from_path(endpoint);
     }
@@ -399,17 +470,17 @@ fn is_openai_compatible_custom_app(value: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::{
-        append_query_to_endpoint_path, append_query_to_full_url, extract_gemini_model_from_path,
-        build_claude_upstream_url, build_codex_upstream_url, interface_kind_for_forward,
-        is_codex_chat_completions_url, is_codex_chat_full_endpoint_base,
-        is_codex_chat_wire_api, is_codex_responses_endpoint, is_github_copilot_upstream,
-        is_origin_only_url, merge_query_params, request_model_for_forward,
-        resolved_copilot_dynamic_base_url,
-        rewrite_claude_transform_endpoint, rewrite_codex_responses_endpoint_to_chat,
-        resolve_codex_provider_uses_chat_completions, should_convert_codex_responses_endpoint_to_chat,
+        append_query_to_endpoint_path, append_query_to_full_url,
+        apply_channel_param_overrides_to_url, build_claude_upstream_url, build_codex_upstream_url,
+        claude_transform_endpoint_rewrite_input_from_body, extract_gemini_model_from_path,
+        interface_kind_for_forward, is_codex_chat_completions_url,
+        is_codex_chat_full_endpoint_base, is_codex_chat_wire_api, is_codex_responses_endpoint,
+        is_github_copilot_upstream, is_origin_only_url, merge_query_params,
+        request_model_for_forward, resolve_codex_provider_uses_chat_completions,
+        resolved_copilot_dynamic_base_url, rewrite_claude_transform_endpoint,
+        rewrite_codex_responses_endpoint_to_chat, should_convert_codex_responses_endpoint_to_chat,
         should_resolve_copilot_dynamic_endpoint, split_endpoint_and_query, strip_beta_query,
-        strip_endpoint_prefix, AppKind,
-        ClaudeTransformEndpointRewriteInput, claude_transform_endpoint_rewrite_input_from_body,
+        strip_endpoint_prefix, AppKind, ClaudeTransformEndpointRewriteInput,
     };
     use crate::domain::CODEX_OAUTH_CLAUDE_BASE_URL;
     use serde_json::json;
@@ -420,7 +491,10 @@ mod tests {
             split_endpoint_and_query("/v1/messages?beta=true&x-id=1"),
             ("/v1/messages", Some("beta=true&x-id=1"))
         );
-        assert_eq!(split_endpoint_and_query("/v1/messages"), ("/v1/messages", None));
+        assert_eq!(
+            split_endpoint_and_query("/v1/messages"),
+            ("/v1/messages", None)
+        );
     }
 
     #[test]
@@ -440,7 +514,10 @@ mod tests {
             Some("x-id=1&foo=bar&alt=sse".to_string())
         );
         assert_eq!(merge_query_params(Some("alt=json"), None), None);
-        assert_eq!(merge_query_params(None, Some("alt=sse")), Some("alt=sse".to_string()));
+        assert_eq!(
+            merge_query_params(None, Some("alt=sse")),
+            Some("alt=sse".to_string())
+        );
     }
 
     #[test]
@@ -460,6 +537,29 @@ mod tests {
     }
 
     #[test]
+    fn channel_param_overrides_merge_into_upstream_url() {
+        let url = apply_channel_param_overrides_to_url(
+            "https://relay.example/api?api-version=old&keep=1",
+            &json!({
+                "api-version": "2026-06-20",
+                "mode": "fast lane",
+                "enabled": true,
+                "skip": null,
+                "nested": { "ignored": true }
+            }),
+        );
+
+        assert_eq!(
+            url,
+            "https://relay.example/api?keep=1&api-version=2026-06-20&mode=fast%20lane&enabled=true"
+        );
+        assert_eq!(
+            apply_channel_param_overrides_to_url("https://relay.example/api", &json!({})),
+            "https://relay.example/api"
+        );
+    }
+
+    #[test]
     fn append_query_to_endpoint_path_preserves_client_query() {
         assert_eq!(
             append_query_to_endpoint_path("/responses", Some("stream=false&x-id=1")),
@@ -469,14 +569,23 @@ mod tests {
             append_query_to_endpoint_path("/responses?existing=true", Some("x-id=1")),
             "/responses?existing=true&x-id=1"
         );
-        assert_eq!(append_query_to_endpoint_path("/responses/compact", None), "/responses/compact");
-        assert_eq!(append_query_to_endpoint_path("/responses", Some("")), "/responses?");
+        assert_eq!(
+            append_query_to_endpoint_path("/responses/compact", None),
+            "/responses/compact"
+        );
+        assert_eq!(
+            append_query_to_endpoint_path("/responses", Some("")),
+            "/responses?"
+        );
     }
 
     #[test]
     fn strip_endpoint_prefix_preserves_suffix_and_query() {
         assert_eq!(
-            strip_endpoint_prefix("/claude-desktop/v1/messages?x-id=1", Some("/claude-desktop")),
+            strip_endpoint_prefix(
+                "/claude-desktop/v1/messages?x-id=1",
+                Some("/claude-desktop")
+            ),
             "/v1/messages?x-id=1"
         );
         assert_eq!(
@@ -769,10 +878,8 @@ mod tests {
             Some("gemini-pro"),
         );
         assert_eq!(
-            extract_gemini_model_from_path(
-                "/v1beta/models/gemini-1.5-flash:streamGenerateContent"
-            )
-            .as_deref(),
+            extract_gemini_model_from_path("/v1beta/models/gemini-1.5-flash:streamGenerateContent")
+                .as_deref(),
             Some("gemini-1.5-flash"),
         );
         assert_eq!(

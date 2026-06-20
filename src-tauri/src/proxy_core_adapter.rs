@@ -1290,10 +1290,27 @@ pub(crate) fn channel_route_candidate_from_selection(
     )
 }
 
+#[cfg(test)]
 pub(crate) fn resolved_channel_attempt_from_candidate(
     candidate: ChannelRouteCandidate,
 ) -> ResolvedChannelAttempt {
     crate::proxy_core::api::routing::resolved_channel_attempt_from_candidate(candidate)
+}
+
+pub(crate) fn resolved_channel_attempt_from_selection(
+    selection: &RouteSelection,
+) -> ResolvedChannelAttempt {
+    crate::proxy_core::api::routing::resolved_channel_attempt_from_selection(selection)
+}
+
+pub(crate) fn apply_channel_param_overrides_to_url(
+    url: &str,
+    param_overrides: &Value,
+) -> String {
+    crate::proxy_core::api::transport::apply_channel_param_overrides_to_url(
+        url,
+        param_overrides,
+    )
 }
 
 pub(crate) fn proxy_core_error_is_unavailable(error: &ProxyCoreError) -> bool {
@@ -3335,6 +3352,7 @@ mod tests {
             inbound_headers: &inbound_headers,
             upstream_host: Some("upstream.example"),
             auth_headers: &auth_headers,
+            channel_header_overrides: None,
             force_identity_encoding: true,
             custom_user_agent: None,
             is_copilot: false,
