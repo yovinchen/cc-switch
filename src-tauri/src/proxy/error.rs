@@ -1,4 +1,4 @@
-use crate::proxy_core::{proxy_error_http_status_code, ProxyErrorStatusKind};
+use crate::proxy_core_adapter::{proxy_error_http_status_code, ProxyErrorStatusKind};
 use axum::{
     http::StatusCode,
     response::{IntoResponse, Response},

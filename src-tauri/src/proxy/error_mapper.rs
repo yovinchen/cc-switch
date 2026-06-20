@@ -6,9 +6,11 @@ use super::{error::ProxyError, ForwardError};
 use crate::proxy::error::proxy_error_status_kind;
 use crate::proxy_core::{
     codex_proxy_error_code, codex_proxy_error_response as core_codex_proxy_error_response,
-    proxy_error_http_status_code, ClaudeDesktopGatewayAuthError, CodexProxyErrorContext,
-    CodexProxyErrorKind, ForwardFailureKind, ManagementAuthError, ProxyCoreError,
-    ProxyCoreResponse, ProxyCoreResult,
+    CodexProxyErrorContext, CodexProxyErrorKind, ForwardFailureKind, ManagementAuthError,
+    ProxyCoreError, ProxyCoreResponse, ProxyCoreResult,
+};
+use crate::proxy_core_adapter::{
+    proxy_error_http_status_code, ClaudeDesktopGatewayAuthError,
 };
 #[cfg(test)]
 use serde_json::Value;

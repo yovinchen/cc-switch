@@ -32,11 +32,17 @@ pub(crate) fn synthesize_gemini_tool_call_id_with_uuid() -> String {
 pub(crate) type ClaudeDesktopGatewayAuthError =
     crate::proxy_core::ClaudeDesktopGatewayAuthError;
 
+pub(crate) type ProxyErrorStatusKind = crate::proxy_core::ProxyErrorStatusKind;
+
 pub(crate) fn validate_claude_desktop_gateway_bearer_header(
     headers: &HeaderMap,
     expected_token: &str,
 ) -> Result<(), ClaudeDesktopGatewayAuthError> {
     crate::proxy_core::validate_claude_desktop_gateway_bearer_header(headers, expected_token)
+}
+
+pub(crate) fn proxy_error_http_status_code(kind: ProxyErrorStatusKind) -> u16 {
+    crate::proxy_core::proxy_error_http_status_code(kind)
 }
 
 pub(crate) const SYSTEM_PROXY_ENV_KEYS: [&str; 6] =
@@ -881,6 +887,22 @@ mod tests {
         assert_eq!(
             validate_claude_desktop_gateway_bearer_header(&headers, "wrong-token").unwrap_err(),
             ClaudeDesktopGatewayAuthError::InvalidToken
+        );
+    }
+
+    #[test]
+    fn proxy_error_status_adapter_projects_http_contract() {
+        assert_eq!(
+            proxy_error_http_status_code(ProxyErrorStatusKind::ForwardFailed),
+            502
+        );
+        assert_eq!(
+            proxy_error_http_status_code(ProxyErrorStatusKind::AuthError),
+            401
+        );
+        assert_eq!(
+            proxy_error_http_status_code(ProxyErrorStatusKind::UpstreamError(42)),
+            502
         );
     }
 
