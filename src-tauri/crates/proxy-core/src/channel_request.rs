@@ -1,7 +1,7 @@
 use super::domain::{parse_auth_profile_ref, DEFAULT_ROUTE_GROUP};
 use super::ports::{
     ProxyChannelKeyPatchRequest, ProxyChannelKeyWriteRequest, ProxyChannelModelWriteRequest,
-    ProxyChannelModelsReplaceRequest, ProxyChannelWriteRequest,
+    ProxyChannelModelsReplaceRequest, ProxyChannelPatchRequest, ProxyChannelWriteRequest,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
@@ -52,6 +52,27 @@ pub fn validate_proxy_channel_write_request_fields(
     for model in &request.models {
         validate_proxy_channel_model_write_request_fields(model)?;
     }
+    Ok(())
+}
+
+pub fn validate_proxy_channel_patch_request_fields(
+    request: &ProxyChannelPatchRequest,
+) -> Result<(), ChannelRequestValidationError> {
+    if let Some(name) = request.name.as_deref() {
+        normalize_required_channel_string(name, "name")?;
+    }
+    if let Some(status) = request.status.as_deref() {
+        normalize_required_channel_string(status, "status")?;
+    }
+    if let Some(base_url) = request.base_url.as_deref() {
+        if normalize_channel_base_url(base_url).is_empty() {
+            return Err(ChannelRequestValidationError::required("baseUrl"));
+        }
+    }
+    if let Some(interface_kind) = request.interface_kind.as_deref() {
+        normalize_required_channel_string(interface_kind, "interfaceKind")?;
+    }
+    validate_optional_channel_auth_profile_ref(request.auth_profile_ref.as_deref())?;
     Ok(())
 }
 
@@ -179,11 +200,12 @@ mod tests {
         validate_proxy_channel_models_replace_request_fields,
         validate_proxy_channel_key_patch_request_fields,
         validate_proxy_channel_key_write_request_fields,
+        validate_proxy_channel_patch_request_fields,
         validate_proxy_channel_write_request_fields,
     };
     use crate::ports::{
         ProxyChannelKeyPatchRequest, ProxyChannelKeyWriteRequest, ProxyChannelModelWriteRequest,
-        ProxyChannelModelsReplaceRequest, ProxyChannelWriteRequest,
+        ProxyChannelModelsReplaceRequest, ProxyChannelPatchRequest, ProxyChannelWriteRequest,
     };
     use serde_json::json;
 
@@ -293,6 +315,36 @@ mod tests {
                 .unwrap_err()
                 .message,
             "baseUrl cannot be empty"
+        );
+    }
+
+    #[test]
+    fn patch_request_validation_checks_present_fields_only() {
+        validate_proxy_channel_patch_request_fields(&ProxyChannelPatchRequest {
+            name: Some(" Relay ".to_string()),
+            base_url: Some(" https://relay.example.com/v1/ ".to_string()),
+            auth_profile_ref: Some("channel-key:primary".to_string()),
+            ..Default::default()
+        })
+        .unwrap();
+
+        assert_eq!(
+            validate_proxy_channel_patch_request_fields(&ProxyChannelPatchRequest {
+                base_url: Some(" ".to_string()),
+                ..Default::default()
+            })
+            .unwrap_err()
+            .message,
+            "baseUrl cannot be empty"
+        );
+        assert_eq!(
+            validate_proxy_channel_patch_request_fields(&ProxyChannelPatchRequest {
+                auth_profile_ref: Some("provider:claude: ".to_string()),
+                ..Default::default()
+            })
+            .unwrap_err()
+            .message,
+            "authProfileRef must be provider:<app>:<providerId> or channel-key:<keyRef>"
         );
     }
 

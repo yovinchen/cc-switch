@@ -21,6 +21,7 @@ use crate::proxy_core_adapter::{
     validate_proxy_channel_key_write_request_fields,
     validate_proxy_channel_model_write_request_fields,
     validate_proxy_channel_models_replace_request_fields,
+    validate_proxy_channel_patch_request_fields,
     validate_proxy_channel_write_request_fields,
     ChannelHealthUpdateInput, ChannelRequestValidationError, LegacyChannelModelProjection,
     LegacyChannelProjection, LegacyChannelProjectionInput, LegacyModelRouteInput,
@@ -472,6 +473,8 @@ impl Database {
         let Some(mut current) = get_proxy_channel_on_conn(&conn, channel_id)? else {
             return Ok(None);
         };
+        validate_proxy_channel_patch_request_fields(&patch)
+            .map_err(channel_request_error_to_app_error)?;
 
         if let Some(name) = patch.name {
             current.name = normalize_required_string(&name, "name")?;

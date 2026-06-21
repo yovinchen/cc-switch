@@ -1100,6 +1100,12 @@ pub(crate) fn validate_proxy_channel_write_request_fields(
     crate::proxy_core::api::routing::validate_proxy_channel_write_request_fields(request)
 }
 
+pub(crate) fn validate_proxy_channel_patch_request_fields(
+    request: &ProxyChannelPatchRequest,
+) -> Result<(), ChannelRequestValidationError> {
+    crate::proxy_core::api::routing::validate_proxy_channel_patch_request_fields(request)
+}
+
 pub(crate) fn validate_proxy_channel_model_write_request_fields(
     model: &ProxyChannelModelWriteRequest,
 ) -> Result<(), ChannelRequestValidationError> {
