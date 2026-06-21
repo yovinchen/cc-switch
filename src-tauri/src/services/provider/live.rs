@@ -13,6 +13,7 @@ use crate::config::{delete_file, get_claude_settings_path, read_json_file, write
 use crate::database::Database;
 use crate::error::AppError;
 use crate::provider::Provider;
+use crate::proxy_core_adapter::provider_model_catalog_raw_value;
 use crate::services::mcp::McpService;
 use crate::store::AppState;
 
@@ -616,7 +617,7 @@ fn restore_live_settings_for_provider_backfill(
     // absent. Never let a switch-away backfill from Live erase the stored
     // mapping: prefer the DB provider's `modelCatalog`, falling back to whatever
     // Live reconstructed only when the DB has none.
-    if let Some(stored_catalog) = provider.settings_config.get("modelCatalog") {
+    if let Some(stored_catalog) = provider_model_catalog_raw_value(provider) {
         if let Some(obj) = settings.as_object_mut() {
             obj.insert("modelCatalog".to_string(), stored_catalog.clone());
         }

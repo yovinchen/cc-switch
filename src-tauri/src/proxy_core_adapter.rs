@@ -2507,6 +2507,10 @@ pub(crate) fn provider_model_catalog_from_provider(
     )
 }
 
+pub(crate) fn provider_model_catalog_raw_value(provider: &Provider) -> Option<&Value> {
+    provider.settings_config.get("modelCatalog")
+}
+
 pub(crate) fn client_model_catalog_from_optional_raw(
     app: &AppKind,
     raw: Option<Value>,
@@ -6485,6 +6489,10 @@ wire_api = "chat"
         assert_eq!(
             provider_model_catalog_from_provider("provider-a", Some(&provider)).models,
             provider_catalog.models
+        );
+        assert_eq!(
+            provider_model_catalog_raw_value(&provider),
+            settings.get("modelCatalog")
         );
 
         let client_catalog = client_model_catalog_from_optional_raw(
