@@ -17,8 +17,10 @@ use crate::database::{validate_cost_multiplier, validate_pricing_source};
 use crate::error::AppError;
 use crate::provider::{Provider, UsageResult};
 use crate::proxy_core_adapter::{
-    codex_config_text_from_settings, gemini_env_map_from_settings, provider_codex_validation_parts,
-    should_block_proxy_switch_to_provider_category, CodexProviderValidationIssue,
+    codex_api_key_from_auth_and_config, codex_auth_object_value_from_settings,
+    codex_config_text_from_settings, gemini_env_map_from_settings,
+    provider_codex_validation_parts, should_block_proxy_switch_to_provider_category,
+    CodexProviderValidationIssue,
 };
 use crate::services::mcp::McpService;
 use crate::settings::CustomEndpoint;
@@ -392,6 +394,25 @@ mod tests {
             ProviderService::extract_credentials(&provider, &AppType::Claude).unwrap();
         assert_eq!(api_key, "token");
         assert_eq!(base_url, "https://claude.example");
+    }
+
+    #[test]
+    fn extract_codex_credentials_uses_auth_and_config_text() {
+        let provider = Provider::with_id(
+            "codex".into(),
+            "Codex".into(),
+            json!({
+                "auth": {
+                    "OPENAI_API_KEY": "sk-test"
+                },
+                "config": "base_url = \"https://codex.example/v1\"\n"
+            }),
+            None,
+        );
+        let (api_key, base_url) =
+            ProviderService::extract_credentials(&provider, &AppType::Codex).unwrap();
+        assert_eq!(api_key, "sk-test");
+        assert_eq!(base_url, "https://codex.example/v1");
     }
 
     #[test]
@@ -2481,10 +2502,7 @@ impl ProviderService {
                 Ok((credentials.api_key, credentials.base_url))
             }
             AppType::Codex => {
-                let _auth = provider
-                    .settings_config
-                    .get("auth")
-                    .and_then(|v| v.as_object())
+                let auth = codex_auth_object_value_from_settings(&provider.settings_config)
                     .ok_or_else(|| {
                         AppError::localized(
                             "provider.codex.auth.missing",
@@ -2493,23 +2511,17 @@ impl ProviderService {
                         )
                     })?;
 
-                let config_toml = provider
-                    .settings_config
-                    .get("config")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("");
+                let config_toml =
+                    codex_config_text_from_settings(&provider.settings_config).unwrap_or("");
 
-                let api_key = crate::codex_config::extract_codex_api_key(
-                    provider.settings_config.get("auth"),
-                    Some(config_toml),
-                )
-                .ok_or_else(|| {
-                    AppError::localized(
-                        "provider.codex.api_key.missing",
-                        "缺少 API Key",
-                        "API key is missing",
-                    )
-                })?;
+                let api_key = codex_api_key_from_auth_and_config(Some(auth), Some(config_toml))
+                    .ok_or_else(|| {
+                        AppError::localized(
+                            "provider.codex.api_key.missing",
+                            "缺少 API Key",
+                            "API key is missing",
+                        )
+                    })?;
 
                 let base_url = if config_toml.contains("base_url") {
                     let re = Regex::new(r#"base_url\s*=\s*["']([^"']+)["']"#).map_err(|e| {

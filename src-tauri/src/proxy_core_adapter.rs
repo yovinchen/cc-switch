@@ -1304,6 +1304,19 @@ pub(crate) fn provider_codex_api_key(provider: &Provider) -> Option<String> {
     None
 }
 
+pub(crate) fn codex_auth_object_value_from_settings(settings: &Value) -> Option<&Value> {
+    let auth = settings.get("auth")?;
+    auth.as_object()?;
+    Some(auth)
+}
+
+pub(crate) fn codex_api_key_from_auth_and_config(
+    auth: Option<&Value>,
+    config_text: Option<&str>,
+) -> Option<String> {
+    crate::codex_config::extract_codex_api_key(auth, config_text)
+}
+
 pub(crate) fn provider_codex_base_url(provider: &Provider) -> Option<String> {
     if let Some(url) = provider
         .settings_config
@@ -5483,6 +5496,14 @@ mod tests {
         );
         assert_eq!(codex_config_text_from_settings(&json!({"config": 42})), None);
         assert_eq!(codex_config_text_from_settings(&json!({})), None);
+        let codex_auth_settings = json!({"auth": {"OPENAI_API_KEY": "sk-auth"}});
+        let auth = codex_auth_object_value_from_settings(&codex_auth_settings)
+            .expect("codex auth object");
+        assert_eq!(
+            codex_api_key_from_auth_and_config(Some(auth), Some("")).as_deref(),
+            Some("sk-auth")
+        );
+        assert!(codex_auth_object_value_from_settings(&json!({"auth": "sk-auth"})).is_none());
         let official_live_provider = Provider::with_id(
             "codex-live-official".to_string(),
             "Codex Live Official".to_string(),
