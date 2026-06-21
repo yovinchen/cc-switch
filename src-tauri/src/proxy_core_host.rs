@@ -12,7 +12,7 @@ use crate::proxy::route_attempt::ForwardAttempt;
 use crate::proxy::usage::UsageLogger;
 use crate::proxy::RequestForwarder;
 use crate::proxy_core_adapter::{
-    AppKind, AuthInfo, AuthProfileRef, ChannelAttemptResult,
+    AppKind, AppSummaryConfig, AuthInfo, AuthProfileRef, ChannelAttemptResult,
     ChannelQuery,
     ChannelMigrationMaterializeInput, ChannelMigrationPreviewInput, ChannelRecord,
     ChannelRouteSource, ChannelSource, ChannelSpec, AuthProvider, ChannelHealthReset,
@@ -253,6 +253,23 @@ impl ProxyConfigSource for CcSwitchConfigSource {
                 rectifier,
                 optimizer,
                 copilot_optimizer,
+            ))
+        })
+    }
+
+    fn load_app_summary<'a>(
+        &'a self,
+        app: &'a AppKind,
+    ) -> BoxFuture<'a, ProxyCoreResult<AppSummaryConfig>> {
+        Box::pin(async move {
+            let config = self
+                .db
+                .get_proxy_config_for_app(app.as_str())
+                .await
+                .map_err(|error| app_error("load app summary config", error))?;
+            Ok(AppSummaryConfig::new(
+                config.enabled,
+                config.auto_failover_enabled,
             ))
         })
     }

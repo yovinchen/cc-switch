@@ -6,8 +6,9 @@ use super::domain::{
 };
 use super::error::ProxyCoreResult;
 use super::management_api::{
-    AppChannelListSource, AppChannelManagementPlan, AppChannelManagementRequest,
-    AppModelCatalogRequest, ChannelCreateRequest, ChannelCreateSource, ChannelDeleteSource,
+    AppChannelListSource, AppChannelManagementPlan, AppChannelManagementRequest, AppListRequest,
+    AppListSource, AppModelCatalogRequest, ChannelCreateRequest, ChannelCreateSource,
+    ChannelDeleteSource,
     ChannelKeyDeleteSource, ChannelKeyPathRequest, ChannelKeyRecordSource, ChannelKeysSource,
     ChannelListPlan, ChannelListRequest, ChannelListSource,
     ChannelModelsSource,
@@ -17,7 +18,8 @@ use super::management_api::{
     RouteResolveManagementRequest,
 };
 use super::ports::{
-    AppChannelResponse, ChannelDeleteResponse, ChannelHealthReset, ChannelHealthResetResponse,
+    AppChannelResponse, AppListResponse, ChannelDeleteResponse, ChannelHealthReset,
+    ChannelHealthResetResponse,
     ChannelKeyDeleteResponse, ChannelKeyRecord, ChannelKeyRecordResponse, ChannelKeysResponse,
     ChannelListResponse, ChannelMigrationMaterializeResponse, ChannelMigrationPreviewResponse,
     ChannelModelRecord, ChannelModelsResponse, ChannelRecord, ChannelRecordResponse,
@@ -82,6 +84,36 @@ where
             accepted_requests: self.state.accepted_requests(),
             forwarding_enabled: true,
         }
+    }
+
+    pub async fn app_list_response<I>(
+        &self,
+        request: AppListRequest,
+        apps: I,
+    ) -> ProxyCoreResult<AppListResponse>
+    where
+        I: IntoIterator<Item = AppKind>,
+    {
+        let mut summaries = Vec::new();
+
+        for app in apps {
+            let config = self.services.config().load_app_summary(&app).await?;
+            let providers = self.services.providers().list_providers(&app).await?;
+            let channels = self
+                .services
+                .channels()
+                .list_materialized_channel_records(Some(&app))
+                .await?;
+            summaries.push(super::ports::AppSummaryInput::new(
+                app.as_str(),
+                config.enabled,
+                config.auto_failover_enabled,
+                providers.len(),
+                channels.len(),
+            ));
+        }
+
+        Ok(request.response_from_source(AppListSource::new(summaries)))
     }
 
     pub async fn plan_route(&self, request: &ProxyRequest) -> ProxyCoreResult<RoutePlan> {
@@ -1439,6 +1471,40 @@ mod tests {
             Some("anthropic_messages")
         );
         assert_eq!(catalog.models.len(), 1);
+    }
+
+    #[test]
+    fn app_list_response_delegates_summary_sources() {
+        let services = Arc::new(TestServices::default());
+        *services
+            .channel_records
+            .lock()
+            .expect("channel records mutex") = vec![
+            channel_record_with_app_and_groups("claude", vec![DEFAULT_ROUTE_GROUP.to_string()]),
+            channel_record_with_app_and_groups("codex", vec!["tools".to_string()]),
+        ];
+        let engine = ProxyEngine::new(services.clone());
+
+        let response = futures::executor::block_on(engine.app_list_response(
+            AppListRequest::new(),
+            vec![AppKind::Claude, AppKind::Codex],
+        ))
+        .expect("app list response");
+
+        assert_eq!(response.apps.len(), 2);
+        assert_eq!(response.apps[0].app_type, "claude");
+        assert_eq!(response.apps[0].provider_count, 1);
+        assert_eq!(response.apps[0].channel_count, 1);
+        assert_eq!(response.apps[1].app_type, "codex");
+        assert_eq!(response.apps[1].provider_count, 1);
+        assert_eq!(response.apps[1].channel_count, 1);
+        assert_eq!(
+            *services
+                .queried_materialized_channel_apps
+                .lock()
+                .expect("queried materialized channel apps mutex"),
+            vec![Some("claude".to_string()), Some("codex".to_string())]
+        );
     }
 
     #[test]

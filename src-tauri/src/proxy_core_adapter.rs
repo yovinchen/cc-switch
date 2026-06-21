@@ -16,9 +16,7 @@ use crate::proxy_core::api::domain::{
 };
 #[cfg(test)]
 use crate::proxy_core::api::domain::{ChannelHealthPolicy, ChannelOverrides, UpstreamEndpoint};
-use crate::proxy_core::api::management::{
-    AppSummaryInput, ChannelReachabilityResult,
-};
+use crate::proxy_core::api::management::ChannelReachabilityResult;
 use crate::proxy_core::api::routing::{
     route_resolve_channel_input_from_record, RouteResolveChannelInput,
     RouteResolveChannelRecordInput, RouteResolveModelRecordInput,
@@ -737,7 +735,7 @@ pub(crate) type CircuitBreakerFailureDecision =
     crate::proxy_core::api::config::CircuitBreakerFailureDecision;
 pub(crate) use crate::proxy_core::api::management::channel_not_found_error;
 pub(crate) use crate::proxy_core::api::ports::{
-    AuthProvider, ChannelHealthReset, ChannelHealthStore, ChannelSource, ForwardPipeline,
+    AppSummaryConfig, AuthProvider, ChannelHealthReset, ChannelHealthStore, ChannelSource, ForwardPipeline,
     ModelCatalogProvider, ProviderSource, ProxyConfigSource, ProxyEventSink, ProxyServices,
     RoutePolicySource, RouteResolver, UsageSink,
 };
@@ -753,7 +751,7 @@ pub(crate) use crate::proxy_core::api::management::{
     channel_health_update_from_input, plan_channel_test, provider_health_update_from_input,
     AppChannelListQuery,
     AppChannelManagementRequest, AppChannelResponse, AppListRequest, AppListResponse,
-    AppListSource, AppModelCatalogRequest,
+    AppModelCatalogRequest,
     AppModelListQuery, ChannelCreateRequest,
     CHANNEL_HEALTH_UNKNOWN_STATUS,
     ChannelDeleteResponse, ChannelHealthResetResponse,
@@ -904,10 +902,6 @@ pub(crate) fn proxy_status_source_from_status(
     status: ProxyRuntimeStatus,
 ) -> ProxyStatusSource<ProxyRuntimeStatus> {
     ProxyStatusSource::new(status)
-}
-
-pub(crate) fn app_list_source_from_summaries(apps: Vec<AppSummaryInput>) -> AppListSource {
-    AppListSource::new(apps)
 }
 
 pub(crate) fn append_utf8_safe(
@@ -1861,22 +1855,6 @@ pub(crate) fn proxy_channel_route_inputs_to_core(
             })
         })
         .collect()
-}
-
-pub(crate) fn proxy_app_summary_input(
-    app_type: &AppType,
-    enabled: bool,
-    auto_failover_enabled: bool,
-    provider_count: usize,
-    channel_count: usize,
-) -> AppSummaryInput {
-    AppSummaryInput::new(
-        app_type.as_str(),
-        enabled,
-        auto_failover_enabled,
-        provider_count,
-        channel_count,
-    )
 }
 
 pub(crate) fn claude_desktop_model_routes_to_core_response(

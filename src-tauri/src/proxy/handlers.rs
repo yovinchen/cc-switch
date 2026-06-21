@@ -69,10 +69,9 @@ use crate::proxy_core_adapter::{
     OPENAI_PARSER_CONFIG,
 };
 use crate::proxy_core_adapter::{
-    app_list_source_from_summaries,
     channel_health_reset_source_from_response,
     channel_test_plan_from_record, health_check_source_from_timestamp,
-    proxy_app_summary_input, proxy_status_source_from_status,
+    proxy_status_source_from_status,
     stream_check_result_to_channel_reachability, synthesize_gemini_tool_call_id_with_uuid,
 };
 use crate::services::stream_check::StreamCheckService;
@@ -177,36 +176,14 @@ pub async fn list_proxy_apps(
     State(state): State<ProxyState>,
 ) -> Result<Json<AppListResponse>, ProxyError> {
     let request = AppListRequest::new();
-    let mut apps = Vec::new();
+    let apps = AppType::all().map(|app| AppKind::from(&app));
+    let response = state
+        .proxy_engine()
+        .app_list_response(request, apps)
+        .await
+        .map_err(proxy_core_error_to_proxy_error)?;
 
-    for app in AppType::all() {
-        let app_type = app.as_str();
-        let config = state
-            .db
-            .get_proxy_config_for_app(app_type)
-            .await
-            .map_err(|e| ProxyError::DatabaseError(e.to_string()))?;
-        let providers = state
-            .db
-            .get_all_providers(app_type)
-            .map_err(|e| ProxyError::DatabaseError(e.to_string()))?;
-        let channels = state
-            .db
-            .list_proxy_channels_for_app(app_type)
-            .map_err(|e| ProxyError::DatabaseError(e.to_string()))?;
-
-        apps.push(proxy_app_summary_input(
-            &app,
-            config.enabled,
-            config.auto_failover_enabled,
-            providers.len(),
-            channels.len(),
-        ));
-    }
-
-    Ok(Json(
-        request.response_from_source(app_list_source_from_summaries(apps)),
-    ))
+    Ok(Json(response))
 }
 
 /// GET /proxy/v1/apps/{app}/providers

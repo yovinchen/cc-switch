@@ -35,6 +35,16 @@ pub trait ProxyConfigSource: Send + Sync {
 
     fn load_app<'a>(&'a self, app: &'a AppKind) -> BoxFuture<'a, ProxyCoreResult<ProxyAppConfig>>;
 
+    fn load_app_summary<'a>(
+        &'a self,
+        app: &'a AppKind,
+    ) -> BoxFuture<'a, ProxyCoreResult<AppSummaryConfig>> {
+        Box::pin(async move {
+            let config = self.load_app(app).await?;
+            Ok(AppSummaryConfig::from_proxy_app_config(&config))
+        })
+    }
+
     fn load_runtime<'a>(&'a self) -> BoxFuture<'a, ProxyCoreResult<ProxyRuntimeConfig>>;
 }
 
@@ -343,6 +353,33 @@ pub struct ProxyAppConfig {
     pub copilot_optimizer: CopilotOptimizerConfigSpec,
     #[serde(default)]
     pub raw: Value,
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AppSummaryConfig {
+    pub enabled: bool,
+    pub auto_failover_enabled: bool,
+}
+
+impl AppSummaryConfig {
+    pub fn new(enabled: bool, auto_failover_enabled: bool) -> Self {
+        Self {
+            enabled,
+            auto_failover_enabled,
+        }
+    }
+
+    pub fn from_proxy_app_config(config: &ProxyAppConfig) -> Self {
+        Self::new(
+            config.enabled,
+            config
+                .raw
+                .get("autoFailoverEnabled")
+                .and_then(Value::as_bool)
+                .unwrap_or(false),
+        )
+    }
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]

@@ -162,6 +162,47 @@ fn route_resolve_handler_delegates_dry_run_to_proxy_engine() {
 }
 
 #[test]
+fn app_list_handler_delegates_summary_sources_to_proxy_engine() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let path = manifest_dir.join("src/proxy/handlers.rs");
+    let source = fs::read_to_string(&path).expect("read handlers.rs");
+    let handler = function_slice(
+        &source,
+        "pub async fn list_proxy_apps",
+        "/// GET /proxy/v1/apps/{app}/providers",
+    );
+    let forbidden_markers = [
+        "state.db",
+        ".get_proxy_config_for_app(",
+        ".get_all_providers(",
+        ".list_proxy_channels_for_app(",
+        "proxy_app_summary_input",
+        "app_list_source_from_summaries",
+        ".response_from_source(",
+    ];
+
+    let mut violations = Vec::new();
+    for (line_index, line) in production_lines(handler) {
+        let code = line.split("//").next().unwrap_or_default();
+        for marker in forbidden_markers {
+            if code.contains(marker) {
+                violations.push(format!(
+                    "src/proxy/handlers.rs list_proxy_apps:{} contains app-list source marker `{}`",
+                    line_index + 1,
+                    marker
+                ));
+            }
+        }
+    }
+
+    assert!(
+        violations.is_empty(),
+        "app-list HTTP handler must delegate config/provider/channel summary sources to ProxyEngine:\n{}",
+        violations.join("\n")
+    );
+}
+
+#[test]
 fn channel_list_handler_delegates_materialized_records_to_proxy_engine() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let path = manifest_dir.join("src/proxy/handlers.rs");
