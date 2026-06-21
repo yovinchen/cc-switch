@@ -1173,6 +1173,10 @@ pub(crate) fn channel_key_auth_error(channel_id: &str, key_ref: &str) -> ProxyCo
     ))
 }
 
+pub(crate) fn channel_key_value_from_record(key: Option<ProxyChannelKeyRecord>) -> Option<String> {
+    key.map(|key| key.key_value)
+}
+
 pub(crate) fn provider_with_channel_auth_key(
     app_type: &AppType,
     provider: &Provider,

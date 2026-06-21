@@ -30,6 +30,7 @@ use crate::proxy_core_adapter::{
     channel_health_attempt_db_update,
     channel_health_reset_from_plan,
     channel_health_reset_plan_from_lookup,
+    channel_key_value_from_record,
     channel_spec_from_source,
     channel_specs_from_source,
     client_model_catalog_from_source,
@@ -617,7 +618,7 @@ fn apply_channel_auth_profile_providers(
             let key = db
                 .get_enabled_proxy_channel_key(channel_id, key_ref)
                 .map_err(|error| app_error("load channel auth key", error))?;
-            Ok(key.map(|key| key.key_value))
+            Ok(channel_key_value_from_record(key))
         },
     )
 }
