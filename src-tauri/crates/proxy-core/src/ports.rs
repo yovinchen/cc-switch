@@ -678,6 +678,40 @@ pub struct ProxyRuntimeStatus {
     pub active_targets: Vec<CurrentRouteTarget>,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ForwardSuccessStatusInput<'a> {
+    pub current_provider_id_at_start: &'a str,
+    pub provider_id: &'a str,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ForwardSuccessStatusUpdate {
+    pub should_switch_current_provider: bool,
+}
+
+pub fn record_forward_success_status(
+    status: &mut ProxyRuntimeStatus,
+    input: ForwardSuccessStatusInput<'_>,
+) -> ForwardSuccessStatusUpdate {
+    status.success_requests += 1;
+    status.last_error = None;
+
+    let should_switch_current_provider =
+        input.current_provider_id_at_start != input.provider_id;
+    if should_switch_current_provider {
+        status.failover_count += 1;
+    }
+
+    if status.total_requests > 0 {
+        status.success_rate =
+            (status.success_requests as f32 / status.total_requests as f32) * 100.0;
+    }
+
+    ForwardSuccessStatusUpdate {
+        should_switch_current_provider,
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ProxyConfig {
     pub listen_address: String,
@@ -2834,6 +2868,7 @@ mod tests {
         ProxyChannelModelsReplaceRequest, ProxyChannelPatchRequest, ProxyChannelTestRequest,
         ProxyChannelWriteRequest, ProxyConfig, ProxyCoreEvent, ProxyCoreEventType,
         ProxyRuntimeStatus, ProxyServerInfo, ProxyStatusResponse, ProxyTakeoverStatus,
+        ForwardSuccessStatusInput, ForwardSuccessStatusUpdate, record_forward_success_status,
         RectifierConfig, RouteGroupListResponse, RouteGroupSourceInput, RouteResolveResponse,
         StreamCheckConfig, StreamCheckResult, DEFAULT_PROXY_LISTEN_ADDRESS,
         DEFAULT_PROXY_LISTEN_PORT, DEFAULT_CHANNEL_HEALTH_FAILURE_THRESHOLD,
@@ -3512,6 +3547,61 @@ mod tests {
         assert_eq!(value["active_targets"][0]["appType"], "claude");
         assert_eq!(value["active_targets"][0]["providerName"], "Provider A");
         assert_eq!(value["active_targets"][0]["channelId"], "channel-a");
+    }
+
+    #[test]
+    fn forward_success_status_records_success_without_switching_same_provider() {
+        let mut status = ProxyRuntimeStatus {
+            total_requests: 4,
+            success_requests: 1,
+            failed_requests: 1,
+            success_rate: 25.0,
+            last_error: Some("previous failure".to_string()),
+            failover_count: 2,
+            ..ProxyRuntimeStatus::default()
+        };
+
+        let update = record_forward_success_status(
+            &mut status,
+            ForwardSuccessStatusInput {
+                current_provider_id_at_start: "provider-a",
+                provider_id: "provider-a",
+            },
+        );
+
+        assert_eq!(
+            update,
+            ForwardSuccessStatusUpdate {
+                should_switch_current_provider: false,
+            }
+        );
+        assert_eq!(status.success_requests, 2);
+        assert_eq!(status.last_error, None);
+        assert_eq!(status.failover_count, 2);
+        assert_eq!(status.success_rate, 50.0);
+    }
+
+    #[test]
+    fn forward_success_status_marks_failover_switch_for_different_provider() {
+        let mut status = ProxyRuntimeStatus {
+            total_requests: 5,
+            success_requests: 2,
+            failover_count: 1,
+            ..ProxyRuntimeStatus::default()
+        };
+
+        let update = record_forward_success_status(
+            &mut status,
+            ForwardSuccessStatusInput {
+                current_provider_id_at_start: "provider-a",
+                provider_id: "provider-b",
+            },
+        );
+
+        assert!(update.should_switch_current_provider);
+        assert_eq!(status.success_requests, 3);
+        assert_eq!(status.failover_count, 2);
+        assert!((status.success_rate - 60.0).abs() < 0.001);
     }
 
     #[test]

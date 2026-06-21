@@ -31,7 +31,7 @@ use crate::proxy_core_adapter::{
     mapped_channel_response_status, merge_copilot_tool_results, normalize_thinking_type,
     prepare_upstream_request_body_with_report, prompt_cache_trace_log_message,
     rectify_anthropic_request, rectify_thinking_budget, replace_image_blocks_with_marker,
-    replace_images_for_text_only_model,
+    record_forward_success_status, replace_images_for_text_only_model,
     request_body_filter_log_message, resolve_claude_forward_api_format,
     resolve_copilot_deterministic_interaction_id, resolve_copilot_model_against_ids,
     resolve_copilot_optimizer_session_id, resolve_copilot_request_id_with_fallback,
@@ -371,18 +371,13 @@ impl RequestForwarder {
 
     async fn record_success_status_and_maybe_switch(&self, app_type: &str, provider: &Provider) {
         let mut status = self.status.write().await;
-        status.success_requests += 1;
-        status.last_error = None;
-
-        let should_switch = self.current_provider_id_at_start.as_str() != provider.id.as_str();
+        let should_switch = record_forward_success_status(
+            &mut status,
+            self.current_provider_id_at_start.as_str(),
+            provider.id.as_str(),
+        );
         if should_switch {
-            status.failover_count += 1;
             self.schedule_failover_switch(app_type, provider);
-        }
-
-        if status.total_requests > 0 {
-            status.success_rate =
-                (status.success_requests as f32 / status.total_requests as f32) * 100.0;
         }
     }
 
