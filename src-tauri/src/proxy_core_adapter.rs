@@ -840,6 +840,18 @@ pub(crate) fn resolve_response_runtime_policy(
     )
 }
 
+pub(crate) fn response_runtime_policy_from_app_proxy_config(
+    config: &AppProxyConfig,
+) -> ResponseRuntimePolicy {
+    resolve_response_runtime_policy(
+        config.auto_failover_enabled,
+        config.max_retries,
+        config.non_streaming_timeout as u64,
+        config.streaming_first_byte_timeout as u64,
+        config.streaming_idle_timeout as u64,
+    )
+}
+
 pub(crate) fn extract_gemini_model_from_path(endpoint: &str) -> Option<String> {
     crate::proxy_core::api::transport::extract_gemini_model_from_path(endpoint)
 }
@@ -2697,6 +2709,17 @@ mod tests {
         };
 
         assert_eq!(CircuitBreakerConfig::from(&app_config), CircuitBreakerConfig::default());
+        let enabled_policy = response_runtime_policy_from_app_proxy_config(&app_config);
+        assert_eq!(enabled_policy.max_retries, 3);
+        assert_eq!(enabled_policy.timeout.non_streaming_timeout, 600);
+        assert_eq!(enabled_policy.timeout.streaming.first_byte_timeout, 60);
+        assert_eq!(enabled_policy.timeout.streaming.idle_timeout, 120);
+
+        let mut disabled_app_config = app_config.clone();
+        disabled_app_config.auto_failover_enabled = false;
+        let disabled_policy = response_runtime_policy_from_app_proxy_config(&disabled_app_config);
+        assert_eq!(disabled_policy.max_retries, 0);
+        assert_eq!(disabled_policy.timeout, ResponseTimeoutConfig::default());
         assert_eq!(
             serde_json::to_value(GlobalProxyConfig {
                 proxy_enabled: true,

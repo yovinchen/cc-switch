@@ -32,6 +32,7 @@ use crate::proxy_core_adapter::{
     proxy_runtime_config_from_config,
     proxy_channel_record_to_core_spec, proxy_channel_records_to_core_specs_for_query,
     proxy_provider_to_core_spec, proxy_providers_to_core_specs,
+    response_runtime_policy_from_app_proxy_config,
     route_plan_provider_match, route_policy_from_failover_queue,
 };
 use bytes::Bytes;
@@ -578,25 +579,12 @@ impl CcSwitchProxyRuntime {
             ));
         }
 
-        let (non_streaming_timeout, first_byte_timeout, idle_timeout) =
-            if app_config.auto_failover_enabled {
-                (
-                    app_config.non_streaming_timeout as u64,
-                    app_config.streaming_first_byte_timeout as u64,
-                    app_config.streaming_idle_timeout as u64,
-                )
-            } else {
-                (0, 0, 0)
-            };
-        let max_retries = if app_config.auto_failover_enabled {
-            app_config.max_retries
-        } else {
-            0
-        };
+        let runtime_policy = response_runtime_policy_from_app_proxy_config(&app_config);
+        let timeout_config = runtime_policy.timeout;
 
         let forwarder = RequestForwarder::new_preplanned(
             self.provider_router.clone(),
-            non_streaming_timeout,
+            timeout_config.non_streaming_timeout,
             self.status.clone(),
             self.current_providers.clone(),
             self.events.clone(),
@@ -607,12 +595,12 @@ impl CcSwitchProxyRuntime {
             current_provider_id,
             session_result.session_id,
             session_result.client_provided,
-            first_byte_timeout,
-            idle_timeout,
+            timeout_config.streaming.first_byte_timeout,
+            timeout_config.streaming.idle_timeout,
             rectifier_config,
             optimizer_config,
             copilot_optimizer_config,
-            max_retries,
+            runtime_policy.max_retries,
         );
 
         let result = forwarder

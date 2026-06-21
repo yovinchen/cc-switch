@@ -10,9 +10,9 @@ use crate::proxy::{
 };
 use crate::proxy_core_adapter::{
     claude_api_format_from_metadata, extract_gemini_model_from_path, extract_proxy_session_id,
-    resolve_response_runtime_policy, usage_route_context_from_selection, AppProxyConfig,
-    CopilotOptimizerConfig, OptimizerConfig, ProxyCoreAppKind as AppKind, ProxyResult,
-    ProxyServices, RectifierConfig, ResponseRuntimePolicy, ResponseTimeoutConfig,
+    response_runtime_policy_from_app_proxy_config, usage_route_context_from_selection,
+    AppProxyConfig, CopilotOptimizerConfig, OptimizerConfig, ProxyCoreAppKind as AppKind,
+    ProxyResult, ProxyServices, RectifierConfig, ResponseRuntimePolicy, ResponseTimeoutConfig,
     StreamingTimeoutConfig, UsageRouteContext,
 };
 use axum::http::HeaderMap;
@@ -304,13 +304,7 @@ impl RequestContext {
 
     #[inline]
     pub fn response_runtime_policy(&self) -> ResponseRuntimePolicy {
-        resolve_response_runtime_policy(
-            self.app_config.auto_failover_enabled,
-            self.app_config.max_retries,
-            self.app_config.non_streaming_timeout as u64,
-            self.app_config.streaming_first_byte_timeout as u64,
-            self.app_config.streaming_idle_timeout as u64,
-        )
+        response_runtime_policy_from_app_proxy_config(&self.app_config)
     }
 
     #[inline]
