@@ -969,6 +969,14 @@ pub(crate) struct ForwarderRuntimeOptions {
     pub(crate) max_retries: u32,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct ForwarderRuntimeConfig {
+    pub(crate) options: ForwarderRuntimeOptions,
+    pub(crate) rectifier: RectifierConfig,
+    pub(crate) optimizer: OptimizerConfig,
+    pub(crate) copilot_optimizer: CopilotOptimizerConfig,
+}
+
 pub(crate) fn resolve_response_runtime_policy(
     auto_failover_enabled: bool,
     max_retries: u32,
@@ -1006,6 +1014,20 @@ pub(crate) fn forwarder_runtime_options_from_app_proxy_config(
         streaming_first_byte_timeout: policy.timeout.streaming.first_byte_timeout,
         streaming_idle_timeout: policy.timeout.streaming.idle_timeout,
         max_retries: policy.max_retries,
+    }
+}
+
+pub(crate) fn forwarder_runtime_config_from_sources(
+    app_config: &AppProxyConfig,
+    rectifier: RectifierConfig,
+    optimizer: OptimizerConfig,
+    copilot_optimizer: CopilotOptimizerConfig,
+) -> ForwarderRuntimeConfig {
+    ForwarderRuntimeConfig {
+        options: forwarder_runtime_options_from_app_proxy_config(app_config),
+        rectifier,
+        optimizer,
+        copilot_optimizer,
     }
 }
 
@@ -3535,6 +3557,35 @@ mod tests {
                 max_retries: 3,
             }
         );
+        let forwarder_config = forwarder_runtime_config_from_sources(
+            &app_config,
+            RectifierConfig {
+                request_media_fallback: false,
+                ..RectifierConfig::default()
+            },
+            OptimizerConfig {
+                enabled: true,
+                cache_ttl: "2h".to_string(),
+                ..OptimizerConfig::default()
+            },
+            CopilotOptimizerConfig {
+                warmup_model: "gpt-5".to_string(),
+                ..CopilotOptimizerConfig::default()
+            },
+        );
+        assert_eq!(
+            forwarder_config.options,
+            ForwarderRuntimeOptions {
+                non_streaming_timeout: 600,
+                streaming_first_byte_timeout: 60,
+                streaming_idle_timeout: 120,
+                max_retries: 3,
+            }
+        );
+        assert!(!forwarder_config.rectifier.request_media_fallback);
+        assert!(forwarder_config.optimizer.enabled);
+        assert_eq!(forwarder_config.optimizer.cache_ttl, "2h");
+        assert_eq!(forwarder_config.copilot_optimizer.warmup_model, "gpt-5");
         let projected_app = proxy_app_config_from_config_source_parts(
             AppKind::Claude,
             app_config.clone(),

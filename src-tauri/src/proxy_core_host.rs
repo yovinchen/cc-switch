@@ -36,7 +36,7 @@ use crate::proxy_core_adapter::{
     current_provider_id_from_settings_for_app,
     current_provider_id_from_settings_for_app_type,
     forward_current_provider_id_from_source,
-    forwarder_runtime_options_from_app_proxy_config,
+    forwarder_runtime_config_from_sources,
     forward_runtime_request_from_proxy_request,
     forward_result_to_proxy_result,
     forwarding_runtime_unavailable_error,
@@ -545,9 +545,12 @@ impl CcSwitchProxyRuntime {
             .get_proxy_config_for_app(app_type.as_str())
             .await
             .map_err(|error| app_error("load app proxy config", error))?;
-        let rectifier_config = self.db.get_rectifier_config().unwrap_or_default();
-        let optimizer_config = self.db.get_optimizer_config().unwrap_or_default();
-        let copilot_optimizer_config = self.db.get_copilot_optimizer_config().unwrap_or_default();
+        let forwarder_config = forwarder_runtime_config_from_sources(
+            &app_config,
+            self.db.get_rectifier_config().unwrap_or_default(),
+            self.db.get_optimizer_config().unwrap_or_default(),
+            self.db.get_copilot_optimizer_config().unwrap_or_default(),
+        );
         let settings_current_provider_id =
             current_provider_id_from_settings_for_app_type(&app_type);
         let current_provider_id = forward_current_provider_id_from_source(
@@ -564,7 +567,7 @@ impl CcSwitchProxyRuntime {
         let mut attempts = required_forward_attempts_from_plan(&app_type, &providers, &plan)?;
         apply_channel_auth_profile_providers(&self.db, &app_type, &all_providers, &mut attempts)?;
 
-        let forwarder_options = forwarder_runtime_options_from_app_proxy_config(&app_config);
+        let forwarder_options = forwarder_config.options;
 
         let forwarder = RequestForwarder::new_preplanned(
             self.provider_router.clone(),
@@ -581,9 +584,9 @@ impl CcSwitchProxyRuntime {
             forward_request.session_result.client_provided,
             forwarder_options.streaming_first_byte_timeout,
             forwarder_options.streaming_idle_timeout,
-            rectifier_config,
-            optimizer_config,
-            copilot_optimizer_config,
+            forwarder_config.rectifier,
+            forwarder_config.optimizer,
+            forwarder_config.copilot_optimizer,
             forwarder_options.max_retries,
         );
 
