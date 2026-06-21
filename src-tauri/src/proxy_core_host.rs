@@ -15,7 +15,7 @@ use crate::proxy::RequestForwarder;
 use crate::proxy_core_adapter::{
     AppKind, AuthInfo, AuthProfileRef, ChannelAttemptResult, ChannelAuthProfileAction,
     ChannelQuery,
-    ChannelSource, ChannelSpec, channel_not_found_error, AuthProvider,
+    ChannelSource, ChannelSpec, AuthProvider,
     ChannelHealthReset, ChannelHealthStore, CurrentRouteTarget, ForwardPipeline,
     GeminiShadowStore, ModelCatalog, ModelCatalogProvider, ProviderSource, ProviderSpec,
     ProxyAppConfig, ProxyConfigSource, ProxyCoreEvent,
@@ -29,7 +29,8 @@ use crate::proxy_core_adapter::{
     app_type_from_proxy_core_app,
     channel_auth_profile_action,
     channel_health_attempt_db_update,
-    channel_health_reset_from_parts,
+    channel_health_reset_from_plan,
+    channel_health_reset_plan_from_lookup,
     channel_key_auth_error,
     channel_spec_from_source,
     channel_specs_from_source,
@@ -389,13 +390,13 @@ impl ChannelHealthStore for CcSwitchHealthStore {
             let app_type = self
                 .db
                 .get_proxy_channel_app_type(channel_id)
-                .map_err(|error| app_error("lookup channel app", error))?
-                .ok_or_else(|| channel_not_found_error(channel_id))?;
+                .map_err(|error| app_error("lookup channel app", error))?;
+            let reset_plan = channel_health_reset_plan_from_lookup(channel_id, app_type)?;
             self.router
-                .reset_channel_breaker(channel_id, &app_type)
+                .reset_channel_breaker(&reset_plan.channel_id, &reset_plan.app_type)
                 .await
                 .map_err(|error| app_error("reset channel health", error))?;
-            Ok(channel_health_reset_from_parts(channel_id, app_type.as_str()))
+            Ok(channel_health_reset_from_plan(reset_plan))
         })
     }
 }
@@ -1395,6 +1396,43 @@ mod tests {
         assert_eq!(health.status, "degraded");
         assert_eq!(health.consecutive_failures, 1);
         assert_eq!(health.response_time_ms, Some(123));
+    }
+
+    #[tokio::test]
+    async fn health_store_resets_channel_health_through_router() {
+        let db = Arc::new(Database::memory().expect("memory db"));
+        save_claude_provider(&db);
+        db.materialize_legacy_proxy_channels("claude")
+            .expect("materialize channels");
+        let channel_id = db
+            .list_proxy_channels_for_app("claude")
+            .expect("list channels")
+            .first()
+            .expect("channel")
+            .id
+            .clone();
+        db.update_proxy_channel_health_with_threshold(
+            &channel_id,
+            false,
+            Some("rate_limited".to_string()),
+            1,
+            Some(99),
+        )
+        .expect("mark unhealthy");
+        let services = CcSwitchProxyServices::new(db.clone());
+
+        let reset = services
+            .health_store()
+            .reset_channel(&channel_id)
+            .await
+            .expect("reset channel health");
+
+        assert_eq!(reset.channel_id, channel_id);
+        assert_eq!(reset.app, AppKind::Claude);
+        let health = db
+            .get_proxy_channel_health(&reset.channel_id)
+            .expect("read channel health");
+        assert_eq!(health.status, "unknown");
     }
 
     #[tokio::test]

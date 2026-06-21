@@ -1919,6 +1919,29 @@ pub(crate) fn channel_health_reset_from_parts(
     crate::proxy_core::api::ports::channel_health_reset_from_parts(channel_id, app_type)
 }
 
+#[derive(Debug)]
+pub(crate) struct ChannelHealthResetPlan {
+    pub(crate) channel_id: String,
+    pub(crate) app_type: String,
+}
+
+pub(crate) fn channel_health_reset_plan_from_lookup(
+    channel_id: &str,
+    app_type: Option<String>,
+) -> ProxyCoreResult<ChannelHealthResetPlan> {
+    let app_type = app_type.ok_or_else(|| channel_not_found_error(channel_id))?;
+    Ok(ChannelHealthResetPlan {
+        channel_id: channel_id.to_string(),
+        app_type,
+    })
+}
+
+pub(crate) fn channel_health_reset_from_plan(
+    plan: ChannelHealthResetPlan,
+) -> ChannelHealthReset {
+    channel_health_reset_from_parts(plan.channel_id, plan.app_type.as_str())
+}
+
 pub(crate) struct ChannelHealthAttemptDbUpdate {
     pub(crate) channel_id: String,
     pub(crate) success: bool,
@@ -4757,6 +4780,18 @@ mod tests {
 
     #[test]
     fn channel_health_adapter_projects_attempt_db_update() {
+        let reset_plan =
+            channel_health_reset_plan_from_lookup("channel-a", Some("claude".to_string()))
+                .expect("reset plan");
+        assert_eq!(reset_plan.channel_id, "channel-a");
+        assert_eq!(reset_plan.app_type, "claude");
+        let reset = channel_health_reset_from_plan(reset_plan);
+        assert_eq!(reset.channel_id, "channel-a");
+        assert_eq!(reset.app, AppKind::Claude);
+        let missing = channel_health_reset_plan_from_lookup("missing-channel", None)
+            .expect_err("missing channel should fail");
+        assert!(missing.to_string().contains("missing-channel"));
+
         let update = channel_health_attempt_db_update(ChannelAttemptResult {
             channel_id: "channel-a".to_string(),
             success: false,
