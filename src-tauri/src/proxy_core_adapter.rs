@@ -352,6 +352,13 @@ pub(crate) fn current_route_target_from_provider(
     )
 }
 
+pub(crate) fn apply_proxy_runtime_active_targets(
+    status: &mut ProxyRuntimeStatus,
+    active_targets: impl IntoIterator<Item = CurrentRouteTarget>,
+) {
+    crate::proxy_core::api::ports::apply_proxy_runtime_active_targets(status, active_targets);
+}
+
 pub(crate) type GeminiShadowStore =
     crate::proxy_core::api::transforms::GeminiShadowStore;
 pub(crate) type GeminiToAnthropicMessageOutput =

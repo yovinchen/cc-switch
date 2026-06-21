@@ -14,9 +14,10 @@ use super::{
 };
 use crate::database::Database;
 use crate::proxy_core_adapter::{
-    current_route_target_from_provider, proxy_engine_from_services, server_log_codes as log_srv,
-    CircuitBreakerConfig, CurrentRouteTarget, GeminiShadowStore, ProxyConfig, ProxyEngine,
-    ProxyRuntimeStatus, ProxyServerInfo,
+    apply_proxy_runtime_active_targets, current_route_target_from_provider,
+    proxy_engine_from_services, server_log_codes as log_srv, CircuitBreakerConfig,
+    CurrentRouteTarget, GeminiShadowStore, ProxyConfig, ProxyEngine, ProxyRuntimeStatus,
+    ProxyServerInfo,
 };
 use crate::proxy_core_host::{CcSwitchProxyRuntime, CcSwitchProxyServices};
 use axum::{
@@ -306,10 +307,7 @@ impl ProxyServer {
 
         // 从 current_providers HashMap 获取每个应用类型当前正在使用的 provider
         let current_providers = self.state.current_providers.read().await;
-        status.active_targets = current_providers.values().cloned().collect();
-        status
-            .active_targets
-            .sort_by(|left, right| left.app_type.cmp(&right.app_type));
+        apply_proxy_runtime_active_targets(&mut status, current_providers.values().cloned());
 
         status
     }

@@ -730,6 +730,16 @@ pub fn record_forward_failure_status(
     }
 }
 
+pub fn apply_proxy_runtime_active_targets(
+    status: &mut ProxyRuntimeStatus,
+    active_targets: impl IntoIterator<Item = CurrentRouteTarget>,
+) {
+    status.active_targets = active_targets.into_iter().collect();
+    status
+        .active_targets
+        .sort_by(|left, right| left.app_type.cmp(&right.app_type));
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ProxyConfig {
     pub listen_address: String,
@@ -2925,7 +2935,8 @@ mod tests {
         ProxyChannelWriteRequest, ProxyConfig, ProxyCoreEvent, ProxyCoreEventType,
         ProxyRuntimeStatus, ProxyServerInfo, ProxyStatusResponse, ProxyTakeoverStatus,
         ForwardFailureStatusInput, ForwardSuccessStatusInput, ForwardSuccessStatusUpdate,
-        record_forward_failure_status, record_forward_success_status,
+        apply_proxy_runtime_active_targets, record_forward_failure_status,
+        record_forward_success_status,
         RectifierConfig, RouteGroupListResponse, RouteGroupSourceInput, RouteResolveResponse,
         StreamCheckConfig, StreamCheckResult, DEFAULT_PROXY_LISTEN_ADDRESS,
         DEFAULT_PROXY_LISTEN_PORT, DEFAULT_CHANNEL_HEALTH_FAILURE_THRESHOLD,
@@ -3685,6 +3696,41 @@ mod tests {
             Some("provider rejected request")
         );
         assert_eq!(status.success_rate, 25.0);
+    }
+
+    #[test]
+    fn proxy_runtime_active_targets_are_sorted_by_app_type() {
+        let mut status = ProxyRuntimeStatus::default();
+
+        apply_proxy_runtime_active_targets(
+            &mut status,
+            vec![
+                CurrentRouteTarget {
+                    app_type: "codex".to_string(),
+                    provider_name: "Provider B".to_string(),
+                    provider_id: "provider-b".to_string(),
+                    channel_id: None,
+                    channel_name: None,
+                    interface_kind: None,
+                    public_model: None,
+                    upstream_model: None,
+                },
+                CurrentRouteTarget {
+                    app_type: "claude".to_string(),
+                    provider_name: "Provider A".to_string(),
+                    provider_id: "provider-a".to_string(),
+                    channel_id: Some("channel-a".to_string()),
+                    channel_name: None,
+                    interface_kind: None,
+                    public_model: None,
+                    upstream_model: None,
+                },
+            ],
+        );
+
+        assert_eq!(status.active_targets[0].app_type, "claude");
+        assert_eq!(status.active_targets[1].app_type, "codex");
+        assert_eq!(status.active_targets[0].channel_id.as_deref(), Some("channel-a"));
     }
 
     #[test]
