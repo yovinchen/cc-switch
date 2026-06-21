@@ -437,6 +437,17 @@ pub struct GlobalProxyConfig {
     pub enable_logging: bool,
 }
 
+impl Default for GlobalProxyConfig {
+    fn default() -> Self {
+        Self {
+            proxy_enabled: false,
+            listen_address: "127.0.0.1".to_string(),
+            listen_port: 15721,
+            enable_logging: true,
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AppProxyConfig {
@@ -3201,6 +3212,16 @@ mod tests {
 
     #[test]
     fn global_proxy_config_preserves_management_command_shape() {
+        assert_eq!(
+            GlobalProxyConfig::default(),
+            GlobalProxyConfig {
+                proxy_enabled: false,
+                listen_address: "127.0.0.1".to_string(),
+                listen_port: 15721,
+                enable_logging: true,
+            }
+        );
+
         let config = GlobalProxyConfig {
             proxy_enabled: true,
             listen_address: "127.0.0.1".to_string(),

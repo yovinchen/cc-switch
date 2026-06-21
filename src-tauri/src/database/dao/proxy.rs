@@ -75,12 +75,7 @@ impl Database {
             Err(rusqlite::Error::QueryReturnedNoRows) => {
                 // 如果不存在，创建默认配置
                 self.init_proxy_config_rows().await?;
-                Ok(GlobalProxyConfig {
-                    proxy_enabled: false,
-                    listen_address: "127.0.0.1".to_string(),
-                    listen_port: 15721,
-                    enable_logging: true,
-                })
+                Ok(GlobalProxyConfig::default())
             }
             Err(e) => Err(AppError::Database(e.to_string())),
         }
@@ -830,6 +825,7 @@ mod tests {
     use crate::database::Database;
     use crate::error::AppError;
     use crate::provider::Provider;
+    use crate::proxy_core_adapter::GlobalProxyConfig;
 
     #[tokio::test]
     async fn test_default_cost_multiplier_round_trip() -> Result<(), AppError> {
@@ -935,6 +931,16 @@ mod tests {
         assert_eq!(fallback.max_retries, 3);
         assert_eq!(fallback.streaming_idle_timeout, 120);
         assert_eq!(fallback.circuit_min_requests, 10);
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn global_proxy_config_defaults_follow_seed_contract() -> Result<(), AppError> {
+        let db = Database::memory()?;
+
+        let config = db.get_global_proxy_config().await?;
+        assert_eq!(config, GlobalProxyConfig::default());
 
         Ok(())
     }
