@@ -48,8 +48,8 @@ use crate::proxy_core_adapter::{
     AppChannelListQuery, AppChannelManagementPlan, AppChannelManagementRequest,
     AppChannelResponse, AppKind, AppListRequest, AppListResponse,
     AppListSource, AppModelCatalogRequest, AppModelListQuery, ChannelCreateRequest,
-    ChannelDeleteResponse, ChannelDeleteSource, ChannelHealthResetResponse,
-    ChannelHealthResetSource, ChannelKeyDeleteResponse, ChannelKeyDeleteSource,
+    ChannelDeleteResponse, ChannelHealthResetResponse,
+    ChannelHealthResetSource, ChannelKeyDeleteResponse,
     ChannelKeyPathRequest, ChannelKeyRecord, ChannelKeyRecordResponse,
     ChannelKeysResponse, ChannelListPlan, ChannelListQuery, ChannelListRequest,
     ChannelListResponse, ChannelMigrationMaterializeResponse, ChannelMigrationPreviewResponse,
@@ -71,9 +71,10 @@ use crate::proxy_core_adapter::{
     OPENAI_PARSER_CONFIG,
 };
 use crate::proxy_core_adapter::{
-    app_channel_list_source_from_records, channel_list_source_from_records,
-    channel_create_source_from_record, channel_record_source_from_record,
-    channel_key_record_source_from_record, channel_keys_source_from_records,
+    app_channel_list_source_from_records, channel_delete_source_from_deleted,
+    channel_list_source_from_records, channel_create_source_from_record,
+    channel_key_delete_source_from_deleted, channel_key_record_source_from_record,
+    channel_keys_source_from_records, channel_record_source_from_record,
     channel_migration_materialize_source_from_result, channel_migration_preview_source_from_result,
     channel_models_source_from_records, group_list_channel_source_from_records,
     channel_test_plan_from_record, proxy_app_summary_input,
@@ -363,9 +364,9 @@ pub async fn delete_proxy_channel(
         .db
         .delete_proxy_channel(&request.channel_id)
         .map_err(|e| ProxyError::DatabaseError(e.to_string()))?;
-    Ok(Json(request.delete_response_from_source(
-        ChannelDeleteSource::new(deleted),
-    )))
+    Ok(Json(
+        request.delete_response_from_source(channel_delete_source_from_deleted(deleted)),
+    ))
 }
 
 /// GET /proxy/v1/channels/{channel_id}/keys
@@ -444,7 +445,7 @@ pub async fn delete_proxy_channel_key(
         .map_err(|e| ProxyError::DatabaseError(e.to_string()))?;
 
     Ok(Json(
-        path_request.delete_response_from_source(ChannelKeyDeleteSource::new(deleted)),
+        path_request.delete_response_from_source(channel_key_delete_source_from_deleted(deleted)),
     ))
 }
 

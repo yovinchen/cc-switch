@@ -3057,6 +3057,10 @@ pub(crate) fn channel_record_source_from_record(
     ChannelRecordSource::new(channel.map(proxy_channel_record_to_core))
 }
 
+pub(crate) fn channel_delete_source_from_deleted(deleted: bool) -> ChannelDeleteSource {
+    ChannelDeleteSource::new(deleted)
+}
+
 pub(crate) fn proxy_channel_key_record_to_core(key: ProxyChannelKeyRecord) -> ChannelKeyRecord {
     channel_key_record_from_input(ChannelKeyRecordInput {
         channel_id: key.channel_id,
@@ -3086,6 +3090,10 @@ pub(crate) fn channel_key_record_source_from_record(
     key: Option<ProxyChannelKeyRecord>,
 ) -> ChannelKeyRecordSource<ChannelKeyRecord> {
     ChannelKeyRecordSource::new(key.map(proxy_channel_key_record_to_core))
+}
+
+pub(crate) fn channel_key_delete_source_from_deleted(deleted: bool) -> ChannelKeyDeleteSource {
+    ChannelKeyDeleteSource::new(deleted)
 }
 
 pub(crate) fn channel_models_source_from_records(
