@@ -20,8 +20,7 @@ use crate::proxy_core_adapter::{
     ProxyCoreEvent, ProxyCoreResponse, ProxyCoreResult, ProxyEventSink, ProxyGlobalConfig,
     ProxyRequest, ProxyResponseBody, ProxyResult, ProxyRuntimeConfig, ProxyRuntimeStatus,
     ProxyServices, RectifierConfigSpec, RoutePlan, RoutePolicy, RoutePolicySource,
-    RouteRequest, RouteResolver, RouteSelection, UsageRecord, UsageSink,
-    CLAUDE_API_FORMAT_METADATA_KEY, DEFAULT_ROUTE_GROUP,
+    RouteRequest, RouteResolver, UsageRecord, UsageSink, DEFAULT_ROUTE_GROUP,
 };
 use crate::proxy_core_adapter::{
     extract_claude_auth_key_from_settings, extract_proxy_session_id, parse_auth_profile_ref,
@@ -810,45 +809,29 @@ fn ensure_object(value: &mut Value) -> &mut Map<String, Value> {
 }
 
 fn forward_result_to_proxy_result(
-    mut result: crate::proxy::ForwardResult,
+    result: crate::proxy::ForwardResult,
     plan: RoutePlan,
 ) -> ProxyResult {
-    let selected_route = selected_route_for_forward_result(&result, &plan);
-    let connection_guard = result.connection_guard.take();
-    let mut metadata = Map::new();
-    metadata.insert("hostProviderId".to_string(), json!(result.provider.id));
-    metadata.insert("hostProviderName".to_string(), json!(result.provider.name));
-    metadata.insert(
-        CLAUDE_API_FORMAT_METADATA_KEY.to_string(),
-        json!(result.claude_api_format),
-    );
-    metadata.insert(
-        "selectedChannelId".to_string(),
-        json!(result
-            .selected_channel
-            .as_ref()
-            .map(|channel| channel.channel_id.clone())),
-    );
-    ProxyResult {
-        response: proxy_response_to_core_response(result.response, connection_guard),
-        selected_route,
-        outbound_model: result.outbound_model,
-        usage_record: None,
-        metadata: Value::Object(metadata),
-    }
-}
+    let crate::proxy::ForwardResult {
+        response,
+        provider,
+        claude_api_format,
+        outbound_model,
+        selected_channel,
+        connection_guard,
+    } = result;
+    let selected_channel_id = selected_channel
+        .as_ref()
+        .map(|channel| channel.channel_id.as_str());
+    let response = proxy_response_to_core_response(response, connection_guard);
 
-fn selected_route_for_forward_result(
-    result: &crate::proxy::ForwardResult,
-    plan: &RoutePlan,
-) -> RouteSelection {
-    crate::proxy_core_adapter::route_selection_for_forward_result(
+    crate::proxy_core_adapter::proxy_result_from_forward_parts(
+        response,
         plan,
-        result
-            .selected_channel
-            .as_ref()
-            .map(|channel| channel.channel_id.as_str()),
-        &result.provider.id,
+        &provider,
+        claude_api_format,
+        outbound_model,
+        selected_channel_id,
     )
 }
 
@@ -1618,7 +1601,7 @@ mod tests {
     }
 
     #[test]
-    fn selected_route_prefers_successful_channel_from_forward_result() {
+    fn forward_result_bridge_projects_metadata_and_successful_channel() {
         let primary = route_plan("provider-a", "channel-a").selection;
         let fallback = route_plan("provider-a", "channel-b").selection;
         let plan = RoutePlan {
@@ -1638,8 +1621,8 @@ mod tests {
                 json!({}),
                 None,
             ),
-            claude_api_format: None,
-            outbound_model: None,
+            claude_api_format: Some("messages".to_string()),
+            outbound_model: Some("upstream-sonnet".to_string()),
             selected_channel: Some(ResolvedChannelAttempt {
                 channel_id: "channel-b".to_string(),
                 channel_name: "Channel B".to_string(),
@@ -1654,9 +1637,38 @@ mod tests {
             connection_guard: None,
         };
 
-        let selected = selected_route_for_forward_result(&result, &plan);
+        let proxy_result = forward_result_to_proxy_result(result, plan);
 
-        assert_eq!(selected.channel.id, "channel-b");
+        assert_eq!(proxy_result.selected_route.channel.id, "channel-b");
+        assert_eq!(proxy_result.outbound_model.as_deref(), Some("upstream-sonnet"));
+        assert_eq!(
+            proxy_result
+                .metadata
+                .get("hostProviderId")
+                .and_then(Value::as_str),
+            Some("provider-a")
+        );
+        assert_eq!(
+            proxy_result
+                .metadata
+                .get("hostProviderName")
+                .and_then(Value::as_str),
+            Some("Provider A")
+        );
+        assert_eq!(
+            proxy_result
+                .metadata
+                .get("claudeApiFormat")
+                .and_then(Value::as_str),
+            Some("messages")
+        );
+        assert_eq!(
+            proxy_result
+                .metadata
+                .get("selectedChannelId")
+                .and_then(Value::as_str),
+            Some("channel-b")
+        );
     }
 
     #[tokio::test]

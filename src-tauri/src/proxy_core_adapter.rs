@@ -29,7 +29,7 @@ use bytes::Bytes;
 use futures::Stream;
 use http::{HeaderMap, StatusCode};
 use rust_decimal::Decimal;
-use serde_json::{Value, json};
+use serde_json::{Map, Value, json};
 use uuid::Uuid;
 
 pub(crate) fn synthesize_gemini_tool_call_id_with_uuid() -> String {
@@ -1499,6 +1499,34 @@ pub(crate) fn route_selection_for_forward_result(
         selected_channel_id,
         provider_id,
     )
+}
+
+pub(crate) fn proxy_result_from_forward_parts(
+    response: ProxyCoreResponse,
+    plan: RoutePlan,
+    provider: &Provider,
+    claude_api_format: Option<String>,
+    outbound_model: Option<String>,
+    selected_channel_id: Option<&str>,
+) -> ProxyResult {
+    let selected_route =
+        route_selection_for_forward_result(&plan, selected_channel_id, &provider.id);
+    let mut metadata = Map::new();
+    metadata.insert("hostProviderId".to_string(), json!(provider.id.clone()));
+    metadata.insert("hostProviderName".to_string(), json!(provider.name.clone()));
+    metadata.insert(
+        CLAUDE_API_FORMAT_METADATA_KEY.to_string(),
+        json!(claude_api_format),
+    );
+    metadata.insert("selectedChannelId".to_string(), json!(selected_channel_id));
+
+    ProxyResult {
+        response,
+        selected_route,
+        outbound_model,
+        usage_record: None,
+        metadata: Value::Object(metadata),
+    }
 }
 
 pub(crate) fn route_plan_from_request(
