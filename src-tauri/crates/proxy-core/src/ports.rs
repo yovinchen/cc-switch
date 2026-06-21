@@ -171,6 +171,78 @@ pub trait ChannelSource: Send + Sync {
             ))
         })
     }
+
+    fn list_channel_key_records<'a>(
+        &'a self,
+        _channel_id: &'a str,
+    ) -> BoxFuture<'a, ProxyCoreResult<Option<Vec<ChannelKeyRecord>>>> {
+        Box::pin(async {
+            Err(ProxyCoreError::Unavailable(
+                "management channel key list source is not configured".to_string(),
+            ))
+        })
+    }
+
+    fn upsert_channel_key_record<'a>(
+        &'a self,
+        _channel_id: &'a str,
+        _key_ref: &'a str,
+        _request: ProxyChannelKeyWriteRequest,
+    ) -> BoxFuture<'a, ProxyCoreResult<Option<ChannelKeyRecord>>> {
+        Box::pin(async {
+            Err(ProxyCoreError::Unavailable(
+                "management channel key upsert source is not configured".to_string(),
+            ))
+        })
+    }
+
+    fn update_channel_key_record<'a>(
+        &'a self,
+        _channel_id: &'a str,
+        _key_ref: &'a str,
+        _patch: ProxyChannelKeyPatchRequest,
+    ) -> BoxFuture<'a, ProxyCoreResult<Option<ChannelKeyRecord>>> {
+        Box::pin(async {
+            Err(ProxyCoreError::Unavailable(
+                "management channel key update source is not configured".to_string(),
+            ))
+        })
+    }
+
+    fn delete_channel_key_record<'a>(
+        &'a self,
+        _channel_id: &'a str,
+        _key_ref: &'a str,
+    ) -> BoxFuture<'a, ProxyCoreResult<bool>> {
+        Box::pin(async {
+            Err(ProxyCoreError::Unavailable(
+                "management channel key delete source is not configured".to_string(),
+            ))
+        })
+    }
+
+    fn list_channel_model_records<'a>(
+        &'a self,
+        _channel_id: &'a str,
+    ) -> BoxFuture<'a, ProxyCoreResult<Option<Vec<ChannelModelRecord>>>> {
+        Box::pin(async {
+            Err(ProxyCoreError::Unavailable(
+                "management channel model list source is not configured".to_string(),
+            ))
+        })
+    }
+
+    fn replace_channel_model_records<'a>(
+        &'a self,
+        _channel_id: &'a str,
+        _request: ProxyChannelModelsReplaceRequest,
+    ) -> BoxFuture<'a, ProxyCoreResult<Option<Vec<ChannelModelRecord>>>> {
+        Box::pin(async {
+            Err(ProxyCoreError::Unavailable(
+                "management channel model replace source is not configured".to_string(),
+            ))
+        })
+    }
 }
 
 pub trait RoutePolicySource: Send + Sync {

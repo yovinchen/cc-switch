@@ -758,12 +758,12 @@ pub(crate) use crate::proxy_core::api::management::{
     CHANNEL_HEALTH_UNKNOWN_STATUS,
     ChannelDeleteResponse, ChannelHealthResetResponse,
     ChannelHealthResetSource, ChannelHealthUpdateInput, ChannelKeyDeleteResponse,
-    ChannelKeyDeleteSource, ChannelKeyPathRequest, ChannelKeyRecordResponse,
-    ChannelKeyRecordSource, ChannelKeysResponse, ChannelKeysSource, ChannelListQuery,
+    ChannelKeyPathRequest, ChannelKeyRecordResponse,
+    ChannelKeysResponse, ChannelListQuery,
     ChannelListRequest, ChannelListResponse,
     ChannelMigrationMaterializeInput, ChannelMigrationMaterializeResponse,
     ChannelMigrationPreviewInput, ChannelMigrationPreviewResponse, ChannelModelsResponse,
-    ChannelModelsSource, ChannelPathRequest, ChannelRecordResponse,
+    ChannelPathRequest, ChannelRecordResponse,
     ChannelRouteRejected,
     ChannelTestPlan, ChannelTestResponse, CurrentRouteResponse, GroupListQuery, GroupListRequest,
     HealthCheckRequest, HealthCheckResponse, HealthCheckSource, ManagementAppPathRequest,
@@ -3080,32 +3080,10 @@ pub(crate) fn proxy_channel_key_records_to_core(
         .collect()
 }
 
-pub(crate) fn channel_keys_source_from_records(
-    keys: Option<Vec<ProxyChannelKeyRecord>>,
-) -> ChannelKeysSource<ChannelKeyRecord> {
-    ChannelKeysSource::new(keys.map(proxy_channel_key_records_to_core))
-}
-
-pub(crate) fn channel_key_record_source_from_record(
-    key: Option<ProxyChannelKeyRecord>,
-) -> ChannelKeyRecordSource<ChannelKeyRecord> {
-    ChannelKeyRecordSource::new(key.map(proxy_channel_key_record_to_core))
-}
-
-pub(crate) fn channel_key_delete_source_from_deleted(deleted: bool) -> ChannelKeyDeleteSource {
-    ChannelKeyDeleteSource::new(deleted)
-}
-
 pub(crate) fn channel_health_reset_source_from_response(
     response: ChannelHealthResetResponse,
 ) -> ChannelHealthResetSource {
     ChannelHealthResetSource::new(response)
-}
-
-pub(crate) fn channel_models_source_from_records(
-    models: Option<Vec<ProxyChannelModelRecord>>,
-) -> ChannelModelsSource<ChannelModelRecord> {
-    ChannelModelsSource::new(models.map(proxy_channel_model_records_to_core))
 }
 
 pub(crate) fn channel_migration_preview_input_from_result(

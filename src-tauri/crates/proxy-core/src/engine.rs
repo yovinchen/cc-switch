@@ -8,7 +8,9 @@ use super::error::ProxyCoreResult;
 use super::management_api::{
     AppChannelListSource, AppChannelManagementPlan, AppChannelManagementRequest,
     AppModelCatalogRequest, ChannelCreateRequest, ChannelCreateSource, ChannelDeleteSource,
+    ChannelKeyDeleteSource, ChannelKeyPathRequest, ChannelKeyRecordSource, ChannelKeysSource,
     ChannelListPlan, ChannelListRequest, ChannelListSource,
+    ChannelModelsSource,
     ChannelMigrationMaterializeSource, ChannelMigrationPreviewSource, ChannelPathRequest,
     ChannelRecordSource, CurrentRouteSource, GroupListChannelRecordInput,
     GroupListChannelSource, GroupListRequest, ManagementAppPathRequest, ProviderListSource,
@@ -16,12 +18,14 @@ use super::management_api::{
 };
 use super::ports::{
     AppChannelResponse, ChannelDeleteResponse, ChannelHealthReset, ChannelHealthResetResponse,
-    ChannelRecord, ChannelRecordResponse, ChannelListResponse, ChannelMigrationMaterializeResponse,
-    ChannelMigrationPreviewResponse, ChannelRouteCandidate, ChannelRouteRejected,
-    ClientModelCatalogResponse, CurrentRouteProviderSummaryInput, CurrentRouteResponse,
-    CurrentRouteTarget, ModelCatalog, ProviderListResponse, ProxyCoreEvent,
-    ProxyChannelPatchRequest, ProxyCoreEventType, ProxyServices, RouteGroupListResponse,
-    RouteResolveResponse,
+    ChannelKeyDeleteResponse, ChannelKeyRecord, ChannelKeyRecordResponse, ChannelKeysResponse,
+    ChannelListResponse, ChannelMigrationMaterializeResponse, ChannelMigrationPreviewResponse,
+    ChannelModelRecord, ChannelModelsResponse, ChannelRecord, ChannelRecordResponse,
+    ChannelRouteCandidate, ChannelRouteRejected, ClientModelCatalogResponse,
+    CurrentRouteProviderSummaryInput, CurrentRouteResponse, CurrentRouteTarget, ModelCatalog,
+    ProviderListResponse, ProxyChannelKeyPatchRequest, ProxyChannelKeyWriteRequest,
+    ProxyChannelModelsReplaceRequest, ProxyChannelPatchRequest, ProxyCoreEvent,
+    ProxyCoreEventType, ProxyServices, RouteGroupListResponse, RouteResolveResponse,
 };
 use serde_json::{json, to_value, Value};
 use std::collections::BTreeMap;
@@ -359,6 +363,81 @@ where
         Ok(request.delete_response_from_source(ChannelDeleteSource::new(deleted)))
     }
 
+    pub async fn channel_keys_response(
+        &self,
+        request: ChannelPathRequest,
+    ) -> ProxyCoreResult<ChannelKeysResponse<ChannelKeyRecord>> {
+        let keys = self
+            .services
+            .channels()
+            .list_channel_key_records(&request.channel_id)
+            .await?;
+        request.keys_response_from_source(ChannelKeysSource::new(keys))
+    }
+
+    pub async fn upsert_channel_key_response(
+        &self,
+        request: ChannelKeyPathRequest,
+        body: ProxyChannelKeyWriteRequest,
+    ) -> ProxyCoreResult<ChannelKeyRecordResponse<ChannelKeyRecord>> {
+        let key = self
+            .services
+            .channels()
+            .upsert_channel_key_record(&request.channel_id, &request.key_ref, body)
+            .await?;
+        request.record_response_from_source(ChannelKeyRecordSource::new(key))
+    }
+
+    pub async fn update_channel_key_response(
+        &self,
+        request: ChannelKeyPathRequest,
+        patch: ProxyChannelKeyPatchRequest,
+    ) -> ProxyCoreResult<ChannelKeyRecordResponse<ChannelKeyRecord>> {
+        let key = self
+            .services
+            .channels()
+            .update_channel_key_record(&request.channel_id, &request.key_ref, patch)
+            .await?;
+        request.record_response_from_source(ChannelKeyRecordSource::new(key))
+    }
+
+    pub async fn delete_channel_key_response(
+        &self,
+        request: ChannelKeyPathRequest,
+    ) -> ProxyCoreResult<ChannelKeyDeleteResponse> {
+        let deleted = self
+            .services
+            .channels()
+            .delete_channel_key_record(&request.channel_id, &request.key_ref)
+            .await?;
+        Ok(request.delete_response_from_source(ChannelKeyDeleteSource::new(deleted)))
+    }
+
+    pub async fn channel_models_response(
+        &self,
+        request: ChannelPathRequest,
+    ) -> ProxyCoreResult<ChannelModelsResponse<ChannelModelRecord>> {
+        let models = self
+            .services
+            .channels()
+            .list_channel_model_records(&request.channel_id)
+            .await?;
+        request.models_response_from_source(ChannelModelsSource::new(models))
+    }
+
+    pub async fn replace_channel_models_response(
+        &self,
+        request: ChannelPathRequest,
+        body: ProxyChannelModelsReplaceRequest,
+    ) -> ProxyCoreResult<ChannelModelsResponse<ChannelModelRecord>> {
+        let models = self
+            .services
+            .channels()
+            .replace_channel_model_records(&request.channel_id, body)
+            .await?;
+        request.models_response_from_source(ChannelModelsSource::new(models))
+    }
+
     pub async fn channel_migration_preview_response(
         &self,
         request: ManagementAppPathRequest,
@@ -537,12 +616,15 @@ mod tests {
     };
     use crate::error::ProxyCoreError;
     use crate::ports::{
-        channel_record_from_input, AppChannelListResponse, ChannelRecordInput,
-        ChannelMigrationMaterializeInput, ChannelMigrationPreviewInput, ChannelRouteSource,
-        AuthInfo, AuthProvider, ChannelHealthStore, ChannelSource, ForwardPipeline, ModelCatalog,
-        ModelCatalogProvider, ProviderSource, ProxyAppConfig, ProxyConfigSource, ProxyCoreEvent,
-        ProxyChannelPatchRequest, ProxyChannelWriteRequest, ProxyEventSink, ProxyGlobalConfig,
-        ProxyRuntimeConfig, RoutePolicySource, RouteResolver, RouteResolveRequest, UsageSink,
+        channel_key_record_from_input, channel_model_record_from_input, channel_record_from_input,
+        AppChannelListResponse, AuthInfo, AuthProvider, ChannelHealthStore, ChannelKeyRecordInput,
+        ChannelModelRecordInput, ChannelMigrationMaterializeInput, ChannelMigrationPreviewInput,
+        ChannelRecordInput, ChannelRouteSource, ChannelSource, ForwardPipeline, ModelCatalog,
+        ModelCatalogProvider, ProviderSource, ProxyAppConfig, ProxyChannelKeyPatchRequest,
+        ProxyChannelKeyWriteRequest, ProxyChannelModelWriteRequest,
+        ProxyChannelModelsReplaceRequest, ProxyChannelPatchRequest, ProxyChannelWriteRequest,
+        ProxyConfigSource, ProxyCoreEvent, ProxyEventSink, ProxyGlobalConfig, ProxyRuntimeConfig,
+        RoutePolicySource, RouteResolver, RouteResolveRequest, UsageSink,
     };
     use futures::future::BoxFuture;
     use http::{Method, StatusCode};
@@ -801,6 +883,104 @@ mod tests {
         ) -> BoxFuture<'a, ProxyCoreResult<bool>> {
             let deleted = channel_id == "channel-a";
             Box::pin(async move { Ok(deleted) })
+        }
+
+        fn list_channel_key_records<'a>(
+            &'a self,
+            channel_id: &'a str,
+        ) -> BoxFuture<'a, ProxyCoreResult<Option<Vec<ChannelKeyRecord>>>> {
+            let keys = (channel_id == "channel-a").then(|| vec![channel_key_record(
+                channel_id,
+                "primary",
+                "enabled",
+                10,
+                100,
+            )]);
+            Box::pin(async move { Ok(keys) })
+        }
+
+        fn upsert_channel_key_record<'a>(
+            &'a self,
+            channel_id: &'a str,
+            key_ref: &'a str,
+            request: ProxyChannelKeyWriteRequest,
+        ) -> BoxFuture<'a, ProxyCoreResult<Option<ChannelKeyRecord>>> {
+            let key = channel_key_record(
+                channel_id,
+                key_ref,
+                &request.status,
+                request.priority,
+                request.weight,
+            );
+            Box::pin(async move { Ok(Some(key)) })
+        }
+
+        fn update_channel_key_record<'a>(
+            &'a self,
+            channel_id: &'a str,
+            key_ref: &'a str,
+            patch: ProxyChannelKeyPatchRequest,
+        ) -> BoxFuture<'a, ProxyCoreResult<Option<ChannelKeyRecord>>> {
+            let key = (channel_id == "channel-a" && key_ref == "primary").then(|| {
+                channel_key_record(
+                    channel_id,
+                    key_ref,
+                    patch.status.as_deref().unwrap_or("enabled"),
+                    patch.priority.unwrap_or(10),
+                    patch.weight.unwrap_or(100),
+                )
+            });
+            Box::pin(async move { Ok(key) })
+        }
+
+        fn delete_channel_key_record<'a>(
+            &'a self,
+            channel_id: &'a str,
+            key_ref: &'a str,
+        ) -> BoxFuture<'a, ProxyCoreResult<bool>> {
+            let deleted = channel_id == "channel-a" && key_ref == "primary";
+            Box::pin(async move { Ok(deleted) })
+        }
+
+        fn list_channel_model_records<'a>(
+            &'a self,
+            channel_id: &'a str,
+        ) -> BoxFuture<'a, ProxyCoreResult<Option<Vec<ChannelModelRecord>>>> {
+            let models = (channel_id == "channel-a").then(|| vec![channel_model_record(
+                channel_id,
+                "sonnet",
+                "upstream-sonnet",
+            )]);
+            Box::pin(async move { Ok(models) })
+        }
+
+        fn replace_channel_model_records<'a>(
+            &'a self,
+            channel_id: &'a str,
+            request: ProxyChannelModelsReplaceRequest,
+        ) -> BoxFuture<'a, ProxyCoreResult<Option<Vec<ChannelModelRecord>>>> {
+            let models = if channel_id == "channel-a" {
+                Some(
+                    request
+                        .models
+                        .into_iter()
+                        .map(|model| {
+                            channel_model_record_from_input(ChannelModelRecordInput {
+                                channel_id: channel_id.to_string(),
+                                public_model: model.public_model,
+                                upstream_model: model.upstream_model,
+                                capabilities: model.capabilities,
+                                pricing_model: model.pricing_model,
+                                request_overrides: model.request_overrides,
+                                response_overrides: model.response_overrides,
+                            })
+                        })
+                        .collect(),
+                )
+            } else {
+                None
+            };
+            Box::pin(async move { Ok(models) })
         }
 
         fn list_channel_records<'a>(
@@ -1494,6 +1674,73 @@ mod tests {
     }
 
     #[test]
+    fn channel_key_and_model_responses_delegate_to_channel_source() {
+        let services = Arc::new(TestServices::default());
+        let engine = ProxyEngine::new(services);
+        let channel_path = ChannelPathRequest::from_path("channel-a").expect("channel path");
+        let key_path =
+            ChannelKeyPathRequest::from_path("channel-a", "primary").expect("channel key path");
+
+        let keys = futures::executor::block_on(engine.channel_keys_response(channel_path.clone()))
+            .expect("key list response");
+        let upserted = futures::executor::block_on(engine.upsert_channel_key_response(
+            key_path.clone(),
+            ProxyChannelKeyWriteRequest {
+                key_value: "secret".to_string(),
+                status: "disabled".to_string(),
+                priority: 20,
+                weight: 50,
+            },
+        ))
+        .expect("key upsert response");
+        let updated = futures::executor::block_on(engine.update_channel_key_response(
+            key_path.clone(),
+            ProxyChannelKeyPatchRequest {
+                status: Some("enabled".to_string()),
+                priority: Some(30),
+                weight: Some(80),
+                ..ProxyChannelKeyPatchRequest::default()
+            },
+        ))
+        .expect("key update response");
+        let deleted = futures::executor::block_on(engine.delete_channel_key_response(key_path))
+            .expect("key delete response");
+        let models =
+            futures::executor::block_on(engine.channel_models_response(channel_path.clone()))
+                .expect("model list response");
+        let replaced = futures::executor::block_on(engine.replace_channel_models_response(
+            channel_path,
+            ProxyChannelModelsReplaceRequest {
+                models: vec![ProxyChannelModelWriteRequest {
+                    public_model: "opus".to_string(),
+                    upstream_model: "upstream-opus".to_string(),
+                    capabilities: json!({"vision": true}),
+                    ..ProxyChannelModelWriteRequest::default()
+                }],
+            },
+        ))
+        .expect("model replace response");
+
+        assert_eq!(keys.channel_id, "channel-a");
+        assert_eq!(keys.keys.len(), 1);
+        assert_eq!(keys.keys[0].key_ref, "primary");
+        assert_eq!(upserted.key.status, "disabled");
+        assert_eq!(upserted.key.priority, 20);
+        assert_eq!(upserted.key.weight, 50);
+        assert_eq!(updated.key.status, "enabled");
+        assert_eq!(updated.key.priority, 30);
+        assert_eq!(updated.key.weight, 80);
+        assert_eq!(deleted.channel_id, "channel-a");
+        assert_eq!(deleted.key_ref, "primary");
+        assert!(deleted.deleted);
+        assert_eq!(models.models[0].public_model, "sonnet");
+        assert_eq!(replaced.models.len(), 1);
+        assert_eq!(replaced.models[0].public_model, "opus");
+        assert_eq!(replaced.models[0].upstream_model, "upstream-opus");
+        assert_eq!(replaced.models[0].capabilities, json!({"vision": true}));
+    }
+
+    #[test]
     fn channel_migration_responses_delegate_to_channel_source() {
         let services = Arc::new(TestServices::default());
         *services
@@ -1695,6 +1942,39 @@ mod tests {
             models: Vec::new(),
             needs_review: false,
             review_reasons: Vec::new(),
+        })
+    }
+
+    fn channel_key_record(
+        channel_id: &str,
+        key_ref: &str,
+        status: &str,
+        priority: i64,
+        weight: u32,
+    ) -> ChannelKeyRecord {
+        channel_key_record_from_input(ChannelKeyRecordInput {
+            channel_id: channel_id.to_string(),
+            key_ref: key_ref.to_string(),
+            status: status.to_string(),
+            priority,
+            weight,
+            last_failure_at: None,
+        })
+    }
+
+    fn channel_model_record(
+        channel_id: &str,
+        public_model: &str,
+        upstream_model: &str,
+    ) -> ChannelModelRecord {
+        channel_model_record_from_input(ChannelModelRecordInput {
+            channel_id: channel_id.to_string(),
+            public_model: public_model.to_string(),
+            upstream_model: upstream_model.to_string(),
+            capabilities: json!({}),
+            pricing_model: None,
+            request_overrides: json!({}),
+            response_overrides: json!({}),
         })
     }
 }

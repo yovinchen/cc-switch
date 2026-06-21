@@ -279,6 +279,105 @@ fn channel_crud_handlers_delegate_records_to_proxy_engine() {
 }
 
 #[test]
+fn channel_key_and_model_handlers_delegate_sources_to_proxy_engine() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let path = manifest_dir.join("src/proxy/handlers.rs");
+    let source = fs::read_to_string(&path).expect("read handlers.rs");
+    let handlers = [
+        (
+            "list_proxy_channel_keys",
+            function_slice(
+                &source,
+                "pub async fn list_proxy_channel_keys",
+                "/// PUT /proxy/v1/channels/{channel_id}/keys/{key_ref}",
+            ),
+        ),
+        (
+            "upsert_proxy_channel_key",
+            function_slice(
+                &source,
+                "pub async fn upsert_proxy_channel_key",
+                "/// PATCH /proxy/v1/channels/{channel_id}/keys/{key_ref}",
+            ),
+        ),
+        (
+            "update_proxy_channel_key",
+            function_slice(
+                &source,
+                "pub async fn update_proxy_channel_key",
+                "/// DELETE /proxy/v1/channels/{channel_id}/keys/{key_ref}",
+            ),
+        ),
+        (
+            "delete_proxy_channel_key",
+            function_slice(
+                &source,
+                "pub async fn delete_proxy_channel_key",
+                "/// GET /proxy/v1/channels/{channel_id}/models",
+            ),
+        ),
+        (
+            "list_proxy_channel_models",
+            function_slice(
+                &source,
+                "pub async fn list_proxy_channel_models",
+                "/// PUT /proxy/v1/channels/{channel_id}/models",
+            ),
+        ),
+        (
+            "replace_proxy_channel_models",
+            function_slice(
+                &source,
+                "pub async fn replace_proxy_channel_models",
+                "/// POST /proxy/v1/channels/{channel_id}/test",
+            ),
+        ),
+    ];
+
+    let forbidden_markers = [
+        "state.db",
+        ".list_proxy_channel_keys(",
+        ".upsert_proxy_channel_key(",
+        ".update_proxy_channel_key(",
+        ".delete_proxy_channel_key(",
+        ".get_proxy_channel(",
+        ".list_proxy_channel_models(",
+        ".replace_proxy_channel_models(",
+        "channel_keys_source_from_records",
+        "channel_key_record_source_from_record",
+        "channel_key_delete_source_from_deleted",
+        "channel_models_source_from_records",
+        ".keys_response_from_source(",
+        ".record_response_from_source(",
+        ".delete_response_from_source(",
+        ".models_response_from_source(",
+    ];
+
+    let mut violations = Vec::new();
+    for (handler_name, handler) in handlers {
+        for (line_index, line) in production_lines(handler) {
+            let code = line.split("//").next().unwrap_or_default();
+            for marker in forbidden_markers {
+                if code.contains(marker) {
+                    violations.push(format!(
+                        "src/proxy/handlers.rs {}:{} contains channel key/model source marker `{}`",
+                        handler_name,
+                        line_index + 1,
+                        marker
+                    ));
+                }
+            }
+        }
+    }
+
+    assert!(
+        violations.is_empty(),
+        "channel key/model HTTP handlers must delegate subresource sources to ProxyEngine:\n{}",
+        violations.join("\n")
+    );
+}
+
+#[test]
 fn channel_list_route_branch_delegates_dry_run_to_proxy_engine() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let path = manifest_dir.join("src/proxy/handlers.rs");

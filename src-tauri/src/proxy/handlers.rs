@@ -71,9 +71,6 @@ use crate::proxy_core_adapter::{
 use crate::proxy_core_adapter::{
     app_list_source_from_summaries,
     channel_health_reset_source_from_response,
-    channel_key_delete_source_from_deleted,
-    channel_key_record_source_from_record, channel_keys_source_from_records,
-    channel_models_source_from_records,
     channel_test_plan_from_record, health_check_source_from_timestamp,
     proxy_app_summary_input, proxy_status_source_from_status,
     stream_check_result_to_channel_reachability, synthesize_gemini_tool_call_id_with_uuid,
@@ -332,16 +329,13 @@ pub async fn list_proxy_channel_keys(
 ) -> Result<Json<ChannelKeysResponse<ChannelKeyRecord>>, ProxyError> {
     let request =
         ChannelPathRequest::from_path(channel_id).map_err(management_api_error_to_proxy_error)?;
-    let keys = state
-        .db
-        .list_proxy_channel_keys(&request.channel_id)
-        .map_err(|e| ProxyError::DatabaseError(e.to_string()))?;
+    let response = state
+        .proxy_engine()
+        .channel_keys_response(request)
+        .await
+        .map_err(proxy_core_error_to_proxy_error)?;
 
-    Ok(Json(
-        request
-            .keys_response_from_source(channel_keys_source_from_records(keys))
-            .map_err(management_api_error_to_proxy_error)?,
-    ))
+    Ok(Json(response))
 }
 
 /// PUT /proxy/v1/channels/{channel_id}/keys/{key_ref}
@@ -352,20 +346,13 @@ pub async fn upsert_proxy_channel_key(
 ) -> Result<Json<ChannelKeyRecordResponse<ChannelKeyRecord>>, ProxyError> {
     let path_request = ChannelKeyPathRequest::from_path(channel_id, key_ref)
         .map_err(management_api_error_to_proxy_error)?;
-    let key = state
-        .db
-        .upsert_proxy_channel_key(
-            &path_request.channel_id,
-            &path_request.key_ref,
-            request,
-        )
-        .map_err(|e| ProxyError::InvalidRequest(e.to_string()))?;
+    let response = state
+        .proxy_engine()
+        .upsert_channel_key_response(path_request, request)
+        .await
+        .map_err(proxy_core_error_to_proxy_error)?;
 
-    Ok(Json(
-        path_request
-            .record_response_from_source(channel_key_record_source_from_record(Some(key)))
-            .map_err(management_api_error_to_proxy_error)?,
-    ))
+    Ok(Json(response))
 }
 
 /// PATCH /proxy/v1/channels/{channel_id}/keys/{key_ref}
@@ -376,16 +363,13 @@ pub async fn update_proxy_channel_key(
 ) -> Result<Json<ChannelKeyRecordResponse<ChannelKeyRecord>>, ProxyError> {
     let path_request = ChannelKeyPathRequest::from_path(channel_id, key_ref)
         .map_err(management_api_error_to_proxy_error)?;
-    let key = state
-        .db
-        .update_proxy_channel_key(&path_request.channel_id, &path_request.key_ref, request)
-        .map_err(|e| ProxyError::InvalidRequest(e.to_string()))?;
+    let response = state
+        .proxy_engine()
+        .update_channel_key_response(path_request, request)
+        .await
+        .map_err(proxy_core_error_to_proxy_error)?;
 
-    Ok(Json(
-        path_request
-            .record_response_from_source(channel_key_record_source_from_record(key))
-            .map_err(management_api_error_to_proxy_error)?,
-    ))
+    Ok(Json(response))
 }
 
 /// DELETE /proxy/v1/channels/{channel_id}/keys/{key_ref}
@@ -395,14 +379,13 @@ pub async fn delete_proxy_channel_key(
 ) -> Result<Json<ChannelKeyDeleteResponse>, ProxyError> {
     let path_request = ChannelKeyPathRequest::from_path(channel_id, key_ref)
         .map_err(management_api_error_to_proxy_error)?;
-    let deleted = state
-        .db
-        .delete_proxy_channel_key(&path_request.channel_id, &path_request.key_ref)
-        .map_err(|e| ProxyError::DatabaseError(e.to_string()))?;
+    let response = state
+        .proxy_engine()
+        .delete_channel_key_response(path_request)
+        .await
+        .map_err(proxy_core_error_to_proxy_error)?;
 
-    Ok(Json(
-        path_request.delete_response_from_source(channel_key_delete_source_from_deleted(deleted)),
-    ))
+    Ok(Json(response))
 }
 
 /// GET /proxy/v1/channels/{channel_id}/models
@@ -412,27 +395,13 @@ pub async fn list_proxy_channel_models(
 ) -> Result<Json<ChannelModelsResponse<ChannelModelRecord>>, ProxyError> {
     let request =
         ChannelPathRequest::from_path(channel_id).map_err(management_api_error_to_proxy_error)?;
-    let channel_exists = state
-        .db
-        .get_proxy_channel(&request.channel_id)
-        .map_err(|e| ProxyError::DatabaseError(e.to_string()))?
-        .is_some();
+    let response = state
+        .proxy_engine()
+        .channel_models_response(request)
+        .await
+        .map_err(proxy_core_error_to_proxy_error)?;
 
-    let models = if channel_exists {
-        Some(
-            state
-                .db
-                .list_proxy_channel_models(&request.channel_id)
-                .map_err(|e| ProxyError::DatabaseError(e.to_string()))?,
-        )
-    } else {
-        None
-    };
-    Ok(Json(
-        request
-            .models_response_from_source(channel_models_source_from_records(models))
-            .map_err(management_api_error_to_proxy_error)?,
-    ))
+    Ok(Json(response))
 }
 
 /// PUT /proxy/v1/channels/{channel_id}/models
@@ -443,16 +412,13 @@ pub async fn replace_proxy_channel_models(
 ) -> Result<Json<ChannelModelsResponse<ChannelModelRecord>>, ProxyError> {
     let path_request =
         ChannelPathRequest::from_path(channel_id).map_err(management_api_error_to_proxy_error)?;
-    let models = state
-        .db
-        .replace_proxy_channel_models(&path_request.channel_id, request)
-        .map_err(|e| ProxyError::InvalidRequest(e.to_string()))?;
+    let response = state
+        .proxy_engine()
+        .replace_channel_models_response(path_request, request)
+        .await
+        .map_err(proxy_core_error_to_proxy_error)?;
 
-    Ok(Json(
-        path_request
-            .models_response_from_source(channel_models_source_from_records(models))
-            .map_err(management_api_error_to_proxy_error)?,
-    ))
+    Ok(Json(response))
 }
 
 /// POST /proxy/v1/channels/{channel_id}/test
