@@ -14,8 +14,9 @@ use crate::database::Database;
 use crate::error::AppError;
 use crate::provider::Provider;
 use crate::proxy_core_adapter::{
-    provider_codex_imported_live_category, provider_model_catalog_raw_value,
-    provider_openclaw_has_live_provider_fields,
+    provider_codex_imported_live_category, provider_codex_live_snapshot_parts,
+    provider_model_catalog_raw_value, provider_openclaw_has_live_provider_fields,
+    CodexLiveSnapshotIssue,
 };
 use crate::services::mcp::McpService;
 use crate::store::AppState;
@@ -755,20 +756,20 @@ pub(crate) fn write_live_snapshot(app_type: &AppType, provider: &Provider) -> Re
             ));
         }
         AppType::Codex => {
-            let obj = provider
-                .settings_config
-                .as_object()
-                .ok_or_else(|| AppError::Config("Codex 供应商配置必须是 JSON 对象".to_string()))?;
-            let auth = obj
-                .get("auth")
-                .ok_or_else(|| AppError::Config("Codex 供应商配置缺少 'auth' 字段".to_string()))?;
-            let config_str = obj.get("config").and_then(|v| v.as_str());
+            let parts = provider_codex_live_snapshot_parts(provider).map_err(|issue| match issue {
+                CodexLiveSnapshotIssue::NotObject => {
+                    AppError::Config("Codex 供应商配置必须是 JSON 对象".to_string())
+                }
+                CodexLiveSnapshotIssue::MissingAuth => {
+                    AppError::Config("Codex 供应商配置缺少 'auth' 字段".to_string())
+                }
+            })?;
 
             crate::codex_config::write_codex_provider_live_with_catalog(
                 &provider.settings_config,
                 provider.category.as_deref(),
-                auth,
-                config_str,
+                parts.auth,
+                parts.config_text,
             )?;
         }
         AppType::Gemini => {
@@ -1704,6 +1705,23 @@ mod tests {
             .map(|value| value.as_str().expect("tool id should be string"))
             .collect();
         assert_eq!(values, vec!["tool2"]);
+    }
+
+    #[test]
+    fn codex_write_live_snapshot_rejects_missing_auth_before_file_write() {
+        let provider = Provider::with_id(
+            "codex-missing-auth".to_string(),
+            "Codex Missing Auth".to_string(),
+            json!({"config": ""}),
+            None,
+        );
+
+        let err = write_live_snapshot(&AppType::Codex, &provider)
+            .expect_err("missing auth should be rejected before writing live files");
+
+        assert!(err
+            .to_string()
+            .contains("Codex 供应商配置缺少 'auth' 字段"));
     }
 
     #[test]

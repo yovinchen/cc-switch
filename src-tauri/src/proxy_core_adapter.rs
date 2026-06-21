@@ -1360,6 +1360,34 @@ pub(crate) fn provider_codex_live_settings_parts(
     })
 }
 
+pub(crate) struct CodexLiveSnapshotParts<'a> {
+    pub(crate) auth: &'a Value,
+    pub(crate) config_text: Option<&'a str>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum CodexLiveSnapshotIssue {
+    NotObject,
+    MissingAuth,
+}
+
+pub(crate) fn provider_codex_live_snapshot_parts(
+    provider: &Provider,
+) -> Result<CodexLiveSnapshotParts<'_>, CodexLiveSnapshotIssue> {
+    let settings = provider
+        .settings_config
+        .as_object()
+        .ok_or(CodexLiveSnapshotIssue::NotObject)?;
+    let auth = settings
+        .get("auth")
+        .ok_or(CodexLiveSnapshotIssue::MissingAuth)?;
+
+    Ok(CodexLiveSnapshotParts {
+        auth,
+        config_text: settings.get("config").and_then(Value::as_str),
+    })
+}
+
 pub(crate) struct CodexProviderValidationParts<'a> {
     pub(crate) config_text: Option<&'a str>,
 }
@@ -5469,6 +5497,18 @@ experimental_bearer_token = "bearer-token"
         assert!(matches!(
             provider_codex_live_settings_parts(&auth_not_object),
             Err(CodexLiveSettingsIssue::AuthNotObject)
+        ));
+        let snapshot_parts = provider_codex_live_snapshot_parts(&auth_not_object)
+            .expect("snapshot keeps legacy auth shape tolerance");
+        assert_eq!(snapshot_parts.auth, &json!("sk-test"));
+        assert_eq!(snapshot_parts.config_text, None);
+        assert!(matches!(
+            provider_codex_live_snapshot_parts(&invalid_shape),
+            Err(CodexLiveSnapshotIssue::NotObject)
+        ));
+        assert!(matches!(
+            provider_codex_live_snapshot_parts(&missing_auth),
+            Err(CodexLiveSnapshotIssue::MissingAuth)
         ));
         let validation_parts = provider_codex_validation_parts(&official_live_provider)
             .expect("codex validation parts");
