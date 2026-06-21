@@ -75,8 +75,8 @@ use crate::proxy_core_adapter::{
     proxy_app_summary_input, proxy_channel_group_inputs_to_core, proxy_channel_key_record_to_core,
     proxy_channel_key_records_to_core, proxy_channel_model_records_to_core,
     proxy_channel_record_to_core, proxy_channel_record_to_core_spec, proxy_channel_records_to_core,
-    proxy_current_route_provider_summary_input, proxy_provider_summary_inputs_to_core,
-    stream_check_result_to_channel_reachability, synthesize_gemini_tool_call_id_with_uuid,
+    proxy_current_route_provider_summary_input, stream_check_result_to_channel_reachability,
+    synthesize_gemini_tool_call_id_with_uuid, ToProxyCoreProviderSpec,
 };
 use crate::services::stream_check::StreamCheckService;
 use axum::{
@@ -215,10 +215,8 @@ pub async fn list_proxy_providers(
 ) -> Result<Json<ProviderListResponse>, ProxyError> {
     let request = ManagementAppPathRequest::from_path(app_type)
         .map_err(management_api_error_to_proxy_error)?;
-    request
-        .app_type
-        .parse::<AppType>()
-        .map_err(|e| ProxyError::InvalidRequest(e.to_string()))?;
+    let app_type = AppType::from_str(&request.app_type)
+        .map_err(|error| ProxyError::InvalidRequest(error.to_string()))?;
 
     let providers = state
         .db
@@ -248,11 +246,13 @@ pub async fn list_proxy_providers(
         Err(e) => return Err(ProxyError::DatabaseError(e.to_string())),
     };
 
-    let provider_summaries = proxy_provider_summary_inputs_to_core(providers.into_values());
+    let provider_specs = providers
+        .into_values()
+        .map(|provider| provider.to_proxy_core_provider_spec(&app_type));
 
     Ok(Json(request.provider_list_response_from_source(
-        ProviderListSource::new(
-            provider_summaries,
+        ProviderListSource::from_provider_specs(
+            provider_specs,
             current_provider,
             failover_ids,
             route_candidate_ids,
