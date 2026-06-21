@@ -2,8 +2,8 @@ use super::provider::{sanitize_claude_settings_for_live, ProviderService};
 use crate::app_config::{AppType, MultiAppConfig};
 use crate::error::AppError;
 use crate::provider::Provider;
+use crate::proxy_core_adapter::{provider_codex_live_settings_parts, CodexLiveSettingsIssue};
 use chrono::Utc;
-use serde_json::Value;
 use std::fs;
 use std::path::Path;
 
@@ -146,24 +146,23 @@ impl ConfigService {
         provider_id: &str,
         provider: &Provider,
     ) -> Result<(), AppError> {
-        let settings = provider.settings_config.as_object().ok_or_else(|| {
-            AppError::Config(format!("供应商 {provider_id} 的 Codex 配置必须是对象"))
-        })?;
-        let auth = settings.get("auth").ok_or_else(|| {
-            AppError::Config(format!("供应商 {provider_id} 的 Codex 配置缺少 auth 字段"))
-        })?;
-        if !auth.is_object() {
-            return Err(AppError::Config(format!(
+        let parts = provider_codex_live_settings_parts(provider).map_err(|issue| match issue {
+            CodexLiveSettingsIssue::NotObject => {
+                AppError::Config(format!("供应商 {provider_id} 的 Codex 配置必须是对象"))
+            }
+            CodexLiveSettingsIssue::MissingAuth => {
+                AppError::Config(format!("供应商 {provider_id} 的 Codex 配置缺少 auth 字段"))
+            }
+            CodexLiveSettingsIssue::AuthNotObject => AppError::Config(format!(
                 "供应商 {provider_id} 的 Codex auth 配置必须是 JSON 对象"
-            )));
-        }
-        let cfg_text = settings.get("config").and_then(Value::as_str);
+            )),
+        })?;
 
         crate::codex_config::write_codex_provider_live_with_catalog(
             &provider.settings_config,
             provider.category.as_deref(),
-            auth,
-            cfg_text,
+            parts.auth,
+            parts.config_text,
         )?;
         // 注意：MCP 同步在 v3.7.0 中已通过 McpService 进行，不再在此调用
         // sync_enabled_to_codex 使用旧的 config.mcp.codex 结构，在新架构中为空
@@ -174,7 +173,7 @@ impl ConfigService {
             if let Some(target) = manager.providers.get_mut(provider_id) {
                 if let Some(obj) = target.settings_config.as_object_mut() {
                     let mut restored = serde_json::json!({
-                        "auth": auth.clone(),
+                        "auth": parts.auth.clone(),
                         "config": cfg_text_after,
                     });
                     let restore_provider_token =

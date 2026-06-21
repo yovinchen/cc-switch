@@ -1327,6 +1327,39 @@ pub(crate) fn provider_codex_imported_live_category(provider: &Provider) -> &'st
     }
 }
 
+pub(crate) struct CodexLiveSettingsParts<'a> {
+    pub(crate) auth: &'a Value,
+    pub(crate) config_text: Option<&'a str>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum CodexLiveSettingsIssue {
+    NotObject,
+    MissingAuth,
+    AuthNotObject,
+}
+
+pub(crate) fn provider_codex_live_settings_parts(
+    provider: &Provider,
+) -> Result<CodexLiveSettingsParts<'_>, CodexLiveSettingsIssue> {
+    let settings = provider
+        .settings_config
+        .as_object()
+        .ok_or(CodexLiveSettingsIssue::NotObject)?;
+    let auth = settings
+        .get("auth")
+        .ok_or(CodexLiveSettingsIssue::MissingAuth)?;
+
+    if !auth.is_object() {
+        return Err(CodexLiveSettingsIssue::AuthNotObject);
+    }
+
+    Ok(CodexLiveSettingsParts {
+        auth,
+        config_text: settings.get("config").and_then(Value::as_str),
+    })
+}
+
 fn codex_wire_api_from_toml(config_text: &str) -> Option<String> {
     let doc = config_text.parse::<toml::Value>().ok()?;
 
@@ -5365,6 +5398,40 @@ experimental_bearer_token = "bearer-token"
             provider_codex_imported_live_category(&bearer_live_provider),
             "custom"
         );
+        let parts =
+            provider_codex_live_settings_parts(&official_live_provider).expect("codex live parts");
+        assert!(parts.auth.is_object());
+        assert_eq!(parts.config_text, Some(""));
+        let invalid_shape = Provider::with_id(
+            "codex-live-invalid".to_string(),
+            "Codex Live Invalid".to_string(),
+            json!("not-object"),
+            None,
+        );
+        assert!(matches!(
+            provider_codex_live_settings_parts(&invalid_shape),
+            Err(CodexLiveSettingsIssue::NotObject)
+        ));
+        let missing_auth = Provider::with_id(
+            "codex-live-missing-auth".to_string(),
+            "Codex Live Missing Auth".to_string(),
+            json!({"config": ""}),
+            None,
+        );
+        assert!(matches!(
+            provider_codex_live_settings_parts(&missing_auth),
+            Err(CodexLiveSettingsIssue::MissingAuth)
+        ));
+        let auth_not_object = Provider::with_id(
+            "codex-live-auth-string".to_string(),
+            "Codex Live Auth String".to_string(),
+            json!({"auth": "sk-test"}),
+            None,
+        );
+        assert!(matches!(
+            provider_codex_live_settings_parts(&auth_not_object),
+            Err(CodexLiveSettingsIssue::AuthNotObject)
+        ));
         let chat_provider = Provider::with_id(
             "codex-chat".to_string(),
             "Codex Chat".to_string(),
