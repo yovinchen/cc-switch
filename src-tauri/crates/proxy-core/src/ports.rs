@@ -678,6 +678,13 @@ pub struct ProxyRuntimeStatus {
     pub active_targets: Vec<CurrentRouteTarget>,
 }
 
+pub fn proxy_runtime_status_stopped() -> ProxyRuntimeStatus {
+    ProxyRuntimeStatus {
+        running: false,
+        ..ProxyRuntimeStatus::default()
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ForwardSuccessStatusInput<'a> {
     pub current_provider_id_at_start: &'a str,
@@ -3008,7 +3015,8 @@ mod tests {
         ProxyRuntimeStatus, ProxyStatusResponse,
         ForwardFailureStatusInput, ForwardRequestStartedStatusInput, ForwardSuccessStatusInput,
         ForwardSuccessStatusUpdate, ProxyServerStartedStatusInput, proxy_server_info_from_parts,
-        proxy_takeover_status_from_parts, apply_proxy_runtime_active_targets, apply_proxy_runtime_uptime,
+        proxy_runtime_status_stopped, proxy_takeover_status_from_parts,
+        apply_proxy_runtime_active_targets, apply_proxy_runtime_uptime,
         record_active_connection_acquired_status, record_active_connection_released_status,
         record_forward_failure_status, record_forward_request_started_status,
         record_forward_success_status, record_proxy_server_started_status,
@@ -3848,6 +3856,16 @@ mod tests {
         record_active_connection_acquired_status(&mut status);
         record_active_connection_released_status(&mut status);
         assert_eq!(status.active_connections, 0);
+    }
+
+    #[test]
+    fn proxy_runtime_stopped_status_preserves_tauri_command_shape() {
+        let status = proxy_runtime_status_stopped();
+
+        assert!(!status.running);
+        assert_eq!(status.address, "");
+        assert_eq!(status.port, 0);
+        assert!(status.active_targets.is_empty());
     }
 
     #[test]

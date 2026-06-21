@@ -224,6 +224,11 @@ pub(crate) type CopilotOptimizerConfig =
 pub(crate) type ProxyConfig = crate::proxy_core::api::ports::ProxyConfig;
 pub(crate) type ProxyRuntimeStatus =
     crate::proxy_core::api::ports::ProxyRuntimeStatus;
+
+pub(crate) fn proxy_runtime_status_stopped() -> ProxyRuntimeStatus {
+    crate::proxy_core::api::ports::proxy_runtime_status_stopped()
+}
+
 pub(crate) fn record_forward_success_status(
     status: &mut ProxyRuntimeStatus,
     current_provider_id_at_start: &str,
@@ -4474,6 +4479,10 @@ mod tests {
         assert_eq!(server_log_codes::STOPPED, "SRV-002");
         assert_eq!(server_log_codes::ACCEPT_ERR, "SRV-005");
         let _shadow_store = GeminiShadowStore::default();
+        let stopped = proxy_runtime_status_stopped();
+        assert!(!stopped.running);
+        assert_eq!(stopped.port, 0);
+        assert!(stopped.active_targets.is_empty());
         let info = proxy_server_info_from_parts(
             "127.0.0.1",
             15721,

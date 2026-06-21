@@ -10,8 +10,9 @@ use crate::proxy::server::ProxyServer;
 use crate::proxy::switch_lock::SwitchLockManager;
 use crate::proxy_core_adapter::{
     build_proxy_official_warning_event_payload, proxy_server_info_from_parts,
-    proxy_takeover_status_from_parts, CircuitBreakerConfig, ProxyConfig, ProxyRuntimeStatus,
-    ProxyServerInfo, ProxyTakeoverStatus, PROXY_OFFICIAL_WARNING_EVENT,
+    proxy_runtime_status_stopped, proxy_takeover_status_from_parts, CircuitBreakerConfig,
+    ProxyConfig, ProxyRuntimeStatus, ProxyServerInfo, ProxyTakeoverStatus,
+    PROXY_OFFICIAL_WARNING_EVENT,
 };
 use crate::services::provider::{
     build_effective_settings_with_common_config, write_live_with_common_config,
@@ -2531,10 +2532,7 @@ impl ProxyService {
             Ok(server.get_status().await)
         } else {
             // 服务器未运行时返回默认状态
-            Ok(ProxyRuntimeStatus {
-                running: false,
-                ..Default::default()
-            })
+            Ok(proxy_runtime_status_stopped())
         }
     }
 
