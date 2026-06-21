@@ -31,7 +31,7 @@ use crate::proxy_core_adapter::{
     is_unsupported_image_error, mapped_channel_response_status,
     merge_copilot_tool_results, normalize_thinking_type, prepare_upstream_request_body_with_report,
     prompt_cache_trace_log_message, rectify_anthropic_request, rectify_thinking_budget,
-    replace_image_blocks_with_marker, record_forward_success_status,
+    replace_image_blocks_with_marker, record_forward_failure_status, record_forward_success_status,
     replace_images_for_text_only_model, request_body_filter_log_message,
     resolve_claude_forward_api_format,
     resolve_copilot_deterministic_interaction_id, resolve_copilot_model_against_ids,
@@ -371,6 +371,11 @@ impl RequestForwarder {
         }
     }
 
+    async fn record_failure_status_message(&self, error_message: impl AsRef<str>) {
+        let mut status = self.status.write().await;
+        record_forward_failure_status(&mut status, error_message.as_ref());
+    }
+
     fn schedule_failover_switch(&self, app_type: &str, provider: &Provider) {
         self.failover_manager.clone().spawn_try_switch(
             self.app_handle.clone(),
@@ -520,13 +525,8 @@ impl RequestForwarder {
 
         self.release_attempt_permit_neutral(attempt, app_type_str, used_half_open_permit)
             .await;
-        let mut status = self.status.write().await;
-        status.failed_requests += 1;
-        status.last_error = Some(retry_err.to_string());
-        if status.total_requests > 0 {
-            status.success_rate =
-                (status.success_requests as f32 / status.total_requests as f32) * 100.0;
-        }
+        self.record_failure_status_message(retry_err.to_string())
+            .await;
         Some(ForwardError {
             error: retry_err,
             provider: Some(provider.clone()),
@@ -847,14 +847,7 @@ impl RequestForwarder {
                                     used_half_open_permit,
                                 )
                                 .await;
-                                let mut status = self.status.write().await;
-                                status.failed_requests += 1;
-                                status.last_error = Some(e.to_string());
-                                if status.total_requests > 0 {
-                                    status.success_rate = (status.success_requests as f32
-                                        / status.total_requests as f32)
-                                        * 100.0;
-                                }
+                                self.record_failure_status_message(e.to_string()).await;
                                 return Err(ForwardError {
                                     error: e,
                                     provider: Some(provider.clone()),
@@ -976,14 +969,7 @@ impl RequestForwarder {
                                     used_half_open_permit,
                                 )
                                 .await;
-                                let mut status = self.status.write().await;
-                                status.failed_requests += 1;
-                                status.last_error = Some(e.to_string());
-                                if status.total_requests > 0 {
-                                    status.success_rate = (status.success_requests as f32
-                                        / status.total_requests as f32)
-                                        * 100.0;
-                                }
+                                self.record_failure_status_message(e.to_string()).await;
                                 return Err(ForwardError {
                                     error: e,
                                     provider: Some(provider.clone()),
@@ -1001,14 +987,7 @@ impl RequestForwarder {
                                     used_half_open_permit,
                                 )
                                 .await;
-                                let mut status = self.status.write().await;
-                                status.failed_requests += 1;
-                                status.last_error = Some(e.to_string());
-                                if status.total_requests > 0 {
-                                    status.success_rate = (status.success_requests as f32
-                                        / status.total_requests as f32)
-                                        * 100.0;
-                                }
+                                self.record_failure_status_message(e.to_string()).await;
                                 return Err(ForwardError {
                                     error: e,
                                     provider: Some(provider.clone()),
@@ -1098,14 +1077,7 @@ impl RequestForwarder {
                             used_half_open_permit,
                         )
                         .await;
-                        let mut status = self.status.write().await;
-                        status.failed_requests += 1;
-                        status.last_error = Some(e.to_string());
-                        if status.total_requests > 0 {
-                            status.success_rate = (status.success_requests as f32
-                                / status.total_requests as f32)
-                                * 100.0;
-                        }
+                        self.record_failure_status_message(e.to_string()).await;
                         return Err(ForwardError {
                             error: e,
                             provider: Some(provider.clone()),
@@ -1161,16 +1133,7 @@ impl RequestForwarder {
                                 used_half_open_permit,
                             )
                             .await;
-                            {
-                                let mut status = self.status.write().await;
-                                status.failed_requests += 1;
-                                status.last_error = Some(e.to_string());
-                                if status.total_requests > 0 {
-                                    status.success_rate = (status.success_requests as f32
-                                        / status.total_requests as f32)
-                                        * 100.0;
-                                }
-                            }
+                            self.record_failure_status_message(e.to_string()).await;
                             return Err(ForwardError {
                                 error: e,
                                 provider: Some(provider.clone()),
@@ -1183,15 +1146,8 @@ impl RequestForwarder {
 
         if attempted_providers == 0 {
             // providers 列表非空，但全部被熔断器拒绝（典型：HalfOpen 探测名额被占用）
-            {
-                let mut status = self.status.write().await;
-                status.failed_requests += 1;
-                status.last_error = Some("所有供应商暂时不可用（熔断器限制）".to_string());
-                if status.total_requests > 0 {
-                    status.success_rate =
-                        (status.success_requests as f32 / status.total_requests as f32) * 100.0;
-                }
-            }
+            self.record_failure_status_message("所有供应商暂时不可用（熔断器限制）")
+                .await;
             return Err(ForwardError {
                 error: ProxyError::NoAvailableProvider,
                 provider: None,
@@ -1199,15 +1155,8 @@ impl RequestForwarder {
         }
 
         // 所有供应商都失败了
-        {
-            let mut status = self.status.write().await;
-            status.failed_requests += 1;
-            status.last_error = Some("所有供应商都失败".to_string());
-            if status.total_requests > 0 {
-                status.success_rate =
-                    (status.success_requests as f32 / status.total_requests as f32) * 100.0;
-            }
-        }
+        self.record_failure_status_message("所有供应商都失败")
+            .await;
 
         let last_failure = last_error
             .as_ref()

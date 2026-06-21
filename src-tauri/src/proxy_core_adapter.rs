@@ -239,6 +239,16 @@ pub(crate) fn record_forward_success_status(
     .should_switch_current_provider
 }
 
+pub(crate) fn record_forward_failure_status(
+    status: &mut ProxyRuntimeStatus,
+    error_message: &str,
+) {
+    crate::proxy_core::api::ports::record_forward_failure_status(
+        status,
+        crate::proxy_core::api::ports::ForwardFailureStatusInput { error_message },
+    );
+}
+
 pub(crate) type ProxyRuntimeConfig =
     crate::proxy_core::api::config::ProxyRuntimeConfig;
 pub(crate) type ProxyGlobalConfig = crate::proxy_core::api::config::ProxyGlobalConfig;

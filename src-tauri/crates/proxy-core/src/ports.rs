@@ -712,6 +712,24 @@ pub fn record_forward_success_status(
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ForwardFailureStatusInput<'a> {
+    pub error_message: &'a str,
+}
+
+pub fn record_forward_failure_status(
+    status: &mut ProxyRuntimeStatus,
+    input: ForwardFailureStatusInput<'_>,
+) {
+    status.failed_requests += 1;
+    status.last_error = Some(input.error_message.to_string());
+
+    if status.total_requests > 0 {
+        status.success_rate =
+            (status.success_requests as f32 / status.total_requests as f32) * 100.0;
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ProxyConfig {
     pub listen_address: String,
@@ -2906,7 +2924,8 @@ mod tests {
         ProxyChannelModelsReplaceRequest, ProxyChannelPatchRequest, ProxyChannelTestRequest,
         ProxyChannelWriteRequest, ProxyConfig, ProxyCoreEvent, ProxyCoreEventType,
         ProxyRuntimeStatus, ProxyServerInfo, ProxyStatusResponse, ProxyTakeoverStatus,
-        ForwardSuccessStatusInput, ForwardSuccessStatusUpdate, record_forward_success_status,
+        ForwardFailureStatusInput, ForwardSuccessStatusInput, ForwardSuccessStatusUpdate,
+        record_forward_failure_status, record_forward_success_status,
         RectifierConfig, RouteGroupListResponse, RouteGroupSourceInput, RouteResolveResponse,
         StreamCheckConfig, StreamCheckResult, DEFAULT_PROXY_LISTEN_ADDRESS,
         DEFAULT_PROXY_LISTEN_PORT, DEFAULT_CHANNEL_HEALTH_FAILURE_THRESHOLD,
@@ -3640,6 +3659,32 @@ mod tests {
         assert_eq!(status.success_requests, 3);
         assert_eq!(status.failover_count, 2);
         assert!((status.success_rate - 60.0).abs() < 0.001);
+    }
+
+    #[test]
+    fn forward_failure_status_records_error_and_recomputes_success_rate() {
+        let mut status = ProxyRuntimeStatus {
+            total_requests: 4,
+            success_requests: 1,
+            failed_requests: 1,
+            success_rate: 25.0,
+            last_error: None,
+            ..ProxyRuntimeStatus::default()
+        };
+
+        record_forward_failure_status(
+            &mut status,
+            ForwardFailureStatusInput {
+                error_message: "provider rejected request",
+            },
+        );
+
+        assert_eq!(status.failed_requests, 2);
+        assert_eq!(
+            status.last_error.as_deref(),
+            Some("provider rejected request")
+        );
+        assert_eq!(status.success_rate, 25.0);
     }
 
     #[test]
