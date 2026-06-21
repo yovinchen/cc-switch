@@ -765,10 +765,10 @@ pub(crate) use crate::proxy_core::api::management::{
     ChannelPathRequest, ChannelRecordResponse,
     ChannelRouteRejected,
     ChannelTestPlan, ChannelTestResponse, CurrentRouteResponse, GroupListQuery, GroupListRequest,
-    HealthCheckRequest, HealthCheckResponse, HealthCheckSource, ManagementAppPathRequest,
+    HealthCheckRequest, HealthCheckResponse, ManagementAppPathRequest,
     ProviderHealthUpdateInput, ProviderListResponse,
     ProxyChannelModelsReplaceRequest, ProxyChannelTestRequest, ProxyStatusRequest,
-    ProxyStatusResponse, ProxyStatusSource, RouteGroupListResponse,
+    ProxyStatusResponse, RouteGroupListResponse,
     RouteResolveManagementRequest,
 };
 pub(crate) use crate::proxy_core::api::model_catalog::{
@@ -891,18 +891,6 @@ where
     S: ProxyServices + ?Sized,
 {
     ProxyEngine::new(services)
-}
-
-pub(crate) fn health_check_source_from_timestamp(
-    timestamp: impl Into<String>,
-) -> HealthCheckSource {
-    HealthCheckSource::new(timestamp)
-}
-
-pub(crate) fn proxy_status_source_from_status(
-    status: ProxyRuntimeStatus,
-) -> ProxyStatusSource<ProxyRuntimeStatus> {
-    ProxyStatusSource::new(status)
 }
 
 pub(crate) fn append_utf8_safe(

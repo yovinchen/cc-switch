@@ -69,9 +69,8 @@ use crate::proxy_core_adapter::{
     OPENAI_PARSER_CONFIG,
 };
 use crate::proxy_core_adapter::{
-    channel_test_plan_from_record, health_check_source_from_timestamp,
-    proxy_status_source_from_status,
-    stream_check_result_to_channel_reachability, synthesize_gemini_tool_call_id_with_uuid,
+    channel_test_plan_from_record, stream_check_result_to_channel_reachability,
+    synthesize_gemini_tool_call_id_with_uuid,
 };
 use crate::services::stream_check::StreamCheckService;
 use axum::{
@@ -96,9 +95,7 @@ pub async fn health_check() -> (StatusCode, Json<HealthCheckResponse>) {
     let request = HealthCheckRequest::new();
     (
         StatusCode::OK,
-        Json(request.response_from_source(health_check_source_from_timestamp(
-            chrono::Utc::now().to_rfc3339(),
-        ))),
+        Json(request.response(chrono::Utc::now().to_rfc3339())),
     )
 }
 
@@ -108,9 +105,7 @@ pub async fn get_status(
 ) -> Result<Json<ProxyStatusResponse<ProxyRuntimeStatus>>, ProxyError> {
     let request = ProxyStatusRequest::new();
     let status = state.status.read().await.clone();
-    Ok(Json(
-        request.response_from_source(proxy_status_source_from_status(status)),
-    ))
+    Ok(Json(request.response(status)))
 }
 
 /// GET /proxy/v1/events

@@ -85,6 +85,51 @@ fn request_context_does_not_preselect_provider() {
 }
 
 #[test]
+fn basic_health_status_handlers_use_direct_management_responses() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let path = manifest_dir.join("src/proxy/handlers.rs");
+    let source = fs::read_to_string(&path).expect("read handlers.rs");
+    let handlers = [
+        (
+            "health_check",
+            function_slice(&source, "pub async fn health_check", "/// 获取服务状态"),
+        ),
+        (
+            "get_status",
+            function_slice(&source, "pub async fn get_status", "/// GET /proxy/v1/events"),
+        ),
+    ];
+    let forbidden_markers = [
+        "health_check_source_from_timestamp",
+        "proxy_status_source_from_status",
+        ".response_from_source(",
+    ];
+
+    let mut violations = Vec::new();
+    for (handler_name, handler) in handlers {
+        for (line_index, line) in production_lines(handler) {
+            let code = line.split("//").next().unwrap_or_default();
+            for marker in forbidden_markers {
+                if code.contains(marker) {
+                    violations.push(format!(
+                        "src/proxy/handlers.rs {}:{} contains basic status wrapper marker `{}`",
+                        handler_name,
+                        line_index + 1,
+                        marker
+                    ));
+                }
+            }
+        }
+    }
+
+    assert!(
+        violations.is_empty(),
+        "basic health/status HTTP handlers must use direct management responses:\n{}",
+        violations.join("\n")
+    );
+}
+
+#[test]
 fn provider_list_handler_delegates_sources_to_proxy_engine() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let path = manifest_dir.join("src/proxy/handlers.rs");
