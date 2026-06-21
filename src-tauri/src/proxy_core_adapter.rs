@@ -275,7 +275,8 @@ pub(crate) type GeminiToAnthropicMessageOutput =
 pub(crate) type AnthropicToolSchemaHints =
     crate::proxy_core::api::transforms::AnthropicToolSchemaHints;
 pub(crate) type AuthProfileRef = crate::proxy_core::api::domain::AuthProfileRef;
-pub(crate) type AuthProfileRefKind = crate::proxy_core::api::domain::AuthProfileRefKind;
+pub(crate) type ChannelAuthProfileResolution =
+    crate::proxy_core::api::domain::ChannelAuthProfileResolution;
 pub(crate) type GeminiOAuthCredentials =
     crate::proxy_core::api::auth::GeminiOAuthCredentials;
 pub(crate) type ClaudeAuthHeaderKind =
@@ -462,8 +463,25 @@ pub(crate) fn resolve_opencode_stream_check_base_url(
     crate::proxy_core::api::domain::resolve_opencode_stream_check_base_url(settings_config, npm)
 }
 
-pub(crate) fn parse_auth_profile_ref(value: &str) -> Option<AuthProfileRefKind> {
-    crate::proxy_core::api::domain::parse_auth_profile_ref(value)
+pub(crate) fn channel_auth_profile_resolution(
+    auth_profile_ref: Option<&str>,
+    app_type: &str,
+) -> ChannelAuthProfileResolution {
+    let auth_profile_ref = auth_profile_ref.map(AuthProfileRef::new);
+    crate::proxy_core::api::domain::channel_auth_profile_resolution(
+        auth_profile_ref.as_ref(),
+        app_type,
+    )
+}
+
+pub(crate) fn channel_auth_profile_missing_provider_warning(
+    app_type: &str,
+    auth_profile_ref: &str,
+) -> String {
+    crate::proxy_core::api::domain::channel_auth_profile_missing_provider_warning(
+        app_type,
+        auth_profile_ref,
+    )
 }
 
 pub(crate) fn model_route_from_input(input: ModelRouteInput) -> ModelRoute {

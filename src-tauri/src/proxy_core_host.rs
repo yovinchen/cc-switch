@@ -11,7 +11,8 @@ use crate::proxy::route_attempt::{forward_attempts_from_route_plan, ForwardAttem
 use crate::proxy::usage::UsageLogger;
 use crate::proxy::RequestForwarder;
 use crate::proxy_core_adapter::{
-    AppKind, AuthInfo, AuthProfileRef, AuthProfileRefKind, ChannelAttemptResult, ChannelQuery,
+    AppKind, AuthInfo, AuthProfileRef, ChannelAttemptResult, ChannelAuthProfileResolution,
+    ChannelQuery,
     ChannelSource, ChannelSpec, ClaudeAuthKeySource, channel_not_found_error, AuthProvider,
     ChannelHealthReset, ChannelHealthStore, CurrentRouteTarget, ForwardPipeline,
     GeminiShadowStore, ModelCatalog, ModelCatalogProvider, ProviderSource, ProviderSpec,
@@ -23,8 +24,10 @@ use crate::proxy_core_adapter::{
 };
 use crate::proxy_core_adapter::{
     auth_info_from_profile_ref,
+    channel_auth_profile_missing_provider_warning,
+    channel_auth_profile_resolution,
     channel_health_reset_from_parts,
-    extract_claude_auth_key_from_settings, extract_proxy_session_id, parse_auth_profile_ref,
+    extract_claude_auth_key_from_settings, extract_proxy_session_id,
     proxy_app_config_from_config_parts, proxy_global_config_from_config,
     proxy_runtime_config_from_config,
     proxy_channel_record_to_core_spec, proxy_channel_records_to_core_specs_for_query,
@@ -647,28 +650,26 @@ fn apply_channel_auth_profile_providers(
     attempts: &mut [ForwardAttempt],
 ) -> ProxyCoreResult<()> {
     for attempt in attempts {
-        let Some(auth_profile_ref) = attempt
+        let auth_profile_ref = attempt
             .channel()
-            .and_then(|channel| channel.auth_profile_ref.as_deref())
-        else {
-            continue;
-        };
-        match parse_auth_profile_ref(auth_profile_ref) {
-            Some(AuthProfileRefKind::Provider {
-                app_type: profile_app,
-                provider_id,
-            }) if profile_app == app_type.as_str() => {
+            .and_then(|channel| channel.auth_profile_ref.as_ref())
+            .map(String::as_str);
+        match channel_auth_profile_resolution(auth_profile_ref, app_type.as_str()) {
+            ChannelAuthProfileResolution::Provider { provider_id } => {
                 let Some(provider) = providers.get(&provider_id).cloned() else {
+                    let auth_profile_ref = auth_profile_ref.unwrap_or_default();
                     log::warn!(
-                        "[{}] channel auth profile references missing provider: {}",
-                        app_type.as_str(),
-                        auth_profile_ref
+                        "{}",
+                        channel_auth_profile_missing_provider_warning(
+                            app_type.as_str(),
+                            auth_profile_ref
+                        )
                     );
                     continue;
                 };
                 attempt.set_auth_provider(provider);
             }
-            Some(AuthProfileRefKind::ChannelKey { key_ref }) => {
+            ChannelAuthProfileResolution::ChannelKey { key_ref } => {
                 let Some(channel_id) = attempt.channel().map(|channel| channel.channel_id.clone())
                 else {
                     continue;
@@ -685,7 +686,7 @@ fn apply_channel_auth_profile_providers(
                     &key.key_value,
                 ));
             }
-            Some(AuthProfileRefKind::Provider { .. }) | None => {
+            ChannelAuthProfileResolution::Ignore => {
                 continue;
             }
         }

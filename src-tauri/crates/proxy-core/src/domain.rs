@@ -243,6 +243,13 @@ pub enum AuthProfileRefKind {
     },
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ChannelAuthProfileResolution {
+    Provider { provider_id: String },
+    ChannelKey { key_ref: String },
+    Ignore,
+}
+
 impl AuthProfileRef {
     pub fn new(value: impl Into<String>) -> Self {
         Self(value.into())
@@ -276,6 +283,35 @@ pub fn parse_auth_profile_ref(value: &str) -> Option<AuthProfileRefKind> {
     }
 
     None
+}
+
+pub fn channel_auth_profile_resolution(
+    auth_profile_ref: Option<&AuthProfileRef>,
+    app_type: &str,
+) -> ChannelAuthProfileResolution {
+    let Some(auth_profile_ref) = auth_profile_ref else {
+        return ChannelAuthProfileResolution::Ignore;
+    };
+
+    match auth_profile_ref.kind() {
+        Some(AuthProfileRefKind::Provider {
+            app_type: profile_app,
+            provider_id,
+        }) if profile_app == app_type => ChannelAuthProfileResolution::Provider { provider_id },
+        Some(AuthProfileRefKind::ChannelKey { key_ref }) => {
+            ChannelAuthProfileResolution::ChannelKey { key_ref }
+        }
+        Some(AuthProfileRefKind::Provider { .. }) | None => ChannelAuthProfileResolution::Ignore,
+    }
+}
+
+pub fn channel_auth_profile_missing_provider_warning(
+    app_type: &str,
+    auth_profile_ref: &str,
+) -> String {
+    format!(
+        "[{app_type}] channel auth profile references missing provider: {auth_profile_ref}"
+    )
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -1491,6 +1527,55 @@ mod tests {
         assert_eq!(parse_auth_profile_ref("channel-key: "), None);
         assert_eq!(parse_auth_profile_ref("provider:claude:"), None);
         assert_eq!(parse_auth_profile_ref("vault:primary"), None);
+    }
+
+    #[test]
+    fn channel_auth_profile_resolution_preserves_host_runtime_semantics() {
+        assert_eq!(
+            channel_auth_profile_resolution(
+                Some(&AuthProfileRef::new("provider:claude:auth-provider")),
+                "claude",
+            ),
+            ChannelAuthProfileResolution::Provider {
+                provider_id: "auth-provider".to_string()
+            }
+        );
+        assert_eq!(
+            channel_auth_profile_resolution(
+                Some(&AuthProfileRef::new("provider:codex:auth-provider")),
+                "claude",
+            ),
+            ChannelAuthProfileResolution::Ignore
+        );
+        assert_eq!(
+            channel_auth_profile_resolution(
+                Some(&AuthProfileRef::new("provider:claude: auth-provider")),
+                "claude",
+            ),
+            ChannelAuthProfileResolution::Provider {
+                provider_id: " auth-provider".to_string()
+            }
+        );
+        assert_eq!(
+            channel_auth_profile_resolution(
+                Some(&AuthProfileRef::new("channel-key: primary ")),
+                "claude",
+            ),
+            ChannelAuthProfileResolution::ChannelKey {
+                key_ref: "primary".to_string()
+            }
+        );
+        assert_eq!(
+            channel_auth_profile_resolution(Some(&AuthProfileRef::new("vault:primary")), "claude"),
+            ChannelAuthProfileResolution::Ignore
+        );
+        assert_eq!(
+            channel_auth_profile_missing_provider_warning(
+                "claude",
+                "provider:claude:missing-provider",
+            ),
+            "[claude] channel auth profile references missing provider: provider:claude:missing-provider"
+        );
     }
 
     #[test]
