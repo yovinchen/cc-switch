@@ -58,22 +58,60 @@ pub fn validate_proxy_channel_write_request_fields(
 pub fn validate_proxy_channel_patch_request_fields(
     request: &ProxyChannelPatchRequest,
 ) -> Result<(), ChannelRequestValidationError> {
-    if let Some(name) = request.name.as_deref() {
-        normalize_required_channel_string(name, "name")?;
-    }
-    if let Some(status) = request.status.as_deref() {
-        normalize_required_channel_string(status, "status")?;
-    }
-    if let Some(base_url) = request.base_url.as_deref() {
-        if normalize_channel_base_url(base_url).is_empty() {
-            return Err(ChannelRequestValidationError::required("baseUrl"));
+    normalize_proxy_channel_patch_request_fields(request.clone()).map(|_| ())
+}
+
+pub fn normalize_proxy_channel_patch_request_fields(
+    request: ProxyChannelPatchRequest,
+) -> Result<ProxyChannelPatchRequest, ChannelRequestValidationError> {
+    let name = request
+        .name
+        .map(|value| normalize_required_channel_string(&value, "name"))
+        .transpose()?;
+    let status = request
+        .status
+        .map(|value| normalize_required_channel_string(&value, "status"))
+        .transpose()?;
+    let base_url = request
+        .base_url
+        .map(|value| {
+            let normalized = normalize_channel_base_url(&value);
+            if normalized.is_empty() {
+                Err(ChannelRequestValidationError::required("baseUrl"))
+            } else {
+                Ok(normalized)
+            }
+        })
+        .transpose()?;
+    let interface_kind = request
+        .interface_kind
+        .map(|value| normalize_required_channel_string(&value, "interfaceKind"))
+        .transpose()?;
+    let auth_profile_ref = match request.auth_profile_ref {
+        Some(value) => {
+            validate_optional_channel_auth_profile_ref(Some(&value))?;
+            normalize_optional_channel_string(value)
         }
-    }
-    if let Some(interface_kind) = request.interface_kind.as_deref() {
-        normalize_required_channel_string(interface_kind, "interfaceKind")?;
-    }
-    validate_optional_channel_auth_profile_ref(request.auth_profile_ref.as_deref())?;
-    Ok(())
+        None => None,
+    };
+
+    Ok(ProxyChannelPatchRequest {
+        name,
+        status,
+        base_url,
+        interface_kind,
+        auth_profile_ref,
+        groups: request.groups.map(normalize_channel_groups),
+        priority: request.priority,
+        weight: request.weight,
+        retry_policy: request.retry_policy.map(channel_object_or_default),
+        health_policy: request.health_policy.map(channel_object_or_default),
+        header_overrides: request.header_overrides.map(channel_object_or_default),
+        param_overrides: request.param_overrides.map(channel_object_or_default),
+        status_code_mapping: request.status_code_mapping.map(channel_array_or_default),
+        tags: request.tags,
+        metadata: request.metadata.map(channel_object_or_default),
+    })
 }
 
 pub fn validate_proxy_channel_model_write_request_fields(
@@ -195,7 +233,8 @@ mod tests {
     use super::{
         channel_array_or_default, channel_object_or_default, normalize_channel_base_url,
         normalize_channel_groups, normalize_optional_channel_string,
-        normalize_required_channel_string, validate_optional_channel_auth_profile_ref,
+        normalize_proxy_channel_patch_request_fields, normalize_required_channel_string,
+        validate_optional_channel_auth_profile_ref,
         validate_proxy_channel_model_write_request_fields,
         validate_proxy_channel_models_replace_request_fields,
         validate_proxy_channel_key_patch_request_fields,
@@ -320,13 +359,25 @@ mod tests {
 
     #[test]
     fn patch_request_validation_checks_present_fields_only() {
-        validate_proxy_channel_patch_request_fields(&ProxyChannelPatchRequest {
+        let normalized = normalize_proxy_channel_patch_request_fields(ProxyChannelPatchRequest {
             name: Some(" Relay ".to_string()),
             base_url: Some(" https://relay.example.com/v1/ ".to_string()),
-            auth_profile_ref: Some("channel-key:primary".to_string()),
+            auth_profile_ref: Some(" ".to_string()),
+            groups: Some(vec![" beta ".to_string(), "".to_string()]),
+            retry_policy: Some(json!(["not", "object"])),
+            status_code_mapping: Some(json!({"not": "array"})),
             ..Default::default()
         })
         .unwrap();
+        assert_eq!(normalized.name.as_deref(), Some("Relay"));
+        assert_eq!(
+            normalized.base_url.as_deref(),
+            Some("https://relay.example.com/v1")
+        );
+        assert_eq!(normalized.auth_profile_ref, None);
+        assert_eq!(normalized.groups, Some(vec!["beta".to_string()]));
+        assert_eq!(normalized.retry_policy, Some(json!({})));
+        assert_eq!(normalized.status_code_mapping, Some(json!([])));
 
         assert_eq!(
             validate_proxy_channel_patch_request_fields(&ProxyChannelPatchRequest {

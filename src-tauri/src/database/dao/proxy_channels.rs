@@ -15,13 +15,12 @@ use crate::proxy_core_adapter::{
     legacy_channel_priority, normalize_channel_base_url as normalize_base_url,
     normalize_channel_groups as normalized_groups,
     normalize_optional_channel_string as normalize_optional_string,
+    normalize_proxy_channel_patch_request_fields,
     normalize_required_channel_string, stable_channel_id,
-    validate_optional_channel_auth_profile_ref,
     validate_proxy_channel_key_patch_request_fields,
     validate_proxy_channel_key_write_request_fields,
     validate_proxy_channel_model_write_request_fields,
     validate_proxy_channel_models_replace_request_fields,
-    validate_proxy_channel_patch_request_fields,
     validate_proxy_channel_write_request_fields,
     ChannelHealthUpdateInput, ChannelRequestValidationError, LegacyChannelModelProjection,
     LegacyChannelProjection, LegacyChannelProjectionInput, LegacyModelRouteInput,
@@ -473,33 +472,27 @@ impl Database {
         let Some(mut current) = get_proxy_channel_on_conn(&conn, channel_id)? else {
             return Ok(None);
         };
-        validate_proxy_channel_patch_request_fields(&patch)
+        let auth_profile_ref_present = patch.auth_profile_ref.is_some();
+        let patch = normalize_proxy_channel_patch_request_fields(patch)
             .map_err(channel_request_error_to_app_error)?;
 
         if let Some(name) = patch.name {
-            current.name = normalize_required_string(&name, "name")?;
+            current.name = name;
         }
         if let Some(status) = patch.status {
-            current.status = normalize_required_string(&status, "status")?;
+            current.status = status;
         }
         if let Some(base_url) = patch.base_url {
-            current.base_url = normalize_base_url(&base_url);
-            if current.base_url.is_empty() {
-                return Err(AppError::InvalidInput(
-                    "baseUrl cannot be empty".to_string(),
-                ));
-            }
+            current.base_url = base_url;
         }
         if let Some(interface_kind) = patch.interface_kind {
-            current.interface_kind = normalize_required_string(&interface_kind, "interfaceKind")?;
+            current.interface_kind = interface_kind;
         }
-        if let Some(auth_profile_ref) = patch.auth_profile_ref {
-            validate_optional_channel_auth_profile_ref(Some(&auth_profile_ref))
-                .map_err(channel_request_error_to_app_error)?;
-            current.auth_profile_ref = normalize_optional_string(auth_profile_ref);
+        if auth_profile_ref_present {
+            current.auth_profile_ref = patch.auth_profile_ref;
         }
         if let Some(groups) = patch.groups {
-            current.groups = normalized_groups(groups);
+            current.groups = groups;
         }
         if let Some(priority) = patch.priority {
             current.priority = priority;
@@ -508,25 +501,25 @@ impl Database {
             current.weight = weight;
         }
         if let Some(retry_policy) = patch.retry_policy {
-            current.retry_policy = object_or_default(retry_policy);
+            current.retry_policy = retry_policy;
         }
         if let Some(health_policy) = patch.health_policy {
-            current.health_policy = object_or_default(health_policy);
+            current.health_policy = health_policy;
         }
         if let Some(header_overrides) = patch.header_overrides {
-            current.header_overrides = object_or_default(header_overrides);
+            current.header_overrides = header_overrides;
         }
         if let Some(param_overrides) = patch.param_overrides {
-            current.param_overrides = object_or_default(param_overrides);
+            current.param_overrides = param_overrides;
         }
         if let Some(status_code_mapping) = patch.status_code_mapping {
-            current.status_code_mapping = array_or_default(status_code_mapping);
+            current.status_code_mapping = status_code_mapping;
         }
         if let Some(tags) = patch.tags {
             current.tags = tags;
         }
         if let Some(metadata) = patch.metadata {
-            current.metadata = object_or_default(metadata);
+            current.metadata = metadata;
         }
 
         let now = chrono::Utc::now().timestamp_millis();
@@ -1565,6 +1558,18 @@ mod tests {
             AppError::InvalidInput(message)
                 if message == "authProfileRef must be provider:<app>:<providerId> or channel-key:<keyRef>"
         ));
+
+        let cleared_auth_profile = db
+            .update_proxy_channel(
+                &created.id,
+                ProxyChannelPatchRequest {
+                    auth_profile_ref: Some(" ".to_string()),
+                    ..Default::default()
+                },
+            )
+            .expect("clear auth profile")
+            .expect("patched channel");
+        assert_eq!(cleared_auth_profile.auth_profile_ref, None);
 
         let replaced_models = db
             .replace_proxy_channel_models(
