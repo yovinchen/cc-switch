@@ -4,9 +4,9 @@
 
 use crate::error::AppError;
 use crate::proxy_core_adapter::{
-    should_block_proxy_switch_to_provider_category, AppProxyConfig, CircuitBreakerConfig,
-    CircuitBreakerStats, GlobalProxyConfig, ProviderHealth, ProxyConfig, ProxyRuntimeStatus,
-    ProxyServerInfo, ProxyTakeoverStatus,
+    should_attempt_restored_provider_switchback, should_block_proxy_switch_to_provider_category,
+    AppProxyConfig, CircuitBreakerConfig, CircuitBreakerStats, GlobalProxyConfig, ProviderHealth,
+    ProxyConfig, ProxyRuntimeStatus, ProxyServerInfo, ProxyTakeoverStatus,
 };
 use crate::store::AppState;
 
@@ -352,7 +352,9 @@ pub async fn reset_circuit_breaker(
         }
     };
 
-    if app_enabled && auto_failover_enabled && state.proxy_service.is_running().await {
+    let proxy_service_running =
+        app_enabled && auto_failover_enabled && state.proxy_service.is_running().await;
+    if proxy_service_running {
         // 获取当前供应商 ID
         let current_id = db
             .get_current_provider(&app_type)
@@ -375,9 +377,14 @@ pub async fn reset_circuit_breaker(
                 .find(|item| item.provider_id == current_id)
                 .and_then(|item| item.sort_index);
 
-            // 如果恢复的供应商优先级更高（sort_index 更小），则切换
             if let (Some(restored), Some(current)) = (restored_order, current_order) {
-                if restored < current {
+                if should_attempt_restored_provider_switchback(
+                    app_enabled,
+                    auto_failover_enabled,
+                    proxy_service_running,
+                    Some(restored),
+                    Some(current),
+                ) {
                     log::info!(
                         "[Recovery] 供应商 {provider_id} 已恢复且优先级更高 (P{restored} vs P{current})，自动切换"
                     );

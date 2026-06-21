@@ -94,11 +94,28 @@ pub fn should_block_proxy_switch_to_provider_category(
     proxy_takeover_active && provider_category == Some("official")
 }
 
+pub fn should_attempt_restored_provider_switchback(
+    proxy_takeover_active: bool,
+    auto_failover_enabled: bool,
+    proxy_service_running: bool,
+    restored_sort_index: Option<usize>,
+    current_sort_index: Option<usize>,
+) -> bool {
+    proxy_takeover_active
+        && auto_failover_enabled
+        && proxy_service_running
+        && matches!(
+            (restored_sort_index, current_sort_index),
+            (Some(restored), Some(current)) if restored < current
+        )
+}
+
 #[cfg(test)]
 mod tests {
     use super::{
-        select_provider_ids, should_block_proxy_switch_to_provider_category,
-        ProviderSelectionCandidate, ProviderSelectionFailure, ProviderSelectionInput,
+        select_provider_ids, should_attempt_restored_provider_switchback,
+        should_block_proxy_switch_to_provider_category, ProviderSelectionCandidate,
+        ProviderSelectionFailure, ProviderSelectionInput,
     };
 
     #[test]
@@ -160,5 +177,66 @@ mod tests {
             Some("custom")
         ));
         assert!(!should_block_proxy_switch_to_provider_category(true, None));
+    }
+
+    #[test]
+    fn restored_provider_switchback_requires_active_failover_and_higher_priority() {
+        assert!(should_attempt_restored_provider_switchback(
+            true,
+            true,
+            true,
+            Some(1),
+            Some(2)
+        ));
+
+        assert!(!should_attempt_restored_provider_switchback(
+            false,
+            true,
+            true,
+            Some(1),
+            Some(2)
+        ));
+        assert!(!should_attempt_restored_provider_switchback(
+            true,
+            false,
+            true,
+            Some(1),
+            Some(2)
+        ));
+        assert!(!should_attempt_restored_provider_switchback(
+            true,
+            true,
+            false,
+            Some(1),
+            Some(2)
+        ));
+        assert!(!should_attempt_restored_provider_switchback(
+            true,
+            true,
+            true,
+            Some(2),
+            Some(2)
+        ));
+        assert!(!should_attempt_restored_provider_switchback(
+            true,
+            true,
+            true,
+            Some(3),
+            Some(2)
+        ));
+        assert!(!should_attempt_restored_provider_switchback(
+            true,
+            true,
+            true,
+            None,
+            Some(2)
+        ));
+        assert!(!should_attempt_restored_provider_switchback(
+            true,
+            true,
+            true,
+            Some(1),
+            None
+        ));
     }
 }

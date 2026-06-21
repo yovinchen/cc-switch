@@ -1023,6 +1023,22 @@ pub(crate) fn should_block_proxy_switch_to_provider_category(
     )
 }
 
+pub(crate) fn should_attempt_restored_provider_switchback(
+    proxy_takeover_active: bool,
+    auto_failover_enabled: bool,
+    proxy_service_running: bool,
+    restored_sort_index: Option<usize>,
+    current_sort_index: Option<usize>,
+) -> bool {
+    crate::proxy_core::api::routing::should_attempt_restored_provider_switchback(
+        proxy_takeover_active,
+        auto_failover_enabled,
+        proxy_service_running,
+        restored_sort_index,
+        current_sort_index,
+    )
+}
+
 pub(crate) fn resolve_channel_route(
     request: RouteResolveRequest,
     channels: Vec<RouteResolveChannelInput>,
