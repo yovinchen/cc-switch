@@ -498,6 +498,46 @@ pub struct ProviderHealth {
     pub updated_at: String,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ProviderHealthUpdateInput {
+    pub current_consecutive_failures: u32,
+    pub success: bool,
+    pub error_msg: Option<String>,
+    pub failure_threshold: u32,
+    pub timestamp: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ProviderHealthUpdate {
+    pub is_healthy: bool,
+    pub consecutive_failures: u32,
+    pub last_success_at: Option<String>,
+    pub last_failure_at: Option<String>,
+    pub last_error: Option<String>,
+}
+
+pub fn provider_health_update_from_input(input: ProviderHealthUpdateInput) -> ProviderHealthUpdate {
+    if input.success {
+        return ProviderHealthUpdate {
+            is_healthy: true,
+            consecutive_failures: 0,
+            last_success_at: Some(input.timestamp),
+            last_failure_at: None,
+            last_error: input.error_msg,
+        };
+    }
+
+    let consecutive_failures = input.current_consecutive_failures.saturating_add(1);
+
+    ProviderHealthUpdate {
+        is_healthy: consecutive_failures < input.failure_threshold,
+        consecutive_failures,
+        last_success_at: None,
+        last_failure_at: Some(input.timestamp),
+        last_error: input.error_msg,
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ChannelHealthReset {
@@ -2391,13 +2431,13 @@ mod tests {
         ChannelTestResponse, ClientModelCatalogResponse, should_retry_channel_reachability_failure,
         CopilotOptimizerConfig, CurrentRouteProviderSummaryInput, CurrentRouteResponse,
         CurrentRouteTarget, GlobalProxyConfig, GroupListQuery, HealthCheckResponse, ModelCatalog,
-        OptimizerConfig, ProviderHealth, ProviderListResponse, ProviderSpec,
-        ProviderSummaryInput, ProxyChannelModelWriteRequest, ProxyChannelModelsReplaceRequest,
-        ProxyChannelPatchRequest, ProxyChannelTestRequest, ProxyChannelWriteRequest, ProxyConfig,
-        ProxyCoreEvent, ProxyCoreEventType, ProxyRuntimeStatus, ProxyServerInfo,
-        ProxyStatusResponse, ProxyTakeoverStatus, RectifierConfig, RouteGroupListResponse,
-        RouteGroupSourceInput, RouteResolveResponse, StreamCheckConfig, StreamCheckResult,
-        plan_channel_test,
+        OptimizerConfig, ProviderHealth, ProviderHealthUpdateInput, ProviderListResponse,
+        ProviderSpec, ProviderSummaryInput, ProxyChannelModelWriteRequest,
+        ProxyChannelModelsReplaceRequest, ProxyChannelPatchRequest, ProxyChannelTestRequest,
+        ProxyChannelWriteRequest, ProxyConfig, ProxyCoreEvent, ProxyCoreEventType,
+        ProxyRuntimeStatus, ProxyServerInfo, ProxyStatusResponse, ProxyTakeoverStatus,
+        RectifierConfig, RouteGroupListResponse, RouteGroupSourceInput, RouteResolveResponse,
+        StreamCheckConfig, StreamCheckResult, plan_channel_test, provider_health_update_from_input,
     };
     use crate::domain::{
         AppKind, ChannelHealthPolicy, ChannelOverrides, ChannelSpec, ChannelStatus, InterfaceKind,
@@ -2904,6 +2944,66 @@ mod tests {
         assert_eq!(healthy.last_success_at, Some(1_771_000_000_200));
         assert_eq!(healthy.last_failure_at, None);
         assert_eq!(healthy.disabled_reason, None);
+    }
+
+    #[test]
+    fn provider_health_update_tracks_threshold_contract() {
+        let still_healthy = provider_health_update_from_input(ProviderHealthUpdateInput {
+            current_consecutive_failures: 0,
+            success: false,
+            error_msg: Some("first failure".to_string()),
+            failure_threshold: 2,
+            timestamp: "2026-06-21T01:00:00Z".to_string(),
+        });
+        assert!(still_healthy.is_healthy);
+        assert_eq!(still_healthy.consecutive_failures, 1);
+        assert_eq!(still_healthy.last_success_at, None);
+        assert_eq!(
+            still_healthy.last_failure_at.as_deref(),
+            Some("2026-06-21T01:00:00Z")
+        );
+        assert_eq!(still_healthy.last_error.as_deref(), Some("first failure"));
+
+        let unhealthy = provider_health_update_from_input(ProviderHealthUpdateInput {
+            current_consecutive_failures: 1,
+            success: false,
+            error_msg: Some("second failure".to_string()),
+            failure_threshold: 2,
+            timestamp: "2026-06-21T01:01:00Z".to_string(),
+        });
+        assert!(!unhealthy.is_healthy);
+        assert_eq!(unhealthy.consecutive_failures, 2);
+        assert_eq!(
+            unhealthy.last_failure_at.as_deref(),
+            Some("2026-06-21T01:01:00Z")
+        );
+        assert_eq!(unhealthy.last_error.as_deref(), Some("second failure"));
+
+        let healthy = provider_health_update_from_input(ProviderHealthUpdateInput {
+            current_consecutive_failures: 2,
+            success: true,
+            error_msg: None,
+            failure_threshold: 2,
+            timestamp: "2026-06-21T01:02:00Z".to_string(),
+        });
+        assert!(healthy.is_healthy);
+        assert_eq!(healthy.consecutive_failures, 0);
+        assert_eq!(
+            healthy.last_success_at.as_deref(),
+            Some("2026-06-21T01:02:00Z")
+        );
+        assert_eq!(healthy.last_failure_at, None);
+        assert_eq!(healthy.last_error, None);
+
+        let zero_threshold = provider_health_update_from_input(ProviderHealthUpdateInput {
+            current_consecutive_failures: 0,
+            success: false,
+            error_msg: None,
+            failure_threshold: 0,
+            timestamp: "2026-06-21T01:03:00Z".to_string(),
+        });
+        assert!(!zero_threshold.is_healthy);
+        assert_eq!(zero_threshold.consecutive_failures, 1);
     }
 
     #[test]

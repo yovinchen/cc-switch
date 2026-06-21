@@ -6,7 +6,8 @@ use std::str::FromStr;
 
 use crate::error::AppError;
 use crate::proxy_core_adapter::{
-    AppProxyConfig, CircuitBreakerConfig, GlobalProxyConfig, ProviderHealth, ProxyConfig,
+    provider_health_update_from_input, AppProxyConfig, CircuitBreakerConfig, GlobalProxyConfig,
+    ProviderHealth, ProviderHealthUpdateInput, ProxyConfig,
 };
 use rust_decimal::Decimal;
 
@@ -585,22 +586,13 @@ impl Database {
             |row| Ok(row.get::<_, i64>(0)? as u32),
         );
 
-        let (is_healthy, consecutive_failures) = if success {
-            // 成功：重置失败计数
-            (1, 0)
-        } else {
-            // 失败：增加失败计数
-            let failures = current.unwrap_or(0) + 1;
-            // 使用传入的阈值而非硬编码
-            let healthy = if failures >= failure_threshold { 0 } else { 1 };
-            (healthy, failures)
-        };
-
-        let (last_success_at, last_failure_at) = if success {
-            (Some(now.clone()), None)
-        } else {
-            (None, Some(now.clone()))
-        };
+        let update = provider_health_update_from_input(ProviderHealthUpdateInput {
+            current_consecutive_failures: current.unwrap_or(0),
+            success,
+            error_msg,
+            failure_threshold,
+            timestamp: now.clone(),
+        });
 
         // UPSERT
         conn.execute(
@@ -616,11 +608,11 @@ impl Database {
             rusqlite::params![
                 provider_id,
                 app_type,
-                is_healthy,
-                consecutive_failures as i64,
-                last_success_at,
-                last_failure_at,
-                error_msg,
+                if update.is_healthy { 1 } else { 0 },
+                update.consecutive_failures as i64,
+                update.last_success_at,
+                update.last_failure_at,
+                update.last_error,
                 &now,
             ],
         )
@@ -879,6 +871,7 @@ impl Database {
 mod tests {
     use crate::database::Database;
     use crate::error::AppError;
+    use crate::provider::Provider;
 
     #[tokio::test]
     async fn test_default_cost_multiplier_round_trip() -> Result<(), AppError> {
@@ -949,6 +942,64 @@ mod tests {
                 ..
             }
         ));
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn provider_health_update_uses_threshold_policy() -> Result<(), AppError> {
+        let db = Database::memory()?;
+        db.save_provider(
+            "claude",
+            &Provider::with_id(
+                "provider-a".to_string(),
+                "Provider A".to_string(),
+                serde_json::json!({}),
+                None,
+            ),
+        )?;
+
+        let initial = db.get_provider_health("provider-a", "claude").await?;
+        assert!(initial.is_healthy);
+        assert_eq!(initial.consecutive_failures, 0);
+
+        db.update_provider_health_with_threshold(
+            "provider-a",
+            "claude",
+            false,
+            Some("first failure".to_string()),
+            2,
+        )
+        .await?;
+        let degraded = db.get_provider_health("provider-a", "claude").await?;
+        assert!(degraded.is_healthy);
+        assert_eq!(degraded.consecutive_failures, 1);
+        assert_eq!(degraded.last_success_at, None);
+        assert!(degraded.last_failure_at.is_some());
+        assert_eq!(degraded.last_error.as_deref(), Some("first failure"));
+
+        db.update_provider_health_with_threshold(
+            "provider-a",
+            "claude",
+            false,
+            Some("second failure".to_string()),
+            2,
+        )
+        .await?;
+        let unhealthy = db.get_provider_health("provider-a", "claude").await?;
+        assert!(!unhealthy.is_healthy);
+        assert_eq!(unhealthy.consecutive_failures, 2);
+        assert!(unhealthy.last_failure_at.is_some());
+        assert_eq!(unhealthy.last_error.as_deref(), Some("second failure"));
+
+        db.update_provider_health_with_threshold("provider-a", "claude", true, None, 2)
+            .await?;
+        let healthy = db.get_provider_health("provider-a", "claude").await?;
+        assert!(healthy.is_healthy);
+        assert_eq!(healthy.consecutive_failures, 0);
+        assert!(healthy.last_success_at.is_some());
+        assert_eq!(healthy.last_failure_at, unhealthy.last_failure_at);
+        assert_eq!(healthy.last_error, None);
 
         Ok(())
     }

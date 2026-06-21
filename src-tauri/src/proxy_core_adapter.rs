@@ -546,7 +546,8 @@ pub(crate) use crate::proxy_core::api::auth::{
     resolve_management_auth_decision, validate_management_bearer_header, ManagementAuthDecision,
 };
 pub(crate) use crate::proxy_core::api::management::{
-    channel_health_update_from_input, plan_channel_test, AppChannelListQuery,
+    channel_health_update_from_input, plan_channel_test, provider_health_update_from_input,
+    AppChannelListQuery,
     AppChannelListSource, AppChannelManagementPlan, AppChannelManagementRequest,
     AppChannelResponse, AppListRequest, AppListResponse, AppListSource, AppModelCatalogRequest,
     AppModelListQuery, ChannelCreateRequest,
@@ -564,9 +565,10 @@ pub(crate) use crate::proxy_core::api::management::{
     ChannelTestPlan, ChannelTestResponse, CurrentRouteResponse, CurrentRouteSource,
     GroupListChannelRecordInput, GroupListChannelSource, GroupListQuery, GroupListRequest,
     HealthCheckRequest, HealthCheckResponse, HealthCheckSource, ManagementAppPathRequest,
-    ProviderListResponse, ProviderListSource, ProxyChannelModelsReplaceRequest,
-    ProviderSummaryInput, ProxyChannelTestRequest, ProxyStatusRequest, ProxyStatusResponse,
-    ProxyStatusSource, RouteGroupListResponse, RouteResolveManagementRequest,
+    ProviderHealthUpdateInput, ProviderListResponse, ProviderListSource,
+    ProxyChannelModelsReplaceRequest, ProviderSummaryInput, ProxyChannelTestRequest,
+    ProxyStatusRequest, ProxyStatusResponse, ProxyStatusSource, RouteGroupListResponse,
+    RouteResolveManagementRequest,
 };
 pub(crate) use crate::proxy_core::api::model_catalog::{
     ClientModelCatalogResponse, RoutableModelList,
