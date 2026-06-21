@@ -596,6 +596,43 @@ fn channel_migration_handlers_delegate_sources_to_proxy_engine() {
 }
 
 #[test]
+fn channel_health_reset_handler_delegates_response_to_proxy_engine() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let path = manifest_dir.join("src/proxy/handlers.rs");
+    let source = fs::read_to_string(&path).expect("read handlers.rs");
+    let handler = function_slice(
+        &source,
+        "pub async fn reset_proxy_channel_breaker",
+        "/// POST /proxy/v1/route/resolve",
+    );
+    let forbidden_markers = [
+        "channel_health_reset_source_from_response",
+        ".health_reset_response_from_source(",
+        ".reset_channel_breaker(",
+    ];
+
+    let mut violations = Vec::new();
+    for (line_index, line) in production_lines(handler) {
+        let code = line.split("//").next().unwrap_or_default();
+        for marker in forbidden_markers {
+            if code.contains(marker) {
+                violations.push(format!(
+                    "src/proxy/handlers.rs reset_proxy_channel_breaker:{} contains health reset source marker `{}`",
+                    line_index + 1,
+                    marker
+                ));
+            }
+        }
+    }
+
+    assert!(
+        violations.is_empty(),
+        "channel health reset HTTP handler must delegate response wrapping to ProxyEngine:\n{}",
+        violations.join("\n")
+    );
+}
+
+#[test]
 fn production_forwarder_stays_preplanned_only() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let mut rust_files = Vec::new();

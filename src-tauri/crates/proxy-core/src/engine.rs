@@ -8,7 +8,7 @@ use super::error::ProxyCoreResult;
 use super::management_api::{
     AppChannelListSource, AppChannelManagementPlan, AppChannelManagementRequest, AppListRequest,
     AppListSource, AppModelCatalogRequest, ChannelCreateRequest, ChannelCreateSource,
-    ChannelDeleteSource,
+    ChannelDeleteSource, ChannelHealthResetSource,
     ChannelKeyDeleteSource, ChannelKeyPathRequest, ChannelKeyRecordSource, ChannelKeysSource,
     ChannelListPlan, ChannelListRequest, ChannelListSource,
     ChannelModelsSource,
@@ -550,11 +550,15 @@ where
 
     pub async fn reset_channel_health_response(
         &self,
-        channel_id: &str,
+        request: ChannelPathRequest,
     ) -> ProxyCoreResult<ChannelHealthResetResponse> {
-        self.reset_channel_health(channel_id)
+        let response = self
+            .reset_channel_health(&request.channel_id)
             .await
-            .map(ChannelHealthResetResponse::from_reset)
+            .map(ChannelHealthResetResponse::from_reset)?;
+        Ok(request.health_reset_response_from_source(ChannelHealthResetSource::new(
+            response,
+        )))
     }
 
     async fn plan_route_with_legacy_projection(
@@ -1915,8 +1919,10 @@ mod tests {
         let services = Arc::new(TestServices::default());
         let engine = ProxyEngine::new(services);
 
-        let response = futures::executor::block_on(engine.reset_channel_health_response("channel-a"))
-            .expect("reset response");
+        let response = futures::executor::block_on(engine.reset_channel_health_response(
+            ChannelPathRequest::from_path("channel-a").expect("channel path"),
+        ))
+        .expect("reset response");
 
         assert_eq!(response.channel_id, "channel-a");
         assert_eq!(response.app_type, "claude");

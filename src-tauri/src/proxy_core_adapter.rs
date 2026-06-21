@@ -755,7 +755,7 @@ pub(crate) use crate::proxy_core::api::management::{
     AppModelListQuery, ChannelCreateRequest,
     CHANNEL_HEALTH_UNKNOWN_STATUS,
     ChannelDeleteResponse, ChannelHealthResetResponse,
-    ChannelHealthResetSource, ChannelHealthUpdateInput, ChannelKeyDeleteResponse,
+    ChannelHealthUpdateInput, ChannelKeyDeleteResponse,
     ChannelKeyPathRequest, ChannelKeyRecordResponse,
     ChannelKeysResponse, ChannelListQuery,
     ChannelListRequest, ChannelListResponse,
@@ -3056,12 +3056,6 @@ pub(crate) fn proxy_channel_key_records_to_core(
     keys.into_iter()
         .map(proxy_channel_key_record_to_core)
         .collect()
-}
-
-pub(crate) fn channel_health_reset_source_from_response(
-    response: ChannelHealthResetResponse,
-) -> ChannelHealthResetSource {
-    ChannelHealthResetSource::new(response)
 }
 
 pub(crate) fn channel_migration_preview_input_from_result(

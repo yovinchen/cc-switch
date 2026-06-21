@@ -69,7 +69,6 @@ use crate::proxy_core_adapter::{
     OPENAI_PARSER_CONFIG,
 };
 use crate::proxy_core_adapter::{
-    channel_health_reset_source_from_response,
     channel_test_plan_from_record, health_check_source_from_timestamp,
     proxy_status_source_from_status,
     stream_check_result_to_channel_reachability, synthesize_gemini_tool_call_id_with_uuid,
@@ -544,13 +543,11 @@ pub async fn reset_proxy_channel_breaker(
         ChannelPathRequest::from_path(channel_id).map_err(management_api_error_to_proxy_error)?;
     let response = state
         .proxy_engine()
-        .reset_channel_health_response(&request.channel_id)
+        .reset_channel_health_response(request)
         .await
         .map_err(proxy_core_error_to_proxy_error)?;
 
-    Ok(Json(request.health_reset_response_from_source(
-        channel_health_reset_source_from_response(response),
-    )))
+    Ok(Json(response))
 }
 
 /// POST /proxy/v1/route/resolve
