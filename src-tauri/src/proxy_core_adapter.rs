@@ -347,6 +347,32 @@ pub(crate) fn proxy_app_config_from_config_parts(
     )
 }
 
+pub(crate) fn current_provider_id_from_settings_for_app(app: &AppKind) -> Option<String> {
+    app_type_option_from_proxy_core_app(app)
+        .as_ref()
+        .and_then(crate::settings::get_current_provider)
+}
+
+pub(crate) fn proxy_app_config_from_config_source_parts(
+    app: AppKind,
+    config: AppProxyConfig,
+    settings_current_provider_id: Option<&str>,
+    rectifier: RectifierConfig,
+    optimizer: OptimizerConfig,
+    copilot_optimizer: CopilotOptimizerConfig,
+) -> ProxyAppConfig {
+    let current_provider_id =
+        current_provider_id_option_from_sources(settings_current_provider_id, None);
+    proxy_app_config_from_config_parts(
+        app,
+        config,
+        current_provider_id,
+        rectifier,
+        optimizer,
+        copilot_optimizer,
+    )
+}
+
 pub(crate) fn proxy_runtime_config_from_config(
     config: ProxyConfig,
     privacy_filter_enabled: bool,
@@ -3096,6 +3122,19 @@ mod tests {
         assert_eq!(enabled_policy.timeout.non_streaming_timeout, 600);
         assert_eq!(enabled_policy.timeout.streaming.first_byte_timeout, 60);
         assert_eq!(enabled_policy.timeout.streaming.idle_timeout, 120);
+        let projected_app = proxy_app_config_from_config_source_parts(
+            AppKind::Claude,
+            app_config.clone(),
+            Some("anthropic-main"),
+            RectifierConfig::default(),
+            OptimizerConfig::default(),
+            CopilotOptimizerConfig::default(),
+        );
+        assert_eq!(projected_app.app, Some(AppKind::Claude));
+        assert_eq!(
+            projected_app.raw["currentProviderId"],
+            json!("anthropic-main")
+        );
 
         let mut disabled_app_config = app_config.clone();
         disabled_app_config.auto_failover_enabled = false;

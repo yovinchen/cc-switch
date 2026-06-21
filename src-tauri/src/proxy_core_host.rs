@@ -28,21 +28,20 @@ use crate::proxy_core_adapter::{
     app_error,
     auth_info_from_cc_switch_provider_config,
     app_type_from_proxy_core_app,
-    app_type_option_from_proxy_core_app,
     channel_auth_profile_action,
     channel_health_reset_from_parts,
     channel_key_auth_error,
     codex_client_model_catalog_raw_from_active_config,
     current_provider_db_fallback_required,
     current_provider_id_from_sources,
-    current_provider_id_option_from_sources,
+    current_provider_id_from_settings_for_app,
     extract_proxy_session_id,
     forward_result_to_proxy_result,
     forwarding_runtime_unavailable_error,
     host_providers_for_plan,
     provider_with_channel_auth_key,
     provider_model_catalog_from_provider,
-    proxy_app_config_from_config_parts, proxy_global_config_from_config,
+    proxy_app_config_from_config_source_parts, proxy_global_config_from_config,
     proxy_runtime_config_from_config,
     proxy_channel_record_to_core_spec, proxy_channel_records_to_core_specs_for_query,
     proxy_provider_to_core_spec, proxy_providers_to_core_specs,
@@ -215,7 +214,6 @@ impl ProxyConfigSource for CcSwitchConfigSource {
 
     fn load_app<'a>(&'a self, app: &'a AppKind) -> BoxFuture<'a, ProxyCoreResult<ProxyAppConfig>> {
         Box::pin(async move {
-            let app_type = app_type_option_from_proxy_core_app(app);
             let config = self
                 .db
                 .get_proxy_config_for_app(app.as_str())
@@ -224,17 +222,11 @@ impl ProxyConfigSource for CcSwitchConfigSource {
             let rectifier = self.db.get_rectifier_config().unwrap_or_default();
             let optimizer = self.db.get_optimizer_config().unwrap_or_default();
             let copilot_optimizer = self.db.get_copilot_optimizer_config().unwrap_or_default();
-            let settings_current_provider_id = app_type
-                .as_ref()
-                .and_then(crate::settings::get_current_provider);
-            let current_provider_id = current_provider_id_option_from_sources(
-                settings_current_provider_id.as_deref(),
-                None,
-            );
-            Ok(proxy_app_config_from_config_parts(
+            let settings_current_provider_id = current_provider_id_from_settings_for_app(app);
+            Ok(proxy_app_config_from_config_source_parts(
                 app.clone(),
                 config,
-                current_provider_id,
+                settings_current_provider_id.as_deref(),
                 rectifier,
                 optimizer,
                 copilot_optimizer,
