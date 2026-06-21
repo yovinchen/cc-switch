@@ -915,6 +915,20 @@ pub struct RoutePolicy {
     pub raw: Value,
 }
 
+pub fn route_policy_from_failover_provider_ids(
+    app: AppKind,
+    failover_provider_ids: impl IntoIterator<Item = String>,
+) -> RoutePolicy {
+    RoutePolicy {
+        app,
+        groups: Vec::new(),
+        raw: json!({
+            "defaultGroup": DEFAULT_ROUTE_GROUP,
+            "failoverProviderIds": failover_provider_ids.into_iter().collect::<Vec<_>>(),
+        }),
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct ChannelQuery<'a> {
     pub app: &'a AppKind,
@@ -1375,6 +1389,22 @@ mod tests {
             selections,
             attempts: Vec::new(),
         }
+    }
+
+    #[test]
+    fn route_policy_from_failover_provider_ids_preserves_raw_contract() {
+        let policy = route_policy_from_failover_provider_ids(
+            AppKind::Claude,
+            vec!["provider-a".to_string(), "provider-b".to_string()],
+        );
+
+        assert_eq!(policy.app, AppKind::Claude);
+        assert!(policy.groups.is_empty());
+        assert_eq!(policy.raw["defaultGroup"], json!(DEFAULT_ROUTE_GROUP));
+        assert_eq!(
+            policy.raw["failoverProviderIds"],
+            json!(["provider-a", "provider-b"])
+        );
     }
 
     #[test]

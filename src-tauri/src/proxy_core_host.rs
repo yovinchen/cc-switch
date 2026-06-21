@@ -26,6 +26,7 @@ use crate::proxy_core_adapter::{
     extract_claude_auth_key_from_settings, extract_proxy_session_id, parse_auth_profile_ref,
     proxy_channel_record_to_core_spec, proxy_channel_records_to_core_specs_for_query,
     proxy_provider_to_core_spec, proxy_providers_to_core_specs,
+    route_policy_from_failover_queue,
 };
 use bytes::Bytes;
 use futures::{future::BoxFuture, Stream, StreamExt};
@@ -343,14 +344,7 @@ impl RoutePolicySource for CcSwitchRoutePolicySource {
                 .db
                 .get_failover_queue(app.as_str())
                 .map_err(|error| app_error("load route policy", error))?;
-            Ok(Some(RoutePolicy {
-                app: app.clone(),
-                groups: Vec::new(),
-                raw: json!({
-                    "defaultGroup": DEFAULT_ROUTE_GROUP,
-                    "failoverProviderIds": queue.into_iter().map(|item| item.provider_id).collect::<Vec<_>>(),
-                }),
-            }))
+            Ok(Some(route_policy_from_failover_queue(app.clone(), queue)))
         })
     }
 }
@@ -1344,6 +1338,27 @@ mod tests {
         assert_eq!(provider.id, "anthropic-main");
         assert_eq!(provider.kind, ProviderKind::Claude);
         assert!(provider.metadata.raw.get("env").is_none());
+    }
+
+    #[tokio::test]
+    async fn route_policy_source_projects_failover_queue_through_core() {
+        let db = Arc::new(Database::memory().expect("memory db"));
+        save_claude_provider(&db);
+        db.add_to_failover_queue("claude", "anthropic-main")
+            .expect("add failover provider");
+        let services = CcSwitchProxyServices::new(db);
+
+        let policy = services
+            .route_policies()
+            .load_policy(&AppKind::Claude)
+            .await
+            .expect("load policy")
+            .expect("policy");
+
+        assert_eq!(policy.app, AppKind::Claude);
+        assert!(policy.groups.is_empty());
+        assert_eq!(policy.raw["defaultGroup"], json!(DEFAULT_ROUTE_GROUP));
+        assert_eq!(policy.raw["failoverProviderIds"], json!(["anthropic-main"]));
     }
 
     #[tokio::test]

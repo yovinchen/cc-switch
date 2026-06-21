@@ -1,7 +1,8 @@
 use crate::app_config::AppType;
 use crate::claude_desktop_config::ResolvedModelRoute;
 use crate::database::{
-    ProxyChannelKeyRecord, ProxyChannelModelRecord, ProxyChannelRecord, ProxyChannelSourceKind,
+    FailoverQueueItem, ProxyChannelKeyRecord, ProxyChannelModelRecord, ProxyChannelRecord,
+    ProxyChannelSourceKind,
 };
 use crate::provider::{Provider, ProviderMeta};
 use crate::proxy::providers::provider_kind_from_app_type_and_config;
@@ -1523,6 +1524,16 @@ pub(crate) fn route_selection_for_forward_result(
         plan,
         selected_channel_id,
         provider_id,
+    )
+}
+
+pub(crate) fn route_policy_from_failover_queue(
+    app: AppKind,
+    queue: impl IntoIterator<Item = FailoverQueueItem>,
+) -> RoutePolicy {
+    crate::proxy_core::api::routing::route_policy_from_failover_provider_ids(
+        app,
+        queue.into_iter().map(|item| item.provider_id),
     )
 }
 
