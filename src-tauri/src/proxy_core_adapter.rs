@@ -3143,6 +3143,13 @@ pub(crate) fn provider_is_codex_oauth(provider: &Provider) -> bool {
     provider_kind_from_provider(provider) == Some(ProviderKind::CodexOAuth)
 }
 
+pub(crate) fn provider_uses_anthropic_rectifiers(app_type: &AppType, provider: &Provider) -> bool {
+    matches!(
+        provider_kind_from_app_type_and_config(app_type, provider),
+        ProviderKind::Claude | ProviderKind::ClaudeAuth
+    )
+}
+
 pub(crate) fn provider_is_github_copilot_upstream(provider: &Provider, base_url: &str) -> bool {
     crate::proxy_core::api::transport::is_github_copilot_upstream(
         provider
@@ -6030,6 +6037,16 @@ mod tests {
             provider_type: Some("codex_oauth".to_string()),
             ..ProviderMeta::default()
         });
+        let mut claude_auth_provider = Provider::with_id(
+            "claude-auth".to_string(),
+            "Claude Auth".to_string(),
+            json!({}),
+            None,
+        );
+        claude_auth_provider.meta = Some(ProviderMeta {
+            provider_type: Some("claude_auth".to_string()),
+            ..ProviderMeta::default()
+        });
 
         let spec = provider.to_proxy_core_provider_spec(&AppType::Claude);
         let source_spec = provider_spec_from_source(&AppKind::Claude, Some(provider.clone()))
@@ -6057,6 +6074,14 @@ mod tests {
             "https://api.githubcopilot.com"
         ));
         assert!(provider_is_codex_oauth(&codex_provider));
+        assert!(provider_uses_anthropic_rectifiers(
+            &AppType::Claude,
+            &claude_auth_provider
+        ));
+        assert!(!provider_uses_anthropic_rectifiers(
+            &AppType::Codex,
+            &claude_auth_provider
+        ));
         assert_eq!(spec.account_ref.as_deref(), Some("github_copilot:acct-1"));
         let serialized = serde_json::to_string(&spec).expect("serialize spec");
         assert!(!serialized.contains("secret-token"));

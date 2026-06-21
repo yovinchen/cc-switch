@@ -9,10 +9,7 @@ use super::{
     events::ProxyEventBus,
     failover_switch::FailoverSwitchManager,
     provider_router::ProviderRouter,
-    providers::{
-        codex_chat_history::CodexChatHistoryStore, get_adapter,
-        provider_kind_from_app_type_and_config, ProviderAdapter,
-    },
+    providers::{codex_chat_history::CodexChatHistoryStore, get_adapter, ProviderAdapter},
     route_attempt::{apply_channel_model_override, ForwardAttempt},
 };
 use crate::proxy::managed_account_auth::{
@@ -33,7 +30,7 @@ use crate::proxy_core_adapter::{
     prepare_upstream_request_body_with_report, prompt_cache_trace_log_message,
     provider_bedrock_env_flag, provider_custom_user_agent_header, provider_is_codex_oauth,
     provider_is_full_url, provider_is_github_copilot_upstream, rectify_anthropic_request,
-    rectify_thinking_budget, replace_image_blocks_with_marker, record_active_connection_acquired_status,
+    provider_uses_anthropic_rectifiers, rectify_thinking_budget, replace_image_blocks_with_marker, record_active_connection_acquired_status,
     record_active_connection_released_status, record_forward_failure_status,
     record_forward_request_started_status, record_forward_success_status,
     replace_images_for_text_only_provider_model, request_body_filter_log_message,
@@ -55,7 +52,7 @@ use crate::proxy_core_adapter::{
     CopilotOptimizerConfig, CurrentRouteTarget, ForwardFailureCategory,
     ForwardUpstreamUrlPlanInput, GeminiShadowStore, MediaRetryInput, OptimizerConfig,
     PromptCacheTraceLogInput,
-    ProviderKind, ProxyRuntimeStatus, RectifierConfig, ResolvedChannelAttempt,
+    ProxyRuntimeStatus, RectifierConfig, ResolvedChannelAttempt,
     REQUEST_STARTED_EVENT,
     UpstreamAuthHeadersInput, UpstreamRequestHeadersInput, UpstreamSendPolicyInput,
     UpstreamTransportKind, UNSUPPORTED_IMAGE_MARKER,
@@ -733,11 +730,8 @@ impl RequestForwarder {
                 }
                 Err(e) => {
                     // 检测是否需要触发整流器（仅 Claude/ClaudeAuth 供应商）
-                    let provider_type = provider_kind_from_app_type_and_config(app_type, provider);
-                    let is_anthropic_provider = matches!(
-                        provider_type,
-                        ProviderKind::Claude | ProviderKind::ClaudeAuth
-                    );
+                    let is_anthropic_provider =
+                        provider_uses_anthropic_rectifiers(app_type, provider);
                     let mut signature_rectifier_non_retryable_client_error = false;
 
                     if self.media_retry_should_trigger(
