@@ -21,10 +21,10 @@ use crate::proxy_core_adapter::{
     non_streaming_response_usage_record_from_body_with_request_id_fallback,
     passthrough_bytes_proxy_response, passthrough_stream_proxy_response,
     response_headers_log_summary, streaming_response_usage_record_with_optional_outbound_model,
-    usage_record_with_route_context, ProxyCoreAppKind as AppKind, ProxyServices,
-    ResponseBodyDecodeLogLevel, SseEventScanner, SsePassthroughEventKind, SseUsageAccumulator,
-    StreamUsageEventFilter, StreamingTimeoutConfig, StreamingTimeoutPhase, UsageParserConfig,
-    UsageRecord,
+    usage_record_with_route_context, usage_selected_provider_missing_log_message,
+    ProxyCoreAppKind as AppKind, ProxyServices, ResponseBodyDecodeLogLevel, SseEventScanner,
+    SsePassthroughEventKind, SseUsageAccumulator, StreamUsageEventFilter, StreamingTimeoutConfig,
+    StreamingTimeoutPhase, UsageParserConfig, UsageRecord, UsageSelectedProviderMissingPhase,
 };
 #[cfg(test)]
 use crate::proxy_core_adapter::{ProviderKind, TokenUsage};
@@ -320,8 +320,11 @@ fn create_usage_collector(
 
     let Some(provider) = ctx.provider_for_usage() else {
         log::warn!(
-            "[{}] 跳过流式 usage 收集：ProxyEngine 尚未回填 selected provider",
-            ctx.tag
+            "{}",
+            usage_selected_provider_missing_log_message(
+                ctx.tag,
+                UsageSelectedProviderMissingPhase::StreamingPassthrough,
+            )
         );
         return None;
     };

@@ -814,6 +814,25 @@ impl TransformedResponseUsageFormat {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum UsageSelectedProviderMissingPhase {
+    StreamingPassthrough,
+    TransformedResponse,
+    TransformedStreaming,
+}
+
+pub fn usage_selected_provider_missing_log_message(
+    tag: &str,
+    phase: UsageSelectedProviderMissingPhase,
+) -> String {
+    let action = match phase {
+        UsageSelectedProviderMissingPhase::StreamingPassthrough => "跳过流式 usage 收集",
+        UsageSelectedProviderMissingPhase::TransformedResponse => "跳过转换响应 usage 记录",
+        UsageSelectedProviderMissingPhase::TransformedStreaming => "跳过转换流式 usage 收集",
+    };
+    format!("[{tag}] {action}：ProxyEngine 尚未回填 selected provider")
+}
+
 #[derive(Debug, Clone)]
 pub struct TransformedResponseUsage {
     pub usage: TokenUsage,
@@ -2706,6 +2725,31 @@ mod tests {
         assert_eq!(
             TransformedResponseUsageFormat::CodexAuto.missing_streaming_usage_log_message(),
             "[Codex] 流式响应 usage 全 0 或缺失，跳过消费记录"
+        );
+    }
+
+    #[test]
+    fn usage_selected_provider_missing_log_message_preserves_host_contracts() {
+        assert_eq!(
+            usage_selected_provider_missing_log_message(
+                "Claude",
+                UsageSelectedProviderMissingPhase::StreamingPassthrough
+            ),
+            "[Claude] 跳过流式 usage 收集：ProxyEngine 尚未回填 selected provider"
+        );
+        assert_eq!(
+            usage_selected_provider_missing_log_message(
+                "Claude",
+                UsageSelectedProviderMissingPhase::TransformedResponse
+            ),
+            "[Claude] 跳过转换响应 usage 记录：ProxyEngine 尚未回填 selected provider"
+        );
+        assert_eq!(
+            usage_selected_provider_missing_log_message(
+                "Codex",
+                UsageSelectedProviderMissingPhase::TransformedStreaming
+            ),
+            "[Codex] 跳过转换流式 usage 收集：ProxyEngine 尚未回填 selected provider"
         );
     }
 

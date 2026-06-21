@@ -10,8 +10,9 @@ use crate::proxy_core_adapter::{
     error_usage_record_with_request_id_fallback,
     transformed_response_usage_record_with_request_id_fallback,
     transformed_streaming_response_usage_record_with_request_id_fallback,
-    usage_record_with_route_context, ProviderKind, ProxyCoreAppKind as AppKind, ProxyServices,
-    StreamUsageEventFilter, TransformedResponseUsageFormat, UsageRecord,
+    usage_record_with_route_context, usage_selected_provider_missing_log_message, ProviderKind,
+    ProxyCoreAppKind as AppKind, ProxyServices, StreamUsageEventFilter,
+    TransformedResponseUsageFormat, UsageRecord, UsageSelectedProviderMissingPhase,
 };
 #[cfg(test)]
 use crate::proxy_core_adapter::{success_usage_record_with_request_id_fallback, TokenUsage};
@@ -147,8 +148,11 @@ pub(crate) fn record_transformed_response_usage(
 
     let Some(provider) = ctx.provider_for_usage() else {
         log::warn!(
-            "[{}] 跳过转换响应 usage 记录：ProxyEngine 尚未回填 selected provider",
-            ctx.tag
+            "{}",
+            usage_selected_provider_missing_log_message(
+                ctx.tag,
+                UsageSelectedProviderMissingPhase::TransformedResponse,
+            )
         );
         return;
     };
@@ -185,8 +189,11 @@ pub(crate) fn transformed_streaming_usage_collector(
 
     let Some(provider) = ctx.provider_for_usage() else {
         log::warn!(
-            "[{}] 跳过转换流式 usage 收集：ProxyEngine 尚未回填 selected provider",
-            ctx.tag
+            "{}",
+            usage_selected_provider_missing_log_message(
+                ctx.tag,
+                UsageSelectedProviderMissingPhase::TransformedStreaming,
+            )
         );
         return None;
     };

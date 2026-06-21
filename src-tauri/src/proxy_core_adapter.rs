@@ -416,6 +416,8 @@ pub(crate) type StreamUsageEventFilter =
     crate::proxy_core::api::usage::StreamUsageEventFilter;
 pub(crate) type TransformedResponseUsageFormat =
     crate::proxy_core::api::usage::TransformedResponseUsageFormat;
+pub(crate) type UsageSelectedProviderMissingPhase =
+    crate::proxy_core::api::usage::UsageSelectedProviderMissingPhase;
 pub(crate) type CurrentRouteTarget =
     crate::proxy_core::api::ports::CurrentRouteTarget;
 
@@ -3090,6 +3092,13 @@ pub(crate) fn transformed_streaming_response_usage_record_with_request_id_fallba
     )
 }
 
+pub(crate) fn usage_selected_provider_missing_log_message(
+    tag: &str,
+    phase: UsageSelectedProviderMissingPhase,
+) -> String {
+    crate::proxy_core::api::usage::usage_selected_provider_missing_log_message(tag, phase)
+}
+
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn streaming_response_usage_record_with_optional_outbound_model(
     events: &[Value],
@@ -5678,6 +5687,27 @@ mod tests {
             Some("[USG-002] 模型定价未找到，成本将记录为 0: upstream-sonnet")
         );
         assert!(missing_pricing.log.cost.is_none());
+        assert_eq!(
+            usage_selected_provider_missing_log_message(
+                "Claude",
+                UsageSelectedProviderMissingPhase::StreamingPassthrough,
+            ),
+            "[Claude] 跳过流式 usage 收集：ProxyEngine 尚未回填 selected provider"
+        );
+        assert_eq!(
+            usage_selected_provider_missing_log_message(
+                "Claude",
+                UsageSelectedProviderMissingPhase::TransformedResponse,
+            ),
+            "[Claude] 跳过转换响应 usage 记录：ProxyEngine 尚未回填 selected provider"
+        );
+        assert_eq!(
+            usage_selected_provider_missing_log_message(
+                "Codex",
+                UsageSelectedProviderMissingPhase::TransformedStreaming,
+            ),
+            "[Codex] 跳过转换流式 usage 收集：ProxyEngine 尚未回填 selected provider"
+        );
     }
 
     #[test]
