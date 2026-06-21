@@ -10,14 +10,13 @@ use crate::provider::{CodexChatReasoningConfig, Provider};
 use crate::proxy::error::ProxyError;
 use crate::proxy_core_adapter::{
     apply_codex_chat_upstream_model_policy, build_codex_bearer_auth_headers,
-    build_codex_upstream_url, codex_provider_catalog_model_ids_from_settings,
-    infer_codex_chat_reasoning_profile, normalize_codex_chat_reasoning_profile,
-    provider_codex_api_key, provider_codex_base_url, resolve_codex_provider_upstream_model,
-    resolve_codex_provider_uses_chat_completions, should_convert_codex_responses_endpoint_to_chat,
+    build_codex_upstream_url, infer_codex_chat_reasoning_profile,
+    normalize_codex_chat_reasoning_profile, provider_codex_api_key, provider_codex_base_url,
+    provider_codex_catalog_model_ids, provider_codex_upstream_model,
+    provider_codex_uses_chat_completions, should_convert_codex_responses_endpoint_to_chat,
     CodexChatReasoningOptions, CodexChatReasoningProfile, ProviderAuthInfo, ProviderAuthStrategy,
 };
 use serde_json::Value as JsonValue;
-use toml::Value as TomlValue;
 
 /// Codex 适配器
 pub struct CodexAdapter;
@@ -26,39 +25,7 @@ pub struct CodexAdapter;
 /// OpenAI Chat Completions, even if the local Codex client is talking to CC
 /// Switch through the Responses API.
 pub fn codex_provider_uses_chat_completions(provider: &Provider) -> bool {
-    let config_text = provider
-        .settings_config
-        .get("config")
-        .and_then(|v| v.as_str());
-    resolve_codex_provider_uses_chat_completions(
-        provider
-            .meta
-            .as_ref()
-            .and_then(|meta| meta.api_format.as_deref())
-            .or_else(|| {
-                provider
-                    .settings_config
-                    .get("api_format")
-                    .and_then(|v| v.as_str())
-            })
-            .or_else(|| {
-                provider
-                    .settings_config
-                    .get("apiFormat")
-                    .and_then(|v| v.as_str())
-            }),
-        config_text
-            .and_then(extract_codex_wire_api_from_toml)
-            .as_deref(),
-        provider
-            .settings_config
-            .get("base_url")
-            .or_else(|| provider.settings_config.get("baseURL"))
-            .and_then(|v| v.as_str()),
-        config_text
-            .and_then(extract_codex_base_url_from_toml)
-            .as_deref(),
-    )
+    provider_codex_uses_chat_completions(provider)
 }
 
 pub fn should_convert_codex_responses_to_chat(provider: &Provider, endpoint: &str) -> bool {
@@ -70,16 +37,7 @@ pub fn should_convert_codex_responses_to_chat(provider: &Provider, endpoint: &st
 
 /// Extract the real upstream model configured for a Codex provider.
 pub fn codex_provider_upstream_model(provider: &Provider) -> Option<String> {
-    let settings_model = provider
-        .settings_config
-        .get("model")
-        .and_then(|v| v.as_str());
-    let config_model = provider
-        .settings_config
-        .get("config")
-        .and_then(|v| v.as_str())
-        .and_then(extract_codex_model_from_toml);
-    resolve_codex_provider_upstream_model(settings_model, config_model.as_deref())
+    provider_codex_upstream_model(provider)
 }
 
 /// For Codex Chat providers, ensure the request uses the configured upstream
@@ -92,8 +50,7 @@ pub fn apply_codex_chat_upstream_model(
         return None;
     }
 
-    let catalog_model_ids =
-        codex_provider_catalog_model_ids_from_settings(&provider.settings_config);
+    let catalog_model_ids = provider_codex_catalog_model_ids(provider);
     let upstream_model = codex_provider_upstream_model(provider);
     apply_codex_chat_upstream_model_policy(
         body,
@@ -185,35 +142,6 @@ fn codex_chat_reasoning_config_from_profile(
     }
 }
 
-fn extract_codex_wire_api_from_toml(config_text: &str) -> Option<String> {
-    let doc = config_text.parse::<TomlValue>().ok()?;
-
-    if let Some(active_provider) = doc.get("model_provider").and_then(|v| v.as_str()) {
-        if let Some(wire_api) = doc
-            .get("model_providers")
-            .and_then(|providers| providers.get(active_provider))
-            .and_then(|provider| provider.get("wire_api"))
-            .and_then(|v| v.as_str())
-        {
-            return Some(wire_api.to_string());
-        }
-    }
-
-    doc.get("wire_api")
-        .and_then(|v| v.as_str())
-        .map(ToString::to_string)
-}
-
-fn extract_codex_model_from_toml(config_text: &str) -> Option<String> {
-    let doc = config_text.parse::<TomlValue>().ok()?;
-
-    doc.get("model")
-        .and_then(|v| v.as_str())
-        .map(str::trim)
-        .filter(|model| !model.is_empty())
-        .map(ToString::to_string)
-}
-
 fn extract_codex_base_url_from_toml(config_text: &str) -> Option<String> {
     // Canonical parser lives in codex_config; keep this thin alias so the
     // proxy hot path and the usage-credential resolver share one implementation.
@@ -243,9 +171,8 @@ impl ProviderAdapter for CodexAdapter {
     }
 
     fn extract_base_url(&self, provider: &Provider) -> Result<String, ProxyError> {
-        provider_codex_base_url(provider).ok_or_else(|| {
-            ProxyError::ConfigError("Codex Provider 缺少 base_url 配置".to_string())
-        })
+        provider_codex_base_url(provider)
+            .ok_or_else(|| ProxyError::ConfigError("Codex Provider 缺少 base_url 配置".to_string()))
     }
 
     fn extract_auth(&self, provider: &Provider) -> Option<ProviderAuthInfo> {

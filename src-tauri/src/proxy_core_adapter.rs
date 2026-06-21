@@ -1302,6 +1302,88 @@ pub(crate) fn provider_codex_base_url(provider: &Provider) -> Option<String> {
     None
 }
 
+fn provider_codex_config_text(provider: &Provider) -> Option<&str> {
+    provider
+        .settings_config
+        .get("config")
+        .and_then(Value::as_str)
+}
+
+fn codex_wire_api_from_toml(config_text: &str) -> Option<String> {
+    let doc = config_text.parse::<toml::Value>().ok()?;
+
+    if let Some(active_provider) = doc.get("model_provider").and_then(|value| value.as_str()) {
+        if let Some(wire_api) = doc
+            .get("model_providers")
+            .and_then(|providers| providers.get(active_provider))
+            .and_then(|provider| provider.get("wire_api"))
+            .and_then(|value| value.as_str())
+        {
+            return Some(wire_api.to_string());
+        }
+    }
+
+    doc.get("wire_api")
+        .and_then(|value| value.as_str())
+        .map(ToString::to_string)
+}
+
+fn codex_model_from_toml(config_text: &str) -> Option<String> {
+    let doc = config_text.parse::<toml::Value>().ok()?;
+
+    doc.get("model")
+        .and_then(|value| value.as_str())
+        .map(str::trim)
+        .filter(|model| !model.is_empty())
+        .map(ToString::to_string)
+}
+
+pub(crate) fn provider_codex_uses_chat_completions(provider: &Provider) -> bool {
+    let config_text = provider_codex_config_text(provider);
+    resolve_codex_provider_uses_chat_completions(
+        provider
+            .meta
+            .as_ref()
+            .and_then(|meta| meta.api_format.as_deref())
+            .or_else(|| {
+                provider
+                    .settings_config
+                    .get("api_format")
+                    .and_then(Value::as_str)
+            })
+            .or_else(|| {
+                provider
+                    .settings_config
+                    .get("apiFormat")
+                    .and_then(Value::as_str)
+            }),
+        config_text.and_then(codex_wire_api_from_toml).as_deref(),
+        provider
+            .settings_config
+            .get("base_url")
+            .or_else(|| provider.settings_config.get("baseURL"))
+            .and_then(Value::as_str),
+        config_text
+            .and_then(crate::codex_config::extract_codex_base_url)
+            .as_deref(),
+    )
+}
+
+pub(crate) fn provider_codex_upstream_model(provider: &Provider) -> Option<String> {
+    let settings_model = provider
+        .settings_config
+        .get("model")
+        .and_then(Value::as_str);
+    let config_model = provider_codex_config_text(provider).and_then(codex_model_from_toml);
+    resolve_codex_provider_upstream_model(settings_model, config_model.as_deref())
+}
+
+pub(crate) fn provider_codex_catalog_model_ids(
+    provider: &Provider,
+) -> std::collections::HashSet<String> {
+    codex_provider_catalog_model_ids_from_settings(&provider.settings_config)
+}
+
 pub(crate) fn codex_provider_catalog_model_ids_from_settings(
     settings_config: &Value,
 ) -> std::collections::HashSet<String> {
@@ -4661,6 +4743,29 @@ mod tests {
             provider_codex_base_url(&provider).as_deref(),
             Some("https://api.openai.com/v1")
         );
+        let chat_provider = Provider::with_id(
+            "codex-chat".to_string(),
+            "Codex Chat".to_string(),
+            json!({
+                "config": r#"model_provider = "openai"
+model = " upstream-model "
+
+[model_providers.openai]
+wire_api = "chat"
+base_url = "https://api.openai.com/v1"
+"#,
+                "modelCatalog": {
+                    "models": [{"model": "catalog-model"}]
+                }
+            }),
+            None,
+        );
+        assert!(provider_codex_uses_chat_completions(&chat_provider));
+        assert_eq!(
+            provider_codex_upstream_model(&chat_provider).as_deref(),
+            Some("upstream-model")
+        );
+        assert!(provider_codex_catalog_model_ids(&chat_provider).contains("catalog-model"));
 
         assert_eq!(
             resolve_codex_provider_upstream_model(Some(" upstream-model "), None).as_deref(),
