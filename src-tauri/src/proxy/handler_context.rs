@@ -31,8 +31,8 @@ pub struct RequestContext {
     pub start_time: Instant,
     /// 响应处理运行时策略（per-app，包含重试次数和超时配置）
     pub response_runtime_policy: ResponseRuntimePolicy,
-    /// 选中的 Provider（故障转移链的第一个）
-    pub provider: Provider,
+    /// ProxyEngine 成功选路后的 Provider。
+    provider: Option<Provider>,
     /// 请求中的模型名称
     pub request_model: String,
     /// 实际发往上游的模型名（路由接管/模型映射后的真值，forward 成功后回填）。
@@ -106,38 +106,17 @@ impl RequestContext {
             session_result.client_provided
         );
 
-        // 使用共享的 ProviderRouter 选择 Provider（熔断器状态跨请求保持）
-        // 注意：只在这里调用一次，结果传递给 forwarder，避免重复消耗 HalfOpen 名额
-        let providers = state
-            .provider_router
-            .select_providers(app_type_str)
-            .await
-            .map_err(|e| match e {
-                crate::error::AppError::AllProvidersCircuitOpen => {
-                    ProxyError::AllProvidersCircuitOpen
-                }
-                crate::error::AppError::NoProvidersConfigured => ProxyError::NoProvidersConfigured,
-                _ => ProxyError::DatabaseError(e.to_string()),
-            })?;
-
-        let provider = providers
-            .first()
-            .cloned()
-            .ok_or(ProxyError::NoAvailableProvider)?;
-
         log::debug!(
-            "[{}] Provider: {}, model: {}, failover chain: {} providers, session: {}",
+            "[{}] Request model: {}, session: {}",
             tag,
-            provider.name,
             request_model,
-            providers.len(),
             session_id
         );
 
         Ok(Self {
             start_time,
             response_runtime_policy,
-            provider,
+            provider: None,
             request_model,
             outbound_model: None,
             usage_route_context: None,
@@ -183,12 +162,42 @@ impl RequestContext {
             request_context_route_update_from_proxy_result(&self.app_type, &provider, result);
         self.outbound_model = update.outbound_model;
         self.usage_route_context = Some(update.usage_route_context);
-        self.provider = update.provider;
+        self.provider = Some(update.provider);
         Ok(())
     }
 
-    pub fn claude_api_format_for_proxy_result(&self, result: &ProxyResult) -> String {
-        claude_api_format_from_metadata(&result.metadata, get_claude_api_format(&self.provider))
+    pub fn provider(&self) -> Result<&Provider, ProxyError> {
+        self.provider.as_ref().ok_or_else(|| {
+            ProxyError::ConfigError(format!(
+                "selected provider is not available before route result is applied: {}",
+                self.app_type_str
+            ))
+        })
+    }
+
+    pub fn provider_for_usage(&self) -> Option<&Provider> {
+        self.provider.as_ref()
+    }
+
+    pub fn provider_name_for_error(&self) -> &str {
+        self.provider
+            .as_ref()
+            .map(|provider| provider.name.as_str())
+            .unwrap_or(self.tag)
+    }
+
+    pub fn fallback_provider_id(&self) -> String {
+        format!("unselected:{}", self.app_type_str)
+    }
+
+    pub fn claude_api_format_for_proxy_result(
+        &self,
+        result: &ProxyResult,
+    ) -> Result<String, ProxyError> {
+        Ok(claude_api_format_from_metadata(
+            &result.metadata,
+            get_claude_api_format(self.provider()?),
+        ))
     }
 
     /// 计算请求延迟（毫秒）
@@ -220,5 +229,54 @@ impl RequestContext {
     #[inline]
     pub fn body_timeout_duration(&self) -> std::time::Duration {
         self.response_timeout_config().body_timeout_duration()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn context_with_provider(provider: Option<Provider>) -> RequestContext {
+        RequestContext {
+            start_time: Instant::now(),
+            response_runtime_policy: ResponseRuntimePolicy::default(),
+            provider,
+            request_model: "client-model".to_string(),
+            outbound_model: None,
+            usage_route_context: None,
+            tag: "Codex",
+            app_type_str: "codex",
+            app_type: AppType::Codex,
+            session_id: "session-1".to_string(),
+        }
+    }
+
+    #[test]
+    fn provider_accessors_use_fallback_before_route_result() {
+        let ctx = context_with_provider(None);
+
+        assert!(matches!(ctx.provider(), Err(ProxyError::ConfigError(_))));
+        assert!(ctx.provider_for_usage().is_none());
+        assert_eq!(ctx.provider_name_for_error(), "Codex");
+        assert_eq!(ctx.fallback_provider_id(), "unselected:codex");
+    }
+
+    #[test]
+    fn provider_accessors_use_selected_provider_after_route_result() {
+        let provider = Provider::with_id(
+            "provider-a".to_string(),
+            "Provider A".to_string(),
+            serde_json::json!({}),
+            None,
+        );
+        let ctx = context_with_provider(Some(provider));
+
+        assert_eq!(ctx.provider().expect("selected provider").id, "provider-a");
+        assert_eq!(
+            ctx.provider_for_usage().map(|provider| provider.id.as_str()),
+            Some("provider-a")
+        );
+        assert_eq!(ctx.provider_name_for_error(), "Provider A");
+        assert_eq!(ctx.fallback_provider_id(), "unselected:codex");
     }
 }

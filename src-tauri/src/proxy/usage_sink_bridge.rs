@@ -52,7 +52,8 @@ pub(crate) fn success_usage_record(
 
 #[allow(clippy::too_many_arguments)]
 fn error_usage_record(
-    provider: &Provider,
+    provider_id: &str,
+    provider_kind: Option<ProviderKind>,
     app_type: &str,
     request_model: &str,
     outbound_model: Option<&str>,
@@ -63,8 +64,8 @@ fn error_usage_record(
     session_id: Option<String>,
 ) -> UsageRecord {
     error_usage_record_with_request_id_fallback(
-        &provider.id,
-        provider_kind_from_provider(provider),
+        provider_id,
+        provider_kind,
         AppKind::from(app_type),
         request_model,
         outbound_model,
@@ -83,8 +84,14 @@ pub(crate) fn record_forward_error_usage(
     is_streaming: bool,
     error: &ProxyError,
 ) {
+    let provider = ctx.provider_for_usage();
+    let provider_id = provider
+        .map(|provider| provider.id.clone())
+        .unwrap_or_else(|| ctx.fallback_provider_id());
+    let provider_kind = provider.and_then(provider_kind_from_provider);
     let record = error_usage_record(
-        &ctx.provider,
+        &provider_id,
+        provider_kind,
         ctx.app_type_str,
         &ctx.request_model,
         ctx.outbound_model.as_deref(),
@@ -138,10 +145,18 @@ pub(crate) fn record_transformed_response_usage(
         return;
     }
 
+    let Some(provider) = ctx.provider_for_usage() else {
+        log::warn!(
+            "[{}] 跳过转换响应 usage 记录：ProxyEngine 尚未回填 selected provider",
+            ctx.tag
+        );
+        return;
+    };
+
     let Some(record) = transformed_response_usage_record(
         body,
         format,
-        &ctx.provider,
+        provider,
         ctx.app_type_str,
         &ctx.request_model,
         ctx.outbound_model.as_deref(),
@@ -168,9 +183,17 @@ pub(crate) fn transformed_streaming_usage_collector(
         return None;
     }
 
+    let Some(provider) = ctx.provider_for_usage() else {
+        log::warn!(
+            "[{}] 跳过转换流式 usage 收集：ProxyEngine 尚未回填 selected provider",
+            ctx.tag
+        );
+        return None;
+    };
+
     let services = state.proxy_core_services.clone();
-    let provider_id = ctx.provider.id.clone();
-    let provider_kind = provider_kind_from_provider(&ctx.provider);
+    let provider_id = provider.id.clone();
+    let provider_kind = provider_kind_from_provider(provider);
     let request_model = ctx.request_model.clone();
     let outbound_model = ctx.outbound_model.clone();
     let app_type_str = ctx.app_type_str;
@@ -296,7 +319,8 @@ mod tests {
         });
 
         let record = error_usage_record(
-            &provider,
+            &provider.id,
+            provider_kind_from_provider(&provider),
             "codex",
             "client-model",
             Some("upstream-model"),

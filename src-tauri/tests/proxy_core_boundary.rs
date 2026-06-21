@@ -11,6 +11,8 @@ const FORBIDDEN_FORWARDER_SELF_PLANNING_MARKERS: &[&str] = &[
     "build_forward_attempts(",
     "create_forwarder(",
 ];
+const FORBIDDEN_REQUEST_CONTEXT_PROVIDER_PRESELECT_MARKERS: &[&str] =
+    &["provider_router", ".select_providers("];
 const PROXY_CORE_MARKER: &str = "crate::proxy_core::";
 const PROXY_CORE_API_MARKER: &str = "crate::proxy_core::api";
 const PROXY_ENGINE_CONSTRUCTOR_MARKER: &str = "ProxyEngine::new(";
@@ -51,6 +53,33 @@ fn host_code_uses_proxy_core_through_adapter_boundary() {
     assert!(
         violations.is_empty(),
         "host code must access proxy-core through src/proxy_core_adapter.rs:\n{}",
+        violations.join("\n")
+    );
+}
+
+#[test]
+fn request_context_does_not_preselect_provider() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let path = manifest_dir.join("src/proxy/handler_context.rs");
+    let source = fs::read_to_string(&path).expect("read handler_context.rs");
+
+    let mut violations = Vec::new();
+    for (line_index, line) in production_lines(&source) {
+        let code = line.split("//").next().unwrap_or_default();
+        for marker in FORBIDDEN_REQUEST_CONTEXT_PROVIDER_PRESELECT_MARKERS {
+            if code.contains(marker) {
+                violations.push(format!(
+                    "src/proxy/handler_context.rs:{} contains provider preselection marker `{}`",
+                    line_index + 1,
+                    marker
+                ));
+            }
+        }
+    }
+
+    assert!(
+        violations.is_empty(),
+        "RequestContext must wait for ProxyEngine route results before storing selected providers:\n{}",
         violations.join("\n")
     );
 }

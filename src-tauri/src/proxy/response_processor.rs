@@ -159,11 +159,12 @@ pub async fn handle_non_streaming(
 
     // 解析并记录使用量。关闭 usage logging 时直接跳过，避免非流式响应整包 JSON parse。
     if usage_logging_enabled(state) {
+        let provider = ctx.provider()?;
         let output = non_streaming_response_usage_record_from_body_with_request_id_fallback(
             &body_bytes,
             parser_config.response_parser,
-            &ctx.provider.id,
-            provider_kind_from_provider(&ctx.provider),
+            &provider.id,
+            provider_kind_from_provider(provider),
             AppKind::from(ctx.app_type_str),
             &ctx.request_model,
             ctx.outbound_model.as_deref(),
@@ -317,9 +318,17 @@ fn create_usage_collector(
         return None;
     }
 
+    let Some(provider) = ctx.provider_for_usage() else {
+        log::warn!(
+            "[{}] 跳过流式 usage 收集：ProxyEngine 尚未回填 selected provider",
+            ctx.tag
+        );
+        return None;
+    };
+
     let state = state.clone();
-    let provider_id = ctx.provider.id.clone();
-    let provider_kind = provider_kind_from_provider(&ctx.provider);
+    let provider_id = provider.id.clone();
+    let provider_kind = provider_kind_from_provider(provider);
     let request_model = ctx.request_model.clone();
     // 用 ctx 的 app_type 而不是 parser_config 的：Claude Desktop 流式透传复用
     // CLAUDE_PARSER_CONFIG（app_type_str="claude"），按 parser_config 记账会把

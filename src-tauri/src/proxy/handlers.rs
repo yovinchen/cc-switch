@@ -843,12 +843,12 @@ async fn handle_messages_for_app(
     };
 
     ctx.apply_proxy_result(&state, &result)?;
-    let api_format = ctx.claude_api_format_for_proxy_result(&result);
+    let api_format = ctx.claude_api_format_for_proxy_result(&result)?;
     let response = proxy_core_response_to_proxy_response(result.response)?;
 
     // 检查是否需要格式转换（OpenRouter 等中转服务）
     let adapter = get_adapter(&app_type);
-    let needs_transform = adapter.needs_transform(&ctx.provider);
+    let needs_transform = adapter.needs_transform(ctx.provider()?);
 
     // Claude 特有：格式转换处理
     if needs_transform {
@@ -881,8 +881,8 @@ async fn handle_claude_transform(
     connection_guard: Option<ActiveConnectionGuard>,
 ) -> Result<axum::response::Response, ProxyError> {
     let status = response.status();
-    let is_codex_oauth = ctx
-        .provider
+    let provider = ctx.provider()?;
+    let is_codex_oauth = provider
         .meta
         .as_ref()
         .and_then(|meta| meta.provider_type.as_deref())
@@ -918,7 +918,7 @@ async fn handle_claude_transform(
             Box::new(Box::pin(create_anthropic_sse_stream_from_gemini(
                 stream,
                 Some(state.gemini_shadow.clone()),
-                Some(ctx.provider.id.clone()),
+                Some(provider.id.clone()),
                 Some(ctx.session_id.clone()),
                 tool_schema_hints.clone(),
                 synthesize_gemini_tool_call_id_with_uuid,
@@ -1002,7 +1002,7 @@ async fn handle_claude_transform(
         gemini_response_to_anthropic_message_with_shadow(
             &upstream_response,
             Some(state.gemini_shadow.as_ref()),
-            Some(&ctx.provider.id),
+            Some(&provider.id),
             Some(&ctx.session_id),
             tool_schema_hints.as_ref(),
             synthesize_gemini_tool_call_id_with_uuid,
@@ -1149,7 +1149,7 @@ pub async fn handle_responses(
     ctx.apply_proxy_result(&state, &result)?;
     let response = proxy_core_response_to_proxy_response(result.response)?;
 
-    if super::providers::should_convert_codex_responses_to_chat(&ctx.provider, &endpoint) {
+    if super::providers::should_convert_codex_responses_to_chat(ctx.provider()?, &endpoint) {
         return handle_codex_chat_to_responses_transform(
             response,
             &ctx,
@@ -1216,7 +1216,7 @@ pub async fn handle_responses_compact(
     ctx.apply_proxy_result(&state, &result)?;
     let response = proxy_core_response_to_proxy_response(result.response)?;
 
-    if super::providers::should_convert_codex_responses_to_chat(&ctx.provider, &endpoint) {
+    if super::providers::should_convert_codex_responses_to_chat(ctx.provider()?, &endpoint) {
         return handle_codex_chat_to_responses_transform(
             response,
             &ctx,
@@ -1376,7 +1376,7 @@ fn build_codex_proxy_error_response(
     error: &ProxyError,
 ) -> Result<axum::response::Response, ProxyError> {
     let response =
-        codex_proxy_error_response(&ctx.provider.name, &ctx.request_model, endpoint, error)
+        codex_proxy_error_response(ctx.provider_name_for_error(), &ctx.request_model, endpoint, error)
             .map_err(|error| {
                 log::error!("[Codex] 构造代理错误响应失败: {error}");
                 proxy_core_error_to_proxy_error(error)
