@@ -3045,6 +3045,18 @@ pub(crate) fn proxy_channel_records_to_core(
         .collect()
 }
 
+pub(crate) fn channel_create_source_from_record(
+    channel: ProxyChannelRecord,
+) -> ChannelCreateSource<ChannelRecord> {
+    ChannelCreateSource::new(proxy_channel_record_to_core(channel))
+}
+
+pub(crate) fn channel_record_source_from_record(
+    channel: Option<ProxyChannelRecord>,
+) -> ChannelRecordSource<ChannelRecord> {
+    ChannelRecordSource::new(channel.map(proxy_channel_record_to_core))
+}
+
 pub(crate) fn proxy_channel_key_record_to_core(key: ProxyChannelKeyRecord) -> ChannelKeyRecord {
     channel_key_record_from_input(ChannelKeyRecordInput {
         channel_id: key.channel_id,

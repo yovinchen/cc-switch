@@ -48,7 +48,7 @@ use crate::proxy_core_adapter::{
     AppChannelListQuery, AppChannelManagementPlan, AppChannelManagementRequest,
     AppChannelResponse, AppKind, AppListRequest, AppListResponse,
     AppListSource, AppModelCatalogRequest, AppModelListQuery, ChannelCreateRequest,
-    ChannelCreateSource, ChannelDeleteResponse, ChannelDeleteSource, ChannelHealthResetResponse,
+    ChannelDeleteResponse, ChannelDeleteSource, ChannelHealthResetResponse,
     ChannelHealthResetSource, ChannelKeyDeleteResponse, ChannelKeyDeleteSource,
     ChannelKeyPathRequest, ChannelKeyRecord, ChannelKeyRecordResponse, ChannelKeyRecordSource,
     ChannelKeysResponse, ChannelKeysSource, ChannelListPlan, ChannelListQuery, ChannelListRequest,
@@ -56,7 +56,7 @@ use crate::proxy_core_adapter::{
     ChannelMigrationMaterializeResponse, ChannelMigrationMaterializeSource,
     ChannelMigrationPreviewInput, ChannelMigrationPreviewResponse, ChannelMigrationPreviewSource,
     ChannelModelRecord, ChannelModelsResponse, ChannelModelsSource, ChannelPathRequest, ChannelRecord,
-    ChannelRecordResponse, ChannelRecordSource, ChannelRouteCandidate, ChannelRouteRejected,
+    ChannelRecordResponse, ChannelRouteCandidate, ChannelRouteRejected,
     ChannelTestPlan, ChannelTestResponse, ClaudeDesktopModelListResponse,
     ClientModelCatalogResponse, CodexToolContext, CurrentRouteProviderSummaryInput,
     CurrentRouteResponse, CurrentRouteSource, CurrentRouteTarget,
@@ -74,9 +74,10 @@ use crate::proxy_core_adapter::{
 };
 use crate::proxy_core_adapter::{
     app_channel_list_source_from_records, channel_list_source_from_records,
+    channel_create_source_from_record, channel_record_source_from_record,
     group_list_channel_source_from_records, proxy_app_summary_input, proxy_channel_key_record_to_core,
     proxy_channel_key_records_to_core, proxy_channel_model_records_to_core,
-    proxy_channel_record_to_core, proxy_channel_record_to_core_spec, proxy_channel_records_to_core,
+    proxy_channel_record_to_core_spec, proxy_channel_records_to_core,
     proxy_provider_to_core_spec, proxy_providers_to_core_specs,
     stream_check_result_to_channel_reachability, synthesize_gemini_tool_call_id_with_uuid,
 };
@@ -311,7 +312,7 @@ pub async fn create_proxy_channel(
         .create_proxy_channel(request.clone().into_body())
         .map_err(|e| ProxyError::InvalidRequest(e.to_string()))?;
     Ok(Json(request.record_response_from_source(
-        ChannelCreateSource::new(proxy_channel_record_to_core(channel)),
+        channel_create_source_from_record(channel),
     )))
 }
 
@@ -325,11 +326,10 @@ pub async fn get_proxy_channel(
     let channel = state
         .db
         .get_proxy_channel(&request.channel_id)
-        .map_err(|e| ProxyError::DatabaseError(e.to_string()))?
-        .map(proxy_channel_record_to_core);
+        .map_err(|e| ProxyError::DatabaseError(e.to_string()))?;
     Ok(Json(
         request
-            .record_response_from_source(ChannelRecordSource::new(channel))
+            .record_response_from_source(channel_record_source_from_record(channel))
             .map_err(management_api_error_to_proxy_error)?,
     ))
 }
@@ -345,11 +345,10 @@ pub async fn update_proxy_channel(
     let channel = state
         .db
         .update_proxy_channel(&path_request.channel_id, request)
-        .map_err(|e| ProxyError::InvalidRequest(e.to_string()))?
-        .map(proxy_channel_record_to_core);
+        .map_err(|e| ProxyError::InvalidRequest(e.to_string()))?;
     Ok(Json(
         path_request
-            .record_response_from_source(ChannelRecordSource::new(channel))
+            .record_response_from_source(channel_record_source_from_record(channel))
             .map_err(management_api_error_to_proxy_error)?,
     ))
 }
