@@ -13,14 +13,14 @@ use crate::proxy::usage::UsageLogger;
 use crate::proxy::RequestForwarder;
 use crate::proxy_core_adapter::{
     AppKind, AppSummaryConfig, AuthInfo, AuthProfileRef, ChannelAttemptResult,
-    ChannelQuery,
+    ChannelQuery, ClaudeDesktopModelRouteInput,
     ChannelMigrationMaterializeInput, ChannelMigrationPreviewInput, ChannelRecord,
     ChannelRouteSource, ChannelSource, ChannelSpec, AuthProvider, ChannelHealthReset,
     ChannelHealthStore, ChannelKeyRecord, ChannelModelRecord, CurrentRouteTarget, ForwardPipeline,
     GeminiShadowStore, ModelCatalog, ModelCatalogProvider, ProviderSource, ProviderSpec,
     ProxyAppConfig, ProxyConfigSource, ProxyCoreEvent,
     ProxyChannelKeyPatchRequest, ProxyChannelKeyWriteRequest, ProxyChannelModelsReplaceRequest,
-    ProxyChannelPatchRequest, ProxyChannelWriteRequest, ProxyCoreResult, ProxyEventSink, ProxyGlobalConfig, ProxyRequest,
+    ProxyChannelPatchRequest, ProxyChannelWriteRequest, ProxyCoreError, ProxyCoreResult, ProxyEventSink, ProxyGlobalConfig, ProxyRequest,
     ProxyResult, ProxyRuntimeConfig, ProxyRuntimeStatus, ProxyServices, RoutePlan, RoutePolicy,
     RoutePolicySource, RouteRequest, RouteResolveRequest, RouteResolveResponse, RouteResolver,
     UsageRecord, UsageSink,
@@ -29,6 +29,7 @@ use crate::proxy_core_adapter::{
     app_error,
     apply_channel_auth_profile_providers_from_source,
     auth_info_from_cc_switch_provider_config,
+    claude_desktop_model_routes_to_core_inputs,
     channel_health_attempt_db_update,
     channel_health_reset_from_plan,
     channel_health_reset_plan_from_lookup,
@@ -135,7 +136,10 @@ impl CcSwitchProxyServices {
                 router: runtime.provider_router.clone(),
             },
             auth_provider: CcSwitchAuthProvider,
-            model_catalog: CcSwitchModelCatalogProvider { db: db.clone() },
+            model_catalog: CcSwitchModelCatalogProvider {
+                db: db.clone(),
+                router: runtime.provider_router.clone(),
+            },
             usage_sink: CcSwitchUsageSink { db },
             event_sink: CcSwitchEventSink {
                 events: Some(runtime.events.clone()),
@@ -166,7 +170,10 @@ impl CcSwitchProxyServices {
                 router: router.clone(),
             },
             auth_provider: CcSwitchAuthProvider,
-            model_catalog: CcSwitchModelCatalogProvider { db: db.clone() },
+            model_catalog: CcSwitchModelCatalogProvider {
+                db: db.clone(),
+                router: router.clone(),
+            },
             usage_sink: CcSwitchUsageSink { db: db.clone() },
             event_sink: CcSwitchEventSink { events },
             forward_pipeline: CcSwitchForwardPipeline::default(),
@@ -709,6 +716,7 @@ impl AuthProvider for CcSwitchAuthProvider {
 #[derive(Clone)]
 struct CcSwitchModelCatalogProvider {
     db: Arc<Database>,
+    router: Arc<ProviderRouter>,
 }
 
 impl ModelCatalogProvider for CcSwitchModelCatalogProvider {
@@ -734,6 +742,29 @@ impl ModelCatalogProvider for CcSwitchModelCatalogProvider {
         app: &'a AppKind,
     ) -> BoxFuture<'a, ProxyCoreResult<ModelCatalog>> {
         Box::pin(async move { Ok(client_model_catalog_from_source(app)) })
+    }
+
+    fn load_claude_desktop_model_routes<'a>(
+        &'a self,
+        app: &'a AppKind,
+    ) -> BoxFuture<'a, ProxyCoreResult<Vec<ClaudeDesktopModelRouteInput>>> {
+        Box::pin(async move {
+            let providers = self
+                .router
+                .select_providers(app.as_str())
+                .await
+                .map_err(|error| {
+                    ProxyCoreError::Internal(format!(
+                        "select claude desktop provider: {error}"
+                    ))
+                })?;
+            let provider = providers.first().ok_or_else(|| {
+                ProxyCoreError::Unavailable("no available claude desktop provider".to_string())
+            })?;
+            let routes = crate::claude_desktop_config::proxy_model_routes(provider)
+                .map_err(|error| app_error("load claude desktop model routes", error))?;
+            Ok(claude_desktop_model_routes_to_core_inputs(routes))
+        })
     }
 }
 

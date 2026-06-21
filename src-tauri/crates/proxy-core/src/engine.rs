@@ -4,6 +4,7 @@ use super::domain::{
     RouteRequest,
     DEFAULT_ROUTE_GROUP,
 };
+use super::claude_desktop_gateway_auth::ClaudeDesktopModelListResponse;
 use super::error::ProxyCoreResult;
 use super::management_api::{
     AppChannelListSource, AppChannelManagementPlan, AppChannelManagementRequest, AppListRequest,
@@ -541,6 +542,17 @@ where
             .map(ClientModelCatalogResponse::from_catalog)
     }
 
+    pub async fn claude_desktop_model_list_response(
+        &self,
+    ) -> ProxyCoreResult<ClaudeDesktopModelListResponse> {
+        let routes = self
+            .services
+            .model_catalog()
+            .load_claude_desktop_model_routes(&AppKind::ClaudeDesktop)
+            .await?;
+        Ok(ClaudeDesktopModelListResponse::from_routes(routes))
+    }
+
     pub async fn reset_channel_health(
         &self,
         channel_id: &str,
@@ -643,6 +655,7 @@ fn failover_provider_ids_from_policy(policy: Option<&RoutePolicy>) -> Vec<String
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::claude_desktop_gateway_auth::ClaudeDesktopModelRouteInput;
     use crate::domain::{
         route_policy_from_failover_provider_ids, AppKind, AuthProfileRef, ChannelAttemptResult,
         ChannelHealthPolicy, ChannelOverrides, ChannelSpec, ChannelStatus, InterfaceKind,
@@ -682,6 +695,7 @@ mod tests {
         channel_route_source: Mutex<Option<ChannelRouteSource>>,
         queried_channel_apps: Mutex<Vec<String>>,
         queried_materialized_channel_apps: Mutex<Vec<Option<String>>>,
+        queried_claude_desktop_model_apps: Mutex<Vec<String>>,
     }
 
     impl ProxyServices for TestServices {
@@ -1242,6 +1256,22 @@ mod tests {
                     models: vec!["gpt-5".to_string()],
                     raw: json!({"models": [{"id": "gpt-5"}]}),
                 })
+            })
+        }
+
+        fn load_claude_desktop_model_routes<'a>(
+            &'a self,
+            app: &'a AppKind,
+        ) -> BoxFuture<'a, ProxyCoreResult<Vec<ClaudeDesktopModelRouteInput>>> {
+            self.queried_claude_desktop_model_apps
+                .lock()
+                .expect("queried claude desktop model apps mutex")
+                .push(app.as_str().to_string());
+            Box::pin(async move {
+                Ok(vec![
+                    ClaudeDesktopModelRouteInput::new("claude-sonnet-4-6", true),
+                    ClaudeDesktopModelRouteInput::new("gpt-5-proxy", false),
+                ])
             })
         }
     }
@@ -1899,6 +1929,28 @@ mod tests {
                 .expect("client model catalog response");
 
         assert_eq!(response.raw, json!({"models": [{"id": "gpt-5"}]}));
+    }
+
+    #[test]
+    fn claude_desktop_model_list_response_delegates_routes_to_catalog_provider() {
+        let services = Arc::new(TestServices::default());
+        let engine = ProxyEngine::new(services.clone());
+
+        let response = futures::executor::block_on(engine.claude_desktop_model_list_response())
+            .expect("claude desktop model list response");
+
+        assert_eq!(response.data.len(), 2);
+        assert_eq!(response.data[0].id, "claude-sonnet-4-6");
+        assert!(response.data[0].supports_1m);
+        assert_eq!(response.data[1].id, "gpt-5-proxy");
+        assert!(!response.data[1].supports_1m);
+        assert_eq!(
+            *services
+                .queried_claude_desktop_model_apps
+                .lock()
+                .expect("queried claude desktop model apps mutex"),
+            vec!["claude-desktop".to_string()]
+        );
     }
 
     #[test]

@@ -10,7 +10,6 @@ use crate::database::Database;
 use crate::database::CLAUDE_DESKTOP_OFFICIAL_PROVIDER_ID;
 use crate::error::AppError;
 use crate::provider::{ClaudeDesktopMode, Provider};
-use crate::proxy_core_adapter::ClaudeDesktopModelListResponse;
 
 pub const PROFILE_ID: &str = "00000000-0000-4000-8000-000000157210";
 pub const PROFILE_NAME: &str = "CC Switch";
@@ -640,13 +639,6 @@ fn next_catalog_safe_route_id(
         }
         index += 1;
     }
-}
-
-pub fn model_list_response(
-    provider: &Provider,
-) -> Result<ClaudeDesktopModelListResponse, AppError> {
-    let routes = proxy_model_routes(provider)?;
-    Ok(crate::proxy_core_adapter::claude_desktop_model_routes_to_core_response(routes))
 }
 
 pub fn map_proxy_request_model(mut body: Value, provider: &Provider) -> Result<Value, AppError> {
@@ -1585,8 +1577,14 @@ mod tests {
         .expect("map route");
         assert_eq!(mapped["model"], json!("kimi-k2"));
 
-        let models =
-            serde_json::to_value(model_list_response(&provider).expect("model list")).unwrap();
+        let models = serde_json::to_value(
+            crate::proxy_core_adapter::ClaudeDesktopModelListResponse::from_routes(
+                crate::proxy_core_adapter::claude_desktop_model_routes_to_core_inputs(
+                    proxy_model_routes(&provider).expect("model routes"),
+                ),
+            ),
+        )
+        .unwrap();
         assert_eq!(models["data"][0]["id"], json!("claude-sonnet-4-6"));
         assert_eq!(models["data"][0]["supports1m"], json!(true));
 

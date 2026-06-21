@@ -625,14 +625,11 @@ pub async fn handle_claude_desktop_models(
     headers: axum::http::HeaderMap,
 ) -> Result<Json<ClaudeDesktopModelListResponse>, ProxyError> {
     validate_claude_desktop_gateway_auth(&state, &headers)?;
-    let providers = state
-        .provider_router
-        .select_providers("claude-desktop")
+    let response = state
+        .proxy_engine()
+        .claude_desktop_model_list_response()
         .await
-        .map_err(|e| ProxyError::DatabaseError(e.to_string()))?;
-    let provider = providers.first().ok_or(ProxyError::NoAvailableProvider)?;
-    let response = crate::claude_desktop_config::model_list_response(provider)
-        .map_err(|e| ProxyError::ConfigError(e.to_string()))?;
+        .map_err(proxy_core_error_to_proxy_error)?;
     Ok(Json(response))
 }
 

@@ -1,4 +1,5 @@
 use super::cache_injector::CacheInjectionConfig;
+use super::claude_desktop_gateway_auth::ClaudeDesktopModelRouteInput;
 use super::domain::{
     AppKind, AuthProfileRef, ChannelAttemptResult, ChannelQuery, ChannelSpec, InterfaceKind,
     ModelRoute, ProviderSpec, ProxyRequest, ProxyResult, RoutePlan, RoutePolicy, RouteRequest,
@@ -311,6 +312,17 @@ pub trait ModelCatalogProvider: Send + Sync {
         &'a self,
         app: &'a AppKind,
     ) -> BoxFuture<'a, ProxyCoreResult<ModelCatalog>>;
+
+    fn load_claude_desktop_model_routes<'a>(
+        &'a self,
+        _app: &'a AppKind,
+    ) -> BoxFuture<'a, ProxyCoreResult<Vec<ClaudeDesktopModelRouteInput>>> {
+        Box::pin(async {
+            Err(ProxyCoreError::Unavailable(
+                "claude desktop model route source is not configured".to_string(),
+            ))
+        })
+    }
 }
 
 pub trait UsageSink: Send + Sync {

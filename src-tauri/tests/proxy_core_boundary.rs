@@ -633,6 +633,44 @@ fn channel_health_reset_handler_delegates_response_to_proxy_engine() {
 }
 
 #[test]
+fn claude_desktop_models_handler_delegates_provider_selection_to_proxy_engine() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let path = manifest_dir.join("src/proxy/handlers.rs");
+    let source = fs::read_to_string(&path).expect("read handlers.rs");
+    let handler = function_slice(
+        &source,
+        "pub async fn handle_claude_desktop_models",
+        "async fn handle_messages_for_app",
+    );
+    let forbidden_markers = [
+        "provider_router",
+        ".select_providers(",
+        "claude_desktop_config::model_list_response",
+        "ProxyError::NoAvailableProvider",
+    ];
+
+    let mut violations = Vec::new();
+    for (line_index, line) in production_lines(handler) {
+        let code = line.split("//").next().unwrap_or_default();
+        for marker in forbidden_markers {
+            if code.contains(marker) {
+                violations.push(format!(
+                    "src/proxy/handlers.rs handle_claude_desktop_models:{} contains Claude Desktop provider marker `{}`",
+                    line_index + 1,
+                    marker
+                ));
+            }
+        }
+    }
+
+    assert!(
+        violations.is_empty(),
+        "Claude Desktop models handler must delegate provider selection and model-list response building to ProxyEngine:\n{}",
+        violations.join("\n")
+    );
+}
+
+#[test]
 fn production_forwarder_stays_preplanned_only() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let mut rust_files = Vec::new();

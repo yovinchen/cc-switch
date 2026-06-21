@@ -10,7 +10,6 @@ use crate::proxy::hyper_client::ProxyResponse;
 use crate::proxy::providers::provider_kind_from_app_type_and_config;
 use crate::proxy::route_attempt::ForwardAttempt;
 use crate::proxy::usage::RequestLog;
-use crate::proxy_core::api::auth::ClaudeDesktopModelRouteInput;
 use crate::proxy_core::api::domain::{
     ChannelSpecInput, ModelRoute, ModelRouteInput, ProviderMetadata, ProviderMetadataInput,
 };
@@ -234,6 +233,8 @@ pub(crate) type ProxyTakeoverStatus =
     crate::proxy_core::api::ports::ProxyTakeoverStatus;
 pub(crate) type ClaudeDesktopModelListResponse =
     crate::proxy_core::api::auth::ClaudeDesktopModelListResponse;
+pub(crate) type ClaudeDesktopModelRouteInput =
+    crate::proxy_core::api::auth::ClaudeDesktopModelRouteInput;
 pub(crate) type ProxyCoreResponse =
     crate::proxy_core::api::transport::ProxyCoreResponse;
 pub(crate) type ProxyCoreResult<T> = crate::proxy_core::api::errors::ProxyCoreResult<T>;
@@ -1857,14 +1858,13 @@ pub(crate) fn proxy_channel_route_inputs_to_core(
         .collect()
 }
 
-pub(crate) fn claude_desktop_model_routes_to_core_response(
+pub(crate) fn claude_desktop_model_routes_to_core_inputs(
     routes: impl IntoIterator<Item = ResolvedModelRoute>,
-) -> ClaudeDesktopModelListResponse {
-    ClaudeDesktopModelListResponse::from_routes(
-        routes
-            .into_iter()
-            .map(|route| ClaudeDesktopModelRouteInput::new(route.route_id, route.supports_1m)),
-    )
+) -> Vec<ClaudeDesktopModelRouteInput> {
+    routes
+        .into_iter()
+        .map(|route| ClaudeDesktopModelRouteInput::new(route.route_id, route.supports_1m))
+        .collect()
 }
 
 pub(crate) fn codex_default_model_context_window() -> u64 {
@@ -4542,15 +4542,18 @@ mod tests {
     }
 
     #[test]
-    fn claude_desktop_model_routes_to_core_response_preserves_route_contract() {
-        let response =
-            claude_desktop_model_routes_to_core_response([ResolvedModelRoute {
-                route_id: "claude-sonnet-4-6".to_string(),
-                upstream_model: "anthropic/claude-sonnet-4-6".to_string(),
-                label_override: None,
-                supports_1m: true,
-            }]);
+    fn claude_desktop_model_routes_to_core_inputs_preserve_route_contract() {
+        let inputs = claude_desktop_model_routes_to_core_inputs([ResolvedModelRoute {
+            route_id: "claude-sonnet-4-6".to_string(),
+            upstream_model: "anthropic/claude-sonnet-4-6".to_string(),
+            label_override: None,
+            supports_1m: true,
+        }]);
+        let response = ClaudeDesktopModelListResponse::from_routes(inputs.clone());
 
+        assert_eq!(inputs.len(), 1);
+        assert_eq!(inputs[0].route_id, "claude-sonnet-4-6");
+        assert!(inputs[0].supports_1m);
         assert_eq!(response.data.len(), 1);
         assert_eq!(response.data[0].id, "claude-sonnet-4-6");
         assert!(response.data[0].supports_1m);
