@@ -11,18 +11,18 @@ use crate::provider::Provider;
 use crate::proxy_core_adapter::{
     build_legacy_channel_projection, channel_health_update_from_input,
     infer_legacy_channel_interface, legacy_channel_priority, legacy_provider_projection_input,
-    normalize_channel_base_url as normalize_base_url,
+    normalize_channel_base_url as normalize_base_url, proxy_channel_record_from_legacy_projection,
     normalize_proxy_channel_key_patch_request_fields,
     normalize_proxy_channel_key_write_request_fields,
     normalize_proxy_channel_model_write_request_fields,
     normalize_proxy_channel_models_replace_request_fields,
     normalize_proxy_channel_patch_request_fields, normalize_proxy_channel_write_request_fields,
     normalize_required_channel_string, stable_channel_id, ChannelHealthUpdateInput,
-    ChannelRequestValidationError, LegacyChannelModelProjection, LegacyChannelProjection,
-    LegacyChannelProjectionInput, LegacyProviderProjectionInput, ProxyChannelKeyPatchRequest,
-    ProxyChannelKeyWriteRequest, ProxyChannelModelWriteRequest, ProxyChannelModelsReplaceRequest,
-    ProxyChannelPatchRequest, ProxyChannelWriteRequest, ProxyCoreAppKind as AppKind,
-    ProxyCoreInterfaceKind as InterfaceKind, CHANNEL_HEALTH_UNKNOWN_STATUS,
+    ChannelRequestValidationError, LegacyChannelProjectionInput, LegacyProviderProjectionInput,
+    ProxyChannelKeyPatchRequest, ProxyChannelKeyWriteRequest, ProxyChannelModelWriteRequest,
+    ProxyChannelModelsReplaceRequest, ProxyChannelPatchRequest, ProxyChannelWriteRequest,
+    ProxyCoreAppKind as AppKind, ProxyCoreInterfaceKind as InterfaceKind,
+    CHANNEL_HEALTH_UNKNOWN_STATUS,
 };
 use rusqlite::{params, Connection, OptionalExtension, Row};
 use serde::{Deserialize, Serialize};
@@ -1114,56 +1114,7 @@ fn build_legacy_channel(
         provider_projection: projection.clone(),
     });
 
-    proxy_channel_record_from_legacy(projection, source_kind)
-}
-
-fn proxy_channel_record_from_legacy(
-    projection: LegacyChannelProjection,
-    source_kind: ProxyChannelSourceKind,
-) -> ProxyChannelRecord {
-    ProxyChannelRecord {
-        id: projection.id,
-        provider_id: projection.provider_id,
-        app_type: projection.app_type,
-        name: projection.name,
-        status: projection.status,
-        base_url: projection.base_url,
-        interface_kind: projection.interface_kind,
-        auth_profile_ref: projection.auth_profile_ref,
-        groups: projection.groups,
-        priority: projection.priority,
-        weight: projection.weight,
-        retry_policy: projection.retry_policy,
-        health_policy: projection.health_policy,
-        header_overrides: projection.header_overrides,
-        param_overrides: projection.param_overrides,
-        status_code_mapping: projection.status_code_mapping,
-        tags: projection.tags,
-        metadata: projection.metadata,
-        source_kind,
-        source_endpoint_url: projection.source_endpoint_url,
-        models: projection
-            .models
-            .into_iter()
-            .map(proxy_channel_model_record_from_legacy)
-            .collect(),
-        needs_review: projection.needs_review,
-        review_reasons: projection.review_reasons,
-    }
-}
-
-fn proxy_channel_model_record_from_legacy(
-    route: LegacyChannelModelProjection,
-) -> ProxyChannelModelRecord {
-    ProxyChannelModelRecord {
-        channel_id: route.channel_id,
-        public_model: route.public_model,
-        upstream_model: route.upstream_model,
-        capabilities: route.capabilities,
-        pricing_model: route.pricing_model,
-        request_overrides: route.request_overrides,
-        response_overrides: route.response_overrides,
-    }
+    proxy_channel_record_from_legacy_projection(projection, source_kind)
 }
 
 fn normalize_proxy_channel_write_request(

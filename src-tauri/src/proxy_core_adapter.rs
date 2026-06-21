@@ -1,6 +1,8 @@
 use crate::app_config::AppType;
 use crate::claude_desktop_config::ResolvedModelRoute;
-use crate::database::{ProxyChannelKeyRecord, ProxyChannelModelRecord, ProxyChannelRecord};
+use crate::database::{
+    ProxyChannelKeyRecord, ProxyChannelModelRecord, ProxyChannelRecord, ProxyChannelSourceKind,
+};
 use crate::provider::{Provider, ProviderMeta};
 use crate::proxy::providers::provider_kind_from_app_type_and_config;
 use crate::proxy::usage::RequestLog;
@@ -1163,6 +1165,55 @@ pub(crate) fn legacy_provider_projection_input(
         codex_catalog_models,
         env,
         claude_desktop_model_routes,
+    }
+}
+
+pub(crate) fn proxy_channel_record_from_legacy_projection(
+    projection: LegacyChannelProjection,
+    source_kind: ProxyChannelSourceKind,
+) -> ProxyChannelRecord {
+    ProxyChannelRecord {
+        id: projection.id,
+        provider_id: projection.provider_id,
+        app_type: projection.app_type,
+        name: projection.name,
+        status: projection.status,
+        base_url: projection.base_url,
+        interface_kind: projection.interface_kind,
+        auth_profile_ref: projection.auth_profile_ref,
+        groups: projection.groups,
+        priority: projection.priority,
+        weight: projection.weight,
+        retry_policy: projection.retry_policy,
+        health_policy: projection.health_policy,
+        header_overrides: projection.header_overrides,
+        param_overrides: projection.param_overrides,
+        status_code_mapping: projection.status_code_mapping,
+        tags: projection.tags,
+        metadata: projection.metadata,
+        source_kind,
+        source_endpoint_url: projection.source_endpoint_url,
+        models: projection
+            .models
+            .into_iter()
+            .map(proxy_channel_model_record_from_legacy)
+            .collect(),
+        needs_review: projection.needs_review,
+        review_reasons: projection.review_reasons,
+    }
+}
+
+fn proxy_channel_model_record_from_legacy(
+    route: LegacyChannelModelProjection,
+) -> ProxyChannelModelRecord {
+    ProxyChannelModelRecord {
+        channel_id: route.channel_id,
+        public_model: route.public_model,
+        upstream_model: route.upstream_model,
+        capabilities: route.capabilities,
+        pricing_model: route.pricing_model,
+        request_overrides: route.request_overrides,
+        response_overrides: route.response_overrides,
     }
 }
 
@@ -3110,6 +3161,16 @@ mod tests {
         assert_eq!(projection.interface_kind, "anthropic_messages");
         assert_eq!(projection.models.len(), 1);
         assert!(!projection.needs_review);
+
+        let record = proxy_channel_record_from_legacy_projection(
+            projection,
+            ProxyChannelSourceKind::LegacyPrimary,
+        );
+        assert_eq!(record.provider_id, "provider-a");
+        assert_eq!(record.source_kind, ProxyChannelSourceKind::LegacyPrimary);
+        assert_eq!(record.models.len(), 1);
+        assert_eq!(record.models[0].channel_id, record.id);
+        assert_eq!(record.models[0].public_model, "claude-sonnet-4-6");
     }
 
     #[test]
