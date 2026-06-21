@@ -61,6 +61,7 @@ pub mod management {
         channel_reachability_status_from_latency, channel_record_from_input, plan_channel_test,
         should_retry_channel_reachability_failure, AppChannelListQuery, AppChannelResponse,
         AppListResponse, AppModelListQuery, AppSummaryInput, ChannelDeleteResponse,
+        CHANNEL_HEALTH_UNKNOWN_STATUS,
         ChannelHealthResetResponse, ChannelHealthUpdate, ChannelHealthUpdateInput,
         ChannelKeyDeleteResponse, ChannelKeyRecord,
         ChannelKeyRecordInput, ChannelKeyRecordResponse, ChannelKeysResponse,

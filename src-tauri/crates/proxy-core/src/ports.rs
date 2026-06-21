@@ -505,6 +505,8 @@ pub struct ChannelHealthReset {
     pub app: AppKind,
 }
 
+pub const CHANNEL_HEALTH_UNKNOWN_STATUS: &str = "unknown";
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ChannelHealthUpdateInput {
     pub current_consecutive_failures: u32,
@@ -2378,7 +2380,7 @@ mod tests {
         channel_reachability_result_from_stream_check_result, AppListResponse, AppModelListQuery,
         AppProxyConfig, AppSummaryInput, channel_key_record_from_input,
         channel_reachability_status_from_latency, channel_record_from_input, ChannelDeleteResponse,
-        ChannelHealthUpdateInput,
+        ChannelHealthUpdateInput, CHANNEL_HEALTH_UNKNOWN_STATUS,
         ChannelKeyRecordInput, ChannelListQuery, ChannelListResponse, ChannelReachabilityInput,
         ChannelMigrationMaterializeInput,
         ChannelMigrationMaterializeResponse, ChannelMigrationPreviewInput,
@@ -2863,6 +2865,8 @@ mod tests {
 
     #[test]
     fn channel_health_update_tracks_threshold_contract() {
+        assert_eq!(CHANNEL_HEALTH_UNKNOWN_STATUS, "unknown");
+
         let degraded = channel_health_update_from_input(ChannelHealthUpdateInput {
             current_consecutive_failures: 0,
             success: false,

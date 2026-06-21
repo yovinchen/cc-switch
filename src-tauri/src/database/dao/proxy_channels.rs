@@ -23,7 +23,7 @@ use crate::proxy_core_adapter::{
     LegacyChannelProjection, LegacyChannelProjectionInput, LegacyModelRouteInput,
     LegacyProviderProjectionInput, ProxyChannelKeyPatchRequest, ProxyChannelModelWriteRequest,
     ProxyChannelPatchRequest, ProxyChannelWriteRequest, ProxyCoreAppKind as AppKind,
-    ProxyCoreInterfaceKind as InterfaceKind,
+    ProxyCoreInterfaceKind as InterfaceKind, CHANNEL_HEALTH_UNKNOWN_STATUS,
 };
 use rusqlite::{params, Connection, OptionalExtension, Row};
 use serde::{Deserialize, Serialize};
@@ -288,8 +288,8 @@ impl Database {
                 .execute(
                     "INSERT OR IGNORE INTO proxy_channel_health (
                         channel_id, status, consecutive_failures, updated_at
-                    ) VALUES (?1, 'unknown', 0, ?2)",
-                    params![channel.id, now],
+                    ) VALUES (?1, ?2, 0, ?3)",
+                    params![channel.id, CHANNEL_HEALTH_UNKNOWN_STATUS, now],
                 )
                 .map_err(|e| AppError::Database(format!("写入 proxy channel health 失败: {e}")))?;
 
@@ -449,8 +449,8 @@ impl Database {
         conn.execute(
             "INSERT OR IGNORE INTO proxy_channel_health (
                 channel_id, status, consecutive_failures, updated_at
-            ) VALUES (?1, 'unknown', 0, ?2)",
-            params![channel_id, now],
+            ) VALUES (?1, ?2, 0, ?3)",
+            params![channel_id, CHANNEL_HEALTH_UNKNOWN_STATUS, now],
         )
         .map_err(|e| AppError::Database(format!("创建 proxy channel health 失败: {e}")))?;
 
@@ -775,7 +775,7 @@ impl Database {
             Ok(health) => Ok(health),
             Err(rusqlite::Error::QueryReturnedNoRows) => Ok(ProxyChannelHealth {
                 channel_id: channel_id.to_string(),
-                status: "unknown".to_string(),
+                status: CHANNEL_HEALTH_UNKNOWN_STATUS.to_string(),
                 last_success_at: None,
                 last_failure_at: None,
                 consecutive_failures: 0,

@@ -550,6 +550,7 @@ pub(crate) use crate::proxy_core::api::management::{
     AppChannelListSource, AppChannelManagementPlan, AppChannelManagementRequest,
     AppChannelResponse, AppListRequest, AppListResponse, AppListSource, AppModelCatalogRequest,
     AppModelListQuery, ChannelCreateRequest,
+    CHANNEL_HEALTH_UNKNOWN_STATUS,
     ChannelCreateSource, ChannelDeleteResponse, ChannelDeleteSource, ChannelHealthResetResponse,
     ChannelHealthResetSource, ChannelHealthUpdateInput, ChannelKeyDeleteResponse,
     ChannelKeyDeleteSource, ChannelKeyPathRequest, ChannelKeyRecordResponse,
