@@ -612,6 +612,32 @@ pub(crate) type AttemptEventPayloadInput<'a> =
     crate::proxy_core::api::events::AttemptEventPayloadInput<'a>;
 pub(crate) type AttemptEventPhase =
     crate::proxy_core::api::events::AttemptEventPhase;
+
+pub(crate) fn attempt_event_payload_from_forward_attempt(
+    request_id: &str,
+    app_type: &str,
+    attempt: &ForwardAttempt,
+    error: Option<&str>,
+) -> Value {
+    let provider = attempt.provider();
+    let channel = attempt.channel().map(|channel| AttemptEventChannel {
+        channel_id: channel.channel_id.as_str(),
+        channel_name: channel.channel_name.as_str(),
+        interface_kind: channel.interface_kind.as_str(),
+        public_model: channel.public_model.as_deref(),
+        upstream_model: channel.upstream_model.as_deref(),
+    });
+
+    build_attempt_event_payload(AttemptEventPayloadInput {
+        request_id,
+        app_type,
+        provider_id: provider.id.as_str(),
+        provider_name: provider.name.as_str(),
+        channel,
+        error,
+    })
+}
+
 pub(crate) type ChannelAttemptResult =
     crate::proxy_core::api::ports::ChannelAttemptResult;
 pub(crate) type ChannelQuery<'a> = crate::proxy_core::api::routing::ChannelQuery<'a>;

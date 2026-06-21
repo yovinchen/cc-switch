@@ -22,7 +22,7 @@ use crate::proxy::managed_account_auth::{
 use crate::proxy_core_adapter::{
     apply_bedrock_pre_send_optimizers, apply_copilot_model_normalization,
     apply_copilot_warmup_model_override, attempt_event_name,
-    bedrock_env_flag_from_provider_settings, build_attempt_event_payload,
+    attempt_event_payload_from_forward_attempt, bedrock_env_flag_from_provider_settings,
     build_codex_oauth_session_headers, build_request_started_event_payload,
     build_retryable_forward_failure_log, build_terminal_forward_failure_log,
     build_upstream_auth_headers, cache_injection_log_message, categorize_forward_failure,
@@ -48,8 +48,8 @@ use crate::proxy_core_adapter::{
     strip_copilot_thinking_blocks, strip_one_m_suffix_for_upstream,
     strip_one_m_suffix_for_upstream_from_body, supports_reasoning_effort,
     thinking_optimization_log_message, validate_managed_account_upstream_auth,
-    AttemptEventChannel, AttemptEventPayloadInput, AttemptEventPhase,
-    CopilotAuthHeaderOverrides, CopilotOptimizerConfig, CurrentRouteTarget, ForwardFailureCategory,
+    AttemptEventPhase, CopilotAuthHeaderOverrides, CopilotOptimizerConfig, CurrentRouteTarget,
+    ForwardFailureCategory,
     ForwardUpstreamUrlPlanInput, GeminiShadowStore, MediaRetryInput, OptimizerConfig,
     PromptCacheTraceLogInput,
     ProviderKind, ProxyRuntimeStatus, RectifierConfig, ResolvedChannelAttempt,
@@ -358,7 +358,7 @@ impl RequestForwarder {
         current_providers.insert(app_type.to_string(), target);
         self.events.emit(
             route_selected_event_name(),
-            attempt_event_payload(request_id, app_type, attempt, None),
+            attempt_event_payload_from_forward_attempt(request_id, app_type, attempt, None),
         );
     }
 
@@ -398,14 +398,14 @@ impl RequestForwarder {
     fn emit_attempt_started(&self, request_id: &str, app_type: &str, attempt: &ForwardAttempt) {
         self.events.emit(
             attempt_event_name(attempt.is_channel(), AttemptEventPhase::Started),
-            attempt_event_payload(request_id, app_type, attempt, None),
+            attempt_event_payload_from_forward_attempt(request_id, app_type, attempt, None),
         );
     }
 
     fn emit_attempt_succeeded(&self, request_id: &str, app_type: &str, attempt: &ForwardAttempt) {
         self.events.emit(
             attempt_event_name(attempt.is_channel(), AttemptEventPhase::Succeeded),
-            attempt_event_payload(request_id, app_type, attempt, None),
+            attempt_event_payload_from_forward_attempt(request_id, app_type, attempt, None),
         );
     }
 
@@ -418,7 +418,7 @@ impl RequestForwarder {
     ) {
         self.events.emit(
             attempt_event_name(attempt.is_channel(), AttemptEventPhase::Failed),
-            attempt_event_payload(request_id, app_type, attempt, Some(error)),
+            attempt_event_payload_from_forward_attempt(request_id, app_type, attempt, Some(error)),
         );
     }
 
@@ -1881,31 +1881,6 @@ impl RequestForwarder {
             body["model"] = serde_json::Value::String(resolved);
         }
     }
-}
-
-fn attempt_event_payload(
-    request_id: &str,
-    app_type: &str,
-    attempt: &ForwardAttempt,
-    error: Option<&str>,
-) -> Value {
-    let provider = attempt.provider();
-    let channel = attempt.channel().map(|channel| AttemptEventChannel {
-        channel_id: channel.channel_id.as_str(),
-        channel_name: channel.channel_name.as_str(),
-        interface_kind: channel.interface_kind.as_str(),
-        public_model: channel.public_model.as_deref(),
-        upstream_model: channel.upstream_model.as_deref(),
-    });
-
-    build_attempt_event_payload(AttemptEventPayloadInput {
-        request_id,
-        app_type,
-        provider_id: provider.id.as_str(),
-        provider_name: provider.name.as_str(),
-        channel,
-        error,
-    })
 }
 
 #[cfg(test)]
