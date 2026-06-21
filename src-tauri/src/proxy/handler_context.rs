@@ -9,11 +9,11 @@ use crate::proxy::{
     server::ProxyState,
 };
 use crate::proxy_core_adapter::{
-    claude_api_format_from_metadata, extract_gemini_model_from_path, extract_proxy_session_id,
+    app_proxy_config_from_proxy_app_config, claude_api_format_from_metadata,
+    extract_gemini_model_from_path, extract_proxy_session_id,
     response_runtime_policy_from_app_proxy_config, usage_route_context_from_selection,
-    AppProxyConfig, ProxyCoreAppKind as AppKind, ProxyResult, ProxyServices,
-    ResponseRuntimePolicy, ResponseTimeoutConfig,
-    StreamingTimeoutConfig, UsageRouteContext,
+    AppProxyConfig, ProxyCoreAppKind as AppKind, ProxyResult, ProxyServices, ResponseRuntimePolicy,
+    ResponseTimeoutConfig, StreamingTimeoutConfig, UsageRouteContext,
 };
 use axum::http::HeaderMap;
 use std::time::Instant;
@@ -84,8 +84,8 @@ impl RequestContext {
             .load_app(&app_kind)
             .await
             .map_err(|e| ProxyError::DatabaseError(e.to_string()))?;
-        let app_config = serde_json::from_value(core_app_config.raw.clone())
-            .map_err(|e| ProxyError::ConfigError(format!("invalid app proxy config: {e}")))?;
+        let app_config = app_proxy_config_from_proxy_app_config(&core_app_config)
+            .map_err(ProxyError::ConfigError)?;
 
         // 从请求体提取模型名称
         let request_model = body

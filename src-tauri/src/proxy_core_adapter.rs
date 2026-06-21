@@ -415,6 +415,13 @@ pub(crate) fn proxy_app_config_from_config_source_parts(
     )
 }
 
+pub(crate) fn app_proxy_config_from_proxy_app_config(
+    config: &ProxyAppConfig,
+) -> Result<AppProxyConfig, String> {
+    serde_json::from_value(config.raw.clone())
+        .map_err(|error| format!("invalid app proxy config: {error}"))
+}
+
 pub(crate) fn proxy_runtime_config_from_config(
     config: ProxyConfig,
     privacy_filter_enabled: bool,
@@ -3777,6 +3784,18 @@ mod tests {
             projected_app.raw["currentProviderId"],
             json!("anthropic-main")
         );
+        assert_eq!(
+            app_proxy_config_from_proxy_app_config(&projected_app)
+                .expect("project host app config from core raw"),
+            app_config
+        );
+        let invalid_projected_app = ProxyAppConfig {
+            raw: json!({ "enabled": true }),
+            ..projected_app.clone()
+        };
+        let error = app_proxy_config_from_proxy_app_config(&invalid_projected_app)
+            .expect_err("invalid raw app config");
+        assert!(error.starts_with("invalid app proxy config:"));
 
         let mut disabled_app_config = app_config.clone();
         disabled_app_config.auto_failover_enabled = false;
