@@ -193,21 +193,43 @@ pub fn normalize_proxy_channel_models_replace_request_fields(
 pub fn validate_proxy_channel_key_write_request_fields(
     request: &ProxyChannelKeyWriteRequest,
 ) -> Result<(), ChannelRequestValidationError> {
-    normalize_required_channel_string(&request.key_value, "keyValue")?;
-    normalize_required_channel_string(&request.status, "status")?;
-    Ok(())
+    normalize_proxy_channel_key_write_request_fields(request.clone()).map(|_| ())
+}
+
+pub fn normalize_proxy_channel_key_write_request_fields(
+    request: ProxyChannelKeyWriteRequest,
+) -> Result<ProxyChannelKeyWriteRequest, ChannelRequestValidationError> {
+    Ok(ProxyChannelKeyWriteRequest {
+        key_value: normalize_required_channel_string(&request.key_value, "keyValue")?,
+        status: normalize_required_channel_string(&request.status, "status")?,
+        priority: request.priority,
+        weight: request.weight,
+    })
 }
 
 pub fn validate_proxy_channel_key_patch_request_fields(
     request: &ProxyChannelKeyPatchRequest,
 ) -> Result<(), ChannelRequestValidationError> {
-    if let Some(key_value) = request.key_value.as_deref() {
-        normalize_required_channel_string(key_value, "keyValue")?;
-    }
-    if let Some(status) = request.status.as_deref() {
-        normalize_required_channel_string(status, "status")?;
-    }
-    Ok(())
+    normalize_proxy_channel_key_patch_request_fields(request.clone()).map(|_| ())
+}
+
+pub fn normalize_proxy_channel_key_patch_request_fields(
+    request: ProxyChannelKeyPatchRequest,
+) -> Result<ProxyChannelKeyPatchRequest, ChannelRequestValidationError> {
+    let key_value = request
+        .key_value
+        .map(|value| normalize_required_channel_string(&value, "keyValue"))
+        .transpose()?;
+    let status = request
+        .status
+        .map(|value| normalize_required_channel_string(&value, "status"))
+        .transpose()?;
+    Ok(ProxyChannelKeyPatchRequest {
+        key_value,
+        status,
+        priority: request.priority,
+        weight: request.weight,
+    })
 }
 
 pub fn normalize_required_channel_string(
@@ -294,6 +316,8 @@ mod tests {
         normalize_channel_groups, normalize_optional_channel_string,
         normalize_proxy_channel_model_write_request_fields,
         normalize_proxy_channel_models_replace_request_fields,
+        normalize_proxy_channel_key_patch_request_fields,
+        normalize_proxy_channel_key_write_request_fields,
         normalize_proxy_channel_patch_request_fields,
         normalize_proxy_channel_write_request_fields,
         normalize_required_channel_string,
@@ -546,11 +570,30 @@ mod tests {
 
     #[test]
     fn channel_key_request_validation_checks_secret_and_status() {
+        let normalized =
+            normalize_proxy_channel_key_write_request_fields(ProxyChannelKeyWriteRequest {
+                key_value: " sk-live ".to_string(),
+                status: " enabled ".to_string(),
+                ..Default::default()
+            })
+            .unwrap();
+        assert_eq!(normalized.key_value, "sk-live");
+        assert_eq!(normalized.status, "enabled");
         validate_proxy_channel_key_write_request_fields(&ProxyChannelKeyWriteRequest {
             key_value: " sk-live ".to_string(),
             ..Default::default()
         })
         .unwrap();
+
+        let patched =
+            normalize_proxy_channel_key_patch_request_fields(ProxyChannelKeyPatchRequest {
+                key_value: Some(" sk-rotated ".to_string()),
+                status: Some(" disabled ".to_string()),
+                ..Default::default()
+            })
+            .unwrap();
+        assert_eq!(patched.key_value.as_deref(), Some("sk-rotated"));
+        assert_eq!(patched.status.as_deref(), Some("disabled"));
 
         assert_eq!(
             validate_proxy_channel_key_write_request_fields(&ProxyChannelKeyWriteRequest {

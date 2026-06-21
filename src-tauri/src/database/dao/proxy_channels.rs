@@ -12,13 +12,13 @@ use crate::proxy_core_adapter::{
     build_legacy_channel_projection, channel_health_update_from_input,
     infer_legacy_channel_interface, legacy_channel_priority,
     normalize_channel_base_url as normalize_base_url,
+    normalize_proxy_channel_key_patch_request_fields,
+    normalize_proxy_channel_key_write_request_fields,
     normalize_proxy_channel_model_write_request_fields,
     normalize_proxy_channel_models_replace_request_fields,
     normalize_proxy_channel_patch_request_fields,
     normalize_proxy_channel_write_request_fields,
     normalize_required_channel_string, stable_channel_id,
-    validate_proxy_channel_key_patch_request_fields,
-    validate_proxy_channel_key_write_request_fields,
     ChannelHealthUpdateInput, ChannelRequestValidationError, LegacyChannelModelProjection,
     LegacyChannelProjection, LegacyChannelProjectionInput, LegacyModelRouteInput,
     LegacyProviderProjectionInput, ProxyChannelKeyPatchRequest, ProxyChannelKeyWriteRequest,
@@ -593,7 +593,7 @@ impl Database {
         key_ref: &str,
         request: ProxyChannelKeyWriteRequest,
     ) -> Result<ProxyChannelKeyRecord, AppError> {
-        validate_proxy_channel_key_write_request_fields(&request)
+        let request = normalize_proxy_channel_key_write_request_fields(request)
             .map_err(channel_request_error_to_app_error)?;
         let conn = lock_conn!(self.conn);
         if get_proxy_channel_on_conn(&conn, channel_id)?.is_none() {
@@ -603,8 +603,6 @@ impl Database {
         }
 
         let key_ref = normalize_required_string(key_ref, "keyRef")?;
-        let key_value = normalize_required_string(&request.key_value, "keyValue")?;
-        let status = normalize_required_string(&request.status, "status")?;
         let now = chrono::Utc::now().timestamp_millis();
         conn.execute(
             "INSERT INTO proxy_channel_keys (
@@ -619,8 +617,8 @@ impl Database {
             params![
                 channel_id,
                 &key_ref,
-                &key_value,
-                &status,
+                &request.key_value,
+                &request.status,
                 request.priority,
                 request.weight as i64,
                 now,
@@ -650,7 +648,7 @@ impl Database {
         key_ref: &str,
         patch: ProxyChannelKeyPatchRequest,
     ) -> Result<Option<ProxyChannelKeyRecord>, AppError> {
-        validate_proxy_channel_key_patch_request_fields(&patch)
+        let patch = normalize_proxy_channel_key_patch_request_fields(patch)
             .map_err(channel_request_error_to_app_error)?;
         let conn = lock_conn!(self.conn);
         let Some(mut current) = get_proxy_channel_key_on_conn(&conn, channel_id, key_ref)? else {
@@ -658,10 +656,10 @@ impl Database {
         };
 
         if let Some(key_value) = patch.key_value {
-            current.key_value = normalize_required_string(&key_value, "keyValue")?;
+            current.key_value = key_value;
         }
         if let Some(status) = patch.status {
-            current.status = normalize_required_string(&status, "status")?;
+            current.status = status;
         }
         if let Some(priority) = patch.priority {
             current.priority = priority;
@@ -1612,8 +1610,8 @@ mod tests {
                 &created.id,
                 "primary",
                 ProxyChannelKeyWriteRequest {
-                    key_value: "sk-channel-secret".to_string(),
-                    status: "enabled".to_string(),
+                    key_value: " sk-channel-secret ".to_string(),
+                    status: " enabled ".to_string(),
                     priority: 10,
                     weight: 80,
                 },
@@ -1650,8 +1648,8 @@ mod tests {
                 &created.id,
                 "primary",
                 ProxyChannelKeyPatchRequest {
-                    key_value: Some("sk-rotated-secret".to_string()),
-                    status: Some("disabled".to_string()),
+                    key_value: Some(" sk-rotated-secret ".to_string()),
+                    status: Some(" disabled ".to_string()),
                     priority: Some(5),
                     weight: Some(20),
                 },
