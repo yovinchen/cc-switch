@@ -13,9 +13,7 @@ use super::{
         codex_chat_history::CodexChatHistoryStore, get_adapter,
         provider_kind_from_app_type_and_config, ProviderAdapter,
     },
-    route_attempt::{
-        apply_channel_model_override, forward_attempts_from_route_plan, ForwardAttempt,
-    },
+    route_attempt::{apply_channel_model_override, ForwardAttempt},
 };
 use crate::commands::{CodexOAuthState, CopilotAuthState};
 use crate::proxy::providers::codex_oauth_auth::CodexOAuthManager;
@@ -29,16 +27,15 @@ use crate::proxy_core_adapter::{
     build_retryable_forward_failure_log, build_terminal_forward_failure_log,
     build_upstream_auth_headers, cache_injection_log_message, categorize_forward_failure,
     classify_copilot_request, claude_transform_endpoint_rewrite_input_from_body,
-    contains_image_blocks, interface_kind_for_forward, is_codex_chat_full_endpoint_base,
-    is_github_copilot_upstream, is_openai_o_series, is_unsupported_image_error,
+    contains_image_blocks, is_codex_chat_full_endpoint_base, is_github_copilot_upstream,
+    is_openai_o_series, is_unsupported_image_error,
     merge_copilot_tool_results, normalize_thinking_type, prepare_upstream_request_body_with_report,
     prompt_cache_trace_log_message, rectify_anthropic_request, rectify_thinking_budget,
     replace_image_blocks_with_marker, replace_images_for_text_only_model,
-    proxy_engine_from_services, request_body_filter_log_message, request_model_for_forward,
-    resolve_claude_forward_api_format, resolve_copilot_deterministic_interaction_id,
-    resolve_copilot_model_against_ids, resolve_copilot_optimizer_session_id,
-    resolve_copilot_request_id_with_fallback, resolve_media_prevention_policy,
-    resolved_copilot_dynamic_base_url,
+    request_body_filter_log_message, resolve_claude_forward_api_format,
+    resolve_copilot_deterministic_interaction_id, resolve_copilot_model_against_ids,
+    resolve_copilot_optimizer_session_id, resolve_copilot_request_id_with_fallback,
+    resolve_media_prevention_policy, resolved_copilot_dynamic_base_url,
     responses_to_chat_completions_with_options, rewrite_claude_transform_endpoint,
     sanitize_copilot_orphan_tool_results, should_apply_bedrock_pre_send_optimizer,
     should_check_media_retry, should_failover_after_rectifier_retry_failure,
@@ -47,16 +44,15 @@ use crate::proxy_core_adapter::{
     should_send_anthropic_request_headers, should_trigger_media_retry, split_endpoint_and_query,
     strip_copilot_thinking_blocks, strip_one_m_suffix_for_upstream,
     strip_one_m_suffix_for_upstream_from_body, supports_reasoning_effort,
-    thinking_optimization_log_message, validate_managed_account_upstream_auth, AppKind,
-    AttemptEventChannel, AttemptEventPayloadInput, AttemptEventPhase, ChannelQuery,
+    thinking_optimization_log_message, validate_managed_account_upstream_auth,
+    AttemptEventChannel, AttemptEventPayloadInput, AttemptEventPhase,
     CopilotAuthHeaderOverrides, CopilotOptimizerConfig, CurrentRouteTarget, ForwardFailureCategory,
-    GeminiShadowStore, InterfaceKind, MediaRetryInput, OptimizerConfig, PromptCacheTraceLogInput,
-    ProviderAuthInfo, ProviderAuthStrategy, ProviderKind, ProxyBody, ProxyRequest,
-    ProxyRuntimeStatus, ProxyServices, RectifierConfig, ResolvedChannelAttempt,
+    GeminiShadowStore, MediaRetryInput, OptimizerConfig, PromptCacheTraceLogInput,
+    ProviderAuthInfo, ProviderAuthStrategy, ProviderKind, ProxyRuntimeStatus, RectifierConfig,
+    ResolvedChannelAttempt,
     UpstreamAuthHeadersInput, UpstreamRequestHeadersInput, UpstreamSendPolicyInput,
     UpstreamTransportKind, UNSUPPORTED_IMAGE_MARKER,
 };
-use crate::proxy_core_host::CcSwitchProxyServices;
 use crate::{app_config::AppType, provider::Provider};
 use futures::StreamExt;
 use http::Extensions;
@@ -93,7 +89,7 @@ pub struct ForwardError {
 /// 一个异步任务执行 -1，从而支持把 guard move 进流式 body future（stream 自然结束
 /// 时 guard 与 future 一起 drop）。
 ///
-/// 设计动机：之前在 `forward_with_retry` 出口处同步 -1，但流式响应的 body 实际
+/// 设计动机：之前在请求 wrapper 出口处同步 -1，但流式响应的 body 实际
 /// 在 `create_logged_passthrough_stream` 内还会继续 yield 字节流，导致 UI 的
 /// `active_connections` 计数过早归零。RAII guard 让"减量"由 Rust 类型系统驱动，
 /// 不需要每条出口路径都手动调用。
@@ -128,9 +124,6 @@ impl Drop for ActiveConnectionGuard {
 pub struct RequestForwarder {
     /// 共享的 ProviderRouter（持有熔断器状态）
     router: Arc<ProviderRouter>,
-    /// Neutral proxy services used only when this forwarder still owns attempt planning.
-    #[allow(dead_code)]
-    proxy_core_services: Option<Arc<CcSwitchProxyServices>>,
     status: Arc<RwLock<ProxyRuntimeStatus>>,
     current_providers: Arc<RwLock<std::collections::HashMap<String, CurrentRouteTarget>>>,
     events: Arc<ProxyEventBus>,
@@ -233,99 +226,8 @@ impl RequestForwarder {
 
     #[allow(dead_code)]
     #[allow(clippy::too_many_arguments)]
-    pub fn new(
-        router: Arc<ProviderRouter>,
-        proxy_core_services: Arc<CcSwitchProxyServices>,
-        non_streaming_timeout: u64,
-        status: Arc<RwLock<ProxyRuntimeStatus>>,
-        current_providers: Arc<RwLock<std::collections::HashMap<String, CurrentRouteTarget>>>,
-        events: Arc<ProxyEventBus>,
-        gemini_shadow: Arc<GeminiShadowStore>,
-        codex_chat_history: Arc<CodexChatHistoryStore>,
-        failover_manager: Arc<FailoverSwitchManager>,
-        app_handle: Option<tauri::AppHandle>,
-        current_provider_id_at_start: String,
-        session_id: String,
-        session_client_provided: bool,
-        streaming_first_byte_timeout: u64,
-        _streaming_idle_timeout: u64,
-        rectifier_config: RectifierConfig,
-        optimizer_config: OptimizerConfig,
-        copilot_optimizer_config: CopilotOptimizerConfig,
-        max_retries: u32,
-    ) -> Self {
-        Self::new_with_optional_proxy_core_services(
-            router,
-            Some(proxy_core_services),
-            non_streaming_timeout,
-            status,
-            current_providers,
-            events,
-            gemini_shadow,
-            codex_chat_history,
-            failover_manager,
-            app_handle,
-            current_provider_id_at_start,
-            session_id,
-            session_client_provided,
-            streaming_first_byte_timeout,
-            _streaming_idle_timeout,
-            rectifier_config,
-            optimizer_config,
-            copilot_optimizer_config,
-            max_retries,
-        )
-    }
-
-    #[allow(dead_code)]
-    #[allow(clippy::too_many_arguments)]
     pub(crate) fn new_preplanned(
         router: Arc<ProviderRouter>,
-        non_streaming_timeout: u64,
-        status: Arc<RwLock<ProxyRuntimeStatus>>,
-        current_providers: Arc<RwLock<std::collections::HashMap<String, CurrentRouteTarget>>>,
-        events: Arc<ProxyEventBus>,
-        gemini_shadow: Arc<GeminiShadowStore>,
-        codex_chat_history: Arc<CodexChatHistoryStore>,
-        failover_manager: Arc<FailoverSwitchManager>,
-        app_handle: Option<tauri::AppHandle>,
-        current_provider_id_at_start: String,
-        session_id: String,
-        session_client_provided: bool,
-        streaming_first_byte_timeout: u64,
-        streaming_idle_timeout: u64,
-        rectifier_config: RectifierConfig,
-        optimizer_config: OptimizerConfig,
-        copilot_optimizer_config: CopilotOptimizerConfig,
-        max_retries: u32,
-    ) -> Self {
-        Self::new_with_optional_proxy_core_services(
-            router,
-            None,
-            non_streaming_timeout,
-            status,
-            current_providers,
-            events,
-            gemini_shadow,
-            codex_chat_history,
-            failover_manager,
-            app_handle,
-            current_provider_id_at_start,
-            session_id,
-            session_client_provided,
-            streaming_first_byte_timeout,
-            streaming_idle_timeout,
-            rectifier_config,
-            optimizer_config,
-            copilot_optimizer_config,
-            max_retries,
-        )
-    }
-
-    #[allow(clippy::too_many_arguments)]
-    fn new_with_optional_proxy_core_services(
-        router: Arc<ProviderRouter>,
-        proxy_core_services: Option<Arc<CcSwitchProxyServices>>,
         non_streaming_timeout: u64,
         status: Arc<RwLock<ProxyRuntimeStatus>>,
         current_providers: Arc<RwLock<std::collections::HashMap<String, CurrentRouteTarget>>>,
@@ -349,7 +251,6 @@ impl RequestForwarder {
         let max_attempts = (max_retries as usize).saturating_add(1);
         Self {
             router,
-            proxy_core_services,
             status,
             current_providers,
             events,
@@ -622,53 +523,6 @@ impl RequestForwarder {
         })
     }
 
-    /// 转发请求（带故障转移）
-    ///
-    /// 这是 thin wrapper：在客户端请求维度记一次 `total_requests` / 调整
-    /// `active_connections` / 刷新 `last_request_at`，无论 inner 走哪条出口路径，
-    /// 出口处都会把 `active_connections` 回收。Per-attempt 维度（成功/失败/熔断
-    /// 等）仍由 inner 内自行更新 `success_requests` / `failed_requests`。
-    #[allow(dead_code)]
-    #[allow(clippy::too_many_arguments)]
-    pub async fn forward_with_retry(
-        &self,
-        app_type: &AppType,
-        method: http::Method,
-        endpoint: &str,
-        body: Value,
-        headers: axum::http::HeaderMap,
-        extensions: Extensions,
-        providers: Vec<Provider>,
-    ) -> Result<ForwardResult, ForwardError> {
-        let request_id = uuid::Uuid::new_v4().to_string();
-        self.emit_request_started(&request_id, app_type.as_str());
-        let guard = ActiveConnectionGuard::acquire(self.status.clone()).await;
-        {
-            let mut s = self.status.write().await;
-            s.total_requests = s.total_requests.saturating_add(1);
-            s.last_request_at = Some(chrono::Utc::now().to_rfc3339());
-        }
-        let result = self
-            .forward_with_retry_inner(
-                &request_id,
-                app_type,
-                method,
-                endpoint,
-                body,
-                headers,
-                extensions,
-                providers,
-            )
-            .await;
-        // 把 guard 注入到 Ok 结果，让它随响应一起流转到 response_processor，
-        // 在流式 body 的 future 内才真正 drop。
-        // Err 路径：guard 在函数 scope 内随返回值落地时自动 drop。
-        result.map(|mut fr| {
-            fr.connection_guard = Some(guard);
-            fr
-        })
-    }
-
     /// Forward a request using attempts planned by a caller such as ProxyEngine.
     ///
     /// This keeps request-scope accounting in one place while allowing the route
@@ -710,128 +564,6 @@ impl RequestForwarder {
             fr.connection_guard = Some(guard);
             fr
         })
-    }
-
-    #[allow(dead_code)]
-    async fn build_forward_attempts(
-        &self,
-        app_type: &AppType,
-        method: &http::Method,
-        endpoint: &str,
-        body: &Value,
-        providers: Vec<Provider>,
-    ) -> Result<Vec<ForwardAttempt>, crate::error::AppError> {
-        let app_kind = AppKind::from(app_type);
-        let requested_model = request_model_for_forward(&app_kind, endpoint, body);
-        let interface_kind =
-            interface_kind_for_forward(&app_kind, endpoint).map(ToString::to_string);
-
-        if let Some(interface_kind) = interface_kind {
-            let proxy_core_services = self.proxy_core_services.as_ref().ok_or_else(|| {
-                crate::error::AppError::Config(
-                    "proxy core services are required to build forward attempts".to_string(),
-                )
-            })?;
-            let app_kind = AppKind::from(app_type);
-            let materialized_channels = proxy_core_services
-                .channels()
-                .list_channels(ChannelQuery {
-                    app: &app_kind,
-                    provider_id: None,
-                    model: None,
-                    group: None,
-                    include_disabled: true,
-                    allow_legacy_projection: false,
-                })
-                .await
-                .map_err(|error| crate::error::AppError::Config(error.to_string()))?;
-            if materialized_channels.is_empty() {
-                return Ok(providers
-                    .into_iter()
-                    .map(ForwardAttempt::from_provider)
-                    .collect());
-            }
-
-            let engine = proxy_engine_from_services(proxy_core_services.clone());
-            let mut proxy_request = ProxyRequest::new(
-                app_kind,
-                method.clone(),
-                endpoint,
-                InterfaceKind::from_storage(&interface_kind),
-                ProxyBody::Json(body.clone()),
-            );
-            proxy_request.requested_model = requested_model.clone();
-
-            match engine.plan_materialized_route(&proxy_request).await {
-                Ok(plan) => {
-                    let attempts = forward_attempts_from_route_plan(app_type, &providers, &plan);
-                    return Ok(attempts);
-                }
-                Err(error)
-                    if crate::proxy_core_adapter::proxy_core_error_is_unavailable(&error) =>
-                {
-                    return Ok(Vec::new());
-                }
-                Err(error) => {
-                    return Err(crate::error::AppError::Config(error.to_string()));
-                }
-            }
-        }
-
-        Ok(providers
-            .into_iter()
-            .map(ForwardAttempt::from_provider)
-            .collect())
-    }
-
-    /// 实际转发逻辑（不包含客户端维度的入口/出口计数）
-    ///
-    /// # Arguments
-    /// * `app_type` - 应用类型
-    /// * `method` - 客户端请求的 HTTP 方法（透传给上游，支持 GET/POST 等）
-    /// * `endpoint` - API 端点
-    /// * `body` - 请求体
-    /// * `headers` - 请求头
-    /// * `providers` - 已选择的 Provider 列表（由 RequestContext 提供，避免重复调用 select_providers）
-    #[allow(dead_code)]
-    #[allow(clippy::too_many_arguments)]
-    async fn forward_with_retry_inner(
-        &self,
-        request_id: &str,
-        app_type: &AppType,
-        method: http::Method,
-        endpoint: &str,
-        body: Value,
-        headers: axum::http::HeaderMap,
-        extensions: Extensions,
-        providers: Vec<Provider>,
-    ) -> Result<ForwardResult, ForwardError> {
-        if providers.is_empty() {
-            return Err(ForwardError {
-                error: ProxyError::NoAvailableProvider,
-                provider: None,
-            });
-        }
-
-        let attempts = self
-            .build_forward_attempts(app_type, &method, endpoint, &body, providers)
-            .await
-            .map_err(|e| ForwardError {
-                error: ProxyError::DatabaseError(e.to_string()),
-                provider: None,
-            })?;
-
-        if attempts.is_empty() {
-            return Err(ForwardError {
-                error: ProxyError::NoAvailableProvider,
-                provider: None,
-            });
-        }
-
-        self.forward_preplanned_attempts_inner(
-            request_id, app_type, method, endpoint, body, headers, extensions, attempts,
-        )
-        .await
     }
 
     /// 实际转发逻辑（不包含客户端维度的入口/出口计数，也不构建 route attempts）。
@@ -938,7 +670,7 @@ impl RequestForwarder {
             // 更新状态中的当前 Provider 信息（per-attempt 维度的标识）
             //
             // total_requests / last_request_at / active_connections 已由
-            // forward_with_retry wrapper 在客户端请求维度统一处理，这里只刷
+            // forward_with_preplanned_attempts 在客户端请求维度统一处理，这里只刷
             // 新「正在尝试哪个 provider」的展示字段。
             {
                 let mut status = self.status.write().await;
@@ -2467,7 +2199,7 @@ mod tests {
     use crate::proxy_core_adapter::ManagedAccountAuthError;
     use crate::proxy_core_adapter::{canonical_json_string, short_value_hash};
     use crate::proxy_core_adapter::{
-        ChannelRouteCandidate,
+        interface_kind_for_forward, request_model_for_forward, AppKind, ChannelRouteCandidate,
         claude_transform_endpoint_rewrite_input_from_body as transform_endpoint_rewrite_input,
         rewrite_claude_transform_endpoint as rewrite_transform_endpoint,
     };
@@ -2522,7 +2254,6 @@ mod tests {
 
         RequestForwarder {
             router: Arc::new(ProviderRouter::new(db.clone())),
-            proxy_core_services: Some(Arc::new(CcSwitchProxyServices::new(db.clone()))),
             status: Arc::new(RwLock::new(ProxyRuntimeStatus::default())),
             current_providers: Arc::new(RwLock::new(HashMap::new())),
             events: Arc::new(ProxyEventBus::default()),
@@ -2606,90 +2337,6 @@ mod tests {
 
         let status = forwarder.status.read().await;
         assert_eq!(status.total_requests, 1);
-    }
-
-    #[tokio::test]
-    async fn build_forward_attempts_uses_proxy_engine_for_materialized_channels() {
-        let db = Arc::new(Database::memory().expect("memory db"));
-        let provider = Provider::with_id(
-            "provider-a".to_string(),
-            "Provider A".to_string(),
-            json!({
-                "env": {
-                    "ANTHROPIC_BASE_URL": "https://primary.example.com/v1",
-                    "ANTHROPIC_MODEL": "public-sonnet",
-                    "ANTHROPIC_API_KEY": "keep-key"
-                }
-            }),
-            None,
-        );
-        db.save_provider("claude", &provider)
-            .expect("save provider");
-        db.materialize_legacy_proxy_channels("claude")
-            .expect("materialize channels");
-
-        let forwarder = RequestForwarder {
-            router: Arc::new(ProviderRouter::new(db.clone())),
-            proxy_core_services: Some(Arc::new(CcSwitchProxyServices::new(db.clone()))),
-            status: Arc::new(RwLock::new(ProxyRuntimeStatus::default())),
-            current_providers: Arc::new(RwLock::new(HashMap::new())),
-            events: Arc::new(ProxyEventBus::default()),
-            gemini_shadow: Arc::new(GeminiShadowStore::new()),
-            codex_chat_history: Arc::new(CodexChatHistoryStore::default()),
-            failover_manager: Arc::new(FailoverSwitchManager::new(db)),
-            app_handle: None,
-            current_provider_id_at_start: String::new(),
-            session_id: String::new(),
-            session_client_provided: false,
-            rectifier_config: RectifierConfig::default(),
-            optimizer_config: OptimizerConfig::default(),
-            copilot_optimizer_config: CopilotOptimizerConfig::default(),
-            non_streaming_timeout: Duration::from_secs(0),
-            streaming_first_byte_timeout: Duration::from_secs(0),
-            max_attempts: 1,
-        };
-
-        let attempts = forwarder
-            .build_forward_attempts(
-                &AppType::Claude,
-                &http::Method::POST,
-                "/v1/messages",
-                &json!({"model": "public-sonnet"}),
-                vec![provider],
-            )
-            .await
-            .expect("build attempts");
-
-        assert_eq!(attempts.len(), 1);
-        let attempt = &attempts[0];
-        assert!(attempt.is_channel());
-        assert_eq!(
-            attempt.channel().map(|channel| channel.base_url.as_str()),
-            Some("https://primary.example.com/v1")
-        );
-        assert_eq!(
-            attempt
-                .provider()
-                .settings_config
-                .pointer("/env/ANTHROPIC_MODEL")
-                .and_then(Value::as_str),
-            Some("public-sonnet")
-        );
-
-        let missing_model_attempts = forwarder
-            .build_forward_attempts(
-                &AppType::Claude,
-                &http::Method::POST,
-                "/v1/messages",
-                &json!({"model": "missing-model"}),
-                vec![attempt.provider().clone()],
-            )
-            .await
-            .expect("build attempts for missing model");
-        assert!(
-            missing_model_attempts.is_empty(),
-            "materialized channels must not fallback to legacy provider chain when routing fails"
-        );
     }
 
     #[test]

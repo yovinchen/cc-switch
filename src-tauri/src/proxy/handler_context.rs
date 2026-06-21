@@ -5,8 +5,8 @@
 use crate::app_config::AppType;
 use crate::provider::Provider;
 use crate::proxy::{
-    error::ProxyError, forwarder::RequestForwarder, providers::get_claude_api_format,
-    route_attempt::ForwardAttempt, server::ProxyState,
+    error::ProxyError, providers::get_claude_api_format, route_attempt::ForwardAttempt,
+    server::ProxyState,
 };
 use crate::proxy_core_adapter::{
     claude_api_format_from_metadata, extract_gemini_model_from_path, extract_proxy_session_id,
@@ -230,47 +230,6 @@ impl RequestContext {
 
     pub fn claude_api_format_for_proxy_result(&self, result: &ProxyResult) -> String {
         claude_api_format_from_metadata(&result.metadata, get_claude_api_format(&self.provider))
-    }
-
-    /// 创建 RequestForwarder
-    ///
-    /// 使用共享的 ProviderRouter，确保熔断器状态跨请求保持
-    ///
-    /// 配置生效规则：
-    /// - 故障转移开启：超时和 retry 配置正常生效（0 表示禁用超时）
-    /// - 故障转移关闭：超时和 retry 配置不生效（全部传入 0）
-    #[allow(dead_code)]
-    pub fn create_forwarder(&self, state: &ProxyState) -> RequestForwarder {
-        let runtime_policy = self.response_runtime_policy();
-        let timeout_config = runtime_policy.timeout;
-        if !self.app_config.auto_failover_enabled {
-            log::debug!(
-                "[{}] Failover disabled, timeout/retry configs are bypassed",
-                self.tag
-            );
-        }
-
-        RequestForwarder::new(
-            state.provider_router.clone(),
-            state.proxy_core_services.clone(),
-            timeout_config.non_streaming_timeout,
-            state.status.clone(),
-            state.current_providers.clone(),
-            state.events.clone(),
-            state.gemini_shadow.clone(),
-            state.codex_chat_history.clone(),
-            state.failover_manager.clone(),
-            state.app_handle.clone(),
-            self.current_provider_id.clone(),
-            self.session_id.clone(),
-            self.session_client_provided,
-            timeout_config.streaming.first_byte_timeout,
-            timeout_config.streaming.idle_timeout,
-            self.rectifier_config.clone(),
-            self.optimizer_config.clone(),
-            self.copilot_optimizer_config.clone(),
-            runtime_policy.max_retries,
-        )
     }
 
     /// 获取 Provider 列表（用于故障转移）

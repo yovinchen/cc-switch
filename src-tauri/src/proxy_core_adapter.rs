@@ -811,12 +811,12 @@ pub(crate) use crate::proxy_core::api::transport::{
     build_codex_oauth_session_headers, build_retryable_forward_failure_log,
     build_terminal_forward_failure_log, build_upstream_auth_headers, categorize_forward_failure,
     classify_copilot_request, claude_transform_endpoint_rewrite_input_from_body,
-    contains_image_blocks, interface_kind_for_forward, is_codex_chat_full_endpoint_base,
+    contains_image_blocks, is_codex_chat_full_endpoint_base,
     is_github_copilot_upstream, is_openai_o_series, is_unsupported_image_error,
     merge_copilot_tool_results,
     prepare_upstream_request_body_with_report, prompt_cache_trace_log_message,
     replace_image_blocks_with_marker, replace_images_for_text_only_model,
-    request_body_filter_log_message, request_model_for_forward,
+    request_body_filter_log_message,
     resolve_copilot_deterministic_interaction_id,
     resolve_copilot_optimizer_session_id, resolve_copilot_request_id_with_fallback,
     resolve_media_prevention_policy, resolved_copilot_dynamic_base_url,
@@ -827,6 +827,10 @@ pub(crate) use crate::proxy_core::api::transport::{
     strip_copilot_thinking_blocks, supports_reasoning_effort,
     UNSUPPORTED_IMAGE_MARKER,
     rewrite_claude_transform_endpoint,
+};
+#[cfg(test)]
+pub(crate) use crate::proxy_core::api::transport::{
+    interface_kind_for_forward, request_model_for_forward,
 };
 pub(crate) use crate::proxy_core::api::usage::{
     normalize_pricing_source, validate_cost_multiplier_value, CostMultiplierValidationError,
@@ -2442,10 +2446,6 @@ pub(crate) fn apply_channel_param_overrides_to_url(
         url,
         param_overrides,
     )
-}
-
-pub(crate) fn proxy_core_error_is_unavailable(error: &ProxyCoreError) -> bool {
-    matches!(error, ProxyCoreError::Unavailable(_))
 }
 
 pub(crate) fn codex_proxy_error_code(kind: CodexProxyErrorKind) -> &'static str {
@@ -4889,12 +4889,6 @@ mod tests {
             route_plan_providers_unconfigured_error_message(),
             "route plan providers are not configured in host database"
         );
-        assert!(proxy_core_error_is_unavailable(
-            &ProxyCoreError::Unavailable("missing provider".to_string())
-        ));
-        assert!(!proxy_core_error_is_unavailable(&ProxyCoreError::Config(
-            "invalid route".to_string()
-        )));
         let policy = route_policy_from_source(
             AppKind::Claude,
             vec![FailoverQueueItem {
