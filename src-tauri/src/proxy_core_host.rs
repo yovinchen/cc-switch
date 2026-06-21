@@ -39,12 +39,13 @@ use crate::proxy_core_adapter::{
     forward_result_to_proxy_result,
     forwarding_runtime_unavailable_error,
     host_providers_for_plan,
+    provider_spec_from_source,
+    provider_specs_from_source,
     provider_with_channel_auth_key,
     provider_model_catalog_from_provider,
     proxy_app_config_from_config_source_parts, proxy_global_config_from_config,
     proxy_runtime_config_from_config_source,
     proxy_channel_record_to_core_spec, proxy_channel_records_to_core_specs_for_query,
-    proxy_provider_to_core_spec, proxy_providers_to_core_specs,
     response_runtime_policy_from_app_proxy_config,
     route_plan_no_matching_host_providers_error,
     route_policy_from_failover_queue,
@@ -257,15 +258,11 @@ impl ProviderSource for CcSwitchProviderSource {
         app: &'a AppKind,
     ) -> BoxFuture<'a, ProxyCoreResult<Vec<ProviderSpec>>> {
         Box::pin(async move {
-            let app_type = app_type_from_proxy_core_app(app)?;
             let providers = self
                 .db
                 .get_all_providers(app.as_str())
                 .map_err(|error| app_error("list providers", error))?;
-            Ok(proxy_providers_to_core_specs(
-                providers.into_values(),
-                &app_type,
-            ))
+            provider_specs_from_source(app, providers.into_values())
         })
     }
 
@@ -275,12 +272,11 @@ impl ProviderSource for CcSwitchProviderSource {
         provider_id: &'a str,
     ) -> BoxFuture<'a, ProxyCoreResult<Option<ProviderSpec>>> {
         Box::pin(async move {
-            let app_type = app_type_from_proxy_core_app(app)?;
             let provider = self
                 .db
                 .get_provider_by_id(provider_id, app.as_str())
                 .map_err(|error| app_error("get provider", error))?;
-            Ok(provider.map(|provider| proxy_provider_to_core_spec(&provider, &app_type)))
+            provider_spec_from_source(app, provider)
         })
     }
 }

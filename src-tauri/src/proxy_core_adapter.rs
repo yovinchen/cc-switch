@@ -1563,6 +1563,22 @@ pub(crate) fn proxy_providers_to_core_specs(
         .collect()
 }
 
+pub(crate) fn provider_specs_from_source(
+    app: &AppKind,
+    providers: impl IntoIterator<Item = Provider>,
+) -> ProxyCoreResult<Vec<ProviderSpec>> {
+    let app_type = app_type_from_proxy_core_app(app)?;
+    Ok(proxy_providers_to_core_specs(providers, &app_type))
+}
+
+pub(crate) fn provider_spec_from_source(
+    app: &AppKind,
+    provider: Option<Provider>,
+) -> ProxyCoreResult<Option<ProviderSpec>> {
+    let app_type = app_type_from_proxy_core_app(app)?;
+    Ok(provider.map(|provider| proxy_provider_to_core_spec(&provider, &app_type)))
+}
+
 #[allow(dead_code)]
 pub(crate) trait ToProxyCoreChannelSpec {
     fn to_proxy_core_channel_spec(&self) -> ChannelSpec;
@@ -4690,8 +4706,15 @@ mod tests {
         });
 
         let spec = provider.to_proxy_core_provider_spec(&AppType::Claude);
+        let source_spec = provider_spec_from_source(&AppKind::Claude, Some(provider.clone()))
+            .expect("provider spec")
+            .expect("provider");
+        let source_specs =
+            provider_specs_from_source(&AppKind::Claude, vec![provider]).expect("provider specs");
 
         assert_eq!(spec.kind, ProviderKind::GitHubCopilot);
+        assert_eq!(source_spec.kind, ProviderKind::GitHubCopilot);
+        assert_eq!(source_specs[0].kind, ProviderKind::GitHubCopilot);
         assert_eq!(spec.account_ref.as_deref(), Some("github_copilot:acct-1"));
         let serialized = serde_json::to_string(&spec).expect("serialize spec");
         assert!(!serialized.contains("secret-token"));
