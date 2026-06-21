@@ -3,6 +3,7 @@ use serde_json::{json, Value};
 
 pub const PROXY_EVENTS_CONNECTED_EVENT: &str = "proxy_events_connected";
 pub const PROXY_EVENTS_LAGGED_EVENT: &str = "proxy_events_lagged";
+pub const PROVIDER_SWITCHED_EVENT: &str = "provider-switched";
 pub const SERVER_STARTED_EVENT: &str = "server_started";
 pub const SERVER_STOPPED_EVENT: &str = "server_stopped";
 
@@ -149,6 +150,18 @@ pub fn build_server_stopped_event_payload() -> Value {
     json!({})
 }
 
+pub fn build_provider_switched_event_payload(
+    app_type: &str,
+    provider_id: &str,
+    source: &str,
+) -> Value {
+    json!({
+        "appType": app_type,
+        "providerId": provider_id,
+        "source": source,
+    })
+}
+
 pub fn build_proxy_events_connected_payload(buffer_size: usize) -> Value {
     json!({
         "bufferSize": buffer_size,
@@ -165,10 +178,11 @@ pub fn build_proxy_events_lagged_payload(skipped: u64) -> Value {
 mod tests {
     use super::{
         attempt_event_name, build_attempt_event_payload, build_proxy_events_connected_payload,
-        build_proxy_events_lagged_payload, build_request_started_event_payload,
-        build_server_started_event_payload, build_server_stopped_event_payload,
-        AttemptEventChannel, AttemptEventPayloadInput, AttemptEventPhase, ProxyEventEnvelope,
-        SERVER_STARTED_EVENT, SERVER_STOPPED_EVENT,
+        build_proxy_events_lagged_payload, build_provider_switched_event_payload,
+        build_request_started_event_payload, build_server_started_event_payload,
+        build_server_stopped_event_payload, AttemptEventChannel, AttemptEventPayloadInput,
+        AttemptEventPhase, ProxyEventEnvelope, PROVIDER_SWITCHED_EVENT, SERVER_STARTED_EVENT,
+        SERVER_STOPPED_EVENT,
     };
 
     #[test]
@@ -261,6 +275,18 @@ mod tests {
 
         let stopped = build_server_stopped_event_payload();
         assert!(stopped.as_object().is_some_and(|object| object.is_empty()));
+    }
+
+    #[test]
+    fn provider_switched_event_contract_keeps_existing_shape() {
+        assert_eq!(PROVIDER_SWITCHED_EVENT, "provider-switched");
+
+        let payload =
+            build_provider_switched_event_payload("claude", "provider-1", "failover");
+
+        assert_eq!(payload["appType"], "claude");
+        assert_eq!(payload["providerId"], "provider-1");
+        assert_eq!(payload["source"], "failover");
     }
 
     #[test]

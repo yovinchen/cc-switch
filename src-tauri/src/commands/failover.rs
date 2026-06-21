@@ -4,6 +4,9 @@
 
 use crate::database::FailoverQueueItem;
 use crate::provider::Provider;
+use crate::proxy_core_adapter::{
+    build_provider_switched_event_payload, PROVIDER_SWITCHED_EVENT,
+};
 use crate::store::AppState;
 use std::str::FromStr;
 use tauri::Emitter;
@@ -163,12 +166,9 @@ pub async fn set_auto_failover_enabled(
 
     if enabled {
         // 发射 provider-switched 事件（让前端刷新当前供应商）
-        let event_data = serde_json::json!({
-            "appType": app_type,
-            "providerId": p1_provider_id,
-            "source": "failoverEnabled"
-        });
-        let _ = app.emit("provider-switched", event_data);
+        let event_data =
+            build_provider_switched_event_payload(&app_type, &p1_provider_id, "failoverEnabled");
+        let _ = app.emit(PROVIDER_SWITCHED_EVENT, event_data);
     }
 
     // 刷新托盘菜单，确保状态同步

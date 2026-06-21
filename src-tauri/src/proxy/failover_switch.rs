@@ -7,6 +7,9 @@
 
 use crate::database::Database;
 use crate::error::AppError;
+use crate::proxy_core_adapter::{
+    build_provider_switched_event_payload, PROVIDER_SWITCHED_EVENT,
+};
 use std::collections::HashSet;
 use std::sync::Arc;
 use tauri::{Emitter, Manager};
@@ -139,12 +142,9 @@ impl FailoverSwitchManager {
             }
 
             // 发射事件到前端
-            let event_data = serde_json::json!({
-                "appType": app_type,
-                "providerId": provider_id,
-                "source": "failover"  // 标识来源是故障转移
-            });
-            if let Err(e) = app.emit("provider-switched", event_data) {
+            let event_data =
+                build_provider_switched_event_payload(app_type, provider_id, "failover");
+            if let Err(e) = app.emit(PROVIDER_SWITCHED_EVENT, event_data) {
                 log::error!("[Failover] 发射事件失败: {e}");
             }
         }
