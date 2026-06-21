@@ -797,6 +797,40 @@ pub(crate) fn provider_opencode_stream_check_base_url(
     resolve_opencode_stream_check_base_url(&provider.settings_config, npm)
 }
 
+pub(crate) struct OpenCodeLiveProviderFragment {
+    pub(crate) config: Value,
+    pub(crate) from_full_config: bool,
+}
+
+pub(crate) fn provider_opencode_live_provider_fragment(
+    provider: &Provider,
+) -> OpenCodeLiveProviderFragment {
+    let Some(obj) = provider.settings_config.as_object() else {
+        return OpenCodeLiveProviderFragment {
+            config: provider.settings_config.clone(),
+            from_full_config: false,
+        };
+    };
+
+    let from_full_config = obj.contains_key("$schema") || obj.contains_key("provider");
+    if from_full_config {
+        let config = obj
+            .get("provider")
+            .and_then(|providers| providers.get(&provider.id))
+            .cloned()
+            .unwrap_or_else(|| provider.settings_config.clone());
+        return OpenCodeLiveProviderFragment {
+            config,
+            from_full_config,
+        };
+    }
+
+    OpenCodeLiveProviderFragment {
+        config: provider.settings_config.clone(),
+        from_full_config,
+    }
+}
+
 pub(crate) fn channel_auth_profile_resolution(
     auth_profile_ref: Option<&str>,
     app_type: &str,
@@ -7609,6 +7643,59 @@ wire_api = "chat"
         );
 
         assert!(!provider_openclaw_has_live_provider_fields(&provider));
+    }
+
+    #[test]
+    fn opencode_live_provider_fragment_adapter_projects_provider_settings() {
+        let provider = Provider::with_id(
+            "openai".to_string(),
+            "OpenAI".to_string(),
+            json!({
+                "npm": "@ai-sdk/openai",
+                "options": {"apiKey": "sk-test"}
+            }),
+            None,
+        );
+        let fragment = provider_opencode_live_provider_fragment(&provider);
+        assert_eq!(fragment.config, provider.settings_config);
+        assert!(!fragment.from_full_config);
+
+        let provider = Provider::with_id(
+            "openai".to_string(),
+            "OpenAI".to_string(),
+            json!({
+                "$schema": "https://opencode.ai/config.json",
+                "provider": {
+                    "openai": {
+                        "npm": "@ai-sdk/openai",
+                        "options": {"apiKey": "sk-nested"}
+                    }
+                }
+            }),
+            None,
+        );
+        let fragment = provider_opencode_live_provider_fragment(&provider);
+        assert_eq!(
+            fragment.config,
+            json!({
+                "npm": "@ai-sdk/openai",
+                "options": {"apiKey": "sk-nested"}
+            })
+        );
+        assert!(fragment.from_full_config);
+
+        let provider = Provider::with_id(
+            "missing".to_string(),
+            "Missing".to_string(),
+            json!({
+                "$schema": "https://opencode.ai/config.json",
+                "provider": {}
+            }),
+            None,
+        );
+        let fragment = provider_opencode_live_provider_fragment(&provider);
+        assert_eq!(fragment.config, provider.settings_config);
+        assert!(fragment.from_full_config);
     }
 
     #[test]

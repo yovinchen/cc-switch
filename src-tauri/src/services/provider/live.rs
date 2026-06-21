@@ -15,8 +15,8 @@ use crate::error::AppError;
 use crate::provider::Provider;
 use crate::proxy_core_adapter::{
     provider_codex_imported_live_category, provider_codex_live_snapshot_parts,
-    provider_model_catalog_raw_value, provider_openclaw_has_live_provider_fields,
-    CodexLiveSnapshotIssue,
+    provider_model_catalog_raw_value, provider_opencode_live_provider_fragment,
+    provider_openclaw_has_live_provider_fields, CodexLiveSnapshotIssue,
 };
 use crate::services::mcp::McpService;
 use crate::store::AppState;
@@ -781,25 +781,14 @@ pub(crate) fn write_live_snapshot(app_type: &AppType, provider: &Provider) -> Re
             use crate::opencode_config;
             use crate::provider::OpenCodeProviderConfig;
 
-            // Defensive check: if settings_config is a full config structure, extract provider fragment
-            let config_to_write = if let Some(obj) = provider.settings_config.as_object() {
-                // Detect full config structure (has $schema or top-level provider field)
-                if obj.contains_key("$schema") || obj.contains_key("provider") {
-                    log::warn!(
-                        "OpenCode provider '{}' has full config structure in settings_config, attempting to extract fragment",
-                        provider.id
-                    );
-                    // Try to extract from provider.{id}
-                    obj.get("provider")
-                        .and_then(|p| p.get(&provider.id))
-                        .cloned()
-                        .unwrap_or_else(|| provider.settings_config.clone())
-                } else {
-                    provider.settings_config.clone()
-                }
-            } else {
-                provider.settings_config.clone()
-            };
+            let fragment = provider_opencode_live_provider_fragment(provider);
+            if fragment.from_full_config {
+                log::warn!(
+                    "OpenCode provider '{}' has full config structure in settings_config, attempting to extract fragment",
+                    provider.id
+                );
+            }
+            let config_to_write = fragment.config;
 
             // Convert settings_config to OpenCodeProviderConfig
             let opencode_config_result =
