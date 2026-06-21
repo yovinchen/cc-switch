@@ -1633,6 +1633,14 @@ pub(crate) fn client_model_catalog_from_optional_raw(
     )
 }
 
+pub(crate) fn empty_client_model_catalog_raw() -> Value {
+    crate::proxy_core::api::model_catalog::empty_client_model_catalog_raw()
+}
+
+pub(crate) fn client_model_catalog_raw_from_text(catalog_text: &str) -> Value {
+    crate::proxy_core::api::model_catalog::client_model_catalog_raw_from_text(catalog_text)
+}
+
 #[cfg(test)]
 pub(crate) fn route_plan_provider_ids(plan: &RoutePlan) -> Vec<String> {
     crate::proxy_core::api::routing::route_plan_provider_ids(plan)
@@ -3677,6 +3685,12 @@ mod tests {
             client_catalog.models,
             vec!["gpt-5".to_string(), "o4-mini".to_string()]
         );
+        assert_eq!(
+            client_model_catalog_raw_from_text(r#"{"models":[{"id":"gpt-5"}]}"#),
+            json!({"models":[{"id":"gpt-5"}]})
+        );
+        assert_eq!(client_model_catalog_raw_from_text("not json"), json!({"models": []}));
+        assert_eq!(empty_client_model_catalog_raw(), json!({"models": []}));
     }
 
     #[test]

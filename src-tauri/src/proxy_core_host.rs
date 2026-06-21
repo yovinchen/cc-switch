@@ -28,9 +28,11 @@ use crate::proxy_core_adapter::{
     channel_auth_profile_missing_provider_warning,
     channel_auth_profile_resolution,
     channel_health_reset_from_parts,
+    client_model_catalog_raw_from_text,
     current_provider_id_from_sources,
     current_provider_id_option_from_sources,
     error_message_with_context,
+    empty_client_model_catalog_raw,
     extract_proxy_session_id,
     proxy_app_config_from_config_parts, proxy_global_config_from_config,
     proxy_runtime_config_from_config,
@@ -47,7 +49,7 @@ use crate::proxy_core_adapter::{
 use bytes::Bytes;
 use futures::{future::BoxFuture, Stream, StreamExt};
 use indexmap::IndexMap;
-use serde_json::{json, Value};
+use serde_json::Value;
 use std::collections::HashMap;
 use std::str::FromStr;
 use std::sync::Arc;
@@ -822,14 +824,14 @@ fn load_codex_client_model_catalog_raw() -> Value {
 
     if let Some(catalog_path) = active_catalog_path.as_ref().filter(|path| path.exists()) {
         let text = std::fs::read_to_string(catalog_path).unwrap_or_default();
-        serde_json::from_str(&text).unwrap_or_else(|_| json!({"models": []}))
+        client_model_catalog_raw_from_text(&text)
     } else {
         if active_catalog_path.is_none() {
             log::debug!(
                 "[models] stale guard: catalog not served (model_catalog_json not set to cc-switch catalog)"
             );
         }
-        json!({"models": []})
+        empty_client_model_catalog_raw()
     }
 }
 

@@ -375,14 +375,19 @@ pub fn client_model_catalog_from_raw(provider_id: impl Into<String>, raw: Value)
     }
 }
 
+pub fn empty_client_model_catalog_raw() -> Value {
+    serde_json::json!({"models": []})
+}
+
+pub fn client_model_catalog_raw_from_text(catalog_text: &str) -> Value {
+    serde_json::from_str(catalog_text).unwrap_or_else(|_| empty_client_model_catalog_raw())
+}
+
 pub fn client_model_catalog_from_optional_raw(
     provider_id: impl Into<String>,
     raw: Option<Value>,
 ) -> ModelCatalog {
-    client_model_catalog_from_raw(
-        provider_id,
-        raw.unwrap_or_else(|| serde_json::json!({"models": []})),
-    )
+    client_model_catalog_from_raw(provider_id, raw.unwrap_or_else(empty_client_model_catalog_raw))
 }
 
 pub fn provider_model_catalog_from_settings(
@@ -1560,6 +1565,19 @@ mod tests {
         assert_eq!(catalog.provider_id, "gemini");
         assert!(catalog.models.is_empty());
         assert_eq!(catalog.raw, json!({"models": []}));
+    }
+
+    #[test]
+    fn client_model_catalog_raw_from_text_falls_back_to_empty_catalog() {
+        assert_eq!(
+            client_model_catalog_raw_from_text(r#"{"models":[{"id":"gpt-5"}]}"#),
+            json!({"models":[{"id":"gpt-5"}]})
+        );
+        assert_eq!(
+            client_model_catalog_raw_from_text("not json"),
+            json!({"models": []})
+        );
+        assert_eq!(empty_client_model_catalog_raw(), json!({"models": []}));
     }
 
     #[test]
