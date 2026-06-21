@@ -3208,6 +3208,45 @@ pub(crate) fn provider_usage_script(provider: Option<&Provider>) -> Option<&Usag
         .and_then(|meta| meta.usage_script.as_ref())
 }
 
+pub(crate) fn provider_claude_env_settings(
+    provider: &Provider,
+) -> Option<&serde_json::Map<String, Value>> {
+    provider
+        .settings_config
+        .get("env")
+        .and_then(Value::as_object)
+}
+
+pub(crate) fn provider_claude_models_are_claude_safe(provider: &Provider) -> bool {
+    let Some(env) = provider_claude_env_settings(provider) else {
+        return true;
+    };
+
+    [
+        "ANTHROPIC_MODEL",
+        "ANTHROPIC_DEFAULT_HAIKU_MODEL",
+        "ANTHROPIC_DEFAULT_SONNET_MODEL",
+        "ANTHROPIC_DEFAULT_OPUS_MODEL",
+    ]
+    .into_iter()
+    .filter_map(|key| env.get(key).and_then(Value::as_str))
+    .map(str::trim)
+    .filter(|value| !value.is_empty())
+    .all(crate::claude_desktop_config::is_claude_safe_model_id)
+}
+
+pub(crate) fn provider_claude_desktop_routes_support_1m_by_default(
+    provider: &Provider,
+) -> bool {
+    !matches!(
+        provider
+            .meta
+            .as_ref()
+            .and_then(|meta| meta.provider_type.as_deref()),
+        Some("github_copilot") | Some("codex_oauth")
+    )
+}
+
 pub(crate) fn provider_is_full_url(provider: &Provider) -> bool {
     provider
         .meta
@@ -6086,6 +6125,10 @@ mod tests {
         let stream_check_provider_is_copilot =
             provider_is_github_copilot_stream_check_target(&provider);
         let copilot_account_id = provider_github_copilot_managed_account_id(&provider);
+        let has_claude_env = provider_claude_env_settings(&provider).is_some();
+        let models_are_claude_safe = provider_claude_models_are_claude_safe(&provider);
+        let supports_1m_by_default =
+            provider_claude_desktop_routes_support_1m_by_default(&provider);
         assert_eq!(
             provider_usage_script(Some(&provider)).and_then(|script| script.template_type.as_deref()),
             Some("github_copilot")
@@ -6137,6 +6180,9 @@ mod tests {
         assert!(usage_provider_is_copilot);
         assert!(stream_check_provider_is_copilot);
         assert_eq!(copilot_account_id.as_deref(), Some("acct-1"));
+        assert!(has_claude_env);
+        assert!(models_are_claude_safe);
+        assert!(!supports_1m_by_default);
         assert!(usage_provider_is_full_url);
         assert_eq!(provider_user_agent, http::HeaderValue::from_static("cc-switch-test/1.0"));
         assert!(copilot_provider_user_agent.is_none());

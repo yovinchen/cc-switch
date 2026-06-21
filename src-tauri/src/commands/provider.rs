@@ -6,7 +6,9 @@ use crate::commands::copilot::CopilotAuthState;
 use crate::error::AppError;
 use crate::provider::{ClaudeDesktopMode, Provider};
 use crate::proxy_core_adapter::{
-    provider_github_copilot_managed_account_id, provider_usage_script,
+    provider_claude_desktop_routes_support_1m_by_default, provider_claude_env_settings,
+    provider_claude_models_are_claude_safe, provider_github_copilot_managed_account_id,
+    provider_usage_script,
 };
 use crate::services::{
     EndpointLatency, ProviderService, ProviderSortUpdate, SpeedtestService, SwitchResult,
@@ -193,7 +195,7 @@ pub fn import_claude_desktop_providers_from_claude(
         let meta = desktop_provider.meta.get_or_insert_with(Default::default);
 
         if crate::claude_desktop_config::is_compatible_direct_provider(provider)
-            && claude_provider_models_are_claude_safe(provider)
+            && provider_claude_models_are_claude_safe(provider)
         {
             meta.claude_desktop_mode = Some(ClaudeDesktopMode::Direct);
         } else if let Some(routes) = suggested_claude_desktop_routes(provider) {
@@ -234,43 +236,12 @@ pub fn ensure_claude_desktop_official_provider(state: State<'_, AppState>) -> Re
         .map_err(|e| e.to_string())
 }
 
-fn claude_provider_models_are_claude_safe(provider: &Provider) -> bool {
-    let Some(env) = provider
-        .settings_config
-        .get("env")
-        .and_then(|value| value.as_object())
-    else {
-        return true;
-    };
-
-    [
-        "ANTHROPIC_MODEL",
-        "ANTHROPIC_DEFAULT_HAIKU_MODEL",
-        "ANTHROPIC_DEFAULT_SONNET_MODEL",
-        "ANTHROPIC_DEFAULT_OPUS_MODEL",
-    ]
-    .into_iter()
-    .filter_map(|key| env.get(key).and_then(|value| value.as_str()))
-    .map(str::trim)
-    .filter(|value| !value.is_empty())
-    .all(crate::claude_desktop_config::is_claude_safe_model_id)
-}
-
 pub(crate) fn suggested_claude_desktop_routes(
     provider: &Provider,
 ) -> Option<std::collections::HashMap<String, crate::provider::ClaudeDesktopModelRoute>> {
-    let env = provider
-        .settings_config
-        .get("env")
-        .and_then(|value| value.as_object())?;
+    let env = provider_claude_env_settings(provider)?;
     let mut routes = std::collections::HashMap::new();
-    let supports_1m_default = !matches!(
-        provider
-            .meta
-            .as_ref()
-            .and_then(|meta| meta.provider_type.as_deref()),
-        Some("github_copilot") | Some("codex_oauth")
-    );
+    let supports_1m_default = provider_claude_desktop_routes_support_1m_by_default(provider);
 
     fn add_route(
         routes: &mut std::collections::HashMap<String, crate::provider::ClaudeDesktopModelRoute>,
