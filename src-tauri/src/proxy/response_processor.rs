@@ -21,12 +21,12 @@ use crate::proxy_core_adapter::{
     non_streaming_response_usage_record_from_body_with_request_id_fallback,
     passthrough_bytes_proxy_response, passthrough_stream_proxy_response,
     response_headers_log_summary, streaming_response_usage_record_with_optional_outbound_model,
-    usage_record_debug_log_message, usage_record_failure_warning_message,
-    usage_record_with_route_context, usage_selected_provider_missing_log_message,
-    ProxyCoreAppKind as AppKind, ProxyServices, ResponseBodyDecodeLogLevel, SseEventScanner,
-    SsePassthroughEventKind, SseUsageAccumulator, StreamUsageEventFilter, StreamingTimeoutConfig,
-    StreamingTimeoutPhase, UsageParserConfig, UsageRecord, UsageRecordFailureLogContext,
-    UsageSelectedProviderMissingPhase,
+    usage_logging_enabled_from_config_flag, usage_record_debug_log_message,
+    usage_record_failure_warning_message, usage_record_with_route_context,
+    usage_selected_provider_missing_log_message, ProxyCoreAppKind as AppKind, ProxyServices,
+    ResponseBodyDecodeLogLevel, SseEventScanner, SsePassthroughEventKind, SseUsageAccumulator,
+    StreamUsageEventFilter, StreamingTimeoutConfig, StreamingTimeoutPhase, UsageParserConfig,
+    UsageRecord, UsageRecordFailureLogContext, UsageSelectedProviderMissingPhase,
 };
 #[cfg(test)]
 use crate::proxy_core_adapter::{ProviderKind, TokenUsage};
@@ -311,12 +311,7 @@ fn create_usage_collector(
     status_code: u16,
     parser_config: &UsageParserConfig,
 ) -> Option<SseUsageCollector> {
-    let logging_enabled = state
-        .config
-        .try_read()
-        .map(|c| c.enable_logging)
-        .unwrap_or(true);
-    if !logging_enabled {
+    if !usage_logging_enabled(state) {
         return None;
     }
 
@@ -381,11 +376,11 @@ fn create_usage_collector(
 }
 
 pub(crate) fn usage_logging_enabled(state: &ProxyState) -> bool {
-    state
+    usage_logging_enabled_from_config_flag(state
         .config
         .try_read()
-        .map(|config| config.enable_logging)
-        .unwrap_or(true)
+        .ok()
+        .map(|config| config.enable_logging))
 }
 
 fn spawn_record_usage(state: &ProxyState, record: UsageRecord) {

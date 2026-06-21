@@ -871,6 +871,10 @@ pub fn usage_record_debug_log_message(record: &UsageRecord) -> String {
     )
 }
 
+pub fn usage_logging_enabled_from_config_flag(enable_logging: Option<bool>) -> bool {
+    enable_logging.unwrap_or(true)
+}
+
 #[derive(Debug, Clone)]
 pub struct TransformedResponseUsage {
     pub usage: TokenUsage,
@@ -2851,6 +2855,13 @@ mod tests {
             usage_record_debug_log_message(&fallback),
             "[claude] 记录请求日志: provider=provider-1, model=outbound-model, streaming=true, status=200, latency_ms=42, first_token_ms=Some(9), session=none, input=3, output=5, cache_read=7, cache_creation=11"
         );
+    }
+
+    #[test]
+    fn usage_logging_enabled_from_config_flag_defaults_to_enabled() {
+        assert!(usage_logging_enabled_from_config_flag(Some(true)));
+        assert!(!usage_logging_enabled_from_config_flag(Some(false)));
+        assert!(usage_logging_enabled_from_config_flag(None));
     }
 
     #[test]

@@ -3112,6 +3112,10 @@ pub(crate) fn usage_record_debug_log_message(record: &UsageRecord) -> String {
     crate::proxy_core::api::usage::usage_record_debug_log_message(record)
 }
 
+pub(crate) fn usage_logging_enabled_from_config_flag(enable_logging: Option<bool>) -> bool {
+    crate::proxy_core::api::usage::usage_logging_enabled_from_config_flag(enable_logging)
+}
+
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn streaming_response_usage_record_with_optional_outbound_model(
     events: &[Value],
@@ -5739,6 +5743,9 @@ mod tests {
             usage_record_debug_log_message(&record),
             "[claude] 记录请求日志: provider=provider-a, model=upstream-sonnet, streaming=true, status=200, latency_ms=42, first_token_ms=Some(7), session=session-a, input=1000, output=500, cache_read=0, cache_creation=0"
         );
+        assert!(usage_logging_enabled_from_config_flag(Some(true)));
+        assert!(!usage_logging_enabled_from_config_flag(Some(false)));
+        assert!(usage_logging_enabled_from_config_flag(None));
     }
 
     #[test]

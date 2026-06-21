@@ -10,10 +10,11 @@ use crate::proxy_core_adapter::{
     error_usage_record_with_request_id_fallback,
     transformed_response_usage_record_with_request_id_fallback,
     transformed_streaming_response_usage_record_with_request_id_fallback,
-    usage_record_failure_warning_message, usage_record_with_route_context,
-    usage_selected_provider_missing_log_message, ProviderKind, ProxyCoreAppKind as AppKind,
-    ProxyServices, StreamUsageEventFilter, TransformedResponseUsageFormat, UsageRecord,
-    UsageRecordFailureLogContext, UsageSelectedProviderMissingPhase,
+    usage_logging_enabled_from_config_flag, usage_record_failure_warning_message,
+    usage_record_with_route_context, usage_selected_provider_missing_log_message, ProviderKind,
+    ProxyCoreAppKind as AppKind, ProxyServices, StreamUsageEventFilter,
+    TransformedResponseUsageFormat, UsageRecord, UsageRecordFailureLogContext,
+    UsageSelectedProviderMissingPhase,
 };
 #[cfg(test)]
 use crate::proxy_core_adapter::{success_usage_record_with_request_id_fallback, TokenUsage};
@@ -248,11 +249,11 @@ pub(crate) fn provider_kind_from_provider(provider: &Provider) -> Option<Provide
 }
 
 fn usage_logging_enabled(state: &ProxyState) -> bool {
-    state
+    usage_logging_enabled_from_config_flag(state
         .config
         .try_read()
-        .map(|config| config.enable_logging)
-        .unwrap_or(true)
+        .ok()
+        .map(|config| config.enable_logging))
 }
 
 fn spawn_usage_record<S>(
