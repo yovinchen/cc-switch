@@ -1794,6 +1794,14 @@ pub(crate) fn client_model_catalog_from_optional_raw(
     )
 }
 
+pub(crate) fn client_model_catalog_from_source(app: &AppKind) -> ModelCatalog {
+    let raw = match app {
+        AppKind::Codex => Some(codex_client_model_catalog_raw_from_active_config()),
+        _ => None,
+    };
+    client_model_catalog_from_optional_raw(app, raw)
+}
+
 pub(crate) fn empty_client_model_catalog_raw() -> Value {
     crate::proxy_core::api::model_catalog::empty_client_model_catalog_raw()
 }
@@ -4160,6 +4168,10 @@ mod tests {
             client_catalog.models,
             vec!["gpt-5".to_string(), "o4-mini".to_string()]
         );
+        let empty_client_catalog = client_model_catalog_from_source(&AppKind::Gemini);
+        assert_eq!(empty_client_catalog.provider_id, "gemini");
+        assert_eq!(empty_client_catalog.models, Vec::<String>::new());
+        assert_eq!(empty_client_catalog.raw, json!({"models": []}));
         assert_eq!(
             client_model_catalog_raw_from_text(r#"{"models":[{"id":"gpt-5"}]}"#),
             json!({"models":[{"id":"gpt-5"}]})

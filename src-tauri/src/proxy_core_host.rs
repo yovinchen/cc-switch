@@ -34,7 +34,7 @@ use crate::proxy_core_adapter::{
     channel_key_auth_error,
     channel_spec_from_source,
     channel_specs_from_source,
-    codex_client_model_catalog_raw_from_active_config,
+    client_model_catalog_from_source,
     current_provider_db_fallback_required,
     current_provider_id_from_sources,
     current_provider_id_from_settings_for_app,
@@ -443,13 +443,7 @@ impl ModelCatalogProvider for CcSwitchModelCatalogProvider {
         &'a self,
         app: &'a AppKind,
     ) -> BoxFuture<'a, ProxyCoreResult<ModelCatalog>> {
-        Box::pin(async move {
-            let raw = match app {
-                AppKind::Codex => Some(codex_client_model_catalog_raw_from_active_config()),
-                _ => None,
-            };
-            Ok(crate::proxy_core_adapter::client_model_catalog_from_optional_raw(app, raw))
-        })
+        Box::pin(async move { Ok(client_model_catalog_from_source(app)) })
     }
 }
 
