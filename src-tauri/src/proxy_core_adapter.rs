@@ -831,6 +831,10 @@ pub(crate) fn provider_opencode_live_provider_fragment(
     }
 }
 
+pub(crate) fn opencode_live_provider_fragment_has_provider_fields(config: &Value) -> bool {
+    crate::proxy_core::api::domain::opencode_settings_have_live_provider_fields(config)
+}
+
 pub(crate) fn channel_auth_profile_resolution(
     auth_profile_ref: Option<&str>,
     app_type: &str,
@@ -7659,6 +7663,18 @@ wire_api = "chat"
         let fragment = provider_opencode_live_provider_fragment(&provider);
         assert_eq!(fragment.config, provider.settings_config);
         assert!(!fragment.from_full_config);
+        assert!(opencode_live_provider_fragment_has_provider_fields(
+            &fragment.config
+        ));
+        assert!(opencode_live_provider_fragment_has_provider_fields(&json!({
+            "npm": Value::Null
+        })));
+        assert!(opencode_live_provider_fragment_has_provider_fields(&json!({
+            "options": {}
+        })));
+        assert!(!opencode_live_provider_fragment_has_provider_fields(&json!({
+            "name": "Provider"
+        })));
 
         let provider = Provider::with_id(
             "openai".to_string(),

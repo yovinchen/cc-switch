@@ -14,6 +14,7 @@ use crate::database::Database;
 use crate::error::AppError;
 use crate::provider::Provider;
 use crate::proxy_core_adapter::{
+    opencode_live_provider_fragment_has_provider_fields,
     provider_codex_imported_live_category, provider_codex_live_snapshot_parts,
     provider_model_catalog_raw_value, provider_opencode_live_provider_fragment,
     provider_openclaw_has_live_provider_fields, CodexLiveSnapshotIssue,
@@ -806,9 +807,7 @@ pub(crate) fn write_live_snapshot(app_type: &AppType, provider: &Provider) -> Re
                         e
                     );
                     // Only write if config looks like a valid provider fragment
-                    if config_to_write.get("npm").is_some()
-                        || config_to_write.get("options").is_some()
-                    {
+                    if opencode_live_provider_fragment_has_provider_fields(&config_to_write) {
                         opencode_config::set_provider(&provider.id, config_to_write)?;
                         log::info!(
                             "OpenCode provider '{}' written as raw JSON to live config",

@@ -211,6 +211,12 @@ pub fn extract_opencode_stream_check_npm(settings_config: &Value) -> Option<Stri
     trimmed_non_empty_setting(settings_config.get("npm"))
 }
 
+pub fn opencode_settings_have_live_provider_fields(settings_config: &Value) -> bool {
+    ["npm", "options"]
+        .into_iter()
+        .any(|key| settings_config.get(key).is_some())
+}
+
 pub fn resolve_opencode_stream_check_base_url(
     settings_config: &Value,
     npm: Option<&str>,
