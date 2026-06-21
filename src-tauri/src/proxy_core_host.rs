@@ -11,20 +11,21 @@ use crate::proxy::route_attempt::{forward_attempts_from_route_plan, ForwardAttem
 use crate::proxy::usage::UsageLogger;
 use crate::proxy::RequestForwarder;
 use crate::proxy_core_adapter::{
-    app_proxy_config_raw, channel_matches_query, AppKind, AuthInfo, AuthProfileRef,
-    AuthProfileRefKind, ChannelAttemptResult, ChannelQuery, ChannelSource, ChannelSpec,
-    ClaudeAuthKeySource, channel_not_found_error, AuthProvider, ChannelHealthReset,
-    ChannelHealthStore, CopilotOptimizerConfigSpec, CurrentRouteTarget, ForwardPipeline,
-    GeminiShadowStore, ModelCatalog, ModelCatalogProvider, OptimizerConfigSpec,
-    ProviderSource, ProviderSpec, ProxyAppConfig, ProxyConfigSource, ProxyCoreError,
-    ProxyCoreEvent, ProxyCoreResponse, ProxyCoreResult, ProxyEventSink, ProxyGlobalConfig,
-    ProxyRequest, ProxyResponseBody, ProxyResult, ProxyRuntimeConfig, ProxyRuntimeStatus,
-    ProxyServices, RectifierConfigSpec, RoutePlan, RoutePolicy, RoutePolicySource,
-    RouteRequest, RouteResolver, UsageRecord, UsageSink, DEFAULT_ROUTE_GROUP,
+    app_proxy_config_raw, AppKind, AuthInfo, AuthProfileRef, AuthProfileRefKind,
+    ChannelAttemptResult, ChannelQuery, ChannelSource, ChannelSpec, ClaudeAuthKeySource,
+    channel_not_found_error, AuthProvider, ChannelHealthReset, ChannelHealthStore,
+    CopilotOptimizerConfigSpec, CurrentRouteTarget, ForwardPipeline, GeminiShadowStore,
+    ModelCatalog, ModelCatalogProvider, OptimizerConfigSpec, ProviderSource, ProviderSpec,
+    ProxyAppConfig, ProxyConfigSource, ProxyCoreError, ProxyCoreEvent, ProxyCoreResponse,
+    ProxyCoreResult, ProxyEventSink, ProxyGlobalConfig, ProxyRequest, ProxyResponseBody,
+    ProxyResult, ProxyRuntimeConfig, ProxyRuntimeStatus, ProxyServices, RectifierConfigSpec,
+    RoutePlan, RoutePolicy, RoutePolicySource, RouteRequest, RouteResolver, UsageRecord,
+    UsageSink, DEFAULT_ROUTE_GROUP,
 };
 use crate::proxy_core_adapter::{
     extract_claude_auth_key_from_settings, extract_proxy_session_id, parse_auth_profile_ref,
-    ToProxyCoreChannelSpec, ToProxyCoreProviderSpec,
+    proxy_channel_record_to_core_spec, proxy_channel_records_to_core_specs_for_query,
+    ToProxyCoreProviderSpec,
 };
 use bytes::Bytes;
 use futures::{future::BoxFuture, Stream, StreamExt};
@@ -308,11 +309,7 @@ impl ChannelSource for CcSwitchChannelSource {
                     .list_proxy_channels_for_app(query.app.as_str())
                     .map_err(|error| app_error("list materialized channels", error))?
             };
-            let channels = channels
-                .into_iter()
-                .map(|channel| channel.to_proxy_core_channel_spec())
-                .filter(|channel| channel_matches_query(channel, &query))
-                .collect();
+            let channels = proxy_channel_records_to_core_specs_for_query(channels, &query);
             Ok(channels)
         })
     }
@@ -326,7 +323,7 @@ impl ChannelSource for CcSwitchChannelSource {
                 .db
                 .get_proxy_channel(channel_id)
                 .map_err(|error| app_error("get channel", error))?;
-            Ok(channel.map(|channel| channel.to_proxy_core_channel_spec()))
+            Ok(channel.map(|channel| proxy_channel_record_to_core_spec(&channel)))
         })
     }
 }

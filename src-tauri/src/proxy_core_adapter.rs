@@ -1358,6 +1358,17 @@ pub(crate) fn proxy_channel_record_to_core_spec(channel: &ProxyChannelRecord) ->
     channel.to_proxy_core_channel_spec()
 }
 
+pub(crate) fn proxy_channel_records_to_core_specs_for_query(
+    channels: impl IntoIterator<Item = ProxyChannelRecord>,
+    query: &ChannelQuery<'_>,
+) -> Vec<ChannelSpec> {
+    channels
+        .into_iter()
+        .map(|channel| proxy_channel_record_to_core_spec(&channel))
+        .filter(|channel| channel_matches_query(channel, query))
+        .collect()
+}
+
 pub(crate) fn proxy_channel_group_inputs_to_core(
     channels: impl IntoIterator<Item = ProxyChannelRecord>,
 ) -> Vec<GroupListChannelRecordInput> {
