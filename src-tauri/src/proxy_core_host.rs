@@ -13,7 +13,7 @@ use crate::proxy::RequestForwarder;
 use crate::proxy_core_adapter::{
     AppKind, AuthInfo, AuthProfileRef, ChannelAttemptResult, ChannelAuthProfileResolution,
     ChannelQuery,
-    ChannelSource, ChannelSpec, ClaudeAuthKeySource, channel_not_found_error, AuthProvider,
+    ChannelSource, ChannelSpec, channel_not_found_error, AuthProvider,
     ChannelHealthReset, ChannelHealthStore, CurrentRouteTarget, ForwardPipeline,
     GeminiShadowStore, ModelCatalog, ModelCatalogProvider, ProviderSource, ProviderSpec,
     ProxyAppConfig, ProxyConfigSource, ProxyCoreError, ProxyCoreEvent, ProxyCoreResponse,
@@ -27,18 +27,19 @@ use crate::proxy_core_adapter::{
     channel_auth_profile_missing_provider_warning,
     channel_auth_profile_resolution,
     channel_health_reset_from_parts,
-    extract_claude_auth_key_from_settings, extract_proxy_session_id,
+    extract_proxy_session_id,
     proxy_app_config_from_config_parts, proxy_global_config_from_config,
     proxy_runtime_config_from_config,
     proxy_channel_record_to_core_spec, proxy_channel_records_to_core_specs_for_query,
     proxy_provider_to_core_spec, proxy_providers_to_core_specs,
     response_runtime_policy_from_app_proxy_config,
     route_plan_provider_match, route_policy_from_failover_queue,
+    settings_config_with_channel_auth_key,
 };
 use bytes::Bytes;
 use futures::{future::BoxFuture, Stream, StreamExt};
 use indexmap::IndexMap;
-use serde_json::{json, Map, Value};
+use serde_json::{json, Value};
 use std::collections::HashMap;
 use std::str::FromStr;
 use std::sync::Arc;
@@ -695,74 +696,12 @@ fn channel_key_auth_provider(
     key_value: &str,
 ) -> crate::provider::Provider {
     let mut auth_provider = provider.clone();
-    auth_provider.settings_config =
-        settings_config_with_channel_auth_key(app_type, &provider.settings_config, key_value);
+    auth_provider.settings_config = settings_config_with_channel_auth_key(
+        app_type.as_str(),
+        &provider.settings_config,
+        key_value,
+    );
     auth_provider
-}
-
-fn settings_config_with_channel_auth_key(
-    app_type: &AppType,
-    settings_config: &Value,
-    key_value: &str,
-) -> Value {
-    let mut settings = settings_config.clone();
-    match app_type {
-        AppType::Claude | AppType::ClaudeDesktop => {
-            match extract_claude_auth_key_from_settings(settings_config)
-                .map(|auth_key| auth_key.source)
-                .unwrap_or(ClaudeAuthKeySource::AnthropicApiKey)
-            {
-                ClaudeAuthKeySource::AnthropicAuthToken => {
-                    set_env_auth_key(&mut settings, "ANTHROPIC_AUTH_TOKEN", key_value)
-                }
-                ClaudeAuthKeySource::AnthropicApiKey => {
-                    set_env_auth_key(&mut settings, "ANTHROPIC_API_KEY", key_value)
-                }
-                ClaudeAuthKeySource::OpenRouterApiKey => {
-                    set_env_auth_key(&mut settings, "OPENROUTER_API_KEY", key_value)
-                }
-                ClaudeAuthKeySource::OpenAiApiKey => {
-                    set_env_auth_key(&mut settings, "OPENAI_API_KEY", key_value)
-                }
-                ClaudeAuthKeySource::GeminiApiKey => {
-                    set_env_auth_key(&mut settings, "GEMINI_API_KEY", key_value)
-                }
-                ClaudeAuthKeySource::DirectApiKey => set_direct_auth_key(&mut settings, key_value),
-            }
-        }
-        AppType::Gemini => set_env_auth_key(&mut settings, "GEMINI_API_KEY", key_value),
-        AppType::Codex | AppType::OpenCode | AppType::OpenClaw | AppType::Hermes => {
-            set_env_auth_key(&mut settings, "OPENAI_API_KEY", key_value)
-        }
-    }
-    settings
-}
-
-fn set_env_auth_key(settings: &mut Value, key_name: &str, key_value: &str) {
-    ensure_object(settings)
-        .entry("env".to_string())
-        .or_insert_with(|| Value::Object(Map::new()));
-    let env = ensure_object(settings)
-        .get_mut("env")
-        .expect("env was inserted");
-    ensure_object(env).insert(
-        key_name.to_string(),
-        Value::String(key_value.trim().to_string()),
-    );
-}
-
-fn set_direct_auth_key(settings: &mut Value, key_value: &str) {
-    ensure_object(settings).insert(
-        "apiKey".to_string(),
-        Value::String(key_value.trim().to_string()),
-    );
-}
-
-fn ensure_object(value: &mut Value) -> &mut Map<String, Value> {
-    if !value.is_object() {
-        *value = Value::Object(Map::new());
-    }
-    value.as_object_mut().expect("value is object")
 }
 
 fn forward_result_to_proxy_result(

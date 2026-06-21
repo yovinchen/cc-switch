@@ -948,6 +948,18 @@ pub(crate) fn extract_claude_auth_key_from_settings(
     crate::proxy_core::api::auth::extract_claude_auth_key_from_settings(settings_config)
 }
 
+pub(crate) fn settings_config_with_channel_auth_key(
+    app_type: &str,
+    settings_config: &Value,
+    key_value: &str,
+) -> Value {
+    crate::proxy_core::api::auth::settings_config_with_channel_auth_key(
+        app_type,
+        settings_config,
+        key_value,
+    )
+}
+
 pub(crate) fn extract_claude_base_url_from_settings(
     is_codex_oauth: bool,
     settings_config: &Value,

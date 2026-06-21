@@ -1,4 +1,6 @@
+use crate::claude_auth::{extract_claude_auth_key_from_settings, ClaudeAuthKeySource};
 use crate::secret::mask_secret;
+use serde_json::{Map, Value};
 
 /// Provider credential selected by a host adapter.
 ///
@@ -49,9 +51,76 @@ pub enum ProviderAuthStrategy {
     CodexOAuth,
 }
 
+pub fn settings_config_with_channel_auth_key(
+    app_type: &str,
+    settings_config: &Value,
+    key_value: &str,
+) -> Value {
+    let mut settings = settings_config.clone();
+    match app_type {
+        "claude" | "claude-desktop" => {
+            match extract_claude_auth_key_from_settings(settings_config)
+                .map(|auth_key| auth_key.source)
+                .unwrap_or(ClaudeAuthKeySource::AnthropicApiKey)
+            {
+                ClaudeAuthKeySource::AnthropicAuthToken => {
+                    set_env_auth_key(&mut settings, "ANTHROPIC_AUTH_TOKEN", key_value)
+                }
+                ClaudeAuthKeySource::AnthropicApiKey => {
+                    set_env_auth_key(&mut settings, "ANTHROPIC_API_KEY", key_value)
+                }
+                ClaudeAuthKeySource::OpenRouterApiKey => {
+                    set_env_auth_key(&mut settings, "OPENROUTER_API_KEY", key_value)
+                }
+                ClaudeAuthKeySource::OpenAiApiKey => {
+                    set_env_auth_key(&mut settings, "OPENAI_API_KEY", key_value)
+                }
+                ClaudeAuthKeySource::GeminiApiKey => {
+                    set_env_auth_key(&mut settings, "GEMINI_API_KEY", key_value)
+                }
+                ClaudeAuthKeySource::DirectApiKey => set_direct_auth_key(&mut settings, key_value),
+            }
+        }
+        "gemini" => set_env_auth_key(&mut settings, "GEMINI_API_KEY", key_value),
+        "codex" | "opencode" | "openclaw" | "hermes" => {
+            set_env_auth_key(&mut settings, "OPENAI_API_KEY", key_value)
+        }
+        _ => set_env_auth_key(&mut settings, "OPENAI_API_KEY", key_value),
+    }
+    settings
+}
+
+fn set_env_auth_key(settings: &mut Value, key_name: &str, key_value: &str) {
+    ensure_object(settings)
+        .entry("env".to_string())
+        .or_insert_with(|| Value::Object(Map::new()));
+    let env = ensure_object(settings)
+        .get_mut("env")
+        .expect("env was inserted");
+    ensure_object(env).insert(
+        key_name.to_string(),
+        Value::String(key_value.trim().to_string()),
+    );
+}
+
+fn set_direct_auth_key(settings: &mut Value, key_value: &str) {
+    ensure_object(settings).insert(
+        "apiKey".to_string(),
+        Value::String(key_value.trim().to_string()),
+    );
+}
+
+fn ensure_object(value: &mut Value) -> &mut Map<String, Value> {
+    if !value.is_object() {
+        *value = Value::Object(Map::new());
+    }
+    value.as_object_mut().expect("value is object")
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serde_json::json;
 
     #[test]
     fn provider_auth_info_masks_key_with_shared_secret_policy() {
@@ -123,5 +192,50 @@ mod tests {
                 }
             }
         }
+    }
+
+    #[test]
+    fn channel_auth_key_settings_preserve_claude_source_shape() {
+        let anthropic = settings_config_with_channel_auth_key(
+            "claude",
+            &json!({"env": {"ANTHROPIC_API_KEY": "old-key"}}),
+            " new-key ",
+        );
+        assert_eq!(
+            anthropic.pointer("/env/ANTHROPIC_API_KEY").and_then(Value::as_str),
+            Some("new-key")
+        );
+
+        let openrouter = settings_config_with_channel_auth_key(
+            "claude",
+            &json!({"env": {"OPENROUTER_API_KEY": "old-key"}}),
+            "router-key",
+        );
+        assert_eq!(
+            openrouter.pointer("/env/OPENROUTER_API_KEY").and_then(Value::as_str),
+            Some("router-key")
+        );
+
+        let direct = settings_config_with_channel_auth_key(
+            "claude",
+            &json!({"api_key": "old-direct"}),
+            "direct-key",
+        );
+        assert_eq!(direct.get("apiKey").and_then(Value::as_str), Some("direct-key"));
+    }
+
+    #[test]
+    fn channel_auth_key_settings_use_app_specific_env_defaults() {
+        let gemini = settings_config_with_channel_auth_key("gemini", &json!({}), "gemini-key");
+        assert_eq!(
+            gemini.pointer("/env/GEMINI_API_KEY").and_then(Value::as_str),
+            Some("gemini-key")
+        );
+
+        let codex = settings_config_with_channel_auth_key("codex", &json!({}), "openai-key");
+        assert_eq!(
+            codex.pointer("/env/OPENAI_API_KEY").and_then(Value::as_str),
+            Some("openai-key")
+        );
     }
 }
