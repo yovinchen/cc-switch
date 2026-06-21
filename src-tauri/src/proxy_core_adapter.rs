@@ -368,6 +368,8 @@ pub(crate) type ForwardFailureCategory =
 
 pub(crate) const DEFAULT_PROXY_LISTEN_PORT: u16 =
     crate::proxy_core::api::ports::DEFAULT_PROXY_LISTEN_PORT;
+pub(crate) const DEFAULT_CHANNEL_HEALTH_FAILURE_THRESHOLD: u32 =
+    crate::proxy_core::api::ports::DEFAULT_CHANNEL_HEALTH_FAILURE_THRESHOLD;
 pub(crate) type MediaRetryInput<'a> =
     crate::proxy_core::api::transport::MediaRetryInput<'a>;
 pub(crate) type PromptCacheTraceLogInput<'a> =

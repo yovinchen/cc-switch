@@ -678,6 +678,7 @@ pub fn channel_health_reset_from_parts(
 }
 
 pub const CHANNEL_HEALTH_UNKNOWN_STATUS: &str = "unknown";
+pub const DEFAULT_CHANNEL_HEALTH_FAILURE_THRESHOLD: u32 = 4;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ChannelHealthUpdateInput {
@@ -2574,7 +2575,8 @@ mod tests {
         ProxyRuntimeStatus, ProxyServerInfo, ProxyStatusResponse, ProxyTakeoverStatus,
         RectifierConfig, RouteGroupListResponse, RouteGroupSourceInput, RouteResolveResponse,
         StreamCheckConfig, StreamCheckResult, DEFAULT_PROXY_LISTEN_ADDRESS,
-        DEFAULT_PROXY_LISTEN_PORT, plan_channel_test, provider_health_update_from_input,
+        DEFAULT_PROXY_LISTEN_PORT, DEFAULT_CHANNEL_HEALTH_FAILURE_THRESHOLD,
+        plan_channel_test, provider_health_update_from_input,
     };
     use crate::domain::{
         AppKind, AuthProfileRef, ChannelHealthPolicy, ChannelOverrides, ChannelSpec,
@@ -3540,6 +3542,11 @@ mod tests {
 
         let custom = channel_health_reset_from_parts("channel-b", "opencode");
         assert_eq!(custom.app, AppKind::Custom("opencode".to_string()));
+    }
+
+    #[test]
+    fn default_channel_health_failure_threshold_matches_runtime_contract() {
+        assert_eq!(DEFAULT_CHANNEL_HEALTH_FAILURE_THRESHOLD, 4);
     }
 
     #[test]

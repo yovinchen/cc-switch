@@ -19,6 +19,7 @@ use crate::proxy_core_adapter::{
     ProxyCoreResult, ProxyEventSink, ProxyGlobalConfig, ProxyRequest, ProxyResponseBody,
     ProxyResult, ProxyRuntimeConfig, ProxyRuntimeStatus, ProxyServices, RoutePlan, RoutePolicy,
     RoutePolicySource, RouteRequest, RouteResolver, UsageRecord, UsageSink,
+    DEFAULT_CHANNEL_HEALTH_FAILURE_THRESHOLD,
 };
 use crate::proxy_core_adapter::{
     auth_info_from_profile_ref,
@@ -41,8 +42,6 @@ use tokio::sync::RwLock;
 
 #[cfg(test)]
 use crate::proxy_core_adapter::DEFAULT_ROUTE_GROUP;
-
-const DEFAULT_CHANNEL_FAILURE_THRESHOLD: u32 = 4;
 
 #[derive(Clone)]
 pub(crate) struct CcSwitchProxyRuntime {
@@ -362,7 +361,7 @@ impl ChannelHealthStore for CcSwitchHealthStore {
                     &result.channel_id,
                     result.success,
                     result.error_code,
-                    DEFAULT_CHANNEL_FAILURE_THRESHOLD,
+                    DEFAULT_CHANNEL_HEALTH_FAILURE_THRESHOLD,
                     result.latency_ms.map(|latency| latency as i64),
                 )
                 .map_err(|error| app_error("record channel attempt", error))
