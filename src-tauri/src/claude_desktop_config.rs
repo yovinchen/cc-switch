@@ -10,6 +10,7 @@ use crate::database::Database;
 use crate::database::CLAUDE_DESKTOP_OFFICIAL_PROVIDER_ID;
 use crate::error::AppError;
 use crate::provider::{ClaudeDesktopMode, Provider};
+use crate::proxy_core_adapter::provider_claude_desktop_proxy_has_base_url_and_key;
 
 pub const PROFILE_ID: &str = "00000000-0000-4000-8000-000000157210";
 pub const PROFILE_NAME: &str = "CC Switch";
@@ -423,7 +424,7 @@ pub fn validate_proxy_provider(provider: &Provider) -> Result<(), AppError> {
 
     proxy_model_routes(provider)?;
 
-    if !has_proxy_base_url_and_key(provider) {
+    if !provider_claude_desktop_proxy_has_base_url_and_key(provider) {
         return Err(AppError::localized(
             "claude_desktop.provider.credentials_missing",
             "Claude Desktop 本地路由供应商缺少 Base URL 或 API Key",
@@ -432,50 +433,6 @@ pub fn validate_proxy_provider(provider: &Provider) -> Result<(), AppError> {
     }
 
     Ok(())
-}
-
-fn has_proxy_base_url_and_key(provider: &Provider) -> bool {
-    let env = provider.settings_config.get("env");
-    let has_base_url = env
-        .and_then(|value| value.get("ANTHROPIC_BASE_URL"))
-        .or_else(|| provider.settings_config.get("base_url"))
-        .or_else(|| provider.settings_config.get("baseURL"))
-        .or_else(|| provider.settings_config.get("apiEndpoint"))
-        .and_then(Value::as_str)
-        .map(str::trim)
-        .is_some_and(|value| !value.is_empty());
-
-    if is_managed_oauth_proxy_provider(provider) {
-        return has_base_url;
-    }
-
-    let has_key = env
-        .and_then(|value| {
-            [
-                "ANTHROPIC_AUTH_TOKEN",
-                "ANTHROPIC_API_KEY",
-                "OPENROUTER_API_KEY",
-                "OPENAI_API_KEY",
-                "GEMINI_API_KEY",
-            ]
-            .into_iter()
-            .find_map(|key| value.get(key))
-        })
-        .or_else(|| provider.settings_config.get("apiKey"))
-        .or_else(|| provider.settings_config.get("api_key"))
-        .and_then(Value::as_str)
-        .map(str::trim)
-        .is_some_and(|value| !value.is_empty());
-
-    has_base_url && has_key
-}
-
-fn is_managed_oauth_proxy_provider(provider: &Provider) -> bool {
-    provider
-        .meta
-        .as_ref()
-        .and_then(|meta| meta.provider_type.as_deref())
-        .is_some_and(|provider_type| matches!(provider_type, "github_copilot" | "codex_oauth"))
 }
 
 pub fn validate_provider(provider: &Provider) -> Result<(), AppError> {

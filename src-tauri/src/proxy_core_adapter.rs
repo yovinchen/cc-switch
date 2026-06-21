@@ -3741,6 +3741,51 @@ pub(crate) fn provider_claude_desktop_routes_support_1m_by_default(
     )
 }
 
+pub(crate) fn provider_claude_desktop_proxy_has_base_url_and_key(provider: &Provider) -> bool {
+    let settings = &provider.settings_config;
+    let env = settings.get("env");
+    let has_base_url = env
+        .and_then(|value| value.get("ANTHROPIC_BASE_URL"))
+        .or_else(|| settings.get("base_url"))
+        .or_else(|| settings.get("baseURL"))
+        .or_else(|| settings.get("apiEndpoint"))
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .is_some_and(|value| !value.is_empty());
+
+    if provider_is_typed_managed_oauth_proxy(provider) {
+        return has_base_url;
+    }
+
+    let has_key = env
+        .and_then(|value| {
+            [
+                "ANTHROPIC_AUTH_TOKEN",
+                "ANTHROPIC_API_KEY",
+                "OPENROUTER_API_KEY",
+                "OPENAI_API_KEY",
+                "GEMINI_API_KEY",
+            ]
+            .into_iter()
+            .find_map(|key| value.get(key))
+        })
+        .or_else(|| settings.get("apiKey"))
+        .or_else(|| settings.get("api_key"))
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .is_some_and(|value| !value.is_empty());
+
+    has_base_url && has_key
+}
+
+fn provider_is_typed_managed_oauth_proxy(provider: &Provider) -> bool {
+    provider
+        .meta
+        .as_ref()
+        .and_then(|meta| meta.provider_type.as_deref())
+        .is_some_and(|provider_type| matches!(provider_type, "github_copilot" | "codex_oauth"))
+}
+
 pub(crate) fn provider_stream_check_test_config(
     provider: &Provider,
 ) -> Option<&ProviderTestConfig> {
@@ -5813,6 +5858,61 @@ wire_api = "chat"
             ),
             &AppType::Claude,
             placeholder
+        ));
+    }
+
+    #[test]
+    fn claude_desktop_proxy_credentials_adapter_preserves_oauth_key_policy() {
+        let proxy_provider = Provider::with_id(
+            "proxy".to_string(),
+            "Proxy".to_string(),
+            json!({
+                "env": {
+                    "ANTHROPIC_BASE_URL": "https://relay.example.com",
+                    "ANTHROPIC_AUTH_TOKEN": "sk-provider"
+                }
+            }),
+            None,
+        );
+        assert!(provider_claude_desktop_proxy_has_base_url_and_key(
+            &proxy_provider
+        ));
+
+        let missing_key = Provider::with_id(
+            "missing-key".to_string(),
+            "Missing Key".to_string(),
+            json!({
+                "env": {
+                    "ANTHROPIC_BASE_URL": "https://relay.example.com"
+                }
+            }),
+            None,
+        );
+        assert!(!provider_claude_desktop_proxy_has_base_url_and_key(
+            &missing_key
+        ));
+
+        let mut typed_oauth = missing_key.clone();
+        typed_oauth.meta = Some(ProviderMeta {
+            provider_type: Some("codex_oauth".to_string()),
+            ..Default::default()
+        });
+        assert!(provider_claude_desktop_proxy_has_base_url_and_key(
+            &typed_oauth
+        ));
+
+        let url_heuristic_only = Provider::with_id(
+            "chatgpt-url".to_string(),
+            "ChatGPT URL".to_string(),
+            json!({
+                "env": {
+                    "ANTHROPIC_BASE_URL": "https://chatgpt.com/backend-api/codex"
+                }
+            }),
+            None,
+        );
+        assert!(!provider_claude_desktop_proxy_has_base_url_and_key(
+            &url_heuristic_only
         ));
     }
 
