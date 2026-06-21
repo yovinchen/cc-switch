@@ -18,12 +18,15 @@ use crate::proxy_core_adapter::{
     normalize_required_channel_string, stable_channel_id,
     validate_optional_channel_auth_profile_ref,
     validate_proxy_channel_key_patch_request_fields,
-    validate_proxy_channel_model_write_request_fields, validate_proxy_channel_write_request_fields,
+    validate_proxy_channel_key_write_request_fields,
+    validate_proxy_channel_model_write_request_fields,
+    validate_proxy_channel_write_request_fields,
     ChannelHealthUpdateInput, ChannelRequestValidationError, LegacyChannelModelProjection,
     LegacyChannelProjection, LegacyChannelProjectionInput, LegacyModelRouteInput,
-    LegacyProviderProjectionInput, ProxyChannelKeyPatchRequest, ProxyChannelModelWriteRequest,
-    ProxyChannelPatchRequest, ProxyChannelWriteRequest, ProxyCoreAppKind as AppKind,
-    ProxyCoreInterfaceKind as InterfaceKind, CHANNEL_HEALTH_UNKNOWN_STATUS,
+    LegacyProviderProjectionInput, ProxyChannelKeyPatchRequest, ProxyChannelKeyWriteRequest,
+    ProxyChannelModelWriteRequest, ProxyChannelPatchRequest, ProxyChannelWriteRequest,
+    ProxyCoreAppKind as AppKind, ProxyCoreInterfaceKind as InterfaceKind,
+    CHANNEL_HEALTH_UNKNOWN_STATUS,
 };
 use rusqlite::{params, Connection, OptionalExtension, Row};
 use serde::{Deserialize, Serialize};
@@ -592,11 +595,10 @@ impl Database {
         &self,
         channel_id: &str,
         key_ref: &str,
-        key_value: &str,
-        status: &str,
-        priority: i64,
-        weight: u32,
+        request: ProxyChannelKeyWriteRequest,
     ) -> Result<ProxyChannelKeyRecord, AppError> {
+        validate_proxy_channel_key_write_request_fields(&request)
+            .map_err(channel_request_error_to_app_error)?;
         let conn = lock_conn!(self.conn);
         if get_proxy_channel_on_conn(&conn, channel_id)?.is_none() {
             return Err(AppError::InvalidInput(format!(
@@ -605,8 +607,8 @@ impl Database {
         }
 
         let key_ref = normalize_required_string(key_ref, "keyRef")?;
-        let key_value = normalize_required_string(key_value, "keyValue")?;
-        let status = normalize_required_string(status, "status")?;
+        let key_value = normalize_required_string(&request.key_value, "keyValue")?;
+        let status = normalize_required_string(&request.status, "status")?;
         let now = chrono::Utc::now().timestamp_millis();
         conn.execute(
             "INSERT INTO proxy_channel_keys (
@@ -623,8 +625,8 @@ impl Database {
                 &key_ref,
                 &key_value,
                 &status,
-                priority,
-                weight as i64,
+                request.priority,
+                request.weight as i64,
                 now,
                 now,
             ],
@@ -1603,10 +1605,12 @@ mod tests {
             .upsert_proxy_channel_key(
                 &created.id,
                 "primary",
-                "sk-channel-secret",
-                "enabled",
-                10,
-                80,
+                ProxyChannelKeyWriteRequest {
+                    key_value: "sk-channel-secret".to_string(),
+                    status: "enabled".to_string(),
+                    priority: 10,
+                    weight: 80,
+                },
             )
             .expect("upsert channel key");
 
@@ -1688,10 +1692,12 @@ mod tests {
         db.upsert_proxy_channel_key(
             &created.id,
             "primary",
-            "sk-channel-secret",
-            "disabled",
-            10,
-            80,
+            ProxyChannelKeyWriteRequest {
+                key_value: "sk-channel-secret".to_string(),
+                status: "disabled".to_string(),
+                priority: 10,
+                weight: 80,
+            },
         )
         .expect("disable channel key");
         assert!(db

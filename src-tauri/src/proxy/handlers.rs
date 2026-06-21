@@ -403,10 +403,7 @@ pub async fn upsert_proxy_channel_key(
         .upsert_proxy_channel_key(
             &path_request.channel_id,
             &path_request.key_ref,
-            &request.key_value,
-            &request.status,
-            request.priority,
-            request.weight,
+            request,
         )
         .map_err(|e| ProxyError::InvalidRequest(e.to_string()))
         .map(proxy_channel_key_record_to_core)?;

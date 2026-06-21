@@ -949,10 +949,10 @@ mod tests {
         ChannelStatus, ProviderKind, ProxyBody, ProxyCoreChannelOverrides as ChannelOverrides,
         ProxyCoreInterfaceKind as InterfaceKind,
         ProxyCoreModelCapabilities as ModelCapabilities, ProxyCoreModelRoute as ModelRoute,
-        ProxyCoreUpstreamEndpoint as UpstreamEndpoint, ProxyCoreEventType, ProxyEngine,
-        ProxyChannelModelWriteRequest, ProxyChannelWriteRequest, ProxyResponseBody,
-        ProxyRuntimeStatus, ResolvedChannelAttempt, RetryPolicy, RouteResolveRequest,
-        RouteSelection, UsageRecord, UsageTokens,
+        ProxyChannelKeyWriteRequest, ProxyChannelModelWriteRequest, ProxyChannelWriteRequest,
+        ProxyCoreEventType, ProxyCoreUpstreamEndpoint as UpstreamEndpoint, ProxyEngine,
+        ProxyResponseBody, ProxyRuntimeStatus, ResolvedChannelAttempt, RetryPolicy,
+        RouteResolveRequest, RouteSelection, UsageRecord, UsageTokens,
     };
     use bytes::Bytes;
     use futures::StreamExt;
@@ -1242,10 +1242,12 @@ mod tests {
         db.upsert_proxy_channel_key(
             "channel-auth-key",
             "primary",
-            "sk-channel-key",
-            "enabled",
-            10,
-            100,
+            ProxyChannelKeyWriteRequest {
+                key_value: "sk-channel-key".to_string(),
+                status: "enabled".to_string(),
+                priority: 10,
+                weight: 100,
+            },
         )
         .expect("upsert channel key");
         let providers = db.get_all_providers("claude").expect("load providers");
@@ -1281,10 +1283,12 @@ mod tests {
         db.upsert_proxy_channel_key(
             "channel-auth-key",
             "primary",
-            "sk-channel-key",
-            "disabled",
-            10,
-            100,
+            ProxyChannelKeyWriteRequest {
+                key_value: "sk-channel-key".to_string(),
+                status: "disabled".to_string(),
+                priority: 10,
+                weight: 100,
+            },
         )
         .expect("disable channel key");
         let mut attempts =
