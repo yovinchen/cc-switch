@@ -47,7 +47,7 @@ use crate::proxy_core_adapter::{
     strip_endpoint_prefix, transformed_sse_proxy_response, validate_management_bearer_header,
     AppChannelListQuery, AppChannelManagementPlan, AppChannelManagementRequest,
     AppChannelResponse, AppKind, AppListRequest, AppListResponse,
-    AppListSource, AppModelCatalogRequest, AppModelListQuery, ChannelCreateRequest,
+    AppModelCatalogRequest, AppModelListQuery, ChannelCreateRequest,
     ChannelDeleteResponse, ChannelHealthResetResponse,
     ChannelKeyDeleteResponse,
     ChannelKeyPathRequest, ChannelKeyRecord, ChannelKeyRecordResponse,
@@ -58,27 +58,29 @@ use crate::proxy_core_adapter::{
     ChannelTestPlan, ChannelTestResponse, ClaudeDesktopModelListResponse,
     ClientModelCatalogResponse, CodexToolContext, CurrentRouteProviderSummaryInput,
     CurrentRouteResponse, CurrentRouteSource, CurrentRouteTarget,
-    GroupListQuery, GroupListRequest, HealthCheckRequest, HealthCheckResponse, HealthCheckSource,
+    GroupListQuery, GroupListRequest, HealthCheckRequest, HealthCheckResponse,
     InterfaceKind, ManagementAppPathRequest, ManagementAuthDecision, ProviderListResponse,
     ProviderListSource,
     ProxyBody, ProxyChannelKeyPatchRequest, ProxyChannelKeyWriteRequest,
     ProxyChannelModelsReplaceRequest, ProxyChannelPatchRequest, ProxyChannelTestRequest,
     ProxyChannelWriteRequest, ProxyRequest, ProxyRuntimeStatus, ProxyStatusRequest,
-    ProxyStatusResponse, ProxyStatusSource, RoutableModelList, RouteGroupListResponse,
+    ProxyStatusResponse, RoutableModelList, RouteGroupListResponse,
     RouteResolveManagementRequest, RouteResolveRequest, RouteResolveResponse,
     TransformedResponseUsageFormat, UnlabeledSseFallbackLogContext, UnlabeledSseFallbackLogLevel,
     UpstreamSseAggregationKind, CLAUDE_PARSER_CONFIG, CODEX_PARSER_CONFIG, GEMINI_PARSER_CONFIG,
     OPENAI_PARSER_CONFIG,
 };
 use crate::proxy_core_adapter::{
-    app_channel_list_source_from_records, channel_delete_source_from_deleted,
-    channel_health_reset_source_from_response, channel_list_source_from_records,
-    channel_create_source_from_record, channel_key_delete_source_from_deleted,
+    app_channel_list_source_from_records, app_list_source_from_summaries,
+    channel_delete_source_from_deleted, channel_health_reset_source_from_response,
+    channel_list_source_from_records, channel_create_source_from_record,
+    channel_key_delete_source_from_deleted,
     channel_key_record_source_from_record, channel_keys_source_from_records,
     channel_record_source_from_record,
     channel_migration_materialize_source_from_result, channel_migration_preview_source_from_result,
     channel_models_source_from_records, group_list_channel_source_from_records,
-    channel_test_plan_from_record, proxy_app_summary_input,
+    channel_test_plan_from_record, health_check_source_from_timestamp, proxy_app_summary_input,
+    proxy_status_source_from_status,
     proxy_provider_to_core_spec, proxy_providers_to_core_specs,
     stream_check_result_to_channel_reachability, synthesize_gemini_tool_call_id_with_uuid,
 };
@@ -105,7 +107,9 @@ pub async fn health_check() -> (StatusCode, Json<HealthCheckResponse>) {
     let request = HealthCheckRequest::new();
     (
         StatusCode::OK,
-        Json(request.response_from_source(HealthCheckSource::new(chrono::Utc::now().to_rfc3339()))),
+        Json(request.response_from_source(health_check_source_from_timestamp(
+            chrono::Utc::now().to_rfc3339(),
+        ))),
     )
 }
 
@@ -116,7 +120,7 @@ pub async fn get_status(
     let request = ProxyStatusRequest::new();
     let status = state.status.read().await.clone();
     Ok(Json(
-        request.response_from_source(ProxyStatusSource::new(status)),
+        request.response_from_source(proxy_status_source_from_status(status)),
     ))
 }
 
@@ -209,7 +213,9 @@ pub async fn list_proxy_apps(
         ));
     }
 
-    Ok(Json(request.response_from_source(AppListSource::new(apps))))
+    Ok(Json(
+        request.response_from_source(app_list_source_from_summaries(apps)),
+    ))
 }
 
 /// GET /proxy/v1/apps/{app}/providers

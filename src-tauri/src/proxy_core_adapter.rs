@@ -877,6 +877,22 @@ pub(crate) fn emit_proxy_core_event(
     emit(message.event_name, message.payload);
 }
 
+pub(crate) fn health_check_source_from_timestamp(
+    timestamp: impl Into<String>,
+) -> HealthCheckSource {
+    HealthCheckSource::new(timestamp)
+}
+
+pub(crate) fn proxy_status_source_from_status(
+    status: ProxyRuntimeStatus,
+) -> ProxyStatusSource<ProxyRuntimeStatus> {
+    ProxyStatusSource::new(status)
+}
+
+pub(crate) fn app_list_source_from_summaries(apps: Vec<AppSummaryInput>) -> AppListSource {
+    AppListSource::new(apps)
+}
+
 pub(crate) fn append_utf8_safe(
     buffer: &mut String,
     remainder: &mut Vec<u8>,
