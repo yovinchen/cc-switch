@@ -3778,6 +3778,80 @@ pub(crate) fn provider_claude_desktop_proxy_has_base_url_and_key(provider: &Prov
     has_base_url && has_key
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum ClaudeDesktopDirectProviderValidationIssue {
+    SettingsNotObject,
+    ApiFormatUnsupported,
+    ProxyModeUnsupported,
+    ManagedProviderTypeUnsupported,
+    FullUrlUnsupported,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum ClaudeDesktopProxyProviderConfigValidationIssue {
+    SettingsNotObject,
+    ApiFormatUnsupported(String),
+}
+
+pub(crate) fn provider_claude_desktop_direct_validation_issue(
+    provider: &Provider,
+) -> Option<ClaudeDesktopDirectProviderValidationIssue> {
+    if !provider.settings_config.is_object() {
+        return Some(ClaudeDesktopDirectProviderValidationIssue::SettingsNotObject);
+    }
+
+    let meta = provider.meta.as_ref()?;
+    if let Some(api_format) = meta.api_format.as_deref() {
+        if !api_format.trim().is_empty() && api_format != "anthropic" {
+            return Some(ClaudeDesktopDirectProviderValidationIssue::ApiFormatUnsupported);
+        }
+    }
+
+    if matches!(
+        meta.claude_desktop_mode.as_ref(),
+        Some(crate::provider::ClaudeDesktopMode::Proxy)
+    ) {
+        return Some(ClaudeDesktopDirectProviderValidationIssue::ProxyModeUnsupported);
+    }
+
+    if matches!(
+        meta.provider_type.as_deref(),
+        Some("github_copilot") | Some("codex_oauth")
+    ) {
+        return Some(ClaudeDesktopDirectProviderValidationIssue::ManagedProviderTypeUnsupported);
+    }
+
+    if meta.is_full_url == Some(true) {
+        return Some(ClaudeDesktopDirectProviderValidationIssue::FullUrlUnsupported);
+    }
+
+    None
+}
+
+pub(crate) fn provider_claude_desktop_proxy_config_validation_issue(
+    provider: &Provider,
+) -> Option<ClaudeDesktopProxyProviderConfigValidationIssue> {
+    if !provider.settings_config.is_object() {
+        return Some(ClaudeDesktopProxyProviderConfigValidationIssue::SettingsNotObject);
+    }
+
+    let meta = provider.meta.as_ref()?;
+    if let Some(api_format) = meta.api_format.as_deref() {
+        if !matches!(
+            api_format,
+            "" | "anthropic" | "openai_chat" | "openai_responses" | "gemini_native"
+        ) {
+            return Some(
+                ClaudeDesktopProxyProviderConfigValidationIssue::ApiFormatUnsupported(
+                    api_format.to_string(),
+                ),
+            );
+        }
+    }
+
+    None
+}
+
 pub(crate) fn provider_should_normalize_mimo_anthropic_thinking_history(
     provider: &Provider,
     upstream_model: &str,
@@ -5999,6 +6073,88 @@ wire_api = "chat"
             &openai_provider,
             "mimo-v2.5-pro"
         ));
+    }
+
+    #[test]
+    fn claude_desktop_validation_adapter_projects_config_issues() {
+        let non_object = Provider::with_id(
+            "bad-settings".to_string(),
+            "Bad Settings".to_string(),
+            Value::Null,
+            None,
+        );
+        assert_eq!(
+            provider_claude_desktop_direct_validation_issue(&non_object),
+            Some(ClaudeDesktopDirectProviderValidationIssue::SettingsNotObject)
+        );
+        assert_eq!(
+            provider_claude_desktop_proxy_config_validation_issue(&non_object),
+            Some(ClaudeDesktopProxyProviderConfigValidationIssue::SettingsNotObject)
+        );
+
+        let mut direct_openai = Provider::with_id(
+            "direct-openai".to_string(),
+            "Direct OpenAI".to_string(),
+            json!({}),
+            None,
+        );
+        direct_openai.meta = Some(ProviderMeta {
+            api_format: Some("openai_chat".to_string()),
+            ..Default::default()
+        });
+        assert_eq!(
+            provider_claude_desktop_direct_validation_issue(&direct_openai),
+            Some(ClaudeDesktopDirectProviderValidationIssue::ApiFormatUnsupported)
+        );
+        assert_eq!(
+            provider_claude_desktop_proxy_config_validation_issue(&direct_openai),
+            None
+        );
+
+        let mut direct_proxy_mode = direct_openai.clone();
+        direct_proxy_mode.meta = Some(ProviderMeta {
+            api_format: Some("anthropic".to_string()),
+            claude_desktop_mode: Some(crate::provider::ClaudeDesktopMode::Proxy),
+            ..Default::default()
+        });
+        assert_eq!(
+            provider_claude_desktop_direct_validation_issue(&direct_proxy_mode),
+            Some(ClaudeDesktopDirectProviderValidationIssue::ProxyModeUnsupported)
+        );
+
+        let mut direct_managed = direct_openai.clone();
+        direct_managed.meta = Some(ProviderMeta {
+            api_format: Some("anthropic".to_string()),
+            provider_type: Some("github_copilot".to_string()),
+            ..Default::default()
+        });
+        assert_eq!(
+            provider_claude_desktop_direct_validation_issue(&direct_managed),
+            Some(ClaudeDesktopDirectProviderValidationIssue::ManagedProviderTypeUnsupported)
+        );
+
+        let mut direct_full_url = direct_openai.clone();
+        direct_full_url.meta = Some(ProviderMeta {
+            api_format: Some("anthropic".to_string()),
+            is_full_url: Some(true),
+            ..Default::default()
+        });
+        assert_eq!(
+            provider_claude_desktop_direct_validation_issue(&direct_full_url),
+            Some(ClaudeDesktopDirectProviderValidationIssue::FullUrlUnsupported)
+        );
+
+        let mut proxy_bad_format = direct_openai.clone();
+        proxy_bad_format.meta = Some(ProviderMeta {
+            api_format: Some("unsupported_wire".to_string()),
+            ..Default::default()
+        });
+        assert_eq!(
+            provider_claude_desktop_proxy_config_validation_issue(&proxy_bad_format),
+            Some(ClaudeDesktopProxyProviderConfigValidationIssue::ApiFormatUnsupported(
+                "unsupported_wire".to_string()
+            ))
+        );
     }
 
     #[test]

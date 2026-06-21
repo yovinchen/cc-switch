@@ -11,8 +11,12 @@ use crate::database::CLAUDE_DESKTOP_OFFICIAL_PROVIDER_ID;
 use crate::error::AppError;
 use crate::provider::{ClaudeDesktopMode, Provider};
 use crate::proxy_core_adapter::{
+    provider_claude_desktop_direct_validation_issue,
+    provider_claude_desktop_proxy_config_validation_issue,
     provider_claude_desktop_proxy_has_base_url_and_key,
     provider_should_normalize_mimo_anthropic_thinking_history,
+    ClaudeDesktopDirectProviderValidationIssue,
+    ClaudeDesktopProxyProviderConfigValidationIssue,
 };
 
 pub const PROFILE_ID: &str = "00000000-0000-4000-8000-000000157210";
@@ -342,54 +346,8 @@ pub fn validate_direct_provider(provider: &Provider) -> Result<(), AppError> {
         return Ok(());
     }
 
-    if !provider.settings_config.is_object() {
-        return Err(AppError::localized(
-            "claude_desktop.provider.settings_not_object",
-            "Claude Desktop 直连供应商配置必须是 JSON 对象",
-            "Claude Desktop direct provider configuration must be a JSON object",
-        ));
-    }
-
-    if let Some(meta) = provider.meta.as_ref() {
-        if let Some(api_format) = meta.api_format.as_deref() {
-            if !api_format.trim().is_empty() && api_format != "anthropic" {
-                return Err(AppError::localized(
-                    "claude_desktop.provider.api_format_unsupported",
-                    "Claude Desktop 第一阶段只支持原生 Anthropic Messages API",
-                    "Claude Desktop phase 1 only supports native Anthropic Messages API",
-                ));
-            }
-        }
-
-        if matches!(
-            meta.claude_desktop_mode.as_ref(),
-            Some(ClaudeDesktopMode::Proxy)
-        ) {
-            return Err(AppError::localized(
-                "claude_desktop.provider.mode_unsupported",
-                "该供应商是 Claude Desktop 本地路由模式，不能按直连模式写入",
-                "This Claude Desktop provider uses proxy mode and cannot be written as direct mode",
-            ));
-        }
-
-        if matches!(
-            meta.provider_type.as_deref(),
-            Some("github_copilot") | Some("codex_oauth")
-        ) {
-            return Err(AppError::localized(
-                "claude_desktop.provider.type_unsupported",
-                "Claude Desktop 直连模式不支持需要本地代理转换的供应商",
-                "Claude Desktop direct mode does not support providers that require local proxy conversion",
-            ));
-        }
-
-        if meta.is_full_url == Some(true) {
-            return Err(AppError::localized(
-                "claude_desktop.provider.full_url_unsupported",
-                "Claude Desktop 直连模式不支持完整 URL 端点配置",
-                "Claude Desktop direct mode does not support full URL endpoint configuration",
-            ));
-        }
+    if let Some(issue) = provider_claude_desktop_direct_validation_issue(provider) {
+        return Err(direct_validation_issue_to_error(issue));
     }
 
     direct_inference_model_specs(provider)?;
@@ -402,27 +360,8 @@ pub fn validate_proxy_provider(provider: &Provider) -> Result<(), AppError> {
         return Ok(());
     }
 
-    if !provider.settings_config.is_object() {
-        return Err(AppError::localized(
-            "claude_desktop.provider.settings_not_object",
-            "Claude Desktop 本地路由供应商配置必须是 JSON 对象",
-            "Claude Desktop proxy provider configuration must be a JSON object",
-        ));
-    }
-
-    if let Some(meta) = provider.meta.as_ref() {
-        if let Some(api_format) = meta.api_format.as_deref() {
-            if !matches!(
-                api_format,
-                "" | "anthropic" | "openai_chat" | "openai_responses" | "gemini_native"
-            ) {
-                return Err(AppError::localized(
-                    "claude_desktop.provider.api_format_unsupported",
-                    format!("Claude Desktop 本地路由模式不支持 API 格式: {api_format}"),
-                    format!("Claude Desktop proxy mode does not support API format: {api_format}"),
-                ));
-            }
-        }
+    if let Some(issue) = provider_claude_desktop_proxy_config_validation_issue(provider) {
+        return Err(proxy_config_validation_issue_to_error(issue));
     }
 
     proxy_model_routes(provider)?;
@@ -436,6 +375,61 @@ pub fn validate_proxy_provider(provider: &Provider) -> Result<(), AppError> {
     }
 
     Ok(())
+}
+
+fn direct_validation_issue_to_error(
+    issue: ClaudeDesktopDirectProviderValidationIssue,
+) -> AppError {
+    match issue {
+        ClaudeDesktopDirectProviderValidationIssue::SettingsNotObject => AppError::localized(
+            "claude_desktop.provider.settings_not_object",
+            "Claude Desktop 直连供应商配置必须是 JSON 对象",
+            "Claude Desktop direct provider configuration must be a JSON object",
+        ),
+        ClaudeDesktopDirectProviderValidationIssue::ApiFormatUnsupported => AppError::localized(
+            "claude_desktop.provider.api_format_unsupported",
+            "Claude Desktop 第一阶段只支持原生 Anthropic Messages API",
+            "Claude Desktop phase 1 only supports native Anthropic Messages API",
+        ),
+        ClaudeDesktopDirectProviderValidationIssue::ProxyModeUnsupported => AppError::localized(
+            "claude_desktop.provider.mode_unsupported",
+            "该供应商是 Claude Desktop 本地路由模式，不能按直连模式写入",
+            "This Claude Desktop provider uses proxy mode and cannot be written as direct mode",
+        ),
+        ClaudeDesktopDirectProviderValidationIssue::ManagedProviderTypeUnsupported => {
+            AppError::localized(
+                "claude_desktop.provider.type_unsupported",
+                "Claude Desktop 直连模式不支持需要本地代理转换的供应商",
+                "Claude Desktop direct mode does not support providers that require local proxy conversion",
+            )
+        }
+        ClaudeDesktopDirectProviderValidationIssue::FullUrlUnsupported => AppError::localized(
+            "claude_desktop.provider.full_url_unsupported",
+            "Claude Desktop 直连模式不支持完整 URL 端点配置",
+            "Claude Desktop direct mode does not support full URL endpoint configuration",
+        ),
+    }
+}
+
+fn proxy_config_validation_issue_to_error(
+    issue: ClaudeDesktopProxyProviderConfigValidationIssue,
+) -> AppError {
+    match issue {
+        ClaudeDesktopProxyProviderConfigValidationIssue::SettingsNotObject => {
+            AppError::localized(
+                "claude_desktop.provider.settings_not_object",
+                "Claude Desktop 本地路由供应商配置必须是 JSON 对象",
+                "Claude Desktop proxy provider configuration must be a JSON object",
+            )
+        }
+        ClaudeDesktopProxyProviderConfigValidationIssue::ApiFormatUnsupported(api_format) => {
+            AppError::localized(
+                "claude_desktop.provider.api_format_unsupported",
+                format!("Claude Desktop 本地路由模式不支持 API 格式: {api_format}"),
+                format!("Claude Desktop proxy mode does not support API format: {api_format}"),
+            )
+        }
+    }
 }
 
 pub fn validate_provider(provider: &Provider) -> Result<(), AppError> {
