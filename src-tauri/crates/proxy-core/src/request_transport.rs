@@ -60,12 +60,14 @@ pub fn resolve_upstream_request_transport_policy(
     }
 }
 
-pub fn is_streaming_upstream_request(endpoint: &str, body: &Value, headers: &HeaderMap) -> bool {
-    if body
-        .get("stream")
+pub fn request_body_stream_flag(body: &Value) -> bool {
+    body.get("stream")
         .and_then(|value| value.as_bool())
         .unwrap_or(false)
-    {
+}
+
+pub fn is_streaming_upstream_request(endpoint: &str, body: &Value, headers: &HeaderMap) -> bool {
+    if request_body_stream_flag(body) {
         return true;
     }
 
@@ -248,9 +250,9 @@ mod tests {
     use super::{
         is_socks_proxy_url, is_streaming_upstream_request, mapped_channel_response_status,
         proxy_url_points_to_loopback_port, proxy_values_point_to_loopback_port,
-        resolve_upstream_request_transport_policy, resolve_upstream_send_policy,
-        UpstreamSendPolicyInput, UpstreamTransportKind, DEFAULT_UPSTREAM_SEND_TIMEOUT,
-        STREAMING_REQWEST_REQUEST_TIMEOUT,
+        request_body_stream_flag, resolve_upstream_request_transport_policy,
+        resolve_upstream_send_policy, UpstreamSendPolicyInput, UpstreamTransportKind,
+        DEFAULT_UPSTREAM_SEND_TIMEOUT, STREAMING_REQWEST_REQUEST_TIMEOUT,
     };
     use http::{header::ACCEPT, HeaderMap, HeaderValue};
     use serde_json::json;
@@ -259,6 +261,8 @@ mod tests {
     #[test]
     fn stream_flag_marks_request_as_streaming_and_forces_identity() {
         let headers = HeaderMap::new();
+        assert!(request_body_stream_flag(&json!({ "stream": true })));
+        assert!(!request_body_stream_flag(&json!({ "stream": "true" })));
 
         let policy = resolve_upstream_request_transport_policy(
             false,

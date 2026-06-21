@@ -43,7 +43,7 @@ use crate::proxy_core_adapter::{
     extract_anthropic_tool_schema_hints, extract_gemini_model_from_path,
     gemini_response_to_anthropic_message_with_shadow, openai_chat_to_anthropic_message,
     openai_responses_to_anthropic_message, parse_upstream_json_or_unlabeled_sse,
-    rebuilt_json_proxy_response, resolve_management_auth_decision,
+    rebuilt_json_proxy_response, request_body_stream_flag, resolve_management_auth_decision,
     should_aggregate_codex_oauth_responses_sse, should_use_claude_transform_streaming,
     strip_endpoint_prefix, transformed_sse_proxy_response, validate_management_bearer_header,
     AppChannelListQuery, AppChannelManagementRequest, AppChannelResponse, AppKind, AppListRequest,
@@ -611,10 +611,7 @@ async fn handle_messages_for_app(
     let raw_endpoint = append_query_to_endpoint_path(uri.path(), uri.query());
     let endpoint = strip_endpoint_prefix(&raw_endpoint, strip_prefix);
 
-    let is_stream = body
-        .get("stream")
-        .and_then(|s| s.as_bool())
-        .unwrap_or(false);
+    let is_stream = request_body_stream_flag(&body);
 
     let mut proxy_request = ProxyRequest::new(
         AppKind::from(&app_type),
@@ -860,10 +857,7 @@ pub async fn handle_chat_completions(
         RequestContext::new(&state, &body, &headers, AppType::Codex, "Codex", "codex").await?;
     let endpoint = append_query_to_endpoint_path("/chat/completions", uri.query());
 
-    let is_stream = body
-        .get("stream")
-        .and_then(|v| v.as_bool())
-        .unwrap_or(false);
+    let is_stream = request_body_stream_flag(&body);
 
     let mut proxy_request = ProxyRequest::new(
         AppKind::from(&AppType::Codex),
@@ -914,10 +908,7 @@ pub async fn handle_responses(
         RequestContext::new(&state, &body, &headers, AppType::Codex, "Codex", "codex").await?;
     let endpoint = append_query_to_endpoint_path("/responses", uri.query());
 
-    let is_stream = body
-        .get("stream")
-        .and_then(|v| v.as_bool())
-        .unwrap_or(false);
+    let is_stream = request_body_stream_flag(&body);
     let codex_tool_context = crate::proxy_core_adapter::codex_tool_context_from_request(&body);
 
     let mut proxy_request = ProxyRequest::new(
@@ -981,10 +972,7 @@ pub async fn handle_responses_compact(
         RequestContext::new(&state, &body, &headers, AppType::Codex, "Codex", "codex").await?;
     let endpoint = append_query_to_endpoint_path("/responses/compact", uri.query());
 
-    let is_stream = body
-        .get("stream")
-        .and_then(|v| v.as_bool())
-        .unwrap_or(false);
+    let is_stream = request_body_stream_flag(&body);
     let codex_tool_context = crate::proxy_core_adapter::codex_tool_context_from_request(&body);
 
     let mut proxy_request = ProxyRequest::new(
@@ -1220,10 +1208,7 @@ pub async fn handle_gemini(
     // 提取完整的路径和查询参数
     let endpoint = append_query_to_endpoint_path(uri.path(), uri.query());
 
-    let is_stream = body
-        .get("stream")
-        .and_then(|v| v.as_bool())
-        .unwrap_or(false);
+    let is_stream = request_body_stream_flag(&body);
 
     let mut proxy_request = ProxyRequest::new(
         AppKind::from(&AppType::Gemini),

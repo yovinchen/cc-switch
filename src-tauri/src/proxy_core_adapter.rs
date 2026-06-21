@@ -2800,6 +2800,10 @@ pub(crate) fn resolve_upstream_request_transport_policy(
     )
 }
 
+pub(crate) fn request_body_stream_flag(body: &Value) -> bool {
+    crate::proxy_core::api::transport::request_body_stream_flag(body)
+}
+
 #[cfg(test)]
 pub(crate) fn is_streaming_upstream_request(
     endpoint: &str,
