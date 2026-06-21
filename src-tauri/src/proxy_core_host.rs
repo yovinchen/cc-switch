@@ -374,6 +374,25 @@ impl ChannelSource for CcSwitchChannelSource {
             Ok((source, proxy_channel_records_to_core(channels)))
         })
     }
+
+    fn list_materialized_channel_records<'a>(
+        &'a self,
+        app: Option<&'a AppKind>,
+    ) -> BoxFuture<'a, ProxyCoreResult<Vec<ChannelRecord>>> {
+        Box::pin(async move {
+            let channels = match app {
+                Some(app) => self
+                    .db
+                    .list_proxy_channels_for_app(app.as_str())
+                    .map_err(|error| app_error("list materialized channel records", error))?,
+                None => self
+                    .db
+                    .list_all_proxy_channels()
+                    .map_err(|error| app_error("list materialized channel records", error))?,
+            };
+            Ok(proxy_channel_records_to_core(channels))
+        })
+    }
 }
 
 #[derive(Clone)]

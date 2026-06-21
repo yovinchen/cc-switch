@@ -759,8 +759,8 @@ pub(crate) use crate::proxy_core::api::management::{
     ChannelCreateSource, ChannelDeleteResponse, ChannelDeleteSource, ChannelHealthResetResponse,
     ChannelHealthResetSource, ChannelHealthUpdateInput, ChannelKeyDeleteResponse,
     ChannelKeyDeleteSource, ChannelKeyPathRequest, ChannelKeyRecordResponse,
-    ChannelKeyRecordSource, ChannelKeysResponse, ChannelKeysSource, ChannelListPlan,
-    ChannelListQuery, ChannelListRequest, ChannelListResponse, ChannelListSource,
+    ChannelKeyRecordSource, ChannelKeysResponse, ChannelKeysSource, ChannelListQuery,
+    ChannelListRequest, ChannelListResponse,
     ChannelMigrationMaterializeInput, ChannelMigrationMaterializeResponse,
     ChannelMigrationMaterializeSource, ChannelMigrationPreviewInput,
     ChannelMigrationPreviewResponse, ChannelMigrationPreviewSource, ChannelModelsResponse,
@@ -1834,12 +1834,6 @@ pub(crate) fn channel_specs_from_source(
 
 pub(crate) fn channel_spec_from_source(channel: Option<ProxyChannelRecord>) -> Option<ChannelSpec> {
     channel.map(|channel| proxy_channel_record_to_core_spec(&channel))
-}
-
-pub(crate) fn channel_list_source_from_records(
-    channels: Vec<ProxyChannelRecord>,
-) -> ChannelListSource<ChannelRecord> {
-    ChannelListSource::new(proxy_channel_records_to_core(channels))
 }
 
 pub(crate) fn proxy_channel_route_inputs_to_core(

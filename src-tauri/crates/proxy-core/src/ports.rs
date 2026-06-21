@@ -86,6 +86,17 @@ pub trait ChannelSource: Send + Sync {
             ))
         })
     }
+
+    fn list_materialized_channel_records<'a>(
+        &'a self,
+        _app: Option<&'a AppKind>,
+    ) -> BoxFuture<'a, ProxyCoreResult<Vec<ChannelRecord>>> {
+        Box::pin(async {
+            Err(ProxyCoreError::Unavailable(
+                "management materialized channel list source is not configured".to_string(),
+            ))
+        })
+    }
 }
 
 pub trait RoutePolicySource: Send + Sync {

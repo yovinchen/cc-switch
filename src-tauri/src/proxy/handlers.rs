@@ -51,7 +51,7 @@ use crate::proxy_core_adapter::{
     ChannelDeleteResponse, ChannelHealthResetResponse,
     ChannelKeyDeleteResponse,
     ChannelKeyPathRequest, ChannelKeyRecord, ChannelKeyRecordResponse,
-    ChannelKeysResponse, ChannelListPlan, ChannelListQuery, ChannelListRequest,
+    ChannelKeysResponse, ChannelListQuery, ChannelListRequest,
     ChannelListResponse, ChannelMigrationMaterializeResponse, ChannelMigrationPreviewResponse,
     ChannelModelRecord, ChannelModelsResponse, ChannelPathRequest, ChannelRecord,
     ChannelRecordResponse, ChannelRouteCandidate, ChannelRouteRejected,
@@ -71,7 +71,7 @@ use crate::proxy_core_adapter::{
 use crate::proxy_core_adapter::{
     app_list_source_from_summaries,
     channel_delete_source_from_deleted, channel_health_reset_source_from_response,
-    channel_list_source_from_records, channel_create_source_from_record,
+    channel_create_source_from_record,
     channel_key_delete_source_from_deleted,
     channel_key_record_source_from_record, channel_keys_source_from_records,
     channel_record_source_from_record,
@@ -256,20 +256,13 @@ pub async fn list_all_proxy_channels(
 ) -> Result<Json<ChannelListResponse<ChannelRecord>>, ProxyError> {
     let request =
         ChannelListRequest::from_query(query).map_err(management_api_error_to_proxy_error)?;
-    let channels = match request.plan() {
-        ChannelListPlan::App { app_type } => state
-            .db
-            .list_proxy_channels_for_app(&app_type)
-            .map_err(|e| ProxyError::DatabaseError(e.to_string()))?,
-        ChannelListPlan::All => state
-            .db
-            .list_all_proxy_channels()
-            .map_err(|e| ProxyError::DatabaseError(e.to_string()))?,
-    };
+    let response = state
+        .proxy_engine()
+        .channel_list_response(request)
+        .await
+        .map_err(proxy_core_error_to_proxy_error)?;
 
-    Ok(Json(request.response_from_source(
-        channel_list_source_from_records(channels),
-    )))
+    Ok(Json(response))
 }
 
 /// POST /proxy/v1/channels

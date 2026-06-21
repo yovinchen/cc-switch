@@ -162,6 +162,46 @@ fn route_resolve_handler_delegates_dry_run_to_proxy_engine() {
 }
 
 #[test]
+fn channel_list_handler_delegates_materialized_records_to_proxy_engine() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let path = manifest_dir.join("src/proxy/handlers.rs");
+    let source = fs::read_to_string(&path).expect("read handlers.rs");
+    let handler = function_slice(
+        &source,
+        "pub async fn list_all_proxy_channels",
+        "/// POST /proxy/v1/channels",
+    );
+    let forbidden_markers = [
+        "state.db",
+        "ChannelListPlan",
+        ".list_proxy_channels_for_app(",
+        ".list_all_proxy_channels(",
+        "channel_list_source_from_records",
+        ".response_from_source(",
+    ];
+
+    let mut violations = Vec::new();
+    for (line_index, line) in production_lines(handler) {
+        let code = line.split("//").next().unwrap_or_default();
+        for marker in forbidden_markers {
+            if code.contains(marker) {
+                violations.push(format!(
+                    "src/proxy/handlers.rs list_all_proxy_channels:{} contains channel DB marker `{}`",
+                    line_index + 1,
+                    marker
+                ));
+            }
+        }
+    }
+
+    assert!(
+        violations.is_empty(),
+        "channel-list HTTP handler must delegate materialized record loading to ProxyEngine:\n{}",
+        violations.join("\n")
+    );
+}
+
+#[test]
 fn channel_list_route_branch_delegates_dry_run_to_proxy_engine() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let path = manifest_dir.join("src/proxy/handlers.rs");

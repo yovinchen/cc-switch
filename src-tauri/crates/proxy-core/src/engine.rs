@@ -7,14 +7,15 @@ use super::domain::{
 use super::error::ProxyCoreResult;
 use super::management_api::{
     AppChannelListSource, AppChannelManagementPlan, AppChannelManagementRequest,
-    AppModelCatalogRequest, GroupListChannelRecordInput, GroupListChannelSource,
-    GroupListRequest, ManagementAppPathRequest, ProviderListSource, RouteResolveManagementRequest,
+    AppModelCatalogRequest, ChannelListPlan, ChannelListRequest, ChannelListSource,
+    GroupListChannelRecordInput, GroupListChannelSource, GroupListRequest,
+    ManagementAppPathRequest, ProviderListSource, RouteResolveManagementRequest,
 };
 use super::ports::{
     AppChannelResponse, ChannelHealthReset, ChannelHealthResetResponse, ChannelRecord,
-    ChannelRouteCandidate, ChannelRouteRejected, ClientModelCatalogResponse, ModelCatalog,
-    ProviderListResponse, ProxyCoreEvent, ProxyCoreEventType, ProxyServices,
-    RouteGroupListResponse, RouteResolveResponse,
+    ChannelListResponse, ChannelRouteCandidate, ChannelRouteRejected,
+    ClientModelCatalogResponse, ModelCatalog, ProviderListResponse, ProxyCoreEvent,
+    ProxyCoreEventType, ProxyServices, RouteGroupListResponse, RouteResolveResponse,
 };
 use serde_json::{json, to_value, Value};
 use std::collections::BTreeMap;
@@ -268,6 +269,22 @@ where
         }
     }
 
+    pub async fn channel_list_response(
+        &self,
+        request: ChannelListRequest,
+    ) -> ProxyCoreResult<ChannelListResponse<ChannelRecord>> {
+        let app = match request.plan() {
+            ChannelListPlan::App { app_type } => Some(AppKind::from(app_type.as_str())),
+            ChannelListPlan::All => None,
+        };
+        let channels = self
+            .services
+            .channels()
+            .list_materialized_channel_records(app.as_ref())
+            .await?;
+        Ok(request.response_from_source(ChannelListSource::new(channels)))
+    }
+
     pub async fn group_list_response<I, T>(
         &self,
         request: GroupListRequest,
@@ -443,6 +460,7 @@ mod tests {
         channel_records: Mutex<Vec<ChannelRecord>>,
         channel_route_source: Mutex<Option<ChannelRouteSource>>,
         queried_channel_apps: Mutex<Vec<String>>,
+        queried_materialized_channel_apps: Mutex<Vec<Option<String>>>,
     }
 
     impl ProxyServices for TestServices {
@@ -605,6 +623,36 @@ mod tests {
                 } else {
                     Ok((source, records))
                 }
+            })
+        }
+
+        fn list_materialized_channel_records<'a>(
+            &'a self,
+            app: Option<&'a AppKind>,
+        ) -> BoxFuture<'a, ProxyCoreResult<Vec<ChannelRecord>>> {
+            let app_type = app.map(|app| app.as_str().to_string());
+            self.queried_materialized_channel_apps
+                .lock()
+                .expect("queried materialized channel apps mutex")
+                .push(app_type.clone());
+            let records = self
+                .channel_records
+                .lock()
+                .expect("channel records mutex")
+                .clone();
+            Box::pin(async move {
+                let records = if records.is_empty() {
+                    vec![channel_record()]
+                } else {
+                    records
+                };
+                Ok(match app_type {
+                    Some(app_type) => records
+                        .into_iter()
+                        .filter(|record| record.app_type == app_type)
+                        .collect(),
+                    None => records,
+                })
             })
         }
     }
@@ -1088,6 +1136,43 @@ mod tests {
     }
 
     #[test]
+    fn channel_list_response_delegates_materialized_scope_to_channel_source() {
+        let services = Arc::new(TestServices::default());
+        *services
+            .channel_records
+            .lock()
+            .expect("channel records mutex") = vec![
+            channel_record_with_app_and_groups("claude", vec![DEFAULT_ROUTE_GROUP.to_string()]),
+            channel_record_with_app_and_groups("codex", vec!["tools".to_string()]),
+        ];
+        let engine = ProxyEngine::new(services.clone());
+
+        let all_request =
+            ChannelListRequest::from_query(serde_json::from_value(json!({})).expect("query"))
+                .expect("all channel list request");
+        let all_response = futures::executor::block_on(engine.channel_list_response(all_request))
+            .expect("all channel list response");
+
+        let app_request = ChannelListRequest::from_query(
+            serde_json::from_value(json!({ "appType": "claude" })).expect("query"),
+        )
+        .expect("app channel list request");
+        let app_response = futures::executor::block_on(engine.channel_list_response(app_request))
+            .expect("app channel list response");
+
+        assert_eq!(all_response.channels.len(), 2);
+        assert_eq!(app_response.channels.len(), 1);
+        assert_eq!(app_response.channels[0].app_type, "claude");
+        assert_eq!(
+            *services
+                .queried_materialized_channel_apps
+                .lock()
+                .expect("queried materialized channel apps mutex"),
+            vec![None, Some("claude".to_string())]
+        );
+    }
+
+    #[test]
     fn group_list_response_delegates_scoped_channel_sources_to_channel_source() {
         let services = Arc::new(TestServices::default());
         *services
@@ -1225,14 +1310,18 @@ mod tests {
     }
 
     fn channel_record() -> ChannelRecord {
-        channel_record_with_groups(vec![DEFAULT_ROUTE_GROUP.to_string()])
+        channel_record_with_app_and_groups("claude", vec![DEFAULT_ROUTE_GROUP.to_string()])
     }
 
     fn channel_record_with_groups(groups: Vec<String>) -> ChannelRecord {
+        channel_record_with_app_and_groups("claude", groups)
+    }
+
+    fn channel_record_with_app_and_groups(app_type: &str, groups: Vec<String>) -> ChannelRecord {
         channel_record_from_input(ChannelRecordInput {
             id: "channel-a".to_string(),
             provider_id: "provider-a".to_string(),
-            app_type: "claude".to_string(),
+            app_type: app_type.to_string(),
             name: "Channel A".to_string(),
             status: "enabled".to_string(),
             base_url: "https://upstream.example.com/v1".to_string(),
