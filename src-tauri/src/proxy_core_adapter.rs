@@ -1705,6 +1705,16 @@ pub(crate) fn provider_model_catalog_from_settings(
     )
 }
 
+pub(crate) fn provider_model_catalog_from_provider(
+    provider_id: &str,
+    provider: Option<&Provider>,
+) -> ModelCatalog {
+    provider_model_catalog_from_settings(
+        provider_id,
+        provider.map(|provider| &provider.settings_config),
+    )
+}
+
 pub(crate) fn client_model_catalog_from_optional_raw(
     app: &AppKind,
     raw: Option<Value>,
@@ -3978,6 +3988,16 @@ mod tests {
                 "deepseek-v4".to_string(),
                 "kimi-k2".to_string()
             ]
+        );
+        let provider = Provider::with_id(
+            "provider-a".to_string(),
+            "Provider A".to_string(),
+            settings.clone(),
+            None,
+        );
+        assert_eq!(
+            provider_model_catalog_from_provider("provider-a", Some(&provider)).models,
+            provider_catalog.models
         );
 
         let client_catalog = client_model_catalog_from_optional_raw(

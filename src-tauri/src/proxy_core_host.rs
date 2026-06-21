@@ -41,6 +41,7 @@ use crate::proxy_core_adapter::{
     forwarding_runtime_unavailable_error,
     host_providers_for_plan,
     provider_with_channel_auth_key,
+    provider_model_catalog_from_provider,
     proxy_app_config_from_config_parts, proxy_global_config_from_config,
     proxy_runtime_config_from_config,
     proxy_channel_record_to_core_spec, proxy_channel_records_to_core_specs_for_query,
@@ -440,9 +441,9 @@ impl ModelCatalogProvider for CcSwitchModelCatalogProvider {
                 .db
                 .get_provider_by_id(provider_id, app.as_str())
                 .map_err(|error| app_error("load model catalog", error))?;
-            Ok(crate::proxy_core_adapter::provider_model_catalog_from_settings(
+            Ok(provider_model_catalog_from_provider(
                 provider_id,
-                provider.as_ref().map(|provider| &provider.settings_config),
+                provider.as_ref(),
             ))
         })
     }
@@ -1275,6 +1276,22 @@ mod tests {
             ]
         );
         assert_eq!(catalog.provider_id, "codex");
+    }
+
+    #[tokio::test]
+    async fn model_catalog_provider_loads_provider_catalog_from_settings() {
+        let db = Arc::new(Database::memory().expect("memory db"));
+        save_claude_provider(&db);
+        let services = CcSwitchProxyServices::new(db);
+
+        let catalog = services
+            .model_catalog()
+            .load_catalog(&AppKind::Claude, "anthropic-main")
+            .await
+            .expect("load provider catalog");
+
+        assert_eq!(catalog.provider_id, "anthropic-main");
+        assert_eq!(catalog.models, vec!["claude-sonnet-4".to_string()]);
     }
 
     #[tokio::test]
