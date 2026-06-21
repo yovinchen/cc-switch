@@ -15,8 +15,10 @@ use super::{
     },
     route_attempt::{apply_channel_model_override, ForwardAttempt},
 };
-use crate::commands::CopilotAuthState;
-use crate::proxy::managed_account_auth::resolve_managed_account_auth;
+use crate::proxy::managed_account_auth::{
+    fetch_copilot_live_models, resolve_copilot_api_endpoint, resolve_copilot_model_vendor,
+    resolve_managed_account_auth,
+};
 use crate::proxy_core_adapter::{
     apply_bedrock_pre_send_optimizers, apply_copilot_model_normalization,
     apply_copilot_warmup_model_override, attempt_event_name,
@@ -55,7 +57,6 @@ use futures::StreamExt;
 use http::Extensions;
 use serde_json::Value;
 use std::sync::Arc;
-use tauri::Manager;
 use tokio::sync::RwLock;
 
 pub struct ForwardResult {
@@ -1477,24 +1478,10 @@ impl RequestForwarder {
             None
         };
 
-        // GitHub Copilot 动态 endpoint 路由
-        // 从 CopilotAuthManager 获取缓存的 API endpoint（支持企业版等非默认 endpoint）
         if should_resolve_copilot_dynamic_endpoint(is_copilot, is_full_url) {
-            if let Some(app_handle) = &self.app_handle {
-                let copilot_state = app_handle.state::<CopilotAuthState>();
-                let copilot_auth = copilot_state.0.read().await;
-
-                // 从 provider.meta 获取关联的 GitHub 账号 ID
-                let account_id = provider
-                    .meta
-                    .as_ref()
-                    .and_then(|m| m.managed_account_id_for("github_copilot"));
-
-                let dynamic_endpoint = match &account_id {
-                    Some(id) => copilot_auth.get_api_endpoint(id).await,
-                    None => copilot_auth.get_default_api_endpoint().await,
-                };
-
+            if let Some(dynamic_endpoint) =
+                resolve_copilot_api_endpoint(self.app_handle.as_ref(), provider).await
+            {
                 if let Some(next_base_url) = resolved_copilot_dynamic_base_url(
                     &base_url,
                     &dynamic_endpoint,
@@ -1945,7 +1932,10 @@ impl RequestForwarder {
         let model = body.get("model").and_then(|value| value.as_str());
         let copilot_model_vendor = if is_copilot {
             match model {
-                Some(model_id) => self.copilot_model_vendor(provider, model_id).await,
+                Some(model_id) => {
+                    resolve_copilot_model_vendor(self.app_handle.as_ref(), provider, model_id)
+                        .await
+                }
                 None => None,
             }
         } else {
@@ -1971,23 +1961,9 @@ impl RequestForwarder {
         };
         let model_id = model_id.to_string();
 
-        let Some(app_handle) = &self.app_handle else {
-            return;
-        };
-        let copilot_state = app_handle.state::<CopilotAuthState>();
-        let copilot_auth = copilot_state.0.read().await;
-        let account_id = provider
-            .meta
-            .as_ref()
-            .and_then(|m| m.managed_account_id_for("github_copilot"));
-
-        let models_result = match account_id.as_deref() {
-            Some(id) => copilot_auth.fetch_models_for_account(id).await,
-            None => copilot_auth.fetch_models().await,
-        };
-
-        let models = match models_result {
-            Ok(m) => m,
+        let models = match fetch_copilot_live_models(self.app_handle.as_ref(), provider).await {
+            Ok(Some(models)) => models,
+            Ok(None) => return,
             Err(err) => {
                 log::debug!("[Copilot] live model list unavailable, skip resolution: {err}");
                 return;
@@ -2000,45 +1976,6 @@ impl RequestForwarder {
         ) {
             log::info!("[Copilot] live-model resolve: {model_id} → {resolved}");
             body["model"] = serde_json::Value::String(resolved);
-        }
-    }
-
-    async fn copilot_model_vendor(&self, provider: &Provider, model_id: &str) -> Option<String> {
-        let Some(app_handle) = &self.app_handle else {
-            log::debug!("[Copilot] AppHandle unavailable, fallback to chat/completions");
-            return None;
-        };
-
-        let copilot_state = app_handle.state::<CopilotAuthState>();
-        let copilot_auth = copilot_state.0.read().await;
-        let account_id = provider
-            .meta
-            .as_ref()
-            .and_then(|m| m.managed_account_id_for("github_copilot"));
-
-        let vendor_result = match account_id.as_deref() {
-            Some(id) => {
-                copilot_auth
-                    .get_model_vendor_for_account(id, model_id)
-                    .await
-            }
-            None => copilot_auth.get_model_vendor(model_id).await,
-        };
-
-        match vendor_result {
-            Ok(Some(vendor)) => Some(vendor),
-            Ok(None) => {
-                log::debug!(
-                    "[Copilot] Model vendor unavailable for {model_id}, fallback to chat/completions"
-                );
-                None
-            }
-            Err(err) => {
-                log::warn!(
-                    "[Copilot] Failed to resolve model vendor for {model_id}, fallback to chat/completions: {err}"
-                );
-                None
-            }
         }
     }
 }

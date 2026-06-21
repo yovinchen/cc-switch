@@ -24,9 +24,16 @@ const FORBIDDEN_FORWARDER_URL_PLANNING_MARKERS: &[&str] = &[
     "is_codex_chat_full_endpoint_base(",
 ];
 const FORBIDDEN_FORWARDER_MANAGED_AUTH_MARKERS: &[&str] = &[
+    "CopilotAuthState",
     "CodexOAuthState",
     "CodexOAuthManager",
     "CopilotAuthManager",
+    "fetch_models_for_account(",
+    "fetch_models().await",
+    "get_api_endpoint(",
+    "get_default_api_endpoint(",
+    "get_model_vendor_for_account(",
+    "get_model_vendor(",
     "get_valid_token_for_account(",
     "get_valid_token().await",
     "default_account_id().await",
