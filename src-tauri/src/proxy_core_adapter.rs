@@ -3025,6 +3025,14 @@ pub(crate) fn should_normalize_anthropic_tool_thinking_history(
     )
 }
 
+pub(crate) fn provider_should_normalize_anthropic_tool_thinking_history(
+    provider: &Provider,
+    body: &Value,
+    api_format: &str,
+) -> bool {
+    should_normalize_anthropic_tool_thinking_history(&provider.settings_config, body, api_format)
+}
+
 pub(crate) fn normalize_anthropic_tool_thinking_history(body: &mut Value) -> bool {
     crate::proxy_core::api::transforms::normalize_anthropic_tool_thinking_history(body)
 }
@@ -3037,6 +3045,13 @@ pub(crate) fn normalize_deepseek_thinking_disabled_strip_effort(
         body,
         settings_config,
     )
+}
+
+pub(crate) fn provider_normalize_deepseek_thinking_disabled_strip_effort(
+    provider: &Provider,
+    body: &mut Value,
+) -> bool {
+    normalize_deepseek_thinking_disabled_strip_effort(body, &provider.settings_config)
 }
 
 pub(crate) fn inject_openai_stream_include_usage(body: &mut Value) {

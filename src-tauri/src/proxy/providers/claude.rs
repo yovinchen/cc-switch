@@ -22,17 +22,21 @@ use crate::proxy_core_adapter::{
     anthropic_to_openai_responses_request, build_claude_auth_headers, build_claude_upstream_url,
     build_copilot_auth_headers, claude_api_format_needs_transform,
     gemini_response_to_anthropic_message, inject_openai_stream_include_usage,
-    normalize_anthropic_tool_thinking_history, normalize_deepseek_thinking_disabled_strip_effort,
-    openai_chat_to_anthropic_message, openai_responses_to_anthropic_message,
+    normalize_anthropic_tool_thinking_history, openai_chat_to_anthropic_message,
+    openai_responses_to_anthropic_message,
     provider_claude_api_format, provider_claude_auth_key, provider_claude_base_url,
     provider_claude_kind, provider_claude_prompt_cache_key,
     provider_claude_responses_prompt_cache_key, provider_codex_fast_mode_enabled,
     provider_is_codex_oauth, provider_should_preserve_reasoning_content_for_openai_chat,
+    provider_normalize_deepseek_thinking_disabled_strip_effort,
+    provider_should_normalize_anthropic_tool_thinking_history,
     ClaudeAuthHeaderKind, ClaudeAuthKey, ClaudeAuthKeySource, CopilotAuthHeadersInput,
     GeminiShadowStore, ProviderAuthInfo,
     ProviderAuthStrategy, ProviderKind,
-    should_normalize_anthropic_tool_thinking_history, synthesize_gemini_tool_call_id_with_uuid,
+    synthesize_gemini_tool_call_id_with_uuid,
 };
+#[cfg(test)]
+use crate::proxy_core_adapter::should_normalize_anthropic_tool_thinking_history;
 use serde_json::Value;
 
 /// 获取 Claude 供应商的 API 格式
@@ -52,8 +56,8 @@ pub fn normalize_anthropic_messages_for_provider(
         return false;
     }
 
-    let mut changed = if should_normalize_anthropic_tool_thinking_history(
-        &provider.settings_config,
+    let mut changed = if provider_should_normalize_anthropic_tool_thinking_history(
+        provider,
         body,
         api_format,
     ) {
@@ -61,10 +65,7 @@ pub fn normalize_anthropic_messages_for_provider(
     } else {
         false
     };
-    changed |= normalize_deepseek_thinking_disabled_strip_effort(
-        body,
-        &provider.settings_config,
-    );
+    changed |= provider_normalize_deepseek_thinking_disabled_strip_effort(provider, body);
     changed
 }
 
