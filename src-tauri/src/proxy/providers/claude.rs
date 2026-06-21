@@ -26,10 +26,11 @@ use crate::proxy_core_adapter::{
     inject_openai_stream_include_usage, is_copilot_prompt_cache_provider,
     is_gemini_oauth_key_shape, normalize_anthropic_tool_thinking_history,
     normalize_deepseek_thinking_disabled_strip_effort, openai_chat_to_anthropic_message,
-    openai_responses_to_anthropic_message, resolve_claude_api_format_from_settings,
-    resolve_claude_responses_prompt_cache_key, should_preserve_reasoning_content_for_openai_chat,
-    ClaudeAuthHeaderKind, ClaudeAuthKey, ClaudeAuthKeySource, CopilotAuthHeadersInput,
-    GeminiShadowStore, ProviderAuthInfo, ProviderAuthStrategy, ProviderKind,
+    openai_responses_to_anthropic_message, provider_is_codex_oauth,
+    resolve_claude_api_format_from_settings, resolve_claude_responses_prompt_cache_key,
+    should_preserve_reasoning_content_for_openai_chat, ClaudeAuthHeaderKind, ClaudeAuthKey,
+    ClaudeAuthKeySource, CopilotAuthHeadersInput, GeminiShadowStore, ProviderAuthInfo,
+    ProviderAuthStrategy, ProviderKind,
     should_normalize_anthropic_tool_thinking_history, synthesize_gemini_tool_call_id_with_uuid,
 };
 use serde_json::Value;
@@ -79,7 +80,7 @@ pub fn transform_claude_request_for_api_format(
     session_id: Option<&str>,
     shadow_store: Option<&GeminiShadowStore>,
 ) -> Result<serde_json::Value, ProxyError> {
-    let is_codex_oauth = provider.is_codex_oauth();
+    let is_codex_oauth = provider_is_codex_oauth(provider);
 
     // Copilot 场景：优先从 metadata.user_id 提取 session ID 作为 cache key
     // 格式: "uuid_sessionId" → 提取 "_" 后面的部分作为 session 标识
@@ -185,16 +186,6 @@ impl ClaudeAdapter {
         )
     }
 
-    /// 检测是否为 Codex OAuth 供应商（ChatGPT Plus/Pro 反代）
-    fn is_codex_oauth(&self, provider: &Provider) -> bool {
-        if let Some(meta) = provider.meta.as_ref() {
-            if meta.provider_type.as_deref() == Some("codex_oauth") {
-                return true;
-            }
-        }
-        false
-    }
-
     /// 获取 API 格式
     ///
     /// 从 provider.meta.api_format 读取格式设置：
@@ -267,7 +258,7 @@ impl ProviderAdapter for ClaudeAdapter {
 
     fn extract_base_url(&self, provider: &Provider) -> Result<String, ProxyError> {
         extract_claude_base_url_from_settings(
-            self.is_codex_oauth(provider),
+            provider_is_codex_oauth(provider),
             &provider.settings_config,
         )
         .ok_or_else(|| ProxyError::ConfigError("Claude Provider 缺少 base_url 配置".to_string()))
