@@ -12,7 +12,7 @@ use crate::proxy_core_adapter::{
     app_proxy_config_from_proxy_app_config, claude_api_format_from_metadata,
     extract_gemini_model_from_path, extract_proxy_session_id,
     response_runtime_policy_from_app_proxy_config, usage_route_context_from_selection,
-    AppProxyConfig, ProxyCoreAppKind as AppKind, ProxyResult, ProxyServices, ResponseRuntimePolicy,
+    ProxyCoreAppKind as AppKind, ProxyResult, ProxyServices, ResponseRuntimePolicy,
     ResponseTimeoutConfig, StreamingTimeoutConfig, UsageRouteContext,
 };
 use axum::http::HeaderMap;
@@ -22,7 +22,7 @@ use std::time::Instant;
 ///
 /// 贯穿整个请求生命周期，包含：
 /// - 计时信息
-/// - 应用级代理配置（per-app）
+/// - 响应处理运行时策略（per-app）
 /// - 选中的 Provider（用于错误和转换兼容语义）
 /// - 请求模型名称
 /// - 日志标签
@@ -30,8 +30,8 @@ use std::time::Instant;
 pub struct RequestContext {
     /// 请求开始时间
     pub start_time: Instant,
-    /// 应用级代理配置（per-app，包含重试次数和超时配置）
-    pub app_config: AppProxyConfig,
+    /// 响应处理运行时策略（per-app，包含重试次数和超时配置）
+    pub response_runtime_policy: ResponseRuntimePolicy,
     /// 选中的 Provider（故障转移链的第一个）
     pub provider: Provider,
     /// 请求中的模型名称
@@ -86,6 +86,7 @@ impl RequestContext {
             .map_err(|e| ProxyError::DatabaseError(e.to_string()))?;
         let app_config = app_proxy_config_from_proxy_app_config(&core_app_config)
             .map_err(ProxyError::ConfigError)?;
+        let response_runtime_policy = response_runtime_policy_from_app_proxy_config(&app_config);
 
         // 从请求体提取模型名称
         let request_model = body
@@ -136,7 +137,7 @@ impl RequestContext {
 
         Ok(Self {
             start_time,
-            app_config,
+            response_runtime_policy,
             provider,
             request_model,
             outbound_model: None,
@@ -215,7 +216,7 @@ impl RequestContext {
 
     #[inline]
     pub fn response_runtime_policy(&self) -> ResponseRuntimePolicy {
-        response_runtime_policy_from_app_proxy_config(&self.app_config)
+        self.response_runtime_policy
     }
 
     #[inline]
