@@ -30,9 +30,10 @@ use crate::proxy_core_adapter::{
     forward_upstream_url_plan, invalid_mapped_channel_response_status_message,
     is_github_copilot_upstream, is_openai_o_series, is_unsupported_image_error,
     mapped_channel_response_status,
-    merge_copilot_tool_results, normalize_thinking_type, prepare_upstream_request_body_with_report,
-    prompt_cache_trace_log_message, rectify_anthropic_request, rectify_thinking_budget,
-    replace_image_blocks_with_marker, record_active_connection_acquired_status,
+    merge_copilot_tool_results, non_streaming_body_timeout_message, normalize_thinking_type,
+    prepare_upstream_request_body_with_report, prompt_cache_trace_log_message,
+    rectify_anthropic_request, rectify_thinking_budget, replace_image_blocks_with_marker,
+    record_active_connection_acquired_status,
     record_active_connection_released_status, record_forward_failure_status,
     record_forward_request_started_status, record_forward_success_status,
     replace_images_for_text_only_model, request_body_filter_log_message,
@@ -1786,12 +1787,7 @@ impl RequestForwarder {
         let body_timeout = self.non_streaming_timeout;
         let body = tokio::time::timeout(body_timeout, response.bytes())
             .await
-            .map_err(|_| {
-                ProxyError::Timeout(format!(
-                    "响应体读取超时: {}s（上游发完响应头后 body 未到达）",
-                    body_timeout.as_secs()
-                ))
-            })??;
+            .map_err(|_| ProxyError::Timeout(non_streaming_body_timeout_message(body_timeout)))??;
 
         Ok(ProxyResponse::buffered(status, headers, body))
     }
