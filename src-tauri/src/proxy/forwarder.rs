@@ -31,10 +31,10 @@ use crate::proxy_core_adapter::{
     is_openai_o_series, is_unsupported_image_error, mapped_channel_response_status,
     merge_copilot_tool_results, non_streaming_body_timeout_message, normalize_thinking_type,
     prepare_upstream_request_body_with_report, prompt_cache_trace_log_message,
-    provider_is_codex_oauth, provider_is_full_url, provider_is_github_copilot_upstream,
-    rectify_anthropic_request, rectify_thinking_budget, replace_image_blocks_with_marker,
-    record_active_connection_acquired_status, record_active_connection_released_status,
-    record_forward_failure_status,
+    provider_custom_user_agent_header, provider_is_codex_oauth, provider_is_full_url,
+    provider_is_github_copilot_upstream, rectify_anthropic_request, rectify_thinking_budget,
+    replace_image_blocks_with_marker, record_active_connection_acquired_status,
+    record_active_connection_released_status, record_forward_failure_status,
     record_forward_request_started_status, record_forward_success_status,
     replace_images_for_text_only_model, request_body_filter_log_message,
     resolve_claude_forward_api_format, route_selected_event_name,
@@ -1529,14 +1529,7 @@ impl RequestForwarder {
         // 自定义 User-Agent：与 stream_check / model_fetch 共用 parse_custom_user_agent，
         // 运行时静默忽略非法值（前端在输入处给非阻断提示，不在保存时阻断）。
         // Copilot 指纹 UA 不可覆盖。
-        let custom_user_agent = if is_copilot {
-            None
-        } else {
-            provider
-                .meta
-                .as_ref()
-                .and_then(|meta| meta.custom_user_agent_header().ok().flatten())
-        };
+        let custom_user_agent = provider_custom_user_agent_header(provider, is_copilot);
 
         // --- Copilot 优化器：动态 header 注入 ---
         let copilot_auth_header_overrides = copilot_optimization.as_ref().map(

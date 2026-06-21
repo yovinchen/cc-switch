@@ -3146,6 +3146,20 @@ pub(crate) fn provider_is_full_url(provider: &Provider) -> bool {
         .unwrap_or(false)
 }
 
+pub(crate) fn provider_custom_user_agent_header(
+    provider: &Provider,
+    is_copilot: bool,
+) -> Option<http::HeaderValue> {
+    if is_copilot {
+        return None;
+    }
+
+    provider
+        .meta
+        .as_ref()
+        .and_then(|meta| meta.custom_user_agent_header().ok().flatten())
+}
+
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn streaming_response_usage_record_with_optional_outbound_model(
     events: &[Value],
@@ -5929,6 +5943,7 @@ mod tests {
         provider.meta = Some(ProviderMeta {
             provider_type: Some("github_copilot".to_string()),
             is_full_url: Some(true),
+            custom_user_agent: Some("cc-switch-test/1.0".to_string()),
             auth_binding: Some(AuthBinding {
                 source: AuthBindingSource::ManagedAccount,
                 auth_provider: Some("github_copilot".to_string()),
@@ -5942,6 +5957,9 @@ mod tests {
         let usage_provider_is_copilot =
             provider_is_github_copilot_upstream(&provider, "https://example.com");
         let usage_provider_is_full_url = provider_is_full_url(&provider);
+        let provider_user_agent =
+            provider_custom_user_agent_header(&provider, false).expect("custom user agent");
+        let copilot_provider_user_agent = provider_custom_user_agent_header(&provider, true);
         let mut codex_provider = Provider::with_id(
             "codex-oauth".to_string(),
             "Codex OAuth".to_string(),
@@ -5967,6 +5985,8 @@ mod tests {
         assert!(!usage_provider_is_codex_oauth);
         assert!(usage_provider_is_copilot);
         assert!(usage_provider_is_full_url);
+        assert_eq!(provider_user_agent, http::HeaderValue::from_static("cc-switch-test/1.0"));
+        assert!(copilot_provider_user_agent.is_none());
         assert!(provider_is_github_copilot_upstream(
             &Provider::with_id(
                 "plain".to_string(),
