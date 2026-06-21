@@ -960,6 +960,16 @@ pub(crate) fn settings_config_with_channel_auth_key(
     )
 }
 
+pub(crate) fn channel_auth_profile_missing_key_error_message(
+    channel_id: &str,
+    key_ref: &str,
+) -> String {
+    crate::proxy_core::api::auth::channel_auth_profile_missing_key_error_message(
+        channel_id,
+        key_ref,
+    )
+}
+
 pub(crate) fn extract_claude_base_url_from_settings(
     is_codex_oauth: bool,
     settings_config: &Value,

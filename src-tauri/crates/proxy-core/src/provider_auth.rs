@@ -90,6 +90,12 @@ pub fn settings_config_with_channel_auth_key(
     settings
 }
 
+pub fn channel_auth_profile_missing_key_error_message(channel_id: &str, key_ref: &str) -> String {
+    format!(
+        "channel auth profile references missing or disabled key: channel_id={channel_id}, key_ref={key_ref}"
+    )
+}
+
 fn set_env_auth_key(settings: &mut Value, key_name: &str, key_value: &str) {
     ensure_object(settings)
         .entry("env".to_string())
@@ -236,6 +242,14 @@ mod tests {
         assert_eq!(
             codex.pointer("/env/OPENAI_API_KEY").and_then(Value::as_str),
             Some("openai-key")
+        );
+    }
+
+    #[test]
+    fn channel_auth_profile_missing_key_error_message_preserves_runtime_text() {
+        assert_eq!(
+            channel_auth_profile_missing_key_error_message("channel-a", "primary"),
+            "channel auth profile references missing or disabled key: channel_id=channel-a, key_ref=primary"
         );
     }
 }

@@ -26,6 +26,7 @@ use crate::proxy_core_adapter::{
     auth_info_from_profile_ref,
     channel_auth_profile_missing_provider_warning,
     channel_auth_profile_resolution,
+    channel_auth_profile_missing_key_error_message,
     channel_health_reset_from_parts,
     extract_proxy_session_id,
     proxy_app_config_from_config_parts, proxy_global_config_from_config,
@@ -685,8 +686,8 @@ fn apply_channel_auth_profile_providers(
 }
 
 fn channel_key_auth_error(channel_id: &str, key_ref: &str) -> ProxyCoreError {
-    ProxyCoreError::Auth(format!(
-        "channel auth profile references missing or disabled key: channel_id={channel_id}, key_ref={key_ref}"
+    ProxyCoreError::Auth(channel_auth_profile_missing_key_error_message(
+        channel_id, key_ref,
     ))
 }
 
