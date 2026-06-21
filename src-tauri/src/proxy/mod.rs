@@ -13,6 +13,7 @@ pub mod handler_context;
 mod handlers;
 pub mod http_client;
 pub mod hyper_client;
+pub(crate) mod managed_account_auth;
 pub mod provider_router;
 pub mod providers;
 pub(crate) mod response_adapter;

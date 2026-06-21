@@ -23,6 +23,15 @@ const FORBIDDEN_FORWARDER_URL_PLANNING_MARKERS: &[&str] = &[
     "apply_channel_param_overrides_to_url(",
     "is_codex_chat_full_endpoint_base(",
 ];
+const FORBIDDEN_FORWARDER_MANAGED_AUTH_MARKERS: &[&str] = &[
+    "CodexOAuthState",
+    "CodexOAuthManager",
+    "CopilotAuthManager",
+    "get_valid_token_for_account(",
+    "get_valid_token().await",
+    "default_account_id().await",
+    "ProviderAuthInfo::new(token",
+];
 const PROXY_CORE_MARKER: &str = "crate::proxy_core::";
 const PROXY_CORE_API_MARKER: &str = "crate::proxy_core::api";
 const PROXY_ENGINE_CONSTRUCTOR_MARKER: &str = "ProxyEngine::new(";
@@ -833,6 +842,33 @@ fn production_forwarder_delegates_upstream_url_planning_to_adapter() {
     assert!(
         violations.is_empty(),
         "production forwarder must delegate upstream URL planning to proxy_core_adapter::forward_upstream_url_plan:\n{}",
+        violations.join("\n")
+    );
+}
+
+#[test]
+fn production_forwarder_delegates_managed_auth_resolution_to_adapter() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let path = manifest_dir.join("src/proxy/forwarder.rs");
+    let source = fs::read_to_string(&path).expect("read forwarder.rs");
+
+    let mut violations = Vec::new();
+    for (line_index, line) in production_lines(&source) {
+        let code = line.split("//").next().unwrap_or_default();
+        for marker in FORBIDDEN_FORWARDER_MANAGED_AUTH_MARKERS {
+            if code.contains(marker) {
+                violations.push(format!(
+                    "src/proxy/forwarder.rs:{} contains managed auth marker `{}`",
+                    line_index + 1,
+                    marker
+                ));
+            }
+        }
+    }
+
+    assert!(
+        violations.is_empty(),
+        "production forwarder must delegate managed account token resolution to proxy::managed_account_auth:\n{}",
         violations.join("\n")
     );
 }
