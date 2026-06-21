@@ -13,7 +13,7 @@ use crate::proxy::route_attempt::{forward_attempts_from_route_plan, ForwardAttem
 use crate::proxy::usage::UsageLogger;
 use crate::proxy::RequestForwarder;
 use crate::proxy_core_adapter::{
-    AppKind, AuthInfo, AuthProfileRef, ChannelAttemptResult, ChannelAuthProfileResolution,
+    AppKind, AuthInfo, AuthProfileRef, ChannelAttemptResult, ChannelAuthProfileAction,
     ChannelQuery,
     ChannelSource, ChannelSpec, channel_not_found_error, AuthProvider,
     ChannelHealthReset, ChannelHealthStore, CurrentRouteTarget, ForwardPipeline,
@@ -29,8 +29,7 @@ use crate::proxy_core_adapter::{
     auth_info_from_profile_ref,
     app_type_from_proxy_core_app,
     app_type_option_from_proxy_core_app,
-    channel_auth_profile_missing_provider_warning,
-    channel_auth_profile_resolution,
+    channel_auth_profile_action,
     channel_health_reset_from_parts,
     channel_key_auth_error,
     client_model_catalog_raw_from_text,
@@ -645,25 +644,22 @@ fn apply_channel_auth_profile_providers(
             .channel()
             .and_then(|channel| channel.auth_profile_ref.as_ref())
             .map(String::as_str);
-        match channel_auth_profile_resolution(auth_profile_ref, app_type.as_str()) {
-            ChannelAuthProfileResolution::Provider { provider_id } => {
+        let channel_id = attempt.channel().map(|channel| channel.channel_id.as_str());
+        match channel_auth_profile_action(app_type.as_str(), auth_profile_ref, channel_id) {
+            ChannelAuthProfileAction::Provider {
+                provider_id,
+                missing_provider_warning,
+            } => {
                 let Some(provider) = providers.get(&provider_id).cloned() else {
-                    log::warn!(
-                        "{}",
-                        channel_auth_profile_missing_provider_warning(
-                            app_type.as_str(),
-                            auth_profile_ref
-                        )
-                    );
+                    log::warn!("{missing_provider_warning}");
                     continue;
                 };
                 attempt.set_auth_provider(provider);
             }
-            ChannelAuthProfileResolution::ChannelKey { key_ref } => {
-                let Some(channel_id) = attempt.channel().map(|channel| channel.channel_id.clone())
-                else {
-                    continue;
-                };
+            ChannelAuthProfileAction::ChannelKey {
+                channel_id,
+                key_ref,
+            } => {
                 let Some(key) = db
                     .get_enabled_proxy_channel_key(&channel_id, &key_ref)
                     .map_err(|error| app_error("load channel auth key", error))?
@@ -676,7 +672,7 @@ fn apply_channel_auth_profile_providers(
                     &key.key_value,
                 ));
             }
-            ChannelAuthProfileResolution::Ignore => {
+            ChannelAuthProfileAction::Ignore => {
                 continue;
             }
         }

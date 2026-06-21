@@ -502,6 +502,46 @@ pub(crate) fn channel_auth_profile_missing_provider_warning(
     )
 }
 
+pub(crate) enum ChannelAuthProfileAction {
+    Provider {
+        provider_id: String,
+        missing_provider_warning: String,
+    },
+    ChannelKey {
+        channel_id: String,
+        key_ref: String,
+    },
+    Ignore,
+}
+
+pub(crate) fn channel_auth_profile_action(
+    app_type: &str,
+    auth_profile_ref: Option<&str>,
+    channel_id: Option<&str>,
+) -> ChannelAuthProfileAction {
+    match channel_auth_profile_resolution(auth_profile_ref, app_type) {
+        ChannelAuthProfileResolution::Provider { provider_id } => {
+            ChannelAuthProfileAction::Provider {
+                provider_id,
+                missing_provider_warning: channel_auth_profile_missing_provider_warning(
+                    app_type,
+                    auth_profile_ref,
+                ),
+            }
+        }
+        ChannelAuthProfileResolution::ChannelKey { key_ref } => {
+            let Some(channel_id) = channel_id else {
+                return ChannelAuthProfileAction::Ignore;
+            };
+            ChannelAuthProfileAction::ChannelKey {
+                channel_id: channel_id.to_string(),
+                key_ref,
+            }
+        }
+        ChannelAuthProfileResolution::Ignore => ChannelAuthProfileAction::Ignore,
+    }
+}
+
 pub(crate) fn model_route_from_input(input: ModelRouteInput) -> ModelRoute {
     crate::proxy_core::api::domain::model_route_from_input(input)
 }
@@ -2742,6 +2782,27 @@ mod tests {
             channel_auth_profile_missing_provider_warning("claude", None),
             "[claude] channel auth profile references missing provider: "
         );
+        assert!(matches!(
+            channel_auth_profile_action(
+                "claude",
+                Some("provider:claude:provider-a"),
+                Some("channel-a")
+            ),
+            ChannelAuthProfileAction::Provider {
+                provider_id,
+                missing_provider_warning,
+            } if provider_id == "provider-a"
+                && missing_provider_warning.contains("provider:claude:provider-a")
+        ));
+        assert!(matches!(
+            channel_auth_profile_action("claude", Some("channel-key:primary"), Some("channel-a")),
+            ChannelAuthProfileAction::ChannelKey { channel_id, key_ref }
+                if channel_id == "channel-a" && key_ref == "primary"
+        ));
+        assert!(matches!(
+            channel_auth_profile_action("claude", Some("channel-key:primary"), None),
+            ChannelAuthProfileAction::Ignore
+        ));
         assert!(matches!(
             channel_key_auth_error("channel-a", "primary"),
             ProxyCoreError::Auth(message)
