@@ -4,6 +4,7 @@ use crate::database::{
     FailoverQueueItem, ProxyChannelKeyRecord, ProxyChannelModelRecord, ProxyChannelRecord,
     ProxyChannelSourceKind,
 };
+use crate::error::AppError;
 use crate::provider::{Provider, ProviderMeta};
 use crate::proxy::hyper_client::ProxyResponse;
 use crate::proxy::providers::provider_kind_from_app_type_and_config;
@@ -72,6 +73,14 @@ pub(crate) fn error_message_with_context(
     error: impl std::fmt::Display,
 ) -> String {
     crate::proxy_core::api::errors::error_message_with_context(context, &error.to_string())
+}
+
+pub(crate) fn app_error(context: &str, error: AppError) -> ProxyCoreError {
+    ProxyCoreError::Config(error_message_with_context(context, error))
+}
+
+pub(crate) fn usage_error(context: &str, error: AppError) -> ProxyCoreError {
+    ProxyCoreError::Internal(error_message_with_context(context, error))
 }
 
 pub(crate) const SYSTEM_PROXY_ENV_KEYS: [&str; 6] =
@@ -3990,6 +3999,16 @@ mod tests {
 
     #[test]
     fn error_mapper_adapter_projects_error_contracts() {
+        assert!(matches!(
+            app_error("load config", AppError::Message("disk failed".to_string())),
+            ProxyCoreError::Config(message)
+                if message == "load config: disk failed"
+        ));
+        assert!(matches!(
+            usage_error("record usage", AppError::Message("db failed".to_string())),
+            ProxyCoreError::Internal(message)
+                if message == "record usage: db failed"
+        ));
         assert_eq!(
             codex_proxy_error_code(CodexProxyErrorKind::ForwardFailed),
             "cc_switch_forward_failed"

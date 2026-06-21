@@ -1,5 +1,6 @@
 use crate::app_config::AppType;
 use crate::database::Database;
+#[cfg(test)]
 use crate::error::AppError;
 use crate::proxy::error_mapper::forward_error_to_core_error;
 use crate::proxy::events::ProxyEventBus;
@@ -24,6 +25,7 @@ use crate::proxy_core_adapter::{
     DEFAULT_CHANNEL_HEALTH_FAILURE_THRESHOLD,
 };
 use crate::proxy_core_adapter::{
+    app_error,
     auth_info_from_profile_ref,
     app_type_from_proxy_core_app,
     app_type_option_from_proxy_core_app,
@@ -34,7 +36,6 @@ use crate::proxy_core_adapter::{
     client_model_catalog_raw_from_text,
     current_provider_id_from_sources,
     current_provider_id_option_from_sources,
-    error_message_with_context,
     empty_client_model_catalog_raw,
     extract_proxy_session_id,
     forward_result_to_proxy_result,
@@ -48,6 +49,7 @@ use crate::proxy_core_adapter::{
     response_runtime_policy_from_app_proxy_config,
     route_plan_no_matching_host_providers_error_message,
     route_policy_from_failover_queue,
+    usage_error,
 };
 use futures::future::BoxFuture;
 use indexmap::IndexMap;
@@ -679,14 +681,6 @@ fn apply_channel_auth_profile_providers(
         }
     }
     Ok(())
-}
-
-fn app_error(context: &str, error: AppError) -> ProxyCoreError {
-    ProxyCoreError::Config(error_message_with_context(context, error))
-}
-
-fn usage_error(context: &str, error: AppError) -> ProxyCoreError {
-    ProxyCoreError::Internal(error_message_with_context(context, error))
 }
 
 fn load_codex_client_model_catalog_raw() -> Value {
