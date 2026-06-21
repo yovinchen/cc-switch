@@ -730,6 +730,27 @@ pub fn record_forward_failure_status(
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ForwardRequestStartedStatusInput<'a> {
+    pub timestamp: &'a str,
+}
+
+pub fn record_forward_request_started_status(
+    status: &mut ProxyRuntimeStatus,
+    input: ForwardRequestStartedStatusInput<'_>,
+) {
+    status.total_requests = status.total_requests.saturating_add(1);
+    status.last_request_at = Some(input.timestamp.to_string());
+}
+
+pub fn record_active_connection_acquired_status(status: &mut ProxyRuntimeStatus) {
+    status.active_connections = status.active_connections.saturating_add(1);
+}
+
+pub fn record_active_connection_released_status(status: &mut ProxyRuntimeStatus) {
+    status.active_connections = status.active_connections.saturating_sub(1);
+}
+
 pub fn apply_proxy_runtime_active_targets(
     status: &mut ProxyRuntimeStatus,
     active_targets: impl IntoIterator<Item = CurrentRouteTarget>,
@@ -2934,8 +2955,10 @@ mod tests {
         ProxyChannelModelsReplaceRequest, ProxyChannelPatchRequest, ProxyChannelTestRequest,
         ProxyChannelWriteRequest, ProxyConfig, ProxyCoreEvent, ProxyCoreEventType,
         ProxyRuntimeStatus, ProxyServerInfo, ProxyStatusResponse, ProxyTakeoverStatus,
-        ForwardFailureStatusInput, ForwardSuccessStatusInput, ForwardSuccessStatusUpdate,
-        apply_proxy_runtime_active_targets, record_forward_failure_status,
+        ForwardFailureStatusInput, ForwardRequestStartedStatusInput, ForwardSuccessStatusInput,
+        ForwardSuccessStatusUpdate, apply_proxy_runtime_active_targets,
+        record_active_connection_acquired_status, record_active_connection_released_status,
+        record_forward_failure_status, record_forward_request_started_status,
         record_forward_success_status,
         RectifierConfig, RouteGroupListResponse, RouteGroupSourceInput, RouteResolveResponse,
         StreamCheckConfig, StreamCheckResult, DEFAULT_PROXY_LISTEN_ADDRESS,
@@ -3731,6 +3754,47 @@ mod tests {
         assert_eq!(status.active_targets[0].app_type, "claude");
         assert_eq!(status.active_targets[1].app_type, "codex");
         assert_eq!(status.active_targets[0].channel_id.as_deref(), Some("channel-a"));
+    }
+
+    #[test]
+    fn forward_request_started_status_records_timestamp_and_saturates_total() {
+        let mut status = ProxyRuntimeStatus {
+            total_requests: u64::MAX,
+            last_request_at: Some("old".to_string()),
+            ..ProxyRuntimeStatus::default()
+        };
+
+        record_forward_request_started_status(
+            &mut status,
+            ForwardRequestStartedStatusInput {
+                timestamp: "2026-06-21T12:00:00Z",
+            },
+        );
+
+        assert_eq!(status.total_requests, u64::MAX);
+        assert_eq!(
+            status.last_request_at.as_deref(),
+            Some("2026-06-21T12:00:00Z")
+        );
+    }
+
+    #[test]
+    fn active_connection_status_saturates_acquire_and_release() {
+        let mut status = ProxyRuntimeStatus {
+            active_connections: usize::MAX,
+            ..ProxyRuntimeStatus::default()
+        };
+
+        record_active_connection_acquired_status(&mut status);
+        assert_eq!(status.active_connections, usize::MAX);
+
+        status.active_connections = 0;
+        record_active_connection_released_status(&mut status);
+        assert_eq!(status.active_connections, 0);
+
+        record_active_connection_acquired_status(&mut status);
+        record_active_connection_released_status(&mut status);
+        assert_eq!(status.active_connections, 0);
     }
 
     #[test]

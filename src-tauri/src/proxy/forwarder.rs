@@ -31,7 +31,9 @@ use crate::proxy_core_adapter::{
     is_unsupported_image_error, mapped_channel_response_status,
     merge_copilot_tool_results, normalize_thinking_type, prepare_upstream_request_body_with_report,
     prompt_cache_trace_log_message, rectify_anthropic_request, rectify_thinking_budget,
-    replace_image_blocks_with_marker, record_forward_failure_status, record_forward_success_status,
+    replace_image_blocks_with_marker, record_active_connection_acquired_status,
+    record_active_connection_released_status, record_forward_failure_status,
+    record_forward_request_started_status, record_forward_success_status,
     replace_images_for_text_only_model, request_body_filter_log_message,
     resolve_claude_forward_api_format,
     resolve_copilot_deterministic_interaction_id, resolve_copilot_model_against_ids,
@@ -101,7 +103,7 @@ impl ActiveConnectionGuard {
     pub(crate) async fn acquire(status: Arc<RwLock<ProxyRuntimeStatus>>) -> Self {
         {
             let mut s = status.write().await;
-            s.active_connections = s.active_connections.saturating_add(1);
+            record_active_connection_acquired_status(&mut s);
         }
         Self { status }
     }
@@ -114,7 +116,7 @@ impl Drop for ActiveConnectionGuard {
         if let Ok(handle) = tokio::runtime::Handle::try_current() {
             handle.spawn(async move {
                 let mut s = status.write().await;
-                s.active_connections = s.active_connections.saturating_sub(1);
+                record_active_connection_released_status(&mut s);
             });
         }
         // 没有 runtime 时静默丢失计数（仅 UI 展示用，可接受最终一致性）
@@ -554,8 +556,7 @@ impl RequestForwarder {
         let guard = ActiveConnectionGuard::acquire(self.status.clone()).await;
         {
             let mut s = self.status.write().await;
-            s.total_requests = s.total_requests.saturating_add(1);
-            s.last_request_at = Some(chrono::Utc::now().to_rfc3339());
+            record_forward_request_started_status(&mut s, &chrono::Utc::now().to_rfc3339());
         }
         let result = self
             .forward_preplanned_attempts_inner(

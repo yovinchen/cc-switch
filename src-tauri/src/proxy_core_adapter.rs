@@ -249,6 +249,24 @@ pub(crate) fn record_forward_failure_status(
     );
 }
 
+pub(crate) fn record_forward_request_started_status(
+    status: &mut ProxyRuntimeStatus,
+    timestamp: &str,
+) {
+    crate::proxy_core::api::ports::record_forward_request_started_status(
+        status,
+        crate::proxy_core::api::ports::ForwardRequestStartedStatusInput { timestamp },
+    );
+}
+
+pub(crate) fn record_active_connection_acquired_status(status: &mut ProxyRuntimeStatus) {
+    crate::proxy_core::api::ports::record_active_connection_acquired_status(status);
+}
+
+pub(crate) fn record_active_connection_released_status(status: &mut ProxyRuntimeStatus) {
+    crate::proxy_core::api::ports::record_active_connection_released_status(status);
+}
+
 pub(crate) type ProxyRuntimeConfig =
     crate::proxy_core::api::config::ProxyRuntimeConfig;
 pub(crate) type ProxyGlobalConfig = crate::proxy_core::api::config::ProxyGlobalConfig;
