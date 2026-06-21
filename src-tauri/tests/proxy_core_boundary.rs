@@ -202,6 +202,83 @@ fn channel_list_handler_delegates_materialized_records_to_proxy_engine() {
 }
 
 #[test]
+fn channel_crud_handlers_delegate_records_to_proxy_engine() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let path = manifest_dir.join("src/proxy/handlers.rs");
+    let source = fs::read_to_string(&path).expect("read handlers.rs");
+    let handlers = [
+        (
+            "create_proxy_channel",
+            function_slice(
+                &source,
+                "pub async fn create_proxy_channel",
+                "/// GET /proxy/v1/channels/{channel_id}",
+            ),
+        ),
+        (
+            "get_proxy_channel",
+            function_slice(
+                &source,
+                "pub async fn get_proxy_channel",
+                "/// PATCH /proxy/v1/channels/{channel_id}",
+            ),
+        ),
+        (
+            "update_proxy_channel",
+            function_slice(
+                &source,
+                "pub async fn update_proxy_channel",
+                "/// DELETE /proxy/v1/channels/{channel_id}",
+            ),
+        ),
+        (
+            "delete_proxy_channel",
+            function_slice(
+                &source,
+                "pub async fn delete_proxy_channel",
+                "/// GET /proxy/v1/channels/{channel_id}/keys",
+            ),
+        ),
+    ];
+
+    let forbidden_markers = [
+        "state.db",
+        ".create_proxy_channel(",
+        ".get_proxy_channel(",
+        ".update_proxy_channel(",
+        ".delete_proxy_channel(",
+        "channel_create_source_from_record",
+        "channel_record_source_from_record",
+        "channel_delete_source_from_deleted",
+        ".record_response_from_source(",
+        ".delete_response_from_source(",
+    ];
+
+    let mut violations = Vec::new();
+    for (handler_name, handler) in handlers {
+        for (line_index, line) in production_lines(handler) {
+            let code = line.split("//").next().unwrap_or_default();
+            for marker in forbidden_markers {
+                if code.contains(marker) {
+                    violations.push(format!(
+                        "src/proxy/handlers.rs {}:{} contains channel CRUD source marker `{}`",
+                        handler_name,
+                        line_index + 1,
+                        marker
+                    ));
+                }
+            }
+        }
+    }
+
+    assert!(
+        violations.is_empty(),
+        "channel CRUD HTTP handlers must delegate record sources to ProxyEngine:\n{}",
+        violations.join("\n")
+    );
+}
+
+#[test]
 fn channel_list_route_branch_delegates_dry_run_to_proxy_engine() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let path = manifest_dir.join("src/proxy/handlers.rs");

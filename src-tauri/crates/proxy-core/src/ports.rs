@@ -83,6 +83,51 @@ pub trait ChannelSource: Send + Sync {
         channel_id: &'a str,
     ) -> BoxFuture<'a, ProxyCoreResult<Option<ChannelSpec>>>;
 
+    fn create_channel_record<'a>(
+        &'a self,
+        _request: ProxyChannelWriteRequest,
+    ) -> BoxFuture<'a, ProxyCoreResult<ChannelRecord>> {
+        Box::pin(async {
+            Err(ProxyCoreError::Unavailable(
+                "management channel create source is not configured".to_string(),
+            ))
+        })
+    }
+
+    fn get_channel_record<'a>(
+        &'a self,
+        _channel_id: &'a str,
+    ) -> BoxFuture<'a, ProxyCoreResult<Option<ChannelRecord>>> {
+        Box::pin(async {
+            Err(ProxyCoreError::Unavailable(
+                "management channel record source is not configured".to_string(),
+            ))
+        })
+    }
+
+    fn update_channel_record<'a>(
+        &'a self,
+        _channel_id: &'a str,
+        _patch: ProxyChannelPatchRequest,
+    ) -> BoxFuture<'a, ProxyCoreResult<Option<ChannelRecord>>> {
+        Box::pin(async {
+            Err(ProxyCoreError::Unavailable(
+                "management channel update source is not configured".to_string(),
+            ))
+        })
+    }
+
+    fn delete_channel_record<'a>(
+        &'a self,
+        _channel_id: &'a str,
+    ) -> BoxFuture<'a, ProxyCoreResult<bool>> {
+        Box::pin(async {
+            Err(ProxyCoreError::Unavailable(
+                "management channel delete source is not configured".to_string(),
+            ))
+        })
+    }
+
     fn list_channel_records<'a>(
         &'a self,
         _app: &'a AppKind,

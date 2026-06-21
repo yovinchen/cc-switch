@@ -70,11 +70,9 @@ use crate::proxy_core_adapter::{
 };
 use crate::proxy_core_adapter::{
     app_list_source_from_summaries,
-    channel_delete_source_from_deleted, channel_health_reset_source_from_response,
-    channel_create_source_from_record,
+    channel_health_reset_source_from_response,
     channel_key_delete_source_from_deleted,
     channel_key_record_source_from_record, channel_keys_source_from_records,
-    channel_record_source_from_record,
     channel_models_source_from_records,
     channel_test_plan_from_record, health_check_source_from_timestamp,
     proxy_app_summary_input, proxy_status_source_from_status,
@@ -269,13 +267,13 @@ pub async fn create_proxy_channel(
     Json(request): Json<ProxyChannelWriteRequest>,
 ) -> Result<Json<ChannelRecordResponse<ChannelRecord>>, ProxyError> {
     let request = ChannelCreateRequest::from_body(request);
-    let channel = state
-        .db
-        .create_proxy_channel(request.clone().into_body())
-        .map_err(|e| ProxyError::InvalidRequest(e.to_string()))?;
-    Ok(Json(request.record_response_from_source(
-        channel_create_source_from_record(channel),
-    )))
+    let response = state
+        .proxy_engine()
+        .create_channel_response(request)
+        .await
+        .map_err(proxy_core_error_to_proxy_error)?;
+
+    Ok(Json(response))
 }
 
 /// GET /proxy/v1/channels/{channel_id}
@@ -285,15 +283,13 @@ pub async fn get_proxy_channel(
 ) -> Result<Json<ChannelRecordResponse<ChannelRecord>>, ProxyError> {
     let request =
         ChannelPathRequest::from_path(channel_id).map_err(management_api_error_to_proxy_error)?;
-    let channel = state
-        .db
-        .get_proxy_channel(&request.channel_id)
-        .map_err(|e| ProxyError::DatabaseError(e.to_string()))?;
-    Ok(Json(
-        request
-            .record_response_from_source(channel_record_source_from_record(channel))
-            .map_err(management_api_error_to_proxy_error)?,
-    ))
+    let response = state
+        .proxy_engine()
+        .channel_record_response(request)
+        .await
+        .map_err(proxy_core_error_to_proxy_error)?;
+
+    Ok(Json(response))
 }
 
 /// PATCH /proxy/v1/channels/{channel_id}
@@ -304,15 +300,13 @@ pub async fn update_proxy_channel(
 ) -> Result<Json<ChannelRecordResponse<ChannelRecord>>, ProxyError> {
     let path_request =
         ChannelPathRequest::from_path(channel_id).map_err(management_api_error_to_proxy_error)?;
-    let channel = state
-        .db
-        .update_proxy_channel(&path_request.channel_id, request)
-        .map_err(|e| ProxyError::InvalidRequest(e.to_string()))?;
-    Ok(Json(
-        path_request
-            .record_response_from_source(channel_record_source_from_record(channel))
-            .map_err(management_api_error_to_proxy_error)?,
-    ))
+    let response = state
+        .proxy_engine()
+        .update_channel_response(path_request, request)
+        .await
+        .map_err(proxy_core_error_to_proxy_error)?;
+
+    Ok(Json(response))
 }
 
 /// DELETE /proxy/v1/channels/{channel_id}
@@ -322,13 +316,13 @@ pub async fn delete_proxy_channel(
 ) -> Result<Json<ChannelDeleteResponse>, ProxyError> {
     let request =
         ChannelPathRequest::from_path(channel_id).map_err(management_api_error_to_proxy_error)?;
-    let deleted = state
-        .db
-        .delete_proxy_channel(&request.channel_id)
-        .map_err(|e| ProxyError::DatabaseError(e.to_string()))?;
-    Ok(Json(
-        request.delete_response_from_source(channel_delete_source_from_deleted(deleted)),
-    ))
+    let response = state
+        .proxy_engine()
+        .delete_channel_response(request)
+        .await
+        .map_err(proxy_core_error_to_proxy_error)?;
+
+    Ok(Json(response))
 }
 
 /// GET /proxy/v1/channels/{channel_id}/keys

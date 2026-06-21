@@ -7,18 +7,21 @@ use super::domain::{
 use super::error::ProxyCoreResult;
 use super::management_api::{
     AppChannelListSource, AppChannelManagementPlan, AppChannelManagementRequest,
-    AppModelCatalogRequest, ChannelListPlan, ChannelListRequest, ChannelListSource,
-    ChannelMigrationMaterializeSource, ChannelMigrationPreviewSource, CurrentRouteSource,
-    GroupListChannelRecordInput, GroupListChannelSource, GroupListRequest,
-    ManagementAppPathRequest, ProviderListSource, RouteResolveManagementRequest,
+    AppModelCatalogRequest, ChannelCreateRequest, ChannelCreateSource, ChannelDeleteSource,
+    ChannelListPlan, ChannelListRequest, ChannelListSource,
+    ChannelMigrationMaterializeSource, ChannelMigrationPreviewSource, ChannelPathRequest,
+    ChannelRecordSource, CurrentRouteSource, GroupListChannelRecordInput,
+    GroupListChannelSource, GroupListRequest, ManagementAppPathRequest, ProviderListSource,
+    RouteResolveManagementRequest,
 };
 use super::ports::{
-    AppChannelResponse, ChannelHealthReset, ChannelHealthResetResponse, ChannelRecord,
-    ChannelListResponse, ChannelMigrationMaterializeResponse,
+    AppChannelResponse, ChannelDeleteResponse, ChannelHealthReset, ChannelHealthResetResponse,
+    ChannelRecord, ChannelRecordResponse, ChannelListResponse, ChannelMigrationMaterializeResponse,
     ChannelMigrationPreviewResponse, ChannelRouteCandidate, ChannelRouteRejected,
     ClientModelCatalogResponse, CurrentRouteProviderSummaryInput, CurrentRouteResponse,
     CurrentRouteTarget, ModelCatalog, ProviderListResponse, ProxyCoreEvent,
-    ProxyCoreEventType, ProxyServices, RouteGroupListResponse, RouteResolveResponse,
+    ProxyChannelPatchRequest, ProxyCoreEventType, ProxyServices, RouteGroupListResponse,
+    RouteResolveResponse,
 };
 use serde_json::{json, to_value, Value};
 use std::collections::BTreeMap;
@@ -305,6 +308,57 @@ where
         Ok(request.response_from_source(ChannelListSource::new(channels)))
     }
 
+    pub async fn create_channel_response(
+        &self,
+        request: ChannelCreateRequest,
+    ) -> ProxyCoreResult<ChannelRecordResponse<ChannelRecord>> {
+        let channel = self
+            .services
+            .channels()
+            .create_channel_record(request.clone().into_body())
+            .await?;
+        Ok(request.record_response_from_source(ChannelCreateSource::new(
+            channel,
+        )))
+    }
+
+    pub async fn channel_record_response(
+        &self,
+        request: ChannelPathRequest,
+    ) -> ProxyCoreResult<ChannelRecordResponse<ChannelRecord>> {
+        let channel = self
+            .services
+            .channels()
+            .get_channel_record(&request.channel_id)
+            .await?;
+        request.record_response_from_source(ChannelRecordSource::new(channel))
+    }
+
+    pub async fn update_channel_response(
+        &self,
+        request: ChannelPathRequest,
+        patch: ProxyChannelPatchRequest,
+    ) -> ProxyCoreResult<ChannelRecordResponse<ChannelRecord>> {
+        let channel = self
+            .services
+            .channels()
+            .update_channel_record(&request.channel_id, patch)
+            .await?;
+        request.record_response_from_source(ChannelRecordSource::new(channel))
+    }
+
+    pub async fn delete_channel_response(
+        &self,
+        request: ChannelPathRequest,
+    ) -> ProxyCoreResult<ChannelDeleteResponse> {
+        let deleted = self
+            .services
+            .channels()
+            .delete_channel_record(&request.channel_id)
+            .await?;
+        Ok(request.delete_response_from_source(ChannelDeleteSource::new(deleted)))
+    }
+
     pub async fn channel_migration_preview_response(
         &self,
         request: ManagementAppPathRequest,
@@ -487,8 +541,8 @@ mod tests {
         ChannelMigrationMaterializeInput, ChannelMigrationPreviewInput, ChannelRouteSource,
         AuthInfo, AuthProvider, ChannelHealthStore, ChannelSource, ForwardPipeline, ModelCatalog,
         ModelCatalogProvider, ProviderSource, ProxyAppConfig, ProxyConfigSource, ProxyCoreEvent,
-        ProxyEventSink, ProxyGlobalConfig, ProxyRuntimeConfig, RoutePolicySource, RouteResolver,
-        RouteResolveRequest, UsageSink,
+        ProxyChannelPatchRequest, ProxyChannelWriteRequest, ProxyEventSink, ProxyGlobalConfig,
+        ProxyRuntimeConfig, RoutePolicySource, RouteResolver, RouteResolveRequest, UsageSink,
     };
     use futures::future::BoxFuture;
     use http::{Method, StatusCode};
@@ -657,6 +711,96 @@ mod tests {
             channel_id: &'a str,
         ) -> BoxFuture<'a, ProxyCoreResult<Option<ChannelSpec>>> {
             Box::pin(async move { Ok((channel_id == "channel-a").then(channel_spec)) })
+        }
+
+        fn create_channel_record<'a>(
+            &'a self,
+            request: ProxyChannelWriteRequest,
+        ) -> BoxFuture<'a, ProxyCoreResult<ChannelRecord>> {
+            let mut record = channel_record_with_app_and_groups(&request.app_type, request.groups);
+            record.id = request.id.unwrap_or_else(|| "channel-a".to_string());
+            record.provider_id = request.provider_id;
+            record.name = request.name;
+            record.status = request.status;
+            record.base_url = request.base_url;
+            record.interface_kind = request.interface_kind;
+            record.auth_profile_ref = request.auth_profile_ref;
+            record.priority = request.priority;
+            record.weight = request.weight;
+            record.retry_policy = request.retry_policy;
+            record.health_policy = request.health_policy;
+            record.header_overrides = request.header_overrides;
+            record.param_overrides = request.param_overrides;
+            record.status_code_mapping = request.status_code_mapping;
+            record.tags = request.tags;
+            record.metadata = request.metadata;
+            self.channel_records
+                .lock()
+                .expect("channel records mutex")
+                .push(record.clone());
+            Box::pin(async move { Ok(record) })
+        }
+
+        fn get_channel_record<'a>(
+            &'a self,
+            channel_id: &'a str,
+        ) -> BoxFuture<'a, ProxyCoreResult<Option<ChannelRecord>>> {
+            let channel = self
+                .channel_records
+                .lock()
+                .expect("channel records mutex")
+                .iter()
+                .find(|record| record.id == channel_id)
+                .cloned()
+                .or_else(|| (channel_id == "channel-a").then(channel_record));
+            Box::pin(async move { Ok(channel) })
+        }
+
+        fn update_channel_record<'a>(
+            &'a self,
+            channel_id: &'a str,
+            patch: ProxyChannelPatchRequest,
+        ) -> BoxFuture<'a, ProxyCoreResult<Option<ChannelRecord>>> {
+            let mut record = self
+                .channel_records
+                .lock()
+                .expect("channel records mutex")
+                .iter()
+                .find(|record| record.id == channel_id)
+                .cloned()
+                .or_else(|| (channel_id == "channel-a").then(channel_record));
+            if let Some(record) = &mut record {
+                if let Some(name) = patch.name {
+                    record.name = name;
+                }
+                if let Some(status) = patch.status {
+                    record.status = status;
+                }
+                if let Some(base_url) = patch.base_url {
+                    record.base_url = base_url;
+                }
+                if let Some(interface_kind) = patch.interface_kind {
+                    record.interface_kind = interface_kind;
+                }
+                if let Some(groups) = patch.groups {
+                    record.groups = groups;
+                }
+                if let Some(priority) = patch.priority {
+                    record.priority = priority;
+                }
+                if let Some(weight) = patch.weight {
+                    record.weight = weight;
+                }
+            }
+            Box::pin(async move { Ok(record) })
+        }
+
+        fn delete_channel_record<'a>(
+            &'a self,
+            channel_id: &'a str,
+        ) -> BoxFuture<'a, ProxyCoreResult<bool>> {
+            let deleted = channel_id == "channel-a";
+            Box::pin(async move { Ok(deleted) })
         }
 
         fn list_channel_records<'a>(
@@ -1302,6 +1446,51 @@ mod tests {
                 .expect("queried materialized channel apps mutex"),
             vec![None, Some("claude".to_string())]
         );
+    }
+
+    #[test]
+    fn channel_crud_responses_delegate_to_channel_source() {
+        let services = Arc::new(TestServices::default());
+        let engine = ProxyEngine::new(services);
+        let create_request = ChannelCreateRequest::from_body(ProxyChannelWriteRequest {
+            id: Some("channel-a".to_string()),
+            provider_id: "provider-a".to_string(),
+            app_type: "claude".to_string(),
+            name: "Channel A".to_string(),
+            status: "enabled".to_string(),
+            base_url: "https://upstream.example.com/v1".to_string(),
+            interface_kind: "anthropic_messages".to_string(),
+            groups: vec![DEFAULT_ROUTE_GROUP.to_string()],
+            ..ProxyChannelWriteRequest::default()
+        });
+
+        let created =
+            futures::executor::block_on(engine.create_channel_response(create_request))
+                .expect("create channel response");
+        let fetched = futures::executor::block_on(engine.channel_record_response(
+            ChannelPathRequest::from_path("channel-a").expect("channel path"),
+        ))
+        .expect("get channel response");
+        let updated = futures::executor::block_on(engine.update_channel_response(
+            ChannelPathRequest::from_path("channel-a").expect("channel path"),
+            ProxyChannelPatchRequest {
+                name: Some("Channel Updated".to_string()),
+                priority: Some(150),
+                ..ProxyChannelPatchRequest::default()
+            },
+        ))
+        .expect("update channel response");
+        let deleted = futures::executor::block_on(engine.delete_channel_response(
+            ChannelPathRequest::from_path("channel-a").expect("channel path"),
+        ))
+        .expect("delete channel response");
+
+        assert_eq!(created.channel.id, "channel-a");
+        assert_eq!(fetched.channel.provider_id, "provider-a");
+        assert_eq!(updated.channel.name, "Channel Updated");
+        assert_eq!(updated.channel.priority, 150);
+        assert_eq!(deleted.channel_id, "channel-a");
+        assert!(deleted.deleted);
     }
 
     #[test]

@@ -756,14 +756,14 @@ pub(crate) use crate::proxy_core::api::management::{
     AppListSource, AppModelCatalogRequest,
     AppModelListQuery, ChannelCreateRequest,
     CHANNEL_HEALTH_UNKNOWN_STATUS,
-    ChannelCreateSource, ChannelDeleteResponse, ChannelDeleteSource, ChannelHealthResetResponse,
+    ChannelDeleteResponse, ChannelHealthResetResponse,
     ChannelHealthResetSource, ChannelHealthUpdateInput, ChannelKeyDeleteResponse,
     ChannelKeyDeleteSource, ChannelKeyPathRequest, ChannelKeyRecordResponse,
     ChannelKeyRecordSource, ChannelKeysResponse, ChannelKeysSource, ChannelListQuery,
     ChannelListRequest, ChannelListResponse,
     ChannelMigrationMaterializeInput, ChannelMigrationMaterializeResponse,
     ChannelMigrationPreviewInput, ChannelMigrationPreviewResponse, ChannelModelsResponse,
-    ChannelModelsSource, ChannelPathRequest, ChannelRecordResponse, ChannelRecordSource,
+    ChannelModelsSource, ChannelPathRequest, ChannelRecordResponse,
     ChannelRouteRejected,
     ChannelTestPlan, ChannelTestResponse, CurrentRouteResponse, GroupListQuery, GroupListRequest,
     HealthCheckRequest, HealthCheckResponse, HealthCheckSource, ManagementAppPathRequest,
@@ -3059,22 +3059,6 @@ pub(crate) fn proxy_channel_records_to_core(
         .into_iter()
         .map(proxy_channel_record_to_core)
         .collect()
-}
-
-pub(crate) fn channel_create_source_from_record(
-    channel: ProxyChannelRecord,
-) -> ChannelCreateSource<ChannelRecord> {
-    ChannelCreateSource::new(proxy_channel_record_to_core(channel))
-}
-
-pub(crate) fn channel_record_source_from_record(
-    channel: Option<ProxyChannelRecord>,
-) -> ChannelRecordSource<ChannelRecord> {
-    ChannelRecordSource::new(channel.map(proxy_channel_record_to_core))
-}
-
-pub(crate) fn channel_delete_source_from_deleted(deleted: bool) -> ChannelDeleteSource {
-    ChannelDeleteSource::new(deleted)
 }
 
 pub(crate) fn proxy_channel_key_record_to_core(key: ProxyChannelKeyRecord) -> ChannelKeyRecord {

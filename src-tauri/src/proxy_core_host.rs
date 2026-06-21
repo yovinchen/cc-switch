@@ -19,7 +19,7 @@ use crate::proxy_core_adapter::{
     ChannelHealthStore, CurrentRouteTarget, ForwardPipeline,
     GeminiShadowStore, ModelCatalog, ModelCatalogProvider, ProviderSource, ProviderSpec,
     ProxyAppConfig, ProxyConfigSource, ProxyCoreEvent,
-    ProxyCoreResult, ProxyEventSink, ProxyGlobalConfig, ProxyRequest,
+    ProxyChannelPatchRequest, ProxyChannelWriteRequest, ProxyCoreResult, ProxyEventSink, ProxyGlobalConfig, ProxyRequest,
     ProxyResult, ProxyRuntimeConfig, ProxyRuntimeStatus, ProxyServices, RoutePlan, RoutePolicy,
     RoutePolicySource, RouteRequest, RouteResolveRequest, RouteResolveResponse, RouteResolver,
     UsageRecord, UsageSink,
@@ -44,7 +44,7 @@ use crate::proxy_core_adapter::{
     forward_result_to_proxy_result,
     forwarding_runtime_unavailable_error,
     host_providers_for_plan,
-    provider_spec_from_source, proxy_channel_records_to_core,
+    provider_spec_from_source, proxy_channel_record_to_core, proxy_channel_records_to_core,
     provider_specs_from_source,
     provider_model_catalog_from_provider,
     proxy_app_config_from_config_source, proxy_global_config_from_config,
@@ -374,6 +374,57 @@ impl ChannelSource for CcSwitchChannelSource {
                 .get_proxy_channel(channel_id)
                 .map_err(|error| app_error("get channel", error))?;
             Ok(channel_spec_from_source(channel))
+        })
+    }
+
+    fn create_channel_record<'a>(
+        &'a self,
+        request: ProxyChannelWriteRequest,
+    ) -> BoxFuture<'a, ProxyCoreResult<ChannelRecord>> {
+        Box::pin(async move {
+            let channel = self
+                .db
+                .create_proxy_channel(request)
+                .map_err(|error| app_error("create channel record", error))?;
+            Ok(proxy_channel_record_to_core(channel))
+        })
+    }
+
+    fn get_channel_record<'a>(
+        &'a self,
+        channel_id: &'a str,
+    ) -> BoxFuture<'a, ProxyCoreResult<Option<ChannelRecord>>> {
+        Box::pin(async move {
+            let channel = self
+                .db
+                .get_proxy_channel(channel_id)
+                .map_err(|error| app_error("get channel record", error))?;
+            Ok(channel.map(proxy_channel_record_to_core))
+        })
+    }
+
+    fn update_channel_record<'a>(
+        &'a self,
+        channel_id: &'a str,
+        patch: ProxyChannelPatchRequest,
+    ) -> BoxFuture<'a, ProxyCoreResult<Option<ChannelRecord>>> {
+        Box::pin(async move {
+            let channel = self
+                .db
+                .update_proxy_channel(channel_id, patch)
+                .map_err(|error| app_error("update channel record", error))?;
+            Ok(channel.map(proxy_channel_record_to_core))
+        })
+    }
+
+    fn delete_channel_record<'a>(
+        &'a self,
+        channel_id: &'a str,
+    ) -> BoxFuture<'a, ProxyCoreResult<bool>> {
+        Box::pin(async move {
+            self.db
+                .delete_proxy_channel(channel_id)
+                .map_err(|error| app_error("delete channel record", error))
         })
     }
 
