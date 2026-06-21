@@ -13,6 +13,16 @@ const FORBIDDEN_FORWARDER_SELF_PLANNING_MARKERS: &[&str] = &[
 ];
 const FORBIDDEN_REQUEST_CONTEXT_PROVIDER_PRESELECT_MARKERS: &[&str] =
     &["provider_router", ".select_providers("];
+const FORBIDDEN_FORWARDER_URL_PLANNING_MARKERS: &[&str] = &[
+    "rewrite_codex_responses_endpoint_to_chat(",
+    "rewrite_claude_transform_endpoint(",
+    "claude_transform_endpoint_rewrite_input_from_body(",
+    "resolve_gemini_native_url(",
+    "append_query_to_full_url(",
+    "split_endpoint_and_query(",
+    "apply_channel_param_overrides_to_url(",
+    "is_codex_chat_full_endpoint_base(",
+];
 const PROXY_CORE_MARKER: &str = "crate::proxy_core::";
 const PROXY_CORE_API_MARKER: &str = "crate::proxy_core::api";
 const PROXY_ENGINE_CONSTRUCTOR_MARKER: &str = "ProxyEngine::new(";
@@ -796,6 +806,33 @@ fn production_forwarder_stays_preplanned_only() {
     assert!(
         violations.is_empty(),
         "production forwarder code must execute preplanned attempts from ProxyEngine/ForwardPipeline:\n{}",
+        violations.join("\n")
+    );
+}
+
+#[test]
+fn production_forwarder_delegates_upstream_url_planning_to_adapter() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let path = manifest_dir.join("src/proxy/forwarder.rs");
+    let source = fs::read_to_string(&path).expect("read forwarder.rs");
+
+    let mut violations = Vec::new();
+    for (line_index, line) in production_lines(&source) {
+        let code = line.split("//").next().unwrap_or_default();
+        for marker in FORBIDDEN_FORWARDER_URL_PLANNING_MARKERS {
+            if code.contains(marker) {
+                violations.push(format!(
+                    "src/proxy/forwarder.rs:{} contains upstream URL planning marker `{}`",
+                    line_index + 1,
+                    marker
+                ));
+            }
+        }
+    }
+
+    assert!(
+        violations.is_empty(),
+        "production forwarder must delegate upstream URL planning to proxy_core_adapter::forward_upstream_url_plan:\n{}",
         violations.join("\n")
     );
 }

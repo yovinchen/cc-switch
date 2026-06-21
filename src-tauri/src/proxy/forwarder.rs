@@ -19,16 +19,14 @@ use crate::commands::{CodexOAuthState, CopilotAuthState};
 use crate::proxy::providers::codex_oauth_auth::CodexOAuthManager;
 use crate::proxy::providers::copilot_auth::CopilotAuthManager;
 use crate::proxy_core_adapter::{
-    append_query_to_full_url, apply_bedrock_pre_send_optimizers,
-    apply_copilot_model_normalization,
+    apply_bedrock_pre_send_optimizers, apply_copilot_model_normalization,
     apply_copilot_warmup_model_override, attempt_event_name,
     bedrock_env_flag_from_provider_settings, build_attempt_event_payload,
     build_codex_oauth_session_headers, build_request_started_event_payload,
     build_retryable_forward_failure_log, build_terminal_forward_failure_log,
     build_upstream_auth_headers, cache_injection_log_message, categorize_forward_failure,
-    classify_copilot_request, claude_transform_endpoint_rewrite_input_from_body,
-    contains_image_blocks, is_codex_chat_full_endpoint_base, is_github_copilot_upstream,
-    is_openai_o_series, is_unsupported_image_error,
+    classify_copilot_request, contains_image_blocks, forward_upstream_url_plan,
+    is_github_copilot_upstream, is_openai_o_series, is_unsupported_image_error,
     merge_copilot_tool_results, normalize_thinking_type, prepare_upstream_request_body_with_report,
     prompt_cache_trace_log_message, rectify_anthropic_request, rectify_thinking_budget,
     replace_image_blocks_with_marker, replace_images_for_text_only_model,
@@ -36,18 +34,19 @@ use crate::proxy_core_adapter::{
     resolve_copilot_deterministic_interaction_id, resolve_copilot_model_against_ids,
     resolve_copilot_optimizer_session_id, resolve_copilot_request_id_with_fallback,
     resolve_media_prevention_policy, resolved_copilot_dynamic_base_url,
-    responses_to_chat_completions_with_options, rewrite_claude_transform_endpoint,
-    sanitize_copilot_orphan_tool_results, should_apply_bedrock_pre_send_optimizer,
+    responses_to_chat_completions_with_options, sanitize_copilot_orphan_tool_results,
+    should_apply_bedrock_pre_send_optimizer,
     should_check_media_retry, should_failover_after_rectifier_retry_failure,
     should_preserve_exact_request_header_case, should_rectify_thinking_budget,
     should_rectify_thinking_signature, should_resolve_copilot_dynamic_endpoint,
-    should_send_anthropic_request_headers, should_trigger_media_retry, split_endpoint_and_query,
+    should_send_anthropic_request_headers, should_trigger_media_retry,
     strip_copilot_thinking_blocks, strip_one_m_suffix_for_upstream,
     strip_one_m_suffix_for_upstream_from_body, supports_reasoning_effort,
     thinking_optimization_log_message, validate_managed_account_upstream_auth,
     AttemptEventChannel, AttemptEventPayloadInput, AttemptEventPhase,
     CopilotAuthHeaderOverrides, CopilotOptimizerConfig, CurrentRouteTarget, ForwardFailureCategory,
-    GeminiShadowStore, MediaRetryInput, OptimizerConfig, PromptCacheTraceLogInput,
+    ForwardUpstreamUrlPlanInput, GeminiShadowStore, MediaRetryInput, OptimizerConfig,
+    PromptCacheTraceLogInput,
     ProviderAuthInfo, ProviderAuthStrategy, ProviderKind, ProxyRuntimeStatus, RectifierConfig,
     ResolvedChannelAttempt,
     UpstreamAuthHeadersInput, UpstreamRequestHeadersInput, UpstreamSendPolicyInput,
@@ -1539,48 +1538,25 @@ impl RequestForwarder {
         };
         let codex_responses_to_chat = matches!(app_type, AppType::Codex)
             && super::providers::should_convert_codex_responses_to_chat(provider, endpoint);
-        let (effective_endpoint, passthrough_query) = if codex_responses_to_chat {
-            crate::proxy_core_adapter::rewrite_codex_responses_endpoint_to_chat(endpoint)
-        } else if needs_transform && adapter.name() == "Claude" {
-            let api_format = resolved_claude_api_format
-                .as_deref()
-                .unwrap_or_else(|| super::providers::get_claude_api_format(provider));
-            rewrite_claude_transform_endpoint(claude_transform_endpoint_rewrite_input_from_body(
+        let claude_api_format_for_url = resolved_claude_api_format.as_deref().or_else(|| {
+            (adapter.name() == "Claude").then(|| super::providers::get_claude_api_format(provider))
+        });
+        let url_plan = forward_upstream_url_plan(
+            ForwardUpstreamUrlPlanInput {
+                base_url: &base_url,
                 endpoint,
-                api_format,
-                is_copilot,
-                &mapped_body,
-            ))
-            .into_parts()
-        } else {
-            (
-                endpoint.to_string(),
-                split_endpoint_and_query(endpoint)
-                    .1
-                    .map(ToString::to_string),
-            )
-        };
-
-        let codex_chat_base_is_full_endpoint =
-            is_codex_chat_full_endpoint_base(codex_responses_to_chat, &base_url);
-
-        let mut url = if matches!(resolved_claude_api_format.as_deref(), Some("gemini_native")) {
-            crate::proxy_core_adapter::resolve_gemini_native_url(
-                &base_url,
-                &effective_endpoint,
                 is_full_url,
-            )
-        } else if is_full_url || codex_chat_base_is_full_endpoint {
-            append_query_to_full_url(&base_url, passthrough_query.as_deref())
-        } else {
-            adapter.build_url(&base_url, &effective_endpoint)
-        };
-        if let Some(channel) = attempt.channel() {
-            url = crate::proxy_core_adapter::apply_channel_param_overrides_to_url(
-                &url,
-                &channel.param_overrides,
-            );
-        }
+                codex_responses_to_chat,
+                use_claude_transform: needs_transform && adapter.name() == "Claude",
+                is_copilot,
+                claude_api_format: claude_api_format_for_url,
+                body: &mapped_body,
+                channel_param_overrides: attempt.channel().map(|channel| &channel.param_overrides),
+            },
+            |base_url, effective_endpoint| adapter.build_url(base_url, effective_endpoint),
+        );
+        let effective_endpoint = url_plan.effective_endpoint;
+        let url = url_plan.url;
 
         // 记录映射后的出站模型名（此时 mapped_body 已完成接管映射 / [1m] 剥离 /
         // Copilot 归一化）。格式转换后若 body 仍带 model 字段会在下方刷新覆盖；
@@ -2759,7 +2735,10 @@ mod tests {
 
     #[test]
     fn append_query_to_full_url_preserves_existing_query_string() {
-        let url = append_query_to_full_url("https://relay.example/api?foo=bar", Some("x-id=1"));
+        let url = crate::proxy_core_adapter::append_query_to_full_url(
+            "https://relay.example/api?foo=bar",
+            Some("x-id=1"),
+        );
 
         assert_eq!(url, "https://relay.example/api?foo=bar&x-id=1");
     }
