@@ -6,16 +6,20 @@
 //! 支持检测官方 Codex 客户端 (codex_vscode, codex_cli_rs)
 
 use super::ProviderAdapter;
-use crate::provider::{CodexChatReasoningConfig, Provider};
+#[cfg(test)]
+use crate::provider::CodexChatReasoningConfig;
+use crate::provider::Provider;
 use crate::proxy::error::ProxyError;
 use crate::proxy_core_adapter::{
     apply_codex_chat_upstream_model_policy, build_codex_bearer_auth_headers,
-    build_codex_upstream_url, infer_codex_chat_reasoning_profile,
-    normalize_codex_chat_reasoning_profile, provider_codex_api_key, provider_codex_base_url,
-    provider_codex_catalog_model_ids, provider_codex_upstream_model,
-    provider_codex_uses_chat_completions, should_convert_codex_responses_endpoint_to_chat,
-    CodexChatReasoningOptions, CodexChatReasoningProfile, ProviderAuthInfo, ProviderAuthStrategy,
+    build_codex_upstream_url, provider_codex_api_key, provider_codex_base_url,
+    provider_codex_catalog_model_ids, provider_codex_chat_reasoning_profile,
+    provider_codex_upstream_model, provider_codex_uses_chat_completions,
+    should_convert_codex_responses_endpoint_to_chat, CodexChatReasoningOptions,
+    ProviderAuthInfo, ProviderAuthStrategy,
 };
+#[cfg(test)]
+use crate::proxy_core_adapter::CodexChatReasoningProfile;
 use serde_json::Value as JsonValue;
 
 /// Codex 适配器
@@ -65,7 +69,7 @@ pub fn resolve_codex_chat_reasoning_config(
     provider: &Provider,
     body: &JsonValue,
 ) -> Option<CodexChatReasoningConfig> {
-    resolve_codex_chat_reasoning_profile(provider, body)
+    provider_codex_chat_reasoning_profile(provider, codex_chat_request_model(body))
         .map(codex_chat_reasoning_config_from_profile)
 }
 
@@ -73,59 +77,12 @@ pub fn resolve_codex_chat_reasoning_options(
     provider: &Provider,
     body: &JsonValue,
 ) -> Option<CodexChatReasoningOptions> {
-    resolve_codex_chat_reasoning_profile(provider, body)
+    provider_codex_chat_reasoning_profile(provider, codex_chat_request_model(body))
         .map(|profile| CodexChatReasoningOptions::from_profile(&profile))
 }
 
-fn resolve_codex_chat_reasoning_profile(
-    provider: &Provider,
-    body: &JsonValue,
-) -> Option<CodexChatReasoningProfile> {
-    if let Some(config) = provider
-        .meta
-        .as_ref()
-        .and_then(|meta| meta.codex_chat_reasoning.clone())
-    {
-        return Some(normalize_codex_chat_reasoning_profile(
-            codex_chat_reasoning_profile_from_config(config),
-        ));
-    }
-
-    let model = body
-        .get("model")
-        .and_then(|value| value.as_str())
-        .map(ToString::to_string)
-        .or_else(|| codex_provider_upstream_model(provider))
-        .unwrap_or_default();
-    let base_url = provider
-        .settings_config
-        .get("base_url")
-        .or_else(|| provider.settings_config.get("baseURL"))
-        .and_then(|v| v.as_str())
-        .map(ToString::to_string)
-        .or_else(|| {
-            provider
-                .settings_config
-                .get("config")
-                .and_then(|v| v.as_str())
-                .and_then(extract_codex_base_url_from_toml)
-        })
-        .unwrap_or_default();
-
-    infer_codex_chat_reasoning_profile(&provider.name, &base_url, &model)
-}
-
-fn codex_chat_reasoning_profile_from_config(
-    config: CodexChatReasoningConfig,
-) -> CodexChatReasoningProfile {
-    CodexChatReasoningProfile {
-        supports_thinking: config.supports_thinking,
-        supports_effort: config.supports_effort,
-        thinking_param: config.thinking_param,
-        effort_param: config.effort_param,
-        effort_value_mode: config.effort_value_mode,
-        output_format: config.output_format,
-    }
+fn codex_chat_request_model(body: &JsonValue) -> Option<&str> {
+    body.get("model").and_then(|value| value.as_str())
 }
 
 #[cfg(test)]
@@ -140,12 +97,6 @@ fn codex_chat_reasoning_config_from_profile(
         effort_value_mode: profile.effort_value_mode,
         output_format: profile.output_format,
     }
-}
-
-fn extract_codex_base_url_from_toml(config_text: &str) -> Option<String> {
-    // Canonical parser lives in codex_config; keep this thin alias so the
-    // proxy hot path and the usage-credential resolver share one implementation.
-    crate::codex_config::extract_codex_base_url(config_text)
 }
 
 impl CodexAdapter {

@@ -1384,6 +1384,52 @@ pub(crate) fn provider_codex_catalog_model_ids(
     codex_provider_catalog_model_ids_from_settings(&provider.settings_config)
 }
 
+fn codex_chat_reasoning_profile_from_config(
+    config: crate::provider::CodexChatReasoningConfig,
+) -> CodexChatReasoningProfile {
+    CodexChatReasoningProfile {
+        supports_thinking: config.supports_thinking,
+        supports_effort: config.supports_effort,
+        thinking_param: config.thinking_param,
+        effort_param: config.effort_param,
+        effort_value_mode: config.effort_value_mode,
+        output_format: config.output_format,
+    }
+}
+
+pub(crate) fn provider_codex_chat_reasoning_profile(
+    provider: &Provider,
+    request_model: Option<&str>,
+) -> Option<CodexChatReasoningProfile> {
+    if let Some(config) = provider
+        .meta
+        .as_ref()
+        .and_then(|meta| meta.codex_chat_reasoning.clone())
+    {
+        return Some(normalize_codex_chat_reasoning_profile(
+            codex_chat_reasoning_profile_from_config(config),
+        ));
+    }
+
+    let model = request_model
+        .map(ToString::to_string)
+        .or_else(|| provider_codex_upstream_model(provider))
+        .unwrap_or_default();
+    let base_url = provider
+        .settings_config
+        .get("base_url")
+        .or_else(|| provider.settings_config.get("baseURL"))
+        .and_then(Value::as_str)
+        .map(ToString::to_string)
+        .or_else(|| {
+            provider_codex_config_text(provider)
+                .and_then(crate::codex_config::extract_codex_base_url)
+        })
+        .unwrap_or_default();
+
+    infer_codex_chat_reasoning_profile(&provider.name, &base_url, &model)
+}
+
 pub(crate) fn codex_provider_catalog_model_ids_from_settings(
     settings_config: &Value,
 ) -> std::collections::HashSet<String> {
@@ -4766,6 +4812,50 @@ base_url = "https://api.openai.com/v1"
             Some("upstream-model")
         );
         assert!(provider_codex_catalog_model_ids(&chat_provider).contains("catalog-model"));
+        let reasoning_provider = Provider::with_id(
+            "codex-reasoning".to_string(),
+            "DeepSeek Relay".to_string(),
+            json!({
+                "config": r#"model_provider = "deepseek"
+model = "deepseek-v4-pro"
+
+[model_providers.deepseek]
+name = "DeepSeek"
+base_url = "https://api.deepseek.com"
+wire_api = "chat"
+"#
+            }),
+            None,
+        );
+        let inferred_profile =
+            provider_codex_chat_reasoning_profile(&reasoning_provider, Some("deepseek-v4-pro"))
+                .expect("deepseek reasoning profile");
+        assert_eq!(inferred_profile.supports_effort, Some(true));
+        assert_eq!(inferred_profile.effort_value_mode.as_deref(), Some("deepseek"));
+        let mut explicit_reasoning_provider = Provider::with_id(
+            "codex-explicit-reasoning".to_string(),
+            "Explicit Reasoning".to_string(),
+            json!({}),
+            None,
+        );
+        explicit_reasoning_provider.meta = Some(ProviderMeta {
+            codex_chat_reasoning: Some(crate::provider::CodexChatReasoningConfig {
+                supports_thinking: Some(false),
+                supports_effort: Some(false),
+                thinking_param: Some("none".to_string()),
+                effort_param: Some("none".to_string()),
+                effort_value_mode: None,
+                output_format: Some("auto".to_string()),
+            }),
+            ..Default::default()
+        });
+        let explicit_profile = provider_codex_chat_reasoning_profile(
+            &explicit_reasoning_provider,
+            Some("deepseek-v4-pro"),
+        )
+        .expect("explicit reasoning profile");
+        assert_eq!(explicit_profile.supports_thinking, Some(false));
+        assert_eq!(explicit_profile.effort_param.as_deref(), Some("none"));
 
         assert_eq!(
             resolve_codex_provider_upstream_model(Some(" upstream-model "), None).as_deref(),
