@@ -3076,6 +3076,24 @@ pub(crate) fn proxy_channel_key_records_to_core(
         .collect()
 }
 
+pub(crate) fn channel_keys_source_from_records(
+    keys: Option<Vec<ProxyChannelKeyRecord>>,
+) -> ChannelKeysSource<ChannelKeyRecord> {
+    ChannelKeysSource::new(keys.map(proxy_channel_key_records_to_core))
+}
+
+pub(crate) fn channel_key_record_source_from_record(
+    key: Option<ProxyChannelKeyRecord>,
+) -> ChannelKeyRecordSource<ChannelKeyRecord> {
+    ChannelKeyRecordSource::new(key.map(proxy_channel_key_record_to_core))
+}
+
+pub(crate) fn channel_models_source_from_records(
+    models: Option<Vec<ProxyChannelModelRecord>>,
+) -> ChannelModelsSource<ChannelModelRecord> {
+    ChannelModelsSource::new(models.map(proxy_channel_model_records_to_core))
+}
+
 pub(crate) fn extract_proxy_session_id(
     headers: &HeaderMap,
     body: &Value,
