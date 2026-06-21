@@ -21,10 +21,11 @@ use crate::proxy_core_adapter::{
     non_streaming_response_usage_record_from_body_with_request_id_fallback,
     passthrough_bytes_proxy_response, passthrough_stream_proxy_response,
     response_headers_log_summary, streaming_response_usage_record_with_optional_outbound_model,
-    usage_record_with_route_context, usage_selected_provider_missing_log_message,
-    ProxyCoreAppKind as AppKind, ProxyServices, ResponseBodyDecodeLogLevel, SseEventScanner,
-    SsePassthroughEventKind, SseUsageAccumulator, StreamUsageEventFilter, StreamingTimeoutConfig,
-    StreamingTimeoutPhase, UsageParserConfig, UsageRecord, UsageSelectedProviderMissingPhase,
+    usage_record_failure_warning_message, usage_record_with_route_context,
+    usage_selected_provider_missing_log_message, ProxyCoreAppKind as AppKind, ProxyServices,
+    ResponseBodyDecodeLogLevel, SseEventScanner, SsePassthroughEventKind, SseUsageAccumulator,
+    StreamUsageEventFilter, StreamingTimeoutConfig, StreamingTimeoutPhase, UsageParserConfig,
+    UsageRecord, UsageRecordFailureLogContext, UsageSelectedProviderMissingPhase,
 };
 #[cfg(test)]
 use crate::proxy_core_adapter::{ProviderKind, TokenUsage};
@@ -419,7 +420,10 @@ async fn record_usage_internal(state: &ProxyState, record: UsageRecord) {
         .record_usage(record)
         .await
     {
-        log::warn!("[USG-001] 记录使用量失败: {e}");
+        log::warn!(
+            "{}",
+            usage_record_failure_warning_message(UsageRecordFailureLogContext::UsageRecord, e)
+        );
     }
 }
 

@@ -10,9 +10,10 @@ use crate::proxy_core_adapter::{
     error_usage_record_with_request_id_fallback,
     transformed_response_usage_record_with_request_id_fallback,
     transformed_streaming_response_usage_record_with_request_id_fallback,
-    usage_record_with_route_context, usage_selected_provider_missing_log_message, ProviderKind,
-    ProxyCoreAppKind as AppKind, ProxyServices, StreamUsageEventFilter,
-    TransformedResponseUsageFormat, UsageRecord, UsageSelectedProviderMissingPhase,
+    usage_record_failure_warning_message, usage_record_with_route_context,
+    usage_selected_provider_missing_log_message, ProviderKind, ProxyCoreAppKind as AppKind,
+    ProxyServices, StreamUsageEventFilter, TransformedResponseUsageFormat, UsageRecord,
+    UsageRecordFailureLogContext, UsageSelectedProviderMissingPhase,
 };
 #[cfg(test)]
 use crate::proxy_core_adapter::{success_usage_record_with_request_id_fallback, TokenUsage};
@@ -105,7 +106,7 @@ pub(crate) fn record_forward_error_usage(
     let record = usage_record_with_route_context(record, ctx.usage_route_context.as_ref());
 
     let services = state.proxy_core_services.clone();
-    spawn_usage_record(services, record, "记录失败请求日志失败");
+    spawn_usage_record(services, record, UsageRecordFailureLogContext::ForwardError);
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -173,7 +174,7 @@ pub(crate) fn record_transformed_response_usage(
 
     let record = usage_record_with_route_context(record, ctx.usage_route_context.as_ref());
     let services = state.proxy_core_services.clone();
-    spawn_usage_record(services, record, "[USG-001] 记录使用量失败");
+    spawn_usage_record(services, record, UsageRecordFailureLogContext::UsageRecord);
 }
 
 pub(crate) fn transformed_streaming_usage_collector(
@@ -233,7 +234,7 @@ pub(crate) fn transformed_streaming_usage_collector(
 
             let record = usage_record_with_route_context(record, usage_route_context.as_ref());
             let services = services.clone();
-            spawn_usage_record(services, record, "[USG-001] 记录使用量失败");
+            spawn_usage_record(services, record, UsageRecordFailureLogContext::UsageRecord);
         },
     ))
 }
@@ -257,13 +258,13 @@ fn usage_logging_enabled(state: &ProxyState) -> bool {
 fn spawn_usage_record<S>(
     services: std::sync::Arc<S>,
     record: UsageRecord,
-    warning_prefix: &'static str,
+    failure_context: UsageRecordFailureLogContext,
 ) where
     S: ProxyServices + Send + Sync + 'static,
 {
     tokio::spawn(async move {
         if let Err(e) = services.usage_sink().record_usage(record).await {
-            log::warn!("{warning_prefix}: {e}");
+            log::warn!("{}", usage_record_failure_warning_message(failure_context, e));
         }
     });
 }

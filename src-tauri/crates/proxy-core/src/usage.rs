@@ -821,6 +821,12 @@ pub enum UsageSelectedProviderMissingPhase {
     TransformedStreaming,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum UsageRecordFailureLogContext {
+    ForwardError,
+    UsageRecord,
+}
+
 pub fn usage_selected_provider_missing_log_message(
     tag: &str,
     phase: UsageSelectedProviderMissingPhase,
@@ -831,6 +837,17 @@ pub fn usage_selected_provider_missing_log_message(
         UsageSelectedProviderMissingPhase::TransformedStreaming => "跳过转换流式 usage 收集",
     };
     format!("[{tag}] {action}：ProxyEngine 尚未回填 selected provider")
+}
+
+pub fn usage_record_failure_warning_message(
+    context: UsageRecordFailureLogContext,
+    error: impl std::fmt::Display,
+) -> String {
+    let prefix = match context {
+        UsageRecordFailureLogContext::ForwardError => "记录失败请求日志失败",
+        UsageRecordFailureLogContext::UsageRecord => "[USG-001] 记录使用量失败",
+    };
+    format!("{prefix}: {error}")
 }
 
 #[derive(Debug, Clone)]
@@ -2750,6 +2767,24 @@ mod tests {
                 UsageSelectedProviderMissingPhase::TransformedStreaming
             ),
             "[Codex] 跳过转换流式 usage 收集：ProxyEngine 尚未回填 selected provider"
+        );
+    }
+
+    #[test]
+    fn usage_record_failure_warning_message_preserves_host_contracts() {
+        assert_eq!(
+            usage_record_failure_warning_message(
+                UsageRecordFailureLogContext::ForwardError,
+                "db failed"
+            ),
+            "记录失败请求日志失败: db failed"
+        );
+        assert_eq!(
+            usage_record_failure_warning_message(
+                UsageRecordFailureLogContext::UsageRecord,
+                "db failed"
+            ),
+            "[USG-001] 记录使用量失败: db failed"
         );
     }
 

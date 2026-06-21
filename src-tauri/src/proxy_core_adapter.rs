@@ -418,6 +418,8 @@ pub(crate) type TransformedResponseUsageFormat =
     crate::proxy_core::api::usage::TransformedResponseUsageFormat;
 pub(crate) type UsageSelectedProviderMissingPhase =
     crate::proxy_core::api::usage::UsageSelectedProviderMissingPhase;
+pub(crate) type UsageRecordFailureLogContext =
+    crate::proxy_core::api::usage::UsageRecordFailureLogContext;
 pub(crate) type CurrentRouteTarget =
     crate::proxy_core::api::ports::CurrentRouteTarget;
 
@@ -3099,6 +3101,13 @@ pub(crate) fn usage_selected_provider_missing_log_message(
     crate::proxy_core::api::usage::usage_selected_provider_missing_log_message(tag, phase)
 }
 
+pub(crate) fn usage_record_failure_warning_message(
+    context: UsageRecordFailureLogContext,
+    error: impl std::fmt::Display,
+) -> String {
+    crate::proxy_core::api::usage::usage_record_failure_warning_message(context, error)
+}
+
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn streaming_response_usage_record_with_optional_outbound_model(
     events: &[Value],
@@ -5707,6 +5716,20 @@ mod tests {
                 UsageSelectedProviderMissingPhase::TransformedStreaming,
             ),
             "[Codex] 跳过转换流式 usage 收集：ProxyEngine 尚未回填 selected provider"
+        );
+        assert_eq!(
+            usage_record_failure_warning_message(
+                UsageRecordFailureLogContext::ForwardError,
+                "db failed"
+            ),
+            "记录失败请求日志失败: db failed"
+        );
+        assert_eq!(
+            usage_record_failure_warning_message(
+                UsageRecordFailureLogContext::UsageRecord,
+                "db failed"
+            ),
+            "[USG-001] 记录使用量失败: db failed"
         );
     }
 
