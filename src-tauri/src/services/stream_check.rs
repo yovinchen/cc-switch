@@ -25,9 +25,10 @@ use crate::error::AppError;
 use crate::provider::Provider;
 use crate::proxy::providers::{get_adapter, ClaudeAdapter, ProviderAdapter};
 use crate::proxy_core_adapter::{
-    channel_reachability_status_from_latency, extract_hermes_stream_check_base_url,
-    extract_opencode_stream_check_npm, extract_openclaw_stream_check_base_url,
-    resolve_opencode_stream_check_base_url, should_retry_channel_reachability_failure,
+    channel_reachability_status_from_latency, provider_custom_user_agent_header,
+    provider_hermes_stream_check_base_url, provider_opencode_stream_check_base_url,
+    provider_opencode_stream_check_npm, provider_openclaw_stream_check_base_url,
+    should_retry_channel_reachability_failure,
 };
 
 pub use crate::proxy_core_adapter::{
@@ -151,9 +152,9 @@ impl StreamCheckService {
     fn resolve_base_url(app_type: &AppType, provider: &Provider) -> Result<String, AppError> {
         match app_type {
             // 累加模式应用的 settings_config 结构与 Claude/Codex/Gemini 不同，
-            // 不走 adapter，直接按各自约定提取 base_url。
+            // 不走标准 ProviderAdapter，按各自约定通过 adapter helper 提取 base_url。
             AppType::OpenCode => {
-                let npm = extract_opencode_stream_check_npm(&provider.settings_config);
+                let npm = provider_opencode_stream_check_npm(provider);
                 Self::resolve_opencode_base_url(provider, npm.as_deref())
             }
             AppType::OpenClaw => Self::extract_openclaw_base_url(provider),
@@ -253,17 +254,14 @@ impl StreamCheckService {
     /// Provider 级自定义 User-Agent（`meta.customUserAgent`），与转发路径共用单一口径：
     /// trim、空串视为未设置、非法值静默忽略（返回 `None`）。
     fn custom_user_agent(provider: &Provider) -> Option<HeaderValue> {
-        provider
-            .meta
-            .as_ref()
-            .and_then(|meta| meta.custom_user_agent_header().ok().flatten())
+        provider_custom_user_agent_header(provider, false)
     }
 
     // ===== 各应用 base_url 提取（settings_config 结构互不相同）=====
 
     /// OpenClaw: `{ baseUrl, apiKey, api, ... }`（camelCase）
     fn extract_openclaw_base_url(provider: &Provider) -> Result<String, AppError> {
-        extract_openclaw_stream_check_base_url(&provider.settings_config).ok_or_else(|| {
+        provider_openclaw_stream_check_base_url(provider).ok_or_else(|| {
             AppError::localized(
                 "openclaw_base_url_missing",
                 "OpenClaw 供应商缺少 baseUrl",
@@ -274,7 +272,7 @@ impl StreamCheckService {
 
     /// Hermes: `{ base_url, api_key, api_mode }`（snake_case）
     fn extract_hermes_base_url(provider: &Provider) -> Result<String, AppError> {
-        extract_hermes_stream_check_base_url(&provider.settings_config).ok_or_else(|| {
+        provider_hermes_stream_check_base_url(provider).ok_or_else(|| {
             AppError::localized(
                 "hermes_base_url_missing",
                 "Hermes 供应商缺少 base_url",
@@ -291,7 +289,7 @@ impl StreamCheckService {
         provider: &Provider,
         npm: Option<&str>,
     ) -> Result<String, AppError> {
-        resolve_opencode_stream_check_base_url(&provider.settings_config, npm).ok_or_else(|| {
+        provider_opencode_stream_check_base_url(provider, npm).ok_or_else(|| {
             AppError::localized(
                 "opencode_base_url_missing",
                 "OpenCode 供应商缺少 options.baseURL，且当前 SDK 包没有默认端点",

@@ -758,12 +758,24 @@ pub(crate) fn extract_openclaw_stream_check_base_url(settings_config: &Value) ->
     crate::proxy_core::api::domain::extract_openclaw_stream_check_base_url(settings_config)
 }
 
+pub(crate) fn provider_openclaw_stream_check_base_url(provider: &Provider) -> Option<String> {
+    extract_openclaw_stream_check_base_url(&provider.settings_config)
+}
+
 pub(crate) fn extract_hermes_stream_check_base_url(settings_config: &Value) -> Option<String> {
     crate::proxy_core::api::domain::extract_hermes_stream_check_base_url(settings_config)
 }
 
+pub(crate) fn provider_hermes_stream_check_base_url(provider: &Provider) -> Option<String> {
+    extract_hermes_stream_check_base_url(&provider.settings_config)
+}
+
 pub(crate) fn extract_opencode_stream_check_npm(settings_config: &Value) -> Option<String> {
     crate::proxy_core::api::domain::extract_opencode_stream_check_npm(settings_config)
+}
+
+pub(crate) fn provider_opencode_stream_check_npm(provider: &Provider) -> Option<String> {
+    extract_opencode_stream_check_npm(&provider.settings_config)
 }
 
 pub(crate) fn resolve_opencode_stream_check_base_url(
@@ -771,6 +783,13 @@ pub(crate) fn resolve_opencode_stream_check_base_url(
     npm: Option<&str>,
 ) -> Option<String> {
     crate::proxy_core::api::domain::resolve_opencode_stream_check_base_url(settings_config, npm)
+}
+
+pub(crate) fn provider_opencode_stream_check_base_url(
+    provider: &Provider,
+    npm: Option<&str>,
+) -> Option<String> {
+    resolve_opencode_stream_check_base_url(&provider.settings_config, npm)
 }
 
 pub(crate) fn channel_auth_profile_resolution(
