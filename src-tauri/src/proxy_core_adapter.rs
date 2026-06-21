@@ -1609,6 +1609,15 @@ pub(crate) fn resolve_claude_api_format_from_settings(
     )
 }
 
+pub(crate) fn provider_claude_api_format(provider: &Provider) -> &'static str {
+    let meta = provider.meta.as_ref();
+    resolve_claude_api_format_from_settings(
+        meta.and_then(|meta| meta.provider_type.as_deref()),
+        meta.and_then(|meta| meta.api_format.as_deref()),
+        &provider.settings_config,
+    )
+}
+
 pub(crate) fn infer_claude_provider_kind(
     api_format: &str,
     uses_google_oauth: bool,
@@ -1657,6 +1666,10 @@ pub(crate) fn extract_claude_auth_key_from_settings(
     settings_config: &Value,
 ) -> Option<ClaudeAuthKey> {
     crate::proxy_core::api::auth::extract_claude_auth_key_from_settings(settings_config)
+}
+
+pub(crate) fn provider_claude_auth_key(provider: &Provider) -> Option<ClaudeAuthKey> {
+    extract_claude_auth_key_from_settings(&provider.settings_config)
 }
 
 pub(crate) fn settings_config_with_channel_auth_key(
@@ -1712,6 +1725,13 @@ pub(crate) fn extract_claude_base_url_from_settings(
     crate::proxy_core::api::domain::extract_claude_base_url_from_settings(
         is_codex_oauth,
         settings_config,
+    )
+}
+
+pub(crate) fn provider_claude_base_url(provider: &Provider) -> Option<String> {
+    extract_claude_base_url_from_settings(
+        provider_is_codex_oauth(provider),
+        &provider.settings_config,
     )
 }
 
@@ -5045,6 +5065,23 @@ wire_api = "chat"
         assert_eq!(auth_key.source, ClaudeAuthKeySource::AnthropicAuthToken);
         assert_eq!(
             extract_claude_base_url_from_settings(false, &settings).as_deref(),
+            Some("https://api.anthropic.com/v1")
+        );
+        let mut provider = Provider::with_id(
+            "claude".to_string(),
+            "Claude".to_string(),
+            settings.clone(),
+            None,
+        );
+        provider.meta = Some(ProviderMeta {
+            api_format: Some("openai_chat".to_string()),
+            ..Default::default()
+        });
+        assert_eq!(provider_claude_api_format(&provider), "openai_chat");
+        let provider_auth_key = provider_claude_auth_key(&provider).expect("provider auth token");
+        assert_eq!(provider_auth_key.key, "claude-token");
+        assert_eq!(
+            provider_claude_base_url(&provider).as_deref(),
             Some("https://api.anthropic.com/v1")
         );
         assert_eq!(

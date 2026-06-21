@@ -21,13 +21,13 @@ use crate::proxy_core_adapter::{
     anthropic_request_to_gemini_request_with_shadow, anthropic_to_openai_chat_request,
     anthropic_to_openai_responses_request, build_claude_auth_headers, build_claude_upstream_url,
     build_copilot_auth_headers, claude_api_format_needs_transform,
-    extract_claude_auth_key_from_settings, extract_claude_base_url_from_settings,
     gemini_response_to_anthropic_message, infer_claude_provider_kind,
     inject_openai_stream_include_usage, is_copilot_prompt_cache_provider,
     is_gemini_oauth_key_shape, normalize_anthropic_tool_thinking_history,
     normalize_deepseek_thinking_disabled_strip_effort, openai_chat_to_anthropic_message,
     openai_responses_to_anthropic_message, provider_is_codex_oauth,
-    resolve_claude_api_format_from_settings, resolve_claude_responses_prompt_cache_key,
+    provider_claude_api_format, provider_claude_auth_key, provider_claude_base_url,
+    resolve_claude_responses_prompt_cache_key,
     should_preserve_reasoning_content_for_openai_chat, ClaudeAuthHeaderKind, ClaudeAuthKey,
     ClaudeAuthKeySource, CopilotAuthHeadersInput, GeminiShadowStore, ProviderAuthInfo,
     ProviderAuthStrategy, ProviderKind,
@@ -40,12 +40,7 @@ use serde_json::Value;
 /// 供 handler/forwarder 外部使用的公开函数。
 /// 优先级：meta.apiFormat > settings_config.api_format > openrouter_compat_mode > 默认 "anthropic"
 pub fn get_claude_api_format(provider: &Provider) -> &'static str {
-    let meta = provider.meta.as_ref();
-    resolve_claude_api_format_from_settings(
-        meta.and_then(|meta| meta.provider_type.as_deref()),
-        meta.and_then(|meta| meta.api_format.as_deref()),
-        &provider.settings_config,
-    )
+    provider_claude_api_format(provider)
 }
 
 pub fn normalize_anthropic_messages_for_provider(
@@ -202,7 +197,7 @@ impl ClaudeAdapter {
     }
 
     fn extract_auth_key(&self, provider: &Provider) -> Option<ClaudeAuthKey> {
-        let auth_key = extract_claude_auth_key_from_settings(&provider.settings_config);
+        let auth_key = provider_claude_auth_key(provider);
         match auth_key.as_ref().map(|auth_key| auth_key.source) {
             Some(ClaudeAuthKeySource::AnthropicAuthToken) => {
                 log::debug!("[Claude] 使用 ANTHROPIC_AUTH_TOKEN");
@@ -257,11 +252,8 @@ impl ProviderAdapter for ClaudeAdapter {
     }
 
     fn extract_base_url(&self, provider: &Provider) -> Result<String, ProxyError> {
-        extract_claude_base_url_from_settings(
-            provider_is_codex_oauth(provider),
-            &provider.settings_config,
-        )
-        .ok_or_else(|| ProxyError::ConfigError("Claude Provider 缺少 base_url 配置".to_string()))
+        provider_claude_base_url(provider)
+            .ok_or_else(|| ProxyError::ConfigError("Claude Provider 缺少 base_url 配置".to_string()))
     }
 
     fn extract_auth(&self, provider: &Provider) -> Option<ProviderAuthInfo> {
