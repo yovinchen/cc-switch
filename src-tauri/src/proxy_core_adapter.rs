@@ -1716,6 +1716,10 @@ pub(crate) fn forwarding_requires_runtime_error_message() -> &'static str {
     crate::proxy_core::api::routing::forwarding_requires_runtime_error_message()
 }
 
+pub(crate) fn forwarding_runtime_unavailable_error() -> ProxyCoreError {
+    ProxyCoreError::Unsupported(forwarding_requires_runtime_error_message().to_string())
+}
+
 pub(crate) fn route_plan_no_matching_host_providers_error_message() -> &'static str {
     crate::proxy_core::api::routing::route_plan_no_matching_host_providers_error_message()
 }
@@ -3980,6 +3984,11 @@ mod tests {
             forwarding_requires_runtime_error_message(),
             "cc-switch forwarding requires a proxy server runtime"
         );
+        assert!(matches!(
+            forwarding_runtime_unavailable_error(),
+            ProxyCoreError::Unsupported(message)
+                if message == "cc-switch forwarding requires a proxy server runtime"
+        ));
         assert_eq!(
             route_plan_no_matching_host_providers_error_message(),
             "route plan has no matching host providers"

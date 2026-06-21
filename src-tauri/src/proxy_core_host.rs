@@ -40,13 +40,13 @@ use crate::proxy_core_adapter::{
     empty_client_model_catalog_raw,
     extract_proxy_session_id,
     forward_result_to_proxy_result,
+    forwarding_runtime_unavailable_error,
     host_providers_for_plan,
     provider_with_channel_auth_key,
     proxy_app_config_from_config_parts, proxy_global_config_from_config,
     proxy_runtime_config_from_config,
     proxy_channel_record_to_core_spec, proxy_channel_records_to_core_specs_for_query,
     proxy_provider_to_core_spec, proxy_providers_to_core_specs,
-    forwarding_requires_runtime_error_message,
     response_runtime_policy_from_app_proxy_config,
     route_plan_no_matching_host_providers_error_message,
     route_policy_from_failover_queue,
@@ -541,11 +541,10 @@ impl ForwardPipeline for CcSwitchForwardPipeline {
         plan: RoutePlan,
     ) -> BoxFuture<'a, ProxyCoreResult<ProxyResult>> {
         Box::pin(async move {
-            let runtime = self.runtime.as_ref().ok_or_else(|| {
-                ProxyCoreError::Unsupported(
-                    forwarding_requires_runtime_error_message().to_string(),
-                )
-            })?;
+            let runtime = self
+                .runtime
+                .as_ref()
+                .ok_or_else(forwarding_runtime_unavailable_error)?;
             runtime.forward(request, plan).await
         })
     }
