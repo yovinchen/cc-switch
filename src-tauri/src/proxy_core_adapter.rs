@@ -1027,8 +1027,8 @@ pub(crate) use crate::proxy_core::api::transport::{
     build_terminal_forward_failure_log, build_upstream_auth_headers, categorize_forward_failure,
     classify_copilot_request, claude_transform_endpoint_rewrite_input_from_body,
     contains_image_blocks, is_codex_chat_full_endpoint_base,
-    invalid_upstream_url_error_message, is_github_copilot_upstream, is_openai_o_series,
-    is_unsupported_image_error, merge_copilot_tool_results,
+    invalid_upstream_url_error_message, is_openai_o_series, is_unsupported_image_error,
+    merge_copilot_tool_results,
     parse_json_request_body, parse_json_request_body_or_null,
     prepare_upstream_request_body_with_report, prompt_cache_trace_log_message,
     replace_image_blocks_with_marker, replace_images_for_text_only_model,
@@ -3126,6 +3126,16 @@ pub(crate) fn provider_kind_from_provider(provider: &Provider) -> Option<Provide
 
 pub(crate) fn provider_is_codex_oauth(provider: &Provider) -> bool {
     provider_kind_from_provider(provider) == Some(ProviderKind::CodexOAuth)
+}
+
+pub(crate) fn provider_is_github_copilot_upstream(provider: &Provider, base_url: &str) -> bool {
+    crate::proxy_core::api::transport::is_github_copilot_upstream(
+        provider
+            .meta
+            .as_ref()
+            .and_then(|meta| meta.provider_type.as_deref()),
+        base_url,
+    )
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -5920,6 +5930,8 @@ mod tests {
 
         let usage_provider_kind = provider_kind_from_provider(&provider);
         let usage_provider_is_codex_oauth = provider_is_codex_oauth(&provider);
+        let usage_provider_is_copilot =
+            provider_is_github_copilot_upstream(&provider, "https://example.com");
         let mut codex_provider = Provider::with_id(
             "codex-oauth".to_string(),
             "Codex OAuth".to_string(),
@@ -5943,6 +5955,16 @@ mod tests {
         assert_eq!(source_specs[0].kind, ProviderKind::GitHubCopilot);
         assert_eq!(usage_provider_kind, Some(ProviderKind::GitHubCopilot));
         assert!(!usage_provider_is_codex_oauth);
+        assert!(usage_provider_is_copilot);
+        assert!(provider_is_github_copilot_upstream(
+            &Provider::with_id(
+                "plain".to_string(),
+                "Plain".to_string(),
+                json!({}),
+                None,
+            ),
+            "https://api.githubcopilot.com"
+        ));
         assert!(provider_is_codex_oauth(&codex_provider));
         assert_eq!(spec.account_ref.as_deref(), Some("github_copilot:acct-1"));
         let serialized = serde_json::to_string(&spec).expect("serialize spec");

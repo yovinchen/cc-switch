@@ -28,13 +28,13 @@ use crate::proxy_core_adapter::{
     build_upstream_auth_headers, cache_injection_log_message, categorize_forward_failure,
     classify_copilot_request, contains_image_blocks, current_route_target_from_forward_attempt,
     forward_upstream_url_plan, invalid_mapped_channel_response_status_message,
-    is_github_copilot_upstream, is_openai_o_series, is_unsupported_image_error,
-    mapped_channel_response_status,
+    is_openai_o_series, is_unsupported_image_error, mapped_channel_response_status,
     merge_copilot_tool_results, non_streaming_body_timeout_message, normalize_thinking_type,
     prepare_upstream_request_body_with_report, prompt_cache_trace_log_message,
-    provider_is_codex_oauth, rectify_anthropic_request, rectify_thinking_budget,
-    replace_image_blocks_with_marker, record_active_connection_acquired_status,
-    record_active_connection_released_status, record_forward_failure_status,
+    provider_is_codex_oauth, provider_is_github_copilot_upstream, rectify_anthropic_request,
+    rectify_thinking_budget, replace_image_blocks_with_marker,
+    record_active_connection_acquired_status, record_active_connection_released_status,
+    record_forward_failure_status,
     record_forward_request_started_status, record_forward_success_status,
     replace_images_for_text_only_model, request_body_filter_log_message,
     resolve_claude_forward_api_format, route_selected_event_name,
@@ -1211,13 +1211,7 @@ impl RequestForwarder {
             .unwrap_or(false);
 
         // GitHub Copilot API 使用 /chat/completions（无 /v1 前缀）
-        let is_copilot = is_github_copilot_upstream(
-            provider
-                .meta
-                .as_ref()
-                .and_then(|m| m.provider_type.as_deref()),
-            &base_url,
-        );
+        let is_copilot = provider_is_github_copilot_upstream(provider, &base_url);
 
         // 应用模型映射（独立于格式转换）
         // Claude Desktop proxy 模式必须先把 Desktop 可见的 claude-* route
