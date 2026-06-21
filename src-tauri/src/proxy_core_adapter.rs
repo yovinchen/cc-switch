@@ -1687,6 +1687,10 @@ pub(crate) fn response_headers_log_summary(headers: &HeaderMap) -> String {
     crate::proxy_core::api::transport::response_headers_log_summary(headers)
 }
 
+pub(crate) fn response_headers_indicate_sse(headers: &HeaderMap) -> bool {
+    crate::proxy_core::api::transport::response_headers_indicate_sse(headers)
+}
+
 pub(crate) fn get_content_encoding(headers: &HeaderMap) -> Option<String> {
     crate::proxy_core::api::transport::get_content_encoding(headers)
 }

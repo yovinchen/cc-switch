@@ -65,6 +65,14 @@ pub fn transformed_sse_response_headers() -> HeaderMap {
     headers
 }
 
+pub fn response_headers_indicate_sse(headers: &HeaderMap) -> bool {
+    headers
+        .get(header::CONTENT_TYPE)
+        .and_then(|value| value.to_str().ok())
+        .map(|content_type| content_type.contains("text/event-stream"))
+        .unwrap_or(false)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -156,5 +164,20 @@ mod tests {
             headers.get(header::CACHE_CONTROL),
             Some(&HeaderValue::from_static("no-cache"))
         );
+    }
+
+    #[test]
+    fn response_headers_identify_sse_content_type() {
+        let mut headers = HeaderMap::new();
+        assert!(!response_headers_indicate_sse(&headers));
+
+        headers.insert(header::CONTENT_TYPE, HeaderValue::from_static("application/json"));
+        assert!(!response_headers_indicate_sse(&headers));
+
+        headers.insert(
+            header::CONTENT_TYPE,
+            HeaderValue::from_static("text/event-stream; charset=utf-8"),
+        );
+        assert!(response_headers_indicate_sse(&headers));
     }
 }
