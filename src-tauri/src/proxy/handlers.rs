@@ -44,8 +44,9 @@ use crate::proxy_core_adapter::{
     gemini_response_to_anthropic_message_with_shadow, openai_chat_to_anthropic_message,
     openai_responses_to_anthropic_message, parse_json_request_body,
     parse_json_request_body_or_null, parse_upstream_json_or_unlabeled_sse,
-    rebuilt_json_proxy_response, request_body_stream_flag, resolve_management_auth_decision,
-    should_aggregate_codex_oauth_responses_sse, should_use_claude_transform_streaming,
+    rebuilt_json_proxy_response, request_body_read_error_message, request_body_stream_flag,
+    resolve_management_auth_decision, should_aggregate_codex_oauth_responses_sse,
+    should_use_claude_transform_streaming,
     strip_endpoint_prefix, transformed_sse_proxy_response, validate_management_bearer_header,
     AppChannelListQuery, AppChannelManagementRequest, AppChannelResponse, AppKind, AppListRequest,
     AppListResponse, AppModelCatalogRequest, AppModelListQuery, ChannelCreateRequest,
@@ -601,7 +602,7 @@ async fn handle_messages_for_app(
     let body_bytes = body
         .collect()
         .await
-        .map_err(|e| ProxyError::Internal(format!("Failed to read request body: {e}")))?
+        .map_err(|e| ProxyError::Internal(request_body_read_error_message(e)))?
         .to_bytes();
     let body: Value =
         parse_json_request_body(&body_bytes).map_err(|e| ProxyError::Internal(e.to_string()))?;
@@ -847,7 +848,7 @@ pub async fn handle_chat_completions(
     let body_bytes = req_body
         .collect()
         .await
-        .map_err(|e| ProxyError::Internal(format!("Failed to read request body: {e}")))?
+        .map_err(|e| ProxyError::Internal(request_body_read_error_message(e)))?
         .to_bytes();
     let body: Value =
         parse_json_request_body(&body_bytes).map_err(|e| ProxyError::Internal(e.to_string()))?;
@@ -896,7 +897,7 @@ pub async fn handle_responses(
     let body_bytes = req_body
         .collect()
         .await
-        .map_err(|e| ProxyError::Internal(format!("Failed to read request body: {e}")))?
+        .map_err(|e| ProxyError::Internal(request_body_read_error_message(e)))?
         .to_bytes();
     let body: Value =
         parse_json_request_body(&body_bytes).map_err(|e| ProxyError::Internal(e.to_string()))?;
@@ -958,7 +959,7 @@ pub async fn handle_responses_compact(
     let body_bytes = req_body
         .collect()
         .await
-        .map_err(|e| ProxyError::Internal(format!("Failed to read request body: {e}")))?
+        .map_err(|e| ProxyError::Internal(request_body_read_error_message(e)))?
         .to_bytes();
     let body: Value =
         parse_json_request_body(&body_bytes).map_err(|e| ProxyError::Internal(e.to_string()))?;
@@ -1182,7 +1183,7 @@ pub async fn handle_gemini(
     let body_bytes = req_body
         .collect()
         .await
-        .map_err(|e| ProxyError::Internal(format!("Failed to read request body: {e}")))?
+        .map_err(|e| ProxyError::Internal(request_body_read_error_message(e)))?
         .to_bytes();
     let body: Value = parse_json_request_body_or_null(&body_bytes)
         .map_err(|e| ProxyError::Internal(e.to_string()))?;

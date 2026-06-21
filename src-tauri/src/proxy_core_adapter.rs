@@ -1000,7 +1000,7 @@ pub(crate) use crate::proxy_core::api::transport::{
     parse_json_request_body, parse_json_request_body_or_null,
     prepare_upstream_request_body_with_report, prompt_cache_trace_log_message,
     replace_image_blocks_with_marker, replace_images_for_text_only_model,
-    request_body_filter_log_message,
+    request_body_filter_log_message, request_body_read_error_message,
     resolve_copilot_deterministic_interaction_id,
     resolve_copilot_optimizer_session_id, resolve_copilot_request_id_with_fallback,
     resolve_media_prevention_policy, resolved_copilot_dynamic_base_url,
