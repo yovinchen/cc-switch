@@ -1571,6 +1571,13 @@ pub(crate) fn route_policy_from_failover_queue(
     )
 }
 
+pub(crate) fn channel_health_reset_from_parts(
+    channel_id: impl Into<String>,
+    app_type: &str,
+) -> ChannelHealthReset {
+    crate::proxy_core::api::ports::channel_health_reset_from_parts(channel_id, app_type)
+}
+
 pub(crate) fn proxy_result_from_forward_parts(
     response: ProxyCoreResponse,
     plan: RoutePlan,

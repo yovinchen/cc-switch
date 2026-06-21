@@ -667,6 +667,16 @@ pub struct ChannelHealthReset {
     pub app: AppKind,
 }
 
+pub fn channel_health_reset_from_parts(
+    channel_id: impl Into<String>,
+    app_type: &str,
+) -> ChannelHealthReset {
+    ChannelHealthReset {
+        channel_id: channel_id.into(),
+        app: AppKind::from(app_type),
+    }
+}
+
 pub const CHANNEL_HEALTH_UNKNOWN_STATUS: &str = "unknown";
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -2539,9 +2549,10 @@ mod tests {
     use super::{
         AppChannelListQuery, AppChannelListResponse, AppChannelResponse, AppChannelRouteResponse,
         app_proxy_config_defaults_for_app, app_proxy_config_raw, auth_info_from_profile_ref,
-        channel_health_update_from_input, channel_model_record_from_input,
-        channel_reachability_result_from_stream_check_result, proxy_app_config_from_parts,
-        proxy_global_config_from_global_config, proxy_runtime_config_from_proxy_config,
+        channel_health_reset_from_parts, channel_health_update_from_input,
+        channel_model_record_from_input, channel_reachability_result_from_stream_check_result,
+        proxy_app_config_from_parts, proxy_global_config_from_global_config,
+        proxy_runtime_config_from_proxy_config,
         AppListResponse, AppModelListQuery, AppProxyConfig, AppSummaryInput,
         channel_key_record_from_input,
         channel_reachability_status_from_latency, channel_record_from_input, ChannelDeleteResponse,
@@ -3518,6 +3529,17 @@ mod tests {
         let anonymous = auth_info_from_profile_ref(None, "cc_switch_provider_config");
         assert_eq!(anonymous.account_ref, None);
         assert_eq!(anonymous.metadata["source"], json!("cc_switch_provider_config"));
+    }
+
+    #[test]
+    fn channel_health_reset_from_parts_normalizes_app_kind() {
+        let reset = channel_health_reset_from_parts("channel-a", "claude");
+
+        assert_eq!(reset.channel_id, "channel-a");
+        assert_eq!(reset.app, AppKind::Claude);
+
+        let custom = channel_health_reset_from_parts("channel-b", "opencode");
+        assert_eq!(custom.app, AppKind::Custom("opencode".to_string()));
     }
 
     #[test]

@@ -22,6 +22,7 @@ use crate::proxy_core_adapter::{
 };
 use crate::proxy_core_adapter::{
     auth_info_from_profile_ref,
+    channel_health_reset_from_parts,
     extract_claude_auth_key_from_settings, extract_proxy_session_id, parse_auth_profile_ref,
     proxy_app_config_from_config_parts, proxy_global_config_from_config,
     proxy_runtime_config_from_config,
@@ -382,10 +383,7 @@ impl ChannelHealthStore for CcSwitchHealthStore {
                 .reset_channel_breaker(channel_id, &app_type)
                 .await
                 .map_err(|error| app_error("reset channel health", error))?;
-            Ok(ChannelHealthReset {
-                channel_id: channel_id.to_string(),
-                app: AppKind::from(app_type.as_str()),
-            })
+            Ok(channel_health_reset_from_parts(channel_id, app_type.as_str()))
         })
     }
 }
