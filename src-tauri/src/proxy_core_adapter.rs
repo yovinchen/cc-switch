@@ -1905,6 +1905,13 @@ pub(crate) fn route_policy_from_failover_queue(
     )
 }
 
+pub(crate) fn route_policy_from_source(
+    app: AppKind,
+    queue: impl IntoIterator<Item = FailoverQueueItem>,
+) -> Option<RoutePolicy> {
+    Some(route_policy_from_failover_queue(app, queue))
+}
+
 pub(crate) fn channel_health_reset_from_parts(
     channel_id: impl Into<String>,
     app_type: &str,
@@ -4252,6 +4259,18 @@ mod tests {
         assert!(!proxy_core_error_is_unavailable(&ProxyCoreError::Config(
             "invalid route".to_string()
         )));
+        let policy = route_policy_from_source(
+            AppKind::Claude,
+            vec![FailoverQueueItem {
+                provider_id: "provider-b".to_string(),
+                provider_name: "Provider B".to_string(),
+                sort_index: Some(1),
+                provider_notes: None,
+            }],
+        )
+        .expect("route policy");
+        assert_eq!(policy.app, AppKind::Claude);
+        assert_eq!(policy.raw["failoverProviderIds"], json!(["provider-b"]));
 
         let mut body = json!({"model": "sonnet-public"});
         assert_eq!(

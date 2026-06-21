@@ -50,7 +50,7 @@ use crate::proxy_core_adapter::{
     proxy_runtime_config_from_config_source,
     response_runtime_policy_from_app_proxy_config,
     route_plan_no_matching_host_providers_error,
-    route_policy_from_failover_queue,
+    route_policy_from_source,
     usage_error,
 };
 use futures::future::BoxFuture;
@@ -339,7 +339,7 @@ impl RoutePolicySource for CcSwitchRoutePolicySource {
                 .db
                 .get_failover_queue(app.as_str())
                 .map_err(|error| app_error("load route policy", error))?;
-            Ok(Some(route_policy_from_failover_queue(app.clone(), queue)))
+            Ok(route_policy_from_source(app.clone(), queue))
         })
     }
 }
