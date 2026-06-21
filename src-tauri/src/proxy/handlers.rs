@@ -52,9 +52,7 @@ use crate::proxy_core_adapter::{
     ChannelHealthResetSource, ChannelKeyDeleteResponse, ChannelKeyDeleteSource,
     ChannelKeyPathRequest, ChannelKeyRecord, ChannelKeyRecordResponse,
     ChannelKeysResponse, ChannelListPlan, ChannelListQuery, ChannelListRequest,
-    ChannelListResponse, ChannelMigrationMaterializeInput,
-    ChannelMigrationMaterializeResponse, ChannelMigrationMaterializeSource,
-    ChannelMigrationPreviewInput, ChannelMigrationPreviewResponse, ChannelMigrationPreviewSource,
+    ChannelListResponse, ChannelMigrationMaterializeResponse, ChannelMigrationPreviewResponse,
     ChannelModelRecord, ChannelModelsResponse, ChannelPathRequest, ChannelRecord,
     ChannelRecordResponse, ChannelRouteCandidate, ChannelRouteRejected,
     ChannelTestPlan, ChannelTestResponse, ClaudeDesktopModelListResponse,
@@ -76,9 +74,9 @@ use crate::proxy_core_adapter::{
     app_channel_list_source_from_records, channel_list_source_from_records,
     channel_create_source_from_record, channel_record_source_from_record,
     channel_key_record_source_from_record, channel_keys_source_from_records,
+    channel_migration_materialize_source_from_result, channel_migration_preview_source_from_result,
     channel_models_source_from_records, group_list_channel_source_from_records,
-    proxy_app_summary_input,
-    proxy_channel_record_to_core_spec, proxy_channel_records_to_core,
+    proxy_app_summary_input, proxy_channel_record_to_core_spec,
     proxy_provider_to_core_spec, proxy_providers_to_core_specs,
     stream_check_result_to_channel_reachability, synthesize_gemini_tool_call_id_with_uuid,
 };
@@ -665,12 +663,7 @@ pub async fn preview_proxy_channel_migration(
         .map_err(|e| ProxyError::DatabaseError(e.to_string()))?;
 
     Ok(Json(request.migration_preview_response_from_source(
-        ChannelMigrationPreviewSource::from_input(ChannelMigrationPreviewInput::new(
-            request.app_type.clone(),
-            proxy_channel_records_to_core(preview.channels),
-            preview.duplicate_count,
-            preview.needs_review_count,
-        )),
+        channel_migration_preview_source_from_result(preview),
     )))
 }
 
@@ -688,15 +681,7 @@ pub async fn materialize_proxy_channel_migration(
         .map_err(|e| ProxyError::DatabaseError(e.to_string()))?;
 
     Ok(Json(request.migration_materialize_response_from_source(
-        ChannelMigrationMaterializeSource::from_input(ChannelMigrationMaterializeInput::new(
-            request.app_type.clone(),
-            result.previewed_channels,
-            result.inserted_channels,
-            result.inserted_models,
-            result.inserted_health_rows,
-            result.duplicate_count,
-            result.needs_review_count,
-        )),
+        channel_migration_materialize_source_from_result(result),
     )))
 }
 

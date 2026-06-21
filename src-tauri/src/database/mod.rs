@@ -38,8 +38,8 @@ pub(crate) use dao::proxy::{
     PRICING_SOURCE_RESPONSE,
 };
 pub(crate) use dao::proxy_channels::{
-    ProxyChannelKeyRecord, ProxyChannelMigrationPreview, ProxyChannelModelRecord,
-    ProxyChannelRecord, ProxyChannelSourceKind,
+    ProxyChannelKeyRecord, ProxyChannelMaterializeResult, ProxyChannelMigrationPreview,
+    ProxyChannelModelRecord, ProxyChannelRecord, ProxyChannelSourceKind,
 };
 pub use dao::FailoverQueueItem;
 
