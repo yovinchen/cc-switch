@@ -35,7 +35,7 @@ use crate::proxy_core_adapter::{
     record_active_connection_released_status, record_forward_failure_status,
     record_forward_request_started_status, record_forward_success_status,
     replace_images_for_text_only_model, request_body_filter_log_message,
-    resolve_claude_forward_api_format,
+    resolve_claude_forward_api_format, route_selected_event_name,
     resolve_copilot_deterministic_interaction_id, resolve_copilot_model_against_ids,
     resolve_copilot_optimizer_session_id, resolve_copilot_request_id_with_fallback,
     resolve_media_prevention_policy, resolved_copilot_dynamic_base_url,
@@ -356,7 +356,7 @@ impl RequestForwarder {
         let mut current_providers = self.current_providers.write().await;
         current_providers.insert(app_type.to_string(), target);
         self.events.emit(
-            "route_selected",
+            route_selected_event_name(),
             attempt_event_payload(request_id, app_type, attempt, None),
         );
     }

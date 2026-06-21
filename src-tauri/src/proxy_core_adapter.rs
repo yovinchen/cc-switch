@@ -1047,6 +1047,10 @@ pub(crate) fn proxy_core_event_to_bus_message(event: ProxyCoreEvent) -> ProxyEve
     }
 }
 
+pub(crate) fn route_selected_event_name() -> String {
+    crate::proxy_core::api::events::ProxyCoreEventType::RouteSelected.event_name()
+}
+
 pub(crate) fn emit_proxy_core_event(
     event: ProxyCoreEvent,
     mut emit: impl FnMut(String, Value),
@@ -4124,6 +4128,7 @@ mod tests {
             payload: json!({"attemptCount": 2}),
         });
         assert_eq!(message.event_name, "route_selected");
+        assert_eq!(route_selected_event_name(), "route_selected");
         assert_eq!(message.payload["requestId"], "req-1");
         assert_eq!(message.payload["channelId"], "channel-a");
         assert_eq!(message.payload["attemptCount"], 2);
