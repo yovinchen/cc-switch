@@ -383,6 +383,10 @@ pub(crate) fn proxy_runtime_config_from_config(
     )
 }
 
+pub(crate) fn proxy_runtime_config_from_config_source(config: ProxyConfig) -> ProxyRuntimeConfig {
+    proxy_runtime_config_from_config(config, false)
+}
+
 pub(crate) type ProviderHealth = crate::proxy_core::api::ports::ProviderHealth;
 pub(crate) type ProviderKind = crate::proxy_core::api::domain::ProviderKind;
 pub(crate) type ProviderAuthInfo =
@@ -3153,6 +3157,8 @@ mod tests {
             .and_then(Value::as_bool),
             Some(true)
         );
+        assert!(!proxy_runtime_config_from_config_source(ProxyConfig::default())
+            .privacy_filter_enabled);
     }
 
     #[test]

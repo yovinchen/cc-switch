@@ -42,7 +42,7 @@ use crate::proxy_core_adapter::{
     provider_with_channel_auth_key,
     provider_model_catalog_from_provider,
     proxy_app_config_from_config_source_parts, proxy_global_config_from_config,
-    proxy_runtime_config_from_config,
+    proxy_runtime_config_from_config_source,
     proxy_channel_record_to_core_spec, proxy_channel_records_to_core_specs_for_query,
     proxy_provider_to_core_spec, proxy_providers_to_core_specs,
     response_runtime_policy_from_app_proxy_config,
@@ -241,7 +241,7 @@ impl ProxyConfigSource for CcSwitchConfigSource {
                 .get_proxy_config()
                 .await
                 .map_err(|error| app_error("load runtime proxy config", error))?;
-            Ok(proxy_runtime_config_from_config(config, false))
+            Ok(proxy_runtime_config_from_config_source(config))
         })
     }
 }
