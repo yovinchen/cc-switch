@@ -3138,6 +3138,14 @@ pub(crate) fn provider_is_github_copilot_upstream(provider: &Provider, base_url:
     )
 }
 
+pub(crate) fn provider_is_full_url(provider: &Provider) -> bool {
+    provider
+        .meta
+        .as_ref()
+        .and_then(|meta| meta.is_full_url)
+        .unwrap_or(false)
+}
+
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn streaming_response_usage_record_with_optional_outbound_model(
     events: &[Value],
@@ -5920,6 +5928,7 @@ mod tests {
         );
         provider.meta = Some(ProviderMeta {
             provider_type: Some("github_copilot".to_string()),
+            is_full_url: Some(true),
             auth_binding: Some(AuthBinding {
                 source: AuthBindingSource::ManagedAccount,
                 auth_provider: Some("github_copilot".to_string()),
@@ -5932,6 +5941,7 @@ mod tests {
         let usage_provider_is_codex_oauth = provider_is_codex_oauth(&provider);
         let usage_provider_is_copilot =
             provider_is_github_copilot_upstream(&provider, "https://example.com");
+        let usage_provider_is_full_url = provider_is_full_url(&provider);
         let mut codex_provider = Provider::with_id(
             "codex-oauth".to_string(),
             "Codex OAuth".to_string(),
@@ -5956,6 +5966,7 @@ mod tests {
         assert_eq!(usage_provider_kind, Some(ProviderKind::GitHubCopilot));
         assert!(!usage_provider_is_codex_oauth);
         assert!(usage_provider_is_copilot);
+        assert!(usage_provider_is_full_url);
         assert!(provider_is_github_copilot_upstream(
             &Provider::with_id(
                 "plain".to_string(),

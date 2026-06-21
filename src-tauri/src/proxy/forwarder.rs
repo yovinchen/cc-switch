@@ -31,8 +31,8 @@ use crate::proxy_core_adapter::{
     is_openai_o_series, is_unsupported_image_error, mapped_channel_response_status,
     merge_copilot_tool_results, non_streaming_body_timeout_message, normalize_thinking_type,
     prepare_upstream_request_body_with_report, prompt_cache_trace_log_message,
-    provider_is_codex_oauth, provider_is_github_copilot_upstream, rectify_anthropic_request,
-    rectify_thinking_budget, replace_image_blocks_with_marker,
+    provider_is_codex_oauth, provider_is_full_url, provider_is_github_copilot_upstream,
+    rectify_anthropic_request, rectify_thinking_budget, replace_image_blocks_with_marker,
     record_active_connection_acquired_status, record_active_connection_released_status,
     record_forward_failure_status,
     record_forward_request_started_status, record_forward_success_status,
@@ -1204,11 +1204,7 @@ impl RequestForwarder {
         // 使用适配器提取 base_url
         let mut base_url = adapter.extract_base_url(provider)?;
 
-        let is_full_url = provider
-            .meta
-            .as_ref()
-            .and_then(|meta| meta.is_full_url)
-            .unwrap_or(false);
+        let is_full_url = provider_is_full_url(provider);
 
         // GitHub Copilot API 使用 /chat/completions（无 /v1 前缀）
         let is_copilot = provider_is_github_copilot_upstream(provider, &base_url);
