@@ -5,6 +5,7 @@ use crate::database::{
     ProxyChannelSourceKind,
 };
 use crate::provider::{Provider, ProviderMeta};
+use crate::proxy::hyper_client::ProxyResponse;
 use crate::proxy::providers::provider_kind_from_app_type_and_config;
 use crate::proxy::usage::RequestLog;
 use crate::proxy_core::api::auth::ClaudeDesktopModelRouteInput;
@@ -26,7 +27,7 @@ use crate::proxy_core::api::session::SessionIdResult;
 use crate::proxy_core::api::transforms::CodexChatErrorNormalization;
 use crate::proxy_core::api::transport::{UpstreamRequestTransportPolicy, UpstreamSendPolicy};
 use bytes::Bytes;
-use futures::Stream;
+use futures::{Stream, StreamExt};
 use http::{HeaderMap, StatusCode};
 use rust_decimal::Decimal;
 use serde_json::{Map, Value, json};
@@ -1687,6 +1688,60 @@ pub(crate) fn channel_health_reset_from_parts(
     app_type: &str,
 ) -> ChannelHealthReset {
     crate::proxy_core::api::ports::channel_health_reset_from_parts(channel_id, app_type)
+}
+
+pub(crate) fn proxy_response_to_core_response<G>(
+    response: ProxyResponse,
+    connection_guard: Option<G>,
+) -> ProxyCoreResponse
+where
+    G: Send + 'static,
+{
+    match response {
+        ProxyResponse::Buffered {
+            status,
+            headers,
+            body,
+        } => ProxyCoreResponse::with_body(status, headers, ProxyResponseBody::bytes(body)),
+        ProxyResponse::Streamed {
+            status,
+            headers,
+            stream,
+        } => ProxyCoreResponse::with_body(
+            status,
+            headers,
+            ProxyResponseBody::stream(stream_with_connection_guard(stream, connection_guard)),
+        ),
+        other => {
+            let status = other.status();
+            let headers = other.headers().clone();
+            ProxyCoreResponse::with_body(
+                status,
+                headers,
+                ProxyResponseBody::stream(stream_with_connection_guard(
+                    other.bytes_stream(),
+                    connection_guard,
+                )),
+            )
+        }
+    }
+}
+
+fn stream_with_connection_guard<S, G>(
+    stream: S,
+    connection_guard: Option<G>,
+) -> impl Stream<Item = Result<Bytes, std::io::Error>> + Send + 'static
+where
+    S: Stream<Item = Result<Bytes, std::io::Error>> + Send + 'static,
+    G: Send + 'static,
+{
+    async_stream::stream! {
+        let _connection_guard = connection_guard;
+        tokio::pin!(stream);
+        while let Some(chunk) = stream.next().await {
+            yield chunk;
+        }
+    }
 }
 
 pub(crate) fn proxy_result_from_forward_parts(

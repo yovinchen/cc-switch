@@ -4,6 +4,7 @@ use crate::error::AppError;
 use crate::proxy::error_mapper::forward_error_to_core_error;
 use crate::proxy::events::ProxyEventBus;
 use crate::proxy::failover_switch::FailoverSwitchManager;
+#[cfg(test)]
 use crate::proxy::hyper_client::ProxyResponse;
 use crate::proxy::provider_router::ProviderRouter;
 use crate::proxy::providers::codex_chat_history::CodexChatHistoryStore;
@@ -16,8 +17,8 @@ use crate::proxy_core_adapter::{
     ChannelSource, ChannelSpec, channel_not_found_error, AuthProvider,
     ChannelHealthReset, ChannelHealthStore, CurrentRouteTarget, ForwardPipeline,
     GeminiShadowStore, ModelCatalog, ModelCatalogProvider, ProviderSource, ProviderSpec,
-    ProxyAppConfig, ProxyConfigSource, ProxyCoreError, ProxyCoreEvent, ProxyCoreResponse,
-    ProxyCoreResult, ProxyEventSink, ProxyGlobalConfig, ProxyRequest, ProxyResponseBody,
+    ProxyAppConfig, ProxyConfigSource, ProxyCoreError, ProxyCoreEvent,
+    ProxyCoreResult, ProxyEventSink, ProxyGlobalConfig, ProxyRequest,
     ProxyResult, ProxyRuntimeConfig, ProxyRuntimeStatus, ProxyServices, RoutePlan, RoutePolicy,
     RoutePolicySource, RouteRequest, RouteResolver, UsageRecord, UsageSink,
     DEFAULT_CHANNEL_HEALTH_FAILURE_THRESHOLD,
@@ -38,6 +39,7 @@ use crate::proxy_core_adapter::{
     proxy_runtime_config_from_config,
     proxy_channel_record_to_core_spec, proxy_channel_records_to_core_specs_for_query,
     proxy_provider_to_core_spec, proxy_providers_to_core_specs,
+    proxy_response_to_core_response,
     forwarding_requires_runtime_error_message,
     response_runtime_policy_from_app_proxy_config,
     route_plan_no_matching_host_providers_error_message,
@@ -46,8 +48,7 @@ use crate::proxy_core_adapter::{
     settings_config_with_channel_auth_key,
     unsupported_app_kind_error_message,
 };
-use bytes::Bytes;
-use futures::{future::BoxFuture, Stream, StreamExt};
+use futures::future::BoxFuture;
 use indexmap::IndexMap;
 use serde_json::Value;
 use std::collections::HashMap;
@@ -744,60 +745,6 @@ fn forward_result_to_proxy_result(
         outbound_model,
         selected_channel_id,
     )
-}
-
-fn proxy_response_to_core_response<G>(
-    response: ProxyResponse,
-    connection_guard: Option<G>,
-) -> ProxyCoreResponse
-where
-    G: Send + 'static,
-{
-    match response {
-        ProxyResponse::Buffered {
-            status,
-            headers,
-            body,
-        } => ProxyCoreResponse::with_body(status, headers, ProxyResponseBody::bytes(body)),
-        ProxyResponse::Streamed {
-            status,
-            headers,
-            stream,
-        } => ProxyCoreResponse::with_body(
-            status,
-            headers,
-            ProxyResponseBody::stream(stream_with_connection_guard(stream, connection_guard)),
-        ),
-        other => {
-            let status = other.status();
-            let headers = other.headers().clone();
-            ProxyCoreResponse::with_body(
-                status,
-                headers,
-                ProxyResponseBody::stream(stream_with_connection_guard(
-                    other.bytes_stream(),
-                    connection_guard,
-                )),
-            )
-        }
-    }
-}
-
-fn stream_with_connection_guard<S, G>(
-    stream: S,
-    connection_guard: Option<G>,
-) -> impl Stream<Item = Result<Bytes, std::io::Error>> + Send + 'static
-where
-    S: Stream<Item = Result<Bytes, std::io::Error>> + Send + 'static,
-    G: Send + 'static,
-{
-    async_stream::stream! {
-        let _connection_guard = connection_guard;
-        tokio::pin!(stream);
-        while let Some(chunk) = stream.next().await {
-            yield chunk;
-        }
-    }
 }
 
 fn parse_app_type(app: &AppKind) -> ProxyCoreResult<AppType> {
