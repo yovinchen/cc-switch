@@ -11,8 +11,8 @@ use crate::proxy::{
 use crate::proxy_core_adapter::{
     claude_api_format_from_metadata, extract_gemini_model_from_path, extract_proxy_session_id,
     response_runtime_policy_from_app_proxy_config, usage_route_context_from_selection,
-    AppProxyConfig, CopilotOptimizerConfig, OptimizerConfig, ProxyCoreAppKind as AppKind,
-    ProxyResult, ProxyServices, RectifierConfig, ResponseRuntimePolicy, ResponseTimeoutConfig,
+    AppProxyConfig, ProxyCoreAppKind as AppKind, ProxyResult, ProxyServices,
+    ResponseRuntimePolicy, ResponseTimeoutConfig,
     StreamingTimeoutConfig, UsageRouteContext,
 };
 use axum::http::HeaderMap;
@@ -23,7 +23,7 @@ use std::time::Instant;
 /// 贯穿整个请求生命周期，包含：
 /// - 计时信息
 /// - 应用级代理配置（per-app）
-/// - 选中的 Provider 列表（用于故障转移）
+/// - 选中的 Provider（用于错误和转换兼容语义）
 /// - 请求模型名称
 /// - 日志标签
 /// - Session ID（用于日志关联）
@@ -34,15 +34,6 @@ pub struct RequestContext {
     pub app_config: AppProxyConfig,
     /// 选中的 Provider（故障转移链的第一个）
     pub provider: Provider,
-    /// 完整的 Provider 列表（用于故障转移）
-    #[allow(dead_code)]
-    providers: Vec<Provider>,
-    /// 请求开始时的"当前供应商"（用于判断是否需要同步 UI/托盘）
-    ///
-    /// 这里使用本地 settings 的设备级 current provider。
-    /// 代理模式下如果实际使用的 provider 与此不一致，会触发切换以确保 UI 始终准确。
-    #[allow(dead_code)]
-    pub current_provider_id: String,
     /// 请求中的模型名称
     pub request_model: String,
     /// 实际发往上游的模型名（路由接管/模型映射后的真值，forward 成功后回填）。
@@ -61,18 +52,6 @@ pub struct RequestContext {
     pub app_type: AppType,
     /// Session ID（从客户端请求提取或新生成）
     pub session_id: String,
-    /// Session ID 是否由客户端提供。生成的 UUID 不能作为上游缓存 key，否则每个请求都会换 key。
-    #[allow(dead_code)]
-    pub session_client_provided: bool,
-    /// 整流器配置
-    #[allow(dead_code)]
-    pub rectifier_config: RectifierConfig,
-    /// 优化器配置
-    #[allow(dead_code)]
-    pub optimizer_config: OptimizerConfig,
-    /// Copilot 优化器配置
-    #[allow(dead_code)]
-    pub copilot_optimizer_config: CopilotOptimizerConfig,
 }
 
 impl RequestContext {
@@ -107,19 +86,6 @@ impl RequestContext {
             .map_err(|e| ProxyError::DatabaseError(e.to_string()))?;
         let app_config = serde_json::from_value(core_app_config.raw.clone())
             .map_err(|e| ProxyError::ConfigError(format!("invalid app proxy config: {e}")))?;
-        let rectifier_config =
-            serde_json::from_value(core_app_config.rectifier.raw.clone()).unwrap_or_default();
-        let optimizer_config =
-            serde_json::from_value(core_app_config.optimizer.raw.clone()).unwrap_or_default();
-        let copilot_optimizer_config =
-            serde_json::from_value(core_app_config.copilot_optimizer.raw.clone())
-                .unwrap_or_default();
-        let current_provider_id = core_app_config
-            .raw
-            .get("currentProviderId")
-            .and_then(|value| value.as_str())
-            .unwrap_or_default()
-            .to_string();
 
         // 从请求体提取模型名称
         let request_model = body
@@ -172,8 +138,6 @@ impl RequestContext {
             start_time,
             app_config,
             provider,
-            providers,
-            current_provider_id,
             request_model,
             outbound_model: None,
             usage_route_context: None,
@@ -181,10 +145,6 @@ impl RequestContext {
             app_type_str,
             app_type,
             session_id,
-            session_client_provided: session_result.client_provided,
-            rectifier_config,
-            optimizer_config,
-            copilot_optimizer_config,
         })
     }
 
@@ -230,14 +190,6 @@ impl RequestContext {
 
     pub fn claude_api_format_for_proxy_result(&self, result: &ProxyResult) -> String {
         claude_api_format_from_metadata(&result.metadata, get_claude_api_format(&self.provider))
-    }
-
-    /// 获取 Provider 列表（用于故障转移）
-    ///
-    /// 返回在创建上下文时已选择的 providers，避免重复调用 select_providers()
-    #[allow(dead_code)]
-    pub fn get_providers(&self) -> Vec<Provider> {
-        self.providers.clone()
     }
 
     /// 计算请求延迟（毫秒）
