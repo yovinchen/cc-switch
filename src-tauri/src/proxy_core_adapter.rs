@@ -1402,6 +1402,16 @@ impl From<&AppType> for AppKind {
     }
 }
 
+pub(crate) fn app_type_option_from_proxy_core_app(app: &AppKind) -> Option<AppType> {
+    app.as_str().parse::<AppType>().ok()
+}
+
+pub(crate) fn app_type_from_proxy_core_app(app: &AppKind) -> ProxyCoreResult<AppType> {
+    app.as_str()
+        .parse::<AppType>()
+        .map_err(|error| ProxyCoreError::Config(unsupported_app_kind_error_message(error)))
+}
+
 pub(crate) fn unsupported_app_kind_error_message(error: impl std::fmt::Display) -> String {
     crate::proxy_core::api::domain::unsupported_app_kind_error_message(&error.to_string())
 }
@@ -2658,6 +2668,20 @@ mod tests {
             AppKind::from(&AppType::OpenClaw),
             AppKind::Custom("openclaw".to_string())
         );
+        assert_eq!(
+            app_type_from_proxy_core_app(&AppKind::Claude).expect("claude app"),
+            AppType::Claude
+        );
+        assert_eq!(
+            app_type_option_from_proxy_core_app(&AppKind::Custom("openclaw".to_string())),
+            Some(AppType::OpenClaw)
+        );
+        assert!(matches!(
+            app_type_from_proxy_core_app(&AppKind::Custom("unknown-app".to_string())),
+            Err(ProxyCoreError::Config(message))
+                if message.starts_with("unsupported app kind:")
+                    && message.contains("unknown-app")
+        ));
         assert_eq!(
             unsupported_app_kind_error_message("invalid app: openclaw"),
             "unsupported app kind: invalid app: openclaw"

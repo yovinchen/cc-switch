@@ -25,6 +25,8 @@ use crate::proxy_core_adapter::{
 };
 use crate::proxy_core_adapter::{
     auth_info_from_profile_ref,
+    app_type_from_proxy_core_app,
+    app_type_option_from_proxy_core_app,
     channel_auth_profile_missing_key_error_message,
     channel_auth_profile_missing_provider_warning,
     channel_auth_profile_resolution,
@@ -46,13 +48,11 @@ use crate::proxy_core_adapter::{
     route_plan_no_matching_host_providers_error_message,
     route_policy_from_failover_queue,
     settings_config_with_channel_auth_key,
-    unsupported_app_kind_error_message,
 };
 use futures::future::BoxFuture;
 use indexmap::IndexMap;
 use serde_json::Value;
 use std::collections::HashMap;
-use std::str::FromStr;
 use std::sync::Arc;
 use tokio::sync::RwLock;
 
@@ -212,7 +212,7 @@ impl ProxyConfigSource for CcSwitchConfigSource {
 
     fn load_app<'a>(&'a self, app: &'a AppKind) -> BoxFuture<'a, ProxyCoreResult<ProxyAppConfig>> {
         Box::pin(async move {
-            let app_type = AppType::from_str(app.as_str()).ok();
+            let app_type = app_type_option_from_proxy_core_app(app);
             let config = self
                 .db
                 .get_proxy_config_for_app(app.as_str())
@@ -262,7 +262,7 @@ impl ProviderSource for CcSwitchProviderSource {
         app: &'a AppKind,
     ) -> BoxFuture<'a, ProxyCoreResult<Vec<ProviderSpec>>> {
         Box::pin(async move {
-            let app_type = parse_app_type(app)?;
+            let app_type = app_type_from_proxy_core_app(app)?;
             let providers = self
                 .db
                 .get_all_providers(app.as_str())
@@ -280,7 +280,7 @@ impl ProviderSource for CcSwitchProviderSource {
         provider_id: &'a str,
     ) -> BoxFuture<'a, ProxyCoreResult<Option<ProviderSpec>>> {
         Box::pin(async move {
-            let app_type = parse_app_type(app)?;
+            let app_type = app_type_from_proxy_core_app(app)?;
             let provider = self
                 .db
                 .get_provider_by_id(provider_id, app.as_str())
@@ -563,7 +563,7 @@ impl CcSwitchProxyRuntime {
             body,
             ..
         } = request;
-        let app_type = parse_app_type(&app)?;
+        let app_type = app_type_from_proxy_core_app(&app)?;
         let body = body.into_json()?;
         let app_config = self
             .db
@@ -699,11 +699,6 @@ fn channel_key_auth_provider(
         key_value,
     );
     auth_provider
-}
-
-fn parse_app_type(app: &AppKind) -> ProxyCoreResult<AppType> {
-    AppType::from_str(app.as_str())
-        .map_err(|error| ProxyCoreError::Config(unsupported_app_kind_error_message(error)))
 }
 
 fn app_error(context: &str, error: AppError) -> ProxyCoreError {
