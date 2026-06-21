@@ -25,7 +25,7 @@ use crate::proxy_core_adapter::{
 use crate::proxy_core_adapter::{
     extract_claude_auth_key_from_settings, extract_proxy_session_id, parse_auth_profile_ref,
     proxy_channel_record_to_core_spec, proxy_channel_records_to_core_specs_for_query,
-    ToProxyCoreProviderSpec,
+    proxy_provider_to_core_spec, proxy_providers_to_core_specs,
 };
 use bytes::Bytes;
 use futures::{future::BoxFuture, Stream, StreamExt};
@@ -263,10 +263,10 @@ impl ProviderSource for CcSwitchProviderSource {
                 .db
                 .get_all_providers(app.as_str())
                 .map_err(|error| app_error("list providers", error))?;
-            Ok(providers
-                .values()
-                .map(|provider| provider.to_proxy_core_provider_spec(&app_type))
-                .collect())
+            Ok(proxy_providers_to_core_specs(
+                providers.into_values(),
+                &app_type,
+            ))
         })
     }
 
@@ -281,7 +281,7 @@ impl ProviderSource for CcSwitchProviderSource {
                 .db
                 .get_provider_by_id(provider_id, app.as_str())
                 .map_err(|error| app_error("get provider", error))?;
-            Ok(provider.map(|provider| provider.to_proxy_core_provider_spec(&app_type)))
+            Ok(provider.map(|provider| proxy_provider_to_core_spec(&provider, &app_type)))
         })
     }
 }
@@ -1313,6 +1313,37 @@ mod tests {
             failover_manager: Arc::new(FailoverSwitchManager::new(db)),
             app_handle: None,
         }
+    }
+
+    #[tokio::test]
+    async fn provider_source_projects_db_providers_through_adapter() {
+        let db = Arc::new(Database::memory().expect("memory db"));
+        save_claude_provider(&db);
+        let services = CcSwitchProxyServices::new(db);
+
+        let providers = services
+            .providers()
+            .list_providers(&AppKind::Claude)
+            .await
+            .expect("list providers");
+
+        assert_eq!(providers.len(), 1);
+        assert_eq!(providers[0].id, "anthropic-main");
+        assert_eq!(providers[0].name, "Anthropic Main");
+        assert_eq!(providers[0].kind, ProviderKind::Claude);
+        assert_eq!(providers[0].account_ref, None);
+        assert!(providers[0].metadata.raw.get("env").is_none());
+
+        let provider = services
+            .providers()
+            .get_provider(&AppKind::Claude, "anthropic-main")
+            .await
+            .expect("get provider")
+            .expect("provider");
+
+        assert_eq!(provider.id, "anthropic-main");
+        assert_eq!(provider.kind, ProviderKind::Claude);
+        assert!(provider.metadata.raw.get("env").is_none());
     }
 
     #[tokio::test]

@@ -1316,6 +1316,20 @@ impl ToProxyCoreProviderSpec for Provider {
     }
 }
 
+pub(crate) fn proxy_provider_to_core_spec(provider: &Provider, app_type: &AppType) -> ProviderSpec {
+    provider.to_proxy_core_provider_spec(app_type)
+}
+
+pub(crate) fn proxy_providers_to_core_specs(
+    providers: impl IntoIterator<Item = Provider>,
+    app_type: &AppType,
+) -> Vec<ProviderSpec> {
+    providers
+        .into_iter()
+        .map(|provider| proxy_provider_to_core_spec(&provider, app_type))
+        .collect()
+}
+
 #[allow(dead_code)]
 pub(crate) trait ToProxyCoreChannelSpec {
     fn to_proxy_core_channel_spec(&self) -> ChannelSpec;
