@@ -267,6 +267,25 @@ pub(crate) fn record_active_connection_released_status(status: &mut ProxyRuntime
     crate::proxy_core::api::ports::record_active_connection_released_status(status);
 }
 
+pub(crate) fn record_proxy_server_started_status(
+    status: &mut ProxyRuntimeStatus,
+    address: &str,
+    port: u16,
+) {
+    crate::proxy_core::api::ports::record_proxy_server_started_status(
+        status,
+        crate::proxy_core::api::ports::ProxyServerStartedStatusInput { address, port },
+    );
+}
+
+pub(crate) fn record_proxy_server_stopped_status(status: &mut ProxyRuntimeStatus) {
+    crate::proxy_core::api::ports::record_proxy_server_stopped_status(status);
+}
+
+pub(crate) fn apply_proxy_runtime_uptime(status: &mut ProxyRuntimeStatus, uptime_seconds: u64) {
+    crate::proxy_core::api::ports::apply_proxy_runtime_uptime(status, uptime_seconds);
+}
+
 pub(crate) type ProxyRuntimeConfig =
     crate::proxy_core::api::config::ProxyRuntimeConfig;
 pub(crate) type ProxyGlobalConfig = crate::proxy_core::api::config::ProxyGlobalConfig;

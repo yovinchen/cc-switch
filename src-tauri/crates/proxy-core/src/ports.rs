@@ -751,6 +751,29 @@ pub fn record_active_connection_released_status(status: &mut ProxyRuntimeStatus)
     status.active_connections = status.active_connections.saturating_sub(1);
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ProxyServerStartedStatusInput<'a> {
+    pub address: &'a str,
+    pub port: u16,
+}
+
+pub fn record_proxy_server_started_status(
+    status: &mut ProxyRuntimeStatus,
+    input: ProxyServerStartedStatusInput<'_>,
+) {
+    status.running = true;
+    status.address = input.address.to_string();
+    status.port = input.port;
+}
+
+pub fn record_proxy_server_stopped_status(status: &mut ProxyRuntimeStatus) {
+    status.running = false;
+}
+
+pub fn apply_proxy_runtime_uptime(status: &mut ProxyRuntimeStatus, uptime_seconds: u64) {
+    status.uptime_seconds = uptime_seconds;
+}
+
 pub fn apply_proxy_runtime_active_targets(
     status: &mut ProxyRuntimeStatus,
     active_targets: impl IntoIterator<Item = CurrentRouteTarget>,
@@ -2956,10 +2979,12 @@ mod tests {
         ProxyChannelWriteRequest, ProxyConfig, ProxyCoreEvent, ProxyCoreEventType,
         ProxyRuntimeStatus, ProxyServerInfo, ProxyStatusResponse, ProxyTakeoverStatus,
         ForwardFailureStatusInput, ForwardRequestStartedStatusInput, ForwardSuccessStatusInput,
-        ForwardSuccessStatusUpdate, apply_proxy_runtime_active_targets,
+        ForwardSuccessStatusUpdate, ProxyServerStartedStatusInput,
+        apply_proxy_runtime_active_targets, apply_proxy_runtime_uptime,
         record_active_connection_acquired_status, record_active_connection_released_status,
         record_forward_failure_status, record_forward_request_started_status,
-        record_forward_success_status,
+        record_forward_success_status, record_proxy_server_started_status,
+        record_proxy_server_stopped_status,
         RectifierConfig, RouteGroupListResponse, RouteGroupSourceInput, RouteResolveResponse,
         StreamCheckConfig, StreamCheckResult, DEFAULT_PROXY_LISTEN_ADDRESS,
         DEFAULT_PROXY_LISTEN_PORT, DEFAULT_CHANNEL_HEALTH_FAILURE_THRESHOLD,
@@ -3795,6 +3820,31 @@ mod tests {
         record_active_connection_acquired_status(&mut status);
         record_active_connection_released_status(&mut status);
         assert_eq!(status.active_connections, 0);
+    }
+
+    #[test]
+    fn proxy_server_lifecycle_status_records_start_stop_and_uptime() {
+        let mut status = ProxyRuntimeStatus::default();
+
+        record_proxy_server_started_status(
+            &mut status,
+            ProxyServerStartedStatusInput {
+                address: "127.0.0.1",
+                port: 15721,
+            },
+        );
+        apply_proxy_runtime_uptime(&mut status, 42);
+
+        assert!(status.running);
+        assert_eq!(status.address, "127.0.0.1");
+        assert_eq!(status.port, 15721);
+        assert_eq!(status.uptime_seconds, 42);
+
+        record_proxy_server_stopped_status(&mut status);
+
+        assert!(!status.running);
+        assert_eq!(status.address, "127.0.0.1");
+        assert_eq!(status.port, 15721);
     }
 
     #[test]

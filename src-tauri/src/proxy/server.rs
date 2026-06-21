@@ -14,10 +14,11 @@ use super::{
 };
 use crate::database::Database;
 use crate::proxy_core_adapter::{
-    apply_proxy_runtime_active_targets, current_route_target_from_provider,
-    proxy_engine_from_services, server_log_codes as log_srv, CircuitBreakerConfig,
-    CurrentRouteTarget, GeminiShadowStore, ProxyConfig, ProxyEngine, ProxyRuntimeStatus,
-    ProxyServerInfo,
+    apply_proxy_runtime_active_targets, apply_proxy_runtime_uptime,
+    current_route_target_from_provider, proxy_engine_from_services,
+    record_proxy_server_started_status, record_proxy_server_stopped_status,
+    server_log_codes as log_srv, CircuitBreakerConfig, CurrentRouteTarget, GeminiShadowStore,
+    ProxyConfig, ProxyEngine, ProxyRuntimeStatus, ProxyServerInfo,
 };
 use crate::proxy_core_host::{CcSwitchProxyRuntime, CcSwitchProxyServices};
 use axum::{
@@ -168,11 +169,14 @@ impl ProxyServer {
         *self.shutdown_tx.write().await = Some(shutdown_tx);
 
         // 更新状态
-        let mut status = self.state.status.write().await;
-        status.running = true;
-        status.address = self.config.listen_address.clone();
-        status.port = actual_port;
-        drop(status);
+        {
+            let mut status = self.state.status.write().await;
+            record_proxy_server_started_status(
+                &mut status,
+                &self.config.listen_address,
+                actual_port,
+            );
+        }
 
         // 记录启动时间
         *self.state.start_time.write().await = Some(std::time::Instant::now());
@@ -250,7 +254,10 @@ impl ProxyServer {
             }
 
             // 服务器停止后更新状态
-            state.status.write().await.running = false;
+            {
+                let mut status = state.status.write().await;
+                record_proxy_server_stopped_status(&mut status);
+            }
             *state.start_time.write().await = None;
             state.events.emit("server_stopped", serde_json::json!({}));
         });
@@ -302,7 +309,7 @@ impl ProxyServer {
 
         // 计算运行时间
         if let Some(start) = *self.state.start_time.read().await {
-            status.uptime_seconds = start.elapsed().as_secs();
+            apply_proxy_runtime_uptime(&mut status, start.elapsed().as_secs());
         }
 
         // 从 current_providers HashMap 获取每个应用类型当前正在使用的 provider
