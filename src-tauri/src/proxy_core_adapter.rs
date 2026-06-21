@@ -1108,6 +1108,16 @@ pub(crate) fn select_provider_ids(
     crate::proxy_core::api::routing::select_provider_ids(input)
 }
 
+pub(crate) fn current_provider_id_from_sources(
+    settings_current_provider_id: Option<&str>,
+    db_current_provider_id: Option<&str>,
+) -> String {
+    crate::proxy_core::api::routing::current_provider_id_from_sources(
+        settings_current_provider_id,
+        db_current_provider_id,
+    )
+}
+
 pub(crate) fn should_block_proxy_switch_to_provider_category(
     proxy_takeover_active: bool,
     provider_category: Option<&str>,
@@ -2806,6 +2816,10 @@ mod tests {
         ]))
         .expect("selected provider ids");
         assert_eq!(selected, vec!["provider-b"]);
+        assert_eq!(
+            current_provider_id_from_sources(Some("settings-provider"), Some("db-provider")),
+            "settings-provider"
+        );
 
         let mut response = resolve_channel_route(
             RouteResolveRequest {

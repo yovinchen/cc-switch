@@ -87,6 +87,16 @@ pub fn select_provider_ids(
     }
 }
 
+pub fn current_provider_id_from_sources(
+    settings_current_provider_id: Option<&str>,
+    db_current_provider_id: Option<&str>,
+) -> String {
+    settings_current_provider_id
+        .or(db_current_provider_id)
+        .unwrap_or_default()
+        .to_string()
+}
+
 pub fn should_block_proxy_switch_to_provider_category(
     proxy_takeover_active: bool,
     provider_category: Option<&str>,
@@ -113,7 +123,8 @@ pub fn should_attempt_restored_provider_switchback(
 #[cfg(test)]
 mod tests {
     use super::{
-        select_provider_ids, should_attempt_restored_provider_switchback,
+        current_provider_id_from_sources, select_provider_ids,
+        should_attempt_restored_provider_switchback,
         should_block_proxy_switch_to_provider_category, ProviderSelectionCandidate,
         ProviderSelectionFailure, ProviderSelectionInput,
     };
@@ -160,6 +171,27 @@ mod tests {
         .expect_err("missing queue entry prevents all-open classification");
 
         assert_eq!(error, ProviderSelectionFailure::NoProvidersConfigured);
+    }
+
+    #[test]
+    fn current_provider_source_resolution_preserves_settings_priority() {
+        assert_eq!(
+            current_provider_id_from_sources(Some("settings-provider"), Some("db-provider")),
+            "settings-provider"
+        );
+        assert_eq!(
+            current_provider_id_from_sources(None, Some("db-provider")),
+            "db-provider"
+        );
+        assert_eq!(current_provider_id_from_sources(None, None), "");
+    }
+
+    #[test]
+    fn current_provider_source_resolution_treats_empty_settings_value_as_present() {
+        assert_eq!(
+            current_provider_id_from_sources(Some(""), Some("db-provider")),
+            ""
+        );
     }
 
     #[test]

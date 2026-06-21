@@ -24,10 +24,11 @@ use crate::proxy_core_adapter::{
 };
 use crate::proxy_core_adapter::{
     auth_info_from_profile_ref,
+    channel_auth_profile_missing_key_error_message,
     channel_auth_profile_missing_provider_warning,
     channel_auth_profile_resolution,
-    channel_auth_profile_missing_key_error_message,
     channel_health_reset_from_parts,
+    current_provider_id_from_sources,
     extract_proxy_session_id,
     proxy_app_config_from_config_parts, proxy_global_config_from_config,
     proxy_runtime_config_from_config,
@@ -559,14 +560,16 @@ impl CcSwitchProxyRuntime {
         let rectifier_config = self.db.get_rectifier_config().unwrap_or_default();
         let optimizer_config = self.db.get_optimizer_config().unwrap_or_default();
         let copilot_optimizer_config = self.db.get_copilot_optimizer_config().unwrap_or_default();
-        let current_provider_id = crate::settings::get_current_provider(&app_type)
-            .or_else(|| {
-                self.db
-                    .get_current_provider(app_type.as_str())
-                    .ok()
-                    .flatten()
-            })
-            .unwrap_or_default();
+        let settings_current_provider_id = crate::settings::get_current_provider(&app_type);
+        let db_current_provider_id = if settings_current_provider_id.is_none() {
+            self.db.get_current_provider(app_type.as_str()).ok().flatten()
+        } else {
+            None
+        };
+        let current_provider_id = current_provider_id_from_sources(
+            settings_current_provider_id.as_deref(),
+            db_current_provider_id.as_deref(),
+        );
         let session_result = extract_proxy_session_id(&headers, &body, app_type.as_str());
         let all_providers = self
             .db
