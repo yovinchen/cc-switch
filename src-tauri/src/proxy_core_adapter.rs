@@ -372,6 +372,12 @@ pub(crate) fn auth_info_from_profile_ref(
     crate::proxy_core::api::ports::auth_info_from_profile_ref(auth_profile, source)
 }
 
+pub(crate) fn auth_info_from_cc_switch_provider_config(
+    auth_profile: Option<&AuthProfileRef>,
+) -> AuthInfo {
+    auth_info_from_profile_ref(auth_profile, "cc_switch_provider_config")
+}
+
 pub(crate) type AttemptEventChannel<'a> =
     crate::proxy_core::api::events::AttemptEventChannel<'a>;
 pub(crate) type AttemptEventPayloadInput<'a> =
@@ -3076,6 +3082,22 @@ mod tests {
             .and_then(Value::as_bool),
             Some(true)
         );
+    }
+
+    #[test]
+    fn auth_adapter_projects_cc_switch_provider_config_source() {
+        let auth_profile = AuthProfileRef::new("provider:claude:anthropic-main");
+        let auth = auth_info_from_cc_switch_provider_config(Some(&auth_profile));
+        assert!(auth.headers.is_empty());
+        assert_eq!(
+            auth.account_ref.as_deref(),
+            Some("provider:claude:anthropic-main")
+        );
+        assert_eq!(auth.metadata["source"], json!("cc_switch_provider_config"));
+
+        let fallback = auth_info_from_cc_switch_provider_config(None);
+        assert!(fallback.account_ref.is_none());
+        assert_eq!(fallback.metadata["source"], json!("cc_switch_provider_config"));
     }
 
     #[test]

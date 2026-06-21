@@ -26,7 +26,7 @@ use crate::proxy_core_adapter::{
 };
 use crate::proxy_core_adapter::{
     app_error,
-    auth_info_from_profile_ref,
+    auth_info_from_cc_switch_provider_config,
     app_type_from_proxy_core_app,
     app_type_option_from_proxy_core_app,
     channel_auth_profile_action,
@@ -419,10 +419,7 @@ impl AuthProvider for CcSwitchAuthProvider {
         _request: &'a ProxyRequest,
     ) -> BoxFuture<'a, ProxyCoreResult<AuthInfo>> {
         Box::pin(async move {
-            Ok(auth_info_from_profile_ref(
-                auth_profile,
-                "cc_switch_provider_config",
-            ))
+            Ok(auth_info_from_cc_switch_provider_config(auth_profile))
         })
     }
 }
