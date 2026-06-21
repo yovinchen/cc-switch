@@ -60,6 +60,20 @@ pub(crate) fn proxy_error_http_status_code(kind: ProxyErrorStatusKind) -> u16 {
     crate::proxy_core::api::errors::proxy_error_http_status_code(kind)
 }
 
+pub(crate) fn proxy_error_response_body(message: impl Into<String>) -> Value {
+    crate::proxy_core::api::errors::proxy_error_response_body(message)
+}
+
+pub(crate) fn upstream_proxy_error_response_body(
+    upstream_status: u16,
+    upstream_body: Option<&str>,
+) -> Value {
+    crate::proxy_core::api::errors::upstream_proxy_error_response_body(
+        upstream_status,
+        upstream_body,
+    )
+}
+
 pub(crate) fn proxy_core_error_from_status_kind(
     kind: ProxyErrorStatusKind,
     message: impl Into<String>,
@@ -3644,6 +3658,14 @@ mod tests {
         assert_eq!(
             error_message_with_context("load config", "disk failed"),
             "load config: disk failed"
+        );
+        assert_eq!(
+            proxy_error_response_body("bad")["error"]["type"],
+            "proxy_error"
+        );
+        assert_eq!(
+            upstream_proxy_error_response_body(502, Some("bad gateway"))["error"]["message"],
+            "bad gateway"
         );
     }
 

@@ -1,4 +1,5 @@
 use http::StatusCode;
+use serde_json::{json, Value};
 use thiserror::Error;
 
 #[derive(Debug, Error)]
@@ -103,6 +104,38 @@ pub fn proxy_core_error_from_status_kind(
     }
 }
 
+pub fn proxy_error_response_body(message: impl Into<String>) -> Value {
+    json!({
+        "error": {
+            "message": message.into(),
+            "type": "proxy_error",
+        }
+    })
+}
+
+pub fn upstream_proxy_error_response_body(
+    upstream_status: u16,
+    upstream_body: Option<&str>,
+) -> Value {
+    if let Some(body) = upstream_body {
+        serde_json::from_str::<Value>(body).unwrap_or_else(|_| {
+            json!({
+                "error": {
+                    "message": body,
+                    "type": "upstream_error",
+                }
+            })
+        })
+    } else {
+        json!({
+            "error": {
+                "message": format!("Upstream error (status {upstream_status})"),
+                "type": "upstream_error",
+            }
+        })
+    }
+}
+
 pub fn error_message_with_context(context: &str, error: &str) -> String {
     format!("{context}: {error}")
 }
@@ -175,6 +208,35 @@ mod tests {
             proxy_core_error_from_status_kind(ProxyErrorStatusKind::TransformError, "bad body"),
             ProxyCoreError::Internal(_)
         ));
+    }
+
+    #[test]
+    fn proxy_error_response_body_preserves_host_envelope() {
+        let body = proxy_error_response_body("dns lookup failed");
+
+        assert_eq!(body["error"]["message"], "dns lookup failed");
+        assert_eq!(body["error"]["type"], "proxy_error");
+    }
+
+    #[test]
+    fn upstream_proxy_error_response_body_preserves_json_or_wraps_text() {
+        let json_body = upstream_proxy_error_response_body(
+            429,
+            Some(r#"{"error":{"message":"rate limited","type":"quota"}}"#),
+        );
+        assert_eq!(json_body["error"]["message"], "rate limited");
+        assert_eq!(json_body["error"]["type"], "quota");
+
+        let text_body = upstream_proxy_error_response_body(502, Some("bad gateway"));
+        assert_eq!(text_body["error"]["message"], "bad gateway");
+        assert_eq!(text_body["error"]["type"], "upstream_error");
+
+        let empty_body = upstream_proxy_error_response_body(503, None);
+        assert_eq!(
+            empty_body["error"]["message"],
+            "Upstream error (status 503)"
+        );
+        assert_eq!(empty_body["error"]["type"], "upstream_error");
     }
 
     #[test]

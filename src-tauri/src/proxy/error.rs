@@ -1,10 +1,12 @@
-use crate::proxy_core_adapter::{proxy_error_http_status_code, ProxyErrorStatusKind};
+use crate::proxy_core_adapter::{
+    proxy_error_http_status_code, proxy_error_response_body,
+    upstream_proxy_error_response_body, ProxyErrorStatusKind,
+};
 use axum::{
     http::StatusCode,
     response::{IntoResponse, Response},
     Json,
 };
-use serde_json::json;
 use thiserror::Error;
 
 #[derive(Debug, Error)]
@@ -87,29 +89,8 @@ impl IntoResponse for ProxyError {
                 body: upstream_body,
             } => {
                 let http_status = status_code_from_proxy_error(&self, StatusCode::BAD_GATEWAY);
-
-                // 尝试解析上游响应体为 JSON，如果失败则包装为字符串
-                let error_body = if let Some(body_str) = upstream_body {
-                    if let Ok(json_body) = serde_json::from_str::<serde_json::Value>(body_str) {
-                        // 上游返回的是 JSON，直接透传
-                        json_body
-                    } else {
-                        // 上游返回的不是 JSON，包装为错误消息
-                        json!({
-                            "error": {
-                                "message": body_str,
-                                "type": "upstream_error",
-                            }
-                        })
-                    }
-                } else {
-                    json!({
-                        "error": {
-                            "message": format!("Upstream error (status {})", upstream_status),
-                            "type": "upstream_error",
-                        }
-                    })
-                };
+                let error_body =
+                    upstream_proxy_error_response_body(*upstream_status, upstream_body.as_deref());
 
                 (http_status, error_body)
             }
@@ -118,12 +99,7 @@ impl IntoResponse for ProxyError {
                     status_code_from_proxy_error(&self, StatusCode::INTERNAL_SERVER_ERROR);
                 let message = self.to_string();
 
-                let error_body = json!({
-                    "error": {
-                        "message": message,
-                        "type": "proxy_error",
-                    }
-                });
+                let error_body = proxy_error_response_body(message);
 
                 (http_status, error_body)
             }
@@ -198,15 +174,23 @@ pub fn categorize_error(error: &reqwest::Error) -> ErrorCategory {
 mod tests {
     use super::*;
 
-    #[test]
-    fn proxy_error_into_response_uses_shared_status_contract() {
+    #[tokio::test]
+    async fn proxy_error_into_response_uses_shared_status_and_body_contract() {
         let response = ProxyError::ForwardFailed("dns lookup failed".to_string()).into_response();
 
         assert_eq!(response.status(), StatusCode::BAD_GATEWAY);
+
+        let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+            .await
+            .expect("read response body");
+        let json: serde_json::Value =
+            serde_json::from_slice(&body).expect("proxy error json body");
+        assert_eq!(json["error"]["message"], "请求转发失败: dns lookup failed");
+        assert_eq!(json["error"]["type"], "proxy_error");
     }
 
-    #[test]
-    fn invalid_upstream_status_falls_back_to_bad_gateway_response() {
+    #[tokio::test]
+    async fn invalid_upstream_status_falls_back_to_bad_gateway_response_and_body() {
         let response = (ProxyError::UpstreamError {
             status: 42,
             body: None,
@@ -214,5 +198,13 @@ mod tests {
         .into_response();
 
         assert_eq!(response.status(), StatusCode::BAD_GATEWAY);
+
+        let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+            .await
+            .expect("read response body");
+        let json: serde_json::Value =
+            serde_json::from_slice(&body).expect("upstream error json body");
+        assert_eq!(json["error"]["message"], "Upstream error (status 42)");
+        assert_eq!(json["error"]["type"], "upstream_error");
     }
 }
