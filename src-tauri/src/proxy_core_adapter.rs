@@ -997,6 +997,7 @@ pub(crate) use crate::proxy_core::api::transport::{
     contains_image_blocks, is_codex_chat_full_endpoint_base,
     is_github_copilot_upstream, is_openai_o_series, is_unsupported_image_error,
     merge_copilot_tool_results,
+    parse_json_request_body, parse_json_request_body_or_null,
     prepare_upstream_request_body_with_report, prompt_cache_trace_log_message,
     replace_image_blocks_with_marker, replace_images_for_text_only_model,
     request_body_filter_log_message,

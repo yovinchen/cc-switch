@@ -3,6 +3,7 @@ use crate::json_canonical::short_value_hash;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::HashSet;
+use std::fmt;
 
 const ANTHROPIC_BILLING_HEADER_PREFIX: &str = "x-anthropic-billing-header:";
 
@@ -22,6 +23,31 @@ pub struct PreparedUpstreamRequestBody {
     pub removed_private_keys: Vec<String>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RequestBodyJsonParseError {
+    message: String,
+}
+
+impl RequestBodyJsonParseError {
+    fn new(error: serde_json::Error) -> Self {
+        Self {
+            message: format!("Failed to parse request body: {error}"),
+        }
+    }
+
+    pub fn message(&self) -> &str {
+        &self.message
+    }
+}
+
+impl fmt::Display for RequestBodyJsonParseError {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str(&self.message)
+    }
+}
+
+impl std::error::Error for RequestBodyJsonParseError {}
+
 #[derive(Debug, Clone, Copy)]
 pub struct PromptCacheTraceLogInput<'a> {
     pub app: &'a str,
@@ -34,6 +60,18 @@ pub struct PromptCacheTraceLogInput<'a> {
 
 pub fn prepare_upstream_request_body(request_body: Value) -> Value {
     prepare_upstream_request_body_with_report(request_body).body
+}
+
+pub fn parse_json_request_body(bytes: &[u8]) -> Result<Value, RequestBodyJsonParseError> {
+    serde_json::from_slice(bytes).map_err(RequestBodyJsonParseError::new)
+}
+
+pub fn parse_json_request_body_or_null(bytes: &[u8]) -> Result<Value, RequestBodyJsonParseError> {
+    if bytes.is_empty() {
+        Ok(Value::Null)
+    } else {
+        parse_json_request_body(bytes)
+    }
 }
 
 pub fn request_body_filter_log_message(report: &PreparedUpstreamRequestBody) -> Option<String> {
@@ -552,6 +590,7 @@ mod tests {
         inject_openai_stream_include_usage, is_openai_o_series,
         map_anthropic_tool_choice_to_openai_chat, map_anthropic_tool_choice_to_openai_responses,
         map_codex_chat_reasoning_effort, method_allows_upstream_request_body,
+        parse_json_request_body, parse_json_request_body_or_null,
         prepare_upstream_request_body_with_report, prompt_cache_trace_log_message,
         request_body_filter_log_message, resolve_codex_provider_upstream_model,
         resolve_reasoning_effort, serialize_upstream_request_body,
@@ -562,6 +601,29 @@ mod tests {
     use http::Method;
     use serde_json::json;
     use std::collections::HashSet;
+
+    #[test]
+    fn parses_json_request_body_with_stable_error_message() {
+        assert_eq!(
+            parse_json_request_body(br#"{"model":"gpt-5"}"#).unwrap(),
+            json!({"model": "gpt-5"})
+        );
+
+        let error = parse_json_request_body(b"{").unwrap_err();
+        assert!(error
+            .message()
+            .starts_with("Failed to parse request body:"));
+        assert_eq!(error.to_string(), error.message());
+    }
+
+    #[test]
+    fn parses_empty_json_request_body_as_null_when_allowed() {
+        assert_eq!(parse_json_request_body_or_null(b"").unwrap(), json!(null));
+        assert_eq!(
+            parse_json_request_body_or_null(br#"{"stream":true}"#).unwrap(),
+            json!({"stream": true})
+        );
+    }
 
     #[test]
     fn filters_private_fields_recursively_but_preserves_schema_property_names() {
