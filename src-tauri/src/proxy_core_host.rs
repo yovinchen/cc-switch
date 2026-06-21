@@ -20,7 +20,8 @@ use crate::proxy_core_adapter::{
     ProxyAppConfig, ProxyConfigSource, ProxyCoreEvent,
     ProxyCoreResult, ProxyEventSink, ProxyGlobalConfig, ProxyRequest,
     ProxyResult, ProxyRuntimeConfig, ProxyRuntimeStatus, ProxyServices, RoutePlan, RoutePolicy,
-    RoutePolicySource, RouteRequest, RouteResolver, UsageRecord, UsageSink,
+    RoutePolicySource, RouteRequest, RouteResolveRequest, RouteResolveResponse, RouteResolver,
+    UsageRecord, UsageSink,
 };
 use crate::proxy_core_adapter::{
     app_error,
@@ -118,7 +119,9 @@ impl CcSwitchProxyServices {
                 router: runtime.provider_router.clone(),
             },
             route_policies: CcSwitchRoutePolicySource { db: db.clone() },
-            route_resolver: CcSwitchRouteResolver,
+            route_resolver: CcSwitchRouteResolver {
+                router: runtime.provider_router.clone(),
+            },
             health_store: CcSwitchHealthStore {
                 db: db.clone(),
                 router: runtime.provider_router.clone(),
@@ -146,7 +149,9 @@ impl CcSwitchProxyServices {
                 router: router.clone(),
             },
             route_policies: CcSwitchRoutePolicySource { db: db.clone() },
-            route_resolver: CcSwitchRouteResolver,
+            route_resolver: CcSwitchRouteResolver {
+                router: router.clone(),
+            },
             health_store: CcSwitchHealthStore {
                 db: db.clone(),
                 router: router.clone(),
@@ -377,8 +382,10 @@ impl RoutePolicySource for CcSwitchRoutePolicySource {
     }
 }
 
-#[derive(Clone, Default)]
-struct CcSwitchRouteResolver;
+#[derive(Clone)]
+struct CcSwitchRouteResolver {
+    router: Arc<ProviderRouter>,
+}
 
 impl RouteResolver for CcSwitchRouteResolver {
     fn resolve<'a>(
@@ -386,6 +393,18 @@ impl RouteResolver for CcSwitchRouteResolver {
         request: RouteRequest<'a>,
     ) -> BoxFuture<'a, ProxyCoreResult<RoutePlan>> {
         Box::pin(async move { crate::proxy_core_adapter::route_plan_from_request(request) })
+    }
+
+    fn resolve_management_route<'a>(
+        &'a self,
+        request: RouteResolveRequest,
+    ) -> BoxFuture<'a, ProxyCoreResult<RouteResolveResponse>> {
+        Box::pin(async move {
+            self.router
+                .resolve_channel_route_dry_run(request)
+                .await
+                .map_err(|error| app_error("resolve channel route dry run", error))
+        })
     }
 }
 

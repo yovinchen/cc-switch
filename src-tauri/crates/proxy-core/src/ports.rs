@@ -4,7 +4,7 @@ use super::domain::{
     ModelRoute, ProviderSpec, ProxyRequest, ProxyResult, RoutePlan, RoutePolicy, RouteRequest,
     UsageRecord, DEFAULT_ROUTE_GROUP,
 };
-use super::error::ProxyCoreResult;
+use super::error::{ProxyCoreError, ProxyCoreResult};
 use super::thinking_budget_rectifier::ThinkingBudgetRectifierConfig;
 use super::thinking_optimizer::ThinkingOptimizerConfig;
 use super::thinking_rectifier::ThinkingSignatureRectifierConfig;
@@ -89,6 +89,17 @@ pub trait RouteResolver: Send + Sync {
         &'a self,
         request: RouteRequest<'a>,
     ) -> BoxFuture<'a, ProxyCoreResult<RoutePlan>>;
+
+    fn resolve_management_route<'a>(
+        &'a self,
+        _request: RouteResolveRequest,
+    ) -> BoxFuture<'a, ProxyCoreResult<RouteResolveResponse>> {
+        Box::pin(async {
+            Err(ProxyCoreError::Unavailable(
+                "management route resolver is not configured".to_string(),
+            ))
+        })
+    }
 }
 
 pub trait ChannelHealthStore: Send + Sync {

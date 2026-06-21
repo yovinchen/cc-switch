@@ -679,12 +679,12 @@ pub async fn resolve_proxy_route(
         .map_err(management_api_error_to_proxy_error)?;
 
     let response = state
-        .provider_router
-        .resolve_channel_route_dry_run(request.request.clone())
+        .proxy_engine()
+        .resolve_route_response(request)
         .await
-        .map_err(|e| ProxyError::DatabaseError(e.to_string()))?;
+        .map_err(proxy_core_error_to_proxy_error)?;
 
-    Ok(Json(request.response_from_resolution(response)))
+    Ok(Json(response))
 }
 
 /// GET /v1/models — Codex model list (reachability check)

@@ -7,10 +7,12 @@ use super::domain::{
 use super::error::ProxyCoreResult;
 use super::management_api::{
     AppModelCatalogRequest, ManagementAppPathRequest, ProviderListSource,
+    RouteResolveManagementRequest,
 };
 use super::ports::{
     ChannelHealthReset, ChannelHealthResetResponse, ClientModelCatalogResponse, ModelCatalog,
     ProviderListResponse, ProxyCoreEvent, ProxyCoreEventType, ProxyServices,
+    RouteResolveResponse,
 };
 use serde_json::{json, to_value, Value};
 use std::collections::BTreeMap;
@@ -230,6 +232,18 @@ where
         Ok(request.provider_list_response_from_source(source))
     }
 
+    pub async fn resolve_route_response(
+        &self,
+        request: RouteResolveManagementRequest,
+    ) -> ProxyCoreResult<RouteResolveResponse> {
+        let response = self
+            .services
+            .route_resolver()
+            .resolve_management_route(request.request.clone())
+            .await?;
+        Ok(request.response_from_resolution(response))
+    }
+
     pub async fn client_model_catalog(
         &self,
         app: &super::domain::AppKind,
@@ -356,7 +370,7 @@ mod tests {
         AuthInfo, AuthProvider, ChannelHealthStore, ChannelSource, ForwardPipeline, ModelCatalog,
         ModelCatalogProvider, ProviderSource, ProxyAppConfig, ProxyConfigSource, ProxyCoreEvent,
         ProxyEventSink, ProxyGlobalConfig, ProxyRuntimeConfig, RoutePolicySource, RouteResolver,
-        UsageSink,
+        RouteResolveRequest, UsageSink,
     };
     use futures::future::BoxFuture;
     use http::{Method, StatusCode};
@@ -372,6 +386,7 @@ mod tests {
         current_provider: Mutex<Option<String>>,
         route_candidate_provider_ids: Mutex<Vec<String>>,
         route_policy: Mutex<Option<RoutePolicy>>,
+        route_resolution: Mutex<Option<RouteResolveResponse>>,
     }
 
     impl ProxyServices for TestServices {
@@ -560,6 +575,29 @@ mod tests {
                     }],
                 })
             })
+        }
+
+        fn resolve_management_route<'a>(
+            &'a self,
+            request: RouteResolveRequest,
+        ) -> BoxFuture<'a, ProxyCoreResult<RouteResolveResponse>> {
+            let response = self
+                .route_resolution
+                .lock()
+                .expect("route resolution mutex")
+                .clone()
+                .unwrap_or(RouteResolveResponse {
+                    app_type: request.app_type,
+                    requested_model: request.requested_model,
+                    interface_kind: request.interface_kind,
+                    route_group: request
+                        .route_group
+                        .unwrap_or_else(|| DEFAULT_ROUTE_GROUP.to_string()),
+                    source: crate::ports::ChannelRouteSource::MaterializedChannels,
+                    candidates: Vec::new(),
+                    rejected: Vec::new(),
+                });
+            Box::pin(async move { Ok(response) })
         }
     }
 
@@ -893,6 +931,43 @@ mod tests {
         assert!(!response.providers[1].current);
         assert!(!response.providers[1].in_failover_queue);
         assert!(response.providers[1].route_candidate);
+    }
+
+    #[test]
+    fn resolve_route_response_delegates_management_dry_run_to_route_resolver() {
+        let services = Arc::new(TestServices::default());
+        let route_response = RouteResolveResponse {
+            app_type: "claude".to_string(),
+            requested_model: Some("sonnet".to_string()),
+            interface_kind: Some("anthropic_messages".to_string()),
+            route_group: "default".to_string(),
+            source: crate::ports::ChannelRouteSource::LegacyProjection,
+            candidates: Vec::new(),
+            rejected: Vec::new(),
+        };
+        *services
+            .route_resolution
+            .lock()
+            .expect("route resolution mutex") = Some(route_response);
+        let engine = ProxyEngine::new(services);
+        let request = RouteResolveManagementRequest::from_body(RouteResolveRequest {
+            app_type: "claude".to_string(),
+            requested_model: Some("sonnet".to_string()),
+            interface_kind: Some("anthropic_messages".to_string()),
+            route_group: None,
+        })
+        .expect("route resolve request");
+
+        let response = futures::executor::block_on(engine.resolve_route_response(request))
+            .expect("route resolve response");
+
+        assert_eq!(response.app_type, "claude");
+        assert_eq!(response.requested_model.as_deref(), Some("sonnet"));
+        assert_eq!(
+            response.interface_kind.as_deref(),
+            Some("anthropic_messages")
+        );
+        assert_eq!(response.source, crate::ports::ChannelRouteSource::LegacyProjection);
     }
 
     #[test]
