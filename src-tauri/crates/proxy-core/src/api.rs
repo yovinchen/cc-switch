@@ -101,7 +101,7 @@ pub mod ports {
         ChannelHealthReset, ChannelHealthResetResponse, ChannelHealthStore, ChannelModelRecord,
         ChannelSource, CopilotOptimizerConfig, CopilotOptimizerConfigSpec, CurrentRouteTarget,
         ForwardPipeline, GlobalProxyConfig, ModelCatalog, ModelCatalogProvider, OptimizerConfig,
-        OptimizerConfigSpec,
+        OptimizerConfigSpec, DEFAULT_PROXY_LISTEN_ADDRESS, DEFAULT_PROXY_LISTEN_PORT,
         app_proxy_config_raw, ProviderHealth, ProviderHealthUpdate, ProviderHealthUpdateInput,
         ProviderSource, ProxyAppConfig, ProxyConfig, ProxyConfigSource, ProxyCoreEvent,
         ProxyCoreEventType, ProxyEventSink, ProxyGlobalConfig, ProxyRuntimeConfig,

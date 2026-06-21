@@ -10,7 +10,8 @@ use std::sync::RwLock;
 use std::time::Duration;
 
 use crate::proxy_core_adapter::{
-    mask_url_for_log, proxy_values_point_to_loopback_port, SYSTEM_PROXY_ENV_KEYS,
+    mask_url_for_log, proxy_values_point_to_loopback_port, DEFAULT_PROXY_LISTEN_PORT,
+    SYSTEM_PROXY_ENV_KEYS,
 };
 
 /// 全局 HTTP 客户端实例
@@ -43,7 +44,7 @@ fn get_proxy_port() -> u16 {
         .get()
         .and_then(|lock| lock.read().ok())
         .map(|port| *port)
-        .unwrap_or(15721) // 默认端口作为回退
+        .unwrap_or(DEFAULT_PROXY_LISTEN_PORT)
 }
 
 /// 初始化全局 HTTP 客户端
@@ -315,32 +316,35 @@ mod tests {
         // 只有指向 CC Switch 自己端口的 loopback 地址才返回 true
         assert!(proxy_url_points_to_loopback_port(
             "http://127.0.0.1:15721",
-            15721
+            DEFAULT_PROXY_LISTEN_PORT
         ));
         assert!(proxy_url_points_to_loopback_port(
             "socks5://localhost:15721",
-            15721
+            DEFAULT_PROXY_LISTEN_PORT
         ));
-        assert!(proxy_url_points_to_loopback_port("127.0.0.1:15721", 15721));
+        assert!(proxy_url_points_to_loopback_port(
+            "127.0.0.1:15721",
+            DEFAULT_PROXY_LISTEN_PORT
+        ));
 
         // 其他 loopback 端口不应该被跳过（允许使用其他本地代理工具）
         assert!(!proxy_url_points_to_loopback_port(
             "http://127.0.0.1:7890",
-            15721
+            DEFAULT_PROXY_LISTEN_PORT
         ));
         assert!(!proxy_url_points_to_loopback_port(
             "socks5://localhost:1080",
-            15721
+            DEFAULT_PROXY_LISTEN_PORT
         ));
 
         // 非 loopback 地址不应该被跳过
         assert!(!proxy_url_points_to_loopback_port(
             "http://192.168.1.10:7890",
-            15721
+            DEFAULT_PROXY_LISTEN_PORT
         ));
         assert!(!proxy_url_points_to_loopback_port(
             "http://192.168.1.10:15721",
-            15721
+            DEFAULT_PROXY_LISTEN_PORT
         ));
     }
 
@@ -349,7 +353,7 @@ mod tests {
         let _guard = env_lock().lock().unwrap();
 
         // 设置 CC Switch 代理端口
-        set_proxy_port(15721);
+        set_proxy_port(DEFAULT_PROXY_LISTEN_PORT);
 
         for key in &SYSTEM_PROXY_ENV_KEYS {
             std::env::remove_var(key);

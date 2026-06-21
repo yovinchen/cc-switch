@@ -328,6 +328,9 @@ pub(crate) type ChannelAttemptResult =
 pub(crate) type ChannelQuery<'a> = crate::proxy_core::api::routing::ChannelQuery<'a>;
 pub(crate) type ForwardFailureCategory =
     crate::proxy_core::api::transport::ForwardFailureCategory;
+
+pub(crate) const DEFAULT_PROXY_LISTEN_PORT: u16 =
+    crate::proxy_core::api::ports::DEFAULT_PROXY_LISTEN_PORT;
 pub(crate) type MediaRetryInput<'a> =
     crate::proxy_core::api::transport::MediaRetryInput<'a>;
 pub(crate) type PromptCacheTraceLogInput<'a> =
@@ -2454,7 +2457,7 @@ mod tests {
             serde_json::to_value(GlobalProxyConfig {
                 proxy_enabled: true,
                 listen_address: "127.0.0.1".to_string(),
-                listen_port: 15721,
+                listen_port: DEFAULT_PROXY_LISTEN_PORT,
                 enable_logging: true,
             })
             .expect("global proxy config")

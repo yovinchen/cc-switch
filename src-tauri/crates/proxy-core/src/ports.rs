@@ -13,6 +13,9 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 use std::collections::{BTreeMap, BTreeSet};
 
+pub const DEFAULT_PROXY_LISTEN_ADDRESS: &str = "127.0.0.1";
+pub const DEFAULT_PROXY_LISTEN_PORT: u16 = 15721;
+
 pub trait ProxyServices: Send + Sync {
     fn config(&self) -> &(dyn ProxyConfigSource + Send + Sync);
     fn providers(&self) -> &(dyn ProviderSource + Send + Sync);
@@ -414,8 +417,8 @@ fn default_non_streaming_timeout() -> u64 {
 impl Default for ProxyConfig {
     fn default() -> Self {
         Self {
-            listen_address: "127.0.0.1".to_string(),
-            listen_port: 15721,
+            listen_address: DEFAULT_PROXY_LISTEN_ADDRESS.to_string(),
+            listen_port: DEFAULT_PROXY_LISTEN_PORT,
             max_retries: 3,
             request_timeout: 600,
             enable_logging: true,
@@ -441,8 +444,8 @@ impl Default for GlobalProxyConfig {
     fn default() -> Self {
         Self {
             proxy_enabled: false,
-            listen_address: "127.0.0.1".to_string(),
-            listen_port: 15721,
+            listen_address: DEFAULT_PROXY_LISTEN_ADDRESS.to_string(),
+            listen_port: DEFAULT_PROXY_LISTEN_PORT,
             enable_logging: true,
         }
     }
@@ -2482,7 +2485,8 @@ mod tests {
         ProxyChannelWriteRequest, ProxyConfig, ProxyCoreEvent, ProxyCoreEventType,
         ProxyRuntimeStatus, ProxyServerInfo, ProxyStatusResponse, ProxyTakeoverStatus,
         RectifierConfig, RouteGroupListResponse, RouteGroupSourceInput, RouteResolveResponse,
-        StreamCheckConfig, StreamCheckResult, plan_channel_test, provider_health_update_from_input,
+        StreamCheckConfig, StreamCheckResult, DEFAULT_PROXY_LISTEN_ADDRESS,
+        DEFAULT_PROXY_LISTEN_PORT, plan_channel_test, provider_health_update_from_input,
     };
     use crate::domain::{
         AppKind, ChannelHealthPolicy, ChannelOverrides, ChannelSpec, ChannelStatus, InterfaceKind,
@@ -3163,8 +3167,8 @@ mod tests {
     fn proxy_config_default_preserves_legacy_values() {
         let config = ProxyConfig::default();
 
-        assert_eq!(config.listen_address, "127.0.0.1");
-        assert_eq!(config.listen_port, 15721);
+        assert_eq!(config.listen_address, DEFAULT_PROXY_LISTEN_ADDRESS);
+        assert_eq!(config.listen_port, DEFAULT_PROXY_LISTEN_PORT);
         assert_eq!(config.max_retries, 3);
         assert_eq!(config.request_timeout, 600);
         assert!(config.enable_logging);
@@ -3179,8 +3183,8 @@ mod tests {
     fn proxy_config_serde_preserves_legacy_command_contract() {
         let value = serde_json::to_value(ProxyConfig::default()).expect("serialize proxy config");
 
-        assert_eq!(value["listen_address"], "127.0.0.1");
-        assert_eq!(value["listen_port"], 15721);
+        assert_eq!(value["listen_address"], DEFAULT_PROXY_LISTEN_ADDRESS);
+        assert_eq!(value["listen_port"], DEFAULT_PROXY_LISTEN_PORT);
         assert_eq!(value["max_retries"], 3);
         assert_eq!(value["request_timeout"], 600);
         assert_eq!(value["enable_logging"], true);
@@ -3216,8 +3220,8 @@ mod tests {
             GlobalProxyConfig::default(),
             GlobalProxyConfig {
                 proxy_enabled: false,
-                listen_address: "127.0.0.1".to_string(),
-                listen_port: 15721,
+                listen_address: DEFAULT_PROXY_LISTEN_ADDRESS.to_string(),
+                listen_port: DEFAULT_PROXY_LISTEN_PORT,
                 enable_logging: true,
             }
         );
