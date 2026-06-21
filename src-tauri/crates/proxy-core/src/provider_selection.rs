@@ -96,6 +96,12 @@ pub fn current_provider_id_option_from_sources(
         .map(str::to_string)
 }
 
+pub fn current_provider_db_fallback_required(
+    settings_current_provider_id: Option<&str>,
+) -> bool {
+    settings_current_provider_id.is_none()
+}
+
 pub fn current_provider_id_from_sources(
     settings_current_provider_id: Option<&str>,
     db_current_provider_id: Option<&str>,
@@ -130,8 +136,9 @@ pub fn should_attempt_restored_provider_switchback(
 #[cfg(test)]
 mod tests {
     use super::{
-        current_provider_id_from_sources, current_provider_id_option_from_sources,
-        select_provider_ids, should_attempt_restored_provider_switchback,
+        current_provider_db_fallback_required, current_provider_id_from_sources,
+        current_provider_id_option_from_sources, select_provider_ids,
+        should_attempt_restored_provider_switchback,
         should_block_proxy_switch_to_provider_category, ProviderSelectionCandidate,
         ProviderSelectionFailure, ProviderSelectionInput,
     };
@@ -182,6 +189,8 @@ mod tests {
 
     #[test]
     fn current_provider_source_resolution_preserves_settings_priority() {
+        assert!(!current_provider_db_fallback_required(Some("settings-provider")));
+        assert!(current_provider_db_fallback_required(None));
         assert_eq!(
             current_provider_id_from_sources(Some("settings-provider"), Some("db-provider")),
             "settings-provider"
@@ -204,6 +213,7 @@ mod tests {
 
     #[test]
     fn current_provider_source_resolution_treats_empty_settings_value_as_present() {
+        assert!(!current_provider_db_fallback_required(Some("")));
         assert_eq!(
             current_provider_id_from_sources(Some(""), Some("db-provider")),
             ""

@@ -34,6 +34,7 @@ use crate::proxy_core_adapter::{
     channel_health_reset_from_parts,
     channel_key_auth_error,
     client_model_catalog_raw_from_text,
+    current_provider_db_fallback_required,
     current_provider_id_from_sources,
     current_provider_id_option_from_sources,
     empty_client_model_catalog_raw,
@@ -576,11 +577,12 @@ impl CcSwitchProxyRuntime {
         let optimizer_config = self.db.get_optimizer_config().unwrap_or_default();
         let copilot_optimizer_config = self.db.get_copilot_optimizer_config().unwrap_or_default();
         let settings_current_provider_id = crate::settings::get_current_provider(&app_type);
-        let db_current_provider_id = if settings_current_provider_id.is_none() {
-            self.db.get_current_provider(app_type.as_str()).ok().flatten()
-        } else {
-            None
-        };
+        let db_current_provider_id =
+            if current_provider_db_fallback_required(settings_current_provider_id.as_deref()) {
+                self.db.get_current_provider(app_type.as_str()).ok().flatten()
+            } else {
+                None
+            };
         let current_provider_id = current_provider_id_from_sources(
             settings_current_provider_id.as_deref(),
             db_current_provider_id.as_deref(),
