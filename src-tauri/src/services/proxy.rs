@@ -9,16 +9,18 @@ use crate::provider::Provider;
 use crate::proxy::server::ProxyServer;
 use crate::proxy::switch_lock::SwitchLockManager;
 use crate::proxy_core_adapter::{
-    build_proxy_official_warning_event_payload, provider_is_github_copilot,
-    provider_uses_managed_account_auth, proxy_server_info_from_parts,
-    proxy_runtime_status_stopped, proxy_takeover_status_from_parts, CircuitBreakerConfig,
-    ProxyConfig, ProxyRuntimeStatus, ProxyServerInfo, ProxyTakeoverStatus,
-    PROXY_OFFICIAL_WARNING_EVENT,
+    build_proxy_official_warning_event_payload, claude_takeover_model_fields_from_settings,
+    provider_claude_takeover_model_fields, provider_is_github_copilot,
+    provider_uses_managed_account_auth, proxy_runtime_status_stopped, proxy_server_info_from_parts,
+    proxy_takeover_status_from_parts, CircuitBreakerConfig, ProxyConfig, ProxyRuntimeStatus,
+    ProxyServerInfo, ProxyTakeoverStatus, PROXY_OFFICIAL_WARNING_EVENT,
 };
 use crate::services::provider::{
     build_effective_settings_with_common_config, write_live_with_common_config,
 };
-use serde_json::{json, Map, Value};
+#[cfg(test)]
+use serde_json::Map;
+use serde_json::{json, Value};
 use std::str::FromStr;
 use std::sync::Arc;
 use tauri::Emitter;
@@ -44,10 +46,6 @@ const CLAUDE_MODEL_OVERRIDE_ENV_KEYS: [&str; 9] = [
     // Legacy key (已废弃)：历史版本使用该字段区分 small/fast 模型
     "ANTHROPIC_SMALL_FAST_MODEL",
 ];
-
-const CLAUDE_TAKEOVER_HAIKU_MODEL: &str = "claude-haiku-4-5";
-const CLAUDE_TAKEOVER_SONNET_MODEL: &str = "claude-sonnet-4-6";
-const CLAUDE_TAKEOVER_OPUS_MODEL: &str = "claude-opus-4-8";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum ClaudeTakeoverAuthPolicy {
@@ -105,9 +103,9 @@ impl ProxyService {
         };
         // Copilot/Codex 接管时 live config 可能还是旧供应商；显示模型必须跟随目标 provider。
         let takeover_model_fields = if provider_uses_managed_account_auth(provider) {
-            Self::build_claude_takeover_model_fields(&provider.settings_config)
+            provider_claude_takeover_model_fields(provider)
         } else {
-            Self::build_claude_takeover_model_fields(config)
+            claude_takeover_model_fields_from_settings(config)
         };
 
         Self::apply_claude_takeover_fields_with_policy_and_models(
@@ -124,7 +122,7 @@ impl ProxyService {
         auth_policy: ClaudeTakeoverAuthPolicy,
     ) {
         // 必须在 remove/insert 前 snapshot：避免读到自己刚写入的接管别名。
-        let takeover_model_fields = Self::build_claude_takeover_model_fields(config);
+        let takeover_model_fields = claude_takeover_model_fields_from_settings(config);
 
         Self::apply_claude_takeover_fields_with_policy_and_models(
             config,
@@ -207,93 +205,6 @@ impl ProxyService {
                 }
             }
         }
-    }
-
-    fn build_claude_takeover_model_fields(config: &Value) -> Vec<(&'static str, String)> {
-        let Some(env) = config.get("env").and_then(Value::as_object) else {
-            return Vec::new();
-        };
-
-        let default_model = Self::claude_env_string(env, "ANTHROPIC_MODEL");
-        let small_fast_model = Self::claude_env_string(env, "ANTHROPIC_SMALL_FAST_MODEL");
-        let haiku_model = Self::claude_env_string(env, "ANTHROPIC_DEFAULT_HAIKU_MODEL")
-            .or(small_fast_model)
-            .or(default_model);
-        let sonnet_model = Self::claude_env_string(env, "ANTHROPIC_DEFAULT_SONNET_MODEL")
-            .or(default_model)
-            .or(small_fast_model);
-        let opus_model = Self::claude_env_string(env, "ANTHROPIC_DEFAULT_OPUS_MODEL")
-            .or(default_model)
-            .or(small_fast_model);
-
-        let mut fields = Vec::with_capacity(6);
-        Self::push_claude_takeover_role_fields(
-            &mut fields,
-            env,
-            "ANTHROPIC_DEFAULT_HAIKU_MODEL",
-            "ANTHROPIC_DEFAULT_HAIKU_MODEL_NAME",
-            CLAUDE_TAKEOVER_HAIKU_MODEL,
-            false,
-            haiku_model,
-        );
-        Self::push_claude_takeover_role_fields(
-            &mut fields,
-            env,
-            "ANTHROPIC_DEFAULT_SONNET_MODEL",
-            "ANTHROPIC_DEFAULT_SONNET_MODEL_NAME",
-            CLAUDE_TAKEOVER_SONNET_MODEL,
-            true,
-            sonnet_model,
-        );
-        Self::push_claude_takeover_role_fields(
-            &mut fields,
-            env,
-            "ANTHROPIC_DEFAULT_OPUS_MODEL",
-            "ANTHROPIC_DEFAULT_OPUS_MODEL_NAME",
-            CLAUDE_TAKEOVER_OPUS_MODEL,
-            true,
-            opus_model,
-        );
-        fields
-    }
-
-    fn push_claude_takeover_role_fields(
-        fields: &mut Vec<(&'static str, String)>,
-        env: &Map<String, Value>,
-        model_key: &'static str,
-        name_key: &'static str,
-        takeover_model: &'static str,
-        supports_one_m: bool,
-        upstream_model: Option<&str>,
-    ) {
-        let Some(upstream_model) = upstream_model else {
-            return;
-        };
-
-        fields.push((
-            model_key,
-            crate::proxy_core_adapter::claude_takeover_client_model_for_upstream(
-                takeover_model,
-                supports_one_m,
-                upstream_model,
-            ),
-        ));
-
-        let display_name = Self::claude_env_string(env, name_key)
-            .map(str::to_string)
-            .unwrap_or_else(|| {
-                crate::proxy_core_adapter::claude_takeover_default_display_name(upstream_model)
-            });
-        if !display_name.is_empty() {
-            fields.push((name_key, display_name));
-        }
-    }
-
-    fn claude_env_string<'a>(env: &'a Map<String, Value>, key: &str) -> Option<&'a str> {
-        env.get(key)
-            .and_then(Value::as_str)
-            .map(str::trim)
-            .filter(|value| !value.is_empty())
     }
 
     fn claude_provider_with_effective_settings(

@@ -3876,6 +3876,106 @@ pub(crate) fn claude_takeover_default_display_name(upstream_model: &str) -> Stri
     crate::proxy_core::api::model_catalog::claude_takeover_default_display_name(upstream_model)
 }
 
+const CLAUDE_TAKEOVER_HAIKU_MODEL: &str = "claude-haiku-4-5";
+const CLAUDE_TAKEOVER_SONNET_MODEL: &str = "claude-sonnet-4-6";
+const CLAUDE_TAKEOVER_OPUS_MODEL: &str = "claude-opus-4-8";
+
+pub(crate) fn provider_claude_takeover_model_fields(
+    provider: &Provider,
+) -> Vec<(&'static str, String)> {
+    claude_takeover_model_fields_from_settings(&provider.settings_config)
+}
+
+pub(crate) fn claude_takeover_model_fields_from_settings(
+    config: &Value,
+) -> Vec<(&'static str, String)> {
+    let Some(env) = config.get("env").and_then(Value::as_object) else {
+        return Vec::new();
+    };
+
+    let default_model = claude_takeover_env_string(env, "ANTHROPIC_MODEL");
+    let small_fast_model = claude_takeover_env_string(env, "ANTHROPIC_SMALL_FAST_MODEL");
+    let haiku_model = claude_takeover_env_string(env, "ANTHROPIC_DEFAULT_HAIKU_MODEL")
+        .or(small_fast_model)
+        .or(default_model);
+    let sonnet_model = claude_takeover_env_string(env, "ANTHROPIC_DEFAULT_SONNET_MODEL")
+        .or(default_model)
+        .or(small_fast_model);
+    let opus_model = claude_takeover_env_string(env, "ANTHROPIC_DEFAULT_OPUS_MODEL")
+        .or(default_model)
+        .or(small_fast_model);
+
+    let mut fields = Vec::with_capacity(6);
+    push_claude_takeover_role_fields(
+        &mut fields,
+        env,
+        "ANTHROPIC_DEFAULT_HAIKU_MODEL",
+        "ANTHROPIC_DEFAULT_HAIKU_MODEL_NAME",
+        CLAUDE_TAKEOVER_HAIKU_MODEL,
+        false,
+        haiku_model,
+    );
+    push_claude_takeover_role_fields(
+        &mut fields,
+        env,
+        "ANTHROPIC_DEFAULT_SONNET_MODEL",
+        "ANTHROPIC_DEFAULT_SONNET_MODEL_NAME",
+        CLAUDE_TAKEOVER_SONNET_MODEL,
+        true,
+        sonnet_model,
+    );
+    push_claude_takeover_role_fields(
+        &mut fields,
+        env,
+        "ANTHROPIC_DEFAULT_OPUS_MODEL",
+        "ANTHROPIC_DEFAULT_OPUS_MODEL_NAME",
+        CLAUDE_TAKEOVER_OPUS_MODEL,
+        true,
+        opus_model,
+    );
+    fields
+}
+
+fn push_claude_takeover_role_fields(
+    fields: &mut Vec<(&'static str, String)>,
+    env: &Map<String, Value>,
+    model_key: &'static str,
+    name_key: &'static str,
+    takeover_model: &'static str,
+    supports_one_m: bool,
+    upstream_model: Option<&str>,
+) {
+    let Some(upstream_model) = upstream_model else {
+        return;
+    };
+
+    fields.push((
+        model_key,
+        claude_takeover_client_model_for_upstream(
+            takeover_model,
+            supports_one_m,
+            upstream_model,
+        ),
+    ));
+
+    let display_name = claude_takeover_env_string(env, name_key)
+        .map(str::to_string)
+        .unwrap_or_else(|| claude_takeover_default_display_name(upstream_model));
+    if !display_name.is_empty() {
+        fields.push((name_key, display_name));
+    }
+}
+
+fn claude_takeover_env_string<'a>(
+    env: &'a Map<String, Value>,
+    key: &str,
+) -> Option<&'a str> {
+    env.get(key)
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+}
+
 #[allow(dead_code)]
 pub(crate) trait ToProxyCoreModelRoute {
     fn to_proxy_core_model_route(&self) -> ModelRoute;
@@ -6659,6 +6759,46 @@ wire_api = "chat"
             claude_takeover_default_display_name("deepseek-v4-ultra [1m]  "),
             "deepseek-v4-ultra"
         );
+
+        let provider = Provider::with_id(
+            "takeover-model-provider".to_string(),
+            "Takeover Model Provider".to_string(),
+            json!({
+                "env": {
+                    "ANTHROPIC_DEFAULT_HAIKU_MODEL": "deepseek-v4-flash",
+                    "ANTHROPIC_DEFAULT_SONNET_MODEL": "deepseek-v4-pro[1M]",
+                    "ANTHROPIC_DEFAULT_SONNET_MODEL_NAME": "DeepSeek V4 Pro",
+                    "ANTHROPIC_DEFAULT_OPUS_MODEL": "deepseek-v4-ultra [1m]"
+                }
+            }),
+            None,
+        );
+        let fields = provider_claude_takeover_model_fields(&provider);
+
+        assert!(fields.contains(&(
+            "ANTHROPIC_DEFAULT_HAIKU_MODEL",
+            "claude-haiku-4-5".to_string()
+        )));
+        assert!(fields.contains(&(
+            "ANTHROPIC_DEFAULT_HAIKU_MODEL_NAME",
+            "deepseek-v4-flash".to_string()
+        )));
+        assert!(fields.contains(&(
+            "ANTHROPIC_DEFAULT_SONNET_MODEL",
+            "claude-sonnet-4-6[1M]".to_string()
+        )));
+        assert!(fields.contains(&(
+            "ANTHROPIC_DEFAULT_SONNET_MODEL_NAME",
+            "DeepSeek V4 Pro".to_string()
+        )));
+        assert!(fields.contains(&(
+            "ANTHROPIC_DEFAULT_OPUS_MODEL",
+            "claude-opus-4-8[1M]".to_string()
+        )));
+        assert!(fields.contains(&(
+            "ANTHROPIC_DEFAULT_OPUS_MODEL_NAME",
+            "deepseek-v4-ultra".to_string()
+        )));
     }
 
     #[test]
