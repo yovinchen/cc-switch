@@ -9,9 +9,9 @@ use crate::provider::Provider;
 use crate::proxy::server::ProxyServer;
 use crate::proxy::switch_lock::SwitchLockManager;
 use crate::proxy_core_adapter::{
-    build_proxy_official_warning_event_payload, proxy_server_info_from_parts,
-    proxy_runtime_status_stopped, proxy_takeover_status_from_parts, CircuitBreakerConfig,
-    ProxyConfig, ProxyRuntimeStatus, ProxyServerInfo, ProxyTakeoverStatus,
+    build_proxy_official_warning_event_payload, provider_is_github_copilot,
+    proxy_server_info_from_parts, proxy_runtime_status_stopped, proxy_takeover_status_from_parts,
+    CircuitBreakerConfig, ProxyConfig, ProxyRuntimeStatus, ProxyServerInfo, ProxyTakeoverStatus,
     PROXY_OFFICIAL_WARNING_EVENT,
 };
 use crate::services::provider::{
@@ -97,7 +97,7 @@ impl ProxyService {
             // ANTHROPIC_AUTH_TOKEN 占位符：Claude Code 缺该键会弹登录提示（#3784）。
             // Copilot 维持仅 API_KEY 占位，避免与 /login 管理的 key 冲突（#1049）。
             ClaudeTakeoverAuthPolicy::ManagedAccount {
-                keep_auth_token: !provider.is_github_copilot(),
+                keep_auth_token: !provider_is_github_copilot(provider),
             }
         } else {
             ClaudeTakeoverAuthPolicy::PreserveExistingOrAuthToken
@@ -3009,7 +3009,9 @@ mod tests {
             None,
         );
         assert!(provider.uses_managed_account_auth());
-        assert!(!provider.is_codex_oauth());
+        assert!(!crate::proxy_core_adapter::provider_is_codex_oauth(
+            &provider
+        ));
 
         let mut live_config = provider.settings_config.clone();
         ProxyService::apply_claude_takeover_fields_for_provider(
