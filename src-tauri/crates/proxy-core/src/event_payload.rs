@@ -3,6 +3,7 @@ use serde_json::{json, Value};
 
 pub const PROXY_EVENTS_CONNECTED_EVENT: &str = "proxy_events_connected";
 pub const PROXY_EVENTS_LAGGED_EVENT: &str = "proxy_events_lagged";
+pub const PROXY_OFFICIAL_WARNING_EVENT: &str = "proxy-official-warning";
 pub const PROVIDER_SWITCHED_EVENT: &str = "provider-switched";
 pub const SERVER_STARTED_EVENT: &str = "server_started";
 pub const SERVER_STOPPED_EVENT: &str = "server_stopped";
@@ -162,6 +163,13 @@ pub fn build_provider_switched_event_payload(
     })
 }
 
+pub fn build_proxy_official_warning_event_payload(app_type: &str, provider_name: &str) -> Value {
+    json!({
+        "appType": app_type,
+        "providerName": provider_name,
+    })
+}
+
 pub fn build_proxy_events_connected_payload(buffer_size: usize) -> Value {
     json!({
         "bufferSize": buffer_size,
@@ -178,10 +186,11 @@ pub fn build_proxy_events_lagged_payload(skipped: u64) -> Value {
 mod tests {
     use super::{
         attempt_event_name, build_attempt_event_payload, build_proxy_events_connected_payload,
-        build_proxy_events_lagged_payload, build_provider_switched_event_payload,
-        build_request_started_event_payload, build_server_started_event_payload,
-        build_server_stopped_event_payload, AttemptEventChannel, AttemptEventPayloadInput,
-        AttemptEventPhase, ProxyEventEnvelope, PROVIDER_SWITCHED_EVENT, SERVER_STARTED_EVENT,
+        build_proxy_events_lagged_payload, build_proxy_official_warning_event_payload,
+        build_provider_switched_event_payload, build_request_started_event_payload,
+        build_server_started_event_payload, build_server_stopped_event_payload,
+        AttemptEventChannel, AttemptEventPayloadInput, AttemptEventPhase, ProxyEventEnvelope,
+        PROVIDER_SWITCHED_EVENT, PROXY_OFFICIAL_WARNING_EVENT, SERVER_STARTED_EVENT,
         SERVER_STOPPED_EVENT,
     };
 
@@ -287,6 +296,17 @@ mod tests {
         assert_eq!(payload["appType"], "claude");
         assert_eq!(payload["providerId"], "provider-1");
         assert_eq!(payload["source"], "failover");
+    }
+
+    #[test]
+    fn proxy_official_warning_event_contract_keeps_existing_shape() {
+        assert_eq!(PROXY_OFFICIAL_WARNING_EVENT, "proxy-official-warning");
+
+        let payload =
+            build_proxy_official_warning_event_payload("claude", "Official Claude");
+
+        assert_eq!(payload["appType"], "claude");
+        assert_eq!(payload["providerName"], "Official Claude");
     }
 
     #[test]

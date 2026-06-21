@@ -9,8 +9,9 @@ use crate::provider::Provider;
 use crate::proxy::server::ProxyServer;
 use crate::proxy::switch_lock::SwitchLockManager;
 use crate::proxy_core_adapter::{
-    proxy_server_info_from_parts, proxy_takeover_status_from_parts, CircuitBreakerConfig,
-    ProxyConfig, ProxyRuntimeStatus, ProxyServerInfo, ProxyTakeoverStatus,
+    build_proxy_official_warning_event_payload, proxy_server_info_from_parts,
+    proxy_takeover_status_from_parts, CircuitBreakerConfig, ProxyConfig, ProxyRuntimeStatus,
+    ProxyServerInfo, ProxyTakeoverStatus, PROXY_OFFICIAL_WARNING_EVENT,
 };
 use crate::services::provider::{
     build_effective_settings_with_common_config, write_live_with_common_config,
@@ -710,11 +711,11 @@ impl ProxyService {
                     if provider.category.as_deref() == Some("official") {
                         if let Some(handle) = self.app_handle.read().await.as_ref() {
                             let _ = handle.emit(
-                                "proxy-official-warning",
-                                serde_json::json!({
-                                    "appType": app_type_str,
-                                    "providerName": provider.name,
-                                }),
+                                PROXY_OFFICIAL_WARNING_EVENT,
+                                build_proxy_official_warning_event_payload(
+                                    app_type_str,
+                                    &provider.name,
+                                ),
                             );
                         }
                     }

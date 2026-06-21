@@ -932,7 +932,8 @@ pub(crate) use crate::proxy_core::api::config::{
     should_rectify_thinking_signature, thinking_optimization_log_message,
 };
 pub(crate) use crate::proxy_core::api::events::{
-    attempt_event_name, build_attempt_event_payload, build_provider_switched_event_payload,
+    attempt_event_name, build_attempt_event_payload,
+    build_proxy_official_warning_event_payload, build_provider_switched_event_payload,
     build_request_started_event_payload,
 };
 pub(crate) use crate::proxy_core::api::model_catalog::{
@@ -984,6 +985,8 @@ pub(crate) const PROXY_EVENTS_CONNECTED_EVENT: &str =
     crate::proxy_core::api::events::PROXY_EVENTS_CONNECTED_EVENT;
 pub(crate) const PROXY_EVENTS_LAGGED_EVENT: &str =
     crate::proxy_core::api::events::PROXY_EVENTS_LAGGED_EVENT;
+pub(crate) const PROXY_OFFICIAL_WARNING_EVENT: &str =
+    crate::proxy_core::api::events::PROXY_OFFICIAL_WARNING_EVENT;
 pub(crate) const PROVIDER_SWITCHED_EVENT: &str =
     crate::proxy_core::api::events::PROVIDER_SWITCHED_EVENT;
 pub(crate) const SERVER_STARTED_EVENT: &str =
@@ -4046,11 +4049,19 @@ mod tests {
     fn proxy_event_adapter_projects_event_stream_contracts() {
         assert_eq!(PROXY_EVENTS_CONNECTED_EVENT, "proxy_events_connected");
         assert_eq!(PROXY_EVENTS_LAGGED_EVENT, "proxy_events_lagged");
+        assert_eq!(PROXY_OFFICIAL_WARNING_EVENT, "proxy-official-warning");
         assert_eq!(PROVIDER_SWITCHED_EVENT, "provider-switched");
         assert_eq!(SERVER_STARTED_EVENT, "server_started");
         assert_eq!(SERVER_STOPPED_EVENT, "server_stopped");
         assert_eq!(build_proxy_events_connected_payload(256)["bufferSize"], 256);
         assert_eq!(build_proxy_events_lagged_payload(3)["skipped"], 3);
+        assert_eq!(
+            build_proxy_official_warning_event_payload("claude", "Official Claude"),
+            json!({
+                "appType": "claude",
+                "providerName": "Official Claude",
+            })
+        );
         assert_eq!(
             build_provider_switched_event_payload("claude", "provider-1", "failover"),
             json!({
