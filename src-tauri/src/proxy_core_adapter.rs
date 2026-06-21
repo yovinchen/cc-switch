@@ -7,7 +7,6 @@ use crate::database::{
 use crate::error::AppError;
 use crate::provider::{Provider, ProviderMeta, ProviderTestConfig, UsageScript};
 use crate::proxy::hyper_client::ProxyResponse;
-use crate::proxy::providers::provider_kind_from_app_type_and_config;
 use crate::proxy::route_attempt::ForwardAttempt;
 use crate::proxy::usage::RequestLog;
 use crate::proxy_core::api::domain::{
@@ -1575,6 +1574,18 @@ pub(crate) fn provider_gemini_base_url(provider: &Provider) -> Option<String> {
     extract_gemini_base_url_from_settings(&provider.settings_config)
 }
 
+pub(crate) fn provider_gemini_kind(provider: &Provider) -> ProviderKind {
+    if provider_gemini_api_key(provider)
+        .as_deref()
+        .map(is_gemini_oauth_key_shape)
+        .unwrap_or(false)
+    {
+        ProviderKind::GeminiCli
+    } else {
+        ProviderKind::Gemini
+    }
+}
+
 pub(crate) fn parse_gemini_oauth_credentials(
     key: &str,
 ) -> Option<GeminiOAuthCredentials> {
@@ -1652,6 +1663,18 @@ pub(crate) fn provider_claude_kind(provider: &Provider) -> ProviderKind {
         base_url.as_deref(),
         &provider.settings_config,
     )
+}
+
+pub(crate) fn provider_kind_from_app_type_and_config(
+    app_type: &AppType,
+    provider: &Provider,
+) -> ProviderKind {
+    match app_type {
+        AppType::Claude | AppType::ClaudeDesktop => provider_claude_kind(provider),
+        AppType::Codex => ProviderKind::Codex,
+        AppType::Gemini => provider_gemini_kind(provider),
+        AppType::OpenCode | AppType::OpenClaw | AppType::Hermes => ProviderKind::Codex,
+    }
 }
 
 pub(crate) fn is_gemini_oauth_key_shape(key: &str) -> bool {
@@ -5452,6 +5475,25 @@ wire_api = "chat"
         assert_eq!(
             provider_claude_kind(&copilot_provider),
             ProviderKind::GitHubCopilot
+        );
+        assert_eq!(
+            provider_kind_from_app_type_and_config(&AppType::Claude, &copilot_provider),
+            ProviderKind::GitHubCopilot
+        );
+        let gemini_provider = Provider::with_id(
+            "gemini-cli".to_string(),
+            "Gemini CLI".to_string(),
+            json!({
+                "env": {
+                    "GEMINI_API_KEY": r#"{"access_token":"ya29.access-token"}"#
+                }
+            }),
+            None,
+        );
+        assert_eq!(provider_gemini_kind(&gemini_provider), ProviderKind::GeminiCli);
+        assert_eq!(
+            provider_kind_from_app_type_and_config(&AppType::Gemini, &gemini_provider),
+            ProviderKind::GeminiCli
         );
     }
 

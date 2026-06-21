@@ -19,7 +19,8 @@ mod gemini;
 use crate::app_config::AppType;
 use crate::provider::Provider;
 use crate::proxy_core_adapter::{
-    infer_claude_provider_kind, is_gemini_oauth_key_shape, ProviderAuthStrategy, ProviderKind,
+    provider_kind_from_app_type_and_config as provider_kind_from_app_type_and_config_adapter,
+    ProviderKind,
 };
 
 pub use adapter::ProviderAdapter;
@@ -43,49 +44,7 @@ pub fn provider_kind_from_app_type_and_config(
     app_type: &AppType,
     provider: &Provider,
 ) -> ProviderKind {
-    match app_type {
-        AppType::Claude | AppType::ClaudeDesktop => {
-            let adapter = ClaudeAdapter::new();
-            let api_format = get_claude_api_format(provider);
-            let uses_google_oauth = if api_format == "gemini_native" {
-                adapter
-                    .extract_auth(provider)
-                    .map(|auth| matches!(auth.strategy, ProviderAuthStrategy::GoogleOAuth))
-                    .unwrap_or(false)
-            } else {
-                false
-            };
-            let base_url = adapter.extract_base_url(provider).ok();
-            let meta_provider_type = provider
-                .meta
-                .as_ref()
-                .and_then(|meta| meta.provider_type.as_deref());
-
-            infer_claude_provider_kind(
-                api_format,
-                uses_google_oauth,
-                meta_provider_type,
-                base_url.as_deref(),
-                &provider.settings_config,
-            )
-        }
-        AppType::Codex => ProviderKind::Codex,
-        AppType::Gemini => {
-            // 检测是否为 CLI 模式（OAuth）
-            let adapter = GeminiAdapter::new();
-            if let Some(auth) = adapter.extract_auth(provider) {
-                let key = &auth.api_key;
-                if is_gemini_oauth_key_shape(key) {
-                    return ProviderKind::GeminiCli;
-                }
-            }
-            ProviderKind::Gemini
-        }
-        AppType::OpenCode | AppType::OpenClaw | AppType::Hermes => {
-            // These apps don't support proxy, fallback to Codex-like type
-            ProviderKind::Codex
-        }
-    }
+    provider_kind_from_app_type_and_config_adapter(app_type, provider)
 }
 
 /// 根据 AppType 获取对应的适配器
