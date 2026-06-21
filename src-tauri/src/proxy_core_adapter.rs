@@ -1102,6 +1102,96 @@ pub(crate) fn build_legacy_channel_projection(
     crate::proxy_core::api::routing::build_legacy_channel_projection(input)
 }
 
+pub(crate) fn legacy_provider_projection_input(
+    provider: &Provider,
+) -> LegacyProviderProjectionInput {
+    let config_text = provider
+        .settings_config
+        .get("config")
+        .and_then(|value| value.as_str());
+    let env = provider
+        .settings_config
+        .get("env")
+        .and_then(|value| value.as_object())
+        .map(|env| {
+            env.iter()
+                .filter_map(|(key, value)| {
+                    value
+                        .as_str()
+                        .map(|model| (key.to_string(), model.to_string()))
+                })
+                .collect::<std::collections::BTreeMap<_, _>>()
+        })
+        .unwrap_or_default();
+    let codex_catalog_models = provider
+        .settings_config
+        .get("modelCatalog")
+        .and_then(|catalog| catalog.get("models"))
+        .and_then(|models| models.as_array())
+        .map(|models| {
+            models
+                .iter()
+                .filter_map(|entry| {
+                    entry
+                        .get("model")
+                        .and_then(|value| value.as_str())
+                        .map(ToString::to_string)
+                })
+                .collect::<Vec<_>>()
+        })
+        .unwrap_or_default();
+    let (api_format, claude_desktop_model_routes) = provider
+        .meta
+        .as_ref()
+        .map(|meta| {
+            let routes = meta
+                .claude_desktop_model_routes
+                .iter()
+                .map(|(public_model, route)| LegacyModelRouteInput {
+                    public_model: public_model.clone(),
+                    upstream_model: route.model.clone(),
+                })
+                .collect::<Vec<_>>();
+            (meta.api_format.clone(), routes)
+        })
+        .unwrap_or_default();
+
+    LegacyProviderProjectionInput {
+        api_format,
+        codex_wire_api: config_text.and_then(extract_codex_wire_api),
+        codex_model: config_text.and_then(extract_codex_model),
+        codex_catalog_models,
+        env,
+        claude_desktop_model_routes,
+    }
+}
+
+fn extract_codex_wire_api(config_text: &str) -> Option<String> {
+    let doc = config_text.parse::<toml::Value>().ok()?;
+    if let Some(active_provider) = doc.get("model_provider").and_then(|value| value.as_str()) {
+        if let Some(wire_api) = doc
+            .get("model_providers")
+            .and_then(|providers| providers.get(active_provider))
+            .and_then(|provider| provider.get("wire_api"))
+            .and_then(|value| value.as_str())
+        {
+            return Some(wire_api.to_string());
+        }
+    }
+    doc.get("wire_api")
+        .and_then(|value| value.as_str())
+        .map(ToString::to_string)
+}
+
+fn extract_codex_model(config_text: &str) -> Option<String> {
+    let doc = config_text.parse::<toml::Value>().ok()?;
+    doc.get("model")
+        .and_then(|value| value.as_str())
+        .map(str::trim)
+        .filter(|model| !model.is_empty())
+        .map(ToString::to_string)
+}
+
 pub(crate) fn normalize_required_channel_string(
     value: &str,
     field: &str,
@@ -2186,7 +2276,9 @@ fn account_ref(provider: &Provider) -> Option<String> {
 mod tests {
     use super::*;
     use crate::database::ProxyChannelSourceKind;
-    use crate::provider::{AuthBinding, AuthBindingSource, ProviderMeta};
+    use crate::provider::{
+        AuthBinding, AuthBindingSource, ClaudeDesktopModelRoute, ProviderMeta,
+    };
     use crate::proxy_core::api::errors::ProxyCoreError;
     use crate::proxy_core::api::session::SessionIdSource;
     use crate::proxy_core::api::transforms::GEMINI_SYNTHESIZED_TOOL_CALL_ID_PREFIX;
@@ -3018,6 +3110,67 @@ mod tests {
         assert_eq!(projection.interface_kind, "anthropic_messages");
         assert_eq!(projection.models.len(), 1);
         assert!(!projection.needs_review);
+    }
+
+    #[test]
+    fn legacy_provider_projection_input_projects_provider_settings() {
+        let mut routes = std::collections::HashMap::new();
+        routes.insert(
+            "sonnet-safe".to_string(),
+            ClaudeDesktopModelRoute {
+                model: "claude-sonnet-4".to_string(),
+                label_override: Some("Sonnet".to_string()),
+                supports_1m: None,
+            },
+        );
+        let mut provider = Provider::with_id(
+            "codex-relay".to_string(),
+            "Codex Relay".to_string(),
+            json!({
+                "config": "model_provider = \"custom\"\nmodel = \"gpt-5.4\"\n\n[model_providers.custom]\nwire_api = \"chat\"\n",
+                "env": {
+                    "ANTHROPIC_MODEL": "claude-sonnet-4",
+                    "IGNORED_NON_STRING": 123
+                },
+                "modelCatalog": {
+                    "models": [
+                        { "model": "gpt-5.4" },
+                        { "model": "gpt-5.4-mini" },
+                        { "notModel": "skip" }
+                    ]
+                }
+            }),
+            None,
+        );
+        provider.meta = Some(ProviderMeta {
+            api_format: Some("openai_responses".to_string()),
+            claude_desktop_model_routes: routes,
+            ..ProviderMeta::default()
+        });
+
+        let projection = legacy_provider_projection_input(&provider);
+
+        assert_eq!(projection.api_format.as_deref(), Some("openai_responses"));
+        assert_eq!(projection.codex_wire_api.as_deref(), Some("chat"));
+        assert_eq!(projection.codex_model.as_deref(), Some("gpt-5.4"));
+        assert_eq!(
+            projection.codex_catalog_models,
+            vec!["gpt-5.4".to_string(), "gpt-5.4-mini".to_string()]
+        );
+        assert_eq!(
+            projection.env.get("ANTHROPIC_MODEL").map(String::as_str),
+            Some("claude-sonnet-4")
+        );
+        assert!(!projection.env.contains_key("IGNORED_NON_STRING"));
+        assert_eq!(projection.claude_desktop_model_routes.len(), 1);
+        assert_eq!(
+            projection.claude_desktop_model_routes[0].public_model,
+            "sonnet-safe"
+        );
+        assert_eq!(
+            projection.claude_desktop_model_routes[0].upstream_model,
+            "claude-sonnet-4"
+        );
     }
 
     #[test]

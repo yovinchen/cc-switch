@@ -10,26 +10,24 @@ use crate::error::AppError;
 use crate::provider::Provider;
 use crate::proxy_core_adapter::{
     build_legacy_channel_projection, channel_health_update_from_input,
-    infer_legacy_channel_interface, legacy_channel_priority,
+    infer_legacy_channel_interface, legacy_channel_priority, legacy_provider_projection_input,
     normalize_channel_base_url as normalize_base_url,
     normalize_proxy_channel_key_patch_request_fields,
     normalize_proxy_channel_key_write_request_fields,
     normalize_proxy_channel_model_write_request_fields,
     normalize_proxy_channel_models_replace_request_fields,
-    normalize_proxy_channel_patch_request_fields,
-    normalize_proxy_channel_write_request_fields,
-    normalize_required_channel_string, stable_channel_id,
-    ChannelHealthUpdateInput, ChannelRequestValidationError, LegacyChannelModelProjection,
-    LegacyChannelProjection, LegacyChannelProjectionInput, LegacyModelRouteInput,
-    LegacyProviderProjectionInput, ProxyChannelKeyPatchRequest, ProxyChannelKeyWriteRequest,
-    ProxyChannelModelWriteRequest, ProxyChannelModelsReplaceRequest, ProxyChannelPatchRequest,
-    ProxyChannelWriteRequest, ProxyCoreAppKind as AppKind, ProxyCoreInterfaceKind as InterfaceKind,
-    CHANNEL_HEALTH_UNKNOWN_STATUS,
+    normalize_proxy_channel_patch_request_fields, normalize_proxy_channel_write_request_fields,
+    normalize_required_channel_string, stable_channel_id, ChannelHealthUpdateInput,
+    ChannelRequestValidationError, LegacyChannelModelProjection, LegacyChannelProjection,
+    LegacyChannelProjectionInput, LegacyProviderProjectionInput, ProxyChannelKeyPatchRequest,
+    ProxyChannelKeyWriteRequest, ProxyChannelModelWriteRequest, ProxyChannelModelsReplaceRequest,
+    ProxyChannelPatchRequest, ProxyChannelWriteRequest, ProxyCoreAppKind as AppKind,
+    ProxyCoreInterfaceKind as InterfaceKind, CHANNEL_HEALTH_UNKNOWN_STATUS,
 };
 use rusqlite::{params, Connection, OptionalExtension, Row};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use std::collections::{BTreeMap, HashSet};
+use std::collections::HashSet;
 use std::str::FromStr;
 
 const LEGACY_PRIMARY_SOURCE: &str = "legacy_primary";
@@ -1184,94 +1182,6 @@ fn channel_request_error_to_app_error(error: ChannelRequestValidationError) -> A
     AppError::InvalidInput(error.message)
 }
 
-fn legacy_provider_projection_input(provider: &Provider) -> LegacyProviderProjectionInput {
-    let config_text = provider
-        .settings_config
-        .get("config")
-        .and_then(|value| value.as_str());
-    let env = provider
-        .settings_config
-        .get("env")
-        .and_then(|value| value.as_object())
-        .map(|env| {
-            env.iter()
-                .filter_map(|(key, value)| {
-                    value
-                        .as_str()
-                        .map(|model| (key.to_string(), model.to_string()))
-                })
-                .collect::<BTreeMap<_, _>>()
-        })
-        .unwrap_or_default();
-    let codex_catalog_models = provider
-        .settings_config
-        .get("modelCatalog")
-        .and_then(|catalog| catalog.get("models"))
-        .and_then(|models| models.as_array())
-        .map(|models| {
-            models
-                .iter()
-                .filter_map(|entry| {
-                    entry
-                        .get("model")
-                        .and_then(|value| value.as_str())
-                        .map(ToString::to_string)
-                })
-                .collect::<Vec<_>>()
-        })
-        .unwrap_or_default();
-    let (api_format, claude_desktop_model_routes) = provider
-        .meta
-        .as_ref()
-        .map(|meta| {
-            let routes = meta
-                .claude_desktop_model_routes
-                .iter()
-                .map(|(public_model, route)| LegacyModelRouteInput {
-                    public_model: public_model.clone(),
-                    upstream_model: route.model.clone(),
-                })
-                .collect::<Vec<_>>();
-            (meta.api_format.clone(), routes)
-        })
-        .unwrap_or_default();
-
-    LegacyProviderProjectionInput {
-        api_format,
-        codex_wire_api: config_text.and_then(extract_codex_wire_api),
-        codex_model: config_text.and_then(extract_codex_model),
-        codex_catalog_models,
-        env,
-        claude_desktop_model_routes,
-    }
-}
-
-fn extract_codex_wire_api(config_text: &str) -> Option<String> {
-    let doc = config_text.parse::<toml::Value>().ok()?;
-    if let Some(active_provider) = doc.get("model_provider").and_then(|value| value.as_str()) {
-        if let Some(wire_api) = doc
-            .get("model_providers")
-            .and_then(|providers| providers.get(active_provider))
-            .and_then(|provider| provider.get("wire_api"))
-            .and_then(|value| value.as_str())
-        {
-            return Some(wire_api.to_string());
-        }
-    }
-    doc.get("wire_api")
-        .and_then(|value| value.as_str())
-        .map(ToString::to_string)
-}
-
-fn extract_codex_model(config_text: &str) -> Option<String> {
-    let doc = config_text.parse::<toml::Value>().ok()?;
-    doc.get("model")
-        .and_then(|value| value.as_str())
-        .map(str::trim)
-        .filter(|model| !model.is_empty())
-        .map(ToString::to_string)
-}
-
 fn parse_json_or_default<T>(value: &str) -> T
 where
     T: serde::de::DeserializeOwned + Default,
@@ -1508,7 +1418,10 @@ mod tests {
 
         assert_eq!(created.source_kind, ProxyChannelSourceKind::Manual);
         assert_eq!(created.base_url, "https://manual.example.com/v1");
-        assert_eq!(created.auth_profile_ref.as_deref(), Some("channel-key:primary"));
+        assert_eq!(
+            created.auth_profile_ref.as_deref(),
+            Some("channel-key:primary")
+        );
         assert_eq!(created.groups, vec!["default".to_string()]);
         assert_eq!(created.models.len(), 1);
 
