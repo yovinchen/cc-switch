@@ -979,6 +979,26 @@ pub(crate) fn channel_auth_profile_missing_key_error_message(
     )
 }
 
+pub(crate) fn channel_key_auth_error(channel_id: &str, key_ref: &str) -> ProxyCoreError {
+    ProxyCoreError::Auth(channel_auth_profile_missing_key_error_message(
+        channel_id, key_ref,
+    ))
+}
+
+pub(crate) fn provider_with_channel_auth_key(
+    app_type: &AppType,
+    provider: &Provider,
+    key_value: &str,
+) -> Provider {
+    let mut auth_provider = provider.clone();
+    auth_provider.settings_config = settings_config_with_channel_auth_key(
+        app_type.as_str(),
+        &provider.settings_config,
+        key_value,
+    );
+    auth_provider
+}
+
 pub(crate) fn extract_claude_base_url_from_settings(
     is_codex_oauth: bool,
     settings_config: &Value,
@@ -2700,6 +2720,35 @@ mod tests {
         assert_eq!(
             channel_auth_profile_missing_provider_warning("claude", None),
             "[claude] channel auth profile references missing provider: "
+        );
+        assert!(matches!(
+            channel_key_auth_error("channel-a", "primary"),
+            ProxyCoreError::Auth(message)
+                if message.contains("channel_id=channel-a")
+                    && message.contains("key_ref=primary")
+        ));
+
+        let provider = Provider::with_id(
+            "route-provider".to_string(),
+            "Route Provider".to_string(),
+            json!({ "env": { "ANTHROPIC_API_KEY": "route-key" } }),
+            None,
+        );
+        let auth_provider =
+            provider_with_channel_auth_key(&AppType::Claude, &provider, "channel-key");
+        assert_eq!(
+            provider
+                .settings_config
+                .pointer("/env/ANTHROPIC_API_KEY")
+                .and_then(Value::as_str),
+            Some("route-key")
+        );
+        assert_eq!(
+            auth_provider
+                .settings_config
+                .pointer("/env/ANTHROPIC_API_KEY")
+                .and_then(Value::as_str),
+            Some("channel-key")
         );
     }
 

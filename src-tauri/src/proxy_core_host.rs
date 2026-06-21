@@ -27,10 +27,10 @@ use crate::proxy_core_adapter::{
     auth_info_from_profile_ref,
     app_type_from_proxy_core_app,
     app_type_option_from_proxy_core_app,
-    channel_auth_profile_missing_key_error_message,
     channel_auth_profile_missing_provider_warning,
     channel_auth_profile_resolution,
     channel_health_reset_from_parts,
+    channel_key_auth_error,
     client_model_catalog_raw_from_text,
     current_provider_id_from_sources,
     current_provider_id_option_from_sources,
@@ -39,6 +39,7 @@ use crate::proxy_core_adapter::{
     extract_proxy_session_id,
     forward_result_to_proxy_result,
     host_providers_for_plan,
+    provider_with_channel_auth_key,
     proxy_app_config_from_config_parts, proxy_global_config_from_config,
     proxy_runtime_config_from_config,
     proxy_channel_record_to_core_spec, proxy_channel_records_to_core_specs_for_query,
@@ -47,7 +48,6 @@ use crate::proxy_core_adapter::{
     response_runtime_policy_from_app_proxy_config,
     route_plan_no_matching_host_providers_error_message,
     route_policy_from_failover_queue,
-    settings_config_with_channel_auth_key,
 };
 use futures::future::BoxFuture;
 use indexmap::IndexMap;
@@ -667,7 +667,7 @@ fn apply_channel_auth_profile_providers(
                 else {
                     return Err(channel_key_auth_error(&channel_id, &key_ref));
                 };
-                attempt.set_auth_provider(channel_key_auth_provider(
+                attempt.set_auth_provider(provider_with_channel_auth_key(
                     app_type,
                     attempt.provider(),
                     &key.key_value,
@@ -679,26 +679,6 @@ fn apply_channel_auth_profile_providers(
         }
     }
     Ok(())
-}
-
-fn channel_key_auth_error(channel_id: &str, key_ref: &str) -> ProxyCoreError {
-    ProxyCoreError::Auth(channel_auth_profile_missing_key_error_message(
-        channel_id, key_ref,
-    ))
-}
-
-fn channel_key_auth_provider(
-    app_type: &AppType,
-    provider: &crate::provider::Provider,
-    key_value: &str,
-) -> crate::provider::Provider {
-    let mut auth_provider = provider.clone();
-    auth_provider.settings_config = settings_config_with_channel_auth_key(
-        app_type.as_str(),
-        &provider.settings_config,
-        key_value,
-    );
-    auth_provider
 }
 
 fn app_error(context: &str, error: AppError) -> ProxyCoreError {
