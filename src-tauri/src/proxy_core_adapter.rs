@@ -1074,30 +1074,14 @@ pub(crate) fn normalize_required_channel_string(
     crate::proxy_core::api::routing::normalize_required_channel_string(value, field)
 }
 
-pub(crate) fn normalize_optional_channel_string(value: String) -> Option<String> {
-    crate::proxy_core::api::routing::normalize_optional_channel_string(value)
-}
-
 pub(crate) fn normalize_channel_base_url(value: &str) -> String {
     crate::proxy_core::api::routing::normalize_channel_base_url(value)
 }
 
-pub(crate) fn normalize_channel_groups(groups: Vec<String>) -> Vec<String> {
-    crate::proxy_core::api::routing::normalize_channel_groups(groups)
-}
-
-pub(crate) fn channel_object_or_default(value: Value) -> Value {
-    crate::proxy_core::api::routing::channel_object_or_default(value)
-}
-
-pub(crate) fn channel_array_or_default(value: Value) -> Value {
-    crate::proxy_core::api::routing::channel_array_or_default(value)
-}
-
-pub(crate) fn validate_proxy_channel_write_request_fields(
-    request: &ProxyChannelWriteRequest,
-) -> Result<(), ChannelRequestValidationError> {
-    crate::proxy_core::api::routing::validate_proxy_channel_write_request_fields(request)
+pub(crate) fn normalize_proxy_channel_write_request_fields(
+    request: ProxyChannelWriteRequest,
+) -> Result<ProxyChannelWriteRequest, ChannelRequestValidationError> {
+    crate::proxy_core::api::routing::normalize_proxy_channel_write_request_fields(request)
 }
 
 pub(crate) fn normalize_proxy_channel_patch_request_fields(
@@ -1106,16 +1090,16 @@ pub(crate) fn normalize_proxy_channel_patch_request_fields(
     crate::proxy_core::api::routing::normalize_proxy_channel_patch_request_fields(request)
 }
 
-pub(crate) fn validate_proxy_channel_model_write_request_fields(
-    model: &ProxyChannelModelWriteRequest,
-) -> Result<(), ChannelRequestValidationError> {
-    crate::proxy_core::api::routing::validate_proxy_channel_model_write_request_fields(model)
+pub(crate) fn normalize_proxy_channel_model_write_request_fields(
+    model: ProxyChannelModelWriteRequest,
+) -> Result<ProxyChannelModelWriteRequest, ChannelRequestValidationError> {
+    crate::proxy_core::api::routing::normalize_proxy_channel_model_write_request_fields(model)
 }
 
-pub(crate) fn validate_proxy_channel_models_replace_request_fields(
-    request: &ProxyChannelModelsReplaceRequest,
-) -> Result<(), ChannelRequestValidationError> {
-    crate::proxy_core::api::routing::validate_proxy_channel_models_replace_request_fields(request)
+pub(crate) fn normalize_proxy_channel_models_replace_request_fields(
+    request: ProxyChannelModelsReplaceRequest,
+) -> Result<ProxyChannelModelsReplaceRequest, ChannelRequestValidationError> {
+    crate::proxy_core::api::routing::normalize_proxy_channel_models_replace_request_fields(request)
 }
 
 pub(crate) fn validate_proxy_channel_key_write_request_fields(
@@ -2972,15 +2956,6 @@ mod tests {
             "https://api.example.com/v1"
         );
         assert_eq!(
-            normalize_channel_groups(vec![
-                "default".to_string(),
-                " ".to_string(),
-                "beta".to_string(),
-                "default".to_string()
-            ]),
-            vec!["beta".to_string(), "default".to_string()]
-        );
-        assert_eq!(
             stable_channel_id("Claude", "Provider A", "legacy_primary", "https://api.example.com"),
             "legacy-claude-provider-a-legacy-primary-fcc8db014bbc"
         );
@@ -2998,7 +2973,9 @@ mod tests {
             }],
             ..ProxyChannelWriteRequest::default()
         };
-        validate_proxy_channel_write_request_fields(&request).expect("valid channel request");
+        let normalized =
+            normalize_proxy_channel_write_request_fields(request).expect("valid channel request");
+        assert_eq!(normalized.base_url, "https://api.example.com/v1");
 
         let provider_projection = LegacyProviderProjectionInput {
             env: std::collections::BTreeMap::from([(

@@ -41,18 +41,55 @@ impl std::error::Error for ChannelRequestValidationError {}
 pub fn validate_proxy_channel_write_request_fields(
     request: &ProxyChannelWriteRequest,
 ) -> Result<(), ChannelRequestValidationError> {
+    normalize_proxy_channel_write_request_fields(request.clone()).map(|_| ())
+}
+
+pub fn normalize_proxy_channel_write_request_fields(
+    request: ProxyChannelWriteRequest,
+) -> Result<ProxyChannelWriteRequest, ChannelRequestValidationError> {
     normalize_required_channel_string(&request.provider_id, "providerId")?;
-    normalize_required_channel_string(&request.name, "name")?;
-    normalize_required_channel_string(&request.status, "status")?;
-    if normalize_channel_base_url(&request.base_url).is_empty() {
+    let name = normalize_required_channel_string(&request.name, "name")?;
+    let status = normalize_required_channel_string(&request.status, "status")?;
+    let base_url = normalize_channel_base_url(&request.base_url);
+    if base_url.is_empty() {
         return Err(ChannelRequestValidationError::required("baseUrl"));
     }
-    normalize_required_channel_string(&request.interface_kind, "interfaceKind")?;
-    validate_optional_channel_auth_profile_ref(request.auth_profile_ref.as_deref())?;
-    for model in &request.models {
-        validate_proxy_channel_model_write_request_fields(model)?;
-    }
-    Ok(())
+    let interface_kind =
+        normalize_required_channel_string(&request.interface_kind, "interfaceKind")?;
+    let auth_profile_ref = match request.auth_profile_ref {
+        Some(value) => {
+            validate_optional_channel_auth_profile_ref(Some(&value))?;
+            normalize_optional_channel_string(value)
+        }
+        None => None,
+    };
+    let models = request
+        .models
+        .into_iter()
+        .map(normalize_proxy_channel_model_write_request_fields)
+        .collect::<Result<Vec<_>, _>>()?;
+
+    Ok(ProxyChannelWriteRequest {
+        id: request.id,
+        provider_id: request.provider_id,
+        app_type: request.app_type,
+        name,
+        status,
+        base_url,
+        interface_kind,
+        auth_profile_ref,
+        groups: normalize_channel_groups(request.groups),
+        priority: request.priority,
+        weight: request.weight,
+        retry_policy: channel_object_or_default(request.retry_policy),
+        health_policy: channel_object_or_default(request.health_policy),
+        header_overrides: channel_object_or_default(request.header_overrides),
+        param_overrides: channel_object_or_default(request.param_overrides),
+        status_code_mapping: channel_array_or_default(request.status_code_mapping),
+        tags: request.tags,
+        metadata: channel_object_or_default(request.metadata),
+        models,
+    })
 }
 
 pub fn validate_proxy_channel_patch_request_fields(
@@ -117,18 +154,40 @@ pub fn normalize_proxy_channel_patch_request_fields(
 pub fn validate_proxy_channel_model_write_request_fields(
     model: &ProxyChannelModelWriteRequest,
 ) -> Result<(), ChannelRequestValidationError> {
-    normalize_required_channel_string(&model.public_model, "publicModel")?;
-    normalize_required_channel_string(&model.upstream_model, "upstreamModel")?;
-    Ok(())
+    normalize_proxy_channel_model_write_request_fields(model.clone()).map(|_| ())
+}
+
+pub fn normalize_proxy_channel_model_write_request_fields(
+    model: ProxyChannelModelWriteRequest,
+) -> Result<ProxyChannelModelWriteRequest, ChannelRequestValidationError> {
+    let public_model = normalize_required_channel_string(&model.public_model, "publicModel")?;
+    let upstream_model = normalize_required_channel_string(&model.upstream_model, "upstreamModel")?;
+
+    Ok(ProxyChannelModelWriteRequest {
+        public_model,
+        upstream_model,
+        capabilities: channel_object_or_default(model.capabilities),
+        pricing_model: model.pricing_model,
+        request_overrides: channel_object_or_default(model.request_overrides),
+        response_overrides: channel_object_or_default(model.response_overrides),
+    })
 }
 
 pub fn validate_proxy_channel_models_replace_request_fields(
     request: &ProxyChannelModelsReplaceRequest,
 ) -> Result<(), ChannelRequestValidationError> {
-    for model in &request.models {
-        validate_proxy_channel_model_write_request_fields(model)?;
-    }
-    Ok(())
+    normalize_proxy_channel_models_replace_request_fields(request.clone()).map(|_| ())
+}
+
+pub fn normalize_proxy_channel_models_replace_request_fields(
+    request: ProxyChannelModelsReplaceRequest,
+) -> Result<ProxyChannelModelsReplaceRequest, ChannelRequestValidationError> {
+    let models = request
+        .models
+        .into_iter()
+        .map(normalize_proxy_channel_model_write_request_fields)
+        .collect::<Result<Vec<_>, _>>()?;
+    Ok(ProxyChannelModelsReplaceRequest { models })
 }
 
 pub fn validate_proxy_channel_key_write_request_fields(
@@ -233,7 +292,11 @@ mod tests {
     use super::{
         channel_array_or_default, channel_object_or_default, normalize_channel_base_url,
         normalize_channel_groups, normalize_optional_channel_string,
-        normalize_proxy_channel_patch_request_fields, normalize_required_channel_string,
+        normalize_proxy_channel_model_write_request_fields,
+        normalize_proxy_channel_models_replace_request_fields,
+        normalize_proxy_channel_patch_request_fields,
+        normalize_proxy_channel_write_request_fields,
+        normalize_required_channel_string,
         validate_optional_channel_auth_profile_ref,
         validate_proxy_channel_model_write_request_fields,
         validate_proxy_channel_models_replace_request_fields,
@@ -331,18 +394,35 @@ mod tests {
         let request = ProxyChannelWriteRequest {
             provider_id: "provider-a".to_string(),
             app_type: "claude".to_string(),
-            name: "Relay".to_string(),
-            base_url: "https://relay.example.com/v1/".to_string(),
+            name: " Relay ".to_string(),
+            base_url: " https://relay.example.com/v1/ ".to_string(),
             interface_kind: "openai_responses".to_string(),
-            auth_profile_ref: Some("channel-key:primary".to_string()),
+            auth_profile_ref: Some(" channel-key:primary ".to_string()),
+            groups: vec![" beta ".to_string(), "default".to_string(), "beta".to_string()],
+            retry_policy: json!(["not", "object"]),
+            status_code_mapping: json!({"not": "array"}),
             models: vec![ProxyChannelModelWriteRequest {
-                public_model: "sonnet".to_string(),
-                upstream_model: "claude-sonnet-4".to_string(),
+                public_model: " sonnet ".to_string(),
+                upstream_model: " claude-sonnet-4 ".to_string(),
+                capabilities: json!(["not", "object"]),
                 ..Default::default()
             }],
             ..Default::default()
         };
 
+        let normalized = normalize_proxy_channel_write_request_fields(request.clone()).unwrap();
+        assert_eq!(normalized.name, "Relay");
+        assert_eq!(normalized.base_url, "https://relay.example.com/v1");
+        assert_eq!(normalized.auth_profile_ref.as_deref(), Some("channel-key:primary"));
+        assert_eq!(
+            normalized.groups,
+            vec!["beta".to_string(), "default".to_string()]
+        );
+        assert_eq!(normalized.retry_policy, json!({}));
+        assert_eq!(normalized.status_code_mapping, json!([]));
+        assert_eq!(normalized.models[0].public_model, "sonnet");
+        assert_eq!(normalized.models[0].upstream_model, "claude-sonnet-4");
+        assert_eq!(normalized.models[0].capabilities, json!({}));
         validate_proxy_channel_write_request_fields(&request).unwrap();
 
         let invalid = ProxyChannelWriteRequest {
@@ -401,6 +481,18 @@ mod tests {
 
     #[test]
     fn model_write_request_validation_checks_public_and_upstream_model() {
+        let normalized =
+            normalize_proxy_channel_model_write_request_fields(ProxyChannelModelWriteRequest {
+                public_model: " public ".to_string(),
+                upstream_model: " upstream ".to_string(),
+                request_overrides: json!(["not", "object"]),
+                ..Default::default()
+            })
+            .unwrap();
+        assert_eq!(normalized.public_model, "public");
+        assert_eq!(normalized.upstream_model, "upstream");
+        assert_eq!(normalized.request_overrides, json!({}));
+
         assert_eq!(
             validate_proxy_channel_model_write_request_fields(&ProxyChannelModelWriteRequest {
                 public_model: " ".to_string(),
@@ -425,14 +517,18 @@ mod tests {
 
     #[test]
     fn models_replace_request_validation_reuses_model_rules() {
-        validate_proxy_channel_models_replace_request_fields(&ProxyChannelModelsReplaceRequest {
-            models: vec![ProxyChannelModelWriteRequest {
-                public_model: "sonnet".to_string(),
-                upstream_model: "claude-sonnet-4".to_string(),
-                ..Default::default()
-            }],
-        })
+        let normalized = normalize_proxy_channel_models_replace_request_fields(
+            ProxyChannelModelsReplaceRequest {
+                models: vec![ProxyChannelModelWriteRequest {
+                    public_model: " sonnet ".to_string(),
+                    upstream_model: " claude-sonnet-4 ".to_string(),
+                    ..Default::default()
+                }],
+            },
+        )
         .unwrap();
+        assert_eq!(normalized.models[0].public_model, "sonnet");
+        assert_eq!(normalized.models[0].upstream_model, "claude-sonnet-4");
 
         assert_eq!(
             validate_proxy_channel_models_replace_request_fields(&ProxyChannelModelsReplaceRequest {

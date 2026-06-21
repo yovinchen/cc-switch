@@ -9,19 +9,16 @@ use crate::database::{lock_conn, to_json_string, Database};
 use crate::error::AppError;
 use crate::provider::Provider;
 use crate::proxy_core_adapter::{
-    build_legacy_channel_projection, channel_array_or_default as array_or_default,
-    channel_health_update_from_input,
-    channel_object_or_default as object_or_default, infer_legacy_channel_interface,
-    legacy_channel_priority, normalize_channel_base_url as normalize_base_url,
-    normalize_channel_groups as normalized_groups,
-    normalize_optional_channel_string as normalize_optional_string,
+    build_legacy_channel_projection, channel_health_update_from_input,
+    infer_legacy_channel_interface, legacy_channel_priority,
+    normalize_channel_base_url as normalize_base_url,
+    normalize_proxy_channel_model_write_request_fields,
+    normalize_proxy_channel_models_replace_request_fields,
     normalize_proxy_channel_patch_request_fields,
+    normalize_proxy_channel_write_request_fields,
     normalize_required_channel_string, stable_channel_id,
     validate_proxy_channel_key_patch_request_fields,
     validate_proxy_channel_key_write_request_fields,
-    validate_proxy_channel_model_write_request_fields,
-    validate_proxy_channel_models_replace_request_fields,
-    validate_proxy_channel_write_request_fields,
     ChannelHealthUpdateInput, ChannelRequestValidationError, LegacyChannelModelProjection,
     LegacyChannelProjection, LegacyChannelProjectionInput, LegacyModelRouteInput,
     LegacyProviderProjectionInput, ProxyChannelKeyPatchRequest, ProxyChannelKeyWriteRequest,
@@ -391,7 +388,7 @@ impl Database {
         &self,
         request: ProxyChannelWriteRequest,
     ) -> Result<ProxyChannelRecord, AppError> {
-        validate_proxy_channel_write_request(&request)?;
+        let request = normalize_proxy_channel_write_request(request)?;
         if self
             .get_provider_by_id(&request.provider_id, &request.app_type)?
             .is_none()
@@ -428,21 +425,21 @@ impl Database {
                 channel_id,
                 request.provider_id,
                 request.app_type,
-                normalize_required_string(&request.name, "name")?,
-                normalize_required_string(&request.status, "status")?,
-                normalize_base_url(&request.base_url),
-                normalize_required_string(&request.interface_kind, "interfaceKind")?,
-                request.auth_profile_ref.and_then(normalize_optional_string),
-                to_json_string(&normalized_groups(request.groups))?,
+                request.name,
+                request.status,
+                request.base_url,
+                request.interface_kind,
+                request.auth_profile_ref,
+                to_json_string(&request.groups)?,
                 request.priority,
                 request.weight as i64,
-                to_json_string(&object_or_default(request.retry_policy))?,
-                to_json_string(&object_or_default(request.health_policy))?,
-                to_json_string(&object_or_default(request.header_overrides))?,
-                to_json_string(&object_or_default(request.param_overrides))?,
-                to_json_string(&array_or_default(request.status_code_mapping))?,
+                to_json_string(&request.retry_policy)?,
+                to_json_string(&request.health_policy)?,
+                to_json_string(&request.header_overrides)?,
+                to_json_string(&request.param_overrides)?,
+                to_json_string(&request.status_code_mapping)?,
                 to_json_string(&request.tags)?,
-                to_json_string(&object_or_default(request.metadata))?,
+                to_json_string(&request.metadata)?,
                 ProxyChannelSourceKind::Manual.as_str(),
                 now,
                 now,
@@ -580,7 +577,7 @@ impl Database {
         channel_id: &str,
         request: ProxyChannelModelsReplaceRequest,
     ) -> Result<Option<Vec<ProxyChannelModelRecord>>, AppError> {
-        validate_proxy_channel_models_replace_request_fields(&request)
+        let request = normalize_proxy_channel_models_replace_request_fields(request)
             .map_err(channel_request_error_to_app_error)?;
         let conn = lock_conn!(self.conn);
         if get_proxy_channel_on_conn(&conn, channel_id)?.is_none() {
@@ -1039,9 +1036,11 @@ fn replace_proxy_channel_models_on_conn(
     channel_id: &str,
     models: Vec<ProxyChannelModelWriteRequest>,
 ) -> Result<(), AppError> {
-    for model in &models {
-        validate_proxy_channel_model_write_request(model)?;
-    }
+    let models = models
+        .into_iter()
+        .map(normalize_proxy_channel_model_write_request_fields)
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(channel_request_error_to_app_error)?;
 
     let now = chrono::Utc::now().timestamp_millis();
     conn.execute(
@@ -1059,12 +1058,12 @@ fn replace_proxy_channel_models_on_conn(
             ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
             params![
                 channel_id,
-                normalize_required_string(&model.public_model, "publicModel")?,
-                normalize_required_string(&model.upstream_model, "upstreamModel")?,
-                to_json_string(&object_or_default(model.capabilities))?,
+                model.public_model,
+                model.upstream_model,
+                to_json_string(&model.capabilities)?,
                 model.pricing_model,
-                to_json_string(&object_or_default(model.request_overrides))?,
-                to_json_string(&object_or_default(model.response_overrides))?,
+                to_json_string(&model.request_overrides)?,
+                to_json_string(&model.response_overrides)?,
                 now,
                 now,
             ],
@@ -1171,17 +1170,11 @@ fn proxy_channel_model_record_from_legacy(
     }
 }
 
-fn validate_proxy_channel_write_request(
-    request: &ProxyChannelWriteRequest,
-) -> Result<(), AppError> {
+fn normalize_proxy_channel_write_request(
+    request: ProxyChannelWriteRequest,
+) -> Result<ProxyChannelWriteRequest, AppError> {
     let _ = AppType::from_str(&request.app_type)?;
-    validate_proxy_channel_write_request_fields(request).map_err(channel_request_error_to_app_error)
-}
-
-fn validate_proxy_channel_model_write_request(
-    model: &ProxyChannelModelWriteRequest,
-) -> Result<(), AppError> {
-    validate_proxy_channel_model_write_request_fields(model)
+    normalize_proxy_channel_write_request_fields(request)
         .map_err(channel_request_error_to_app_error)
 }
 
