@@ -656,7 +656,6 @@ fn apply_channel_auth_profile_providers(
         match channel_auth_profile_resolution(auth_profile_ref, app_type.as_str()) {
             ChannelAuthProfileResolution::Provider { provider_id } => {
                 let Some(provider) = providers.get(&provider_id).cloned() else {
-                    let auth_profile_ref = auth_profile_ref.unwrap_or_default();
                     log::warn!(
                         "{}",
                         channel_auth_profile_missing_provider_warning(

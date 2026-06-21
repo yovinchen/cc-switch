@@ -311,8 +311,9 @@ pub fn channel_auth_profile_resolution(
 
 pub fn channel_auth_profile_missing_provider_warning(
     app_type: &str,
-    auth_profile_ref: &str,
+    auth_profile_ref: Option<&str>,
 ) -> String {
+    let auth_profile_ref = auth_profile_ref.unwrap_or_default();
     format!(
         "[{app_type}] channel auth profile references missing provider: {auth_profile_ref}"
     )
@@ -1643,9 +1644,13 @@ mod tests {
         assert_eq!(
             channel_auth_profile_missing_provider_warning(
                 "claude",
-                "provider:claude:missing-provider",
+                Some("provider:claude:missing-provider"),
             ),
             "[claude] channel auth profile references missing provider: provider:claude:missing-provider"
+        );
+        assert_eq!(
+            channel_auth_profile_missing_provider_warning("claude", None),
+            "[claude] channel auth profile references missing provider: "
         );
     }
 

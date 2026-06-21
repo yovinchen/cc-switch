@@ -483,7 +483,7 @@ pub(crate) fn channel_auth_profile_resolution(
 
 pub(crate) fn channel_auth_profile_missing_provider_warning(
     app_type: &str,
-    auth_profile_ref: &str,
+    auth_profile_ref: Option<&str>,
 ) -> String {
     crate::proxy_core::api::domain::channel_auth_profile_missing_provider_warning(
         app_type,
@@ -2554,6 +2554,21 @@ mod tests {
         assert_eq!(
             unsupported_app_kind_error_message("invalid app: openclaw"),
             "unsupported app kind: invalid app: openclaw"
+        );
+    }
+
+    #[test]
+    fn channel_auth_profile_warning_adapter_projects_optional_ref() {
+        assert_eq!(
+            channel_auth_profile_missing_provider_warning(
+                "claude",
+                Some("provider:claude:missing"),
+            ),
+            "[claude] channel auth profile references missing provider: provider:claude:missing"
+        );
+        assert_eq!(
+            channel_auth_profile_missing_provider_warning("claude", None),
+            "[claude] channel auth profile references missing provider: "
         );
     }
 
