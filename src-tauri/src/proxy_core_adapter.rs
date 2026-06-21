@@ -30,7 +30,7 @@ use crate::proxy_core::api::transforms::CodexChatErrorNormalization;
 use crate::proxy_core::api::transport::{UpstreamRequestTransportPolicy, UpstreamSendPolicy};
 use bytes::Bytes;
 use futures::{Stream, StreamExt};
-use http::{HeaderMap, StatusCode};
+use http::{HeaderMap, Method, StatusCode};
 use indexmap::IndexMap;
 use rust_decimal::Decimal;
 use serde_json::{Map, Value, json};
@@ -1568,6 +1568,37 @@ pub(crate) fn app_type_from_proxy_core_app(app: &AppKind) -> ProxyCoreResult<App
         .map_err(|error| ProxyCoreError::Config(unsupported_app_kind_error_message(error)))
 }
 
+pub(crate) struct ForwardRuntimeRequest {
+    pub(crate) app_type: AppType,
+    pub(crate) method: Method,
+    pub(crate) endpoint: String,
+    pub(crate) headers: HeaderMap,
+    pub(crate) extensions: http::Extensions,
+    pub(crate) body: Value,
+}
+
+pub(crate) fn forward_runtime_request_from_proxy_request(
+    request: ProxyRequest,
+) -> ProxyCoreResult<ForwardRuntimeRequest> {
+    let ProxyRequest {
+        app,
+        method,
+        endpoint,
+        headers,
+        extensions,
+        body,
+        ..
+    } = request;
+    Ok(ForwardRuntimeRequest {
+        app_type: app_type_from_proxy_core_app(&app)?,
+        method,
+        endpoint,
+        headers,
+        extensions,
+        body: body.into_json()?,
+    })
+}
+
 pub(crate) fn unsupported_app_kind_error_message(error: impl std::fmt::Display) -> String {
     crate::proxy_core::api::domain::unsupported_app_kind_error_message(&error.to_string())
 }
@@ -3045,6 +3076,34 @@ mod tests {
             unsupported_app_kind_error_message("invalid app: openclaw"),
             "unsupported app kind: invalid app: openclaw"
         );
+
+        let forward_request = forward_runtime_request_from_proxy_request(ProxyRequest::new(
+            AppKind::Claude,
+            Method::POST,
+            "/v1/messages",
+            InterfaceKind::AnthropicMessages,
+            ProxyBody::Bytes(Bytes::from_static(br#"{"ok":true}"#)),
+        ))
+        .expect("forward request");
+        assert_eq!(forward_request.app_type, AppType::Claude);
+        assert_eq!(forward_request.method, Method::POST);
+        assert_eq!(forward_request.endpoint, "/v1/messages");
+        assert_eq!(forward_request.body, json!({"ok": true}));
+
+        let invalid_request = match forward_runtime_request_from_proxy_request(ProxyRequest::new(
+            AppKind::Claude,
+            Method::POST,
+            "/v1/messages",
+            InterfaceKind::AnthropicMessages,
+            ProxyBody::Bytes(Bytes::from_static(b"{bad-json")),
+        )) {
+            Ok(_) => panic!("invalid JSON body should fail"),
+            Err(error) => error,
+        };
+        assert!(matches!(
+            invalid_request,
+            ProxyCoreError::InvalidRequest(message) if message.contains("invalid JSON body")
+        ));
     }
 
     #[test]

@@ -27,7 +27,6 @@ use crate::proxy_core_adapter::{
     app_error,
     apply_channel_auth_profile_providers_from_source,
     auth_info_from_cc_switch_provider_config,
-    app_type_from_proxy_core_app,
     channel_health_attempt_db_update,
     channel_health_reset_from_plan,
     channel_health_reset_plan_from_lookup,
@@ -38,6 +37,7 @@ use crate::proxy_core_adapter::{
     current_provider_id_from_settings_for_app_type,
     extract_proxy_session_id,
     forward_current_provider_id_from_source,
+    forward_runtime_request_from_proxy_request,
     forward_result_to_proxy_result,
     forwarding_runtime_unavailable_error,
     host_providers_for_plan,
@@ -539,17 +539,8 @@ impl CcSwitchProxyRuntime {
         request: ProxyRequest,
         plan: RoutePlan,
     ) -> ProxyCoreResult<ProxyResult> {
-        let ProxyRequest {
-            app,
-            method,
-            endpoint,
-            headers,
-            extensions,
-            body,
-            ..
-        } = request;
-        let app_type = app_type_from_proxy_core_app(&app)?;
-        let body = body.into_json()?;
+        let forward_request = forward_runtime_request_from_proxy_request(request)?;
+        let app_type = forward_request.app_type;
         let app_config = self
             .db
             .get_proxy_config_for_app(app_type.as_str())
@@ -566,7 +557,11 @@ impl CcSwitchProxyRuntime {
                 self.db.get_current_provider(app_type.as_str()).ok().flatten()
             },
         );
-        let session_result = extract_proxy_session_id(&headers, &body, app_type.as_str());
+        let session_result = extract_proxy_session_id(
+            &forward_request.headers,
+            &forward_request.body,
+            app_type.as_str(),
+        );
         let all_providers = self
             .db
             .get_all_providers(app_type.as_str())
@@ -601,7 +596,13 @@ impl CcSwitchProxyRuntime {
 
         let result = forwarder
             .forward_with_preplanned_attempts(
-                &app_type, method, &endpoint, body, headers, extensions, attempts,
+                &app_type,
+                forward_request.method,
+                &forward_request.endpoint,
+                forward_request.body,
+                forward_request.headers,
+                forward_request.extensions,
+                attempts,
             )
             .await
             .map_err(forward_error_to_core_error)?;
