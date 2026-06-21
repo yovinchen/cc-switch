@@ -3586,6 +3586,58 @@ pub(crate) fn provider_claude_env_settings(
         .and_then(Value::as_object)
 }
 
+pub(crate) fn provider_launch_env_vars_for_app(
+    provider: &Provider,
+    app_type: &AppType,
+) -> Vec<(String, String)> {
+    launch_env_vars_from_provider_settings(&provider.settings_config, app_type)
+}
+
+fn launch_env_vars_from_provider_settings(
+    config: &Value,
+    app_type: &AppType,
+) -> Vec<(String, String)> {
+    let mut env_vars = Vec::new();
+
+    let Some(obj) = config.as_object() else {
+        return env_vars;
+    };
+
+    if let Some(env) = obj.get("env").and_then(Value::as_object) {
+        for (key, value) in env {
+            if let Some(str_val) = value.as_str() {
+                env_vars.push((key.clone(), str_val.to_string()));
+            }
+        }
+
+        let base_url_key = match app_type {
+            AppType::Claude | AppType::ClaudeDesktop => Some("ANTHROPIC_BASE_URL"),
+            AppType::Gemini => Some("GOOGLE_GEMINI_BASE_URL"),
+            _ => None,
+        };
+
+        if let Some(key) = base_url_key {
+            if let Some(url_str) = env.get(key).and_then(Value::as_str) {
+                env_vars.push((key.to_string(), url_str.to_string()));
+            }
+        }
+    }
+
+    if *app_type == AppType::Codex {
+        if let Some(auth) = obj.get("auth").and_then(Value::as_str) {
+            env_vars.push(("OPENAI_API_KEY".to_string(), auth.to_string()));
+        }
+    }
+
+    if *app_type == AppType::Gemini {
+        if let Some(api_key) = obj.get("api_key").and_then(Value::as_str) {
+            env_vars.push(("GEMINI_API_KEY".to_string(), api_key.to_string()));
+        }
+    }
+
+    env_vars
+}
+
 pub(crate) fn provider_claude_models_are_claude_safe(provider: &Provider) -> bool {
     let Some(env) = provider_claude_env_settings(provider) else {
         return true;
@@ -5495,6 +5547,52 @@ wire_api = "chat"
             provider_kind_from_app_type_and_config(&AppType::Gemini, &gemini_provider),
             ProviderKind::GeminiCli
         );
+    }
+
+    #[test]
+    fn provider_launch_env_adapter_projects_app_specific_settings() {
+        let provider = Provider::with_id(
+            "mixed-provider".to_string(),
+            "Mixed Provider".to_string(),
+            json!({
+                "env": {
+                    "ANTHROPIC_BASE_URL": "https://anthropic.example.com",
+                    "ANTHROPIC_AUTH_TOKEN": "anthropic-token",
+                    "GOOGLE_GEMINI_BASE_URL": "https://gemini.example.com",
+                    "IGNORED_NUMERIC": 1
+                },
+                "auth": "codex-token",
+                "api_key": "gemini-key"
+            }),
+            None,
+        );
+
+        let claude_env = provider_launch_env_vars_for_app(&provider, &AppType::Claude);
+        assert!(claude_env.contains(&(
+            "ANTHROPIC_AUTH_TOKEN".to_string(),
+            "anthropic-token".to_string()
+        )));
+        assert!(claude_env.contains(&(
+            "ANTHROPIC_BASE_URL".to_string(),
+            "https://anthropic.example.com".to_string()
+        )));
+        assert!(!claude_env.iter().any(|(key, _)| key == "IGNORED_NUMERIC"));
+
+        let codex_env = provider_launch_env_vars_for_app(&provider, &AppType::Codex);
+        assert!(codex_env.contains(&(
+            "OPENAI_API_KEY".to_string(),
+            "codex-token".to_string()
+        )));
+
+        let gemini_env = provider_launch_env_vars_for_app(&provider, &AppType::Gemini);
+        assert!(gemini_env.contains(&(
+            "GOOGLE_GEMINI_BASE_URL".to_string(),
+            "https://gemini.example.com".to_string()
+        )));
+        assert!(gemini_env.contains(&(
+            "GEMINI_API_KEY".to_string(),
+            "gemini-key".to_string()
+        )));
     }
 
     #[test]
