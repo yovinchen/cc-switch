@@ -5,7 +5,7 @@ use crate::database::{
     ProxyChannelMigrationPreview, ProxyChannelMaterializeResult, ProxyChannelSourceKind,
 };
 use crate::error::AppError;
-use crate::provider::{Provider, ProviderMeta};
+use crate::provider::{Provider, ProviderMeta, UsageScript};
 use crate::proxy::hyper_client::ProxyResponse;
 use crate::proxy::providers::provider_kind_from_app_type_and_config;
 use crate::proxy::route_attempt::ForwardAttempt;
@@ -3202,6 +3202,12 @@ pub(crate) fn provider_codex_oauth_managed_account_id(provider: &Provider) -> Op
         .and_then(|meta| meta.managed_account_id_for("codex_oauth"))
 }
 
+pub(crate) fn provider_usage_script(provider: Option<&Provider>) -> Option<&UsageScript> {
+    provider
+        .and_then(|provider| provider.meta.as_ref())
+        .and_then(|meta| meta.usage_script.as_ref())
+}
+
 pub(crate) fn provider_is_full_url(provider: &Provider) -> bool {
     provider
         .meta
@@ -6057,6 +6063,19 @@ mod tests {
                 auth_provider: Some("github_copilot".to_string()),
                 account_id: Some("acct-1".to_string()),
             }),
+            usage_script: Some(UsageScript {
+                enabled: true,
+                language: "javascript".to_string(),
+                code: String::new(),
+                timeout: None,
+                api_key: None,
+                base_url: None,
+                access_token: None,
+                user_id: None,
+                template_type: Some("github_copilot".to_string()),
+                auto_query_interval: None,
+                coding_plan_provider: None,
+            }),
             ..ProviderMeta::default()
         });
 
@@ -6067,6 +6086,11 @@ mod tests {
         let stream_check_provider_is_copilot =
             provider_is_github_copilot_stream_check_target(&provider);
         let copilot_account_id = provider_github_copilot_managed_account_id(&provider);
+        assert_eq!(
+            provider_usage_script(Some(&provider)).and_then(|script| script.template_type.as_deref()),
+            Some("github_copilot")
+        );
+        assert!(provider_usage_script(None).is_none());
         let usage_provider_is_full_url = provider_is_full_url(&provider);
         let provider_user_agent =
             provider_custom_user_agent_header(&provider, false).expect("custom user agent");

@@ -5,6 +5,9 @@ use crate::app_config::AppType;
 use crate::commands::copilot::CopilotAuthState;
 use crate::error::AppError;
 use crate::provider::{ClaudeDesktopMode, Provider};
+use crate::proxy_core_adapter::{
+    provider_github_copilot_managed_account_id, provider_usage_script,
+};
 use crate::services::{
     EndpointLatency, ProviderService, ProviderSortUpdate, SpeedtestService, SwitchResult,
 };
@@ -466,18 +469,14 @@ async fn query_provider_usage_inner(
         .get_all_providers(app_type.as_str())
         .map_err(|e| format!("Failed to get providers: {e}"))?;
     let provider = providers.get(provider_id);
-    let usage_script = provider
-        .and_then(|p| p.meta.as_ref())
-        .and_then(|m| m.usage_script.as_ref());
+    let usage_script = provider_usage_script(provider);
     let template_type = usage_script
         .and_then(|s| s.template_type.as_deref())
         .unwrap_or("");
 
     // ── GitHub Copilot 专用路径 ──
     if template_type == TEMPLATE_TYPE_GITHUB_COPILOT {
-        let copilot_account_id = provider
-            .and_then(|p| p.meta.as_ref())
-            .and_then(|m| m.managed_account_id_for(TEMPLATE_TYPE_GITHUB_COPILOT));
+        let copilot_account_id = provider.and_then(provider_github_copilot_managed_account_id);
 
         let auth_manager = copilot_state.0.read().await;
         let usage = match copilot_account_id.as_deref() {
