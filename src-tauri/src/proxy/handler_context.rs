@@ -9,10 +9,11 @@ use crate::proxy::{
 };
 use crate::proxy_core_adapter::{
     app_proxy_config_from_proxy_app_config, claude_api_format_from_metadata,
-    extract_gemini_model_from_path, extract_proxy_session_id,
-    request_context_route_update_from_proxy_result, response_runtime_policy_from_app_proxy_config,
-    ProxyCoreAppKind as AppKind, ProxyResult, ProxyServices, ResponseRuntimePolicy,
-    ResponseTimeoutConfig, StreamingTimeoutConfig, UsageRouteContext,
+    extract_proxy_session_id, request_context_route_update_from_proxy_result,
+    request_model_from_body_for_context, request_model_from_gemini_path_for_context,
+    response_runtime_policy_from_app_proxy_config, ProxyCoreAppKind as AppKind, ProxyResult,
+    ProxyServices, ResponseRuntimePolicy, ResponseTimeoutConfig, StreamingTimeoutConfig,
+    UsageRouteContext,
 };
 use axum::http::HeaderMap;
 use std::time::Instant;
@@ -87,12 +88,7 @@ impl RequestContext {
             .map_err(ProxyError::ConfigError)?;
         let response_runtime_policy = response_runtime_policy_from_app_proxy_config(&app_config);
 
-        // 从请求体提取模型名称
-        let request_model = body
-            .get("model")
-            .and_then(|m| m.as_str())
-            .unwrap_or("unknown")
-            .to_string();
+        let request_model = request_model_from_body_for_context(&app_type, body);
 
         // 提取 Session ID
         let session_result = extract_proxy_session_id(headers, body, app_type_str);
@@ -136,8 +132,7 @@ impl RequestContext {
         // 否则 GET /v1beta/models/<id>?key=... 会把 query 拼到 request_model 上。
         let endpoint = uri.path();
 
-        self.request_model =
-            extract_gemini_model_from_path(endpoint).unwrap_or_else(|| "unknown".to_string());
+        self.request_model = request_model_from_gemini_path_for_context(endpoint);
 
         self
     }

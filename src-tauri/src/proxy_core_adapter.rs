@@ -1272,6 +1272,21 @@ pub(crate) fn extract_gemini_model_from_path(endpoint: &str) -> Option<String> {
     crate::proxy_core::api::transport::extract_gemini_model_from_path(endpoint)
 }
 
+pub(crate) fn request_model_from_body_for_context(app_type: &AppType, body: &Value) -> String {
+    let app = AppKind::from(app_type);
+    crate::proxy_core::api::transport::request_model_for_forward(&app, "", body)
+        .unwrap_or_else(|| "unknown".to_string())
+}
+
+pub(crate) fn request_model_from_gemini_path_for_context(endpoint: &str) -> String {
+    crate::proxy_core::api::transport::request_model_for_forward(
+        &AppKind::Gemini,
+        endpoint,
+        &Value::Null,
+    )
+    .unwrap_or_else(|| "unknown".to_string())
+}
+
 pub(crate) fn extract_gemini_api_key_from_settings(settings: &Value) -> Option<String> {
     crate::proxy_core::api::auth::extract_gemini_api_key_from_settings(settings)
 }
@@ -4364,6 +4379,20 @@ mod tests {
             extract_gemini_model_from_path("/v1beta/models/gemini-pro:generateContent")
                 .as_deref(),
             Some("gemini-pro")
+        );
+        assert_eq!(
+            request_model_from_body_for_context(&AppType::Codex, &json!({"model": " gpt-5 "})),
+            "gpt-5"
+        );
+        assert_eq!(
+            request_model_from_body_for_context(&AppType::Claude, &json!({"model": "  "})),
+            "unknown"
+        );
+        assert_eq!(
+            request_model_from_gemini_path_for_context(
+                "/v1beta/models/gemini-pro:generateContent"
+            ),
+            "gemini-pro"
         );
         assert_eq!(
             claude_api_format_from_metadata(
