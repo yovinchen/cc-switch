@@ -1,3 +1,4 @@
+use crate::domain::ResolvedChannelAttempt;
 use crate::json_canonical::short_value_hash;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -247,6 +248,32 @@ pub fn apply_channel_route_model_override(
     } else {
         None
     }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ChannelRouteModelOverride {
+    pub channel_id: String,
+    pub previous_model: String,
+    pub upstream_model: String,
+}
+
+pub fn apply_resolved_channel_model_override(
+    body: &mut Value,
+    channel: &ResolvedChannelAttempt,
+) -> Option<ChannelRouteModelOverride> {
+    let previous_model = body.get("model").and_then(Value::as_str)?.to_string();
+    let upstream_model = apply_channel_route_model_override(
+        body,
+        channel.public_model.as_deref(),
+        channel.upstream_model.as_deref(),
+    )?;
+
+    Some(ChannelRouteModelOverride {
+        channel_id: channel.channel_id.clone(),
+        previous_model,
+        upstream_model,
+    })
 }
 
 pub fn map_codex_chat_reasoning_effort(
@@ -518,7 +545,8 @@ fn matches_schema_name_map(key: &str) -> bool {
 mod tests {
     use super::{
         apply_channel_route_model_override, apply_codex_chat_upstream_model_policy,
-        canonicalize_request_body_value, clean_openai_tool_schema, codex_chat_reasoning_requested,
+        apply_resolved_channel_model_override, canonicalize_request_body_value,
+        clean_openai_tool_schema, codex_chat_reasoning_requested,
         codex_provider_catalog_model_ids_from_settings, filter_private_params,
         filter_private_params_with_whitelist, filter_private_params_with_whitelist_report,
         inject_openai_stream_include_usage, is_openai_o_series,
@@ -530,6 +558,7 @@ mod tests {
         strip_leading_anthropic_billing_header, supports_reasoning_effort,
         PromptCacheTraceLogInput,
     };
+    use crate::domain::ResolvedChannelAttempt;
     use http::Method;
     use serde_json::json;
     use std::collections::HashSet;
@@ -918,6 +947,34 @@ mod tests {
         );
         assert!(selected.is_none());
         assert_eq!(already_upstream["model"], "upstream-sonnet");
+    }
+
+    #[test]
+    fn resolved_channel_model_override_returns_log_context() {
+        let channel = ResolvedChannelAttempt {
+            channel_id: "ch_1".to_string(),
+            channel_name: "Relay".to_string(),
+            base_url: "https://relay.example.com/v1".to_string(),
+            interface_kind: "openai_responses".to_string(),
+            auth_profile_ref: None,
+            public_model: Some("sonnet-public".to_string()),
+            upstream_model: Some("upstream-sonnet".to_string()),
+            header_overrides: json!({}),
+            param_overrides: json!({}),
+        };
+        let mut body = json!({"model": "sonnet-public"});
+
+        let override_result =
+            apply_resolved_channel_model_override(&mut body, &channel).expect("override result");
+
+        assert_eq!(body["model"], "upstream-sonnet");
+        assert_eq!(override_result.channel_id, "ch_1");
+        assert_eq!(override_result.previous_model, "sonnet-public");
+        assert_eq!(override_result.upstream_model, "upstream-sonnet");
+
+        let mut unrelated = json!({"model": "other-model"});
+        assert!(apply_resolved_channel_model_override(&mut unrelated, &channel).is_none());
+        assert_eq!(unrelated["model"], "other-model");
     }
 
     #[test]

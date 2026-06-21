@@ -1504,6 +1504,7 @@ pub(crate) fn codex_proxy_error_response(
     crate::proxy_core::api::transforms::codex_proxy_error_response(status, ctx)
 }
 
+#[cfg(test)]
 pub(crate) fn apply_channel_route_model_override(
     body: &mut Value,
     public_model: Option<&str>,
@@ -1514,6 +1515,13 @@ pub(crate) fn apply_channel_route_model_override(
         public_model,
         upstream_model,
     )
+}
+
+pub(crate) fn apply_resolved_channel_model_override(
+    body: &mut Value,
+    channel: &ResolvedChannelAttempt,
+) -> Option<crate::proxy_core::api::transport::ChannelRouteModelOverride> {
+    crate::proxy_core::api::transport::apply_resolved_channel_model_override(body, channel)
 }
 
 pub(crate) fn apply_channel_provider_overrides(

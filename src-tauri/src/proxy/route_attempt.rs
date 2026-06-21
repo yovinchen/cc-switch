@@ -6,7 +6,7 @@
 use crate::app_config::AppType;
 use crate::provider::Provider;
 use crate::proxy_core_adapter::{
-    apply_channel_provider_overrides, apply_channel_route_model_override,
+    apply_channel_provider_overrides, apply_resolved_channel_model_override,
     channel_route_candidate_from_selection, resolved_channel_attempt_from_selection,
     route_plan_selections,
     ResolvedChannelAttempt, RoutePlan, RouteSelection,
@@ -110,21 +110,13 @@ pub(crate) fn apply_channel_model_override(body: &mut Value, attempt: &ForwardAt
     let Some(channel) = attempt.channel() else {
         return;
     };
-    let Some(current_model) = body.get("model").and_then(Value::as_str) else {
-        return;
-    };
-    let current_model = current_model.to_string();
 
-    if let Some(upstream_model) = apply_channel_route_model_override(
-        body,
-        channel.public_model.as_deref(),
-        channel.upstream_model.as_deref(),
-    ) {
+    if let Some(override_result) = apply_resolved_channel_model_override(body, channel) {
         log::debug!(
             "[ChannelRoute] model override via channel {}: {} -> {}",
-            channel.channel_id,
-            current_model,
-            upstream_model
+            override_result.channel_id,
+            override_result.previous_model,
+            override_result.upstream_model
         );
     }
 }
