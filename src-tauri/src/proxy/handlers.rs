@@ -56,11 +56,9 @@ use crate::proxy_core_adapter::{
     ChannelModelRecord, ChannelModelsResponse, ChannelPathRequest, ChannelRecord,
     ChannelRecordResponse, ChannelRouteCandidate, ChannelRouteRejected,
     ChannelTestPlan, ChannelTestResponse, ClaudeDesktopModelListResponse,
-    ClientModelCatalogResponse, CodexToolContext, CurrentRouteProviderSummaryInput,
-    CurrentRouteResponse, CurrentRouteSource, CurrentRouteTarget,
+    ClientModelCatalogResponse, CodexToolContext, CurrentRouteResponse, CurrentRouteTarget,
     GroupListQuery, GroupListRequest, HealthCheckRequest, HealthCheckResponse,
     InterfaceKind, ManagementAppPathRequest, ManagementAuthDecision, ProviderListResponse,
-    ProviderListSource,
     ProxyBody, ProxyChannelKeyPatchRequest, ProxyChannelKeyWriteRequest,
     ProxyChannelModelsReplaceRequest, ProxyChannelPatchRequest, ProxyChannelTestRequest,
     ProxyChannelWriteRequest, ProxyRequest, ProxyRuntimeStatus, ProxyStatusRequest,
@@ -79,9 +77,9 @@ use crate::proxy_core_adapter::{
     channel_record_source_from_record,
     channel_migration_materialize_source_from_result, channel_migration_preview_source_from_result,
     channel_models_source_from_records, group_list_channel_source_from_records,
-    channel_test_plan_from_record, health_check_source_from_timestamp, proxy_app_summary_input,
-    proxy_status_source_from_status,
-    proxy_provider_to_core_spec, proxy_providers_to_core_specs,
+    channel_test_plan_from_record, current_route_source_from_provider,
+    health_check_source_from_timestamp, provider_list_source_from_providers,
+    proxy_app_summary_input, proxy_status_source_from_status,
     stream_check_result_to_channel_reachability, synthesize_gemini_tool_call_id_with_uuid,
 };
 use crate::services::stream_check::StreamCheckService;
@@ -256,11 +254,10 @@ pub async fn list_proxy_providers(
         Err(e) => return Err(ProxyError::DatabaseError(e.to_string())),
     };
 
-    let provider_specs = proxy_providers_to_core_specs(providers.into_values(), &app_type);
-
     Ok(Json(request.provider_list_response_from_source(
-        ProviderListSource::from_provider_specs(
-            provider_specs,
+        provider_list_source_from_providers(
+            providers.into_values(),
+            &app_type,
             current_provider,
             failover_ids,
             route_candidate_ids,
@@ -643,17 +640,12 @@ pub async fn get_current_proxy_route(
         Some(provider_id) => state
             .db
             .get_provider_by_id(&provider_id, &request.app_type)
-            .map_err(|e| ProxyError::DatabaseError(e.to_string()))?
-            .map(|provider| {
-                CurrentRouteProviderSummaryInput::from_provider_spec(
-                    proxy_provider_to_core_spec(&provider, &app_type),
-                )
-            }),
+            .map_err(|e| ProxyError::DatabaseError(e.to_string()))?,
         None => None,
     };
 
     Ok(Json(request.current_route_response_from_source(
-        CurrentRouteSource::new(active_target, configured_provider),
+        current_route_source_from_provider(active_target, configured_provider, &app_type),
     )))
 }
 
