@@ -56,11 +56,13 @@ pub mod management {
     pub use crate::management_api::*;
     pub use crate::ports::{
         channel_key_record_from_input, channel_model_record_from_input,
+        channel_health_update_from_input,
         channel_reachability_result_from_stream_check_result,
         channel_reachability_status_from_latency, channel_record_from_input, plan_channel_test,
         should_retry_channel_reachability_failure, AppChannelListQuery, AppChannelResponse,
         AppListResponse, AppModelListQuery, AppSummaryInput, ChannelDeleteResponse,
-        ChannelHealthResetResponse, ChannelKeyDeleteResponse, ChannelKeyRecord,
+        ChannelHealthResetResponse, ChannelHealthUpdate, ChannelHealthUpdateInput,
+        ChannelKeyDeleteResponse, ChannelKeyRecord,
         ChannelKeyRecordInput, ChannelKeyRecordResponse, ChannelKeysResponse,
         ChannelListQuery, ChannelListResponse, ChannelMigrationMaterializeInput,
         ChannelMigrationMaterializeResponse, ChannelMigrationPreviewInput,

@@ -505,6 +505,51 @@ pub struct ChannelHealthReset {
     pub app: AppKind,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ChannelHealthUpdateInput {
+    pub current_consecutive_failures: u32,
+    pub success: bool,
+    pub error_msg: Option<String>,
+    pub failure_threshold: u32,
+    pub timestamp_ms: i64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ChannelHealthUpdate {
+    pub status: &'static str,
+    pub consecutive_failures: u32,
+    pub last_success_at: Option<i64>,
+    pub last_failure_at: Option<i64>,
+    pub disabled_reason: Option<String>,
+}
+
+pub fn channel_health_update_from_input(input: ChannelHealthUpdateInput) -> ChannelHealthUpdate {
+    if input.success {
+        return ChannelHealthUpdate {
+            status: "healthy",
+            consecutive_failures: 0,
+            last_success_at: Some(input.timestamp_ms),
+            last_failure_at: None,
+            disabled_reason: None,
+        };
+    }
+
+    let consecutive_failures = input.current_consecutive_failures.saturating_add(1);
+    let status = if consecutive_failures >= input.failure_threshold {
+        "unhealthy"
+    } else {
+        "degraded"
+    };
+
+    ChannelHealthUpdate {
+        status,
+        consecutive_failures,
+        last_success_at: None,
+        last_failure_at: Some(input.timestamp_ms),
+        disabled_reason: input.error_msg,
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct HealthCheckResponse {
@@ -2329,10 +2374,11 @@ impl ProxyCoreEvent {
 mod tests {
     use super::{
         AppChannelListQuery, AppChannelListResponse, AppChannelResponse, AppChannelRouteResponse,
-        app_proxy_config_raw, channel_model_record_from_input,
+        app_proxy_config_raw, channel_health_update_from_input, channel_model_record_from_input,
         channel_reachability_result_from_stream_check_result, AppListResponse, AppModelListQuery,
         AppProxyConfig, AppSummaryInput, channel_key_record_from_input,
         channel_reachability_status_from_latency, channel_record_from_input, ChannelDeleteResponse,
+        ChannelHealthUpdateInput,
         ChannelKeyRecordInput, ChannelListQuery, ChannelListResponse, ChannelReachabilityInput,
         ChannelMigrationMaterializeInput,
         ChannelMigrationMaterializeResponse, ChannelMigrationPreviewInput,
@@ -2813,6 +2859,47 @@ mod tests {
         assert_eq!(result.http_status, Some(429));
         assert_eq!(result.tested_at, 1_771_000_002);
         assert_eq!(result.retry_count, 2);
+    }
+
+    #[test]
+    fn channel_health_update_tracks_threshold_contract() {
+        let degraded = channel_health_update_from_input(ChannelHealthUpdateInput {
+            current_consecutive_failures: 0,
+            success: false,
+            error_msg: Some("first failure".to_string()),
+            failure_threshold: 2,
+            timestamp_ms: 1_771_000_000_000,
+        });
+        assert_eq!(degraded.status, "degraded");
+        assert_eq!(degraded.consecutive_failures, 1);
+        assert_eq!(degraded.last_success_at, None);
+        assert_eq!(degraded.last_failure_at, Some(1_771_000_000_000));
+        assert_eq!(degraded.disabled_reason.as_deref(), Some("first failure"));
+
+        let unhealthy = channel_health_update_from_input(ChannelHealthUpdateInput {
+            current_consecutive_failures: 1,
+            success: false,
+            error_msg: Some("second failure".to_string()),
+            failure_threshold: 2,
+            timestamp_ms: 1_771_000_000_100,
+        });
+        assert_eq!(unhealthy.status, "unhealthy");
+        assert_eq!(unhealthy.consecutive_failures, 2);
+        assert_eq!(unhealthy.last_failure_at, Some(1_771_000_000_100));
+        assert_eq!(unhealthy.disabled_reason.as_deref(), Some("second failure"));
+
+        let healthy = channel_health_update_from_input(ChannelHealthUpdateInput {
+            current_consecutive_failures: 2,
+            success: true,
+            error_msg: Some("ignored".to_string()),
+            failure_threshold: 2,
+            timestamp_ms: 1_771_000_000_200,
+        });
+        assert_eq!(healthy.status, "healthy");
+        assert_eq!(healthy.consecutive_failures, 0);
+        assert_eq!(healthy.last_success_at, Some(1_771_000_000_200));
+        assert_eq!(healthy.last_failure_at, None);
+        assert_eq!(healthy.disabled_reason, None);
     }
 
     #[test]

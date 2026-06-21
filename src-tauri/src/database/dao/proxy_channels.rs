@@ -10,6 +10,7 @@ use crate::error::AppError;
 use crate::provider::Provider;
 use crate::proxy_core_adapter::{
     build_legacy_channel_projection, channel_array_or_default as array_or_default,
+    channel_health_update_from_input,
     channel_object_or_default as object_or_default, infer_legacy_channel_interface,
     legacy_channel_priority, normalize_channel_base_url as normalize_base_url,
     normalize_channel_groups as normalized_groups,
@@ -18,10 +19,11 @@ use crate::proxy_core_adapter::{
     validate_optional_channel_auth_profile_ref,
     validate_proxy_channel_key_patch_request_fields,
     validate_proxy_channel_model_write_request_fields, validate_proxy_channel_write_request_fields,
-    ChannelRequestValidationError, LegacyChannelModelProjection, LegacyChannelProjection,
-    LegacyChannelProjectionInput, LegacyModelRouteInput, LegacyProviderProjectionInput,
-    ProxyChannelKeyPatchRequest, ProxyChannelModelWriteRequest, ProxyChannelPatchRequest,
-    ProxyChannelWriteRequest, ProxyCoreAppKind as AppKind, ProxyCoreInterfaceKind as InterfaceKind,
+    ChannelHealthUpdateInput, ChannelRequestValidationError, LegacyChannelModelProjection,
+    LegacyChannelProjection, LegacyChannelProjectionInput, LegacyModelRouteInput,
+    LegacyProviderProjectionInput, ProxyChannelKeyPatchRequest, ProxyChannelModelWriteRequest,
+    ProxyChannelPatchRequest, ProxyChannelWriteRequest, ProxyCoreAppKind as AppKind,
+    ProxyCoreInterfaceKind as InterfaceKind,
 };
 use rusqlite::{params, Connection, OptionalExtension, Row};
 use serde::{Deserialize, Serialize};
@@ -804,18 +806,13 @@ impl Database {
             .unwrap_or(0)
             .max(0) as u32;
 
-        let (status, consecutive_failures, last_success_at, last_failure_at, disabled_reason) =
-            if success {
-                ("healthy", 0u32, Some(now), None, None)
-            } else {
-                let failures = current_failures + 1;
-                let status = if failures >= failure_threshold {
-                    "unhealthy"
-                } else {
-                    "degraded"
-                };
-                (status, failures, None, Some(now), error_msg)
-            };
+        let update = channel_health_update_from_input(ChannelHealthUpdateInput {
+            current_consecutive_failures: current_failures,
+            success,
+            error_msg,
+            failure_threshold,
+            timestamp_ms: now,
+        });
 
         conn.execute(
             "INSERT OR REPLACE INTO proxy_channel_health (
@@ -831,12 +828,12 @@ impl Database {
             )",
             params![
                 channel_id,
-                status,
-                last_success_at,
-                last_failure_at,
-                consecutive_failures as i64,
+                update.status,
+                update.last_success_at,
+                update.last_failure_at,
+                update.consecutive_failures as i64,
                 response_time_ms,
-                disabled_reason,
+                update.disabled_reason,
                 now,
             ],
         )
