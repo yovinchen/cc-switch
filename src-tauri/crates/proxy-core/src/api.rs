@@ -17,7 +17,10 @@ pub mod config {
     pub use crate::circuit_breaker_config::*;
     pub use crate::circuit_breaker_key::*;
     pub use crate::ports::{
-        app_proxy_config_defaults_for_app, AppProxyConfig, CopilotOptimizerConfigSpec,
+        app_proxy_config_defaults_for_app, copilot_optimizer_config_spec_from_config,
+        optimizer_config_spec_from_config, proxy_app_config_from_parts,
+        proxy_global_config_from_global_config, proxy_runtime_config_from_proxy_config,
+        rectifier_config_spec_from_config, AppProxyConfig, CopilotOptimizerConfigSpec,
         OptimizerConfigSpec, ProxyAppConfig, ProxyGlobalConfig, ProxyRuntimeConfig,
         RectifierConfigSpec,
     };
@@ -102,11 +105,15 @@ pub mod ports {
         ChannelSource, CopilotOptimizerConfig, CopilotOptimizerConfigSpec, CurrentRouteTarget,
         ForwardPipeline, GlobalProxyConfig, ModelCatalog, ModelCatalogProvider, OptimizerConfig,
         OptimizerConfigSpec, DEFAULT_PROXY_LISTEN_ADDRESS, DEFAULT_PROXY_LISTEN_PORT,
-        app_proxy_config_raw, ProviderHealth, ProviderHealthUpdate, ProviderHealthUpdateInput,
-        ProviderSource, ProxyAppConfig, ProxyConfig, ProxyConfigSource, ProxyCoreEvent,
-        ProxyCoreEventType, ProxyEventSink, ProxyGlobalConfig, ProxyRuntimeConfig,
-        ProxyRuntimeStatus, ProxyServerInfo, ProxyServices, ProxyTakeoverStatus,
-        RectifierConfig, RectifierConfigSpec, RoutePolicySource, RouteResolver, UsageSink,
+        app_proxy_config_raw, copilot_optimizer_config_spec_from_config,
+        optimizer_config_spec_from_config, proxy_app_config_from_parts,
+        proxy_global_config_from_global_config, proxy_runtime_config_from_proxy_config,
+        rectifier_config_spec_from_config, ProviderHealth, ProviderHealthUpdate,
+        ProviderHealthUpdateInput, ProviderSource, ProxyAppConfig, ProxyConfig,
+        ProxyConfigSource, ProxyCoreEvent, ProxyCoreEventType, ProxyEventSink,
+        ProxyGlobalConfig, ProxyRuntimeConfig, ProxyRuntimeStatus, ProxyServerInfo,
+        ProxyServices, ProxyTakeoverStatus, RectifierConfig, RectifierConfigSpec,
+        RoutePolicySource, RouteResolver, UsageSink,
     };
 }
 

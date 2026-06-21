@@ -11,19 +11,19 @@ use crate::proxy::route_attempt::{forward_attempts_from_route_plan, ForwardAttem
 use crate::proxy::usage::UsageLogger;
 use crate::proxy::RequestForwarder;
 use crate::proxy_core_adapter::{
-    app_proxy_config_raw, AppKind, AuthInfo, AuthProfileRef, AuthProfileRefKind,
-    ChannelAttemptResult, ChannelQuery, ChannelSource, ChannelSpec, ClaudeAuthKeySource,
-    channel_not_found_error, AuthProvider, ChannelHealthReset, ChannelHealthStore,
-    CopilotOptimizerConfigSpec, CurrentRouteTarget, ForwardPipeline, GeminiShadowStore,
-    ModelCatalog, ModelCatalogProvider, OptimizerConfigSpec, ProviderSource, ProviderSpec,
+    AppKind, AuthInfo, AuthProfileRef, AuthProfileRefKind, ChannelAttemptResult, ChannelQuery,
+    ChannelSource, ChannelSpec, ClaudeAuthKeySource, channel_not_found_error, AuthProvider,
+    ChannelHealthReset, ChannelHealthStore, CurrentRouteTarget, ForwardPipeline,
+    GeminiShadowStore, ModelCatalog, ModelCatalogProvider, ProviderSource, ProviderSpec,
     ProxyAppConfig, ProxyConfigSource, ProxyCoreError, ProxyCoreEvent, ProxyCoreResponse,
     ProxyCoreResult, ProxyEventSink, ProxyGlobalConfig, ProxyRequest, ProxyResponseBody,
-    ProxyResult, ProxyRuntimeConfig, ProxyRuntimeStatus, ProxyServices, RectifierConfigSpec,
-    RoutePlan, RoutePolicy, RoutePolicySource, RouteRequest, RouteResolver, UsageRecord,
-    UsageSink, DEFAULT_ROUTE_GROUP,
+    ProxyResult, ProxyRuntimeConfig, ProxyRuntimeStatus, ProxyServices, RoutePlan, RoutePolicy,
+    RoutePolicySource, RouteRequest, RouteResolver, UsageRecord, UsageSink,
 };
 use crate::proxy_core_adapter::{
     extract_claude_auth_key_from_settings, extract_proxy_session_id, parse_auth_profile_ref,
+    proxy_app_config_from_config_parts, proxy_global_config_from_config,
+    proxy_runtime_config_from_config,
     proxy_channel_record_to_core_spec, proxy_channel_records_to_core_specs_for_query,
     proxy_provider_to_core_spec, proxy_providers_to_core_specs,
     route_policy_from_failover_queue,
@@ -36,6 +36,9 @@ use std::collections::HashMap;
 use std::str::FromStr;
 use std::sync::Arc;
 use tokio::sync::RwLock;
+
+#[cfg(test)]
+use crate::proxy_core_adapter::DEFAULT_ROUTE_GROUP;
 
 const DEFAULT_CHANNEL_FAILURE_THRESHOLD: u32 = 4;
 
@@ -186,12 +189,7 @@ impl ProxyConfigSource for CcSwitchConfigSource {
                 .get_global_proxy_config()
                 .await
                 .map_err(|error| app_error("load global proxy config", error))?;
-            Ok(ProxyGlobalConfig {
-                bind_host: Some(config.listen_address.clone()),
-                bind_port: Some(config.listen_port),
-                request_timeout_ms: None,
-                raw: serde_json::to_value(config).unwrap_or_else(|_| json!({})),
-            })
+            Ok(proxy_global_config_from_config(config))
         })
     }
 
@@ -209,26 +207,14 @@ impl ProxyConfigSource for CcSwitchConfigSource {
             let current_provider_id = app_type
                 .as_ref()
                 .and_then(crate::settings::get_current_provider);
-            let raw = app_proxy_config_raw(config.clone(), current_provider_id);
-
-            Ok(ProxyAppConfig {
-                app: Some(app.clone()),
-                enabled: config.enabled,
-                default_group: Some(DEFAULT_ROUTE_GROUP.to_string()),
-                rectifier: RectifierConfigSpec {
-                    enabled: rectifier.enabled,
-                    raw: serde_json::to_value(rectifier).unwrap_or_else(|_| json!({})),
-                },
-                optimizer: OptimizerConfigSpec {
-                    enabled: optimizer.enabled,
-                    raw: serde_json::to_value(optimizer).unwrap_or_else(|_| json!({})),
-                },
-                copilot_optimizer: CopilotOptimizerConfigSpec {
-                    enabled: copilot_optimizer.enabled,
-                    raw: serde_json::to_value(copilot_optimizer).unwrap_or_else(|_| json!({})),
-                },
-                raw,
-            })
+            Ok(proxy_app_config_from_config_parts(
+                app.clone(),
+                config,
+                current_provider_id,
+                rectifier,
+                optimizer,
+                copilot_optimizer,
+            ))
         })
     }
 
@@ -239,11 +225,7 @@ impl ProxyConfigSource for CcSwitchConfigSource {
                 .get_proxy_config()
                 .await
                 .map_err(|error| app_error("load runtime proxy config", error))?;
-            Ok(ProxyRuntimeConfig {
-                privacy_filter_enabled: false,
-                route_events_enabled: config.enable_logging,
-                raw: serde_json::to_value(config).unwrap_or_else(|_| json!({})),
-            })
+            Ok(proxy_runtime_config_from_config(config, false))
         })
     }
 }
@@ -1307,6 +1289,45 @@ mod tests {
             failover_manager: Arc::new(FailoverSwitchManager::new(db)),
             app_handle: None,
         }
+    }
+
+    #[tokio::test]
+    async fn config_source_projects_proxy_configs_through_core() {
+        let _home = IsolatedTestHome::new();
+        let db = Arc::new(Database::memory().expect("memory db"));
+        let services = CcSwitchProxyServices::new(db);
+
+        let global = services
+            .config()
+            .load_global()
+            .await
+            .expect("load global config");
+        assert_eq!(global.bind_host.as_deref(), Some("127.0.0.1"));
+        assert_eq!(global.bind_port, Some(15721));
+        assert_eq!(global.raw["listenAddress"], json!("127.0.0.1"));
+
+        let app = services
+            .config()
+            .load_app(&AppKind::Claude)
+            .await
+            .expect("load app config");
+        assert_eq!(app.app, Some(AppKind::Claude));
+        assert_eq!(app.default_group.as_deref(), Some(DEFAULT_ROUTE_GROUP));
+        assert_eq!(app.raw["appType"], json!("claude"));
+        assert!(app.raw["currentProviderId"].is_null());
+        assert!(app.rectifier.enabled);
+        assert_eq!(app.rectifier.raw["enabled"], json!(true));
+        assert_eq!(app.optimizer.raw["cacheTtl"], json!("1h"));
+        assert_eq!(app.copilot_optimizer.raw["warmupModel"], json!("gpt-5-mini"));
+
+        let runtime = services
+            .config()
+            .load_runtime()
+            .await
+            .expect("load runtime config");
+        assert!(!runtime.privacy_filter_enabled);
+        assert!(runtime.route_events_enabled);
+        assert_eq!(runtime.raw["enable_logging"], json!(true));
     }
 
     #[tokio::test]

@@ -205,13 +205,6 @@ pub(crate) type RectifierConfig = crate::proxy_core::api::ports::RectifierConfig
 pub(crate) type OptimizerConfig = crate::proxy_core::api::ports::OptimizerConfig;
 pub(crate) type CopilotOptimizerConfig =
     crate::proxy_core::api::ports::CopilotOptimizerConfig;
-pub(crate) type RectifierConfigSpec =
-    crate::proxy_core::api::ports::RectifierConfigSpec;
-pub(crate) type OptimizerConfigSpec =
-    crate::proxy_core::api::ports::OptimizerConfigSpec;
-pub(crate) type CopilotOptimizerConfigSpec =
-    crate::proxy_core::api::ports::CopilotOptimizerConfigSpec;
-
 pub(crate) type ProxyConfig = crate::proxy_core::api::ports::ProxyConfig;
 pub(crate) type ProxyRuntimeStatus =
     crate::proxy_core::api::ports::ProxyRuntimeStatus;
@@ -313,6 +306,39 @@ pub(crate) type SseUsageAccumulator =
     crate::proxy_core::api::transforms::SseUsageAccumulator;
 pub(crate) type GlobalProxyConfig = crate::proxy_core::api::ports::GlobalProxyConfig;
 pub(crate) type AppProxyConfig = crate::proxy_core::api::config::AppProxyConfig;
+
+pub(crate) fn proxy_global_config_from_config(config: GlobalProxyConfig) -> ProxyGlobalConfig {
+    crate::proxy_core::api::config::proxy_global_config_from_global_config(config)
+}
+
+pub(crate) fn proxy_app_config_from_config_parts(
+    app: AppKind,
+    config: AppProxyConfig,
+    current_provider_id: Option<String>,
+    rectifier: RectifierConfig,
+    optimizer: OptimizerConfig,
+    copilot_optimizer: CopilotOptimizerConfig,
+) -> ProxyAppConfig {
+    crate::proxy_core::api::config::proxy_app_config_from_parts(
+        app,
+        config,
+        current_provider_id,
+        rectifier,
+        optimizer,
+        copilot_optimizer,
+    )
+}
+
+pub(crate) fn proxy_runtime_config_from_config(
+    config: ProxyConfig,
+    privacy_filter_enabled: bool,
+) -> ProxyRuntimeConfig {
+    crate::proxy_core::api::config::proxy_runtime_config_from_proxy_config(
+        config,
+        privacy_filter_enabled,
+    )
+}
+
 pub(crate) type ProviderHealth = crate::proxy_core::api::ports::ProviderHealth;
 pub(crate) type ProviderKind = crate::proxy_core::api::domain::ProviderKind;
 pub(crate) type ProviderAuthInfo =
@@ -539,9 +565,9 @@ pub(crate) type CircuitBreakerFailureDecision =
     crate::proxy_core::api::config::CircuitBreakerFailureDecision;
 pub(crate) use crate::proxy_core::api::management::channel_not_found_error;
 pub(crate) use crate::proxy_core::api::ports::{
-    app_proxy_config_raw, AuthProvider, ChannelHealthReset, ChannelHealthStore, ChannelSource,
-    ForwardPipeline, ModelCatalogProvider, ProviderSource, ProxyConfigSource, ProxyEventSink,
-    ProxyServices, RoutePolicySource, RouteResolver, UsageSink,
+    AuthProvider, ChannelHealthReset, ChannelHealthStore, ChannelSource, ForwardPipeline,
+    ModelCatalogProvider, ProviderSource, ProxyConfigSource, ProxyEventSink, ProxyServices,
+    RoutePolicySource, RouteResolver, UsageSink,
 };
 pub(crate) use crate::proxy_core::api::domain::channel_matches_query;
 pub(crate) use crate::proxy_core::api::routing::{

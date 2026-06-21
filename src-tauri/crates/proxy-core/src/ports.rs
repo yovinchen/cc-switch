@@ -185,6 +185,29 @@ pub struct CopilotOptimizerConfigSpec {
     pub raw: Value,
 }
 
+pub fn rectifier_config_spec_from_config(config: RectifierConfig) -> RectifierConfigSpec {
+    RectifierConfigSpec {
+        enabled: config.enabled,
+        raw: serde_json::to_value(config).unwrap_or_else(|_| serde_json::json!({})),
+    }
+}
+
+pub fn optimizer_config_spec_from_config(config: OptimizerConfig) -> OptimizerConfigSpec {
+    OptimizerConfigSpec {
+        enabled: config.enabled,
+        raw: serde_json::to_value(config).unwrap_or_else(|_| serde_json::json!({})),
+    }
+}
+
+pub fn copilot_optimizer_config_spec_from_config(
+    config: CopilotOptimizerConfig,
+) -> CopilotOptimizerConfigSpec {
+    CopilotOptimizerConfigSpec {
+        enabled: config.enabled,
+        raw: serde_json::to_value(config).unwrap_or_else(|_| serde_json::json!({})),
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RectifierConfig {
@@ -515,6 +538,47 @@ pub fn app_proxy_config_raw(
         );
     }
     raw
+}
+
+pub fn proxy_global_config_from_global_config(config: GlobalProxyConfig) -> ProxyGlobalConfig {
+    ProxyGlobalConfig {
+        bind_host: Some(config.listen_address.clone()),
+        bind_port: Some(config.listen_port),
+        request_timeout_ms: None,
+        raw: serde_json::to_value(config).unwrap_or_else(|_| serde_json::json!({})),
+    }
+}
+
+pub fn proxy_app_config_from_parts(
+    app: AppKind,
+    config: AppProxyConfig,
+    current_provider_id: Option<String>,
+    rectifier: RectifierConfig,
+    optimizer: OptimizerConfig,
+    copilot_optimizer: CopilotOptimizerConfig,
+) -> ProxyAppConfig {
+    let enabled = config.enabled;
+    ProxyAppConfig {
+        app: Some(app),
+        enabled,
+        default_group: Some(DEFAULT_ROUTE_GROUP.to_string()),
+        rectifier: rectifier_config_spec_from_config(rectifier),
+        optimizer: optimizer_config_spec_from_config(optimizer),
+        copilot_optimizer: copilot_optimizer_config_spec_from_config(copilot_optimizer),
+        raw: app_proxy_config_raw(config, current_provider_id),
+    }
+}
+
+pub fn proxy_runtime_config_from_proxy_config(
+    config: ProxyConfig,
+    privacy_filter_enabled: bool,
+) -> ProxyRuntimeConfig {
+    let route_events_enabled = config.enable_logging;
+    ProxyRuntimeConfig {
+        privacy_filter_enabled,
+        route_events_enabled,
+        raw: serde_json::to_value(config).unwrap_or_else(|_| serde_json::json!({})),
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -2465,6 +2529,8 @@ mod tests {
         AppChannelListQuery, AppChannelListResponse, AppChannelResponse, AppChannelRouteResponse,
         app_proxy_config_defaults_for_app, app_proxy_config_raw, channel_health_update_from_input,
         channel_model_record_from_input, channel_reachability_result_from_stream_check_result,
+        proxy_app_config_from_parts, proxy_global_config_from_global_config,
+        proxy_runtime_config_from_proxy_config,
         AppListResponse, AppModelListQuery, AppProxyConfig, AppSummaryInput,
         channel_key_record_from_input,
         channel_reachability_status_from_latency, channel_record_from_input, ChannelDeleteResponse,
@@ -2491,7 +2557,7 @@ mod tests {
     use crate::domain::{
         AppKind, ChannelHealthPolicy, ChannelOverrides, ChannelSpec, ChannelStatus, InterfaceKind,
         ModelCapabilities, ModelRoute, ProviderKind, ProviderMetadata, RetryPolicy,
-        UpstreamEndpoint,
+        UpstreamEndpoint, DEFAULT_ROUTE_GROUP,
     };
     use serde_json::{json, Value};
 
@@ -3347,6 +3413,78 @@ mod tests {
         assert!(raw_without_provider
             .get("currentProviderId")
             .is_some_and(Value::is_null));
+    }
+
+    #[test]
+    fn proxy_config_projection_helpers_preserve_raw_contracts() {
+        let proxy_config = ProxyConfig {
+            listen_address: "127.0.0.1".to_string(),
+            listen_port: 18080,
+            enable_logging: false,
+            ..ProxyConfig::default()
+        };
+
+        let global = proxy_global_config_from_global_config(GlobalProxyConfig {
+            proxy_enabled: true,
+            listen_address: "127.0.0.1".to_string(),
+            listen_port: 18080,
+            enable_logging: false,
+        });
+        assert_eq!(global.bind_host.as_deref(), Some("127.0.0.1"));
+        assert_eq!(global.bind_port, Some(18080));
+        assert_eq!(global.request_timeout_ms, None);
+        assert_eq!(global.raw["proxyEnabled"], json!(true));
+        assert_eq!(global.raw["listenAddress"], json!("127.0.0.1"));
+
+        let runtime = proxy_runtime_config_from_proxy_config(proxy_config, true);
+        assert!(runtime.privacy_filter_enabled);
+        assert!(!runtime.route_events_enabled);
+        assert_eq!(runtime.raw["enable_logging"], json!(false));
+
+        let app = proxy_app_config_from_parts(
+            AppKind::Codex,
+            AppProxyConfig {
+                app_type: "codex".to_string(),
+                enabled: true,
+                auto_failover_enabled: true,
+                max_retries: 4,
+                streaming_first_byte_timeout: 30,
+                streaming_idle_timeout: 120,
+                non_streaming_timeout: 600,
+                circuit_failure_threshold: 4,
+                circuit_success_threshold: 2,
+                circuit_timeout_seconds: 60,
+                circuit_error_rate_threshold: 0.6,
+                circuit_min_requests: 10,
+            },
+            Some("provider-1".to_string()),
+            RectifierConfig {
+                enabled: false,
+                ..RectifierConfig::default()
+            },
+            OptimizerConfig {
+                enabled: true,
+                cache_ttl: "5m".to_string(),
+                ..OptimizerConfig::default()
+            },
+            CopilotOptimizerConfig {
+                enabled: false,
+                warmup_model: "gpt-5".to_string(),
+                ..CopilotOptimizerConfig::default()
+            },
+        );
+
+        assert_eq!(app.app, Some(AppKind::Codex));
+        assert!(app.enabled);
+        assert_eq!(app.default_group.as_deref(), Some(DEFAULT_ROUTE_GROUP));
+        assert_eq!(app.raw["currentProviderId"], json!("provider-1"));
+        assert_eq!(app.raw["autoFailoverEnabled"], json!(true));
+        assert!(!app.rectifier.enabled);
+        assert_eq!(app.rectifier.raw["enabled"], json!(false));
+        assert!(app.optimizer.enabled);
+        assert_eq!(app.optimizer.raw["cacheTtl"], json!("5m"));
+        assert!(!app.copilot_optimizer.enabled);
+        assert_eq!(app.copilot_optimizer.raw["warmupModel"], json!("gpt-5"));
     }
 
     #[test]
