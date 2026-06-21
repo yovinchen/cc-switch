@@ -631,6 +631,10 @@ pub(crate) use crate::proxy_core::api::transport::{
     UNSUPPORTED_IMAGE_MARKER,
     rewrite_claude_transform_endpoint,
 };
+pub(crate) use crate::proxy_core::api::usage::{
+    normalize_pricing_source, validate_cost_multiplier_value, CostMultiplierValidationError,
+    PricingSourceValidationError, PRICING_SOURCE_REQUEST, PRICING_SOURCE_RESPONSE,
+};
 #[cfg(test)]
 pub(crate) use crate::proxy_core::api::auth::ManagedAccountAuthError;
 #[cfg(test)]

@@ -1,4 +1,6 @@
+use rust_decimal::Decimal;
 use serde_json::Value;
+use std::str::FromStr;
 
 use crate::sse::{
     claude_stream_usage_event_filter, codex_stream_usage_event_filter,
@@ -20,6 +22,47 @@ pub type StreamModelExtractor = fn(&[Value], &str) -> String;
 
 /// Hot-path prefilter for raw SSE `data:` payloads before JSON parsing.
 pub type StreamUsageEventFilter = fn(&str) -> bool;
+
+pub const PRICING_SOURCE_RESPONSE: &str = "response";
+pub const PRICING_SOURCE_REQUEST: &str = "request";
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum CostMultiplierValidationError {
+    Empty,
+    InvalidNumber(String),
+    Negative,
+}
+
+pub fn validate_cost_multiplier_value(
+    value: &str,
+) -> Result<Decimal, CostMultiplierValidationError> {
+    let trimmed = value.trim();
+    if trimmed.is_empty() {
+        return Err(CostMultiplierValidationError::Empty);
+    }
+
+    let parsed = Decimal::from_str(trimmed)
+        .map_err(|err| CostMultiplierValidationError::InvalidNumber(err.to_string()))?;
+    if parsed < Decimal::ZERO {
+        return Err(CostMultiplierValidationError::Negative);
+    }
+
+    Ok(parsed)
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PricingSourceValidationError {
+    Unknown,
+}
+
+pub fn normalize_pricing_source(value: &str) -> Result<&str, PricingSourceValidationError> {
+    let trimmed = value.trim();
+    if trimmed == PRICING_SOURCE_RESPONSE || trimmed == PRICING_SOURCE_REQUEST {
+        Ok(trimmed)
+    } else {
+        Err(PricingSourceValidationError::Unknown)
+    }
+}
 
 #[derive(Clone, Copy)]
 pub struct UsageParserConfig {
@@ -64,9 +107,15 @@ pub const GEMINI_PARSER_CONFIG: UsageParserConfig = UsageParserConfig {
 
 #[cfg(test)]
 mod tests {
+    use rust_decimal::Decimal;
     use serde_json::json;
+    use std::str::FromStr;
 
-    use super::{CLAUDE_PARSER_CONFIG, CODEX_PARSER_CONFIG, GEMINI_PARSER_CONFIG};
+    use super::{
+        normalize_pricing_source, validate_cost_multiplier_value, CostMultiplierValidationError,
+        PricingSourceValidationError, CLAUDE_PARSER_CONFIG, CODEX_PARSER_CONFIG,
+        GEMINI_PARSER_CONFIG, PRICING_SOURCE_REQUEST, PRICING_SOURCE_RESPONSE,
+    };
 
     #[test]
     fn parser_configs_keep_protocol_labels_and_prefilters() {
@@ -101,5 +150,45 @@ mod tests {
         assert_eq!(usage.input_tokens, 3);
         assert_eq!(usage.output_tokens, 5);
         assert_eq!(usage.model.as_deref(), Some("gpt-4.1"));
+    }
+
+    #[test]
+    fn cost_multiplier_validation_preserves_storage_contract() {
+        assert_eq!(
+            validate_cost_multiplier_value(" 1.5 ").expect("valid multiplier"),
+            Decimal::from_str("1.5").unwrap()
+        );
+        assert_eq!(
+            validate_cost_multiplier_value(" ").unwrap_err(),
+            CostMultiplierValidationError::Empty
+        );
+        assert_eq!(
+            validate_cost_multiplier_value("-0.5").unwrap_err(),
+            CostMultiplierValidationError::Negative
+        );
+        assert!(matches!(
+            validate_cost_multiplier_value("not-a-number").unwrap_err(),
+            CostMultiplierValidationError::InvalidNumber(_)
+        ));
+    }
+
+    #[test]
+    fn pricing_source_validation_trims_known_modes() {
+        assert_eq!(
+            normalize_pricing_source(" response ").expect("response source"),
+            PRICING_SOURCE_RESPONSE
+        );
+        assert_eq!(
+            normalize_pricing_source(" request ").expect("request source"),
+            PRICING_SOURCE_REQUEST
+        );
+        assert_eq!(
+            normalize_pricing_source("Response").unwrap_err(),
+            PricingSourceValidationError::Unknown
+        );
+        assert_eq!(
+            normalize_pricing_source("").unwrap_err(),
+            PricingSourceValidationError::Unknown
+        );
     }
 }

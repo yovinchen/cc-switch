@@ -2,57 +2,45 @@
 //!
 //! 处理代理配置、Provider健康状态和使用统计的数据库操作
 
-use std::str::FromStr;
-
 use crate::error::AppError;
 use crate::proxy_core_adapter::{
-    provider_health_update_from_input, AppProxyConfig, CircuitBreakerConfig, GlobalProxyConfig,
-    ProviderHealth, ProviderHealthUpdateInput, ProxyConfig,
+    normalize_pricing_source, provider_health_update_from_input, validate_cost_multiplier_value,
+    AppProxyConfig, CircuitBreakerConfig, CostMultiplierValidationError, GlobalProxyConfig,
+    PricingSourceValidationError, ProviderHealth, ProviderHealthUpdateInput, ProxyConfig,
 };
+pub(crate) use crate::proxy_core_adapter::{PRICING_SOURCE_REQUEST, PRICING_SOURCE_RESPONSE};
 use rust_decimal::Decimal;
 
 use super::super::{Database, LiveBackup, lock_conn};
 
-pub(crate) const PRICING_SOURCE_RESPONSE: &str = "response";
-pub(crate) const PRICING_SOURCE_REQUEST: &str = "request";
-
 pub(crate) fn validate_cost_multiplier(value: &str) -> Result<Decimal, AppError> {
-    let trimmed = value.trim();
-    if trimmed.is_empty() {
-        return Err(AppError::localized(
+    validate_cost_multiplier_value(value).map_err(|err| match err {
+        CostMultiplierValidationError::Empty => AppError::localized(
             "error.multiplierEmpty",
             "倍率不能为空",
             "Multiplier cannot be empty",
-        ));
-    }
-    let parsed = Decimal::from_str(trimmed).map_err(|e| {
-        AppError::localized(
+        ),
+        CostMultiplierValidationError::InvalidNumber(e) => AppError::localized(
             "error.invalidMultiplier",
             format!("无效倍率: {value} - {e}"),
             format!("Invalid multiplier: {value} - {e}"),
-        )
-    })?;
-    if parsed < Decimal::ZERO {
-        return Err(AppError::localized(
+        ),
+        CostMultiplierValidationError::Negative => AppError::localized(
             "error.invalidMultiplier",
             format!("无效倍率: {value} - 倍率不能为负数"),
             format!("Invalid multiplier: {value} - multiplier cannot be negative"),
-        ));
-    }
-    Ok(parsed)
+        ),
+    })
 }
 
 pub(crate) fn validate_pricing_source(value: &str) -> Result<&str, AppError> {
-    let trimmed = value.trim();
-    if trimmed == PRICING_SOURCE_RESPONSE || trimmed == PRICING_SOURCE_REQUEST {
-        Ok(trimmed)
-    } else {
-        Err(AppError::localized(
+    normalize_pricing_source(value).map_err(|err| match err {
+        PricingSourceValidationError::Unknown => AppError::localized(
             "error.invalidPricingMode",
             format!("无效计费模式: {value}"),
             format!("Invalid pricing mode: {value}"),
-        ))
-    }
+        ),
+    })
 }
 
 impl Database {
