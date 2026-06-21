@@ -521,6 +521,7 @@ mod tests {
         http::{Method, Request, StatusCode},
     };
     use serde_json::{json, Value};
+    use tokio::io::AsyncWriteExt;
     use tower::Service;
 
     #[test]
@@ -841,6 +842,8 @@ mod tests {
             .build()
             .expect("reqwest client");
         let base_url = format!("http://127.0.0.1:{}", info.port);
+        let (reachable_channel_base_url, upstream_handle) =
+            start_reachability_probe_server().await;
 
         let smoke = async {
             let health_response = client
@@ -978,7 +981,7 @@ mod tests {
                     "providerId": "runtime-provider",
                     "appType": "claude",
                     "name": "Runtime Relay",
-                    "baseUrl": "https://runtime-relay.example.com/v1",
+                    "baseUrl": reachable_channel_base_url.clone(),
                     "interfaceKind": "openai_responses",
                     "authProfileRef": "channel-key:primary",
                     "models": [{
@@ -1004,6 +1007,43 @@ mod tests {
                 .ok_or_else(|| format!("created channel missing id: {created}"))?;
             if created["authProfileRef"] != "channel-key:primary" {
                 return Err(format!("unexpected created channel body: {created}"));
+            }
+
+            let test_response = client
+                .post(format!("{base_url}/proxy/v1/channels/{channel_id}/test"))
+                .json(&json!({
+                    "model": "runtime-public",
+                    "interfaceKind": "openai_responses"
+                }))
+                .send()
+                .await
+                .map_err(|error| error.to_string())?;
+            if test_response.status() != StatusCode::OK {
+                return Err(format!(
+                    "unexpected channel test status: {}",
+                    test_response.status()
+                ));
+            }
+            let channel_test = test_response
+                .json::<Value>()
+                .await
+                .map_err(|error| error.to_string())?;
+            if channel_test["channelId"] != channel_id
+                || channel_test["providerId"] != "runtime-provider"
+                || channel_test["appType"] != "claude"
+                || channel_test["channelName"] != "Runtime Relay"
+                || channel_test["baseUrl"] != reachable_channel_base_url
+                || channel_test["interfaceKind"] != "openai_responses"
+                || channel_test["model"] != "runtime-public"
+                || channel_test["modelAvailable"] != true
+                || channel_test["success"] != true
+                || channel_test["status"] != "operational"
+                || channel_test["message"] != "Reachable"
+                || channel_test["httpStatus"] != 204
+                || channel_test["retryCount"] != 0
+                || channel_test.get("failureReason").is_some()
+            {
+                return Err(format!("unexpected channel test body: {channel_test}"));
             }
 
             server.state.current_providers.write().await.insert(
@@ -1377,6 +1417,11 @@ mod tests {
 
         assert!(stop.is_ok(), "stop proxy server: {stop:?}");
         smoke.expect("runtime management smoke");
+        let upstream = tokio::time::timeout(std::time::Duration::from_secs(1), upstream_handle)
+            .await
+            .expect("reachability probe server should be consumed")
+            .expect("reachability probe server task");
+        assert_eq!(upstream, ());
     }
 
     #[tokio::test]
@@ -2370,5 +2415,26 @@ mod tests {
             .header("content-type", "application/json")
             .body(Body::from(body.to_string()))
             .unwrap()
+    }
+
+    async fn start_reachability_probe_server() -> (String, tokio::task::JoinHandle<()>) {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("bind reachability probe server");
+        let addr = listener
+            .local_addr()
+            .expect("reachability probe server local addr");
+        let handle = tokio::spawn(async move {
+            if let Ok((mut socket, _)) = listener.accept().await {
+                let _ = socket
+                    .write_all(
+                        b"HTTP/1.1 204 No Content\r\ncontent-length: 0\r\nconnection: close\r\n\r\n",
+                    )
+                    .await;
+                let _ = socket.shutdown().await;
+            }
+        });
+
+        (format!("http://{addr}/v1"), handle)
     }
 }
