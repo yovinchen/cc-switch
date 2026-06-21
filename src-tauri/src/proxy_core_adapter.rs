@@ -1747,6 +1747,33 @@ where
     }
 }
 
+pub(crate) fn forward_result_to_proxy_result(
+    result: crate::proxy::ForwardResult,
+    plan: RoutePlan,
+) -> ProxyResult {
+    let crate::proxy::ForwardResult {
+        response,
+        provider,
+        claude_api_format,
+        outbound_model,
+        selected_channel,
+        connection_guard,
+    } = result;
+    let selected_channel_id = selected_channel
+        .as_ref()
+        .map(|channel| channel.channel_id.as_str());
+    let response = proxy_response_to_core_response(response, connection_guard);
+
+    proxy_result_from_forward_parts(
+        response,
+        plan,
+        &provider,
+        claude_api_format,
+        outbound_model,
+        selected_channel_id,
+    )
+}
+
 fn stream_with_connection_guard<S, G>(
     stream: S,
     connection_guard: Option<G>,

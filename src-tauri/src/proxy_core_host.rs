@@ -35,12 +35,12 @@ use crate::proxy_core_adapter::{
     error_message_with_context,
     empty_client_model_catalog_raw,
     extract_proxy_session_id,
+    forward_result_to_proxy_result,
     host_providers_for_plan,
     proxy_app_config_from_config_parts, proxy_global_config_from_config,
     proxy_runtime_config_from_config,
     proxy_channel_record_to_core_spec, proxy_channel_records_to_core_specs_for_query,
     proxy_provider_to_core_spec, proxy_providers_to_core_specs,
-    proxy_response_to_core_response,
     forwarding_requires_runtime_error_message,
     response_runtime_policy_from_app_proxy_config,
     route_plan_no_matching_host_providers_error_message,
@@ -701,33 +701,6 @@ fn channel_key_auth_provider(
     auth_provider
 }
 
-fn forward_result_to_proxy_result(
-    result: crate::proxy::ForwardResult,
-    plan: RoutePlan,
-) -> ProxyResult {
-    let crate::proxy::ForwardResult {
-        response,
-        provider,
-        claude_api_format,
-        outbound_model,
-        selected_channel,
-        connection_guard,
-    } = result;
-    let selected_channel_id = selected_channel
-        .as_ref()
-        .map(|channel| channel.channel_id.as_str());
-    let response = proxy_response_to_core_response(response, connection_guard);
-
-    crate::proxy_core_adapter::proxy_result_from_forward_parts(
-        response,
-        plan,
-        &provider,
-        claude_api_format,
-        outbound_model,
-        selected_channel_id,
-    )
-}
-
 fn parse_app_type(app: &AppKind) -> ProxyCoreResult<AppType> {
     AppType::from_str(app.as_str())
         .map_err(|error| ProxyCoreError::Config(unsupported_app_kind_error_message(error)))
@@ -773,6 +746,7 @@ mod tests {
         ProxyCoreModelCapabilities as ModelCapabilities, ProxyCoreModelRoute as ModelRoute,
         ProxyChannelKeyWriteRequest, ProxyChannelModelWriteRequest, ProxyChannelWriteRequest,
         ProxyCoreEventType, ProxyCoreUpstreamEndpoint as UpstreamEndpoint, ProxyEngine,
+        proxy_response_to_core_response,
         ProxyResponseBody, ProxyRuntimeStatus, ResolvedChannelAttempt, RetryPolicy,
         RouteResolveRequest, RouteSelection, UsageRecord, UsageTokens,
     };
