@@ -3778,6 +3778,50 @@ pub(crate) fn provider_claude_desktop_proxy_has_base_url_and_key(provider: &Prov
     has_base_url && has_key
 }
 
+pub(crate) fn provider_should_normalize_mimo_anthropic_thinking_history(
+    provider: &Provider,
+    upstream_model: &str,
+) -> bool {
+    if !provider_uses_anthropic_messages_format(provider) {
+        return false;
+    }
+
+    is_mimo_identifier(upstream_model) || provider_has_mimo_endpoint(provider)
+}
+
+fn provider_uses_anthropic_messages_format(provider: &Provider) -> bool {
+    let api_format = provider
+        .meta
+        .as_ref()
+        .and_then(|meta| meta.api_format.as_deref())
+        .or_else(|| provider.settings_config.get("api_format").and_then(Value::as_str))
+        .map(str::trim)
+        .unwrap_or("anthropic");
+
+    api_format.is_empty() || api_format == "anthropic"
+}
+
+fn provider_has_mimo_endpoint(provider: &Provider) -> bool {
+    let settings = &provider.settings_config;
+    [
+        settings
+            .get("env")
+            .and_then(|env| env.get("ANTHROPIC_BASE_URL"))
+            .and_then(Value::as_str),
+        settings.get("base_url").and_then(Value::as_str),
+        settings.get("baseURL").and_then(Value::as_str),
+        settings.get("apiEndpoint").and_then(Value::as_str),
+    ]
+    .into_iter()
+    .flatten()
+    .any(is_mimo_identifier)
+}
+
+fn is_mimo_identifier(value: &str) -> bool {
+    let value = value.to_ascii_lowercase();
+    value.contains("mimo") || value.contains("xiaomimimo")
+}
+
 fn provider_is_typed_managed_oauth_proxy(provider: &Provider) -> bool {
     provider
         .meta
@@ -5913,6 +5957,47 @@ wire_api = "chat"
         );
         assert!(!provider_claude_desktop_proxy_has_base_url_and_key(
             &url_heuristic_only
+        ));
+    }
+
+    #[test]
+    fn claude_desktop_mimo_gate_adapter_requires_anthropic_format() {
+        let anthropic_provider = Provider::with_id(
+            "anthropic-mimo".to_string(),
+            "Anthropic MiMo".to_string(),
+            json!({
+                "env": {
+                    "ANTHROPIC_BASE_URL": "https://relay.example.com"
+                }
+            }),
+            None,
+        );
+        assert!(provider_should_normalize_mimo_anthropic_thinking_history(
+            &anthropic_provider,
+            "mimo-v2.5-pro"
+        ));
+
+        let endpoint_provider = Provider::with_id(
+            "mimo-endpoint".to_string(),
+            "MiMo Endpoint".to_string(),
+            json!({
+                "baseURL": "https://api.xiaomimimo.com/anthropic"
+            }),
+            None,
+        );
+        assert!(provider_should_normalize_mimo_anthropic_thinking_history(
+            &endpoint_provider,
+            "claude-sonnet-4-6"
+        ));
+
+        let mut openai_provider = endpoint_provider.clone();
+        openai_provider.meta = Some(ProviderMeta {
+            api_format: Some("openai_chat".to_string()),
+            ..Default::default()
+        });
+        assert!(!provider_should_normalize_mimo_anthropic_thinking_history(
+            &openai_provider,
+            "mimo-v2.5-pro"
         ));
     }
 

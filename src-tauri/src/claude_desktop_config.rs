@@ -10,7 +10,10 @@ use crate::database::Database;
 use crate::database::CLAUDE_DESKTOP_OFFICIAL_PROVIDER_ID;
 use crate::error::AppError;
 use crate::provider::{ClaudeDesktopMode, Provider};
-use crate::proxy_core_adapter::provider_claude_desktop_proxy_has_base_url_and_key;
+use crate::proxy_core_adapter::{
+    provider_claude_desktop_proxy_has_base_url_and_key,
+    provider_should_normalize_mimo_anthropic_thinking_history,
+};
 
 pub const PROFILE_ID: &str = "00000000-0000-4000-8000-000000157210";
 pub const PROFILE_NAME: &str = "CC Switch";
@@ -662,7 +665,7 @@ pub fn map_proxy_request_model(mut body: Value, provider: &Provider) -> Result<V
         })?;
 
     body["model"] = json!(upstream_model);
-    if should_normalize_mimo_anthropic_thinking_history(provider, &upstream_model) {
+    if provider_should_normalize_mimo_anthropic_thinking_history(provider, &upstream_model) {
         normalize_mimo_anthropic_thinking_history(&mut body);
     }
     Ok(body)
@@ -717,55 +720,6 @@ fn claude_role_keyword(model: &str) -> Option<&'static str> {
     } else {
         None
     }
-}
-
-fn should_normalize_mimo_anthropic_thinking_history(
-    provider: &Provider,
-    upstream_model: &str,
-) -> bool {
-    if !provider_uses_anthropic_messages_format(provider) {
-        return false;
-    }
-
-    is_mimo_identifier(upstream_model) || provider_has_mimo_endpoint(provider)
-}
-
-fn provider_uses_anthropic_messages_format(provider: &Provider) -> bool {
-    let api_format = provider
-        .meta
-        .as_ref()
-        .and_then(|meta| meta.api_format.as_deref())
-        .or_else(|| {
-            provider
-                .settings_config
-                .get("api_format")
-                .and_then(Value::as_str)
-        })
-        .map(str::trim)
-        .unwrap_or("anthropic");
-
-    api_format.is_empty() || api_format == "anthropic"
-}
-
-fn provider_has_mimo_endpoint(provider: &Provider) -> bool {
-    let settings = &provider.settings_config;
-    [
-        settings
-            .get("env")
-            .and_then(|env| env.get("ANTHROPIC_BASE_URL"))
-            .and_then(Value::as_str),
-        settings.get("base_url").and_then(Value::as_str),
-        settings.get("baseURL").and_then(Value::as_str),
-        settings.get("apiEndpoint").and_then(Value::as_str),
-    ]
-    .into_iter()
-    .flatten()
-    .any(is_mimo_identifier)
-}
-
-fn is_mimo_identifier(value: &str) -> bool {
-    let value = value.to_ascii_lowercase();
-    value.contains("mimo") || value.contains("xiaomimimo")
 }
 
 fn normalize_mimo_anthropic_thinking_history(body: &mut Value) {
