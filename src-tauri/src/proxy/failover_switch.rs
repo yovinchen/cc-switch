@@ -71,6 +71,25 @@ impl FailoverSwitchManager {
         result
     }
 
+    pub fn spawn_try_switch(
+        self: Arc<Self>,
+        app_handle: Option<tauri::AppHandle>,
+        app_type: String,
+        provider_id: String,
+        provider_name: String,
+    ) {
+        tokio::spawn(async move {
+            let _ = self
+                .try_switch(
+                    app_handle.as_ref(),
+                    &app_type,
+                    &provider_id,
+                    &provider_name,
+                )
+                .await;
+        });
+    }
+
     async fn do_switch(
         &self,
         app_handle: Option<&tauri::AppHandle>,

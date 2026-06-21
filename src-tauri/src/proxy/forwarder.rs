@@ -386,15 +386,12 @@ impl RequestForwarder {
     }
 
     fn schedule_failover_switch(&self, app_type: &str, provider: &Provider) {
-        let fm = self.failover_manager.clone();
-        let ah = self.app_handle.clone();
-        let pid = provider.id.clone();
-        let pname = provider.name.clone();
-        let at = app_type.to_string();
-
-        tokio::spawn(async move {
-            let _ = fm.try_switch(ah.as_ref(), &at, &pid, &pname).await;
-        });
+        self.failover_manager.clone().spawn_try_switch(
+            self.app_handle.clone(),
+            app_type.to_string(),
+            provider.id.clone(),
+            provider.name.clone(),
+        );
     }
 
     fn emit_request_started(&self, request_id: &str, app_type: &str) {
