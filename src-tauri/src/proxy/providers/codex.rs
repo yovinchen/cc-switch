@@ -12,9 +12,9 @@ use crate::proxy_core_adapter::{
     apply_codex_chat_upstream_model_policy, build_codex_bearer_auth_headers,
     build_codex_upstream_url, codex_provider_catalog_model_ids_from_settings,
     infer_codex_chat_reasoning_profile, normalize_codex_chat_reasoning_profile,
-    resolve_codex_provider_upstream_model, resolve_codex_provider_uses_chat_completions,
-    should_convert_codex_responses_endpoint_to_chat, CodexChatReasoningOptions,
-    CodexChatReasoningProfile, ProviderAuthInfo, ProviderAuthStrategy,
+    provider_codex_api_key, provider_codex_base_url, resolve_codex_provider_upstream_model,
+    resolve_codex_provider_uses_chat_completions, should_convert_codex_responses_endpoint_to_chat,
+    CodexChatReasoningOptions, CodexChatReasoningProfile, ProviderAuthInfo, ProviderAuthStrategy,
 };
 use serde_json::Value as JsonValue;
 use toml::Value as TomlValue;
@@ -227,59 +227,7 @@ impl CodexAdapter {
 
     /// 从 Provider 配置中提取 API Key
     fn extract_key(&self, provider: &Provider) -> Option<String> {
-        // 1. 尝试从 env 中获取
-        if let Some(env) = provider.settings_config.get("env") {
-            if let Some(key) = env
-                .get("OPENAI_API_KEY")
-                .and_then(|v| v.as_str())
-                .map(str::trim)
-                .filter(|key| !key.is_empty())
-            {
-                return Some(key.to_string());
-            }
-        }
-
-        // 2. 尝试从 auth 中获取 (Codex CLI 格式)
-        if let Some(auth) = provider.settings_config.get("auth") {
-            if let Some(key) = crate::codex_config::extract_codex_auth_api_key(auth) {
-                return Some(key.to_string());
-            }
-        }
-
-        // 3. 尝试直接获取
-        if let Some(key) = provider
-            .settings_config
-            .get("apiKey")
-            .or_else(|| provider.settings_config.get("api_key"))
-            .and_then(|v| v.as_str())
-            .map(str::trim)
-            .filter(|key| !key.is_empty())
-        {
-            return Some(key.to_string());
-        }
-
-        // 4. 尝试从 config 对象中获取
-        if let Some(config) = provider.settings_config.get("config") {
-            if let Some(key) = config
-                .get("api_key")
-                .or_else(|| config.get("apiKey"))
-                .and_then(|v| v.as_str())
-                .map(str::trim)
-                .filter(|key| !key.is_empty())
-            {
-                return Some(key.to_string());
-            }
-
-            if let Some(config_str) = config.as_str() {
-                if let Some(key) =
-                    crate::codex_config::extract_codex_experimental_bearer_token(config_str)
-                {
-                    return Some(key);
-                }
-            }
-        }
-
-        None
+        provider_codex_api_key(provider)
     }
 }
 
@@ -295,50 +243,9 @@ impl ProviderAdapter for CodexAdapter {
     }
 
     fn extract_base_url(&self, provider: &Provider) -> Result<String, ProxyError> {
-        // 1. 尝试直接获取 base_url 字段
-        if let Some(url) = provider
-            .settings_config
-            .get("base_url")
-            .and_then(|v| v.as_str())
-        {
-            return Ok(url.trim_end_matches('/').to_string());
-        }
-
-        // 2. 尝试 baseURL
-        if let Some(url) = provider
-            .settings_config
-            .get("baseURL")
-            .and_then(|v| v.as_str())
-        {
-            return Ok(url.trim_end_matches('/').to_string());
-        }
-
-        // 3. 尝试从 config 对象中获取
-        if let Some(config) = provider.settings_config.get("config") {
-            if let Some(url) = config.get("base_url").and_then(|v| v.as_str()) {
-                return Ok(url.trim_end_matches('/').to_string());
-            }
-
-            // 尝试解析 TOML 字符串格式
-            if let Some(config_str) = config.as_str() {
-                if let Some(start) = config_str.find("base_url = \"") {
-                    let rest = &config_str[start + 12..];
-                    if let Some(end) = rest.find('"') {
-                        return Ok(rest[..end].trim_end_matches('/').to_string());
-                    }
-                }
-                if let Some(start) = config_str.find("base_url = '") {
-                    let rest = &config_str[start + 12..];
-                    if let Some(end) = rest.find('\'') {
-                        return Ok(rest[..end].trim_end_matches('/').to_string());
-                    }
-                }
-            }
-        }
-
-        Err(ProxyError::ConfigError(
-            "Codex Provider 缺少 base_url 配置".to_string(),
-        ))
+        provider_codex_base_url(provider).ok_or_else(|| {
+            ProxyError::ConfigError("Codex Provider 缺少 base_url 配置".to_string())
+        })
     }
 
     fn extract_auth(&self, provider: &Provider) -> Option<ProviderAuthInfo> {

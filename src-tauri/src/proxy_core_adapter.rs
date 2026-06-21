@@ -1209,6 +1209,99 @@ pub(crate) fn resolve_codex_provider_upstream_model(
     )
 }
 
+pub(crate) fn provider_codex_api_key(provider: &Provider) -> Option<String> {
+    if let Some(env) = provider.settings_config.get("env") {
+        if let Some(key) = env
+            .get("OPENAI_API_KEY")
+            .and_then(Value::as_str)
+            .map(str::trim)
+            .filter(|key| !key.is_empty())
+        {
+            return Some(key.to_string());
+        }
+    }
+
+    if let Some(auth) = provider.settings_config.get("auth") {
+        if let Some(key) = crate::codex_config::extract_codex_auth_api_key(auth) {
+            return Some(key.to_string());
+        }
+    }
+
+    if let Some(key) = provider
+        .settings_config
+        .get("apiKey")
+        .or_else(|| provider.settings_config.get("api_key"))
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|key| !key.is_empty())
+    {
+        return Some(key.to_string());
+    }
+
+    if let Some(config) = provider.settings_config.get("config") {
+        if let Some(key) = config
+            .get("api_key")
+            .or_else(|| config.get("apiKey"))
+            .and_then(Value::as_str)
+            .map(str::trim)
+            .filter(|key| !key.is_empty())
+        {
+            return Some(key.to_string());
+        }
+
+        if let Some(config_str) = config.as_str() {
+            if let Some(key) =
+                crate::codex_config::extract_codex_experimental_bearer_token(config_str)
+            {
+                return Some(key);
+            }
+        }
+    }
+
+    None
+}
+
+pub(crate) fn provider_codex_base_url(provider: &Provider) -> Option<String> {
+    if let Some(url) = provider
+        .settings_config
+        .get("base_url")
+        .and_then(Value::as_str)
+    {
+        return Some(url.trim_end_matches('/').to_string());
+    }
+
+    if let Some(url) = provider
+        .settings_config
+        .get("baseURL")
+        .and_then(Value::as_str)
+    {
+        return Some(url.trim_end_matches('/').to_string());
+    }
+
+    if let Some(config) = provider.settings_config.get("config") {
+        if let Some(url) = config.get("base_url").and_then(Value::as_str) {
+            return Some(url.trim_end_matches('/').to_string());
+        }
+
+        if let Some(config_str) = config.as_str() {
+            if let Some(start) = config_str.find("base_url = \"") {
+                let rest = &config_str[start + 12..];
+                if let Some(end) = rest.find('"') {
+                    return Some(rest[..end].trim_end_matches('/').to_string());
+                }
+            }
+            if let Some(start) = config_str.find("base_url = '") {
+                let rest = &config_str[start + 12..];
+                if let Some(end) = rest.find('\'') {
+                    return Some(rest[..end].trim_end_matches('/').to_string());
+                }
+            }
+        }
+    }
+
+    None
+}
+
 pub(crate) fn codex_provider_catalog_model_ids_from_settings(
     settings_config: &Value,
 ) -> std::collections::HashSet<String> {
@@ -4548,6 +4641,25 @@ mod tests {
         assert_eq!(
             headers[0].1,
             http::HeaderValue::from_static("Bearer sk-test")
+        );
+        let provider = Provider::with_id(
+            "codex".to_string(),
+            "Codex".to_string(),
+            json!({
+                "env": {
+                    "OPENAI_API_KEY": " sk-provider "
+                },
+                "baseURL": "https://api.openai.com/v1/"
+            }),
+            None,
+        );
+        assert_eq!(
+            provider_codex_api_key(&provider).as_deref(),
+            Some("sk-provider")
+        );
+        assert_eq!(
+            provider_codex_base_url(&provider).as_deref(),
+            Some("https://api.openai.com/v1")
         );
 
         assert_eq!(
