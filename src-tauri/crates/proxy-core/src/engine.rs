@@ -7,14 +7,14 @@ use super::domain::{
 use super::error::ProxyCoreResult;
 use super::management_api::{
     AppChannelListSource, AppChannelManagementPlan, AppChannelManagementRequest,
-    AppModelCatalogRequest, ManagementAppPathRequest, ProviderListSource,
-    RouteResolveManagementRequest,
+    AppModelCatalogRequest, GroupListChannelRecordInput, GroupListChannelSource,
+    GroupListRequest, ManagementAppPathRequest, ProviderListSource, RouteResolveManagementRequest,
 };
 use super::ports::{
     AppChannelResponse, ChannelHealthReset, ChannelHealthResetResponse, ChannelRecord,
     ChannelRouteCandidate, ChannelRouteRejected, ClientModelCatalogResponse, ModelCatalog,
     ProviderListResponse, ProxyCoreEvent, ProxyCoreEventType, ProxyServices,
-    RouteResolveResponse,
+    RouteGroupListResponse, RouteResolveResponse,
 };
 use serde_json::{json, to_value, Value};
 use std::collections::BTreeMap;
@@ -268,6 +268,33 @@ where
         }
     }
 
+    pub async fn group_list_response<I, T>(
+        &self,
+        request: GroupListRequest,
+        all_app_types: I,
+    ) -> ProxyCoreResult<RouteGroupListResponse>
+    where
+        I: IntoIterator<Item = T>,
+        T: Into<String>,
+    {
+        let app_types = request.app_scope(all_app_types);
+        let mut sources = Vec::new();
+
+        for app_type in app_types {
+            let app = AppKind::from(app_type.as_str());
+            let (source, channels) = self.services.channels().list_channel_records(&app).await?;
+            sources.push(GroupListChannelSource::from_record_inputs(
+                app_type,
+                source,
+                channels
+                    .into_iter()
+                    .map(|channel| GroupListChannelRecordInput::new(channel.groups)),
+            ));
+        }
+
+        Ok(request.response_from_channel_sources(sources))
+    }
+
     pub async fn client_model_catalog(
         &self,
         app: &super::domain::AppKind,
@@ -415,6 +442,7 @@ mod tests {
         route_resolution: Mutex<Option<RouteResolveResponse>>,
         channel_records: Mutex<Vec<ChannelRecord>>,
         channel_route_source: Mutex<Option<ChannelRouteSource>>,
+        queried_channel_apps: Mutex<Vec<String>>,
     }
 
     impl ProxyServices for TestServices {
@@ -554,8 +582,12 @@ mod tests {
 
         fn list_channel_records<'a>(
             &'a self,
-            _app: &'a AppKind,
+            app: &'a AppKind,
         ) -> BoxFuture<'a, ProxyCoreResult<(ChannelRouteSource, Vec<ChannelRecord>)>> {
+            self.queried_channel_apps
+                .lock()
+                .expect("queried channel apps mutex")
+                .push(app.as_str().to_string());
             let source = self
                 .channel_route_source
                 .lock()
@@ -1056,6 +1088,39 @@ mod tests {
     }
 
     #[test]
+    fn group_list_response_delegates_scoped_channel_sources_to_channel_source() {
+        let services = Arc::new(TestServices::default());
+        *services
+            .channel_records
+            .lock()
+            .expect("channel records mutex") =
+            vec![channel_record_with_groups(vec!["shared".to_string()])];
+        let engine = ProxyEngine::new(services.clone());
+        let request = GroupListRequest::from_query(serde_json::from_value(json!({})).expect("query"))
+            .expect("group request");
+
+        let response = futures::executor::block_on(engine.group_list_response(
+            request,
+            ["claude".to_string(), "codex".to_string()],
+        ))
+        .expect("group response");
+
+        assert_eq!(response.app_type, None);
+        assert_eq!(response.sources, vec!["materialized_channels"]);
+        assert_eq!(response.groups.len(), 1);
+        assert_eq!(response.groups[0].name, "shared");
+        assert_eq!(response.groups[0].app_types, vec!["claude", "codex"]);
+        assert_eq!(response.groups[0].channel_count, 2);
+        assert_eq!(
+            *services
+                .queried_channel_apps
+                .lock()
+                .expect("queried channel apps mutex"),
+            vec!["claude".to_string(), "codex".to_string()]
+        );
+    }
+
+    #[test]
     fn client_model_catalog_delegates_to_catalog_provider() {
         let services = Arc::new(TestServices::default());
         let engine = ProxyEngine::new(services);
@@ -1160,6 +1225,10 @@ mod tests {
     }
 
     fn channel_record() -> ChannelRecord {
+        channel_record_with_groups(vec![DEFAULT_ROUTE_GROUP.to_string()])
+    }
+
+    fn channel_record_with_groups(groups: Vec<String>) -> ChannelRecord {
         channel_record_from_input(ChannelRecordInput {
             id: "channel-a".to_string(),
             provider_id: "provider-a".to_string(),
@@ -1169,7 +1238,7 @@ mod tests {
             base_url: "https://upstream.example.com/v1".to_string(),
             interface_kind: "anthropic_messages".to_string(),
             auth_profile_ref: None,
-            groups: vec![DEFAULT_ROUTE_GROUP.to_string()],
+            groups,
             priority: 100,
             weight: 100,
             retry_policy: json!({}),

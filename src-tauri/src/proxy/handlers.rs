@@ -76,7 +76,7 @@ use crate::proxy_core_adapter::{
     channel_key_record_source_from_record, channel_keys_source_from_records,
     channel_record_source_from_record,
     channel_migration_materialize_source_from_result, channel_migration_preview_source_from_result,
-    channel_models_source_from_records, group_list_channel_source_from_records,
+    channel_models_source_from_records,
     channel_test_plan_from_record, current_route_source_from_provider,
     health_check_source_from_timestamp,
     proxy_app_summary_input, proxy_status_source_from_status,
@@ -549,24 +549,14 @@ pub async fn list_proxy_groups(
 ) -> Result<Json<RouteGroupListResponse>, ProxyError> {
     let request =
         GroupListRequest::from_query(query).map_err(management_api_error_to_proxy_error)?;
-    let app_types = request.app_scope(AppType::all().map(|app| app.as_str().to_string()));
 
-    let mut sources = Vec::new();
+    let response = state
+        .proxy_engine()
+        .group_list_response(request, AppType::all().map(|app| app.as_str().to_string()))
+        .await
+        .map_err(proxy_core_error_to_proxy_error)?;
 
-    for app_type in &app_types {
-        let (channels, source) = state
-            .provider_router
-            .list_channels_for_app(app_type)
-            .await
-            .map_err(|e| ProxyError::DatabaseError(e.to_string()))?;
-        sources.push(group_list_channel_source_from_records(
-            app_type.clone(),
-            source,
-            channels,
-        ));
-    }
-
-    Ok(Json(request.response_from_channel_sources(sources)))
+    Ok(Json(response))
 }
 
 /// GET /proxy/v1/apps/{app}/routes/current

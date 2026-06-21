@@ -767,9 +767,9 @@ pub(crate) use crate::proxy_core::api::management::{
     ChannelModelsSource, ChannelPathRequest, ChannelRecordResponse, ChannelRecordSource,
     ChannelRouteRejected,
     ChannelTestPlan, ChannelTestResponse, CurrentRouteProviderSummaryInput,
-    CurrentRouteResponse, CurrentRouteSource, GroupListChannelRecordInput, GroupListChannelSource,
-    GroupListQuery, GroupListRequest, HealthCheckRequest, HealthCheckResponse, HealthCheckSource,
-    ManagementAppPathRequest, ProviderHealthUpdateInput, ProviderListResponse,
+    CurrentRouteResponse, CurrentRouteSource, GroupListQuery, GroupListRequest,
+    HealthCheckRequest, HealthCheckResponse, HealthCheckSource, ManagementAppPathRequest,
+    ProviderHealthUpdateInput, ProviderListResponse,
     ProxyChannelModelsReplaceRequest, ProxyChannelTestRequest, ProxyStatusRequest,
     ProxyStatusResponse, ProxyStatusSource, RouteGroupListResponse,
     RouteResolveManagementRequest,
@@ -1836,31 +1836,10 @@ pub(crate) fn channel_spec_from_source(channel: Option<ProxyChannelRecord>) -> O
     channel.map(|channel| proxy_channel_record_to_core_spec(&channel))
 }
 
-pub(crate) fn proxy_channel_group_inputs_to_core(
-    channels: impl IntoIterator<Item = ProxyChannelRecord>,
-) -> Vec<GroupListChannelRecordInput> {
-    channels
-        .into_iter()
-        .map(|channel| GroupListChannelRecordInput::new(channel.groups))
-        .collect()
-}
-
 pub(crate) fn channel_list_source_from_records(
     channels: Vec<ProxyChannelRecord>,
 ) -> ChannelListSource<ChannelRecord> {
     ChannelListSource::new(proxy_channel_records_to_core(channels))
-}
-
-pub(crate) fn group_list_channel_source_from_records(
-    app_type: impl Into<String>,
-    source: ChannelRouteSource,
-    channels: Vec<ProxyChannelRecord>,
-) -> GroupListChannelSource {
-    GroupListChannelSource::from_record_inputs(
-        app_type,
-        source,
-        proxy_channel_group_inputs_to_core(channels),
-    )
 }
 
 pub(crate) fn proxy_channel_route_inputs_to_core(

@@ -200,6 +200,46 @@ fn channel_list_route_branch_delegates_dry_run_to_proxy_engine() {
 }
 
 #[test]
+fn group_list_handler_delegates_sources_to_proxy_engine() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let path = manifest_dir.join("src/proxy/handlers.rs");
+    let source = fs::read_to_string(&path).expect("read handlers.rs");
+    let handler = function_slice(
+        &source,
+        "pub async fn list_proxy_groups",
+        "/// GET /proxy/v1/apps/{app}/routes/current",
+    );
+
+    let forbidden_markers = [
+        "provider_router",
+        ".list_channels_for_app(",
+        "group_list_channel_source_from_records",
+        ".response_from_channel_sources(",
+        ".app_scope(",
+    ];
+
+    let mut violations = Vec::new();
+    for (line_index, line) in production_lines(handler) {
+        let code = line.split("//").next().unwrap_or_default();
+        for marker in forbidden_markers {
+            if code.contains(marker) {
+                violations.push(format!(
+                    "src/proxy/handlers.rs list_proxy_groups:{} contains group source marker `{}`",
+                    line_index + 1,
+                    marker
+                ));
+            }
+        }
+    }
+
+    assert!(
+        violations.is_empty(),
+        "group-list HTTP handler must delegate channel source aggregation to ProxyEngine:\n{}",
+        violations.join("\n")
+    );
+}
+
+#[test]
 fn production_forwarder_stays_preplanned_only() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let mut rust_files = Vec::new();
