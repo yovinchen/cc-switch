@@ -11,7 +11,7 @@ use crate::proxy_core::api::domain::{
 #[cfg(test)]
 use crate::proxy_core::api::domain::{ChannelHealthPolicy, ChannelOverrides, UpstreamEndpoint};
 use crate::proxy_core::api::management::{
-    AppSummaryInput, ChannelReachabilityResult, CurrentRouteProviderSummaryInput,
+    AppSummaryInput, ChannelReachabilityResult,
 };
 use crate::proxy_core::api::routing::{
     route_resolve_channel_input_from_record, RouteResolveChannelInput,
@@ -565,10 +565,10 @@ pub(crate) use crate::proxy_core::api::management::{
     ChannelMigrationPreviewResponse, ChannelMigrationPreviewSource, ChannelModelsResponse,
     ChannelModelsSource, ChannelPathRequest, ChannelRecordResponse, ChannelRecordSource,
     ChannelRouteRejected,
-    ChannelTestPlan, ChannelTestResponse, CurrentRouteResponse, CurrentRouteSource,
-    GroupListChannelRecordInput, GroupListChannelSource, GroupListQuery, GroupListRequest,
-    HealthCheckRequest, HealthCheckResponse, HealthCheckSource, ManagementAppPathRequest,
-    ProviderHealthUpdateInput, ProviderListResponse, ProviderListSource,
+    ChannelTestPlan, ChannelTestResponse, CurrentRouteProviderSummaryInput,
+    CurrentRouteResponse, CurrentRouteSource, GroupListChannelRecordInput, GroupListChannelSource,
+    GroupListQuery, GroupListRequest, HealthCheckRequest, HealthCheckResponse, HealthCheckSource,
+    ManagementAppPathRequest, ProviderHealthUpdateInput, ProviderListResponse, ProviderListSource,
     ProxyChannelModelsReplaceRequest, ProxyChannelTestRequest, ProxyStatusRequest,
     ProxyStatusResponse, ProxyStatusSource, RouteGroupListResponse,
     RouteResolveManagementRequest,
@@ -1173,12 +1173,6 @@ impl ToProxyCoreProviderSpec for Provider {
             metadata,
         }
     }
-}
-
-pub(crate) fn proxy_current_route_provider_summary_input(
-    provider: Provider,
-) -> CurrentRouteProviderSummaryInput {
-    CurrentRouteProviderSummaryInput::new(provider.id, provider.name, provider.category)
 }
 
 #[allow(dead_code)]

@@ -58,10 +58,11 @@ use crate::proxy_core_adapter::{
     ChannelModelRecord, ChannelModelsResponse, ChannelModelsSource, ChannelPathRequest, ChannelRecord,
     ChannelRecordResponse, ChannelRecordSource, ChannelRouteCandidate, ChannelRouteRejected,
     ChannelTestPlan, ChannelTestResponse, ClaudeDesktopModelListResponse,
-    ClientModelCatalogResponse, CodexToolContext, CurrentRouteResponse, CurrentRouteSource,
-    CurrentRouteTarget, GroupListChannelSource, GroupListQuery, GroupListRequest,
-    HealthCheckRequest, HealthCheckResponse, HealthCheckSource, InterfaceKind,
-    ManagementAppPathRequest, ManagementAuthDecision, ProviderListResponse, ProviderListSource,
+    ClientModelCatalogResponse, CodexToolContext, CurrentRouteProviderSummaryInput,
+    CurrentRouteResponse, CurrentRouteSource, CurrentRouteTarget, GroupListChannelSource,
+    GroupListQuery, GroupListRequest, HealthCheckRequest, HealthCheckResponse, HealthCheckSource,
+    InterfaceKind, ManagementAppPathRequest, ManagementAuthDecision, ProviderListResponse,
+    ProviderListSource,
     ProxyBody, ProxyChannelKeyPatchRequest, ProxyChannelKeyWriteRequest,
     ProxyChannelModelsReplaceRequest, ProxyChannelPatchRequest, ProxyChannelTestRequest,
     ProxyChannelWriteRequest, ProxyRequest, ProxyRuntimeStatus, ProxyStatusRequest,
@@ -75,8 +76,8 @@ use crate::proxy_core_adapter::{
     proxy_app_summary_input, proxy_channel_group_inputs_to_core, proxy_channel_key_record_to_core,
     proxy_channel_key_records_to_core, proxy_channel_model_records_to_core,
     proxy_channel_record_to_core, proxy_channel_record_to_core_spec, proxy_channel_records_to_core,
-    proxy_current_route_provider_summary_input, stream_check_result_to_channel_reachability,
-    synthesize_gemini_tool_call_id_with_uuid, ToProxyCoreProviderSpec,
+    stream_check_result_to_channel_reachability, synthesize_gemini_tool_call_id_with_uuid,
+    ToProxyCoreProviderSpec,
 };
 use crate::services::stream_check::StreamCheckService;
 use axum::{
@@ -627,10 +628,8 @@ pub async fn get_current_proxy_route(
 ) -> Result<Json<CurrentRouteResponse<CurrentRouteTarget>>, ProxyError> {
     let request = ManagementAppPathRequest::from_path(app_type)
         .map_err(management_api_error_to_proxy_error)?;
-    request
-        .app_type
-        .parse::<AppType>()
-        .map_err(|e| ProxyError::InvalidRequest(e.to_string()))?;
+    let app_type = AppType::from_str(&request.app_type)
+        .map_err(|error| ProxyError::InvalidRequest(error.to_string()))?;
 
     let active_target = {
         let current_providers = state.current_providers.read().await;
@@ -646,7 +645,11 @@ pub async fn get_current_proxy_route(
             .db
             .get_provider_by_id(&provider_id, &request.app_type)
             .map_err(|e| ProxyError::DatabaseError(e.to_string()))?
-            .map(proxy_current_route_provider_summary_input),
+            .map(|provider| {
+                CurrentRouteProviderSummaryInput::from_provider_spec(
+                    provider.to_proxy_core_provider_spec(&app_type),
+                )
+            }),
         None => None,
     };
 
