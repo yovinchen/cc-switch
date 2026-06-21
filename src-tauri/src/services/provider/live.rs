@@ -13,7 +13,9 @@ use crate::config::{delete_file, get_claude_settings_path, read_json_file, write
 use crate::database::Database;
 use crate::error::AppError;
 use crate::provider::Provider;
-use crate::proxy_core_adapter::provider_model_catalog_raw_value;
+use crate::proxy_core_adapter::{
+    provider_model_catalog_raw_value, provider_openclaw_has_live_provider_fields,
+};
 use crate::services::mcp::McpService;
 use crate::store::AppState;
 
@@ -851,10 +853,7 @@ pub(crate) fn write_live_snapshot(app_type: &AppType, provider: &Provider) -> Re
                         e
                     );
                     // Try to write as raw JSON if it looks valid
-                    if provider.settings_config.get("baseUrl").is_some()
-                        || provider.settings_config.get("api").is_some()
-                        || provider.settings_config.get("models").is_some()
-                    {
+                    if provider_openclaw_has_live_provider_fields(provider) {
                         openclaw_config::set_provider(
                             &provider.id,
                             provider.settings_config.clone(),

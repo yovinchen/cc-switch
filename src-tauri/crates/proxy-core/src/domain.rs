@@ -197,6 +197,12 @@ pub fn extract_openclaw_stream_check_base_url(settings_config: &Value) -> Option
     trimmed_non_empty_setting(settings_config.get("baseUrl"))
 }
 
+pub fn openclaw_settings_have_live_provider_fields(settings_config: &Value) -> bool {
+    ["baseUrl", "api", "models"]
+        .into_iter()
+        .any(|key| settings_config.get(key).is_some())
+}
+
 pub fn extract_hermes_stream_check_base_url(settings_config: &Value) -> Option<String> {
     trimmed_non_empty_setting(settings_config.get("base_url"))
 }
@@ -2330,6 +2336,18 @@ mod tests {
             extract_openclaw_stream_check_base_url(&serde_json::json!({"baseUrl": "   "})),
             None
         );
+        assert!(openclaw_settings_have_live_provider_fields(
+            &serde_json::json!({"baseUrl": serde_json::Value::Null})
+        ));
+        assert!(openclaw_settings_have_live_provider_fields(
+            &serde_json::json!({"api": {"key": "sk-test"}})
+        ));
+        assert!(openclaw_settings_have_live_provider_fields(
+            &serde_json::json!({"models": []})
+        ));
+        assert!(!openclaw_settings_have_live_provider_fields(
+            &serde_json::json!({"name": "provider-a"})
+        ));
         assert_eq!(
             extract_hermes_stream_check_base_url(&serde_json::json!({
                 "base_url": " https://hermes.example.com "

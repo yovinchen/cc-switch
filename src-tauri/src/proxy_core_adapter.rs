@@ -761,6 +761,12 @@ pub(crate) fn provider_openclaw_stream_check_base_url(provider: &Provider) -> Op
     extract_openclaw_stream_check_base_url(&provider.settings_config)
 }
 
+pub(crate) fn provider_openclaw_has_live_provider_fields(provider: &Provider) -> bool {
+    crate::proxy_core::api::domain::openclaw_settings_have_live_provider_fields(
+        &provider.settings_config,
+    )
+}
+
 pub(crate) fn extract_hermes_stream_check_base_url(settings_config: &Value) -> Option<String> {
     crate::proxy_core::api::domain::extract_hermes_stream_check_base_url(settings_config)
 }
@@ -7348,6 +7354,32 @@ wire_api = "chat"
                 reachability_status.as_str()
             );
         }
+    }
+
+    #[test]
+    fn openclaw_live_provider_shape_adapter_projects_provider_settings() {
+        for settings in [
+            json!({"baseUrl": Value::Null}),
+            json!({"api": {"key": "sk-test"}}),
+            json!({"models": []}),
+        ] {
+            let provider = Provider::with_id(
+                "openclaw-provider".to_string(),
+                "OpenClaw Provider".to_string(),
+                settings,
+                None,
+            );
+            assert!(provider_openclaw_has_live_provider_fields(&provider));
+        }
+
+        let provider = Provider::with_id(
+            "invalid-provider".to_string(),
+            "Invalid Provider".to_string(),
+            json!({"name": "Provider"}),
+            None,
+        );
+
+        assert!(!provider_openclaw_has_live_provider_fields(&provider));
     }
 
     #[test]
