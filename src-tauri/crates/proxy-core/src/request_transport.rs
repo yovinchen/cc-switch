@@ -208,6 +208,13 @@ pub fn mapped_channel_response_status(status: u16, mapping: &Value) -> Option<u1
     }
 }
 
+pub fn invalid_mapped_channel_response_status_message(
+    mapped: u16,
+    error: impl std::fmt::Display,
+) -> String {
+    format!("invalid mapped channel response status {mapped}: {error}")
+}
+
 fn mapped_status_from_object(status: u16, entry: &Map<String, Value>) -> Option<u16> {
     let from = entry
         .get("from")
@@ -248,7 +255,8 @@ fn valid_status_code(value: u64) -> Option<u16> {
 #[cfg(test)]
 mod tests {
     use super::{
-        is_socks_proxy_url, is_streaming_upstream_request, mapped_channel_response_status,
+        invalid_mapped_channel_response_status_message, is_socks_proxy_url,
+        is_streaming_upstream_request, mapped_channel_response_status,
         proxy_url_points_to_loopback_port, proxy_values_point_to_loopback_port,
         request_body_stream_flag, resolve_upstream_request_transport_policy,
         resolve_upstream_send_policy, UpstreamSendPolicyInput, UpstreamTransportKind,
@@ -502,6 +510,14 @@ mod tests {
                 })
             ),
             Some(502)
+        );
+    }
+
+    #[test]
+    fn formats_invalid_mapped_channel_response_status_errors() {
+        assert_eq!(
+            invalid_mapped_channel_response_status_message(99, "invalid status code"),
+            "invalid mapped channel response status 99: invalid status code"
         );
     }
 

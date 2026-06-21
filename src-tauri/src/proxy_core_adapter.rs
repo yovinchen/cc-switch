@@ -2562,6 +2562,15 @@ pub(crate) fn mapped_channel_response_status(status: u16, mapping: &Value) -> Op
     crate::proxy_core::api::transport::mapped_channel_response_status(status, mapping)
 }
 
+pub(crate) fn invalid_mapped_channel_response_status_message(
+    mapped: u16,
+    error: impl std::fmt::Display,
+) -> String {
+    crate::proxy_core::api::transport::invalid_mapped_channel_response_status_message(
+        mapped, error,
+    )
+}
+
 pub(crate) fn codex_proxy_error_code(kind: CodexProxyErrorKind) -> &'static str {
     crate::proxy_core::api::transforms::codex_proxy_error_code(kind)
 }

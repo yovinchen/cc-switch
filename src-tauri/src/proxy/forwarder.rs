@@ -27,8 +27,9 @@ use crate::proxy_core_adapter::{
     build_retryable_forward_failure_log, build_terminal_forward_failure_log,
     build_upstream_auth_headers, cache_injection_log_message, categorize_forward_failure,
     classify_copilot_request, contains_image_blocks, current_route_target_from_forward_attempt,
-    forward_upstream_url_plan, is_github_copilot_upstream, is_openai_o_series,
-    is_unsupported_image_error, mapped_channel_response_status,
+    forward_upstream_url_plan, invalid_mapped_channel_response_status_message,
+    is_github_copilot_upstream, is_openai_o_series, is_unsupported_image_error,
+    mapped_channel_response_status,
     merge_copilot_tool_results, normalize_thinking_type, prepare_upstream_request_body_with_report,
     prompt_cache_trace_log_message, rectify_anthropic_request, rectify_thinking_budget,
     replace_image_blocks_with_marker, record_active_connection_acquired_status,
@@ -1748,9 +1749,7 @@ impl RequestForwarder {
             return Ok(response);
         };
         let mapped_status = http::StatusCode::from_u16(mapped).map_err(|error| {
-            ProxyError::Internal(format!(
-                "invalid mapped channel response status {mapped}: {error}"
-            ))
+            ProxyError::Internal(invalid_mapped_channel_response_status_message(mapped, error))
         })?;
 
         if mapped_status != status {
