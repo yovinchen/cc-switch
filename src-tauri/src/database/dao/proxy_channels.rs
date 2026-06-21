@@ -20,12 +20,13 @@ use crate::proxy_core_adapter::{
     validate_proxy_channel_key_patch_request_fields,
     validate_proxy_channel_key_write_request_fields,
     validate_proxy_channel_model_write_request_fields,
+    validate_proxy_channel_models_replace_request_fields,
     validate_proxy_channel_write_request_fields,
     ChannelHealthUpdateInput, ChannelRequestValidationError, LegacyChannelModelProjection,
     LegacyChannelProjection, LegacyChannelProjectionInput, LegacyModelRouteInput,
     LegacyProviderProjectionInput, ProxyChannelKeyPatchRequest, ProxyChannelKeyWriteRequest,
-    ProxyChannelModelWriteRequest, ProxyChannelPatchRequest, ProxyChannelWriteRequest,
-    ProxyCoreAppKind as AppKind, ProxyCoreInterfaceKind as InterfaceKind,
+    ProxyChannelModelWriteRequest, ProxyChannelModelsReplaceRequest, ProxyChannelPatchRequest,
+    ProxyChannelWriteRequest, ProxyCoreAppKind as AppKind, ProxyCoreInterfaceKind as InterfaceKind,
     CHANNEL_HEALTH_UNKNOWN_STATUS,
 };
 use rusqlite::{params, Connection, OptionalExtension, Row};
@@ -581,13 +582,15 @@ impl Database {
     pub(crate) fn replace_proxy_channel_models(
         &self,
         channel_id: &str,
-        models: Vec<ProxyChannelModelWriteRequest>,
+        request: ProxyChannelModelsReplaceRequest,
     ) -> Result<Option<Vec<ProxyChannelModelRecord>>, AppError> {
+        validate_proxy_channel_models_replace_request_fields(&request)
+            .map_err(channel_request_error_to_app_error)?;
         let conn = lock_conn!(self.conn);
         if get_proxy_channel_on_conn(&conn, channel_id)?.is_none() {
             return Ok(None);
         }
-        replace_proxy_channel_models_on_conn(&conn, channel_id, models)?;
+        replace_proxy_channel_models_on_conn(&conn, channel_id, request.models)?;
         Ok(Some(list_proxy_channel_models_on_conn(&conn, channel_id)?))
     }
 
@@ -1563,11 +1566,13 @@ mod tests {
         let replaced_models = db
             .replace_proxy_channel_models(
                 &created.id,
-                vec![ProxyChannelModelWriteRequest {
-                    public_model: "haiku-public".to_string(),
-                    upstream_model: "upstream-haiku".to_string(),
-                    ..Default::default()
-                }],
+                ProxyChannelModelsReplaceRequest {
+                    models: vec![ProxyChannelModelWriteRequest {
+                        public_model: "haiku-public".to_string(),
+                        upstream_model: "upstream-haiku".to_string(),
+                        ..Default::default()
+                    }],
+                },
             )
             .expect("replace models")
             .expect("models after replace");

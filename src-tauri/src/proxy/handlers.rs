@@ -495,7 +495,7 @@ pub async fn replace_proxy_channel_models(
         ChannelPathRequest::from_path(channel_id).map_err(management_api_error_to_proxy_error)?;
     let models = state
         .db
-        .replace_proxy_channel_models(&path_request.channel_id, request.models)
+        .replace_proxy_channel_models(&path_request.channel_id, request)
         .map_err(|e| ProxyError::InvalidRequest(e.to_string()))?
         .map(proxy_channel_model_records_to_core);
 

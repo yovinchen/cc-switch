@@ -1,7 +1,7 @@
 use super::domain::{parse_auth_profile_ref, DEFAULT_ROUTE_GROUP};
 use super::ports::{
     ProxyChannelKeyPatchRequest, ProxyChannelKeyWriteRequest, ProxyChannelModelWriteRequest,
-    ProxyChannelWriteRequest,
+    ProxyChannelModelsReplaceRequest, ProxyChannelWriteRequest,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
@@ -60,6 +60,15 @@ pub fn validate_proxy_channel_model_write_request_fields(
 ) -> Result<(), ChannelRequestValidationError> {
     normalize_required_channel_string(&model.public_model, "publicModel")?;
     normalize_required_channel_string(&model.upstream_model, "upstreamModel")?;
+    Ok(())
+}
+
+pub fn validate_proxy_channel_models_replace_request_fields(
+    request: &ProxyChannelModelsReplaceRequest,
+) -> Result<(), ChannelRequestValidationError> {
+    for model in &request.models {
+        validate_proxy_channel_model_write_request_fields(model)?;
+    }
     Ok(())
 }
 
@@ -167,12 +176,14 @@ mod tests {
         normalize_channel_groups, normalize_optional_channel_string,
         normalize_required_channel_string, validate_optional_channel_auth_profile_ref,
         validate_proxy_channel_model_write_request_fields,
+        validate_proxy_channel_models_replace_request_fields,
         validate_proxy_channel_key_patch_request_fields,
-        validate_proxy_channel_key_write_request_fields, validate_proxy_channel_write_request_fields,
+        validate_proxy_channel_key_write_request_fields,
+        validate_proxy_channel_write_request_fields,
     };
     use crate::ports::{
         ProxyChannelKeyPatchRequest, ProxyChannelKeyWriteRequest, ProxyChannelModelWriteRequest,
-        ProxyChannelWriteRequest,
+        ProxyChannelModelsReplaceRequest, ProxyChannelWriteRequest,
     };
     use serde_json::json;
 
@@ -306,6 +317,31 @@ mod tests {
             .unwrap_err()
             .message,
             "upstreamModel cannot be empty"
+        );
+    }
+
+    #[test]
+    fn models_replace_request_validation_reuses_model_rules() {
+        validate_proxy_channel_models_replace_request_fields(&ProxyChannelModelsReplaceRequest {
+            models: vec![ProxyChannelModelWriteRequest {
+                public_model: "sonnet".to_string(),
+                upstream_model: "claude-sonnet-4".to_string(),
+                ..Default::default()
+            }],
+        })
+        .unwrap();
+
+        assert_eq!(
+            validate_proxy_channel_models_replace_request_fields(&ProxyChannelModelsReplaceRequest {
+                models: vec![ProxyChannelModelWriteRequest {
+                    public_model: " ".to_string(),
+                    upstream_model: "claude-sonnet-4".to_string(),
+                    ..Default::default()
+                }],
+            })
+            .unwrap_err()
+            .message,
+            "publicModel cannot be empty"
         );
     }
 
