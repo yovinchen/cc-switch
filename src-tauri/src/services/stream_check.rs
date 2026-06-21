@@ -28,7 +28,7 @@ use crate::proxy_core_adapter::{
     channel_reachability_status_from_latency, provider_custom_user_agent_header,
     provider_hermes_stream_check_base_url, provider_opencode_stream_check_base_url,
     provider_opencode_stream_check_npm, provider_openclaw_stream_check_base_url,
-    should_retry_channel_reachability_failure,
+    provider_stream_check_test_config, should_retry_channel_reachability_failure,
 };
 
 pub use crate::proxy_core_adapter::{
@@ -96,11 +96,7 @@ impl StreamCheckService {
 
     /// 合并供应商单独配置（`meta.testConfig`，仅当 `enabled`）与全局配置。
     fn merge_provider_config(provider: &Provider, global: &StreamCheckConfig) -> StreamCheckConfig {
-        let tc = provider
-            .meta
-            .as_ref()
-            .and_then(|m| m.test_config.as_ref())
-            .filter(|tc| tc.enabled);
+        let tc = provider_stream_check_test_config(provider);
 
         match tc {
             Some(tc) => StreamCheckConfig {

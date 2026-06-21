@@ -5,7 +5,7 @@ use crate::database::{
     ProxyChannelMigrationPreview, ProxyChannelMaterializeResult, ProxyChannelSourceKind,
 };
 use crate::error::AppError;
-use crate::provider::{Provider, ProviderMeta, UsageScript};
+use crate::provider::{Provider, ProviderMeta, ProviderTestConfig, UsageScript};
 use crate::proxy::hyper_client::ProxyResponse;
 use crate::proxy::providers::provider_kind_from_app_type_and_config;
 use crate::proxy::route_attempt::ForwardAttempt;
@@ -3247,6 +3247,16 @@ pub(crate) fn provider_claude_desktop_routes_support_1m_by_default(
     )
 }
 
+pub(crate) fn provider_stream_check_test_config(
+    provider: &Provider,
+) -> Option<&ProviderTestConfig> {
+    provider
+        .meta
+        .as_ref()
+        .and_then(|meta| meta.test_config.as_ref())
+        .filter(|config| config.enabled)
+}
+
 pub(crate) fn provider_is_full_url(provider: &Provider) -> bool {
     provider
         .meta
@@ -6115,6 +6125,12 @@ mod tests {
                 auto_query_interval: None,
                 coding_plan_provider: None,
             }),
+            test_config: Some(ProviderTestConfig {
+                enabled: true,
+                timeout_secs: Some(20),
+                degraded_threshold_ms: Some(3000),
+                max_retries: None,
+            }),
             ..ProviderMeta::default()
         });
 
@@ -6129,6 +6145,8 @@ mod tests {
         let models_are_claude_safe = provider_claude_models_are_claude_safe(&provider);
         let supports_1m_by_default =
             provider_claude_desktop_routes_support_1m_by_default(&provider);
+        let stream_check_timeout_secs =
+            provider_stream_check_test_config(&provider).and_then(|config| config.timeout_secs);
         assert_eq!(
             provider_usage_script(Some(&provider)).and_then(|script| script.template_type.as_deref()),
             Some("github_copilot")
@@ -6183,6 +6201,7 @@ mod tests {
         assert!(has_claude_env);
         assert!(models_are_claude_safe);
         assert!(!supports_1m_by_default);
+        assert_eq!(stream_check_timeout_secs, Some(20));
         assert!(usage_provider_is_full_url);
         assert_eq!(provider_user_agent, http::HeaderValue::from_static("cc-switch-test/1.0"));
         assert!(copilot_provider_user_agent.is_none());
