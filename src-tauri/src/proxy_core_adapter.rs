@@ -816,6 +816,18 @@ pub(crate) fn proxy_event_envelope_to_sse_spec(
     event.to_sse_spec()
 }
 
+pub(crate) struct ProxyEventBusMessage {
+    pub(crate) event_name: String,
+    pub(crate) payload: Value,
+}
+
+pub(crate) fn proxy_core_event_to_bus_message(event: ProxyCoreEvent) -> ProxyEventBusMessage {
+    ProxyEventBusMessage {
+        event_name: event.event_type.event_name(),
+        payload: event.into_event_payload(),
+    }
+}
+
 pub(crate) fn append_utf8_safe(
     buffer: &mut String,
     remainder: &mut Vec<u8>,
@@ -3339,6 +3351,17 @@ mod tests {
         assert_eq!(spec.id, "42");
         assert_eq!(spec.event, "request_started");
         assert!(spec.data.contains("\"provider\":\"relay-a\""));
+
+        let message = proxy_core_event_to_bus_message(ProxyCoreEvent {
+            event_type: ProxyCoreEventType::RouteSelected,
+            request_id: Some("req-1".to_string()),
+            channel_id: Some("channel-a".to_string()),
+            payload: json!({"attemptCount": 2}),
+        });
+        assert_eq!(message.event_name, "route_selected");
+        assert_eq!(message.payload["requestId"], "req-1");
+        assert_eq!(message.payload["channelId"], "channel-a");
+        assert_eq!(message.payload["attemptCount"], 2);
     }
 
     #[test]
