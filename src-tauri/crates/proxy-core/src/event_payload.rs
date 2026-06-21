@@ -3,6 +3,8 @@ use serde_json::{json, Value};
 
 pub const PROXY_EVENTS_CONNECTED_EVENT: &str = "proxy_events_connected";
 pub const PROXY_EVENTS_LAGGED_EVENT: &str = "proxy_events_lagged";
+pub const SERVER_STARTED_EVENT: &str = "server_started";
+pub const SERVER_STOPPED_EVENT: &str = "server_stopped";
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
@@ -136,6 +138,17 @@ pub fn build_request_started_event_payload(request_id: &str, app_type: &str) -> 
     })
 }
 
+pub fn build_server_started_event_payload(address: &str, port: u16) -> Value {
+    json!({
+        "address": address,
+        "port": port,
+    })
+}
+
+pub fn build_server_stopped_event_payload() -> Value {
+    json!({})
+}
+
 pub fn build_proxy_events_connected_payload(buffer_size: usize) -> Value {
     json!({
         "bufferSize": buffer_size,
@@ -153,7 +166,9 @@ mod tests {
     use super::{
         attempt_event_name, build_attempt_event_payload, build_proxy_events_connected_payload,
         build_proxy_events_lagged_payload, build_request_started_event_payload,
+        build_server_started_event_payload, build_server_stopped_event_payload,
         AttemptEventChannel, AttemptEventPayloadInput, AttemptEventPhase, ProxyEventEnvelope,
+        SERVER_STARTED_EVENT, SERVER_STOPPED_EVENT,
     };
 
     #[test]
@@ -233,6 +248,19 @@ mod tests {
 
         assert_eq!(payload["requestId"], "req-1");
         assert_eq!(payload["appType"], "claude");
+    }
+
+    #[test]
+    fn server_lifecycle_event_contracts_keep_existing_shape() {
+        assert_eq!(SERVER_STARTED_EVENT, "server_started");
+        assert_eq!(SERVER_STOPPED_EVENT, "server_stopped");
+
+        let started = build_server_started_event_payload("127.0.0.1", 15721);
+        assert_eq!(started["address"], "127.0.0.1");
+        assert_eq!(started["port"], 15721);
+
+        let stopped = build_server_stopped_event_payload();
+        assert!(stopped.as_object().is_some_and(|object| object.is_empty()));
     }
 
     #[test]

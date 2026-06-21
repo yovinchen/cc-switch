@@ -961,6 +961,10 @@ pub(crate) const PROXY_EVENTS_CONNECTED_EVENT: &str =
     crate::proxy_core::api::events::PROXY_EVENTS_CONNECTED_EVENT;
 pub(crate) const PROXY_EVENTS_LAGGED_EVENT: &str =
     crate::proxy_core::api::events::PROXY_EVENTS_LAGGED_EVENT;
+pub(crate) const SERVER_STARTED_EVENT: &str =
+    crate::proxy_core::api::events::SERVER_STARTED_EVENT;
+pub(crate) const SERVER_STOPPED_EVENT: &str =
+    crate::proxy_core::api::events::SERVER_STOPPED_EVENT;
 
 pub(crate) fn build_proxy_events_connected_payload(buffer_size: usize) -> Value {
     crate::proxy_core::api::events::build_proxy_events_connected_payload(buffer_size)
@@ -968,6 +972,14 @@ pub(crate) fn build_proxy_events_connected_payload(buffer_size: usize) -> Value 
 
 pub(crate) fn build_proxy_events_lagged_payload(skipped: u64) -> Value {
     crate::proxy_core::api::events::build_proxy_events_lagged_payload(skipped)
+}
+
+pub(crate) fn build_server_started_event_payload(address: &str, port: u16) -> Value {
+    crate::proxy_core::api::events::build_server_started_event_payload(address, port)
+}
+
+pub(crate) fn build_server_stopped_event_payload() -> Value {
+    crate::proxy_core::api::events::build_server_stopped_event_payload()
 }
 
 pub(crate) fn proxy_event_envelope_to_sse_spec(
@@ -4009,8 +4021,17 @@ mod tests {
     fn proxy_event_adapter_projects_event_stream_contracts() {
         assert_eq!(PROXY_EVENTS_CONNECTED_EVENT, "proxy_events_connected");
         assert_eq!(PROXY_EVENTS_LAGGED_EVENT, "proxy_events_lagged");
+        assert_eq!(SERVER_STARTED_EVENT, "server_started");
+        assert_eq!(SERVER_STOPPED_EVENT, "server_stopped");
         assert_eq!(build_proxy_events_connected_payload(256)["bufferSize"], 256);
         assert_eq!(build_proxy_events_lagged_payload(3)["skipped"], 3);
+        assert_eq!(
+            build_server_started_event_payload("127.0.0.1", 15721),
+            json!({"address": "127.0.0.1", "port": 15721})
+        );
+        assert!(build_server_stopped_event_payload()
+            .as_object()
+            .is_some_and(|object| object.is_empty()));
 
         let envelope = ProxyEventEnvelope::new(
             42,
