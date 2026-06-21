@@ -125,6 +125,47 @@ pub fn legacy_channel_priority(
     }
 }
 
+pub fn legacy_provider_config_text_from_settings(settings_config: &Value) -> Option<&str> {
+    settings_config.get("config").and_then(Value::as_str)
+}
+
+pub fn legacy_provider_env_from_settings(settings_config: &Value) -> BTreeMap<String, String> {
+    settings_config
+        .get("env")
+        .and_then(Value::as_object)
+        .map(|env| {
+            env.iter()
+                .filter_map(|(key, value)| {
+                    value
+                        .as_str()
+                        .map(|model| (key.to_string(), model.to_string()))
+                })
+                .collect::<BTreeMap<_, _>>()
+        })
+        .unwrap_or_default()
+}
+
+pub fn legacy_provider_codex_catalog_models_from_settings(
+    settings_config: &Value,
+) -> Vec<String> {
+    settings_config
+        .get("modelCatalog")
+        .and_then(|catalog| catalog.get("models"))
+        .and_then(Value::as_array)
+        .map(|models| {
+            models
+                .iter()
+                .filter_map(|entry| {
+                    entry
+                        .get("model")
+                        .and_then(Value::as_str)
+                        .map(ToString::to_string)
+                })
+                .collect::<Vec<_>>()
+        })
+        .unwrap_or_default()
+}
+
 pub fn build_legacy_channel_projection(
     input: LegacyChannelProjectionInput,
 ) -> LegacyChannelProjection {
@@ -312,10 +353,13 @@ fn push_model_route(
 mod tests {
     use super::{
         build_legacy_channel_projection, infer_legacy_channel_interface, infer_legacy_model_routes,
-        legacy_channel_priority, push_model_route, LegacyChannelProjectionInput,
-        LegacyModelRouteInput, LegacyModelRouteProjection, LegacyProviderProjectionInput,
+        legacy_channel_priority, legacy_provider_codex_catalog_models_from_settings,
+        legacy_provider_config_text_from_settings, legacy_provider_env_from_settings,
+        push_model_route, LegacyChannelProjectionInput, LegacyModelRouteInput,
+        LegacyModelRouteProjection, LegacyProviderProjectionInput,
     };
     use crate::domain::{AppKind, InterfaceKind};
+    use serde_json::json;
 
     #[test]
     fn infer_claude_interface_from_api_format_aliases() {
@@ -401,6 +445,52 @@ mod tests {
             infer_legacy_channel_interface(None, &Default::default()),
             InterfaceKind::Custom("custom".to_string())
         );
+    }
+
+    #[test]
+    fn legacy_provider_settings_projection_extracts_json_shapes() {
+        let settings = json!({
+            "config": "model = \"gpt-5.4\"",
+            "env": {
+                "ANTHROPIC_MODEL": "claude-sonnet-4",
+                "IGNORED_NON_STRING": 123
+            },
+            "modelCatalog": {
+                "models": [
+                    { "model": "gpt-5.4" },
+                    { "model": "gpt-5.4-mini" },
+                    { "id": "skip" },
+                    { "model": 123 }
+                ]
+            }
+        });
+
+        assert_eq!(
+            legacy_provider_config_text_from_settings(&settings),
+            Some("model = \"gpt-5.4\"")
+        );
+        assert_eq!(
+            legacy_provider_env_from_settings(&settings)
+                .get("ANTHROPIC_MODEL")
+                .map(String::as_str),
+            Some("claude-sonnet-4")
+        );
+        assert!(
+            !legacy_provider_env_from_settings(&settings)
+                .contains_key("IGNORED_NON_STRING")
+        );
+        assert_eq!(
+            legacy_provider_codex_catalog_models_from_settings(&settings),
+            vec!["gpt-5.4".to_string(), "gpt-5.4-mini".to_string()]
+        );
+
+        let empty = json!({
+            "env": [],
+            "modelCatalog": { "models": {} }
+        });
+        assert_eq!(legacy_provider_config_text_from_settings(&empty), None);
+        assert!(legacy_provider_env_from_settings(&empty).is_empty());
+        assert!(legacy_provider_codex_catalog_models_from_settings(&empty).is_empty());
     }
 
     #[test]

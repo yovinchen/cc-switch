@@ -851,6 +851,7 @@ mod tests {
     use bytes::Bytes;
     use futures::StreamExt;
     use http::{Method, StatusCode};
+    use serde_json::json;
     use std::ffi::OsString;
 
     struct IsolatedTestHome {

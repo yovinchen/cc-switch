@@ -1208,6 +1208,24 @@ pub(crate) fn legacy_channel_priority(
     )
 }
 
+pub(crate) fn legacy_provider_config_text_from_settings(settings_config: &Value) -> Option<&str> {
+    crate::proxy_core::api::routing::legacy_provider_config_text_from_settings(settings_config)
+}
+
+pub(crate) fn legacy_provider_env_from_settings(
+    settings_config: &Value,
+) -> std::collections::BTreeMap<String, String> {
+    crate::proxy_core::api::routing::legacy_provider_env_from_settings(settings_config)
+}
+
+pub(crate) fn legacy_provider_codex_catalog_models_from_settings(
+    settings_config: &Value,
+) -> Vec<String> {
+    crate::proxy_core::api::routing::legacy_provider_codex_catalog_models_from_settings(
+        settings_config,
+    )
+}
+
 pub(crate) fn infer_legacy_channel_interface(
     app: Option<&ProxyCoreAppKind>,
     provider: &LegacyProviderProjectionInput,
@@ -1224,41 +1242,10 @@ pub(crate) fn build_legacy_channel_projection(
 pub(crate) fn legacy_provider_projection_input(
     provider: &Provider,
 ) -> LegacyProviderProjectionInput {
-    let config_text = provider
-        .settings_config
-        .get("config")
-        .and_then(|value| value.as_str());
-    let env = provider
-        .settings_config
-        .get("env")
-        .and_then(|value| value.as_object())
-        .map(|env| {
-            env.iter()
-                .filter_map(|(key, value)| {
-                    value
-                        .as_str()
-                        .map(|model| (key.to_string(), model.to_string()))
-                })
-                .collect::<std::collections::BTreeMap<_, _>>()
-        })
-        .unwrap_or_default();
-    let codex_catalog_models = provider
-        .settings_config
-        .get("modelCatalog")
-        .and_then(|catalog| catalog.get("models"))
-        .and_then(|models| models.as_array())
-        .map(|models| {
-            models
-                .iter()
-                .filter_map(|entry| {
-                    entry
-                        .get("model")
-                        .and_then(|value| value.as_str())
-                        .map(ToString::to_string)
-                })
-                .collect::<Vec<_>>()
-        })
-        .unwrap_or_default();
+    let config_text = legacy_provider_config_text_from_settings(&provider.settings_config);
+    let env = legacy_provider_env_from_settings(&provider.settings_config);
+    let codex_catalog_models =
+        legacy_provider_codex_catalog_models_from_settings(&provider.settings_config);
     let (api_format, claude_desktop_model_routes) = provider
         .meta
         .as_ref()
@@ -3473,6 +3460,21 @@ mod tests {
             claude_desktop_model_routes: routes,
             ..ProviderMeta::default()
         });
+
+        assert!(
+            legacy_provider_config_text_from_settings(&provider.settings_config)
+                .is_some_and(|config| config.contains("wire_api = \"chat\""))
+        );
+        assert_eq!(
+            legacy_provider_env_from_settings(&provider.settings_config)
+                .get("ANTHROPIC_MODEL")
+                .map(String::as_str),
+            Some("claude-sonnet-4")
+        );
+        assert_eq!(
+            legacy_provider_codex_catalog_models_from_settings(&provider.settings_config),
+            vec!["gpt-5.4".to_string(), "gpt-5.4-mini".to_string()]
+        );
 
         let projection = legacy_provider_projection_input(&provider);
 
