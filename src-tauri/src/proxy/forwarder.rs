@@ -48,10 +48,11 @@ use crate::proxy_core_adapter::{
     should_rectify_thinking_signature, should_resolve_copilot_dynamic_endpoint,
     should_send_anthropic_request_headers, should_trigger_media_retry,
     strip_copilot_thinking_blocks, strip_one_m_suffix_for_upstream,
-    strip_one_m_suffix_for_upstream_from_body, supports_reasoning_effort,
-    thinking_optimization_log_message, validate_managed_account_upstream_auth,
-    AttemptEventPhase, CopilotAuthHeaderOverrides, CopilotOptimizerConfig, CurrentRouteTarget,
-    ForwardFailureCategory,
+    strip_one_m_suffix_for_upstream_from_body, streaming_body_ended_before_first_chunk_message,
+    streaming_body_first_chunk_read_error_message, streaming_body_first_chunk_timeout_message,
+    streaming_header_timeout_message, supports_reasoning_effort, thinking_optimization_log_message,
+    validate_managed_account_upstream_auth, AttemptEventPhase, CopilotAuthHeaderOverrides,
+    CopilotOptimizerConfig, CurrentRouteTarget, ForwardFailureCategory,
     ForwardUpstreamUrlPlanInput, GeminiShadowStore, MediaRetryInput, OptimizerConfig,
     PromptCacheTraceLogInput,
     ProviderKind, ProxyRuntimeStatus, RectifierConfig, ResolvedChannelAttempt,
@@ -1681,10 +1682,7 @@ impl RequestForwarder {
                 tokio::time::timeout(header_timeout, send)
                     .await
                     .map_err(|_| {
-                        ProxyError::Timeout(format!(
-                            "流式响应首包超时: {}s（上游未返回响应头）",
-                            header_timeout.as_secs()
-                        ))
+                        ProxyError::Timeout(streaming_header_timeout_message(header_timeout))
                     })?
             } else {
                 send.await
@@ -1808,20 +1806,18 @@ impl RequestForwarder {
         let first = tokio::time::timeout(timeout, stream.next())
             .await
             .map_err(|_| {
-                ProxyError::Timeout(format!(
-                    "流式响应首包超时: {}s（上游已返回响应头但未返回数据）",
-                    timeout.as_secs()
-                ))
+                ProxyError::Timeout(streaming_body_first_chunk_timeout_message(timeout))
             })?;
 
         let Some(first) = first else {
             return Err(ProxyError::ForwardFailed(
-                "流式响应在首包到达前结束".to_string(),
+                streaming_body_ended_before_first_chunk_message().to_string(),
             ));
         };
 
-        let first =
-            first.map_err(|e| ProxyError::ForwardFailed(format!("读取流式响应首包失败: {e}")))?;
+        let first = first.map_err(|e| {
+            ProxyError::ForwardFailed(streaming_body_first_chunk_read_error_message(e))
+        })?;
 
         let replay = futures::stream::once(async move { Ok(first) }).chain(stream);
         Ok(ProxyResponse::streamed(status, headers, replay))

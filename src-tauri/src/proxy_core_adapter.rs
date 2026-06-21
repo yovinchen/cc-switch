@@ -2870,6 +2870,24 @@ pub(crate) fn non_streaming_body_timeout_message(timeout: std::time::Duration) -
     crate::proxy_core::api::transport::non_streaming_body_timeout_message(timeout)
 }
 
+pub(crate) fn streaming_header_timeout_message(timeout: std::time::Duration) -> String {
+    crate::proxy_core::api::transport::streaming_header_timeout_message(timeout)
+}
+
+pub(crate) fn streaming_body_first_chunk_timeout_message(timeout: std::time::Duration) -> String {
+    crate::proxy_core::api::transport::streaming_body_first_chunk_timeout_message(timeout)
+}
+
+pub(crate) fn streaming_body_ended_before_first_chunk_message() -> &'static str {
+    crate::proxy_core::api::transport::streaming_body_ended_before_first_chunk_message()
+}
+
+pub(crate) fn streaming_body_first_chunk_read_error_message(
+    error: impl std::fmt::Display,
+) -> String {
+    crate::proxy_core::api::transport::streaming_body_first_chunk_read_error_message(error)
+}
+
 pub(crate) fn passthrough_bytes_proxy_response(
     status: StatusCode,
     headers: HeaderMap,

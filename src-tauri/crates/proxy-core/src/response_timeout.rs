@@ -67,6 +67,30 @@ pub fn non_streaming_body_timeout_message(timeout: Duration) -> String {
     )
 }
 
+pub fn streaming_header_timeout_message(timeout: Duration) -> String {
+    format!(
+        "流式响应首包超时: {}s（上游未返回响应头）",
+        timeout.as_secs()
+    )
+}
+
+pub fn streaming_body_first_chunk_timeout_message(timeout: Duration) -> String {
+    format!(
+        "流式响应首包超时: {}s（上游已返回响应头但未返回数据）",
+        timeout.as_secs()
+    )
+}
+
+pub fn streaming_body_ended_before_first_chunk_message() -> &'static str {
+    "流式响应在首包到达前结束"
+}
+
+pub fn streaming_body_first_chunk_read_error_message(
+    error: impl std::fmt::Display,
+) -> String {
+    format!("读取流式响应首包失败: {error}")
+}
+
 pub fn resolve_response_runtime_policy(
     auto_failover_enabled: bool,
     max_retries: u32,
@@ -197,6 +221,26 @@ mod tests {
         assert_eq!(
             non_streaming_body_timeout_message(Duration::from_secs(45)),
             "响应体读取超时: 45s（上游发完响应头后 body 未到达）"
+        );
+    }
+
+    #[test]
+    fn streaming_response_timeout_messages_match_host_contract() {
+        assert_eq!(
+            streaming_header_timeout_message(Duration::from_secs(12)),
+            "流式响应首包超时: 12s（上游未返回响应头）"
+        );
+        assert_eq!(
+            streaming_body_first_chunk_timeout_message(Duration::from_secs(30)),
+            "流式响应首包超时: 30s（上游已返回响应头但未返回数据）"
+        );
+        assert_eq!(
+            streaming_body_ended_before_first_chunk_message(),
+            "流式响应在首包到达前结束"
+        );
+        assert_eq!(
+            streaming_body_first_chunk_read_error_message("connection reset"),
+            "读取流式响应首包失败: connection reset"
         );
     }
 
