@@ -36,7 +36,7 @@ use crate::proxy_core_adapter::{
     rectify_thinking_budget, replace_image_blocks_with_marker, record_active_connection_acquired_status,
     record_active_connection_released_status, record_forward_failure_status,
     record_forward_request_started_status, record_forward_success_status,
-    replace_images_for_text_only_model, request_body_filter_log_message,
+    replace_images_for_text_only_provider_model, request_body_filter_log_message,
     resolve_claude_forward_api_format, route_selected_event_name,
     resolve_copilot_deterministic_interaction_id, resolve_copilot_model_against_ids,
     resolve_copilot_optimizer_session_id, resolve_copilot_request_id_with_fallback,
@@ -178,11 +178,8 @@ impl RequestForwarder {
         if !policy.should_attempt {
             return 0;
         }
-        let replaced_images = replace_images_for_text_only_model(
-            body,
-            &provider.settings_config,
-            policy.allow_heuristic,
-        );
+        let replaced_images =
+            replace_images_for_text_only_provider_model(body, provider, policy.allow_heuristic);
         if replaced_images > 0 {
             let model = body.get("model").and_then(Value::as_str).unwrap_or("");
             log::info!(
@@ -1216,9 +1213,9 @@ impl RequestForwarder {
             crate::claude_desktop_config::map_proxy_request_model(body.clone(), provider)
                 .map_err(|e| ProxyError::InvalidRequest(e.to_string()))?
         } else {
-            let projection = crate::proxy_core_adapter::apply_provider_model_mapping(
+            let projection = crate::proxy_core_adapter::apply_provider_model_mapping_from_provider(
                 body.clone(),
-                &provider.settings_config,
+                provider,
             );
             if let Some(message) = projection.log_message {
                 log::debug!("{message}");

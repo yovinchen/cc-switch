@@ -2734,6 +2734,21 @@ pub(crate) fn apply_provider_model_mapping(
     crate::proxy_core::api::model_catalog::apply_provider_model_mapping(body, provider_settings)
 }
 
+pub(crate) fn apply_provider_model_mapping_from_provider(
+    body: Value,
+    provider: &Provider,
+) -> ModelMappingProjection {
+    apply_provider_model_mapping(body, &provider.settings_config)
+}
+
+pub(crate) fn replace_images_for_text_only_provider_model(
+    body: &mut Value,
+    provider: &Provider,
+    allow_heuristic: bool,
+) -> usize {
+    replace_images_for_text_only_model(body, &provider.settings_config, allow_heuristic)
+}
+
 pub(crate) fn rewrite_codex_responses_endpoint_to_chat(
     endpoint: &str,
 ) -> (String, Option<String>) {
@@ -5458,13 +5473,20 @@ mod tests {
 
     #[test]
     fn model_mapping_adapter_projects_body_and_log_message() {
-        let projection = apply_provider_model_mapping(
-            json!({"model": "claude-sonnet", "messages": []}),
-            &json!({
+        let provider = Provider::with_id(
+            "provider-a".to_string(),
+            "Provider A".to_string(),
+            json!({
                 "env": {
                     "ANTHROPIC_DEFAULT_SONNET_MODEL": "sonnet-mapped"
                 }
             }),
+            None,
+        );
+
+        let projection = apply_provider_model_mapping_from_provider(
+            json!({"model": "claude-sonnet", "messages": []}),
+            &provider,
         );
 
         assert_eq!(
@@ -5476,12 +5498,44 @@ mod tests {
             Some("[ModelMapper] 模型映射: claude-sonnet \u{2192} sonnet-mapped")
         );
 
-        let unchanged = apply_provider_model_mapping(json!({"model": "unknown"}), &json!({}));
+        let unchanged = apply_provider_model_mapping_from_provider(
+            json!({"model": "unknown"}),
+            &Provider::with_id(
+                "provider-b".to_string(),
+                "Provider B".to_string(),
+                json!({}),
+                None,
+            ),
+        );
         assert_eq!(
             unchanged.body.get("model").and_then(Value::as_str),
             Some("unknown")
         );
         assert!(unchanged.log_message.is_none());
+
+        let mut image_body = json!({
+            "model": "text-model",
+            "messages": [{
+                "role": "user",
+                "content": [
+                    { "type": "image", "source": { "type": "base64", "media_type": "image/png", "data": "abc" } }
+                ]
+            }]
+        });
+        let text_only_provider = Provider::with_id(
+            "provider-c".to_string(),
+            "Provider C".to_string(),
+            json!({
+                "models": [ { "id": "text-model", "input": ["text"] } ]
+            }),
+            None,
+        );
+
+        assert_eq!(
+            replace_images_for_text_only_provider_model(&mut image_body, &text_only_provider, false),
+            1
+        );
+        assert_eq!(image_body["messages"][0]["content"][0]["type"], "text");
     }
 
     #[test]
