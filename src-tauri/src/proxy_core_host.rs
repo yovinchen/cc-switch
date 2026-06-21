@@ -31,6 +31,8 @@ use crate::proxy_core_adapter::{
     channel_auth_profile_action,
     channel_health_reset_from_parts,
     channel_key_auth_error,
+    channel_spec_from_source,
+    channel_specs_from_source,
     codex_client_model_catalog_raw_from_active_config,
     current_provider_db_fallback_required,
     current_provider_id_from_sources,
@@ -45,7 +47,6 @@ use crate::proxy_core_adapter::{
     provider_model_catalog_from_provider,
     proxy_app_config_from_config_source_parts, proxy_global_config_from_config,
     proxy_runtime_config_from_config_source,
-    proxy_channel_record_to_core_spec, proxy_channel_records_to_core_specs_for_query,
     response_runtime_policy_from_app_proxy_config,
     route_plan_no_matching_host_providers_error,
     route_policy_from_failover_queue,
@@ -304,8 +305,7 @@ impl ChannelSource for CcSwitchChannelSource {
                     .list_proxy_channels_for_app(query.app.as_str())
                     .map_err(|error| app_error("list materialized channels", error))?
             };
-            let channels = proxy_channel_records_to_core_specs_for_query(channels, &query);
-            Ok(channels)
+            Ok(channel_specs_from_source(channels, &query))
         })
     }
 
@@ -318,7 +318,7 @@ impl ChannelSource for CcSwitchChannelSource {
                 .db
                 .get_proxy_channel(channel_id)
                 .map_err(|error| app_error("get channel", error))?;
-            Ok(channel.map(|channel| proxy_channel_record_to_core_spec(&channel)))
+            Ok(channel_spec_from_source(channel))
         })
     }
 }

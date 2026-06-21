@@ -1632,6 +1632,17 @@ pub(crate) fn proxy_channel_records_to_core_specs_for_query(
         .collect()
 }
 
+pub(crate) fn channel_specs_from_source(
+    channels: impl IntoIterator<Item = ProxyChannelRecord>,
+    query: &ChannelQuery<'_>,
+) -> Vec<ChannelSpec> {
+    proxy_channel_records_to_core_specs_for_query(channels, query)
+}
+
+pub(crate) fn channel_spec_from_source(channel: Option<ProxyChannelRecord>) -> Option<ChannelSpec> {
+    channel.map(|channel| proxy_channel_record_to_core_spec(&channel))
+}
+
 pub(crate) fn proxy_channel_group_inputs_to_core(
     channels: impl IntoIterator<Item = ProxyChannelRecord>,
 ) -> Vec<GroupListChannelRecordInput> {
@@ -4759,7 +4770,9 @@ mod tests {
         };
 
         let spec = channel.to_proxy_core_channel_spec();
+        let source_spec = channel_spec_from_source(Some(channel.clone())).expect("channel spec");
 
+        assert_eq!(source_spec.id, "ch-1");
         assert_eq!(spec.app, AppKind::Claude);
         assert_eq!(spec.endpoint.base_url, "https://relay.example.com/v1");
         assert_eq!(spec.interface, InterfaceKind::OpenAiChatCompletions);
