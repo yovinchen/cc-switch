@@ -961,6 +961,14 @@ pub(crate) fn normalize_codex_chat_reasoning_profile(
     crate::proxy_core::api::transforms::normalize_codex_chat_reasoning_profile(profile)
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct ForwarderRuntimeOptions {
+    pub(crate) non_streaming_timeout: u64,
+    pub(crate) streaming_first_byte_timeout: u64,
+    pub(crate) streaming_idle_timeout: u64,
+    pub(crate) max_retries: u32,
+}
+
 pub(crate) fn resolve_response_runtime_policy(
     auto_failover_enabled: bool,
     max_retries: u32,
@@ -987,6 +995,18 @@ pub(crate) fn response_runtime_policy_from_app_proxy_config(
         config.streaming_first_byte_timeout as u64,
         config.streaming_idle_timeout as u64,
     )
+}
+
+pub(crate) fn forwarder_runtime_options_from_app_proxy_config(
+    config: &AppProxyConfig,
+) -> ForwarderRuntimeOptions {
+    let policy = response_runtime_policy_from_app_proxy_config(config);
+    ForwarderRuntimeOptions {
+        non_streaming_timeout: policy.timeout.non_streaming_timeout,
+        streaming_first_byte_timeout: policy.timeout.streaming.first_byte_timeout,
+        streaming_idle_timeout: policy.timeout.streaming.idle_timeout,
+        max_retries: policy.max_retries,
+    }
 }
 
 pub(crate) fn extract_gemini_model_from_path(endpoint: &str) -> Option<String> {
@@ -3506,6 +3526,15 @@ mod tests {
         assert_eq!(enabled_policy.timeout.non_streaming_timeout, 600);
         assert_eq!(enabled_policy.timeout.streaming.first_byte_timeout, 60);
         assert_eq!(enabled_policy.timeout.streaming.idle_timeout, 120);
+        assert_eq!(
+            forwarder_runtime_options_from_app_proxy_config(&app_config),
+            ForwarderRuntimeOptions {
+                non_streaming_timeout: 600,
+                streaming_first_byte_timeout: 60,
+                streaming_idle_timeout: 120,
+                max_retries: 3,
+            }
+        );
         let projected_app = proxy_app_config_from_config_source_parts(
             AppKind::Claude,
             app_config.clone(),
@@ -3525,6 +3554,19 @@ mod tests {
         let disabled_policy = response_runtime_policy_from_app_proxy_config(&disabled_app_config);
         assert_eq!(disabled_policy.max_retries, 0);
         assert_eq!(disabled_policy.timeout, ResponseTimeoutConfig::default());
+        assert_eq!(
+            forwarder_runtime_options_from_app_proxy_config(&disabled_app_config),
+            ForwarderRuntimeOptions {
+                non_streaming_timeout: ResponseTimeoutConfig::default().non_streaming_timeout,
+                streaming_first_byte_timeout: ResponseTimeoutConfig::default()
+                    .streaming
+                    .first_byte_timeout,
+                streaming_idle_timeout: ResponseTimeoutConfig::default()
+                    .streaming
+                    .idle_timeout,
+                max_retries: 0,
+            }
+        );
         assert_eq!(
             serde_json::to_value(GlobalProxyConfig {
                 proxy_enabled: true,

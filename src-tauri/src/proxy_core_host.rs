@@ -36,6 +36,7 @@ use crate::proxy_core_adapter::{
     current_provider_id_from_settings_for_app,
     current_provider_id_from_settings_for_app_type,
     forward_current_provider_id_from_source,
+    forwarder_runtime_options_from_app_proxy_config,
     forward_runtime_request_from_proxy_request,
     forward_result_to_proxy_result,
     forwarding_runtime_unavailable_error,
@@ -47,7 +48,6 @@ use crate::proxy_core_adapter::{
     emit_proxy_core_event,
     proxy_runtime_config_from_config_source,
     required_forward_attempts_from_plan,
-    response_runtime_policy_from_app_proxy_config,
     route_policy_from_source,
     usage_error,
     usage_pricing_config_lookup_from_record,
@@ -564,12 +564,11 @@ impl CcSwitchProxyRuntime {
         let mut attempts = required_forward_attempts_from_plan(&app_type, &providers, &plan)?;
         apply_channel_auth_profile_providers(&self.db, &app_type, &all_providers, &mut attempts)?;
 
-        let runtime_policy = response_runtime_policy_from_app_proxy_config(&app_config);
-        let timeout_config = runtime_policy.timeout;
+        let forwarder_options = forwarder_runtime_options_from_app_proxy_config(&app_config);
 
         let forwarder = RequestForwarder::new_preplanned(
             self.provider_router.clone(),
-            timeout_config.non_streaming_timeout,
+            forwarder_options.non_streaming_timeout,
             self.status.clone(),
             self.current_providers.clone(),
             self.events.clone(),
@@ -580,12 +579,12 @@ impl CcSwitchProxyRuntime {
             current_provider_id,
             forward_request.session_result.session_id,
             forward_request.session_result.client_provided,
-            timeout_config.streaming.first_byte_timeout,
-            timeout_config.streaming.idle_timeout,
+            forwarder_options.streaming_first_byte_timeout,
+            forwarder_options.streaming_idle_timeout,
             rectifier_config,
             optimizer_config,
             copilot_optimizer_config,
-            runtime_policy.max_retries,
+            forwarder_options.max_retries,
         );
 
         let result = forwarder
