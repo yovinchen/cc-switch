@@ -162,6 +162,35 @@ fn route_resolve_handler_delegates_dry_run_to_proxy_engine() {
 }
 
 #[test]
+fn channel_list_route_branch_delegates_dry_run_to_proxy_engine() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let path = manifest_dir.join("src/proxy/handlers.rs");
+    let source = fs::read_to_string(&path).expect("read handlers.rs");
+    let handler = function_slice(
+        &source,
+        "pub async fn list_proxy_channels",
+        "/// GET /proxy/v1/groups",
+    );
+
+    let mut violations = Vec::new();
+    for (line_index, line) in production_lines(handler) {
+        let code = line.split("//").next().unwrap_or_default();
+        if code.contains(".resolve_channel_route_dry_run(") {
+            violations.push(format!(
+                "src/proxy/handlers.rs list_proxy_channels:{} contains route dry-run marker",
+                line_index + 1
+            ));
+        }
+    }
+
+    assert!(
+        violations.is_empty(),
+        "channel-list route branch must delegate dry-run route resolution to ProxyEngine:\n{}",
+        violations.join("\n")
+    );
+}
+
+#[test]
 fn production_forwarder_stays_preplanned_only() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let mut rust_files = Vec::new();
