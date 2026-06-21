@@ -1795,6 +1795,31 @@ pub(crate) fn proxy_channel_group_inputs_to_core(
         .collect()
 }
 
+pub(crate) fn channel_list_source_from_records(
+    channels: Vec<ProxyChannelRecord>,
+) -> ChannelListSource<ChannelRecord> {
+    ChannelListSource::new(proxy_channel_records_to_core(channels))
+}
+
+pub(crate) fn app_channel_list_source_from_records(
+    source: ChannelRouteSource,
+    channels: Vec<ProxyChannelRecord>,
+) -> AppChannelListSource<ChannelRecord> {
+    AppChannelListSource::new(source, proxy_channel_records_to_core(channels))
+}
+
+pub(crate) fn group_list_channel_source_from_records(
+    app_type: impl Into<String>,
+    source: ChannelRouteSource,
+    channels: Vec<ProxyChannelRecord>,
+) -> GroupListChannelSource {
+    GroupListChannelSource::from_record_inputs(
+        app_type,
+        source,
+        proxy_channel_group_inputs_to_core(channels),
+    )
+}
+
 pub(crate) fn proxy_channel_route_inputs_to_core(
     channels: impl IntoIterator<Item = ProxyChannelRecord>,
 ) -> Vec<RouteResolveChannelInput> {

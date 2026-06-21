@@ -45,21 +45,21 @@ use crate::proxy_core_adapter::{
     rebuilt_json_proxy_response, resolve_management_auth_decision,
     should_aggregate_codex_oauth_responses_sse, should_use_claude_transform_streaming,
     strip_endpoint_prefix, transformed_sse_proxy_response, validate_management_bearer_header,
-    AppChannelListQuery, AppChannelListSource, AppChannelManagementPlan,
-    AppChannelManagementRequest, AppChannelResponse, AppKind, AppListRequest, AppListResponse,
+    AppChannelListQuery, AppChannelManagementPlan, AppChannelManagementRequest,
+    AppChannelResponse, AppKind, AppListRequest, AppListResponse,
     AppListSource, AppModelCatalogRequest, AppModelListQuery, ChannelCreateRequest,
     ChannelCreateSource, ChannelDeleteResponse, ChannelDeleteSource, ChannelHealthResetResponse,
     ChannelHealthResetSource, ChannelKeyDeleteResponse, ChannelKeyDeleteSource,
     ChannelKeyPathRequest, ChannelKeyRecord, ChannelKeyRecordResponse, ChannelKeyRecordSource,
     ChannelKeysResponse, ChannelKeysSource, ChannelListPlan, ChannelListQuery, ChannelListRequest,
-    ChannelListResponse, ChannelListSource, ChannelMigrationMaterializeInput,
+    ChannelListResponse, ChannelMigrationMaterializeInput,
     ChannelMigrationMaterializeResponse, ChannelMigrationMaterializeSource,
     ChannelMigrationPreviewInput, ChannelMigrationPreviewResponse, ChannelMigrationPreviewSource,
     ChannelModelRecord, ChannelModelsResponse, ChannelModelsSource, ChannelPathRequest, ChannelRecord,
     ChannelRecordResponse, ChannelRecordSource, ChannelRouteCandidate, ChannelRouteRejected,
     ChannelTestPlan, ChannelTestResponse, ClaudeDesktopModelListResponse,
     ClientModelCatalogResponse, CodexToolContext, CurrentRouteProviderSummaryInput,
-    CurrentRouteResponse, CurrentRouteSource, CurrentRouteTarget, GroupListChannelSource,
+    CurrentRouteResponse, CurrentRouteSource, CurrentRouteTarget,
     GroupListQuery, GroupListRequest, HealthCheckRequest, HealthCheckResponse, HealthCheckSource,
     InterfaceKind, ManagementAppPathRequest, ManagementAuthDecision, ProviderListResponse,
     ProviderListSource,
@@ -73,7 +73,8 @@ use crate::proxy_core_adapter::{
     OPENAI_PARSER_CONFIG,
 };
 use crate::proxy_core_adapter::{
-    proxy_app_summary_input, proxy_channel_group_inputs_to_core, proxy_channel_key_record_to_core,
+    app_channel_list_source_from_records, channel_list_source_from_records,
+    group_list_channel_source_from_records, proxy_app_summary_input, proxy_channel_key_record_to_core,
     proxy_channel_key_records_to_core, proxy_channel_model_records_to_core,
     proxy_channel_record_to_core, proxy_channel_record_to_core_spec, proxy_channel_records_to_core,
     proxy_provider_to_core_spec, proxy_providers_to_core_specs,
@@ -294,9 +295,9 @@ pub async fn list_all_proxy_channels(
             .map_err(|e| ProxyError::DatabaseError(e.to_string()))?,
     };
 
-    Ok(Json(request.response_from_source(ChannelListSource::new(
-        proxy_channel_records_to_core(channels),
-    ))))
+    Ok(Json(request.response_from_source(
+        channel_list_source_from_records(channels),
+    )))
 }
 
 /// POST /proxy/v1/channels
@@ -586,7 +587,7 @@ pub async fn list_proxy_channels(
                 .map_err(|e| ProxyError::DatabaseError(e.to_string()))?;
 
             Ok(Json(request.response_from_list_source(
-                AppChannelListSource::new(source, proxy_channel_records_to_core(channels)),
+                app_channel_list_source_from_records(source, channels),
             )))
         }
     }
@@ -609,10 +610,10 @@ pub async fn list_proxy_groups(
             .list_channels_for_app(app_type)
             .await
             .map_err(|e| ProxyError::DatabaseError(e.to_string()))?;
-        sources.push(GroupListChannelSource::from_record_inputs(
+        sources.push(group_list_channel_source_from_records(
             app_type.clone(),
             source,
-            proxy_channel_group_inputs_to_core(channels),
+            channels,
         ));
     }
 
