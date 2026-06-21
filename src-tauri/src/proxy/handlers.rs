@@ -613,16 +613,14 @@ async fn handle_messages_for_app(
 
     let is_stream = request_body_stream_flag(&body);
 
-    let mut proxy_request = ProxyRequest::new(
+    let proxy_request = ProxyRequest::new(
         AppKind::from(&app_type),
         method,
         endpoint,
         InterfaceKind::AnthropicMessages,
         ProxyBody::Json(body.clone()),
-    );
-    proxy_request.requested_model = Some(ctx.request_model.clone());
-    proxy_request.headers = headers;
-    proxy_request.extensions = extensions;
+    )
+    .with_observed_request_context(Some(ctx.request_model.clone()), headers, extensions);
 
     let engine = state.proxy_engine();
     let result = match engine.handle(proxy_request).await {
@@ -859,16 +857,14 @@ pub async fn handle_chat_completions(
 
     let is_stream = request_body_stream_flag(&body);
 
-    let mut proxy_request = ProxyRequest::new(
+    let proxy_request = ProxyRequest::new(
         AppKind::from(&AppType::Codex),
         method,
         &endpoint,
         InterfaceKind::OpenAiChatCompletions,
         ProxyBody::Json(body),
-    );
-    proxy_request.requested_model = Some(ctx.request_model.clone());
-    proxy_request.headers = headers;
-    proxy_request.extensions = extensions;
+    )
+    .with_observed_request_context(Some(ctx.request_model.clone()), headers, extensions);
 
     let engine = state.proxy_engine();
     let result = match engine.handle(proxy_request).await {
@@ -911,16 +907,14 @@ pub async fn handle_responses(
     let is_stream = request_body_stream_flag(&body);
     let codex_tool_context = crate::proxy_core_adapter::codex_tool_context_from_request(&body);
 
-    let mut proxy_request = ProxyRequest::new(
+    let proxy_request = ProxyRequest::new(
         AppKind::from(&AppType::Codex),
         method,
         &endpoint,
         InterfaceKind::OpenAiResponses,
         ProxyBody::Json(body),
-    );
-    proxy_request.requested_model = Some(ctx.request_model.clone());
-    proxy_request.headers = headers;
-    proxy_request.extensions = extensions;
+    )
+    .with_observed_request_context(Some(ctx.request_model.clone()), headers, extensions);
 
     let engine = state.proxy_engine();
     let result = match engine.handle(proxy_request).await {
@@ -975,16 +969,14 @@ pub async fn handle_responses_compact(
     let is_stream = request_body_stream_flag(&body);
     let codex_tool_context = crate::proxy_core_adapter::codex_tool_context_from_request(&body);
 
-    let mut proxy_request = ProxyRequest::new(
+    let proxy_request = ProxyRequest::new(
         AppKind::from(&AppType::Codex),
         method,
         &endpoint,
         InterfaceKind::OpenAiResponses,
         ProxyBody::Json(body),
-    );
-    proxy_request.requested_model = Some(ctx.request_model.clone());
-    proxy_request.headers = headers;
-    proxy_request.extensions = extensions;
+    )
+    .with_observed_request_context(Some(ctx.request_model.clone()), headers, extensions);
 
     let engine = state.proxy_engine();
     let result = match engine.handle(proxy_request).await {
@@ -1210,16 +1202,14 @@ pub async fn handle_gemini(
 
     let is_stream = request_body_stream_flag(&body);
 
-    let mut proxy_request = ProxyRequest::new(
+    let proxy_request = ProxyRequest::new(
         AppKind::from(&AppType::Gemini),
         method,
         &endpoint,
         InterfaceKind::GeminiNative,
         ProxyBody::Json(body),
-    );
-    proxy_request.requested_model = extract_gemini_model_from_path(&endpoint);
-    proxy_request.headers = headers;
-    proxy_request.extensions = extensions;
+    )
+    .with_observed_request_context(extract_gemini_model_from_path(&endpoint), headers, extensions);
 
     let engine = state.proxy_engine();
     let result = match engine.handle(proxy_request).await {

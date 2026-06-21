@@ -1217,6 +1217,18 @@ impl ProxyRequest {
             client_request_id: None,
         }
     }
+
+    pub fn with_observed_request_context(
+        mut self,
+        requested_model: Option<String>,
+        headers: HeaderMap,
+        extensions: http::Extensions,
+    ) -> Self {
+        self.requested_model = requested_model;
+        self.headers = headers;
+        self.extensions = extensions;
+        self
+    }
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -1850,6 +1862,30 @@ mod tests {
                 .collect::<Vec<_>>(),
             vec!["channel-heavier", "channel-high", "channel-low"]
         );
+    }
+
+    #[test]
+    fn proxy_request_observed_context_sets_model_headers_and_extensions() {
+        let mut headers = HeaderMap::new();
+        headers.insert("x-request-id", http::HeaderValue::from_static("req-1"));
+        let mut extensions = http::Extensions::new();
+        extensions.insert(42usize);
+
+        let request = ProxyRequest::new(
+            AppKind::Codex,
+            Method::POST,
+            "/responses",
+            InterfaceKind::OpenAiResponses,
+            ProxyBody::Empty,
+        )
+        .with_observed_request_context(Some("gpt-5".to_string()), headers, extensions);
+
+        assert_eq!(request.requested_model.as_deref(), Some("gpt-5"));
+        assert_eq!(
+            request.headers.get("x-request-id"),
+            Some(&http::HeaderValue::from_static("req-1"))
+        );
+        assert_eq!(request.extensions.get::<usize>(), Some(&42));
     }
 
     #[test]
