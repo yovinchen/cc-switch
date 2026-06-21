@@ -1628,6 +1628,18 @@ where
     crate::proxy_core::api::routing::route_plan_provider_match(plan, configured_provider_ids)
 }
 
+pub(crate) fn forwarding_requires_runtime_error_message() -> &'static str {
+    crate::proxy_core::api::routing::forwarding_requires_runtime_error_message()
+}
+
+pub(crate) fn route_plan_no_matching_host_providers_error_message() -> &'static str {
+    crate::proxy_core::api::routing::route_plan_no_matching_host_providers_error_message()
+}
+
+pub(crate) fn route_plan_providers_unconfigured_error_message() -> &'static str {
+    crate::proxy_core::api::routing::route_plan_providers_unconfigured_error_message()
+}
+
 pub(crate) fn route_plan_selections(plan: &RoutePlan) -> &[RouteSelection] {
     crate::proxy_core::api::routing::route_plan_selections(plan)
 }
@@ -3704,6 +3716,18 @@ mod tests {
         assert_eq!(candidate.source_kind, "proxy_core");
         let resolved = resolved_channel_attempt_from_candidate(candidate);
         assert_eq!(resolved.channel_id, "ch-b");
+        assert_eq!(
+            forwarding_requires_runtime_error_message(),
+            "cc-switch forwarding requires a proxy server runtime"
+        );
+        assert_eq!(
+            route_plan_no_matching_host_providers_error_message(),
+            "route plan has no matching host providers"
+        );
+        assert_eq!(
+            route_plan_providers_unconfigured_error_message(),
+            "route plan providers are not configured in host database"
+        );
         assert!(proxy_core_error_is_unavailable(
             &ProxyCoreError::Unavailable("missing provider".to_string())
         ));

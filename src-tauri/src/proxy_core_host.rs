@@ -34,7 +34,10 @@ use crate::proxy_core_adapter::{
     proxy_runtime_config_from_config,
     proxy_channel_record_to_core_spec, proxy_channel_records_to_core_specs_for_query,
     proxy_provider_to_core_spec, proxy_providers_to_core_specs,
+    forwarding_requires_runtime_error_message,
     response_runtime_policy_from_app_proxy_config,
+    route_plan_no_matching_host_providers_error_message,
+    route_plan_providers_unconfigured_error_message,
     route_plan_provider_match, route_policy_from_failover_queue,
     settings_config_with_channel_auth_key,
 };
@@ -527,7 +530,7 @@ impl ForwardPipeline for CcSwitchForwardPipeline {
         Box::pin(async move {
             let runtime = self.runtime.as_ref().ok_or_else(|| {
                 ProxyCoreError::Unsupported(
-                    "cc-switch forwarding requires a proxy server runtime".to_string(),
+                    forwarding_requires_runtime_error_message().to_string(),
                 )
             })?;
             runtime.forward(request, plan).await
@@ -580,7 +583,7 @@ impl CcSwitchProxyRuntime {
         apply_channel_auth_profile_providers(&self.db, &app_type, &all_providers, &mut attempts)?;
         if attempts.is_empty() {
             return Err(ProxyCoreError::Unavailable(
-                "route plan has no matching host providers".to_string(),
+                route_plan_no_matching_host_providers_error_message().to_string(),
             ));
         }
 
@@ -631,7 +634,7 @@ fn host_providers_for_plan(
         .collect();
     if !has_matches {
         return Err(ProxyCoreError::Unavailable(
-            "route plan providers are not configured in host database".to_string(),
+            route_plan_providers_unconfigured_error_message().to_string(),
         ));
     }
     Ok(matching)

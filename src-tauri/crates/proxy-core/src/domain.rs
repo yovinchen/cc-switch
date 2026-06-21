@@ -915,6 +915,18 @@ where
     }
 }
 
+pub fn forwarding_requires_runtime_error_message() -> &'static str {
+    "cc-switch forwarding requires a proxy server runtime"
+}
+
+pub fn route_plan_no_matching_host_providers_error_message() -> &'static str {
+    "route plan has no matching host providers"
+}
+
+pub fn route_plan_providers_unconfigured_error_message() -> &'static str {
+    "route plan providers are not configured in host database"
+}
+
 pub fn select_route_for_forward_result(
     plan: &RoutePlan,
     selected_channel_id: Option<&str>,
@@ -1924,6 +1936,22 @@ mod tests {
             vec!["provider-a", "provider-b", "provider-c"]
         );
         assert!(!missing_match.has_matches());
+    }
+
+    #[test]
+    fn forwarding_route_plan_error_messages_preserve_runtime_contracts() {
+        assert_eq!(
+            forwarding_requires_runtime_error_message(),
+            "cc-switch forwarding requires a proxy server runtime"
+        );
+        assert_eq!(
+            route_plan_no_matching_host_providers_error_message(),
+            "route plan has no matching host providers"
+        );
+        assert_eq!(
+            route_plan_providers_unconfigured_error_message(),
+            "route plan providers are not configured in host database"
+        );
     }
 
     #[test]
