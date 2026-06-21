@@ -17,7 +17,8 @@ use crate::proxy_core_adapter::{
     apply_proxy_runtime_active_targets, apply_proxy_runtime_uptime,
     build_server_started_event_payload, build_server_stopped_event_payload,
     current_route_target_from_provider, proxy_engine_from_services,
-    record_proxy_server_started_status, record_proxy_server_stopped_status,
+    proxy_server_info_from_parts, record_proxy_server_started_status,
+    record_proxy_server_stopped_status,
     server_log_codes as log_srv, CircuitBreakerConfig, CurrentRouteTarget, GeminiShadowStore,
     ProxyConfig, ProxyEngine, ProxyRuntimeStatus, ProxyServerInfo, SERVER_STARTED_EVENT,
     SERVER_STOPPED_EVENT,
@@ -266,11 +267,11 @@ impl ProxyServer {
         // 保存服务器任务句柄
         *self.server_handle.write().await = Some(handle);
 
-        Ok(ProxyServerInfo {
-            address: self.config.listen_address.clone(),
-            port: actual_port,
-            started_at: chrono::Utc::now().to_rfc3339(),
-        })
+        Ok(proxy_server_info_from_parts(
+            self.config.listen_address.clone(),
+            actual_port,
+            chrono::Utc::now().to_rfc3339(),
+        ))
     }
 
     pub async fn stop(&self) -> Result<(), ProxyError> {

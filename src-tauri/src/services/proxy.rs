@@ -9,7 +9,8 @@ use crate::provider::Provider;
 use crate::proxy::server::ProxyServer;
 use crate::proxy::switch_lock::SwitchLockManager;
 use crate::proxy_core_adapter::{
-    CircuitBreakerConfig, ProxyConfig, ProxyRuntimeStatus, ProxyServerInfo, ProxyTakeoverStatus,
+    proxy_server_info_from_parts, CircuitBreakerConfig, ProxyConfig, ProxyRuntimeStatus,
+    ProxyServerInfo, ProxyTakeoverStatus,
 };
 use crate::services::provider::{
     build_effective_settings_with_common_config, write_live_with_common_config,
@@ -428,12 +429,12 @@ impl ProxyService {
         // 3. 若已在运行：确保持久化状态（如需要）并返回当前信息
         if let Some(server) = self.server.read().await.as_ref() {
             let status = server.get_status().await;
-            return Ok(ProxyServerInfo {
-                address: status.address,
-                port: status.port,
+            return Ok(proxy_server_info_from_parts(
+                status.address,
+                status.port,
                 // 无法精确取回首次启动时间，返回当前时间用于 UI 展示即可
-                started_at: chrono::Utc::now().to_rfc3339(),
-            });
+                chrono::Utc::now().to_rfc3339(),
+            ));
         }
 
         // 4. 创建并启动服务器

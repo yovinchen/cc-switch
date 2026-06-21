@@ -966,6 +966,18 @@ pub struct ProxyServerInfo {
     pub started_at: String,
 }
 
+pub fn proxy_server_info_from_parts(
+    address: impl Into<String>,
+    port: u16,
+    started_at: impl Into<String>,
+) -> ProxyServerInfo {
+    ProxyServerInfo {
+        address: address.into(),
+        port,
+        started_at: started_at.into(),
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
 pub struct ProxyTakeoverStatus {
     pub claude: bool,
@@ -2977,9 +2989,9 @@ mod tests {
         ProxyChannelModelWriteRequest,
         ProxyChannelModelsReplaceRequest, ProxyChannelPatchRequest, ProxyChannelTestRequest,
         ProxyChannelWriteRequest, ProxyConfig, ProxyCoreEvent, ProxyCoreEventType,
-        ProxyRuntimeStatus, ProxyServerInfo, ProxyStatusResponse, ProxyTakeoverStatus,
+        ProxyRuntimeStatus, ProxyStatusResponse, ProxyTakeoverStatus,
         ForwardFailureStatusInput, ForwardRequestStartedStatusInput, ForwardSuccessStatusInput,
-        ForwardSuccessStatusUpdate, ProxyServerStartedStatusInput,
+        ForwardSuccessStatusUpdate, ProxyServerStartedStatusInput, proxy_server_info_from_parts,
         apply_proxy_runtime_active_targets, apply_proxy_runtime_uptime,
         record_active_connection_acquired_status, record_active_connection_released_status,
         record_forward_failure_status, record_forward_request_started_status,
@@ -4315,11 +4327,11 @@ mod tests {
 
     #[test]
     fn proxy_server_info_preserves_tauri_command_shape() {
-        let info = ProxyServerInfo {
-            address: "127.0.0.1".to_string(),
-            port: 15721,
-            started_at: "2026-06-19T00:00:00Z".to_string(),
-        };
+        let info = proxy_server_info_from_parts(
+            "127.0.0.1",
+            15721,
+            "2026-06-19T00:00:00Z",
+        );
 
         let value = serde_json::to_value(info).expect("serialize proxy server info");
 

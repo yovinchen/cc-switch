@@ -291,6 +291,15 @@ pub(crate) type ProxyRuntimeConfig =
 pub(crate) type ProxyGlobalConfig = crate::proxy_core::api::config::ProxyGlobalConfig;
 pub(crate) type ProxyAppConfig = crate::proxy_core::api::config::ProxyAppConfig;
 pub(crate) type ProxyServerInfo = crate::proxy_core::api::ports::ProxyServerInfo;
+
+pub(crate) fn proxy_server_info_from_parts(
+    address: impl Into<String>,
+    port: u16,
+    started_at: impl Into<String>,
+) -> ProxyServerInfo {
+    crate::proxy_core::api::ports::proxy_server_info_from_parts(address, port, started_at)
+}
+
 pub(crate) type ProxyTakeoverStatus =
     crate::proxy_core::api::ports::ProxyTakeoverStatus;
 pub(crate) type ClaudeDesktopModelListResponse =
@@ -4429,6 +4438,14 @@ mod tests {
         assert_eq!(server_log_codes::STOPPED, "SRV-002");
         assert_eq!(server_log_codes::ACCEPT_ERR, "SRV-005");
         let _shadow_store = GeminiShadowStore::default();
+        let info = proxy_server_info_from_parts(
+            "127.0.0.1",
+            15721,
+            "2026-06-21T00:00:00Z",
+        );
+        assert_eq!(info.address, "127.0.0.1");
+        assert_eq!(info.port, 15721);
+        assert_eq!(info.started_at, "2026-06-21T00:00:00Z");
 
         let target = CurrentRouteTarget {
             app_type: "claude".to_string(),
