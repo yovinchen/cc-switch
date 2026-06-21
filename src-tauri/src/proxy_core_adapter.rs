@@ -1878,6 +1878,13 @@ pub(crate) fn should_preserve_reasoning_content_for_openai_chat(
     )
 }
 
+pub(crate) fn provider_should_preserve_reasoning_content_for_openai_chat(
+    provider: &Provider,
+    body: &Value,
+) -> bool {
+    should_preserve_reasoning_content_for_openai_chat(&provider.settings_config, body)
+}
+
 pub(crate) fn circuit_breaker_config_from_app_config(
     config: Option<&AppProxyConfig>,
 ) -> CircuitBreakerConfig {
@@ -5281,6 +5288,16 @@ wire_api = "chat"
 
         assert!(should_preserve_reasoning_content_for_openai_chat(
             &json!({}),
+            &json!({"model": "deepseek-v4-pro"})
+        ));
+        let reasoning_provider = Provider::with_id(
+            "reasoning".to_string(),
+            "Reasoning".to_string(),
+            json!({}),
+            None,
+        );
+        assert!(provider_should_preserve_reasoning_content_for_openai_chat(
+            &reasoning_provider,
             &json!({"model": "deepseek-v4-pro"})
         ));
     }

@@ -27,9 +27,9 @@ use crate::proxy_core_adapter::{
     provider_claude_api_format, provider_claude_auth_key, provider_claude_base_url,
     provider_claude_kind, provider_claude_prompt_cache_key,
     provider_claude_responses_prompt_cache_key, provider_codex_fast_mode_enabled,
-    provider_is_codex_oauth,
-    should_preserve_reasoning_content_for_openai_chat, ClaudeAuthHeaderKind, ClaudeAuthKey,
-    ClaudeAuthKeySource, CopilotAuthHeadersInput, GeminiShadowStore, ProviderAuthInfo,
+    provider_is_codex_oauth, provider_should_preserve_reasoning_content_for_openai_chat,
+    ClaudeAuthHeaderKind, ClaudeAuthKey, ClaudeAuthKeySource, CopilotAuthHeadersInput,
+    GeminiShadowStore, ProviderAuthInfo,
     ProviderAuthStrategy, ProviderKind,
     should_normalize_anthropic_tool_thinking_history, synthesize_gemini_tool_call_id_with_uuid,
 };
@@ -102,7 +102,7 @@ pub fn transform_claude_request_for_api_format(
         }
         "openai_chat" => {
             let preserve_reasoning_content =
-                should_preserve_reasoning_content_for_openai_chat(&provider.settings_config, &body);
+                provider_should_preserve_reasoning_content_for_openai_chat(provider, &body);
             let mut result = anthropic_to_openai_chat_request(&body, preserve_reasoning_content);
             // Inject prompt_cache_key only if explicitly configured in meta
             if let Some(key) = provider_claude_prompt_cache_key(provider) {
