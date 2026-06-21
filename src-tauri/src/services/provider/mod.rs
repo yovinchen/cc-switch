@@ -16,7 +16,10 @@ use crate::app_config::AppType;
 use crate::database::{validate_cost_multiplier, validate_pricing_source};
 use crate::error::AppError;
 use crate::provider::{Provider, UsageResult};
-use crate::proxy_core_adapter::should_block_proxy_switch_to_provider_category;
+use crate::proxy_core_adapter::{
+    provider_codex_validation_parts, should_block_proxy_switch_to_provider_category,
+    CodexProviderValidationIssue,
+};
 use crate::services::mcp::McpService;
 use crate::settings::CustomEndpoint;
 use crate::store::AppState;
@@ -2322,43 +2325,34 @@ impl ProviderService {
                 crate::claude_desktop_config::validate_provider(provider)?;
             }
             AppType::Codex => {
-                let settings = provider.settings_config.as_object().ok_or_else(|| {
-                    AppError::localized(
+                let parts = provider_codex_validation_parts(provider).map_err(|issue| match issue {
+                    CodexProviderValidationIssue::NotObject => AppError::localized(
                         "provider.codex.settings.not_object",
                         "Codex 配置必须是 JSON 对象",
                         "Codex configuration must be a JSON object",
-                    )
-                })?;
-
-                let auth = settings.get("auth").ok_or_else(|| {
-                    AppError::localized(
+                    ),
+                    CodexProviderValidationIssue::MissingAuth => AppError::localized(
                         "provider.codex.auth.missing",
                         format!("供应商 {} 缺少 auth 配置", provider.id),
                         format!("Provider {} is missing auth configuration", provider.id),
-                    )
-                })?;
-                if !auth.is_object() {
-                    return Err(AppError::localized(
+                    ),
+                    CodexProviderValidationIssue::AuthNotObject => AppError::localized(
                         "provider.codex.auth.not_object",
                         format!("供应商 {} 的 auth 配置必须是 JSON 对象", provider.id),
                         format!(
                             "Provider {} auth configuration must be a JSON object",
                             provider.id
                         ),
-                    ));
-                }
+                    ),
+                    CodexProviderValidationIssue::ConfigInvalidType => AppError::localized(
+                        "provider.codex.config.invalid_type",
+                        "Codex config 字段必须是字符串",
+                        "Codex config field must be a string",
+                    ),
+                })?;
 
-                if let Some(config_value) = settings.get("config") {
-                    if !(config_value.is_string() || config_value.is_null()) {
-                        return Err(AppError::localized(
-                            "provider.codex.config.invalid_type",
-                            "Codex config 字段必须是字符串",
-                            "Codex config field must be a string",
-                        ));
-                    }
-                    if let Some(cfg_text) = config_value.as_str() {
-                        crate::codex_config::validate_config_toml(cfg_text)?;
-                    }
+                if let Some(cfg_text) = parts.config_text {
+                    crate::codex_config::validate_config_toml(cfg_text)?;
                 }
             }
             AppType::Gemini => {
