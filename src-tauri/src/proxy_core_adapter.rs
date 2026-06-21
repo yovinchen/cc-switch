@@ -3160,6 +3160,22 @@ pub(crate) fn provider_is_github_copilot_upstream(provider: &Provider, base_url:
     )
 }
 
+pub(crate) fn provider_is_github_copilot_stream_check_target(provider: &Provider) -> bool {
+    let base_url = provider
+        .settings_config
+        .pointer("/env/ANTHROPIC_BASE_URL")
+        .and_then(Value::as_str)
+        .unwrap_or("");
+    provider_is_github_copilot_upstream(provider, base_url)
+}
+
+pub(crate) fn provider_github_copilot_managed_account_id(provider: &Provider) -> Option<String> {
+    provider
+        .meta
+        .as_ref()
+        .and_then(|meta| meta.managed_account_id_for("github_copilot"))
+}
+
 pub(crate) fn provider_is_full_url(provider: &Provider) -> bool {
     provider
         .meta
@@ -6022,6 +6038,9 @@ mod tests {
         let usage_provider_is_codex_oauth = provider_is_codex_oauth(&provider);
         let usage_provider_is_copilot =
             provider_is_github_copilot_upstream(&provider, "https://example.com");
+        let stream_check_provider_is_copilot =
+            provider_is_github_copilot_stream_check_target(&provider);
+        let copilot_account_id = provider_github_copilot_managed_account_id(&provider);
         let usage_provider_is_full_url = provider_is_full_url(&provider);
         let provider_user_agent =
             provider_custom_user_agent_header(&provider, false).expect("custom user agent");
@@ -6061,6 +6080,8 @@ mod tests {
         assert_eq!(usage_provider_kind, Some(ProviderKind::GitHubCopilot));
         assert!(!usage_provider_is_codex_oauth);
         assert!(usage_provider_is_copilot);
+        assert!(stream_check_provider_is_copilot);
+        assert_eq!(copilot_account_id.as_deref(), Some("acct-1"));
         assert!(usage_provider_is_full_url);
         assert_eq!(provider_user_agent, http::HeaderValue::from_static("cc-switch-test/1.0"));
         assert!(copilot_provider_user_agent.is_none());

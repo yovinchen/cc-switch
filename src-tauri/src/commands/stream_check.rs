@@ -10,6 +10,10 @@ use crate::services::stream_check::{
     HealthStatus, StreamCheckConfig, StreamCheckResult, StreamCheckService,
 };
 use crate::store::AppState;
+use crate::proxy_core_adapter::{
+    provider_github_copilot_managed_account_id, provider_is_full_url,
+    provider_is_github_copilot_stream_check_target,
+};
 use std::collections::HashSet;
 use tauri::State;
 
@@ -126,22 +130,15 @@ async fn resolve_copilot_base_url_override(
     provider: &crate::provider::Provider,
     copilot_state: &State<'_, CopilotAuthState>,
 ) -> Result<Option<String>, AppError> {
-    let is_copilot = is_copilot_provider(provider);
-    let is_full_url = provider
-        .meta
-        .as_ref()
-        .and_then(|meta| meta.is_full_url)
-        .unwrap_or(false);
+    let is_copilot = provider_is_github_copilot_stream_check_target(provider);
+    let is_full_url = provider_is_full_url(provider);
 
     if !is_copilot || is_full_url {
         return Ok(None);
     }
 
     let auth_manager = copilot_state.0.read().await;
-    let account_id = provider
-        .meta
-        .as_ref()
-        .and_then(|meta| meta.managed_account_id_for("github_copilot"));
+    let account_id = provider_github_copilot_managed_account_id(provider);
 
     let endpoint = match account_id.as_deref() {
         Some(id) => auth_manager.get_api_endpoint(id).await,
@@ -151,23 +148,11 @@ async fn resolve_copilot_base_url_override(
     Ok(Some(endpoint))
 }
 
-fn is_copilot_provider(provider: &crate::provider::Provider) -> bool {
-    provider
-        .meta
-        .as_ref()
-        .and_then(|meta| meta.provider_type.as_deref())
-        == Some("github_copilot")
-        || provider
-            .settings_config
-            .pointer("/env/ANTHROPIC_BASE_URL")
-            .and_then(|value| value.as_str())
-            .map(|url| url.contains("githubcopilot.com"))
-            .unwrap_or(false)
-}
-
 #[cfg(test)]
 mod tests {
-    use super::is_copilot_provider;
+    use crate::proxy_core_adapter::{
+        provider_is_full_url, provider_is_github_copilot_stream_check_target,
+    };
     use crate::provider::{Provider, ProviderMeta};
     use serde_json::json;
 
@@ -190,7 +175,7 @@ mod tests {
             icon_color: None,
             in_failover_queue: false,
         };
-        assert!(is_copilot_provider(&typed_provider));
+        assert!(provider_is_github_copilot_stream_check_target(&typed_provider));
 
         let url_provider = Provider {
             id: "p2".to_string(),
@@ -210,7 +195,7 @@ mod tests {
             icon_color: None,
             in_failover_queue: false,
         };
-        assert!(is_copilot_provider(&url_provider));
+        assert!(provider_is_github_copilot_stream_check_target(&url_provider));
     }
 
     #[test]
@@ -234,10 +219,7 @@ mod tests {
             in_failover_queue: false,
         };
 
-        assert!(is_copilot_provider(&provider));
-        assert_eq!(
-            provider.meta.as_ref().and_then(|meta| meta.is_full_url),
-            Some(true)
-        );
+        assert!(provider_is_github_copilot_stream_check_target(&provider));
+        assert!(provider_is_full_url(&provider));
     }
 }
