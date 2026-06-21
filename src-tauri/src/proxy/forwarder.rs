@@ -1611,7 +1611,9 @@ impl RequestForwarder {
         let body_bytes =
             crate::proxy_core_adapter::serialize_upstream_request_body(method, &filtered_body)
                 .map_err(|e| {
-                    ProxyError::Internal(format!("Failed to serialize request body: {e}"))
+                    ProxyError::Internal(
+                        crate::proxy_core_adapter::request_body_serialize_error_message(e),
+                    )
                 })?;
 
         validate_managed_account_upstream_auth(&url, &ordered_headers)

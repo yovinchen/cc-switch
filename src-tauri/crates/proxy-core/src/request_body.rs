@@ -78,6 +78,10 @@ pub fn request_body_read_error_message(error: impl fmt::Display) -> String {
     format!("Failed to read request body: {error}")
 }
 
+pub fn request_body_serialize_error_message(error: impl fmt::Display) -> String {
+    format!("Failed to serialize request body: {error}")
+}
+
 pub fn request_body_filter_log_message(report: &PreparedUpstreamRequestBody) -> Option<String> {
     (!report.removed_private_keys.is_empty()).then(|| {
         format!(
@@ -597,8 +601,8 @@ mod tests {
         parse_json_request_body, parse_json_request_body_or_null,
         prepare_upstream_request_body_with_report, prompt_cache_trace_log_message,
         request_body_filter_log_message, request_body_read_error_message,
-        resolve_codex_provider_upstream_model, resolve_reasoning_effort,
-        serialize_upstream_request_body,
+        request_body_serialize_error_message, resolve_codex_provider_upstream_model,
+        resolve_reasoning_effort, serialize_upstream_request_body,
         strip_leading_anthropic_billing_header, supports_reasoning_effort,
         PromptCacheTraceLogInput,
     };
@@ -635,6 +639,14 @@ mod tests {
         assert_eq!(
             request_body_read_error_message("connection reset"),
             "Failed to read request body: connection reset"
+        );
+    }
+
+    #[test]
+    fn formats_request_body_serialize_errors() {
+        assert_eq!(
+            request_body_serialize_error_message("bad value"),
+            "Failed to serialize request body: bad value"
         );
     }
 
