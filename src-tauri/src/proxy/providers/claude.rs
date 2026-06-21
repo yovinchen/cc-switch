@@ -21,13 +21,12 @@ use crate::proxy_core_adapter::{
     anthropic_request_to_gemini_request_with_shadow, anthropic_to_openai_chat_request,
     anthropic_to_openai_responses_request, build_claude_auth_headers, build_claude_upstream_url,
     build_copilot_auth_headers, claude_api_format_needs_transform,
-    gemini_response_to_anthropic_message, infer_claude_provider_kind,
-    inject_openai_stream_include_usage, is_copilot_prompt_cache_provider,
-    is_gemini_oauth_key_shape, normalize_anthropic_tool_thinking_history,
+    gemini_response_to_anthropic_message, inject_openai_stream_include_usage,
+    is_copilot_prompt_cache_provider, normalize_anthropic_tool_thinking_history,
     normalize_deepseek_thinking_disabled_strip_effort, openai_chat_to_anthropic_message,
     openai_responses_to_anthropic_message, provider_is_codex_oauth,
     provider_claude_api_format, provider_claude_auth_key, provider_claude_base_url,
-    resolve_claude_responses_prompt_cache_key,
+    provider_claude_kind, resolve_claude_responses_prompt_cache_key,
     should_preserve_reasoning_content_for_openai_chat, ClaudeAuthHeaderKind, ClaudeAuthKey,
     ClaudeAuthKeySource, CopilotAuthHeadersInput, GeminiShadowStore, ProviderAuthInfo,
     ProviderAuthStrategy, ProviderKind,
@@ -161,24 +160,7 @@ impl ClaudeAdapter {
     /// - ClaudeAuth: auth_mode 为 bearer_only
     /// - Claude: 默认 Anthropic 官方
     pub fn provider_type(&self, provider: &Provider) -> ProviderKind {
-        let api_format = self.get_api_format(provider);
-        let uses_google_oauth = self
-            .extract_key(provider)
-            .map(|key| is_gemini_oauth_key_shape(&key))
-            .unwrap_or(false);
-        let meta_provider_type = provider
-            .meta
-            .as_ref()
-            .and_then(|meta| meta.provider_type.as_deref());
-        let base_url = self.extract_base_url(provider).ok();
-
-        infer_claude_provider_kind(
-            api_format,
-            uses_google_oauth,
-            meta_provider_type,
-            base_url.as_deref(),
-            &provider.settings_config,
-        )
+        provider_claude_kind(provider)
     }
 
     /// 获取 API 格式
@@ -189,11 +171,6 @@ impl ClaudeAdapter {
     /// - "openai_responses": OpenAI Responses API 格式，需要格式转换
     fn get_api_format(&self, provider: &Provider) -> &'static str {
         get_claude_api_format(provider)
-    }
-
-    /// 从 Provider 配置中提取 API Key
-    fn extract_key(&self, provider: &Provider) -> Option<String> {
-        self.extract_auth_key(provider).map(|auth_key| auth_key.key)
     }
 
     fn extract_auth_key(&self, provider: &Provider) -> Option<ClaudeAuthKey> {

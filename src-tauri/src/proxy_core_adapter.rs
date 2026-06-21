@@ -1634,6 +1634,26 @@ pub(crate) fn infer_claude_provider_kind(
     )
 }
 
+pub(crate) fn provider_claude_kind(provider: &Provider) -> ProviderKind {
+    let api_format = provider_claude_api_format(provider);
+    let uses_google_oauth = provider_claude_auth_key(provider)
+        .map(|auth_key| is_gemini_oauth_key_shape(&auth_key.key))
+        .unwrap_or(false);
+    let meta_provider_type = provider
+        .meta
+        .as_ref()
+        .and_then(|meta| meta.provider_type.as_deref());
+    let base_url = provider_claude_base_url(provider);
+
+    infer_claude_provider_kind(
+        api_format,
+        uses_google_oauth,
+        meta_provider_type,
+        base_url.as_deref(),
+        &provider.settings_config,
+    )
+}
+
 pub(crate) fn is_gemini_oauth_key_shape(key: &str) -> bool {
     crate::proxy_core::api::auth::is_gemini_oauth_key_shape(key)
 }
@@ -5297,6 +5317,44 @@ wire_api = "chat"
             r#"{"access_token":"ya29.access-token"}"#
         ));
         assert!(!is_gemini_oauth_key_shape("AIza-api-key"));
+        let mut gemini_cli_provider = Provider::with_id(
+            "gemini-cli".to_string(),
+            "Gemini CLI".to_string(),
+            json!({
+                "env": {
+                    "ANTHROPIC_AUTH_TOKEN": r#"{"access_token":"ya29.access-token"}"#,
+                    "ANTHROPIC_BASE_URL": "https://generativelanguage.googleapis.com"
+                }
+            }),
+            None,
+        );
+        gemini_cli_provider.meta = Some(ProviderMeta {
+            api_format: Some("gemini_native".to_string()),
+            ..Default::default()
+        });
+        assert_eq!(
+            provider_claude_kind(&gemini_cli_provider),
+            ProviderKind::GeminiCli
+        );
+        let mut copilot_provider = Provider::with_id(
+            "copilot".to_string(),
+            "Copilot".to_string(),
+            json!({
+                "env": {
+                    "ANTHROPIC_AUTH_TOKEN": "copilot-token",
+                    "ANTHROPIC_BASE_URL": "https://example.com"
+                }
+            }),
+            None,
+        );
+        copilot_provider.meta = Some(ProviderMeta {
+            provider_type: Some("github_copilot".to_string()),
+            ..Default::default()
+        });
+        assert_eq!(
+            provider_claude_kind(&copilot_provider),
+            ProviderKind::GitHubCopilot
+        );
     }
 
     #[test]
