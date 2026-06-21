@@ -75,7 +75,6 @@ use crate::proxy_core_adapter::{
     channel_key_delete_source_from_deleted,
     channel_key_record_source_from_record, channel_keys_source_from_records,
     channel_record_source_from_record,
-    channel_migration_materialize_source_from_result, channel_migration_preview_source_from_result,
     channel_models_source_from_records,
     channel_test_plan_from_record, health_check_source_from_timestamp,
     proxy_app_summary_input, proxy_status_source_from_status,
@@ -574,15 +573,13 @@ pub async fn preview_proxy_channel_migration(
 ) -> Result<Json<ChannelMigrationPreviewResponse<ChannelRecord>>, ProxyError> {
     let request = ManagementAppPathRequest::from_path(app_type)
         .map_err(management_api_error_to_proxy_error)?;
+    let response = state
+        .proxy_engine()
+        .channel_migration_preview_response(request)
+        .await
+        .map_err(proxy_core_error_to_proxy_error)?;
 
-    let preview = state
-        .db
-        .preview_legacy_proxy_channel_migration(&request.app_type)
-        .map_err(|e| ProxyError::DatabaseError(e.to_string()))?;
-
-    Ok(Json(request.migration_preview_response_from_source(
-        channel_migration_preview_source_from_result(preview),
-    )))
+    Ok(Json(response))
 }
 
 /// POST /proxy/v1/apps/{app}/channels/migration/materialize
@@ -592,15 +589,13 @@ pub async fn materialize_proxy_channel_migration(
 ) -> Result<Json<ChannelMigrationMaterializeResponse>, ProxyError> {
     let request = ManagementAppPathRequest::from_path(app_type)
         .map_err(management_api_error_to_proxy_error)?;
+    let response = state
+        .proxy_engine()
+        .channel_migration_materialize_response(request)
+        .await
+        .map_err(proxy_core_error_to_proxy_error)?;
 
-    let result = state
-        .db
-        .materialize_legacy_proxy_channels(&request.app_type)
-        .map_err(|e| ProxyError::DatabaseError(e.to_string()))?;
-
-    Ok(Json(request.migration_materialize_response_from_source(
-        channel_migration_materialize_source_from_result(result),
-    )))
+    Ok(Json(response))
 }
 
 /// POST /proxy/v1/channels/{channel_id}/breakers/reset

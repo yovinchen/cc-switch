@@ -762,8 +762,7 @@ pub(crate) use crate::proxy_core::api::management::{
     ChannelKeyRecordSource, ChannelKeysResponse, ChannelKeysSource, ChannelListQuery,
     ChannelListRequest, ChannelListResponse,
     ChannelMigrationMaterializeInput, ChannelMigrationMaterializeResponse,
-    ChannelMigrationMaterializeSource, ChannelMigrationPreviewInput,
-    ChannelMigrationPreviewResponse, ChannelMigrationPreviewSource, ChannelModelsResponse,
+    ChannelMigrationPreviewInput, ChannelMigrationPreviewResponse, ChannelModelsResponse,
     ChannelModelsSource, ChannelPathRequest, ChannelRecordResponse, ChannelRecordSource,
     ChannelRouteRejected,
     ChannelTestPlan, ChannelTestResponse, CurrentRouteResponse, GroupListQuery, GroupListRequest,
@@ -3125,21 +3124,21 @@ pub(crate) fn channel_models_source_from_records(
     ChannelModelsSource::new(models.map(proxy_channel_model_records_to_core))
 }
 
-pub(crate) fn channel_migration_preview_source_from_result(
+pub(crate) fn channel_migration_preview_input_from_result(
     preview: ProxyChannelMigrationPreview,
-) -> ChannelMigrationPreviewSource<ChannelRecord> {
-    ChannelMigrationPreviewSource::from_input(ChannelMigrationPreviewInput::new(
+) -> ChannelMigrationPreviewInput<ChannelRecord> {
+    ChannelMigrationPreviewInput::new(
         preview.app_type,
         proxy_channel_records_to_core(preview.channels),
         preview.duplicate_count,
         preview.needs_review_count,
-    ))
+    )
 }
 
-pub(crate) fn channel_migration_materialize_source_from_result(
+pub(crate) fn channel_migration_materialize_input_from_result(
     result: ProxyChannelMaterializeResult,
-) -> ChannelMigrationMaterializeSource {
-    ChannelMigrationMaterializeSource::from_input(ChannelMigrationMaterializeInput::new(
+) -> ChannelMigrationMaterializeInput {
+    ChannelMigrationMaterializeInput::new(
         result.app_type,
         result.previewed_channels,
         result.inserted_channels,
@@ -3147,7 +3146,7 @@ pub(crate) fn channel_migration_materialize_source_from_result(
         result.inserted_health_rows,
         result.duplicate_count,
         result.needs_review_count,
-    ))
+    )
 }
 
 pub(crate) fn channel_test_plan_from_record(

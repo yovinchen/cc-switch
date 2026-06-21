@@ -8,16 +8,17 @@ use super::error::ProxyCoreResult;
 use super::management_api::{
     AppChannelListSource, AppChannelManagementPlan, AppChannelManagementRequest,
     AppModelCatalogRequest, ChannelListPlan, ChannelListRequest, ChannelListSource,
-    CurrentRouteSource, GroupListChannelRecordInput, GroupListChannelSource,
-    GroupListRequest, ManagementAppPathRequest, ProviderListSource,
-    RouteResolveManagementRequest,
+    ChannelMigrationMaterializeSource, ChannelMigrationPreviewSource, CurrentRouteSource,
+    GroupListChannelRecordInput, GroupListChannelSource, GroupListRequest,
+    ManagementAppPathRequest, ProviderListSource, RouteResolveManagementRequest,
 };
 use super::ports::{
     AppChannelResponse, ChannelHealthReset, ChannelHealthResetResponse, ChannelRecord,
-    ChannelListResponse, ChannelRouteCandidate, ChannelRouteRejected,
+    ChannelListResponse, ChannelMigrationMaterializeResponse,
+    ChannelMigrationPreviewResponse, ChannelRouteCandidate, ChannelRouteRejected,
     ClientModelCatalogResponse, CurrentRouteProviderSummaryInput, CurrentRouteResponse,
-    CurrentRouteTarget, ModelCatalog, ProviderListResponse, ProxyCoreEvent, ProxyCoreEventType,
-    ProxyServices, RouteGroupListResponse, RouteResolveResponse,
+    CurrentRouteTarget, ModelCatalog, ProviderListResponse, ProxyCoreEvent,
+    ProxyCoreEventType, ProxyServices, RouteGroupListResponse, RouteResolveResponse,
 };
 use serde_json::{json, to_value, Value};
 use std::collections::BTreeMap;
@@ -304,6 +305,34 @@ where
         Ok(request.response_from_source(ChannelListSource::new(channels)))
     }
 
+    pub async fn channel_migration_preview_response(
+        &self,
+        request: ManagementAppPathRequest,
+    ) -> ProxyCoreResult<ChannelMigrationPreviewResponse<ChannelRecord>> {
+        let app = AppKind::from(request.app_type.as_str());
+        let source = ChannelMigrationPreviewSource::from_input(
+            self.services
+                .channels()
+                .preview_legacy_channel_migration(&app)
+                .await?,
+        );
+        Ok(request.migration_preview_response_from_source(source))
+    }
+
+    pub async fn channel_migration_materialize_response(
+        &self,
+        request: ManagementAppPathRequest,
+    ) -> ProxyCoreResult<ChannelMigrationMaterializeResponse> {
+        let app = AppKind::from(request.app_type.as_str());
+        let source = ChannelMigrationMaterializeSource::from_input(
+            self.services
+                .channels()
+                .materialize_legacy_channel_migration(&app)
+                .await?,
+        );
+        Ok(request.migration_materialize_response_from_source(source))
+    }
+
     pub async fn group_list_response<I, T>(
         &self,
         request: GroupListRequest,
@@ -455,7 +484,7 @@ mod tests {
     use crate::error::ProxyCoreError;
     use crate::ports::{
         channel_record_from_input, AppChannelListResponse, ChannelRecordInput,
-        ChannelRouteSource,
+        ChannelMigrationMaterializeInput, ChannelMigrationPreviewInput, ChannelRouteSource,
         AuthInfo, AuthProvider, ChannelHealthStore, ChannelSource, ForwardPipeline, ModelCatalog,
         ModelCatalogProvider, ProviderSource, ProxyAppConfig, ProxyConfigSource, ProxyCoreEvent,
         ProxyEventSink, ProxyGlobalConfig, ProxyRuntimeConfig, RoutePolicySource, RouteResolver,
@@ -685,6 +714,38 @@ mod tests {
                         .collect(),
                     None => records,
                 })
+            })
+        }
+
+        fn preview_legacy_channel_migration<'a>(
+            &'a self,
+            app: &'a AppKind,
+        ) -> BoxFuture<'a, ProxyCoreResult<ChannelMigrationPreviewInput<ChannelRecord>>> {
+            let app_type = app.as_str().to_string();
+            let records = self
+                .channel_records
+                .lock()
+                .expect("channel records mutex")
+                .clone();
+            Box::pin(async move {
+                let records = if records.is_empty() {
+                    vec![channel_record()]
+                } else {
+                    records
+                };
+                Ok(ChannelMigrationPreviewInput::new(app_type, records, 2, 1))
+            })
+        }
+
+        fn materialize_legacy_channel_migration<'a>(
+            &'a self,
+            app: &'a AppKind,
+        ) -> BoxFuture<'a, ProxyCoreResult<ChannelMigrationMaterializeInput>> {
+            let app_type = app.as_str().to_string();
+            Box::pin(async move {
+                Ok(ChannelMigrationMaterializeInput::new(
+                    app_type, 3, 2, 4, 2, 1, 1,
+                ))
             })
         }
     }
@@ -1241,6 +1302,38 @@ mod tests {
                 .expect("queried materialized channel apps mutex"),
             vec![None, Some("claude".to_string())]
         );
+    }
+
+    #[test]
+    fn channel_migration_responses_delegate_to_channel_source() {
+        let services = Arc::new(TestServices::default());
+        *services
+            .channel_records
+            .lock()
+            .expect("channel records mutex") =
+            vec![channel_record_with_groups(vec!["migration".to_string()])];
+        let engine = ProxyEngine::new(services);
+        let request = ManagementAppPathRequest::from_path("claude")
+            .expect("migration request");
+
+        let preview =
+            futures::executor::block_on(engine.channel_migration_preview_response(request.clone()))
+                .expect("migration preview response");
+        let materialize =
+            futures::executor::block_on(engine.channel_migration_materialize_response(request))
+                .expect("migration materialize response");
+
+        assert_eq!(preview.app_type, "claude");
+        assert_eq!(preview.channels.len(), 1);
+        assert_eq!(preview.duplicate_count, 2);
+        assert_eq!(preview.needs_review_count, 1);
+        assert_eq!(materialize.app_type, "claude");
+        assert_eq!(materialize.previewed_channels, 3);
+        assert_eq!(materialize.inserted_channels, 2);
+        assert_eq!(materialize.inserted_models, 4);
+        assert_eq!(materialize.inserted_health_rows, 2);
+        assert_eq!(materialize.duplicate_count, 1);
+        assert_eq!(materialize.needs_review_count, 1);
     }
 
     #[test]

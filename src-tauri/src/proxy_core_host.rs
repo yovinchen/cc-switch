@@ -14,8 +14,9 @@ use crate::proxy::RequestForwarder;
 use crate::proxy_core_adapter::{
     AppKind, AuthInfo, AuthProfileRef, ChannelAttemptResult,
     ChannelQuery,
-    ChannelRecord, ChannelRouteSource, ChannelSource, ChannelSpec, AuthProvider,
-    ChannelHealthReset, ChannelHealthStore, CurrentRouteTarget, ForwardPipeline,
+    ChannelMigrationMaterializeInput, ChannelMigrationPreviewInput, ChannelRecord,
+    ChannelRouteSource, ChannelSource, ChannelSpec, AuthProvider, ChannelHealthReset,
+    ChannelHealthStore, CurrentRouteTarget, ForwardPipeline,
     GeminiShadowStore, ModelCatalog, ModelCatalogProvider, ProviderSource, ProviderSpec,
     ProxyAppConfig, ProxyConfigSource, ProxyCoreEvent,
     ProxyCoreResult, ProxyEventSink, ProxyGlobalConfig, ProxyRequest,
@@ -31,6 +32,8 @@ use crate::proxy_core_adapter::{
     channel_health_reset_from_plan,
     channel_health_reset_plan_from_lookup,
     channel_key_value_from_record,
+    channel_migration_materialize_input_from_result,
+    channel_migration_preview_input_from_result,
     channel_spec_from_source,
     channel_specs_from_source,
     client_model_catalog_from_source,
@@ -404,6 +407,32 @@ impl ChannelSource for CcSwitchChannelSource {
                     .map_err(|error| app_error("list materialized channel records", error))?,
             };
             Ok(proxy_channel_records_to_core(channels))
+        })
+    }
+
+    fn preview_legacy_channel_migration<'a>(
+        &'a self,
+        app: &'a AppKind,
+    ) -> BoxFuture<'a, ProxyCoreResult<ChannelMigrationPreviewInput<ChannelRecord>>> {
+        Box::pin(async move {
+            let preview = self
+                .db
+                .preview_legacy_proxy_channel_migration(app.as_str())
+                .map_err(|error| app_error("preview legacy channel migration", error))?;
+            Ok(channel_migration_preview_input_from_result(preview))
+        })
+    }
+
+    fn materialize_legacy_channel_migration<'a>(
+        &'a self,
+        app: &'a AppKind,
+    ) -> BoxFuture<'a, ProxyCoreResult<ChannelMigrationMaterializeInput>> {
+        Box::pin(async move {
+            let result = self
+                .db
+                .materialize_legacy_proxy_channels(app.as_str())
+                .map_err(|error| app_error("materialize legacy channel migration", error))?;
+            Ok(channel_migration_materialize_input_from_result(result))
         })
     }
 }

@@ -104,6 +104,28 @@ pub trait ChannelSource: Send + Sync {
             ))
         })
     }
+
+    fn preview_legacy_channel_migration<'a>(
+        &'a self,
+        _app: &'a AppKind,
+    ) -> BoxFuture<'a, ProxyCoreResult<ChannelMigrationPreviewInput<ChannelRecord>>> {
+        Box::pin(async {
+            Err(ProxyCoreError::Unavailable(
+                "management channel migration preview source is not configured".to_string(),
+            ))
+        })
+    }
+
+    fn materialize_legacy_channel_migration<'a>(
+        &'a self,
+        _app: &'a AppKind,
+    ) -> BoxFuture<'a, ProxyCoreResult<ChannelMigrationMaterializeInput>> {
+        Box::pin(async {
+            Err(ProxyCoreError::Unavailable(
+                "management channel migration materialize source is not configured".to_string(),
+            ))
+        })
+    }
 }
 
 pub trait RoutePolicySource: Send + Sync {
