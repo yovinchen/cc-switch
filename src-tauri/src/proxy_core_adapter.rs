@@ -1575,6 +1575,7 @@ pub(crate) struct ForwardRuntimeRequest {
     pub(crate) headers: HeaderMap,
     pub(crate) extensions: http::Extensions,
     pub(crate) body: Value,
+    pub(crate) session_result: SessionIdResult,
 }
 
 pub(crate) fn forward_runtime_request_from_proxy_request(
@@ -1589,13 +1590,17 @@ pub(crate) fn forward_runtime_request_from_proxy_request(
         body,
         ..
     } = request;
+    let app_type = app_type_from_proxy_core_app(&app)?;
+    let body = body.into_json()?;
+    let session_result = extract_proxy_session_id(&headers, &body, app_type.as_str());
     Ok(ForwardRuntimeRequest {
-        app_type: app_type_from_proxy_core_app(&app)?,
+        app_type,
         method,
         endpoint,
         headers,
         extensions,
-        body: body.into_json()?,
+        body,
+        session_result,
     })
 }
 
@@ -3089,6 +3094,10 @@ mod tests {
         assert_eq!(forward_request.method, Method::POST);
         assert_eq!(forward_request.endpoint, "/v1/messages");
         assert_eq!(forward_request.body, json!({"ok": true}));
+        assert_eq!(forward_request.session_result.source, SessionIdSource::Generated);
+        assert!(!forward_request.session_result.client_provided);
+        Uuid::parse_str(&forward_request.session_result.session_id)
+            .expect("generated forward session id should be a UUID");
 
         let invalid_request = match forward_runtime_request_from_proxy_request(ProxyRequest::new(
             AppKind::Claude,

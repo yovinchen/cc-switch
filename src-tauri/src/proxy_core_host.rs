@@ -35,7 +35,6 @@ use crate::proxy_core_adapter::{
     client_model_catalog_from_source,
     current_provider_id_from_settings_for_app,
     current_provider_id_from_settings_for_app_type,
-    extract_proxy_session_id,
     forward_current_provider_id_from_source,
     forward_runtime_request_from_proxy_request,
     forward_result_to_proxy_result,
@@ -557,11 +556,6 @@ impl CcSwitchProxyRuntime {
                 self.db.get_current_provider(app_type.as_str()).ok().flatten()
             },
         );
-        let session_result = extract_proxy_session_id(
-            &forward_request.headers,
-            &forward_request.body,
-            app_type.as_str(),
-        );
         let all_providers = self
             .db
             .get_all_providers(app_type.as_str())
@@ -584,8 +578,8 @@ impl CcSwitchProxyRuntime {
             self.failover_manager.clone(),
             self.app_handle.clone(),
             current_provider_id,
-            session_result.session_id,
-            session_result.client_provided,
+            forward_request.session_result.session_id,
+            forward_request.session_result.client_provided,
             timeout_config.streaming.first_byte_timeout,
             timeout_config.streaming.idle_timeout,
             rectifier_config,
