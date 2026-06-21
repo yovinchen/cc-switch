@@ -2026,6 +2026,42 @@ pub struct CurrentRouteTarget {
     pub upstream_model: Option<String>,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct CurrentRouteChannelTargetInput<'a> {
+    pub channel_id: &'a str,
+    pub channel_name: &'a str,
+    pub interface_kind: &'a str,
+    pub public_model: Option<&'a str>,
+    pub upstream_model: Option<&'a str>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct CurrentRouteTargetInput<'a> {
+    pub app_type: &'a str,
+    pub provider_id: &'a str,
+    pub provider_name: &'a str,
+    pub channel: Option<CurrentRouteChannelTargetInput<'a>>,
+}
+
+pub fn current_route_target_from_input(input: CurrentRouteTargetInput<'_>) -> CurrentRouteTarget {
+    CurrentRouteTarget {
+        app_type: input.app_type.to_string(),
+        provider_id: input.provider_id.to_string(),
+        provider_name: input.provider_name.to_string(),
+        channel_id: input.channel.map(|channel| channel.channel_id.to_string()),
+        channel_name: input.channel.map(|channel| channel.channel_name.to_string()),
+        interface_kind: input
+            .channel
+            .map(|channel| channel.interface_kind.to_string()),
+        public_model: input
+            .channel
+            .and_then(|channel| channel.public_model.map(str::to_string)),
+        upstream_model: input
+            .channel
+            .and_then(|channel| channel.upstream_model.map(str::to_string)),
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CurrentRouteResponse<T> {
@@ -2861,10 +2897,12 @@ mod tests {
         ChannelRouteCandidate, ChannelReachabilityResult, ChannelReachabilityStatus,
         ChannelRouteRejected, ChannelRouteSource, ChannelTestInput, ChannelTestPlan,
         ChannelTestResponse, ClientModelCatalogResponse, should_retry_channel_reachability_failure,
-        CopilotOptimizerConfig, CurrentRouteProviderSummaryInput, CurrentRouteResponse,
-        CurrentRouteTarget, GlobalProxyConfig, GroupListQuery, HealthCheckResponse, ModelCatalog,
-        OptimizerConfig, ProviderHealth, ProviderHealthUpdateInput, ProviderListResponse,
-        ProviderSpec, ProviderSummaryInput, ProxyChannelModelWriteRequest,
+        CopilotOptimizerConfig, CurrentRouteChannelTargetInput,
+        CurrentRouteProviderSummaryInput, CurrentRouteResponse, CurrentRouteTarget,
+        CurrentRouteTargetInput, current_route_target_from_input, GlobalProxyConfig,
+        GroupListQuery, HealthCheckResponse, ModelCatalog, OptimizerConfig, ProviderHealth,
+        ProviderHealthUpdateInput, ProviderListResponse, ProviderSpec, ProviderSummaryInput,
+        ProxyChannelModelWriteRequest,
         ProxyChannelModelsReplaceRequest, ProxyChannelPatchRequest, ProxyChannelTestRequest,
         ProxyChannelWriteRequest, ProxyConfig, ProxyCoreEvent, ProxyCoreEventType,
         ProxyRuntimeStatus, ProxyServerInfo, ProxyStatusResponse, ProxyTakeoverStatus,
@@ -4429,6 +4467,43 @@ mod tests {
         assert_eq!(value["target"]["interfaceKind"], "openai_responses");
         assert_eq!(value["target"]["publicModel"], "public-sonnet");
         assert_eq!(value["target"]["upstreamModel"], "upstream-sonnet");
+    }
+
+    #[test]
+    fn current_route_target_from_input_projects_optional_channel_fields() {
+        let target = current_route_target_from_input(CurrentRouteTargetInput {
+            app_type: "claude",
+            provider_id: "provider-a",
+            provider_name: "Provider A",
+            channel: Some(CurrentRouteChannelTargetInput {
+                channel_id: "channel-a",
+                channel_name: "Relay A",
+                interface_kind: "openai_responses",
+                public_model: Some("public-sonnet"),
+                upstream_model: Some("upstream-sonnet"),
+            }),
+        });
+
+        assert_eq!(target.app_type, "claude");
+        assert_eq!(target.provider_id, "provider-a");
+        assert_eq!(target.provider_name, "Provider A");
+        assert_eq!(target.channel_id.as_deref(), Some("channel-a"));
+        assert_eq!(target.channel_name.as_deref(), Some("Relay A"));
+        assert_eq!(target.interface_kind.as_deref(), Some("openai_responses"));
+        assert_eq!(target.public_model.as_deref(), Some("public-sonnet"));
+        assert_eq!(target.upstream_model.as_deref(), Some("upstream-sonnet"));
+
+        let provider_only = current_route_target_from_input(CurrentRouteTargetInput {
+            app_type: "codex",
+            provider_id: "provider-b",
+            provider_name: "Provider B",
+            channel: None,
+        });
+
+        assert_eq!(provider_only.app_type, "codex");
+        assert_eq!(provider_only.provider_id, "provider-b");
+        assert!(provider_only.channel_id.is_none());
+        assert!(provider_only.interface_kind.is_none());
     }
 
     #[test]

@@ -26,13 +26,14 @@ use crate::proxy_core_adapter::{
     build_codex_oauth_session_headers, build_request_started_event_payload,
     build_retryable_forward_failure_log, build_terminal_forward_failure_log,
     build_upstream_auth_headers, cache_injection_log_message, categorize_forward_failure,
-    classify_copilot_request, contains_image_blocks, forward_upstream_url_plan,
-    is_github_copilot_upstream, is_openai_o_series, is_unsupported_image_error,
-    mapped_channel_response_status, merge_copilot_tool_results, normalize_thinking_type,
-    prepare_upstream_request_body_with_report, prompt_cache_trace_log_message,
-    rectify_anthropic_request, rectify_thinking_budget, replace_image_blocks_with_marker,
-    record_forward_success_status, replace_images_for_text_only_model,
-    request_body_filter_log_message, resolve_claude_forward_api_format,
+    classify_copilot_request, contains_image_blocks, current_route_target_from_forward_attempt,
+    forward_upstream_url_plan, is_github_copilot_upstream, is_openai_o_series,
+    is_unsupported_image_error, mapped_channel_response_status,
+    merge_copilot_tool_results, normalize_thinking_type, prepare_upstream_request_body_with_report,
+    prompt_cache_trace_log_message, rectify_anthropic_request, rectify_thinking_budget,
+    replace_image_blocks_with_marker, record_forward_success_status,
+    replace_images_for_text_only_model, request_body_filter_log_message,
+    resolve_claude_forward_api_format,
     resolve_copilot_deterministic_interaction_id, resolve_copilot_model_against_ids,
     resolve_copilot_optimizer_session_id, resolve_copilot_request_id_with_fallback,
     resolve_media_prevention_policy, resolved_copilot_dynamic_base_url,
@@ -348,18 +349,7 @@ impl RequestForwarder {
         app_type: &str,
         attempt: &ForwardAttempt,
     ) {
-        let provider = attempt.provider();
-        let channel = attempt.channel();
-        let target = CurrentRouteTarget {
-            app_type: app_type.to_string(),
-            provider_id: provider.id.clone(),
-            provider_name: provider.name.clone(),
-            channel_id: channel.map(|channel| channel.channel_id.clone()),
-            channel_name: channel.map(|channel| channel.channel_name.clone()),
-            interface_kind: channel.map(|channel| channel.interface_kind.clone()),
-            public_model: channel.and_then(|channel| channel.public_model.clone()),
-            upstream_model: channel.and_then(|channel| channel.upstream_model.clone()),
-        };
+        let target = current_route_target_from_forward_attempt(app_type, attempt);
 
         let mut current_providers = self.current_providers.write().await;
         current_providers.insert(app_type.to_string(), target);

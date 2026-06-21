@@ -302,6 +302,31 @@ pub(crate) type TransformedResponseUsageFormat =
     crate::proxy_core::api::usage::TransformedResponseUsageFormat;
 pub(crate) type CurrentRouteTarget =
     crate::proxy_core::api::ports::CurrentRouteTarget;
+
+pub(crate) fn current_route_target_from_forward_attempt(
+    app_type: &str,
+    attempt: &ForwardAttempt,
+) -> CurrentRouteTarget {
+    let provider = attempt.provider();
+    let channel = attempt.channel();
+    crate::proxy_core::api::ports::current_route_target_from_input(
+        crate::proxy_core::api::ports::CurrentRouteTargetInput {
+            app_type,
+            provider_id: provider.id.as_str(),
+            provider_name: provider.name.as_str(),
+            channel: channel.map(|channel| {
+                crate::proxy_core::api::ports::CurrentRouteChannelTargetInput {
+                    channel_id: channel.channel_id.as_str(),
+                    channel_name: channel.channel_name.as_str(),
+                    interface_kind: channel.interface_kind.as_str(),
+                    public_model: channel.public_model.as_deref(),
+                    upstream_model: channel.upstream_model.as_deref(),
+                }
+            }),
+        },
+    )
+}
+
 pub(crate) type GeminiShadowStore =
     crate::proxy_core::api::transforms::GeminiShadowStore;
 pub(crate) type GeminiToAnthropicMessageOutput =
