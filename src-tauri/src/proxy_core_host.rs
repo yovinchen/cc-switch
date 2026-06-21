@@ -13,7 +13,7 @@ use crate::proxy::route_attempt::ForwardAttempt;
 use crate::proxy::usage::UsageLogger;
 use crate::proxy::RequestForwarder;
 use crate::proxy_core_adapter::{
-    AppKind, AuthInfo, AuthProfileRef, ChannelAttemptResult, ChannelAuthProfileAction,
+    AppKind, AuthInfo, AuthProfileRef, ChannelAttemptResult,
     ChannelQuery,
     ChannelSource, ChannelSpec, AuthProvider,
     ChannelHealthReset, ChannelHealthStore, CurrentRouteTarget, ForwardPipeline,
@@ -25,13 +25,12 @@ use crate::proxy_core_adapter::{
 };
 use crate::proxy_core_adapter::{
     app_error,
+    apply_channel_auth_profile_providers_from_source,
     auth_info_from_cc_switch_provider_config,
     app_type_from_proxy_core_app,
-    channel_auth_profile_action,
     channel_health_attempt_db_update,
     channel_health_reset_from_plan,
     channel_health_reset_plan_from_lookup,
-    channel_key_auth_error,
     channel_spec_from_source,
     channel_specs_from_source,
     client_model_catalog_from_source,
@@ -45,7 +44,6 @@ use crate::proxy_core_adapter::{
     host_providers_for_plan,
     provider_spec_from_source,
     provider_specs_from_source,
-    provider_with_channel_auth_key,
     provider_model_catalog_from_provider,
     proxy_app_config_from_config_source_parts, proxy_global_config_from_config,
     emit_proxy_core_event,
@@ -622,45 +620,17 @@ fn apply_channel_auth_profile_providers(
     providers: &IndexMap<String, crate::provider::Provider>,
     attempts: &mut [ForwardAttempt],
 ) -> ProxyCoreResult<()> {
-    for attempt in attempts {
-        let auth_profile_ref = attempt
-            .channel()
-            .and_then(|channel| channel.auth_profile_ref.as_ref())
-            .map(String::as_str);
-        let channel_id = attempt.channel().map(|channel| channel.channel_id.as_str());
-        match channel_auth_profile_action(app_type.as_str(), auth_profile_ref, channel_id) {
-            ChannelAuthProfileAction::Provider {
-                provider_id,
-                missing_provider_warning,
-            } => {
-                let Some(provider) = providers.get(&provider_id).cloned() else {
-                    log::warn!("{missing_provider_warning}");
-                    continue;
-                };
-                attempt.set_auth_provider(provider);
-            }
-            ChannelAuthProfileAction::ChannelKey {
-                channel_id,
-                key_ref,
-            } => {
-                let Some(key) = db
-                    .get_enabled_proxy_channel_key(&channel_id, &key_ref)
-                    .map_err(|error| app_error("load channel auth key", error))?
-                else {
-                    return Err(channel_key_auth_error(&channel_id, &key_ref));
-                };
-                attempt.set_auth_provider(provider_with_channel_auth_key(
-                    app_type,
-                    attempt.provider(),
-                    &key.key_value,
-                ));
-            }
-            ChannelAuthProfileAction::Ignore => {
-                continue;
-            }
-        }
-    }
-    Ok(())
+    apply_channel_auth_profile_providers_from_source(
+        app_type,
+        providers,
+        attempts,
+        |channel_id, key_ref| {
+            let key = db
+                .get_enabled_proxy_channel_key(channel_id, key_ref)
+                .map_err(|error| app_error("load channel auth key", error))?;
+            Ok(key.map(|key| key.key_value))
+        },
+    )
 }
 
 #[cfg(test)]

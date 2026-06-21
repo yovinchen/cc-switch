@@ -1884,6 +1884,50 @@ pub(crate) fn forward_attempts_from_plan(
     crate::proxy::route_attempt::forward_attempts_from_route_plan(app_type, providers, plan)
 }
 
+pub(crate) fn apply_channel_auth_profile_providers_from_source(
+    app_type: &AppType,
+    providers: &IndexMap<String, Provider>,
+    attempts: &mut [ForwardAttempt],
+    mut load_channel_key_value: impl FnMut(&str, &str) -> ProxyCoreResult<Option<String>>,
+) -> ProxyCoreResult<()> {
+    for attempt in attempts {
+        let auth_profile_ref = attempt
+            .channel()
+            .and_then(|channel| channel.auth_profile_ref.as_ref())
+            .map(String::as_str);
+        let channel_id = attempt.channel().map(|channel| channel.channel_id.as_str());
+        match channel_auth_profile_action(app_type.as_str(), auth_profile_ref, channel_id) {
+            ChannelAuthProfileAction::Provider {
+                provider_id,
+                missing_provider_warning,
+            } => {
+                let Some(provider) = providers.get(&provider_id).cloned() else {
+                    log::warn!("{missing_provider_warning}");
+                    continue;
+                };
+                attempt.set_auth_provider(provider);
+            }
+            ChannelAuthProfileAction::ChannelKey {
+                channel_id,
+                key_ref,
+            } => {
+                let Some(key_value) = load_channel_key_value(&channel_id, &key_ref)? else {
+                    return Err(channel_key_auth_error(&channel_id, &key_ref));
+                };
+                attempt.set_auth_provider(provider_with_channel_auth_key(
+                    app_type,
+                    attempt.provider(),
+                    &key_value,
+                ));
+            }
+            ChannelAuthProfileAction::Ignore => {
+                continue;
+            }
+        }
+    }
+    Ok(())
+}
+
 pub(crate) fn forwarding_requires_runtime_error_message() -> &'static str {
     crate::proxy_core::api::routing::forwarding_requires_runtime_error_message()
 }
@@ -3031,6 +3075,112 @@ mod tests {
                 .pointer("/env/ANTHROPIC_API_KEY")
                 .and_then(Value::as_str),
             Some("channel-key")
+        );
+
+        let route_provider = provider.clone();
+        fn attempt_with_auth_ref(
+            route_provider: &Provider,
+            channel_id: &str,
+            auth_profile_ref: &str,
+        ) -> ForwardAttempt {
+            let provider = ProviderSpec {
+                id: route_provider.id.clone(),
+                name: route_provider.name.clone(),
+                kind: ProviderKind::Claude,
+                account_ref: None,
+                metadata: ProviderMetadata::default(),
+            };
+            let channel = ChannelSpec {
+                id: channel_id.to_string(),
+                provider_id: route_provider.id.clone(),
+                app: AppKind::Claude,
+                name: channel_id.to_string(),
+                status: ChannelStatus::Enabled,
+                endpoint: UpstreamEndpoint {
+                    base_url: format!("https://{channel_id}.example.com/v1"),
+                    path_template: None,
+                    api_version: None,
+                    timeout_profile: None,
+                },
+                interface: InterfaceKind::AnthropicMessages,
+                auth_profile: Some(AuthProfileRef::new(auth_profile_ref)),
+                models: Vec::new(),
+                groups: vec!["default".to_string()],
+                priority: 0,
+                weight: 100,
+                retry_policy: RetryPolicy {
+                    raw: Value::Object(Default::default()),
+                },
+                health_policy: ChannelHealthPolicy {
+                    raw: Value::Object(Default::default()),
+                },
+                overrides: ChannelOverrides {
+                    headers: Value::Object(Default::default()),
+                    params: Value::Object(Default::default()),
+                    status_code_mapping: Value::Array(Vec::new()),
+                    model_mapping: Value::Object(Default::default()),
+                },
+                tags: Vec::new(),
+                metadata: Value::Object(Default::default()),
+                source_ref: None,
+                needs_review: false,
+                review_reasons: Vec::new(),
+            };
+            let selection = crate::proxy_core::api::routing::route_selection_from_parts(
+                provider,
+                channel,
+                None,
+                InterfaceKind::AnthropicMessages,
+            );
+            ForwardAttempt::from_core_selection(&AppType::Claude, route_provider, &selection)
+        }
+
+        let provider_auth = Provider::with_id(
+            "provider-auth".to_string(),
+            "Provider Auth".to_string(),
+            json!({ "env": { "ANTHROPIC_API_KEY": "provider-auth-key" } }),
+            None,
+        );
+        let mut providers = IndexMap::new();
+        providers.insert(route_provider.id.clone(), route_provider.clone());
+        providers.insert(provider_auth.id.clone(), provider_auth);
+        let mut provider_attempt = attempt_with_auth_ref(
+            &route_provider,
+            "channel-a",
+            "provider:claude:provider-auth",
+        );
+        apply_channel_auth_profile_providers_from_source(
+            &AppType::Claude,
+            &providers,
+            std::slice::from_mut(&mut provider_attempt),
+            |_, _| unreachable!("provider auth should not load channel keys"),
+        )
+        .expect("apply provider auth profile");
+        assert_eq!(provider_attempt.auth_provider().id, "provider-auth");
+
+        let mut channel_key_attempt = attempt_with_auth_ref(
+            &route_provider,
+            "channel-key",
+            "channel-key:primary",
+        );
+        apply_channel_auth_profile_providers_from_source(
+            &AppType::Claude,
+            &providers,
+            std::slice::from_mut(&mut channel_key_attempt),
+            |channel_id, key_ref| {
+                assert_eq!(channel_id, "channel-key");
+                assert_eq!(key_ref, "primary");
+                Ok(Some("loaded-channel-key".to_string()))
+            },
+        )
+        .expect("apply channel key auth profile");
+        assert_eq!(
+            channel_key_attempt
+                .auth_provider()
+                .settings_config
+                .pointer("/env/ANTHROPIC_API_KEY")
+                .and_then(Value::as_str),
+            Some("loaded-channel-key")
         );
     }
 
