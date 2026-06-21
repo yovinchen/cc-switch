@@ -470,11 +470,8 @@ impl UsageSink for CcSwitchUsageSink {
                 || uuid::Uuid::new_v4().to_string(),
             );
 
-            if let Some(pricing_model) = projection.missing_pricing_model.as_ref() {
-                log::warn!(
-                    "[USG-002] 模型定价未找到，成本将记录为 0: {}",
-                    pricing_model
-                );
+            if let Some(message) = projection.missing_pricing_warning_message.as_ref() {
+                log::warn!("{message}");
             }
 
             logger

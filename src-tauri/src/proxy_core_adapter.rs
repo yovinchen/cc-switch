@@ -25,7 +25,6 @@ use crate::proxy_core::api::routing::RouteResolveModelInput;
 use crate::proxy_core::api::session::SessionIdResult;
 use crate::proxy_core::api::transforms::CodexChatErrorNormalization;
 use crate::proxy_core::api::transport::{UpstreamRequestTransportPolicy, UpstreamSendPolicy};
-use crate::services::usage_stats::is_placeholder_pricing_model;
 use bytes::Bytes;
 use futures::Stream;
 use http::{HeaderMap, StatusCode};
@@ -1968,7 +1967,7 @@ pub(crate) fn build_gemini_native_url(base_url: &str, endpoint: &str) -> String 
 
 pub(crate) struct UsageRequestLogProjection {
     pub(crate) log: RequestLog,
-    pub(crate) missing_pricing_model: Option<String>,
+    pub(crate) missing_pricing_warning_message: Option<String>,
 }
 
 #[cfg(test)]
@@ -2182,49 +2181,42 @@ pub(crate) fn usage_record_to_request_log(
     multiplier: Decimal,
     fallback_request_id: impl FnOnce() -> String,
 ) -> UsageRequestLogProjection {
-    let app_type = record.app.as_str().to_string();
-    let model_selection =
-        crate::proxy_core::api::usage::resolve_usage_record_pricing_models(
-            record,
-            pricing_model_source,
-        );
-    let usage = crate::proxy_core::api::usage::token_usage_from_usage_record(record);
-    let missing_pricing_model = (pricing.is_none()
-        && record.tokens.has_billable_tokens()
-        && !is_placeholder_pricing_model(&model_selection.pricing_model))
-    .then(|| model_selection.pricing_model.clone());
-    let cost = CostCalculator::try_calculate_for_app(&app_type, &usage, pricing, multiplier);
-
+    let projection = crate::proxy_core::api::usage::usage_request_log_projection(
+        record,
+        pricing_model_source,
+        pricing,
+        multiplier,
+        fallback_request_id,
+    );
+    let fields = projection.fields;
     UsageRequestLogProjection {
         log: RequestLog {
-            request_id: crate::proxy_core::api::usage::usage_record_request_id_with_fallback(
-                record,
-                fallback_request_id,
-            ),
-            provider_id: record.provider_id.clone(),
-            app_type,
-            model: model_selection.response_model,
-            request_model: record.request_model.clone(),
-            pricing_model: model_selection.pricing_model,
-            usage,
-            cost,
-            latency_ms: record.latency_ms,
-            first_token_ms: record.first_token_ms,
-            status_code: record.status_code,
-            error_message: record.error_message.clone(),
-            session_id: record.session_id.clone(),
-            provider_type: record
-                .provider_kind
-                .as_ref()
-                .map(|provider_kind| provider_kind.as_str().to_string()),
-            channel_id: record.channel_id.clone(),
-            channel_name: record.channel_name.clone(),
-            route_group: record.route_group.clone(),
-            is_streaming: record.is_streaming,
-            cost_multiplier: multiplier.to_string(),
+            request_id: fields.request_id,
+            provider_id: fields.provider_id,
+            app_type: fields.app_type,
+            model: fields.model,
+            request_model: fields.request_model,
+            pricing_model: fields.pricing_model,
+            usage: fields.usage,
+            cost: fields.cost,
+            latency_ms: fields.latency_ms,
+            first_token_ms: fields.first_token_ms,
+            status_code: fields.status_code,
+            error_message: fields.error_message,
+            session_id: fields.session_id,
+            provider_type: fields.provider_type,
+            channel_id: fields.channel_id,
+            channel_name: fields.channel_name,
+            route_group: fields.route_group,
+            is_streaming: fields.is_streaming,
+            cost_multiplier: fields.cost_multiplier,
         },
-        missing_pricing_model,
+        missing_pricing_warning_message: projection.missing_pricing_warning_message,
     }
+}
+
+pub(crate) fn is_placeholder_pricing_model(model_id: &str) -> bool {
+    crate::proxy_core::api::usage::is_placeholder_pricing_model(model_id)
 }
 
 pub(crate) fn claude_takeover_client_model_for_upstream(
@@ -3983,7 +3975,6 @@ mod tests {
         assert_eq!(projection.log.route_group.as_deref(), Some("default"));
         assert!(projection.log.is_streaming);
         assert_eq!(projection.log.cost_multiplier, "2");
-        assert!(projection.missing_pricing_model.is_none());
 
         let missing_pricing = usage_record_to_request_log(
             &record,
@@ -3993,8 +3984,8 @@ mod tests {
             || "fallback".to_string(),
         );
         assert_eq!(
-            missing_pricing.missing_pricing_model.as_deref(),
-            Some("upstream-sonnet")
+            missing_pricing.missing_pricing_warning_message.as_deref(),
+            Some("[USG-002] 模型定价未找到，成本将记录为 0: upstream-sonnet")
         );
         assert!(missing_pricing.log.cost.is_none());
     }

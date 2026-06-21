@@ -6,9 +6,12 @@
 //! - Codex API (非流式和流式)
 //! - Gemini API (非流式和流式)
 
+use crate::cost::{CostBreakdown, CostCalculator, ModelPricing};
 use crate::domain::{
     AppKind, ProviderKind, RouteSelection, UsageRecord, UsageTokens, DEFAULT_ROUTE_GROUP,
 };
+use crate::log_codes;
+use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 
@@ -766,6 +769,36 @@ pub struct UsageRecordPricingModels {
     pub pricing_model: String,
 }
 
+#[derive(Debug, Clone)]
+pub struct UsageRequestLogFields {
+    pub request_id: String,
+    pub provider_id: String,
+    pub app_type: String,
+    pub model: String,
+    pub request_model: String,
+    pub pricing_model: String,
+    pub usage: TokenUsage,
+    pub cost: Option<CostBreakdown>,
+    pub latency_ms: u64,
+    pub first_token_ms: Option<u64>,
+    pub status_code: u16,
+    pub error_message: Option<String>,
+    pub session_id: Option<String>,
+    pub provider_type: Option<String>,
+    pub channel_id: Option<String>,
+    pub channel_name: Option<String>,
+    pub route_group: Option<String>,
+    pub is_streaming: bool,
+    pub cost_multiplier: String,
+}
+
+#[derive(Debug, Clone)]
+pub struct UsageRequestLogProjection {
+    pub fields: UsageRequestLogFields,
+    pub missing_pricing_model: Option<String>,
+    pub missing_pricing_warning_message: Option<String>,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TransformedResponseUsageFormat {
     Claude,
@@ -1299,6 +1332,68 @@ pub fn resolve_usage_record_pricing_models(
         response_model,
         outbound_model,
         pricing_model,
+    }
+}
+
+pub fn is_placeholder_pricing_model(model_id: &str) -> bool {
+    let normalized = model_id.trim().to_ascii_lowercase();
+    normalized.is_empty() || matches!(normalized.as_str(), "unknown" | "null" | "none")
+}
+
+pub fn missing_pricing_model_warning_message(pricing_model: &str) -> String {
+    format!(
+        "[{}] 模型定价未找到，成本将记录为 0: {}",
+        log_codes::usg::PRICING_NOT_FOUND,
+        pricing_model
+    )
+}
+
+pub fn usage_request_log_projection(
+    record: &UsageRecord,
+    pricing_model_source: &str,
+    pricing: Option<&ModelPricing>,
+    multiplier: Decimal,
+    fallback_request_id: impl FnOnce() -> String,
+) -> UsageRequestLogProjection {
+    let app_type = record.app.as_str().to_string();
+    let model_selection = resolve_usage_record_pricing_models(record, pricing_model_source);
+    let usage = token_usage_from_usage_record(record);
+    let missing_pricing_model = (pricing.is_none()
+        && record.tokens.has_billable_tokens()
+        && !is_placeholder_pricing_model(&model_selection.pricing_model))
+    .then(|| model_selection.pricing_model.clone());
+    let missing_pricing_warning_message = missing_pricing_model
+        .as_deref()
+        .map(missing_pricing_model_warning_message);
+    let cost = CostCalculator::try_calculate_for_app(&app_type, &usage, pricing, multiplier);
+
+    UsageRequestLogProjection {
+        fields: UsageRequestLogFields {
+            request_id: usage_record_request_id_with_fallback(record, fallback_request_id),
+            provider_id: record.provider_id.clone(),
+            app_type,
+            model: model_selection.response_model,
+            request_model: record.request_model.clone(),
+            pricing_model: model_selection.pricing_model,
+            usage,
+            cost,
+            latency_ms: record.latency_ms,
+            first_token_ms: record.first_token_ms,
+            status_code: record.status_code,
+            error_message: record.error_message.clone(),
+            session_id: record.session_id.clone(),
+            provider_type: record
+                .provider_kind
+                .as_ref()
+                .map(|provider_kind| provider_kind.as_str().to_string()),
+            channel_id: record.channel_id.clone(),
+            channel_name: record.channel_name.clone(),
+            route_group: record.route_group.clone(),
+            is_streaming: record.is_streaming,
+            cost_multiplier: multiplier.to_string(),
+        },
+        missing_pricing_model,
+        missing_pricing_warning_message,
     }
 }
 
@@ -3311,5 +3406,102 @@ mod tests {
         record.pricing_model = Some(" explicit-price ".to_string());
         let explicit_pricing = resolve_usage_record_pricing_models(&record, "request");
         assert_eq!(explicit_pricing.pricing_model, "explicit-price");
+    }
+
+    #[test]
+    fn usage_request_log_projection_builds_log_fields_and_warning() {
+        let mut record = usage_record_for_request_id(Some("req-usage-1"), Some("msg-1"));
+        record.app = crate::domain::AppKind::Claude;
+        record.provider_id = "provider-a".to_string();
+        record.provider_kind = Some(crate::domain::ProviderKind::Claude);
+        record.channel_id = Some("channel-a".to_string());
+        record.channel_name = Some("Channel A".to_string());
+        record.route_group = Some("default".to_string());
+        record.request_model = "public-sonnet".to_string();
+        record.outbound_model = "upstream-sonnet".to_string();
+        record.response_model = Some("upstream-sonnet".to_string());
+        record.tokens = UsageTokens {
+            input_tokens: 1_000,
+            output_tokens: 500,
+            cache_read_tokens: 0,
+            cache_creation_tokens: 0,
+        };
+        record.latency_ms = 42;
+        record.first_token_ms = Some(7);
+        record.session_id = Some("session-a".to_string());
+        record.is_streaming = true;
+        let pricing =
+            crate::cost::ModelPricing::from_strings("3.0", "15.0", "0.3", "3.75")
+                .expect("pricing");
+
+        let projection = usage_request_log_projection(
+            &record,
+            "response",
+            Some(&pricing),
+            Decimal::new(2, 0),
+            || "fallback".to_string(),
+        );
+
+        assert_eq!(projection.fields.request_id, "req-usage-1");
+        assert_eq!(projection.fields.provider_id, "provider-a");
+        assert_eq!(projection.fields.app_type, "claude");
+        assert_eq!(projection.fields.model, "upstream-sonnet");
+        assert_eq!(projection.fields.request_model, "public-sonnet");
+        assert_eq!(projection.fields.pricing_model, "upstream-sonnet");
+        assert_eq!(projection.fields.usage.input_tokens, 1_000);
+        assert!(projection.fields.cost.is_some());
+        assert_eq!(projection.fields.provider_type.as_deref(), Some("claude"));
+        assert_eq!(projection.fields.channel_id.as_deref(), Some("channel-a"));
+        assert_eq!(projection.fields.channel_name.as_deref(), Some("Channel A"));
+        assert_eq!(projection.fields.route_group.as_deref(), Some("default"));
+        assert!(projection.fields.is_streaming);
+        assert_eq!(projection.fields.cost_multiplier, "2");
+        assert!(projection.missing_pricing_model.is_none());
+        assert!(projection.missing_pricing_warning_message.is_none());
+
+        let missing_pricing = usage_request_log_projection(
+            &record,
+            "response",
+            None,
+            Decimal::new(1, 0),
+            || "fallback".to_string(),
+        );
+        assert_eq!(
+            missing_pricing.missing_pricing_model.as_deref(),
+            Some("upstream-sonnet")
+        );
+        assert_eq!(
+            missing_pricing.missing_pricing_warning_message.as_deref(),
+            Some("[USG-002] 模型定价未找到，成本将记录为 0: upstream-sonnet")
+        );
+        assert!(missing_pricing.fields.cost.is_none());
+    }
+
+    #[test]
+    fn usage_request_log_projection_suppresses_placeholder_missing_pricing_warning() {
+        let mut record = usage_record_for_request_id(None, None);
+        record.response_model = Some(" unknown ".to_string());
+
+        let projection = usage_request_log_projection(
+            &record,
+            "response",
+            None,
+            Decimal::new(1, 0),
+            || "fallback".to_string(),
+        );
+
+        assert_eq!(projection.fields.request_id, "fallback");
+        assert_eq!(projection.fields.pricing_model, "unknown");
+        assert!(projection.missing_pricing_model.is_none());
+        assert!(projection.missing_pricing_warning_message.is_none());
+    }
+
+    #[test]
+    fn placeholder_pricing_model_contract_matches_usage_backfill() {
+        assert!(is_placeholder_pricing_model(""));
+        assert!(is_placeholder_pricing_model(" unknown "));
+        assert!(is_placeholder_pricing_model("NULL"));
+        assert!(is_placeholder_pricing_model("none"));
+        assert!(!is_placeholder_pricing_model("claude-sonnet"));
     }
 }
