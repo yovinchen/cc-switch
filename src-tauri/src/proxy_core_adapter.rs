@@ -1345,11 +1345,12 @@ pub(crate) fn provider_codex_base_url(provider: &Provider) -> Option<String> {
     None
 }
 
+pub(crate) fn codex_config_text_from_settings(settings: &Value) -> Option<&str> {
+    settings.get("config").and_then(Value::as_str)
+}
+
 fn provider_codex_config_text(provider: &Provider) -> Option<&str> {
-    provider
-        .settings_config
-        .get("config")
-        .and_then(Value::as_str)
+    codex_config_text_from_settings(&provider.settings_config)
 }
 
 pub(crate) fn provider_codex_imported_live_category(provider: &Provider) -> &'static str {
@@ -1394,7 +1395,7 @@ pub(crate) fn provider_codex_live_settings_parts(
 
     Ok(CodexLiveSettingsParts {
         auth,
-        config_text: settings.get("config").and_then(Value::as_str),
+        config_text: codex_config_text_from_settings(&provider.settings_config),
     })
 }
 
@@ -1422,7 +1423,7 @@ pub(crate) fn provider_codex_live_snapshot_parts(
 
     Ok(CodexLiveSnapshotParts {
         auth,
-        config_text: settings.get("config").and_then(Value::as_str),
+        config_text: codex_config_text_from_settings(&provider.settings_config),
     })
 }
 
@@ -1457,7 +1458,7 @@ pub(crate) fn provider_codex_validation_parts(
         Some(config_value) if !(config_value.is_string() || config_value.is_null()) => {
             return Err(CodexProviderValidationIssue::ConfigInvalidType);
         }
-        Some(config_value) => config_value.as_str(),
+        Some(_) => codex_config_text_from_settings(&provider.settings_config),
         None => None,
     };
 
@@ -5472,6 +5473,12 @@ mod tests {
             provider_codex_base_url(&provider).as_deref(),
             Some("https://api.openai.com/v1")
         );
+        assert_eq!(
+            codex_config_text_from_settings(&json!({"config": "model = \"gpt-5\""})),
+            Some("model = \"gpt-5\"")
+        );
+        assert_eq!(codex_config_text_from_settings(&json!({"config": 42})), None);
+        assert_eq!(codex_config_text_from_settings(&json!({})), None);
         let official_live_provider = Provider::with_id(
             "codex-live-official".to_string(),
             "Codex Live Official".to_string(),

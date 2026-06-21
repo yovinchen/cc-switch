@@ -14,7 +14,7 @@ use crate::database::Database;
 use crate::error::AppError;
 use crate::provider::Provider;
 use crate::proxy_core_adapter::{
-    opencode_live_provider_fragment_has_provider_fields,
+    codex_config_text_from_settings, opencode_live_provider_fragment_has_provider_fields,
     provider_codex_imported_live_category, provider_codex_live_snapshot_parts,
     provider_gemini_live_config_object, provider_model_catalog_raw_value,
     provider_opencode_live_provider_fragment, provider_openclaw_has_live_provider_fields,
@@ -325,7 +325,7 @@ fn settings_contain_common_config(app_type: &AppType, settings: &Value, snippet:
             _ => false,
         },
         AppType::Codex => {
-            let config_toml = settings.get("config").and_then(Value::as_str).unwrap_or("");
+            let config_toml = codex_config_text_from_settings(settings).unwrap_or("");
             if config_toml.trim().is_empty() {
                 return false;
             }
@@ -395,7 +395,7 @@ pub(crate) fn remove_common_config_from_settings(
         }
         AppType::Codex => {
             let mut result = settings.clone();
-            let config_toml = settings.get("config").and_then(Value::as_str).unwrap_or("");
+            let config_toml = codex_config_text_from_settings(settings).unwrap_or("");
             let mut target_doc = if config_toml.trim().is_empty() {
                 DocumentMut::new()
             } else {
@@ -450,7 +450,7 @@ fn apply_common_config_to_settings(
         }
         AppType::Codex => {
             let mut result = settings.clone();
-            let config_toml = settings.get("config").and_then(Value::as_str).unwrap_or("");
+            let config_toml = codex_config_text_from_settings(settings).unwrap_or("");
             let mut target_doc = if config_toml.trim().is_empty() {
                 DocumentMut::new()
             } else {

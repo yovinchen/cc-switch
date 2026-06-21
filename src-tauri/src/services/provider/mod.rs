@@ -17,8 +17,8 @@ use crate::database::{validate_cost_multiplier, validate_pricing_source};
 use crate::error::AppError;
 use crate::provider::{Provider, UsageResult};
 use crate::proxy_core_adapter::{
-    provider_codex_validation_parts, should_block_proxy_switch_to_provider_category,
-    CodexProviderValidationIssue,
+    codex_config_text_from_settings, provider_codex_validation_parts,
+    should_block_proxy_switch_to_provider_category, CodexProviderValidationIssue,
 };
 use crate::services::mcp::McpService;
 use crate::settings::CustomEndpoint;
@@ -2074,10 +2074,7 @@ impl ProviderService {
     /// Extract common config for Codex (TOML format)
     fn extract_codex_common_config(settings: &Value) -> Result<String, AppError> {
         // Codex config is stored as { "auth": {...}, "config": "toml string" }
-        let config_toml = settings
-            .get("config")
-            .and_then(|v| v.as_str())
-            .unwrap_or("");
+        let config_toml = codex_config_text_from_settings(settings).unwrap_or("");
 
         if config_toml.is_empty() {
             return Ok(String::new());
