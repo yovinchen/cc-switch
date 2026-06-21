@@ -103,6 +103,10 @@ pub fn proxy_core_error_from_status_kind(
     }
 }
 
+pub fn error_message_with_context(context: &str, error: &str) -> String {
+    format!("{context}: {error}")
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -171,5 +175,13 @@ mod tests {
             proxy_core_error_from_status_kind(ProxyErrorStatusKind::TransformError, "bad body"),
             ProxyCoreError::Internal(_)
         ));
+    }
+
+    #[test]
+    fn error_message_with_context_preserves_host_adapter_text() {
+        assert_eq!(
+            error_message_with_context("load app proxy config", "database unavailable"),
+            "load app proxy config: database unavailable"
+        );
     }
 }

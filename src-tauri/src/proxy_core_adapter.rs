@@ -65,6 +65,13 @@ pub(crate) fn proxy_core_error_from_status_kind(
     crate::proxy_core::api::errors::proxy_core_error_from_status_kind(kind, message)
 }
 
+pub(crate) fn error_message_with_context(
+    context: &str,
+    error: impl std::fmt::Display,
+) -> String {
+    crate::proxy_core::api::errors::error_message_with_context(context, &error.to_string())
+}
+
 pub(crate) const SYSTEM_PROXY_ENV_KEYS: [&str; 6] =
     crate::proxy_core::api::transport::SYSTEM_PROXY_ENV_KEYS;
 
@@ -2585,6 +2592,10 @@ mod tests {
         assert_eq!(
             proxy_error_http_status_code(ProxyErrorStatusKind::UpstreamError(42)),
             502
+        );
+        assert_eq!(
+            error_message_with_context("load config", "disk failed"),
+            "load config: disk failed"
         );
     }
 

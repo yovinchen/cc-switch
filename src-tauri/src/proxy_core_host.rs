@@ -29,6 +29,7 @@ use crate::proxy_core_adapter::{
     channel_auth_profile_resolution,
     channel_health_reset_from_parts,
     current_provider_id_from_sources,
+    error_message_with_context,
     extract_proxy_session_id,
     proxy_app_config_from_config_parts, proxy_global_config_from_config,
     proxy_runtime_config_from_config,
@@ -799,11 +800,11 @@ fn parse_app_type(app: &AppKind) -> ProxyCoreResult<AppType> {
 }
 
 fn app_error(context: &str, error: AppError) -> ProxyCoreError {
-    ProxyCoreError::Config(format!("{context}: {error}"))
+    ProxyCoreError::Config(error_message_with_context(context, error))
 }
 
 fn usage_error(context: &str, error: AppError) -> ProxyCoreError {
-    ProxyCoreError::Internal(format!("{context}: {error}"))
+    ProxyCoreError::Internal(error_message_with_context(context, error))
 }
 
 fn load_codex_client_model_catalog_raw() -> Value {
