@@ -1342,8 +1342,16 @@ pub(crate) fn extract_gemini_api_key_from_settings(settings: &Value) -> Option<S
     crate::proxy_core::api::auth::extract_gemini_api_key_from_settings(settings)
 }
 
+pub(crate) fn provider_gemini_api_key(provider: &Provider) -> Option<String> {
+    extract_gemini_api_key_from_settings(&provider.settings_config)
+}
+
 pub(crate) fn extract_gemini_base_url_from_settings(settings: &Value) -> Option<String> {
     crate::proxy_core::api::auth::extract_gemini_base_url_from_settings(settings)
+}
+
+pub(crate) fn provider_gemini_base_url(provider: &Provider) -> Option<String> {
+    extract_gemini_base_url_from_settings(&provider.settings_config)
 }
 
 pub(crate) fn parse_gemini_oauth_credentials(
@@ -4663,6 +4671,20 @@ mod tests {
         );
         assert_eq!(
             extract_gemini_base_url_from_settings(&settings).as_deref(),
+            Some("https://generativelanguage.googleapis.com/v1beta")
+        );
+        let provider = Provider::with_id(
+            "gemini".to_string(),
+            "Gemini".to_string(),
+            settings.clone(),
+            None,
+        );
+        assert_eq!(
+            provider_gemini_api_key(&provider).as_deref(),
+            Some("ya29.access-token")
+        );
+        assert_eq!(
+            provider_gemini_base_url(&provider).as_deref(),
             Some("https://generativelanguage.googleapis.com/v1beta")
         );
 
