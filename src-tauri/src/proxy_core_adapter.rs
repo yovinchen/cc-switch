@@ -769,7 +769,7 @@ pub(crate) use crate::proxy_core::api::management::{
     ChannelTestPlan, ChannelTestResponse, CurrentRouteProviderSummaryInput,
     CurrentRouteResponse, CurrentRouteSource, GroupListChannelRecordInput, GroupListChannelSource,
     GroupListQuery, GroupListRequest, HealthCheckRequest, HealthCheckResponse, HealthCheckSource,
-    ManagementAppPathRequest, ProviderHealthUpdateInput, ProviderListResponse, ProviderListSource,
+    ManagementAppPathRequest, ProviderHealthUpdateInput, ProviderListResponse,
     ProxyChannelModelsReplaceRequest, ProxyChannelTestRequest, ProxyStatusRequest,
     ProxyStatusResponse, ProxyStatusSource, RouteGroupListResponse,
     RouteResolveManagementRequest,
@@ -910,21 +910,6 @@ pub(crate) fn proxy_status_source_from_status(
 
 pub(crate) fn app_list_source_from_summaries(apps: Vec<AppSummaryInput>) -> AppListSource {
     AppListSource::new(apps)
-}
-
-pub(crate) fn provider_list_source_from_providers(
-    providers: impl IntoIterator<Item = Provider>,
-    app_type: &AppType,
-    current_provider: Option<String>,
-    failover_ids: Vec<String>,
-    route_candidate_ids: Vec<String>,
-) -> ProviderListSource {
-    ProviderListSource::from_provider_specs(
-        proxy_providers_to_core_specs(providers, app_type),
-        current_provider,
-        failover_ids,
-        route_candidate_ids,
-    )
 }
 
 pub(crate) fn current_route_source_from_provider(

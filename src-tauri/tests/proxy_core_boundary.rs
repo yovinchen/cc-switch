@@ -85,6 +85,46 @@ fn request_context_does_not_preselect_provider() {
 }
 
 #[test]
+fn provider_list_handler_delegates_sources_to_proxy_engine() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let path = manifest_dir.join("src/proxy/handlers.rs");
+    let source = fs::read_to_string(&path).expect("read handlers.rs");
+    let handler = function_slice(
+        &source,
+        "pub async fn list_proxy_providers",
+        "/// GET /proxy/v1/apps/{app}/models",
+    );
+    let forbidden_markers = [
+        "state.db",
+        "provider_router",
+        ".select_providers(",
+        "get_all_providers(",
+        "get_current_provider(",
+        "get_failover_queue(",
+    ];
+
+    let mut violations = Vec::new();
+    for (line_index, line) in production_lines(handler) {
+        let code = line.split("//").next().unwrap_or_default();
+        for marker in forbidden_markers {
+            if code.contains(marker) {
+                violations.push(format!(
+                    "src/proxy/handlers.rs list_proxy_providers:{} contains runtime source marker `{}`",
+                    line_index + 1,
+                    marker
+                ));
+            }
+        }
+    }
+
+    assert!(
+        violations.is_empty(),
+        "provider-list HTTP handler must delegate provider/current/failover/candidate sources to ProxyEngine:\n{}",
+        violations.join("\n")
+    );
+}
+
+#[test]
 fn production_forwarder_stays_preplanned_only() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let mut rust_files = Vec::new();
@@ -186,20 +226,27 @@ fn proxy_core_adapter_uses_grouped_api_surface() {
     );
 }
 
+fn function_slice<'a>(source: &'a str, start_marker: &str, end_marker: &str) -> &'a str {
+    let start = source
+        .find(start_marker)
+        .unwrap_or_else(|| panic!("missing start marker {start_marker}"));
+    let tail = &source[start..];
+    let end = tail
+        .find(end_marker)
+        .unwrap_or_else(|| panic!("missing end marker {end_marker}"));
+    &tail[..end]
+}
+
 fn production_lines(source: &str) -> impl Iterator<Item = (usize, &str)> {
     let lines: Vec<&str> = source.lines().collect();
     let production_len = lines
         .windows(2)
         .position(|window| {
-            window[0].trim() == "#[cfg(test)]"
-                && window[1].trim_start().starts_with("mod tests")
+            window[0].trim() == "#[cfg(test)]" && window[1].trim_start().starts_with("mod tests")
         })
         .unwrap_or(lines.len());
 
-    lines
-        .into_iter()
-        .take(production_len)
-        .enumerate()
+    lines.into_iter().take(production_len).enumerate()
 }
 
 fn collect_rust_files(dir: &Path, files: &mut Vec<PathBuf>) {

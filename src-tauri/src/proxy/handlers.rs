@@ -78,7 +78,7 @@ use crate::proxy_core_adapter::{
     channel_migration_materialize_source_from_result, channel_migration_preview_source_from_result,
     channel_models_source_from_records, group_list_channel_source_from_records,
     channel_test_plan_from_record, current_route_source_from_provider,
-    health_check_source_from_timestamp, provider_list_source_from_providers,
+    health_check_source_from_timestamp,
     proxy_app_summary_input, proxy_status_source_from_status,
     stream_check_result_to_channel_reachability, synthesize_gemini_tool_call_id_with_uuid,
 };
@@ -223,46 +223,13 @@ pub async fn list_proxy_providers(
 ) -> Result<Json<ProviderListResponse>, ProxyError> {
     let request = ManagementAppPathRequest::from_path(app_type)
         .map_err(management_api_error_to_proxy_error)?;
-    let app_type = AppType::from_str(&request.app_type)
-        .map_err(|error| ProxyError::InvalidRequest(error.to_string()))?;
-
-    let providers = state
-        .db
-        .get_all_providers(&request.app_type)
-        .map_err(|e| ProxyError::DatabaseError(e.to_string()))?;
-    let current_provider = state
-        .db
-        .get_current_provider(&request.app_type)
-        .map_err(|e| ProxyError::DatabaseError(e.to_string()))?;
-    let failover_queue = state
-        .db
-        .get_failover_queue(&request.app_type)
-        .map_err(|e| ProxyError::DatabaseError(e.to_string()))?;
-    let failover_ids: Vec<String> = failover_queue
-        .into_iter()
-        .map(|item| item.provider_id)
-        .collect();
-
-    let route_candidate_ids: Vec<String> = match state
-        .provider_router
-        .select_providers(&request.app_type)
+    let response = state
+        .proxy_engine()
+        .provider_list_response(request)
         .await
-    {
-        Ok(selected) => selected.into_iter().map(|provider| provider.id).collect(),
-        Err(crate::error::AppError::NoProvidersConfigured)
-        | Err(crate::error::AppError::AllProvidersCircuitOpen) => Vec::new(),
-        Err(e) => return Err(ProxyError::DatabaseError(e.to_string())),
-    };
+        .map_err(proxy_core_error_to_proxy_error)?;
 
-    Ok(Json(request.provider_list_response_from_source(
-        provider_list_source_from_providers(
-            providers.into_values(),
-            &app_type,
-            current_provider,
-            failover_ids,
-            route_candidate_ids,
-        ),
-    )))
+    Ok(Json(response))
 }
 
 /// GET /proxy/v1/apps/{app}/models

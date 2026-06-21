@@ -49,6 +49,20 @@ pub trait ProviderSource: Send + Sync {
         app: &'a AppKind,
         provider_id: &'a str,
     ) -> BoxFuture<'a, ProxyCoreResult<Option<ProviderSpec>>>;
+
+    fn current_provider_id<'a>(
+        &'a self,
+        _app: &'a AppKind,
+    ) -> BoxFuture<'a, ProxyCoreResult<Option<String>>> {
+        Box::pin(async { Ok(None) })
+    }
+
+    fn route_candidate_provider_ids<'a>(
+        &'a self,
+        _app: &'a AppKind,
+    ) -> BoxFuture<'a, ProxyCoreResult<Vec<String>>> {
+        Box::pin(async { Ok(Vec::new()) })
+    }
 }
 
 pub trait ChannelSource: Send + Sync {

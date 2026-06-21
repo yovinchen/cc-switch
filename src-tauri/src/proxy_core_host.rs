@@ -1,6 +1,5 @@
 use crate::app_config::AppType;
 use crate::database::Database;
-#[cfg(test)]
 use crate::error::AppError;
 use crate::proxy::error_mapper::forward_error_to_core_error;
 use crate::proxy::events::ProxyEventBus;
@@ -110,7 +109,10 @@ impl CcSwitchProxyServices {
         let db = runtime.db.clone();
         Self {
             config: CcSwitchConfigSource { db: db.clone() },
-            providers: CcSwitchProviderSource { db: db.clone() },
+            providers: CcSwitchProviderSource {
+                db: db.clone(),
+                router: runtime.provider_router.clone(),
+            },
             channels: CcSwitchChannelSource {
                 db: db.clone(),
                 router: runtime.provider_router.clone(),
@@ -135,7 +137,10 @@ impl CcSwitchProxyServices {
         let router = Arc::new(ProviderRouter::new(db.clone()));
         Self {
             config: CcSwitchConfigSource { db: db.clone() },
-            providers: CcSwitchProviderSource { db: db.clone() },
+            providers: CcSwitchProviderSource {
+                db: db.clone(),
+                router: router.clone(),
+            },
             channels: CcSwitchChannelSource {
                 db: db.clone(),
                 router: router.clone(),
@@ -253,6 +258,7 @@ impl ProxyConfigSource for CcSwitchConfigSource {
 #[derive(Clone)]
 struct CcSwitchProviderSource {
     db: Arc<Database>,
+    router: Arc<ProviderRouter>,
 }
 
 impl ProviderSource for CcSwitchProviderSource {
@@ -280,6 +286,32 @@ impl ProviderSource for CcSwitchProviderSource {
                 .get_provider_by_id(provider_id, app.as_str())
                 .map_err(|error| app_error("get provider", error))?;
             provider_spec_from_source(app, provider)
+        })
+    }
+
+    fn current_provider_id<'a>(
+        &'a self,
+        app: &'a AppKind,
+    ) -> BoxFuture<'a, ProxyCoreResult<Option<String>>> {
+        Box::pin(async move {
+            self.db
+                .get_current_provider(app.as_str())
+                .map_err(|error| app_error("get current provider", error))
+        })
+    }
+
+    fn route_candidate_provider_ids<'a>(
+        &'a self,
+        app: &'a AppKind,
+    ) -> BoxFuture<'a, ProxyCoreResult<Vec<String>>> {
+        Box::pin(async move {
+            match self.router.select_providers(app.as_str()).await {
+                Ok(providers) => Ok(providers.into_iter().map(|provider| provider.id).collect()),
+                Err(AppError::NoProvidersConfigured) | Err(AppError::AllProvidersCircuitOpen) => {
+                    Ok(Vec::new())
+                }
+                Err(error) => Err(app_error("select route candidate providers", error)),
+            }
         })
     }
 }

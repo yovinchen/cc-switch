@@ -1,15 +1,18 @@
 use super::domain::{
     interfaces_compatible, route_group_matches, ChannelQuery, ChannelStatus, InterfaceKind,
-    ProxyRequest, ProxyResult, RoutableModel, RoutableModelList, RoutePlan, RouteRequest,
+    AppKind, ProxyRequest, ProxyResult, RoutableModel, RoutableModelList, RoutePlan, RoutePolicy,
+    RouteRequest,
     DEFAULT_ROUTE_GROUP,
 };
 use super::error::ProxyCoreResult;
-use super::management_api::AppModelCatalogRequest;
+use super::management_api::{
+    AppModelCatalogRequest, ManagementAppPathRequest, ProviderListSource,
+};
 use super::ports::{
     ChannelHealthReset, ChannelHealthResetResponse, ClientModelCatalogResponse, ModelCatalog,
-    ProxyCoreEvent, ProxyCoreEventType, ProxyServices,
+    ProviderListResponse, ProxyCoreEvent, ProxyCoreEventType, ProxyServices,
 };
-use serde_json::{json, to_value};
+use serde_json::{json, to_value, Value};
 use std::collections::BTreeMap;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
@@ -196,6 +199,37 @@ where
         .await
     }
 
+    pub async fn provider_list_source(
+        &self,
+        app: &AppKind,
+    ) -> ProxyCoreResult<ProviderListSource> {
+        let providers = self.services.providers().list_providers(app).await?;
+        let current_provider = self.services.providers().current_provider_id(app).await?;
+        let route_policy = self.services.route_policies().load_policy(app).await?;
+        let failover_provider_ids = failover_provider_ids_from_policy(route_policy.as_ref());
+        let route_candidate_ids = self
+            .services
+            .providers()
+            .route_candidate_provider_ids(app)
+            .await?;
+
+        Ok(ProviderListSource::from_provider_specs(
+            providers,
+            current_provider,
+            failover_provider_ids,
+            route_candidate_ids,
+        ))
+    }
+
+    pub async fn provider_list_response(
+        &self,
+        request: ManagementAppPathRequest,
+    ) -> ProxyCoreResult<ProviderListResponse> {
+        let app = AppKind::from(request.app_type.as_str());
+        let source = self.provider_list_source(&app).await?;
+        Ok(request.provider_list_response_from_source(source))
+    }
+
     pub async fn client_model_catalog(
         &self,
         app: &super::domain::AppKind,
@@ -297,14 +331,25 @@ where
     }
 }
 
+fn failover_provider_ids_from_policy(policy: Option<&RoutePolicy>) -> Vec<String> {
+    policy
+        .and_then(|policy| policy.raw.get("failoverProviderIds"))
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .filter_map(|value| value.as_str().map(ToString::to_string))
+        .collect()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::domain::{
-        AppKind, AuthProfileRef, ChannelAttemptResult, ChannelHealthPolicy, ChannelOverrides,
-        ChannelSpec, ChannelStatus, InterfaceKind, ModelCapabilities, ModelRoute, ProviderKind,
-        ProviderMetadata, ProviderSpec, ProxyBody, ProxyCoreResponse, RetryPolicy,
-        RouteSelection, UpstreamEndpoint, UsageRecord, UsageTokens, DEFAULT_ROUTE_GROUP,
+        route_policy_from_failover_provider_ids, AppKind, AuthProfileRef, ChannelAttemptResult,
+        ChannelHealthPolicy, ChannelOverrides, ChannelSpec, ChannelStatus, InterfaceKind,
+        ModelCapabilities, ModelRoute, ProviderKind, ProviderMetadata, ProviderSpec, ProxyBody,
+        ProxyCoreResponse, RetryPolicy, RoutePolicy, RouteSelection, UpstreamEndpoint,
+        UsageRecord, UsageTokens, DEFAULT_ROUTE_GROUP,
     };
     use crate::error::ProxyCoreError;
     use crate::ports::{
@@ -323,6 +368,10 @@ mod tests {
         forwarded: Mutex<Vec<String>>,
         usage: Mutex<Vec<UsageRecord>>,
         channels: Mutex<Vec<ChannelSpec>>,
+        providers: Mutex<Vec<ProviderSpec>>,
+        current_provider: Mutex<Option<String>>,
+        route_candidate_provider_ids: Mutex<Vec<String>>,
+        route_policy: Mutex<Option<RoutePolicy>>,
     }
 
     impl ProxyServices for TestServices {
@@ -393,7 +442,14 @@ mod tests {
             &'a self,
             _app: &'a AppKind,
         ) -> BoxFuture<'a, ProxyCoreResult<Vec<ProviderSpec>>> {
-            Box::pin(async { Ok(vec![provider_spec()]) })
+            let providers = self.providers.lock().expect("providers mutex").clone();
+            Box::pin(async move {
+                if providers.is_empty() {
+                    Ok(vec![provider_spec()])
+                } else {
+                    Ok(providers)
+                }
+            })
         }
 
         fn get_provider<'a>(
@@ -404,6 +460,30 @@ mod tests {
             Box::pin(async move {
                 Ok((provider_id == "provider-a").then(provider_spec))
             })
+        }
+
+        fn current_provider_id<'a>(
+            &'a self,
+            _app: &'a AppKind,
+        ) -> BoxFuture<'a, ProxyCoreResult<Option<String>>> {
+            let current_provider = self
+                .current_provider
+                .lock()
+                .expect("current provider mutex")
+                .clone();
+            Box::pin(async move { Ok(current_provider) })
+        }
+
+        fn route_candidate_provider_ids<'a>(
+            &'a self,
+            _app: &'a AppKind,
+        ) -> BoxFuture<'a, ProxyCoreResult<Vec<String>>> {
+            let provider_ids = self
+                .route_candidate_provider_ids
+                .lock()
+                .expect("route candidates mutex")
+                .clone();
+            Box::pin(async move { Ok(provider_ids) })
         }
     }
 
@@ -435,7 +515,12 @@ mod tests {
             &'a self,
             _app: &'a AppKind,
         ) -> BoxFuture<'a, ProxyCoreResult<Option<crate::domain::RoutePolicy>>> {
-            Box::pin(async { Ok(None) })
+            let route_policy = self
+                .route_policy
+                .lock()
+                .expect("route policy mutex")
+                .clone();
+            Box::pin(async move { Ok(route_policy) })
         }
     }
 
@@ -767,6 +852,47 @@ mod tests {
             Some("anthropic_messages")
         );
         assert_eq!(catalog.models.len(), 1);
+    }
+
+    #[test]
+    fn provider_list_response_combines_provider_runtime_sources() {
+        let services = Arc::new(TestServices::default());
+        let mut provider_a = provider_spec();
+        provider_a.id = "provider-a".to_string();
+        provider_a.name = "Provider A".to_string();
+        let mut provider_b = provider_spec();
+        provider_b.id = "provider-b".to_string();
+        provider_b.name = "Provider B".to_string();
+
+        *services.providers.lock().expect("providers mutex") = vec![provider_a, provider_b];
+        *services
+            .current_provider
+            .lock()
+            .expect("current provider mutex") = Some("provider-a".to_string());
+        *services
+            .route_candidate_provider_ids
+            .lock()
+            .expect("route candidates mutex") = vec!["provider-b".to_string()];
+        *services.route_policy.lock().expect("route policy mutex") =
+            Some(route_policy_from_failover_provider_ids(
+                AppKind::Claude,
+                vec!["provider-a".to_string()],
+            ));
+
+        let engine = ProxyEngine::new(services);
+        let request = ManagementAppPathRequest::from_path("claude").expect("provider request");
+
+        let response = futures::executor::block_on(engine.provider_list_response(request))
+            .expect("provider list response");
+
+        assert_eq!(response.app_type, "claude");
+        assert_eq!(response.providers.len(), 2);
+        assert!(response.providers[0].current);
+        assert!(response.providers[0].in_failover_queue);
+        assert!(!response.providers[0].route_candidate);
+        assert!(!response.providers[1].current);
+        assert!(!response.providers[1].in_failover_queue);
+        assert!(response.providers[1].route_candidate);
     }
 
     #[test]
