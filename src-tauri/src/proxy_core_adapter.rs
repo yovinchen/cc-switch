@@ -1906,6 +1906,18 @@ pub(crate) fn forward_attempts_from_plan(
     crate::proxy::route_attempt::forward_attempts_from_route_plan(app_type, providers, plan)
 }
 
+pub(crate) fn required_forward_attempts_from_plan(
+    app_type: &AppType,
+    providers: &[Provider],
+    plan: &RoutePlan,
+) -> ProxyCoreResult<Vec<ForwardAttempt>> {
+    let attempts = forward_attempts_from_plan(app_type, providers, plan);
+    if attempts.is_empty() {
+        return Err(route_plan_no_matching_host_providers_error());
+    }
+    Ok(attempts)
+}
+
 pub(crate) fn apply_channel_auth_profile_providers_from_source(
     app_type: &AppType,
     providers: &IndexMap<String, Provider>,
@@ -4509,6 +4521,13 @@ mod tests {
         assert_eq!(attempts.len(), 2);
         assert_eq!(attempts[0].provider().id, "provider-a");
         assert_eq!(attempts[1].provider().id, "provider-a");
+        let missing_attempts =
+            required_forward_attempts_from_plan(&AppType::Claude, &[], &plan).unwrap_err();
+        assert!(matches!(
+            missing_attempts,
+            ProxyCoreError::Unavailable(message)
+                if message == "route plan has no matching host providers"
+        ));
         assert_eq!(
             forwarding_requires_runtime_error_message(),
             "cc-switch forwarding requires a proxy server runtime"

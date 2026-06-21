@@ -37,7 +37,6 @@ use crate::proxy_core_adapter::{
     current_provider_id_from_settings_for_app,
     current_provider_id_from_settings_for_app_type,
     extract_proxy_session_id,
-    forward_attempts_from_plan,
     forward_current_provider_id_from_source,
     forward_result_to_proxy_result,
     forwarding_runtime_unavailable_error,
@@ -48,14 +47,16 @@ use crate::proxy_core_adapter::{
     proxy_app_config_from_config_source_parts, proxy_global_config_from_config,
     emit_proxy_core_event,
     proxy_runtime_config_from_config_source,
+    required_forward_attempts_from_plan,
     response_runtime_policy_from_app_proxy_config,
-    route_plan_no_matching_host_providers_error,
     route_policy_from_source,
     usage_error,
     usage_pricing_config_lookup_from_record,
     usage_record_pricing_model,
     usage_record_to_request_log,
 };
+#[cfg(test)]
+use crate::proxy_core_adapter::forward_attempts_from_plan;
 use futures::future::BoxFuture;
 use indexmap::IndexMap;
 #[cfg(test)]
@@ -571,11 +572,8 @@ impl CcSwitchProxyRuntime {
             .get_all_providers(app_type.as_str())
             .map_err(|error| app_error("load host providers", error))?;
         let providers = host_providers_for_plan(&all_providers, &plan)?;
-        let mut attempts = forward_attempts_from_plan(&app_type, &providers, &plan);
+        let mut attempts = required_forward_attempts_from_plan(&app_type, &providers, &plan)?;
         apply_channel_auth_profile_providers(&self.db, &app_type, &all_providers, &mut attempts)?;
-        if attempts.is_empty() {
-            return Err(route_plan_no_matching_host_providers_error());
-        }
 
         let runtime_policy = response_runtime_policy_from_app_proxy_config(&app_config);
         let timeout_config = runtime_policy.timeout;
