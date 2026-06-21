@@ -53,6 +53,9 @@ use crate::proxy_core_adapter::{
     route_plan_no_matching_host_providers_error,
     route_policy_from_source,
     usage_error,
+    usage_pricing_config_lookup_from_record,
+    usage_record_pricing_model,
+    usage_record_to_request_log,
 };
 use futures::future::BoxFuture;
 use indexmap::IndexMap;
@@ -456,18 +459,15 @@ impl UsageSink for CcSwitchUsageSink {
     fn record_usage<'a>(&'a self, record: UsageRecord) -> BoxFuture<'a, ProxyCoreResult<()>> {
         Box::pin(async move {
             let logger = UsageLogger::new(&self.db);
-            let app_type = record.app.as_str().to_string();
+            let lookup = usage_pricing_config_lookup_from_record(&record);
             let (multiplier, pricing_model_source) = logger
-                .resolve_pricing_config(&record.provider_id, &app_type)
+                .resolve_pricing_config(&lookup.provider_id, &lookup.app_type)
                 .await;
-            let pricing_model = crate::proxy_core_adapter::usage_record_pricing_model(
-                &record,
-                &pricing_model_source,
-            );
+            let pricing_model = usage_record_pricing_model(&record, &pricing_model_source);
             let pricing = logger
                 .get_model_pricing(&pricing_model)
                 .map_err(|error| usage_error("load model pricing", error))?;
-            let projection = crate::proxy_core_adapter::usage_record_to_request_log(
+            let projection = usage_record_to_request_log(
                 &record,
                 &pricing_model_source,
                 pricing.as_ref(),

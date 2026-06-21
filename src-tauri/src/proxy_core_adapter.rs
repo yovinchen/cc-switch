@@ -2436,6 +2436,11 @@ pub(crate) struct UsageRequestLogProjection {
     pub(crate) missing_pricing_warning_message: Option<String>,
 }
 
+pub(crate) struct UsagePricingConfigLookup {
+    pub(crate) provider_id: String,
+    pub(crate) app_type: String,
+}
+
 #[cfg(test)]
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn success_usage_record_with_request_id_fallback(
@@ -2627,6 +2632,15 @@ pub(crate) fn usage_record_pricing_model(
 ) -> String {
     crate::proxy_core::api::usage::resolve_usage_record_pricing_models(record, pricing_model_source)
         .pricing_model
+}
+
+pub(crate) fn usage_pricing_config_lookup_from_record(
+    record: &UsageRecord,
+) -> UsagePricingConfigLookup {
+    UsagePricingConfigLookup {
+        provider_id: record.provider_id.clone(),
+        app_type: record.app.as_str().to_string(),
+    }
 }
 
 pub(crate) fn usage_route_context_from_selection(selection: &RouteSelection) -> UsageRouteContext {
@@ -4645,6 +4659,9 @@ mod tests {
         };
         let pricing =
             ModelPricing::from_strings("3.0", "15.0", "0.3", "3.75").expect("pricing");
+        let lookup = usage_pricing_config_lookup_from_record(&record);
+        assert_eq!(lookup.provider_id, "provider-a");
+        assert_eq!(lookup.app_type, "claude");
         assert_eq!(
             usage_record_pricing_model(&record, "response"),
             "upstream-sonnet"
