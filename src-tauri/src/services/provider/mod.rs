@@ -17,7 +17,7 @@ use crate::database::{validate_cost_multiplier, validate_pricing_source};
 use crate::error::AppError;
 use crate::provider::{Provider, UsageResult};
 use crate::proxy_core_adapter::{
-    codex_config_text_from_settings, provider_codex_validation_parts,
+    codex_config_text_from_settings, gemini_env_map_from_settings, provider_codex_validation_parts,
     should_block_proxy_switch_to_provider_category, CodexProviderValidationIssue,
 };
 use crate::services::mcp::McpService;
@@ -433,6 +433,29 @@ base_url = "http://localhost:8080"
             extracted.contains("http://localhost:8080"),
             "should keep mcp_servers.* base_url"
         );
+    }
+
+    #[test]
+    fn extract_gemini_common_config_excludes_provider_credentials() {
+        let settings = json!({
+            "env": {
+                "GEMINI_API_KEY": "AIza-test",
+                "GOOGLE_GEMINI_BASE_URL": "https://gemini.example",
+                "SHARED_REGION": " us-central1 ",
+                "EMPTY_VALUE": " ",
+                "NON_STRING": 42
+            }
+        });
+
+        let extracted = ProviderService::extract_gemini_common_config(&settings)
+            .expect("extract_gemini_common_config should succeed");
+        let value: Value = serde_json::from_str(&extracted).expect("valid JSON common config");
+
+        assert_eq!(value["SHARED_REGION"], "us-central1");
+        assert!(value.get("GEMINI_API_KEY").is_none());
+        assert!(value.get("GOOGLE_GEMINI_BASE_URL").is_none());
+        assert!(value.get("EMPTY_VALUE").is_none());
+        assert!(value.get("NON_STRING").is_none());
     }
 
     #[tokio::test]
@@ -2119,7 +2142,7 @@ impl ProviderService {
     /// - GOOGLE_GEMINI_BASE_URL
     /// - GEMINI_API_KEY
     fn extract_gemini_common_config(settings: &Value) -> Result<String, AppError> {
-        let env = settings.get("env").and_then(|v| v.as_object());
+        let env = gemini_env_map_from_settings(settings);
 
         let mut snippet = serde_json::Map::new();
         if let Some(env) = env {

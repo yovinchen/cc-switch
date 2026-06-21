@@ -14,8 +14,9 @@ use crate::database::Database;
 use crate::error::AppError;
 use crate::provider::Provider;
 use crate::proxy_core_adapter::{
-    codex_config_text_from_settings, opencode_live_provider_fragment_has_provider_fields,
-    provider_codex_imported_live_category, provider_codex_live_snapshot_parts,
+    codex_config_text_from_settings, gemini_env_map_from_settings,
+    opencode_live_provider_fragment_has_provider_fields, provider_codex_imported_live_category,
+    provider_codex_live_snapshot_parts,
     provider_gemini_live_config_object, provider_model_catalog_raw_value,
     provider_opencode_live_provider_fragment, provider_openclaw_has_live_provider_fields,
     CodexLiveSnapshotIssue, GeminiLiveConfigIssue,
@@ -343,7 +344,7 @@ fn settings_contain_common_config(app_type: &AppType, settings: &Value, snippet:
         }
         AppType::Gemini => match serde_json::from_str::<Value>(trimmed) {
             Ok(Value::Object(source_map)) => {
-                let Some(target_map) = settings.get("env").and_then(Value::as_object) else {
+                let Some(target_map) = gemini_env_map_from_settings(settings) else {
                     return false;
                 };
                 source_map.iter().all(|(key, source_value)| {
@@ -1697,6 +1698,30 @@ mod tests {
             .map(|value| value.as_str().expect("tool id should be string"))
             .collect();
         assert_eq!(values, vec!["tool2"]);
+    }
+
+    #[test]
+    fn gemini_common_config_subset_detection_reads_env_object() {
+        let settings = json!({
+            "env": {
+                "SHARED_REGION": "us-central1",
+                "EXTRA_FLAG": "enabled"
+            }
+        });
+        let snippet = r#"{"SHARED_REGION": "us-central1"}"#;
+
+        assert!(
+            settings_contain_common_config(&AppType::Gemini, &settings, snippet),
+            "Gemini common config should be matched inside env"
+        );
+        assert!(
+            !settings_contain_common_config(
+                &AppType::Gemini,
+                &json!({"env": "invalid"}),
+                snippet
+            ),
+            "non-object env should not match Gemini common config"
+        );
     }
 
     #[test]

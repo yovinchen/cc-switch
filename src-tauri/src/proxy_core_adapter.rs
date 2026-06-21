@@ -1731,6 +1731,10 @@ pub(crate) fn provider_gemini_base_url(provider: &Provider) -> Option<String> {
     extract_gemini_base_url_from_settings(&provider.settings_config)
 }
 
+pub(crate) fn gemini_env_map_from_settings(settings: &Value) -> Option<&Map<String, Value>> {
+    settings.get("env").and_then(Value::as_object)
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum GeminiLiveConfigIssue {
     InvalidType,
@@ -5787,6 +5791,12 @@ wire_api = "chat"
             extract_gemini_base_url_from_settings(&settings).as_deref(),
             Some("https://generativelanguage.googleapis.com/v1beta")
         );
+        let env = gemini_env_map_from_settings(&settings).expect("gemini env map");
+        assert_eq!(
+            env.get("GEMINI_API_KEY").and_then(Value::as_str),
+            Some(" ya29.access-token ")
+        );
+        assert!(gemini_env_map_from_settings(&json!({"env": "invalid"})).is_none());
         let provider = Provider::with_id(
             "gemini".to_string(),
             "Gemini".to_string(),
