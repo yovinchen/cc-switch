@@ -57,6 +57,13 @@ pub trait ProviderSource: Send + Sync {
         Box::pin(async { Ok(None) })
     }
 
+    fn active_route_target<'a>(
+        &'a self,
+        _app: &'a AppKind,
+    ) -> BoxFuture<'a, ProxyCoreResult<Option<CurrentRouteTarget>>> {
+        Box::pin(async { Ok(None) })
+    }
+
     fn route_candidate_provider_ids<'a>(
         &'a self,
         _app: &'a AppKind,

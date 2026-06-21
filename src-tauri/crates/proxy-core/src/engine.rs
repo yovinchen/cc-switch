@@ -8,14 +8,16 @@ use super::error::ProxyCoreResult;
 use super::management_api::{
     AppChannelListSource, AppChannelManagementPlan, AppChannelManagementRequest,
     AppModelCatalogRequest, ChannelListPlan, ChannelListRequest, ChannelListSource,
-    GroupListChannelRecordInput, GroupListChannelSource, GroupListRequest,
-    ManagementAppPathRequest, ProviderListSource, RouteResolveManagementRequest,
+    CurrentRouteSource, GroupListChannelRecordInput, GroupListChannelSource,
+    GroupListRequest, ManagementAppPathRequest, ProviderListSource,
+    RouteResolveManagementRequest,
 };
 use super::ports::{
     AppChannelResponse, ChannelHealthReset, ChannelHealthResetResponse, ChannelRecord,
     ChannelListResponse, ChannelRouteCandidate, ChannelRouteRejected,
-    ClientModelCatalogResponse, ModelCatalog, ProviderListResponse, ProxyCoreEvent,
-    ProxyCoreEventType, ProxyServices, RouteGroupListResponse, RouteResolveResponse,
+    ClientModelCatalogResponse, CurrentRouteProviderSummaryInput, CurrentRouteResponse,
+    CurrentRouteTarget, ModelCatalog, ProviderListResponse, ProxyCoreEvent, ProxyCoreEventType,
+    ProxyServices, RouteGroupListResponse, RouteResolveResponse,
 };
 use serde_json::{json, to_value, Value};
 use std::collections::BTreeMap;
@@ -233,6 +235,23 @@ where
         let app = AppKind::from(request.app_type.as_str());
         let source = self.provider_list_source(&app).await?;
         Ok(request.provider_list_response_from_source(source))
+    }
+
+    pub async fn current_route_response(
+        &self,
+        request: ManagementAppPathRequest,
+    ) -> ProxyCoreResult<CurrentRouteResponse<CurrentRouteTarget>> {
+        let app = AppKind::from(request.app_type.as_str());
+        let active_target = self.services.providers().active_route_target(&app).await?;
+        let configured_provider = match self.services.providers().current_provider_id(&app).await? {
+            Some(provider_id) => self.services.providers().get_provider(&app, &provider_id).await?,
+            None => None,
+        };
+
+        Ok(request.current_route_response_from_source(CurrentRouteSource::new(
+            active_target,
+            configured_provider.map(CurrentRouteProviderSummaryInput::from_provider_spec),
+        )))
     }
 
     pub async fn resolve_route_response(
@@ -454,6 +473,7 @@ mod tests {
         channels: Mutex<Vec<ChannelSpec>>,
         providers: Mutex<Vec<ProviderSpec>>,
         current_provider: Mutex<Option<String>>,
+        active_route_target: Mutex<Option<CurrentRouteTarget>>,
         route_candidate_provider_ids: Mutex<Vec<String>>,
         route_policy: Mutex<Option<RoutePolicy>>,
         route_resolution: Mutex<Option<RouteResolveResponse>>,
@@ -561,6 +581,18 @@ mod tests {
                 .expect("current provider mutex")
                 .clone();
             Box::pin(async move { Ok(current_provider) })
+        }
+
+        fn active_route_target<'a>(
+            &'a self,
+            _app: &'a AppKind,
+        ) -> BoxFuture<'a, ProxyCoreResult<Option<CurrentRouteTarget>>> {
+            let active_target = self
+                .active_route_target
+                .lock()
+                .expect("active route target mutex")
+                .clone();
+            Box::pin(async move { Ok(active_target) })
         }
 
         fn route_candidate_provider_ids<'a>(
@@ -1063,6 +1095,45 @@ mod tests {
         assert!(!response.providers[1].current);
         assert!(!response.providers[1].in_failover_queue);
         assert!(response.providers[1].route_candidate);
+    }
+
+    #[test]
+    fn current_route_response_combines_active_target_and_configured_provider() {
+        let services = Arc::new(TestServices::default());
+        *services
+            .current_provider
+            .lock()
+            .expect("current provider mutex") = Some("provider-a".to_string());
+        *services
+            .active_route_target
+            .lock()
+            .expect("active route target mutex") = Some(CurrentRouteTarget {
+            app_type: "claude".to_string(),
+            provider_name: "Provider A".to_string(),
+            provider_id: "provider-a".to_string(),
+            channel_id: Some("channel-a".to_string()),
+            channel_name: Some("Channel A".to_string()),
+            interface_kind: Some("anthropic_messages".to_string()),
+            public_model: Some("sonnet".to_string()),
+            upstream_model: Some("upstream-sonnet".to_string()),
+        });
+        let engine = ProxyEngine::new(services);
+        let request = ManagementAppPathRequest::from_path("claude")
+            .expect("current route request");
+
+        let response = futures::executor::block_on(engine.current_route_response(request))
+            .expect("current route response");
+
+        assert_eq!(response.app_type, "claude");
+        assert!(response.active);
+        assert_eq!(response.target.expect("active target").provider_id, "provider-a");
+        assert_eq!(
+            response
+                .configured_provider
+                .expect("configured provider")
+                .id,
+            "provider-a"
+        );
     }
 
     #[test]

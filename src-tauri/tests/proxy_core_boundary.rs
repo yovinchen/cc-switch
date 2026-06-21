@@ -280,6 +280,47 @@ fn group_list_handler_delegates_sources_to_proxy_engine() {
 }
 
 #[test]
+fn current_route_handler_delegates_runtime_sources_to_proxy_engine() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let path = manifest_dir.join("src/proxy/handlers.rs");
+    let source = fs::read_to_string(&path).expect("read handlers.rs");
+    let handler = function_slice(
+        &source,
+        "pub async fn get_current_proxy_route",
+        "/// GET /proxy/v1/apps/{app}/channels/migration/preview",
+    );
+
+    let forbidden_markers = [
+        "current_providers",
+        "state.db",
+        ".get_current_provider(",
+        ".get_provider_by_id(",
+        "current_route_source_from_provider",
+        ".current_route_response_from_source(",
+    ];
+
+    let mut violations = Vec::new();
+    for (line_index, line) in production_lines(handler) {
+        let code = line.split("//").next().unwrap_or_default();
+        for marker in forbidden_markers {
+            if code.contains(marker) {
+                violations.push(format!(
+                    "src/proxy/handlers.rs get_current_proxy_route:{} contains current-route source marker `{}`",
+                    line_index + 1,
+                    marker
+                ));
+            }
+        }
+    }
+
+    assert!(
+        violations.is_empty(),
+        "current-route HTTP handler must delegate active/configured provider sources to ProxyEngine:\n{}",
+        violations.join("\n")
+    );
+}
+
+#[test]
 fn production_forwarder_stays_preplanned_only() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let mut rust_files = Vec::new();

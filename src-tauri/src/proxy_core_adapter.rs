@@ -766,8 +766,7 @@ pub(crate) use crate::proxy_core::api::management::{
     ChannelMigrationPreviewResponse, ChannelMigrationPreviewSource, ChannelModelsResponse,
     ChannelModelsSource, ChannelPathRequest, ChannelRecordResponse, ChannelRecordSource,
     ChannelRouteRejected,
-    ChannelTestPlan, ChannelTestResponse, CurrentRouteProviderSummaryInput,
-    CurrentRouteResponse, CurrentRouteSource, GroupListQuery, GroupListRequest,
+    ChannelTestPlan, ChannelTestResponse, CurrentRouteResponse, GroupListQuery, GroupListRequest,
     HealthCheckRequest, HealthCheckResponse, HealthCheckSource, ManagementAppPathRequest,
     ProviderHealthUpdateInput, ProviderListResponse,
     ProxyChannelModelsReplaceRequest, ProxyChannelTestRequest, ProxyStatusRequest,
@@ -910,21 +909,6 @@ pub(crate) fn proxy_status_source_from_status(
 
 pub(crate) fn app_list_source_from_summaries(apps: Vec<AppSummaryInput>) -> AppListSource {
     AppListSource::new(apps)
-}
-
-pub(crate) fn current_route_source_from_provider(
-    active_target: Option<CurrentRouteTarget>,
-    configured_provider: Option<Provider>,
-    app_type: &AppType,
-) -> CurrentRouteSource<CurrentRouteTarget> {
-    CurrentRouteSource::new(
-        active_target,
-        configured_provider.map(|provider| {
-            CurrentRouteProviderSummaryInput::from_provider_spec(proxy_provider_to_core_spec(
-                &provider, app_type,
-            ))
-        }),
-    )
 }
 
 pub(crate) fn append_utf8_safe(

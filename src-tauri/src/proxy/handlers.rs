@@ -77,8 +77,7 @@ use crate::proxy_core_adapter::{
     channel_record_source_from_record,
     channel_migration_materialize_source_from_result, channel_migration_preview_source_from_result,
     channel_models_source_from_records,
-    channel_test_plan_from_record, current_route_source_from_provider,
-    health_check_source_from_timestamp,
+    channel_test_plan_from_record, health_check_source_from_timestamp,
     proxy_app_summary_input, proxy_status_source_from_status,
     stream_check_result_to_channel_reachability, synthesize_gemini_tool_call_id_with_uuid,
 };
@@ -559,29 +558,13 @@ pub async fn get_current_proxy_route(
 ) -> Result<Json<CurrentRouteResponse<CurrentRouteTarget>>, ProxyError> {
     let request = ManagementAppPathRequest::from_path(app_type)
         .map_err(management_api_error_to_proxy_error)?;
-    let app_type = AppType::from_str(&request.app_type)
-        .map_err(|error| ProxyError::InvalidRequest(error.to_string()))?;
+    let response = state
+        .proxy_engine()
+        .current_route_response(request)
+        .await
+        .map_err(proxy_core_error_to_proxy_error)?;
 
-    let active_target = {
-        let current_providers = state.current_providers.read().await;
-        current_providers.get(&request.app_type).cloned()
-    };
-
-    let configured_provider = match state
-        .db
-        .get_current_provider(&request.app_type)
-        .map_err(|e| ProxyError::DatabaseError(e.to_string()))?
-    {
-        Some(provider_id) => state
-            .db
-            .get_provider_by_id(&provider_id, &request.app_type)
-            .map_err(|e| ProxyError::DatabaseError(e.to_string()))?,
-        None => None,
-    };
-
-    Ok(Json(request.current_route_response_from_source(
-        current_route_source_from_provider(active_target, configured_provider, &app_type),
-    )))
+    Ok(Json(response))
 }
 
 /// GET /proxy/v1/apps/{app}/channels/migration/preview

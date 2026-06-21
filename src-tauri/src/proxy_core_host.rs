@@ -113,6 +113,7 @@ impl CcSwitchProxyServices {
             providers: CcSwitchProviderSource {
                 db: db.clone(),
                 router: runtime.provider_router.clone(),
+                current_providers: runtime.current_providers.clone(),
             },
             channels: CcSwitchChannelSource {
                 db: db.clone(),
@@ -143,6 +144,7 @@ impl CcSwitchProxyServices {
             providers: CcSwitchProviderSource {
                 db: db.clone(),
                 router: router.clone(),
+                current_providers: Arc::new(RwLock::new(HashMap::new())),
             },
             channels: CcSwitchChannelSource {
                 db: db.clone(),
@@ -264,6 +266,7 @@ impl ProxyConfigSource for CcSwitchConfigSource {
 struct CcSwitchProviderSource {
     db: Arc<Database>,
     router: Arc<ProviderRouter>,
+    current_providers: Arc<RwLock<HashMap<String, CurrentRouteTarget>>>,
 }
 
 impl ProviderSource for CcSwitchProviderSource {
@@ -302,6 +305,16 @@ impl ProviderSource for CcSwitchProviderSource {
             self.db
                 .get_current_provider(app.as_str())
                 .map_err(|error| app_error("get current provider", error))
+        })
+    }
+
+    fn active_route_target<'a>(
+        &'a self,
+        app: &'a AppKind,
+    ) -> BoxFuture<'a, ProxyCoreResult<Option<CurrentRouteTarget>>> {
+        Box::pin(async move {
+            let current_providers = self.current_providers.read().await;
+            Ok(current_providers.get(app.as_str()).cloned())
         })
     }
 
