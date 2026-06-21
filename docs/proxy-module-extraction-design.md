@@ -363,7 +363,7 @@
 352. GitHub Copilot auth header 列表、固定 fingerprint header 和 request id/header 绑定规则已迁入 `proxy-core::build_copilot_auth_headers`；host `ClaudeAdapter` 只负责生成 request id 并传入 Copilot 版本常量事实。
 353. Claude Responses prompt cache 的 Copilot provider 判定已迁入 `proxy-core::is_copilot_prompt_cache_provider`；host `ClaudeAdapter` 只传入 provider meta/settings 事实并沿用既有 cache-key 解析。
 354. Gemini OAuth key 形态判定（trim 后 `ya29.` 或 JSON 起始）已迁入 `proxy-core::is_gemini_oauth_key_shape`；host Claude/Gemini provider registry 不再本地手写 `starts_with` 规则。
-355. Claude forward API format 的 Copilot vendor 分流策略已迁入 `proxy-core::resolve_claude_forward_api_format`；host `RequestForwarder` 只负责从 CopilotAuthState 拉取 live model vendor 事实。
+355. Claude forward API format 的 Copilot vendor 分流策略已迁入 `proxy-core::resolve_claude_forward_api_format`；host `RequestForwarder` 只消费 `proxy::managed_account_auth` 返回的 live model vendor 事实。
 356. Codex Responses→Chat 转发时 base URL 是否已是完整 `/chat/completions` endpoint 的判断已迁入 `proxy-core::is_codex_chat_full_endpoint_base`；host `RequestForwarder` 只负责按 core policy 选择 full URL query 追加路径。
 357. 请求头大小写保真策略的 host wrapper 已删除；`RequestForwarder` 直接调用 `proxy-core::should_preserve_exact_request_header_case` 并只传入 adapter/provider/Copilot/api_format 事实。
 358. Bedrock pre-send optimizer env flag 的 host wrapper 已删除；`RequestForwarder` 直接调用 `proxy-core::bedrock_env_flag_from_provider_settings` 并只传入 provider settings。
@@ -822,7 +822,7 @@
 | `crate::app_config::AppType` | handlers、adapter、provider type 推断 | 外部调用方无法定义自己的 app namespace |
 | `crate::provider::Provider` | provider adapter、router、media sanitizer | provider 数据模型绑在 CC Switch 配置结构上 |
 | `crate::settings` | 当前 provider 读取、有效 provider 读取 | 核心逻辑隐式读宿主全局配置 |
-| `crate::commands::{CodexOAuthState, CopilotAuthState}` | `forwarder.rs` 认证刷新 | 认证管理和请求转发耦合 |
+| `crate::commands::{CodexOAuthState, CopilotAuthState}` | `proxy::managed_account_auth` 托管账号 token/runtime 读取 | 当前仍是 CC Switch host 适配层能力，后续应替换为外部宿主可注入的 `AuthProvider` |
 | `crate::services::usage_stats` | `UsageLogger` 定价查询 | 用量记录无法替换为外部 sink |
 | `crate::claude_desktop_config`, `crate::codex_config` | model list、gateway auth | 协议入口混入桌面配置文件细节 |
 
