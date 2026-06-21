@@ -44,6 +44,10 @@ impl From<&str> for AppKind {
     }
 }
 
+pub fn unsupported_app_kind_error_message(error: &str) -> String {
+    format!("unsupported app kind: {error}")
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ProviderKind {
@@ -1484,6 +1488,14 @@ mod tests {
             selections,
             attempts: Vec::new(),
         }
+    }
+
+    #[test]
+    fn unsupported_app_kind_error_message_preserves_runtime_text() {
+        assert_eq!(
+            unsupported_app_kind_error_message("invalid app: openclaw"),
+            "unsupported app kind: invalid app: openclaw"
+        );
     }
 
     #[test]

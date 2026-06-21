@@ -1396,6 +1396,10 @@ impl From<&AppType> for AppKind {
     }
 }
 
+pub(crate) fn unsupported_app_kind_error_message(error: impl std::fmt::Display) -> String {
+    crate::proxy_core::api::domain::unsupported_app_kind_error_message(&error.to_string())
+}
+
 #[allow(dead_code)]
 pub(crate) trait ToProxyCoreProviderSpec {
     fn to_proxy_core_provider_spec(&self, app_type: &AppType) -> ProviderSpec;
@@ -2539,6 +2543,10 @@ mod tests {
         assert_eq!(
             AppKind::from(&AppType::OpenClaw),
             AppKind::Custom("openclaw".to_string())
+        );
+        assert_eq!(
+            unsupported_app_kind_error_message("invalid app: openclaw"),
+            "unsupported app kind: invalid app: openclaw"
         );
     }
 

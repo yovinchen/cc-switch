@@ -40,6 +40,7 @@ use crate::proxy_core_adapter::{
     route_plan_providers_unconfigured_error_message,
     route_plan_provider_match, route_policy_from_failover_queue,
     settings_config_with_channel_auth_key,
+    unsupported_app_kind_error_message,
 };
 use bytes::Bytes;
 use futures::{future::BoxFuture, Stream, StreamExt};
@@ -794,7 +795,7 @@ where
 
 fn parse_app_type(app: &AppKind) -> ProxyCoreResult<AppType> {
     AppType::from_str(app.as_str())
-        .map_err(|error| ProxyCoreError::Config(format!("unsupported app kind: {error}")))
+        .map_err(|error| ProxyCoreError::Config(unsupported_app_kind_error_message(error)))
 }
 
 fn app_error(context: &str, error: AppError) -> ProxyCoreError {
