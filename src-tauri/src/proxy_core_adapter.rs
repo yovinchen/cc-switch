@@ -1900,6 +1900,26 @@ pub(crate) fn channel_health_reset_from_parts(
     crate::proxy_core::api::ports::channel_health_reset_from_parts(channel_id, app_type)
 }
 
+pub(crate) struct ChannelHealthAttemptDbUpdate {
+    pub(crate) channel_id: String,
+    pub(crate) success: bool,
+    pub(crate) error_code: Option<String>,
+    pub(crate) failure_threshold: u32,
+    pub(crate) response_time_ms: Option<i64>,
+}
+
+pub(crate) fn channel_health_attempt_db_update(
+    result: ChannelAttemptResult,
+) -> ChannelHealthAttemptDbUpdate {
+    ChannelHealthAttemptDbUpdate {
+        channel_id: result.channel_id,
+        success: result.success,
+        error_code: result.error_code,
+        failure_threshold: DEFAULT_CHANNEL_HEALTH_FAILURE_THRESHOLD,
+        response_time_ms: result.latency_ms.map(|latency| latency as i64),
+    }
+}
+
 pub(crate) fn proxy_response_to_core_response<G>(
     response: ProxyResponse,
     connection_guard: Option<G>,
@@ -4691,6 +4711,26 @@ mod tests {
                 reachability_status.as_str()
             );
         }
+    }
+
+    #[test]
+    fn channel_health_adapter_projects_attempt_db_update() {
+        let update = channel_health_attempt_db_update(ChannelAttemptResult {
+            channel_id: "channel-a".to_string(),
+            success: false,
+            status_code: Some(429),
+            latency_ms: Some(123),
+            error_code: Some("rate_limited".to_string()),
+        });
+
+        assert_eq!(update.channel_id, "channel-a");
+        assert!(!update.success);
+        assert_eq!(update.error_code.as_deref(), Some("rate_limited"));
+        assert_eq!(
+            update.failure_threshold,
+            DEFAULT_CHANNEL_HEALTH_FAILURE_THRESHOLD
+        );
+        assert_eq!(update.response_time_ms, Some(123));
     }
 
     #[test]

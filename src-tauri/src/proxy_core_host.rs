@@ -22,13 +22,13 @@ use crate::proxy_core_adapter::{
     ProxyCoreResult, ProxyEventSink, ProxyGlobalConfig, ProxyRequest,
     ProxyResult, ProxyRuntimeConfig, ProxyRuntimeStatus, ProxyServices, RoutePlan, RoutePolicy,
     RoutePolicySource, RouteRequest, RouteResolver, UsageRecord, UsageSink,
-    DEFAULT_CHANNEL_HEALTH_FAILURE_THRESHOLD,
 };
 use crate::proxy_core_adapter::{
     app_error,
     auth_info_from_cc_switch_provider_config,
     app_type_from_proxy_core_app,
     channel_auth_profile_action,
+    channel_health_attempt_db_update,
     channel_health_reset_from_parts,
     channel_key_auth_error,
     channel_spec_from_source,
@@ -367,13 +367,14 @@ impl ChannelHealthStore for CcSwitchHealthStore {
         result: ChannelAttemptResult,
     ) -> BoxFuture<'a, ProxyCoreResult<()>> {
         Box::pin(async move {
+            let update = channel_health_attempt_db_update(result);
             self.db
                 .update_proxy_channel_health_with_threshold(
-                    &result.channel_id,
-                    result.success,
-                    result.error_code,
-                    DEFAULT_CHANNEL_HEALTH_FAILURE_THRESHOLD,
-                    result.latency_ms.map(|latency| latency as i64),
+                    &update.channel_id,
+                    update.success,
+                    update.error_code,
+                    update.failure_threshold,
+                    update.response_time_ms,
                 )
                 .map_err(|error| app_error("record channel attempt", error))
         })
