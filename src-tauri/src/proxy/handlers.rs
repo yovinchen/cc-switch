@@ -44,8 +44,9 @@ use crate::proxy_core_adapter::{
     gemini_response_to_anthropic_message_with_shadow, openai_chat_to_anthropic_message,
     openai_responses_to_anthropic_message, parse_json_request_body,
     parse_json_request_body_or_null, parse_upstream_json_or_unlabeled_sse,
-    rebuilt_json_proxy_response, request_body_read_error_message, request_body_stream_flag,
-    resolve_management_auth_decision, should_aggregate_codex_oauth_responses_sse,
+    provider_is_codex_oauth, rebuilt_json_proxy_response, request_body_read_error_message,
+    request_body_stream_flag, resolve_management_auth_decision,
+    should_aggregate_codex_oauth_responses_sse,
     should_use_claude_transform_streaming,
     strip_endpoint_prefix, transformed_sse_proxy_response, validate_management_bearer_header,
     AppChannelListQuery, AppChannelManagementRequest, AppChannelResponse, AppKind, AppListRequest,
@@ -674,11 +675,7 @@ async fn handle_claude_transform(
 ) -> Result<axum::response::Response, ProxyError> {
     let status = response.status();
     let provider = ctx.provider()?;
-    let is_codex_oauth = provider
-        .meta
-        .as_ref()
-        .and_then(|meta| meta.provider_type.as_deref())
-        == Some("codex_oauth");
+    let is_codex_oauth = provider_is_codex_oauth(provider);
     // Codex OAuth 会把 openai_responses 响应强制升级为 SSE，即使客户端发的是 stream:false。
     // should_use_claude_transform_streaming 默认会把这个组合路由到流式转换器——虽然能避免
     // JSON parse 报 422，但会让非流客户端收到 text/event-stream，违反 Anthropic 非流语义。

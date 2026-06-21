@@ -3124,6 +3124,10 @@ pub(crate) fn provider_kind_from_provider(provider: &Provider) -> Option<Provide
         .map(ProviderKind::from)
 }
 
+pub(crate) fn provider_is_codex_oauth(provider: &Provider) -> bool {
+    provider_kind_from_provider(provider) == Some(ProviderKind::CodexOAuth)
+}
+
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn streaming_response_usage_record_with_optional_outbound_model(
     events: &[Value],
@@ -5915,6 +5919,18 @@ mod tests {
         });
 
         let usage_provider_kind = provider_kind_from_provider(&provider);
+        let usage_provider_is_codex_oauth = provider_is_codex_oauth(&provider);
+        let mut codex_provider = Provider::with_id(
+            "codex-oauth".to_string(),
+            "Codex OAuth".to_string(),
+            json!({}),
+            None,
+        );
+        codex_provider.meta = Some(ProviderMeta {
+            provider_type: Some("codex_oauth".to_string()),
+            ..ProviderMeta::default()
+        });
+
         let spec = provider.to_proxy_core_provider_spec(&AppType::Claude);
         let source_spec = provider_spec_from_source(&AppKind::Claude, Some(provider.clone()))
             .expect("provider spec")
@@ -5926,6 +5942,8 @@ mod tests {
         assert_eq!(source_spec.kind, ProviderKind::GitHubCopilot);
         assert_eq!(source_specs[0].kind, ProviderKind::GitHubCopilot);
         assert_eq!(usage_provider_kind, Some(ProviderKind::GitHubCopilot));
+        assert!(!usage_provider_is_codex_oauth);
+        assert!(provider_is_codex_oauth(&codex_provider));
         assert_eq!(spec.account_ref.as_deref(), Some("github_copilot:acct-1"));
         let serialized = serde_json::to_string(&spec).expect("serialize spec");
         assert!(!serialized.contains("secret-token"));
