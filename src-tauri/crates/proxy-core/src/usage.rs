@@ -850,6 +850,27 @@ pub fn usage_record_failure_warning_message(
     format!("{prefix}: {error}")
 }
 
+pub fn usage_record_debug_log_message(record: &UsageRecord) -> String {
+    format!(
+        "[{}] 记录请求日志: provider={}, model={}, streaming={}, status={}, latency_ms={}, first_token_ms={:?}, session={}, input={}, output={}, cache_read={}, cache_creation={}",
+        record.app.as_str(),
+        record.provider_id,
+        record
+            .response_model
+            .as_deref()
+            .unwrap_or(record.outbound_model.as_str()),
+        record.is_streaming,
+        record.status_code,
+        record.latency_ms,
+        record.first_token_ms,
+        record.session_id.as_deref().unwrap_or("none"),
+        record.tokens.input_tokens,
+        record.tokens.output_tokens,
+        record.tokens.cache_read_tokens,
+        record.tokens.cache_creation_tokens
+    )
+}
+
 #[derive(Debug, Clone)]
 pub struct TransformedResponseUsage {
     pub usage: TokenUsage,
@@ -2785,6 +2806,50 @@ mod tests {
                 "db failed"
             ),
             "[USG-001] 记录使用量失败: db failed"
+        );
+    }
+
+    #[test]
+    fn usage_record_debug_log_message_preserves_host_contract() {
+        let record = UsageRecord {
+            request_id: Some("req-1".to_string()),
+            message_id: None,
+            app: crate::domain::AppKind::Claude,
+            provider_id: "provider-1".to_string(),
+            provider_kind: None,
+            channel_id: None,
+            channel_name: None,
+            route_group: None,
+            request_model: "request-model".to_string(),
+            outbound_model: "outbound-model".to_string(),
+            response_model: Some("response-model".to_string()),
+            pricing_model: None,
+            tokens: UsageTokens {
+                input_tokens: 3,
+                output_tokens: 5,
+                cache_read_tokens: 7,
+                cache_creation_tokens: 11,
+            },
+            latency_ms: 42,
+            first_token_ms: Some(9),
+            status_code: 200,
+            error_message: None,
+            session_id: Some("session-1".to_string()),
+            is_streaming: true,
+            metadata: Value::Object(Default::default()),
+        };
+
+        assert_eq!(
+            usage_record_debug_log_message(&record),
+            "[claude] 记录请求日志: provider=provider-1, model=response-model, streaming=true, status=200, latency_ms=42, first_token_ms=Some(9), session=session-1, input=3, output=5, cache_read=7, cache_creation=11"
+        );
+
+        let mut fallback = record;
+        fallback.response_model = None;
+        fallback.session_id = None;
+        assert_eq!(
+            usage_record_debug_log_message(&fallback),
+            "[claude] 记录请求日志: provider=provider-1, model=outbound-model, streaming=true, status=200, latency_ms=42, first_token_ms=Some(9), session=none, input=3, output=5, cache_read=7, cache_creation=11"
         );
     }
 

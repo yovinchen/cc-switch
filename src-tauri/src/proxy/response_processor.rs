@@ -21,11 +21,12 @@ use crate::proxy_core_adapter::{
     non_streaming_response_usage_record_from_body_with_request_id_fallback,
     passthrough_bytes_proxy_response, passthrough_stream_proxy_response,
     response_headers_log_summary, streaming_response_usage_record_with_optional_outbound_model,
-    usage_record_failure_warning_message, usage_record_with_route_context,
-    usage_selected_provider_missing_log_message, ProxyCoreAppKind as AppKind, ProxyServices,
-    ResponseBodyDecodeLogLevel, SseEventScanner, SsePassthroughEventKind, SseUsageAccumulator,
-    StreamUsageEventFilter, StreamingTimeoutConfig, StreamingTimeoutPhase, UsageParserConfig,
-    UsageRecord, UsageRecordFailureLogContext, UsageSelectedProviderMissingPhase,
+    usage_record_debug_log_message, usage_record_failure_warning_message,
+    usage_record_with_route_context, usage_selected_provider_missing_log_message,
+    ProxyCoreAppKind as AppKind, ProxyServices, ResponseBodyDecodeLogLevel, SseEventScanner,
+    SsePassthroughEventKind, SseUsageAccumulator, StreamUsageEventFilter, StreamingTimeoutConfig,
+    StreamingTimeoutPhase, UsageParserConfig, UsageRecord, UsageRecordFailureLogContext,
+    UsageSelectedProviderMissingPhase,
 };
 #[cfg(test)]
 use crate::proxy_core_adapter::{ProviderKind, TokenUsage};
@@ -395,24 +396,7 @@ fn spawn_record_usage(state: &ProxyState, record: UsageRecord) {
 }
 
 async fn record_usage_internal(state: &ProxyState, record: UsageRecord) {
-    log::debug!(
-        "[{}] 记录请求日志: provider={}, model={}, streaming={}, status={}, latency_ms={}, first_token_ms={:?}, session={}, input={}, output={}, cache_read={}, cache_creation={}",
-        record.app.as_str(),
-        record.provider_id,
-        record
-            .response_model
-            .as_deref()
-            .unwrap_or(record.outbound_model.as_str()),
-        record.is_streaming,
-        record.status_code,
-        record.latency_ms,
-        record.first_token_ms,
-        record.session_id.as_deref().unwrap_or("none"),
-        record.tokens.input_tokens,
-        record.tokens.output_tokens,
-        record.tokens.cache_read_tokens,
-        record.tokens.cache_creation_tokens
-    );
+    log::debug!("{}", usage_record_debug_log_message(&record));
 
     if let Err(e) = state
         .proxy_core_services

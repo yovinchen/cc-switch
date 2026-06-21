@@ -3108,6 +3108,10 @@ pub(crate) fn usage_record_failure_warning_message(
     crate::proxy_core::api::usage::usage_record_failure_warning_message(context, error)
 }
 
+pub(crate) fn usage_record_debug_log_message(record: &UsageRecord) -> String {
+    crate::proxy_core::api::usage::usage_record_debug_log_message(record)
+}
+
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn streaming_response_usage_record_with_optional_outbound_model(
     events: &[Value],
@@ -5730,6 +5734,10 @@ mod tests {
                 "db failed"
             ),
             "[USG-001] 记录使用量失败: db failed"
+        );
+        assert_eq!(
+            usage_record_debug_log_message(&record),
+            "[claude] 记录请求日志: provider=provider-a, model=upstream-sonnet, streaming=true, status=200, latency_ms=42, first_token_ms=Some(7), session=session-a, input=1000, output=500, cache_read=0, cache_creation=0"
         );
     }
 
