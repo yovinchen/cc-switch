@@ -29,6 +29,7 @@ use crate::proxy_core_adapter::{
     channel_auth_profile_resolution,
     channel_health_reset_from_parts,
     current_provider_id_from_sources,
+    current_provider_id_option_from_sources,
     error_message_with_context,
     extract_proxy_session_id,
     proxy_app_config_from_config_parts, proxy_global_config_from_config,
@@ -217,9 +218,13 @@ impl ProxyConfigSource for CcSwitchConfigSource {
             let rectifier = self.db.get_rectifier_config().unwrap_or_default();
             let optimizer = self.db.get_optimizer_config().unwrap_or_default();
             let copilot_optimizer = self.db.get_copilot_optimizer_config().unwrap_or_default();
-            let current_provider_id = app_type
+            let settings_current_provider_id = app_type
                 .as_ref()
                 .and_then(crate::settings::get_current_provider);
+            let current_provider_id = current_provider_id_option_from_sources(
+                settings_current_provider_id.as_deref(),
+                None,
+            );
             Ok(proxy_app_config_from_config_parts(
                 app.clone(),
                 config,

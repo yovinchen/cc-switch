@@ -87,14 +87,21 @@ pub fn select_provider_ids(
     }
 }
 
+pub fn current_provider_id_option_from_sources(
+    settings_current_provider_id: Option<&str>,
+    db_current_provider_id: Option<&str>,
+) -> Option<String> {
+    settings_current_provider_id
+        .or(db_current_provider_id)
+        .map(str::to_string)
+}
+
 pub fn current_provider_id_from_sources(
     settings_current_provider_id: Option<&str>,
     db_current_provider_id: Option<&str>,
 ) -> String {
-    settings_current_provider_id
-        .or(db_current_provider_id)
+    current_provider_id_option_from_sources(settings_current_provider_id, db_current_provider_id)
         .unwrap_or_default()
-        .to_string()
 }
 
 pub fn should_block_proxy_switch_to_provider_category(
@@ -123,8 +130,8 @@ pub fn should_attempt_restored_provider_switchback(
 #[cfg(test)]
 mod tests {
     use super::{
-        current_provider_id_from_sources, select_provider_ids,
-        should_attempt_restored_provider_switchback,
+        current_provider_id_from_sources, current_provider_id_option_from_sources,
+        select_provider_ids, should_attempt_restored_provider_switchback,
         should_block_proxy_switch_to_provider_category, ProviderSelectionCandidate,
         ProviderSelectionFailure, ProviderSelectionInput,
     };
@@ -180,10 +187,19 @@ mod tests {
             "settings-provider"
         );
         assert_eq!(
+            current_provider_id_option_from_sources(Some("settings-provider"), Some("db-provider")),
+            Some("settings-provider".to_string())
+        );
+        assert_eq!(
             current_provider_id_from_sources(None, Some("db-provider")),
             "db-provider"
         );
+        assert_eq!(
+            current_provider_id_option_from_sources(None, Some("db-provider")),
+            Some("db-provider".to_string())
+        );
         assert_eq!(current_provider_id_from_sources(None, None), "");
+        assert_eq!(current_provider_id_option_from_sources(None, None), None);
     }
 
     #[test]
@@ -191,6 +207,10 @@ mod tests {
         assert_eq!(
             current_provider_id_from_sources(Some(""), Some("db-provider")),
             ""
+        );
+        assert_eq!(
+            current_provider_id_option_from_sources(Some(""), Some("db-provider")),
+            Some(String::new())
         );
     }
 
