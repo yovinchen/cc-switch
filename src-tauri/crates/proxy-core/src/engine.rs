@@ -6,11 +6,13 @@ use super::domain::{
 };
 use super::error::ProxyCoreResult;
 use super::management_api::{
+    AppChannelListSource, AppChannelManagementPlan, AppChannelManagementRequest,
     AppModelCatalogRequest, ManagementAppPathRequest, ProviderListSource,
     RouteResolveManagementRequest,
 };
 use super::ports::{
-    ChannelHealthReset, ChannelHealthResetResponse, ClientModelCatalogResponse, ModelCatalog,
+    AppChannelResponse, ChannelHealthReset, ChannelHealthResetResponse, ChannelRecord,
+    ChannelRouteCandidate, ChannelRouteRejected, ClientModelCatalogResponse, ModelCatalog,
     ProviderListResponse, ProxyCoreEvent, ProxyCoreEventType, ProxyServices,
     RouteResolveResponse,
 };
@@ -244,6 +246,28 @@ where
         Ok(request.response_from_resolution(response))
     }
 
+    pub async fn app_channel_response(
+        &self,
+        request: AppChannelManagementRequest,
+    ) -> ProxyCoreResult<AppChannelResponse<ChannelRecord, ChannelRouteCandidate, ChannelRouteRejected>>
+    {
+        match request.plan() {
+            AppChannelManagementPlan::Route(route_request) => {
+                let response = self
+                    .resolve_route_response(RouteResolveManagementRequest::from_body(route_request)?)
+                    .await?;
+                Ok(request.response_from_route_resolution(response))
+            }
+            AppChannelManagementPlan::List { app_type } => {
+                let app = AppKind::from(app_type.as_str());
+                let (source, channels) = self.services.channels().list_channel_records(&app).await?;
+                Ok(request.response_from_list_source(AppChannelListSource::new(
+                    source, channels,
+                )))
+            }
+        }
+    }
+
     pub async fn client_model_catalog(
         &self,
         app: &super::domain::AppKind,
@@ -367,6 +391,8 @@ mod tests {
     };
     use crate::error::ProxyCoreError;
     use crate::ports::{
+        channel_record_from_input, AppChannelListResponse, ChannelRecordInput,
+        ChannelRouteSource,
         AuthInfo, AuthProvider, ChannelHealthStore, ChannelSource, ForwardPipeline, ModelCatalog,
         ModelCatalogProvider, ProviderSource, ProxyAppConfig, ProxyConfigSource, ProxyCoreEvent,
         ProxyEventSink, ProxyGlobalConfig, ProxyRuntimeConfig, RoutePolicySource, RouteResolver,
@@ -387,6 +413,8 @@ mod tests {
         route_candidate_provider_ids: Mutex<Vec<String>>,
         route_policy: Mutex<Option<RoutePolicy>>,
         route_resolution: Mutex<Option<RouteResolveResponse>>,
+        channel_records: Mutex<Vec<ChannelRecord>>,
+        channel_route_source: Mutex<Option<ChannelRouteSource>>,
     }
 
     impl ProxyServices for TestServices {
@@ -522,6 +550,30 @@ mod tests {
             channel_id: &'a str,
         ) -> BoxFuture<'a, ProxyCoreResult<Option<ChannelSpec>>> {
             Box::pin(async move { Ok((channel_id == "channel-a").then(channel_spec)) })
+        }
+
+        fn list_channel_records<'a>(
+            &'a self,
+            _app: &'a AppKind,
+        ) -> BoxFuture<'a, ProxyCoreResult<(ChannelRouteSource, Vec<ChannelRecord>)>> {
+            let source = self
+                .channel_route_source
+                .lock()
+                .expect("channel route source mutex")
+                .clone()
+                .unwrap_or(ChannelRouteSource::MaterializedChannels);
+            let records = self
+                .channel_records
+                .lock()
+                .expect("channel records mutex")
+                .clone();
+            Box::pin(async move {
+                if records.is_empty() {
+                    Ok((source, vec![channel_record()]))
+                } else {
+                    Ok((source, records))
+                }
+            })
         }
     }
 
@@ -971,6 +1023,39 @@ mod tests {
     }
 
     #[test]
+    fn app_channel_response_delegates_list_sources_to_channel_source() {
+        let services = Arc::new(TestServices::default());
+        *services
+            .channel_route_source
+            .lock()
+            .expect("channel route source mutex") = Some(ChannelRouteSource::LegacyProjection);
+        *services
+            .channel_records
+            .lock()
+            .expect("channel records mutex") = vec![channel_record()];
+        let engine = ProxyEngine::new(services);
+        let request = AppChannelManagementRequest::from_parts(
+            "claude",
+            serde_json::from_value(json!({})).expect("query"),
+        )
+        .expect("channel management request");
+
+        let response = futures::executor::block_on(engine.app_channel_response(request))
+            .expect("channel response");
+
+        let AppChannelResponse::List(AppChannelListResponse {
+            source, channels, ..
+        }) = response
+        else {
+            panic!("expected channel list response");
+        };
+        assert_eq!(source, "legacy_projection");
+        assert_eq!(channels.len(), 1);
+        assert_eq!(channels[0].id, "channel-a");
+        assert_eq!(channels[0].source_kind, "legacy_projection");
+    }
+
+    #[test]
     fn client_model_catalog_delegates_to_catalog_provider() {
         let services = Arc::new(TestServices::default());
         let engine = ProxyEngine::new(services);
@@ -1072,5 +1157,33 @@ mod tests {
             needs_review: false,
             review_reasons: Vec::new(),
         }
+    }
+
+    fn channel_record() -> ChannelRecord {
+        channel_record_from_input(ChannelRecordInput {
+            id: "channel-a".to_string(),
+            provider_id: "provider-a".to_string(),
+            app_type: "claude".to_string(),
+            name: "Channel A".to_string(),
+            status: "enabled".to_string(),
+            base_url: "https://upstream.example.com/v1".to_string(),
+            interface_kind: "anthropic_messages".to_string(),
+            auth_profile_ref: None,
+            groups: vec![DEFAULT_ROUTE_GROUP.to_string()],
+            priority: 100,
+            weight: 100,
+            retry_policy: json!({}),
+            health_policy: json!({}),
+            header_overrides: json!({}),
+            param_overrides: json!({}),
+            status_code_mapping: json!({}),
+            tags: Vec::new(),
+            metadata: json!({}),
+            source_kind: "legacy_projection".to_string(),
+            source_endpoint_url: Some("https://upstream.example.com/v1".to_string()),
+            models: Vec::new(),
+            needs_review: false,
+            review_reasons: Vec::new(),
+        })
     }
 }

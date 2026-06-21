@@ -752,8 +752,8 @@ pub(crate) use crate::proxy_core::api::auth::{
 pub(crate) use crate::proxy_core::api::management::{
     channel_health_update_from_input, plan_channel_test, provider_health_update_from_input,
     AppChannelListQuery,
-    AppChannelListSource, AppChannelManagementPlan, AppChannelManagementRequest,
-    AppChannelResponse, AppListRequest, AppListResponse, AppListSource, AppModelCatalogRequest,
+    AppChannelManagementRequest, AppChannelResponse, AppListRequest, AppListResponse,
+    AppListSource, AppModelCatalogRequest,
     AppModelListQuery, ChannelCreateRequest,
     CHANNEL_HEALTH_UNKNOWN_STATUS,
     ChannelCreateSource, ChannelDeleteResponse, ChannelDeleteSource, ChannelHealthResetResponse,
@@ -1849,13 +1849,6 @@ pub(crate) fn channel_list_source_from_records(
     channels: Vec<ProxyChannelRecord>,
 ) -> ChannelListSource<ChannelRecord> {
     ChannelListSource::new(proxy_channel_records_to_core(channels))
-}
-
-pub(crate) fn app_channel_list_source_from_records(
-    source: ChannelRouteSource,
-    channels: Vec<ProxyChannelRecord>,
-) -> AppChannelListSource<ChannelRecord> {
-    AppChannelListSource::new(source, proxy_channel_records_to_core(channels))
 }
 
 pub(crate) fn group_list_channel_source_from_records(

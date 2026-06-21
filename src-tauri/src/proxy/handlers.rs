@@ -45,7 +45,7 @@ use crate::proxy_core_adapter::{
     rebuilt_json_proxy_response, resolve_management_auth_decision,
     should_aggregate_codex_oauth_responses_sse, should_use_claude_transform_streaming,
     strip_endpoint_prefix, transformed_sse_proxy_response, validate_management_bearer_header,
-    AppChannelListQuery, AppChannelManagementPlan, AppChannelManagementRequest,
+    AppChannelListQuery, AppChannelManagementRequest,
     AppChannelResponse, AppKind, AppListRequest, AppListResponse,
     AppModelCatalogRequest, AppModelListQuery, ChannelCreateRequest,
     ChannelDeleteResponse, ChannelHealthResetResponse,
@@ -69,7 +69,7 @@ use crate::proxy_core_adapter::{
     OPENAI_PARSER_CONFIG,
 };
 use crate::proxy_core_adapter::{
-    app_channel_list_source_from_records, app_list_source_from_summaries,
+    app_list_source_from_summaries,
     channel_delete_source_from_deleted, channel_health_reset_source_from_response,
     channel_list_source_from_records, channel_create_source_from_record,
     channel_key_delete_source_from_deleted,
@@ -533,31 +533,13 @@ pub async fn list_proxy_channels(
     let request = AppChannelManagementRequest::from_parts(app_type, query)
         .map_err(management_api_error_to_proxy_error)?;
 
-    match request.plan() {
-        AppChannelManagementPlan::Route(route_request) => {
-            let response = state
-                .proxy_engine()
-                .resolve_route_response(
-                    RouteResolveManagementRequest::from_body(route_request)
-                        .map_err(management_api_error_to_proxy_error)?,
-                )
-                .await
-                .map_err(proxy_core_error_to_proxy_error)?;
+    let response = state
+        .proxy_engine()
+        .app_channel_response(request)
+        .await
+        .map_err(proxy_core_error_to_proxy_error)?;
 
-            Ok(Json(request.response_from_route_resolution(response)))
-        }
-        AppChannelManagementPlan::List { app_type } => {
-            let (channels, source) = state
-                .provider_router
-                .list_channels_for_app(&app_type)
-                .await
-                .map_err(|e| ProxyError::DatabaseError(e.to_string()))?;
-
-            Ok(Json(request.response_from_list_source(
-                app_channel_list_source_from_records(source, channels),
-            )))
-        }
-    }
+    Ok(Json(response))
 }
 
 /// GET /proxy/v1/groups

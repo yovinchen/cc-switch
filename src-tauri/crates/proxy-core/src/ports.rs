@@ -75,6 +75,17 @@ pub trait ChannelSource: Send + Sync {
         &'a self,
         channel_id: &'a str,
     ) -> BoxFuture<'a, ProxyCoreResult<Option<ChannelSpec>>>;
+
+    fn list_channel_records<'a>(
+        &'a self,
+        _app: &'a AppKind,
+    ) -> BoxFuture<'a, ProxyCoreResult<(ChannelRouteSource, Vec<ChannelRecord>)>> {
+        Box::pin(async {
+            Err(ProxyCoreError::Unavailable(
+                "management channel list source is not configured".to_string(),
+            ))
+        })
+    }
 }
 
 pub trait RoutePolicySource: Send + Sync {

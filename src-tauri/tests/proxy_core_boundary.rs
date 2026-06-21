@@ -172,20 +172,29 @@ fn channel_list_route_branch_delegates_dry_run_to_proxy_engine() {
         "/// GET /proxy/v1/groups",
     );
 
+    let forbidden_markers = [
+        "provider_router",
+        ".resolve_channel_route_dry_run(",
+        ".list_channels_for_app(",
+        "AppChannelManagementPlan",
+    ];
+
     let mut violations = Vec::new();
     for (line_index, line) in production_lines(handler) {
         let code = line.split("//").next().unwrap_or_default();
-        if code.contains(".resolve_channel_route_dry_run(") {
-            violations.push(format!(
-                "src/proxy/handlers.rs list_proxy_channels:{} contains route dry-run marker",
-                line_index + 1
-            ));
+        for marker in forbidden_markers {
+            if code.contains(marker) {
+                violations.push(format!(
+                    "src/proxy/handlers.rs list_proxy_channels:{} contains channel source marker `{}`",
+                    line_index + 1,
+                    marker
+                ));
+            }
         }
     }
-
     assert!(
         violations.is_empty(),
-        "channel-list route branch must delegate dry-run route resolution to ProxyEngine:\n{}",
+        "channel-list HTTP handler must delegate list and route source resolution to ProxyEngine:\n{}",
         violations.join("\n")
     );
 }

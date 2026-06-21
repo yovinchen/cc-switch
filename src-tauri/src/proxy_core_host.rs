@@ -14,7 +14,7 @@ use crate::proxy::RequestForwarder;
 use crate::proxy_core_adapter::{
     AppKind, AuthInfo, AuthProfileRef, ChannelAttemptResult,
     ChannelQuery,
-    ChannelSource, ChannelSpec, AuthProvider,
+    ChannelRecord, ChannelRouteSource, ChannelSource, ChannelSpec, AuthProvider,
     ChannelHealthReset, ChannelHealthStore, CurrentRouteTarget, ForwardPipeline,
     GeminiShadowStore, ModelCatalog, ModelCatalogProvider, ProviderSource, ProviderSpec,
     ProxyAppConfig, ProxyConfigSource, ProxyCoreEvent,
@@ -41,7 +41,7 @@ use crate::proxy_core_adapter::{
     forward_result_to_proxy_result,
     forwarding_runtime_unavailable_error,
     host_providers_for_plan,
-    provider_spec_from_source,
+    provider_spec_from_source, proxy_channel_records_to_core,
     provider_specs_from_source,
     provider_model_catalog_from_provider,
     proxy_app_config_from_config_source, proxy_global_config_from_config,
@@ -358,6 +358,20 @@ impl ChannelSource for CcSwitchChannelSource {
                 .get_proxy_channel(channel_id)
                 .map_err(|error| app_error("get channel", error))?;
             Ok(channel_spec_from_source(channel))
+        })
+    }
+
+    fn list_channel_records<'a>(
+        &'a self,
+        app: &'a AppKind,
+    ) -> BoxFuture<'a, ProxyCoreResult<(ChannelRouteSource, Vec<ChannelRecord>)>> {
+        Box::pin(async move {
+            let (channels, source) = self
+                .router
+                .list_channels_for_app(app.as_str())
+                .await
+                .map_err(|error| app_error("list channel records", error))?;
+            Ok((source, proxy_channel_records_to_core(channels)))
         })
     }
 }
