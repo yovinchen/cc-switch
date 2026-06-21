@@ -9,11 +9,14 @@ use crate::provider::Provider;
 use crate::proxy::server::ProxyServer;
 use crate::proxy::switch_lock::SwitchLockManager;
 use crate::proxy_core_adapter::{
-    build_proxy_official_warning_event_payload, claude_takeover_model_fields_from_settings,
+    build_proxy_official_warning_event_payload, claude_live_config_has_proxy_placeholder,
+    claude_takeover_model_fields_from_settings, codex_live_config_has_proxy_placeholder,
+    gemini_live_config_has_proxy_placeholder, live_config_has_proxy_placeholder_for_app,
     provider_claude_takeover_model_fields, provider_is_github_copilot,
-    provider_uses_managed_account_auth, proxy_runtime_status_stopped, proxy_server_info_from_parts,
-    proxy_takeover_status_from_parts, CircuitBreakerConfig, ProxyConfig, ProxyRuntimeStatus,
-    ProxyServerInfo, ProxyTakeoverStatus, PROXY_OFFICIAL_WARNING_EVENT,
+    provider_settings_have_proxy_placeholder_for_app, provider_uses_managed_account_auth,
+    proxy_runtime_status_stopped, proxy_server_info_from_parts, proxy_takeover_status_from_parts,
+    CircuitBreakerConfig, ProxyConfig, ProxyRuntimeStatus, ProxyServerInfo, ProxyTakeoverStatus,
+    PROXY_OFFICIAL_WARNING_EVENT,
 };
 use crate::services::provider::{
     build_effective_settings_with_common_config, write_live_with_common_config,
@@ -1573,7 +1576,11 @@ impl ProxyService {
         // 供应商配置本身含接管占位符时不可写回（历史异常：接管期间 Live 被
         // 误导入成了供应商）。写回只会把占位符固化进 Live；返回 Ok(false)
         // 让调用方落到"清理占位符"兜底。
-        if Self::live_has_proxy_placeholder_for_app(app_type, &provider.settings_config) {
+        if provider_settings_have_proxy_placeholder_for_app(
+            provider,
+            app_type,
+            PROXY_TOKEN_PLACEHOLDER,
+        ) {
             log::warn!(
                 "{app_type:?} 当前供应商配置含代理接管占位符（疑似接管期间被导入的残留），跳过 SSOT 写回，改走占位符清理"
             );
@@ -1830,42 +1837,11 @@ impl ProxyService {
     }
 
     fn is_claude_live_taken_over(config: &Value) -> bool {
-        let env = match config.get("env").and_then(|v| v.as_object()) {
-            Some(env) => env,
-            None => return false,
-        };
-
-        for key in [
-            "ANTHROPIC_AUTH_TOKEN",
-            "ANTHROPIC_API_KEY",
-            "OPENROUTER_API_KEY",
-            "OPENAI_API_KEY",
-        ] {
-            if env.get(key).and_then(|v| v.as_str()) == Some(PROXY_TOKEN_PLACEHOLDER) {
-                return true;
-            }
-        }
-
-        false
+        claude_live_config_has_proxy_placeholder(config, PROXY_TOKEN_PLACEHOLDER)
     }
 
     fn codex_live_has_proxy_placeholder(config: &Value) -> bool {
-        if config
-            .get("auth")
-            .and_then(|v| v.as_object())
-            .and_then(|auth| auth.get("OPENAI_API_KEY"))
-            .and_then(|v| v.as_str())
-            == Some(PROXY_TOKEN_PLACEHOLDER)
-        {
-            return true;
-        }
-
-        config
-            .get("config")
-            .and_then(|v| v.as_str())
-            .and_then(crate::codex_config::extract_codex_experimental_bearer_token)
-            .as_deref()
-            == Some(PROXY_TOKEN_PLACEHOLDER)
+        codex_live_config_has_proxy_placeholder(config, PROXY_TOKEN_PLACEHOLDER)
     }
 
     fn is_codex_live_taken_over(config: &Value) -> bool {
@@ -1873,11 +1849,7 @@ impl ProxyService {
     }
 
     fn is_gemini_live_taken_over(config: &Value) -> bool {
-        let env = match config.get("env").and_then(|v| v.as_object()) {
-            Some(env) => env,
-            None => return false,
-        };
-        env.get("GEMINI_API_KEY").and_then(|v| v.as_str()) == Some(PROXY_TOKEN_PLACEHOLDER)
+        gemini_live_config_has_proxy_placeholder(config, PROXY_TOKEN_PLACEHOLDER)
     }
 
     /// 判断给定的 Live/备份配置是否已被代理接管（包含占位符）
@@ -1887,12 +1859,7 @@ impl ProxyService {
     /// 恢复路径不能读取（否则会把代理占位符原样写回 Live，永久卡在代理地址）。
     /// 两种情况下都应该走 SSOT 兜底重建 Live。
     fn live_has_proxy_placeholder_for_app(app_type: &AppType, config: &Value) -> bool {
-        match app_type {
-            AppType::Claude => Self::is_claude_live_taken_over(config),
-            AppType::Codex => Self::codex_live_has_proxy_placeholder(config),
-            AppType::Gemini => Self::is_gemini_live_taken_over(config),
-            _ => false,
-        }
+        live_config_has_proxy_placeholder_for_app(app_type, config, PROXY_TOKEN_PLACEHOLDER)
     }
 
     /// 从供应商配置更新 Live 备份（用于代理模式下的热切换）

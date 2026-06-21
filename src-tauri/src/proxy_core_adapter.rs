@@ -3593,6 +3593,79 @@ pub(crate) fn provider_launch_env_vars_for_app(
     launch_env_vars_from_provider_settings(&provider.settings_config, app_type)
 }
 
+pub(crate) fn provider_settings_have_proxy_placeholder_for_app(
+    provider: &Provider,
+    app_type: &AppType,
+    placeholder: &str,
+) -> bool {
+    live_config_has_proxy_placeholder_for_app(app_type, &provider.settings_config, placeholder)
+}
+
+pub(crate) fn live_config_has_proxy_placeholder_for_app(
+    app_type: &AppType,
+    config: &Value,
+    placeholder: &str,
+) -> bool {
+    match app_type {
+        AppType::Claude => claude_live_config_has_proxy_placeholder(config, placeholder),
+        AppType::Codex => codex_live_config_has_proxy_placeholder(config, placeholder),
+        AppType::Gemini => gemini_live_config_has_proxy_placeholder(config, placeholder),
+        _ => false,
+    }
+}
+
+pub(crate) fn claude_live_config_has_proxy_placeholder(
+    config: &Value,
+    placeholder: &str,
+) -> bool {
+    let Some(env) = config.get("env").and_then(Value::as_object) else {
+        return false;
+    };
+
+    [
+        "ANTHROPIC_AUTH_TOKEN",
+        "ANTHROPIC_API_KEY",
+        "OPENROUTER_API_KEY",
+        "OPENAI_API_KEY",
+    ]
+    .into_iter()
+    .any(|key| env.get(key).and_then(Value::as_str) == Some(placeholder))
+}
+
+pub(crate) fn codex_live_config_has_proxy_placeholder(
+    config: &Value,
+    placeholder: &str,
+) -> bool {
+    if config
+        .get("auth")
+        .and_then(Value::as_object)
+        .and_then(|auth| auth.get("OPENAI_API_KEY"))
+        .and_then(Value::as_str)
+        == Some(placeholder)
+    {
+        return true;
+    }
+
+    config
+        .get("config")
+        .and_then(Value::as_str)
+        .and_then(crate::codex_config::extract_codex_experimental_bearer_token)
+        .as_deref()
+        == Some(placeholder)
+}
+
+pub(crate) fn gemini_live_config_has_proxy_placeholder(
+    config: &Value,
+    placeholder: &str,
+) -> bool {
+    config
+        .get("env")
+        .and_then(Value::as_object)
+        .and_then(|env| env.get("GEMINI_API_KEY"))
+        .and_then(Value::as_str)
+        == Some(placeholder)
+}
+
 fn launch_env_vars_from_provider_settings(
     config: &Value,
     app_type: &AppType,
@@ -5693,6 +5766,54 @@ wire_api = "chat"
             "GEMINI_API_KEY".to_string(),
             "gemini-key".to_string()
         )));
+    }
+
+    #[test]
+    fn proxy_placeholder_adapter_projects_app_specific_live_detection() {
+        let placeholder = "PROXY_MANAGED";
+
+        assert!(live_config_has_proxy_placeholder_for_app(
+            &AppType::Claude,
+            &json!({ "env": { "ANTHROPIC_API_KEY": placeholder } }),
+            placeholder
+        ));
+        assert!(live_config_has_proxy_placeholder_for_app(
+            &AppType::Codex,
+            &json!({ "config": "experimental_bearer_token = \"PROXY_MANAGED\"" }),
+            placeholder
+        ));
+        assert!(live_config_has_proxy_placeholder_for_app(
+            &AppType::Gemini,
+            &json!({ "env": { "GEMINI_API_KEY": placeholder } }),
+            placeholder
+        ));
+        assert!(!live_config_has_proxy_placeholder_for_app(
+            &AppType::OpenClaw,
+            &json!({ "env": { "ANTHROPIC_API_KEY": placeholder } }),
+            placeholder
+        ));
+
+        let provider = Provider::with_id(
+            "codex-live-residue".to_string(),
+            "Codex Live Residue".to_string(),
+            json!({ "auth": placeholder }),
+            None,
+        );
+        assert!(!provider_settings_have_proxy_placeholder_for_app(
+            &provider,
+            &AppType::Claude,
+            placeholder
+        ));
+        assert!(provider_settings_have_proxy_placeholder_for_app(
+            &Provider::with_id(
+                "claude-live-residue".to_string(),
+                "Claude Live Residue".to_string(),
+                json!({ "env": { "ANTHROPIC_AUTH_TOKEN": placeholder } }),
+                None,
+            ),
+            &AppType::Claude,
+            placeholder
+        ));
     }
 
     #[test]
