@@ -454,6 +454,39 @@ pub struct AppProxyConfig {
     pub circuit_min_requests: u32,
 }
 
+pub fn app_proxy_config_defaults_for_app(app_type: &str) -> AppProxyConfig {
+    let (
+        max_retries,
+        streaming_first_byte_timeout,
+        streaming_idle_timeout,
+        circuit_failure_threshold,
+        circuit_success_threshold,
+        circuit_timeout_seconds,
+        circuit_error_rate_threshold,
+        circuit_min_requests,
+    ) = match app_type {
+        "claude" => (6, 90, 180, 8, 3, 90, 0.7, 15),
+        "codex" => (3, 60, 120, 4, 2, 60, 0.6, 10),
+        "gemini" => (5, 60, 120, 4, 2, 60, 0.6, 10),
+        _ => (3, 60, 120, 4, 2, 60, 0.6, 10),
+    };
+
+    AppProxyConfig {
+        app_type: app_type.to_string(),
+        enabled: false,
+        auto_failover_enabled: false,
+        max_retries,
+        streaming_first_byte_timeout,
+        streaming_idle_timeout,
+        non_streaming_timeout: 600,
+        circuit_failure_threshold,
+        circuit_success_threshold,
+        circuit_timeout_seconds,
+        circuit_error_rate_threshold,
+        circuit_min_requests,
+    }
+}
+
 pub fn app_proxy_config_raw(
     config: AppProxyConfig,
     current_provider_id: Option<String>,
@@ -2416,9 +2449,10 @@ impl ProxyCoreEvent {
 mod tests {
     use super::{
         AppChannelListQuery, AppChannelListResponse, AppChannelResponse, AppChannelRouteResponse,
-        app_proxy_config_raw, channel_health_update_from_input, channel_model_record_from_input,
-        channel_reachability_result_from_stream_check_result, AppListResponse, AppModelListQuery,
-        AppProxyConfig, AppSummaryInput, channel_key_record_from_input,
+        app_proxy_config_defaults_for_app, app_proxy_config_raw, channel_health_update_from_input,
+        channel_model_record_from_input, channel_reachability_result_from_stream_check_result,
+        AppListResponse, AppModelListQuery, AppProxyConfig, AppSummaryInput,
+        channel_key_record_from_input,
         channel_reachability_status_from_latency, channel_record_from_input, ChannelDeleteResponse,
         ChannelHealthUpdateInput, CHANNEL_HEALTH_UNKNOWN_STATUS,
         ChannelKeyRecordInput, ChannelListQuery, ChannelListResponse, ChannelReachabilityInput,
@@ -3185,6 +3219,40 @@ mod tests {
                 "enableLogging": false
             })
         );
+    }
+
+    #[test]
+    fn app_proxy_config_defaults_preserve_seed_contract() {
+        let claude = app_proxy_config_defaults_for_app("claude");
+        assert_eq!(claude.app_type, "claude");
+        assert!(!claude.enabled);
+        assert!(!claude.auto_failover_enabled);
+        assert_eq!(claude.max_retries, 6);
+        assert_eq!(claude.streaming_first_byte_timeout, 90);
+        assert_eq!(claude.streaming_idle_timeout, 180);
+        assert_eq!(claude.non_streaming_timeout, 600);
+        assert_eq!(claude.circuit_failure_threshold, 8);
+        assert_eq!(claude.circuit_success_threshold, 3);
+        assert_eq!(claude.circuit_timeout_seconds, 90);
+        assert_eq!(claude.circuit_error_rate_threshold, 0.7);
+        assert_eq!(claude.circuit_min_requests, 15);
+
+        let codex = app_proxy_config_defaults_for_app("codex");
+        assert_eq!(codex.max_retries, 3);
+        assert_eq!(codex.streaming_first_byte_timeout, 60);
+        assert_eq!(codex.streaming_idle_timeout, 120);
+        assert_eq!(codex.circuit_failure_threshold, 4);
+
+        let gemini = app_proxy_config_defaults_for_app("gemini");
+        assert_eq!(gemini.max_retries, 5);
+        assert_eq!(gemini.streaming_first_byte_timeout, 60);
+        assert_eq!(gemini.circuit_failure_threshold, 4);
+
+        let other = app_proxy_config_defaults_for_app("opencode");
+        assert_eq!(other.app_type, "opencode");
+        assert_eq!(other.max_retries, 3);
+        assert_eq!(other.streaming_idle_timeout, 120);
+        assert_eq!(other.circuit_min_requests, 10);
     }
 
     #[test]

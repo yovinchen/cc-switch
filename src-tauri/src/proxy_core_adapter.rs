@@ -594,9 +594,9 @@ pub(crate) use crate::proxy_core::api::usage::{
 };
 pub(crate) use crate::proxy_core::api::auth::validate_managed_account_upstream_auth;
 pub(crate) use crate::proxy_core::api::config::{
-    cache_injection_log_message, normalize_thinking_type, rectify_anthropic_request,
-    rectify_thinking_budget, should_rectify_thinking_budget, should_rectify_thinking_signature,
-    thinking_optimization_log_message,
+    app_proxy_config_defaults_for_app, cache_injection_log_message, normalize_thinking_type,
+    rectify_anthropic_request, rectify_thinking_budget, should_rectify_thinking_budget,
+    should_rectify_thinking_signature, thinking_optimization_log_message,
 };
 pub(crate) use crate::proxy_core::api::events::{
     attempt_event_name, build_attempt_event_payload, build_request_started_event_payload,

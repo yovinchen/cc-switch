@@ -17,8 +17,9 @@ pub mod config {
     pub use crate::circuit_breaker_config::*;
     pub use crate::circuit_breaker_key::*;
     pub use crate::ports::{
-        AppProxyConfig, CopilotOptimizerConfigSpec, OptimizerConfigSpec, ProxyAppConfig,
-        ProxyGlobalConfig, ProxyRuntimeConfig, RectifierConfigSpec,
+        app_proxy_config_defaults_for_app, AppProxyConfig, CopilotOptimizerConfigSpec,
+        OptimizerConfigSpec, ProxyAppConfig, ProxyGlobalConfig, ProxyRuntimeConfig,
+        RectifierConfigSpec,
     };
     pub use crate::response_timeout::{
         ResponseRuntimePolicy, ResponseTimeoutConfig, StreamingTimeoutConfig,
@@ -96,10 +97,11 @@ pub mod model_catalog {
 pub mod ports {
     pub use crate::domain::{ChannelAttemptPlan, ChannelAttemptResult};
     pub use crate::ports::{
-        AppProxyConfig, AuthInfo, AuthProvider, ChannelHealthReset, ChannelHealthResetResponse,
-        ChannelHealthStore, ChannelModelRecord, ChannelSource, CopilotOptimizerConfig,
-        CopilotOptimizerConfigSpec, CurrentRouteTarget, ForwardPipeline, GlobalProxyConfig,
-        ModelCatalog, ModelCatalogProvider, OptimizerConfig, OptimizerConfigSpec,
+        app_proxy_config_defaults_for_app, AppProxyConfig, AuthInfo, AuthProvider,
+        ChannelHealthReset, ChannelHealthResetResponse, ChannelHealthStore, ChannelModelRecord,
+        ChannelSource, CopilotOptimizerConfig, CopilotOptimizerConfigSpec, CurrentRouteTarget,
+        ForwardPipeline, GlobalProxyConfig, ModelCatalog, ModelCatalogProvider, OptimizerConfig,
+        OptimizerConfigSpec,
         app_proxy_config_raw, ProviderHealth, ProviderHealthUpdate, ProviderHealthUpdateInput,
         ProviderSource, ProxyAppConfig, ProxyConfig, ProxyConfigSource, ProxyCoreEvent,
         ProxyCoreEventType, ProxyEventSink, ProxyGlobalConfig, ProxyRuntimeConfig,

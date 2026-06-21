@@ -4,8 +4,9 @@
 
 use crate::error::AppError;
 use crate::proxy_core_adapter::{
-    normalize_pricing_source, provider_health_update_from_input, validate_cost_multiplier_value,
-    AppProxyConfig, CircuitBreakerConfig, CostMultiplierValidationError, GlobalProxyConfig,
+    app_proxy_config_defaults_for_app, normalize_pricing_source,
+    provider_health_update_from_input, validate_cost_multiplier_value, AppProxyConfig,
+    CircuitBreakerConfig, CostMultiplierValidationError, GlobalProxyConfig,
     PricingSourceValidationError, ProviderHealth, ProviderHealthUpdateInput, ProxyConfig,
 };
 pub(crate) use crate::proxy_core_adapter::{PRICING_SOURCE_REQUEST, PRICING_SOURCE_RESPONSE};
@@ -243,20 +244,7 @@ impl Database {
             Err(rusqlite::Error::QueryReturnedNoRows) => {
                 // 如果不存在，创建默认配置
                 self.init_proxy_config_rows().await?;
-                Ok(AppProxyConfig {
-                    app_type: app_type_owned,
-                    enabled: false,
-                    auto_failover_enabled: false,
-                    max_retries: 3,
-                    streaming_first_byte_timeout: 60,
-                    streaming_idle_timeout: 120,
-                    non_streaming_timeout: 600,
-                    circuit_failure_threshold: 4,
-                    circuit_success_threshold: 2,
-                    circuit_timeout_seconds: 60,
-                    circuit_error_rate_threshold: 0.6,
-                    circuit_min_requests: 10,
-                })
+                Ok(app_proxy_config_defaults_for_app(&app_type_owned))
             }
             Err(e) => Err(AppError::Database(e.to_string())),
         }
@@ -313,14 +301,7 @@ impl Database {
             .lock()
             .map_err(|e| AppError::Lock(e.to_string()))?;
 
-        // 根据 app_type 使用不同的默认值（与 schema.rs seed 保持一致）
-        let (retries, fb_timeout, idle_timeout, cb_fail, cb_succ, cb_timeout, cb_rate, cb_min) =
-            match app_type {
-                "claude" => (6, 90, 180, 8, 3, 90, 0.7, 15),
-                "codex" => (3, 60, 120, 4, 2, 60, 0.6, 10),
-                "gemini" => (5, 60, 120, 4, 2, 60, 0.6, 10),
-                _ => (3, 60, 120, 4, 2, 60, 0.6, 10), // 默认值
-            };
+        let defaults = app_proxy_config_defaults_for_app(app_type);
 
         conn.execute(
             "INSERT OR IGNORE INTO proxy_config (
@@ -328,17 +309,18 @@ impl Database {
                 streaming_first_byte_timeout, streaming_idle_timeout, non_streaming_timeout,
                 circuit_failure_threshold, circuit_success_threshold, circuit_timeout_seconds,
                 circuit_error_rate_threshold, circuit_min_requests
-            ) VALUES (?1, ?2, ?3, ?4, 600, ?5, ?6, ?7, ?8, ?9)",
+            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
             rusqlite::params![
                 app_type,
-                retries,
-                fb_timeout,
-                idle_timeout,
-                cb_fail,
-                cb_succ,
-                cb_timeout,
-                cb_rate,
-                cb_min
+                defaults.max_retries,
+                defaults.streaming_first_byte_timeout,
+                defaults.streaming_idle_timeout,
+                defaults.non_streaming_timeout,
+                defaults.circuit_failure_threshold,
+                defaults.circuit_success_threshold,
+                defaults.circuit_timeout_seconds,
+                defaults.circuit_error_rate_threshold,
+                defaults.circuit_min_requests
             ],
         )
         .map_err(|e| AppError::Database(e.to_string()))?;
@@ -352,42 +334,30 @@ impl Database {
     async fn init_proxy_config_rows(&self) -> Result<(), AppError> {
         let conn = lock_conn!(self.conn);
 
-        // 使用与 schema.rs seed 相同的 per-app 默认值
-        // claude: 更激进的重试和超时配置
-        conn.execute(
-            "INSERT OR IGNORE INTO proxy_config (
-                app_type, max_retries,
-                streaming_first_byte_timeout, streaming_idle_timeout, non_streaming_timeout,
-                circuit_failure_threshold, circuit_success_threshold, circuit_timeout_seconds,
-                circuit_error_rate_threshold, circuit_min_requests
-            ) VALUES ('claude', 6, 90, 180, 600, 8, 3, 90, 0.7, 15)",
-            [],
-        )
-        .map_err(|e| AppError::Database(e.to_string()))?;
-
-        // codex: 默认配置
-        conn.execute(
-            "INSERT OR IGNORE INTO proxy_config (
-                app_type, max_retries,
-                streaming_first_byte_timeout, streaming_idle_timeout, non_streaming_timeout,
-                circuit_failure_threshold, circuit_success_threshold, circuit_timeout_seconds,
-                circuit_error_rate_threshold, circuit_min_requests
-            ) VALUES ('codex', 3, 60, 120, 600, 4, 2, 60, 0.6, 10)",
-            [],
-        )
-        .map_err(|e| AppError::Database(e.to_string()))?;
-
-        // gemini: 稍高的重试次数
-        conn.execute(
-            "INSERT OR IGNORE INTO proxy_config (
-                app_type, max_retries,
-                streaming_first_byte_timeout, streaming_idle_timeout, non_streaming_timeout,
-                circuit_failure_threshold, circuit_success_threshold, circuit_timeout_seconds,
-                circuit_error_rate_threshold, circuit_min_requests
-            ) VALUES ('gemini', 5, 60, 120, 600, 4, 2, 60, 0.6, 10)",
-            [],
-        )
-        .map_err(|e| AppError::Database(e.to_string()))?;
+        for app_type in ["claude", "codex", "gemini"] {
+            let defaults = app_proxy_config_defaults_for_app(app_type);
+            conn.execute(
+                "INSERT OR IGNORE INTO proxy_config (
+                    app_type, max_retries,
+                    streaming_first_byte_timeout, streaming_idle_timeout, non_streaming_timeout,
+                    circuit_failure_threshold, circuit_success_threshold, circuit_timeout_seconds,
+                    circuit_error_rate_threshold, circuit_min_requests
+                ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
+                rusqlite::params![
+                    app_type,
+                    defaults.max_retries,
+                    defaults.streaming_first_byte_timeout,
+                    defaults.streaming_idle_timeout,
+                    defaults.non_streaming_timeout,
+                    defaults.circuit_failure_threshold,
+                    defaults.circuit_success_threshold,
+                    defaults.circuit_timeout_seconds,
+                    defaults.circuit_error_rate_threshold,
+                    defaults.circuit_min_requests
+                ],
+            )
+            .map_err(|e| AppError::Database(e.to_string()))?;
+        }
 
         Ok(())
     }
@@ -930,6 +900,41 @@ mod tests {
                 ..
             }
         ));
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn app_proxy_config_defaults_follow_seed_contract() -> Result<(), AppError> {
+        let db = Database::memory()?;
+
+        let claude = db.get_proxy_config_for_app("claude").await?;
+        assert_eq!(claude.max_retries, 6);
+        assert_eq!(claude.streaming_first_byte_timeout, 90);
+        assert_eq!(claude.streaming_idle_timeout, 180);
+        assert_eq!(claude.non_streaming_timeout, 600);
+        assert_eq!(claude.circuit_failure_threshold, 8);
+        assert_eq!(claude.circuit_success_threshold, 3);
+        assert_eq!(claude.circuit_timeout_seconds, 90);
+        assert_eq!(claude.circuit_error_rate_threshold, 0.7);
+        assert_eq!(claude.circuit_min_requests, 15);
+
+        let codex = db.get_proxy_config_for_app("codex").await?;
+        assert_eq!(codex.max_retries, 3);
+        assert_eq!(codex.streaming_first_byte_timeout, 60);
+        assert_eq!(codex.streaming_idle_timeout, 120);
+        assert_eq!(codex.circuit_failure_threshold, 4);
+
+        let gemini = db.get_proxy_config_for_app("gemini").await?;
+        assert_eq!(gemini.max_retries, 5);
+        assert_eq!(gemini.streaming_first_byte_timeout, 60);
+        assert_eq!(gemini.circuit_failure_threshold, 4);
+
+        db.set_default_cost_multiplier("opencode", "2").await?;
+        let fallback = db.get_proxy_config_for_app("opencode").await?;
+        assert_eq!(fallback.max_retries, 3);
+        assert_eq!(fallback.streaming_idle_timeout, 120);
+        assert_eq!(fallback.circuit_min_requests, 10);
 
         Ok(())
     }
