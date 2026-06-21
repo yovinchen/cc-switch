@@ -148,6 +148,13 @@ pub fn selected_provider_not_applied_message(app_type: &str) -> String {
     format!("selected provider is not available before route result is applied: {app_type}")
 }
 
+pub fn selected_provider_display_name_for_error<'a>(
+    selected_provider_name: Option<&'a str>,
+    fallback_tag: &'a str,
+) -> &'a str {
+    selected_provider_name.unwrap_or(fallback_tag)
+}
+
 pub fn unselected_provider_fallback_id(app_type: &str) -> String {
     format!("unselected:{app_type}")
 }
@@ -268,6 +275,14 @@ mod tests {
         assert_eq!(
             selected_provider_not_applied_message("codex"),
             "selected provider is not available before route result is applied: codex"
+        );
+        assert_eq!(
+            selected_provider_display_name_for_error(Some("Provider A"), "Codex"),
+            "Provider A"
+        );
+        assert_eq!(
+            selected_provider_display_name_for_error(None, "Codex"),
+            "Codex"
         );
         assert_eq!(unselected_provider_fallback_id("codex"), "unselected:codex");
     }

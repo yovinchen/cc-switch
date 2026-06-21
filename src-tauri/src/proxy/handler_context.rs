@@ -13,6 +13,7 @@ use crate::proxy_core_adapter::{
     request_model_from_body_for_context, request_model_from_gemini_path_for_context,
     response_runtime_policy_from_app_proxy_config, ProxyCoreAppKind as AppKind, ProxyResult,
     ProxyServices, ResponseRuntimePolicy, ResponseTimeoutConfig,
+    selected_provider_display_name_for_error,
     selected_provider_missing_from_source_message, selected_provider_not_applied_message,
     StreamingTimeoutConfig, unselected_provider_fallback_id, UsageRouteContext,
 };
@@ -173,10 +174,10 @@ impl RequestContext {
     }
 
     pub fn provider_name_for_error(&self) -> &str {
-        self.provider
-            .as_ref()
-            .map(|provider| provider.name.as_str())
-            .unwrap_or(self.tag)
+        selected_provider_display_name_for_error(
+            self.provider.as_ref().map(|provider| provider.name.as_str()),
+            self.tag,
+        )
     }
 
     pub fn fallback_provider_id(&self) -> String {

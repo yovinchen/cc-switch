@@ -102,6 +102,16 @@ pub(crate) fn selected_provider_not_applied_message(app_type: &str) -> String {
     crate::proxy_core::api::errors::selected_provider_not_applied_message(app_type)
 }
 
+pub(crate) fn selected_provider_display_name_for_error<'a>(
+    selected_provider_name: Option<&'a str>,
+    fallback_tag: &'a str,
+) -> &'a str {
+    crate::proxy_core::api::errors::selected_provider_display_name_for_error(
+        selected_provider_name,
+        fallback_tag,
+    )
+}
+
 pub(crate) fn unselected_provider_fallback_id(app_type: &str) -> String {
     crate::proxy_core::api::errors::unselected_provider_fallback_id(app_type)
 }
@@ -5257,6 +5267,14 @@ mod tests {
         assert_eq!(
             selected_provider_not_applied_message("codex"),
             "selected provider is not available before route result is applied: codex"
+        );
+        assert_eq!(
+            selected_provider_display_name_for_error(Some("Provider A"), "Codex"),
+            "Provider A"
+        );
+        assert_eq!(
+            selected_provider_display_name_for_error(None, "Codex"),
+            "Codex"
         );
         assert_eq!(unselected_provider_fallback_id("codex"), "unselected:codex");
         assert_eq!(
