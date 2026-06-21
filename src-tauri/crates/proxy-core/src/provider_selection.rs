@@ -87,11 +87,18 @@ pub fn select_provider_ids(
     }
 }
 
+pub fn should_block_proxy_switch_to_provider_category(
+    proxy_takeover_active: bool,
+    provider_category: Option<&str>,
+) -> bool {
+    proxy_takeover_active && provider_category == Some("official")
+}
+
 #[cfg(test)]
 mod tests {
     use super::{
-        select_provider_ids, ProviderSelectionCandidate, ProviderSelectionFailure,
-        ProviderSelectionInput,
+        select_provider_ids, should_block_proxy_switch_to_provider_category,
+        ProviderSelectionCandidate, ProviderSelectionFailure, ProviderSelectionInput,
     };
 
     #[test]
@@ -136,5 +143,22 @@ mod tests {
         .expect_err("missing queue entry prevents all-open classification");
 
         assert_eq!(error, ProviderSelectionFailure::NoProvidersConfigured);
+    }
+
+    #[test]
+    fn official_provider_switch_block_only_applies_during_proxy_takeover() {
+        assert!(should_block_proxy_switch_to_provider_category(
+            true,
+            Some("official")
+        ));
+        assert!(!should_block_proxy_switch_to_provider_category(
+            false,
+            Some("official")
+        ));
+        assert!(!should_block_proxy_switch_to_provider_category(
+            true,
+            Some("custom")
+        ));
+        assert!(!should_block_proxy_switch_to_provider_category(true, None));
     }
 }

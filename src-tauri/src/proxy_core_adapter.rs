@@ -1013,6 +1013,16 @@ pub(crate) fn select_provider_ids(
     crate::proxy_core::api::routing::select_provider_ids(input)
 }
 
+pub(crate) fn should_block_proxy_switch_to_provider_category(
+    proxy_takeover_active: bool,
+    provider_category: Option<&str>,
+) -> bool {
+    crate::proxy_core::api::routing::should_block_proxy_switch_to_provider_category(
+        proxy_takeover_active,
+        provider_category,
+    )
+}
+
 pub(crate) fn resolve_channel_route(
     request: RouteResolveRequest,
     channels: Vec<RouteResolveChannelInput>,
