@@ -435,10 +435,10 @@ impl ModelCatalogProvider for CcSwitchModelCatalogProvider {
     ) -> BoxFuture<'a, ProxyCoreResult<ModelCatalog>> {
         Box::pin(async move {
             let raw = match app {
-                AppKind::Codex => load_codex_client_model_catalog_raw(),
-                _ => json!({"models": []}),
+                AppKind::Codex => Some(load_codex_client_model_catalog_raw()),
+                _ => None,
             };
-            Ok(crate::proxy_core_adapter::client_model_catalog_from_raw(app, raw))
+            Ok(crate::proxy_core_adapter::client_model_catalog_from_optional_raw(app, raw))
         })
     }
 }
@@ -1469,9 +1469,9 @@ mod tests {
 
     #[test]
     fn model_catalog_from_raw_extracts_supported_client_model_ids() {
-        let catalog = crate::proxy_core_adapter::client_model_catalog_from_raw(
+        let catalog = crate::proxy_core_adapter::client_model_catalog_from_optional_raw(
             &AppKind::Codex,
-            json!({
+            Some(json!({
                 "models": [
                     {"id": " gpt-5 "},
                     {"model": "o4-mini"},
@@ -1479,7 +1479,7 @@ mod tests {
                     "claude-sonnet-4",
                     {"id": "gpt-5"}
                 ]
-            }),
+            })),
         );
 
         assert_eq!(
@@ -1553,6 +1553,21 @@ mod tests {
             .await
             .expect("load client catalog");
 
+        assert_eq!(catalog.models, Vec::<String>::new());
+        assert_eq!(catalog.raw, json!({"models": []}));
+    }
+
+    #[tokio::test]
+    async fn model_catalog_provider_uses_core_empty_client_catalog_default() {
+        let services = CcSwitchProxyServices::new(Arc::new(Database::memory().expect("memory db")));
+
+        let catalog = services
+            .model_catalog()
+            .load_client_catalog(&AppKind::Gemini)
+            .await
+            .expect("load client catalog");
+
+        assert_eq!(catalog.provider_id, "gemini");
         assert_eq!(catalog.models, Vec::<String>::new());
         assert_eq!(catalog.raw, json!({"models": []}));
     }

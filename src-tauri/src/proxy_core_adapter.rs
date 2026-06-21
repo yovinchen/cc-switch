@@ -1537,8 +1537,14 @@ pub(crate) fn provider_model_catalog_from_settings(
     )
 }
 
-pub(crate) fn client_model_catalog_from_raw(app: &AppKind, raw: Value) -> ModelCatalog {
-    crate::proxy_core::api::model_catalog::client_model_catalog_from_raw(app.as_str(), raw)
+pub(crate) fn client_model_catalog_from_optional_raw(
+    app: &AppKind,
+    raw: Option<Value>,
+) -> ModelCatalog {
+    crate::proxy_core::api::model_catalog::client_model_catalog_from_optional_raw(
+        app.as_str(),
+        raw,
+    )
 }
 
 pub(crate) fn route_plan_provider_ids(plan: &RoutePlan) -> Vec<String> {
@@ -3510,15 +3516,15 @@ mod tests {
             ]
         );
 
-        let client_catalog = client_model_catalog_from_raw(
+        let client_catalog = client_model_catalog_from_optional_raw(
             &AppKind::Codex,
-            json!({
+            Some(json!({
                 "models": [
                     {"id": " gpt-5 "},
                     {"model": "o4-mini"},
                     {"id": "gpt-5"}
                 ]
-            }),
+            })),
         );
         assert_eq!(client_catalog.provider_id, "codex");
         assert_eq!(

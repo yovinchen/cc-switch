@@ -375,6 +375,16 @@ pub fn client_model_catalog_from_raw(provider_id: impl Into<String>, raw: Value)
     }
 }
 
+pub fn client_model_catalog_from_optional_raw(
+    provider_id: impl Into<String>,
+    raw: Option<Value>,
+) -> ModelCatalog {
+    client_model_catalog_from_raw(
+        provider_id,
+        raw.unwrap_or_else(|| serde_json::json!({"models": []})),
+    )
+}
+
 pub fn provider_model_catalog_from_settings(
     provider_id: impl Into<String>,
     settings: Option<&Value>,
@@ -1541,6 +1551,15 @@ mod tests {
             ]
         );
         assert_eq!(catalog.raw, raw);
+    }
+
+    #[test]
+    fn client_model_catalog_from_optional_raw_uses_empty_model_list_default() {
+        let catalog = client_model_catalog_from_optional_raw("gemini", None);
+
+        assert_eq!(catalog.provider_id, "gemini");
+        assert!(catalog.models.is_empty());
+        assert_eq!(catalog.raw, json!({"models": []}));
     }
 
     #[test]
