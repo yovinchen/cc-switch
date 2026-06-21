@@ -28,9 +28,10 @@ use crate::proxy_core_adapter::{
     build_upstream_auth_headers, cache_injection_log_message, categorize_forward_failure,
     classify_copilot_request, contains_image_blocks, forward_upstream_url_plan,
     is_github_copilot_upstream, is_openai_o_series, is_unsupported_image_error,
-    merge_copilot_tool_results, normalize_thinking_type, prepare_upstream_request_body_with_report,
-    prompt_cache_trace_log_message, rectify_anthropic_request, rectify_thinking_budget,
-    replace_image_blocks_with_marker, replace_images_for_text_only_model,
+    mapped_channel_response_status, merge_copilot_tool_results, normalize_thinking_type,
+    prepare_upstream_request_body_with_report, prompt_cache_trace_log_message,
+    rectify_anthropic_request, rectify_thinking_budget, replace_image_blocks_with_marker,
+    replace_images_for_text_only_model,
     request_body_filter_log_message, resolve_claude_forward_api_format,
     resolve_copilot_deterministic_interaction_id, resolve_copilot_model_against_ids,
     resolve_copilot_optimizer_session_id, resolve_copilot_request_id_with_fallback,
@@ -1768,6 +1769,8 @@ impl RequestForwarder {
             .await?
         };
 
+        let response = self.apply_channel_response_status_mapping(response, attempt)?;
+
         // 检查响应状态
         let status = response.status();
 
@@ -1785,6 +1788,39 @@ impl RequestForwarder {
                 body: body_text,
             })
         }
+    }
+
+    fn apply_channel_response_status_mapping(
+        &self,
+        response: ProxyResponse,
+        attempt: &ForwardAttempt,
+    ) -> Result<ProxyResponse, ProxyError> {
+        let Some(channel) = attempt.channel() else {
+            return Ok(response);
+        };
+
+        let status = response.status();
+        let Some(mapped) =
+            mapped_channel_response_status(status.as_u16(), &channel.status_code_mapping)
+        else {
+            return Ok(response);
+        };
+        let mapped_status = http::StatusCode::from_u16(mapped).map_err(|error| {
+            ProxyError::Internal(format!(
+                "invalid mapped channel response status {mapped}: {error}"
+            ))
+        })?;
+
+        if mapped_status != status {
+            log::debug!(
+                "[ChannelRoute] response status mapped via channel {}: {} -> {}",
+                channel.channel_id,
+                status.as_u16(),
+                mapped_status.as_u16()
+            );
+        }
+
+        Ok(response.with_status(mapped_status))
     }
 
     /// 故障转移开启时，成功不能只看上游响应头。
@@ -1944,6 +1980,7 @@ mod tests {
     use crate::proxy_core_adapter::{canonical_json_string, short_value_hash};
     use crate::proxy_core_adapter::{
         interface_kind_for_forward, request_model_for_forward, AppKind, ChannelRouteCandidate,
+        ResolvedChannelAttempt,
         claude_transform_endpoint_rewrite_input_from_body as transform_endpoint_rewrite_input,
         rewrite_claude_transform_endpoint as rewrite_transform_endpoint,
     };
@@ -2181,6 +2218,68 @@ mod tests {
             prepared.bytes().await.unwrap(),
             Bytes::from_static(b"{\"ok\":true}")
         );
+    }
+
+    #[test]
+    fn channel_status_code_mapping_rewrites_response_status() {
+        let forwarder = test_forwarder(Duration::from_secs(0), Duration::from_secs(0));
+        let attempt = ForwardAttempt::from_resolved_channel_for_test(
+            test_provider_with_type(None),
+            ResolvedChannelAttempt {
+                channel_id: "channel-a".to_string(),
+                channel_name: "Relay A".to_string(),
+                base_url: "https://relay.example.com/v1".to_string(),
+                interface_kind: "openai_responses".to_string(),
+                auth_profile_ref: None,
+                public_model: None,
+                upstream_model: None,
+                header_overrides: json!({}),
+                param_overrides: json!({}),
+                status_code_mapping: json!([{"from": 429, "to": 200}]),
+            },
+        );
+        let response = ProxyResponse::buffered(
+            StatusCode::TOO_MANY_REQUESTS,
+            HeaderMap::new(),
+            Bytes::from_static(b"ok"),
+        );
+
+        let mapped = forwarder
+            .apply_channel_response_status_mapping(response, &attempt)
+            .expect("status mapping");
+
+        assert_eq!(mapped.status(), StatusCode::OK);
+    }
+
+    #[test]
+    fn channel_status_code_mapping_ignores_non_numeric_targets() {
+        let forwarder = test_forwarder(Duration::from_secs(0), Duration::from_secs(0));
+        let attempt = ForwardAttempt::from_resolved_channel_for_test(
+            test_provider_with_type(None),
+            ResolvedChannelAttempt {
+                channel_id: "channel-a".to_string(),
+                channel_name: "Relay A".to_string(),
+                base_url: "https://relay.example.com/v1".to_string(),
+                interface_kind: "openai_responses".to_string(),
+                auth_profile_ref: None,
+                public_model: None,
+                upstream_model: None,
+                header_overrides: json!({}),
+                param_overrides: json!({}),
+                status_code_mapping: json!([{"from": 429, "to": "rate_limited"}]),
+            },
+        );
+        let response = ProxyResponse::buffered(
+            StatusCode::TOO_MANY_REQUESTS,
+            HeaderMap::new(),
+            Bytes::from_static(b"rate limited"),
+        );
+
+        let mapped = forwarder
+            .apply_channel_response_status_mapping(response, &attempt)
+            .expect("status mapping");
+
+        assert_eq!(mapped.status(), StatusCode::TOO_MANY_REQUESTS);
     }
 
     #[tokio::test]

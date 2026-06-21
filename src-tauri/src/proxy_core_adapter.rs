@@ -2356,6 +2356,10 @@ pub(crate) fn apply_channel_param_overrides_to_url(
     )
 }
 
+pub(crate) fn mapped_channel_response_status(status: u16, mapping: &Value) -> Option<u16> {
+    crate::proxy_core::api::transport::mapped_channel_response_status(status, mapping)
+}
+
 pub(crate) fn codex_proxy_error_code(kind: CodexProxyErrorKind) -> &'static str {
     crate::proxy_core::api::transforms::codex_proxy_error_code(kind)
 }

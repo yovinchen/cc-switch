@@ -994,6 +994,8 @@ pub struct ResolvedChannelAttempt {
     pub header_overrides: Value,
     #[serde(default)]
     pub param_overrides: Value,
+    #[serde(default)]
+    pub status_code_mapping: Value,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

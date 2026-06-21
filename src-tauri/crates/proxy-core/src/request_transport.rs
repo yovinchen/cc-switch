@@ -1,5 +1,5 @@
 use http::HeaderMap;
-use serde_json::Value;
+use serde_json::{Map, Value};
 use std::net::IpAddr;
 use std::time::Duration;
 
@@ -195,13 +195,62 @@ pub fn resolve_upstream_send_policy(input: UpstreamSendPolicyInput) -> UpstreamS
     }
 }
 
+pub fn mapped_channel_response_status(status: u16, mapping: &Value) -> Option<u16> {
+    match mapping {
+        Value::Array(entries) => entries
+            .iter()
+            .filter_map(Value::as_object)
+            .find_map(|entry| mapped_status_from_object(status, entry)),
+        Value::Object(entries) => mapped_status_from_map(status, entries),
+        _ => None,
+    }
+}
+
+fn mapped_status_from_object(status: u16, entry: &Map<String, Value>) -> Option<u16> {
+    let from = entry
+        .get("from")
+        .or_else(|| entry.get("source"))
+        .or_else(|| entry.get("status"))
+        .and_then(status_code_from_value)?;
+    if from != status {
+        return None;
+    }
+
+    entry
+        .get("to")
+        .or_else(|| entry.get("target"))
+        .or_else(|| entry.get("statusCode"))
+        .and_then(status_code_from_value)
+}
+
+fn mapped_status_from_map(status: u16, entries: &Map<String, Value>) -> Option<u16> {
+    entries
+        .get(&status.to_string())
+        .and_then(status_code_from_value)
+}
+
+fn status_code_from_value(value: &Value) -> Option<u16> {
+    match value {
+        Value::Number(number) => number.as_u64().and_then(valid_status_code),
+        Value::String(value) => value.trim().parse::<u64>().ok().and_then(valid_status_code),
+        _ => None,
+    }
+}
+
+fn valid_status_code(value: u64) -> Option<u16> {
+    let value = u16::try_from(value).ok()?;
+    http::StatusCode::from_u16(value).ok()?;
+    Some(value)
+}
+
 #[cfg(test)]
 mod tests {
     use super::{
-        is_socks_proxy_url, is_streaming_upstream_request, proxy_url_points_to_loopback_port,
-        proxy_values_point_to_loopback_port, resolve_upstream_request_transport_policy,
-        resolve_upstream_send_policy, UpstreamSendPolicyInput, UpstreamTransportKind,
-        DEFAULT_UPSTREAM_SEND_TIMEOUT, STREAMING_REQWEST_REQUEST_TIMEOUT,
+        is_socks_proxy_url, is_streaming_upstream_request, mapped_channel_response_status,
+        proxy_url_points_to_loopback_port, proxy_values_point_to_loopback_port,
+        resolve_upstream_request_transport_policy, resolve_upstream_send_policy,
+        UpstreamSendPolicyInput, UpstreamTransportKind, DEFAULT_UPSTREAM_SEND_TIMEOUT,
+        STREAMING_REQWEST_REQUEST_TIMEOUT,
     };
     use http::{header::ACCEPT, HeaderMap, HeaderValue};
     use serde_json::json;
@@ -426,5 +475,44 @@ mod tests {
             policy.streaming_header_timeout,
             Some(DEFAULT_UPSTREAM_SEND_TIMEOUT)
         );
+    }
+
+    #[test]
+    fn maps_channel_response_status_from_array_or_object_rules() {
+        assert_eq!(
+            mapped_channel_response_status(
+                429,
+                &json!([
+                    {"from": 500, "to": 502},
+                    {"from": 429, "to": 503}
+                ])
+            ),
+            Some(503)
+        );
+        assert_eq!(
+            mapped_channel_response_status(
+                418,
+                &json!({
+                    "418": "502",
+                    "429": 503
+                })
+            ),
+            Some(502)
+        );
+    }
+
+    #[test]
+    fn ignores_invalid_channel_response_status_rules() {
+        assert_eq!(
+            mapped_channel_response_status(
+                429,
+                &json!([
+                    {"from": 429, "to": "rate_limited"},
+                    {"from": 429, "to": 99}
+                ])
+            ),
+            None
+        );
+        assert_eq!(mapped_channel_response_status(429, &json!("bad")), None);
     }
 }

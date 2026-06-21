@@ -121,6 +121,35 @@ impl ProxyResponse {
         }
     }
 
+    pub fn with_status(self, status: http::StatusCode) -> Self {
+        match self {
+            Self::Hyper(response) => {
+                let (mut parts, body) = response.into_parts();
+                parts.status = status;
+                Self::Hyper(hyper::Response::from_parts(parts, body))
+            }
+            Self::Reqwest(response) => {
+                let headers = response.headers().clone();
+                let stream = response
+                    .bytes_stream()
+                    .map(|chunk| chunk.map_err(|error| std::io::Error::other(error.to_string())));
+                Self::streamed(status, headers, stream)
+            }
+            Self::Buffered { headers, body, .. } => Self::Buffered {
+                status,
+                headers,
+                body,
+            },
+            Self::Streamed {
+                headers, stream, ..
+            } => Self::Streamed {
+                status,
+                headers,
+                stream,
+            },
+        }
+    }
+
     pub fn headers(&self) -> &http::HeaderMap {
         match self {
             Self::Hyper(r) => r.headers(),

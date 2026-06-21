@@ -65,6 +65,18 @@ impl ForwardAttempt {
         }
     }
 
+    #[cfg(test)]
+    pub(crate) fn from_resolved_channel_for_test(
+        provider: Provider,
+        channel: ResolvedChannelAttempt,
+    ) -> Self {
+        Self {
+            provider,
+            auth_provider: None,
+            channel: Some(channel),
+        }
+    }
+
     pub(crate) fn provider(&self) -> &Provider {
         &self.provider
     }
@@ -382,6 +394,7 @@ mod tests {
         selection.channel.overrides = ChannelOverrides {
             headers: json!({ "x-relay-profile": "manual" }),
             params: json!({ "api-version": "2026-06-20" }),
+            status_code_mapping: json!([{ "from": 429, "to": 503 }]),
             ..ChannelOverrides::default()
         };
 
@@ -394,6 +407,7 @@ mod tests {
         );
         assert_eq!(channel.header_overrides["x-relay-profile"], "manual");
         assert_eq!(channel.param_overrides["api-version"], "2026-06-20");
+        assert_eq!(channel.status_code_mapping[0]["to"], 503);
     }
 
     #[test]

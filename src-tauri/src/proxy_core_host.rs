@@ -1883,6 +1883,7 @@ mod tests {
                 upstream_model: Some("upstream-sonnet".to_string()),
                 header_overrides: json!({}),
                 param_overrides: json!({}),
+                status_code_mapping: json!([]),
             }),
             connection_guard: None,
         };

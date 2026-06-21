@@ -153,6 +153,7 @@ pub fn resolved_channel_attempt_from_candidate(
         upstream_model: candidate.upstream_model,
         header_overrides: Value::Object(Default::default()),
         param_overrides: Value::Object(Default::default()),
+        status_code_mapping: Value::Array(Vec::new()),
     }
 }
 
@@ -179,6 +180,7 @@ pub fn resolved_channel_attempt_from_selection(
             .map(|route| route.upstream_model.clone()),
         header_overrides: selection.channel.overrides.headers.clone(),
         param_overrides: selection.channel.overrides.params.clone(),
+        status_code_mapping: selection.channel.overrides.status_code_mapping.clone(),
     }
 }
 
@@ -623,7 +625,8 @@ mod tests {
                 "publicModel": "sonnet-public",
                 "upstreamModel": "upstream-sonnet",
                 "headerOverrides": {},
-                "paramOverrides": {}
+                "paramOverrides": {},
+                "statusCodeMapping": []
             })
         );
     }
@@ -632,6 +635,7 @@ mod tests {
     fn maps_route_selection_to_resolved_channel_attempt_with_auth_profile() {
         let mut selection = selection();
         selection.channel.auth_profile = Some(AuthProfileRef::new("channel-key:relay-a"));
+        selection.channel.overrides.status_code_mapping = json!([{"from": 429, "to": 503}]);
 
         let attempt = resolved_channel_attempt_from_selection(&selection);
 
@@ -639,6 +643,7 @@ mod tests {
             attempt.auth_profile_ref.as_deref(),
             Some("channel-key:relay-a")
         );
+        assert_eq!(attempt.status_code_mapping, json!([{"from": 429, "to": 503}]));
     }
 
     #[test]
