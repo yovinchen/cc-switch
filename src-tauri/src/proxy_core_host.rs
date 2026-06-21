@@ -32,11 +32,10 @@ use crate::proxy_core_adapter::{
     channel_auth_profile_action,
     channel_health_reset_from_parts,
     channel_key_auth_error,
-    client_model_catalog_raw_from_text,
+    codex_client_model_catalog_raw_from_active_config,
     current_provider_db_fallback_required,
     current_provider_id_from_sources,
     current_provider_id_option_from_sources,
-    empty_client_model_catalog_raw,
     extract_proxy_session_id,
     forward_result_to_proxy_result,
     forwarding_runtime_unavailable_error,
@@ -53,6 +52,7 @@ use crate::proxy_core_adapter::{
 };
 use futures::future::BoxFuture;
 use indexmap::IndexMap;
+#[cfg(test)]
 use serde_json::Value;
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -453,7 +453,7 @@ impl ModelCatalogProvider for CcSwitchModelCatalogProvider {
     ) -> BoxFuture<'a, ProxyCoreResult<ModelCatalog>> {
         Box::pin(async move {
             let raw = match app {
-                AppKind::Codex => Some(load_codex_client_model_catalog_raw()),
+                AppKind::Codex => Some(codex_client_model_catalog_raw_from_active_config()),
                 _ => None,
             };
             Ok(crate::proxy_core_adapter::client_model_catalog_from_optional_raw(app, raw))
@@ -673,28 +673,6 @@ fn apply_channel_auth_profile_providers(
         }
     }
     Ok(())
-}
-
-fn load_codex_client_model_catalog_raw() -> Value {
-    let generated_path = crate::codex_config::get_codex_model_catalog_path();
-    let active_catalog_path = match crate::codex_config::read_codex_config_text() {
-        Ok(config_text) => {
-            crate::codex_config::resolve_cc_switch_catalog_path(&config_text, &generated_path)
-        }
-        Err(_) => None,
-    };
-
-    if let Some(catalog_path) = active_catalog_path.as_ref().filter(|path| path.exists()) {
-        let text = std::fs::read_to_string(catalog_path).unwrap_or_default();
-        client_model_catalog_raw_from_text(&text)
-    } else {
-        if active_catalog_path.is_none() {
-            log::debug!(
-                "[models] stale guard: catalog not served (model_catalog_json not set to cc-switch catalog)"
-            );
-        }
-        empty_client_model_catalog_raw()
-    }
 }
 
 #[cfg(test)]

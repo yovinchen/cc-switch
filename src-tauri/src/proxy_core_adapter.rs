@@ -1723,6 +1723,28 @@ pub(crate) fn client_model_catalog_raw_from_text(catalog_text: &str) -> Value {
     crate::proxy_core::api::model_catalog::client_model_catalog_raw_from_text(catalog_text)
 }
 
+pub(crate) fn codex_client_model_catalog_raw_from_active_config() -> Value {
+    let generated_path = crate::codex_config::get_codex_model_catalog_path();
+    let active_catalog_path = match crate::codex_config::read_codex_config_text() {
+        Ok(config_text) => {
+            crate::codex_config::resolve_cc_switch_catalog_path(&config_text, &generated_path)
+        }
+        Err(_) => None,
+    };
+
+    if let Some(catalog_path) = active_catalog_path.as_ref().filter(|path| path.exists()) {
+        let text = std::fs::read_to_string(catalog_path).unwrap_or_default();
+        client_model_catalog_raw_from_text(&text)
+    } else {
+        if active_catalog_path.is_none() {
+            log::debug!(
+                "[models] stale guard: catalog not served (model_catalog_json not set to cc-switch catalog)"
+            );
+        }
+        empty_client_model_catalog_raw()
+    }
+}
+
 #[cfg(test)]
 pub(crate) fn route_plan_provider_ids(plan: &RoutePlan) -> Vec<String> {
     crate::proxy_core::api::routing::route_plan_provider_ids(plan)
