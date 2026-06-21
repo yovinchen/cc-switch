@@ -5,6 +5,7 @@ pub const PROXY_EVENTS_CONNECTED_EVENT: &str = "proxy_events_connected";
 pub const PROXY_EVENTS_LAGGED_EVENT: &str = "proxy_events_lagged";
 pub const PROXY_OFFICIAL_WARNING_EVENT: &str = "proxy-official-warning";
 pub const PROVIDER_SWITCHED_EVENT: &str = "provider-switched";
+pub const REQUEST_STARTED_EVENT: &str = "request_started";
 pub const SERVER_STARTED_EVENT: &str = "server_started";
 pub const SERVER_STOPPED_EVENT: &str = "server_stopped";
 
@@ -190,8 +191,8 @@ mod tests {
         build_provider_switched_event_payload, build_request_started_event_payload,
         build_server_started_event_payload, build_server_stopped_event_payload,
         AttemptEventChannel, AttemptEventPayloadInput, AttemptEventPhase, ProxyEventEnvelope,
-        PROVIDER_SWITCHED_EVENT, PROXY_OFFICIAL_WARNING_EVENT, SERVER_STARTED_EVENT,
-        SERVER_STOPPED_EVENT,
+        PROVIDER_SWITCHED_EVENT, PROXY_OFFICIAL_WARNING_EVENT, REQUEST_STARTED_EVENT,
+        SERVER_STARTED_EVENT, SERVER_STOPPED_EVENT,
     };
 
     #[test]
@@ -267,6 +268,8 @@ mod tests {
 
     #[test]
     fn request_started_payload_contains_request_and_app_identity() {
+        assert_eq!(REQUEST_STARTED_EVENT, "request_started");
+
         let payload = build_request_started_event_payload("req-1", "claude");
 
         assert_eq!(payload["requestId"], "req-1");

@@ -1008,6 +1008,8 @@ pub(crate) const PROXY_OFFICIAL_WARNING_EVENT: &str =
     crate::proxy_core::api::events::PROXY_OFFICIAL_WARNING_EVENT;
 pub(crate) const PROVIDER_SWITCHED_EVENT: &str =
     crate::proxy_core::api::events::PROVIDER_SWITCHED_EVENT;
+pub(crate) const REQUEST_STARTED_EVENT: &str =
+    crate::proxy_core::api::events::REQUEST_STARTED_EVENT;
 pub(crate) const SERVER_STARTED_EVENT: &str =
     crate::proxy_core::api::events::SERVER_STARTED_EVENT;
 pub(crate) const SERVER_STOPPED_EVENT: &str =
@@ -4082,6 +4084,7 @@ mod tests {
         assert_eq!(PROXY_EVENTS_LAGGED_EVENT, "proxy_events_lagged");
         assert_eq!(PROXY_OFFICIAL_WARNING_EVENT, "proxy-official-warning");
         assert_eq!(PROVIDER_SWITCHED_EVENT, "provider-switched");
+        assert_eq!(REQUEST_STARTED_EVENT, "request_started");
         assert_eq!(SERVER_STARTED_EVENT, "server_started");
         assert_eq!(SERVER_STOPPED_EVENT, "server_stopped");
         assert_eq!(build_proxy_events_connected_payload(256)["bufferSize"], 256);

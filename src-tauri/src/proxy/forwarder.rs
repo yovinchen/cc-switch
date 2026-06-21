@@ -53,6 +53,7 @@ use crate::proxy_core_adapter::{
     ForwardUpstreamUrlPlanInput, GeminiShadowStore, MediaRetryInput, OptimizerConfig,
     PromptCacheTraceLogInput,
     ProviderKind, ProxyRuntimeStatus, RectifierConfig, ResolvedChannelAttempt,
+    REQUEST_STARTED_EVENT,
     UpstreamAuthHeadersInput, UpstreamRequestHeadersInput, UpstreamSendPolicyInput,
     UpstreamTransportKind, UNSUPPORTED_IMAGE_MARKER,
 };
@@ -389,7 +390,7 @@ impl RequestForwarder {
 
     fn emit_request_started(&self, request_id: &str, app_type: &str) {
         self.events.emit(
-            "request_started",
+            REQUEST_STARTED_EVENT,
             build_request_started_event_payload(request_id, app_type),
         );
     }
