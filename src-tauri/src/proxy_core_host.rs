@@ -35,6 +35,7 @@ use crate::proxy_core_adapter::{
     error_message_with_context,
     empty_client_model_catalog_raw,
     extract_proxy_session_id,
+    host_providers_for_plan,
     proxy_app_config_from_config_parts, proxy_global_config_from_config,
     proxy_runtime_config_from_config,
     proxy_channel_record_to_core_spec, proxy_channel_records_to_core_specs_for_query,
@@ -43,8 +44,7 @@ use crate::proxy_core_adapter::{
     forwarding_requires_runtime_error_message,
     response_runtime_policy_from_app_proxy_config,
     route_plan_no_matching_host_providers_error_message,
-    route_plan_providers_unconfigured_error_message,
-    route_plan_provider_match, route_policy_from_failover_queue,
+    route_policy_from_failover_queue,
     settings_config_with_channel_auth_key,
     unsupported_app_kind_error_message,
 };
@@ -631,25 +631,6 @@ impl CcSwitchProxyRuntime {
     }
 }
 
-fn host_providers_for_plan(
-    providers: &IndexMap<String, crate::provider::Provider>,
-    plan: &RoutePlan,
-) -> ProxyCoreResult<Vec<crate::provider::Provider>> {
-    let provider_match = route_plan_provider_match(plan, providers.keys().map(String::as_str));
-    let has_matches = provider_match.has_matches();
-    let matching: Vec<_> = provider_match
-        .matched_provider_ids
-        .iter()
-        .filter_map(|provider_id| providers.get(provider_id.as_str()).cloned())
-        .collect();
-    if !has_matches {
-        return Err(ProxyCoreError::Unavailable(
-            route_plan_providers_unconfigured_error_message().to_string(),
-        ));
-    }
-    Ok(matching)
-}
-
 fn apply_channel_auth_profile_providers(
     db: &Database,
     app_type: &AppType,
@@ -798,6 +779,7 @@ mod tests {
     use bytes::Bytes;
     use futures::StreamExt;
     use http::{Method, StatusCode};
+    use indexmap::IndexMap;
     use serde_json::json;
     use std::ffi::OsString;
 

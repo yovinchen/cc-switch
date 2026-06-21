@@ -29,6 +29,7 @@ use crate::proxy_core::api::transport::{UpstreamRequestTransportPolicy, Upstream
 use bytes::Bytes;
 use futures::{Stream, StreamExt};
 use http::{HeaderMap, StatusCode};
+use indexmap::IndexMap;
 use rust_decimal::Decimal;
 use serde_json::{Map, Value, json};
 use uuid::Uuid;
@@ -1643,6 +1644,25 @@ where
     S: AsRef<str>,
 {
     crate::proxy_core::api::routing::route_plan_provider_match(plan, configured_provider_ids)
+}
+
+pub(crate) fn host_providers_for_plan(
+    providers: &IndexMap<String, Provider>,
+    plan: &RoutePlan,
+) -> ProxyCoreResult<Vec<Provider>> {
+    let provider_match = route_plan_provider_match(plan, providers.keys().map(String::as_str));
+    let has_matches = provider_match.has_matches();
+    let matching: Vec<_> = provider_match
+        .matched_provider_ids
+        .iter()
+        .filter_map(|provider_id| providers.get(provider_id.as_str()).cloned())
+        .collect();
+    if !has_matches {
+        return Err(ProxyCoreError::Unavailable(
+            route_plan_providers_unconfigured_error_message().to_string(),
+        ));
+    }
+    Ok(matching)
 }
 
 pub(crate) fn forwarding_requires_runtime_error_message() -> &'static str {
