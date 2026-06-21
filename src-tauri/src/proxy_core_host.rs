@@ -34,11 +34,11 @@ use crate::proxy_core_adapter::{
     channel_spec_from_source,
     channel_specs_from_source,
     client_model_catalog_from_source,
-    current_provider_db_fallback_required,
-    current_provider_id_from_sources,
     current_provider_id_from_settings_for_app,
+    current_provider_id_from_settings_for_app_type,
     extract_proxy_session_id,
     forward_attempts_from_plan,
+    forward_current_provider_id_from_source,
     forward_result_to_proxy_result,
     forwarding_runtime_unavailable_error,
     host_providers_for_plan,
@@ -557,16 +557,13 @@ impl CcSwitchProxyRuntime {
         let rectifier_config = self.db.get_rectifier_config().unwrap_or_default();
         let optimizer_config = self.db.get_optimizer_config().unwrap_or_default();
         let copilot_optimizer_config = self.db.get_copilot_optimizer_config().unwrap_or_default();
-        let settings_current_provider_id = crate::settings::get_current_provider(&app_type);
-        let db_current_provider_id =
-            if current_provider_db_fallback_required(settings_current_provider_id.as_deref()) {
-                self.db.get_current_provider(app_type.as_str()).ok().flatten()
-            } else {
-                None
-            };
-        let current_provider_id = current_provider_id_from_sources(
+        let settings_current_provider_id =
+            current_provider_id_from_settings_for_app_type(&app_type);
+        let current_provider_id = forward_current_provider_id_from_source(
             settings_current_provider_id.as_deref(),
-            db_current_provider_id.as_deref(),
+            || {
+                self.db.get_current_provider(app_type.as_str()).ok().flatten()
+            },
         );
         let session_result = extract_proxy_session_id(&headers, &body, app_type.as_str());
         let all_providers = self

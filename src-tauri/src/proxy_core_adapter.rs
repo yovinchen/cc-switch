@@ -354,6 +354,28 @@ pub(crate) fn current_provider_id_from_settings_for_app(app: &AppKind) -> Option
         .and_then(crate::settings::get_current_provider)
 }
 
+pub(crate) fn current_provider_id_from_settings_for_app_type(
+    app_type: &AppType,
+) -> Option<String> {
+    crate::settings::get_current_provider(app_type)
+}
+
+pub(crate) fn forward_current_provider_id_from_source(
+    settings_current_provider_id: Option<&str>,
+    load_db_current_provider_id: impl FnOnce() -> Option<String>,
+) -> String {
+    let db_current_provider_id =
+        if current_provider_db_fallback_required(settings_current_provider_id) {
+            load_db_current_provider_id()
+        } else {
+            None
+        };
+    current_provider_id_from_sources(
+        settings_current_provider_id,
+        db_current_provider_id.as_deref(),
+    )
+}
+
 pub(crate) fn proxy_app_config_from_config_source_parts(
     app: AppKind,
     config: AppProxyConfig,
@@ -3517,6 +3539,20 @@ mod tests {
         assert!(!current_provider_db_fallback_required(Some("")));
         assert!(current_provider_db_fallback_required(None));
         assert_eq!(current_provider_id_option_from_sources(None, None), None);
+        let mut db_lookup_called = false;
+        assert_eq!(
+            forward_current_provider_id_from_source(Some("settings-provider"), || {
+                db_lookup_called = true;
+                Some("db-provider".to_string())
+            }),
+            "settings-provider"
+        );
+        assert!(!db_lookup_called);
+        assert_eq!(
+            forward_current_provider_id_from_source(None, || Some("db-provider".to_string())),
+            "db-provider"
+        );
+        assert_eq!(forward_current_provider_id_from_source(None, || None), "");
 
         let mut response = resolve_channel_route(
             RouteResolveRequest {
