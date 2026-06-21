@@ -22,11 +22,12 @@ use crate::proxy_core_adapter::{
     anthropic_to_openai_responses_request, build_claude_auth_headers, build_claude_upstream_url,
     build_copilot_auth_headers, claude_api_format_needs_transform,
     gemini_response_to_anthropic_message, inject_openai_stream_include_usage,
-    is_copilot_prompt_cache_provider, normalize_anthropic_tool_thinking_history,
-    normalize_deepseek_thinking_disabled_strip_effort, openai_chat_to_anthropic_message,
-    openai_responses_to_anthropic_message, provider_is_codex_oauth,
+    normalize_anthropic_tool_thinking_history, normalize_deepseek_thinking_disabled_strip_effort,
+    openai_chat_to_anthropic_message, openai_responses_to_anthropic_message,
     provider_claude_api_format, provider_claude_auth_key, provider_claude_base_url,
-    provider_claude_kind, resolve_claude_responses_prompt_cache_key,
+    provider_claude_kind, provider_claude_prompt_cache_key,
+    provider_claude_responses_prompt_cache_key, provider_codex_fast_mode_enabled,
+    provider_is_codex_oauth,
     should_preserve_reasoning_content_for_openai_chat, ClaudeAuthHeaderKind, ClaudeAuthKey,
     ClaudeAuthKeySource, CopilotAuthHeadersInput, GeminiShadowStore, ProviderAuthInfo,
     ProviderAuthStrategy, ProviderKind,
@@ -79,23 +80,8 @@ pub fn transform_claude_request_for_api_format(
     // Copilot 场景：优先从 metadata.user_id 提取 session ID 作为 cache key
     // 格式: "uuid_sessionId" → 提取 "_" 后面的部分作为 session 标识
     // 同一会话的请求共享 cache key，提升 Copilot 缓存命中率
-    let is_copilot = is_copilot_prompt_cache_provider(
-        provider
-            .meta
-            .as_ref()
-            .and_then(|m| m.provider_type.as_deref()),
-        &provider.settings_config,
-    );
-    let explicit_cache_key = provider
-        .meta
-        .as_ref()
-        .and_then(|m| m.prompt_cache_key.as_deref());
-    let cache_key_resolution = resolve_claude_responses_prompt_cache_key(
-        &body,
-        explicit_cache_key,
-        session_id,
-        is_copilot,
-    );
+    let cache_key_resolution =
+        provider_claude_responses_prompt_cache_key(provider, &body, session_id);
     match api_format {
         "openai_responses" => {
             log::debug!(
@@ -106,7 +92,7 @@ pub fn transform_claude_request_for_api_format(
             );
             // Codex OAuth (ChatGPT Plus/Pro 反代) 需要在请求体里强制 store: false
             // + include: ["reasoning.encrypted_content"]，由 transform 层统一处理。
-            let codex_fast_mode = provider.codex_fast_mode_enabled();
+            let codex_fast_mode = provider_codex_fast_mode_enabled(provider);
             Ok(anthropic_to_openai_responses_request(
                 &body,
                 cache_key_resolution.key.as_deref(),
@@ -119,11 +105,7 @@ pub fn transform_claude_request_for_api_format(
                 should_preserve_reasoning_content_for_openai_chat(&provider.settings_config, &body);
             let mut result = anthropic_to_openai_chat_request(&body, preserve_reasoning_content);
             // Inject prompt_cache_key only if explicitly configured in meta
-            if let Some(key) = provider
-                .meta
-                .as_ref()
-                .and_then(|m| m.prompt_cache_key.as_deref())
-            {
+            if let Some(key) = provider_claude_prompt_cache_key(provider) {
                 result["prompt_cache_key"] = serde_json::json!(key);
             }
             // 流式请求必须注入 stream_options.include_usage，否则 OpenAI 兼容上游

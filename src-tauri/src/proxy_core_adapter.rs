@@ -1668,6 +1668,23 @@ pub(crate) fn is_copilot_prompt_cache_provider(
     )
 }
 
+pub(crate) fn provider_is_copilot_prompt_cache_provider(provider: &Provider) -> bool {
+    is_copilot_prompt_cache_provider(
+        provider
+            .meta
+            .as_ref()
+            .and_then(|meta| meta.provider_type.as_deref()),
+        &provider.settings_config,
+    )
+}
+
+pub(crate) fn provider_claude_prompt_cache_key(provider: &Provider) -> Option<&str> {
+    provider
+        .meta
+        .as_ref()
+        .and_then(|meta| meta.prompt_cache_key.as_deref())
+}
+
 pub(crate) fn resolve_claude_responses_prompt_cache_key(
     body: &Value,
     explicit_cache_key: Option<&str>,
@@ -1680,6 +1697,23 @@ pub(crate) fn resolve_claude_responses_prompt_cache_key(
         session_id,
         is_copilot,
     )
+}
+
+pub(crate) fn provider_claude_responses_prompt_cache_key(
+    provider: &Provider,
+    body: &Value,
+    session_id: Option<&str>,
+) -> ClaudePromptCacheKeyResolution {
+    resolve_claude_responses_prompt_cache_key(
+        body,
+        provider_claude_prompt_cache_key(provider),
+        session_id,
+        provider_is_copilot_prompt_cache_provider(provider),
+    )
+}
+
+pub(crate) fn provider_codex_fast_mode_enabled(provider: &Provider) -> bool {
+    provider.codex_fast_mode_enabled()
 }
 
 pub(crate) fn extract_claude_auth_key_from_settings(
@@ -5143,6 +5177,38 @@ wire_api = "chat"
         );
         assert_eq!(cache_key.key.as_deref(), Some("session-1"));
         assert_eq!(cache_key.source.as_str(), "session");
+        let mut copilot_cache_provider = Provider::with_id(
+            "copilot-cache".to_string(),
+            "Copilot Cache".to_string(),
+            json!({}),
+            None,
+        );
+        copilot_cache_provider.meta = Some(ProviderMeta {
+            provider_type: Some("github_copilot".to_string()),
+            ..Default::default()
+        });
+        let provider_cache_key = provider_claude_responses_prompt_cache_key(
+            &copilot_cache_provider,
+            &json!({"metadata": {"session_id": "session-2"}}),
+            Some("fallback-session"),
+        );
+        assert_eq!(provider_cache_key.key.as_deref(), Some("session-2"));
+        let mut explicit_cache_provider = Provider::with_id(
+            "explicit-cache".to_string(),
+            "Explicit Cache".to_string(),
+            json!({}),
+            None,
+        );
+        explicit_cache_provider.meta = Some(ProviderMeta {
+            prompt_cache_key: Some("cache-explicit".to_string()),
+            codex_fast_mode: Some(true),
+            ..Default::default()
+        });
+        assert_eq!(
+            provider_claude_prompt_cache_key(&explicit_cache_provider),
+            Some("cache-explicit")
+        );
+        assert!(provider_codex_fast_mode_enabled(&explicit_cache_provider));
     }
 
     #[test]
