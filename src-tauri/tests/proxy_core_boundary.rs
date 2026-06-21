@@ -2,10 +2,12 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 const ALLOWED_PROXY_CORE_FILES: &[&str] = &["src/lib.rs", "src/proxy_core_adapter.rs"];
+const ALLOWED_PROXY_ENGINE_CONSTRUCTOR_FILES: &[&str] = &["src/proxy_core_adapter.rs"];
 
 const FORBIDDEN_MARKERS: &[&str] = &["crate::proxy_core::", "cc_switch_proxy_core::"];
 const PROXY_CORE_MARKER: &str = "crate::proxy_core::";
 const PROXY_CORE_API_MARKER: &str = "crate::proxy_core::api";
+const PROXY_ENGINE_CONSTRUCTOR_MARKER: &str = "ProxyEngine::new(";
 
 #[test]
 fn host_code_uses_proxy_core_through_adapter_boundary() {
@@ -48,6 +50,44 @@ fn host_code_uses_proxy_core_through_adapter_boundary() {
 }
 
 #[test]
+fn production_host_constructs_proxy_engine_through_adapter() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let mut rust_files = Vec::new();
+    collect_rust_files(&manifest_dir.join("src"), &mut rust_files);
+
+    let mut violations = Vec::new();
+    for path in rust_files {
+        let relative = path
+            .strip_prefix(&manifest_dir)
+            .expect("source path under manifest dir")
+            .to_string_lossy()
+            .replace('\\', "/");
+        if ALLOWED_PROXY_ENGINE_CONSTRUCTOR_FILES.contains(&relative.as_str()) {
+            continue;
+        }
+
+        let source = fs::read_to_string(&path).expect("read host source file");
+        for (line_index, line) in production_lines(&source) {
+            let code = line.split("//").next().unwrap_or_default();
+            if code.contains(PROXY_ENGINE_CONSTRUCTOR_MARKER) {
+                violations.push(format!(
+                    "{}:{} contains direct production `{}`",
+                    relative,
+                    line_index + 1,
+                    PROXY_ENGINE_CONSTRUCTOR_MARKER
+                ));
+            }
+        }
+    }
+
+    assert!(
+        violations.is_empty(),
+        "production host code must construct ProxyEngine through src/proxy_core_adapter.rs:\n{}",
+        violations.join("\n")
+    );
+}
+
+#[test]
 fn proxy_core_adapter_uses_grouped_api_surface() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let adapter_path = manifest_dir.join("src/proxy_core_adapter.rs");
@@ -72,6 +112,22 @@ fn proxy_core_adapter_uses_grouped_api_surface() {
         "proxy_core_adapter.rs must use proxy_core::api as its integration surface:\n{}",
         violations.join("\n")
     );
+}
+
+fn production_lines(source: &str) -> impl Iterator<Item = (usize, &str)> {
+    let lines: Vec<&str> = source.lines().collect();
+    let production_len = lines
+        .windows(2)
+        .position(|window| {
+            window[0].trim() == "#[cfg(test)]"
+                && window[1].trim_start().starts_with("mod tests")
+        })
+        .unwrap_or(lines.len());
+
+    lines
+        .into_iter()
+        .take(production_len)
+        .enumerate()
 }
 
 fn collect_rust_files(dir: &Path, files: &mut Vec<PathBuf>) {
