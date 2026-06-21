@@ -3195,6 +3195,13 @@ pub(crate) fn provider_github_copilot_managed_account_id(provider: &Provider) ->
         .and_then(|meta| meta.managed_account_id_for("github_copilot"))
 }
 
+pub(crate) fn provider_codex_oauth_managed_account_id(provider: &Provider) -> Option<String> {
+    provider
+        .meta
+        .as_ref()
+        .and_then(|meta| meta.managed_account_id_for("codex_oauth"))
+}
+
 pub(crate) fn provider_is_full_url(provider: &Provider) -> bool {
     provider
         .meta
@@ -6073,6 +6080,11 @@ mod tests {
         );
         codex_provider.meta = Some(ProviderMeta {
             provider_type: Some("codex_oauth".to_string()),
+            auth_binding: Some(AuthBinding {
+                source: AuthBindingSource::ManagedAccount,
+                auth_provider: Some("codex_oauth".to_string()),
+                account_id: Some("codex-acct-1".to_string()),
+            }),
             ..ProviderMeta::default()
         });
         let mut claude_auth_provider = Provider::with_id(
@@ -6114,6 +6126,10 @@ mod tests {
             "https://api.githubcopilot.com"
         ));
         assert!(provider_is_codex_oauth(&codex_provider));
+        assert_eq!(
+            provider_codex_oauth_managed_account_id(&codex_provider).as_deref(),
+            Some("codex-acct-1")
+        );
         assert!(provider_uses_anthropic_rectifiers(
             &AppType::Claude,
             &claude_auth_provider

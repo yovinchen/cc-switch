@@ -1,7 +1,10 @@
 use crate::commands::{CodexOAuthState, CopilotAuthState};
 use crate::provider::Provider;
 use crate::proxy::error::ProxyError;
-use crate::proxy_core_adapter::{CopilotModel, ProviderAuthInfo, ProviderAuthStrategy};
+use crate::proxy_core_adapter::{
+    provider_codex_oauth_managed_account_id, provider_github_copilot_managed_account_id,
+    CopilotModel, ProviderAuthInfo, ProviderAuthStrategy,
+};
 use tauri::Manager;
 
 #[derive(Debug)]
@@ -49,7 +52,7 @@ pub(crate) async fn resolve_copilot_api_endpoint(
     let app_handle = app_handle?;
     let copilot_state = app_handle.state::<CopilotAuthState>();
     let copilot_auth = copilot_state.0.read().await;
-    let account_id = copilot_account_id(auth_provider);
+    let account_id = provider_github_copilot_managed_account_id(auth_provider);
 
     Some(match account_id.as_deref() {
         Some(id) => copilot_auth.get_api_endpoint(id).await,
@@ -67,7 +70,7 @@ pub(crate) async fn fetch_copilot_live_models(
 
     let copilot_state = app_handle.state::<CopilotAuthState>();
     let copilot_auth = copilot_state.0.read().await;
-    let account_id = copilot_account_id(auth_provider);
+    let account_id = provider_github_copilot_managed_account_id(auth_provider);
 
     match account_id.as_deref() {
         Some(id) => copilot_auth.fetch_models_for_account(id).await,
@@ -89,7 +92,7 @@ pub(crate) async fn resolve_copilot_model_vendor(
 
     let copilot_state = app_handle.state::<CopilotAuthState>();
     let copilot_auth = copilot_state.0.read().await;
-    let account_id = copilot_account_id(auth_provider);
+    let account_id = provider_github_copilot_managed_account_id(auth_provider);
 
     let vendor_result = match account_id.as_deref() {
         Some(id) => {
@@ -130,7 +133,7 @@ async fn resolve_copilot_auth(
 
     let copilot_state = app_handle.state::<CopilotAuthState>();
     let copilot_auth = copilot_state.0.read().await;
-    let account_id = copilot_account_id(auth_provider);
+    let account_id = provider_github_copilot_managed_account_id(auth_provider);
 
     let token_result = match &account_id {
         Some(id) => {
@@ -166,13 +169,6 @@ async fn resolve_copilot_auth(
     }
 }
 
-fn copilot_account_id(auth_provider: &Provider) -> Option<String> {
-    auth_provider
-        .meta
-        .as_ref()
-        .and_then(|m| m.managed_account_id_for("github_copilot"))
-}
-
 async fn resolve_codex_oauth(
     app_handle: Option<&tauri::AppHandle>,
     auth_provider: &Provider,
@@ -186,10 +182,7 @@ async fn resolve_codex_oauth(
 
     let codex_state = app_handle.state::<CodexOAuthState>();
     let codex_auth = codex_state.0.read().await;
-    let account_id = auth_provider
-        .meta
-        .as_ref()
-        .and_then(|m| m.managed_account_id_for("codex_oauth"));
+    let account_id = provider_codex_oauth_managed_account_id(auth_provider);
 
     let token_result = match &account_id {
         Some(id) => {
