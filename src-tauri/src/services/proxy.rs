@@ -10,8 +10,9 @@ use crate::proxy::server::ProxyServer;
 use crate::proxy::switch_lock::SwitchLockManager;
 use crate::proxy_core_adapter::{
     build_proxy_official_warning_event_payload, provider_is_github_copilot,
-    proxy_server_info_from_parts, proxy_runtime_status_stopped, proxy_takeover_status_from_parts,
-    CircuitBreakerConfig, ProxyConfig, ProxyRuntimeStatus, ProxyServerInfo, ProxyTakeoverStatus,
+    provider_uses_managed_account_auth, proxy_server_info_from_parts,
+    proxy_runtime_status_stopped, proxy_takeover_status_from_parts, CircuitBreakerConfig,
+    ProxyConfig, ProxyRuntimeStatus, ProxyServerInfo, ProxyTakeoverStatus,
     PROXY_OFFICIAL_WARNING_EVENT,
 };
 use crate::services::provider::{
@@ -92,7 +93,7 @@ impl ProxyService {
         proxy_url: &str,
         provider: &Provider,
     ) {
-        let auth_policy = if provider.uses_managed_account_auth() {
+        let auth_policy = if provider_uses_managed_account_auth(provider) {
             // Codex 系（含仅凭 base_url 识别、无 provider_type meta 的）必须保留
             // ANTHROPIC_AUTH_TOKEN 占位符：Claude Code 缺该键会弹登录提示（#3784）。
             // Copilot 维持仅 API_KEY 占位，避免与 /login 管理的 key 冲突（#1049）。
@@ -103,7 +104,7 @@ impl ProxyService {
             ClaudeTakeoverAuthPolicy::PreserveExistingOrAuthToken
         };
         // Copilot/Codex 接管时 live config 可能还是旧供应商；显示模型必须跟随目标 provider。
-        let takeover_model_fields = if provider.uses_managed_account_auth() {
+        let takeover_model_fields = if provider_uses_managed_account_auth(provider) {
             Self::build_claude_takeover_model_fields(&provider.settings_config)
         } else {
             Self::build_claude_takeover_model_fields(config)
@@ -3008,7 +3009,9 @@ mod tests {
             }),
             None,
         );
-        assert!(provider.uses_managed_account_auth());
+        assert!(crate::proxy_core_adapter::provider_uses_managed_account_auth(
+            &provider
+        ));
         assert!(!crate::proxy_core_adapter::provider_is_codex_oauth(
             &provider
         ));

@@ -3172,6 +3172,17 @@ pub(crate) fn provider_is_github_copilot(provider: &Provider) -> bool {
             .unwrap_or(false)
 }
 
+pub(crate) fn provider_uses_managed_account_auth(provider: &Provider) -> bool {
+    provider_is_github_copilot(provider)
+        || provider_is_codex_oauth(provider)
+        || provider
+            .settings_config
+            .pointer("/env/ANTHROPIC_BASE_URL")
+            .and_then(Value::as_str)
+            .map(|base_url| base_url.contains("chatgpt.com/backend-api/codex"))
+            .unwrap_or(false)
+}
+
 pub(crate) fn provider_uses_anthropic_rectifiers(app_type: &AppType, provider: &Provider) -> bool {
     matches!(
         provider_kind_from_app_type_and_config(app_type, provider),
@@ -6147,6 +6158,7 @@ mod tests {
         let usage_provider_kind = provider_kind_from_provider(&provider);
         let usage_provider_is_codex_oauth = provider_is_codex_oauth(&provider);
         let usage_provider_is_github_copilot = provider_is_github_copilot(&provider);
+        let usage_provider_uses_managed_account = provider_uses_managed_account_auth(&provider);
         let usage_provider_is_copilot =
             provider_is_github_copilot_upstream(&provider, "https://example.com");
         let stream_check_provider_is_copilot =
@@ -6207,6 +6219,7 @@ mod tests {
         assert_eq!(usage_provider_kind, Some(ProviderKind::GitHubCopilot));
         assert!(!usage_provider_is_codex_oauth);
         assert!(usage_provider_is_github_copilot);
+        assert!(usage_provider_uses_managed_account);
         assert!(usage_provider_is_copilot);
         assert!(stream_check_provider_is_copilot);
         assert_eq!(copilot_account_id.as_deref(), Some("acct-1"));
