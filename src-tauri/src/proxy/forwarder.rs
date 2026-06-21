@@ -1694,7 +1694,11 @@ impl RequestForwarder {
             // 如果有 HTTP 代理，hyper_client 会用 CONNECT 隧道穿过代理
             let uri: http::Uri = url
                 .parse()
-                .map_err(|e| ProxyError::ForwardFailed(format!("Invalid URL '{url}': {e}")))?;
+                .map_err(|e| {
+                    ProxyError::ForwardFailed(
+                        crate::proxy_core_adapter::invalid_upstream_url_error_message(&url, e),
+                    )
+                })?;
             super::hyper_client::send_request(
                 uri,
                 method.clone(),

@@ -59,6 +59,10 @@ pub fn split_endpoint_and_query(endpoint: &str) -> (&str, Option<&str>) {
         .map_or((endpoint, None), |(path, query)| (path, Some(query)))
 }
 
+pub fn invalid_upstream_url_error_message(url: &str, error: impl std::fmt::Display) -> String {
+    format!("Invalid URL '{url}': {error}")
+}
+
 pub fn strip_beta_query(query: Option<&str>) -> Option<String> {
     let filtered = query.map(|query| {
         query
@@ -473,8 +477,9 @@ mod tests {
         append_query_to_endpoint_path, append_query_to_full_url,
         apply_channel_param_overrides_to_url, build_claude_upstream_url, build_codex_upstream_url,
         claude_transform_endpoint_rewrite_input_from_body, extract_gemini_model_from_path,
-        interface_kind_for_forward, is_codex_chat_completions_url,
-        is_codex_chat_full_endpoint_base, is_codex_chat_wire_api, is_codex_responses_endpoint,
+        interface_kind_for_forward, invalid_upstream_url_error_message,
+        is_codex_chat_completions_url, is_codex_chat_full_endpoint_base, is_codex_chat_wire_api,
+        is_codex_responses_endpoint,
         is_github_copilot_upstream, is_origin_only_url, merge_query_params,
         request_model_for_forward, resolve_codex_provider_uses_chat_completions,
         resolved_copilot_dynamic_base_url, rewrite_claude_transform_endpoint,
@@ -484,6 +489,14 @@ mod tests {
     };
     use crate::domain::CODEX_OAUTH_CLAUDE_BASE_URL;
     use serde_json::json;
+
+    #[test]
+    fn formats_invalid_upstream_url_errors() {
+        assert_eq!(
+            invalid_upstream_url_error_message("http://[bad", "invalid uri"),
+            "Invalid URL 'http://[bad': invalid uri"
+        );
+    }
 
     #[test]
     fn split_endpoint_and_query_separates_first_query_marker() {
