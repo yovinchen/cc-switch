@@ -34,10 +34,11 @@ use crate::proxy_core_adapter::{
     merge_copilot_tool_results, normalize_thinking_type, prepare_upstream_request_body_with_report,
     prompt_cache_trace_log_message, rectify_anthropic_request, rectify_thinking_budget,
     replace_image_blocks_with_marker, replace_images_for_text_only_model,
-    request_body_filter_log_message, request_model_for_forward, resolve_claude_forward_api_format,
-    resolve_copilot_deterministic_interaction_id, resolve_copilot_model_against_ids,
-    resolve_copilot_optimizer_session_id, resolve_copilot_request_id_with_fallback,
-    resolve_media_prevention_policy, resolved_copilot_dynamic_base_url,
+    proxy_engine_from_services, request_body_filter_log_message, request_model_for_forward,
+    resolve_claude_forward_api_format, resolve_copilot_deterministic_interaction_id,
+    resolve_copilot_model_against_ids, resolve_copilot_optimizer_session_id,
+    resolve_copilot_request_id_with_fallback, resolve_media_prevention_policy,
+    resolved_copilot_dynamic_base_url,
     responses_to_chat_completions_with_options, rewrite_claude_transform_endpoint,
     sanitize_copilot_orphan_tool_results, should_apply_bedrock_pre_send_optimizer,
     should_check_media_retry, should_failover_after_rectifier_retry_failure,
@@ -50,7 +51,7 @@ use crate::proxy_core_adapter::{
     AttemptEventChannel, AttemptEventPayloadInput, AttemptEventPhase, ChannelQuery,
     CopilotAuthHeaderOverrides, CopilotOptimizerConfig, CurrentRouteTarget, ForwardFailureCategory,
     GeminiShadowStore, InterfaceKind, MediaRetryInput, OptimizerConfig, PromptCacheTraceLogInput,
-    ProviderAuthInfo, ProviderAuthStrategy, ProviderKind, ProxyBody, ProxyEngine, ProxyRequest,
+    ProviderAuthInfo, ProviderAuthStrategy, ProviderKind, ProxyBody, ProxyRequest,
     ProxyRuntimeStatus, ProxyServices, RectifierConfig, ResolvedChannelAttempt,
     UpstreamAuthHeadersInput, UpstreamRequestHeadersInput, UpstreamSendPolicyInput,
     UpstreamTransportKind, UNSUPPORTED_IMAGE_MARKER,
@@ -751,7 +752,7 @@ impl RequestForwarder {
                     .collect());
             }
 
-            let engine = ProxyEngine::new(proxy_core_services.clone());
+            let engine = proxy_engine_from_services(proxy_core_services.clone());
             let mut proxy_request = ProxyRequest::new(
                 app_kind,
                 method.clone(),

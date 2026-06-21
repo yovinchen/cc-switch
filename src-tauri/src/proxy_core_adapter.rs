@@ -34,6 +34,7 @@ use http::{HeaderMap, Method, StatusCode};
 use indexmap::IndexMap;
 use rust_decimal::Decimal;
 use serde_json::{Map, Value, json};
+use std::sync::Arc;
 use uuid::Uuid;
 
 pub(crate) fn synthesize_gemini_tool_call_id_with_uuid() -> String {
@@ -875,6 +876,13 @@ pub(crate) fn emit_proxy_core_event(
 ) {
     let message = proxy_core_event_to_bus_message(event);
     emit(message.event_name, message.payload);
+}
+
+pub(crate) fn proxy_engine_from_services<S>(services: Arc<S>) -> ProxyEngine<S>
+where
+    S: ProxyServices + ?Sized,
+{
+    ProxyEngine::new(services)
 }
 
 pub(crate) fn health_check_source_from_timestamp(

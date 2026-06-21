@@ -14,8 +14,9 @@ use super::{
 };
 use crate::database::Database;
 use crate::proxy_core_adapter::{
-    server_log_codes as log_srv, CircuitBreakerConfig, CurrentRouteTarget, GeminiShadowStore,
-    ProxyConfig, ProxyEngine, ProxyRuntimeStatus, ProxyServerInfo,
+    proxy_engine_from_services, server_log_codes as log_srv, CircuitBreakerConfig,
+    CurrentRouteTarget, GeminiShadowStore, ProxyConfig, ProxyEngine, ProxyRuntimeStatus,
+    ProxyServerInfo,
 };
 use crate::proxy_core_host::{CcSwitchProxyRuntime, CcSwitchProxyServices};
 use axum::{
@@ -60,7 +61,7 @@ pub struct ProxyState {
 
 impl ProxyState {
     pub(crate) fn proxy_engine(&self) -> ProxyEngine<CcSwitchProxyServices> {
-        ProxyEngine::new(self.proxy_core_services.clone())
+        proxy_engine_from_services(self.proxy_core_services.clone())
     }
 }
 
