@@ -100,12 +100,13 @@ pub mod model_catalog {
 pub mod ports {
     pub use crate::domain::{ChannelAttemptPlan, ChannelAttemptResult};
     pub use crate::ports::{
-        app_proxy_config_defaults_for_app, AppProxyConfig, AuthInfo, AuthProvider,
-        ChannelHealthReset, ChannelHealthResetResponse, ChannelHealthStore, ChannelModelRecord,
-        ChannelSource, CopilotOptimizerConfig, CopilotOptimizerConfigSpec, CurrentRouteTarget,
-        ForwardPipeline, GlobalProxyConfig, ModelCatalog, ModelCatalogProvider, OptimizerConfig,
-        OptimizerConfigSpec, DEFAULT_PROXY_LISTEN_ADDRESS, DEFAULT_PROXY_LISTEN_PORT,
-        app_proxy_config_raw, copilot_optimizer_config_spec_from_config,
+        app_proxy_config_defaults_for_app, auth_info_from_profile_ref, AppProxyConfig, AuthInfo,
+        AuthProvider, ChannelHealthReset, ChannelHealthResetResponse, ChannelHealthStore,
+        ChannelModelRecord, ChannelSource, CopilotOptimizerConfig, CopilotOptimizerConfigSpec,
+        CurrentRouteTarget, ForwardPipeline, GlobalProxyConfig, ModelCatalog,
+        ModelCatalogProvider, OptimizerConfig, OptimizerConfigSpec,
+        DEFAULT_PROXY_LISTEN_ADDRESS, DEFAULT_PROXY_LISTEN_PORT, app_proxy_config_raw,
+        copilot_optimizer_config_spec_from_config,
         optimizer_config_spec_from_config, proxy_app_config_from_parts,
         proxy_global_config_from_global_config, proxy_runtime_config_from_proxy_config,
         rectifier_config_spec_from_config, ProviderHealth, ProviderHealthUpdate,

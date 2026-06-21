@@ -352,6 +352,17 @@ pub struct AuthInfo {
     pub metadata: Value,
 }
 
+pub fn auth_info_from_profile_ref(
+    auth_profile: Option<&AuthProfileRef>,
+    source: impl Into<String>,
+) -> AuthInfo {
+    AuthInfo {
+        headers: Vec::new(),
+        account_ref: auth_profile.map(|value| value.0.clone()),
+        metadata: serde_json::json!({ "source": source.into() }),
+    }
+}
+
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ModelCatalog {
@@ -2527,10 +2538,10 @@ impl ProxyCoreEvent {
 mod tests {
     use super::{
         AppChannelListQuery, AppChannelListResponse, AppChannelResponse, AppChannelRouteResponse,
-        app_proxy_config_defaults_for_app, app_proxy_config_raw, channel_health_update_from_input,
-        channel_model_record_from_input, channel_reachability_result_from_stream_check_result,
-        proxy_app_config_from_parts, proxy_global_config_from_global_config,
-        proxy_runtime_config_from_proxy_config,
+        app_proxy_config_defaults_for_app, app_proxy_config_raw, auth_info_from_profile_ref,
+        channel_health_update_from_input, channel_model_record_from_input,
+        channel_reachability_result_from_stream_check_result, proxy_app_config_from_parts,
+        proxy_global_config_from_global_config, proxy_runtime_config_from_proxy_config,
         AppListResponse, AppModelListQuery, AppProxyConfig, AppSummaryInput,
         channel_key_record_from_input,
         channel_reachability_status_from_latency, channel_record_from_input, ChannelDeleteResponse,
@@ -2555,9 +2566,9 @@ mod tests {
         DEFAULT_PROXY_LISTEN_PORT, plan_channel_test, provider_health_update_from_input,
     };
     use crate::domain::{
-        AppKind, ChannelHealthPolicy, ChannelOverrides, ChannelSpec, ChannelStatus, InterfaceKind,
-        ModelCapabilities, ModelRoute, ProviderKind, ProviderMetadata, RetryPolicy,
-        UpstreamEndpoint, DEFAULT_ROUTE_GROUP,
+        AppKind, AuthProfileRef, ChannelHealthPolicy, ChannelOverrides, ChannelSpec,
+        ChannelStatus, InterfaceKind, ModelCapabilities, ModelRoute, ProviderKind,
+        ProviderMetadata, RetryPolicy, UpstreamEndpoint, DEFAULT_ROUTE_GROUP,
     };
     use serde_json::{json, Value};
 
@@ -3485,6 +3496,28 @@ mod tests {
         assert_eq!(app.optimizer.raw["cacheTtl"], json!("5m"));
         assert!(!app.copilot_optimizer.enabled);
         assert_eq!(app.copilot_optimizer.raw["warmupModel"], json!("gpt-5"));
+    }
+
+    #[test]
+    fn auth_info_from_profile_ref_preserves_source_metadata() {
+        let auth_info = auth_info_from_profile_ref(
+            Some(&AuthProfileRef::new("provider:claude:anthropic-main")),
+            "cc_switch_provider_config",
+        );
+
+        assert!(auth_info.headers.is_empty());
+        assert_eq!(
+            auth_info.account_ref.as_deref(),
+            Some("provider:claude:anthropic-main")
+        );
+        assert_eq!(
+            auth_info.metadata["source"],
+            json!("cc_switch_provider_config")
+        );
+
+        let anonymous = auth_info_from_profile_ref(None, "cc_switch_provider_config");
+        assert_eq!(anonymous.account_ref, None);
+        assert_eq!(anonymous.metadata["source"], json!("cc_switch_provider_config"));
     }
 
     #[test]

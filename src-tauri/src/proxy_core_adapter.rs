@@ -346,6 +346,14 @@ pub(crate) type ProviderAuthInfo =
 pub(crate) type ProviderAuthStrategy =
     crate::proxy_core::api::auth::ProviderAuthStrategy;
 pub(crate) type AuthInfo = crate::proxy_core::api::ports::AuthInfo;
+
+pub(crate) fn auth_info_from_profile_ref(
+    auth_profile: Option<&AuthProfileRef>,
+    source: &str,
+) -> AuthInfo {
+    crate::proxy_core::api::ports::auth_info_from_profile_ref(auth_profile, source)
+}
+
 pub(crate) type AttemptEventChannel<'a> =
     crate::proxy_core::api::events::AttemptEventChannel<'a>;
 pub(crate) type AttemptEventPayloadInput<'a> =

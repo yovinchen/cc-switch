@@ -21,6 +21,7 @@ use crate::proxy_core_adapter::{
     RoutePolicySource, RouteRequest, RouteResolver, UsageRecord, UsageSink,
 };
 use crate::proxy_core_adapter::{
+    auth_info_from_profile_ref,
     extract_claude_auth_key_from_settings, extract_proxy_session_id, parse_auth_profile_ref,
     proxy_app_config_from_config_parts, proxy_global_config_from_config,
     proxy_runtime_config_from_config,
@@ -399,11 +400,10 @@ impl AuthProvider for CcSwitchAuthProvider {
         _request: &'a ProxyRequest,
     ) -> BoxFuture<'a, ProxyCoreResult<AuthInfo>> {
         Box::pin(async move {
-            Ok(AuthInfo {
-                headers: Vec::new(),
-                account_ref: auth_profile.map(|value| value.0.clone()),
-                metadata: json!({"source": "cc_switch_provider_config"}),
-            })
+            Ok(auth_info_from_profile_ref(
+                auth_profile,
+                "cc_switch_provider_config",
+            ))
         })
     }
 }
@@ -1380,6 +1380,25 @@ mod tests {
         assert!(policy.groups.is_empty());
         assert_eq!(policy.raw["defaultGroup"], json!(DEFAULT_ROUTE_GROUP));
         assert_eq!(policy.raw["failoverProviderIds"], json!(["anthropic-main"]));
+    }
+
+    #[tokio::test]
+    async fn auth_provider_projects_profile_ref_through_core() {
+        let provider = CcSwitchAuthProvider;
+        let request = proxy_request();
+        let auth_profile = AuthProfileRef::new("provider:claude:anthropic-main");
+
+        let auth = provider
+            .resolve_auth(Some(&auth_profile), &request)
+            .await
+            .expect("resolve auth");
+
+        assert!(auth.headers.is_empty());
+        assert_eq!(
+            auth.account_ref.as_deref(),
+            Some("provider:claude:anthropic-main")
+        );
+        assert_eq!(auth.metadata["source"], json!("cc_switch_provider_config"));
     }
 
     #[tokio::test]
