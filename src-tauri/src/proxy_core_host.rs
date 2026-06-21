@@ -244,6 +244,14 @@ struct CcSwitchConfigSource {
 }
 
 impl ProxyConfigSource for CcSwitchConfigSource {
+    fn list_apps<'a>(&'a self) -> BoxFuture<'a, ProxyCoreResult<Vec<AppKind>>> {
+        Box::pin(async move {
+            Ok(AppType::all()
+                .map(|app| AppKind::from(&app))
+                .collect())
+        })
+    }
+
     fn load_global<'a>(&'a self) -> BoxFuture<'a, ProxyCoreResult<ProxyGlobalConfig>> {
         Box::pin(async move {
             let config = self

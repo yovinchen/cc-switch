@@ -161,10 +161,9 @@ pub async fn list_proxy_apps(
     State(state): State<ProxyState>,
 ) -> Result<Json<AppListResponse>, ProxyError> {
     let request = AppListRequest::new();
-    let apps = AppType::all().map(|app| AppKind::from(&app));
     let response = state
         .proxy_engine()
-        .app_list_response(request, apps)
+        .app_list_response(request)
         .await
         .map_err(proxy_core_error_to_proxy_error)?;
 
@@ -431,7 +430,7 @@ pub async fn list_proxy_groups(
 
     let response = state
         .proxy_engine()
-        .group_list_response(request, AppType::all().map(|app| app.as_str().to_string()))
+        .group_list_response(request)
         .await
         .map_err(proxy_core_error_to_proxy_error)?;
 

@@ -228,6 +228,7 @@ fn app_list_handler_delegates_summary_sources_to_proxy_engine() {
         "proxy_app_summary_input",
         "app_list_source_from_summaries",
         ".response_from_source(",
+        "AppType::all",
     ];
 
     let mut violations = Vec::new();
@@ -564,6 +565,7 @@ fn group_list_handler_delegates_sources_to_proxy_engine() {
         "group_list_channel_source_from_records",
         ".response_from_channel_sources(",
         ".app_scope(",
+        "AppType::all",
     ];
 
     let mut violations = Vec::new();

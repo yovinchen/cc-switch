@@ -88,14 +88,12 @@ where
         }
     }
 
-    pub async fn app_list_response<I>(
+    pub async fn app_list_response(
         &self,
         request: AppListRequest,
-        apps: I,
     ) -> ProxyCoreResult<AppListResponse>
-    where
-        I: IntoIterator<Item = AppKind>,
     {
+        let apps = self.services.config().list_apps().await?;
         let mut summaries = Vec::new();
 
         for app in apps {
@@ -500,20 +498,19 @@ where
         Ok(request.migration_materialize_response_from_source(source))
     }
 
-    pub async fn group_list_response<I, T>(
+    pub async fn group_list_response(
         &self,
         request: GroupListRequest,
-        all_app_types: I,
     ) -> ProxyCoreResult<RouteGroupListResponse>
-    where
-        I: IntoIterator<Item = T>,
-        T: Into<String>,
     {
-        let app_types = request.app_scope(all_app_types);
+        let apps = match request.app_type() {
+            Some(app_type) => vec![AppKind::from(app_type)],
+            None => self.services.config().list_apps().await?,
+        };
         let mut sources = Vec::new();
 
-        for app_type in app_types {
-            let app = AppKind::from(app_type.as_str());
+        for app in apps {
+            let app_type = app.as_str().to_string();
             let (source, channels) = self.services.channels().list_channel_records(&app).await?;
             sources.push(GroupListChannelSource::from_record_inputs(
                 app_type,
@@ -720,6 +717,7 @@ mod tests {
         route_candidate_provider_ids: Mutex<Vec<String>>,
         route_policy: Mutex<Option<RoutePolicy>>,
         route_resolution: Mutex<Option<RouteResolveResponse>>,
+        apps: Mutex<Vec<AppKind>>,
         channel_records: Mutex<Vec<ChannelRecord>>,
         channel_route_source: Mutex<Option<ChannelRouteSource>>,
         reachability_requests: Mutex<Vec<ChannelTestProbeRequest>>,
@@ -780,6 +778,17 @@ mod tests {
     }
 
     impl ProxyConfigSource for TestServices {
+        fn list_apps<'a>(&'a self) -> BoxFuture<'a, ProxyCoreResult<Vec<AppKind>>> {
+            let apps = self.apps.lock().expect("apps mutex").clone();
+            Box::pin(async move {
+                if apps.is_empty() {
+                    Ok(vec![AppKind::Claude, AppKind::Codex])
+                } else {
+                    Ok(apps)
+                }
+            })
+        }
+
         fn load_global<'a>(&'a self) -> BoxFuture<'a, ProxyCoreResult<ProxyGlobalConfig>> {
             Box::pin(async { Ok(ProxyGlobalConfig::default()) })
         }
@@ -1581,11 +1590,10 @@ mod tests {
         ];
         let engine = ProxyEngine::new(services.clone());
 
-        let response = futures::executor::block_on(engine.app_list_response(
-            AppListRequest::new(),
-            vec![AppKind::Claude, AppKind::Codex],
-        ))
-        .expect("app list response");
+        *services.apps.lock().expect("apps mutex") = vec![AppKind::Claude, AppKind::Codex];
+
+        let response = futures::executor::block_on(engine.app_list_response(AppListRequest::new()))
+            .expect("app list response");
 
         assert_eq!(response.apps.len(), 2);
         assert_eq!(response.apps[0].app_type, "claude");
@@ -1946,11 +1954,10 @@ mod tests {
         let request = GroupListRequest::from_query(serde_json::from_value(json!({})).expect("query"))
             .expect("group request");
 
-        let response = futures::executor::block_on(engine.group_list_response(
-            request,
-            ["claude".to_string(), "codex".to_string()],
-        ))
-        .expect("group response");
+        *services.apps.lock().expect("apps mutex") = vec![AppKind::Claude, AppKind::Codex];
+
+        let response = futures::executor::block_on(engine.group_list_response(request))
+            .expect("group response");
 
         assert_eq!(response.app_type, None);
         assert_eq!(response.sources, vec!["materialized_channels"]);
