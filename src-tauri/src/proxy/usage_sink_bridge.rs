@@ -8,6 +8,7 @@ use crate::proxy::{
 };
 use crate::proxy_core_adapter::{
     error_usage_record_with_request_id_fallback,
+    provider_kind_from_provider,
     transformed_response_usage_record_with_request_id_fallback,
     transformed_streaming_response_usage_record_with_request_id_fallback,
     usage_logging_enabled_from_config_flag, usage_record_failure_warning_message,
@@ -238,14 +239,6 @@ pub(crate) fn transformed_streaming_usage_collector(
             spawn_usage_record(services, record, UsageRecordFailureLogContext::UsageRecord);
         },
     ))
-}
-
-pub(crate) fn provider_kind_from_provider(provider: &Provider) -> Option<ProviderKind> {
-    provider
-        .meta
-        .as_ref()
-        .and_then(|meta| meta.provider_type.as_deref())
-        .map(ProviderKind::from)
 }
 
 fn usage_logging_enabled(state: &ProxyState) -> bool {

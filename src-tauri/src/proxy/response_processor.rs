@@ -14,13 +14,13 @@ use super::{
         proxy_core_response_to_axum_response_with_error_message,
     },
     server::ProxyState,
-    usage_sink_bridge::provider_kind_from_provider,
 };
 use crate::proxy_core_adapter::{
     decode_response_body, get_content_encoding, non_streaming_body_timeout_message,
     non_streaming_response_usage_record_from_body_with_request_id_fallback,
     passthrough_bytes_proxy_response, passthrough_stream_proxy_response,
-    response_headers_log_summary, streaming_response_usage_record_with_optional_outbound_model,
+    provider_kind_from_provider, response_headers_log_summary,
+    streaming_response_usage_record_with_optional_outbound_model,
     usage_logging_enabled_from_config_flag, usage_record_debug_log_message,
     usage_record_failure_warning_message, usage_record_with_route_context,
     usage_selected_provider_missing_log_message, ProxyCoreAppKind as AppKind, ProxyServices,

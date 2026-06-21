@@ -3116,6 +3116,14 @@ pub(crate) fn usage_logging_enabled_from_config_flag(enable_logging: Option<bool
     crate::proxy_core::api::usage::usage_logging_enabled_from_config_flag(enable_logging)
 }
 
+pub(crate) fn provider_kind_from_provider(provider: &Provider) -> Option<ProviderKind> {
+    provider
+        .meta
+        .as_ref()
+        .and_then(|meta| meta.provider_type.as_deref())
+        .map(ProviderKind::from)
+}
+
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn streaming_response_usage_record_with_optional_outbound_model(
     events: &[Value],
@@ -5906,6 +5914,7 @@ mod tests {
             ..ProviderMeta::default()
         });
 
+        let usage_provider_kind = provider_kind_from_provider(&provider);
         let spec = provider.to_proxy_core_provider_spec(&AppType::Claude);
         let source_spec = provider_spec_from_source(&AppKind::Claude, Some(provider.clone()))
             .expect("provider spec")
@@ -5916,6 +5925,7 @@ mod tests {
         assert_eq!(spec.kind, ProviderKind::GitHubCopilot);
         assert_eq!(source_spec.kind, ProviderKind::GitHubCopilot);
         assert_eq!(source_specs[0].kind, ProviderKind::GitHubCopilot);
+        assert_eq!(usage_provider_kind, Some(ProviderKind::GitHubCopilot));
         assert_eq!(spec.account_ref.as_deref(), Some("github_copilot:acct-1"));
         let serialized = serde_json::to_string(&spec).expect("serialize spec");
         assert!(!serialized.contains("secret-token"));
