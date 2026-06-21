@@ -17,8 +17,9 @@ use crate::database::{validate_cost_multiplier, validate_pricing_source};
 use crate::error::AppError;
 use crate::provider::{Provider, UsageResult};
 use crate::proxy_core_adapter::{
-    codex_api_key_from_auth_and_config, codex_auth_object_value_from_settings,
-    codex_config_text_from_settings, gemini_env_map_from_settings,
+    claude_env_credentials_from_settings, codex_api_key_from_auth_and_config,
+    codex_auth_object_value_from_settings, codex_config_text_from_settings,
+    gemini_env_map_from_settings,
     provider_codex_validation_parts, should_block_proxy_switch_to_provider_category,
     CodexProviderValidationIssue,
 };
@@ -2457,10 +2458,7 @@ impl ProviderService {
     ) -> Result<(String, String), AppError> {
         match app_type {
             AppType::Claude => {
-                let env = provider
-                    .settings_config
-                    .get("env")
-                    .and_then(|v| v.as_object())
+                let credentials = claude_env_credentials_from_settings(&provider.settings_config)
                     .ok_or_else(|| {
                         AppError::localized(
                             "provider.claude.env.missing",
@@ -2469,10 +2467,8 @@ impl ProviderService {
                         )
                     })?;
 
-                let api_key = env
-                    .get("ANTHROPIC_AUTH_TOKEN")
-                    .or_else(|| env.get("ANTHROPIC_API_KEY"))
-                    .and_then(|v| v.as_str())
+                let api_key = credentials
+                    .api_key
                     .ok_or_else(|| {
                         AppError::localized(
                             "provider.claude.api_key.missing",
@@ -2482,9 +2478,8 @@ impl ProviderService {
                     })?
                     .to_string();
 
-                let base_url = env
-                    .get("ANTHROPIC_BASE_URL")
-                    .and_then(|v| v.as_str())
+                let base_url = credentials
+                    .base_url
                     .ok_or_else(|| {
                         AppError::localized(
                             "provider.claude.base_url.missing",

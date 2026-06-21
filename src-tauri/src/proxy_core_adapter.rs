@@ -1929,6 +1929,24 @@ pub(crate) fn provider_codex_fast_mode_enabled(provider: &Provider) -> bool {
     provider.codex_fast_mode_enabled()
 }
 
+pub(crate) struct ClaudeEnvCredentials<'a> {
+    pub(crate) api_key: Option<&'a str>,
+    pub(crate) base_url: Option<&'a str>,
+}
+
+pub(crate) fn claude_env_credentials_from_settings(
+    settings_config: &Value,
+) -> Option<ClaudeEnvCredentials<'_>> {
+    let env = settings_config.get("env").and_then(Value::as_object)?;
+    Some(ClaudeEnvCredentials {
+        api_key: env
+            .get("ANTHROPIC_AUTH_TOKEN")
+            .or_else(|| env.get("ANTHROPIC_API_KEY"))
+            .and_then(Value::as_str),
+        base_url: env.get("ANTHROPIC_BASE_URL").and_then(Value::as_str),
+    })
+}
+
 pub(crate) fn extract_claude_auth_key_from_settings(
     settings_config: &Value,
 ) -> Option<ClaudeAuthKey> {
@@ -5916,6 +5934,14 @@ wire_api = "chat"
             extract_claude_base_url_from_settings(false, &settings).as_deref(),
             Some("https://api.anthropic.com/v1")
         );
+        let env_credentials =
+            claude_env_credentials_from_settings(&settings).expect("claude env credentials");
+        assert_eq!(env_credentials.api_key, Some(" claude-token "));
+        assert_eq!(
+            env_credentials.base_url,
+            Some("https://api.anthropic.com/v1/")
+        );
+        assert!(claude_env_credentials_from_settings(&json!({"env": "invalid"})).is_none());
         let mut provider = Provider::with_id(
             "claude".to_string(),
             "Claude".to_string(),
