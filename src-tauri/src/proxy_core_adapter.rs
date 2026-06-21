@@ -2928,6 +2928,27 @@ pub(crate) fn usage_route_context_from_selection(selection: &RouteSelection) -> 
     crate::proxy_core::api::usage::usage_route_context_from_selection(selection)
 }
 
+#[derive(Debug, Clone)]
+pub(crate) struct RequestContextRouteUpdate {
+    pub(crate) outbound_model: Option<String>,
+    pub(crate) usage_route_context: UsageRouteContext,
+    pub(crate) provider: Provider,
+}
+
+pub(crate) fn request_context_route_update_from_proxy_result(
+    app_type: &AppType,
+    provider: &Provider,
+    result: &ProxyResult,
+) -> RequestContextRouteUpdate {
+    RequestContextRouteUpdate {
+        outbound_model: result.outbound_model.clone(),
+        usage_route_context: usage_route_context_from_selection(&result.selected_route),
+        provider: ForwardAttempt::from_core_selection(app_type, provider, &result.selected_route)
+            .provider()
+            .clone(),
+    }
+}
+
 pub(crate) fn usage_record_with_route_context(
     record: UsageRecord,
     route: Option<&UsageRouteContext>,
@@ -4869,6 +4890,27 @@ mod tests {
         assert_eq!(candidate.source_kind, "proxy_core");
         let resolved = resolved_channel_attempt_from_candidate(candidate);
         assert_eq!(resolved.channel_id, "ch-b");
+        let result = ProxyResult {
+            response: ProxyCoreResponse::empty(http::StatusCode::OK),
+            selected_route: selected,
+            outbound_model: Some("upstream-sonnet".to_string()),
+            usage_record: None,
+            metadata: json!({}),
+        };
+        let selected_host_provider = Provider::with_id(
+            "provider-b".to_string(),
+            "Provider B".to_string(),
+            json!({}),
+            None,
+        );
+        let update = request_context_route_update_from_proxy_result(
+            &AppType::Claude,
+            &selected_host_provider,
+            &result,
+        );
+        assert_eq!(update.outbound_model.as_deref(), Some("upstream-sonnet"));
+        assert_eq!(update.usage_route_context.channel_id, "ch-b");
+        assert_eq!(update.provider.id, "provider-b");
         let host_provider = Provider::with_id(
             "provider-a".to_string(),
             "Provider A".to_string(),

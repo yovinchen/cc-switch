@@ -5,13 +5,12 @@
 use crate::app_config::AppType;
 use crate::provider::Provider;
 use crate::proxy::{
-    error::ProxyError, providers::get_claude_api_format, route_attempt::ForwardAttempt,
-    server::ProxyState,
+    error::ProxyError, providers::get_claude_api_format, server::ProxyState,
 };
 use crate::proxy_core_adapter::{
     app_proxy_config_from_proxy_app_config, claude_api_format_from_metadata,
     extract_gemini_model_from_path, extract_proxy_session_id,
-    response_runtime_policy_from_app_proxy_config, usage_route_context_from_selection,
+    request_context_route_update_from_proxy_result, response_runtime_policy_from_app_proxy_config,
     ProxyCoreAppKind as AppKind, ProxyResult, ProxyServices, ResponseRuntimePolicy,
     ResponseTimeoutConfig, StreamingTimeoutConfig, UsageRouteContext,
 };
@@ -169,8 +168,6 @@ impl RequestContext {
         state: &ProxyState,
         result: &ProxyResult,
     ) -> Result<(), ProxyError> {
-        self.outbound_model = result.outbound_model.clone();
-        self.usage_route_context = Some(usage_route_context_from_selection(&result.selected_route));
         let provider_id = result.selected_route.provider.id.as_str();
         let Some(provider) = state
             .db
@@ -182,10 +179,11 @@ impl RequestContext {
             )));
         };
 
-        self.provider =
-            ForwardAttempt::from_core_selection(&self.app_type, &provider, &result.selected_route)
-                .provider()
-                .clone();
+        let update =
+            request_context_route_update_from_proxy_result(&self.app_type, &provider, result);
+        self.outbound_model = update.outbound_model;
+        self.usage_route_context = Some(update.usage_route_context);
+        self.provider = update.provider;
         Ok(())
     }
 
