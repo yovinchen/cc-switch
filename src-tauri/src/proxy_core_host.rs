@@ -9,7 +9,7 @@ use crate::proxy::failover_switch::FailoverSwitchManager;
 use crate::proxy::hyper_client::ProxyResponse;
 use crate::proxy::provider_router::ProviderRouter;
 use crate::proxy::providers::codex_chat_history::CodexChatHistoryStore;
-use crate::proxy::route_attempt::{forward_attempts_from_route_plan, ForwardAttempt};
+use crate::proxy::route_attempt::ForwardAttempt;
 use crate::proxy::usage::UsageLogger;
 use crate::proxy::RequestForwarder;
 use crate::proxy_core_adapter::{
@@ -39,6 +39,7 @@ use crate::proxy_core_adapter::{
     current_provider_id_from_sources,
     current_provider_id_from_settings_for_app,
     extract_proxy_session_id,
+    forward_attempts_from_plan,
     forward_result_to_proxy_result,
     forwarding_runtime_unavailable_error,
     host_providers_for_plan,
@@ -575,7 +576,7 @@ impl CcSwitchProxyRuntime {
             .get_all_providers(app_type.as_str())
             .map_err(|error| app_error("load host providers", error))?;
         let providers = host_providers_for_plan(&all_providers, &plan)?;
-        let mut attempts = forward_attempts_from_route_plan(&app_type, &providers, &plan);
+        let mut attempts = forward_attempts_from_plan(&app_type, &providers, &plan);
         apply_channel_auth_profile_providers(&self.db, &app_type, &all_providers, &mut attempts)?;
         if attempts.is_empty() {
             return Err(route_plan_no_matching_host_providers_error());
@@ -840,8 +841,7 @@ mod tests {
             Some(AuthProfileRef::new("provider:claude:auth-provider"));
 
         let route_providers = host_providers_for_plan(&providers, &plan).expect("route providers");
-        let mut attempts =
-            forward_attempts_from_route_plan(&AppType::Claude, &route_providers, &plan);
+        let mut attempts = forward_attempts_from_plan(&AppType::Claude, &route_providers, &plan);
         let db = Database::memory().expect("memory db");
         apply_channel_auth_profile_providers(&db, &AppType::Claude, &providers, &mut attempts)
             .expect("apply auth profiles");
@@ -874,8 +874,7 @@ mod tests {
             Some(AuthProfileRef::new("provider:codex:auth-provider"));
 
         let route_providers = host_providers_for_plan(&providers, &plan).expect("route providers");
-        let mut attempts =
-            forward_attempts_from_route_plan(&AppType::Claude, &route_providers, &plan);
+        let mut attempts = forward_attempts_from_plan(&AppType::Claude, &route_providers, &plan);
         let db = Database::memory().expect("memory db");
         apply_channel_auth_profile_providers(&db, &AppType::Claude, &providers, &mut attempts)
             .expect("apply cross-app profile");
@@ -906,8 +905,7 @@ mod tests {
             Some(AuthProfileRef::new("provider:claude: auth-provider"));
 
         let route_providers = host_providers_for_plan(&providers, &plan).expect("route providers");
-        let mut attempts =
-            forward_attempts_from_route_plan(&AppType::Claude, &route_providers, &plan);
+        let mut attempts = forward_attempts_from_plan(&AppType::Claude, &route_providers, &plan);
         let db = Database::memory().expect("memory db");
         apply_channel_auth_profile_providers(&db, &AppType::Claude, &providers, &mut attempts)
             .expect("apply spaced provider profile");
@@ -929,8 +927,7 @@ mod tests {
         let mut plan = route_plan("route-provider", "channel-auth");
         plan.selection.channel.auth_profile = Some(AuthProfileRef::new("channel-key:manual"));
         let route_providers = host_providers_for_plan(&providers, &plan).expect("route providers");
-        let mut attempts =
-            forward_attempts_from_route_plan(&AppType::Claude, &route_providers, &plan);
+        let mut attempts = forward_attempts_from_plan(&AppType::Claude, &route_providers, &plan);
         let db = Database::memory().expect("memory db");
         let error = apply_channel_auth_profile_providers(
             &db,
@@ -979,8 +976,7 @@ mod tests {
         plan.selection.channel.auth_profile = Some(AuthProfileRef::new("channel-key:primary"));
 
         let route_providers = host_providers_for_plan(&providers, &plan).expect("route providers");
-        let mut attempts =
-            forward_attempts_from_route_plan(&AppType::Claude, &route_providers, &plan);
+        let mut attempts = forward_attempts_from_plan(&AppType::Claude, &route_providers, &plan);
         apply_channel_auth_profile_providers(&db, &AppType::Claude, &providers, &mut attempts)
             .expect("apply channel key auth profile");
 
@@ -1015,8 +1011,7 @@ mod tests {
             },
         )
         .expect("disable channel key");
-        let mut attempts =
-            forward_attempts_from_route_plan(&AppType::Claude, &route_providers, &plan);
+        let mut attempts = forward_attempts_from_plan(&AppType::Claude, &route_providers, &plan);
         let error = apply_channel_auth_profile_providers(
             &db,
             &AppType::Claude,

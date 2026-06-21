@@ -8,6 +8,7 @@ use crate::error::AppError;
 use crate::provider::{Provider, ProviderMeta};
 use crate::proxy::hyper_client::ProxyResponse;
 use crate::proxy::providers::provider_kind_from_app_type_and_config;
+use crate::proxy::route_attempt::ForwardAttempt;
 use crate::proxy::usage::RequestLog;
 use crate::proxy_core::api::auth::ClaudeDesktopModelRouteInput;
 use crate::proxy_core::api::domain::{
@@ -1873,6 +1874,14 @@ pub(crate) fn host_providers_for_plan(
         ));
     }
     Ok(matching)
+}
+
+pub(crate) fn forward_attempts_from_plan(
+    app_type: &AppType,
+    providers: &[Provider],
+    plan: &RoutePlan,
+) -> Vec<ForwardAttempt> {
+    crate::proxy::route_attempt::forward_attempts_from_route_plan(app_type, providers, plan)
 }
 
 pub(crate) fn forwarding_requires_runtime_error_message() -> &'static str {
@@ -4304,6 +4313,16 @@ mod tests {
         assert_eq!(candidate.source_kind, "proxy_core");
         let resolved = resolved_channel_attempt_from_candidate(candidate);
         assert_eq!(resolved.channel_id, "ch-b");
+        let host_provider = Provider::with_id(
+            "provider-a".to_string(),
+            "Provider A".to_string(),
+            json!({}),
+            None,
+        );
+        let attempts = forward_attempts_from_plan(&AppType::Claude, &[host_provider], &plan);
+        assert_eq!(attempts.len(), 2);
+        assert_eq!(attempts[0].provider().id, "provider-a");
+        assert_eq!(attempts[1].provider().id, "provider-a");
         assert_eq!(
             forwarding_requires_runtime_error_message(),
             "cc-switch forwarding requires a proxy server runtime"
