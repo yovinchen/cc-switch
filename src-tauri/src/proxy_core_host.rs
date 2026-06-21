@@ -18,7 +18,7 @@ use crate::proxy_core_adapter::{
     ChannelSource, ChannelSpec, channel_not_found_error, AuthProvider,
     ChannelHealthReset, ChannelHealthStore, CurrentRouteTarget, ForwardPipeline,
     GeminiShadowStore, ModelCatalog, ModelCatalogProvider, ProviderSource, ProviderSpec,
-    ProxyAppConfig, ProxyConfigSource, ProxyCoreError, ProxyCoreEvent,
+    ProxyAppConfig, ProxyConfigSource, ProxyCoreEvent,
     ProxyCoreResult, ProxyEventSink, ProxyGlobalConfig, ProxyRequest,
     ProxyResult, ProxyRuntimeConfig, ProxyRuntimeStatus, ProxyServices, RoutePlan, RoutePolicy,
     RoutePolicySource, RouteRequest, RouteResolver, UsageRecord, UsageSink,
@@ -47,7 +47,7 @@ use crate::proxy_core_adapter::{
     proxy_channel_record_to_core_spec, proxy_channel_records_to_core_specs_for_query,
     proxy_provider_to_core_spec, proxy_providers_to_core_specs,
     response_runtime_policy_from_app_proxy_config,
-    route_plan_no_matching_host_providers_error_message,
+    route_plan_no_matching_host_providers_error,
     route_policy_from_failover_queue,
     usage_error,
 };
@@ -594,9 +594,7 @@ impl CcSwitchProxyRuntime {
         let mut attempts = forward_attempts_from_route_plan(&app_type, &providers, &plan);
         apply_channel_auth_profile_providers(&self.db, &app_type, &all_providers, &mut attempts)?;
         if attempts.is_empty() {
-            return Err(ProxyCoreError::Unavailable(
-                route_plan_no_matching_host_providers_error_message().to_string(),
-            ));
+            return Err(route_plan_no_matching_host_providers_error());
         }
 
         let runtime_policy = response_runtime_policy_from_app_proxy_config(&app_config);
@@ -713,7 +711,7 @@ mod tests {
         ProxyChannelKeyWriteRequest, ProxyChannelModelWriteRequest, ProxyChannelWriteRequest,
         ProxyCoreEventType, ProxyCoreUpstreamEndpoint as UpstreamEndpoint, ProxyEngine,
         proxy_response_to_core_response,
-        ProxyResponseBody, ProxyRuntimeStatus, ResolvedChannelAttempt, RetryPolicy,
+        ProxyCoreError, ProxyResponseBody, ProxyRuntimeStatus, ResolvedChannelAttempt, RetryPolicy,
         RouteResolveRequest, RouteSelection, UsageRecord, UsageTokens,
     };
     use bytes::Bytes;

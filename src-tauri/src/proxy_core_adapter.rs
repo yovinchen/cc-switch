@@ -1764,6 +1764,10 @@ pub(crate) fn route_plan_no_matching_host_providers_error_message() -> &'static 
     crate::proxy_core::api::routing::route_plan_no_matching_host_providers_error_message()
 }
 
+pub(crate) fn route_plan_no_matching_host_providers_error() -> ProxyCoreError {
+    ProxyCoreError::Unavailable(route_plan_no_matching_host_providers_error_message().to_string())
+}
+
 pub(crate) fn route_plan_providers_unconfigured_error_message() -> &'static str {
     crate::proxy_core::api::routing::route_plan_providers_unconfigured_error_message()
 }
@@ -4054,6 +4058,11 @@ mod tests {
             route_plan_no_matching_host_providers_error_message(),
             "route plan has no matching host providers"
         );
+        assert!(matches!(
+            route_plan_no_matching_host_providers_error(),
+            ProxyCoreError::Unavailable(message)
+                if message == "route plan has no matching host providers"
+        ));
         assert_eq!(
             route_plan_providers_unconfigured_error_message(),
             "route plan providers are not configured in host database"
