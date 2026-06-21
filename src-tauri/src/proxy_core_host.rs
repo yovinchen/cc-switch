@@ -11,11 +11,13 @@ use crate::proxy::providers::codex_chat_history::CodexChatHistoryStore;
 use crate::proxy::route_attempt::ForwardAttempt;
 use crate::proxy::usage::UsageLogger;
 use crate::proxy::RequestForwarder;
+use crate::services::stream_check::StreamCheckService;
 use crate::proxy_core_adapter::{
     AppKind, AppSummaryConfig, AuthInfo, AuthProfileRef, ChannelAttemptResult,
     ChannelQuery, ClaudeDesktopModelRouteInput,
     ChannelMigrationMaterializeInput, ChannelMigrationPreviewInput, ChannelRecord,
-    ChannelRouteSource, ChannelSource, ChannelSpec, AuthProvider, ChannelHealthReset,
+    ChannelReachabilityProbe, ChannelReachabilityResult, ChannelRouteSource, ChannelSource,
+    ChannelSpec, AuthProvider, ChannelHealthReset,
     ChannelHealthStore, ChannelKeyRecord, ChannelModelRecord, CurrentRouteTarget, ForwardPipeline,
     GeminiShadowStore, ModelCatalog, ModelCatalogProvider, ProviderSource, ProviderSpec,
     ProxyAppConfig, ProxyConfigSource, ProxyCoreEvent,
@@ -23,7 +25,7 @@ use crate::proxy_core_adapter::{
     ProxyChannelPatchRequest, ProxyChannelWriteRequest, ProxyCoreError, ProxyCoreResult, ProxyEventSink, ProxyGlobalConfig, ProxyRequest,
     ProxyResult, ProxyRuntimeConfig, ProxyRuntimeStatus, ProxyServices, RoutePlan, RoutePolicy,
     RoutePolicySource, RouteRequest, RouteResolveRequest, RouteResolveResponse, RouteResolver,
-    UsageRecord, UsageSink,
+    ChannelTestProbeRequest, UsageRecord, UsageSink,
 };
 use crate::proxy_core_adapter::{
     app_error,
@@ -57,6 +59,7 @@ use crate::proxy_core_adapter::{
     proxy_runtime_config_from_config_source,
     required_forward_attempts_from_plan,
     route_policy_from_source,
+    stream_check_result_to_channel_reachability,
     usage_error,
     usage_pricing_config_lookup_from_record,
     usage_record_pricing_model,
@@ -69,6 +72,7 @@ use indexmap::IndexMap;
 #[cfg(test)]
 use serde_json::Value;
 use std::collections::HashMap;
+use std::str::FromStr;
 use std::sync::Arc;
 use tokio::sync::RwLock;
 
@@ -97,6 +101,7 @@ pub(crate) struct CcSwitchProxyServices {
     route_policies: CcSwitchRoutePolicySource,
     route_resolver: CcSwitchRouteResolver,
     health_store: CcSwitchHealthStore,
+    reachability_probe: CcSwitchChannelReachabilityProbe,
     auth_provider: CcSwitchAuthProvider,
     model_catalog: CcSwitchModelCatalogProvider,
     usage_sink: CcSwitchUsageSink,
@@ -135,6 +140,7 @@ impl CcSwitchProxyServices {
                 db: db.clone(),
                 router: runtime.provider_router.clone(),
             },
+            reachability_probe: CcSwitchChannelReachabilityProbe { db: db.clone() },
             auth_provider: CcSwitchAuthProvider,
             model_catalog: CcSwitchModelCatalogProvider {
                 db: db.clone(),
@@ -169,6 +175,7 @@ impl CcSwitchProxyServices {
                 db: db.clone(),
                 router: router.clone(),
             },
+            reachability_probe: CcSwitchChannelReachabilityProbe { db: db.clone() },
             auth_provider: CcSwitchAuthProvider,
             model_catalog: CcSwitchModelCatalogProvider {
                 db: db.clone(),
@@ -204,6 +211,10 @@ impl ProxyServices for CcSwitchProxyServices {
 
     fn health_store(&self) -> &(dyn ChannelHealthStore + Send + Sync) {
         &self.health_store
+    }
+
+    fn reachability_probe(&self) -> &(dyn ChannelReachabilityProbe + Send + Sync) {
+        &self.reachability_probe
     }
 
     fn auth_provider(&self) -> &(dyn AuthProvider + Send + Sync) {
@@ -694,6 +705,42 @@ impl ChannelHealthStore for CcSwitchHealthStore {
                 .await
                 .map_err(|error| app_error("reset channel health", error))?;
             Ok(channel_health_reset_from_plan(reset_plan))
+        })
+    }
+}
+
+#[derive(Clone)]
+struct CcSwitchChannelReachabilityProbe {
+    db: Arc<Database>,
+}
+
+impl ChannelReachabilityProbe for CcSwitchChannelReachabilityProbe {
+    fn probe_channel<'a>(
+        &'a self,
+        request: ChannelTestProbeRequest,
+    ) -> BoxFuture<'a, ProxyCoreResult<ChannelReachabilityResult>> {
+        Box::pin(async move {
+            let app_type = AppType::from_str(&request.app_type)
+                .map_err(|error| ProxyCoreError::InvalidRequest(error.to_string()))?;
+            let provider = self
+                .db
+                .get_provider_by_id(&request.provider_id, &request.app_type)
+                .map_err(|error| app_error("get channel test provider", error))?
+                .ok_or_else(|| ProxyCoreError::Config(request.provider_not_found_message()))?;
+            let config = self
+                .db
+                .get_stream_check_config()
+                .map_err(|error| app_error("get stream check config", error))?;
+            let result = StreamCheckService::check_with_retry(
+                &app_type,
+                &provider,
+                &config,
+                Some(request.base_url),
+            )
+            .await
+            .map_err(|error| ProxyCoreError::Internal(error.to_string()))?;
+
+            Ok(stream_check_result_to_channel_reachability(result))
         })
     }
 }

@@ -74,7 +74,8 @@ pub mod management {
         ChannelMigrationPreviewResponse, ChannelModelRecord, ChannelModelRecordInput,
         ChannelModelsResponse, ChannelReachabilityInput, ChannelReachabilityResult,
         ChannelReachabilityStatus, ChannelRecord, ChannelRecordInput, ChannelRecordResponse,
-        ChannelRouteRejected, ChannelRouteSource, ChannelTestPlan, ChannelTestResponse,
+        ChannelRouteRejected, ChannelRouteSource, ChannelTestPlan, ChannelTestProbeRequest,
+        ChannelTestResponse,
         CurrentRouteProviderSummaryInput, CurrentRouteResponse, GroupListQuery,
         HealthCheckResponse, ProviderHealthUpdate, ProviderHealthUpdateInput,
         ProviderListResponse, ProviderSummaryInput, ProxyChannelKeyPatchRequest,
@@ -102,7 +103,7 @@ pub mod ports {
     pub use crate::ports::{
         app_proxy_config_defaults_for_app, auth_info_from_profile_ref, AppProxyConfig,
         AppSummaryConfig, AuthInfo, AuthProvider, ChannelHealthReset, ChannelHealthResetResponse,
-        ChannelHealthStore,
+        ChannelHealthStore, ChannelReachabilityProbe,
         ChannelModelRecord, ChannelSource, CopilotOptimizerConfig, CopilotOptimizerConfigSpec,
         CurrentRouteTarget, ForwardPipeline, GlobalProxyConfig, ModelCatalog,
         ModelCatalogProvider, OptimizerConfig, OptimizerConfigSpec,

@@ -24,10 +24,11 @@ use super::ports::{
     ChannelKeyDeleteResponse, ChannelKeyRecord, ChannelKeyRecordResponse, ChannelKeysResponse,
     ChannelListResponse, ChannelMigrationMaterializeResponse, ChannelMigrationPreviewResponse,
     ChannelModelRecord, ChannelModelsResponse, ChannelRecord, ChannelRecordResponse,
-    ChannelRouteCandidate, ChannelRouteRejected, ClientModelCatalogResponse,
-    CurrentRouteProviderSummaryInput, CurrentRouteResponse, CurrentRouteTarget, ModelCatalog,
-    ProviderListResponse, ProxyChannelKeyPatchRequest, ProxyChannelKeyWriteRequest,
-    ProxyChannelModelsReplaceRequest, ProxyChannelPatchRequest, ProxyCoreEvent,
+    ChannelRouteCandidate, ChannelRouteRejected, ChannelTestPlan, ChannelTestResponse,
+    ClientModelCatalogResponse, CurrentRouteProviderSummaryInput, CurrentRouteResponse,
+    CurrentRouteTarget, ModelCatalog, ProviderListResponse, ProxyChannelKeyPatchRequest,
+    ProxyChannelKeyWriteRequest, ProxyChannelModelsReplaceRequest, ProxyChannelPatchRequest,
+    ProxyChannelTestRequest, ProxyCoreEvent,
     ProxyCoreEventType, ProxyServices, RouteGroupListResponse, RouteResolveResponse,
 };
 use serde_json::{json, to_value, Value};
@@ -573,6 +574,32 @@ where
         )))
     }
 
+    pub async fn channel_test_response(
+        &self,
+        request: ChannelPathRequest,
+        test_request: ProxyChannelTestRequest,
+        tested_at: i64,
+    ) -> ProxyCoreResult<ChannelTestResponse> {
+        let channel = self
+            .services
+            .channels()
+            .get_channel(&request.channel_id)
+            .await?
+            .ok_or_else(|| request.channel_not_found_error())?;
+
+        match super::ports::plan_channel_test(&channel, &test_request, tested_at) {
+            ChannelTestPlan::Failure(response) => Ok(response),
+            ChannelTestPlan::Probe(context) => {
+                let reachability = self
+                    .services
+                    .reachability_probe()
+                    .probe_channel(context.probe_request())
+                    .await?;
+                Ok(context.reachability_response(reachability))
+            }
+        }
+    }
+
     async fn plan_route_with_legacy_projection(
         &self,
         request: &ProxyRequest,
@@ -668,12 +695,14 @@ mod tests {
         channel_key_record_from_input, channel_model_record_from_input, channel_record_from_input,
         AppChannelListResponse, AuthInfo, AuthProvider, ChannelHealthStore, ChannelKeyRecordInput,
         ChannelModelRecordInput, ChannelMigrationMaterializeInput, ChannelMigrationPreviewInput,
-        ChannelRecordInput, ChannelRouteSource, ChannelSource, ForwardPipeline, ModelCatalog,
+        ChannelReachabilityProbe, ChannelReachabilityResult, ChannelRecordInput,
+        ChannelRouteSource, ChannelSource, ChannelTestProbeRequest, ForwardPipeline, ModelCatalog,
         ModelCatalogProvider, ProviderSource, ProxyAppConfig, ProxyChannelKeyPatchRequest,
         ProxyChannelKeyWriteRequest, ProxyChannelModelWriteRequest,
-        ProxyChannelModelsReplaceRequest, ProxyChannelPatchRequest, ProxyChannelWriteRequest,
-        ProxyConfigSource, ProxyCoreEvent, ProxyEventSink, ProxyGlobalConfig, ProxyRuntimeConfig,
-        RoutePolicySource, RouteResolver, RouteResolveRequest, UsageSink,
+        ProxyChannelModelsReplaceRequest, ProxyChannelPatchRequest, ProxyChannelTestRequest,
+        ProxyChannelWriteRequest, ProxyConfigSource, ProxyCoreEvent, ProxyEventSink,
+        ProxyGlobalConfig, ProxyRuntimeConfig, RoutePolicySource, RouteResolver,
+        RouteResolveRequest, UsageSink,
     };
     use futures::future::BoxFuture;
     use http::{Method, StatusCode};
@@ -693,6 +722,8 @@ mod tests {
         route_resolution: Mutex<Option<RouteResolveResponse>>,
         channel_records: Mutex<Vec<ChannelRecord>>,
         channel_route_source: Mutex<Option<ChannelRouteSource>>,
+        reachability_requests: Mutex<Vec<ChannelTestProbeRequest>>,
+        reachability_result: Mutex<Option<ChannelReachabilityResult>>,
         queried_channel_apps: Mutex<Vec<String>>,
         queried_materialized_channel_apps: Mutex<Vec<Option<String>>>,
         queried_claude_desktop_model_apps: Mutex<Vec<String>>,
@@ -720,6 +751,10 @@ mod tests {
         }
 
         fn health_store(&self) -> &(dyn ChannelHealthStore + Send + Sync) {
+            self
+        }
+
+        fn reachability_probe(&self) -> &(dyn ChannelReachabilityProbe + Send + Sync) {
             self
         }
 
@@ -1218,6 +1253,33 @@ mod tests {
                     app: AppKind::Claude,
                 })
             })
+        }
+    }
+
+    impl ChannelReachabilityProbe for TestServices {
+        fn probe_channel<'a>(
+            &'a self,
+            request: ChannelTestProbeRequest,
+        ) -> BoxFuture<'a, ProxyCoreResult<ChannelReachabilityResult>> {
+            self.reachability_requests
+                .lock()
+                .expect("reachability requests mutex")
+                .push(request);
+            let result = self
+                .reachability_result
+                .lock()
+                .expect("reachability result mutex")
+                .clone()
+                .unwrap_or(ChannelReachabilityResult {
+                    success: true,
+                    status: "operational".to_string(),
+                    message: "Reachable".to_string(),
+                    latency_ms: Some(42),
+                    http_status: Some(204),
+                    tested_at: 1_771_000_001,
+                    retry_count: 0,
+                });
+            Box::pin(async move { Ok(result) })
         }
     }
 
@@ -1984,6 +2046,60 @@ mod tests {
         assert_eq!(value["channelId"], "channel-a");
         assert_eq!(value["appType"], "claude");
         assert_eq!(value["reset"], true);
+    }
+
+    #[test]
+    fn channel_test_response_delegates_probe_to_reachability_port() {
+        let services = Arc::new(TestServices::default());
+        *services
+            .reachability_result
+            .lock()
+            .expect("reachability result mutex") = Some(ChannelReachabilityResult {
+            success: true,
+            status: "degraded".to_string(),
+            message: "Reachable".to_string(),
+            latency_ms: Some(6100),
+            http_status: Some(200),
+            tested_at: 1_771_000_123,
+            retry_count: 1,
+        });
+        let engine = ProxyEngine::new(services.clone());
+        let path_request = ChannelPathRequest::from_path("channel-a").expect("path");
+        let test_request: ProxyChannelTestRequest = serde_json::from_value(json!({
+            "model": "sonnet",
+            "interfaceKind": "anthropic_messages"
+        }))
+        .expect("test request");
+
+        let response = futures::executor::block_on(engine.channel_test_response(
+            path_request,
+            test_request,
+            1_771_000_000,
+        ))
+        .expect("channel test response");
+
+        assert_eq!(response.channel_id, "channel-a");
+        assert_eq!(response.provider_id, "provider-a");
+        assert_eq!(response.app_type, "claude");
+        assert_eq!(response.base_url, "https://upstream.example.com/v1");
+        assert_eq!(response.interface_kind, "anthropic_messages");
+        assert_eq!(response.model.as_deref(), Some("sonnet"));
+        assert_eq!(response.model_available, Some(true));
+        assert!(response.success);
+        assert_eq!(response.status, "degraded");
+        assert_eq!(response.latency_ms, Some(6100));
+        assert_eq!(response.http_status, Some(200));
+        assert_eq!(response.retry_count, 1);
+
+        let requests = services
+            .reachability_requests
+            .lock()
+            .expect("reachability requests mutex");
+        assert_eq!(requests.len(), 1);
+        assert_eq!(requests[0].channel_id, "channel-a");
+        assert_eq!(requests[0].provider_id, "provider-a");
+        assert_eq!(requests[0].app_type, "claude");
+        assert_eq!(requests[0].base_url, "https://upstream.example.com/v1");
     }
 
     fn provider_spec() -> ProviderSpec {

@@ -15,7 +15,7 @@ use crate::proxy_core::api::domain::{
 };
 #[cfg(test)]
 use crate::proxy_core::api::domain::{ChannelHealthPolicy, ChannelOverrides, UpstreamEndpoint};
-use crate::proxy_core::api::management::ChannelReachabilityResult;
+pub(crate) use crate::proxy_core::api::management::ChannelReachabilityResult;
 use crate::proxy_core::api::routing::{
     route_resolve_channel_input_from_record, RouteResolveChannelInput,
     RouteResolveChannelRecordInput, RouteResolveModelRecordInput,
@@ -736,9 +736,10 @@ pub(crate) type CircuitBreakerFailureDecision =
     crate::proxy_core::api::config::CircuitBreakerFailureDecision;
 pub(crate) use crate::proxy_core::api::management::channel_not_found_error;
 pub(crate) use crate::proxy_core::api::ports::{
-    AppSummaryConfig, AuthProvider, ChannelHealthReset, ChannelHealthStore, ChannelSource, ForwardPipeline,
-    ModelCatalogProvider, ProviderSource, ProxyConfigSource, ProxyEventSink, ProxyServices,
-    RoutePolicySource, RouteResolver, UsageSink,
+    AppSummaryConfig, AuthProvider, ChannelHealthReset, ChannelHealthStore,
+    ChannelReachabilityProbe, ChannelSource, ForwardPipeline, ModelCatalogProvider,
+    ProviderSource, ProxyConfigSource, ProxyEventSink, ProxyServices, RoutePolicySource,
+    RouteResolver, UsageSink,
 };
 pub(crate) use crate::proxy_core::api::domain::channel_matches_query;
 pub(crate) use crate::proxy_core::api::routing::{
@@ -749,7 +750,7 @@ pub(crate) use crate::proxy_core::api::auth::{
     resolve_management_auth_decision, validate_management_bearer_header, ManagementAuthDecision,
 };
 pub(crate) use crate::proxy_core::api::management::{
-    channel_health_update_from_input, plan_channel_test, provider_health_update_from_input,
+    channel_health_update_from_input, provider_health_update_from_input,
     AppChannelListQuery,
     AppChannelManagementRequest, AppChannelResponse, AppListRequest, AppListResponse,
     AppModelCatalogRequest,
@@ -764,8 +765,8 @@ pub(crate) use crate::proxy_core::api::management::{
     ChannelMigrationPreviewInput, ChannelMigrationPreviewResponse, ChannelModelsResponse,
     ChannelPathRequest, ChannelRecordResponse,
     ChannelRouteRejected,
-    ChannelTestPlan, ChannelTestResponse, CurrentRouteResponse, GroupListQuery, GroupListRequest,
-    HealthCheckRequest, HealthCheckResponse, ManagementAppPathRequest,
+    ChannelTestProbeRequest, ChannelTestResponse, CurrentRouteResponse, GroupListQuery,
+    GroupListRequest, HealthCheckRequest, HealthCheckResponse, ManagementAppPathRequest,
     ProviderHealthUpdateInput, ProviderListResponse,
     ProxyChannelModelsReplaceRequest, ProxyChannelTestRequest, ProxyStatusRequest,
     ProxyStatusResponse, RouteGroupListResponse,
@@ -3069,14 +3070,6 @@ pub(crate) fn channel_migration_materialize_input_from_result(
         result.duplicate_count,
         result.needs_review_count,
     )
-}
-
-pub(crate) fn channel_test_plan_from_record(
-    channel: &ProxyChannelRecord,
-    request: &ProxyChannelTestRequest,
-    tested_at: i64,
-) -> ChannelTestPlan {
-    plan_channel_test(&proxy_channel_record_to_core_spec(channel), request, tested_at)
 }
 
 pub(crate) fn extract_proxy_session_id(

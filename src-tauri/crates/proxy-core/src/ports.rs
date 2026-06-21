@@ -24,6 +24,7 @@ pub trait ProxyServices: Send + Sync {
     fn route_policies(&self) -> &(dyn RoutePolicySource + Send + Sync);
     fn route_resolver(&self) -> &(dyn RouteResolver + Send + Sync);
     fn health_store(&self) -> &(dyn ChannelHealthStore + Send + Sync);
+    fn reachability_probe(&self) -> &(dyn ChannelReachabilityProbe + Send + Sync);
     fn auth_provider(&self) -> &(dyn AuthProvider + Send + Sync);
     fn model_catalog(&self) -> &(dyn ModelCatalogProvider + Send + Sync);
     fn usage_sink(&self) -> &(dyn UsageSink + Send + Sync);
@@ -291,6 +292,13 @@ pub trait ChannelHealthStore: Send + Sync {
         &'a self,
         channel_id: &'a str,
     ) -> BoxFuture<'a, ProxyCoreResult<ChannelHealthReset>>;
+}
+
+pub trait ChannelReachabilityProbe: Send + Sync {
+    fn probe_channel<'a>(
+        &'a self,
+        request: ChannelTestProbeRequest,
+    ) -> BoxFuture<'a, ProxyCoreResult<ChannelReachabilityResult>>;
 }
 
 pub trait AuthProvider: Send + Sync {

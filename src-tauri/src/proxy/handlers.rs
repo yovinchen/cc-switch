@@ -30,6 +30,7 @@ use super::{
     },
 };
 use crate::app_config::AppType;
+use crate::proxy_core_adapter::synthesize_gemini_tool_call_id_with_uuid;
 use crate::proxy_core_adapter::{
     append_query_to_endpoint_path,
     chat_completion_to_response_with_context as build_chat_completion_response_with_context,
@@ -45,34 +46,25 @@ use crate::proxy_core_adapter::{
     rebuilt_json_proxy_response, resolve_management_auth_decision,
     should_aggregate_codex_oauth_responses_sse, should_use_claude_transform_streaming,
     strip_endpoint_prefix, transformed_sse_proxy_response, validate_management_bearer_header,
-    AppChannelListQuery, AppChannelManagementRequest,
-    AppChannelResponse, AppKind, AppListRequest, AppListResponse,
-    AppModelCatalogRequest, AppModelListQuery, ChannelCreateRequest,
-    ChannelDeleteResponse, ChannelHealthResetResponse,
-    ChannelKeyDeleteResponse,
-    ChannelKeyPathRequest, ChannelKeyRecord, ChannelKeyRecordResponse,
-    ChannelKeysResponse, ChannelListQuery, ChannelListRequest,
-    ChannelListResponse, ChannelMigrationMaterializeResponse, ChannelMigrationPreviewResponse,
-    ChannelModelRecord, ChannelModelsResponse, ChannelPathRequest, ChannelRecord,
-    ChannelRecordResponse, ChannelRouteCandidate, ChannelRouteRejected,
-    ChannelTestPlan, ChannelTestResponse, ClaudeDesktopModelListResponse,
-    ClientModelCatalogResponse, CodexToolContext, CurrentRouteResponse, CurrentRouteTarget,
-    GroupListQuery, GroupListRequest, HealthCheckRequest, HealthCheckResponse,
-    InterfaceKind, ManagementAppPathRequest, ManagementAuthDecision, ProviderListResponse,
-    ProxyBody, ProxyChannelKeyPatchRequest, ProxyChannelKeyWriteRequest,
-    ProxyChannelModelsReplaceRequest, ProxyChannelPatchRequest, ProxyChannelTestRequest,
-    ProxyChannelWriteRequest, ProxyRequest, ProxyRuntimeStatus, ProxyStatusRequest,
-    ProxyStatusResponse, RoutableModelList, RouteGroupListResponse,
+    AppChannelListQuery, AppChannelManagementRequest, AppChannelResponse, AppKind, AppListRequest,
+    AppListResponse, AppModelCatalogRequest, AppModelListQuery, ChannelCreateRequest,
+    ChannelDeleteResponse, ChannelHealthResetResponse, ChannelKeyDeleteResponse,
+    ChannelKeyPathRequest, ChannelKeyRecord, ChannelKeyRecordResponse, ChannelKeysResponse,
+    ChannelListQuery, ChannelListRequest, ChannelListResponse, ChannelMigrationMaterializeResponse,
+    ChannelMigrationPreviewResponse, ChannelModelRecord, ChannelModelsResponse, ChannelPathRequest,
+    ChannelRecord, ChannelRecordResponse, ChannelRouteCandidate, ChannelRouteRejected,
+    ChannelTestResponse, ClaudeDesktopModelListResponse, ClientModelCatalogResponse,
+    CodexToolContext, CurrentRouteResponse, CurrentRouteTarget, GroupListQuery, GroupListRequest,
+    HealthCheckRequest, HealthCheckResponse, InterfaceKind, ManagementAppPathRequest,
+    ManagementAuthDecision, ProviderListResponse, ProxyBody, ProxyChannelKeyPatchRequest,
+    ProxyChannelKeyWriteRequest, ProxyChannelModelsReplaceRequest, ProxyChannelPatchRequest,
+    ProxyChannelTestRequest, ProxyChannelWriteRequest, ProxyRequest, ProxyRuntimeStatus,
+    ProxyStatusRequest, ProxyStatusResponse, RoutableModelList, RouteGroupListResponse,
     RouteResolveManagementRequest, RouteResolveRequest, RouteResolveResponse,
     TransformedResponseUsageFormat, UnlabeledSseFallbackLogContext, UnlabeledSseFallbackLogLevel,
     UpstreamSseAggregationKind, CLAUDE_PARSER_CONFIG, CODEX_PARSER_CONFIG, GEMINI_PARSER_CONFIG,
     OPENAI_PARSER_CONFIG,
 };
-use crate::proxy_core_adapter::{
-    channel_test_plan_from_record, stream_check_result_to_channel_reachability,
-    synthesize_gemini_tool_call_id_with_uuid,
-};
-use crate::services::stream_check::StreamCheckService;
 use axum::{
     extract::{Path, Query, State},
     http::StatusCode,
@@ -83,7 +75,6 @@ use bytes::Bytes;
 use http_body_util::BodyExt;
 use serde_json::Value;
 use std::convert::Infallible;
-use std::str::FromStr;
 use std::time::Duration;
 
 // ============================================================================
@@ -400,47 +391,13 @@ pub async fn test_proxy_channel(
 ) -> Result<Json<ChannelTestResponse>, ProxyError> {
     let path_request =
         ChannelPathRequest::from_path(channel_id).map_err(management_api_error_to_proxy_error)?;
-    let channel = state
-        .db
-        .get_proxy_channel(&path_request.channel_id)
-        .map_err(|e| ProxyError::DatabaseError(e.to_string()))?
-        .ok_or_else(|| proxy_core_error_to_proxy_error(path_request.channel_not_found_error()))?;
+    let response = state
+        .proxy_engine()
+        .channel_test_response(path_request, request, chrono::Utc::now().timestamp())
+        .await
+        .map_err(proxy_core_error_to_proxy_error)?;
 
-    let channel_test_context = match channel_test_plan_from_record(
-        &channel,
-        &request,
-        chrono::Utc::now().timestamp(),
-    ) {
-        ChannelTestPlan::Probe(context) => context,
-        ChannelTestPlan::Failure(response) => return Ok(Json(response)),
-    };
-
-    let probe_request = channel_test_context.probe_request();
-
-    let app_type = AppType::from_str(&probe_request.app_type)
-        .map_err(|error| ProxyError::InvalidRequest(error.to_string()))?;
-    let provider = state
-        .db
-        .get_provider_by_id(&probe_request.provider_id, &probe_request.app_type)
-        .map_err(|e| ProxyError::DatabaseError(e.to_string()))?
-        .ok_or_else(|| ProxyError::ConfigError(probe_request.provider_not_found_message()))?;
-    let config = state
-        .db
-        .get_stream_check_config()
-        .map_err(|e| ProxyError::DatabaseError(e.to_string()))?;
-
-    let result = StreamCheckService::check_with_retry(
-        &app_type,
-        &provider,
-        &config,
-        Some(probe_request.base_url.clone()),
-    )
-    .await
-    .map_err(|e| ProxyError::Internal(e.to_string()))?;
-
-    Ok(Json(channel_test_context.reachability_response(
-        stream_check_result_to_channel_reachability(result),
-    )))
+    Ok(Json(response))
 }
 
 /// GET /proxy/v1/apps/{app}/channels
@@ -1214,12 +1171,16 @@ fn build_codex_proxy_error_response(
     endpoint: &str,
     error: &ProxyError,
 ) -> Result<axum::response::Response, ProxyError> {
-    let response =
-        codex_proxy_error_response(ctx.provider_name_for_error(), &ctx.request_model, endpoint, error)
-            .map_err(|error| {
-                log::error!("[Codex] 构造代理错误响应失败: {error}");
-                proxy_core_error_to_proxy_error(error)
-            })?;
+    let response = codex_proxy_error_response(
+        ctx.provider_name_for_error(),
+        &ctx.request_model,
+        endpoint,
+        error,
+    )
+    .map_err(|error| {
+        log::error!("[Codex] 构造代理错误响应失败: {error}");
+        proxy_core_error_to_proxy_error(error)
+    })?;
 
     proxy_core_response_to_axum_response(response, "[Codex] 构建代理错误响应失败")
 }

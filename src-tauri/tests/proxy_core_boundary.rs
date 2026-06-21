@@ -96,7 +96,11 @@ fn basic_health_status_handlers_use_direct_management_responses() {
         ),
         (
             "get_status",
-            function_slice(&source, "pub async fn get_status", "/// GET /proxy/v1/events"),
+            function_slice(
+                &source,
+                "pub async fn get_status",
+                "/// GET /proxy/v1/events",
+            ),
         ),
     ];
     let forbidden_markers = [
@@ -459,6 +463,48 @@ fn channel_key_and_model_handlers_delegate_sources_to_proxy_engine() {
     assert!(
         violations.is_empty(),
         "channel key/model HTTP handlers must delegate subresource sources to ProxyEngine:\n{}",
+        violations.join("\n")
+    );
+}
+
+#[test]
+fn channel_test_handler_delegates_probe_to_proxy_engine() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let path = manifest_dir.join("src/proxy/handlers.rs");
+    let source = fs::read_to_string(&path).expect("read handlers.rs");
+    let handler = function_slice(
+        &source,
+        "pub async fn test_proxy_channel",
+        "/// GET /proxy/v1/apps/{app}/channels",
+    );
+    let forbidden_markers = [
+        "state.db",
+        "StreamCheckService",
+        "channel_test_plan_from_record",
+        "stream_check_result_to_channel_reachability",
+        "AppType::from_str",
+        ".get_proxy_channel(",
+        ".get_provider_by_id(",
+        ".get_stream_check_config(",
+    ];
+
+    let mut violations = Vec::new();
+    for (line_index, line) in production_lines(handler) {
+        let code = line.split("//").next().unwrap_or_default();
+        for marker in forbidden_markers {
+            if code.contains(marker) {
+                violations.push(format!(
+                    "src/proxy/handlers.rs test_proxy_channel:{} contains channel test source marker `{}`",
+                    line_index + 1,
+                    marker
+                ));
+            }
+        }
+    }
+
+    assert!(
+        violations.is_empty(),
+        "channel test HTTP handler must delegate probe orchestration to ProxyEngine:\n{}",
         violations.join("\n")
     );
 }
