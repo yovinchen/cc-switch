@@ -49,7 +49,7 @@ use crate::proxy_core_adapter::{
     AppChannelResponse, AppKind, AppListRequest, AppListResponse,
     AppListSource, AppModelCatalogRequest, AppModelListQuery, ChannelCreateRequest,
     ChannelDeleteResponse, ChannelHealthResetResponse,
-    ChannelHealthResetSource, ChannelKeyDeleteResponse,
+    ChannelKeyDeleteResponse,
     ChannelKeyPathRequest, ChannelKeyRecord, ChannelKeyRecordResponse,
     ChannelKeysResponse, ChannelListPlan, ChannelListQuery, ChannelListRequest,
     ChannelListResponse, ChannelMigrationMaterializeResponse, ChannelMigrationPreviewResponse,
@@ -72,9 +72,10 @@ use crate::proxy_core_adapter::{
 };
 use crate::proxy_core_adapter::{
     app_channel_list_source_from_records, channel_delete_source_from_deleted,
-    channel_list_source_from_records, channel_create_source_from_record,
-    channel_key_delete_source_from_deleted, channel_key_record_source_from_record,
-    channel_keys_source_from_records, channel_record_source_from_record,
+    channel_health_reset_source_from_response, channel_list_source_from_records,
+    channel_create_source_from_record, channel_key_delete_source_from_deleted,
+    channel_key_record_source_from_record, channel_keys_source_from_records,
+    channel_record_source_from_record,
     channel_migration_materialize_source_from_result, channel_migration_preview_source_from_result,
     channel_models_source_from_records, group_list_channel_source_from_records,
     channel_test_plan_from_record, proxy_app_summary_input,
@@ -700,7 +701,7 @@ pub async fn reset_proxy_channel_breaker(
         .map_err(proxy_core_error_to_proxy_error)?;
 
     Ok(Json(request.health_reset_response_from_source(
-        ChannelHealthResetSource::new(response),
+        channel_health_reset_source_from_response(response),
     )))
 }
 

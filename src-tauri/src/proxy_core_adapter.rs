@@ -3096,6 +3096,12 @@ pub(crate) fn channel_key_delete_source_from_deleted(deleted: bool) -> ChannelKe
     ChannelKeyDeleteSource::new(deleted)
 }
 
+pub(crate) fn channel_health_reset_source_from_response(
+    response: ChannelHealthResetResponse,
+) -> ChannelHealthResetSource {
+    ChannelHealthResetSource::new(response)
+}
+
 pub(crate) fn channel_models_source_from_records(
     models: Option<Vec<ProxyChannelModelRecord>>,
 ) -> ChannelModelsSource<ChannelModelRecord> {
