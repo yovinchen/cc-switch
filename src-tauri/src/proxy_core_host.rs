@@ -47,7 +47,7 @@ use crate::proxy_core_adapter::{
     provider_with_channel_auth_key,
     provider_model_catalog_from_provider,
     proxy_app_config_from_config_source_parts, proxy_global_config_from_config,
-    proxy_core_event_to_bus_message,
+    emit_proxy_core_event,
     proxy_runtime_config_from_config_source,
     response_runtime_policy_from_app_proxy_config,
     route_plan_no_matching_host_providers_error,
@@ -495,8 +495,9 @@ impl ProxyEventSink for CcSwitchEventSink {
     fn emit_event<'a>(&'a self, event: ProxyCoreEvent) -> BoxFuture<'a, ProxyCoreResult<()>> {
         Box::pin(async move {
             if let Some(events) = self.events.as_ref() {
-                let message = proxy_core_event_to_bus_message(event);
-                events.emit(message.event_name, message.payload);
+                emit_proxy_core_event(event, |event_name, payload| {
+                    events.emit(event_name, payload);
+                });
             }
             Ok(())
         })

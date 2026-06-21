@@ -828,6 +828,14 @@ pub(crate) fn proxy_core_event_to_bus_message(event: ProxyCoreEvent) -> ProxyEve
     }
 }
 
+pub(crate) fn emit_proxy_core_event(
+    event: ProxyCoreEvent,
+    mut emit: impl FnMut(String, Value),
+) {
+    let message = proxy_core_event_to_bus_message(event);
+    emit(message.event_name, message.payload);
+}
+
 pub(crate) fn append_utf8_safe(
     buffer: &mut String,
     remainder: &mut Vec<u8>,
@@ -3414,6 +3422,22 @@ mod tests {
         assert_eq!(message.payload["requestId"], "req-1");
         assert_eq!(message.payload["channelId"], "channel-a");
         assert_eq!(message.payload["attemptCount"], 2);
+
+        let mut emitted = None;
+        emit_proxy_core_event(
+            ProxyCoreEvent {
+                event_type: ProxyCoreEventType::RouteSelected,
+                request_id: Some("req-2".to_string()),
+                channel_id: Some("channel-b".to_string()),
+                payload: json!({"attemptCount": 1}),
+            },
+            |event_name, payload| emitted = Some((event_name, payload)),
+        );
+        let (event_name, payload) = emitted.expect("event emitted");
+        assert_eq!(event_name, "route_selected");
+        assert_eq!(payload["requestId"], "req-2");
+        assert_eq!(payload["channelId"], "channel-b");
+        assert_eq!(payload["attemptCount"], 1);
     }
 
     #[test]
