@@ -116,7 +116,7 @@ pub mod ports {
         optimizer_config_spec_from_config,
         proxy_app_config_from_parts, proxy_global_config_from_global_config,
         proxy_runtime_config_from_proxy_config, proxy_server_info_from_parts,
-        apply_proxy_runtime_uptime,
+        proxy_takeover_status_from_parts, apply_proxy_runtime_uptime,
         record_active_connection_acquired_status, record_active_connection_released_status,
         record_forward_failure_status, record_forward_request_started_status,
         record_forward_success_status, record_proxy_server_started_status,

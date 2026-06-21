@@ -987,6 +987,22 @@ pub struct ProxyTakeoverStatus {
     pub openclaw: bool,
 }
 
+pub fn proxy_takeover_status_from_parts(
+    claude: bool,
+    codex: bool,
+    gemini: bool,
+    opencode: bool,
+    openclaw: bool,
+) -> ProxyTakeoverStatus {
+    ProxyTakeoverStatus {
+        claude,
+        codex,
+        gemini,
+        opencode,
+        openclaw,
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ProviderHealth {
     pub provider_id: String,
@@ -2989,10 +3005,10 @@ mod tests {
         ProxyChannelModelWriteRequest,
         ProxyChannelModelsReplaceRequest, ProxyChannelPatchRequest, ProxyChannelTestRequest,
         ProxyChannelWriteRequest, ProxyConfig, ProxyCoreEvent, ProxyCoreEventType,
-        ProxyRuntimeStatus, ProxyStatusResponse, ProxyTakeoverStatus,
+        ProxyRuntimeStatus, ProxyStatusResponse,
         ForwardFailureStatusInput, ForwardRequestStartedStatusInput, ForwardSuccessStatusInput,
         ForwardSuccessStatusUpdate, ProxyServerStartedStatusInput, proxy_server_info_from_parts,
-        apply_proxy_runtime_active_targets, apply_proxy_runtime_uptime,
+        proxy_takeover_status_from_parts, apply_proxy_runtime_active_targets, apply_proxy_runtime_uptime,
         record_active_connection_acquired_status, record_active_connection_released_status,
         record_forward_failure_status, record_forward_request_started_status,
         record_forward_success_status, record_proxy_server_started_status,
@@ -4347,13 +4363,7 @@ mod tests {
 
     #[test]
     fn proxy_takeover_status_preserves_tauri_command_shape() {
-        let status = ProxyTakeoverStatus {
-            claude: true,
-            codex: false,
-            gemini: true,
-            opencode: false,
-            openclaw: false,
-        };
+        let status = proxy_takeover_status_from_parts(true, false, true, false, false);
 
         let value = serde_json::to_value(status).expect("serialize takeover status");
 

@@ -302,6 +302,19 @@ pub(crate) fn proxy_server_info_from_parts(
 
 pub(crate) type ProxyTakeoverStatus =
     crate::proxy_core::api::ports::ProxyTakeoverStatus;
+
+pub(crate) fn proxy_takeover_status_from_parts(
+    claude: bool,
+    codex: bool,
+    gemini: bool,
+    opencode: bool,
+    openclaw: bool,
+) -> ProxyTakeoverStatus {
+    crate::proxy_core::api::ports::proxy_takeover_status_from_parts(
+        claude, codex, gemini, opencode, openclaw,
+    )
+}
+
 pub(crate) type ClaudeDesktopModelListResponse =
     crate::proxy_core::api::auth::ClaudeDesktopModelListResponse;
 pub(crate) type ClaudeDesktopModelRouteInput =
@@ -4446,6 +4459,12 @@ mod tests {
         assert_eq!(info.address, "127.0.0.1");
         assert_eq!(info.port, 15721);
         assert_eq!(info.started_at, "2026-06-21T00:00:00Z");
+        let takeover = proxy_takeover_status_from_parts(true, false, true, false, false);
+        assert!(takeover.claude);
+        assert!(!takeover.codex);
+        assert!(takeover.gemini);
+        assert!(!takeover.opencode);
+        assert!(!takeover.openclaw);
 
         let target = CurrentRouteTarget {
             app_type: "claude".to_string(),

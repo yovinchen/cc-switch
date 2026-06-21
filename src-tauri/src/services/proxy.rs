@@ -9,8 +9,8 @@ use crate::provider::Provider;
 use crate::proxy::server::ProxyServer;
 use crate::proxy::switch_lock::SwitchLockManager;
 use crate::proxy_core_adapter::{
-    proxy_server_info_from_parts, CircuitBreakerConfig, ProxyConfig, ProxyRuntimeStatus,
-    ProxyServerInfo, ProxyTakeoverStatus,
+    proxy_server_info_from_parts, proxy_takeover_status_from_parts, CircuitBreakerConfig,
+    ProxyConfig, ProxyRuntimeStatus, ProxyServerInfo, ProxyTakeoverStatus,
 };
 use crate::services::provider::{
     build_effective_settings_with_common_config, write_live_with_common_config,
@@ -595,13 +595,13 @@ impl ProxyService {
         let opencode_enabled = false;
         let openclaw_enabled = false;
 
-        Ok(ProxyTakeoverStatus {
-            claude: claude_enabled,
-            codex: codex_enabled,
-            gemini: gemini_enabled,
-            opencode: opencode_enabled,
-            openclaw: openclaw_enabled,
-        })
+        Ok(proxy_takeover_status_from_parts(
+            claude_enabled,
+            codex_enabled,
+            gemini_enabled,
+            opencode_enabled,
+            openclaw_enabled,
+        ))
     }
 
     /// 为指定应用开启/关闭 Live 接管
