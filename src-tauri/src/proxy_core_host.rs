@@ -32,7 +32,7 @@ use crate::proxy_core_adapter::{
     proxy_runtime_config_from_config,
     proxy_channel_record_to_core_spec, proxy_channel_records_to_core_specs_for_query,
     proxy_provider_to_core_spec, proxy_providers_to_core_specs,
-    route_policy_from_failover_queue,
+    route_plan_provider_match, route_policy_from_failover_queue,
 };
 use bytes::Bytes;
 use futures::{future::BoxFuture, Stream, StreamExt};
@@ -629,13 +629,14 @@ fn host_providers_for_plan(
     providers: &IndexMap<String, crate::provider::Provider>,
     plan: &RoutePlan,
 ) -> ProxyCoreResult<Vec<crate::provider::Provider>> {
-    let provider_ids = crate::proxy_core_adapter::route_plan_provider_ids(plan);
-
-    let matching: Vec<_> = provider_ids
-        .into_iter()
-        .filter_map(|provider_id| providers.get(&provider_id).cloned())
+    let provider_match = route_plan_provider_match(plan, providers.keys().map(String::as_str));
+    let has_matches = provider_match.has_matches();
+    let matching: Vec<_> = provider_match
+        .matched_provider_ids
+        .iter()
+        .filter_map(|provider_id| providers.get(provider_id.as_str()).cloned())
         .collect();
-    if matching.is_empty() {
+    if !has_matches {
         return Err(ProxyCoreError::Unavailable(
             "route plan providers are not configured in host database".to_string(),
         ));

@@ -833,6 +833,19 @@ pub struct RoutePlan {
     pub attempts: Vec<ChannelAttemptPlan>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RoutePlanProviderMatch {
+    pub required_provider_ids: Vec<String>,
+    pub matched_provider_ids: Vec<String>,
+    pub missing_provider_ids: Vec<String>,
+}
+
+impl RoutePlanProviderMatch {
+    pub fn has_matches(&self) -> bool {
+        !self.matched_provider_ids.is_empty()
+    }
+}
+
 pub fn route_selection_from_parts(
     provider: ProviderSpec,
     channel: ChannelSpec,
@@ -866,6 +879,40 @@ pub fn route_plan_provider_ids(plan: &RoutePlan) -> Vec<String> {
         }
     }
     provider_ids
+}
+
+pub fn route_plan_provider_match<I, S>(
+    plan: &RoutePlan,
+    configured_provider_ids: I,
+) -> RoutePlanProviderMatch
+where
+    I: IntoIterator<Item = S>,
+    S: AsRef<str>,
+{
+    let required_provider_ids = route_plan_provider_ids(plan);
+    let configured_provider_ids: Vec<String> = configured_provider_ids
+        .into_iter()
+        .map(|provider_id| provider_id.as_ref().to_string())
+        .collect();
+    let mut matched_provider_ids = Vec::new();
+    let mut missing_provider_ids = Vec::new();
+
+    for provider_id in &required_provider_ids {
+        if configured_provider_ids
+            .iter()
+            .any(|configured_id| configured_id == provider_id)
+        {
+            matched_provider_ids.push(provider_id.clone());
+        } else {
+            missing_provider_ids.push(provider_id.clone());
+        }
+    }
+
+    RoutePlanProviderMatch {
+        required_provider_ids,
+        matched_provider_ids,
+        missing_provider_ids,
+    }
 }
 
 pub fn select_route_for_forward_result(
@@ -1839,6 +1886,44 @@ mod tests {
             route_plan_provider_ids(&plan),
             vec!["provider-a", "provider-b"]
         );
+    }
+
+    #[test]
+    fn route_plan_provider_match_preserves_order_and_missing_ids() {
+        let plan = test_route_plan(vec![
+            test_route_selection("provider-a", "channel-a"),
+            test_route_selection("provider-b", "channel-b"),
+            test_route_selection("provider-a", "channel-c"),
+            test_route_selection("provider-c", "channel-d"),
+        ]);
+
+        let provider_match = route_plan_provider_match(
+            &plan,
+            ["provider-c", "provider-a", "unused-provider"],
+        );
+
+        assert_eq!(
+            provider_match.required_provider_ids,
+            vec!["provider-a", "provider-b", "provider-c"]
+        );
+        assert_eq!(
+            provider_match.matched_provider_ids,
+            vec!["provider-a", "provider-c"]
+        );
+        assert_eq!(provider_match.missing_provider_ids, vec!["provider-b"]);
+        assert!(provider_match.has_matches());
+
+        let missing_match = route_plan_provider_match(&plan, ["unused-provider"]);
+        assert_eq!(
+            missing_match.required_provider_ids,
+            vec!["provider-a", "provider-b", "provider-c"]
+        );
+        assert!(missing_match.matched_provider_ids.is_empty());
+        assert_eq!(
+            missing_match.missing_provider_ids,
+            vec!["provider-a", "provider-b", "provider-c"]
+        );
+        assert!(!missing_match.has_matches());
     }
 
     #[test]

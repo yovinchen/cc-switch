@@ -579,6 +579,8 @@ pub(crate) type ChannelRouteCandidate =
 pub(crate) type ResolvedChannelAttempt =
     crate::proxy_core::api::routing::ResolvedChannelAttempt;
 pub(crate) type RoutePlan = crate::proxy_core::api::routing::RoutePlan;
+pub(crate) type RoutePlanProviderMatch =
+    crate::proxy_core::api::routing::RoutePlanProviderMatch;
 pub(crate) type RouteSelection = crate::proxy_core::api::routing::RouteSelection;
 pub(crate) type CodexProxyErrorContext<'a> =
     crate::proxy_core::api::transforms::CodexProxyErrorContext<'a>;
@@ -1566,8 +1568,20 @@ pub(crate) fn client_model_catalog_from_optional_raw(
     )
 }
 
+#[cfg(test)]
 pub(crate) fn route_plan_provider_ids(plan: &RoutePlan) -> Vec<String> {
     crate::proxy_core::api::routing::route_plan_provider_ids(plan)
+}
+
+pub(crate) fn route_plan_provider_match<I, S>(
+    plan: &RoutePlan,
+    configured_provider_ids: I,
+) -> RoutePlanProviderMatch
+where
+    I: IntoIterator<Item = S>,
+    S: AsRef<str>,
+{
+    crate::proxy_core::api::routing::route_plan_provider_match(plan, configured_provider_ids)
 }
 
 pub(crate) fn route_plan_selections(plan: &RoutePlan) -> &[RouteSelection] {

@@ -124,9 +124,10 @@ pub mod routing {
     pub use crate::channel_request::*;
     pub use crate::domain::{
         ChannelQuery, ChannelSpec, ChannelStatus, InterfaceKind, ResolvedChannelAttempt, RoutePlan,
-        RoutePolicy, RouteRequest, RouteSelection, DEFAULT_ROUTE_GROUP, interfaces_compatible,
-        build_route_plan, route_group_matches, route_plan_provider_ids, route_plan_selections,
-        route_policy_from_failover_provider_ids, route_selection_from_parts,
+        RoutePlanProviderMatch, RoutePolicy, RouteRequest, RouteSelection, DEFAULT_ROUTE_GROUP,
+        interfaces_compatible, build_route_plan, route_group_matches, route_plan_provider_ids,
+        route_plan_provider_match, route_plan_selections, route_policy_from_failover_provider_ids,
+        route_selection_from_parts,
         select_route_for_forward_result,
     };
     pub use crate::legacy_projection::*;
