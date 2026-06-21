@@ -1730,6 +1730,22 @@ pub(crate) fn provider_gemini_base_url(provider: &Provider) -> Option<String> {
     extract_gemini_base_url_from_settings(&provider.settings_config)
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum GeminiLiveConfigIssue {
+    InvalidType,
+}
+
+pub(crate) fn provider_gemini_live_config_object(
+    provider: &Provider,
+) -> Result<Option<&Value>, GeminiLiveConfigIssue> {
+    match provider.settings_config.get("config") {
+        Some(config) if config.is_object() => Ok(Some(config)),
+        Some(config) if config.is_null() => Ok(None),
+        Some(_) => Err(GeminiLiveConfigIssue::InvalidType),
+        None => Ok(None),
+    }
+}
+
 pub(crate) fn provider_gemini_kind(provider: &Provider) -> ProviderKind {
     if provider_gemini_api_key(provider)
         .as_deref()
@@ -5778,6 +5794,37 @@ wire_api = "chat"
             provider_gemini_base_url(&provider).as_deref(),
             Some("https://generativelanguage.googleapis.com/v1beta")
         );
+        assert_eq!(
+            provider_gemini_live_config_object(&Provider::with_id(
+                "gemini-config".to_string(),
+                "Gemini Config".to_string(),
+                json!({"config": {"mcpServers": {}}}),
+                None,
+            ))
+            .expect("config object")
+            .and_then(Value::as_object)
+            .map(|obj| obj.contains_key("mcpServers")),
+            Some(true)
+        );
+        assert!(
+            provider_gemini_live_config_object(&Provider::with_id(
+                "gemini-null-config".to_string(),
+                "Gemini Null Config".to_string(),
+                json!({"config": Value::Null}),
+                None,
+            ))
+            .expect("null config should preserve live file")
+            .is_none()
+        );
+        assert!(matches!(
+            provider_gemini_live_config_object(&Provider::with_id(
+                "gemini-invalid-config".to_string(),
+                "Gemini Invalid Config".to_string(),
+                json!({"config": "not-object"}),
+                None,
+            )),
+            Err(GeminiLiveConfigIssue::InvalidType)
+        ));
 
         let creds = parse_gemini_oauth_credentials("ya29.access-token")
             .expect("direct oauth token should parse");

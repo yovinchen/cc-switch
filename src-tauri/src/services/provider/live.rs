@@ -16,8 +16,9 @@ use crate::provider::Provider;
 use crate::proxy_core_adapter::{
     opencode_live_provider_fragment_has_provider_fields,
     provider_codex_imported_live_category, provider_codex_live_snapshot_parts,
-    provider_model_catalog_raw_value, provider_opencode_live_provider_fragment,
-    provider_openclaw_has_live_provider_fields, CodexLiveSnapshotIssue,
+    provider_gemini_live_config_object, provider_model_catalog_raw_value,
+    provider_opencode_live_provider_fragment, provider_openclaw_has_live_provider_fields,
+    CodexLiveSnapshotIssue, GeminiLiveConfigIssue,
 };
 use crate::services::mcp::McpService;
 use crate::store::AppState;
@@ -1272,8 +1273,8 @@ pub(crate) fn write_gemini_live(provider: &Provider) -> Result<(), AppError> {
     let settings_path = get_gemini_settings_path();
     let mut config_to_write: Option<Value> = None;
 
-    if let Some(config_value) = provider.settings_config.get("config") {
-        if config_value.is_object() {
+    match provider_gemini_live_config_object(provider) {
+        Ok(Some(config_value)) => {
             // Merge with existing settings to preserve mcpServers and other fields
             let mut merged = if settings_path.exists() {
                 read_json_file::<Value>(&settings_path).unwrap_or_else(|_| json!({}))
@@ -1290,14 +1291,17 @@ pub(crate) fn write_gemini_live(provider: &Provider) -> Result<(), AppError> {
                 }
             }
             config_to_write = Some(merged);
-        } else if !config_value.is_null() {
+        }
+        Ok(None) => {
+            // config is null or absent: don't modify existing settings.json (preserve mcpServers etc.)
+        }
+        Err(GeminiLiveConfigIssue::InvalidType) => {
             return Err(AppError::localized(
                 "gemini.validation.invalid_config",
                 "Gemini 配置格式错误: config 必须是对象或 null",
                 "Gemini config invalid: config must be an object or null",
             ));
         }
-        // config is null: don't modify existing settings.json (preserve mcpServers etc.)
     }
 
     // If no config specified or config is null, preserve existing file
@@ -1710,6 +1714,30 @@ mod tests {
         assert!(err
             .to_string()
             .contains("Codex 供应商配置缺少 'auth' 字段"));
+    }
+
+    #[test]
+    fn gemini_write_live_rejects_invalid_config_shape_before_file_write() {
+        let provider = Provider::with_id(
+            "gemini-invalid-config".to_string(),
+            "Gemini Invalid Config".to_string(),
+            json!({
+                "env": {"GEMINI_API_KEY": "AIza-test"},
+                "config": "not-object"
+            }),
+            None,
+        );
+
+        let err = write_gemini_live(&provider)
+            .expect_err("invalid Gemini config should be rejected before writing live files");
+
+        assert!(matches!(
+            err,
+            AppError::Localized {
+                key: "gemini.validation.invalid_config",
+                ..
+            }
+        ));
     }
 
     #[test]
