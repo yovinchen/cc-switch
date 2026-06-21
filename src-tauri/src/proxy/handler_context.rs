@@ -12,8 +12,9 @@ use crate::proxy_core_adapter::{
     extract_proxy_session_id, request_context_route_update_from_proxy_result,
     request_model_from_body_for_context, request_model_from_gemini_path_for_context,
     response_runtime_policy_from_app_proxy_config, ProxyCoreAppKind as AppKind, ProxyResult,
-    ProxyServices, ResponseRuntimePolicy, ResponseTimeoutConfig, StreamingTimeoutConfig,
-    UsageRouteContext,
+    ProxyServices, ResponseRuntimePolicy, ResponseTimeoutConfig,
+    selected_provider_missing_from_source_message, selected_provider_not_applied_message,
+    StreamingTimeoutConfig, unselected_provider_fallback_id, UsageRouteContext,
 };
 use axum::http::HeaderMap;
 use std::time::Instant;
@@ -148,9 +149,9 @@ impl RequestContext {
             .get_provider_by_id(provider_id, self.app_type_str)
             .map_err(|error| ProxyError::DatabaseError(error.to_string()))?
         else {
-            return Err(ProxyError::ConfigError(format!(
-                "selected provider is missing from host database: {provider_id}"
-            )));
+            return Err(ProxyError::ConfigError(
+                selected_provider_missing_from_source_message(provider_id, "host database"),
+            ));
         };
 
         let update =
@@ -163,10 +164,7 @@ impl RequestContext {
 
     pub fn provider(&self) -> Result<&Provider, ProxyError> {
         self.provider.as_ref().ok_or_else(|| {
-            ProxyError::ConfigError(format!(
-                "selected provider is not available before route result is applied: {}",
-                self.app_type_str
-            ))
+            ProxyError::ConfigError(selected_provider_not_applied_message(self.app_type_str))
         })
     }
 
@@ -182,7 +180,7 @@ impl RequestContext {
     }
 
     pub fn fallback_provider_id(&self) -> String {
-        format!("unselected:{}", self.app_type_str)
+        unselected_provider_fallback_id(self.app_type_str)
     }
 
     pub fn claude_api_format_for_proxy_result(

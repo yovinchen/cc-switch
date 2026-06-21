@@ -140,6 +140,18 @@ pub fn error_message_with_context(context: &str, error: &str) -> String {
     format!("{context}: {error}")
 }
 
+pub fn selected_provider_missing_from_source_message(provider_id: &str, source: &str) -> String {
+    format!("selected provider is missing from {source}: {provider_id}")
+}
+
+pub fn selected_provider_not_applied_message(app_type: &str) -> String {
+    format!("selected provider is not available before route result is applied: {app_type}")
+}
+
+pub fn unselected_provider_fallback_id(app_type: &str) -> String {
+    format!("unselected:{app_type}")
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -245,5 +257,18 @@ mod tests {
             error_message_with_context("load app proxy config", "database unavailable"),
             "load app proxy config: database unavailable"
         );
+    }
+
+    #[test]
+    fn selected_provider_context_messages_preserve_host_contracts() {
+        assert_eq!(
+            selected_provider_missing_from_source_message("provider-a", "host database"),
+            "selected provider is missing from host database: provider-a"
+        );
+        assert_eq!(
+            selected_provider_not_applied_message("codex"),
+            "selected provider is not available before route result is applied: codex"
+        );
+        assert_eq!(unselected_provider_fallback_id("codex"), "unselected:codex");
     }
 }

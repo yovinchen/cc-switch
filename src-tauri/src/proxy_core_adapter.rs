@@ -88,6 +88,24 @@ pub(crate) fn error_message_with_context(
     crate::proxy_core::api::errors::error_message_with_context(context, &error.to_string())
 }
 
+pub(crate) fn selected_provider_missing_from_source_message(
+    provider_id: &str,
+    source: &str,
+) -> String {
+    crate::proxy_core::api::errors::selected_provider_missing_from_source_message(
+        provider_id,
+        source,
+    )
+}
+
+pub(crate) fn selected_provider_not_applied_message(app_type: &str) -> String {
+    crate::proxy_core::api::errors::selected_provider_not_applied_message(app_type)
+}
+
+pub(crate) fn unselected_provider_fallback_id(app_type: &str) -> String {
+    crate::proxy_core::api::errors::unselected_provider_fallback_id(app_type)
+}
+
 pub(crate) fn app_error(context: &str, error: AppError) -> ProxyCoreError {
     ProxyCoreError::Config(error_message_with_context(context, error))
 }
@@ -5232,6 +5250,15 @@ mod tests {
             ProxyCoreError::Internal(message)
                 if message == "record usage: db failed"
         ));
+        assert_eq!(
+            selected_provider_missing_from_source_message("provider-a", "host database"),
+            "selected provider is missing from host database: provider-a"
+        );
+        assert_eq!(
+            selected_provider_not_applied_message("codex"),
+            "selected provider is not available before route result is applied: codex"
+        );
+        assert_eq!(unselected_provider_fallback_id("codex"), "unselected:codex");
         assert_eq!(
             codex_proxy_error_code(CodexProxyErrorKind::ForwardFailed),
             "cc_switch_forward_failed"
