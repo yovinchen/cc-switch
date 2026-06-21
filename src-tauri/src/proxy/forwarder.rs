@@ -22,8 +22,8 @@ use crate::proxy::managed_account_auth::{
 use crate::proxy_core_adapter::{
     apply_bedrock_pre_send_optimizers, apply_copilot_model_normalization,
     apply_copilot_warmup_model_override, attempt_event_name,
-    attempt_event_payload_from_forward_attempt, bedrock_env_flag_from_provider_settings,
-    build_codex_oauth_session_headers, build_request_started_event_payload,
+    attempt_event_payload_from_forward_attempt, build_codex_oauth_session_headers,
+    build_request_started_event_payload,
     build_retryable_forward_failure_log, build_terminal_forward_failure_log,
     build_upstream_auth_headers, cache_injection_log_message, categorize_forward_failure,
     classify_copilot_request, contains_image_blocks, current_route_target_from_forward_attempt,
@@ -31,9 +31,9 @@ use crate::proxy_core_adapter::{
     is_openai_o_series, is_unsupported_image_error, mapped_channel_response_status,
     merge_copilot_tool_results, non_streaming_body_timeout_message, normalize_thinking_type,
     prepare_upstream_request_body_with_report, prompt_cache_trace_log_message,
-    provider_custom_user_agent_header, provider_is_codex_oauth, provider_is_full_url,
-    provider_is_github_copilot_upstream, rectify_anthropic_request, rectify_thinking_budget,
-    replace_image_blocks_with_marker, record_active_connection_acquired_status,
+    provider_bedrock_env_flag, provider_custom_user_agent_header, provider_is_codex_oauth,
+    provider_is_full_url, provider_is_github_copilot_upstream, rectify_anthropic_request,
+    rectify_thinking_budget, replace_image_blocks_with_marker, record_active_connection_acquired_status,
     record_active_connection_released_status, record_forward_failure_status,
     record_forward_request_started_status, record_forward_success_status,
     replace_images_for_text_only_model, request_body_filter_log_message,
@@ -661,7 +661,7 @@ impl RequestForwarder {
             // clone body 以避免 Bedrock 优化字段泄漏到非 Bedrock provider（failover 场景）
             let mut provider_body = if should_apply_bedrock_pre_send_optimizer(
                 self.optimizer_config.enabled,
-                bedrock_env_flag_from_provider_settings(&provider.settings_config),
+                provider_bedrock_env_flag(provider),
             ) {
                 let mut b = body.clone();
                 let report = apply_bedrock_pre_send_optimizers(&mut b, &self.optimizer_config);
@@ -1912,10 +1912,7 @@ mod tests {
             }
         });
 
-        assert_eq!(
-            bedrock_env_flag_from_provider_settings(&provider.settings_config),
-            Some("1")
-        );
+        assert_eq!(provider_bedrock_env_flag(&provider), Some("1"));
     }
 
     fn test_forwarder(

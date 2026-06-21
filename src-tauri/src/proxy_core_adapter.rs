@@ -3160,6 +3160,10 @@ pub(crate) fn provider_custom_user_agent_header(
         .and_then(|meta| meta.custom_user_agent_header().ok().flatten())
 }
 
+pub(crate) fn provider_bedrock_env_flag(provider: &Provider) -> Option<&str> {
+    bedrock_env_flag_from_provider_settings(&provider.settings_config)
+}
+
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn streaming_response_usage_record_with_optional_outbound_model(
     events: &[Value],
@@ -5935,7 +5939,8 @@ mod tests {
             json!({
                 "env": {
                     "ANTHROPIC_AUTH_TOKEN": "secret-token",
-                    "ANTHROPIC_BASE_URL": "https://api.githubcopilot.com"
+                    "ANTHROPIC_BASE_URL": "https://api.githubcopilot.com",
+                    "CLAUDE_CODE_USE_BEDROCK": "1"
                 }
             }),
             Some("https://github.com/features/copilot".to_string()),
@@ -5960,6 +5965,7 @@ mod tests {
         let provider_user_agent =
             provider_custom_user_agent_header(&provider, false).expect("custom user agent");
         let copilot_provider_user_agent = provider_custom_user_agent_header(&provider, true);
+        assert_eq!(provider_bedrock_env_flag(&provider), Some("1"));
         let mut codex_provider = Provider::with_id(
             "codex-oauth".to_string(),
             "Codex OAuth".to_string(),
