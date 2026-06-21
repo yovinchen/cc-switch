@@ -5,6 +5,12 @@ const ALLOWED_PROXY_CORE_FILES: &[&str] = &["src/lib.rs", "src/proxy_core_adapte
 const ALLOWED_PROXY_ENGINE_CONSTRUCTOR_FILES: &[&str] = &["src/proxy_core_adapter.rs"];
 
 const FORBIDDEN_MARKERS: &[&str] = &["crate::proxy_core::", "cc_switch_proxy_core::"];
+const FORBIDDEN_FORWARDER_SELF_PLANNING_MARKERS: &[&str] = &[
+    "RequestForwarder::new(",
+    ".forward_with_retry(",
+    "build_forward_attempts(",
+    "create_forwarder(",
+];
 const PROXY_CORE_MARKER: &str = "crate::proxy_core::";
 const PROXY_CORE_API_MARKER: &str = "crate::proxy_core::api";
 const PROXY_ENGINE_CONSTRUCTOR_MARKER: &str = "ProxyEngine::new(";
@@ -45,6 +51,43 @@ fn host_code_uses_proxy_core_through_adapter_boundary() {
     assert!(
         violations.is_empty(),
         "host code must access proxy-core through src/proxy_core_adapter.rs:\n{}",
+        violations.join("\n")
+    );
+}
+
+#[test]
+fn production_forwarder_stays_preplanned_only() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let mut rust_files = Vec::new();
+    collect_rust_files(&manifest_dir.join("src"), &mut rust_files);
+
+    let mut violations = Vec::new();
+    for path in rust_files {
+        let relative = path
+            .strip_prefix(&manifest_dir)
+            .expect("source path under manifest dir")
+            .to_string_lossy()
+            .replace('\\', "/");
+
+        let source = fs::read_to_string(&path).expect("read host source file");
+        for (line_index, line) in production_lines(&source) {
+            let code = line.split("//").next().unwrap_or_default();
+            for marker in FORBIDDEN_FORWARDER_SELF_PLANNING_MARKERS {
+                if code.contains(marker) {
+                    violations.push(format!(
+                        "{}:{} contains legacy forwarder self-planning marker `{}`",
+                        relative,
+                        line_index + 1,
+                        marker
+                    ));
+                }
+            }
+        }
+    }
+
+    assert!(
+        violations.is_empty(),
+        "production forwarder code must execute preplanned attempts from ProxyEngine/ForwardPipeline:\n{}",
         violations.join("\n")
     );
 }
