@@ -33,7 +33,6 @@ use crate::proxy_core_adapter::{
     channel_spec_from_source,
     channel_specs_from_source,
     client_model_catalog_from_source,
-    current_provider_id_from_settings_for_app,
     current_provider_id_from_settings_for_app_type,
     forward_current_provider_id_from_source,
     forwarder_runtime_config_from_sources,
@@ -44,7 +43,7 @@ use crate::proxy_core_adapter::{
     provider_spec_from_source,
     provider_specs_from_source,
     provider_model_catalog_from_provider,
-    proxy_app_config_from_config_source_parts, proxy_global_config_from_config,
+    proxy_app_config_from_config_source, proxy_global_config_from_config,
     emit_proxy_core_event,
     proxy_runtime_config_from_config_source,
     required_forward_attempts_from_plan,
@@ -228,11 +227,9 @@ impl ProxyConfigSource for CcSwitchConfigSource {
             let rectifier = self.db.get_rectifier_config().unwrap_or_default();
             let optimizer = self.db.get_optimizer_config().unwrap_or_default();
             let copilot_optimizer = self.db.get_copilot_optimizer_config().unwrap_or_default();
-            let settings_current_provider_id = current_provider_id_from_settings_for_app(app);
-            Ok(proxy_app_config_from_config_source_parts(
+            Ok(proxy_app_config_from_config_source(
                 app.clone(),
                 config,
-                settings_current_provider_id.as_deref(),
                 rectifier,
                 optimizer,
                 copilot_optimizer,

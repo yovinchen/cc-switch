@@ -360,6 +360,24 @@ pub(crate) fn current_provider_id_from_settings_for_app_type(
     crate::settings::get_current_provider(app_type)
 }
 
+pub(crate) fn proxy_app_config_from_config_source(
+    app: AppKind,
+    config: AppProxyConfig,
+    rectifier: RectifierConfig,
+    optimizer: OptimizerConfig,
+    copilot_optimizer: CopilotOptimizerConfig,
+) -> ProxyAppConfig {
+    let settings_current_provider_id = current_provider_id_from_settings_for_app(&app);
+    proxy_app_config_from_config_source_parts(
+        app,
+        config,
+        settings_current_provider_id.as_deref(),
+        rectifier,
+        optimizer,
+        copilot_optimizer,
+    )
+}
+
 pub(crate) fn forward_current_provider_id_from_source(
     settings_current_provider_id: Option<&str>,
     load_db_current_provider_id: impl FnOnce() -> Option<String>,
