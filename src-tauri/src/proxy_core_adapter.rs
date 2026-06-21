@@ -1314,6 +1314,19 @@ fn provider_codex_config_text(provider: &Provider) -> Option<&str> {
         .and_then(Value::as_str)
 }
 
+pub(crate) fn provider_codex_imported_live_category(provider: &Provider) -> &'static str {
+    let config_text = provider_codex_config_text(provider);
+    let auth = provider.settings_config.get("auth");
+    let has_provider_key = crate::codex_config::extract_codex_api_key(auth, config_text).is_some();
+    let has_login_material = auth.is_some_and(crate::codex_config::codex_auth_has_login_material);
+
+    if has_login_material && !has_provider_key {
+        "official"
+    } else {
+        "custom"
+    }
+}
+
 fn codex_wire_api_from_toml(config_text: &str) -> Option<String> {
     let doc = config_text.parse::<toml::Value>().ok()?;
 
@@ -5305,6 +5318,52 @@ mod tests {
         assert_eq!(
             provider_codex_base_url(&provider).as_deref(),
             Some("https://api.openai.com/v1")
+        );
+        let official_live_provider = Provider::with_id(
+            "codex-live-official".to_string(),
+            "Codex Live Official".to_string(),
+            json!({
+                "auth": {
+                    "tokens": {"id_token": "id-token"},
+                    "auth_mode": "chatgpt"
+                },
+                "config": ""
+            }),
+            None,
+        );
+        assert_eq!(
+            provider_codex_imported_live_category(&official_live_provider),
+            "official"
+        );
+        let api_key_live_provider = Provider::with_id(
+            "codex-live-api-key".to_string(),
+            "Codex Live API Key".to_string(),
+            json!({
+                "auth": {"OPENAI_API_KEY": "sk-test"},
+                "config": ""
+            }),
+            None,
+        );
+        assert_eq!(
+            provider_codex_imported_live_category(&api_key_live_provider),
+            "custom"
+        );
+        let bearer_live_provider = Provider::with_id(
+            "codex-live-bearer".to_string(),
+            "Codex Live Bearer".to_string(),
+            json!({
+                "auth": {"tokens": {"id_token": "id-token"}},
+                "config": r#"model_provider = "custom"
+
+[model_providers.custom]
+experimental_bearer_token = "bearer-token"
+"#
+            }),
+            None,
+        );
+        assert_eq!(
+            provider_codex_imported_live_category(&bearer_live_provider),
+            "custom"
         );
         let chat_provider = Provider::with_id(
             "codex-chat".to_string(),

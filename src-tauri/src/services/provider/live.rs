@@ -14,7 +14,8 @@ use crate::database::Database;
 use crate::error::AppError;
 use crate::provider::Provider;
 use crate::proxy_core_adapter::{
-    provider_model_catalog_raw_value, provider_openclaw_has_live_provider_fields,
+    provider_codex_imported_live_category, provider_model_catalog_raw_value,
+    provider_openclaw_has_live_provider_fields,
 };
 use crate::services::mcp::McpService;
 use crate::store::AppState;
@@ -1231,25 +1232,7 @@ pub fn import_default_config(state: &AppState, app_type: AppType) -> Result<bool
     );
     provider.category = Some(
         if matches!(app_type, AppType::Codex) {
-            let config_text = provider
-                .settings_config
-                .get("config")
-                .and_then(Value::as_str);
-            let has_provider_key = crate::codex_config::extract_codex_api_key(
-                provider.settings_config.get("auth"),
-                config_text,
-            )
-            .is_some();
-            let has_login_material = provider
-                .settings_config
-                .get("auth")
-                .is_some_and(crate::codex_config::codex_auth_has_login_material);
-
-            if has_login_material && !has_provider_key {
-                "official"
-            } else {
-                "custom"
-            }
+            provider_codex_imported_live_category(&provider)
         } else {
             "custom"
         }
