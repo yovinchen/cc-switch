@@ -14,9 +14,9 @@ use super::{
 };
 use crate::database::Database;
 use crate::proxy_core_adapter::{
-    proxy_engine_from_services, server_log_codes as log_srv, CircuitBreakerConfig,
-    CurrentRouteTarget, GeminiShadowStore, ProxyConfig, ProxyEngine, ProxyRuntimeStatus,
-    ProxyServerInfo,
+    current_route_target_from_provider, proxy_engine_from_services, server_log_codes as log_srv,
+    CircuitBreakerConfig, CurrentRouteTarget, GeminiShadowStore, ProxyConfig, ProxyEngine,
+    ProxyRuntimeStatus, ProxyServerInfo,
 };
 use crate::proxy_core_host::{CcSwitchProxyRuntime, CcSwitchProxyServices};
 use axum::{
@@ -322,16 +322,7 @@ impl ProxyServer {
         let mut current_providers = self.state.current_providers.write().await;
         current_providers.insert(
             app_type.to_string(),
-            CurrentRouteTarget {
-                app_type: app_type.to_string(),
-                provider_id: provider_id.to_string(),
-                provider_name: provider_name.to_string(),
-                channel_id: None,
-                channel_name: None,
-                interface_kind: None,
-                public_model: None,
-                upstream_model: None,
-            },
+            current_route_target_from_provider(app_type, provider_id, provider_name),
         );
     }
 

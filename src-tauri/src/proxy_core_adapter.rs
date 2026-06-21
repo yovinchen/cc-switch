@@ -327,6 +327,21 @@ pub(crate) fn current_route_target_from_forward_attempt(
     )
 }
 
+pub(crate) fn current_route_target_from_provider(
+    app_type: &str,
+    provider_id: &str,
+    provider_name: &str,
+) -> CurrentRouteTarget {
+    crate::proxy_core::api::ports::current_route_target_from_input(
+        crate::proxy_core::api::ports::CurrentRouteTargetInput {
+            app_type,
+            provider_id,
+            provider_name,
+            channel: None,
+        },
+    )
+}
+
 pub(crate) type GeminiShadowStore =
     crate::proxy_core::api::transforms::GeminiShadowStore;
 pub(crate) type GeminiToAnthropicMessageOutput =
@@ -4363,6 +4378,14 @@ mod tests {
                 "upstreamModel": "upstream-sonnet"
             })
         );
+
+        let provider_only =
+            current_route_target_from_provider("codex", "provider-b", "Provider B");
+        assert_eq!(provider_only.app_type, "codex");
+        assert_eq!(provider_only.provider_id, "provider-b");
+        assert_eq!(provider_only.provider_name, "Provider B");
+        assert!(provider_only.channel_id.is_none());
+        assert!(provider_only.interface_kind.is_none());
     }
 
     #[test]
