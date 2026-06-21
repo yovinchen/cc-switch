@@ -41,7 +41,7 @@ use crate::proxy_core_adapter::{
     create_openai_responses_to_anthropic_sse_stream as create_anthropic_sse_stream_from_responses,
     extract_anthropic_tool_schema_hints, extract_gemini_model_from_path,
     gemini_response_to_anthropic_message_with_shadow, openai_chat_to_anthropic_message,
-    openai_responses_to_anthropic_message, parse_upstream_json_or_unlabeled_sse, plan_channel_test,
+    openai_responses_to_anthropic_message, parse_upstream_json_or_unlabeled_sse,
     rebuilt_json_proxy_response, resolve_management_auth_decision,
     should_aggregate_codex_oauth_responses_sse, should_use_claude_transform_streaming,
     strip_endpoint_prefix, transformed_sse_proxy_response, validate_management_bearer_header,
@@ -76,7 +76,7 @@ use crate::proxy_core_adapter::{
     channel_key_record_source_from_record, channel_keys_source_from_records,
     channel_migration_materialize_source_from_result, channel_migration_preview_source_from_result,
     channel_models_source_from_records, group_list_channel_source_from_records,
-    proxy_app_summary_input, proxy_channel_record_to_core_spec,
+    channel_test_plan_from_record, proxy_app_summary_input,
     proxy_provider_to_core_spec, proxy_providers_to_core_specs,
     stream_check_result_to_channel_reachability, synthesize_gemini_tool_call_id_with_uuid,
 };
@@ -512,8 +512,8 @@ pub async fn test_proxy_channel(
         .map_err(|e| ProxyError::DatabaseError(e.to_string()))?
         .ok_or_else(|| proxy_core_error_to_proxy_error(path_request.channel_not_found_error()))?;
 
-    let channel_test_context = match plan_channel_test(
-        &proxy_channel_record_to_core_spec(&channel),
+    let channel_test_context = match channel_test_plan_from_record(
+        &channel,
         &request,
         chrono::Utc::now().timestamp(),
     ) {

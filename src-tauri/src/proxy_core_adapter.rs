@@ -3119,6 +3119,14 @@ pub(crate) fn channel_migration_materialize_source_from_result(
     ))
 }
 
+pub(crate) fn channel_test_plan_from_record(
+    channel: &ProxyChannelRecord,
+    request: &ProxyChannelTestRequest,
+    tested_at: i64,
+) -> ChannelTestPlan {
+    plan_channel_test(&proxy_channel_record_to_core_spec(channel), request, tested_at)
+}
+
 pub(crate) fn extract_proxy_session_id(
     headers: &HeaderMap,
     body: &Value,
