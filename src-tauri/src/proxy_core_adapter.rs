@@ -4066,6 +4066,23 @@ pub(crate) fn gemini_live_config_has_proxy_placeholder(
         == Some(placeholder)
 }
 
+pub(crate) fn apply_gemini_takeover_env_fields(
+    config: &mut Value,
+    proxy_url: &str,
+    placeholder: &str,
+) {
+    if let Some(env) = config.get_mut("env").and_then(Value::as_object_mut) {
+        env.insert("GOOGLE_GEMINI_BASE_URL".to_string(), json!(proxy_url));
+        env.insert("GEMINI_API_KEY".to_string(), json!(placeholder));
+        return;
+    }
+
+    config["env"] = json!({
+        "GOOGLE_GEMINI_BASE_URL": proxy_url,
+        "GEMINI_API_KEY": placeholder
+    });
+}
+
 fn claude_live_token_pair<'a>(
     live_config: &'a Value,
     placeholder: &str,
@@ -6723,6 +6740,48 @@ wire_api = "chat"
             &AppType::Claude,
             placeholder
         ));
+
+        let mut gemini_config = json!({
+            "env": {
+                "GOOGLE_GEMINI_BASE_URL": "https://gemini.example",
+                "GEMINI_API_KEY": "real-key",
+                "OTHER": "kept"
+            }
+        });
+        apply_gemini_takeover_env_fields(
+            &mut gemini_config,
+            "http://127.0.0.1:15721",
+            placeholder,
+        );
+        let gemini_env = gemini_config
+            .get("env")
+            .and_then(Value::as_object)
+            .expect("gemini env");
+        assert_eq!(
+            gemini_env
+                .get("GOOGLE_GEMINI_BASE_URL")
+                .and_then(Value::as_str),
+            Some("http://127.0.0.1:15721")
+        );
+        assert_eq!(
+            gemini_env.get("GEMINI_API_KEY").and_then(Value::as_str),
+            Some(placeholder)
+        );
+        assert_eq!(gemini_env.get("OTHER").and_then(Value::as_str), Some("kept"));
+
+        let mut missing_env = json!({});
+        apply_gemini_takeover_env_fields(
+            &mut missing_env,
+            "http://127.0.0.1:15721",
+            placeholder,
+        );
+        assert_eq!(
+            missing_env
+                .get("env")
+                .and_then(|env| env.get("GEMINI_API_KEY"))
+                .and_then(Value::as_str),
+            Some(placeholder)
+        );
     }
 
     #[test]
