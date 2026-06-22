@@ -1402,6 +1402,27 @@ pub(crate) fn provider_omo_switch_pair(
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum ProviderAdditiveUpdateRoute {
+    OmoVariant(ProviderOmoVariant),
+    LiveConfigPresence,
+}
+
+pub(crate) fn provider_additive_update_route(
+    app_type: &AppType,
+    category: Option<&str>,
+) -> Option<ProviderAdditiveUpdateRoute> {
+    if !app_type.is_additive_mode() {
+        return None;
+    }
+
+    if let Some(omo_variant) = provider_omo_variant_for_category(app_type, category) {
+        return Some(ProviderAdditiveUpdateRoute::OmoVariant(omo_variant));
+    }
+
+    Some(ProviderAdditiveUpdateRoute::LiveConfigPresence)
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum ProviderSwitchDispatch {
     Normal,
     TakeoverAware,
@@ -13204,6 +13225,38 @@ command = "latest-command"
         assert_eq!(provider_live_removal_target(&AppType::ClaudeDesktop), None);
         assert_eq!(provider_live_removal_target(&AppType::Codex), None);
         assert_eq!(provider_live_removal_target(&AppType::Gemini), None);
+    }
+
+    #[test]
+    fn provider_additive_update_route_keeps_omo_separate_from_live_presence() {
+        assert_eq!(
+            provider_additive_update_route(&AppType::OpenCode, Some("omo")),
+            Some(ProviderAdditiveUpdateRoute::OmoVariant(
+                ProviderOmoVariant::Standard
+            ))
+        );
+        assert_eq!(
+            provider_additive_update_route(&AppType::OpenCode, Some("omo-slim")),
+            Some(ProviderAdditiveUpdateRoute::OmoVariant(
+                ProviderOmoVariant::Slim
+            ))
+        );
+        assert_eq!(
+            provider_additive_update_route(&AppType::OpenCode, Some("custom")),
+            Some(ProviderAdditiveUpdateRoute::LiveConfigPresence)
+        );
+        assert_eq!(
+            provider_additive_update_route(&AppType::OpenClaw, None),
+            Some(ProviderAdditiveUpdateRoute::LiveConfigPresence)
+        );
+        assert_eq!(
+            provider_additive_update_route(&AppType::Hermes, None),
+            Some(ProviderAdditiveUpdateRoute::LiveConfigPresence)
+        );
+        assert_eq!(
+            provider_additive_update_route(&AppType::Claude, Some("omo")),
+            None
+        );
     }
 
     #[test]

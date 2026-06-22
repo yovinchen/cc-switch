@@ -18,7 +18,7 @@ use crate::provider::{Provider, UsageResult};
 use crate::proxy_core_adapter::{
     common_config_snippet_from_settings, common_config_snippet_issue_message,
     normalize_provider_settings_for_storage, provider_additive_live_write_action,
-    provider_app_has_current_provider,
+    provider_additive_update_route, provider_app_has_current_provider,
     provider_credential_issue_spec, provider_credential_values, provider_key_change_policy_issue,
     provider_key_change_policy_issue_message, provider_live_config_presence_error_policy,
     provider_initial_live_config_managed_marker, provider_live_removal_target,
@@ -33,7 +33,7 @@ use crate::proxy_core_adapter::{
     should_block_proxy_switch_to_provider,
     should_reapply_codex_official_live_for_provider,
     should_skip_provider_legacy_common_config_migration, CommonConfigSnippetIssue,
-    ProviderAdditiveLiveWriteAction, ProviderCredentialIssue,
+    ProviderAdditiveLiveWriteAction, ProviderAdditiveUpdateRoute, ProviderCredentialIssue,
     ProviderLiveConfigPresenceErrorPolicy, ProviderLiveRemovalTarget, ProviderLiveSyncScope,
     ProviderOmoVariant, ProviderSettingsValidationIssue, ProviderSwitchDispatch,
     ProviderTakeoverLiveSyncTarget,
@@ -1545,10 +1545,10 @@ impl ProviderService {
 
         // Additive mode apps (OpenCode, OpenClaw): only sync to live when the provider
         // already exists in live config. Editing a DB-only provider must not auto-add it.
-        if app_type.is_additive_mode() {
-            if let Some(omo_variant) =
-                provider_omo_variant_for_category(&app_type, provider.category.as_deref())
-            {
+        if let Some(route) =
+            provider_additive_update_route(&app_type, provider.category.as_deref())
+        {
+            if let ProviderAdditiveUpdateRoute::OmoVariant(omo_variant) = route {
                 let variant = Self::omo_variant_descriptor(omo_variant);
                 let is_current = state.db.is_omo_provider_current(
                     app_type.as_str(),
@@ -1574,6 +1574,7 @@ impl ProviderService {
                 }
                 return Ok(true);
             }
+
             let live_config_managed = Self::check_live_config_exists(
                 &app_type,
                 &provider.id,
