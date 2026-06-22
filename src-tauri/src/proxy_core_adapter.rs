@@ -7559,38 +7559,12 @@ pub(crate) fn provider_bedrock_env_flag(provider: &Provider) -> Option<&str> {
     bedrock_env_flag_from_provider_settings(&provider.settings_config)
 }
 
-#[allow(clippy::too_many_arguments)]
-pub(crate) fn streaming_response_usage_record_with_optional_outbound_model(
-    events: &[Value],
-    stream_parser: fn(&[Value]) -> Option<TokenUsage>,
-    model_extractor: fn(&[Value], &str) -> String,
-    provider_id: &str,
-    provider_kind: Option<ProviderKind>,
-    app: AppKind,
-    request_model: &str,
-    outbound_model: Option<&str>,
-    latency_ms: u64,
-    first_token_ms: Option<u64>,
-    status_code: u16,
-    session_id: Option<String>,
-    request_id_fallback: impl FnOnce() -> String,
-) -> StreamingResponseUsageRecord {
-    crate::proxy_core::api::usage::streaming_response_usage_record_with_optional_outbound_model(
-        events,
-        stream_parser,
-        model_extractor,
-        provider_id,
-        provider_kind,
-        app,
-        request_model,
-        outbound_model,
-        latency_ms,
-        first_token_ms,
-        status_code,
-        session_id,
-        request_id_fallback,
-    )
-}
+pub(crate) use crate::proxy_core::api::usage::{
+    is_placeholder_pricing_model,
+    non_streaming_response_usage_record_from_body_with_request_id_fallback,
+    streaming_response_usage_record_with_optional_outbound_model,
+    usage_record_with_route_context, usage_route_context_from_selection,
+};
 
 #[derive(Debug, Clone)]
 pub(crate) struct ResponseUsageProviderFacts {
@@ -7942,35 +7916,6 @@ pub(crate) fn transformed_streaming_response_usage_record_from_response_context(
 }
 
 #[allow(clippy::too_many_arguments)]
-pub(crate) fn non_streaming_response_usage_record_from_body_with_request_id_fallback(
-    body: &[u8],
-    response_parser: fn(&Value) -> Option<TokenUsage>,
-    provider_id: &str,
-    provider_kind: Option<ProviderKind>,
-    app: AppKind,
-    request_model: &str,
-    outbound_model: Option<&str>,
-    latency_ms: u64,
-    status_code: u16,
-    session_id: Option<String>,
-    request_id_fallback: impl FnOnce() -> String,
-) -> NonStreamingResponseUsageRecord {
-    crate::proxy_core::api::usage::non_streaming_response_usage_record_from_body_with_request_id_fallback(
-        body,
-        response_parser,
-        provider_id,
-        provider_kind,
-        app,
-        request_model,
-        outbound_model,
-        latency_ms,
-        status_code,
-        session_id,
-        request_id_fallback,
-    )
-}
-
-#[allow(clippy::too_many_arguments)]
 pub(crate) fn non_streaming_response_usage_record_from_provider_body_with_request_id_fallback(
     body: &[u8],
     response_parser: fn(&Value) -> Option<TokenUsage>,
@@ -8039,10 +7984,6 @@ pub(crate) fn usage_pricing_config_lookup_from_record(
     }
 }
 
-pub(crate) fn usage_route_context_from_selection(selection: &RouteSelection) -> UsageRouteContext {
-    crate::proxy_core::api::usage::usage_route_context_from_selection(selection)
-}
-
 #[derive(Debug, Clone)]
 pub(crate) struct RequestContextRouteUpdate {
     pub(crate) outbound_model: Option<String>,
@@ -8089,13 +8030,6 @@ pub(crate) fn request_context_route_update_from_proxy_result_source<E>(
     Ok(request_context_route_update_from_proxy_result(
         app_type, &provider, result,
     ))
-}
-
-pub(crate) fn usage_record_with_route_context(
-    record: UsageRecord,
-    route: Option<&UsageRouteContext>,
-) -> UsageRecord {
-    crate::proxy_core::api::usage::usage_record_with_route_context(record, route)
 }
 
 pub(crate) fn usage_record_to_request_log(
@@ -8171,10 +8105,6 @@ pub(crate) async fn record_usage_in_db_source(
     logger
         .log_request(&projection.log)
         .map_err(|error| usage_error("record usage", error))
-}
-
-pub(crate) fn is_placeholder_pricing_model(model_id: &str) -> bool {
-    crate::proxy_core::api::usage::is_placeholder_pricing_model(model_id)
 }
 
 pub(crate) fn claude_takeover_client_model_for_upstream(
