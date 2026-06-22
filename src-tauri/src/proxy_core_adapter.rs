@@ -5127,6 +5127,57 @@ pub(crate) fn claude_takeover_model_fields_from_settings(
     fields
 }
 
+pub(crate) fn apply_claude_takeover_fields_for_provider(
+    config: &mut Value,
+    proxy_url: &str,
+    placeholder: &str,
+    provider: &Provider,
+) {
+    let uses_managed_account = provider_uses_managed_account_auth(provider);
+    let auth_policy = if uses_managed_account {
+        // Codex 系（含仅凭 base_url 识别、无 provider_type meta 的）必须保留
+        // ANTHROPIC_AUTH_TOKEN 占位符：Claude Code 缺该键会弹登录提示（#3784）。
+        // Copilot 维持仅 API_KEY 占位，避免与 /login 管理的 key 冲突（#1049）。
+        ClaudeTakeoverAuthPolicy::ManagedAccount {
+            keep_auth_token: !provider_is_github_copilot(provider),
+        }
+    } else {
+        ClaudeTakeoverAuthPolicy::PreserveExistingOrAuthToken
+    };
+    // Copilot/Codex 接管时 live config 可能还是旧供应商；显示模型必须跟随目标 provider。
+    let takeover_model_fields = if uses_managed_account {
+        provider_claude_takeover_model_fields(provider)
+    } else {
+        claude_takeover_model_fields_from_settings(config)
+    };
+
+    apply_claude_takeover_fields_with_policy_and_models(
+        config,
+        proxy_url,
+        placeholder,
+        auth_policy,
+        takeover_model_fields,
+    );
+}
+
+pub(crate) fn apply_claude_takeover_fields_with_policy(
+    config: &mut Value,
+    proxy_url: &str,
+    placeholder: &str,
+    auth_policy: ClaudeTakeoverAuthPolicy,
+) {
+    // 必须在 remove/insert 前 snapshot：避免读到自己刚写入的接管别名。
+    let takeover_model_fields = claude_takeover_model_fields_from_settings(config);
+
+    apply_claude_takeover_fields_with_policy_and_models(
+        config,
+        proxy_url,
+        placeholder,
+        auth_policy,
+        takeover_model_fields,
+    );
+}
+
 pub(crate) fn apply_claude_takeover_fields_with_policy_and_models(
     config: &mut Value,
     proxy_url: &str,

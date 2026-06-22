@@ -9,23 +9,22 @@ use crate::provider::Provider;
 use crate::proxy::server::ProxyServer;
 use crate::proxy::switch_lock::SwitchLockManager;
 use crate::proxy_core_adapter::{
-    apply_claude_takeover_fields_with_policy_and_models,
+    apply_claude_takeover_fields_for_provider, apply_claude_takeover_fields_with_policy,
     apply_codex_takeover_auth_placeholder_if_present, apply_gemini_takeover_env_fields,
     attach_codex_model_catalog_from_provider, build_proxy_official_warning_event_payload,
-    claude_takeover_model_fields_from_settings, ClaudeTakeoverAuthPolicy,
+    ClaudeTakeoverAuthPolicy,
     codex_live_write_projection, codex_preserved_auth_live_config_text_if_proxy_placeholder,
     codex_takeover_toml_config_for_provider,
     ensure_codex_takeover_auth_placeholder, gemini_live_backup_from_effective_settings,
     is_local_proxy_url, live_backup_snapshot_from_live_config,
     live_config_has_proxy_placeholder_for_app, live_takeover_config_matches_proxy_for_app,
-    provider_claude_takeover_model_fields, provider_is_github_copilot,
     provider_settings_have_proxy_placeholder_for_app,
     preserve_codex_mcp_servers_from_existing_config,
     preserve_codex_oauth_auth_in_backup_if_present, provider_settings_with_live_token_sync,
     remove_claude_takeover_env_fields_if_present, CodexBackupProjectionIssue,
     CodexLiveWriteProjection,
-    provider_uses_managed_account_auth, proxy_runtime_status_stopped, proxy_server_info_from_parts,
-    proxy_takeover_status_from_parts, remove_codex_takeover_auth_placeholder_if_present,
+    proxy_runtime_status_stopped, proxy_server_info_from_parts, proxy_takeover_status_from_parts,
+    remove_codex_takeover_auth_placeholder_if_present,
     remove_codex_takeover_config_placeholders_if_present,
     remove_gemini_takeover_env_fields_if_present, CircuitBreakerConfig,
     LiveTokenProviderSettingsIssue, ProxyConfig, ProxyRuntimeStatus, ProxyServerInfo,
@@ -69,63 +68,6 @@ impl ProxyService {
         }
     }
 
-    #[cfg(test)]
-    fn apply_claude_takeover_fields(config: &mut Value, proxy_url: &str) {
-        Self::apply_claude_takeover_fields_with_policy(
-            config,
-            proxy_url,
-            ClaudeTakeoverAuthPolicy::PreserveExistingOrAuthToken,
-        );
-    }
-
-    fn apply_claude_takeover_fields_for_provider(
-        config: &mut Value,
-        proxy_url: &str,
-        provider: &Provider,
-    ) {
-        let auth_policy = if provider_uses_managed_account_auth(provider) {
-            // Codex 系（含仅凭 base_url 识别、无 provider_type meta 的）必须保留
-            // ANTHROPIC_AUTH_TOKEN 占位符：Claude Code 缺该键会弹登录提示（#3784）。
-            // Copilot 维持仅 API_KEY 占位，避免与 /login 管理的 key 冲突（#1049）。
-            ClaudeTakeoverAuthPolicy::ManagedAccount {
-                keep_auth_token: !provider_is_github_copilot(provider),
-            }
-        } else {
-            ClaudeTakeoverAuthPolicy::PreserveExistingOrAuthToken
-        };
-        // Copilot/Codex 接管时 live config 可能还是旧供应商；显示模型必须跟随目标 provider。
-        let takeover_model_fields = if provider_uses_managed_account_auth(provider) {
-            provider_claude_takeover_model_fields(provider)
-        } else {
-            claude_takeover_model_fields_from_settings(config)
-        };
-
-        apply_claude_takeover_fields_with_policy_and_models(
-            config,
-            proxy_url,
-            PROXY_TOKEN_PLACEHOLDER,
-            auth_policy,
-            takeover_model_fields,
-        );
-    }
-
-    fn apply_claude_takeover_fields_with_policy(
-        config: &mut Value,
-        proxy_url: &str,
-        auth_policy: ClaudeTakeoverAuthPolicy,
-    ) {
-        // 必须在 remove/insert 前 snapshot：避免读到自己刚写入的接管别名。
-        let takeover_model_fields = claude_takeover_model_fields_from_settings(config);
-
-        apply_claude_takeover_fields_with_policy_and_models(
-            config,
-            proxy_url,
-            PROXY_TOKEN_PLACEHOLDER,
-            auth_policy,
-            takeover_model_fields,
-        );
-    }
-
     fn claude_provider_with_effective_settings(
         &self,
         provider: &Provider,
@@ -148,9 +90,10 @@ impl ProxyService {
         let mut effective_settings = effective_provider.settings_config.clone();
         let (proxy_url, _) = self.build_proxy_urls().await?;
 
-        Self::apply_claude_takeover_fields_for_provider(
+        apply_claude_takeover_fields_for_provider(
             &mut effective_settings,
             &proxy_url,
+            PROXY_TOKEN_PLACEHOLDER,
             &effective_provider,
         );
         self.write_claude_live(&effective_settings)?;
@@ -1031,9 +974,10 @@ impl ProxyService {
         if let Ok(mut live_config) = self.read_claude_live() {
             let claude_provider = self.require_current_provider_for_app(&AppType::Claude)?;
             let claude_provider = self.claude_provider_with_effective_settings(&claude_provider)?;
-            Self::apply_claude_takeover_fields_for_provider(
+            apply_claude_takeover_fields_for_provider(
                 &mut live_config,
                 &proxy_url,
+                PROXY_TOKEN_PLACEHOLDER,
                 &claude_provider,
             );
             self.write_claude_live(&live_config)?;
@@ -1093,9 +1037,10 @@ impl ProxyService {
                 let claude_provider = self.require_current_provider_for_app(&AppType::Claude)?;
                 let claude_provider =
                     self.claude_provider_with_effective_settings(&claude_provider)?;
-                Self::apply_claude_takeover_fields_for_provider(
+                apply_claude_takeover_fields_for_provider(
                     &mut live_config,
                     &proxy_url,
+                    PROXY_TOKEN_PLACEHOLDER,
                     &claude_provider,
                 );
                 self.write_claude_live(&live_config)?;
@@ -1156,15 +1101,17 @@ impl ProxyService {
                         .flatten();
                     if let Some(provider) = claude_provider.as_ref() {
                         let provider = self.claude_provider_with_effective_settings(provider)?;
-                        Self::apply_claude_takeover_fields_for_provider(
+                        apply_claude_takeover_fields_for_provider(
                             &mut live_config,
                             &proxy_url,
+                            PROXY_TOKEN_PLACEHOLDER,
                             &provider,
                         );
                     } else {
-                        Self::apply_claude_takeover_fields_with_policy(
+                        apply_claude_takeover_fields_with_policy(
                             &mut live_config,
                             &proxy_url,
+                            PROXY_TOKEN_PLACEHOLDER,
                             ClaudeTakeoverAuthPolicy::PreserveExistingOrAuthToken,
                         );
                     }
@@ -2195,9 +2142,10 @@ mod tests {
         });
 
         let mut live_config = provider.settings_config.clone();
-        ProxyService::apply_claude_takeover_fields_for_provider(
+        apply_claude_takeover_fields_for_provider(
             &mut live_config,
             "http://127.0.0.1:15721",
+            PROXY_TOKEN_PLACEHOLDER,
             &provider,
         );
 
@@ -2250,9 +2198,10 @@ mod tests {
                 "ANTHROPIC_DEFAULT_OPUS_MODEL_NAME": "Stale Opus"
             }
         });
-        ProxyService::apply_claude_takeover_fields_for_provider(
+        apply_claude_takeover_fields_for_provider(
             &mut live_config,
             "http://127.0.0.1:15721",
+            PROXY_TOKEN_PLACEHOLDER,
             &provider,
         );
 
@@ -2325,9 +2274,10 @@ mod tests {
                 "ANTHROPIC_DEFAULT_OPUS_MODEL_NAME": "Stale Opus"
             }
         });
-        ProxyService::apply_claude_takeover_fields_for_provider(
+        apply_claude_takeover_fields_for_provider(
             &mut live_config,
             "http://127.0.0.1:15721",
+            PROXY_TOKEN_PLACEHOLDER,
             &provider,
         );
 
@@ -2377,9 +2327,10 @@ mod tests {
 
         // 全新安装/热切换形态：传入的 env 没有任何 token 键。
         let mut live_config = provider.settings_config.clone();
-        ProxyService::apply_claude_takeover_fields_for_provider(
+        apply_claude_takeover_fields_for_provider(
             &mut live_config,
             "http://127.0.0.1:15721",
+            PROXY_TOKEN_PLACEHOLDER,
             &provider,
         );
 
@@ -2413,9 +2364,10 @@ mod tests {
         ));
 
         let mut live_config = provider.settings_config.clone();
-        ProxyService::apply_claude_takeover_fields_for_provider(
+        apply_claude_takeover_fields_for_provider(
             &mut live_config,
             "http://127.0.0.1:15721",
+            PROXY_TOKEN_PLACEHOLDER,
             &provider,
         );
 
@@ -2450,9 +2402,10 @@ mod tests {
                 "ANTHROPIC_AUTH_TOKEN": "stale-token"
             }
         });
-        ProxyService::apply_claude_takeover_fields_for_provider(
+        apply_claude_takeover_fields_for_provider(
             &mut live_config,
             "http://127.0.0.1:15721",
+            PROXY_TOKEN_PLACEHOLDER,
             &provider,
         );
 
@@ -2473,7 +2426,12 @@ mod tests {
             }
         });
 
-        ProxyService::apply_claude_takeover_fields(&mut live_config, "http://127.0.0.1:15721");
+        apply_claude_takeover_fields_with_policy(
+            &mut live_config,
+            "http://127.0.0.1:15721",
+            PROXY_TOKEN_PLACEHOLDER,
+            ClaudeTakeoverAuthPolicy::PreserveExistingOrAuthToken,
+        );
 
         assert_eq!(
             live_config
