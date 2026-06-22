@@ -2293,6 +2293,20 @@ pub(crate) fn build_server_stopped_event_payload() -> Value {
     crate::proxy_core::api::events::build_server_stopped_event_payload()
 }
 
+pub(crate) fn server_started_event_message(address: &str, port: u16) -> ProxyEventBusMessage {
+    ProxyEventBusMessage {
+        event_name: SERVER_STARTED_EVENT.to_string(),
+        payload: build_server_started_event_payload(address, port),
+    }
+}
+
+pub(crate) fn server_stopped_event_message() -> ProxyEventBusMessage {
+    ProxyEventBusMessage {
+        event_name: SERVER_STOPPED_EVENT.to_string(),
+        payload: build_server_stopped_event_payload(),
+    }
+}
+
 pub(crate) fn proxy_event_envelope_to_sse_spec(
     event: &ProxyEventEnvelope,
 ) -> ProxyEventSseSpec {
@@ -8549,6 +8563,15 @@ mod tests {
             json!({"address": "127.0.0.1", "port": 15721})
         );
         assert!(build_server_stopped_event_payload()
+            .as_object()
+            .is_some_and(|object| object.is_empty()));
+        let server_started = server_started_event_message("127.0.0.1", 15721);
+        assert_eq!(server_started.event_name, "server_started");
+        assert_eq!(server_started.payload, json!({"address": "127.0.0.1", "port": 15721}));
+        let server_stopped = server_stopped_event_message();
+        assert_eq!(server_stopped.event_name, "server_stopped");
+        assert!(server_stopped
+            .payload
             .as_object()
             .is_some_and(|object| object.is_empty()));
 

@@ -15,13 +15,12 @@ use super::{
 use crate::database::Database;
 use crate::proxy_core_adapter::{
     apply_proxy_runtime_active_targets, apply_proxy_runtime_uptime,
-    build_server_started_event_payload, build_server_stopped_event_payload,
     current_route_target_from_provider, proxy_engine_from_services,
     proxy_server_info_from_parts, record_proxy_server_started_status,
     record_proxy_server_stopped_status,
+    server_started_event_message, server_stopped_event_message,
     server_log_codes as log_srv, CircuitBreakerConfig, CurrentRouteTarget, GeminiShadowStore,
-    ProxyConfig, ProxyEngine, ProxyRuntimeStatus, ProxyServerInfo, SERVER_STARTED_EVENT,
-    SERVER_STOPPED_EVENT,
+    ProxyConfig, ProxyEngine, ProxyRuntimeStatus, ProxyServerInfo,
 };
 use crate::proxy_core_host::{CcSwitchProxyRuntime, CcSwitchProxyServices};
 use axum::{
@@ -157,10 +156,9 @@ impl ProxyServer {
         let actual_port = local_addr.port();
 
         log::info!("[{}] 代理服务器启动于 {local_addr}", log_srv::STARTED);
-        self.state.events.emit(
-            SERVER_STARTED_EVENT,
-            build_server_started_event_payload(&local_addr.ip().to_string(), actual_port),
-        );
+        let message =
+            server_started_event_message(&local_addr.ip().to_string(), actual_port);
+        self.state.events.emit(message.event_name, message.payload);
 
         // 更新全局代理端口，用于系统代理检测
         crate::proxy::http_client::set_proxy_port(actual_port);
@@ -259,9 +257,8 @@ impl ProxyServer {
                 record_proxy_server_stopped_status(&mut status);
             }
             *state.start_time.write().await = None;
-            state
-                .events
-                .emit(SERVER_STOPPED_EVENT, build_server_stopped_event_payload());
+            let message = server_stopped_event_message();
+            state.events.emit(message.event_name, message.payload);
         });
 
         // 保存服务器任务句柄
