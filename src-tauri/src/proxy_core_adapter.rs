@@ -907,6 +907,28 @@ pub(crate) fn provider_hermes_stream_check_base_url(provider: &Provider) -> Opti
     extract_hermes_stream_check_base_url(&provider.settings_config)
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum HermesLiveImportIssue {
+    EmptyName,
+}
+
+pub(crate) fn provider_from_hermes_live_config(
+    name: &str,
+    config: Value,
+) -> Result<Provider, HermesLiveImportIssue> {
+    if name.trim().is_empty() {
+        return Err(HermesLiveImportIssue::EmptyName);
+    }
+
+    let mut provider = Provider::with_id(name.to_string(), name.to_string(), config, None);
+    provider.meta = Some(ProviderMeta {
+        live_config_managed: Some(true),
+        ..Default::default()
+    });
+
+    Ok(provider)
+}
+
 pub(crate) fn extract_opencode_stream_check_npm(settings_config: &Value) -> Option<String> {
     crate::proxy_core::api::domain::extract_opencode_stream_check_npm(settings_config)
 }
@@ -11554,6 +11576,34 @@ command = "latest-command"
                 reachability_status.as_str()
             );
         }
+    }
+
+    #[test]
+    fn hermes_live_import_adapter_projects_provider_settings() {
+        let settings = json!({
+            "apiKey": "sk-hermes",
+            "baseUrl": "https://hermes.example",
+            "models": {
+                "fast": "claude-sonnet"
+            }
+        });
+        let imported_provider =
+            provider_from_hermes_live_config("hermes-provider", settings.clone())
+                .expect("import provider");
+        assert_eq!(imported_provider.id, "hermes-provider");
+        assert_eq!(imported_provider.name, "hermes-provider");
+        assert_eq!(imported_provider.settings_config, settings);
+        assert_eq!(
+            imported_provider
+                .meta
+                .as_ref()
+                .and_then(|meta| meta.live_config_managed),
+            Some(true)
+        );
+        assert!(matches!(
+            provider_from_hermes_live_config("   ", json!({})),
+            Err(HermesLiveImportIssue::EmptyName)
+        ));
     }
 
     #[test]

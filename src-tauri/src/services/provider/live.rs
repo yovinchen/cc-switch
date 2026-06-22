@@ -23,10 +23,11 @@ use crate::proxy_core_adapter::{
     OpenCodeLiveWriteConfig,
     ProviderBackfillSettingsWarning, ProviderEffectiveSettingsWarning,
     provider_common_config_storage_normalization_requires_snippet,
-    provider_gemini_env_map, provider_gemini_live_config_object,
-    provider_from_openclaw_live_config, provider_from_opencode_live_config,
-    provider_opencode_live_write_plan, provider_openclaw_live_write_plan,
-    OpenClawLiveImportIssue, OpenCodeLiveImportIssue,
+    provider_from_hermes_live_config, provider_from_openclaw_live_config,
+    provider_from_opencode_live_config, provider_gemini_env_map,
+    provider_gemini_live_config_object, provider_opencode_live_write_plan,
+    provider_openclaw_live_write_plan, HermesLiveImportIssue, OpenClawLiveImportIssue,
+    OpenCodeLiveImportIssue,
     proxy_live_config_owned_by_takeover,
     restore_live_settings_for_provider_backfill as adapter_restore_live_settings_for_provider_backfill,
     sanitize_claude_settings_for_live,
@@ -1058,24 +1059,19 @@ pub fn import_hermes_providers_from_live(state: &AppState) -> Result<usize, AppE
     let existing_ids = state.db.get_provider_ids("hermes")?;
 
     for (name, config) in providers {
-        // Validate: skip entries with empty name
-        if name.trim().is_empty() {
-            log::warn!("Skipping Hermes provider with empty name");
-            continue;
-        }
+        let provider = match provider_from_hermes_live_config(&name, config) {
+            Ok(provider) => provider,
+            Err(HermesLiveImportIssue::EmptyName) => {
+                log::warn!("Skipping Hermes provider with empty name");
+                continue;
+            }
+        };
 
         // Skip if already exists in database
         if existing_ids.contains(&name) {
             log::debug!("Hermes provider '{name}' already exists in database, skipping");
             continue;
         }
-
-        // Create provider
-        let mut provider = Provider::with_id(name.clone(), name.clone(), config, None);
-        provider.meta = Some(crate::provider::ProviderMeta {
-            live_config_managed: Some(true),
-            ..Default::default()
-        });
 
         // Save to database
         if let Err(e) = state.db.save_provider("hermes", &provider) {
