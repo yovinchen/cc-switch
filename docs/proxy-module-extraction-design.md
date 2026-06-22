@@ -962,6 +962,7 @@
 本轮继续把 ProviderRouter 的 failover 候选选择结果组装收敛到 adapter，router 只负责读取 failover queue、provider map 和 circuit breaker 可用性，不再直接构造 `ProviderSelectionInput` 或调用 `select_provider_ids`。
 本轮继续把 ProviderRouter 的 auto-failover 配置读取结果决策收敛到 adapter，router 只负责读取 proxy_config，读取失败时的日志和默认禁用故障转移策略由 adapter 维护。
 本轮继续把 ProviderRouter 的 circuit breaker config 与 failure threshold 配置读取结果 fallback 收敛到 adapter，router 只负责读取 proxy_config 并管理 breaker 实例生命周期。
+本轮继续把 ProviderRouter 的 dry-run route circuit availability 到 rejected:circuit_open response mutation 收敛到 adapter，router 只负责按候选 circuit key 查询 breaker 可用性。
 
 当前原则：核心 crate 可以新增端口和领域字段，但不得引入 `tauri`、`Database`、settings、commands、services 等宿主依赖；现有 runtime 行为必须继续通过 targeted tests 证明不回归。
 
@@ -1723,7 +1724,7 @@ Channel 管理 API 的部分 contract 也已开始收敛到 core：`management_a
 
 materialized channel 优先、空表才 fallback 到 legacy projection 的 source 选择规则已由 `channel_route_source_for_materialized_count` 固化，并经 `proxy_core_adapter::channel_route_records_from_sources` 包装为 host record/source 选择入口；`ProviderRouter` 只读取 materialized records，并提供 lazy legacy preview loader。
 
-dry-run route 的 circuit-open 识别也开始收敛：`route_candidate_channel_circuit_keys` 负责把 `RouteResolveResponse` 的候选投影成 channel circuit lookup facts，`ProviderRouter` 只查询已有 breaker 可用性并把不可用 channel id 交回 `reject_unavailable_channel_ids`。
+dry-run route 的 circuit-open 识别也继续收敛：`route_candidate_channel_circuit_keys` 负责把 `RouteResolveResponse` 的候选投影成 channel circuit lookup facts，`ProviderRouter` 只查询已有 breaker 可用性并把 availability facts 交给 `proxy_core_adapter::apply_route_candidate_circuit_availability`，由 adapter/core 生成 rejected:circuit_open response mutation。
 
 provider failover 的 circuit lookup 也已开始收敛：`provider_failover_circuit_lookups` 负责保留 failover queue 顺序、标记 missing provider 并生成已配置 provider 的 circuit key；`ProviderRouter` 只读取 DB provider facts 与 breaker 可用性，再把 lookup 投影为 `ProviderSelectionCandidate` 交回 core selection 策略。
 

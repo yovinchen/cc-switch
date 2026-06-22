@@ -4829,6 +4829,18 @@ pub(crate) fn route_candidate_channel_circuit_keys(
     crate::proxy_core::api::routing::route_candidate_channel_circuit_keys(response)
 }
 
+pub(crate) fn apply_route_candidate_circuit_availability<I>(
+    response: &mut RouteResolveResponse,
+    availability: I,
+) where
+    I: IntoIterator<Item = (RouteCandidateCircuitKey, bool)>,
+{
+    let unavailable_channel_ids = availability
+        .into_iter()
+        .filter_map(|(lookup, available)| (!available).then_some(lookup.channel_id));
+    reject_unavailable_channel_ids(response, unavailable_channel_ids);
+}
+
 pub(crate) fn stable_channel_id(
     app_type: &str,
     provider_id: &str,
@@ -9332,7 +9344,14 @@ mod tests {
         .expect("route response");
         assert_eq!(response.candidates.len(), 1);
 
-        reject_unavailable_channel_ids(&mut response, ["channel-a"]);
+        let circuit_lookups = route_candidate_channel_circuit_keys(&response);
+        assert_eq!(circuit_lookups.len(), 1);
+        assert_eq!(circuit_lookups[0].channel_id, "channel-a");
+        assert_eq!(circuit_lookups[0].circuit_key, "channel:claude:channel-a");
+        apply_route_candidate_circuit_availability(
+            &mut response,
+            [(circuit_lookups[0].clone(), false)],
+        );
         assert!(response.candidates.is_empty());
         assert_eq!(response.rejected.len(), 1);
         assert_eq!(response.rejected[0].reasons, vec!["circuit_open"]);

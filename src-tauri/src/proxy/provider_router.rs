@@ -9,15 +9,15 @@ use crate::proxy::circuit_breaker::CircuitBreaker;
 use crate::proxy_core_adapter::{
     app_error_from_proxy_core_error, app_type_from_circuit_key, channel_circuit_key,
     channel_circuit_key_prefix, channel_route_records_from_sources,
-    auto_failover_enabled_from_router_config_result,
+    apply_route_candidate_circuit_availability, auto_failover_enabled_from_router_config_result,
     circuit_breaker_config_from_router_config_result,
     circuit_failure_threshold_from_router_config_result, current_provider_id_from_router_sources,
     provider_circuit_key, provider_circuit_key_prefix, provider_failover_circuit_lookups,
     provider_selection_candidate_from_failover_lookup, proxy_channel_route_inputs_to_core,
-    reject_unavailable_channel_ids, resolve_channel_route as resolve_core_channel_route,
-    route_candidate_channel_circuit_keys, select_current_provider_from_router_source,
-    select_failover_providers_from_router_candidates, AllowResult, ChannelRouteSource,
-    CircuitBreakerConfig, CircuitBreakerStats, RouteResolveRequest, RouteResolveResponse,
+    resolve_channel_route as resolve_core_channel_route, route_candidate_channel_circuit_keys,
+    select_current_provider_from_router_source, select_failover_providers_from_router_candidates,
+    AllowResult, ChannelRouteSource, CircuitBreakerConfig, CircuitBreakerStats,
+    RouteCandidateCircuitKey, RouteResolveRequest, RouteResolveResponse,
 };
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -147,29 +147,26 @@ impl ProviderRouter {
             source,
         )
         .map_err(app_error_from_proxy_core_error)?;
-        let unavailable_channel_ids = self.unavailable_route_candidate_ids(&response).await;
-        reject_unavailable_channel_ids(&mut response, unavailable_channel_ids);
+        let availability = self.route_candidate_circuit_availability(&response).await;
+        apply_route_candidate_circuit_availability(&mut response, availability);
         Ok(response)
     }
 
-    async fn unavailable_route_candidate_ids(
+    async fn route_candidate_circuit_availability(
         &self,
         response: &RouteResolveResponse,
-    ) -> Vec<String> {
-        let mut unavailable_channel_ids = Vec::new();
+    ) -> Vec<(RouteCandidateCircuitKey, bool)> {
+        let mut availability = Vec::new();
 
         for lookup in route_candidate_channel_circuit_keys(response) {
             let is_available = match self.get_existing_circuit_breaker(&lookup.circuit_key).await {
                 Some(breaker) => breaker.is_available().await,
                 None => true,
             };
-
-            if !is_available {
-                unavailable_channel_ids.push(lookup.channel_id);
-            }
+            availability.push((lookup, is_available));
         }
 
-        unavailable_channel_ids
+        availability
     }
 
     /// 请求执行前获取熔断器“放行许可”
