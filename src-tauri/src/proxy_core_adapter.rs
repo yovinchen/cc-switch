@@ -2852,6 +2852,15 @@ pub(crate) fn emit_proxy_core_event(
     emit(message.event_name, message.payload);
 }
 
+pub(crate) fn emit_proxy_core_event_bus_source(
+    events: &ProxyEventBus,
+    event: ProxyCoreEvent,
+) {
+    emit_proxy_core_event(event, |event_name, payload| {
+        events.emit(event_name, payload);
+    });
+}
+
 pub(crate) fn proxy_engine_from_services<S>(services: Arc<S>) -> ProxyEngine<S>
 where
     S: ProxyServices + ?Sized,

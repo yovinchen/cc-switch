@@ -47,7 +47,7 @@ use crate::proxy_core_adapter::{
     probe_channel_reachability_from_db_source,
     proxy_app_config_from_db_source, proxy_global_config_from_db_source,
     record_channel_attempt_in_db_source,
-    emit_proxy_core_event,
+    emit_proxy_core_event_bus_source,
     management_route_response_from_router_source,
     materialized_channel_records_from_db_source,
     proxy_runtime_config_from_db_source,
@@ -593,9 +593,7 @@ impl ProxyEventSink for CcSwitchEventSink {
     fn emit_event<'a>(&'a self, event: ProxyCoreEvent) -> BoxFuture<'a, ProxyCoreResult<()>> {
         Box::pin(async move {
             if let Some(events) = self.events.as_ref() {
-                emit_proxy_core_event(event, |event_name, payload| {
-                    events.emit(event_name, payload);
-                });
+                emit_proxy_core_event_bus_source(events.as_ref(), event);
             }
             Ok(())
         })

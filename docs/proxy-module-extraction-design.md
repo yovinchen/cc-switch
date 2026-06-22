@@ -975,6 +975,7 @@
 本轮继续把 ChannelSource 的 channel 列表/单条投影收敛到 adapter，host ChannelSource 只保留 DB/router channel 查询。
 本轮也把 ChannelHealthStore 的 attempt 写库参数投影收敛到 adapter，host health store 只保留 DB 写入调用。
 本轮继续把 `ProxyCoreEvent` 到 host event bus 的 name/payload 投影收敛到 adapter，host event sink 只负责 emit。
+本轮继续把 `CcSwitchEventSink` 的 `ProxyEventBus` 分发副作用收敛到 adapter source wrapper，host event sink 只保留 optional event bus 判断。
 本轮还把 RoutePolicySource 的 failover queue 到 optional route policy 包装收敛到 adapter，host route policy source 只保留 DB 查询。
 本轮继续把 ChannelHealthStore reset 的 app lookup 校验和 reset fact 投影收敛到 adapter，host health store 只负责查询 app 并调用 router reset。
 本轮继续把 response processor 的 provider/app usage facts 投影收敛到 adapter，response processor 不再直接调用 provider kind 或 app kind 投影 helper。
