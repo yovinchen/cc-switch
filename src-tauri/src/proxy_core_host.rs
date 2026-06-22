@@ -13,13 +13,14 @@ use crate::proxy_core_adapter::{
     ChannelMigrationMaterializeInput, ChannelMigrationPreviewInput, ChannelQuery, ChannelRecord,
     ChannelReachabilityProbe, ChannelReachabilityResult, ChannelRouteSource, ChannelSource,
     ChannelSpec, ChannelTestProbeRequest, ClaudeDesktopModelRouteInput, CurrentRouteTarget,
-    ForwardPipeline, ForwarderRuntimeHostResources, GeminiShadowStore, ModelCatalog,
-    ModelCatalogProvider, ProviderSource, ProviderSpec, ProxyAppConfig, ProxyChannelKeyPatchRequest,
-    ProxyChannelKeyWriteRequest, ProxyChannelModelsReplaceRequest, ProxyChannelPatchRequest,
-    ProxyChannelWriteRequest, ProxyConfigSource, ProxyCoreEvent, ProxyCoreResult, ProxyEventSink,
-    ProxyGlobalConfig, ProxyRequest, ProxyResult, ProxyRuntimeConfig, ProxyRuntimeStatus,
-    ProxyServices, RoutePlan, RoutePolicy, RoutePolicySource, RouteRequest, RouteResolveRequest,
-    RouteResolveResponse, RouteResolver, UsageRecord, UsageSink,
+    ForwardPipeline, ForwarderRuntimeHostResources, GeminiShadowStore, HostForwardRuntime,
+    ModelCatalog, ModelCatalogProvider, ProviderSource, ProviderSpec, ProxyAppConfig,
+    ProxyChannelKeyPatchRequest, ProxyChannelKeyWriteRequest, ProxyChannelModelsReplaceRequest,
+    ProxyChannelPatchRequest, ProxyChannelWriteRequest, ProxyConfigSource, ProxyCoreEvent,
+    ProxyCoreResult, ProxyEventSink, ProxyGlobalConfig, ProxyRequest, ProxyResult,
+    ProxyRuntimeConfig, ProxyRuntimeStatus, ProxyServices, RoutePlan, RoutePolicy,
+    RoutePolicySource, RouteRequest, RouteResolveRequest, RouteResolveResponse, RouteResolver,
+    UsageRecord, UsageSink,
 };
 use crate::proxy_core_adapter::{
     active_route_target_from_runtime_source,
@@ -41,7 +42,7 @@ use crate::proxy_core_adapter::{
     delete_channel_record_from_db_source,
     delete_channel_key_record_from_db_source,
     forward_proxy_request_with_host_runtime,
-    forwarding_runtime_unavailable_error,
+    forward_with_optional_host_runtime,
     provider_model_catalog_from_db_source, provider_spec_from_db_source,
     provider_specs_from_db_source,
     probe_channel_reachability_from_db_source,
@@ -619,12 +620,24 @@ impl ForwardPipeline for CcSwitchForwardPipeline {
         request: ProxyRequest,
         plan: RoutePlan,
     ) -> BoxFuture<'a, ProxyCoreResult<ProxyResult>> {
+        forward_with_optional_host_runtime(self.runtime.as_ref(), request, plan)
+    }
+}
+
+impl HostForwardRuntime for CcSwitchProxyRuntime {
+    fn forward_host<'a>(
+        &'a self,
+        request: ProxyRequest,
+        plan: RoutePlan,
+    ) -> BoxFuture<'a, ProxyCoreResult<ProxyResult>> {
         Box::pin(async move {
-            let runtime = self
-                .runtime
-                .as_ref()
-                .ok_or_else(forwarding_runtime_unavailable_error)?;
-            runtime.forward(request, plan).await
+            forward_proxy_request_with_host_runtime(
+                &self.db,
+                self.forwarder_runtime_host_resources(),
+                request,
+                plan,
+            )
+            .await
         })
     }
 }
@@ -641,20 +654,6 @@ impl CcSwitchProxyRuntime {
             failover_manager: self.failover_manager.clone(),
             app_handle: self.app_handle.clone(),
         }
-    }
-
-    async fn forward(
-        &self,
-        request: ProxyRequest,
-        plan: RoutePlan,
-    ) -> ProxyCoreResult<ProxyResult> {
-        forward_proxy_request_with_host_runtime(
-            &self.db,
-            self.forwarder_runtime_host_resources(),
-            request,
-            plan,
-        )
-        .await
     }
 }
 

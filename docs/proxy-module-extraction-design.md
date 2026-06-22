@@ -894,6 +894,7 @@
 本轮还把 client model catalog 的 app source 选择收敛到 adapter，host ModelCatalogProvider 只保留 port 调用。
 本轮继续把 usage sink 的计费配置 lookup 输入收敛到 adapter，host 不再直接拆 `UsageRecord` 的 app/provider 字段。
 本轮还把 core event 到 host event bus 的投影+分发入口收敛到 adapter，host event sink 只保留事件总线副作用。
+本轮继续把 `CcSwitchForwardPipeline` 的 runtime 缺失判断和 host forward runtime 调度收敛到 adapter wrapper，host forward pipeline 只保留 `ForwardPipeline` port 委托。
 本轮继续把 forward runtime 的 route plan attempt 构造入口收敛到 adapter；auth profile 的 DB key 注入 wrapper 也已收敛到 adapter，host forward runtime 只调用统一 helper。
 本轮还把 forward runtime 的 auth profile action 应用循环收敛到 adapter，host 不再维护 channel-key DB lookup 闭包。
 本轮继续把 forward runtime 的 current-provider 来源组合收敛到 adapter，host forward runtime 不再读取 settings 或手写 DB fallback 闭包。

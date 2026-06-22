@@ -211,6 +211,13 @@ const FORBIDDEN_PROXY_CORE_HOST_FORWARD_ATTEMPT_SOURCE_MARKERS: &[&str] = &[
     "required_forward_attempts_from_db_sources(",
     "apply_channel_auth_profile_providers_from_db(",
 ];
+const FORBIDDEN_PROXY_CORE_HOST_FORWARD_PIPELINE_RUNTIME_MARKERS: &[&str] = &[
+    "Box::pin(async move",
+    "forwarding_runtime_unavailable_error(",
+    ".ok_or_else(",
+    ".forward(request, plan)",
+    "runtime.forward(",
+];
 const FORBIDDEN_PROXY_CORE_HOST_FORWARDER_LAUNCH_MARKERS: &[&str] = &[
     "RequestForwarder::new_preplanned(",
     ".forward_with_preplanned_attempts(",
@@ -2003,14 +2010,46 @@ fn production_proxy_core_host_delegates_auth_profile_db_injection_to_adapter() {
 }
 
 #[test]
+fn production_proxy_core_host_delegates_forward_pipeline_to_adapter() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let path = manifest_dir.join("src/proxy_core_host.rs");
+    let source = fs::read_to_string(&path).expect("read proxy_core_host.rs");
+    let forward_pipeline = function_slice(
+        &source,
+        "impl ForwardPipeline for CcSwitchForwardPipeline",
+        "impl HostForwardRuntime for CcSwitchProxyRuntime",
+    );
+
+    let mut violations = Vec::new();
+    for (line_index, line) in production_lines(forward_pipeline) {
+        let code = line.split("//").next().unwrap_or_default();
+        for marker in FORBIDDEN_PROXY_CORE_HOST_FORWARD_PIPELINE_RUNTIME_MARKERS {
+            if code.contains(marker) {
+                violations.push(format!(
+                    "src/proxy_core_host.rs CcSwitchForwardPipeline:{} contains forward runtime marker `{}`",
+                    line_index + 1,
+                    marker
+                ));
+            }
+        }
+    }
+
+    assert!(
+        violations.is_empty(),
+        "production proxy_core_host must delegate ForwardPipeline runtime selection/dispatch to proxy_core_adapter:\n{}",
+        violations.join("\n")
+    );
+}
+
+#[test]
 fn production_proxy_core_host_delegates_forward_current_provider_source_to_adapter() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let path = manifest_dir.join("src/proxy_core_host.rs");
     let source = fs::read_to_string(&path).expect("read proxy_core_host.rs");
     let forward_source = function_slice(
         &source,
-        "    async fn forward(",
-        "\n}\n\n#[cfg(test)]",
+        "impl HostForwardRuntime for CcSwitchProxyRuntime",
+        "impl CcSwitchProxyRuntime",
     );
 
     let mut violations = Vec::new();
@@ -2019,7 +2058,7 @@ fn production_proxy_core_host_delegates_forward_current_provider_source_to_adapt
         for marker in FORBIDDEN_PROXY_CORE_HOST_FORWARD_CURRENT_PROVIDER_MARKERS {
             if code.contains(marker) {
                 violations.push(format!(
-                    "src/proxy_core_host.rs CcSwitchProxyRuntime::forward:{} contains current-provider source marker `{}`",
+                    "src/proxy_core_host.rs CcSwitchProxyRuntime::forward_host:{} contains current-provider source marker `{}`",
                     line_index + 1,
                     marker
                 ));
@@ -2041,8 +2080,8 @@ fn production_proxy_core_host_delegates_forward_runtime_config_source_to_adapter
     let source = fs::read_to_string(&path).expect("read proxy_core_host.rs");
     let forward_source = function_slice(
         &source,
-        "    async fn forward(",
-        "\n}\n\n#[cfg(test)]",
+        "impl HostForwardRuntime for CcSwitchProxyRuntime",
+        "impl CcSwitchProxyRuntime",
     );
 
     let mut violations = Vec::new();
@@ -2051,7 +2090,7 @@ fn production_proxy_core_host_delegates_forward_runtime_config_source_to_adapter
         for marker in FORBIDDEN_PROXY_CORE_HOST_FORWARD_CONFIG_SOURCE_MARKERS {
             if code.contains(marker) {
                 violations.push(format!(
-                    "src/proxy_core_host.rs CcSwitchProxyRuntime::forward:{} contains forward runtime config source marker `{}`",
+                    "src/proxy_core_host.rs CcSwitchProxyRuntime::forward_host:{} contains forward runtime config source marker `{}`",
                     line_index + 1,
                     marker
                 ));
@@ -2073,8 +2112,8 @@ fn production_proxy_core_host_delegates_forward_attempt_source_to_adapter() {
     let source = fs::read_to_string(&path).expect("read proxy_core_host.rs");
     let forward_source = function_slice(
         &source,
-        "    async fn forward(",
-        "\n}\n\n#[cfg(test)]",
+        "impl HostForwardRuntime for CcSwitchProxyRuntime",
+        "impl CcSwitchProxyRuntime",
     );
 
     let mut violations = Vec::new();
@@ -2083,7 +2122,7 @@ fn production_proxy_core_host_delegates_forward_attempt_source_to_adapter() {
         for marker in FORBIDDEN_PROXY_CORE_HOST_FORWARD_ATTEMPT_SOURCE_MARKERS {
             if code.contains(marker) {
                 violations.push(format!(
-                    "src/proxy_core_host.rs CcSwitchProxyRuntime::forward:{} contains forward attempt source marker `{}`",
+                    "src/proxy_core_host.rs CcSwitchProxyRuntime::forward_host:{} contains forward attempt source marker `{}`",
                     line_index + 1,
                     marker
                 ));

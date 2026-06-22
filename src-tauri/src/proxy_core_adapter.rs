@@ -35,7 +35,7 @@ use crate::proxy_core::api::session::SessionIdResult;
 use crate::proxy_core::api::transforms::CodexChatErrorNormalization;
 use crate::proxy_core::api::transport::{UpstreamRequestTransportPolicy, UpstreamSendPolicy};
 use bytes::Bytes;
-use futures::{Stream, StreamExt};
+use futures::{future::BoxFuture, Stream, StreamExt};
 use http::{HeaderMap, Method, StatusCode};
 use indexmap::IndexMap;
 use regex::Regex;
@@ -6360,6 +6360,28 @@ pub(crate) async fn forward_proxy_request_with_host_runtime(
         attempts,
     )
     .await
+}
+
+pub(crate) trait HostForwardRuntime {
+    fn forward_host<'a>(
+        &'a self,
+        request: ProxyRequest,
+        plan: RoutePlan,
+    ) -> BoxFuture<'a, ProxyCoreResult<ProxyResult>>;
+}
+
+pub(crate) fn forward_with_optional_host_runtime<'a, R>(
+    runtime: Option<&'a R>,
+    request: ProxyRequest,
+    plan: RoutePlan,
+) -> BoxFuture<'a, ProxyCoreResult<ProxyResult>>
+where
+    R: HostForwardRuntime + Sync + 'a,
+{
+    Box::pin(async move {
+        let runtime = runtime.ok_or_else(forwarding_runtime_unavailable_error)?;
+        runtime.forward_host(request, plan).await
+    })
 }
 
 pub(crate) fn forwarding_requires_runtime_error_message() -> &'static str {
