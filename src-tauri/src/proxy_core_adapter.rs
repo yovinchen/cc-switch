@@ -1210,6 +1210,20 @@ pub(crate) fn should_skip_startup_default_live_import(
     app_type.is_additive_mode() || has_any_provider
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum ProviderLiveSyncScope {
+    AllProviders,
+    CurrentProvider,
+}
+
+pub(crate) fn provider_live_sync_scope(app_type: &AppType) -> ProviderLiveSyncScope {
+    if app_type.is_additive_mode() {
+        ProviderLiveSyncScope::AllProviders
+    } else {
+        ProviderLiveSyncScope::CurrentProvider
+    }
+}
+
 /// Reads old Claude model keys, writes DEFAULT_* keys, and deletes legacy SMALL_FAST.
 pub(crate) fn normalize_claude_models_in_value(settings: &mut Value) -> bool {
     let mut changed = false;
@@ -12584,6 +12598,26 @@ command = "latest-command"
             &AppType::Claude,
             true
         ));
+    }
+
+    #[test]
+    fn provider_live_sync_scope_uses_all_only_for_additive_apps() {
+        assert_eq!(
+            provider_live_sync_scope(&AppType::OpenCode),
+            ProviderLiveSyncScope::AllProviders
+        );
+        assert_eq!(
+            provider_live_sync_scope(&AppType::OpenClaw),
+            ProviderLiveSyncScope::AllProviders
+        );
+        assert_eq!(
+            provider_live_sync_scope(&AppType::Claude),
+            ProviderLiveSyncScope::CurrentProvider
+        );
+        assert_eq!(
+            provider_live_sync_scope(&AppType::ClaudeDesktop),
+            ProviderLiveSyncScope::CurrentProvider
+        );
     }
 
     #[test]

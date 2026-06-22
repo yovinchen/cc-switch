@@ -28,8 +28,8 @@ use crate::proxy_core_adapter::{
     provider_from_hermes_live_config, provider_from_openclaw_live_config,
     provider_from_opencode_live_config, provider_gemini_env_map,
     provider_gemini_live_config_object, provider_opencode_live_write_projection,
-    provider_openclaw_live_write_projection, HermesLiveImportIssue, OpenClawLiveImportIssue,
-    OpenCodeLiveImportIssue,
+    provider_live_sync_scope, provider_openclaw_live_write_projection, HermesLiveImportIssue,
+    OpenClawLiveImportIssue, OpenCodeLiveImportIssue, ProviderLiveSyncScope,
     proxy_live_config_owned_by_takeover,
     restore_live_settings_for_provider_backfill as adapter_restore_live_settings_for_provider_backfill,
     sanitize_claude_settings_for_live,
@@ -482,18 +482,19 @@ pub(crate) fn sync_current_provider_for_app_to_live(
     state: &AppState,
     app_type: &AppType,
 ) -> Result<(), AppError> {
-    if app_type.is_additive_mode() {
-        sync_all_providers_to_live(state, app_type)?;
-    } else {
-        let current_id = match crate::settings::get_effective_current_provider(&state.db, app_type)?
-        {
-            Some(id) => id,
-            None => return Ok(()),
-        };
+    match provider_live_sync_scope(app_type) {
+        ProviderLiveSyncScope::AllProviders => sync_all_providers_to_live(state, app_type)?,
+        ProviderLiveSyncScope::CurrentProvider => {
+            let current_id =
+                match crate::settings::get_effective_current_provider(&state.db, app_type)? {
+                    Some(id) => id,
+                    None => return Ok(()),
+                };
 
-        let providers = state.db.get_all_providers(app_type.as_str())?;
-        if let Some(provider) = providers.get(&current_id) {
-            write_live_with_common_config(state.db.as_ref(), app_type, provider)?;
+            let providers = state.db.get_all_providers(app_type.as_str())?;
+            if let Some(provider) = providers.get(&current_id) {
+                write_live_with_common_config(state.db.as_ref(), app_type, provider)?;
+            }
         }
     }
 
@@ -554,14 +555,15 @@ fn sync_current_provider_for_app_respecting_takeover(
 pub fn sync_current_to_live(state: &AppState) -> Result<(), AppError> {
     // Sync providers based on mode
     for app_type in AppType::all() {
-        if app_type.is_additive_mode() {
+        match provider_live_sync_scope(&app_type) {
             // Additive mode: sync ALL providers
-            sync_all_providers_to_live(state, &app_type)?;
-        } else {
+            ProviderLiveSyncScope::AllProviders => sync_all_providers_to_live(state, &app_type)?,
             // Switch mode: sync only current provider. During proxy takeover,
             // update the restore backup instead of rewriting the taken-over
             // live file.
-            sync_current_provider_for_app_respecting_takeover(state, &app_type)?;
+            ProviderLiveSyncScope::CurrentProvider => {
+                sync_current_provider_for_app_respecting_takeover(state, &app_type)?;
+            }
         }
     }
 
