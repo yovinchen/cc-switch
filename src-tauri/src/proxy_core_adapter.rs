@@ -2206,11 +2206,10 @@ pub(crate) fn restore_live_settings_for_provider_backfill(
     // generated catalog file) that proxy takeover/restore cycles and Codex.app
     // config rewrites can drop. Prefer the DB provider's stored catalog so a
     // switch-away backfill never erases it.
-    if let Some(stored_catalog) = provider_model_catalog_raw_value(provider) {
-        if let Some(obj) = settings.as_object_mut() {
-            obj.insert("modelCatalog".to_string(), stored_catalog.clone());
-        }
-    }
+    settings = codex_live_settings_with_model_catalog(
+        settings,
+        provider_model_catalog_raw_value(provider).cloned(),
+    );
 
     ProviderBackfillSettingsResult { settings, warnings }
 }
@@ -4503,6 +4502,17 @@ pub(crate) fn provider_model_catalog_from_provider(
 
 pub(crate) fn provider_model_catalog_raw_value(provider: &Provider) -> Option<&Value> {
     provider.settings_config.get("modelCatalog")
+}
+
+pub(crate) fn codex_live_settings_with_model_catalog(
+    mut live_settings: Value,
+    model_catalog: Option<Value>,
+) -> Value {
+    if let (Some(root), Some(model_catalog)) = (live_settings.as_object_mut(), model_catalog) {
+        root.insert("modelCatalog".to_string(), model_catalog);
+    }
+
+    live_settings
 }
 
 pub(crate) fn attach_codex_model_catalog_from_provider(
@@ -10868,6 +10878,25 @@ command = "latest-command"
         let mut live_config = json!({"auth": {}, "config": ""});
         attach_codex_model_catalog_from_provider(&mut live_config, Some(&provider));
         assert_eq!(live_config.get("modelCatalog"), settings.get("modelCatalog"));
+        assert_eq!(
+            codex_live_settings_with_model_catalog(
+                json!({"auth": {}, "config": ""}),
+                settings.get("modelCatalog").cloned()
+            )
+            .get("modelCatalog"),
+            settings.get("modelCatalog")
+        );
+        assert_eq!(
+            codex_live_settings_with_model_catalog(json!({"auth": {}}), None),
+            json!({"auth": {}})
+        );
+        assert_eq!(
+            codex_live_settings_with_model_catalog(
+                json!("not-object"),
+                Some(json!({"models": []}))
+            ),
+            json!("not-object")
+        );
 
         let provider_without_catalog = Provider::with_id(
             "provider-b".to_string(),

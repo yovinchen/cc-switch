@@ -15,7 +15,8 @@ use crate::provider::Provider;
 use crate::proxy_core_adapter::{
     build_effective_settings_with_common_config as adapter_build_effective_settings_with_common_config,
     remove_common_config_from_settings as adapter_remove_common_config_from_settings,
-    gemini_live_settings_from_env_json_and_config, normalize_claude_models_in_value,
+    codex_live_settings_with_model_catalog, gemini_live_settings_from_env_json_and_config,
+    normalize_claude_models_in_value,
     normalize_provider_common_config_for_storage as adapter_normalize_provider_common_config_for_storage,
     provider_codex_live_snapshot_parts, provider_from_default_live_settings,
     CommonConfigSettingsMutationIssue,
@@ -599,20 +600,17 @@ pub fn sync_current_to_live(state: &AppState) -> Result<(), AppError> {
 pub fn read_live_settings(app_type: AppType) -> Result<Value, AppError> {
     match app_type {
         AppType::Codex => {
-            let mut result = crate::codex_config::read_codex_live_settings()?;
+            let result = crate::codex_config::read_codex_live_settings()?;
             // `modelCatalog` is a cc-switch private field that lives only in
             // the DB SSOT plus the `cc-switch-model-catalog.json` projection
             // file — it is never inlined into `auth.json` or `config.toml`.
             // Reverse-parse the projection so the edit form for the active
             // Codex provider doesn't see an empty mapping table.
-            if let Ok(Some(model_catalog)) =
+            let model_catalog =
                 crate::codex_config::read_codex_model_catalog_simplified_from_live()
-            {
-                if let Some(obj) = result.as_object_mut() {
-                    obj.insert("modelCatalog".to_string(), model_catalog);
-                }
-            }
-            Ok(result)
+                    .ok()
+                    .flatten();
+            Ok(codex_live_settings_with_model_catalog(result, model_catalog))
         }
         AppType::Claude => {
             let path = get_claude_settings_path();
