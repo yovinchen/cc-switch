@@ -1290,6 +1290,71 @@ pub(crate) enum ProviderCredentialIssue {
     OpenClawApiKeyMissing,
 }
 
+pub(crate) fn provider_credential_issue_spec(issue: ProviderCredentialIssue) -> LocalizedErrorSpec {
+    match issue {
+        ProviderCredentialIssue::ClaudeEnvMissing => LocalizedErrorSpec::new(
+            "provider.claude.env.missing",
+            "配置格式错误: 缺少 env",
+            "Invalid configuration: missing env section",
+        ),
+        ProviderCredentialIssue::ClaudeApiKeyMissing => LocalizedErrorSpec::new(
+            "provider.claude.api_key.missing",
+            "缺少 API Key",
+            "API key is missing",
+        ),
+        ProviderCredentialIssue::ClaudeBaseUrlMissing => LocalizedErrorSpec::new(
+            "provider.claude.base_url.missing",
+            "缺少 ANTHROPIC_BASE_URL 配置",
+            "Missing ANTHROPIC_BASE_URL configuration",
+        ),
+        ProviderCredentialIssue::ClaudeDesktopRequiresGateway => LocalizedErrorSpec::new(
+            "provider.claude_desktop.gateway.required",
+            "Claude Desktop 凭据必须通过 gateway 配置解析",
+            "Claude Desktop credentials must be resolved through gateway configuration",
+        ),
+        ProviderCredentialIssue::CodexAuthMissing => LocalizedErrorSpec::new(
+            "provider.codex.auth.missing",
+            "配置格式错误: 缺少 auth",
+            "Invalid configuration: missing auth section",
+        ),
+        ProviderCredentialIssue::CodexApiKeyMissing => LocalizedErrorSpec::new(
+            "provider.codex.api_key.missing",
+            "缺少 API Key",
+            "API key is missing",
+        ),
+        ProviderCredentialIssue::CodexBaseUrlMissing => LocalizedErrorSpec::new(
+            "provider.codex.base_url.missing",
+            "config.toml 中缺少 base_url 配置",
+            "base_url is missing from config.toml",
+        ),
+        ProviderCredentialIssue::CodexBaseUrlInvalid => LocalizedErrorSpec::new(
+            "provider.codex.base_url.invalid",
+            "config.toml 中 base_url 格式错误",
+            "base_url in config.toml has invalid format",
+        ),
+        ProviderCredentialIssue::GeminiApiKeyMissing => LocalizedErrorSpec::new(
+            "gemini.missing_api_key",
+            "缺少 GEMINI_API_KEY",
+            "Missing GEMINI_API_KEY",
+        ),
+        ProviderCredentialIssue::OpenCodeOptionsMissing => LocalizedErrorSpec::new(
+            "provider.opencode.options.missing",
+            "配置格式错误: 缺少 options",
+            "Invalid configuration: missing options section",
+        ),
+        ProviderCredentialIssue::OpenCodeApiKeyMissing => LocalizedErrorSpec::new(
+            "provider.opencode.api_key.missing",
+            "缺少 API Key",
+            "API key is missing",
+        ),
+        ProviderCredentialIssue::OpenClawApiKeyMissing => LocalizedErrorSpec::new(
+            "provider.openclaw.api_key.missing",
+            "缺少 API Key",
+            "API key is missing",
+        ),
+    }
+}
+
 pub(crate) fn provider_credential_values(
     provider: &Provider,
     app_type: &AppType,
@@ -12381,6 +12446,27 @@ command = "latest-command"
         assert_eq!(
             provider_credential_values(&missing_codex_base_url, &AppType::Codex),
             Err(ProviderCredentialIssue::CodexBaseUrlMissing)
+        );
+        let missing_base_url_spec =
+            provider_credential_issue_spec(ProviderCredentialIssue::CodexBaseUrlMissing);
+        assert_eq!(missing_base_url_spec.key, "provider.codex.base_url.missing");
+        assert_eq!(
+            missing_base_url_spec.zh,
+            "config.toml 中缺少 base_url 配置"
+        );
+        assert_eq!(
+            missing_base_url_spec.en,
+            "base_url is missing from config.toml"
+        );
+        let missing_options_spec =
+            provider_credential_issue_spec(ProviderCredentialIssue::OpenCodeOptionsMissing);
+        assert_eq!(
+            missing_options_spec.key,
+            "provider.opencode.options.missing"
+        );
+        assert_eq!(
+            missing_options_spec.en,
+            "Invalid configuration: missing options section"
         );
     }
 

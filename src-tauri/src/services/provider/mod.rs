@@ -17,8 +17,9 @@ use crate::error::AppError;
 use crate::provider::{Provider, UsageResult};
 use crate::proxy_core_adapter::{
     common_config_snippet_from_settings, common_config_snippet_issue_message,
-    normalize_claude_models_in_value, provider_credential_values,
-    provider_settings_validation_issue_spec, provider_settings_validation_parts,
+    normalize_claude_models_in_value, provider_credential_issue_spec,
+    provider_credential_values, provider_settings_validation_issue_spec,
+    provider_settings_validation_parts,
     proxy_live_config_owned_by_takeover,
     proxy_switch_should_hot_switch, should_block_proxy_switch_to_provider,
     should_reapply_codex_official_live_for_provider, CommonConfigSnippetIssue,
@@ -2355,68 +2356,8 @@ impl ProviderService {
     }
 
     fn credential_issue_to_app_error(issue: ProviderCredentialIssue) -> AppError {
-        match issue {
-            ProviderCredentialIssue::ClaudeEnvMissing => AppError::localized(
-                "provider.claude.env.missing",
-                "配置格式错误: 缺少 env",
-                "Invalid configuration: missing env section",
-            ),
-            ProviderCredentialIssue::ClaudeApiKeyMissing => AppError::localized(
-                "provider.claude.api_key.missing",
-                "缺少 API Key",
-                "API key is missing",
-            ),
-            ProviderCredentialIssue::ClaudeBaseUrlMissing => AppError::localized(
-                "provider.claude.base_url.missing",
-                "缺少 ANTHROPIC_BASE_URL 配置",
-                "Missing ANTHROPIC_BASE_URL configuration",
-            ),
-            ProviderCredentialIssue::ClaudeDesktopRequiresGateway => AppError::localized(
-                "provider.claude_desktop.gateway.required",
-                "Claude Desktop 凭据必须通过 gateway 配置解析",
-                "Claude Desktop credentials must be resolved through gateway configuration",
-            ),
-            ProviderCredentialIssue::CodexAuthMissing => AppError::localized(
-                "provider.codex.auth.missing",
-                "配置格式错误: 缺少 auth",
-                "Invalid configuration: missing auth section",
-            ),
-            ProviderCredentialIssue::CodexApiKeyMissing => AppError::localized(
-                "provider.codex.api_key.missing",
-                "缺少 API Key",
-                "API key is missing",
-            ),
-            ProviderCredentialIssue::CodexBaseUrlMissing => AppError::localized(
-                "provider.codex.base_url.missing",
-                "config.toml 中缺少 base_url 配置",
-                "base_url is missing from config.toml",
-            ),
-            ProviderCredentialIssue::CodexBaseUrlInvalid => AppError::localized(
-                "provider.codex.base_url.invalid",
-                "config.toml 中 base_url 格式错误",
-                "base_url in config.toml has invalid format",
-            ),
-            ProviderCredentialIssue::GeminiApiKeyMissing => AppError::localized(
-                "gemini.missing_api_key",
-                "缺少 GEMINI_API_KEY",
-                "Missing GEMINI_API_KEY",
-            ),
-            ProviderCredentialIssue::OpenCodeOptionsMissing => AppError::localized(
-                "provider.opencode.options.missing",
-                "配置格式错误: 缺少 options",
-                "Invalid configuration: missing options section",
-            ),
-            ProviderCredentialIssue::OpenCodeApiKeyMissing => AppError::localized(
-                "provider.opencode.api_key.missing",
-                "缺少 API Key",
-                "API key is missing",
-            ),
-            ProviderCredentialIssue::OpenClawApiKeyMissing => AppError::localized(
-                "provider.openclaw.api_key.missing",
-                "缺少 API Key",
-                "API key is missing",
-            ),
-        }
+        let spec = provider_credential_issue_spec(issue);
+        AppError::localized(spec.key, spec.zh, spec.en)
     }
 }
 
