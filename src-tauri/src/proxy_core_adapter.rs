@@ -5030,6 +5030,28 @@ pub(crate) fn app_type_from_proxy_core_app(app: &AppKind) -> ProxyCoreResult<App
         .map_err(|error| ProxyCoreError::Config(unsupported_app_kind_error_message(error)))
 }
 
+pub(crate) struct JsonProxyRequestInput {
+    pub(crate) app_type: AppType,
+    pub(crate) method: Method,
+    pub(crate) endpoint: String,
+    pub(crate) inbound_interface: InterfaceKind,
+    pub(crate) body: Value,
+    pub(crate) requested_model: Option<String>,
+    pub(crate) headers: HeaderMap,
+    pub(crate) extensions: http::Extensions,
+}
+
+pub(crate) fn json_proxy_request_from_input(input: JsonProxyRequestInput) -> ProxyRequest {
+    ProxyRequest::new(
+        AppKind::from(&input.app_type),
+        input.method,
+        input.endpoint,
+        input.inbound_interface,
+        ProxyBody::Json(input.body),
+    )
+    .with_observed_request_context(input.requested_model, input.headers, input.extensions)
+}
+
 pub(crate) struct ForwardRuntimeRequest {
     pub(crate) app_type: AppType,
     pub(crate) method: Method,
@@ -8020,6 +8042,40 @@ mod tests {
             unsupported_app_kind_error_message("invalid app: openclaw"),
             "unsupported app kind: invalid app: openclaw"
         );
+
+        let mut headers = HeaderMap::new();
+        headers.insert("x-test", "1".parse().expect("header value"));
+        let mut extensions = http::Extensions::new();
+        extensions.insert("extension-value".to_string());
+        let bridged_request = json_proxy_request_from_input(JsonProxyRequestInput {
+            app_type: AppType::Codex,
+            method: Method::POST,
+            endpoint: "/v1/responses".to_string(),
+            inbound_interface: InterfaceKind::OpenAiResponses,
+            body: json!({"model": "gpt-5"}),
+            requested_model: Some("gpt-5".to_string()),
+            headers,
+            extensions,
+        });
+        assert_eq!(bridged_request.app, AppKind::Codex);
+        assert_eq!(bridged_request.endpoint, "/v1/responses");
+        assert_eq!(
+            bridged_request.inbound_interface,
+            InterfaceKind::OpenAiResponses
+        );
+        assert_eq!(bridged_request.requested_model.as_deref(), Some("gpt-5"));
+        assert_eq!(
+            bridged_request.headers.get("x-test").and_then(|value| value.to_str().ok()),
+            Some("1")
+        );
+        assert_eq!(
+            bridged_request
+                .extensions
+                .get::<String>()
+                .map(String::as_str),
+            Some("extension-value")
+        );
+        assert_eq!(bridged_request.body, ProxyBody::Json(json!({"model": "gpt-5"})));
 
         let forward_request = forward_runtime_request_from_proxy_request(ProxyRequest::new(
             AppKind::Claude,

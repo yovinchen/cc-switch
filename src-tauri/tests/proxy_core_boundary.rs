@@ -43,6 +43,7 @@ const FORBIDDEN_FORWARDER_FAILOVER_SWITCH_MARKERS: &[&str] = &[".try_switch("];
 const FORBIDDEN_PROXY_CORE_HOST_ERROR_MARKERS: &[&str] = &["ProxyCoreError::"];
 const FORBIDDEN_PROXY_CORE_HOST_USAGE_PROJECTION_MARKERS: &[&str] =
     &["missing_pricing_warning_message"];
+const FORBIDDEN_HANDLER_PROXY_REQUEST_BRIDGE_MARKERS: &[&str] = &["ProxyRequest::new("];
 const PROXY_CORE_MARKER: &str = "crate::proxy_core::";
 const PROXY_CORE_API_MARKER: &str = "crate::proxy_core::api";
 const PROXY_ENGINE_CONSTRUCTOR_MARKER: &str = "ProxyEngine::new(";
@@ -789,6 +790,33 @@ fn claude_desktop_models_handler_delegates_provider_selection_to_proxy_engine() 
     assert!(
         violations.is_empty(),
         "Claude Desktop models handler must delegate provider selection and model-list response building to ProxyEngine:\n{}",
+        violations.join("\n")
+    );
+}
+
+#[test]
+fn production_handlers_build_proxy_requests_through_adapter() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let path = manifest_dir.join("src/proxy/handlers.rs");
+    let source = fs::read_to_string(&path).expect("read handlers.rs");
+
+    let mut violations = Vec::new();
+    for (line_index, line) in production_lines(&source) {
+        let code = line.split("//").next().unwrap_or_default();
+        for marker in FORBIDDEN_HANDLER_PROXY_REQUEST_BRIDGE_MARKERS {
+            if code.contains(marker) {
+                violations.push(format!(
+                    "src/proxy/handlers.rs:{} contains direct proxy request bridge marker `{}`",
+                    line_index + 1,
+                    marker
+                ));
+            }
+        }
+    }
+
+    assert!(
+        violations.is_empty(),
+        "production handlers must build ProxyRequest values through proxy_core_adapter helpers:\n{}",
         violations.join("\n")
     );
 }

@@ -42,6 +42,7 @@ use crate::proxy_core_adapter::{
     create_openai_responses_to_anthropic_sse_stream as create_anthropic_sse_stream_from_responses,
     extract_anthropic_tool_schema_hints, extract_gemini_model_from_path,
     gemini_response_to_anthropic_message_with_shadow, openai_chat_to_anthropic_message,
+    json_proxy_request_from_input, JsonProxyRequestInput,
     openai_responses_to_anthropic_message, parse_json_request_body,
     parse_json_request_body_or_null, parse_upstream_json_or_unlabeled_sse,
     provider_is_codex_oauth, rebuilt_json_proxy_response, request_body_read_error_message,
@@ -59,9 +60,9 @@ use crate::proxy_core_adapter::{
     ChannelTestResponse, ClaudeDesktopModelListResponse, ClientModelCatalogResponse,
     CodexToolContext, CurrentRouteResponse, CurrentRouteTarget, GroupListQuery, GroupListRequest,
     HealthCheckRequest, HealthCheckResponse, InterfaceKind, ManagementAppPathRequest,
-    ManagementAuthDecision, ProviderListResponse, ProxyBody, ProxyChannelKeyPatchRequest,
+    ManagementAuthDecision, ProviderListResponse, ProxyChannelKeyPatchRequest,
     ProxyChannelKeyWriteRequest, ProxyChannelModelsReplaceRequest, ProxyChannelPatchRequest,
-    ProxyChannelTestRequest, ProxyChannelWriteRequest, ProxyRequest, ProxyRuntimeStatus,
+    ProxyChannelTestRequest, ProxyChannelWriteRequest, ProxyRuntimeStatus,
     ProxyStatusRequest, ProxyStatusResponse, RoutableModelList, RouteGroupListResponse,
     RouteResolveManagementRequest, RouteResolveRequest, RouteResolveResponse,
     TransformedResponseUsageFormat, UnlabeledSseFallbackLogContext, UnlabeledSseFallbackLogLevel,
@@ -616,14 +617,16 @@ async fn handle_messages_for_app(
 
     let is_stream = request_body_stream_flag(&body);
 
-    let proxy_request = ProxyRequest::new(
-        AppKind::from(&app_type),
+    let proxy_request = json_proxy_request_from_input(JsonProxyRequestInput {
+        app_type: app_type.clone(),
         method,
-        endpoint,
-        InterfaceKind::AnthropicMessages,
-        ProxyBody::Json(body.clone()),
-    )
-    .with_observed_request_context(Some(ctx.request_model.clone()), headers, extensions);
+        endpoint: endpoint.to_string(),
+        inbound_interface: InterfaceKind::AnthropicMessages,
+        body: body.clone(),
+        requested_model: Some(ctx.request_model.clone()),
+        headers,
+        extensions,
+    });
 
     let engine = state.proxy_engine();
     let result = match engine.handle(proxy_request).await {
@@ -856,14 +859,16 @@ pub async fn handle_chat_completions(
 
     let is_stream = request_body_stream_flag(&body);
 
-    let proxy_request = ProxyRequest::new(
-        AppKind::from(&AppType::Codex),
+    let proxy_request = json_proxy_request_from_input(JsonProxyRequestInput {
+        app_type: AppType::Codex,
         method,
-        &endpoint,
-        InterfaceKind::OpenAiChatCompletions,
-        ProxyBody::Json(body),
-    )
-    .with_observed_request_context(Some(ctx.request_model.clone()), headers, extensions);
+        endpoint: endpoint.clone(),
+        inbound_interface: InterfaceKind::OpenAiChatCompletions,
+        body,
+        requested_model: Some(ctx.request_model.clone()),
+        headers,
+        extensions,
+    });
 
     let engine = state.proxy_engine();
     let result = match engine.handle(proxy_request).await {
@@ -906,14 +911,16 @@ pub async fn handle_responses(
     let is_stream = request_body_stream_flag(&body);
     let codex_tool_context = crate::proxy_core_adapter::codex_tool_context_from_request(&body);
 
-    let proxy_request = ProxyRequest::new(
-        AppKind::from(&AppType::Codex),
+    let proxy_request = json_proxy_request_from_input(JsonProxyRequestInput {
+        app_type: AppType::Codex,
         method,
-        &endpoint,
-        InterfaceKind::OpenAiResponses,
-        ProxyBody::Json(body),
-    )
-    .with_observed_request_context(Some(ctx.request_model.clone()), headers, extensions);
+        endpoint: endpoint.clone(),
+        inbound_interface: InterfaceKind::OpenAiResponses,
+        body,
+        requested_model: Some(ctx.request_model.clone()),
+        headers,
+        extensions,
+    });
 
     let engine = state.proxy_engine();
     let result = match engine.handle(proxy_request).await {
@@ -968,14 +975,16 @@ pub async fn handle_responses_compact(
     let is_stream = request_body_stream_flag(&body);
     let codex_tool_context = crate::proxy_core_adapter::codex_tool_context_from_request(&body);
 
-    let proxy_request = ProxyRequest::new(
-        AppKind::from(&AppType::Codex),
+    let proxy_request = json_proxy_request_from_input(JsonProxyRequestInput {
+        app_type: AppType::Codex,
         method,
-        &endpoint,
-        InterfaceKind::OpenAiResponses,
-        ProxyBody::Json(body),
-    )
-    .with_observed_request_context(Some(ctx.request_model.clone()), headers, extensions);
+        endpoint: endpoint.clone(),
+        inbound_interface: InterfaceKind::OpenAiResponses,
+        body,
+        requested_model: Some(ctx.request_model.clone()),
+        headers,
+        extensions,
+    });
 
     let engine = state.proxy_engine();
     let result = match engine.handle(proxy_request).await {
@@ -1195,14 +1204,16 @@ pub async fn handle_gemini(
 
     let is_stream = request_body_stream_flag(&body);
 
-    let proxy_request = ProxyRequest::new(
-        AppKind::from(&AppType::Gemini),
+    let proxy_request = json_proxy_request_from_input(JsonProxyRequestInput {
+        app_type: AppType::Gemini,
         method,
-        &endpoint,
-        InterfaceKind::GeminiNative,
-        ProxyBody::Json(body),
-    )
-    .with_observed_request_context(extract_gemini_model_from_path(&endpoint), headers, extensions);
+        endpoint: endpoint.clone(),
+        inbound_interface: InterfaceKind::GeminiNative,
+        body,
+        requested_model: extract_gemini_model_from_path(&endpoint),
+        headers,
+        extensions,
+    });
 
     let engine = state.proxy_engine();
     let result = match engine.handle(proxy_request).await {
