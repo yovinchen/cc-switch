@@ -643,8 +643,46 @@ pub(crate) fn proxy_app_config_from_config_source(
     )
 }
 
+pub(crate) async fn proxy_global_config_from_db_source(
+    db: &Database,
+) -> ProxyCoreResult<ProxyGlobalConfig> {
+    let config = db
+        .get_global_proxy_config()
+        .await
+        .map_err(|error| app_error("load global proxy config", error))?;
+    Ok(proxy_global_config_from_config(config))
+}
+
+pub(crate) async fn proxy_app_config_from_db_source(
+    db: &Database,
+    app: &AppKind,
+) -> ProxyCoreResult<ProxyAppConfig> {
+    let config = db
+        .get_proxy_config_for_app(app.as_str())
+        .await
+        .map_err(|error| app_error("load app proxy config", error))?;
+    Ok(proxy_app_config_from_config_source(
+        app.clone(),
+        config,
+        db.get_rectifier_config().unwrap_or_default(),
+        db.get_optimizer_config().unwrap_or_default(),
+        db.get_copilot_optimizer_config().unwrap_or_default(),
+    ))
+}
+
 pub(crate) fn app_summary_config_from_config_source(config: AppProxyConfig) -> AppSummaryConfig {
     AppSummaryConfig::new(config.enabled, config.auto_failover_enabled)
+}
+
+pub(crate) async fn app_summary_config_from_db_source(
+    db: &Database,
+    app: &AppKind,
+) -> ProxyCoreResult<AppSummaryConfig> {
+    let config = db
+        .get_proxy_config_for_app(app.as_str())
+        .await
+        .map_err(|error| app_error("load app summary config", error))?;
+    Ok(app_summary_config_from_config_source(config))
 }
 
 pub(crate) fn forward_current_provider_id_from_source(
@@ -712,6 +750,16 @@ pub(crate) fn proxy_runtime_config_from_config(
 
 pub(crate) fn proxy_runtime_config_from_config_source(config: ProxyConfig) -> ProxyRuntimeConfig {
     proxy_runtime_config_from_config(config, false)
+}
+
+pub(crate) async fn proxy_runtime_config_from_db_source(
+    db: &Database,
+) -> ProxyCoreResult<ProxyRuntimeConfig> {
+    let config = db
+        .get_proxy_config()
+        .await
+        .map_err(|error| app_error("load runtime proxy config", error))?;
+    Ok(proxy_runtime_config_from_config_source(config))
 }
 
 pub(crate) type ProviderHealth = crate::proxy_core::api::ports::ProviderHealth;

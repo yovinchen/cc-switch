@@ -25,7 +25,7 @@ use crate::proxy_core_adapter::{
 use crate::services::stream_check::StreamCheckService;
 use crate::proxy_core_adapter::{
     app_error,
-    app_summary_config_from_config_source,
+    app_summary_config_from_db_source,
     auth_info_from_cc_switch_provider_config,
     cc_switch_app_kinds,
     claude_desktop_provider_from_selection_result,
@@ -50,9 +50,9 @@ use crate::proxy_core_adapter::{
     provider_spec_from_source, proxy_channel_record_to_core, proxy_channel_records_to_core,
     provider_specs_from_source,
     provider_model_catalog_from_provider,
-    proxy_app_config_from_config_source, proxy_global_config_from_config,
+    proxy_app_config_from_db_source, proxy_global_config_from_db_source,
     emit_proxy_core_event,
-    proxy_runtime_config_from_config_source,
+    proxy_runtime_config_from_db_source,
     route_policy_from_source,
     route_candidate_provider_ids_from_selection_result,
     stream_check_result_to_channel_reachability,
@@ -246,59 +246,22 @@ impl ProxyConfigSource for CcSwitchConfigSource {
     }
 
     fn load_global<'a>(&'a self) -> BoxFuture<'a, ProxyCoreResult<ProxyGlobalConfig>> {
-        Box::pin(async move {
-            let config = self
-                .db
-                .get_global_proxy_config()
-                .await
-                .map_err(|error| app_error("load global proxy config", error))?;
-            Ok(proxy_global_config_from_config(config))
-        })
+        Box::pin(async move { proxy_global_config_from_db_source(&self.db).await })
     }
 
     fn load_app<'a>(&'a self, app: &'a AppKind) -> BoxFuture<'a, ProxyCoreResult<ProxyAppConfig>> {
-        Box::pin(async move {
-            let config = self
-                .db
-                .get_proxy_config_for_app(app.as_str())
-                .await
-                .map_err(|error| app_error("load app proxy config", error))?;
-            let rectifier = self.db.get_rectifier_config().unwrap_or_default();
-            let optimizer = self.db.get_optimizer_config().unwrap_or_default();
-            let copilot_optimizer = self.db.get_copilot_optimizer_config().unwrap_or_default();
-            Ok(proxy_app_config_from_config_source(
-                app.clone(),
-                config,
-                rectifier,
-                optimizer,
-                copilot_optimizer,
-            ))
-        })
+        Box::pin(async move { proxy_app_config_from_db_source(&self.db, app).await })
     }
 
     fn load_app_summary<'a>(
         &'a self,
         app: &'a AppKind,
     ) -> BoxFuture<'a, ProxyCoreResult<AppSummaryConfig>> {
-        Box::pin(async move {
-            let config = self
-                .db
-                .get_proxy_config_for_app(app.as_str())
-                .await
-                .map_err(|error| app_error("load app summary config", error))?;
-            Ok(app_summary_config_from_config_source(config))
-        })
+        Box::pin(async move { app_summary_config_from_db_source(&self.db, app).await })
     }
 
     fn load_runtime<'a>(&'a self) -> BoxFuture<'a, ProxyCoreResult<ProxyRuntimeConfig>> {
-        Box::pin(async move {
-            let config = self
-                .db
-                .get_proxy_config()
-                .await
-                .map_err(|error| app_error("load runtime proxy config", error))?;
-            Ok(proxy_runtime_config_from_config_source(config))
-        })
+        Box::pin(async move { proxy_runtime_config_from_db_source(&self.db).await })
     }
 }
 
