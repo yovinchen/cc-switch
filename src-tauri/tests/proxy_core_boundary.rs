@@ -22,6 +22,8 @@ const FORBIDDEN_REQUEST_CONTEXT_PROVIDER_ADAPTER_MARKERS: &[&str] =
         "selected_provider_missing_from_source_message(",
         "request_context_route_update_from_proxy_result(",
     ];
+const FORBIDDEN_PROXY_ERROR_MAPPER_CODEX_PROJECTION_MARKERS: &[&str] =
+    &["CodexProxyErrorContext", "codex_proxy_error_code("];
 const FORBIDDEN_FORWARDER_URL_PLANNING_MARKERS: &[&str] = &[
     "rewrite_codex_responses_endpoint_to_chat(",
     "rewrite_claude_transform_endpoint(",
@@ -426,6 +428,33 @@ fn request_context_uses_adapter_for_provider_facts() {
     assert!(
         violations.is_empty(),
         "RequestContext must consume provider facts through proxy_core_adapter helpers:\n{}",
+        violations.join("\n")
+    );
+}
+
+#[test]
+fn proxy_error_mapper_delegates_codex_error_projection_to_adapter() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let path = manifest_dir.join("src/proxy/error_mapper.rs");
+    let source = fs::read_to_string(&path).expect("read error_mapper.rs");
+
+    let mut violations = Vec::new();
+    for (line_index, line) in production_lines(&source) {
+        let code = line.split("//").next().unwrap_or_default();
+        for marker in FORBIDDEN_PROXY_ERROR_MAPPER_CODEX_PROJECTION_MARKERS {
+            if code.contains(marker) {
+                violations.push(format!(
+                    "src/proxy/error_mapper.rs:{} contains codex error projection marker `{}`",
+                    line_index + 1,
+                    marker
+                ));
+            }
+        }
+    }
+
+    assert!(
+        violations.is_empty(),
+        "Proxy error mapper must delegate Codex error envelope projection to proxy_core_adapter:\n{}",
         violations.join("\n")
     );
 }

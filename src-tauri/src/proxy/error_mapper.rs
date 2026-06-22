@@ -5,15 +5,15 @@
 use super::{error::ProxyError, ForwardError};
 use crate::proxy::error::proxy_error_status_kind;
 use crate::proxy_core_adapter::{
-    codex_proxy_error_code, codex_proxy_error_response as core_codex_proxy_error_response,
+    codex_proxy_error_response_from_host_facts as core_codex_proxy_error_response,
     forward_failure_kind_from_proxy_status, proxy_core_error_from_status_kind,
-    proxy_error_http_status_code, ClaudeDesktopGatewayAuthError, CodexProxyErrorContext,
-    CodexProxyErrorKind, ForwardFailureKind, ManagementAuthError, ProxyCoreError,
+    proxy_error_http_status_code, ClaudeDesktopGatewayAuthError, CodexProxyErrorKind,
+    CodexProxyHostErrorFacts, ForwardFailureKind, ManagementAuthError, ProxyCoreError,
     ProxyCoreResponse, ProxyCoreResult,
 };
 #[cfg(test)]
 use crate::proxy_core_adapter::{
-    codex_proxy_error_json as core_codex_proxy_error_json, ProxyResponseBody,
+    codex_proxy_error_json_from_host_facts as core_codex_proxy_error_json, ProxyResponseBody,
 };
 #[cfg(test)]
 use serde_json::Value;
@@ -145,19 +145,13 @@ pub(crate) fn codex_proxy_error_json(
     endpoint: &str,
     error: &ProxyError,
 ) -> Value {
-    let (upstream_status, upstream_body) = match error {
-        ProxyError::UpstreamError { status, body } => (Some(*status), body.as_deref()),
-        _ => (None, None),
-    };
-    core_codex_proxy_error_json(CodexProxyErrorContext {
+    let message = get_error_message(error);
+    core_codex_proxy_error_json(
         provider_name,
         request_model,
         endpoint,
-        fallback_message: &get_error_message(error),
-        fallback_code: codex_proxy_error_code(codex_proxy_error_kind(error)),
-        upstream_status,
-        upstream_body,
-    })
+        codex_proxy_error_facts(error, &message),
+    )
 }
 
 pub(crate) fn codex_proxy_error_response(
@@ -166,22 +160,31 @@ pub(crate) fn codex_proxy_error_response(
     endpoint: &str,
     error: &ProxyError,
 ) -> ProxyCoreResult<ProxyCoreResponse> {
+    let message = get_error_message(error);
+    core_codex_proxy_error_response(
+        provider_name,
+        request_model,
+        endpoint,
+        codex_proxy_error_facts(error, &message),
+    )
+}
+
+fn codex_proxy_error_facts<'a>(
+    error: &'a ProxyError,
+    message: &'a str,
+) -> CodexProxyHostErrorFacts<'a> {
     let (upstream_status, upstream_body) = match error {
         ProxyError::UpstreamError { status, body } => (Some(*status), body.as_deref()),
         _ => (None, None),
     };
-    core_codex_proxy_error_response(
-        proxy_error_status_kind(error),
-        CodexProxyErrorContext {
-            provider_name,
-            request_model,
-            endpoint,
-            fallback_message: &get_error_message(error),
-            fallback_code: codex_proxy_error_code(codex_proxy_error_kind(error)),
-            upstream_status,
-            upstream_body,
-        },
-    )
+
+    CodexProxyHostErrorFacts {
+        status: proxy_error_status_kind(error),
+        message,
+        kind: codex_proxy_error_kind(error),
+        upstream_status,
+        upstream_body,
+    }
 }
 
 fn codex_proxy_error_kind(error: &ProxyError) -> CodexProxyErrorKind {

@@ -6782,9 +6782,45 @@ pub(crate) fn codex_proxy_error_code(kind: CodexProxyErrorKind) -> &'static str 
     crate::proxy_core::api::transforms::codex_proxy_error_code(kind)
 }
 
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct CodexProxyHostErrorFacts<'a> {
+    pub(crate) status: ProxyErrorStatusKind,
+    pub(crate) message: &'a str,
+    pub(crate) kind: CodexProxyErrorKind,
+    pub(crate) upstream_status: Option<u16>,
+    pub(crate) upstream_body: Option<&'a str>,
+}
+
+#[cfg(test)]
+pub(crate) fn codex_proxy_error_json_from_host_facts(
+    provider_name: &str,
+    request_model: &str,
+    endpoint: &str,
+    facts: CodexProxyHostErrorFacts<'_>,
+) -> Value {
+    codex_proxy_error_json(codex_proxy_error_context_from_host_facts(
+        provider_name,
+        request_model,
+        endpoint,
+        facts,
+    ))
+}
+
 #[cfg(test)]
 pub(crate) fn codex_proxy_error_json(ctx: CodexProxyErrorContext<'_>) -> Value {
     crate::proxy_core::api::transforms::codex_proxy_error_json(ctx)
+}
+
+pub(crate) fn codex_proxy_error_response_from_host_facts(
+    provider_name: &str,
+    request_model: &str,
+    endpoint: &str,
+    facts: CodexProxyHostErrorFacts<'_>,
+) -> ProxyCoreResult<ProxyCoreResponse> {
+    codex_proxy_error_response(
+        facts.status,
+        codex_proxy_error_context_from_host_facts(provider_name, request_model, endpoint, facts),
+    )
 }
 
 pub(crate) fn codex_proxy_error_response(
@@ -6792,6 +6828,23 @@ pub(crate) fn codex_proxy_error_response(
     ctx: CodexProxyErrorContext<'_>,
 ) -> ProxyCoreResult<ProxyCoreResponse> {
     crate::proxy_core::api::transforms::codex_proxy_error_response(status, ctx)
+}
+
+fn codex_proxy_error_context_from_host_facts<'a>(
+    provider_name: &'a str,
+    request_model: &'a str,
+    endpoint: &'a str,
+    facts: CodexProxyHostErrorFacts<'a>,
+) -> CodexProxyErrorContext<'a> {
+    CodexProxyErrorContext {
+        provider_name,
+        request_model,
+        endpoint,
+        fallback_message: facts.message,
+        fallback_code: codex_proxy_error_code(facts.kind),
+        upstream_status: facts.upstream_status,
+        upstream_body: facts.upstream_body,
+    }
 }
 
 #[cfg(test)]
@@ -14486,6 +14539,20 @@ command = "latest-command"
             upstream_body: None,
         });
         assert_eq!(json_body["error"]["provider"], "Relay");
+        let facts_body = codex_proxy_error_json_from_host_facts(
+            "Relay",
+            "model-a",
+            "/responses",
+            CodexProxyHostErrorFacts {
+                status: ProxyErrorStatusKind::ForwardFailed,
+                message: "failed",
+                kind: CodexProxyErrorKind::ForwardFailed,
+                upstream_status: None,
+                upstream_body: None,
+            },
+        );
+        assert_eq!(facts_body["error"]["code"], "cc_switch_forward_failed");
+        assert_eq!(facts_body["error"]["provider"], "Relay");
 
         let response = codex_proxy_error_response(
             ProxyErrorStatusKind::AuthError,
@@ -14501,6 +14568,20 @@ command = "latest-command"
         )
         .expect("codex error response");
         assert_eq!(response.status.as_u16(), 401);
+        let facts_response = codex_proxy_error_response_from_host_facts(
+            "Relay",
+            "model-a",
+            "/responses",
+            CodexProxyHostErrorFacts {
+                status: ProxyErrorStatusKind::AuthError,
+                message: "bad token",
+                kind: CodexProxyErrorKind::AuthError,
+                upstream_status: None,
+                upstream_body: None,
+            },
+        )
+        .expect("codex facts error response");
+        assert_eq!(facts_response.status.as_u16(), 401);
 
         let failure = ForwardFailureKind::Timeout("slow".to_string());
         assert!(matches!(failure, ForwardFailureKind::Timeout(message) if message == "slow"));
