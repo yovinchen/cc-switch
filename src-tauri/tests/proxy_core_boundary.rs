@@ -2288,6 +2288,44 @@ fn proxy_core_adapter_excludes_model_fetch_transport_facades() {
 }
 
 #[test]
+fn proxy_core_adapter_delegates_client_model_catalog_source_selection_to_core() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let path = manifest_dir.join("src/proxy_core_adapter.rs");
+    let source = fs::read_to_string(&path).expect("read proxy_core_adapter.rs");
+    let function = function_slice(
+        &source,
+        "pub(crate) fn client_model_catalog_from_app_source",
+        "pub(crate) fn empty_client_model_catalog_raw",
+    );
+
+    assert!(
+        function.contains("client_model_catalog_source_for_app"),
+        "client model catalog app selection should be delegated to proxy-core"
+    );
+
+    let forbidden_markers = ["match app", "AppKind::Codex"];
+    let mut violations = Vec::new();
+    for (line_index, line) in production_lines(function) {
+        let code = line.split("//").next().unwrap_or_default();
+        for marker in forbidden_markers {
+            if code.contains(marker) {
+                violations.push(format!(
+                    "src/proxy_core_adapter.rs client_model_catalog_from_app_source:{} contains source selection marker `{}`",
+                    line_index + 1,
+                    marker
+                ));
+            }
+        }
+    }
+
+    assert!(
+        violations.is_empty(),
+        "client model catalog source selection belongs in proxy-core:\n{}",
+        violations.join("\n")
+    );
+}
+
+#[test]
 fn production_forwarder_delegates_managed_auth_resolution_to_adapter() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let path = manifest_dir.join("src/proxy/forwarder.rs");

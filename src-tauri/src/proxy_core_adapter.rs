@@ -2563,7 +2563,8 @@ pub(crate) use crate::proxy_core::api::management::{
     RouteResolveManagementRequest,
 };
 pub(crate) use crate::proxy_core::api::model_catalog::{
-    ClientModelCatalogResponse, RoutableModelList,
+    client_model_catalog_source_for_app, ClientModelCatalogResponse, ClientModelCatalogSource,
+    RoutableModelList,
 };
 pub(crate) use crate::proxy_core::api::transforms::{
     chat_completion_to_response_with_context, claude_stream_usage_event_filter,
@@ -6304,18 +6305,23 @@ pub(crate) fn client_model_catalog_from_optional_raw(
     )
 }
 
-pub(crate) fn client_model_catalog_from_source(app: &AppKind) -> ModelCatalog {
-    let raw = match app {
-        AppKind::Codex => Some(codex_client_model_catalog_raw_from_active_config()),
-        _ => None,
-    };
-    client_model_catalog_from_optional_raw(app, raw)
+pub(crate) fn client_model_catalog_raw_from_source(
+    source: ClientModelCatalogSource,
+) -> Option<Value> {
+    match source {
+        ClientModelCatalogSource::CodexActiveConfig => {
+            Some(codex_client_model_catalog_raw_from_active_config())
+        }
+        ClientModelCatalogSource::Empty => None,
+    }
 }
 
 pub(crate) fn client_model_catalog_from_app_source(
     app: &AppKind,
 ) -> ProxyCoreResult<ModelCatalog> {
-    Ok(client_model_catalog_from_source(app))
+    let source = client_model_catalog_source_for_app(app.as_str());
+    let raw = client_model_catalog_raw_from_source(source);
+    Ok(client_model_catalog_from_optional_raw(app, raw))
 }
 
 pub(crate) fn empty_client_model_catalog_raw() -> Value {
@@ -14772,7 +14778,8 @@ command = "latest-command"
             client_catalog.models,
             vec!["gpt-5".to_string(), "o4-mini".to_string()]
         );
-        let empty_client_catalog = client_model_catalog_from_source(&AppKind::Gemini);
+        let empty_client_catalog =
+            client_model_catalog_from_app_source(&AppKind::Gemini).expect("client catalog");
         assert_eq!(empty_client_catalog.provider_id, "gemini");
         assert_eq!(empty_client_catalog.models, Vec::<String>::new());
         assert_eq!(empty_client_catalog.raw, json!({"models": []}));

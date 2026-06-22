@@ -390,6 +390,20 @@ pub fn client_model_catalog_from_optional_raw(
     client_model_catalog_from_raw(provider_id, raw.unwrap_or_else(empty_client_model_catalog_raw))
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ClientModelCatalogSource {
+    Empty,
+    CodexActiveConfig,
+}
+
+pub fn client_model_catalog_source_for_app(app: &str) -> ClientModelCatalogSource {
+    if app == "codex" {
+        ClientModelCatalogSource::CodexActiveConfig
+    } else {
+        ClientModelCatalogSource::Empty
+    }
+}
+
 pub fn provider_model_catalog_from_settings(
     provider_id: impl Into<String>,
     settings: Option<&Value>,
@@ -1582,6 +1596,22 @@ mod tests {
         assert_eq!(catalog.provider_id, "gemini");
         assert!(catalog.models.is_empty());
         assert_eq!(catalog.raw, json!({"models": []}));
+    }
+
+    #[test]
+    fn client_model_catalog_source_selects_codex_generated_catalog_only() {
+        assert_eq!(
+            client_model_catalog_source_for_app("codex"),
+            ClientModelCatalogSource::CodexActiveConfig
+        );
+        assert_eq!(
+            client_model_catalog_source_for_app("claude"),
+            ClientModelCatalogSource::Empty
+        );
+        assert_eq!(
+            client_model_catalog_source_for_app("gemini"),
+            ClientModelCatalogSource::Empty
+        );
     }
 
     #[test]
