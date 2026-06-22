@@ -2449,7 +2449,14 @@ pub(crate) use crate::proxy_core::api::transport::{
 };
 pub(crate) use crate::proxy_core::api::usage::{
     CLAUDE_PARSER_CONFIG, CODEX_PARSER_CONFIG, GEMINI_PARSER_CONFIG, OPENAI_PARSER_CONFIG,
+    error_usage_record_with_request_id_fallback,
+    transformed_response_usage_record_with_request_id_fallback,
+    transformed_streaming_response_usage_record_with_request_id_fallback,
+    usage_logging_enabled_from_config_flag, usage_record_debug_log_message,
+    usage_record_failure_warning_message, usage_selected_provider_missing_log_message,
 };
+#[cfg(test)]
+pub(crate) use crate::proxy_core::api::usage::success_usage_record_with_request_id_fallback;
 pub(crate) use crate::proxy_core::api::auth::validate_managed_account_upstream_auth;
 pub(crate) use crate::proxy_core::api::config::{
     app_proxy_config_defaults_for_app, app_type_from_circuit_key, cache_injection_log_message,
@@ -6689,147 +6696,6 @@ pub(crate) struct UsagePricingConfigLookup {
     pub(crate) app_type: String,
 }
 
-#[cfg(test)]
-#[allow(clippy::too_many_arguments)]
-pub(crate) fn success_usage_record_with_request_id_fallback(
-    provider_id: &str,
-    provider_kind: Option<ProviderKind>,
-    app: AppKind,
-    response_model: &str,
-    request_model: &str,
-    outbound_model: &str,
-    usage: TokenUsage,
-    latency_ms: u64,
-    first_token_ms: Option<u64>,
-    is_streaming: bool,
-    status_code: u16,
-    session_id: Option<String>,
-    request_id_fallback: impl FnOnce() -> String,
-) -> UsageRecord {
-    crate::proxy_core::api::usage::success_usage_record_with_request_id_fallback(
-        provider_id,
-        provider_kind,
-        app,
-        response_model,
-        request_model,
-        outbound_model,
-        usage,
-        latency_ms,
-        first_token_ms,
-        is_streaming,
-        status_code,
-        session_id,
-        request_id_fallback,
-    )
-}
-
-#[allow(clippy::too_many_arguments)]
-pub(crate) fn error_usage_record_with_request_id_fallback(
-    provider_id: &str,
-    provider_kind: Option<ProviderKind>,
-    app: AppKind,
-    request_model: &str,
-    outbound_model: Option<&str>,
-    status_code: u16,
-    error_message: String,
-    latency_ms: u64,
-    is_streaming: bool,
-    session_id: Option<String>,
-    request_id_fallback: impl FnOnce() -> String,
-) -> UsageRecord {
-    crate::proxy_core::api::usage::error_usage_record_with_request_id_fallback(
-        provider_id,
-        provider_kind,
-        app,
-        request_model,
-        outbound_model,
-        status_code,
-        error_message,
-        latency_ms,
-        is_streaming,
-        session_id,
-        request_id_fallback,
-    )
-}
-
-#[allow(clippy::too_many_arguments)]
-pub(crate) fn transformed_response_usage_record_with_request_id_fallback(
-    body: &Value,
-    format: TransformedResponseUsageFormat,
-    provider_id: &str,
-    provider_kind: Option<ProviderKind>,
-    app: AppKind,
-    request_model: &str,
-    outbound_model: Option<&str>,
-    latency_ms: u64,
-    status_code: u16,
-    session_id: Option<String>,
-    request_id_fallback: impl FnOnce() -> String,
-) -> Option<UsageRecord> {
-    crate::proxy_core::api::usage::transformed_response_usage_record_with_request_id_fallback(
-        body,
-        format,
-        provider_id,
-        provider_kind,
-        app,
-        request_model,
-        outbound_model,
-        latency_ms,
-        status_code,
-        session_id,
-        request_id_fallback,
-    )
-}
-
-#[allow(clippy::too_many_arguments)]
-pub(crate) fn transformed_streaming_response_usage_record_with_request_id_fallback(
-    events: &[Value],
-    format: TransformedResponseUsageFormat,
-    provider_id: &str,
-    provider_kind: Option<ProviderKind>,
-    app: AppKind,
-    request_model: &str,
-    outbound_model: Option<&str>,
-    latency_ms: u64,
-    first_token_ms: Option<u64>,
-    status_code: u16,
-    session_id: Option<String>,
-    request_id_fallback: impl FnOnce() -> String,
-) -> Option<UsageRecord> {
-    crate::proxy_core::api::usage::transformed_streaming_response_usage_record_with_request_id_fallback(
-        events,
-        format,
-        provider_id,
-        provider_kind,
-        app,
-        request_model,
-        outbound_model,
-        latency_ms,
-        first_token_ms,
-        status_code,
-        session_id,
-        request_id_fallback,
-    )
-}
-
-pub(crate) fn usage_selected_provider_missing_log_message(
-    tag: &str,
-    phase: UsageSelectedProviderMissingPhase,
-) -> String {
-    crate::proxy_core::api::usage::usage_selected_provider_missing_log_message(tag, phase)
-}
-
-pub(crate) fn usage_record_failure_warning_message(
-    context: UsageRecordFailureLogContext,
-    error: impl std::fmt::Display,
-) -> String {
-    crate::proxy_core::api::usage::usage_record_failure_warning_message(context, error)
-}
-
-pub(crate) fn usage_record_debug_log_message(record: &UsageRecord) -> String {
-    crate::proxy_core::api::usage::usage_record_debug_log_message(record)
-}
-
 pub(crate) async fn record_usage_with_proxy_services(
     services: &(dyn ProxyServices + Send + Sync),
     record: UsageRecord,
@@ -6855,10 +6721,6 @@ pub(crate) async fn record_usage_with_proxy_services_context(
             usage_record_failure_warning_message(failure_context, error)
         );
     }
-}
-
-pub(crate) fn usage_logging_enabled_from_config_flag(enable_logging: Option<bool>) -> bool {
-    crate::proxy_core::api::usage::usage_logging_enabled_from_config_flag(enable_logging)
 }
 
 pub(crate) fn provider_kind_from_provider(provider: &Provider) -> Option<ProviderKind> {
