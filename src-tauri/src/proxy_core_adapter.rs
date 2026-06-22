@@ -2885,6 +2885,74 @@ pub(crate) fn remove_toml_table_like(
     }
 }
 
+pub(crate) fn contains_common_config_snippet(
+    app_type: &AppType,
+    settings: &Value,
+    snippet: &str,
+) -> bool {
+    let trimmed = snippet.trim();
+    if trimmed.is_empty() {
+        return false;
+    }
+
+    match app_type {
+        AppType::Claude => match serde_json::from_str::<Value>(trimmed) {
+            Ok(source) if source.is_object() => json_value_is_subset(settings, &source),
+            _ => false,
+        },
+        AppType::Codex => {
+            let config_toml = codex_config_text_from_settings(settings).unwrap_or("");
+            if config_toml.trim().is_empty() {
+                return false;
+            }
+
+            let target_doc = match config_toml.parse::<toml_edit::DocumentMut>() {
+                Ok(doc) => doc,
+                Err(_) => return false,
+            };
+            let source_doc = match trimmed.parse::<toml_edit::DocumentMut>() {
+                Ok(doc) => doc,
+                Err(_) => return false,
+            };
+
+            toml_item_is_subset(target_doc.as_item(), source_doc.as_item())
+        }
+        AppType::Gemini => match serde_json::from_str::<Value>(trimmed) {
+            Ok(Value::Object(source_map)) => {
+                let Some(target_map) = gemini_env_map_from_settings(settings) else {
+                    return false;
+                };
+                source_map.iter().all(|(key, source_value)| {
+                    target_map
+                        .get(key)
+                        .is_some_and(|target_value| {
+                            json_value_is_subset(target_value, source_value)
+                        })
+                })
+            }
+            _ => false,
+        },
+        AppType::OpenCode | AppType::OpenClaw | AppType::Hermes | AppType::ClaudeDesktop => false,
+    }
+}
+
+pub(crate) fn provider_uses_common_config(
+    app_type: &AppType,
+    provider: &Provider,
+    snippet: Option<&str>,
+) -> bool {
+    match provider
+        .meta
+        .as_ref()
+        .and_then(|meta| meta.common_config_enabled)
+    {
+        Some(explicit) => explicit && snippet.is_some_and(|value| !value.trim().is_empty()),
+        None => snippet.is_some_and(|value| {
+            contains_common_config_snippet(app_type, &provider.settings_config, value)
+        }),
+    }
+}
+
 pub(crate) fn proxy_takeover_marked_state_is_reusable(
     has_live_backup: bool,
     live_matches_current_proxy: bool,
@@ -8063,6 +8131,53 @@ reasoning = "medium"
             .as_table()
             .and_then(|table| table.get("reasoning"))
             .is_none());
+    }
+
+    #[test]
+    fn provider_common_config_detection_respects_meta_and_legacy_snippet() {
+        let mut provider = Provider::with_id(
+            "claude-test".to_string(),
+            "Claude Test".to_string(),
+            json!({
+                "includeCoAuthoredBy": false,
+                "env": {
+                    "ANTHROPIC_API_KEY": "sk-test"
+                }
+            }),
+            None,
+        );
+        let snippet = r#"{ "includeCoAuthoredBy": false }"#;
+
+        assert!(contains_common_config_snippet(
+            &AppType::Claude,
+            &provider.settings_config,
+            snippet
+        ));
+        assert!(provider_uses_common_config(
+            &AppType::Claude,
+            &provider,
+            Some(snippet)
+        ));
+
+        provider.meta = Some(ProviderMeta {
+            common_config_enabled: Some(false),
+            ..Default::default()
+        });
+        assert!(!provider_uses_common_config(
+            &AppType::Claude,
+            &provider,
+            Some(snippet)
+        ));
+
+        provider.meta = Some(ProviderMeta {
+            common_config_enabled: Some(true),
+            ..Default::default()
+        });
+        assert!(!provider_uses_common_config(
+            &AppType::Claude,
+            &provider,
+            Some("   ")
+        ));
     }
 
     #[test]

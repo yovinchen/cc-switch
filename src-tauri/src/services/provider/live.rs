@@ -14,18 +14,17 @@ use crate::database::Database;
 use crate::error::AppError;
 use crate::provider::Provider;
 use crate::proxy_core_adapter::{
-    codex_config_text_from_settings, gemini_env_map_from_settings,
+    codex_config_text_from_settings,
     gemini_env_value_from_env_json, opencode_live_provider_fragment_has_provider_fields,
-    json_deep_merge, json_deep_remove, json_value_is_subset,
-    provider_codex_imported_live_category, provider_codex_live_snapshot_parts,
+    json_deep_merge, json_deep_remove, provider_codex_imported_live_category,
+    provider_codex_live_snapshot_parts,
     provider_gemini_env_map, provider_gemini_live_config_object,
     provider_model_catalog_raw_value, provider_opencode_live_provider_fragment,
     provider_openclaw_has_live_provider_fields, proxy_live_config_owned_by_takeover,
     remove_toml_table_like, restore_codex_settings_for_provider_backfill,
     sanitize_claude_settings_for_live,
     strip_codex_unified_session_bucket_for_provider_backfill,
-    toml_item_is_subset, validate_provider_gemini_settings_strict, CodexLiveSnapshotIssue,
-    GeminiLiveConfigIssue,
+    validate_provider_gemini_settings_strict, CodexLiveSnapshotIssue, GeminiLiveConfigIssue,
 };
 use crate::services::mcp::McpService;
 use crate::store::AppState;
@@ -34,6 +33,10 @@ use super::gemini_auth::{
     detect_gemini_auth_type, ensure_google_oauth_security_flag, GeminiAuthType,
 };
 use super::normalize_claude_models_in_value;
+
+#[cfg(test)]
+use crate::proxy_core_adapter::contains_common_config_snippet;
+pub(crate) use crate::proxy_core_adapter::provider_uses_common_config;
 
 pub(crate) fn provider_exists_in_live_config(
     app_type: &AppType,
@@ -69,70 +72,6 @@ fn merge_toml_table_like(target: &mut dyn TableLike, source: &dyn TableLike) {
                 target.insert(key, source_item.clone());
             }
         }
-    }
-}
-
-fn settings_contain_common_config(app_type: &AppType, settings: &Value, snippet: &str) -> bool {
-    let trimmed = snippet.trim();
-    if trimmed.is_empty() {
-        return false;
-    }
-
-    match app_type {
-        AppType::Claude => match serde_json::from_str::<Value>(trimmed) {
-            Ok(source) if source.is_object() => json_value_is_subset(settings, &source),
-            _ => false,
-        },
-        AppType::Codex => {
-            let config_toml = codex_config_text_from_settings(settings).unwrap_or("");
-            if config_toml.trim().is_empty() {
-                return false;
-            }
-
-            let target_doc = match config_toml.parse::<DocumentMut>() {
-                Ok(doc) => doc,
-                Err(_) => return false,
-            };
-            let source_doc = match trimmed.parse::<DocumentMut>() {
-                Ok(doc) => doc,
-                Err(_) => return false,
-            };
-
-            toml_item_is_subset(target_doc.as_item(), source_doc.as_item())
-        }
-        AppType::Gemini => match serde_json::from_str::<Value>(trimmed) {
-            Ok(Value::Object(source_map)) => {
-                let Some(target_map) = gemini_env_map_from_settings(settings) else {
-                    return false;
-                };
-                source_map.iter().all(|(key, source_value)| {
-                    target_map
-                        .get(key)
-                        .is_some_and(|target_value| {
-                            json_value_is_subset(target_value, source_value)
-                        })
-                })
-            }
-            _ => false,
-        },
-        AppType::OpenCode | AppType::OpenClaw | AppType::Hermes | AppType::ClaudeDesktop => false,
-    }
-}
-
-pub(crate) fn provider_uses_common_config(
-    app_type: &AppType,
-    provider: &Provider,
-    snippet: Option<&str>,
-) -> bool {
-    match provider
-        .meta
-        .as_ref()
-        .and_then(|meta| meta.common_config_enabled)
-    {
-        Some(explicit) => explicit && snippet.is_some_and(|value| !value.trim().is_empty()),
-        None => snippet.is_some_and(|value| {
-            settings_contain_common_config(app_type, &provider.settings_config, value)
-        }),
     }
 }
 
@@ -1402,7 +1341,7 @@ mod tests {
 }"#;
 
         assert!(
-            settings_contain_common_config(&AppType::Claude, &settings, snippet),
+            contains_common_config_snippet(&AppType::Claude, &settings, snippet),
             "array subset should be detected for legacy providers"
         );
 
@@ -1425,7 +1364,7 @@ mod tests {
         let snippet = "allowed_tools = [\"tool1\"]\n";
 
         assert!(
-            settings_contain_common_config(&AppType::Codex, &settings, snippet),
+            contains_common_config_snippet(&AppType::Codex, &settings, snippet),
             "TOML array subset should be detected for legacy providers"
         );
 
@@ -1457,11 +1396,11 @@ mod tests {
         let snippet = r#"{"SHARED_REGION": "us-central1"}"#;
 
         assert!(
-            settings_contain_common_config(&AppType::Gemini, &settings, snippet),
+            contains_common_config_snippet(&AppType::Gemini, &settings, snippet),
             "Gemini common config should be matched inside env"
         );
         assert!(
-            !settings_contain_common_config(
+            !contains_common_config_snippet(
                 &AppType::Gemini,
                 &json!({"env": "invalid"}),
                 snippet
