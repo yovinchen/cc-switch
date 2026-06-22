@@ -1512,6 +1512,23 @@ pub(crate) struct CodexRestoredLiveSettingsParts<'a> {
     pub(crate) config: Option<&'a Value>,
 }
 
+pub(crate) struct CodexProviderBackfillParts<'a> {
+    pub(crate) template_settings: &'a Value,
+    pub(crate) restore_provider_token: bool,
+    pub(crate) strip_unified_session_bucket: bool,
+}
+
+pub(crate) fn provider_codex_backfill_parts(provider: &Provider) -> CodexProviderBackfillParts<'_> {
+    CodexProviderBackfillParts {
+        template_settings: &provider.settings_config,
+        restore_provider_token: crate::codex_config::should_restore_codex_provider_token_for_backfill(
+            provider.category.as_deref(),
+            &provider.settings_config,
+        ),
+        strip_unified_session_bucket: provider.category.as_deref() == Some("official"),
+    }
+}
+
 pub(crate) fn codex_restored_live_settings_parts(
     settings: &Value,
 ) -> CodexRestoredLiveSettingsParts<'_> {
@@ -6583,6 +6600,14 @@ experimental_bearer_token = "bearer-token"
         assert_eq!(parts.config_text, Some(""));
         let mut custom_category_provider = api_key_live_provider.clone();
         custom_category_provider.category = Some("custom".to_string());
+        let custom_backfill_parts = provider_codex_backfill_parts(&custom_category_provider);
+        assert!(custom_backfill_parts.restore_provider_token);
+        assert!(!custom_backfill_parts.strip_unified_session_bucket);
+        let mut official_category_provider = api_key_live_provider.clone();
+        official_category_provider.category = Some("official".to_string());
+        let official_backfill_parts = provider_codex_backfill_parts(&official_category_provider);
+        assert!(!official_backfill_parts.restore_provider_token);
+        assert!(official_backfill_parts.strip_unified_session_bucket);
         let write_settings = json!({
             "auth": {"OPENAI_API_KEY": "sk-write"},
             "config": "model = \"gpt-5\""

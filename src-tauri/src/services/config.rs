@@ -3,7 +3,8 @@ use crate::app_config::{AppType, MultiAppConfig};
 use crate::error::AppError;
 use crate::provider::Provider;
 use crate::proxy_core_adapter::{
-    codex_restored_live_settings_parts, provider_codex_live_settings_parts,
+    codex_restored_live_settings_parts, provider_codex_backfill_parts,
+    provider_codex_live_settings_parts,
     CodexLiveSettingsIssue,
 };
 use chrono::Utc;
@@ -179,15 +180,11 @@ impl ConfigService {
                         "auth": parts.auth.clone(),
                         "config": cfg_text_after,
                     });
-                    let restore_provider_token =
-                        crate::codex_config::should_restore_codex_provider_token_for_backfill(
-                            parts.category,
-                            &provider.settings_config,
-                        );
+                    let backfill_parts = provider_codex_backfill_parts(provider);
                     crate::codex_config::restore_codex_settings_for_backfill(
                         &mut restored,
-                        &provider.settings_config,
-                        restore_provider_token,
+                        backfill_parts.template_settings,
+                        backfill_parts.restore_provider_token,
                     )?;
                     // 必须同时写回 auth 和 config: backfill 会把 live 的
                     // experimental_bearer_token 移到 restored.auth.OPENAI_API_KEY。
