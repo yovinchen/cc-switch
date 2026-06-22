@@ -3923,11 +3923,26 @@ pub(crate) fn circuit_breaker_config_from_app_config(
     crate::proxy_core::api::config::circuit_breaker_config_from_app_config(config)
 }
 
+pub(crate) fn circuit_breaker_config_from_router_config_result(
+    result: Result<AppProxyConfig, AppError>,
+) -> CircuitBreakerConfig {
+    let config = result.ok();
+    circuit_breaker_config_from_app_config(config.as_ref())
+}
+
 pub(crate) fn circuit_failure_threshold_from_app_config(
     config: Option<&AppProxyConfig>,
     fallback: u32,
 ) -> u32 {
     crate::proxy_core::api::config::circuit_failure_threshold_from_app_config(config, fallback)
+}
+
+pub(crate) fn circuit_failure_threshold_from_router_config_result(
+    result: Result<AppProxyConfig, AppError>,
+    fallback: u32,
+) -> u32 {
+    let config = result.ok();
+    circuit_failure_threshold_from_app_config(config.as_ref(), fallback)
 }
 
 pub(crate) fn provider_circuit_key(app_type: &str, provider_id: &str) -> String {
@@ -8942,6 +8957,34 @@ mod tests {
         );
 
         assert_eq!(CircuitBreakerConfig::from(&app_config), CircuitBreakerConfig::default());
+        let mut custom_breaker_app_config = app_config.clone();
+        custom_breaker_app_config.circuit_failure_threshold = 7;
+        custom_breaker_app_config.circuit_timeout_seconds = 45;
+        let projected_breaker_config = circuit_breaker_config_from_router_config_result(Ok(
+            custom_breaker_app_config.clone(),
+        ));
+        assert_eq!(projected_breaker_config.failure_threshold, 7);
+        assert_eq!(projected_breaker_config.timeout_seconds, 45);
+        assert_eq!(
+            circuit_breaker_config_from_router_config_result(Err(AppError::Config(
+                "missing proxy_config".to_string(),
+            ))),
+            CircuitBreakerConfig::default()
+        );
+        assert_eq!(
+            circuit_failure_threshold_from_router_config_result(
+                Ok(custom_breaker_app_config),
+                9,
+            ),
+            7
+        );
+        assert_eq!(
+            circuit_failure_threshold_from_router_config_result(
+                Err(AppError::Config("missing proxy_config".to_string())),
+                9,
+            ),
+            9
+        );
         let enabled_policy = response_runtime_policy_from_app_proxy_config(&app_config);
         assert_eq!(enabled_policy.max_retries, 3);
         assert_eq!(enabled_policy.timeout.non_streaming_timeout, 600);
