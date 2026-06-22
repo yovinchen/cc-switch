@@ -8461,6 +8461,36 @@ pub(crate) fn proxy_channel_model_records_to_core(
         .collect()
 }
 
+pub(crate) fn channel_model_records_from_db_source(
+    db: &Database,
+    channel_id: &str,
+) -> ProxyCoreResult<Option<Vec<ChannelModelRecord>>> {
+    let channel_exists = db
+        .get_proxy_channel(channel_id)
+        .map_err(|error| app_error("get channel for model records", error))?
+        .is_some();
+
+    if !channel_exists {
+        return Ok(None);
+    }
+
+    let models = db
+        .list_proxy_channel_models(channel_id)
+        .map_err(|error| app_error("list channel model records", error))?;
+    Ok(Some(proxy_channel_model_records_to_core(models)))
+}
+
+pub(crate) fn replace_channel_model_records_from_db_source(
+    db: &Database,
+    channel_id: &str,
+    request: ProxyChannelModelsReplaceRequest,
+) -> ProxyCoreResult<Option<Vec<ChannelModelRecord>>> {
+    let models = db
+        .replace_proxy_channel_models(channel_id, request)
+        .map_err(|error| app_error("replace channel model records", error))?;
+    Ok(models.map(proxy_channel_model_records_to_core))
+}
+
 #[allow(dead_code)]
 pub(crate) trait ToProxyCoreChannelRecord {
     fn to_proxy_core_channel_record(&self) -> ChannelRecord;
@@ -8569,6 +8599,49 @@ pub(crate) fn proxy_channel_key_records_to_core(
     keys.into_iter()
         .map(proxy_channel_key_record_to_core)
         .collect()
+}
+
+pub(crate) fn channel_key_records_from_db_source(
+    db: &Database,
+    channel_id: &str,
+) -> ProxyCoreResult<Option<Vec<ChannelKeyRecord>>> {
+    let keys = db
+        .list_proxy_channel_keys(channel_id)
+        .map_err(|error| app_error("list channel key records", error))?;
+    Ok(keys.map(proxy_channel_key_records_to_core))
+}
+
+pub(crate) fn upsert_channel_key_record_from_db_source(
+    db: &Database,
+    channel_id: &str,
+    key_ref: &str,
+    request: ProxyChannelKeyWriteRequest,
+) -> ProxyCoreResult<Option<ChannelKeyRecord>> {
+    let key = db
+        .upsert_proxy_channel_key(channel_id, key_ref, request)
+        .map_err(|error| app_error("upsert channel key record", error))?;
+    Ok(Some(proxy_channel_key_record_to_core(key)))
+}
+
+pub(crate) fn update_channel_key_record_from_db_source(
+    db: &Database,
+    channel_id: &str,
+    key_ref: &str,
+    patch: ProxyChannelKeyPatchRequest,
+) -> ProxyCoreResult<Option<ChannelKeyRecord>> {
+    let key = db
+        .update_proxy_channel_key(channel_id, key_ref, patch)
+        .map_err(|error| app_error("update channel key record", error))?;
+    Ok(key.map(proxy_channel_key_record_to_core))
+}
+
+pub(crate) fn delete_channel_key_record_from_db_source(
+    db: &Database,
+    channel_id: &str,
+    key_ref: &str,
+) -> ProxyCoreResult<bool> {
+    db.delete_proxy_channel_key(channel_id, key_ref)
+        .map_err(|error| app_error("delete channel key record", error))
 }
 
 pub(crate) fn channel_migration_preview_input_from_result(
