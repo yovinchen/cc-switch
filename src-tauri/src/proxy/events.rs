@@ -5,8 +5,7 @@
 //! implementation when the forwarding engine is moved behind service ports.
 
 use crate::proxy_core_adapter::{
-    build_proxy_events_connected_payload, build_proxy_events_lagged_payload, ProxyEventEnvelope,
-    PROXY_EVENTS_CONNECTED_EVENT, PROXY_EVENTS_LAGGED_EVENT,
+    proxy_events_connected_message, proxy_events_lagged_message, ProxyEventEnvelope,
 };
 use serde_json::Value;
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -42,17 +41,13 @@ impl ProxyEventBus {
     }
 
     pub fn connected_event(&self) -> ProxyEventEnvelope {
-        self.envelope(
-            PROXY_EVENTS_CONNECTED_EVENT,
-            build_proxy_events_connected_payload(EVENT_BUFFER_SIZE),
-        )
+        let message = proxy_events_connected_message(EVENT_BUFFER_SIZE);
+        self.envelope(message.event_name, message.payload)
     }
 
     pub fn lagged_event(&self, skipped: u64) -> ProxyEventEnvelope {
-        self.envelope(
-            PROXY_EVENTS_LAGGED_EVENT,
-            build_proxy_events_lagged_payload(skipped),
-        )
+        let message = proxy_events_lagged_message(skipped);
+        self.envelope(message.event_name, message.payload)
     }
 
     fn envelope(&self, event: impl Into<String>, payload: Value) -> ProxyEventEnvelope {
@@ -82,5 +77,18 @@ mod tests {
         assert_eq!(received.id, 1);
         assert_eq!(received.event, "request_started");
         assert_eq!(received.payload["appType"], "claude");
+    }
+
+    #[test]
+    fn event_bus_projects_connected_and_lagged_messages() {
+        let bus = ProxyEventBus::default();
+
+        let connected = bus.connected_event();
+        assert_eq!(connected.event, "proxy_events_connected");
+        assert_eq!(connected.payload["bufferSize"], EVENT_BUFFER_SIZE);
+
+        let lagged = bus.lagged_event(7);
+        assert_eq!(lagged.event, "proxy_events_lagged");
+        assert_eq!(lagged.payload["skipped"], 7);
     }
 }

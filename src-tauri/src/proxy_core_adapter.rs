@@ -2285,6 +2285,20 @@ pub(crate) fn build_proxy_events_lagged_payload(skipped: u64) -> Value {
     crate::proxy_core::api::events::build_proxy_events_lagged_payload(skipped)
 }
 
+pub(crate) fn proxy_events_connected_message(buffer_size: usize) -> ProxyEventBusMessage {
+    ProxyEventBusMessage {
+        event_name: PROXY_EVENTS_CONNECTED_EVENT.to_string(),
+        payload: build_proxy_events_connected_payload(buffer_size),
+    }
+}
+
+pub(crate) fn proxy_events_lagged_message(skipped: u64) -> ProxyEventBusMessage {
+    ProxyEventBusMessage {
+        event_name: PROXY_EVENTS_LAGGED_EVENT.to_string(),
+        payload: build_proxy_events_lagged_payload(skipped),
+    }
+}
+
 pub(crate) fn build_server_started_event_payload(address: &str, port: u16) -> Value {
     crate::proxy_core::api::events::build_server_started_event_payload(address, port)
 }
@@ -8564,6 +8578,12 @@ mod tests {
         assert_eq!(SERVER_STOPPED_EVENT, "server_stopped");
         assert_eq!(build_proxy_events_connected_payload(256)["bufferSize"], 256);
         assert_eq!(build_proxy_events_lagged_payload(3)["skipped"], 3);
+        let connected = proxy_events_connected_message(256);
+        assert_eq!(connected.event_name, "proxy_events_connected");
+        assert_eq!(connected.payload["bufferSize"], 256);
+        let lagged = proxy_events_lagged_message(3);
+        assert_eq!(lagged.event_name, "proxy_events_lagged");
+        assert_eq!(lagged.payload["skipped"], 3);
         assert_eq!(
             build_proxy_official_warning_event_payload("claude", "Official Claude"),
             json!({

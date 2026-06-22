@@ -706,7 +706,7 @@
 695. runtime status 的 active target 注入与按 appType 排序规则已迁入 `proxy-core::apply_proxy_runtime_active_targets`：server 只负责读取 host runtime map，状态响应里的排序口径由 core 维护。
 696. request started 与 active connection 的 runtime status 计数策略已迁入 `proxy-core::{record_forward_request_started_status,record_active_connection_acquired_status,record_active_connection_released_status}`：forwarder 保留 RAII guard 和时间戳注入，计数加减与饱和规则由 core 维护。
 697. server lifecycle 的 runtime status 更新策略已迁入 `proxy-core::{record_proxy_server_started_status,record_proxy_server_stopped_status,apply_proxy_runtime_uptime}`：server 继续负责 socket 监听、Instant 计时和事件发送，running/address/port/uptime 字段变更由 core 维护。
-698. server lifecycle 事件名与 payload contract 已经通过 `proxy_core_adapter::{server_started_event_message,server_stopped_event_message}` 投影为 event bus message：server 只负责把监听事实交给 adapter 并通过现有事件总线 emit。
+698. server lifecycle 与 proxy events connected/lagged 事件名、payload contract 已经通过 `proxy_core_adapter::{server_started_event_message,server_stopped_event_message,proxy_events_connected_message,proxy_events_lagged_message}` 投影为 event bus message：server/event bus 只负责监听事实、sequence/timestamp 和现有事件总线 emit。
 699. `ProxyServerInfo` 构造已迁入 `proxy-core::proxy_server_info_from_parts`：server start 和 service 已运行返回路径都只提供 address/port/started_at 事实，不再手写 core DTO 字段。
 700. `ProxyTakeoverStatus` 构造已迁入 `proxy-core::proxy_takeover_status_from_parts`：service 继续负责读取各 app 接管事实，DTO 字段 shape 与序列化 contract 由 core 统一维护。
 701. provider-switched 事件名、source 常量与 payload contract 已经通过 `proxy_core_adapter::{provider_switched_failover_event_message,provider_switched_failover_enabled_event_message}` 投影为 Tauri event message：failover manager 与 command 只负责切换副作用和 emit 时机。
