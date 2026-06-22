@@ -3215,6 +3215,31 @@ pub(crate) fn toml_item_is_subset(target: &toml_edit::Item, source: &toml_edit::
     }
 }
 
+fn merge_toml_item(target: &mut toml_edit::Item, source: &toml_edit::Item) {
+    if let Some(source_table) = source.as_table_like() {
+        if let Some(target_table) = target.as_table_like_mut() {
+            merge_toml_table_like(target_table, source_table);
+            return;
+        }
+    }
+
+    *target = source.clone();
+}
+
+pub(crate) fn merge_toml_table_like(
+    target: &mut dyn toml_edit::TableLike,
+    source: &dyn toml_edit::TableLike,
+) {
+    for (key, source_item) in source.iter() {
+        match target.get_mut(key) {
+            Some(target_item) => merge_toml_item(target_item, source_item),
+            None => {
+                target.insert(key, source_item.clone());
+            }
+        }
+    }
+}
+
 fn remove_toml_item(target: &mut toml_edit::Item, source: &toml_edit::Item) {
     if let Some(source_table) = source.as_table_like() {
         if let Some(target_table) = target.as_table_like_mut() {

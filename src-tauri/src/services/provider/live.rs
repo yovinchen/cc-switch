@@ -5,7 +5,7 @@
 use std::collections::HashMap;
 
 use serde_json::{json, Value};
-use toml_edit::{DocumentMut, Item, TableLike};
+use toml_edit::DocumentMut;
 
 use crate::app_config::AppType;
 use crate::codex_config::{get_codex_auth_path, get_codex_config_path};
@@ -16,8 +16,9 @@ use crate::provider::Provider;
 use crate::proxy_core_adapter::{
     codex_config_text_from_settings,
     gemini_env_value_from_env_json, opencode_live_provider_fragment_has_provider_fields,
-    json_deep_merge, json_deep_remove, normalize_claude_models_in_value,
-    provider_codex_imported_live_category, provider_codex_live_snapshot_parts,
+    json_deep_merge, json_deep_remove, merge_toml_table_like,
+    normalize_claude_models_in_value, provider_codex_imported_live_category,
+    provider_codex_live_snapshot_parts,
     provider_gemini_env_map, provider_gemini_live_config_object,
     provider_model_catalog_raw_value, provider_opencode_live_provider_fragment,
     provider_openclaw_has_live_provider_fields, proxy_live_config_owned_by_takeover,
@@ -48,28 +49,6 @@ pub(crate) fn provider_exists_in_live_config(
         AppType::Hermes => crate::hermes_config::get_providers()
             .map(|providers| providers.contains_key(provider_id)),
         _ => Ok(false),
-    }
-}
-
-fn merge_toml_item(target: &mut Item, source: &Item) {
-    if let Some(source_table) = source.as_table_like() {
-        if let Some(target_table) = target.as_table_like_mut() {
-            merge_toml_table_like(target_table, source_table);
-            return;
-        }
-    }
-
-    *target = source.clone();
-}
-
-fn merge_toml_table_like(target: &mut dyn TableLike, source: &dyn TableLike) {
-    for (key, source_item) in source.iter() {
-        match target.get_mut(key) {
-            Some(target_item) => merge_toml_item(target_item, source_item),
-            None => {
-                target.insert(key, source_item.clone());
-            }
-        }
     }
 }
 
