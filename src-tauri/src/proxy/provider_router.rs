@@ -8,6 +8,7 @@ use crate::error::AppError;
 use crate::provider::Provider;
 use crate::proxy::circuit_breaker::CircuitBreaker;
 use crate::proxy_core_adapter::{
+    app_error_from_provider_selection_failure, app_error_from_proxy_core_error,
     app_type_from_circuit_key, channel_circuit_key, channel_circuit_key_prefix,
     circuit_breaker_config_from_app_config, circuit_failure_threshold_from_app_config,
     provider_circuit_key, provider_circuit_key_prefix,
@@ -16,8 +17,7 @@ use crate::proxy_core_adapter::{
     reject_unavailable_channel_ids, resolve_channel_route as resolve_core_channel_route,
     route_candidate_channel_circuit_keys, select_provider_ids, AllowResult, ChannelRouteSource,
     CircuitBreakerConfig,
-    CircuitBreakerStats, ProviderSelectionFailure, ProviderSelectionInput, ProxyCoreError,
-    RouteResolveRequest, RouteResolveResponse,
+    CircuitBreakerStats, ProviderSelectionInput, RouteResolveRequest, RouteResolveResponse,
 };
 use std::collections::HashMap;
 use std::str::FromStr;
@@ -97,7 +97,7 @@ impl ProviderRouter {
         }
 
         let selected_ids = select_provider_ids(ProviderSelectionInput::failover(candidates))
-            .map_err(|error| provider_selection_failure_to_app_error(app_type, error))?;
+            .map_err(|error| app_error_from_provider_selection_failure(app_type, error))?;
 
         Ok(selected_ids
             .into_iter()
@@ -127,7 +127,7 @@ impl ProviderRouter {
         let selected_ids = select_provider_ids(ProviderSelectionInput::current(
             current.as_ref().map(|provider| provider.id.clone()),
         ))
-        .map_err(|error| provider_selection_failure_to_app_error(app_type, error))?;
+        .map_err(|error| app_error_from_provider_selection_failure(app_type, error))?;
 
         Ok(selected_ids
             .into_iter()
@@ -173,7 +173,7 @@ impl ProviderRouter {
             proxy_channel_route_inputs_to_core(channels),
             source,
         )
-        .map_err(proxy_core_error_to_app_error)?;
+        .map_err(app_error_from_proxy_core_error)?;
         let unavailable_channel_ids = self.unavailable_route_candidate_ids(&response).await;
         reject_unavailable_channel_ids(&mut response, unavailable_channel_ids);
         Ok(response)
@@ -439,30 +439,6 @@ impl ProviderRouter {
     async fn failure_threshold_for_app(&self, app_type: &str, fallback: u32) -> u32 {
         let app_config = self.db.get_proxy_config_for_app(app_type).await.ok();
         circuit_failure_threshold_from_app_config(app_config.as_ref(), fallback)
-    }
-}
-
-fn proxy_core_error_to_app_error(error: ProxyCoreError) -> AppError {
-    match error {
-        ProxyCoreError::Config(message) => AppError::Config(message),
-        ProxyCoreError::InvalidRequest(message) => AppError::InvalidInput(message),
-        other => AppError::Message(other.to_string()),
-    }
-}
-
-fn provider_selection_failure_to_app_error(
-    app_type: &str,
-    error: ProviderSelectionFailure,
-) -> AppError {
-    match error {
-        ProviderSelectionFailure::AllProvidersCircuitOpen => {
-            log::warn!("[{app_type}] [FO-004] 所有供应商均已熔断");
-            AppError::AllProvidersCircuitOpen
-        }
-        ProviderSelectionFailure::NoProvidersConfigured => {
-            log::warn!("[{app_type}] [FO-005] 未配置供应商");
-            AppError::NoProvidersConfigured
-        }
     }
 }
 

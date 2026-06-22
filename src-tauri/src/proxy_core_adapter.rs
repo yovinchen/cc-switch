@@ -128,6 +128,30 @@ pub(crate) fn usage_error(context: &str, error: AppError) -> ProxyCoreError {
     ProxyCoreError::Internal(error_message_with_context(context, error))
 }
 
+pub(crate) fn app_error_from_proxy_core_error(error: ProxyCoreError) -> AppError {
+    match error {
+        ProxyCoreError::Config(message) => AppError::Config(message),
+        ProxyCoreError::InvalidRequest(message) => AppError::InvalidInput(message),
+        other => AppError::Message(other.to_string()),
+    }
+}
+
+pub(crate) fn app_error_from_provider_selection_failure(
+    app_type: &str,
+    error: ProviderSelectionFailure,
+) -> AppError {
+    match error {
+        ProviderSelectionFailure::AllProvidersCircuitOpen => {
+            log::warn!("[{app_type}] [FO-004] 所有供应商均已熔断");
+            AppError::AllProvidersCircuitOpen
+        }
+        ProviderSelectionFailure::NoProvidersConfigured => {
+            log::warn!("[{app_type}] [FO-005] 未配置供应商");
+            AppError::NoProvidersConfigured
+        }
+    }
+}
+
 pub(crate) const SYSTEM_PROXY_ENV_KEYS: [&str; 6] =
     crate::proxy_core::api::transport::SYSTEM_PROXY_ENV_KEYS;
 
@@ -8568,6 +8592,36 @@ mod tests {
         ]))
         .expect("selected provider ids");
         assert_eq!(selected, vec!["provider-b"]);
+        assert!(matches!(
+            app_error_from_provider_selection_failure(
+                "claude",
+                ProviderSelectionFailure::AllProvidersCircuitOpen,
+            ),
+            AppError::AllProvidersCircuitOpen
+        ));
+        assert!(matches!(
+            app_error_from_provider_selection_failure(
+                "claude",
+                ProviderSelectionFailure::NoProvidersConfigured,
+            ),
+            AppError::NoProvidersConfigured
+        ));
+        assert!(matches!(
+            app_error_from_proxy_core_error(ProxyCoreError::Config("bad config".to_string())),
+            AppError::Config(message) if message == "bad config"
+        ));
+        assert!(matches!(
+            app_error_from_proxy_core_error(ProxyCoreError::InvalidRequest(
+                "bad request".to_string()
+            )),
+            AppError::InvalidInput(message) if message == "bad request"
+        ));
+        assert!(matches!(
+            app_error_from_proxy_core_error(ProxyCoreError::Unavailable(
+                "not available".to_string()
+            )),
+            AppError::Message(message) if message.contains("not available")
+        ));
         assert_eq!(
             current_provider_id_from_sources(Some("settings-provider"), Some("db-provider")),
             "settings-provider"
