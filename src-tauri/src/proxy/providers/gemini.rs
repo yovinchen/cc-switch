@@ -10,7 +10,7 @@ use super::ProviderAdapter;
 use crate::provider::Provider;
 use crate::proxy::error::ProxyError;
 use crate::proxy_core_adapter::{
-    provider_gemini_auth_headers, provider_gemini_auth_info, provider_gemini_upstream_url,
+    build_gemini_upstream_url, provider_gemini_auth_headers, provider_gemini_auth_info,
     required_gemini_provider_base_url, ProviderAuthInfo,
 };
 #[cfg(test)]
@@ -45,7 +45,7 @@ impl ProviderAdapter for GeminiAdapter {
     }
 
     fn build_url(&self, base_url: &str, endpoint: &str) -> String {
-        provider_gemini_upstream_url(base_url, endpoint)
+        build_gemini_upstream_url(base_url, endpoint)
     }
 
     fn get_auth_headers(

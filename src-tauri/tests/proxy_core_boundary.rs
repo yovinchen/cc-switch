@@ -383,9 +383,16 @@ const FORBIDDEN_PROVIDER_ADAPTER_AUTH_HEADER_MARKERS: &[&str] = &[
     ".map_err(|error| ProxyError::AuthError(error.to_string()))",
 ];
 const FORBIDDEN_PROVIDER_ADAPTER_URL_BUILD_MARKERS: &[&str] = &[
-    "build_claude_upstream_url(",
-    "build_codex_upstream_url(",
-    "build_gemini_upstream_url(",
+    "provider_claude_upstream_url(",
+    "provider_codex_upstream_url(",
+    "provider_gemini_upstream_url(",
+    "crate::proxy_core::",
+    "cc_switch_proxy_core::",
+];
+const FORBIDDEN_PROXY_CORE_ADAPTER_PROVIDER_URL_FACADE_MARKERS: &[&str] = &[
+    "fn provider_claude_upstream_url(",
+    "fn provider_codex_upstream_url(",
+    "fn provider_gemini_upstream_url(",
 ];
 const FORBIDDEN_CLAUDE_PROVIDER_ADAPTER_TRANSFORM_DECISION_MARKERS: &[&str] = &[
     "ProviderKind::GitHubCopilot",
@@ -1667,7 +1674,34 @@ fn production_provider_adapters_delegate_url_building_to_adapter() {
 
     assert!(
         violations.is_empty(),
-        "provider adapters must delegate upstream URL building to proxy_core_adapter provider helpers:\n{}",
+        "provider adapters must delegate upstream URL building to proxy_core_adapter build helpers without direct core access or provider URL facades:\n{}",
+        violations.join("\n")
+    );
+}
+
+#[test]
+fn proxy_core_adapter_excludes_provider_url_facades() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let adapter_path = manifest_dir.join("src/proxy_core_adapter.rs");
+    let source = fs::read_to_string(&adapter_path).expect("read proxy_core_adapter.rs");
+
+    let mut violations = Vec::new();
+    for (line_index, line) in production_lines(&source) {
+        let code = line.split("//").next().unwrap_or_default();
+        for marker in FORBIDDEN_PROXY_CORE_ADAPTER_PROVIDER_URL_FACADE_MARKERS {
+            if code.contains(marker) {
+                violations.push(format!(
+                    "src/proxy_core_adapter.rs:{} contains provider URL facade marker `{}`",
+                    line_index + 1,
+                    marker
+                ));
+            }
+        }
+    }
+
+    assert!(
+        violations.is_empty(),
+        "proxy_core_adapter should expose core upstream URL builders directly instead of provider_* one-line facades:\n{}",
         violations.join("\n")
     );
 }

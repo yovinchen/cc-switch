@@ -9,7 +9,7 @@ use super::ProviderAdapter;
 use crate::provider::Provider;
 use crate::proxy::error::ProxyError;
 use crate::proxy_core_adapter::{
-    provider_codex_auth_headers, provider_codex_auth_info, provider_codex_upstream_url,
+    build_codex_upstream_url, provider_codex_auth_headers, provider_codex_auth_info,
     required_codex_provider_base_url, ProviderAuthInfo,
 };
 
@@ -42,7 +42,7 @@ impl ProviderAdapter for CodexAdapter {
     }
 
     fn build_url(&self, base_url: &str, endpoint: &str) -> String {
-        provider_codex_upstream_url(base_url, endpoint)
+        build_codex_upstream_url(base_url, endpoint)
     }
 
     fn get_auth_headers(

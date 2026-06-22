@@ -18,9 +18,9 @@ use super::ProviderAdapter;
 use crate::provider::Provider;
 use crate::proxy::error::ProxyError;
 use crate::proxy_core_adapter::{
-    provider_claude_api_format, provider_claude_auth_headers, provider_claude_auth_info,
-    provider_claude_transform_request_for_api_format, provider_claude_transform_response,
-    provider_claude_upstream_url, provider_needs_claude_transform,
+    build_claude_upstream_url, provider_claude_api_format, provider_claude_auth_headers,
+    provider_claude_auth_info, provider_claude_transform_request_for_api_format,
+    provider_claude_transform_response, provider_needs_claude_transform,
     required_claude_provider_base_url, GeminiShadowStore, ProviderAuthInfo,
 };
 #[cfg(test)]
@@ -86,7 +86,7 @@ impl ProviderAdapter for ClaudeAdapter {
     }
 
     fn build_url(&self, base_url: &str, endpoint: &str) -> String {
-        provider_claude_upstream_url(base_url, endpoint)
+        build_claude_upstream_url(base_url, endpoint)
     }
 
     fn get_auth_headers(
