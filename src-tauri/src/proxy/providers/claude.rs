@@ -18,18 +18,16 @@ use super::ProviderAdapter;
 use crate::provider::Provider;
 use crate::proxy::error::ProxyError;
 use crate::proxy_core_adapter::{
-    normalize_anthropic_tool_thinking_history, provider_claude_api_format,
-    provider_claude_auth_headers, provider_claude_auth_info,
+    provider_claude_api_format, provider_claude_auth_headers, provider_claude_auth_info,
+    provider_claude_normalize_anthropic_messages,
     provider_claude_transform_request_for_api_format, provider_claude_transform_response,
-    provider_claude_upstream_url, required_claude_provider_base_url,
-    provider_normalize_deepseek_thinking_disabled_strip_effort,
-    provider_needs_claude_transform, provider_should_normalize_anthropic_tool_thinking_history,
-    GeminiShadowStore, ProviderAuthInfo,
+    provider_claude_upstream_url, provider_needs_claude_transform,
+    required_claude_provider_base_url, GeminiShadowStore, ProviderAuthInfo,
 };
 #[cfg(test)]
 use crate::proxy_core_adapter::{
-    provider_claude_kind, should_normalize_anthropic_tool_thinking_history, ProviderAuthStrategy,
-    ProviderKind,
+    normalize_anthropic_tool_thinking_history, provider_claude_kind,
+    should_normalize_anthropic_tool_thinking_history, ProviderAuthStrategy, ProviderKind,
 };
 use serde_json::Value;
 
@@ -46,21 +44,7 @@ pub fn normalize_anthropic_messages_for_provider(
     provider: &Provider,
     api_format: &str,
 ) -> bool {
-    if api_format.trim() != "anthropic" {
-        return false;
-    }
-
-    let mut changed = if provider_should_normalize_anthropic_tool_thinking_history(
-        provider,
-        body,
-        api_format,
-    ) {
-        normalize_anthropic_tool_thinking_history(body)
-    } else {
-        false
-    };
-    changed |= provider_normalize_deepseek_thinking_disabled_strip_effort(provider, body);
-    changed
+    provider_claude_normalize_anthropic_messages(body, provider, api_format)
 }
 
 pub fn transform_claude_request_for_api_format(
