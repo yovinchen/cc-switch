@@ -19,7 +19,7 @@ use crate::proxy_core_adapter::{
     normalize_provider_common_config_for_storage as adapter_normalize_provider_common_config_for_storage,
     provider_codex_live_snapshot_parts, provider_from_default_live_settings,
     CommonConfigSettingsMutationIssue,
-    OpenClawLiveWriteConfig,
+    gemini_live_settings_to_write, OpenClawLiveWriteConfig,
     OpenCodeLiveWriteConfig,
     ProviderBackfillSettingsWarning, ProviderEffectiveSettingsWarning,
     provider_common_config_storage_normalization_requires_snippet,
@@ -850,22 +850,13 @@ pub(crate) fn write_gemini_live(provider: &Provider) -> Result<(), AppError> {
 
     match provider_gemini_live_config_object(provider) {
         Ok(Some(config_value)) => {
-            // Merge with existing settings to preserve mcpServers and other fields
-            let mut merged = if settings_path.exists() {
+            let existing_settings = if settings_path.exists() {
                 read_json_file::<Value>(&settings_path).unwrap_or_else(|_| json!({}))
             } else {
                 json!({})
             };
-
-            // Merge provider config into existing settings
-            if let (Some(merged_obj), Some(config_obj)) =
-                (merged.as_object_mut(), config_value.as_object())
-            {
-                for (k, v) in config_obj {
-                    merged_obj.insert(k.clone(), v.clone());
-                }
-            }
-            config_to_write = Some(merged);
+            config_to_write =
+                gemini_live_settings_to_write(Some(existing_settings), Some(config_value));
         }
         Ok(None) => {
             // config is null or absent: don't modify existing settings.json (preserve mcpServers etc.)
@@ -881,7 +872,8 @@ pub(crate) fn write_gemini_live(provider: &Provider) -> Result<(), AppError> {
 
     // If no config specified or config is null, preserve existing file
     if config_to_write.is_none() && settings_path.exists() {
-        config_to_write = Some(read_json_file(&settings_path)?);
+        config_to_write =
+            gemini_live_settings_to_write(Some(read_json_file(&settings_path)?), None);
     }
 
     match auth_type {

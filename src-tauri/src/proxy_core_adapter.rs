@@ -2773,6 +2773,26 @@ pub(crate) fn provider_gemini_live_config_object(
     }
 }
 
+pub(crate) fn gemini_live_settings_to_write(
+    existing_settings: Option<Value>,
+    provider_config: Option<&Value>,
+) -> Option<Value> {
+    match provider_config {
+        Some(config_value) => {
+            let mut merged = existing_settings.unwrap_or_else(|| json!({}));
+            if let (Some(merged_obj), Some(config_obj)) =
+                (merged.as_object_mut(), config_value.as_object())
+            {
+                for (key, value) in config_obj {
+                    merged_obj.insert(key.clone(), value.clone());
+                }
+            }
+            Some(merged)
+        }
+        None => existing_settings,
+    }
+}
+
 pub(crate) fn provider_gemini_kind(provider: &Provider) -> ProviderKind {
     if provider_gemini_api_key(provider)
         .as_deref()
@@ -8538,6 +8558,31 @@ base_url = "https://api.openai.com/v1"
             )),
             Err(GeminiLiveConfigIssue::InvalidType)
         ));
+        assert_eq!(
+            gemini_live_settings_to_write(
+                Some(json!({
+                    "mcpServers": {"existing": {}},
+                    "security": {"auth": {"selectedType": "oauth-personal"}}
+                })),
+                Some(&json!({
+                    "security": {"auth": {"selectedType": "api-key"}},
+                    "ui": {"theme": "dark"}
+                })),
+            ),
+            Some(json!({
+                "mcpServers": {"existing": {}},
+                "security": {"auth": {"selectedType": "api-key"}},
+                "ui": {"theme": "dark"}
+            }))
+        );
+        assert_eq!(
+            gemini_live_settings_to_write(Some(json!({"mcpServers": {}})), None),
+            Some(json!({"mcpServers": {}}))
+        );
+        assert_eq!(
+            gemini_live_settings_to_write(None, Some(&json!({"ui": {"theme": "dark"}}))),
+            Some(json!({"ui": {"theme": "dark"}}))
+        );
 
         let creds = parse_gemini_oauth_credentials("ya29.access-token")
             .expect("direct oauth token should parse");
