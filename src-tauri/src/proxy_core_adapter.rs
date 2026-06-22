@@ -4014,6 +4014,13 @@ pub(crate) fn provider_settings_with_live_token_sync(
     }
 }
 
+const CLAUDE_TAKEOVER_TOKEN_ENV_KEYS: [&str; 4] = [
+    "ANTHROPIC_AUTH_TOKEN",
+    "ANTHROPIC_API_KEY",
+    "OPENROUTER_API_KEY",
+    "OPENAI_API_KEY",
+];
+
 pub(crate) fn claude_live_config_has_proxy_placeholder(
     config: &Value,
     placeholder: &str,
@@ -4022,14 +4029,40 @@ pub(crate) fn claude_live_config_has_proxy_placeholder(
         return false;
     };
 
-    [
-        "ANTHROPIC_AUTH_TOKEN",
-        "ANTHROPIC_API_KEY",
-        "OPENROUTER_API_KEY",
-        "OPENAI_API_KEY",
-    ]
-    .into_iter()
-    .any(|key| env.get(key).and_then(Value::as_str) == Some(placeholder))
+    CLAUDE_TAKEOVER_TOKEN_ENV_KEYS
+        .into_iter()
+        .any(|key| env.get(key).and_then(Value::as_str) == Some(placeholder))
+}
+
+pub(crate) fn remove_claude_takeover_env_fields_if_present<F>(
+    config: &mut Value,
+    placeholder: &str,
+    is_local_proxy_url: F,
+) -> Option<bool>
+where
+    F: Fn(&str) -> bool,
+{
+    let env = config.get_mut("env").and_then(Value::as_object_mut)?;
+    let mut changed = false;
+
+    for key in CLAUDE_TAKEOVER_TOKEN_ENV_KEYS {
+        if env.get(key).and_then(Value::as_str) == Some(placeholder) {
+            env.remove(key);
+            changed = true;
+        }
+    }
+
+    if env
+        .get("ANTHROPIC_BASE_URL")
+        .and_then(Value::as_str)
+        .map(is_local_proxy_url)
+        .unwrap_or(false)
+    {
+        env.remove("ANTHROPIC_BASE_URL");
+        changed = true;
+    }
+
+    Some(changed)
 }
 
 pub(crate) fn codex_live_config_has_proxy_placeholder(
@@ -4165,16 +4198,11 @@ fn claude_live_token_pair<'a>(
 ) -> Option<(&'static str, &'a str)> {
     let env = live_config.get("env").and_then(Value::as_object)?;
 
-    [
-        "ANTHROPIC_AUTH_TOKEN",
-        "ANTHROPIC_API_KEY",
-        "OPENROUTER_API_KEY",
-        "OPENAI_API_KEY",
-    ]
-    .into_iter()
-    .find_map(|key| {
-        non_placeholder_trimmed_string(env.get(key), placeholder).map(|token| (key, token))
-    })
+    CLAUDE_TAKEOVER_TOKEN_ENV_KEYS
+        .into_iter()
+        .find_map(|key| {
+            non_placeholder_trimmed_string(env.get(key), placeholder).map(|token| (key, token))
+        })
 }
 
 fn codex_live_openai_api_key<'a>(live_config: &'a Value, placeholder: &str) -> Option<&'a str> {
@@ -6816,6 +6844,75 @@ wire_api = "chat"
             &AppType::Claude,
             placeholder
         ));
+
+        let mut claude_live = json!({
+            "env": {
+                "ANTHROPIC_AUTH_TOKEN": placeholder,
+                "ANTHROPIC_API_KEY": "real-key",
+                "ANTHROPIC_BASE_URL": "http://localhost:15721",
+                "OTHER": "kept"
+            }
+        });
+        assert_eq!(
+            remove_claude_takeover_env_fields_if_present(
+                &mut claude_live,
+                placeholder,
+                |url| url.starts_with("http://localhost")
+            ),
+            Some(true)
+        );
+        let claude_env = claude_live
+            .get("env")
+            .and_then(Value::as_object)
+            .expect("claude env");
+        assert!(claude_env.get("ANTHROPIC_AUTH_TOKEN").is_none());
+        assert!(claude_env.get("ANTHROPIC_BASE_URL").is_none());
+        assert_eq!(
+            claude_env.get("ANTHROPIC_API_KEY").and_then(Value::as_str),
+            Some("real-key")
+        );
+        assert_eq!(claude_env.get("OTHER").and_then(Value::as_str), Some("kept"));
+
+        let mut claude_real_config = json!({
+            "env": {
+                "ANTHROPIC_AUTH_TOKEN": "real-token",
+                "ANTHROPIC_BASE_URL": "https://api.anthropic.com"
+            }
+        });
+        assert_eq!(
+            remove_claude_takeover_env_fields_if_present(
+                &mut claude_real_config,
+                placeholder,
+                |url| url.starts_with("http://localhost")
+            ),
+            Some(false)
+        );
+        let claude_real_env = claude_real_config
+            .get("env")
+            .and_then(Value::as_object)
+            .expect("claude env");
+        assert_eq!(
+            claude_real_env
+                .get("ANTHROPIC_AUTH_TOKEN")
+                .and_then(Value::as_str),
+            Some("real-token")
+        );
+        assert_eq!(
+            claude_real_env
+                .get("ANTHROPIC_BASE_URL")
+                .and_then(Value::as_str),
+            Some("https://api.anthropic.com")
+        );
+
+        let mut claude_missing_env = json!({});
+        assert_eq!(
+            remove_claude_takeover_env_fields_if_present(
+                &mut claude_missing_env,
+                placeholder,
+                |url| url.starts_with("http://localhost")
+            ),
+            None
+        );
 
         let mut codex_live = json!({"auth": {"OPENAI_API_KEY": "real-key"}});
         assert!(apply_codex_takeover_auth_placeholder_if_present(

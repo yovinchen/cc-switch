@@ -17,6 +17,7 @@ use crate::proxy_core_adapter::{
     ensure_codex_takeover_auth_placeholder, live_config_has_proxy_placeholder_for_app,
     provider_claude_takeover_model_fields, provider_is_github_copilot,
     provider_settings_have_proxy_placeholder_for_app, provider_settings_with_live_token_sync,
+    remove_claude_takeover_env_fields_if_present,
     provider_uses_managed_account_auth, proxy_runtime_status_stopped, proxy_server_info_from_parts,
     proxy_takeover_status_from_parts, remove_codex_takeover_auth_placeholder_if_present,
     remove_gemini_takeover_env_fields_if_present, CircuitBreakerConfig,
@@ -1598,28 +1599,14 @@ impl ProxyService {
     fn cleanup_claude_takeover_placeholders_in_live(&self) -> Result<(), String> {
         let mut config = self.read_claude_live()?;
 
-        let Some(env) = config.get_mut("env").and_then(|v| v.as_object_mut()) else {
-            return Ok(());
-        };
-
-        for key in [
-            "ANTHROPIC_AUTH_TOKEN",
-            "ANTHROPIC_API_KEY",
-            "OPENROUTER_API_KEY",
-            "OPENAI_API_KEY",
-        ] {
-            if env.get(key).and_then(|v| v.as_str()) == Some(PROXY_TOKEN_PLACEHOLDER) {
-                env.remove(key);
-            }
-        }
-
-        if env
-            .get("ANTHROPIC_BASE_URL")
-            .and_then(|v| v.as_str())
-            .map(Self::is_local_proxy_url)
-            .unwrap_or(false)
+        if remove_claude_takeover_env_fields_if_present(
+            &mut config,
+            PROXY_TOKEN_PLACEHOLDER,
+            Self::is_local_proxy_url,
+        )
+        .is_none()
         {
-            env.remove("ANTHROPIC_BASE_URL");
+            return Ok(());
         }
 
         self.write_claude_live(&config)?;
@@ -3758,6 +3745,54 @@ experimental_bearer_token = "PROXY_MANAGED"
             !live_config.contains("http://127.0.0.1:15721"),
             "cleanup should remove local proxy base_url"
         );
+    }
+
+    #[test]
+    #[serial]
+    fn claude_takeover_cleanup_removes_placeholders_without_touching_real_token() {
+        let _home = TempHome::new();
+        crate::settings::reload_settings().expect("reload settings");
+
+        let db = Arc::new(Database::memory().expect("init db"));
+        let service = ProxyService::new(db);
+        service
+            .write_claude_live(&json!({
+                "env": {
+                    "ANTHROPIC_AUTH_TOKEN": PROXY_TOKEN_PLACEHOLDER,
+                    "ANTHROPIC_API_KEY": "real-key",
+                    "ANTHROPIC_BASE_URL": "http://127.0.0.1:15721",
+                    "OTHER": "kept"
+                }
+            }))
+            .expect("seed taken-over Claude live config");
+
+        assert!(
+            service.detect_takeover_in_live_config_for_app(&AppType::Claude),
+            "Claude token placeholder should be detected before cleanup"
+        );
+
+        service
+            .cleanup_claude_takeover_placeholders_in_live()
+            .expect("cleanup Claude takeover placeholders");
+
+        let live = service.read_claude_live().expect("read Claude live config");
+        let env = live
+            .get("env")
+            .and_then(Value::as_object)
+            .expect("Claude env");
+        assert!(
+            !env.contains_key("ANTHROPIC_AUTH_TOKEN"),
+            "cleanup should remove Claude proxy token placeholder"
+        );
+        assert!(
+            !env.contains_key("ANTHROPIC_BASE_URL"),
+            "cleanup should remove local Claude proxy base URL"
+        );
+        assert_eq!(
+            env.get("ANTHROPIC_API_KEY").and_then(Value::as_str),
+            Some("real-key")
+        );
+        assert_eq!(env.get("OTHER").and_then(Value::as_str), Some("kept"));
     }
 
     #[test]
