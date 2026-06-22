@@ -5747,6 +5747,20 @@ pub(crate) fn apply_channel_auth_profile_providers_from_db(
     )
 }
 
+pub(crate) fn required_forward_attempts_from_db_sources(
+    db: &Database,
+    app_type: &AppType,
+    plan: &RoutePlan,
+) -> ProxyCoreResult<Vec<ForwardAttempt>> {
+    let all_providers = db
+        .get_all_providers(app_type.as_str())
+        .map_err(|error| app_error("load host providers", error))?;
+    let providers = host_providers_for_plan(&all_providers, plan)?;
+    let mut attempts = required_forward_attempts_from_plan(app_type, &providers, plan)?;
+    apply_channel_auth_profile_providers_from_db(db, app_type, &all_providers, &mut attempts)?;
+    Ok(attempts)
+}
+
 pub(crate) fn forwarding_requires_runtime_error_message() -> &'static str {
     crate::proxy_core::api::routing::forwarding_requires_runtime_error_message()
 }

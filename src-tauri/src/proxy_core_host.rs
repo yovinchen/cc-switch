@@ -29,7 +29,6 @@ use crate::proxy_core_adapter::{
 use crate::proxy_core_adapter::{
     app_error,
     app_summary_config_from_config_source,
-    apply_channel_auth_profile_providers_from_db,
     auth_info_from_cc_switch_provider_config,
     cc_switch_app_kinds,
     claude_desktop_provider_from_selection_result,
@@ -53,7 +52,6 @@ use crate::proxy_core_adapter::{
     forward_runtime_request_from_proxy_request,
     forward_result_to_proxy_result,
     forwarding_runtime_unavailable_error,
-    host_providers_for_plan,
     log_usage_request_projection_warnings,
     provider_spec_from_source, proxy_channel_record_to_core, proxy_channel_records_to_core,
     provider_specs_from_source,
@@ -61,9 +59,9 @@ use crate::proxy_core_adapter::{
     proxy_app_config_from_config_source, proxy_global_config_from_config,
     emit_proxy_core_event,
     proxy_runtime_config_from_config_source,
-    required_forward_attempts_from_plan,
     route_policy_from_source,
     route_candidate_provider_ids_from_selection_result,
+    required_forward_attempts_from_db_sources,
     stream_check_result_to_channel_reachability,
     usage_error,
     usage_pricing_config_lookup_from_record,
@@ -71,7 +69,10 @@ use crate::proxy_core_adapter::{
     usage_record_to_request_log,
 };
 #[cfg(test)]
-use crate::proxy_core_adapter::forward_attempts_from_plan;
+use crate::proxy_core_adapter::{
+    apply_channel_auth_profile_providers_from_db, forward_attempts_from_plan,
+    host_providers_for_plan,
+};
 use futures::future::BoxFuture;
 #[cfg(test)]
 use serde_json::Value;
@@ -899,18 +900,7 @@ impl CcSwitchProxyRuntime {
         let forwarder_config =
             forwarder_runtime_config_from_db_sources(&self.db, &app_type).await?;
         let current_provider_id = forward_current_provider_id_from_db_sources(&self.db, &app_type);
-        let all_providers = self
-            .db
-            .get_all_providers(app_type.as_str())
-            .map_err(|error| app_error("load host providers", error))?;
-        let providers = host_providers_for_plan(&all_providers, &plan)?;
-        let mut attempts = required_forward_attempts_from_plan(&app_type, &providers, &plan)?;
-        apply_channel_auth_profile_providers_from_db(
-            &self.db,
-            &app_type,
-            &all_providers,
-            &mut attempts,
-        )?;
+        let attempts = required_forward_attempts_from_db_sources(&self.db, &app_type, &plan)?;
 
         let forwarder_options = forwarder_config.options;
 
