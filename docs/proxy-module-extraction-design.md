@@ -61,8 +61,8 @@
 50. 管理 API 鉴权策略已迁入 `proxy-core::management_auth`；host middleware 只负责读取 `ProxyConfig`/环境变量/header，并把 core 鉴权错误映射为现有 `ProxyError::AuthError`。
 51. `/proxy/v1/apps/{app}/providers` 的 provider summary 打标和 response 组装已迁入 `proxy-core::{ProviderSummaryInput, ProviderListResponse::from_provider_inputs}`；host 只负责查询 provider/current/failover/routeCandidate 输入集合。
 52. legacy/manual channel 的幂等 ID 生成规则已迁入 `proxy-core::channel_identity::stable_channel_id`；DB DAO 只负责调用 core 函数并写入 schema。
-53. legacy channel 投影的 priority、interface kind 和模型路由推断规则已迁入 `proxy-core::legacy_projection`；DB DAO 只负责把宿主 `Provider`/TOML/env/meta 字段适配成 `LegacyProviderProjectionInput` 并构造持久化 record。
-54. legacy channel 投影的默认字段、review 标记、metadata、auth profile 引用和 model channel id 绑定已迁入 `proxy-core::LegacyChannelProjection`；DB DAO 只负责把 core projection 映射回当前 SQLite record 形状。
+53. legacy channel 投影的 priority、interface kind、模型路由推断、endpoint 排序和 normalized base URL 去重规则已迁入 `proxy-core::legacy_projection`；host adapter 负责把宿主 `Provider`/TOML/env/meta 字段适配成 core migration input。
+54. legacy channel 投影的默认字段、review 标记、metadata、auth profile 引用和 model channel id 绑定已迁入 `proxy-core::LegacyChannelProjection`；host adapter 负责映射回当前 `ProxyChannelRecord` 形状，DB DAO 只负责读取 legacy facts 和物化落库。
 55. `/proxy/v1/channels` 写请求的字段校验、base URL 归一化、group 去重排序、可选 auth ref 裁剪和 JSON object/array 默认值规则已迁入 `proxy-core::channel_request`；host DB DAO 只保留 AppType/provider 校验、错误映射和持久化。
 56. 托管账号上游的 `PROXY_MANAGED` 占位符泄漏保护已迁入 `proxy-core::managed_account_auth`；host forwarder 只负责把 core guard 错误映射为现有 `ProxyError::AuthError`。
 57. 请求头大小写保真策略已迁入 `proxy-core::request_headers::should_preserve_exact_request_header_case`；host forwarder 只提供 adapter/provider 事实并据此选择 raw hyper 或 pooled reqwest transport。
