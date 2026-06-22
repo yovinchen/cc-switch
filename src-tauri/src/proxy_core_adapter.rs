@@ -2544,7 +2544,9 @@ pub(crate) use crate::proxy_core::api::domain::channel_matches_query;
 pub(crate) use crate::proxy_core::api::routing::{
     RoutePolicy, RouteRequest, DEFAULT_ROUTE_GROUP,
 };
-pub(crate) use crate::proxy_core::api::transforms::CLAUDE_API_FORMAT_METADATA_KEY;
+pub(crate) use crate::proxy_core::api::transforms::{
+    claude_api_format_from_metadata, CLAUDE_API_FORMAT_METADATA_KEY,
+};
 pub(crate) use crate::proxy_core::api::auth::{
     resolve_management_auth_decision, validate_management_bearer_header, ManagementAuthDecision,
 };
@@ -4041,10 +4043,6 @@ pub(crate) fn provider_gemini_auth_headers(
         matches!(auth.strategy, ProviderAuthStrategy::GoogleOAuth),
     )
     .map_err(|error| error.to_string())
-}
-
-pub(crate) fn claude_api_format_from_metadata(metadata: &Value, fallback: &str) -> String {
-    crate::proxy_core::api::transforms::claude_api_format_from_metadata(metadata, fallback)
 }
 
 pub(crate) fn resolve_claude_api_format_from_settings(
