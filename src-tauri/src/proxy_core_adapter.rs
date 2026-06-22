@@ -1244,6 +1244,17 @@ pub(crate) fn provider_should_sync_to_live(provider: &Provider) -> bool {
         != Some(false)
 }
 
+pub(crate) fn provider_initial_live_config_managed_marker(
+    app_type: &AppType,
+    add_to_live: bool,
+) -> Option<bool> {
+    if app_type.is_additive_mode() {
+        Some(add_to_live)
+    } else {
+        None
+    }
+}
+
 pub(crate) fn provider_supports_legacy_common_config_migration(app_type: &AppType) -> bool {
     !app_type.is_additive_mode()
 }
@@ -12882,6 +12893,22 @@ command = "latest-command"
             ..Default::default()
         });
         assert!(!provider_should_sync_to_live(&provider));
+    }
+
+    #[test]
+    fn provider_initial_live_config_managed_marker_only_applies_to_additive_apps() {
+        assert_eq!(
+            provider_initial_live_config_managed_marker(&AppType::OpenCode, true),
+            Some(true)
+        );
+        assert_eq!(
+            provider_initial_live_config_managed_marker(&AppType::OpenClaw, false),
+            Some(false)
+        );
+        assert_eq!(
+            provider_initial_live_config_managed_marker(&AppType::Claude, true),
+            None
+        );
     }
 
     #[test]

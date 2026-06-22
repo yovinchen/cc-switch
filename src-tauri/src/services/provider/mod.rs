@@ -21,9 +21,10 @@ use crate::proxy_core_adapter::{
     provider_app_has_current_provider,
     provider_credential_issue_spec, provider_credential_values, provider_key_change_policy_issue,
     provider_key_change_policy_issue_message, provider_live_config_presence_error_policy,
+    provider_initial_live_config_managed_marker, provider_live_sync_scope,
     provider_omo_switch_pair, provider_omo_variant_for_category,
-    provider_live_sync_scope, provider_settings_validation_issue_spec,
-    provider_settings_validation_parts, provider_switch_backfill_source_id, provider_switch_dispatch,
+    provider_settings_validation_issue_spec, provider_settings_validation_parts,
+    provider_switch_backfill_source_id, provider_switch_dispatch,
     provider_switch_should_mark_live_config_managed, proxy_live_config_owned_by_takeover,
     proxy_switch_should_hot_switch, should_block_proxy_switch_to_provider,
     should_reapply_codex_official_live_for_provider,
@@ -1417,8 +1418,10 @@ impl ProviderService {
         let _ = normalize_provider_settings_for_storage(&app_type, &mut provider.settings_config);
         Self::validate_provider_settings(&app_type, &provider)?;
         normalize_provider_common_config_for_storage(state.db.as_ref(), &app_type, &mut provider)?;
-        if app_type.is_additive_mode() {
-            Self::set_provider_live_config_managed(&mut provider, add_to_live);
+        if let Some(live_config_managed) =
+            provider_initial_live_config_managed_marker(&app_type, add_to_live)
+        {
+            Self::set_provider_live_config_managed(&mut provider, live_config_managed);
         }
 
         // Save to database
