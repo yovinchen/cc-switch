@@ -1,5 +1,6 @@
 use crate::app_config::AppType;
 use crate::database::Database;
+#[cfg(test)]
 use crate::error::AppError;
 use crate::proxy::error_mapper::forward_error_to_core_error;
 use crate::proxy::events::ProxyEventBus;
@@ -60,6 +61,7 @@ use crate::proxy_core_adapter::{
     proxy_runtime_config_from_config_source,
     required_forward_attempts_from_plan,
     route_policy_from_source,
+    route_candidate_provider_ids_from_selection_result,
     stream_check_result_to_channel_reachability,
     usage_error,
     usage_pricing_config_lookup_from_record,
@@ -370,13 +372,9 @@ impl ProviderSource for CcSwitchProviderSource {
         app: &'a AppKind,
     ) -> BoxFuture<'a, ProxyCoreResult<Vec<String>>> {
         Box::pin(async move {
-            match self.router.select_providers(app.as_str()).await {
-                Ok(providers) => Ok(providers.into_iter().map(|provider| provider.id).collect()),
-                Err(AppError::NoProvidersConfigured) | Err(AppError::AllProvidersCircuitOpen) => {
-                    Ok(Vec::new())
-                }
-                Err(error) => Err(app_error("select route candidate providers", error)),
-            }
+            route_candidate_provider_ids_from_selection_result(
+                self.router.select_providers(app.as_str()).await,
+            )
         })
     }
 }

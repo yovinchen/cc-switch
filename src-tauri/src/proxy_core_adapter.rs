@@ -5075,6 +5075,18 @@ pub(crate) fn provider_spec_from_source(
     Ok(provider.map(|provider| proxy_provider_to_core_spec(&provider, &app_type)))
 }
 
+pub(crate) fn route_candidate_provider_ids_from_selection_result(
+    result: Result<Vec<Provider>, AppError>,
+) -> ProxyCoreResult<Vec<String>> {
+    match result {
+        Ok(providers) => Ok(providers.into_iter().map(|provider| provider.id).collect()),
+        Err(AppError::NoProvidersConfigured) | Err(AppError::AllProvidersCircuitOpen) => {
+            Ok(Vec::new())
+        }
+        Err(error) => Err(app_error("select route candidate providers", error)),
+    }
+}
+
 #[allow(dead_code)]
 pub(crate) trait ToProxyCoreChannelSpec {
     fn to_proxy_core_channel_spec(&self) -> ChannelSpec;
@@ -11915,6 +11927,43 @@ command = "latest-command"
             route_plan_provider_ids(&plan),
             vec!["provider-a".to_string(), "provider-b".to_string()]
         );
+        assert_eq!(
+            route_candidate_provider_ids_from_selection_result(Ok(vec![
+                Provider::with_id(
+                    "provider-a".to_string(),
+                    "Provider A".to_string(),
+                    json!({}),
+                    None,
+                ),
+                Provider::with_id(
+                    "provider-b".to_string(),
+                    "Provider B".to_string(),
+                    json!({}),
+                    None,
+                ),
+            ]))
+            .expect("candidate ids"),
+            vec!["provider-a".to_string(), "provider-b".to_string()]
+        );
+        assert_eq!(
+            route_candidate_provider_ids_from_selection_result(Err(AppError::NoProvidersConfigured))
+                .expect("empty no providers"),
+            Vec::<String>::new()
+        );
+        assert_eq!(
+            route_candidate_provider_ids_from_selection_result(Err(
+                AppError::AllProvidersCircuitOpen
+            ))
+            .expect("empty circuit open"),
+            Vec::<String>::new()
+        );
+        assert!(matches!(
+            route_candidate_provider_ids_from_selection_result(Err(AppError::Message(
+                "router failed".to_string()
+            ))),
+            Err(ProxyCoreError::Config(message))
+                if message == "select route candidate providers: router failed"
+        ));
         assert_eq!(
             route_selection_for_forward_result(&plan, Some("ch-b"), "provider-a").channel.id,
             "ch-b"
