@@ -14,7 +14,14 @@ const FORBIDDEN_FORWARDER_SELF_PLANNING_MARKERS: &[&str] = &[
 const FORBIDDEN_REQUEST_CONTEXT_PROVIDER_PRESELECT_MARKERS: &[&str] =
     &["provider_router", ".select_providers("];
 const FORBIDDEN_REQUEST_CONTEXT_PROVIDER_ADAPTER_MARKERS: &[&str] =
-    &["providers::", "get_claude_api_format(", "AppKind::from("];
+    &[
+        "providers::",
+        "get_claude_api_format(",
+        "AppKind::from(",
+        "selected_route.provider",
+        "selected_provider_missing_from_source_message(",
+        "request_context_route_update_from_proxy_result(",
+    ];
 const FORBIDDEN_FORWARDER_URL_PLANNING_MARKERS: &[&str] = &[
     "rewrite_codex_responses_endpoint_to_chat(",
     "rewrite_claude_transform_endpoint(",

@@ -8791,6 +8791,12 @@ pub(crate) struct RequestContextRouteUpdate {
     pub(crate) provider: Provider,
 }
 
+#[derive(Debug)]
+pub(crate) enum RequestContextRouteUpdateError<E> {
+    ProviderLoad(E),
+    ProviderMissing(String),
+}
+
 pub(crate) fn request_context_route_update_from_proxy_result(
     app_type: &AppType,
     provider: &Provider,
@@ -8803,6 +8809,27 @@ pub(crate) fn request_context_route_update_from_proxy_result(
             .provider()
             .clone(),
     }
+}
+
+pub(crate) fn request_context_route_update_from_proxy_result_source<E>(
+    app_type: &AppType,
+    app_type_str: &str,
+    result: &ProxyResult,
+    source_name: &str,
+    load_provider: impl FnOnce(&str, &str) -> Result<Option<Provider>, E>,
+) -> Result<RequestContextRouteUpdate, RequestContextRouteUpdateError<E>> {
+    let provider_id = result.selected_route.provider.id.as_str();
+    let provider = load_provider(provider_id, app_type_str)
+        .map_err(RequestContextRouteUpdateError::ProviderLoad)?;
+    let Some(provider) = provider else {
+        return Err(RequestContextRouteUpdateError::ProviderMissing(
+            selected_provider_missing_from_source_message(provider_id, source_name),
+        ));
+    };
+
+    Ok(request_context_route_update_from_proxy_result(
+        app_type, &provider, result,
+    ))
 }
 
 pub(crate) fn usage_record_with_route_context(
@@ -14311,6 +14338,46 @@ command = "latest-command"
         assert_eq!(update.outbound_model.as_deref(), Some("upstream-sonnet"));
         assert_eq!(update.usage_route_context.channel_id, "ch-b");
         assert_eq!(update.provider.id, "provider-b");
+        let sourced_update = request_context_route_update_from_proxy_result_source(
+            &AppType::Claude,
+            AppType::Claude.as_str(),
+            &result,
+            "host database",
+            |provider_id, app_type| {
+                assert_eq!(provider_id, "provider-b");
+                assert_eq!(app_type, AppType::Claude.as_str());
+                Ok::<_, String>(Some(selected_host_provider.clone()))
+            },
+        )
+        .expect("sourced route update");
+        assert_eq!(sourced_update.outbound_model.as_deref(), Some("upstream-sonnet"));
+        assert_eq!(sourced_update.usage_route_context.channel_id, "ch-b");
+        assert_eq!(sourced_update.provider.id, "provider-b");
+        let missing_sourced_update = request_context_route_update_from_proxy_result_source(
+            &AppType::Claude,
+            AppType::Claude.as_str(),
+            &result,
+            "host database",
+            |_provider_id, _app_type| Ok::<_, String>(None),
+        )
+        .expect_err("missing provider");
+        assert!(matches!(
+            missing_sourced_update,
+            RequestContextRouteUpdateError::ProviderMissing(message)
+                if message == "selected provider is missing from host database: provider-b"
+        ));
+        let load_error = request_context_route_update_from_proxy_result_source(
+            &AppType::Claude,
+            AppType::Claude.as_str(),
+            &result,
+            "host database",
+            |_provider_id, _app_type| Err::<Option<Provider>, _>("db failed".to_string()),
+        )
+        .expect_err("load error");
+        assert!(matches!(
+            load_error,
+            RequestContextRouteUpdateError::ProviderLoad(message) if message == "db failed"
+        ));
         let host_provider = Provider::with_id(
             "provider-a".to_string(),
             "Provider A".to_string(),

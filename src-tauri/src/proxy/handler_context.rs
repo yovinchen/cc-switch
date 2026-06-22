@@ -8,14 +8,14 @@ use crate::proxy::{error::ProxyError, server::ProxyState};
 use crate::proxy_core_adapter::{
     app_proxy_config_from_proxy_app_config, claude_api_format_from_metadata,
     extract_proxy_session_id, proxy_core_app_kind_from_app_type,
-    request_context_route_update_from_proxy_result,
+    request_context_route_update_from_proxy_result_source, RequestContextRouteUpdateError,
     request_model_from_body_for_context, request_model_from_gemini_path_for_context,
     provider_claude_api_format,
     response_runtime_policy_from_app_proxy_config, ProxyResult, ProxyServices,
     ResponseRuntimePolicy, ResponseTimeoutConfig,
     selected_provider_display_name_for_error,
-    selected_provider_missing_from_source_message, selected_provider_not_applied_message,
-    StreamingTimeoutConfig, unselected_provider_fallback_id, UsageRouteContext,
+    selected_provider_not_applied_message, StreamingTimeoutConfig, unselected_provider_fallback_id,
+    UsageRouteContext,
 };
 use axum::http::HeaderMap;
 use std::time::Instant;
@@ -144,19 +144,21 @@ impl RequestContext {
         state: &ProxyState,
         result: &ProxyResult,
     ) -> Result<(), ProxyError> {
-        let provider_id = result.selected_route.provider.id.as_str();
-        let Some(provider) = state
-            .db
-            .get_provider_by_id(provider_id, self.app_type_str)
-            .map_err(|error| ProxyError::DatabaseError(error.to_string()))?
-        else {
-            return Err(ProxyError::ConfigError(
-                selected_provider_missing_from_source_message(provider_id, "host database"),
-            ));
-        };
-
-        let update =
-            request_context_route_update_from_proxy_result(&self.app_type, &provider, result);
+        let update = request_context_route_update_from_proxy_result_source(
+            &self.app_type,
+            self.app_type_str,
+            result,
+            "host database",
+            |provider_id, app_type| state.db.get_provider_by_id(provider_id, app_type),
+        )
+        .map_err(|error| match error {
+            RequestContextRouteUpdateError::ProviderLoad(error) => {
+                ProxyError::DatabaseError(error.to_string())
+            }
+            RequestContextRouteUpdateError::ProviderMissing(message) => {
+                ProxyError::ConfigError(message)
+            }
+        })?;
         self.outbound_model = update.outbound_model;
         self.usage_route_context = Some(update.usage_route_context);
         self.provider = Some(update.provider);

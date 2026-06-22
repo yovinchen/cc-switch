@@ -955,6 +955,7 @@
 本轮继续把 `ProxyResult` 到 `RequestContext` route/provider update 的投影收敛到 adapter，context 不再直接调用 route attempt 映射 helper。
 本轮继续移除 `RequestContext::new` 的重复 provider 预选，provider 改为 route result 后回填；选路失败时错误 usage 使用 `unselected:<app>` fallback，Codex 错误体使用 app tag fallback。
 本轮继续把 `RequestContext::new` 的 host `AppType` 到 core `AppKind` 投影收敛到 adapter helper，context 只负责加载 app config 和请求生命周期事实。
+本轮继续把 `RequestContext::apply_proxy_result` 的 selected-route provider lookup、缺失文案和 route update 组装收敛到 adapter source wrapper，context 只保留 DB 查询闭包和字段回填。
 本轮补充 `RequestContext` provider preselect 边界测试，防止后续把 provider router 选路重新塞回 handler context。
 本轮也把 forward runtime 当前 provider 来源优先级收敛为 core helper，host 不再手写 settings/DB fallback 选择策略。
 本轮进一步把 forward pipeline 和 route plan host-provider 匹配失败的固定错误文案收敛为 core helper，host 只保留错误类型包装。
