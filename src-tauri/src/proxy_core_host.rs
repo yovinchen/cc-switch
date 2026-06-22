@@ -23,7 +23,7 @@ use crate::proxy_core_adapter::{
     GeminiShadowStore, ModelCatalog, ModelCatalogProvider, ProviderSource, ProviderSpec,
     ProxyAppConfig, ProxyConfigSource, ProxyCoreEvent,
     ProxyChannelKeyPatchRequest, ProxyChannelKeyWriteRequest, ProxyChannelModelsReplaceRequest,
-    ProxyChannelPatchRequest, ProxyChannelWriteRequest, ProxyCoreError, ProxyCoreResult, ProxyEventSink, ProxyGlobalConfig, ProxyRequest,
+    ProxyChannelPatchRequest, ProxyChannelWriteRequest, ProxyCoreResult, ProxyEventSink, ProxyGlobalConfig, ProxyRequest,
     ProxyResult, ProxyRuntimeConfig, ProxyRuntimeStatus, ProxyServices, RoutePlan, RoutePolicy,
     RoutePolicySource, RouteRequest, RouteResolveRequest, RouteResolveResponse, RouteResolver,
     ChannelTestProbeRequest, UsageRecord, UsageSink,
@@ -33,6 +33,7 @@ use crate::proxy_core_adapter::{
     apply_channel_auth_profile_providers_from_source,
     auth_info_from_cc_switch_provider_config,
     cc_switch_app_kinds,
+    claude_desktop_provider_from_selection_result,
     claude_desktop_model_routes_to_core_inputs,
     channel_reachability_probe_error,
     channel_health_attempt_db_update,
@@ -803,16 +804,9 @@ impl ModelCatalogProvider for CcSwitchModelCatalogProvider {
             let providers = self
                 .router
                 .select_providers(app.as_str())
-                .await
-                .map_err(|error| {
-                    ProxyCoreError::Internal(format!(
-                        "select claude desktop provider: {error}"
-                    ))
-                })?;
-            let provider = providers.first().ok_or_else(|| {
-                ProxyCoreError::Unavailable("no available claude desktop provider".to_string())
-            })?;
-            let routes = crate::claude_desktop_config::proxy_model_routes(provider)
+                .await;
+            let provider = claude_desktop_provider_from_selection_result(providers)?;
+            let routes = crate::claude_desktop_config::proxy_model_routes(&provider)
                 .map_err(|error| app_error("load claude desktop model routes", error))?;
             Ok(claude_desktop_model_routes_to_core_inputs(routes))
         })

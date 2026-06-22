@@ -5260,6 +5260,17 @@ pub(crate) fn provider_model_catalog_from_provider(
     )
 }
 
+pub(crate) fn claude_desktop_provider_from_selection_result(
+    result: Result<Vec<Provider>, AppError>,
+) -> ProxyCoreResult<Provider> {
+    let providers = result.map_err(|error| {
+        ProxyCoreError::Internal(format!("select claude desktop provider: {error}"))
+    })?;
+    providers.into_iter().next().ok_or_else(|| {
+        ProxyCoreError::Unavailable("no available claude desktop provider".to_string())
+    })
+}
+
 pub(crate) fn provider_model_catalog_raw_value(provider: &Provider) -> Option<&Value> {
     provider.settings_config.get("modelCatalog")
 }
@@ -11810,6 +11821,24 @@ command = "latest-command"
             provider_model_catalog_from_provider("provider-a", Some(&provider)).models,
             provider_catalog.models
         );
+        assert_eq!(
+            claude_desktop_provider_from_selection_result(Ok(vec![provider.clone()]))
+                .expect("selected provider")
+                .id,
+            "provider-a"
+        );
+        assert!(matches!(
+            claude_desktop_provider_from_selection_result(Ok(Vec::new())),
+            Err(ProxyCoreError::Unavailable(message))
+                if message == "no available claude desktop provider"
+        ));
+        assert!(matches!(
+            claude_desktop_provider_from_selection_result(Err(AppError::Message(
+                "router failed".to_string()
+            ))),
+            Err(ProxyCoreError::Internal(message))
+                if message == "select claude desktop provider: router failed"
+        ));
         assert_eq!(
             provider_model_catalog_raw_value(&provider),
             settings.get("modelCatalog")
