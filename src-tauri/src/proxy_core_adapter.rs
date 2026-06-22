@@ -3560,23 +3560,9 @@ pub(crate) fn provider_codex_chat_reasoning_options(
     .map(|profile| CodexChatReasoningOptions::from_profile(&profile))
 }
 
-pub(crate) fn infer_codex_chat_reasoning_profile(
-    provider_name: &str,
-    base_url: &str,
-    model: &str,
-) -> Option<CodexChatReasoningProfile> {
-    crate::proxy_core::api::transforms::infer_codex_chat_reasoning_profile(
-        provider_name,
-        base_url,
-        model,
-    )
-}
-
-pub(crate) fn normalize_codex_chat_reasoning_profile(
-    profile: CodexChatReasoningProfile,
-) -> CodexChatReasoningProfile {
-    crate::proxy_core::api::transforms::normalize_codex_chat_reasoning_profile(profile)
-}
+pub(crate) use crate::proxy_core::api::transforms::{
+    infer_codex_chat_reasoning_profile, normalize_codex_chat_reasoning_profile,
+};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct ForwarderRuntimeOptions {
@@ -3651,17 +3637,13 @@ pub(crate) async fn forwarder_runtime_config_from_db_sources(
     ))
 }
 
-pub(crate) fn extract_gemini_api_key_from_settings(settings: &Value) -> Option<String> {
-    crate::proxy_core::api::auth::extract_gemini_api_key_from_settings(settings)
-}
+pub(crate) use crate::proxy_core::api::auth::extract_gemini_api_key_from_settings;
 
 pub(crate) fn provider_gemini_api_key(provider: &Provider) -> Option<String> {
     extract_gemini_api_key_from_settings(&provider.settings_config)
 }
 
-pub(crate) fn extract_gemini_base_url_from_settings(settings: &Value) -> Option<String> {
-    crate::proxy_core::api::auth::extract_gemini_base_url_from_settings(settings)
-}
+pub(crate) use crate::proxy_core::api::auth::extract_gemini_base_url_from_settings;
 
 pub(crate) fn provider_gemini_base_url(provider: &Provider) -> Option<String> {
     extract_gemini_base_url_from_settings(&provider.settings_config)
@@ -3787,17 +3769,7 @@ pub(crate) fn provider_gemini_auth_headers(
     .map_err(|error| error.to_string())
 }
 
-pub(crate) fn resolve_claude_api_format_from_settings(
-    provider_type: Option<&str>,
-    meta_api_format: Option<&str>,
-    settings_config: &Value,
-) -> &'static str {
-    crate::proxy_core::api::transforms::resolve_claude_api_format_from_settings(
-        provider_type,
-        meta_api_format,
-        settings_config,
-    )
-}
+pub(crate) use crate::proxy_core::api::transforms::resolve_claude_api_format_from_settings;
 
 pub(crate) fn provider_claude_api_format(provider: &Provider) -> &'static str {
     let meta = provider.meta.as_ref();
@@ -3853,15 +3825,7 @@ pub(crate) fn provider_kind_from_app_type_and_config(
     }
 }
 
-pub(crate) fn is_copilot_prompt_cache_provider(
-    meta_provider_type: Option<&str>,
-    settings_config: &Value,
-) -> bool {
-    crate::proxy_core::api::transforms::is_copilot_prompt_cache_provider(
-        meta_provider_type,
-        settings_config,
-    )
-}
+pub(crate) use crate::proxy_core::api::transforms::is_copilot_prompt_cache_provider;
 
 pub(crate) fn provider_is_copilot_prompt_cache_provider(provider: &Provider) -> bool {
     is_copilot_prompt_cache_provider(
@@ -3880,19 +3844,7 @@ pub(crate) fn provider_claude_prompt_cache_key(provider: &Provider) -> Option<&s
         .and_then(|meta| meta.prompt_cache_key.as_deref())
 }
 
-pub(crate) fn resolve_claude_responses_prompt_cache_key(
-    body: &Value,
-    explicit_cache_key: Option<&str>,
-    session_id: Option<&str>,
-    is_copilot: bool,
-) -> ClaudePromptCacheKeyResolution {
-    crate::proxy_core::api::transforms::resolve_claude_responses_prompt_cache_key(
-        body,
-        explicit_cache_key,
-        session_id,
-        is_copilot,
-    )
-}
+pub(crate) use crate::proxy_core::api::transforms::resolve_claude_responses_prompt_cache_key;
 
 pub(crate) fn provider_claude_responses_prompt_cache_key(
     provider: &Provider,
