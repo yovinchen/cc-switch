@@ -16,8 +16,8 @@ use crate::provider::Provider;
 use crate::proxy_core_adapter::{
     codex_config_text_from_settings, gemini_env_map_from_settings,
     gemini_env_value_from_env_json, opencode_live_provider_fragment_has_provider_fields,
-    json_remove_array_items, json_value_is_subset, provider_codex_imported_live_category,
-    provider_codex_live_snapshot_parts,
+    json_deep_merge, json_deep_remove, json_value_is_subset,
+    provider_codex_imported_live_category, provider_codex_live_snapshot_parts,
     provider_gemini_env_map, provider_gemini_live_config_object,
     provider_model_catalog_raw_value, provider_opencode_live_provider_fragment,
     provider_openclaw_has_live_provider_fields, proxy_live_config_owned_by_takeover,
@@ -47,52 +47,6 @@ pub(crate) fn provider_exists_in_live_config(
         AppType::Hermes => crate::hermes_config::get_providers()
             .map(|providers| providers.contains_key(provider_id)),
         _ => Ok(false),
-    }
-}
-
-fn json_deep_merge(target: &mut Value, source: &Value) {
-    match (target, source) {
-        (Value::Object(target_map), Value::Object(source_map)) => {
-            for (key, source_value) in source_map {
-                match target_map.get_mut(key) {
-                    Some(target_value) => json_deep_merge(target_value, source_value),
-                    None => {
-                        target_map.insert(key.clone(), source_value.clone());
-                    }
-                }
-            }
-        }
-        (target_value, source_value) => {
-            *target_value = source_value.clone();
-        }
-    }
-}
-
-fn json_deep_remove(target: &mut Value, source: &Value) {
-    let (Some(target_map), Some(source_map)) = (target.as_object_mut(), source.as_object()) else {
-        return;
-    };
-
-    for (key, source_value) in source_map {
-        let mut remove_key = false;
-
-        if let Some(target_value) = target_map.get_mut(key) {
-            if source_value.is_object() && target_value.is_object() {
-                json_deep_remove(target_value, source_value);
-                remove_key = target_value.as_object().is_some_and(|obj| obj.is_empty());
-            } else if let (Some(target_arr), Some(source_arr)) =
-                (target_value.as_array_mut(), source_value.as_array())
-            {
-                json_remove_array_items(target_arr, source_arr);
-                remove_key = target_arr.is_empty();
-            } else if json_value_is_subset(target_value, source_value) {
-                remove_key = true;
-            }
-        }
-
-        if remove_key {
-            target_map.remove(key);
-        }
     }
 }
 
