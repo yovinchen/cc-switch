@@ -43,11 +43,10 @@ use crate::proxy_core_adapter::{
     extract_anthropic_tool_schema_hints, extract_gemini_model_from_path,
     gemini_response_to_anthropic_message_with_shadow, openai_chat_to_anthropic_message,
     json_proxy_request_from_input, JsonProxyRequestInput,
-    openai_responses_to_anthropic_message, parse_json_request_body,
-    parse_json_request_body_or_null, parse_upstream_json_or_unlabeled_sse,
+    openai_responses_to_anthropic_message, parse_json_proxy_request_body,
+    parse_json_proxy_request_body_or_null, parse_upstream_json_or_unlabeled_sse,
     provider_is_codex_oauth, rebuilt_json_proxy_response, request_body_read_error_message,
-    request_body_stream_flag, resolve_management_auth_decision,
-    should_aggregate_codex_oauth_responses_sse,
+    resolve_management_auth_decision, should_aggregate_codex_oauth_responses_sse,
     should_use_claude_transform_streaming,
     strip_endpoint_prefix, transformed_sse_proxy_response, validate_management_bearer_header,
     AppChannelListQuery, AppChannelManagementRequest, AppChannelResponse, AppKind, AppListRequest,
@@ -606,16 +605,16 @@ async fn handle_messages_for_app(
         .await
         .map_err(|e| ProxyError::Internal(request_body_read_error_message(e)))?
         .to_bytes();
-    let body: Value =
-        parse_json_request_body(&body_bytes).map_err(|e| ProxyError::Internal(e.to_string()))?;
+    let parsed_body = parse_json_proxy_request_body(&body_bytes)
+        .map_err(|e| ProxyError::Internal(e.to_string()))?;
+    let body = parsed_body.body;
+    let is_stream = parsed_body.is_stream;
 
     let mut ctx =
         RequestContext::new(&state, &body, &headers, app_type.clone(), tag, app_type_str).await?;
 
     let raw_endpoint = append_query_to_endpoint_path(uri.path(), uri.query());
     let endpoint = strip_endpoint_prefix(&raw_endpoint, strip_prefix);
-
-    let is_stream = request_body_stream_flag(&body);
 
     let proxy_request = json_proxy_request_from_input(JsonProxyRequestInput {
         app_type: app_type.clone(),
@@ -850,14 +849,14 @@ pub async fn handle_chat_completions(
         .await
         .map_err(|e| ProxyError::Internal(request_body_read_error_message(e)))?
         .to_bytes();
-    let body: Value =
-        parse_json_request_body(&body_bytes).map_err(|e| ProxyError::Internal(e.to_string()))?;
+    let parsed_body = parse_json_proxy_request_body(&body_bytes)
+        .map_err(|e| ProxyError::Internal(e.to_string()))?;
+    let body = parsed_body.body;
+    let is_stream = parsed_body.is_stream;
 
     let mut ctx =
         RequestContext::new(&state, &body, &headers, AppType::Codex, "Codex", "codex").await?;
     let endpoint = append_query_to_endpoint_path("/chat/completions", uri.query());
-
-    let is_stream = request_body_stream_flag(&body);
 
     let proxy_request = json_proxy_request_from_input(JsonProxyRequestInput {
         app_type: AppType::Codex,
@@ -901,14 +900,15 @@ pub async fn handle_responses(
         .await
         .map_err(|e| ProxyError::Internal(request_body_read_error_message(e)))?
         .to_bytes();
-    let body: Value =
-        parse_json_request_body(&body_bytes).map_err(|e| ProxyError::Internal(e.to_string()))?;
+    let parsed_body = parse_json_proxy_request_body(&body_bytes)
+        .map_err(|e| ProxyError::Internal(e.to_string()))?;
+    let body = parsed_body.body;
+    let is_stream = parsed_body.is_stream;
 
     let mut ctx =
         RequestContext::new(&state, &body, &headers, AppType::Codex, "Codex", "codex").await?;
     let endpoint = append_query_to_endpoint_path("/responses", uri.query());
 
-    let is_stream = request_body_stream_flag(&body);
     let codex_tool_context = crate::proxy_core_adapter::codex_tool_context_from_request(&body);
 
     let proxy_request = json_proxy_request_from_input(JsonProxyRequestInput {
@@ -965,14 +965,15 @@ pub async fn handle_responses_compact(
         .await
         .map_err(|e| ProxyError::Internal(request_body_read_error_message(e)))?
         .to_bytes();
-    let body: Value =
-        parse_json_request_body(&body_bytes).map_err(|e| ProxyError::Internal(e.to_string()))?;
+    let parsed_body = parse_json_proxy_request_body(&body_bytes)
+        .map_err(|e| ProxyError::Internal(e.to_string()))?;
+    let body = parsed_body.body;
+    let is_stream = parsed_body.is_stream;
 
     let mut ctx =
         RequestContext::new(&state, &body, &headers, AppType::Codex, "Codex", "codex").await?;
     let endpoint = append_query_to_endpoint_path("/responses/compact", uri.query());
 
-    let is_stream = request_body_stream_flag(&body);
     let codex_tool_context = crate::proxy_core_adapter::codex_tool_context_from_request(&body);
 
     let proxy_request = json_proxy_request_from_input(JsonProxyRequestInput {
@@ -1191,8 +1192,10 @@ pub async fn handle_gemini(
         .await
         .map_err(|e| ProxyError::Internal(request_body_read_error_message(e)))?
         .to_bytes();
-    let body: Value = parse_json_request_body_or_null(&body_bytes)
+    let parsed_body = parse_json_proxy_request_body_or_null(&body_bytes)
         .map_err(|e| ProxyError::Internal(e.to_string()))?;
+    let body = parsed_body.body;
+    let is_stream = parsed_body.is_stream;
 
     // Gemini 的模型名称在 URI 中
     let mut ctx = RequestContext::new(&state, &body, &headers, AppType::Gemini, "Gemini", "gemini")
@@ -1201,8 +1204,6 @@ pub async fn handle_gemini(
 
     // 提取完整的路径和查询参数
     let endpoint = append_query_to_endpoint_path(uri.path(), uri.query());
-
-    let is_stream = request_body_stream_flag(&body);
 
     let proxy_request = json_proxy_request_from_input(JsonProxyRequestInput {
         app_type: AppType::Gemini,

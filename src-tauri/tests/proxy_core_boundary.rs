@@ -44,6 +44,11 @@ const FORBIDDEN_PROXY_CORE_HOST_ERROR_MARKERS: &[&str] = &["ProxyCoreError::"];
 const FORBIDDEN_PROXY_CORE_HOST_USAGE_PROJECTION_MARKERS: &[&str] =
     &["missing_pricing_warning_message"];
 const FORBIDDEN_HANDLER_PROXY_REQUEST_BRIDGE_MARKERS: &[&str] = &["ProxyRequest::new("];
+const FORBIDDEN_HANDLER_RAW_JSON_BODY_PARSE_MARKERS: &[&str] = &[
+    "parse_json_request_body(",
+    "parse_json_request_body_or_null(",
+    "request_body_stream_flag(",
+];
 const PROXY_CORE_MARKER: &str = "crate::proxy_core::";
 const PROXY_CORE_API_MARKER: &str = "crate::proxy_core::api";
 const PROXY_ENGINE_CONSTRUCTOR_MARKER: &str = "ProxyEngine::new(";
@@ -817,6 +822,33 @@ fn production_handlers_build_proxy_requests_through_adapter() {
     assert!(
         violations.is_empty(),
         "production handlers must build ProxyRequest values through proxy_core_adapter helpers:\n{}",
+        violations.join("\n")
+    );
+}
+
+#[test]
+fn production_handlers_parse_json_bodies_through_adapter() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let path = manifest_dir.join("src/proxy/handlers.rs");
+    let source = fs::read_to_string(&path).expect("read handlers.rs");
+
+    let mut violations = Vec::new();
+    for (line_index, line) in production_lines(&source) {
+        let code = line.split("//").next().unwrap_or_default();
+        for marker in FORBIDDEN_HANDLER_RAW_JSON_BODY_PARSE_MARKERS {
+            if code.contains(marker) {
+                violations.push(format!(
+                    "src/proxy/handlers.rs:{} contains direct JSON body parse marker `{}`",
+                    line_index + 1,
+                    marker
+                ));
+            }
+        }
+    }
+
+    assert!(
+        violations.is_empty(),
+        "production handlers must parse JSON proxy bodies through proxy_core_adapter helpers:\n{}",
         violations.join("\n")
     );
 }

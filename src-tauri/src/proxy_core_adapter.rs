@@ -422,6 +422,8 @@ pub(crate) type ClaudeDesktopModelRouteInput =
     crate::proxy_core::api::auth::ClaudeDesktopModelRouteInput;
 pub(crate) type ProxyCoreResponse =
     crate::proxy_core::api::transport::ProxyCoreResponse;
+pub(crate) type RequestBodyJsonParseError =
+    crate::proxy_core::api::transport::RequestBodyJsonParseError;
 pub(crate) type ProxyCoreResult<T> = crate::proxy_core::api::errors::ProxyCoreResult<T>;
 pub(crate) type ProxyEngine<S> = crate::proxy_core::api::engine::ProxyEngine<S>;
 pub(crate) type ProxyResult = crate::proxy_core::api::transport::ProxyResult;
@@ -5041,6 +5043,30 @@ pub(crate) struct JsonProxyRequestInput {
     pub(crate) extensions: http::Extensions,
 }
 
+pub(crate) struct ParsedJsonProxyBody {
+    pub(crate) body: Value,
+    pub(crate) is_stream: bool,
+}
+
+pub(crate) fn parse_json_proxy_request_body(
+    body_bytes: &Bytes,
+) -> Result<ParsedJsonProxyBody, RequestBodyJsonParseError> {
+    let body = parse_json_request_body(body_bytes.as_ref())?;
+    Ok(parsed_json_proxy_body_from_value(body))
+}
+
+pub(crate) fn parse_json_proxy_request_body_or_null(
+    body_bytes: &Bytes,
+) -> Result<ParsedJsonProxyBody, RequestBodyJsonParseError> {
+    let body = parse_json_request_body_or_null(body_bytes.as_ref())?;
+    Ok(parsed_json_proxy_body_from_value(body))
+}
+
+fn parsed_json_proxy_body_from_value(body: Value) -> ParsedJsonProxyBody {
+    let is_stream = request_body_stream_flag(&body);
+    ParsedJsonProxyBody { body, is_stream }
+}
+
 pub(crate) fn json_proxy_request_from_input(input: JsonProxyRequestInput) -> ProxyRequest {
     ProxyRequest::new(
         AppKind::from(&input.app_type),
@@ -8042,6 +8068,18 @@ mod tests {
             unsupported_app_kind_error_message("invalid app: openclaw"),
             "unsupported app kind: invalid app: openclaw"
         );
+
+        let parsed_body = parse_json_proxy_request_body(&Bytes::from_static(
+            br#"{"model":"gpt-5","stream":true}"#,
+        ))
+        .expect("parse streamed body");
+        assert_eq!(parsed_body.body["model"], "gpt-5");
+        assert!(parsed_body.is_stream);
+
+        let parsed_null_body =
+            parse_json_proxy_request_body_or_null(&Bytes::new()).expect("parse empty body");
+        assert!(parsed_null_body.body.is_null());
+        assert!(!parsed_null_body.is_stream);
 
         let mut headers = HeaderMap::new();
         headers.insert("x-test", "1".parse().expect("header value"));
