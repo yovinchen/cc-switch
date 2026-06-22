@@ -463,6 +463,17 @@ const FORBIDDEN_PROXY_CORE_ADAPTER_SMALL_HELPER_FACADE_MARKERS: &[&str] = &[
     "fn unselected_provider_fallback_id(",
     "fn mask_url_for_log(",
     "fn proxy_url_points_to_loopback_port(",
+    "fn default_copilot_github_domain(",
+    "fn normalize_github_domain(",
+    "fn is_copilot_ghes_domain(",
+    "fn copilot_composite_account_id(",
+    "fn copilot_github_client_id(",
+    "fn copilot_github_device_code_url(",
+    "fn copilot_github_oauth_token_url(",
+    "fn copilot_github_user_url(",
+    "fn copilot_token_url(",
+    "fn copilot_usage_url(",
+    "fn copilot_api_base(",
 ];
 const FORBIDDEN_CLAUDE_PROVIDER_ADAPTER_TRANSFORM_DECISION_MARKERS: &[&str] = &[
     "ProviderKind::GitHubCopilot",
