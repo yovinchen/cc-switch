@@ -58,8 +58,8 @@ use crate::proxy_core_adapter::{
     emit_proxy_core_event,
     materialized_channel_records_from_db_source,
     proxy_runtime_config_from_db_source,
+    route_policy_from_db_source,
     replace_channel_model_records_from_db_source,
-    route_policy_from_source,
     route_candidate_provider_ids_from_selection_result,
     stream_check_result_to_channel_reachability,
     update_channel_record_from_db_source,
@@ -473,13 +473,7 @@ impl RoutePolicySource for CcSwitchRoutePolicySource {
         &'a self,
         app: &'a AppKind,
     ) -> BoxFuture<'a, ProxyCoreResult<Option<RoutePolicy>>> {
-        Box::pin(async move {
-            let queue = self
-                .db
-                .get_failover_queue(app.as_str())
-                .map_err(|error| app_error("load route policy", error))?;
-            Ok(route_policy_from_source(app.clone(), queue))
-        })
+        Box::pin(async move { route_policy_from_db_source(&self.db, app) })
     }
 }
 

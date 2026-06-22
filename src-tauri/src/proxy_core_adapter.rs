@@ -6019,6 +6019,16 @@ pub(crate) fn route_policy_from_source(
     Some(route_policy_from_failover_queue(app, queue))
 }
 
+pub(crate) fn route_policy_from_db_source(
+    db: &Database,
+    app: &AppKind,
+) -> ProxyCoreResult<Option<RoutePolicy>> {
+    let queue = db
+        .get_failover_queue(app.as_str())
+        .map_err(|error| app_error("load route policy", error))?;
+    Ok(route_policy_from_source(app.clone(), queue))
+}
+
 pub(crate) fn channel_health_reset_from_parts(
     channel_id: impl Into<String>,
     app_type: &str,
