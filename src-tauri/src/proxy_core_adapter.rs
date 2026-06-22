@@ -4535,6 +4535,26 @@ where
     )
 }
 
+pub(crate) fn provider_claude_transform_response(body: Value) -> Result<Value, String> {
+    // ProviderAdapter::transform_response does not receive provider config, so detect
+    // structurally disjoint upstream response formats by their top-level fields.
+    if body.get("candidates").is_some() || body.get("promptFeedback").is_some() {
+        let output = gemini_response_to_anthropic_message(
+            &body,
+            None,
+            synthesize_gemini_tool_call_id_with_uuid,
+        )?;
+        for name in &output.rectified_tool_names {
+            log::info!("[Claude/Gemini] Rectified tool args for `{name}`");
+        }
+        Ok(output.response)
+    } else if body.get("output").is_some() {
+        openai_responses_to_anthropic_message(&body)
+    } else {
+        openai_chat_to_anthropic_message(&body)
+    }
+}
+
 pub(crate) fn should_preserve_reasoning_content_for_openai_chat(
     settings_config: &Value,
     body: &Value,
@@ -12542,6 +12562,17 @@ base_url = "https://api.openai.com/v1"
         }))
         .expect("chat response");
         assert_eq!(chat_response["content"][0]["text"], "Hi");
+        let delegated_chat_response = provider_claude_transform_response(json!({
+            "id": "chatcmpl_1",
+            "model": "chat-model",
+            "choices": [{
+                "message": {"role": "assistant", "content": "Hi"},
+                "finish_reason": "stop"
+            }],
+            "usage": {"prompt_tokens": 1, "completion_tokens": 2}
+        }))
+        .expect("delegated chat response");
+        assert_eq!(delegated_chat_response["content"][0]["text"], "Hi");
 
         let responses_response = openai_responses_to_anthropic_message(&json!({
             "id": "resp_1",
@@ -12555,6 +12586,18 @@ base_url = "https://api.openai.com/v1"
         }))
         .expect("responses response");
         assert_eq!(responses_response["content"][0]["text"], "Done");
+        let delegated_responses_response = provider_claude_transform_response(json!({
+            "id": "resp_1",
+            "model": "responses-model",
+            "status": "completed",
+            "output": [{
+                "type": "message",
+                "content": [{"type": "output_text", "text": "Done"}]
+            }],
+            "usage": {"input_tokens": 1, "output_tokens": 2}
+        }))
+        .expect("delegated responses response");
+        assert_eq!(delegated_responses_response["content"][0]["text"], "Done");
 
         let gemini_output = gemini_response_to_anthropic_message(
             &json!({
@@ -12573,6 +12616,19 @@ base_url = "https://api.openai.com/v1"
         )
         .expect("gemini response");
         assert_eq!(gemini_output.response["content"][0]["text"], "Gemini hi");
+        let delegated_gemini_response = provider_claude_transform_response(json!({
+            "responseId": "gemini_1",
+            "candidates": [{
+                "content": {
+                    "role": "model",
+                    "parts": [{"text": "Gemini hi"}]
+                },
+                "finishReason": "STOP"
+            }],
+            "usageMetadata": {"promptTokenCount": 1, "candidatesTokenCount": 2}
+        }))
+        .expect("delegated gemini response");
+        assert_eq!(delegated_gemini_response["content"][0]["text"], "Gemini hi");
 
         assert!(should_preserve_reasoning_content_for_openai_chat(
             &json!({}),

@@ -331,6 +331,15 @@ const FORBIDDEN_CLAUDE_PROVIDER_ADAPTER_TRANSFORM_DECISION_MARKERS: &[&str] = &[
     "claude_api_format_needs_transform(",
     "self.get_api_format(provider)",
 ];
+const FORBIDDEN_CLAUDE_PROVIDER_ADAPTER_RESPONSE_TRANSFORM_MARKERS: &[&str] = &[
+    "gemini_response_to_anthropic_message(",
+    "openai_responses_to_anthropic_message(",
+    "openai_chat_to_anthropic_message(",
+    "synthesize_gemini_tool_call_id_with_uuid",
+    "rectified_tool_names",
+    "body.get(\"candidates\")",
+    "body.get(\"output\")",
+];
 const FORBIDDEN_HANDLER_MANAGEMENT_AUTH_DECISION_MARKERS: &[&str] = &[
     "std::env::var(",
     "CC_SWITCH_PROXY_MANAGEMENT_TOKEN",
@@ -1546,6 +1555,38 @@ fn production_claude_provider_adapter_delegates_transform_decision_to_adapter() 
     assert!(
         violations.is_empty(),
         "Claude provider adapter must delegate transform decision policy to proxy_core_adapter helpers:\n{}",
+        violations.join("\n")
+    );
+}
+
+#[test]
+fn production_claude_provider_adapter_delegates_response_transforms_to_adapter() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let path = manifest_dir.join("src/proxy/providers/claude.rs");
+    let source = fs::read_to_string(&path).expect("read claude provider adapter source");
+    let transform_response = function_slice(
+        &source,
+        "    fn transform_response(&self, body: serde_json::Value) -> Result<serde_json::Value, ProxyError>",
+        "}",
+    );
+
+    let mut violations = Vec::new();
+    for (line_index, line) in production_lines(transform_response) {
+        let code = line.split("//").next().unwrap_or_default();
+        for marker in FORBIDDEN_CLAUDE_PROVIDER_ADAPTER_RESPONSE_TRANSFORM_MARKERS {
+            if code.contains(marker) {
+                violations.push(format!(
+                    "src/proxy/providers/claude.rs transform_response:{} contains response transform marker `{}`",
+                    line_index + 1,
+                    marker
+                ));
+            }
+        }
+    }
+
+    assert!(
+        violations.is_empty(),
+        "Claude provider adapter must delegate response transform dispatch to proxy_core_adapter helpers:\n{}",
         violations.join("\n")
     );
 }

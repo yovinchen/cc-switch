@@ -19,18 +19,16 @@ use crate::provider::Provider;
 use crate::proxy::error::ProxyError;
 use crate::proxy_core_adapter::{
     anthropic_request_to_gemini_request_with_shadow, anthropic_to_openai_chat_request,
-    anthropic_to_openai_responses_request,
-    gemini_response_to_anthropic_message, inject_openai_stream_include_usage,
-    normalize_anthropic_tool_thinking_history, openai_chat_to_anthropic_message,
-    openai_responses_to_anthropic_message,
-    provider_claude_api_format, provider_claude_auth_headers, provider_claude_auth_info,
+    anthropic_to_openai_responses_request, inject_openai_stream_include_usage,
+    normalize_anthropic_tool_thinking_history, provider_claude_api_format,
+    provider_claude_auth_headers, provider_claude_auth_info, provider_claude_transform_response,
     provider_claude_upstream_url, required_claude_provider_base_url,
     provider_claude_prompt_cache_key, provider_claude_responses_prompt_cache_key,
     provider_codex_fast_mode_enabled,
     provider_is_codex_oauth, provider_should_preserve_reasoning_content_for_openai_chat,
     provider_normalize_deepseek_thinking_disabled_strip_effort,
     provider_needs_claude_transform, provider_should_normalize_anthropic_tool_thinking_history,
-    GeminiShadowStore, ProviderAuthInfo, synthesize_gemini_tool_call_id_with_uuid,
+    GeminiShadowStore, ProviderAuthInfo,
 };
 #[cfg(test)]
 use crate::proxy_core_adapter::{
@@ -207,27 +205,7 @@ impl ProviderAdapter for ClaudeAdapter {
     }
 
     fn transform_response(&self, body: serde_json::Value) -> Result<serde_json::Value, ProxyError> {
-        // Heuristic: detect response format by presence of top-level fields.
-        // The ProviderAdapter trait's transform_response doesn't receive the Provider
-        // config, so we can't check api_format here. Instead we rely on the fact that
-        // Responses API always returns "output" while Chat Completions returns "choices".
-        // This is safe because the two formats are structurally disjoint.
-        if body.get("candidates").is_some() || body.get("promptFeedback").is_some() {
-            let output = gemini_response_to_anthropic_message(
-                &body,
-                None,
-                synthesize_gemini_tool_call_id_with_uuid,
-            )
-            .map_err(ProxyError::TransformError)?;
-            for name in &output.rectified_tool_names {
-                log::info!("[Claude/Gemini] Rectified tool args for `{name}`");
-            }
-            Ok(output.response)
-        } else if body.get("output").is_some() {
-            openai_responses_to_anthropic_message(&body).map_err(ProxyError::TransformError)
-        } else {
-            openai_chat_to_anthropic_message(&body).map_err(ProxyError::TransformError)
-        }
+        provider_claude_transform_response(body).map_err(ProxyError::TransformError)
     }
 }
 
@@ -982,6 +960,24 @@ mod tests {
 
         // GitHub Copilot always needs transform
         assert!(adapter.needs_transform(&copilot));
+    }
+
+    #[test]
+    fn test_transform_response_delegates_to_adapter() {
+        let adapter = ClaudeAdapter::new();
+        let transformed = adapter
+            .transform_response(json!({
+                "id": "chatcmpl_1",
+                "model": "chat-model",
+                "choices": [{
+                    "message": {"role": "assistant", "content": "Hi"},
+                    "finish_reason": "stop"
+                }],
+                "usage": {"prompt_tokens": 1, "completion_tokens": 2}
+            }))
+            .unwrap();
+
+        assert_eq!(transformed["content"][0]["text"], "Hi");
     }
 
     #[test]
