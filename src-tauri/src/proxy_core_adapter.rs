@@ -1038,6 +1038,15 @@ pub(crate) enum CommonConfigSnippetIssue {
     TomlParse(String),
 }
 
+pub(crate) fn common_config_snippet_issue_message(issue: CommonConfigSnippetIssue) -> String {
+    match issue {
+        CommonConfigSnippetIssue::Serialization(error) => {
+            format!("Serialization failed: {error}")
+        }
+        CommonConfigSnippetIssue::TomlParse(error) => format!("TOML parse error: {error}"),
+    }
+}
+
 pub(crate) fn common_config_snippet_from_settings(
     app_type: &AppType,
     settings: &Value,
@@ -2342,6 +2351,73 @@ pub(crate) enum ProviderSettingsValidationIssue {
     OpenCodeSettingsNotObject,
     OpenClawSettingsNotObject,
     HermesSettingsNotObject,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct LocalizedErrorSpec {
+    pub(crate) key: &'static str,
+    pub(crate) zh: String,
+    pub(crate) en: String,
+}
+
+impl LocalizedErrorSpec {
+    fn new(key: &'static str, zh: impl Into<String>, en: impl Into<String>) -> Self {
+        Self {
+            key,
+            zh: zh.into(),
+            en: en.into(),
+        }
+    }
+}
+
+pub(crate) fn provider_settings_validation_issue_spec(
+    issue: ProviderSettingsValidationIssue,
+    provider_id: &str,
+) -> LocalizedErrorSpec {
+    match issue {
+        ProviderSettingsValidationIssue::ClaudeSettingsNotObject => LocalizedErrorSpec::new(
+            "provider.claude.settings.not_object",
+            "Claude 配置必须是 JSON 对象",
+            "Claude configuration must be a JSON object",
+        ),
+        ProviderSettingsValidationIssue::Codex(issue) => match issue {
+            CodexProviderValidationIssue::NotObject => LocalizedErrorSpec::new(
+                "provider.codex.settings.not_object",
+                "Codex 配置必须是 JSON 对象",
+                "Codex configuration must be a JSON object",
+            ),
+            CodexProviderValidationIssue::MissingAuth => LocalizedErrorSpec::new(
+                "provider.codex.auth.missing",
+                format!("供应商 {provider_id} 缺少 auth 配置"),
+                format!("Provider {provider_id} is missing auth configuration"),
+            ),
+            CodexProviderValidationIssue::AuthNotObject => LocalizedErrorSpec::new(
+                "provider.codex.auth.not_object",
+                format!("供应商 {provider_id} 的 auth 配置必须是 JSON 对象"),
+                format!("Provider {provider_id} auth configuration must be a JSON object"),
+            ),
+            CodexProviderValidationIssue::ConfigInvalidType => LocalizedErrorSpec::new(
+                "provider.codex.config.invalid_type",
+                "Codex config 字段必须是字符串",
+                "Codex config field must be a string",
+            ),
+        },
+        ProviderSettingsValidationIssue::OpenCodeSettingsNotObject => LocalizedErrorSpec::new(
+            "provider.opencode.settings.not_object",
+            "OpenCode 配置必须是 JSON 对象",
+            "OpenCode configuration must be a JSON object",
+        ),
+        ProviderSettingsValidationIssue::OpenClawSettingsNotObject => LocalizedErrorSpec::new(
+            "provider.openclaw.settings.not_object",
+            "OpenClaw 配置必须是 JSON 对象",
+            "OpenClaw configuration must be a JSON object",
+        ),
+        ProviderSettingsValidationIssue::HermesSettingsNotObject => LocalizedErrorSpec::new(
+            "provider.hermes.settings.not_object",
+            "Hermes 配置必须是 JSON 对象",
+            "Hermes configuration must be a JSON object",
+        ),
+    }
 }
 
 pub(crate) fn provider_settings_validation_parts<'a>(
@@ -8345,6 +8421,27 @@ experimental_bearer_token = "live-token"
             provider_codex_validation_parts(&invalid_config),
             Err(CodexProviderValidationIssue::ConfigInvalidType)
         ));
+        let validation_spec = provider_settings_validation_issue_spec(
+            ProviderSettingsValidationIssue::Codex(CodexProviderValidationIssue::MissingAuth),
+            "codex-live-missing-auth",
+        );
+        assert_eq!(validation_spec.key, "provider.codex.auth.missing");
+        assert_eq!(
+            validation_spec.zh,
+            "供应商 codex-live-missing-auth 缺少 auth 配置"
+        );
+        assert_eq!(
+            validation_spec.en,
+            "Provider codex-live-missing-auth is missing auth configuration"
+        );
+        assert_eq!(
+            provider_settings_validation_issue_spec(
+                ProviderSettingsValidationIssue::OpenClawSettingsNotObject,
+                "openclaw-invalid",
+            )
+            .key,
+            "provider.openclaw.settings.not_object"
+        );
         let chat_provider = Provider::with_id(
             "codex-chat".to_string(),
             "Codex Chat".to_string(),
@@ -9354,6 +9451,18 @@ reasoning = "medium"
                 CommonConfigSettingsMutationIssue::GeminiCommonConfigJson("bad json".to_string())
             ),
             "Invalid Gemini common config: bad json"
+        );
+        assert_eq!(
+            common_config_snippet_issue_message(CommonConfigSnippetIssue::Serialization(
+                "bad json".to_string()
+            )),
+            "Serialization failed: bad json"
+        );
+        assert_eq!(
+            common_config_snippet_issue_message(CommonConfigSnippetIssue::TomlParse(
+                "bad toml".to_string()
+            )),
+            "TOML parse error: bad toml"
         );
     }
 

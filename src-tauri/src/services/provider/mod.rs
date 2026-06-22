@@ -16,12 +16,13 @@ use crate::database::{validate_cost_multiplier, validate_pricing_source};
 use crate::error::AppError;
 use crate::provider::{Provider, UsageResult};
 use crate::proxy_core_adapter::{
-    common_config_snippet_from_settings, normalize_claude_models_in_value,
-    provider_credential_values, provider_settings_validation_parts,
+    common_config_snippet_from_settings, common_config_snippet_issue_message,
+    normalize_claude_models_in_value, provider_credential_values,
+    provider_settings_validation_issue_spec, provider_settings_validation_parts,
     proxy_live_config_owned_by_takeover,
     proxy_switch_should_hot_switch, should_block_proxy_switch_to_provider,
-    should_reapply_codex_official_live_for_provider, CodexProviderValidationIssue,
-    CommonConfigSnippetIssue, ProviderCredentialIssue, ProviderSettingsValidationIssue,
+    should_reapply_codex_official_live_for_provider, CommonConfigSnippetIssue,
+    ProviderCredentialIssue, ProviderSettingsValidationIssue,
 };
 use crate::services::mcp::McpService;
 use crate::settings::CustomEndpoint;
@@ -2170,14 +2171,7 @@ impl ProviderService {
     }
 
     fn common_config_snippet_issue_to_app_error(issue: CommonConfigSnippetIssue) -> AppError {
-        match issue {
-            CommonConfigSnippetIssue::Serialization(error) => {
-                AppError::Message(format!("Serialization failed: {error}"))
-            }
-            CommonConfigSnippetIssue::TomlParse(error) => {
-                AppError::Message(format!("TOML parse error: {error}"))
-            }
-        }
+        AppError::Message(common_config_snippet_issue_message(issue))
     }
 
     /// Import default configuration from live files (re-export)
@@ -2341,50 +2335,8 @@ impl ProviderService {
         issue: ProviderSettingsValidationIssue,
         provider_id: &str,
     ) -> AppError {
-        match issue {
-            ProviderSettingsValidationIssue::ClaudeSettingsNotObject => AppError::localized(
-                "provider.claude.settings.not_object",
-                "Claude 配置必须是 JSON 对象",
-                "Claude configuration must be a JSON object",
-            ),
-            ProviderSettingsValidationIssue::Codex(issue) => match issue {
-                CodexProviderValidationIssue::NotObject => AppError::localized(
-                    "provider.codex.settings.not_object",
-                    "Codex 配置必须是 JSON 对象",
-                    "Codex configuration must be a JSON object",
-                ),
-                CodexProviderValidationIssue::MissingAuth => AppError::localized(
-                    "provider.codex.auth.missing",
-                    format!("供应商 {provider_id} 缺少 auth 配置"),
-                    format!("Provider {provider_id} is missing auth configuration"),
-                ),
-                CodexProviderValidationIssue::AuthNotObject => AppError::localized(
-                    "provider.codex.auth.not_object",
-                    format!("供应商 {provider_id} 的 auth 配置必须是 JSON 对象"),
-                    format!("Provider {provider_id} auth configuration must be a JSON object"),
-                ),
-                CodexProviderValidationIssue::ConfigInvalidType => AppError::localized(
-                    "provider.codex.config.invalid_type",
-                    "Codex config 字段必须是字符串",
-                    "Codex config field must be a string",
-                ),
-            },
-            ProviderSettingsValidationIssue::OpenCodeSettingsNotObject => AppError::localized(
-                "provider.opencode.settings.not_object",
-                "OpenCode 配置必须是 JSON 对象",
-                "OpenCode configuration must be a JSON object",
-            ),
-            ProviderSettingsValidationIssue::OpenClawSettingsNotObject => AppError::localized(
-                "provider.openclaw.settings.not_object",
-                "OpenClaw 配置必须是 JSON 对象",
-                "OpenClaw configuration must be a JSON object",
-            ),
-            ProviderSettingsValidationIssue::HermesSettingsNotObject => AppError::localized(
-                "provider.hermes.settings.not_object",
-                "Hermes 配置必须是 JSON 对象",
-                "Hermes configuration must be a JSON object",
-            ),
-        }
+        let spec = provider_settings_validation_issue_spec(issue, provider_id);
+        AppError::localized(spec.key, spec.zh, spec.en)
     }
 
     #[allow(dead_code)]
