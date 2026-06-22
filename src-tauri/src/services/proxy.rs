@@ -18,8 +18,8 @@ use crate::proxy_core_adapter::{
     codex_live_write_projection, codex_preserved_auth_live_config_text_if_proxy_placeholder,
     codex_takeover_toml_config_for_provider, gemini_live_config_has_proxy_placeholder,
     ensure_codex_takeover_auth_placeholder, gemini_live_backup_from_effective_settings,
-    live_backup_snapshot_from_live_config, live_config_has_proxy_placeholder_for_app,
-    live_takeover_config_matches_proxy_for_app, provider_claude_takeover_model_fields,
+    live_backup_snapshot_from_live_config, live_takeover_config_matches_proxy_for_app,
+    provider_claude_takeover_model_fields,
     provider_is_github_copilot, provider_settings_have_proxy_placeholder_for_app,
     preserve_codex_mcp_servers_from_existing_config,
     preserve_codex_oauth_auth_in_backup_if_present, provider_settings_with_live_token_sync,
@@ -1307,14 +1307,16 @@ impl ProxyService {
             // 备份若是代理占位符（异常历史：上次 stop 失败导致 Live 留在了代理状态，
             // 下次接管时又被错误地备份成"原始 Live"），不能直接用 — 否则 stop 后
             // Live 永远卡在 127.0.0.1:15721。落到下面的 SSOT 兜底重建。
-            if Self::live_has_proxy_placeholder_for_app(app_type, &config) {
+            if let Some(restorable_config) =
+                live_backup_snapshot_from_live_config(app_type, &config, PROXY_TOKEN_PLACEHOLDER)
+            {
+                self.write_live_config_for_app(app_type, &restorable_config)?;
+                log::info!("{app_type_str} Live 配置已从备份恢复");
+                return Ok(());
+            } else {
                 log::warn!(
                     "{app_type_str} 备份本身已是代理占位符（异常历史状态），跳过备份，改走 SSOT 重建 Live"
                 );
-            } else {
-                self.write_live_config_for_app(app_type, &config)?;
-                log::info!("{app_type_str} Live 配置已从备份恢复");
-                return Ok(());
             }
         }
 
@@ -1585,16 +1587,6 @@ impl ProxyService {
 
     fn is_gemini_live_taken_over(config: &Value) -> bool {
         gemini_live_config_has_proxy_placeholder(config, PROXY_TOKEN_PLACEHOLDER)
-    }
-
-    /// 判断给定的 Live/备份配置是否已被代理接管（包含占位符）
-    ///
-    /// 用途：检测"备份里存的其实是代理配置"这种异常历史状态。
-    /// 如果发现，备份不可信，备份路径不能写入（否则会把代理配置固化进备份槽），
-    /// 恢复路径不能读取（否则会把代理占位符原样写回 Live，永久卡在代理地址）。
-    /// 两种情况下都应该走 SSOT 兜底重建 Live。
-    fn live_has_proxy_placeholder_for_app(app_type: &AppType, config: &Value) -> bool {
-        live_config_has_proxy_placeholder_for_app(app_type, config, PROXY_TOKEN_PLACEHOLDER)
     }
 
     /// 从供应商配置更新 Live 备份（用于代理模式下的热切换）

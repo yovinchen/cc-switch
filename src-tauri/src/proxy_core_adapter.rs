@@ -7230,6 +7230,14 @@ wire_api = "chat"
             ),
             None
         );
+        assert_eq!(
+            live_backup_snapshot_from_live_config(
+                &AppType::Codex,
+                &json!({ "config": "experimental_bearer_token = \"PROXY_MANAGED\"" }),
+                placeholder
+            ),
+            None
+        );
 
         let provider = Provider::with_id(
             "codex-live-residue".to_string(),
