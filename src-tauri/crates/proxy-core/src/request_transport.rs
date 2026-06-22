@@ -208,6 +208,31 @@ pub fn mapped_channel_response_status(status: u16, mapping: &Value) -> Option<u1
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ChannelResponseStatusMapping {
+    pub original_status: http::StatusCode,
+    pub mapped_status: http::StatusCode,
+}
+
+impl ChannelResponseStatusMapping {
+    pub fn changed(self) -> bool {
+        self.original_status != self.mapped_status
+    }
+}
+
+pub fn resolve_channel_response_status_mapping(
+    status: http::StatusCode,
+    mapping: &Value,
+) -> Option<ChannelResponseStatusMapping> {
+    let mapped_status = mapped_channel_response_status(status.as_u16(), mapping)
+        .and_then(|status| http::StatusCode::from_u16(status).ok())?;
+
+    Some(ChannelResponseStatusMapping {
+        original_status: status,
+        mapped_status,
+    })
+}
+
 pub fn invalid_mapped_channel_response_status_message(
     mapped: u16,
     error: impl std::fmt::Display,
@@ -258,9 +283,10 @@ mod tests {
         invalid_mapped_channel_response_status_message, is_socks_proxy_url,
         is_streaming_upstream_request, mapped_channel_response_status,
         proxy_url_points_to_loopback_port, proxy_values_point_to_loopback_port,
-        request_body_stream_flag, resolve_upstream_request_transport_policy,
-        resolve_upstream_send_policy, UpstreamSendPolicyInput, UpstreamTransportKind,
-        DEFAULT_UPSTREAM_SEND_TIMEOUT, STREAMING_REQWEST_REQUEST_TIMEOUT,
+        request_body_stream_flag, resolve_channel_response_status_mapping,
+        resolve_upstream_request_transport_policy, resolve_upstream_send_policy,
+        UpstreamSendPolicyInput, UpstreamTransportKind, DEFAULT_UPSTREAM_SEND_TIMEOUT,
+        STREAMING_REQWEST_REQUEST_TIMEOUT,
     };
     use http::{header::ACCEPT, HeaderMap, HeaderValue};
     use serde_json::json;
@@ -518,6 +544,27 @@ mod tests {
         assert_eq!(
             invalid_mapped_channel_response_status_message(99, "invalid status code"),
             "invalid mapped channel response status 99: invalid status code"
+        );
+    }
+
+    #[test]
+    fn resolves_channel_response_status_mapping_with_valid_status_codes() {
+        let mapping = resolve_channel_response_status_mapping(
+            http::StatusCode::TOO_MANY_REQUESTS,
+            &json!([{"from": 429, "to": 200}]),
+        )
+        .expect("status mapping");
+
+        assert_eq!(mapping.original_status, http::StatusCode::TOO_MANY_REQUESTS);
+        assert_eq!(mapping.mapped_status, http::StatusCode::OK);
+        assert!(mapping.changed());
+
+        assert_eq!(
+            resolve_channel_response_status_mapping(
+                http::StatusCode::TOO_MANY_REQUESTS,
+                &json!([{"from": 429, "to": "rate_limited"}])
+            ),
+            None
         );
     }
 

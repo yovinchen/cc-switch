@@ -48,6 +48,11 @@ const FORBIDDEN_FORWARDER_CODEX_PROVIDER_COMPAT_MARKERS: &[&str] = &[
     "super::providers::apply_codex_chat_upstream_model(",
     "super::providers::resolve_codex_chat_reasoning_options(",
 ];
+const FORBIDDEN_FORWARDER_CHANNEL_STATUS_MAPPING_MARKERS: &[&str] = &[
+    "mapped_channel_response_status(",
+    "invalid_mapped_channel_response_status_message(",
+    "StatusCode::from_u16(",
+];
 const FORBIDDEN_PROVIDER_MODULE_CODEX_HISTORY_MARKERS: &[&str] =
     &["codex_chat_history", "providers::codex_chat_history"];
 const FORBIDDEN_PROVIDER_MODULE_KIND_FACADE_MARKERS: &[&str] = &[
@@ -1918,6 +1923,33 @@ fn production_forwarder_delegates_codex_provider_helpers_to_adapter() {
     assert!(
         violations.is_empty(),
         "forwarder must consume Codex provider facts through proxy_core_adapter helpers:\n{}",
+        violations.join("\n")
+    );
+}
+
+#[test]
+fn production_forwarder_delegates_channel_status_mapping_to_adapter() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let path = manifest_dir.join("src/proxy/forwarder.rs");
+    let source = fs::read_to_string(&path).expect("read forwarder.rs");
+
+    let mut violations = Vec::new();
+    for (line_index, line) in production_lines(&source) {
+        let code = line.split("//").next().unwrap_or_default();
+        for marker in FORBIDDEN_FORWARDER_CHANNEL_STATUS_MAPPING_MARKERS {
+            if code.contains(marker) {
+                violations.push(format!(
+                    "src/proxy/forwarder.rs:{} contains channel status mapping marker `{}`",
+                    line_index + 1,
+                    marker
+                ));
+            }
+        }
+    }
+
+    assert!(
+        violations.is_empty(),
+        "forwarder must consume channel response status mapping through proxy_core_adapter decision helper:\n{}",
         violations.join("\n")
     );
 }

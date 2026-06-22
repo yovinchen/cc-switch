@@ -25,9 +25,8 @@ use crate::proxy_core_adapter::{
     build_upstream_auth_headers, cache_injection_log_message, categorize_forward_failure,
     classify_copilot_request, contains_image_blocks,
     emit_attempt_event_source, emit_request_started_event_source, forward_upstream_url_plan,
-    invalid_mapped_channel_response_status_message,
-    is_openai_o_series, is_unsupported_image_error, mapped_channel_response_status,
-    allow_forward_attempt_runtime_source, merge_copilot_tool_results,
+    is_openai_o_series, is_unsupported_image_error, allow_forward_attempt_runtime_source,
+    merge_copilot_tool_results,
     non_streaming_body_timeout_message, normalize_thinking_type,
     prepare_upstream_request_body_with_report, prompt_cache_trace_log_message,
     provider_apply_codex_chat_upstream_model, provider_bedrock_env_flag,
@@ -54,8 +53,9 @@ use crate::proxy_core_adapter::{
     resolve_claude_forward_api_format,
     resolve_copilot_deterministic_interaction_id, resolve_copilot_model_against_ids,
     resolve_copilot_optimizer_session_id, resolve_copilot_request_id_with_fallback,
-    resolve_media_prevention_policy, resolved_copilot_dynamic_base_url,
-    responses_to_chat_completions_with_options, sanitize_copilot_orphan_tool_results,
+    resolve_channel_response_status_mapping, resolve_media_prevention_policy,
+    resolved_copilot_dynamic_base_url, responses_to_chat_completions_with_options,
+    sanitize_copilot_orphan_tool_results,
     should_apply_bedrock_pre_send_optimizer,
     should_check_media_retry, should_failover_after_rectifier_retry_failure,
     should_preserve_exact_request_header_case, should_rectify_thinking_budget,
@@ -1655,26 +1655,24 @@ impl RequestForwarder {
             return Ok(response);
         };
 
-        let status = response.status();
-        let Some(mapped) =
-            mapped_channel_response_status(status.as_u16(), &channel.status_code_mapping)
-        else {
+        let status_mapping = resolve_channel_response_status_mapping(
+            response.status(),
+            &channel.status_code_mapping,
+        );
+        let Some(status_mapping) = status_mapping else {
             return Ok(response);
         };
-        let mapped_status = http::StatusCode::from_u16(mapped).map_err(|error| {
-            ProxyError::Internal(invalid_mapped_channel_response_status_message(mapped, error))
-        })?;
 
-        if mapped_status != status {
+        if status_mapping.changed() {
             log::debug!(
                 "[ChannelRoute] response status mapped via channel {}: {} -> {}",
                 channel.channel_id,
-                status.as_u16(),
-                mapped_status.as_u16()
+                status_mapping.original_status.as_u16(),
+                status_mapping.mapped_status.as_u16()
             );
         }
 
-        Ok(response.with_status(mapped_status))
+        Ok(response.with_status(status_mapping.mapped_status))
     }
 
     /// 故障转移开启时，成功不能只看上游响应头。

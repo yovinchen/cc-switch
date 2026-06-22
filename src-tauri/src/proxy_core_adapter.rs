@@ -7018,17 +7018,14 @@ pub(crate) fn apply_channel_param_overrides_to_url(
     )
 }
 
-pub(crate) fn mapped_channel_response_status(status: u16, mapping: &Value) -> Option<u16> {
-    crate::proxy_core::api::transport::mapped_channel_response_status(status, mapping)
-}
+pub(crate) type ChannelResponseStatusMapping =
+    crate::proxy_core::api::transport::ChannelResponseStatusMapping;
 
-pub(crate) fn invalid_mapped_channel_response_status_message(
-    mapped: u16,
-    error: impl std::fmt::Display,
-) -> String {
-    crate::proxy_core::api::transport::invalid_mapped_channel_response_status_message(
-        mapped, error,
-    )
+pub(crate) fn resolve_channel_response_status_mapping(
+    status: http::StatusCode,
+    mapping: &Value,
+) -> Option<ChannelResponseStatusMapping> {
+    crate::proxy_core::api::transport::resolve_channel_response_status_mapping(status, mapping)
 }
 
 pub(crate) fn codex_proxy_error_code(kind: CodexProxyErrorKind) -> &'static str {
