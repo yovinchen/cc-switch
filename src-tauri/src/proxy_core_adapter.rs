@@ -1952,6 +1952,12 @@ pub(crate) fn gemini_env_value_from_env_json(env_json: &Value) -> Value {
     env_json.get("env").cloned().unwrap_or_else(|| json!({}))
 }
 
+pub(crate) fn gemini_live_backup_from_effective_settings(settings: &Value) -> Value {
+    json!({
+        "env": settings.get("env").cloned().unwrap_or_else(|| json!({}))
+    })
+}
+
 pub(crate) fn provider_gemini_env_map(
     provider: &Provider,
 ) -> Result<HashMap<String, String>, AppError> {
@@ -6662,6 +6668,19 @@ wire_api = "chat"
             json!({"A": "B"})
         );
         assert_eq!(gemini_env_value_from_env_json(&json!({})), json!({}));
+        assert_eq!(
+            gemini_live_backup_from_effective_settings(&json!({
+                "env": {"GEMINI_API_KEY": "key"},
+                "config": {"mcpServers": {"kept-out-of-env-backup": {}}}
+            })),
+            json!({"env": {"GEMINI_API_KEY": "key"}})
+        );
+        assert_eq!(
+            gemini_live_backup_from_effective_settings(&json!({
+                "config": {"mcpServers": {}}
+            })),
+            json!({"env": {}})
+        );
         let provider = Provider::with_id(
             "gemini".to_string(),
             "Gemini".to_string(),

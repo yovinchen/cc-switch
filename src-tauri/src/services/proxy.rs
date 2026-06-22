@@ -17,8 +17,9 @@ use crate::proxy_core_adapter::{
     codex_live_config_has_proxy_placeholder,
     codex_live_write_projection, codex_preserved_auth_live_config_text_if_proxy_placeholder,
     codex_takeover_toml_config_for_provider, gemini_live_config_has_proxy_placeholder,
-    ensure_codex_takeover_auth_placeholder, live_config_has_proxy_placeholder_for_app,
-    live_takeover_config_matches_proxy_for_app, provider_claude_takeover_model_fields,
+    ensure_codex_takeover_auth_placeholder, gemini_live_backup_from_effective_settings,
+    live_config_has_proxy_placeholder_for_app, live_takeover_config_matches_proxy_for_app,
+    provider_claude_takeover_model_fields,
     provider_is_github_copilot, provider_settings_have_proxy_placeholder_for_app,
     preserve_codex_mcp_servers_from_existing_config,
     preserve_codex_oauth_auth_in_backup_if_present, provider_settings_with_live_token_sync,
@@ -1651,11 +1652,7 @@ impl ProxyService {
                 .map_err(|e| format!("序列化 Codex 配置失败: {e}"))?,
             AppType::Gemini => {
                 // Gemini takeover 仅修改 .env；settings.json（含 mcpServers）保持原样。
-                let env_backup = if let Some(env) = effective_settings.get("env") {
-                    json!({ "env": env })
-                } else {
-                    json!({ "env": {} })
-                };
+                let env_backup = gemini_live_backup_from_effective_settings(&effective_settings);
                 serde_json::to_string(&env_backup)
                     .map_err(|e| format!("序列化 Gemini 配置失败: {e}"))?
             }
@@ -4608,6 +4605,57 @@ base_url = "https://codex.example/v1"
         assert!(
             config.contains("disable_response_storage = true"),
             "common config should be applied into Codex restore backup"
+        );
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn update_live_backup_from_provider_for_gemini_stores_env_only() {
+        let _home = TempHome::new();
+        crate::settings::reload_settings().expect("reload settings");
+
+        let db = Arc::new(Database::memory().expect("init db"));
+        let service = ProxyService::new(db.clone());
+        let provider = Provider::with_id(
+            "gemini-p1".to_string(),
+            "Gemini P1".to_string(),
+            json!({
+                "env": {
+                    "GEMINI_API_KEY": "gemini-key",
+                    "GOOGLE_GEMINI_BASE_URL": "https://generativelanguage.googleapis.com/v1beta"
+                },
+                "config": {
+                    "mcpServers": {
+                        "filesystem": {
+                            "command": "npx"
+                        }
+                    }
+                }
+            }),
+            None,
+        );
+
+        service
+            .update_live_backup_from_provider("gemini", &provider)
+            .await
+            .expect("update live backup");
+
+        let backup = db
+            .get_live_backup("gemini")
+            .await
+            .expect("get live backup")
+            .expect("backup exists");
+        let stored: Value =
+            serde_json::from_str(&backup.original_config).expect("parse backup json");
+
+        assert_eq!(
+            stored,
+            json!({
+                "env": {
+                    "GEMINI_API_KEY": "gemini-key",
+                    "GOOGLE_GEMINI_BASE_URL": "https://generativelanguage.googleapis.com/v1beta"
+                }
+            })
         );
     }
 
