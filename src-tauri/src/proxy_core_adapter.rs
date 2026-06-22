@@ -8396,6 +8396,47 @@ pub(crate) struct NonStreamingResponseUsageContext<'a> {
     pub(crate) session_id: &'a str,
 }
 
+pub(crate) struct ForwardErrorUsageContext<'a> {
+    pub(crate) provider: Option<&'a Provider>,
+    pub(crate) fallback_provider_id: &'a str,
+    pub(crate) app_type: &'a str,
+    pub(crate) request_model: &'a str,
+    pub(crate) outbound_model: Option<&'a str>,
+    pub(crate) route_context: Option<&'a UsageRouteContext>,
+    pub(crate) status_code: u16,
+    pub(crate) error_message: String,
+    pub(crate) latency_ms: u64,
+    pub(crate) is_streaming: bool,
+    pub(crate) session_id: &'a str,
+}
+
+pub(crate) struct TransformedResponseUsageContext<'a> {
+    pub(crate) body: &'a Value,
+    pub(crate) format: TransformedResponseUsageFormat,
+    pub(crate) provider: Option<&'a Provider>,
+    pub(crate) tag: &'a str,
+    pub(crate) app_type: &'a str,
+    pub(crate) request_model: &'a str,
+    pub(crate) outbound_model: Option<&'a str>,
+    pub(crate) route_context: Option<&'a UsageRouteContext>,
+    pub(crate) latency_ms: u64,
+    pub(crate) status_code: u16,
+    pub(crate) session_id: &'a str,
+}
+
+pub(crate) struct TransformedStreamingResponseUsageContext<'a> {
+    pub(crate) events: &'a [Value],
+    pub(crate) format: TransformedResponseUsageFormat,
+    pub(crate) provider_facts: &'a ResponseUsageProviderFacts,
+    pub(crate) request_model: &'a str,
+    pub(crate) outbound_model: Option<&'a str>,
+    pub(crate) route_context: Option<&'a UsageRouteContext>,
+    pub(crate) latency_ms: u64,
+    pub(crate) first_token_ms: Option<u64>,
+    pub(crate) status_code: u16,
+    pub(crate) session_id: &'a str,
+}
+
 #[cfg(test)]
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn success_usage_record_from_app_type_with_request_id_fallback(
@@ -8455,6 +8496,33 @@ pub(crate) fn error_usage_record_from_provider_facts_with_request_id_fallback(
         session_id,
         request_id_fallback,
     )
+}
+
+pub(crate) fn forward_error_usage_record_from_response_context(
+    context: ForwardErrorUsageContext<'_>,
+    request_id_fallback: impl FnOnce() -> String,
+) -> UsageRecord {
+    let provider_facts = context
+        .provider
+        .map(|provider| response_usage_provider_facts(provider, context.app_type))
+        .unwrap_or_else(|| {
+            fallback_response_usage_provider_facts(
+                context.fallback_provider_id.to_string(),
+                context.app_type,
+            )
+        });
+    let record = error_usage_record_from_provider_facts_with_request_id_fallback(
+        &provider_facts,
+        context.request_model,
+        context.outbound_model,
+        context.status_code,
+        context.error_message,
+        context.latency_ms,
+        context.is_streaming,
+        Some(context.session_id.to_string()),
+        request_id_fallback,
+    );
+    usage_record_with_route_context(record, context.route_context)
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -8563,6 +8631,51 @@ pub(crate) fn transformed_streaming_response_usage_record_from_provider_facts_wi
         session_id,
         request_id_fallback,
     )
+}
+
+pub(crate) fn transformed_response_usage_record_from_response_context(
+    context: TransformedResponseUsageContext<'_>,
+    request_id_fallback: impl FnOnce() -> String,
+) -> Result<Option<UsageRecord>, String> {
+    let provider_facts = response_usage_provider_facts_from_optional(
+        context.provider,
+        context.app_type,
+        context.tag,
+        UsageSelectedProviderMissingPhase::TransformedResponse,
+    )?;
+    Ok(
+        transformed_response_usage_record_from_provider_facts_with_request_id_fallback(
+            context.body,
+            context.format,
+            &provider_facts,
+            context.request_model,
+            context.outbound_model,
+            context.latency_ms,
+            context.status_code,
+            Some(context.session_id.to_string()),
+            request_id_fallback,
+        )
+        .map(|record| usage_record_with_route_context(record, context.route_context)),
+    )
+}
+
+pub(crate) fn transformed_streaming_response_usage_record_from_response_context(
+    context: TransformedStreamingResponseUsageContext<'_>,
+    request_id_fallback: impl FnOnce() -> String,
+) -> Option<UsageRecord> {
+    transformed_streaming_response_usage_record_from_provider_facts_with_request_id_fallback(
+        context.events,
+        context.format,
+        context.provider_facts,
+        context.request_model,
+        context.outbound_model,
+        context.latency_ms,
+        context.first_token_ms,
+        context.status_code,
+        Some(context.session_id.to_string()),
+        request_id_fallback,
+    )
+    .map(|record| usage_record_with_route_context(record, context.route_context))
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -9645,6 +9758,106 @@ mod tests {
             channel_name: "Channel One".to_string(),
             route_group: "beta".to_string(),
         };
+        let error_record = forward_error_usage_record_from_response_context(
+            ForwardErrorUsageContext {
+                provider: Some(&provider),
+                fallback_provider_id: "fallback-provider",
+                app_type: AppType::ClaudeDesktop.as_str(),
+                request_model: "request-model",
+                outbound_model: Some("outbound-model"),
+                route_context: Some(&route_context),
+                status_code: 502,
+                error_message: "upstream failed".to_string(),
+                latency_ms: 321,
+                is_streaming: false,
+                session_id: "session-error",
+            },
+            || "request-error".to_string(),
+        );
+        assert_eq!(error_record.provider_id, "provider-a");
+        assert_eq!(
+            error_record.provider_kind,
+            Some(ProviderKind::GitHubCopilot)
+        );
+        assert_eq!(error_record.app, AppKind::ClaudeDesktop);
+        assert_eq!(error_record.request_model, "request-model");
+        assert_eq!(error_record.outbound_model, "outbound-model");
+        assert_eq!(error_record.status_code, 502);
+        assert_eq!(
+            error_record.error_message.as_deref(),
+            Some("upstream failed")
+        );
+        assert_eq!(error_record.tokens.input_tokens, 0);
+        assert_eq!(error_record.channel_id.as_deref(), Some("channel-1"));
+
+        let transformed_body = json!({
+            "id": "msg_1",
+            "model": "claude-response-model",
+            "usage": {
+                "input_tokens": 3,
+                "output_tokens": 5
+            }
+        });
+        let transformed_record = transformed_response_usage_record_from_response_context(
+            TransformedResponseUsageContext {
+                body: &transformed_body,
+                format: TransformedResponseUsageFormat::Claude,
+                provider: Some(&provider),
+                tag: "Claude Desktop",
+                app_type: AppType::ClaudeDesktop.as_str(),
+                request_model: "request-model",
+                outbound_model: Some("outbound-model"),
+                route_context: Some(&route_context),
+                latency_ms: 123,
+                status_code: 200,
+                session_id: "session-transformed",
+            },
+            || "request-transformed".to_string(),
+        )
+        .expect("transformed provider facts")
+        .expect("transformed usage record");
+        assert_eq!(transformed_record.provider_id, "provider-a");
+        assert_eq!(
+            transformed_record.provider_kind,
+            Some(ProviderKind::GitHubCopilot)
+        );
+        assert_eq!(transformed_record.app, AppKind::ClaudeDesktop);
+        assert_eq!(
+            transformed_record.response_model.as_deref(),
+            Some("claude-response-model")
+        );
+        assert_eq!(transformed_record.tokens.input_tokens, 3);
+        assert!(!transformed_record.is_streaming);
+        assert_eq!(
+            transformed_record.channel_name.as_deref(),
+            Some("Channel One")
+        );
+
+        let missing_transformed = transformed_response_usage_record_from_response_context(
+            TransformedResponseUsageContext {
+                body: &transformed_body,
+                format: TransformedResponseUsageFormat::Claude,
+                provider: None,
+                tag: "Claude Desktop",
+                app_type: AppType::ClaudeDesktop.as_str(),
+                request_model: "request-model",
+                outbound_model: None,
+                route_context: None,
+                latency_ms: 123,
+                status_code: 200,
+                session_id: "session-transformed",
+            },
+            || "request-missing".to_string(),
+        )
+        .unwrap_err();
+        assert_eq!(
+            missing_transformed,
+            usage_selected_provider_missing_log_message(
+                "Claude Desktop",
+                UsageSelectedProviderMissingPhase::TransformedResponse
+            )
+        );
+
         let stream_events = vec![json!({"model": "stream-response-model"})];
         let stream_output = streaming_response_usage_record_from_response_context(
             StreamingResponseUsageContext {
@@ -9686,6 +9899,55 @@ mod tests {
             Some("Channel One")
         );
         assert_eq!(stream_output.record.route_group.as_deref(), Some("beta"));
+
+        let transformed_stream_events = vec![
+            json!({
+                "type": "message_start",
+                "message": {
+                    "id": "msg_stream_1",
+                    "model": "claude-stream-model",
+                    "usage": {
+                        "input_tokens": 7
+                    }
+                }
+            }),
+            json!({
+                "type": "message_delta",
+                "usage": {
+                    "output_tokens": 11
+                }
+            }),
+        ];
+        let transformed_stream_record =
+            transformed_streaming_response_usage_record_from_response_context(
+                TransformedStreamingResponseUsageContext {
+                    events: &transformed_stream_events,
+                    format: TransformedResponseUsageFormat::Claude,
+                    provider_facts: &optional_facts,
+                    request_model: "request-model",
+                    outbound_model: Some("outbound-model"),
+                    route_context: Some(&route_context),
+                    latency_ms: 654,
+                    first_token_ms: Some(34),
+                    status_code: 200,
+                    session_id: "session-transformed-stream",
+                },
+                || "request-transformed-stream".to_string(),
+            )
+            .expect("transformed streaming usage record");
+        assert_eq!(transformed_stream_record.provider_id, "provider-a");
+        assert_eq!(
+            transformed_stream_record.response_model.as_deref(),
+            Some("claude-stream-model")
+        );
+        assert_eq!(transformed_stream_record.tokens.input_tokens, 7);
+        assert_eq!(transformed_stream_record.tokens.output_tokens, 11);
+        assert_eq!(transformed_stream_record.first_token_ms, Some(34));
+        assert!(transformed_stream_record.is_streaming);
+        assert_eq!(
+            transformed_stream_record.route_group.as_deref(),
+            Some("beta")
+        );
 
         let response_body =
             br#"{"model":"response-model","usage":{"prompt_tokens":2,"completion_tokens":3}}"#;

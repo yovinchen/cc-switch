@@ -900,6 +900,7 @@
 本轮继续把 response processor 的 route/channel usage 归因合并收敛到 adapter wrapper，streaming/non-streaming 输出的 `UsageRecord` 已在进入 `UsageSink` 前带好 route context。
 本轮继续把 response processor 的 `UsageSink` 调用、usage debug 日志和落库失败 warning 收敛到 adapter wrapper，response processor 只保留 tokio task 调度。
 本轮继续把 usage sink bridge 的 `UsageSink` 调用和落库失败 warning 收敛到 adapter wrapper，bridge 只保留 transformed/forward-error usage 的 task 调度和 failure context 选择。
+本轮继续把 usage sink bridge 的 forward-error/transformed response usage provider 选择、缺失 warning、record 组装和 route context 合并收敛到 adapter wrapper，bridge 只保留 logging 开关读取、SSE collector 生命周期和 task 调度。
 本轮继续把 forward runtime 的 route plan attempt 构造入口收敛到 adapter；auth profile 的 DB key 注入 wrapper 也已收敛到 adapter，host forward runtime 只调用统一 helper。
 本轮还把 forward runtime 的 auth profile action 应用循环收敛到 adapter，host 不再维护 channel-key DB lookup 闭包。
 本轮继续把 forward runtime 的 current-provider 来源组合收敛到 adapter，host forward runtime 不再读取 settings 或手写 DB fallback 闭包。
