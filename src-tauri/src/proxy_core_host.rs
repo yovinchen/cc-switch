@@ -44,18 +44,22 @@ use crate::proxy_core_adapter::{
     channel_migration_materialize_input_from_result,
     channel_migration_preview_input_from_result,
     client_model_catalog_from_source,
+    channel_record_from_db_source,
+    create_channel_record_from_db_source,
     current_provider_id_from_db_source,
+    delete_channel_record_from_db_source,
     forward_proxy_request_with_host_runtime,
     forwarding_runtime_unavailable_error,
     log_usage_request_projection_warnings,
     provider_model_catalog_from_provider, provider_spec_from_db_source,
-    provider_specs_from_db_source, proxy_channel_record_to_core, proxy_channel_records_to_core,
+    provider_specs_from_db_source, proxy_channel_records_to_core,
     proxy_app_config_from_db_source, proxy_global_config_from_db_source,
     emit_proxy_core_event,
     proxy_runtime_config_from_db_source,
     route_policy_from_source,
     route_candidate_provider_ids_from_selection_result,
     stream_check_result_to_channel_reachability,
+    update_channel_record_from_db_source,
     usage_error,
     usage_pricing_config_lookup_from_record,
     usage_record_pricing_model,
@@ -344,26 +348,14 @@ impl ChannelSource for CcSwitchChannelSource {
         &'a self,
         request: ProxyChannelWriteRequest,
     ) -> BoxFuture<'a, ProxyCoreResult<ChannelRecord>> {
-        Box::pin(async move {
-            let channel = self
-                .db
-                .create_proxy_channel(request)
-                .map_err(|error| app_error("create channel record", error))?;
-            Ok(proxy_channel_record_to_core(channel))
-        })
+        Box::pin(async move { create_channel_record_from_db_source(&self.db, request) })
     }
 
     fn get_channel_record<'a>(
         &'a self,
         channel_id: &'a str,
     ) -> BoxFuture<'a, ProxyCoreResult<Option<ChannelRecord>>> {
-        Box::pin(async move {
-            let channel = self
-                .db
-                .get_proxy_channel(channel_id)
-                .map_err(|error| app_error("get channel record", error))?;
-            Ok(channel.map(proxy_channel_record_to_core))
-        })
+        Box::pin(async move { channel_record_from_db_source(&self.db, channel_id) })
     }
 
     fn update_channel_record<'a>(
@@ -371,24 +363,14 @@ impl ChannelSource for CcSwitchChannelSource {
         channel_id: &'a str,
         patch: ProxyChannelPatchRequest,
     ) -> BoxFuture<'a, ProxyCoreResult<Option<ChannelRecord>>> {
-        Box::pin(async move {
-            let channel = self
-                .db
-                .update_proxy_channel(channel_id, patch)
-                .map_err(|error| app_error("update channel record", error))?;
-            Ok(channel.map(proxy_channel_record_to_core))
-        })
+        Box::pin(async move { update_channel_record_from_db_source(&self.db, channel_id, patch) })
     }
 
     fn delete_channel_record<'a>(
         &'a self,
         channel_id: &'a str,
     ) -> BoxFuture<'a, ProxyCoreResult<bool>> {
-        Box::pin(async move {
-            self.db
-                .delete_proxy_channel(channel_id)
-                .map_err(|error| app_error("delete channel record", error))
-        })
+        Box::pin(async move { delete_channel_record_from_db_source(&self.db, channel_id) })
     }
 
     fn list_channel_key_records<'a>(

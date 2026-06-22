@@ -8504,6 +8504,45 @@ pub(crate) fn proxy_channel_record_to_core(channel: ProxyChannelRecord) -> Chann
     channel.to_proxy_core_channel_record()
 }
 
+pub(crate) fn create_channel_record_from_db_source(
+    db: &Database,
+    request: ProxyChannelWriteRequest,
+) -> ProxyCoreResult<ChannelRecord> {
+    let channel = db
+        .create_proxy_channel(request)
+        .map_err(|error| app_error("create channel record", error))?;
+    Ok(proxy_channel_record_to_core(channel))
+}
+
+pub(crate) fn channel_record_from_db_source(
+    db: &Database,
+    channel_id: &str,
+) -> ProxyCoreResult<Option<ChannelRecord>> {
+    let channel = db
+        .get_proxy_channel(channel_id)
+        .map_err(|error| app_error("get channel record", error))?;
+    Ok(channel.map(proxy_channel_record_to_core))
+}
+
+pub(crate) fn update_channel_record_from_db_source(
+    db: &Database,
+    channel_id: &str,
+    patch: ProxyChannelPatchRequest,
+) -> ProxyCoreResult<Option<ChannelRecord>> {
+    let channel = db
+        .update_proxy_channel(channel_id, patch)
+        .map_err(|error| app_error("update channel record", error))?;
+    Ok(channel.map(proxy_channel_record_to_core))
+}
+
+pub(crate) fn delete_channel_record_from_db_source(
+    db: &Database,
+    channel_id: &str,
+) -> ProxyCoreResult<bool> {
+    db.delete_proxy_channel(channel_id)
+        .map_err(|error| app_error("delete channel record", error))
+}
+
 pub(crate) fn proxy_channel_records_to_core(
     channels: Vec<ProxyChannelRecord>,
 ) -> Vec<ChannelRecord> {
