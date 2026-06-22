@@ -57,6 +57,7 @@ use crate::proxy_core_adapter::{
     forward_result_to_proxy_result,
     forwarding_runtime_unavailable_error,
     host_providers_for_plan,
+    log_usage_request_projection_warnings,
     provider_spec_from_source, proxy_channel_record_to_core, proxy_channel_records_to_core,
     provider_specs_from_source,
     provider_model_catalog_from_provider,
@@ -838,9 +839,7 @@ impl UsageSink for CcSwitchUsageSink {
                 || uuid::Uuid::new_v4().to_string(),
             );
 
-            if let Some(message) = projection.missing_pricing_warning_message.as_ref() {
-                log::warn!("{message}");
-            }
+            log_usage_request_projection_warnings(&projection);
 
             logger
                 .log_request(&projection.log)

@@ -7414,6 +7414,12 @@ pub(crate) fn usage_record_to_request_log(
     }
 }
 
+pub(crate) fn log_usage_request_projection_warnings(projection: &UsageRequestLogProjection) {
+    if let Some(message) = projection.missing_pricing_warning_message.as_ref() {
+        log::warn!("{message}");
+    }
+}
+
 pub(crate) fn is_placeholder_pricing_model(model_id: &str) -> bool {
     crate::proxy_core::api::usage::is_placeholder_pricing_model(model_id)
 }
