@@ -1947,6 +1947,10 @@ pub(crate) fn provider_codex_fast_mode_enabled(provider: &Provider) -> bool {
     provider.codex_fast_mode_enabled()
 }
 
+pub(crate) fn provider_settings_config_is_object(provider: &Provider) -> bool {
+    provider.settings_config.is_object()
+}
+
 pub(crate) struct ClaudeEnvCredentials<'a> {
     pub(crate) api_key: Option<&'a str>,
     pub(crate) base_url: Option<&'a str>,
@@ -5980,6 +5984,13 @@ wire_api = "chat"
             settings.clone(),
             None,
         );
+        assert!(provider_settings_config_is_object(&provider));
+        assert!(!provider_settings_config_is_object(&Provider::with_id(
+            "invalid".to_string(),
+            "Invalid".to_string(),
+            json!("not-object"),
+            None,
+        )));
         provider.meta = Some(ProviderMeta {
             api_format: Some("openai_chat".to_string()),
             ..Default::default()

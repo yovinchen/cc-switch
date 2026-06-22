@@ -20,8 +20,8 @@ use crate::proxy_core_adapter::{
     claude_env_credentials_from_settings, codex_api_key_from_auth_and_config,
     codex_auth_object_value_from_settings, codex_config_text_from_settings,
     gemini_env_map_from_settings,
-    provider_codex_validation_parts, should_block_proxy_switch_to_provider_category,
-    CodexProviderValidationIssue,
+    provider_codex_validation_parts, provider_settings_config_is_object,
+    should_block_proxy_switch_to_provider_category, CodexProviderValidationIssue,
 };
 use crate::services::mcp::McpService;
 use crate::settings::CustomEndpoint;
@@ -347,6 +347,21 @@ mod tests {
             err.to_string().contains("auth"),
             "expected auth error, got {err:?}"
         );
+    }
+
+    #[test]
+    fn validate_provider_settings_rejects_non_object_claude_settings() {
+        let provider =
+            Provider::with_id("claude".into(), "Claude".into(), json!("not-object"), None);
+        let err = ProviderService::validate_provider_settings(&AppType::Claude, &provider)
+            .expect_err("non-object Claude settings should be rejected");
+        assert!(matches!(
+            err,
+            AppError::Localized {
+                key: "provider.claude.settings.not_object",
+                ..
+            }
+        ));
     }
 
     #[test]
@@ -2355,7 +2370,7 @@ impl ProviderService {
     fn validate_provider_settings(app_type: &AppType, provider: &Provider) -> Result<(), AppError> {
         match app_type {
             AppType::Claude => {
-                if !provider.settings_config.is_object() {
+                if !provider_settings_config_is_object(provider) {
                     return Err(AppError::localized(
                         "provider.claude.settings.not_object",
                         "Claude 配置必须是 JSON 对象",
@@ -2404,7 +2419,7 @@ impl ProviderService {
             AppType::OpenCode => {
                 // OpenCode uses a different config structure: { npm, options, models }
                 // Basic validation - must be an object
-                if !provider.settings_config.is_object() {
+                if !provider_settings_config_is_object(provider) {
                     return Err(AppError::localized(
                         "provider.opencode.settings.not_object",
                         "OpenCode 配置必须是 JSON 对象",
@@ -2415,7 +2430,7 @@ impl ProviderService {
             AppType::OpenClaw => {
                 // OpenClaw uses config structure: { baseUrl, apiKey, api, models }
                 // Basic validation - must be an object
-                if !provider.settings_config.is_object() {
+                if !provider_settings_config_is_object(provider) {
                     return Err(AppError::localized(
                         "provider.openclaw.settings.not_object",
                         "OpenClaw 配置必须是 JSON 对象",
@@ -2425,7 +2440,7 @@ impl ProviderService {
             }
             AppType::Hermes => {
                 // Hermes: accept any JSON object for now
-                if !provider.settings_config.is_object() {
+                if !provider_settings_config_is_object(provider) {
                     return Err(AppError::localized(
                         "provider.hermes.settings.not_object",
                         "Hermes 配置必须是 JSON 对象",
