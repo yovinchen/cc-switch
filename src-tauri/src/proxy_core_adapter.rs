@@ -3979,6 +3979,27 @@ pub(crate) fn current_provider_id_option_from_sources(
     )
 }
 
+pub(crate) fn current_provider_id_from_router_sources(
+    app_type: &str,
+    load_settings_current_provider_id: impl FnOnce(&AppType) -> Option<String>,
+    load_db_current_provider_id: impl FnOnce() -> Option<String>,
+) -> Option<String> {
+    let settings_current_provider_id = app_type
+        .parse::<AppType>()
+        .ok()
+        .and_then(|app| load_settings_current_provider_id(&app));
+    let db_current_provider_id =
+        if current_provider_db_fallback_required(settings_current_provider_id.as_deref()) {
+            load_db_current_provider_id()
+        } else {
+            None
+        };
+    current_provider_id_option_from_sources(
+        settings_current_provider_id.as_deref(),
+        db_current_provider_id.as_deref(),
+    )
+}
+
 pub(crate) fn current_provider_db_fallback_required(
     settings_current_provider_id: Option<&str>,
 ) -> bool {
@@ -8634,6 +8655,48 @@ mod tests {
         assert!(!current_provider_db_fallback_required(Some("")));
         assert!(current_provider_db_fallback_required(None));
         assert_eq!(current_provider_id_option_from_sources(None, None), None);
+        let mut db_lookup_called_for_settings = false;
+        assert_eq!(
+            current_provider_id_from_router_sources(
+                "claude",
+                |app| {
+                    assert_eq!(app, &AppType::Claude);
+                    Some("settings-provider".to_string())
+                },
+                || {
+                    db_lookup_called_for_settings = true;
+                    Some("db-provider".to_string())
+                },
+            ),
+            Some("settings-provider".to_string())
+        );
+        assert!(!db_lookup_called_for_settings);
+        let mut settings_lookup_called_for_unknown = false;
+        assert_eq!(
+            current_provider_id_from_router_sources(
+                "unknown-app",
+                |_| {
+                    settings_lookup_called_for_unknown = true;
+                    Some("settings-provider".to_string())
+                },
+                || Some("db-provider".to_string()),
+            ),
+            Some("db-provider".to_string())
+        );
+        assert!(!settings_lookup_called_for_unknown);
+        let mut db_lookup_called_for_empty = false;
+        assert_eq!(
+            current_provider_id_from_router_sources(
+                "claude",
+                |_| Some(String::new()),
+                || {
+                    db_lookup_called_for_empty = true;
+                    Some("db-provider".to_string())
+                },
+            ),
+            Some(String::new())
+        );
+        assert!(!db_lookup_called_for_empty);
         let mut db_lookup_called = false;
         assert_eq!(
             forward_current_provider_id_from_source(Some("settings-provider"), || {

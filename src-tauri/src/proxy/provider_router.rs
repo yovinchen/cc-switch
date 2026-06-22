@@ -2,7 +2,6 @@
 //!
 //! 负责选择和管理代理目标供应商，实现智能故障转移
 
-use crate::app_config::AppType;
 use crate::database::{Database, ProxyChannelMigrationPreview, ProxyChannelRecord};
 use crate::error::AppError;
 use crate::provider::Provider;
@@ -11,6 +10,7 @@ use crate::proxy_core_adapter::{
     app_error_from_provider_selection_failure, app_error_from_proxy_core_error,
     app_type_from_circuit_key, channel_circuit_key, channel_circuit_key_prefix,
     circuit_breaker_config_from_app_config, circuit_failure_threshold_from_app_config,
+    current_provider_id_from_router_sources,
     provider_circuit_key, provider_circuit_key_prefix,
     channel_route_source_for_materialized_records, provider_failover_circuit_lookups,
     provider_selection_candidate_from_failover_lookup, proxy_channel_route_inputs_to_core,
@@ -20,7 +20,6 @@ use crate::proxy_core_adapter::{
     CircuitBreakerStats, ProviderSelectionInput, RouteResolveRequest, RouteResolveResponse,
 };
 use std::collections::HashMap;
-use std::str::FromStr;
 use std::sync::Arc;
 use tokio::sync::RwLock;
 
@@ -107,14 +106,15 @@ impl ProviderRouter {
 
     fn select_current_provider(&self, app_type: &str) -> Result<Vec<Provider>, AppError> {
         // 故障转移关闭：仅使用当前供应商，跳过熔断器检查
-        let current_id = AppType::from_str(app_type)
-            .ok()
-            .and_then(|app_enum| {
-                crate::settings::get_effective_current_provider(&self.db, &app_enum)
+        let current_id = current_provider_id_from_router_sources(
+            app_type,
+            |app_enum| {
+                crate::settings::get_effective_current_provider(&self.db, app_enum)
                     .ok()
                     .flatten()
-            })
-            .or_else(|| self.db.get_current_provider(app_type).ok().flatten());
+            },
+            || self.db.get_current_provider(app_type).ok().flatten(),
+        );
 
         let current = current_id
             .and_then(|current_id| {
