@@ -6819,45 +6819,10 @@ pub(crate) async fn management_route_response_from_router_source(
         .map_err(|error| app_error("resolve channel route dry run", error))
 }
 
-pub(crate) fn should_transition_open_to_half_open(
-    open_elapsed_seconds: Option<u64>,
-    timeout_seconds: u64,
-) -> bool {
-    crate::proxy_core::api::config::should_transition_open_to_half_open(
-        open_elapsed_seconds,
-        timeout_seconds,
-    )
-}
-
-pub(crate) fn should_close_half_open_after_success(
-    consecutive_successes: u32,
-    success_threshold: u32,
-) -> bool {
-    crate::proxy_core::api::config::should_close_half_open_after_success(
-        consecutive_successes,
-        success_threshold,
-    )
-}
-
-pub(crate) fn half_open_probe_allow_result(current_requests: u32, max_requests: u32) -> AllowResult {
-    crate::proxy_core::api::config::half_open_probe_allow_result(current_requests, max_requests)
-}
-
-pub(crate) fn circuit_breaker_failure_decision(
-    state: CircuitState,
-    consecutive_failures: u32,
-    total_requests: u32,
-    failed_requests: u32,
-    config: &CircuitBreakerConfig,
-) -> CircuitBreakerFailureDecision {
-    crate::proxy_core::api::config::circuit_breaker_failure_decision(
-        state,
-        consecutive_failures,
-        total_requests,
-        failed_requests,
-        config,
-    )
-}
+pub(crate) use crate::proxy_core::api::config::{
+    circuit_breaker_failure_decision, half_open_probe_allow_result,
+    should_close_half_open_after_success, should_transition_open_to_half_open,
+};
 
 pub(crate) async fn update_all_circuit_breaker_configs_source(
     router: &ProviderRouter,

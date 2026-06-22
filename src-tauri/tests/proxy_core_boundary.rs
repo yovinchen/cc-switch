@@ -423,6 +423,10 @@ const FORBIDDEN_PROXY_CORE_ADAPTER_SMALL_HELPER_FACADE_MARKERS: &[&str] = &[
     "fn forward_failure_kind_from_proxy_status(",
     "fn apply_channel_param_overrides_to_url(",
     "fn resolve_channel_response_status_mapping(",
+    "fn should_transition_open_to_half_open(",
+    "fn should_close_half_open_after_success(",
+    "fn half_open_probe_allow_result(",
+    "fn circuit_breaker_failure_decision(",
 ];
 const FORBIDDEN_CLAUDE_PROVIDER_ADAPTER_TRANSFORM_DECISION_MARKERS: &[&str] = &[
     "ProviderKind::GitHubCopilot",
