@@ -1971,6 +1971,28 @@ pub(crate) fn provider_codex_imported_live_category(provider: &Provider) -> &'st
     }
 }
 
+pub(crate) fn provider_from_default_live_settings(
+    app_type: &AppType,
+    settings_config: Value,
+) -> Provider {
+    let mut provider = Provider::with_id(
+        "default".to_string(),
+        "default".to_string(),
+        settings_config,
+        None,
+    );
+    provider.category = Some(
+        if matches!(app_type, AppType::Codex) {
+            provider_codex_imported_live_category(&provider)
+        } else {
+            "custom"
+        }
+        .to_string(),
+    );
+
+    provider
+}
+
 pub(crate) struct CodexLiveSettingsParts<'a> {
     pub(crate) category: Option<&'a str>,
     pub(crate) auth: &'a Value,
@@ -7934,6 +7956,16 @@ mod tests {
             provider_codex_imported_live_category(&official_live_provider),
             "official"
         );
+        let imported_official_provider = provider_from_default_live_settings(
+            &AppType::Codex,
+            official_live_provider.settings_config.clone(),
+        );
+        assert_eq!(imported_official_provider.id, "default");
+        assert_eq!(imported_official_provider.name, "default");
+        assert_eq!(
+            imported_official_provider.category.as_deref(),
+            Some("official")
+        );
         let api_key_live_provider = Provider::with_id(
             "codex-live-api-key".to_string(),
             "Codex Live API Key".to_string(),
@@ -7946,6 +7978,22 @@ mod tests {
         assert_eq!(
             provider_codex_imported_live_category(&api_key_live_provider),
             "custom"
+        );
+        let imported_custom_provider = provider_from_default_live_settings(
+            &AppType::Codex,
+            api_key_live_provider.settings_config.clone(),
+        );
+        assert_eq!(
+            imported_custom_provider.category.as_deref(),
+            Some("custom")
+        );
+        let imported_claude_provider = provider_from_default_live_settings(
+            &AppType::Claude,
+            json!({"env": {"ANTHROPIC_API_KEY": "sk-test"}}),
+        );
+        assert_eq!(
+            imported_claude_provider.category.as_deref(),
+            Some("custom")
         );
         let bearer_live_provider = Provider::with_id(
             "codex-live-bearer".to_string(),

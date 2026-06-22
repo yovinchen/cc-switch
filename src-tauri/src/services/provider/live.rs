@@ -17,8 +17,8 @@ use crate::proxy_core_adapter::{
     remove_common_config_from_settings as adapter_remove_common_config_from_settings,
     gemini_env_value_from_env_json, normalize_claude_models_in_value,
     normalize_provider_common_config_for_storage as adapter_normalize_provider_common_config_for_storage,
-    provider_codex_imported_live_category,
-    provider_codex_live_snapshot_parts, CommonConfigSettingsMutationIssue,
+    provider_codex_live_snapshot_parts, provider_from_default_live_settings,
+    CommonConfigSettingsMutationIssue,
     OpenClawLiveWriteConfig,
     OpenCodeLiveWriteConfig,
     ProviderBackfillSettingsWarning, ProviderEffectiveSettingsWarning,
@@ -805,20 +805,7 @@ pub fn import_default_config(state: &AppState, app_type: AppType) -> Result<bool
         }
     };
 
-    let mut provider = Provider::with_id(
-        "default".to_string(),
-        "default".to_string(),
-        settings_config,
-        None,
-    );
-    provider.category = Some(
-        if matches!(app_type, AppType::Codex) {
-            provider_codex_imported_live_category(&provider)
-        } else {
-            "custom"
-        }
-        .to_string(),
-    );
+    let provider = provider_from_default_live_settings(&app_type, settings_config);
 
     state.db.save_provider(app_type.as_str(), &provider)?;
     state
