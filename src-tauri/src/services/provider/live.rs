@@ -16,7 +16,8 @@ use crate::provider::Provider;
 use crate::proxy_core_adapter::{
     codex_config_text_from_settings, gemini_env_map_from_settings,
     gemini_env_value_from_env_json, opencode_live_provider_fragment_has_provider_fields,
-    provider_codex_imported_live_category, provider_codex_live_snapshot_parts,
+    json_remove_array_items, json_value_is_subset, provider_codex_imported_live_category,
+    provider_codex_live_snapshot_parts,
     provider_gemini_env_map, provider_gemini_live_config_object,
     provider_model_catalog_raw_value, provider_opencode_live_provider_fragment,
     provider_openclaw_has_live_provider_fields, proxy_live_config_owned_by_takeover,
@@ -45,54 +46,6 @@ pub(crate) fn provider_exists_in_live_config(
         AppType::Hermes => crate::hermes_config::get_providers()
             .map(|providers| providers.contains_key(provider_id)),
         _ => Ok(false),
-    }
-}
-
-fn json_is_subset(target: &Value, source: &Value) -> bool {
-    match source {
-        Value::Object(source_map) => {
-            let Some(target_map) = target.as_object() else {
-                return false;
-            };
-            source_map.iter().all(|(key, source_value)| {
-                target_map
-                    .get(key)
-                    .is_some_and(|target_value| json_is_subset(target_value, source_value))
-            })
-        }
-        Value::Array(source_arr) => {
-            let Some(target_arr) = target.as_array() else {
-                return false;
-            };
-            json_array_contains_subset(target_arr, source_arr)
-        }
-        _ => target == source,
-    }
-}
-
-fn json_array_contains_subset(target_arr: &[Value], source_arr: &[Value]) -> bool {
-    let mut matched = vec![false; target_arr.len()];
-
-    source_arr.iter().all(|source_item| {
-        if let Some((index, _)) = target_arr.iter().enumerate().find(|(index, target_item)| {
-            !matched[*index] && json_is_subset(target_item, source_item)
-        }) {
-            matched[index] = true;
-            true
-        } else {
-            false
-        }
-    })
-}
-
-fn json_remove_array_items(target_arr: &mut Vec<Value>, source_arr: &[Value]) {
-    for source_item in source_arr {
-        if let Some(index) = target_arr
-            .iter()
-            .position(|target_item| json_is_subset(target_item, source_item))
-        {
-            target_arr.remove(index);
-        }
     }
 }
 
@@ -131,7 +84,7 @@ fn json_deep_remove(target: &mut Value, source: &Value) {
             {
                 json_remove_array_items(target_arr, source_arr);
                 remove_key = target_arr.is_empty();
-            } else if json_is_subset(target_value, source_value) {
+            } else if json_value_is_subset(target_value, source_value) {
                 remove_key = true;
             }
         }
@@ -314,7 +267,7 @@ fn settings_contain_common_config(app_type: &AppType, settings: &Value, snippet:
 
     match app_type {
         AppType::Claude => match serde_json::from_str::<Value>(trimmed) {
-            Ok(source) if source.is_object() => json_is_subset(settings, &source),
+            Ok(source) if source.is_object() => json_value_is_subset(settings, &source),
             _ => false,
         },
         AppType::Codex => {
@@ -342,7 +295,9 @@ fn settings_contain_common_config(app_type: &AppType, settings: &Value, snippet:
                 source_map.iter().all(|(key, source_value)| {
                     target_map
                         .get(key)
-                        .is_some_and(|target_value| json_is_subset(target_value, source_value))
+                        .is_some_and(|target_value| {
+                            json_value_is_subset(target_value, source_value)
+                        })
                 })
             }
             _ => false,

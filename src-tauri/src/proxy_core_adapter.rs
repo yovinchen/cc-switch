@@ -2635,6 +2635,56 @@ pub(crate) fn sanitize_claude_settings_for_live(settings: &Value) -> Value {
     sanitized
 }
 
+pub(crate) fn json_value_is_subset(target: &Value, source: &Value) -> bool {
+    match source {
+        Value::Object(source_map) => {
+            let Some(target_map) = target.as_object() else {
+                return false;
+            };
+            source_map.iter().all(|(key, source_value)| {
+                target_map
+                    .get(key)
+                    .is_some_and(|target_value| {
+                        json_value_is_subset(target_value, source_value)
+                    })
+            })
+        }
+        Value::Array(source_arr) => {
+            let Some(target_arr) = target.as_array() else {
+                return false;
+            };
+            json_array_contains_subset(target_arr, source_arr)
+        }
+        _ => target == source,
+    }
+}
+
+pub(crate) fn json_array_contains_subset(target_arr: &[Value], source_arr: &[Value]) -> bool {
+    let mut matched = vec![false; target_arr.len()];
+
+    source_arr.iter().all(|source_item| {
+        if let Some((index, _)) = target_arr.iter().enumerate().find(|(index, target_item)| {
+            !matched[*index] && json_value_is_subset(target_item, source_item)
+        }) {
+            matched[index] = true;
+            true
+        } else {
+            false
+        }
+    })
+}
+
+pub(crate) fn json_remove_array_items(target_arr: &mut Vec<Value>, source_arr: &[Value]) {
+    for source_item in source_arr {
+        if let Some(index) = target_arr
+            .iter()
+            .position(|target_item| json_value_is_subset(target_item, source_item))
+        {
+            target_arr.remove(index);
+        }
+    }
+}
+
 pub(crate) fn proxy_takeover_marked_state_is_reusable(
     has_live_backup: bool,
     live_matches_current_proxy: bool,
@@ -7703,6 +7753,39 @@ base_url = "https://api.openai.com/v1"
                 },
                 "includeCoAuthoredBy": false
             })
+        );
+    }
+
+    #[test]
+    fn json_subset_helpers_match_and_remove_array_items_once() {
+        let target = json!({
+            "allowedTools": [
+                { "name": "tool-a", "scope": "global" },
+                { "name": "tool-b", "scope": "local" },
+                { "name": "tool-a", "scope": "project" }
+            ],
+            "env": {
+                "A": "1",
+                "B": "2"
+            }
+        });
+        let source = json!({
+            "allowedTools": [
+                { "name": "tool-a" },
+                { "name": "tool-b", "scope": "local" }
+            ],
+            "env": {
+                "A": "1"
+            }
+        });
+        assert!(json_value_is_subset(&target, &source));
+
+        let mut target_arr = target["allowedTools"].as_array().cloned().unwrap();
+        let source_arr = source["allowedTools"].as_array().unwrap();
+        json_remove_array_items(&mut target_arr, source_arr);
+        assert_eq!(
+            target_arr,
+            vec![json!({ "name": "tool-a", "scope": "project" })]
         );
     }
 
