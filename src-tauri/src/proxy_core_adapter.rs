@@ -158,16 +158,10 @@ pub(crate) const COPILOT_PUBLIC_GITHUB_DOMAIN: &str =
 
 pub(crate) use crate::proxy_core::api::model_catalog::{
     copilot_composite_account_id, default_copilot_github_domain, is_copilot_ghes_domain,
-    normalize_github_domain,
+    normalize_github_domain, parse_copilot_models_response_bytes,
 };
 
 pub(crate) type CopilotModel = crate::proxy_core::api::model_catalog::CopilotModel;
-
-pub(crate) fn parse_copilot_models_response_bytes(
-    body: &[u8],
-) -> Result<Vec<CopilotModel>, String> {
-    crate::proxy_core::api::model_catalog::parse_copilot_models_response_bytes(body)
-}
 
 pub(crate) use crate::proxy_core::api::model_catalog::{
     copilot_api_base, copilot_github_client_id, copilot_github_device_code_url,
@@ -2450,7 +2444,7 @@ pub(crate) use crate::proxy_core::api::transforms::{
     create_gemini_to_anthropic_sse_stream_with_callbacks,
     create_openai_chat_to_anthropic_sse_stream,
     create_openai_responses_to_anthropic_sse_stream, extract_anthropic_tool_schema_hints,
-    gemini_response_to_anthropic_message_with_shadow,
+    build_gemini_upstream_url, gemini_response_to_anthropic_message_with_shadow,
     should_aggregate_codex_oauth_responses_sse, should_use_claude_transform_streaming,
 };
 pub(crate) use crate::proxy_core::api::transport::{
@@ -2483,7 +2477,7 @@ pub(crate) use crate::proxy_core::api::transforms::{
 pub(crate) use crate::proxy_core::api::transport::{
     append_query_to_full_url, apply_bedrock_pre_send_optimizers,
     apply_copilot_warmup_model_override, bedrock_env_flag_from_provider_settings,
-    build_claude_auth_headers, build_codex_bearer_auth_headers,
+    build_claude_auth_headers, build_claude_upstream_url, build_codex_bearer_auth_headers,
     build_codex_oauth_session_headers, build_copilot_auth_headers, build_gemini_auth_headers,
     build_retryable_forward_failure_log, build_terminal_forward_failure_log,
     build_upstream_auth_headers, categorize_forward_failure, classify_copilot_request,
@@ -2497,15 +2491,17 @@ pub(crate) use crate::proxy_core::api::transport::{
     request_body_filter_log_message, request_body_read_error_message,
     request_body_serialize_error_message,
     resolve_copilot_deterministic_interaction_id,
-    resolve_copilot_optimizer_session_id, resolve_copilot_request_id_with_fallback,
-    resolve_media_prevention_policy, resolved_copilot_dynamic_base_url,
-    sanitize_copilot_orphan_tool_results, should_apply_bedrock_pre_send_optimizer,
-    should_check_media_retry, should_failover_after_rectifier_retry_failure,
+    resolve_codex_provider_uses_chat_completions, resolve_copilot_optimizer_session_id,
+    resolve_copilot_request_id_with_fallback, resolve_media_prevention_policy,
+    resolved_copilot_dynamic_base_url, sanitize_copilot_orphan_tool_results,
+    should_apply_bedrock_pre_send_optimizer, should_check_media_retry,
+    should_convert_codex_responses_endpoint_to_chat,
+    should_failover_after_rectifier_retry_failure,
     should_preserve_exact_request_header_case, should_resolve_copilot_dynamic_endpoint,
     should_send_anthropic_request_headers, should_trigger_media_retry, split_endpoint_and_query,
     strip_copilot_thinking_blocks, supports_reasoning_effort,
     UNSUPPORTED_IMAGE_MARKER,
-    rewrite_claude_transform_endpoint,
+    build_codex_upstream_url, rewrite_claude_transform_endpoint,
 };
 pub(crate) use crate::proxy_core::api::transport::{
     extract_gemini_model_from_path, request_model_for_forward,
@@ -2708,34 +2704,6 @@ pub(crate) fn inspect_codex_chat_history_sse_block(
     block: &str,
 ) -> Option<CodexChatHistorySseInspection> {
     crate::proxy_core::api::transforms::inspect_codex_chat_history_sse_block(block)
-}
-
-pub(crate) fn build_codex_upstream_url(base_url: &str, endpoint: &str) -> String {
-    crate::proxy_core::api::transport::build_codex_upstream_url(base_url, endpoint)
-}
-
-pub(crate) fn should_convert_codex_responses_endpoint_to_chat(
-    provider_uses_chat_completions: bool,
-    endpoint: &str,
-) -> bool {
-    crate::proxy_core::api::transport::should_convert_codex_responses_endpoint_to_chat(
-        provider_uses_chat_completions,
-        endpoint,
-    )
-}
-
-pub(crate) fn resolve_codex_provider_uses_chat_completions(
-    api_format: Option<&str>,
-    wire_api: Option<&str>,
-    base_url: Option<&str>,
-    config_base_url: Option<&str>,
-) -> bool {
-    crate::proxy_core::api::transport::resolve_codex_provider_uses_chat_completions(
-        api_format,
-        wire_api,
-        base_url,
-        config_base_url,
-    )
 }
 
 pub(crate) fn provider_codex_auth_headers(
@@ -3874,10 +3842,6 @@ pub(crate) fn provider_gemini_auth_info(provider: &Provider) -> Option<ProviderA
     }
 }
 
-pub(crate) fn build_gemini_upstream_url(base_url: &str, endpoint: &str) -> String {
-    crate::proxy_core::api::transforms::build_gemini_upstream_url(base_url, endpoint)
-}
-
 pub(crate) fn provider_gemini_auth_headers(
     auth: &ProviderAuthInfo,
 ) -> Result<Vec<(http::HeaderName, http::HeaderValue)>, String> {
@@ -4159,10 +4123,6 @@ pub(crate) fn provider_claude_base_url(provider: &Provider) -> Option<String> {
         provider_is_codex_oauth(provider),
         &provider.settings_config,
     )
-}
-
-pub(crate) fn build_claude_upstream_url(base_url: &str, endpoint: &str) -> String {
-    crate::proxy_core::api::transport::build_claude_upstream_url(base_url, endpoint)
 }
 
 fn claude_auth_header_kind(strategy: ProviderAuthStrategy) -> Option<ClaudeAuthHeaderKind> {
