@@ -19,14 +19,14 @@ use crate::proxy_core_adapter::{
     normalize_provider_common_config_for_storage as adapter_normalize_provider_common_config_for_storage,
     provider_codex_live_snapshot_parts, provider_from_default_live_settings,
     CommonConfigSettingsMutationIssue,
-    gemini_live_settings_to_write, OpenClawLiveWriteConfig,
-    OpenCodeLiveWriteConfig,
+    gemini_live_settings_to_write, OpenClawLiveWriteAction,
+    OpenCodeLiveWriteAction,
     ProviderBackfillSettingsWarning, ProviderEffectiveSettingsWarning,
     provider_common_config_storage_normalization_requires_snippet,
     provider_from_hermes_live_config, provider_from_openclaw_live_config,
     provider_from_opencode_live_config, provider_gemini_env_map,
-    provider_gemini_live_config_object, provider_opencode_live_write_plan,
-    provider_openclaw_live_write_plan, HermesLiveImportIssue, OpenClawLiveImportIssue,
+    provider_gemini_live_config_object, provider_opencode_live_write_projection,
+    provider_openclaw_live_write_projection, HermesLiveImportIssue, OpenClawLiveImportIssue,
     OpenCodeLiveImportIssue,
     proxy_live_config_owned_by_takeover,
     restore_live_settings_for_provider_backfill as adapter_restore_live_settings_for_provider_backfill,
@@ -374,20 +374,20 @@ pub(crate) fn write_live_snapshot(app_type: &AppType, provider: &Provider) -> Re
             // OpenCode uses additive mode - write provider to config
             use crate::opencode_config;
 
-            let plan = provider_opencode_live_write_plan(provider);
-            if plan.from_full_config {
+            let projection = provider_opencode_live_write_projection(provider);
+            if projection.from_full_config {
                 log::warn!(
                     "OpenCode provider '{}' has full config structure in settings_config, attempting to extract fragment",
                     provider.id
                 );
             }
 
-            match plan.config {
-                OpenCodeLiveWriteConfig::Typed(config) => {
+            match projection.action {
+                OpenCodeLiveWriteAction::Typed(config) => {
                     opencode_config::set_typed_provider(&provider.id, &config)?;
                     log::info!("OpenCode provider '{}' written to live config", provider.id);
                 }
-                OpenCodeLiveWriteConfig::Raw {
+                OpenCodeLiveWriteAction::Raw {
                     config,
                     parse_error,
                 } => {
@@ -402,16 +402,16 @@ pub(crate) fn write_live_snapshot(app_type: &AppType, provider: &Provider) -> Re
                         provider.id
                     );
                 }
-                OpenCodeLiveWriteConfig::Invalid { parse_error } => {
+                OpenCodeLiveWriteAction::Reject {
+                    parse_error,
+                    message,
+                } => {
                     log::warn!(
                         "Failed to parse OpenCode provider config for '{}': {}",
                         provider.id,
                         parse_error
                     );
-                    return Err(AppError::Message(format!(
-                        "OpenCode provider '{}' has invalid config structure for live config (must contain 'npm' or 'options')",
-                        provider.id
-                    )));
+                    return Err(AppError::Message(message));
                 }
             }
         }
@@ -419,13 +419,13 @@ pub(crate) fn write_live_snapshot(app_type: &AppType, provider: &Provider) -> Re
             // OpenClaw uses additive mode - write provider to config
             use crate::openclaw_config;
 
-            let plan = provider_openclaw_live_write_plan(provider);
-            match plan.config {
-                OpenClawLiveWriteConfig::Typed(config) => {
+            let projection = provider_openclaw_live_write_projection(provider);
+            match projection.action {
+                OpenClawLiveWriteAction::Typed(config) => {
                     openclaw_config::set_typed_provider(&provider.id, &config)?;
                     log::info!("OpenClaw provider '{}' written to live config", provider.id);
                 }
-                OpenClawLiveWriteConfig::Raw {
+                OpenClawLiveWriteAction::Raw {
                     config,
                     parse_error,
                 } => {
@@ -440,16 +440,16 @@ pub(crate) fn write_live_snapshot(app_type: &AppType, provider: &Provider) -> Re
                         provider.id
                     );
                 }
-                OpenClawLiveWriteConfig::Invalid { parse_error } => {
+                OpenClawLiveWriteAction::Reject {
+                    parse_error,
+                    message,
+                } => {
                     log::warn!(
                         "Failed to parse OpenClaw provider config for '{}': {}",
                         provider.id,
                         parse_error
                     );
-                    return Err(AppError::Message(format!(
-                        "OpenClaw provider '{}' has invalid config structure for live config (must contain 'baseUrl', 'api', or 'models')",
-                        provider.id
-                    )));
+                    return Err(AppError::Message(message));
                 }
             }
         }

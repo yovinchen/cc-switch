@@ -815,6 +815,24 @@ pub(crate) struct OpenClawLiveWritePlan {
     pub(crate) config: OpenClawLiveWriteConfig,
 }
 
+#[derive(Debug, Clone)]
+pub(crate) enum OpenClawLiveWriteAction {
+    Typed(OpenClawProviderConfig),
+    Raw {
+        config: Value,
+        parse_error: String,
+    },
+    Reject {
+        parse_error: String,
+        message: String,
+    },
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct OpenClawLiveWriteProjection {
+    pub(crate) action: OpenClawLiveWriteAction,
+}
+
 pub(crate) fn provider_openclaw_live_write_plan(provider: &Provider) -> OpenClawLiveWritePlan {
     let config_to_write = provider.settings_config.clone();
 
@@ -832,6 +850,31 @@ pub(crate) fn provider_openclaw_live_write_plan(provider: &Provider) -> OpenClaw
     };
 
     OpenClawLiveWritePlan { config }
+}
+
+pub(crate) fn provider_openclaw_live_write_projection(
+    provider: &Provider,
+) -> OpenClawLiveWriteProjection {
+    let plan = provider_openclaw_live_write_plan(provider);
+    let action = match plan.config {
+        OpenClawLiveWriteConfig::Typed(config) => OpenClawLiveWriteAction::Typed(config),
+        OpenClawLiveWriteConfig::Raw {
+            config,
+            parse_error,
+        } => OpenClawLiveWriteAction::Raw {
+            config,
+            parse_error,
+        },
+        OpenClawLiveWriteConfig::Invalid { parse_error } => OpenClawLiveWriteAction::Reject {
+            parse_error,
+            message: format!(
+                "OpenClaw provider '{}' has invalid config structure for live config (must contain 'baseUrl', 'api', or 'models')",
+                provider.id
+            ),
+        },
+    };
+
+    OpenClawLiveWriteProjection { action }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -1377,6 +1420,25 @@ pub(crate) struct OpenCodeLiveWritePlan {
     pub(crate) from_full_config: bool,
 }
 
+#[derive(Debug, Clone)]
+pub(crate) enum OpenCodeLiveWriteAction {
+    Typed(OpenCodeProviderConfig),
+    Raw {
+        config: Value,
+        parse_error: String,
+    },
+    Reject {
+        parse_error: String,
+        message: String,
+    },
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct OpenCodeLiveWriteProjection {
+    pub(crate) action: OpenCodeLiveWriteAction,
+    pub(crate) from_full_config: bool,
+}
+
 pub(crate) fn provider_opencode_live_write_plan(
     provider: &Provider,
 ) -> OpenCodeLiveWritePlan {
@@ -1399,6 +1461,34 @@ pub(crate) fn provider_opencode_live_write_plan(
     OpenCodeLiveWritePlan {
         config,
         from_full_config: fragment.from_full_config,
+    }
+}
+
+pub(crate) fn provider_opencode_live_write_projection(
+    provider: &Provider,
+) -> OpenCodeLiveWriteProjection {
+    let plan = provider_opencode_live_write_plan(provider);
+    let action = match plan.config {
+        OpenCodeLiveWriteConfig::Typed(config) => OpenCodeLiveWriteAction::Typed(config),
+        OpenCodeLiveWriteConfig::Raw {
+            config,
+            parse_error,
+        } => OpenCodeLiveWriteAction::Raw {
+            config,
+            parse_error,
+        },
+        OpenCodeLiveWriteConfig::Invalid { parse_error } => OpenCodeLiveWriteAction::Reject {
+            parse_error,
+            message: format!(
+                "OpenCode provider '{}' has invalid config structure for live config (must contain 'npm' or 'options')",
+                provider.id
+            ),
+        },
+    };
+
+    OpenCodeLiveWriteProjection {
+        action,
+        from_full_config: plan.from_full_config,
     }
 }
 
@@ -11813,6 +11903,10 @@ command = "latest-command"
             }
             other => panic!("expected raw OpenClaw write plan, got {other:?}"),
         }
+        assert!(matches!(
+            provider_openclaw_live_write_projection(&raw_provider).action,
+            OpenClawLiveWriteAction::Raw { .. }
+        ));
 
         let provider = Provider::with_id(
             "invalid-provider".to_string(),
@@ -11837,6 +11931,13 @@ command = "latest-command"
             plan.config,
             OpenClawLiveWriteConfig::Invalid { .. }
         ));
+        match provider_openclaw_live_write_projection(&provider).action {
+            OpenClawLiveWriteAction::Reject { message, .. } => {
+                assert!(message.contains("OpenClaw provider 'invalid-provider'"));
+                assert!(message.contains("baseUrl"));
+            }
+            other => panic!("expected reject OpenClaw write action, got {other:?}"),
+        }
     }
 
     #[test]
@@ -11927,6 +12028,10 @@ command = "latest-command"
             }
             other => panic!("expected raw OpenCode write plan, got {other:?}"),
         }
+        assert!(matches!(
+            provider_opencode_live_write_projection(&raw_provider).action,
+            OpenCodeLiveWriteAction::Raw { .. }
+        ));
         assert!(opencode_live_provider_fragment_has_provider_fields(&json!({
             "options": {}
         })));
@@ -11946,6 +12051,13 @@ command = "latest-command"
             plan.config,
             OpenCodeLiveWriteConfig::Invalid { .. }
         ));
+        match provider_opencode_live_write_projection(&invalid_provider).action {
+            OpenCodeLiveWriteAction::Reject { message, .. } => {
+                assert!(message.contains("OpenCode provider 'invalid'"));
+                assert!(message.contains("npm"));
+            }
+            other => panic!("expected reject OpenCode write action, got {other:?}"),
+        }
         assert!(matches!(
             provider_opencode_credential_parts(&Provider::with_id(
                 "missing-options".to_string(),
