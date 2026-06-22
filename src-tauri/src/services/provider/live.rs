@@ -5,7 +5,6 @@
 use std::collections::HashMap;
 
 use serde_json::{json, Value};
-use toml_edit::DocumentMut;
 
 use crate::app_config::AppType;
 use crate::codex_config::{get_codex_auth_path, get_codex_config_path};
@@ -14,16 +13,15 @@ use crate::database::Database;
 use crate::error::AppError;
 use crate::provider::Provider;
 use crate::proxy_core_adapter::{
-    codex_config_text_from_settings,
+    apply_common_config_to_settings as adapter_apply_common_config_to_settings,
+    remove_common_config_from_settings as adapter_remove_common_config_from_settings,
     gemini_env_value_from_env_json, opencode_live_provider_fragment_has_provider_fields,
-    json_deep_merge, json_deep_remove, merge_toml_table_like,
     normalize_claude_models_in_value, provider_codex_imported_live_category,
-    provider_codex_live_snapshot_parts,
+    provider_codex_live_snapshot_parts, CommonConfigSettingsMutationIssue,
     provider_gemini_env_map, provider_gemini_live_config_object,
     provider_model_catalog_raw_value, provider_opencode_live_provider_fragment,
     provider_openclaw_has_live_provider_fields, proxy_live_config_owned_by_takeover,
-    remove_toml_table_like, restore_codex_settings_for_provider_backfill,
-    sanitize_claude_settings_for_live,
+    restore_codex_settings_for_provider_backfill, sanitize_claude_settings_for_live,
     strip_codex_unified_session_bucket_for_provider_backfill,
     validate_provider_gemini_settings_strict, CodexLiveSnapshotIssue, GeminiLiveConfigIssue,
 };
@@ -57,54 +55,8 @@ pub(crate) fn remove_common_config_from_settings(
     settings: &Value,
     snippet: &str,
 ) -> Result<Value, AppError> {
-    let trimmed = snippet.trim();
-    if trimmed.is_empty() {
-        return Ok(settings.clone());
-    }
-
-    match app_type {
-        AppType::Claude => {
-            let source = serde_json::from_str::<Value>(trimmed)
-                .map_err(|e| AppError::Message(format!("Invalid Claude common config: {e}")))?;
-            let mut result = settings.clone();
-            json_deep_remove(&mut result, &source);
-            Ok(result)
-        }
-        AppType::Codex => {
-            let mut result = settings.clone();
-            let config_toml = codex_config_text_from_settings(settings).unwrap_or("");
-            let mut target_doc = if config_toml.trim().is_empty() {
-                DocumentMut::new()
-            } else {
-                config_toml.parse::<DocumentMut>().map_err(|e| {
-                    AppError::Message(format!(
-                        "Invalid Codex config.toml while removing common config: {e}"
-                    ))
-                })?
-            };
-            let source_doc = trimmed.parse::<DocumentMut>().map_err(|e| {
-                AppError::Message(format!("Invalid Codex common config snippet: {e}"))
-            })?;
-
-            remove_toml_table_like(target_doc.as_table_mut(), source_doc.as_table());
-            if let Some(obj) = result.as_object_mut() {
-                obj.insert("config".to_string(), Value::String(target_doc.to_string()));
-            }
-            Ok(result)
-        }
-        AppType::Gemini => {
-            let source = serde_json::from_str::<Value>(trimmed)
-                .map_err(|e| AppError::Message(format!("Invalid Gemini common config: {e}")))?;
-            let mut result = settings.clone();
-            if let Some(env) = result.get_mut("env") {
-                json_deep_remove(env, &source);
-            }
-            Ok(result)
-        }
-        AppType::OpenCode | AppType::OpenClaw | AppType::Hermes | AppType::ClaudeDesktop => {
-            Ok(settings.clone())
-        }
-    }
+    adapter_remove_common_config_from_settings(app_type, settings, snippet)
+        .map_err(common_config_settings_mutation_issue_to_app_error)
 }
 
 fn apply_common_config_to_settings(
@@ -112,54 +64,32 @@ fn apply_common_config_to_settings(
     settings: &Value,
     snippet: &str,
 ) -> Result<Value, AppError> {
-    let trimmed = snippet.trim();
-    if trimmed.is_empty() {
-        return Ok(settings.clone());
-    }
+    adapter_apply_common_config_to_settings(app_type, settings, snippet)
+        .map_err(common_config_settings_mutation_issue_to_app_error)
+}
 
-    match app_type {
-        AppType::Claude => {
-            let source = serde_json::from_str::<Value>(trimmed)
-                .map_err(|e| AppError::Message(format!("Invalid Claude common config: {e}")))?;
-            let mut result = settings.clone();
-            json_deep_merge(&mut result, &source);
-            Ok(result)
+fn common_config_settings_mutation_issue_to_app_error(
+    issue: CommonConfigSettingsMutationIssue,
+) -> AppError {
+    match issue {
+        CommonConfigSettingsMutationIssue::ClaudeCommonConfigJson(error) => {
+            AppError::Message(format!("Invalid Claude common config: {error}"))
         }
-        AppType::Codex => {
-            let mut result = settings.clone();
-            let config_toml = codex_config_text_from_settings(settings).unwrap_or("");
-            let mut target_doc = if config_toml.trim().is_empty() {
-                DocumentMut::new()
-            } else {
-                config_toml.parse::<DocumentMut>().map_err(|e| {
-                    AppError::Message(format!(
-                        "Invalid Codex config.toml while applying common config: {e}"
-                    ))
-                })?
-            };
-            let source_doc = trimmed.parse::<DocumentMut>().map_err(|e| {
-                AppError::Message(format!("Invalid Codex common config snippet: {e}"))
-            })?;
-
-            merge_toml_table_like(target_doc.as_table_mut(), source_doc.as_table());
-            if let Some(obj) = result.as_object_mut() {
-                obj.insert("config".to_string(), Value::String(target_doc.to_string()));
-            }
-            Ok(result)
+        CommonConfigSettingsMutationIssue::CodexApplyTargetToml(error) => {
+            AppError::Message(format!(
+                "Invalid Codex config.toml while applying common config: {error}"
+            ))
         }
-        AppType::Gemini => {
-            let source = serde_json::from_str::<Value>(trimmed)
-                .map_err(|e| AppError::Message(format!("Invalid Gemini common config: {e}")))?;
-            let mut result = settings.clone();
-            if let Some(env) = result.get_mut("env") {
-                json_deep_merge(env, &source);
-            } else if let Some(obj) = result.as_object_mut() {
-                obj.insert("env".to_string(), source);
-            }
-            Ok(result)
+        CommonConfigSettingsMutationIssue::CodexRemoveTargetToml(error) => {
+            AppError::Message(format!(
+                "Invalid Codex config.toml while removing common config: {error}"
+            ))
         }
-        AppType::OpenCode | AppType::OpenClaw | AppType::Hermes | AppType::ClaudeDesktop => {
-            Ok(settings.clone())
+        CommonConfigSettingsMutationIssue::CodexCommonConfigSnippetToml(error) => {
+            AppError::Message(format!("Invalid Codex common config snippet: {error}"))
+        }
+        CommonConfigSettingsMutationIssue::GeminiCommonConfigJson(error) => {
+            AppError::Message(format!("Invalid Gemini common config: {error}"))
         }
     }
 }
@@ -1238,6 +1168,7 @@ pub fn remove_openclaw_provider_from_live(provider_id: &str) -> Result<(), AppEr
 mod tests {
     use super::*;
     use serde_json::json;
+    use toml_edit::DocumentMut;
 
     #[test]
     fn claude_common_config_apply_and_remove_roundtrip_for_non_overlapping_fields() {

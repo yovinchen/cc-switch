@@ -3363,6 +3363,143 @@ pub(crate) fn provider_uses_common_config(
     }
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum CommonConfigSettingsMutationIssue {
+    ClaudeCommonConfigJson(String),
+    CodexApplyTargetToml(String),
+    CodexRemoveTargetToml(String),
+    CodexCommonConfigSnippetToml(String),
+    GeminiCommonConfigJson(String),
+}
+
+pub(crate) fn apply_common_config_to_settings(
+    app_type: &AppType,
+    settings: &Value,
+    snippet: &str,
+) -> Result<Value, CommonConfigSettingsMutationIssue> {
+    let trimmed = snippet.trim();
+    if trimmed.is_empty() {
+        return Ok(settings.clone());
+    }
+
+    match app_type {
+        AppType::Claude => {
+            let source = serde_json::from_str::<Value>(trimmed).map_err(|e| {
+                CommonConfigSettingsMutationIssue::ClaudeCommonConfigJson(e.to_string())
+            })?;
+            let mut result = settings.clone();
+            json_deep_merge(&mut result, &source);
+            Ok(result)
+        }
+        AppType::Codex => {
+            let mut result = settings.clone();
+            let config_toml = codex_config_text_from_settings(settings).unwrap_or("");
+            let mut target_doc = if config_toml.trim().is_empty() {
+                toml_edit::DocumentMut::new()
+            } else {
+                config_toml
+                    .parse::<toml_edit::DocumentMut>()
+                    .map_err(|e| {
+                        CommonConfigSettingsMutationIssue::CodexApplyTargetToml(
+                            e.to_string(),
+                        )
+                    })?
+            };
+            let source_doc = trimmed
+                .parse::<toml_edit::DocumentMut>()
+                .map_err(|e| {
+                    CommonConfigSettingsMutationIssue::CodexCommonConfigSnippetToml(
+                        e.to_string(),
+                    )
+                })?;
+
+            merge_toml_table_like(target_doc.as_table_mut(), source_doc.as_table());
+            if let Some(obj) = result.as_object_mut() {
+                obj.insert("config".to_string(), Value::String(target_doc.to_string()));
+            }
+            Ok(result)
+        }
+        AppType::Gemini => {
+            let source = serde_json::from_str::<Value>(trimmed).map_err(|e| {
+                CommonConfigSettingsMutationIssue::GeminiCommonConfigJson(e.to_string())
+            })?;
+            let mut result = settings.clone();
+            if let Some(env) = result.get_mut("env") {
+                json_deep_merge(env, &source);
+            } else if let Some(obj) = result.as_object_mut() {
+                obj.insert("env".to_string(), source);
+            }
+            Ok(result)
+        }
+        AppType::OpenCode | AppType::OpenClaw | AppType::Hermes | AppType::ClaudeDesktop => {
+            Ok(settings.clone())
+        }
+    }
+}
+
+pub(crate) fn remove_common_config_from_settings(
+    app_type: &AppType,
+    settings: &Value,
+    snippet: &str,
+) -> Result<Value, CommonConfigSettingsMutationIssue> {
+    let trimmed = snippet.trim();
+    if trimmed.is_empty() {
+        return Ok(settings.clone());
+    }
+
+    match app_type {
+        AppType::Claude => {
+            let source = serde_json::from_str::<Value>(trimmed).map_err(|e| {
+                CommonConfigSettingsMutationIssue::ClaudeCommonConfigJson(e.to_string())
+            })?;
+            let mut result = settings.clone();
+            json_deep_remove(&mut result, &source);
+            Ok(result)
+        }
+        AppType::Codex => {
+            let mut result = settings.clone();
+            let config_toml = codex_config_text_from_settings(settings).unwrap_or("");
+            let mut target_doc = if config_toml.trim().is_empty() {
+                toml_edit::DocumentMut::new()
+            } else {
+                config_toml
+                    .parse::<toml_edit::DocumentMut>()
+                    .map_err(|e| {
+                        CommonConfigSettingsMutationIssue::CodexRemoveTargetToml(
+                            e.to_string(),
+                        )
+                    })?
+            };
+            let source_doc = trimmed
+                .parse::<toml_edit::DocumentMut>()
+                .map_err(|e| {
+                    CommonConfigSettingsMutationIssue::CodexCommonConfigSnippetToml(
+                        e.to_string(),
+                    )
+                })?;
+
+            remove_toml_table_like(target_doc.as_table_mut(), source_doc.as_table());
+            if let Some(obj) = result.as_object_mut() {
+                obj.insert("config".to_string(), Value::String(target_doc.to_string()));
+            }
+            Ok(result)
+        }
+        AppType::Gemini => {
+            let source = serde_json::from_str::<Value>(trimmed).map_err(|e| {
+                CommonConfigSettingsMutationIssue::GeminiCommonConfigJson(e.to_string())
+            })?;
+            let mut result = settings.clone();
+            if let Some(env) = result.get_mut("env") {
+                json_deep_remove(env, &source);
+            }
+            Ok(result)
+        }
+        AppType::OpenCode | AppType::OpenClaw | AppType::Hermes | AppType::ClaudeDesktop => {
+            Ok(settings.clone())
+        }
+    }
+}
+
 pub(crate) fn proxy_takeover_marked_state_is_reusable(
     has_live_backup: bool,
     live_matches_current_proxy: bool,
@@ -8559,6 +8696,42 @@ reasoning = "medium"
             .as_table()
             .and_then(|table| table.get("reasoning"))
             .is_none());
+    }
+
+    #[test]
+    fn common_config_settings_mutation_adapter_applies_and_removes_by_app() {
+        let claude_settings = json!({"allowedTools": ["tool-a", "tool-b"]});
+        let claude_snippet = r#"{"allowedTools": ["tool-a"]}"#;
+        let stripped =
+            remove_common_config_from_settings(&AppType::Claude, &claude_settings, claude_snippet)
+                .expect("claude remove");
+        assert_eq!(stripped, json!({"allowedTools": ["tool-b"]}));
+
+        let codex_settings = json!({
+            "auth": {},
+            "config": "model_provider = \"openai\"\n"
+        });
+        let codex_snippet = "[shared]\nreasoning = \"medium\"\n";
+        let applied =
+            apply_common_config_to_settings(&AppType::Codex, &codex_settings, codex_snippet)
+                .expect("codex apply");
+        let applied_config = applied["config"].as_str().expect("codex config");
+        assert!(applied_config.contains("[shared]"));
+        assert!(applied_config.contains("reasoning = \"medium\""));
+        let stripped =
+            remove_common_config_from_settings(&AppType::Codex, &applied, codex_snippet)
+                .expect("codex remove");
+        assert_eq!(stripped, codex_settings);
+
+        let gemini_settings = json!({});
+        let gemini_snippet = r#"{"SHARED_REGION": "us-central1"}"#;
+        let applied =
+            apply_common_config_to_settings(&AppType::Gemini, &gemini_settings, gemini_snippet)
+                .expect("gemini apply");
+        assert_eq!(
+            applied,
+            json!({"env": {"SHARED_REGION": "us-central1"}})
+        );
     }
 
     #[test]
