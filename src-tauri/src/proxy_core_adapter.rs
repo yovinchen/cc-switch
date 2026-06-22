@@ -138,19 +138,7 @@ pub(crate) use crate::proxy_core::api::security::mask_url_for_log;
 #[cfg(test)]
 pub(crate) use crate::proxy_core::api::transport::proxy_url_points_to_loopback_port;
 
-pub(crate) fn proxy_values_point_to_loopback_port<I, V>(
-    values: I,
-    loopback_port: u16,
-) -> bool
-where
-    I: IntoIterator<Item = V>,
-    V: AsRef<str>,
-{
-    crate::proxy_core::api::transport::proxy_values_point_to_loopback_port(
-        values,
-        loopback_port,
-    )
-}
+pub(crate) use crate::proxy_core::api::transport::proxy_values_point_to_loopback_port;
 
 pub(crate) const COPILOT_PUBLIC_GITHUB_DOMAIN: &str =
     crate::proxy_core::api::model_catalog::COPILOT_PUBLIC_GITHUB_DOMAIN;
@@ -2698,15 +2686,7 @@ pub(crate) fn provider_codex_auth_headers(
     build_codex_bearer_auth_headers(&auth.api_key).map_err(|error| error.to_string())
 }
 
-pub(crate) fn resolve_codex_provider_upstream_model(
-    settings_model: Option<&str>,
-    config_model: Option<&str>,
-) -> Option<String> {
-    crate::proxy_core::api::transport::resolve_codex_provider_upstream_model(
-        settings_model,
-        config_model,
-    )
-}
+pub(crate) use crate::proxy_core::api::transport::resolve_codex_provider_upstream_model;
 
 pub(crate) fn provider_codex_api_key(provider: &Provider) -> Option<String> {
     if let Some(env) = provider.settings_config.get("env") {
@@ -3547,27 +3527,9 @@ pub(crate) fn provider_codex_chat_reasoning_profile(
     infer_codex_chat_reasoning_profile(&provider.name, &base_url, &model)
 }
 
-pub(crate) fn codex_provider_catalog_model_ids_from_settings(
-    settings_config: &Value,
-) -> std::collections::HashSet<String> {
-    crate::proxy_core::api::transport::codex_provider_catalog_model_ids_from_settings(
-        settings_config,
-    )
-}
-
-pub(crate) fn apply_codex_chat_upstream_model_policy(
-    body: &mut Value,
-    uses_chat_completions: bool,
-    upstream_model: Option<&str>,
-    catalog_model_ids: &std::collections::HashSet<String>,
-) -> Option<String> {
-    crate::proxy_core::api::transport::apply_codex_chat_upstream_model_policy(
-        body,
-        uses_chat_completions,
-        upstream_model,
-        catalog_model_ids,
-    )
-}
+pub(crate) use crate::proxy_core::api::transport::{
+    apply_codex_chat_upstream_model_policy, codex_provider_catalog_model_ids_from_settings,
+};
 
 pub(crate) fn provider_apply_codex_chat_upstream_model(
     provider: &Provider,
@@ -3632,21 +3594,7 @@ pub(crate) struct ForwarderRuntimeConfig {
     pub(crate) copilot_optimizer: CopilotOptimizerConfig,
 }
 
-pub(crate) fn resolve_response_runtime_policy(
-    auto_failover_enabled: bool,
-    max_retries: u32,
-    non_streaming_timeout: u64,
-    streaming_first_byte_timeout: u64,
-    streaming_idle_timeout: u64,
-) -> ResponseRuntimePolicy {
-    crate::proxy_core::api::transport::resolve_response_runtime_policy(
-        auto_failover_enabled,
-        max_retries,
-        non_streaming_timeout,
-        streaming_first_byte_timeout,
-        streaming_idle_timeout,
-    )
-}
+pub(crate) use crate::proxy_core::api::transport::resolve_response_runtime_policy;
 
 pub(crate) fn response_runtime_policy_from_app_proxy_config(
     config: &AppProxyConfig,
@@ -6314,24 +6262,9 @@ fn codex_proxy_error_context_from_host_facts<'a>(
 }
 
 #[cfg(test)]
-pub(crate) fn apply_channel_route_model_override(
-    body: &mut Value,
-    public_model: Option<&str>,
-    upstream_model: Option<&str>,
-) -> Option<String> {
-    crate::proxy_core::api::transport::apply_channel_route_model_override(
-        body,
-        public_model,
-        upstream_model,
-    )
-}
+pub(crate) use crate::proxy_core::api::transport::apply_channel_route_model_override;
 
-pub(crate) fn apply_resolved_channel_model_override(
-    body: &mut Value,
-    channel: &ResolvedChannelAttempt,
-) -> Option<crate::proxy_core::api::transport::ChannelRouteModelOverride> {
-    crate::proxy_core::api::transport::apply_resolved_channel_model_override(body, channel)
-}
+pub(crate) use crate::proxy_core::api::transport::apply_resolved_channel_model_override;
 
 pub(crate) fn apply_channel_provider_overrides(
     app_type: &AppType,
