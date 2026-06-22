@@ -7838,6 +7838,28 @@ pub(crate) fn stream_check_result_to_channel_reachability(
     crate::proxy_core::api::management::channel_reachability_result_from_stream_check_result(result)
 }
 
+pub(crate) fn channel_test_app_type_from_probe_request(
+    request: &ChannelTestProbeRequest,
+) -> ProxyCoreResult<AppType> {
+    request
+        .app_type
+        .parse::<AppType>()
+        .map_err(|error| ProxyCoreError::InvalidRequest(error.to_string()))
+}
+
+pub(crate) fn channel_test_provider_from_probe_source(
+    request: &ChannelTestProbeRequest,
+    provider: Option<Provider>,
+) -> ProxyCoreResult<Provider> {
+    provider.ok_or_else(|| ProxyCoreError::Config(request.provider_not_found_message()))
+}
+
+pub(crate) fn channel_reachability_probe_error(
+    error: impl std::fmt::Display,
+) -> ProxyCoreError {
+    ProxyCoreError::Internal(error.to_string())
+}
+
 pub(crate) fn channel_reachability_status_from_latency(
     latency_ms: u64,
     degraded_threshold_ms: u64,
@@ -12738,6 +12760,49 @@ command = "latest-command"
         assert_eq!(reachability.http_status, Some(200));
         assert_eq!(reachability.tested_at, 1_797_000_000);
         assert_eq!(reachability.retry_count, 1);
+
+        let probe = ChannelTestProbeRequest {
+            channel_id: "channel-a".to_string(),
+            provider_id: "provider-a".to_string(),
+            app_type: "claude".to_string(),
+            base_url: "https://api.example.com/v1".to_string(),
+        };
+        assert_eq!(
+            channel_test_app_type_from_probe_request(&probe).expect("app type"),
+            AppType::Claude
+        );
+        let provider = Provider::with_id(
+            "provider-a".to_string(),
+            "Provider A".to_string(),
+            json!({}),
+            None,
+        );
+        assert_eq!(
+            channel_test_provider_from_probe_source(&probe, Some(provider))
+                .expect("provider")
+                .id,
+            "provider-a"
+        );
+        let missing_provider = channel_test_provider_from_probe_source(&probe, None)
+            .expect_err("missing provider");
+        assert!(matches!(
+            missing_provider,
+            ProxyCoreError::Config(message)
+                if message == "provider not found for channel channel-a: provider-a"
+        ));
+        let invalid_probe = ChannelTestProbeRequest {
+            app_type: "unknown-app".to_string(),
+            ..probe.clone()
+        };
+        assert!(matches!(
+            channel_test_app_type_from_probe_request(&invalid_probe),
+            Err(ProxyCoreError::InvalidRequest(message))
+                if message.contains("unknown-app")
+        ));
+        assert!(matches!(
+            channel_reachability_probe_error("probe failed"),
+            ProxyCoreError::Internal(message) if message == "probe failed"
+        ));
 
         for (health_status, reachability_status) in [
             (

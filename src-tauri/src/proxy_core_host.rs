@@ -34,9 +34,12 @@ use crate::proxy_core_adapter::{
     auth_info_from_cc_switch_provider_config,
     cc_switch_app_kinds,
     claude_desktop_model_routes_to_core_inputs,
+    channel_reachability_probe_error,
     channel_health_attempt_db_update,
     channel_health_reset_from_plan,
     channel_health_reset_plan_from_lookup,
+    channel_test_app_type_from_probe_request,
+    channel_test_provider_from_probe_source,
     proxy_channel_key_record_to_core,
     proxy_channel_key_records_to_core,
     proxy_channel_model_records_to_core,
@@ -75,7 +78,6 @@ use indexmap::IndexMap;
 #[cfg(test)]
 use serde_json::Value;
 use std::collections::HashMap;
-use std::str::FromStr;
 use std::sync::Arc;
 use tokio::sync::RwLock;
 
@@ -723,13 +725,12 @@ impl ChannelReachabilityProbe for CcSwitchChannelReachabilityProbe {
         request: ChannelTestProbeRequest,
     ) -> BoxFuture<'a, ProxyCoreResult<ChannelReachabilityResult>> {
         Box::pin(async move {
-            let app_type = AppType::from_str(&request.app_type)
-                .map_err(|error| ProxyCoreError::InvalidRequest(error.to_string()))?;
+            let app_type = channel_test_app_type_from_probe_request(&request)?;
             let provider = self
                 .db
                 .get_provider_by_id(&request.provider_id, &request.app_type)
-                .map_err(|error| app_error("get channel test provider", error))?
-                .ok_or_else(|| ProxyCoreError::Config(request.provider_not_found_message()))?;
+                .map_err(|error| app_error("get channel test provider", error))?;
+            let provider = channel_test_provider_from_probe_source(&request, provider)?;
             let config = self
                 .db
                 .get_stream_check_config()
@@ -741,7 +742,7 @@ impl ChannelReachabilityProbe for CcSwitchChannelReachabilityProbe {
                 Some(request.base_url),
             )
             .await
-            .map_err(|error| ProxyCoreError::Internal(error.to_string()))?;
+            .map_err(channel_reachability_probe_error)?;
 
             Ok(stream_check_result_to_channel_reachability(result))
         })
