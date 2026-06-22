@@ -5,7 +5,6 @@
 //! Falls back to hyper-util Client (title-case headers) when raw write is not feasible.
 
 use super::error::ProxyError;
-use crate::proxy_core_adapter::response_headers_indicate_sse;
 use bytes::Bytes;
 use futures::{stream::Stream, StreamExt};
 use http_body_util::BodyExt;
@@ -156,11 +155,6 @@ impl ProxyResponse {
             Self::Reqwest(r) => r.headers(),
             Self::Buffered { headers, .. } | Self::Streamed { headers, .. } => headers,
         }
-    }
-
-    /// Check if the response is an SSE stream.
-    pub fn is_sse(&self) -> bool {
-        response_headers_indicate_sse(self.headers())
     }
 
     /// Consume the response and collect the full body into `Bytes`.

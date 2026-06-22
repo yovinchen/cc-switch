@@ -2157,6 +2157,31 @@ fn response_processor_delegates_usage_provider_projection_to_adapter() {
 }
 
 #[test]
+fn response_pipeline_uses_core_sse_header_decision() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let hyper_client = fs::read_to_string(manifest_dir.join("src/proxy/hyper_client.rs"))
+        .expect("read hyper_client.rs");
+    let response_processor =
+        fs::read_to_string(manifest_dir.join("src/proxy/response_processor.rs"))
+            .expect("read response_processor.rs");
+    let handlers =
+        fs::read_to_string(manifest_dir.join("src/proxy/handlers.rs")).expect("read handlers.rs");
+
+    assert!(
+        !hyper_client.contains("fn is_sse("),
+        "SSE response detection should stay in proxy-core response header helpers, not on the host ProxyResponse type"
+    );
+    assert!(
+        response_processor.contains("response_headers_indicate_sse(response.headers())"),
+        "response_processor should delegate SSE detection to proxy-core"
+    );
+    assert!(
+        handlers.contains("response_headers_indicate_sse(response.headers())"),
+        "protocol transform handlers should delegate SSE detection to proxy-core"
+    );
+}
+
+#[test]
 fn usage_sink_bridge_delegates_provider_projection_to_adapter() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let path = manifest_dir.join("src/proxy/usage_sink_bridge.rs");

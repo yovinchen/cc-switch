@@ -20,7 +20,8 @@ use crate::proxy_core_adapter::{
     non_streaming_response_usage_record_from_response_context, NonStreamingResponseUsageContext,
     passthrough_bytes_proxy_response, passthrough_stream_proxy_response,
     record_usage_with_proxy_services,
-    response_headers_log_summary, response_usage_provider_facts_from_optional,
+    response_headers_indicate_sse, response_headers_log_summary,
+    response_usage_provider_facts_from_optional,
     streaming_response_usage_record_from_response_context, StreamingResponseUsageContext,
     usage_logging_enabled_from_config_flag, ResponseBodyDecodeLogLevel, SseEventScanner,
     SsePassthroughEventKind, SseUsageAccumulator, StreamUsageEventFilter, StreamingTimeoutConfig,
@@ -81,7 +82,7 @@ pub(crate) async fn read_decoded_body(
 /// 检测响应是否为 SSE 流式响应
 #[inline]
 pub fn is_sse_response(response: &ProxyResponse) -> bool {
-    response.is_sse()
+    response_headers_indicate_sse(response.headers())
 }
 
 /// 处理流式响应

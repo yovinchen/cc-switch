@@ -48,7 +48,7 @@ use crate::proxy_core_adapter::{
     management_auth_decision_from_proxy_config,
     provider_is_codex_oauth, provider_needs_claude_transform,
     provider_should_convert_codex_responses_to_chat, rebuilt_json_proxy_response,
-    should_aggregate_codex_oauth_responses_sse,
+    response_headers_indicate_sse, should_aggregate_codex_oauth_responses_sse,
     should_use_claude_transform_streaming,
     strip_endpoint_prefix, transformed_sse_proxy_response, validate_management_bearer_header,
     AppChannelListQuery, AppChannelManagementRequest, AppChannelResponse, AppKind, AppListRequest,
@@ -681,7 +681,7 @@ async fn handle_claude_transform(
     } else {
         should_use_claude_transform_streaming(
             is_stream,
-            response.is_sse(),
+            response_headers_indicate_sse(response.headers()),
             api_format,
             is_codex_oauth,
         )
@@ -1011,7 +1011,7 @@ async fn handle_codex_chat_to_responses_transform(
         return handle_codex_chat_error_response(response, ctx, status).await;
     }
 
-    if is_stream || response.is_sse() {
+    if is_stream || response_headers_indicate_sse(response.headers()) {
         let stream = response.bytes_stream();
         let sse_stream = create_responses_sse_stream_from_chat_with_context(stream, tool_context);
         let sse_stream = record_responses_sse_stream(sse_stream, state.codex_chat_history.clone());
