@@ -4974,6 +4974,12 @@ pub(crate) fn channel_spec_from_source(channel: Option<ProxyChannelRecord>) -> O
     channel.map(|channel| proxy_channel_record_to_core_spec(&channel))
 }
 
+pub(crate) fn channel_route_source_for_materialized_records(
+    channels: &[ProxyChannelRecord],
+) -> ChannelRouteSource {
+    crate::proxy_core::api::management::channel_route_source_for_materialized_count(channels.len())
+}
+
 pub(crate) fn proxy_channel_route_inputs_to_core(
     channels: impl IntoIterator<Item = ProxyChannelRecord>,
 ) -> Vec<RouteResolveChannelInput> {

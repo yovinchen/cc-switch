@@ -10,7 +10,8 @@ use crate::proxy::circuit_breaker::CircuitBreaker;
 use crate::proxy_core_adapter::{
     app_type_from_circuit_key, channel_circuit_key, channel_circuit_key_prefix,
     circuit_breaker_config_from_app_config, circuit_failure_threshold_from_app_config,
-    provider_circuit_key, provider_circuit_key_prefix, proxy_channel_route_inputs_to_core,
+    provider_circuit_key, provider_circuit_key_prefix,
+    channel_route_source_for_materialized_records, proxy_channel_route_inputs_to_core,
     reject_unavailable_channel_ids, resolve_channel_route as resolve_core_channel_route,
     select_provider_ids, AllowResult, ChannelRouteSource, CircuitBreakerConfig,
     CircuitBreakerStats, ProviderSelectionCandidate, ProviderSelectionFailure,
@@ -143,13 +144,14 @@ impl ProviderRouter {
         app_type: &str,
     ) -> Result<(Vec<ProxyChannelRecord>, ChannelRouteSource), AppError> {
         let channels = self.db.list_proxy_channels_for_app(app_type)?;
-        if !channels.is_empty() {
-            return Ok((channels, ChannelRouteSource::MaterializedChannels));
+        let source = channel_route_source_for_materialized_records(&channels);
+        if source == ChannelRouteSource::MaterializedChannels {
+            return Ok((channels, source));
         }
 
         let preview: ProxyChannelMigrationPreview =
             self.db.preview_legacy_proxy_channel_migration(app_type)?;
-        Ok((preview.channels, ChannelRouteSource::LegacyProjection))
+        Ok((preview.channels, source))
     }
 
     /// Resolve a dry-run channel route for management API/debugging.

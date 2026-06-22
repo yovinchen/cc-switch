@@ -2361,6 +2361,16 @@ impl ChannelRouteSource {
     }
 }
 
+pub fn channel_route_source_for_materialized_count(
+    materialized_channel_count: usize,
+) -> ChannelRouteSource {
+    if materialized_channel_count == 0 {
+        ChannelRouteSource::LegacyProjection
+    } else {
+        ChannelRouteSource::MaterializedChannels
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(rename_all = "camelCase")]
 pub struct RouteResolveRequest {
@@ -2990,6 +3000,7 @@ mod tests {
         app_proxy_config_defaults_for_app, app_proxy_config_raw, auth_info_from_profile_ref,
         channel_health_reset_from_parts, channel_health_update_from_input,
         channel_model_record_from_input, channel_reachability_result_from_stream_check_result,
+        channel_route_source_for_materialized_count,
         proxy_app_config_from_parts, proxy_global_config_from_global_config,
         proxy_runtime_config_from_proxy_config,
         AppListResponse, AppModelListQuery, AppProxyConfig, AppSummaryInput,
@@ -5075,6 +5086,22 @@ mod tests {
         let value = serde_json::to_value(response).expect("serialize response");
         assert_eq!(value["appType"], "claude");
         assert_eq!(value["groups"][1]["channelCount"], 2);
+    }
+
+    #[test]
+    fn channel_route_source_falls_back_only_when_materialized_empty() {
+        assert_eq!(
+            channel_route_source_for_materialized_count(0),
+            ChannelRouteSource::LegacyProjection
+        );
+        assert_eq!(
+            channel_route_source_for_materialized_count(1),
+            ChannelRouteSource::MaterializedChannels
+        );
+        assert_eq!(
+            channel_route_source_for_materialized_count(5),
+            ChannelRouteSource::MaterializedChannels
+        );
     }
 
     #[test]
