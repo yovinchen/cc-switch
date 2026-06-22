@@ -1887,6 +1887,7 @@ pub(crate) fn strip_codex_unified_session_bucket_for_provider_backfill(
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum ProviderBackfillSettingsWarning {
+    CommonConfigStrip(CommonConfigSettingsMutationIssue),
     CodexSettingsRestore(String),
     CodexUnifiedSessionBucketStrip(String),
 }
@@ -3561,6 +3562,40 @@ pub(crate) fn remove_common_config_from_settings(
         AppType::OpenCode | AppType::OpenClaw | AppType::Hermes | AppType::ClaudeDesktop => {
             Ok(settings.clone())
         }
+    }
+}
+
+pub(crate) fn strip_common_config_from_live_settings_for_backfill(
+    app_type: &AppType,
+    provider: &Provider,
+    live_settings: Value,
+    snippet: Option<&str>,
+) -> ProviderBackfillSettingsResult {
+    let mut warnings = Vec::new();
+    let backfill_settings = if provider_uses_common_config(app_type, provider, snippet) {
+        match snippet {
+            Some(snippet_text) => {
+                match remove_common_config_from_settings(app_type, &live_settings, snippet_text) {
+                    Ok(settings) => settings,
+                    Err(issue) => {
+                        warnings.push(ProviderBackfillSettingsWarning::CommonConfigStrip(issue));
+                        live_settings
+                    }
+                }
+            }
+            None => live_settings,
+        }
+    } else {
+        live_settings
+    };
+
+    let result =
+        restore_live_settings_for_provider_backfill(app_type, provider, backfill_settings);
+    warnings.extend(result.warnings);
+
+    ProviderBackfillSettingsResult {
+        settings: result.settings,
+        warnings,
     }
 }
 
@@ -8912,6 +8947,54 @@ reasoning = "medium"
                 }
             }))
         );
+    }
+
+    #[test]
+    fn provider_backfill_common_config_strip_returns_warnings() {
+        let mut provider = Provider::with_id(
+            "claude-test".to_string(),
+            "Claude Test".to_string(),
+            json!({}),
+            None,
+        );
+        provider.meta = Some(ProviderMeta {
+            common_config_enabled: Some(true),
+            ..Default::default()
+        });
+
+        let live_settings = json!({
+            "includeCoAuthoredBy": false,
+            "env": {
+                "ANTHROPIC_API_KEY": "sk-test"
+            }
+        });
+        let result = strip_common_config_from_live_settings_for_backfill(
+            &AppType::Claude,
+            &provider,
+            live_settings.clone(),
+            Some(r#"{ "includeCoAuthoredBy": false }"#),
+        );
+        assert!(result.warnings.is_empty());
+        assert_eq!(
+            result.settings,
+            json!({
+                "env": {
+                    "ANTHROPIC_API_KEY": "sk-test"
+                }
+            })
+        );
+
+        let result = strip_common_config_from_live_settings_for_backfill(
+            &AppType::Claude,
+            &provider,
+            live_settings.clone(),
+            Some("{"),
+        );
+        assert!(matches!(
+            result.warnings.as_slice(),
+            [ProviderBackfillSettingsWarning::CommonConfigStrip(_)]
+        ));
+        assert_eq!(result.settings, live_settings);
     }
 
     #[test]

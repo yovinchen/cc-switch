@@ -27,6 +27,7 @@ use crate::proxy_core_adapter::{
     proxy_live_config_owned_by_takeover,
     restore_live_settings_for_provider_backfill as adapter_restore_live_settings_for_provider_backfill,
     sanitize_claude_settings_for_live,
+    strip_common_config_from_live_settings_for_backfill as adapter_strip_common_config_from_live_settings_for_backfill,
     validate_provider_gemini_settings_strict, CodexLiveSnapshotIssue, GeminiLiveConfigIssue,
 };
 use crate::services::mcp::McpService;
@@ -164,28 +165,14 @@ pub(crate) fn strip_common_config_from_live_settings(
         }
     };
 
-    let backfill_settings = if provider_uses_common_config(app_type, provider, snippet.as_deref()) {
-        match snippet.as_deref() {
-            Some(snippet_text) => {
-                match remove_common_config_from_settings(app_type, &live_settings, snippet_text) {
-                    Ok(settings) => settings,
-                    Err(err) => {
-                        log::warn!(
-                            "Failed to strip common config for {} provider '{}': {err}",
-                            app_type.as_str(),
-                            provider.id
-                        );
-                        live_settings
-                    }
-                }
-            }
-            None => live_settings,
-        }
-    } else {
-        live_settings
-    };
-
-    restore_live_settings_for_provider_backfill(app_type, provider, backfill_settings)
+    let result = adapter_strip_common_config_from_live_settings_for_backfill(
+        app_type,
+        provider,
+        live_settings,
+        snippet.as_deref(),
+    );
+    log_provider_backfill_settings_warnings(app_type, provider, result.warnings);
+    result.settings
 }
 
 fn restore_live_settings_for_provider_backfill(
@@ -195,8 +182,26 @@ fn restore_live_settings_for_provider_backfill(
 ) -> Value {
     let result =
         adapter_restore_live_settings_for_provider_backfill(app_type, provider, live_settings);
-    for warning in result.warnings {
+    log_provider_backfill_settings_warnings(app_type, provider, result.warnings);
+
+    result.settings
+}
+
+fn log_provider_backfill_settings_warnings(
+    app_type: &AppType,
+    provider: &Provider,
+    warnings: Vec<ProviderBackfillSettingsWarning>,
+) {
+    for warning in warnings {
         match warning {
+            ProviderBackfillSettingsWarning::CommonConfigStrip(issue) => {
+                let err = common_config_settings_mutation_issue_to_app_error(issue);
+                log::warn!(
+                    "Failed to strip common config for {} provider '{}': {err}",
+                    app_type.as_str(),
+                    provider.id
+                );
+            }
             ProviderBackfillSettingsWarning::CodexSettingsRestore(err) => {
                 log::warn!(
                     "Failed to restore Codex settings while backfilling '{}': {err}",
@@ -211,8 +216,6 @@ fn restore_live_settings_for_provider_backfill(
             }
         }
     }
-
-    result.settings
 }
 
 pub(crate) fn normalize_provider_common_config_for_storage(
