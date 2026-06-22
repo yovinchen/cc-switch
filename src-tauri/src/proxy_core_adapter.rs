@@ -1529,6 +1529,29 @@ pub(crate) fn provider_codex_backfill_parts(provider: &Provider) -> CodexProvide
     }
 }
 
+pub(crate) fn restore_codex_settings_for_provider_backfill(
+    provider: &Provider,
+    settings: &mut Value,
+) -> Result<(), AppError> {
+    let backfill_parts = provider_codex_backfill_parts(provider);
+    crate::codex_config::restore_codex_settings_for_backfill(
+        settings,
+        backfill_parts.template_settings,
+        backfill_parts.restore_provider_token,
+    )
+}
+
+pub(crate) fn strip_codex_unified_session_bucket_for_provider_backfill(
+    provider: &Provider,
+    settings: &mut Value,
+) -> Result<(), AppError> {
+    let backfill_parts = provider_codex_backfill_parts(provider);
+    if backfill_parts.strip_unified_session_bucket {
+        crate::codex_config::strip_codex_unified_session_bucket_from_settings(settings)?;
+    }
+    Ok(())
+}
+
 pub(crate) fn apply_codex_unified_session_bucket_for_provider(
     provider: &Provider,
     settings: &mut Value,
@@ -6655,6 +6678,63 @@ experimental_bearer_token = "bearer-token"
         let official_backfill_parts = provider_codex_backfill_parts(&official_category_provider);
         assert!(!official_backfill_parts.restore_provider_token);
         assert!(official_backfill_parts.strip_unified_session_bucket);
+        let mut live_backfill_settings = json!({
+            "auth": {},
+            "config": r#"model_provider = "custom"
+
+[model_providers.custom]
+experimental_bearer_token = "live-token"
+"#
+        });
+        restore_codex_settings_for_provider_backfill(
+            &custom_category_provider,
+            &mut live_backfill_settings,
+        )
+        .expect("restore codex provider backfill");
+        assert_eq!(
+            live_backfill_settings
+                .get("auth")
+                .and_then(|auth| auth.get("OPENAI_API_KEY"))
+                .and_then(Value::as_str),
+            Some("live-token")
+        );
+        assert!(
+            !live_backfill_settings
+                .get("config")
+                .and_then(Value::as_str)
+                .expect("restored config")
+                .contains("experimental_bearer_token")
+        );
+        let injected_unified_config =
+            crate::codex_config::inject_codex_unified_session_bucket("").expect("inject");
+        let mut official_unified_backfill = json!({"config": injected_unified_config});
+        strip_codex_unified_session_bucket_for_provider_backfill(
+            &official_category_provider,
+            &mut official_unified_backfill,
+        )
+        .expect("strip official unified session bucket");
+        assert!(
+            !official_unified_backfill
+                .get("config")
+                .and_then(Value::as_str)
+                .expect("official stripped config")
+                .contains("model_provider")
+        );
+        let mut custom_unified_backfill = json!({
+            "config": crate::codex_config::inject_codex_unified_session_bucket("").expect("inject")
+        });
+        strip_codex_unified_session_bucket_for_provider_backfill(
+            &custom_category_provider,
+            &mut custom_unified_backfill,
+        )
+        .expect("custom backfill no-op");
+        assert!(
+            custom_unified_backfill
+                .get("config")
+                .and_then(Value::as_str)
+                .expect("custom retained config")
+                .contains("model_provider")
+        );
         let write_settings = json!({
             "auth": {"OPENAI_API_KEY": "sk-write"},
             "config": "model = \"gpt-5\""

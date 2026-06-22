@@ -16,12 +16,12 @@ use crate::provider::Provider;
 use crate::proxy_core_adapter::{
     codex_config_text_from_settings, gemini_env_map_from_settings,
     gemini_env_value_from_env_json, opencode_live_provider_fragment_has_provider_fields,
-    provider_codex_backfill_parts, provider_codex_imported_live_category,
-    provider_codex_live_snapshot_parts,
+    provider_codex_imported_live_category, provider_codex_live_snapshot_parts,
     provider_gemini_env_map, provider_gemini_live_config_object,
     provider_model_catalog_raw_value, provider_opencode_live_provider_fragment,
-    provider_openclaw_has_live_provider_fields, validate_provider_gemini_settings_strict,
-    CodexLiveSnapshotIssue, GeminiLiveConfigIssue,
+    provider_openclaw_has_live_provider_fields, restore_codex_settings_for_provider_backfill,
+    strip_codex_unified_session_bucket_for_provider_backfill,
+    validate_provider_gemini_settings_strict, CodexLiveSnapshotIssue, GeminiLiveConfigIssue,
 };
 use crate::services::mcp::McpService;
 use crate::store::AppState;
@@ -590,12 +590,7 @@ fn restore_live_settings_for_provider_backfill(
     }
 
     let mut settings = live_settings;
-    let backfill_parts = provider_codex_backfill_parts(provider);
-    if let Err(err) = crate::codex_config::restore_codex_settings_for_backfill(
-        &mut settings,
-        backfill_parts.template_settings,
-        backfill_parts.restore_provider_token,
-    ) {
+    if let Err(err) = restore_codex_settings_for_provider_backfill(provider, &mut settings) {
         log::warn!(
             "Failed to restore Codex settings while backfilling '{}': {err}",
             provider.id
@@ -604,15 +599,13 @@ fn restore_live_settings_for_provider_backfill(
 
     // 统一会话开关注入的共享 `custom` 路由只属于 live 配置；切换回填时
     // 必须剥掉，否则官方供应商的存储配置被污染，关闭开关后无法还原。
-    if backfill_parts.strip_unified_session_bucket {
-        if let Err(err) =
-            crate::codex_config::strip_codex_unified_session_bucket_from_settings(&mut settings)
-        {
-            log::warn!(
-                "Failed to strip unified session bucket while backfilling '{}': {err}",
-                provider.id
-            );
-        }
+    if let Err(err) =
+        strip_codex_unified_session_bucket_for_provider_backfill(provider, &mut settings)
+    {
+        log::warn!(
+            "Failed to strip unified session bucket while backfilling '{}': {err}",
+            provider.id
+        );
     }
 
     // `modelCatalog` is a cc-switch–private field whose SSOT is the DB. Live's
