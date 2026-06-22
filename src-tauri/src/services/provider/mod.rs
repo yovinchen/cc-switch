@@ -18,8 +18,8 @@ use crate::provider::{Provider, UsageResult};
 use crate::proxy_core_adapter::{
     common_config_snippet_from_settings, common_config_snippet_issue_message,
     normalize_claude_models_in_value, provider_app_has_current_provider,
-    provider_credential_issue_spec, provider_credential_values,
-    provider_live_config_presence_error_policy,
+    provider_credential_issue_spec, provider_credential_values, provider_key_change_policy_issue,
+    provider_key_change_policy_issue_message, provider_live_config_presence_error_policy,
     provider_settings_validation_issue_spec, provider_settings_validation_parts,
     proxy_live_config_owned_by_takeover,
     proxy_switch_should_hot_switch, should_block_proxy_switch_to_provider,
@@ -1468,9 +1468,11 @@ impl ProviderService {
         normalize_provider_common_config_for_storage(state.db.as_ref(), &app_type, &mut provider)?;
 
         if provider_id_changed {
-            if !app_type.is_additive_mode() {
+            if let Some(issue) =
+                provider_key_change_policy_issue(&app_type, existing_provider.as_ref())
+            {
                 return Err(AppError::Message(
-                    "Only additive-mode providers support changing provider key".to_string(),
+                    provider_key_change_policy_issue_message(issue).to_string(),
                 ));
             }
 
@@ -1481,21 +1483,6 @@ impl ProviderService {
                     app_type.as_str()
                 )));
             };
-
-            // OMO / OMO Slim providers are activated via a dedicated current-state mechanism
-            // (set_omo_provider_current) that is NOT captured by provider_exists_in_live_config,
-            // which only checks opencode.json. A rename would orphan that current-state marker
-            // and silently break subsequent OMO file syncs. Block it unconditionally.
-            if matches!(app_type, AppType::OpenCode)
-                && matches!(
-                    existing_provider.category.as_deref(),
-                    Some("omo") | Some("omo-slim")
-                )
-            {
-                return Err(AppError::Message(
-                    "Provider key cannot be changed for OMO/OMO Slim providers".to_string(),
-                ));
-            }
 
             let original_in_live = Self::check_live_config_exists(
                 &app_type,

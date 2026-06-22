@@ -1252,6 +1252,45 @@ pub(crate) fn provider_live_config_presence_error_policy(
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum ProviderKeyChangePolicyIssue {
+    UnsupportedAppMode,
+    ExclusiveCurrentStateProvider,
+}
+
+pub(crate) fn provider_key_change_policy_issue(
+    app_type: &AppType,
+    existing_provider: Option<&Provider>,
+) -> Option<ProviderKeyChangePolicyIssue> {
+    if !app_type.is_additive_mode() {
+        return Some(ProviderKeyChangePolicyIssue::UnsupportedAppMode);
+    }
+
+    if matches!(app_type, AppType::OpenCode)
+        && matches!(
+            existing_provider.and_then(|provider| provider.category.as_deref()),
+            Some("omo") | Some("omo-slim")
+        )
+    {
+        return Some(ProviderKeyChangePolicyIssue::ExclusiveCurrentStateProvider);
+    }
+
+    None
+}
+
+pub(crate) fn provider_key_change_policy_issue_message(
+    issue: ProviderKeyChangePolicyIssue,
+) -> &'static str {
+    match issue {
+        ProviderKeyChangePolicyIssue::UnsupportedAppMode => {
+            "Only additive-mode providers support changing provider key"
+        }
+        ProviderKeyChangePolicyIssue::ExclusiveCurrentStateProvider => {
+            "Provider key cannot be changed for OMO/OMO Slim providers"
+        }
+    }
+}
+
 /// Reads old Claude model keys, writes DEFAULT_* keys, and deletes legacy SMALL_FAST.
 pub(crate) fn normalize_claude_models_in_value(settings: &mut Value) -> bool {
     let mut changed = false;
@@ -12692,6 +12731,48 @@ command = "latest-command"
         assert_eq!(
             provider_live_config_presence_error_policy(Some(false)),
             ProviderLiveConfigPresenceErrorPolicy::TreatErrorAsMissing
+        );
+    }
+
+    #[test]
+    fn provider_key_change_policy_blocks_non_additive_and_omo_providers() {
+        assert_eq!(
+            provider_key_change_policy_issue(&AppType::Claude, None),
+            Some(ProviderKeyChangePolicyIssue::UnsupportedAppMode)
+        );
+
+        let mut omo_provider = Provider::with_id(
+            "omo-provider".to_string(),
+            "OMO Provider".to_string(),
+            json!({}),
+            None,
+        );
+        omo_provider.category = Some("omo".to_string());
+        assert_eq!(
+            provider_key_change_policy_issue(&AppType::OpenCode, Some(&omo_provider)),
+            Some(ProviderKeyChangePolicyIssue::ExclusiveCurrentStateProvider)
+        );
+
+        let mut custom_provider = Provider::with_id(
+            "custom-provider".to_string(),
+            "Custom Provider".to_string(),
+            json!({}),
+            None,
+        );
+        custom_provider.category = Some("custom".to_string());
+        assert_eq!(
+            provider_key_change_policy_issue(&AppType::OpenCode, Some(&custom_provider)),
+            None
+        );
+        assert_eq!(
+            provider_key_change_policy_issue(&AppType::OpenClaw, None),
+            None
+        );
+        assert_eq!(
+            provider_key_change_policy_issue_message(
+                ProviderKeyChangePolicyIssue::UnsupportedAppMode
+            ),
+            "Only additive-mode providers support changing provider key"
         );
     }
 
