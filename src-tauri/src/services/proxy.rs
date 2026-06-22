@@ -1163,7 +1163,7 @@ impl ProxyService {
                 if let Ok(Some(backup)) = self.db.get_live_backup("codex").await {
                     let config: Value = serde_json::from_str(&backup.original_config)
                         .map_err(|e| format!("解析 Codex 备份失败: {e}"))?;
-                    self.write_codex_live(&config)?;
+                    self.write_codex_live_verbatim(&config)?;
                     log::info!("Codex Live 配置已恢复");
                 }
             }
@@ -1274,7 +1274,7 @@ impl ProxyService {
     fn write_live_config_for_app(&self, app_type: &AppType, config: &Value) -> Result<(), String> {
         match app_type {
             AppType::Claude => self.write_claude_live(config),
-            AppType::Codex => self.write_codex_live(config),
+            AppType::Codex => self.write_codex_live_verbatim(config),
             AppType::Gemini => self.write_gemini_live(config),
             _ => Err("该应用不支持代理功能".to_string()),
         }
@@ -1403,7 +1403,7 @@ impl ProxyService {
         )
         .map_err(|e| format!("清理 Codex 接管占位符失败: {e}"))?;
 
-        self.write_codex_live(&config)?;
+        self.write_codex_live_verbatim(&config)?;
         Ok(())
     }
 
@@ -1708,10 +1708,6 @@ impl ProxyService {
     fn read_codex_live(&self) -> Result<Value, String> {
         crate::codex_config::read_codex_live_settings()
             .map_err(|e| format!("读取 Codex Live 配置失败: {e}"))
-    }
-
-    fn write_codex_live(&self, config: &Value) -> Result<(), String> {
-        self.write_codex_live_verbatim(config)
     }
 
     fn write_codex_live_for_provider(
@@ -4615,7 +4611,7 @@ requires_openai_auth = true
         .await
         .expect("seed live backup");
         service
-            .write_codex_live(&json!({
+            .write_codex_live_verbatim(&json!({
                 "auth": {
                     "OPENAI_API_KEY": PROXY_TOKEN_PLACEHOLDER
                 },
@@ -4790,7 +4786,7 @@ requires_openai_auth = true
         .await
         .expect("seed live backup");
         service
-            .write_codex_live(&json!({
+            .write_codex_live_verbatim(&json!({
                 "auth": {
                     "OPENAI_API_KEY": PROXY_TOKEN_PLACEHOLDER
                 },
