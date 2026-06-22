@@ -21,6 +21,7 @@ use crate::proxy_core_adapter::{
     provider_model_catalog_raw_value, provider_opencode_live_provider_fragment,
     provider_openclaw_has_live_provider_fields, proxy_live_config_owned_by_takeover,
     restore_codex_settings_for_provider_backfill,
+    sanitize_claude_settings_for_live,
     strip_codex_unified_session_bucket_for_provider_backfill,
     validate_provider_gemini_settings_strict, CodexLiveSnapshotIssue, GeminiLiveConfigIssue,
 };
@@ -31,18 +32,6 @@ use super::gemini_auth::{
     detect_gemini_auth_type, ensure_google_oauth_security_flag, GeminiAuthType,
 };
 use super::normalize_claude_models_in_value;
-
-pub(crate) fn sanitize_claude_settings_for_live(settings: &Value) -> Value {
-    let mut v = settings.clone();
-    if let Some(obj) = v.as_object_mut() {
-        // Internal-only fields - never write to Claude Code settings.json
-        obj.remove("api_format");
-        obj.remove("apiFormat");
-        obj.remove("openrouter_compat_mode");
-        obj.remove("openrouterCompatMode");
-    }
-    v
-}
 
 pub(crate) fn provider_exists_in_live_config(
     app_type: &AppType,

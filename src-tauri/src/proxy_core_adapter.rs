@@ -2624,6 +2624,17 @@ pub(crate) fn proxy_hot_switch_should_sync_claude_live_while_proxy_active(
     matches!(app_type, AppType::Claude) && proxy_live_owned_by_takeover
 }
 
+pub(crate) fn sanitize_claude_settings_for_live(settings: &Value) -> Value {
+    let mut sanitized = settings.clone();
+    if let Some(obj) = sanitized.as_object_mut() {
+        obj.remove("api_format");
+        obj.remove("apiFormat");
+        obj.remove("openrouter_compat_mode");
+        obj.remove("openrouterCompatMode");
+    }
+    sanitized
+}
+
 pub(crate) fn proxy_takeover_marked_state_is_reusable(
     has_live_backup: bool,
     live_matches_current_proxy: bool,
@@ -7669,6 +7680,30 @@ base_url = "https://api.openai.com/v1"
         assert!(!proxy_takeover_should_restore_existing_backup_before_retakeover(
             true, true
         ));
+    }
+
+    #[test]
+    fn sanitize_claude_settings_for_live_strips_host_only_fields() {
+        let sanitized = sanitize_claude_settings_for_live(&json!({
+            "api_format": "anthropic",
+            "apiFormat": "openai",
+            "openrouter_compat_mode": true,
+            "openrouterCompatMode": true,
+            "env": {
+                "ANTHROPIC_API_KEY": "sk-test"
+            },
+            "includeCoAuthoredBy": false
+        }));
+
+        assert_eq!(
+            sanitized,
+            json!({
+                "env": {
+                    "ANTHROPIC_API_KEY": "sk-test"
+                },
+                "includeCoAuthoredBy": false
+            })
+        );
     }
 
     #[test]
