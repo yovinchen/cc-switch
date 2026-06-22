@@ -1,7 +1,11 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 
-const ALLOWED_PROXY_CORE_FILES: &[&str] = &["src/lib.rs", "src/proxy_core_adapter.rs"];
+const ALLOWED_PROXY_CORE_FILES: &[&str] = &[
+    "src/lib.rs",
+    "src/proxy_core_adapter.rs",
+    "src/services/model_fetch_transport.rs",
+];
 const ALLOWED_PROXY_ENGINE_CONSTRUCTOR_FILES: &[&str] = &["src/proxy_core_adapter.rs"];
 
 const FORBIDDEN_MARKERS: &[&str] = &["crate::proxy_core::", "cc_switch_proxy_core::"];
@@ -109,6 +113,16 @@ const FORBIDDEN_FORWARDER_ATTEMPT_RUNTIME_MARKERS: &[&str] = &[
 const FORBIDDEN_PROXY_CORE_HOST_ERROR_MARKERS: &[&str] = &["ProxyCoreError::"];
 const FORBIDDEN_PROXY_CORE_ADAPTER_PROVIDER_COPILOT_MARKERS: &[&str] =
     &["providers::copilot_auth::COPILOT_", "copilot_auth::COPILOT_"];
+const FORBIDDEN_PROXY_CORE_ADAPTER_MODEL_FETCH_FACADE_MARKERS: &[&str] = &[
+    "FetchedModel",
+    "CodexOAuthModelsRequest",
+    "OpenAiCompatibleModelsRequest",
+    "ModelFetchHttpResponse",
+    "CodexOAuthModelsTransport",
+    "OpenAiCompatibleModelsTransport",
+    "fetch_openai_compatible_models_with_transport",
+    "fetch_codex_oauth_models_with_transport",
+];
 const FORBIDDEN_PROXY_CORE_HOST_USAGE_PROJECTION_MARKERS: &[&str] =
     &["missing_pricing_warning_message"];
 const FORBIDDEN_PROXY_CORE_HOST_APP_SUMMARY_PROJECTION_MARKERS: &[&str] =
@@ -461,7 +475,7 @@ fn host_code_uses_proxy_core_through_adapter_boundary() {
 
     assert!(
         violations.is_empty(),
-        "host code must access proxy-core through src/proxy_core_adapter.rs:\n{}",
+        "host code must access proxy-core through approved host adapter files:\n{}",
         violations.join("\n")
     );
 }
@@ -2037,6 +2051,33 @@ fn production_sources_do_not_import_managed_auth_through_providers() {
     assert!(
         violations.is_empty(),
         "Managed account auth imports must target proxy::{{copilot_auth,codex_oauth_auth}}, not proxy::providers:\n{}",
+        violations.join("\n")
+    );
+}
+
+#[test]
+fn proxy_core_adapter_excludes_model_fetch_transport_facades() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let path = manifest_dir.join("src/proxy_core_adapter.rs");
+    let source = fs::read_to_string(&path).expect("read proxy_core_adapter.rs");
+
+    let mut violations = Vec::new();
+    for (line_index, line) in production_lines(&source) {
+        let code = line.split("//").next().unwrap_or_default();
+        for marker in FORBIDDEN_PROXY_CORE_ADAPTER_MODEL_FETCH_FACADE_MARKERS {
+            if code.contains(marker) {
+                violations.push(format!(
+                    "src/proxy_core_adapter.rs:{} contains model fetch facade marker `{}`",
+                    line_index + 1,
+                    marker
+                ));
+            }
+        }
+    }
+
+    assert!(
+        violations.is_empty(),
+        "Model fetch transport should use proxy_core::api::model_catalog directly instead of proxy_core_adapter facades:\n{}",
         violations.join("\n")
     );
 }

@@ -1471,6 +1471,23 @@ mod tests {
     }
 
     #[test]
+    fn fetched_model_serializes_frontend_contract() {
+        let value = serde_json::to_value(FetchedModel {
+            id: "gpt-5.4".to_string(),
+            owned_by: Some("openai".to_string()),
+        })
+        .expect("serialize fetched model");
+
+        assert_eq!(
+            value,
+            json!({
+                "id": "gpt-5.4",
+                "ownedBy": "openai"
+            })
+        );
+    }
+
+    #[test]
     fn parse_codex_oauth_models_accepts_openai_style_data() {
         let models = parse_codex_oauth_models(&json!({
             "data": [
