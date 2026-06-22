@@ -906,6 +906,7 @@
 本轮继续把 `ProxyRequest` 解析、forwarder runtime config/current-provider/attempt source 读取和 preplanned launcher 串联为单一 adapter forward runtime 入口，host forward runtime 只保留资源包委托。
 本轮继续把 `CcSwitchConfigSource` 的 global/app/summary/runtime 配置 DB 读取和 core DTO 投影收敛到 adapter source wrapper，host config source 只保留端口委托。
 本轮继续把 `CcSwitchProviderSource` 的 provider list/get/current-provider DB 读取和 `ProviderSpec` 投影收敛到 adapter source wrapper，host provider source 只保留端口委托与 active-route 内存读取。
+本轮继续把 `CcSwitchChannelSource` 的 channel spec list/get 读取与 `ChannelSpec` 投影收敛到 adapter source wrapper，host channel source 的 spec 查询只保留端口委托。
 本轮还把 ConfigSource 的 app 配置 wrapper 收敛到 adapter，host 不再显式读取 settings current-provider 后再拼 `ProxyAppConfig`。
 本轮继续把 channel-key DB record 到 runtime key value 的字段投影收敛到 adapter，host auth-profile 路径不再直接查询或投影 channel-key。
 本轮也把 management handler 中 provider 到 core spec 的直接 trait 调用收敛为 adapter helper，provider list/current route handler 不再暴露投影细节。

@@ -5491,8 +5491,36 @@ pub(crate) fn channel_specs_from_source(
     proxy_channel_records_to_core_specs_for_query(channels, query)
 }
 
+pub(crate) async fn channel_specs_from_source_lookup(
+    db: &Database,
+    router: &ProviderRouter,
+    query: ChannelQuery<'_>,
+) -> ProxyCoreResult<Vec<ChannelSpec>> {
+    let channels = if query.allow_legacy_projection {
+        router
+            .list_channels_for_app(query.app.as_str())
+            .await
+            .map_err(|error| app_error("list channels", error))?
+            .0
+    } else {
+        db.list_proxy_channels_for_app(query.app.as_str())
+            .map_err(|error| app_error("list materialized channels", error))?
+    };
+    Ok(channel_specs_from_source(channels, &query))
+}
+
 pub(crate) fn channel_spec_from_source(channel: Option<ProxyChannelRecord>) -> Option<ChannelSpec> {
     channel.map(|channel| proxy_channel_record_to_core_spec(&channel))
+}
+
+pub(crate) fn channel_spec_from_source_lookup(
+    db: &Database,
+    channel_id: &str,
+) -> ProxyCoreResult<Option<ChannelSpec>> {
+    let channel = db
+        .get_proxy_channel(channel_id)
+        .map_err(|error| app_error("get channel", error))?;
+    Ok(channel_spec_from_source(channel))
 }
 
 pub(crate) fn channel_route_source_for_materialized_records(

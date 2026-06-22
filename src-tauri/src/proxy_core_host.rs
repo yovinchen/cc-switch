@@ -36,13 +36,13 @@ use crate::proxy_core_adapter::{
     channel_health_reset_plan_from_lookup,
     channel_test_app_type_from_probe_request,
     channel_test_provider_from_probe_source,
+    channel_spec_from_source_lookup,
+    channel_specs_from_source_lookup,
     proxy_channel_key_record_to_core,
     proxy_channel_key_records_to_core,
     proxy_channel_model_records_to_core,
     channel_migration_materialize_input_from_result,
     channel_migration_preview_input_from_result,
-    channel_spec_from_source,
-    channel_specs_from_source,
     client_model_catalog_from_source,
     current_provider_id_from_db_source,
     forward_proxy_request_with_host_runtime,
@@ -329,18 +329,7 @@ impl ChannelSource for CcSwitchChannelSource {
         query: ChannelQuery<'a>,
     ) -> BoxFuture<'a, ProxyCoreResult<Vec<ChannelSpec>>> {
         Box::pin(async move {
-            let channels = if query.allow_legacy_projection {
-                self.router
-                    .list_channels_for_app(query.app.as_str())
-                    .await
-                    .map_err(|error| app_error("list channels", error))?
-                    .0
-            } else {
-                self.db
-                    .list_proxy_channels_for_app(query.app.as_str())
-                    .map_err(|error| app_error("list materialized channels", error))?
-            };
-            Ok(channel_specs_from_source(channels, &query))
+            channel_specs_from_source_lookup(&self.db, &self.router, query).await
         })
     }
 
@@ -348,13 +337,7 @@ impl ChannelSource for CcSwitchChannelSource {
         &'a self,
         channel_id: &'a str,
     ) -> BoxFuture<'a, ProxyCoreResult<Option<ChannelSpec>>> {
-        Box::pin(async move {
-            let channel = self
-                .db
-                .get_proxy_channel(channel_id)
-                .map_err(|error| app_error("get channel", error))?;
-            Ok(channel_spec_from_source(channel))
-        })
+        Box::pin(async move { channel_spec_from_source_lookup(&self.db, channel_id) })
     }
 
     fn create_channel_record<'a>(
