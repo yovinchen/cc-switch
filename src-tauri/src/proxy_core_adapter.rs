@@ -3956,6 +3956,26 @@ pub(crate) fn select_provider_ids(
     crate::proxy_core::api::routing::select_provider_ids(input)
 }
 
+pub(crate) fn select_current_provider_from_router_source(
+    app_type: &str,
+    current: Option<Provider>,
+) -> Result<Vec<Provider>, AppError> {
+    let selected_ids = select_provider_ids(ProviderSelectionInput::current(
+        current.as_ref().map(|provider| provider.id.clone()),
+    ))
+    .map_err(|error| app_error_from_provider_selection_failure(app_type, error))?;
+
+    Ok(selected_ids
+        .into_iter()
+        .filter_map(|provider_id| {
+            current
+                .as_ref()
+                .filter(|provider| provider.id == provider_id)
+                .cloned()
+        })
+        .collect())
+}
+
 pub(crate) fn plan_auto_failover_toggle(
     input: AutoFailoverToggleInput,
 ) -> Result<AutoFailoverTogglePlan, ProxyCoreError> {
@@ -9157,6 +9177,17 @@ mod tests {
             "db-provider"
         );
         assert_eq!(forward_current_provider_id_from_source(None, || None), "");
+        let current_provider =
+            Provider::with_id("provider-a".to_string(), "Provider A".to_string(), json!({}), None);
+        let selected_current =
+            select_current_provider_from_router_source("claude", Some(current_provider))
+                .expect("selected current provider");
+        assert_eq!(selected_current.len(), 1);
+        assert_eq!(selected_current[0].id, "provider-a");
+        assert!(matches!(
+            select_current_provider_from_router_source("claude", None),
+            Err(AppError::NoProvidersConfigured)
+        ));
 
         let mut response = resolve_channel_route(
             RouteResolveRequest {

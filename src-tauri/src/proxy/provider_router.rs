@@ -10,7 +10,7 @@ use crate::proxy_core_adapter::{
     app_error_from_provider_selection_failure, app_error_from_proxy_core_error,
     app_type_from_circuit_key, channel_circuit_key, channel_circuit_key_prefix,
     circuit_breaker_config_from_app_config, circuit_failure_threshold_from_app_config,
-    current_provider_id_from_router_sources,
+    current_provider_id_from_router_sources, select_current_provider_from_router_source,
     provider_circuit_key, provider_circuit_key_prefix, channel_route_records_from_sources,
     provider_failover_circuit_lookups,
     provider_selection_candidate_from_failover_lookup, proxy_channel_route_inputs_to_core,
@@ -124,20 +124,7 @@ impl ProviderRouter {
             })
             .transpose()?;
 
-        let selected_ids = select_provider_ids(ProviderSelectionInput::current(
-            current.as_ref().map(|provider| provider.id.clone()),
-        ))
-        .map_err(|error| app_error_from_provider_selection_failure(app_type, error))?;
-
-        Ok(selected_ids
-            .into_iter()
-            .filter_map(|provider_id| {
-                current
-                    .as_ref()
-                    .filter(|provider| provider.id == provider_id)
-                    .cloned()
-            })
-            .collect())
+        select_current_provider_from_router_source(app_type, current)
     }
 
     /// List routable channels for an app without changing the forwarding path.
