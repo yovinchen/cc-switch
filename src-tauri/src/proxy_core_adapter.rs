@@ -2064,6 +2064,8 @@ pub(crate) type ProxyChannelWriteRequest =
     crate::proxy_core::api::management::ProxyChannelWriteRequest;
 pub(crate) type ProviderSelectionCandidate =
     crate::proxy_core::api::routing::ProviderSelectionCandidate;
+pub(crate) type ProviderFailoverCircuitLookup =
+    crate::proxy_core::api::routing::ProviderFailoverCircuitLookup;
 pub(crate) type ProviderSelectionFailure =
     crate::proxy_core::api::routing::ProviderSelectionFailure;
 pub(crate) type ProviderSelectionInput =
@@ -3764,6 +3766,28 @@ pub(crate) fn select_provider_ids(
     input: ProviderSelectionInput,
 ) -> Result<Vec<String>, ProviderSelectionFailure> {
     crate::proxy_core::api::routing::select_provider_ids(input)
+}
+
+pub(crate) fn provider_failover_circuit_lookups(
+    app_type: &str,
+    ordered_provider_ids: Vec<String>,
+    configured_provider_ids: Vec<String>,
+) -> Vec<ProviderFailoverCircuitLookup> {
+    crate::proxy_core::api::routing::provider_failover_circuit_lookups(
+        app_type,
+        ordered_provider_ids,
+        configured_provider_ids,
+    )
+}
+
+pub(crate) fn provider_selection_candidate_from_failover_lookup(
+    lookup: ProviderFailoverCircuitLookup,
+    available: bool,
+) -> ProviderSelectionCandidate {
+    crate::proxy_core::api::routing::provider_selection_candidate_from_failover_lookup(
+        lookup,
+        available,
+    )
 }
 
 pub(crate) fn current_provider_id_from_sources(

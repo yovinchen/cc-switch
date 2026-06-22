@@ -335,7 +335,7 @@
 324. route dry-run 使用的 channel route input + source kind 投影已收敛到 `proxy_core_adapter::proxy_channel_route_inputs_to_core`；`proxy::channel_routing` 只负责调用 core resolver 和错误适配，且保留 DB 原始 status 文本用于 rejected reason。
 325. handler 中直接构造 `ProxyEngine::new(state.proxy_core_services.clone())` 的重复逻辑已收敛到 `ProxyState::proxy_engine`；HTTP handler 不再关心 core service 容器的克隆方式，后续可在 state/adapter 层统一调整 engine 生命周期。
 326. route dry-run 的 circuit-open channel id 到 rejected:circuit_open response mutation 已收敛到 `proxy-core::reject_unavailable_channel_ids`；`ProviderRouter` 只负责查询当前候选的 circuit breaker 可用性并传回不可用 channel id 列表。
-327. provider failover/current 选择的纯策略已迁入 `proxy-core::provider_selection`；`ProviderRouter` 只负责读取 DB/settings/circuit breaker 事实并把 `ProviderSelectionFailure` 映射回既有 `AppError` 与 FO 日志。
+327. provider failover/current 选择的纯策略、failover 队列到 provider circuit lookup/candidate 的投影已迁入 `proxy-core::provider_selection`；`ProviderRouter` 只负责读取 DB/settings/circuit breaker 事实并把 `ProviderSelectionFailure` 映射回既有 `AppError` 与 FO 日志。
 328. `CircuitBreakerConfig` DTO、默认值和 `AppProxyConfig` 到熔断器配置/失败阈值的投影已迁入 `proxy-core::circuit_breaker_config`；host `proxy::circuit_breaker` 只保留状态机实现，调用方直接引用 core 配置类型。
 329. provider/channel circuit breaker key、app type 解析和 app scope prefix 规则已迁入 `proxy-core::circuit_breaker_key`；`ProviderRouter` 不再手写 `app:provider` / `channel:app:channel` 字符串契约。
 330. response runtime policy 已在 `proxy-core::response_timeout` 中统一产出 failover-gated timeout 和 `max_retries`；host `RequestContext` 不再手写 failover 关闭时 retry 清零规则。
@@ -1709,6 +1709,8 @@ Channel 管理 API 的部分 contract 也已开始收敛到 core：`management_a
 materialized channel 优先、空表才 fallback 到 legacy projection 的 source 选择规则已由 `channel_route_source_for_materialized_count` 固化；`ProviderRouter` 只读取 materialized records、按 core 决策决定是否再取 legacy preview。
 
 dry-run route 的 circuit-open 识别也开始收敛：`route_candidate_channel_circuit_keys` 负责把 `RouteResolveResponse` 的候选投影成 channel circuit lookup facts，`ProviderRouter` 只查询已有 breaker 可用性并把不可用 channel id 交回 `reject_unavailable_channel_ids`。
+
+provider failover 的 circuit lookup 也已开始收敛：`provider_failover_circuit_lookups` 负责保留 failover queue 顺序、标记 missing provider 并生成已配置 provider 的 circuit key；`ProviderRouter` 只读取 DB provider facts 与 breaker 可用性，再把 lookup 投影为 `ProviderSelectionCandidate` 交回 core selection 策略。
 
 管理 API 查询类入口已基本收敛到 `ProxyEngine`：`list_proxy_providers`、`list_proxy_channels` 的 route-aware 分支、`list_proxy_groups` 和 `test_proxy_channel` 都只保留 HTTP path/query/body 提取与错误映射；下一步应继续减少 host runtime 对固定 app catalog、Tauri runtime smoke 覆盖和外部集成契约的隐性依赖。
 

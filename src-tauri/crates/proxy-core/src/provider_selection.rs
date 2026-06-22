@@ -1,3 +1,6 @@
+use super::circuit_breaker_key::provider_circuit_key;
+use std::collections::HashSet;
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ProviderSelectionCandidate {
     pub provider_id: String,
@@ -15,6 +18,27 @@ impl ProviderSelectionCandidate {
             provider_id: provider_id.into(),
             configured,
             available,
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ProviderFailoverCircuitLookup {
+    pub provider_id: String,
+    pub circuit_key: Option<String>,
+    pub configured: bool,
+}
+
+impl ProviderFailoverCircuitLookup {
+    pub fn new(
+        provider_id: impl Into<String>,
+        circuit_key: Option<String>,
+        configured: bool,
+    ) -> Self {
+        Self {
+            provider_id: provider_id.into(),
+            circuit_key,
+            configured,
         }
     }
 }
@@ -42,6 +66,30 @@ impl ProviderSelectionInput {
             failover_candidates,
         }
     }
+}
+
+pub fn provider_failover_circuit_lookups(
+    app_type: &str,
+    ordered_provider_ids: impl IntoIterator<Item = String>,
+    configured_provider_ids: impl IntoIterator<Item = String>,
+) -> Vec<ProviderFailoverCircuitLookup> {
+    let configured_provider_ids = configured_provider_ids.into_iter().collect::<HashSet<_>>();
+
+    ordered_provider_ids
+        .into_iter()
+        .map(|provider_id| {
+            let configured = configured_provider_ids.contains(&provider_id);
+            let circuit_key = configured.then(|| provider_circuit_key(app_type, &provider_id));
+            ProviderFailoverCircuitLookup::new(provider_id, circuit_key, configured)
+        })
+        .collect()
+}
+
+pub fn provider_selection_candidate_from_failover_lookup(
+    lookup: ProviderFailoverCircuitLookup,
+    available: bool,
+) -> ProviderSelectionCandidate {
+    ProviderSelectionCandidate::new(lookup.provider_id, lookup.configured, available)
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -137,10 +185,11 @@ pub fn should_attempt_restored_provider_switchback(
 mod tests {
     use super::{
         current_provider_db_fallback_required, current_provider_id_from_sources,
-        current_provider_id_option_from_sources, select_provider_ids,
+        current_provider_id_option_from_sources, provider_failover_circuit_lookups,
+        provider_selection_candidate_from_failover_lookup, select_provider_ids,
         should_attempt_restored_provider_switchback,
-        should_block_proxy_switch_to_provider_category, ProviderSelectionCandidate,
-        ProviderSelectionFailure, ProviderSelectionInput,
+        should_block_proxy_switch_to_provider_category, ProviderFailoverCircuitLookup,
+        ProviderSelectionCandidate, ProviderSelectionFailure, ProviderSelectionInput,
     };
 
     #[test]
@@ -163,6 +212,61 @@ mod tests {
         .expect("selected providers");
 
         assert_eq!(selected, vec!["provider-b", "provider-a"]);
+    }
+
+    #[test]
+    fn failover_circuit_lookups_preserve_queue_and_mark_missing_providers() {
+        let lookups = provider_failover_circuit_lookups(
+            "claude",
+            vec![
+                "missing".to_string(),
+                "provider-b".to_string(),
+                "provider-a".to_string(),
+            ],
+            vec!["provider-a".to_string(), "provider-b".to_string()],
+        );
+
+        assert_eq!(
+            lookups,
+            vec![
+                ProviderFailoverCircuitLookup::new("missing", None, false),
+                ProviderFailoverCircuitLookup::new(
+                    "provider-b",
+                    Some("claude:provider-b".to_string()),
+                    true
+                ),
+                ProviderFailoverCircuitLookup::new(
+                    "provider-a",
+                    Some("claude:provider-a".to_string()),
+                    true
+                )
+            ]
+        );
+    }
+
+    #[test]
+    fn failover_lookup_projects_selection_candidate() {
+        let configured = provider_selection_candidate_from_failover_lookup(
+            ProviderFailoverCircuitLookup::new(
+                "provider-a",
+                Some("claude:provider-a".to_string()),
+                true,
+            ),
+            false,
+        );
+        let missing = provider_selection_candidate_from_failover_lookup(
+            ProviderFailoverCircuitLookup::new("missing", None, false),
+            true,
+        );
+
+        assert_eq!(
+            configured,
+            ProviderSelectionCandidate::new("provider-a", true, false)
+        );
+        assert_eq!(
+            missing,
+            ProviderSelectionCandidate::new("missing", false, true)
+        );
     }
 
     #[test]

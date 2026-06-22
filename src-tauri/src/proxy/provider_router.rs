@@ -11,12 +11,13 @@ use crate::proxy_core_adapter::{
     app_type_from_circuit_key, channel_circuit_key, channel_circuit_key_prefix,
     circuit_breaker_config_from_app_config, circuit_failure_threshold_from_app_config,
     provider_circuit_key, provider_circuit_key_prefix,
-    channel_route_source_for_materialized_records, proxy_channel_route_inputs_to_core,
+    channel_route_source_for_materialized_records, provider_failover_circuit_lookups,
+    provider_selection_candidate_from_failover_lookup, proxy_channel_route_inputs_to_core,
     reject_unavailable_channel_ids, resolve_channel_route as resolve_core_channel_route,
     route_candidate_channel_circuit_keys, select_provider_ids, AllowResult, ChannelRouteSource,
     CircuitBreakerConfig,
-    CircuitBreakerStats, ProviderSelectionCandidate, ProviderSelectionFailure,
-    ProviderSelectionInput, ProxyCoreError, RouteResolveRequest, RouteResolveResponse,
+    CircuitBreakerStats, ProviderSelectionFailure, ProviderSelectionInput, ProxyCoreError,
+    RouteResolveRequest, RouteResolveResponse,
 };
 use std::collections::HashMap;
 use std::str::FromStr;
@@ -76,19 +77,22 @@ impl ProviderRouter {
             .map(|item| item.provider_id)
             .collect();
 
-        let mut candidates = Vec::with_capacity(ordered_ids.len());
-        for provider_id in &ordered_ids {
-            let Some(provider) = all_providers.get(provider_id) else {
-                candidates.push(ProviderSelectionCandidate::new(provider_id, false, true));
-                continue;
+        let lookups = provider_failover_circuit_lookups(
+            app_type,
+            ordered_ids,
+            all_providers.keys().cloned().collect(),
+        );
+        let mut candidates = Vec::with_capacity(lookups.len());
+        for lookup in lookups {
+            let available = match lookup.circuit_key.as_ref() {
+                Some(circuit_key) => {
+                    let breaker = self.get_or_create_circuit_breaker(circuit_key).await;
+                    breaker.is_available().await
+                }
+                None => true,
             };
-
-            let circuit_key = provider_circuit_key(app_type, &provider.id);
-            let breaker = self.get_or_create_circuit_breaker(&circuit_key).await;
-            candidates.push(ProviderSelectionCandidate::new(
-                provider_id,
-                true,
-                breaker.is_available().await,
+            candidates.push(provider_selection_candidate_from_failover_lookup(
+                lookup, available,
             ));
         }
 
