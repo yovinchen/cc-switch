@@ -181,7 +181,7 @@ impl ProxyService {
             .get("config")
             .and_then(|v| v.as_str())
             .unwrap_or("");
-        let updated_config = Self::apply_codex_proxy_toml_config_for_provider(
+        let updated_config = codex_takeover_toml_config_for_provider(
             config_str,
             &proxy_codex_base_url,
             Some(provider),
@@ -1058,7 +1058,7 @@ impl ProxyService {
                 .get_current_provider_for_app(&AppType::Codex)
                 .ok()
                 .flatten();
-            let updated_config = Self::apply_codex_proxy_toml_config_for_provider(
+            let updated_config = codex_takeover_toml_config_for_provider(
                 config_str,
                 &proxy_codex_base_url,
                 codex_provider.as_ref(),
@@ -1118,7 +1118,7 @@ impl ProxyService {
                     .and_then(|v| v.as_str())
                     .unwrap_or("");
                 let codex_provider = self.require_current_provider_for_app(&AppType::Codex)?;
-                let updated_config = Self::apply_codex_proxy_toml_config_for_provider(
+                let updated_config = codex_takeover_toml_config_for_provider(
                     config_str,
                     &proxy_codex_base_url,
                     Some(&codex_provider),
@@ -1193,7 +1193,7 @@ impl ProxyService {
                         .get_current_provider_for_app(&AppType::Codex)
                         .ok()
                         .flatten();
-                    let updated_config = Self::apply_codex_proxy_toml_config_for_provider(
+                    let updated_config = codex_takeover_toml_config_for_provider(
                         config_str,
                         &proxy_codex_base_url,
                         codex_provider.as_ref(),
@@ -1768,16 +1768,6 @@ impl ProxyService {
     fn update_toml_base_url(toml_str: &str, new_url: &str) -> String {
         crate::codex_config::update_codex_toml_field(toml_str, "base_url", new_url)
             .unwrap_or_else(|_| toml_str.to_string())
-    }
-
-    /// 接管 Codex 时，本地客户端必须继续以 Responses wire API 访问代理。
-    /// 真实上游是否走 Chat Completions 由 provider 配置决定，并在代理内部转换。
-    fn apply_codex_proxy_toml_config_for_provider(
-        toml_str: &str,
-        proxy_url: &str,
-        provider: Option<&Provider>,
-    ) -> String {
-        codex_takeover_toml_config_for_provider(toml_str, proxy_url, provider)
     }
 
     fn attach_codex_model_catalog_from_provider(
@@ -3659,7 +3649,7 @@ requires_openai_auth = true
     }
 
     #[test]
-    fn apply_codex_proxy_toml_config_forces_local_responses_wire_api() {
+    fn codex_takeover_toml_config_forces_local_responses_wire_api() {
         let input = r#"
 model_provider = "chat_only"
 model = "gpt-5.1-codex"
@@ -3671,8 +3661,7 @@ wire_api = "chat"
 "#;
 
         let proxy_url = "http://127.0.0.1:5000/v1";
-        let output =
-            ProxyService::apply_codex_proxy_toml_config_for_provider(input, proxy_url, None);
+        let output = codex_takeover_toml_config_for_provider(input, proxy_url, None);
         let parsed: toml::Value =
             toml::from_str(&output).expect("updated config should be valid TOML");
 
@@ -3692,7 +3681,7 @@ wire_api = "chat"
     }
 
     #[test]
-    fn apply_codex_proxy_toml_config_keeps_upstream_model_for_chat_provider() {
+    fn codex_takeover_toml_config_keeps_upstream_model_for_chat_provider() {
         let input = r#"
 model_provider = "deepseek"
 model = "deepseek-v4-flash"
@@ -3716,7 +3705,7 @@ wire_api = "responses"
         });
 
         let proxy_url = "http://127.0.0.1:5000/v1";
-        let output = ProxyService::apply_codex_proxy_toml_config_for_provider(
+        let output = codex_takeover_toml_config_for_provider(
             input,
             proxy_url,
             Some(&provider),
@@ -3739,7 +3728,7 @@ wire_api = "responses"
     }
 
     #[test]
-    fn apply_codex_proxy_toml_config_preserves_model_for_responses_provider() {
+    fn codex_takeover_toml_config_preserves_model_for_responses_provider() {
         let input = r#"
 model_provider = "responses"
 model = "upstream-responses-model"
@@ -3762,7 +3751,7 @@ wire_api = "responses"
             ..Default::default()
         });
 
-        let output = ProxyService::apply_codex_proxy_toml_config_for_provider(
+        let output = codex_takeover_toml_config_for_provider(
             input,
             "http://127.0.0.1:5000/v1",
             Some(&provider),
@@ -3777,7 +3766,7 @@ wire_api = "responses"
     }
 
     #[test]
-    fn apply_codex_proxy_toml_config_restores_upstream_model_for_responses_provider() {
+    fn codex_takeover_toml_config_restores_upstream_model_for_responses_provider() {
         let input = r#"
 model_provider = "responses"
 model = "gpt-5.4"
@@ -3807,7 +3796,7 @@ wire_api = "responses"
             ..Default::default()
         });
 
-        let output = ProxyService::apply_codex_proxy_toml_config_for_provider(
+        let output = codex_takeover_toml_config_for_provider(
             input,
             "http://127.0.0.1:5000/v1",
             Some(&provider),
