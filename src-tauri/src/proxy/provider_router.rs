@@ -7,17 +7,16 @@ use crate::error::AppError;
 use crate::provider::Provider;
 use crate::proxy::circuit_breaker::CircuitBreaker;
 use crate::proxy_core_adapter::{
-    app_error_from_provider_selection_failure, app_error_from_proxy_core_error,
-    app_type_from_circuit_key, channel_circuit_key, channel_circuit_key_prefix,
+    app_error_from_proxy_core_error, app_type_from_circuit_key, channel_circuit_key,
+    channel_circuit_key_prefix, channel_route_records_from_sources,
     circuit_breaker_config_from_app_config, circuit_failure_threshold_from_app_config,
-    current_provider_id_from_router_sources, select_current_provider_from_router_source,
-    provider_circuit_key, provider_circuit_key_prefix, channel_route_records_from_sources,
-    provider_failover_circuit_lookups,
-    provider_selection_candidate_from_failover_lookup, proxy_channel_route_inputs_to_core,
-    reject_unavailable_channel_ids, resolve_channel_route as resolve_core_channel_route,
-    route_candidate_channel_circuit_keys, select_provider_ids, AllowResult, ChannelRouteSource,
-    CircuitBreakerConfig,
-    CircuitBreakerStats, ProviderSelectionInput, RouteResolveRequest, RouteResolveResponse,
+    current_provider_id_from_router_sources, provider_circuit_key, provider_circuit_key_prefix,
+    provider_failover_circuit_lookups, provider_selection_candidate_from_failover_lookup,
+    proxy_channel_route_inputs_to_core, reject_unavailable_channel_ids,
+    resolve_channel_route as resolve_core_channel_route, route_candidate_channel_circuit_keys,
+    select_current_provider_from_router_source, select_failover_providers_from_router_candidates,
+    AllowResult, ChannelRouteSource, CircuitBreakerConfig, CircuitBreakerStats,
+    RouteResolveRequest, RouteResolveResponse,
 };
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -95,13 +94,7 @@ impl ProviderRouter {
             ));
         }
 
-        let selected_ids = select_provider_ids(ProviderSelectionInput::failover(candidates))
-            .map_err(|error| app_error_from_provider_selection_failure(app_type, error))?;
-
-        Ok(selected_ids
-            .into_iter()
-            .filter_map(|provider_id| all_providers.get(&provider_id).cloned())
-            .collect())
+        select_failover_providers_from_router_candidates(app_type, &all_providers, candidates)
     }
 
     fn select_current_provider(&self, app_type: &str) -> Result<Vec<Provider>, AppError> {

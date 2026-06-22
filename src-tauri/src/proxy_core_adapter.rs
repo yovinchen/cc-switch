@@ -3976,6 +3976,20 @@ pub(crate) fn select_current_provider_from_router_source(
         .collect())
 }
 
+pub(crate) fn select_failover_providers_from_router_candidates(
+    app_type: &str,
+    providers: &IndexMap<String, Provider>,
+    candidates: Vec<ProviderSelectionCandidate>,
+) -> Result<Vec<Provider>, AppError> {
+    let selected_ids = select_provider_ids(ProviderSelectionInput::failover(candidates))
+        .map_err(|error| app_error_from_provider_selection_failure(app_type, error))?;
+
+    Ok(selected_ids
+        .into_iter()
+        .filter_map(|provider_id| providers.get(&provider_id).cloned())
+        .collect())
+}
+
 pub(crate) fn plan_auto_failover_toggle(
     input: AutoFailoverToggleInput,
 ) -> Result<AutoFailoverTogglePlan, ProxyCoreError> {
@@ -9073,6 +9087,37 @@ mod tests {
         ]))
         .expect("selected provider ids");
         assert_eq!(selected, vec!["provider-b"]);
+        let mut failover_providers = IndexMap::new();
+        failover_providers.insert(
+            "provider-a".to_string(),
+            Provider::with_id(
+                "provider-a".to_string(),
+                "Provider A".to_string(),
+                json!({}),
+                None,
+            ),
+        );
+        failover_providers.insert(
+            "provider-b".to_string(),
+            Provider::with_id(
+                "provider-b".to_string(),
+                "Provider B".to_string(),
+                json!({}),
+                None,
+            ),
+        );
+        let selected_failover = select_failover_providers_from_router_candidates(
+            "claude",
+            &failover_providers,
+            vec![
+                ProviderSelectionCandidate::new("missing", false, true),
+                ProviderSelectionCandidate::new("provider-b", true, true),
+                ProviderSelectionCandidate::new("provider-a", true, false),
+            ],
+        )
+        .expect("selected failover providers");
+        assert_eq!(selected_failover.len(), 1);
+        assert_eq!(selected_failover[0].id, "provider-b");
         assert!(!channel_route_should_load_legacy_projection(
             &ChannelRouteSource::MaterializedChannels
         ));

@@ -51,8 +51,8 @@ const FORBIDDEN_PROVIDER_ROUTER_CHANNEL_ROUTE_SOURCE_MARKERS: &[&str] = &[
     "channel_route_source_for_materialized_records(",
     "channel_route_should_load_legacy_projection(",
 ];
-const FORBIDDEN_PROVIDER_ROUTER_CURRENT_SELECTION_MARKERS: &[&str] =
-    &["ProviderSelectionInput::current("];
+const FORBIDDEN_PROVIDER_ROUTER_SELECTION_MARKERS: &[&str] =
+    &["ProviderSelectionInput::", "select_provider_ids("];
 const FORBIDDEN_HANDLER_PROXY_REQUEST_BRIDGE_MARKERS: &[&str] = &["ProxyRequest::new("];
 const FORBIDDEN_HANDLER_RAW_JSON_BODY_PARSE_MARKERS: &[&str] = &[
     "parse_json_request_body(",
@@ -1282,7 +1282,7 @@ fn production_provider_router_delegates_channel_route_source_to_adapter() {
 }
 
 #[test]
-fn production_provider_router_delegates_current_selection_to_adapter() {
+fn production_provider_router_delegates_provider_selection_to_adapter() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let path = manifest_dir.join("src/proxy/provider_router.rs");
     let source = fs::read_to_string(&path).expect("read provider_router.rs");
@@ -1290,10 +1290,10 @@ fn production_provider_router_delegates_current_selection_to_adapter() {
     let mut violations = Vec::new();
     for (line_index, line) in production_lines(&source) {
         let code = line.split("//").next().unwrap_or_default();
-        for marker in FORBIDDEN_PROVIDER_ROUTER_CURRENT_SELECTION_MARKERS {
+        for marker in FORBIDDEN_PROVIDER_ROUTER_SELECTION_MARKERS {
             if code.contains(marker) {
                 violations.push(format!(
-                    "src/proxy/provider_router.rs:{} contains current selection marker `{}`",
+                    "src/proxy/provider_router.rs:{} contains provider selection marker `{}`",
                     line_index + 1,
                     marker
                 ));
@@ -1303,7 +1303,7 @@ fn production_provider_router_delegates_current_selection_to_adapter() {
 
     assert!(
         violations.is_empty(),
-        "provider router must delegate current provider selection to proxy_core_adapter helpers:\n{}",
+        "provider router must delegate provider selection to proxy_core_adapter helpers:\n{}",
         violations.join("\n")
     );
 }

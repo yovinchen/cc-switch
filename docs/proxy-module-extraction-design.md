@@ -959,6 +959,7 @@
 本轮也把管理 API token-source 决策收敛到 adapter，handler middleware 不再直接读取 `CC_SWITCH_PROXY_MANAGEMENT_TOKEN` 或调用 core 决策函数。
 本轮继续把 ProviderRouter 的 channel route records/source fallback 决策收敛到 adapter，router 只负责读取 materialized records 与按需提供 legacy preview loader。
 本轮继续把 ProviderRouter 的当前供应商选择结果组装收敛到 adapter，router 只负责读取 settings/db 当前 provider 事实和加载 Provider 实体，不再直接构造 `ProviderSelectionInput::current`。
+本轮继续把 ProviderRouter 的 failover 候选选择结果组装收敛到 adapter，router 只负责读取 failover queue、provider map 和 circuit breaker 可用性，不再直接构造 `ProviderSelectionInput` 或调用 `select_provider_ids`。
 
 当前原则：核心 crate 可以新增端口和领域字段，但不得引入 `tauri`、`Database`、settings、commands、services 等宿主依赖；现有 runtime 行为必须继续通过 targeted tests 证明不回归。
 
