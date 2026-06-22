@@ -58,7 +58,7 @@
 47. `/proxy/v1/health` 的 response contract 已迁入 `proxy-core::HealthCheckResponse`；host 只负责注入当前 RFC3339 时间并返回 typed JSON。
 48. `/proxy/v1/apps/{app}/models` 与 `/proxy/v1/apps/{app}/channels` 的 query DTO 和别名归一化已迁入 `proxy-core::{AppModelListQuery, AppChannelListQuery}`；host handler 只负责 axum query 提取和调用 core/adapter。
 49. `ChannelRouteSource` 的外部 source label 和 `/proxy/v1/apps/{app}/channels` list/route response 组装已迁入 `proxy-core::{ChannelRouteSource::as_str, AppChannelListResponse::from_route_source, AppChannelRouteResponse::from_route_resolve}`；host 不再手写 source 字符串映射。
-50. 管理 API 鉴权策略已迁入 `proxy-core::management_auth`；host middleware 只负责读取 `ProxyConfig`/环境变量/header，并把 core 鉴权错误映射为现有 `ProxyError::AuthError`。
+50. 管理 API 鉴权策略已迁入 `proxy-core::management_auth`；token-source 决策已由 `proxy_core_adapter::management_auth_decision_from_proxy_config` 统一读取 `ProxyConfig` 与 `CC_SWITCH_PROXY_MANAGEMENT_TOKEN` fallback，host middleware 只负责读取 config guard、校验 header 并把 core 鉴权错误映射为现有 `ProxyError::AuthError`。
 51. `/proxy/v1/apps/{app}/providers` 的 provider summary 打标和 response 组装已迁入 `proxy-core::{ProviderSummaryInput, ProviderListResponse::from_provider_inputs}`；host 只负责查询 provider/current/failover/routeCandidate 输入集合。
 52. legacy/manual channel 的幂等 ID 生成规则已迁入 `proxy-core::channel_identity::stable_channel_id`；DB DAO 只负责调用 core 函数并写入 schema。
 53. legacy channel 投影的 priority、interface kind、模型路由推断、endpoint 排序和 normalized base URL 去重规则已迁入 `proxy-core::legacy_projection`；host adapter 负责把宿主 `Provider`/TOML/env/meta 字段适配成 core migration input。
@@ -956,6 +956,7 @@
 本轮继续把 response processor 的 provider/app usage facts 投影收敛到 adapter，response processor 不再直接调用 provider kind 或 app kind 投影 helper。
 本轮也把 usage sink bridge 的 forward error 与 transformed usage provider facts 投影收敛到 adapter，bridge 不再直接拼 provider kind、app kind 或 transformed usage record。
 本轮继续把 ConfigSource 的 app summary DTO 组装收敛到 adapter，host ConfigSource 不再直接构造 `AppSummaryConfig`。
+本轮也把管理 API token-source 决策收敛到 adapter，handler middleware 不再直接读取 `CC_SWITCH_PROXY_MANAGEMENT_TOKEN` 或调用 core 决策函数。
 
 当前原则：核心 crate 可以新增端口和领域字段，但不得引入 `tauri`、`Database`、settings、commands、services 等宿主依赖；现有 runtime 行为必须继续通过 targeted tests 证明不回归。
 

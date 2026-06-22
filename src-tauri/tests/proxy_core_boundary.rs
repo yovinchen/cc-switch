@@ -60,6 +60,11 @@ const FORBIDDEN_HANDLER_PROVIDER_ADAPTER_DECISION_MARKERS: &[&str] = &[
     ".needs_transform(",
     "super::providers::should_convert_codex_responses_to_chat(",
 ];
+const FORBIDDEN_HANDLER_MANAGEMENT_AUTH_DECISION_MARKERS: &[&str] = &[
+    "std::env::var(",
+    "CC_SWITCH_PROXY_MANAGEMENT_TOKEN",
+    "resolve_management_auth_decision(",
+];
 const FORBIDDEN_RESPONSE_PROCESSOR_USAGE_PROVIDER_PROJECTION_MARKERS: &[&str] = &[
     "provider_kind_from_provider(",
     "AppKind::from(",
@@ -954,6 +959,38 @@ fn production_handlers_delegate_provider_decisions_to_adapter() {
     assert!(
         violations.is_empty(),
         "production handlers must delegate provider decisions to proxy_core_adapter helpers:\n{}",
+        violations.join("\n")
+    );
+}
+
+#[test]
+fn production_handlers_delegate_management_auth_decisions_to_adapter() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let path = manifest_dir.join("src/proxy/handlers.rs");
+    let source = fs::read_to_string(&path).expect("read handlers.rs");
+    let handler = function_slice(
+        &source,
+        "pub async fn require_proxy_management_auth",
+        "/// GET /proxy/v1/apps",
+    );
+
+    let mut violations = Vec::new();
+    for (line_index, line) in production_lines(handler) {
+        let code = line.split("//").next().unwrap_or_default();
+        for marker in FORBIDDEN_HANDLER_MANAGEMENT_AUTH_DECISION_MARKERS {
+            if code.contains(marker) {
+                violations.push(format!(
+                    "src/proxy/handlers.rs require_proxy_management_auth:{} contains management auth decision marker `{}`",
+                    line_index + 1,
+                    marker
+                ));
+            }
+        }
+    }
+
+    assert!(
+        violations.is_empty(),
+        "management auth middleware must delegate token-source decisions to proxy_core_adapter helpers:\n{}",
         violations.join("\n")
     );
 }

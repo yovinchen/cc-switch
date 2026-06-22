@@ -299,6 +299,26 @@ pub(crate) fn proxy_runtime_status_stopped() -> ProxyRuntimeStatus {
     crate::proxy_core::api::ports::proxy_runtime_status_stopped()
 }
 
+const PROXY_MANAGEMENT_AUTH_TOKEN_ENV: &str = "CC_SWITCH_PROXY_MANAGEMENT_TOKEN";
+
+pub(crate) fn management_auth_decision_from_proxy_config(
+    config: &ProxyConfig,
+) -> Result<ManagementAuthDecision, ManagementAuthError> {
+    let fallback_token = std::env::var(PROXY_MANAGEMENT_AUTH_TOKEN_ENV).ok();
+    management_auth_decision_from_proxy_config_sources(config, fallback_token.as_deref())
+}
+
+pub(crate) fn management_auth_decision_from_proxy_config_sources(
+    config: &ProxyConfig,
+    fallback_token: Option<&str>,
+) -> Result<ManagementAuthDecision, ManagementAuthError> {
+    resolve_management_auth_decision(
+        &config.listen_address,
+        config.management_auth_token.as_deref(),
+        fallback_token,
+    )
+}
+
 pub(crate) fn record_forward_success_status(
     status: &mut ProxyRuntimeStatus,
     current_provider_id_at_start: &str,
@@ -8815,6 +8835,37 @@ mod tests {
             circuit_error_rate_threshold: 0.6,
             circuit_min_requests: 10,
         };
+
+        let loopback_auth =
+            management_auth_decision_from_proxy_config_sources(&ProxyConfig::default(), None)
+                .expect("loopback auth decision");
+        assert_eq!(loopback_auth, ManagementAuthDecision::AllowWithoutToken);
+        let mut public_proxy_config = ProxyConfig {
+            listen_address: "0.0.0.0".to_string(),
+            ..ProxyConfig::default()
+        };
+        assert_eq!(
+            management_auth_decision_from_proxy_config_sources(&public_proxy_config, None)
+                .unwrap_err(),
+            ManagementAuthError::RequiredTokenMissing
+        );
+        assert_eq!(
+            management_auth_decision_from_proxy_config_sources(
+                &public_proxy_config,
+                Some("env-token")
+            )
+            .expect("env fallback token"),
+            ManagementAuthDecision::RequireToken("env-token".to_string())
+        );
+        public_proxy_config.management_auth_token = Some(" config-token ".to_string());
+        assert_eq!(
+            management_auth_decision_from_proxy_config_sources(
+                &public_proxy_config,
+                Some("env-token")
+            )
+            .expect("configured token"),
+            ManagementAuthDecision::RequireToken("config-token".to_string())
+        );
 
         assert_eq!(CircuitBreakerConfig::from(&app_config), CircuitBreakerConfig::default());
         let enabled_policy = response_runtime_policy_from_app_proxy_config(&app_config);

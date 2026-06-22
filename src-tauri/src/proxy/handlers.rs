@@ -45,9 +45,10 @@ use crate::proxy_core_adapter::{
     json_proxy_request_from_input, JsonProxyRequestInput,
     openai_responses_to_anthropic_message, parse_json_proxy_request_body,
     parse_json_proxy_request_body_or_null, parse_upstream_json_or_unlabeled_sse,
+    management_auth_decision_from_proxy_config,
     provider_is_codex_oauth, provider_needs_claude_transform,
     provider_should_convert_codex_responses_to_chat, rebuilt_json_proxy_response,
-    resolve_management_auth_decision, should_aggregate_codex_oauth_responses_sse,
+    should_aggregate_codex_oauth_responses_sse,
     should_use_claude_transform_streaming,
     strip_endpoint_prefix, transformed_sse_proxy_response, validate_management_bearer_header,
     AppChannelListQuery, AppChannelManagementRequest, AppChannelResponse, AppKind, AppListRequest,
@@ -142,13 +143,8 @@ pub async fn require_proxy_management_auth(
 ) -> Result<axum::response::Response, ProxyError> {
     let auth_decision = {
         let config = state.config.read().await;
-        let fallback_token = std::env::var("CC_SWITCH_PROXY_MANAGEMENT_TOKEN").ok();
-        resolve_management_auth_decision(
-            &config.listen_address,
-            config.management_auth_token.as_deref(),
-            fallback_token.as_deref(),
-        )
-        .map_err(management_auth_error_to_proxy_error)?
+        management_auth_decision_from_proxy_config(&config)
+            .map_err(management_auth_error_to_proxy_error)?
     };
 
     if let ManagementAuthDecision::RequireToken(expected_token) = auth_decision {
