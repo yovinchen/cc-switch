@@ -5005,6 +5005,12 @@ pub(crate) fn should_reapply_codex_official_live_for_provider(provider: &Provide
 pub(crate) use crate::proxy_core::api::routing::{
     current_provider_db_fallback_required, current_provider_id_from_sources,
     current_provider_id_option_from_sources, failover_switch_pending_key,
+    normalize_channel_base_url, normalize_proxy_channel_key_patch_request_fields,
+    normalize_proxy_channel_key_write_request_fields,
+    normalize_proxy_channel_model_write_request_fields,
+    normalize_proxy_channel_models_replace_request_fields,
+    normalize_proxy_channel_patch_request_fields, normalize_proxy_channel_write_request_fields,
+    normalize_required_channel_string,
     plan_auto_failover_toggle, provider_failover_circuit_lookups,
     provider_selection_candidate_from_failover_lookup, restored_provider_switchback_decision,
     select_provider_ids, should_block_proxy_switch_to_provider_category,
@@ -5253,53 +5259,6 @@ fn extract_codex_model(config_text: &str) -> Option<String> {
         .map(str::trim)
         .filter(|model| !model.is_empty())
         .map(ToString::to_string)
-}
-
-pub(crate) fn normalize_required_channel_string(
-    value: &str,
-    field: &str,
-) -> Result<String, ChannelRequestValidationError> {
-    crate::proxy_core::api::routing::normalize_required_channel_string(value, field)
-}
-
-pub(crate) fn normalize_channel_base_url(value: &str) -> String {
-    crate::proxy_core::api::routing::normalize_channel_base_url(value)
-}
-
-pub(crate) fn normalize_proxy_channel_write_request_fields(
-    request: ProxyChannelWriteRequest,
-) -> Result<ProxyChannelWriteRequest, ChannelRequestValidationError> {
-    crate::proxy_core::api::routing::normalize_proxy_channel_write_request_fields(request)
-}
-
-pub(crate) fn normalize_proxy_channel_patch_request_fields(
-    request: ProxyChannelPatchRequest,
-) -> Result<ProxyChannelPatchRequest, ChannelRequestValidationError> {
-    crate::proxy_core::api::routing::normalize_proxy_channel_patch_request_fields(request)
-}
-
-pub(crate) fn normalize_proxy_channel_model_write_request_fields(
-    model: ProxyChannelModelWriteRequest,
-) -> Result<ProxyChannelModelWriteRequest, ChannelRequestValidationError> {
-    crate::proxy_core::api::routing::normalize_proxy_channel_model_write_request_fields(model)
-}
-
-pub(crate) fn normalize_proxy_channel_models_replace_request_fields(
-    request: ProxyChannelModelsReplaceRequest,
-) -> Result<ProxyChannelModelsReplaceRequest, ChannelRequestValidationError> {
-    crate::proxy_core::api::routing::normalize_proxy_channel_models_replace_request_fields(request)
-}
-
-pub(crate) fn normalize_proxy_channel_key_write_request_fields(
-    request: ProxyChannelKeyWriteRequest,
-) -> Result<ProxyChannelKeyWriteRequest, ChannelRequestValidationError> {
-    crate::proxy_core::api::routing::normalize_proxy_channel_key_write_request_fields(request)
-}
-
-pub(crate) fn normalize_proxy_channel_key_patch_request_fields(
-    request: ProxyChannelKeyPatchRequest,
-) -> Result<ProxyChannelKeyPatchRequest, ChannelRequestValidationError> {
-    crate::proxy_core::api::routing::normalize_proxy_channel_key_patch_request_fields(request)
 }
 
 impl From<&AppType> for AppKind {
