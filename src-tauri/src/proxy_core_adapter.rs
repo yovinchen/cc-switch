@@ -788,6 +788,17 @@ pub(crate) fn provider_openclaw_credential_parts(
     }
 }
 
+pub(crate) fn openclaw_common_config_value_from_settings(settings: &Value) -> Value {
+    let mut config = settings.clone();
+
+    if let Some(obj) = config.as_object_mut() {
+        obj.remove("apiKey");
+        obj.remove("baseUrl");
+    }
+
+    config
+}
+
 pub(crate) fn extract_hermes_stream_check_base_url(settings_config: &Value) -> Option<String> {
     crate::proxy_core::api::domain::extract_hermes_stream_check_base_url(settings_config)
 }
@@ -841,6 +852,19 @@ pub(crate) fn provider_opencode_credential_parts(
         api_key: options.get("apiKey").and_then(Value::as_str),
         base_url: options.get("baseURL").and_then(Value::as_str),
     })
+}
+
+pub(crate) fn opencode_common_config_value_from_settings(settings: &Value) -> Value {
+    let mut config = settings.clone();
+
+    if let Some(obj) = config.as_object_mut() {
+        if let Some(options) = obj.get_mut("options").and_then(Value::as_object_mut) {
+            options.remove("apiKey");
+            options.remove("baseURL");
+        }
+    }
+
+    config
 }
 
 pub(crate) struct OpenCodeLiveProviderFragment {
@@ -7856,6 +7880,19 @@ wire_api = "chat"
         let credentials = provider_openclaw_credential_parts(&credential_provider);
         assert_eq!(credentials.api_key, Some("sk-openclaw"));
         assert_eq!(credentials.base_url, Some("https://openclaw.example"));
+        let common_config = openclaw_common_config_value_from_settings(&json!({
+            "apiKey": "sk-openclaw",
+            "baseUrl": "https://openclaw.example",
+            "api": {"chat": "/v1/chat/completions"},
+            "models": {"fast": "claude-sonnet"}
+        }));
+        assert_eq!(
+            common_config,
+            json!({
+                "api": {"chat": "/v1/chat/completions"},
+                "models": {"fast": "claude-sonnet"}
+            })
+        );
 
         for settings in [
             json!({"baseUrl": Value::Null}),
@@ -7896,6 +7933,23 @@ wire_api = "chat"
             provider_opencode_credential_parts(&provider).expect("opencode credentials");
         assert_eq!(credentials.api_key, Some("sk-test"));
         assert_eq!(credentials.base_url, None);
+        let common_config = opencode_common_config_value_from_settings(&json!({
+            "npm": "@ai-sdk/openai",
+            "options": {
+                "apiKey": "sk-test",
+                "baseURL": "https://opencode.example",
+                "timeout": 30
+            },
+            "models": {"fast": "gpt-4o-mini"}
+        }));
+        assert_eq!(
+            common_config,
+            json!({
+                "npm": "@ai-sdk/openai",
+                "options": {"timeout": 30},
+                "models": {"fast": "gpt-4o-mini"}
+            })
+        );
         let fragment = provider_opencode_live_provider_fragment(&provider);
         assert_eq!(fragment.config, provider.settings_config);
         assert!(!fragment.from_full_config);

@@ -19,7 +19,8 @@ use crate::provider::{Provider, UsageResult};
 use crate::proxy_core_adapter::{
     claude_env_credentials_from_settings, codex_api_key_from_auth_and_config,
     codex_auth_object_value_from_settings, codex_config_text_from_settings,
-    gemini_env_map_from_settings,
+    gemini_env_map_from_settings, openclaw_common_config_value_from_settings,
+    opencode_common_config_value_from_settings,
     provider_codex_validation_parts, provider_gemini_env_map,
     provider_openclaw_credential_parts, provider_opencode_credential_parts,
     provider_settings_config_is_object, should_block_proxy_switch_to_provider_category,
@@ -2312,18 +2313,7 @@ impl ProviderService {
 
     /// Extract common config for OpenCode (JSON format)
     fn extract_opencode_common_config(settings: &Value) -> Result<String, AppError> {
-        // OpenCode uses a different config structure with npm, options, models
-        // For common config, we exclude provider-specific fields like apiKey
-        let mut config = settings.clone();
-
-        // Remove provider-specific fields
-        if let Some(obj) = config.as_object_mut() {
-            if let Some(options) = obj.get_mut("options").and_then(|v| v.as_object_mut()) {
-                options.remove("apiKey");
-                options.remove("baseURL");
-            }
-            // Keep npm and models as they might be common
-        }
+        let config = opencode_common_config_value_from_settings(settings);
 
         if config.is_null() || (config.is_object() && config.as_object().unwrap().is_empty()) {
             return Ok("{}".to_string());
@@ -2335,16 +2325,7 @@ impl ProviderService {
 
     /// Extract common config for OpenClaw (JSON format)
     fn extract_openclaw_common_config(settings: &Value) -> Result<String, AppError> {
-        // OpenClaw uses a different config structure with baseUrl, apiKey, api, models
-        // For common config, we exclude provider-specific fields like apiKey
-        let mut config = settings.clone();
-
-        // Remove provider-specific fields
-        if let Some(obj) = config.as_object_mut() {
-            obj.remove("apiKey");
-            obj.remove("baseUrl");
-            // Keep api and models as they might be common
-        }
+        let config = openclaw_common_config_value_from_settings(settings);
 
         if config.is_null() || (config.is_object() && config.as_object().unwrap().is_empty()) {
             return Ok("{}".to_string());
