@@ -1,9 +1,13 @@
 use super::channel_identity::stable_channel_id;
+use super::channel_request::normalize_channel_base_url;
 use super::domain::{AppKind, InterfaceKind, DEFAULT_ROUTE_GROUP};
 use super::request_url::is_codex_chat_wire_api;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashSet};
+
+pub const LEGACY_PRIMARY_SOURCE: &str = "legacy_primary";
+pub const LEGACY_ENDPOINT_SOURCE: &str = "legacy_endpoint";
 
 const CLAUDE_MODEL_ENV_KEYS: &[&str] = &[
     "ANTHROPIC_MODEL",
@@ -111,6 +115,49 @@ pub struct LegacyChannelProjection {
     pub review_reasons: Vec<String>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LegacyEndpointInput {
+    pub url: String,
+    pub added_at: i64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LegacyProviderChannelMigrationInput {
+    pub provider_id: String,
+    pub provider_name: String,
+    #[serde(default)]
+    pub provider_sort_index: Option<usize>,
+    pub provider_in_failover_queue: bool,
+    #[serde(default)]
+    pub primary_base_url: String,
+    #[serde(default)]
+    pub endpoints: Vec<LegacyEndpointInput>,
+    pub provider_projection: LegacyProviderProjectionInput,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LegacyChannelMigrationPlanInput {
+    pub app_type: String,
+    #[serde(default)]
+    pub app: Option<AppKind>,
+    #[serde(default)]
+    pub current_provider_id: Option<String>,
+    #[serde(default)]
+    pub providers: Vec<LegacyProviderChannelMigrationInput>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LegacyChannelMigrationPlan {
+    pub app_type: String,
+    pub channels: Vec<LegacyChannelProjection>,
+    pub duplicate_count: usize,
+    pub needs_review_count: usize,
+}
+
 pub fn legacy_channel_priority(
     provider_id: &str,
     in_failover_queue: bool,
@@ -164,6 +211,101 @@ pub fn legacy_provider_codex_catalog_models_from_settings(
                 .collect::<Vec<_>>()
         })
         .unwrap_or_default()
+}
+
+pub fn build_legacy_channel_migration_plan(
+    input: LegacyChannelMigrationPlanInput,
+) -> LegacyChannelMigrationPlan {
+    let mut channels = Vec::new();
+    let mut seen_routes = HashSet::new();
+    let mut duplicate_count = 0usize;
+
+    for provider in input.providers {
+        let priority = legacy_channel_priority(
+            &provider.provider_id,
+            provider.provider_in_failover_queue,
+            input.current_provider_id.as_deref(),
+        );
+        let interface_kind =
+            infer_legacy_channel_interface(input.app.as_ref(), &provider.provider_projection);
+
+        let primary = build_legacy_channel_projection(LegacyChannelProjectionInput {
+            app_type: input.app_type.clone(),
+            app: input.app.clone(),
+            provider_id: provider.provider_id.clone(),
+            provider_name: provider.provider_name.clone(),
+            provider_sort_index: provider.provider_sort_index,
+            provider_in_failover_queue: provider.provider_in_failover_queue,
+            base_url: normalize_channel_base_url(&provider.primary_base_url),
+            interface_kind: interface_kind.clone(),
+            priority,
+            source_kind: LEGACY_PRIMARY_SOURCE.to_string(),
+            source_endpoint_url: None,
+            provider_projection: provider.provider_projection.clone(),
+        });
+        push_channel_projection_or_count_duplicate(
+            &mut channels,
+            &mut seen_routes,
+            &mut duplicate_count,
+            primary,
+        );
+
+        let mut endpoints = provider.endpoints;
+        endpoints.sort_by(|a, b| a.added_at.cmp(&b.added_at).then_with(|| a.url.cmp(&b.url)));
+        for endpoint in endpoints {
+            let channel = build_legacy_channel_projection(LegacyChannelProjectionInput {
+                app_type: input.app_type.clone(),
+                app: input.app.clone(),
+                provider_id: provider.provider_id.clone(),
+                provider_name: provider.provider_name.clone(),
+                provider_sort_index: provider.provider_sort_index,
+                provider_in_failover_queue: provider.provider_in_failover_queue,
+                base_url: normalize_channel_base_url(&endpoint.url),
+                interface_kind: interface_kind.clone(),
+                priority,
+                source_kind: LEGACY_ENDPOINT_SOURCE.to_string(),
+                source_endpoint_url: Some(endpoint.url),
+                provider_projection: provider.provider_projection.clone(),
+            });
+            push_channel_projection_or_count_duplicate(
+                &mut channels,
+                &mut seen_routes,
+                &mut duplicate_count,
+                channel,
+            );
+        }
+    }
+
+    let needs_review_count = channels
+        .iter()
+        .filter(|channel| channel.needs_review)
+        .count();
+
+    LegacyChannelMigrationPlan {
+        app_type: input.app_type,
+        channels,
+        duplicate_count,
+        needs_review_count,
+    }
+}
+
+fn push_channel_projection_or_count_duplicate(
+    channels: &mut Vec<LegacyChannelProjection>,
+    seen_routes: &mut HashSet<(String, String, String)>,
+    duplicate_count: &mut usize,
+    channel: LegacyChannelProjection,
+) {
+    let route_key = (
+        channel.provider_id.clone(),
+        channel.interface_kind.clone(),
+        channel.base_url.clone(),
+    );
+    if !seen_routes.insert(route_key) {
+        *duplicate_count += 1;
+        return;
+    }
+
+    channels.push(channel);
 }
 
 pub fn build_legacy_channel_projection(
@@ -352,11 +494,13 @@ fn push_model_route(
 #[cfg(test)]
 mod tests {
     use super::{
-        build_legacy_channel_projection, infer_legacy_channel_interface, infer_legacy_model_routes,
-        legacy_channel_priority, legacy_provider_codex_catalog_models_from_settings,
-        legacy_provider_config_text_from_settings, legacy_provider_env_from_settings,
-        push_model_route, LegacyChannelProjectionInput, LegacyModelRouteInput,
-        LegacyModelRouteProjection, LegacyProviderProjectionInput,
+        build_legacy_channel_migration_plan, build_legacy_channel_projection,
+        infer_legacy_channel_interface, infer_legacy_model_routes, legacy_channel_priority,
+        legacy_provider_codex_catalog_models_from_settings, legacy_provider_config_text_from_settings,
+        legacy_provider_env_from_settings, push_model_route, LegacyChannelMigrationPlanInput,
+        LegacyChannelProjectionInput, LegacyEndpointInput, LegacyModelRouteInput,
+        LegacyModelRouteProjection, LegacyProviderChannelMigrationInput,
+        LegacyProviderProjectionInput, LEGACY_ENDPOINT_SOURCE, LEGACY_PRIMARY_SOURCE,
     };
     use crate::domain::{AppKind, InterfaceKind};
     use serde_json::json;
@@ -660,6 +804,60 @@ mod tests {
         assert_eq!(projection.models.len(), 1);
         assert_eq!(projection.models[0].channel_id, projection.id);
         assert_eq!(projection.models[0].public_model, "claude-sonnet-4");
+    }
+
+    #[test]
+    fn build_legacy_channel_migration_plan_orders_and_dedupes_legacy_endpoints() {
+        let plan = build_legacy_channel_migration_plan(LegacyChannelMigrationPlanInput {
+            app_type: "claude".to_string(),
+            app: Some(AppKind::Claude),
+            current_provider_id: Some("anthropic-main".to_string()),
+            providers: vec![LegacyProviderChannelMigrationInput {
+                provider_id: "anthropic-main".to_string(),
+                provider_name: "Anthropic Main".to_string(),
+                provider_sort_index: Some(1),
+                provider_in_failover_queue: false,
+                primary_base_url: "https://relay-a.example.com/v1/".to_string(),
+                endpoints: vec![
+                    LegacyEndpointInput {
+                        url: "https://relay-c.example.com/v1".to_string(),
+                        added_at: 3,
+                    },
+                    LegacyEndpointInput {
+                        url: "https://relay-a.example.com/v1".to_string(),
+                        added_at: 1,
+                    },
+                    LegacyEndpointInput {
+                        url: "https://relay-b.example.com/v1/".to_string(),
+                        added_at: 2,
+                    },
+                ],
+                provider_projection: LegacyProviderProjectionInput {
+                    env: [(
+                        "ANTHROPIC_MODEL".to_string(),
+                        "claude-sonnet-4".to_string(),
+                    )]
+                    .into_iter()
+                    .collect(),
+                    ..Default::default()
+                },
+            }],
+        });
+
+        assert_eq!(plan.app_type, "claude");
+        assert_eq!(plan.duplicate_count, 1);
+        assert_eq!(plan.needs_review_count, 0);
+        assert_eq!(plan.channels.len(), 3);
+        assert_eq!(plan.channels[0].source_kind, LEGACY_PRIMARY_SOURCE);
+        assert_eq!(plan.channels[0].base_url, "https://relay-a.example.com/v1");
+        assert_eq!(plan.channels[0].priority, 100);
+        assert_eq!(plan.channels[1].source_kind, LEGACY_ENDPOINT_SOURCE);
+        assert_eq!(plan.channels[1].base_url, "https://relay-b.example.com/v1");
+        assert_eq!(plan.channels[2].base_url, "https://relay-c.example.com/v1");
+        assert!(plan
+            .channels
+            .iter()
+            .all(|channel| channel.interface_kind == "anthropic_messages"));
     }
 
     #[test]

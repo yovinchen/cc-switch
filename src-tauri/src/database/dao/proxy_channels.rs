@@ -7,27 +7,23 @@
 use crate::app_config::AppType;
 use crate::database::{lock_conn, to_json_string, Database};
 use crate::error::AppError;
-use crate::provider::Provider;
 use crate::proxy_core_adapter::{
-    build_legacy_channel_projection, channel_health_update_from_input,
-    infer_legacy_channel_interface, legacy_channel_priority, legacy_provider_projection_input,
-    normalize_channel_base_url as normalize_base_url, proxy_channel_record_from_legacy_projection,
+    channel_health_update_from_input, legacy_channel_migration_preview_from_providers,
+    normalize_channel_base_url as normalize_base_url,
     normalize_proxy_channel_key_patch_request_fields,
     normalize_proxy_channel_key_write_request_fields,
     normalize_proxy_channel_model_write_request_fields,
     normalize_proxy_channel_models_replace_request_fields,
     normalize_proxy_channel_patch_request_fields, normalize_proxy_channel_write_request_fields,
     normalize_required_channel_string, stable_channel_id, ChannelHealthUpdateInput,
-    ChannelRequestValidationError, LegacyChannelProjectionInput, LegacyProviderProjectionInput,
+    ChannelRequestValidationError,
     ProxyChannelKeyPatchRequest, ProxyChannelKeyWriteRequest, ProxyChannelModelWriteRequest,
     ProxyChannelModelsReplaceRequest, ProxyChannelPatchRequest, ProxyChannelWriteRequest,
-    ProxyCoreAppKind as AppKind, ProxyCoreInterfaceKind as InterfaceKind,
     CHANNEL_HEALTH_UNKNOWN_STATUS,
 };
 use rusqlite::{params, Connection, OptionalExtension, Row};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use std::collections::HashSet;
 use std::str::FromStr;
 
 const LEGACY_PRIMARY_SOURCE: &str = "legacy_primary";
@@ -147,80 +143,12 @@ impl Database {
         let providers = self.get_all_providers(app_type)?;
         let current_provider_id = self.get_current_provider(app_type)?;
         let app = AppType::from_str(app_type).ok();
-        let app_kind = app.as_ref().map(|app| AppKind::from(app.as_str()));
-        let mut channels = Vec::new();
-        let mut seen_routes = HashSet::new();
-        let mut duplicate_count = 0usize;
-
-        for provider in providers.values() {
-            let projection = legacy_provider_projection_input(provider);
-            let priority = legacy_channel_priority(
-                &provider.id,
-                provider.in_failover_queue,
-                current_provider_id.as_deref(),
-            );
-            let interface_kind = infer_legacy_channel_interface(app_kind.as_ref(), &projection);
-            let primary_base_url = app
-                .as_ref()
-                .map(|app| provider.resolve_usage_credentials(app).0)
-                .unwrap_or_default();
-
-            let primary = build_legacy_channel(
-                app_type,
-                app_kind.as_ref(),
-                provider,
-                &projection,
-                normalize_base_url(&primary_base_url),
-                interface_kind.clone(),
-                priority,
-                ProxyChannelSourceKind::LegacyPrimary,
-                None,
-            );
-            push_channel_or_count_duplicate(
-                &mut channels,
-                &mut seen_routes,
-                &mut duplicate_count,
-                primary,
-            );
-
-            let mut endpoints: Vec<_> = provider
-                .meta
-                .as_ref()
-                .map(|meta| meta.custom_endpoints.values().cloned().collect::<Vec<_>>())
-                .unwrap_or_default();
-            endpoints.sort_by(|a, b| a.added_at.cmp(&b.added_at).then_with(|| a.url.cmp(&b.url)));
-
-            for endpoint in endpoints {
-                let channel = build_legacy_channel(
-                    app_type,
-                    app_kind.as_ref(),
-                    provider,
-                    &projection,
-                    normalize_base_url(&endpoint.url),
-                    interface_kind.clone(),
-                    priority,
-                    ProxyChannelSourceKind::LegacyEndpoint,
-                    Some(endpoint.url),
-                );
-                push_channel_or_count_duplicate(
-                    &mut channels,
-                    &mut seen_routes,
-                    &mut duplicate_count,
-                    channel,
-                );
-            }
-        }
-
-        let needs_review_count = channels
-            .iter()
-            .filter(|channel| channel.needs_review)
-            .count();
-        Ok(ProxyChannelMigrationPreview {
-            app_type: app_type.to_string(),
-            channels,
-            duplicate_count,
-            needs_review_count,
-        })
+        Ok(legacy_channel_migration_preview_from_providers(
+            app_type,
+            app.as_ref(),
+            current_provider_id.as_deref(),
+            providers.values(),
+        ))
     }
 
     pub(crate) fn materialize_legacy_proxy_channels(
@@ -1070,53 +998,6 @@ fn replace_proxy_channel_models_on_conn(
     Ok(())
 }
 
-fn push_channel_or_count_duplicate(
-    channels: &mut Vec<ProxyChannelRecord>,
-    seen_routes: &mut HashSet<(String, String, String)>,
-    duplicate_count: &mut usize,
-    channel: ProxyChannelRecord,
-) {
-    let route_key = (
-        channel.provider_id.clone(),
-        channel.interface_kind.clone(),
-        channel.base_url.clone(),
-    );
-    if !seen_routes.insert(route_key) {
-        *duplicate_count += 1;
-        return;
-    }
-    channels.push(channel);
-}
-
-fn build_legacy_channel(
-    app_type: &str,
-    app: Option<&AppKind>,
-    provider: &Provider,
-    projection: &LegacyProviderProjectionInput,
-    base_url: String,
-    interface_kind: InterfaceKind,
-    priority: i64,
-    source_kind: ProxyChannelSourceKind,
-    source_endpoint_url: Option<String>,
-) -> ProxyChannelRecord {
-    let projection = build_legacy_channel_projection(LegacyChannelProjectionInput {
-        app_type: app_type.to_string(),
-        app: app.cloned(),
-        provider_id: provider.id.clone(),
-        provider_name: provider.name.clone(),
-        provider_sort_index: provider.sort_index,
-        provider_in_failover_queue: provider.in_failover_queue,
-        base_url,
-        interface_kind,
-        priority,
-        source_kind: source_kind.as_str().to_string(),
-        source_endpoint_url,
-        provider_projection: projection.clone(),
-    });
-
-    proxy_channel_record_from_legacy_projection(projection, source_kind)
-}
-
 fn normalize_proxy_channel_write_request(
     request: ProxyChannelWriteRequest,
 ) -> Result<ProxyChannelWriteRequest, AppError> {
@@ -1143,7 +1024,7 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::provider::{ClaudeDesktopModelRoute, ProviderMeta};
+    use crate::provider::{ClaudeDesktopModelRoute, Provider, ProviderMeta};
     use crate::settings::CustomEndpoint;
     use serde_json::json;
     use std::collections::HashMap;

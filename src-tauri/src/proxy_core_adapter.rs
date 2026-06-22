@@ -757,6 +757,7 @@ pub(crate) type ChannelStatus = crate::proxy_core::api::routing::ChannelStatus;
 #[cfg(test)]
 pub(crate) type ProxyCoreChannelStatus =
     crate::proxy_core::api::routing::ChannelStatus;
+#[cfg(test)]
 pub(crate) type ProxyCoreInterfaceKind =
     crate::proxy_core::api::routing::InterfaceKind;
 #[cfg(test)]
@@ -2038,10 +2039,17 @@ pub(crate) type LegacyChannelModelProjection =
     crate::proxy_core::api::routing::LegacyChannelModelProjection;
 pub(crate) type LegacyChannelProjection =
     crate::proxy_core::api::routing::LegacyChannelProjection;
+#[cfg(test)]
 pub(crate) type LegacyChannelProjectionInput =
     crate::proxy_core::api::routing::LegacyChannelProjectionInput;
+pub(crate) type LegacyChannelMigrationPlanInput =
+    crate::proxy_core::api::routing::LegacyChannelMigrationPlanInput;
+pub(crate) type LegacyEndpointInput =
+    crate::proxy_core::api::routing::LegacyEndpointInput;
 pub(crate) type LegacyModelRouteInput =
     crate::proxy_core::api::routing::LegacyModelRouteInput;
+pub(crate) type LegacyProviderChannelMigrationInput =
+    crate::proxy_core::api::routing::LegacyProviderChannelMigrationInput;
 pub(crate) type LegacyProviderProjectionInput =
     crate::proxy_core::api::routing::LegacyProviderProjectionInput;
 pub(crate) type ProxyChannelModelWriteRequest =
@@ -4520,6 +4528,7 @@ pub(crate) fn stable_channel_id(
     )
 }
 
+#[cfg(test)]
 pub(crate) fn legacy_channel_priority(
     provider_id: &str,
     in_failover_queue: bool,
@@ -4550,6 +4559,7 @@ pub(crate) fn legacy_provider_codex_catalog_models_from_settings(
     )
 }
 
+#[cfg(test)]
 pub(crate) fn infer_legacy_channel_interface(
     app: Option<&ProxyCoreAppKind>,
     provider: &LegacyProviderProjectionInput,
@@ -4557,6 +4567,7 @@ pub(crate) fn infer_legacy_channel_interface(
     crate::proxy_core::api::routing::infer_legacy_channel_interface(app, provider)
 }
 
+#[cfg(test)]
 pub(crate) fn build_legacy_channel_projection(
     input: LegacyChannelProjectionInput,
 ) -> LegacyChannelProjection {
@@ -4593,6 +4604,81 @@ pub(crate) fn legacy_provider_projection_input(
         codex_catalog_models,
         env,
         claude_desktop_model_routes,
+    }
+}
+
+pub(crate) fn legacy_channel_migration_preview_from_providers<'a>(
+    app_type: &str,
+    app: Option<&AppType>,
+    current_provider_id: Option<&str>,
+    providers: impl IntoIterator<Item = &'a Provider>,
+) -> ProxyChannelMigrationPreview {
+    let provider_inputs = providers
+        .into_iter()
+        .map(|provider| {
+            let primary_base_url = app
+                .map(|app| provider.resolve_usage_credentials(app).0)
+                .unwrap_or_default();
+            let endpoints = provider
+                .meta
+                .as_ref()
+                .map(|meta| {
+                    meta.custom_endpoints
+                        .values()
+                        .map(|endpoint| LegacyEndpointInput {
+                            url: endpoint.url.clone(),
+                            added_at: endpoint.added_at,
+                        })
+                        .collect::<Vec<_>>()
+                })
+                .unwrap_or_default();
+
+            LegacyProviderChannelMigrationInput {
+                provider_id: provider.id.clone(),
+                provider_name: provider.name.clone(),
+                provider_sort_index: provider.sort_index,
+                provider_in_failover_queue: provider.in_failover_queue,
+                primary_base_url,
+                endpoints,
+                provider_projection: legacy_provider_projection_input(provider),
+            }
+        })
+        .collect::<Vec<_>>();
+
+    let plan = crate::proxy_core::api::routing::build_legacy_channel_migration_plan(
+        LegacyChannelMigrationPlanInput {
+            app_type: app_type.to_string(),
+            app: app.map(|app| ProxyCoreAppKind::from(app.as_str())),
+            current_provider_id: current_provider_id.map(ToString::to_string),
+            providers: provider_inputs,
+        },
+    );
+    let channels = plan
+        .channels
+        .into_iter()
+        .map(|projection| {
+            let source_kind = proxy_channel_source_kind_from_legacy(&projection.source_kind);
+            proxy_channel_record_from_legacy_projection(projection, source_kind)
+        })
+        .collect();
+
+    ProxyChannelMigrationPreview {
+        app_type: plan.app_type,
+        channels,
+        duplicate_count: plan.duplicate_count,
+        needs_review_count: plan.needs_review_count,
+    }
+}
+
+fn proxy_channel_source_kind_from_legacy(source_kind: &str) -> ProxyChannelSourceKind {
+    match source_kind {
+        crate::proxy_core::api::routing::LEGACY_PRIMARY_SOURCE => {
+            ProxyChannelSourceKind::LegacyPrimary
+        }
+        crate::proxy_core::api::routing::LEGACY_ENDPOINT_SOURCE => {
+            ProxyChannelSourceKind::LegacyEndpoint
+        }
+        _ => ProxyChannelSourceKind::Manual,
     }
 }
 
