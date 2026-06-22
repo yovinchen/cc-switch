@@ -16,13 +16,12 @@ use crate::database::{validate_cost_multiplier, validate_pricing_source};
 use crate::error::AppError;
 use crate::provider::{Provider, UsageResult};
 use crate::proxy_core_adapter::{
-    codex_config_text_from_settings, gemini_env_map_from_settings,
-    openclaw_common_config_value_from_settings, opencode_common_config_value_from_settings,
-    provider_codex_validation_parts, provider_credential_values,
+    common_config_snippet_from_settings, provider_codex_validation_parts,
+    provider_credential_values,
     provider_settings_config_is_object, proxy_live_config_owned_by_takeover,
     proxy_switch_should_hot_switch, should_block_proxy_switch_to_provider,
     should_reapply_codex_official_live_for_provider, CodexProviderValidationIssue,
-    ProviderCredentialIssue,
+    CommonConfigSnippetIssue, ProviderCredentialIssue,
 };
 use crate::services::mcp::McpService;
 use crate::settings::CustomEndpoint;
@@ -503,7 +502,8 @@ base_url = "http://localhost:8080"
 "#;
 
         let settings = json!({ "config": config_toml });
-        let extracted = ProviderService::extract_codex_common_config(&settings)
+        let extracted =
+            ProviderService::extract_common_config_snippet_from_settings(AppType::Codex, &settings)
             .expect("extract_codex_common_config should succeed");
 
         assert!(
@@ -540,7 +540,8 @@ base_url = "http://localhost:8080"
             }
         });
 
-        let extracted = ProviderService::extract_gemini_common_config(&settings)
+        let extracted =
+            ProviderService::extract_common_config_snippet_from_settings(AppType::Gemini, &settings)
             .expect("extract_gemini_common_config should succeed");
         let value: Value = serde_json::from_str(&extracted).expect("valid JSON common config");
 
@@ -565,8 +566,11 @@ base_url = "http://localhost:8080"
             }
         });
 
-        let extracted = ProviderService::extract_opencode_common_config(&settings)
-            .expect("extract_opencode_common_config should succeed");
+        let extracted = ProviderService::extract_common_config_snippet_from_settings(
+            AppType::OpenCode,
+            &settings,
+        )
+        .expect("extract_opencode_common_config should succeed");
         let value: Value = serde_json::from_str(&extracted).expect("valid JSON common config");
 
         assert_eq!(value["npm"], "@ai-sdk/openai");
@@ -589,8 +593,11 @@ base_url = "http://localhost:8080"
             }
         });
 
-        let extracted = ProviderService::extract_openclaw_common_config(&settings)
-            .expect("extract_openclaw_common_config should succeed");
+        let extracted = ProviderService::extract_common_config_snippet_from_settings(
+            AppType::OpenClaw,
+            &settings,
+        )
+        .expect("extract_openclaw_common_config should succeed");
         let value: Value = serde_json::from_str(&extracted).expect("valid JSON common config");
 
         assert_eq!(value["api"]["chat"], "/v1/chat/completions");
@@ -2150,15 +2157,7 @@ impl ProviderService {
             .get(&current_id)
             .ok_or_else(|| AppError::Message(format!("Provider {current_id} not found")))?;
 
-        match app_type {
-            AppType::Claude => Self::extract_claude_common_config(&provider.settings_config),
-            AppType::ClaudeDesktop => Ok(String::new()),
-            AppType::Codex => Self::extract_codex_common_config(&provider.settings_config),
-            AppType::Gemini => Self::extract_gemini_common_config(&provider.settings_config),
-            AppType::OpenCode => Self::extract_opencode_common_config(&provider.settings_config),
-            AppType::OpenClaw => Self::extract_openclaw_common_config(&provider.settings_config),
-            AppType::Hermes => Ok(String::new()), // Hermes doesn't use common config snippets
-        }
+        Self::extract_common_config_snippet_from_settings(app_type, &provider.settings_config)
     }
 
     /// Extract common config snippet from a config value (e.g. editor content).
@@ -2166,169 +2165,19 @@ impl ProviderService {
         app_type: AppType,
         settings_config: &Value,
     ) -> Result<String, AppError> {
-        match app_type {
-            AppType::Claude => Self::extract_claude_common_config(settings_config),
-            AppType::ClaudeDesktop => Ok(String::new()),
-            AppType::Codex => Self::extract_codex_common_config(settings_config),
-            AppType::Gemini => Self::extract_gemini_common_config(settings_config),
-            AppType::OpenCode => Self::extract_opencode_common_config(settings_config),
-            AppType::OpenClaw => Self::extract_openclaw_common_config(settings_config),
-            AppType::Hermes => Ok(String::new()), // Hermes doesn't use common config snippets
-        }
+        common_config_snippet_from_settings(&app_type, settings_config)
+            .map_err(Self::common_config_snippet_issue_to_app_error)
     }
 
-    /// Extract common config for Claude (JSON format)
-    fn extract_claude_common_config(settings: &Value) -> Result<String, AppError> {
-        let mut config = settings.clone();
-
-        // Fields to exclude from common config
-        const ENV_EXCLUDES: &[&str] = &[
-            // Auth
-            "ANTHROPIC_API_KEY",
-            "ANTHROPIC_AUTH_TOKEN",
-            // Models and Claude Code model-menu display names
-            "ANTHROPIC_MODEL",
-            "ANTHROPIC_REASONING_MODEL", // legacy: 已废弃，但旧配置可能残留
-            "ANTHROPIC_DEFAULT_HAIKU_MODEL",
-            "ANTHROPIC_DEFAULT_HAIKU_MODEL_NAME",
-            "ANTHROPIC_DEFAULT_OPUS_MODEL",
-            "ANTHROPIC_DEFAULT_OPUS_MODEL_NAME",
-            "ANTHROPIC_DEFAULT_SONNET_MODEL",
-            "ANTHROPIC_DEFAULT_SONNET_MODEL_NAME",
-            // Endpoint
-            "ANTHROPIC_BASE_URL",
-        ];
-
-        const TOP_LEVEL_EXCLUDES: &[&str] = &[
-            "apiBaseUrl",
-            // Legacy model fields
-            "primaryModel",
-            "smallFastModel",
-        ];
-
-        // Remove env fields
-        if let Some(env) = config.get_mut("env").and_then(|v| v.as_object_mut()) {
-            for key in ENV_EXCLUDES {
-                env.remove(*key);
+    fn common_config_snippet_issue_to_app_error(issue: CommonConfigSnippetIssue) -> AppError {
+        match issue {
+            CommonConfigSnippetIssue::Serialization(error) => {
+                AppError::Message(format!("Serialization failed: {error}"))
             }
-            // If env is empty after removal, remove the env object itself
-            if env.is_empty() {
-                config.as_object_mut().map(|obj| obj.remove("env"));
+            CommonConfigSnippetIssue::TomlParse(error) => {
+                AppError::Message(format!("TOML parse error: {error}"))
             }
         }
-
-        // Remove top-level fields
-        if let Some(obj) = config.as_object_mut() {
-            for key in TOP_LEVEL_EXCLUDES {
-                obj.remove(*key);
-            }
-        }
-
-        // Check if result is empty
-        if config.as_object().is_none_or(|obj| obj.is_empty()) {
-            return Ok("{}".to_string());
-        }
-
-        serde_json::to_string_pretty(&config)
-            .map_err(|e| AppError::Message(format!("Serialization failed: {e}")))
-    }
-
-    /// Extract common config for Codex (TOML format)
-    fn extract_codex_common_config(settings: &Value) -> Result<String, AppError> {
-        // Codex config is stored as { "auth": {...}, "config": "toml string" }
-        let config_toml = codex_config_text_from_settings(settings).unwrap_or("");
-
-        if config_toml.is_empty() {
-            return Ok(String::new());
-        }
-
-        let mut doc = config_toml
-            .parse::<toml_edit::DocumentMut>()
-            .map_err(|e| AppError::Message(format!("TOML parse error: {e}")))?;
-
-        // Remove provider-specific fields.
-        let root = doc.as_table_mut();
-        root.remove("model");
-        root.remove("model_provider");
-        // Legacy/alt formats might use a top-level base_url.
-        root.remove("base_url");
-
-        // Remove entire model_providers table (provider-specific configuration)
-        root.remove("model_providers");
-
-        // Clean up multiple empty lines (keep at most one blank line).
-        let mut cleaned = String::new();
-        let mut blank_run = 0usize;
-        for line in doc.to_string().lines() {
-            if line.trim().is_empty() {
-                blank_run += 1;
-                if blank_run <= 1 {
-                    cleaned.push('\n');
-                }
-                continue;
-            }
-            blank_run = 0;
-            cleaned.push_str(line);
-            cleaned.push('\n');
-        }
-
-        Ok(cleaned.trim().to_string())
-    }
-
-    /// Extract common config for Gemini (JSON format)
-    ///
-    /// Extracts `.env` values while excluding provider-specific credentials:
-    /// - GOOGLE_GEMINI_BASE_URL
-    /// - GEMINI_API_KEY
-    fn extract_gemini_common_config(settings: &Value) -> Result<String, AppError> {
-        let env = gemini_env_map_from_settings(settings);
-
-        let mut snippet = serde_json::Map::new();
-        if let Some(env) = env {
-            for (key, value) in env {
-                if key == "GOOGLE_GEMINI_BASE_URL" || key == "GEMINI_API_KEY" {
-                    continue;
-                }
-                let Value::String(v) = value else {
-                    continue;
-                };
-                let trimmed = v.trim();
-                if !trimmed.is_empty() {
-                    snippet.insert(key.to_string(), Value::String(trimmed.to_string()));
-                }
-            }
-        }
-
-        if snippet.is_empty() {
-            return Ok("{}".to_string());
-        }
-
-        serde_json::to_string_pretty(&Value::Object(snippet))
-            .map_err(|e| AppError::Message(format!("Serialization failed: {e}")))
-    }
-
-    /// Extract common config for OpenCode (JSON format)
-    fn extract_opencode_common_config(settings: &Value) -> Result<String, AppError> {
-        let config = opencode_common_config_value_from_settings(settings);
-
-        if config.is_null() || (config.is_object() && config.as_object().unwrap().is_empty()) {
-            return Ok("{}".to_string());
-        }
-
-        serde_json::to_string_pretty(&config)
-            .map_err(|e| AppError::Message(format!("Serialization failed: {e}")))
-    }
-
-    /// Extract common config for OpenClaw (JSON format)
-    fn extract_openclaw_common_config(settings: &Value) -> Result<String, AppError> {
-        let config = openclaw_common_config_value_from_settings(settings);
-
-        if config.is_null() || (config.is_object() && config.as_object().unwrap().is_empty()) {
-            return Ok("{}".to_string());
-        }
-
-        serde_json::to_string_pretty(&config)
-            .map_err(|e| AppError::Message(format!("Serialization failed: {e}")))
     }
 
     /// Import default configuration from live files (re-export)

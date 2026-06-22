@@ -895,6 +895,161 @@ pub(crate) fn opencode_common_config_value_from_settings(settings: &Value) -> Va
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum CommonConfigSnippetIssue {
+    Serialization(String),
+    TomlParse(String),
+}
+
+pub(crate) fn common_config_snippet_from_settings(
+    app_type: &AppType,
+    settings: &Value,
+) -> Result<String, CommonConfigSnippetIssue> {
+    match app_type {
+        AppType::Claude => claude_common_config_snippet_from_settings(settings),
+        AppType::ClaudeDesktop => Ok(String::new()),
+        AppType::Codex => codex_common_config_snippet_from_settings(settings),
+        AppType::Gemini => gemini_common_config_snippet_from_settings(settings),
+        AppType::OpenCode => opencode_common_config_snippet_from_settings(settings),
+        AppType::OpenClaw => openclaw_common_config_snippet_from_settings(settings),
+        AppType::Hermes => Ok(String::new()),
+    }
+}
+
+pub(crate) fn claude_common_config_snippet_from_settings(
+    settings: &Value,
+) -> Result<String, CommonConfigSnippetIssue> {
+    let mut config = settings.clone();
+
+    const ENV_EXCLUDES: &[&str] = &[
+        "ANTHROPIC_API_KEY",
+        "ANTHROPIC_AUTH_TOKEN",
+        "ANTHROPIC_MODEL",
+        "ANTHROPIC_REASONING_MODEL",
+        "ANTHROPIC_DEFAULT_HAIKU_MODEL",
+        "ANTHROPIC_DEFAULT_HAIKU_MODEL_NAME",
+        "ANTHROPIC_DEFAULT_OPUS_MODEL",
+        "ANTHROPIC_DEFAULT_OPUS_MODEL_NAME",
+        "ANTHROPIC_DEFAULT_SONNET_MODEL",
+        "ANTHROPIC_DEFAULT_SONNET_MODEL_NAME",
+        "ANTHROPIC_BASE_URL",
+    ];
+    const TOP_LEVEL_EXCLUDES: &[&str] = &["apiBaseUrl", "primaryModel", "smallFastModel"];
+
+    if let Some(env) = config.get_mut("env").and_then(Value::as_object_mut) {
+        for key in ENV_EXCLUDES {
+            env.remove(*key);
+        }
+        if env.is_empty() {
+            if let Some(obj) = config.as_object_mut() {
+                obj.remove("env");
+            }
+        }
+    }
+
+    if let Some(obj) = config.as_object_mut() {
+        for key in TOP_LEVEL_EXCLUDES {
+            obj.remove(*key);
+        }
+    }
+
+    if config.as_object().is_none_or(|obj| obj.is_empty()) {
+        return Ok("{}".to_string());
+    }
+
+    serde_json::to_string_pretty(&config)
+        .map_err(|e| CommonConfigSnippetIssue::Serialization(e.to_string()))
+}
+
+pub(crate) fn codex_common_config_snippet_from_settings(
+    settings: &Value,
+) -> Result<String, CommonConfigSnippetIssue> {
+    let config_toml = codex_config_text_from_settings(settings).unwrap_or("");
+
+    if config_toml.is_empty() {
+        return Ok(String::new());
+    }
+
+    let mut doc = config_toml
+        .parse::<toml_edit::DocumentMut>()
+        .map_err(|e| CommonConfigSnippetIssue::TomlParse(e.to_string()))?;
+
+    let root = doc.as_table_mut();
+    root.remove("model");
+    root.remove("model_provider");
+    root.remove("base_url");
+    root.remove("model_providers");
+
+    let mut cleaned = String::new();
+    let mut blank_run = 0usize;
+    for line in doc.to_string().lines() {
+        if line.trim().is_empty() {
+            blank_run += 1;
+            if blank_run <= 1 {
+                cleaned.push('\n');
+            }
+            continue;
+        }
+        blank_run = 0;
+        cleaned.push_str(line);
+        cleaned.push('\n');
+    }
+
+    Ok(cleaned.trim().to_string())
+}
+
+pub(crate) fn gemini_common_config_snippet_from_settings(
+    settings: &Value,
+) -> Result<String, CommonConfigSnippetIssue> {
+    let env = gemini_env_map_from_settings(settings);
+
+    let mut snippet = Map::new();
+    if let Some(env) = env {
+        for (key, value) in env {
+            if key == "GOOGLE_GEMINI_BASE_URL" || key == "GEMINI_API_KEY" {
+                continue;
+            }
+            let Value::String(v) = value else {
+                continue;
+            };
+            let trimmed = v.trim();
+            if !trimmed.is_empty() {
+                snippet.insert(key.to_string(), Value::String(trimmed.to_string()));
+            }
+        }
+    }
+
+    if snippet.is_empty() {
+        return Ok("{}".to_string());
+    }
+
+    serde_json::to_string_pretty(&Value::Object(snippet))
+        .map_err(|e| CommonConfigSnippetIssue::Serialization(e.to_string()))
+}
+
+pub(crate) fn opencode_common_config_snippet_from_settings(
+    settings: &Value,
+) -> Result<String, CommonConfigSnippetIssue> {
+    json_object_or_null_common_config_snippet(opencode_common_config_value_from_settings(settings))
+}
+
+pub(crate) fn openclaw_common_config_snippet_from_settings(
+    settings: &Value,
+) -> Result<String, CommonConfigSnippetIssue> {
+    json_object_or_null_common_config_snippet(openclaw_common_config_value_from_settings(settings))
+}
+
+fn json_object_or_null_common_config_snippet(
+    config: Value,
+) -> Result<String, CommonConfigSnippetIssue> {
+    if config.is_null() || (config.is_object() && config.as_object().unwrap().is_empty()) {
+        return Ok("{}".to_string());
+    }
+
+    serde_json::to_string_pretty(&config)
+        .map_err(|e| CommonConfigSnippetIssue::Serialization(e.to_string()))
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct ProviderCredentialValues {
     pub(crate) api_key: String,
     pub(crate) base_url: String,
