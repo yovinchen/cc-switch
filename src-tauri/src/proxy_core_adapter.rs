@@ -2291,6 +2291,16 @@ pub(crate) struct ProxyEventBusMessage {
     pub(crate) payload: Value,
 }
 
+pub(crate) fn request_started_event_message(
+    request_id: &str,
+    app_type: &str,
+) -> ProxyEventBusMessage {
+    ProxyEventBusMessage {
+        event_name: REQUEST_STARTED_EVENT.to_string(),
+        payload: build_request_started_event_payload(request_id, app_type),
+    }
+}
+
 pub(crate) fn proxy_core_event_to_bus_message(event: ProxyCoreEvent) -> ProxyEventBusMessage {
     ProxyEventBusMessage {
         event_name: event.event_type.event_name(),
@@ -8540,6 +8550,11 @@ mod tests {
         assert_eq!(spec.id, "42");
         assert_eq!(spec.event, "request_started");
         assert!(spec.data.contains("\"provider\":\"relay-a\""));
+
+        let request_started = request_started_event_message("req-start", "claude");
+        assert_eq!(request_started.event_name, "request_started");
+        assert_eq!(request_started.payload["requestId"], "req-start");
+        assert_eq!(request_started.payload["appType"], "claude");
 
         let message = proxy_core_event_to_bus_message(ProxyCoreEvent {
             event_type: ProxyCoreEventType::RouteSelected,

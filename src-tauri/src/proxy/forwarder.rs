@@ -20,7 +20,6 @@ use crate::proxy_core_adapter::{
     apply_bedrock_pre_send_optimizers, apply_copilot_model_normalization,
     apply_copilot_warmup_model_override, attempt_event_name,
     attempt_event_payload_from_forward_attempt, build_codex_oauth_session_headers,
-    build_request_started_event_payload,
     build_retryable_forward_failure_log, build_terminal_forward_failure_log,
     build_upstream_auth_headers, cache_injection_log_message, categorize_forward_failure,
     classify_copilot_request, contains_image_blocks, current_route_target_from_forward_attempt,
@@ -34,7 +33,8 @@ use crate::proxy_core_adapter::{
     record_active_connection_released_status, record_forward_failure_status,
     record_forward_request_started_status, record_forward_success_status,
     replace_images_for_text_only_provider_model, request_body_filter_log_message,
-    resolve_claude_forward_api_format, route_selected_event_message_from_forward_attempt,
+    request_started_event_message, resolve_claude_forward_api_format,
+    route_selected_event_message_from_forward_attempt,
     resolve_copilot_deterministic_interaction_id, resolve_copilot_model_against_ids,
     resolve_copilot_optimizer_session_id, resolve_copilot_request_id_with_fallback,
     resolve_media_prevention_policy, resolved_copilot_dynamic_base_url,
@@ -53,7 +53,6 @@ use crate::proxy_core_adapter::{
     ForwardUpstreamUrlPlanInput, GeminiShadowStore, MediaRetryInput, OptimizerConfig,
     PromptCacheTraceLogInput,
     ProxyRuntimeStatus, RectifierConfig, ResolvedChannelAttempt,
-    REQUEST_STARTED_EVENT,
     UpstreamAuthHeadersInput, UpstreamRequestHeadersInput, UpstreamSendPolicyInput,
     UpstreamTransportKind, UNSUPPORTED_IMAGE_MARKER,
 };
@@ -385,10 +384,8 @@ impl RequestForwarder {
     }
 
     fn emit_request_started(&self, request_id: &str, app_type: &str) {
-        self.events.emit(
-            REQUEST_STARTED_EVENT,
-            build_request_started_event_payload(request_id, app_type),
-        );
+        let message = request_started_event_message(request_id, app_type);
+        self.events.emit(message.event_name, message.payload);
     }
 
     fn emit_attempt_started(&self, request_id: &str, app_type: &str, attempt: &ForwardAttempt) {
