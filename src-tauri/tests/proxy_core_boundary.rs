@@ -46,6 +46,11 @@ const FORBIDDEN_FORWARDER_CODEX_PROVIDER_COMPAT_MARKERS: &[&str] = &[
 ];
 const FORBIDDEN_PROVIDER_MODULE_CODEX_HISTORY_MARKERS: &[&str] =
     &["codex_chat_history", "providers::codex_chat_history"];
+const FORBIDDEN_PROVIDER_MODULE_KIND_FACADE_MARKERS: &[&str] = &[
+    "provider_kind_from_app_type_and_config",
+    "get_adapter_for_provider_type",
+    "ProviderKind",
+];
 const FORBIDDEN_FORWARDER_MANAGED_AUTH_MARKERS: &[&str] = &[
     "CopilotAuthState",
     "CodexOAuthState",
@@ -1929,6 +1934,33 @@ fn production_provider_module_excludes_codex_chat_history_state() {
     assert!(
         violations.is_empty(),
         "Codex chat history must live at proxy module scope, not under provider adapters:\n{}",
+        violations.join("\n")
+    );
+}
+
+#[test]
+fn production_provider_module_excludes_provider_kind_facades() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let provider_mod_path = manifest_dir.join("src/proxy/providers/mod.rs");
+    let provider_mod = fs::read_to_string(&provider_mod_path).expect("read providers/mod.rs");
+
+    let mut violations = Vec::new();
+    for (line_index, line) in production_lines(&provider_mod) {
+        let code = line.split("//").next().unwrap_or_default();
+        for marker in FORBIDDEN_PROVIDER_MODULE_KIND_FACADE_MARKERS {
+            if code.contains(marker) {
+                violations.push(format!(
+                    "src/proxy/providers/mod.rs:{} contains provider kind facade marker `{}`",
+                    line_index + 1,
+                    marker
+                ));
+            }
+        }
+    }
+
+    assert!(
+        violations.is_empty(),
+        "Provider kind inference belongs behind proxy_core_adapter, not provider registry:\n{}",
         violations.join("\n")
     );
 }
