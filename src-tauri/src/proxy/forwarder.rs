@@ -9,7 +9,8 @@ use super::{
     events::ProxyEventBus,
     failover_switch::FailoverSwitchManager,
     provider_router::ProviderRouter,
-    providers::{codex_chat_history::CodexChatHistoryStore, get_adapter, ProviderAdapter},
+    codex_chat_history::CodexChatHistoryStore,
+    providers::{get_adapter, ProviderAdapter},
     route_attempt::{apply_channel_model_override, ForwardAttempt},
 };
 use crate::proxy::managed_account_auth::{

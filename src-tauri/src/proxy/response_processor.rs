@@ -534,7 +534,7 @@ mod tests {
     use crate::provider::ProviderMeta;
     use crate::proxy::failover_switch::FailoverSwitchManager;
     use crate::proxy::provider_router::ProviderRouter;
-    use crate::proxy::providers::codex_chat_history::CodexChatHistoryStore;
+    use crate::proxy::codex_chat_history::CodexChatHistoryStore;
     use crate::proxy_core_adapter::{
         decompress_body, strip_sse_field, GeminiShadowStore, ProxyConfig, ProxyRuntimeStatus,
     };

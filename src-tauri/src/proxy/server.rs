@@ -10,7 +10,7 @@
 
 use super::{
     error::ProxyError, events::ProxyEventBus, failover_switch::FailoverSwitchManager, handlers,
-    provider_router::ProviderRouter, providers::codex_chat_history::CodexChatHistoryStore,
+    codex_chat_history::CodexChatHistoryStore, provider_router::ProviderRouter,
 };
 use crate::database::Database;
 use crate::proxy_core_adapter::{

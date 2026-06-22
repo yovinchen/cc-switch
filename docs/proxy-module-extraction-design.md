@@ -1019,6 +1019,7 @@
 本轮继续删除 provider 模块对 Claude api_format、消息规范化和请求转换兼容函数的 re-export，Claude provider 对外只保留 `ClaudeAdapter`。
 本轮继续把 forwarder 对 Codex Responses->Chat 判定、上游模型覆写和 reasoning options 的调用改为直接消费 adapter helper，并删除 provider 模块对应 re-export。
 本轮继续把 Copilot fingerprint header 常量提升到 adapter，`proxy_core_adapter` 不再反向引用 `providers::copilot_auth` 常量。
+本轮继续把 `codex_chat_history` 从 `proxy::providers` 移到 `proxy` 模块根，provider 目录只保留 provider adapter 和账号认证相关实现。
 
 当前原则：核心 crate 可以新增端口和领域字段，但不得引入 `tauri`、`Database`、settings、commands、services 等宿主依赖；现有 runtime 行为必须继续通过 targeted tests 证明不回归。
 

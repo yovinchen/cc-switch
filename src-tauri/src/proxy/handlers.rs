@@ -17,7 +17,7 @@ use super::{
     },
     forwarder::ActiveConnectionGuard,
     handler_context::RequestContext,
-    providers::codex_chat_history::record_responses_sse_stream,
+    codex_chat_history::record_responses_sse_stream,
     response_adapter::{
         collect_axum_request_body, proxy_core_response_to_axum_response,
         proxy_core_response_to_proxy_response, proxy_event_envelope_to_axum_sse_event,

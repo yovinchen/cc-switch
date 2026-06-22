@@ -6,7 +6,7 @@ use crate::proxy::failover_switch::FailoverSwitchManager;
 #[cfg(test)]
 use crate::proxy::hyper_client::ProxyResponse;
 use crate::proxy::provider_router::ProviderRouter;
-use crate::proxy::providers::codex_chat_history::CodexChatHistoryStore;
+use crate::proxy::codex_chat_history::CodexChatHistoryStore;
 use crate::proxy_core_adapter::{
     AppKind, AppSummaryConfig, AuthInfo, AuthProfileRef, ChannelAttemptResult,
     AuthProvider, ChannelHealthReset, ChannelHealthStore, ChannelKeyRecord, ChannelModelRecord,

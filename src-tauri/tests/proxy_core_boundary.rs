@@ -44,6 +44,8 @@ const FORBIDDEN_FORWARDER_CODEX_PROVIDER_COMPAT_MARKERS: &[&str] = &[
     "super::providers::apply_codex_chat_upstream_model(",
     "super::providers::resolve_codex_chat_reasoning_options(",
 ];
+const FORBIDDEN_PROVIDER_MODULE_CODEX_HISTORY_MARKERS: &[&str] =
+    &["codex_chat_history", "providers::codex_chat_history"];
 const FORBIDDEN_FORWARDER_MANAGED_AUTH_MARKERS: &[&str] = &[
     "CopilotAuthState",
     "CodexOAuthState",
@@ -1885,6 +1887,48 @@ fn production_forwarder_delegates_codex_provider_helpers_to_adapter() {
     assert!(
         violations.is_empty(),
         "forwarder must consume Codex provider facts through proxy_core_adapter helpers:\n{}",
+        violations.join("\n")
+    );
+}
+
+#[test]
+fn production_provider_module_excludes_codex_chat_history_state() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let provider_mod_path = manifest_dir.join("src/proxy/providers/mod.rs");
+    let provider_mod = fs::read_to_string(&provider_mod_path).expect("read providers/mod.rs");
+    let proxy_paths = ["src/proxy/forwarder.rs", "src/proxy/handlers.rs", "src/proxy/server.rs"];
+
+    let mut violations = Vec::new();
+    for (line_index, line) in production_lines(&provider_mod) {
+        let code = line.split("//").next().unwrap_or_default();
+        for marker in FORBIDDEN_PROVIDER_MODULE_CODEX_HISTORY_MARKERS {
+            if code.contains(marker) {
+                violations.push(format!(
+                    "src/proxy/providers/mod.rs:{} contains Codex history marker `{}`",
+                    line_index + 1,
+                    marker
+                ));
+            }
+        }
+    }
+
+    for relative in proxy_paths {
+        let source = fs::read_to_string(manifest_dir.join(relative)).expect("read proxy source");
+        for (line_index, line) in production_lines(&source) {
+            let code = line.split("//").next().unwrap_or_default();
+            if code.contains("providers::codex_chat_history") {
+                violations.push(format!(
+                    "{}:{} imports Codex history through provider module",
+                    relative,
+                    line_index + 1
+                ));
+            }
+        }
+    }
+
+    assert!(
+        violations.is_empty(),
+        "Codex chat history must live at proxy module scope, not under provider adapters:\n{}",
         violations.join("\n")
     );
 }

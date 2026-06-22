@@ -14,7 +14,7 @@ use crate::proxy::events::ProxyEventBus;
 use crate::proxy::failover_switch::FailoverSwitchManager;
 use crate::proxy::hyper_client::ProxyResponse;
 use crate::proxy::provider_router::ProviderRouter;
-use crate::proxy::providers::codex_chat_history::CodexChatHistoryStore;
+use crate::proxy::codex_chat_history::CodexChatHistoryStore;
 use crate::proxy::route_attempt::ForwardAttempt;
 use crate::proxy::usage::{RequestLog, UsageLogger};
 use crate::proxy::RequestForwarder;
