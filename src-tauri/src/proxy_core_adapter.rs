@@ -2078,6 +2078,8 @@ pub(crate) type RouteResolveRequest =
     crate::proxy_core::api::management::RouteResolveRequest;
 pub(crate) type RouteResolveResponse =
     crate::proxy_core::api::management::RouteResolveResponse;
+pub(crate) type RouteCandidateCircuitKey =
+    crate::proxy_core::api::routing::RouteCandidateCircuitKey;
 pub(crate) type ChannelRouteCandidate =
     crate::proxy_core::api::routing::ChannelRouteCandidate;
 pub(crate) type ResolvedChannelAttempt =
@@ -4512,6 +4514,12 @@ pub(crate) fn reject_unavailable_channel_ids<I, S>(
         response,
         unavailable_channel_ids,
     );
+}
+
+pub(crate) fn route_candidate_channel_circuit_keys(
+    response: &RouteResolveResponse,
+) -> Vec<RouteCandidateCircuitKey> {
+    crate::proxy_core::api::routing::route_candidate_channel_circuit_keys(response)
 }
 
 pub(crate) fn stable_channel_id(

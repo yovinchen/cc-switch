@@ -13,7 +13,8 @@ use crate::proxy_core_adapter::{
     provider_circuit_key, provider_circuit_key_prefix,
     channel_route_source_for_materialized_records, proxy_channel_route_inputs_to_core,
     reject_unavailable_channel_ids, resolve_channel_route as resolve_core_channel_route,
-    select_provider_ids, AllowResult, ChannelRouteSource, CircuitBreakerConfig,
+    route_candidate_channel_circuit_keys, select_provider_ids, AllowResult, ChannelRouteSource,
+    CircuitBreakerConfig,
     CircuitBreakerStats, ProviderSelectionCandidate, ProviderSelectionFailure,
     ProviderSelectionInput, ProxyCoreError, RouteResolveRequest, RouteResolveResponse,
 };
@@ -180,15 +181,14 @@ impl ProviderRouter {
     ) -> Vec<String> {
         let mut unavailable_channel_ids = Vec::new();
 
-        for candidate in &response.candidates {
-            let circuit_key = channel_circuit_key(&response.app_type, &candidate.channel_id);
-            let is_available = match self.get_existing_circuit_breaker(&circuit_key).await {
+        for lookup in route_candidate_channel_circuit_keys(response) {
+            let is_available = match self.get_existing_circuit_breaker(&lookup.circuit_key).await {
                 Some(breaker) => breaker.is_available().await,
                 None => true,
             };
 
             if !is_available {
-                unavailable_channel_ids.push(candidate.channel_id.clone());
+                unavailable_channel_ids.push(lookup.channel_id);
             }
         }
 

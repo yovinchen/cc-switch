@@ -1,3 +1,4 @@
+use super::circuit_breaker_key::channel_circuit_key;
 use super::domain::{
     claude_api_format_for_interface_kind, codex_api_format_for_interface_kind, AppKind,
     ChannelSpec, ModelRoute, ResolvedChannelAttempt, RouteSelection, DEFAULT_ROUTE_GROUP,
@@ -20,6 +21,12 @@ pub struct RouteResolveModelInput {
 pub struct RouteResolveModelRecordInput {
     pub public_model: String,
     pub upstream_model: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RouteCandidateCircuitKey {
+    pub channel_id: String,
+    pub circuit_key: String,
 }
 
 pub fn route_resolve_model_input_from_record(
@@ -450,6 +457,19 @@ pub fn reject_unavailable_channel_ids<I, S>(
     reject_unavailable_route_candidates(response, |candidate| {
         unavailable_channel_ids.contains(&candidate.channel_id)
     });
+}
+
+pub fn route_candidate_channel_circuit_keys(
+    response: &RouteResolveResponse,
+) -> Vec<RouteCandidateCircuitKey> {
+    response
+        .candidates
+        .iter()
+        .map(|candidate| RouteCandidateCircuitKey {
+            channel_id: candidate.channel_id.clone(),
+            circuit_key: channel_circuit_key(&response.app_type, &candidate.channel_id),
+        })
+        .collect()
 }
 
 fn normalize_required(value: &str, field: &str) -> ProxyCoreResult<String> {
@@ -918,5 +938,31 @@ mod tests {
         assert_eq!(response.rejected[0].provider_id, "provider-blocked");
         assert_eq!(response.rejected[0].channel_name, "Channel blocked");
         assert_eq!(response.rejected[0].reasons, vec!["circuit_open"]);
+    }
+
+    #[test]
+    fn route_candidate_channel_circuit_keys_project_response_candidates() {
+        let response = resolve_channel_route(
+            RouteResolveRequest {
+                app_type: "claude".to_string(),
+                requested_model: Some("sonnet".to_string()),
+                interface_kind: Some("anthropic_messages".to_string()),
+                route_group: None,
+            },
+            vec![
+                channel("low", "openai_responses", "sonnet", 10),
+                channel("high", "openai_responses", "sonnet", 100),
+            ],
+            ChannelRouteSource::MaterializedChannels,
+        )
+        .expect("resolve route");
+
+        let keys = route_candidate_channel_circuit_keys(&response);
+
+        assert_eq!(keys.len(), 2);
+        assert_eq!(keys[0].channel_id, "high");
+        assert_eq!(keys[0].circuit_key, "channel:claude:high");
+        assert_eq!(keys[1].channel_id, "low");
+        assert_eq!(keys[1].circuit_key, "channel:claude:low");
     }
 }
