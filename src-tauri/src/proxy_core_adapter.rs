@@ -4067,6 +4067,18 @@ pub(crate) fn provider_failover_circuit_lookups(
     )
 }
 
+pub(crate) fn provider_failover_circuit_lookups_from_router_sources(
+    app_type: &str,
+    queue: impl IntoIterator<Item = FailoverQueueItem>,
+    providers: &IndexMap<String, Provider>,
+) -> Vec<ProviderFailoverCircuitLookup> {
+    provider_failover_circuit_lookups(
+        app_type,
+        queue.into_iter().map(|item| item.provider_id).collect(),
+        providers.keys().cloned().collect(),
+    )
+}
+
 pub(crate) fn provider_selection_candidate_from_failover_lookup(
     lookup: ProviderFailoverCircuitLookup,
     available: bool,
@@ -9197,14 +9209,37 @@ mod tests {
                 None,
             ),
         );
-        let failover_lookups = provider_failover_circuit_lookups(
+        let failover_lookups = provider_failover_circuit_lookups_from_router_sources(
             "claude",
             vec![
-                "missing".to_string(),
-                "provider-b".to_string(),
-                "provider-a".to_string(),
+                FailoverQueueItem {
+                    provider_id: "missing".to_string(),
+                    provider_name: "Missing".to_string(),
+                    sort_index: Some(0),
+                    provider_notes: None,
+                },
+                FailoverQueueItem {
+                    provider_id: "provider-b".to_string(),
+                    provider_name: "Provider B".to_string(),
+                    sort_index: Some(1),
+                    provider_notes: None,
+                },
+                FailoverQueueItem {
+                    provider_id: "provider-a".to_string(),
+                    provider_name: "Provider A".to_string(),
+                    sort_index: Some(2),
+                    provider_notes: None,
+                },
             ],
-            failover_providers.keys().cloned().collect(),
+            &failover_providers,
+        );
+        assert_eq!(failover_lookups[0].provider_id, "missing");
+        assert!(!failover_lookups[0].configured);
+        assert_eq!(failover_lookups[1].provider_id, "provider-b");
+        assert!(failover_lookups[1].configured);
+        assert_eq!(
+            failover_lookups[1].circuit_key.as_deref(),
+            Some("claude:provider-b")
         );
         let selected_failover = select_failover_providers_from_router_lookup_availability(
             "claude",

@@ -56,6 +56,7 @@ const FORBIDDEN_PROVIDER_ROUTER_SELECTION_MARKERS: &[&str] =
         "ProviderSelectionInput::",
         "select_provider_ids(",
         "provider_selection_candidate_from_failover_lookup(",
+        "provider_failover_circuit_lookups(",
     ];
 const FORBIDDEN_PROVIDER_ROUTER_FAILOVER_CONFIG_MARKERS: &[&str] =
     &[".auto_failover_enabled", "默认禁用故障转移"];

@@ -12,9 +12,10 @@ use crate::proxy_core_adapter::{
     apply_route_candidate_circuit_availability, auto_failover_enabled_from_router_config_result,
     circuit_breaker_config_from_router_config_result,
     circuit_failure_threshold_from_router_config_result, current_provider_id_from_router_sources,
-    provider_circuit_key, provider_circuit_key_prefix, provider_failover_circuit_lookups,
-    proxy_channel_route_inputs_to_core, resolve_channel_route as resolve_core_channel_route,
-    route_candidate_channel_circuit_keys, select_current_provider_from_router_source,
+    provider_circuit_key, provider_circuit_key_prefix,
+    provider_failover_circuit_lookups_from_router_sources, proxy_channel_route_inputs_to_core,
+    resolve_channel_route as resolve_core_channel_route, route_candidate_channel_circuit_keys,
+    select_current_provider_from_router_source,
     select_failover_providers_from_router_lookup_availability, AllowResult, ChannelRouteSource,
     CircuitBreakerConfig, CircuitBreakerStats, RouteCandidateCircuitKey, RouteResolveRequest,
     RouteResolveResponse,
@@ -65,18 +66,10 @@ impl ProviderRouter {
         // 故障转移开启：仅按队列顺序依次尝试（P1 → P2 → ...）
         let all_providers = self.db.get_all_providers(app_type)?;
 
-        // 使用 DAO 返回的排序结果，确保和前端展示一致
-        let ordered_ids: Vec<String> = self
-            .db
-            .get_failover_queue(app_type)?
-            .into_iter()
-            .map(|item| item.provider_id)
-            .collect();
-
-        let lookups = provider_failover_circuit_lookups(
+        let lookups = provider_failover_circuit_lookups_from_router_sources(
             app_type,
-            ordered_ids,
-            all_providers.keys().cloned().collect(),
+            self.db.get_failover_queue(app_type)?,
+            &all_providers,
         );
         let mut lookup_availability = Vec::with_capacity(lookups.len());
         for lookup in lookups {

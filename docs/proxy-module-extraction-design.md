@@ -964,6 +964,7 @@
 本轮继续把 ProviderRouter 的 circuit breaker config 与 failure threshold 配置读取结果 fallback 收敛到 adapter，router 只负责读取 proxy_config 并管理 breaker 实例生命周期。
 本轮继续把 ProviderRouter 的 dry-run route circuit availability 到 rejected:circuit_open response mutation 收敛到 adapter，router 只负责按候选 circuit key 查询 breaker 可用性。
 本轮继续把 ProviderRouter 的 failover lookup availability 到 selection candidate 的投影收敛到 adapter，router 只负责读取 failover queue/provider map 并查询 breaker 可用性。
+本轮继续把 ProviderRouter 的 failover queue/provider map 到 provider circuit lookup 的投影收敛到 adapter，router 不再展开 queue provider_id 或 provider map keys。
 
 当前原则：核心 crate 可以新增端口和领域字段，但不得引入 `tauri`、`Database`、settings、commands、services 等宿主依赖；现有 runtime 行为必须继续通过 targeted tests 证明不回归。
 
@@ -1727,7 +1728,7 @@ materialized channel 优先、空表才 fallback 到 legacy projection 的 sourc
 
 dry-run route 的 circuit-open 识别也继续收敛：`route_candidate_channel_circuit_keys` 负责把 `RouteResolveResponse` 的候选投影成 channel circuit lookup facts，`ProviderRouter` 只查询已有 breaker 可用性并把 availability facts 交给 `proxy_core_adapter::apply_route_candidate_circuit_availability`，由 adapter/core 生成 rejected:circuit_open response mutation。
 
-provider failover 的 circuit lookup 也继续收敛：`provider_failover_circuit_lookups` 负责保留 failover queue 顺序、标记 missing provider 并生成已配置 provider 的 circuit key；`ProviderRouter` 只读取 DB provider facts 与 breaker 可用性，再把 lookup availability facts 交给 `proxy_core_adapter::select_failover_providers_from_router_lookup_availability` 投影为 selection candidates 并执行 core selection 策略。
+provider failover 的 circuit lookup 也继续收敛：`provider_failover_circuit_lookups` 负责保留 failover queue 顺序、标记 missing provider 并生成已配置 provider 的 circuit key；`ProviderRouter` 只读取 DB provider facts 与 breaker 可用性，再把 queue/provider map facts 交给 `proxy_core_adapter::provider_failover_circuit_lookups_from_router_sources`，随后把 lookup availability facts 交给 `select_failover_providers_from_router_lookup_availability` 投影为 selection candidates 并执行 core selection 策略。
 
 auto failover 开关启用的计划也已收敛：`plan_auto_failover_toggle` 负责“接管未开启则拒绝”、“队列非空则切 P1”、“队列为空则自动加入当前 provider 并切换”的纯决策；Tauri command 只读取 config/queue/current provider、执行 DB 队列写入、调用 proxy service 切换、写回 config 并 emit core 事件 contract。
 
