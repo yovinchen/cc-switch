@@ -1323,6 +1323,38 @@ fn production_gemini_provider_adapter_delegates_auth_info_to_adapter() {
 }
 
 #[test]
+fn production_codex_provider_adapter_delegates_auth_info_to_adapter() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let path = manifest_dir.join("src/proxy/providers/codex.rs");
+    let source = fs::read_to_string(&path).expect("read codex provider adapter source");
+    let extract_auth = function_slice(
+        &source,
+        "    fn extract_auth(&self, provider: &Provider)",
+        "    fn build_url(&self, base_url: &str, endpoint: &str) -> String",
+    );
+
+    let mut violations = Vec::new();
+    for (line_index, line) in production_lines(extract_auth) {
+        let code = line.split("//").next().unwrap_or_default();
+        for marker in FORBIDDEN_PROVIDER_ADAPTER_AUTH_INFO_MARKERS {
+            if code.contains(marker) {
+                violations.push(format!(
+                    "src/proxy/providers/codex.rs extract_auth:{} contains auth info marker `{}`",
+                    line_index + 1,
+                    marker
+                ));
+            }
+        }
+    }
+
+    assert!(
+        violations.is_empty(),
+        "Codex provider adapter must delegate auth info construction to proxy_core_adapter helpers:\n{}",
+        violations.join("\n")
+    );
+}
+
+#[test]
 fn production_handlers_delegate_management_auth_decisions_to_adapter() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let path = manifest_dir.join("src/proxy/handlers.rs");

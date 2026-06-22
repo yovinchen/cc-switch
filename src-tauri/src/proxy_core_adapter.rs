@@ -2982,6 +2982,11 @@ pub(crate) fn provider_codex_api_key(provider: &Provider) -> Option<String> {
     None
 }
 
+pub(crate) fn provider_codex_auth_info(provider: &Provider) -> Option<ProviderAuthInfo> {
+    provider_codex_api_key(provider)
+        .map(|key| ProviderAuthInfo::new(key, ProviderAuthStrategy::Bearer))
+}
+
 pub(crate) fn codex_auth_object_value_from_settings(settings: &Value) -> Option<&Value> {
     let auth = settings.get("auth")?;
     auth.as_object()?;
@@ -11298,6 +11303,17 @@ mod tests {
             provider_codex_api_key(&provider).as_deref(),
             Some("sk-provider")
         );
+        let provider_auth = provider_codex_auth_info(&provider).expect("codex auth info");
+        assert_eq!(provider_auth.api_key, "sk-provider");
+        assert_eq!(provider_auth.access_token, None);
+        assert_eq!(provider_auth.strategy, ProviderAuthStrategy::Bearer);
+        let missing_codex_auth = Provider::with_id(
+            "codex-missing-auth".to_string(),
+            "Codex Missing Auth".to_string(),
+            json!({}),
+            None,
+        );
+        assert!(provider_codex_auth_info(&missing_codex_auth).is_none());
         assert_eq!(
             provider_codex_base_url(&provider).as_deref(),
             Some("https://api.openai.com/v1")

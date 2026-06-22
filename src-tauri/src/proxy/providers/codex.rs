@@ -12,14 +12,16 @@ use crate::provider::Provider;
 use crate::proxy::error::ProxyError;
 use crate::proxy_core_adapter::{
     apply_codex_chat_upstream_model_policy, build_codex_bearer_auth_headers,
-    build_codex_upstream_url, provider_codex_api_key, required_codex_provider_base_url,
+    build_codex_upstream_url, provider_codex_auth_info, required_codex_provider_base_url,
     provider_codex_catalog_model_ids, provider_codex_chat_reasoning_profile,
     provider_codex_upstream_model, provider_codex_uses_chat_completions,
     should_convert_codex_responses_endpoint_to_chat, CodexChatReasoningOptions,
-    ProviderAuthInfo, ProviderAuthStrategy,
+    ProviderAuthInfo,
 };
 #[cfg(test)]
 use crate::proxy_core_adapter::CodexChatReasoningProfile;
+#[cfg(test)]
+use crate::proxy_core_adapter::ProviderAuthStrategy;
 use serde_json::Value as JsonValue;
 
 /// Codex 适配器
@@ -103,11 +105,6 @@ impl CodexAdapter {
     pub fn new() -> Self {
         Self
     }
-
-    /// 从 Provider 配置中提取 API Key
-    fn extract_key(&self, provider: &Provider) -> Option<String> {
-        provider_codex_api_key(provider)
-    }
 }
 
 impl Default for CodexAdapter {
@@ -126,8 +123,7 @@ impl ProviderAdapter for CodexAdapter {
     }
 
     fn extract_auth(&self, provider: &Provider) -> Option<ProviderAuthInfo> {
-        self.extract_key(provider)
-            .map(|key| ProviderAuthInfo::new(key, ProviderAuthStrategy::Bearer))
+        provider_codex_auth_info(provider)
     }
 
     fn build_url(&self, base_url: &str, endpoint: &str) -> String {
