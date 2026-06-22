@@ -9,14 +9,16 @@ use crate::provider::Provider;
 use crate::proxy::server::ProxyServer;
 use crate::proxy::switch_lock::SwitchLockManager;
 use crate::proxy_core_adapter::{
+    attach_codex_model_catalog_from_provider as attach_codex_model_catalog_from_provider_settings,
     build_proxy_official_warning_event_payload, claude_live_config_has_proxy_placeholder,
     claude_takeover_model_fields_from_settings, codex_live_config_has_proxy_placeholder,
-    gemini_live_config_has_proxy_placeholder, live_config_has_proxy_placeholder_for_app,
-    provider_claude_takeover_model_fields, provider_is_github_copilot,
-    provider_settings_have_proxy_placeholder_for_app, provider_settings_with_live_token_sync,
-    provider_uses_managed_account_auth, proxy_runtime_status_stopped, proxy_server_info_from_parts,
-    proxy_takeover_status_from_parts, CircuitBreakerConfig, LiveTokenProviderSettingsIssue,
-    ProxyConfig, ProxyRuntimeStatus, ProxyServerInfo, ProxyTakeoverStatus,
+    codex_takeover_toml_config_for_provider, gemini_live_config_has_proxy_placeholder,
+    live_config_has_proxy_placeholder_for_app, provider_claude_takeover_model_fields,
+    provider_is_github_copilot, provider_settings_have_proxy_placeholder_for_app,
+    provider_settings_with_live_token_sync, provider_uses_managed_account_auth,
+    proxy_runtime_status_stopped, proxy_server_info_from_parts, proxy_takeover_status_from_parts,
+    CircuitBreakerConfig, LiveTokenProviderSettingsIssue, ProxyConfig, ProxyRuntimeStatus,
+    ProxyServerInfo, ProxyTakeoverStatus,
     PROXY_OFFICIAL_WARNING_EVENT,
 };
 use crate::services::provider::{
@@ -2075,6 +2077,7 @@ impl ProxyService {
     // ==================== Live 配置读写辅助方法 ====================
 
     /// 更新 TOML 字符串中的 base_url（委托给 codex_config 共享实现）
+    #[cfg(test)]
     fn update_toml_base_url(toml_str: &str, new_url: &str) -> String {
         crate::codex_config::update_codex_toml_field(toml_str, "base_url", new_url)
             .unwrap_or_else(|_| toml_str.to_string())
@@ -2087,39 +2090,14 @@ impl ProxyService {
         proxy_url: &str,
         provider: Option<&Provider>,
     ) -> String {
-        let updated = Self::update_toml_base_url(toml_str, proxy_url);
-        let mut updated =
-            crate::codex_config::update_codex_toml_field(&updated, "wire_api", "responses")
-                .unwrap_or(updated);
-
-        if let Some(upstream_model) =
-            provider.and_then(crate::proxy::providers::codex_provider_upstream_model)
-        {
-            updated =
-                crate::codex_config::update_codex_toml_field(&updated, "model", &upstream_model)
-                    .unwrap_or(updated);
-        }
-
-        updated
+        codex_takeover_toml_config_for_provider(toml_str, proxy_url, provider)
     }
 
     fn attach_codex_model_catalog_from_provider(
         live_config: &mut Value,
         provider: Option<&Provider>,
     ) {
-        let Some(provider) = provider else {
-            return;
-        };
-
-        let model_catalog = provider
-            .settings_config
-            .get("modelCatalog")
-            .cloned()
-            .unwrap_or_else(|| json!({ "models": [] }));
-
-        if let Some(root) = live_config.as_object_mut() {
-            root.insert("modelCatalog".to_string(), model_catalog);
-        }
+        attach_codex_model_catalog_from_provider_settings(live_config, provider);
     }
 
     fn read_claude_live(&self) -> Result<Value, String> {

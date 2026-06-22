@@ -1631,6 +1631,25 @@ pub(crate) fn provider_codex_upstream_model(provider: &Provider) -> Option<Strin
     resolve_codex_provider_upstream_model(settings_model, config_model.as_deref())
 }
 
+pub(crate) fn codex_takeover_toml_config_for_provider(
+    toml_str: &str,
+    proxy_url: &str,
+    provider: Option<&Provider>,
+) -> String {
+    let updated = crate::codex_config::update_codex_toml_field(toml_str, "base_url", proxy_url)
+        .unwrap_or_else(|_| toml_str.to_string());
+    let mut updated =
+        crate::codex_config::update_codex_toml_field(&updated, "wire_api", "responses")
+            .unwrap_or(updated);
+
+    if let Some(upstream_model) = provider.and_then(provider_codex_upstream_model) {
+        updated = crate::codex_config::update_codex_toml_field(&updated, "model", &upstream_model)
+            .unwrap_or(updated);
+    }
+
+    updated
+}
+
 pub(crate) fn provider_codex_catalog_model_ids(
     provider: &Provider,
 ) -> std::collections::HashSet<String> {
@@ -2821,6 +2840,24 @@ pub(crate) fn provider_model_catalog_from_provider(
 
 pub(crate) fn provider_model_catalog_raw_value(provider: &Provider) -> Option<&Value> {
     provider.settings_config.get("modelCatalog")
+}
+
+pub(crate) fn attach_codex_model_catalog_from_provider(
+    live_config: &mut Value,
+    provider: Option<&Provider>,
+) {
+    let Some(root) = live_config.as_object_mut() else {
+        return;
+    };
+
+    let Some(provider) = provider else {
+        return;
+    };
+
+    let model_catalog = provider_model_catalog_raw_value(provider)
+        .cloned()
+        .unwrap_or_else(|| json!({ "models": [] }));
+    root.insert("modelCatalog".to_string(), model_catalog);
 }
 
 pub(crate) fn client_model_catalog_from_optional_raw(
@@ -6005,6 +6042,41 @@ wire_api = "chat"
         assert_eq!(profile.supports_thinking, Some(true));
         let options = CodexChatReasoningOptions::from_profile(&profile);
         assert_eq!(options.supports_effort, Some(true));
+        let takeover_config = codex_takeover_toml_config_for_provider(
+            r#"model_provider = "openai"
+model = "client-model"
+
+[model_providers.openai]
+base_url = "https://api.openai.com/v1"
+wire_api = "chat"
+"#,
+            "http://127.0.0.1:15721/v1",
+            Some(&chat_provider),
+        );
+        let parsed_takeover: toml::Value =
+            toml::from_str(&takeover_config).expect("takeover config should be valid TOML");
+        assert_eq!(
+            parsed_takeover
+                .get("model_providers")
+                .and_then(|providers| providers.get("openai"))
+                .and_then(|provider| provider.get("base_url"))
+                .and_then(toml::Value::as_str),
+            Some("http://127.0.0.1:15721/v1")
+        );
+        assert_eq!(
+            parsed_takeover
+                .get("model_providers")
+                .and_then(|providers| providers.get("openai"))
+                .and_then(|provider| provider.get("wire_api"))
+                .and_then(toml::Value::as_str),
+            Some("responses")
+        );
+        assert_eq!(
+            parsed_takeover
+                .get("model")
+                .and_then(toml::Value::as_str),
+            Some("upstream-model")
+        );
         assert_eq!(
             infer_codex_chat_reasoning_profile(
                 "DeepSeek Relay",
@@ -7232,6 +7304,24 @@ wire_api = "chat"
         assert_eq!(
             provider_model_catalog_raw_value(&provider),
             settings.get("modelCatalog")
+        );
+        let mut live_config = json!({"auth": {}, "config": ""});
+        attach_codex_model_catalog_from_provider(&mut live_config, Some(&provider));
+        assert_eq!(live_config.get("modelCatalog"), settings.get("modelCatalog"));
+
+        let provider_without_catalog = Provider::with_id(
+            "provider-b".to_string(),
+            "Provider B".to_string(),
+            json!({"config": ""}),
+            None,
+        );
+        attach_codex_model_catalog_from_provider(
+            &mut live_config,
+            Some(&provider_without_catalog),
+        );
+        assert_eq!(
+            live_config.get("modelCatalog"),
+            Some(&json!({ "models": [] }))
         );
 
         let client_catalog = client_model_catalog_from_optional_raw(
