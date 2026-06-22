@@ -4,13 +4,12 @@
 
 use crate::app_config::AppType;
 use crate::provider::Provider;
-use crate::proxy::{
-    error::ProxyError, providers::get_claude_api_format, server::ProxyState,
-};
+use crate::proxy::{error::ProxyError, server::ProxyState};
 use crate::proxy_core_adapter::{
     app_proxy_config_from_proxy_app_config, claude_api_format_from_metadata,
     extract_proxy_session_id, request_context_route_update_from_proxy_result,
     request_model_from_body_for_context, request_model_from_gemini_path_for_context,
+    provider_claude_api_format,
     response_runtime_policy_from_app_proxy_config, ProxyCoreAppKind as AppKind, ProxyResult,
     ProxyServices, ResponseRuntimePolicy, ResponseTimeoutConfig,
     selected_provider_display_name_for_error,
@@ -190,7 +189,7 @@ impl RequestContext {
     ) -> Result<String, ProxyError> {
         Ok(claude_api_format_from_metadata(
             &result.metadata,
-            get_claude_api_format(self.provider()?),
+            provider_claude_api_format(self.provider()?),
         ))
     }
 

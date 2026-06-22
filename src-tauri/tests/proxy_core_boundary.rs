@@ -13,6 +13,8 @@ const FORBIDDEN_FORWARDER_SELF_PLANNING_MARKERS: &[&str] = &[
 ];
 const FORBIDDEN_REQUEST_CONTEXT_PROVIDER_PRESELECT_MARKERS: &[&str] =
     &["provider_router", ".select_providers("];
+const FORBIDDEN_REQUEST_CONTEXT_PROVIDER_ADAPTER_MARKERS: &[&str] =
+    &["providers::", "get_claude_api_format("];
 const FORBIDDEN_FORWARDER_URL_PLANNING_MARKERS: &[&str] = &[
     "rewrite_codex_responses_endpoint_to_chat(",
     "rewrite_claude_transform_endpoint(",
@@ -118,6 +120,33 @@ fn request_context_does_not_preselect_provider() {
     assert!(
         violations.is_empty(),
         "RequestContext must wait for ProxyEngine route results before storing selected providers:\n{}",
+        violations.join("\n")
+    );
+}
+
+#[test]
+fn request_context_uses_adapter_for_provider_facts() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let path = manifest_dir.join("src/proxy/handler_context.rs");
+    let source = fs::read_to_string(&path).expect("read handler_context.rs");
+
+    let mut violations = Vec::new();
+    for (line_index, line) in production_lines(&source) {
+        let code = line.split("//").next().unwrap_or_default();
+        for marker in FORBIDDEN_REQUEST_CONTEXT_PROVIDER_ADAPTER_MARKERS {
+            if code.contains(marker) {
+                violations.push(format!(
+                    "src/proxy/handler_context.rs:{} contains provider adapter marker `{}`",
+                    line_index + 1,
+                    marker
+                ));
+            }
+        }
+    }
+
+    assert!(
+        violations.is_empty(),
+        "RequestContext must consume provider facts through proxy_core_adapter helpers:\n{}",
         violations.join("\n")
     );
 }
