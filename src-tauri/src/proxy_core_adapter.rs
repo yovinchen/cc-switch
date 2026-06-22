@@ -1428,6 +1428,22 @@ pub(crate) fn provider_switch_requires_takeover_lock(app_type: &AppType) -> bool
     matches!(app_type, AppType::Claude | AppType::Codex | AppType::Gemini)
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum ProviderTakeoverLiveSyncTarget {
+    LiveConfig,
+    LiveBackup,
+}
+
+pub(crate) fn provider_takeover_live_sync_target(
+    app_type: &AppType,
+) -> ProviderTakeoverLiveSyncTarget {
+    if matches!(app_type, AppType::ClaudeDesktop) {
+        ProviderTakeoverLiveSyncTarget::LiveConfig
+    } else {
+        ProviderTakeoverLiveSyncTarget::LiveBackup
+    }
+}
+
 pub(crate) fn provider_switch_backfill_source_id<'a>(
     app_type: &AppType,
     current_id: Option<&'a str>,
@@ -13126,6 +13142,30 @@ command = "latest-command"
         assert!(!provider_switch_requires_takeover_lock(&AppType::OpenCode));
         assert!(!provider_switch_requires_takeover_lock(&AppType::OpenClaw));
         assert!(!provider_switch_requires_takeover_lock(&AppType::Hermes));
+    }
+
+    #[test]
+    fn provider_takeover_live_sync_target_keeps_desktop_on_live_config() {
+        assert_eq!(
+            provider_takeover_live_sync_target(&AppType::ClaudeDesktop),
+            ProviderTakeoverLiveSyncTarget::LiveConfig
+        );
+        assert_eq!(
+            provider_takeover_live_sync_target(&AppType::Claude),
+            ProviderTakeoverLiveSyncTarget::LiveBackup
+        );
+        assert_eq!(
+            provider_takeover_live_sync_target(&AppType::Codex),
+            ProviderTakeoverLiveSyncTarget::LiveBackup
+        );
+        assert_eq!(
+            provider_takeover_live_sync_target(&AppType::Gemini),
+            ProviderTakeoverLiveSyncTarget::LiveBackup
+        );
+        assert_eq!(
+            provider_takeover_live_sync_target(&AppType::OpenCode),
+            ProviderTakeoverLiveSyncTarget::LiveBackup
+        );
     }
 
     #[test]

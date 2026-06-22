@@ -26,13 +26,14 @@ use crate::proxy_core_adapter::{
     provider_settings_validation_issue_spec, provider_settings_validation_parts,
     provider_switch_backfill_source_id, provider_switch_dispatch,
     provider_switch_requires_takeover_lock,
-    provider_switch_should_mark_live_config_managed, proxy_live_config_owned_by_takeover,
-    proxy_switch_should_hot_switch, should_block_proxy_switch_to_provider,
+    provider_switch_should_mark_live_config_managed, provider_takeover_live_sync_target,
+    proxy_live_config_owned_by_takeover, proxy_switch_should_hot_switch,
+    should_block_proxy_switch_to_provider,
     should_reapply_codex_official_live_for_provider,
     should_skip_provider_legacy_common_config_migration, CommonConfigSnippetIssue,
     ProviderAdditiveLiveWriteAction, ProviderCredentialIssue,
     ProviderLiveConfigPresenceErrorPolicy, ProviderLiveSyncScope, ProviderOmoVariant,
-    ProviderSettingsValidationIssue, ProviderSwitchDispatch,
+    ProviderSettingsValidationIssue, ProviderSwitchDispatch, ProviderTakeoverLiveSyncTarget,
 };
 use crate::services::mcp::McpService;
 use crate::settings::CustomEndpoint;
@@ -1608,15 +1609,18 @@ impl ProviderService {
                 proxy_live_config_owned_by_takeover(has_live_backup, live_taken_over);
 
             if should_sync_via_proxy {
-                if matches!(app_type, AppType::ClaudeDesktop) {
-                    write_live_with_common_config(state.db.as_ref(), &app_type, &provider)?;
-                } else {
-                    futures::executor::block_on(
-                        state
-                            .proxy_service
-                            .update_live_backup_from_provider(app_type.as_str(), &provider),
-                    )
-                    .map_err(|e| AppError::Message(format!("更新 Live 备份失败: {e}")))?;
+                match provider_takeover_live_sync_target(&app_type) {
+                    ProviderTakeoverLiveSyncTarget::LiveConfig => {
+                        write_live_with_common_config(state.db.as_ref(), &app_type, &provider)?;
+                    }
+                    ProviderTakeoverLiveSyncTarget::LiveBackup => {
+                        futures::executor::block_on(
+                            state
+                                .proxy_service
+                                .update_live_backup_from_provider(app_type.as_str(), &provider),
+                        )
+                        .map_err(|e| AppError::Message(format!("更新 Live 备份失败: {e}")))?;
+                    }
                 }
 
                 if matches!(app_type, AppType::Claude)
@@ -2016,17 +2020,19 @@ impl ProviderService {
         // See the save path above: backup/placeholders are the ownership signal
         // here, not just proxy_config.enabled.
         if proxy_live_config_owned_by_takeover(has_live_backup, live_taken_over) {
-            if matches!(app_type, AppType::ClaudeDesktop) {
-                write_live_with_common_config(state.db.as_ref(), &app_type, provider)?;
-                return Ok(());
+            match provider_takeover_live_sync_target(&app_type) {
+                ProviderTakeoverLiveSyncTarget::LiveConfig => {
+                    write_live_with_common_config(state.db.as_ref(), &app_type, provider)?;
+                }
+                ProviderTakeoverLiveSyncTarget::LiveBackup => {
+                    futures::executor::block_on(
+                        state
+                            .proxy_service
+                            .update_live_backup_from_provider(app_type.as_str(), provider),
+                    )
+                    .map_err(|e| AppError::Message(format!("更新 Live 备份失败: {e}")))?;
+                }
             }
-
-            futures::executor::block_on(
-                state
-                    .proxy_service
-                    .update_live_backup_from_provider(app_type.as_str(), provider),
-            )
-            .map_err(|e| AppError::Message(format!("更新 Live 备份失败: {e}")))?;
             return Ok(());
         }
 
