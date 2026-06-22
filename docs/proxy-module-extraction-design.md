@@ -894,7 +894,7 @@
 本轮还把 client model catalog 的 app source 选择收敛到 adapter，host ModelCatalogProvider 只保留 port 调用。
 本轮继续把 usage sink 的计费配置 lookup 输入收敛到 adapter，host 不再直接拆 `UsageRecord` 的 app/provider 字段。
 本轮还把 core event 到 host event bus 的投影+分发入口收敛到 adapter，host event sink 只保留事件总线副作用。
-本轮继续把 forward runtime 的 route plan attempt 构造入口收敛到 adapter，auth profile 的 DB key 注入仍留在 host 侧作为下一步拆分点。
+本轮继续把 forward runtime 的 route plan attempt 构造入口收敛到 adapter；auth profile 的 DB key 注入 wrapper 也已收敛到 adapter，host forward runtime 只调用统一 helper。
 本轮还把 forward runtime 的 auth profile action 应用循环收敛到 adapter，host 仅保留 channel-key DB lookup 闭包。
 本轮继续把 forward runtime 的 current-provider 来源组合收敛到 adapter，host 只传入 settings 事实和 DB fallback 闭包。
 本轮还把 forward runtime 的 required attempts 空结果错误判断收敛到 adapter，host 只接收可执行 attempts 或 core error。
@@ -967,6 +967,7 @@
 本轮继续把 ProviderRouter 的 failover queue/provider map 到 provider circuit lookup 的投影收敛到 adapter，router 不再展开 queue provider_id 或 provider map keys。
 本轮继续把固定 app catalog 从 proxy-core 默认端口移出，`ProxyConfigSource::list_apps` 改为宿主必填能力，CC Switch 的 `AppType::all()` 只保留在 host adapter。
 本轮继续把 RoutePolicy raw 中 `failoverProviderIds` 的读取 contract 收敛到 domain/routing helper，`ProxyEngine` 不再直接读取 raw JSON 字段。
+本轮继续把 forward runtime 的 auth profile DB key 注入 helper 收敛到 adapter，`proxy_core_host` 不再维护本地 wrapper 或直接查询 channel-key。
 
 当前原则：核心 crate 可以新增端口和领域字段，但不得引入 `tauri`、`Database`、settings、commands、services 等宿主依赖；现有 runtime 行为必须继续通过 targeted tests 证明不回归。
 

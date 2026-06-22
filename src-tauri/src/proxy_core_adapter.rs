@@ -1,7 +1,7 @@
 use crate::app_config::AppType;
 use crate::claude_desktop_config::ResolvedModelRoute;
 use crate::database::{
-    FailoverQueueItem, ProxyChannelKeyRecord, ProxyChannelModelRecord, ProxyChannelRecord,
+    Database, FailoverQueueItem, ProxyChannelKeyRecord, ProxyChannelModelRecord, ProxyChannelRecord,
     ProxyChannelMigrationPreview, ProxyChannelMaterializeResult, ProxyChannelSourceKind,
 };
 use crate::error::AppError;
@@ -5699,6 +5699,25 @@ pub(crate) fn apply_channel_auth_profile_providers_from_source(
         }
     }
     Ok(())
+}
+
+pub(crate) fn apply_channel_auth_profile_providers_from_db(
+    db: &Database,
+    app_type: &AppType,
+    providers: &IndexMap<String, Provider>,
+    attempts: &mut [ForwardAttempt],
+) -> ProxyCoreResult<()> {
+    apply_channel_auth_profile_providers_from_source(
+        app_type,
+        providers,
+        attempts,
+        |channel_id, key_ref| {
+            let key = db
+                .get_enabled_proxy_channel_key(channel_id, key_ref)
+                .map_err(|error| app_error("load channel auth key", error))?;
+            Ok(channel_key_value_from_record(key))
+        },
+    )
 }
 
 pub(crate) fn forwarding_requires_runtime_error_message() -> &'static str {

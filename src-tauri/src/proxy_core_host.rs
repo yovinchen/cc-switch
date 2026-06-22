@@ -1,4 +1,3 @@
-use crate::app_config::AppType;
 use crate::database::Database;
 #[cfg(test)]
 use crate::error::AppError;
@@ -9,7 +8,6 @@ use crate::proxy::failover_switch::FailoverSwitchManager;
 use crate::proxy::hyper_client::ProxyResponse;
 use crate::proxy::provider_router::ProviderRouter;
 use crate::proxy::providers::codex_chat_history::CodexChatHistoryStore;
-use crate::proxy::route_attempt::ForwardAttempt;
 use crate::proxy::usage::UsageLogger;
 use crate::proxy::RequestForwarder;
 use crate::services::stream_check::StreamCheckService;
@@ -31,7 +29,7 @@ use crate::proxy_core_adapter::{
 use crate::proxy_core_adapter::{
     app_error,
     app_summary_config_from_config_source,
-    apply_channel_auth_profile_providers_from_source,
+    apply_channel_auth_profile_providers_from_db,
     auth_info_from_cc_switch_provider_config,
     cc_switch_app_kinds,
     claude_desktop_provider_from_selection_result,
@@ -45,7 +43,6 @@ use crate::proxy_core_adapter::{
     proxy_channel_key_record_to_core,
     proxy_channel_key_records_to_core,
     proxy_channel_model_records_to_core,
-    channel_key_value_from_record,
     channel_migration_materialize_input_from_result,
     channel_migration_preview_input_from_result,
     channel_spec_from_source,
@@ -77,7 +74,6 @@ use crate::proxy_core_adapter::{
 #[cfg(test)]
 use crate::proxy_core_adapter::forward_attempts_from_plan;
 use futures::future::BoxFuture;
-use indexmap::IndexMap;
 #[cfg(test)]
 use serde_json::Value;
 use std::collections::HashMap;
@@ -926,7 +922,12 @@ impl CcSwitchProxyRuntime {
             .map_err(|error| app_error("load host providers", error))?;
         let providers = host_providers_for_plan(&all_providers, &plan)?;
         let mut attempts = required_forward_attempts_from_plan(&app_type, &providers, &plan)?;
-        apply_channel_auth_profile_providers(&self.db, &app_type, &all_providers, &mut attempts)?;
+        apply_channel_auth_profile_providers_from_db(
+            &self.db,
+            &app_type,
+            &all_providers,
+            &mut attempts,
+        )?;
 
         let forwarder_options = forwarder_config.options;
 
@@ -967,28 +968,10 @@ impl CcSwitchProxyRuntime {
     }
 }
 
-fn apply_channel_auth_profile_providers(
-    db: &Database,
-    app_type: &AppType,
-    providers: &IndexMap<String, crate::provider::Provider>,
-    attempts: &mut [ForwardAttempt],
-) -> ProxyCoreResult<()> {
-    apply_channel_auth_profile_providers_from_source(
-        app_type,
-        providers,
-        attempts,
-        |channel_id, key_ref| {
-            let key = db
-                .get_enabled_proxy_channel_key(channel_id, key_ref)
-                .map_err(|error| app_error("load channel auth key", error))?;
-            Ok(channel_key_value_from_record(key))
-        },
-    )
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::app_config::AppType;
     use crate::provider::Provider;
     use crate::proxy_core_adapter::{
         ChannelStatus, ProviderKind, ProxyBody, ProxyCoreChannelOverrides as ChannelOverrides,
@@ -1166,8 +1149,13 @@ mod tests {
         let route_providers = host_providers_for_plan(&providers, &plan).expect("route providers");
         let mut attempts = forward_attempts_from_plan(&AppType::Claude, &route_providers, &plan);
         let db = Database::memory().expect("memory db");
-        apply_channel_auth_profile_providers(&db, &AppType::Claude, &providers, &mut attempts)
-            .expect("apply auth profiles");
+        apply_channel_auth_profile_providers_from_db(
+            &db,
+            &AppType::Claude,
+            &providers,
+            &mut attempts,
+        )
+        .expect("apply auth profiles");
 
         assert_eq!(attempts.len(), 1);
         assert_eq!(attempts[0].provider().id, "route-provider");
@@ -1199,8 +1187,13 @@ mod tests {
         let route_providers = host_providers_for_plan(&providers, &plan).expect("route providers");
         let mut attempts = forward_attempts_from_plan(&AppType::Claude, &route_providers, &plan);
         let db = Database::memory().expect("memory db");
-        apply_channel_auth_profile_providers(&db, &AppType::Claude, &providers, &mut attempts)
-            .expect("apply cross-app profile");
+        apply_channel_auth_profile_providers_from_db(
+            &db,
+            &AppType::Claude,
+            &providers,
+            &mut attempts,
+        )
+        .expect("apply cross-app profile");
 
         assert_eq!(attempts[0].provider().id, "route-provider");
         assert_eq!(attempts[0].auth_provider().id, "route-provider");
@@ -1230,8 +1223,13 @@ mod tests {
         let route_providers = host_providers_for_plan(&providers, &plan).expect("route providers");
         let mut attempts = forward_attempts_from_plan(&AppType::Claude, &route_providers, &plan);
         let db = Database::memory().expect("memory db");
-        apply_channel_auth_profile_providers(&db, &AppType::Claude, &providers, &mut attempts)
-            .expect("apply spaced provider profile");
+        apply_channel_auth_profile_providers_from_db(
+            &db,
+            &AppType::Claude,
+            &providers,
+            &mut attempts,
+        )
+        .expect("apply spaced provider profile");
 
         assert_eq!(attempts[0].provider().id, "route-provider");
         assert_eq!(attempts[0].auth_provider().id, "route-provider");
@@ -1252,7 +1250,7 @@ mod tests {
         let route_providers = host_providers_for_plan(&providers, &plan).expect("route providers");
         let mut attempts = forward_attempts_from_plan(&AppType::Claude, &route_providers, &plan);
         let db = Database::memory().expect("memory db");
-        let error = apply_channel_auth_profile_providers(
+        let error = apply_channel_auth_profile_providers_from_db(
             &db,
             &AppType::Claude,
             &providers,
@@ -1300,8 +1298,13 @@ mod tests {
 
         let route_providers = host_providers_for_plan(&providers, &plan).expect("route providers");
         let mut attempts = forward_attempts_from_plan(&AppType::Claude, &route_providers, &plan);
-        apply_channel_auth_profile_providers(&db, &AppType::Claude, &providers, &mut attempts)
-            .expect("apply channel key auth profile");
+        apply_channel_auth_profile_providers_from_db(
+            &db,
+            &AppType::Claude,
+            &providers,
+            &mut attempts,
+        )
+        .expect("apply channel key auth profile");
 
         assert_eq!(attempts.len(), 1);
         assert_eq!(attempts[0].provider().id, "anthropic-main");
@@ -1335,7 +1338,7 @@ mod tests {
         )
         .expect("disable channel key");
         let mut attempts = forward_attempts_from_plan(&AppType::Claude, &route_providers, &plan);
-        let error = apply_channel_auth_profile_providers(
+        let error = apply_channel_auth_profile_providers_from_db(
             &db,
             &AppType::Claude,
             &providers,
