@@ -656,6 +656,16 @@ pub(crate) fn forward_current_provider_id_from_source(
     )
 }
 
+pub(crate) fn forward_current_provider_id_from_db_sources(
+    db: &Database,
+    app_type: &AppType,
+) -> String {
+    let settings_current_provider_id = current_provider_id_from_settings_for_app_type(app_type);
+    forward_current_provider_id_from_source(settings_current_provider_id.as_deref(), || {
+        db.get_current_provider(app_type.as_str()).ok().flatten()
+    })
+}
+
 pub(crate) fn proxy_app_config_from_config_source_parts(
     app: AppKind,
     config: AppProxyConfig,

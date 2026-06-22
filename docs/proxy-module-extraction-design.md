@@ -895,14 +895,14 @@
 本轮继续把 usage sink 的计费配置 lookup 输入收敛到 adapter，host 不再直接拆 `UsageRecord` 的 app/provider 字段。
 本轮还把 core event 到 host event bus 的投影+分发入口收敛到 adapter，host event sink 只保留事件总线副作用。
 本轮继续把 forward runtime 的 route plan attempt 构造入口收敛到 adapter；auth profile 的 DB key 注入 wrapper 也已收敛到 adapter，host forward runtime 只调用统一 helper。
-本轮还把 forward runtime 的 auth profile action 应用循环收敛到 adapter，host 仅保留 channel-key DB lookup 闭包。
-本轮继续把 forward runtime 的 current-provider 来源组合收敛到 adapter，host 只传入 settings 事实和 DB fallback 闭包。
+本轮还把 forward runtime 的 auth profile action 应用循环收敛到 adapter，host 不再维护 channel-key DB lookup 闭包。
+本轮继续把 forward runtime 的 current-provider 来源组合收敛到 adapter，host forward runtime 不再读取 settings 或手写 DB fallback 闭包。
 本轮还把 forward runtime 的 required attempts 空结果错误判断收敛到 adapter，host 只接收可执行 attempts 或 core error。
 本轮还把 `ProxyRequest` 到 host forward 输入的投影收敛到 adapter，host forward runtime 不再直接处理 app kind 解析、body JSON 转换和 session id 抽取。
 本轮继续把 `AppProxyConfig` 到 forwarder timeout/retry 参数的投影收敛到 adapter，host 不再直接展开 response runtime policy。
 本轮还把 forwarder runtime 的 app config 与 rectifier/optimizer 配置组合收敛到 adapter，host forward runtime 只保留 DB 读取和 `RequestForwarder` 运行态装配。
 本轮还把 ConfigSource 的 app 配置 wrapper 收敛到 adapter，host 不再显式读取 settings current-provider 后再拼 `ProxyAppConfig`。
-本轮继续把 channel-key DB record 到 runtime key value 的字段投影收敛到 adapter，host auth-profile 闭包只保留持久化查询。
+本轮继续把 channel-key DB record 到 runtime key value 的字段投影收敛到 adapter，host auth-profile 路径不再直接查询或投影 channel-key。
 本轮也把 management handler 中 provider 到 core spec 的直接 trait 调用收敛为 adapter helper，provider list/current route handler 不再暴露投影细节。
 本轮继续把 channel/group 管理列表的 response source 组装收敛到 adapter，list/group handlers 不再直接拼 record-to-source 投影。
 本轮还把 channel create/get/update 的 record response source 组装收敛到 adapter，CRUD handler 不再直接暴露 channel record 投影细节。
@@ -968,6 +968,7 @@
 本轮继续把固定 app catalog 从 proxy-core 默认端口移出，`ProxyConfigSource::list_apps` 改为宿主必填能力，CC Switch 的 `AppType::all()` 只保留在 host adapter。
 本轮继续把 RoutePolicy raw 中 `failoverProviderIds` 的读取 contract 收敛到 domain/routing helper，`ProxyEngine` 不再直接读取 raw JSON 字段。
 本轮继续把 forward runtime 的 auth profile DB key 注入 helper 收敛到 adapter，`proxy_core_host` 不再维护本地 wrapper 或直接查询 channel-key。
+本轮继续把 forward runtime 的 current-provider settings/DB fallback 读取入口收敛到 adapter，`proxy_core_host` 只消费最终 provider id 字符串。
 
 当前原则：核心 crate 可以新增端口和领域字段，但不得引入 `tauri`、`Database`、settings、commands、services 等宿主依赖；现有 runtime 行为必须继续通过 targeted tests 证明不回归。
 
