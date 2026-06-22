@@ -5,6 +5,8 @@
 pub(crate) mod auth_adapter;
 pub mod circuit_breaker;
 pub(crate) mod codex_chat_history;
+pub(crate) mod codex_oauth_auth;
+pub(crate) mod copilot_auth;
 pub mod error;
 pub mod error_mapper;
 pub(crate) mod events;

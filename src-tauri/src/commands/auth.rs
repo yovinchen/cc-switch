@@ -2,10 +2,8 @@ use tauri::State;
 
 use crate::commands::codex_oauth::CodexOAuthState;
 use crate::commands::copilot::CopilotAuthState;
-use crate::proxy::providers::codex_oauth_auth::CodexOAuthError;
-use crate::proxy::providers::copilot_auth::{
-    CopilotAuthError, GitHubAccount, GitHubDeviceCodeResponse,
-};
+use crate::proxy::codex_oauth_auth::CodexOAuthError;
+use crate::proxy::copilot_auth::{CopilotAuthError, GitHubAccount, GitHubDeviceCodeResponse};
 
 const AUTH_PROVIDER_GITHUB_COPILOT: &str = "github_copilot";
 const AUTH_PROVIDER_CODEX_OAUTH: &str = "codex_oauth";

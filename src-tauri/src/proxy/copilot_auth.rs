@@ -1,4 +1,4 @@
-//! GitHub Copilot Authentication Module
+//! Proxy-level GitHub Copilot authentication module
 //!
 //! 实现 GitHub OAuth 设备码流程和 Copilot 令牌管理。
 //! 支持多账号认证，每个 Provider 可关联不同的 GitHub 账号。

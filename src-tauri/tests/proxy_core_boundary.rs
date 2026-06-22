@@ -51,6 +51,18 @@ const FORBIDDEN_PROVIDER_MODULE_KIND_FACADE_MARKERS: &[&str] = &[
     "get_adapter_for_provider_type",
     "ProviderKind",
 ];
+const FORBIDDEN_PROVIDER_MODULE_MANAGED_AUTH_MARKERS: &[&str] = &[
+    "copilot_auth",
+    "codex_oauth_auth",
+    "CopilotAuthManager",
+    "CodexOAuthManager",
+];
+const FORBIDDEN_PROXY_PROVIDER_AUTH_PATH_MARKERS: &[&str] = &[
+    "proxy::providers::copilot_auth",
+    "proxy::providers::codex_oauth_auth",
+    "providers::copilot_auth",
+    "providers::codex_oauth_auth",
+];
 const FORBIDDEN_FORWARDER_MANAGED_AUTH_MARKERS: &[&str] = &[
     "CopilotAuthState",
     "CodexOAuthState",
@@ -96,7 +108,7 @@ const FORBIDDEN_FORWARDER_ATTEMPT_RUNTIME_MARKERS: &[&str] = &[
 ];
 const FORBIDDEN_PROXY_CORE_HOST_ERROR_MARKERS: &[&str] = &["ProxyCoreError::"];
 const FORBIDDEN_PROXY_CORE_ADAPTER_PROVIDER_COPILOT_MARKERS: &[&str] =
-    &["providers::copilot_auth::COPILOT_"];
+    &["providers::copilot_auth::COPILOT_", "copilot_auth::COPILOT_"];
 const FORBIDDEN_PROXY_CORE_HOST_USAGE_PROJECTION_MARKERS: &[&str] =
     &["missing_pricing_warning_message"];
 const FORBIDDEN_PROXY_CORE_HOST_APP_SUMMARY_PROJECTION_MARKERS: &[&str] =
@@ -1961,6 +1973,70 @@ fn production_provider_module_excludes_provider_kind_facades() {
     assert!(
         violations.is_empty(),
         "Provider kind inference belongs behind proxy_core_adapter, not provider registry:\n{}",
+        violations.join("\n")
+    );
+}
+
+#[test]
+fn production_provider_module_excludes_managed_auth_modules() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let provider_mod_path = manifest_dir.join("src/proxy/providers/mod.rs");
+    let provider_mod = fs::read_to_string(&provider_mod_path).expect("read providers/mod.rs");
+
+    let mut violations = Vec::new();
+    for (line_index, line) in production_lines(&provider_mod) {
+        let code = line.split("//").next().unwrap_or_default();
+        for marker in FORBIDDEN_PROVIDER_MODULE_MANAGED_AUTH_MARKERS {
+            if code.contains(marker) {
+                violations.push(format!(
+                    "src/proxy/providers/mod.rs:{} contains managed auth marker `{}`",
+                    line_index + 1,
+                    marker
+                ));
+            }
+        }
+    }
+
+    assert!(
+        violations.is_empty(),
+        "Managed account auth modules must live at proxy module scope, not under provider adapters:\n{}",
+        violations.join("\n")
+    );
+}
+
+#[test]
+fn production_sources_do_not_import_managed_auth_through_providers() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let src_dir = manifest_dir.join("src");
+    let mut files = Vec::new();
+    collect_rust_files(&src_dir, &mut files);
+
+    let mut violations = Vec::new();
+    for file in files {
+        let source = fs::read_to_string(&file).expect("read rust source");
+        let relative = file
+            .strip_prefix(&manifest_dir)
+            .expect("source under manifest dir")
+            .display()
+            .to_string();
+        for (line_index, line) in production_lines(&source) {
+            let code = line.split("//").next().unwrap_or_default();
+            for marker in FORBIDDEN_PROXY_PROVIDER_AUTH_PATH_MARKERS {
+                if code.contains(marker) {
+                    violations.push(format!(
+                        "{}:{} imports managed auth through provider module marker `{}`",
+                        relative,
+                        line_index + 1,
+                        marker
+                    ));
+                }
+            }
+        }
+    }
+
+    assert!(
+        violations.is_empty(),
+        "Managed account auth imports must target proxy::{{copilot_auth,codex_oauth_auth}}, not proxy::providers:\n{}",
         violations.join("\n")
     );
 }

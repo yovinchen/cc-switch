@@ -931,7 +931,7 @@ pub fn run() {
 
             // 初始化 CopilotAuthManager
             {
-                use crate::proxy::providers::copilot_auth::CopilotAuthManager;
+                use crate::proxy::copilot_auth::CopilotAuthManager;
                 use commands::CopilotAuthState;
                 use tokio::sync::RwLock;
 
@@ -943,7 +943,7 @@ pub fn run() {
 
             // 初始化 CodexOAuthManager (ChatGPT Plus/Pro 反代)
             {
-                use crate::proxy::providers::codex_oauth_auth::CodexOAuthManager;
+                use crate::proxy::codex_oauth_auth::CodexOAuthManager;
                 use commands::CodexOAuthState;
                 use tokio::sync::RwLock;
 

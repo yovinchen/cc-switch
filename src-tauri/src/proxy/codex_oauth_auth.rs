@@ -1,4 +1,4 @@
-//! Codex OAuth Authentication Module
+//! Proxy-level Codex OAuth authentication module
 //!
 //! 实现 OpenAI ChatGPT Plus/Pro 订阅的 OAuth Device Code 流程。
 //! 支持多账号管理，每个 Provider 可关联不同的 ChatGPT 账号。
