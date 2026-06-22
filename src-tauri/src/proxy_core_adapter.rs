@@ -553,6 +553,60 @@ pub(crate) fn apply_proxy_runtime_active_targets(
     crate::proxy_core::api::ports::apply_proxy_runtime_active_targets(status, active_targets);
 }
 
+pub(crate) async fn record_proxy_server_started_runtime_source(
+    status: &RwLock<ProxyRuntimeStatus>,
+    start_time: &RwLock<Option<std::time::Instant>>,
+    address: &str,
+    port: u16,
+) {
+    {
+        let mut status = status.write().await;
+        record_proxy_server_started_status(&mut status, address, port);
+    }
+    *start_time.write().await = Some(std::time::Instant::now());
+}
+
+pub(crate) async fn record_proxy_server_stopped_runtime_source(
+    status: &RwLock<ProxyRuntimeStatus>,
+    start_time: &RwLock<Option<std::time::Instant>>,
+) {
+    {
+        let mut status = status.write().await;
+        record_proxy_server_stopped_status(&mut status);
+    }
+    *start_time.write().await = None;
+}
+
+pub(crate) async fn proxy_runtime_status_from_runtime_sources(
+    status: &RwLock<ProxyRuntimeStatus>,
+    start_time: &RwLock<Option<std::time::Instant>>,
+    current_providers: &RwLock<HashMap<String, CurrentRouteTarget>>,
+) -> ProxyRuntimeStatus {
+    let mut status = status.read().await.clone();
+
+    if let Some(start) = start_time.read().await.as_ref().copied() {
+        apply_proxy_runtime_uptime(&mut status, start.elapsed().as_secs());
+    }
+
+    let current_providers = current_providers.read().await;
+    apply_proxy_runtime_active_targets(&mut status, current_providers.values().cloned());
+
+    status
+}
+
+pub(crate) async fn set_active_route_target_runtime_source(
+    current_providers: &RwLock<HashMap<String, CurrentRouteTarget>>,
+    app_type: &str,
+    provider_id: &str,
+    provider_name: &str,
+) {
+    let mut current_providers = current_providers.write().await;
+    current_providers.insert(
+        app_type.to_string(),
+        current_route_target_from_provider(app_type, provider_id, provider_name),
+    );
+}
+
 pub(crate) type GeminiShadowStore =
     crate::proxy_core::api::transforms::GeminiShadowStore;
 pub(crate) type GeminiToAnthropicMessageOutput =

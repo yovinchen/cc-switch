@@ -196,6 +196,20 @@ const FORBIDDEN_PROXY_SERVER_CIRCUIT_RUNTIME_MARKERS: &[&str] = &[
     ".update_app_configs(",
     ".reset_provider_breaker(",
 ];
+const FORBIDDEN_PROXY_SERVER_RUNTIME_STATE_MARKERS: &[&str] = &[
+    "record_proxy_server_started_status(",
+    "record_proxy_server_stopped_status(",
+    "apply_proxy_runtime_uptime(",
+    "apply_proxy_runtime_active_targets(",
+    "current_route_target_from_provider(",
+    ".status.write()",
+    ".status.read()",
+    ".start_time.write()",
+    ".start_time.read()",
+    ".current_providers.write()",
+    ".current_providers.read()",
+    "current_providers.insert(",
+];
 const FORBIDDEN_PROXY_CORE_CONFIG_SOURCE_APP_CATALOG_MARKERS: &[&str] = &[
     "AppKind::Claude",
     "AppKind::ClaudeDesktop",
@@ -2019,6 +2033,38 @@ fn production_proxy_server_delegates_circuit_runtime_to_adapter() {
     assert!(
         violations.is_empty(),
         "production ProxyServer must delegate circuit runtime side effects to proxy_core_adapter:\n{}",
+        violations.join("\n")
+    );
+}
+
+#[test]
+fn production_proxy_server_delegates_runtime_state_to_adapter() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let path = manifest_dir.join("src/proxy/server.rs");
+    let source = fs::read_to_string(&path).expect("read server.rs");
+    let runtime_state = function_slice(
+        &source,
+        "    pub async fn start",
+        "    fn build_router",
+    );
+
+    let mut violations = Vec::new();
+    for (line_index, line) in production_lines(runtime_state) {
+        let code = line.split("//").next().unwrap_or_default();
+        for marker in FORBIDDEN_PROXY_SERVER_RUNTIME_STATE_MARKERS {
+            if code.contains(marker) {
+                violations.push(format!(
+                    "src/proxy/server.rs ProxyServer runtime state:{} contains runtime state marker `{}`",
+                    line_index + 1,
+                    marker
+                ));
+            }
+        }
+    }
+
+    assert!(
+        violations.is_empty(),
+        "production ProxyServer must delegate runtime state projection/mutation to proxy_core_adapter:\n{}",
         violations.join("\n")
     );
 }

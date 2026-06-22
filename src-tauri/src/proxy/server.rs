@@ -14,12 +14,12 @@ use super::{
 };
 use crate::database::Database;
 use crate::proxy_core_adapter::{
-    apply_proxy_runtime_active_targets, apply_proxy_runtime_uptime,
-    current_route_target_from_provider, proxy_engine_from_services,
-    proxy_server_info_from_parts, record_proxy_server_started_status,
-    record_proxy_server_stopped_status,
+    proxy_engine_from_services, proxy_runtime_status_from_runtime_sources,
+    proxy_server_info_from_parts, record_proxy_server_started_runtime_source,
+    record_proxy_server_stopped_runtime_source,
     reset_provider_circuit_breaker_source,
     server_started_event_message, server_stopped_event_message,
+    set_active_route_target_runtime_source,
     server_log_codes as log_srv, CircuitBreakerConfig, CurrentRouteTarget, GeminiShadowStore,
     ProxyConfig, ProxyEngine, ProxyRuntimeStatus, ProxyServerInfo,
     update_all_circuit_breaker_configs_source, update_app_circuit_breaker_config_source,
@@ -168,18 +168,13 @@ impl ProxyServer {
         // 保存关闭句柄
         *self.shutdown_tx.write().await = Some(shutdown_tx);
 
-        // 更新状态
-        {
-            let mut status = self.state.status.write().await;
-            record_proxy_server_started_status(
-                &mut status,
-                &self.config.listen_address,
-                actual_port,
-            );
-        }
-
-        // 记录启动时间
-        *self.state.start_time.write().await = Some(std::time::Instant::now());
+        record_proxy_server_started_runtime_source(
+            self.state.status.as_ref(),
+            self.state.start_time.as_ref(),
+            &self.config.listen_address,
+            actual_port,
+        )
+        .await;
 
         // 启动服务器 — 使用手动 hyper HTTP/1.1 accept loop
         // 开启 preserve_header_case 以捕获客户端请求头的原始大小写
@@ -253,12 +248,11 @@ impl ProxyServer {
                 }
             }
 
-            // 服务器停止后更新状态
-            {
-                let mut status = state.status.write().await;
-                record_proxy_server_stopped_status(&mut status);
-            }
-            *state.start_time.write().await = None;
+            record_proxy_server_stopped_runtime_source(
+                state.status.as_ref(),
+                state.start_time.as_ref(),
+            )
+            .await;
             let message = server_stopped_event_message();
             state.events.emit(message.event_name, message.payload);
         });
@@ -306,18 +300,12 @@ impl ProxyServer {
     }
 
     pub async fn get_status(&self) -> ProxyRuntimeStatus {
-        let mut status = self.state.status.read().await.clone();
-
-        // 计算运行时间
-        if let Some(start) = *self.state.start_time.read().await {
-            apply_proxy_runtime_uptime(&mut status, start.elapsed().as_secs());
-        }
-
-        // 从 current_providers HashMap 获取每个应用类型当前正在使用的 provider
-        let current_providers = self.state.current_providers.read().await;
-        apply_proxy_runtime_active_targets(&mut status, current_providers.values().cloned());
-
-        status
+        proxy_runtime_status_from_runtime_sources(
+            self.state.status.as_ref(),
+            self.state.start_time.as_ref(),
+            self.state.current_providers.as_ref(),
+        )
+        .await
     }
 
     /// 更新某个应用类型当前“目标供应商”（用于 UI 展示 active_targets）
@@ -325,11 +313,13 @@ impl ProxyServer {
     /// 注意：这不代表该供应商一定已经处理过请求，而是用于“热切换/启用故障转移立即切 P1”
     /// 等场景下，让 UI 能立刻反映最新目标。
     pub async fn set_active_target(&self, app_type: &str, provider_id: &str, provider_name: &str) {
-        let mut current_providers = self.state.current_providers.write().await;
-        current_providers.insert(
-            app_type.to_string(),
-            current_route_target_from_provider(app_type, provider_id, provider_name),
-        );
+        set_active_route_target_runtime_source(
+            self.state.current_providers.as_ref(),
+            app_type,
+            provider_id,
+            provider_name,
+        )
+        .await;
     }
 
     fn build_router(&self) -> Router {
