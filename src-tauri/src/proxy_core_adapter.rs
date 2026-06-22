@@ -2636,10 +2636,9 @@ pub(crate) use crate::proxy_core::api::transport::{
     UNSUPPORTED_IMAGE_MARKER,
     rewrite_claude_transform_endpoint,
 };
+pub(crate) use crate::proxy_core::api::transport::request_model_for_forward;
 #[cfg(test)]
-pub(crate) use crate::proxy_core::api::transport::{
-    interface_kind_for_forward, request_model_for_forward,
-};
+pub(crate) use crate::proxy_core::api::transport::interface_kind_for_forward;
 pub(crate) use crate::proxy_core::api::usage::{
     normalize_pricing_source, validate_cost_multiplier_value, CostMultiplierValidationError,
     PricingSourceValidationError, PRICING_SOURCE_REQUEST, PRICING_SOURCE_RESPONSE,
@@ -3888,21 +3887,6 @@ pub(crate) async fn forwarder_runtime_config_from_db_sources(
 
 pub(crate) fn extract_gemini_model_from_path(endpoint: &str) -> Option<String> {
     crate::proxy_core::api::transport::extract_gemini_model_from_path(endpoint)
-}
-
-pub(crate) fn request_model_from_body_for_context(app_type: &AppType, body: &Value) -> String {
-    let app = AppKind::from(app_type);
-    crate::proxy_core::api::transport::request_model_for_forward(&app, "", body)
-        .unwrap_or_else(|| "unknown".to_string())
-}
-
-pub(crate) fn request_model_from_gemini_path_for_context(endpoint: &str) -> String {
-    crate::proxy_core::api::transport::request_model_for_forward(
-        &AppKind::Gemini,
-        endpoint,
-        &Value::Null,
-    )
-    .unwrap_or_else(|| "unknown".to_string())
 }
 
 pub(crate) fn extract_gemini_api_key_from_settings(settings: &Value) -> Option<String> {
@@ -12001,18 +11985,22 @@ base_url = "https://api.openai.com/v1"
             Some("gemini-pro")
         );
         assert_eq!(
-            request_model_from_body_for_context(&AppType::Codex, &json!({"model": " gpt-5 "})),
-            "gpt-5"
+            request_model_for_forward(&AppKind::Codex, "", &json!({"model": " gpt-5 "}))
+                .as_deref(),
+            Some("gpt-5")
         );
         assert_eq!(
-            request_model_from_body_for_context(&AppType::Claude, &json!({"model": "  "})),
-            "unknown"
+            request_model_for_forward(&AppKind::Claude, "", &json!({"model": "  "})),
+            None
         );
         assert_eq!(
-            request_model_from_gemini_path_for_context(
-                "/v1beta/models/gemini-pro:generateContent"
-            ),
-            "gemini-pro"
+            request_model_for_forward(
+                &AppKind::Gemini,
+                "/v1beta/models/gemini-pro:generateContent",
+                &Value::Null,
+            )
+            .as_deref(),
+            Some("gemini-pro")
         );
         assert_eq!(
             claude_api_format_from_metadata(
