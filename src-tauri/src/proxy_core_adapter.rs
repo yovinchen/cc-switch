@@ -1038,6 +1038,78 @@ pub(crate) fn openclaw_common_config_snippet_from_settings(
     json_object_or_null_common_config_snippet(openclaw_common_config_value_from_settings(settings))
 }
 
+/// Reads old Claude model keys, writes DEFAULT_* keys, and deletes legacy SMALL_FAST.
+pub(crate) fn normalize_claude_models_in_value(settings: &mut Value) -> bool {
+    let mut changed = false;
+    let env = match settings.get_mut("env").and_then(Value::as_object_mut) {
+        Some(obj) => obj,
+        None => return changed,
+    };
+
+    let model = env
+        .get("ANTHROPIC_MODEL")
+        .and_then(Value::as_str)
+        .map(ToString::to_string);
+    let small_fast = env
+        .get("ANTHROPIC_SMALL_FAST_MODEL")
+        .and_then(Value::as_str)
+        .map(ToString::to_string);
+
+    let current_haiku = env
+        .get("ANTHROPIC_DEFAULT_HAIKU_MODEL")
+        .and_then(Value::as_str)
+        .map(ToString::to_string);
+    let current_sonnet = env
+        .get("ANTHROPIC_DEFAULT_SONNET_MODEL")
+        .and_then(Value::as_str)
+        .map(ToString::to_string);
+    let current_opus = env
+        .get("ANTHROPIC_DEFAULT_OPUS_MODEL")
+        .and_then(Value::as_str)
+        .map(ToString::to_string);
+
+    let target_haiku = current_haiku
+        .or_else(|| small_fast.clone())
+        .or_else(|| model.clone());
+    let target_sonnet = current_sonnet
+        .or_else(|| model.clone())
+        .or_else(|| small_fast.clone());
+    let target_opus = current_opus
+        .or_else(|| model.clone())
+        .or_else(|| small_fast.clone());
+
+    if env.get("ANTHROPIC_DEFAULT_HAIKU_MODEL").is_none() {
+        if let Some(v) = target_haiku {
+            env.insert(
+                "ANTHROPIC_DEFAULT_HAIKU_MODEL".to_string(),
+                Value::String(v),
+            );
+            changed = true;
+        }
+    }
+    if env.get("ANTHROPIC_DEFAULT_SONNET_MODEL").is_none() {
+        if let Some(v) = target_sonnet {
+            env.insert(
+                "ANTHROPIC_DEFAULT_SONNET_MODEL".to_string(),
+                Value::String(v),
+            );
+            changed = true;
+        }
+    }
+    if env.get("ANTHROPIC_DEFAULT_OPUS_MODEL").is_none() {
+        if let Some(v) = target_opus {
+            env.insert("ANTHROPIC_DEFAULT_OPUS_MODEL".to_string(), Value::String(v));
+            changed = true;
+        }
+    }
+
+    if env.remove("ANTHROPIC_SMALL_FAST_MODEL").is_some() {
+        changed = true;
+    }
+
+    changed
+}
+
 fn json_object_or_null_common_config_snippet(
     config: Value,
 ) -> Result<String, CommonConfigSnippetIssue> {
@@ -10940,6 +11012,42 @@ command = "latest-command"
             provider_credential_values(&missing_codex_base_url, &AppType::Codex),
             Err(ProviderCredentialIssue::CodexBaseUrlMissing)
         );
+    }
+
+    #[test]
+    fn claude_model_normalization_adapter_backfills_default_model_keys() {
+        let mut settings = json!({
+            "env": {
+                "ANTHROPIC_MODEL": "claude-sonnet",
+                "ANTHROPIC_SMALL_FAST_MODEL": "claude-haiku",
+                "ANTHROPIC_DEFAULT_OPUS_MODEL": "claude-opus"
+            }
+        });
+
+        assert!(normalize_claude_models_in_value(&mut settings));
+
+        let env = settings
+            .get("env")
+            .and_then(Value::as_object)
+            .expect("env object");
+        assert_eq!(
+            env.get("ANTHROPIC_DEFAULT_HAIKU_MODEL")
+                .and_then(Value::as_str),
+            Some("claude-haiku")
+        );
+        assert_eq!(
+            env.get("ANTHROPIC_DEFAULT_SONNET_MODEL")
+                .and_then(Value::as_str),
+            Some("claude-sonnet")
+        );
+        assert_eq!(
+            env.get("ANTHROPIC_DEFAULT_OPUS_MODEL")
+                .and_then(Value::as_str),
+            Some("claude-opus")
+        );
+        assert!(env.get("ANTHROPIC_SMALL_FAST_MODEL").is_none());
+
+        assert!(!normalize_claude_models_in_value(&mut settings));
     }
 
     #[test]

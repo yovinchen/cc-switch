@@ -16,8 +16,8 @@ use crate::provider::Provider;
 use crate::proxy_core_adapter::{
     codex_config_text_from_settings,
     gemini_env_value_from_env_json, opencode_live_provider_fragment_has_provider_fields,
-    json_deep_merge, json_deep_remove, provider_codex_imported_live_category,
-    provider_codex_live_snapshot_parts,
+    json_deep_merge, json_deep_remove, normalize_claude_models_in_value,
+    provider_codex_imported_live_category, provider_codex_live_snapshot_parts,
     provider_gemini_env_map, provider_gemini_live_config_object,
     provider_model_catalog_raw_value, provider_opencode_live_provider_fragment,
     provider_openclaw_has_live_provider_fields, proxy_live_config_owned_by_takeover,
@@ -32,8 +32,6 @@ use crate::store::AppState;
 use super::gemini_auth::{
     detect_gemini_auth_type, ensure_google_oauth_security_flag, GeminiAuthType,
 };
-use super::normalize_claude_models_in_value;
-
 #[cfg(test)]
 use crate::proxy_core_adapter::contains_common_config_snippet;
 pub(crate) use crate::proxy_core_adapter::provider_uses_common_config;
