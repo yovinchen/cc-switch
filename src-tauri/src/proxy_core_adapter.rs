@@ -1100,9 +1100,7 @@ pub(crate) use crate::proxy_core::api::domain::{
     provider_account_ref, provider_metadata_from_input,
 };
 
-pub(crate) fn extract_openclaw_stream_check_base_url(settings_config: &Value) -> Option<String> {
-    crate::proxy_core::api::domain::extract_openclaw_stream_check_base_url(settings_config)
-}
+pub(crate) use crate::proxy_core::api::domain::extract_openclaw_stream_check_base_url;
 
 pub(crate) fn provider_openclaw_stream_check_base_url(provider: &Provider) -> Option<String> {
     extract_openclaw_stream_check_base_url(&provider.settings_config)
@@ -1258,9 +1256,7 @@ pub(crate) fn openclaw_common_config_value_from_settings(settings: &Value) -> Va
     config
 }
 
-pub(crate) fn extract_hermes_stream_check_base_url(settings_config: &Value) -> Option<String> {
-    crate::proxy_core::api::domain::extract_hermes_stream_check_base_url(settings_config)
-}
+pub(crate) use crate::proxy_core::api::domain::extract_hermes_stream_check_base_url;
 
 pub(crate) fn provider_hermes_stream_check_base_url(provider: &Provider) -> Option<String> {
     extract_hermes_stream_check_base_url(&provider.settings_config)
@@ -1288,20 +1284,13 @@ pub(crate) fn provider_from_hermes_live_config(
     Ok(provider)
 }
 
-pub(crate) fn extract_opencode_stream_check_npm(settings_config: &Value) -> Option<String> {
-    crate::proxy_core::api::domain::extract_opencode_stream_check_npm(settings_config)
-}
+pub(crate) use crate::proxy_core::api::domain::extract_opencode_stream_check_npm;
 
 pub(crate) fn provider_opencode_stream_check_npm(provider: &Provider) -> Option<String> {
     extract_opencode_stream_check_npm(&provider.settings_config)
 }
 
-pub(crate) fn resolve_opencode_stream_check_base_url(
-    settings_config: &Value,
-    npm: Option<&str>,
-) -> Option<String> {
-    crate::proxy_core::api::domain::resolve_opencode_stream_check_base_url(settings_config, npm)
-}
+pub(crate) use crate::proxy_core::api::domain::resolve_opencode_stream_check_base_url;
 
 pub(crate) fn provider_opencode_stream_check_base_url(
     provider: &Provider,
@@ -2116,9 +2105,9 @@ pub(crate) fn provider_opencode_live_provider_fragment(
     }
 }
 
-pub(crate) fn opencode_live_provider_fragment_has_provider_fields(config: &Value) -> bool {
-    crate::proxy_core::api::domain::opencode_settings_have_live_provider_fields(config)
-}
+pub(crate) use crate::proxy_core::api::domain::{
+    opencode_settings_have_live_provider_fields as opencode_live_provider_fragment_has_provider_fields,
+};
 
 #[derive(Debug, Clone)]
 pub(crate) enum OpenCodeLiveWriteConfig {
