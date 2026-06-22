@@ -22,7 +22,8 @@ use crate::proxy_core_adapter::{
     preserve_codex_mcp_servers_from_existing_config,
     preserve_codex_oauth_auth_in_backup_if_present,
     remove_claude_takeover_env_fields_if_present, CodexLiveWriteProjection,
-    proxy_live_urls_from_listen_parts, proxy_runtime_status_stopped,
+    proxy_live_config_owned_by_takeover, proxy_live_urls_from_listen_parts,
+    proxy_runtime_status_stopped,
     proxy_server_info_from_parts, proxy_takeover_status_from_parts,
     remove_codex_takeover_auth_placeholder_if_present,
     remove_codex_takeover_config_placeholders_if_present,
@@ -1547,7 +1548,7 @@ impl ProxyService {
             .map_err(|e| format!("读取 {app_type} 备份失败: {e}"))?
             .is_some();
         let live_taken_over = self.detect_takeover_in_live_config_for_app(&app_type_enum);
-        let should_sync_backup = has_backup || live_taken_over;
+        let should_sync_backup = proxy_live_config_owned_by_takeover(has_backup, live_taken_over);
 
         self.db
             .set_current_provider(app_type_enum.as_str(), provider_id)
