@@ -6322,6 +6322,29 @@ pub(crate) fn circuit_breaker_failure_decision(
     )
 }
 
+pub(crate) async fn update_all_circuit_breaker_configs_source(
+    router: &ProviderRouter,
+    config: CircuitBreakerConfig,
+) {
+    router.update_all_configs(config).await;
+}
+
+pub(crate) async fn update_app_circuit_breaker_config_source(
+    router: &ProviderRouter,
+    app_type: &str,
+    config: CircuitBreakerConfig,
+) {
+    router.update_app_configs(app_type, config).await;
+}
+
+pub(crate) async fn reset_provider_circuit_breaker_source(
+    router: &ProviderRouter,
+    provider_id: &str,
+    app_type: &str,
+) {
+    router.reset_provider_breaker(provider_id, app_type).await;
+}
+
 pub(crate) fn forward_failure_kind_from_proxy_status(
     kind: ProxyErrorStatusKind,
     message: impl Into<String>,

@@ -18,9 +18,11 @@ use crate::proxy_core_adapter::{
     current_route_target_from_provider, proxy_engine_from_services,
     proxy_server_info_from_parts, record_proxy_server_started_status,
     record_proxy_server_stopped_status,
+    reset_provider_circuit_breaker_source,
     server_started_event_message, server_stopped_event_message,
     server_log_codes as log_srv, CircuitBreakerConfig, CurrentRouteTarget, GeminiShadowStore,
     ProxyConfig, ProxyEngine, ProxyRuntimeStatus, ProxyServerInfo,
+    update_all_circuit_breaker_configs_source, update_app_circuit_breaker_config_source,
 };
 use crate::proxy_core_host::{CcSwitchProxyRuntime, CcSwitchProxyServices};
 use axum::{
@@ -484,7 +486,8 @@ impl ProxyServer {
     ///
     /// 将新配置应用到所有已创建的熔断器实例
     pub async fn update_circuit_breaker_configs(&self, config: CircuitBreakerConfig) {
-        self.state.provider_router.update_all_configs(config).await;
+        update_all_circuit_breaker_configs_source(self.state.provider_router.as_ref(), config)
+            .await;
     }
 
     pub async fn update_circuit_breaker_config_for_app(
@@ -492,18 +495,22 @@ impl ProxyServer {
         app_type: &str,
         config: CircuitBreakerConfig,
     ) {
-        self.state
-            .provider_router
-            .update_app_configs(app_type, config)
-            .await;
+        update_app_circuit_breaker_config_source(
+            self.state.provider_router.as_ref(),
+            app_type,
+            config,
+        )
+        .await;
     }
 
     /// 重置指定 Provider 的熔断器
     pub async fn reset_provider_circuit_breaker(&self, provider_id: &str, app_type: &str) {
-        self.state
-            .provider_router
-            .reset_provider_breaker(provider_id, app_type)
-            .await;
+        reset_provider_circuit_breaker_source(
+            self.state.provider_router.as_ref(),
+            provider_id,
+            app_type,
+        )
+        .await;
     }
 }
 

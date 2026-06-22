@@ -188,6 +188,14 @@ const FORBIDDEN_PROXY_CORE_HOST_FORWARDER_LAUNCH_MARKERS: &[&str] = &[
     "forward_with_preplanned_host_runtime(",
     "forward_error_to_core_error(",
 ];
+const FORBIDDEN_PROXY_SERVER_CIRCUIT_RUNTIME_MARKERS: &[&str] = &[
+    ".provider_router.update_all_configs(",
+    ".provider_router.update_app_configs(",
+    ".provider_router.reset_provider_breaker(",
+    ".update_all_configs(",
+    ".update_app_configs(",
+    ".reset_provider_breaker(",
+];
 const FORBIDDEN_PROXY_CORE_CONFIG_SOURCE_APP_CATALOG_MARKERS: &[&str] = &[
     "AppKind::Claude",
     "AppKind::ClaudeDesktop",
@@ -1979,6 +1987,38 @@ fn production_proxy_core_host_delegates_forwarder_launch_to_adapter() {
     assert!(
         violations.is_empty(),
         "production proxy_core_host must delegate RequestForwarder launch/execution to proxy_core_adapter:\n{}",
+        violations.join("\n")
+    );
+}
+
+#[test]
+fn production_proxy_server_delegates_circuit_runtime_to_adapter() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let path = manifest_dir.join("src/proxy/server.rs");
+    let source = fs::read_to_string(&path).expect("read server.rs");
+    let circuit_runtime = function_slice(
+        &source,
+        "    /// 热更新熔断器配置",
+        "\n}\n\n#[cfg(test)]",
+    );
+
+    let mut violations = Vec::new();
+    for (line_index, line) in production_lines(circuit_runtime) {
+        let code = line.split("//").next().unwrap_or_default();
+        for marker in FORBIDDEN_PROXY_SERVER_CIRCUIT_RUNTIME_MARKERS {
+            if code.contains(marker) {
+                violations.push(format!(
+                    "src/proxy/server.rs ProxyServer circuit runtime:{} contains provider router marker `{}`",
+                    line_index + 1,
+                    marker
+                ));
+            }
+        }
+    }
+
+    assert!(
+        violations.is_empty(),
+        "production ProxyServer must delegate circuit runtime side effects to proxy_core_adapter:\n{}",
         violations.join("\n")
     );
 }
