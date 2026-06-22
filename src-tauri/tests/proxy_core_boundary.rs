@@ -300,8 +300,10 @@ const FORBIDDEN_HANDLER_MANAGEMENT_AUTH_DECISION_MARKERS: &[&str] = &[
 const FORBIDDEN_RESPONSE_PROCESSOR_USAGE_PROVIDER_PROJECTION_MARKERS: &[&str] = &[
     "provider_kind_from_provider(",
     "AppKind::from(",
+    "ctx.provider()?",
     "streaming_response_usage_record_with_optional_outbound_model(",
     "non_streaming_response_usage_record_from_body_with_request_id_fallback(",
+    "non_streaming_response_usage_record_from_provider_body_with_request_id_fallback(",
 ];
 const FORBIDDEN_USAGE_SINK_PROVIDER_PROJECTION_MARKERS: &[&str] = &[
     "provider_kind_from_provider(",

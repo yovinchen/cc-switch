@@ -8331,6 +8331,18 @@ pub(crate) fn fallback_response_usage_provider_facts(
     }
 }
 
+pub(crate) struct NonStreamingResponseUsageContext<'a> {
+    pub(crate) body: &'a [u8],
+    pub(crate) response_parser: fn(&Value) -> Option<TokenUsage>,
+    pub(crate) provider: Option<&'a Provider>,
+    pub(crate) app_type: &'a str,
+    pub(crate) request_model: &'a str,
+    pub(crate) outbound_model: Option<&'a str>,
+    pub(crate) latency_ms: u64,
+    pub(crate) status_code: u16,
+    pub(crate) session_id: &'a str,
+}
+
 #[cfg(test)]
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn success_usage_record_from_app_type_with_request_id_fallback(
@@ -8535,6 +8547,27 @@ pub(crate) fn non_streaming_response_usage_record_from_provider_body_with_reques
         session_id,
         request_id_fallback,
     )
+}
+
+pub(crate) fn non_streaming_response_usage_record_from_response_context(
+    context: NonStreamingResponseUsageContext<'_>,
+    request_id_fallback: impl FnOnce() -> String,
+) -> Result<NonStreamingResponseUsageRecord, String> {
+    let provider = context
+        .provider
+        .ok_or_else(|| selected_provider_not_applied_message(context.app_type))?;
+    Ok(non_streaming_response_usage_record_from_provider_body_with_request_id_fallback(
+        context.body,
+        context.response_parser,
+        provider,
+        context.app_type,
+        context.request_model,
+        context.outbound_model,
+        context.latency_ms,
+        context.status_code,
+        Some(context.session_id.to_string()),
+        request_id_fallback,
+    ))
 }
 
 pub(crate) fn usage_record_pricing_model(
@@ -9488,18 +9521,23 @@ mod tests {
         assert_eq!(facts.provider_kind, Some(ProviderKind::GitHubCopilot));
         assert_eq!(facts.app, AppKind::ClaudeDesktop);
 
-        let output = non_streaming_response_usage_record_from_provider_body_with_request_id_fallback(
-            br#"{"model":"response-model","usage":{"prompt_tokens":2,"completion_tokens":3}}"#,
-            TokenUsage::from_openai_response,
-            &provider,
-            AppType::ClaudeDesktop.as_str(),
-            "request-model",
-            Some("outbound-model"),
-            123,
-            200,
-            None,
+        let response_body =
+            br#"{"model":"response-model","usage":{"prompt_tokens":2,"completion_tokens":3}}"#;
+        let output = non_streaming_response_usage_record_from_response_context(
+            NonStreamingResponseUsageContext {
+                body: response_body,
+                response_parser: TokenUsage::from_openai_response,
+                provider: Some(&provider),
+                app_type: AppType::ClaudeDesktop.as_str(),
+                request_model: "request-model",
+                outbound_model: Some("outbound-model"),
+                latency_ms: 123,
+                status_code: 200,
+                session_id: "session-1",
+            },
             || "request-1".to_string(),
-        );
+        )
+        .expect("non-streaming usage record");
 
         assert!(output.usage_found);
         assert_eq!(output.record.provider_id, "provider-a");
@@ -9512,6 +9550,26 @@ mod tests {
         assert_eq!(output.record.outbound_model, "outbound-model");
         assert_eq!(output.record.tokens.input_tokens, 2);
         assert_eq!(output.record.tokens.output_tokens, 3);
+
+        let missing = non_streaming_response_usage_record_from_response_context(
+            NonStreamingResponseUsageContext {
+                body: b"{}",
+                response_parser: TokenUsage::from_openai_response,
+                provider: None,
+                app_type: AppType::ClaudeDesktop.as_str(),
+                request_model: "request-model",
+                outbound_model: None,
+                latency_ms: 123,
+                status_code: 200,
+                session_id: "session-1",
+            },
+            || "request-2".to_string(),
+        )
+        .unwrap_err();
+        assert_eq!(
+            missing,
+            selected_provider_not_applied_message(AppType::ClaudeDesktop.as_str())
+        );
     }
 
     #[test]

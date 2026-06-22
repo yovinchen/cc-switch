@@ -17,7 +17,7 @@ use super::{
 };
 use crate::proxy_core_adapter::{
     decode_response_body, get_content_encoding, non_streaming_body_timeout_message,
-    non_streaming_response_usage_record_from_provider_body_with_request_id_fallback,
+    non_streaming_response_usage_record_from_response_context, NonStreamingResponseUsageContext,
     passthrough_bytes_proxy_response, passthrough_stream_proxy_response,
     response_headers_log_summary, response_usage_provider_facts,
     streaming_response_usage_record_from_provider_facts,
@@ -161,19 +161,21 @@ pub async fn handle_non_streaming(
 
     // 解析并记录使用量。关闭 usage logging 时直接跳过，避免非流式响应整包 JSON parse。
     if usage_logging_enabled(state) {
-        let provider = ctx.provider()?;
-        let output = non_streaming_response_usage_record_from_provider_body_with_request_id_fallback(
-            &body_bytes,
-            parser_config.response_parser,
-            provider,
-            ctx.app_type_str,
-            &ctx.request_model,
-            ctx.outbound_model.as_deref(),
-            ctx.latency_ms(),
-            status.as_u16(),
-            Some(ctx.session_id.clone()),
+        let output = non_streaming_response_usage_record_from_response_context(
+            NonStreamingResponseUsageContext {
+                body: &body_bytes,
+                response_parser: parser_config.response_parser,
+                provider: ctx.provider_for_usage(),
+                app_type: ctx.app_type_str,
+                request_model: &ctx.request_model,
+                outbound_model: ctx.outbound_model.as_deref(),
+                latency_ms: ctx.latency_ms(),
+                status_code: status.as_u16(),
+                session_id: &ctx.session_id,
+            },
             || uuid::Uuid::new_v4().to_string(),
-        );
+        )
+        .map_err(ProxyError::ConfigError)?;
 
         if let Some(event) = output.log_event(body_bytes.len()) {
             log::debug!("{}", event.message(ctx.tag, parser_config.app_type_str));
