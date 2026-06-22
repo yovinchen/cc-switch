@@ -25,7 +25,10 @@ use crate::proxy_core_adapter::{
     remove_claude_takeover_env_fields_if_present, CodexLiveWriteProjection,
     proxy_live_config_owned_by_takeover, proxy_live_urls_from_listen_parts,
     proxy_runtime_status_stopped,
-    proxy_server_info_from_parts, proxy_takeover_status_from_parts,
+    proxy_server_info_from_parts,
+    proxy_takeover_marked_state_is_reusable,
+    proxy_takeover_should_restore_existing_backup_before_retakeover,
+    proxy_takeover_status_from_parts,
     remove_codex_takeover_auth_placeholder_if_present,
     remove_codex_takeover_config_placeholders_if_present,
     remove_gemini_takeover_env_fields_if_present, should_block_proxy_switch_to_provider,
@@ -408,10 +411,14 @@ impl ProxyService {
                 // 必须 backup 存在，且 live 确实指向当前代理地址，才算真接管。
                 // 只看占位符会把半接管/旧端口残留误判为可复用，导致开启接管后
                 // live 文件仍停留在普通供应商配置。
-                if has_backup && live_matches_current_proxy {
+                if proxy_takeover_marked_state_is_reusable(has_backup, live_matches_current_proxy) {
                     return Ok(());
                 }
-                restore_existing_backup_before_takeover = has_backup;
+                restore_existing_backup_before_takeover =
+                    proxy_takeover_should_restore_existing_backup_before_retakeover(
+                        has_backup,
+                        live_matches_current_proxy,
+                    );
 
                 log::warn!(
                     "{app_type_str} 标记为已接管，但 backup={has_backup} live_matches_current_proxy={live_matches_current_proxy}，正在重新接管并补齐 Live"

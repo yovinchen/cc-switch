@@ -2602,6 +2602,20 @@ pub(crate) fn proxy_switch_should_hot_switch(
     proxy_config_takeover_enabled || live_taken_over
 }
 
+pub(crate) fn proxy_takeover_marked_state_is_reusable(
+    has_live_backup: bool,
+    live_matches_current_proxy: bool,
+) -> bool {
+    has_live_backup && live_matches_current_proxy
+}
+
+pub(crate) fn proxy_takeover_should_restore_existing_backup_before_retakeover(
+    has_live_backup: bool,
+    live_matches_current_proxy: bool,
+) -> bool {
+    has_live_backup && !live_matches_current_proxy
+}
+
 pub(crate) fn provider_is_official_category(provider: &Provider) -> bool {
     provider.category.as_deref() == Some("official")
 }
@@ -7573,6 +7587,21 @@ base_url = "https://api.openai.com/v1"
         assert!(!proxy_switch_should_hot_switch(false, false));
         assert!(proxy_switch_should_hot_switch(true, false));
         assert!(proxy_switch_should_hot_switch(false, true));
+
+        assert!(!proxy_takeover_marked_state_is_reusable(false, false));
+        assert!(!proxy_takeover_marked_state_is_reusable(true, false));
+        assert!(!proxy_takeover_marked_state_is_reusable(false, true));
+        assert!(proxy_takeover_marked_state_is_reusable(true, true));
+        assert!(!proxy_takeover_should_restore_existing_backup_before_retakeover(
+            false, false
+        ));
+        assert!(proxy_takeover_should_restore_existing_backup_before_retakeover(true, false));
+        assert!(!proxy_takeover_should_restore_existing_backup_before_retakeover(
+            false, true
+        ));
+        assert!(!proxy_takeover_should_restore_existing_backup_before_retakeover(
+            true, true
+        ));
     }
 
     #[test]
