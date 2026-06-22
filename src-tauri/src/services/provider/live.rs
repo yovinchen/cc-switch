@@ -17,7 +17,7 @@ use crate::proxy_core_adapter::{
     common_config_settings_mutation_issue_message,
     remove_common_config_from_settings as adapter_remove_common_config_from_settings,
     codex_live_settings_with_model_catalog, gemini_live_settings_from_env_json_and_config,
-    normalize_claude_models_in_value,
+    provider_default_live_import_settings,
     normalize_provider_common_config_for_storage as adapter_normalize_provider_common_config_for_storage,
     provider_codex_live_snapshot_parts, provider_from_default_live_settings,
     CommonConfigSettingsMutationIssue,
@@ -732,9 +732,7 @@ pub fn import_default_config(state: &AppState, app_type: AppType) -> Result<bool
                     "Claude settings file is missing",
                 ));
             }
-            let mut v = read_json_file::<Value>(&settings_path)?;
-            let _ = normalize_claude_models_in_value(&mut v);
-            v
+            read_json_file::<Value>(&settings_path)?
         }
         AppType::ClaudeDesktop => {
             return Err(AppError::localized(
@@ -778,6 +776,7 @@ pub fn import_default_config(state: &AppState, app_type: AppType) -> Result<bool
         }
     };
 
+    let settings_config = provider_default_live_import_settings(&app_type, settings_config);
     let provider = provider_from_default_live_settings(&app_type, settings_config);
 
     state.db.save_provider(app_type.as_str(), &provider)?;

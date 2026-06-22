@@ -1185,6 +1185,17 @@ pub(crate) fn openclaw_common_config_snippet_from_settings(
     json_object_or_null_common_config_snippet(openclaw_common_config_value_from_settings(settings))
 }
 
+pub(crate) fn provider_default_live_import_settings(
+    app_type: &AppType,
+    mut settings: Value,
+) -> Value {
+    if matches!(app_type, AppType::Claude) {
+        let _ = normalize_claude_models_in_value(&mut settings);
+    }
+
+    settings
+}
+
 /// Reads old Claude model keys, writes DEFAULT_* keys, and deletes legacy SMALL_FAST.
 pub(crate) fn normalize_claude_models_in_value(settings: &mut Value) -> bool {
     let mut changed = false;
@@ -12504,6 +12515,31 @@ command = "latest-command"
         assert!(env.get("ANTHROPIC_SMALL_FAST_MODEL").is_none());
 
         assert!(!normalize_claude_models_in_value(&mut settings));
+
+        let imported = provider_default_live_import_settings(
+            &AppType::Claude,
+            json!({
+                "env": {
+                    "ANTHROPIC_MODEL": "claude-sonnet",
+                    "ANTHROPIC_SMALL_FAST_MODEL": "claude-haiku"
+                }
+            }),
+        );
+        assert_eq!(
+            imported["env"]["ANTHROPIC_DEFAULT_HAIKU_MODEL"].as_str(),
+            Some("claude-haiku")
+        );
+        assert_eq!(
+            imported["env"]["ANTHROPIC_DEFAULT_SONNET_MODEL"].as_str(),
+            Some("claude-sonnet")
+        );
+        assert!(imported["env"].get("ANTHROPIC_SMALL_FAST_MODEL").is_none());
+
+        let codex_settings = json!({"config": "model = \"gpt-5\""});
+        assert_eq!(
+            provider_default_live_import_settings(&AppType::Codex, codex_settings.clone()),
+            codex_settings
+        );
     }
 
     #[test]
