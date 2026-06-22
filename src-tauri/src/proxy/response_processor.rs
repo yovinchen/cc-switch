@@ -19,14 +19,14 @@ use crate::proxy_core_adapter::{
     decode_response_body, get_content_encoding, non_streaming_body_timeout_message,
     non_streaming_response_usage_record_from_response_context, NonStreamingResponseUsageContext,
     passthrough_bytes_proxy_response, passthrough_stream_proxy_response,
-    response_headers_log_summary, response_usage_provider_facts,
-    streaming_response_usage_record_from_provider_facts,
+    response_headers_log_summary, response_usage_provider_facts_from_optional,
+    streaming_response_usage_record_from_response_context, StreamingResponseUsageContext,
     usage_logging_enabled_from_config_flag, usage_record_debug_log_message,
     usage_record_failure_warning_message, usage_record_with_route_context,
-    usage_selected_provider_missing_log_message, ProxyServices, ResponseBodyDecodeLogLevel,
-    SseEventScanner, SsePassthroughEventKind, SseUsageAccumulator, StreamUsageEventFilter,
-    StreamingTimeoutConfig, StreamingTimeoutPhase, UsageParserConfig, UsageRecord,
-    UsageRecordFailureLogContext, UsageSelectedProviderMissingPhase,
+    ProxyServices, ResponseBodyDecodeLogLevel, SseEventScanner, SsePassthroughEventKind,
+    SseUsageAccumulator, StreamUsageEventFilter, StreamingTimeoutConfig, StreamingTimeoutPhase,
+    UsageParserConfig, UsageRecord, UsageRecordFailureLogContext,
+    UsageSelectedProviderMissingPhase,
 };
 #[cfg(test)]
 use crate::proxy_core_adapter::{ProviderKind, TokenUsage};
@@ -316,19 +316,20 @@ fn create_usage_collector(
         return None;
     }
 
-    let Some(provider) = ctx.provider_for_usage() else {
-        log::warn!(
-            "{}",
-            usage_selected_provider_missing_log_message(
-                ctx.tag,
-                UsageSelectedProviderMissingPhase::StreamingPassthrough,
-            )
-        );
-        return None;
+    let provider_facts = match response_usage_provider_facts_from_optional(
+        ctx.provider_for_usage(),
+        ctx.app_type_str,
+        ctx.tag,
+        UsageSelectedProviderMissingPhase::StreamingPassthrough,
+    ) {
+        Ok(provider_facts) => provider_facts,
+        Err(message) => {
+            log::warn!("{message}");
+            return None;
+        }
     };
 
     let state = state.clone();
-    let provider_facts = response_usage_provider_facts(provider, ctx.app_type_str);
     let request_model = ctx.request_model.clone();
     // 用 ctx 的 app_type 而不是 parser_config 的：Claude Desktop 流式透传复用
     // CLAUDE_PARSER_CONFIG（app_type_str="claude"），按 parser_config 记账会把
@@ -346,17 +347,19 @@ fn create_usage_collector(
         parser_config.stream_event_filter,
         move |events, first_token_ms| {
             let latency_ms = start_time.elapsed().as_millis() as u64;
-            let output = streaming_response_usage_record_from_provider_facts(
-                &events,
-                stream_parser,
-                model_extractor,
-                &provider_facts,
-                &request_model,
-                outbound_model.as_deref(),
-                latency_ms,
-                first_token_ms,
-                status_code,
-                Some(session_id.clone()),
+            let output = streaming_response_usage_record_from_response_context(
+                StreamingResponseUsageContext {
+                    events: &events,
+                    stream_parser,
+                    model_extractor,
+                    provider_facts: &provider_facts,
+                    request_model: &request_model,
+                    outbound_model: outbound_model.as_deref(),
+                    latency_ms,
+                    first_token_ms,
+                    status_code,
+                    session_id: &session_id,
+                },
                 || uuid::Uuid::new_v4().to_string(),
             );
 

@@ -8331,6 +8331,30 @@ pub(crate) fn fallback_response_usage_provider_facts(
     }
 }
 
+pub(crate) fn response_usage_provider_facts_from_optional(
+    provider: Option<&Provider>,
+    app_type: &str,
+    tag: &str,
+    phase: UsageSelectedProviderMissingPhase,
+) -> Result<ResponseUsageProviderFacts, String> {
+    provider
+        .map(|provider| response_usage_provider_facts(provider, app_type))
+        .ok_or_else(|| usage_selected_provider_missing_log_message(tag, phase))
+}
+
+pub(crate) struct StreamingResponseUsageContext<'a> {
+    pub(crate) events: &'a [Value],
+    pub(crate) stream_parser: fn(&[Value]) -> Option<TokenUsage>,
+    pub(crate) model_extractor: fn(&[Value], &str) -> String,
+    pub(crate) provider_facts: &'a ResponseUsageProviderFacts,
+    pub(crate) request_model: &'a str,
+    pub(crate) outbound_model: Option<&'a str>,
+    pub(crate) latency_ms: u64,
+    pub(crate) first_token_ms: Option<u64>,
+    pub(crate) status_code: u16,
+    pub(crate) session_id: &'a str,
+}
+
 pub(crate) struct NonStreamingResponseUsageContext<'a> {
     pub(crate) body: &'a [u8],
     pub(crate) response_parser: fn(&Value) -> Option<TokenUsage>,
@@ -8431,6 +8455,25 @@ pub(crate) fn streaming_response_usage_record_from_provider_facts(
         first_token_ms,
         status_code,
         session_id,
+        request_id_fallback,
+    )
+}
+
+pub(crate) fn streaming_response_usage_record_from_response_context(
+    context: StreamingResponseUsageContext<'_>,
+    request_id_fallback: impl FnOnce() -> String,
+) -> StreamingResponseUsageRecord {
+    streaming_response_usage_record_from_provider_facts(
+        context.events,
+        context.stream_parser,
+        context.model_extractor,
+        context.provider_facts,
+        context.request_model,
+        context.outbound_model,
+        context.latency_ms,
+        context.first_token_ms,
+        context.status_code,
+        Some(context.session_id.to_string()),
         request_id_fallback,
     )
 }
@@ -9520,6 +9563,81 @@ mod tests {
         assert_eq!(facts.provider_id, "provider-a");
         assert_eq!(facts.provider_kind, Some(ProviderKind::GitHubCopilot));
         assert_eq!(facts.app, AppKind::ClaudeDesktop);
+
+        let optional_facts = response_usage_provider_facts_from_optional(
+            Some(&provider),
+            AppType::ClaudeDesktop.as_str(),
+            "Claude Desktop",
+            UsageSelectedProviderMissingPhase::StreamingPassthrough,
+        )
+        .expect("provider facts");
+        assert_eq!(optional_facts.provider_id, "provider-a");
+
+        let missing_provider = response_usage_provider_facts_from_optional(
+            None,
+            AppType::ClaudeDesktop.as_str(),
+            "Claude Desktop",
+            UsageSelectedProviderMissingPhase::StreamingPassthrough,
+        )
+        .unwrap_err();
+        assert_eq!(
+            missing_provider,
+            usage_selected_provider_missing_log_message(
+                "Claude Desktop",
+                UsageSelectedProviderMissingPhase::StreamingPassthrough
+            )
+        );
+
+        fn parsed_stream_usage(_events: &[Value]) -> Option<TokenUsage> {
+            Some(TokenUsage {
+                input_tokens: 4,
+                output_tokens: 6,
+                cache_read_tokens: 0,
+                cache_creation_tokens: 0,
+                model: None,
+                message_id: None,
+            })
+        }
+
+        fn extracted_stream_model(events: &[Value], fallback: &str) -> String {
+            events
+                .iter()
+                .find_map(|event| event.get("model").and_then(Value::as_str))
+                .unwrap_or(fallback)
+                .to_string()
+        }
+
+        let stream_events = vec![json!({"model": "stream-response-model"})];
+        let stream_output = streaming_response_usage_record_from_response_context(
+            StreamingResponseUsageContext {
+                events: &stream_events,
+                stream_parser: parsed_stream_usage,
+                model_extractor: extracted_stream_model,
+                provider_facts: &optional_facts,
+                request_model: "request-model",
+                outbound_model: Some("outbound-model"),
+                latency_ms: 456,
+                first_token_ms: Some(12),
+                status_code: 200,
+                session_id: "session-stream",
+            },
+            || "request-stream".to_string(),
+        );
+        assert_eq!(stream_output.record.provider_id, "provider-a");
+        assert_eq!(
+            stream_output.record.provider_kind,
+            Some(ProviderKind::GitHubCopilot)
+        );
+        assert_eq!(stream_output.record.app, AppKind::ClaudeDesktop);
+        assert_eq!(
+            stream_output.record.response_model.as_deref(),
+            Some("stream-response-model")
+        );
+        assert_eq!(stream_output.record.outbound_model, "outbound-model");
+        assert_eq!(stream_output.record.tokens.input_tokens, 4);
+        assert_eq!(stream_output.record.tokens.output_tokens, 6);
+        assert!(stream_output.record.is_streaming);
+        assert_eq!(stream_output.record.first_token_ms, Some(12));
 
         let response_body =
             br#"{"model":"response-model","usage":{"prompt_tokens":2,"completion_tokens":3}}"#;
