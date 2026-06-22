@@ -5382,12 +5382,41 @@ pub(crate) fn provider_specs_from_source(
     Ok(proxy_providers_to_core_specs(providers, &app_type))
 }
 
+pub(crate) fn provider_specs_from_db_source(
+    db: &Database,
+    app: &AppKind,
+) -> ProxyCoreResult<Vec<ProviderSpec>> {
+    let providers = db
+        .get_all_providers(app.as_str())
+        .map_err(|error| app_error("list providers", error))?;
+    provider_specs_from_source(app, providers.into_values())
+}
+
 pub(crate) fn provider_spec_from_source(
     app: &AppKind,
     provider: Option<Provider>,
 ) -> ProxyCoreResult<Option<ProviderSpec>> {
     let app_type = app_type_from_proxy_core_app(app)?;
     Ok(provider.map(|provider| proxy_provider_to_core_spec(&provider, &app_type)))
+}
+
+pub(crate) fn provider_spec_from_db_source(
+    db: &Database,
+    app: &AppKind,
+    provider_id: &str,
+) -> ProxyCoreResult<Option<ProviderSpec>> {
+    let provider = db
+        .get_provider_by_id(provider_id, app.as_str())
+        .map_err(|error| app_error("get provider", error))?;
+    provider_spec_from_source(app, provider)
+}
+
+pub(crate) fn current_provider_id_from_db_source(
+    db: &Database,
+    app: &AppKind,
+) -> ProxyCoreResult<Option<String>> {
+    db.get_current_provider(app.as_str())
+        .map_err(|error| app_error("get current provider", error))
 }
 
 pub(crate) fn route_candidate_provider_ids_from_selection_result(

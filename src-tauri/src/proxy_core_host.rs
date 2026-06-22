@@ -44,12 +44,12 @@ use crate::proxy_core_adapter::{
     channel_spec_from_source,
     channel_specs_from_source,
     client_model_catalog_from_source,
+    current_provider_id_from_db_source,
     forward_proxy_request_with_host_runtime,
     forwarding_runtime_unavailable_error,
     log_usage_request_projection_warnings,
-    provider_spec_from_source, proxy_channel_record_to_core, proxy_channel_records_to_core,
-    provider_specs_from_source,
-    provider_model_catalog_from_provider,
+    provider_model_catalog_from_provider, provider_spec_from_db_source,
+    provider_specs_from_db_source, proxy_channel_record_to_core, proxy_channel_records_to_core,
     proxy_app_config_from_db_source, proxy_global_config_from_db_source,
     emit_proxy_core_event,
     proxy_runtime_config_from_db_source,
@@ -277,13 +277,7 @@ impl ProviderSource for CcSwitchProviderSource {
         &'a self,
         app: &'a AppKind,
     ) -> BoxFuture<'a, ProxyCoreResult<Vec<ProviderSpec>>> {
-        Box::pin(async move {
-            let providers = self
-                .db
-                .get_all_providers(app.as_str())
-                .map_err(|error| app_error("list providers", error))?;
-            provider_specs_from_source(app, providers.into_values())
-        })
+        Box::pin(async move { provider_specs_from_db_source(&self.db, app) })
     }
 
     fn get_provider<'a>(
@@ -291,24 +285,14 @@ impl ProviderSource for CcSwitchProviderSource {
         app: &'a AppKind,
         provider_id: &'a str,
     ) -> BoxFuture<'a, ProxyCoreResult<Option<ProviderSpec>>> {
-        Box::pin(async move {
-            let provider = self
-                .db
-                .get_provider_by_id(provider_id, app.as_str())
-                .map_err(|error| app_error("get provider", error))?;
-            provider_spec_from_source(app, provider)
-        })
+        Box::pin(async move { provider_spec_from_db_source(&self.db, app, provider_id) })
     }
 
     fn current_provider_id<'a>(
         &'a self,
         app: &'a AppKind,
     ) -> BoxFuture<'a, ProxyCoreResult<Option<String>>> {
-        Box::pin(async move {
-            self.db
-                .get_current_provider(app.as_str())
-                .map_err(|error| app_error("get current provider", error))
-        })
+        Box::pin(async move { current_provider_id_from_db_source(&self.db, app) })
     }
 
     fn active_route_target<'a>(
