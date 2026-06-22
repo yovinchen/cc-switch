@@ -12,14 +12,13 @@ use crate::proxy_core_adapter::{
     apply_claude_takeover_fields_with_policy_and_models,
     apply_codex_takeover_auth_placeholder_if_present, apply_gemini_takeover_env_fields,
     attach_codex_model_catalog_from_provider as attach_codex_model_catalog_from_provider_settings,
-    build_proxy_official_warning_event_payload, claude_live_config_has_proxy_placeholder,
-    claude_takeover_model_fields_from_settings, ClaudeTakeoverAuthPolicy,
-    codex_live_config_has_proxy_placeholder,
+    build_proxy_official_warning_event_payload, claude_takeover_model_fields_from_settings,
+    ClaudeTakeoverAuthPolicy,
     codex_live_write_projection, codex_preserved_auth_live_config_text_if_proxy_placeholder,
-    codex_takeover_toml_config_for_provider, gemini_live_config_has_proxy_placeholder,
+    codex_takeover_toml_config_for_provider,
     ensure_codex_takeover_auth_placeholder, gemini_live_backup_from_effective_settings,
-    live_backup_snapshot_from_live_config, live_takeover_config_matches_proxy_for_app,
-    provider_claude_takeover_model_fields,
+    live_backup_snapshot_from_live_config, live_config_has_proxy_placeholder_for_app,
+    live_takeover_config_matches_proxy_for_app, provider_claude_takeover_model_fields,
     provider_is_github_copilot, provider_settings_have_proxy_placeholder_for_app,
     preserve_codex_mcp_servers_from_existing_config,
     preserve_codex_oauth_auth_in_backup_if_present, provider_settings_with_live_token_sync,
@@ -1359,20 +1358,20 @@ impl ProxyService {
     }
 
     pub fn detect_takeover_in_live_config_for_app(&self, app_type: &AppType) -> bool {
-        match app_type {
-            AppType::Claude => match self.read_claude_live() {
-                Ok(config) => Self::is_claude_live_taken_over(&config),
-                Err(_) => false,
-            },
-            AppType::Codex => match self.read_codex_live() {
-                Ok(config) => Self::is_codex_live_taken_over(&config),
-                Err(_) => false,
-            },
-            AppType::Gemini => match self.read_gemini_live() {
-                Ok(config) => Self::is_gemini_live_taken_over(&config),
-                Err(_) => false,
-            },
-            _ => false,
+        let config = match app_type {
+            AppType::Claude => self.read_claude_live(),
+            AppType::Codex => self.read_codex_live(),
+            AppType::Gemini => self.read_gemini_live(),
+            _ => return false,
+        };
+
+        match config {
+            Ok(config) => live_config_has_proxy_placeholder_for_app(
+                app_type,
+                &config,
+                PROXY_TOKEN_PLACEHOLDER,
+            ),
+            Err(_) => false,
         }
     }
 
@@ -1552,41 +1551,9 @@ impl ProxyService {
     /// 用于兜底处理：当数据库备份缺失但 Live 文件已经写成代理占位符时，
     /// 启动流程可以据此触发恢复逻辑。
     pub fn detect_takeover_in_live_configs(&self) -> bool {
-        if let Ok(config) = self.read_claude_live() {
-            if Self::is_claude_live_taken_over(&config) {
-                return true;
-            }
-        }
-
-        if let Ok(config) = self.read_codex_live() {
-            if Self::is_codex_live_taken_over(&config) {
-                return true;
-            }
-        }
-
-        if let Ok(config) = self.read_gemini_live() {
-            if Self::is_gemini_live_taken_over(&config) {
-                return true;
-            }
-        }
-
-        false
-    }
-
-    fn is_claude_live_taken_over(config: &Value) -> bool {
-        claude_live_config_has_proxy_placeholder(config, PROXY_TOKEN_PLACEHOLDER)
-    }
-
-    fn codex_live_has_proxy_placeholder(config: &Value) -> bool {
-        codex_live_config_has_proxy_placeholder(config, PROXY_TOKEN_PLACEHOLDER)
-    }
-
-    fn is_codex_live_taken_over(config: &Value) -> bool {
-        Self::codex_live_has_proxy_placeholder(config)
-    }
-
-    fn is_gemini_live_taken_over(config: &Value) -> bool {
-        gemini_live_config_has_proxy_placeholder(config, PROXY_TOKEN_PLACEHOLDER)
+        [AppType::Claude, AppType::Codex, AppType::Gemini]
+            .iter()
+            .any(|app_type| self.detect_takeover_in_live_config_for_app(app_type))
     }
 
     /// 从供应商配置更新 Live 备份（用于代理模式下的热切换）
