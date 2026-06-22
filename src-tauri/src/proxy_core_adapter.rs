@@ -6958,20 +6958,10 @@ pub(crate) fn apply_channel_provider_overrides(
 
 pub(crate) use crate::proxy_core::api::transforms::{
     build_codex_tool_context_from_request as codex_tool_context_from_request,
-    normalize_codex_chat_error_body,
+    normalize_anthropic_tool_thinking_history, normalize_codex_chat_error_body,
+    normalize_deepseek_thinking_disabled_strip_effort,
+    should_normalize_anthropic_tool_thinking_history,
 };
-
-pub(crate) fn should_normalize_anthropic_tool_thinking_history(
-    settings_config: &Value,
-    body: &Value,
-    api_format: &str,
-) -> bool {
-    crate::proxy_core::api::transforms::should_normalize_anthropic_tool_thinking_history(
-        settings_config,
-        body,
-        api_format,
-    )
-}
 
 pub(crate) fn provider_should_normalize_anthropic_tool_thinking_history(
     provider: &Provider,
@@ -6979,20 +6969,6 @@ pub(crate) fn provider_should_normalize_anthropic_tool_thinking_history(
     api_format: &str,
 ) -> bool {
     should_normalize_anthropic_tool_thinking_history(&provider.settings_config, body, api_format)
-}
-
-pub(crate) fn normalize_anthropic_tool_thinking_history(body: &mut Value) -> bool {
-    crate::proxy_core::api::transforms::normalize_anthropic_tool_thinking_history(body)
-}
-
-pub(crate) fn normalize_deepseek_thinking_disabled_strip_effort(
-    body: &mut Value,
-    settings_config: &Value,
-) -> bool {
-    crate::proxy_core::api::transforms::normalize_deepseek_thinking_disabled_strip_effort(
-        body,
-        settings_config,
-    )
 }
 
 pub(crate) fn provider_normalize_deepseek_thinking_disabled_strip_effort(

@@ -433,6 +433,9 @@ const FORBIDDEN_PROXY_CORE_ADAPTER_SMALL_HELPER_FACADE_MARKERS: &[&str] = &[
     "fn codex_proxy_error_response(",
     "fn codex_tool_context_from_request(",
     "fn normalize_codex_chat_error_body(",
+    "fn should_normalize_anthropic_tool_thinking_history(",
+    "fn normalize_anthropic_tool_thinking_history(",
+    "fn normalize_deepseek_thinking_disabled_strip_effort(",
 ];
 const FORBIDDEN_CLAUDE_PROVIDER_ADAPTER_TRANSFORM_DECISION_MARKERS: &[&str] = &[
     "ProviderKind::GitHubCopilot",
