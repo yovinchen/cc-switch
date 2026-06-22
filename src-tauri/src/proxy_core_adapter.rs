@@ -1424,6 +1424,10 @@ pub(crate) fn provider_switch_dispatch(
     ProviderSwitchDispatch::TakeoverAware
 }
 
+pub(crate) fn provider_switch_requires_takeover_lock(app_type: &AppType) -> bool {
+    matches!(app_type, AppType::Claude | AppType::Codex | AppType::Gemini)
+}
+
 pub(crate) fn provider_switch_backfill_source_id<'a>(
     app_type: &AppType,
     current_id: Option<&'a str>,
@@ -13112,6 +13116,16 @@ command = "latest-command"
             provider_switch_dispatch(&AppType::Claude, &normal_provider),
             ProviderSwitchDispatch::TakeoverAware
         );
+
+        assert!(provider_switch_requires_takeover_lock(&AppType::Claude));
+        assert!(provider_switch_requires_takeover_lock(&AppType::Codex));
+        assert!(provider_switch_requires_takeover_lock(&AppType::Gemini));
+        assert!(!provider_switch_requires_takeover_lock(
+            &AppType::ClaudeDesktop
+        ));
+        assert!(!provider_switch_requires_takeover_lock(&AppType::OpenCode));
+        assert!(!provider_switch_requires_takeover_lock(&AppType::OpenClaw));
+        assert!(!provider_switch_requires_takeover_lock(&AppType::Hermes));
     }
 
     #[test]
