@@ -34,6 +34,11 @@ const FORBIDDEN_FORWARDER_URL_PLANNING_MARKERS: &[&str] = &[
     "apply_channel_param_overrides_to_url(",
     "is_codex_chat_full_endpoint_base(",
 ];
+const FORBIDDEN_FORWARDER_CLAUDE_PROVIDER_COMPAT_MARKERS: &[&str] = &[
+    "super::providers::get_claude_api_format(",
+    "super::providers::normalize_anthropic_messages_for_provider(",
+    "super::providers::transform_claude_request_for_api_format(",
+];
 const FORBIDDEN_FORWARDER_MANAGED_AUTH_MARKERS: &[&str] = &[
     "CopilotAuthState",
     "CodexOAuthState",
@@ -1584,7 +1589,7 @@ fn production_claude_provider_adapter_delegates_request_transforms_to_adapter() 
     let source = fs::read_to_string(&path).expect("read claude provider adapter source");
     let transform_request_helper = function_slice(
         &source,
-        "pub fn transform_claude_request_for_api_format(",
+        "fn transform_claude_request_for_api_format(",
         "/// Claude 适配器",
     );
 
@@ -1616,8 +1621,8 @@ fn production_claude_provider_adapter_delegates_message_normalization_to_adapter
     let source = fs::read_to_string(&path).expect("read claude provider adapter source");
     let normalize_helper = function_slice(
         &source,
-        "pub fn normalize_anthropic_messages_for_provider(",
-        "pub fn transform_claude_request_for_api_format(",
+        "fn normalize_anthropic_messages_for_provider(",
+        "fn transform_claude_request_for_api_format(",
     );
 
     let mut violations = Vec::new();
@@ -1819,6 +1824,33 @@ fn production_forwarder_delegates_upstream_url_planning_to_adapter() {
     assert!(
         violations.is_empty(),
         "production forwarder must delegate upstream URL planning to proxy_core_adapter::forward_upstream_url_plan:\n{}",
+        violations.join("\n")
+    );
+}
+
+#[test]
+fn production_forwarder_delegates_claude_provider_helpers_to_adapter() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let path = manifest_dir.join("src/proxy/forwarder.rs");
+    let source = fs::read_to_string(&path).expect("read forwarder.rs");
+
+    let mut violations = Vec::new();
+    for (line_index, line) in production_lines(&source) {
+        let code = line.split("//").next().unwrap_or_default();
+        for marker in FORBIDDEN_FORWARDER_CLAUDE_PROVIDER_COMPAT_MARKERS {
+            if code.contains(marker) {
+                violations.push(format!(
+                    "src/proxy/forwarder.rs:{} contains Claude provider compat marker `{}`",
+                    line_index + 1,
+                    marker
+                ));
+            }
+        }
+    }
+
+    assert!(
+        violations.is_empty(),
+        "forwarder must consume Claude provider facts through proxy_core_adapter helpers:\n{}",
         violations.join("\n")
     );
 }

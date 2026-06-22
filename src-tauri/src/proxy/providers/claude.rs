@@ -19,7 +19,6 @@ use crate::provider::Provider;
 use crate::proxy::error::ProxyError;
 use crate::proxy_core_adapter::{
     provider_claude_api_format, provider_claude_auth_headers, provider_claude_auth_info,
-    provider_claude_normalize_anthropic_messages,
     provider_claude_transform_request_for_api_format, provider_claude_transform_response,
     provider_claude_upstream_url, provider_needs_claude_transform,
     required_claude_provider_base_url, GeminiShadowStore, ProviderAuthInfo,
@@ -27,19 +26,22 @@ use crate::proxy_core_adapter::{
 #[cfg(test)]
 use crate::proxy_core_adapter::{
     normalize_anthropic_tool_thinking_history, provider_claude_kind,
+    provider_claude_normalize_anthropic_messages,
     should_normalize_anthropic_tool_thinking_history, ProviderAuthStrategy, ProviderKind,
 };
+#[cfg(test)]
 use serde_json::Value;
 
 /// 获取 Claude 供应商的 API 格式
 ///
 /// 供 handler/forwarder 外部使用的公开函数。
 /// 优先级：meta.apiFormat > settings_config.api_format > openrouter_compat_mode > 默认 "anthropic"
-pub fn get_claude_api_format(provider: &Provider) -> &'static str {
+fn get_claude_api_format(provider: &Provider) -> &'static str {
     provider_claude_api_format(provider)
 }
 
-pub fn normalize_anthropic_messages_for_provider(
+#[cfg(test)]
+fn normalize_anthropic_messages_for_provider(
     body: &mut Value,
     provider: &Provider,
     api_format: &str,
@@ -47,7 +49,7 @@ pub fn normalize_anthropic_messages_for_provider(
     provider_claude_normalize_anthropic_messages(body, provider, api_format)
 }
 
-pub fn transform_claude_request_for_api_format(
+fn transform_claude_request_for_api_format(
     body: serde_json::Value,
     provider: &Provider,
     api_format: &str,

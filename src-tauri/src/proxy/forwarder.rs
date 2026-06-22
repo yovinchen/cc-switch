@@ -29,9 +29,12 @@ use crate::proxy_core_adapter::{
     allow_forward_attempt_runtime_source, merge_copilot_tool_results,
     non_streaming_body_timeout_message, normalize_thinking_type,
     prepare_upstream_request_body_with_report, prompt_cache_trace_log_message,
-    provider_bedrock_env_flag, provider_custom_user_agent_header, provider_is_codex_oauth,
-    provider_is_full_url, provider_is_github_copilot_upstream, rectify_anthropic_request,
-    provider_uses_anthropic_rectifiers, rectify_thinking_budget, replace_image_blocks_with_marker,
+    provider_bedrock_env_flag, provider_claude_api_format,
+    provider_claude_normalize_anthropic_messages,
+    provider_claude_transform_request_for_api_format, provider_custom_user_agent_header,
+    provider_is_codex_oauth, provider_is_full_url, provider_is_github_copilot_upstream,
+    provider_uses_anthropic_rectifiers, rectify_anthropic_request, rectify_thinking_budget,
+    replace_image_blocks_with_marker,
     record_forward_attempt_failure_runtime_source,
     record_forward_attempt_success_runtime_source,
     record_forward_active_connection_acquired_runtime_source,
@@ -1293,7 +1296,7 @@ impl RequestForwarder {
         };
         if adapter.name() == "Claude" {
             if let Some(api_format) = resolved_claude_api_format.as_deref() {
-                super::providers::normalize_anthropic_messages_for_provider(
+                provider_claude_normalize_anthropic_messages(
                     &mut mapped_body,
                     provider,
                     api_format,
@@ -1310,7 +1313,7 @@ impl RequestForwarder {
         let codex_responses_to_chat = matches!(app_type, AppType::Codex)
             && super::providers::should_convert_codex_responses_to_chat(provider, endpoint);
         let claude_api_format_for_url = resolved_claude_api_format.as_deref().or_else(|| {
-            (adapter.name() == "Claude").then(|| super::providers::get_claude_api_format(provider))
+            (adapter.name() == "Claude").then(|| provider_claude_api_format(provider))
         });
         let url_plan = forward_upstream_url_plan(
             ForwardUpstreamUrlPlanInput {
@@ -1367,15 +1370,16 @@ impl RequestForwarder {
             if adapter.name() == "Claude" {
                 let api_format = resolved_claude_api_format
                     .as_deref()
-                    .unwrap_or_else(|| super::providers::get_claude_api_format(provider));
-                super::providers::transform_claude_request_for_api_format(
+                    .unwrap_or_else(|| provider_claude_api_format(provider));
+                provider_claude_transform_request_for_api_format(
                     mapped_body,
                     provider,
                     api_format,
                     self.session_client_provided
                         .then_some(self.session_id.as_str()),
                     Some(self.gemini_shadow.as_ref()),
-                )?
+                )
+                .map_err(ProxyError::TransformError)?
             } else {
                 adapter.transform_request(mapped_body, provider)?
             }
@@ -1751,7 +1755,7 @@ impl RequestForwarder {
         };
 
         resolve_claude_forward_api_format(
-            super::providers::get_claude_api_format(provider),
+            provider_claude_api_format(provider),
             is_copilot,
             copilot_model_vendor.as_deref(),
         )

@@ -1015,6 +1015,8 @@
 本轮继续把 Claude 非流式响应转换的 OpenAI Chat/OpenAI Responses/Gemini Native 分支识别与转换调度收敛到 adapter，Claude provider 只保留 trait 边界和错误映射。
 本轮继续把 Claude 请求转换的 api_format 分支、prompt cache 选择、stream usage 注入和 Gemini request wrapper 调度收敛到 adapter，provider 公开函数只保留兼容入口和错误映射。
 本轮继续把 Claude Anthropic 消息规范化策略收敛到 adapter，provider 公开函数不再直接判断 api_format、tool-thinking history gate 或 DeepSeek thinking-disabled effort 清理。
+本轮继续把 forwarder 对 Claude api_format、消息规范化和请求转换的调用改为直接消费 adapter helper，不再经由 provider 兼容函数绕回代理模块。
+本轮继续删除 provider 模块对 Claude api_format、消息规范化和请求转换兼容函数的 re-export，Claude provider 对外只保留 `ClaudeAdapter`。
 
 当前原则：核心 crate 可以新增端口和领域字段，但不得引入 `tauri`、`Database`、settings、commands、services 等宿主依赖；现有 runtime 行为必须继续通过 targeted tests 证明不回归。
 
