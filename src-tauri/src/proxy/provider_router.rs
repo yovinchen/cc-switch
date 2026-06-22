@@ -13,11 +13,11 @@ use crate::proxy_core_adapter::{
     circuit_breaker_config_from_router_config_result,
     circuit_failure_threshold_from_router_config_result, current_provider_id_from_router_sources,
     provider_circuit_key, provider_circuit_key_prefix, provider_failover_circuit_lookups,
-    provider_selection_candidate_from_failover_lookup, proxy_channel_route_inputs_to_core,
-    resolve_channel_route as resolve_core_channel_route, route_candidate_channel_circuit_keys,
-    select_current_provider_from_router_source, select_failover_providers_from_router_candidates,
-    AllowResult, ChannelRouteSource, CircuitBreakerConfig, CircuitBreakerStats,
-    RouteCandidateCircuitKey, RouteResolveRequest, RouteResolveResponse,
+    proxy_channel_route_inputs_to_core, resolve_channel_route as resolve_core_channel_route,
+    route_candidate_channel_circuit_keys, select_current_provider_from_router_source,
+    select_failover_providers_from_router_lookup_availability, AllowResult, ChannelRouteSource,
+    CircuitBreakerConfig, CircuitBreakerStats, RouteCandidateCircuitKey, RouteResolveRequest,
+    RouteResolveResponse,
 };
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -78,7 +78,7 @@ impl ProviderRouter {
             ordered_ids,
             all_providers.keys().cloned().collect(),
         );
-        let mut candidates = Vec::with_capacity(lookups.len());
+        let mut lookup_availability = Vec::with_capacity(lookups.len());
         for lookup in lookups {
             let available = match lookup.circuit_key.as_ref() {
                 Some(circuit_key) => {
@@ -87,12 +87,14 @@ impl ProviderRouter {
                 }
                 None => true,
             };
-            candidates.push(provider_selection_candidate_from_failover_lookup(
-                lookup, available,
-            ));
+            lookup_availability.push((lookup, available));
         }
 
-        select_failover_providers_from_router_candidates(app_type, &all_providers, candidates)
+        select_failover_providers_from_router_lookup_availability(
+            app_type,
+            &all_providers,
+            lookup_availability,
+        )
     }
 
     fn select_current_provider(&self, app_type: &str) -> Result<Vec<Provider>, AppError> {

@@ -52,7 +52,11 @@ const FORBIDDEN_PROVIDER_ROUTER_CHANNEL_ROUTE_SOURCE_MARKERS: &[&str] = &[
     "channel_route_should_load_legacy_projection(",
 ];
 const FORBIDDEN_PROVIDER_ROUTER_SELECTION_MARKERS: &[&str] =
-    &["ProviderSelectionInput::", "select_provider_ids("];
+    &[
+        "ProviderSelectionInput::",
+        "select_provider_ids(",
+        "provider_selection_candidate_from_failover_lookup(",
+    ];
 const FORBIDDEN_PROVIDER_ROUTER_FAILOVER_CONFIG_MARKERS: &[&str] =
     &[".auto_failover_enabled", "默认禁用故障转移"];
 const FORBIDDEN_PROVIDER_ROUTER_CIRCUIT_CONFIG_MARKERS: &[&str] = &[

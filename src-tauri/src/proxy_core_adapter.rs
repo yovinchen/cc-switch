@@ -4004,11 +4004,20 @@ pub(crate) fn select_current_provider_from_router_source(
         .collect())
 }
 
-pub(crate) fn select_failover_providers_from_router_candidates(
+pub(crate) fn select_failover_providers_from_router_lookup_availability<I>(
     app_type: &str,
     providers: &IndexMap<String, Provider>,
-    candidates: Vec<ProviderSelectionCandidate>,
-) -> Result<Vec<Provider>, AppError> {
+    lookup_availability: I,
+) -> Result<Vec<Provider>, AppError>
+where
+    I: IntoIterator<Item = (ProviderFailoverCircuitLookup, bool)>,
+{
+    let candidates = lookup_availability
+        .into_iter()
+        .map(|(lookup, available)| {
+            provider_selection_candidate_from_failover_lookup(lookup, available)
+        })
+        .collect();
     let selected_ids = select_provider_ids(ProviderSelectionInput::failover(candidates))
         .map_err(|error| app_error_from_provider_selection_failure(app_type, error))?;
 
@@ -9188,14 +9197,24 @@ mod tests {
                 None,
             ),
         );
-        let selected_failover = select_failover_providers_from_router_candidates(
+        let failover_lookups = provider_failover_circuit_lookups(
+            "claude",
+            vec![
+                "missing".to_string(),
+                "provider-b".to_string(),
+                "provider-a".to_string(),
+            ],
+            failover_providers.keys().cloned().collect(),
+        );
+        let selected_failover = select_failover_providers_from_router_lookup_availability(
             "claude",
             &failover_providers,
-            vec![
-                ProviderSelectionCandidate::new("missing", false, true),
-                ProviderSelectionCandidate::new("provider-b", true, true),
-                ProviderSelectionCandidate::new("provider-a", true, false),
-            ],
+            failover_lookups
+                .into_iter()
+                .map(|lookup| {
+                    let available = lookup.provider_id == "provider-b";
+                    (lookup, available)
+                }),
         )
         .expect("selected failover providers");
         assert_eq!(selected_failover.len(), 1);
