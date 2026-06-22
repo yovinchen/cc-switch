@@ -30,6 +30,7 @@ use crate::proxy_core_adapter::{
 };
 use crate::proxy_core_adapter::{
     app_error,
+    app_summary_config_from_config_source,
     apply_channel_auth_profile_providers_from_source,
     auth_info_from_cc_switch_provider_config,
     cc_switch_app_kinds,
@@ -296,10 +297,7 @@ impl ProxyConfigSource for CcSwitchConfigSource {
                 .get_proxy_config_for_app(app.as_str())
                 .await
                 .map_err(|error| app_error("load app summary config", error))?;
-            Ok(AppSummaryConfig::new(
-                config.enabled,
-                config.auto_failover_enabled,
-            ))
+            Ok(app_summary_config_from_config_source(config))
         })
     }
 
@@ -1407,6 +1405,17 @@ mod tests {
         assert_eq!(app.rectifier.raw["enabled"], json!(true));
         assert_eq!(app.optimizer.raw["cacheTtl"], json!("1h"));
         assert_eq!(app.copilot_optimizer.raw["warmupModel"], json!("gpt-5-mini"));
+
+        let summary = services
+            .config()
+            .load_app_summary(&AppKind::Claude)
+            .await
+            .expect("load app summary config");
+        assert_eq!(summary.enabled, app.enabled);
+        assert_eq!(
+            summary.auto_failover_enabled,
+            app.raw["autoFailoverEnabled"].as_bool().unwrap_or_default()
+        );
 
         let runtime = services
             .config()

@@ -670,7 +670,7 @@
 659. `ProxyRequest` 到 host forward runtime 输入的 app/body/method/header/session 投影已移入 `proxy_core_adapter::forward_runtime_request_from_proxy_request`：`proxy_core_host` 不再直接拆 `ProxyRequest`、调用 `ProxyBody::into_json` 或抽取 session id。
 660. `AppProxyConfig` 到 `RequestForwarder` timeout/retry 选项的投影已移入 `proxy_core_adapter::forwarder_runtime_options_from_app_proxy_config`：`proxy_core_host` 不再直接展开 `ResponseRuntimePolicy.timeout`。
 661. forward runtime 的 `AppProxyConfig`、rectifier、optimizer 与 Copilot optimizer 组合已收敛为 `proxy_core_adapter::forwarder_runtime_config_from_sources`：`proxy_core_host` 仍负责读取 DB 配置，但不再把 forwarder runtime config 作为散落局部变量维护。
-662. ConfigSource 的 app 配置投影已新增 `proxy_core_adapter::proxy_app_config_from_config_source` wrapper：`proxy_core_host` 只传入 DB 读取到的 app/optimizer 配置，settings current-provider 读取与 `ProxyAppConfig` 组合由 adapter 统一处理。
+662. ConfigSource 的 app 配置投影已新增 `proxy_core_adapter::proxy_app_config_from_config_source` wrapper，app summary 投影已新增 `app_summary_config_from_config_source` wrapper：`proxy_core_host` 只传入 DB 读取到的 app/optimizer 配置，settings current-provider 读取、`ProxyAppConfig` 组合与 `AppSummaryConfig` 组装由 adapter 统一处理。
 663. channel-key auth profile 的 DB key record 到 runtime key value 投影已移入 `proxy_core_adapter::channel_key_value_from_record`：host auth-profile closure 只负责查询 enabled key 和错误映射，不再直接拆 DAO record 字段。
 664. management handlers 的 provider summary/current route provider 投影已改为调用 `proxy_core_adapter::proxy_provider_to_core_spec` / `proxy_providers_to_core_specs`：handler 不再直接依赖 provider projection trait，只保留 HTTP path、DB 查询和 response envelope 调用。
 665. channel/group 管理列表的 response source 组装已新增 `proxy_core_adapter::channel_list_source_from_records`、`app_channel_list_source_from_records` 与 `group_list_channel_source_from_records`：handler 仍负责 DB/router 查询，但不再手写 channel record 到 list/group source 的组合。
@@ -955,6 +955,7 @@
 本轮继续把 ChannelHealthStore reset 的 app lookup 校验和 reset fact 投影收敛到 adapter，host health store 只负责查询 app 并调用 router reset。
 本轮继续把 response processor 的 provider/app usage facts 投影收敛到 adapter，response processor 不再直接调用 provider kind 或 app kind 投影 helper。
 本轮也把 usage sink bridge 的 forward error 与 transformed usage provider facts 投影收敛到 adapter，bridge 不再直接拼 provider kind、app kind 或 transformed usage record。
+本轮继续把 ConfigSource 的 app summary DTO 组装收敛到 adapter，host ConfigSource 不再直接构造 `AppSummaryConfig`。
 
 当前原则：核心 crate 可以新增端口和领域字段，但不得引入 `tauri`、`Database`、settings、commands、services 等宿主依赖；现有 runtime 行为必须继续通过 targeted tests 证明不回归。
 

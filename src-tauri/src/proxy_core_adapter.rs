@@ -616,6 +616,10 @@ pub(crate) fn proxy_app_config_from_config_source(
     )
 }
 
+pub(crate) fn app_summary_config_from_config_source(config: AppProxyConfig) -> AppSummaryConfig {
+    AppSummaryConfig::new(config.enabled, config.auto_failover_enabled)
+}
+
 pub(crate) fn forward_current_provider_id_from_source(
     settings_current_provider_id: Option<&str>,
     load_db_current_provider_id: impl FnOnce() -> Option<String>,
@@ -8869,6 +8873,9 @@ mod tests {
             projected_app.raw["currentProviderId"],
             json!("anthropic-main")
         );
+        let app_summary = app_summary_config_from_config_source(app_config.clone());
+        assert!(app_summary.enabled);
+        assert!(app_summary.auto_failover_enabled);
         assert_eq!(
             app_proxy_config_from_proxy_app_config(&projected_app)
                 .expect("project host app config from core raw"),
