@@ -23,7 +23,8 @@ use crate::proxy_core_adapter::{
     preserve_codex_oauth_auth_in_backup_if_present, provider_settings_with_live_token_sync,
     remove_claude_takeover_env_fields_if_present, CodexBackupProjectionIssue,
     CodexLiveWriteProjection,
-    proxy_runtime_status_stopped, proxy_server_info_from_parts, proxy_takeover_status_from_parts,
+    proxy_live_urls_from_listen_parts, proxy_runtime_status_stopped,
+    proxy_server_info_from_parts, proxy_takeover_status_from_parts,
     remove_codex_takeover_auth_placeholder_if_present,
     remove_codex_takeover_config_placeholders_if_present,
     remove_gemini_takeover_env_fields_if_present, CircuitBreakerConfig,
@@ -928,19 +929,6 @@ impl ProxyService {
             .await
             .map_err(|e| format!("获取代理配置失败: {e}"))?;
 
-        // listen_address 可能是 0.0.0.0（用于监听所有网卡），但客户端无法用 0.0.0.0 连接；
-        // 因此写回到各应用配置时，优先使用本机回环地址。
-        let connect_host = match config.listen_address.as_str() {
-            "0.0.0.0" => "127.0.0.1".to_string(),
-            "::" => "::1".to_string(),
-            _ => config.listen_address.clone(),
-        };
-        let connect_host_for_url = if connect_host.contains(':') && !connect_host.starts_with('[') {
-            format!("[{connect_host}]")
-        } else {
-            connect_host
-        };
-
         let mut listen_port = config.listen_port;
         if let Some(server) = self.server.read().await.as_ref() {
             let status = server.get_status().await;
@@ -948,15 +936,9 @@ impl ProxyService {
                 listen_port = status.port;
             }
         }
-        if listen_port == 0 {
-            return Err("代理监听端口为 0，但代理服务器尚未运行，无法生成接管地址".to_string());
-        }
 
-        let proxy_origin = format!("http://{}:{}", connect_host_for_url, listen_port);
-        let proxy_url = proxy_origin.clone();
-        let proxy_codex_base_url = format!("{}/v1", proxy_origin.trim_end_matches('/'));
-
-        Ok((proxy_url, proxy_codex_base_url))
+        proxy_live_urls_from_listen_parts(&config.listen_address, listen_port)
+            .ok_or_else(|| "代理监听端口为 0，但代理服务器尚未运行，无法生成接管地址".to_string())
     }
 
     /// 接管各应用的 Live 配置（写入代理地址）

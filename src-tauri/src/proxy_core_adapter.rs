@@ -347,6 +347,32 @@ pub(crate) fn proxy_server_info_from_parts(
     crate::proxy_core::api::ports::proxy_server_info_from_parts(address, port, started_at)
 }
 
+pub(crate) fn proxy_live_urls_from_listen_parts(
+    listen_address: &str,
+    listen_port: u16,
+) -> Option<(String, String)> {
+    if listen_port == 0 {
+        return None;
+    }
+
+    // listen_address 可能是 0.0.0.0（用于监听所有网卡），但客户端无法用
+    // 0.0.0.0 连接；因此写回到各应用配置时，优先使用本机回环地址。
+    let connect_host = match listen_address {
+        "0.0.0.0" => "127.0.0.1".to_string(),
+        "::" => "::1".to_string(),
+        _ => listen_address.to_string(),
+    };
+    let connect_host_for_url = if connect_host.contains(':') && !connect_host.starts_with('[') {
+        format!("[{connect_host}]")
+    } else {
+        connect_host
+    };
+
+    let proxy_origin = format!("http://{connect_host_for_url}:{listen_port}");
+    let proxy_codex_base_url = format!("{}/v1", proxy_origin.trim_end_matches('/'));
+    Some((proxy_origin, proxy_codex_base_url))
+}
+
 pub(crate) type ProxyTakeoverStatus =
     crate::proxy_core::api::ports::ProxyTakeoverStatus;
 
@@ -7077,6 +7103,36 @@ wire_api = "chat"
         assert!(takeover.gemini);
         assert!(!takeover.opencode);
         assert!(!takeover.openclaw);
+
+        assert_eq!(
+            proxy_live_urls_from_listen_parts("127.0.0.1", 15721),
+            Some((
+                "http://127.0.0.1:15721".to_string(),
+                "http://127.0.0.1:15721/v1".to_string()
+            ))
+        );
+        assert_eq!(
+            proxy_live_urls_from_listen_parts("0.0.0.0", 15721),
+            Some((
+                "http://127.0.0.1:15721".to_string(),
+                "http://127.0.0.1:15721/v1".to_string()
+            ))
+        );
+        assert_eq!(
+            proxy_live_urls_from_listen_parts("::", 15721),
+            Some((
+                "http://[::1]:15721".to_string(),
+                "http://[::1]:15721/v1".to_string()
+            ))
+        );
+        assert_eq!(
+            proxy_live_urls_from_listen_parts("fd00::1", 15721),
+            Some((
+                "http://[fd00::1]:15721".to_string(),
+                "http://[fd00::1]:15721/v1".to_string()
+            ))
+        );
+        assert_eq!(proxy_live_urls_from_listen_parts("127.0.0.1", 0), None);
 
         let target = CurrentRouteTarget {
             app_type: "claude".to_string(),
