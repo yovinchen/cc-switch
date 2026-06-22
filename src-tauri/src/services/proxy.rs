@@ -17,7 +17,9 @@ use crate::proxy_core_adapter::{
     ensure_codex_takeover_auth_placeholder, live_config_has_proxy_placeholder_for_app,
     live_takeover_config_matches_proxy_for_app, provider_claude_takeover_model_fields,
     provider_is_github_copilot, provider_settings_have_proxy_placeholder_for_app,
-    provider_settings_with_live_token_sync, remove_claude_takeover_env_fields_if_present,
+    preserve_codex_mcp_servers_from_existing_config,
+    preserve_codex_oauth_auth_in_backup_if_present, provider_settings_with_live_token_sync,
+    remove_claude_takeover_env_fields_if_present, CodexBackupProjectionIssue,
     provider_uses_managed_account_auth, proxy_runtime_status_stopped, proxy_server_info_from_parts,
     proxy_takeover_status_from_parts, remove_codex_takeover_auth_placeholder_if_present,
     remove_gemini_takeover_env_fields_if_present, CircuitBreakerConfig,
@@ -259,10 +261,8 @@ impl ProxyService {
         )
         .map_err(|e| format!("构建 codex 有效配置失败: {e}"))?;
         if let Some(existing_live) = existing_live.as_ref() {
-            Self::preserve_codex_mcp_servers_from_existing_config(
-                &mut effective_settings,
-                existing_live,
-            )?;
+            preserve_codex_mcp_servers_from_existing_config(&mut effective_settings, existing_live)
+                .map_err(Self::codex_backup_projection_error_message)?;
         }
         let (_, proxy_codex_base_url) = self.build_proxy_urls().await?;
 
@@ -1721,11 +1721,18 @@ impl ProxyService {
                 .transpose()?;
 
             if let Some(existing_value) = existing_backup_value.as_ref() {
-                Self::preserve_codex_mcp_servers_from_existing_config(
+                preserve_codex_mcp_servers_from_existing_config(
                     &mut effective_settings,
                     existing_value,
-                )?;
-                Self::preserve_codex_oauth_auth_in_backup(&mut effective_settings, existing_value)?;
+                )
+                .map_err(Self::codex_backup_projection_error_message)?;
+                if crate::settings::preserve_codex_official_auth_on_switch() {
+                    preserve_codex_oauth_auth_in_backup_if_present(
+                        &mut effective_settings,
+                        existing_value,
+                    )
+                    .map_err(Self::codex_backup_projection_error_message)?;
+                }
             }
 
             // 统一会话开关：备份是接管释放时恢复 live 的来源，官方配置的
@@ -1865,99 +1872,21 @@ impl ProxyService {
         self.switch_locks.lock_for_app(app_type).await
     }
 
-    fn preserve_codex_mcp_servers_from_existing_config(
-        target_settings: &mut Value,
-        existing_config: &Value,
-    ) -> Result<(), String> {
-        let target_obj = target_settings
-            .as_object_mut()
-            .ok_or_else(|| "Codex 备份必须是 JSON 对象".to_string())?;
-
-        let target_config = target_obj
-            .get("config")
-            .and_then(|v| v.as_str())
-            .unwrap_or("");
-        let mut target_doc = if target_config.trim().is_empty() {
-            toml_edit::DocumentMut::new()
-        } else {
-            target_config
-                .parse::<toml_edit::DocumentMut>()
-                .map_err(|e| format!("解析新的 Codex config.toml 失败: {e}"))?
-        };
-
-        let existing_config = existing_config
-            .get("config")
-            .and_then(|v| v.as_str())
-            .unwrap_or("");
-        if existing_config.trim().is_empty() {
-            target_obj.insert("config".to_string(), json!(target_doc.to_string()));
-            return Ok(());
-        }
-
-        let existing_doc = existing_config
-            .parse::<toml_edit::DocumentMut>()
-            .map_err(|e| format!("解析现有 Codex 备份失败: {e}"))?;
-
-        if let Some(existing_mcp_servers) = existing_doc.get("mcp_servers") {
-            match target_doc.get_mut("mcp_servers") {
-                Some(target_mcp_servers) => {
-                    if let (Some(target_table), Some(existing_table)) = (
-                        target_mcp_servers.as_table_like_mut(),
-                        existing_mcp_servers.as_table_like(),
-                    ) {
-                        for (server_id, server_item) in existing_table.iter() {
-                            if target_table.get(server_id).is_none() {
-                                target_table.insert(server_id, server_item.clone());
-                            }
-                        }
-                    } else {
-                        log::warn!(
-                            "Codex config contains a non-table mcp_servers section; skipping MCP merge"
-                        );
-                    }
-                }
-                None => {
-                    target_doc["mcp_servers"] = existing_mcp_servers.clone();
-                }
+    fn codex_backup_projection_error_message(issue: CodexBackupProjectionIssue) -> String {
+        match issue {
+            CodexBackupProjectionIssue::InvalidTargetSettings => {
+                "Codex 备份必须是 JSON 对象".to_string()
+            }
+            CodexBackupProjectionIssue::ParseTargetConfig(message) => {
+                format!("解析新的 Codex config.toml 失败: {message}")
+            }
+            CodexBackupProjectionIssue::ParseExistingConfig(message) => {
+                format!("解析现有 Codex 备份失败: {message}")
+            }
+            CodexBackupProjectionIssue::PrepareLiveConfig(message) => {
+                format!("更新 Codex 备份配置失败: {message}")
             }
         }
-
-        target_obj.insert("config".to_string(), json!(target_doc.to_string()));
-        Ok(())
-    }
-
-    fn preserve_codex_oauth_auth_in_backup(
-        target_settings: &mut Value,
-        existing_backup: &Value,
-    ) -> Result<(), String> {
-        if !crate::settings::preserve_codex_official_auth_on_switch() {
-            return Ok(());
-        }
-
-        let Some(existing_auth) = existing_backup
-            .get("auth")
-            .filter(|auth| crate::codex_config::codex_auth_has_oauth_login_material(auth))
-            .cloned()
-        else {
-            return Ok(());
-        };
-
-        let Some(target_obj) = target_settings.as_object_mut() else {
-            return Ok(());
-        };
-
-        let provider_auth = target_obj.get("auth").cloned().unwrap_or_else(|| json!({}));
-        if let Some(config_text) = target_obj.get("config").and_then(|value| value.as_str()) {
-            let live_config = crate::codex_config::prepare_codex_provider_live_config(
-                &provider_auth,
-                config_text,
-            )
-            .map_err(|e| format!("更新 Codex 备份配置失败: {e}"))?;
-            target_obj.insert("config".to_string(), json!(live_config));
-        }
-        target_obj.insert("auth".to_string(), existing_auth);
-
-        Ok(())
     }
 
     /// 代理模式下切换供应商（热切换，并按需刷新代理安全的 Live 显示字段）

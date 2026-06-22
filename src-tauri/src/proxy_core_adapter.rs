@@ -1591,6 +1591,103 @@ fn codex_model_from_toml(config_text: &str) -> Option<String> {
         .map(ToString::to_string)
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum CodexBackupProjectionIssue {
+    InvalidTargetSettings,
+    ParseTargetConfig(String),
+    ParseExistingConfig(String),
+    PrepareLiveConfig(String),
+}
+
+pub(crate) fn preserve_codex_mcp_servers_from_existing_config(
+    target_settings: &mut Value,
+    existing_config: &Value,
+) -> Result<(), CodexBackupProjectionIssue> {
+    let target_obj = target_settings
+        .as_object_mut()
+        .ok_or(CodexBackupProjectionIssue::InvalidTargetSettings)?;
+
+    let target_config = target_obj
+        .get("config")
+        .and_then(Value::as_str)
+        .unwrap_or("");
+    let mut target_doc = if target_config.trim().is_empty() {
+        toml_edit::DocumentMut::new()
+    } else {
+        target_config
+            .parse::<toml_edit::DocumentMut>()
+            .map_err(|e| CodexBackupProjectionIssue::ParseTargetConfig(e.to_string()))?
+    };
+
+    let existing_config = existing_config
+        .get("config")
+        .and_then(Value::as_str)
+        .unwrap_or("");
+    if existing_config.trim().is_empty() {
+        target_obj.insert("config".to_string(), json!(target_doc.to_string()));
+        return Ok(());
+    }
+
+    let existing_doc = existing_config
+        .parse::<toml_edit::DocumentMut>()
+        .map_err(|e| CodexBackupProjectionIssue::ParseExistingConfig(e.to_string()))?;
+
+    if let Some(existing_mcp_servers) = existing_doc.get("mcp_servers") {
+        match target_doc.get_mut("mcp_servers") {
+            Some(target_mcp_servers) => {
+                if let (Some(target_table), Some(existing_table)) = (
+                    target_mcp_servers.as_table_like_mut(),
+                    existing_mcp_servers.as_table_like(),
+                ) {
+                    for (server_id, server_item) in existing_table.iter() {
+                        if target_table.get(server_id).is_none() {
+                            target_table.insert(server_id, server_item.clone());
+                        }
+                    }
+                } else {
+                    log::warn!(
+                        "Codex config contains a non-table mcp_servers section; skipping MCP merge"
+                    );
+                }
+            }
+            None => {
+                target_doc["mcp_servers"] = existing_mcp_servers.clone();
+            }
+        }
+    }
+
+    target_obj.insert("config".to_string(), json!(target_doc.to_string()));
+    Ok(())
+}
+
+pub(crate) fn preserve_codex_oauth_auth_in_backup_if_present(
+    target_settings: &mut Value,
+    existing_backup: &Value,
+) -> Result<(), CodexBackupProjectionIssue> {
+    let Some(existing_auth) = existing_backup
+        .get("auth")
+        .filter(|auth| crate::codex_config::codex_auth_has_oauth_login_material(auth))
+        .cloned()
+    else {
+        return Ok(());
+    };
+
+    let Some(target_obj) = target_settings.as_object_mut() else {
+        return Ok(());
+    };
+
+    let provider_auth = target_obj.get("auth").cloned().unwrap_or_else(|| json!({}));
+    if let Some(config_text) = target_obj.get("config").and_then(Value::as_str) {
+        let live_config =
+            crate::codex_config::prepare_codex_provider_live_config(&provider_auth, config_text)
+                .map_err(|e| CodexBackupProjectionIssue::PrepareLiveConfig(e.to_string()))?;
+        target_obj.insert("config".to_string(), json!(live_config));
+    }
+    target_obj.insert("auth".to_string(), existing_auth);
+
+    Ok(())
+}
+
 pub(crate) fn provider_codex_uses_chat_completions(provider: &Provider) -> bool {
     let config_text = provider_codex_config_text(provider);
     resolve_codex_provider_uses_chat_completions(
@@ -7219,6 +7316,83 @@ base_url = "https://relay.example/v1"
             codex_proxy_url,
             placeholder
         ));
+    }
+
+    #[test]
+    fn codex_backup_projection_adapter_preserves_mcp_and_oauth_auth() {
+        let oauth_auth = json!({
+            "auth_mode": "chatgpt",
+            "tokens": {
+                "access_token": "oauth-access"
+            }
+        });
+        let existing_backup = json!({
+            "auth": oauth_auth,
+            "config": r#"[mcp_servers.shared]
+command = "old-command"
+
+[mcp_servers.legacy]
+command = "legacy-command"
+"#
+        });
+        let mut target_settings = json!({
+            "auth": {
+                "OPENAI_API_KEY": "provider-key"
+            },
+            "config": r#"model_provider = "custom"
+model = "gpt-5"
+
+[model_providers.custom]
+base_url = "https://new.example/v1"
+wire_api = "responses"
+
+[mcp_servers.shared]
+command = "new-command"
+
+[mcp_servers.latest]
+command = "latest-command"
+"#
+        });
+
+        preserve_codex_mcp_servers_from_existing_config(&mut target_settings, &existing_backup)
+            .expect("mcp merge");
+        preserve_codex_oauth_auth_in_backup_if_present(&mut target_settings, &existing_backup)
+            .expect("oauth auth preserve");
+
+        assert_eq!(target_settings.get("auth"), Some(&oauth_auth));
+
+        let config = target_settings
+            .get("config")
+            .and_then(Value::as_str)
+            .expect("config text");
+        assert_eq!(
+            crate::codex_config::extract_codex_experimental_bearer_token(config).as_deref(),
+            Some("provider-key")
+        );
+
+        let parsed: toml::Value = toml::from_str(config).expect("parse projected config");
+        let mcp_servers = parsed.get("mcp_servers").expect("mcp_servers");
+        assert_eq!(
+            mcp_servers
+                .get("shared")
+                .and_then(|server| server.get("command"))
+                .and_then(toml::Value::as_str),
+            Some("new-command")
+        );
+        assert_eq!(
+            mcp_servers
+                .get("legacy")
+                .and_then(|server| server.get("command"))
+                .and_then(toml::Value::as_str),
+            Some("legacy-command")
+        );
+        assert_eq!(
+            mcp_servers
+                .get("latest")
+                .and_then(|server| server.get("command"))
+                .and_then(toml::Value::as_str),
+            Some("latest-command")
+        );
     }
 
     #[test]
