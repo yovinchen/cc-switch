@@ -2547,6 +2547,13 @@ pub(crate) fn should_block_proxy_switch_to_provider_category(
     )
 }
 
+pub(crate) fn should_block_proxy_switch_to_provider(
+    proxy_takeover_active: bool,
+    provider: &Provider,
+) -> bool {
+    should_block_proxy_switch_to_provider_category(proxy_takeover_active, provider.category.as_deref())
+}
+
 pub(crate) fn provider_is_official_category(provider: &Provider) -> bool {
     provider.category.as_deref() == Some("official")
 }
@@ -7429,6 +7436,18 @@ base_url = "https://api.openai.com/v1"
             Some("custom")
         ));
         assert!(!should_block_proxy_switch_to_provider_category(true, None));
+
+        let mut provider = Provider::with_id(
+            "official-codex".to_string(),
+            "Official Codex".to_string(),
+            json!({}),
+            None,
+        );
+        provider.category = Some("official".to_string());
+        assert!(should_block_proxy_switch_to_provider(true, &provider));
+        assert!(!should_block_proxy_switch_to_provider(false, &provider));
+        provider.category = Some("custom".to_string());
+        assert!(!should_block_proxy_switch_to_provider(true, &provider));
     }
 
     #[test]

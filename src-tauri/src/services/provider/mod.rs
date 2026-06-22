@@ -23,7 +23,7 @@ use crate::proxy_core_adapter::{
     opencode_common_config_value_from_settings,
     provider_codex_validation_parts, provider_gemini_env_map,
     provider_openclaw_credential_parts, provider_opencode_credential_parts,
-    provider_settings_config_is_object, should_block_proxy_switch_to_provider_category,
+    provider_settings_config_is_object, should_block_proxy_switch_to_provider,
     should_reapply_codex_official_live_for_provider, CodexProviderValidationIssue,
     OpenCodeCredentialIssue,
 };
@@ -1835,10 +1835,7 @@ impl ProviderService {
 
         // Block switching to official providers when proxy takeover is active.
         // Using a proxy with official APIs (Anthropic/OpenAI/Google) may cause account bans.
-        if should_block_proxy_switch_to_provider_category(
-            should_hot_switch,
-            _provider.category.as_deref(),
-        ) {
+        if should_block_proxy_switch_to_provider(should_hot_switch, _provider) {
             return Err(AppError::localized(
                 "switch.official_blocked_by_proxy",
                 "代理接管模式下不能切换到官方供应商，使用代理访问官方 API 可能导致账号被封禁。请先关闭代理接管，或选择第三方供应商。",

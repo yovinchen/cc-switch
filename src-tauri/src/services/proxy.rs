@@ -26,7 +26,7 @@ use crate::proxy_core_adapter::{
     proxy_server_info_from_parts, proxy_takeover_status_from_parts,
     remove_codex_takeover_auth_placeholder_if_present,
     remove_codex_takeover_config_placeholders_if_present,
-    remove_gemini_takeover_env_fields_if_present, should_block_proxy_switch_to_provider_category,
+    remove_gemini_takeover_env_fields_if_present, should_block_proxy_switch_to_provider,
     should_emit_proxy_official_warning_for_provider, CircuitBreakerConfig, CodexTakeoverAuthPolicy,
     LiveTokenProviderSettingsIssue, ProxyConfig, ProxyRuntimeStatus, ProxyServerInfo,
     ProxyTakeoverStatus, PROXY_OFFICIAL_WARNING_EVENT,
@@ -1527,7 +1527,7 @@ impl ProxyService {
             .ok_or_else(|| format!("供应商不存在: {provider_id}"))?;
 
         // Defense-in-depth: block official providers during proxy takeover
-        if should_block_proxy_switch_to_provider_category(true, provider.category.as_deref()) {
+        if should_block_proxy_switch_to_provider(true, &provider) {
             return Err(
                 "代理接管模式下不能切换到官方供应商 (Cannot switch to official provider during proxy takeover)"
                     .to_string(),
