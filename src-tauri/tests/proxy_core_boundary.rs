@@ -363,6 +363,8 @@ const FORBIDDEN_PROVIDER_ADAPTER_AUTH_INFO_MARKERS: &[&str] = &[
     "pub fn provider_type(",
     "pub fn parse_oauth_credentials(",
 ];
+const FORBIDDEN_PROVIDER_ADAPTER_TEST_FACADE_MARKERS: &[&str] =
+    &["pub fn provider_type(", "pub fn parse_oauth_credentials("];
 const FORBIDDEN_PROVIDER_ADAPTER_AUTH_HEADER_MARKERS: &[&str] = &[
     "build_codex_bearer_auth_headers(",
     "build_gemini_auth_headers(",
@@ -1418,6 +1420,39 @@ fn production_gemini_provider_adapter_delegates_auth_info_to_adapter() {
     assert!(
         violations.is_empty(),
         "Gemini provider adapter must delegate auth info construction to proxy_core_adapter helpers:\n{}",
+        violations.join("\n")
+    );
+}
+
+#[test]
+fn production_provider_adapters_exclude_provider_kind_test_facades() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let provider_paths = [
+        "src/proxy/providers/claude.rs",
+        "src/proxy/providers/gemini.rs",
+    ];
+
+    let mut violations = Vec::new();
+    for relative in provider_paths {
+        let source = fs::read_to_string(manifest_dir.join(relative)).expect("read provider adapter");
+        for (line_index, line) in production_lines(&source) {
+            let code = line.split("//").next().unwrap_or_default();
+            for marker in FORBIDDEN_PROVIDER_ADAPTER_TEST_FACADE_MARKERS {
+                if code.contains(marker) {
+                    violations.push(format!(
+                        "{}:{} contains test facade marker `{}`",
+                        relative,
+                        line_index + 1,
+                        marker
+                    ));
+                }
+            }
+        }
+    }
+
+    assert!(
+        violations.is_empty(),
+        "Provider kind and credential parser tests belong in proxy_core_adapter/proxy-core, not provider adapter cfg(test) facades:\n{}",
         violations.join("\n")
     );
 }

@@ -25,9 +25,8 @@ use crate::proxy_core_adapter::{
 };
 #[cfg(test)]
 use crate::proxy_core_adapter::{
-    normalize_anthropic_tool_thinking_history, provider_claude_kind,
-    provider_claude_normalize_anthropic_messages,
-    should_normalize_anthropic_tool_thinking_history, ProviderAuthStrategy, ProviderKind,
+    normalize_anthropic_tool_thinking_history, provider_claude_normalize_anthropic_messages,
+    should_normalize_anthropic_tool_thinking_history, ProviderAuthStrategy,
     COPILOT_API_VERSION, COPILOT_EDITOR_VERSION, COPILOT_INTEGRATION_ID, COPILOT_PLUGIN_VERSION,
     COPILOT_USER_AGENT,
 };
@@ -74,19 +73,6 @@ pub struct ClaudeAdapter;
 impl ClaudeAdapter {
     pub fn new() -> Self {
         Self
-    }
-
-    /// 获取供应商类型
-    ///
-    /// 根据 base_url 和 auth_mode 检测具体的供应商类型：
-    /// - GitHubCopilot: meta.provider_type 为 github_copilot 或 base_url 包含 githubcopilot.com
-    /// - CodexOAuth: meta.provider_type 为 codex_oauth
-    /// - OpenRouter: base_url 包含 openrouter.ai
-    /// - ClaudeAuth: auth_mode 为 bearer_only
-    /// - Claude: 默认 Anthropic 官方
-    #[cfg(test)]
-    pub fn provider_type(&self, provider: &Provider) -> ProviderKind {
-        provider_claude_kind(provider)
     }
 
     /// 获取 API 格式
@@ -578,8 +564,6 @@ mod tests {
             },
         );
 
-        assert_eq!(adapter.provider_type(&provider), ProviderKind::GeminiCli);
-
         let auth = adapter.extract_auth(&provider).unwrap();
         assert_eq!(auth.access_token.as_deref(), Some("ya29.valid"));
         assert_eq!(auth.strategy, ProviderAuthStrategy::GoogleOAuth);
@@ -603,47 +587,9 @@ mod tests {
             },
         );
 
-        assert_eq!(adapter.provider_type(&provider), ProviderKind::GeminiCli);
-
         let auth = adapter.extract_auth(&provider).unwrap();
         assert_eq!(auth.access_token.as_deref(), Some("ya29.raw-token-value"));
         assert_eq!(auth.strategy, ProviderAuthStrategy::GoogleOAuth);
-    }
-
-    #[test]
-    fn test_provider_type_detection() {
-        let adapter = ClaudeAdapter::new();
-
-        // Anthropic 官方
-        let anthropic = create_provider(json!({
-            "env": {
-                "ANTHROPIC_BASE_URL": "https://api.anthropic.com",
-                "ANTHROPIC_AUTH_TOKEN": "sk-ant-test"
-            }
-        }));
-        assert_eq!(adapter.provider_type(&anthropic), ProviderKind::Claude);
-
-        // OpenRouter
-        let openrouter = create_provider(json!({
-            "env": {
-                "ANTHROPIC_BASE_URL": "https://openrouter.ai/api",
-                "OPENROUTER_API_KEY": "sk-or-test"
-            }
-        }));
-        assert_eq!(adapter.provider_type(&openrouter), ProviderKind::OpenRouter);
-
-        // ClaudeAuth
-        let claude_auth = create_provider(json!({
-            "env": {
-                "ANTHROPIC_BASE_URL": "https://some-proxy.com",
-                "ANTHROPIC_AUTH_TOKEN": "sk-test"
-            },
-            "auth_mode": "bearer_only"
-        }));
-        assert_eq!(
-            adapter.provider_type(&claude_auth),
-            ProviderKind::ClaudeAuth
-        );
     }
 
     #[test]
@@ -789,11 +735,6 @@ mod tests {
             },
         );
         assert!(adapter.needs_transform(&gemini_native_provider));
-        assert_eq!(
-            adapter.provider_type(&gemini_native_provider),
-            ProviderKind::Gemini
-        );
-
         // meta takes precedence over legacy settings_config fields
         let meta_precedence_over_settings = create_provider_with_meta(
             json!({
@@ -826,23 +767,9 @@ mod tests {
     }
 
     #[test]
-    fn test_github_copilot_detection_by_url() {
+    fn test_github_copilot_auth_by_meta() {
         let adapter = ClaudeAdapter::new();
 
-        // GitHub Copilot by base_url
-        let copilot = create_provider(json!({
-            "env": {
-                "ANTHROPIC_BASE_URL": "https://api.githubcopilot.com"
-            }
-        }));
-        assert_eq!(adapter.provider_type(&copilot), ProviderKind::GitHubCopilot);
-    }
-
-    #[test]
-    fn test_github_copilot_detection_by_meta() {
-        let adapter = ClaudeAdapter::new();
-
-        // GitHub Copilot by meta.provider_type
         let copilot_meta = create_provider_with_meta(
             json!({
                 "env": {
@@ -854,10 +781,8 @@ mod tests {
                 ..Default::default()
             },
         );
-        assert_eq!(
-            adapter.provider_type(&copilot_meta),
-            ProviderKind::GitHubCopilot
-        );
+        let auth = adapter.extract_auth(&copilot_meta).unwrap();
+        assert_eq!(auth.strategy, ProviderAuthStrategy::GitHubCopilot);
     }
 
     #[test]
