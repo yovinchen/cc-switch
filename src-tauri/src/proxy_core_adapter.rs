@@ -4192,6 +4192,80 @@ where
     Some(changed)
 }
 
+pub(crate) fn live_takeover_config_matches_proxy_for_app(
+    app_type: &AppType,
+    config: &Value,
+    proxy_url: &str,
+    codex_proxy_base_url: &str,
+    placeholder: &str,
+) -> bool {
+    match app_type {
+        AppType::Claude => {
+            claude_live_config_has_proxy_placeholder(config, placeholder)
+                && live_env_base_url_matches(config, "ANTHROPIC_BASE_URL", proxy_url)
+        }
+        AppType::Codex => {
+            codex_live_config_has_proxy_placeholder(config, placeholder)
+                && config
+                    .get("config")
+                    .and_then(Value::as_str)
+                    .is_some_and(|config_text| {
+                        codex_config_has_base_url_matching(config_text, |url| {
+                            proxy_urls_match(url, codex_proxy_base_url)
+                        })
+                    })
+        }
+        AppType::Gemini => {
+            gemini_live_config_has_proxy_placeholder(config, placeholder)
+                && live_env_base_url_matches(config, "GOOGLE_GEMINI_BASE_URL", proxy_url)
+        }
+        _ => false,
+    }
+}
+
+fn live_env_base_url_matches(config: &Value, key: &str, expected: &str) -> bool {
+    config
+        .get("env")
+        .and_then(|value| value.get(key))
+        .and_then(Value::as_str)
+        .is_some_and(|url| proxy_urls_match(url, expected))
+}
+
+fn proxy_urls_match(actual: &str, expected: &str) -> bool {
+    actual.trim().trim_end_matches('/') == expected.trim().trim_end_matches('/')
+}
+
+fn codex_config_has_base_url_matching(
+    config_text: &str,
+    predicate: impl Fn(&str) -> bool,
+) -> bool {
+    let Ok(doc) = toml::from_str::<toml::Value>(config_text) else {
+        return false;
+    };
+
+    let active_provider = doc
+        .get("model_provider")
+        .and_then(|value| value.as_str())
+        .map(str::trim)
+        .filter(|id| !id.is_empty());
+
+    if let Some(provider_id) = active_provider {
+        if doc
+            .get("model_providers")
+            .and_then(|value| value.get(provider_id))
+            .and_then(|value| value.get("base_url"))
+            .and_then(|value| value.as_str())
+            .is_some_and(&predicate)
+        {
+            return true;
+        }
+    }
+
+    doc.get("base_url")
+        .and_then(|value| value.as_str())
+        .is_some_and(predicate)
+}
+
 fn claude_live_token_pair<'a>(
     live_config: &'a Value,
     placeholder: &str,
@@ -7059,6 +7133,92 @@ wire_api = "chat"
                 .and_then(Value::as_str),
             Some(placeholder)
         );
+    }
+
+    #[test]
+    fn live_takeover_match_adapter_projects_app_specific_proxy_urls() {
+        let placeholder = "PROXY_MANAGED";
+        let proxy_url = "http://127.0.0.1:15721";
+        let codex_proxy_url = "http://127.0.0.1:15721/v1";
+
+        assert!(live_takeover_config_matches_proxy_for_app(
+            &AppType::Claude,
+            &json!({
+                "env": {
+                    "ANTHROPIC_AUTH_TOKEN": placeholder,
+                    "ANTHROPIC_BASE_URL": "http://127.0.0.1:15721/"
+                }
+            }),
+            proxy_url,
+            codex_proxy_url,
+            placeholder
+        ));
+        assert!(!live_takeover_config_matches_proxy_for_app(
+            &AppType::Claude,
+            &json!({
+                "env": {
+                    "ANTHROPIC_AUTH_TOKEN": placeholder,
+                    "ANTHROPIC_BASE_URL": "https://api.anthropic.com"
+                }
+            }),
+            proxy_url,
+            codex_proxy_url,
+            placeholder
+        ));
+
+        assert!(live_takeover_config_matches_proxy_for_app(
+            &AppType::Codex,
+            &json!({
+                "auth": {"OPENAI_API_KEY": placeholder},
+                "config": r#"model_provider = "cc-switch"
+
+[model_providers.cc-switch]
+base_url = "http://127.0.0.1:15721/v1/"
+"#
+            }),
+            proxy_url,
+            codex_proxy_url,
+            placeholder
+        ));
+        assert!(!live_takeover_config_matches_proxy_for_app(
+            &AppType::Codex,
+            &json!({
+                "auth": {"OPENAI_API_KEY": placeholder},
+                "config": r#"model_provider = "cc-switch"
+
+[model_providers.cc-switch]
+base_url = "https://relay.example/v1"
+"#
+            }),
+            proxy_url,
+            codex_proxy_url,
+            placeholder
+        ));
+
+        assert!(live_takeover_config_matches_proxy_for_app(
+            &AppType::Gemini,
+            &json!({
+                "env": {
+                    "GEMINI_API_KEY": placeholder,
+                    "GOOGLE_GEMINI_BASE_URL": "http://127.0.0.1:15721/"
+                }
+            }),
+            proxy_url,
+            codex_proxy_url,
+            placeholder
+        ));
+        assert!(!live_takeover_config_matches_proxy_for_app(
+            &AppType::Gemini,
+            &json!({
+                "env": {
+                    "GEMINI_API_KEY": "real-key",
+                    "GOOGLE_GEMINI_BASE_URL": "http://127.0.0.1:15721"
+                }
+            }),
+            proxy_url,
+            codex_proxy_url,
+            placeholder
+        ));
     }
 
     #[test]

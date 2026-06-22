@@ -15,9 +15,9 @@ use crate::proxy_core_adapter::{
     claude_takeover_model_fields_from_settings, codex_live_config_has_proxy_placeholder,
     codex_takeover_toml_config_for_provider, gemini_live_config_has_proxy_placeholder,
     ensure_codex_takeover_auth_placeholder, live_config_has_proxy_placeholder_for_app,
-    provider_claude_takeover_model_fields, provider_is_github_copilot,
-    provider_settings_have_proxy_placeholder_for_app, provider_settings_with_live_token_sync,
-    remove_claude_takeover_env_fields_if_present,
+    live_takeover_config_matches_proxy_for_app, provider_claude_takeover_model_fields,
+    provider_is_github_copilot, provider_settings_have_proxy_placeholder_for_app,
+    provider_settings_with_live_token_sync, remove_claude_takeover_env_fields_if_present,
     provider_uses_managed_account_auth, proxy_runtime_status_stopped, proxy_server_info_from_parts,
     proxy_takeover_status_from_parts, remove_codex_takeover_auth_placeholder_if_present,
     remove_gemini_takeover_env_fields_if_present, CircuitBreakerConfig,
@@ -1520,80 +1520,26 @@ impl ProxyService {
             || rest.starts_with("::")
     }
 
-    fn proxy_urls_match(actual: &str, expected: &str) -> bool {
-        actual.trim().trim_end_matches('/') == expected.trim().trim_end_matches('/')
-    }
-
-    fn codex_config_has_base_url_matching(
-        config_text: &str,
-        predicate: impl Fn(&str) -> bool,
-    ) -> bool {
-        let Ok(doc) = toml::from_str::<toml::Value>(config_text) else {
-            return false;
-        };
-
-        let active_provider = doc
-            .get("model_provider")
-            .and_then(|value| value.as_str())
-            .map(str::trim)
-            .filter(|id| !id.is_empty());
-
-        if let Some(provider_id) = active_provider {
-            if doc
-                .get("model_providers")
-                .and_then(|value| value.get(provider_id))
-                .and_then(|value| value.get("base_url"))
-                .and_then(|value| value.as_str())
-                .is_some_and(&predicate)
-            {
-                return true;
-            }
-        }
-
-        doc.get("base_url")
-            .and_then(|value| value.as_str())
-            .is_some_and(predicate)
-    }
-
     async fn live_takeover_matches_current_proxy(
         &self,
         app_type: &AppType,
     ) -> Result<bool, String> {
         let (proxy_url, proxy_codex_base_url) = self.build_proxy_urls().await?;
 
-        match app_type {
-            AppType::Claude => {
-                let config = self.read_claude_live()?;
-                let base_url_matches = config
-                    .get("env")
-                    .and_then(|value| value.get("ANTHROPIC_BASE_URL"))
-                    .and_then(|value| value.as_str())
-                    .is_some_and(|url| Self::proxy_urls_match(url, &proxy_url));
-                Ok(Self::is_claude_live_taken_over(&config) && base_url_matches)
-            }
-            AppType::Codex => {
-                let config = self.read_codex_live()?;
-                let base_url_matches = config
-                    .get("config")
-                    .and_then(|value| value.as_str())
-                    .is_some_and(|config_text| {
-                        Self::codex_config_has_base_url_matching(config_text, |url| {
-                            Self::proxy_urls_match(url, &proxy_codex_base_url)
-                        })
-                    });
-                Ok(Self::codex_live_has_proxy_placeholder(&config) && base_url_matches)
-            }
-            AppType::Gemini => {
-                let config = self.read_gemini_live()?;
-                let base_url_matches = config
-                    .get("env")
-                    .and_then(|value| value.get("GOOGLE_GEMINI_BASE_URL"))
-                    .and_then(|value| value.as_str())
-                    .is_some_and(|url| Self::proxy_urls_match(url, &proxy_url));
-                Ok(Self::is_gemini_live_taken_over(&config) && base_url_matches)
-            }
-            _ => Ok(false),
-        }
+        let config = match app_type {
+            AppType::Claude => self.read_claude_live()?,
+            AppType::Codex => self.read_codex_live()?,
+            AppType::Gemini => self.read_gemini_live()?,
+            _ => return Ok(false),
+        };
+
+        Ok(live_takeover_config_matches_proxy_for_app(
+            app_type,
+            &config,
+            &proxy_url,
+            &proxy_codex_base_url,
+            PROXY_TOKEN_PLACEHOLDER,
+        ))
     }
 
     fn cleanup_claude_takeover_placeholders_in_live(&self) -> Result<(), String> {
