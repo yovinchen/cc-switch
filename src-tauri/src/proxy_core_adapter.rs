@@ -740,8 +740,6 @@ pub(crate) type AnthropicToolSchemaHints =
 pub(crate) type AuthProfileRef = crate::proxy_core::api::domain::AuthProfileRef;
 pub(crate) type ChannelAuthProfileResolution =
     crate::proxy_core::api::domain::ChannelAuthProfileResolution;
-pub(crate) type GeminiOAuthCredentials =
-    crate::proxy_core::api::auth::GeminiOAuthCredentials;
 pub(crate) type ClaudeAuthHeaderKind =
     crate::proxy_core::api::transport::ClaudeAuthHeaderKind;
 pub(crate) type ClaudeAuthKey = crate::proxy_core::api::auth::ClaudeAuthKey;
@@ -2409,8 +2407,11 @@ pub(crate) use crate::proxy_core::api::transforms::{
     claude_api_format_from_metadata, CLAUDE_API_FORMAT_METADATA_KEY,
 };
 pub(crate) use crate::proxy_core::api::auth::{
+    channel_auth_profile_missing_key_error_message, extract_claude_auth_key_from_settings,
+    is_gemini_oauth_key_shape, parse_gemini_oauth_credentials,
     resolve_management_auth_decision, validate_claude_desktop_gateway_bearer_header,
-    validate_management_bearer_header, ManagementAuthDecision,
+    validate_management_bearer_header, settings_config_with_channel_auth_key,
+    ManagementAuthDecision,
 };
 pub(crate) use crate::proxy_core::api::management::{
     channel_health_update_from_input,
@@ -2482,9 +2483,11 @@ pub(crate) use crate::proxy_core::api::transforms::{
 pub(crate) use crate::proxy_core::api::transport::{
     append_query_to_full_url, apply_bedrock_pre_send_optimizers,
     apply_copilot_warmup_model_override, bedrock_env_flag_from_provider_settings,
-    build_codex_oauth_session_headers, build_retryable_forward_failure_log,
-    build_terminal_forward_failure_log, build_upstream_auth_headers, categorize_forward_failure,
-    classify_copilot_request, claude_transform_endpoint_rewrite_input_from_body,
+    build_claude_auth_headers, build_codex_bearer_auth_headers,
+    build_codex_oauth_session_headers, build_copilot_auth_headers, build_gemini_auth_headers,
+    build_retryable_forward_failure_log, build_terminal_forward_failure_log,
+    build_upstream_auth_headers, categorize_forward_failure, classify_copilot_request,
+    claude_transform_endpoint_rewrite_input_from_body,
     contains_image_blocks, is_codex_chat_full_endpoint_base,
     invalid_upstream_url_error_message, is_openai_o_series, is_unsupported_image_error,
     merge_copilot_tool_results,
@@ -2733,12 +2736,6 @@ pub(crate) fn resolve_codex_provider_uses_chat_completions(
         base_url,
         config_base_url,
     )
-}
-
-pub(crate) fn build_codex_bearer_auth_headers(
-    api_key: &str,
-) -> Result<Vec<(http::HeaderName, http::HeaderValue)>, ProxyCoreError> {
-    crate::proxy_core::api::transport::build_codex_bearer_auth_headers(api_key)
 }
 
 pub(crate) fn provider_codex_auth_headers(
@@ -3877,22 +3874,8 @@ pub(crate) fn provider_gemini_auth_info(provider: &Provider) -> Option<ProviderA
     }
 }
 
-pub(crate) fn parse_gemini_oauth_credentials(
-    key: &str,
-) -> Option<GeminiOAuthCredentials> {
-    crate::proxy_core::api::auth::parse_gemini_oauth_credentials(key)
-}
-
 pub(crate) fn build_gemini_upstream_url(base_url: &str, endpoint: &str) -> String {
     crate::proxy_core::api::transforms::build_gemini_upstream_url(base_url, endpoint)
-}
-
-pub(crate) fn build_gemini_auth_headers(
-    api_key: &str,
-    access_token: Option<&str>,
-    use_oauth: bool,
-) -> Result<Vec<(http::HeaderName, http::HeaderValue)>, ProxyCoreError> {
-    crate::proxy_core::api::transport::build_gemini_auth_headers(api_key, access_token, use_oauth)
 }
 
 pub(crate) fn provider_gemini_auth_headers(
@@ -3970,10 +3953,6 @@ pub(crate) fn provider_kind_from_app_type_and_config(
         AppType::Gemini => provider_gemini_kind(provider),
         AppType::OpenCode | AppType::OpenClaw | AppType::Hermes => ProviderKind::Codex,
     }
-}
-
-pub(crate) fn is_gemini_oauth_key_shape(key: &str) -> bool {
-    crate::proxy_core::api::auth::is_gemini_oauth_key_shape(key)
 }
 
 pub(crate) fn is_copilot_prompt_cache_provider(
@@ -4054,12 +4033,6 @@ pub(crate) fn claude_env_credentials_from_settings(
             .and_then(Value::as_str),
         base_url: env.get("ANTHROPIC_BASE_URL").and_then(Value::as_str),
     })
-}
-
-pub(crate) fn extract_claude_auth_key_from_settings(
-    settings_config: &Value,
-) -> Option<ClaudeAuthKey> {
-    crate::proxy_core::api::auth::extract_claude_auth_key_from_settings(settings_config)
 }
 
 pub(crate) fn provider_claude_auth_key(provider: &Provider) -> Option<ClaudeAuthKey> {
@@ -4155,28 +4128,6 @@ pub(crate) fn provider_claude_auth_info(provider: &Provider) -> Option<ProviderA
     }
 }
 
-pub(crate) fn settings_config_with_channel_auth_key(
-    app_type: &str,
-    settings_config: &Value,
-    key_value: &str,
-) -> Value {
-    crate::proxy_core::api::auth::settings_config_with_channel_auth_key(
-        app_type,
-        settings_config,
-        key_value,
-    )
-}
-
-pub(crate) fn channel_auth_profile_missing_key_error_message(
-    channel_id: &str,
-    key_ref: &str,
-) -> String {
-    crate::proxy_core::api::auth::channel_auth_profile_missing_key_error_message(
-        channel_id,
-        key_ref,
-    )
-}
-
 pub(crate) fn channel_key_auth_error(channel_id: &str, key_ref: &str) -> ProxyCoreError {
     ProxyCoreError::Auth(channel_auth_profile_missing_key_error_message(
         channel_id, key_ref,
@@ -4212,20 +4163,6 @@ pub(crate) fn provider_claude_base_url(provider: &Provider) -> Option<String> {
 
 pub(crate) fn build_claude_upstream_url(base_url: &str, endpoint: &str) -> String {
     crate::proxy_core::api::transport::build_claude_upstream_url(base_url, endpoint)
-}
-
-pub(crate) fn build_claude_auth_headers(
-    kind: ClaudeAuthHeaderKind,
-    api_key: &str,
-    access_token: Option<&str>,
-) -> Result<Vec<(http::HeaderName, http::HeaderValue)>, ProxyCoreError> {
-    crate::proxy_core::api::transport::build_claude_auth_headers(kind, api_key, access_token)
-}
-
-pub(crate) fn build_copilot_auth_headers(
-    input: CopilotAuthHeadersInput<'_>,
-) -> Result<Vec<(http::HeaderName, http::HeaderValue)>, ProxyCoreError> {
-    crate::proxy_core::api::transport::build_copilot_auth_headers(input)
 }
 
 fn claude_auth_header_kind(strategy: ProviderAuthStrategy) -> Option<ClaudeAuthHeaderKind> {
