@@ -472,6 +472,18 @@ pub fn route_candidate_channel_circuit_keys(
         .collect()
 }
 
+pub fn apply_route_candidate_circuit_availability<I>(
+    response: &mut RouteResolveResponse,
+    availability: I,
+) where
+    I: IntoIterator<Item = (RouteCandidateCircuitKey, bool)>,
+{
+    let unavailable_channel_ids = availability
+        .into_iter()
+        .filter_map(|(lookup, available)| (!available).then_some(lookup.channel_id));
+    reject_unavailable_channel_ids(response, unavailable_channel_ids);
+}
+
 fn normalize_required(value: &str, field: &str) -> ProxyCoreResult<String> {
     let normalized = value.trim();
     if normalized.is_empty() {
@@ -942,7 +954,7 @@ mod tests {
 
     #[test]
     fn route_candidate_channel_circuit_keys_project_response_candidates() {
-        let response = resolve_channel_route(
+        let mut response = resolve_channel_route(
             RouteResolveRequest {
                 app_type: "claude".to_string(),
                 requested_model: Some("sonnet".to_string()),
@@ -964,5 +976,13 @@ mod tests {
         assert_eq!(keys[0].circuit_key, "channel:claude:high");
         assert_eq!(keys[1].channel_id, "low");
         assert_eq!(keys[1].circuit_key, "channel:claude:low");
+
+        apply_route_candidate_circuit_availability(&mut response, [(keys[0].clone(), false)]);
+
+        assert_eq!(response.candidates.len(), 1);
+        assert_eq!(response.candidates[0].channel_id, "low");
+        assert_eq!(response.rejected.len(), 1);
+        assert_eq!(response.rejected[0].channel_id, "high");
+        assert_eq!(response.rejected[0].reasons, vec!["circuit_open"]);
     }
 }

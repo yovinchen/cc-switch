@@ -5481,36 +5481,13 @@ pub(crate) fn resolve_channel_route(
     crate::proxy_core::api::routing::resolve_channel_route(request, channels, source)
 }
 
-pub(crate) fn reject_unavailable_channel_ids<I, S>(
-    response: &mut RouteResolveResponse,
-    unavailable_channel_ids: I,
-) where
-    I: IntoIterator<Item = S>,
-    S: AsRef<str>,
-{
-    crate::proxy_core::api::routing::reject_unavailable_channel_ids(
-        response,
-        unavailable_channel_ids,
-    );
-}
-
 pub(crate) fn route_candidate_channel_circuit_keys(
     response: &RouteResolveResponse,
 ) -> Vec<RouteCandidateCircuitKey> {
     crate::proxy_core::api::routing::route_candidate_channel_circuit_keys(response)
 }
 
-pub(crate) fn apply_route_candidate_circuit_availability<I>(
-    response: &mut RouteResolveResponse,
-    availability: I,
-) where
-    I: IntoIterator<Item = (RouteCandidateCircuitKey, bool)>,
-{
-    let unavailable_channel_ids = availability
-        .into_iter()
-        .filter_map(|(lookup, available)| (!available).then_some(lookup.channel_id));
-    reject_unavailable_channel_ids(response, unavailable_channel_ids);
-}
+pub(crate) use crate::proxy_core::api::routing::apply_route_candidate_circuit_availability;
 
 pub(crate) fn stable_channel_id(
     app_type: &str,
