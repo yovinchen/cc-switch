@@ -325,6 +325,12 @@ const FORBIDDEN_PROVIDER_ADAPTER_URL_BUILD_MARKERS: &[&str] = &[
     "build_codex_upstream_url(",
     "build_gemini_upstream_url(",
 ];
+const FORBIDDEN_CLAUDE_PROVIDER_ADAPTER_TRANSFORM_DECISION_MARKERS: &[&str] = &[
+    "ProviderKind::GitHubCopilot",
+    "ProviderKind::CodexOAuth",
+    "claude_api_format_needs_transform(",
+    "self.get_api_format(provider)",
+];
 const FORBIDDEN_HANDLER_MANAGEMENT_AUTH_DECISION_MARKERS: &[&str] = &[
     "std::env::var(",
     "CC_SWITCH_PROXY_MANAGEMENT_TOKEN",
@@ -1508,6 +1514,38 @@ fn production_provider_adapters_delegate_url_building_to_adapter() {
     assert!(
         violations.is_empty(),
         "provider adapters must delegate upstream URL building to proxy_core_adapter provider helpers:\n{}",
+        violations.join("\n")
+    );
+}
+
+#[test]
+fn production_claude_provider_adapter_delegates_transform_decision_to_adapter() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let path = manifest_dir.join("src/proxy/providers/claude.rs");
+    let source = fs::read_to_string(&path).expect("read claude provider adapter source");
+    let needs_transform = function_slice(
+        &source,
+        "    fn needs_transform(&self, provider: &Provider) -> bool",
+        "    fn transform_request(",
+    );
+
+    let mut violations = Vec::new();
+    for (line_index, line) in production_lines(needs_transform) {
+        let code = line.split("//").next().unwrap_or_default();
+        for marker in FORBIDDEN_CLAUDE_PROVIDER_ADAPTER_TRANSFORM_DECISION_MARKERS {
+            if code.contains(marker) {
+                violations.push(format!(
+                    "src/proxy/providers/claude.rs needs_transform:{} contains transform decision marker `{}`",
+                    line_index + 1,
+                    marker
+                ));
+            }
+        }
+    }
+
+    assert!(
+        violations.is_empty(),
+        "Claude provider adapter must delegate transform decision policy to proxy_core_adapter helpers:\n{}",
         violations.join("\n")
     );
 }

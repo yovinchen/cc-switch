@@ -12343,6 +12343,13 @@ base_url = "https://api.openai.com/v1"
         });
         assert_eq!(provider_claude_api_format(&provider), "openai_chat");
         assert!(provider_needs_claude_transform(&provider));
+        let no_transform_provider = Provider::with_id(
+            "claude-no-transform".to_string(),
+            "Claude No Transform".to_string(),
+            json!({"env": {"ANTHROPIC_BASE_URL": "https://api.anthropic.com/v1/"}}),
+            None,
+        );
+        assert!(!provider_needs_claude_transform(&no_transform_provider));
         let provider_auth_key = provider_claude_auth_key(&provider).expect("provider auth token");
         assert_eq!(provider_auth_key.key, "claude-token");
         let provider_auth = provider_claude_auth_info(&provider).expect("provider auth info");

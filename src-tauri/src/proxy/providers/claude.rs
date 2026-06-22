@@ -19,22 +19,23 @@ use crate::provider::Provider;
 use crate::proxy::error::ProxyError;
 use crate::proxy_core_adapter::{
     anthropic_request_to_gemini_request_with_shadow, anthropic_to_openai_chat_request,
-    anthropic_to_openai_responses_request, claude_api_format_needs_transform,
+    anthropic_to_openai_responses_request,
     gemini_response_to_anthropic_message, inject_openai_stream_include_usage,
     normalize_anthropic_tool_thinking_history, openai_chat_to_anthropic_message,
     openai_responses_to_anthropic_message,
     provider_claude_api_format, provider_claude_auth_headers, provider_claude_auth_info,
     provider_claude_upstream_url, required_claude_provider_base_url,
-    provider_claude_kind, provider_claude_prompt_cache_key,
-    provider_claude_responses_prompt_cache_key, provider_codex_fast_mode_enabled,
+    provider_claude_prompt_cache_key, provider_claude_responses_prompt_cache_key,
+    provider_codex_fast_mode_enabled,
     provider_is_codex_oauth, provider_should_preserve_reasoning_content_for_openai_chat,
     provider_normalize_deepseek_thinking_disabled_strip_effort,
-    provider_should_normalize_anthropic_tool_thinking_history,
-    GeminiShadowStore, ProviderAuthInfo, ProviderKind, synthesize_gemini_tool_call_id_with_uuid,
+    provider_needs_claude_transform, provider_should_normalize_anthropic_tool_thinking_history,
+    GeminiShadowStore, ProviderAuthInfo, synthesize_gemini_tool_call_id_with_uuid,
 };
 #[cfg(test)]
 use crate::proxy_core_adapter::{
-    should_normalize_anthropic_tool_thinking_history, ProviderAuthStrategy,
+    provider_claude_kind, should_normalize_anthropic_tool_thinking_history, ProviderAuthStrategy,
+    ProviderKind,
 };
 use serde_json::Value;
 
@@ -141,6 +142,7 @@ impl ClaudeAdapter {
     /// - OpenRouter: base_url 包含 openrouter.ai
     /// - ClaudeAuth: auth_mode 为 bearer_only
     /// - Claude: 默认 Anthropic 官方
+    #[cfg(test)]
     pub fn provider_type(&self, provider: &Provider) -> ProviderKind {
         provider_claude_kind(provider)
     }
@@ -187,19 +189,7 @@ impl ProviderAdapter for ClaudeAdapter {
     }
 
     fn needs_transform(&self, provider: &Provider) -> bool {
-        // GitHub Copilot / Codex OAuth 总是需要格式转换
-        if matches!(
-            self.provider_type(provider),
-            ProviderKind::GitHubCopilot | ProviderKind::CodexOAuth
-        ) {
-            return true;
-        }
-
-        // 根据 api_format 配置决定是否需要格式转换
-        // - "anthropic" (默认): 直接透传，无需转换
-        // - "openai_chat": 需要 Anthropic ↔ OpenAI Chat Completions 格式转换
-        // - "openai_responses": 需要 Anthropic ↔ OpenAI Responses API 格式转换
-        claude_api_format_needs_transform(self.get_api_format(provider))
+        provider_needs_claude_transform(provider)
     }
 
     fn transform_request(

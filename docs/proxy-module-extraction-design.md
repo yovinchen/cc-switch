@@ -969,6 +969,7 @@
 本轮继续把 Codex/Gemini provider adapter 的 auth header 构造和 `AuthError` 文案包装收敛到 adapter helper，两个简单 provider adapter 的 `get_auth_headers` 只保留 helper 调用。
 本轮继续把 Claude provider adapter 的 auth strategy 到 header kind 映射、Copilot 指纹 header 构造和 `AuthError` 文案包装收敛到 adapter helper，Claude adapter 的 `get_auth_headers` 只保留 helper 调用。
 本轮继续把 Claude/Codex/Gemini provider adapter 的 upstream URL 构造收敛到 provider-scoped adapter helper，三个 provider adapter 的 `build_url` 只保留统一 helper 调用。
+本轮继续把 Claude provider adapter 的 transform 判定策略收敛到 adapter helper，`needs_transform` 不再直接维护 Copilot/CodexOAuth 特例或 `api_format` 判定。
 本轮也把 channel authProfileRef 缺失 provider warning 的 optional fallback 收敛到 core，host 不再维护空 ref 兜底逻辑。
 本轮继续把 current provider 来源优先级的 option/string 两种 contract 统一到 core，config source 和 forward runtime 复用同一选择规则。
 本轮还把 Codex client model catalog raw JSON 解析失败 fallback 收敛到 core，host 的 model catalog provider 只保留路径选择与文件读取。
