@@ -607,7 +607,7 @@
 596. app 级 proxy_config 默认值策略已新增 `proxy-core::app_proxy_config_defaults_for_app`：DAO 的缺省读取、单行 ensure 和三行 init 不再手写 claude/codex/gemini 的重试、超时和熔断 seed 值，只保留 SQL upsert/insert。
 597. proxy takeover/hot-switch 期间阻断 official provider 的业务规则已新增 `proxy-core::should_block_proxy_switch_to_provider_category`：Tauri command 与 provider service 不再各自手写 `category == "official"` 判定，host 只保留查询 provider、执行切换和错误文案。
 598. global proxy_config 缺省值已收敛到 `proxy-core::GlobalProxyConfig::default()`：DAO 在全局配置行缺失时不再手写 listen address、port、logging 与 enabled 默认值，只负责初始化行和返回 core 默认 DTO。
-599. 熔断恢复后的 failover switchback 判定已新增 `proxy-core::should_attempt_restored_provider_switchback`：`reset_circuit_breaker` 仍负责健康状态重置、队列读取和实际切换，但“接管中 + 自动故障转移 + 服务运行 + 恢复 provider 优先级更高”的业务规则由 core 统一判定。
+599. 熔断恢复后的 failover switchback 判定已新增 `proxy-core::restored_provider_switchback_decision`：`reset_circuit_breaker` 仍负责健康状态重置、队列读取和实际切换，但队列 sort_index 提取以及“接管中 + 自动故障转移 + 服务运行 + 恢复 provider 优先级更高”的业务规则由 core 统一判定。
 600. channel route 的 resolved attempt model override 已新增 `proxy-core::apply_resolved_channel_model_override` 与 `ChannelRouteModelOverride`：host `route_attempt` 不再读取 body/public/upstream model 组合，只把 core 返回的 channel/model 变更上下文写入日志。
 601. 响应 SSE content-type 识别已新增 `proxy-core::response_headers_indicate_sse`：host `ProxyResponse::is_sse` 不再手写 `text/event-stream` 字符串判定，只负责把响应 headers 传入 core helper。
 602. `ProxyServer::start` 级 runtime smoke 已覆盖 `/proxy/v1/channels/{channel_id}/test`：真实本机端口创建 materialized channel 后，通过本机临时 upstream 验证 channel test 的 modelAvailable、reachability success、HTTP status、retryCount 和无 failureReason 的外部 JSON contract。
@@ -1715,6 +1715,8 @@ dry-run route 的 circuit-open 识别也开始收敛：`route_candidate_channel_
 provider failover 的 circuit lookup 也已开始收敛：`provider_failover_circuit_lookups` 负责保留 failover queue 顺序、标记 missing provider 并生成已配置 provider 的 circuit key；`ProviderRouter` 只读取 DB provider facts 与 breaker 可用性，再把 lookup 投影为 `ProviderSelectionCandidate` 交回 core selection 策略。
 
 auto failover 开关启用的计划也已收敛：`plan_auto_failover_toggle` 负责“接管未开启则拒绝”、“队列非空则切 P1”、“队列为空则自动加入当前 provider 并切换”的纯决策；Tauri command 只读取 config/queue/current provider、执行 DB 队列写入、调用 proxy service 切换、写回 config 并 emit core 事件 contract。
+
+熔断 reset 后的恢复切回也已进一步收敛：`restored_provider_switchback_decision` 接收 failover queue position facts，返回是否切回以及日志所需的 restored/current sort_index；`reset_circuit_breaker` 只负责读取 DB 队列、查询 provider 名称并调用 `FailoverSwitchManager` 执行宿主副作用。
 
 管理 API 查询类入口已基本收敛到 `ProxyEngine`：`list_proxy_providers`、`list_proxy_channels` 的 route-aware 分支、`list_proxy_groups` 和 `test_proxy_channel` 都只保留 HTTP path/query/body 提取与错误映射；下一步应继续减少 host runtime 对固定 app catalog、Tauri runtime smoke 覆盖和外部集成契约的隐性依赖。
 

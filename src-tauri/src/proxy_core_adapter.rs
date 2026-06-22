@@ -2074,6 +2074,10 @@ pub(crate) type AutoFailoverToggleInput =
     crate::proxy_core::api::routing::AutoFailoverToggleInput;
 pub(crate) type AutoFailoverTogglePlan =
     crate::proxy_core::api::routing::AutoFailoverTogglePlan;
+pub(crate) type FailoverQueuePosition =
+    crate::proxy_core::api::routing::FailoverQueuePosition;
+pub(crate) type RestoredProviderSwitchbackDecision =
+    crate::proxy_core::api::routing::RestoredProviderSwitchbackDecision;
 pub(crate) type ProxyCoreError = crate::proxy_core::api::errors::ProxyCoreError;
 #[cfg(test)]
 pub(crate) type ProxyCoreEventType = crate::proxy_core::api::events::ProxyCoreEventType;
@@ -3790,6 +3794,24 @@ pub(crate) fn failover_switch_pending_key(app_type: &str, provider_id: &str) -> 
     crate::proxy_core::api::routing::failover_switch_pending_key(app_type, provider_id)
 }
 
+pub(crate) fn restored_provider_switchback_decision(
+    proxy_takeover_active: bool,
+    auto_failover_enabled: bool,
+    proxy_service_running: bool,
+    restored_provider_id: &str,
+    current_provider_id: &str,
+    queue_positions: Vec<FailoverQueuePosition>,
+) -> RestoredProviderSwitchbackDecision {
+    crate::proxy_core::api::routing::restored_provider_switchback_decision(
+        proxy_takeover_active,
+        auto_failover_enabled,
+        proxy_service_running,
+        restored_provider_id,
+        current_provider_id,
+        queue_positions,
+    )
+}
+
 pub(crate) fn provider_failover_circuit_lookups(
     app_type: &str,
     ordered_provider_ids: Vec<String>,
@@ -4523,22 +4545,6 @@ pub(crate) fn should_emit_proxy_official_warning_for_provider(provider: &Provide
 
 pub(crate) fn should_reapply_codex_official_live_for_provider(provider: &Provider) -> bool {
     provider_is_official_category(provider)
-}
-
-pub(crate) fn should_attempt_restored_provider_switchback(
-    proxy_takeover_active: bool,
-    auto_failover_enabled: bool,
-    proxy_service_running: bool,
-    restored_sort_index: Option<usize>,
-    current_sort_index: Option<usize>,
-) -> bool {
-    crate::proxy_core::api::routing::should_attempt_restored_provider_switchback(
-        proxy_takeover_active,
-        auto_failover_enabled,
-        proxy_service_running,
-        restored_sort_index,
-        current_sort_index,
-    )
 }
 
 pub(crate) fn resolve_channel_route(

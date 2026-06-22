@@ -4,9 +4,9 @@
 
 use crate::error::AppError;
 use crate::proxy_core_adapter::{
-    should_attempt_restored_provider_switchback, should_block_proxy_switch_to_provider,
-    AppProxyConfig, CircuitBreakerConfig, CircuitBreakerStats, GlobalProxyConfig, ProviderHealth,
-    ProxyConfig, ProxyRuntimeStatus, ProxyServerInfo, ProxyTakeoverStatus,
+    restored_provider_switchback_decision, should_block_proxy_switch_to_provider, AppProxyConfig,
+    CircuitBreakerConfig, CircuitBreakerStats, FailoverQueuePosition, GlobalProxyConfig,
+    ProviderHealth, ProxyConfig, ProxyRuntimeStatus, ProxyServerInfo, ProxyTakeoverStatus,
 };
 use crate::store::AppState;
 
@@ -366,45 +366,42 @@ pub async fn reset_circuit_breaker(
                 .get_failover_queue(&app_type)
                 .map_err(|e| e.to_string())?;
 
-            // 找到恢复的供应商和当前供应商在队列中的位置（使用 sort_index）
-            let restored_order = queue
-                .iter()
-                .find(|item| item.provider_id == provider_id)
-                .and_then(|item| item.sort_index);
+            let decision = restored_provider_switchback_decision(
+                app_enabled,
+                auto_failover_enabled,
+                proxy_service_running,
+                &provider_id,
+                &current_id,
+                queue
+                    .into_iter()
+                    .map(|item| FailoverQueuePosition::new(item.provider_id, item.sort_index))
+                    .collect(),
+            );
 
-            let current_order = queue
-                .iter()
-                .find(|item| item.provider_id == current_id)
-                .and_then(|item| item.sort_index);
-
-            if let (Some(restored), Some(current)) = (restored_order, current_order) {
-                if should_attempt_restored_provider_switchback(
-                    app_enabled,
-                    auto_failover_enabled,
-                    proxy_service_running,
-                    Some(restored),
-                    Some(current),
-                ) {
+            if decision.should_switch {
+                if let (Some(restored), Some(current)) =
+                    (decision.restored_sort_index, decision.current_sort_index)
+                {
                     log::info!(
                         "[Recovery] 供应商 {provider_id} 已恢复且优先级更高 (P{restored} vs P{current})，自动切换"
                     );
+                }
 
-                    // 获取供应商名称用于日志和事件
-                    let provider_name = db
-                        .get_all_providers(&app_type)
-                        .ok()
-                        .and_then(|providers| providers.get(&provider_id).map(|p| p.name.clone()))
-                        .unwrap_or_else(|| provider_id.clone());
+                // 获取供应商名称用于日志和事件
+                let provider_name = db
+                    .get_all_providers(&app_type)
+                    .ok()
+                    .and_then(|providers| providers.get(&provider_id).map(|p| p.name.clone()))
+                    .unwrap_or_else(|| provider_id.clone());
 
-                    // 创建故障转移切换管理器并执行切换
-                    let switch_manager =
-                        crate::proxy::failover_switch::FailoverSwitchManager::new(db.clone());
-                    if let Err(e) = switch_manager
-                        .try_switch(Some(&app_handle), &app_type, &provider_id, &provider_name)
-                        .await
-                    {
-                        log::error!("[Recovery] 自动切换失败: {e}");
-                    }
+                // 创建故障转移切换管理器并执行切换
+                let switch_manager =
+                    crate::proxy::failover_switch::FailoverSwitchManager::new(db.clone());
+                if let Err(e) = switch_manager
+                    .try_switch(Some(&app_handle), &app_type, &provider_id, &provider_name)
+                    .await
+                {
+                    log::error!("[Recovery] 自动切换失败: {e}");
                 }
             }
         }

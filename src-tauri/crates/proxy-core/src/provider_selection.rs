@@ -162,6 +162,77 @@ pub fn failover_switch_pending_key(app_type: &str, provider_id: &str) -> String 
     format!("{app_type}:{provider_id}")
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct FailoverQueuePosition {
+    pub provider_id: String,
+    pub sort_index: Option<usize>,
+}
+
+impl FailoverQueuePosition {
+    pub fn new(provider_id: impl Into<String>, sort_index: Option<usize>) -> Self {
+        Self {
+            provider_id: provider_id.into(),
+            sort_index,
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RestoredProviderSwitchbackDecision {
+    pub should_switch: bool,
+    pub restored_sort_index: Option<usize>,
+    pub current_sort_index: Option<usize>,
+}
+
+impl RestoredProviderSwitchbackDecision {
+    pub fn new(
+        should_switch: bool,
+        restored_sort_index: Option<usize>,
+        current_sort_index: Option<usize>,
+    ) -> Self {
+        Self {
+            should_switch,
+            restored_sort_index,
+            current_sort_index,
+        }
+    }
+}
+
+pub fn restored_provider_switchback_decision(
+    proxy_takeover_active: bool,
+    auto_failover_enabled: bool,
+    proxy_service_running: bool,
+    restored_provider_id: &str,
+    current_provider_id: &str,
+    queue_positions: impl IntoIterator<Item = FailoverQueuePosition>,
+) -> RestoredProviderSwitchbackDecision {
+    let mut restored_sort_index = None;
+    let mut current_sort_index = None;
+
+    for position in queue_positions {
+        if position.provider_id == restored_provider_id {
+            restored_sort_index = position.sort_index;
+        }
+        if position.provider_id == current_provider_id {
+            current_sort_index = position.sort_index;
+        }
+    }
+
+    let should_switch = should_attempt_restored_provider_switchback(
+        proxy_takeover_active,
+        auto_failover_enabled,
+        proxy_service_running,
+        restored_sort_index,
+        current_sort_index,
+    );
+
+    RestoredProviderSwitchbackDecision::new(
+        should_switch,
+        restored_sort_index,
+        current_sort_index,
+    )
+}
+
 pub fn provider_failover_circuit_lookups(
     app_type: &str,
     ordered_provider_ids: impl IntoIterator<Item = String>,
@@ -281,11 +352,12 @@ mod tests {
         current_provider_db_fallback_required, current_provider_id_from_sources,
         current_provider_id_option_from_sources, failover_switch_pending_key,
         plan_auto_failover_toggle, provider_failover_circuit_lookups,
-        provider_selection_candidate_from_failover_lookup, select_provider_ids,
-        should_attempt_restored_provider_switchback,
+        provider_selection_candidate_from_failover_lookup, restored_provider_switchback_decision,
+        select_provider_ids, should_attempt_restored_provider_switchback,
         should_block_proxy_switch_to_provider_category, AutoFailoverToggleInput,
-        AutoFailoverTogglePlan, ProviderFailoverCircuitLookup, ProviderSelectionCandidate,
-        ProviderSelectionFailure, ProviderSelectionInput,
+        AutoFailoverTogglePlan, FailoverQueuePosition, ProviderFailoverCircuitLookup,
+        ProviderSelectionCandidate, ProviderSelectionFailure, ProviderSelectionInput,
+        RestoredProviderSwitchbackDecision,
         AUTO_FAILOVER_EMPTY_QUEUE_WITHOUT_CURRENT_PROVIDER_MESSAGE,
         AUTO_FAILOVER_ENABLE_REQUIRES_PROXY_TAKEOVER_MESSAGE,
     };
@@ -456,6 +528,55 @@ mod tests {
         assert_eq!(
             failover_switch_pending_key("claude", "provider-a"),
             "claude:provider-a"
+        );
+    }
+
+    #[test]
+    fn restored_provider_switchback_decision_finds_queue_positions() {
+        let decision = restored_provider_switchback_decision(
+            true,
+            true,
+            true,
+            "provider-a",
+            "provider-b",
+            vec![
+                FailoverQueuePosition::new("provider-a", Some(1)),
+                FailoverQueuePosition::new("provider-b", Some(2)),
+            ],
+        );
+
+        assert_eq!(
+            decision,
+            RestoredProviderSwitchbackDecision::new(true, Some(1), Some(2))
+        );
+    }
+
+    #[test]
+    fn restored_provider_switchback_decision_requires_both_queue_positions() {
+        let missing_current = restored_provider_switchback_decision(
+            true,
+            true,
+            true,
+            "provider-a",
+            "provider-b",
+            vec![FailoverQueuePosition::new("provider-a", Some(1))],
+        );
+        let missing_restored = restored_provider_switchback_decision(
+            true,
+            true,
+            true,
+            "provider-a",
+            "provider-b",
+            vec![FailoverQueuePosition::new("provider-b", Some(2))],
+        );
+
+        assert_eq!(
+            missing_current,
+            RestoredProviderSwitchbackDecision::new(false, Some(1), None)
+        );
+        assert_eq!(
+            missing_restored,
+            RestoredProviderSwitchbackDecision::new(false, None, Some(2))
         );
     }
 
