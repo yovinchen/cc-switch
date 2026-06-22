@@ -3502,6 +3502,39 @@ pub(crate) fn apply_common_config_to_settings(
     }
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum ProviderEffectiveSettingsWarning {
+    CommonConfigApply(CommonConfigSettingsMutationIssue),
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) struct ProviderEffectiveSettingsResult {
+    pub(crate) settings: Value,
+    pub(crate) warnings: Vec<ProviderEffectiveSettingsWarning>,
+}
+
+pub(crate) fn build_effective_settings_with_common_config(
+    app_type: &AppType,
+    provider: &Provider,
+    snippet: Option<&str>,
+) -> ProviderEffectiveSettingsResult {
+    let mut settings = provider.settings_config.clone();
+    let mut warnings = Vec::new();
+
+    if provider_uses_common_config(app_type, provider, snippet) {
+        if let Some(snippet_text) = snippet {
+            match apply_common_config_to_settings(app_type, &settings, snippet_text) {
+                Ok(applied_settings) => settings = applied_settings,
+                Err(issue) => warnings.push(ProviderEffectiveSettingsWarning::CommonConfigApply(
+                    issue,
+                )),
+            }
+        }
+    }
+
+    ProviderEffectiveSettingsResult { settings, warnings }
+}
+
 pub(crate) fn remove_common_config_from_settings(
     app_type: &AppType,
     settings: &Value,
@@ -8887,6 +8920,48 @@ reasoning = "medium"
             applied,
             json!({"env": {"SHARED_REGION": "us-central1"}})
         );
+    }
+
+    #[test]
+    fn provider_effective_settings_apply_common_config_returns_warnings() {
+        let mut provider = Provider::with_id(
+            "claude-test".to_string(),
+            "Claude Test".to_string(),
+            json!({
+                "env": {
+                    "ANTHROPIC_API_KEY": "sk-test"
+                }
+            }),
+            None,
+        );
+        provider.meta = Some(ProviderMeta {
+            common_config_enabled: Some(true),
+            ..Default::default()
+        });
+
+        let result = build_effective_settings_with_common_config(
+            &AppType::Claude,
+            &provider,
+            Some(r#"{ "includeCoAuthoredBy": false }"#),
+        );
+        assert!(result.warnings.is_empty());
+        assert_eq!(
+            result.settings,
+            json!({
+                "includeCoAuthoredBy": false,
+                "env": {
+                    "ANTHROPIC_API_KEY": "sk-test"
+                }
+            })
+        );
+
+        let result =
+            build_effective_settings_with_common_config(&AppType::Claude, &provider, Some("{"));
+        assert!(matches!(
+            result.warnings.as_slice(),
+            [ProviderEffectiveSettingsWarning::CommonConfigApply(_)]
+        ));
+        assert_eq!(result.settings, provider.settings_config);
     }
 
     #[test]

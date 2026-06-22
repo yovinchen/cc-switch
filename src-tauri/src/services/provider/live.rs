@@ -13,14 +13,14 @@ use crate::database::Database;
 use crate::error::AppError;
 use crate::provider::Provider;
 use crate::proxy_core_adapter::{
-    apply_common_config_to_settings as adapter_apply_common_config_to_settings,
+    build_effective_settings_with_common_config as adapter_build_effective_settings_with_common_config,
     remove_common_config_from_settings as adapter_remove_common_config_from_settings,
     gemini_env_value_from_env_json, opencode_live_provider_fragment_has_provider_fields,
     normalize_claude_models_in_value,
     normalize_provider_common_config_for_storage as adapter_normalize_provider_common_config_for_storage,
     provider_codex_imported_live_category,
     provider_codex_live_snapshot_parts, CommonConfigSettingsMutationIssue,
-    ProviderBackfillSettingsWarning,
+    ProviderBackfillSettingsWarning, ProviderEffectiveSettingsWarning,
     provider_common_config_storage_normalization_requires_snippet,
     provider_gemini_env_map, provider_gemini_live_config_object,
     provider_opencode_live_provider_fragment, provider_openclaw_has_live_provider_fields,
@@ -30,6 +30,8 @@ use crate::proxy_core_adapter::{
     strip_common_config_from_live_settings_for_backfill as adapter_strip_common_config_from_live_settings_for_backfill,
     validate_provider_gemini_settings_strict, CodexLiveSnapshotIssue, GeminiLiveConfigIssue,
 };
+#[cfg(test)]
+use crate::proxy_core_adapter::apply_common_config_to_settings as adapter_apply_common_config_to_settings;
 use crate::services::mcp::McpService;
 use crate::store::AppState;
 
@@ -64,6 +66,7 @@ pub(crate) fn remove_common_config_from_settings(
         .map_err(common_config_settings_mutation_issue_to_app_error)
 }
 
+#[cfg(test)]
 fn apply_common_config_to_settings(
     app_type: &AppType,
     settings: &Value,
@@ -105,24 +108,11 @@ pub(crate) fn build_effective_settings_with_common_config(
     provider: &Provider,
 ) -> Result<Value, AppError> {
     let snippet = db.get_config_snippet(app_type.as_str())?;
-    let mut effective_settings = provider.settings_config.clone();
+    let result =
+        adapter_build_effective_settings_with_common_config(app_type, provider, snippet.as_deref());
+    log_provider_effective_settings_warnings(app_type, provider, result.warnings);
 
-    if provider_uses_common_config(app_type, provider, snippet.as_deref()) {
-        if let Some(snippet_text) = snippet.as_deref() {
-            match apply_common_config_to_settings(app_type, &effective_settings, snippet_text) {
-                Ok(settings) => effective_settings = settings,
-                Err(err) => {
-                    log::warn!(
-                        "Failed to apply common config for {} provider '{}': {err}",
-                        app_type.as_str(),
-                        provider.id
-                    );
-                }
-            }
-        }
-    }
-
-    Ok(effective_settings)
+    Ok(result.settings)
 }
 
 pub(crate) fn write_live_with_common_config(
@@ -211,6 +201,25 @@ fn log_provider_backfill_settings_warnings(
             ProviderBackfillSettingsWarning::CodexUnifiedSessionBucketStrip(err) => {
                 log::warn!(
                     "Failed to strip unified session bucket while backfilling '{}': {err}",
+                    provider.id
+                );
+            }
+        }
+    }
+}
+
+fn log_provider_effective_settings_warnings(
+    app_type: &AppType,
+    provider: &Provider,
+    warnings: Vec<ProviderEffectiveSettingsWarning>,
+) {
+    for warning in warnings {
+        match warning {
+            ProviderEffectiveSettingsWarning::CommonConfigApply(issue) => {
+                let err = common_config_settings_mutation_issue_to_app_error(issue);
+                log::warn!(
+                    "Failed to apply common config for {} provider '{}': {err}",
+                    app_type.as_str(),
                     provider.id
                 );
             }
