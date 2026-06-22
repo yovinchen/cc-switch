@@ -4054,6 +4054,37 @@ pub(crate) fn codex_live_config_has_proxy_placeholder(
         == Some(placeholder)
 }
 
+pub(crate) fn apply_codex_takeover_auth_placeholder_if_present(
+    config: &mut Value,
+    placeholder: &str,
+) -> bool {
+    let Some(auth) = config.get_mut("auth").and_then(Value::as_object_mut) else {
+        return false;
+    };
+
+    auth.insert("OPENAI_API_KEY".to_string(), json!(placeholder));
+    true
+}
+
+pub(crate) fn ensure_codex_takeover_auth_placeholder(
+    config: &mut Value,
+    placeholder: &str,
+) -> bool {
+    if apply_codex_takeover_auth_placeholder_if_present(config, placeholder) {
+        return true;
+    }
+
+    let Some(root) = config.as_object_mut() else {
+        return false;
+    };
+
+    root.insert(
+        "auth".to_string(),
+        json!({ "OPENAI_API_KEY": placeholder }),
+    );
+    true
+}
+
 pub(crate) fn gemini_live_config_has_proxy_placeholder(
     config: &Value,
     placeholder: &str,
@@ -6740,6 +6771,37 @@ wire_api = "chat"
             &AppType::Claude,
             placeholder
         ));
+
+        let mut codex_live = json!({"auth": {"OPENAI_API_KEY": "real-key"}});
+        assert!(apply_codex_takeover_auth_placeholder_if_present(
+            &mut codex_live,
+            placeholder
+        ));
+        assert_eq!(
+            codex_live
+                .get("auth")
+                .and_then(|auth| auth.get("OPENAI_API_KEY"))
+                .and_then(Value::as_str),
+            Some(placeholder)
+        );
+
+        let mut codex_live_without_auth = json!({"config": ""});
+        assert!(!apply_codex_takeover_auth_placeholder_if_present(
+            &mut codex_live_without_auth,
+            placeholder
+        ));
+        assert!(codex_live_without_auth.get("auth").is_none());
+        assert!(ensure_codex_takeover_auth_placeholder(
+            &mut codex_live_without_auth,
+            placeholder
+        ));
+        assert_eq!(
+            codex_live_without_auth
+                .get("auth")
+                .and_then(|auth| auth.get("OPENAI_API_KEY"))
+                .and_then(Value::as_str),
+            Some(placeholder)
+        );
 
         let mut gemini_config = json!({
             "env": {

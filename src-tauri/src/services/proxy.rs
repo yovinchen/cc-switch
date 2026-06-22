@@ -9,17 +9,17 @@ use crate::provider::Provider;
 use crate::proxy::server::ProxyServer;
 use crate::proxy::switch_lock::SwitchLockManager;
 use crate::proxy_core_adapter::{
-    apply_gemini_takeover_env_fields,
+    apply_codex_takeover_auth_placeholder_if_present, apply_gemini_takeover_env_fields,
     attach_codex_model_catalog_from_provider as attach_codex_model_catalog_from_provider_settings,
     build_proxy_official_warning_event_payload, claude_live_config_has_proxy_placeholder,
     claude_takeover_model_fields_from_settings, codex_live_config_has_proxy_placeholder,
     codex_takeover_toml_config_for_provider, gemini_live_config_has_proxy_placeholder,
-    live_config_has_proxy_placeholder_for_app, provider_claude_takeover_model_fields,
-    provider_is_github_copilot, provider_settings_have_proxy_placeholder_for_app,
-    provider_settings_with_live_token_sync, provider_uses_managed_account_auth,
-    proxy_runtime_status_stopped, proxy_server_info_from_parts, proxy_takeover_status_from_parts,
-    CircuitBreakerConfig, LiveTokenProviderSettingsIssue, ProxyConfig, ProxyRuntimeStatus,
-    ProxyServerInfo, ProxyTakeoverStatus,
+    ensure_codex_takeover_auth_placeholder, live_config_has_proxy_placeholder_for_app,
+    provider_claude_takeover_model_fields, provider_is_github_copilot,
+    provider_settings_have_proxy_placeholder_for_app, provider_settings_with_live_token_sync,
+    provider_uses_managed_account_auth, proxy_runtime_status_stopped, proxy_server_info_from_parts,
+    proxy_takeover_status_from_parts, CircuitBreakerConfig, LiveTokenProviderSettingsIssue,
+    ProxyConfig, ProxyRuntimeStatus, ProxyServerInfo, ProxyTakeoverStatus,
     PROXY_OFFICIAL_WARNING_EVENT,
 };
 use crate::services::provider::{
@@ -264,17 +264,7 @@ impl ProxyService {
         }
         let (_, proxy_codex_base_url) = self.build_proxy_urls().await?;
 
-        if let Some(auth) = effective_settings
-            .get_mut("auth")
-            .and_then(|v| v.as_object_mut())
-        {
-            auth.insert("OPENAI_API_KEY".to_string(), json!(PROXY_TOKEN_PLACEHOLDER));
-        } else if let Some(root) = effective_settings.as_object_mut() {
-            root.insert(
-                "auth".to_string(),
-                json!({ "OPENAI_API_KEY": PROXY_TOKEN_PLACEHOLDER }),
-            );
-        }
+        ensure_codex_takeover_auth_placeholder(&mut effective_settings, PROXY_TOKEN_PLACEHOLDER);
 
         let config_str = effective_settings
             .get("config")
@@ -1129,9 +1119,10 @@ impl ProxyService {
         // Codex: 修改 config.toml 的 base_url，auth.json 的 OPENAI_API_KEY（代理会注入真实 Token）
         if let Ok(mut live_config) = self.read_codex_live() {
             // 1. 修改 auth.json 中的 OPENAI_API_KEY（使用占位符）
-            if let Some(auth) = live_config.get_mut("auth").and_then(|v| v.as_object_mut()) {
-                auth.insert("OPENAI_API_KEY".to_string(), json!(PROXY_TOKEN_PLACEHOLDER));
-            }
+            apply_codex_takeover_auth_placeholder_if_present(
+                &mut live_config,
+                PROXY_TOKEN_PLACEHOLDER,
+            );
 
             // 2. 修改 config.toml 中的 base_url
             let config_str = live_config
@@ -1192,9 +1183,10 @@ impl ProxyService {
             AppType::Codex => {
                 let mut live_config = self.read_codex_live()?;
 
-                if let Some(auth) = live_config.get_mut("auth").and_then(|v| v.as_object_mut()) {
-                    auth.insert("OPENAI_API_KEY".to_string(), json!(PROXY_TOKEN_PLACEHOLDER));
-                }
+                apply_codex_takeover_auth_placeholder_if_present(
+                    &mut live_config,
+                    PROXY_TOKEN_PLACEHOLDER,
+                );
 
                 let config_str = live_config
                     .get("config")
@@ -1263,10 +1255,10 @@ impl ProxyService {
             }
             AppType::Codex => {
                 if let Ok(mut live_config) = self.read_codex_live() {
-                    if let Some(auth) = live_config.get_mut("auth").and_then(|v| v.as_object_mut())
-                    {
-                        auth.insert("OPENAI_API_KEY".to_string(), json!(PROXY_TOKEN_PLACEHOLDER));
-                    }
+                    apply_codex_takeover_auth_placeholder_if_present(
+                        &mut live_config,
+                        PROXY_TOKEN_PLACEHOLDER,
+                    );
 
                     let config_str = live_config
                         .get("config")
