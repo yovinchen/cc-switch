@@ -1,10 +1,20 @@
 use super::{error::ProxyError, hyper_client::ProxyResponse};
 use crate::proxy_core_adapter::{
     proxy_event_envelope_to_sse_spec, ProxyCoreResponse, ProxyEventEnvelope,
-    ProxyTransportResponse, ProxyTransportResponseBody,
+    ProxyTransportResponse, ProxyTransportResponseBody, request_body_read_error_message,
 };
 use axum::response::sse::Event;
 use bytes::Bytes;
+use http_body_util::BodyExt;
+
+pub(crate) async fn collect_axum_request_body(
+    body: axum::body::Body,
+) -> Result<Bytes, ProxyError> {
+    body.collect()
+        .await
+        .map_err(|error| ProxyError::Internal(request_body_read_error_message(error)))
+        .map(|collected| collected.to_bytes())
+}
 
 pub(crate) fn proxy_core_response_to_proxy_response(
     response: ProxyCoreResponse,

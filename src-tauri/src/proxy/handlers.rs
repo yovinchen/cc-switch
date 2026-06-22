@@ -19,8 +19,8 @@ use super::{
     handler_context::RequestContext,
     providers::{codex_chat_history::record_responses_sse_stream, get_adapter},
     response_adapter::{
-        proxy_core_response_to_axum_response, proxy_core_response_to_proxy_response,
-        proxy_event_envelope_to_axum_sse_event,
+        collect_axum_request_body, proxy_core_response_to_axum_response,
+        proxy_core_response_to_proxy_response, proxy_event_envelope_to_axum_sse_event,
     },
     response_processor::{create_logged_passthrough_stream, process_response, read_decoded_body},
     server::ProxyState,
@@ -45,8 +45,8 @@ use crate::proxy_core_adapter::{
     json_proxy_request_from_input, JsonProxyRequestInput,
     openai_responses_to_anthropic_message, parse_json_proxy_request_body,
     parse_json_proxy_request_body_or_null, parse_upstream_json_or_unlabeled_sse,
-    provider_is_codex_oauth, rebuilt_json_proxy_response, request_body_read_error_message,
-    resolve_management_auth_decision, should_aggregate_codex_oauth_responses_sse,
+    provider_is_codex_oauth, rebuilt_json_proxy_response, resolve_management_auth_decision,
+    should_aggregate_codex_oauth_responses_sse,
     should_use_claude_transform_streaming,
     strip_endpoint_prefix, transformed_sse_proxy_response, validate_management_bearer_header,
     AppChannelListQuery, AppChannelManagementRequest, AppChannelResponse, AppKind, AppListRequest,
@@ -75,7 +75,6 @@ use axum::{
     Json,
 };
 use bytes::Bytes;
-use http_body_util::BodyExt;
 use serde_json::Value;
 use std::convert::Infallible;
 use std::time::Duration;
@@ -600,11 +599,7 @@ async fn handle_messages_for_app(
     let uri = parts.uri;
     let headers = parts.headers;
     let extensions = parts.extensions;
-    let body_bytes = body
-        .collect()
-        .await
-        .map_err(|e| ProxyError::Internal(request_body_read_error_message(e)))?
-        .to_bytes();
+    let body_bytes = collect_axum_request_body(body).await?;
     let parsed_body = parse_json_proxy_request_body(&body_bytes)
         .map_err(|e| ProxyError::Internal(e.to_string()))?;
     let body = parsed_body.body;
@@ -844,11 +839,7 @@ pub async fn handle_chat_completions(
     let uri = parts.uri;
     let headers = parts.headers;
     let extensions = parts.extensions;
-    let body_bytes = req_body
-        .collect()
-        .await
-        .map_err(|e| ProxyError::Internal(request_body_read_error_message(e)))?
-        .to_bytes();
+    let body_bytes = collect_axum_request_body(req_body).await?;
     let parsed_body = parse_json_proxy_request_body(&body_bytes)
         .map_err(|e| ProxyError::Internal(e.to_string()))?;
     let body = parsed_body.body;
@@ -895,11 +886,7 @@ pub async fn handle_responses(
     let uri = parts.uri;
     let headers = parts.headers;
     let extensions = parts.extensions;
-    let body_bytes = req_body
-        .collect()
-        .await
-        .map_err(|e| ProxyError::Internal(request_body_read_error_message(e)))?
-        .to_bytes();
+    let body_bytes = collect_axum_request_body(req_body).await?;
     let parsed_body = parse_json_proxy_request_body(&body_bytes)
         .map_err(|e| ProxyError::Internal(e.to_string()))?;
     let body = parsed_body.body;
@@ -960,11 +947,7 @@ pub async fn handle_responses_compact(
     let uri = parts.uri;
     let headers = parts.headers;
     let extensions = parts.extensions;
-    let body_bytes = req_body
-        .collect()
-        .await
-        .map_err(|e| ProxyError::Internal(request_body_read_error_message(e)))?
-        .to_bytes();
+    let body_bytes = collect_axum_request_body(req_body).await?;
     let parsed_body = parse_json_proxy_request_body(&body_bytes)
         .map_err(|e| ProxyError::Internal(e.to_string()))?;
     let body = parsed_body.body;
@@ -1187,11 +1170,7 @@ pub async fn handle_gemini(
     let method = parts.method.clone();
     let headers = parts.headers;
     let extensions = parts.extensions;
-    let body_bytes = req_body
-        .collect()
-        .await
-        .map_err(|e| ProxyError::Internal(request_body_read_error_message(e)))?
-        .to_bytes();
+    let body_bytes = collect_axum_request_body(req_body).await?;
     let parsed_body = parse_json_proxy_request_body_or_null(&body_bytes)
         .map_err(|e| ProxyError::Internal(e.to_string()))?;
     let body = parsed_body.body;
