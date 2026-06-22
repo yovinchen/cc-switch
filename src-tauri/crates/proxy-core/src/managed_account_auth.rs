@@ -1,7 +1,47 @@
 use http::HeaderMap;
 use thiserror::Error;
 
+use crate::provider_auth::{ProviderAuthInfo, ProviderAuthStrategy};
+
 pub const PROXY_AUTH_PLACEHOLDER: &str = "PROXY_MANAGED";
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ManagedAccountAuthRuntime {
+    GitHubCopilot,
+    CodexOAuth,
+}
+
+impl ManagedAccountAuthRuntime {
+    pub fn provider_auth_strategy(self) -> ProviderAuthStrategy {
+        match self {
+            Self::GitHubCopilot => ProviderAuthStrategy::GitHubCopilot,
+            Self::CodexOAuth => ProviderAuthStrategy::CodexOAuth,
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ManagedAccountAuthPlan {
+    Passthrough {
+        auth: ProviderAuthInfo,
+    },
+    ResolveRuntimeToken {
+        runtime: ManagedAccountAuthRuntime,
+        account_id: Option<String>,
+    },
+}
+
+impl ManagedAccountAuthPlan {
+    pub fn should_send_codex_oauth_session_headers(&self) -> bool {
+        matches!(
+            self,
+            Self::ResolveRuntimeToken {
+                runtime: ManagedAccountAuthRuntime::CodexOAuth,
+                ..
+            }
+        )
+    }
+}
 
 #[derive(Debug, Clone, PartialEq, Eq, Error)]
 pub enum ManagedAccountAuthError {
@@ -9,6 +49,24 @@ pub enum ManagedAccountAuthError {
         "Managed account proxy auth was not resolved; PROXY_MANAGED must not be sent upstream"
     )]
     PlaceholderForwarded,
+}
+
+pub fn managed_account_auth_plan(
+    auth: ProviderAuthInfo,
+    github_copilot_account_id: Option<String>,
+    codex_oauth_account_id: Option<String>,
+) -> ManagedAccountAuthPlan {
+    match auth.strategy {
+        ProviderAuthStrategy::GitHubCopilot => ManagedAccountAuthPlan::ResolveRuntimeToken {
+            runtime: ManagedAccountAuthRuntime::GitHubCopilot,
+            account_id: github_copilot_account_id,
+        },
+        ProviderAuthStrategy::CodexOAuth => ManagedAccountAuthPlan::ResolveRuntimeToken {
+            runtime: ManagedAccountAuthRuntime::CodexOAuth,
+            account_id: codex_oauth_account_id,
+        },
+        _ => ManagedAccountAuthPlan::Passthrough { auth },
+    }
 }
 
 pub fn validate_managed_account_upstream_auth(
@@ -49,9 +107,72 @@ pub fn headers_contain_proxy_auth_placeholder(headers: &HeaderMap) -> bool {
 mod tests {
     use super::{
         headers_contain_proxy_auth_placeholder, is_managed_account_upstream_url,
-        validate_managed_account_upstream_auth, ManagedAccountAuthError,
+        managed_account_auth_plan, validate_managed_account_upstream_auth, ManagedAccountAuthError,
+        ManagedAccountAuthPlan, ManagedAccountAuthRuntime, PROXY_AUTH_PLACEHOLDER,
     };
     use http::{HeaderMap, HeaderValue};
+
+    use crate::provider_auth::{ProviderAuthInfo, ProviderAuthStrategy};
+
+    #[test]
+    fn managed_account_plan_passes_through_non_runtime_auth() {
+        let auth = ProviderAuthInfo::new("sk-test".to_string(), ProviderAuthStrategy::Bearer);
+
+        let plan = managed_account_auth_plan(
+            auth.clone(),
+            Some("copilot-account".to_string()),
+            Some("codex-account".to_string()),
+        );
+
+        assert_eq!(plan, ManagedAccountAuthPlan::Passthrough { auth });
+        assert!(!plan.should_send_codex_oauth_session_headers());
+    }
+
+    #[test]
+    fn managed_account_plan_resolves_copilot_runtime_token() {
+        let auth = ProviderAuthInfo::new(
+            PROXY_AUTH_PLACEHOLDER.to_string(),
+            ProviderAuthStrategy::GitHubCopilot,
+        );
+
+        let plan = managed_account_auth_plan(auth, Some("copilot-account".to_string()), None);
+
+        assert_eq!(
+            plan,
+            ManagedAccountAuthPlan::ResolveRuntimeToken {
+                runtime: ManagedAccountAuthRuntime::GitHubCopilot,
+                account_id: Some("copilot-account".to_string()),
+            }
+        );
+        assert!(!plan.should_send_codex_oauth_session_headers());
+        assert_eq!(
+            ManagedAccountAuthRuntime::GitHubCopilot.provider_auth_strategy(),
+            ProviderAuthStrategy::GitHubCopilot
+        );
+    }
+
+    #[test]
+    fn managed_account_plan_resolves_codex_runtime_token_with_session_headers() {
+        let auth = ProviderAuthInfo::new(
+            PROXY_AUTH_PLACEHOLDER.to_string(),
+            ProviderAuthStrategy::CodexOAuth,
+        );
+
+        let plan = managed_account_auth_plan(auth, None, Some("codex-account".to_string()));
+
+        assert_eq!(
+            plan,
+            ManagedAccountAuthPlan::ResolveRuntimeToken {
+                runtime: ManagedAccountAuthRuntime::CodexOAuth,
+                account_id: Some("codex-account".to_string()),
+            }
+        );
+        assert!(plan.should_send_codex_oauth_session_headers());
+        assert_eq!(
+            ManagedAccountAuthRuntime::CodexOAuth.provider_auth_strategy(),
+            ProviderAuthStrategy::CodexOAuth
+        );
+    }
 
     #[test]
     fn managed_account_url_detection_covers_copilot_and_codex_hosts() {

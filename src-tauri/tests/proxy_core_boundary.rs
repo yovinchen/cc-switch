@@ -88,6 +88,11 @@ const FORBIDDEN_FORWARDER_MANAGED_AUTH_MARKERS: &[&str] = &[
     "default_account_id().await",
     "ProviderAuthInfo::new(token",
 ];
+const FORBIDDEN_MANAGED_ACCOUNT_AUTH_STRATEGY_MARKERS: &[&str] = &[
+    "match auth.strategy",
+    "ProviderAuthStrategy::GitHubCopilot",
+    "ProviderAuthStrategy::CodexOAuth",
+];
 const FORBIDDEN_FORWARDER_FAILOVER_SWITCH_MARKERS: &[&str] = &[".try_switch("];
 const FORBIDDEN_FORWARDER_RUNTIME_EVENT_SOURCE_MARKERS: &[&str] = &[
     ".status.write()",
@@ -2305,6 +2310,33 @@ fn production_forwarder_delegates_managed_auth_resolution_to_adapter() {
     assert!(
         violations.is_empty(),
         "production forwarder must delegate managed account token resolution to proxy::managed_account_auth:\n{}",
+        violations.join("\n")
+    );
+}
+
+#[test]
+fn production_managed_account_auth_delegates_runtime_plan_to_core() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let path = manifest_dir.join("src/proxy/managed_account_auth.rs");
+    let source = fs::read_to_string(&path).expect("read managed_account_auth.rs");
+
+    let mut violations = Vec::new();
+    for (line_index, line) in production_lines(&source) {
+        let code = line.split("//").next().unwrap_or_default();
+        for marker in FORBIDDEN_MANAGED_ACCOUNT_AUTH_STRATEGY_MARKERS {
+            if code.contains(marker) {
+                violations.push(format!(
+                    "src/proxy/managed_account_auth.rs:{} contains runtime strategy marker `{}`",
+                    line_index + 1,
+                    marker
+                ));
+            }
+        }
+    }
+
+    assert!(
+        violations.is_empty(),
+        "managed account auth runtime selection must use proxy-core planning instead of local strategy branching:\n{}",
         violations.join("\n")
     );
 }

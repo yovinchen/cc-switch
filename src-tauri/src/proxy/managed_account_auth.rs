@@ -2,8 +2,9 @@ use crate::commands::{CodexOAuthState, CopilotAuthState};
 use crate::provider::Provider;
 use crate::proxy::error::ProxyError;
 use crate::proxy_core_adapter::{
-    provider_codex_oauth_managed_account_id, provider_github_copilot_managed_account_id,
-    CopilotModel, ProviderAuthInfo, ProviderAuthStrategy,
+    managed_account_auth_plan, provider_codex_oauth_managed_account_id,
+    provider_github_copilot_managed_account_id, CopilotModel, ManagedAccountAuthPlan,
+    ManagedAccountAuthRuntime, ProviderAuthInfo,
 };
 use tauri::Manager;
 
@@ -19,28 +20,41 @@ pub(crate) async fn resolve_managed_account_auth(
     auth_provider: &Provider,
     auth: ProviderAuthInfo,
 ) -> Result<ManagedAccountAuthResolution, ProxyError> {
-    match auth.strategy {
-        ProviderAuthStrategy::GitHubCopilot => {
-            let auth = resolve_copilot_auth(app_handle, auth_provider).await?;
+    let plan = managed_account_auth_plan(
+        auth,
+        provider_github_copilot_managed_account_id(auth_provider),
+        provider_codex_oauth_managed_account_id(auth_provider),
+    );
+    let should_send_codex_oauth_session_headers = plan.should_send_codex_oauth_session_headers();
+
+    match plan {
+        ManagedAccountAuthPlan::ResolveRuntimeToken {
+            runtime: runtime @ ManagedAccountAuthRuntime::GitHubCopilot,
+            account_id,
+        } => {
+            let auth = resolve_copilot_auth(app_handle, account_id.as_deref(), runtime).await?;
             Ok(ManagedAccountAuthResolution {
                 auth,
                 codex_oauth_account_id: None,
-                should_send_codex_oauth_session_headers: false,
+                should_send_codex_oauth_session_headers,
             })
         }
-        ProviderAuthStrategy::CodexOAuth => {
+        ManagedAccountAuthPlan::ResolveRuntimeToken {
+            runtime: runtime @ ManagedAccountAuthRuntime::CodexOAuth,
+            account_id,
+        } => {
             let (auth, codex_oauth_account_id) =
-                resolve_codex_oauth(app_handle, auth_provider).await?;
+                resolve_codex_oauth(app_handle, account_id, runtime).await?;
             Ok(ManagedAccountAuthResolution {
                 auth,
                 codex_oauth_account_id,
-                should_send_codex_oauth_session_headers: true,
+                should_send_codex_oauth_session_headers,
             })
         }
-        _ => Ok(ManagedAccountAuthResolution {
+        ManagedAccountAuthPlan::Passthrough { auth } => Ok(ManagedAccountAuthResolution {
             auth,
             codex_oauth_account_id: None,
-            should_send_codex_oauth_session_headers: false,
+            should_send_codex_oauth_session_headers,
         }),
     }
 }
@@ -122,7 +136,8 @@ pub(crate) async fn resolve_copilot_model_vendor(
 
 async fn resolve_copilot_auth(
     app_handle: Option<&tauri::AppHandle>,
-    auth_provider: &Provider,
+    account_id: Option<&str>,
+    runtime: ManagedAccountAuthRuntime,
 ) -> Result<ProviderAuthInfo, ProxyError> {
     let Some(app_handle) = app_handle else {
         log::error!("[Copilot] AppHandle 不可用");
@@ -133,9 +148,8 @@ async fn resolve_copilot_auth(
 
     let copilot_state = app_handle.state::<CopilotAuthState>();
     let copilot_auth = copilot_state.0.read().await;
-    let account_id = provider_github_copilot_managed_account_id(auth_provider);
 
-    let token_result = match &account_id {
+    let token_result = match account_id {
         Some(id) => {
             log::debug!("[Copilot] 使用指定账号 {id} 获取 token");
             copilot_auth.get_valid_token_for_account(id).await
@@ -150,17 +164,17 @@ async fn resolve_copilot_auth(
         Ok(token) => {
             log::debug!(
                 "[Copilot] 成功获取 Copilot token (account={})",
-                account_id.as_deref().unwrap_or("default")
+                account_id.unwrap_or("default")
             );
             Ok(ProviderAuthInfo::new(
                 token,
-                ProviderAuthStrategy::GitHubCopilot,
+                runtime.provider_auth_strategy(),
             ))
         }
         Err(error) => {
             log::error!(
                 "[Copilot] 获取 Copilot token 失败 (account={}): {error}",
-                account_id.as_deref().unwrap_or("default")
+                account_id.unwrap_or("default")
             );
             Err(ProxyError::AuthError(format!(
                 "GitHub Copilot 认证失败: {error}"
@@ -171,7 +185,8 @@ async fn resolve_copilot_auth(
 
 async fn resolve_codex_oauth(
     app_handle: Option<&tauri::AppHandle>,
-    auth_provider: &Provider,
+    account_id: Option<String>,
+    runtime: ManagedAccountAuthRuntime,
 ) -> Result<(ProviderAuthInfo, Option<String>), ProxyError> {
     let Some(app_handle) = app_handle else {
         log::error!("[CodexOAuth] AppHandle 不可用");
@@ -182,7 +197,6 @@ async fn resolve_codex_oauth(
 
     let codex_state = app_handle.state::<CodexOAuthState>();
     let codex_auth = codex_state.0.read().await;
-    let account_id = provider_codex_oauth_managed_account_id(auth_provider);
 
     let token_result = match &account_id {
         Some(id) => {
@@ -206,7 +220,7 @@ async fn resolve_codex_oauth(
                 resolved_account_id.as_deref().unwrap_or("default")
             );
             Ok((
-                ProviderAuthInfo::new(token, ProviderAuthStrategy::CodexOAuth),
+                ProviderAuthInfo::new(token, runtime.provider_auth_strategy()),
                 resolved_account_id,
             ))
         }
@@ -222,6 +236,7 @@ async fn resolve_codex_oauth(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::proxy_core_adapter::ProviderAuthStrategy;
 
     #[tokio::test]
     async fn non_managed_auth_passes_through_without_app_handle() {
@@ -270,7 +285,10 @@ mod tests {
         let codex = resolve_managed_account_auth(
             None,
             &provider,
-            ProviderAuthInfo::new("PROXY_MANAGED".to_string(), ProviderAuthStrategy::CodexOAuth),
+            ProviderAuthInfo::new(
+                "PROXY_MANAGED".to_string(),
+                ProviderAuthStrategy::CodexOAuth,
+            ),
         )
         .await
         .expect_err("codex app handle error");
@@ -292,7 +310,9 @@ mod tests {
 
         assert_eq!(resolve_copilot_api_endpoint(None, &provider).await, None);
         assert_eq!(
-            fetch_copilot_live_models(None, &provider).await.expect("skip"),
+            fetch_copilot_live_models(None, &provider)
+                .await
+                .expect("skip"),
             None
         );
         assert_eq!(
