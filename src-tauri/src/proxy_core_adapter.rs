@@ -515,6 +515,10 @@ pub(crate) fn proxy_live_urls_from_listen_parts(
     Some((proxy_origin, proxy_codex_base_url))
 }
 
+pub(crate) fn record_proxy_server_listen_port_runtime_source(port: u16) {
+    crate::proxy::http_client::set_proxy_port(port);
+}
+
 pub(crate) type ProxyTakeoverStatus =
     crate::proxy_core::api::ports::ProxyTakeoverStatus;
 

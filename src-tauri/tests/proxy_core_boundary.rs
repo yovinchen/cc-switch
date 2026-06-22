@@ -231,6 +231,7 @@ const FORBIDDEN_PROXY_SERVER_RUNTIME_STATE_MARKERS: &[&str] = &[
     "server_started_event_message(",
     "server_stopped_event_message(",
     ".events.emit(",
+    "set_proxy_port(",
     ".status.write()",
     ".status.read()",
     ".start_time.write()",
