@@ -771,7 +771,7 @@ pub(crate) fn write_live_snapshot(app_type: &AppType, provider: &Provider) -> Re
 
             crate::codex_config::write_codex_provider_live_with_catalog(
                 &provider.settings_config,
-                provider.category.as_deref(),
+                parts.category,
                 parts.auth,
                 parts.config_text,
             )?;

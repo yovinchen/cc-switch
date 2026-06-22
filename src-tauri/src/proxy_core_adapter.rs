@@ -1476,6 +1476,7 @@ pub(crate) fn provider_codex_imported_live_category(provider: &Provider) -> &'st
 }
 
 pub(crate) struct CodexLiveSettingsParts<'a> {
+    pub(crate) category: Option<&'a str>,
     pub(crate) auth: &'a Value,
     pub(crate) config_text: Option<&'a str>,
 }
@@ -1543,12 +1544,14 @@ pub(crate) fn provider_codex_live_settings_parts(
     }
 
     Ok(CodexLiveSettingsParts {
+        category: provider.category.as_deref(),
         auth,
         config_text: codex_config_text_from_settings(&provider.settings_config),
     })
 }
 
 pub(crate) struct CodexLiveSnapshotParts<'a> {
+    pub(crate) category: Option<&'a str>,
     pub(crate) auth: &'a Value,
     pub(crate) config_text: Option<&'a str>,
 }
@@ -1571,6 +1574,7 @@ pub(crate) fn provider_codex_live_snapshot_parts(
         .ok_or(CodexLiveSnapshotIssue::MissingAuth)?;
 
     Ok(CodexLiveSnapshotParts {
+        category: provider.category.as_deref(),
         auth,
         config_text: codex_config_text_from_settings(&provider.settings_config),
     })
@@ -6574,6 +6578,7 @@ experimental_bearer_token = "bearer-token"
         );
         let parts =
             provider_codex_live_settings_parts(&official_live_provider).expect("codex live parts");
+        assert_eq!(parts.category, None);
         assert!(parts.auth.is_object());
         assert_eq!(parts.config_text, Some(""));
         let mut custom_category_provider = api_key_live_provider.clone();
@@ -6620,18 +6625,20 @@ experimental_bearer_token = "bearer-token"
             provider_codex_live_settings_parts(&missing_auth),
             Err(CodexLiveSettingsIssue::MissingAuth)
         ));
-        let auth_not_object = Provider::with_id(
+        let mut auth_not_object = Provider::with_id(
             "codex-live-auth-string".to_string(),
             "Codex Live Auth String".to_string(),
             json!({"auth": "sk-test"}),
             None,
         );
+        auth_not_object.category = Some("custom".to_string());
         assert!(matches!(
             provider_codex_live_settings_parts(&auth_not_object),
             Err(CodexLiveSettingsIssue::AuthNotObject)
         ));
         let snapshot_parts = provider_codex_live_snapshot_parts(&auth_not_object)
             .expect("snapshot keeps legacy auth shape tolerance");
+        assert_eq!(snapshot_parts.category, Some("custom"));
         assert_eq!(snapshot_parts.auth, &json!("sk-test"));
         assert_eq!(snapshot_parts.config_text, None);
         assert!(matches!(
