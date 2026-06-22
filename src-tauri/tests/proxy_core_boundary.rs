@@ -331,6 +331,18 @@ const FORBIDDEN_CLAUDE_PROVIDER_ADAPTER_TRANSFORM_DECISION_MARKERS: &[&str] = &[
     "claude_api_format_needs_transform(",
     "self.get_api_format(provider)",
 ];
+const FORBIDDEN_CLAUDE_PROVIDER_ADAPTER_REQUEST_TRANSFORM_MARKERS: &[&str] = &[
+    "anthropic_to_openai_responses_request(",
+    "anthropic_to_openai_chat_request(",
+    "anthropic_request_to_gemini_request_with_shadow(",
+    "provider_claude_responses_prompt_cache_key(",
+    "provider_codex_fast_mode_enabled(",
+    "provider_should_preserve_reasoning_content_for_openai_chat(",
+    "provider_claude_prompt_cache_key(",
+    "inject_openai_stream_include_usage(",
+    "provider_is_codex_oauth(",
+    "match api_format",
+];
 const FORBIDDEN_CLAUDE_PROVIDER_ADAPTER_RESPONSE_TRANSFORM_MARKERS: &[&str] = &[
     "gemini_response_to_anthropic_message(",
     "openai_responses_to_anthropic_message(",
@@ -1555,6 +1567,38 @@ fn production_claude_provider_adapter_delegates_transform_decision_to_adapter() 
     assert!(
         violations.is_empty(),
         "Claude provider adapter must delegate transform decision policy to proxy_core_adapter helpers:\n{}",
+        violations.join("\n")
+    );
+}
+
+#[test]
+fn production_claude_provider_adapter_delegates_request_transforms_to_adapter() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let path = manifest_dir.join("src/proxy/providers/claude.rs");
+    let source = fs::read_to_string(&path).expect("read claude provider adapter source");
+    let transform_request_helper = function_slice(
+        &source,
+        "pub fn transform_claude_request_for_api_format(",
+        "/// Claude 适配器",
+    );
+
+    let mut violations = Vec::new();
+    for (line_index, line) in production_lines(transform_request_helper) {
+        let code = line.split("//").next().unwrap_or_default();
+        for marker in FORBIDDEN_CLAUDE_PROVIDER_ADAPTER_REQUEST_TRANSFORM_MARKERS {
+            if code.contains(marker) {
+                violations.push(format!(
+                    "src/proxy/providers/claude.rs transform_claude_request_for_api_format:{} contains request transform marker `{}`",
+                    line_index + 1,
+                    marker
+                ));
+            }
+        }
+    }
+
+    assert!(
+        violations.is_empty(),
+        "Claude provider adapter must delegate request transform dispatch to proxy_core_adapter helpers:\n{}",
         violations.join("\n")
     );
 }

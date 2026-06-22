@@ -4535,6 +4535,52 @@ where
     )
 }
 
+pub(crate) fn provider_claude_transform_request_for_api_format(
+    body: Value,
+    provider: &Provider,
+    api_format: &str,
+    session_id: Option<&str>,
+    shadow_store: Option<&GeminiShadowStore>,
+) -> Result<Value, String> {
+    let is_codex_oauth = provider_is_codex_oauth(provider);
+    let cache_key_resolution =
+        provider_claude_responses_prompt_cache_key(provider, &body, session_id);
+
+    match api_format {
+        "openai_responses" => {
+            log::debug!(
+                "[Cache] OpenAI Responses prompt_cache_key source={cache_key_source}, provider={}, codex_oauth={is_codex_oauth}, has_key={}",
+                provider.id,
+                cache_key_resolution.key.is_some(),
+                cache_key_source = cache_key_resolution.source.as_str()
+            );
+            Ok(anthropic_to_openai_responses_request(
+                &body,
+                cache_key_resolution.key.as_deref(),
+                is_codex_oauth,
+                provider_codex_fast_mode_enabled(provider),
+            ))
+        }
+        "openai_chat" => {
+            let preserve_reasoning_content =
+                provider_should_preserve_reasoning_content_for_openai_chat(provider, &body);
+            let mut result = anthropic_to_openai_chat_request(&body, preserve_reasoning_content);
+            if let Some(key) = provider_claude_prompt_cache_key(provider) {
+                result["prompt_cache_key"] = serde_json::json!(key);
+            }
+            inject_openai_stream_include_usage(&mut result);
+            Ok(result)
+        }
+        "gemini_native" => anthropic_request_to_gemini_request_with_shadow(
+            &body,
+            shadow_store,
+            Some(&provider.id),
+            session_id,
+        ),
+        _ => Ok(body),
+    }
+}
+
 pub(crate) fn provider_claude_transform_response(body: Value) -> Result<Value, String> {
     // ProviderAdapter::transform_response does not receive provider config, so detect
     // structurally disjoint upstream response formats by their top-level fields.
@@ -12536,11 +12582,50 @@ base_url = "https://api.openai.com/v1"
         let chat_request = anthropic_to_openai_chat_request(&anthropic_body, false);
         assert_eq!(chat_request["model"], "claude-sonnet");
         assert_eq!(chat_request["messages"][0]["role"], "user");
+        let mut request_provider = Provider::with_id(
+            "claude-request".to_string(),
+            "Claude Request".to_string(),
+            json!({}),
+            None,
+        );
+        request_provider.meta = Some(ProviderMeta {
+            prompt_cache_key: Some("cache-request".to_string()),
+            ..Default::default()
+        });
+        let mut streaming_anthropic_body = anthropic_body.clone();
+        streaming_anthropic_body["stream"] = json!(true);
+        let delegated_chat_request = provider_claude_transform_request_for_api_format(
+            streaming_anthropic_body,
+            &request_provider,
+            "openai_chat",
+            None,
+            None,
+        )
+        .expect("delegated chat request");
+        assert_eq!(delegated_chat_request["model"], "claude-sonnet");
+        assert_eq!(delegated_chat_request["prompt_cache_key"], "cache-request");
+        assert_eq!(
+            delegated_chat_request["stream_options"]["include_usage"],
+            true
+        );
 
         let responses_request =
             anthropic_to_openai_responses_request(&anthropic_body, Some("cache-1"), false, false);
         assert_eq!(responses_request["model"], "claude-sonnet");
         assert_eq!(responses_request["prompt_cache_key"], "cache-1");
+        let delegated_responses_request = provider_claude_transform_request_for_api_format(
+            anthropic_body.clone(),
+            &request_provider,
+            "openai_responses",
+            Some("session-request"),
+            None,
+        )
+        .expect("delegated responses request");
+        assert_eq!(delegated_responses_request["model"], "claude-sonnet");
+        assert_eq!(
+            delegated_responses_request["prompt_cache_key"],
+            "cache-request"
+        );
 
         let gemini_request = anthropic_request_to_gemini_request_with_shadow(
             &anthropic_body,
@@ -12550,6 +12635,24 @@ base_url = "https://api.openai.com/v1"
         )
         .expect("gemini request");
         assert_eq!(gemini_request["contents"][0]["role"], "user");
+        let delegated_gemini_request = provider_claude_transform_request_for_api_format(
+            anthropic_body.clone(),
+            &request_provider,
+            "gemini_native",
+            Some("session-request"),
+            None,
+        )
+        .expect("delegated gemini request");
+        assert_eq!(delegated_gemini_request["contents"][0]["role"], "user");
+        let delegated_passthrough_request = provider_claude_transform_request_for_api_format(
+            anthropic_body.clone(),
+            &request_provider,
+            "anthropic",
+            None,
+            None,
+        )
+        .expect("delegated passthrough request");
+        assert_eq!(delegated_passthrough_request, anthropic_body);
 
         let chat_response = openai_chat_to_anthropic_message(&json!({
             "id": "chatcmpl_1",
