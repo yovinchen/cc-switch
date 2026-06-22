@@ -13,9 +13,10 @@ use crate::proxy_core_adapter::{
     claude_takeover_model_fields_from_settings, codex_live_config_has_proxy_placeholder,
     gemini_live_config_has_proxy_placeholder, live_config_has_proxy_placeholder_for_app,
     provider_claude_takeover_model_fields, provider_is_github_copilot,
-    provider_settings_have_proxy_placeholder_for_app, provider_uses_managed_account_auth,
-    proxy_runtime_status_stopped, proxy_server_info_from_parts, proxy_takeover_status_from_parts,
-    CircuitBreakerConfig, ProxyConfig, ProxyRuntimeStatus, ProxyServerInfo, ProxyTakeoverStatus,
+    provider_settings_have_proxy_placeholder_for_app, provider_settings_with_live_token_sync,
+    provider_uses_managed_account_auth, proxy_runtime_status_stopped, proxy_server_info_from_parts,
+    proxy_takeover_status_from_parts, CircuitBreakerConfig, LiveTokenProviderSettingsIssue,
+    ProxyConfig, ProxyRuntimeStatus, ProxyServerInfo, ProxyTakeoverStatus,
     PROXY_OFFICIAL_WARNING_EVENT,
 };
 use crate::services::provider::{
@@ -735,87 +736,21 @@ impl ProxyService {
                     if let Ok(Some(mut provider)) =
                         self.db.get_provider_by_id(&provider_id, "claude")
                     {
-                        if let Some(env) = live_config.get("env").and_then(|v| v.as_object()) {
-                            let token_pair = [
-                                "ANTHROPIC_AUTH_TOKEN",
-                                "ANTHROPIC_API_KEY",
-                                "OPENROUTER_API_KEY",
-                                "OPENAI_API_KEY",
-                            ]
-                            .into_iter()
-                            .find_map(|key| {
-                                env.get(key)
-                                    .and_then(|v| v.as_str())
-                                    .map(|s| (key, s.trim()))
-                            })
-                            .filter(|(_, token)| {
-                                !token.is_empty() && *token != PROXY_TOKEN_PLACEHOLDER
-                            });
-
-                            if let Some((token_key, token)) = token_pair {
-                                let env_obj = provider
-                                    .settings_config
-                                    .get_mut("env")
-                                    .and_then(|v| v.as_object_mut());
-
-                                match env_obj {
-                                    Some(obj) => {
-                                        if token_key == "ANTHROPIC_AUTH_TOKEN"
-                                            || token_key == "ANTHROPIC_API_KEY"
-                                        {
-                                            let mut updated = false;
-                                            if obj.contains_key("ANTHROPIC_AUTH_TOKEN") {
-                                                obj.insert(
-                                                    "ANTHROPIC_AUTH_TOKEN".to_string(),
-                                                    json!(token),
-                                                );
-                                                updated = true;
-                                            }
-                                            if obj.contains_key("ANTHROPIC_API_KEY") {
-                                                obj.insert(
-                                                    "ANTHROPIC_API_KEY".to_string(),
-                                                    json!(token),
-                                                );
-                                                updated = true;
-                                            }
-                                            if !updated {
-                                                obj.insert(token_key.to_string(), json!(token));
-                                            }
-                                        } else {
-                                            obj.insert(token_key.to_string(), json!(token));
-                                        }
-                                    }
-                                    None => {
-                                        // 至少写入一份可用的 Token
-                                        if provider.settings_config.is_null() {
-                                            provider.settings_config = json!({});
-                                        }
-
-                                        if let Some(root) = provider.settings_config.as_object_mut()
-                                        {
-                                            root.insert(
-                                                "env".to_string(),
-                                                json!({ token_key: token }),
-                                            );
-                                        } else {
-                                            log::warn!(
-                                                "Claude provider settings_config 格式异常（非对象），跳过写入 Token (provider: {provider_id})"
-                                            );
-                                        }
-                                    }
-                                }
-
-                                if let Err(e) = self.db.update_provider_settings_config(
-                                    "claude",
-                                    &provider_id,
-                                    &provider.settings_config,
-                                ) {
-                                    log::warn!("同步 Claude Token 到数据库失败: {e}");
-                                } else {
-                                    log::info!(
-                                        "已同步 Claude Token 到数据库 (provider: {provider_id})"
-                                    );
-                                }
+                        if Self::sync_live_token_to_provider_settings(
+                            &AppType::Claude,
+                            "Claude",
+                            &provider_id,
+                            &mut provider,
+                            live_config,
+                        ) {
+                            if let Err(e) = self.db.update_provider_settings_config(
+                                "claude",
+                                &provider_id,
+                                &provider.settings_config,
+                            ) {
+                                log::warn!("同步 Claude Token 到数据库失败: {e}");
+                            } else {
+                                log::info!("已同步 Claude Token 到数据库 (provider: {provider_id})");
                             }
                         }
                     }
@@ -830,36 +765,13 @@ impl ProxyService {
                     if let Ok(Some(mut provider)) =
                         self.db.get_provider_by_id(&provider_id, "codex")
                     {
-                        if let Some(token) = live_config
-                            .get("auth")
-                            .and_then(|v| v.get("OPENAI_API_KEY"))
-                            .and_then(|v| v.as_str())
-                            .map(|s| s.trim())
-                            .filter(|s| !s.is_empty() && *s != PROXY_TOKEN_PLACEHOLDER)
-                        {
-                            if let Some(auth_obj) = provider
-                                .settings_config
-                                .get_mut("auth")
-                                .and_then(|v| v.as_object_mut())
-                            {
-                                auth_obj.insert("OPENAI_API_KEY".to_string(), json!(token));
-                            } else {
-                                if provider.settings_config.is_null() {
-                                    provider.settings_config = json!({});
-                                }
-
-                                if let Some(root) = provider.settings_config.as_object_mut() {
-                                    root.insert(
-                                        "auth".to_string(),
-                                        json!({ "OPENAI_API_KEY": token }),
-                                    );
-                                } else {
-                                    log::warn!(
-                                        "Codex provider settings_config 格式异常（非对象），跳过写入 Token (provider: {provider_id})"
-                                    );
-                                }
-                            }
-
+                        if Self::sync_live_token_to_provider_settings(
+                            &AppType::Codex,
+                            "Codex",
+                            &provider_id,
+                            &mut provider,
+                            live_config,
+                        ) {
                             if let Err(e) = self.db.update_provider_settings_config(
                                 "codex",
                                 &provider_id,
@@ -882,36 +794,13 @@ impl ProxyService {
                     if let Ok(Some(mut provider)) =
                         self.db.get_provider_by_id(&provider_id, "gemini")
                     {
-                        if let Some(token) = live_config
-                            .get("env")
-                            .and_then(|v| v.get("GEMINI_API_KEY"))
-                            .and_then(|v| v.as_str())
-                            .map(|s| s.trim())
-                            .filter(|s| !s.is_empty() && *s != PROXY_TOKEN_PLACEHOLDER)
-                        {
-                            if let Some(env_obj) = provider
-                                .settings_config
-                                .get_mut("env")
-                                .and_then(|v| v.as_object_mut())
-                            {
-                                env_obj.insert("GEMINI_API_KEY".to_string(), json!(token));
-                            } else {
-                                if provider.settings_config.is_null() {
-                                    provider.settings_config = json!({});
-                                }
-
-                                if let Some(root) = provider.settings_config.as_object_mut() {
-                                    root.insert(
-                                        "env".to_string(),
-                                        json!({ "GEMINI_API_KEY": token }),
-                                    );
-                                } else {
-                                    log::warn!(
-                                        "Gemini provider settings_config 格式异常（非对象），跳过写入 Token (provider: {provider_id})"
-                                    );
-                                }
-                            }
-
+                        if Self::sync_live_token_to_provider_settings(
+                            &AppType::Gemini,
+                            "Gemini",
+                            &provider_id,
+                            &mut provider,
+                            live_config,
+                        ) {
                             if let Err(e) = self.db.update_provider_settings_config(
                                 "gemini",
                                 &provider_id,
@@ -931,6 +820,33 @@ impl ProxyService {
         }
 
         Ok(())
+    }
+
+    fn sync_live_token_to_provider_settings(
+        app_type: &AppType,
+        app_label: &str,
+        provider_id: &str,
+        provider: &mut Provider,
+        live_config: &Value,
+    ) -> bool {
+        match provider_settings_with_live_token_sync(
+            app_type,
+            live_config,
+            &provider.settings_config,
+            PROXY_TOKEN_PLACEHOLDER,
+        ) {
+            Ok(Some(settings_config)) => {
+                provider.settings_config = settings_config;
+                true
+            }
+            Ok(None) => false,
+            Err(LiveTokenProviderSettingsIssue::InvalidProviderSettings) => {
+                log::warn!(
+                    "{app_label} provider settings_config 格式异常（非对象），跳过写入 Token (provider: {provider_id})"
+                );
+                false
+            }
+        }
     }
 
     async fn sync_live_to_providers(&self) -> Result<(), String> {
