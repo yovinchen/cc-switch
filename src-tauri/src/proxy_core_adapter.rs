@@ -1196,6 +1196,20 @@ pub(crate) fn provider_default_live_import_settings(
     settings
 }
 
+pub(crate) fn should_skip_manual_default_live_import(
+    app_type: &AppType,
+    has_non_official_seed_provider: bool,
+) -> bool {
+    app_type.is_additive_mode() || has_non_official_seed_provider
+}
+
+pub(crate) fn should_skip_startup_default_live_import(
+    app_type: &AppType,
+    has_any_provider: bool,
+) -> bool {
+    app_type.is_additive_mode() || has_any_provider
+}
+
 /// Reads old Claude model keys, writes DEFAULT_* keys, and deletes legacy SMALL_FAST.
 pub(crate) fn normalize_claude_models_in_value(settings: &mut Value) -> bool {
     let mut changed = false;
@@ -12540,6 +12554,36 @@ command = "latest-command"
             provider_default_live_import_settings(&AppType::Codex, codex_settings.clone()),
             codex_settings
         );
+    }
+
+    #[test]
+    fn default_live_import_skip_policy_distinguishes_manual_and_startup() {
+        assert!(should_skip_manual_default_live_import(
+            &AppType::OpenCode,
+            false
+        ));
+        assert!(should_skip_startup_default_live_import(
+            &AppType::OpenCode,
+            false
+        ));
+
+        assert!(!should_skip_manual_default_live_import(
+            &AppType::Claude,
+            false
+        ));
+        assert!(should_skip_manual_default_live_import(
+            &AppType::Claude,
+            true
+        ));
+
+        assert!(!should_skip_startup_default_live_import(
+            &AppType::Claude,
+            false
+        ));
+        assert!(should_skip_startup_default_live_import(
+            &AppType::Claude,
+            true
+        ));
     }
 
     #[test]

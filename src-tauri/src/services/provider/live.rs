@@ -33,6 +33,8 @@ use crate::proxy_core_adapter::{
     proxy_live_config_owned_by_takeover,
     restore_live_settings_for_provider_backfill as adapter_restore_live_settings_for_provider_backfill,
     sanitize_claude_settings_for_live,
+    should_skip_manual_default_live_import,
+    should_skip_startup_default_live_import,
     strip_common_config_from_live_settings_for_backfill as adapter_strip_common_config_from_live_settings_for_backfill,
     validate_provider_gemini_settings_strict, CodexLiveSnapshotIssue, GeminiLiveConfigIssue,
 };
@@ -691,17 +693,13 @@ pub fn read_live_settings(app_type: AppType) -> Result<Value, AppError> {
 /// Returns `Ok(true)` if a provider was actually imported,
 /// `Ok(false)` if skipped (providers already exist for this app).
 pub fn import_default_config(state: &AppState, app_type: AppType) -> Result<bool, AppError> {
-    // Additive mode apps (OpenCode, OpenClaw) should use their dedicated
-    // import_xxx_providers_from_live functions, not this generic default config import
-    if app_type.is_additive_mode() {
-        return Ok(false);
-    }
-
     // 允许 "只有官方 seed 预设" 的情况下继续导入 live：
     // - 启动编排顺序是先 import 后 seed，新用户启动时 providers 为空，导入照常
     // - 老用户已有非 seed provider，跳过导入（正确）
     // - 用户手动点 ProviderEmptyState 的导入按钮时，与官方 seed 共存而不被阻塞
-    if state.db.has_non_official_seed_provider(app_type.as_str())? {
+    let has_non_official_seed_provider =
+        state.db.has_non_official_seed_provider(app_type.as_str())?;
+    if should_skip_manual_default_live_import(&app_type, has_non_official_seed_provider) {
         return Ok(false);
     }
 
@@ -797,11 +795,11 @@ pub fn should_import_default_config_on_startup(
     state: &AppState,
     app_type: &AppType,
 ) -> Result<bool, AppError> {
-    if app_type.is_additive_mode() {
-        return Ok(false);
-    }
-
-    Ok(!state.db.has_any_provider_for_app(app_type.as_str())?)
+    let has_any_provider = state.db.has_any_provider_for_app(app_type.as_str())?;
+    Ok(!should_skip_startup_default_live_import(
+        app_type,
+        has_any_provider,
+    ))
 }
 
 /// Write Gemini live configuration with authentication handling
