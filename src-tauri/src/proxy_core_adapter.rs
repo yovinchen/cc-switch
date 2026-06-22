@@ -1224,6 +1224,10 @@ pub(crate) fn provider_live_sync_scope(app_type: &AppType) -> ProviderLiveSyncSc
     }
 }
 
+pub(crate) fn provider_app_has_current_provider(app_type: &AppType) -> bool {
+    !app_type.is_additive_mode()
+}
+
 pub(crate) fn provider_should_sync_to_live(provider: &Provider) -> bool {
     provider
         .meta
@@ -12642,6 +12646,14 @@ command = "latest-command"
             provider_live_sync_scope(&AppType::ClaudeDesktop),
             ProviderLiveSyncScope::CurrentProvider
         );
+    }
+
+    #[test]
+    fn provider_current_provider_scope_excludes_additive_apps() {
+        assert!(!provider_app_has_current_provider(&AppType::OpenCode));
+        assert!(!provider_app_has_current_provider(&AppType::OpenClaw));
+        assert!(provider_app_has_current_provider(&AppType::Claude));
+        assert!(provider_app_has_current_provider(&AppType::Codex));
     }
 
     #[test]

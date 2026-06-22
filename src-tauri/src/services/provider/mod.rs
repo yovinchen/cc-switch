@@ -17,8 +17,9 @@ use crate::error::AppError;
 use crate::provider::{Provider, UsageResult};
 use crate::proxy_core_adapter::{
     common_config_snippet_from_settings, common_config_snippet_issue_message,
-    normalize_claude_models_in_value, provider_credential_issue_spec,
-    provider_credential_values, provider_live_config_presence_error_policy,
+    normalize_claude_models_in_value, provider_app_has_current_provider,
+    provider_credential_issue_spec, provider_credential_values,
+    provider_live_config_presence_error_policy,
     provider_settings_validation_issue_spec, provider_settings_validation_parts,
     proxy_live_config_owned_by_takeover,
     proxy_switch_should_hot_switch, should_block_proxy_switch_to_provider,
@@ -1392,8 +1393,7 @@ impl ProviderService {
     ///
     /// 对于累加模式应用（OpenCode, OpenClaw），不存在"当前供应商"概念，直接返回空字符串。
     pub fn current(state: &AppState, app_type: AppType) -> Result<String, AppError> {
-        // Additive mode apps have no "current" provider concept
-        if app_type.is_additive_mode() {
+        if !provider_app_has_current_provider(&app_type) {
             return Ok(String::new());
         }
         crate::settings::get_effective_current_provider(&state.db, &app_type)
