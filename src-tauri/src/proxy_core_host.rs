@@ -36,6 +36,7 @@ use crate::proxy_core_adapter::{
     channel_health_reset_plan_from_lookup,
     channel_key_records_from_db_source,
     channel_model_records_from_db_source,
+    channel_records_from_router_source,
     channel_test_app_type_from_probe_request,
     channel_test_provider_from_probe_source,
     channel_spec_from_source_lookup,
@@ -52,9 +53,10 @@ use crate::proxy_core_adapter::{
     forwarding_runtime_unavailable_error,
     log_usage_request_projection_warnings,
     provider_model_catalog_from_provider, provider_spec_from_db_source,
-    provider_specs_from_db_source, proxy_channel_records_to_core,
+    provider_specs_from_db_source,
     proxy_app_config_from_db_source, proxy_global_config_from_db_source,
     emit_proxy_core_event,
+    materialized_channel_records_from_db_source,
     proxy_runtime_config_from_db_source,
     replace_channel_model_records_from_db_source,
     route_policy_from_source,
@@ -436,33 +438,14 @@ impl ChannelSource for CcSwitchChannelSource {
         &'a self,
         app: &'a AppKind,
     ) -> BoxFuture<'a, ProxyCoreResult<(ChannelRouteSource, Vec<ChannelRecord>)>> {
-        Box::pin(async move {
-            let (channels, source) = self
-                .router
-                .list_channels_for_app(app.as_str())
-                .await
-                .map_err(|error| app_error("list channel records", error))?;
-            Ok((source, proxy_channel_records_to_core(channels)))
-        })
+        Box::pin(async move { channel_records_from_router_source(&self.router, app).await })
     }
 
     fn list_materialized_channel_records<'a>(
         &'a self,
         app: Option<&'a AppKind>,
     ) -> BoxFuture<'a, ProxyCoreResult<Vec<ChannelRecord>>> {
-        Box::pin(async move {
-            let channels = match app {
-                Some(app) => self
-                    .db
-                    .list_proxy_channels_for_app(app.as_str())
-                    .map_err(|error| app_error("list materialized channel records", error))?,
-                None => self
-                    .db
-                    .list_all_proxy_channels()
-                    .map_err(|error| app_error("list materialized channel records", error))?,
-            };
-            Ok(proxy_channel_records_to_core(channels))
-        })
+        Box::pin(async move { materialized_channel_records_from_db_source(&self.db, app) })
     }
 
     fn preview_legacy_channel_migration<'a>(

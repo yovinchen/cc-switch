@@ -92,6 +92,12 @@ const FORBIDDEN_PROXY_CORE_HOST_CHANNEL_KEY_MODEL_SOURCE_MARKERS: &[&str] = &[
     "proxy_channel_key_records_to_core(",
     "proxy_channel_model_records_to_core(",
 ];
+const FORBIDDEN_PROXY_CORE_HOST_CHANNEL_RECORD_LIST_SOURCE_MARKERS: &[&str] = &[
+    ".list_channels_for_app(",
+    ".list_proxy_channels_for_app(",
+    ".list_all_proxy_channels(",
+    "proxy_channel_records_to_core(",
+];
 const FORBIDDEN_PROXY_CORE_HOST_AUTH_PROFILE_DB_MARKERS: &[&str] = &[
     "fn apply_channel_auth_profile_providers(",
     "get_enabled_proxy_channel_key(",
@@ -1510,6 +1516,38 @@ fn production_proxy_core_host_delegates_channel_key_model_source_to_adapter() {
     assert!(
         violations.is_empty(),
         "production proxy_core_host must delegate channel key/model DB/projection wiring to proxy_core_adapter:\n{}",
+        violations.join("\n")
+    );
+}
+
+#[test]
+fn production_proxy_core_host_delegates_channel_record_list_source_to_adapter() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let path = manifest_dir.join("src/proxy_core_host.rs");
+    let source = fs::read_to_string(&path).expect("read proxy_core_host.rs");
+    let channel_record_list_source = function_slice(
+        &source,
+        "    fn list_channel_records",
+        "    fn preview_legacy_channel_migration",
+    );
+
+    let mut violations = Vec::new();
+    for (line_index, line) in production_lines(channel_record_list_source) {
+        let code = line.split("//").next().unwrap_or_default();
+        for marker in FORBIDDEN_PROXY_CORE_HOST_CHANNEL_RECORD_LIST_SOURCE_MARKERS {
+            if code.contains(marker) {
+                violations.push(format!(
+                    "src/proxy_core_host.rs CcSwitchChannelSource record-list:{} contains channel record list source marker `{}`",
+                    line_index + 1,
+                    marker
+                ));
+            }
+        }
+    }
+
+    assert!(
+        violations.is_empty(),
+        "production proxy_core_host must delegate channel record list DB/router projection wiring to proxy_core_adapter:\n{}",
         violations.join("\n")
     );
 }

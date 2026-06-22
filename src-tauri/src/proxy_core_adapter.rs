@@ -8582,6 +8582,32 @@ pub(crate) fn proxy_channel_records_to_core(
         .collect()
 }
 
+pub(crate) async fn channel_records_from_router_source(
+    router: &ProviderRouter,
+    app: &AppKind,
+) -> ProxyCoreResult<(ChannelRouteSource, Vec<ChannelRecord>)> {
+    let (channels, source) = router
+        .list_channels_for_app(app.as_str())
+        .await
+        .map_err(|error| app_error("list channel records", error))?;
+    Ok((source, proxy_channel_records_to_core(channels)))
+}
+
+pub(crate) fn materialized_channel_records_from_db_source(
+    db: &Database,
+    app: Option<&AppKind>,
+) -> ProxyCoreResult<Vec<ChannelRecord>> {
+    let channels = match app {
+        Some(app) => db
+            .list_proxy_channels_for_app(app.as_str())
+            .map_err(|error| app_error("list materialized channel records", error))?,
+        None => db
+            .list_all_proxy_channels()
+            .map_err(|error| app_error("list materialized channel records", error))?,
+    };
+    Ok(proxy_channel_records_to_core(channels))
+}
+
 pub(crate) fn proxy_channel_key_record_to_core(key: ProxyChannelKeyRecord) -> ChannelKeyRecord {
     channel_key_record_from_input(ChannelKeyRecordInput {
         channel_id: key.channel_id,
