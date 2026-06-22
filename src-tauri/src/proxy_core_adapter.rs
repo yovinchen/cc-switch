@@ -3938,21 +3938,7 @@ pub(crate) fn provider_needs_claude_transform(provider: &Provider) -> bool {
     claude_api_format_needs_transform(provider_claude_api_format(provider))
 }
 
-pub(crate) fn infer_claude_provider_kind(
-    api_format: &str,
-    uses_google_oauth: bool,
-    meta_provider_type: Option<&str>,
-    base_url: Option<&str>,
-    settings_config: &Value,
-) -> ProviderKind {
-    crate::proxy_core::api::domain::infer_claude_provider_kind(
-        api_format,
-        uses_google_oauth,
-        meta_provider_type,
-        base_url,
-        settings_config,
-    )
-}
+pub(crate) use crate::proxy_core::api::domain::infer_claude_provider_kind;
 
 pub(crate) fn provider_claude_kind(provider: &Provider) -> ProviderKind {
     let api_format = provider_claude_api_format(provider);
@@ -4215,15 +4201,7 @@ pub(crate) fn provider_with_channel_auth_key(
     auth_provider
 }
 
-pub(crate) fn extract_claude_base_url_from_settings(
-    is_codex_oauth: bool,
-    settings_config: &Value,
-) -> Option<String> {
-    crate::proxy_core::api::domain::extract_claude_base_url_from_settings(
-        is_codex_oauth,
-        settings_config,
-    )
-}
+pub(crate) use crate::proxy_core::api::domain::extract_claude_base_url_from_settings;
 
 pub(crate) fn provider_claude_base_url(provider: &Provider) -> Option<String> {
     extract_claude_base_url_from_settings(

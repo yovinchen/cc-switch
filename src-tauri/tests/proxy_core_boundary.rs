@@ -485,6 +485,8 @@ const FORBIDDEN_PROXY_CORE_ADAPTER_SMALL_HELPER_FACADE_MARKERS: &[&str] = &[
     "fn stream_check_result_to_channel_reachability(",
     "fn channel_reachability_status_from_latency(",
     "fn should_retry_channel_reachability_failure(",
+    "fn infer_claude_provider_kind(",
+    "fn extract_claude_base_url_from_settings(",
     "fn model_route_from_input(",
     "fn channel_spec_from_input(",
     "fn channel_model_record_from_input(",
