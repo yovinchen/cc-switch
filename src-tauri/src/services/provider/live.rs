@@ -24,7 +24,8 @@ use crate::proxy_core_adapter::{
     ProviderBackfillSettingsWarning, ProviderEffectiveSettingsWarning,
     provider_common_config_storage_normalization_requires_snippet,
     provider_gemini_env_map, provider_gemini_live_config_object,
-    provider_opencode_live_write_plan, provider_openclaw_live_write_plan,
+    provider_from_opencode_live_config, provider_opencode_live_write_plan,
+    provider_openclaw_live_write_plan, OpenCodeLiveImportIssue,
     proxy_live_config_owned_by_takeover,
     restore_live_settings_for_provider_backfill as adapter_restore_live_settings_for_provider_backfill,
     sanitize_claude_settings_for_live,
@@ -966,26 +967,13 @@ pub fn import_opencode_providers_from_live(state: &AppState) -> Result<usize, Ap
             continue;
         }
 
-        // Convert to Value for settings_config
-        let settings_config = match serde_json::to_value(&config) {
-            Ok(v) => v,
-            Err(e) => {
-                log::warn!("Failed to serialize OpenCode provider '{id}': {e}");
+        let provider = match provider_from_opencode_live_config(&id, &config) {
+            Ok(provider) => provider,
+            Err(OpenCodeLiveImportIssue::Serialization(error)) => {
+                log::warn!("Failed to serialize OpenCode provider '{id}': {error}");
                 continue;
             }
         };
-
-        // Create provider
-        let mut provider = Provider::with_id(
-            id.clone(),
-            config.name.clone().unwrap_or_else(|| id.clone()),
-            settings_config,
-            None,
-        );
-        provider.meta = Some(crate::provider::ProviderMeta {
-            live_config_managed: Some(true),
-            ..Default::default()
-        });
 
         // Save to database
         if let Err(e) = state.db.save_provider("opencode", &provider) {

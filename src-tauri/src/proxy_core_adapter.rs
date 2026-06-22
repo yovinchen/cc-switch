@@ -1346,6 +1346,31 @@ pub(crate) fn provider_opencode_live_write_plan(
     }
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum OpenCodeLiveImportIssue {
+    Serialization(String),
+}
+
+pub(crate) fn provider_from_opencode_live_config(
+    id: &str,
+    config: &OpenCodeProviderConfig,
+) -> Result<Provider, OpenCodeLiveImportIssue> {
+    let settings_config = serde_json::to_value(config)
+        .map_err(|error| OpenCodeLiveImportIssue::Serialization(error.to_string()))?;
+    let mut provider = Provider::with_id(
+        id.to_string(),
+        config.name.clone().unwrap_or_else(|| id.to_string()),
+        settings_config,
+        None,
+    );
+    provider.meta = Some(ProviderMeta {
+        live_config_managed: Some(true),
+        ..Default::default()
+    });
+
+    Ok(provider)
+}
+
 pub(crate) fn channel_auth_profile_resolution(
     auth_profile_ref: Option<&str>,
     app_type: &str,
@@ -11625,6 +11650,31 @@ command = "latest-command"
         assert!(opencode_live_provider_fragment_has_provider_fields(
             &fragment.config
         ));
+        let typed_config =
+            serde_json::from_value::<OpenCodeProviderConfig>(provider.settings_config.clone())
+                .expect("typed opencode provider config");
+        let imported_provider =
+            provider_from_opencode_live_config("openai", &typed_config).expect("import provider");
+        assert_eq!(imported_provider.id, "openai");
+        assert_eq!(imported_provider.name, "openai");
+        assert_eq!(
+            imported_provider.settings_config,
+            serde_json::to_value(&typed_config).expect("serialized typed config")
+        );
+        assert_eq!(
+            imported_provider
+                .meta
+                .as_ref()
+                .and_then(|meta| meta.live_config_managed),
+            Some(true)
+        );
+        let named_config = OpenCodeProviderConfig {
+            name: Some("OpenAI".to_string()),
+            ..typed_config.clone()
+        };
+        let imported_named_provider =
+            provider_from_opencode_live_config("openai", &named_config).expect("import provider");
+        assert_eq!(imported_named_provider.name, "OpenAI");
         let plan = provider_opencode_live_write_plan(&provider);
         assert!(!plan.from_full_config);
         assert!(matches!(plan.config, OpenCodeLiveWriteConfig::Typed(_)));
