@@ -4149,6 +4149,21 @@ pub(crate) fn claude_live_config_has_proxy_placeholder(
         .any(|key| env.get(key).and_then(Value::as_str) == Some(placeholder))
 }
 
+pub(crate) fn is_local_proxy_url(url: &str) -> bool {
+    let url = url.trim();
+    if !url.starts_with("http://") {
+        return false;
+    }
+    let rest = &url["http://".len()..];
+    rest.starts_with("127.0.0.1")
+        || rest.starts_with("localhost")
+        || rest.starts_with("0.0.0.0")
+        || rest.starts_with("[::1]")
+        || rest.starts_with("[::]")
+        || rest.starts_with("::1")
+        || rest.starts_with("::")
+}
+
 pub(crate) fn remove_claude_takeover_env_fields_if_present<F>(
     config: &mut Value,
     placeholder: &str,
@@ -7188,6 +7203,30 @@ wire_api = "chat"
             "GEMINI_API_KEY".to_string(),
             "gemini-key".to_string()
         )));
+    }
+
+    #[test]
+    fn proxy_adapter_classifies_local_proxy_urls_for_takeover_cleanup() {
+        for url in [
+            " http://127.0.0.1:15721 ",
+            "http://localhost:15721",
+            "http://0.0.0.0:15721",
+            "http://[::1]:15721",
+            "http://[::]:15721",
+            "http://::1:15721",
+            "http://:::15721",
+        ] {
+            assert!(is_local_proxy_url(url), "{url} should be local");
+        }
+
+        for url in [
+            "https://127.0.0.1:15721",
+            "socks5://localhost:15721",
+            "http://relay.example/v1",
+            "",
+        ] {
+            assert!(!is_local_proxy_url(url), "{url} should not be local");
+        }
     }
 
     #[test]

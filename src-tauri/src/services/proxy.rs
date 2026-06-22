@@ -17,9 +17,10 @@ use crate::proxy_core_adapter::{
     codex_live_write_projection, codex_preserved_auth_live_config_text_if_proxy_placeholder,
     codex_takeover_toml_config_for_provider,
     ensure_codex_takeover_auth_placeholder, gemini_live_backup_from_effective_settings,
-    live_backup_snapshot_from_live_config, live_config_has_proxy_placeholder_for_app,
-    live_takeover_config_matches_proxy_for_app, provider_claude_takeover_model_fields,
-    provider_is_github_copilot, provider_settings_have_proxy_placeholder_for_app,
+    is_local_proxy_url, live_backup_snapshot_from_live_config,
+    live_config_has_proxy_placeholder_for_app, live_takeover_config_matches_proxy_for_app,
+    provider_claude_takeover_model_fields, provider_is_github_copilot,
+    provider_settings_have_proxy_placeholder_for_app,
     preserve_codex_mcp_servers_from_existing_config,
     preserve_codex_oauth_auth_in_backup_if_present, provider_settings_with_live_token_sync,
     remove_claude_takeover_env_fields_if_present, CodexBackupProjectionIssue,
@@ -1429,21 +1430,6 @@ impl ProxyService {
         }
     }
 
-    fn is_local_proxy_url(url: &str) -> bool {
-        let url = url.trim();
-        if !url.starts_with("http://") {
-            return false;
-        }
-        let rest = &url["http://".len()..];
-        rest.starts_with("127.0.0.1")
-            || rest.starts_with("localhost")
-            || rest.starts_with("0.0.0.0")
-            || rest.starts_with("[::1]")
-            || rest.starts_with("[::]")
-            || rest.starts_with("::1")
-            || rest.starts_with("::")
-    }
-
     async fn live_takeover_matches_current_proxy(
         &self,
         app_type: &AppType,
@@ -1472,7 +1458,7 @@ impl ProxyService {
         if remove_claude_takeover_env_fields_if_present(
             &mut config,
             PROXY_TOKEN_PLACEHOLDER,
-            Self::is_local_proxy_url,
+            is_local_proxy_url,
         )
         .is_none()
         {
@@ -1491,7 +1477,7 @@ impl ProxyService {
         remove_codex_takeover_config_placeholders_if_present(
             &mut config,
             PROXY_TOKEN_PLACEHOLDER,
-            Self::is_local_proxy_url,
+            is_local_proxy_url,
         )
         .map_err(|e| format!("清理 Codex 接管占位符失败: {e}"))?;
 
@@ -1505,7 +1491,7 @@ impl ProxyService {
         if remove_gemini_takeover_env_fields_if_present(
             &mut config,
             PROXY_TOKEN_PLACEHOLDER,
-            Self::is_local_proxy_url,
+            is_local_proxy_url,
         )
         .is_none()
         {
