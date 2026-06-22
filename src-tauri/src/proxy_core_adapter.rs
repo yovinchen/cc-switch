@@ -5601,41 +5601,12 @@ pub(crate) fn codex_default_model_context_window() -> u64 {
     crate::proxy_core::api::model_catalog::DEFAULT_CODEX_MODEL_CONTEXT_WINDOW
 }
 
-pub(crate) fn codex_settings_have_model_catalog_specs(settings: &Value) -> bool {
-    crate::proxy_core::api::model_catalog::has_codex_model_catalog_specs(settings)
-}
-
-pub(crate) fn codex_model_catalog_from_settings(
-    settings: &Value,
-    default_context_window: u64,
-    template: &Value,
-) -> Option<Value> {
-    crate::proxy_core::api::model_catalog::build_codex_model_catalog_from_settings(
-        settings,
-        default_context_window,
-        template,
-    )
-}
-
-pub(crate) fn simplify_codex_model_catalog(
-    catalog_text: &str,
-    default_context_window: u64,
-) -> Option<Value> {
-    crate::proxy_core::api::model_catalog::simplify_codex_model_catalog(
-        catalog_text,
-        default_context_window,
-    )
-}
-
-pub(crate) fn provider_model_catalog_from_settings(
-    provider_id: &str,
-    settings: Option<&Value>,
-) -> ModelCatalog {
-    crate::proxy_core::api::model_catalog::provider_model_catalog_from_settings(
-        provider_id,
-        settings,
-    )
-}
+pub(crate) use crate::proxy_core::api::model_catalog::{
+    build_codex_model_catalog_from_settings as codex_model_catalog_from_settings,
+    client_model_catalog_raw_from_text, empty_client_model_catalog_raw,
+    has_codex_model_catalog_specs as codex_settings_have_model_catalog_specs,
+    provider_model_catalog_from_settings, simplify_codex_model_catalog,
+};
 
 pub(crate) fn provider_model_catalog_from_provider(
     provider_id: &str,
@@ -5743,14 +5714,6 @@ pub(crate) fn client_model_catalog_from_app_source(
     let source = client_model_catalog_source_for_app(app.as_str());
     let raw = client_model_catalog_raw_from_source(source);
     Ok(client_model_catalog_from_optional_raw(app, raw))
-}
-
-pub(crate) fn empty_client_model_catalog_raw() -> Value {
-    crate::proxy_core::api::model_catalog::empty_client_model_catalog_raw()
-}
-
-pub(crate) fn client_model_catalog_raw_from_text(catalog_text: &str) -> Value {
-    crate::proxy_core::api::model_catalog::client_model_catalog_raw_from_text(catalog_text)
 }
 
 pub(crate) fn codex_client_model_catalog_raw_from_active_config() -> Value {

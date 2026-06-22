@@ -562,6 +562,12 @@ const FORBIDDEN_PROXY_CORE_ADAPTER_SMALL_HELPER_FACADE_MARKERS: &[&str] = &[
     "fn legacy_provider_codex_catalog_models_from_settings(",
     "fn infer_legacy_channel_interface(",
     "fn build_legacy_channel_projection(",
+    "fn codex_settings_have_model_catalog_specs(",
+    "fn codex_model_catalog_from_settings(",
+    "fn simplify_codex_model_catalog(",
+    "fn provider_model_catalog_from_settings(",
+    "fn empty_client_model_catalog_raw(",
+    "fn client_model_catalog_raw_from_text(",
     "fn model_route_from_input(",
     "fn channel_spec_from_input(",
     "fn channel_model_record_from_input(",
@@ -2463,7 +2469,7 @@ fn proxy_core_adapter_delegates_client_model_catalog_source_selection_to_core() 
     let function = function_slice(
         &source,
         "pub(crate) fn client_model_catalog_from_app_source",
-        "pub(crate) fn empty_client_model_catalog_raw",
+        "pub(crate) fn codex_client_model_catalog_raw_from_active_config",
     );
 
     assert!(
