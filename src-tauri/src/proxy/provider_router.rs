@@ -2,7 +2,7 @@
 //!
 //! 负责选择和管理代理目标供应商，实现智能故障转移
 
-use crate::database::{Database, ProxyChannelMigrationPreview, ProxyChannelRecord};
+use crate::database::{Database, ProxyChannelRecord};
 use crate::error::AppError;
 use crate::provider::Provider;
 use crate::proxy::circuit_breaker::CircuitBreaker;
@@ -11,8 +11,7 @@ use crate::proxy_core_adapter::{
     app_type_from_circuit_key, channel_circuit_key, channel_circuit_key_prefix,
     circuit_breaker_config_from_app_config, circuit_failure_threshold_from_app_config,
     current_provider_id_from_router_sources,
-    provider_circuit_key, provider_circuit_key_prefix,
-    channel_route_should_load_legacy_projection, channel_route_source_for_materialized_records,
+    provider_circuit_key, provider_circuit_key_prefix, channel_route_records_from_sources,
     provider_failover_circuit_lookups,
     provider_selection_candidate_from_failover_lookup, proxy_channel_route_inputs_to_core,
     reject_unavailable_channel_ids, resolve_channel_route as resolve_core_channel_route,
@@ -150,14 +149,9 @@ impl ProviderRouter {
         app_type: &str,
     ) -> Result<(Vec<ProxyChannelRecord>, ChannelRouteSource), AppError> {
         let channels = self.db.list_proxy_channels_for_app(app_type)?;
-        let source = channel_route_source_for_materialized_records(&channels);
-        if !channel_route_should_load_legacy_projection(&source) {
-            return Ok((channels, source));
-        }
-
-        let preview: ProxyChannelMigrationPreview =
-            self.db.preview_legacy_proxy_channel_migration(app_type)?;
-        Ok((preview.channels, source))
+        channel_route_records_from_sources(channels, || {
+            self.db.preview_legacy_proxy_channel_migration(app_type)
+        })
     }
 
     /// Resolve a dry-run channel route for management API/debugging.

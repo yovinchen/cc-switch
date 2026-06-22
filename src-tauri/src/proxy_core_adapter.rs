@@ -5299,6 +5299,19 @@ pub(crate) fn channel_route_should_load_legacy_projection(source: &ChannelRouteS
     source == &ChannelRouteSource::LegacyProjection
 }
 
+pub(crate) fn channel_route_records_from_sources(
+    materialized_channels: Vec<ProxyChannelRecord>,
+    load_legacy_projection: impl FnOnce() -> Result<ProxyChannelMigrationPreview, AppError>,
+) -> Result<(Vec<ProxyChannelRecord>, ChannelRouteSource), AppError> {
+    let source = channel_route_source_for_materialized_records(&materialized_channels);
+    if !channel_route_should_load_legacy_projection(&source) {
+        return Ok((materialized_channels, source));
+    }
+
+    let preview = load_legacy_projection()?;
+    Ok((preview.channels, source))
+}
+
 pub(crate) fn proxy_channel_route_inputs_to_core(
     channels: impl IntoIterator<Item = ProxyChannelRecord>,
 ) -> Vec<RouteResolveChannelInput> {
@@ -14607,8 +14620,27 @@ command = "latest-command"
 
         let spec = channel.to_proxy_core_channel_spec();
         let source_spec = channel_spec_from_source(Some(channel.clone())).expect("channel spec");
+        let (materialized_channels, materialized_source) =
+            channel_route_records_from_sources(vec![channel.clone()], || {
+                panic!("materialized channels must not load legacy projection")
+            })
+            .expect("materialized route records");
+        let (legacy_channels, legacy_source) =
+            channel_route_records_from_sources(Vec::new(), || {
+                Ok(ProxyChannelMigrationPreview {
+                    app_type: "claude".to_string(),
+                    channels: vec![channel.clone()],
+                    duplicate_count: 0,
+                    needs_review_count: 0,
+                })
+            })
+            .expect("legacy route records");
 
         assert_eq!(source_spec.id, "ch-1");
+        assert_eq!(materialized_source, ChannelRouteSource::MaterializedChannels);
+        assert_eq!(materialized_channels[0].id, "ch-1");
+        assert_eq!(legacy_source, ChannelRouteSource::LegacyProjection);
+        assert_eq!(legacy_channels[0].id, "ch-1");
         assert_eq!(spec.app, AppKind::Claude);
         assert_eq!(spec.endpoint.base_url, "https://relay.example.com/v1");
         assert_eq!(spec.interface, InterfaceKind::OpenAiChatCompletions);
