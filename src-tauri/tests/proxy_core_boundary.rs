@@ -420,6 +420,9 @@ const FORBIDDEN_PROXY_CORE_ADAPTER_SMALL_HELPER_FACADE_MARKERS: &[&str] = &[
     "fn channel_route_candidate_from_selection(",
     "fn resolved_channel_attempt_from_candidate(",
     "fn resolved_channel_attempt_from_selection(",
+    "fn forward_failure_kind_from_proxy_status(",
+    "fn apply_channel_param_overrides_to_url(",
+    "fn resolve_channel_response_status_mapping(",
 ];
 const FORBIDDEN_CLAUDE_PROVIDER_ADAPTER_TRANSFORM_DECISION_MARKERS: &[&str] = &[
     "ProviderKind::GitHubCopilot",

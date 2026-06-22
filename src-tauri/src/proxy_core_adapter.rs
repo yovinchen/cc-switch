@@ -6882,17 +6882,7 @@ pub(crate) async fn reset_provider_circuit_breaker_source(
     router.reset_provider_breaker(provider_id, app_type).await;
 }
 
-pub(crate) fn forward_failure_kind_from_proxy_status(
-    kind: ProxyErrorStatusKind,
-    message: impl Into<String>,
-    upstream_body: Option<String>,
-) -> ForwardFailureKind {
-    crate::proxy_core::api::transport::forward_failure_kind_from_proxy_status(
-        kind,
-        message,
-        upstream_body,
-    )
-}
+pub(crate) use crate::proxy_core::api::transport::forward_failure_kind_from_proxy_status;
 
 pub(crate) use crate::proxy_core::api::routing::default_route_candidate_from_selection as channel_route_candidate_from_selection;
 
@@ -6900,25 +6890,9 @@ pub(crate) use crate::proxy_core::api::routing::default_route_candidate_from_sel
 pub(crate) use crate::proxy_core::api::routing::resolved_channel_attempt_from_candidate;
 pub(crate) use crate::proxy_core::api::routing::resolved_channel_attempt_from_selection;
 
-pub(crate) fn apply_channel_param_overrides_to_url(
-    url: &str,
-    param_overrides: &Value,
-) -> String {
-    crate::proxy_core::api::transport::apply_channel_param_overrides_to_url(
-        url,
-        param_overrides,
-    )
-}
-
-pub(crate) type ChannelResponseStatusMapping =
-    crate::proxy_core::api::transport::ChannelResponseStatusMapping;
-
-pub(crate) fn resolve_channel_response_status_mapping(
-    status: http::StatusCode,
-    mapping: &Value,
-) -> Option<ChannelResponseStatusMapping> {
-    crate::proxy_core::api::transport::resolve_channel_response_status_mapping(status, mapping)
-}
+pub(crate) use crate::proxy_core::api::transport::{
+    apply_channel_param_overrides_to_url, resolve_channel_response_status_mapping,
+};
 
 pub(crate) fn codex_proxy_error_code(kind: CodexProxyErrorKind) -> &'static str {
     crate::proxy_core::api::transforms::codex_proxy_error_code(kind)
