@@ -25,30 +25,10 @@ use crate::proxy_core_adapter::{
 };
 #[cfg(test)]
 use crate::proxy_core_adapter::{
-    normalize_anthropic_tool_thinking_history, provider_claude_normalize_anthropic_messages,
-    should_normalize_anthropic_tool_thinking_history, ProviderAuthStrategy,
-    COPILOT_API_VERSION, COPILOT_EDITOR_VERSION, COPILOT_INTEGRATION_ID, COPILOT_PLUGIN_VERSION,
-    COPILOT_USER_AGENT,
+    normalize_anthropic_tool_thinking_history, should_normalize_anthropic_tool_thinking_history,
+    ProviderAuthStrategy, COPILOT_API_VERSION, COPILOT_EDITOR_VERSION, COPILOT_INTEGRATION_ID,
+    COPILOT_PLUGIN_VERSION, COPILOT_USER_AGENT,
 };
-#[cfg(test)]
-use serde_json::Value;
-
-/// 获取 Claude 供应商的 API 格式
-///
-/// 供 handler/forwarder 外部使用的公开函数。
-/// 优先级：meta.apiFormat > settings_config.api_format > openrouter_compat_mode > 默认 "anthropic"
-fn get_claude_api_format(provider: &Provider) -> &'static str {
-    provider_claude_api_format(provider)
-}
-
-#[cfg(test)]
-fn normalize_anthropic_messages_for_provider(
-    body: &mut Value,
-    provider: &Provider,
-    api_format: &str,
-) -> bool {
-    provider_claude_normalize_anthropic_messages(body, provider, api_format)
-}
 
 fn transform_claude_request_for_api_format(
     body: serde_json::Value,
@@ -82,7 +62,7 @@ impl ClaudeAdapter {
     /// - "openai_chat": OpenAI Chat Completions 格式，需要格式转换
     /// - "openai_responses": OpenAI Responses API 格式，需要格式转换
     fn get_api_format(&self, provider: &Provider) -> &'static str {
-        get_claude_api_format(provider)
+        provider_claude_api_format(provider)
     }
 }
 
@@ -143,7 +123,8 @@ impl ProviderAdapter for ClaudeAdapter {
 mod tests {
     use super::*;
     use crate::provider::ProviderMeta;
-    use serde_json::json;
+    use crate::proxy_core_adapter::provider_claude_normalize_anthropic_messages;
+    use serde_json::{json, Value};
 
     fn create_provider(config: serde_json::Value) -> Provider {
         Provider {
@@ -1396,7 +1377,8 @@ mod tests {
             ]
         });
 
-        let changed = normalize_anthropic_messages_for_provider(&mut body, &provider, "anthropic");
+        let changed =
+            provider_claude_normalize_anthropic_messages(&mut body, &provider, "anthropic");
 
         assert!(!changed);
         let messages = body["messages"].as_array().unwrap();
@@ -1424,7 +1406,7 @@ mod tests {
         });
 
         let changed =
-            normalize_anthropic_messages_for_provider(&mut body, &provider, "openai_chat");
+            provider_claude_normalize_anthropic_messages(&mut body, &provider, "openai_chat");
 
         assert!(!changed);
         assert!(body.get("system").is_none());
@@ -1801,7 +1783,7 @@ mod tests {
             "messages": [{ "role": "user", "content": "hello" }]
         });
 
-        let changed = normalize_anthropic_messages_for_provider(
+        let changed = provider_claude_normalize_anthropic_messages(
             &mut body,
             &deepseek_official_provider(),
             "anthropic",
