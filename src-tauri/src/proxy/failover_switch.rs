@@ -8,8 +8,7 @@
 use crate::database::Database;
 use crate::error::AppError;
 use crate::proxy_core_adapter::{
-    build_provider_switched_event_payload, failover_switch_pending_key, PROVIDER_SWITCHED_EVENT,
-    PROVIDER_SWITCHED_SOURCE_FAILOVER,
+    failover_switch_pending_key, provider_switched_failover_event_message,
 };
 use std::collections::HashSet;
 use std::sync::Arc;
@@ -143,12 +142,8 @@ impl FailoverSwitchManager {
             }
 
             // 发射事件到前端
-            let event_data = build_provider_switched_event_payload(
-                app_type,
-                provider_id,
-                PROVIDER_SWITCHED_SOURCE_FAILOVER,
-            );
-            if let Err(e) = app.emit(PROVIDER_SWITCHED_EVENT, event_data) {
+            let message = provider_switched_failover_event_message(app_type, provider_id);
+            if let Err(e) = app.emit(&message.event_name, message.payload) {
                 log::error!("[Failover] 发射事件失败: {e}");
             }
         }

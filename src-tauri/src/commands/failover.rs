@@ -5,10 +5,10 @@
 use crate::database::FailoverQueueItem;
 use crate::provider::Provider;
 use crate::proxy_core_adapter::{
-    build_provider_switched_event_payload, plan_auto_failover_toggle, AutoFailoverToggleInput,
-    ProxyCoreError, AUTO_FAILOVER_EMPTY_QUEUE_WITHOUT_CURRENT_PROVIDER_MESSAGE,
-    AUTO_FAILOVER_ENABLE_REQUIRES_PROXY_TAKEOVER_MESSAGE, PROVIDER_SWITCHED_EVENT,
-    PROVIDER_SWITCHED_SOURCE_FAILOVER_ENABLED,
+    plan_auto_failover_toggle, provider_switched_failover_enabled_event_message,
+    AutoFailoverToggleInput, ProxyCoreError,
+    AUTO_FAILOVER_EMPTY_QUEUE_WITHOUT_CURRENT_PROVIDER_MESSAGE,
+    AUTO_FAILOVER_ENABLE_REQUIRES_PROXY_TAKEOVER_MESSAGE,
 };
 use crate::store::AppState;
 use std::str::FromStr;
@@ -186,12 +186,8 @@ pub async fn set_auto_failover_enabled(
 
     if let Some(provider_id) = plan.provider_id_to_switch_to.as_ref() {
         // 发射 provider-switched 事件（让前端刷新当前供应商）
-        let event_data = build_provider_switched_event_payload(
-            &app_type,
-            provider_id,
-            PROVIDER_SWITCHED_SOURCE_FAILOVER_ENABLED,
-        );
-        let _ = app.emit(PROVIDER_SWITCHED_EVENT, event_data);
+        let message = provider_switched_failover_enabled_event_message(&app_type, provider_id);
+        let _ = app.emit(&message.event_name, message.payload);
     }
 
     // 刷新托盘菜单，确保状态同步

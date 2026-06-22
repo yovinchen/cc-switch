@@ -11,8 +11,7 @@ use crate::proxy::switch_lock::SwitchLockManager;
 use crate::proxy_core_adapter::{
     apply_claude_takeover_fields_for_provider, apply_claude_takeover_fields_with_policy,
     apply_codex_takeover_fields_for_provider, apply_codex_unified_session_bucket_for_provider,
-    apply_gemini_takeover_env_fields, build_proxy_official_warning_event_payload,
-    ClaudeTakeoverAuthPolicy,
+    apply_gemini_takeover_env_fields, ClaudeTakeoverAuthPolicy,
     codex_backup_projection_error_message, codex_live_write_projection,
     codex_provider_live_write_parts,
     codex_preserved_auth_live_config_text_for_configured_policy,
@@ -31,12 +30,13 @@ use crate::proxy_core_adapter::{
     proxy_takeover_marked_state_is_reusable,
     proxy_takeover_should_restore_existing_backup_before_retakeover,
     proxy_takeover_status_from_parts,
+    proxy_official_warning_event_message,
     remove_codex_takeover_auth_placeholder_if_present,
     remove_codex_takeover_config_placeholders_if_present,
     remove_gemini_takeover_env_fields_if_present, should_block_proxy_switch_to_provider,
     should_emit_proxy_official_warning_for_provider, CircuitBreakerConfig, CodexTakeoverAuthPolicy,
     LiveTokenProviderSettingsIssue, ProxyConfig, ProxyRuntimeStatus, ProxyServerInfo,
-    ProxyTakeoverStatus, PROXY_OFFICIAL_WARNING_EVENT,
+    ProxyTakeoverStatus,
 };
 use crate::services::provider::{
     build_effective_settings_with_common_config, write_live_with_common_config,
@@ -479,13 +479,11 @@ impl ProxyService {
                 if let Ok(Some(provider)) = self.db.get_provider_by_id(&current_id, app_type_str) {
                     if should_emit_proxy_official_warning_for_provider(&provider) {
                         if let Some(handle) = self.app_handle.read().await.as_ref() {
-                            let _ = handle.emit(
-                                PROXY_OFFICIAL_WARNING_EVENT,
-                                build_proxy_official_warning_event_payload(
-                                    app_type_str,
-                                    &provider.name,
-                                ),
+                            let message = proxy_official_warning_event_message(
+                                app_type_str,
+                                &provider.name,
                             );
+                            let _ = handle.emit(&message.event_name, message.payload);
                         }
                     }
                 }

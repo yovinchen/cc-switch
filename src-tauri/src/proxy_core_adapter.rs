@@ -2307,6 +2307,45 @@ pub(crate) fn server_stopped_event_message() -> ProxyEventBusMessage {
     }
 }
 
+pub(crate) fn provider_switched_event_message(
+    app_type: &str,
+    provider_id: &str,
+    source: &str,
+) -> ProxyEventBusMessage {
+    ProxyEventBusMessage {
+        event_name: PROVIDER_SWITCHED_EVENT.to_string(),
+        payload: build_provider_switched_event_payload(app_type, provider_id, source),
+    }
+}
+
+pub(crate) fn provider_switched_failover_event_message(
+    app_type: &str,
+    provider_id: &str,
+) -> ProxyEventBusMessage {
+    provider_switched_event_message(app_type, provider_id, PROVIDER_SWITCHED_SOURCE_FAILOVER)
+}
+
+pub(crate) fn provider_switched_failover_enabled_event_message(
+    app_type: &str,
+    provider_id: &str,
+) -> ProxyEventBusMessage {
+    provider_switched_event_message(
+        app_type,
+        provider_id,
+        PROVIDER_SWITCHED_SOURCE_FAILOVER_ENABLED,
+    )
+}
+
+pub(crate) fn proxy_official_warning_event_message(
+    app_type: &str,
+    provider_name: &str,
+) -> ProxyEventBusMessage {
+    ProxyEventBusMessage {
+        event_name: PROXY_OFFICIAL_WARNING_EVENT.to_string(),
+        payload: build_proxy_official_warning_event_payload(app_type, provider_name),
+    }
+}
+
 pub(crate) fn proxy_event_envelope_to_sse_spec(
     event: &ProxyEventEnvelope,
 ) -> ProxyEventSseSpec {
@@ -8532,6 +8571,16 @@ mod tests {
                 "providerName": "Official Claude",
             })
         );
+        let official_warning =
+            proxy_official_warning_event_message("claude", "Official Claude");
+        assert_eq!(official_warning.event_name, "proxy-official-warning");
+        assert_eq!(
+            official_warning.payload,
+            json!({
+                "appType": "claude",
+                "providerName": "Official Claude",
+            })
+        );
         let mut provider = Provider::with_id(
             "official-codex".to_string(),
             "Official Codex".to_string(),
@@ -8558,6 +8607,14 @@ mod tests {
                 "source": "failover",
             })
         );
+        let provider_switched =
+            provider_switched_failover_event_message("claude", "provider-1");
+        assert_eq!(provider_switched.event_name, "provider-switched");
+        assert_eq!(provider_switched.payload["source"], "failover");
+        let provider_switched_enabled =
+            provider_switched_failover_enabled_event_message("claude", "provider-1");
+        assert_eq!(provider_switched_enabled.event_name, "provider-switched");
+        assert_eq!(provider_switched_enabled.payload["source"], "failoverEnabled");
         assert_eq!(
             build_server_started_event_payload("127.0.0.1", 15721),
             json!({"address": "127.0.0.1", "port": 15721})

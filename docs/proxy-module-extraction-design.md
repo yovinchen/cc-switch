@@ -709,8 +709,8 @@
 698. server lifecycle 事件名与 payload contract 已经通过 `proxy_core_adapter::{server_started_event_message,server_stopped_event_message}` 投影为 event bus message：server 只负责把监听事实交给 adapter 并通过现有事件总线 emit。
 699. `ProxyServerInfo` 构造已迁入 `proxy-core::proxy_server_info_from_parts`：server start 和 service 已运行返回路径都只提供 address/port/started_at 事实，不再手写 core DTO 字段。
 700. `ProxyTakeoverStatus` 构造已迁入 `proxy-core::proxy_takeover_status_from_parts`：service 继续负责读取各 app 接管事实，DTO 字段 shape 与序列化 contract 由 core 统一维护。
-701. provider-switched 事件名、source 常量与 payload contract 已迁入 `proxy-core::{PROVIDER_SWITCHED_EVENT,PROVIDER_SWITCHED_SOURCE_FAILOVER,PROVIDER_SWITCHED_SOURCE_FAILOVER_ENABLED,build_provider_switched_event_payload}`：failover manager 与 command 只提供 app/provider/source 事实，不再各自手写前端事件 JSON 或 source 字符串。
-702. proxy-official-warning 事件名与 payload contract 已迁入 `proxy-core::{PROXY_OFFICIAL_WARNING_EVENT,build_proxy_official_warning_event_payload}`：service 继续负责官方供应商风险判断和 Tauri emit，前端 warning payload shape 由 core 维护。
+701. provider-switched 事件名、source 常量与 payload contract 已经通过 `proxy_core_adapter::{provider_switched_failover_event_message,provider_switched_failover_enabled_event_message}` 投影为 Tauri event message：failover manager 与 command 只负责切换副作用和 emit 时机。
+702. proxy-official-warning 事件名与 payload contract 已经通过 `proxy_core_adapter::proxy_official_warning_event_message` 投影为 Tauri event message：service 继续负责官方供应商风险判断和 Tauri emit，前端 warning payload shape 由 adapter/core 维护。
 703. 未运行代理的 runtime status 默认 DTO 已迁入 `proxy-core::proxy_runtime_status_stopped`：service 只负责判定是否存在 server，stopped 状态字段 shape 由 core 维护。
 704. `ProxyError` HTTP JSON body contract 已迁入 `proxy-core::{proxy_error_response_body,upstream_proxy_error_response_body}`：host 仍负责错误枚举和 HTTP status 映射，上游 JSON 透传/文本包装/proxy_error envelope 由 core 统一维护。
 705. forwarder 的 route_selected 事件名与 `ForwardAttempt` 到 bus message 的投影已切到 `proxy_core_adapter::route_selected_event_message_from_forward_attempt`：forwarder 只负责 active target 写入和 emit 时机，不再手写事件名或 route-selected payload 组合。
