@@ -28,6 +28,8 @@ use crate::proxy_core_adapter::{
     normalize_anthropic_tool_thinking_history, provider_claude_kind,
     provider_claude_normalize_anthropic_messages,
     should_normalize_anthropic_tool_thinking_history, ProviderAuthStrategy, ProviderKind,
+    COPILOT_API_VERSION, COPILOT_EDITOR_VERSION, COPILOT_INTEGRATION_ID, COPILOT_PLUGIN_VERSION,
+    COPILOT_USER_AGENT,
 };
 #[cfg(test)]
 use serde_json::Value;
@@ -358,38 +360,20 @@ mod tests {
         assert_eq!(pairs[0], ("authorization", "Bearer copilot-token"));
         assert_eq!(
             pairs[1],
-            (
-                "editor-version",
-                crate::proxy::providers::copilot_auth::COPILOT_EDITOR_VERSION,
-            )
+            ("editor-version", COPILOT_EDITOR_VERSION)
         );
         assert_eq!(
             pairs[2],
-            (
-                "editor-plugin-version",
-                crate::proxy::providers::copilot_auth::COPILOT_PLUGIN_VERSION,
-            )
+            ("editor-plugin-version", COPILOT_PLUGIN_VERSION)
         );
         assert_eq!(
             pairs[3],
-            (
-                "copilot-integration-id",
-                crate::proxy::providers::copilot_auth::COPILOT_INTEGRATION_ID,
-            )
+            ("copilot-integration-id", COPILOT_INTEGRATION_ID)
         );
-        assert_eq!(
-            pairs[4],
-            (
-                "user-agent",
-                crate::proxy::providers::copilot_auth::COPILOT_USER_AGENT,
-            )
-        );
+        assert_eq!(pairs[4], ("user-agent", COPILOT_USER_AGENT));
         assert_eq!(
             pairs[5],
-            (
-                "x-github-api-version",
-                crate::proxy::providers::copilot_auth::COPILOT_API_VERSION,
-            )
+            ("x-github-api-version", COPILOT_API_VERSION)
         );
         assert_eq!(pairs[6], ("openai-intent", "conversation-agent"));
         assert_eq!(pairs[7], ("x-initiator", "user"));

@@ -46,6 +46,12 @@ use std::sync::Arc;
 use tokio::sync::RwLock;
 use uuid::Uuid;
 
+pub(crate) const COPILOT_EDITOR_VERSION: &str = "vscode/1.110.1";
+pub(crate) const COPILOT_PLUGIN_VERSION: &str = "copilot-chat/0.38.2";
+pub(crate) const COPILOT_USER_AGENT: &str = "GitHubCopilotChat/0.38.2";
+pub(crate) const COPILOT_API_VERSION: &str = "2025-10-01";
+pub(crate) const COPILOT_INTEGRATION_ID: &str = "vscode-chat";
+
 pub(crate) fn synthesize_gemini_tool_call_id_with_uuid() -> String {
     crate::proxy_core::api::transforms::synthesize_gemini_tool_call_id(
         Uuid::new_v4().simple().to_string(),
@@ -4491,11 +4497,11 @@ pub(crate) fn provider_claude_auth_headers(
             build_copilot_auth_headers(CopilotAuthHeadersInput {
                 api_key: &auth.api_key,
                 request_id: &request_id,
-                editor_version: crate::proxy::providers::copilot_auth::COPILOT_EDITOR_VERSION,
-                editor_plugin_version: crate::proxy::providers::copilot_auth::COPILOT_PLUGIN_VERSION,
-                integration_id: crate::proxy::providers::copilot_auth::COPILOT_INTEGRATION_ID,
-                user_agent: crate::proxy::providers::copilot_auth::COPILOT_USER_AGENT,
-                github_api_version: crate::proxy::providers::copilot_auth::COPILOT_API_VERSION,
+                editor_version: COPILOT_EDITOR_VERSION,
+                editor_plugin_version: COPILOT_PLUGIN_VERSION,
+                integration_id: COPILOT_INTEGRATION_ID,
+                user_agent: COPILOT_USER_AGENT,
+                github_api_version: COPILOT_API_VERSION,
             })
             .map_err(|error| error.to_string())
         }

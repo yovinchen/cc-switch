@@ -88,6 +88,8 @@ const FORBIDDEN_FORWARDER_ATTEMPT_RUNTIME_MARKERS: &[&str] = &[
     ".release_permit_neutral(",
 ];
 const FORBIDDEN_PROXY_CORE_HOST_ERROR_MARKERS: &[&str] = &["ProxyCoreError::"];
+const FORBIDDEN_PROXY_CORE_ADAPTER_PROVIDER_COPILOT_MARKERS: &[&str] =
+    &["providers::copilot_auth::COPILOT_"];
 const FORBIDDEN_PROXY_CORE_HOST_USAGE_PROJECTION_MARKERS: &[&str] =
     &["missing_pricing_warning_message"];
 const FORBIDDEN_PROXY_CORE_HOST_APP_SUMMARY_PROJECTION_MARKERS: &[&str] =
@@ -3025,6 +3027,33 @@ fn proxy_core_adapter_uses_grouped_api_surface() {
     assert!(
         violations.is_empty(),
         "proxy_core_adapter.rs must use proxy_core::api as its integration surface:\n{}",
+        violations.join("\n")
+    );
+}
+
+#[test]
+fn proxy_core_adapter_owns_copilot_header_constants() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let adapter_path = manifest_dir.join("src/proxy_core_adapter.rs");
+    let source = fs::read_to_string(&adapter_path).expect("read proxy_core_adapter.rs");
+
+    let mut violations = Vec::new();
+    for (line_index, line) in production_lines(&source) {
+        let code = line.split("//").next().unwrap_or_default();
+        for marker in FORBIDDEN_PROXY_CORE_ADAPTER_PROVIDER_COPILOT_MARKERS {
+            if code.contains(marker) {
+                violations.push(format!(
+                    "src/proxy_core_adapter.rs:{} contains provider Copilot constant marker `{}`",
+                    line_index + 1,
+                    marker
+                ));
+            }
+        }
+    }
+
+    assert!(
+        violations.is_empty(),
+        "proxy_core_adapter must own Copilot header constants instead of reading provider module constants:\n{}",
         violations.join("\n")
     );
 }

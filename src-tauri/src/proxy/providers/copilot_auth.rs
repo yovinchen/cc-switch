@@ -28,20 +28,15 @@ use crate::proxy_core_adapter::{
     copilot_api_base, copilot_composite_account_id, copilot_github_client_id,
     copilot_github_device_code_url, copilot_github_oauth_token_url, copilot_github_user_url,
     copilot_token_url, copilot_usage_url, is_copilot_ghes_domain, normalize_github_domain,
-    parse_copilot_models_response_bytes, CopilotModel, COPILOT_PUBLIC_GITHUB_DOMAIN,
+    parse_copilot_models_response_bytes, CopilotModel, COPILOT_API_VERSION,
+    COPILOT_EDITOR_VERSION, COPILOT_PLUGIN_VERSION, COPILOT_PUBLIC_GITHUB_DOMAIN,
+    COPILOT_USER_AGENT,
 };
 
 const DEFAULT_GITHUB_DOMAIN: &str = COPILOT_PUBLIC_GITHUB_DOMAIN;
 
 /// Token 刷新提前量（秒）
 const TOKEN_REFRESH_BUFFER_SECONDS: i64 = 60;
-
-/// Copilot API Header 常量
-pub const COPILOT_EDITOR_VERSION: &str = "vscode/1.110.1";
-pub const COPILOT_PLUGIN_VERSION: &str = "copilot-chat/0.38.2";
-pub const COPILOT_USER_AGENT: &str = "GitHubCopilotChat/0.38.2";
-pub const COPILOT_API_VERSION: &str = "2025-10-01";
-pub const COPILOT_INTEGRATION_ID: &str = "vscode-chat";
 
 /// Copilot 使用量响应
 #[derive(Debug, Clone, Serialize, Deserialize)]
