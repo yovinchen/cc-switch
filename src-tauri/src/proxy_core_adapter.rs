@@ -156,6 +156,16 @@ pub(crate) fn app_error_from_provider_selection_failure(
     }
 }
 
+pub(crate) fn provider_selection_failure_from_app_error(
+    error: &AppError,
+) -> Option<ProviderSelectionFailure> {
+    match error {
+        AppError::AllProvidersCircuitOpen => Some(ProviderSelectionFailure::AllProvidersCircuitOpen),
+        AppError::NoProvidersConfigured => Some(ProviderSelectionFailure::NoProvidersConfigured),
+        _ => None,
+    }
+}
+
 pub(crate) const SYSTEM_PROXY_ENV_KEYS: [&str; 6] =
     crate::proxy_core::api::transport::SYSTEM_PROXY_ENV_KEYS;
 
@@ -5992,13 +6002,18 @@ pub(crate) async fn active_route_target_from_runtime_source(
 pub(crate) fn route_candidate_provider_ids_from_selection_result(
     result: Result<Vec<Provider>, AppError>,
 ) -> ProxyCoreResult<Vec<String>> {
-    match result {
+    let selection_result = match result {
         Ok(providers) => Ok(providers.into_iter().map(|provider| provider.id).collect()),
-        Err(AppError::NoProvidersConfigured) | Err(AppError::AllProvidersCircuitOpen) => {
-            Ok(Vec::new())
-        }
-        Err(error) => Err(app_error("select route candidate providers", error)),
-    }
+        Err(error) => match provider_selection_failure_from_app_error(&error) {
+            Some(failure) => Err(failure),
+            None => return Err(app_error("select route candidate providers", error)),
+        },
+    };
+    Ok(
+        crate::proxy_core::api::routing::route_candidate_provider_ids_from_selection_result(
+            selection_result,
+        ),
+    )
 }
 
 pub(crate) async fn route_candidate_provider_ids_from_router_source(

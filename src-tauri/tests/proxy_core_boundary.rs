@@ -2326,6 +2326,50 @@ fn proxy_core_adapter_delegates_client_model_catalog_source_selection_to_core() 
 }
 
 #[test]
+fn proxy_core_adapter_delegates_route_candidate_empty_policy_to_core() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let path = manifest_dir.join("src/proxy_core_adapter.rs");
+    let source = fs::read_to_string(&path).expect("read proxy_core_adapter.rs");
+    let function = function_slice(
+        &source,
+        "pub(crate) fn route_candidate_provider_ids_from_selection_result",
+        "pub(crate) async fn route_candidate_provider_ids_from_router_source",
+    );
+
+    assert!(
+        function.contains(
+            "crate::proxy_core::api::routing::route_candidate_provider_ids_from_selection_result"
+        ),
+        "route candidate empty-selection policy should be delegated to proxy-core"
+    );
+
+    let forbidden_markers = [
+        "AppError::NoProvidersConfigured",
+        "AppError::AllProvidersCircuitOpen",
+        "Ok(Vec::new())",
+    ];
+    let mut violations = Vec::new();
+    for (line_index, line) in production_lines(function) {
+        let code = line.split("//").next().unwrap_or_default();
+        for marker in forbidden_markers {
+            if code.contains(marker) {
+                violations.push(format!(
+                    "src/proxy_core_adapter.rs route_candidate_provider_ids_from_selection_result:{} contains local empty-policy marker `{}`",
+                    line_index + 1,
+                    marker
+                ));
+            }
+        }
+    }
+
+    assert!(
+        violations.is_empty(),
+        "route candidate empty-selection policy belongs in proxy-core:\n{}",
+        violations.join("\n")
+    );
+}
+
+#[test]
 fn production_forwarder_delegates_managed_auth_resolution_to_adapter() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let path = manifest_dir.join("src/proxy/forwarder.rs");

@@ -300,6 +300,12 @@ pub fn select_provider_ids(
     }
 }
 
+pub fn route_candidate_provider_ids_from_selection_result(
+    result: Result<Vec<String>, ProviderSelectionFailure>,
+) -> Vec<String> {
+    result.unwrap_or_default()
+}
+
 pub fn current_provider_id_option_from_sources(
     settings_current_provider_id: Option<&str>,
     db_current_provider_id: Option<&str>,
@@ -353,11 +359,11 @@ mod tests {
         current_provider_id_option_from_sources, failover_switch_pending_key,
         plan_auto_failover_toggle, provider_failover_circuit_lookups,
         provider_selection_candidate_from_failover_lookup, restored_provider_switchback_decision,
-        select_provider_ids, should_attempt_restored_provider_switchback,
-        should_block_proxy_switch_to_provider_category, AutoFailoverToggleInput,
-        AutoFailoverTogglePlan, FailoverQueuePosition, ProviderFailoverCircuitLookup,
-        ProviderSelectionCandidate, ProviderSelectionFailure, ProviderSelectionInput,
-        RestoredProviderSwitchbackDecision,
+        route_candidate_provider_ids_from_selection_result, select_provider_ids,
+        should_attempt_restored_provider_switchback, should_block_proxy_switch_to_provider_category,
+        AutoFailoverToggleInput, AutoFailoverTogglePlan, FailoverQueuePosition,
+        ProviderFailoverCircuitLookup, ProviderSelectionCandidate, ProviderSelectionFailure,
+        ProviderSelectionInput, RestoredProviderSwitchbackDecision,
         AUTO_FAILOVER_EMPTY_QUEUE_WITHOUT_CURRENT_PROVIDER_MESSAGE,
         AUTO_FAILOVER_ENABLE_REQUIRES_PROXY_TAKEOVER_MESSAGE,
     };
@@ -600,6 +606,29 @@ mod tests {
         .expect_err("missing queue entry prevents all-open classification");
 
         assert_eq!(error, ProviderSelectionFailure::NoProvidersConfigured);
+    }
+
+    #[test]
+    fn route_candidate_provider_ids_treat_configured_selection_failures_as_empty() {
+        assert_eq!(
+            route_candidate_provider_ids_from_selection_result(Ok(vec![
+                "provider-a".to_string(),
+                "provider-b".to_string(),
+            ])),
+            vec!["provider-a".to_string(), "provider-b".to_string()]
+        );
+        assert_eq!(
+            route_candidate_provider_ids_from_selection_result(Err(
+                ProviderSelectionFailure::NoProvidersConfigured
+            )),
+            Vec::<String>::new()
+        );
+        assert_eq!(
+            route_candidate_provider_ids_from_selection_result(Err(
+                ProviderSelectionFailure::AllProvidersCircuitOpen
+            )),
+            Vec::<String>::new()
+        );
     }
 
     #[test]
