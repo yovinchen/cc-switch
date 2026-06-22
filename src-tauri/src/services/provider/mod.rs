@@ -552,6 +552,54 @@ base_url = "http://localhost:8080"
         assert!(value.get("NON_STRING").is_none());
     }
 
+    #[test]
+    fn extract_opencode_common_config_excludes_provider_credentials() {
+        let settings = json!({
+            "npm": "@ai-sdk/openai",
+            "options": {
+                "apiKey": "sk-opencode",
+                "baseURL": "https://opencode.example",
+                "timeout": 30
+            },
+            "models": {
+                "fast": "gpt-4o-mini"
+            }
+        });
+
+        let extracted = ProviderService::extract_opencode_common_config(&settings)
+            .expect("extract_opencode_common_config should succeed");
+        let value: Value = serde_json::from_str(&extracted).expect("valid JSON common config");
+
+        assert_eq!(value["npm"], "@ai-sdk/openai");
+        assert_eq!(value["options"]["timeout"], 30);
+        assert_eq!(value["models"]["fast"], "gpt-4o-mini");
+        assert!(value["options"].get("apiKey").is_none());
+        assert!(value["options"].get("baseURL").is_none());
+    }
+
+    #[test]
+    fn extract_openclaw_common_config_excludes_provider_credentials() {
+        let settings = json!({
+            "apiKey": "sk-openclaw",
+            "baseUrl": "https://openclaw.example",
+            "api": {
+                "chat": "/v1/chat/completions"
+            },
+            "models": {
+                "fast": "claude-sonnet"
+            }
+        });
+
+        let extracted = ProviderService::extract_openclaw_common_config(&settings)
+            .expect("extract_openclaw_common_config should succeed");
+        let value: Value = serde_json::from_str(&extracted).expect("valid JSON common config");
+
+        assert_eq!(value["api"]["chat"], "/v1/chat/completions");
+        assert_eq!(value["models"]["fast"], "claude-sonnet");
+        assert!(value.get("apiKey").is_none());
+        assert!(value.get("baseUrl").is_none());
+    }
+
     #[tokio::test]
     #[serial]
     async fn update_current_claude_provider_syncs_live_when_proxy_takeover_detected_without_backup()
