@@ -2202,7 +2202,7 @@ pub(crate) use crate::proxy_core::api::config::{
     rectify_anthropic_request, rectify_thinking_budget, should_rectify_thinking_budget,
     should_rectify_thinking_signature, thinking_optimization_log_message,
 };
-pub(crate) use crate::proxy_core::api::events::{
+use crate::proxy_core::api::events::{
     attempt_event_name, build_attempt_event_payload,
     build_proxy_official_warning_event_payload, build_provider_switched_event_payload,
     build_request_started_event_payload,
@@ -2254,34 +2254,34 @@ pub(crate) use crate::proxy_core::api::transforms::{canonical_json_string, short
 
 pub(crate) const SESSION_REQUEST_ID_PREFIX: &str =
     crate::proxy_core::api::usage::SESSION_REQUEST_ID_PREFIX;
-pub(crate) const PROXY_EVENTS_CONNECTED_EVENT: &str =
+const PROXY_EVENTS_CONNECTED_EVENT: &str =
     crate::proxy_core::api::events::PROXY_EVENTS_CONNECTED_EVENT;
-pub(crate) const PROXY_EVENTS_LAGGED_EVENT: &str =
+const PROXY_EVENTS_LAGGED_EVENT: &str =
     crate::proxy_core::api::events::PROXY_EVENTS_LAGGED_EVENT;
-pub(crate) const PROXY_OFFICIAL_WARNING_EVENT: &str =
+const PROXY_OFFICIAL_WARNING_EVENT: &str =
     crate::proxy_core::api::events::PROXY_OFFICIAL_WARNING_EVENT;
-pub(crate) const PROVIDER_SWITCHED_EVENT: &str =
+const PROVIDER_SWITCHED_EVENT: &str =
     crate::proxy_core::api::events::PROVIDER_SWITCHED_EVENT;
-pub(crate) const PROVIDER_SWITCHED_SOURCE_FAILOVER: &str =
+const PROVIDER_SWITCHED_SOURCE_FAILOVER: &str =
     crate::proxy_core::api::events::PROVIDER_SWITCHED_SOURCE_FAILOVER;
-pub(crate) const PROVIDER_SWITCHED_SOURCE_FAILOVER_ENABLED: &str =
+const PROVIDER_SWITCHED_SOURCE_FAILOVER_ENABLED: &str =
     crate::proxy_core::api::events::PROVIDER_SWITCHED_SOURCE_FAILOVER_ENABLED;
-pub(crate) const REQUEST_STARTED_EVENT: &str =
+const REQUEST_STARTED_EVENT: &str =
     crate::proxy_core::api::events::REQUEST_STARTED_EVENT;
-pub(crate) const SERVER_STARTED_EVENT: &str =
+const SERVER_STARTED_EVENT: &str =
     crate::proxy_core::api::events::SERVER_STARTED_EVENT;
-pub(crate) const SERVER_STOPPED_EVENT: &str =
+const SERVER_STOPPED_EVENT: &str =
     crate::proxy_core::api::events::SERVER_STOPPED_EVENT;
 pub(crate) const AUTO_FAILOVER_ENABLE_REQUIRES_PROXY_TAKEOVER_MESSAGE: &str =
     crate::proxy_core::api::routing::AUTO_FAILOVER_ENABLE_REQUIRES_PROXY_TAKEOVER_MESSAGE;
 pub(crate) const AUTO_FAILOVER_EMPTY_QUEUE_WITHOUT_CURRENT_PROVIDER_MESSAGE: &str =
     crate::proxy_core::api::routing::AUTO_FAILOVER_EMPTY_QUEUE_WITHOUT_CURRENT_PROVIDER_MESSAGE;
 
-pub(crate) fn build_proxy_events_connected_payload(buffer_size: usize) -> Value {
+fn build_proxy_events_connected_payload(buffer_size: usize) -> Value {
     crate::proxy_core::api::events::build_proxy_events_connected_payload(buffer_size)
 }
 
-pub(crate) fn build_proxy_events_lagged_payload(skipped: u64) -> Value {
+fn build_proxy_events_lagged_payload(skipped: u64) -> Value {
     crate::proxy_core::api::events::build_proxy_events_lagged_payload(skipped)
 }
 
@@ -2299,11 +2299,11 @@ pub(crate) fn proxy_events_lagged_message(skipped: u64) -> ProxyEventBusMessage 
     }
 }
 
-pub(crate) fn build_server_started_event_payload(address: &str, port: u16) -> Value {
+fn build_server_started_event_payload(address: &str, port: u16) -> Value {
     crate::proxy_core::api::events::build_server_started_event_payload(address, port)
 }
 
-pub(crate) fn build_server_stopped_event_payload() -> Value {
+fn build_server_stopped_event_payload() -> Value {
     crate::proxy_core::api::events::build_server_stopped_event_payload()
 }
 
