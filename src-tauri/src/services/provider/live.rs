@@ -15,7 +15,7 @@ use crate::provider::Provider;
 use crate::proxy_core_adapter::{
     build_effective_settings_with_common_config as adapter_build_effective_settings_with_common_config,
     remove_common_config_from_settings as adapter_remove_common_config_from_settings,
-    gemini_env_value_from_env_json, normalize_claude_models_in_value,
+    gemini_live_settings_from_env_json_and_config, normalize_claude_models_in_value,
     normalize_provider_common_config_for_storage as adapter_normalize_provider_common_config_for_storage,
     provider_codex_live_snapshot_parts, provider_from_default_live_settings,
     CommonConfigSettingsMutationIssue,
@@ -647,7 +647,6 @@ pub fn read_live_settings(app_type: AppType) -> Result<Value, AppError> {
 
             let env_map = read_gemini_env()?;
             let env_json = env_to_json(&env_map);
-            let env_obj = gemini_env_value_from_env_json(&env_json);
 
             // Read settings.json file (MCP config etc.)
             let settings_path = get_gemini_settings_path();
@@ -658,10 +657,9 @@ pub fn read_live_settings(app_type: AppType) -> Result<Value, AppError> {
             };
 
             // Return complete structure: { "env": {...}, "config": {...} }
-            Ok(json!({
-                "env": env_obj,
-                "config": config_obj
-            }))
+            Ok(gemini_live_settings_from_env_json_and_config(
+                &env_json, config_obj,
+            ))
         }
         AppType::OpenCode => {
             use crate::opencode_config::{get_opencode_config_path, read_opencode_config};
@@ -783,7 +781,6 @@ pub fn import_default_config(state: &AppState, app_type: AppType) -> Result<bool
 
             let env_map = read_gemini_env()?;
             let env_json = env_to_json(&env_map);
-            let env_obj = gemini_env_value_from_env_json(&env_json);
 
             // Read settings.json file (MCP config etc.)
             let settings_path = get_gemini_settings_path();
@@ -794,10 +791,7 @@ pub fn import_default_config(state: &AppState, app_type: AppType) -> Result<bool
             };
 
             // Return complete structure: { "env": {...}, "config": {...} }
-            json!({
-                "env": env_obj,
-                "config": config_obj
-            })
+            gemini_live_settings_from_env_json_and_config(&env_json, config_obj)
         }
         // OpenCode, OpenClaw and Hermes use additive mode and are handled by early return above
         AppType::OpenCode | AppType::OpenClaw | AppType::Hermes => {

@@ -2829,6 +2829,16 @@ pub(crate) fn gemini_env_value_from_env_json(env_json: &Value) -> Value {
     env_json.get("env").cloned().unwrap_or_else(|| json!({}))
 }
 
+pub(crate) fn gemini_live_settings_from_env_json_and_config(
+    env_json: &Value,
+    config: Value,
+) -> Value {
+    json!({
+        "env": gemini_env_value_from_env_json(env_json),
+        "config": config
+    })
+}
+
 pub(crate) fn gemini_live_backup_from_effective_settings(settings: &Value) -> Value {
     json!({
         "env": settings.get("env").cloned().unwrap_or_else(|| json!({}))
@@ -8583,6 +8593,20 @@ base_url = "https://api.openai.com/v1"
             json!({"A": "B"})
         );
         assert_eq!(gemini_env_value_from_env_json(&json!({})), json!({}));
+        assert_eq!(
+            gemini_live_settings_from_env_json_and_config(
+                &json!({"env": {"GEMINI_API_KEY": "sk-test"}}),
+                json!({"mcpServers": {"server": {}}})
+            ),
+            json!({
+                "env": {"GEMINI_API_KEY": "sk-test"},
+                "config": {"mcpServers": {"server": {}}}
+            })
+        );
+        assert_eq!(
+            gemini_live_settings_from_env_json_and_config(&json!({}), json!({})),
+            json!({"env": {}, "config": {}})
+        );
         assert_eq!(
             gemini_live_backup_from_effective_settings(&json!({
                 "env": {"GEMINI_API_KEY": "key"},
