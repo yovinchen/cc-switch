@@ -713,7 +713,7 @@
 702. proxy-official-warning 事件名与 payload contract 已迁入 `proxy-core::{PROXY_OFFICIAL_WARNING_EVENT,build_proxy_official_warning_event_payload}`：service 继续负责官方供应商风险判断和 Tauri emit，前端 warning payload shape 由 core 维护。
 703. 未运行代理的 runtime status 默认 DTO 已迁入 `proxy-core::proxy_runtime_status_stopped`：service 只负责判定是否存在 server，stopped 状态字段 shape 由 core 维护。
 704. `ProxyError` HTTP JSON body contract 已迁入 `proxy-core::{proxy_error_response_body,upstream_proxy_error_response_body}`：host 仍负责错误枚举和 HTTP status 映射，上游 JSON 透传/文本包装/proxy_error envelope 由 core 统一维护。
-705. forwarder 的 route_selected 事件名已切到 `proxy-core::ProxyCoreEventType::RouteSelected` 投影：forwarder 只构造 route 选择 payload，不再手写事件名字符串。
+705. forwarder 的 route_selected 事件名与 `ForwardAttempt` 到 bus message 的投影已切到 `proxy_core_adapter::route_selected_event_message_from_forward_attempt`：forwarder 只负责 active target 写入和 emit 时机，不再手写事件名或 route-selected payload 组合。
 706. request_started 事件名已迁入 `proxy-core::REQUEST_STARTED_EVENT`：forwarder 继续负责请求开始时机，事件名与 payload helper 均由 core 维护。
 707. `ForwardAttempt` 到 attempt event payload 的 host 投影已迁入 `proxy_core_adapter::attempt_event_payload_from_forward_attempt`：forwarder 只负责 emit 时机和 attempt phase，不再手写 provider/channel 字段拆箱。
 708. handler 请求体 `stream` 标志解析已迁入 `proxy-core::request_body_stream_flag`：Claude/Codex/Gemini handler 继续负责读取 body 与使用场景，stream 布尔 contract 由 core 统一维护并被 transport streaming 判定复用。

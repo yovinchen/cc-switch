@@ -700,6 +700,21 @@ pub(crate) fn attempt_event_payload_from_forward_attempt(
     })
 }
 
+pub(crate) fn route_selected_event_message_from_forward_attempt(
+    request_id: &str,
+    app_type: &str,
+    attempt: &ForwardAttempt,
+) -> ProxyEventBusMessage {
+    proxy_core_event_to_bus_message(ProxyCoreEvent {
+        event_type: crate::proxy_core::api::events::ProxyCoreEventType::RouteSelected,
+        request_id: Some(request_id.to_string()),
+        channel_id: attempt
+            .channel()
+            .map(|channel| channel.channel_id.clone()),
+        payload: attempt_event_payload_from_forward_attempt(request_id, app_type, attempt, None),
+    })
+}
+
 pub(crate) type ChannelAttemptResult =
     crate::proxy_core::api::ports::ChannelAttemptResult;
 pub(crate) type ChannelQuery<'a> = crate::proxy_core::api::routing::ChannelQuery<'a>;
@@ -2281,10 +2296,6 @@ pub(crate) fn proxy_core_event_to_bus_message(event: ProxyCoreEvent) -> ProxyEve
         event_name: event.event_type.event_name(),
         payload: event.into_event_payload(),
     }
-}
-
-pub(crate) fn route_selected_event_name() -> String {
-    crate::proxy_core::api::events::ProxyCoreEventType::RouteSelected.event_name()
 }
 
 pub(crate) fn emit_proxy_core_event(
@@ -8537,10 +8548,44 @@ mod tests {
             payload: json!({"attemptCount": 2}),
         });
         assert_eq!(message.event_name, "route_selected");
-        assert_eq!(route_selected_event_name(), "route_selected");
         assert_eq!(message.payload["requestId"], "req-1");
         assert_eq!(message.payload["channelId"], "channel-a");
         assert_eq!(message.payload["attemptCount"], 2);
+
+        let route_provider = Provider::with_id(
+            "provider-1".to_string(),
+            "Relay Provider".to_string(),
+            json!({}),
+            None,
+        );
+        let route_attempt = ForwardAttempt::from_channel(
+            &AppType::Claude,
+            &route_provider,
+            ChannelRouteCandidate {
+                channel_id: "channel-a".to_string(),
+                provider_id: route_provider.id.clone(),
+                channel_name: "Relay A".to_string(),
+                base_url: "https://relay.example.com/v1".to_string(),
+                interface_kind: "openai_responses".to_string(),
+                public_model: Some("public-sonnet".to_string()),
+                upstream_model: Some("upstream-sonnet".to_string()),
+                route_group: "default".to_string(),
+                priority: 100,
+                weight: 50,
+                source_kind: "manual".to_string(),
+            },
+        );
+        let route_message = route_selected_event_message_from_forward_attempt(
+            "req-route",
+            "claude",
+            &route_attempt,
+        );
+        assert_eq!(route_message.event_name, "route_selected");
+        assert_eq!(route_message.payload["requestId"], "req-route");
+        assert_eq!(route_message.payload["providerId"], "provider-1");
+        assert_eq!(route_message.payload["channelId"], "channel-a");
+        assert_eq!(route_message.payload["interfaceKind"], "openai_responses");
+        assert_eq!(route_message.payload["upstreamModel"], "upstream-sonnet");
 
         let mut emitted = None;
         emit_proxy_core_event(

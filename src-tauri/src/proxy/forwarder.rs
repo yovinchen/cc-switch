@@ -34,7 +34,7 @@ use crate::proxy_core_adapter::{
     record_active_connection_released_status, record_forward_failure_status,
     record_forward_request_started_status, record_forward_success_status,
     replace_images_for_text_only_provider_model, request_body_filter_log_message,
-    resolve_claude_forward_api_format, route_selected_event_name,
+    resolve_claude_forward_api_format, route_selected_event_message_from_forward_attempt,
     resolve_copilot_deterministic_interaction_id, resolve_copilot_model_against_ids,
     resolve_copilot_optimizer_session_id, resolve_copilot_request_id_with_fallback,
     resolve_media_prevention_policy, resolved_copilot_dynamic_base_url,
@@ -353,10 +353,9 @@ impl RequestForwarder {
 
         let mut current_providers = self.current_providers.write().await;
         current_providers.insert(app_type.to_string(), target);
-        self.events.emit(
-            route_selected_event_name(),
-            attempt_event_payload_from_forward_attempt(request_id, app_type, attempt, None),
-        );
+        let message =
+            route_selected_event_message_from_forward_attempt(request_id, app_type, attempt);
+        self.events.emit(message.event_name, message.payload);
     }
 
     async fn record_success_status_and_maybe_switch(&self, app_type: &str, provider: &Provider) {
@@ -1969,6 +1968,16 @@ mod tests {
         let success_event = subscriber.recv().await.expect("success event");
         assert_eq!(success_event.event, "channel_succeeded");
         assert_eq!(success_event.payload["channelName"], "Relay A");
+
+        forwarder
+            .record_active_target("req-route", "claude", &attempt)
+            .await;
+        let route_event = subscriber.recv().await.expect("route selected event");
+        assert_eq!(route_event.event, "route_selected");
+        assert_eq!(route_event.payload["requestId"], "req-route");
+        assert_eq!(route_event.payload["providerId"], "provider-1");
+        assert_eq!(route_event.payload["channelId"], "channel-a");
+        assert_eq!(route_event.payload["interfaceKind"], "openai_responses");
     }
 
     #[tokio::test]
