@@ -327,6 +327,8 @@ const FORBIDDEN_PROXY_ENGINE_ROUTE_POLICY_RAW_MARKERS: &[&str] =
 const FORBIDDEN_PROVIDER_ROUTER_CHANNEL_ROUTE_SOURCE_MARKERS: &[&str] = &[
     "channel_route_source_for_materialized_records(",
     "channel_route_should_load_legacy_projection(",
+    ".list_proxy_channels_for_app(",
+    ".preview_legacy_proxy_channel_migration(",
 ];
 const FORBIDDEN_PROVIDER_ROUTER_SELECTION_MARKERS: &[&str] = &[
     "ProviderSelectionInput::",

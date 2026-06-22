@@ -7,9 +7,9 @@ use crate::error::AppError;
 use crate::provider::Provider;
 use crate::proxy::circuit_breaker::CircuitBreaker;
 use crate::proxy_core_adapter::{
-    app_error_from_proxy_core_error, app_type_from_circuit_key, channel_circuit_key,
-    channel_circuit_key_prefix, channel_route_records_from_sources,
+    app_error_from_proxy_core_error, app_type_from_circuit_key,
     apply_route_candidate_circuit_availability, auto_failover_enabled_from_router_config_result,
+    channel_circuit_key, channel_circuit_key_prefix, channel_route_records_from_db_source,
     circuit_breaker_config_from_router_config_result,
     circuit_failure_threshold_from_router_config_result, current_provider_id_from_router_sources,
     provider_circuit_key, provider_circuit_key_prefix,
@@ -121,10 +121,8 @@ impl ProviderRouter {
         &self,
         app_type: &str,
     ) -> Result<(Vec<ProxyChannelRecord>, ChannelRouteSource), AppError> {
-        let channels = self.db.list_proxy_channels_for_app(app_type)?;
-        channel_route_records_from_sources(channels, || {
-            self.db.preview_legacy_proxy_channel_migration(app_type)
-        })
+        channel_route_records_from_db_source(&self.db, app_type)
+            .map_err(app_error_from_proxy_core_error)
     }
 
     /// Resolve a dry-run channel route for management API/debugging.

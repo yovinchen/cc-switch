@@ -5408,6 +5408,19 @@ pub(crate) fn channel_route_records_from_sources(
     Ok((preview.channels, source))
 }
 
+pub(crate) fn channel_route_records_from_db_source(
+    db: &Database,
+    app_type: &str,
+) -> ProxyCoreResult<(Vec<ProxyChannelRecord>, ChannelRouteSource)> {
+    let channels = db
+        .list_proxy_channels_for_app(app_type)
+        .map_err(|error| app_error("list channel route records", error))?;
+    channel_route_records_from_sources(channels, || {
+        db.preview_legacy_proxy_channel_migration(app_type)
+    })
+    .map_err(|error| app_error("load channel route records", error))
+}
+
 pub(crate) fn proxy_channel_route_inputs_to_core(
     channels: impl IntoIterator<Item = ProxyChannelRecord>,
 ) -> Vec<RouteResolveChannelInput> {
