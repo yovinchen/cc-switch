@@ -28,6 +28,7 @@ use bytes::Bytes;
 use futures::{Stream, StreamExt};
 use http::{HeaderMap, Method, StatusCode};
 use indexmap::IndexMap;
+use regex::Regex;
 use rust_decimal::Decimal;
 use serde_json::{Map, Value, json};
 use std::collections::HashMap;
@@ -891,6 +892,111 @@ pub(crate) fn opencode_common_config_value_from_settings(settings: &Value) -> Va
     }
 
     config
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct ProviderCredentialValues {
+    pub(crate) api_key: String,
+    pub(crate) base_url: String,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum ProviderCredentialIssue {
+    ClaudeEnvMissing,
+    ClaudeApiKeyMissing,
+    ClaudeBaseUrlMissing,
+    ClaudeDesktopRequiresGateway,
+    CodexAuthMissing,
+    CodexApiKeyMissing,
+    CodexBaseUrlMissing,
+    CodexBaseUrlInvalid,
+    GeminiApiKeyMissing,
+    OpenCodeOptionsMissing,
+    OpenCodeApiKeyMissing,
+    OpenClawApiKeyMissing,
+}
+
+pub(crate) fn provider_credential_values(
+    provider: &Provider,
+    app_type: &AppType,
+) -> Result<ProviderCredentialValues, ProviderCredentialIssue> {
+    match app_type {
+        AppType::Claude => {
+            let credentials = claude_env_credentials_from_settings(&provider.settings_config)
+                .ok_or(ProviderCredentialIssue::ClaudeEnvMissing)?;
+            let api_key = credentials
+                .api_key
+                .ok_or(ProviderCredentialIssue::ClaudeApiKeyMissing)?
+                .to_string();
+            let base_url = credentials
+                .base_url
+                .ok_or(ProviderCredentialIssue::ClaudeBaseUrlMissing)?
+                .to_string();
+
+            Ok(ProviderCredentialValues { api_key, base_url })
+        }
+        AppType::ClaudeDesktop => Err(ProviderCredentialIssue::ClaudeDesktopRequiresGateway),
+        AppType::Codex => {
+            let auth = codex_auth_object_value_from_settings(&provider.settings_config)
+                .ok_or(ProviderCredentialIssue::CodexAuthMissing)?;
+            let config_toml =
+                codex_config_text_from_settings(&provider.settings_config).unwrap_or("");
+            let api_key = codex_api_key_from_auth_and_config(Some(auth), Some(config_toml))
+                .ok_or(ProviderCredentialIssue::CodexApiKeyMissing)?;
+            let base_url = if config_toml.contains("base_url") {
+                let re = Regex::new(r#"base_url\s*=\s*["']([^"']+)["']"#)
+                    .expect("static Codex base_url regex must compile");
+                re.captures(config_toml)
+                    .and_then(|caps| caps.get(1))
+                    .map(|m| m.as_str().to_string())
+                    .ok_or(ProviderCredentialIssue::CodexBaseUrlInvalid)?
+            } else {
+                return Err(ProviderCredentialIssue::CodexBaseUrlMissing);
+            };
+
+            Ok(ProviderCredentialValues { api_key, base_url })
+        }
+        AppType::Gemini => {
+            let env_map = gemini_env_map_from_settings(&provider.settings_config);
+            let api_key = env_map
+                .and_then(|env| env.get("GEMINI_API_KEY"))
+                .and_then(Value::as_str)
+                .ok_or(ProviderCredentialIssue::GeminiApiKeyMissing)?
+                .to_string();
+            let base_url = env_map
+                .and_then(|env| env.get("GOOGLE_GEMINI_BASE_URL"))
+                .and_then(Value::as_str)
+                .unwrap_or("https://generativelanguage.googleapis.com")
+                .to_string();
+
+            Ok(ProviderCredentialValues { api_key, base_url })
+        }
+        AppType::OpenCode => {
+            let parts =
+                provider_opencode_credential_parts(provider).map_err(|issue| match issue {
+                    OpenCodeCredentialIssue::MissingOptions => {
+                        ProviderCredentialIssue::OpenCodeOptionsMissing
+                    }
+                })?;
+            let api_key = parts
+                .api_key
+                .ok_or(ProviderCredentialIssue::OpenCodeApiKeyMissing)?
+                .to_string();
+            let base_url = parts.base_url.unwrap_or("").to_string();
+
+            Ok(ProviderCredentialValues { api_key, base_url })
+        }
+        AppType::OpenClaw | AppType::Hermes => {
+            let parts = provider_openclaw_credential_parts(provider);
+            let api_key = parts
+                .api_key
+                .ok_or(ProviderCredentialIssue::OpenClawApiKeyMissing)?
+                .to_string();
+            let base_url = parts.base_url.unwrap_or("").to_string();
+
+            Ok(ProviderCredentialValues { api_key, base_url })
+        }
+    }
 }
 
 pub(crate) struct OpenCodeLiveProviderFragment {
@@ -10621,6 +10727,64 @@ command = "latest-command"
         let fragment = provider_opencode_live_provider_fragment(&provider);
         assert_eq!(fragment.config, provider.settings_config);
         assert!(fragment.from_full_config);
+    }
+
+    #[test]
+    fn provider_credentials_adapter_extracts_app_specific_values() {
+        let claude = Provider::with_id(
+            "claude".to_string(),
+            "Claude".to_string(),
+            json!({
+                "env": {
+                    "ANTHROPIC_AUTH_TOKEN": "token",
+                    "ANTHROPIC_BASE_URL": "https://claude.example"
+                }
+            }),
+            None,
+        );
+        let claude_credentials = provider_credential_values(&claude, &AppType::Claude)
+            .expect("claude credentials");
+        assert_eq!(claude_credentials.api_key, "token");
+        assert_eq!(claude_credentials.base_url, "https://claude.example");
+
+        let codex = Provider::with_id(
+            "codex".to_string(),
+            "Codex".to_string(),
+            json!({
+                "auth": {"OPENAI_API_KEY": "sk-test"},
+                "config": "base_url = \"https://codex.example/v1\"\n"
+            }),
+            None,
+        );
+        let codex_credentials = provider_credential_values(&codex, &AppType::Codex)
+            .expect("codex credentials");
+        assert_eq!(codex_credentials.api_key, "sk-test");
+        assert_eq!(codex_credentials.base_url, "https://codex.example/v1");
+
+        let gemini = Provider::with_id(
+            "gemini".to_string(),
+            "Gemini".to_string(),
+            json!({"env": {"GEMINI_API_KEY": "AIza-test"}}),
+            None,
+        );
+        let gemini_credentials = provider_credential_values(&gemini, &AppType::Gemini)
+            .expect("gemini credentials");
+        assert_eq!(gemini_credentials.api_key, "AIza-test");
+        assert_eq!(
+            gemini_credentials.base_url,
+            "https://generativelanguage.googleapis.com"
+        );
+
+        let missing_codex_base_url = Provider::with_id(
+            "codex-missing-base-url".to_string(),
+            "Codex Missing Base URL".to_string(),
+            json!({"auth": {"OPENAI_API_KEY": "sk-test"}, "config": ""}),
+            None,
+        );
+        assert_eq!(
+            provider_credential_values(&missing_codex_base_url, &AppType::Codex),
+            Err(ProviderCredentialIssue::CodexBaseUrlMissing)
+        );
     }
 
     #[test]
