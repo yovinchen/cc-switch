@@ -308,6 +308,7 @@ const FORBIDDEN_PROVIDER_ADAPTER_BASE_URL_ERROR_MARKERS: &[&str] = &[
 const FORBIDDEN_PROVIDER_ADAPTER_AUTH_INFO_MARKERS: &[&str] = &[
     "ProviderAuthInfo::new(",
     "ProviderAuthInfo::with_access_token(",
+    "GeminiAdapter::new().parse_oauth_credentials(",
     "parse_gemini_oauth_credentials(&key)",
 ];
 const FORBIDDEN_HANDLER_MANAGEMENT_AUTH_DECISION_MARKERS: &[&str] = &[
@@ -1350,6 +1351,38 @@ fn production_codex_provider_adapter_delegates_auth_info_to_adapter() {
     assert!(
         violations.is_empty(),
         "Codex provider adapter must delegate auth info construction to proxy_core_adapter helpers:\n{}",
+        violations.join("\n")
+    );
+}
+
+#[test]
+fn production_claude_provider_adapter_delegates_auth_info_to_adapter() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let path = manifest_dir.join("src/proxy/providers/claude.rs");
+    let source = fs::read_to_string(&path).expect("read claude provider adapter source");
+    let extract_auth = function_slice(
+        &source,
+        "    fn extract_auth(&self, provider: &Provider)",
+        "    fn build_url(&self, base_url: &str, endpoint: &str) -> String",
+    );
+
+    let mut violations = Vec::new();
+    for (line_index, line) in production_lines(extract_auth) {
+        let code = line.split("//").next().unwrap_or_default();
+        for marker in FORBIDDEN_PROVIDER_ADAPTER_AUTH_INFO_MARKERS {
+            if code.contains(marker) {
+                violations.push(format!(
+                    "src/proxy/providers/claude.rs extract_auth:{} contains auth info marker `{}`",
+                    line_index + 1,
+                    marker
+                ));
+            }
+        }
+    }
+
+    assert!(
+        violations.is_empty(),
+        "Claude provider adapter must delegate auth info construction to proxy_core_adapter helpers:\n{}",
         violations.join("\n")
     );
 }

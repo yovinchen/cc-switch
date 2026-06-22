@@ -24,13 +24,13 @@ use crate::proxy_core_adapter::{
     gemini_response_to_anthropic_message, inject_openai_stream_include_usage,
     normalize_anthropic_tool_thinking_history, openai_chat_to_anthropic_message,
     openai_responses_to_anthropic_message,
-    provider_claude_api_format, provider_claude_auth_key, required_claude_provider_base_url,
+    provider_claude_api_format, provider_claude_auth_info, required_claude_provider_base_url,
     provider_claude_kind, provider_claude_prompt_cache_key,
     provider_claude_responses_prompt_cache_key, provider_codex_fast_mode_enabled,
     provider_is_codex_oauth, provider_should_preserve_reasoning_content_for_openai_chat,
     provider_normalize_deepseek_thinking_disabled_strip_effort,
     provider_should_normalize_anthropic_tool_thinking_history,
-    ClaudeAuthHeaderKind, ClaudeAuthKey, ClaudeAuthKeySource, CopilotAuthHeadersInput,
+    ClaudeAuthHeaderKind, CopilotAuthHeadersInput,
     GeminiShadowStore, ProviderAuthInfo,
     ProviderAuthStrategy, ProviderKind,
     synthesize_gemini_tool_call_id_with_uuid,
@@ -155,49 +155,6 @@ impl ClaudeAdapter {
     fn get_api_format(&self, provider: &Provider) -> &'static str {
         get_claude_api_format(provider)
     }
-
-    fn extract_auth_key(&self, provider: &Provider) -> Option<ClaudeAuthKey> {
-        let auth_key = provider_claude_auth_key(provider);
-        match auth_key.as_ref().map(|auth_key| auth_key.source) {
-            Some(ClaudeAuthKeySource::AnthropicAuthToken) => {
-                log::debug!("[Claude] 使用 ANTHROPIC_AUTH_TOKEN");
-            }
-            Some(ClaudeAuthKeySource::AnthropicApiKey) => {
-                log::debug!("[Claude] 使用 ANTHROPIC_API_KEY");
-            }
-            Some(ClaudeAuthKeySource::OpenRouterApiKey) => {
-                log::debug!("[Claude] 使用 OPENROUTER_API_KEY");
-            }
-            Some(ClaudeAuthKeySource::OpenAiApiKey) => {
-                log::debug!("[Claude] 使用 OPENAI_API_KEY");
-            }
-            Some(ClaudeAuthKeySource::GeminiApiKey) => {
-                log::debug!("[Claude] 使用 GEMINI_API_KEY");
-            }
-            Some(ClaudeAuthKeySource::DirectApiKey) => {
-                log::debug!("[Claude] 使用 apiKey/api_key");
-            }
-            None => {
-                log::warn!("[Claude] 未找到有效的 API Key");
-            }
-        }
-        auth_key
-    }
-
-    /// 根据 env 中填写的变量名推断 Anthropic 默认走哪种鉴权策略。
-    ///
-    /// 与 Anthropic SDK 原生语义保持一致：
-    /// - `ANTHROPIC_AUTH_TOKEN` → `ClaudeAuth`（发送 `Authorization: Bearer`）
-    /// - `ANTHROPIC_API_KEY`    → `Anthropic` （发送 `x-api-key`）
-    ///
-    /// 优先级与 [`extract_key`] 一致；两者都缺时返回 `None` 由调用方决定 fallback。
-    fn infer_anthropic_auth_strategy(source: ClaudeAuthKeySource) -> Option<ProviderAuthStrategy> {
-        match source {
-            ClaudeAuthKeySource::AnthropicAuthToken => Some(ProviderAuthStrategy::ClaudeAuth),
-            ClaudeAuthKeySource::AnthropicApiKey => Some(ProviderAuthStrategy::Anthropic),
-            _ => None,
-        }
-    }
 }
 
 impl Default for ClaudeAdapter {
@@ -216,83 +173,7 @@ impl ProviderAdapter for ClaudeAdapter {
     }
 
     fn extract_auth(&self, provider: &Provider) -> Option<ProviderAuthInfo> {
-        let provider_type = self.provider_type(provider);
-
-        // GitHub Copilot 使用特殊的认证策略
-        // 实际的 token 会在代理请求时动态获取
-        if provider_type == ProviderKind::GitHubCopilot {
-            // 返回一个占位符，实际 token 由 CopilotAuthManager 动态提供
-            return Some(ProviderAuthInfo::new(
-                "copilot_placeholder".to_string(),
-                ProviderAuthStrategy::GitHubCopilot,
-            ));
-        }
-
-        // Codex OAuth (ChatGPT Plus/Pro) 同样使用占位符
-        // 实际的 access_token 由 CodexOAuthManager 动态提供
-        if provider_type == ProviderKind::CodexOAuth {
-            return Some(ProviderAuthInfo::new(
-                "codex_oauth_placeholder".to_string(),
-                ProviderAuthStrategy::CodexOAuth,
-            ));
-        }
-
-        let auth_key = self.extract_auth_key(provider)?;
-        let key = auth_key.key;
-
-        match provider_type {
-            ProviderKind::GeminiCli => {
-                // Parse stored OAuth JSON and only attach access_token when
-                // it's actually usable. `parse_oauth_credentials` accepts
-                // refresh-token-only JSON (which is legitimate before the
-                // first refresh) and also surfaces `{"access_token": "", ...}`
-                // for expired credentials. In both cases we would otherwise
-                // send `Authorization: Bearer ` to upstream and get a 401.
-                //
-                // CC Switch does not currently exchange the refresh_token for
-                // a fresh access_token. Until that path exists, degrade to
-                // plain GoogleOAuth strategy (which still sends the raw key
-                // as a fallback) and log loudly so users know to refresh
-                // their `~/.gemini/oauth_creds.json`.
-                match super::gemini::GeminiAdapter::new().parse_oauth_credentials(&key) {
-                    Some(creds) if !creds.access_token.is_empty() => {
-                        Some(ProviderAuthInfo::with_access_token(key, creds.access_token))
-                    }
-                    Some(_) => {
-                        log::warn!(
-                            "[Gemini OAuth] access_token missing or empty for provider `{}`; \
-                             bearer auth will likely fail with 401. Refresh \
-                             ~/.gemini/oauth_creds.json via the gemini CLI to obtain a new token.",
-                            provider.id
-                        );
-                        Some(ProviderAuthInfo::new(
-                            key,
-                            ProviderAuthStrategy::GoogleOAuth,
-                        ))
-                    }
-                    None => Some(ProviderAuthInfo::new(
-                        key,
-                        ProviderAuthStrategy::GoogleOAuth,
-                    )),
-                }
-            }
-            ProviderKind::Gemini => Some(ProviderAuthInfo::new(key, ProviderAuthStrategy::Google)),
-            ProviderKind::OpenRouter => {
-                Some(ProviderAuthInfo::new(key, ProviderAuthStrategy::Bearer))
-            }
-            ProviderKind::ClaudeAuth => {
-                Some(ProviderAuthInfo::new(key, ProviderAuthStrategy::ClaudeAuth))
-            }
-            _ => {
-                // 按 env 中的变量名推断鉴权策略，对齐 Anthropic SDK 语义：
-                // ANTHROPIC_AUTH_TOKEN → Authorization: Bearer
-                // ANTHROPIC_API_KEY    → x-api-key
-                // 其他来源（apiKey 直填等）默认走 x-api-key（Anthropic 官方协议）。
-                let strategy = Self::infer_anthropic_auth_strategy(auth_key.source)
-                    .unwrap_or(ProviderAuthStrategy::Anthropic);
-                Some(ProviderAuthInfo::new(key, strategy))
-            }
-        }
+        provider_claude_auth_info(provider)
     }
 
     fn build_url(&self, base_url: &str, endpoint: &str) -> String {

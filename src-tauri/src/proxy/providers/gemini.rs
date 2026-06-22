@@ -10,12 +10,13 @@ use super::ProviderAdapter;
 use crate::provider::Provider;
 use crate::proxy::error::ProxyError;
 use crate::proxy_core_adapter::{
-    build_gemini_auth_headers, build_gemini_upstream_url, parse_gemini_oauth_credentials,
-    provider_gemini_auth_info, required_gemini_provider_base_url, GeminiOAuthCredentials,
-    ProviderAuthInfo, ProviderAuthStrategy,
+    build_gemini_auth_headers, build_gemini_upstream_url, provider_gemini_auth_info,
+    required_gemini_provider_base_url, ProviderAuthInfo, ProviderAuthStrategy,
 };
 #[cfg(test)]
-use crate::proxy_core_adapter::{provider_gemini_kind, ProviderKind};
+use crate::proxy_core_adapter::{
+    parse_gemini_oauth_credentials, provider_gemini_kind, GeminiOAuthCredentials, ProviderKind,
+};
 
 /// Gemini 适配器
 pub struct GeminiAdapter;
@@ -36,6 +37,7 @@ impl GeminiAdapter {
     }
 
     /// 解析 OAuth 凭证
+    #[cfg(test)]
     pub fn parse_oauth_credentials(&self, key: &str) -> Option<GeminiOAuthCredentials> {
         parse_gemini_oauth_credentials(key)
     }

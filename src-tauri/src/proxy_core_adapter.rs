@@ -4236,6 +4236,95 @@ pub(crate) fn provider_claude_auth_key(provider: &Provider) -> Option<ClaudeAuth
     extract_claude_auth_key_from_settings(&provider.settings_config)
 }
 
+fn log_claude_auth_key_source(auth_key: Option<&ClaudeAuthKey>) {
+    match auth_key.map(|auth_key| auth_key.source) {
+        Some(ClaudeAuthKeySource::AnthropicAuthToken) => {
+            log::debug!("[Claude] 使用 ANTHROPIC_AUTH_TOKEN");
+        }
+        Some(ClaudeAuthKeySource::AnthropicApiKey) => {
+            log::debug!("[Claude] 使用 ANTHROPIC_API_KEY");
+        }
+        Some(ClaudeAuthKeySource::OpenRouterApiKey) => {
+            log::debug!("[Claude] 使用 OPENROUTER_API_KEY");
+        }
+        Some(ClaudeAuthKeySource::OpenAiApiKey) => {
+            log::debug!("[Claude] 使用 OPENAI_API_KEY");
+        }
+        Some(ClaudeAuthKeySource::GeminiApiKey) => {
+            log::debug!("[Claude] 使用 GEMINI_API_KEY");
+        }
+        Some(ClaudeAuthKeySource::DirectApiKey) => {
+            log::debug!("[Claude] 使用 apiKey/api_key");
+        }
+        None => {
+            log::warn!("[Claude] 未找到有效的 API Key");
+        }
+    }
+}
+
+fn claude_anthropic_auth_strategy(source: ClaudeAuthKeySource) -> Option<ProviderAuthStrategy> {
+    match source {
+        ClaudeAuthKeySource::AnthropicAuthToken => Some(ProviderAuthStrategy::ClaudeAuth),
+        ClaudeAuthKeySource::AnthropicApiKey => Some(ProviderAuthStrategy::Anthropic),
+        _ => None,
+    }
+}
+
+fn claude_gemini_cli_auth_info(provider: &Provider, key: String) -> ProviderAuthInfo {
+    match parse_gemini_oauth_credentials(&key) {
+        Some(credentials) if !credentials.access_token.is_empty() => {
+            ProviderAuthInfo::with_access_token(key, credentials.access_token)
+        }
+        Some(_) => {
+            log::warn!(
+                "[Gemini OAuth] access_token missing or empty for provider `{}`; \
+                 bearer auth will likely fail with 401. Refresh \
+                 ~/.gemini/oauth_creds.json via the gemini CLI to obtain a new token.",
+                provider.id
+            );
+            ProviderAuthInfo::new(key, ProviderAuthStrategy::GoogleOAuth)
+        }
+        None => ProviderAuthInfo::new(key, ProviderAuthStrategy::GoogleOAuth),
+    }
+}
+
+pub(crate) fn provider_claude_auth_info(provider: &Provider) -> Option<ProviderAuthInfo> {
+    let provider_type = provider_claude_kind(provider);
+
+    if provider_type == ProviderKind::GitHubCopilot {
+        return Some(ProviderAuthInfo::new(
+            "copilot_placeholder".to_string(),
+            ProviderAuthStrategy::GitHubCopilot,
+        ));
+    }
+
+    if provider_type == ProviderKind::CodexOAuth {
+        return Some(ProviderAuthInfo::new(
+            "codex_oauth_placeholder".to_string(),
+            ProviderAuthStrategy::CodexOAuth,
+        ));
+    }
+
+    let auth_key = provider_claude_auth_key(provider);
+    log_claude_auth_key_source(auth_key.as_ref());
+    let auth_key = auth_key?;
+    let key = auth_key.key;
+
+    match provider_type {
+        ProviderKind::GeminiCli => Some(claude_gemini_cli_auth_info(provider, key)),
+        ProviderKind::Gemini => Some(ProviderAuthInfo::new(key, ProviderAuthStrategy::Google)),
+        ProviderKind::OpenRouter => Some(ProviderAuthInfo::new(key, ProviderAuthStrategy::Bearer)),
+        ProviderKind::ClaudeAuth => {
+            Some(ProviderAuthInfo::new(key, ProviderAuthStrategy::ClaudeAuth))
+        }
+        _ => {
+            let strategy = claude_anthropic_auth_strategy(auth_key.source)
+                .unwrap_or(ProviderAuthStrategy::Anthropic);
+            Some(ProviderAuthInfo::new(key, strategy))
+        }
+    }
+}
+
 pub(crate) fn settings_config_with_channel_auth_key(
     app_type: &str,
     settings_config: &Value,
@@ -12144,6 +12233,10 @@ base_url = "https://api.openai.com/v1"
         assert!(provider_needs_claude_transform(&provider));
         let provider_auth_key = provider_claude_auth_key(&provider).expect("provider auth token");
         assert_eq!(provider_auth_key.key, "claude-token");
+        let provider_auth = provider_claude_auth_info(&provider).expect("provider auth info");
+        assert_eq!(provider_auth.api_key, "claude-token");
+        assert_eq!(provider_auth.access_token, None);
+        assert_eq!(provider_auth.strategy, ProviderAuthStrategy::ClaudeAuth);
         assert_eq!(
             provider_claude_base_url(&provider).as_deref(),
             Some("https://api.anthropic.com/v1")
@@ -12162,6 +12255,40 @@ base_url = "https://api.openai.com/v1"
             required_claude_provider_base_url(&missing_claude_base_url).unwrap_err(),
             "Claude Provider 缺少 base_url 配置"
         );
+        let direct_key_provider = Provider::with_id(
+            "claude-direct-key".to_string(),
+            "Claude Direct Key".to_string(),
+            json!({"apiKey": "sk-direct"}),
+            None,
+        );
+        let direct_key_auth =
+            provider_claude_auth_info(&direct_key_provider).expect("direct auth info");
+        assert_eq!(direct_key_auth.api_key, "sk-direct");
+        assert_eq!(direct_key_auth.strategy, ProviderAuthStrategy::Anthropic);
+        let mut gemini_cli_provider = Provider::with_id(
+            "claude-gemini-cli".to_string(),
+            "Claude Gemini CLI".to_string(),
+            json!({"env": {
+                "ANTHROPIC_BASE_URL": "https://generativelanguage.googleapis.com",
+                "ANTHROPIC_API_KEY": "{\"access_token\":\"ya29.valid\",\"refresh_token\":\"rt\"}"
+            }}),
+            None,
+        );
+        gemini_cli_provider.meta = Some(ProviderMeta {
+            api_format: Some("gemini_native".to_string()),
+            ..Default::default()
+        });
+        let gemini_cli_auth =
+            provider_claude_auth_info(&gemini_cli_provider).expect("gemini cli auth info");
+        assert_eq!(gemini_cli_auth.access_token.as_deref(), Some("ya29.valid"));
+        assert_eq!(gemini_cli_auth.strategy, ProviderAuthStrategy::GoogleOAuth);
+        let missing_claude_auth = Provider::with_id(
+            "claude-missing-auth".to_string(),
+            "Claude Missing Auth".to_string(),
+            json!({}),
+            None,
+        );
+        assert!(provider_claude_auth_info(&missing_claude_auth).is_none());
         assert_eq!(
             build_claude_upstream_url("https://api.anthropic.com/v1", "/v1/messages"),
             "https://api.anthropic.com/v1/messages"
