@@ -30,6 +30,7 @@ use crate::proxy_core_adapter::{
     provider_gemini_live_config_object, provider_opencode_live_write_projection,
     provider_live_sync_scope, provider_openclaw_live_write_projection, HermesLiveImportIssue,
     OpenClawLiveImportIssue, OpenCodeLiveImportIssue, ProviderLiveSyncScope,
+    provider_should_sync_to_live,
     proxy_live_config_owned_by_takeover,
     restore_live_settings_for_provider_backfill as adapter_restore_live_settings_for_provider_backfill,
     sanitize_claude_settings_for_live,
@@ -454,12 +455,7 @@ fn sync_all_providers_to_live(state: &AppState, app_type: &AppType) -> Result<()
     let mut synced_count = 0usize;
 
     for provider in providers.values() {
-        if provider
-            .meta
-            .as_ref()
-            .and_then(|meta| meta.live_config_managed)
-            == Some(false)
-        {
+        if !provider_should_sync_to_live(provider) {
             continue;
         }
 

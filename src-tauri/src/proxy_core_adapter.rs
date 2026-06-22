@@ -1224,6 +1224,14 @@ pub(crate) fn provider_live_sync_scope(app_type: &AppType) -> ProviderLiveSyncSc
     }
 }
 
+pub(crate) fn provider_should_sync_to_live(provider: &Provider) -> bool {
+    provider
+        .meta
+        .as_ref()
+        .and_then(|meta| meta.live_config_managed)
+        != Some(false)
+}
+
 /// Reads old Claude model keys, writes DEFAULT_* keys, and deletes legacy SMALL_FAST.
 pub(crate) fn normalize_claude_models_in_value(settings: &mut Value) -> bool {
     let mut changed = false;
@@ -12618,6 +12626,29 @@ command = "latest-command"
             provider_live_sync_scope(&AppType::ClaudeDesktop),
             ProviderLiveSyncScope::CurrentProvider
         );
+    }
+
+    #[test]
+    fn provider_live_sync_includes_unknown_and_managed_providers() {
+        let mut provider = Provider::with_id(
+            "sync-provider".to_string(),
+            "Sync Provider".to_string(),
+            json!({}),
+            None,
+        );
+        assert!(provider_should_sync_to_live(&provider));
+
+        provider.meta = Some(ProviderMeta {
+            live_config_managed: Some(true),
+            ..Default::default()
+        });
+        assert!(provider_should_sync_to_live(&provider));
+
+        provider.meta = Some(ProviderMeta {
+            live_config_managed: Some(false),
+            ..Default::default()
+        });
+        assert!(!provider_should_sync_to_live(&provider));
     }
 
     #[test]
