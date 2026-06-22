@@ -396,8 +396,6 @@ pub(crate) type ProxyResult = crate::proxy_core::api::transport::ProxyResult;
 pub(crate) type ProxyCoreEvent = crate::proxy_core::api::events::ProxyCoreEvent;
 pub(crate) type ProxyEventEnvelope =
     crate::proxy_core::api::events::ProxyEventEnvelope;
-pub(crate) type CodexChatHistorySseInspection =
-    crate::proxy_core::api::transforms::CodexChatHistorySseInspection;
 pub(crate) type CodexChatHistorySseRecord =
     crate::proxy_core::api::transforms::CodexChatHistorySseRecord;
 pub(crate) type CodexChatHistoryState =
@@ -2438,14 +2436,15 @@ pub(crate) use crate::proxy_core::api::model_catalog::{
     RoutableModelList,
 };
 pub(crate) use crate::proxy_core::api::transforms::{
-    chat_completion_to_response_with_context, claude_stream_usage_event_filter,
+    append_utf8_safe, chat_completion_to_response_with_context, claude_stream_usage_event_filter,
     claude_transform_unlabeled_sse_aggregation, codex_stream_usage_event_filter,
     create_codex_chat_to_responses_sse_stream_with_context,
     create_gemini_to_anthropic_sse_stream_with_callbacks,
     create_openai_chat_to_anthropic_sse_stream,
     create_openai_responses_to_anthropic_sse_stream, extract_anthropic_tool_schema_hints,
     build_gemini_upstream_url, gemini_response_to_anthropic_message_with_shadow,
-    should_aggregate_codex_oauth_responses_sse, should_use_claude_transform_streaming,
+    inspect_codex_chat_history_sse_block, should_aggregate_codex_oauth_responses_sse,
+    should_use_claude_transform_streaming, take_sse_block,
 };
 pub(crate) use crate::proxy_core::api::transport::{
     append_query_to_endpoint_path, parse_upstream_json_or_unlabeled_sse,
@@ -2686,24 +2685,6 @@ where
     S: ProxyServices + ?Sized,
 {
     ProxyEngine::new(services)
-}
-
-pub(crate) fn append_utf8_safe(
-    buffer: &mut String,
-    remainder: &mut Vec<u8>,
-    new_bytes: &[u8],
-) {
-    crate::proxy_core::api::transforms::append_utf8_safe(buffer, remainder, new_bytes);
-}
-
-pub(crate) fn take_sse_block(buffer: &mut String) -> Option<String> {
-    crate::proxy_core::api::transforms::take_sse_block(buffer)
-}
-
-pub(crate) fn inspect_codex_chat_history_sse_block(
-    block: &str,
-) -> Option<CodexChatHistorySseInspection> {
-    crate::proxy_core::api::transforms::inspect_codex_chat_history_sse_block(block)
 }
 
 pub(crate) fn provider_codex_auth_headers(
