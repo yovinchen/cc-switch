@@ -31,6 +31,7 @@ use crate::proxy_core_adapter::{
     app_error,
     apply_channel_auth_profile_providers_from_source,
     auth_info_from_cc_switch_provider_config,
+    cc_switch_app_kinds,
     claude_desktop_model_routes_to_core_inputs,
     channel_health_attempt_db_update,
     channel_health_reset_from_plan,
@@ -245,11 +246,7 @@ struct CcSwitchConfigSource {
 
 impl ProxyConfigSource for CcSwitchConfigSource {
     fn list_apps<'a>(&'a self) -> BoxFuture<'a, ProxyCoreResult<Vec<AppKind>>> {
-        Box::pin(async move {
-            Ok(AppType::all()
-                .map(|app| AppKind::from(&app))
-                .collect())
-        })
+        Box::pin(async move { Ok(cc_switch_app_kinds()) })
     }
 
     fn load_global<'a>(&'a self) -> BoxFuture<'a, ProxyCoreResult<ProxyGlobalConfig>> {

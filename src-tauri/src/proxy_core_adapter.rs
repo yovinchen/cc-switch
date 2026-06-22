@@ -4971,6 +4971,10 @@ impl From<&AppType> for AppKind {
     }
 }
 
+pub(crate) fn cc_switch_app_kinds() -> Vec<AppKind> {
+    AppType::all().map(|app| AppKind::from(&app)).collect()
+}
+
 pub(crate) fn app_type_option_from_proxy_core_app(app: &AppKind) -> Option<AppType> {
     app.as_str().parse::<AppType>().ok()
 }
@@ -7891,6 +7895,13 @@ mod tests {
             AppKind::from(&AppType::OpenClaw),
             AppKind::Custom("openclaw".to_string())
         );
+        let catalog = cc_switch_app_kinds();
+        let expected_catalog = AppType::all()
+            .map(|app| AppKind::from(&app))
+            .collect::<Vec<_>>();
+        assert_eq!(catalog, expected_catalog);
+        assert!(catalog.contains(&AppKind::Claude));
+        assert!(catalog.contains(&AppKind::Custom("opencode".to_string())));
         assert_eq!(
             app_type_from_proxy_core_app(&AppKind::Claude).expect("claude app"),
             AppType::Claude
