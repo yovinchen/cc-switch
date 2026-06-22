@@ -11,8 +11,8 @@ use crate::provider::CodexChatReasoningConfig;
 use crate::provider::Provider;
 use crate::proxy::error::ProxyError;
 use crate::proxy_core_adapter::{
-    apply_codex_chat_upstream_model_policy, build_codex_upstream_url,
-    provider_codex_auth_headers, provider_codex_auth_info, required_codex_provider_base_url,
+    apply_codex_chat_upstream_model_policy, provider_codex_auth_headers,
+    provider_codex_auth_info, provider_codex_upstream_url, required_codex_provider_base_url,
     provider_codex_catalog_model_ids, provider_codex_chat_reasoning_profile,
     provider_codex_upstream_model, provider_codex_uses_chat_completions,
     should_convert_codex_responses_endpoint_to_chat, CodexChatReasoningOptions,
@@ -127,7 +127,7 @@ impl ProviderAdapter for CodexAdapter {
     }
 
     fn build_url(&self, base_url: &str, endpoint: &str) -> String {
-        build_codex_upstream_url(base_url, endpoint)
+        provider_codex_upstream_url(base_url, endpoint)
     }
 
     fn get_auth_headers(

@@ -320,6 +320,11 @@ const FORBIDDEN_PROVIDER_ADAPTER_AUTH_HEADER_MARKERS: &[&str] = &[
     "CopilotAuthHeadersInput",
     ".map_err(|error| ProxyError::AuthError(error.to_string()))",
 ];
+const FORBIDDEN_PROVIDER_ADAPTER_URL_BUILD_MARKERS: &[&str] = &[
+    "build_claude_upstream_url(",
+    "build_codex_upstream_url(",
+    "build_gemini_upstream_url(",
+];
 const FORBIDDEN_HANDLER_MANAGEMENT_AUTH_DECISION_MARKERS: &[&str] = &[
     "std::env::var(",
     "CC_SWITCH_PROXY_MANAGEMENT_TOKEN",
@@ -1463,6 +1468,46 @@ fn production_claude_provider_adapter_delegates_auth_headers_to_adapter() {
     assert!(
         violations.is_empty(),
         "Claude provider adapter must delegate auth header construction and error text to proxy_core_adapter helpers:\n{}",
+        violations.join("\n")
+    );
+}
+
+#[test]
+fn production_provider_adapters_delegate_url_building_to_adapter() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let provider_paths = [
+        "src/proxy/providers/claude.rs",
+        "src/proxy/providers/codex.rs",
+        "src/proxy/providers/gemini.rs",
+    ];
+
+    let mut violations = Vec::new();
+    for relative in provider_paths {
+        let path = manifest_dir.join(relative);
+        let source = fs::read_to_string(&path).expect("read provider adapter source");
+        let build_url = function_slice(
+            &source,
+            "    fn build_url(&self, base_url: &str, endpoint: &str) -> String",
+            "    fn get_auth_headers(",
+        );
+        for (line_index, line) in production_lines(build_url) {
+            let code = line.split("//").next().unwrap_or_default();
+            for marker in FORBIDDEN_PROVIDER_ADAPTER_URL_BUILD_MARKERS {
+                if code.contains(marker) {
+                    violations.push(format!(
+                        "{} build_url:{} contains URL build marker `{}`",
+                        relative,
+                        line_index + 1,
+                        marker
+                    ));
+                }
+            }
+        }
+    }
+
+    assert!(
+        violations.is_empty(),
+        "provider adapters must delegate upstream URL building to proxy_core_adapter provider helpers:\n{}",
         violations.join("\n")
     );
 }

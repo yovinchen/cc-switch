@@ -19,13 +19,12 @@ use crate::provider::Provider;
 use crate::proxy::error::ProxyError;
 use crate::proxy_core_adapter::{
     anthropic_request_to_gemini_request_with_shadow, anthropic_to_openai_chat_request,
-    anthropic_to_openai_responses_request, build_claude_upstream_url,
-    claude_api_format_needs_transform,
+    anthropic_to_openai_responses_request, claude_api_format_needs_transform,
     gemini_response_to_anthropic_message, inject_openai_stream_include_usage,
     normalize_anthropic_tool_thinking_history, openai_chat_to_anthropic_message,
     openai_responses_to_anthropic_message,
     provider_claude_api_format, provider_claude_auth_headers, provider_claude_auth_info,
-    required_claude_provider_base_url,
+    provider_claude_upstream_url, required_claude_provider_base_url,
     provider_claude_kind, provider_claude_prompt_cache_key,
     provider_claude_responses_prompt_cache_key, provider_codex_fast_mode_enabled,
     provider_is_codex_oauth, provider_should_preserve_reasoning_content_for_openai_chat,
@@ -177,7 +176,7 @@ impl ProviderAdapter for ClaudeAdapter {
     }
 
     fn build_url(&self, base_url: &str, endpoint: &str) -> String {
-        build_claude_upstream_url(base_url, endpoint)
+        provider_claude_upstream_url(base_url, endpoint)
     }
 
     fn get_auth_headers(

@@ -2890,6 +2890,10 @@ pub(crate) fn build_codex_upstream_url(base_url: &str, endpoint: &str) -> String
     crate::proxy_core::api::transport::build_codex_upstream_url(base_url, endpoint)
 }
 
+pub(crate) fn provider_codex_upstream_url(base_url: &str, endpoint: &str) -> String {
+    build_codex_upstream_url(base_url, endpoint)
+}
+
 pub(crate) fn should_convert_codex_responses_endpoint_to_chat(
     provider_uses_chat_completions: bool,
     endpoint: &str,
@@ -4056,6 +4060,10 @@ pub(crate) fn build_gemini_upstream_url(base_url: &str, endpoint: &str) -> Strin
     crate::proxy_core::api::transforms::build_gemini_upstream_url(base_url, endpoint)
 }
 
+pub(crate) fn provider_gemini_upstream_url(base_url: &str, endpoint: &str) -> String {
+    build_gemini_upstream_url(base_url, endpoint)
+}
+
 pub(crate) fn build_gemini_auth_headers(
     api_key: &str,
     access_token: Option<&str>,
@@ -4407,6 +4415,10 @@ pub(crate) fn provider_claude_base_url(provider: &Provider) -> Option<String> {
 
 pub(crate) fn build_claude_upstream_url(base_url: &str, endpoint: &str) -> String {
     crate::proxy_core::api::transport::build_claude_upstream_url(base_url, endpoint)
+}
+
+pub(crate) fn provider_claude_upstream_url(base_url: &str, endpoint: &str) -> String {
+    build_claude_upstream_url(base_url, endpoint)
 }
 
 pub(crate) fn build_claude_auth_headers(
@@ -11426,6 +11438,10 @@ mod tests {
             build_codex_upstream_url("https://api.openai.com", "/chat/completions"),
             "https://api.openai.com/v1/chat/completions"
         );
+        assert_eq!(
+            provider_codex_upstream_url("https://api.openai.com", "/chat/completions"),
+            "https://api.openai.com/v1/chat/completions"
+        );
 
         let headers = build_codex_bearer_auth_headers("sk-test").expect("bearer header");
         assert_eq!(headers[0].0.as_str(), "authorization");
@@ -12230,6 +12246,13 @@ base_url = "https://api.openai.com/v1"
             ),
             "https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent"
         );
+        assert_eq!(
+            provider_gemini_upstream_url(
+                "https://generativelanguage.googleapis.com/v1beta",
+                "/v1beta/models/gemini-pro:generateContent",
+            ),
+            "https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent"
+        );
 
         let oauth_headers = build_gemini_auth_headers(
             "refresh-token",
@@ -12380,6 +12403,10 @@ base_url = "https://api.openai.com/v1"
         assert!(provider_claude_auth_info(&missing_claude_auth).is_none());
         assert_eq!(
             build_claude_upstream_url("https://api.anthropic.com/v1", "/v1/messages"),
+            "https://api.anthropic.com/v1/messages"
+        );
+        assert_eq!(
+            provider_claude_upstream_url("https://api.anthropic.com/v1", "/v1/messages"),
             "https://api.anthropic.com/v1/messages"
         );
 
