@@ -10,14 +10,13 @@ use crate::proxy::server::ProxyServer;
 use crate::proxy::switch_lock::SwitchLockManager;
 use crate::proxy_core_adapter::{
     apply_claude_takeover_fields_for_provider, apply_claude_takeover_fields_with_policy,
-    apply_codex_takeover_auth_placeholder_if_present, apply_gemini_takeover_env_fields,
-    attach_codex_model_catalog_from_provider, build_proxy_official_warning_event_payload,
+    apply_codex_takeover_fields_for_provider, apply_gemini_takeover_env_fields,
+    build_proxy_official_warning_event_payload,
     ClaudeTakeoverAuthPolicy,
     codex_backup_projection_error_message, codex_live_write_projection,
     codex_provider_live_write_parts, codex_preserved_auth_live_config_text_for_policy,
-    codex_takeover_toml_config_for_provider,
-    ensure_codex_takeover_auth_placeholder, gemini_live_backup_from_effective_settings,
-    is_local_proxy_url, live_backup_snapshot_from_live_config,
+    gemini_live_backup_from_effective_settings, is_local_proxy_url,
+    live_backup_snapshot_from_live_config,
     live_config_has_proxy_placeholder_for_app, live_takeover_config_matches_proxy_for_app,
     provider_settings_have_proxy_placeholder_for_app, sync_provider_settings_with_live_token,
     preserve_codex_mcp_servers_from_existing_config,
@@ -28,8 +27,8 @@ use crate::proxy_core_adapter::{
     remove_codex_takeover_auth_placeholder_if_present,
     remove_codex_takeover_config_placeholders_if_present,
     remove_gemini_takeover_env_fields_if_present, should_block_proxy_switch_to_provider_category,
-    CircuitBreakerConfig, LiveTokenProviderSettingsIssue, ProxyConfig, ProxyRuntimeStatus,
-    ProxyServerInfo, ProxyTakeoverStatus, PROXY_OFFICIAL_WARNING_EVENT,
+    CircuitBreakerConfig, CodexTakeoverAuthPolicy, LiveTokenProviderSettingsIssue, ProxyConfig,
+    ProxyRuntimeStatus, ProxyServerInfo, ProxyTakeoverStatus, PROXY_OFFICIAL_WARNING_EVENT,
 };
 use crate::services::provider::{
     build_effective_settings_with_common_config, write_live_with_common_config,
@@ -118,19 +117,13 @@ impl ProxyService {
         }
         let (_, proxy_codex_base_url) = self.build_proxy_urls().await?;
 
-        ensure_codex_takeover_auth_placeholder(&mut effective_settings, PROXY_TOKEN_PLACEHOLDER);
-
-        let config_str = effective_settings
-            .get("config")
-            .and_then(|v| v.as_str())
-            .unwrap_or("");
-        let updated_config = codex_takeover_toml_config_for_provider(
-            config_str,
+        apply_codex_takeover_fields_for_provider(
+            &mut effective_settings,
             &proxy_codex_base_url,
+            PROXY_TOKEN_PLACEHOLDER,
             Some(provider),
+            CodexTakeoverAuthPolicy::EnsureAuth,
         );
-        effective_settings["config"] = json!(updated_config);
-        attach_codex_model_catalog_from_provider(&mut effective_settings, Some(provider));
 
         self.write_codex_takeover_live_for_provider(&effective_settings, Some(provider))?;
         Ok(())
@@ -964,28 +957,17 @@ impl ProxyService {
 
         // Codex: 修改 config.toml 的 base_url，auth.json 的 OPENAI_API_KEY（代理会注入真实 Token）
         if let Ok(mut live_config) = self.read_codex_live() {
-            // 1. 修改 auth.json 中的 OPENAI_API_KEY（使用占位符）
-            apply_codex_takeover_auth_placeholder_if_present(
-                &mut live_config,
-                PROXY_TOKEN_PLACEHOLDER,
-            );
-
-            // 2. 修改 config.toml 中的 base_url
-            let config_str = live_config
-                .get("config")
-                .and_then(|v| v.as_str())
-                .unwrap_or("");
             let codex_provider = self
                 .get_current_provider_for_app(&AppType::Codex)
                 .ok()
                 .flatten();
-            let updated_config = codex_takeover_toml_config_for_provider(
-                config_str,
+            apply_codex_takeover_fields_for_provider(
+                &mut live_config,
                 &proxy_codex_base_url,
+                PROXY_TOKEN_PLACEHOLDER,
                 codex_provider.as_ref(),
+                CodexTakeoverAuthPolicy::ExistingAuthOnly,
             );
-            live_config["config"] = json!(updated_config);
-            attach_codex_model_catalog_from_provider(&mut live_config, codex_provider.as_ref());
 
             self.write_codex_takeover_live_for_provider(&live_config, codex_provider.as_ref())?;
             log::info!("Codex Live 配置已接管，代理地址: {proxy_codex_base_url}");
@@ -1027,23 +1009,14 @@ impl ProxyService {
             AppType::Codex => {
                 let mut live_config = self.read_codex_live()?;
 
-                apply_codex_takeover_auth_placeholder_if_present(
-                    &mut live_config,
-                    PROXY_TOKEN_PLACEHOLDER,
-                );
-
-                let config_str = live_config
-                    .get("config")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("");
                 let codex_provider = self.require_current_provider_for_app(&AppType::Codex)?;
-                let updated_config = codex_takeover_toml_config_for_provider(
-                    config_str,
+                apply_codex_takeover_fields_for_provider(
+                    &mut live_config,
                     &proxy_codex_base_url,
+                    PROXY_TOKEN_PLACEHOLDER,
                     Some(&codex_provider),
+                    CodexTakeoverAuthPolicy::ExistingAuthOnly,
                 );
-                live_config["config"] = json!(updated_config);
-                attach_codex_model_catalog_from_provider(&mut live_config, Some(&codex_provider));
 
                 self.write_codex_takeover_live_for_provider(&live_config, Some(&codex_provider))?;
                 log::info!("Codex Live 配置已接管，代理地址: {proxy_codex_base_url}");
@@ -1098,28 +1071,16 @@ impl ProxyService {
             }
             AppType::Codex => {
                 if let Ok(mut live_config) = self.read_codex_live() {
-                    apply_codex_takeover_auth_placeholder_if_present(
-                        &mut live_config,
-                        PROXY_TOKEN_PLACEHOLDER,
-                    );
-
-                    let config_str = live_config
-                        .get("config")
-                        .and_then(|v| v.as_str())
-                        .unwrap_or("");
                     let codex_provider = self
                         .get_current_provider_for_app(&AppType::Codex)
                         .ok()
                         .flatten();
-                    let updated_config = codex_takeover_toml_config_for_provider(
-                        config_str,
-                        &proxy_codex_base_url,
-                        codex_provider.as_ref(),
-                    );
-                    live_config["config"] = json!(updated_config);
-                    attach_codex_model_catalog_from_provider(
+                    apply_codex_takeover_fields_for_provider(
                         &mut live_config,
+                        &proxy_codex_base_url,
+                        PROXY_TOKEN_PLACEHOLDER,
                         codex_provider.as_ref(),
+                        CodexTakeoverAuthPolicy::ExistingAuthOnly,
                     );
 
                     let _ = self.write_codex_takeover_live_for_provider(
@@ -1979,6 +1940,7 @@ impl ProxyService {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::proxy_core_adapter::codex_takeover_toml_config_for_provider;
     use crate::provider::ProviderMeta;
     use serial_test::serial;
     use std::env;
