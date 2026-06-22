@@ -1529,6 +1529,16 @@ pub(crate) fn provider_codex_backfill_parts(provider: &Provider) -> CodexProvide
     }
 }
 
+pub(crate) fn apply_codex_unified_session_bucket_for_provider(
+    provider: &Provider,
+    settings: &mut Value,
+) -> Result<(), AppError> {
+    crate::codex_config::apply_codex_unified_session_bucket_to_settings(
+        provider.category.as_deref(),
+        settings,
+    )
+}
+
 pub(crate) fn codex_restored_live_settings_parts(
     settings: &Value,
 ) -> CodexRestoredLiveSettingsParts<'_> {

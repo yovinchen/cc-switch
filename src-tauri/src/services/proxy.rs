@@ -10,8 +10,8 @@ use crate::proxy::server::ProxyServer;
 use crate::proxy::switch_lock::SwitchLockManager;
 use crate::proxy_core_adapter::{
     apply_claude_takeover_fields_for_provider, apply_claude_takeover_fields_with_policy,
-    apply_codex_takeover_fields_for_provider, apply_gemini_takeover_env_fields,
-    build_proxy_official_warning_event_payload,
+    apply_codex_takeover_fields_for_provider, apply_codex_unified_session_bucket_for_provider,
+    apply_gemini_takeover_env_fields, build_proxy_official_warning_event_payload,
     ClaudeTakeoverAuthPolicy,
     codex_backup_projection_error_message, codex_live_write_projection,
     codex_provider_live_write_parts, codex_preserved_auth_live_config_text_for_policy,
@@ -1476,10 +1476,7 @@ impl ProxyService {
 
             // 统一会话开关：备份是接管释放时恢复 live 的来源，官方配置的
             // 共享 custom 路由注入必须落在备份里，否则恢复后开关失效。
-            crate::codex_config::apply_codex_unified_session_bucket_to_settings(
-                provider.category.as_deref(),
-                &mut effective_settings,
-            )
+            apply_codex_unified_session_bucket_for_provider(provider, &mut effective_settings)
             .map_err(|e| format!("注入统一会话路由失败: {e}"))?;
         }
 
@@ -4320,6 +4317,9 @@ wire_api = "responses"
     async fn update_live_backup_from_provider_applies_codex_common_config() {
         let _home = TempHome::new();
         crate::settings::reload_settings().expect("reload settings");
+        let mut app_settings = crate::settings::AppSettings::default();
+        app_settings.unify_codex_session_history = true;
+        crate::settings::update_settings(app_settings).expect("enable unified session");
 
         let db = Arc::new(Database::memory().expect("init db"));
         db.set_config_snippet(
@@ -4337,15 +4337,11 @@ wire_api = "responses"
                 "auth": {
                     "OPENAI_API_KEY": "token"
                 },
-                "config": r#"model_provider = "any"
-model = "gpt-5"
-
-[model_providers.any]
-base_url = "https://codex.example/v1"
-"#
+                "config": "model = \"gpt-5\"\n"
             }),
             None,
         );
+        provider.category = Some("official".to_string());
         provider.meta = Some(ProviderMeta {
             common_config_enabled: Some(true),
             ..Default::default()
@@ -4371,6 +4367,14 @@ base_url = "https://codex.example/v1"
         assert!(
             config.contains("disable_response_storage = true"),
             "common config should be applied into Codex restore backup"
+        );
+        assert!(
+            config.contains("model_provider = \"custom\""),
+            "official Codex restore backup should receive the shared history route"
+        );
+        assert!(
+            config.contains("[model_providers.custom]"),
+            "official Codex restore backup should include the shared route provider"
         );
     }
 
