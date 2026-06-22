@@ -29,10 +29,12 @@ use crate::proxy_core_adapter::{
     allow_forward_attempt_runtime_source, merge_copilot_tool_results,
     non_streaming_body_timeout_message, normalize_thinking_type,
     prepare_upstream_request_body_with_report, prompt_cache_trace_log_message,
-    provider_bedrock_env_flag, provider_claude_api_format,
+    provider_apply_codex_chat_upstream_model, provider_bedrock_env_flag,
+    provider_claude_api_format,
     provider_claude_normalize_anthropic_messages,
     provider_claude_transform_request_for_api_format, provider_custom_user_agent_header,
-    provider_is_codex_oauth, provider_is_full_url, provider_is_github_copilot_upstream,
+    provider_codex_chat_reasoning_options, provider_is_codex_oauth, provider_is_full_url,
+    provider_is_github_copilot_upstream, provider_should_convert_codex_responses_to_chat,
     provider_uses_anthropic_rectifiers, rectify_anthropic_request, rectify_thinking_budget,
     replace_image_blocks_with_marker,
     record_forward_attempt_failure_runtime_source,
@@ -1311,7 +1313,7 @@ impl RequestForwarder {
             None => adapter.needs_transform(provider),
         };
         let codex_responses_to_chat = matches!(app_type, AppType::Codex)
-            && super::providers::should_convert_codex_responses_to_chat(provider, endpoint);
+            && provider_should_convert_codex_responses_to_chat(provider, endpoint);
         let claude_api_format_for_url = resolved_claude_api_format.as_deref().or_else(|| {
             (adapter.name() == "Claude").then(|| provider_claude_api_format(provider))
         });
@@ -1353,9 +1355,8 @@ impl RequestForwarder {
                     "[Codex] Restored or enriched {restored} cached function call item(s) for Chat upstream"
                 );
             }
-            super::providers::apply_codex_chat_upstream_model(provider, &mut mapped_body);
-            let reasoning_options =
-                super::providers::resolve_codex_chat_reasoning_options(provider, &mapped_body);
+            provider_apply_codex_chat_upstream_model(provider, &mut mapped_body);
+            let reasoning_options = provider_codex_chat_reasoning_options(provider, &mapped_body);
             let model = mapped_body
                 .get("model")
                 .and_then(|value| value.as_str())

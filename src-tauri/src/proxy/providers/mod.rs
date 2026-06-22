@@ -26,10 +26,6 @@ use crate::proxy_core_adapter::{
 pub use adapter::ProviderAdapter;
 pub use claude::ClaudeAdapter;
 pub use codex::CodexAdapter;
-pub use codex::{
-    apply_codex_chat_upstream_model, resolve_codex_chat_reasoning_options,
-    should_convert_codex_responses_to_chat,
-};
 pub use gemini::GeminiAdapter;
 
 /// 从 AppType 和 Provider 配置推断供应商类型。

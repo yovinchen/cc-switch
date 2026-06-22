@@ -1017,6 +1017,7 @@
 本轮继续把 Claude Anthropic 消息规范化策略收敛到 adapter，provider 公开函数不再直接判断 api_format、tool-thinking history gate 或 DeepSeek thinking-disabled effort 清理。
 本轮继续把 forwarder 对 Claude api_format、消息规范化和请求转换的调用改为直接消费 adapter helper，不再经由 provider 兼容函数绕回代理模块。
 本轮继续删除 provider 模块对 Claude api_format、消息规范化和请求转换兼容函数的 re-export，Claude provider 对外只保留 `ClaudeAdapter`。
+本轮继续把 forwarder 对 Codex Responses->Chat 判定、上游模型覆写和 reasoning options 的调用改为直接消费 adapter helper，并删除 provider 模块对应 re-export。
 
 当前原则：核心 crate 可以新增端口和领域字段，但不得引入 `tauri`、`Database`、settings、commands、services 等宿主依赖；现有 runtime 行为必须继续通过 targeted tests 证明不回归。
 

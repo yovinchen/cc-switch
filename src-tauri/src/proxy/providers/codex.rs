@@ -11,17 +11,16 @@ use crate::provider::CodexChatReasoningConfig;
 use crate::provider::Provider;
 use crate::proxy::error::ProxyError;
 use crate::proxy_core_adapter::{
-    apply_codex_chat_upstream_model_policy, provider_codex_auth_headers,
-    provider_codex_auth_info, provider_codex_upstream_url, required_codex_provider_base_url,
-    provider_codex_catalog_model_ids, provider_codex_chat_reasoning_profile,
-    provider_codex_upstream_model, provider_codex_uses_chat_completions,
-    should_convert_codex_responses_endpoint_to_chat, CodexChatReasoningOptions,
-    ProviderAuthInfo,
+    provider_codex_auth_headers, provider_codex_auth_info, provider_codex_upstream_url,
+    required_codex_provider_base_url, ProviderAuthInfo,
 };
 #[cfg(test)]
-use crate::proxy_core_adapter::CodexChatReasoningProfile;
+use crate::proxy_core_adapter::{
+    provider_apply_codex_chat_upstream_model, provider_codex_chat_reasoning_profile,
+    provider_codex_uses_chat_completions, provider_should_convert_codex_responses_to_chat,
+    CodexChatReasoningProfile, ProviderAuthStrategy,
+};
 #[cfg(test)]
-use crate::proxy_core_adapter::ProviderAuthStrategy;
 use serde_json::Value as JsonValue;
 
 /// Codex 适配器
@@ -30,44 +29,25 @@ pub struct CodexAdapter;
 /// Whether this Codex provider's real upstream should be called through
 /// OpenAI Chat Completions, even if the local Codex client is talking to CC
 /// Switch through the Responses API.
-pub fn codex_provider_uses_chat_completions(provider: &Provider) -> bool {
+#[cfg(test)]
+fn codex_provider_uses_chat_completions(provider: &Provider) -> bool {
     provider_codex_uses_chat_completions(provider)
 }
 
-pub fn should_convert_codex_responses_to_chat(provider: &Provider, endpoint: &str) -> bool {
-    should_convert_codex_responses_endpoint_to_chat(
-        codex_provider_uses_chat_completions(provider),
-        endpoint,
-    )
-}
-
-/// Extract the real upstream model configured for a Codex provider.
-pub fn codex_provider_upstream_model(provider: &Provider) -> Option<String> {
-    provider_codex_upstream_model(provider)
+#[cfg(test)]
+fn should_convert_codex_responses_to_chat(provider: &Provider, endpoint: &str) -> bool {
+    provider_should_convert_codex_responses_to_chat(provider, endpoint)
 }
 
 /// For Codex Chat providers, ensure the request uses the configured upstream
 /// model before converting the request to Chat Completions.
-pub fn apply_codex_chat_upstream_model(
-    provider: &Provider,
-    body: &mut JsonValue,
-) -> Option<String> {
-    if !codex_provider_uses_chat_completions(provider) {
-        return None;
-    }
-
-    let catalog_model_ids = provider_codex_catalog_model_ids(provider);
-    let upstream_model = codex_provider_upstream_model(provider);
-    apply_codex_chat_upstream_model_policy(
-        body,
-        true,
-        upstream_model.as_deref(),
-        &catalog_model_ids,
-    )
+#[cfg(test)]
+fn apply_codex_chat_upstream_model(provider: &Provider, body: &mut JsonValue) -> Option<String> {
+    provider_apply_codex_chat_upstream_model(provider, body)
 }
 
 #[cfg(test)]
-pub fn resolve_codex_chat_reasoning_config(
+fn resolve_codex_chat_reasoning_config(
     provider: &Provider,
     body: &JsonValue,
 ) -> Option<CodexChatReasoningConfig> {
@@ -75,14 +55,7 @@ pub fn resolve_codex_chat_reasoning_config(
         .map(codex_chat_reasoning_config_from_profile)
 }
 
-pub fn resolve_codex_chat_reasoning_options(
-    provider: &Provider,
-    body: &JsonValue,
-) -> Option<CodexChatReasoningOptions> {
-    provider_codex_chat_reasoning_profile(provider, codex_chat_request_model(body))
-        .map(|profile| CodexChatReasoningOptions::from_profile(&profile))
-}
-
+#[cfg(test)]
 fn codex_chat_request_model(body: &JsonValue) -> Option<&str> {
     body.get("model").and_then(|value| value.as_str())
 }

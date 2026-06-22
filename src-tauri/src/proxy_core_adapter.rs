@@ -3801,6 +3801,35 @@ pub(crate) fn apply_codex_chat_upstream_model_policy(
     )
 }
 
+pub(crate) fn provider_apply_codex_chat_upstream_model(
+    provider: &Provider,
+    body: &mut Value,
+) -> Option<String> {
+    if !provider_codex_uses_chat_completions(provider) {
+        return None;
+    }
+
+    let catalog_model_ids = provider_codex_catalog_model_ids(provider);
+    let upstream_model = provider_codex_upstream_model(provider);
+    apply_codex_chat_upstream_model_policy(
+        body,
+        true,
+        upstream_model.as_deref(),
+        &catalog_model_ids,
+    )
+}
+
+pub(crate) fn provider_codex_chat_reasoning_options(
+    provider: &Provider,
+    body: &Value,
+) -> Option<CodexChatReasoningOptions> {
+    provider_codex_chat_reasoning_profile(
+        provider,
+        body.get("model").and_then(|value| value.as_str()),
+    )
+    .map(|profile| CodexChatReasoningOptions::from_profile(&profile))
+}
+
 pub(crate) fn infer_codex_chat_reasoning_profile(
     provider_name: &str,
     base_url: &str,
