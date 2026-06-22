@@ -22,7 +22,8 @@ use crate::proxy_core_adapter::{
     provider_credential_issue_spec, provider_credential_values, provider_key_change_policy_issue,
     provider_key_change_policy_issue_message, provider_live_config_presence_error_policy,
     provider_settings_validation_issue_spec, provider_settings_validation_parts,
-    provider_switch_dispatch, proxy_live_config_owned_by_takeover,
+    provider_switch_backfill_source_id, provider_switch_dispatch,
+    provider_switch_should_mark_live_config_managed, proxy_live_config_owned_by_takeover,
     proxy_switch_should_hot_switch, should_block_proxy_switch_to_provider,
     should_reapply_codex_official_live_for_provider, CommonConfigSnippetIssue,
     ProviderAdditiveLiveWriteAction, ProviderCredentialIssue,
@@ -1889,37 +1890,28 @@ impl ProviderService {
         // Use effective current provider (validated existence) to ensure backfill targets valid provider
         let current_id = crate::settings::get_effective_current_provider(&state.db, &app_type)?;
 
-        if let Some(current_id) = current_id {
-            if current_id != id {
-                // Additive mode apps - all providers coexist in the same file,
-                // no backfill needed (backfill is for exclusive mode apps like Claude/Codex/Gemini)
-                if !app_type.is_additive_mode() {
-                    // Only backfill when switching to a different provider
-                    if let Ok(live_config) = read_live_settings(app_type.clone()) {
-                        if let Some(mut current_provider) = providers.get(&current_id).cloned() {
-                            current_provider.settings_config =
-                                strip_common_config_from_live_settings(
-                                    state.db.as_ref(),
-                                    &app_type,
-                                    &current_provider,
-                                    live_config,
-                                );
-                            if let Err(e) =
-                                state.db.save_provider(app_type.as_str(), &current_provider)
-                            {
-                                log::warn!("Backfill failed: {e}");
-                                result
-                                    .warnings
-                                    .push(format!("backfill_failed:{current_id}"));
-                            }
-                        }
+        if let Some(current_id) =
+            provider_switch_backfill_source_id(&app_type, current_id.as_deref(), id)
+        {
+            // Only backfill when switching exclusive-mode apps to a different provider.
+            if let Ok(live_config) = read_live_settings(app_type.clone()) {
+                if let Some(mut current_provider) = providers.get(current_id).cloned() {
+                    current_provider.settings_config = strip_common_config_from_live_settings(
+                        state.db.as_ref(),
+                        &app_type,
+                        &current_provider,
+                        live_config,
+                    );
+                    if let Err(e) = state.db.save_provider(app_type.as_str(), &current_provider) {
+                        log::warn!("Backfill failed: {e}");
+                        result.warnings.push(format!("backfill_failed:{current_id}"));
                     }
                 }
             }
         }
 
         // Additive mode apps skip setting is_current (no such concept)
-        if !app_type.is_additive_mode() {
+        if provider_app_has_current_provider(&app_type) {
             // Update local settings (device-level, takes priority)
             crate::settings::set_current_provider(&app_type, Some(id))?;
 
@@ -1955,8 +1947,10 @@ impl ProviderService {
         //
         // If persisting the marker fails, roll back the just-written live config so we don't leave
         // the provider in a silent inconsistent state (present in live, but still marked DB-only).
-        if app_type.is_additive_mode() && Self::provider_live_config_managed(provider) != Some(true)
-        {
+        if provider_switch_should_mark_live_config_managed(
+            &app_type,
+            Self::provider_live_config_managed(provider),
+        ) {
             let mut updated = provider.clone();
             Self::set_provider_live_config_managed(&mut updated, true);
             if let Err(e) = state.db.save_provider(app_type.as_str(), &updated) {

@@ -1339,6 +1339,28 @@ pub(crate) fn provider_switch_dispatch(
     ProviderSwitchDispatch::TakeoverAware
 }
 
+pub(crate) fn provider_switch_backfill_source_id<'a>(
+    app_type: &AppType,
+    current_id: Option<&'a str>,
+    target_id: &str,
+) -> Option<&'a str> {
+    if !provider_app_has_current_provider(app_type) {
+        return None;
+    }
+
+    match current_id {
+        Some(current_id) if current_id != target_id => Some(current_id),
+        _ => None,
+    }
+}
+
+pub(crate) fn provider_switch_should_mark_live_config_managed(
+    app_type: &AppType,
+    live_config_managed: Option<bool>,
+) -> bool {
+    app_type.is_additive_mode() && live_config_managed != Some(true)
+}
+
 /// Reads old Claude model keys, writes DEFAULT_* keys, and deletes legacy SMALL_FAST.
 pub(crate) fn normalize_claude_models_in_value(settings: &mut Value) -> bool {
     let mut changed = false;
@@ -12886,6 +12908,46 @@ command = "latest-command"
             provider_switch_dispatch(&AppType::Claude, &normal_provider),
             ProviderSwitchDispatch::TakeoverAware
         );
+    }
+
+    #[test]
+    fn provider_switch_backfill_source_id_requires_exclusive_different_current() {
+        assert_eq!(
+            provider_switch_backfill_source_id(&AppType::Claude, Some("current"), "target"),
+            Some("current")
+        );
+        assert_eq!(
+            provider_switch_backfill_source_id(&AppType::Claude, Some("target"), "target"),
+            None
+        );
+        assert_eq!(
+            provider_switch_backfill_source_id(&AppType::Claude, None, "target"),
+            None
+        );
+        assert_eq!(
+            provider_switch_backfill_source_id(&AppType::OpenCode, Some("current"), "target"),
+            None
+        );
+    }
+
+    #[test]
+    fn provider_switch_should_mark_live_config_managed_only_for_unmanaged_additive() {
+        assert!(provider_switch_should_mark_live_config_managed(
+            &AppType::OpenCode,
+            None
+        ));
+        assert!(provider_switch_should_mark_live_config_managed(
+            &AppType::OpenCode,
+            Some(false)
+        ));
+        assert!(!provider_switch_should_mark_live_config_managed(
+            &AppType::OpenCode,
+            Some(true)
+        ));
+        assert!(!provider_switch_should_mark_live_config_managed(
+            &AppType::Claude,
+            None
+        ));
     }
 
     #[test]
