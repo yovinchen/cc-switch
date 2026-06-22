@@ -15,8 +15,8 @@ use crate::error::AppError;
 use crate::provider::Provider;
 use crate::proxy_core_adapter::{
     codex_config_text_from_settings, gemini_env_map_from_settings,
-    opencode_live_provider_fragment_has_provider_fields, provider_codex_imported_live_category,
-    provider_codex_live_snapshot_parts,
+    gemini_env_value_from_env_json, opencode_live_provider_fragment_has_provider_fields,
+    provider_codex_imported_live_category, provider_codex_live_snapshot_parts,
     provider_gemini_live_config_object, provider_model_catalog_raw_value,
     provider_opencode_live_provider_fragment, provider_openclaw_has_live_provider_fields,
     CodexLiveSnapshotIssue, GeminiLiveConfigIssue,
@@ -1057,7 +1057,7 @@ pub fn read_live_settings(app_type: AppType) -> Result<Value, AppError> {
 
             let env_map = read_gemini_env()?;
             let env_json = env_to_json(&env_map);
-            let env_obj = env_json.get("env").cloned().unwrap_or_else(|| json!({}));
+            let env_obj = gemini_env_value_from_env_json(&env_json);
 
             // Read settings.json file (MCP config etc.)
             let settings_path = get_gemini_settings_path();
@@ -1193,7 +1193,7 @@ pub fn import_default_config(state: &AppState, app_type: AppType) -> Result<bool
 
             let env_map = read_gemini_env()?;
             let env_json = env_to_json(&env_map);
-            let env_obj = env_json.get("env").cloned().unwrap_or_else(|| json!({}));
+            let env_obj = gemini_env_value_from_env_json(&env_json);
 
             // Read settings.json file (MCP config etc.)
             let settings_path = get_gemini_settings_path();

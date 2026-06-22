@@ -1748,6 +1748,10 @@ pub(crate) fn gemini_env_map_from_settings(settings: &Value) -> Option<&Map<Stri
     settings.get("env").and_then(Value::as_object)
 }
 
+pub(crate) fn gemini_env_value_from_env_json(env_json: &Value) -> Value {
+    env_json.get("env").cloned().unwrap_or_else(|| json!({}))
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum GeminiLiveConfigIssue {
     InvalidType,
@@ -5836,6 +5840,11 @@ wire_api = "chat"
             Some(" ya29.access-token ")
         );
         assert!(gemini_env_map_from_settings(&json!({"env": "invalid"})).is_none());
+        assert_eq!(
+            gemini_env_value_from_env_json(&json!({"env": {"A": "B"}})),
+            json!({"A": "B"})
+        );
+        assert_eq!(gemini_env_value_from_env_json(&json!({})), json!({}));
         let provider = Provider::with_id(
             "gemini".to_string(),
             "Gemini".to_string(),
