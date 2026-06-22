@@ -20,12 +20,13 @@ use crate::proxy_core_adapter::{
     normalize_provider_common_config_for_storage as adapter_normalize_provider_common_config_for_storage,
     provider_codex_imported_live_category,
     provider_codex_live_snapshot_parts, CommonConfigSettingsMutationIssue,
+    ProviderBackfillSettingsWarning,
     provider_common_config_storage_normalization_requires_snippet,
     provider_gemini_env_map, provider_gemini_live_config_object,
-    provider_model_catalog_raw_value, provider_opencode_live_provider_fragment,
-    provider_openclaw_has_live_provider_fields, proxy_live_config_owned_by_takeover,
-    restore_codex_settings_for_provider_backfill, sanitize_claude_settings_for_live,
-    strip_codex_unified_session_bucket_for_provider_backfill,
+    provider_opencode_live_provider_fragment, provider_openclaw_has_live_provider_fields,
+    proxy_live_config_owned_by_takeover,
+    restore_live_settings_for_provider_backfill as adapter_restore_live_settings_for_provider_backfill,
+    sanitize_claude_settings_for_live,
     validate_provider_gemini_settings_strict, CodexLiveSnapshotIssue, GeminiLiveConfigIssue,
 };
 use crate::services::mcp::McpService;
@@ -192,43 +193,26 @@ fn restore_live_settings_for_provider_backfill(
     provider: &Provider,
     live_settings: Value,
 ) -> Value {
-    if !matches!(app_type, AppType::Codex) {
-        return live_settings;
-    }
-
-    let mut settings = live_settings;
-    if let Err(err) = restore_codex_settings_for_provider_backfill(provider, &mut settings) {
-        log::warn!(
-            "Failed to restore Codex settings while backfilling '{}': {err}",
-            provider.id
-        );
-    }
-
-    // 统一会话开关注入的共享 `custom` 路由只属于 live 配置；切换回填时
-    // 必须剥掉，否则官方供应商的存储配置被污染，关闭开关后无法还原。
-    if let Err(err) =
-        strip_codex_unified_session_bucket_for_provider_backfill(provider, &mut settings)
-    {
-        log::warn!(
-            "Failed to strip unified session bucket while backfilling '{}': {err}",
-            provider.id
-        );
-    }
-
-    // `modelCatalog` is a cc-switch–private field whose SSOT is the DB. Live's
-    // `config.toml` only carries a lossy projection (`model_catalog_json` →
-    // generated catalog file) that proxy takeover/restore cycles and Codex.app
-    // config rewrites can drop, so `read_live_settings` may reconstruct it as
-    // absent. Never let a switch-away backfill from Live erase the stored
-    // mapping: prefer the DB provider's `modelCatalog`, falling back to whatever
-    // Live reconstructed only when the DB has none.
-    if let Some(stored_catalog) = provider_model_catalog_raw_value(provider) {
-        if let Some(obj) = settings.as_object_mut() {
-            obj.insert("modelCatalog".to_string(), stored_catalog.clone());
+    let result =
+        adapter_restore_live_settings_for_provider_backfill(app_type, provider, live_settings);
+    for warning in result.warnings {
+        match warning {
+            ProviderBackfillSettingsWarning::CodexSettingsRestore(err) => {
+                log::warn!(
+                    "Failed to restore Codex settings while backfilling '{}': {err}",
+                    provider.id
+                );
+            }
+            ProviderBackfillSettingsWarning::CodexUnifiedSessionBucketStrip(err) => {
+                log::warn!(
+                    "Failed to strip unified session bucket while backfilling '{}': {err}",
+                    provider.id
+                );
+            }
         }
     }
 
-    settings
+    result.settings
 }
 
 pub(crate) fn normalize_provider_common_config_for_storage(

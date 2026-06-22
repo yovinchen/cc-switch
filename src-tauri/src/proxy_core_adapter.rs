@@ -1885,6 +1885,60 @@ pub(crate) fn strip_codex_unified_session_bucket_for_provider_backfill(
     Ok(())
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum ProviderBackfillSettingsWarning {
+    CodexSettingsRestore(String),
+    CodexUnifiedSessionBucketStrip(String),
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) struct ProviderBackfillSettingsResult {
+    pub(crate) settings: Value,
+    pub(crate) warnings: Vec<ProviderBackfillSettingsWarning>,
+}
+
+pub(crate) fn restore_live_settings_for_provider_backfill(
+    app_type: &AppType,
+    provider: &Provider,
+    live_settings: Value,
+) -> ProviderBackfillSettingsResult {
+    if !matches!(app_type, AppType::Codex) {
+        return ProviderBackfillSettingsResult {
+            settings: live_settings,
+            warnings: Vec::new(),
+        };
+    }
+
+    let mut settings = live_settings;
+    let mut warnings = Vec::new();
+    if let Err(err) = restore_codex_settings_for_provider_backfill(provider, &mut settings) {
+        warnings.push(ProviderBackfillSettingsWarning::CodexSettingsRestore(
+            err.to_string(),
+        ));
+    }
+
+    if let Err(err) =
+        strip_codex_unified_session_bucket_for_provider_backfill(provider, &mut settings)
+    {
+        warnings.push(ProviderBackfillSettingsWarning::CodexUnifiedSessionBucketStrip(
+            err.to_string(),
+        ));
+    }
+
+    // `modelCatalog` is a cc-switch-private field whose SSOT is the DB. Live's
+    // `config.toml` only carries a lossy projection (`model_catalog_json` to a
+    // generated catalog file) that proxy takeover/restore cycles and Codex.app
+    // config rewrites can drop. Prefer the DB provider's stored catalog so a
+    // switch-away backfill never erases it.
+    if let Some(stored_catalog) = provider_model_catalog_raw_value(provider) {
+        if let Some(obj) = settings.as_object_mut() {
+            obj.insert("modelCatalog".to_string(), stored_catalog.clone());
+        }
+    }
+
+    ProviderBackfillSettingsResult { settings, warnings }
+}
+
 pub(crate) fn apply_codex_unified_session_bucket_for_provider(
     provider: &Provider,
     settings: &mut Value,
@@ -7526,6 +7580,46 @@ mod tests {
         assert_eq!(state.enrich_request(&mut request), 1);
         assert_eq!(request["input"][0]["type"], "function_call");
         assert_eq!(request["input"][0]["reasoning_content"], "Need context.");
+    }
+
+    #[test]
+    fn provider_backfill_live_settings_adapter_preserves_codex_catalog() {
+        let mut provider = Provider::with_id(
+            "deepseek".to_string(),
+            "DeepSeek".to_string(),
+            json!({
+                "auth": { "OPENAI_API_KEY": "sk-deepseek" },
+                "config": "model_provider = \"custom\"\nmodel = \"deepseek-v4-pro\"\n",
+                "modelCatalog": {
+                    "models": [
+                        { "model": "deepseek-v4-pro", "contextWindow": 1_000_000 }
+                    ]
+                }
+            }),
+            None,
+        );
+        provider.category = Some("cn_official".to_string());
+
+        let live_settings = json!({
+            "auth": { "OPENAI_API_KEY": "sk-deepseek" },
+            "config": "model_provider = \"custom\"\nmodel = \"deepseek-v4-pro\"\n"
+        });
+        let result =
+            restore_live_settings_for_provider_backfill(&AppType::Codex, &provider, live_settings);
+        assert!(result.warnings.is_empty());
+        assert_eq!(
+            result.settings.get("modelCatalog"),
+            provider.settings_config.get("modelCatalog")
+        );
+
+        let non_codex_settings = json!({"env": {"ANTHROPIC_API_KEY": "sk-test"}});
+        let result = restore_live_settings_for_provider_backfill(
+            &AppType::Claude,
+            &provider,
+            non_codex_settings.clone(),
+        );
+        assert!(result.warnings.is_empty());
+        assert_eq!(result.settings, non_codex_settings);
     }
 
     #[test]
