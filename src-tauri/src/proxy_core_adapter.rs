@@ -1625,6 +1625,23 @@ pub(crate) enum CodexBackupProjectionIssue {
     PrepareLiveConfig(String),
 }
 
+pub(crate) fn codex_backup_projection_error_message(issue: CodexBackupProjectionIssue) -> String {
+    match issue {
+        CodexBackupProjectionIssue::InvalidTargetSettings => {
+            "Codex 备份必须是 JSON 对象".to_string()
+        }
+        CodexBackupProjectionIssue::ParseTargetConfig(message) => {
+            format!("解析新的 Codex config.toml 失败: {message}")
+        }
+        CodexBackupProjectionIssue::ParseExistingConfig(message) => {
+            format!("解析现有 Codex 备份失败: {message}")
+        }
+        CodexBackupProjectionIssue::PrepareLiveConfig(message) => {
+            format!("更新 Codex 备份配置失败: {message}")
+        }
+    }
+}
+
 pub(crate) fn preserve_codex_mcp_servers_from_existing_config(
     target_settings: &mut Value,
     existing_config: &Value,
@@ -7836,6 +7853,31 @@ base_url = "https://relay.example/v1"
 
     #[test]
     fn codex_backup_projection_adapter_preserves_mcp_and_oauth_auth() {
+        assert_eq!(
+            codex_backup_projection_error_message(
+                CodexBackupProjectionIssue::InvalidTargetSettings
+            ),
+            "Codex 备份必须是 JSON 对象"
+        );
+        assert_eq!(
+            codex_backup_projection_error_message(CodexBackupProjectionIssue::ParseTargetConfig(
+                "bad target".to_string()
+            )),
+            "解析新的 Codex config.toml 失败: bad target"
+        );
+        assert_eq!(
+            codex_backup_projection_error_message(CodexBackupProjectionIssue::ParseExistingConfig(
+                "bad existing".to_string()
+            )),
+            "解析现有 Codex 备份失败: bad existing"
+        );
+        assert_eq!(
+            codex_backup_projection_error_message(CodexBackupProjectionIssue::PrepareLiveConfig(
+                "bad live".to_string()
+            )),
+            "更新 Codex 备份配置失败: bad live"
+        );
+
         let oauth_auth = json!({
             "auth_mode": "chatgpt",
             "tokens": {

@@ -13,7 +13,8 @@ use crate::proxy_core_adapter::{
     apply_codex_takeover_auth_placeholder_if_present, apply_gemini_takeover_env_fields,
     attach_codex_model_catalog_from_provider, build_proxy_official_warning_event_payload,
     ClaudeTakeoverAuthPolicy,
-    codex_live_write_projection, codex_preserved_auth_live_config_text_if_proxy_placeholder,
+    codex_backup_projection_error_message, codex_live_write_projection,
+    codex_preserved_auth_live_config_text_if_proxy_placeholder,
     codex_takeover_toml_config_for_provider,
     ensure_codex_takeover_auth_placeholder, gemini_live_backup_from_effective_settings,
     is_local_proxy_url, live_backup_snapshot_from_live_config,
@@ -21,8 +22,7 @@ use crate::proxy_core_adapter::{
     provider_settings_have_proxy_placeholder_for_app,
     preserve_codex_mcp_servers_from_existing_config,
     preserve_codex_oauth_auth_in_backup_if_present, provider_settings_with_live_token_sync,
-    remove_claude_takeover_env_fields_if_present, CodexBackupProjectionIssue,
-    CodexLiveWriteProjection,
+    remove_claude_takeover_env_fields_if_present, CodexLiveWriteProjection,
     proxy_live_urls_from_listen_parts, proxy_runtime_status_stopped,
     proxy_server_info_from_parts, proxy_takeover_status_from_parts,
     remove_codex_takeover_auth_placeholder_if_present,
@@ -114,7 +114,7 @@ impl ProxyService {
         .map_err(|e| format!("构建 codex 有效配置失败: {e}"))?;
         if let Some(existing_live) = existing_live.as_ref() {
             preserve_codex_mcp_servers_from_existing_config(&mut effective_settings, existing_live)
-                .map_err(Self::codex_backup_projection_error_message)?;
+                .map_err(codex_backup_projection_error_message)?;
         }
         let (_, proxy_codex_base_url) = self.build_proxy_urls().await?;
 
@@ -1507,13 +1507,13 @@ impl ProxyService {
                     &mut effective_settings,
                     existing_value,
                 )
-                .map_err(Self::codex_backup_projection_error_message)?;
+                .map_err(codex_backup_projection_error_message)?;
                 if crate::settings::preserve_codex_official_auth_on_switch() {
                     preserve_codex_oauth_auth_in_backup_if_present(
                         &mut effective_settings,
                         existing_value,
                     )
-                    .map_err(Self::codex_backup_projection_error_message)?;
+                    .map_err(codex_backup_projection_error_message)?;
                 }
             }
 
@@ -1648,23 +1648,6 @@ impl ProxyService {
     #[cfg(test)]
     async fn lock_switch_for_test(&self, app_type: &str) -> tokio::sync::OwnedMutexGuard<()> {
         self.switch_locks.lock_for_app(app_type).await
-    }
-
-    fn codex_backup_projection_error_message(issue: CodexBackupProjectionIssue) -> String {
-        match issue {
-            CodexBackupProjectionIssue::InvalidTargetSettings => {
-                "Codex 备份必须是 JSON 对象".to_string()
-            }
-            CodexBackupProjectionIssue::ParseTargetConfig(message) => {
-                format!("解析新的 Codex config.toml 失败: {message}")
-            }
-            CodexBackupProjectionIssue::ParseExistingConfig(message) => {
-                format!("解析现有 Codex 备份失败: {message}")
-            }
-            CodexBackupProjectionIssue::PrepareLiveConfig(message) => {
-                format!("更新 Codex 备份配置失败: {message}")
-            }
-        }
     }
 
     /// 代理模式下切换供应商（热切换，并按需刷新代理安全的 Live 显示字段）
