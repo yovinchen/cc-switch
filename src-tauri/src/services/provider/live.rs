@@ -21,10 +21,11 @@ use crate::proxy_core_adapter::{
     provider_gemini_env_map, provider_gemini_live_config_object,
     provider_model_catalog_raw_value, provider_opencode_live_provider_fragment,
     provider_openclaw_has_live_provider_fields, proxy_live_config_owned_by_takeover,
-    restore_codex_settings_for_provider_backfill,
+    remove_toml_table_like, restore_codex_settings_for_provider_backfill,
     sanitize_claude_settings_for_live,
     strip_codex_unified_session_bucket_for_provider_backfill,
-    validate_provider_gemini_settings_strict, CodexLiveSnapshotIssue, GeminiLiveConfigIssue,
+    toml_item_is_subset, validate_provider_gemini_settings_strict, CodexLiveSnapshotIssue,
+    GeminiLiveConfigIssue,
 };
 use crate::services::mcp::McpService;
 use crate::store::AppState;
@@ -95,94 +96,6 @@ fn json_deep_remove(target: &mut Value, source: &Value) {
     }
 }
 
-fn toml_value_is_subset(target: &toml_edit::Value, source: &toml_edit::Value) -> bool {
-    match (target, source) {
-        (toml_edit::Value::String(target), toml_edit::Value::String(source)) => {
-            target.value() == source.value()
-        }
-        (toml_edit::Value::Integer(target), toml_edit::Value::Integer(source)) => {
-            target.value() == source.value()
-        }
-        (toml_edit::Value::Float(target), toml_edit::Value::Float(source)) => {
-            target.value() == source.value()
-        }
-        (toml_edit::Value::Boolean(target), toml_edit::Value::Boolean(source)) => {
-            target.value() == source.value()
-        }
-        (toml_edit::Value::Datetime(target), toml_edit::Value::Datetime(source)) => {
-            target.value() == source.value()
-        }
-        (toml_edit::Value::Array(target), toml_edit::Value::Array(source)) => {
-            toml_array_contains_subset(target, source)
-        }
-        (toml_edit::Value::InlineTable(target), toml_edit::Value::InlineTable(source)) => {
-            source.iter().all(|(key, source_item)| {
-                target
-                    .get(key)
-                    .is_some_and(|target_item| toml_value_is_subset(target_item, source_item))
-            })
-        }
-        _ => false,
-    }
-}
-
-fn toml_array_contains_subset(target: &toml_edit::Array, source: &toml_edit::Array) -> bool {
-    let mut matched = vec![false; target.len()];
-    let target_items: Vec<&toml_edit::Value> = target.iter().collect();
-
-    source.iter().all(|source_item| {
-        if let Some((index, _)) = target_items
-            .iter()
-            .enumerate()
-            .find(|(index, target_item)| {
-                !matched[*index] && toml_value_is_subset(target_item, source_item)
-            })
-        {
-            matched[index] = true;
-            true
-        } else {
-            false
-        }
-    })
-}
-
-fn toml_remove_array_items(target: &mut toml_edit::Array, source: &toml_edit::Array) {
-    for source_item in source.iter() {
-        let index = {
-            let target_items: Vec<&toml_edit::Value> = target.iter().collect();
-            target_items
-                .iter()
-                .enumerate()
-                .find(|(_, target_item)| toml_value_is_subset(target_item, source_item))
-                .map(|(index, _)| index)
-        };
-
-        if let Some(index) = index {
-            target.remove(index);
-        }
-    }
-}
-
-fn toml_item_is_subset(target: &Item, source: &Item) -> bool {
-    if let Some(source_table) = source.as_table_like() {
-        let Some(target_table) = target.as_table_like() else {
-            return false;
-        };
-        return source_table.iter().all(|(key, source_item)| {
-            target_table
-                .get(key)
-                .is_some_and(|target_item| toml_item_is_subset(target_item, source_item))
-        });
-    }
-
-    match (target.as_value(), source.as_value()) {
-        (Some(target_value), Some(source_value)) => {
-            toml_value_is_subset(target_value, source_value)
-        }
-        _ => false,
-    }
-}
-
 fn merge_toml_item(target: &mut Item, source: &Item) {
     if let Some(source_table) = source.as_table_like() {
         if let Some(target_table) = target.as_table_like_mut() {
@@ -201,60 +114,6 @@ fn merge_toml_table_like(target: &mut dyn TableLike, source: &dyn TableLike) {
             None => {
                 target.insert(key, source_item.clone());
             }
-        }
-    }
-}
-
-fn remove_toml_item(target: &mut Item, source: &Item) {
-    if let Some(source_table) = source.as_table_like() {
-        if let Some(target_table) = target.as_table_like_mut() {
-            remove_toml_table_like(target_table, source_table);
-            if target_table.is_empty() {
-                *target = Item::None;
-            }
-            return;
-        }
-    }
-
-    if let Some(source_value) = source.as_value() {
-        let mut remove_item = false;
-
-        if let Some(target_value) = target.as_value_mut() {
-            match (target_value, source_value) {
-                (toml_edit::Value::Array(target_arr), toml_edit::Value::Array(source_arr)) => {
-                    toml_remove_array_items(target_arr, source_arr);
-                    remove_item = target_arr.is_empty();
-                }
-                (target_value, source_value)
-                    if toml_value_is_subset(target_value, source_value) =>
-                {
-                    remove_item = true;
-                }
-                _ => {}
-            }
-        }
-
-        if remove_item {
-            *target = Item::None;
-        }
-    }
-}
-
-fn remove_toml_table_like(target: &mut dyn TableLike, source: &dyn TableLike) {
-    let keys: Vec<String> = source.iter().map(|(key, _)| key.to_string()).collect();
-
-    for key in keys {
-        let mut remove_key = false;
-        if let (Some(target_item), Some(source_item)) = (target.get_mut(&key), source.get(&key)) {
-            remove_toml_item(target_item, source_item);
-            remove_key = target_item.is_none()
-                || target_item
-                    .as_table_like()
-                    .is_some_and(|table_like| table_like.is_empty());
-        }
-
-        if remove_key {
-            target.remove(&key);
         }
     }
 }

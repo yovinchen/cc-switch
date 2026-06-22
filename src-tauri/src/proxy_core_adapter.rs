@@ -2685,6 +2685,158 @@ pub(crate) fn json_remove_array_items(target_arr: &mut Vec<Value>, source_arr: &
     }
 }
 
+pub(crate) fn toml_value_is_subset(
+    target: &toml_edit::Value,
+    source: &toml_edit::Value,
+) -> bool {
+    match (target, source) {
+        (toml_edit::Value::String(target), toml_edit::Value::String(source)) => {
+            target.value() == source.value()
+        }
+        (toml_edit::Value::Integer(target), toml_edit::Value::Integer(source)) => {
+            target.value() == source.value()
+        }
+        (toml_edit::Value::Float(target), toml_edit::Value::Float(source)) => {
+            target.value() == source.value()
+        }
+        (toml_edit::Value::Boolean(target), toml_edit::Value::Boolean(source)) => {
+            target.value() == source.value()
+        }
+        (toml_edit::Value::Datetime(target), toml_edit::Value::Datetime(source)) => {
+            target.value() == source.value()
+        }
+        (toml_edit::Value::Array(target), toml_edit::Value::Array(source)) => {
+            toml_array_contains_subset(target, source)
+        }
+        (toml_edit::Value::InlineTable(target), toml_edit::Value::InlineTable(source)) => {
+            source.iter().all(|(key, source_item)| {
+                target
+                    .get(key)
+                    .is_some_and(|target_item| toml_value_is_subset(target_item, source_item))
+            })
+        }
+        _ => false,
+    }
+}
+
+pub(crate) fn toml_array_contains_subset(
+    target: &toml_edit::Array,
+    source: &toml_edit::Array,
+) -> bool {
+    let mut matched = vec![false; target.len()];
+    let target_items: Vec<&toml_edit::Value> = target.iter().collect();
+
+    source.iter().all(|source_item| {
+        if let Some((index, _)) = target_items
+            .iter()
+            .enumerate()
+            .find(|(index, target_item)| {
+                !matched[*index] && toml_value_is_subset(target_item, source_item)
+            })
+        {
+            matched[index] = true;
+            true
+        } else {
+            false
+        }
+    })
+}
+
+pub(crate) fn toml_remove_array_items(
+    target: &mut toml_edit::Array,
+    source: &toml_edit::Array,
+) {
+    for source_item in source.iter() {
+        let index = {
+            let target_items: Vec<&toml_edit::Value> = target.iter().collect();
+            target_items
+                .iter()
+                .enumerate()
+                .find(|(_, target_item)| toml_value_is_subset(target_item, source_item))
+                .map(|(index, _)| index)
+        };
+
+        if let Some(index) = index {
+            target.remove(index);
+        }
+    }
+}
+
+pub(crate) fn toml_item_is_subset(target: &toml_edit::Item, source: &toml_edit::Item) -> bool {
+    if let Some(source_table) = source.as_table_like() {
+        let Some(target_table) = target.as_table_like() else {
+            return false;
+        };
+        return source_table.iter().all(|(key, source_item)| {
+            target_table
+                .get(key)
+                .is_some_and(|target_item| toml_item_is_subset(target_item, source_item))
+        });
+    }
+
+    match (target.as_value(), source.as_value()) {
+        (Some(target_value), Some(source_value)) => {
+            toml_value_is_subset(target_value, source_value)
+        }
+        _ => false,
+    }
+}
+
+fn remove_toml_item(target: &mut toml_edit::Item, source: &toml_edit::Item) {
+    if let Some(source_table) = source.as_table_like() {
+        if let Some(target_table) = target.as_table_like_mut() {
+            remove_toml_table_like(target_table, source_table);
+            if target_table.is_empty() {
+                *target = toml_edit::Item::None;
+            }
+            return;
+        }
+    }
+
+    if let Some(source_value) = source.as_value() {
+        let mut remove_item = false;
+
+        if let Some(target_value) = target.as_value_mut() {
+            match (target_value, source_value) {
+                (toml_edit::Value::Array(target_arr), toml_edit::Value::Array(source_arr)) => {
+                    toml_remove_array_items(target_arr, source_arr);
+                    remove_item = target_arr.is_empty();
+                }
+                (target_value, source_value) if toml_value_is_subset(target_value, source_value) => {
+                    remove_item = true;
+                }
+                _ => {}
+            }
+        }
+
+        if remove_item {
+            *target = toml_edit::Item::None;
+        }
+    }
+}
+
+pub(crate) fn remove_toml_table_like(
+    target: &mut dyn toml_edit::TableLike,
+    source: &dyn toml_edit::TableLike,
+) {
+    let keys: Vec<String> = source.iter().map(|(key, _)| key.to_string()).collect();
+
+    for key in keys {
+        let mut remove_key = false;
+        if let (Some(target_item), Some(source_item)) = (target.get_mut(&key), source.get(&key)) {
+            remove_toml_item(target_item, source_item);
+            remove_key = target_item.is_none()
+                || target_item
+                    .as_table_like()
+                    .is_some_and(|table_like| table_like.is_empty());
+        }
+
+        if remove_key {
+            target.remove(&key);
+        }
+    }
+}
+
 pub(crate) fn proxy_takeover_marked_state_is_reusable(
     has_live_backup: bool,
     live_matches_current_proxy: bool,
@@ -7787,6 +7939,48 @@ base_url = "https://api.openai.com/v1"
             target_arr,
             vec![json!({ "name": "tool-a", "scope": "project" })]
         );
+    }
+
+    #[test]
+    fn toml_subset_helpers_match_and_remove_array_items_once() {
+        let mut target_doc = r#"
+allowed_tools = ["tool1", "tool2", "tool1"]
+
+[shared]
+reasoning = "medium"
+extra = "keep"
+"#
+        .parse::<toml_edit::DocumentMut>()
+        .expect("target TOML should parse");
+        let source_doc = r#"
+allowed_tools = ["tool1", "tool2"]
+
+[shared]
+reasoning = "medium"
+"#
+        .parse::<toml_edit::DocumentMut>()
+        .expect("source TOML should parse");
+
+        assert!(toml_item_is_subset(
+            target_doc.as_item(),
+            source_doc.as_item()
+        ));
+
+        remove_toml_table_like(target_doc.as_table_mut(), source_doc.as_table());
+
+        let allowed_tools = target_doc["allowed_tools"]
+            .as_array()
+            .expect("allowed_tools should remain an array");
+        let values: Vec<&str> = allowed_tools
+            .iter()
+            .map(|value| value.as_str().expect("tool id should be string"))
+            .collect();
+        assert_eq!(values, vec!["tool1"]);
+        assert_eq!(target_doc["shared"]["extra"].as_str(), Some("keep"));
+        assert!(target_doc["shared"]
+            .as_table()
+            .and_then(|table| table.get("reasoning"))
+            .is_none());
     }
 
     #[test]
