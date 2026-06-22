@@ -1685,13 +1685,6 @@ impl ProxyService {
 
     // ==================== Live 配置读写辅助方法 ====================
 
-    /// 更新 TOML 字符串中的 base_url（委托给 codex_config 共享实现）
-    #[cfg(test)]
-    fn update_toml_base_url(toml_str: &str, new_url: &str) -> String {
-        crate::codex_config::update_codex_toml_field(toml_str, "base_url", new_url)
-            .unwrap_or_else(|_| toml_str.to_string())
-    }
-
     fn read_claude_live(&self) -> Result<Value, String> {
         let path = get_claude_settings_path();
         if !path.exists() {
@@ -3533,48 +3526,6 @@ wire_api = "responses"
     }
 
     #[test]
-    fn update_toml_base_url_updates_active_model_provider_base_url() {
-        let input = r#"
-model_provider = "any"
-model = "gpt-5.1-codex"
-disable_response_storage = true
-
-[model_providers.any]
-name = "any"
-base_url = "https://anyrouter.top/v1"
-wire_api = "responses"
-requires_openai_auth = true
-"#;
-
-        let new_url = "http://127.0.0.1:5000/v1";
-        let output = ProxyService::update_toml_base_url(input, new_url);
-
-        let parsed: toml::Value =
-            toml::from_str(&output).expect("updated config should be valid TOML");
-
-        let base_url = parsed
-            .get("model_providers")
-            .and_then(|v| v.get("any"))
-            .and_then(|v| v.get("base_url"))
-            .and_then(|v| v.as_str())
-            .expect("model_providers.any.base_url should exist");
-
-        assert_eq!(base_url, new_url);
-        assert!(
-            parsed.get("base_url").is_none(),
-            "should not write top-level base_url"
-        );
-
-        let wire_api = parsed
-            .get("model_providers")
-            .and_then(|v| v.get("any"))
-            .and_then(|v| v.get("wire_api"))
-            .and_then(|v| v.as_str())
-            .expect("model_providers.any.wire_api should exist");
-        assert_eq!(wire_api, "responses");
-    }
-
-    #[test]
     fn codex_takeover_toml_config_forces_local_responses_wire_api() {
         let input = r#"
 model_provider = "chat_only"
@@ -3734,26 +3685,6 @@ wire_api = "responses"
             parsed.get("model").and_then(|v| v.as_str()),
             Some("upstream-responses-model")
         );
-    }
-
-    #[test]
-    fn update_toml_base_url_falls_back_to_top_level_base_url() {
-        let input = r#"
-model = "gpt-5.1-codex"
-"#;
-
-        let new_url = "http://127.0.0.1:5000/v1";
-        let output = ProxyService::update_toml_base_url(input, new_url);
-
-        let parsed: toml::Value =
-            toml::from_str(&output).expect("updated config should be valid TOML");
-
-        let base_url = parsed
-            .get("base_url")
-            .and_then(|v| v.as_str())
-            .expect("base_url should exist");
-
-        assert_eq!(base_url, new_url);
     }
 
     #[tokio::test]
