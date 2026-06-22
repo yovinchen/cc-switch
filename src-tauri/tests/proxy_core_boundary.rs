@@ -428,6 +428,9 @@ const FORBIDDEN_PROXY_CORE_ADAPTER_SMALL_HELPER_FACADE_MARKERS: &[&str] = &[
     "fn should_close_half_open_after_success(",
     "fn half_open_probe_allow_result(",
     "fn circuit_breaker_failure_decision(",
+    "fn codex_proxy_error_code(",
+    "fn codex_proxy_error_json(",
+    "fn codex_proxy_error_response(",
 ];
 const FORBIDDEN_CLAUDE_PROVIDER_ADAPTER_TRANSFORM_DECISION_MARKERS: &[&str] = &[
     "ProviderKind::GitHubCopilot",

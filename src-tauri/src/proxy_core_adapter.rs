@@ -6855,9 +6855,7 @@ pub(crate) use crate::proxy_core::api::transport::{
     apply_channel_param_overrides_to_url, resolve_channel_response_status_mapping,
 };
 
-pub(crate) fn codex_proxy_error_code(kind: CodexProxyErrorKind) -> &'static str {
-    crate::proxy_core::api::transforms::codex_proxy_error_code(kind)
-}
+pub(crate) use crate::proxy_core::api::transforms::codex_proxy_error_code;
 
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct CodexProxyHostErrorFacts<'a> {
@@ -6884,9 +6882,7 @@ pub(crate) fn codex_proxy_error_json_from_host_facts(
 }
 
 #[cfg(test)]
-pub(crate) fn codex_proxy_error_json(ctx: CodexProxyErrorContext<'_>) -> Value {
-    crate::proxy_core::api::transforms::codex_proxy_error_json(ctx)
-}
+pub(crate) use crate::proxy_core::api::transforms::codex_proxy_error_json;
 
 pub(crate) fn codex_proxy_error_response_from_host_facts(
     provider_name: &str,
@@ -6900,12 +6896,7 @@ pub(crate) fn codex_proxy_error_response_from_host_facts(
     )
 }
 
-pub(crate) fn codex_proxy_error_response(
-    status: ProxyErrorStatusKind,
-    ctx: CodexProxyErrorContext<'_>,
-) -> ProxyCoreResult<ProxyCoreResponse> {
-    crate::proxy_core::api::transforms::codex_proxy_error_response(status, ctx)
-}
+pub(crate) use crate::proxy_core::api::transforms::codex_proxy_error_response;
 
 fn codex_proxy_error_context_from_host_facts<'a>(
     provider_name: &'a str,
