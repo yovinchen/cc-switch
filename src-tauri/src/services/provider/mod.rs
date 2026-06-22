@@ -17,13 +17,13 @@ use crate::error::AppError;
 use crate::provider::{Provider, UsageResult};
 use crate::proxy_core_adapter::{
     common_config_snippet_from_settings, common_config_snippet_issue_message,
-    normalize_claude_models_in_value, provider_additive_live_write_action,
+    normalize_provider_settings_for_storage, provider_additive_live_write_action,
     provider_app_has_current_provider,
     provider_credential_issue_spec, provider_credential_values, provider_key_change_policy_issue,
     provider_key_change_policy_issue_message, provider_live_config_presence_error_policy,
     provider_omo_switch_pair, provider_omo_variant_for_category,
-    provider_settings_validation_issue_spec, provider_settings_validation_parts,
-    provider_live_sync_scope, provider_switch_backfill_source_id, provider_switch_dispatch,
+    provider_live_sync_scope, provider_settings_validation_issue_spec,
+    provider_settings_validation_parts, provider_switch_backfill_source_id, provider_switch_dispatch,
     provider_switch_should_mark_live_config_managed, proxy_live_config_owned_by_takeover,
     proxy_switch_should_hot_switch, should_block_proxy_switch_to_provider,
     should_reapply_codex_official_live_for_provider,
@@ -1342,15 +1342,6 @@ base_url = "http://localhost:8080"
 }
 
 impl ProviderService {
-    fn normalize_provider_if_claude(app_type: &AppType, provider: &mut Provider) {
-        if matches!(app_type, AppType::Claude) {
-            let mut v = provider.settings_config.clone();
-            if normalize_claude_models_in_value(&mut v) {
-                provider.settings_config = v;
-            }
-        }
-    }
-
     /// Check whether a provider exists in live config, tolerating parse errors
     /// only for providers that are explicitly marked as DB-only.
     fn check_live_config_exists(
@@ -1423,7 +1414,7 @@ impl ProviderService {
     ) -> Result<bool, AppError> {
         let mut provider = provider;
         // Normalize Claude model keys
-        Self::normalize_provider_if_claude(&app_type, &mut provider);
+        let _ = normalize_provider_settings_for_storage(&app_type, &mut provider.settings_config);
         Self::validate_provider_settings(&app_type, &provider)?;
         normalize_provider_common_config_for_storage(state.db.as_ref(), &app_type, &mut provider)?;
         if app_type.is_additive_mode() {
@@ -1471,7 +1462,7 @@ impl ProviderService {
             .db
             .get_provider_by_id(&original_id, app_type.as_str())?;
         // Normalize Claude model keys
-        Self::normalize_provider_if_claude(&app_type, &mut provider);
+        let _ = normalize_provider_settings_for_storage(&app_type, &mut provider.settings_config);
         Self::validate_provider_settings(&app_type, &provider)?;
         normalize_provider_common_config_for_storage(state.db.as_ref(), &app_type, &mut provider)?;
 

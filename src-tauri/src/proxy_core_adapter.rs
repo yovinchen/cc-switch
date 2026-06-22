@@ -1189,11 +1189,19 @@ pub(crate) fn provider_default_live_import_settings(
     app_type: &AppType,
     mut settings: Value,
 ) -> Value {
+    let _ = normalize_provider_settings_for_storage(app_type, &mut settings);
+    settings
+}
+
+pub(crate) fn normalize_provider_settings_for_storage(
+    app_type: &AppType,
+    settings: &mut Value,
+) -> bool {
     if matches!(app_type, AppType::Claude) {
-        let _ = normalize_claude_models_in_value(&mut settings);
+        return normalize_claude_models_in_value(settings);
     }
 
-    settings
+    false
 }
 
 pub(crate) fn should_skip_manual_default_live_import(
@@ -12766,11 +12774,33 @@ command = "latest-command"
         );
         assert!(imported["env"].get("ANTHROPIC_SMALL_FAST_MODEL").is_none());
 
+        let mut saved = json!({
+            "env": {
+                "ANTHROPIC_MODEL": "claude-sonnet",
+                "ANTHROPIC_SMALL_FAST_MODEL": "claude-haiku"
+            }
+        });
+        assert!(normalize_provider_settings_for_storage(
+            &AppType::Claude,
+            &mut saved
+        ));
+        assert_eq!(
+            saved["env"]["ANTHROPIC_DEFAULT_HAIKU_MODEL"].as_str(),
+            Some("claude-haiku")
+        );
+        assert!(saved["env"].get("ANTHROPIC_SMALL_FAST_MODEL").is_none());
+
         let codex_settings = json!({"config": "model = \"gpt-5\""});
         assert_eq!(
             provider_default_live_import_settings(&AppType::Codex, codex_settings.clone()),
             codex_settings
         );
+        let mut codex_saved = codex_settings.clone();
+        assert!(!normalize_provider_settings_for_storage(
+            &AppType::Codex,
+            &mut codex_saved
+        ));
+        assert_eq!(codex_saved, codex_settings);
     }
 
     #[test]
