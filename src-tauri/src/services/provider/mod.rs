@@ -17,15 +17,16 @@ use crate::error::AppError;
 use crate::provider::{Provider, UsageResult};
 use crate::proxy_core_adapter::{
     common_config_snippet_from_settings, common_config_snippet_issue_message,
-    normalize_claude_models_in_value, provider_app_has_current_provider,
+    normalize_claude_models_in_value, provider_additive_live_write_action,
+    provider_app_has_current_provider,
     provider_credential_issue_spec, provider_credential_values, provider_key_change_policy_issue,
     provider_key_change_policy_issue_message, provider_live_config_presence_error_policy,
     provider_settings_validation_issue_spec, provider_settings_validation_parts,
     proxy_live_config_owned_by_takeover,
     proxy_switch_should_hot_switch, should_block_proxy_switch_to_provider,
     should_reapply_codex_official_live_for_provider, CommonConfigSnippetIssue,
-    ProviderCredentialIssue, ProviderLiveConfigPresenceErrorPolicy,
-    ProviderSettingsValidationIssue,
+    ProviderAdditiveLiveWriteAction, ProviderCredentialIssue,
+    ProviderLiveConfigPresenceErrorPolicy, ProviderSettingsValidationIssue,
 };
 use crate::services::mcp::McpService;
 use crate::settings::CustomEndpoint;
@@ -1421,16 +1422,10 @@ impl ProviderService {
 
         // Additive mode apps (OpenCode, OpenClaw): optionally write to live config.
         if app_type.is_additive_mode() {
-            // OMO / OMO Slim providers use exclusive mode and write to dedicated config file.
-            if matches!(app_type, AppType::OpenCode)
-                && matches!(provider.category.as_deref(), Some("omo") | Some("omo-slim"))
-            {
-                // Do not auto-enable newly added OMO / OMO Slim providers.
-                // Users must explicitly switch/apply an OMO provider to activate it.
-                return Ok(true);
-            }
-            if !add_to_live {
-                return Ok(true);
+            match provider_additive_live_write_action(&app_type, &provider, add_to_live) {
+                ProviderAdditiveLiveWriteAction::SkipExclusiveCurrentStateProvider
+                | ProviderAdditiveLiveWriteAction::SkipNotRequested => return Ok(true),
+                ProviderAdditiveLiveWriteAction::Write => {}
             }
             write_live_with_common_config(state.db.as_ref(), &app_type, &provider)?;
             return Ok(true);

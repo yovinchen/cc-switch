@@ -1291,6 +1291,31 @@ pub(crate) fn provider_key_change_policy_issue_message(
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum ProviderAdditiveLiveWriteAction {
+    SkipExclusiveCurrentStateProvider,
+    SkipNotRequested,
+    Write,
+}
+
+pub(crate) fn provider_additive_live_write_action(
+    app_type: &AppType,
+    provider: &Provider,
+    add_to_live: bool,
+) -> ProviderAdditiveLiveWriteAction {
+    if matches!(app_type, AppType::OpenCode)
+        && matches!(provider.category.as_deref(), Some("omo") | Some("omo-slim"))
+    {
+        return ProviderAdditiveLiveWriteAction::SkipExclusiveCurrentStateProvider;
+    }
+
+    if !add_to_live {
+        return ProviderAdditiveLiveWriteAction::SkipNotRequested;
+    }
+
+    ProviderAdditiveLiveWriteAction::Write
+}
+
 /// Reads old Claude model keys, writes DEFAULT_* keys, and deletes legacy SMALL_FAST.
 pub(crate) fn normalize_claude_models_in_value(settings: &mut Value) -> bool {
     let mut changed = false;
@@ -12773,6 +12798,36 @@ command = "latest-command"
                 ProviderKeyChangePolicyIssue::UnsupportedAppMode
             ),
             "Only additive-mode providers support changing provider key"
+        );
+    }
+
+    #[test]
+    fn provider_additive_live_write_action_skips_omo_and_unrequested_writes() {
+        let mut omo_provider = Provider::with_id(
+            "omo-provider".to_string(),
+            "OMO Provider".to_string(),
+            json!({}),
+            None,
+        );
+        omo_provider.category = Some("omo-slim".to_string());
+        assert_eq!(
+            provider_additive_live_write_action(&AppType::OpenCode, &omo_provider, true),
+            ProviderAdditiveLiveWriteAction::SkipExclusiveCurrentStateProvider
+        );
+
+        let custom_provider = Provider::with_id(
+            "custom-provider".to_string(),
+            "Custom Provider".to_string(),
+            json!({}),
+            None,
+        );
+        assert_eq!(
+            provider_additive_live_write_action(&AppType::OpenCode, &custom_provider, false),
+            ProviderAdditiveLiveWriteAction::SkipNotRequested
+        );
+        assert_eq!(
+            provider_additive_live_write_action(&AppType::OpenClaw, &custom_provider, true),
+            ProviderAdditiveLiveWriteAction::Write
         );
     }
 
