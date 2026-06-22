@@ -914,6 +914,7 @@
 本轮继续把 `CcSwitchRoutePolicySource` 的 failover queue DB 读取与 `RoutePolicy` 投影收敛到 adapter source wrapper，host route policy source 只保留端口委托。
 本轮继续把 `CcSwitchHealthStore` 的 channel health attempt DB 更新、reset app lookup、breaker reset 与 `ChannelHealthReset` 投影收敛到 adapter source wrapper，host health store 只保留端口委托。
 本轮继续把 `CcSwitchChannelReachabilityProbe` 的 probe request app/provider 投影、provider/config DB 读取、stream-check 调用与 reachability 结果投影收敛到 adapter source wrapper，host reachability probe 只保留端口委托。
+本轮继续把 `CcSwitchModelCatalogProvider` 的 provider catalog DB 读取、client catalog source 选择、Claude Desktop provider route 选择与 model route 投影收敛到 adapter source wrapper，host model catalog provider 只保留端口委托。
 本轮还把 ConfigSource 的 app 配置 wrapper 收敛到 adapter，host 不再显式读取 settings current-provider 后再拼 `ProxyAppConfig`。
 本轮继续把 channel-key DB record 到 runtime key value 的字段投影收敛到 adapter，host auth-profile 路径不再直接查询或投影 channel-key。
 本轮也把 management handler 中 provider 到 core spec 的直接 trait 调用收敛为 adapter helper，provider list/current route handler 不再暴露投影细节。

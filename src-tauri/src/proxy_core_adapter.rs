@@ -5650,6 +5650,20 @@ pub(crate) fn provider_model_catalog_from_provider(
     )
 }
 
+pub(crate) fn provider_model_catalog_from_db_source(
+    db: &Database,
+    app: &AppKind,
+    provider_id: &str,
+) -> ProxyCoreResult<ModelCatalog> {
+    let provider = db
+        .get_provider_by_id(provider_id, app.as_str())
+        .map_err(|error| app_error("load model catalog", error))?;
+    Ok(provider_model_catalog_from_provider(
+        provider_id,
+        provider.as_ref(),
+    ))
+}
+
 pub(crate) fn claude_desktop_provider_from_selection_result(
     result: Result<Vec<Provider>, AppError>,
 ) -> ProxyCoreResult<Provider> {
@@ -5659,6 +5673,17 @@ pub(crate) fn claude_desktop_provider_from_selection_result(
     providers.into_iter().next().ok_or_else(|| {
         ProxyCoreError::Unavailable("no available claude desktop provider".to_string())
     })
+}
+
+pub(crate) async fn claude_desktop_model_routes_from_router_source(
+    router: &ProviderRouter,
+    app: &AppKind,
+) -> ProxyCoreResult<Vec<ClaudeDesktopModelRouteInput>> {
+    let providers = router.select_providers(app.as_str()).await;
+    let provider = claude_desktop_provider_from_selection_result(providers)?;
+    let routes = crate::claude_desktop_config::proxy_model_routes(&provider)
+        .map_err(|error| app_error("load claude desktop model routes", error))?;
+    Ok(claude_desktop_model_routes_to_core_inputs(routes))
 }
 
 pub(crate) fn provider_model_catalog_raw_value(provider: &Provider) -> Option<&Value> {
@@ -5710,6 +5735,12 @@ pub(crate) fn client_model_catalog_from_source(app: &AppKind) -> ModelCatalog {
         _ => None,
     };
     client_model_catalog_from_optional_raw(app, raw)
+}
+
+pub(crate) fn client_model_catalog_from_app_source(
+    app: &AppKind,
+) -> ProxyCoreResult<ModelCatalog> {
+    Ok(client_model_catalog_from_source(app))
 }
 
 pub(crate) fn empty_client_model_catalog_raw() -> Value {

@@ -27,8 +27,7 @@ use crate::proxy_core_adapter::{
     app_summary_config_from_db_source,
     auth_info_from_cc_switch_provider_config,
     cc_switch_app_kinds,
-    claude_desktop_provider_from_selection_result,
-    claude_desktop_model_routes_to_core_inputs,
+    claude_desktop_model_routes_from_router_source,
     channel_key_records_from_db_source,
     channel_model_records_from_db_source,
     channel_records_from_router_source,
@@ -36,7 +35,7 @@ use crate::proxy_core_adapter::{
     channel_specs_from_source_lookup,
     channel_migration_materialize_from_db_source,
     channel_migration_preview_from_db_source,
-    client_model_catalog_from_source,
+    client_model_catalog_from_app_source,
     channel_record_from_db_source,
     create_channel_record_from_db_source,
     current_provider_id_from_db_source,
@@ -45,7 +44,7 @@ use crate::proxy_core_adapter::{
     forward_proxy_request_with_host_runtime,
     forwarding_runtime_unavailable_error,
     log_usage_request_projection_warnings,
-    provider_model_catalog_from_provider, provider_spec_from_db_source,
+    provider_model_catalog_from_db_source, provider_spec_from_db_source,
     provider_specs_from_db_source,
     probe_channel_reachability_from_db_source,
     proxy_app_config_from_db_source, proxy_global_config_from_db_source,
@@ -563,23 +562,14 @@ impl ModelCatalogProvider for CcSwitchModelCatalogProvider {
         app: &'a AppKind,
         provider_id: &'a str,
     ) -> BoxFuture<'a, ProxyCoreResult<ModelCatalog>> {
-        Box::pin(async move {
-            let provider = self
-                .db
-                .get_provider_by_id(provider_id, app.as_str())
-                .map_err(|error| app_error("load model catalog", error))?;
-            Ok(provider_model_catalog_from_provider(
-                provider_id,
-                provider.as_ref(),
-            ))
-        })
+        Box::pin(async move { provider_model_catalog_from_db_source(&self.db, app, provider_id) })
     }
 
     fn load_client_catalog<'a>(
         &'a self,
         app: &'a AppKind,
     ) -> BoxFuture<'a, ProxyCoreResult<ModelCatalog>> {
-        Box::pin(async move { Ok(client_model_catalog_from_source(app)) })
+        Box::pin(async move { client_model_catalog_from_app_source(app) })
     }
 
     fn load_claude_desktop_model_routes<'a>(
@@ -587,14 +577,7 @@ impl ModelCatalogProvider for CcSwitchModelCatalogProvider {
         app: &'a AppKind,
     ) -> BoxFuture<'a, ProxyCoreResult<Vec<ClaudeDesktopModelRouteInput>>> {
         Box::pin(async move {
-            let providers = self
-                .router
-                .select_providers(app.as_str())
-                .await;
-            let provider = claude_desktop_provider_from_selection_result(providers)?;
-            let routes = crate::claude_desktop_config::proxy_model_routes(&provider)
-                .map_err(|error| app_error("load claude desktop model routes", error))?;
-            Ok(claude_desktop_model_routes_to_core_inputs(routes))
+            claude_desktop_model_routes_from_router_source(&self.router, app).await
         })
     }
 }
