@@ -5838,6 +5838,29 @@ pub(crate) async fn forward_with_preplanned_host_runtime(
     Ok(forward_result_to_proxy_result(result, plan))
 }
 
+pub(crate) async fn forward_proxy_request_with_host_runtime(
+    db: &Database,
+    resources: ForwarderRuntimeHostResources,
+    request: ProxyRequest,
+    plan: RoutePlan,
+) -> ProxyCoreResult<ProxyResult> {
+    let forward_request = forward_runtime_request_from_proxy_request(request)?;
+    let app_type = forward_request.app_type.clone();
+    let forwarder_config = forwarder_runtime_config_from_db_sources(db, &app_type).await?;
+    let current_provider_id = forward_current_provider_id_from_db_sources(db, &app_type);
+    let attempts = required_forward_attempts_from_db_sources(db, &app_type, &plan)?;
+
+    forward_with_preplanned_host_runtime(
+        resources,
+        forward_request,
+        plan,
+        forwarder_config,
+        current_provider_id,
+        attempts,
+    )
+    .await
+}
+
 pub(crate) fn forwarding_requires_runtime_error_message() -> &'static str {
     crate::proxy_core::api::routing::forwarding_requires_runtime_error_message()
 }

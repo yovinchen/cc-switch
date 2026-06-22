@@ -44,10 +44,7 @@ use crate::proxy_core_adapter::{
     channel_spec_from_source,
     channel_specs_from_source,
     client_model_catalog_from_source,
-    forward_current_provider_id_from_db_sources,
-    forwarder_runtime_config_from_db_sources,
-    forward_runtime_request_from_proxy_request,
-    forward_with_preplanned_host_runtime,
+    forward_proxy_request_with_host_runtime,
     forwarding_runtime_unavailable_error,
     log_usage_request_projection_warnings,
     provider_spec_from_source, proxy_channel_record_to_core, proxy_channel_records_to_core,
@@ -58,7 +55,6 @@ use crate::proxy_core_adapter::{
     proxy_runtime_config_from_config_source,
     route_policy_from_source,
     route_candidate_provider_ids_from_selection_result,
-    required_forward_attempts_from_db_sources,
     stream_check_result_to_channel_reachability,
     usage_error,
     usage_pricing_config_lookup_from_record,
@@ -905,20 +901,11 @@ impl CcSwitchProxyRuntime {
         request: ProxyRequest,
         plan: RoutePlan,
     ) -> ProxyCoreResult<ProxyResult> {
-        let forward_request = forward_runtime_request_from_proxy_request(request)?;
-        let app_type = forward_request.app_type.clone();
-        let forwarder_config =
-            forwarder_runtime_config_from_db_sources(&self.db, &app_type).await?;
-        let current_provider_id = forward_current_provider_id_from_db_sources(&self.db, &app_type);
-        let attempts = required_forward_attempts_from_db_sources(&self.db, &app_type, &plan)?;
-
-        forward_with_preplanned_host_runtime(
+        forward_proxy_request_with_host_runtime(
+            &self.db,
             self.forwarder_runtime_host_resources(),
-            forward_request,
+            request,
             plan,
-            forwarder_config,
-            current_provider_id,
-            attempts,
         )
         .await
     }

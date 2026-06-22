@@ -55,6 +55,7 @@ const FORBIDDEN_PROXY_CORE_HOST_AUTH_PROFILE_DB_MARKERS: &[&str] = &[
 const FORBIDDEN_PROXY_CORE_HOST_FORWARD_CURRENT_PROVIDER_MARKERS: &[&str] = &[
     "current_provider_id_from_settings_for_app_type(",
     "forward_current_provider_id_from_source(",
+    "forward_current_provider_id_from_db_sources(",
     ".get_current_provider(",
 ];
 const FORBIDDEN_PROXY_CORE_HOST_FORWARD_CONFIG_SOURCE_MARKERS: &[&str] = &[
@@ -63,16 +64,20 @@ const FORBIDDEN_PROXY_CORE_HOST_FORWARD_CONFIG_SOURCE_MARKERS: &[&str] = &[
     "get_optimizer_config(",
     "get_copilot_optimizer_config(",
     "forwarder_runtime_config_from_sources(",
+    "forwarder_runtime_config_from_db_sources(",
 ];
 const FORBIDDEN_PROXY_CORE_HOST_FORWARD_ATTEMPT_SOURCE_MARKERS: &[&str] = &[
     ".get_all_providers(",
     "host_providers_for_plan(",
     "required_forward_attempts_from_plan(",
+    "required_forward_attempts_from_db_sources(",
     "apply_channel_auth_profile_providers_from_db(",
 ];
 const FORBIDDEN_PROXY_CORE_HOST_FORWARDER_LAUNCH_MARKERS: &[&str] = &[
     "RequestForwarder::new_preplanned(",
     ".forward_with_preplanned_attempts(",
+    "forward_runtime_request_from_proxy_request(",
+    "forward_with_preplanned_host_runtime(",
     "forward_error_to_core_error(",
 ];
 const FORBIDDEN_PROXY_CORE_CONFIG_SOURCE_APP_CATALOG_MARKERS: &[&str] = &[
@@ -1339,7 +1344,7 @@ fn production_proxy_core_host_delegates_forward_current_provider_source_to_adapt
     let forward_source = function_slice(
         &source,
         "    async fn forward(",
-        "        let attempts = required_forward_attempts_from_db_sources(",
+        "\n}\n\n#[cfg(test)]",
     );
 
     let mut violations = Vec::new();
@@ -1371,7 +1376,7 @@ fn production_proxy_core_host_delegates_forward_runtime_config_source_to_adapter
     let forward_source = function_slice(
         &source,
         "    async fn forward(",
-        "        let current_provider_id = forward_current_provider_id_from_db_sources(",
+        "\n}\n\n#[cfg(test)]",
     );
 
     let mut violations = Vec::new();
@@ -1403,7 +1408,7 @@ fn production_proxy_core_host_delegates_forward_attempt_source_to_adapter() {
     let forward_source = function_slice(
         &source,
         "    async fn forward(",
-        "        forward_with_preplanned_host_runtime(",
+        "\n}\n\n#[cfg(test)]",
     );
 
     let mut violations = Vec::new();
