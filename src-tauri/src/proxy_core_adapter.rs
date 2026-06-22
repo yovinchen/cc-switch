@@ -4172,6 +4172,26 @@ pub(crate) fn provider_settings_with_live_token_sync(
     }
 }
 
+pub(crate) fn sync_provider_settings_with_live_token(
+    app_type: &AppType,
+    live_config: &Value,
+    provider: &mut Provider,
+    placeholder: &str,
+) -> Result<bool, LiveTokenProviderSettingsIssue> {
+    match provider_settings_with_live_token_sync(
+        app_type,
+        live_config,
+        &provider.settings_config,
+        placeholder,
+    )? {
+        Some(settings_config) => {
+            provider.settings_config = settings_config;
+            Ok(true)
+        }
+        None => Ok(false),
+    }
+}
+
 const CLAUDE_TAKEOVER_TOKEN_ENV_KEYS: [&str; 4] = [
     "ANTHROPIC_AUTH_TOKEN",
     "ANTHROPIC_API_KEY",
@@ -7999,6 +8019,30 @@ command = "latest-command"
                 .and_then(|auth| auth.get("OPENAI_API_KEY"))
                 .and_then(Value::as_str),
             Some("fresh-codex")
+        );
+
+        let mut gemini_provider = Provider::with_id(
+            "gemini-provider".to_string(),
+            "Gemini Provider".to_string(),
+            json!({ "env": { "GEMINI_API_KEY": "stale-gemini" } }),
+            None,
+        );
+        assert!(
+            sync_provider_settings_with_live_token(
+                &AppType::Gemini,
+                &json!({ "env": { "GEMINI_API_KEY": "fresh-gemini" } }),
+                &mut gemini_provider,
+                placeholder,
+            )
+            .expect("provider token sync should be valid")
+        );
+        assert_eq!(
+            gemini_provider
+                .settings_config
+                .get("env")
+                .and_then(|env| env.get("GEMINI_API_KEY"))
+                .and_then(Value::as_str),
+            Some("fresh-gemini")
         );
 
         assert_eq!(

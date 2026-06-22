@@ -19,9 +19,9 @@ use crate::proxy_core_adapter::{
     ensure_codex_takeover_auth_placeholder, gemini_live_backup_from_effective_settings,
     is_local_proxy_url, live_backup_snapshot_from_live_config,
     live_config_has_proxy_placeholder_for_app, live_takeover_config_matches_proxy_for_app,
-    provider_settings_have_proxy_placeholder_for_app,
+    provider_settings_have_proxy_placeholder_for_app, sync_provider_settings_with_live_token,
     preserve_codex_mcp_servers_from_existing_config,
-    preserve_codex_oauth_auth_in_backup_if_present, provider_settings_with_live_token_sync,
+    preserve_codex_oauth_auth_in_backup_if_present,
     remove_claude_takeover_env_fields_if_present, CodexLiveWriteProjection,
     proxy_live_urls_from_listen_parts, proxy_runtime_status_stopped,
     proxy_server_info_from_parts, proxy_takeover_status_from_parts,
@@ -676,17 +676,13 @@ impl ProxyService {
         provider: &mut Provider,
         live_config: &Value,
     ) -> bool {
-        match provider_settings_with_live_token_sync(
+        match sync_provider_settings_with_live_token(
             app_type,
             live_config,
-            &provider.settings_config,
+            provider,
             PROXY_TOKEN_PLACEHOLDER,
         ) {
-            Ok(Some(settings_config)) => {
-                provider.settings_config = settings_config;
-                true
-            }
-            Ok(None) => false,
+            Ok(updated) => updated,
             Err(LiveTokenProviderSettingsIssue::InvalidProviderSettings) => {
                 log::warn!(
                     "{app_label} provider settings_config 格式异常（非对象），跳过写入 Token (provider: {provider_id})"
