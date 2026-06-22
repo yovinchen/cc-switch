@@ -3741,6 +3741,28 @@ pub(crate) enum CommonConfigSettingsMutationIssue {
     GeminiCommonConfigJson(String),
 }
 
+pub(crate) fn common_config_settings_mutation_issue_message(
+    issue: CommonConfigSettingsMutationIssue,
+) -> String {
+    match issue {
+        CommonConfigSettingsMutationIssue::ClaudeCommonConfigJson(error) => {
+            format!("Invalid Claude common config: {error}")
+        }
+        CommonConfigSettingsMutationIssue::CodexApplyTargetToml(error) => {
+            format!("Invalid Codex config.toml while applying common config: {error}")
+        }
+        CommonConfigSettingsMutationIssue::CodexRemoveTargetToml(error) => {
+            format!("Invalid Codex config.toml while removing common config: {error}")
+        }
+        CommonConfigSettingsMutationIssue::CodexCommonConfigSnippetToml(error) => {
+            format!("Invalid Codex common config snippet: {error}")
+        }
+        CommonConfigSettingsMutationIssue::GeminiCommonConfigJson(error) => {
+            format!("Invalid Gemini common config: {error}")
+        }
+    }
+}
+
 pub(crate) fn apply_common_config_to_settings(
     app_type: &AppType,
     settings: &Value,
@@ -9299,6 +9321,39 @@ reasoning = "medium"
         assert_eq!(
             applied,
             json!({"env": {"SHARED_REGION": "us-central1"}})
+        );
+
+        assert_eq!(
+            common_config_settings_mutation_issue_message(
+                CommonConfigSettingsMutationIssue::ClaudeCommonConfigJson("bad json".to_string())
+            ),
+            "Invalid Claude common config: bad json"
+        );
+        assert_eq!(
+            common_config_settings_mutation_issue_message(
+                CommonConfigSettingsMutationIssue::CodexApplyTargetToml("bad target".to_string())
+            ),
+            "Invalid Codex config.toml while applying common config: bad target"
+        );
+        assert_eq!(
+            common_config_settings_mutation_issue_message(
+                CommonConfigSettingsMutationIssue::CodexRemoveTargetToml("bad target".to_string())
+            ),
+            "Invalid Codex config.toml while removing common config: bad target"
+        );
+        assert_eq!(
+            common_config_settings_mutation_issue_message(
+                CommonConfigSettingsMutationIssue::CodexCommonConfigSnippetToml(
+                    "bad snippet".to_string()
+                )
+            ),
+            "Invalid Codex common config snippet: bad snippet"
+        );
+        assert_eq!(
+            common_config_settings_mutation_issue_message(
+                CommonConfigSettingsMutationIssue::GeminiCommonConfigJson("bad json".to_string())
+            ),
+            "Invalid Gemini common config: bad json"
         );
     }
 

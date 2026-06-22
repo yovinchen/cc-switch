@@ -14,6 +14,7 @@ use crate::error::AppError;
 use crate::provider::Provider;
 use crate::proxy_core_adapter::{
     build_effective_settings_with_common_config as adapter_build_effective_settings_with_common_config,
+    common_config_settings_mutation_issue_message,
     remove_common_config_from_settings as adapter_remove_common_config_from_settings,
     codex_live_settings_with_model_catalog, gemini_live_settings_from_env_json_and_config,
     normalize_claude_models_in_value,
@@ -84,27 +85,7 @@ fn apply_common_config_to_settings(
 fn common_config_settings_mutation_issue_to_app_error(
     issue: CommonConfigSettingsMutationIssue,
 ) -> AppError {
-    match issue {
-        CommonConfigSettingsMutationIssue::ClaudeCommonConfigJson(error) => {
-            AppError::Message(format!("Invalid Claude common config: {error}"))
-        }
-        CommonConfigSettingsMutationIssue::CodexApplyTargetToml(error) => {
-            AppError::Message(format!(
-                "Invalid Codex config.toml while applying common config: {error}"
-            ))
-        }
-        CommonConfigSettingsMutationIssue::CodexRemoveTargetToml(error) => {
-            AppError::Message(format!(
-                "Invalid Codex config.toml while removing common config: {error}"
-            ))
-        }
-        CommonConfigSettingsMutationIssue::CodexCommonConfigSnippetToml(error) => {
-            AppError::Message(format!("Invalid Codex common config snippet: {error}"))
-        }
-        CommonConfigSettingsMutationIssue::GeminiCommonConfigJson(error) => {
-            AppError::Message(format!("Invalid Gemini common config: {error}"))
-        }
-    }
+    AppError::Message(common_config_settings_mutation_issue_message(issue))
 }
 
 pub(crate) fn build_effective_settings_with_common_config(
