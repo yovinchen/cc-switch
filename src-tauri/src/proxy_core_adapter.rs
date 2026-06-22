@@ -5432,6 +5432,13 @@ pub(crate) fn route_candidate_provider_ids_from_selection_result(
     }
 }
 
+pub(crate) async fn route_candidate_provider_ids_from_router_source(
+    router: &ProviderRouter,
+    app: &AppKind,
+) -> ProxyCoreResult<Vec<String>> {
+    route_candidate_provider_ids_from_selection_result(router.select_providers(app.as_str()).await)
+}
+
 #[allow(dead_code)]
 pub(crate) trait ToProxyCoreChannelSpec {
     fn to_proxy_core_channel_spec(&self) -> ChannelSpec;

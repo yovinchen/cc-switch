@@ -63,8 +63,10 @@ const FORBIDDEN_PROXY_CORE_HOST_PROVIDER_SOURCE_MARKERS: &[&str] = &[
     ".get_all_providers(",
     ".get_provider_by_id(",
     ".get_current_provider(",
+    ".select_providers(",
     "provider_specs_from_source(",
     "provider_spec_from_source(",
+    "route_candidate_provider_ids_from_selection_result(",
 ];
 const FORBIDDEN_PROXY_CORE_HOST_CHANNEL_SPEC_SOURCE_MARKERS: &[&str] = &[
     ".list_channels_for_app(",

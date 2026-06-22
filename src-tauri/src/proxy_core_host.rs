@@ -54,7 +54,7 @@ use crate::proxy_core_adapter::{
     reset_channel_health_with_router_source,
     route_policy_from_db_source,
     replace_channel_model_records_from_db_source,
-    route_candidate_provider_ids_from_selection_result,
+    route_candidate_provider_ids_from_router_source,
     update_channel_record_from_db_source,
     update_channel_key_record_from_db_source,
     upsert_channel_key_record_from_db_source,
@@ -308,9 +308,7 @@ impl ProviderSource for CcSwitchProviderSource {
         app: &'a AppKind,
     ) -> BoxFuture<'a, ProxyCoreResult<Vec<String>>> {
         Box::pin(async move {
-            route_candidate_provider_ids_from_selection_result(
-                self.router.select_providers(app.as_str()).await,
-            )
+            route_candidate_provider_ids_from_router_source(&self.router, app).await
         })
     }
 }
