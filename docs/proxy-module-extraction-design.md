@@ -963,6 +963,7 @@
 本轮继续把 host adapter 的 context/error 通用拼接格式迁入 core errors API，host 只保留错误类别映射。
 本轮继续把 `ProxyError` 到 Codex 错误响应 envelope 的 context/code/status 组装收敛到 adapter wrapper，error mapper 只保留 host error facts 归类。
 本轮继续把 Claude/Codex/Gemini provider adapter 的必填 base_url 提取和缺失错误文案收敛到 adapter helper，provider adapter 只保留现有 `ProxyError` 映射。
+本轮继续把 Gemini provider adapter 的 auth strategy/auth info 构造收敛到 adapter helper，Gemini adapter 不再直接解析 OAuth key 或构造 `ProviderAuthInfo`。
 本轮也把 channel authProfileRef 缺失 provider warning 的 optional fallback 收敛到 core，host 不再维护空 ref 兜底逻辑。
 本轮继续把 current provider 来源优先级的 option/string 两种 contract 统一到 core，config source 和 forward runtime 复用同一选择规则。
 本轮还把 Codex client model catalog raw JSON 解析失败 fallback 收敛到 core，host 的 model catalog provider 只保留路径选择与文件读取。

@@ -11,9 +11,11 @@ use crate::provider::Provider;
 use crate::proxy::error::ProxyError;
 use crate::proxy_core_adapter::{
     build_gemini_auth_headers, build_gemini_upstream_url, parse_gemini_oauth_credentials,
-    provider_gemini_api_key, required_gemini_provider_base_url, GeminiOAuthCredentials,
-    ProviderAuthInfo, ProviderAuthStrategy, ProviderKind,
+    provider_gemini_auth_info, required_gemini_provider_base_url, GeminiOAuthCredentials,
+    ProviderAuthInfo, ProviderAuthStrategy,
 };
+#[cfg(test)]
+use crate::proxy_core_adapter::{provider_gemini_kind, ProviderKind};
 
 /// Gemini 适配器
 pub struct GeminiAdapter;
@@ -28,31 +30,14 @@ impl GeminiAdapter {
     /// 根据 API Key 格式检测：
     /// - GeminiCli: access_token (ya29. 开头) 或 JSON 格式凭证
     /// - Gemini: 普通 API Key
+    #[cfg(test)]
     pub fn provider_type(&self, provider: &Provider) -> ProviderKind {
-        if let Some(key) = self.extract_key_raw(provider) {
-            if parse_gemini_oauth_credentials(&key).is_some() {
-                return ProviderKind::GeminiCli;
-            }
-        }
-        ProviderKind::Gemini
-    }
-
-    /// 检测认证类型
-    pub fn detect_auth_type(&self, provider: &Provider) -> ProviderAuthStrategy {
-        match self.provider_type(provider) {
-            ProviderKind::GeminiCli => ProviderAuthStrategy::GoogleOAuth,
-            _ => ProviderAuthStrategy::Google,
-        }
+        provider_gemini_kind(provider)
     }
 
     /// 解析 OAuth 凭证
     pub fn parse_oauth_credentials(&self, key: &str) -> Option<GeminiOAuthCredentials> {
         parse_gemini_oauth_credentials(key)
-    }
-
-    /// 从 Provider 配置中提取原始 API Key
-    fn extract_key_raw(&self, provider: &Provider) -> Option<String> {
-        provider_gemini_api_key(provider)
     }
 }
 
@@ -72,21 +57,7 @@ impl ProviderAdapter for GeminiAdapter {
     }
 
     fn extract_auth(&self, provider: &Provider) -> Option<ProviderAuthInfo> {
-        let key = self.extract_key_raw(provider)?;
-        let strategy = self.detect_auth_type(provider);
-
-        match strategy {
-            ProviderAuthStrategy::GoogleOAuth => {
-                // 解析 OAuth 凭证
-                if let Some(creds) = self.parse_oauth_credentials(&key) {
-                    Some(ProviderAuthInfo::with_access_token(key, creds.access_token))
-                } else {
-                    // 回退到普通 API Key
-                    Some(ProviderAuthInfo::new(key, ProviderAuthStrategy::Google))
-                }
-            }
-            _ => Some(ProviderAuthInfo::new(key, ProviderAuthStrategy::Google)),
-        }
+        provider_gemini_auth_info(provider)
     }
 
     fn build_url(&self, base_url: &str, endpoint: &str) -> String {

@@ -4010,6 +4010,31 @@ pub(crate) fn provider_gemini_kind(provider: &Provider) -> ProviderKind {
     }
 }
 
+pub(crate) fn provider_gemini_auth_strategy(provider: &Provider) -> ProviderAuthStrategy {
+    match provider_gemini_kind(provider) {
+        ProviderKind::GeminiCli => ProviderAuthStrategy::GoogleOAuth,
+        _ => ProviderAuthStrategy::Google,
+    }
+}
+
+pub(crate) fn provider_gemini_auth_info(provider: &Provider) -> Option<ProviderAuthInfo> {
+    let key = provider_gemini_api_key(provider)?;
+
+    match provider_gemini_auth_strategy(provider) {
+        ProviderAuthStrategy::GoogleOAuth => {
+            if let Some(credentials) = parse_gemini_oauth_credentials(&key) {
+                Some(ProviderAuthInfo::with_access_token(
+                    key,
+                    credentials.access_token,
+                ))
+            } else {
+                Some(ProviderAuthInfo::new(key, ProviderAuthStrategy::Google))
+            }
+        }
+        _ => Some(ProviderAuthInfo::new(key, ProviderAuthStrategy::Google)),
+    }
+}
+
 pub(crate) fn parse_gemini_oauth_credentials(
     key: &str,
 ) -> Option<GeminiOAuthCredentials> {
@@ -11931,6 +11956,33 @@ base_url = "https://api.openai.com/v1"
             required_gemini_provider_base_url(&missing_gemini_base_url).unwrap_err(),
             "Gemini Provider 缺少 base_url 配置"
         );
+        let provider_auth = provider_gemini_auth_info(&provider).expect("gemini oauth auth info");
+        assert_eq!(provider_gemini_auth_strategy(&provider), ProviderAuthStrategy::GoogleOAuth);
+        assert_eq!(provider_auth.api_key, "ya29.access-token");
+        assert_eq!(provider_auth.access_token.as_deref(), Some("ya29.access-token"));
+        assert_eq!(provider_auth.strategy, ProviderAuthStrategy::GoogleOAuth);
+        let api_key_provider = Provider::with_id(
+            "gemini-api-key".to_string(),
+            "Gemini API Key".to_string(),
+            json!({"env": {"GEMINI_API_KEY": "AIza-api-key"}}),
+            None,
+        );
+        let api_key_auth =
+            provider_gemini_auth_info(&api_key_provider).expect("gemini api key auth info");
+        assert_eq!(
+            provider_gemini_auth_strategy(&api_key_provider),
+            ProviderAuthStrategy::Google
+        );
+        assert_eq!(api_key_auth.api_key, "AIza-api-key");
+        assert_eq!(api_key_auth.access_token, None);
+        assert_eq!(api_key_auth.strategy, ProviderAuthStrategy::Google);
+        let missing_auth = Provider::with_id(
+            "gemini-missing-auth".to_string(),
+            "Gemini Missing Auth".to_string(),
+            json!({}),
+            None,
+        );
+        assert!(provider_gemini_auth_info(&missing_auth).is_none());
         let live_env = provider_gemini_env_map(&provider).expect("gemini env map");
         assert_eq!(
             live_env.get("GEMINI_API_KEY").map(String::as_str),

@@ -305,6 +305,11 @@ const FORBIDDEN_PROVIDER_ADAPTER_BASE_URL_ERROR_MARKERS: &[&str] = &[
     "缺少 base_url 配置",
     ".ok_or_else(|| ProxyError::ConfigError(",
 ];
+const FORBIDDEN_PROVIDER_ADAPTER_AUTH_INFO_MARKERS: &[&str] = &[
+    "ProviderAuthInfo::new(",
+    "ProviderAuthInfo::with_access_token(",
+    "parse_gemini_oauth_credentials(&key)",
+];
 const FORBIDDEN_HANDLER_MANAGEMENT_AUTH_DECISION_MARKERS: &[&str] = &[
     "std::env::var(",
     "CC_SWITCH_PROXY_MANAGEMENT_TOKEN",
@@ -1281,6 +1286,38 @@ fn production_provider_adapters_delegate_base_url_errors_to_adapter() {
     assert!(
         violations.is_empty(),
         "provider adapters must delegate required base_url extraction errors to proxy_core_adapter helpers:\n{}",
+        violations.join("\n")
+    );
+}
+
+#[test]
+fn production_gemini_provider_adapter_delegates_auth_info_to_adapter() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let path = manifest_dir.join("src/proxy/providers/gemini.rs");
+    let source = fs::read_to_string(&path).expect("read gemini provider adapter source");
+    let extract_auth = function_slice(
+        &source,
+        "    fn extract_auth(&self, provider: &Provider)",
+        "    fn build_url(&self, base_url: &str, endpoint: &str) -> String",
+    );
+
+    let mut violations = Vec::new();
+    for (line_index, line) in production_lines(extract_auth) {
+        let code = line.split("//").next().unwrap_or_default();
+        for marker in FORBIDDEN_PROVIDER_ADAPTER_AUTH_INFO_MARKERS {
+            if code.contains(marker) {
+                violations.push(format!(
+                    "src/proxy/providers/gemini.rs extract_auth:{} contains auth info marker `{}`",
+                    line_index + 1,
+                    marker
+                ));
+            }
+        }
+    }
+
+    assert!(
+        violations.is_empty(),
+        "Gemini provider adapter must delegate auth info construction to proxy_core_adapter helpers:\n{}",
         violations.join("\n")
     );
 }
