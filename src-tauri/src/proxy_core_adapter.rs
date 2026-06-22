@@ -6264,6 +6264,16 @@ pub(crate) fn route_plan_from_request(
     crate::proxy_core::api::routing::build_route_plan(request)
 }
 
+pub(crate) async fn management_route_response_from_router_source(
+    router: &ProviderRouter,
+    request: RouteResolveRequest,
+) -> ProxyCoreResult<RouteResolveResponse> {
+    router
+        .resolve_channel_route_dry_run(request)
+        .await
+        .map_err(|error| app_error("resolve channel route dry run", error))
+}
+
 pub(crate) fn should_transition_open_to_half_open(
     open_elapsed_seconds: Option<u64>,
     timeout_seconds: u64,

@@ -917,6 +917,7 @@
 本轮继续把 `CcSwitchModelCatalogProvider` 的 provider catalog DB 读取、client catalog source 选择、Claude Desktop provider route 选择与 model route 投影收敛到 adapter source wrapper，host model catalog provider 只保留端口委托。
 本轮继续把 `CcSwitchUsageSink` 的 usage pricing lookup、pricing model 解析、request log 投影、缺价告警与 usage log 写入收敛到 adapter source wrapper，host usage sink 只保留端口委托。
 本轮继续把 `CcSwitchProviderSource` 的 route candidate provider router selection 与 provider-id 投影收敛到 adapter source wrapper，host provider source 的 candidate 路径只保留端口委托。
+本轮继续把 `CcSwitchRouteResolver` 的 management dry-run router 调用与错误映射收敛到 adapter source wrapper，host route resolver 只保留端口委托。
 本轮还把 ConfigSource 的 app 配置 wrapper 收敛到 adapter，host 不再显式读取 settings current-provider 后再拼 `ProxyAppConfig`。
 本轮继续把 channel-key DB record 到 runtime key value 的字段投影收敛到 adapter，host auth-profile 路径不再直接查询或投影 channel-key。
 本轮也把 management handler 中 provider 到 core spec 的直接 trait 调用收敛为 adapter helper，provider list/current route handler 不再暴露投影细节。

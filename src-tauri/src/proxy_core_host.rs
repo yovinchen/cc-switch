@@ -22,7 +22,6 @@ use crate::proxy_core_adapter::{
     RouteResolveResponse, RouteResolver, UsageRecord, UsageSink,
 };
 use crate::proxy_core_adapter::{
-    app_error,
     app_summary_config_from_db_source,
     auth_info_from_cc_switch_provider_config,
     cc_switch_app_kinds,
@@ -48,11 +47,13 @@ use crate::proxy_core_adapter::{
     proxy_app_config_from_db_source, proxy_global_config_from_db_source,
     record_channel_attempt_in_db_source,
     emit_proxy_core_event,
+    management_route_response_from_router_source,
     materialized_channel_records_from_db_source,
     proxy_runtime_config_from_db_source,
     record_usage_in_db_source,
     reset_channel_health_with_router_source,
     route_policy_from_db_source,
+    route_plan_from_request,
     replace_channel_model_records_from_db_source,
     route_candidate_provider_ids_from_router_source,
     update_channel_record_from_db_source,
@@ -474,7 +475,7 @@ impl RouteResolver for CcSwitchRouteResolver {
         &'a self,
         request: RouteRequest<'a>,
     ) -> BoxFuture<'a, ProxyCoreResult<RoutePlan>> {
-        Box::pin(async move { crate::proxy_core_adapter::route_plan_from_request(request) })
+        Box::pin(async move { route_plan_from_request(request) })
     }
 
     fn resolve_management_route<'a>(
@@ -482,10 +483,7 @@ impl RouteResolver for CcSwitchRouteResolver {
         request: RouteResolveRequest,
     ) -> BoxFuture<'a, ProxyCoreResult<RouteResolveResponse>> {
         Box::pin(async move {
-            self.router
-                .resolve_channel_route_dry_run(request)
-                .await
-                .map_err(|error| app_error("resolve channel route dry run", error))
+            management_route_response_from_router_source(&self.router, request).await
         })
     }
 }
