@@ -7168,6 +7168,23 @@ wire_api = "chat"
     }
 
     #[test]
+    fn proxy_switch_policy_adapter_blocks_official_only_during_takeover() {
+        assert!(should_block_proxy_switch_to_provider_category(
+            true,
+            Some("official")
+        ));
+        assert!(!should_block_proxy_switch_to_provider_category(
+            false,
+            Some("official")
+        ));
+        assert!(!should_block_proxy_switch_to_provider_category(
+            true,
+            Some("custom")
+        ));
+        assert!(!should_block_proxy_switch_to_provider_category(true, None));
+    }
+
+    #[test]
     fn provider_auth_adapter_projects_strategy_contracts() {
         let bearer =
             ProviderAuthInfo::new("provider-token".to_string(), ProviderAuthStrategy::Bearer);

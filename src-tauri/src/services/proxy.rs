@@ -27,9 +27,9 @@ use crate::proxy_core_adapter::{
     proxy_server_info_from_parts, proxy_takeover_status_from_parts,
     remove_codex_takeover_auth_placeholder_if_present,
     remove_codex_takeover_config_placeholders_if_present,
-    remove_gemini_takeover_env_fields_if_present, CircuitBreakerConfig,
-    LiveTokenProviderSettingsIssue, ProxyConfig, ProxyRuntimeStatus, ProxyServerInfo,
-    ProxyTakeoverStatus, PROXY_OFFICIAL_WARNING_EVENT,
+    remove_gemini_takeover_env_fields_if_present, should_block_proxy_switch_to_provider_category,
+    CircuitBreakerConfig, LiveTokenProviderSettingsIssue, ProxyConfig, ProxyRuntimeStatus,
+    ProxyServerInfo, ProxyTakeoverStatus, PROXY_OFFICIAL_WARNING_EVENT,
 };
 use crate::services::provider::{
     build_effective_settings_with_common_config, write_live_with_common_config,
@@ -1572,7 +1572,7 @@ impl ProxyService {
             .ok_or_else(|| format!("供应商不存在: {provider_id}"))?;
 
         // Defense-in-depth: block official providers during proxy takeover
-        if provider.category.as_deref() == Some("official") {
+        if should_block_proxy_switch_to_provider_category(true, provider.category.as_deref()) {
             return Err(
                 "代理接管模式下不能切换到官方供应商 (Cannot switch to official provider during proxy takeover)"
                     .to_string(),
@@ -4279,6 +4279,36 @@ model = "gpt-5.1-codex"
             .expect("backup exists");
         let expected = serde_json::to_string(&provider_c.settings_config).expect("serialize");
         assert_eq!(backup.original_config, expected);
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn hot_switch_provider_blocks_official_provider_during_takeover() {
+        let _home = TempHome::new();
+        crate::settings::reload_settings().expect("reload settings");
+
+        let db = Arc::new(Database::memory().expect("init db"));
+        let service = ProxyService::new(db.clone());
+
+        let mut provider = Provider::with_id(
+            "official".to_string(),
+            "Official Claude".to_string(),
+            json!({ "env": { "ANTHROPIC_API_KEY": "official-key" } }),
+            None,
+        );
+        provider.category = Some("official".to_string());
+        db.save_provider("claude", &provider)
+            .expect("save official provider");
+
+        let error = service
+            .hot_switch_provider_inner("claude", "official")
+            .await
+            .expect_err("official providers should be blocked during proxy takeover");
+
+        assert!(
+            error.contains("Cannot switch to official provider during proxy takeover"),
+            "unexpected error: {error}"
+        );
     }
 
     #[tokio::test]
