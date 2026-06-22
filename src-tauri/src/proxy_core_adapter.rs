@@ -3363,6 +3363,16 @@ pub(crate) fn provider_uses_common_config(
     }
 }
 
+pub(crate) fn provider_common_config_storage_normalization_requires_snippet(
+    provider: &Provider,
+) -> bool {
+    provider
+        .meta
+        .as_ref()
+        .and_then(|meta| meta.common_config_enabled)
+        .unwrap_or(false)
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum CommonConfigSettingsMutationIssue {
     ClaudeCommonConfigJson(String),
@@ -3498,6 +3508,22 @@ pub(crate) fn remove_common_config_from_settings(
             Ok(settings.clone())
         }
     }
+}
+
+pub(crate) fn normalize_provider_common_config_for_storage(
+    app_type: &AppType,
+    provider: &Provider,
+    snippet: Option<&str>,
+) -> Result<Option<Value>, CommonConfigSettingsMutationIssue> {
+    if !provider_common_config_storage_normalization_requires_snippet(provider) {
+        return Ok(None);
+    }
+
+    let Some(snippet) = snippet.filter(|value| !value.trim().is_empty()) else {
+        return Ok(None);
+    };
+
+    remove_common_config_from_settings(app_type, &provider.settings_config, snippet).map(Some)
 }
 
 pub(crate) fn proxy_takeover_marked_state_is_reusable(
@@ -8731,6 +8757,66 @@ reasoning = "medium"
         assert_eq!(
             applied,
             json!({"env": {"SHARED_REGION": "us-central1"}})
+        );
+    }
+
+    #[test]
+    fn provider_common_config_storage_normalization_requires_explicit_enablement() {
+        let mut provider = Provider::with_id(
+            "claude-test".to_string(),
+            "Claude Test".to_string(),
+            json!({
+                "includeCoAuthoredBy": false,
+                "env": {
+                    "ANTHROPIC_API_KEY": "sk-test"
+                }
+            }),
+            None,
+        );
+        let snippet = r#"{ "includeCoAuthoredBy": false }"#;
+
+        assert!(!provider_common_config_storage_normalization_requires_snippet(
+            &provider
+        ));
+        assert_eq!(
+            normalize_provider_common_config_for_storage(
+                &AppType::Claude,
+                &provider,
+                Some(snippet)
+            )
+            .expect("disabled storage normalization"),
+            None
+        );
+
+        provider.meta = Some(ProviderMeta {
+            common_config_enabled: Some(true),
+            ..Default::default()
+        });
+
+        assert!(provider_common_config_storage_normalization_requires_snippet(
+            &provider
+        ));
+        assert_eq!(
+            normalize_provider_common_config_for_storage(
+                &AppType::Claude,
+                &provider,
+                Some("   ")
+            )
+            .expect("empty snippet"),
+            None
+        );
+        assert_eq!(
+            normalize_provider_common_config_for_storage(
+                &AppType::Claude,
+                &provider,
+                Some(snippet)
+            )
+            .expect("enabled storage normalization"),
+            Some(json!({
+                "env": {
+                    "ANTHROPIC_API_KEY": "sk-test"
+                }
+            }))
         );
     }
 

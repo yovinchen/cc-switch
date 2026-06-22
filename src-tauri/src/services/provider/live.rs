@@ -16,8 +16,11 @@ use crate::proxy_core_adapter::{
     apply_common_config_to_settings as adapter_apply_common_config_to_settings,
     remove_common_config_from_settings as adapter_remove_common_config_from_settings,
     gemini_env_value_from_env_json, opencode_live_provider_fragment_has_provider_fields,
-    normalize_claude_models_in_value, provider_codex_imported_live_category,
+    normalize_claude_models_in_value,
+    normalize_provider_common_config_for_storage as adapter_normalize_provider_common_config_for_storage,
+    provider_codex_imported_live_category,
     provider_codex_live_snapshot_parts, CommonConfigSettingsMutationIssue,
+    provider_common_config_storage_normalization_requires_snippet,
     provider_gemini_env_map, provider_gemini_live_config_object,
     provider_model_catalog_raw_value, provider_opencode_live_provider_fragment,
     provider_openclaw_has_live_provider_fields, proxy_live_config_owned_by_takeover,
@@ -233,27 +236,20 @@ pub(crate) fn normalize_provider_common_config_for_storage(
     app_type: &AppType,
     provider: &mut Provider,
 ) -> Result<(), AppError> {
-    let uses_common_config = provider
-        .meta
-        .as_ref()
-        .and_then(|meta| meta.common_config_enabled)
-        .unwrap_or(false);
-
-    if !uses_common_config {
+    if !provider_common_config_storage_normalization_requires_snippet(provider) {
         return Ok(());
     }
 
-    let Some(snippet) = db.get_config_snippet(app_type.as_str())? else {
-        return Ok(());
-    };
-
-    if snippet.trim().is_empty() {
-        return Ok(());
-    }
-
-    match remove_common_config_from_settings(app_type, &provider.settings_config, &snippet) {
-        Ok(settings) => provider.settings_config = settings,
-        Err(err) => {
+    let snippet = db.get_config_snippet(app_type.as_str())?;
+    match adapter_normalize_provider_common_config_for_storage(
+        app_type,
+        provider,
+        snippet.as_deref(),
+    ) {
+        Ok(Some(settings)) => provider.settings_config = settings,
+        Ok(None) => {}
+        Err(issue) => {
+            let err = common_config_settings_mutation_issue_to_app_error(issue);
             log::warn!(
                 "Failed to normalize common config before saving {} provider '{}': {err}",
                 app_type.as_str(),
