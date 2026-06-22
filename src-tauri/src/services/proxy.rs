@@ -9,10 +9,12 @@ use crate::provider::Provider;
 use crate::proxy::server::ProxyServer;
 use crate::proxy::switch_lock::SwitchLockManager;
 use crate::proxy_core_adapter::{
+    apply_claude_takeover_fields_with_policy_and_models,
     apply_codex_takeover_auth_placeholder_if_present, apply_gemini_takeover_env_fields,
     attach_codex_model_catalog_from_provider as attach_codex_model_catalog_from_provider_settings,
     build_proxy_official_warning_event_payload, claude_live_config_has_proxy_placeholder,
-    claude_takeover_model_fields_from_settings, codex_live_config_has_proxy_placeholder,
+    claude_takeover_model_fields_from_settings, ClaudeTakeoverAuthPolicy,
+    codex_live_config_has_proxy_placeholder,
     codex_live_write_projection, codex_preserved_auth_live_config_text_if_proxy_placeholder,
     codex_takeover_toml_config_for_provider, gemini_live_config_has_proxy_placeholder,
     ensure_codex_takeover_auth_placeholder, live_config_has_proxy_placeholder_for_app,
@@ -41,30 +43,6 @@ use tokio::sync::RwLock;
 
 /// 用于接管 Live 配置时的占位符（避免客户端提示缺少 key，同时不泄露真实 Token）
 const PROXY_TOKEN_PLACEHOLDER: &str = "PROXY_MANAGED";
-
-/// 代理接管模式下需要从 Claude Live 配置中移除的"模型覆盖"字段。
-///
-/// 原因：接管模式下 `*_MODEL` 必须由 CC Switch 写成稳定的 Claude 角色别名，
-/// 再由本地代理映射到当前供应商真实模型；`*_MODEL_NAME` 也需要同步接管，
-/// 否则 Claude Code 模型菜单会残留上一个供应商的显示名称。
-const CLAUDE_MODEL_OVERRIDE_ENV_KEYS: [&str; 9] = [
-    "ANTHROPIC_MODEL",
-    "ANTHROPIC_REASONING_MODEL", // legacy: 已废弃，但旧配置可能残留
-    "ANTHROPIC_DEFAULT_HAIKU_MODEL",
-    "ANTHROPIC_DEFAULT_HAIKU_MODEL_NAME",
-    "ANTHROPIC_DEFAULT_SONNET_MODEL",
-    "ANTHROPIC_DEFAULT_SONNET_MODEL_NAME",
-    "ANTHROPIC_DEFAULT_OPUS_MODEL",
-    "ANTHROPIC_DEFAULT_OPUS_MODEL_NAME",
-    // Legacy key (已废弃)：历史版本使用该字段区分 small/fast 模型
-    "ANTHROPIC_SMALL_FAST_MODEL",
-];
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum ClaudeTakeoverAuthPolicy {
-    PreserveExistingOrAuthToken,
-    ManagedAccount { keep_auth_token: bool },
-}
 
 #[derive(Clone)]
 pub struct ProxyService {
@@ -121,9 +99,10 @@ impl ProxyService {
             claude_takeover_model_fields_from_settings(config)
         };
 
-        Self::apply_claude_takeover_fields_with_policy_and_models(
+        apply_claude_takeover_fields_with_policy_and_models(
             config,
             proxy_url,
+            PROXY_TOKEN_PLACEHOLDER,
             auth_policy,
             takeover_model_fields,
         );
@@ -137,87 +116,13 @@ impl ProxyService {
         // 必须在 remove/insert 前 snapshot：避免读到自己刚写入的接管别名。
         let takeover_model_fields = claude_takeover_model_fields_from_settings(config);
 
-        Self::apply_claude_takeover_fields_with_policy_and_models(
+        apply_claude_takeover_fields_with_policy_and_models(
             config,
             proxy_url,
+            PROXY_TOKEN_PLACEHOLDER,
             auth_policy,
             takeover_model_fields,
         );
-    }
-
-    fn apply_claude_takeover_fields_with_policy_and_models(
-        config: &mut Value,
-        proxy_url: &str,
-        auth_policy: ClaudeTakeoverAuthPolicy,
-        takeover_model_fields: Vec<(&'static str, String)>,
-    ) {
-        if !config.is_object() {
-            *config = json!({});
-        }
-
-        let root = config
-            .as_object_mut()
-            .expect("Claude config should be normalized to an object");
-        let env = root.entry("env".to_string()).or_insert_with(|| json!({}));
-        if !env.is_object() {
-            *env = json!({});
-        }
-
-        let env = env
-            .as_object_mut()
-            .expect("Claude env should be normalized to an object");
-        env.insert("ANTHROPIC_BASE_URL".to_string(), json!(proxy_url));
-
-        for key in CLAUDE_MODEL_OVERRIDE_ENV_KEYS {
-            env.remove(key);
-        }
-
-        for (key, value) in takeover_model_fields {
-            env.insert(key.to_string(), Value::String(value));
-        }
-
-        let token_keys = [
-            "ANTHROPIC_AUTH_TOKEN",
-            "ANTHROPIC_API_KEY",
-            "OPENROUTER_API_KEY",
-            "OPENAI_API_KEY",
-        ];
-
-        match auth_policy {
-            ClaudeTakeoverAuthPolicy::PreserveExistingOrAuthToken => {
-                let mut replaced_any = false;
-                for key in token_keys {
-                    if env.contains_key(key) {
-                        env.insert(key.to_string(), json!(PROXY_TOKEN_PLACEHOLDER));
-                        replaced_any = true;
-                    }
-                }
-
-                if !replaced_any {
-                    env.insert(
-                        "ANTHROPIC_AUTH_TOKEN".to_string(),
-                        json!(PROXY_TOKEN_PLACEHOLDER),
-                    );
-                }
-            }
-            ClaudeTakeoverAuthPolicy::ManagedAccount { keep_auth_token } => {
-                for key in token_keys {
-                    env.remove(key);
-                }
-                env.insert(
-                    "ANTHROPIC_API_KEY".to_string(),
-                    json!(PROXY_TOKEN_PLACEHOLDER),
-                );
-                if keep_auth_token {
-                    // 无条件注入而非"已存在才保留"：热切换路径传入的是 provider
-                    // settings（预设不含该键），且旧版接管已把存量用户 live 中的键删光。
-                    env.insert(
-                        "ANTHROPIC_AUTH_TOKEN".to_string(),
-                        json!(PROXY_TOKEN_PLACEHOLDER),
-                    );
-                }
-            }
-        }
     }
 
     fn claude_provider_with_effective_settings(

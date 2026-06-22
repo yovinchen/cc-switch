@@ -4986,6 +4986,30 @@ pub(crate) fn claude_takeover_default_display_name(upstream_model: &str) -> Stri
     crate::proxy_core::api::model_catalog::claude_takeover_default_display_name(upstream_model)
 }
 
+/// 代理接管模式下需要从 Claude Live 配置中移除的"模型覆盖"字段。
+///
+/// 原因：接管模式下 `*_MODEL` 必须由 CC Switch 写成稳定的 Claude 角色别名，
+/// 再由本地代理映射到当前供应商真实模型；`*_MODEL_NAME` 也需要同步接管，
+/// 否则 Claude Code 模型菜单会残留上一个供应商的显示名称。
+const CLAUDE_MODEL_OVERRIDE_ENV_KEYS: [&str; 9] = [
+    "ANTHROPIC_MODEL",
+    "ANTHROPIC_REASONING_MODEL", // legacy: 已废弃，但旧配置可能残留
+    "ANTHROPIC_DEFAULT_HAIKU_MODEL",
+    "ANTHROPIC_DEFAULT_HAIKU_MODEL_NAME",
+    "ANTHROPIC_DEFAULT_SONNET_MODEL",
+    "ANTHROPIC_DEFAULT_SONNET_MODEL_NAME",
+    "ANTHROPIC_DEFAULT_OPUS_MODEL",
+    "ANTHROPIC_DEFAULT_OPUS_MODEL_NAME",
+    // Legacy key (已废弃)：历史版本使用该字段区分 small/fast 模型
+    "ANTHROPIC_SMALL_FAST_MODEL",
+];
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum ClaudeTakeoverAuthPolicy {
+    PreserveExistingOrAuthToken,
+    ManagedAccount { keep_auth_token: bool },
+}
+
 const CLAUDE_TAKEOVER_HAIKU_MODEL: &str = "claude-haiku-4-5";
 const CLAUDE_TAKEOVER_SONNET_MODEL: &str = "claude-sonnet-4-6";
 const CLAUDE_TAKEOVER_OPUS_MODEL: &str = "claude-opus-4-8";
@@ -5044,6 +5068,73 @@ pub(crate) fn claude_takeover_model_fields_from_settings(
         opus_model,
     );
     fields
+}
+
+pub(crate) fn apply_claude_takeover_fields_with_policy_and_models(
+    config: &mut Value,
+    proxy_url: &str,
+    placeholder: &str,
+    auth_policy: ClaudeTakeoverAuthPolicy,
+    takeover_model_fields: Vec<(&'static str, String)>,
+) {
+    if !config.is_object() {
+        *config = json!({});
+    }
+
+    let root = config
+        .as_object_mut()
+        .expect("Claude config should be normalized to an object");
+    let env = root.entry("env".to_string()).or_insert_with(|| json!({}));
+    if !env.is_object() {
+        *env = json!({});
+    }
+
+    let env = env
+        .as_object_mut()
+        .expect("Claude env should be normalized to an object");
+    env.insert("ANTHROPIC_BASE_URL".to_string(), json!(proxy_url));
+
+    for key in CLAUDE_MODEL_OVERRIDE_ENV_KEYS {
+        env.remove(key);
+    }
+
+    for (key, value) in takeover_model_fields {
+        env.insert(key.to_string(), Value::String(value));
+    }
+
+    let token_keys = [
+        "ANTHROPIC_AUTH_TOKEN",
+        "ANTHROPIC_API_KEY",
+        "OPENROUTER_API_KEY",
+        "OPENAI_API_KEY",
+    ];
+
+    match auth_policy {
+        ClaudeTakeoverAuthPolicy::PreserveExistingOrAuthToken => {
+            let mut replaced_any = false;
+            for key in token_keys {
+                if env.contains_key(key) {
+                    env.insert(key.to_string(), json!(placeholder));
+                    replaced_any = true;
+                }
+            }
+
+            if !replaced_any {
+                env.insert("ANTHROPIC_AUTH_TOKEN".to_string(), json!(placeholder));
+            }
+        }
+        ClaudeTakeoverAuthPolicy::ManagedAccount { keep_auth_token } => {
+            for key in token_keys {
+                env.remove(key);
+            }
+            env.insert("ANTHROPIC_API_KEY".to_string(), json!(placeholder));
+            if keep_auth_token {
+                // 无条件注入而非"已存在才保留"：热切换路径传入的是 provider
+                // settings（预设不含该键），且旧版接管已把存量用户 live 中的键删光。
+                env.insert("ANTHROPIC_AUTH_TOKEN".to_string(), json!(placeholder));
+            }
+        }
+    }
 }
 
 fn push_claude_takeover_role_fields(
@@ -8927,6 +9018,52 @@ command = "latest-command"
             "ANTHROPIC_DEFAULT_OPUS_MODEL_NAME",
             "deepseek-v4-ultra".to_string()
         )));
+
+        let mut live_config = json!({
+            "env": {
+                "ANTHROPIC_BASE_URL": "https://old.example",
+                "ANTHROPIC_AUTH_TOKEN": "old-token",
+                "ANTHROPIC_MODEL": "stale-model",
+                "OPENAI_API_KEY": "old-openai",
+                "OTHER": "kept"
+            }
+        });
+        apply_claude_takeover_fields_with_policy_and_models(
+            &mut live_config,
+            "http://127.0.0.1:15721",
+            "PROXY_MANAGED",
+            ClaudeTakeoverAuthPolicy::ManagedAccount {
+                keep_auth_token: true,
+            },
+            vec![(
+                "ANTHROPIC_DEFAULT_SONNET_MODEL",
+                "claude-sonnet-4-6".to_string(),
+            )],
+        );
+        let env = live_config
+            .get("env")
+            .and_then(Value::as_object)
+            .expect("env");
+        assert_eq!(
+            env.get("ANTHROPIC_BASE_URL").and_then(Value::as_str),
+            Some("http://127.0.0.1:15721")
+        );
+        assert!(env.get("ANTHROPIC_MODEL").is_none());
+        assert!(env.get("OPENAI_API_KEY").is_none());
+        assert_eq!(
+            env.get("ANTHROPIC_API_KEY").and_then(Value::as_str),
+            Some("PROXY_MANAGED")
+        );
+        assert_eq!(
+            env.get("ANTHROPIC_AUTH_TOKEN").and_then(Value::as_str),
+            Some("PROXY_MANAGED")
+        );
+        assert_eq!(
+            env.get("ANTHROPIC_DEFAULT_SONNET_MODEL")
+                .and_then(Value::as_str),
+            Some("claude-sonnet-4-6")
+        );
+        assert_eq!(env.get("OTHER").and_then(Value::as_str), Some("kept"));
     }
 
     #[test]
