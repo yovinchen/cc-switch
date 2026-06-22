@@ -3036,6 +3036,22 @@ pub(crate) fn provider_codex_base_url(provider: &Provider) -> Option<String> {
     None
 }
 
+fn missing_provider_base_url_message(provider_name: &str) -> String {
+    format!("{provider_name} Provider 缺少 base_url 配置")
+}
+
+pub(crate) fn required_codex_provider_base_url(provider: &Provider) -> Result<String, String> {
+    provider_codex_base_url(provider).ok_or_else(|| missing_provider_base_url_message("Codex"))
+}
+
+pub(crate) fn required_gemini_provider_base_url(provider: &Provider) -> Result<String, String> {
+    provider_gemini_base_url(provider).ok_or_else(|| missing_provider_base_url_message("Gemini"))
+}
+
+pub(crate) fn required_claude_provider_base_url(provider: &Provider) -> Result<String, String> {
+    provider_claude_base_url(provider).ok_or_else(|| missing_provider_base_url_message("Claude"))
+}
+
 pub(crate) fn codex_config_text_from_settings(settings: &Value) -> Option<&str> {
     settings.get("config").and_then(Value::as_str)
 }
@@ -11262,6 +11278,20 @@ mod tests {
             Some("https://api.openai.com/v1")
         );
         assert_eq!(
+            required_codex_provider_base_url(&provider).as_deref(),
+            Ok("https://api.openai.com/v1")
+        );
+        let missing_codex_base_url = Provider::with_id(
+            "codex-missing-base-url".to_string(),
+            "Codex Missing Base URL".to_string(),
+            json!({}),
+            None,
+        );
+        assert_eq!(
+            required_codex_provider_base_url(&missing_codex_base_url).unwrap_err(),
+            "Codex Provider 缺少 base_url 配置"
+        );
+        assert_eq!(
             codex_config_text_from_settings(&json!({"config": "model = \"gpt-5\""})),
             Some("model = \"gpt-5\"")
         );
@@ -11887,6 +11917,20 @@ base_url = "https://api.openai.com/v1"
             provider_gemini_base_url(&provider).as_deref(),
             Some("https://generativelanguage.googleapis.com/v1beta")
         );
+        assert_eq!(
+            required_gemini_provider_base_url(&provider).as_deref(),
+            Ok("https://generativelanguage.googleapis.com/v1beta")
+        );
+        let missing_gemini_base_url = Provider::with_id(
+            "gemini-missing-base-url".to_string(),
+            "Gemini Missing Base URL".to_string(),
+            json!({}),
+            None,
+        );
+        assert_eq!(
+            required_gemini_provider_base_url(&missing_gemini_base_url).unwrap_err(),
+            "Gemini Provider 缺少 base_url 配置"
+        );
         let live_env = provider_gemini_env_map(&provider).expect("gemini env map");
         assert_eq!(
             live_env.get("GEMINI_API_KEY").map(String::as_str),
@@ -12035,6 +12079,20 @@ base_url = "https://api.openai.com/v1"
         assert_eq!(
             provider_claude_base_url(&provider).as_deref(),
             Some("https://api.anthropic.com/v1")
+        );
+        assert_eq!(
+            required_claude_provider_base_url(&provider).as_deref(),
+            Ok("https://api.anthropic.com/v1")
+        );
+        let missing_claude_base_url = Provider::with_id(
+            "claude-missing-base-url".to_string(),
+            "Claude Missing Base URL".to_string(),
+            json!({}),
+            None,
+        );
+        assert_eq!(
+            required_claude_provider_base_url(&missing_claude_base_url).unwrap_err(),
+            "Claude Provider 缺少 base_url 配置"
         );
         assert_eq!(
             build_claude_upstream_url("https://api.anthropic.com/v1", "/v1/messages"),

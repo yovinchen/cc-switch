@@ -24,7 +24,7 @@ use crate::proxy_core_adapter::{
     gemini_response_to_anthropic_message, inject_openai_stream_include_usage,
     normalize_anthropic_tool_thinking_history, openai_chat_to_anthropic_message,
     openai_responses_to_anthropic_message,
-    provider_claude_api_format, provider_claude_auth_key, provider_claude_base_url,
+    provider_claude_api_format, provider_claude_auth_key, required_claude_provider_base_url,
     provider_claude_kind, provider_claude_prompt_cache_key,
     provider_claude_responses_prompt_cache_key, provider_codex_fast_mode_enabled,
     provider_is_codex_oauth, provider_should_preserve_reasoning_content_for_openai_chat,
@@ -212,8 +212,7 @@ impl ProviderAdapter for ClaudeAdapter {
     }
 
     fn extract_base_url(&self, provider: &Provider) -> Result<String, ProxyError> {
-        provider_claude_base_url(provider)
-            .ok_or_else(|| ProxyError::ConfigError("Claude Provider 缺少 base_url 配置".to_string()))
+        required_claude_provider_base_url(provider).map_err(ProxyError::ConfigError)
     }
 
     fn extract_auth(&self, provider: &Provider) -> Option<ProviderAuthInfo> {

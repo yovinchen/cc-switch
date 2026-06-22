@@ -11,8 +11,8 @@ use crate::provider::Provider;
 use crate::proxy::error::ProxyError;
 use crate::proxy_core_adapter::{
     build_gemini_auth_headers, build_gemini_upstream_url, parse_gemini_oauth_credentials,
-    provider_gemini_api_key, provider_gemini_base_url, GeminiOAuthCredentials, ProviderAuthInfo,
-    ProviderAuthStrategy, ProviderKind,
+    provider_gemini_api_key, required_gemini_provider_base_url, GeminiOAuthCredentials,
+    ProviderAuthInfo, ProviderAuthStrategy, ProviderKind,
 };
 
 /// Gemini 适配器
@@ -68,9 +68,7 @@ impl ProviderAdapter for GeminiAdapter {
     }
 
     fn extract_base_url(&self, provider: &Provider) -> Result<String, ProxyError> {
-        provider_gemini_base_url(provider).ok_or_else(|| {
-            ProxyError::ConfigError("Gemini Provider 缺少 base_url 配置".to_string())
-        })
+        required_gemini_provider_base_url(provider).map_err(ProxyError::ConfigError)
     }
 
     fn extract_auth(&self, provider: &Provider) -> Option<ProviderAuthInfo> {

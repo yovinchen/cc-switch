@@ -301,6 +301,10 @@ const FORBIDDEN_HANDLER_PROVIDER_ADAPTER_DECISION_MARKERS: &[&str] = &[
     ".needs_transform(",
     "super::providers::should_convert_codex_responses_to_chat(",
 ];
+const FORBIDDEN_PROVIDER_ADAPTER_BASE_URL_ERROR_MARKERS: &[&str] = &[
+    "缺少 base_url 配置",
+    ".ok_or_else(|| ProxyError::ConfigError(",
+];
 const FORBIDDEN_HANDLER_MANAGEMENT_AUTH_DECISION_MARKERS: &[&str] = &[
     "std::env::var(",
     "CC_SWITCH_PROXY_MANAGEMENT_TOKEN",
@@ -1242,6 +1246,41 @@ fn production_handlers_delegate_provider_decisions_to_adapter() {
     assert!(
         violations.is_empty(),
         "production handlers must delegate provider decisions to proxy_core_adapter helpers:\n{}",
+        violations.join("\n")
+    );
+}
+
+#[test]
+fn production_provider_adapters_delegate_base_url_errors_to_adapter() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let provider_paths = [
+        "src/proxy/providers/claude.rs",
+        "src/proxy/providers/codex.rs",
+        "src/proxy/providers/gemini.rs",
+    ];
+
+    let mut violations = Vec::new();
+    for relative in provider_paths {
+        let path = manifest_dir.join(relative);
+        let source = fs::read_to_string(&path).expect("read provider adapter source");
+        for (line_index, line) in production_lines(&source) {
+            let code = line.split("//").next().unwrap_or_default();
+            for marker in FORBIDDEN_PROVIDER_ADAPTER_BASE_URL_ERROR_MARKERS {
+                if code.contains(marker) {
+                    violations.push(format!(
+                        "{}:{} contains base URL error marker `{}`",
+                        relative,
+                        line_index + 1,
+                        marker
+                    ));
+                }
+            }
+        }
+    }
+
+    assert!(
+        violations.is_empty(),
+        "provider adapters must delegate required base_url extraction errors to proxy_core_adapter helpers:\n{}",
         violations.join("\n")
     );
 }

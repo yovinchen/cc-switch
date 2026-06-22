@@ -12,7 +12,7 @@ use crate::provider::Provider;
 use crate::proxy::error::ProxyError;
 use crate::proxy_core_adapter::{
     apply_codex_chat_upstream_model_policy, build_codex_bearer_auth_headers,
-    build_codex_upstream_url, provider_codex_api_key, provider_codex_base_url,
+    build_codex_upstream_url, provider_codex_api_key, required_codex_provider_base_url,
     provider_codex_catalog_model_ids, provider_codex_chat_reasoning_profile,
     provider_codex_upstream_model, provider_codex_uses_chat_completions,
     should_convert_codex_responses_endpoint_to_chat, CodexChatReasoningOptions,
@@ -122,8 +122,7 @@ impl ProviderAdapter for CodexAdapter {
     }
 
     fn extract_base_url(&self, provider: &Provider) -> Result<String, ProxyError> {
-        provider_codex_base_url(provider)
-            .ok_or_else(|| ProxyError::ConfigError("Codex Provider 缺少 base_url 配置".to_string()))
+        required_codex_provider_base_url(provider).map_err(ProxyError::ConfigError)
     }
 
     fn extract_auth(&self, provider: &Provider) -> Option<ProviderAuthInfo> {
