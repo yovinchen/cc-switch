@@ -1316,6 +1316,29 @@ pub(crate) fn provider_additive_live_write_action(
     ProviderAdditiveLiveWriteAction::Write
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum ProviderSwitchDispatch {
+    Normal,
+    TakeoverAware,
+}
+
+pub(crate) fn provider_switch_dispatch(
+    app_type: &AppType,
+    provider: &Provider,
+) -> ProviderSwitchDispatch {
+    if matches!(app_type, AppType::OpenCode)
+        && matches!(provider.category.as_deref(), Some("omo") | Some("omo-slim"))
+    {
+        return ProviderSwitchDispatch::Normal;
+    }
+
+    if matches!(app_type, AppType::ClaudeDesktop) {
+        return ProviderSwitchDispatch::Normal;
+    }
+
+    ProviderSwitchDispatch::TakeoverAware
+}
+
 /// Reads old Claude model keys, writes DEFAULT_* keys, and deletes legacy SMALL_FAST.
 pub(crate) fn normalize_claude_models_in_value(settings: &mut Value) -> bool {
     let mut changed = false;
@@ -12828,6 +12851,40 @@ command = "latest-command"
         assert_eq!(
             provider_additive_live_write_action(&AppType::OpenClaw, &custom_provider, true),
             ProviderAdditiveLiveWriteAction::Write
+        );
+    }
+
+    #[test]
+    fn provider_switch_dispatch_routes_exclusive_and_desktop_to_normal_flow() {
+        let mut omo_provider = Provider::with_id(
+            "omo-provider".to_string(),
+            "OMO Provider".to_string(),
+            json!({}),
+            None,
+        );
+        omo_provider.category = Some("omo".to_string());
+        assert_eq!(
+            provider_switch_dispatch(&AppType::OpenCode, &omo_provider),
+            ProviderSwitchDispatch::Normal
+        );
+
+        let normal_provider = Provider::with_id(
+            "normal-provider".to_string(),
+            "Normal Provider".to_string(),
+            json!({}),
+            None,
+        );
+        assert_eq!(
+            provider_switch_dispatch(&AppType::ClaudeDesktop, &normal_provider),
+            ProviderSwitchDispatch::Normal
+        );
+        assert_eq!(
+            provider_switch_dispatch(&AppType::OpenCode, &normal_provider),
+            ProviderSwitchDispatch::TakeoverAware
+        );
+        assert_eq!(
+            provider_switch_dispatch(&AppType::Claude, &normal_provider),
+            ProviderSwitchDispatch::TakeoverAware
         );
     }
 

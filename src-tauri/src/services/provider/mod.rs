@@ -22,11 +22,11 @@ use crate::proxy_core_adapter::{
     provider_credential_issue_spec, provider_credential_values, provider_key_change_policy_issue,
     provider_key_change_policy_issue_message, provider_live_config_presence_error_policy,
     provider_settings_validation_issue_spec, provider_settings_validation_parts,
-    proxy_live_config_owned_by_takeover,
+    provider_switch_dispatch, proxy_live_config_owned_by_takeover,
     proxy_switch_should_hot_switch, should_block_proxy_switch_to_provider,
     should_reapply_codex_official_live_for_provider, CommonConfigSnippetIssue,
     ProviderAdditiveLiveWriteAction, ProviderCredentialIssue,
-    ProviderLiveConfigPresenceErrorPolicy, ProviderSettingsValidationIssue,
+    ProviderLiveConfigPresenceErrorPolicy, ProviderSettingsValidationIssue, ProviderSwitchDispatch,
 };
 use crate::services::mcp::McpService;
 use crate::settings::CustomEndpoint;
@@ -1783,19 +1783,10 @@ impl ProviderService {
             .get(id)
             .ok_or_else(|| AppError::Message(format!("供应商 {id} 不存在")))?;
 
-        // OMO providers are switched through their own exclusive path.
-        if matches!(app_type, AppType::OpenCode) && _provider.category.as_deref() == Some("omo") {
-            return Self::switch_normal(state, app_type, id, &providers);
-        }
-
-        // OMO Slim providers are switched through their own exclusive path.
-        if matches!(app_type, AppType::OpenCode)
-            && _provider.category.as_deref() == Some("omo-slim")
-        {
-            return Self::switch_normal(state, app_type, id, &providers);
-        }
-
-        if matches!(app_type, AppType::ClaudeDesktop) {
+        if matches!(
+            provider_switch_dispatch(&app_type, _provider),
+            ProviderSwitchDispatch::Normal
+        ) {
             return Self::switch_normal(state, app_type, id, &providers);
         }
 
