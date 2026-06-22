@@ -3950,6 +3950,19 @@ pub(crate) fn app_type_from_circuit_key(key: &str) -> &str {
     crate::proxy_core::api::config::app_type_from_circuit_key(key)
 }
 
+pub(crate) fn auto_failover_enabled_from_router_config_result(
+    app_type: &str,
+    result: Result<AppProxyConfig, AppError>,
+) -> bool {
+    match result {
+        Ok(config) => config.auto_failover_enabled,
+        Err(error) => {
+            log::error!("[{app_type}] 读取 proxy_config 失败: {error}，默认禁用故障转移");
+            false
+        }
+    }
+}
+
 pub(crate) fn select_provider_ids(
     input: ProviderSelectionInput,
 ) -> Result<Vec<String>, ProviderSelectionFailure> {
@@ -8882,6 +8895,20 @@ mod tests {
             circuit_error_rate_threshold: 0.6,
             circuit_min_requests: 10,
         };
+        assert!(auto_failover_enabled_from_router_config_result(
+            "claude",
+            Ok(app_config.clone())
+        ));
+        let mut no_failover_config = app_config.clone();
+        no_failover_config.auto_failover_enabled = false;
+        assert!(!auto_failover_enabled_from_router_config_result(
+            "claude",
+            Ok(no_failover_config)
+        ));
+        assert!(!auto_failover_enabled_from_router_config_result(
+            "claude",
+            Err(AppError::Config("missing proxy_config".to_string()))
+        ));
 
         let loopback_auth =
             management_auth_decision_from_proxy_config_sources(&ProxyConfig::default(), None)

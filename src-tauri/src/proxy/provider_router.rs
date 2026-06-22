@@ -9,14 +9,14 @@ use crate::proxy::circuit_breaker::CircuitBreaker;
 use crate::proxy_core_adapter::{
     app_error_from_proxy_core_error, app_type_from_circuit_key, channel_circuit_key,
     channel_circuit_key_prefix, channel_route_records_from_sources,
-    circuit_breaker_config_from_app_config, circuit_failure_threshold_from_app_config,
-    current_provider_id_from_router_sources, provider_circuit_key, provider_circuit_key_prefix,
-    provider_failover_circuit_lookups, provider_selection_candidate_from_failover_lookup,
-    proxy_channel_route_inputs_to_core, reject_unavailable_channel_ids,
-    resolve_channel_route as resolve_core_channel_route, route_candidate_channel_circuit_keys,
-    select_current_provider_from_router_source, select_failover_providers_from_router_candidates,
-    AllowResult, ChannelRouteSource, CircuitBreakerConfig, CircuitBreakerStats,
-    RouteResolveRequest, RouteResolveResponse,
+    auto_failover_enabled_from_router_config_result, circuit_breaker_config_from_app_config,
+    circuit_failure_threshold_from_app_config, current_provider_id_from_router_sources,
+    provider_circuit_key, provider_circuit_key_prefix, provider_failover_circuit_lookups,
+    provider_selection_candidate_from_failover_lookup, proxy_channel_route_inputs_to_core,
+    reject_unavailable_channel_ids, resolve_channel_route as resolve_core_channel_route,
+    route_candidate_channel_circuit_keys, select_current_provider_from_router_source,
+    select_failover_providers_from_router_candidates, AllowResult, ChannelRouteSource,
+    CircuitBreakerConfig, CircuitBreakerStats, RouteResolveRequest, RouteResolveResponse,
 };
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -46,13 +46,10 @@ impl ProviderRouter {
     /// - 故障转移开启时：仅使用故障转移队列，按队列顺序依次尝试（P1 → P2 → ...）
     pub async fn select_providers(&self, app_type: &str) -> Result<Vec<Provider>, AppError> {
         // 检查该应用的自动故障转移开关是否开启（从 proxy_config 表读取）
-        let auto_failover_enabled = match self.db.get_proxy_config_for_app(app_type).await {
-            Ok(config) => config.auto_failover_enabled,
-            Err(e) => {
-                log::error!("[{app_type}] 读取 proxy_config 失败: {e}，默认禁用故障转移");
-                false
-            }
-        };
+        let auto_failover_enabled = auto_failover_enabled_from_router_config_result(
+            app_type,
+            self.db.get_proxy_config_for_app(app_type).await,
+        );
 
         let result = if auto_failover_enabled {
             self.select_failover_providers(app_type).await
