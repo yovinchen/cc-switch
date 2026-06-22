@@ -311,6 +311,11 @@ const FORBIDDEN_PROVIDER_ADAPTER_AUTH_INFO_MARKERS: &[&str] = &[
     "GeminiAdapter::new().parse_oauth_credentials(",
     "parse_gemini_oauth_credentials(&key)",
 ];
+const FORBIDDEN_PROVIDER_ADAPTER_AUTH_HEADER_MARKERS: &[&str] = &[
+    "build_codex_bearer_auth_headers(",
+    "build_gemini_auth_headers(",
+    ".map_err(|error| ProxyError::AuthError(error.to_string()))",
+];
 const FORBIDDEN_HANDLER_MANAGEMENT_AUTH_DECISION_MARKERS: &[&str] = &[
     "std::env::var(",
     "CC_SWITCH_PROXY_MANAGEMENT_TOKEN",
@@ -1383,6 +1388,45 @@ fn production_claude_provider_adapter_delegates_auth_info_to_adapter() {
     assert!(
         violations.is_empty(),
         "Claude provider adapter must delegate auth info construction to proxy_core_adapter helpers:\n{}",
+        violations.join("\n")
+    );
+}
+
+#[test]
+fn production_simple_provider_adapters_delegate_auth_headers_to_adapter() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let provider_paths = [
+        "src/proxy/providers/codex.rs",
+        "src/proxy/providers/gemini.rs",
+    ];
+
+    let mut violations = Vec::new();
+    for relative in provider_paths {
+        let path = manifest_dir.join(relative);
+        let source = fs::read_to_string(&path).expect("read provider adapter source");
+        let get_auth_headers = function_slice(
+            &source,
+            "    fn get_auth_headers(",
+            "\n}\n\n#[cfg(test)]",
+        );
+        for (line_index, line) in production_lines(get_auth_headers) {
+            let code = line.split("//").next().unwrap_or_default();
+            for marker in FORBIDDEN_PROVIDER_ADAPTER_AUTH_HEADER_MARKERS {
+                if code.contains(marker) {
+                    violations.push(format!(
+                        "{} get_auth_headers:{} contains auth header marker `{}`",
+                        relative,
+                        line_index + 1,
+                        marker
+                    ));
+                }
+            }
+        }
+    }
+
+    assert!(
+        violations.is_empty(),
+        "simple provider adapters must delegate auth header construction and error text to proxy_core_adapter helpers:\n{}",
         violations.join("\n")
     );
 }

@@ -2920,6 +2920,12 @@ pub(crate) fn build_codex_bearer_auth_headers(
     crate::proxy_core::api::transport::build_codex_bearer_auth_headers(api_key)
 }
 
+pub(crate) fn provider_codex_auth_headers(
+    auth: &ProviderAuthInfo,
+) -> Result<Vec<(http::HeaderName, http::HeaderValue)>, String> {
+    build_codex_bearer_auth_headers(&auth.api_key).map_err(|error| error.to_string())
+}
+
 pub(crate) fn resolve_codex_provider_upstream_model(
     settings_model: Option<&str>,
     config_model: Option<&str>,
@@ -4056,6 +4062,17 @@ pub(crate) fn build_gemini_auth_headers(
     use_oauth: bool,
 ) -> Result<Vec<(http::HeaderName, http::HeaderValue)>, ProxyCoreError> {
     crate::proxy_core::api::transport::build_gemini_auth_headers(api_key, access_token, use_oauth)
+}
+
+pub(crate) fn provider_gemini_auth_headers(
+    auth: &ProviderAuthInfo,
+) -> Result<Vec<(http::HeaderName, http::HeaderValue)>, String> {
+    build_gemini_auth_headers(
+        &auth.api_key,
+        auth.access_token.as_deref(),
+        matches!(auth.strategy, ProviderAuthStrategy::GoogleOAuth),
+    )
+    .map_err(|error| error.to_string())
 }
 
 pub(crate) fn claude_api_format_from_metadata(metadata: &Value, fallback: &str) -> String {
@@ -11377,6 +11394,17 @@ mod tests {
             headers[0].1,
             http::HeaderValue::from_static("Bearer sk-test")
         );
+        let auth_headers =
+            provider_codex_auth_headers(&ProviderAuthInfo::new(
+                "sk-provider".to_string(),
+                ProviderAuthStrategy::Bearer,
+            ))
+            .expect("provider codex auth headers");
+        assert_eq!(auth_headers[0].0.as_str(), "authorization");
+        assert_eq!(
+            auth_headers[0].1,
+            http::HeaderValue::from_static("Bearer sk-provider")
+        );
         let provider = Provider::with_id(
             "codex".to_string(),
             "Codex".to_string(),
@@ -12175,12 +12203,34 @@ base_url = "https://api.openai.com/v1"
             oauth_headers[0].1,
             http::HeaderValue::from_static("Bearer ya29.access-token")
         );
+        let provider_oauth_headers =
+            provider_gemini_auth_headers(&ProviderAuthInfo::with_access_token(
+                "refresh-token".to_string(),
+                "ya29.provider-access-token".to_string(),
+            ))
+            .expect("provider gemini oauth headers");
+        assert_eq!(provider_oauth_headers[0].0.as_str(), "authorization");
+        assert_eq!(
+            provider_oauth_headers[0].1,
+            http::HeaderValue::from_static("Bearer ya29.provider-access-token")
+        );
         let api_key_headers =
             build_gemini_auth_headers("AIza-api-key", None, false).expect("api key headers");
         assert_eq!(api_key_headers[0].0.as_str(), "x-goog-api-key");
         assert_eq!(
             api_key_headers[0].1,
             http::HeaderValue::from_static("AIza-api-key")
+        );
+        let provider_api_key_headers =
+            provider_gemini_auth_headers(&ProviderAuthInfo::new(
+                "AIza-provider-key".to_string(),
+                ProviderAuthStrategy::Google,
+            ))
+            .expect("provider gemini api key headers");
+        assert_eq!(provider_api_key_headers[0].0.as_str(), "x-goog-api-key");
+        assert_eq!(
+            provider_api_key_headers[0].1,
+            http::HeaderValue::from_static("AIza-provider-key")
         );
     }
 

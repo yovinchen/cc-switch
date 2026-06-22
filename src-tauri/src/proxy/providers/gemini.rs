@@ -10,12 +10,13 @@ use super::ProviderAdapter;
 use crate::provider::Provider;
 use crate::proxy::error::ProxyError;
 use crate::proxy_core_adapter::{
-    build_gemini_auth_headers, build_gemini_upstream_url, provider_gemini_auth_info,
-    required_gemini_provider_base_url, ProviderAuthInfo, ProviderAuthStrategy,
+    build_gemini_upstream_url, provider_gemini_auth_headers, provider_gemini_auth_info,
+    required_gemini_provider_base_url, ProviderAuthInfo,
 };
 #[cfg(test)]
 use crate::proxy_core_adapter::{
-    parse_gemini_oauth_credentials, provider_gemini_kind, GeminiOAuthCredentials, ProviderKind,
+    parse_gemini_oauth_credentials, provider_gemini_kind, GeminiOAuthCredentials,
+    ProviderAuthStrategy, ProviderKind,
 };
 
 /// Gemini 适配器
@@ -70,12 +71,7 @@ impl ProviderAdapter for GeminiAdapter {
         &self,
         auth: &ProviderAuthInfo,
     ) -> Result<Vec<(http::HeaderName, http::HeaderValue)>, ProxyError> {
-        build_gemini_auth_headers(
-            &auth.api_key,
-            auth.access_token.as_deref(),
-            matches!(auth.strategy, ProviderAuthStrategy::GoogleOAuth),
-        )
-        .map_err(|error| ProxyError::AuthError(error.to_string()))
+        provider_gemini_auth_headers(auth).map_err(ProxyError::AuthError)
     }
 }
 

@@ -966,6 +966,7 @@
 本轮继续把 Gemini provider adapter 的 auth strategy/auth info 构造收敛到 adapter helper，Gemini adapter 不再直接解析 OAuth key 或构造 `ProviderAuthInfo`。
 本轮继续把 Codex provider adapter 的 Bearer auth info 构造收敛到 adapter helper，Codex adapter 不再保留私有 API key 提取和 `ProviderAuthInfo` 包装逻辑。
 本轮继续把 Claude provider adapter 的 auth key source 日志、占位 token、Gemini OAuth 降级和 `ProviderAuthInfo` 构造收敛到 adapter helper，Claude adapter 的 `extract_auth` 只保留 helper 调用。
+本轮继续把 Codex/Gemini provider adapter 的 auth header 构造和 `AuthError` 文案包装收敛到 adapter helper，两个简单 provider adapter 的 `get_auth_headers` 只保留 helper 调用。
 本轮也把 channel authProfileRef 缺失 provider warning 的 optional fallback 收敛到 core，host 不再维护空 ref 兜底逻辑。
 本轮继续把 current provider 来源优先级的 option/string 两种 contract 统一到 core，config source 和 forward runtime 复用同一选择规则。
 本轮还把 Codex client model catalog raw JSON 解析失败 fallback 收敛到 core，host 的 model catalog provider 只保留路径选择与文件读取。
