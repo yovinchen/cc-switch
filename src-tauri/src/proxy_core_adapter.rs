@@ -2399,7 +2399,7 @@ pub(crate) use crate::proxy_core::api::ports::{
     AppSummaryConfig, AuthProvider, ChannelHealthReset, ChannelHealthStore,
     ChannelReachabilityProbe, ChannelSource, ForwardPipeline, ModelCatalogProvider,
     ProviderSource, ProxyConfigSource, ProxyEventSink, ProxyServices, RoutePolicySource,
-    RouteResolver, UsageSink,
+    RouteResolver, UsageSink, channel_health_reset_from_parts,
 };
 pub(crate) use crate::proxy_core::api::domain::channel_matches_query;
 #[cfg(test)]
@@ -2413,7 +2413,10 @@ pub(crate) use crate::proxy_core::api::auth::{
     validate_management_bearer_header, ManagementAuthDecision,
 };
 pub(crate) use crate::proxy_core::api::management::{
-    channel_health_update_from_input, provider_health_update_from_input,
+    channel_health_update_from_input,
+    channel_reachability_result_from_stream_check_result as stream_check_result_to_channel_reachability,
+    channel_reachability_status_from_latency, provider_health_update_from_input,
+    should_retry_channel_reachability_failure,
     AppChannelListQuery,
     AppChannelManagementRequest, AppChannelResponse, AppListRequest, AppListResponse,
     AppModelCatalogRequest,
@@ -6478,13 +6481,6 @@ pub(crate) fn route_policy_from_db_source(
     Ok(route_policy_from_source(app.clone(), queue))
 }
 
-pub(crate) fn channel_health_reset_from_parts(
-    channel_id: impl Into<String>,
-    app_type: &str,
-) -> ChannelHealthReset {
-    crate::proxy_core::api::ports::channel_health_reset_from_parts(channel_id, app_type)
-}
-
 #[derive(Debug)]
 pub(crate) struct ChannelHealthResetPlan {
     pub(crate) channel_id: String,
@@ -9429,12 +9425,6 @@ pub(crate) fn extract_proxy_session_id(
     )
 }
 
-pub(crate) fn stream_check_result_to_channel_reachability(
-    result: StreamCheckResult,
-) -> ChannelReachabilityResult {
-    crate::proxy_core::api::management::channel_reachability_result_from_stream_check_result(result)
-}
-
 pub(crate) fn channel_test_app_type_from_probe_request(
     request: &ChannelTestProbeRequest,
 ) -> ProxyCoreResult<AppType> {
@@ -9475,20 +9465,6 @@ pub(crate) async fn probe_channel_reachability_from_db_source(
             .map_err(channel_reachability_probe_error)?;
 
     Ok(stream_check_result_to_channel_reachability(result))
-}
-
-pub(crate) fn channel_reachability_status_from_latency(
-    latency_ms: u64,
-    degraded_threshold_ms: u64,
-) -> ChannelReachabilityStatus {
-    crate::proxy_core::api::management::channel_reachability_status_from_latency(
-        latency_ms,
-        degraded_threshold_ms,
-    )
-}
-
-pub(crate) fn should_retry_channel_reachability_failure(message: &str) -> bool {
-    crate::proxy_core::api::management::should_retry_channel_reachability_failure(message)
 }
 
 fn provider_metadata_without_secrets(provider: &Provider) -> ProviderMetadata {
