@@ -7413,6 +7413,55 @@ pub(crate) fn streaming_response_usage_record_with_optional_outbound_model(
     )
 }
 
+#[derive(Debug, Clone)]
+pub(crate) struct ResponseUsageProviderFacts {
+    provider_id: String,
+    provider_kind: Option<ProviderKind>,
+    app: AppKind,
+}
+
+pub(crate) fn response_usage_provider_facts(
+    provider: &Provider,
+    app_type: &str,
+) -> ResponseUsageProviderFacts {
+    ResponseUsageProviderFacts {
+        provider_id: provider.id.clone(),
+        provider_kind: provider_kind_from_provider(provider),
+        app: AppKind::from(app_type),
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn streaming_response_usage_record_from_provider_facts(
+    events: &[Value],
+    stream_parser: fn(&[Value]) -> Option<TokenUsage>,
+    model_extractor: fn(&[Value], &str) -> String,
+    provider_facts: &ResponseUsageProviderFacts,
+    request_model: &str,
+    outbound_model: Option<&str>,
+    latency_ms: u64,
+    first_token_ms: Option<u64>,
+    status_code: u16,
+    session_id: Option<String>,
+    request_id_fallback: impl FnOnce() -> String,
+) -> StreamingResponseUsageRecord {
+    streaming_response_usage_record_with_optional_outbound_model(
+        events,
+        stream_parser,
+        model_extractor,
+        &provider_facts.provider_id,
+        provider_facts.provider_kind.clone(),
+        provider_facts.app.clone(),
+        request_model,
+        outbound_model,
+        latency_ms,
+        first_token_ms,
+        status_code,
+        session_id,
+        request_id_fallback,
+    )
+}
+
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn non_streaming_response_usage_record_from_body_with_request_id_fallback(
     body: &[u8],
@@ -7433,6 +7482,35 @@ pub(crate) fn non_streaming_response_usage_record_from_body_with_request_id_fall
         provider_id,
         provider_kind,
         app,
+        request_model,
+        outbound_model,
+        latency_ms,
+        status_code,
+        session_id,
+        request_id_fallback,
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn non_streaming_response_usage_record_from_provider_body_with_request_id_fallback(
+    body: &[u8],
+    response_parser: fn(&Value) -> Option<TokenUsage>,
+    provider: &Provider,
+    app_type: &str,
+    request_model: &str,
+    outbound_model: Option<&str>,
+    latency_ms: u64,
+    status_code: u16,
+    session_id: Option<String>,
+    request_id_fallback: impl FnOnce() -> String,
+) -> NonStreamingResponseUsageRecord {
+    let provider_facts = response_usage_provider_facts(provider, app_type);
+    non_streaming_response_usage_record_from_body_with_request_id_fallback(
+        body,
+        response_parser,
+        &provider_facts.provider_id,
+        provider_facts.provider_kind,
+        provider_facts.app,
         request_model,
         outbound_model,
         latency_ms,
@@ -8167,6 +8245,50 @@ mod tests {
             invalid_request,
             ProxyCoreError::InvalidRequest(message) if message.contains("invalid JSON body")
         ));
+    }
+
+    #[test]
+    fn response_usage_helpers_project_provider_and_app_facts() {
+        let mut provider = Provider::with_id(
+            "provider-a".to_string(),
+            "Provider A".to_string(),
+            json!({}),
+            None,
+        );
+        provider.meta = Some(ProviderMeta {
+            provider_type: Some("github_copilot".to_string()),
+            ..ProviderMeta::default()
+        });
+
+        let facts = response_usage_provider_facts(&provider, AppType::ClaudeDesktop.as_str());
+        assert_eq!(facts.provider_id, "provider-a");
+        assert_eq!(facts.provider_kind, Some(ProviderKind::GitHubCopilot));
+        assert_eq!(facts.app, AppKind::ClaudeDesktop);
+
+        let output = non_streaming_response_usage_record_from_provider_body_with_request_id_fallback(
+            br#"{"model":"response-model","usage":{"prompt_tokens":2,"completion_tokens":3}}"#,
+            TokenUsage::from_openai_response,
+            &provider,
+            AppType::ClaudeDesktop.as_str(),
+            "request-model",
+            Some("outbound-model"),
+            123,
+            200,
+            None,
+            || "request-1".to_string(),
+        );
+
+        assert!(output.usage_found);
+        assert_eq!(output.record.provider_id, "provider-a");
+        assert_eq!(
+            output.record.provider_kind,
+            Some(ProviderKind::GitHubCopilot)
+        );
+        assert_eq!(output.record.app, AppKind::ClaudeDesktop);
+        assert_eq!(output.record.response_model.as_deref(), Some("response-model"));
+        assert_eq!(output.record.outbound_model, "outbound-model");
+        assert_eq!(output.record.tokens.input_tokens, 2);
+        assert_eq!(output.record.tokens.output_tokens, 3);
     }
 
     #[test]

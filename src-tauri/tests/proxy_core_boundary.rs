@@ -58,6 +58,12 @@ const FORBIDDEN_HANDLER_PROVIDER_ADAPTER_DECISION_MARKERS: &[&str] = &[
     ".needs_transform(",
     "super::providers::should_convert_codex_responses_to_chat(",
 ];
+const FORBIDDEN_RESPONSE_PROCESSOR_USAGE_PROVIDER_PROJECTION_MARKERS: &[&str] = &[
+    "provider_kind_from_provider(",
+    "AppKind::from(",
+    "streaming_response_usage_record_with_optional_outbound_model(",
+    "non_streaming_response_usage_record_from_body_with_request_id_fallback(",
+];
 const PROXY_CORE_MARKER: &str = "crate::proxy_core::";
 const PROXY_CORE_API_MARKER: &str = "crate::proxy_core::api";
 const PROXY_ENGINE_CONSTRUCTOR_MARKER: &str = "ProxyEngine::new(";
@@ -939,6 +945,33 @@ fn production_handlers_delegate_provider_decisions_to_adapter() {
     assert!(
         violations.is_empty(),
         "production handlers must delegate provider decisions to proxy_core_adapter helpers:\n{}",
+        violations.join("\n")
+    );
+}
+
+#[test]
+fn response_processor_delegates_usage_provider_projection_to_adapter() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let path = manifest_dir.join("src/proxy/response_processor.rs");
+    let source = fs::read_to_string(&path).expect("read response_processor.rs");
+
+    let mut violations = Vec::new();
+    for (line_index, line) in production_lines(&source) {
+        let code = line.split("//").next().unwrap_or_default();
+        for marker in FORBIDDEN_RESPONSE_PROCESSOR_USAGE_PROVIDER_PROJECTION_MARKERS {
+            if code.contains(marker) {
+                violations.push(format!(
+                    "src/proxy/response_processor.rs:{} contains usage provider projection marker `{}`",
+                    line_index + 1,
+                    marker
+                ));
+            }
+        }
+    }
+
+    assert!(
+        violations.is_empty(),
+        "response processor must build provider usage facts through proxy_core_adapter helpers:\n{}",
         violations.join("\n")
     );
 }

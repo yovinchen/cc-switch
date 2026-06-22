@@ -524,7 +524,7 @@
 513. error mapper 使用的 ProxyCore error/result/response、forward failure kind、management auth error 与 Codex proxy error body/response helper 入口已迁入 `proxy_core_adapter`；host error mapper 继续负责 `ProxyError`/`ForwardError` 与 core error category 的双向桥接。
 514. route attempt 测试使用的 provider/channel/route DTO alias 已迁入 `proxy_core_adapter`；`route_attempt.rs` 生产与测试路径均不再直接 import `proxy_core`，host 继续负责 provider cloning、AppType-specific override 与 ForwardAttempt 编排。
 515. usage sink bridge 使用的 usage record helper、stream event filter、transformed usage format、provider kind、`UsageRecord` 与 `ProxyServices` 入口已迁入 `proxy_core_adapter`；host 继续负责 `Provider`/`RequestContext` 投影、usage logging 开关与异步落库调度。
-516. response processor 使用的 response body decode、passthrough response builder、response header log summary、SSE scanner/usage accumulator、timeout phase、usage parser config 与 streaming/non-streaming usage record helper 入口已迁入 `proxy_core_adapter`；host 继续负责 Axum response 转换、connection guard 生命周期与 `ProxyState` 调度。
+516. response processor 使用的 response body decode、passthrough response builder、response header log summary、SSE scanner/usage accumulator、timeout phase、usage parser config、provider usage facts 与 streaming/non-streaming usage record helper 入口已迁入 `proxy_core_adapter`；host 继续负责 Axum response 转换、connection guard 生命周期与 `ProxyState` 调度。
 517. Claude Desktop config 使用的 model-list response contract 与测试 proxy config 类型入口已迁入 `proxy_core_adapter`；host 继续负责桌面 profile 文件写入、route ID 管理与 provider model projection。
 518. handlers 使用的管理 DTO、parser config、SSE transform helper、management auth decision、model catalog response、Codex tool context 与 channel/app response contract 入口已迁入 `proxy_core_adapter`；host handlers 继续负责 Axum extractor/response、数据库访问、provider routing 与 `ProxyError` 映射。
 519. proxy core host service glue 使用的 core service traits、runtime config contract、health reset DTO、event/usage DTO、route policy/request、channel query 与测试 DTO 入口已迁入 `proxy_core_adapter`；host 继续负责 `Database`、`ProviderRouter`、`ProxyEventBus`、Tauri runtime 与 forward pipeline delegation。
@@ -953,6 +953,7 @@
 本轮继续把 `ProxyCoreEvent` 到 host event bus 的 name/payload 投影收敛到 adapter，host event sink 只负责 emit。
 本轮还把 RoutePolicySource 的 failover queue 到 optional route policy 包装收敛到 adapter，host route policy source 只保留 DB 查询。
 本轮继续把 ChannelHealthStore reset 的 app lookup 校验和 reset fact 投影收敛到 adapter，host health store 只负责查询 app 并调用 router reset。
+本轮继续把 response processor 的 provider/app usage facts 投影收敛到 adapter，response processor 不再直接调用 provider kind 或 app kind 投影 helper。
 
 当前原则：核心 crate 可以新增端口和领域字段，但不得引入 `tauri`、`Database`、settings、commands、services 等宿主依赖；现有 runtime 行为必须继续通过 targeted tests 证明不回归。
 

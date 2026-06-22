@@ -17,16 +17,16 @@ use super::{
 };
 use crate::proxy_core_adapter::{
     decode_response_body, get_content_encoding, non_streaming_body_timeout_message,
-    non_streaming_response_usage_record_from_body_with_request_id_fallback,
+    non_streaming_response_usage_record_from_provider_body_with_request_id_fallback,
     passthrough_bytes_proxy_response, passthrough_stream_proxy_response,
-    provider_kind_from_provider, response_headers_log_summary,
-    streaming_response_usage_record_with_optional_outbound_model,
+    response_headers_log_summary, response_usage_provider_facts,
+    streaming_response_usage_record_from_provider_facts,
     usage_logging_enabled_from_config_flag, usage_record_debug_log_message,
     usage_record_failure_warning_message, usage_record_with_route_context,
-    usage_selected_provider_missing_log_message, ProxyCoreAppKind as AppKind, ProxyServices,
-    ResponseBodyDecodeLogLevel, SseEventScanner, SsePassthroughEventKind, SseUsageAccumulator,
-    StreamUsageEventFilter, StreamingTimeoutConfig, StreamingTimeoutPhase, UsageParserConfig,
-    UsageRecord, UsageRecordFailureLogContext, UsageSelectedProviderMissingPhase,
+    usage_selected_provider_missing_log_message, ProxyServices, ResponseBodyDecodeLogLevel,
+    SseEventScanner, SsePassthroughEventKind, SseUsageAccumulator, StreamUsageEventFilter,
+    StreamingTimeoutConfig, StreamingTimeoutPhase, UsageParserConfig, UsageRecord,
+    UsageRecordFailureLogContext, UsageSelectedProviderMissingPhase,
 };
 #[cfg(test)]
 use crate::proxy_core_adapter::{ProviderKind, TokenUsage};
@@ -162,12 +162,11 @@ pub async fn handle_non_streaming(
     // 解析并记录使用量。关闭 usage logging 时直接跳过，避免非流式响应整包 JSON parse。
     if usage_logging_enabled(state) {
         let provider = ctx.provider()?;
-        let output = non_streaming_response_usage_record_from_body_with_request_id_fallback(
+        let output = non_streaming_response_usage_record_from_provider_body_with_request_id_fallback(
             &body_bytes,
             parser_config.response_parser,
-            &provider.id,
-            provider_kind_from_provider(provider),
-            AppKind::from(ctx.app_type_str),
+            provider,
+            ctx.app_type_str,
             &ctx.request_model,
             ctx.outbound_model.as_deref(),
             ctx.latency_ms(),
@@ -327,13 +326,11 @@ fn create_usage_collector(
     };
 
     let state = state.clone();
-    let provider_id = provider.id.clone();
-    let provider_kind = provider_kind_from_provider(provider);
+    let provider_facts = response_usage_provider_facts(provider, ctx.app_type_str);
     let request_model = ctx.request_model.clone();
     // 用 ctx 的 app_type 而不是 parser_config 的：Claude Desktop 流式透传复用
     // CLAUDE_PARSER_CONFIG（app_type_str="claude"），按 parser_config 记账会把
     // claude-desktop 的行错记到 claude 名下，导致供应商计价覆盖解析不到。
-    let app_type_str = ctx.app_type_str;
     let tag = ctx.tag;
     let start_time = ctx.start_time;
     let stream_parser = parser_config.stream_parser;
@@ -347,13 +344,11 @@ fn create_usage_collector(
         parser_config.stream_event_filter,
         move |events, first_token_ms| {
             let latency_ms = start_time.elapsed().as_millis() as u64;
-            let output = streaming_response_usage_record_with_optional_outbound_model(
+            let output = streaming_response_usage_record_from_provider_facts(
                 &events,
                 stream_parser,
                 model_extractor,
-                &provider_id,
-                provider_kind.clone(),
-                AppKind::from(app_type_str),
+                &provider_facts,
                 &request_model,
                 outbound_model.as_deref(),
                 latency_ms,
