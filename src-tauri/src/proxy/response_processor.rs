@@ -22,11 +22,10 @@ use crate::proxy_core_adapter::{
     response_headers_log_summary, response_usage_provider_facts_from_optional,
     streaming_response_usage_record_from_response_context, StreamingResponseUsageContext,
     usage_logging_enabled_from_config_flag, usage_record_debug_log_message,
-    usage_record_failure_warning_message, usage_record_with_route_context,
-    ProxyServices, ResponseBodyDecodeLogLevel, SseEventScanner, SsePassthroughEventKind,
-    SseUsageAccumulator, StreamUsageEventFilter, StreamingTimeoutConfig, StreamingTimeoutPhase,
-    UsageParserConfig, UsageRecord, UsageRecordFailureLogContext,
-    UsageSelectedProviderMissingPhase,
+    usage_record_failure_warning_message, ProxyServices, ResponseBodyDecodeLogLevel,
+    SseEventScanner, SsePassthroughEventKind, SseUsageAccumulator, StreamUsageEventFilter,
+    StreamingTimeoutConfig, StreamingTimeoutPhase, UsageParserConfig, UsageRecord,
+    UsageRecordFailureLogContext, UsageSelectedProviderMissingPhase,
 };
 #[cfg(test)]
 use crate::proxy_core_adapter::{ProviderKind, TokenUsage};
@@ -169,6 +168,7 @@ pub async fn handle_non_streaming(
                 app_type: ctx.app_type_str,
                 request_model: &ctx.request_model,
                 outbound_model: ctx.outbound_model.as_deref(),
+                route_context: ctx.usage_route_context.as_ref(),
                 latency_ms: ctx.latency_ms(),
                 status_code: status.as_u16(),
                 session_id: &ctx.session_id,
@@ -181,10 +181,7 @@ pub async fn handle_non_streaming(
             log::debug!("{}", event.message(ctx.tag, parser_config.app_type_str));
         }
 
-        spawn_record_usage(
-            state,
-            usage_record_with_route_context(output.record, ctx.usage_route_context.as_ref()),
-        );
+        spawn_record_usage(state, output.record);
     } else {
         log::debug!("[{}] usage logging 已关闭，跳过非流式 usage 解析", ctx.tag);
     }
@@ -355,6 +352,7 @@ fn create_usage_collector(
                     provider_facts: &provider_facts,
                     request_model: &request_model,
                     outbound_model: outbound_model.as_deref(),
+                    route_context: usage_route_context.as_ref(),
                     latency_ms,
                     first_token_ms,
                     status_code,
@@ -367,10 +365,7 @@ fn create_usage_collector(
                 log::debug!("{message}");
             }
 
-            spawn_record_usage(
-                &state,
-                usage_record_with_route_context(output.record, usage_route_context.as_ref()),
-            );
+            spawn_record_usage(&state, output.record);
         },
     ))
 }

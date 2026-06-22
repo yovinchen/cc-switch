@@ -303,6 +303,7 @@ const FORBIDDEN_RESPONSE_PROCESSOR_USAGE_PROVIDER_PROJECTION_MARKERS: &[&str] = 
     "ctx.provider()?",
     "response_usage_provider_facts(",
     "streaming_response_usage_record_from_provider_facts(",
+    "usage_record_with_route_context(",
     "streaming_response_usage_record_with_optional_outbound_model(",
     "non_streaming_response_usage_record_from_body_with_request_id_fallback(",
     "non_streaming_response_usage_record_from_provider_body_with_request_id_fallback(",

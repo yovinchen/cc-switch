@@ -8349,6 +8349,7 @@ pub(crate) struct StreamingResponseUsageContext<'a> {
     pub(crate) provider_facts: &'a ResponseUsageProviderFacts,
     pub(crate) request_model: &'a str,
     pub(crate) outbound_model: Option<&'a str>,
+    pub(crate) route_context: Option<&'a UsageRouteContext>,
     pub(crate) latency_ms: u64,
     pub(crate) first_token_ms: Option<u64>,
     pub(crate) status_code: u16,
@@ -8362,6 +8363,7 @@ pub(crate) struct NonStreamingResponseUsageContext<'a> {
     pub(crate) app_type: &'a str,
     pub(crate) request_model: &'a str,
     pub(crate) outbound_model: Option<&'a str>,
+    pub(crate) route_context: Option<&'a UsageRouteContext>,
     pub(crate) latency_ms: u64,
     pub(crate) status_code: u16,
     pub(crate) session_id: &'a str,
@@ -8463,7 +8465,7 @@ pub(crate) fn streaming_response_usage_record_from_response_context(
     context: StreamingResponseUsageContext<'_>,
     request_id_fallback: impl FnOnce() -> String,
 ) -> StreamingResponseUsageRecord {
-    streaming_response_usage_record_from_provider_facts(
+    let mut output = streaming_response_usage_record_from_provider_facts(
         context.events,
         context.stream_parser,
         context.model_extractor,
@@ -8475,7 +8477,9 @@ pub(crate) fn streaming_response_usage_record_from_response_context(
         context.status_code,
         Some(context.session_id.to_string()),
         request_id_fallback,
-    )
+    );
+    output.record = usage_record_with_route_context(output.record, context.route_context);
+    output
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -8599,7 +8603,7 @@ pub(crate) fn non_streaming_response_usage_record_from_response_context(
     let provider = context
         .provider
         .ok_or_else(|| selected_provider_not_applied_message(context.app_type))?;
-    Ok(non_streaming_response_usage_record_from_provider_body_with_request_id_fallback(
+    let mut output = non_streaming_response_usage_record_from_provider_body_with_request_id_fallback(
         context.body,
         context.response_parser,
         provider,
@@ -8610,7 +8614,9 @@ pub(crate) fn non_streaming_response_usage_record_from_response_context(
         context.status_code,
         Some(context.session_id.to_string()),
         request_id_fallback,
-    ))
+    );
+    output.record = usage_record_with_route_context(output.record, context.route_context);
+    Ok(output)
 }
 
 pub(crate) fn usage_record_pricing_model(
@@ -9607,6 +9613,11 @@ mod tests {
                 .to_string()
         }
 
+        let route_context = UsageRouteContext {
+            channel_id: "channel-1".to_string(),
+            channel_name: "Channel One".to_string(),
+            route_group: "beta".to_string(),
+        };
         let stream_events = vec![json!({"model": "stream-response-model"})];
         let stream_output = streaming_response_usage_record_from_response_context(
             StreamingResponseUsageContext {
@@ -9616,6 +9627,7 @@ mod tests {
                 provider_facts: &optional_facts,
                 request_model: "request-model",
                 outbound_model: Some("outbound-model"),
+                route_context: Some(&route_context),
                 latency_ms: 456,
                 first_token_ms: Some(12),
                 status_code: 200,
@@ -9638,6 +9650,15 @@ mod tests {
         assert_eq!(stream_output.record.tokens.output_tokens, 6);
         assert!(stream_output.record.is_streaming);
         assert_eq!(stream_output.record.first_token_ms, Some(12));
+        assert_eq!(
+            stream_output.record.channel_id.as_deref(),
+            Some("channel-1")
+        );
+        assert_eq!(
+            stream_output.record.channel_name.as_deref(),
+            Some("Channel One")
+        );
+        assert_eq!(stream_output.record.route_group.as_deref(), Some("beta"));
 
         let response_body =
             br#"{"model":"response-model","usage":{"prompt_tokens":2,"completion_tokens":3}}"#;
@@ -9649,6 +9670,7 @@ mod tests {
                 app_type: AppType::ClaudeDesktop.as_str(),
                 request_model: "request-model",
                 outbound_model: Some("outbound-model"),
+                route_context: Some(&route_context),
                 latency_ms: 123,
                 status_code: 200,
                 session_id: "session-1",
@@ -9668,6 +9690,9 @@ mod tests {
         assert_eq!(output.record.outbound_model, "outbound-model");
         assert_eq!(output.record.tokens.input_tokens, 2);
         assert_eq!(output.record.tokens.output_tokens, 3);
+        assert_eq!(output.record.channel_id.as_deref(), Some("channel-1"));
+        assert_eq!(output.record.channel_name.as_deref(), Some("Channel One"));
+        assert_eq!(output.record.route_group.as_deref(), Some("beta"));
 
         let missing = non_streaming_response_usage_record_from_response_context(
             NonStreamingResponseUsageContext {
@@ -9677,6 +9702,7 @@ mod tests {
                 app_type: AppType::ClaudeDesktop.as_str(),
                 request_model: "request-model",
                 outbound_model: None,
+                route_context: None,
                 latency_ms: 123,
                 status_code: 200,
                 session_id: "session-1",
