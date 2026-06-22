@@ -64,16 +64,6 @@ pub(crate) type ClaudeDesktopGatewayAuthError =
 pub(crate) type ProxyErrorStatusKind =
     crate::proxy_core::api::errors::ProxyErrorStatusKind;
 
-pub(crate) fn validate_claude_desktop_gateway_bearer_header(
-    headers: &HeaderMap,
-    expected_token: &str,
-) -> Result<(), ClaudeDesktopGatewayAuthError> {
-    crate::proxy_core::api::auth::validate_claude_desktop_gateway_bearer_header(
-        headers,
-        expected_token,
-    )
-}
-
 pub(crate) fn proxy_error_http_status_code(kind: ProxyErrorStatusKind) -> u16 {
     crate::proxy_core::api::errors::proxy_error_http_status_code(kind)
 }
@@ -503,8 +493,6 @@ pub(crate) type ProxyResult = crate::proxy_core::api::transport::ProxyResult;
 pub(crate) type ProxyCoreEvent = crate::proxy_core::api::events::ProxyCoreEvent;
 pub(crate) type ProxyEventEnvelope =
     crate::proxy_core::api::events::ProxyEventEnvelope;
-pub(crate) type ProxyEventSseSpec =
-    crate::proxy_core::api::events::ProxyEventSseSpec;
 pub(crate) type CodexChatHistorySseInspection =
     crate::proxy_core::api::transforms::CodexChatHistorySseInspection;
 pub(crate) type CodexChatHistorySseRecord =
@@ -2548,7 +2536,8 @@ pub(crate) use crate::proxy_core::api::transforms::{
     claude_api_format_from_metadata, CLAUDE_API_FORMAT_METADATA_KEY,
 };
 pub(crate) use crate::proxy_core::api::auth::{
-    resolve_management_auth_decision, validate_management_bearer_header, ManagementAuthDecision,
+    resolve_management_auth_decision, validate_claude_desktop_gateway_bearer_header,
+    validate_management_bearer_header, ManagementAuthDecision,
 };
 pub(crate) use crate::proxy_core::api::management::{
     channel_health_update_from_input, provider_health_update_from_input,
@@ -2772,12 +2761,6 @@ pub(crate) fn proxy_official_warning_event_message(
         event_name: PROXY_OFFICIAL_WARNING_EVENT.to_string(),
         payload: build_proxy_official_warning_event_payload(app_type, provider_name),
     }
-}
-
-pub(crate) fn proxy_event_envelope_to_sse_spec(
-    event: &ProxyEventEnvelope,
-) -> ProxyEventSseSpec {
-    event.to_sse_spec()
 }
 
 pub(crate) struct ProxyEventBusMessage {
@@ -11196,7 +11179,7 @@ mod tests {
             "2026-06-20T00:00:00Z",
             json!({"provider": "relay-a"}),
         );
-        let spec = proxy_event_envelope_to_sse_spec(&envelope);
+        let spec = envelope.to_sse_spec();
 
         assert_eq!(spec.id, "42");
         assert_eq!(spec.event, "request_started");

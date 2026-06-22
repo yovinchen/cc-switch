@@ -399,6 +399,8 @@ const FORBIDDEN_PROXY_CORE_ADAPTER_SMALL_HELPER_FACADE_MARKERS: &[&str] = &[
     "fn request_model_from_gemini_path_for_context(",
     "fn claude_api_format_from_metadata(",
     "fn extract_gemini_model_from_path(",
+    "fn validate_claude_desktop_gateway_bearer_header(",
+    "fn proxy_event_envelope_to_sse_spec(",
 ];
 const FORBIDDEN_CLAUDE_PROVIDER_ADAPTER_TRANSFORM_DECISION_MARKERS: &[&str] = &[
     "ProviderKind::GitHubCopilot",
