@@ -1384,6 +1384,20 @@ pub(crate) struct CodexLiveSettingsParts<'a> {
     pub(crate) config_text: Option<&'a str>,
 }
 
+pub(crate) struct CodexRestoredLiveSettingsParts<'a> {
+    pub(crate) auth: Option<&'a Value>,
+    pub(crate) config: Option<&'a Value>,
+}
+
+pub(crate) fn codex_restored_live_settings_parts(
+    settings: &Value,
+) -> CodexRestoredLiveSettingsParts<'_> {
+    CodexRestoredLiveSettingsParts {
+        auth: settings.get("auth"),
+        config: settings.get("config"),
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum CodexLiveSettingsIssue {
     NotObject,
@@ -5526,6 +5540,15 @@ mod tests {
             Some("sk-auth")
         );
         assert!(codex_auth_object_value_from_settings(&json!({"auth": "sk-auth"})).is_none());
+        let restored_settings = json!({
+            "auth": {"OPENAI_API_KEY": "sk-restored"},
+            "config": "model = \"gpt-5\""
+        });
+        let restored_parts = codex_restored_live_settings_parts(&restored_settings);
+        let expected_auth = json!({"OPENAI_API_KEY": "sk-restored"});
+        let expected_config = json!("model = \"gpt-5\"");
+        assert_eq!(restored_parts.auth, Some(&expected_auth));
+        assert_eq!(restored_parts.config, Some(&expected_config));
         let official_live_provider = Provider::with_id(
             "codex-live-official".to_string(),
             "Codex Live Official".to_string(),

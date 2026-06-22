@@ -2,7 +2,10 @@ use super::provider::{sanitize_claude_settings_for_live, ProviderService};
 use crate::app_config::{AppType, MultiAppConfig};
 use crate::error::AppError;
 use crate::provider::Provider;
-use crate::proxy_core_adapter::{provider_codex_live_settings_parts, CodexLiveSettingsIssue};
+use crate::proxy_core_adapter::{
+    codex_restored_live_settings_parts, provider_codex_live_settings_parts,
+    CodexLiveSettingsIssue,
+};
 use chrono::Utc;
 use std::fs;
 use std::path::Path;
@@ -188,13 +191,12 @@ impl ConfigService {
                     )?;
                     // 必须同时写回 auth 和 config: backfill 会把 live 的
                     // experimental_bearer_token 移到 restored.auth.OPENAI_API_KEY。
-                    if let Some(restored_obj) = restored.as_object() {
-                        if let Some(auth_value) = restored_obj.get("auth") {
-                            obj.insert("auth".to_string(), auth_value.clone());
-                        }
-                        if let Some(config_value) = restored_obj.get("config") {
-                            obj.insert("config".to_string(), config_value.clone());
-                        }
+                    let restored_parts = codex_restored_live_settings_parts(&restored);
+                    if let Some(auth_value) = restored_parts.auth {
+                        obj.insert("auth".to_string(), auth_value.clone());
+                    }
+                    if let Some(config_value) = restored_parts.config {
+                        obj.insert("config".to_string(), config_value.clone());
                     }
                 }
             }
