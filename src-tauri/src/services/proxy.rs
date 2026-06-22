@@ -13,7 +13,7 @@ use crate::proxy_core_adapter::{
     attach_codex_model_catalog_from_provider as attach_codex_model_catalog_from_provider_settings,
     build_proxy_official_warning_event_payload, claude_live_config_has_proxy_placeholder,
     claude_takeover_model_fields_from_settings, codex_live_config_has_proxy_placeholder,
-    codex_preserved_auth_live_config_text_if_proxy_placeholder,
+    codex_live_write_projection, codex_preserved_auth_live_config_text_if_proxy_placeholder,
     codex_takeover_toml_config_for_provider, gemini_live_config_has_proxy_placeholder,
     ensure_codex_takeover_auth_placeholder, live_config_has_proxy_placeholder_for_app,
     live_takeover_config_matches_proxy_for_app, provider_claude_takeover_model_fields,
@@ -21,6 +21,7 @@ use crate::proxy_core_adapter::{
     preserve_codex_mcp_servers_from_existing_config,
     preserve_codex_oauth_auth_in_backup_if_present, provider_settings_with_live_token_sync,
     remove_claude_takeover_env_fields_if_present, CodexBackupProjectionIssue,
+    CodexLiveWriteProjection,
     provider_uses_managed_account_auth, proxy_runtime_status_stopped, proxy_server_info_from_parts,
     proxy_takeover_status_from_parts, remove_codex_takeover_auth_placeholder_if_present,
     remove_gemini_takeover_env_fields_if_present, CircuitBreakerConfig,
@@ -2040,55 +2041,31 @@ impl ProxyService {
     fn write_codex_live_verbatim(&self, config: &Value) -> Result<(), String> {
         use crate::codex_config::{get_codex_auth_path, get_codex_config_path};
 
-        let auth = config.get("auth");
-        let config_str = config.get("config").and_then(|v| v.as_str());
-
-        // Decide the config.toml text ONCE, before splitting on auth. A stored
-        // Codex backup comes in two shapes needing opposite handling:
-        //  - snapshot backup (`read_codex_live_settings`): no inline `modelCatalog`;
-        //    the config text already carries the live `model_catalog_json` pointer
-        //    → keep raw, or projection would strip it.
-        //  - provider-rebuilt backup (`update_live_backup_from_provider`): inline
-        //    `modelCatalog` (DB SSOT) with a pointer-less config text → project,
-        //    or the mapping is lost on restore.
-        // The projection decision is orthogonal to auth: a provider-rebuilt backup
-        // can pair an inline `modelCatalog` with empty/absent `auth.json` (the key
-        // living in the config's `experimental_bearer_token`). Computing it up here
-        // keeps every config-writing branch — write-auth, delete-auth, no-auth —
-        // consistent instead of letting the empty-auth path skip projection.
-        let prepared_cfg = config_str
-            .map(|cfg| {
-                crate::codex_config::prepare_codex_live_config_text_with_optional_catalog(
-                    config, cfg,
-                )
-            })
-            .transpose()
-            .map_err(|e| format!("写入 Codex 配置失败: {e}"))?;
-
-        match (auth, prepared_cfg.as_deref()) {
-            (Some(auth), Some(cfg)) => {
-                let auth_path = get_codex_auth_path();
-                if auth.as_object().is_some_and(|obj| obj.is_empty()) {
-                    let _ = crate::config::delete_file(&auth_path);
-                    let config_path = get_codex_config_path();
-                    crate::config::write_text_file(&config_path, cfg)
-                        .map_err(|e| format!("写入 Codex config 失败: {e}"))?;
-                } else {
-                    crate::codex_config::write_codex_live_atomic(auth, Some(cfg))
-                        .map_err(|e| format!("写入 Codex 配置失败: {e}"))?;
-                }
+        match codex_live_write_projection(config)
+            .map_err(|e| format!("写入 Codex 配置失败: {e}"))?
+        {
+            CodexLiveWriteProjection::WriteAuthAndConfig { auth, config_text } => {
+                crate::codex_config::write_codex_live_atomic(&auth, Some(&config_text))
+                    .map_err(|e| format!("写入 Codex 配置失败: {e}"))?;
             }
-            (Some(auth), None) => {
+            CodexLiveWriteProjection::DeleteAuthAndWriteConfig { config_text } => {
                 let auth_path = get_codex_auth_path();
-                write_json_file(&auth_path, auth)
-                    .map_err(|e| format!("写入 Codex auth 失败: {e}"))?;
-            }
-            (None, Some(cfg)) => {
+                let _ = crate::config::delete_file(&auth_path);
                 let config_path = get_codex_config_path();
-                crate::config::write_text_file(&config_path, cfg)
+                crate::config::write_text_file(&config_path, &config_text)
                     .map_err(|e| format!("写入 Codex config 失败: {e}"))?;
             }
-            (None, None) => {}
+            CodexLiveWriteProjection::WriteAuthOnly { auth } => {
+                let auth_path = get_codex_auth_path();
+                write_json_file(&auth_path, &auth)
+                    .map_err(|e| format!("写入 Codex auth 失败: {e}"))?;
+            }
+            CodexLiveWriteProjection::WriteConfigOnly { config_text } => {
+                let config_path = get_codex_config_path();
+                crate::config::write_text_file(&config_path, &config_text)
+                    .map_err(|e| format!("写入 Codex config 失败: {e}"))?;
+            }
+            CodexLiveWriteProjection::Noop => {}
         }
 
         Ok(())

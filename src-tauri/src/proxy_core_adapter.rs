@@ -4264,6 +4264,48 @@ fn codex_auth_value_has_proxy_placeholder(auth: &Value, placeholder: &str) -> bo
     auth.get("OPENAI_API_KEY").and_then(Value::as_str) == Some(placeholder)
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum CodexLiveWriteProjection {
+    WriteAuthAndConfig { auth: Value, config_text: String },
+    DeleteAuthAndWriteConfig { config_text: String },
+    WriteAuthOnly { auth: Value },
+    WriteConfigOnly { config_text: String },
+    Noop,
+}
+
+/// Classifies restored Codex live settings into host filesystem actions.
+/// Snapshot backups may already carry a model catalog pointer, while
+/// provider-derived backups may need inline `modelCatalog` projected first.
+pub(crate) fn codex_live_write_projection(
+    config: &Value,
+) -> Result<CodexLiveWriteProjection, String> {
+    let auth = config.get("auth").cloned();
+    let config_text = config
+        .get("config")
+        .and_then(Value::as_str)
+        .map(|config_text| {
+            crate::codex_config::prepare_codex_live_config_text_with_optional_catalog(
+                config,
+                config_text,
+            )
+        })
+        .transpose()
+        .map_err(|e| e.to_string())?;
+
+    Ok(match (auth, config_text) {
+        (Some(auth), Some(config_text)) => {
+            if auth.as_object().is_some_and(|obj| obj.is_empty()) {
+                CodexLiveWriteProjection::DeleteAuthAndWriteConfig { config_text }
+            } else {
+                CodexLiveWriteProjection::WriteAuthAndConfig { auth, config_text }
+            }
+        }
+        (Some(auth), None) => CodexLiveWriteProjection::WriteAuthOnly { auth },
+        (None, Some(config_text)) => CodexLiveWriteProjection::WriteConfigOnly { config_text },
+        (None, None) => CodexLiveWriteProjection::Noop,
+    })
+}
+
 pub(crate) fn gemini_live_config_has_proxy_placeholder(
     config: &Value,
     placeholder: &str,
@@ -7291,6 +7333,61 @@ base_url = "https://relay.example/v1"
                 .and_then(|env| env.get("GEMINI_API_KEY"))
                 .and_then(Value::as_str),
             Some(placeholder)
+        );
+    }
+
+    #[test]
+    fn codex_live_write_projection_adapter_projects_auth_config_branches() {
+        let auth = json!({"OPENAI_API_KEY": "key"});
+        let write_both = codex_live_write_projection(&json!({
+            "auth": auth.clone(),
+            "config": "model_catalog_json = \"cc-switch-model-catalog.json\"\n"
+        }))
+        .expect("write auth and config");
+        match write_both {
+            CodexLiveWriteProjection::WriteAuthAndConfig {
+                auth: projected_auth,
+                config_text,
+            } => {
+                assert_eq!(projected_auth, auth);
+                assert!(config_text.contains(
+                    "model_catalog_json = \"cc-switch-model-catalog.json\""
+                ));
+            }
+            other => panic!("unexpected projection: {other:?}"),
+        }
+
+        assert_eq!(
+            codex_live_write_projection(&json!({
+                "auth": {},
+                "config": "model = \"gpt-5\"\n"
+            }))
+            .expect("delete auth and write config"),
+            CodexLiveWriteProjection::DeleteAuthAndWriteConfig {
+                config_text: "model = \"gpt-5\"\n".to_string(),
+            }
+        );
+        assert_eq!(
+            codex_live_write_projection(&json!({
+                "auth": {"OPENAI_API_KEY": "key"}
+            }))
+            .expect("write auth only"),
+            CodexLiveWriteProjection::WriteAuthOnly {
+                auth: json!({"OPENAI_API_KEY": "key"}),
+            }
+        );
+        assert_eq!(
+            codex_live_write_projection(&json!({
+                "config": "model = \"gpt-5\"\n"
+            }))
+            .expect("write config only"),
+            CodexLiveWriteProjection::WriteConfigOnly {
+                config_text: "model = \"gpt-5\"\n".to_string(),
+            }
+        );
+        assert_eq!(
+            codex_live_write_projection(&json!({})).expect("noop"),
+            CodexLiveWriteProjection::Noop
         );
     }
 
