@@ -26,7 +26,8 @@ use crate::proxy_core_adapter::{
     provider_switch_backfill_source_id, provider_switch_dispatch,
     provider_switch_should_mark_live_config_managed, proxy_live_config_owned_by_takeover,
     proxy_switch_should_hot_switch, should_block_proxy_switch_to_provider,
-    should_reapply_codex_official_live_for_provider, CommonConfigSnippetIssue,
+    should_reapply_codex_official_live_for_provider,
+    should_skip_provider_legacy_common_config_migration, CommonConfigSnippetIssue,
     ProviderAdditiveLiveWriteAction, ProviderCredentialIssue,
     ProviderLiveConfigPresenceErrorPolicy, ProviderOmoVariant, ProviderSettingsValidationIssue,
     ProviderSwitchDispatch,
@@ -2040,7 +2041,7 @@ impl ProviderService {
         app_type: AppType,
         legacy_snippet: &str,
     ) -> Result<(), AppError> {
-        if app_type.is_additive_mode() || legacy_snippet.trim().is_empty() {
+        if should_skip_provider_legacy_common_config_migration(&app_type, legacy_snippet) {
             return Ok(());
         }
 
@@ -2093,7 +2094,7 @@ impl ProviderService {
         state: &AppState,
         app_type: AppType,
     ) -> Result<(), AppError> {
-        if app_type.is_additive_mode() {
+        if !provider_app_has_current_provider(&app_type) {
             return Ok(());
         }
 

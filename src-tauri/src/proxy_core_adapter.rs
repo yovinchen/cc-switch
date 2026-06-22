@@ -1236,6 +1236,17 @@ pub(crate) fn provider_should_sync_to_live(provider: &Provider) -> bool {
         != Some(false)
 }
 
+pub(crate) fn provider_supports_legacy_common_config_migration(app_type: &AppType) -> bool {
+    !app_type.is_additive_mode()
+}
+
+pub(crate) fn should_skip_provider_legacy_common_config_migration(
+    app_type: &AppType,
+    legacy_snippet: &str,
+) -> bool {
+    !provider_supports_legacy_common_config_migration(app_type) || legacy_snippet.trim().is_empty()
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum ProviderLiveConfigPresenceErrorPolicy {
     Strict,
@@ -12841,6 +12852,28 @@ command = "latest-command"
             ..Default::default()
         });
         assert!(!provider_should_sync_to_live(&provider));
+    }
+
+    #[test]
+    fn provider_legacy_common_config_migration_skips_additive_and_empty_snippets() {
+        assert!(provider_supports_legacy_common_config_migration(
+            &AppType::Claude
+        ));
+        assert!(!provider_supports_legacy_common_config_migration(
+            &AppType::OpenCode
+        ));
+        assert!(!should_skip_provider_legacy_common_config_migration(
+            &AppType::Claude,
+            "legacy = true"
+        ));
+        assert!(should_skip_provider_legacy_common_config_migration(
+            &AppType::Claude,
+            "  \n  "
+        ));
+        assert!(should_skip_provider_legacy_common_config_migration(
+            &AppType::OpenClaw,
+            "legacy = true"
+        ));
     }
 
     #[test]
