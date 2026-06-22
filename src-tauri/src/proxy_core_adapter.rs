@@ -8681,6 +8681,16 @@ pub(crate) fn channel_migration_preview_input_from_result(
     )
 }
 
+pub(crate) fn channel_migration_preview_from_db_source(
+    db: &Database,
+    app: &AppKind,
+) -> ProxyCoreResult<ChannelMigrationPreviewInput<ChannelRecord>> {
+    let preview = db
+        .preview_legacy_proxy_channel_migration(app.as_str())
+        .map_err(|error| app_error("preview legacy channel migration", error))?;
+    Ok(channel_migration_preview_input_from_result(preview))
+}
+
 pub(crate) fn channel_migration_materialize_input_from_result(
     result: ProxyChannelMaterializeResult,
 ) -> ChannelMigrationMaterializeInput {
@@ -8693,6 +8703,16 @@ pub(crate) fn channel_migration_materialize_input_from_result(
         result.duplicate_count,
         result.needs_review_count,
     )
+}
+
+pub(crate) fn channel_migration_materialize_from_db_source(
+    db: &Database,
+    app: &AppKind,
+) -> ProxyCoreResult<ChannelMigrationMaterializeInput> {
+    let result = db
+        .materialize_legacy_proxy_channels(app.as_str())
+        .map_err(|error| app_error("materialize legacy channel migration", error))?;
+    Ok(channel_migration_materialize_input_from_result(result))
 }
 
 pub(crate) fn extract_proxy_session_id(

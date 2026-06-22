@@ -98,6 +98,12 @@ const FORBIDDEN_PROXY_CORE_HOST_CHANNEL_RECORD_LIST_SOURCE_MARKERS: &[&str] = &[
     ".list_all_proxy_channels(",
     "proxy_channel_records_to_core(",
 ];
+const FORBIDDEN_PROXY_CORE_HOST_CHANNEL_MIGRATION_SOURCE_MARKERS: &[&str] = &[
+    ".preview_legacy_proxy_channel_migration(",
+    ".materialize_legacy_proxy_channels(",
+    "channel_migration_preview_input_from_result(",
+    "channel_migration_materialize_input_from_result(",
+];
 const FORBIDDEN_PROXY_CORE_HOST_AUTH_PROFILE_DB_MARKERS: &[&str] = &[
     "fn apply_channel_auth_profile_providers(",
     "get_enabled_proxy_channel_key(",
@@ -1548,6 +1554,38 @@ fn production_proxy_core_host_delegates_channel_record_list_source_to_adapter() 
     assert!(
         violations.is_empty(),
         "production proxy_core_host must delegate channel record list DB/router projection wiring to proxy_core_adapter:\n{}",
+        violations.join("\n")
+    );
+}
+
+#[test]
+fn production_proxy_core_host_delegates_channel_migration_source_to_adapter() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let path = manifest_dir.join("src/proxy_core_host.rs");
+    let source = fs::read_to_string(&path).expect("read proxy_core_host.rs");
+    let channel_migration_source = function_slice(
+        &source,
+        "    fn preview_legacy_channel_migration",
+        "\n}\n\n#[derive(Clone)]\nstruct CcSwitchRoutePolicySource",
+    );
+
+    let mut violations = Vec::new();
+    for (line_index, line) in production_lines(channel_migration_source) {
+        let code = line.split("//").next().unwrap_or_default();
+        for marker in FORBIDDEN_PROXY_CORE_HOST_CHANNEL_MIGRATION_SOURCE_MARKERS {
+            if code.contains(marker) {
+                violations.push(format!(
+                    "src/proxy_core_host.rs CcSwitchChannelSource migration:{} contains channel migration source marker `{}`",
+                    line_index + 1,
+                    marker
+                ));
+            }
+        }
+    }
+
+    assert!(
+        violations.is_empty(),
+        "production proxy_core_host must delegate channel migration DB/projection wiring to proxy_core_adapter:\n{}",
         violations.join("\n")
     );
 }

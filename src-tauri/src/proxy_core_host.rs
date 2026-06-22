@@ -41,8 +41,8 @@ use crate::proxy_core_adapter::{
     channel_test_provider_from_probe_source,
     channel_spec_from_source_lookup,
     channel_specs_from_source_lookup,
-    channel_migration_materialize_input_from_result,
-    channel_migration_preview_input_from_result,
+    channel_migration_materialize_from_db_source,
+    channel_migration_preview_from_db_source,
     client_model_catalog_from_source,
     channel_record_from_db_source,
     create_channel_record_from_db_source,
@@ -452,26 +452,14 @@ impl ChannelSource for CcSwitchChannelSource {
         &'a self,
         app: &'a AppKind,
     ) -> BoxFuture<'a, ProxyCoreResult<ChannelMigrationPreviewInput<ChannelRecord>>> {
-        Box::pin(async move {
-            let preview = self
-                .db
-                .preview_legacy_proxy_channel_migration(app.as_str())
-                .map_err(|error| app_error("preview legacy channel migration", error))?;
-            Ok(channel_migration_preview_input_from_result(preview))
-        })
+        Box::pin(async move { channel_migration_preview_from_db_source(&self.db, app) })
     }
 
     fn materialize_legacy_channel_migration<'a>(
         &'a self,
         app: &'a AppKind,
     ) -> BoxFuture<'a, ProxyCoreResult<ChannelMigrationMaterializeInput>> {
-        Box::pin(async move {
-            let result = self
-                .db
-                .materialize_legacy_proxy_channels(app.as_str())
-                .map_err(|error| app_error("materialize legacy channel migration", error))?;
-            Ok(channel_migration_materialize_input_from_result(result))
-        })
+        Box::pin(async move { channel_migration_materialize_from_db_source(&self.db, app) })
     }
 }
 
