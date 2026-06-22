@@ -2602,6 +2602,14 @@ pub(crate) fn proxy_switch_should_hot_switch(
     proxy_config_takeover_enabled || live_taken_over
 }
 
+pub(crate) fn proxy_hot_switch_should_refresh_codex_live_from_backup(
+    app_type: &AppType,
+    has_live_backup: bool,
+    live_taken_over: bool,
+) -> bool {
+    matches!(app_type, AppType::Codex) && has_live_backup && !live_taken_over
+}
+
 pub(crate) fn proxy_takeover_marked_state_is_reusable(
     has_live_backup: bool,
     live_matches_current_proxy: bool,
@@ -7587,6 +7595,27 @@ base_url = "https://api.openai.com/v1"
         assert!(!proxy_switch_should_hot_switch(false, false));
         assert!(proxy_switch_should_hot_switch(true, false));
         assert!(proxy_switch_should_hot_switch(false, true));
+
+        assert!(!proxy_hot_switch_should_refresh_codex_live_from_backup(
+            &AppType::Codex,
+            false,
+            false
+        ));
+        assert!(proxy_hot_switch_should_refresh_codex_live_from_backup(
+            &AppType::Codex,
+            true,
+            false
+        ));
+        assert!(!proxy_hot_switch_should_refresh_codex_live_from_backup(
+            &AppType::Codex,
+            true,
+            true
+        ));
+        assert!(!proxy_hot_switch_should_refresh_codex_live_from_backup(
+            &AppType::Claude,
+            true,
+            false
+        ));
 
         assert!(!proxy_takeover_marked_state_is_reusable(false, false));
         assert!(!proxy_takeover_marked_state_is_reusable(true, false));
