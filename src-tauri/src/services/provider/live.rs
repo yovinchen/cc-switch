@@ -24,8 +24,9 @@ use crate::proxy_core_adapter::{
     ProviderBackfillSettingsWarning, ProviderEffectiveSettingsWarning,
     provider_common_config_storage_normalization_requires_snippet,
     provider_gemini_env_map, provider_gemini_live_config_object,
-    provider_from_opencode_live_config, provider_opencode_live_write_plan,
-    provider_openclaw_live_write_plan, OpenCodeLiveImportIssue,
+    provider_from_openclaw_live_config, provider_from_opencode_live_config,
+    provider_opencode_live_write_plan, provider_openclaw_live_write_plan,
+    OpenClawLiveImportIssue, OpenCodeLiveImportIssue,
     proxy_live_config_owned_by_takeover,
     restore_live_settings_for_provider_backfill as adapter_restore_live_settings_for_provider_backfill,
     sanitize_claude_settings_for_live,
@@ -1005,44 +1006,27 @@ pub fn import_openclaw_providers_from_live(state: &AppState) -> Result<usize, Ap
     let existing_ids = state.db.get_provider_ids("openclaw")?;
 
     for (id, config) in providers {
-        // Validate: skip entries with empty id or no models
-        if id.trim().is_empty() {
-            log::warn!("Skipping OpenClaw provider with empty id");
-            continue;
-        }
-        if config.models.is_empty() {
-            log::warn!("Skipping OpenClaw provider '{id}': no models defined");
-            continue;
-        }
+        let provider = match provider_from_openclaw_live_config(&id, &config) {
+            Ok(provider) => provider,
+            Err(OpenClawLiveImportIssue::EmptyId) => {
+                log::warn!("Skipping OpenClaw provider with empty id");
+                continue;
+            }
+            Err(OpenClawLiveImportIssue::NoModels) => {
+                log::warn!("Skipping OpenClaw provider '{id}': no models defined");
+                continue;
+            }
+            Err(OpenClawLiveImportIssue::Serialization(error)) => {
+                log::warn!("Failed to serialize OpenClaw provider '{id}': {error}");
+                continue;
+            }
+        };
 
         // Skip if already exists in database
         if existing_ids.contains(&id) {
             log::debug!("OpenClaw provider '{id}' already exists in database, skipping");
             continue;
         }
-
-        // Convert to Value for settings_config
-        let settings_config = match serde_json::to_value(&config) {
-            Ok(v) => v,
-            Err(e) => {
-                log::warn!("Failed to serialize OpenClaw provider '{id}': {e}");
-                continue;
-            }
-        };
-
-        // Determine display name: use first model name if available, otherwise use id
-        let display_name = config
-            .models
-            .first()
-            .and_then(|m| m.name.clone())
-            .unwrap_or_else(|| id.clone());
-
-        // Create provider
-        let mut provider = Provider::with_id(id.clone(), display_name, settings_config, None);
-        provider.meta = Some(crate::provider::ProviderMeta {
-            live_config_managed: Some(true),
-            ..Default::default()
-        });
 
         // Save to database
         if let Err(e) = state.db.save_provider("openclaw", &provider) {

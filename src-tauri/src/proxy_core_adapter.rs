@@ -834,6 +834,40 @@ pub(crate) fn provider_openclaw_live_write_plan(provider: &Provider) -> OpenClaw
     OpenClawLiveWritePlan { config }
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum OpenClawLiveImportIssue {
+    EmptyId,
+    NoModels,
+    Serialization(String),
+}
+
+pub(crate) fn provider_from_openclaw_live_config(
+    id: &str,
+    config: &OpenClawProviderConfig,
+) -> Result<Provider, OpenClawLiveImportIssue> {
+    if id.trim().is_empty() {
+        return Err(OpenClawLiveImportIssue::EmptyId);
+    }
+    if config.models.is_empty() {
+        return Err(OpenClawLiveImportIssue::NoModels);
+    }
+
+    let settings_config = serde_json::to_value(config)
+        .map_err(|error| OpenClawLiveImportIssue::Serialization(error.to_string()))?;
+    let display_name = config
+        .models
+        .first()
+        .and_then(|model| model.name.clone())
+        .unwrap_or_else(|| id.to_string());
+    let mut provider = Provider::with_id(id.to_string(), display_name, settings_config, None);
+    provider.meta = Some(ProviderMeta {
+        live_config_managed: Some(true),
+        ..Default::default()
+    });
+
+    Ok(provider)
+}
+
 pub(crate) struct OpenClawCredentialParts<'a> {
     pub(crate) api_key: Option<&'a str>,
     pub(crate) base_url: Option<&'a str>,
@@ -11566,6 +11600,56 @@ command = "latest-command"
 
         let typed_plan = provider_openclaw_live_write_plan(&credential_provider);
         assert!(matches!(typed_plan.config, OpenClawLiveWriteConfig::Typed(_)));
+
+        let typed_config = serde_json::from_value::<OpenClawProviderConfig>(json!({
+            "baseUrl": "https://openclaw.example",
+            "apiKey": "sk-openclaw",
+            "models": [
+                {
+                    "id": "claude-sonnet-4",
+                    "name": "Claude Sonnet 4"
+                }
+            ]
+        }))
+        .expect("typed openclaw provider config");
+        let imported_provider = provider_from_openclaw_live_config("anthropic", &typed_config)
+            .expect("import provider");
+        assert_eq!(imported_provider.id, "anthropic");
+        assert_eq!(imported_provider.name, "Claude Sonnet 4");
+        assert_eq!(
+            imported_provider.settings_config,
+            serde_json::to_value(&typed_config).expect("serialized typed config")
+        );
+        assert_eq!(
+            imported_provider
+                .meta
+                .as_ref()
+                .and_then(|meta| meta.live_config_managed),
+            Some(true)
+        );
+        let unnamed_config = serde_json::from_value::<OpenClawProviderConfig>(json!({
+            "models": [
+                {
+                    "id": "claude-sonnet-4"
+                }
+            ]
+        }))
+        .expect("typed openclaw provider config");
+        let imported_unnamed_provider =
+            provider_from_openclaw_live_config("anthropic", &unnamed_config)
+                .expect("import provider");
+        assert_eq!(imported_unnamed_provider.name, "anthropic");
+        assert!(matches!(
+            provider_from_openclaw_live_config("   ", &typed_config),
+            Err(OpenClawLiveImportIssue::EmptyId)
+        ));
+        assert!(matches!(
+            provider_from_openclaw_live_config("empty", &OpenClawProviderConfig {
+                models: Vec::new(),
+                ..typed_config.clone()
+            }),
+            Err(OpenClawLiveImportIssue::NoModels)
+        ));
 
         let raw_provider = Provider::with_id(
             "raw-openclaw".to_string(),
