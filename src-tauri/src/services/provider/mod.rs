@@ -23,14 +23,14 @@ use crate::proxy_core_adapter::{
     provider_key_change_policy_issue_message, provider_live_config_presence_error_policy,
     provider_omo_switch_pair, provider_omo_variant_for_category,
     provider_settings_validation_issue_spec, provider_settings_validation_parts,
-    provider_switch_backfill_source_id, provider_switch_dispatch,
+    provider_live_sync_scope, provider_switch_backfill_source_id, provider_switch_dispatch,
     provider_switch_should_mark_live_config_managed, proxy_live_config_owned_by_takeover,
     proxy_switch_should_hot_switch, should_block_proxy_switch_to_provider,
     should_reapply_codex_official_live_for_provider,
     should_skip_provider_legacy_common_config_migration, CommonConfigSnippetIssue,
     ProviderAdditiveLiveWriteAction, ProviderCredentialIssue,
-    ProviderLiveConfigPresenceErrorPolicy, ProviderOmoVariant, ProviderSettingsValidationIssue,
-    ProviderSwitchDispatch,
+    ProviderLiveConfigPresenceErrorPolicy, ProviderLiveSyncScope, ProviderOmoVariant,
+    ProviderSettingsValidationIssue, ProviderSwitchDispatch,
 };
 use crate::services::mcp::McpService;
 use crate::settings::CustomEndpoint;
@@ -1991,8 +1991,11 @@ impl ProviderService {
         state: &AppState,
         app_type: AppType,
     ) -> Result<(), AppError> {
-        if app_type.is_additive_mode() {
-            return sync_current_provider_for_app_to_live(state, &app_type);
+        match provider_live_sync_scope(&app_type) {
+            ProviderLiveSyncScope::AllProviders => {
+                return sync_current_provider_for_app_to_live(state, &app_type);
+            }
+            ProviderLiveSyncScope::CurrentProvider => {}
         }
 
         let current_id =
