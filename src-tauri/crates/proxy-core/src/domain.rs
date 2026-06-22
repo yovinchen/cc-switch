@@ -1043,6 +1043,17 @@ pub fn route_policy_from_failover_provider_ids(
     }
 }
 
+pub fn route_policy_failover_provider_ids(policy: &RoutePolicy) -> Vec<String> {
+    policy
+        .raw
+        .get("failoverProviderIds")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .filter_map(|value| value.as_str().map(ToString::to_string))
+        .collect()
+}
+
 #[derive(Debug, Clone)]
 pub struct ChannelQuery<'a> {
     pub app: &'a AppKind,
@@ -1538,6 +1549,10 @@ mod tests {
         assert_eq!(
             policy.raw["failoverProviderIds"],
             json!(["provider-a", "provider-b"])
+        );
+        assert_eq!(
+            route_policy_failover_provider_ids(&policy),
+            vec!["provider-a".to_string(), "provider-b".to_string()]
         );
     }
 

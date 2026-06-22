@@ -140,8 +140,8 @@ pub mod routing {
         route_group_matches, route_plan_no_matching_host_providers_error_message,
         route_plan_provider_ids, route_plan_provider_match,
         route_plan_providers_unconfigured_error_message, route_plan_selections,
-        route_policy_from_failover_provider_ids, route_selection_from_parts,
-        select_route_for_forward_result,
+        route_policy_failover_provider_ids, route_policy_from_failover_provider_ids,
+        route_selection_from_parts, select_route_for_forward_result,
     };
     pub use crate::legacy_projection::*;
     pub use crate::ports::ChannelRouteCandidate;

@@ -31,7 +31,7 @@ use super::ports::{
     ProxyChannelTestRequest, ProxyCoreEvent,
     ProxyCoreEventType, ProxyServices, RouteGroupListResponse, RouteResolveResponse,
 };
-use serde_json::{json, to_value, Value};
+use serde_json::{json, to_value};
 use std::collections::BTreeMap;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
@@ -668,12 +668,8 @@ where
 
 fn failover_provider_ids_from_policy(policy: Option<&RoutePolicy>) -> Vec<String> {
     policy
-        .and_then(|policy| policy.raw.get("failoverProviderIds"))
-        .and_then(Value::as_array)
-        .into_iter()
-        .flatten()
-        .filter_map(|value| value.as_str().map(ToString::to_string))
-        .collect()
+        .map(super::domain::route_policy_failover_provider_ids)
+        .unwrap_or_default()
 }
 
 #[cfg(test)]

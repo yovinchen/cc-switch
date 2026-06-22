@@ -54,6 +54,8 @@ const FORBIDDEN_PROXY_CORE_CONFIG_SOURCE_APP_CATALOG_MARKERS: &[&str] = &[
     "AppKind::Gemini",
     "Ok(vec![",
 ];
+const FORBIDDEN_PROXY_ENGINE_ROUTE_POLICY_RAW_MARKERS: &[&str] =
+    &["failoverProviderIds", ".raw.get("];
 const FORBIDDEN_PROVIDER_ROUTER_CHANNEL_ROUTE_SOURCE_MARKERS: &[&str] = &[
     "channel_route_source_for_materialized_records(",
     "channel_route_should_load_legacy_projection(",
@@ -1302,6 +1304,33 @@ fn proxy_core_config_source_requires_host_app_catalog() {
     assert!(
         violations.is_empty(),
         "proxy-core config source must require host-provided app catalog:\n{}",
+        violations.join("\n")
+    );
+}
+
+#[test]
+fn proxy_engine_delegates_route_policy_raw_contract() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let path = manifest_dir.join("crates/proxy-core/src/engine.rs");
+    let source = fs::read_to_string(&path).expect("read proxy-core engine.rs");
+
+    let mut violations = Vec::new();
+    for (line_index, line) in production_lines(&source) {
+        let code = line.split("//").next().unwrap_or_default();
+        for marker in FORBIDDEN_PROXY_ENGINE_ROUTE_POLICY_RAW_MARKERS {
+            if code.contains(marker) {
+                violations.push(format!(
+                    "crates/proxy-core/src/engine.rs:{} contains route policy raw marker `{}`",
+                    line_index + 1,
+                    marker
+                ));
+            }
+        }
+    }
+
+    assert!(
+        violations.is_empty(),
+        "proxy engine must consume route policy facts through domain helpers:\n{}",
         violations.join("\n")
     );
 }
