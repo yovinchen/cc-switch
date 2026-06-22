@@ -14,6 +14,7 @@ use crate::proxy_core_adapter::{
     attach_codex_model_catalog_from_provider, build_proxy_official_warning_event_payload,
     ClaudeTakeoverAuthPolicy,
     codex_backup_projection_error_message, codex_live_write_projection,
+    codex_provider_live_write_parts,
     codex_preserved_auth_live_config_text_if_proxy_placeholder,
     codex_takeover_toml_config_for_provider,
     ensure_codex_takeover_auth_placeholder, gemini_live_backup_from_effective_settings,
@@ -1616,16 +1617,14 @@ impl ProxyService {
                 &provider,
             )
             .map_err(|e| format!("构建 Codex 有效配置失败: {e}"))?;
-            let auth = effective_settings
-                .get("auth")
-                .ok_or_else(|| "Codex 供应商缺少 auth 配置".to_string())?;
-            let config_str = effective_settings.get("config").and_then(|v| v.as_str());
+            let live_parts = codex_provider_live_write_parts(&effective_settings, &provider)
+                .map_err(|_| "Codex 供应商缺少 auth 配置".to_string())?;
 
             crate::codex_config::write_codex_provider_live_with_catalog(
                 &effective_settings,
-                provider.category.as_deref(),
-                auth,
-                config_str,
+                live_parts.category,
+                live_parts.auth,
+                live_parts.config_text,
             )
             .map_err(|e| format!("写入 Codex 配置失败: {e}"))?;
         }
@@ -1729,16 +1728,14 @@ impl ProxyService {
             return self.write_codex_live_verbatim(config);
         };
 
-        let auth = config
-            .get("auth")
-            .ok_or_else(|| "Codex 配置缺少 auth 字段".to_string())?;
-        let config_str = config.get("config").and_then(|v| v.as_str());
+        let live_parts = codex_provider_live_write_parts(config, provider)
+            .map_err(|_| "Codex 配置缺少 auth 字段".to_string())?;
 
         crate::codex_config::write_codex_provider_live_with_catalog(
             config,
-            provider.category.as_deref(),
-            auth,
-            config_str,
+            live_parts.category,
+            live_parts.auth,
+            live_parts.config_text,
         )
         .map_err(|e| format!("写入 Codex 配置失败: {e}"))
     }

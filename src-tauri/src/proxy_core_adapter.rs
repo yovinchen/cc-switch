@@ -1480,6 +1480,32 @@ pub(crate) struct CodexLiveSettingsParts<'a> {
     pub(crate) config_text: Option<&'a str>,
 }
 
+pub(crate) struct CodexProviderLiveWriteParts<'a> {
+    pub(crate) category: Option<&'a str>,
+    pub(crate) auth: &'a Value,
+    pub(crate) config_text: Option<&'a str>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum CodexProviderLiveWriteIssue {
+    MissingAuth,
+}
+
+pub(crate) fn codex_provider_live_write_parts<'a>(
+    settings: &'a Value,
+    provider: &'a Provider,
+) -> Result<CodexProviderLiveWriteParts<'a>, CodexProviderLiveWriteIssue> {
+    let auth = settings
+        .get("auth")
+        .ok_or(CodexProviderLiveWriteIssue::MissingAuth)?;
+
+    Ok(CodexProviderLiveWriteParts {
+        category: provider.category.as_deref(),
+        auth,
+        config_text: codex_config_text_from_settings(settings),
+    })
+}
+
 pub(crate) struct CodexRestoredLiveSettingsParts<'a> {
     pub(crate) auth: Option<&'a Value>,
     pub(crate) config: Option<&'a Value>,
@@ -6505,6 +6531,30 @@ experimental_bearer_token = "bearer-token"
             provider_codex_live_settings_parts(&official_live_provider).expect("codex live parts");
         assert!(parts.auth.is_object());
         assert_eq!(parts.config_text, Some(""));
+        let mut custom_category_provider = api_key_live_provider.clone();
+        custom_category_provider.category = Some("custom".to_string());
+        let write_settings = json!({
+            "auth": {"OPENAI_API_KEY": "sk-write"},
+            "config": "model = \"gpt-5\""
+        });
+        let write_parts = codex_provider_live_write_parts(
+            &write_settings,
+            &custom_category_provider,
+        )
+        .expect("codex provider live write parts");
+        assert_eq!(write_parts.category, Some("custom"));
+        assert_eq!(
+            write_parts.auth.get("OPENAI_API_KEY").and_then(Value::as_str),
+            Some("sk-write")
+        );
+        assert_eq!(write_parts.config_text, Some("model = \"gpt-5\""));
+        assert!(matches!(
+            codex_provider_live_write_parts(
+                &json!({"config": "model = \"gpt-5\""}),
+                &custom_category_provider,
+            ),
+            Err(CodexProviderLiveWriteIssue::MissingAuth)
+        ));
         let invalid_shape = Provider::with_id(
             "codex-live-invalid".to_string(),
             "Codex Live Invalid".to_string(),
