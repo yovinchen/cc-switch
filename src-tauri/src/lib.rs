@@ -1000,7 +1000,10 @@ pub fn run() {
                 // 检查 Live 配置是否仍处于被接管状态（包含占位符）
                 let live_taken_over = state.proxy_service.detect_takeover_in_live_configs();
 
-                if has_backups || live_taken_over {
+                if crate::proxy_core_adapter::proxy_live_config_owned_by_takeover(
+                    has_backups,
+                    live_taken_over,
+                ) {
                     log::warn!("检测到上次异常退出（存在接管残留），正在恢复 Live 配置...");
                     if let Err(e) = state.proxy_service.recover_from_crash().await {
                         log::error!("恢复 Live 配置失败: {e}");
@@ -1636,7 +1639,10 @@ pub async fn cleanup_before_exit(app_handle: &tauri::AppHandle) {
             }
         };
         let live_taken_over = proxy_service.detect_takeover_in_live_configs();
-        let needs_restore = has_backups || live_taken_over;
+        let needs_restore = crate::proxy_core_adapter::proxy_live_config_owned_by_takeover(
+            has_backups,
+            live_taken_over,
+        );
 
         if needs_restore {
             log::info!("检测到接管残留，开始恢复 Live 配置（保留代理状态）...");
