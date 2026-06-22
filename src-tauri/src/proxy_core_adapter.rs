@@ -7302,15 +7302,25 @@ pub(crate) async fn record_usage_with_proxy_services(
     services: &(dyn ProxyServices + Send + Sync),
     record: UsageRecord,
 ) {
+    record_usage_with_proxy_services_context(
+        services,
+        record,
+        UsageRecordFailureLogContext::UsageRecord,
+    )
+    .await
+}
+
+pub(crate) async fn record_usage_with_proxy_services_context(
+    services: &(dyn ProxyServices + Send + Sync),
+    record: UsageRecord,
+    failure_context: UsageRecordFailureLogContext,
+) {
     log::debug!("{}", usage_record_debug_log_message(&record));
 
     if let Err(error) = services.usage_sink().record_usage(record).await {
         log::warn!(
             "{}",
-            usage_record_failure_warning_message(
-                UsageRecordFailureLogContext::UsageRecord,
-                error,
-            )
+            usage_record_failure_warning_message(failure_context, error)
         );
     }
 }

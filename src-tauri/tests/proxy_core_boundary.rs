@@ -315,6 +315,8 @@ const FORBIDDEN_RESPONSE_PROCESSOR_USAGE_PROVIDER_PROJECTION_MARKERS: &[&str] = 
 const FORBIDDEN_USAGE_SINK_PROVIDER_PROJECTION_MARKERS: &[&str] = &[
     "provider_kind_from_provider(",
     "AppKind::from(",
+    ".usage_sink()",
+    "usage_record_failure_warning_message(",
     "error_usage_record_with_request_id_fallback(",
     "transformed_response_usage_record_with_request_id_fallback(",
     "transformed_streaming_response_usage_record_with_request_id_fallback(",

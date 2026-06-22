@@ -8,12 +8,13 @@ use crate::proxy::{
 use crate::proxy_core_adapter::{
     error_usage_record_from_provider_facts_with_request_id_fallback,
     fallback_response_usage_provider_facts, response_usage_provider_facts, ResponseUsageProviderFacts,
+    record_usage_with_proxy_services_context,
     transformed_response_usage_record_from_provider_facts_with_request_id_fallback,
     transformed_streaming_response_usage_record_from_provider_facts_with_request_id_fallback,
-    usage_logging_enabled_from_config_flag, usage_record_failure_warning_message,
-    usage_record_with_route_context, usage_selected_provider_missing_log_message, ProxyServices,
-    StreamUsageEventFilter, TransformedResponseUsageFormat, UsageRecord,
-    UsageRecordFailureLogContext, UsageSelectedProviderMissingPhase,
+    usage_logging_enabled_from_config_flag, usage_record_with_route_context,
+    usage_selected_provider_missing_log_message, ProxyServices, StreamUsageEventFilter,
+    TransformedResponseUsageFormat, UsageRecord, UsageRecordFailureLogContext,
+    UsageSelectedProviderMissingPhase,
 };
 #[cfg(test)]
 use crate::proxy_core_adapter::{
@@ -246,9 +247,7 @@ fn spawn_usage_record<S>(
     S: ProxyServices + Send + Sync + 'static,
 {
     tokio::spawn(async move {
-        if let Err(e) = services.usage_sink().record_usage(record).await {
-            log::warn!("{}", usage_record_failure_warning_message(failure_context, e));
-        }
+        record_usage_with_proxy_services_context(services.as_ref(), record, failure_context).await;
     });
 }
 
