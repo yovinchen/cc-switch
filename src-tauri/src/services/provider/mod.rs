@@ -1732,54 +1732,44 @@ impl ProviderService {
         app_type: AppType,
         id: &str,
     ) -> Result<(), AppError> {
-        match app_type {
-            AppType::OpenCode => {
-                let provider_category = state
-                    .db
-                    .get_provider_by_id(id, app_type.as_str())?
-                    .and_then(|p| p.category);
+        if matches!(app_type, AppType::OpenCode) {
+            let provider_category = state
+                .db
+                .get_provider_by_id(id, app_type.as_str())?
+                .and_then(|p| p.category);
 
-                if let Some(omo_variant) =
-                    provider_omo_variant_for_category(&app_type, provider_category.as_deref())
-                {
-                    let variant = Self::omo_variant_descriptor(omo_variant);
-                    state
-                        .db
-                        .clear_omo_provider_current(app_type.as_str(), id, variant.category)?;
-                    let still_has_current = state
-                        .db
-                        .get_current_omo_provider("opencode", variant.category)?
-                        .is_some();
-                    if still_has_current {
-                        crate::services::OmoService::write_config_to_file(state, variant)?;
-                    } else {
-                        crate::services::OmoService::delete_config_file(variant)?;
-                    }
+            if let Some(omo_variant) =
+                provider_omo_variant_for_category(&app_type, provider_category.as_deref())
+            {
+                let variant = Self::omo_variant_descriptor(omo_variant);
+                state
+                    .db
+                    .clear_omo_provider_current(app_type.as_str(), id, variant.category)?;
+                let still_has_current = state
+                    .db
+                    .get_current_omo_provider("opencode", variant.category)?
+                    .is_some();
+                if still_has_current {
+                    crate::services::OmoService::write_config_to_file(state, variant)?;
                 } else {
-                    Self::remove_provider_from_live_by_target(
-                        ProviderLiveRemovalTarget::OpenCode,
-                        id,
-                    )?;
+                    crate::services::OmoService::delete_config_file(variant)?;
                 }
+            } else {
+                let target = provider_live_removal_target(&app_type).ok_or_else(|| {
+                    AppError::Message(format!(
+                        "App {} does not support remove from live config",
+                        app_type.as_str()
+                    ))
+                })?;
+                Self::remove_provider_from_live_by_target(target, id)?;
             }
-            AppType::OpenClaw => {
-                Self::remove_provider_from_live_by_target(
-                    ProviderLiveRemovalTarget::OpenClaw,
-                    id,
-                )?;
-            }
-            AppType::Hermes => {
-                Self::remove_provider_from_live_by_target(
-                    ProviderLiveRemovalTarget::Hermes,
-                    id,
-                )?;
-            }
-            _ => {
-                return Err(AppError::Message(format!(
-                    "App {} does not support remove from live config",
-                    app_type.as_str()
-                )));
-            }
+        } else if let Some(target) = provider_live_removal_target(&app_type) {
+            Self::remove_provider_from_live_by_target(target, id)?;
+        } else {
+            return Err(AppError::Message(format!(
+                "App {} does not support remove from live config",
+                app_type.as_str()
+            )));
         }
 
         if let Some(mut provider) = state.db.get_provider_by_id(id, app_type.as_str())? {
