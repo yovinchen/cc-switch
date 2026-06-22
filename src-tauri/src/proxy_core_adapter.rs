@@ -5005,6 +5005,8 @@ pub(crate) fn should_reapply_codex_official_live_for_provider(provider: &Provide
 pub(crate) use crate::proxy_core::api::routing::{
     current_provider_db_fallback_required, current_provider_id_from_sources,
     current_provider_id_option_from_sources, failover_switch_pending_key,
+    legacy_provider_codex_catalog_models_from_settings, legacy_provider_config_text_from_settings,
+    legacy_provider_env_from_settings,
     normalize_channel_base_url, normalize_proxy_channel_key_patch_request_fields,
     normalize_proxy_channel_key_write_request_fields,
     normalize_proxy_channel_model_write_request_fields,
@@ -5015,68 +5017,13 @@ pub(crate) use crate::proxy_core::api::routing::{
     provider_selection_candidate_from_failover_lookup, restored_provider_switchback_decision,
     select_provider_ids, should_block_proxy_switch_to_provider_category,
     apply_route_candidate_circuit_availability, resolve_channel_route,
-    route_candidate_channel_circuit_keys,
+    route_candidate_channel_circuit_keys, stable_channel_id,
 };
 
-pub(crate) fn stable_channel_id(
-    app_type: &str,
-    provider_id: &str,
-    source_kind: &str,
-    base_url: &str,
-) -> String {
-    crate::proxy_core::api::routing::stable_channel_id(
-        app_type,
-        provider_id,
-        source_kind,
-        base_url,
-    )
-}
-
 #[cfg(test)]
-pub(crate) fn legacy_channel_priority(
-    provider_id: &str,
-    in_failover_queue: bool,
-    current_provider_id: Option<&str>,
-) -> i64 {
-    crate::proxy_core::api::routing::legacy_channel_priority(
-        provider_id,
-        in_failover_queue,
-        current_provider_id,
-    )
-}
-
-pub(crate) fn legacy_provider_config_text_from_settings(settings_config: &Value) -> Option<&str> {
-    crate::proxy_core::api::routing::legacy_provider_config_text_from_settings(settings_config)
-}
-
-pub(crate) fn legacy_provider_env_from_settings(
-    settings_config: &Value,
-) -> std::collections::BTreeMap<String, String> {
-    crate::proxy_core::api::routing::legacy_provider_env_from_settings(settings_config)
-}
-
-pub(crate) fn legacy_provider_codex_catalog_models_from_settings(
-    settings_config: &Value,
-) -> Vec<String> {
-    crate::proxy_core::api::routing::legacy_provider_codex_catalog_models_from_settings(
-        settings_config,
-    )
-}
-
-#[cfg(test)]
-pub(crate) fn infer_legacy_channel_interface(
-    app: Option<&ProxyCoreAppKind>,
-    provider: &LegacyProviderProjectionInput,
-) -> ProxyCoreInterfaceKind {
-    crate::proxy_core::api::routing::infer_legacy_channel_interface(app, provider)
-}
-
-#[cfg(test)]
-pub(crate) fn build_legacy_channel_projection(
-    input: LegacyChannelProjectionInput,
-) -> LegacyChannelProjection {
-    crate::proxy_core::api::routing::build_legacy_channel_projection(input)
-}
+pub(crate) use crate::proxy_core::api::routing::{
+    build_legacy_channel_projection, infer_legacy_channel_interface, legacy_channel_priority,
+};
 
 pub(crate) fn legacy_provider_projection_input(
     provider: &Provider,
