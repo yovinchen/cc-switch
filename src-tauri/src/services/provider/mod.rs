@@ -27,6 +27,7 @@ use crate::proxy_core_adapter::{
     provider_switch_backfill_source_id, provider_switch_dispatch,
     provider_switch_requires_takeover_lock,
     provider_switch_should_mark_live_config_managed, provider_takeover_live_sync_target,
+    proxy_hot_switch_should_sync_claude_live_while_proxy_active,
     proxy_live_config_owned_by_takeover, proxy_switch_should_hot_switch,
     should_block_proxy_switch_to_provider,
     should_reapply_codex_official_live_for_provider,
@@ -1623,7 +1624,10 @@ impl ProviderService {
                     }
                 }
 
-                if matches!(app_type, AppType::Claude)
+                if proxy_hot_switch_should_sync_claude_live_while_proxy_active(
+                    &app_type,
+                    should_sync_via_proxy,
+                )
                     && futures::executor::block_on(state.proxy_service.is_running())
                 {
                     futures::executor::block_on(
