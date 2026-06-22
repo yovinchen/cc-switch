@@ -7298,6 +7298,23 @@ pub(crate) fn usage_record_debug_log_message(record: &UsageRecord) -> String {
     crate::proxy_core::api::usage::usage_record_debug_log_message(record)
 }
 
+pub(crate) async fn record_usage_with_proxy_services(
+    services: &(dyn ProxyServices + Send + Sync),
+    record: UsageRecord,
+) {
+    log::debug!("{}", usage_record_debug_log_message(&record));
+
+    if let Err(error) = services.usage_sink().record_usage(record).await {
+        log::warn!(
+            "{}",
+            usage_record_failure_warning_message(
+                UsageRecordFailureLogContext::UsageRecord,
+                error,
+            )
+        );
+    }
+}
+
 pub(crate) fn usage_logging_enabled_from_config_flag(enable_logging: Option<bool>) -> bool {
     crate::proxy_core::api::usage::usage_logging_enabled_from_config_flag(enable_logging)
 }

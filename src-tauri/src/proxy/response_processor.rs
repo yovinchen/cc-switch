@@ -19,13 +19,12 @@ use crate::proxy_core_adapter::{
     decode_response_body, get_content_encoding, non_streaming_body_timeout_message,
     non_streaming_response_usage_record_from_response_context, NonStreamingResponseUsageContext,
     passthrough_bytes_proxy_response, passthrough_stream_proxy_response,
+    record_usage_with_proxy_services,
     response_headers_log_summary, response_usage_provider_facts_from_optional,
     streaming_response_usage_record_from_response_context, StreamingResponseUsageContext,
-    usage_logging_enabled_from_config_flag, usage_record_debug_log_message,
-    usage_record_failure_warning_message, ProxyServices, ResponseBodyDecodeLogLevel,
-    SseEventScanner, SsePassthroughEventKind, SseUsageAccumulator, StreamUsageEventFilter,
-    StreamingTimeoutConfig, StreamingTimeoutPhase, UsageParserConfig, UsageRecord,
-    UsageRecordFailureLogContext, UsageSelectedProviderMissingPhase,
+    usage_logging_enabled_from_config_flag, ResponseBodyDecodeLogLevel, SseEventScanner,
+    SsePassthroughEventKind, SseUsageAccumulator, StreamUsageEventFilter, StreamingTimeoutConfig,
+    StreamingTimeoutPhase, UsageParserConfig, UsageRecord, UsageSelectedProviderMissingPhase,
 };
 #[cfg(test)]
 use crate::proxy_core_adapter::{ProviderKind, TokenUsage};
@@ -379,26 +378,10 @@ pub(crate) fn usage_logging_enabled(state: &ProxyState) -> bool {
 }
 
 fn spawn_record_usage(state: &ProxyState, record: UsageRecord) {
-    let state = state.clone();
+    let services = state.proxy_core_services.clone();
     tokio::spawn(async move {
-        record_usage_internal(&state, record).await;
+        record_usage_with_proxy_services(services.as_ref(), record).await;
     });
-}
-
-async fn record_usage_internal(state: &ProxyState, record: UsageRecord) {
-    log::debug!("{}", usage_record_debug_log_message(&record));
-
-    if let Err(e) = state
-        .proxy_core_services
-        .usage_sink()
-        .record_usage(record)
-        .await
-    {
-        log::warn!(
-            "{}",
-            usage_record_failure_warning_message(UsageRecordFailureLogContext::UsageRecord, e)
-        );
-    }
 }
 
 /// 内部使用量记录函数
@@ -439,7 +422,7 @@ async fn log_usage_internal(
         session_id,
     );
 
-    record_usage_internal(state, record).await;
+    record_usage_with_proxy_services(state.proxy_core_services.as_ref(), record).await;
 }
 
 /// 创建带日志记录和超时控制的透传流
