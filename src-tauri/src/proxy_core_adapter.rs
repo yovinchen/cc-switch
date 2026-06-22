@@ -63,30 +63,10 @@ pub(crate) type ClaudeDesktopGatewayAuthError =
 pub(crate) type ProxyErrorStatusKind =
     crate::proxy_core::api::errors::ProxyErrorStatusKind;
 
-pub(crate) fn proxy_error_http_status_code(kind: ProxyErrorStatusKind) -> u16 {
-    crate::proxy_core::api::errors::proxy_error_http_status_code(kind)
-}
-
-pub(crate) fn proxy_error_response_body(message: impl Into<String>) -> Value {
-    crate::proxy_core::api::errors::proxy_error_response_body(message)
-}
-
-pub(crate) fn upstream_proxy_error_response_body(
-    upstream_status: u16,
-    upstream_body: Option<&str>,
-) -> Value {
-    crate::proxy_core::api::errors::upstream_proxy_error_response_body(
-        upstream_status,
-        upstream_body,
-    )
-}
-
-pub(crate) fn proxy_core_error_from_status_kind(
-    kind: ProxyErrorStatusKind,
-    message: impl Into<String>,
-) -> ProxyCoreError {
-    crate::proxy_core::api::errors::proxy_core_error_from_status_kind(kind, message)
-}
+pub(crate) use crate::proxy_core::api::errors::{
+    proxy_core_error_from_status_kind, proxy_error_http_status_code, proxy_error_response_body,
+    upstream_proxy_error_response_body,
+};
 
 pub(crate) fn error_message_with_context(
     context: &str,
@@ -95,33 +75,10 @@ pub(crate) fn error_message_with_context(
     crate::proxy_core::api::errors::error_message_with_context(context, &error.to_string())
 }
 
-pub(crate) fn selected_provider_missing_from_source_message(
-    provider_id: &str,
-    source: &str,
-) -> String {
-    crate::proxy_core::api::errors::selected_provider_missing_from_source_message(
-        provider_id,
-        source,
-    )
-}
-
-pub(crate) fn selected_provider_not_applied_message(app_type: &str) -> String {
-    crate::proxy_core::api::errors::selected_provider_not_applied_message(app_type)
-}
-
-pub(crate) fn selected_provider_display_name_for_error<'a>(
-    selected_provider_name: Option<&'a str>,
-    fallback_tag: &'a str,
-) -> &'a str {
-    crate::proxy_core::api::errors::selected_provider_display_name_for_error(
-        selected_provider_name,
-        fallback_tag,
-    )
-}
-
-pub(crate) fn unselected_provider_fallback_id(app_type: &str) -> String {
-    crate::proxy_core::api::errors::unselected_provider_fallback_id(app_type)
-}
+pub(crate) use crate::proxy_core::api::errors::{
+    selected_provider_display_name_for_error, selected_provider_missing_from_source_message,
+    selected_provider_not_applied_message, unselected_provider_fallback_id,
+};
 
 pub(crate) fn app_error(context: &str, error: AppError) -> ProxyCoreError {
     ProxyCoreError::Config(error_message_with_context(context, error))
@@ -168,17 +125,10 @@ pub(crate) fn provider_selection_failure_from_app_error(
 pub(crate) const SYSTEM_PROXY_ENV_KEYS: [&str; 6] =
     crate::proxy_core::api::transport::SYSTEM_PROXY_ENV_KEYS;
 
-pub(crate) fn mask_url_for_log(url: &str) -> String {
-    crate::proxy_core::api::security::mask_url_for_log(url)
-}
+pub(crate) use crate::proxy_core::api::security::mask_url_for_log;
 
 #[cfg(test)]
-pub(crate) fn proxy_url_points_to_loopback_port(value: &str, loopback_port: u16) -> bool {
-    crate::proxy_core::api::transport::proxy_url_points_to_loopback_port(
-        value,
-        loopback_port,
-    )
-}
+pub(crate) use crate::proxy_core::api::transport::proxy_url_points_to_loopback_port;
 
 pub(crate) fn proxy_values_point_to_loopback_port<I, V>(
     values: I,

@@ -453,6 +453,16 @@ const FORBIDDEN_PROXY_CORE_ADAPTER_SMALL_HELPER_FACADE_MARKERS: &[&str] = &[
     "fn streaming_body_first_chunk_read_error_message(",
     "fn is_official_codex_client_user_agent(",
     "fn build_gemini_native_url(",
+    "fn proxy_error_http_status_code(",
+    "fn proxy_error_response_body(",
+    "fn upstream_proxy_error_response_body(",
+    "fn proxy_core_error_from_status_kind(",
+    "fn selected_provider_missing_from_source_message(",
+    "fn selected_provider_not_applied_message(",
+    "fn selected_provider_display_name_for_error(",
+    "fn unselected_provider_fallback_id(",
+    "fn mask_url_for_log(",
+    "fn proxy_url_points_to_loopback_port(",
 ];
 const FORBIDDEN_CLAUDE_PROVIDER_ADAPTER_TRANSFORM_DECISION_MARKERS: &[&str] = &[
     "ProviderKind::GitHubCopilot",
