@@ -2537,9 +2537,9 @@ pub(crate) use crate::proxy_core::api::ports::{
     RouteResolver, UsageSink,
 };
 pub(crate) use crate::proxy_core::api::domain::channel_matches_query;
-pub(crate) use crate::proxy_core::api::routing::{
-    RoutePolicy, RouteRequest, DEFAULT_ROUTE_GROUP,
-};
+#[cfg(test)]
+pub(crate) use crate::proxy_core::api::routing::DEFAULT_ROUTE_GROUP;
+pub(crate) use crate::proxy_core::api::routing::{RoutePolicy, RouteRequest};
 pub(crate) use crate::proxy_core::api::transforms::{
     claude_api_format_from_metadata, CLAUDE_API_FORMAT_METADATA_KEY,
 };
@@ -6894,15 +6894,7 @@ pub(crate) fn forward_failure_kind_from_proxy_status(
     )
 }
 
-pub(crate) fn channel_route_candidate_from_selection(
-    selection: &RouteSelection,
-) -> ChannelRouteCandidate {
-    crate::proxy_core::api::routing::route_candidate_from_selection(
-        selection,
-        DEFAULT_ROUTE_GROUP,
-        "proxy_core",
-    )
-}
+pub(crate) use crate::proxy_core::api::routing::default_route_candidate_from_selection as channel_route_candidate_from_selection;
 
 #[cfg(test)]
 pub(crate) use crate::proxy_core::api::routing::resolved_channel_attempt_from_candidate;

@@ -417,6 +417,7 @@ const FORBIDDEN_PROXY_CORE_ADAPTER_SMALL_HELPER_FACADE_MARKERS: &[&str] = &[
     "fn route_plan_selections(",
     "fn route_selection_for_forward_result(",
     "fn resolve_channel_route(",
+    "fn channel_route_candidate_from_selection(",
     "fn resolved_channel_attempt_from_candidate(",
     "fn resolved_channel_attempt_from_selection(",
 ];

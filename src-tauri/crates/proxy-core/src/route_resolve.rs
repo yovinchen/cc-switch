@@ -11,6 +11,8 @@ use super::ports::{
 use serde_json::{Map, Value};
 use std::collections::HashSet;
 
+pub const PROXY_CORE_ROUTE_CANDIDATE_SOURCE: &str = "proxy_core";
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RouteResolveModelInput {
     pub public_model: String,
@@ -145,6 +147,16 @@ pub fn route_candidate_from_selection(
         weight: selection.channel.weight,
         source_kind: source_kind.into(),
     }
+}
+
+pub fn default_route_candidate_from_selection(
+    selection: &RouteSelection,
+) -> ChannelRouteCandidate {
+    route_candidate_from_selection(
+        selection,
+        DEFAULT_ROUTE_GROUP,
+        PROXY_CORE_ROUTE_CANDIDATE_SOURCE,
+    )
 }
 
 pub fn resolved_channel_attempt_from_candidate(
@@ -629,6 +641,13 @@ mod tests {
         assert_eq!(candidate.priority, 50);
         assert_eq!(candidate.weight, 20);
         assert_eq!(candidate.source_kind, "proxy_core");
+
+        let default_candidate = default_route_candidate_from_selection(&selection());
+        assert_eq!(default_candidate.route_group, DEFAULT_ROUTE_GROUP);
+        assert_eq!(
+            default_candidate.source_kind,
+            PROXY_CORE_ROUTE_CANDIDATE_SOURCE
+        );
     }
 
     #[test]
