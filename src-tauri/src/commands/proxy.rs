@@ -375,7 +375,7 @@ pub async fn reset_circuit_breaker(
                 queue
                     .into_iter()
                     .map(|item| FailoverQueuePosition::new(item.provider_id, item.sort_index))
-                    .collect(),
+                    .collect::<Vec<_>>(),
             );
 
             if decision.should_switch {

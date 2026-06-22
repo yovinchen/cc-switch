@@ -2336,6 +2336,7 @@ pub(crate) type ProxyChannelPatchRequest =
     crate::proxy_core::api::management::ProxyChannelPatchRequest;
 pub(crate) type ProxyChannelWriteRequest =
     crate::proxy_core::api::management::ProxyChannelWriteRequest;
+#[cfg(test)]
 pub(crate) type ProviderSelectionCandidate =
     crate::proxy_core::api::routing::ProviderSelectionCandidate;
 pub(crate) type ProviderFailoverCircuitLookup =
@@ -2346,12 +2347,8 @@ pub(crate) type ProviderSelectionInput =
     crate::proxy_core::api::routing::ProviderSelectionInput;
 pub(crate) type AutoFailoverToggleInput =
     crate::proxy_core::api::routing::AutoFailoverToggleInput;
-pub(crate) type AutoFailoverTogglePlan =
-    crate::proxy_core::api::routing::AutoFailoverTogglePlan;
 pub(crate) type FailoverQueuePosition =
     crate::proxy_core::api::routing::FailoverQueuePosition;
-pub(crate) type RestoredProviderSwitchbackDecision =
-    crate::proxy_core::api::routing::RestoredProviderSwitchbackDecision;
 pub(crate) type ProxyCoreError = crate::proxy_core::api::errors::ProxyCoreError;
 #[cfg(test)]
 pub(crate) type ProxyCoreEventType = crate::proxy_core::api::events::ProxyCoreEventType;
@@ -2458,9 +2455,12 @@ pub(crate) use crate::proxy_core::api::usage::{
 };
 pub(crate) use crate::proxy_core::api::auth::validate_managed_account_upstream_auth;
 pub(crate) use crate::proxy_core::api::config::{
-    app_proxy_config_defaults_for_app, cache_injection_log_message, normalize_thinking_type,
-    rectify_anthropic_request, rectify_thinking_budget, should_rectify_thinking_budget,
-    should_rectify_thinking_signature, thinking_optimization_log_message,
+    app_proxy_config_defaults_for_app, app_type_from_circuit_key, cache_injection_log_message,
+    channel_circuit_key, channel_circuit_key_prefix, circuit_breaker_config_from_app_config,
+    circuit_failure_threshold_from_app_config, normalize_thinking_type, provider_circuit_key,
+    provider_circuit_key_prefix, rectify_anthropic_request, rectify_thinking_budget,
+    should_rectify_thinking_budget, should_rectify_thinking_signature,
+    thinking_optimization_log_message,
 };
 use crate::proxy_core::api::events::{
     attempt_event_name, build_attempt_event_payload,
@@ -4219,24 +4219,11 @@ pub(crate) fn provider_should_preserve_reasoning_content_for_openai_chat(
     should_preserve_reasoning_content_for_openai_chat(&provider.settings_config, body)
 }
 
-pub(crate) fn circuit_breaker_config_from_app_config(
-    config: Option<&AppProxyConfig>,
-) -> CircuitBreakerConfig {
-    crate::proxy_core::api::config::circuit_breaker_config_from_app_config(config)
-}
-
 pub(crate) fn circuit_breaker_config_from_router_config_result(
     result: Result<AppProxyConfig, AppError>,
 ) -> CircuitBreakerConfig {
     let config = result.ok();
     circuit_breaker_config_from_app_config(config.as_ref())
-}
-
-pub(crate) fn circuit_failure_threshold_from_app_config(
-    config: Option<&AppProxyConfig>,
-    fallback: u32,
-) -> u32 {
-    crate::proxy_core::api::config::circuit_failure_threshold_from_app_config(config, fallback)
 }
 
 pub(crate) fn circuit_failure_threshold_from_router_config_result(
@@ -4245,26 +4232,6 @@ pub(crate) fn circuit_failure_threshold_from_router_config_result(
 ) -> u32 {
     let config = result.ok();
     circuit_failure_threshold_from_app_config(config.as_ref(), fallback)
-}
-
-pub(crate) fn provider_circuit_key(app_type: &str, provider_id: &str) -> String {
-    crate::proxy_core::api::config::provider_circuit_key(app_type, provider_id)
-}
-
-pub(crate) fn channel_circuit_key(app_type: &str, channel_id: &str) -> String {
-    crate::proxy_core::api::config::channel_circuit_key(app_type, channel_id)
-}
-
-pub(crate) fn provider_circuit_key_prefix(app_type: &str) -> String {
-    crate::proxy_core::api::config::provider_circuit_key_prefix(app_type)
-}
-
-pub(crate) fn channel_circuit_key_prefix(app_type: &str) -> String {
-    crate::proxy_core::api::config::channel_circuit_key_prefix(app_type)
-}
-
-pub(crate) fn app_type_from_circuit_key(key: &str) -> &str {
-    crate::proxy_core::api::config::app_type_from_circuit_key(key)
 }
 
 pub(crate) fn auto_failover_enabled_from_router_config_result(
@@ -4278,12 +4245,6 @@ pub(crate) fn auto_failover_enabled_from_router_config_result(
             false
         }
     }
-}
-
-pub(crate) fn select_provider_ids(
-    input: ProviderSelectionInput,
-) -> Result<Vec<String>, ProviderSelectionFailure> {
-    crate::proxy_core::api::routing::select_provider_ids(input)
 }
 
 pub(crate) fn select_current_provider_from_router_source(
@@ -4329,46 +4290,6 @@ where
         .collect())
 }
 
-pub(crate) fn plan_auto_failover_toggle(
-    input: AutoFailoverToggleInput,
-) -> Result<AutoFailoverTogglePlan, ProxyCoreError> {
-    crate::proxy_core::api::routing::plan_auto_failover_toggle(input)
-}
-
-pub(crate) fn failover_switch_pending_key(app_type: &str, provider_id: &str) -> String {
-    crate::proxy_core::api::routing::failover_switch_pending_key(app_type, provider_id)
-}
-
-pub(crate) fn restored_provider_switchback_decision(
-    proxy_takeover_active: bool,
-    auto_failover_enabled: bool,
-    proxy_service_running: bool,
-    restored_provider_id: &str,
-    current_provider_id: &str,
-    queue_positions: Vec<FailoverQueuePosition>,
-) -> RestoredProviderSwitchbackDecision {
-    crate::proxy_core::api::routing::restored_provider_switchback_decision(
-        proxy_takeover_active,
-        auto_failover_enabled,
-        proxy_service_running,
-        restored_provider_id,
-        current_provider_id,
-        queue_positions,
-    )
-}
-
-pub(crate) fn provider_failover_circuit_lookups(
-    app_type: &str,
-    ordered_provider_ids: Vec<String>,
-    configured_provider_ids: Vec<String>,
-) -> Vec<ProviderFailoverCircuitLookup> {
-    crate::proxy_core::api::routing::provider_failover_circuit_lookups(
-        app_type,
-        ordered_provider_ids,
-        configured_provider_ids,
-    )
-}
-
 pub(crate) fn provider_failover_circuit_lookups_from_router_sources(
     app_type: &str,
     queue: impl IntoIterator<Item = FailoverQueueItem>,
@@ -4376,38 +4297,8 @@ pub(crate) fn provider_failover_circuit_lookups_from_router_sources(
 ) -> Vec<ProviderFailoverCircuitLookup> {
     provider_failover_circuit_lookups(
         app_type,
-        queue.into_iter().map(|item| item.provider_id).collect(),
-        providers.keys().cloned().collect(),
-    )
-}
-
-pub(crate) fn provider_selection_candidate_from_failover_lookup(
-    lookup: ProviderFailoverCircuitLookup,
-    available: bool,
-) -> ProviderSelectionCandidate {
-    crate::proxy_core::api::routing::provider_selection_candidate_from_failover_lookup(
-        lookup,
-        available,
-    )
-}
-
-pub(crate) fn current_provider_id_from_sources(
-    settings_current_provider_id: Option<&str>,
-    db_current_provider_id: Option<&str>,
-) -> String {
-    crate::proxy_core::api::routing::current_provider_id_from_sources(
-        settings_current_provider_id,
-        db_current_provider_id,
-    )
-}
-
-pub(crate) fn current_provider_id_option_from_sources(
-    settings_current_provider_id: Option<&str>,
-    db_current_provider_id: Option<&str>,
-) -> Option<String> {
-    crate::proxy_core::api::routing::current_provider_id_option_from_sources(
-        settings_current_provider_id,
-        db_current_provider_id,
+        queue.into_iter().map(|item| item.provider_id).collect::<Vec<_>>(),
+        providers.keys().cloned().collect::<Vec<_>>(),
     )
 }
 
@@ -4429,24 +4320,6 @@ pub(crate) fn current_provider_id_from_router_sources(
     current_provider_id_option_from_sources(
         settings_current_provider_id.as_deref(),
         db_current_provider_id.as_deref(),
-    )
-}
-
-pub(crate) fn current_provider_db_fallback_required(
-    settings_current_provider_id: Option<&str>,
-) -> bool {
-    crate::proxy_core::api::routing::current_provider_db_fallback_required(
-        settings_current_provider_id,
-    )
-}
-
-pub(crate) fn should_block_proxy_switch_to_provider_category(
-    proxy_takeover_active: bool,
-    provider_category: Option<&str>,
-) -> bool {
-    crate::proxy_core::api::routing::should_block_proxy_switch_to_provider_category(
-        proxy_takeover_active,
-        provider_category,
     )
 }
 
@@ -5126,6 +4999,11 @@ pub(crate) fn should_reapply_codex_official_live_for_provider(provider: &Provide
 }
 
 pub(crate) use crate::proxy_core::api::routing::{
+    current_provider_db_fallback_required, current_provider_id_from_sources,
+    current_provider_id_option_from_sources, failover_switch_pending_key,
+    plan_auto_failover_toggle, provider_failover_circuit_lookups,
+    provider_selection_candidate_from_failover_lookup, restored_provider_switchback_decision,
+    select_provider_ids, should_block_proxy_switch_to_provider_category,
     apply_route_candidate_circuit_availability, resolve_channel_route,
     route_candidate_channel_circuit_keys,
 };
