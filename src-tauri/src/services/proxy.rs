@@ -4326,6 +4326,110 @@ model = "gpt-5.1-codex"
 
     #[tokio::test]
     #[serial]
+    async fn sync_codex_token_updates_auth_from_live() {
+        let _home = TempHome::new();
+        crate::settings::reload_settings().expect("reload settings");
+
+        let db = Arc::new(Database::memory().expect("init db"));
+        let service = ProxyService::new(db.clone());
+
+        let provider = Provider::with_id(
+            "codex-p1".to_string(),
+            "Codex P1".to_string(),
+            json!({
+                "auth": {
+                    "OPENAI_API_KEY": "stale"
+                },
+                "config": "model = \"gpt-5\""
+            }),
+            None,
+        );
+        db.save_provider("codex", &provider)
+            .expect("save provider");
+        db.set_current_provider("codex", "codex-p1")
+            .expect("set current provider");
+
+        let live_config = json!({
+            "auth": {
+                "OPENAI_API_KEY": " fresh-codex "
+            }
+        });
+
+        service
+            .sync_live_config_to_provider(&AppType::Codex, &live_config)
+            .await
+            .expect("sync");
+
+        let updated = db
+            .get_provider_by_id("codex-p1", "codex")
+            .expect("get provider")
+            .expect("provider exists");
+
+        assert_eq!(
+            updated
+                .settings_config
+                .get("auth")
+                .and_then(|value| value.get("OPENAI_API_KEY"))
+                .and_then(|value| value.as_str()),
+            Some("fresh-codex")
+        );
+        assert_eq!(
+            updated
+                .settings_config
+                .get("config")
+                .and_then(|value| value.as_str()),
+            Some("model = \"gpt-5\"")
+        );
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn sync_gemini_token_creates_env_for_null_settings() {
+        let _home = TempHome::new();
+        crate::settings::reload_settings().expect("reload settings");
+
+        let db = Arc::new(Database::memory().expect("init db"));
+        let service = ProxyService::new(db.clone());
+
+        let provider = Provider::with_id(
+            "gemini-p1".to_string(),
+            "Gemini P1".to_string(),
+            Value::Null,
+            None,
+        );
+        db.save_provider("gemini", &provider)
+            .expect("save provider");
+        db.set_current_provider("gemini", "gemini-p1")
+            .expect("set current provider");
+
+        let live_config = json!({
+            "env": {
+                "GEMINI_API_KEY": " fresh-gemini "
+            }
+        });
+
+        service
+            .sync_live_config_to_provider(&AppType::Gemini, &live_config)
+            .await
+            .expect("sync");
+
+        let updated = db
+            .get_provider_by_id("gemini-p1", "gemini")
+            .expect("get provider")
+            .expect("provider exists");
+
+        assert_eq!(
+            updated
+                .settings_config
+                .get("env")
+                .and_then(|value| value.get("GEMINI_API_KEY"))
+                .and_then(|value| value.as_str()),
+            Some("fresh-gemini")
+        );
+    }
+
+    #[tokio::test]
+    #[serial]
     async fn switch_proxy_target_updates_live_backup_when_taken_over() {
         let _home = TempHome::new();
         crate::settings::reload_settings().expect("reload settings");
