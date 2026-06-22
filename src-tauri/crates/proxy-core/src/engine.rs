@@ -780,13 +780,7 @@ mod tests {
     impl ProxyConfigSource for TestServices {
         fn list_apps<'a>(&'a self) -> BoxFuture<'a, ProxyCoreResult<Vec<AppKind>>> {
             let apps = self.apps.lock().expect("apps mutex").clone();
-            Box::pin(async move {
-                if apps.is_empty() {
-                    Ok(vec![AppKind::Claude, AppKind::Codex])
-                } else {
-                    Ok(apps)
-                }
-            })
+            Box::pin(async move { Ok(apps) })
         }
 
         fn load_global<'a>(&'a self) -> BoxFuture<'a, ProxyCoreResult<ProxyGlobalConfig>> {

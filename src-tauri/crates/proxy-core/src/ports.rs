@@ -33,16 +33,7 @@ pub trait ProxyServices: Send + Sync {
 }
 
 pub trait ProxyConfigSource: Send + Sync {
-    fn list_apps<'a>(&'a self) -> BoxFuture<'a, ProxyCoreResult<Vec<AppKind>>> {
-        Box::pin(async {
-            Ok(vec![
-                AppKind::Claude,
-                AppKind::ClaudeDesktop,
-                AppKind::Codex,
-                AppKind::Gemini,
-            ])
-        })
-    }
+    fn list_apps<'a>(&'a self) -> BoxFuture<'a, ProxyCoreResult<Vec<AppKind>>>;
 
     fn load_global<'a>(&'a self) -> BoxFuture<'a, ProxyCoreResult<ProxyGlobalConfig>>;
 

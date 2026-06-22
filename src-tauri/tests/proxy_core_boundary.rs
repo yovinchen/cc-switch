@@ -47,17 +47,23 @@ const FORBIDDEN_PROXY_CORE_HOST_USAGE_PROJECTION_MARKERS: &[&str] =
     &["missing_pricing_warning_message"];
 const FORBIDDEN_PROXY_CORE_HOST_APP_SUMMARY_PROJECTION_MARKERS: &[&str] =
     &["AppSummaryConfig::new("];
+const FORBIDDEN_PROXY_CORE_CONFIG_SOURCE_APP_CATALOG_MARKERS: &[&str] = &[
+    "AppKind::Claude",
+    "AppKind::ClaudeDesktop",
+    "AppKind::Codex",
+    "AppKind::Gemini",
+    "Ok(vec![",
+];
 const FORBIDDEN_PROVIDER_ROUTER_CHANNEL_ROUTE_SOURCE_MARKERS: &[&str] = &[
     "channel_route_source_for_materialized_records(",
     "channel_route_should_load_legacy_projection(",
 ];
-const FORBIDDEN_PROVIDER_ROUTER_SELECTION_MARKERS: &[&str] =
-    &[
-        "ProviderSelectionInput::",
-        "select_provider_ids(",
-        "provider_selection_candidate_from_failover_lookup(",
-        "provider_failover_circuit_lookups(",
-    ];
+const FORBIDDEN_PROVIDER_ROUTER_SELECTION_MARKERS: &[&str] = &[
+    "ProviderSelectionInput::",
+    "select_provider_ids(",
+    "provider_selection_candidate_from_failover_lookup(",
+    "provider_failover_circuit_lookups(",
+];
 const FORBIDDEN_PROVIDER_ROUTER_FAILOVER_CONFIG_MARKERS: &[&str] =
     &[".auto_failover_enabled", "默认禁用故障转移"];
 const FORBIDDEN_PROVIDER_ROUTER_CIRCUIT_CONFIG_MARKERS: &[&str] = &[
@@ -1264,6 +1270,38 @@ fn production_proxy_core_host_projects_app_summary_through_adapter() {
     assert!(
         violations.is_empty(),
         "production proxy_core_host must build app summary config through proxy_core_adapter helpers:\n{}",
+        violations.join("\n")
+    );
+}
+
+#[test]
+fn proxy_core_config_source_requires_host_app_catalog() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let path = manifest_dir.join("crates/proxy-core/src/ports.rs");
+    let source = fs::read_to_string(&path).expect("read proxy-core ports.rs");
+    let trait_source = function_slice(
+        &source,
+        "pub trait ProxyConfigSource",
+        "pub trait ProviderSource",
+    );
+
+    let mut violations = Vec::new();
+    for (line_index, line) in production_lines(trait_source) {
+        let code = line.split("//").next().unwrap_or_default();
+        for marker in FORBIDDEN_PROXY_CORE_CONFIG_SOURCE_APP_CATALOG_MARKERS {
+            if code.contains(marker) {
+                violations.push(format!(
+                    "crates/proxy-core/src/ports.rs ProxyConfigSource:{} contains host app catalog marker `{}`",
+                    line_index + 1,
+                    marker
+                ));
+            }
+        }
+    }
+
+    assert!(
+        violations.is_empty(),
+        "proxy-core config source must require host-provided app catalog:\n{}",
         violations.join("\n")
     );
 }

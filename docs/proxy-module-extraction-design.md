@@ -965,6 +965,7 @@
 本轮继续把 ProviderRouter 的 dry-run route circuit availability 到 rejected:circuit_open response mutation 收敛到 adapter，router 只负责按候选 circuit key 查询 breaker 可用性。
 本轮继续把 ProviderRouter 的 failover lookup availability 到 selection candidate 的投影收敛到 adapter，router 只负责读取 failover queue/provider map 并查询 breaker 可用性。
 本轮继续把 ProviderRouter 的 failover queue/provider map 到 provider circuit lookup 的投影收敛到 adapter，router 不再展开 queue provider_id 或 provider map keys。
+本轮继续把固定 app catalog 从 proxy-core 默认端口移出，`ProxyConfigSource::list_apps` 改为宿主必填能力，CC Switch 的 `AppType::all()` 只保留在 host adapter。
 
 当前原则：核心 crate 可以新增端口和领域字段，但不得引入 `tauri`、`Database`、settings、commands、services 等宿主依赖；现有 runtime 行为必须继续通过 targeted tests 证明不回归。
 
@@ -1734,7 +1735,7 @@ auto failover 开关启用的计划也已收敛：`plan_auto_failover_toggle` �
 
 熔断 reset 后的恢复切回也已进一步收敛：`restored_provider_switchback_decision` 接收 failover queue position facts，返回是否切回以及日志所需的 restored/current sort_index；`reset_circuit_breaker` 只负责读取 DB 队列、查询 provider 名称并调用 `FailoverSwitchManager` 执行宿主副作用。
 
-管理 API 查询类入口已基本收敛到 `ProxyEngine`：`list_proxy_providers`、`list_proxy_channels` 的 route-aware 分支、`list_proxy_groups` 和 `test_proxy_channel` 都只保留 HTTP path/query/body 提取与错误映射；下一步应继续减少 host runtime 对固定 app catalog、Tauri runtime smoke 覆盖和外部集成契约的隐性依赖。
+管理 API 查询类入口已基本收敛到 `ProxyEngine`：`list_proxy_providers`、`list_proxy_channels` 的 route-aware 分支、`list_proxy_groups` 和 `test_proxy_channel` 都只保留 HTTP path/query/body 提取与错误映射；固定 app catalog 已从 `proxy-core` 的端口默认实现移出，改由 `CcSwitchConfigSource` 显式提供；下一步应继续减少 host runtime 对 Tauri runtime smoke 覆盖和外部集成契约的隐性依赖。
 
 CC Switch 桌面宿主在 `CcSwitchModelCatalogProvider::load_client_catalog` 中实现 Codex `model_catalog_json` 文件读取和 stale guard；外部宿主可以返回自己的模型目录。后续如需让 Codex `/v1/models` 完全使用 route-visible 目录，应在 core 内生成 Codex 兼容 raw catalog，而不是让 handler 重新拼装。
 
