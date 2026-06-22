@@ -2759,6 +2759,20 @@ pub(crate) fn server_stopped_event_message() -> ProxyEventBusMessage {
     }
 }
 
+pub(crate) fn emit_proxy_server_started_event_source(
+    events: &ProxyEventBus,
+    address: &str,
+    port: u16,
+) {
+    let message = server_started_event_message(address, port);
+    events.emit(message.event_name, message.payload);
+}
+
+pub(crate) fn emit_proxy_server_stopped_event_source(events: &ProxyEventBus) {
+    let message = server_stopped_event_message();
+    events.emit(message.event_name, message.payload);
+}
+
 pub(crate) fn provider_switched_event_message(
     app_type: &str,
     provider_id: &str,
