@@ -6344,12 +6344,7 @@ pub(crate) fn anthropic_redacted_thinking_placeholder() -> &'static str {
 pub(crate) type ModelMappingProjection =
     crate::proxy_core::api::model_catalog::ModelMappingProjection;
 
-pub(crate) fn apply_provider_model_mapping(
-    body: Value,
-    provider_settings: &Value,
-) -> ModelMappingProjection {
-    crate::proxy_core::api::model_catalog::apply_provider_model_mapping(body, provider_settings)
-}
+pub(crate) use crate::proxy_core::api::model_catalog::apply_provider_model_mapping;
 
 pub(crate) fn apply_provider_model_mapping_from_provider(
     body: Value,
@@ -8040,21 +8035,9 @@ pub(crate) async fn record_usage_in_db_source(
         .map_err(|error| usage_error("record usage", error))
 }
 
-pub(crate) fn claude_takeover_client_model_for_upstream(
-    takeover_model: &str,
-    supports_one_m: bool,
-    upstream_model: &str,
-) -> String {
-    crate::proxy_core::api::model_catalog::claude_takeover_client_model_for_upstream(
-        takeover_model,
-        supports_one_m,
-        upstream_model,
-    )
-}
-
-pub(crate) fn claude_takeover_default_display_name(upstream_model: &str) -> String {
-    crate::proxy_core::api::model_catalog::claude_takeover_default_display_name(upstream_model)
-}
+pub(crate) use crate::proxy_core::api::model_catalog::{
+    claude_takeover_client_model_for_upstream, claude_takeover_default_display_name,
+};
 
 /// 代理接管模式下需要从 Claude Live 配置中移除的"模型覆盖"字段。
 ///
