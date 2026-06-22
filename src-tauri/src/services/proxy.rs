@@ -27,8 +27,9 @@ use crate::proxy_core_adapter::{
     remove_codex_takeover_auth_placeholder_if_present,
     remove_codex_takeover_config_placeholders_if_present,
     remove_gemini_takeover_env_fields_if_present, should_block_proxy_switch_to_provider_category,
-    CircuitBreakerConfig, CodexTakeoverAuthPolicy, LiveTokenProviderSettingsIssue, ProxyConfig,
-    ProxyRuntimeStatus, ProxyServerInfo, ProxyTakeoverStatus, PROXY_OFFICIAL_WARNING_EVENT,
+    should_emit_proxy_official_warning_for_provider, CircuitBreakerConfig, CodexTakeoverAuthPolicy,
+    LiveTokenProviderSettingsIssue, ProxyConfig, ProxyRuntimeStatus, ProxyServerInfo,
+    ProxyTakeoverStatus, PROXY_OFFICIAL_WARNING_EVENT,
 };
 use crate::services::provider::{
     build_effective_settings_with_common_config, write_live_with_common_config,
@@ -465,7 +466,7 @@ impl ProxyService {
                 crate::settings::get_effective_current_provider(&self.db, &app)
             {
                 if let Ok(Some(provider)) = self.db.get_provider_by_id(&current_id, app_type_str) {
-                    if provider.category.as_deref() == Some("official") {
+                    if should_emit_proxy_official_warning_for_provider(&provider) {
                         if let Some(handle) = self.app_handle.read().await.as_ref() {
                             let _ = handle.emit(
                                 PROXY_OFFICIAL_WARNING_EVENT,

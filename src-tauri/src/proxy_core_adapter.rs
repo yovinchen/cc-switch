@@ -2547,6 +2547,10 @@ pub(crate) fn should_block_proxy_switch_to_provider_category(
     )
 }
 
+pub(crate) fn should_emit_proxy_official_warning_for_provider(provider: &Provider) -> bool {
+    provider.category.as_deref() == Some("official")
+}
+
 pub(crate) fn should_attempt_restored_provider_switchback(
     proxy_takeover_active: bool,
     auto_failover_enabled: bool,
@@ -6386,6 +6390,18 @@ mod tests {
                 "providerName": "Official Claude",
             })
         );
+        let mut provider = Provider::with_id(
+            "official-codex".to_string(),
+            "Official Codex".to_string(),
+            json!({}),
+            None,
+        );
+        provider.category = Some("official".to_string());
+        assert!(should_emit_proxy_official_warning_for_provider(&provider));
+        provider.category = Some("custom".to_string());
+        assert!(!should_emit_proxy_official_warning_for_provider(&provider));
+        provider.category = None;
+        assert!(!should_emit_proxy_official_warning_for_provider(&provider));
         assert_eq!(
             build_provider_switched_event_payload("claude", "provider-1", "failover"),
             json!({
