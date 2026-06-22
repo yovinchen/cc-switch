@@ -3453,6 +3453,23 @@ pub(crate) fn forwarder_runtime_config_from_sources(
     }
 }
 
+pub(crate) async fn forwarder_runtime_config_from_db_sources(
+    db: &Database,
+    app_type: &AppType,
+) -> ProxyCoreResult<ForwarderRuntimeConfig> {
+    let app_config = db
+        .get_proxy_config_for_app(app_type.as_str())
+        .await
+        .map_err(|error| app_error("load app proxy config", error))?;
+
+    Ok(forwarder_runtime_config_from_sources(
+        &app_config,
+        db.get_rectifier_config().unwrap_or_default(),
+        db.get_optimizer_config().unwrap_or_default(),
+        db.get_copilot_optimizer_config().unwrap_or_default(),
+    ))
+}
+
 pub(crate) fn extract_gemini_model_from_path(endpoint: &str) -> Option<String> {
     crate::proxy_core::api::transport::extract_gemini_model_from_path(endpoint)
 }

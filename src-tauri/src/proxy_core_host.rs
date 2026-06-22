@@ -49,7 +49,7 @@ use crate::proxy_core_adapter::{
     channel_specs_from_source,
     client_model_catalog_from_source,
     forward_current_provider_id_from_db_sources,
-    forwarder_runtime_config_from_sources,
+    forwarder_runtime_config_from_db_sources,
     forward_runtime_request_from_proxy_request,
     forward_result_to_proxy_result,
     forwarding_runtime_unavailable_error,
@@ -896,17 +896,8 @@ impl CcSwitchProxyRuntime {
     ) -> ProxyCoreResult<ProxyResult> {
         let forward_request = forward_runtime_request_from_proxy_request(request)?;
         let app_type = forward_request.app_type;
-        let app_config = self
-            .db
-            .get_proxy_config_for_app(app_type.as_str())
-            .await
-            .map_err(|error| app_error("load app proxy config", error))?;
-        let forwarder_config = forwarder_runtime_config_from_sources(
-            &app_config,
-            self.db.get_rectifier_config().unwrap_or_default(),
-            self.db.get_optimizer_config().unwrap_or_default(),
-            self.db.get_copilot_optimizer_config().unwrap_or_default(),
-        );
+        let forwarder_config =
+            forwarder_runtime_config_from_db_sources(&self.db, &app_type).await?;
         let current_provider_id = forward_current_provider_id_from_db_sources(&self.db, &app_type);
         let all_providers = self
             .db

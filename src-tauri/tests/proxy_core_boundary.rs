@@ -57,6 +57,13 @@ const FORBIDDEN_PROXY_CORE_HOST_FORWARD_CURRENT_PROVIDER_MARKERS: &[&str] = &[
     "forward_current_provider_id_from_source(",
     ".get_current_provider(",
 ];
+const FORBIDDEN_PROXY_CORE_HOST_FORWARD_CONFIG_SOURCE_MARKERS: &[&str] = &[
+    "get_proxy_config_for_app(",
+    "get_rectifier_config(",
+    "get_optimizer_config(",
+    "get_copilot_optimizer_config(",
+    "forwarder_runtime_config_from_sources(",
+];
 const FORBIDDEN_PROXY_CORE_CONFIG_SOURCE_APP_CATALOG_MARKERS: &[&str] = &[
     "AppKind::Claude",
     "AppKind::ClaudeDesktop",
@@ -1341,6 +1348,38 @@ fn production_proxy_core_host_delegates_forward_current_provider_source_to_adapt
     assert!(
         violations.is_empty(),
         "production proxy_core_host must delegate forward current-provider source selection to proxy_core_adapter:\n{}",
+        violations.join("\n")
+    );
+}
+
+#[test]
+fn production_proxy_core_host_delegates_forward_runtime_config_source_to_adapter() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let path = manifest_dir.join("src/proxy_core_host.rs");
+    let source = fs::read_to_string(&path).expect("read proxy_core_host.rs");
+    let forward_source = function_slice(
+        &source,
+        "    async fn forward(",
+        "        let current_provider_id = forward_current_provider_id_from_db_sources(",
+    );
+
+    let mut violations = Vec::new();
+    for (line_index, line) in production_lines(forward_source) {
+        let code = line.split("//").next().unwrap_or_default();
+        for marker in FORBIDDEN_PROXY_CORE_HOST_FORWARD_CONFIG_SOURCE_MARKERS {
+            if code.contains(marker) {
+                violations.push(format!(
+                    "src/proxy_core_host.rs CcSwitchProxyRuntime::forward:{} contains forward runtime config source marker `{}`",
+                    line_index + 1,
+                    marker
+                ));
+            }
+        }
+    }
+
+    assert!(
+        violations.is_empty(),
+        "production proxy_core_host must delegate forward runtime config source selection to proxy_core_adapter:\n{}",
         violations.join("\n")
     );
 }
