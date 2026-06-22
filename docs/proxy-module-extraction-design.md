@@ -902,6 +902,7 @@
 本轮继续把 `AppProxyConfig` 到 forwarder timeout/retry 参数的投影收敛到 adapter，host 不再直接展开 response runtime policy。
 本轮还把 forwarder runtime 的 app config 与 rectifier/optimizer 配置 DB 读取及组合入口收敛到 adapter，host forward runtime 只保留 `RequestForwarder` 运行态装配。
 本轮继续把 forward runtime 的 provider DB 读取、plan provider 过滤、required attempts 构造与 auth profile DB 注入统一收敛到 adapter wrapper，host forward runtime 只接收最终 attempts。
+本轮继续把 `RequestForwarder::new_preplanned` 构造、预规划 attempts 执行和 forward error 到 core error 的映射收敛到 adapter runtime launcher，host forward runtime 只传入资源包和已解析 runtime facts。
 本轮还把 ConfigSource 的 app 配置 wrapper 收敛到 adapter，host 不再显式读取 settings current-provider 后再拼 `ProxyAppConfig`。
 本轮继续把 channel-key DB record 到 runtime key value 的字段投影收敛到 adapter，host auth-profile 路径不再直接查询或投影 channel-key。
 本轮也把 management handler 中 provider 到 core spec 的直接 trait 调用收敛为 adapter helper，provider list/current route handler 不再暴露投影细节。

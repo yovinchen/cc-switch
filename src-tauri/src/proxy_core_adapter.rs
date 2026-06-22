@@ -9,9 +9,15 @@ use crate::openclaw_config::OpenClawProviderConfig;
 use crate::provider::{
     OpenCodeProviderConfig, Provider, ProviderMeta, ProviderTestConfig, UsageScript,
 };
+use crate::proxy::error_mapper::forward_error_to_core_error;
+use crate::proxy::events::ProxyEventBus;
+use crate::proxy::failover_switch::FailoverSwitchManager;
 use crate::proxy::hyper_client::ProxyResponse;
+use crate::proxy::provider_router::ProviderRouter;
+use crate::proxy::providers::codex_chat_history::CodexChatHistoryStore;
 use crate::proxy::route_attempt::ForwardAttempt;
 use crate::proxy::usage::RequestLog;
+use crate::proxy::RequestForwarder;
 use crate::proxy_core::api::domain::{
     ChannelSpecInput, ModelRoute, ModelRouteInput, ProviderMetadata, ProviderMetadataInput,
 };
@@ -36,6 +42,7 @@ use rust_decimal::Decimal;
 use serde_json::{Map, Value, json};
 use std::collections::HashMap;
 use std::sync::Arc;
+use tokio::sync::RwLock;
 use uuid::Uuid;
 
 pub(crate) fn synthesize_gemini_tool_call_id_with_uuid() -> String {
@@ -5759,6 +5766,76 @@ pub(crate) fn required_forward_attempts_from_db_sources(
     let mut attempts = required_forward_attempts_from_plan(app_type, &providers, plan)?;
     apply_channel_auth_profile_providers_from_db(db, app_type, &all_providers, &mut attempts)?;
     Ok(attempts)
+}
+
+#[derive(Clone)]
+pub(crate) struct ForwarderRuntimeHostResources {
+    pub(crate) provider_router: Arc<ProviderRouter>,
+    pub(crate) status: Arc<RwLock<ProxyRuntimeStatus>>,
+    pub(crate) current_providers: Arc<RwLock<HashMap<String, CurrentRouteTarget>>>,
+    pub(crate) events: Arc<ProxyEventBus>,
+    pub(crate) gemini_shadow: Arc<GeminiShadowStore>,
+    pub(crate) codex_chat_history: Arc<CodexChatHistoryStore>,
+    pub(crate) failover_manager: Arc<FailoverSwitchManager>,
+    pub(crate) app_handle: Option<tauri::AppHandle>,
+}
+
+pub(crate) async fn forward_with_preplanned_host_runtime(
+    resources: ForwarderRuntimeHostResources,
+    request: ForwardRuntimeRequest,
+    plan: RoutePlan,
+    forwarder_config: ForwarderRuntimeConfig,
+    current_provider_id: String,
+    attempts: Vec<ForwardAttempt>,
+) -> ProxyCoreResult<ProxyResult> {
+    let ForwarderRuntimeHostResources {
+        provider_router,
+        status,
+        current_providers,
+        events,
+        gemini_shadow,
+        codex_chat_history,
+        failover_manager,
+        app_handle,
+    } = resources;
+    let ForwardRuntimeRequest {
+        app_type,
+        method,
+        endpoint,
+        headers,
+        extensions,
+        body,
+        session_result,
+    } = request;
+    let forwarder_options = forwarder_config.options;
+    let forwarder = RequestForwarder::new_preplanned(
+        provider_router,
+        forwarder_options.non_streaming_timeout,
+        status,
+        current_providers,
+        events,
+        gemini_shadow,
+        codex_chat_history,
+        failover_manager,
+        app_handle,
+        current_provider_id,
+        session_result.session_id,
+        session_result.client_provided,
+        forwarder_options.streaming_first_byte_timeout,
+        forwarder_options.streaming_idle_timeout,
+        forwarder_config.rectifier,
+        forwarder_config.optimizer,
+        forwarder_config.copilot_optimizer,
+        forwarder_options.max_retries,
+    );
+
+    let result = forwarder
+        .forward_with_preplanned_attempts(
+            &app_type, method, &endpoint, body, headers, extensions, attempts,
+        )
+        .await
+        .map_err(forward_error_to_core_error)?;
+    Ok(forward_result_to_proxy_result(result, plan))
 }
 
 pub(crate) fn forwarding_requires_runtime_error_message() -> &'static str {

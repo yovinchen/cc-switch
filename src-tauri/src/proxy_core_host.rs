@@ -1,7 +1,6 @@
 use crate::database::Database;
 #[cfg(test)]
 use crate::error::AppError;
-use crate::proxy::error_mapper::forward_error_to_core_error;
 use crate::proxy::events::ProxyEventBus;
 use crate::proxy::failover_switch::FailoverSwitchManager;
 #[cfg(test)]
@@ -9,23 +8,21 @@ use crate::proxy::hyper_client::ProxyResponse;
 use crate::proxy::provider_router::ProviderRouter;
 use crate::proxy::providers::codex_chat_history::CodexChatHistoryStore;
 use crate::proxy::usage::UsageLogger;
-use crate::proxy::RequestForwarder;
-use crate::services::stream_check::StreamCheckService;
 use crate::proxy_core_adapter::{
     AppKind, AppSummaryConfig, AuthInfo, AuthProfileRef, ChannelAttemptResult,
-    ChannelQuery, ClaudeDesktopModelRouteInput,
-    ChannelMigrationMaterializeInput, ChannelMigrationPreviewInput, ChannelRecord,
+    AuthProvider, ChannelHealthReset, ChannelHealthStore, ChannelKeyRecord, ChannelModelRecord,
+    ChannelMigrationMaterializeInput, ChannelMigrationPreviewInput, ChannelQuery, ChannelRecord,
     ChannelReachabilityProbe, ChannelReachabilityResult, ChannelRouteSource, ChannelSource,
-    ChannelSpec, AuthProvider, ChannelHealthReset,
-    ChannelHealthStore, ChannelKeyRecord, ChannelModelRecord, CurrentRouteTarget, ForwardPipeline,
-    GeminiShadowStore, ModelCatalog, ModelCatalogProvider, ProviderSource, ProviderSpec,
-    ProxyAppConfig, ProxyConfigSource, ProxyCoreEvent,
-    ProxyChannelKeyPatchRequest, ProxyChannelKeyWriteRequest, ProxyChannelModelsReplaceRequest,
-    ProxyChannelPatchRequest, ProxyChannelWriteRequest, ProxyCoreResult, ProxyEventSink, ProxyGlobalConfig, ProxyRequest,
-    ProxyResult, ProxyRuntimeConfig, ProxyRuntimeStatus, ProxyServices, RoutePlan, RoutePolicy,
-    RoutePolicySource, RouteRequest, RouteResolveRequest, RouteResolveResponse, RouteResolver,
-    ChannelTestProbeRequest, UsageRecord, UsageSink,
+    ChannelSpec, ChannelTestProbeRequest, ClaudeDesktopModelRouteInput, CurrentRouteTarget,
+    ForwardPipeline, ForwarderRuntimeHostResources, GeminiShadowStore, ModelCatalog,
+    ModelCatalogProvider, ProviderSource, ProviderSpec, ProxyAppConfig, ProxyChannelKeyPatchRequest,
+    ProxyChannelKeyWriteRequest, ProxyChannelModelsReplaceRequest, ProxyChannelPatchRequest,
+    ProxyChannelWriteRequest, ProxyConfigSource, ProxyCoreEvent, ProxyCoreResult, ProxyEventSink,
+    ProxyGlobalConfig, ProxyRequest, ProxyResult, ProxyRuntimeConfig, ProxyRuntimeStatus,
+    ProxyServices, RoutePlan, RoutePolicy, RoutePolicySource, RouteRequest, RouteResolveRequest,
+    RouteResolveResponse, RouteResolver, UsageRecord, UsageSink,
 };
+use crate::services::stream_check::StreamCheckService;
 use crate::proxy_core_adapter::{
     app_error,
     app_summary_config_from_config_source,
@@ -50,7 +47,7 @@ use crate::proxy_core_adapter::{
     forward_current_provider_id_from_db_sources,
     forwarder_runtime_config_from_db_sources,
     forward_runtime_request_from_proxy_request,
-    forward_result_to_proxy_result,
+    forward_with_preplanned_host_runtime,
     forwarding_runtime_unavailable_error,
     log_usage_request_projection_warnings,
     provider_spec_from_source, proxy_channel_record_to_core, proxy_channel_records_to_core,
@@ -71,7 +68,7 @@ use crate::proxy_core_adapter::{
 #[cfg(test)]
 use crate::proxy_core_adapter::{
     apply_channel_auth_profile_providers_from_db, forward_attempts_from_plan,
-    host_providers_for_plan,
+    forward_result_to_proxy_result, host_providers_for_plan,
 };
 use futures::future::BoxFuture;
 #[cfg(test)]
@@ -890,54 +887,40 @@ impl ForwardPipeline for CcSwitchForwardPipeline {
 }
 
 impl CcSwitchProxyRuntime {
+    fn forwarder_runtime_host_resources(&self) -> ForwarderRuntimeHostResources {
+        ForwarderRuntimeHostResources {
+            provider_router: self.provider_router.clone(),
+            status: self.status.clone(),
+            current_providers: self.current_providers.clone(),
+            events: self.events.clone(),
+            gemini_shadow: self.gemini_shadow.clone(),
+            codex_chat_history: self.codex_chat_history.clone(),
+            failover_manager: self.failover_manager.clone(),
+            app_handle: self.app_handle.clone(),
+        }
+    }
+
     async fn forward(
         &self,
         request: ProxyRequest,
         plan: RoutePlan,
     ) -> ProxyCoreResult<ProxyResult> {
         let forward_request = forward_runtime_request_from_proxy_request(request)?;
-        let app_type = forward_request.app_type;
+        let app_type = forward_request.app_type.clone();
         let forwarder_config =
             forwarder_runtime_config_from_db_sources(&self.db, &app_type).await?;
         let current_provider_id = forward_current_provider_id_from_db_sources(&self.db, &app_type);
         let attempts = required_forward_attempts_from_db_sources(&self.db, &app_type, &plan)?;
 
-        let forwarder_options = forwarder_config.options;
-
-        let forwarder = RequestForwarder::new_preplanned(
-            self.provider_router.clone(),
-            forwarder_options.non_streaming_timeout,
-            self.status.clone(),
-            self.current_providers.clone(),
-            self.events.clone(),
-            self.gemini_shadow.clone(),
-            self.codex_chat_history.clone(),
-            self.failover_manager.clone(),
-            self.app_handle.clone(),
+        forward_with_preplanned_host_runtime(
+            self.forwarder_runtime_host_resources(),
+            forward_request,
+            plan,
+            forwarder_config,
             current_provider_id,
-            forward_request.session_result.session_id,
-            forward_request.session_result.client_provided,
-            forwarder_options.streaming_first_byte_timeout,
-            forwarder_options.streaming_idle_timeout,
-            forwarder_config.rectifier,
-            forwarder_config.optimizer,
-            forwarder_config.copilot_optimizer,
-            forwarder_options.max_retries,
-        );
-
-        let result = forwarder
-            .forward_with_preplanned_attempts(
-                &app_type,
-                forward_request.method,
-                &forward_request.endpoint,
-                forward_request.body,
-                forward_request.headers,
-                forward_request.extensions,
-                attempts,
-            )
-            .await
-            .map_err(forward_error_to_core_error)?;
-        Ok(forward_result_to_proxy_result(result, plan))
+            attempts,
+        )
+        .await
     }
 }
 

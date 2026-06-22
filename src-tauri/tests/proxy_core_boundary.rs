@@ -70,6 +70,11 @@ const FORBIDDEN_PROXY_CORE_HOST_FORWARD_ATTEMPT_SOURCE_MARKERS: &[&str] = &[
     "required_forward_attempts_from_plan(",
     "apply_channel_auth_profile_providers_from_db(",
 ];
+const FORBIDDEN_PROXY_CORE_HOST_FORWARDER_LAUNCH_MARKERS: &[&str] = &[
+    "RequestForwarder::new_preplanned(",
+    ".forward_with_preplanned_attempts(",
+    "forward_error_to_core_error(",
+];
 const FORBIDDEN_PROXY_CORE_CONFIG_SOURCE_APP_CATALOG_MARKERS: &[&str] = &[
     "AppKind::Claude",
     "AppKind::ClaudeDesktop",
@@ -1334,7 +1339,7 @@ fn production_proxy_core_host_delegates_forward_current_provider_source_to_adapt
     let forward_source = function_slice(
         &source,
         "    async fn forward(",
-        "        let forwarder = RequestForwarder::new_preplanned(",
+        "        let attempts = required_forward_attempts_from_db_sources(",
     );
 
     let mut violations = Vec::new();
@@ -1398,7 +1403,7 @@ fn production_proxy_core_host_delegates_forward_attempt_source_to_adapter() {
     let forward_source = function_slice(
         &source,
         "    async fn forward(",
-        "        let forwarder_options = forwarder_config.options;",
+        "        forward_with_preplanned_host_runtime(",
     );
 
     let mut violations = Vec::new();
@@ -1418,6 +1423,33 @@ fn production_proxy_core_host_delegates_forward_attempt_source_to_adapter() {
     assert!(
         violations.is_empty(),
         "production proxy_core_host must delegate forward attempt source selection to proxy_core_adapter:\n{}",
+        violations.join("\n")
+    );
+}
+
+#[test]
+fn production_proxy_core_host_delegates_forwarder_launch_to_adapter() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let path = manifest_dir.join("src/proxy_core_host.rs");
+    let source = fs::read_to_string(&path).expect("read proxy_core_host.rs");
+
+    let mut violations = Vec::new();
+    for (line_index, line) in production_lines(&source) {
+        let code = line.split("//").next().unwrap_or_default();
+        for marker in FORBIDDEN_PROXY_CORE_HOST_FORWARDER_LAUNCH_MARKERS {
+            if code.contains(marker) {
+                violations.push(format!(
+                    "src/proxy_core_host.rs:{} contains forwarder launch marker `{}`",
+                    line_index + 1,
+                    marker
+                ));
+            }
+        }
+    }
+
+    assert!(
+        violations.is_empty(),
+        "production proxy_core_host must delegate RequestForwarder launch/execution to proxy_core_adapter:\n{}",
         violations.join("\n")
     );
 }
