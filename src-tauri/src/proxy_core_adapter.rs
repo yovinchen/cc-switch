@@ -30,6 +30,7 @@ use http::{HeaderMap, Method, StatusCode};
 use indexmap::IndexMap;
 use rust_decimal::Decimal;
 use serde_json::{Map, Value, json};
+use std::collections::HashMap;
 use std::sync::Arc;
 use uuid::Uuid;
 
@@ -1764,6 +1765,18 @@ pub(crate) fn gemini_env_map_from_settings(settings: &Value) -> Option<&Map<Stri
 
 pub(crate) fn gemini_env_value_from_env_json(env_json: &Value) -> Value {
     env_json.get("env").cloned().unwrap_or_else(|| json!({}))
+}
+
+pub(crate) fn provider_gemini_env_map_for_live(
+    provider: &Provider,
+) -> Result<HashMap<String, String>, AppError> {
+    crate::gemini_config::json_to_env(&provider.settings_config)
+}
+
+pub(crate) fn validate_provider_gemini_settings_strict(
+    provider: &Provider,
+) -> Result<(), AppError> {
+    crate::gemini_config::validate_gemini_settings_strict(&provider.settings_config)
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -5886,6 +5899,13 @@ wire_api = "chat"
             provider_gemini_base_url(&provider).as_deref(),
             Some("https://generativelanguage.googleapis.com/v1beta")
         );
+        let live_env = provider_gemini_env_map_for_live(&provider).expect("gemini live env map");
+        assert_eq!(
+            live_env.get("GEMINI_API_KEY").map(String::as_str),
+            Some(" ya29.access-token ")
+        );
+        validate_provider_gemini_settings_strict(&provider)
+            .expect("provider Gemini settings should be valid for API key mode");
         assert_eq!(
             provider_gemini_live_config_object(&Provider::with_id(
                 "gemini-config".to_string(),

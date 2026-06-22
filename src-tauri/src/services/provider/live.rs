@@ -17,8 +17,9 @@ use crate::proxy_core_adapter::{
     codex_config_text_from_settings, gemini_env_map_from_settings,
     gemini_env_value_from_env_json, opencode_live_provider_fragment_has_provider_fields,
     provider_codex_imported_live_category, provider_codex_live_snapshot_parts,
-    provider_gemini_live_config_object, provider_model_catalog_raw_value,
-    provider_opencode_live_provider_fragment, provider_openclaw_has_live_provider_fields,
+    provider_gemini_env_map_for_live, provider_gemini_live_config_object,
+    provider_model_catalog_raw_value, provider_opencode_live_provider_fragment,
+    provider_openclaw_has_live_provider_fields, validate_provider_gemini_settings_strict,
     CodexLiveSnapshotIssue, GeminiLiveConfigIssue,
 };
 use crate::services::mcp::McpService;
@@ -1257,15 +1258,12 @@ pub fn should_import_default_config_on_startup(
 
 /// Write Gemini live configuration with authentication handling
 pub(crate) fn write_gemini_live(provider: &Provider) -> Result<(), AppError> {
-    use crate::gemini_config::{
-        get_gemini_settings_path, json_to_env, validate_gemini_settings_strict,
-        write_gemini_env_atomic,
-    };
+    use crate::gemini_config::{get_gemini_settings_path, write_gemini_env_atomic};
 
     // One-time auth type detection to avoid repeated detection
     let auth_type = detect_gemini_auth_type(provider);
 
-    let env_map = json_to_env(&provider.settings_config)?;
+    let env_map = provider_gemini_env_map_for_live(provider)?;
 
     // Prepare config to write to ~/.gemini/settings.json
     // Behavior:
@@ -1318,7 +1316,7 @@ pub(crate) fn write_gemini_live(provider: &Provider) -> Result<(), AppError> {
         }
         GeminiAuthType::Packycode | GeminiAuthType::Generic => {
             // API Key mode -- require GEMINI_API_KEY
-            validate_gemini_settings_strict(&provider.settings_config)?;
+            validate_provider_gemini_settings_strict(provider)?;
             write_gemini_env_atomic(&env_map)?;
         }
     }
