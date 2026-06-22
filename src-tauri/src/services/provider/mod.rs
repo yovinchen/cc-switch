@@ -21,7 +21,8 @@ use crate::proxy_core_adapter::{
     provider_app_has_current_provider,
     provider_credential_issue_spec, provider_credential_values, provider_key_change_policy_issue,
     provider_key_change_policy_issue_message, provider_live_config_presence_error_policy,
-    provider_initial_live_config_managed_marker, provider_live_sync_scope,
+    provider_initial_live_config_managed_marker, provider_live_removal_target,
+    provider_live_sync_scope,
     provider_omo_switch_pair, provider_omo_variant_for_category,
     provider_settings_validation_issue_spec, provider_settings_validation_parts,
     provider_switch_backfill_source_id, provider_switch_dispatch,
@@ -33,8 +34,9 @@ use crate::proxy_core_adapter::{
     should_reapply_codex_official_live_for_provider,
     should_skip_provider_legacy_common_config_migration, CommonConfigSnippetIssue,
     ProviderAdditiveLiveWriteAction, ProviderCredentialIssue,
-    ProviderLiveConfigPresenceErrorPolicy, ProviderLiveSyncScope, ProviderOmoVariant,
-    ProviderSettingsValidationIssue, ProviderSwitchDispatch, ProviderTakeoverLiveSyncTarget,
+    ProviderLiveConfigPresenceErrorPolicy, ProviderLiveRemovalTarget, ProviderLiveSyncScope,
+    ProviderOmoVariant, ProviderSettingsValidationIssue, ProviderSwitchDispatch,
+    ProviderTakeoverLiveSyncTarget,
 };
 use crate::services::mcp::McpService;
 use crate::settings::CustomEndpoint;
@@ -1377,6 +1379,17 @@ impl ProviderService {
             .live_config_managed = Some(managed);
     }
 
+    fn remove_provider_from_live_by_target(
+        target: ProviderLiveRemovalTarget,
+        provider_id: &str,
+    ) -> Result<(), AppError> {
+        match target {
+            ProviderLiveRemovalTarget::OpenCode => remove_opencode_provider_from_live(provider_id),
+            ProviderLiveRemovalTarget::OpenClaw => remove_openclaw_provider_from_live(provider_id),
+            ProviderLiveRemovalTarget::Hermes => remove_hermes_provider_from_live(provider_id),
+        }
+    }
+
     fn omo_variant_descriptor(
         variant: ProviderOmoVariant,
     ) -> &'static crate::services::omo::OmoVariant {
@@ -1688,11 +1701,8 @@ impl ProviderService {
                 .as_ref()
                 .and_then(Self::provider_live_config_managed);
             if Self::check_live_config_exists(&app_type, id, live_managed)? {
-                match app_type {
-                    AppType::OpenCode => remove_opencode_provider_from_live(id)?,
-                    AppType::OpenClaw => remove_openclaw_provider_from_live(id)?,
-                    AppType::Hermes => remove_hermes_provider_from_live(id)?,
-                    _ => {}
+                if let Some(target) = provider_live_removal_target(&app_type) {
+                    Self::remove_provider_from_live_by_target(target, id)?;
                 }
             }
             state.db.delete_provider(app_type.as_str(), id)?;
@@ -1746,14 +1756,23 @@ impl ProviderService {
                         crate::services::OmoService::delete_config_file(variant)?;
                     }
                 } else {
-                    remove_opencode_provider_from_live(id)?;
+                    Self::remove_provider_from_live_by_target(
+                        ProviderLiveRemovalTarget::OpenCode,
+                        id,
+                    )?;
                 }
             }
             AppType::OpenClaw => {
-                remove_openclaw_provider_from_live(id)?;
+                Self::remove_provider_from_live_by_target(
+                    ProviderLiveRemovalTarget::OpenClaw,
+                    id,
+                )?;
             }
             AppType::Hermes => {
-                remove_hermes_provider_from_live(id)?;
+                Self::remove_provider_from_live_by_target(
+                    ProviderLiveRemovalTarget::Hermes,
+                    id,
+                )?;
             }
             _ => {
                 return Err(AppError::Message(format!(
@@ -1954,12 +1973,9 @@ impl ProviderService {
             let mut updated = provider.clone();
             Self::set_provider_live_config_managed(&mut updated, true);
             if let Err(e) = state.db.save_provider(app_type.as_str(), &updated) {
-                let rollback_result = match app_type {
-                    AppType::OpenCode => remove_opencode_provider_from_live(&provider.id),
-                    AppType::OpenClaw => remove_openclaw_provider_from_live(&provider.id),
-                    AppType::Hermes => remove_hermes_provider_from_live(&provider.id),
-                    _ => Ok(()),
-                };
+                let rollback_result = provider_live_removal_target(&app_type).map_or(Ok(()), |target| {
+                    Self::remove_provider_from_live_by_target(target, &provider.id)
+                });
 
                 match rollback_result {
                     Ok(()) => {

@@ -1444,6 +1444,24 @@ pub(crate) fn provider_takeover_live_sync_target(
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum ProviderLiveRemovalTarget {
+    OpenCode,
+    OpenClaw,
+    Hermes,
+}
+
+pub(crate) fn provider_live_removal_target(
+    app_type: &AppType,
+) -> Option<ProviderLiveRemovalTarget> {
+    match app_type {
+        AppType::OpenCode => Some(ProviderLiveRemovalTarget::OpenCode),
+        AppType::OpenClaw => Some(ProviderLiveRemovalTarget::OpenClaw),
+        AppType::Hermes => Some(ProviderLiveRemovalTarget::Hermes),
+        _ => None,
+    }
+}
+
 pub(crate) fn provider_switch_backfill_source_id<'a>(
     app_type: &AppType,
     current_id: Option<&'a str>,
@@ -13166,6 +13184,26 @@ command = "latest-command"
             provider_takeover_live_sync_target(&AppType::OpenCode),
             ProviderTakeoverLiveSyncTarget::LiveBackup
         );
+    }
+
+    #[test]
+    fn provider_live_removal_target_only_covers_additive_live_configs() {
+        assert_eq!(
+            provider_live_removal_target(&AppType::OpenCode),
+            Some(ProviderLiveRemovalTarget::OpenCode)
+        );
+        assert_eq!(
+            provider_live_removal_target(&AppType::OpenClaw),
+            Some(ProviderLiveRemovalTarget::OpenClaw)
+        );
+        assert_eq!(
+            provider_live_removal_target(&AppType::Hermes),
+            Some(ProviderLiveRemovalTarget::Hermes)
+        );
+        assert_eq!(provider_live_removal_target(&AppType::Claude), None);
+        assert_eq!(provider_live_removal_target(&AppType::ClaudeDesktop), None);
+        assert_eq!(provider_live_removal_target(&AppType::Codex), None);
+        assert_eq!(provider_live_removal_target(&AppType::Gemini), None);
     }
 
     #[test]
