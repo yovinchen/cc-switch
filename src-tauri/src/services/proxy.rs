@@ -18,9 +18,10 @@ use crate::proxy_core_adapter::{
     provider_claude_takeover_model_fields, provider_is_github_copilot,
     provider_settings_have_proxy_placeholder_for_app, provider_settings_with_live_token_sync,
     provider_uses_managed_account_auth, proxy_runtime_status_stopped, proxy_server_info_from_parts,
-    proxy_takeover_status_from_parts, CircuitBreakerConfig, LiveTokenProviderSettingsIssue,
-    ProxyConfig, ProxyRuntimeStatus, ProxyServerInfo, ProxyTakeoverStatus,
-    PROXY_OFFICIAL_WARNING_EVENT,
+    proxy_takeover_status_from_parts, remove_codex_takeover_auth_placeholder_if_present,
+    remove_gemini_takeover_env_fields_if_present, CircuitBreakerConfig,
+    LiveTokenProviderSettingsIssue, ProxyConfig, ProxyRuntimeStatus, ProxyServerInfo,
+    ProxyTakeoverStatus, PROXY_OFFICIAL_WARNING_EVENT,
 };
 use crate::services::provider::{
     build_effective_settings_with_common_config, write_live_with_common_config,
@@ -1628,12 +1629,7 @@ impl ProxyService {
     fn cleanup_codex_takeover_placeholders_in_live(&self) -> Result<(), String> {
         let mut config = self.read_codex_live()?;
 
-        if let Some(auth) = config.get_mut("auth").and_then(|v| v.as_object_mut()) {
-            if auth.get("OPENAI_API_KEY").and_then(|v| v.as_str()) == Some(PROXY_TOKEN_PLACEHOLDER)
-            {
-                auth.remove("OPENAI_API_KEY");
-            }
-        }
+        remove_codex_takeover_auth_placeholder_if_present(&mut config, PROXY_TOKEN_PLACEHOLDER);
 
         if let Some(cfg_str) = config.get("config").and_then(|v| v.as_str()) {
             let updated = Self::remove_local_toml_base_url(cfg_str);
@@ -1657,21 +1653,14 @@ impl ProxyService {
     fn cleanup_gemini_takeover_placeholders_in_live(&self) -> Result<(), String> {
         let mut config = self.read_gemini_live()?;
 
-        let Some(env) = config.get_mut("env").and_then(|v| v.as_object_mut()) else {
-            return Ok(());
-        };
-
-        if env.get("GEMINI_API_KEY").and_then(|v| v.as_str()) == Some(PROXY_TOKEN_PLACEHOLDER) {
-            env.remove("GEMINI_API_KEY");
-        }
-
-        if env
-            .get("GOOGLE_GEMINI_BASE_URL")
-            .and_then(|v| v.as_str())
-            .map(Self::is_local_proxy_url)
-            .unwrap_or(false)
+        if remove_gemini_takeover_env_fields_if_present(
+            &mut config,
+            PROXY_TOKEN_PLACEHOLDER,
+            Self::is_local_proxy_url,
+        )
+        .is_none()
         {
-            env.remove("GOOGLE_GEMINI_BASE_URL");
+            return Ok(());
         }
 
         self.write_gemini_live(&config)?;
@@ -3769,6 +3758,45 @@ experimental_bearer_token = "PROXY_MANAGED"
             !live_config.contains("http://127.0.0.1:15721"),
             "cleanup should remove local proxy base_url"
         );
+    }
+
+    #[test]
+    #[serial]
+    fn gemini_takeover_cleanup_removes_placeholders_without_touching_other_env() {
+        let _home = TempHome::new();
+        crate::settings::reload_settings().expect("reload settings");
+
+        let db = Arc::new(Database::memory().expect("init db"));
+        let service = ProxyService::new(db);
+        let gemini_env_path = crate::gemini_config::get_gemini_env_path();
+        if let Some(parent) = gemini_env_path.parent() {
+            std::fs::create_dir_all(parent).expect("create gemini dir");
+        }
+        std::fs::write(
+            &gemini_env_path,
+            "GEMINI_API_KEY=PROXY_MANAGED\nGOOGLE_GEMINI_BASE_URL=http://localhost:15721\nOTHER=kept\n",
+        )
+        .expect("seed Gemini env");
+
+        assert!(
+            service.detect_takeover_in_live_config_for_app(&AppType::Gemini),
+            "Gemini API key placeholder should be detected before cleanup"
+        );
+
+        service
+            .cleanup_gemini_takeover_placeholders_in_live()
+            .expect("cleanup Gemini takeover placeholders");
+
+        let env = crate::gemini_config::read_gemini_env().expect("read Gemini env");
+        assert!(
+            !env.contains_key("GEMINI_API_KEY"),
+            "cleanup should remove Gemini proxy token placeholder"
+        );
+        assert!(
+            !env.contains_key("GOOGLE_GEMINI_BASE_URL"),
+            "cleanup should remove local Gemini proxy base URL"
+        );
+        assert_eq!(env.get("OTHER").map(String::as_str), Some("kept"));
     }
 
     #[test]

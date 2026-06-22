@@ -4085,6 +4085,22 @@ pub(crate) fn ensure_codex_takeover_auth_placeholder(
     true
 }
 
+pub(crate) fn remove_codex_takeover_auth_placeholder_if_present(
+    config: &mut Value,
+    placeholder: &str,
+) -> bool {
+    let Some(auth) = config.get_mut("auth").and_then(Value::as_object_mut) else {
+        return false;
+    };
+
+    if auth.get("OPENAI_API_KEY").and_then(Value::as_str) != Some(placeholder) {
+        return false;
+    }
+
+    auth.remove("OPENAI_API_KEY");
+    true
+}
+
 pub(crate) fn gemini_live_config_has_proxy_placeholder(
     config: &Value,
     placeholder: &str,
@@ -4112,6 +4128,35 @@ pub(crate) fn apply_gemini_takeover_env_fields(
         "GOOGLE_GEMINI_BASE_URL": proxy_url,
         "GEMINI_API_KEY": placeholder
     });
+}
+
+pub(crate) fn remove_gemini_takeover_env_fields_if_present<F>(
+    config: &mut Value,
+    placeholder: &str,
+    is_local_proxy_url: F,
+) -> Option<bool>
+where
+    F: Fn(&str) -> bool,
+{
+    let env = config.get_mut("env").and_then(Value::as_object_mut)?;
+    let mut changed = false;
+
+    if env.get("GEMINI_API_KEY").and_then(Value::as_str) == Some(placeholder) {
+        env.remove("GEMINI_API_KEY");
+        changed = true;
+    }
+
+    if env
+        .get("GOOGLE_GEMINI_BASE_URL")
+        .and_then(Value::as_str)
+        .map(is_local_proxy_url)
+        .unwrap_or(false)
+    {
+        env.remove("GOOGLE_GEMINI_BASE_URL");
+        changed = true;
+    }
+
+    Some(changed)
 }
 
 fn claude_live_token_pair<'a>(
@@ -6784,6 +6829,27 @@ wire_api = "chat"
                 .and_then(Value::as_str),
             Some(placeholder)
         );
+        assert!(remove_codex_takeover_auth_placeholder_if_present(
+            &mut codex_live,
+            placeholder
+        ));
+        assert!(codex_live
+            .get("auth")
+            .and_then(|auth| auth.get("OPENAI_API_KEY"))
+            .is_none());
+
+        let mut codex_live_with_real_auth = json!({"auth": {"OPENAI_API_KEY": "real-key"}});
+        assert!(!remove_codex_takeover_auth_placeholder_if_present(
+            &mut codex_live_with_real_auth,
+            placeholder
+        ));
+        assert_eq!(
+            codex_live_with_real_auth
+                .get("auth")
+                .and_then(|auth| auth.get("OPENAI_API_KEY"))
+                .and_then(Value::as_str),
+            Some("real-key")
+        );
 
         let mut codex_live_without_auth = json!({"config": ""});
         assert!(!apply_codex_takeover_auth_placeholder_if_present(
@@ -6830,8 +6896,60 @@ wire_api = "chat"
             Some(placeholder)
         );
         assert_eq!(gemini_env.get("OTHER").and_then(Value::as_str), Some("kept"));
+        assert_eq!(
+            remove_gemini_takeover_env_fields_if_present(
+                &mut gemini_config,
+                placeholder,
+                |url| url.starts_with("http://127.0.0.1")
+            ),
+            Some(true)
+        );
+        let gemini_env = gemini_config
+            .get("env")
+            .and_then(Value::as_object)
+            .expect("gemini env");
+        assert!(gemini_env.get("GOOGLE_GEMINI_BASE_URL").is_none());
+        assert!(gemini_env.get("GEMINI_API_KEY").is_none());
+        assert_eq!(gemini_env.get("OTHER").and_then(Value::as_str), Some("kept"));
+
+        let mut gemini_real_config = json!({
+            "env": {
+                "GOOGLE_GEMINI_BASE_URL": "https://gemini.example",
+                "GEMINI_API_KEY": "real-key"
+            }
+        });
+        assert_eq!(
+            remove_gemini_takeover_env_fields_if_present(
+                &mut gemini_real_config,
+                placeholder,
+                |url| url.starts_with("http://127.0.0.1")
+            ),
+            Some(false)
+        );
+        let gemini_real_env = gemini_real_config
+            .get("env")
+            .and_then(Value::as_object)
+            .expect("gemini env");
+        assert_eq!(
+            gemini_real_env
+                .get("GOOGLE_GEMINI_BASE_URL")
+                .and_then(Value::as_str),
+            Some("https://gemini.example")
+        );
+        assert_eq!(
+            gemini_real_env.get("GEMINI_API_KEY").and_then(Value::as_str),
+            Some("real-key")
+        );
 
         let mut missing_env = json!({});
+        assert_eq!(
+            remove_gemini_takeover_env_fields_if_present(
+                &mut missing_env,
+                placeholder,
+                |url| url.starts_with("http://127.0.0.1")
+            ),
+            None
+        );
         apply_gemini_takeover_env_fields(
             &mut missing_env,
             "http://127.0.0.1:15721",
