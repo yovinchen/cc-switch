@@ -19,11 +19,12 @@ use crate::proxy_core_adapter::{
     normalize_provider_common_config_for_storage as adapter_normalize_provider_common_config_for_storage,
     provider_codex_imported_live_category,
     provider_codex_live_snapshot_parts, CommonConfigSettingsMutationIssue,
+    OpenClawLiveWriteConfig,
     OpenCodeLiveWriteConfig,
     ProviderBackfillSettingsWarning, ProviderEffectiveSettingsWarning,
     provider_common_config_storage_normalization_requires_snippet,
     provider_gemini_env_map, provider_gemini_live_config_object,
-    provider_opencode_live_write_plan, provider_openclaw_has_live_provider_fields,
+    provider_opencode_live_write_plan, provider_openclaw_live_write_plan,
     proxy_live_config_owned_by_takeover,
     restore_live_settings_for_provider_backfill as adapter_restore_live_settings_for_provider_backfill,
     sanitize_claude_settings_for_live,
@@ -414,39 +415,38 @@ pub(crate) fn write_live_snapshot(app_type: &AppType, provider: &Provider) -> Re
         AppType::OpenClaw => {
             // OpenClaw uses additive mode - write provider to config
             use crate::openclaw_config;
-            use crate::openclaw_config::OpenClawProviderConfig;
 
-            // Convert settings_config to OpenClawProviderConfig
-            let openclaw_config_result =
-                serde_json::from_value::<OpenClawProviderConfig>(provider.settings_config.clone());
-
-            match openclaw_config_result {
-                Ok(config) => {
+            let plan = provider_openclaw_live_write_plan(provider);
+            match plan.config {
+                OpenClawLiveWriteConfig::Typed(config) => {
                     openclaw_config::set_typed_provider(&provider.id, &config)?;
                     log::info!("OpenClaw provider '{}' written to live config", provider.id);
                 }
-                Err(e) => {
+                OpenClawLiveWriteConfig::Raw {
+                    config,
+                    parse_error,
+                } => {
                     log::warn!(
                         "Failed to parse OpenClaw provider config for '{}': {}",
                         provider.id,
-                        e
+                        parse_error
                     );
-                    // Try to write as raw JSON if it looks valid
-                    if provider_openclaw_has_live_provider_fields(provider) {
-                        openclaw_config::set_provider(
-                            &provider.id,
-                            provider.settings_config.clone(),
-                        )?;
-                        log::info!(
-                            "OpenClaw provider '{}' written as raw JSON to live config",
-                            provider.id
-                        );
-                    } else {
-                        return Err(AppError::Message(format!(
-                            "OpenClaw provider '{}' has invalid config structure for live config (must contain 'baseUrl', 'api', or 'models')",
-                            provider.id
-                        )));
-                    }
+                    openclaw_config::set_provider(&provider.id, config)?;
+                    log::info!(
+                        "OpenClaw provider '{}' written as raw JSON to live config",
+                        provider.id
+                    );
+                }
+                OpenClawLiveWriteConfig::Invalid { parse_error } => {
+                    log::warn!(
+                        "Failed to parse OpenClaw provider config for '{}': {}",
+                        provider.id,
+                        parse_error
+                    );
+                    return Err(AppError::Message(format!(
+                        "OpenClaw provider '{}' has invalid config structure for live config (must contain 'baseUrl', 'api', or 'models')",
+                        provider.id
+                    )));
                 }
             }
         }

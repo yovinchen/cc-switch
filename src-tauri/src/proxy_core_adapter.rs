@@ -5,6 +5,7 @@ use crate::database::{
     ProxyChannelMigrationPreview, ProxyChannelMaterializeResult, ProxyChannelSourceKind,
 };
 use crate::error::AppError;
+use crate::openclaw_config::OpenClawProviderConfig;
 use crate::provider::{
     OpenCodeProviderConfig, Provider, ProviderMeta, ProviderTestConfig, UsageScript,
 };
@@ -795,6 +796,42 @@ pub(crate) fn provider_openclaw_has_live_provider_fields(provider: &Provider) ->
     crate::proxy_core::api::domain::openclaw_settings_have_live_provider_fields(
         &provider.settings_config,
     )
+}
+
+#[derive(Debug, Clone)]
+pub(crate) enum OpenClawLiveWriteConfig {
+    Typed(OpenClawProviderConfig),
+    Raw {
+        config: Value,
+        parse_error: String,
+    },
+    Invalid {
+        parse_error: String,
+    },
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct OpenClawLiveWritePlan {
+    pub(crate) config: OpenClawLiveWriteConfig,
+}
+
+pub(crate) fn provider_openclaw_live_write_plan(provider: &Provider) -> OpenClawLiveWritePlan {
+    let config_to_write = provider.settings_config.clone();
+
+    let config = match serde_json::from_value::<OpenClawProviderConfig>(config_to_write.clone()) {
+        Ok(config) => OpenClawLiveWriteConfig::Typed(config),
+        Err(error) if provider_openclaw_has_live_provider_fields(provider) => {
+            OpenClawLiveWriteConfig::Raw {
+                config: config_to_write,
+                parse_error: error.to_string(),
+            }
+        }
+        Err(error) => OpenClawLiveWriteConfig::Invalid {
+            parse_error: error.to_string(),
+        },
+    };
+
+    OpenClawLiveWritePlan { config }
 }
 
 pub(crate) struct OpenClawCredentialParts<'a> {
@@ -11502,6 +11539,29 @@ command = "latest-command"
             assert!(provider_openclaw_has_live_provider_fields(&provider));
         }
 
+        let typed_plan = provider_openclaw_live_write_plan(&credential_provider);
+        assert!(matches!(typed_plan.config, OpenClawLiveWriteConfig::Typed(_)));
+
+        let raw_provider = Provider::with_id(
+            "raw-openclaw".to_string(),
+            "Raw OpenClaw".to_string(),
+            json!({
+                "models": {}
+            }),
+            None,
+        );
+        let plan = provider_openclaw_live_write_plan(&raw_provider);
+        match plan.config {
+            OpenClawLiveWriteConfig::Raw {
+                config,
+                parse_error,
+            } => {
+                assert_eq!(config, json!({"models": {}}));
+                assert!(parse_error.contains("invalid type"));
+            }
+            other => panic!("expected raw OpenClaw write plan, got {other:?}"),
+        }
+
         let provider = Provider::with_id(
             "invalid-provider".to_string(),
             "Invalid Provider".to_string(),
@@ -11510,6 +11570,21 @@ command = "latest-command"
         );
 
         assert!(!provider_openclaw_has_live_provider_fields(&provider));
+
+        let plan = provider_openclaw_live_write_plan(&provider);
+        assert!(matches!(plan.config, OpenClawLiveWriteConfig::Typed(_)));
+
+        let provider = Provider::with_id(
+            "invalid-provider".to_string(),
+            "Invalid Provider".to_string(),
+            json!("invalid"),
+            None,
+        );
+        let plan = provider_openclaw_live_write_plan(&provider);
+        assert!(matches!(
+            plan.config,
+            OpenClawLiveWriteConfig::Invalid { .. }
+        ));
     }
 
     #[test]
