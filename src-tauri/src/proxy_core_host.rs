@@ -31,9 +31,6 @@ use crate::proxy_core_adapter::{
     claude_desktop_provider_from_selection_result,
     claude_desktop_model_routes_to_core_inputs,
     channel_reachability_probe_error,
-    channel_health_attempt_db_update,
-    channel_health_reset_from_plan,
-    channel_health_reset_plan_from_lookup,
     channel_key_records_from_db_source,
     channel_model_records_from_db_source,
     channel_records_from_router_source,
@@ -55,9 +52,11 @@ use crate::proxy_core_adapter::{
     provider_model_catalog_from_provider, provider_spec_from_db_source,
     provider_specs_from_db_source,
     proxy_app_config_from_db_source, proxy_global_config_from_db_source,
+    record_channel_attempt_in_db_source,
     emit_proxy_core_event,
     materialized_channel_records_from_db_source,
     proxy_runtime_config_from_db_source,
+    reset_channel_health_with_router_source,
     route_policy_from_db_source,
     replace_channel_model_records_from_db_source,
     route_candidate_provider_ids_from_selection_result,
@@ -514,18 +513,7 @@ impl ChannelHealthStore for CcSwitchHealthStore {
         &'a self,
         result: ChannelAttemptResult,
     ) -> BoxFuture<'a, ProxyCoreResult<()>> {
-        Box::pin(async move {
-            let update = channel_health_attempt_db_update(result);
-            self.db
-                .update_proxy_channel_health_with_threshold(
-                    &update.channel_id,
-                    update.success,
-                    update.error_code,
-                    update.failure_threshold,
-                    update.response_time_ms,
-                )
-                .map_err(|error| app_error("record channel attempt", error))
-        })
+        Box::pin(async move { record_channel_attempt_in_db_source(&self.db, result) })
     }
 
     fn reset_channel<'a>(
@@ -533,16 +521,7 @@ impl ChannelHealthStore for CcSwitchHealthStore {
         channel_id: &'a str,
     ) -> BoxFuture<'a, ProxyCoreResult<ChannelHealthReset>> {
         Box::pin(async move {
-            let app_type = self
-                .db
-                .get_proxy_channel_app_type(channel_id)
-                .map_err(|error| app_error("lookup channel app", error))?;
-            let reset_plan = channel_health_reset_plan_from_lookup(channel_id, app_type)?;
-            self.router
-                .reset_channel_breaker(&reset_plan.channel_id, &reset_plan.app_type)
-                .await
-                .map_err(|error| app_error("reset channel health", error))?;
-            Ok(channel_health_reset_from_plan(reset_plan))
+            reset_channel_health_with_router_source(&self.db, &self.router, channel_id).await
         })
     }
 }

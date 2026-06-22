@@ -109,6 +109,14 @@ const FORBIDDEN_PROXY_CORE_HOST_ROUTE_POLICY_SOURCE_MARKERS: &[&str] = &[
     "route_policy_from_source(",
     "route_policy_from_failover_queue(",
 ];
+const FORBIDDEN_PROXY_CORE_HOST_HEALTH_STORE_SOURCE_MARKERS: &[&str] = &[
+    ".update_proxy_channel_health_with_threshold(",
+    ".get_proxy_channel_app_type(",
+    ".reset_channel_breaker(",
+    "channel_health_attempt_db_update(",
+    "channel_health_reset_plan_from_lookup(",
+    "channel_health_reset_from_plan(",
+];
 const FORBIDDEN_PROXY_CORE_HOST_AUTH_PROFILE_DB_MARKERS: &[&str] = &[
     "fn apply_channel_auth_profile_providers(",
     "get_enabled_proxy_channel_key(",
@@ -1623,6 +1631,38 @@ fn production_proxy_core_host_delegates_route_policy_source_to_adapter() {
     assert!(
         violations.is_empty(),
         "production proxy_core_host must delegate route policy DB/projection wiring to proxy_core_adapter:\n{}",
+        violations.join("\n")
+    );
+}
+
+#[test]
+fn production_proxy_core_host_delegates_health_store_sources_to_adapter() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let path = manifest_dir.join("src/proxy_core_host.rs");
+    let source = fs::read_to_string(&path).expect("read proxy_core_host.rs");
+    let health_store = function_slice(
+        &source,
+        "impl ChannelHealthStore for CcSwitchHealthStore",
+        "#[derive(Clone)]\nstruct CcSwitchChannelReachabilityProbe",
+    );
+
+    let mut violations = Vec::new();
+    for (line_index, line) in production_lines(health_store) {
+        let code = line.split("//").next().unwrap_or_default();
+        for marker in FORBIDDEN_PROXY_CORE_HOST_HEALTH_STORE_SOURCE_MARKERS {
+            if code.contains(marker) {
+                violations.push(format!(
+                    "src/proxy_core_host.rs CcSwitchHealthStore:{} contains health store source marker `{}`",
+                    line_index + 1,
+                    marker
+                ));
+            }
+        }
+    }
+
+    assert!(
+        violations.is_empty(),
+        "production proxy_core_host must delegate health store DB/router/projection wiring to proxy_core_adapter:\n{}",
         violations.join("\n")
     );
 }

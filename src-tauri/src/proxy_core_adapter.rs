@@ -6079,6 +6079,37 @@ pub(crate) fn channel_health_attempt_db_update(
     }
 }
 
+pub(crate) fn record_channel_attempt_in_db_source(
+    db: &Database,
+    result: ChannelAttemptResult,
+) -> ProxyCoreResult<()> {
+    let update = channel_health_attempt_db_update(result);
+    db.update_proxy_channel_health_with_threshold(
+        &update.channel_id,
+        update.success,
+        update.error_code,
+        update.failure_threshold,
+        update.response_time_ms,
+    )
+    .map_err(|error| app_error("record channel attempt", error))
+}
+
+pub(crate) async fn reset_channel_health_with_router_source(
+    db: &Database,
+    router: &ProviderRouter,
+    channel_id: &str,
+) -> ProxyCoreResult<ChannelHealthReset> {
+    let app_type = db
+        .get_proxy_channel_app_type(channel_id)
+        .map_err(|error| app_error("lookup channel app", error))?;
+    let reset_plan = channel_health_reset_plan_from_lookup(channel_id, app_type)?;
+    router
+        .reset_channel_breaker(&reset_plan.channel_id, &reset_plan.app_type)
+        .await
+        .map_err(|error| app_error("reset channel health", error))?;
+    Ok(channel_health_reset_from_plan(reset_plan))
+}
+
 pub(crate) fn proxy_response_to_core_response<G>(
     response: ProxyResponse,
     connection_guard: Option<G>,
