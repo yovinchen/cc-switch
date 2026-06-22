@@ -32,7 +32,6 @@ use crate::proxy_core::api::routing::{
 #[cfg(test)]
 use crate::proxy_core::api::routing::RouteResolveModelInput;
 use crate::proxy_core::api::session::SessionIdResult;
-use crate::proxy_core::api::transforms::CodexChatErrorNormalization;
 use crate::proxy_core::api::transport::{UpstreamRequestTransportPolicy, UpstreamSendPolicy};
 use bytes::Bytes;
 use futures::{future::BoxFuture, Stream, StreamExt};
@@ -6957,13 +6956,10 @@ pub(crate) fn apply_channel_provider_overrides(
     }
 }
 
-pub(crate) fn codex_tool_context_from_request(body: &Value) -> CodexToolContext {
-    crate::proxy_core::api::transforms::build_codex_tool_context_from_request(body)
-}
-
-pub(crate) fn normalize_codex_chat_error_body(body: &[u8]) -> CodexChatErrorNormalization {
-    crate::proxy_core::api::transforms::normalize_codex_chat_error_body(body)
-}
+pub(crate) use crate::proxy_core::api::transforms::{
+    build_codex_tool_context_from_request as codex_tool_context_from_request,
+    normalize_codex_chat_error_body,
+};
 
 pub(crate) fn should_normalize_anthropic_tool_thinking_history(
     settings_config: &Value,
