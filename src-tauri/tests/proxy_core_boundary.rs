@@ -60,6 +60,14 @@ const FORBIDDEN_FORWARDER_RUNTIME_EVENT_SOURCE_MARKERS: &[&str] = &[
     "route_selected_event_message_from_forward_attempt(",
     ".events.emit(",
 ];
+const FORBIDDEN_FORWARDER_ATTEMPT_RUNTIME_MARKERS: &[&str] = &[
+    ".allow_channel_request(",
+    ".allow_provider_request(",
+    ".record_channel_result(",
+    ".record_result(",
+    ".release_channel_permit_neutral(",
+    ".release_permit_neutral(",
+];
 const FORBIDDEN_PROXY_CORE_HOST_ERROR_MARKERS: &[&str] = &["ProxyCoreError::"];
 const FORBIDDEN_PROXY_CORE_HOST_USAGE_PROJECTION_MARKERS: &[&str] =
     &["missing_pricing_warning_message"];
@@ -1399,6 +1407,33 @@ fn production_forwarder_delegates_runtime_events_to_adapter() {
     assert!(
         violations.is_empty(),
         "production forwarder must delegate runtime status, active-target, and event side effects to proxy_core_adapter:\n{}",
+        violations.join("\n")
+    );
+}
+
+#[test]
+fn production_forwarder_delegates_attempt_runtime_to_adapter() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let path = manifest_dir.join("src/proxy/forwarder.rs");
+    let source = fs::read_to_string(&path).expect("read forwarder.rs");
+
+    let mut violations = Vec::new();
+    for (line_index, line) in production_lines(&source) {
+        let code = line.split("//").next().unwrap_or_default();
+        for marker in FORBIDDEN_FORWARDER_ATTEMPT_RUNTIME_MARKERS {
+            if code.contains(marker) {
+                violations.push(format!(
+                    "src/proxy/forwarder.rs:{} contains attempt runtime marker `{}`",
+                    line_index + 1,
+                    marker
+                ));
+            }
+        }
+    }
+
+    assert!(
+        violations.is_empty(),
+        "production forwarder must delegate circuit allow, health result, and neutral permit side effects to proxy_core_adapter:\n{}",
         violations.join("\n")
     );
 }

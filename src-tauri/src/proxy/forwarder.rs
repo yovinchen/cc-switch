@@ -26,11 +26,14 @@ use crate::proxy_core_adapter::{
     emit_attempt_event_source, emit_request_started_event_source, forward_upstream_url_plan,
     invalid_mapped_channel_response_status_message,
     is_openai_o_series, is_unsupported_image_error, mapped_channel_response_status,
-    merge_copilot_tool_results, non_streaming_body_timeout_message, normalize_thinking_type,
+    allow_forward_attempt_runtime_source, merge_copilot_tool_results,
+    non_streaming_body_timeout_message, normalize_thinking_type,
     prepare_upstream_request_body_with_report, prompt_cache_trace_log_message,
     provider_bedrock_env_flag, provider_custom_user_agent_header, provider_is_codex_oauth,
     provider_is_full_url, provider_is_github_copilot_upstream, rectify_anthropic_request,
     provider_uses_anthropic_rectifiers, rectify_thinking_budget, replace_image_blocks_with_marker,
+    record_forward_attempt_failure_runtime_source,
+    record_forward_attempt_success_runtime_source,
     record_forward_active_connection_acquired_runtime_source,
     record_forward_active_connection_released_runtime_source,
     record_forward_active_route_target_runtime_source,
@@ -40,6 +43,7 @@ use crate::proxy_core_adapter::{
     record_forward_provider_rectifier_retry_failure_runtime_source,
     record_forward_request_started_runtime_source,
     record_forward_success_runtime_source,
+    release_forward_attempt_permit_neutral_runtime_source,
     replace_images_for_text_only_provider_model, request_body_filter_log_message,
     resolve_claude_forward_api_format,
     resolve_copilot_deterministic_interaction_id, resolve_copilot_model_against_ids,
@@ -281,67 +285,13 @@ impl RequestForwarder {
         app_type: &str,
         used_half_open_permit: bool,
     ) {
-        if let Some(channel) = attempt.channel() {
-            if used_half_open_permit {
-                if let Err(e) = self
-                    .router
-                    .record_channel_result(&channel.channel_id, app_type, true, true, None, None)
-                    .await
-                {
-                    log::warn!(
-                        "[{app_type}] 记录 Channel 成功结果失败: channel_id={}, error={e}",
-                        channel.channel_id
-                    );
-                }
-                self.emit_attempt_succeeded(request_id, app_type, attempt);
-                return;
-            }
-
-            let router = self.router.clone();
-            let channel_id = channel.channel_id.clone();
-            let app_type_owned = app_type.to_string();
-            tokio::spawn(async move {
-                if let Err(e) = router
-                    .record_channel_result(&channel_id, &app_type_owned, false, true, None, None)
-                    .await
-                {
-                    log::warn!(
-                        "[{app_type_owned}] 异步记录 Channel 成功结果失败: channel_id={channel_id}, error={e}"
-                    );
-                }
-            });
-            self.emit_attempt_succeeded(request_id, app_type, attempt);
-            return;
-        }
-
-        let provider_id = &attempt.provider().id;
-        if used_half_open_permit {
-            if let Err(e) = self
-                .router
-                .record_result(provider_id, app_type, true, true, None)
-                .await
-            {
-                log::warn!(
-                    "[{app_type}] 记录 Provider 成功结果失败: provider_id={provider_id}, error={e}"
-                );
-            }
-            self.emit_attempt_succeeded(request_id, app_type, attempt);
-            return;
-        }
-
-        let router = self.router.clone();
-        let provider_id = provider_id.clone();
-        let app_type_owned = app_type.to_string();
-        tokio::spawn(async move {
-            if let Err(e) = router
-                .record_result(&provider_id, &app_type_owned, false, true, None)
-                .await
-            {
-                log::warn!(
-                    "[{app_type_owned}] 异步记录 Provider 成功结果失败: provider_id={provider_id}, error={e}"
-                );
-            }
-        });
+        record_forward_attempt_success_runtime_source(
+            &self.router,
+            attempt,
+            app_type,
+            used_half_open_permit,
+        )
+        .await;
         self.emit_attempt_succeeded(request_id, app_type, attempt);
     }
 
@@ -437,32 +387,14 @@ impl RequestForwarder {
         used_half_open_permit: bool,
         error_msg: String,
     ) {
-        if let Some(channel) = attempt.channel() {
-            let _ = self
-                .router
-                .record_channel_result(
-                    &channel.channel_id,
-                    app_type,
-                    used_half_open_permit,
-                    false,
-                    Some(error_msg.clone()),
-                    None,
-                )
-                .await;
-            self.emit_attempt_failed(request_id, app_type, attempt, &error_msg);
-            return;
-        }
-
-        let _ = self
-            .router
-            .record_result(
-                &attempt.provider().id,
-                app_type,
-                used_half_open_permit,
-                false,
-                Some(error_msg.clone()),
-            )
-            .await;
+        record_forward_attempt_failure_runtime_source(
+            self.router.as_ref(),
+            attempt,
+            app_type,
+            used_half_open_permit,
+            &error_msg,
+        )
+        .await;
         self.emit_attempt_failed(request_id, app_type, attempt, &error_msg);
     }
 
@@ -472,20 +404,13 @@ impl RequestForwarder {
         app_type: &str,
         used_half_open_permit: bool,
     ) {
-        if let Some(channel) = attempt.channel() {
-            self.router
-                .release_channel_permit_neutral(
-                    &channel.channel_id,
-                    app_type,
-                    used_half_open_permit,
-                )
-                .await;
-            return;
-        }
-
-        self.router
-            .release_permit_neutral(&attempt.provider().id, app_type, used_half_open_permit)
-            .await;
+        release_forward_attempt_permit_neutral_runtime_source(
+            self.router.as_ref(),
+            attempt,
+            app_type,
+            used_half_open_permit,
+        )
+        .await;
     }
 
     /// 整流（thinking signature 或 budget）重试失败后的统一收尾。
@@ -642,21 +567,15 @@ impl RequestForwarder {
 
             // 发起请求前先获取熔断器放行许可（HalfOpen 会占用探测名额）
             // 单 Provider 场景下跳过此检查，避免熔断器阻塞所有请求
-            let (allowed, used_half_open_permit) = if bypass_circuit_breaker {
-                (true, false)
-            } else if let Some(channel) = attempt.channel() {
-                let permit = self
-                    .router
-                    .allow_channel_request(&channel.channel_id, app_type_str)
-                    .await;
-                (permit.allowed, permit.used_half_open_permit)
-            } else {
-                let permit = self
-                    .router
-                    .allow_provider_request(&provider.id, app_type_str)
-                    .await;
-                (permit.allowed, permit.used_half_open_permit)
-            };
+            let permit = allow_forward_attempt_runtime_source(
+                self.router.as_ref(),
+                attempt,
+                app_type_str,
+                bypass_circuit_breaker,
+            )
+            .await;
+            let allowed = permit.allowed;
+            let used_half_open_permit = permit.used_half_open_permit;
 
             if !allowed {
                 continue;

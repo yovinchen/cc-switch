@@ -734,6 +734,147 @@ pub(crate) async fn record_forward_active_route_target_runtime_source(
     events.emit(message.event_name, message.payload);
 }
 
+pub(crate) async fn allow_forward_attempt_runtime_source(
+    router: &ProviderRouter,
+    attempt: &ForwardAttempt,
+    app_type: &str,
+    bypass_circuit_breaker: bool,
+) -> AllowResult {
+    if bypass_circuit_breaker {
+        return AllowResult {
+            allowed: true,
+            used_half_open_permit: false,
+        };
+    }
+
+    if let Some(channel) = attempt.channel() {
+        router
+            .allow_channel_request(&channel.channel_id, app_type)
+            .await
+    } else {
+        router
+            .allow_provider_request(&attempt.provider().id, app_type)
+            .await
+    }
+}
+
+pub(crate) async fn record_forward_attempt_success_runtime_source(
+    router: &Arc<ProviderRouter>,
+    attempt: &ForwardAttempt,
+    app_type: &str,
+    used_half_open_permit: bool,
+) {
+    if let Some(channel) = attempt.channel() {
+        if used_half_open_permit {
+            if let Err(error) = router
+                .record_channel_result(&channel.channel_id, app_type, true, true, None, None)
+                .await
+            {
+                log::warn!(
+                    "[{app_type}] 记录 Channel 成功结果失败: channel_id={}, error={error}",
+                    channel.channel_id
+                );
+            }
+            return;
+        }
+
+        let router = router.clone();
+        let channel_id = channel.channel_id.clone();
+        let app_type = app_type.to_string();
+        tokio::spawn(async move {
+            if let Err(error) = router
+                .record_channel_result(&channel_id, &app_type, false, true, None, None)
+                .await
+            {
+                log::warn!(
+                    "[{app_type}] 异步记录 Channel 成功结果失败: channel_id={channel_id}, error={error}"
+                );
+            }
+        });
+        return;
+    }
+
+    let provider_id = attempt.provider().id.clone();
+    if used_half_open_permit {
+        if let Err(error) = router
+            .record_result(&provider_id, app_type, true, true, None)
+            .await
+        {
+            log::warn!(
+                "[{app_type}] 记录 Provider 成功结果失败: provider_id={provider_id}, error={error}"
+            );
+        }
+        return;
+    }
+
+    let router = router.clone();
+    let app_type = app_type.to_string();
+    tokio::spawn(async move {
+        if let Err(error) = router
+            .record_result(&provider_id, &app_type, false, true, None)
+            .await
+        {
+            log::warn!(
+                "[{app_type}] 异步记录 Provider 成功结果失败: provider_id={provider_id}, error={error}"
+            );
+        }
+    });
+}
+
+pub(crate) async fn record_forward_attempt_failure_runtime_source(
+    router: &ProviderRouter,
+    attempt: &ForwardAttempt,
+    app_type: &str,
+    used_half_open_permit: bool,
+    error_message: &str,
+) {
+    if let Some(channel) = attempt.channel() {
+        let _ = router
+            .record_channel_result(
+                &channel.channel_id,
+                app_type,
+                used_half_open_permit,
+                false,
+                Some(error_message.to_string()),
+                None,
+            )
+            .await;
+        return;
+    }
+
+    let _ = router
+        .record_result(
+            &attempt.provider().id,
+            app_type,
+            used_half_open_permit,
+            false,
+            Some(error_message.to_string()),
+        )
+        .await;
+}
+
+pub(crate) async fn release_forward_attempt_permit_neutral_runtime_source(
+    router: &ProviderRouter,
+    attempt: &ForwardAttempt,
+    app_type: &str,
+    used_half_open_permit: bool,
+) {
+    if let Some(channel) = attempt.channel() {
+        router
+            .release_channel_permit_neutral(
+                &channel.channel_id,
+                app_type,
+                used_half_open_permit,
+            )
+            .await;
+        return;
+    }
+
+    router
+        .release_permit_neutral(&attempt.provider().id, app_type, used_half_open_permit)
+        .await;
+}
+
 pub(crate) type GeminiShadowStore =
     crate::proxy_core::api::transforms::GeminiShadowStore;
 pub(crate) type GeminiToAnthropicMessageOutput =
