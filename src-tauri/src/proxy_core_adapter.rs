@@ -1344,19 +1344,26 @@ pub(crate) struct ProviderOmoSwitchPair {
     pub(crate) disable: ProviderOmoVariant,
 }
 
-pub(crate) fn provider_omo_switch_pair(
+pub(crate) fn provider_omo_variant_for_category(
     app_type: &AppType,
-    provider: &Provider,
-) -> Option<ProviderOmoSwitchPair> {
+    category: Option<&str>,
+) -> Option<ProviderOmoVariant> {
     if !matches!(app_type, AppType::OpenCode) {
         return None;
     }
 
-    let enable = match provider.category.as_deref() {
-        Some("omo") => ProviderOmoVariant::Standard,
-        Some("omo-slim") => ProviderOmoVariant::Slim,
-        _ => return None,
-    };
+    match category {
+        Some("omo") => Some(ProviderOmoVariant::Standard),
+        Some("omo-slim") => Some(ProviderOmoVariant::Slim),
+        _ => None,
+    }
+}
+
+pub(crate) fn provider_omo_switch_pair(
+    app_type: &AppType,
+    provider: &Provider,
+) -> Option<ProviderOmoSwitchPair> {
+    let enable = provider_omo_variant_for_category(app_type, provider.category.as_deref())?;
 
     Some(ProviderOmoSwitchPair {
         enable,
@@ -12934,6 +12941,10 @@ command = "latest-command"
         );
         standard_provider.category = Some("omo".to_string());
         assert_eq!(
+            provider_omo_variant_for_category(&AppType::OpenCode, Some("omo")),
+            Some(ProviderOmoVariant::Standard)
+        );
+        assert_eq!(
             provider_omo_switch_pair(&AppType::OpenCode, &standard_provider),
             Some(ProviderOmoSwitchPair {
                 enable: ProviderOmoVariant::Standard,
@@ -12943,6 +12954,10 @@ command = "latest-command"
 
         let mut slim_provider = standard_provider.clone();
         slim_provider.category = Some("omo-slim".to_string());
+        assert_eq!(
+            provider_omo_variant_for_category(&AppType::OpenCode, Some("omo-slim")),
+            Some(ProviderOmoVariant::Slim)
+        );
         assert_eq!(
             provider_omo_switch_pair(&AppType::OpenCode, &slim_provider),
             Some(ProviderOmoSwitchPair {
@@ -12962,7 +12977,15 @@ command = "latest-command"
             None
         );
         assert_eq!(
+            provider_omo_variant_for_category(&AppType::OpenCode, Some("custom")),
+            None
+        );
+        assert_eq!(
             provider_omo_switch_pair(&AppType::Claude, &standard_provider),
+            None
+        );
+        assert_eq!(
+            provider_omo_variant_for_category(&AppType::Claude, Some("omo")),
             None
         );
     }

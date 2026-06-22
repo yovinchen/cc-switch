@@ -21,8 +21,9 @@ use crate::proxy_core_adapter::{
     provider_app_has_current_provider,
     provider_credential_issue_spec, provider_credential_values, provider_key_change_policy_issue,
     provider_key_change_policy_issue_message, provider_live_config_presence_error_policy,
-    provider_omo_switch_pair, provider_settings_validation_issue_spec,
-    provider_settings_validation_parts, provider_switch_backfill_source_id, provider_switch_dispatch,
+    provider_omo_switch_pair, provider_omo_variant_for_category,
+    provider_settings_validation_issue_spec, provider_settings_validation_parts,
+    provider_switch_backfill_source_id, provider_switch_dispatch,
     provider_switch_should_mark_live_config_managed, proxy_live_config_owned_by_takeover,
     proxy_switch_should_hot_switch, should_block_proxy_switch_to_provider,
     should_reapply_codex_official_live_for_provider, CommonConfigSnippetIssue,
@@ -1534,16 +1535,10 @@ impl ProviderService {
         // Additive mode apps (OpenCode, OpenClaw): only sync to live when the provider
         // already exists in live config. Editing a DB-only provider must not auto-add it.
         if app_type.is_additive_mode() {
-            let omo_variant = if matches!(app_type, AppType::OpenCode) {
-                match provider.category.as_deref() {
-                    Some("omo") => Some(&crate::services::omo::STANDARD),
-                    Some("omo-slim") => Some(&crate::services::omo::SLIM),
-                    _ => None,
-                }
-            } else {
-                None
-            };
-            if let Some(variant) = omo_variant {
+            if let Some(omo_variant) =
+                provider_omo_variant_for_category(&app_type, provider.category.as_deref())
+            {
+                let variant = Self::omo_variant_descriptor(omo_variant);
                 let is_current = state.db.is_omo_provider_current(
                     app_type.as_str(),
                     &provider.id,
@@ -1659,13 +1654,12 @@ impl ProviderService {
             let existing = state.db.get_provider_by_id(id, app_type.as_str())?;
 
             if matches!(app_type, AppType::OpenCode) {
-                let provider_category = existing.as_ref().and_then(|p| p.category.clone());
-                let omo_variant = match provider_category.as_deref() {
-                    Some("omo") => Some(&crate::services::omo::STANDARD),
-                    Some("omo-slim") => Some(&crate::services::omo::SLIM),
-                    _ => None,
-                };
-                if let Some(variant) = omo_variant {
+                let omo_variant = provider_omo_variant_for_category(
+                    &app_type,
+                    existing.as_ref().and_then(|p| p.category.as_deref()),
+                );
+                if let Some(omo_variant) = omo_variant {
+                    let variant = Self::omo_variant_descriptor(omo_variant);
                     let was_current = state.db.is_omo_provider_current(
                         app_type.as_str(),
                         id,
@@ -1731,12 +1725,10 @@ impl ProviderService {
                     .get_provider_by_id(id, app_type.as_str())?
                     .and_then(|p| p.category);
 
-                let omo_variant = match provider_category.as_deref() {
-                    Some("omo") => Some(&crate::services::omo::STANDARD),
-                    Some("omo-slim") => Some(&crate::services::omo::SLIM),
-                    _ => None,
-                };
-                if let Some(variant) = omo_variant {
+                if let Some(omo_variant) =
+                    provider_omo_variant_for_category(&app_type, provider_category.as_deref())
+                {
+                    let variant = Self::omo_variant_descriptor(omo_variant);
                     state
                         .db
                         .clear_omo_provider_current(app_type.as_str(), id, variant.category)?;
