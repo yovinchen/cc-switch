@@ -24,7 +24,7 @@ use crate::proxy_core_adapter::{
     preserve_codex_oauth_auth_in_backup_for_configured_policy,
     remove_claude_takeover_env_fields_if_present, CodexLiveWriteProjection,
     proxy_hot_switch_should_refresh_codex_live_from_backup, proxy_live_config_owned_by_takeover,
-    proxy_live_urls_from_listen_parts,
+    proxy_hot_switch_should_sync_codex_live_while_proxy_active, proxy_live_urls_from_listen_parts,
     proxy_runtime_status_stopped,
     proxy_server_info_from_parts,
     proxy_takeover_marked_state_is_reusable,
@@ -1562,6 +1562,11 @@ impl ProxyService {
                 has_backup,
                 live_taken_over,
             );
+        let should_sync_codex_live_while_proxy_active =
+            proxy_hot_switch_should_sync_codex_live_while_proxy_active(
+                &app_type_enum,
+                live_taken_over,
+            );
 
         self.db
             .set_current_provider(app_type_enum.as_str(), provider_id)
@@ -1576,7 +1581,7 @@ impl ProxyService {
             if matches!(app_type_enum, AppType::Claude) {
                 self.sync_claude_live_from_provider_while_proxy_active(&provider)
                     .await?;
-            } else if live_taken_over && matches!(app_type_enum, AppType::Codex) {
+            } else if should_sync_codex_live_while_proxy_active {
                 self.sync_codex_live_from_provider_while_proxy_active(&provider)
                     .await?;
             }
