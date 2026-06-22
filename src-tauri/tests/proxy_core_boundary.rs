@@ -135,6 +135,17 @@ const FORBIDDEN_PROXY_CORE_HOST_MODEL_CATALOG_SOURCE_MARKERS: &[&str] = &[
     "crate::claude_desktop_config::proxy_model_routes(",
     "claude_desktop_model_routes_to_core_inputs(",
 ];
+const FORBIDDEN_PROXY_CORE_HOST_USAGE_SINK_SOURCE_MARKERS: &[&str] = &[
+    "UsageLogger::new(",
+    "usage_pricing_config_lookup_from_record(",
+    ".resolve_pricing_config(",
+    "usage_record_pricing_model(",
+    ".get_model_pricing(",
+    "usage_record_to_request_log(",
+    "log_usage_request_projection_warnings(",
+    ".log_request(",
+    "usage_error(",
+];
 const FORBIDDEN_PROXY_CORE_HOST_AUTH_PROFILE_DB_MARKERS: &[&str] = &[
     "fn apply_channel_auth_profile_providers(",
     "get_enabled_proxy_channel_key(",
@@ -1745,6 +1756,38 @@ fn production_proxy_core_host_delegates_model_catalog_source_to_adapter() {
     assert!(
         violations.is_empty(),
         "production proxy_core_host must delegate model catalog DB/router/projection wiring to proxy_core_adapter:\n{}",
+        violations.join("\n")
+    );
+}
+
+#[test]
+fn production_proxy_core_host_delegates_usage_sink_source_to_adapter() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let path = manifest_dir.join("src/proxy_core_host.rs");
+    let source = fs::read_to_string(&path).expect("read proxy_core_host.rs");
+    let usage_sink = function_slice(
+        &source,
+        "impl UsageSink for CcSwitchUsageSink",
+        "#[derive(Clone, Default)]\nstruct CcSwitchEventSink",
+    );
+
+    let mut violations = Vec::new();
+    for (line_index, line) in production_lines(usage_sink) {
+        let code = line.split("//").next().unwrap_or_default();
+        for marker in FORBIDDEN_PROXY_CORE_HOST_USAGE_SINK_SOURCE_MARKERS {
+            if code.contains(marker) {
+                violations.push(format!(
+                    "src/proxy_core_host.rs CcSwitchUsageSink:{} contains usage sink source marker `{}`",
+                    line_index + 1,
+                    marker
+                ));
+            }
+        }
+    }
+
+    assert!(
+        violations.is_empty(),
+        "production proxy_core_host must delegate usage sink pricing/projection/logging wiring to proxy_core_adapter:\n{}",
         violations.join("\n")
     );
 }

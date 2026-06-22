@@ -16,7 +16,7 @@ use crate::proxy::hyper_client::ProxyResponse;
 use crate::proxy::provider_router::ProviderRouter;
 use crate::proxy::providers::codex_chat_history::CodexChatHistoryStore;
 use crate::proxy::route_attempt::ForwardAttempt;
-use crate::proxy::usage::RequestLog;
+use crate::proxy::usage::{RequestLog, UsageLogger};
 use crate::proxy::RequestForwarder;
 use crate::services::stream_check::StreamCheckService;
 use crate::proxy_core::api::domain::{
@@ -8212,6 +8212,34 @@ pub(crate) fn log_usage_request_projection_warnings(projection: &UsageRequestLog
     if let Some(message) = projection.missing_pricing_warning_message.as_ref() {
         log::warn!("{message}");
     }
+}
+
+pub(crate) async fn record_usage_in_db_source(
+    db: &Database,
+    record: UsageRecord,
+) -> ProxyCoreResult<()> {
+    let logger = UsageLogger::new(db);
+    let lookup = usage_pricing_config_lookup_from_record(&record);
+    let (multiplier, pricing_model_source) = logger
+        .resolve_pricing_config(&lookup.provider_id, &lookup.app_type)
+        .await;
+    let pricing_model = usage_record_pricing_model(&record, &pricing_model_source);
+    let pricing = logger
+        .get_model_pricing(&pricing_model)
+        .map_err(|error| usage_error("load model pricing", error))?;
+    let projection = usage_record_to_request_log(
+        &record,
+        &pricing_model_source,
+        pricing.as_ref(),
+        multiplier,
+        || uuid::Uuid::new_v4().to_string(),
+    );
+
+    log_usage_request_projection_warnings(&projection);
+
+    logger
+        .log_request(&projection.log)
+        .map_err(|error| usage_error("record usage", error))
 }
 
 pub(crate) fn is_placeholder_pricing_model(model_id: &str) -> bool {

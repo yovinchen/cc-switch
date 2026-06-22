@@ -7,7 +7,6 @@ use crate::proxy::failover_switch::FailoverSwitchManager;
 use crate::proxy::hyper_client::ProxyResponse;
 use crate::proxy::provider_router::ProviderRouter;
 use crate::proxy::providers::codex_chat_history::CodexChatHistoryStore;
-use crate::proxy::usage::UsageLogger;
 use crate::proxy_core_adapter::{
     AppKind, AppSummaryConfig, AuthInfo, AuthProfileRef, ChannelAttemptResult,
     AuthProvider, ChannelHealthReset, ChannelHealthStore, ChannelKeyRecord, ChannelModelRecord,
@@ -43,7 +42,6 @@ use crate::proxy_core_adapter::{
     delete_channel_key_record_from_db_source,
     forward_proxy_request_with_host_runtime,
     forwarding_runtime_unavailable_error,
-    log_usage_request_projection_warnings,
     provider_model_catalog_from_db_source, provider_spec_from_db_source,
     provider_specs_from_db_source,
     probe_channel_reachability_from_db_source,
@@ -52,6 +50,7 @@ use crate::proxy_core_adapter::{
     emit_proxy_core_event,
     materialized_channel_records_from_db_source,
     proxy_runtime_config_from_db_source,
+    record_usage_in_db_source,
     reset_channel_health_with_router_source,
     route_policy_from_db_source,
     replace_channel_model_records_from_db_source,
@@ -59,10 +58,6 @@ use crate::proxy_core_adapter::{
     update_channel_record_from_db_source,
     update_channel_key_record_from_db_source,
     upsert_channel_key_record_from_db_source,
-    usage_error,
-    usage_pricing_config_lookup_from_record,
-    usage_record_pricing_model,
-    usage_record_to_request_log,
 };
 #[cfg(test)]
 use crate::proxy_core_adapter::{
@@ -589,30 +584,7 @@ struct CcSwitchUsageSink {
 
 impl UsageSink for CcSwitchUsageSink {
     fn record_usage<'a>(&'a self, record: UsageRecord) -> BoxFuture<'a, ProxyCoreResult<()>> {
-        Box::pin(async move {
-            let logger = UsageLogger::new(&self.db);
-            let lookup = usage_pricing_config_lookup_from_record(&record);
-            let (multiplier, pricing_model_source) = logger
-                .resolve_pricing_config(&lookup.provider_id, &lookup.app_type)
-                .await;
-            let pricing_model = usage_record_pricing_model(&record, &pricing_model_source);
-            let pricing = logger
-                .get_model_pricing(&pricing_model)
-                .map_err(|error| usage_error("load model pricing", error))?;
-            let projection = usage_record_to_request_log(
-                &record,
-                &pricing_model_source,
-                pricing.as_ref(),
-                multiplier,
-                || uuid::Uuid::new_v4().to_string(),
-            );
-
-            log_usage_request_projection_warnings(&projection);
-
-            logger
-                .log_request(&projection.log)
-                .map_err(|error| usage_error("record usage", error))
-        })
+        Box::pin(async move { record_usage_in_db_source(&self.db, record).await })
     }
 }
 
