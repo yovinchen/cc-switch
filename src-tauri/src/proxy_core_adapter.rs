@@ -18,6 +18,7 @@ use crate::proxy::providers::codex_chat_history::CodexChatHistoryStore;
 use crate::proxy::route_attempt::ForwardAttempt;
 use crate::proxy::usage::RequestLog;
 use crate::proxy::RequestForwarder;
+use crate::services::stream_check::StreamCheckService;
 use crate::proxy_core::api::domain::{
     ChannelSpecInput, ModelRoute, ModelRouteInput, ProviderMetadata, ProviderMetadataInput,
 };
@@ -8795,6 +8796,26 @@ pub(crate) fn channel_reachability_probe_error(
     error: impl std::fmt::Display,
 ) -> ProxyCoreError {
     ProxyCoreError::Internal(error.to_string())
+}
+
+pub(crate) async fn probe_channel_reachability_from_db_source(
+    db: &Database,
+    request: ChannelTestProbeRequest,
+) -> ProxyCoreResult<ChannelReachabilityResult> {
+    let app_type = channel_test_app_type_from_probe_request(&request)?;
+    let provider = db
+        .get_provider_by_id(&request.provider_id, &request.app_type)
+        .map_err(|error| app_error("get channel test provider", error))?;
+    let provider = channel_test_provider_from_probe_source(&request, provider)?;
+    let config = db
+        .get_stream_check_config()
+        .map_err(|error| app_error("get stream check config", error))?;
+    let result =
+        StreamCheckService::check_with_retry(&app_type, &provider, &config, Some(request.base_url))
+            .await
+            .map_err(channel_reachability_probe_error)?;
+
+    Ok(stream_check_result_to_channel_reachability(result))
 }
 
 pub(crate) fn channel_reachability_status_from_latency(

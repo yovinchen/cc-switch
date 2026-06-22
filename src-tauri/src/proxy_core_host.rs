@@ -22,7 +22,6 @@ use crate::proxy_core_adapter::{
     ProxyServices, RoutePlan, RoutePolicy, RoutePolicySource, RouteRequest, RouteResolveRequest,
     RouteResolveResponse, RouteResolver, UsageRecord, UsageSink,
 };
-use crate::services::stream_check::StreamCheckService;
 use crate::proxy_core_adapter::{
     app_error,
     app_summary_config_from_db_source,
@@ -30,12 +29,9 @@ use crate::proxy_core_adapter::{
     cc_switch_app_kinds,
     claude_desktop_provider_from_selection_result,
     claude_desktop_model_routes_to_core_inputs,
-    channel_reachability_probe_error,
     channel_key_records_from_db_source,
     channel_model_records_from_db_source,
     channel_records_from_router_source,
-    channel_test_app_type_from_probe_request,
-    channel_test_provider_from_probe_source,
     channel_spec_from_source_lookup,
     channel_specs_from_source_lookup,
     channel_migration_materialize_from_db_source,
@@ -51,6 +47,7 @@ use crate::proxy_core_adapter::{
     log_usage_request_projection_warnings,
     provider_model_catalog_from_provider, provider_spec_from_db_source,
     provider_specs_from_db_source,
+    probe_channel_reachability_from_db_source,
     proxy_app_config_from_db_source, proxy_global_config_from_db_source,
     record_channel_attempt_in_db_source,
     emit_proxy_core_event,
@@ -60,7 +57,6 @@ use crate::proxy_core_adapter::{
     route_policy_from_db_source,
     replace_channel_model_records_from_db_source,
     route_candidate_provider_ids_from_selection_result,
-    stream_check_result_to_channel_reachability,
     update_channel_record_from_db_source,
     update_channel_key_record_from_db_source,
     upsert_channel_key_record_from_db_source,
@@ -536,28 +532,7 @@ impl ChannelReachabilityProbe for CcSwitchChannelReachabilityProbe {
         &'a self,
         request: ChannelTestProbeRequest,
     ) -> BoxFuture<'a, ProxyCoreResult<ChannelReachabilityResult>> {
-        Box::pin(async move {
-            let app_type = channel_test_app_type_from_probe_request(&request)?;
-            let provider = self
-                .db
-                .get_provider_by_id(&request.provider_id, &request.app_type)
-                .map_err(|error| app_error("get channel test provider", error))?;
-            let provider = channel_test_provider_from_probe_source(&request, provider)?;
-            let config = self
-                .db
-                .get_stream_check_config()
-                .map_err(|error| app_error("get stream check config", error))?;
-            let result = StreamCheckService::check_with_retry(
-                &app_type,
-                &provider,
-                &config,
-                Some(request.base_url),
-            )
-            .await
-            .map_err(channel_reachability_probe_error)?;
-
-            Ok(stream_check_result_to_channel_reachability(result))
-        })
+        Box::pin(async move { probe_channel_reachability_from_db_source(&self.db, request).await })
     }
 }
 
