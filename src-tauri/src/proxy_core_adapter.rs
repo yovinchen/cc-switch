@@ -13389,6 +13389,20 @@ reasoning = "medium"
             provider_kind_from_app_type_and_config(&AppType::Gemini, &gemini_provider),
             ProviderKind::GeminiCli
         );
+        let gemini_api_key_provider = Provider::with_id(
+            "gemini-api-key".to_string(),
+            "Gemini API Key".to_string(),
+            json!({
+                "env": {
+                    "GEMINI_API_KEY": "AIza-api-key"
+                }
+            }),
+            None,
+        );
+        assert_eq!(
+            provider_gemini_kind(&gemini_api_key_provider),
+            ProviderKind::Gemini
+        );
     }
 
     #[test]

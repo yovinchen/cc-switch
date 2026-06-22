@@ -360,6 +360,8 @@ const FORBIDDEN_PROVIDER_ADAPTER_AUTH_INFO_MARKERS: &[&str] = &[
     "ProviderAuthInfo::with_access_token(",
     "GeminiAdapter::new().parse_oauth_credentials(",
     "parse_gemini_oauth_credentials(&key)",
+    "pub fn provider_type(",
+    "pub fn parse_oauth_credentials(",
 ];
 const FORBIDDEN_PROVIDER_ADAPTER_AUTH_HEADER_MARKERS: &[&str] = &[
     "build_codex_bearer_auth_headers(",

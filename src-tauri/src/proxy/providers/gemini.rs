@@ -14,10 +14,7 @@ use crate::proxy_core_adapter::{
     required_gemini_provider_base_url, ProviderAuthInfo,
 };
 #[cfg(test)]
-use crate::proxy_core_adapter::{
-    parse_gemini_oauth_credentials, provider_gemini_kind, GeminiOAuthCredentials,
-    ProviderAuthStrategy, ProviderKind,
-};
+use crate::proxy_core_adapter::ProviderAuthStrategy;
 
 /// Gemini 适配器
 pub struct GeminiAdapter;
@@ -25,22 +22,6 @@ pub struct GeminiAdapter;
 impl GeminiAdapter {
     pub fn new() -> Self {
         Self
-    }
-
-    /// 获取供应商类型
-    ///
-    /// 根据 API Key 格式检测：
-    /// - GeminiCli: access_token (ya29. 开头) 或 JSON 格式凭证
-    /// - Gemini: 普通 API Key
-    #[cfg(test)]
-    pub fn provider_type(&self, provider: &Provider) -> ProviderKind {
-        provider_gemini_kind(provider)
-    }
-
-    /// 解析 OAuth 凭证
-    #[cfg(test)]
-    pub fn parse_oauth_credentials(&self, key: &str) -> Option<GeminiOAuthCredentials> {
-        parse_gemini_oauth_credentials(key)
     }
 }
 
@@ -157,44 +138,6 @@ mod tests {
     }
 
     #[test]
-    fn test_provider_type_detection() {
-        let adapter = GeminiAdapter::new();
-
-        // API Key
-        let api_key_provider = create_provider(json!({
-            "env": {
-                "GEMINI_API_KEY": "AIza-test-key"
-            }
-        }));
-        assert_eq!(
-            adapter.provider_type(&api_key_provider),
-            ProviderKind::Gemini
-        );
-
-        // OAuth access_token
-        let oauth_provider = create_provider(json!({
-            "env": {
-                "GEMINI_API_KEY": "ya29.test-token"
-            }
-        }));
-        assert_eq!(
-            adapter.provider_type(&oauth_provider),
-            ProviderKind::GeminiCli
-        );
-
-        // OAuth JSON
-        let oauth_json_provider = create_provider(json!({
-            "env": {
-                "GEMINI_API_KEY": "{\"access_token\":\"ya29.test\"}"
-            }
-        }));
-        assert_eq!(
-            adapter.provider_type(&oauth_json_provider),
-            ProviderKind::GeminiCli
-        );
-    }
-
-    #[test]
     fn test_extract_auth_fallback() {
         let adapter = GeminiAdapter::new();
         let provider = create_provider(json!({
@@ -232,35 +175,6 @@ mod tests {
             url,
             "https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent"
         );
-    }
-
-    #[test]
-    fn test_parse_oauth_credentials_direct_token() {
-        let adapter = GeminiAdapter::new();
-        let creds = adapter
-            .parse_oauth_credentials("ya29.test-access-token")
-            .unwrap();
-        assert_eq!(creds.access_token, "ya29.test-access-token");
-        assert!(creds.refresh_token.is_none());
-    }
-
-    #[test]
-    fn test_parse_oauth_credentials_json() {
-        let adapter = GeminiAdapter::new();
-        let creds = adapter
-            .parse_oauth_credentials(
-                "{\"access_token\":\"ya29.test\",\"refresh_token\":\"1//refresh\"}",
-            )
-            .unwrap();
-        assert_eq!(creds.access_token, "ya29.test");
-        assert_eq!(creds.refresh_token, Some("1//refresh".to_string()));
-    }
-
-    #[test]
-    fn test_parse_oauth_credentials_invalid() {
-        let adapter = GeminiAdapter::new();
-        assert!(adapter.parse_oauth_credentials("AIza-api-key").is_none());
-        assert!(adapter.parse_oauth_credentials("invalid-json{").is_none());
     }
 
     #[test]
