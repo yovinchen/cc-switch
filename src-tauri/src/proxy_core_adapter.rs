@@ -4070,6 +4070,18 @@ pub(crate) fn live_config_has_proxy_placeholder_for_app(
     }
 }
 
+pub(crate) fn live_backup_snapshot_from_live_config(
+    app_type: &AppType,
+    config: &Value,
+    placeholder: &str,
+) -> Option<Value> {
+    if live_config_has_proxy_placeholder_for_app(app_type, config, placeholder) {
+        None
+    } else {
+        Some(config.clone())
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum LiveTokenProviderSettingsIssue {
     InvalidProviderSettings,
@@ -7202,6 +7214,22 @@ wire_api = "chat"
             &json!({ "env": { "ANTHROPIC_API_KEY": placeholder } }),
             placeholder
         ));
+        assert_eq!(
+            live_backup_snapshot_from_live_config(
+                &AppType::Claude,
+                &json!({ "env": { "ANTHROPIC_AUTH_TOKEN": "real-token" } }),
+                placeholder
+            ),
+            Some(json!({ "env": { "ANTHROPIC_AUTH_TOKEN": "real-token" } }))
+        );
+        assert_eq!(
+            live_backup_snapshot_from_live_config(
+                &AppType::Claude,
+                &json!({ "env": { "ANTHROPIC_AUTH_TOKEN": placeholder } }),
+                placeholder
+            ),
+            None
+        );
 
         let provider = Provider::with_id(
             "codex-live-residue".to_string(),

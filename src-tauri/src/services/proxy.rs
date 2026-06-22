@@ -18,8 +18,8 @@ use crate::proxy_core_adapter::{
     codex_live_write_projection, codex_preserved_auth_live_config_text_if_proxy_placeholder,
     codex_takeover_toml_config_for_provider, gemini_live_config_has_proxy_placeholder,
     ensure_codex_takeover_auth_placeholder, gemini_live_backup_from_effective_settings,
-    live_config_has_proxy_placeholder_for_app, live_takeover_config_matches_proxy_for_app,
-    provider_claude_takeover_model_fields,
+    live_backup_snapshot_from_live_config, live_config_has_proxy_placeholder_for_app,
+    live_takeover_config_matches_proxy_for_app, provider_claude_takeover_model_fields,
     provider_is_github_copilot, provider_settings_have_proxy_placeholder_for_app,
     preserve_codex_mcp_servers_from_existing_config,
     preserve_codex_oauth_auth_in_backup_if_present, provider_settings_with_live_token_sync,
@@ -892,43 +892,55 @@ impl ProxyService {
             // 否则下次 start_with_takeover 在异常历史状态下（Live 已是占位符）再次
             // 调用本函数，会用代理配置覆盖一个原本正常的备份；之后 stop 恢复时
             // 即便走到备份路径也会把代理占位符再写回 Live，永久卡在 127.0.0.1:15721。
-            if Self::live_has_proxy_placeholder_for_app(&AppType::Claude, &config) {
-                log::warn!("claude Live 已被代理接管，不备份（避免把代理配置固化进备份槽）；下次 stop 会从 SSOT 重建 Live");
-            } else {
-                let json_str = serde_json::to_string(&config)
+            if let Some(backup_value) = live_backup_snapshot_from_live_config(
+                &AppType::Claude,
+                &config,
+                PROXY_TOKEN_PLACEHOLDER,
+            ) {
+                let json_str = serde_json::to_string(&backup_value)
                     .map_err(|e| format!("序列化 Claude 配置失败: {e}"))?;
                 self.db
                     .save_live_backup("claude", &json_str)
                     .await
                     .map_err(|e| format!("备份 Claude 配置失败: {e}"))?;
+            } else {
+                log::warn!("claude Live 已被代理接管，不备份（避免把代理配置固化进备份槽）；下次 stop 会从 SSOT 重建 Live");
             }
         }
 
         // Codex
         if let Ok(config) = self.read_codex_live() {
-            if Self::live_has_proxy_placeholder_for_app(&AppType::Codex, &config) {
-                log::warn!("codex Live 已被代理接管，不备份（避免把代理配置固化进备份槽）；下次 stop 会从 SSOT 重建 Live");
-            } else {
-                let json_str = serde_json::to_string(&config)
+            if let Some(backup_value) = live_backup_snapshot_from_live_config(
+                &AppType::Codex,
+                &config,
+                PROXY_TOKEN_PLACEHOLDER,
+            ) {
+                let json_str = serde_json::to_string(&backup_value)
                     .map_err(|e| format!("序列化 Codex 配置失败: {e}"))?;
                 self.db
                     .save_live_backup("codex", &json_str)
                     .await
                     .map_err(|e| format!("备份 Codex 配置失败: {e}"))?;
+            } else {
+                log::warn!("codex Live 已被代理接管，不备份（避免把代理配置固化进备份槽）；下次 stop 会从 SSOT 重建 Live");
             }
         }
 
         // Gemini
         if let Ok(config) = self.read_gemini_live() {
-            if Self::live_has_proxy_placeholder_for_app(&AppType::Gemini, &config) {
-                log::warn!("gemini Live 已被代理接管，不备份（避免把代理配置固化进备份槽）；下次 stop 会从 SSOT 重建 Live");
-            } else {
-                let json_str = serde_json::to_string(&config)
+            if let Some(backup_value) = live_backup_snapshot_from_live_config(
+                &AppType::Gemini,
+                &config,
+                PROXY_TOKEN_PLACEHOLDER,
+            ) {
+                let json_str = serde_json::to_string(&backup_value)
                     .map_err(|e| format!("序列化 Gemini 配置失败: {e}"))?;
                 self.db
                     .save_live_backup("gemini", &json_str)
                     .await
                     .map_err(|e| format!("备份 Gemini 配置失败: {e}"))?;
+            } else {
+                log::warn!("gemini Live 已被代理接管，不备份（避免把代理配置固化进备份槽）；下次 stop 会从 SSOT 重建 Live");
             }
         }
 
@@ -947,14 +959,16 @@ impl ProxyService {
 
         // 跳过已被代理接管的 Live：避免把代理占位符当作"原始 Live"存进备份槽
         // （见 backup_live_configs 中的注释）。
-        if Self::live_has_proxy_placeholder_for_app(app_type, &config) {
+        let Some(backup_value) =
+            live_backup_snapshot_from_live_config(app_type, &config, PROXY_TOKEN_PLACEHOLDER)
+        else {
             log::warn!(
                 "{app_type_str} Live 已被代理接管，不备份（避免把代理配置固化进备份槽）；下次 stop 会从 SSOT 重建 Live"
             );
             return Ok(());
-        }
+        };
 
-        let json_str = serde_json::to_string(&config)
+        let json_str = serde_json::to_string(&backup_value)
             .map_err(|e| format!("序列化 {app_type_str} 配置失败: {e}"))?;
         self.db
             .save_live_backup(app_type_str, &json_str)
