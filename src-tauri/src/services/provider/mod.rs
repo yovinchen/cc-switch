@@ -24,7 +24,8 @@ use crate::proxy_core_adapter::{
     provider_codex_validation_parts, provider_gemini_env_map,
     provider_openclaw_credential_parts, provider_opencode_credential_parts,
     provider_settings_config_is_object, should_block_proxy_switch_to_provider_category,
-    CodexProviderValidationIssue, OpenCodeCredentialIssue,
+    should_reapply_codex_official_live_for_provider, CodexProviderValidationIssue,
+    OpenCodeCredentialIssue,
 };
 use crate::services::mcp::McpService;
 use crate::settings::CustomEndpoint;
@@ -65,7 +66,7 @@ pub fn reapply_current_codex_official_live(state: &AppState) -> Result<bool, App
     let Some(provider) = providers.get(&current_id) else {
         return Ok(false);
     };
-    if provider.category.as_deref() != Some("official") {
+    if !should_reapply_codex_official_live_for_provider(provider) {
         return Ok(false);
     }
 

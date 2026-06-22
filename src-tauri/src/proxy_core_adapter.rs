@@ -2547,8 +2547,16 @@ pub(crate) fn should_block_proxy_switch_to_provider_category(
     )
 }
 
-pub(crate) fn should_emit_proxy_official_warning_for_provider(provider: &Provider) -> bool {
+pub(crate) fn provider_is_official_category(provider: &Provider) -> bool {
     provider.category.as_deref() == Some("official")
+}
+
+pub(crate) fn should_emit_proxy_official_warning_for_provider(provider: &Provider) -> bool {
+    provider_is_official_category(provider)
+}
+
+pub(crate) fn should_reapply_codex_official_live_for_provider(provider: &Provider) -> bool {
+    provider_is_official_category(provider)
 }
 
 pub(crate) fn should_attempt_restored_provider_switchback(
@@ -6397,11 +6405,17 @@ mod tests {
             None,
         );
         provider.category = Some("official".to_string());
+        assert!(provider_is_official_category(&provider));
         assert!(should_emit_proxy_official_warning_for_provider(&provider));
+        assert!(should_reapply_codex_official_live_for_provider(&provider));
         provider.category = Some("custom".to_string());
+        assert!(!provider_is_official_category(&provider));
         assert!(!should_emit_proxy_official_warning_for_provider(&provider));
+        assert!(!should_reapply_codex_official_live_for_provider(&provider));
         provider.category = None;
+        assert!(!provider_is_official_category(&provider));
         assert!(!should_emit_proxy_official_warning_for_provider(&provider));
+        assert!(!should_reapply_codex_official_live_for_provider(&provider));
         assert_eq!(
             build_provider_switched_event_payload("claude", "provider-1", "failover"),
             json!({
