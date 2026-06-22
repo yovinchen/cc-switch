@@ -2638,7 +2638,9 @@ pub(crate) use crate::proxy_core::api::transport::{
     UNSUPPORTED_IMAGE_MARKER,
     rewrite_claude_transform_endpoint,
 };
-pub(crate) use crate::proxy_core::api::transport::request_model_for_forward;
+pub(crate) use crate::proxy_core::api::transport::{
+    extract_gemini_model_from_path, request_model_for_forward,
+};
 #[cfg(test)]
 pub(crate) use crate::proxy_core::api::transport::interface_kind_for_forward;
 pub(crate) use crate::proxy_core::api::usage::{
@@ -3885,10 +3887,6 @@ pub(crate) async fn forwarder_runtime_config_from_db_sources(
         db.get_optimizer_config().unwrap_or_default(),
         db.get_copilot_optimizer_config().unwrap_or_default(),
     ))
-}
-
-pub(crate) fn extract_gemini_model_from_path(endpoint: &str) -> Option<String> {
-    crate::proxy_core::api::transport::extract_gemini_model_from_path(endpoint)
 }
 
 pub(crate) fn extract_gemini_api_key_from_settings(settings: &Value) -> Option<String> {

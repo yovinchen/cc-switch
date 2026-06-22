@@ -394,10 +394,11 @@ const FORBIDDEN_PROXY_CORE_ADAPTER_PROVIDER_URL_FACADE_MARKERS: &[&str] = &[
     "fn provider_codex_upstream_url(",
     "fn provider_gemini_upstream_url(",
 ];
-const FORBIDDEN_PROXY_CORE_ADAPTER_HANDLER_CONTEXT_FACADE_MARKERS: &[&str] = &[
+const FORBIDDEN_PROXY_CORE_ADAPTER_SMALL_HELPER_FACADE_MARKERS: &[&str] = &[
     "fn request_model_from_body_for_context(",
     "fn request_model_from_gemini_path_for_context(",
     "fn claude_api_format_from_metadata(",
+    "fn extract_gemini_model_from_path(",
 ];
 const FORBIDDEN_CLAUDE_PROVIDER_ADAPTER_TRANSFORM_DECISION_MARKERS: &[&str] = &[
     "ProviderKind::GitHubCopilot",
@@ -1712,7 +1713,7 @@ fn proxy_core_adapter_excludes_provider_url_facades() {
 }
 
 #[test]
-fn proxy_core_adapter_excludes_handler_context_facades() {
+fn proxy_core_adapter_excludes_small_helper_facades() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let adapter_path = manifest_dir.join("src/proxy_core_adapter.rs");
     let source = fs::read_to_string(&adapter_path).expect("read proxy_core_adapter.rs");
@@ -1720,10 +1721,10 @@ fn proxy_core_adapter_excludes_handler_context_facades() {
     let mut violations = Vec::new();
     for (line_index, line) in production_lines(&source) {
         let code = line.split("//").next().unwrap_or_default();
-        for marker in FORBIDDEN_PROXY_CORE_ADAPTER_HANDLER_CONTEXT_FACADE_MARKERS {
+        for marker in FORBIDDEN_PROXY_CORE_ADAPTER_SMALL_HELPER_FACADE_MARKERS {
             if code.contains(marker) {
                 violations.push(format!(
-                    "src/proxy_core_adapter.rs:{} contains handler context facade marker `{}`",
+                    "src/proxy_core_adapter.rs:{} contains small helper facade marker `{}`",
                     line_index + 1,
                     marker
                 ));
@@ -1733,7 +1734,7 @@ fn proxy_core_adapter_excludes_handler_context_facades() {
 
     assert!(
         violations.is_empty(),
-        "handler context must call core-facing helpers through proxy_core_adapter instead of context-specific facades:\n{}",
+        "proxy_core_adapter should expose small pure core helpers directly instead of local one-line facades:\n{}",
         violations.join("\n")
     );
 }
