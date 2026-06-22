@@ -768,6 +768,26 @@ pub(crate) fn provider_openclaw_has_live_provider_fields(provider: &Provider) ->
     )
 }
 
+pub(crate) struct OpenClawCredentialParts<'a> {
+    pub(crate) api_key: Option<&'a str>,
+    pub(crate) base_url: Option<&'a str>,
+}
+
+pub(crate) fn provider_openclaw_credential_parts(
+    provider: &Provider,
+) -> OpenClawCredentialParts<'_> {
+    OpenClawCredentialParts {
+        api_key: provider
+            .settings_config
+            .get("apiKey")
+            .and_then(Value::as_str),
+        base_url: provider
+            .settings_config
+            .get("baseUrl")
+            .and_then(Value::as_str),
+    }
+}
+
 pub(crate) fn extract_hermes_stream_check_base_url(settings_config: &Value) -> Option<String> {
     crate::proxy_core::api::domain::extract_hermes_stream_check_base_url(settings_config)
 }
@@ -796,6 +816,31 @@ pub(crate) fn provider_opencode_stream_check_base_url(
     npm: Option<&str>,
 ) -> Option<String> {
     resolve_opencode_stream_check_base_url(&provider.settings_config, npm)
+}
+
+pub(crate) struct OpenCodeCredentialParts<'a> {
+    pub(crate) api_key: Option<&'a str>,
+    pub(crate) base_url: Option<&'a str>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum OpenCodeCredentialIssue {
+    MissingOptions,
+}
+
+pub(crate) fn provider_opencode_credential_parts(
+    provider: &Provider,
+) -> Result<OpenCodeCredentialParts<'_>, OpenCodeCredentialIssue> {
+    let options = provider
+        .settings_config
+        .get("options")
+        .and_then(Value::as_object)
+        .ok_or(OpenCodeCredentialIssue::MissingOptions)?;
+
+    Ok(OpenCodeCredentialParts {
+        api_key: options.get("apiKey").and_then(Value::as_str),
+        base_url: options.get("baseURL").and_then(Value::as_str),
+    })
 }
 
 pub(crate) struct OpenCodeLiveProviderFragment {
@@ -7799,6 +7844,19 @@ wire_api = "chat"
 
     #[test]
     fn openclaw_live_provider_shape_adapter_projects_provider_settings() {
+        let credential_provider = Provider::with_id(
+            "openclaw-credentials".to_string(),
+            "OpenClaw Credentials".to_string(),
+            json!({
+                "apiKey": "sk-openclaw",
+                "baseUrl": "https://openclaw.example"
+            }),
+            None,
+        );
+        let credentials = provider_openclaw_credential_parts(&credential_provider);
+        assert_eq!(credentials.api_key, Some("sk-openclaw"));
+        assert_eq!(credentials.base_url, Some("https://openclaw.example"));
+
         for settings in [
             json!({"baseUrl": Value::Null}),
             json!({"api": {"key": "sk-test"}}),
@@ -7834,6 +7892,10 @@ wire_api = "chat"
             }),
             None,
         );
+        let credentials =
+            provider_opencode_credential_parts(&provider).expect("opencode credentials");
+        assert_eq!(credentials.api_key, Some("sk-test"));
+        assert_eq!(credentials.base_url, None);
         let fragment = provider_opencode_live_provider_fragment(&provider);
         assert_eq!(fragment.config, provider.settings_config);
         assert!(!fragment.from_full_config);
@@ -7849,6 +7911,15 @@ wire_api = "chat"
         assert!(!opencode_live_provider_fragment_has_provider_fields(&json!({
             "name": "Provider"
         })));
+        assert!(matches!(
+            provider_opencode_credential_parts(&Provider::with_id(
+                "missing-options".to_string(),
+                "Missing Options".to_string(),
+                json!({}),
+                None,
+            )),
+            Err(OpenCodeCredentialIssue::MissingOptions)
+        ));
 
         let provider = Provider::with_id(
             "openai".to_string(),

@@ -20,8 +20,10 @@ use crate::proxy_core_adapter::{
     claude_env_credentials_from_settings, codex_api_key_from_auth_and_config,
     codex_auth_object_value_from_settings, codex_config_text_from_settings,
     gemini_env_map_from_settings,
-    provider_codex_validation_parts, provider_gemini_env_map, provider_settings_config_is_object,
-    should_block_proxy_switch_to_provider_category, CodexProviderValidationIssue,
+    provider_codex_validation_parts, provider_gemini_env_map,
+    provider_openclaw_credential_parts, provider_opencode_credential_parts,
+    provider_settings_config_is_object, should_block_proxy_switch_to_provider_category,
+    CodexProviderValidationIssue, OpenCodeCredentialIssue,
 };
 use crate::services::mcp::McpService;
 use crate::settings::CustomEndpoint;
@@ -448,6 +450,42 @@ mod tests {
             ProviderService::extract_credentials(&provider, &AppType::Gemini).unwrap();
         assert_eq!(api_key, "AIza-test");
         assert_eq!(base_url, "https://gemini.example");
+    }
+
+    #[test]
+    fn extract_opencode_credentials_uses_options_parts() {
+        let provider = Provider::with_id(
+            "opencode".into(),
+            "OpenCode".into(),
+            json!({
+                "options": {
+                    "apiKey": "sk-opencode",
+                    "baseURL": "https://opencode.example"
+                }
+            }),
+            None,
+        );
+        let (api_key, base_url) =
+            ProviderService::extract_credentials(&provider, &AppType::OpenCode).unwrap();
+        assert_eq!(api_key, "sk-opencode");
+        assert_eq!(base_url, "https://opencode.example");
+    }
+
+    #[test]
+    fn extract_openclaw_credentials_uses_top_level_parts() {
+        let provider = Provider::with_id(
+            "openclaw".into(),
+            "OpenClaw".into(),
+            json!({
+                "apiKey": "sk-openclaw",
+                "baseUrl": "https://openclaw.example"
+            }),
+            None,
+        );
+        let (api_key, base_url) =
+            ProviderService::extract_credentials(&provider, &AppType::OpenClaw).unwrap();
+        assert_eq!(api_key, "sk-openclaw");
+        assert_eq!(base_url, "https://openclaw.example");
     }
 
     #[test]
@@ -2600,21 +2638,17 @@ impl ProviderService {
             }
             AppType::OpenCode => {
                 // OpenCode uses options.apiKey and options.baseURL
-                let options = provider
-                    .settings_config
-                    .get("options")
-                    .and_then(|v| v.as_object())
-                    .ok_or_else(|| {
-                        AppError::localized(
+                let parts =
+                    provider_opencode_credential_parts(provider).map_err(|issue| match issue {
+                        OpenCodeCredentialIssue::MissingOptions => AppError::localized(
                             "provider.opencode.options.missing",
                             "配置格式错误: 缺少 options",
                             "Invalid configuration: missing options section",
-                        )
+                        ),
                     })?;
 
-                let api_key = options
-                    .get("apiKey")
-                    .and_then(|v| v.as_str())
+                let api_key = parts
+                    .api_key
                     .ok_or_else(|| {
                         AppError::localized(
                             "provider.opencode.api_key.missing",
@@ -2624,20 +2658,15 @@ impl ProviderService {
                     })?
                     .to_string();
 
-                let base_url = options
-                    .get("baseURL")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("")
-                    .to_string();
+                let base_url = parts.base_url.unwrap_or("").to_string();
 
                 Ok((api_key, base_url))
             }
             AppType::OpenClaw | AppType::Hermes => {
                 // OpenClaw/Hermes use apiKey and baseUrl directly on the object
-                let api_key = provider
-                    .settings_config
-                    .get("apiKey")
-                    .and_then(|v| v.as_str())
+                let parts = provider_openclaw_credential_parts(provider);
+                let api_key = parts
+                    .api_key
                     .ok_or_else(|| {
                         AppError::localized(
                             "provider.openclaw.api_key.missing",
@@ -2647,12 +2676,7 @@ impl ProviderService {
                     })?
                     .to_string();
 
-                let base_url = provider
-                    .settings_config
-                    .get("baseUrl")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("")
-                    .to_string();
+                let base_url = parts.base_url.unwrap_or("").to_string();
 
                 Ok((api_key, base_url))
             }
