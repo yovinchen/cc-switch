@@ -12,7 +12,8 @@ use crate::proxy_core_adapter::{
     circuit_breaker_config_from_app_config, circuit_failure_threshold_from_app_config,
     current_provider_id_from_router_sources,
     provider_circuit_key, provider_circuit_key_prefix,
-    channel_route_source_for_materialized_records, provider_failover_circuit_lookups,
+    channel_route_should_load_legacy_projection, channel_route_source_for_materialized_records,
+    provider_failover_circuit_lookups,
     provider_selection_candidate_from_failover_lookup, proxy_channel_route_inputs_to_core,
     reject_unavailable_channel_ids, resolve_channel_route as resolve_core_channel_route,
     route_candidate_channel_circuit_keys, select_provider_ids, AllowResult, ChannelRouteSource,
@@ -150,7 +151,7 @@ impl ProviderRouter {
     ) -> Result<(Vec<ProxyChannelRecord>, ChannelRouteSource), AppError> {
         let channels = self.db.list_proxy_channels_for_app(app_type)?;
         let source = channel_route_source_for_materialized_records(&channels);
-        if source == ChannelRouteSource::MaterializedChannels {
+        if !channel_route_should_load_legacy_projection(&source) {
             return Ok((channels, source));
         }
 

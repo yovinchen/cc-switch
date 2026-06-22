@@ -5202,6 +5202,10 @@ pub(crate) fn channel_route_source_for_materialized_records(
     crate::proxy_core::api::management::channel_route_source_for_materialized_count(channels.len())
 }
 
+pub(crate) fn channel_route_should_load_legacy_projection(source: &ChannelRouteSource) -> bool {
+    source == &ChannelRouteSource::LegacyProjection
+}
+
 pub(crate) fn proxy_channel_route_inputs_to_core(
     channels: impl IntoIterator<Item = ProxyChannelRecord>,
 ) -> Vec<RouteResolveChannelInput> {
@@ -8613,6 +8617,12 @@ mod tests {
         ]))
         .expect("selected provider ids");
         assert_eq!(selected, vec!["provider-b"]);
+        assert!(!channel_route_should_load_legacy_projection(
+            &ChannelRouteSource::MaterializedChannels
+        ));
+        assert!(channel_route_should_load_legacy_projection(
+            &ChannelRouteSource::LegacyProjection
+        ));
         assert!(matches!(
             app_error_from_provider_selection_failure(
                 "claude",
