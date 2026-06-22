@@ -4231,6 +4231,30 @@ pub(crate) fn remove_codex_takeover_auth_placeholder_if_present(
     true
 }
 
+pub(crate) fn remove_codex_takeover_config_placeholders_if_present<F>(
+    config: &mut Value,
+    placeholder: &str,
+    is_local_proxy_url: F,
+) -> Result<(), String>
+where
+    F: Fn(&str) -> bool,
+{
+    let Some(config_text) = config.get("config").and_then(Value::as_str) else {
+        return Ok(());
+    };
+
+    let updated =
+        crate::codex_config::remove_codex_toml_base_url_if(config_text, is_local_proxy_url);
+    let updated =
+        crate::codex_config::remove_codex_experimental_bearer_token_if(&updated, |token| {
+            token == placeholder
+        })
+        .map_err(|e| e.to_string())?;
+    config["config"] = json!(updated);
+
+    Ok(())
+}
+
 pub(crate) fn codex_preserved_auth_live_config_text_if_proxy_placeholder(
     config: &Value,
     placeholder: &str,
@@ -7284,6 +7308,30 @@ wire_api = "chat"
                 .and_then(Value::as_str),
             Some("real-key")
         );
+
+        let mut codex_takeover_config = json!({
+            "config": r#"model_provider = "custom"
+
+[model_providers.custom]
+base_url = "http://127.0.0.1:15721/v1"
+experimental_bearer_token = "PROXY_MANAGED"
+wire_api = "responses"
+"#
+        });
+        remove_codex_takeover_config_placeholders_if_present(
+            &mut codex_takeover_config,
+            placeholder,
+            |url| url.starts_with("http://127.0.0.1"),
+        )
+        .expect("cleanup codex config placeholders");
+        let cleaned_config = codex_takeover_config
+            .get("config")
+            .and_then(Value::as_str)
+            .expect("cleaned config");
+        assert!(!cleaned_config.contains("base_url"));
+        assert!(!cleaned_config.contains("experimental_bearer_token"));
+        assert!(cleaned_config.contains("wire_api"));
+
         let codex_config_only = json!({
             "auth": {"OPENAI_API_KEY": placeholder},
             "config": r#"model_provider = "custom"

@@ -26,6 +26,7 @@ use crate::proxy_core_adapter::{
     CodexLiveWriteProjection,
     provider_uses_managed_account_auth, proxy_runtime_status_stopped, proxy_server_info_from_parts,
     proxy_takeover_status_from_parts, remove_codex_takeover_auth_placeholder_if_present,
+    remove_codex_takeover_config_placeholders_if_present,
     remove_gemini_takeover_env_fields_if_present, CircuitBreakerConfig,
     LiveTokenProviderSettingsIssue, ProxyConfig, ProxyRuntimeStatus, ProxyServerInfo,
     ProxyTakeoverStatus, PROXY_OFFICIAL_WARNING_EVENT,
@@ -1471,23 +1472,15 @@ impl ProxyService {
 
         remove_codex_takeover_auth_placeholder_if_present(&mut config, PROXY_TOKEN_PLACEHOLDER);
 
-        if let Some(cfg_str) = config.get("config").and_then(|v| v.as_str()) {
-            let updated = Self::remove_local_toml_base_url(cfg_str);
-            let updated =
-                crate::codex_config::remove_codex_experimental_bearer_token_if(&updated, |token| {
-                    token == PROXY_TOKEN_PLACEHOLDER
-                })
-                .map_err(|e| format!("清理 Codex 接管占位符失败: {e}"))?;
-            config["config"] = json!(updated);
-        }
+        remove_codex_takeover_config_placeholders_if_present(
+            &mut config,
+            PROXY_TOKEN_PLACEHOLDER,
+            Self::is_local_proxy_url,
+        )
+        .map_err(|e| format!("清理 Codex 接管占位符失败: {e}"))?;
 
         self.write_codex_live(&config)?;
         Ok(())
-    }
-
-    /// Remove local proxy base_url from TOML（委托给 codex_config 共享实现）
-    fn remove_local_toml_base_url(toml_str: &str) -> String {
-        crate::codex_config::remove_codex_toml_base_url_if(toml_str, Self::is_local_proxy_url)
     }
 
     fn cleanup_gemini_takeover_placeholders_in_live(&self) -> Result<(), String> {
