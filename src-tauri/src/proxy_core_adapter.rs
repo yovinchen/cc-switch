@@ -1096,16 +1096,9 @@ pub(crate) type ProviderSpec = crate::proxy_core::api::domain::ProviderSpec;
 pub(crate) type ProxyCoreProviderSpec =
     crate::proxy_core::api::domain::ProviderSpec;
 
-pub(crate) fn provider_metadata_from_input(input: ProviderMetadataInput) -> ProviderMetadata {
-    crate::proxy_core::api::domain::provider_metadata_from_input(input)
-}
-
-pub(crate) fn provider_account_ref(
-    provider_type: Option<&str>,
-    managed_account_id: Option<&str>,
-) -> Option<String> {
-    crate::proxy_core::api::domain::provider_account_ref(provider_type, managed_account_id)
-}
+pub(crate) use crate::proxy_core::api::domain::{
+    provider_account_ref, provider_metadata_from_input,
+};
 
 pub(crate) fn extract_openclaw_stream_check_base_url(settings_config: &Value) -> Option<String> {
     crate::proxy_core::api::domain::extract_openclaw_stream_check_base_url(settings_config)
@@ -2303,13 +2296,7 @@ pub(crate) fn channel_auth_profile_action(
     }
 }
 
-pub(crate) fn model_route_from_input(input: ModelRouteInput) -> ModelRoute {
-    crate::proxy_core::api::domain::model_route_from_input(input)
-}
-
-pub(crate) fn channel_spec_from_input(input: ChannelSpecInput) -> ChannelSpec {
-    crate::proxy_core::api::domain::channel_spec_from_input(input)
-}
+pub(crate) use crate::proxy_core::api::domain::{channel_spec_from_input, model_route_from_input};
 
 #[cfg(test)]
 pub(crate) type ProxyCoreUpstreamEndpoint =
@@ -2342,19 +2329,9 @@ pub(crate) type ChannelModelRecordInput =
 pub(crate) type ChannelRecordInput =
     crate::proxy_core::api::management::ChannelRecordInput;
 
-pub(crate) fn channel_model_record_from_input(
-    input: ChannelModelRecordInput,
-) -> ChannelModelRecord {
-    crate::proxy_core::api::management::channel_model_record_from_input(input)
-}
-
-pub(crate) fn channel_key_record_from_input(input: ChannelKeyRecordInput) -> ChannelKeyRecord {
-    crate::proxy_core::api::management::channel_key_record_from_input(input)
-}
-
-pub(crate) fn channel_record_from_input(input: ChannelRecordInput) -> ChannelRecord {
-    crate::proxy_core::api::management::channel_record_from_input(input)
-}
+pub(crate) use crate::proxy_core::api::management::{
+    channel_key_record_from_input, channel_model_record_from_input, channel_record_from_input,
+};
 
 pub(crate) type InterfaceKind = crate::proxy_core::api::routing::InterfaceKind;
 pub(crate) type LegacyChannelModelProjection =
