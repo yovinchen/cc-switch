@@ -1,4 +1,3 @@
-use crate::provider::Provider;
 use crate::proxy::{
     error::ProxyError,
     error_mapper::{get_error_message, map_proxy_error_to_status},
@@ -7,18 +6,19 @@ use crate::proxy::{
     server::ProxyState,
 };
 use crate::proxy_core_adapter::{
-    error_usage_record_with_request_id_fallback,
-    provider_kind_from_provider,
-    transformed_response_usage_record_with_request_id_fallback,
-    transformed_streaming_response_usage_record_with_request_id_fallback,
+    error_usage_record_from_provider_facts_with_request_id_fallback,
+    fallback_response_usage_provider_facts, response_usage_provider_facts, ResponseUsageProviderFacts,
+    transformed_response_usage_record_from_provider_facts_with_request_id_fallback,
+    transformed_streaming_response_usage_record_from_provider_facts_with_request_id_fallback,
     usage_logging_enabled_from_config_flag, usage_record_failure_warning_message,
-    usage_record_with_route_context, usage_selected_provider_missing_log_message, ProviderKind,
-    ProxyCoreAppKind as AppKind, ProxyServices, StreamUsageEventFilter,
-    TransformedResponseUsageFormat, UsageRecord, UsageRecordFailureLogContext,
-    UsageSelectedProviderMissingPhase,
+    usage_record_with_route_context, usage_selected_provider_missing_log_message, ProxyServices,
+    StreamUsageEventFilter, TransformedResponseUsageFormat, UsageRecord,
+    UsageRecordFailureLogContext, UsageSelectedProviderMissingPhase,
 };
 #[cfg(test)]
-use crate::proxy_core_adapter::{success_usage_record_with_request_id_fallback, TokenUsage};
+use crate::proxy_core_adapter::{
+    success_usage_record_from_app_type_with_request_id_fallback, ProviderKind, TokenUsage,
+};
 use serde_json::Value;
 
 #[cfg(test)]
@@ -37,10 +37,10 @@ pub(crate) fn success_usage_record(
     status_code: u16,
     session_id: Option<String>,
 ) -> UsageRecord {
-    success_usage_record_with_request_id_fallback(
+    success_usage_record_from_app_type_with_request_id_fallback(
         provider_id,
         provider_kind,
-        AppKind::from(app_type),
+        app_type,
         model,
         request_model,
         outbound_model,
@@ -56,9 +56,7 @@ pub(crate) fn success_usage_record(
 
 #[allow(clippy::too_many_arguments)]
 fn error_usage_record(
-    provider_id: &str,
-    provider_kind: Option<ProviderKind>,
-    app_type: &str,
+    provider_facts: &ResponseUsageProviderFacts,
     request_model: &str,
     outbound_model: Option<&str>,
     status_code: u16,
@@ -67,10 +65,8 @@ fn error_usage_record(
     is_streaming: bool,
     session_id: Option<String>,
 ) -> UsageRecord {
-    error_usage_record_with_request_id_fallback(
-        provider_id,
-        provider_kind,
-        AppKind::from(app_type),
+    error_usage_record_from_provider_facts_with_request_id_fallback(
+        provider_facts,
         request_model,
         outbound_model,
         status_code,
@@ -89,14 +85,13 @@ pub(crate) fn record_forward_error_usage(
     error: &ProxyError,
 ) {
     let provider = ctx.provider_for_usage();
-    let provider_id = provider
-        .map(|provider| provider.id.clone())
-        .unwrap_or_else(|| ctx.fallback_provider_id());
-    let provider_kind = provider.and_then(provider_kind_from_provider);
+    let provider_facts = provider
+        .map(|provider| response_usage_provider_facts(provider, ctx.app_type_str))
+        .unwrap_or_else(|| {
+            fallback_response_usage_provider_facts(ctx.fallback_provider_id(), ctx.app_type_str)
+        });
     let record = error_usage_record(
-        &provider_id,
-        provider_kind,
-        ctx.app_type_str,
+        &provider_facts,
         &ctx.request_model,
         ctx.outbound_model.as_deref(),
         map_proxy_error_to_status(error),
@@ -115,20 +110,17 @@ pub(crate) fn record_forward_error_usage(
 fn transformed_response_usage_record(
     body: &Value,
     format: TransformedResponseUsageFormat,
-    provider: &Provider,
-    app_type: &str,
+    provider_facts: &ResponseUsageProviderFacts,
     request_model: &str,
     outbound_model: Option<&str>,
     latency_ms: u64,
     status_code: u16,
     session_id: Option<String>,
 ) -> Option<UsageRecord> {
-    transformed_response_usage_record_with_request_id_fallback(
+    transformed_response_usage_record_from_provider_facts_with_request_id_fallback(
         body,
         format,
-        &provider.id,
-        provider_kind_from_provider(provider),
-        AppKind::from(app_type),
+        provider_facts,
         request_model,
         outbound_model,
         latency_ms,
@@ -160,11 +152,11 @@ pub(crate) fn record_transformed_response_usage(
         return;
     };
 
+    let provider_facts = response_usage_provider_facts(provider, ctx.app_type_str);
     let Some(record) = transformed_response_usage_record(
         body,
         format,
-        provider,
-        ctx.app_type_str,
+        &provider_facts,
         &ctx.request_model,
         ctx.outbound_model.as_deref(),
         ctx.latency_ms(),
@@ -202,11 +194,9 @@ pub(crate) fn transformed_streaming_usage_collector(
     };
 
     let services = state.proxy_core_services.clone();
-    let provider_id = provider.id.clone();
-    let provider_kind = provider_kind_from_provider(provider);
+    let provider_facts = response_usage_provider_facts(provider, ctx.app_type_str);
     let request_model = ctx.request_model.clone();
     let outbound_model = ctx.outbound_model.clone();
-    let app_type_str = ctx.app_type_str;
     let start_time = ctx.start_time;
     let session_id = ctx.session_id.clone();
     let usage_route_context = ctx.usage_route_context.clone();
@@ -216,12 +206,11 @@ pub(crate) fn transformed_streaming_usage_collector(
         Some(stream_event_filter),
         move |events, first_token_ms| {
             let latency_ms = start_time.elapsed().as_millis() as u64;
-            let Some(record) = transformed_streaming_response_usage_record_with_request_id_fallback(
+            let Some(record) =
+                transformed_streaming_response_usage_record_from_provider_facts_with_request_id_fallback(
                 &events,
                 usage_format,
-                &provider_id,
-                provider_kind.clone(),
-                AppKind::from(app_type_str),
+                &provider_facts,
                 &request_model,
                 outbound_model.as_deref(),
                 latency_ms,
@@ -320,10 +309,9 @@ mod tests {
             ..ProviderMeta::default()
         });
 
+        let provider_facts = response_usage_provider_facts(&provider, "codex");
         let record = error_usage_record(
-            &provider.id,
-            provider_kind_from_provider(&provider),
-            "codex",
+            &provider_facts,
             "client-model",
             Some("upstream-model"),
             502,
@@ -354,6 +342,7 @@ mod tests {
             ..ProviderMeta::default()
         });
 
+        let provider_facts = response_usage_provider_facts(&provider, "claude-desktop");
         let record = transformed_response_usage_record(
             &json!({
                 "id": "msg_1",
@@ -364,8 +353,7 @@ mod tests {
                 }
             }),
             TransformedResponseUsageFormat::Claude,
-            &provider,
-            "claude-desktop",
+            &provider_facts,
             "request-model",
             Some("outbound-model"),
             123,

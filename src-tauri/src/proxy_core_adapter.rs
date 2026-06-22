@@ -7431,6 +7431,78 @@ pub(crate) fn response_usage_provider_facts(
     }
 }
 
+pub(crate) fn fallback_response_usage_provider_facts(
+    provider_id: String,
+    app_type: &str,
+) -> ResponseUsageProviderFacts {
+    ResponseUsageProviderFacts {
+        provider_id,
+        provider_kind: None,
+        app: AppKind::from(app_type),
+    }
+}
+
+#[cfg(test)]
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn success_usage_record_from_app_type_with_request_id_fallback(
+    provider_id: &str,
+    provider_kind: Option<ProviderKind>,
+    app_type: &str,
+    model: &str,
+    request_model: &str,
+    outbound_model: &str,
+    usage: TokenUsage,
+    latency_ms: u64,
+    first_token_ms: Option<u64>,
+    is_streaming: bool,
+    status_code: u16,
+    session_id: Option<String>,
+    request_id_fallback: impl FnOnce() -> String,
+) -> UsageRecord {
+    success_usage_record_with_request_id_fallback(
+        provider_id,
+        provider_kind,
+        AppKind::from(app_type),
+        model,
+        request_model,
+        outbound_model,
+        usage,
+        latency_ms,
+        first_token_ms,
+        is_streaming,
+        status_code,
+        session_id,
+        request_id_fallback,
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn error_usage_record_from_provider_facts_with_request_id_fallback(
+    provider_facts: &ResponseUsageProviderFacts,
+    request_model: &str,
+    outbound_model: Option<&str>,
+    status_code: u16,
+    error_message: String,
+    latency_ms: u64,
+    is_streaming: bool,
+    session_id: Option<String>,
+    request_id_fallback: impl FnOnce() -> String,
+) -> UsageRecord {
+    error_usage_record_with_request_id_fallback(
+        &provider_facts.provider_id,
+        provider_facts.provider_kind.clone(),
+        provider_facts.app.clone(),
+        request_model,
+        outbound_model,
+        status_code,
+        error_message,
+        latency_ms,
+        is_streaming,
+        session_id,
+        request_id_fallback,
+    )
+}
+
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn streaming_response_usage_record_from_provider_facts(
     events: &[Value],
@@ -7449,6 +7521,62 @@ pub(crate) fn streaming_response_usage_record_from_provider_facts(
         events,
         stream_parser,
         model_extractor,
+        &provider_facts.provider_id,
+        provider_facts.provider_kind.clone(),
+        provider_facts.app.clone(),
+        request_model,
+        outbound_model,
+        latency_ms,
+        first_token_ms,
+        status_code,
+        session_id,
+        request_id_fallback,
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn transformed_response_usage_record_from_provider_facts_with_request_id_fallback(
+    body: &Value,
+    format: TransformedResponseUsageFormat,
+    provider_facts: &ResponseUsageProviderFacts,
+    request_model: &str,
+    outbound_model: Option<&str>,
+    latency_ms: u64,
+    status_code: u16,
+    session_id: Option<String>,
+    request_id_fallback: impl FnOnce() -> String,
+) -> Option<UsageRecord> {
+    transformed_response_usage_record_with_request_id_fallback(
+        body,
+        format,
+        &provider_facts.provider_id,
+        provider_facts.provider_kind.clone(),
+        provider_facts.app.clone(),
+        request_model,
+        outbound_model,
+        latency_ms,
+        status_code,
+        session_id,
+        request_id_fallback,
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn transformed_streaming_response_usage_record_from_provider_facts_with_request_id_fallback(
+    events: &[Value],
+    format: TransformedResponseUsageFormat,
+    provider_facts: &ResponseUsageProviderFacts,
+    request_model: &str,
+    outbound_model: Option<&str>,
+    latency_ms: u64,
+    first_token_ms: Option<u64>,
+    status_code: u16,
+    session_id: Option<String>,
+    request_id_fallback: impl FnOnce() -> String,
+) -> Option<UsageRecord> {
+    transformed_streaming_response_usage_record_with_request_id_fallback(
+        events,
+        format,
         &provider_facts.provider_id,
         provider_facts.provider_kind.clone(),
         provider_facts.app.clone(),

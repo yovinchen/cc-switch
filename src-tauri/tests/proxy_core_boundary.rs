@@ -64,6 +64,13 @@ const FORBIDDEN_RESPONSE_PROCESSOR_USAGE_PROVIDER_PROJECTION_MARKERS: &[&str] = 
     "streaming_response_usage_record_with_optional_outbound_model(",
     "non_streaming_response_usage_record_from_body_with_request_id_fallback(",
 ];
+const FORBIDDEN_USAGE_SINK_PROVIDER_PROJECTION_MARKERS: &[&str] = &[
+    "provider_kind_from_provider(",
+    "AppKind::from(",
+    "error_usage_record_with_request_id_fallback(",
+    "transformed_response_usage_record_with_request_id_fallback(",
+    "transformed_streaming_response_usage_record_with_request_id_fallback(",
+];
 const PROXY_CORE_MARKER: &str = "crate::proxy_core::";
 const PROXY_CORE_API_MARKER: &str = "crate::proxy_core::api";
 const PROXY_ENGINE_CONSTRUCTOR_MARKER: &str = "ProxyEngine::new(";
@@ -972,6 +979,33 @@ fn response_processor_delegates_usage_provider_projection_to_adapter() {
     assert!(
         violations.is_empty(),
         "response processor must build provider usage facts through proxy_core_adapter helpers:\n{}",
+        violations.join("\n")
+    );
+}
+
+#[test]
+fn usage_sink_bridge_delegates_provider_projection_to_adapter() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let path = manifest_dir.join("src/proxy/usage_sink_bridge.rs");
+    let source = fs::read_to_string(&path).expect("read usage_sink_bridge.rs");
+
+    let mut violations = Vec::new();
+    for (line_index, line) in production_lines(&source) {
+        let code = line.split("//").next().unwrap_or_default();
+        for marker in FORBIDDEN_USAGE_SINK_PROVIDER_PROJECTION_MARKERS {
+            if code.contains(marker) {
+                violations.push(format!(
+                    "src/proxy/usage_sink_bridge.rs:{} contains usage provider projection marker `{}`",
+                    line_index + 1,
+                    marker
+                ));
+            }
+        }
+    }
+
+    assert!(
+        violations.is_empty(),
+        "usage sink bridge must build provider usage facts through proxy_core_adapter helpers:\n{}",
         violations.join("\n")
     );
 }
