@@ -4406,6 +4406,23 @@ pub(crate) fn codex_preserved_auth_live_config_text_if_proxy_placeholder(
         .map_err(|e| e.to_string())
 }
 
+pub(crate) fn codex_preserved_auth_live_config_text_for_policy(
+    config: &Value,
+    placeholder: &str,
+    preserve_auth: bool,
+    include_optional_catalog: bool,
+) -> Result<Option<String>, String> {
+    if !preserve_auth {
+        return Ok(None);
+    }
+
+    codex_preserved_auth_live_config_text_if_proxy_placeholder(
+        config,
+        placeholder,
+        include_optional_catalog,
+    )
+}
+
 fn codex_auth_value_has_proxy_placeholder(auth: &Value, placeholder: &str) -> bool {
     auth.get("OPENAI_API_KEY").and_then(Value::as_str) == Some(placeholder)
 }
@@ -7656,6 +7673,26 @@ base_url = "https://relay.example/v1"
             crate::codex_config::extract_codex_experimental_bearer_token(&config_only_live)
                 .as_deref(),
             Some(placeholder)
+        );
+        assert_eq!(
+            codex_preserved_auth_live_config_text_for_policy(
+                &codex_config_only,
+                placeholder,
+                false,
+                true,
+            )
+            .expect("disabled preservation should be a valid no-op"),
+            None
+        );
+        assert!(
+            codex_preserved_auth_live_config_text_for_policy(
+                &codex_config_only,
+                placeholder,
+                true,
+                true,
+            )
+            .expect("enabled preservation should be valid")
+            .is_some()
         );
         assert_eq!(
             codex_preserved_auth_live_config_text_if_proxy_placeholder(
