@@ -5,11 +5,21 @@
 use crate::database::FailoverQueueItem;
 use crate::provider::Provider;
 use crate::proxy_core_adapter::{
-    build_provider_switched_event_payload, PROVIDER_SWITCHED_EVENT,
+    build_provider_switched_event_payload, plan_auto_failover_toggle, AutoFailoverToggleInput,
+    ProxyCoreError, AUTO_FAILOVER_EMPTY_QUEUE_WITHOUT_CURRENT_PROVIDER_MESSAGE,
+    AUTO_FAILOVER_ENABLE_REQUIRES_PROXY_TAKEOVER_MESSAGE, PROVIDER_SWITCHED_EVENT,
+    PROVIDER_SWITCHED_SOURCE_FAILOVER_ENABLED,
 };
 use crate::store::AppState;
 use std::str::FromStr;
 use tauri::Emitter;
+
+fn auto_failover_plan_error_to_string(error: ProxyCoreError) -> String {
+    match error {
+        ProxyCoreError::InvalidRequest(message) => message,
+        other => other.to_string(),
+    }
+}
 
 /// 获取故障转移队列
 #[tauri::command]
@@ -97,13 +107,13 @@ pub async fn set_auto_failover_enabled(
         .map_err(|e| e.to_string())?;
 
     if enabled && !config.enabled {
-        return Err("需要先启用该应用的代理接管，再开启故障转移".to_string());
+        return Err(AUTO_FAILOVER_ENABLE_REQUIRES_PROXY_TAKEOVER_MESSAGE.to_string());
     }
 
     // 队列为空时把当前供应商自动加入作为 P1，避免用户陷入"必须先加队列才能开启"的死锁
-    let mut auto_added_provider_id: Option<String> = None;
-    let p1_provider_id = if enabled {
-        let mut queue = state
+    let mut current_provider_id = None;
+    let queued_provider_ids = if enabled {
+        let queue = state
             .db
             .get_failover_queue(&app_type)
             .map_err(|e| e.to_string())?;
@@ -116,35 +126,45 @@ pub async fn set_auto_failover_enabled(
                 .map_err(|e| e.to_string())?;
 
             let Some(current_id) = current_id else {
-                return Err("故障转移队列为空，且未设置当前供应商，无法开启故障转移".to_string());
+                return Err(
+                    AUTO_FAILOVER_EMPTY_QUEUE_WITHOUT_CURRENT_PROVIDER_MESSAGE.to_string(),
+                );
             };
 
-            state
-                .db
-                .add_to_failover_queue(&app_type, &current_id)
-                .map_err(|e| e.to_string())?;
-            auto_added_provider_id = Some(current_id);
-
-            queue = state
-                .db
-                .get_failover_queue(&app_type)
-                .map_err(|e| e.to_string())?;
+            current_provider_id = Some(current_id);
         }
 
         queue
-            .first()
-            .map(|item| item.provider_id.clone())
-            .ok_or_else(|| "故障转移队列为空，无法开启故障转移".to_string())?
+            .into_iter()
+            .map(|item| item.provider_id)
+            .collect()
     } else {
-        String::new()
+        Vec::new()
     };
+
+    let plan = plan_auto_failover_toggle(AutoFailoverToggleInput::new(
+        enabled,
+        config.enabled,
+        queued_provider_ids,
+        current_provider_id,
+    ))
+    .map_err(auto_failover_plan_error_to_string)?;
+
+    let mut auto_added_provider_id = None;
+    if let Some(provider_id) = plan.provider_id_to_add_to_queue.as_ref() {
+        state
+            .db
+            .add_to_failover_queue(&app_type, provider_id)
+            .map_err(|e| e.to_string())?;
+        auto_added_provider_id = Some(provider_id.clone());
+    }
 
     // 开启前先切到 P1。只有切换成功后才写入 auto_failover_enabled=true，
     // 避免 P1 不可切换（例如 official provider）时留下“开关已开但目标未切”的脏状态。
-    if enabled {
+    if let Some(provider_id) = plan.provider_id_to_switch_to.as_ref() {
         if let Err(e) = state
             .proxy_service
-            .switch_proxy_target(&app_type, &p1_provider_id)
+            .switch_proxy_target(&app_type, provider_id)
             .await
         {
             if let Some(provider_id) = auto_added_provider_id {
@@ -155,7 +175,7 @@ pub async fn set_auto_failover_enabled(
     }
 
     // 更新 auto_failover_enabled 字段
-    config.auto_failover_enabled = enabled;
+    config.auto_failover_enabled = plan.auto_failover_enabled;
 
     // 写回数据库
     state
@@ -164,10 +184,13 @@ pub async fn set_auto_failover_enabled(
         .await
         .map_err(|e| e.to_string())?;
 
-    if enabled {
+    if let Some(provider_id) = plan.provider_id_to_switch_to.as_ref() {
         // 发射 provider-switched 事件（让前端刷新当前供应商）
-        let event_data =
-            build_provider_switched_event_payload(&app_type, &p1_provider_id, "failoverEnabled");
+        let event_data = build_provider_switched_event_payload(
+            &app_type,
+            provider_id,
+            PROVIDER_SWITCHED_SOURCE_FAILOVER_ENABLED,
+        );
         let _ = app.emit(PROVIDER_SWITCHED_EVENT, event_data);
     }
 

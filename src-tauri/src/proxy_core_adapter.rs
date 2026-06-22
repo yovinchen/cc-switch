@@ -2070,6 +2070,10 @@ pub(crate) type ProviderSelectionFailure =
     crate::proxy_core::api::routing::ProviderSelectionFailure;
 pub(crate) type ProviderSelectionInput =
     crate::proxy_core::api::routing::ProviderSelectionInput;
+pub(crate) type AutoFailoverToggleInput =
+    crate::proxy_core::api::routing::AutoFailoverToggleInput;
+pub(crate) type AutoFailoverTogglePlan =
+    crate::proxy_core::api::routing::AutoFailoverTogglePlan;
 pub(crate) type ProxyCoreError = crate::proxy_core::api::errors::ProxyCoreError;
 #[cfg(test)]
 pub(crate) type ProxyCoreEventType = crate::proxy_core::api::events::ProxyCoreEventType;
@@ -2226,12 +2230,20 @@ pub(crate) const PROXY_OFFICIAL_WARNING_EVENT: &str =
     crate::proxy_core::api::events::PROXY_OFFICIAL_WARNING_EVENT;
 pub(crate) const PROVIDER_SWITCHED_EVENT: &str =
     crate::proxy_core::api::events::PROVIDER_SWITCHED_EVENT;
+pub(crate) const PROVIDER_SWITCHED_SOURCE_FAILOVER: &str =
+    crate::proxy_core::api::events::PROVIDER_SWITCHED_SOURCE_FAILOVER;
+pub(crate) const PROVIDER_SWITCHED_SOURCE_FAILOVER_ENABLED: &str =
+    crate::proxy_core::api::events::PROVIDER_SWITCHED_SOURCE_FAILOVER_ENABLED;
 pub(crate) const REQUEST_STARTED_EVENT: &str =
     crate::proxy_core::api::events::REQUEST_STARTED_EVENT;
 pub(crate) const SERVER_STARTED_EVENT: &str =
     crate::proxy_core::api::events::SERVER_STARTED_EVENT;
 pub(crate) const SERVER_STOPPED_EVENT: &str =
     crate::proxy_core::api::events::SERVER_STOPPED_EVENT;
+pub(crate) const AUTO_FAILOVER_ENABLE_REQUIRES_PROXY_TAKEOVER_MESSAGE: &str =
+    crate::proxy_core::api::routing::AUTO_FAILOVER_ENABLE_REQUIRES_PROXY_TAKEOVER_MESSAGE;
+pub(crate) const AUTO_FAILOVER_EMPTY_QUEUE_WITHOUT_CURRENT_PROVIDER_MESSAGE: &str =
+    crate::proxy_core::api::routing::AUTO_FAILOVER_EMPTY_QUEUE_WITHOUT_CURRENT_PROVIDER_MESSAGE;
 
 pub(crate) fn build_proxy_events_connected_payload(buffer_size: usize) -> Value {
     crate::proxy_core::api::events::build_proxy_events_connected_payload(buffer_size)
@@ -3766,6 +3778,16 @@ pub(crate) fn select_provider_ids(
     input: ProviderSelectionInput,
 ) -> Result<Vec<String>, ProviderSelectionFailure> {
     crate::proxy_core::api::routing::select_provider_ids(input)
+}
+
+pub(crate) fn plan_auto_failover_toggle(
+    input: AutoFailoverToggleInput,
+) -> Result<AutoFailoverTogglePlan, ProxyCoreError> {
+    crate::proxy_core::api::routing::plan_auto_failover_toggle(input)
+}
+
+pub(crate) fn failover_switch_pending_key(app_type: &str, provider_id: &str) -> String {
+    crate::proxy_core::api::routing::failover_switch_pending_key(app_type, provider_id)
 }
 
 pub(crate) fn provider_failover_circuit_lookups(

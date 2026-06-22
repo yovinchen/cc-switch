@@ -8,6 +8,8 @@ pub const PROVIDER_SWITCHED_EVENT: &str = "provider-switched";
 pub const REQUEST_STARTED_EVENT: &str = "request_started";
 pub const SERVER_STARTED_EVENT: &str = "server_started";
 pub const SERVER_STOPPED_EVENT: &str = "server_stopped";
+pub const PROVIDER_SWITCHED_SOURCE_FAILOVER: &str = "failover";
+pub const PROVIDER_SWITCHED_SOURCE_FAILOVER_ENABLED: &str = "failoverEnabled";
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
@@ -191,8 +193,9 @@ mod tests {
         build_provider_switched_event_payload, build_request_started_event_payload,
         build_server_started_event_payload, build_server_stopped_event_payload,
         AttemptEventChannel, AttemptEventPayloadInput, AttemptEventPhase, ProxyEventEnvelope,
-        PROVIDER_SWITCHED_EVENT, PROXY_OFFICIAL_WARNING_EVENT, REQUEST_STARTED_EVENT,
-        SERVER_STARTED_EVENT, SERVER_STOPPED_EVENT,
+        PROVIDER_SWITCHED_EVENT, PROVIDER_SWITCHED_SOURCE_FAILOVER,
+        PROVIDER_SWITCHED_SOURCE_FAILOVER_ENABLED, PROXY_OFFICIAL_WARNING_EVENT,
+        REQUEST_STARTED_EVENT, SERVER_STARTED_EVENT, SERVER_STOPPED_EVENT,
     };
 
     #[test]
@@ -293,12 +296,16 @@ mod tests {
     fn provider_switched_event_contract_keeps_existing_shape() {
         assert_eq!(PROVIDER_SWITCHED_EVENT, "provider-switched");
 
-        let payload =
-            build_provider_switched_event_payload("claude", "provider-1", "failover");
+        let payload = build_provider_switched_event_payload(
+            "claude",
+            "provider-1",
+            PROVIDER_SWITCHED_SOURCE_FAILOVER,
+        );
 
         assert_eq!(payload["appType"], "claude");
         assert_eq!(payload["providerId"], "provider-1");
         assert_eq!(payload["source"], "failover");
+        assert_eq!(PROVIDER_SWITCHED_SOURCE_FAILOVER_ENABLED, "failoverEnabled");
     }
 
     #[test]

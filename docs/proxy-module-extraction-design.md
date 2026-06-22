@@ -335,7 +335,7 @@
 324. route dry-run 使用的 channel route input + source kind 投影已收敛到 `proxy_core_adapter::proxy_channel_route_inputs_to_core`；`proxy::channel_routing` 只负责调用 core resolver 和错误适配，且保留 DB 原始 status 文本用于 rejected reason。
 325. handler 中直接构造 `ProxyEngine::new(state.proxy_core_services.clone())` 的重复逻辑已收敛到 `ProxyState::proxy_engine`；HTTP handler 不再关心 core service 容器的克隆方式，后续可在 state/adapter 层统一调整 engine 生命周期。
 326. route dry-run 的 circuit-open channel id 到 rejected:circuit_open response mutation 已收敛到 `proxy-core::reject_unavailable_channel_ids`；`ProviderRouter` 只负责查询当前候选的 circuit breaker 可用性并传回不可用 channel id 列表。
-327. provider failover/current 选择的纯策略、failover 队列到 provider circuit lookup/candidate 的投影已迁入 `proxy-core::provider_selection`；`ProviderRouter` 只负责读取 DB/settings/circuit breaker 事实并把 `ProviderSelectionFailure` 映射回既有 `AppError` 与 FO 日志。
+327. provider failover/current 选择的纯策略、auto failover 启用 plan、failover 队列到 provider circuit lookup/candidate 的投影已迁入 `proxy-core::provider_selection`；`ProviderRouter`/Tauri command 只负责读取 DB/settings/circuit breaker 事实并把 core 决策映射回既有 `AppError`、String 错误与 FO 日志。
 328. `CircuitBreakerConfig` DTO、默认值和 `AppProxyConfig` 到熔断器配置/失败阈值的投影已迁入 `proxy-core::circuit_breaker_config`；host `proxy::circuit_breaker` 只保留状态机实现，调用方直接引用 core 配置类型。
 329. provider/channel circuit breaker key、app type 解析和 app scope prefix 规则已迁入 `proxy-core::circuit_breaker_key`；`ProviderRouter` 不再手写 `app:provider` / `channel:app:channel` 字符串契约。
 330. response runtime policy 已在 `proxy-core::response_timeout` 中统一产出 failover-gated timeout 和 `max_retries`；host `RequestContext` 不再手写 failover 关闭时 retry 清零规则。
@@ -709,7 +709,7 @@
 698. server lifecycle 事件名与 payload contract 已迁入 `proxy-core::{SERVER_STARTED_EVENT,SERVER_STOPPED_EVENT,build_server_started_event_payload,build_server_stopped_event_payload}`：server 只负责把监听事实交给 core helper 并通过现有事件总线 emit。
 699. `ProxyServerInfo` 构造已迁入 `proxy-core::proxy_server_info_from_parts`：server start 和 service 已运行返回路径都只提供 address/port/started_at 事实，不再手写 core DTO 字段。
 700. `ProxyTakeoverStatus` 构造已迁入 `proxy-core::proxy_takeover_status_from_parts`：service 继续负责读取各 app 接管事实，DTO 字段 shape 与序列化 contract 由 core 统一维护。
-701. provider-switched 事件名与 payload contract 已迁入 `proxy-core::{PROVIDER_SWITCHED_EVENT,build_provider_switched_event_payload}`：failover manager 与 command 只提供 app/provider/source 事实，不再各自手写前端事件 JSON。
+701. provider-switched 事件名、source 常量与 payload contract 已迁入 `proxy-core::{PROVIDER_SWITCHED_EVENT,PROVIDER_SWITCHED_SOURCE_FAILOVER,PROVIDER_SWITCHED_SOURCE_FAILOVER_ENABLED,build_provider_switched_event_payload}`：failover manager 与 command 只提供 app/provider/source 事实，不再各自手写前端事件 JSON 或 source 字符串。
 702. proxy-official-warning 事件名与 payload contract 已迁入 `proxy-core::{PROXY_OFFICIAL_WARNING_EVENT,build_proxy_official_warning_event_payload}`：service 继续负责官方供应商风险判断和 Tauri emit，前端 warning payload shape 由 core 维护。
 703. 未运行代理的 runtime status 默认 DTO 已迁入 `proxy-core::proxy_runtime_status_stopped`：service 只负责判定是否存在 server，stopped 状态字段 shape 由 core 维护。
 704. `ProxyError` HTTP JSON body contract 已迁入 `proxy-core::{proxy_error_response_body,upstream_proxy_error_response_body}`：host 仍负责错误枚举和 HTTP status 映射，上游 JSON 透传/文本包装/proxy_error envelope 由 core 统一维护。
@@ -1648,6 +1648,8 @@ pub trait ProxyEventSink: Send + Sync {
 1. 核心只发 `ProxyEvent::FailoverSelected`。
 2. CC Switch 宿主收到事件后决定是否更新 DB 当前 provider、Live 配置、托盘菜单和前端事件。
 
+当前迁移已先把 auto failover 开关启用 plan、空队列自动加入当前 provider 的决策、pending switch key 和 provider-switched source 常量抽到 core。CC Switch command/manager 继续负责队列 DB 写入、`switch_proxy_target`/`hot_switch_provider`、托盘菜单和 Tauri emit。
+
 ### 认证接口
 
 当前 `forwarder.rs` 已不再直接依赖 Codex OAuth/Copilot token 刷新 manager，也不再直接读取 Copilot 动态 endpoint、live model list 或 model vendor 状态；这一步先用 `proxy::managed_account_auth` 把 refresh/read state 副作用收口。独立模块最终应把“获取/刷新可用 token”和“读取账号运行态能力”抽象成宿主可替换端口。
@@ -1711,6 +1713,8 @@ materialized channel 优先、空表才 fallback 到 legacy projection 的 sourc
 dry-run route 的 circuit-open 识别也开始收敛：`route_candidate_channel_circuit_keys` 负责把 `RouteResolveResponse` 的候选投影成 channel circuit lookup facts，`ProviderRouter` 只查询已有 breaker 可用性并把不可用 channel id 交回 `reject_unavailable_channel_ids`。
 
 provider failover 的 circuit lookup 也已开始收敛：`provider_failover_circuit_lookups` 负责保留 failover queue 顺序、标记 missing provider 并生成已配置 provider 的 circuit key；`ProviderRouter` 只读取 DB provider facts 与 breaker 可用性，再把 lookup 投影为 `ProviderSelectionCandidate` 交回 core selection 策略。
+
+auto failover 开关启用的计划也已收敛：`plan_auto_failover_toggle` 负责“接管未开启则拒绝”、“队列非空则切 P1”、“队列为空则自动加入当前 provider 并切换”的纯决策；Tauri command 只读取 config/queue/current provider、执行 DB 队列写入、调用 proxy service 切换、写回 config 并 emit core 事件 contract。
 
 管理 API 查询类入口已基本收敛到 `ProxyEngine`：`list_proxy_providers`、`list_proxy_channels` 的 route-aware 分支、`list_proxy_groups` 和 `test_proxy_channel` 都只保留 HTTP path/query/body 提取与错误映射；下一步应继续减少 host runtime 对固定 app catalog、Tauri runtime smoke 覆盖和外部集成契约的隐性依赖。
 

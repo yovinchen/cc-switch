@@ -1,5 +1,11 @@
 use super::circuit_breaker_key::provider_circuit_key;
+use crate::error::{ProxyCoreError, ProxyCoreResult};
 use std::collections::HashSet;
+
+pub const AUTO_FAILOVER_ENABLE_REQUIRES_PROXY_TAKEOVER_MESSAGE: &str =
+    "需要先启用该应用的代理接管，再开启故障转移";
+pub const AUTO_FAILOVER_EMPTY_QUEUE_WITHOUT_CURRENT_PROVIDER_MESSAGE: &str =
+    "故障转移队列为空，且未设置当前供应商，无法开启故障转移";
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ProviderSelectionCandidate {
@@ -66,6 +72,94 @@ impl ProviderSelectionInput {
             failover_candidates,
         }
     }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AutoFailoverToggleInput {
+    pub requested_enabled: bool,
+    pub app_proxy_enabled: bool,
+    pub queued_provider_ids: Vec<String>,
+    pub current_provider_id: Option<String>,
+}
+
+impl AutoFailoverToggleInput {
+    pub fn new(
+        requested_enabled: bool,
+        app_proxy_enabled: bool,
+        queued_provider_ids: Vec<String>,
+        current_provider_id: Option<String>,
+    ) -> Self {
+        Self {
+            requested_enabled,
+            app_proxy_enabled,
+            queued_provider_ids,
+            current_provider_id,
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AutoFailoverTogglePlan {
+    pub auto_failover_enabled: bool,
+    pub provider_id_to_add_to_queue: Option<String>,
+    pub provider_id_to_switch_to: Option<String>,
+}
+
+impl AutoFailoverTogglePlan {
+    pub fn disabled() -> Self {
+        Self {
+            auto_failover_enabled: false,
+            provider_id_to_add_to_queue: None,
+            provider_id_to_switch_to: None,
+        }
+    }
+
+    pub fn enabled(
+        provider_id_to_add_to_queue: Option<String>,
+        provider_id_to_switch_to: String,
+    ) -> Self {
+        Self {
+            auto_failover_enabled: true,
+            provider_id_to_add_to_queue,
+            provider_id_to_switch_to: Some(provider_id_to_switch_to),
+        }
+    }
+}
+
+pub fn plan_auto_failover_toggle(
+    input: AutoFailoverToggleInput,
+) -> ProxyCoreResult<AutoFailoverTogglePlan> {
+    if !input.requested_enabled {
+        return Ok(AutoFailoverTogglePlan::disabled());
+    }
+
+    if !input.app_proxy_enabled {
+        return Err(ProxyCoreError::InvalidRequest(
+            AUTO_FAILOVER_ENABLE_REQUIRES_PROXY_TAKEOVER_MESSAGE.to_string(),
+        ));
+    }
+
+    if let Some(provider_id) = input.queued_provider_ids.into_iter().next() {
+        return Ok(AutoFailoverTogglePlan::enabled(None, provider_id));
+    }
+
+    let provider_id =
+        input
+            .current_provider_id
+            .ok_or_else(|| {
+                ProxyCoreError::InvalidRequest(
+                    AUTO_FAILOVER_EMPTY_QUEUE_WITHOUT_CURRENT_PROVIDER_MESSAGE.to_string(),
+                )
+            })?;
+
+    Ok(AutoFailoverTogglePlan::enabled(
+        Some(provider_id.clone()),
+        provider_id,
+    ))
+}
+
+pub fn failover_switch_pending_key(app_type: &str, provider_id: &str) -> String {
+    format!("{app_type}:{provider_id}")
 }
 
 pub fn provider_failover_circuit_lookups(
@@ -185,11 +279,15 @@ pub fn should_attempt_restored_provider_switchback(
 mod tests {
     use super::{
         current_provider_db_fallback_required, current_provider_id_from_sources,
-        current_provider_id_option_from_sources, provider_failover_circuit_lookups,
+        current_provider_id_option_from_sources, failover_switch_pending_key,
+        plan_auto_failover_toggle, provider_failover_circuit_lookups,
         provider_selection_candidate_from_failover_lookup, select_provider_ids,
         should_attempt_restored_provider_switchback,
-        should_block_proxy_switch_to_provider_category, ProviderFailoverCircuitLookup,
-        ProviderSelectionCandidate, ProviderSelectionFailure, ProviderSelectionInput,
+        should_block_proxy_switch_to_provider_category, AutoFailoverToggleInput,
+        AutoFailoverTogglePlan, ProviderFailoverCircuitLookup, ProviderSelectionCandidate,
+        ProviderSelectionFailure, ProviderSelectionInput,
+        AUTO_FAILOVER_EMPTY_QUEUE_WITHOUT_CURRENT_PROVIDER_MESSAGE,
+        AUTO_FAILOVER_ENABLE_REQUIRES_PROXY_TAKEOVER_MESSAGE,
     };
 
     #[test]
@@ -266,6 +364,98 @@ mod tests {
         assert_eq!(
             missing,
             ProviderSelectionCandidate::new("missing", false, true)
+        );
+    }
+
+    #[test]
+    fn auto_failover_toggle_plan_keeps_disable_side_effect_free() {
+        let plan = plan_auto_failover_toggle(AutoFailoverToggleInput::new(
+            false,
+            true,
+            vec!["provider-a".to_string()],
+            Some("provider-b".to_string()),
+        ))
+        .expect("toggle plan");
+
+        assert_eq!(plan, AutoFailoverTogglePlan::disabled());
+    }
+
+    #[test]
+    fn auto_failover_toggle_plan_requires_proxy_takeover() {
+        let error = plan_auto_failover_toggle(AutoFailoverToggleInput::new(
+            true,
+            false,
+            vec!["provider-a".to_string()],
+            None,
+        ))
+        .expect_err("disabled app should reject enable");
+
+        assert_eq!(
+            error.to_string(),
+            format!(
+                "invalid proxy request: {AUTO_FAILOVER_ENABLE_REQUIRES_PROXY_TAKEOVER_MESSAGE}"
+            )
+        );
+    }
+
+    #[test]
+    fn auto_failover_toggle_plan_switches_to_existing_p1() {
+        let plan = plan_auto_failover_toggle(AutoFailoverToggleInput::new(
+            true,
+            true,
+            vec!["provider-a".to_string(), "provider-b".to_string()],
+            Some("provider-c".to_string()),
+        ))
+        .expect("toggle plan");
+
+        assert_eq!(
+            plan,
+            AutoFailoverTogglePlan::enabled(None, "provider-a".to_string())
+        );
+    }
+
+    #[test]
+    fn auto_failover_toggle_plan_auto_adds_current_provider_for_empty_queue() {
+        let plan = plan_auto_failover_toggle(AutoFailoverToggleInput::new(
+            true,
+            true,
+            Vec::new(),
+            Some("provider-current".to_string()),
+        ))
+        .expect("toggle plan");
+
+        assert_eq!(
+            plan,
+            AutoFailoverTogglePlan::enabled(
+                Some("provider-current".to_string()),
+                "provider-current".to_string()
+            )
+        );
+    }
+
+    #[test]
+    fn auto_failover_toggle_plan_rejects_empty_queue_without_current_provider() {
+        let error = plan_auto_failover_toggle(AutoFailoverToggleInput::new(
+            true,
+            true,
+            Vec::new(),
+            None,
+        ))
+        .expect_err("empty queue without current provider should reject enable");
+
+        assert_eq!(
+            error.to_string(),
+            format!(
+                "invalid proxy request: {AUTO_FAILOVER_EMPTY_QUEUE_WITHOUT_CURRENT_PROVIDER_MESSAGE}"
+            )
+        );
+    }
+
+    #[test]
+    fn failover_switch_pending_key_uses_app_and_provider_identity() {
+        assert_eq!(
+            failover_switch_pending_key("claude", "provider-a"),
+            "claude:provider-a"
         );
     }
 
