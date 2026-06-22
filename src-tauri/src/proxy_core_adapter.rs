@@ -700,6 +700,19 @@ pub(crate) fn attempt_event_payload_from_forward_attempt(
     })
 }
 
+pub(crate) fn attempt_event_message_from_forward_attempt(
+    request_id: &str,
+    app_type: &str,
+    attempt: &ForwardAttempt,
+    phase: AttemptEventPhase,
+    error: Option<&str>,
+) -> ProxyEventBusMessage {
+    ProxyEventBusMessage {
+        event_name: attempt_event_name(attempt.is_channel(), phase).to_string(),
+        payload: attempt_event_payload_from_forward_attempt(request_id, app_type, attempt, error),
+    }
+}
+
 pub(crate) fn route_selected_event_message_from_forward_attempt(
     request_id: &str,
     app_type: &str,
@@ -8601,6 +8614,18 @@ mod tests {
         assert_eq!(route_message.payload["channelId"], "channel-a");
         assert_eq!(route_message.payload["interfaceKind"], "openai_responses");
         assert_eq!(route_message.payload["upstreamModel"], "upstream-sonnet");
+
+        let failed_attempt_message = attempt_event_message_from_forward_attempt(
+            "req-failed",
+            "claude",
+            &route_attempt,
+            AttemptEventPhase::Failed,
+            Some("upstream failed"),
+        );
+        assert_eq!(failed_attempt_message.event_name, "channel_failed");
+        assert_eq!(failed_attempt_message.payload["requestId"], "req-failed");
+        assert_eq!(failed_attempt_message.payload["channelId"], "channel-a");
+        assert_eq!(failed_attempt_message.payload["error"], "upstream failed");
 
         let mut emitted = None;
         emit_proxy_core_event(

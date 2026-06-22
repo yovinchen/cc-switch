@@ -18,8 +18,8 @@ use crate::proxy::managed_account_auth::{
 };
 use crate::proxy_core_adapter::{
     apply_bedrock_pre_send_optimizers, apply_copilot_model_normalization,
-    apply_copilot_warmup_model_override, attempt_event_name,
-    attempt_event_payload_from_forward_attempt, build_codex_oauth_session_headers,
+    apply_copilot_warmup_model_override, attempt_event_message_from_forward_attempt,
+    build_codex_oauth_session_headers,
     build_retryable_forward_failure_log, build_terminal_forward_failure_log,
     build_upstream_auth_headers, cache_injection_log_message, categorize_forward_failure,
     classify_copilot_request, contains_image_blocks, current_route_target_from_forward_attempt,
@@ -389,17 +389,25 @@ impl RequestForwarder {
     }
 
     fn emit_attempt_started(&self, request_id: &str, app_type: &str, attempt: &ForwardAttempt) {
-        self.events.emit(
-            attempt_event_name(attempt.is_channel(), AttemptEventPhase::Started),
-            attempt_event_payload_from_forward_attempt(request_id, app_type, attempt, None),
+        let message = attempt_event_message_from_forward_attempt(
+            request_id,
+            app_type,
+            attempt,
+            AttemptEventPhase::Started,
+            None,
         );
+        self.events.emit(message.event_name, message.payload);
     }
 
     fn emit_attempt_succeeded(&self, request_id: &str, app_type: &str, attempt: &ForwardAttempt) {
-        self.events.emit(
-            attempt_event_name(attempt.is_channel(), AttemptEventPhase::Succeeded),
-            attempt_event_payload_from_forward_attempt(request_id, app_type, attempt, None),
+        let message = attempt_event_message_from_forward_attempt(
+            request_id,
+            app_type,
+            attempt,
+            AttemptEventPhase::Succeeded,
+            None,
         );
+        self.events.emit(message.event_name, message.payload);
     }
 
     fn emit_attempt_failed(
@@ -409,10 +417,14 @@ impl RequestForwarder {
         attempt: &ForwardAttempt,
         error: &str,
     ) {
-        self.events.emit(
-            attempt_event_name(attempt.is_channel(), AttemptEventPhase::Failed),
-            attempt_event_payload_from_forward_attempt(request_id, app_type, attempt, Some(error)),
+        let message = attempt_event_message_from_forward_attempt(
+            request_id,
+            app_type,
+            attempt,
+            AttemptEventPhase::Failed,
+            Some(error),
         );
+        self.events.emit(message.event_name, message.payload);
     }
 
     async fn record_failure_result(
@@ -1965,6 +1977,12 @@ mod tests {
         let success_event = subscriber.recv().await.expect("success event");
         assert_eq!(success_event.event, "channel_succeeded");
         assert_eq!(success_event.payload["channelName"], "Relay A");
+
+        forwarder.emit_attempt_failed("req-1", "claude", &attempt, "upstream failed");
+        let failed_event = subscriber.recv().await.expect("failed event");
+        assert_eq!(failed_event.event, "channel_failed");
+        assert_eq!(failed_event.payload["error"], "upstream failed");
+        assert_eq!(failed_event.payload["channelId"], "channel-a");
 
         forwarder
             .record_active_target("req-route", "claude", &attempt)

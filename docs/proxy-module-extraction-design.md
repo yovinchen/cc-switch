@@ -715,7 +715,7 @@
 704. `ProxyError` HTTP JSON body contract 已迁入 `proxy-core::{proxy_error_response_body,upstream_proxy_error_response_body}`：host 仍负责错误枚举和 HTTP status 映射，上游 JSON 透传/文本包装/proxy_error envelope 由 core 统一维护。
 705. forwarder 的 route_selected 事件名与 `ForwardAttempt` 到 bus message 的投影已切到 `proxy_core_adapter::route_selected_event_message_from_forward_attempt`：forwarder 只负责 active target 写入和 emit 时机，不再手写事件名或 route-selected payload 组合。
 706. request_started 事件名与 payload message 已迁入 `proxy_core_adapter::request_started_event_message`：forwarder 继续负责请求开始时机，不再分别引用事件名常量和 payload builder。
-707. `ForwardAttempt` 到 attempt event payload 的 host 投影已迁入 `proxy_core_adapter::attempt_event_payload_from_forward_attempt`：forwarder 只负责 emit 时机和 attempt phase，不再手写 provider/channel 字段拆箱。
+707. `ForwardAttempt` 到 attempt event bus message 的 host 投影已迁入 `proxy_core_adapter::attempt_event_message_from_forward_attempt`：forwarder 只负责 emit 时机和 attempt phase，不再手写 provider/channel 字段拆箱或 attempt 事件名/payload 组合。
 708. handler 请求体 `stream` 标志解析已迁入 `proxy-core::request_body_stream_flag`：Claude/Codex/Gemini handler 继续负责读取 body 与使用场景，stream 布尔 contract 由 core 统一维护并被 transport streaming 判定复用。
 709. handler 到 core `ProxyRequest` 的 observed request context 装配已迁入 `proxy-core::ProxyRequest::with_observed_request_context`：handler 继续负责 endpoint/model 来源，`requested_model`/headers/extensions 写入由 core domain builder 维护。
 710. handler 请求体 JSON 解析契约已迁入 `proxy-core::{parse_json_request_body,parse_json_request_body_or_null}`：host 继续负责 axum body collection，strict JSON 与 Gemini 空 body -> `Null` 语义及 parse error 前缀由 core 统一维护。
