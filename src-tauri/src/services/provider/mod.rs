@@ -18,12 +18,13 @@ use crate::provider::{Provider, UsageResult};
 use crate::proxy_core_adapter::{
     common_config_snippet_from_settings, common_config_snippet_issue_message,
     normalize_claude_models_in_value, provider_credential_issue_spec,
-    provider_credential_values, provider_settings_validation_issue_spec,
-    provider_settings_validation_parts,
+    provider_credential_values, provider_live_config_presence_error_policy,
+    provider_settings_validation_issue_spec, provider_settings_validation_parts,
     proxy_live_config_owned_by_takeover,
     proxy_switch_should_hot_switch, should_block_proxy_switch_to_provider,
     should_reapply_codex_official_live_for_provider, CommonConfigSnippetIssue,
-    ProviderCredentialIssue, ProviderSettingsValidationIssue,
+    ProviderCredentialIssue, ProviderLiveConfigPresenceErrorPolicy,
+    ProviderSettingsValidationIssue,
 };
 use crate::services::mcp::McpService;
 use crate::settings::CustomEndpoint;
@@ -1351,10 +1352,13 @@ impl ProviderService {
         provider_id: &str,
         live_config_managed: Option<bool>,
     ) -> Result<bool, AppError> {
-        if live_config_managed == Some(false) {
-            Ok(provider_exists_in_live_config(app_type, provider_id).unwrap_or(false))
-        } else {
-            provider_exists_in_live_config(app_type, provider_id)
+        match provider_live_config_presence_error_policy(live_config_managed) {
+            ProviderLiveConfigPresenceErrorPolicy::TreatErrorAsMissing => {
+                Ok(provider_exists_in_live_config(app_type, provider_id).unwrap_or(false))
+            }
+            ProviderLiveConfigPresenceErrorPolicy::Strict => {
+                provider_exists_in_live_config(app_type, provider_id)
+            }
         }
     }
 

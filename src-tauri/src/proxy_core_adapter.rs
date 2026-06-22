@@ -1232,6 +1232,22 @@ pub(crate) fn provider_should_sync_to_live(provider: &Provider) -> bool {
         != Some(false)
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum ProviderLiveConfigPresenceErrorPolicy {
+    Strict,
+    TreatErrorAsMissing,
+}
+
+pub(crate) fn provider_live_config_presence_error_policy(
+    live_config_managed: Option<bool>,
+) -> ProviderLiveConfigPresenceErrorPolicy {
+    if live_config_managed == Some(false) {
+        ProviderLiveConfigPresenceErrorPolicy::TreatErrorAsMissing
+    } else {
+        ProviderLiveConfigPresenceErrorPolicy::Strict
+    }
+}
+
 /// Reads old Claude model keys, writes DEFAULT_* keys, and deletes legacy SMALL_FAST.
 pub(crate) fn normalize_claude_models_in_value(settings: &mut Value) -> bool {
     let mut changed = false;
@@ -12649,6 +12665,22 @@ command = "latest-command"
             ..Default::default()
         });
         assert!(!provider_should_sync_to_live(&provider));
+    }
+
+    #[test]
+    fn provider_live_config_presence_error_policy_tolerates_db_only_providers() {
+        assert_eq!(
+            provider_live_config_presence_error_policy(None),
+            ProviderLiveConfigPresenceErrorPolicy::Strict
+        );
+        assert_eq!(
+            provider_live_config_presence_error_policy(Some(true)),
+            ProviderLiveConfigPresenceErrorPolicy::Strict
+        );
+        assert_eq!(
+            provider_live_config_presence_error_policy(Some(false)),
+            ProviderLiveConfigPresenceErrorPolicy::TreatErrorAsMissing
+        );
     }
 
     #[test]
