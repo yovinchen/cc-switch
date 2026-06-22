@@ -1811,6 +1811,17 @@ pub(crate) fn preserve_codex_oauth_auth_in_backup_if_present(
     Ok(())
 }
 
+pub(crate) fn preserve_codex_oauth_auth_in_backup_for_configured_policy(
+    target_settings: &mut Value,
+    existing_backup: &Value,
+) -> Result<(), CodexBackupProjectionIssue> {
+    if !crate::settings::preserve_codex_official_auth_on_switch() {
+        return Ok(());
+    }
+
+    preserve_codex_oauth_auth_in_backup_if_present(target_settings, existing_backup)
+}
+
 pub(crate) fn provider_codex_uses_chat_completions(provider: &Provider) -> bool {
     let config_text = provider_codex_config_text(provider);
     resolve_codex_provider_uses_chat_completions(
@@ -4534,6 +4545,19 @@ pub(crate) fn codex_preserved_auth_live_config_text_for_policy(
     codex_preserved_auth_live_config_text_if_proxy_placeholder(
         config,
         placeholder,
+        include_optional_catalog,
+    )
+}
+
+pub(crate) fn codex_preserved_auth_live_config_text_for_configured_policy(
+    config: &Value,
+    placeholder: &str,
+    include_optional_catalog: bool,
+) -> Result<Option<String>, String> {
+    codex_preserved_auth_live_config_text_for_policy(
+        config,
+        placeholder,
+        crate::settings::preserve_codex_official_auth_on_switch(),
         include_optional_catalog,
     )
 }

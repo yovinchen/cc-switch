@@ -14,13 +14,14 @@ use crate::proxy_core_adapter::{
     apply_gemini_takeover_env_fields, build_proxy_official_warning_event_payload,
     ClaudeTakeoverAuthPolicy,
     codex_backup_projection_error_message, codex_live_write_projection,
-    codex_provider_live_write_parts, codex_preserved_auth_live_config_text_for_policy,
+    codex_provider_live_write_parts,
+    codex_preserved_auth_live_config_text_for_configured_policy,
     gemini_live_backup_from_effective_settings, is_local_proxy_url,
     live_backup_snapshot_from_live_config,
     live_config_has_proxy_placeholder_for_app, live_takeover_config_matches_proxy_for_app,
     provider_settings_have_proxy_placeholder_for_app, sync_provider_settings_with_live_token,
     preserve_codex_mcp_servers_from_existing_config,
-    preserve_codex_oauth_auth_in_backup_if_present,
+    preserve_codex_oauth_auth_in_backup_for_configured_policy,
     remove_claude_takeover_env_fields_if_present, CodexLiveWriteProjection,
     proxy_live_config_owned_by_takeover, proxy_live_urls_from_listen_parts,
     proxy_runtime_status_stopped,
@@ -1467,13 +1468,11 @@ impl ProxyService {
                     existing_value,
                 )
                 .map_err(codex_backup_projection_error_message)?;
-                if crate::settings::preserve_codex_official_auth_on_switch() {
-                    preserve_codex_oauth_auth_in_backup_if_present(
-                        &mut effective_settings,
-                        existing_value,
-                    )
-                    .map_err(codex_backup_projection_error_message)?;
-                }
+                preserve_codex_oauth_auth_in_backup_for_configured_policy(
+                    &mut effective_settings,
+                    existing_value,
+                )
+                .map_err(codex_backup_projection_error_message)?;
             }
 
             // 统一会话开关：备份是接管释放时恢复 live 的来源，官方配置的
@@ -1670,10 +1669,9 @@ impl ProxyService {
         provider: Option<&Provider>,
     ) -> Result<(), String> {
         let Some(provider) = provider else {
-            if let Some(live_config) = codex_preserved_auth_live_config_text_for_policy(
+            if let Some(live_config) = codex_preserved_auth_live_config_text_for_configured_policy(
                 config,
                 PROXY_TOKEN_PLACEHOLDER,
-                crate::settings::preserve_codex_official_auth_on_switch(),
                 false,
             )
             .map_err(|e| format!("写入 Codex 配置失败: {e}"))?
@@ -1703,10 +1701,9 @@ impl ProxyService {
         config: &Value,
         provider: Option<&Provider>,
     ) -> Result<(), String> {
-        if let Some(live_config) = codex_preserved_auth_live_config_text_for_policy(
+        if let Some(live_config) = codex_preserved_auth_live_config_text_for_configured_policy(
             config,
             PROXY_TOKEN_PLACEHOLDER,
-            crate::settings::preserve_codex_official_auth_on_switch(),
             true,
         )
         .map_err(|e| format!("写入 Codex 配置失败: {e}"))?
