@@ -1483,6 +1483,14 @@ pub(crate) fn provider_live_removal_target(
     }
 }
 
+pub(crate) fn provider_delete_is_current_provider(
+    provider_id: &str,
+    local_current: Option<&str>,
+    db_current: Option<&str>,
+) -> bool {
+    local_current == Some(provider_id) || db_current == Some(provider_id)
+}
+
 pub(crate) fn provider_switch_backfill_source_id<'a>(
     app_type: &AppType,
     current_id: Option<&'a str>,
@@ -13225,6 +13233,31 @@ command = "latest-command"
         assert_eq!(provider_live_removal_target(&AppType::ClaudeDesktop), None);
         assert_eq!(provider_live_removal_target(&AppType::Codex), None);
         assert_eq!(provider_live_removal_target(&AppType::Gemini), None);
+    }
+
+    #[test]
+    fn provider_delete_is_current_provider_checks_local_and_db_sources() {
+        assert!(provider_delete_is_current_provider(
+            "provider-a",
+            Some("provider-a"),
+            None
+        ));
+        assert!(provider_delete_is_current_provider(
+            "provider-a",
+            None,
+            Some("provider-a")
+        ));
+        assert!(provider_delete_is_current_provider(
+            "provider-a",
+            Some("provider-a"),
+            Some("provider-a")
+        ));
+        assert!(!provider_delete_is_current_provider(
+            "provider-a",
+            Some("provider-b"),
+            Some("provider-c")
+        ));
+        assert!(!provider_delete_is_current_provider("provider-a", None, None));
     }
 
     #[test]

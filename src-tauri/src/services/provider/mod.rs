@@ -21,8 +21,8 @@ use crate::proxy_core_adapter::{
     provider_additive_update_route, provider_app_has_current_provider,
     provider_credential_issue_spec, provider_credential_values, provider_key_change_policy_issue,
     provider_key_change_policy_issue_message, provider_live_config_presence_error_policy,
-    provider_initial_live_config_managed_marker, provider_live_removal_target,
-    provider_live_sync_scope,
+    provider_delete_is_current_provider, provider_initial_live_config_managed_marker,
+    provider_live_removal_target, provider_live_sync_scope,
     provider_omo_switch_pair, provider_omo_variant_for_category,
     provider_settings_validation_issue_spec, provider_settings_validation_parts,
     provider_switch_backfill_source_id, provider_switch_dispatch,
@@ -1714,7 +1714,8 @@ impl ProviderService {
         let local_current = crate::settings::get_current_provider(&app_type);
         let db_current = state.db.get_current_provider(app_type.as_str())?;
 
-        if local_current.as_deref() == Some(id) || db_current.as_deref() == Some(id) {
+        if provider_delete_is_current_provider(id, local_current.as_deref(), db_current.as_deref())
+        {
             return Err(AppError::Message(
                 "无法删除当前正在使用的供应商".to_string(),
             ));
