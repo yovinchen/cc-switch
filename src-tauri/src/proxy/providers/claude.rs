@@ -19,24 +19,24 @@ use crate::provider::Provider;
 use crate::proxy::error::ProxyError;
 use crate::proxy_core_adapter::{
     anthropic_request_to_gemini_request_with_shadow, anthropic_to_openai_chat_request,
-    anthropic_to_openai_responses_request, build_claude_auth_headers, build_claude_upstream_url,
-    build_copilot_auth_headers, claude_api_format_needs_transform,
+    anthropic_to_openai_responses_request, build_claude_upstream_url,
+    claude_api_format_needs_transform,
     gemini_response_to_anthropic_message, inject_openai_stream_include_usage,
     normalize_anthropic_tool_thinking_history, openai_chat_to_anthropic_message,
     openai_responses_to_anthropic_message,
-    provider_claude_api_format, provider_claude_auth_info, required_claude_provider_base_url,
+    provider_claude_api_format, provider_claude_auth_headers, provider_claude_auth_info,
+    required_claude_provider_base_url,
     provider_claude_kind, provider_claude_prompt_cache_key,
     provider_claude_responses_prompt_cache_key, provider_codex_fast_mode_enabled,
     provider_is_codex_oauth, provider_should_preserve_reasoning_content_for_openai_chat,
     provider_normalize_deepseek_thinking_disabled_strip_effort,
     provider_should_normalize_anthropic_tool_thinking_history,
-    ClaudeAuthHeaderKind, CopilotAuthHeadersInput,
-    GeminiShadowStore, ProviderAuthInfo,
-    ProviderAuthStrategy, ProviderKind,
-    synthesize_gemini_tool_call_id_with_uuid,
+    GeminiShadowStore, ProviderAuthInfo, ProviderKind, synthesize_gemini_tool_call_id_with_uuid,
 };
 #[cfg(test)]
-use crate::proxy_core_adapter::should_normalize_anthropic_tool_thinking_history;
+use crate::proxy_core_adapter::{
+    should_normalize_anthropic_tool_thinking_history, ProviderAuthStrategy,
+};
 use serde_json::Value;
 
 /// 获取 Claude 供应商的 API 格式
@@ -184,37 +184,7 @@ impl ProviderAdapter for ClaudeAdapter {
         &self,
         auth: &ProviderAuthInfo,
     ) -> Result<Vec<(http::HeaderName, http::HeaderValue)>, ProxyError> {
-        let static_kind = match auth.strategy {
-            ProviderAuthStrategy::Anthropic => Some(ClaudeAuthHeaderKind::AnthropicApiKey),
-            ProviderAuthStrategy::ClaudeAuth | ProviderAuthStrategy::Bearer => {
-                Some(ClaudeAuthHeaderKind::Bearer)
-            }
-            ProviderAuthStrategy::Google => Some(ClaudeAuthHeaderKind::GoogleApiKey),
-            ProviderAuthStrategy::GoogleOAuth => Some(ClaudeAuthHeaderKind::GoogleOAuth),
-            ProviderAuthStrategy::CodexOAuth => Some(ClaudeAuthHeaderKind::CodexOAuth),
-            ProviderAuthStrategy::GitHubCopilot => None,
-        };
-        if let Some(kind) = static_kind {
-            return build_claude_auth_headers(kind, &auth.api_key, auth.access_token.as_deref())
-                .map_err(|error| ProxyError::AuthError(error.to_string()));
-        }
-
-        Ok(match auth.strategy {
-            ProviderAuthStrategy::GitHubCopilot => {
-                let request_id = uuid::Uuid::new_v4().to_string();
-                build_copilot_auth_headers(CopilotAuthHeadersInput {
-                    api_key: &auth.api_key,
-                    request_id: &request_id,
-                    editor_version: super::copilot_auth::COPILOT_EDITOR_VERSION,
-                    editor_plugin_version: super::copilot_auth::COPILOT_PLUGIN_VERSION,
-                    integration_id: super::copilot_auth::COPILOT_INTEGRATION_ID,
-                    user_agent: super::copilot_auth::COPILOT_USER_AGENT,
-                    github_api_version: super::copilot_auth::COPILOT_API_VERSION,
-                })
-                .map_err(|error| ProxyError::AuthError(error.to_string()))?
-            }
-            _ => unreachable!("static auth strategies are delegated to proxy-core"),
-        })
+        provider_claude_auth_headers(auth).map_err(ProxyError::AuthError)
     }
 
     fn needs_transform(&self, provider: &Provider) -> bool {

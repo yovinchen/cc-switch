@@ -4423,6 +4423,45 @@ pub(crate) fn build_copilot_auth_headers(
     crate::proxy_core::api::transport::build_copilot_auth_headers(input)
 }
 
+fn claude_auth_header_kind(strategy: ProviderAuthStrategy) -> Option<ClaudeAuthHeaderKind> {
+    match strategy {
+        ProviderAuthStrategy::Anthropic => Some(ClaudeAuthHeaderKind::AnthropicApiKey),
+        ProviderAuthStrategy::ClaudeAuth | ProviderAuthStrategy::Bearer => {
+            Some(ClaudeAuthHeaderKind::Bearer)
+        }
+        ProviderAuthStrategy::Google => Some(ClaudeAuthHeaderKind::GoogleApiKey),
+        ProviderAuthStrategy::GoogleOAuth => Some(ClaudeAuthHeaderKind::GoogleOAuth),
+        ProviderAuthStrategy::CodexOAuth => Some(ClaudeAuthHeaderKind::CodexOAuth),
+        ProviderAuthStrategy::GitHubCopilot => None,
+    }
+}
+
+pub(crate) fn provider_claude_auth_headers(
+    auth: &ProviderAuthInfo,
+) -> Result<Vec<(http::HeaderName, http::HeaderValue)>, String> {
+    if let Some(kind) = claude_auth_header_kind(auth.strategy) {
+        return build_claude_auth_headers(kind, &auth.api_key, auth.access_token.as_deref())
+            .map_err(|error| error.to_string());
+    }
+
+    match auth.strategy {
+        ProviderAuthStrategy::GitHubCopilot => {
+            let request_id = Uuid::new_v4().to_string();
+            build_copilot_auth_headers(CopilotAuthHeadersInput {
+                api_key: &auth.api_key,
+                request_id: &request_id,
+                editor_version: crate::proxy::providers::copilot_auth::COPILOT_EDITOR_VERSION,
+                editor_plugin_version: crate::proxy::providers::copilot_auth::COPILOT_PLUGIN_VERSION,
+                integration_id: crate::proxy::providers::copilot_auth::COPILOT_INTEGRATION_ID,
+                user_agent: crate::proxy::providers::copilot_auth::COPILOT_USER_AGENT,
+                github_api_version: crate::proxy::providers::copilot_auth::COPILOT_API_VERSION,
+            })
+            .map_err(|error| error.to_string())
+        }
+        _ => unreachable!("static auth strategies are delegated to proxy-core"),
+    }
+}
+
 pub(crate) fn anthropic_to_openai_responses_request(
     body: &Value,
     cache_key: Option<&str>,
@@ -12352,6 +12391,16 @@ base_url = "https://api.openai.com/v1"
             bearer_headers[0].1,
             http::HeaderValue::from_static("Bearer claude-token")
         );
+        let provider_bearer_headers = provider_claude_auth_headers(&ProviderAuthInfo::new(
+            "claude-provider-token".to_string(),
+            ProviderAuthStrategy::ClaudeAuth,
+        ))
+        .expect("provider claude bearer headers");
+        assert_eq!(provider_bearer_headers[0].0.as_str(), "authorization");
+        assert_eq!(
+            provider_bearer_headers[0].1,
+            http::HeaderValue::from_static("Bearer claude-provider-token")
+        );
         let copilot_headers = build_copilot_auth_headers(CopilotAuthHeadersInput {
             api_key: "copilot-token",
             request_id: "request-1",
@@ -12365,6 +12414,17 @@ base_url = "https://api.openai.com/v1"
         assert!(copilot_headers
             .iter()
             .any(|(name, value)| name.as_str() == "x-request-id" && value == "request-1"));
+        let provider_copilot_headers = provider_claude_auth_headers(&ProviderAuthInfo::new(
+            "copilot-provider-token".to_string(),
+            ProviderAuthStrategy::GitHubCopilot,
+        ))
+        .expect("provider claude copilot headers");
+        assert!(provider_copilot_headers.iter().any(|(name, value)| {
+            name.as_str() == "authorization" && value == "Bearer copilot-provider-token"
+        }));
+        assert!(provider_copilot_headers
+            .iter()
+            .any(|(name, _)| name.as_str() == "x-request-id"));
 
         assert!(is_copilot_prompt_cache_provider(
             Some("github_copilot"),
