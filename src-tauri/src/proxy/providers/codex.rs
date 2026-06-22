@@ -6,73 +6,15 @@
 //! 支持检测官方 Codex 客户端 (codex_vscode, codex_cli_rs)
 
 use super::ProviderAdapter;
-#[cfg(test)]
-use crate::provider::CodexChatReasoningConfig;
 use crate::provider::Provider;
 use crate::proxy::error::ProxyError;
 use crate::proxy_core_adapter::{
     provider_codex_auth_headers, provider_codex_auth_info, provider_codex_upstream_url,
     required_codex_provider_base_url, ProviderAuthInfo,
 };
-#[cfg(test)]
-use crate::proxy_core_adapter::{
-    provider_apply_codex_chat_upstream_model, provider_codex_chat_reasoning_profile,
-    provider_codex_uses_chat_completions, provider_should_convert_codex_responses_to_chat,
-    CodexChatReasoningProfile, ProviderAuthStrategy,
-};
-#[cfg(test)]
-use serde_json::Value as JsonValue;
 
 /// Codex 适配器
 pub struct CodexAdapter;
-
-/// Whether this Codex provider's real upstream should be called through
-/// OpenAI Chat Completions, even if the local Codex client is talking to CC
-/// Switch through the Responses API.
-#[cfg(test)]
-fn codex_provider_uses_chat_completions(provider: &Provider) -> bool {
-    provider_codex_uses_chat_completions(provider)
-}
-
-#[cfg(test)]
-fn should_convert_codex_responses_to_chat(provider: &Provider, endpoint: &str) -> bool {
-    provider_should_convert_codex_responses_to_chat(provider, endpoint)
-}
-
-/// For Codex Chat providers, ensure the request uses the configured upstream
-/// model before converting the request to Chat Completions.
-#[cfg(test)]
-fn apply_codex_chat_upstream_model(provider: &Provider, body: &mut JsonValue) -> Option<String> {
-    provider_apply_codex_chat_upstream_model(provider, body)
-}
-
-#[cfg(test)]
-fn resolve_codex_chat_reasoning_config(
-    provider: &Provider,
-    body: &JsonValue,
-) -> Option<CodexChatReasoningConfig> {
-    provider_codex_chat_reasoning_profile(provider, codex_chat_request_model(body))
-        .map(codex_chat_reasoning_config_from_profile)
-}
-
-#[cfg(test)]
-fn codex_chat_request_model(body: &JsonValue) -> Option<&str> {
-    body.get("model").and_then(|value| value.as_str())
-}
-
-#[cfg(test)]
-fn codex_chat_reasoning_config_from_profile(
-    profile: CodexChatReasoningProfile,
-) -> CodexChatReasoningConfig {
-    CodexChatReasoningConfig {
-        supports_thinking: profile.supports_thinking,
-        supports_effort: profile.supports_effort,
-        thinking_param: profile.thinking_param,
-        effort_param: profile.effort_param,
-        effort_value_mode: profile.effort_value_mode,
-        output_format: profile.output_format,
-    }
-}
 
 impl CodexAdapter {
     pub fn new() -> Self {
@@ -114,7 +56,12 @@ impl ProviderAdapter for CodexAdapter {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::proxy_core_adapter::is_official_codex_client_user_agent;
+    use crate::provider::CodexChatReasoningConfig;
+    use crate::proxy_core_adapter::{
+        is_official_codex_client_user_agent, provider_apply_codex_chat_upstream_model,
+        provider_codex_chat_reasoning_profile, provider_codex_uses_chat_completions,
+        provider_should_convert_codex_responses_to_chat, ProviderAuthStrategy,
+    };
     use serde_json::json;
 
     fn create_provider(config: serde_json::Value) -> Provider {
@@ -296,12 +243,12 @@ wire_api = "chat"
 "#
         }));
 
-        assert!(codex_provider_uses_chat_completions(&provider));
-        assert!(should_convert_codex_responses_to_chat(
+        assert!(provider_codex_uses_chat_completions(&provider));
+        assert!(provider_should_convert_codex_responses_to_chat(
             &provider,
             "/responses?stream=true"
         ));
-        assert!(!should_convert_codex_responses_to_chat(
+        assert!(!provider_should_convert_codex_responses_to_chat(
             &provider,
             "/chat/completions"
         ));
@@ -313,8 +260,8 @@ wire_api = "chat"
             "base_url": "https://example.com/v1/chat/completions"
         }));
 
-        assert!(codex_provider_uses_chat_completions(&provider));
-        assert!(should_convert_codex_responses_to_chat(
+        assert!(provider_codex_uses_chat_completions(&provider));
+        assert!(provider_should_convert_codex_responses_to_chat(
             &provider,
             "/v1/responses/compact"
         ));
@@ -330,8 +277,8 @@ wire_api = "chat"
             ..Default::default()
         });
 
-        assert!(codex_provider_uses_chat_completions(&provider));
-        assert!(should_convert_codex_responses_to_chat(
+        assert!(provider_codex_uses_chat_completions(&provider));
+        assert!(provider_should_convert_codex_responses_to_chat(
             &provider,
             "/responses/compact?stream=true"
         ));
@@ -347,7 +294,7 @@ wire_api = "chat"
             ..Default::default()
         });
 
-        assert!(should_convert_codex_responses_to_chat(
+        assert!(provider_should_convert_codex_responses_to_chat(
             &provider,
             "/v1/responses"
         ));
@@ -375,7 +322,7 @@ wire_api = "responses"
             "input": "ping"
         });
 
-        let upstream_model = apply_codex_chat_upstream_model(&provider, &mut body);
+        let upstream_model = provider_apply_codex_chat_upstream_model(&provider, &mut body);
 
         assert_eq!(upstream_model.as_deref(), Some("deepseek-v4-flash"));
         assert_eq!(
@@ -412,7 +359,7 @@ wire_api = "responses"
             "input": "ping"
         });
 
-        let upstream_model = apply_codex_chat_upstream_model(&provider, &mut body);
+        let upstream_model = provider_apply_codex_chat_upstream_model(&provider, &mut body);
 
         assert_eq!(upstream_model.as_deref(), Some("kimi-k2"));
         assert_eq!(body.get("model").and_then(|v| v.as_str()), Some("kimi-k2"));
@@ -433,8 +380,7 @@ wire_api = "chat"
         }));
 
         let config =
-            resolve_codex_chat_reasoning_config(&provider, &json!({ "model": "deepseek-v4-pro" }))
-                .unwrap();
+            provider_codex_chat_reasoning_profile(&provider, Some("deepseek-v4-pro")).unwrap();
 
         assert_eq!(config.supports_thinking, Some(true));
         assert_eq!(config.supports_effort, Some(true));
@@ -467,8 +413,7 @@ wire_api = "chat"
         });
 
         let config =
-            resolve_codex_chat_reasoning_config(&provider, &json!({ "model": "deepseek-v4-pro" }))
-                .unwrap();
+            provider_codex_chat_reasoning_profile(&provider, Some("deepseek-v4-pro")).unwrap();
 
         assert_eq!(config.supports_thinking, Some(false));
         assert_eq!(config.supports_effort, Some(false));
@@ -490,9 +435,9 @@ wire_api = "chat"
         }));
 
         // 模型名含 "deepseek"，但平台是 OpenRouter —— 平台规则必须覆盖模型规则。
-        let config = resolve_codex_chat_reasoning_config(
+        let config = provider_codex_chat_reasoning_profile(
             &provider,
-            &json!({ "model": "deepseek/deepseek-chat-v3.1" }),
+            Some("deepseek/deepseek-chat-v3.1"),
         )
         .unwrap();
 
@@ -517,11 +462,9 @@ wire_api = "chat"
         }));
 
         // 模型是 MiniMax（官方用 reasoning_split），但平台是 SiliconFlow —— 应走平台的 enable_thinking。
-        let config = resolve_codex_chat_reasoning_config(
-            &provider,
-            &json!({ "model": "MiniMaxAI/MiniMax-M2.7" }),
-        )
-        .unwrap();
+        let config =
+            provider_codex_chat_reasoning_profile(&provider, Some("MiniMaxAI/MiniMax-M2.7"))
+                .unwrap();
 
         assert_eq!(config.thinking_param.as_deref(), Some("enable_thinking"));
         assert_eq!(config.supports_effort, Some(false));

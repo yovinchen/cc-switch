@@ -365,6 +365,14 @@ const FORBIDDEN_PROVIDER_ADAPTER_AUTH_INFO_MARKERS: &[&str] = &[
 ];
 const FORBIDDEN_PROVIDER_ADAPTER_TEST_FACADE_MARKERS: &[&str] =
     &["pub fn provider_type(", "pub fn parse_oauth_credentials("];
+const FORBIDDEN_CODEX_PROVIDER_ADAPTER_TEST_FACADE_MARKERS: &[&str] = &[
+    "fn codex_provider_uses_chat_completions(",
+    "fn should_convert_codex_responses_to_chat(",
+    "fn apply_codex_chat_upstream_model(",
+    "fn resolve_codex_chat_reasoning_config(",
+    "fn codex_chat_request_model(",
+    "fn codex_chat_reasoning_config_from_profile(",
+];
 const FORBIDDEN_PROVIDER_ADAPTER_AUTH_HEADER_MARKERS: &[&str] = &[
     "build_codex_bearer_auth_headers(",
     "build_gemini_auth_headers(",
@@ -1453,6 +1461,34 @@ fn production_provider_adapters_exclude_provider_kind_test_facades() {
     assert!(
         violations.is_empty(),
         "Provider kind and credential parser tests belong in proxy_core_adapter/proxy-core, not provider adapter cfg(test) facades:\n{}",
+        violations.join("\n")
+    );
+}
+
+#[test]
+fn production_codex_provider_adapter_excludes_strategy_test_facades() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let relative = "src/proxy/providers/codex.rs";
+    let source = fs::read_to_string(manifest_dir.join(relative)).expect("read Codex provider");
+
+    let mut violations = Vec::new();
+    for (line_index, line) in production_lines(&source) {
+        let code = line.split("//").next().unwrap_or_default();
+        for marker in FORBIDDEN_CODEX_PROVIDER_ADAPTER_TEST_FACADE_MARKERS {
+            if code.contains(marker) {
+                violations.push(format!(
+                    "{}:{} contains Codex strategy test facade marker `{}`",
+                    relative,
+                    line_index + 1,
+                    marker
+                ));
+            }
+        }
+    }
+
+    assert!(
+        violations.is_empty(),
+        "Codex provider strategy tests must call proxy_core_adapter helpers directly instead of adding cfg(test) facades:\n{}",
         violations.join("\n")
     );
 }
