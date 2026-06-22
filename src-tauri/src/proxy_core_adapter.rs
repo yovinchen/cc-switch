@@ -1317,6 +1317,54 @@ pub(crate) fn provider_additive_live_write_action(
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum ProviderOmoVariant {
+    Standard,
+    Slim,
+}
+
+impl ProviderOmoVariant {
+    pub(crate) fn category(self) -> &'static str {
+        match self {
+            ProviderOmoVariant::Standard => "omo",
+            ProviderOmoVariant::Slim => "omo-slim",
+        }
+    }
+
+    fn opposite(self) -> Self {
+        match self {
+            ProviderOmoVariant::Standard => ProviderOmoVariant::Slim,
+            ProviderOmoVariant::Slim => ProviderOmoVariant::Standard,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct ProviderOmoSwitchPair {
+    pub(crate) enable: ProviderOmoVariant,
+    pub(crate) disable: ProviderOmoVariant,
+}
+
+pub(crate) fn provider_omo_switch_pair(
+    app_type: &AppType,
+    provider: &Provider,
+) -> Option<ProviderOmoSwitchPair> {
+    if !matches!(app_type, AppType::OpenCode) {
+        return None;
+    }
+
+    let enable = match provider.category.as_deref() {
+        Some("omo") => ProviderOmoVariant::Standard,
+        Some("omo-slim") => ProviderOmoVariant::Slim,
+        _ => return None,
+    };
+
+    Some(ProviderOmoSwitchPair {
+        enable,
+        disable: enable.opposite(),
+    })
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum ProviderSwitchDispatch {
     Normal,
     TakeoverAware,
@@ -12873,6 +12921,49 @@ command = "latest-command"
         assert_eq!(
             provider_additive_live_write_action(&AppType::OpenClaw, &custom_provider, true),
             ProviderAdditiveLiveWriteAction::Write
+        );
+    }
+
+    #[test]
+    fn provider_omo_switch_pair_maps_enable_and_disable_variants() {
+        let mut standard_provider = Provider::with_id(
+            "omo-provider".to_string(),
+            "OMO Provider".to_string(),
+            json!({}),
+            None,
+        );
+        standard_provider.category = Some("omo".to_string());
+        assert_eq!(
+            provider_omo_switch_pair(&AppType::OpenCode, &standard_provider),
+            Some(ProviderOmoSwitchPair {
+                enable: ProviderOmoVariant::Standard,
+                disable: ProviderOmoVariant::Slim,
+            })
+        );
+
+        let mut slim_provider = standard_provider.clone();
+        slim_provider.category = Some("omo-slim".to_string());
+        assert_eq!(
+            provider_omo_switch_pair(&AppType::OpenCode, &slim_provider),
+            Some(ProviderOmoSwitchPair {
+                enable: ProviderOmoVariant::Slim,
+                disable: ProviderOmoVariant::Standard,
+            })
+        );
+
+        let custom_provider = Provider::with_id(
+            "custom-provider".to_string(),
+            "Custom Provider".to_string(),
+            json!({}),
+            None,
+        );
+        assert_eq!(
+            provider_omo_switch_pair(&AppType::OpenCode, &custom_provider),
+            None
+        );
+        assert_eq!(
+            provider_omo_switch_pair(&AppType::Claude, &standard_provider),
+            None
         );
     }
 

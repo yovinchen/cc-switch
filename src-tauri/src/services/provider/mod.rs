@@ -21,13 +21,14 @@ use crate::proxy_core_adapter::{
     provider_app_has_current_provider,
     provider_credential_issue_spec, provider_credential_values, provider_key_change_policy_issue,
     provider_key_change_policy_issue_message, provider_live_config_presence_error_policy,
-    provider_settings_validation_issue_spec, provider_settings_validation_parts,
-    provider_switch_backfill_source_id, provider_switch_dispatch,
+    provider_omo_switch_pair, provider_settings_validation_issue_spec,
+    provider_settings_validation_parts, provider_switch_backfill_source_id, provider_switch_dispatch,
     provider_switch_should_mark_live_config_managed, proxy_live_config_owned_by_takeover,
     proxy_switch_should_hot_switch, should_block_proxy_switch_to_provider,
     should_reapply_codex_official_live_for_provider, CommonConfigSnippetIssue,
     ProviderAdditiveLiveWriteAction, ProviderCredentialIssue,
-    ProviderLiveConfigPresenceErrorPolicy, ProviderSettingsValidationIssue, ProviderSwitchDispatch,
+    ProviderLiveConfigPresenceErrorPolicy, ProviderOmoVariant, ProviderSettingsValidationIssue,
+    ProviderSwitchDispatch,
 };
 use crate::services::mcp::McpService;
 use crate::settings::CustomEndpoint;
@@ -1379,6 +1380,15 @@ impl ProviderService {
             .live_config_managed = Some(managed);
     }
 
+    fn omo_variant_descriptor(
+        variant: ProviderOmoVariant,
+    ) -> &'static crate::services::omo::OmoVariant {
+        match variant {
+            ProviderOmoVariant::Standard => &crate::services::omo::STANDARD,
+            ProviderOmoVariant::Slim => &crate::services::omo::SLIM,
+        }
+    }
+
     /// List all providers for an app type
     pub fn list(
         state: &AppState,
@@ -1866,22 +1876,17 @@ impl ProviderService {
             .ok_or_else(|| AppError::Message(format!("供应商 {id} 不存在")))?;
 
         // OMO ↔ OMO Slim are mutually exclusive; activating one removes the other's config file.
-        if matches!(app_type, AppType::OpenCode) {
-            let omo_pair = match provider.category.as_deref() {
-                Some("omo") => Some((&crate::services::omo::STANDARD, &crate::services::omo::SLIM)),
-                Some("omo-slim") => {
-                    Some((&crate::services::omo::SLIM, &crate::services::omo::STANDARD))
-                }
-                _ => None,
-            };
-            if let Some((enable, disable)) = omo_pair {
-                state
-                    .db
-                    .set_omo_provider_current(app_type.as_str(), id, enable.category)?;
-                crate::services::OmoService::write_config_to_file(state, enable)?;
-                let _ = crate::services::OmoService::delete_config_file(disable);
-                return Ok(SwitchResult::default());
-            }
+        if let Some(omo_pair) = provider_omo_switch_pair(&app_type, provider) {
+            let enable = Self::omo_variant_descriptor(omo_pair.enable);
+            let disable = Self::omo_variant_descriptor(omo_pair.disable);
+            state.db.set_omo_provider_current(
+                app_type.as_str(),
+                id,
+                omo_pair.enable.category(),
+            )?;
+            crate::services::OmoService::write_config_to_file(state, enable)?;
+            let _ = crate::services::OmoService::delete_config_file(disable);
+            return Ok(SwitchResult::default());
         }
 
         let mut result = SwitchResult::default();
