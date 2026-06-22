@@ -17,12 +17,11 @@ use crate::error::AppError;
 use crate::provider::{Provider, UsageResult};
 use crate::proxy_core_adapter::{
     common_config_snippet_from_settings, normalize_claude_models_in_value,
-    provider_codex_validation_parts,
-    provider_credential_values,
-    provider_settings_config_is_object, proxy_live_config_owned_by_takeover,
+    provider_credential_values, provider_settings_validation_parts,
+    proxy_live_config_owned_by_takeover,
     proxy_switch_should_hot_switch, should_block_proxy_switch_to_provider,
     should_reapply_codex_official_live_for_provider, CodexProviderValidationIssue,
-    CommonConfigSnippetIssue, ProviderCredentialIssue,
+    CommonConfigSnippetIssue, ProviderCredentialIssue, ProviderSettingsValidationIssue,
 };
 use crate::services::mcp::McpService;
 use crate::settings::CustomEndpoint;
@@ -2300,47 +2299,18 @@ impl ProviderService {
     }
 
     fn validate_provider_settings(app_type: &AppType, provider: &Provider) -> Result<(), AppError> {
+        let validation_parts = provider_settings_validation_parts(app_type, provider)
+            .map_err(|issue| {
+                Self::provider_settings_validation_issue_to_app_error(issue, &provider.id)
+            })?;
+
         match app_type {
-            AppType::Claude => {
-                if !provider_settings_config_is_object(provider) {
-                    return Err(AppError::localized(
-                        "provider.claude.settings.not_object",
-                        "Claude 配置必须是 JSON 对象",
-                        "Claude configuration must be a JSON object",
-                    ));
-                }
-            }
+            AppType::Claude => {}
             AppType::ClaudeDesktop => {
                 crate::claude_desktop_config::validate_provider(provider)?;
             }
             AppType::Codex => {
-                let parts = provider_codex_validation_parts(provider).map_err(|issue| match issue {
-                    CodexProviderValidationIssue::NotObject => AppError::localized(
-                        "provider.codex.settings.not_object",
-                        "Codex 配置必须是 JSON 对象",
-                        "Codex configuration must be a JSON object",
-                    ),
-                    CodexProviderValidationIssue::MissingAuth => AppError::localized(
-                        "provider.codex.auth.missing",
-                        format!("供应商 {} 缺少 auth 配置", provider.id),
-                        format!("Provider {} is missing auth configuration", provider.id),
-                    ),
-                    CodexProviderValidationIssue::AuthNotObject => AppError::localized(
-                        "provider.codex.auth.not_object",
-                        format!("供应商 {} 的 auth 配置必须是 JSON 对象", provider.id),
-                        format!(
-                            "Provider {} auth configuration must be a JSON object",
-                            provider.id
-                        ),
-                    ),
-                    CodexProviderValidationIssue::ConfigInvalidType => AppError::localized(
-                        "provider.codex.config.invalid_type",
-                        "Codex config 字段必须是字符串",
-                        "Codex config field must be a string",
-                    ),
-                })?;
-
-                if let Some(cfg_text) = parts.config_text {
+                if let Some(cfg_text) = validation_parts.codex_config_text {
                     crate::codex_config::validate_config_toml(cfg_text)?;
                 }
             }
@@ -2348,38 +2318,7 @@ impl ProviderService {
                 use crate::gemini_config::validate_gemini_settings;
                 validate_gemini_settings(&provider.settings_config)?
             }
-            AppType::OpenCode => {
-                // OpenCode uses a different config structure: { npm, options, models }
-                // Basic validation - must be an object
-                if !provider_settings_config_is_object(provider) {
-                    return Err(AppError::localized(
-                        "provider.opencode.settings.not_object",
-                        "OpenCode 配置必须是 JSON 对象",
-                        "OpenCode configuration must be a JSON object",
-                    ));
-                }
-            }
-            AppType::OpenClaw => {
-                // OpenClaw uses config structure: { baseUrl, apiKey, api, models }
-                // Basic validation - must be an object
-                if !provider_settings_config_is_object(provider) {
-                    return Err(AppError::localized(
-                        "provider.openclaw.settings.not_object",
-                        "OpenClaw 配置必须是 JSON 对象",
-                        "OpenClaw configuration must be a JSON object",
-                    ));
-                }
-            }
-            AppType::Hermes => {
-                // Hermes: accept any JSON object for now
-                if !provider_settings_config_is_object(provider) {
-                    return Err(AppError::localized(
-                        "provider.hermes.settings.not_object",
-                        "Hermes 配置必须是 JSON 对象",
-                        "Hermes configuration must be a JSON object",
-                    ));
-                }
-            }
+            AppType::OpenCode | AppType::OpenClaw | AppType::Hermes => {}
         }
 
         // Validate and clean UsageScript configuration (common for all app types)
@@ -2396,6 +2335,56 @@ impl ProviderService {
         }
 
         Ok(())
+    }
+
+    fn provider_settings_validation_issue_to_app_error(
+        issue: ProviderSettingsValidationIssue,
+        provider_id: &str,
+    ) -> AppError {
+        match issue {
+            ProviderSettingsValidationIssue::ClaudeSettingsNotObject => AppError::localized(
+                "provider.claude.settings.not_object",
+                "Claude 配置必须是 JSON 对象",
+                "Claude configuration must be a JSON object",
+            ),
+            ProviderSettingsValidationIssue::Codex(issue) => match issue {
+                CodexProviderValidationIssue::NotObject => AppError::localized(
+                    "provider.codex.settings.not_object",
+                    "Codex 配置必须是 JSON 对象",
+                    "Codex configuration must be a JSON object",
+                ),
+                CodexProviderValidationIssue::MissingAuth => AppError::localized(
+                    "provider.codex.auth.missing",
+                    format!("供应商 {provider_id} 缺少 auth 配置"),
+                    format!("Provider {provider_id} is missing auth configuration"),
+                ),
+                CodexProviderValidationIssue::AuthNotObject => AppError::localized(
+                    "provider.codex.auth.not_object",
+                    format!("供应商 {provider_id} 的 auth 配置必须是 JSON 对象"),
+                    format!("Provider {provider_id} auth configuration must be a JSON object"),
+                ),
+                CodexProviderValidationIssue::ConfigInvalidType => AppError::localized(
+                    "provider.codex.config.invalid_type",
+                    "Codex config 字段必须是字符串",
+                    "Codex config field must be a string",
+                ),
+            },
+            ProviderSettingsValidationIssue::OpenCodeSettingsNotObject => AppError::localized(
+                "provider.opencode.settings.not_object",
+                "OpenCode 配置必须是 JSON 对象",
+                "OpenCode configuration must be a JSON object",
+            ),
+            ProviderSettingsValidationIssue::OpenClawSettingsNotObject => AppError::localized(
+                "provider.openclaw.settings.not_object",
+                "OpenClaw 配置必须是 JSON 对象",
+                "OpenClaw configuration must be a JSON object",
+            ),
+            ProviderSettingsValidationIssue::HermesSettingsNotObject => AppError::localized(
+                "provider.hermes.settings.not_object",
+                "Hermes 配置必须是 JSON 对象",
+                "Hermes configuration must be a JSON object",
+            ),
+        }
     }
 
     #[allow(dead_code)]

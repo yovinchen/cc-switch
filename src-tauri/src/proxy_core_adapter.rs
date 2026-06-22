@@ -2001,6 +2001,58 @@ pub(crate) fn provider_codex_validation_parts(
     Ok(CodexProviderValidationParts { config_text })
 }
 
+#[derive(Default)]
+pub(crate) struct ProviderSettingsValidationParts<'a> {
+    pub(crate) codex_config_text: Option<&'a str>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum ProviderSettingsValidationIssue {
+    ClaudeSettingsNotObject,
+    Codex(CodexProviderValidationIssue),
+    OpenCodeSettingsNotObject,
+    OpenClawSettingsNotObject,
+    HermesSettingsNotObject,
+}
+
+pub(crate) fn provider_settings_validation_parts<'a>(
+    app_type: &AppType,
+    provider: &'a Provider,
+) -> Result<ProviderSettingsValidationParts<'a>, ProviderSettingsValidationIssue> {
+    match app_type {
+        AppType::Claude => {
+            if !provider_settings_config_is_object(provider) {
+                return Err(ProviderSettingsValidationIssue::ClaudeSettingsNotObject);
+            }
+        }
+        AppType::Codex => {
+            let parts = provider_codex_validation_parts(provider)
+                .map_err(ProviderSettingsValidationIssue::Codex)?;
+            return Ok(ProviderSettingsValidationParts {
+                codex_config_text: parts.config_text,
+            });
+        }
+        AppType::OpenCode => {
+            if !provider_settings_config_is_object(provider) {
+                return Err(ProviderSettingsValidationIssue::OpenCodeSettingsNotObject);
+            }
+        }
+        AppType::OpenClaw => {
+            if !provider_settings_config_is_object(provider) {
+                return Err(ProviderSettingsValidationIssue::OpenClawSettingsNotObject);
+            }
+        }
+        AppType::Hermes => {
+            if !provider_settings_config_is_object(provider) {
+                return Err(ProviderSettingsValidationIssue::HermesSettingsNotObject);
+            }
+        }
+        AppType::ClaudeDesktop | AppType::Gemini => {}
+    }
+
+    Ok(ProviderSettingsValidationParts::default())
+}
+
 fn codex_wire_api_from_toml(config_text: &str) -> Option<String> {
     let doc = config_text.parse::<toml::Value>().ok()?;
 
@@ -7540,13 +7592,31 @@ experimental_bearer_token = "live-token"
         let validation_parts = provider_codex_validation_parts(&official_live_provider)
             .expect("codex validation parts");
         assert_eq!(validation_parts.config_text, Some(""));
+        let provider_validation_parts =
+            provider_settings_validation_parts(&AppType::Codex, &official_live_provider)
+                .expect("provider validation parts");
+        assert_eq!(provider_validation_parts.codex_config_text, Some(""));
         assert!(matches!(
             provider_codex_validation_parts(&invalid_shape),
             Err(CodexProviderValidationIssue::NotObject)
         ));
         assert!(matches!(
+            provider_settings_validation_parts(&AppType::Claude, &invalid_shape),
+            Err(ProviderSettingsValidationIssue::ClaudeSettingsNotObject)
+        ));
+        assert!(matches!(
+            provider_settings_validation_parts(&AppType::OpenCode, &invalid_shape),
+            Err(ProviderSettingsValidationIssue::OpenCodeSettingsNotObject)
+        ));
+        assert!(matches!(
             provider_codex_validation_parts(&missing_auth),
             Err(CodexProviderValidationIssue::MissingAuth)
+        ));
+        assert!(matches!(
+            provider_settings_validation_parts(&AppType::Codex, &missing_auth),
+            Err(ProviderSettingsValidationIssue::Codex(
+                CodexProviderValidationIssue::MissingAuth
+            ))
         ));
         assert!(matches!(
             provider_codex_validation_parts(&auth_not_object),
