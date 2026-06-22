@@ -15,15 +15,15 @@ use crate::provider::Provider;
 use crate::proxy_core_adapter::{
     build_effective_settings_with_common_config as adapter_build_effective_settings_with_common_config,
     remove_common_config_from_settings as adapter_remove_common_config_from_settings,
-    gemini_env_value_from_env_json, opencode_live_provider_fragment_has_provider_fields,
-    normalize_claude_models_in_value,
+    gemini_env_value_from_env_json, normalize_claude_models_in_value,
     normalize_provider_common_config_for_storage as adapter_normalize_provider_common_config_for_storage,
     provider_codex_imported_live_category,
     provider_codex_live_snapshot_parts, CommonConfigSettingsMutationIssue,
+    OpenCodeLiveWriteConfig,
     ProviderBackfillSettingsWarning, ProviderEffectiveSettingsWarning,
     provider_common_config_storage_normalization_requires_snippet,
     provider_gemini_env_map, provider_gemini_live_config_object,
-    provider_opencode_live_provider_fragment, provider_openclaw_has_live_provider_fields,
+    provider_opencode_live_write_plan, provider_openclaw_has_live_provider_fields,
     proxy_live_config_owned_by_takeover,
     restore_live_settings_for_provider_backfill as adapter_restore_live_settings_for_provider_backfill,
     sanitize_claude_settings_for_live,
@@ -369,45 +369,45 @@ pub(crate) fn write_live_snapshot(app_type: &AppType, provider: &Provider) -> Re
         AppType::OpenCode => {
             // OpenCode uses additive mode - write provider to config
             use crate::opencode_config;
-            use crate::provider::OpenCodeProviderConfig;
 
-            let fragment = provider_opencode_live_provider_fragment(provider);
-            if fragment.from_full_config {
+            let plan = provider_opencode_live_write_plan(provider);
+            if plan.from_full_config {
                 log::warn!(
                     "OpenCode provider '{}' has full config structure in settings_config, attempting to extract fragment",
                     provider.id
                 );
             }
-            let config_to_write = fragment.config;
 
-            // Convert settings_config to OpenCodeProviderConfig
-            let opencode_config_result =
-                serde_json::from_value::<OpenCodeProviderConfig>(config_to_write.clone());
-
-            match opencode_config_result {
-                Ok(config) => {
+            match plan.config {
+                OpenCodeLiveWriteConfig::Typed(config) => {
                     opencode_config::set_typed_provider(&provider.id, &config)?;
                     log::info!("OpenCode provider '{}' written to live config", provider.id);
                 }
-                Err(e) => {
+                OpenCodeLiveWriteConfig::Raw {
+                    config,
+                    parse_error,
+                } => {
                     log::warn!(
                         "Failed to parse OpenCode provider config for '{}': {}",
                         provider.id,
-                        e
+                        parse_error
                     );
-                    // Only write if config looks like a valid provider fragment
-                    if opencode_live_provider_fragment_has_provider_fields(&config_to_write) {
-                        opencode_config::set_provider(&provider.id, config_to_write)?;
-                        log::info!(
-                            "OpenCode provider '{}' written as raw JSON to live config",
-                            provider.id
-                        );
-                    } else {
-                        return Err(AppError::Message(format!(
-                            "OpenCode provider '{}' has invalid config structure for live config (must contain 'npm' or 'options')",
-                            provider.id
-                        )));
-                    }
+                    opencode_config::set_provider(&provider.id, config)?;
+                    log::info!(
+                        "OpenCode provider '{}' written as raw JSON to live config",
+                        provider.id
+                    );
+                }
+                OpenCodeLiveWriteConfig::Invalid { parse_error } => {
+                    log::warn!(
+                        "Failed to parse OpenCode provider config for '{}': {}",
+                        provider.id,
+                        parse_error
+                    );
+                    return Err(AppError::Message(format!(
+                        "OpenCode provider '{}' has invalid config structure for live config (must contain 'npm' or 'options')",
+                        provider.id
+                    )));
                 }
             }
         }
