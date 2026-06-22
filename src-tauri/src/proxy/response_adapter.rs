@@ -94,7 +94,6 @@ mod tests {
     use crate::proxy_core_adapter::{ProxyEventEnvelope, ProxyResponseBody};
     use axum::response::{IntoResponse, sse::Sse};
     use http::StatusCode;
-    use http_body_util::BodyExt as _;
     use serde_json::json;
     use std::convert::Infallible;
 

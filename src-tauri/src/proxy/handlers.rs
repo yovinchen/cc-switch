@@ -17,7 +17,7 @@ use super::{
     },
     forwarder::ActiveConnectionGuard,
     handler_context::RequestContext,
-    providers::{codex_chat_history::record_responses_sse_stream, get_adapter},
+    providers::codex_chat_history::record_responses_sse_stream,
     response_adapter::{
         collect_axum_request_body, proxy_core_response_to_axum_response,
         proxy_core_response_to_proxy_response, proxy_event_envelope_to_axum_sse_event,
@@ -45,8 +45,9 @@ use crate::proxy_core_adapter::{
     json_proxy_request_from_input, JsonProxyRequestInput,
     openai_responses_to_anthropic_message, parse_json_proxy_request_body,
     parse_json_proxy_request_body_or_null, parse_upstream_json_or_unlabeled_sse,
-    provider_is_codex_oauth, rebuilt_json_proxy_response, resolve_management_auth_decision,
-    should_aggregate_codex_oauth_responses_sse,
+    provider_is_codex_oauth, provider_needs_claude_transform,
+    provider_should_convert_codex_responses_to_chat, rebuilt_json_proxy_response,
+    resolve_management_auth_decision, should_aggregate_codex_oauth_responses_sse,
     should_use_claude_transform_streaming,
     strip_endpoint_prefix, transformed_sse_proxy_response, validate_management_bearer_header,
     AppChannelListQuery, AppChannelManagementRequest, AppChannelResponse, AppKind, AppListRequest,
@@ -637,8 +638,7 @@ async fn handle_messages_for_app(
     let response = proxy_core_response_to_proxy_response(result.response)?;
 
     // 检查是否需要格式转换（OpenRouter 等中转服务）
-    let adapter = get_adapter(&app_type);
-    let needs_transform = adapter.needs_transform(ctx.provider()?);
+    let needs_transform = provider_needs_claude_transform(ctx.provider()?);
 
     // Claude 特有：格式转换处理
     if needs_transform {
@@ -922,7 +922,7 @@ pub async fn handle_responses(
     ctx.apply_proxy_result(&state, &result)?;
     let response = proxy_core_response_to_proxy_response(result.response)?;
 
-    if super::providers::should_convert_codex_responses_to_chat(ctx.provider()?, &endpoint) {
+    if provider_should_convert_codex_responses_to_chat(ctx.provider()?, &endpoint) {
         return handle_codex_chat_to_responses_transform(
             response,
             &ctx,
@@ -983,7 +983,7 @@ pub async fn handle_responses_compact(
     ctx.apply_proxy_result(&state, &result)?;
     let response = proxy_core_response_to_proxy_response(result.response)?;
 
-    if super::providers::should_convert_codex_responses_to_chat(ctx.provider()?, &endpoint) {
+    if provider_should_convert_codex_responses_to_chat(ctx.provider()?, &endpoint) {
         return handle_codex_chat_to_responses_transform(
             response,
             &ctx,

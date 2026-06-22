@@ -3191,6 +3191,16 @@ pub(crate) fn provider_codex_uses_chat_completions(provider: &Provider) -> bool 
     )
 }
 
+pub(crate) fn provider_should_convert_codex_responses_to_chat(
+    provider: &Provider,
+    endpoint: &str,
+) -> bool {
+    should_convert_codex_responses_endpoint_to_chat(
+        provider_codex_uses_chat_completions(provider),
+        endpoint,
+    )
+}
+
 pub(crate) fn provider_codex_upstream_model(provider: &Provider) -> Option<String> {
     let settings_model = provider
         .settings_config
@@ -3569,6 +3579,17 @@ pub(crate) fn provider_claude_api_format(provider: &Provider) -> &'static str {
         meta.and_then(|meta| meta.api_format.as_deref()),
         &provider.settings_config,
     )
+}
+
+pub(crate) fn provider_needs_claude_transform(provider: &Provider) -> bool {
+    if matches!(
+        provider_claude_kind(provider),
+        ProviderKind::GitHubCopilot | ProviderKind::CodexOAuth
+    ) {
+        return true;
+    }
+
+    claude_api_format_needs_transform(provider_claude_api_format(provider))
 }
 
 pub(crate) fn infer_claude_provider_kind(
@@ -9473,6 +9494,14 @@ base_url = "https://api.openai.com/v1"
             None,
         );
         assert!(provider_codex_uses_chat_completions(&chat_provider));
+        assert!(provider_should_convert_codex_responses_to_chat(
+            &chat_provider,
+            "/responses"
+        ));
+        assert!(!provider_should_convert_codex_responses_to_chat(
+            &chat_provider,
+            "/chat/completions"
+        ));
         assert_eq!(
             provider_codex_upstream_model(&chat_provider).as_deref(),
             Some("upstream-model")
@@ -9918,6 +9947,7 @@ base_url = "https://api.openai.com/v1"
             ..Default::default()
         });
         assert_eq!(provider_claude_api_format(&provider), "openai_chat");
+        assert!(provider_needs_claude_transform(&provider));
         let provider_auth_key = provider_claude_auth_key(&provider).expect("provider auth token");
         assert_eq!(provider_auth_key.key, "claude-token");
         assert_eq!(
