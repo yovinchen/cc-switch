@@ -11,9 +11,8 @@ use crate::proxy::switch_lock::SwitchLockManager;
 use crate::proxy_core_adapter::{
     apply_claude_takeover_fields_with_policy_and_models,
     apply_codex_takeover_auth_placeholder_if_present, apply_gemini_takeover_env_fields,
-    attach_codex_model_catalog_from_provider as attach_codex_model_catalog_from_provider_settings,
-    build_proxy_official_warning_event_payload, claude_takeover_model_fields_from_settings,
-    ClaudeTakeoverAuthPolicy,
+    attach_codex_model_catalog_from_provider, build_proxy_official_warning_event_payload,
+    claude_takeover_model_fields_from_settings, ClaudeTakeoverAuthPolicy,
     codex_live_write_projection, codex_preserved_auth_live_config_text_if_proxy_placeholder,
     codex_takeover_toml_config_for_provider,
     ensure_codex_takeover_auth_placeholder, gemini_live_backup_from_effective_settings,
@@ -187,7 +186,7 @@ impl ProxyService {
             Some(provider),
         );
         effective_settings["config"] = json!(updated_config);
-        Self::attach_codex_model_catalog_from_provider(&mut effective_settings, Some(provider));
+        attach_codex_model_catalog_from_provider(&mut effective_settings, Some(provider));
 
         self.write_codex_takeover_live_for_provider(&effective_settings, Some(provider))?;
         Ok(())
@@ -1064,10 +1063,7 @@ impl ProxyService {
                 codex_provider.as_ref(),
             );
             live_config["config"] = json!(updated_config);
-            Self::attach_codex_model_catalog_from_provider(
-                &mut live_config,
-                codex_provider.as_ref(),
-            );
+            attach_codex_model_catalog_from_provider(&mut live_config, codex_provider.as_ref());
 
             self.write_codex_takeover_live_for_provider(&live_config, codex_provider.as_ref())?;
             log::info!("Codex Live 配置已接管，代理地址: {proxy_codex_base_url}");
@@ -1124,10 +1120,7 @@ impl ProxyService {
                     Some(&codex_provider),
                 );
                 live_config["config"] = json!(updated_config);
-                Self::attach_codex_model_catalog_from_provider(
-                    &mut live_config,
-                    Some(&codex_provider),
-                );
+                attach_codex_model_catalog_from_provider(&mut live_config, Some(&codex_provider));
 
                 self.write_codex_takeover_live_for_provider(&live_config, Some(&codex_provider))?;
                 log::info!("Codex Live 配置已接管，代理地址: {proxy_codex_base_url}");
@@ -1199,7 +1192,7 @@ impl ProxyService {
                         codex_provider.as_ref(),
                     );
                     live_config["config"] = json!(updated_config);
-                    Self::attach_codex_model_catalog_from_provider(
+                    attach_codex_model_catalog_from_provider(
                         &mut live_config,
                         codex_provider.as_ref(),
                     );
@@ -1768,13 +1761,6 @@ impl ProxyService {
     fn update_toml_base_url(toml_str: &str, new_url: &str) -> String {
         crate::codex_config::update_codex_toml_field(toml_str, "base_url", new_url)
             .unwrap_or_else(|_| toml_str.to_string())
-    }
-
-    fn attach_codex_model_catalog_from_provider(
-        live_config: &mut Value,
-        provider: Option<&Provider>,
-    ) {
-        attach_codex_model_catalog_from_provider_settings(live_config, provider);
     }
 
     fn read_claude_live(&self) -> Result<Value, String> {
