@@ -6997,9 +6997,7 @@ pub(crate) fn provider_claude_normalize_anthropic_messages(
     changed
 }
 
-pub(crate) fn inject_openai_stream_include_usage(body: &mut Value) {
-    crate::proxy_core::api::transport::inject_openai_stream_include_usage(body);
-}
+pub(crate) use crate::proxy_core::api::transport::inject_openai_stream_include_usage;
 
 #[cfg(test)]
 pub(crate) fn anthropic_tool_thinking_placeholder() -> &'static str {
@@ -7107,25 +7105,11 @@ pub(crate) fn forward_upstream_url_plan(
     }
 }
 
-pub(crate) fn resolve_gemini_native_url(
-    base_url: &str,
-    endpoint: &str,
-    is_full_url: bool,
-) -> String {
-    crate::proxy_core::api::transforms::resolve_gemini_native_url(
-        base_url,
-        endpoint,
-        is_full_url,
-    )
-}
+pub(crate) use crate::proxy_core::api::transforms::{
+    claude_api_format_needs_transform, resolve_gemini_native_url,
+};
 
-pub(crate) fn claude_api_format_needs_transform(api_format: &str) -> bool {
-    crate::proxy_core::api::transforms::claude_api_format_needs_transform(api_format)
-}
-
-pub(crate) fn anthropic_beta_header_value(existing_beta: Option<&str>) -> String {
-    crate::proxy_core::api::transport::anthropic_beta_header_value(existing_beta)
-}
+pub(crate) use crate::proxy_core::api::transport::anthropic_beta_header_value;
 
 pub(crate) fn build_upstream_request_headers(
     input: UpstreamRequestHeadersInput<'_>,
@@ -7133,9 +7117,7 @@ pub(crate) fn build_upstream_request_headers(
     crate::proxy_core::api::transport::build_upstream_request_headers(input)
 }
 
-pub(crate) fn upstream_host_header_from_url(url: &str) -> Option<String> {
-    crate::proxy_core::api::transport::upstream_host_header_from_url(url)
-}
+pub(crate) use crate::proxy_core::api::transport::upstream_host_header_from_url;
 
 pub(crate) fn serialize_upstream_request_body(
     method: &http::Method,
@@ -7160,9 +7142,7 @@ pub(crate) fn resolve_upstream_request_transport_policy(
     )
 }
 
-pub(crate) fn request_body_stream_flag(body: &Value) -> bool {
-    crate::proxy_core::api::transport::request_body_stream_flag(body)
-}
+pub(crate) use crate::proxy_core::api::transport::request_body_stream_flag;
 
 #[cfg(test)]
 pub(crate) fn is_streaming_upstream_request(
@@ -7173,9 +7153,7 @@ pub(crate) fn is_streaming_upstream_request(
     crate::proxy_core::api::transport::is_streaming_upstream_request(endpoint, body, headers)
 }
 
-pub(crate) fn is_socks_proxy_url(upstream_proxy_url: Option<&str>) -> bool {
-    crate::proxy_core::api::transport::is_socks_proxy_url(upstream_proxy_url)
-}
+pub(crate) use crate::proxy_core::api::transport::is_socks_proxy_url;
 
 pub(crate) fn resolve_upstream_send_policy(
     input: UpstreamSendPolicyInput,
@@ -7183,17 +7161,9 @@ pub(crate) fn resolve_upstream_send_policy(
     crate::proxy_core::api::transport::resolve_upstream_send_policy(input)
 }
 
-pub(crate) fn response_headers_log_summary(headers: &HeaderMap) -> String {
-    crate::proxy_core::api::transport::response_headers_log_summary(headers)
-}
-
-pub(crate) fn response_headers_indicate_sse(headers: &HeaderMap) -> bool {
-    crate::proxy_core::api::transport::response_headers_indicate_sse(headers)
-}
-
-pub(crate) fn get_content_encoding(headers: &HeaderMap) -> Option<String> {
-    crate::proxy_core::api::transport::get_content_encoding(headers)
-}
+pub(crate) use crate::proxy_core::api::transport::{
+    get_content_encoding, response_headers_indicate_sse, response_headers_log_summary,
+};
 
 pub(crate) fn decode_response_body(
     headers: &mut HeaderMap,
@@ -7215,27 +7185,11 @@ pub(crate) fn strip_sse_field<'a>(line: &'a str, field: &str) -> Option<&'a str>
     crate::proxy_core::api::transforms::strip_sse_field(line, field)
 }
 
-pub(crate) fn non_streaming_body_timeout_message(timeout: std::time::Duration) -> String {
-    crate::proxy_core::api::transport::non_streaming_body_timeout_message(timeout)
-}
-
-pub(crate) fn streaming_header_timeout_message(timeout: std::time::Duration) -> String {
-    crate::proxy_core::api::transport::streaming_header_timeout_message(timeout)
-}
-
-pub(crate) fn streaming_body_first_chunk_timeout_message(timeout: std::time::Duration) -> String {
-    crate::proxy_core::api::transport::streaming_body_first_chunk_timeout_message(timeout)
-}
-
-pub(crate) fn streaming_body_ended_before_first_chunk_message() -> &'static str {
-    crate::proxy_core::api::transport::streaming_body_ended_before_first_chunk_message()
-}
-
-pub(crate) fn streaming_body_first_chunk_read_error_message(
-    error: impl std::fmt::Display,
-) -> String {
-    crate::proxy_core::api::transport::streaming_body_first_chunk_read_error_message(error)
-}
+pub(crate) use crate::proxy_core::api::transport::{
+    non_streaming_body_timeout_message, streaming_body_ended_before_first_chunk_message,
+    streaming_body_first_chunk_read_error_message, streaming_body_first_chunk_timeout_message,
+    streaming_header_timeout_message,
+};
 
 pub(crate) fn passthrough_bytes_proxy_response(
     status: StatusCode,
@@ -7254,14 +7208,10 @@ pub(crate) fn passthrough_stream_proxy_response(
 }
 
 #[cfg(test)]
-pub(crate) fn is_official_codex_client_user_agent(user_agent: &str) -> bool {
-    crate::proxy_core::api::transport::is_official_codex_client_user_agent(user_agent)
-}
+pub(crate) use crate::proxy_core::api::transport::is_official_codex_client_user_agent;
 
 #[cfg(test)]
-pub(crate) fn build_gemini_native_url(base_url: &str, endpoint: &str) -> String {
-    crate::proxy_core::api::transforms::build_gemini_native_url(base_url, endpoint)
-}
+pub(crate) use crate::proxy_core::api::transforms::build_gemini_native_url;
 
 pub(crate) struct UsageRequestLogProjection {
     pub(crate) log: RequestLog,
