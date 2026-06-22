@@ -474,6 +474,13 @@ const FORBIDDEN_PROXY_CORE_ADAPTER_SMALL_HELPER_FACADE_MARKERS: &[&str] = &[
     "fn copilot_token_url(",
     "fn copilot_usage_url(",
     "fn copilot_api_base(",
+    "fn proxy_runtime_status_stopped(",
+    "fn record_active_connection_acquired_status(",
+    "fn record_active_connection_released_status(",
+    "fn record_proxy_server_stopped_status(",
+    "fn apply_proxy_runtime_uptime(",
+    "fn proxy_server_info_from_parts(",
+    "fn proxy_takeover_status_from_parts(",
 ];
 const FORBIDDEN_CLAUDE_PROVIDER_ADAPTER_TRANSFORM_DECISION_MARKERS: &[&str] = &[
     "ProviderKind::GitHubCopilot",

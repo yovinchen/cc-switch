@@ -84,6 +84,15 @@ pub(crate) fn app_error(context: &str, error: AppError) -> ProxyCoreError {
     ProxyCoreError::Config(error_message_with_context(context, error))
 }
 
+pub(crate) fn app_write_error(context: &str, error: AppError) -> ProxyCoreError {
+    match error {
+        AppError::InvalidInput(message) => {
+            ProxyCoreError::InvalidRequest(AppError::InvalidInput(message).to_string())
+        }
+        other => app_error(context, other),
+    }
+}
+
 pub(crate) fn usage_error(context: &str, error: AppError) -> ProxyCoreError {
     ProxyCoreError::Internal(error_message_with_context(context, error))
 }
@@ -174,9 +183,7 @@ pub(crate) type ProxyConfig = crate::proxy_core::api::ports::ProxyConfig;
 pub(crate) type ProxyRuntimeStatus =
     crate::proxy_core::api::ports::ProxyRuntimeStatus;
 
-pub(crate) fn proxy_runtime_status_stopped() -> ProxyRuntimeStatus {
-    crate::proxy_core::api::ports::proxy_runtime_status_stopped()
-}
+pub(crate) use crate::proxy_core::api::ports::proxy_runtime_status_stopped;
 
 const PROXY_MANAGEMENT_AUTH_TOKEN_ENV: &str = "CC_SWITCH_PROXY_MANAGEMENT_TOKEN";
 
@@ -233,13 +240,9 @@ pub(crate) fn record_forward_request_started_status(
     );
 }
 
-pub(crate) fn record_active_connection_acquired_status(status: &mut ProxyRuntimeStatus) {
-    crate::proxy_core::api::ports::record_active_connection_acquired_status(status);
-}
-
-pub(crate) fn record_active_connection_released_status(status: &mut ProxyRuntimeStatus) {
-    crate::proxy_core::api::ports::record_active_connection_released_status(status);
-}
+pub(crate) use crate::proxy_core::api::ports::{
+    record_active_connection_acquired_status, record_active_connection_released_status,
+};
 
 pub(crate) async fn record_forward_active_connection_acquired_runtime_source(
     status: &RwLock<ProxyRuntimeStatus>,
@@ -338,13 +341,9 @@ pub(crate) fn record_proxy_server_started_status(
     );
 }
 
-pub(crate) fn record_proxy_server_stopped_status(status: &mut ProxyRuntimeStatus) {
-    crate::proxy_core::api::ports::record_proxy_server_stopped_status(status);
-}
-
-pub(crate) fn apply_proxy_runtime_uptime(status: &mut ProxyRuntimeStatus, uptime_seconds: u64) {
-    crate::proxy_core::api::ports::apply_proxy_runtime_uptime(status, uptime_seconds);
-}
+pub(crate) use crate::proxy_core::api::ports::{
+    apply_proxy_runtime_uptime, record_proxy_server_stopped_status,
+};
 
 pub(crate) type ProxyRuntimeConfig =
     crate::proxy_core::api::config::ProxyRuntimeConfig;
@@ -352,13 +351,7 @@ pub(crate) type ProxyGlobalConfig = crate::proxy_core::api::config::ProxyGlobalC
 pub(crate) type ProxyAppConfig = crate::proxy_core::api::config::ProxyAppConfig;
 pub(crate) type ProxyServerInfo = crate::proxy_core::api::ports::ProxyServerInfo;
 
-pub(crate) fn proxy_server_info_from_parts(
-    address: impl Into<String>,
-    port: u16,
-    started_at: impl Into<String>,
-) -> ProxyServerInfo {
-    crate::proxy_core::api::ports::proxy_server_info_from_parts(address, port, started_at)
-}
+pub(crate) use crate::proxy_core::api::ports::proxy_server_info_from_parts;
 
 pub(crate) fn proxy_live_urls_from_listen_parts(
     listen_address: &str,
@@ -393,17 +386,7 @@ pub(crate) fn record_proxy_server_listen_port_runtime_source(port: u16) {
 pub(crate) type ProxyTakeoverStatus =
     crate::proxy_core::api::ports::ProxyTakeoverStatus;
 
-pub(crate) fn proxy_takeover_status_from_parts(
-    claude: bool,
-    codex: bool,
-    gemini: bool,
-    opencode: bool,
-    openclaw: bool,
-) -> ProxyTakeoverStatus {
-    crate::proxy_core::api::ports::proxy_takeover_status_from_parts(
-        claude, codex, gemini, opencode, openclaw,
-    )
-}
+pub(crate) use crate::proxy_core::api::ports::proxy_takeover_status_from_parts;
 
 pub(crate) type ClaudeDesktopModelListResponse =
     crate::proxy_core::api::auth::ClaudeDesktopModelListResponse;
@@ -9239,7 +9222,7 @@ pub(crate) fn replace_channel_model_records_from_db_source(
 ) -> ProxyCoreResult<Option<Vec<ChannelModelRecord>>> {
     let models = db
         .replace_proxy_channel_models(channel_id, request)
-        .map_err(|error| app_error("replace channel model records", error))?;
+        .map_err(|error| app_write_error("replace channel model records", error))?;
     Ok(models.map(proxy_channel_model_records_to_core))
 }
 
@@ -9292,7 +9275,7 @@ pub(crate) fn create_channel_record_from_db_source(
 ) -> ProxyCoreResult<ChannelRecord> {
     let channel = db
         .create_proxy_channel(request)
-        .map_err(|error| app_error("create channel record", error))?;
+        .map_err(|error| app_write_error("create channel record", error))?;
     Ok(proxy_channel_record_to_core(channel))
 }
 
@@ -9313,7 +9296,7 @@ pub(crate) fn update_channel_record_from_db_source(
 ) -> ProxyCoreResult<Option<ChannelRecord>> {
     let channel = db
         .update_proxy_channel(channel_id, patch)
-        .map_err(|error| app_error("update channel record", error))?;
+        .map_err(|error| app_write_error("update channel record", error))?;
     Ok(channel.map(proxy_channel_record_to_core))
 }
 
@@ -9397,7 +9380,7 @@ pub(crate) fn upsert_channel_key_record_from_db_source(
 ) -> ProxyCoreResult<Option<ChannelKeyRecord>> {
     let key = db
         .upsert_proxy_channel_key(channel_id, key_ref, request)
-        .map_err(|error| app_error("upsert channel key record", error))?;
+        .map_err(|error| app_write_error("upsert channel key record", error))?;
     Ok(Some(proxy_channel_key_record_to_core(key)))
 }
 
@@ -9409,7 +9392,7 @@ pub(crate) fn update_channel_key_record_from_db_source(
 ) -> ProxyCoreResult<Option<ChannelKeyRecord>> {
     let key = db
         .update_proxy_channel_key(channel_id, key_ref, patch)
-        .map_err(|error| app_error("update channel key record", error))?;
+        .map_err(|error| app_write_error("update channel key record", error))?;
     Ok(key.map(proxy_channel_key_record_to_core))
 }
 

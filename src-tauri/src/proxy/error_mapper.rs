@@ -58,14 +58,13 @@ pub fn get_error_message(error: &ProxyError) -> String {
 }
 
 pub(crate) fn proxy_core_error_to_proxy_error(error: ProxyCoreError) -> ProxyError {
-    let message = error.to_string();
     match error {
-        ProxyCoreError::InvalidRequest(_) => ProxyError::InvalidRequest(message),
-        ProxyCoreError::Config(_) => ProxyError::ConfigError(message),
-        ProxyCoreError::Auth(_) => ProxyError::AuthError(message),
+        ProxyCoreError::InvalidRequest(message) => ProxyError::InvalidRequest(message),
+        ProxyCoreError::Config(message) => ProxyError::ConfigError(message),
+        ProxyCoreError::Auth(message) => ProxyError::AuthError(message),
         ProxyCoreError::Unavailable(_) => ProxyError::NoAvailableProvider,
-        ProxyCoreError::Upstream(_) => ProxyError::ForwardFailed(message),
-        ProxyCoreError::Unsupported(_) | ProxyCoreError::Internal(_) => {
+        ProxyCoreError::Upstream(message) => ProxyError::ForwardFailed(message),
+        ProxyCoreError::Unsupported(message) | ProxyCoreError::Internal(message) => {
             ProxyError::Internal(message)
         }
     }
