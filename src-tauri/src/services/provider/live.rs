@@ -17,7 +17,7 @@ use crate::proxy_core_adapter::{
     codex_config_text_from_settings, gemini_env_map_from_settings,
     gemini_env_value_from_env_json, opencode_live_provider_fragment_has_provider_fields,
     provider_codex_imported_live_category, provider_codex_live_snapshot_parts,
-    provider_gemini_env_map_for_live, provider_gemini_live_config_object,
+    provider_gemini_env_map, provider_gemini_live_config_object,
     provider_model_catalog_raw_value, provider_opencode_live_provider_fragment,
     provider_openclaw_has_live_provider_fields, validate_provider_gemini_settings_strict,
     CodexLiveSnapshotIssue, GeminiLiveConfigIssue,
@@ -1263,7 +1263,7 @@ pub(crate) fn write_gemini_live(provider: &Provider) -> Result<(), AppError> {
     // One-time auth type detection to avoid repeated detection
     let auth_type = detect_gemini_auth_type(provider);
 
-    let env_map = provider_gemini_env_map_for_live(provider)?;
+    let env_map = provider_gemini_env_map(provider)?;
 
     // Prepare config to write to ~/.gemini/settings.json
     // Behavior:

@@ -20,7 +20,7 @@ use crate::proxy_core_adapter::{
     claude_env_credentials_from_settings, codex_api_key_from_auth_and_config,
     codex_auth_object_value_from_settings, codex_config_text_from_settings,
     gemini_env_map_from_settings,
-    provider_codex_validation_parts, provider_settings_config_is_object,
+    provider_codex_validation_parts, provider_gemini_env_map, provider_settings_config_is_object,
     should_block_proxy_switch_to_provider_category, CodexProviderValidationIssue,
 };
 use crate::services::mcp::McpService;
@@ -429,6 +429,25 @@ mod tests {
             ProviderService::extract_credentials(&provider, &AppType::Codex).unwrap();
         assert_eq!(api_key, "sk-test");
         assert_eq!(base_url, "https://codex.example/v1");
+    }
+
+    #[test]
+    fn extract_gemini_credentials_uses_provider_env_map() {
+        let provider = Provider::with_id(
+            "gemini".into(),
+            "Gemini".into(),
+            json!({
+                "env": {
+                    "GEMINI_API_KEY": "AIza-test",
+                    "GOOGLE_GEMINI_BASE_URL": "https://gemini.example"
+                }
+            }),
+            None,
+        );
+        let (api_key, base_url) =
+            ProviderService::extract_credentials(&provider, &AppType::Gemini).unwrap();
+        assert_eq!(api_key, "AIza-test");
+        assert_eq!(base_url, "https://gemini.example");
     }
 
     #[test]
@@ -2562,9 +2581,7 @@ impl ProviderService {
                 Ok((api_key, base_url))
             }
             AppType::Gemini => {
-                use crate::gemini_config::json_to_env;
-
-                let env_map = json_to_env(&provider.settings_config)?;
+                let env_map = provider_gemini_env_map(provider)?;
 
                 let api_key = env_map.get("GEMINI_API_KEY").cloned().ok_or_else(|| {
                     AppError::localized(

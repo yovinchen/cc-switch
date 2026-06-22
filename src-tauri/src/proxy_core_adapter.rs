@@ -1767,7 +1767,7 @@ pub(crate) fn gemini_env_value_from_env_json(env_json: &Value) -> Value {
     env_json.get("env").cloned().unwrap_or_else(|| json!({}))
 }
 
-pub(crate) fn provider_gemini_env_map_for_live(
+pub(crate) fn provider_gemini_env_map(
     provider: &Provider,
 ) -> Result<HashMap<String, String>, AppError> {
     crate::gemini_config::json_to_env(&provider.settings_config)
@@ -5899,7 +5899,7 @@ wire_api = "chat"
             provider_gemini_base_url(&provider).as_deref(),
             Some("https://generativelanguage.googleapis.com/v1beta")
         );
-        let live_env = provider_gemini_env_map_for_live(&provider).expect("gemini live env map");
+        let live_env = provider_gemini_env_map(&provider).expect("gemini env map");
         assert_eq!(
             live_env.get("GEMINI_API_KEY").map(String::as_str),
             Some(" ya29.access-token ")
