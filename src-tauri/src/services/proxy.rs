@@ -13,6 +13,7 @@ use crate::proxy_core_adapter::{
     attach_codex_model_catalog_from_provider as attach_codex_model_catalog_from_provider_settings,
     build_proxy_official_warning_event_payload, claude_live_config_has_proxy_placeholder,
     claude_takeover_model_fields_from_settings, codex_live_config_has_proxy_placeholder,
+    codex_preserved_auth_live_config_text_if_proxy_placeholder,
     codex_takeover_toml_config_for_provider, gemini_live_config_has_proxy_placeholder,
     ensure_codex_takeover_auth_placeholder, live_config_has_proxy_placeholder_for_app,
     live_takeover_config_matches_proxy_for_app, provider_claude_takeover_model_fields,
@@ -1984,21 +1985,16 @@ impl ProxyService {
     ) -> Result<(), String> {
         let Some(provider) = provider else {
             if crate::settings::preserve_codex_official_auth_on_switch() {
-                if let (Some(auth), Some(config_str)) = (
-                    config.get("auth"),
-                    config.get("config").and_then(|v| v.as_str()),
-                ) {
-                    if auth.get("OPENAI_API_KEY").and_then(|v| v.as_str())
-                        == Some(PROXY_TOKEN_PLACEHOLDER)
-                    {
-                        let live_config = crate::codex_config::prepare_codex_provider_live_config(
-                            auth, config_str,
-                        )
+                if let Some(live_config) = codex_preserved_auth_live_config_text_if_proxy_placeholder(
+                    config,
+                    PROXY_TOKEN_PLACEHOLDER,
+                    false,
+                )
+                .map_err(|e| format!("写入 Codex 配置失败: {e}"))?
+                {
+                    crate::codex_config::write_codex_live_config_atomic(Some(&live_config))
                         .map_err(|e| format!("写入 Codex 配置失败: {e}"))?;
-                        crate::codex_config::write_codex_live_config_atomic(Some(&live_config))
-                            .map_err(|e| format!("写入 Codex 配置失败: {e}"))?;
-                        return Ok(());
-                    }
+                    return Ok(());
                 }
             }
 
@@ -2019,29 +2015,19 @@ impl ProxyService {
         .map_err(|e| format!("写入 Codex 配置失败: {e}"))
     }
 
-    fn codex_auth_has_proxy_placeholder(auth: &Value) -> bool {
-        auth.get("OPENAI_API_KEY").and_then(|v| v.as_str()) == Some(PROXY_TOKEN_PLACEHOLDER)
-    }
-
     fn write_codex_takeover_live_for_provider(
         &self,
         config: &Value,
         provider: Option<&Provider>,
     ) -> Result<(), String> {
         if crate::settings::preserve_codex_official_auth_on_switch() {
-            if let Some(auth) = config
-                .get("auth")
-                .filter(|auth| Self::codex_auth_has_proxy_placeholder(auth))
+            if let Some(live_config) = codex_preserved_auth_live_config_text_if_proxy_placeholder(
+                config,
+                PROXY_TOKEN_PLACEHOLDER,
+                true,
+            )
+            .map_err(|e| format!("写入 Codex 配置失败: {e}"))?
             {
-                let config_str = config.get("config").and_then(|v| v.as_str()).unwrap_or("");
-                let prepared_config =
-                    crate::codex_config::prepare_codex_live_config_text_with_optional_catalog(
-                        config, config_str,
-                    )
-                    .map_err(|e| format!("写入 Codex 配置失败: {e}"))?;
-                let live_config =
-                    crate::codex_config::prepare_codex_provider_live_config(auth, &prepared_config)
-                        .map_err(|e| format!("写入 Codex 配置失败: {e}"))?;
                 crate::codex_config::write_codex_live_config_atomic(Some(&live_config))
                     .map_err(|e| format!("写入 Codex 配置失败: {e}"))?;
                 return Ok(());

@@ -4231,6 +4231,39 @@ pub(crate) fn remove_codex_takeover_auth_placeholder_if_present(
     true
 }
 
+pub(crate) fn codex_preserved_auth_live_config_text_if_proxy_placeholder(
+    config: &Value,
+    placeholder: &str,
+    include_optional_catalog: bool,
+) -> Result<Option<String>, String> {
+    let Some(auth) = config
+        .get("auth")
+        .filter(|auth| codex_auth_value_has_proxy_placeholder(auth, placeholder))
+    else {
+        return Ok(None);
+    };
+    let Some(config_str) = config.get("config").and_then(Value::as_str) else {
+        return Ok(None);
+    };
+
+    let prepared_config = if include_optional_catalog {
+        crate::codex_config::prepare_codex_live_config_text_with_optional_catalog(
+            config, config_str,
+        )
+        .map_err(|e| e.to_string())?
+    } else {
+        config_str.to_string()
+    };
+
+    crate::codex_config::prepare_codex_provider_live_config(auth, &prepared_config)
+        .map(Some)
+        .map_err(|e| e.to_string())
+}
+
+fn codex_auth_value_has_proxy_placeholder(auth: &Value, placeholder: &str) -> bool {
+    auth.get("OPENAI_API_KEY").and_then(Value::as_str) == Some(placeholder)
+}
+
 pub(crate) fn gemini_live_config_has_proxy_placeholder(
     config: &Value,
     placeholder: &str,
@@ -7117,6 +7150,35 @@ wire_api = "chat"
                 .and_then(|auth| auth.get("OPENAI_API_KEY"))
                 .and_then(Value::as_str),
             Some("real-key")
+        );
+        let codex_config_only = json!({
+            "auth": {"OPENAI_API_KEY": placeholder},
+            "config": r#"model_provider = "custom"
+
+[model_providers.custom]
+base_url = "https://relay.example/v1"
+"#
+        });
+        let config_only_live = codex_preserved_auth_live_config_text_if_proxy_placeholder(
+            &codex_config_only,
+            placeholder,
+            true,
+        )
+        .expect("config-only projection")
+        .expect("placeholder auth should project config-only live text");
+        assert_eq!(
+            crate::codex_config::extract_codex_experimental_bearer_token(&config_only_live)
+                .as_deref(),
+            Some(placeholder)
+        );
+        assert_eq!(
+            codex_preserved_auth_live_config_text_if_proxy_placeholder(
+                &codex_live_with_real_auth,
+                placeholder,
+                true,
+            )
+            .expect("real auth projection should be valid"),
+            None
         );
 
         let mut codex_live_without_auth = json!({"config": ""});
