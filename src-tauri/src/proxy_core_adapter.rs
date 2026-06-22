@@ -2617,6 +2617,13 @@ pub(crate) fn proxy_hot_switch_should_sync_codex_live_while_proxy_active(
     matches!(app_type, AppType::Codex) && live_taken_over
 }
 
+pub(crate) fn proxy_hot_switch_should_sync_claude_live_while_proxy_active(
+    app_type: &AppType,
+    proxy_live_owned_by_takeover: bool,
+) -> bool {
+    matches!(app_type, AppType::Claude) && proxy_live_owned_by_takeover
+}
+
 pub(crate) fn proxy_takeover_marked_state_is_reusable(
     has_live_backup: bool,
     live_matches_current_proxy: bool,
@@ -7633,6 +7640,18 @@ base_url = "https://api.openai.com/v1"
         ));
         assert!(!proxy_hot_switch_should_sync_codex_live_while_proxy_active(
             &AppType::Claude,
+            true
+        ));
+        assert!(!proxy_hot_switch_should_sync_claude_live_while_proxy_active(
+            &AppType::Claude,
+            false
+        ));
+        assert!(proxy_hot_switch_should_sync_claude_live_while_proxy_active(
+            &AppType::Claude,
+            true
+        ));
+        assert!(!proxy_hot_switch_should_sync_claude_live_while_proxy_active(
+            &AppType::Codex,
             true
         ));
 
