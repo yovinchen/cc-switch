@@ -921,6 +921,7 @@
 本轮继续把 `CcSwitchProviderSource` 的 active route runtime map lookup 收敛到 adapter source wrapper，host provider source 不再直接读取 `current_providers`。
 本轮继续把 `ProxyServer` 的 circuit breaker runtime config 更新与 provider breaker reset 副作用收敛到 adapter runtime wrapper，server 生产方法不再直接调用 ProviderRouter circuit runtime API。
 本轮继续把 `ProxyServer` 的 started/stopped runtime status mutation、uptime/active target status projection 与 active target map 更新收敛到 adapter runtime wrapper，server 生产方法只保留监听生命周期和 transport 编排。
+本轮继续把 `RequestForwarder` 的请求运行态 status 更新、active target map 写入和 request/attempt/route event 分发收敛到 adapter runtime wrapper，forwarder 生产方法只保留请求生命周期编排与上游发送。
 本轮还把 ConfigSource 的 app 配置 wrapper 收敛到 adapter，host 不再显式读取 settings current-provider 后再拼 `ProxyAppConfig`。
 本轮继续把 channel-key DB record 到 runtime key value 的字段投影收敛到 adapter，host auth-profile 路径不再直接查询或投影 channel-key。
 本轮也把 management handler 中 provider 到 core spec 的直接 trait 调用收敛为 adapter helper，provider list/current route handler 不再暴露投影细节。

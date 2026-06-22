@@ -18,23 +18,30 @@ use crate::proxy::managed_account_auth::{
 };
 use crate::proxy_core_adapter::{
     apply_bedrock_pre_send_optimizers, apply_copilot_model_normalization,
-    apply_copilot_warmup_model_override, attempt_event_message_from_forward_attempt,
+    apply_copilot_warmup_model_override,
     build_codex_oauth_session_headers,
     build_retryable_forward_failure_log, build_terminal_forward_failure_log,
     build_upstream_auth_headers, cache_injection_log_message, categorize_forward_failure,
-    classify_copilot_request, contains_image_blocks, current_route_target_from_forward_attempt,
-    forward_upstream_url_plan, invalid_mapped_channel_response_status_message,
+    classify_copilot_request, contains_image_blocks,
+    emit_attempt_event_source, emit_request_started_event_source, forward_upstream_url_plan,
+    invalid_mapped_channel_response_status_message,
     is_openai_o_series, is_unsupported_image_error, mapped_channel_response_status,
     merge_copilot_tool_results, non_streaming_body_timeout_message, normalize_thinking_type,
     prepare_upstream_request_body_with_report, prompt_cache_trace_log_message,
     provider_bedrock_env_flag, provider_custom_user_agent_header, provider_is_codex_oauth,
     provider_is_full_url, provider_is_github_copilot_upstream, rectify_anthropic_request,
-    provider_uses_anthropic_rectifiers, rectify_thinking_budget, replace_image_blocks_with_marker, record_active_connection_acquired_status,
-    record_active_connection_released_status, record_forward_failure_status,
-    record_forward_request_started_status, record_forward_success_status,
+    provider_uses_anthropic_rectifiers, rectify_thinking_budget, replace_image_blocks_with_marker,
+    record_forward_active_connection_acquired_runtime_source,
+    record_forward_active_connection_released_runtime_source,
+    record_forward_active_route_target_runtime_source,
+    record_forward_current_provider_runtime_source,
+    record_forward_failure_runtime_source,
+    record_forward_provider_failure_runtime_source,
+    record_forward_provider_rectifier_retry_failure_runtime_source,
+    record_forward_request_started_runtime_source,
+    record_forward_success_runtime_source,
     replace_images_for_text_only_provider_model, request_body_filter_log_message,
-    request_started_event_message, resolve_claude_forward_api_format,
-    route_selected_event_message_from_forward_attempt,
+    resolve_claude_forward_api_format,
     resolve_copilot_deterministic_interaction_id, resolve_copilot_model_against_ids,
     resolve_copilot_optimizer_session_id, resolve_copilot_request_id_with_fallback,
     resolve_media_prevention_policy, resolved_copilot_dynamic_base_url,
@@ -101,10 +108,7 @@ pub(crate) struct ActiveConnectionGuard {
 
 impl ActiveConnectionGuard {
     pub(crate) async fn acquire(status: Arc<RwLock<ProxyRuntimeStatus>>) -> Self {
-        {
-            let mut s = status.write().await;
-            record_active_connection_acquired_status(&mut s);
-        }
+        record_forward_active_connection_acquired_runtime_source(status.as_ref()).await;
         Self { status }
     }
 }
@@ -115,8 +119,7 @@ impl Drop for ActiveConnectionGuard {
         let status = self.status.clone();
         if let Ok(handle) = tokio::runtime::Handle::try_current() {
             handle.spawn(async move {
-                let mut s = status.write().await;
-                record_active_connection_released_status(&mut s);
+                record_forward_active_connection_released_runtime_source(status.as_ref()).await;
             });
         }
         // 没有 runtime 时静默丢失计数（仅 UI 展示用，可接受最终一致性）
@@ -348,30 +351,30 @@ impl RequestForwarder {
         app_type: &str,
         attempt: &ForwardAttempt,
     ) {
-        let target = current_route_target_from_forward_attempt(app_type, attempt);
-
-        let mut current_providers = self.current_providers.write().await;
-        current_providers.insert(app_type.to_string(), target);
-        let message =
-            route_selected_event_message_from_forward_attempt(request_id, app_type, attempt);
-        self.events.emit(message.event_name, message.payload);
+        record_forward_active_route_target_runtime_source(
+            self.current_providers.as_ref(),
+            self.events.as_ref(),
+            request_id,
+            app_type,
+            attempt,
+        )
+        .await;
     }
 
     async fn record_success_status_and_maybe_switch(&self, app_type: &str, provider: &Provider) {
-        let mut status = self.status.write().await;
-        let should_switch = record_forward_success_status(
-            &mut status,
+        let should_switch = record_forward_success_runtime_source(
+            self.status.as_ref(),
             self.current_provider_id_at_start.as_str(),
             provider.id.as_str(),
-        );
+        )
+        .await;
         if should_switch {
             self.schedule_failover_switch(app_type, provider);
         }
     }
 
     async fn record_failure_status_message(&self, error_message: impl AsRef<str>) {
-        let mut status = self.status.write().await;
-        record_forward_failure_status(&mut status, error_message.as_ref());
+        record_forward_failure_runtime_source(self.status.as_ref(), error_message.as_ref()).await;
     }
 
     fn schedule_failover_switch(&self, app_type: &str, provider: &Provider) {
@@ -384,30 +387,29 @@ impl RequestForwarder {
     }
 
     fn emit_request_started(&self, request_id: &str, app_type: &str) {
-        let message = request_started_event_message(request_id, app_type);
-        self.events.emit(message.event_name, message.payload);
+        emit_request_started_event_source(self.events.as_ref(), request_id, app_type);
     }
 
     fn emit_attempt_started(&self, request_id: &str, app_type: &str, attempt: &ForwardAttempt) {
-        let message = attempt_event_message_from_forward_attempt(
+        emit_attempt_event_source(
+            self.events.as_ref(),
             request_id,
             app_type,
             attempt,
             AttemptEventPhase::Started,
             None,
         );
-        self.events.emit(message.event_name, message.payload);
     }
 
     fn emit_attempt_succeeded(&self, request_id: &str, app_type: &str, attempt: &ForwardAttempt) {
-        let message = attempt_event_message_from_forward_attempt(
+        emit_attempt_event_source(
+            self.events.as_ref(),
             request_id,
             app_type,
             attempt,
             AttemptEventPhase::Succeeded,
             None,
         );
-        self.events.emit(message.event_name, message.payload);
     }
 
     fn emit_attempt_failed(
@@ -417,14 +419,14 @@ impl RequestForwarder {
         attempt: &ForwardAttempt,
         error: &str,
     ) {
-        let message = attempt_event_message_from_forward_attempt(
+        emit_attempt_event_source(
+            self.events.as_ref(),
             request_id,
             app_type,
             attempt,
             AttemptEventPhase::Failed,
             Some(error),
         );
-        self.events.emit(message.event_name, message.payload);
     }
 
     async fn record_failure_result(
@@ -511,21 +513,22 @@ impl RequestForwarder {
         let is_provider_error = should_failover_after_rectifier_retry_failure(&failure);
 
         if is_provider_error {
+            let retry_error_message = retry_err.to_string();
             self.record_failure_result(
                 request_id,
                 attempt,
                 app_type_str,
                 used_half_open_permit,
-                retry_err.to_string(),
+                retry_error_message.clone(),
             )
             .await;
-            {
-                let mut status = self.status.write().await;
-                status.last_error = Some(format!(
-                    "Provider {} {rectifier_label}重试失败: {}",
-                    provider.name, retry_err
-                ));
-            }
+            record_forward_provider_rectifier_retry_failure_runtime_source(
+                self.status.as_ref(),
+                &provider.name,
+                rectifier_label,
+                &retry_error_message,
+            )
+            .await;
             *last_error = Some(retry_err);
             *last_provider = Some(provider.clone());
             return None;
@@ -560,10 +563,11 @@ impl RequestForwarder {
         let request_id = uuid::Uuid::new_v4().to_string();
         self.emit_request_started(&request_id, app_type.as_str());
         let guard = ActiveConnectionGuard::acquire(self.status.clone()).await;
-        {
-            let mut s = self.status.write().await;
-            record_forward_request_started_status(&mut s, &chrono::Utc::now().to_rfc3339());
-        }
+        record_forward_request_started_runtime_source(
+            self.status.as_ref(),
+            &chrono::Utc::now().to_rfc3339(),
+        )
+        .await;
         let result = self
             .forward_preplanned_attempts_inner(
                 &request_id,
@@ -689,11 +693,12 @@ impl RequestForwarder {
             // total_requests / last_request_at / active_connections 已由
             // forward_with_preplanned_attempts 在客户端请求维度统一处理，这里只刷
             // 新「正在尝试哪个 provider」的展示字段。
-            {
-                let mut status = self.status.write().await;
-                status.current_provider = Some(provider.name.clone());
-                status.current_provider_id = Some(provider.id.clone());
-            }
+            record_forward_current_provider_runtime_source(
+                self.status.as_ref(),
+                provider.id.as_str(),
+                provider.name.as_str(),
+            )
+            .await;
 
             // 转发请求（每个 Provider 只尝试一次，重试由客户端控制）
             match self
@@ -1097,20 +1102,22 @@ impl RequestForwarder {
                     match category {
                         ForwardFailureCategory::Retryable => {
                             // 可重试：真正的 provider 故障 → 记录失败并更新熔断器/DB 健康度
+                            let error_message = e.to_string();
                             self.record_failure_result(
                                 request_id,
                                 attempt,
                                 app_type_str,
                                 used_half_open_permit,
-                                e.to_string(),
+                                error_message.clone(),
                             )
                             .await;
 
-                            {
-                                let mut status = self.status.write().await;
-                                status.last_error =
-                                    Some(format!("Provider {} 失败: {}", provider.name, e));
-                            }
+                            record_forward_provider_failure_runtime_source(
+                                self.status.as_ref(),
+                                &provider.name,
+                                &error_message,
+                            )
+                            .await;
 
                             let failure_log = build_retryable_forward_failure_log(
                                 &provider.name,

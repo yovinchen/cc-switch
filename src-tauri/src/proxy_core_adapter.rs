@@ -370,6 +370,92 @@ pub(crate) fn record_active_connection_released_status(status: &mut ProxyRuntime
     crate::proxy_core::api::ports::record_active_connection_released_status(status);
 }
 
+pub(crate) async fn record_forward_active_connection_acquired_runtime_source(
+    status: &RwLock<ProxyRuntimeStatus>,
+) {
+    let mut status = status.write().await;
+    record_active_connection_acquired_status(&mut status);
+}
+
+pub(crate) async fn record_forward_active_connection_released_runtime_source(
+    status: &RwLock<ProxyRuntimeStatus>,
+) {
+    let mut status = status.write().await;
+    record_active_connection_released_status(&mut status);
+}
+
+pub(crate) async fn record_forward_request_started_runtime_source(
+    status: &RwLock<ProxyRuntimeStatus>,
+    timestamp: &str,
+) {
+    let mut status = status.write().await;
+    record_forward_request_started_status(&mut status, timestamp);
+}
+
+pub(crate) async fn record_forward_current_provider_runtime_source(
+    status: &RwLock<ProxyRuntimeStatus>,
+    provider_id: &str,
+    provider_name: &str,
+) {
+    let mut status = status.write().await;
+    crate::proxy_core::api::ports::record_forward_current_provider_status(
+        &mut status,
+        crate::proxy_core::api::ports::ForwardCurrentProviderStatusInput {
+            provider_id,
+            provider_name,
+        },
+    );
+}
+
+pub(crate) async fn record_forward_success_runtime_source(
+    status: &RwLock<ProxyRuntimeStatus>,
+    current_provider_id_at_start: &str,
+    provider_id: &str,
+) -> bool {
+    let mut status = status.write().await;
+    record_forward_success_status(&mut status, current_provider_id_at_start, provider_id)
+}
+
+pub(crate) async fn record_forward_failure_runtime_source(
+    status: &RwLock<ProxyRuntimeStatus>,
+    error_message: &str,
+) {
+    let mut status = status.write().await;
+    record_forward_failure_status(&mut status, error_message);
+}
+
+pub(crate) async fn record_forward_provider_failure_runtime_source(
+    status: &RwLock<ProxyRuntimeStatus>,
+    provider_name: &str,
+    error_message: &str,
+) {
+    let mut status = status.write().await;
+    crate::proxy_core::api::ports::record_forward_provider_failure_status(
+        &mut status,
+        crate::proxy_core::api::ports::ForwardProviderFailureStatusInput {
+            provider_name,
+            error_message,
+        },
+    );
+}
+
+pub(crate) async fn record_forward_provider_rectifier_retry_failure_runtime_source(
+    status: &RwLock<ProxyRuntimeStatus>,
+    provider_name: &str,
+    rectifier_label: &str,
+    error_message: &str,
+) {
+    let mut status = status.write().await;
+    crate::proxy_core::api::ports::record_forward_provider_rectifier_retry_failure_status(
+        &mut status,
+        crate::proxy_core::api::ports::ForwardProviderRectifierRetryFailureStatusInput {
+            provider_name,
+            rectifier_label,
+            error_message,
+        },
+    );
+}
+
 pub(crate) fn record_proxy_server_started_status(
     status: &mut ProxyRuntimeStatus,
     address: &str,
@@ -605,6 +691,47 @@ pub(crate) async fn set_active_route_target_runtime_source(
         app_type.to_string(),
         current_route_target_from_provider(app_type, provider_id, provider_name),
     );
+}
+
+pub(crate) fn emit_request_started_event_source(
+    events: &ProxyEventBus,
+    request_id: &str,
+    app_type: &str,
+) {
+    let message = request_started_event_message(request_id, app_type);
+    events.emit(message.event_name, message.payload);
+}
+
+pub(crate) fn emit_attempt_event_source(
+    events: &ProxyEventBus,
+    request_id: &str,
+    app_type: &str,
+    attempt: &ForwardAttempt,
+    phase: AttemptEventPhase,
+    error: Option<&str>,
+) {
+    let message =
+        attempt_event_message_from_forward_attempt(request_id, app_type, attempt, phase, error);
+    events.emit(message.event_name, message.payload);
+}
+
+pub(crate) async fn record_forward_active_route_target_runtime_source(
+    current_providers: &RwLock<HashMap<String, CurrentRouteTarget>>,
+    events: &ProxyEventBus,
+    request_id: &str,
+    app_type: &str,
+    attempt: &ForwardAttempt,
+) {
+    {
+        let mut current_providers = current_providers.write().await;
+        current_providers.insert(
+            app_type.to_string(),
+            current_route_target_from_forward_attempt(app_type, attempt),
+        );
+    }
+
+    let message = route_selected_event_message_from_forward_attempt(request_id, app_type, attempt);
+    events.emit(message.event_name, message.payload);
 }
 
 pub(crate) type GeminiShadowStore =

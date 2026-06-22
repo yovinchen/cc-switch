@@ -42,6 +42,24 @@ const FORBIDDEN_FORWARDER_MANAGED_AUTH_MARKERS: &[&str] = &[
     "ProviderAuthInfo::new(token",
 ];
 const FORBIDDEN_FORWARDER_FAILOVER_SWITCH_MARKERS: &[&str] = &[".try_switch("];
+const FORBIDDEN_FORWARDER_RUNTIME_EVENT_SOURCE_MARKERS: &[&str] = &[
+    ".status.write()",
+    "record_active_connection_acquired_status(",
+    "record_active_connection_released_status(",
+    "record_forward_request_started_status(",
+    "record_forward_success_status(",
+    "record_forward_failure_status(",
+    "status.current_provider",
+    "status.current_provider_id",
+    "status.last_error",
+    ".current_providers.write()",
+    "current_providers.insert(",
+    "current_route_target_from_forward_attempt(",
+    "request_started_event_message(",
+    "attempt_event_message_from_forward_attempt(",
+    "route_selected_event_message_from_forward_attempt(",
+    ".events.emit(",
+];
 const FORBIDDEN_PROXY_CORE_HOST_ERROR_MARKERS: &[&str] = &["ProxyCoreError::"];
 const FORBIDDEN_PROXY_CORE_HOST_USAGE_PROJECTION_MARKERS: &[&str] =
     &["missing_pricing_warning_message"];
@@ -1354,6 +1372,33 @@ fn production_forwarder_delegates_failover_switch_scheduling_to_manager() {
     assert!(
         violations.is_empty(),
         "production forwarder must delegate failover switch scheduling to FailoverSwitchManager:\n{}",
+        violations.join("\n")
+    );
+}
+
+#[test]
+fn production_forwarder_delegates_runtime_events_to_adapter() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let path = manifest_dir.join("src/proxy/forwarder.rs");
+    let source = fs::read_to_string(&path).expect("read forwarder.rs");
+
+    let mut violations = Vec::new();
+    for (line_index, line) in production_lines(&source) {
+        let code = line.split("//").next().unwrap_or_default();
+        for marker in FORBIDDEN_FORWARDER_RUNTIME_EVENT_SOURCE_MARKERS {
+            if code.contains(marker) {
+                violations.push(format!(
+                    "src/proxy/forwarder.rs:{} contains runtime event marker `{}`",
+                    line_index + 1,
+                    marker
+                ));
+            }
+        }
+    }
+
+    assert!(
+        violations.is_empty(),
+        "production forwarder must delegate runtime status, active-target, and event side effects to proxy_core_adapter:\n{}",
         violations.join("\n")
     );
 }

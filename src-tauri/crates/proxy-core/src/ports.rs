@@ -741,6 +741,53 @@ pub fn record_forward_request_started_status(
     status.last_request_at = Some(input.timestamp.to_string());
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ForwardCurrentProviderStatusInput<'a> {
+    pub provider_id: &'a str,
+    pub provider_name: &'a str,
+}
+
+pub fn record_forward_current_provider_status(
+    status: &mut ProxyRuntimeStatus,
+    input: ForwardCurrentProviderStatusInput<'_>,
+) {
+    status.current_provider = Some(input.provider_name.to_string());
+    status.current_provider_id = Some(input.provider_id.to_string());
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ForwardProviderFailureStatusInput<'a> {
+    pub provider_name: &'a str,
+    pub error_message: &'a str,
+}
+
+pub fn record_forward_provider_failure_status(
+    status: &mut ProxyRuntimeStatus,
+    input: ForwardProviderFailureStatusInput<'_>,
+) {
+    status.last_error = Some(format!(
+        "Provider {} 失败: {}",
+        input.provider_name, input.error_message
+    ));
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ForwardProviderRectifierRetryFailureStatusInput<'a> {
+    pub provider_name: &'a str,
+    pub rectifier_label: &'a str,
+    pub error_message: &'a str,
+}
+
+pub fn record_forward_provider_rectifier_retry_failure_status(
+    status: &mut ProxyRuntimeStatus,
+    input: ForwardProviderRectifierRetryFailureStatusInput<'_>,
+) {
+    status.last_error = Some(format!(
+        "Provider {} {}重试失败: {}",
+        input.provider_name, input.rectifier_label, input.error_message
+    ));
+}
+
 pub fn record_active_connection_acquired_status(status: &mut ProxyRuntimeStatus) {
     status.active_connections = status.active_connections.saturating_add(1);
 }
@@ -3015,14 +3062,18 @@ mod tests {
         ProxyChannelModelsReplaceRequest, ProxyChannelPatchRequest, ProxyChannelTestRequest,
         ProxyChannelWriteRequest, ProxyConfig, ProxyCoreEvent, ProxyCoreEventType,
         ProxyRuntimeStatus, ProxyStatusResponse,
-        ForwardFailureStatusInput, ForwardRequestStartedStatusInput, ForwardSuccessStatusInput,
-        ForwardSuccessStatusUpdate, ProxyServerStartedStatusInput, proxy_server_info_from_parts,
+        ForwardCurrentProviderStatusInput, ForwardFailureStatusInput,
+        ForwardProviderFailureStatusInput, ForwardProviderRectifierRetryFailureStatusInput,
+        ForwardRequestStartedStatusInput, ForwardSuccessStatusInput, ForwardSuccessStatusUpdate,
+        ProxyServerStartedStatusInput, proxy_server_info_from_parts,
         proxy_runtime_status_stopped, proxy_takeover_status_from_parts,
         apply_proxy_runtime_active_targets, apply_proxy_runtime_uptime,
         record_active_connection_acquired_status, record_active_connection_released_status,
-        record_forward_failure_status, record_forward_request_started_status,
-        record_forward_success_status, record_proxy_server_started_status,
-        record_proxy_server_stopped_status,
+        record_forward_current_provider_status, record_forward_failure_status,
+        record_forward_provider_failure_status,
+        record_forward_provider_rectifier_retry_failure_status,
+        record_forward_request_started_status, record_forward_success_status,
+        record_proxy_server_started_status, record_proxy_server_stopped_status,
         RectifierConfig, RouteGroupListResponse, RouteGroupSourceInput, RouteResolveResponse,
         StreamCheckConfig, StreamCheckResult, DEFAULT_PROXY_LISTEN_ADDRESS,
         DEFAULT_PROXY_LISTEN_PORT, DEFAULT_CHANNEL_HEALTH_FAILURE_THRESHOLD,
@@ -3782,6 +3833,59 @@ mod tests {
             Some("provider rejected request")
         );
         assert_eq!(status.success_rate, 25.0);
+    }
+
+    #[test]
+    fn forward_current_provider_status_updates_display_provider() {
+        let mut status = ProxyRuntimeStatus::default();
+
+        record_forward_current_provider_status(
+            &mut status,
+            ForwardCurrentProviderStatusInput {
+                provider_id: "provider-a",
+                provider_name: "Provider A",
+            },
+        );
+
+        assert_eq!(status.current_provider.as_deref(), Some("Provider A"));
+        assert_eq!(status.current_provider_id.as_deref(), Some("provider-a"));
+    }
+
+    #[test]
+    fn forward_provider_failure_status_records_provider_scoped_error() {
+        let mut status = ProxyRuntimeStatus::default();
+
+        record_forward_provider_failure_status(
+            &mut status,
+            ForwardProviderFailureStatusInput {
+                provider_name: "Provider A",
+                error_message: "upstream timeout",
+            },
+        );
+
+        assert_eq!(
+            status.last_error.as_deref(),
+            Some("Provider Provider A 失败: upstream timeout")
+        );
+    }
+
+    #[test]
+    fn forward_provider_rectifier_retry_failure_status_records_provider_scoped_error() {
+        let mut status = ProxyRuntimeStatus::default();
+
+        record_forward_provider_rectifier_retry_failure_status(
+            &mut status,
+            ForwardProviderRectifierRetryFailureStatusInput {
+                provider_name: "Provider A",
+                rectifier_label: "media fallback",
+                error_message: "still invalid",
+            },
+        );
+
+        assert_eq!(
+            status.last_error.as_deref(),
+            Some("Provider Provider A media fallback重试失败: still invalid")
+        );
     }
 
     #[test]
