@@ -409,6 +409,13 @@ const FORBIDDEN_PROXY_CORE_ADAPTER_SMALL_HELPER_FACADE_MARKERS: &[&str] = &[
     "fn apply_route_candidate_circuit_availability(",
     "fn route_candidate_channel_circuit_keys(",
     "fn reject_unavailable_channel_ids(",
+    "fn route_plan_provider_ids(",
+    "fn route_plan_provider_match(",
+    "fn forwarding_requires_runtime_error_message(",
+    "fn route_plan_no_matching_host_providers_error_message(",
+    "fn route_plan_providers_unconfigured_error_message(",
+    "fn route_plan_selections(",
+    "fn route_selection_for_forward_result(",
 ];
 const FORBIDDEN_CLAUDE_PROVIDER_ADAPTER_TRANSFORM_DECISION_MARKERS: &[&str] = &[
     "ProviderKind::GitHubCopilot",

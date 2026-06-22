@@ -2518,8 +2518,6 @@ pub(crate) type ChannelRouteCandidate =
 pub(crate) type ResolvedChannelAttempt =
     crate::proxy_core::api::routing::ResolvedChannelAttempt;
 pub(crate) type RoutePlan = crate::proxy_core::api::routing::RoutePlan;
-pub(crate) type RoutePlanProviderMatch =
-    crate::proxy_core::api::routing::RoutePlanProviderMatch;
 pub(crate) type RouteSelection = crate::proxy_core::api::routing::RouteSelection;
 pub(crate) type CodexProxyErrorContext<'a> =
     crate::proxy_core::api::transforms::CodexProxyErrorContext<'a>;
@@ -6343,20 +6341,8 @@ pub(crate) fn codex_client_model_catalog_raw_from_active_config() -> Value {
 }
 
 #[cfg(test)]
-pub(crate) fn route_plan_provider_ids(plan: &RoutePlan) -> Vec<String> {
-    crate::proxy_core::api::routing::route_plan_provider_ids(plan)
-}
-
-pub(crate) fn route_plan_provider_match<I, S>(
-    plan: &RoutePlan,
-    configured_provider_ids: I,
-) -> RoutePlanProviderMatch
-where
-    I: IntoIterator<Item = S>,
-    S: AsRef<str>,
-{
-    crate::proxy_core::api::routing::route_plan_provider_match(plan, configured_provider_ids)
-}
+pub(crate) use crate::proxy_core::api::routing::route_plan_provider_ids;
+pub(crate) use crate::proxy_core::api::routing::route_plan_provider_match;
 
 pub(crate) fn host_providers_for_plan(
     providers: &IndexMap<String, Provider>,
@@ -6589,41 +6575,23 @@ where
     })
 }
 
-pub(crate) fn forwarding_requires_runtime_error_message() -> &'static str {
-    crate::proxy_core::api::routing::forwarding_requires_runtime_error_message()
-}
+pub(crate) use crate::proxy_core::api::routing::forwarding_requires_runtime_error_message;
 
 pub(crate) fn forwarding_runtime_unavailable_error() -> ProxyCoreError {
     ProxyCoreError::Unsupported(forwarding_requires_runtime_error_message().to_string())
 }
 
-pub(crate) fn route_plan_no_matching_host_providers_error_message() -> &'static str {
-    crate::proxy_core::api::routing::route_plan_no_matching_host_providers_error_message()
-}
+pub(crate) use crate::proxy_core::api::routing::route_plan_no_matching_host_providers_error_message;
 
 pub(crate) fn route_plan_no_matching_host_providers_error() -> ProxyCoreError {
     ProxyCoreError::Unavailable(route_plan_no_matching_host_providers_error_message().to_string())
 }
 
-pub(crate) fn route_plan_providers_unconfigured_error_message() -> &'static str {
-    crate::proxy_core::api::routing::route_plan_providers_unconfigured_error_message()
-}
+pub(crate) use crate::proxy_core::api::routing::route_plan_providers_unconfigured_error_message;
 
-pub(crate) fn route_plan_selections(plan: &RoutePlan) -> &[RouteSelection] {
-    crate::proxy_core::api::routing::route_plan_selections(plan)
-}
-
-pub(crate) fn route_selection_for_forward_result(
-    plan: &RoutePlan,
-    selected_channel_id: Option<&str>,
-    provider_id: &str,
-) -> RouteSelection {
-    crate::proxy_core::api::routing::select_route_for_forward_result(
-        plan,
-        selected_channel_id,
-        provider_id,
-    )
-}
+pub(crate) use crate::proxy_core::api::routing::{
+    route_plan_selections, select_route_for_forward_result as route_selection_for_forward_result,
+};
 
 pub(crate) fn route_policy_from_failover_queue(
     app: AppKind,
