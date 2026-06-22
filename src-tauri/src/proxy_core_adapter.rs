@@ -5471,16 +5471,9 @@ pub(crate) fn should_reapply_codex_official_live_for_provider(provider: &Provide
     provider_is_official_category(provider)
 }
 
-pub(crate) fn resolve_channel_route(
-    request: RouteResolveRequest,
-    channels: Vec<RouteResolveChannelInput>,
-    source: ChannelRouteSource,
-) -> Result<RouteResolveResponse, ProxyCoreError> {
-    crate::proxy_core::api::routing::resolve_channel_route(request, channels, source)
-}
-
 pub(crate) use crate::proxy_core::api::routing::{
-    apply_route_candidate_circuit_availability, route_candidate_channel_circuit_keys,
+    apply_route_candidate_circuit_availability, resolve_channel_route,
+    route_candidate_channel_circuit_keys,
 };
 
 pub(crate) fn stable_channel_id(
@@ -6912,17 +6905,8 @@ pub(crate) fn channel_route_candidate_from_selection(
 }
 
 #[cfg(test)]
-pub(crate) fn resolved_channel_attempt_from_candidate(
-    candidate: ChannelRouteCandidate,
-) -> ResolvedChannelAttempt {
-    crate::proxy_core::api::routing::resolved_channel_attempt_from_candidate(candidate)
-}
-
-pub(crate) fn resolved_channel_attempt_from_selection(
-    selection: &RouteSelection,
-) -> ResolvedChannelAttempt {
-    crate::proxy_core::api::routing::resolved_channel_attempt_from_selection(selection)
-}
+pub(crate) use crate::proxy_core::api::routing::resolved_channel_attempt_from_candidate;
+pub(crate) use crate::proxy_core::api::routing::resolved_channel_attempt_from_selection;
 
 pub(crate) fn apply_channel_param_overrides_to_url(
     url: &str,

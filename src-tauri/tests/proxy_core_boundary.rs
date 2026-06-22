@@ -416,6 +416,9 @@ const FORBIDDEN_PROXY_CORE_ADAPTER_SMALL_HELPER_FACADE_MARKERS: &[&str] = &[
     "fn route_plan_providers_unconfigured_error_message(",
     "fn route_plan_selections(",
     "fn route_selection_for_forward_result(",
+    "fn resolve_channel_route(",
+    "fn resolved_channel_attempt_from_candidate(",
+    "fn resolved_channel_attempt_from_selection(",
 ];
 const FORBIDDEN_CLAUDE_PROVIDER_ADAPTER_TRANSFORM_DECISION_MARKERS: &[&str] = &[
     "ProviderKind::GitHubCopilot",
