@@ -725,10 +725,6 @@ pub(crate) async fn release_forward_attempt_permit_neutral_runtime_source(
 
 pub(crate) type GeminiShadowStore =
     crate::proxy_core::api::transforms::GeminiShadowStore;
-pub(crate) type GeminiToAnthropicMessageOutput =
-    crate::proxy_core::api::transforms::GeminiToAnthropicMessageOutput;
-pub(crate) type AnthropicToolSchemaHints =
-    crate::proxy_core::api::transforms::AnthropicToolSchemaHints;
 pub(crate) type AuthProfileRef = crate::proxy_core::api::domain::AuthProfileRef;
 pub(crate) type ChannelAuthProfileResolution =
     crate::proxy_core::api::domain::ChannelAuthProfileResolution;
@@ -2436,15 +2432,20 @@ pub(crate) use crate::proxy_core::api::model_catalog::{
     RoutableModelList,
 };
 pub(crate) use crate::proxy_core::api::transforms::{
-    append_utf8_safe, chat_completion_to_response_with_context, claude_stream_usage_event_filter,
+    anthropic_request_to_gemini_request_with_shadow, anthropic_to_openai_chat_request,
+    anthropic_to_openai_responses_request, append_utf8_safe,
+    chat_completion_to_response_with_context, claude_stream_usage_event_filter,
     claude_transform_unlabeled_sse_aggregation, codex_stream_usage_event_filter,
     create_codex_chat_to_responses_sse_stream_with_context,
     create_gemini_to_anthropic_sse_stream_with_callbacks,
     create_openai_chat_to_anthropic_sse_stream,
     create_openai_responses_to_anthropic_sse_stream, extract_anthropic_tool_schema_hints,
-    build_gemini_upstream_url, gemini_response_to_anthropic_message_with_shadow,
-    inspect_codex_chat_history_sse_block, should_aggregate_codex_oauth_responses_sse,
-    should_use_claude_transform_streaming, take_sse_block,
+    build_gemini_upstream_url, gemini_response_to_anthropic_message,
+    gemini_response_to_anthropic_message_with_shadow, inspect_codex_chat_history_sse_block,
+    openai_chat_to_anthropic_message, openai_responses_to_anthropic_message,
+    should_aggregate_codex_oauth_responses_sse,
+    should_preserve_reasoning_content_for_openai_chat, should_use_claude_transform_streaming,
+    take_sse_block,
 };
 pub(crate) use crate::proxy_core::api::transport::{
     append_query_to_endpoint_path, parse_upstream_json_or_unlabeled_sse,
@@ -4145,67 +4146,6 @@ pub(crate) fn provider_claude_auth_headers(
     }
 }
 
-pub(crate) fn anthropic_to_openai_responses_request(
-    body: &Value,
-    cache_key: Option<&str>,
-    is_codex_oauth: bool,
-    codex_fast_mode: bool,
-) -> Value {
-    crate::proxy_core::api::transforms::anthropic_to_openai_responses_request(
-        body,
-        cache_key,
-        is_codex_oauth,
-        codex_fast_mode,
-    )
-}
-
-pub(crate) fn anthropic_to_openai_chat_request(
-    body: &Value,
-    preserve_reasoning_content: bool,
-) -> Value {
-    crate::proxy_core::api::transforms::anthropic_to_openai_chat_request(
-        body,
-        preserve_reasoning_content,
-    )
-}
-
-pub(crate) fn anthropic_request_to_gemini_request_with_shadow(
-    body: &Value,
-    shadow_store: Option<&GeminiShadowStore>,
-    provider_id: Option<&str>,
-    session_id: Option<&str>,
-) -> Result<Value, String> {
-    crate::proxy_core::api::transforms::anthropic_request_to_gemini_request_with_shadow(
-        body,
-        shadow_store,
-        provider_id,
-        session_id,
-    )
-}
-
-pub(crate) fn openai_responses_to_anthropic_message(body: &Value) -> Result<Value, String> {
-    crate::proxy_core::api::transforms::openai_responses_to_anthropic_message(body)
-}
-
-pub(crate) fn openai_chat_to_anthropic_message(body: &Value) -> Result<Value, String> {
-    crate::proxy_core::api::transforms::openai_chat_to_anthropic_message(body)
-}
-
-pub(crate) fn gemini_response_to_anthropic_message<F>(
-    body: &Value,
-    tool_schema_hints: Option<&AnthropicToolSchemaHints>,
-    synthesize_tool_call_id: F,
-) -> Result<GeminiToAnthropicMessageOutput, String>
-where
-    F: FnMut() -> String,
-{
-    crate::proxy_core::api::transforms::gemini_response_to_anthropic_message(
-        body,
-        tool_schema_hints,
-        synthesize_tool_call_id,
-    )
-}
-
 pub(crate) fn provider_claude_transform_request_for_api_format(
     body: Value,
     provider: &Provider,
@@ -4270,16 +4210,6 @@ pub(crate) fn provider_claude_transform_response(body: Value) -> Result<Value, S
     } else {
         openai_chat_to_anthropic_message(&body)
     }
-}
-
-pub(crate) fn should_preserve_reasoning_content_for_openai_chat(
-    settings_config: &Value,
-    body: &Value,
-) -> bool {
-    crate::proxy_core::api::transforms::should_preserve_reasoning_content_for_openai_chat(
-        settings_config,
-        body,
-    )
 }
 
 pub(crate) fn provider_should_preserve_reasoning_content_for_openai_chat(
