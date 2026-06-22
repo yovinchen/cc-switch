@@ -5481,13 +5481,9 @@ pub(crate) fn resolve_channel_route(
     crate::proxy_core::api::routing::resolve_channel_route(request, channels, source)
 }
 
-pub(crate) fn route_candidate_channel_circuit_keys(
-    response: &RouteResolveResponse,
-) -> Vec<RouteCandidateCircuitKey> {
-    crate::proxy_core::api::routing::route_candidate_channel_circuit_keys(response)
-}
-
-pub(crate) use crate::proxy_core::api::routing::apply_route_candidate_circuit_availability;
+pub(crate) use crate::proxy_core::api::routing::{
+    apply_route_candidate_circuit_availability, route_candidate_channel_circuit_keys,
+};
 
 pub(crate) fn stable_channel_id(
     app_type: &str,

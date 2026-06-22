@@ -407,6 +407,7 @@ const FORBIDDEN_PROXY_CORE_ADAPTER_SMALL_HELPER_FACADE_MARKERS: &[&str] = &[
     "fn validate_claude_desktop_gateway_bearer_header(",
     "fn proxy_event_envelope_to_sse_spec(",
     "fn apply_route_candidate_circuit_availability(",
+    "fn route_candidate_channel_circuit_keys(",
     "fn reject_unavailable_channel_ids(",
 ];
 const FORBIDDEN_CLAUDE_PROVIDER_ADAPTER_TRANSFORM_DECISION_MARKERS: &[&str] = &[
