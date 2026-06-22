@@ -2577,6 +2577,20 @@ pub(crate) fn should_block_proxy_switch_to_provider(
     should_block_proxy_switch_to_provider_category(proxy_takeover_active, provider.category.as_deref())
 }
 
+pub(crate) fn proxy_live_config_owned_by_takeover(
+    has_live_backup: bool,
+    live_taken_over: bool,
+) -> bool {
+    has_live_backup || live_taken_over
+}
+
+pub(crate) fn proxy_switch_should_hot_switch(
+    proxy_config_takeover_enabled: bool,
+    live_taken_over: bool,
+) -> bool {
+    proxy_config_takeover_enabled || live_taken_over
+}
+
 pub(crate) fn provider_is_official_category(provider: &Provider) -> bool {
     provider.category.as_deref() == Some("official")
 }
@@ -7528,6 +7542,13 @@ base_url = "https://api.openai.com/v1"
         assert!(!should_block_proxy_switch_to_provider(false, &provider));
         provider.category = Some("custom".to_string());
         assert!(!should_block_proxy_switch_to_provider(true, &provider));
+
+        assert!(!proxy_live_config_owned_by_takeover(false, false));
+        assert!(proxy_live_config_owned_by_takeover(true, false));
+        assert!(proxy_live_config_owned_by_takeover(false, true));
+        assert!(!proxy_switch_should_hot_switch(false, false));
+        assert!(proxy_switch_should_hot_switch(true, false));
+        assert!(proxy_switch_should_hot_switch(false, true));
     }
 
     #[test]

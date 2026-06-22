@@ -23,7 +23,8 @@ use crate::proxy_core_adapter::{
     opencode_common_config_value_from_settings,
     provider_codex_validation_parts, provider_gemini_env_map,
     provider_openclaw_credential_parts, provider_opencode_credential_parts,
-    provider_settings_config_is_object, should_block_proxy_switch_to_provider,
+    provider_settings_config_is_object, proxy_live_config_owned_by_takeover,
+    proxy_switch_should_hot_switch, should_block_proxy_switch_to_provider,
     should_reapply_codex_official_live_for_provider, CodexProviderValidationIssue,
     OpenCodeCredentialIssue,
 };
@@ -81,7 +82,7 @@ pub fn reapply_current_codex_official_live(state: &AppState) -> Result<bool, App
     let live_taken_over = state
         .proxy_service
         .detect_takeover_in_live_config_for_app(&AppType::Codex);
-    if has_live_backup || live_taken_over {
+    if proxy_live_config_owned_by_takeover(has_live_backup, live_taken_over) {
         futures::executor::block_on(
             state
                 .proxy_service
@@ -1610,7 +1611,8 @@ impl ProviderService {
             // Backup or live placeholders mean the live file is currently owned
             // by proxy takeover, including the short activation window before
             // proxy_config.enabled is committed.
-            let should_sync_via_proxy = has_live_backup || live_taken_over;
+            let should_sync_via_proxy =
+                proxy_live_config_owned_by_takeover(has_live_backup, live_taken_over);
 
             if should_sync_via_proxy {
                 if matches!(app_type, AppType::ClaudeDesktop) {
@@ -1831,7 +1833,7 @@ impl ProviderService {
             .proxy_service
             .detect_takeover_in_live_config_for_app(&app_type);
 
-        let should_hot_switch = is_app_taken_over || live_taken_over;
+        let should_hot_switch = proxy_switch_should_hot_switch(is_app_taken_over, live_taken_over);
 
         // Block switching to official providers when proxy takeover is active.
         // Using a proxy with official APIs (Anthropic/OpenAI/Google) may cause account bans.
@@ -2042,7 +2044,7 @@ impl ProviderService {
 
         // See the save path above: backup/placeholders are the ownership signal
         // here, not just proxy_config.enabled.
-        if has_live_backup || live_taken_over {
+        if proxy_live_config_owned_by_takeover(has_live_backup, live_taken_over) {
             if matches!(app_type, AppType::ClaudeDesktop) {
                 write_live_with_common_config(state.db.as_ref(), &app_type, provider)?;
                 return Ok(());

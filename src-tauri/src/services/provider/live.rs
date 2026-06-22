@@ -19,7 +19,8 @@ use crate::proxy_core_adapter::{
     provider_codex_imported_live_category, provider_codex_live_snapshot_parts,
     provider_gemini_env_map, provider_gemini_live_config_object,
     provider_model_catalog_raw_value, provider_opencode_live_provider_fragment,
-    provider_openclaw_has_live_provider_fields, restore_codex_settings_for_provider_backfill,
+    provider_openclaw_has_live_provider_fields, proxy_live_config_owned_by_takeover,
+    restore_codex_settings_for_provider_backfill,
     strip_codex_unified_session_bucket_for_provider_backfill,
     validate_provider_gemini_settings_strict, CodexLiveSnapshotIssue, GeminiLiveConfigIssue,
 };
@@ -944,7 +945,7 @@ fn sync_current_provider_for_app_respecting_takeover(
     // `enabled` is set only after takeover writes complete. During that
     // activation window, backup/live placeholders are the authoritative signal
     // that normal provider sync must not rewrite the managed live file.
-    if has_live_backup || live_taken_over {
+    if proxy_live_config_owned_by_takeover(has_live_backup, live_taken_over) {
         if matches!(app_type, AppType::ClaudeDesktop) {
             write_live_with_common_config(state.db.as_ref(), app_type, provider)?;
         } else {
