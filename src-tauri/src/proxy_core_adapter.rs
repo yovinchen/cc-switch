@@ -741,27 +741,10 @@ pub(crate) type SseUsageAccumulator =
 pub(crate) type GlobalProxyConfig = crate::proxy_core::api::ports::GlobalProxyConfig;
 pub(crate) type AppProxyConfig = crate::proxy_core::api::config::AppProxyConfig;
 
-pub(crate) fn proxy_global_config_from_config(config: GlobalProxyConfig) -> ProxyGlobalConfig {
-    crate::proxy_core::api::config::proxy_global_config_from_global_config(config)
-}
-
-pub(crate) fn proxy_app_config_from_config_parts(
-    app: AppKind,
-    config: AppProxyConfig,
-    current_provider_id: Option<String>,
-    rectifier: RectifierConfig,
-    optimizer: OptimizerConfig,
-    copilot_optimizer: CopilotOptimizerConfig,
-) -> ProxyAppConfig {
-    crate::proxy_core::api::config::proxy_app_config_from_parts(
-        app,
-        config,
-        current_provider_id,
-        rectifier,
-        optimizer,
-        copilot_optimizer,
-    )
-}
+pub(crate) use crate::proxy_core::api::config::{
+    proxy_app_config_from_parts as proxy_app_config_from_config_parts,
+    proxy_global_config_from_global_config as proxy_global_config_from_config,
+};
 
 pub(crate) fn current_provider_id_from_settings_for_app(app: &AppKind) -> Option<String> {
     app_type_option_from_proxy_core_app(app)
@@ -888,15 +871,9 @@ pub(crate) fn app_proxy_config_from_proxy_app_config(
         .map_err(|error| format!("invalid app proxy config: {error}"))
 }
 
-pub(crate) fn proxy_runtime_config_from_config(
-    config: ProxyConfig,
-    privacy_filter_enabled: bool,
-) -> ProxyRuntimeConfig {
-    crate::proxy_core::api::config::proxy_runtime_config_from_proxy_config(
-        config,
-        privacy_filter_enabled,
-    )
-}
+pub(crate) use crate::proxy_core::api::config::{
+    proxy_runtime_config_from_proxy_config as proxy_runtime_config_from_config,
+};
 
 pub(crate) fn proxy_runtime_config_from_config_source(config: ProxyConfig) -> ProxyRuntimeConfig {
     proxy_runtime_config_from_config(config, false)
@@ -920,12 +897,7 @@ pub(crate) type ProviderAuthStrategy =
     crate::proxy_core::api::auth::ProviderAuthStrategy;
 pub(crate) type AuthInfo = crate::proxy_core::api::ports::AuthInfo;
 
-pub(crate) fn auth_info_from_profile_ref(
-    auth_profile: Option<&AuthProfileRef>,
-    source: &str,
-) -> AuthInfo {
-    crate::proxy_core::api::ports::auth_info_from_profile_ref(auth_profile, source)
-}
+pub(crate) use crate::proxy_core::api::ports::auth_info_from_profile_ref;
 
 pub(crate) fn auth_info_from_cc_switch_provider_config(
     auth_profile: Option<&AuthProfileRef>,
@@ -2206,15 +2178,7 @@ pub(crate) fn channel_auth_profile_resolution(
     )
 }
 
-pub(crate) fn channel_auth_profile_missing_provider_warning(
-    app_type: &str,
-    auth_profile_ref: Option<&str>,
-) -> String {
-    crate::proxy_core::api::domain::channel_auth_profile_missing_provider_warning(
-        app_type,
-        auth_profile_ref,
-    )
-}
+pub(crate) use crate::proxy_core::api::domain::channel_auth_profile_missing_provider_warning;
 
 pub(crate) enum ChannelAuthProfileAction {
     Provider {
