@@ -7,11 +7,12 @@ use crate::provider::Provider;
 use crate::proxy::{error::ProxyError, server::ProxyState};
 use crate::proxy_core_adapter::{
     app_proxy_config_from_proxy_app_config, claude_api_format_from_metadata,
-    extract_proxy_session_id, request_context_route_update_from_proxy_result,
+    extract_proxy_session_id, proxy_core_app_kind_from_app_type,
+    request_context_route_update_from_proxy_result,
     request_model_from_body_for_context, request_model_from_gemini_path_for_context,
     provider_claude_api_format,
-    response_runtime_policy_from_app_proxy_config, ProxyCoreAppKind as AppKind, ProxyResult,
-    ProxyServices, ResponseRuntimePolicy, ResponseTimeoutConfig,
+    response_runtime_policy_from_app_proxy_config, ProxyResult, ProxyServices,
+    ResponseRuntimePolicy, ResponseTimeoutConfig,
     selected_provider_display_name_for_error,
     selected_provider_missing_from_source_message, selected_provider_not_applied_message,
     StreamingTimeoutConfig, unselected_provider_fallback_id, UsageRouteContext,
@@ -78,7 +79,7 @@ impl RequestContext {
     ) -> Result<Self, ProxyError> {
         let start_time = Instant::now();
 
-        let app_kind = AppKind::from(&app_type);
+        let app_kind = proxy_core_app_kind_from_app_type(&app_type);
         let core_app_config = state
             .proxy_core_services
             .config()
