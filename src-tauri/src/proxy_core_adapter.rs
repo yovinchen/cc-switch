@@ -6803,11 +6803,7 @@ pub(crate) fn proxy_result_from_forward_parts(
     }
 }
 
-pub(crate) fn route_plan_from_request(
-    request: RouteRequest<'_>,
-) -> ProxyCoreResult<RoutePlan> {
-    crate::proxy_core::api::routing::build_route_plan(request)
-}
+pub(crate) use crate::proxy_core::api::routing::build_route_plan as route_plan_from_request;
 
 pub(crate) async fn management_route_response_from_router_source(
     router: &ProviderRouter,

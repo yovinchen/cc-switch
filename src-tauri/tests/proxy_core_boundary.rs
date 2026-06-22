@@ -409,6 +409,7 @@ const FORBIDDEN_PROXY_CORE_ADAPTER_SMALL_HELPER_FACADE_MARKERS: &[&str] = &[
     "fn apply_route_candidate_circuit_availability(",
     "fn route_candidate_channel_circuit_keys(",
     "fn reject_unavailable_channel_ids(",
+    "fn route_plan_from_request(",
     "fn route_plan_provider_ids(",
     "fn route_plan_provider_match(",
     "fn forwarding_requires_runtime_error_message(",
