@@ -5420,6 +5420,14 @@ pub(crate) fn current_provider_id_from_db_source(
         .map_err(|error| app_error("get current provider", error))
 }
 
+pub(crate) async fn active_route_target_from_runtime_source(
+    current_providers: &RwLock<HashMap<String, CurrentRouteTarget>>,
+    app: &AppKind,
+) -> ProxyCoreResult<Option<CurrentRouteTarget>> {
+    let current_providers = current_providers.read().await;
+    Ok(current_providers.get(app.as_str()).cloned())
+}
+
 pub(crate) fn route_candidate_provider_ids_from_selection_result(
     result: Result<Vec<Provider>, AppError>,
 ) -> ProxyCoreResult<Vec<String>> {

@@ -22,6 +22,7 @@ use crate::proxy_core_adapter::{
     RouteResolveResponse, RouteResolver, UsageRecord, UsageSink,
 };
 use crate::proxy_core_adapter::{
+    active_route_target_from_runtime_source,
     app_summary_config_from_db_source,
     auth_info_from_cc_switch_provider_config,
     cc_switch_app_kinds,
@@ -299,8 +300,7 @@ impl ProviderSource for CcSwitchProviderSource {
         app: &'a AppKind,
     ) -> BoxFuture<'a, ProxyCoreResult<Option<CurrentRouteTarget>>> {
         Box::pin(async move {
-            let current_providers = self.current_providers.read().await;
-            Ok(current_providers.get(app.as_str()).cloned())
+            active_route_target_from_runtime_source(&self.current_providers, app).await
         })
     }
 
