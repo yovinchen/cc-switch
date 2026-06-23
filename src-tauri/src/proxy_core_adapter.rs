@@ -8544,6 +8544,29 @@ pub(crate) struct ForwarderCopilotRequestOptimization {
     pub(crate) classification: CopilotClassification,
 }
 
+pub(crate) struct ForwarderMediaPreventionInput<'a> {
+    pub(crate) body: &'a mut Value,
+    pub(crate) provider: &'a Provider,
+    pub(crate) rectifier_enabled: bool,
+    pub(crate) request_media_fallback: bool,
+    pub(crate) request_media_heuristic: bool,
+}
+
+pub(crate) struct ForwarderMediaRetryPlanInput<'a> {
+    pub(crate) app: &'a str,
+    pub(crate) adapter_name: &'a str,
+    pub(crate) provider: &'a Provider,
+    pub(crate) already_retried: bool,
+    pub(crate) provider_body: &'a Value,
+    pub(crate) error: &'a ProxyError,
+    pub(crate) rectifier_enabled: bool,
+    pub(crate) request_media_fallback: bool,
+}
+
+pub(crate) struct ForwarderMediaRetryPlan {
+    pub(crate) body: Value,
+}
+
 pub(crate) struct ForwarderRequestPartsInput<'a> {
     pub(crate) method: &'a Method,
     pub(crate) url: &'a str,
@@ -8570,6 +8593,13 @@ pub(crate) trait ForwarderRequestSource {
         &self,
         input: ForwarderCopilotRequestOptimizationInput<'_>,
     ) -> ForwarderCopilotRequestOptimization;
+
+    fn apply_media_prevention(&self, input: ForwarderMediaPreventionInput<'_>) -> usize;
+
+    fn media_retry_plan(
+        &self,
+        input: ForwarderMediaRetryPlanInput<'_>,
+    ) -> Option<ForwarderMediaRetryPlan>;
 
     fn prepare_upstream_body(
         &self,
@@ -8629,6 +8659,82 @@ impl ForwarderRequestSource for CcSwitchForwarderRequestSource {
             body: warmup_override.body,
             classification,
         }
+    }
+
+    fn apply_media_prevention(&self, input: ForwarderMediaPreventionInput<'_>) -> usize {
+        let policy = resolve_media_prevention_policy(
+            input.rectifier_enabled,
+            input.request_media_fallback,
+            input.request_media_heuristic,
+        );
+        if !policy.should_attempt {
+            return 0;
+        }
+
+        let replaced_images = forwarder_replace_images_for_text_only_provider_model(
+            input.body,
+            input.provider,
+            policy.allow_heuristic,
+        );
+        if replaced_images > 0 {
+            let model = input.body.get("model").and_then(Value::as_str).unwrap_or("");
+            log::info!(
+                "[Media] Replaced {replaced_images} image block(s) with {} for text-only provider={}, model={}",
+                UNSUPPORTED_IMAGE_MARKER,
+                input.provider.id,
+                model
+            );
+        }
+        replaced_images
+    }
+
+    fn media_retry_plan(
+        &self,
+        input: ForwarderMediaRetryPlanInput<'_>,
+    ) -> Option<ForwarderMediaRetryPlan> {
+        if !should_check_media_retry(
+            input.adapter_name,
+            input.rectifier_enabled,
+            input.request_media_fallback,
+            input.already_retried,
+        ) {
+            return None;
+        }
+
+        let unsupported_image_error = match input.error {
+            ProxyError::UpstreamError { status, body } => {
+                is_unsupported_image_error(*status, body.as_deref())
+            }
+            _ => false,
+        };
+
+        if !should_trigger_media_retry(MediaRetryInput {
+            adapter_name: input.adapter_name,
+            rectifier_enabled: input.rectifier_enabled,
+            request_media_fallback: input.request_media_fallback,
+            already_retried: input.already_retried,
+            body_has_images: contains_image_blocks(input.provider_body),
+            unsupported_image_error,
+        }) {
+            return None;
+        }
+
+        let mut body = input.provider_body.clone();
+        let replaced_images = replace_image_blocks_with_marker(&mut body);
+        if replaced_images == 0 {
+            return None;
+        }
+
+        let model = body.get("model").and_then(Value::as_str).unwrap_or("");
+        log::info!(
+            "[{}] [Media] Upstream rejected image input; retrying provider={} model={} with {replaced_images} image block(s) replaced by {}",
+            input.app,
+            input.provider.id,
+            model,
+            UNSUPPORTED_IMAGE_MARKER
+        );
+
+        Some(ForwarderMediaRetryPlan { body })
     }
 
     fn prepare_upstream_body(

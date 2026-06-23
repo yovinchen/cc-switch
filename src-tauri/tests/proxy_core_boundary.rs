@@ -6317,6 +6317,14 @@ fn production_forwarder_uses_request_source_resource() {
         "merge_copilot_tool_results(",
         "strip_copilot_thinking_blocks(",
         "apply_copilot_warmup_model_override(",
+        "resolve_media_prevention_policy(",
+        "forwarder_replace_images_for_text_only_provider_model(",
+        "should_check_media_retry(",
+        "should_trigger_media_retry(",
+        "contains_image_blocks(",
+        "is_unsupported_image_error(",
+        "replace_image_blocks_with_marker(",
+        "MediaRetryInput",
     ];
     let mut violations = Vec::new();
 

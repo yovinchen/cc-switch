@@ -12,40 +12,38 @@ use crate::proxy_core_adapter::{
     apply_forward_request_model_mapping_from_provider,
     build_retryable_forward_failure_log, build_terminal_forward_failure_log,
     cache_injection_log_message, categorize_forward_failure,
-    contains_image_blocks, forward_upstream_url_plan,
+    forward_upstream_url_plan,
     forwarder_apply_codex_chat_upstream_model, forwarder_bedrock_env_flag,
     forwarder_codex_chat_reasoning_options,
     forward_failure_kind_from_proxy_error, forwarder_should_convert_codex_responses_to_chat,
     forwarder_is_full_url_provider,
     forwarder_is_github_copilot_upstream,
-    forwarder_replace_images_for_text_only_provider_model, forwarder_uses_anthropic_rectifiers,
+    forwarder_uses_anthropic_rectifiers,
     forwarder_provider_adapter_for_app,
     forwarder_provider_adapter_name, forwarder_provider_base_url, forwarder_provider_upstream_url,
     forwarder_provider_transform_request, forwarder_provider_transform_required,
     ForwarderAdapterHandle, is_openai_o_series,
-    is_unsupported_image_error,
     normalize_thinking_type,
     forwarder_claude_normalize_anthropic_messages,
     provider_adapter_name_is_claude,
-    rectify_anthropic_request, rectify_thinking_budget, replace_image_blocks_with_marker,
-    resolve_media_prevention_policy,
+    rectify_anthropic_request, rectify_thinking_budget,
     forwarder_claude_api_format, forwarder_claude_transform_required,
     responses_to_chat_completions_with_options,
     should_apply_bedrock_pre_send_optimizer,
-    should_check_media_retry, should_failover_after_rectifier_retry_failure,
+    should_failover_after_rectifier_retry_failure,
     should_rectify_thinking_budget, should_rectify_thinking_signature,
-    should_trigger_media_retry,
     strip_one_m_suffix_for_upstream,
     strip_one_m_suffix_for_upstream_from_body,
     supports_reasoning_effort, thinking_optimization_log_message,
     AttemptEventPhase, CopilotOptimizerConfig, ForwardFailureCategory, ForwardUpstreamUrlPlanInput,
     ForwarderAuthHeadersInput, ForwarderAuthSourceRef, ForwarderCopilotAuthOptimizationInput,
-    ForwarderCopilotRequestOptimizationInput, MediaRetryInput, OptimizerConfig,
+    ForwarderCopilotRequestOptimizationInput, ForwarderMediaPreventionInput,
+    ForwarderMediaRetryPlanInput, OptimizerConfig,
     FailoverSwitchSchedulerRef, ForwarderAttemptRuntimeSourceRef, ForwarderProtocolStateSourceRef,
     ForwarderRequestPartsInput, ForwarderRequestPreparationInput, ForwarderRequestSourceRef,
     ForwarderResponseSourceRef, ForwarderRuntimeStateSourceRef, ForwarderTransportSourceRef,
     ForwarderUpstreamTransportRequest, ManagedAccountRuntimeSourceRef,
-    RectifierConfig, ResolvedChannelAttempt, UNSUPPORTED_IMAGE_MARKER,
+    RectifierConfig, ResolvedChannelAttempt,
 };
 #[cfg(test)]
 use crate::proxy_core_adapter::{
@@ -151,73 +149,6 @@ pub struct RequestForwarder {
 }
 
 impl RequestForwarder {
-    /// 预防式 media 降级：发送前对 text-only 模型把图片块替换为标记。
-    ///
-    /// 受 `enabled && request_media_fallback` 管辖；其中"启发式模型名单预测"
-    /// 再受 `request_media_heuristic` 单独管辖（显式声明 text-only 始终生效）。
-    /// 返回被替换的图片块数量（0 = 未触发或开关关闭）。
-    fn apply_media_prevention(&self, body: &mut Value, provider: &Provider) -> usize {
-        let policy = resolve_media_prevention_policy(
-            self.rectifier_config.enabled,
-            self.rectifier_config.request_media_fallback,
-            self.rectifier_config.request_media_heuristic,
-        );
-        if !policy.should_attempt {
-            return 0;
-        }
-        let replaced_images =
-            forwarder_replace_images_for_text_only_provider_model(
-                body,
-                provider,
-                policy.allow_heuristic,
-            );
-        if replaced_images > 0 {
-            let model = body.get("model").and_then(Value::as_str).unwrap_or("");
-            log::info!(
-                "[Media] Replaced {replaced_images} image block(s) with {} for text-only provider={}, model={}",
-                UNSUPPORTED_IMAGE_MARKER,
-                provider.id,
-                model
-            );
-        }
-        replaced_images
-    }
-
-    /// 反应式 media 重试判定：上游因图片输入报错后，是否应替换图片块并对同一供应商重试一次。
-    ///
-    /// 受 `enabled && request_media_fallback` 管辖；不涉及 `request_media_heuristic`——
-    /// 这里是上游"实测"错误后的纯恢复，不是预测，故启发式开关与它无关。
-    fn media_retry_should_trigger(
-        &self,
-        adapter_name: &str,
-        already_retried: bool,
-        provider_body: &Value,
-        error: &ProxyError,
-    ) -> bool {
-        if !should_check_media_retry(
-            adapter_name,
-            self.rectifier_config.enabled,
-            self.rectifier_config.request_media_fallback,
-            already_retried,
-        ) {
-            return false;
-        }
-
-        should_trigger_media_retry(MediaRetryInput {
-            adapter_name,
-            rectifier_enabled: self.rectifier_config.enabled,
-            request_media_fallback: self.rectifier_config.request_media_fallback,
-            already_retried,
-            body_has_images: contains_image_blocks(provider_body),
-            unsupported_image_error: match error {
-                ProxyError::UpstreamError { status, body } => {
-                    is_unsupported_image_error(*status, body.as_deref())
-                }
-                _ => false,
-            },
-        })
-    }
-
     #[allow(dead_code)]
     #[allow(clippy::too_many_arguments)]
     pub(crate) fn new_preplanned(
@@ -628,92 +559,84 @@ impl RequestForwarder {
                         forwarder_uses_anthropic_rectifiers(app_type, provider);
                     let mut signature_rectifier_non_retryable_client_error = false;
 
-                    if self.media_retry_should_trigger(
-                        forwarder_provider_adapter_name(adapter.as_ref()),
-                        media_rectifier_retried,
-                        &provider_body,
-                        &e,
-                    ) {
-                        let mut media_body = provider_body.clone();
-                        let replaced_images = replace_image_blocks_with_marker(&mut media_body);
+                    if let Some(media_retry) =
+                        self.request_source
+                            .media_retry_plan(ForwarderMediaRetryPlanInput {
+                                app: app_type_str,
+                                adapter_name: forwarder_provider_adapter_name(adapter.as_ref()),
+                                provider,
+                                already_retried: media_rectifier_retried,
+                                provider_body: &provider_body,
+                                error: &e,
+                                rectifier_enabled: self.rectifier_config.enabled,
+                                request_media_fallback: self.rectifier_config.request_media_fallback,
+                            })
+                    {
+                        let _ = std::mem::replace(&mut media_rectifier_retried, true);
 
-                        if replaced_images > 0 {
-                            let _ = std::mem::replace(&mut media_rectifier_retried, true);
-                            let model = media_body
-                                .get("model")
-                                .and_then(Value::as_str)
-                                .unwrap_or("");
-                            log::info!(
-                                "[{app_type_str}] [Media] Upstream rejected image input; retrying provider={} model={} with {replaced_images} image block(s) replaced by {}",
-                                provider.id,
-                                model,
-                                UNSUPPORTED_IMAGE_MARKER
-                            );
-
-                            match self
-                                .forward(
-                                    app_type,
-                                    &method,
+                        match self
+                            .forward(
+                                app_type,
+                                &method,
+                                attempt,
+                                endpoint,
+                                &media_retry.body,
+                                &headers,
+                                &extensions,
+                                adapter.as_ref(),
+                            )
+                            .await
+                        {
+                            Ok((response, claude_api_format, outbound_model)) => {
+                                log::info!(
+                                    "[{app_type_str}] [Media] Unsupported-image retry succeeded"
+                                );
+                                self.record_success_result(
+                                    request_id,
                                     attempt,
-                                    endpoint,
-                                    &media_body,
-                                    &headers,
-                                    &extensions,
-                                    adapter.as_ref(),
+                                    app_type_str,
+                                    used_half_open_permit,
                                 )
-                                .await
-                            {
-                                Ok((response, claude_api_format, outbound_model)) => {
-                                    log::info!(
-                                        "[{app_type_str}] [Media] Unsupported-image retry succeeded"
-                                    );
-                                    self.record_success_result(
+                                .await;
+
+                                self.record_active_target(request_id, app_type_str, attempt)
+                                    .await;
+
+                                self.record_success_status_and_maybe_switch(
+                                    app_type_str,
+                                    provider,
+                                )
+                                .await;
+
+                                return Ok(ForwardResult {
+                                    response,
+                                    provider: provider.clone(),
+                                    claude_api_format,
+                                    outbound_model,
+                                    selected_channel: attempt.channel().cloned(),
+                                    connection_guard: None,
+                                });
+                            }
+                            Err(retry_err) => {
+                                log::warn!(
+                                    "[{app_type_str}] [Media] Unsupported-image retry still failed: {retry_err}"
+                                );
+                                if let Some(err) = self
+                                    .handle_rectifier_retry_failure(
+                                        retry_err,
                                         request_id,
                                         attempt,
                                         app_type_str,
                                         used_half_open_permit,
+                                        "media 降级",
+                                        &mut last_error,
+                                        &mut last_provider,
                                     )
-                                    .await;
-
-                                    self.record_active_target(request_id, app_type_str, attempt)
-                                        .await;
-
-                                    self.record_success_status_and_maybe_switch(
-                                        app_type_str,
-                                        provider,
-                                    )
-                                    .await;
-
-                                    return Ok(ForwardResult {
-                                        response,
-                                        provider: provider.clone(),
-                                        claude_api_format,
-                                        outbound_model,
-                                        selected_channel: attempt.channel().cloned(),
-                                        connection_guard: None,
-                                    });
+                                    .await
+                                {
+                                    return Err(err);
                                 }
-                                Err(retry_err) => {
-                                    log::warn!(
-                                        "[{app_type_str}] [Media] Unsupported-image retry still failed: {retry_err}"
-                                    );
-                                    if let Some(err) = self
-                                        .handle_rectifier_retry_failure(
-                                            retry_err,
-                                            request_id,
-                                            attempt,
-                                            app_type_str,
-                                            used_half_open_permit,
-                                            "media 降级",
-                                            &mut last_error,
-                                            &mut last_provider,
-                                        )
-                                        .await
-                                    {
-                                        return Err(err);
-                                    }
-                                    continue;
-                                }
+                                continue;
                             }
                         }
                     }
@@ -1203,7 +1126,14 @@ impl RequestForwarder {
                     provider,
                     api_format,
                 );
-                self.apply_media_prevention(&mut mapped_body, provider);
+                self.request_source
+                    .apply_media_prevention(ForwarderMediaPreventionInput {
+                        body: &mut mapped_body,
+                        provider,
+                        rectifier_enabled: self.rectifier_config.enabled,
+                        request_media_fallback: self.rectifier_config.request_media_fallback,
+                        request_media_heuristic: self.rectifier_config.request_media_heuristic,
+                    });
             }
         }
         let needs_transform = match resolved_claude_api_format.as_deref() {
@@ -1290,7 +1220,14 @@ impl RequestForwarder {
         };
 
         if matches!(app_type, AppType::Codex) {
-            self.apply_media_prevention(&mut request_body, provider);
+            self.request_source
+                .apply_media_prevention(ForwarderMediaPreventionInput {
+                    body: &mut request_body,
+                    provider,
+                    rectifier_enabled: self.rectifier_config.enabled,
+                    request_media_fallback: self.rectifier_config.request_media_fallback,
+                    request_media_heuristic: self.rectifier_config.request_media_heuristic,
+                });
         }
 
         let prepared_request =
@@ -2326,13 +2263,51 @@ mod tests {
             ),
         }
     }
+
+    fn apply_media_prevention_for_test(
+        fwd: &RequestForwarder,
+        body: &mut Value,
+        provider: &Provider,
+    ) -> usize {
+        fwd.request_source
+            .apply_media_prevention(ForwarderMediaPreventionInput {
+                body,
+                provider,
+                rectifier_enabled: fwd.rectifier_config.enabled,
+                request_media_fallback: fwd.rectifier_config.request_media_fallback,
+                request_media_heuristic: fwd.rectifier_config.request_media_heuristic,
+            })
+    }
+
+    fn media_retry_should_trigger_for_test(
+        fwd: &RequestForwarder,
+        adapter_name: &str,
+        already_retried: bool,
+        provider_body: &Value,
+        error: &ProxyError,
+    ) -> bool {
+        let provider = provider_with_settings(json!({}));
+        fwd.request_source
+            .media_retry_plan(ForwarderMediaRetryPlanInput {
+                app: "claude",
+                adapter_name,
+                provider: &provider,
+                already_retried,
+                provider_body,
+                error,
+                rectifier_enabled: fwd.rectifier_config.enabled,
+                request_media_fallback: fwd.rectifier_config.request_media_fallback,
+            })
+            .is_some()
+    }
+
     #[test]
     fn prevention_replaces_when_all_switches_on_and_model_in_heuristic_list() {
         let fwd = forwarder_with_rectifier(RectifierConfig::default());
         let provider = provider_with_settings(json!({}));
         let mut body = body_with_image("deepseek-v4-pro");
 
-        let replaced = fwd.apply_media_prevention(&mut body, &provider);
+        let replaced = apply_media_prevention_for_test(&fwd, &mut body, &provider);
 
         assert_eq!(replaced, 1, "默认全开 + 名单内模型应预替换");
         assert_eq!(body["messages"][0]["content"][0]["type"], "text");
@@ -2348,7 +2323,7 @@ mod tests {
         let provider = provider_with_settings(json!({}));
         let mut body = body_with_image("deepseek-v4-pro");
 
-        let replaced = fwd.apply_media_prevention(&mut body, &provider);
+        let replaced = apply_media_prevention_for_test(&fwd, &mut body, &provider);
 
         assert_eq!(replaced, 0);
         assert_eq!(body["messages"][0]["content"][0]["type"], "image");
@@ -2363,7 +2338,7 @@ mod tests {
         let provider = provider_with_settings(json!({}));
         let mut body = body_with_image("deepseek-v4-pro");
 
-        assert_eq!(fwd.apply_media_prevention(&mut body, &provider), 0);
+        assert_eq!(apply_media_prevention_for_test(&fwd, &mut body, &provider), 0);
         assert_eq!(body["messages"][0]["content"][0]["type"], "image");
     }
 
@@ -2379,7 +2354,7 @@ mod tests {
         let bare_provider = provider_with_settings(json!({}));
         let mut list_body = body_with_image("deepseek-v4-pro");
         assert_eq!(
-            fwd.apply_media_prevention(&mut list_body, &bare_provider),
+            apply_media_prevention_for_test(&fwd, &mut list_body, &bare_provider),
             0,
             "heuristic 关闭后名单模型不应被预替换"
         );
@@ -2391,7 +2366,7 @@ mod tests {
         }));
         let mut declared_body = body_with_image("some-text-model");
         assert_eq!(
-            fwd.apply_media_prevention(&mut declared_body, &declared_provider),
+            apply_media_prevention_for_test(&fwd, &mut declared_body, &declared_provider),
             1,
             "显式 text-only 即使关闭 heuristic 也应预替换"
         );
@@ -2402,7 +2377,13 @@ mod tests {
     fn reactive_triggers_when_all_switches_on() {
         let fwd = forwarder_with_rectifier(RectifierConfig::default());
         let body = body_with_image("any-model");
-        assert!(fwd.media_retry_should_trigger("Claude", false, &body, &image_unsupported_error()));
+        assert!(media_retry_should_trigger_for_test(
+            &fwd,
+            "Claude",
+            false,
+            &body,
+            &image_unsupported_error()
+        ));
     }
 
     #[test]
@@ -2417,7 +2398,9 @@ mod tests {
             ),
         };
 
-        assert!(fwd.media_retry_should_trigger("Codex", false, &body, &error));
+        assert!(media_retry_should_trigger_for_test(
+            &fwd, "Codex", false, &body, &error
+        ));
     }
 
     #[test]
@@ -2428,7 +2411,8 @@ mod tests {
             ..RectifierConfig::default()
         });
         let body = body_with_image("any-model");
-        assert!(!fwd.media_retry_should_trigger(
+        assert!(!media_retry_should_trigger_for_test(
+            &fwd,
             "Claude",
             false,
             &body,
@@ -2443,7 +2427,8 @@ mod tests {
             ..RectifierConfig::default()
         });
         let body = body_with_image("any-model");
-        assert!(!fwd.media_retry_should_trigger(
+        assert!(!media_retry_should_trigger_for_test(
+            &fwd,
             "Claude",
             false,
             &body,
@@ -2459,6 +2444,12 @@ mod tests {
             ..RectifierConfig::default()
         });
         let body = body_with_image("any-model");
-        assert!(fwd.media_retry_should_trigger("Claude", false, &body, &image_unsupported_error()));
+        assert!(media_retry_should_trigger_for_test(
+            &fwd,
+            "Claude",
+            false,
+            &body,
+            &image_unsupported_error()
+        ));
     }
 }
