@@ -5,7 +5,7 @@
 use super::hyper_client::ProxyResponse;
 use super::{
     error::ProxyError,
-    error_mapper::{forward_failure_kind_from_proxy_error, reqwest_send_error_to_proxy_error},
+    error_mapper::reqwest_send_error_to_proxy_error,
     events::ProxyEventBus,
     failover_switch::FailoverSwitchManager,
     provider_router::ProviderRouter,
@@ -25,7 +25,8 @@ use crate::proxy_core_adapter::{
     build_upstream_auth_headers, cache_injection_log_message, categorize_forward_failure,
     classify_copilot_request, contains_image_blocks,
     emit_attempt_event_source, emit_request_started_event_source, forward_upstream_url_plan,
-    forwarder_should_convert_codex_responses_to_chat, is_openai_o_series,
+    forward_failure_kind_from_proxy_error, forwarder_should_convert_codex_responses_to_chat,
+    is_openai_o_series,
     is_unsupported_image_error, allow_forward_attempt_runtime_source, merge_copilot_tool_results,
     non_streaming_body_timeout_message, normalize_thinking_type,
     prepare_upstream_request_body_with_report, prompt_cache_trace_log_message,

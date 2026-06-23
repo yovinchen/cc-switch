@@ -35,6 +35,12 @@ const FORBIDDEN_PROXY_ERROR_MAPPER_CODEX_PROJECTION_MARKERS: &[&str] =
         "codex_proxy_error_facts(",
         "codex_proxy_error_kind(",
     ];
+const FORBIDDEN_PROXY_ERROR_MAPPER_FORWARD_FAILURE_PROJECTION_MARKERS: &[&str] =
+    &[
+        "ForwardFailureKind",
+        "forward_failure_kind_from_proxy_status(",
+        "forward_failure_message(",
+    ];
 const FORBIDDEN_FORWARDER_URL_PLANNING_MARKERS: &[&str] = &[
     "rewrite_codex_responses_endpoint_to_chat(",
     "rewrite_claude_transform_endpoint(",
@@ -1070,6 +1076,33 @@ fn proxy_error_mapper_delegates_codex_error_projection_to_adapter() {
     assert!(
         violations.is_empty(),
         "Proxy error mapper must delegate Codex error envelope projection to proxy_core_adapter:\n{}",
+        violations.join("\n")
+    );
+}
+
+#[test]
+fn proxy_error_mapper_delegates_forward_failure_projection_to_adapter() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let path = manifest_dir.join("src/proxy/error_mapper.rs");
+    let source = fs::read_to_string(&path).expect("read error_mapper.rs");
+
+    let mut violations = Vec::new();
+    for (line_index, line) in production_lines(&source) {
+        let code = line.split("//").next().unwrap_or_default();
+        for marker in FORBIDDEN_PROXY_ERROR_MAPPER_FORWARD_FAILURE_PROJECTION_MARKERS {
+            if code.contains(marker) {
+                violations.push(format!(
+                    "src/proxy/error_mapper.rs:{} contains forward failure projection marker `{}`",
+                    line_index + 1,
+                    marker
+                ));
+            }
+        }
+    }
+
+    assert!(
+        violations.is_empty(),
+        "Proxy error mapper must delegate forward failure projection to proxy_core_adapter:\n{}",
         violations.join("\n")
     );
 }

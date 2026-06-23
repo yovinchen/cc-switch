@@ -7355,6 +7355,29 @@ pub(crate) async fn reset_provider_circuit_breaker_source(
 
 pub(crate) use crate::proxy_core::api::transport::forward_failure_kind_from_proxy_status;
 
+pub(crate) fn forward_failure_kind_from_proxy_error(error: &ProxyError) -> ForwardFailureKind {
+    let upstream_body = match error {
+        ProxyError::UpstreamError { body, .. } => body.clone(),
+        _ => None,
+    };
+    forward_failure_kind_from_proxy_status(
+        proxy_error_status_kind(error),
+        forward_failure_message_from_proxy_error(error),
+        upstream_body,
+    )
+}
+
+fn forward_failure_message_from_proxy_error(error: &ProxyError) -> String {
+    match error {
+        ProxyError::Timeout(message)
+        | ProxyError::ForwardFailed(message)
+        | ProxyError::TransformError(message)
+        | ProxyError::ConfigError(message)
+        | ProxyError::AuthError(message) => message.clone(),
+        _ => error.to_string(),
+    }
+}
+
 pub(crate) use crate::proxy_core::api::routing::default_route_candidate_from_selection as channel_route_candidate_from_selection;
 
 #[cfg(test)]
@@ -16189,8 +16212,45 @@ command = "latest-command"
         .expect("codex proxy error response");
         assert_eq!(proxy_error_response.status.as_u16(), 401);
 
-        let failure = ForwardFailureKind::Timeout("slow".to_string());
-        assert!(matches!(failure, ForwardFailureKind::Timeout(message) if message == "slow"));
+        assert!(matches!(
+            forward_failure_kind_from_proxy_error(&ProxyError::Timeout("slow".to_string())),
+            ForwardFailureKind::Timeout(message) if message == "slow"
+        ));
+        assert!(matches!(
+            forward_failure_kind_from_proxy_error(&ProxyError::ForwardFailed(
+                "connection reset".to_string()
+            )),
+            ForwardFailureKind::ForwardFailed(message) if message == "connection reset"
+        ));
+        assert!(matches!(
+            forward_failure_kind_from_proxy_error(&ProxyError::AuthError("bad token".to_string())),
+            ForwardFailureKind::AuthError(message) if message == "bad token"
+        ));
+        assert!(matches!(
+            forward_failure_kind_from_proxy_error(&ProxyError::ProviderUnhealthy(
+                "half-open".to_string()
+            )),
+            ForwardFailureKind::RetryableOther(_)
+        ));
+        assert!(matches!(
+            forward_failure_kind_from_proxy_error(&ProxyError::DatabaseError(
+                "write failed".to_string()
+            )),
+            ForwardFailureKind::Other(_)
+        ));
+        match forward_failure_kind_from_proxy_error(&ProxyError::UpstreamError {
+            status: 429,
+            body: Some(r#"{"error":{"message":"rate limit"}}"#.to_string()),
+        }) {
+            ForwardFailureKind::Upstream { status, body } => {
+                assert_eq!(status, 429);
+                assert_eq!(
+                    body.as_deref(),
+                    Some(r#"{"error":{"message":"rate limit"}}"#)
+                );
+            }
+            other => panic!("expected upstream failure, got {other:?}"),
+        }
         assert_eq!(
             ManagementAuthError::MissingBearerToken.message(),
             "Missing management bearer token"
