@@ -90,6 +90,8 @@ const FORBIDDEN_FORWARDER_PROVIDER_ADAPTER_BASE_URL_MARKERS: &[&str] =
     &[".extract_base_url("];
 const FORBIDDEN_FORWARDER_PROVIDER_ADAPTER_AUTH_INFO_MARKERS: &[&str] =
     &[".extract_auth("];
+const FORBIDDEN_FORWARDER_PROVIDER_ADAPTER_AUTH_HEADER_MARKERS: &[&str] =
+    &[".get_auth_headers("];
 const FORBIDDEN_FORWARDER_PROVIDER_ADAPTER_URL_BUILD_MARKERS: &[&str] =
     &[".build_url("];
 const FORBIDDEN_FORWARDER_PROVIDER_ADAPTER_NAME_MARKERS: &[&str] =
@@ -3447,6 +3449,33 @@ fn production_forwarder_delegates_provider_adapter_auth_info_to_adapter() {
     assert!(
         violations.is_empty(),
         "forwarder must consume provider adapter auth info extraction through proxy_core_adapter helpers:\n{}",
+        violations.join("\n")
+    );
+}
+
+#[test]
+fn production_forwarder_delegates_provider_adapter_auth_headers_to_adapter() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let path = manifest_dir.join("src/proxy/forwarder.rs");
+    let source = fs::read_to_string(&path).expect("read forwarder.rs");
+
+    let mut violations = Vec::new();
+    for (line_index, line) in production_lines(&source) {
+        let code = line.split("//").next().unwrap_or_default();
+        for marker in FORBIDDEN_FORWARDER_PROVIDER_ADAPTER_AUTH_HEADER_MARKERS {
+            if code.contains(marker) {
+                violations.push(format!(
+                    "src/proxy/forwarder.rs:{} contains provider adapter auth header marker `{}`",
+                    line_index + 1,
+                    marker
+                ));
+            }
+        }
+    }
+
+    assert!(
+        violations.is_empty(),
+        "forwarder must consume provider adapter auth headers through proxy_core_adapter helpers:\n{}",
         violations.join("\n")
     );
 }

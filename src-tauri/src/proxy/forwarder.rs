@@ -34,8 +34,8 @@ use crate::proxy_core_adapter::{
     forwarder_is_github_copilot_upstream,
     forwarder_replace_images_for_text_only_provider_model, forwarder_uses_anthropic_rectifiers,
     forwarder_provider_adapter_for_app,
-    forwarder_provider_adapter_name, forwarder_provider_auth_info, forwarder_provider_base_url,
-    forwarder_provider_upstream_url,
+    forwarder_provider_adapter_name, forwarder_provider_auth_headers, forwarder_provider_auth_info,
+    forwarder_provider_base_url, forwarder_provider_upstream_url,
     forwarder_provider_transform_request, forwarder_provider_transform_required,
     is_openai_o_series,
     is_unsupported_image_error, allow_forward_attempt_runtime_source, merge_copilot_tool_results,
@@ -1456,7 +1456,7 @@ impl RequestForwarder {
                 managed_auth.should_send_codex_oauth_session_headers;
             codex_oauth_account_id = managed_auth.codex_oauth_account_id;
 
-            adapter.get_auth_headers(&auth)?
+            forwarder_provider_auth_headers(adapter, &auth)?
         } else {
             Vec::new()
         };

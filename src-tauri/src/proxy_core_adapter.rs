@@ -4099,6 +4099,13 @@ pub(crate) fn forwarder_provider_auth_info(
     adapter.extract_auth(provider)
 }
 
+pub(crate) fn forwarder_provider_auth_headers(
+    adapter: &dyn ProviderAdapter,
+    auth: &ProviderAuthInfo,
+) -> Result<Vec<(http::HeaderName, http::HeaderValue)>, ProxyError> {
+    adapter.get_auth_headers(auth)
+}
+
 pub(crate) fn forwarder_provider_upstream_url(
     adapter: &dyn ProviderAdapter,
     base_url: &str,
@@ -14517,6 +14524,15 @@ reasoning = "medium"
             .expect("codex forwarder auth info");
         assert_eq!(forwarder_auth.api_key, "sk-forwarder-auth");
         assert_eq!(forwarder_auth.strategy, ProviderAuthStrategy::Bearer);
+        let forwarder_auth_headers =
+            forwarder_provider_auth_headers(&codex_adapter, &forwarder_auth)
+                .expect("codex forwarder auth headers");
+        assert_eq!(forwarder_auth_headers.len(), 1);
+        assert_eq!(forwarder_auth_headers[0].0, http::header::AUTHORIZATION);
+        assert_eq!(
+            forwarder_auth_headers[0].1.to_str().expect("header value"),
+            "Bearer sk-forwarder-auth"
+        );
 
         let missing_auth = Provider::with_id(
             "missing".to_string(),
