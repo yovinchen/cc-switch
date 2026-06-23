@@ -5873,6 +5873,44 @@ pub(crate) fn client_model_catalog_from_app_source(
     Ok(client_model_catalog_from_optional_raw(app, raw))
 }
 
+#[derive(Clone)]
+pub(crate) struct CcSwitchModelCatalogProvider {
+    db: Arc<Database>,
+    router: Arc<ProviderRouter>,
+}
+
+impl CcSwitchModelCatalogProvider {
+    pub(crate) fn new(db: Arc<Database>, router: Arc<ProviderRouter>) -> Self {
+        Self { db, router }
+    }
+}
+
+impl ModelCatalogProvider for CcSwitchModelCatalogProvider {
+    fn load_catalog<'a>(
+        &'a self,
+        app: &'a AppKind,
+        provider_id: &'a str,
+    ) -> BoxFuture<'a, ProxyCoreResult<ModelCatalog>> {
+        Box::pin(async move { provider_model_catalog_from_db_source(&self.db, app, provider_id) })
+    }
+
+    fn load_client_catalog<'a>(
+        &'a self,
+        app: &'a AppKind,
+    ) -> BoxFuture<'a, ProxyCoreResult<ModelCatalog>> {
+        Box::pin(async move { client_model_catalog_from_app_source(app) })
+    }
+
+    fn load_claude_desktop_model_routes<'a>(
+        &'a self,
+        app: &'a AppKind,
+    ) -> BoxFuture<'a, ProxyCoreResult<Vec<ClaudeDesktopModelRouteInput>>> {
+        Box::pin(async move {
+            claude_desktop_model_routes_from_router_source(&self.db, &self.router, app).await
+        })
+    }
+}
+
 pub(crate) fn codex_client_model_catalog_raw_from_active_config() -> Value {
     let generated_path = crate::codex_config::get_codex_model_catalog_path();
     let active_catalog_path = match crate::codex_config::read_codex_config_text() {

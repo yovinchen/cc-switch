@@ -241,6 +241,11 @@ const FORBIDDEN_PROXY_CORE_HOST_REACHABILITY_PROBE_SOURCE_MARKERS: &[&str] = &[
     "stream_check_result_to_channel_reachability(",
 ];
 const FORBIDDEN_PROXY_CORE_HOST_MODEL_CATALOG_SOURCE_MARKERS: &[&str] = &[
+    "struct CcSwitchModelCatalogProvider",
+    "impl ModelCatalogProvider for CcSwitchModelCatalogProvider",
+    "provider_model_catalog_from_db_source(",
+    "client_model_catalog_from_app_source(",
+    "claude_desktop_model_routes_from_router_source(",
     ".get_provider_by_id(",
     ".select_providers(",
     ".select_provider_ids(",
@@ -3112,7 +3117,7 @@ fn production_proxy_core_host_delegates_channel_migration_source_to_adapter() {
     let channel_migration_source = function_slice(
         &source,
         "    fn preview_legacy_channel_migration",
-        "\n}\n\n#[derive(Clone)]\nstruct CcSwitchModelCatalogProvider",
+        "\n}\n\n#[derive(Clone, Default)]\nstruct CcSwitchForwardPipeline",
     );
 
     let mut violations = Vec::new();
@@ -3249,19 +3254,14 @@ fn production_proxy_core_host_delegates_model_catalog_source_to_adapter() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let path = manifest_dir.join("src/proxy_core_host.rs");
     let source = fs::read_to_string(&path).expect("read proxy_core_host.rs");
-    let model_catalog = function_slice(
-        &source,
-        "impl ModelCatalogProvider for CcSwitchModelCatalogProvider",
-        "#[derive(Clone, Default)]\nstruct CcSwitchForwardPipeline",
-    );
 
     let mut violations = Vec::new();
-    for (line_index, line) in production_lines(model_catalog) {
+    for (line_index, line) in production_lines(&source) {
         let code = line.split("//").next().unwrap_or_default();
         for marker in FORBIDDEN_PROXY_CORE_HOST_MODEL_CATALOG_SOURCE_MARKERS {
             if code.contains(marker) {
                 violations.push(format!(
-                    "src/proxy_core_host.rs CcSwitchModelCatalogProvider:{} contains model catalog source marker `{}`",
+                    "src/proxy_core_host.rs:{} contains model catalog source marker `{}`",
                     line_index + 1,
                     marker
                 ));
