@@ -5,12 +5,11 @@
 use super::hyper_client::ProxyResponse;
 use super::{
     error::ProxyError,
-    route_attempt::{apply_channel_model_override, ForwardAttempt},
+    route_attempt::ForwardAttempt,
 };
 use crate::proxy_core_adapter::{
-    apply_bedrock_pre_send_optimizers, apply_copilot_model_normalization,
-    apply_forward_request_model_mapping_from_provider,
-    build_retryable_forward_failure_log, build_terminal_forward_failure_log,
+    apply_bedrock_pre_send_optimizers, build_retryable_forward_failure_log,
+    build_terminal_forward_failure_log,
     cache_injection_log_message, categorize_forward_failure,
     forward_upstream_url_plan,
     forwarder_apply_codex_chat_upstream_model, forwarder_bedrock_env_flag,
@@ -23,20 +22,18 @@ use crate::proxy_core_adapter::{
     forwarder_provider_adapter_name, forwarder_provider_base_url, forwarder_provider_upstream_url,
     forwarder_provider_transform_request, forwarder_provider_transform_required,
     ForwarderAdapterHandle, is_openai_o_series,
-    normalize_thinking_type,
     forwarder_claude_normalize_anthropic_messages,
     provider_adapter_name_is_claude,
     forwarder_claude_api_format, forwarder_claude_transform_required,
     responses_to_chat_completions_with_options,
     should_apply_bedrock_pre_send_optimizer,
     should_failover_after_rectifier_retry_failure,
-    strip_one_m_suffix_for_upstream,
-    strip_one_m_suffix_for_upstream_from_body,
     supports_reasoning_effort, thinking_optimization_log_message,
     AttemptEventPhase, CopilotOptimizerConfig, ForwardFailureCategory, ForwardUpstreamUrlPlanInput,
     ForwarderAuthHeadersInput, ForwarderAuthSourceRef, ForwarderCopilotAuthOptimizationInput,
     ForwarderCopilotRequestOptimizationInput, ForwarderMediaPreventionInput,
-    ForwarderMediaRetryPlanInput, ForwarderRequestRectifierPlan,
+    ForwarderMediaRetryPlanInput, ForwarderProviderRequestBodyInput,
+    ForwarderRequestRectifierPlan,
     ForwarderThinkingBudgetRectifierInput, ForwarderThinkingSignatureRectifierInput,
     OptimizerConfig,
     FailoverSwitchSchedulerRef, ForwarderAttemptRuntimeSourceRef, ForwarderProtocolStateSourceRef,
@@ -977,49 +974,20 @@ impl RequestForwarder {
         // GitHub Copilot API 使用 /chat/completions（无 /v1 前缀）
         let is_copilot = forwarder_is_github_copilot_upstream(provider, &base_url);
 
-        // 应用模型映射（独立于格式转换）
-        // Claude Desktop proxy 模式必须先把 Desktop 可见的 claude-* route
-        // 映射成真实上游模型名，并且未知 route 要直接报错，不能使用默认模型兜底。
-        let projection =
-            apply_forward_request_model_mapping_from_provider(app_type, body.clone(), provider)?;
-        if let Some(message) = projection.log_message {
-            log::debug!("{message}");
-        }
-        let mapped_body = projection.body;
-
-        // 与 CCH 对齐：请求前不做 thinking 主动改写（仅保留兼容入口）
-        let mut mapped_body = normalize_thinking_type(mapped_body);
-        apply_channel_model_override(&mut mapped_body, attempt);
-
+        // Copilot live model resolution is asynchronous runtime state, so it remains
+        // in the forwarder after the synchronous request-source projection.
+        let mut mapped_body = self.request_source.prepare_provider_request_body(
+            ForwarderProviderRequestBodyInput {
+                app_type,
+                body: body.clone(),
+                provider,
+                channel: attempt.channel(),
+                is_copilot,
+            },
+        )?;
         if is_copilot {
-            let original_model = mapped_body
-                .get("model")
-                .and_then(|value| value.as_str())
-                .map(ToString::to_string);
-            mapped_body = apply_copilot_model_normalization(mapped_body);
-            if let (Some(original), Some(normalized)) = (
-                original_model.as_deref(),
-                mapped_body.get("model").and_then(|value| value.as_str()),
-            ) {
-                if original != normalized {
-                    log::debug!("[CopilotNormalizer] {original} -> {normalized}");
-                }
-            }
             self.apply_copilot_live_model_resolution(provider, &mut mapped_body)
                 .await;
-        } else {
-            let one_m_model_change =
-                mapped_body
-                    .get("model")
-                    .and_then(Value::as_str)
-                    .and_then(|model| {
-                        let stripped = strip_one_m_suffix_for_upstream(model);
-                        (stripped != model).then(|| (model.to_string(), stripped.to_string()))
-                    });
-            mapped_body = strip_one_m_suffix_for_upstream_from_body(mapped_body);
-            if let Some((model, stripped)) = one_m_model_change {
-                log::debug!("[ModelMapper] 去除本地 1M 标记: {model} → {stripped}");
-            }
         }
 
         // --- Copilot 优化器：分类 + 请求体优化（在格式转换之前执行） ---

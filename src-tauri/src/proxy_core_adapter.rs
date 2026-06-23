@@ -8544,6 +8544,14 @@ pub(crate) struct ForwarderCopilotRequestOptimization {
     pub(crate) classification: CopilotClassification,
 }
 
+pub(crate) struct ForwarderProviderRequestBodyInput<'a> {
+    pub(crate) app_type: &'a AppType,
+    pub(crate) body: Value,
+    pub(crate) provider: &'a Provider,
+    pub(crate) channel: Option<&'a ResolvedChannelAttempt>,
+    pub(crate) is_copilot: bool,
+}
+
 pub(crate) struct ForwarderMediaPreventionInput<'a> {
     pub(crate) body: &'a mut Value,
     pub(crate) provider: &'a Provider,
@@ -8613,6 +8621,11 @@ pub(crate) struct ForwarderUpstreamRequestParts {
 }
 
 pub(crate) trait ForwarderRequestSource {
+    fn prepare_provider_request_body(
+        &self,
+        input: ForwarderProviderRequestBodyInput<'_>,
+    ) -> Result<Value, ProxyError>;
+
     fn optimize_copilot_request(
         &self,
         input: ForwarderCopilotRequestOptimizationInput<'_>,
@@ -8649,6 +8662,65 @@ pub(crate) trait ForwarderRequestSource {
 struct CcSwitchForwarderRequestSource;
 
 impl ForwarderRequestSource for CcSwitchForwarderRequestSource {
+    fn prepare_provider_request_body(
+        &self,
+        input: ForwarderProviderRequestBodyInput<'_>,
+    ) -> Result<Value, ProxyError> {
+        let projection = apply_forward_request_model_mapping_from_provider(
+            input.app_type,
+            input.body,
+            input.provider,
+        )?;
+        if let Some(message) = projection.log_message {
+            log::debug!("{message}");
+        }
+
+        let mut body = normalize_thinking_type(projection.body);
+
+        if let Some(channel) = input.channel {
+            if let Some(override_result) = apply_resolved_channel_model_override(&mut body, channel)
+            {
+                log::debug!(
+                    "[ChannelRoute] model override via channel {}: {} -> {}",
+                    override_result.channel_id,
+                    override_result.previous_model,
+                    override_result.upstream_model
+                );
+            }
+        }
+
+        if input.is_copilot {
+            let original_model = body
+                .get("model")
+                .and_then(|value| value.as_str())
+                .map(ToString::to_string);
+            body = apply_copilot_model_normalization(body);
+            if let (Some(original), Some(normalized)) = (
+                original_model.as_deref(),
+                body.get("model").and_then(|value| value.as_str()),
+            ) {
+                if original != normalized {
+                    log::debug!("[CopilotNormalizer] {original} -> {normalized}");
+                }
+            }
+            return Ok(body);
+        }
+
+        let one_m_model_change = body
+            .get("model")
+            .and_then(Value::as_str)
+            .and_then(|model| {
+                let stripped = strip_one_m_suffix_for_upstream(model);
+                (stripped != model).then(|| (model.to_string(), stripped.to_string()))
+            });
+        body = strip_one_m_suffix_for_upstream_from_body(body);
+        if let Some((model, stripped)) = one_m_model_change {
+            log::debug!("[ModelMapper] 去除本地 1M 标记: {model} → {stripped}");
+        }
+
+        Ok(body)
+    }
+
     fn optimize_copilot_request(
         &self,
         input: ForwarderCopilotRequestOptimizationInput<'_>,
@@ -14279,6 +14351,69 @@ mod tests {
         assert_eq!(optimized.classification.initiator, "user");
         assert!(optimized.classification.is_warmup);
         assert_eq!(optimized.body["model"], "gpt-5-mini");
+    }
+
+    #[test]
+    fn forwarder_request_source_prepares_provider_request_body() {
+        let source = CcSwitchForwarderRequestSource;
+        let provider = Provider::with_id(
+            "provider-a".to_string(),
+            "Provider A".to_string(),
+            json!({
+                "env": {
+                    "ANTHROPIC_DEFAULT_SONNET_MODEL": "sonnet-mapped"
+                }
+            }),
+            None,
+        );
+        let channel = resolved_channel_attempt_from_candidate(ChannelRouteCandidate {
+            channel_id: "ch_1".to_string(),
+            provider_id: "provider-a".to_string(),
+            channel_name: "Relay".to_string(),
+            base_url: "https://relay.example.com/v1".to_string(),
+            interface_kind: "anthropic_messages".to_string(),
+            public_model: Some("sonnet-mapped".to_string()),
+            upstream_model: Some("upstream-sonnet[1M]".to_string()),
+            route_group: "default".to_string(),
+            priority: 100,
+            weight: 1,
+            source_kind: "manual".to_string(),
+        });
+
+        let body = source
+            .prepare_provider_request_body(ForwarderProviderRequestBodyInput {
+                app_type: &AppType::Claude,
+                body: json!({"model": "claude-sonnet", "messages": []}),
+                provider: &provider,
+                channel: Some(&channel),
+                is_copilot: false,
+            })
+            .expect("prepared body");
+
+        assert_eq!(body["model"], "upstream-sonnet");
+    }
+
+    #[test]
+    fn forwarder_request_source_normalizes_copilot_model_body() {
+        let source = CcSwitchForwarderRequestSource;
+        let provider = Provider::with_id(
+            "provider-a".to_string(),
+            "Provider A".to_string(),
+            json!({}),
+            None,
+        );
+
+        let body = source
+            .prepare_provider_request_body(ForwarderProviderRequestBodyInput {
+                app_type: &AppType::Claude,
+                body: json!({"model": "claude-sonnet-4-6[1m]", "messages": []}),
+                provider: &provider,
+                channel: None,
+                is_copilot: true,
+            })
+            .expect("prepared body");
+
+        assert_eq!(body["model"], "claude-sonnet-4.6-1m");
     }
 
     #[test]

@@ -6331,6 +6331,12 @@ fn production_forwarder_uses_request_source_resource() {
         "should_rectify_thinking_budget(",
         "rectify_thinking_budget(",
         "thinking_budget_core_config(",
+        "apply_forward_request_model_mapping_from_provider(",
+        "normalize_thinking_type(",
+        "apply_channel_model_override(",
+        "apply_copilot_model_normalization(",
+        "strip_one_m_suffix_for_upstream(",
+        "strip_one_m_suffix_for_upstream_from_body(",
     ];
     let mut violations = Vec::new();
 

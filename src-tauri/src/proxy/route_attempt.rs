@@ -6,11 +6,11 @@
 use crate::app_config::AppType;
 use crate::provider::Provider;
 use crate::proxy_core_adapter::{
-    apply_channel_provider_overrides, apply_resolved_channel_model_override,
-    channel_route_candidate_from_selection, resolved_channel_attempt_from_selection,
-    route_plan_selections,
+    apply_channel_provider_overrides, channel_route_candidate_from_selection,
+    resolved_channel_attempt_from_selection, route_plan_selections,
     ResolvedChannelAttempt, RoutePlan, RouteSelection,
 };
+#[cfg(test)]
 use serde_json::Value;
 use std::collections::HashMap;
 
@@ -118,12 +118,18 @@ pub(crate) fn forward_attempts_from_route_plan(
         .collect()
 }
 
-pub(crate) fn apply_channel_model_override(body: &mut Value, attempt: &ForwardAttempt) {
+#[cfg(test)]
+pub(crate) fn apply_channel_model_override(
+    body: &mut serde_json::Value,
+    attempt: &ForwardAttempt,
+) {
     let Some(channel) = attempt.channel() else {
         return;
     };
 
-    if let Some(override_result) = apply_resolved_channel_model_override(body, channel) {
+    if let Some(override_result) =
+        crate::proxy_core_adapter::apply_resolved_channel_model_override(body, channel)
+    {
         log::debug!(
             "[ChannelRoute] model override via channel {}: {} -> {}",
             override_result.channel_id,
