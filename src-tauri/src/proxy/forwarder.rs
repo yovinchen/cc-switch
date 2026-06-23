@@ -34,7 +34,6 @@ use crate::proxy_core_adapter::{
     forwarder_claude_transform_request_for_api_format,
     provider_adapter_name_is_claude,
     rectify_anthropic_request, rectify_thinking_budget, replace_image_blocks_with_marker,
-    record_forward_active_route_target_runtime_source,
     record_forward_current_provider_runtime_source,
     record_forward_failure_runtime_source,
     record_forward_provider_failure_runtime_source,
@@ -292,16 +291,9 @@ impl RequestForwarder {
         app_type: &str,
         attempt: &ForwardAttempt,
     ) {
-        let current_providers = self.runtime_state_source.current_providers();
-        let events = self.runtime_state_source.events();
-        record_forward_active_route_target_runtime_source(
-            current_providers.as_ref(),
-            events.as_ref(),
-            request_id,
-            app_type,
-            attempt,
-        )
-        .await;
+        self.runtime_state_source
+            .record_active_route_target(request_id, app_type, attempt)
+            .await;
     }
 
     async fn record_success_status_and_maybe_switch(&self, app_type: &str, provider: &Provider) {

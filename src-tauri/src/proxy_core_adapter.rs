@@ -7845,6 +7845,12 @@ pub(crate) trait ForwarderRuntimeStateSource {
         phase: AttemptEventPhase,
         error: Option<&str>,
     );
+    fn record_active_route_target<'a>(
+        &'a self,
+        request_id: &'a str,
+        app_type: &'a str,
+        attempt: &'a ForwardAttempt,
+    ) -> BoxFuture<'a, ()>;
     fn record_request_started<'a>(&'a self, started_at: &'a str) -> BoxFuture<'a, ()>;
     fn record_active_connection_acquired<'a>(&'a self) -> BoxFuture<'a, ()>;
     fn record_active_connection_released<'a>(&'a self) -> BoxFuture<'a, ()>;
@@ -7903,6 +7909,24 @@ impl ForwarderRuntimeStateSource for CcSwitchForwarderRuntimeStateSource {
             phase,
             error,
         );
+    }
+
+    fn record_active_route_target<'a>(
+        &'a self,
+        request_id: &'a str,
+        app_type: &'a str,
+        attempt: &'a ForwardAttempt,
+    ) -> BoxFuture<'a, ()> {
+        Box::pin(async move {
+            record_forward_active_route_target_runtime_source(
+                self.current_providers.as_ref(),
+                self.events.as_ref(),
+                request_id,
+                app_type,
+                attempt,
+            )
+            .await;
+        })
     }
 
     fn record_request_started<'a>(&'a self, started_at: &'a str) -> BoxFuture<'a, ()> {
