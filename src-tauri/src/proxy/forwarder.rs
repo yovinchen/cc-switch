@@ -15,9 +15,8 @@ use crate::proxy_core_adapter::{
     build_retryable_forward_failure_log, build_terminal_forward_failure_log,
     build_upstream_auth_headers, cache_injection_log_message, categorize_forward_failure,
     classify_copilot_request, contains_image_blocks,
-    emit_attempt_event_source, emit_request_started_event_source, forward_upstream_url_plan,
-    forwarder_apply_codex_chat_upstream_model,
-    forwarder_bedrock_env_flag,
+    emit_attempt_event_source, forward_upstream_url_plan,
+    forwarder_apply_codex_chat_upstream_model, forwarder_bedrock_env_flag,
     forwarder_codex_chat_reasoning_options,
     forwarder_custom_user_agent_header,
     forward_failure_kind_from_proxy_error, forwarder_should_convert_codex_responses_to_chat,
@@ -41,7 +40,7 @@ use crate::proxy_core_adapter::{
     record_forward_failure_runtime_source,
     record_forward_provider_failure_runtime_source,
     record_forward_provider_rectifier_retry_failure_runtime_source,
-    record_forward_request_started_runtime_source, record_forward_success_runtime_source,
+    record_forward_success_runtime_source,
     request_body_filter_log_message,
     resolve_copilot_api_endpoint_from_runtime_source,
     resolve_copilot_deterministic_interaction_id, resolve_copilot_model_against_ids,
@@ -333,8 +332,8 @@ impl RequestForwarder {
     }
 
     fn emit_request_started(&self, request_id: &str, app_type: &str) {
-        let events = self.runtime_state_source.events();
-        emit_request_started_event_source(events.as_ref(), request_id, app_type);
+        self.runtime_state_source
+            .emit_request_started(request_id, app_type);
     }
 
     fn emit_attempt_started(&self, request_id: &str, app_type: &str, attempt: &ForwardAttempt) {
@@ -479,13 +478,11 @@ impl RequestForwarder {
     ) -> Result<ForwardResult, ForwardError> {
         let request_id = uuid::Uuid::new_v4().to_string();
         self.emit_request_started(&request_id, app_type.as_str());
-        let status = self.runtime_state_source.status();
         let guard = ActiveConnectionGuard::acquire(self.runtime_state_source.clone()).await;
-        record_forward_request_started_runtime_source(
-            status.as_ref(),
-            &chrono::Utc::now().to_rfc3339(),
-        )
-        .await;
+        let request_started_at = chrono::Utc::now().to_rfc3339();
+        self.runtime_state_source
+            .record_request_started(&request_started_at)
+            .await;
         let result = self
             .forward_preplanned_attempts_inner(
                 &request_id,

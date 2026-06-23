@@ -7836,6 +7836,8 @@ pub(crate) trait ForwarderRuntimeStateSource {
     fn status(&self) -> Arc<RwLock<ProxyRuntimeStatus>>;
     fn current_providers(&self) -> Arc<RwLock<HashMap<String, CurrentRouteTarget>>>;
     fn events(&self) -> Arc<ProxyEventBus>;
+    fn emit_request_started(&self, request_id: &str, app_type: &str);
+    fn record_request_started<'a>(&'a self, started_at: &'a str) -> BoxFuture<'a, ()>;
     fn record_active_connection_acquired<'a>(&'a self) -> BoxFuture<'a, ()>;
     fn record_active_connection_released<'a>(&'a self) -> BoxFuture<'a, ()>;
 }
@@ -7871,6 +7873,16 @@ impl ForwarderRuntimeStateSource for CcSwitchForwarderRuntimeStateSource {
 
     fn events(&self) -> Arc<ProxyEventBus> {
         self.events.clone()
+    }
+
+    fn emit_request_started(&self, request_id: &str, app_type: &str) {
+        emit_request_started_event_source(self.events.as_ref(), request_id, app_type);
+    }
+
+    fn record_request_started<'a>(&'a self, started_at: &'a str) -> BoxFuture<'a, ()> {
+        Box::pin(async move {
+            record_forward_request_started_runtime_source(self.status.as_ref(), started_at).await;
+        })
     }
 
     fn record_active_connection_acquired<'a>(&'a self) -> BoxFuture<'a, ()> {
