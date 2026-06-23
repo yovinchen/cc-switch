@@ -25,7 +25,7 @@
 14. Claude 与 Claude Desktop `/v1/messages` handler 已进入 `ProxyEngine::handle`；核心 `ProxyResult` 会带回 `claudeApiFormat` 等宿主 metadata，host 侧继续复用现有格式转换、SSE/非流式响应处理和用量解析。
 15. `ProxyEngine::list_models` 已提供按 app/group/interface 过滤的可路由模型视图，复用 channel source 的 legacy projection；`ProxyEngine::list_model_catalog` 负责生成 `/proxy/v1/apps/{app}/models` 的管理 API response envelope，返回模型对应的 provider/channel/interface 路由信息。
 16. Codex 兼容 `/v1/models` 已从 handler 直读配置迁到 `ModelCatalogProvider::load_client_catalog` 与 `ProxyEngine::client_model_catalog`；CC Switch host adapter 保留 `model_catalog_json` stale guard 和 raw catalog 返回语义。
-17. `/proxy/v1/channels/{channel_id}/breakers/reset` 已从 handler 直连 DB/router 改为 `ProxyEngine::reset_channel_health`；`CcSwitchHealthStore` 负责同时清内存 circuit breaker 和持久化健康状态。
+17. `/proxy/v1/channels/{channel_id}/breakers/reset` 已从 handler 直连 DB/router 改为 `ProxyEngine::reset_channel_health`；adapter-owned `CcSwitchChannelHealthStore` 负责同时清内存 circuit breaker 和持久化健康状态。
 18. response pipeline 中的 hop-by-hop 响应头清理和重建 body 后实体头清理已迁入 `proxy-core::response_headers`，host `response_processor` 与特殊响应转换分支复用 core helper。
 19. response pipeline 的 body 诊断摘要、content header 诊断后缀、SSE 聚合兜底失败诊断消息和未标记 SSE body 嗅探已迁入 `proxy-core::response_diagnostics`，host 只负责把诊断文本包装成现有 `ProxyError`。
 20. SSE field 解析、SSE block 分帧和跨 chunk UTF-8 拼接已迁入 `proxy-core::sse`；host 调用方已直接引用 core helper，`proxy::sse` 兼容模块已删除，现有 Claude/OpenAI/Responses/Gemini/Codex 流式转换路径继续复用同一实现。
@@ -656,10 +656,10 @@
 645. runtime config source 的 host 默认 privacy-filter flag 包装已移入 `proxy_core_adapter::proxy_runtime_config_from_config_source`：`proxy_core_host` 不再直接传入固定 `false` 构造 runtime config。
 646. ProviderSource 的列表/单条 provider 到 `ProviderSpec` 投影已移入 `proxy_core_adapter::provider_specs_from_source` / `provider_spec_from_source`：`proxy_core_host` 不再直接解析 app kind 或调用 provider spec conversion。
 647. ChannelSource 的列表/单条 channel 到 `ChannelSpec` 投影已移入 `proxy_core_adapter::channel_specs_from_source` / `channel_spec_from_source`：`proxy_core_host` 不再直接调用 channel record conversion。
-648. ChannelHealthStore 的 attempt 写库参数投影已移入 `proxy_core_adapter::channel_health_attempt_db_update`：`proxy_core_host` 不再维护默认 failure threshold 或 latency 类型转换，只负责调用 DB 写入。
+648. ChannelHealthStore 的 attempt 写库参数投影已移入 `proxy_core_adapter::channel_health_attempt_db_update`，adapter-owned `CcSwitchChannelHealthStore` 负责调用 DB 写入；`proxy_core_host` 只装配该 store。
 649. `ProxyCoreEvent` 到 host event bus name/payload 的投影已移入 `proxy_core_adapter::proxy_core_event_to_bus_message`：`proxy_core_host` 的 event sink 不再直接调用 `event_name()` 或 `into_event_payload()`。
 650. RoutePolicySource 的 failover queue 到 optional `RoutePolicy` source 投影已移入 `proxy_core_adapter::route_policy_from_source`：`proxy_core_host` 只保留 DB queue 查询与错误映射。
-651. ChannelHealthStore reset 的 app lookup 结果校验与 reset fact 投影已移入 `proxy_core_adapter::channel_health_reset_plan_from_lookup` / `channel_health_reset_from_plan`：`proxy_core_host` 只保留 DB app 查询和 router reset 调用。
+651. ChannelHealthStore reset 的 app lookup 结果校验、router reset 调用与 reset fact 投影已由 adapter-owned `CcSwitchChannelHealthStore` 包装；`proxy_core_host` 不再保留该桥接实现。
 652. client model catalog 的 app 分派、Codex active catalog raw 读取与非 Codex 空目录默认值已移入 `proxy_core_adapter::client_model_catalog_from_source`：`proxy_core_host` 的 `ModelCatalogProvider` 不再维护客户端 catalog source 分支。
 653. UsageSink 的 provider/app 计费配置 lookup 输入已移入 `proxy_core_adapter::usage_pricing_config_lookup_from_record`：`proxy_core_host` 只负责调用 usage logger 读取配置、定价和落库。
 654. `ProxyCoreEvent` 的 event bus 投影与分发闭包入口已移入 `proxy_core_adapter::emit_proxy_core_event`：`proxy_core_host` 的 event sink 只提供实际 bus emit 副作用。
@@ -919,7 +919,7 @@
 本轮继续把 `CcSwitchChannelSource` 的 route/materialized channel record list 读取与 `ChannelRecord` 投影收敛到 adapter source wrapper，host channel source 的 record list 路径只保留端口委托。
 本轮继续把 `CcSwitchChannelSource` 的 legacy channel migration preview/materialize DB 操作与 response input 投影收敛到 adapter source wrapper，host migration 路径只保留端口委托。
 本轮继续把 `CcSwitchRoutePolicySource` 的 failover queue DB 读取与 `RoutePolicy` 投影收敛到 adapter source wrapper，host route policy source 只保留端口委托。
-本轮继续把 `CcSwitchHealthStore` 的 channel health attempt DB 更新、reset app lookup、breaker reset 与 `ChannelHealthReset` 投影收敛到 adapter source wrapper，host health store 只保留端口委托。
+本轮继续把 channel health attempt DB 更新、reset app lookup、breaker reset 与 `ChannelHealthReset` 投影迁入 adapter-owned `CcSwitchChannelHealthStore`，host services 只装配 store。
 本轮继续把 `CcSwitchChannelReachabilityProbe` 的 probe request app/provider 投影、provider/config DB 读取、stream-check 调用与 reachability 结果投影收敛到 adapter source wrapper，host reachability probe 只保留端口委托。
 本轮继续把 `CcSwitchModelCatalogProvider` 的 provider catalog DB 读取、client catalog source 选择、Claude Desktop provider route 选择与 model route 投影收敛到 adapter source wrapper，host model catalog provider 只保留端口委托。
 本轮继续把 `CcSwitchUsageSink` 的 usage pricing lookup、pricing model 解析、request log 投影、缺价告警与 usage log 写入收敛到 adapter source wrapper，host usage sink 只保留端口委托。
@@ -991,11 +991,11 @@
 本轮继续把 runtime config source 的默认 privacy-filter flag 包装收敛到 adapter，host ConfigSource 不再维护该固定参数。
 本轮还把 ProviderSource 的 provider 列表/单条投影收敛到 adapter，host ProviderSource 只保留 DB provider 查询。
 本轮继续把 ChannelSource 的 channel 列表/单条投影收敛到 adapter，host ChannelSource 只保留 DB/router channel 查询。
-本轮也把 ChannelHealthStore 的 attempt 写库参数投影收敛到 adapter，host health store 只保留 DB 写入调用。
+本轮也把 ChannelHealthStore 的 attempt 写库参数投影和 DB 写入调用收敛到 adapter-owned health store，host services 只装配 store。
 本轮继续把 `ProxyCoreEvent` 到 host event bus 的 name/payload 投影收敛到 adapter，host event sink 只负责 emit。
 本轮继续把 `CcSwitchEventSink` 的 `ProxyEventBus` 分发副作用收敛到 adapter source wrapper，host event sink 只保留 optional event bus 判断。
 本轮还把 RoutePolicySource 的 failover queue 到 optional route policy 包装收敛到 adapter，host route policy source 只保留 DB 查询。
-本轮继续把 ChannelHealthStore reset 的 app lookup 校验和 reset fact 投影收敛到 adapter，host health store 只负责查询 app 并调用 router reset。
+本轮继续把 ChannelHealthStore reset 的 app lookup 校验、router reset 和 reset fact 投影收敛到 adapter-owned health store，host services 不再保留 reset 桥接实现。
 本轮继续把 response processor 的 provider/app usage facts 投影收敛到 adapter，response processor 不再直接调用 provider kind 或 app kind 投影 helper。
 本轮也把 usage sink bridge 的 forward error 与 transformed usage provider facts 投影收敛到 adapter，bridge 不再直接拼 provider kind、app kind 或 transformed usage record。
 本轮继续把 ConfigSource 的 app summary DTO 组装收敛到 adapter，host ConfigSource 不再直接构造 `AppSummaryConfig`。
@@ -1244,7 +1244,7 @@ proxy host adapter layer
   CcSwitchProviderSource
   CcSwitchChannelSource
   CcSwitchConfigSource
-  CcSwitchHealthStore
+  CcSwitchChannelHealthStore
   CcSwitchUsageSink
   CcSwitchEventSink
   CcSwitchAuthProvider
@@ -1972,7 +1972,7 @@ node_modules/.bin/tsc --noEmit
 2. `CcSwitchProviderSource` 包装 provider/current provider 读取。
 3. `CcSwitchChannelSource` 包装 provider 主 URL、`provider_endpoints` 和未来 channel 表读取。
 4. `CcSwitchRoutePolicySource` 包装 failover queue、group 和优先级/权重策略。
-5. `CcSwitchHealthStore` 包装 channel health 写入；兼容期可同时写 provider health 聚合。
+5. `CcSwitchChannelHealthStore` 包装 channel health 写入；兼容期可同时写 provider health 聚合。
 6. `CcSwitchUsageSink` 包装 `UsageLogger`；写入必须使用完整 `UsageRecord`，不能用简化 hint 直接写账单。
 7. `CcSwitchEventSink` 包装 `ProxyEventBus`，再由宿主决定是否转发到 Tauri/UI/托盘。
 8. `CcSwitchAuthProvider` 包装 Codex/Copilot OAuth token 刷新和 channel key 选择。
