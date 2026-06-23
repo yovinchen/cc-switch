@@ -910,6 +910,7 @@
 本轮继续把 response processor 的非流式 usage JSON parse、usage log event 输出、disabled logging 诊断和 usage record task 调度收敛到 adapter-owned helper；host `handle_non_streaming` 只传入 body/request/route/parser facts 与 services，并保留 `ProxyError::ConfigError` 映射。
 本轮继续把 response processor 的 `ProxyConfig.enable_logging` 读取和读取失败 fallback 策略收敛到 adapter-owned helper；host 只把 config lock 作为事实传入。
 本轮继续把 usage sink bridge 的 `ProxyConfig.enable_logging` 读取和读取失败 fallback 策略收敛到 adapter-owned helper；bridge 只把 config lock 作为事实传入。
+本轮继续把 usage sink bridge 的 forward-error usage、转换后非流 usage 和转换后流式 usage collector 组装/调度收敛到 adapter-owned helpers；bridge 只保留 `ProxyError` 到 status/message 的 host 映射和 ctx/state facts 传递。
 本轮继续把 forward runtime 的 route plan attempt 构造入口收敛到 adapter；auth profile 的 DB key 注入 wrapper 也已收敛到 adapter，host forward runtime 只调用统一 helper。
 本轮还把 forward runtime 的 auth profile action 应用循环收敛到 adapter，host 不再维护 channel-key DB lookup 闭包。
 本轮继续把 forward runtime 的 current-provider 来源组合收敛到 adapter，host forward runtime 不再读取 settings 或手写 DB fallback 闭包。
