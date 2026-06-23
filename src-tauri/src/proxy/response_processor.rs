@@ -21,11 +21,8 @@ use crate::proxy_core_adapter::{
     non_streaming_body_timeout_message, non_streaming_response_usage_record_from_response_context,
     NonStreamingResponseUsageContext, passthrough_bytes_proxy_response,
     passthrough_stream_proxy_response, response_headers_indicate_sse,
-    response_usage_provider_facts_from_optional,
-    spawn_usage_record_with_proxy_services,
-    streaming_response_usage_record_from_response_context, StreamingResponseUsageContext,
-    usage_logging_enabled_from_config_flag, SseUsageCollector, UsageParserConfig,
-    UsageSelectedProviderMissingPhase,
+    spawn_usage_record_with_proxy_services, streaming_usage_collector_from_context,
+    usage_logging_enabled_from_config_flag, StreamingUsageCollectorContext, UsageParserConfig,
 };
 #[cfg(test)]
 use crate::proxy_core_adapter::{provider_router_from_database, ProviderKind, TokenUsage};
@@ -84,7 +81,20 @@ pub async fn handle_streaming(
     let stream = response.bytes_stream();
 
     // 创建使用量收集器；关闭 usage logging 时不要在流式热路径上解析每个 SSE event。
-    let usage_collector = create_usage_collector(ctx, state, status.as_u16(), parser_config);
+    let usage_collector = streaming_usage_collector_from_context(StreamingUsageCollectorContext {
+        usage_logging_enabled: usage_logging_enabled(state),
+        services: state.proxy_core_services.clone(),
+        provider: ctx.provider_for_usage(),
+        app_type: ctx.app_type_str,
+        tag: ctx.tag,
+        request_model: &ctx.request_model,
+        outbound_model: ctx.outbound_model.as_deref(),
+        route_context: ctx.usage_route_context.as_ref(),
+        start_time: ctx.start_time,
+        status_code: status.as_u16(),
+        session_id: &ctx.session_id,
+        parser_config,
+    });
 
     // 获取流式超时配置
     let timeout_config = ctx.streaming_timeout_config();
@@ -177,74 +187,6 @@ pub async fn process_response(
 // ============================================================================
 // 内部辅助函数
 // ============================================================================
-
-/// 创建使用量收集器
-fn create_usage_collector(
-    ctx: &RequestContext,
-    state: &ProxyState,
-    status_code: u16,
-    parser_config: &UsageParserConfig,
-) -> Option<SseUsageCollector> {
-    if !usage_logging_enabled(state) {
-        return None;
-    }
-
-    let provider_facts = match response_usage_provider_facts_from_optional(
-        ctx.provider_for_usage(),
-        ctx.app_type_str,
-        ctx.tag,
-        UsageSelectedProviderMissingPhase::StreamingPassthrough,
-    ) {
-        Ok(provider_facts) => provider_facts,
-        Err(message) => {
-            log::warn!("{message}");
-            return None;
-        }
-    };
-
-    let state = state.clone();
-    let request_model = ctx.request_model.clone();
-    // 用 ctx 的 app_type 而不是 parser_config 的：Claude Desktop 流式透传复用
-    // CLAUDE_PARSER_CONFIG（app_type_str="claude"），按 parser_config 记账会把
-    // claude-desktop 的行错记到 claude 名下，导致供应商计价覆盖解析不到。
-    let tag = ctx.tag;
-    let start_time = ctx.start_time;
-    let stream_parser = parser_config.stream_parser;
-    let model_extractor = parser_config.model_extractor;
-    let session_id = ctx.session_id.clone();
-    let outbound_model = ctx.outbound_model.clone();
-    let usage_route_context = ctx.usage_route_context.clone();
-
-    Some(SseUsageCollector::new(
-        start_time,
-        parser_config.stream_event_filter,
-        move |events, first_token_ms| {
-            let latency_ms = start_time.elapsed().as_millis() as u64;
-            let output = streaming_response_usage_record_from_response_context(
-                StreamingResponseUsageContext {
-                    events: &events,
-                    stream_parser,
-                    model_extractor,
-                    provider_facts: &provider_facts,
-                    request_model: &request_model,
-                    outbound_model: outbound_model.as_deref(),
-                    route_context: usage_route_context.as_ref(),
-                    latency_ms,
-                    first_token_ms,
-                    status_code,
-                    session_id: &session_id,
-                },
-                || uuid::Uuid::new_v4().to_string(),
-            );
-
-            if let Some(message) = output.missing_usage_log_message(tag) {
-                log::debug!("{message}");
-            }
-
-            spawn_usage_record_with_proxy_services(state.proxy_core_services.clone(), output.record);
-        },
-    ))
-}
 
 pub(crate) fn usage_logging_enabled(state: &ProxyState) -> bool {
     usage_logging_enabled_from_config_flag(state

@@ -8420,6 +8420,90 @@ pub(crate) struct StreamingResponseUsageContext<'a> {
     pub(crate) session_id: &'a str,
 }
 
+pub(crate) struct StreamingUsageCollectorContext<'a, S> {
+    pub(crate) usage_logging_enabled: bool,
+    pub(crate) services: Arc<S>,
+    pub(crate) provider: Option<&'a Provider>,
+    pub(crate) app_type: &'a str,
+    pub(crate) tag: &'static str,
+    pub(crate) request_model: &'a str,
+    pub(crate) outbound_model: Option<&'a str>,
+    pub(crate) route_context: Option<&'a UsageRouteContext>,
+    pub(crate) start_time: std::time::Instant,
+    pub(crate) status_code: u16,
+    pub(crate) session_id: &'a str,
+    pub(crate) parser_config: &'a UsageParserConfig,
+}
+
+pub(crate) fn streaming_usage_collector_from_context<S>(
+    context: StreamingUsageCollectorContext<'_, S>,
+) -> Option<SseUsageCollector>
+where
+    S: ProxyServices + Send + Sync + 'static,
+{
+    if !context.usage_logging_enabled {
+        return None;
+    }
+
+    // Use the request app_type instead of parser_config.app_type_str:
+    // Claude Desktop streaming passthrough reuses CLAUDE_PARSER_CONFIG, but usage
+    // must stay under claude-desktop so provider pricing overrides resolve.
+    let provider_facts = match response_usage_provider_facts_from_optional(
+        context.provider,
+        context.app_type,
+        context.tag,
+        UsageSelectedProviderMissingPhase::StreamingPassthrough,
+    ) {
+        Ok(provider_facts) => provider_facts,
+        Err(message) => {
+            log::warn!("{message}");
+            return None;
+        }
+    };
+
+    let services = context.services;
+    let request_model = context.request_model.to_string();
+    let outbound_model = context.outbound_model.map(str::to_string);
+    let route_context = context.route_context.cloned();
+    let tag = context.tag;
+    let start_time = context.start_time;
+    let stream_parser = context.parser_config.stream_parser;
+    let model_extractor = context.parser_config.model_extractor;
+    let stream_event_filter = context.parser_config.stream_event_filter;
+    let session_id = context.session_id.to_string();
+    let status_code = context.status_code;
+
+    Some(SseUsageCollector::new(
+        start_time,
+        stream_event_filter,
+        move |events, first_token_ms| {
+            let latency_ms = start_time.elapsed().as_millis() as u64;
+            let output = streaming_response_usage_record_from_response_context(
+                StreamingResponseUsageContext {
+                    events: &events,
+                    stream_parser,
+                    model_extractor,
+                    provider_facts: &provider_facts,
+                    request_model: &request_model,
+                    outbound_model: outbound_model.as_deref(),
+                    route_context: route_context.as_ref(),
+                    latency_ms,
+                    first_token_ms,
+                    status_code,
+                    session_id: &session_id,
+                },
+                || uuid::Uuid::new_v4().to_string(),
+            );
+
+            if let Some(message) = output.missing_usage_log_message(tag) {
+                log::debug!("{message}");
+            }
+
+            spawn_usage_record_with_proxy_services(services.clone(), output.record);
+        },
+    ))
+}
+
 pub(crate) struct NonStreamingResponseUsageContext<'a> {
     pub(crate) body: &'a [u8],
     pub(crate) response_parser: fn(&Value) -> Option<TokenUsage>,
