@@ -1114,6 +1114,7 @@
 本轮继续把 `update_live_backup_from_provider_inner` 中用于保留 Codex MCP/OAuth 的现有 Live 备份读取与 JSON 解析错误投影收敛到 `proxy_core_adapter::existing_live_backup_value_for_update_from_db`：service 保留备份内容合并和统一会话路由注入，existing backup source 细节由 adapter 维护。
 本轮继续把 `update_live_backup_from_provider_inner` 的 provider-derived Live 备份序列化和 `save_live_backup` 更新错误投影收敛到 `proxy_core_adapter::save_provider_live_backup_from_effective_settings_in_db`：Claude/Codex 保留完整 effective settings，Gemini 继续只保存 env 备份，service 只负责构造和合并 effective settings。
 本轮继续把 `hot_switch_provider_inner` 的 provider 读取、官方供应商拦截、当前目标判断、Live 备份存在性读取和 current provider 双写收敛到 `proxy_core_adapter::{proxy_hot_switch_target_state_from_db,persist_hot_switch_current_provider_sources}`：service 只消费目标状态并保留 live 备份刷新、live 文件同步和运行时 active target 更新编排。
+本轮继续把 `ProxyService::{start,update_config}` 中的 `ProxyServer::new` 构造入口收敛到 `proxy_core_adapter::proxy_server_from_runtime_config`：service 仍持有运行中 server 并负责生命周期锁、启动、停止和重启编排，但不再直接绑定 runtime server 构造签名。
 
 当前原则：核心 crate 可以新增端口和领域字段，但不得引入 `tauri`、`Database`、settings、commands、services 等宿主依赖；现有 runtime 行为必须继续通过 targeted tests 证明不回归。
 
