@@ -21,7 +21,8 @@ use crate::proxy_core_adapter::{
     delete_live_backup_best_effort_in_db, delete_live_backup_in_db,
     is_local_proxy_url, live_backup_snapshot_from_live_config, live_token_sync_app_label,
     live_backup_config_for_simple_restore_from_db,
-    live_takeover_backup_exists_from_db, live_token_sync_provider_from_db,
+    live_takeover_any_enabled_from_db, live_takeover_backup_exists_from_db,
+    live_token_sync_provider_from_db,
     live_config_has_proxy_placeholder_for_app, live_takeover_config_matches_proxy_for_app,
     live_takeover_app_types, provider_settings_have_proxy_placeholder_for_app,
     proxy_app_enabled_from_db, sync_provider_settings_with_live_token,
@@ -41,9 +42,9 @@ use crate::proxy_core_adapter::{
     remove_codex_takeover_auth_placeholder_if_present,
     remove_codex_takeover_config_placeholders_if_present,
     remove_gemini_takeover_env_fields_if_present, set_proxy_app_enabled_in_db,
-    should_block_proxy_switch_to_provider, CircuitBreakerConfig, CodexTakeoverAuthPolicy,
-    LiveTokenProviderSettingsIssue, ProxyConfig, ProxyRuntimeStatus, ProxyServerInfo,
-    ProxyTakeoverStatus,
+    set_legacy_live_takeover_active_best_effort_in_db, should_block_proxy_switch_to_provider,
+    CircuitBreakerConfig, CodexTakeoverAuthPolicy, LiveTokenProviderSettingsIssue, ProxyConfig,
+    ProxyRuntimeStatus, ProxyServerInfo, ProxyTakeoverStatus,
 };
 use crate::services::provider::{
     build_effective_settings_with_common_config, write_live_with_common_config,
@@ -421,7 +422,7 @@ impl ProxyService {
             set_proxy_app_enabled_in_db(&self.db, app_type_str, true).await?;
 
             // 7) 兼容旧逻辑：写入 any-of 标志（失败不影响功能）
-            let _ = self.db.set_live_takeover_active(true).await;
+            set_legacy_live_takeover_active_best_effort_in_db(&self.db, true).await;
 
             // 8) Warn if the current provider is official (risk of account ban via proxy)
             if let Some(message) =
@@ -462,14 +463,10 @@ impl ProxyService {
 
         // 5) 若无其它接管，更新旧标志，并停止代理服务
         // 检查是否还有其它 app 的 enabled = true
-        let any_enabled = self
-            .db
-            .is_live_takeover_active()
-            .await
-            .map_err(|e| format!("检查接管状态失败: {e}"))?;
+        let any_enabled = live_takeover_any_enabled_from_db(&self.db).await?;
 
         if !any_enabled {
-            let _ = self.db.set_live_takeover_active(false).await;
+            set_legacy_live_takeover_active_best_effort_in_db(&self.db, false).await;
 
             if self.is_running().await {
                 // 此时没有任何 app 处于接管状态，停止服务即可
