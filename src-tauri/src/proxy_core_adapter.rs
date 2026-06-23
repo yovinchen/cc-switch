@@ -909,6 +909,21 @@ pub(crate) fn auth_info_from_cc_switch_provider_config(
     auth_info_from_profile_ref(auth_profile, "cc_switch_provider_config")
 }
 
+#[derive(Clone, Default)]
+pub(crate) struct CcSwitchAuthProvider;
+
+impl AuthProvider for CcSwitchAuthProvider {
+    fn resolve_auth<'a>(
+        &'a self,
+        auth_profile: Option<&'a AuthProfileRef>,
+        _request: &'a ProxyRequest,
+    ) -> BoxFuture<'a, ProxyCoreResult<AuthInfo>> {
+        Box::pin(async move {
+            Ok(auth_info_from_cc_switch_provider_config(auth_profile))
+        })
+    }
+}
+
 pub(crate) type AttemptEventChannel<'a> =
     crate::proxy_core::api::events::AttemptEventChannel<'a>;
 pub(crate) type AttemptEventPayloadInput<'a> =
@@ -2641,6 +2656,28 @@ pub(crate) fn emit_proxy_core_event_bus_source(
     emit_proxy_core_event(event, |event_name, payload| {
         events.emit(event_name, payload);
     });
+}
+
+#[derive(Clone, Default)]
+pub(crate) struct CcSwitchEventSink {
+    events: Option<Arc<ProxyEventBus>>,
+}
+
+impl CcSwitchEventSink {
+    pub(crate) fn new(events: Option<Arc<ProxyEventBus>>) -> Self {
+        Self { events }
+    }
+}
+
+impl ProxyEventSink for CcSwitchEventSink {
+    fn emit_event<'a>(&'a self, event: ProxyCoreEvent) -> BoxFuture<'a, ProxyCoreResult<()>> {
+        Box::pin(async move {
+            if let Some(events) = self.events.as_ref() {
+                emit_proxy_core_event_bus_source(events.as_ref(), event);
+            }
+            Ok(())
+        })
+    }
 }
 
 pub(crate) fn proxy_engine_from_services<S>(services: Arc<S>) -> ProxyEngine<S>

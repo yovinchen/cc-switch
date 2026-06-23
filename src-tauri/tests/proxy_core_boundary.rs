@@ -259,8 +259,16 @@ const FORBIDDEN_PROXY_CORE_HOST_USAGE_SINK_SOURCE_MARKERS: &[&str] = &[
     "usage_error(",
 ];
 const FORBIDDEN_PROXY_CORE_HOST_EVENT_SINK_SOURCE_MARKERS: &[&str] = &[
+    "struct CcSwitchEventSink",
+    "impl ProxyEventSink for CcSwitchEventSink",
+    "emit_proxy_core_event_bus_source(",
     "emit_proxy_core_event(",
     ".emit(",
+];
+const FORBIDDEN_PROXY_CORE_HOST_AUTH_PROVIDER_SOURCE_MARKERS: &[&str] = &[
+    "struct CcSwitchAuthProvider",
+    "impl AuthProvider for CcSwitchAuthProvider",
+    "auth_info_from_cc_switch_provider_config(",
 ];
 const FORBIDDEN_PROXY_CORE_HOST_AUTH_PROFILE_DB_MARKERS: &[&str] = &[
     "fn apply_channel_auth_profile_providers(",
@@ -3211,7 +3219,7 @@ fn production_proxy_core_host_delegates_reachability_probe_source_to_adapter() {
     let reachability_probe = function_slice(
         &source,
         "impl ChannelReachabilityProbe for CcSwitchChannelReachabilityProbe",
-        "#[derive(Clone, Default)]\nstruct CcSwitchAuthProvider",
+        "#[derive(Clone)]\nstruct CcSwitchModelCatalogProvider",
     );
 
     let mut violations = Vec::new();
@@ -3275,7 +3283,7 @@ fn production_proxy_core_host_delegates_usage_sink_source_to_adapter() {
     let usage_sink = function_slice(
         &source,
         "impl UsageSink for CcSwitchUsageSink",
-        "#[derive(Clone, Default)]\nstruct CcSwitchEventSink",
+        "#[derive(Clone, Default)]\nstruct CcSwitchForwardPipeline",
     );
 
     let mut violations = Vec::new();
@@ -3304,19 +3312,14 @@ fn production_proxy_core_host_delegates_event_sink_source_to_adapter() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let path = manifest_dir.join("src/proxy_core_host.rs");
     let source = fs::read_to_string(&path).expect("read proxy_core_host.rs");
-    let event_sink = function_slice(
-        &source,
-        "impl ProxyEventSink for CcSwitchEventSink",
-        "#[derive(Clone, Default)]\nstruct CcSwitchForwardPipeline",
-    );
 
     let mut violations = Vec::new();
-    for (line_index, line) in production_lines(event_sink) {
+    for (line_index, line) in production_lines(&source) {
         let code = line.split("//").next().unwrap_or_default();
         for marker in FORBIDDEN_PROXY_CORE_HOST_EVENT_SINK_SOURCE_MARKERS {
             if code.contains(marker) {
                 violations.push(format!(
-                    "src/proxy_core_host.rs CcSwitchEventSink:{} contains event sink source marker `{}`",
+                    "src/proxy_core_host.rs:{} contains event sink source marker `{}`",
                     line_index + 1,
                     marker
                 ));
@@ -3327,6 +3330,33 @@ fn production_proxy_core_host_delegates_event_sink_source_to_adapter() {
     assert!(
         violations.is_empty(),
         "production proxy_core_host must delegate event sink projection and bus dispatch to proxy_core_adapter:\n{}",
+        violations.join("\n")
+    );
+}
+
+#[test]
+fn production_proxy_core_host_delegates_auth_provider_source_to_adapter() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let path = manifest_dir.join("src/proxy_core_host.rs");
+    let source = fs::read_to_string(&path).expect("read proxy_core_host.rs");
+
+    let mut violations = Vec::new();
+    for (line_index, line) in production_lines(&source) {
+        let code = line.split("//").next().unwrap_or_default();
+        for marker in FORBIDDEN_PROXY_CORE_HOST_AUTH_PROVIDER_SOURCE_MARKERS {
+            if code.contains(marker) {
+                violations.push(format!(
+                    "src/proxy_core_host.rs:{} contains auth provider source marker `{}`",
+                    line_index + 1,
+                    marker
+                ));
+            }
+        }
+    }
+
+    assert!(
+        violations.is_empty(),
+        "production proxy_core_host must delegate auth provider profile projection to proxy_core_adapter:\n{}",
         violations.join("\n")
     );
 }

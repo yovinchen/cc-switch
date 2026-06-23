@@ -8,24 +8,23 @@ use crate::proxy::hyper_client::ProxyResponse;
 use crate::proxy::provider_router::ProviderRouter;
 use crate::proxy::codex_chat_history::CodexChatHistoryStore;
 use crate::proxy_core_adapter::{
-    AppKind, AppSummaryConfig, AuthInfo, AuthProfileRef, AuthProvider, CcSwitchChannelHealthStore,
-    CcSwitchRoutePolicySource, CcSwitchRouteResolver, ChannelHealthStore, ChannelKeyRecord,
-    ChannelModelRecord, ChannelMigrationMaterializeInput, ChannelMigrationPreviewInput,
-    ChannelQuery, ChannelRecord, ChannelReachabilityProbe, ChannelReachabilityResult,
-    ChannelRouteSource, ChannelSource, ChannelSpec, ChannelTestProbeRequest,
+    AppKind, AppSummaryConfig, AuthProvider, CcSwitchAuthProvider, CcSwitchChannelHealthStore,
+    CcSwitchEventSink, CcSwitchRoutePolicySource, CcSwitchRouteResolver, ChannelHealthStore,
+    ChannelKeyRecord, ChannelModelRecord, ChannelMigrationMaterializeInput,
+    ChannelMigrationPreviewInput, ChannelQuery, ChannelRecord, ChannelReachabilityProbe,
+    ChannelReachabilityResult, ChannelRouteSource, ChannelSource, ChannelSpec, ChannelTestProbeRequest,
     ClaudeDesktopModelRouteInput, CurrentRouteTarget, ForwardPipeline, ForwarderRuntimeHostResources,
     GeminiShadowStore, HostForwardRuntime, ModelCatalog, ModelCatalogProvider, ProviderSource,
     ProviderSpec, ProxyAppConfig,
     ProxyChannelKeyPatchRequest, ProxyChannelKeyWriteRequest, ProxyChannelModelsReplaceRequest,
-    ProxyChannelPatchRequest, ProxyChannelWriteRequest, ProxyConfigSource, ProxyCoreEvent,
-    ProxyCoreResult, ProxyEventSink, ProxyGlobalConfig, ProxyRequest, ProxyResult,
+    ProxyChannelPatchRequest, ProxyChannelWriteRequest, ProxyConfigSource, ProxyCoreResult,
+    ProxyEventSink, ProxyGlobalConfig, ProxyRequest, ProxyResult,
     ProxyRuntimeConfig, ProxyRuntimeStatus, ProxyServices, RoutePlan, RoutePolicySource,
     RouteResolver, UsageRecord, UsageSink,
 };
 use crate::proxy_core_adapter::{
     active_route_target_from_runtime_source,
     app_summary_config_from_db_source,
-    auth_info_from_cc_switch_provider_config,
     cc_switch_app_kinds,
     claude_desktop_model_routes_from_router_source,
     channel_key_records_from_db_source,
@@ -48,7 +47,6 @@ use crate::proxy_core_adapter::{
     provider_router_from_database,
     probe_channel_reachability_from_db_source,
     proxy_app_config_from_db_source, proxy_global_config_from_db_source,
-    emit_proxy_core_event_bus_source,
     materialized_channel_records_from_db_source,
     proxy_runtime_config_from_db_source,
     record_usage_in_db_source,
@@ -62,7 +60,8 @@ use crate::proxy_core_adapter::{
 use crate::proxy_core_adapter::{
     apply_channel_auth_profile_providers_from_db, forward_attempts_from_plan,
     forward_result_to_proxy_result, host_providers_for_plan,
-    management_route_response_from_router_source, ChannelAttemptResult, RouteRequest,
+    management_route_response_from_router_source, AuthProfileRef, ChannelAttemptResult,
+    ProxyCoreEvent, RouteRequest,
 };
 use futures::future::BoxFuture;
 #[cfg(test)]
@@ -139,9 +138,7 @@ impl CcSwitchProxyServices {
                 router: runtime.provider_router.clone(),
             },
             usage_sink: CcSwitchUsageSink { db },
-            event_sink: CcSwitchEventSink {
-                events: Some(runtime.events.clone()),
-            },
+            event_sink: CcSwitchEventSink::new(Some(runtime.events.clone())),
             forward_pipeline: CcSwitchForwardPipeline::with_runtime(runtime),
         }
     }
@@ -168,7 +165,7 @@ impl CcSwitchProxyServices {
                 router: router.clone(),
             },
             usage_sink: CcSwitchUsageSink { db: db.clone() },
-            event_sink: CcSwitchEventSink { events },
+            event_sink: CcSwitchEventSink::new(events),
             forward_pipeline: CcSwitchForwardPipeline::default(),
         }
     }
@@ -451,21 +448,6 @@ impl ChannelReachabilityProbe for CcSwitchChannelReachabilityProbe {
     }
 }
 
-#[derive(Clone, Default)]
-struct CcSwitchAuthProvider;
-
-impl AuthProvider for CcSwitchAuthProvider {
-    fn resolve_auth<'a>(
-        &'a self,
-        auth_profile: Option<&'a AuthProfileRef>,
-        _request: &'a ProxyRequest,
-    ) -> BoxFuture<'a, ProxyCoreResult<AuthInfo>> {
-        Box::pin(async move {
-            Ok(auth_info_from_cc_switch_provider_config(auth_profile))
-        })
-    }
-}
-
 #[derive(Clone)]
 struct CcSwitchModelCatalogProvider {
     db: Arc<Database>,
@@ -506,22 +488,6 @@ struct CcSwitchUsageSink {
 impl UsageSink for CcSwitchUsageSink {
     fn record_usage<'a>(&'a self, record: UsageRecord) -> BoxFuture<'a, ProxyCoreResult<()>> {
         Box::pin(async move { record_usage_in_db_source(&self.db, record).await })
-    }
-}
-
-#[derive(Clone, Default)]
-struct CcSwitchEventSink {
-    events: Option<Arc<ProxyEventBus>>,
-}
-
-impl ProxyEventSink for CcSwitchEventSink {
-    fn emit_event<'a>(&'a self, event: ProxyCoreEvent) -> BoxFuture<'a, ProxyCoreResult<()>> {
-        Box::pin(async move {
-            if let Some(events) = self.events.as_ref() {
-                emit_proxy_core_event_bus_source(events.as_ref(), event);
-            }
-            Ok(())
-        })
     }
 }
 
