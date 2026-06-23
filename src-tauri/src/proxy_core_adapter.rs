@@ -1055,6 +1055,13 @@ pub(crate) async fn clear_live_takeover_enabled_flags_in_db(db: &Database) {
     }
 }
 
+pub(crate) async fn clear_legacy_live_takeover_active_flag_in_db(db: &Database) {
+    if let Ok(mut config) = db.get_proxy_config().await {
+        config.live_takeover_active = false;
+        let _ = db.update_proxy_config(config).await;
+    }
+}
+
 pub(crate) async fn live_backup_config_for_simple_restore_from_db(
     db: &Database,
     app_type: &AppType,

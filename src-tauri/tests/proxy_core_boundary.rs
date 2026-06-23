@@ -205,6 +205,11 @@ const FORBIDDEN_PROXY_SERVICE_SIMPLE_RESTORE_BACKUP_SOURCE_MARKERS: &[&str] = &[
     "解析 Codex 备份失败",
     "解析 Gemini 备份失败",
 ];
+const FORBIDDEN_PROXY_SERVICE_KEEP_STATE_ACTIVE_FLAG_MARKERS: &[&str] = &[
+    ".get_proxy_config()",
+    ".update_proxy_config(",
+    ".live_takeover_active =",
+];
 const FORBIDDEN_FORWARDER_MANAGED_AUTH_MARKERS: &[&str] = &[
     "CopilotAuthState",
     "CodexOAuthState",
@@ -4262,6 +4267,38 @@ fn production_proxy_service_delegates_simple_restore_backup_source_to_adapter() 
     assert!(
         violations.is_empty(),
         "ProxyService::restore_live_config_for_app_inner must delegate backup source reads and parse-error projection to proxy_core_adapter:\n{}",
+        violations.join("\n")
+    );
+}
+
+#[test]
+fn production_proxy_service_delegates_keep_state_active_flag_to_adapter() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let path = manifest_dir.join("src/services/proxy.rs");
+    let source = fs::read_to_string(&path).expect("read services/proxy.rs");
+    let function = function_slice(
+        &source,
+        "pub async fn stop_with_restore_keep_state",
+        "/// 备份各应用的 Live 配置",
+    );
+
+    let mut violations = Vec::new();
+    for (line_index, line) in production_lines(function) {
+        let code = line.split("//").next().unwrap_or_default();
+        for marker in FORBIDDEN_PROXY_SERVICE_KEEP_STATE_ACTIVE_FLAG_MARKERS {
+            if code.contains(marker) {
+                violations.push(format!(
+                    "src/services/proxy.rs stop_with_restore_keep_state:{} contains keep-state active flag marker `{}`",
+                    line_index + 1,
+                    marker
+                ));
+            }
+        }
+    }
+
+    assert!(
+        violations.is_empty(),
+        "ProxyService::stop_with_restore_keep_state must delegate legacy active-flag cleanup to proxy_core_adapter:\n{}",
         violations.join("\n")
     );
 }

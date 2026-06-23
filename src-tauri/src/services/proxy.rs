@@ -12,6 +12,7 @@ use crate::proxy_core_adapter::{
     apply_claude_takeover_fields_for_provider, apply_claude_takeover_fields_with_policy,
     apply_codex_takeover_fields_for_provider, apply_codex_unified_session_bucket_for_provider,
     apply_gemini_takeover_env_fields, ClaudeTakeoverAuthPolicy,
+    clear_legacy_live_takeover_active_flag_in_db,
     clear_live_takeover_enabled_flags_in_db,
     codex_backup_projection_error_message, codex_live_write_projection,
     codex_provider_live_write_parts,
@@ -660,10 +661,7 @@ impl ProxyService {
 
         // 3. 更新 proxy_config 表中的 live_takeover_active 标志（兼容旧版）
         //    注意：保留 proxy_config.enabled 状态，下次启动时自动恢复
-        if let Ok(mut config) = self.db.get_proxy_config().await {
-            config.live_takeover_active = false;
-            let _ = self.db.update_proxy_config(config).await;
-        }
+        clear_legacy_live_takeover_active_flag_in_db(&self.db).await;
 
         // 4. 删除备份（Live 配置已恢复，备份不再需要）
         self.db
