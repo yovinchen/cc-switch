@@ -27,7 +27,14 @@ const FORBIDDEN_REQUEST_CONTEXT_PROVIDER_ADAPTER_MARKERS: &[&str] =
         "request_context_route_update_from_proxy_result(",
     ];
 const FORBIDDEN_PROXY_ERROR_MAPPER_CODEX_PROJECTION_MARKERS: &[&str] =
-    &["CodexProxyErrorContext", "codex_proxy_error_code("];
+    &[
+        "CodexProxyErrorContext",
+        "CodexProxyHostErrorFacts",
+        "CodexProxyErrorKind",
+        "codex_proxy_error_code(",
+        "codex_proxy_error_facts(",
+        "codex_proxy_error_kind(",
+    ];
 const FORBIDDEN_FORWARDER_URL_PLANNING_MARKERS: &[&str] = &[
     "rewrite_codex_responses_endpoint_to_chat(",
     "rewrite_claude_transform_endpoint(",

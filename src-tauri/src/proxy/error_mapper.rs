@@ -5,18 +5,17 @@
 use super::{error::ProxyError, ForwardError};
 use crate::proxy::error::proxy_error_status_kind;
 use crate::proxy_core_adapter::{
-    codex_proxy_error_response_from_host_facts as core_codex_proxy_error_response,
+    codex_proxy_error_response_from_proxy_error as core_codex_proxy_error_response,
     forward_failure_kind_from_proxy_status, log_unlabeled_sse_fallback_event,
     parse_upstream_json_or_unlabeled_sse, proxy_core_error_from_status_kind,
     proxy_error_http_status_code, upstream_response_parse_failure_log_message,
-    ClaudeDesktopGatewayAuthError, CodexProxyErrorKind, CodexProxyHostErrorFacts,
-    ForwardFailureKind, ManagementAuthError, ProxyCoreError, ProxyCoreResponse, ProxyCoreResult,
-    UnlabeledSseFallbackLogContext, UpstreamResponseParseFailureLogContext,
-    UpstreamSseAggregationKind,
+    ClaudeDesktopGatewayAuthError, ForwardFailureKind, ManagementAuthError, ProxyCoreError,
+    ProxyCoreResponse, ProxyCoreResult, UnlabeledSseFallbackLogContext,
+    UpstreamResponseParseFailureLogContext, UpstreamSseAggregationKind,
 };
 #[cfg(test)]
 use crate::proxy_core_adapter::{
-    codex_proxy_error_json_from_host_facts as core_codex_proxy_error_json, ProxyResponseBody,
+    codex_proxy_error_json_from_proxy_error as core_codex_proxy_error_json, ProxyResponseBody,
 };
 use http::HeaderMap;
 use serde_json::Value;
@@ -280,13 +279,7 @@ pub(crate) fn codex_proxy_error_json(
     endpoint: &str,
     error: &ProxyError,
 ) -> Value {
-    let message = get_error_message(error);
-    core_codex_proxy_error_json(
-        provider_name,
-        request_model,
-        endpoint,
-        codex_proxy_error_facts(error, &message),
-    )
+    core_codex_proxy_error_json(provider_name, request_model, endpoint, error)
 }
 
 pub(crate) fn codex_proxy_error_response(
@@ -295,55 +288,7 @@ pub(crate) fn codex_proxy_error_response(
     endpoint: &str,
     error: &ProxyError,
 ) -> ProxyCoreResult<ProxyCoreResponse> {
-    let message = get_error_message(error);
-    core_codex_proxy_error_response(
-        provider_name,
-        request_model,
-        endpoint,
-        codex_proxy_error_facts(error, &message),
-    )
-}
-
-fn codex_proxy_error_facts<'a>(
-    error: &'a ProxyError,
-    message: &'a str,
-) -> CodexProxyHostErrorFacts<'a> {
-    let (upstream_status, upstream_body) = match error {
-        ProxyError::UpstreamError { status, body } => (Some(*status), body.as_deref()),
-        _ => (None, None),
-    };
-
-    CodexProxyHostErrorFacts {
-        status: proxy_error_status_kind(error),
-        message,
-        kind: codex_proxy_error_kind(error),
-        upstream_status,
-        upstream_body,
-    }
-}
-
-fn codex_proxy_error_kind(error: &ProxyError) -> CodexProxyErrorKind {
-    match error {
-        ProxyError::ForwardFailed(_) => CodexProxyErrorKind::ForwardFailed,
-        ProxyError::Timeout(_) | ProxyError::StreamIdleTimeout(_) => CodexProxyErrorKind::Timeout,
-        ProxyError::NoAvailableProvider => CodexProxyErrorKind::NoAvailableProvider,
-        ProxyError::AllProvidersCircuitOpen => CodexProxyErrorKind::AllProvidersCircuitOpen,
-        ProxyError::NoProvidersConfigured => CodexProxyErrorKind::NoProvidersConfigured,
-        ProxyError::MaxRetriesExceeded => CodexProxyErrorKind::MaxRetriesExceeded,
-        ProxyError::ProviderUnhealthy(_) => CodexProxyErrorKind::ProviderUnhealthy,
-        ProxyError::ConfigError(_) => CodexProxyErrorKind::ConfigError,
-        ProxyError::TransformError(_) => CodexProxyErrorKind::TransformError,
-        ProxyError::InvalidRequest(_) => CodexProxyErrorKind::InvalidRequest,
-        ProxyError::AuthError(_) => CodexProxyErrorKind::AuthError,
-        ProxyError::UpstreamError { .. } => CodexProxyErrorKind::UpstreamError,
-        ProxyError::DatabaseError(_) => CodexProxyErrorKind::DatabaseError,
-        ProxyError::Internal(_) => CodexProxyErrorKind::InternalError,
-        ProxyError::AlreadyRunning
-        | ProxyError::NotRunning
-        | ProxyError::BindFailed(_)
-        | ProxyError::StopTimeout
-        | ProxyError::StopFailed(_) => CodexProxyErrorKind::ProxyError,
-    }
+    core_codex_proxy_error_response(provider_name, request_model, endpoint, error)
 }
 
 #[cfg(test)]
