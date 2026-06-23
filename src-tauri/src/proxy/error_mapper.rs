@@ -163,6 +163,28 @@ pub(crate) fn response_build_error_to_proxy_error(
     proxy_core_error_to_proxy_error(error)
 }
 
+pub(crate) enum ResponseTransformFailureContext {
+    ClaudeResponse,
+    CodexChatToResponses,
+}
+
+impl ResponseTransformFailureContext {
+    fn log_prefix(&self) -> &'static str {
+        match self {
+            Self::ClaudeResponse => "[Claude] 转换响应失败",
+            Self::CodexChatToResponses => "[Codex] Chat → Responses 响应转换失败",
+        }
+    }
+}
+
+pub(crate) fn response_transform_error_to_proxy_error(
+    context: ResponseTransformFailureContext,
+    error: String,
+) -> ProxyError {
+    log::error!("{}: {error}", context.log_prefix());
+    ProxyError::TransformError(error)
+}
+
 #[cfg(test)]
 pub(crate) fn codex_proxy_error_json(
     provider_name: &str,

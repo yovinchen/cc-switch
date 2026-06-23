@@ -846,6 +846,10 @@ const FORBIDDEN_HANDLER_RESPONSE_BUILD_ERROR_MAPPING_MARKERS: &[&str] = &[
     "构造 Responses 错误体失败",
     "构造代理错误响应失败",
 ];
+const FORBIDDEN_HANDLER_RESPONSE_TRANSFORM_ERROR_MAPPING_MARKERS: &[&str] = &[
+    "转换响应失败",
+    "Chat → Responses 响应转换失败",
+];
 const FORBIDDEN_USAGE_SINK_PROVIDER_PROJECTION_MARKERS: &[&str] = &[
     "provider_kind_from_provider(",
     "AppKind::from(",
@@ -2552,6 +2556,33 @@ fn handlers_delegate_response_build_error_mapping_to_error_mapper() {
     assert!(
         violations.is_empty(),
         "protocol handlers must delegate response build error mapping to error_mapper:\n{}",
+        violations.join("\n")
+    );
+}
+
+#[test]
+fn handlers_delegate_response_transform_error_mapping_to_error_mapper() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let path = manifest_dir.join("src/proxy/handlers.rs");
+    let source = fs::read_to_string(&path).expect("read handlers.rs");
+
+    let mut violations = Vec::new();
+    for (line_index, line) in production_lines(&source) {
+        let code = line.split("//").next().unwrap_or_default();
+        for marker in FORBIDDEN_HANDLER_RESPONSE_TRANSFORM_ERROR_MAPPING_MARKERS {
+            if code.contains(marker) {
+                violations.push(format!(
+                    "src/proxy/handlers.rs:{} contains response transform error mapping marker `{}`",
+                    line_index + 1,
+                    marker
+                ));
+            }
+        }
+    }
+
+    assert!(
+        violations.is_empty(),
+        "protocol handlers must delegate response transform error mapping to error_mapper:\n{}",
         violations.join("\n")
     );
 }

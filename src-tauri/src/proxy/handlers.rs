@@ -14,7 +14,8 @@ use super::{
         codex_proxy_error_response, response_build_error_to_proxy_error,
         CoreResponseBuildFailureContext, management_api_error_to_proxy_error,
         management_auth_error_to_proxy_error, proxy_core_error_to_proxy_error,
-        response_body_parse_error_to_proxy_error,
+        response_body_parse_error_to_proxy_error, response_transform_error_to_proxy_error,
+        ResponseTransformFailureContext,
     },
     forwarder::ActiveConnectionGuard,
     handler_context::RequestContext,
@@ -791,7 +792,6 @@ async fn handle_claude_transform(
     // 根据 api_format 选择非流式转换器
     let anthropic_response = if api_format == "openai_responses" {
         openai_responses_to_anthropic_message(&upstream_response)
-            .map_err(ProxyError::TransformError)
     } else if api_format == "gemini_native" {
         gemini_response_to_anthropic_message_with_shadow(
             &upstream_response,
@@ -807,13 +807,14 @@ async fn handle_claude_transform(
             }
             output.response
         })
-        .map_err(ProxyError::TransformError)
     } else {
-        openai_chat_to_anthropic_message(&upstream_response).map_err(ProxyError::TransformError)
+        openai_chat_to_anthropic_message(&upstream_response)
     }
-    .map_err(|e| {
-        log::error!("[Claude] 转换响应失败: {e}");
-        e
+    .map_err(|error| {
+        response_transform_error_to_proxy_error(
+            ResponseTransformFailureContext::ClaudeResponse,
+            error,
+        )
     })?;
 
     record_transformed_response_usage(
@@ -1087,10 +1088,11 @@ async fn handle_codex_chat_to_responses_transform(
     let chat_response = parsed_chat_response.value;
     let responses_response =
         build_chat_completion_response_with_context(&chat_response, &tool_context)
-            .map_err(ProxyError::TransformError)
-            .map_err(|e| {
-                log::error!("[Codex] Chat → Responses 响应转换失败: {e}");
-                e
+            .map_err(|error| {
+                response_transform_error_to_proxy_error(
+                    ResponseTransformFailureContext::CodexChatToResponses,
+                    error,
+                )
             })?;
     state
         .codex_chat_history
