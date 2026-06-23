@@ -497,6 +497,16 @@ pub(crate) fn log_codex_chat_error_normalization(normalized: &CodexChatErrorNorm
     }
 }
 
+pub(crate) fn codex_chat_error_proxy_response(
+    status: http::StatusCode,
+    headers: HeaderMap,
+    body: &[u8],
+) -> ProxyCoreResult<ProxyCoreResponse> {
+    let normalized = normalize_codex_chat_error_body(body);
+    log_codex_chat_error_normalization(&normalized);
+    rebuilt_json_proxy_response(status, headers, normalized.response_error)
+}
+
 pub(crate) fn current_route_target_from_forward_attempt(
     app_type: &str,
     attempt: &ForwardAttempt,
