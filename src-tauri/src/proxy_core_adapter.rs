@@ -8552,6 +8552,15 @@ pub(crate) struct ForwarderProviderRequestBodyInput<'a> {
     pub(crate) is_copilot: bool,
 }
 
+pub(crate) struct ForwarderClaudeBodyPolicyInput<'a> {
+    pub(crate) body: &'a mut Value,
+    pub(crate) provider: &'a Provider,
+    pub(crate) api_format: &'a str,
+    pub(crate) rectifier_enabled: bool,
+    pub(crate) request_media_fallback: bool,
+    pub(crate) request_media_heuristic: bool,
+}
+
 pub(crate) struct ForwarderMediaPreventionInput<'a> {
     pub(crate) body: &'a mut Value,
     pub(crate) provider: &'a Provider,
@@ -8625,6 +8634,11 @@ pub(crate) trait ForwarderRequestSource {
         &self,
         input: ForwarderProviderRequestBodyInput<'_>,
     ) -> Result<Value, ProxyError>;
+
+    fn apply_claude_body_policies(
+        &self,
+        input: ForwarderClaudeBodyPolicyInput<'_>,
+    );
 
     fn optimize_copilot_request(
         &self,
@@ -8719,6 +8733,24 @@ impl ForwarderRequestSource for CcSwitchForwarderRequestSource {
         }
 
         Ok(body)
+    }
+
+    fn apply_claude_body_policies(
+        &self,
+        input: ForwarderClaudeBodyPolicyInput<'_>,
+    ) {
+        forwarder_claude_normalize_anthropic_messages(
+            input.body,
+            input.provider,
+            input.api_format,
+        );
+        self.apply_media_prevention(ForwarderMediaPreventionInput {
+            body: input.body,
+            provider: input.provider,
+            rectifier_enabled: input.rectifier_enabled,
+            request_media_fallback: input.request_media_fallback,
+            request_media_heuristic: input.request_media_heuristic,
+        });
     }
 
     fn optimize_copilot_request(
@@ -14414,6 +14446,42 @@ mod tests {
             .expect("prepared body");
 
         assert_eq!(body["model"], "claude-sonnet-4.6-1m");
+    }
+
+    #[test]
+    fn forwarder_request_source_applies_claude_body_policies() {
+        let source = CcSwitchForwarderRequestSource;
+        let mut provider = Provider::with_id(
+            "claude-normalize".to_string(),
+            "Claude Normalize".to_string(),
+            json!({
+                "env": {
+                    "ANTHROPIC_BASE_URL": "https://api.deepseek.com/anthropic"
+                }
+            }),
+            None,
+        );
+        provider.meta = Some(ProviderMeta {
+            api_format: Some("anthropic".to_string()),
+            ..Default::default()
+        });
+        let mut body = json!({
+            "model": "deepseek-v4-pro",
+            "thinking": { "type": "disabled" },
+            "output_config": { "effort": "max" },
+            "messages": [{ "role": "user", "content": "hello" }]
+        });
+
+        source.apply_claude_body_policies(ForwarderClaudeBodyPolicyInput {
+            body: &mut body,
+            provider: &provider,
+            api_format: "anthropic",
+            rectifier_enabled: true,
+            request_media_fallback: false,
+            request_media_heuristic: false,
+        });
+
+        assert!(body.get("output_config").is_none());
     }
 
     #[test]

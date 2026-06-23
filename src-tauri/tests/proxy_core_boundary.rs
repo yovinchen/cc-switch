@@ -6337,6 +6337,8 @@ fn production_forwarder_uses_request_source_resource() {
         "apply_copilot_model_normalization(",
         "strip_one_m_suffix_for_upstream(",
         "strip_one_m_suffix_for_upstream_from_body(",
+        "forwarder_claude_normalize_anthropic_messages(",
+        "provider_claude_normalize_anthropic_messages(",
     ];
     let mut violations = Vec::new();
 

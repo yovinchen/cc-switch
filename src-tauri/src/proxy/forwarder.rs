@@ -22,7 +22,6 @@ use crate::proxy_core_adapter::{
     forwarder_provider_adapter_name, forwarder_provider_base_url, forwarder_provider_upstream_url,
     forwarder_provider_transform_request, forwarder_provider_transform_required,
     ForwarderAdapterHandle, is_openai_o_series,
-    forwarder_claude_normalize_anthropic_messages,
     provider_adapter_name_is_claude,
     forwarder_claude_api_format, forwarder_claude_transform_required,
     responses_to_chat_completions_with_options,
@@ -31,7 +30,8 @@ use crate::proxy_core_adapter::{
     supports_reasoning_effort, thinking_optimization_log_message,
     AttemptEventPhase, CopilotOptimizerConfig, ForwardFailureCategory, ForwardUpstreamUrlPlanInput,
     ForwarderAuthHeadersInput, ForwarderAuthSourceRef, ForwarderCopilotAuthOptimizationInput,
-    ForwarderCopilotRequestOptimizationInput, ForwarderMediaPreventionInput,
+    ForwarderClaudeBodyPolicyInput, ForwarderCopilotRequestOptimizationInput,
+    ForwarderMediaPreventionInput,
     ForwarderMediaRetryPlanInput, ForwarderProviderRequestBodyInput,
     ForwarderRequestRectifierPlan,
     ForwarderThinkingBudgetRectifierInput, ForwarderThinkingSignatureRectifierInput,
@@ -1050,19 +1050,16 @@ impl RequestForwarder {
         };
         if is_claude_adapter {
             if let Some(api_format) = resolved_claude_api_format.as_deref() {
-                forwarder_claude_normalize_anthropic_messages(
-                    &mut mapped_body,
-                    provider,
-                    api_format,
-                );
-                self.request_source
-                    .apply_media_prevention(ForwarderMediaPreventionInput {
+                self.request_source.apply_claude_body_policies(
+                    ForwarderClaudeBodyPolicyInput {
                         body: &mut mapped_body,
                         provider,
+                        api_format,
                         rectifier_enabled: self.rectifier_config.enabled,
                         request_media_fallback: self.rectifier_config.request_media_fallback,
                         request_media_heuristic: self.rectifier_config.request_media_heuristic,
-                    });
+                    },
+                );
             }
         }
         let needs_transform = match resolved_claude_api_format.as_deref() {
