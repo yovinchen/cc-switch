@@ -8572,6 +8572,12 @@ pub(crate) struct ForwarderCodexResponsesToChatInput<'a> {
     pub(crate) provider: &'a Provider,
 }
 
+pub(crate) struct ForwarderProviderTransformInput<'a> {
+    pub(crate) adapter: &'a ForwarderAdapterHandle,
+    pub(crate) body: Value,
+    pub(crate) provider: &'a Provider,
+}
+
 pub(crate) struct ForwarderMediaPreventionInput<'a> {
     pub(crate) body: &'a mut Value,
     pub(crate) provider: &'a Provider,
@@ -8657,6 +8663,11 @@ pub(crate) trait ForwarderRequestSource {
         &self,
         input: ForwarderCodexResponsesToChatInput<'_>,
     ) -> Value;
+
+    fn transform_provider_request_body(
+        &self,
+        input: ForwarderProviderTransformInput<'_>,
+    ) -> Result<Value, ProxyError>;
 
     fn optimize_copilot_request(
         &self,
@@ -8809,6 +8820,13 @@ impl ForwarderRequestSource for CcSwitchForwarderRequestSource {
             is_openai_o_series(model),
             supports_reasoning_effort(model),
         )
+    }
+
+    fn transform_provider_request_body(
+        &self,
+        input: ForwarderProviderTransformInput<'_>,
+    ) -> Result<Value, ProxyError> {
+        forwarder_provider_transform_request(input.adapter, input.body, input.provider)
     }
 
     fn optimize_copilot_request(
@@ -14507,6 +14525,29 @@ base_url = "https://api.openai.com/v1"
         assert_eq!(body["messages"][1]["content"], "Hello");
         assert_eq!(body["max_tokens"], 64);
         assert_eq!(body["stream"], true);
+    }
+
+    #[test]
+    fn forwarder_request_source_wraps_provider_transform_request() {
+        let source = CcSwitchForwarderRequestSource;
+        let adapter = forwarder_provider_adapter_for_app(&AppType::Codex);
+        let provider = Provider::with_id(
+            "codex-provider".to_string(),
+            "Codex Provider".to_string(),
+            json!({}),
+            None,
+        );
+        let body = json!({"model": "gpt-5", "messages": []});
+
+        let transformed = source
+            .transform_provider_request_body(ForwarderProviderTransformInput {
+                adapter: adapter.as_ref(),
+                body: body.clone(),
+                provider: &provider,
+            })
+            .expect("provider transform");
+
+        assert_eq!(transformed, body);
     }
 
     #[test]

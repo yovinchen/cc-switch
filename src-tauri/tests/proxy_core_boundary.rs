@@ -6351,6 +6351,7 @@ fn production_forwarder_uses_request_source_resource() {
         "responses_to_chat_completions_with_options(",
         "is_openai_o_series(",
         "supports_reasoning_effort(",
+        "forwarder_provider_transform_request(",
     ];
     let mut violations = Vec::new();
 

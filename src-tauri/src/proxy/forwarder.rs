@@ -17,7 +17,7 @@ use crate::proxy_core_adapter::{
     forwarder_uses_anthropic_rectifiers,
     forwarder_provider_adapter_for_app,
     forwarder_provider_adapter_name, forwarder_provider_base_url, forwarder_provider_upstream_url,
-    forwarder_provider_transform_request, forwarder_provider_transform_required,
+    forwarder_provider_transform_required,
     ForwarderAdapterHandle,
     provider_adapter_name_is_claude,
     forwarder_claude_api_format, forwarder_claude_transform_required,
@@ -29,6 +29,7 @@ use crate::proxy_core_adapter::{
     ForwarderCodexResponsesToChatInput, ForwarderCopilotRequestOptimizationInput,
     ForwarderMediaPreventionInput,
     ForwarderMediaRetryPlanInput, ForwarderProviderRequestBodyInput,
+    ForwarderProviderTransformInput,
     ForwarderRequestRectifierPlan,
     ForwarderThinkingBudgetRectifierInput, ForwarderThinkingSignatureRectifierInput,
     OptimizerConfig,
@@ -1113,7 +1114,13 @@ impl RequestForwarder {
                     )
                     .map_err(ProxyError::TransformError)?
             } else {
-                forwarder_provider_transform_request(adapter, mapped_body, provider)?
+                self.request_source.transform_provider_request_body(
+                    ForwarderProviderTransformInput {
+                        adapter,
+                        body: mapped_body,
+                        provider,
+                    },
+                )?
             }
         } else {
             mapped_body
