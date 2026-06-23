@@ -3,11 +3,9 @@
 //! `proxy-core` owns request planning and response parsing. This module owns
 //! the concrete reqwest execution against the shared proxy HTTP client.
 
-pub use crate::proxy_core::api::model_catalog::FetchedModel;
-
 use crate::proxy_core::api::model_catalog::{
     fetch_codex_oauth_models_with_transport, fetch_openai_compatible_models_with_transport,
-    CodexOAuthModelsRequest, CodexOAuthModelsTransport, ModelFetchHttpResponse,
+    CodexOAuthModelsRequest, CodexOAuthModelsTransport, FetchedModel, ModelFetchHttpResponse,
     OpenAiCompatibleModelsRequest, OpenAiCompatibleModelsTransport,
 };
 use futures::future::BoxFuture;

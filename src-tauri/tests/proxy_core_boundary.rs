@@ -120,6 +120,10 @@ const FORBIDDEN_PROXY_PROVIDER_AUTH_PATH_MARKERS: &[&str] = &[
     "providers::copilot_auth",
     "providers::codex_oauth_auth",
 ];
+const FORBIDDEN_MODEL_FETCH_TRANSPORT_DTO_EXPORT_MARKERS: &[&str] =
+    &["pub use crate::proxy_core::api::model_catalog::FetchedModel"];
+const FORBIDDEN_MODEL_FETCH_COMMAND_DTO_IMPORT_MARKERS: &[&str] =
+    &["services::model_fetch_transport::FetchedModel"];
 const FORBIDDEN_FORWARDER_MANAGED_AUTH_MARKERS: &[&str] = &[
     "CopilotAuthState",
     "CodexOAuthState",
@@ -172,7 +176,6 @@ const FORBIDDEN_PROXY_CORE_HOST_ERROR_MARKERS: &[&str] = &["ProxyCoreError::"];
 const FORBIDDEN_PROXY_CORE_ADAPTER_PROVIDER_COPILOT_MARKERS: &[&str] =
     &["providers::copilot_auth::COPILOT_", "copilot_auth::COPILOT_"];
 const FORBIDDEN_PROXY_CORE_ADAPTER_MODEL_FETCH_FACADE_MARKERS: &[&str] = &[
-    "FetchedModel",
     "CodexOAuthModelsRequest",
     "OpenAiCompatibleModelsRequest",
     "ModelFetchHttpResponse",
@@ -3703,6 +3706,55 @@ fn proxy_core_adapter_excludes_model_fetch_transport_facades() {
     assert!(
         violations.is_empty(),
         "Model fetch transport should use proxy_core::api::model_catalog directly instead of proxy_core_adapter facades:\n{}",
+        violations.join("\n")
+    );
+}
+
+#[test]
+fn model_fetch_commands_use_adapter_dto_entrypoint() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let transport_path = manifest_dir.join("src/services/model_fetch_transport.rs");
+    let transport_source =
+        fs::read_to_string(&transport_path).expect("read model_fetch_transport.rs");
+    let command_paths = [
+        "src/commands/model_fetch.rs",
+        "src/commands/codex_oauth.rs",
+    ];
+
+    let mut violations = Vec::new();
+    for (line_index, line) in production_lines(&transport_source) {
+        let code = line.split("//").next().unwrap_or_default();
+        for marker in FORBIDDEN_MODEL_FETCH_TRANSPORT_DTO_EXPORT_MARKERS {
+            if code.contains(marker) {
+                violations.push(format!(
+                    "src/services/model_fetch_transport.rs:{} contains DTO export marker `{}`",
+                    line_index + 1,
+                    marker
+                ));
+            }
+        }
+    }
+
+    for relative in command_paths {
+        let source = fs::read_to_string(manifest_dir.join(relative)).expect("read command source");
+        for (line_index, line) in production_lines(&source) {
+            let code = line.split("//").next().unwrap_or_default();
+            for marker in FORBIDDEN_MODEL_FETCH_COMMAND_DTO_IMPORT_MARKERS {
+                if code.contains(marker) {
+                    violations.push(format!(
+                        "{}:{} contains service DTO import marker `{}`",
+                        relative,
+                        line_index + 1,
+                        marker
+                    ));
+                }
+            }
+        }
+    }
+
+    assert!(
+        violations.is_empty(),
+        "model fetch commands must use proxy_core_adapter as the FetchedModel DTO entrypoint:\n{}",
         violations.join("\n")
     );
 }
