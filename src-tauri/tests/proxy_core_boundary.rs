@@ -841,6 +841,7 @@ const FORBIDDEN_HANDLER_RESPONSE_PARSE_FAILURE_LOG_PROJECTION_MARKERS: &[&str] =
     "解析/聚合 Chat 上游响应失败",
     ".unlabeled_sse_fallback_log_event(",
     "UnlabeledSseFallbackLogLevel::",
+    ".non_json_body_log_message(",
 ];
 const FORBIDDEN_HANDLER_RESPONSE_BUILD_ERROR_MAPPING_MARKERS: &[&str] = &[
     "构造 JSON 响应失败",

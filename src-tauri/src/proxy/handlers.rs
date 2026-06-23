@@ -44,7 +44,7 @@ use crate::proxy_core_adapter::{
     create_openai_responses_to_anthropic_sse_stream as create_anthropic_sse_stream_from_responses,
     extract_anthropic_tool_schema_hints, extract_gemini_model_from_path,
     gemini_response_to_anthropic_message_with_shadow, openai_chat_to_anthropic_message,
-    json_proxy_request_from_input, JsonProxyRequestInput,
+    json_proxy_request_from_input, log_codex_chat_error_normalization, JsonProxyRequestInput,
     log_unlabeled_sse_fallback_event,
     openai_responses_to_anthropic_message, parse_json_proxy_request_body,
     parse_json_proxy_request_body_or_null, parse_upstream_json_or_unlabeled_sse,
@@ -1123,9 +1123,7 @@ async fn handle_codex_chat_error_response(
         read_decoded_body(response, ctx.tag, ctx.body_timeout_duration()).await?;
 
     let normalized_error = crate::proxy_core_adapter::normalize_codex_chat_error_body(&body_bytes);
-    if let Some(message) = normalized_error.non_json_body_log_message() {
-        log::warn!("{message}");
-    }
+    log_codex_chat_error_normalization(&normalized_error);
     let responses_error = normalized_error.response_error;
 
     let response = rebuilt_json_proxy_response(status, response_headers, responses_error).map_err(

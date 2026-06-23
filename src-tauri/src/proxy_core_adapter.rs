@@ -391,6 +391,8 @@ pub(crate) type CodexChatHistorySseRecord =
     crate::proxy_core::api::transforms::CodexChatHistorySseRecord;
 pub(crate) type CodexChatHistoryState =
     crate::proxy_core::api::transforms::CodexChatHistoryState;
+pub(crate) type CodexChatErrorNormalization =
+    crate::proxy_core::api::transforms::CodexChatErrorNormalization;
 pub(crate) type CodexChatReasoningOptions =
     crate::proxy_core::api::transforms::CodexChatReasoningOptions;
 pub(crate) type CodexChatReasoningProfile =
@@ -486,6 +488,12 @@ pub(crate) fn log_unlabeled_sse_fallback_event(
             UnlabeledSseFallbackLogLevel::Debug => log::debug!("{}", event.message),
             UnlabeledSseFallbackLogLevel::Warn => log::warn!("{}", event.message),
         }
+    }
+}
+
+pub(crate) fn log_codex_chat_error_normalization(normalized: &CodexChatErrorNormalization) {
+    if let Some(message) = normalized.non_json_body_log_message() {
+        log::warn!("{message}");
     }
 }
 
