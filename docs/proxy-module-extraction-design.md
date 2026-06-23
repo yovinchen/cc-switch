@@ -1131,6 +1131,7 @@
 本轮继续把 forwarder 对托管账号运行时的 Copilot endpoint/model vendor/live model list 以及 token resolution 入口收敛到 `proxy_core_adapter` thin wrappers：forwarder 不再直接依赖 `proxy::managed_account_auth`，后续可在 adapter 内继续把 Tauri runtime 读取替换为外部宿主可注入的 AuthProvider 端口。
 本轮继续把 `ManagedAccountAuthResolution` DTO 迁入 `proxy_core_adapter`：`proxy::managed_account_auth` 只负责读取 Copilot/Codex OAuth 运行时并返回 adapter-owned resolution，结果字段归属不再留在 host auth 模块。
 本轮继续把托管账号的 `managed_account_auth_plan` 调用、provider account-id 投影和 resolution 组装迁入 `proxy_core_adapter`：`proxy::managed_account_auth` 的公开入口降为接收 account id / runtime 的 Tauri 运行态读取函数，便于后续替换为宿主可注入 AuthProvider。
+本轮继续在 `proxy_core_adapter` 内引入 `CcSwitchManagedAccountRuntimeSource`：managed-auth plan/resolution 组装不再直接调用 host auth runtime 函数，而是通过 adapter-owned source 包装 Copilot/Codex OAuth 运行态读取，后续可把该 source 替换为外部宿主实现。
 
 当前原则：核心 crate 可以新增端口和领域字段，但不得引入 `tauri`、`Database`、settings、commands、services 等宿主依赖；现有 runtime 行为必须继续通过 targeted tests 证明不回归。
 
