@@ -10,9 +10,9 @@ use crate::proxy::codex_chat_history::CodexChatHistoryStore;
 use crate::proxy_core_adapter::{
     AuthProvider, CcSwitchAuthProvider, CcSwitchChannelHealthStore,
     CcSwitchChannelReachabilityProbe, CcSwitchChannelSource, CcSwitchConfigSource,
-    CcSwitchEventSink, CcSwitchModelCatalogProvider, CcSwitchProviderSource,
-    CcSwitchRoutePolicySource, CcSwitchRouteResolver, CcSwitchUsageSink, ChannelHealthStore,
-    ChannelReachabilityProbe, ChannelSource,
+    CcSwitchEventSink, CcSwitchForwardPipeline, CcSwitchModelCatalogProvider,
+    CcSwitchProviderSource, CcSwitchRoutePolicySource, CcSwitchRouteResolver,
+    CcSwitchUsageSink, ChannelHealthStore, ChannelReachabilityProbe, ChannelSource,
     CurrentRouteTarget, ForwardPipeline, ForwarderRuntimeHostResources,
     GeminiShadowStore, HostForwardRuntime, ModelCatalogProvider, ProviderSource,
     ProxyConfigSource, ProxyCoreResult,
@@ -20,9 +20,7 @@ use crate::proxy_core_adapter::{
     RoutePolicySource, RouteResolver, UsageSink,
 };
 use crate::proxy_core_adapter::{
-    forward_proxy_request_with_host_runtime,
-    forward_with_optional_host_runtime,
-    provider_router_from_database,
+    forward_proxy_request_with_host_runtime, provider_router_from_database,
 };
 #[cfg(test)]
 use crate::proxy_core_adapter::{
@@ -68,7 +66,7 @@ pub(crate) struct CcSwitchProxyServices {
     model_catalog: CcSwitchModelCatalogProvider,
     usage_sink: CcSwitchUsageSink,
     event_sink: CcSwitchEventSink,
-    forward_pipeline: CcSwitchForwardPipeline,
+    forward_pipeline: CcSwitchForwardPipeline<CcSwitchProxyRuntime>,
 }
 
 #[allow(dead_code)]
@@ -179,29 +177,6 @@ impl ProxyServices for CcSwitchProxyServices {
 
     fn forward_pipeline(&self) -> &(dyn ForwardPipeline + Send + Sync) {
         &self.forward_pipeline
-    }
-}
-
-#[derive(Clone, Default)]
-struct CcSwitchForwardPipeline {
-    runtime: Option<CcSwitchProxyRuntime>,
-}
-
-impl CcSwitchForwardPipeline {
-    fn with_runtime(runtime: CcSwitchProxyRuntime) -> Self {
-        Self {
-            runtime: Some(runtime),
-        }
-    }
-}
-
-impl ForwardPipeline for CcSwitchForwardPipeline {
-    fn forward<'a>(
-        &'a self,
-        request: ProxyRequest,
-        plan: RoutePlan,
-    ) -> BoxFuture<'a, ProxyCoreResult<ProxyResult>> {
-        forward_with_optional_host_runtime(self.runtime.as_ref(), request, plan)
     }
 }
 

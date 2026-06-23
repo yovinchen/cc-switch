@@ -6245,6 +6245,38 @@ pub(crate) async fn forward_proxy_request_with_host_runtime(
     .await
 }
 
+#[derive(Clone)]
+pub(crate) struct CcSwitchForwardPipeline<R> {
+    runtime: Option<R>,
+}
+
+impl<R> CcSwitchForwardPipeline<R> {
+    pub(crate) fn with_runtime(runtime: R) -> Self {
+        Self {
+            runtime: Some(runtime),
+        }
+    }
+}
+
+impl<R> Default for CcSwitchForwardPipeline<R> {
+    fn default() -> Self {
+        Self { runtime: None }
+    }
+}
+
+impl<R> ForwardPipeline for CcSwitchForwardPipeline<R>
+where
+    R: HostForwardRuntime + Send + Sync,
+{
+    fn forward<'a>(
+        &'a self,
+        request: ProxyRequest,
+        plan: RoutePlan,
+    ) -> BoxFuture<'a, ProxyCoreResult<ProxyResult>> {
+        forward_with_optional_host_runtime(self.runtime.as_ref(), request, plan)
+    }
+}
+
 pub(crate) trait HostForwardRuntime {
     fn forward_host<'a>(
         &'a self,
