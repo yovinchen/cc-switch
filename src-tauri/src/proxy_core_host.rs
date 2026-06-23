@@ -1,48 +1,35 @@
+#[cfg(test)]
 use crate::database::Database;
 #[cfg(test)]
 use crate::error::AppError;
+#[cfg(test)]
 use crate::proxy::events::ProxyEventBus;
+#[cfg(test)]
 use crate::proxy::failover_switch::FailoverSwitchManager;
 #[cfg(test)]
 use crate::proxy::hyper_client::ProxyResponse;
-use crate::proxy::provider_router::ProviderRouter;
+#[cfg(test)]
 use crate::proxy::codex_chat_history::CodexChatHistoryStore;
-use crate::proxy_core_adapter::{
-    CurrentRouteTarget, GeminiShadowStore, ProxyRuntimeStatus,
-};
 #[cfg(test)]
 use crate::proxy_core_adapter::{
     apply_channel_auth_profile_providers_from_db, forward_attempts_from_plan,
     forward_result_to_proxy_result, host_providers_for_plan,
     management_route_response_from_router_source, provider_router_from_database, AppKind,
     AuthProfileRef, AuthProvider, CcSwitchAuthProvider, ChannelAttemptResult, ChannelQuery,
-    ChannelSpec, ProviderSpec, ProxyCoreEvent, ProxyServices, RouteRequest,
-    ProxyRequest, RoutePlan,
+    ChannelSpec, CcSwitchProxyRuntime, GeminiShadowStore, ProviderSpec, ProxyCoreEvent,
+    ProxyServices, RouteRequest, ProxyRequest, RoutePlan,
 };
 #[cfg(test)]
 use serde_json::Value;
-use std::collections::HashMap;
+#[cfg(test)]
 use std::sync::Arc;
+#[cfg(test)]
 use tokio::sync::RwLock;
 
 #[cfg(test)]
 use crate::proxy_core_adapter::DEFAULT_ROUTE_GROUP;
 
-#[derive(Clone)]
-pub(crate) struct CcSwitchProxyRuntime {
-    pub(crate) db: Arc<Database>,
-    pub(crate) provider_router: Arc<ProviderRouter>,
-    pub(crate) status: Arc<RwLock<ProxyRuntimeStatus>>,
-    pub(crate) current_providers: Arc<RwLock<HashMap<String, CurrentRouteTarget>>>,
-    pub(crate) events: Arc<ProxyEventBus>,
-    pub(crate) gemini_shadow: Arc<GeminiShadowStore>,
-    pub(crate) codex_chat_history: Arc<CodexChatHistoryStore>,
-    pub(crate) failover_manager: Arc<FailoverSwitchManager>,
-    pub(crate) app_handle: Option<tauri::AppHandle>,
-}
-
-pub(crate) type CcSwitchProxyServices =
-    crate::proxy_core_adapter::CcSwitchProxyServices<CcSwitchProxyRuntime>;
+pub(crate) use crate::proxy_core_adapter::CcSwitchProxyRuntimeServices as CcSwitchProxyServices;
 
 #[cfg(test)]
 mod tests {

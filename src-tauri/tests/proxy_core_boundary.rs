@@ -581,6 +581,10 @@ const FORBIDDEN_PROXY_CORE_HOST_RUNTIME_TRAIT_IMPL_MARKERS: &[&str] = &[
     "impl ProxyServiceRuntimeResources for CcSwitchProxyRuntime",
     "impl HostForwardRuntime for CcSwitchProxyRuntime",
 ];
+const FORBIDDEN_PROXY_CORE_HOST_RUNTIME_TYPE_DEFINITION_MARKERS: &[&str] = &[
+    "pub(crate) struct CcSwitchProxyRuntime",
+    "pub(crate) type CcSwitchProxyServices =",
+];
 const FORBIDDEN_PROXY_CORE_HOST_AUTH_PROFILE_DB_MARKERS: &[&str] = &[
     "fn apply_channel_auth_profile_providers(",
     "get_enabled_proxy_channel_key(",
@@ -6108,6 +6112,33 @@ fn production_proxy_core_host_delegates_runtime_trait_impls_to_adapter() {
     assert!(
         violations.is_empty(),
         "production proxy_core_host must delegate runtime trait implementations to proxy_core_adapter:\n{}",
+        violations.join("\n")
+    );
+}
+
+#[test]
+fn production_proxy_core_host_delegates_runtime_type_definitions_to_adapter() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let path = manifest_dir.join("src/proxy_core_host.rs");
+    let source = fs::read_to_string(&path).expect("read proxy_core_host.rs");
+
+    let mut violations = Vec::new();
+    for (line_index, line) in production_lines(&source) {
+        let code = line.split("//").next().unwrap_or_default();
+        for marker in FORBIDDEN_PROXY_CORE_HOST_RUNTIME_TYPE_DEFINITION_MARKERS {
+            if code.contains(marker) {
+                violations.push(format!(
+                    "src/proxy_core_host.rs:{} contains runtime type definition marker `{}`",
+                    line_index + 1,
+                    marker
+                ));
+            }
+        }
+    }
+
+    assert!(
+        violations.is_empty(),
+        "production proxy_core_host must delegate runtime type definitions to proxy_core_adapter:\n{}",
         violations.join("\n")
     );
 }

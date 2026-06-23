@@ -29,7 +29,6 @@ use crate::proxy::codex_chat_history::{record_responses_sse_stream, CodexChatHis
 use crate::proxy::route_attempt::ForwardAttempt;
 use crate::proxy::usage::{RequestLog, UsageLogger};
 use crate::proxy::RequestForwarder;
-use crate::proxy_core_host::CcSwitchProxyRuntime;
 use crate::services::stream_check::StreamCheckService;
 use crate::settings::CustomEndpoint;
 use crate::proxy_core::api::domain::{
@@ -62,6 +61,22 @@ pub(crate) const COPILOT_PLUGIN_VERSION: &str = "copilot-chat/0.38.2";
 pub(crate) const COPILOT_USER_AGENT: &str = "GitHubCopilotChat/0.38.2";
 pub(crate) const COPILOT_API_VERSION: &str = "2025-10-01";
 pub(crate) const COPILOT_INTEGRATION_ID: &str = "vscode-chat";
+
+#[derive(Clone)]
+pub(crate) struct CcSwitchProxyRuntime {
+    pub(crate) db: Arc<Database>,
+    pub(crate) provider_router: Arc<ProviderRouter>,
+    pub(crate) status: Arc<RwLock<ProxyRuntimeStatus>>,
+    pub(crate) current_providers: Arc<RwLock<HashMap<String, CurrentRouteTarget>>>,
+    pub(crate) events: Arc<ProxyEventBus>,
+    pub(crate) gemini_shadow: Arc<GeminiShadowStore>,
+    pub(crate) codex_chat_history: Arc<CodexChatHistoryStore>,
+    pub(crate) failover_manager: Arc<FailoverSwitchManager>,
+    pub(crate) app_handle: Option<tauri::AppHandle>,
+}
+
+pub(crate) type CcSwitchProxyRuntimeServices =
+    CcSwitchProxyServices<CcSwitchProxyRuntime>;
 
 pub(crate) fn synthesize_gemini_tool_call_id_with_uuid() -> String {
     crate::proxy_core::api::transforms::synthesize_gemini_tool_call_id(
