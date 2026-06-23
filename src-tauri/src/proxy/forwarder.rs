@@ -36,8 +36,6 @@ use crate::proxy_core_adapter::{
     forwarder_claude_transform_request_for_api_format,
     provider_adapter_name_is_claude,
     rectify_anthropic_request, rectify_thinking_budget, replace_image_blocks_with_marker,
-    record_forward_active_connection_acquired_runtime_source,
-    record_forward_active_connection_released_runtime_source,
     record_forward_active_route_target_runtime_source,
     record_forward_current_provider_runtime_source,
     record_forward_failure_runtime_source,
@@ -67,7 +65,7 @@ use crate::proxy_core_adapter::{
     CopilotOptimizerConfig, ForwardFailureCategory, ForwardUpstreamUrlPlanInput,
     MediaRetryInput, OptimizerConfig, PromptCacheTraceLogInput,
     FailoverSwitchSchedulerRef, ForwarderAttemptRuntimeSourceRef, ForwarderProtocolStateSourceRef,
-    ForwarderRuntimeStateSourceRef, ManagedAccountRuntimeSourceRef, ProxyRuntimeStatus,
+    ForwarderRuntimeStateSourceRef, ManagedAccountRuntimeSourceRef,
     RectifierConfig, ResolvedChannelAttempt, UpstreamAuthHeadersInput,
     UpstreamRequestHeadersInput, UpstreamSendPolicyInput, UpstreamTransportKind,
     UNSUPPORTED_IMAGE_MARKER,
@@ -78,8 +76,6 @@ use crate::{app_config::AppType, provider::Provider};
 use futures::StreamExt;
 use http::Extensions;
 use serde_json::Value;
-use std::sync::Arc;
-use tokio::sync::RwLock;
 
 pub struct ForwardResult {
     pub response: ProxyResponse,
@@ -114,23 +110,25 @@ pub struct ForwardError {
 /// `active_connections` 计数过早归零。RAII guard 让"减量"由 Rust 类型系统驱动，
 /// 不需要每条出口路径都手动调用。
 pub(crate) struct ActiveConnectionGuard {
-    status: Arc<RwLock<ProxyRuntimeStatus>>,
+    runtime_state_source: ForwarderRuntimeStateSourceRef,
 }
 
 impl ActiveConnectionGuard {
-    pub(crate) async fn acquire(status: Arc<RwLock<ProxyRuntimeStatus>>) -> Self {
-        record_forward_active_connection_acquired_runtime_source(status.as_ref()).await;
-        Self { status }
+    pub(crate) async fn acquire(runtime_state_source: ForwarderRuntimeStateSourceRef) -> Self {
+        runtime_state_source.record_active_connection_acquired().await;
+        Self {
+            runtime_state_source,
+        }
     }
 }
 
 impl Drop for ActiveConnectionGuard {
     fn drop(&mut self) {
         // Drop 不能 await：把减量操作调度到 tokio runtime
-        let status = self.status.clone();
+        let runtime_state_source = self.runtime_state_source.clone();
         if let Ok(handle) = tokio::runtime::Handle::try_current() {
             handle.spawn(async move {
-                record_forward_active_connection_released_runtime_source(status.as_ref()).await;
+                runtime_state_source.record_active_connection_released().await;
             });
         }
         // 没有 runtime 时静默丢失计数（仅 UI 展示用，可接受最终一致性）
@@ -482,7 +480,7 @@ impl RequestForwarder {
         let request_id = uuid::Uuid::new_v4().to_string();
         self.emit_request_started(&request_id, app_type.as_str());
         let status = self.runtime_state_source.status();
-        let guard = ActiveConnectionGuard::acquire(status.clone()).await;
+        let guard = ActiveConnectionGuard::acquire(self.runtime_state_source.clone()).await;
         record_forward_request_started_runtime_source(
             status.as_ref(),
             &chrono::Utc::now().to_rfc3339(),
@@ -1796,7 +1794,7 @@ mod tests {
     use crate::database::Database;
     use crate::proxy::events::ProxyEventBus;
     use crate::proxy::codex_chat_history::CodexChatHistoryStore;
-    use crate::proxy_core_adapter::ManagedAccountAuthError;
+    use crate::proxy_core_adapter::{ManagedAccountAuthError, ProxyRuntimeStatus};
     use crate::proxy_core_adapter::{canonical_json_string, short_value_hash};
     use crate::proxy_core_adapter::{
         interface_kind_for_forward, request_model_for_forward, AppKind, ChannelRouteCandidate,
@@ -1810,7 +1808,9 @@ mod tests {
     use http::StatusCode;
     use serde_json::json;
     use std::collections::HashMap;
+    use std::sync::Arc;
     use std::time::Duration;
+    use tokio::sync::RwLock;
 
     fn test_provider_with_type(provider_type: Option<&str>) -> Provider {
         Provider {

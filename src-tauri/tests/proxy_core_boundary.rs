@@ -5628,6 +5628,50 @@ fn production_forwarder_uses_runtime_state_source_resource() {
 }
 
 #[test]
+fn production_forwarder_active_connection_guard_uses_runtime_state_source() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let path = manifest_dir.join("src/proxy/forwarder.rs");
+    let source = fs::read_to_string(&path).expect("read forwarder.rs");
+    let guard_slice = function_slice(
+        &source,
+        "pub(crate) struct ActiveConnectionGuard",
+        "pub struct RequestForwarder",
+    );
+
+    assert!(
+        guard_slice.contains("runtime_state_source"),
+        "ActiveConnectionGuard must receive active connection lifecycle through the runtime state source"
+    );
+
+    let forbidden_markers = [
+        "status: Arc<RwLock<ProxyRuntimeStatus>>",
+        "Arc<RwLock<ProxyRuntimeStatus>>",
+        "record_forward_active_connection_acquired_runtime_source(",
+        "record_forward_active_connection_released_runtime_source(",
+    ];
+    let mut violations = Vec::new();
+
+    for (line_index, line) in production_lines(guard_slice) {
+        let code = line.split("//").next().unwrap_or_default();
+        for marker in forbidden_markers {
+            if code.contains(marker) {
+                violations.push(format!(
+                    "src/proxy/forwarder.rs ActiveConnectionGuard:{} contains direct active-connection runtime marker `{}`",
+                    line_index + 1,
+                    marker
+                ));
+            }
+        }
+    }
+
+    assert!(
+        violations.is_empty(),
+        "active connection guard must use runtime state source lifecycle methods instead of direct status/helper calls:\n{}",
+        violations.join("\n")
+    );
+}
+
+#[test]
 fn production_forwarder_uses_protocol_state_source_resource() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let path = manifest_dir.join("src/proxy/forwarder.rs");
