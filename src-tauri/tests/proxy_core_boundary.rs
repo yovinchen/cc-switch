@@ -359,6 +359,8 @@ const FORBIDDEN_PROVIDER_ROUTER_HEALTH_PERSISTENCE_MARKERS: &[&str] = &[
 ];
 const FORBIDDEN_PROVIDER_ROUTER_CONCRETE_SOURCE_MARKERS: &[&str] =
     &["    db: Arc<Database>,", "self.db"];
+const FORBIDDEN_PROVIDER_ROUTER_COARSE_SOURCE_MARKERS: &[&str] =
+    &["trait ProviderRouterSource", "dyn ProviderRouterSource", "with_source("];
 const FORBIDDEN_HANDLER_PROXY_REQUEST_BRIDGE_MARKERS: &[&str] = &["ProxyRequest::new("];
 const FORBIDDEN_HANDLER_RAW_JSON_BODY_PARSE_MARKERS: &[&str] = &[
     "parse_json_request_body(",
@@ -3765,6 +3767,33 @@ fn production_provider_router_uses_injected_source_adapter() {
     assert!(
         violations.is_empty(),
         "provider router must use an injected source adapter instead of holding Database directly:\n{}",
+        violations.join("\n")
+    );
+}
+
+#[test]
+fn production_provider_router_uses_split_source_ports() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let path = manifest_dir.join("src/proxy/provider_router.rs");
+    let source = fs::read_to_string(&path).expect("read provider_router.rs");
+
+    let mut violations = Vec::new();
+    for (line_index, line) in production_lines(&source) {
+        let code = line.split("//").next().unwrap_or_default();
+        for marker in FORBIDDEN_PROVIDER_ROUTER_COARSE_SOURCE_MARKERS {
+            if code.contains(marker) {
+                violations.push(format!(
+                    "src/proxy/provider_router.rs:{} contains coarse router source marker `{}`",
+                    line_index + 1,
+                    marker
+                ));
+            }
+        }
+    }
+
+    assert!(
+        violations.is_empty(),
+        "provider router must keep provider/channel/config/health source ports split:\n{}",
         violations.join("\n")
     );
 }

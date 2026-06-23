@@ -14,7 +14,9 @@ use crate::proxy::events::ProxyEventBus;
 use crate::proxy::failover_switch::FailoverSwitchManager;
 use crate::proxy::hyper_client::ProxyResponse;
 use crate::proxy::provider_router::{
-    ProviderFailoverRouterSources, ProviderRouter, ProviderRouterSource,
+    ProviderFailoverRouterSources, ProviderRouter, ProviderRouterChannelSource,
+    ProviderRouterConfigSource, ProviderRouterHealthStore, ProviderRouterProviderSource,
+    ProviderRouterSources,
 };
 use crate::proxy::codex_chat_history::CodexChatHistoryStore;
 use crate::proxy::route_attempt::ForwardAttempt;
@@ -4276,35 +4278,26 @@ pub(crate) fn provider_failover_sources_from_router_db(
     Ok(ProviderFailoverRouterSources { providers, lookups })
 }
 
-pub(crate) struct CcSwitchProviderRouterSource {
+pub(crate) struct CcSwitchProviderRouterSources;
+
+impl CcSwitchProviderRouterSources {
+    pub(crate) fn from_database(db: Arc<Database>) -> ProviderRouterSources {
+        ProviderRouterSources::new(
+            Arc::new(CcSwitchProviderRouterConfigSource { db: db.clone() }),
+            Arc::new(CcSwitchProviderRouterProviderSource { db: db.clone() }),
+            Arc::new(CcSwitchProviderRouterChannelSource { db: db.clone() }),
+            Arc::new(CcSwitchProviderRouterHealthStore { db }),
+        )
+    }
+}
+
+struct CcSwitchProviderRouterConfigSource {
     db: Arc<Database>,
 }
 
-impl CcSwitchProviderRouterSource {
-    pub(crate) fn new(db: Arc<Database>) -> Self {
-        Self { db }
-    }
-}
-
-impl ProviderRouterSource for CcSwitchProviderRouterSource {
+impl ProviderRouterConfigSource for CcSwitchProviderRouterConfigSource {
     fn load_failover_enabled<'a>(&'a self, app_type: &'a str) -> BoxFuture<'a, bool> {
         Box::pin(async move { auto_failover_enabled_from_router_db(&self.db, app_type).await })
-    }
-
-    fn failover_sources(&self, app_type: &str) -> Result<ProviderFailoverRouterSources, AppError> {
-        provider_failover_sources_from_router_db(&self.db, app_type)
-    }
-
-    fn current_provider(&self, app_type: &str) -> Result<Vec<Provider>, AppError> {
-        select_current_provider_from_router_db_source(&self.db, app_type)
-    }
-
-    fn channel_route_records(
-        &self,
-        app_type: &str,
-    ) -> Result<(Vec<ProxyChannelRecord>, ChannelRouteSource), AppError> {
-        channel_route_records_from_db_source(&self.db, app_type)
-            .map_err(app_error_from_proxy_core_error)
     }
 
     fn circuit_breaker_config<'a>(
@@ -4323,7 +4316,41 @@ impl ProviderRouterSource for CcSwitchProviderRouterSource {
             circuit_failure_threshold_from_router_db(&self.db, app_type, fallback).await
         })
     }
+}
 
+struct CcSwitchProviderRouterProviderSource {
+    db: Arc<Database>,
+}
+
+impl ProviderRouterProviderSource for CcSwitchProviderRouterProviderSource {
+    fn failover_sources(&self, app_type: &str) -> Result<ProviderFailoverRouterSources, AppError> {
+        provider_failover_sources_from_router_db(&self.db, app_type)
+    }
+
+    fn current_provider(&self, app_type: &str) -> Result<Vec<Provider>, AppError> {
+        select_current_provider_from_router_db_source(&self.db, app_type)
+    }
+}
+
+struct CcSwitchProviderRouterChannelSource {
+    db: Arc<Database>,
+}
+
+impl ProviderRouterChannelSource for CcSwitchProviderRouterChannelSource {
+    fn channel_route_records(
+        &self,
+        app_type: &str,
+    ) -> Result<(Vec<ProxyChannelRecord>, ChannelRouteSource), AppError> {
+        channel_route_records_from_db_source(&self.db, app_type)
+            .map_err(app_error_from_proxy_core_error)
+    }
+}
+
+struct CcSwitchProviderRouterHealthStore {
+    db: Arc<Database>,
+}
+
+impl ProviderRouterHealthStore for CcSwitchProviderRouterHealthStore {
     fn record_provider_health<'a>(
         &'a self,
         provider_id: &'a str,
