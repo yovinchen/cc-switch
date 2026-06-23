@@ -7448,6 +7448,21 @@ pub(crate) struct ForwarderRuntimeHostResources {
     pub(crate) app_handle: Option<tauri::AppHandle>,
 }
 
+pub(crate) fn forwarder_runtime_host_resources_from_runtime(
+    runtime: &CcSwitchProxyRuntime,
+) -> ForwarderRuntimeHostResources {
+    ForwarderRuntimeHostResources {
+        provider_router: runtime.provider_router.clone(),
+        status: runtime.status.clone(),
+        current_providers: runtime.current_providers.clone(),
+        events: runtime.events.clone(),
+        gemini_shadow: runtime.gemini_shadow.clone(),
+        codex_chat_history: runtime.codex_chat_history.clone(),
+        failover_manager: runtime.failover_manager.clone(),
+        app_handle: runtime.app_handle.clone(),
+    }
+}
+
 pub(crate) async fn forward_with_preplanned_host_runtime(
     resources: ForwarderRuntimeHostResources,
     request: ForwardRuntimeRequest,

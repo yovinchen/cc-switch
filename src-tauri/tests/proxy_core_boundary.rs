@@ -619,6 +619,8 @@ const FORBIDDEN_PROXY_CORE_HOST_FORWARDER_LAUNCH_MARKERS: &[&str] = &[
     "forward_with_preplanned_host_runtime(",
     "forward_error_to_core_error(",
 ];
+const FORBIDDEN_PROXY_CORE_HOST_FORWARDER_RUNTIME_RESOURCE_MARKERS: &[&str] =
+    &["        ForwarderRuntimeHostResources {"];
 const FORBIDDEN_PROXY_SERVER_CIRCUIT_RUNTIME_MARKERS: &[&str] = &[
     ".provider_router.update_all_configs(",
     ".provider_router.update_app_configs(",
@@ -6084,7 +6086,7 @@ fn production_proxy_core_host_delegates_forward_current_provider_source_to_adapt
     let forward_source = function_slice(
         &source,
         "impl HostForwardRuntime for CcSwitchProxyRuntime",
-        "impl CcSwitchProxyRuntime",
+        "#[cfg(test)]",
     );
 
     let mut violations = Vec::new();
@@ -6116,7 +6118,7 @@ fn production_proxy_core_host_delegates_forward_runtime_config_source_to_adapter
     let forward_source = function_slice(
         &source,
         "impl HostForwardRuntime for CcSwitchProxyRuntime",
-        "impl CcSwitchProxyRuntime",
+        "#[cfg(test)]",
     );
 
     let mut violations = Vec::new();
@@ -6148,7 +6150,7 @@ fn production_proxy_core_host_delegates_forward_attempt_source_to_adapter() {
     let forward_source = function_slice(
         &source,
         "impl HostForwardRuntime for CcSwitchProxyRuntime",
-        "impl CcSwitchProxyRuntime",
+        "#[cfg(test)]",
     );
 
     let mut violations = Vec::new();
@@ -6195,6 +6197,33 @@ fn production_proxy_core_host_delegates_forwarder_launch_to_adapter() {
     assert!(
         violations.is_empty(),
         "production proxy_core_host must delegate RequestForwarder launch/execution to proxy_core_adapter:\n{}",
+        violations.join("\n")
+    );
+}
+
+#[test]
+fn production_proxy_core_host_delegates_forwarder_runtime_resources_to_adapter() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let path = manifest_dir.join("src/proxy_core_host.rs");
+    let source = fs::read_to_string(&path).expect("read proxy_core_host.rs");
+
+    let mut violations = Vec::new();
+    for (line_index, line) in production_lines(&source) {
+        let code = line.split("//").next().unwrap_or_default();
+        for marker in FORBIDDEN_PROXY_CORE_HOST_FORWARDER_RUNTIME_RESOURCE_MARKERS {
+            if code.contains(marker) {
+                violations.push(format!(
+                    "src/proxy_core_host.rs CcSwitchProxyRuntime:{} contains forwarder runtime resource marker `{}`",
+                    line_index + 1,
+                    marker
+                ));
+            }
+        }
+    }
+
+    assert!(
+        violations.is_empty(),
+        "production proxy_core_host must delegate ForwarderRuntimeHostResources assembly to proxy_core_adapter:\n{}",
         violations.join("\n")
     );
 }

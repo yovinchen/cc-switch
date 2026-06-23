@@ -8,9 +8,9 @@ use crate::proxy::hyper_client::ProxyResponse;
 use crate::proxy::provider_router::ProviderRouter;
 use crate::proxy::codex_chat_history::CodexChatHistoryStore;
 use crate::proxy_core_adapter::{
-    forward_proxy_request_with_host_runtime, CurrentRouteTarget, ForwarderRuntimeHostResources,
-    GeminiShadowStore, HostForwardRuntime, ProxyCoreResult, ProxyRequest, ProxyResult,
-    ProxyRuntimeStatus, ProxyServiceRuntimeResources, RoutePlan,
+    forward_proxy_request_with_host_runtime, forwarder_runtime_host_resources_from_runtime,
+    CurrentRouteTarget, GeminiShadowStore, HostForwardRuntime, ProxyCoreResult, ProxyRequest,
+    ProxyResult, ProxyRuntimeStatus, ProxyServiceRuntimeResources, RoutePlan,
 };
 #[cfg(test)]
 use crate::proxy_core_adapter::{
@@ -73,27 +73,12 @@ impl HostForwardRuntime for CcSwitchProxyRuntime {
         Box::pin(async move {
             forward_proxy_request_with_host_runtime(
                 &self.db,
-                self.forwarder_runtime_host_resources(),
+                forwarder_runtime_host_resources_from_runtime(self),
                 request,
                 plan,
             )
             .await
         })
-    }
-}
-
-impl CcSwitchProxyRuntime {
-    fn forwarder_runtime_host_resources(&self) -> ForwarderRuntimeHostResources {
-        ForwarderRuntimeHostResources {
-            provider_router: self.provider_router.clone(),
-            status: self.status.clone(),
-            current_providers: self.current_providers.clone(),
-            events: self.events.clone(),
-            gemini_shadow: self.gemini_shadow.clone(),
-            codex_chat_history: self.codex_chat_history.clone(),
-            failover_manager: self.failover_manager.clone(),
-            app_handle: self.app_handle.clone(),
-        }
     }
 }
 
