@@ -25,6 +25,5 @@ pub(crate) mod route_attempt;
 pub(crate) mod server;
 pub(crate) mod switch_lock;
 pub mod usage;
-pub(crate) mod usage_sink_bridge;
 
 pub(crate) use forwarder::{ForwardError, ForwardResult, RequestForwarder};

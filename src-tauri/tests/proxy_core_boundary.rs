@@ -857,43 +857,6 @@ const FORBIDDEN_HANDLER_RESPONSE_TRANSFORM_ERROR_MAPPING_MARKERS: &[&str] = &[
     "转换响应失败",
     "Chat → Responses 响应转换失败",
 ];
-const FORBIDDEN_USAGE_SINK_PROVIDER_PROJECTION_MARKERS: &[&str] = &[
-    "provider_kind_from_provider(",
-    "AppKind::from(",
-    ".usage_sink()",
-    "usage_record_failure_warning_message(",
-    "response_usage_provider_facts(",
-    "fallback_response_usage_provider_facts(",
-    "response_usage_provider_facts_from_optional(",
-    "usage_record_with_route_context(",
-    "usage_selected_provider_missing_log_message(",
-    "error_usage_record_with_request_id_fallback(",
-    "forward_error_usage_record_from_response_context(",
-    "ForwardErrorUsageContext",
-    "transformed_response_usage_record_from_response_context(",
-    "TransformedResponseUsageContext",
-    "transformed_streaming_response_usage_record_from_response_context(",
-    "TransformedStreamingResponseUsageContext",
-    "SseUsageCollector::new(",
-    "UsageSelectedProviderMissingPhase::TransformedStreaming",
-    "missing_streaming_usage_log_message(",
-    "transformed_response_usage_record_with_request_id_fallback(",
-    "transformed_streaming_response_usage_record_with_request_id_fallback(",
-    "usage_logging_enabled_from_config_flag(",
-    ".try_read()",
-    ".enable_logging",
-    "spawn_usage_record_with_proxy_services_context(",
-    "UsageRecordFailureLogContext::ForwardError",
-    "UsageRecordFailureLogContext::UsageRecord",
-    "record_usage_with_proxy_services_context(",
-    "fn spawn_usage_record(",
-    "tokio::spawn(async move",
-];
-const FORBIDDEN_USAGE_SINK_PRODUCTION_ENTRYPOINT_MARKERS: &[&str] = &[
-    "fn record_forward_error_usage(",
-    "fn record_transformed_response_usage(",
-    "fn transformed_streaming_usage_collector(",
-];
 const PROXY_CORE_MARKER: &str = "crate::proxy_core::";
 const PROXY_CORE_API_MARKER: &str = "crate::proxy_core::api";
 const PROXY_ENGINE_CONSTRUCTOR_MARKER: &str = "ProxyEngine::new(";
@@ -2652,56 +2615,13 @@ fn response_pipeline_uses_core_sse_header_decision() {
 }
 
 #[test]
-fn usage_sink_bridge_delegates_provider_projection_to_adapter() {
+fn usage_sink_bridge_module_removed_after_adapter_migration() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let path = manifest_dir.join("src/proxy/usage_sink_bridge.rs");
-    let source = fs::read_to_string(&path).expect("read usage_sink_bridge.rs");
-
-    let mut violations = Vec::new();
-    for (line_index, line) in production_lines(&source) {
-        let code = line.split("//").next().unwrap_or_default();
-        for marker in FORBIDDEN_USAGE_SINK_PROVIDER_PROJECTION_MARKERS {
-            if code.contains(marker) {
-                violations.push(format!(
-                    "src/proxy/usage_sink_bridge.rs:{} contains usage provider projection marker `{}`",
-                    line_index + 1,
-                    marker
-                ));
-            }
-        }
-    }
 
     assert!(
-        violations.is_empty(),
-        "usage sink bridge must build provider usage facts through proxy_core_adapter helpers:\n{}",
-        violations.join("\n")
-    );
-}
-
-#[test]
-fn usage_sink_bridge_delegates_production_usage_entrypoints_to_adapter() {
-    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let path = manifest_dir.join("src/proxy/usage_sink_bridge.rs");
-    let source = fs::read_to_string(&path).expect("read usage_sink_bridge.rs");
-
-    let mut violations = Vec::new();
-    for (line_index, line) in production_lines(&source) {
-        let code = line.split("//").next().unwrap_or_default();
-        for marker in FORBIDDEN_USAGE_SINK_PRODUCTION_ENTRYPOINT_MARKERS {
-            if code.contains(marker) {
-                violations.push(format!(
-                    "src/proxy/usage_sink_bridge.rs:{} contains production usage entrypoint marker `{}`",
-                    line_index + 1,
-                    marker
-                ));
-            }
-        }
-    }
-
-    assert!(
-        violations.is_empty(),
-        "usage sink bridge must delegate production usage entrypoints to proxy_core_adapter:\n{}",
-        violations.join("\n")
+        !path.exists(),
+        "usage_sink_bridge should stay deleted; add usage entrypoints to proxy_core_adapter instead"
     );
 }
 

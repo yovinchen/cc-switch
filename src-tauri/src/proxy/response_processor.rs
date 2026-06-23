@@ -2,8 +2,6 @@
 //!
 //! 统一处理流式和非流式 API 响应
 
-#[cfg(test)]
-use super::usage_sink_bridge::success_usage_record;
 use super::{
     error::ProxyError,
     forwarder::ActiveConnectionGuard,
@@ -25,7 +23,10 @@ use crate::proxy_core_adapter::{
     AxumResponseBuildErrorContext, StreamingUsageCollectorContext, UsageParserConfig,
 };
 #[cfg(test)]
-use crate::proxy_core_adapter::{provider_router_from_database, ProviderKind, TokenUsage};
+use crate::proxy_core_adapter::{
+    provider_router_from_database, success_usage_record_from_app_type_with_request_id_fallback,
+    ProviderKind, TokenUsage,
+};
 use axum::http::header::HeaderMap;
 use axum::response::{IntoResponse, Response};
 use bytes::Bytes;
@@ -197,7 +198,7 @@ async fn log_usage_internal(
     status_code: u16,
     session_id: Option<String>,
 ) {
-    let record = success_usage_record(
+    let record = success_usage_record_from_app_type_with_request_id_fallback(
         provider_id,
         provider_kind,
         app_type,
@@ -210,6 +211,7 @@ async fn log_usage_internal(
         is_streaming,
         status_code,
         session_id,
+        || uuid::Uuid::new_v4().to_string(),
     );
 
     crate::proxy_core_adapter::record_usage_with_proxy_services(
