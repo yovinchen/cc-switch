@@ -35,10 +35,8 @@ use crate::proxy_core_adapter::{
     provider_adapter_name_is_claude,
     rectify_anthropic_request, rectify_thinking_budget, replace_image_blocks_with_marker,
     record_forward_current_provider_runtime_source,
-    record_forward_failure_runtime_source,
     record_forward_provider_failure_runtime_source,
     record_forward_provider_rectifier_retry_failure_runtime_source,
-    record_forward_success_runtime_source,
     request_body_filter_log_message,
     resolve_copilot_api_endpoint_from_runtime_source,
     resolve_copilot_deterministic_interaction_id, resolve_copilot_model_against_ids,
@@ -297,21 +295,19 @@ impl RequestForwarder {
     }
 
     async fn record_success_status_and_maybe_switch(&self, app_type: &str, provider: &Provider) {
-        let status = self.runtime_state_source.status();
-        let should_switch = record_forward_success_runtime_source(
-            status.as_ref(),
-            self.current_provider_id_at_start.as_str(),
-            provider.id.as_str(),
-        )
-        .await;
+        let should_switch = self
+            .runtime_state_source
+            .record_success_status(self.current_provider_id_at_start.as_str(), provider.id.as_str())
+            .await;
         if should_switch {
             self.schedule_failover_switch(app_type, provider);
         }
     }
 
     async fn record_failure_status_message(&self, error_message: impl AsRef<str>) {
-        let status = self.runtime_state_source.status();
-        record_forward_failure_runtime_source(status.as_ref(), error_message.as_ref()).await;
+        self.runtime_state_source
+            .record_failure_status(error_message.as_ref())
+            .await;
     }
 
     fn schedule_failover_switch(&self, app_type: &str, provider: &Provider) {

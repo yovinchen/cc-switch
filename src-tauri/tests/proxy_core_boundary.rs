@@ -5765,6 +5765,39 @@ fn production_forwarder_active_route_target_uses_runtime_state_source() {
 }
 
 #[test]
+fn production_forwarder_status_updates_use_runtime_state_source() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let path = manifest_dir.join("src/proxy/forwarder.rs");
+    let source = fs::read_to_string(&path).expect("read forwarder.rs");
+    let impl_slice = function_slice(&source, "impl RequestForwarder", "#[cfg(test)]");
+
+    let forbidden_markers = [
+        "record_forward_success_runtime_source(",
+        "record_forward_failure_runtime_source(",
+    ];
+    let mut violations = Vec::new();
+
+    for (line_index, line) in production_lines(impl_slice) {
+        let code = line.split("//").next().unwrap_or_default();
+        for marker in forbidden_markers {
+            if code.contains(marker) {
+                violations.push(format!(
+                    "src/proxy/forwarder.rs impl RequestForwarder:{} contains direct status update marker `{}`",
+                    line_index + 1,
+                    marker
+                ));
+            }
+        }
+    }
+
+    assert!(
+        violations.is_empty(),
+        "success/failure status updates must use runtime state source methods:\n{}",
+        violations.join("\n")
+    );
+}
+
+#[test]
 fn production_forwarder_uses_protocol_state_source_resource() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let path = manifest_dir.join("src/proxy/forwarder.rs");

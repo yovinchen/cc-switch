@@ -7851,6 +7851,12 @@ pub(crate) trait ForwarderRuntimeStateSource {
         app_type: &'a str,
         attempt: &'a ForwardAttempt,
     ) -> BoxFuture<'a, ()>;
+    fn record_success_status<'a>(
+        &'a self,
+        current_provider_id_at_start: &'a str,
+        provider_id: &'a str,
+    ) -> BoxFuture<'a, bool>;
+    fn record_failure_status<'a>(&'a self, error_message: &'a str) -> BoxFuture<'a, ()>;
     fn record_request_started<'a>(&'a self, started_at: &'a str) -> BoxFuture<'a, ()>;
     fn record_active_connection_acquired<'a>(&'a self) -> BoxFuture<'a, ()>;
     fn record_active_connection_released<'a>(&'a self) -> BoxFuture<'a, ()>;
@@ -7926,6 +7932,27 @@ impl ForwarderRuntimeStateSource for CcSwitchForwarderRuntimeStateSource {
                 attempt,
             )
             .await;
+        })
+    }
+
+    fn record_success_status<'a>(
+        &'a self,
+        current_provider_id_at_start: &'a str,
+        provider_id: &'a str,
+    ) -> BoxFuture<'a, bool> {
+        Box::pin(async move {
+            record_forward_success_runtime_source(
+                self.status.as_ref(),
+                current_provider_id_at_start,
+                provider_id,
+            )
+            .await
+        })
+    }
+
+    fn record_failure_status<'a>(&'a self, error_message: &'a str) -> BoxFuture<'a, ()> {
+        Box::pin(async move {
+            record_forward_failure_runtime_source(self.status.as_ref(), error_message).await;
         })
     }
 
