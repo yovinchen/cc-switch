@@ -1044,6 +1044,8 @@ pub(crate) type CopilotAuthHeadersInput<'a> =
     crate::proxy_core::api::transport::CopilotAuthHeadersInput<'a>;
 pub(crate) type CopilotAuthHeaderOverrides<'a> =
     crate::proxy_core::api::transport::CopilotAuthHeaderOverrides<'a>;
+pub(crate) type CopilotClassification =
+    crate::proxy_core::api::transport::CopilotClassification;
 pub(crate) type ResponseRuntimePolicy =
     crate::proxy_core::api::config::ResponseRuntimePolicy;
 pub(crate) type ResponseTimeoutConfig =
@@ -8367,11 +8369,20 @@ pub(crate) type ForwarderAuthSourceRef =
     Arc<dyn ForwarderAuthSource + Send + Sync>;
 
 pub(crate) struct ForwarderCopilotAuthOptimizationInput<'a> {
+    pub(crate) classification: CopilotClassification,
     pub(crate) request_classification_enabled: bool,
-    pub(crate) initiator: &'a str,
-    pub(crate) is_subagent: bool,
-    pub(crate) deterministic_request_id: Option<&'a str>,
-    pub(crate) interaction_id: Option<&'a str>,
+    pub(crate) deterministic_request_id_enabled: bool,
+    pub(crate) session_source_body: &'a Value,
+    pub(crate) request_body: &'a Value,
+    pub(crate) headers: &'a HeaderMap,
+}
+
+pub(crate) struct ForwarderPreparedCopilotAuthOptimization {
+    request_classification_enabled: bool,
+    initiator: &'static str,
+    is_subagent: bool,
+    deterministic_request_id: Option<String>,
+    interaction_id: Option<String>,
 }
 
 pub(crate) struct ForwarderAuthHeadersInput<'a> {
@@ -8380,7 +8391,7 @@ pub(crate) struct ForwarderAuthHeadersInput<'a> {
     pub(crate) managed_account_runtime_source: ManagedAccountRuntimeSourceRef,
     pub(crate) session_id: &'a str,
     pub(crate) session_client_provided: bool,
-    pub(crate) copilot_optimization: Option<ForwarderCopilotAuthOptimizationInput<'a>>,
+    pub(crate) copilot_optimization: Option<ForwarderPreparedCopilotAuthOptimization>,
 }
 
 pub(crate) struct ForwarderAuthHeaders {
@@ -8389,6 +8400,11 @@ pub(crate) struct ForwarderAuthHeaders {
 }
 
 pub(crate) trait ForwarderAuthSource {
+    fn prepare_copilot_auth_optimization(
+        &self,
+        input: ForwarderCopilotAuthOptimizationInput<'_>,
+    ) -> ForwarderPreparedCopilotAuthOptimization;
+
     fn resolve_upstream_auth_headers<'a>(
         &'a self,
         input: ForwarderAuthHeadersInput<'a>,
@@ -8398,6 +8414,32 @@ pub(crate) trait ForwarderAuthSource {
 struct CcSwitchForwarderAuthSource;
 
 impl ForwarderAuthSource for CcSwitchForwarderAuthSource {
+    fn prepare_copilot_auth_optimization(
+        &self,
+        input: ForwarderCopilotAuthOptimizationInput<'_>,
+    ) -> ForwarderPreparedCopilotAuthOptimization {
+        let session_id =
+            resolve_copilot_optimizer_session_id(input.session_source_body, input.headers);
+        let deterministic_request_id = input
+            .deterministic_request_id_enabled
+            .then(|| {
+                resolve_copilot_request_id_with_fallback(
+                    input.request_body,
+                    &session_id,
+                    || uuid::Uuid::new_v4().to_string(),
+                )
+            });
+        let interaction_id = resolve_copilot_deterministic_interaction_id(&session_id);
+
+        ForwarderPreparedCopilotAuthOptimization {
+            request_classification_enabled: input.request_classification_enabled,
+            initiator: input.classification.initiator,
+            is_subagent: input.classification.is_subagent,
+            deterministic_request_id,
+            interaction_id,
+        }
+    }
+
     fn resolve_upstream_auth_headers<'a>(
         &'a self,
         input: ForwarderAuthHeadersInput<'a>,
@@ -8438,8 +8480,8 @@ impl ForwarderAuthSource for CcSwitchForwarderAuthSource {
                             .request_classification_enabled
                             .then_some(optimization.initiator),
                         is_subagent: optimization.is_subagent,
-                        deterministic_request_id: optimization.deterministic_request_id,
-                        interaction_id: optimization.interaction_id,
+                        deterministic_request_id: optimization.deterministic_request_id.as_deref(),
+                        interaction_id: optimization.interaction_id.as_deref(),
                     });
 
             auth_headers = build_upstream_auth_headers(UpstreamAuthHeadersInput {

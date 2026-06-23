@@ -28,9 +28,7 @@ use crate::proxy_core_adapter::{
     forwarder_claude_normalize_anthropic_messages,
     provider_adapter_name_is_claude,
     rectify_anthropic_request, rectify_thinking_budget, replace_image_blocks_with_marker,
-    resolve_copilot_deterministic_interaction_id, resolve_copilot_optimizer_session_id,
-    resolve_copilot_request_id_with_fallback, resolve_channel_response_status_mapping,
-    resolve_media_prevention_policy,
+    resolve_channel_response_status_mapping, resolve_media_prevention_policy,
     forwarder_claude_api_format, forwarder_claude_transform_required,
     responses_to_chat_completions_with_options,
     sanitize_copilot_orphan_tool_results,
@@ -1194,27 +1192,20 @@ impl RequestForwarder {
             }
             mapped_body = warmup_override.body;
 
-            // 预计算确定性 Request ID（在 body 被 move 之前）
-            // Session 提取优先级由 proxy-core::request_optimizer 固化：
-            //   1. metadata.user_id 中的 _session_ 后缀
-            //   2. metadata.session_id（直接字段）
-            //   3. raw metadata.user_id（整串 fallback）
-            //   4. x-session-id header
-            let session_id = resolve_copilot_optimizer_session_id(body, headers);
-            let det_request_id = if self.copilot_optimizer_config.deterministic_request_id {
-                Some(resolve_copilot_request_id_with_fallback(
-                    &mapped_body,
-                    &session_id,
-                    || uuid::Uuid::new_v4().to_string(),
-                ))
-            } else {
-                None
-            };
-
-            // 从 session ID 派生稳定的 interaction ID（同一主对话共享）
-            let interaction_id = resolve_copilot_deterministic_interaction_id(&session_id);
-
-            Some((classification, det_request_id, interaction_id))
+            Some(self.auth_source.prepare_copilot_auth_optimization(
+                ForwarderCopilotAuthOptimizationInput {
+                    classification,
+                    request_classification_enabled: self
+                        .copilot_optimizer_config
+                        .request_classification,
+                    deterministic_request_id_enabled: self
+                        .copilot_optimizer_config
+                        .deterministic_request_id,
+                    session_source_body: body,
+                    request_body: &mapped_body,
+                    headers,
+                },
+            ))
         } else {
             None
         };
@@ -1367,20 +1358,6 @@ impl RequestForwarder {
         let force_identity_encoding = prepared_request.force_identity_encoding;
 
         let auth_provider = attempt.auth_provider();
-        let copilot_auth_optimization = copilot_optimization.as_ref().map(
-            |(classification, det_request_id, interaction_id)| {
-                ForwarderCopilotAuthOptimizationInput {
-                    request_classification_enabled: self
-                        .copilot_optimizer_config
-                        .request_classification,
-                    initiator: classification.initiator,
-                    is_subagent: classification.is_subagent,
-                    deterministic_request_id: det_request_id.as_deref(),
-                    interaction_id: interaction_id.as_deref(),
-                }
-            },
-        );
-
         let auth_headers = self
             .auth_source
             .resolve_upstream_auth_headers(ForwarderAuthHeadersInput {
@@ -1389,7 +1366,7 @@ impl RequestForwarder {
                 managed_account_runtime_source: self.managed_account_runtime_source.clone(),
                 session_id: &self.session_id,
                 session_client_provided: self.session_client_provided,
-                copilot_optimization: copilot_auth_optimization,
+                copilot_optimization,
             })
             .await?;
         let codex_oauth_session_headers = auth_headers.codex_oauth_session_headers;

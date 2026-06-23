@@ -5720,6 +5720,9 @@ fn production_forwarder_uses_auth_source_resource() {
         "build_upstream_auth_headers(",
         "CopilotAuthHeaderOverrides",
         "UpstreamAuthHeadersInput",
+        "resolve_copilot_optimizer_session_id(",
+        "resolve_copilot_request_id_with_fallback(",
+        "resolve_copilot_deterministic_interaction_id(",
     ];
     let mut violations = Vec::new();
 
