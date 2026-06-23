@@ -9,7 +9,7 @@ use crate::proxy_core_adapter::{
     provider_circuit_key, provider_circuit_key_prefix,
     select_failover_provider_ids_from_router_lookup_availability, AllowResult, ChannelRouteSource,
     CircuitBreakerConfig, CircuitBreakerStats, ProviderFailoverCircuitLookup,
-    RouteCandidateCircuitKey,
+    RouteCandidateCircuitKey, RouteResolveChannelInput,
 };
 use futures::future::BoxFuture;
 use std::collections::HashMap;
@@ -19,25 +19,6 @@ use tokio::sync::RwLock;
 pub(crate) struct ProviderFailoverRouterSources {
     pub(crate) provider_ids: Vec<String>,
     pub(crate) lookups: Vec<ProviderFailoverCircuitLookup>,
-}
-
-pub(crate) struct ProviderRouterChannelModelRecord {
-    pub(crate) public_model: String,
-    pub(crate) upstream_model: String,
-}
-
-pub(crate) struct ProviderRouterChannelRecord {
-    pub(crate) id: String,
-    pub(crate) provider_id: String,
-    pub(crate) name: String,
-    pub(crate) status: String,
-    pub(crate) base_url: String,
-    pub(crate) interface_kind: String,
-    pub(crate) groups: Vec<String>,
-    pub(crate) models: Vec<ProviderRouterChannelModelRecord>,
-    pub(crate) priority: i64,
-    pub(crate) weight: u32,
-    pub(crate) source_kind: String,
 }
 
 pub(crate) trait ProviderRouterConfigSource: Send + Sync {
@@ -61,7 +42,7 @@ pub(crate) trait ProviderRouterChannelSource: Send + Sync {
     fn channel_route_records(
         &self,
         app_type: &str,
-    ) -> Result<(Vec<ProviderRouterChannelRecord>, ChannelRouteSource), AppError>;
+    ) -> Result<(Vec<RouteResolveChannelInput>, ChannelRouteSource), AppError>;
 }
 
 pub(crate) trait ProviderRouterHealthStore: Send + Sync {
@@ -177,7 +158,7 @@ impl ProviderRouter {
     pub async fn list_channels_for_app(
         &self,
         app_type: &str,
-    ) -> Result<(Vec<ProviderRouterChannelRecord>, ChannelRouteSource), AppError> {
+    ) -> Result<(Vec<RouteResolveChannelInput>, ChannelRouteSource), AppError> {
         self.sources.channels.channel_route_records(app_type)
     }
 

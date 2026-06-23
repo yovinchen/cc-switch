@@ -14,9 +14,9 @@ use crate::proxy::events::ProxyEventBus;
 use crate::proxy::failover_switch::FailoverSwitchManager;
 use crate::proxy::hyper_client::ProxyResponse;
 use crate::proxy::provider_router::{
-    ProviderFailoverRouterSources, ProviderRouter, ProviderRouterChannelModelRecord,
-    ProviderRouterChannelRecord, ProviderRouterChannelSource, ProviderRouterConfigSource,
-    ProviderRouterHealthStore, ProviderRouterProviderSource, ProviderRouterSources,
+    ProviderFailoverRouterSources, ProviderRouter, ProviderRouterChannelSource,
+    ProviderRouterConfigSource, ProviderRouterHealthStore, ProviderRouterProviderSource,
+    ProviderRouterSources,
 };
 use crate::proxy::codex_chat_history::CodexChatHistoryStore;
 use crate::proxy::route_attempt::ForwardAttempt;
@@ -30,8 +30,8 @@ use crate::proxy_core::api::domain::{
 use crate::proxy_core::api::domain::{ChannelHealthPolicy, ChannelOverrides, UpstreamEndpoint};
 pub(crate) use crate::proxy_core::api::management::ChannelReachabilityResult;
 use crate::proxy_core::api::routing::{
-    route_resolve_channel_input_from_record, RouteResolveChannelInput,
-    RouteResolveChannelRecordInput, RouteResolveModelRecordInput,
+    route_resolve_channel_input_from_record, RouteResolveChannelRecordInput,
+    RouteResolveModelRecordInput,
 };
 #[cfg(test)]
 use crate::proxy_core::api::routing::RouteResolveModelInput;
@@ -2312,6 +2312,8 @@ pub(crate) type RouteResolveRequest =
     crate::proxy_core::api::management::RouteResolveRequest;
 pub(crate) type RouteResolveResponse =
     crate::proxy_core::api::management::RouteResolveResponse;
+pub(crate) type RouteResolveChannelInput =
+    crate::proxy_core::api::routing::RouteResolveChannelInput;
 pub(crate) type RouteCandidateCircuitKey =
     crate::proxy_core::api::routing::RouteCandidateCircuitKey;
 pub(crate) type ChannelRouteCandidate =
@@ -4351,8 +4353,8 @@ impl ProviderRouterChannelSource for CcSwitchProviderRouterChannelSource {
     fn channel_route_records(
         &self,
         app_type: &str,
-    ) -> Result<(Vec<ProviderRouterChannelRecord>, ChannelRouteSource), AppError> {
-        router_channel_records_from_db_source(&self.db, app_type)
+    ) -> Result<(Vec<RouteResolveChannelInput>, ChannelRouteSource), AppError> {
+        router_channel_route_inputs_from_db_source(&self.db, app_type)
             .map_err(app_error_from_proxy_core_error)
     }
 }
@@ -5652,13 +5654,13 @@ pub(crate) fn channel_route_records_from_db_source(
     .map_err(|error| app_error("load channel route records", error))
 }
 
-pub(crate) fn proxy_channel_record_to_router_channel_record(
+pub(crate) fn proxy_channel_record_to_route_resolve_channel_input(
     channel: ProxyChannelRecord,
-) -> ProviderRouterChannelRecord {
-    ProviderRouterChannelRecord {
-        id: channel.id,
+) -> RouteResolveChannelInput {
+    route_resolve_channel_input_from_record(RouteResolveChannelRecordInput {
+        channel_id: channel.id,
         provider_id: channel.provider_id,
-        name: channel.name,
+        channel_name: channel.name,
         status: channel.status,
         base_url: channel.base_url,
         interface_kind: channel.interface_kind,
@@ -5666,7 +5668,7 @@ pub(crate) fn proxy_channel_record_to_router_channel_record(
         models: channel
             .models
             .into_iter()
-            .map(|model| ProviderRouterChannelModelRecord {
+            .map(|model| RouteResolveModelRecordInput {
                 public_model: model.public_model,
                 upstream_model: model.upstream_model,
             })
@@ -5674,67 +5676,27 @@ pub(crate) fn proxy_channel_record_to_router_channel_record(
         priority: channel.priority,
         weight: channel.weight,
         source_kind: channel.source_kind.as_str().to_string(),
-    }
+    })
 }
 
-pub(crate) fn proxy_channel_records_to_router_channel_records(
+pub(crate) fn proxy_channel_records_to_route_resolve_channel_inputs(
     channels: impl IntoIterator<Item = ProxyChannelRecord>,
-) -> Vec<ProviderRouterChannelRecord> {
-    channels
-        .into_iter()
-        .map(proxy_channel_record_to_router_channel_record)
-        .collect()
-}
-
-pub(crate) fn router_channel_records_from_db_source(
-    db: &Database,
-    app_type: &str,
-) -> ProxyCoreResult<(Vec<ProviderRouterChannelRecord>, ChannelRouteSource)> {
-    let (channels, source) = channel_route_records_from_db_source(db, app_type)?;
-    Ok((proxy_channel_records_to_router_channel_records(channels), source))
-}
-
-pub(crate) fn proxy_channel_route_inputs_to_core(
-    channels: impl IntoIterator<Item = ProviderRouterChannelRecord>,
 ) -> Vec<RouteResolveChannelInput> {
     channels
         .into_iter()
-        .map(|channel| {
-            let ProviderRouterChannelRecord {
-                id,
-                provider_id,
-                name,
-                status,
-                base_url,
-                interface_kind,
-                groups,
-                models,
-                priority,
-                weight,
-                source_kind,
-            } = channel;
-
-            route_resolve_channel_input_from_record(RouteResolveChannelRecordInput {
-                channel_id: id,
-                provider_id,
-                channel_name: name,
-                status,
-                base_url,
-                interface_kind,
-                groups,
-                models: models
-                    .into_iter()
-                    .map(|model| RouteResolveModelRecordInput {
-                        public_model: model.public_model,
-                        upstream_model: model.upstream_model,
-                    })
-                    .collect(),
-                priority,
-                weight,
-                source_kind,
-            })
-        })
+        .map(proxy_channel_record_to_route_resolve_channel_input)
         .collect()
+}
+
+pub(crate) fn router_channel_route_inputs_from_db_source(
+    db: &Database,
+    app_type: &str,
+) -> ProxyCoreResult<(Vec<RouteResolveChannelInput>, ChannelRouteSource)> {
+    let (channels, source) = channel_route_records_from_db_source(db, app_type)?;
+    Ok((
+        proxy_channel_records_to_route_resolve_channel_inputs(channels),
+        source,
+    ))
 }
 
 pub(crate) fn claude_desktop_model_routes_to_core_inputs(
@@ -6369,11 +6331,7 @@ pub(crate) async fn management_route_response_from_router_source(
         .list_channels_for_app(&request.app_type)
         .await
         .map_err(|error| app_error("list channel route records", error))?;
-    let mut response = resolve_channel_route(
-        request,
-        proxy_channel_route_inputs_to_core(channels),
-        source,
-    )?;
+    let mut response = resolve_channel_route(request, channels, source)?;
     let availability = router
         .route_candidate_circuit_availability(route_candidate_channel_circuit_keys(&response))
         .await;
@@ -16005,6 +15963,7 @@ command = "latest-command"
 
         let spec = channel.to_proxy_core_channel_spec();
         let source_spec = channel_spec_from_source(Some(channel.clone())).expect("channel spec");
+        let route_input = proxy_channel_record_to_route_resolve_channel_input(channel.clone());
         let (materialized_channels, materialized_source) =
             channel_route_records_from_sources(vec![channel.clone()], || {
                 panic!("materialized channels must not load legacy projection")
@@ -16026,6 +15985,15 @@ command = "latest-command"
         assert_eq!(materialized_channels[0].id, "ch-1");
         assert_eq!(legacy_source, ChannelRouteSource::LegacyProjection);
         assert_eq!(legacy_channels[0].id, "ch-1");
+        assert_eq!(route_input.channel_id, "ch-1");
+        assert_eq!(route_input.provider_id, "provider-1");
+        assert_eq!(route_input.channel_name, "Relay A");
+        assert_eq!(route_input.status, "enabled");
+        assert_eq!(route_input.interface_kind, "openai_chat_completions");
+        assert_eq!(route_input.source_kind, "manual");
+        assert_eq!(route_input.models.len(), 1);
+        assert_eq!(route_input.models[0].public_model, "sonnet");
+        assert_eq!(route_input.models[0].upstream_model, "anthropic/sonnet");
         assert_eq!(spec.app, AppKind::Claude);
         assert_eq!(spec.endpoint.base_url, "https://relay.example.com/v1");
         assert_eq!(spec.interface, InterfaceKind::OpenAiChatCompletions);

@@ -372,8 +372,12 @@ const FORBIDDEN_PROVIDER_ROUTER_CONCRETE_SOURCE_MARKERS: &[&str] =
     &["    db: Arc<Database>,", "self.db"];
 const FORBIDDEN_PROVIDER_ROUTER_COARSE_SOURCE_MARKERS: &[&str] =
     &["trait ProviderRouterSource", "dyn ProviderRouterSource", "with_source("];
-const FORBIDDEN_PROVIDER_ROUTER_CHANNEL_DAO_MARKERS: &[&str] =
-    &["ProxyChannelRecord", "ProxyChannelSourceKind"];
+const FORBIDDEN_PROVIDER_ROUTER_CHANNEL_DAO_MARKERS: &[&str] = &[
+    "ProxyChannelRecord",
+    "ProxyChannelSourceKind",
+    "ProviderRouterChannelRecord",
+    "ProviderRouterChannelModelRecord",
+];
 const FORBIDDEN_PROVIDER_ROUTER_PROVIDER_RECORD_MARKERS: &[&str] = &[
     "use crate::provider::Provider",
     "IndexMap<String, Provider>",
@@ -435,6 +439,11 @@ const FORBIDDEN_PROXY_CORE_ADAPTER_PROVIDER_URL_FACADE_MARKERS: &[&str] = &[
     "fn provider_claude_upstream_url(",
     "fn provider_codex_upstream_url(",
     "fn provider_gemini_upstream_url(",
+];
+const FORBIDDEN_PROXY_CORE_ADAPTER_ROUTER_CHANNEL_DTO_MARKERS: &[&str] = &[
+    "ProviderRouterChannelRecord",
+    "ProviderRouterChannelModelRecord",
+    "proxy_channel_route_inputs_to_core(",
 ];
 const FORBIDDEN_PROXY_CORE_ADAPTER_SMALL_HELPER_FACADE_MARKERS: &[&str] = &[
     "fn request_model_from_body_for_context(",
@@ -1955,6 +1964,33 @@ fn proxy_core_adapter_excludes_provider_url_facades() {
     assert!(
         violations.is_empty(),
         "proxy_core_adapter should expose core upstream URL builders directly instead of provider_* one-line facades:\n{}",
+        violations.join("\n")
+    );
+}
+
+#[test]
+fn proxy_core_adapter_excludes_router_channel_dto_bridge() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let adapter_path = manifest_dir.join("src/proxy_core_adapter.rs");
+    let source = fs::read_to_string(&adapter_path).expect("read proxy_core_adapter.rs");
+
+    let mut violations = Vec::new();
+    for (line_index, line) in production_lines(&source) {
+        let code = line.split("//").next().unwrap_or_default();
+        for marker in FORBIDDEN_PROXY_CORE_ADAPTER_ROUTER_CHANNEL_DTO_MARKERS {
+            if code.contains(marker) {
+                violations.push(format!(
+                    "src/proxy_core_adapter.rs:{} contains router channel DTO marker `{}`",
+                    line_index + 1,
+                    marker
+                ));
+            }
+        }
+    }
+
+    assert!(
+        violations.is_empty(),
+        "proxy_core_adapter should project DB channel records directly to route resolve inputs:\n{}",
         violations.join("\n")
     );
 }
