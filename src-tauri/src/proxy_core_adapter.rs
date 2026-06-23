@@ -4120,6 +4120,48 @@ pub(crate) async fn circuit_failure_threshold_from_router_db(
     )
 }
 
+pub(crate) async fn record_provider_health_result_from_router_db(
+    db: &Database,
+    provider_id: &str,
+    app_type: &str,
+    success: bool,
+    error_msg: Option<String>,
+    failure_threshold: u32,
+) -> Result<(), AppError> {
+    db.update_provider_health_with_threshold(
+        provider_id,
+        app_type,
+        success,
+        error_msg,
+        failure_threshold,
+    )
+    .await
+}
+
+pub(crate) fn record_channel_health_result_from_router_db(
+    db: &Database,
+    channel_id: &str,
+    success: bool,
+    error_msg: Option<String>,
+    failure_threshold: u32,
+    response_time_ms: Option<i64>,
+) -> Result<(), AppError> {
+    db.update_proxy_channel_health_with_threshold(
+        channel_id,
+        success,
+        error_msg,
+        failure_threshold,
+        response_time_ms,
+    )
+}
+
+pub(crate) fn reset_channel_health_from_router_db(
+    db: &Database,
+    channel_id: &str,
+) -> Result<(), AppError> {
+    db.reset_proxy_channel_health(channel_id)
+}
+
 pub(crate) fn auto_failover_enabled_from_router_config_result(
     app_type: &str,
     result: Result<AppProxyConfig, AppError>,

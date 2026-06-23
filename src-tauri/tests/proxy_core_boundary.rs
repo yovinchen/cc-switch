@@ -352,6 +352,11 @@ const FORBIDDEN_PROVIDER_ROUTER_CIRCUIT_CONFIG_MARKERS: &[&str] = &[
 ];
 const FORBIDDEN_PROVIDER_ROUTER_ROUTE_REJECTION_MARKERS: &[&str] =
     &["reject_unavailable_channel_ids(", "unavailable_channel_ids"];
+const FORBIDDEN_PROVIDER_ROUTER_HEALTH_PERSISTENCE_MARKERS: &[&str] = &[
+    ".update_provider_health_with_threshold(",
+    ".update_proxy_channel_health_with_threshold(",
+    ".reset_proxy_channel_health(",
+];
 const FORBIDDEN_HANDLER_PROXY_REQUEST_BRIDGE_MARKERS: &[&str] = &["ProxyRequest::new("];
 const FORBIDDEN_HANDLER_RAW_JSON_BODY_PARSE_MARKERS: &[&str] = &[
     "parse_json_request_body(",
@@ -3704,6 +3709,33 @@ fn production_provider_router_delegates_route_rejection_to_adapter() {
     assert!(
         violations.is_empty(),
         "provider router must delegate route rejection projection to proxy_core_adapter helpers:\n{}",
+        violations.join("\n")
+    );
+}
+
+#[test]
+fn production_provider_router_delegates_health_persistence_to_adapter() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let path = manifest_dir.join("src/proxy/provider_router.rs");
+    let source = fs::read_to_string(&path).expect("read provider_router.rs");
+
+    let mut violations = Vec::new();
+    for (line_index, line) in production_lines(&source) {
+        let code = line.split("//").next().unwrap_or_default();
+        for marker in FORBIDDEN_PROVIDER_ROUTER_HEALTH_PERSISTENCE_MARKERS {
+            if code.contains(marker) {
+                violations.push(format!(
+                    "src/proxy/provider_router.rs:{} contains health persistence marker `{}`",
+                    line_index + 1,
+                    marker
+                ));
+            }
+        }
+    }
+
+    assert!(
+        violations.is_empty(),
+        "provider router must delegate health persistence to proxy_core_adapter helpers:\n{}",
         violations.join("\n")
     );
 }

@@ -14,6 +14,8 @@ use crate::proxy_core_adapter::{
     circuit_failure_threshold_from_router_db,
     provider_circuit_key, provider_circuit_key_prefix, provider_failover_sources_from_router_db,
     proxy_channel_route_inputs_to_core,
+    record_channel_health_result_from_router_db, record_provider_health_result_from_router_db,
+    reset_channel_health_from_router_db,
     resolve_channel_route as resolve_core_channel_route, route_candidate_channel_circuit_keys,
     select_current_provider_from_router_db_source,
     select_failover_providers_from_router_lookup_availability, AllowResult, ChannelRouteSource,
@@ -179,15 +181,15 @@ impl ProviderRouter {
         }
 
         // 3. 更新数据库健康状态（使用配置的阈值）
-        self.db
-            .update_provider_health_with_threshold(
-                provider_id,
-                app_type,
-                success,
-                error_msg.clone(),
-                failure_threshold,
-            )
-            .await?;
+        record_provider_health_result_from_router_db(
+            &self.db,
+            provider_id,
+            app_type,
+            success,
+            error_msg,
+            failure_threshold,
+        )
+        .await?;
 
         Ok(())
     }
@@ -214,7 +216,8 @@ impl ProviderRouter {
             breaker.record_failure(used_half_open_permit).await;
         }
 
-        self.db.update_proxy_channel_health_with_threshold(
+        record_channel_health_result_from_router_db(
+            &self.db,
             channel_id,
             success,
             error_msg,
@@ -247,7 +250,7 @@ impl ProviderRouter {
     ) -> Result<(), AppError> {
         let circuit_key = channel_circuit_key(app_type, channel_id);
         self.reset_circuit_breaker(&circuit_key).await;
-        self.db.reset_proxy_channel_health(channel_id)
+        reset_channel_health_from_router_db(&self.db, channel_id)
     }
 
     /// 仅释放 HalfOpen permit，不影响健康统计（neutral 接口）
