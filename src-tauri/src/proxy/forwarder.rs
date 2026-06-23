@@ -28,11 +28,9 @@ use crate::proxy_core_adapter::{
     ForwarderAdapterHandle, is_openai_o_series,
     is_unsupported_image_error, merge_copilot_tool_results,
     normalize_thinking_type,
-    prepare_upstream_request_body_with_report, prompt_cache_trace_log_message,
     forwarder_claude_normalize_anthropic_messages,
     provider_adapter_name_is_claude,
     rectify_anthropic_request, rectify_thinking_budget, replace_image_blocks_with_marker,
-    request_body_filter_log_message,
     resolve_copilot_deterministic_interaction_id, resolve_copilot_model_against_ids,
     resolve_copilot_optimizer_session_id,
     resolve_copilot_request_id_with_fallback, resolve_channel_response_status_mapping,
@@ -45,21 +43,25 @@ use crate::proxy_core_adapter::{
     should_check_media_retry, should_failover_after_rectifier_retry_failure,
     should_preserve_exact_request_header_case, should_rectify_thinking_budget,
     should_rectify_thinking_signature, should_resolve_copilot_dynamic_endpoint,
-    should_send_anthropic_request_headers, should_trigger_media_retry,
+    should_trigger_media_retry,
     strip_copilot_thinking_blocks, strip_one_m_suffix_for_upstream,
     strip_one_m_suffix_for_upstream_from_body,
     supports_reasoning_effort, thinking_optimization_log_message,
-    validate_managed_account_upstream_auth, AttemptEventPhase, CopilotAuthHeaderOverrides,
+    AttemptEventPhase, CopilotAuthHeaderOverrides,
     CopilotOptimizerConfig, ForwardFailureCategory, ForwardUpstreamUrlPlanInput,
-    MediaRetryInput, OptimizerConfig, PromptCacheTraceLogInput,
+    MediaRetryInput, OptimizerConfig,
     FailoverSwitchSchedulerRef, ForwarderAttemptRuntimeSourceRef, ForwarderProtocolStateSourceRef,
+    ForwarderRequestPartsInput, ForwarderRequestPreparationInput, ForwarderRequestSourceRef,
     ForwarderResponseSourceRef, ForwarderRuntimeStateSourceRef, ForwarderTransportSourceRef,
     ForwarderUpstreamTransportRequest, ManagedAccountRuntimeSourceRef,
     RectifierConfig, ResolvedChannelAttempt, UpstreamAuthHeadersInput,
-    UpstreamRequestHeadersInput, UNSUPPORTED_IMAGE_MARKER,
+    UNSUPPORTED_IMAGE_MARKER,
 };
 #[cfg(test)]
-use crate::proxy_core_adapter::provider_router_from_database;
+use crate::proxy_core_adapter::{
+    prepare_upstream_request_body_with_report, provider_router_from_database,
+    validate_managed_account_upstream_auth,
+};
 use crate::{app_config::AppType, provider::Provider};
 use http::Extensions;
 use serde_json::Value;
@@ -126,6 +128,7 @@ pub struct RequestForwarder {
     attempt_runtime_source: ForwarderAttemptRuntimeSourceRef,
     protocol_state_source: ForwarderProtocolStateSourceRef,
     runtime_state_source: ForwarderRuntimeStateSourceRef,
+    request_source: ForwarderRequestSourceRef,
     transport_source: ForwarderTransportSourceRef,
     response_source: ForwarderResponseSourceRef,
     failover_switch_scheduler: FailoverSwitchSchedulerRef,
@@ -229,6 +232,7 @@ impl RequestForwarder {
         non_streaming_timeout: u64,
         protocol_state_source: ForwarderProtocolStateSourceRef,
         runtime_state_source: ForwarderRuntimeStateSourceRef,
+        request_source: ForwarderRequestSourceRef,
         transport_source: ForwarderTransportSourceRef,
         response_source: ForwarderResponseSourceRef,
         failover_switch_scheduler: FailoverSwitchSchedulerRef,
@@ -250,6 +254,7 @@ impl RequestForwarder {
             attempt_runtime_source,
             protocol_state_source,
             runtime_state_source,
+            request_source,
             transport_source,
             response_source,
             failover_switch_scheduler,
@@ -1344,13 +1349,20 @@ impl RequestForwarder {
             self.apply_media_prevention(&mut request_body, provider);
         }
 
-        // 过滤私有参数（以 `_` 开头的字段），防止内部信息泄露到上游
-        // 默认使用空白名单，过滤所有 _ 前缀字段
-        let prepared_body = prepare_upstream_request_body_with_report(request_body);
-        if let Some(message) = request_body_filter_log_message(&prepared_body) {
-            log::debug!("{message}");
-        }
-        let filtered_body = prepared_body.body;
+        let prepared_request =
+            self.request_source
+                .prepare_upstream_body(ForwarderRequestPreparationInput {
+                    app: app_type.as_str(),
+                    provider_id: provider.id.as_str(),
+                    endpoint: &effective_endpoint,
+                    api_format: resolved_claude_api_format.as_deref(),
+                    body: request_body,
+                    session_client_provided: self.session_client_provided,
+                    needs_transform,
+                    codex_responses_to_chat,
+                    headers,
+                });
+        let filtered_body = prepared_request.body;
         // 出站 body 定稿后刷新真值（覆盖 Codex chat 上游模型覆写、转换层模型改写）
         if let Some(m) = filtered_body
             .get("model")
@@ -1359,28 +1371,8 @@ impl RequestForwarder {
         {
             outbound_model = Some(m.to_string());
         }
-        if log::log_enabled!(log::Level::Debug) {
-            log::debug!(
-                "{}",
-                prompt_cache_trace_log_message(PromptCacheTraceLogInput {
-                    app: app_type.as_str(),
-                    provider_id: provider.id.as_str(),
-                    endpoint: &effective_endpoint,
-                    api_format: resolved_claude_api_format.as_deref(),
-                    body: &filtered_body,
-                    session_client_provided: self.session_client_provided,
-                })
-            );
-        }
-        let transport_policy = crate::proxy_core_adapter::resolve_upstream_request_transport_policy(
-            needs_transform,
-            codex_responses_to_chat,
-            &effective_endpoint,
-            &filtered_body,
-            headers,
-        );
-        let request_is_streaming = transport_policy.is_streaming_request;
-        let force_identity_encoding = transport_policy.force_identity_encoding;
+        let request_is_streaming = prepared_request.request_is_streaming;
+        let force_identity_encoding = prepared_request.force_identity_encoding;
 
         // Codex OAuth 需要注入的 ChatGPT-Account-Id（在动态 token 获取期间填充）
         let mut codex_oauth_account_id: Option<String> = None;
@@ -1444,52 +1436,26 @@ impl RequestForwarder {
             }
         }
 
-        // 预计算上游 host 值（用于在原位替换 host header）
-        let upstream_host = crate::proxy_core_adapter::upstream_host_header_from_url(&url);
-
-        let should_send_anthropic_headers = should_send_anthropic_request_headers(
-            adapter_name,
-            resolved_claude_api_format.as_deref(),
-        );
-
-        // 预计算 anthropic-beta 值（仅 Claude）
-        let anthropic_beta_value = if should_send_anthropic_headers {
-            Some(crate::proxy_core_adapter::anthropic_beta_header_value(
-                headers
-                    .get("anthropic-beta")
-                    .and_then(|beta| beta.to_str().ok()),
-            ))
-        } else {
-            None
-        };
-
-        let ordered_headers =
-            crate::proxy_core_adapter::build_upstream_request_headers(UpstreamRequestHeadersInput {
-                inbound_headers: headers,
-                upstream_host: upstream_host.as_deref(),
-                auth_headers: &auth_headers,
-                channel_header_overrides: attempt
-                    .channel()
-                    .map(|channel| &channel.header_overrides),
-                force_identity_encoding,
-                custom_user_agent: custom_user_agent.as_ref(),
-                is_copilot,
-                should_send_anthropic_headers,
-                anthropic_beta_value: anthropic_beta_value.as_deref(),
-                codex_oauth_session_headers: &codex_oauth_session_headers,
-                ensure_json_content_type: true,
-            });
-
-        let body_bytes =
-            crate::proxy_core_adapter::serialize_upstream_request_body(method, &filtered_body)
-                .map_err(|e| {
-                    ProxyError::Internal(
-                        crate::proxy_core_adapter::request_body_serialize_error_message(e),
-                    )
+        let request_parts =
+            self.request_source
+                .build_upstream_request_parts(ForwarderRequestPartsInput {
+                    method,
+                    url: &url,
+                    inbound_headers: headers,
+                    filtered_body: &filtered_body,
+                    auth_headers: &auth_headers,
+                    channel_header_overrides: attempt
+                        .channel()
+                        .map(|channel| &channel.header_overrides),
+                    force_identity_encoding,
+                    custom_user_agent: custom_user_agent.as_ref(),
+                    is_copilot,
+                    adapter_name,
+                    resolved_claude_api_format: resolved_claude_api_format.as_deref(),
+                    codex_oauth_session_headers: &codex_oauth_session_headers,
                 })?;
-
-        validate_managed_account_upstream_auth(&url, &ordered_headers)
-            .map_err(|error| ProxyError::AuthError(error.to_string()))?;
+        let ordered_headers = request_parts.ordered_headers;
+        let body_bytes = request_parts.body;
 
         // 输出请求信息日志
         let tag = adapter_name;
@@ -1740,6 +1706,7 @@ mod tests {
                     current_providers,
                     events,
                 ),
+            request_source: crate::proxy_core_adapter::default_forwarder_request_source(),
             transport_source: crate::proxy_core_adapter::default_forwarder_transport_source(),
             response_source: crate::proxy_core_adapter::default_forwarder_response_source(),
             failover_switch_scheduler: crate::proxy_core_adapter::noop_failover_switch_scheduler(),

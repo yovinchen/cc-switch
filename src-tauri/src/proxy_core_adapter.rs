@@ -69,6 +69,7 @@ pub(crate) struct CcSwitchProxyRuntime {
     pub(crate) attempt_runtime_source: ForwarderAttemptRuntimeSourceRef,
     pub(crate) protocol_state_source: ForwarderProtocolStateSourceRef,
     pub(crate) runtime_state_source: ForwarderRuntimeStateSourceRef,
+    pub(crate) request_source: ForwarderRequestSourceRef,
     pub(crate) transport_source: ForwarderTransportSourceRef,
     pub(crate) response_source: ForwarderResponseSourceRef,
     pub(crate) failover_switch_scheduler: FailoverSwitchSchedulerRef,
@@ -489,6 +490,7 @@ pub(crate) fn proxy_state_from_runtime_sources(
         current_providers.clone(),
         events.clone(),
     );
+    let request_source = default_forwarder_request_source();
     let transport_source = default_forwarder_transport_source();
     let response_source = default_forwarder_response_source();
     let failover_switch_scheduler = failover_switch_scheduler_from_runtime_sources(
@@ -504,6 +506,7 @@ pub(crate) fn proxy_state_from_runtime_sources(
             attempt_runtime_source,
             protocol_state_source,
             runtime_state_source,
+            request_source,
             transport_source,
             response_source,
             failover_switch_scheduler,
@@ -8289,6 +8292,153 @@ pub(crate) fn forwarder_attempt_runtime_source_from_router(
     Arc::new(CcSwitchForwarderAttemptRuntimeSource::new(router))
 }
 
+pub(crate) type ForwarderRequestSourceRef =
+    Arc<dyn ForwarderRequestSource + Send + Sync>;
+
+pub(crate) struct ForwarderRequestPreparationInput<'a> {
+    pub(crate) app: &'a str,
+    pub(crate) provider_id: &'a str,
+    pub(crate) endpoint: &'a str,
+    pub(crate) api_format: Option<&'a str>,
+    pub(crate) body: Value,
+    pub(crate) session_client_provided: bool,
+    pub(crate) needs_transform: bool,
+    pub(crate) codex_responses_to_chat: bool,
+    pub(crate) headers: &'a HeaderMap,
+}
+
+pub(crate) struct ForwarderPreparedRequest {
+    pub(crate) body: Value,
+    pub(crate) request_is_streaming: bool,
+    pub(crate) force_identity_encoding: bool,
+}
+
+pub(crate) struct ForwarderRequestPartsInput<'a> {
+    pub(crate) method: &'a Method,
+    pub(crate) url: &'a str,
+    pub(crate) inbound_headers: &'a HeaderMap,
+    pub(crate) filtered_body: &'a Value,
+    pub(crate) auth_headers: &'a [(http::HeaderName, http::HeaderValue)],
+    pub(crate) channel_header_overrides: Option<&'a Value>,
+    pub(crate) force_identity_encoding: bool,
+    pub(crate) custom_user_agent: Option<&'a http::HeaderValue>,
+    pub(crate) is_copilot: bool,
+    pub(crate) adapter_name: &'a str,
+    pub(crate) resolved_claude_api_format: Option<&'a str>,
+    pub(crate) codex_oauth_session_headers: &'a [(http::HeaderName, http::HeaderValue)],
+}
+
+pub(crate) struct ForwarderUpstreamRequestParts {
+    pub(crate) ordered_headers: HeaderMap,
+    pub(crate) body: Vec<u8>,
+}
+
+pub(crate) trait ForwarderRequestSource {
+    fn prepare_upstream_body(
+        &self,
+        input: ForwarderRequestPreparationInput<'_>,
+    ) -> ForwarderPreparedRequest;
+
+    fn build_upstream_request_parts(
+        &self,
+        input: ForwarderRequestPartsInput<'_>,
+    ) -> Result<ForwarderUpstreamRequestParts, ProxyError>;
+}
+
+struct CcSwitchForwarderRequestSource;
+
+impl ForwarderRequestSource for CcSwitchForwarderRequestSource {
+    fn prepare_upstream_body(
+        &self,
+        input: ForwarderRequestPreparationInput<'_>,
+    ) -> ForwarderPreparedRequest {
+        let prepared_body = prepare_upstream_request_body_with_report(input.body);
+        if let Some(message) = request_body_filter_log_message(&prepared_body) {
+            log::debug!("{message}");
+        }
+        let filtered_body = prepared_body.body;
+
+        if log::log_enabled!(log::Level::Debug) {
+            log::debug!(
+                "{}",
+                prompt_cache_trace_log_message(PromptCacheTraceLogInput {
+                    app: input.app,
+                    provider_id: input.provider_id,
+                    endpoint: input.endpoint,
+                    api_format: input.api_format,
+                    body: &filtered_body,
+                    session_client_provided: input.session_client_provided,
+                })
+            );
+        }
+
+        let transport_policy = resolve_upstream_request_transport_policy(
+            input.needs_transform,
+            input.codex_responses_to_chat,
+            input.endpoint,
+            &filtered_body,
+            input.headers,
+        );
+
+        ForwarderPreparedRequest {
+            body: filtered_body,
+            request_is_streaming: transport_policy.is_streaming_request,
+            force_identity_encoding: transport_policy.force_identity_encoding,
+        }
+    }
+
+    fn build_upstream_request_parts(
+        &self,
+        input: ForwarderRequestPartsInput<'_>,
+    ) -> Result<ForwarderUpstreamRequestParts, ProxyError> {
+        let upstream_host = upstream_host_header_from_url(input.url);
+        let should_send_anthropic_headers = should_send_anthropic_request_headers(
+            input.adapter_name,
+            input.resolved_claude_api_format,
+        );
+        let anthropic_beta_value = if should_send_anthropic_headers {
+            Some(anthropic_beta_header_value(
+                input
+                    .inbound_headers
+                    .get("anthropic-beta")
+                    .and_then(|beta| beta.to_str().ok()),
+            ))
+        } else {
+            None
+        };
+
+        let ordered_headers = build_upstream_request_headers(UpstreamRequestHeadersInput {
+            inbound_headers: input.inbound_headers,
+            upstream_host: upstream_host.as_deref(),
+            auth_headers: input.auth_headers,
+            channel_header_overrides: input.channel_header_overrides,
+            force_identity_encoding: input.force_identity_encoding,
+            custom_user_agent: input.custom_user_agent,
+            is_copilot: input.is_copilot,
+            should_send_anthropic_headers,
+            anthropic_beta_value: anthropic_beta_value.as_deref(),
+            codex_oauth_session_headers: input.codex_oauth_session_headers,
+            ensure_json_content_type: true,
+        });
+
+        let body = serialize_upstream_request_body(input.method, input.filtered_body).map_err(
+            |error| ProxyError::Internal(request_body_serialize_error_message(error)),
+        )?;
+
+        validate_managed_account_upstream_auth(input.url, &ordered_headers)
+            .map_err(|error| ProxyError::AuthError(error.to_string()))?;
+
+        Ok(ForwarderUpstreamRequestParts {
+            ordered_headers,
+            body,
+        })
+    }
+}
+
+pub(crate) fn default_forwarder_request_source() -> ForwarderRequestSourceRef {
+    Arc::new(CcSwitchForwarderRequestSource)
+}
+
 pub(crate) type ForwarderTransportSourceRef =
     Arc<dyn ForwarderTransportSource + Send + Sync>;
 
@@ -8481,6 +8631,7 @@ pub(crate) struct ForwarderRuntimeHostResources {
     pub(crate) attempt_runtime_source: ForwarderAttemptRuntimeSourceRef,
     pub(crate) protocol_state_source: ForwarderProtocolStateSourceRef,
     pub(crate) runtime_state_source: ForwarderRuntimeStateSourceRef,
+    pub(crate) request_source: ForwarderRequestSourceRef,
     pub(crate) transport_source: ForwarderTransportSourceRef,
     pub(crate) response_source: ForwarderResponseSourceRef,
     pub(crate) failover_switch_scheduler: FailoverSwitchSchedulerRef,
@@ -8494,6 +8645,7 @@ pub(crate) fn forwarder_runtime_host_resources_from_runtime(
         attempt_runtime_source: runtime.attempt_runtime_source.clone(),
         protocol_state_source: runtime.protocol_state_source.clone(),
         runtime_state_source: runtime.runtime_state_source.clone(),
+        request_source: runtime.request_source.clone(),
         transport_source: runtime.transport_source.clone(),
         response_source: runtime.response_source.clone(),
         failover_switch_scheduler: runtime.failover_switch_scheduler.clone(),
@@ -8527,6 +8679,7 @@ pub(crate) async fn forward_with_preplanned_host_runtime(
         attempt_runtime_source,
         protocol_state_source,
         runtime_state_source,
+        request_source,
         transport_source,
         response_source,
         failover_switch_scheduler,
@@ -8547,6 +8700,7 @@ pub(crate) async fn forward_with_preplanned_host_runtime(
         forwarder_options.non_streaming_timeout,
         protocol_state_source,
         runtime_state_source,
+        request_source,
         transport_source,
         response_source,
         failover_switch_scheduler,

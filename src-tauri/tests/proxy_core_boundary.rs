@@ -6116,6 +6116,55 @@ fn production_forwarder_uses_transport_source_resource() {
 }
 
 #[test]
+fn production_forwarder_uses_request_source_resource() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let path = manifest_dir.join("src/proxy/forwarder.rs");
+    let source = fs::read_to_string(&path).expect("read forwarder.rs");
+    let struct_slice = function_slice(&source, "pub struct RequestForwarder", "impl RequestForwarder");
+    let impl_slice = function_slice(&source, "impl RequestForwarder", "#[cfg(test)]");
+
+    assert!(
+        struct_slice.contains("request_source"),
+        "RequestForwarder must receive upstream request assembly as an injected source"
+    );
+
+    let impl_forbidden_markers = [
+        "prepare_upstream_request_body_with_report(",
+        "request_body_filter_log_message(",
+        "prompt_cache_trace_log_message(",
+        "PromptCacheTraceLogInput",
+        "resolve_upstream_request_transport_policy(",
+        "upstream_host_header_from_url(",
+        "anthropic_beta_header_value(",
+        "build_upstream_request_headers(",
+        "serialize_upstream_request_body(",
+        "request_body_serialize_error_message(",
+        "validate_managed_account_upstream_auth(",
+        "UpstreamRequestHeadersInput",
+    ];
+    let mut violations = Vec::new();
+
+    for (line_index, line) in production_lines(impl_slice) {
+        let code = line.split("//").next().unwrap_or_default();
+        for marker in impl_forbidden_markers {
+            if code.contains(marker) {
+                violations.push(format!(
+                    "src/proxy/forwarder.rs impl RequestForwarder:{} contains direct request assembly marker `{}`",
+                    line_index + 1,
+                    marker
+                ));
+            }
+        }
+    }
+
+    assert!(
+        violations.is_empty(),
+        "forwarder must use an injected request source for upstream body/header assembly:\n{}",
+        violations.join("\n")
+    );
+}
+
+#[test]
 fn production_forwarder_uses_response_source_resource() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let path = manifest_dir.join("src/proxy/forwarder.rs");
