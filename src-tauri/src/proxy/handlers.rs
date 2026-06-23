@@ -40,16 +40,14 @@ use crate::proxy_core_adapter::{
     create_openai_chat_to_anthropic_sse_stream as create_anthropic_sse_stream,
     create_openai_responses_to_anthropic_sse_stream as create_anthropic_sse_stream_from_responses,
     codex_chat_error_proxy_response, extract_anthropic_tool_schema_hints,
-    extract_gemini_model_from_path,
-    gemini_response_to_anthropic_message_with_shadow, openai_chat_to_anthropic_message,
-    json_proxy_request_from_input, JsonProxyRequestInput,
-    openai_responses_to_anthropic_message, parse_json_proxy_request_body,
+    extract_gemini_model_from_path, json_proxy_request_from_input, JsonProxyRequestInput,
+    parse_json_proxy_request_body,
     parse_json_proxy_request_body_or_null,
     management_auth_decision_from_proxy_config, record_forward_error_usage,
     record_codex_chat_response_history,
     record_codex_chat_response_sse_history, record_transformed_response_usage,
     transformed_streaming_usage_collector, provider_is_codex_oauth,
-    provider_needs_claude_transform,
+    provider_claude_transform_response_for_api_format, provider_needs_claude_transform,
     provider_should_convert_codex_responses_to_chat, response_headers_indicate_sse,
     should_aggregate_codex_oauth_responses_sse, should_use_claude_transform_streaming,
     strip_endpoint_prefix, synthesize_gemini_tool_call_id_with_uuid,
@@ -765,27 +763,14 @@ async fn handle_claude_transform(
         },
     )?;
 
-    // 根据 api_format 选择非流式转换器
-    let anthropic_response = if api_format == "openai_responses" {
-        openai_responses_to_anthropic_message(&upstream_response)
-    } else if api_format == "gemini_native" {
-        gemini_response_to_anthropic_message_with_shadow(
-            &upstream_response,
-            Some(state.gemini_shadow.as_ref()),
-            Some(&provider.id),
-            Some(&ctx.session_id),
-            tool_schema_hints.as_ref(),
-            synthesize_gemini_tool_call_id_with_uuid,
-        )
-        .map(|output| {
-            for name in &output.rectified_tool_names {
-                log::info!("[Claude/Gemini] Rectified tool args for `{name}`");
-            }
-            output.response
-        })
-    } else {
-        openai_chat_to_anthropic_message(&upstream_response)
-    }
+    let anthropic_response = provider_claude_transform_response_for_api_format(
+        &upstream_response,
+        api_format,
+        Some(state.gemini_shadow.as_ref()),
+        Some(&provider.id),
+        Some(&ctx.session_id),
+        tool_schema_hints.as_ref(),
+    )
     .map_err(|error| {
         response_transform_error_to_proxy_error(
             ResponseTransformFailureContext::ClaudeResponse,

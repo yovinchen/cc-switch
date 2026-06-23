@@ -2532,7 +2532,7 @@ pub(crate) use crate::proxy_core::api::model_catalog::{
 };
 pub(crate) use crate::proxy_core::api::transforms::{
     anthropic_request_to_gemini_request_with_shadow, anthropic_to_openai_chat_request,
-    anthropic_to_openai_responses_request, append_utf8_safe,
+    anthropic_to_openai_responses_request, append_utf8_safe, AnthropicToolSchemaHints,
     chat_completion_to_response_with_context, claude_stream_usage_event_filter,
     claude_transform_unlabeled_sse_aggregation, codex_stream_usage_event_filter,
     create_codex_chat_to_responses_sse_stream_with_context,
@@ -4252,6 +4252,36 @@ pub(crate) fn provider_claude_transform_response(body: Value) -> Result<Value, S
         openai_responses_to_anthropic_message(&body)
     } else {
         openai_chat_to_anthropic_message(&body)
+    }
+}
+
+pub(crate) fn provider_claude_transform_response_for_api_format(
+    body: &Value,
+    api_format: &str,
+    shadow_store: Option<&GeminiShadowStore>,
+    provider_id: Option<&str>,
+    session_id: Option<&str>,
+    tool_schema_hints: Option<&AnthropicToolSchemaHints>,
+) -> Result<Value, String> {
+    if api_format == "openai_responses" {
+        openai_responses_to_anthropic_message(body)
+    } else if api_format == "gemini_native" {
+        gemini_response_to_anthropic_message_with_shadow(
+            body,
+            shadow_store,
+            provider_id,
+            session_id,
+            tool_schema_hints,
+            synthesize_gemini_tool_call_id_with_uuid,
+        )
+        .map(|output| {
+            for name in &output.rectified_tool_names {
+                log::info!("[Claude/Gemini] Rectified tool args for `{name}`");
+            }
+            output.response
+        })
+    } else {
+        openai_chat_to_anthropic_message(body)
     }
 }
 
@@ -12911,6 +12941,48 @@ base_url = "https://api.openai.com/v1"
         }))
         .expect("delegated responses response");
         assert_eq!(delegated_responses_response["content"][0]["text"], "Done");
+
+        let explicit_chat_response = provider_claude_transform_response_for_api_format(
+            &json!({
+                "id": "chatcmpl_2",
+                "model": "chat-model",
+                "choices": [{
+                    "message": {"role": "assistant", "content": "Explicit chat"},
+                    "finish_reason": "stop"
+                }],
+                "usage": {"prompt_tokens": 1, "completion_tokens": 2}
+            }),
+            "openai_chat",
+            None,
+            None,
+            None,
+            None,
+        )
+        .expect("explicit chat response");
+        assert_eq!(explicit_chat_response["content"][0]["text"], "Explicit chat");
+
+        let explicit_responses_response = provider_claude_transform_response_for_api_format(
+            &json!({
+                "id": "resp_2",
+                "model": "responses-model",
+                "status": "completed",
+                "output": [{
+                    "type": "message",
+                    "content": [{"type": "output_text", "text": "Explicit responses"}]
+                }],
+                "usage": {"input_tokens": 1, "output_tokens": 2}
+            }),
+            "openai_responses",
+            None,
+            None,
+            None,
+            None,
+        )
+        .expect("explicit responses response");
+        assert_eq!(
+            explicit_responses_response["content"][0]["text"],
+            "Explicit responses"
+        );
 
         let gemini_output = gemini_response_to_anthropic_message(
             &json!({

@@ -863,6 +863,12 @@ const FORBIDDEN_HANDLER_RESPONSE_TRANSFORM_ERROR_MAPPING_MARKERS: &[&str] = &[
     "转换响应失败",
     "Chat → Responses 响应转换失败",
 ];
+const FORBIDDEN_HANDLER_CLAUDE_RESPONSE_TRANSFORM_DISPATCH_MARKERS: &[&str] = &[
+    "openai_responses_to_anthropic_message(",
+    "openai_chat_to_anthropic_message(",
+    "gemini_response_to_anthropic_message_with_shadow(",
+    "rectified_tool_names",
+];
 const PROXY_CORE_MARKER: &str = "crate::proxy_core::";
 const PROXY_CORE_API_MARKER: &str = "crate::proxy_core::api";
 const PROXY_ENGINE_CONSTRUCTOR_MARKER: &str = "ProxyEngine::new(";
@@ -2591,6 +2597,33 @@ fn handlers_delegate_response_transform_error_mapping_to_error_mapper() {
     assert!(
         violations.is_empty(),
         "protocol handlers must delegate response transform error mapping to error_mapper:\n{}",
+        violations.join("\n")
+    );
+}
+
+#[test]
+fn handlers_delegate_claude_response_transform_dispatch_to_adapter() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let path = manifest_dir.join("src/proxy/handlers.rs");
+    let source = fs::read_to_string(&path).expect("read handlers.rs");
+
+    let mut violations = Vec::new();
+    for (line_index, line) in production_lines(&source) {
+        let code = line.split("//").next().unwrap_or_default();
+        for marker in FORBIDDEN_HANDLER_CLAUDE_RESPONSE_TRANSFORM_DISPATCH_MARKERS {
+            if code.contains(marker) {
+                violations.push(format!(
+                    "src/proxy/handlers.rs:{} contains Claude response transform dispatch marker `{}`",
+                    line_index + 1,
+                    marker
+                ));
+            }
+        }
+    }
+
+    assert!(
+        violations.is_empty(),
+        "protocol handlers must delegate Claude response transform dispatch to proxy_core_adapter:\n{}",
         violations.join("\n")
     );
 }
