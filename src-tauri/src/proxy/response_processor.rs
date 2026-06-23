@@ -16,11 +16,11 @@ use super::{
     server::ProxyState,
 };
 use crate::proxy_core_adapter::{
-    create_logged_passthrough_stream, decode_raw_proxy_response_body, get_content_encoding,
-    non_streaming_body_timeout_message, non_streaming_response_usage_record_from_response_context,
-    NonStreamingResponseUsageContext, passthrough_bytes_proxy_response,
-    passthrough_stream_proxy_response,
-    response_headers_indicate_sse, response_headers_log_summary,
+    create_logged_passthrough_stream, decode_raw_proxy_response_body,
+    log_streaming_proxy_response_received, non_streaming_body_timeout_message,
+    non_streaming_response_usage_record_from_response_context, NonStreamingResponseUsageContext,
+    passthrough_bytes_proxy_response, passthrough_stream_proxy_response,
+    response_headers_indicate_sse,
     response_usage_provider_facts_from_optional,
     spawn_usage_record_with_proxy_services,
     streaming_response_usage_record_from_response_context, StreamingResponseUsageContext,
@@ -77,20 +77,7 @@ pub async fn handle_streaming(
     connection_guard: Option<ActiveConnectionGuard>,
 ) -> Response {
     let status = response.status();
-    log::debug!(
-        "[{}] 已接收上游流式响应: status={}, headers={}",
-        ctx.tag,
-        status.as_u16(),
-        response_headers_log_summary(response.headers())
-    );
-    // 检查流式响应是否被压缩（SSE 通常不压缩，如果压缩则 SSE 解析会失败）
-    if let Some(encoding) = get_content_encoding(response.headers()) {
-        log::warn!(
-            "[{}] 流式响应含 content-encoding={encoding}，SSE 解析可能失败。\
-             上游在 accept-encoding 透传后压缩了 SSE 流。",
-            ctx.tag
-        );
-    }
+    log_streaming_proxy_response_received(response.headers(), status, ctx.tag);
 
     // 创建字节流
     let response_headers = response.headers().clone();

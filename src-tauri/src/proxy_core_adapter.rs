@@ -6313,6 +6313,25 @@ pub(crate) fn decode_raw_proxy_response_body(
     }
 }
 
+pub(crate) fn log_streaming_proxy_response_received(
+    headers: &HeaderMap,
+    status: http::StatusCode,
+    tag: &str,
+) {
+    log::debug!(
+        "[{tag}] 已接收上游流式响应: status={}, headers={}",
+        status.as_u16(),
+        response_headers_log_summary(headers)
+    );
+
+    if let Some(encoding) = get_content_encoding(headers) {
+        log::warn!(
+            "[{tag}] 流式响应含 content-encoding={encoding}，SSE 解析可能失败。\
+             上游在 accept-encoding 透传后压缩了 SSE 流。"
+        );
+    }
+}
+
 #[derive(Clone)]
 pub(crate) struct SseUsageCollector {
     inner: Arc<SseUsageCollectorInner>,

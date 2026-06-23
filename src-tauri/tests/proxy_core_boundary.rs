@@ -805,6 +805,12 @@ const FORBIDDEN_RESPONSE_PROCESSOR_BODY_DECODE_PROJECTION_MARKERS: &[&str] = &[
     "ResponseBodyDecodeLogLevel::",
     ".status.log_event()",
 ];
+const FORBIDDEN_RESPONSE_PROCESSOR_RESPONSE_LOG_PROJECTION_MARKERS: &[&str] = &[
+    "response_headers_log_summary(",
+    "get_content_encoding(",
+    "已接收上游流式响应",
+    "流式响应含 content-encoding",
+];
 const FORBIDDEN_USAGE_SINK_PROVIDER_PROJECTION_MARKERS: &[&str] = &[
     "provider_kind_from_provider(",
     "AppKind::from(",
@@ -2378,6 +2384,33 @@ fn response_processor_delegates_body_decode_projection_to_adapter() {
     assert!(
         violations.is_empty(),
         "response processor must delegate body decode/log projection to proxy_core_adapter:\n{}",
+        violations.join("\n")
+    );
+}
+
+#[test]
+fn response_processor_delegates_response_log_projection_to_adapter() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let path = manifest_dir.join("src/proxy/response_processor.rs");
+    let source = fs::read_to_string(&path).expect("read response_processor.rs");
+
+    let mut violations = Vec::new();
+    for (line_index, line) in production_lines(&source) {
+        let code = line.split("//").next().unwrap_or_default();
+        for marker in FORBIDDEN_RESPONSE_PROCESSOR_RESPONSE_LOG_PROJECTION_MARKERS {
+            if code.contains(marker) {
+                violations.push(format!(
+                    "src/proxy/response_processor.rs:{} contains response log projection marker `{}`",
+                    line_index + 1,
+                    marker
+                ));
+            }
+        }
+    }
+
+    assert!(
+        violations.is_empty(),
+        "response processor must delegate response header log projection to proxy_core_adapter:\n{}",
         violations.join("\n")
     );
 }
