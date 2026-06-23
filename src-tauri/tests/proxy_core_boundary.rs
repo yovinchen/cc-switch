@@ -5486,6 +5486,10 @@ fn production_forwarder_uses_managed_auth_runtime_source_resource() {
         "resolve_copilot_api_endpoint(self.app_handle.as_ref()",
         "fetch_copilot_live_models(self.app_handle.as_ref()",
         "resolve_copilot_model_vendor(self.app_handle.as_ref()",
+        "resolve_managed_account_auth_from_runtime_source(",
+        "resolve_copilot_api_endpoint_from_runtime_source(",
+        "fetch_copilot_live_models_from_runtime_source(",
+        "resolve_copilot_model_vendor_from_runtime_source(",
     ];
     let mut violations = Vec::new();
     for (line_index, line) in production_lines(&source) {

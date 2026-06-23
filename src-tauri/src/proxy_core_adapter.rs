@@ -3198,7 +3198,7 @@ pub(crate) fn default_managed_account_runtime_source() -> ManagedAccountRuntimeS
     managed_account_runtime_source_from_app_handle(None)
 }
 
-pub(crate) trait ManagedAccountRuntimeSource {
+pub(crate) trait ManagedAccountRuntimeSource: Send + Sync {
     fn resolve_copilot_auth<'a>(
         &'a self,
         account_id: Option<&'a str>,
@@ -3226,6 +3226,49 @@ pub(crate) trait ManagedAccountRuntimeSource {
         account_id: Option<&'a str>,
         model_id: &'a str,
     ) -> BoxFuture<'a, Option<String>>;
+
+    fn resolve_auth_for_provider<'a>(
+        &'a self,
+        auth_provider: &'a Provider,
+        auth: ProviderAuthInfo,
+    ) -> BoxFuture<'a, Result<ManagedAccountAuthResolution, ProxyError>> {
+        Box::pin(async move {
+            resolve_managed_account_auth_with_runtime_source(self, auth_provider, auth).await
+        })
+    }
+
+    fn resolve_copilot_api_endpoint_for_provider<'a>(
+        &'a self,
+        auth_provider: &'a Provider,
+    ) -> BoxFuture<'a, Option<String>> {
+        Box::pin(async move {
+            let account_id = provider_github_copilot_managed_account_id(auth_provider);
+            self.resolve_copilot_api_endpoint(account_id.as_deref())
+                .await
+        })
+    }
+
+    fn fetch_copilot_live_models_for_provider<'a>(
+        &'a self,
+        auth_provider: &'a Provider,
+    ) -> BoxFuture<'a, Result<Option<Vec<CopilotModel>>, String>> {
+        Box::pin(async move {
+            let account_id = provider_github_copilot_managed_account_id(auth_provider);
+            self.fetch_copilot_live_models(account_id.as_deref()).await
+        })
+    }
+
+    fn resolve_copilot_model_vendor_for_provider<'a>(
+        &'a self,
+        auth_provider: &'a Provider,
+        model_id: &'a str,
+    ) -> BoxFuture<'a, Option<String>> {
+        Box::pin(async move {
+            let account_id = provider_github_copilot_managed_account_id(auth_provider);
+            self.resolve_copilot_model_vendor(account_id.as_deref(), model_id)
+                .await
+        })
+    }
 }
 
 impl ManagedAccountRuntimeSource for CcSwitchManagedAccountRuntimeSource {
@@ -3348,12 +3391,15 @@ async fn resolve_managed_account_auth_with_runtime_source(
     }
 }
 
+#[cfg(test)]
 pub(crate) async fn resolve_managed_account_auth_from_runtime_source(
     runtime_source: &(dyn ManagedAccountRuntimeSource + Send + Sync),
     auth_provider: &Provider,
     auth: ProviderAuthInfo,
 ) -> Result<ManagedAccountAuthResolution, ProxyError> {
-    resolve_managed_account_auth_with_runtime_source(runtime_source, auth_provider, auth).await
+    runtime_source
+        .resolve_auth_for_provider(auth_provider, auth)
+        .await
 }
 
 #[cfg(test)]
@@ -3372,13 +3418,13 @@ pub(crate) async fn resolve_managed_account_auth(
     .await
 }
 
+#[cfg(test)]
 pub(crate) async fn resolve_copilot_api_endpoint_from_runtime_source(
     runtime_source: &(dyn ManagedAccountRuntimeSource + Send + Sync),
     auth_provider: &Provider,
 ) -> Option<String> {
-    let account_id = provider_github_copilot_managed_account_id(auth_provider);
     runtime_source
-        .resolve_copilot_api_endpoint(account_id.as_deref())
+        .resolve_copilot_api_endpoint_for_provider(auth_provider)
         .await
 }
 
@@ -3393,13 +3439,13 @@ pub(crate) async fn resolve_copilot_api_endpoint(
     resolve_copilot_api_endpoint_from_runtime_source(runtime_source.as_ref(), auth_provider).await
 }
 
+#[cfg(test)]
 pub(crate) async fn fetch_copilot_live_models_from_runtime_source(
     runtime_source: &(dyn ManagedAccountRuntimeSource + Send + Sync),
     auth_provider: &Provider,
 ) -> Result<Option<Vec<CopilotModel>>, String> {
-    let account_id = provider_github_copilot_managed_account_id(auth_provider);
     runtime_source
-        .fetch_copilot_live_models(account_id.as_deref())
+        .fetch_copilot_live_models_for_provider(auth_provider)
         .await
 }
 
@@ -3414,14 +3460,14 @@ pub(crate) async fn fetch_copilot_live_models(
     fetch_copilot_live_models_from_runtime_source(runtime_source.as_ref(), auth_provider).await
 }
 
+#[cfg(test)]
 pub(crate) async fn resolve_copilot_model_vendor_from_runtime_source(
     runtime_source: &(dyn ManagedAccountRuntimeSource + Send + Sync),
     auth_provider: &Provider,
     model_id: &str,
 ) -> Option<String> {
-    let account_id = provider_github_copilot_managed_account_id(auth_provider);
     runtime_source
-        .resolve_copilot_model_vendor(account_id.as_deref(), model_id)
+        .resolve_copilot_model_vendor_for_provider(auth_provider, model_id)
         .await
 }
 

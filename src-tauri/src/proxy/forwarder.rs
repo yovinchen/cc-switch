@@ -25,7 +25,7 @@ use crate::proxy_core_adapter::{
     forwarder_provider_adapter_name, forwarder_provider_auth_headers, forwarder_provider_auth_info,
     forwarder_provider_base_url, forwarder_provider_upstream_url,
     forwarder_provider_transform_request, forwarder_provider_transform_required,
-    ForwarderAdapterHandle, fetch_copilot_live_models_from_runtime_source, is_openai_o_series,
+    ForwarderAdapterHandle, is_openai_o_series,
     is_unsupported_image_error, merge_copilot_tool_results,
     normalize_thinking_type,
     prepare_upstream_request_body_with_report, prompt_cache_trace_log_message,
@@ -33,11 +33,10 @@ use crate::proxy_core_adapter::{
     provider_adapter_name_is_claude,
     rectify_anthropic_request, rectify_thinking_budget, replace_image_blocks_with_marker,
     request_body_filter_log_message,
-    resolve_copilot_api_endpoint_from_runtime_source,
     resolve_copilot_deterministic_interaction_id, resolve_copilot_model_against_ids,
-    resolve_copilot_model_vendor_from_runtime_source, resolve_copilot_optimizer_session_id,
+    resolve_copilot_optimizer_session_id,
     resolve_copilot_request_id_with_fallback, resolve_channel_response_status_mapping,
-    resolve_managed_account_auth_from_runtime_source, resolve_media_prevention_policy,
+    resolve_media_prevention_policy,
     forwarder_claude_api_format, forwarder_claude_transform_required,
     resolve_forwarder_claude_api_format,
     resolved_copilot_dynamic_base_url, responses_to_chat_completions_with_options,
@@ -1219,10 +1218,8 @@ impl RequestForwarder {
 
         if should_resolve_copilot_dynamic_endpoint(is_copilot, is_full_url) {
             if let Some(dynamic_endpoint) =
-                resolve_copilot_api_endpoint_from_runtime_source(
-                    self.managed_account_runtime_source.as_ref(),
-                    provider,
-                )
+                self.managed_account_runtime_source
+                    .resolve_copilot_api_endpoint_for_provider(provider)
                 .await
             {
                 if let Some(next_base_url) = resolved_copilot_dynamic_base_url(
@@ -1395,11 +1392,8 @@ impl RequestForwarder {
             forwarder_provider_auth_info(adapter, auth_provider)
         {
             let managed_auth =
-                resolve_managed_account_auth_from_runtime_source(
-                    self.managed_account_runtime_source.as_ref(),
-                    auth_provider,
-                    auth,
-                )
+                self.managed_account_runtime_source
+                    .resolve_auth_for_provider(auth_provider, auth)
                 .await?;
             auth = managed_auth.auth;
             should_send_codex_oauth_session_headers =
@@ -1616,11 +1610,8 @@ impl RequestForwarder {
         let copilot_model_vendor = if is_copilot {
             match model {
                 Some(model_id) => {
-                    resolve_copilot_model_vendor_from_runtime_source(
-                        self.managed_account_runtime_source.as_ref(),
-                        provider,
-                        model_id,
-                    )
+                    self.managed_account_runtime_source
+                        .resolve_copilot_model_vendor_for_provider(provider, model_id)
                     .await
                 }
                 None => None,
@@ -1644,11 +1635,10 @@ impl RequestForwarder {
         };
         let model_id = model_id.to_string();
 
-        let models = match fetch_copilot_live_models_from_runtime_source(
-            self.managed_account_runtime_source.as_ref(),
-            provider,
-        )
-        .await
+        let models = match self
+            .managed_account_runtime_source
+            .fetch_copilot_live_models_for_provider(provider)
+            .await
         {
             Ok(Some(models)) => models,
             Ok(None) => return,
