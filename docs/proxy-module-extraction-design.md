@@ -897,12 +897,12 @@
 本轮继续把 `CcSwitchForwardPipeline` 本身迁为 adapter-owned optional runtime wrapper，runtime 缺失判断和 host forward runtime 调度都在 adapter wrapper 内完成；host services 只持有 `CcSwitchForwardPipeline<CcSwitchProxyRuntime>` 并保留 `HostForwardRuntime for CcSwitchProxyRuntime` 作为 DB/router/Tauri 资源装配点。
 本轮继续把 `CcSwitchProxyServices` 迁为 adapter-owned generic `ProxyServices` 容器；`proxy_core_host` 只保留 `CcSwitchProxyServices = CcSwitchProxyServices<CcSwitchProxyRuntime>` type alias 和 `ProxyServiceRuntimeResources` 实现，用于暴露 DB、ProviderRouter、current providers 与 event bus。
 本轮继续把 response processor 非流式 usage 的 provider 缺失判定和 usage record 输入组装收敛到 adapter wrapper，response processor 只负责读取响应体、记录日志和触发 `UsageSink`。
-本轮继续把 response processor 流式 usage 的 provider facts 选择、缺失 warning 和 usage record 输入组装收敛到 adapter wrapper，response processor 只保留 SSE 异步收集和落库调度。
+本轮继续把 response processor 流式 usage 的 provider facts 选择、缺失 warning 和 usage record 输入组装收敛到 adapter wrapper，response processor 只保留 usage collector 创建入口和响应 transport 编排。
 本轮继续把 response processor 的 SSE usage collector、finish guard、SSE passthrough scanner 和流式 first-byte/idle timeout loop 迁入 adapter-owned `create_logged_passthrough_stream`，host response processor/handlers 只传入 stream、tag、collector、timeout config 与 active-connection guard。
 本轮继续把 response processor 的 route/channel usage 归因合并收敛到 adapter wrapper，streaming/non-streaming 输出的 `UsageRecord` 已在进入 `UsageSink` 前带好 route context。
-本轮继续把 response processor 的 `UsageSink` 调用、usage debug 日志和落库失败 warning 收敛到 adapter wrapper，response processor 只保留 tokio task 调度。
-本轮继续把 usage sink bridge 的 `UsageSink` 调用和落库失败 warning 收敛到 adapter wrapper，bridge 只保留 transformed/forward-error usage 的 task 调度和 failure context 选择。
-本轮继续把 usage sink bridge 的 forward-error/transformed response usage provider 选择、缺失 warning、record 组装和 route context 合并收敛到 adapter wrapper，bridge 只保留 logging 开关读取、SSE collector 生命周期和 task 调度。
+本轮继续把 response processor 的 `UsageSink` 调用、usage debug 日志、落库失败 warning 和默认落库 task 调度收敛到 adapter wrapper，response processor 不再维护本地 `tokio::spawn` usage 落库 helper。
+本轮继续把 usage sink bridge 的 `UsageSink` 调用、落库失败 warning 和 failure-context-aware task 调度收敛到 adapter wrapper，bridge 只保留 transformed/forward-error usage 的入口编排。
+本轮继续把 usage sink bridge 的 forward-error/transformed response usage provider 选择、缺失 warning、record 组装和 route context 合并收敛到 adapter wrapper，bridge 只保留 logging 开关读取和 SSE collector 生命周期入口。
 本轮继续把 forward runtime 的 route plan attempt 构造入口收敛到 adapter；auth profile 的 DB key 注入 wrapper 也已收敛到 adapter，host forward runtime 只调用统一 helper。
 本轮还把 forward runtime 的 auth profile action 应用循环收敛到 adapter，host 不再维护 channel-key DB lookup 闭包。
 本轮继续把 forward runtime 的 current-provider 来源组合收敛到 adapter，host forward runtime 不再读取 settings 或手写 DB fallback 闭包。
