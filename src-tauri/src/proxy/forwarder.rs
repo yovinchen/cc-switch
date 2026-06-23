@@ -14,8 +14,7 @@ use crate::proxy_core_adapter::{
     build_codex_oauth_session_headers,
     build_retryable_forward_failure_log, build_terminal_forward_failure_log,
     build_upstream_auth_headers, cache_injection_log_message, categorize_forward_failure,
-    classify_copilot_request, contains_image_blocks,
-    emit_attempt_event_source, forward_upstream_url_plan,
+    classify_copilot_request, contains_image_blocks, forward_upstream_url_plan,
     forwarder_apply_codex_chat_upstream_model, forwarder_bedrock_env_flag,
     forwarder_codex_chat_reasoning_options,
     forwarder_custom_user_agent_header,
@@ -337,9 +336,7 @@ impl RequestForwarder {
     }
 
     fn emit_attempt_started(&self, request_id: &str, app_type: &str, attempt: &ForwardAttempt) {
-        let events = self.runtime_state_source.events();
-        emit_attempt_event_source(
-            events.as_ref(),
+        self.runtime_state_source.emit_attempt_event(
             request_id,
             app_type,
             attempt,
@@ -349,9 +346,7 @@ impl RequestForwarder {
     }
 
     fn emit_attempt_succeeded(&self, request_id: &str, app_type: &str, attempt: &ForwardAttempt) {
-        let events = self.runtime_state_source.events();
-        emit_attempt_event_source(
-            events.as_ref(),
+        self.runtime_state_source.emit_attempt_event(
             request_id,
             app_type,
             attempt,
@@ -367,9 +362,7 @@ impl RequestForwarder {
         attempt: &ForwardAttempt,
         error: &str,
     ) {
-        let events = self.runtime_state_source.events();
-        emit_attempt_event_source(
-            events.as_ref(),
+        self.runtime_state_source.emit_attempt_event(
             request_id,
             app_type,
             attempt,

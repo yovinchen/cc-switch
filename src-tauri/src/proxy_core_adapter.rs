@@ -7837,6 +7837,14 @@ pub(crate) trait ForwarderRuntimeStateSource {
     fn current_providers(&self) -> Arc<RwLock<HashMap<String, CurrentRouteTarget>>>;
     fn events(&self) -> Arc<ProxyEventBus>;
     fn emit_request_started(&self, request_id: &str, app_type: &str);
+    fn emit_attempt_event(
+        &self,
+        request_id: &str,
+        app_type: &str,
+        attempt: &ForwardAttempt,
+        phase: AttemptEventPhase,
+        error: Option<&str>,
+    );
     fn record_request_started<'a>(&'a self, started_at: &'a str) -> BoxFuture<'a, ()>;
     fn record_active_connection_acquired<'a>(&'a self) -> BoxFuture<'a, ()>;
     fn record_active_connection_released<'a>(&'a self) -> BoxFuture<'a, ()>;
@@ -7877,6 +7885,24 @@ impl ForwarderRuntimeStateSource for CcSwitchForwarderRuntimeStateSource {
 
     fn emit_request_started(&self, request_id: &str, app_type: &str) {
         emit_request_started_event_source(self.events.as_ref(), request_id, app_type);
+    }
+
+    fn emit_attempt_event(
+        &self,
+        request_id: &str,
+        app_type: &str,
+        attempt: &ForwardAttempt,
+        phase: AttemptEventPhase,
+        error: Option<&str>,
+    ) {
+        emit_attempt_event_source(
+            self.events.as_ref(),
+            request_id,
+            app_type,
+            attempt,
+            phase,
+            error,
+        );
     }
 
     fn record_request_started<'a>(&'a self, started_at: &'a str) -> BoxFuture<'a, ()> {
