@@ -4042,6 +4042,10 @@ pub(crate) fn resolve_forwarder_claude_api_format(
     )
 }
 
+pub(crate) fn forwarder_claude_transform_required(api_format: &str) -> bool {
+    claude_api_format_needs_transform(api_format)
+}
+
 pub(crate) fn provider_needs_claude_transform(provider: &Provider) -> bool {
     if matches!(
         provider_claude_kind(provider),
@@ -16559,6 +16563,8 @@ command = "latest-command"
             resolve_forwarder_claude_api_format(&provider, true, Some("OpenAI")),
             "openai_responses"
         );
+        assert!(!forwarder_claude_transform_required("anthropic"));
+        assert!(forwarder_claude_transform_required("openai_chat"));
         assert!(!claude_api_format_needs_transform("anthropic"));
         assert!(claude_api_format_needs_transform("openai_chat"));
         assert!(claude_api_format_needs_transform("openai_responses"));

@@ -53,7 +53,8 @@ use crate::proxy_core_adapter::{
     resolve_copilot_deterministic_interaction_id, resolve_copilot_model_against_ids,
     resolve_copilot_optimizer_session_id, resolve_copilot_request_id_with_fallback,
     resolve_channel_response_status_mapping, resolve_media_prevention_policy,
-    forwarder_claude_api_format, resolve_forwarder_claude_api_format,
+    forwarder_claude_api_format, forwarder_claude_transform_required,
+    resolve_forwarder_claude_api_format,
     resolved_copilot_dynamic_base_url, responses_to_chat_completions_with_options,
     sanitize_copilot_orphan_tool_results,
     should_apply_bedrock_pre_send_optimizer,
@@ -1305,9 +1306,7 @@ impl RequestForwarder {
             }
         }
         let needs_transform = match resolved_claude_api_format.as_deref() {
-            Some(api_format) => {
-                crate::proxy_core_adapter::claude_api_format_needs_transform(api_format)
-            }
+            Some(api_format) => forwarder_claude_transform_required(api_format),
             None => adapter.needs_transform(provider),
         };
         let codex_responses_to_chat =
