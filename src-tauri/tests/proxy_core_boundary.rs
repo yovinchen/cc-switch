@@ -339,6 +339,8 @@ const FORBIDDEN_PROVIDER_ROUTER_SELECTION_MARKERS: &[&str] = &[
     "crate::settings::get_effective_current_provider(",
     ".get_current_provider(",
     ".get_provider_by_id(",
+    ".get_all_providers(",
+    ".get_failover_queue(",
 ];
 const FORBIDDEN_PROVIDER_ROUTER_FAILOVER_CONFIG_MARKERS: &[&str] =
     &[".auto_failover_enabled", "默认禁用故障转移"];

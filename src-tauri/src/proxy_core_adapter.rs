@@ -4191,6 +4191,24 @@ pub(crate) fn provider_failover_circuit_lookups_from_router_sources(
     )
 }
 
+pub(crate) struct ProviderFailoverRouterSources {
+    pub(crate) providers: IndexMap<String, Provider>,
+    pub(crate) lookups: Vec<ProviderFailoverCircuitLookup>,
+}
+
+pub(crate) fn provider_failover_sources_from_router_db(
+    db: &Database,
+    app_type: &str,
+) -> Result<ProviderFailoverRouterSources, AppError> {
+    let providers = db.get_all_providers(app_type)?;
+    let lookups = provider_failover_circuit_lookups_from_router_sources(
+        app_type,
+        db.get_failover_queue(app_type)?,
+        &providers,
+    );
+    Ok(ProviderFailoverRouterSources { providers, lookups })
+}
+
 pub(crate) fn current_provider_id_from_router_sources(
     app_type: &str,
     load_settings_current_provider_id: impl FnOnce(&AppType) -> Option<String>,

@@ -12,8 +12,8 @@ use crate::proxy_core_adapter::{
     channel_circuit_key, channel_circuit_key_prefix, channel_route_records_from_db_source,
     circuit_breaker_config_from_router_config_result,
     circuit_failure_threshold_from_router_config_result,
-    provider_circuit_key, provider_circuit_key_prefix,
-    provider_failover_circuit_lookups_from_router_sources, proxy_channel_route_inputs_to_core,
+    provider_circuit_key, provider_circuit_key_prefix, provider_failover_sources_from_router_db,
+    proxy_channel_route_inputs_to_core,
     resolve_channel_route as resolve_core_channel_route, route_candidate_channel_circuit_keys,
     select_current_provider_from_router_db_source,
     select_failover_providers_from_router_lookup_availability, AllowResult, ChannelRouteSource,
@@ -64,15 +64,9 @@ impl ProviderRouter {
 
     async fn select_failover_providers(&self, app_type: &str) -> Result<Vec<Provider>, AppError> {
         // 故障转移开启：仅按队列顺序依次尝试（P1 → P2 → ...）
-        let all_providers = self.db.get_all_providers(app_type)?;
-
-        let lookups = provider_failover_circuit_lookups_from_router_sources(
-            app_type,
-            self.db.get_failover_queue(app_type)?,
-            &all_providers,
-        );
-        let mut lookup_availability = Vec::with_capacity(lookups.len());
-        for lookup in lookups {
+        let sources = provider_failover_sources_from_router_db(&self.db, app_type)?;
+        let mut lookup_availability = Vec::with_capacity(sources.lookups.len());
+        for lookup in sources.lookups {
             let available = match lookup.circuit_key.as_ref() {
                 Some(circuit_key) => {
                     let breaker = self.get_or_create_circuit_breaker(circuit_key).await;
@@ -85,7 +79,7 @@ impl ProviderRouter {
 
         select_failover_providers_from_router_lookup_availability(
             app_type,
-            &all_providers,
+            &sources.providers,
             lookup_availability,
         )
     }
