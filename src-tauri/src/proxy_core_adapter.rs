@@ -4291,6 +4291,10 @@ impl CcSwitchProviderRouterSources {
     }
 }
 
+pub(crate) fn provider_router_from_database(db: Arc<Database>) -> ProviderRouter {
+    ProviderRouter::with_sources(CcSwitchProviderRouterSources::from_database(db))
+}
+
 struct CcSwitchProviderRouterConfigSource {
     db: Arc<Database>,
 }

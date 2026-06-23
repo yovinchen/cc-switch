@@ -28,7 +28,7 @@ use crate::proxy_core_adapter::{
     StreamingTimeoutPhase, UsageParserConfig, UsageRecord, UsageSelectedProviderMissingPhase,
 };
 #[cfg(test)]
-use crate::proxy_core_adapter::{ProviderKind, TokenUsage};
+use crate::proxy_core_adapter::{provider_router_from_database, ProviderKind, TokenUsage};
 use axum::http::header::HeaderMap;
 use axum::response::{IntoResponse, Response};
 use bytes::Bytes;
@@ -534,7 +534,6 @@ mod tests {
     use crate::error::AppError;
     use crate::provider::ProviderMeta;
     use crate::proxy::failover_switch::FailoverSwitchManager;
-    use crate::proxy::provider_router::ProviderRouter;
     use crate::proxy::codex_chat_history::CodexChatHistoryStore;
     use crate::proxy_core_adapter::{
         decompress_body, strip_sse_field, GeminiShadowStore, ProxyConfig, ProxyRuntimeStatus,
@@ -608,7 +607,7 @@ mod tests {
             status: Arc::new(RwLock::new(ProxyRuntimeStatus::default())),
             start_time: Arc::new(RwLock::new(None)),
             current_providers: Arc::new(RwLock::new(HashMap::new())),
-            provider_router: Arc::new(ProviderRouter::new(db.clone())),
+            provider_router: Arc::new(provider_router_from_database(db.clone())),
             proxy_core_services: Arc::new(CcSwitchProxyServices::new(db.clone())),
             gemini_shadow: Arc::new(GeminiShadowStore::default()),
             codex_chat_history: Arc::new(CodexChatHistoryStore::default()),

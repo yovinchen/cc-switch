@@ -17,6 +17,7 @@ use crate::proxy_core_adapter::{
     emit_proxy_server_started_event_source, emit_proxy_server_stopped_event_source,
     proxy_engine_from_services, proxy_runtime_status_from_runtime_sources,
     proxy_server_info_from_parts, record_proxy_server_listen_port_runtime_source,
+    provider_router_from_database,
     record_proxy_server_started_runtime_source, record_proxy_server_stopped_runtime_source,
     reset_provider_circuit_breaker_source, set_active_route_target_runtime_source,
     server_log_codes as log_srv, CircuitBreakerConfig, CurrentRouteTarget, GeminiShadowStore,
@@ -86,7 +87,7 @@ impl ProxyServer {
         app_handle: Option<tauri::AppHandle>,
     ) -> Self {
         // 创建共享的 ProviderRouter（熔断器状态将跨所有请求保持）
-        let provider_router = Arc::new(ProviderRouter::new(db.clone()));
+        let provider_router = Arc::new(provider_router_from_database(db.clone()));
         let events = Arc::new(ProxyEventBus::default());
         // 创建故障转移切换管理器
         let failover_manager = Arc::new(FailoverSwitchManager::new(db.clone()));

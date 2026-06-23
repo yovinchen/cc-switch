@@ -73,6 +73,8 @@ use crate::proxy_core_adapter::{
     UpstreamAuthHeadersInput, UpstreamRequestHeadersInput, UpstreamSendPolicyInput,
     UpstreamTransportKind, UNSUPPORTED_IMAGE_MARKER,
 };
+#[cfg(test)]
+use crate::proxy_core_adapter::provider_router_from_database;
 use crate::{app_config::AppType, provider::Provider};
 use futures::StreamExt;
 use http::Extensions;
@@ -1851,7 +1853,7 @@ mod tests {
         let db = Arc::new(Database::memory().expect("memory db"));
 
         RequestForwarder {
-            router: Arc::new(ProviderRouter::new(db.clone())),
+            router: Arc::new(provider_router_from_database(db.clone())),
             status: Arc::new(RwLock::new(ProxyRuntimeStatus::default())),
             current_providers: Arc::new(RwLock::new(HashMap::new())),
             events: Arc::new(ProxyEventBus::default()),

@@ -2,7 +2,7 @@
 //!
 //! 负责选择和管理代理目标供应商，实现智能故障转移
 
-use crate::database::{Database, ProxyChannelRecord};
+use crate::database::ProxyChannelRecord;
 use crate::error::AppError;
 use crate::provider::Provider;
 use crate::proxy::circuit_breaker::CircuitBreaker;
@@ -13,8 +13,8 @@ use crate::proxy_core_adapter::{
     proxy_channel_route_inputs_to_core,
     resolve_channel_route as resolve_core_channel_route, route_candidate_channel_circuit_keys,
     select_failover_providers_from_router_lookup_availability, AllowResult, ChannelRouteSource,
-    CcSwitchProviderRouterSources, CircuitBreakerConfig, CircuitBreakerStats,
-    ProviderFailoverCircuitLookup, RouteCandidateCircuitKey, RouteResolveRequest, RouteResolveResponse,
+    CircuitBreakerConfig, CircuitBreakerStats, ProviderFailoverCircuitLookup,
+    RouteCandidateCircuitKey, RouteResolveRequest, RouteResolveResponse,
 };
 use futures::future::BoxFuture;
 use indexmap::IndexMap;
@@ -109,11 +109,6 @@ pub struct ProviderRouter {
 }
 
 impl ProviderRouter {
-    /// 创建新的供应商路由器
-    pub fn new(db: Arc<Database>) -> Self {
-        Self::with_sources(CcSwitchProviderRouterSources::from_database(db))
-    }
-
     pub(crate) fn with_sources(sources: ProviderRouterSources) -> Self {
         Self {
             sources,
@@ -458,7 +453,9 @@ impl ProviderRouter {
 mod tests {
     use super::*;
     use crate::database::Database;
-    use crate::proxy_core_adapter::{ChannelRouteSource, CircuitState, RouteResolveRequest};
+    use crate::proxy_core_adapter::{
+        provider_router_from_database, ChannelRouteSource, CircuitState, RouteResolveRequest,
+    };
     use crate::settings::CustomEndpoint;
     use serde_json::json;
     use serial_test::serial;
@@ -519,7 +516,7 @@ mod tests {
     async fn test_provider_router_creation() {
         let _home = TempHome::new();
         let db = Arc::new(Database::memory().unwrap());
-        let router = ProviderRouter::new(db);
+        let router = provider_router_from_database(db);
 
         let breaker = router.get_or_create_circuit_breaker("claude:test").await;
         assert!(breaker.allow_request().await.allowed);
@@ -541,7 +538,7 @@ mod tests {
         db.set_current_provider("claude", "a").unwrap();
         db.add_to_failover_queue("claude", "b").unwrap();
 
-        let router = ProviderRouter::new(db.clone());
+        let router = provider_router_from_database(db.clone());
         let providers = router.select_providers("claude").await.unwrap();
 
         assert_eq!(providers.len(), 1);
@@ -580,7 +577,7 @@ mod tests {
         db.save_provider("claude", &provider).unwrap();
         db.set_current_provider("claude", "a").unwrap();
 
-        let router = ProviderRouter::new(db);
+        let router = provider_router_from_database(db);
         let response = router
             .resolve_channel_route_dry_run(RouteResolveRequest {
                 app_type: "claude".to_string(),
@@ -616,7 +613,7 @@ mod tests {
         db.save_provider("claude", &provider).unwrap();
         db.materialize_legacy_proxy_channels("claude").unwrap();
 
-        let router = ProviderRouter::new(db);
+        let router = provider_router_from_database(db);
         let response = router
             .resolve_channel_route_dry_run(RouteResolveRequest {
                 app_type: "claude".to_string(),
@@ -662,7 +659,7 @@ mod tests {
         let channels = db.list_proxy_channels_for_app("claude").unwrap();
         let channel_id = channels[0].id.clone();
 
-        let router = ProviderRouter::new(db.clone());
+        let router = provider_router_from_database(db.clone());
         router
             .record_channel_result(
                 &channel_id,
@@ -757,7 +754,7 @@ mod tests {
         config.auto_failover_enabled = true;
         db.update_proxy_config_for_app(config).await.unwrap();
 
-        let router = ProviderRouter::new(db.clone());
+        let router = provider_router_from_database(db.clone());
         let providers = router.select_providers("claude").await.unwrap();
 
         assert_eq!(providers.len(), 2);
@@ -789,7 +786,7 @@ mod tests {
         config.auto_failover_enabled = true;
         db.update_proxy_config_for_app(config).await.unwrap();
 
-        let router = ProviderRouter::new(db.clone());
+        let router = provider_router_from_database(db.clone());
         let providers = router.select_providers("claude").await.unwrap();
 
         assert_eq!(providers.len(), 1);
@@ -826,7 +823,7 @@ mod tests {
         config.auto_failover_enabled = true;
         db.update_proxy_config_for_app(config).await.unwrap();
 
-        let router = ProviderRouter::new(db.clone());
+        let router = provider_router_from_database(db.clone());
 
         router
             .record_result("b", "claude", false, false, Some("fail".to_string()))
@@ -864,7 +861,7 @@ mod tests {
         config.auto_failover_enabled = true;
         db.update_proxy_config_for_app(config).await.unwrap();
 
-        let router = ProviderRouter::new(db.clone());
+        let router = provider_router_from_database(db.clone());
 
         // 触发熔断：1 次失败
         router

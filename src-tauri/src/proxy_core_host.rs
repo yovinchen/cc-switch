@@ -45,6 +45,7 @@ use crate::proxy_core_adapter::{
     forward_with_optional_host_runtime,
     provider_model_catalog_from_db_source, provider_spec_from_db_source,
     provider_specs_from_db_source,
+    provider_router_from_database,
     probe_channel_reachability_from_db_source,
     proxy_app_config_from_db_source, proxy_global_config_from_db_source,
     record_channel_attempt_in_db_source,
@@ -153,7 +154,7 @@ impl CcSwitchProxyServices {
     }
 
     fn with_optional_event_bus(db: Arc<Database>, events: Option<Arc<ProxyEventBus>>) -> Self {
-        let router = Arc::new(ProviderRouter::new(db.clone()));
+        let router = Arc::new(provider_router_from_database(db.clone()));
         Self {
             config: CcSwitchConfigSource { db: db.clone() },
             providers: CcSwitchProviderSource {
@@ -1058,7 +1059,7 @@ mod tests {
         let events = Arc::new(ProxyEventBus::default());
         CcSwitchProxyRuntime {
             db: db.clone(),
-            provider_router: Arc::new(ProviderRouter::new(db.clone())),
+            provider_router: Arc::new(provider_router_from_database(db.clone())),
             status: Arc::new(RwLock::new(ProxyRuntimeStatus::default())),
             current_providers: Arc::new(RwLock::new(std::collections::HashMap::new())),
             events,
@@ -1842,7 +1843,7 @@ mod tests {
         create_materialized_channel(&db, "channel-low", 10, 100, "upstream-low");
         create_materialized_channel(&db, "channel-high", 100, 20, "upstream-high");
 
-        let router = ProviderRouter::new(db.clone());
+        let router = provider_router_from_database(db.clone());
         let dry_run = router
             .resolve_channel_route_dry_run(RouteResolveRequest {
                 app_type: "claude".to_string(),

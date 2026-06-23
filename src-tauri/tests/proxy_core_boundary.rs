@@ -361,6 +361,7 @@ const FORBIDDEN_PROVIDER_ROUTER_CONCRETE_SOURCE_MARKERS: &[&str] =
     &["    db: Arc<Database>,", "self.db"];
 const FORBIDDEN_PROVIDER_ROUTER_COARSE_SOURCE_MARKERS: &[&str] =
     &["trait ProviderRouterSource", "dyn ProviderRouterSource", "with_source("];
+const PROVIDER_ROUTER_DATABASE_CONSTRUCTOR_MARKER: &str = "ProviderRouter::new(";
 const FORBIDDEN_HANDLER_PROXY_REQUEST_BRIDGE_MARKERS: &[&str] = &["ProxyRequest::new("];
 const FORBIDDEN_HANDLER_RAW_JSON_BODY_PARSE_MARKERS: &[&str] = &[
     "parse_json_request_body(",
@@ -3794,6 +3795,41 @@ fn production_provider_router_uses_split_source_ports() {
     assert!(
         violations.is_empty(),
         "provider router must keep provider/channel/config/health source ports split:\n{}",
+        violations.join("\n")
+    );
+}
+
+#[test]
+fn production_constructs_provider_router_through_adapter() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let mut rust_files = Vec::new();
+    collect_rust_files(&manifest_dir.join("src"), &mut rust_files);
+
+    let mut violations = Vec::new();
+    for path in rust_files {
+        let relative = path
+            .strip_prefix(&manifest_dir)
+            .expect("source path under manifest dir")
+            .to_string_lossy()
+            .replace('\\', "/");
+
+        let source = fs::read_to_string(&path).expect("read host source file");
+        for (line_index, line) in production_lines(&source) {
+            let code = line.split("//").next().unwrap_or_default();
+            if code.contains(PROVIDER_ROUTER_DATABASE_CONSTRUCTOR_MARKER) {
+                violations.push(format!(
+                    "{}:{} contains direct `{}`",
+                    relative,
+                    line_index + 1,
+                    PROVIDER_ROUTER_DATABASE_CONSTRUCTOR_MARKER
+                ));
+            }
+        }
+    }
+
+    assert!(
+        violations.is_empty(),
+        "production host code must construct ProviderRouter through proxy_core_adapter:\n{}",
         violations.join("\n")
     );
 }
