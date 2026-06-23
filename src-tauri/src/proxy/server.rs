@@ -21,10 +21,10 @@ use crate::proxy_core_adapter::{
     record_proxy_server_started_runtime_source, record_proxy_server_stopped_runtime_source,
     reset_provider_circuit_breaker_source, set_active_route_target_runtime_source,
     server_log_codes as log_srv, CircuitBreakerConfig, CurrentRouteTarget, GeminiShadowStore,
-    ProxyConfig, ProxyEngine, ProxyRuntimeStatus, ProxyServerInfo,
+    CcSwitchProxyRuntimeServices as CcSwitchProxyServices, ProxyConfig, ProxyEngine,
+    ProxyRuntimeStatus, ProxyServerInfo,
     update_all_circuit_breaker_configs_source, update_app_circuit_breaker_config_source,
 };
-use crate::proxy_core_host::CcSwitchProxyServices;
 use axum::{
     extract::DefaultBodyLimit,
     middleware,
