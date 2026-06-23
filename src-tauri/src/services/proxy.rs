@@ -33,6 +33,7 @@ use crate::proxy_core_adapter::{
     persist_ephemeral_listen_port_if_needed_in_db, proxy_app_enabled_from_db,
     proxy_config_from_db, sync_provider_settings_with_live_token,
     provider_effective_settings_with_common_config_from_db,
+    save_live_backup_value_in_db,
     preserve_codex_mcp_servers_from_existing_config,
     preserve_codex_oauth_auth_in_backup_for_configured_policy,
     remove_claude_takeover_env_fields_if_present, CodexLiveWriteProjection,
@@ -624,12 +625,7 @@ impl ProxyService {
                 &config,
                 PROXY_TOKEN_PLACEHOLDER,
             ) {
-                let json_str = serde_json::to_string(&backup_value)
-                    .map_err(|e| format!("序列化 Claude 配置失败: {e}"))?;
-                self.db
-                    .save_live_backup("claude", &json_str)
-                    .await
-                    .map_err(|e| format!("备份 Claude 配置失败: {e}"))?;
+                save_live_backup_value_in_db(&self.db, "claude", &backup_value, "Claude").await?;
             } else {
                 log::warn!("claude Live 已被代理接管，不备份（避免把代理配置固化进备份槽）；下次 stop 会从 SSOT 重建 Live");
             }
@@ -642,12 +638,7 @@ impl ProxyService {
                 &config,
                 PROXY_TOKEN_PLACEHOLDER,
             ) {
-                let json_str = serde_json::to_string(&backup_value)
-                    .map_err(|e| format!("序列化 Codex 配置失败: {e}"))?;
-                self.db
-                    .save_live_backup("codex", &json_str)
-                    .await
-                    .map_err(|e| format!("备份 Codex 配置失败: {e}"))?;
+                save_live_backup_value_in_db(&self.db, "codex", &backup_value, "Codex").await?;
             } else {
                 log::warn!("codex Live 已被代理接管，不备份（避免把代理配置固化进备份槽）；下次 stop 会从 SSOT 重建 Live");
             }
@@ -660,12 +651,7 @@ impl ProxyService {
                 &config,
                 PROXY_TOKEN_PLACEHOLDER,
             ) {
-                let json_str = serde_json::to_string(&backup_value)
-                    .map_err(|e| format!("序列化 Gemini 配置失败: {e}"))?;
-                self.db
-                    .save_live_backup("gemini", &json_str)
-                    .await
-                    .map_err(|e| format!("备份 Gemini 配置失败: {e}"))?;
+                save_live_backup_value_in_db(&self.db, "gemini", &backup_value, "Gemini").await?;
             } else {
                 log::warn!("gemini Live 已被代理接管，不备份（避免把代理配置固化进备份槽）；下次 stop 会从 SSOT 重建 Live");
             }
@@ -695,12 +681,7 @@ impl ProxyService {
             return Ok(());
         };
 
-        let json_str = serde_json::to_string(&backup_value)
-            .map_err(|e| format!("序列化 {app_type_str} 配置失败: {e}"))?;
-        self.db
-            .save_live_backup(app_type_str, &json_str)
-            .await
-            .map_err(|e| format!("备份 {app_type_str} 配置失败: {e}"))?;
+        save_live_backup_value_in_db(&self.db, app_type_str, &backup_value, app_type_str).await?;
 
         Ok(())
     }

@@ -222,6 +222,16 @@ const FORBIDDEN_PROXY_SERVICE_SIMPLE_RESTORE_BACKUP_SOURCE_MARKERS: &[&str] = &[
     "解析 Codex 备份失败",
     "解析 Gemini 备份失败",
 ];
+const FORBIDDEN_PROXY_SERVICE_LIVE_BACKUP_SAVE_MARKERS: &[&str] = &[
+    ".save_live_backup(",
+    "serde_json::to_string(&backup_value)",
+    "序列化 Claude 配置失败",
+    "序列化 Codex 配置失败",
+    "序列化 Gemini 配置失败",
+    "备份 Claude 配置失败",
+    "备份 Codex 配置失败",
+    "备份 Gemini 配置失败",
+];
 const FORBIDDEN_PROXY_SERVICE_KEEP_STATE_ACTIVE_FLAG_MARKERS: &[&str] = &[
     ".get_proxy_config()",
     ".update_proxy_config(",
@@ -4504,6 +4514,53 @@ fn production_proxy_service_delegates_simple_restore_backup_source_to_adapter() 
     assert!(
         violations.is_empty(),
         "ProxyService::restore_live_config_for_app_inner must delegate backup source reads and parse-error projection to proxy_core_adapter:\n{}",
+        violations.join("\n")
+    );
+}
+
+#[test]
+fn production_proxy_service_delegates_live_backup_save_to_adapter() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let path = manifest_dir.join("src/services/proxy.rs");
+    let source = fs::read_to_string(&path).expect("read services/proxy.rs");
+    let functions = [
+        (
+            "backup_live_configs",
+            function_slice(
+                &source,
+                "async fn backup_live_configs",
+                "/// 备份指定应用的 Live 配置（严格模式：目标配置不存在则返回错误）",
+            ),
+        ),
+        (
+            "backup_live_config_strict",
+            function_slice(
+                &source,
+                "async fn backup_live_config_strict",
+                "/// 构造写入 Live 的代理地址",
+            ),
+        ),
+    ];
+
+    let mut violations = Vec::new();
+    for (function_name, function) in functions {
+        for (line_index, line) in production_lines(function) {
+            let code = line.split("//").next().unwrap_or_default();
+            for marker in FORBIDDEN_PROXY_SERVICE_LIVE_BACKUP_SAVE_MARKERS {
+                if code.contains(marker) {
+                    violations.push(format!(
+                        "src/services/proxy.rs {function_name}:{} contains live backup save marker `{}`",
+                        line_index + 1,
+                        marker
+                    ));
+                }
+            }
+        }
+    }
+
+    assert!(
+        violations.is_empty(),
+        "ProxyService must delegate live backup serialization and persistence to proxy_core_adapter:\n{}",
         violations.join("\n")
     );
 }

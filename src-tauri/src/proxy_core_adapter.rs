@@ -1217,6 +1217,19 @@ pub(crate) async fn delete_all_live_backups_in_db(db: &Database) -> Result<(), S
         .map_err(|e| format!("删除备份失败: {e}"))
 }
 
+pub(crate) async fn save_live_backup_value_in_db(
+    db: &Database,
+    app_type: &str,
+    backup_value: &Value,
+    error_label: &str,
+) -> Result<(), String> {
+    let json_str = serde_json::to_string(backup_value)
+        .map_err(|e| format!("序列化 {error_label} 配置失败: {e}"))?;
+    db.save_live_backup(app_type, &json_str)
+        .await
+        .map_err(|e| format!("备份 {error_label} 配置失败: {e}"))
+}
+
 pub(crate) async fn clear_all_provider_health_in_db(db: &Database) -> Result<(), String> {
     db.clear_all_provider_health()
         .await
