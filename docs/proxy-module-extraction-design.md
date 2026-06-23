@@ -1093,6 +1093,7 @@
 本轮继续把 Live 接管流程里的当前 provider source 读取收敛到 `proxy_core_adapter::{current_provider_for_app_from_db,require_current_provider_for_app_from_db}`：`ProxyService` 保留本地 helper 名称和 live 文件副作用，但不再直接读取 settings 当前 provider 或 provider 表实体。
 本轮继续把 Live token 同步的当前 provider source 和支持 app label 收敛到 `proxy_core_adapter::{live_token_sync_provider_from_db,live_token_sync_app_label}`：`ProxyService::sync_live_config_to_provider` 不再为 Claude/Codex/Gemini 重复读取 settings/provider 表，只保留 token 投影、provider settings 写回和日志。
 本轮继续把 `ProxyService::set_takeover_for_app` 的 proxy_config enabled 状态读取和 read-modify-write 收敛到 `proxy_core_adapter::{proxy_app_enabled_from_db,set_proxy_app_enabled_in_db}`：service 只保留接管/恢复流程编排，enabled 持久化错误文案和状态投影由 adapter 维护。
+本轮继续把手动 `stop_with_restore` 的批量 enabled 清理收敛到 `proxy_core_adapter::clear_live_takeover_enabled_flags_in_db`：service 不再手写 Claude/Codex/Gemini app catalog 或配置表循环，读取失败忽略、写入失败 warning 的 best-effort 语义由 adapter 维护；`stop_with_restore_keep_state` 继续保留 enabled 状态以支持下次启动恢复。
 
 当前原则：核心 crate 可以新增端口和领域字段，但不得引入 `tauri`、`Database`、settings、commands、services 等宿主依赖；现有 runtime 行为必须继续通过 targeted tests 证明不回归。
 
