@@ -465,7 +465,7 @@
 454. `ProxyResult` 回填 host `RequestContext` 的 outbound model、selected provider hydration 和 Claude api_format fallback 已迁入 `RequestContext::{apply_proxy_result,claude_api_format_for_proxy_result}`；各协议 handler 只调用 context 方法。
 455. Claude Desktop gateway 的宿主 token 读取、core bearer 校验和 `ProxyError` 映射已迁入 `proxy::auth_adapter::validate_claude_desktop_gateway_auth`；handler 只负责传入请求 headers。
 456. forward error 的失败请求 usage record 构造与 `UsageSink` 异步调度已迁入 `proxy::usage_sink_bridge::record_forward_error_usage`；各协议 handler 只负责把 core/host error 映射后交给 usage bridge。
-457. Claude/Codex 转换响应的非流式 usage 落库调度与流式 `SseUsageCollector` 构造已迁入 `proxy::usage_sink_bridge`；handler 不再直接拼装 transformed usage record 或调用 `UsageSink`。
+457. Claude/Codex 转换响应的非流式 usage 落库调度与流式 `SseUsageCollector` 构造已从 `proxy::usage_sink_bridge` 继续上移到 `proxy_core_adapter`；handler 不再直接拼装 transformed usage record 或调用 `UsageSink`。
 458. `/proxy/v1/groups` 的 channel source facts 到 `RouteGroupListResponse` 投影已迁入 `proxy-core::GroupListRequest::response_from_channel_sources`；host handler 只负责按 app 查询 route source 和 channel specs。
 459. `/proxy/v1/apps/{app}/providers` 的 provider/current/failover/route-candidate facts 已聚合为 `proxy-core::ProviderListSource`；host handler 只负责读取 DB/router facts 并交给 core 生成 provider list response。
 460. `/proxy/v1/apps/{app}/channels` 的 route-aware 分支计划与 list source 投影已迁入 `proxy-core::{AppChannelManagementPlan, AppChannelListSource}`；host handler 只负责执行 dry-run route resolve 或 channel list 查询。
