@@ -341,6 +341,7 @@ const FORBIDDEN_PROXY_SERVICE_EFFECTIVE_SETTINGS_SOURCE_MARKERS: &[&str] = &[
 const FORBIDDEN_PROXY_SERVICE_LIVE_WRITE_PROVIDER_FACADE_MARKERS: &[&str] =
     &["crate::services::provider::sanitize_claude_settings_for_live("];
 const FORBIDDEN_FORWARDER_MANAGED_AUTH_MARKERS: &[&str] = &[
+    "crate::proxy::managed_account_auth",
     "CopilotAuthState",
     "CodexOAuthState",
     "CodexOAuthManager",
@@ -5327,7 +5328,7 @@ fn production_forwarder_delegates_managed_auth_resolution_to_adapter() {
 
     assert!(
         violations.is_empty(),
-        "production forwarder must delegate managed account token resolution to proxy::managed_account_auth:\n{}",
+        "production forwarder must delegate managed account runtime access through proxy_core_adapter:\n{}",
         violations.join("\n")
     );
 }

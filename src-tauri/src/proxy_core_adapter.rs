@@ -3148,6 +3148,48 @@ pub(crate) use crate::proxy_core::api::auth::ManagedAccountAuthError;
 #[cfg(test)]
 pub(crate) use crate::proxy_core::api::transforms::{canonical_json_string, short_value_hash};
 
+pub(crate) async fn resolve_managed_account_auth(
+    app_handle: Option<&tauri::AppHandle>,
+    auth_provider: &Provider,
+    auth: ProviderAuthInfo,
+) -> Result<crate::proxy::managed_account_auth::ManagedAccountAuthResolution, ProxyError> {
+    crate::proxy::managed_account_auth::resolve_managed_account_auth(
+        app_handle,
+        auth_provider,
+        auth,
+    )
+    .await
+}
+
+pub(crate) async fn resolve_copilot_api_endpoint(
+    app_handle: Option<&tauri::AppHandle>,
+    auth_provider: &Provider,
+) -> Option<String> {
+    crate::proxy::managed_account_auth::resolve_copilot_api_endpoint(app_handle, auth_provider)
+        .await
+}
+
+pub(crate) async fn fetch_copilot_live_models(
+    app_handle: Option<&tauri::AppHandle>,
+    auth_provider: &Provider,
+) -> Result<Option<Vec<CopilotModel>>, String> {
+    crate::proxy::managed_account_auth::fetch_copilot_live_models(app_handle, auth_provider)
+        .await
+}
+
+pub(crate) async fn resolve_copilot_model_vendor(
+    app_handle: Option<&tauri::AppHandle>,
+    auth_provider: &Provider,
+    model_id: &str,
+) -> Option<String> {
+    crate::proxy::managed_account_auth::resolve_copilot_model_vendor(
+        app_handle,
+        auth_provider,
+        model_id,
+    )
+    .await
+}
+
 pub(crate) const SESSION_REQUEST_ID_PREFIX: &str =
     crate::proxy_core::api::usage::SESSION_REQUEST_ID_PREFIX;
 const PROXY_EVENTS_CONNECTED_EVENT: &str =

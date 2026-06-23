@@ -12,10 +12,6 @@ use super::{
     codex_chat_history::CodexChatHistoryStore,
     route_attempt::{apply_channel_model_override, ForwardAttempt},
 };
-use crate::proxy::managed_account_auth::{
-    fetch_copilot_live_models, resolve_copilot_api_endpoint, resolve_copilot_model_vendor,
-    resolve_managed_account_auth,
-};
 use crate::proxy_core_adapter::{
     apply_bedrock_pre_send_optimizers, apply_copilot_model_normalization,
     apply_copilot_warmup_model_override, apply_forward_request_model_mapping_from_provider,
@@ -36,8 +32,7 @@ use crate::proxy_core_adapter::{
     forwarder_provider_adapter_name, forwarder_provider_auth_headers, forwarder_provider_auth_info,
     forwarder_provider_base_url, forwarder_provider_upstream_url,
     forwarder_provider_transform_request, forwarder_provider_transform_required,
-    ForwarderAdapterHandle,
-    is_openai_o_series,
+    ForwarderAdapterHandle, fetch_copilot_live_models, is_openai_o_series,
     is_unsupported_image_error, allow_forward_attempt_runtime_source, merge_copilot_tool_results,
     non_streaming_body_timeout_message, normalize_thinking_type,
     prepare_upstream_request_body_with_report, prompt_cache_trace_log_message,
@@ -56,9 +51,11 @@ use crate::proxy_core_adapter::{
     record_forward_provider_rectifier_retry_failure_runtime_source,
     record_forward_request_started_runtime_source, record_forward_success_runtime_source,
     release_forward_attempt_permit_neutral_runtime_source, request_body_filter_log_message,
+    resolve_copilot_api_endpoint,
     resolve_copilot_deterministic_interaction_id, resolve_copilot_model_against_ids,
-    resolve_copilot_optimizer_session_id, resolve_copilot_request_id_with_fallback,
-    resolve_channel_response_status_mapping, resolve_media_prevention_policy,
+    resolve_copilot_model_vendor, resolve_copilot_optimizer_session_id,
+    resolve_copilot_request_id_with_fallback, resolve_channel_response_status_mapping,
+    resolve_managed_account_auth, resolve_media_prevention_policy,
     forwarder_claude_api_format, forwarder_claude_transform_required,
     resolve_forwarder_claude_api_format,
     resolved_copilot_dynamic_base_url, responses_to_chat_completions_with_options,
