@@ -28,7 +28,7 @@ use crate::proxy_core_adapter::{
     forwarder_claude_normalize_anthropic_messages,
     provider_adapter_name_is_claude,
     rectify_anthropic_request, rectify_thinking_budget, replace_image_blocks_with_marker,
-    resolve_channel_response_status_mapping, resolve_media_prevention_policy,
+    resolve_media_prevention_policy,
     forwarder_claude_api_format, forwarder_claude_transform_required,
     responses_to_chat_completions_with_options,
     should_apply_bedrock_pre_send_optimizer,
@@ -1388,7 +1388,9 @@ impl RequestForwarder {
             })
             .await?;
 
-        let response = self.apply_channel_response_status_mapping(response, attempt)?;
+        let response = self
+            .response_source
+            .apply_channel_response_status_mapping(response, attempt.channel())?;
 
         // 检查响应状态
         let status = response.status();
@@ -1407,35 +1409,6 @@ impl RequestForwarder {
                 body: body_text,
             })
         }
-    }
-
-    fn apply_channel_response_status_mapping(
-        &self,
-        response: ProxyResponse,
-        attempt: &ForwardAttempt,
-    ) -> Result<ProxyResponse, ProxyError> {
-        let Some(channel) = attempt.channel() else {
-            return Ok(response);
-        };
-
-        let status_mapping = resolve_channel_response_status_mapping(
-            response.status(),
-            &channel.status_code_mapping,
-        );
-        let Some(status_mapping) = status_mapping else {
-            return Ok(response);
-        };
-
-        if status_mapping.changed() {
-            log::debug!(
-                "[ChannelRoute] response status mapped via channel {}: {} -> {}",
-                channel.channel_id,
-                status_mapping.original_status.as_u16(),
-                status_mapping.mapped_status.as_u16()
-            );
-        }
-
-        Ok(response.with_status(status_mapping.mapped_status))
     }
 
     /// 故障转移开启时，成功不能只看上游响应头。
@@ -1796,7 +1769,8 @@ mod tests {
         );
 
         let mapped = forwarder
-            .apply_channel_response_status_mapping(response, &attempt)
+            .response_source
+            .apply_channel_response_status_mapping(response, attempt.channel())
             .expect("status mapping");
 
         assert_eq!(mapped.status(), StatusCode::OK);
@@ -1827,7 +1801,8 @@ mod tests {
         );
 
         let mapped = forwarder
-            .apply_channel_response_status_mapping(response, &attempt)
+            .response_source
+            .apply_channel_response_status_mapping(response, attempt.channel())
             .expect("status mapping");
 
         assert_eq!(mapped.status(), StatusCode::TOO_MANY_REQUESTS);

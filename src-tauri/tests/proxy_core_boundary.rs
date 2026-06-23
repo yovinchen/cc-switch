@@ -6364,6 +6364,7 @@ fn production_forwarder_uses_response_source_resource() {
         "streaming_body_first_chunk_timeout_message(",
         "streaming_body_ended_before_first_chunk_message(",
         "streaming_body_first_chunk_read_error_message(",
+        "resolve_channel_response_status_mapping(",
     ];
     let mut violations = Vec::new();
 

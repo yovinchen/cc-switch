@@ -8831,6 +8831,12 @@ pub(crate) type ForwarderResponseSourceRef =
     Arc<dyn ForwarderResponseSource + Send + Sync>;
 
 pub(crate) trait ForwarderResponseSource {
+    fn apply_channel_response_status_mapping(
+        &self,
+        response: ProxyResponse,
+        channel: Option<&ResolvedChannelAttempt>,
+    ) -> Result<ProxyResponse, ProxyError>;
+
     fn prepare_success_response<'a>(
         &'a self,
         response: ProxyResponse,
@@ -8848,6 +8854,35 @@ pub(crate) trait ForwarderResponseSource {
 struct CcSwitchForwarderResponseSource;
 
 impl ForwarderResponseSource for CcSwitchForwarderResponseSource {
+    fn apply_channel_response_status_mapping(
+        &self,
+        response: ProxyResponse,
+        channel: Option<&ResolvedChannelAttempt>,
+    ) -> Result<ProxyResponse, ProxyError> {
+        let Some(channel) = channel else {
+            return Ok(response);
+        };
+
+        let status_mapping = resolve_channel_response_status_mapping(
+            response.status(),
+            &channel.status_code_mapping,
+        );
+        let Some(status_mapping) = status_mapping else {
+            return Ok(response);
+        };
+
+        if status_mapping.changed() {
+            log::debug!(
+                "[ChannelRoute] response status mapped via channel {}: {} -> {}",
+                channel.channel_id,
+                status_mapping.original_status.as_u16(),
+                status_mapping.mapped_status.as_u16()
+            );
+        }
+
+        Ok(response.with_status(status_mapping.mapped_status))
+    }
+
     fn prepare_success_response<'a>(
         &'a self,
         response: ProxyResponse,
