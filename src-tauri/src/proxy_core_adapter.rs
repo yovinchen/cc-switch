@@ -5604,6 +5604,69 @@ pub(crate) async fn route_candidate_provider_ids_from_router_source(
     route_candidate_provider_ids_from_selection_result(router.select_provider_ids(app.as_str()).await)
 }
 
+#[derive(Clone)]
+pub(crate) struct CcSwitchProviderSource {
+    db: Arc<Database>,
+    router: Arc<ProviderRouter>,
+    current_providers: Arc<RwLock<HashMap<String, CurrentRouteTarget>>>,
+}
+
+impl CcSwitchProviderSource {
+    pub(crate) fn new(
+        db: Arc<Database>,
+        router: Arc<ProviderRouter>,
+        current_providers: Arc<RwLock<HashMap<String, CurrentRouteTarget>>>,
+    ) -> Self {
+        Self {
+            db,
+            router,
+            current_providers,
+        }
+    }
+}
+
+impl ProviderSource for CcSwitchProviderSource {
+    fn list_providers<'a>(
+        &'a self,
+        app: &'a AppKind,
+    ) -> BoxFuture<'a, ProxyCoreResult<Vec<ProviderSpec>>> {
+        Box::pin(async move { provider_specs_from_db_source(&self.db, app) })
+    }
+
+    fn get_provider<'a>(
+        &'a self,
+        app: &'a AppKind,
+        provider_id: &'a str,
+    ) -> BoxFuture<'a, ProxyCoreResult<Option<ProviderSpec>>> {
+        Box::pin(async move { provider_spec_from_db_source(&self.db, app, provider_id) })
+    }
+
+    fn current_provider_id<'a>(
+        &'a self,
+        app: &'a AppKind,
+    ) -> BoxFuture<'a, ProxyCoreResult<Option<String>>> {
+        Box::pin(async move { current_provider_id_from_db_source(&self.db, app) })
+    }
+
+    fn active_route_target<'a>(
+        &'a self,
+        app: &'a AppKind,
+    ) -> BoxFuture<'a, ProxyCoreResult<Option<CurrentRouteTarget>>> {
+        Box::pin(async move {
+            active_route_target_from_runtime_source(&self.current_providers, app).await
+        })
+    }
+
+    fn route_candidate_provider_ids<'a>(
+        &'a self,
+        app: &'a AppKind,
+    ) -> BoxFuture<'a, ProxyCoreResult<Vec<String>>> {
+        Box::pin(async move {
+            route_candidate_provider_ids_from_router_source(&self.router, app).await
+        })
+    }
+}
+
 #[allow(dead_code)]
 pub(crate) trait ToProxyCoreChannelSpec {
     fn to_proxy_core_channel_spec(&self) -> ChannelSpec;

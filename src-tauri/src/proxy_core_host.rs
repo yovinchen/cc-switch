@@ -10,20 +10,19 @@ use crate::proxy::codex_chat_history::CodexChatHistoryStore;
 use crate::proxy_core_adapter::{
     AppKind, AuthProvider, CcSwitchAuthProvider, CcSwitchChannelHealthStore,
     CcSwitchChannelReachabilityProbe, CcSwitchConfigSource, CcSwitchEventSink,
-    CcSwitchModelCatalogProvider, CcSwitchRoutePolicySource, CcSwitchRouteResolver,
-    CcSwitchUsageSink, ChannelHealthStore, ChannelKeyRecord, ChannelModelRecord,
-    ChannelMigrationMaterializeInput, ChannelMigrationPreviewInput, ChannelQuery, ChannelRecord,
-    ChannelReachabilityProbe, ChannelRouteSource, ChannelSource, ChannelSpec,
+    CcSwitchModelCatalogProvider, CcSwitchProviderSource, CcSwitchRoutePolicySource,
+    CcSwitchRouteResolver, CcSwitchUsageSink, ChannelHealthStore, ChannelKeyRecord,
+    ChannelModelRecord, ChannelMigrationMaterializeInput, ChannelMigrationPreviewInput,
+    ChannelQuery, ChannelRecord, ChannelReachabilityProbe, ChannelRouteSource, ChannelSource,
+    ChannelSpec,
     CurrentRouteTarget, ForwardPipeline, ForwarderRuntimeHostResources,
     GeminiShadowStore, HostForwardRuntime, ModelCatalogProvider, ProviderSource,
-    ProviderSpec,
     ProxyChannelKeyPatchRequest, ProxyChannelKeyWriteRequest, ProxyChannelModelsReplaceRequest,
     ProxyChannelPatchRequest, ProxyChannelWriteRequest, ProxyConfigSource, ProxyCoreResult,
     ProxyEventSink, ProxyRequest, ProxyResult, ProxyRuntimeStatus, ProxyServices, RoutePlan,
     RoutePolicySource, RouteResolver, UsageSink,
 };
 use crate::proxy_core_adapter::{
-    active_route_target_from_runtime_source,
     channel_key_records_from_db_source,
     channel_model_records_from_db_source,
     channel_records_from_db_source,
@@ -33,17 +32,13 @@ use crate::proxy_core_adapter::{
     channel_migration_preview_from_db_source,
     channel_record_from_db_source,
     create_channel_record_from_db_source,
-    current_provider_id_from_db_source,
     delete_channel_record_from_db_source,
     delete_channel_key_record_from_db_source,
     forward_proxy_request_with_host_runtime,
     forward_with_optional_host_runtime,
-    provider_spec_from_db_source,
-    provider_specs_from_db_source,
     provider_router_from_database,
     materialized_channel_records_from_db_source,
     replace_channel_model_records_from_db_source,
-    route_candidate_provider_ids_from_router_source,
     update_channel_record_from_db_source,
     update_channel_key_record_from_db_source,
     upsert_channel_key_record_from_db_source,
@@ -53,7 +48,7 @@ use crate::proxy_core_adapter::{
     apply_channel_auth_profile_providers_from_db, forward_attempts_from_plan,
     forward_result_to_proxy_result, host_providers_for_plan,
     management_route_response_from_router_source, AuthProfileRef, ChannelAttemptResult,
-    ProxyCoreEvent, RouteRequest,
+    ProviderSpec, ProxyCoreEvent, RouteRequest,
 };
 use futures::future::BoxFuture;
 #[cfg(test)]
@@ -109,11 +104,11 @@ impl CcSwitchProxyServices {
         let db = runtime.db.clone();
         Self {
             config: CcSwitchConfigSource::new(db.clone()),
-            providers: CcSwitchProviderSource {
-                db: db.clone(),
-                router: runtime.provider_router.clone(),
-                current_providers: runtime.current_providers.clone(),
-            },
+            providers: CcSwitchProviderSource::new(
+                db.clone(),
+                runtime.provider_router.clone(),
+                runtime.current_providers.clone(),
+            ),
             channels: CcSwitchChannelSource {
                 db: db.clone(),
             },
@@ -139,11 +134,11 @@ impl CcSwitchProxyServices {
         let router = Arc::new(provider_router_from_database(db.clone()));
         Self {
             config: CcSwitchConfigSource::new(db.clone()),
-            providers: CcSwitchProviderSource {
-                db: db.clone(),
-                router: router.clone(),
-                current_providers: Arc::new(RwLock::new(HashMap::new())),
-            },
+            providers: CcSwitchProviderSource::new(
+                db.clone(),
+                router.clone(),
+                Arc::new(RwLock::new(HashMap::new())),
+            ),
             channels: CcSwitchChannelSource {
                 db: db.clone(),
             },
@@ -207,55 +202,6 @@ impl ProxyServices for CcSwitchProxyServices {
 
     fn forward_pipeline(&self) -> &(dyn ForwardPipeline + Send + Sync) {
         &self.forward_pipeline
-    }
-}
-
-#[derive(Clone)]
-struct CcSwitchProviderSource {
-    db: Arc<Database>,
-    router: Arc<ProviderRouter>,
-    current_providers: Arc<RwLock<HashMap<String, CurrentRouteTarget>>>,
-}
-
-impl ProviderSource for CcSwitchProviderSource {
-    fn list_providers<'a>(
-        &'a self,
-        app: &'a AppKind,
-    ) -> BoxFuture<'a, ProxyCoreResult<Vec<ProviderSpec>>> {
-        Box::pin(async move { provider_specs_from_db_source(&self.db, app) })
-    }
-
-    fn get_provider<'a>(
-        &'a self,
-        app: &'a AppKind,
-        provider_id: &'a str,
-    ) -> BoxFuture<'a, ProxyCoreResult<Option<ProviderSpec>>> {
-        Box::pin(async move { provider_spec_from_db_source(&self.db, app, provider_id) })
-    }
-
-    fn current_provider_id<'a>(
-        &'a self,
-        app: &'a AppKind,
-    ) -> BoxFuture<'a, ProxyCoreResult<Option<String>>> {
-        Box::pin(async move { current_provider_id_from_db_source(&self.db, app) })
-    }
-
-    fn active_route_target<'a>(
-        &'a self,
-        app: &'a AppKind,
-    ) -> BoxFuture<'a, ProxyCoreResult<Option<CurrentRouteTarget>>> {
-        Box::pin(async move {
-            active_route_target_from_runtime_source(&self.current_providers, app).await
-        })
-    }
-
-    fn route_candidate_provider_ids<'a>(
-        &'a self,
-        app: &'a AppKind,
-    ) -> BoxFuture<'a, ProxyCoreResult<Vec<String>>> {
-        Box::pin(async move {
-            route_candidate_provider_ids_from_router_source(&self.router, app).await
-        })
     }
 }
 
