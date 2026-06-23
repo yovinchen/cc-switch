@@ -902,6 +902,7 @@
 本轮继续把 forwarder 的 full URL 与 GitHub Copilot upstream provider fact 收敛到 `proxy_core_adapter::{forwarder_is_full_url_provider, forwarder_is_github_copilot_upstream}`；上游 URL 分支不再直接消费 provider 级 URL 投影 helper。
 本轮继续把 forwarder 的 media prevention text-only provider 图片替换 fact 收敛到 `proxy_core_adapter::forwarder_replace_images_for_text_only_provider_model`；media 预防式降级不再直接消费 provider 级模型能力投影 helper。
 本轮继续把 forwarder 的 provider adapter transform gate 收敛到 `proxy_core_adapter::forwarder_provider_transform_required`；forwarder 不再直接调用 `ProviderAdapter::needs_transform`。
+本轮继续把 forwarder 的 provider adapter request transform 调用收敛到 `proxy_core_adapter::forwarder_provider_transform_request`；forwarder 不再直接调用 `ProviderAdapter::transform_request`。
 本轮继续把 usage sink 的计费配置 lookup 输入收敛到 adapter，host 不再直接拆 `UsageRecord` 的 app/provider 字段。
 本轮还把 core event 到 host event bus 的投影+分发入口收敛到 adapter，后续再把 event sink 端口实现本身收敛为 adapter-owned source wrapper。
 本轮继续把 `CcSwitchForwardPipeline` 本身迁为 adapter-owned optional runtime wrapper，runtime 缺失判断和 host forward runtime 调度都在 adapter wrapper 内完成；host services 只持有 `CcSwitchForwardPipeline<CcSwitchProxyRuntime>` 并保留 `HostForwardRuntime for CcSwitchProxyRuntime` 作为 DB/router/Tauri 资源装配点。
