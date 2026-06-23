@@ -30,7 +30,7 @@
 19. response pipeline 的 body 诊断摘要、content header 诊断后缀、SSE 聚合兜底失败诊断消息和未标记 SSE body 嗅探已迁入 `proxy-core::response_diagnostics`，host 只负责把诊断文本包装成现有 `ProxyError`。
 20. SSE field 解析、SSE block 分帧和跨 chunk UTF-8 拼接已迁入 `proxy-core::sse`；host 调用方已直接引用 core helper，`proxy::sse` 兼容模块已删除，现有 Claude/OpenAI/Responses/Gemini/Codex 流式转换路径继续复用同一实现。
 21. 非流式兜底使用的 Chat Completions SSE 与 OpenAI Responses SSE 聚合器已迁入 `proxy-core::sse`；host handler 只保留 `ProxyError` 映射和缺失 chat completion id 时的 UUID 生成适配。
-22. 非流式响应体的 `content-encoding` 提取和 gzip/x-gzip/deflate/br 解压算法已迁入 `proxy-core::response_body`；host `response_processor` 只保留 body 读取超时、日志和 transport 适配。
+22. 非流式响应体的 `content-encoding` 提取和 gzip/x-gzip/deflate/br 解压算法已迁入 `proxy-core::response_body`；host `response_processor` 只保留 body 读取超时和 transport 适配。
 23. SSE data 行扫描、跨 chunk UTF-8 缓冲、`[DONE]` 判定和可选 JSON parse 已迁入 `proxy-core::sse::SseEventScanner`；host `response_processor` 只负责 stream timeout、日志、collector 回调和 usage 落库。
 24. SSE usage 事件缓存、首个被收集事件计时和 finish-once 防重入已迁入 `proxy-core::sse::SseUsageAccumulator`；host `SseUsageCollector` 只保留异步互斥、usage 事件预过滤、parser/model extractor 回调和 `UsageSink` 落库适配。
 25. Claude/OpenAI/Codex/Gemini 的 SSE usage 事件预过滤函数已迁入 `proxy-core::sse`；协议 parser 配置表也已由 `proxy-core::usage_config` 统一维护，host handler 直接消费 core 配置。
@@ -903,6 +903,7 @@
 本轮继续把 response processor 的 `UsageSink` 调用、usage debug 日志、落库失败 warning 和默认落库 task 调度收敛到 adapter wrapper，response processor 不再维护本地 `tokio::spawn` usage 落库 helper。
 本轮继续把 usage sink bridge 的 `UsageSink` 调用、落库失败 warning 和 failure-context-aware task 调度收敛到 adapter wrapper，bridge 只保留 transformed/forward-error usage 的入口编排。
 本轮继续把 usage sink bridge 的 forward-error/transformed response usage provider 选择、缺失 warning、record 组装和 route context 合并收敛到 adapter wrapper，bridge 只保留 logging 开关读取和 SSE collector 生命周期入口。
+本轮继续把 response processor 的 raw response body 接收日志、content-encoding decode 调用和 decode status 日志投影收敛到 adapter-owned helper；host `read_decoded_body` 只保留 `ProxyResponse` body 读取、timeout/`ProxyError` 映射和 transport 返回值拆包。
 本轮继续把 forward runtime 的 route plan attempt 构造入口收敛到 adapter；auth profile 的 DB key 注入 wrapper 也已收敛到 adapter，host forward runtime 只调用统一 helper。
 本轮还把 forward runtime 的 auth profile action 应用循环收敛到 adapter，host 不再维护 channel-key DB lookup 闭包。
 本轮继续把 forward runtime 的 current-provider 来源组合收敛到 adapter，host forward runtime 不再读取 settings 或手写 DB fallback 闭包。
