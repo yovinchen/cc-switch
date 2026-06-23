@@ -1136,6 +1136,7 @@
 本轮继续把 `ManagedAccountRuntimeSource` 接入 `CcSwitchProxyRuntime`、`ForwarderRuntimeHostResources` 和 `RequestForwarder`：forwarder 对 Copilot 动态 endpoint、live models、model vendor 和 managed token resolution 的读取都走 runtime 注入 source，不再通过 `app_handle` wrapper 临时构造运行态读取入口。
 本轮继续把 failover 切换调度封装为 `FailoverSwitchScheduler` runtime source：`RequestForwarder` 不再持有 `FailoverSwitchManager` 或 `AppHandle`，只在成功记录后调用注入 scheduler；CC Switch 默认 scheduler 仍在 adapter 内把调度投影到现有 manager、托盘/UI 与 Live 切换副作用。
 本轮继续把 forwarder 的 `ProxyRuntimeStatus`、active route target map 和 `ProxyEventBus` 合并为 `ForwarderRuntimeStateSource`：`RequestForwarder` 不再直持三份运行态状态资源，状态计数、当前目标和事件发射仍通过 adapter helper 执行，后续外部宿主可以替换 runtime state source 或把事件桥接到自己的监控接口。
+本轮继续把 active connection RAII guard 的 acquire/release 生命周期接入 `ForwarderRuntimeStateSource`：guard 不再直持 `ProxyRuntimeStatus`，连接计数增减的异步释放也通过 runtime source 方法执行，避免流式响应生命周期把 status lock 类型泄漏到 forwarder。
 本轮继续把 Gemini shadow session store 与 Codex Chat history store 合并为 `ForwarderProtocolStateSource`：`RequestForwarder` 不再直持协议会话状态，Claude/Gemini transform replay 和 Codex Responses->Chat history enrich 仍消费同一批 store，外部宿主可在 adapter 边界替换协议会话状态实现。
 本轮继续把 forwarder 的 provider/channel attempt runtime 包装为 `ForwarderAttemptRuntimeSource`：`RequestForwarder` 不再直持 `ProviderRouter`，attempt 放行、成功/失败健康记录和 neutral permit 释放都通过注入 source 进入 adapter helper，后续可把该 source 替换为独立中转模块的 routing/circuit runtime。
 
