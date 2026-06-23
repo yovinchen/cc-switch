@@ -8578,6 +8578,19 @@ pub(crate) struct ForwarderProviderTransformInput<'a> {
     pub(crate) provider: &'a Provider,
 }
 
+pub(crate) struct ForwarderUpstreamUrlInput<'a> {
+    pub(crate) adapter: &'a ForwarderAdapterHandle,
+    pub(crate) base_url: &'a str,
+    pub(crate) endpoint: &'a str,
+    pub(crate) is_full_url: bool,
+    pub(crate) codex_responses_to_chat: bool,
+    pub(crate) use_claude_transform: bool,
+    pub(crate) is_copilot: bool,
+    pub(crate) claude_api_format: Option<&'a str>,
+    pub(crate) body: &'a Value,
+    pub(crate) channel_param_overrides: Option<&'a Value>,
+}
+
 pub(crate) struct ForwarderMediaPreventionInput<'a> {
     pub(crate) body: &'a mut Value,
     pub(crate) provider: &'a Provider,
@@ -8668,6 +8681,11 @@ pub(crate) trait ForwarderRequestSource {
         &self,
         input: ForwarderProviderTransformInput<'_>,
     ) -> Result<Value, ProxyError>;
+
+    fn plan_upstream_url(
+        &self,
+        input: ForwarderUpstreamUrlInput<'_>,
+    ) -> ForwardUpstreamUrlPlan;
 
     fn optimize_copilot_request(
         &self,
@@ -8827,6 +8845,28 @@ impl ForwarderRequestSource for CcSwitchForwarderRequestSource {
         input: ForwarderProviderTransformInput<'_>,
     ) -> Result<Value, ProxyError> {
         forwarder_provider_transform_request(input.adapter, input.body, input.provider)
+    }
+
+    fn plan_upstream_url(
+        &self,
+        input: ForwarderUpstreamUrlInput<'_>,
+    ) -> ForwardUpstreamUrlPlan {
+        forward_upstream_url_plan(
+            ForwardUpstreamUrlPlanInput {
+                base_url: input.base_url,
+                endpoint: input.endpoint,
+                is_full_url: input.is_full_url,
+                codex_responses_to_chat: input.codex_responses_to_chat,
+                use_claude_transform: input.use_claude_transform,
+                is_copilot: input.is_copilot,
+                claude_api_format: input.claude_api_format,
+                body: input.body,
+                channel_param_overrides: input.channel_param_overrides,
+            },
+            |base_url, effective_endpoint| {
+                forwarder_provider_upstream_url(input.adapter, base_url, effective_endpoint)
+            },
+        )
     }
 
     fn optimize_copilot_request(
@@ -14548,6 +14588,40 @@ base_url = "https://api.openai.com/v1"
             .expect("provider transform");
 
         assert_eq!(transformed, body);
+    }
+
+    #[test]
+    fn forwarder_request_source_plans_codex_upstream_url() {
+        let source = CcSwitchForwarderRequestSource;
+        let adapter = forwarder_provider_adapter_for_app(&AppType::Codex);
+        let body = json!({});
+        let param_overrides = json!({"api-version": "2026-06-21"});
+
+        let plan = source.plan_upstream_url(ForwarderUpstreamUrlInput {
+            adapter: adapter.as_ref(),
+            base_url: "https://api.openai.com/v1/chat/completions",
+            endpoint: "/v1/responses?foo=bar&api-version=old",
+            is_full_url: false,
+            codex_responses_to_chat: true,
+            use_claude_transform: false,
+            is_copilot: false,
+            claude_api_format: None,
+            body: &body,
+            channel_param_overrides: Some(&param_overrides),
+        });
+
+        assert_eq!(
+            plan.effective_endpoint,
+            "/chat/completions?foo=bar&api-version=old"
+        );
+        assert_eq!(
+            plan.passthrough_query.as_deref(),
+            Some("foo=bar&api-version=old")
+        );
+        assert_eq!(
+            plan.url,
+            "https://api.openai.com/v1/chat/completions?foo=bar&api-version=2026-06-21"
+        );
     }
 
     #[test]

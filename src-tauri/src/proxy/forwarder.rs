@@ -10,20 +10,19 @@ use super::{
 use crate::proxy_core_adapter::{
     build_retryable_forward_failure_log, build_terminal_forward_failure_log,
     categorize_forward_failure,
-    forward_upstream_url_plan,
     forward_failure_kind_from_proxy_error, forwarder_should_convert_codex_responses_to_chat,
     forwarder_is_full_url_provider,
     forwarder_is_github_copilot_upstream,
     forwarder_uses_anthropic_rectifiers,
     forwarder_provider_adapter_for_app,
-    forwarder_provider_adapter_name, forwarder_provider_base_url, forwarder_provider_upstream_url,
+    forwarder_provider_adapter_name, forwarder_provider_base_url,
     forwarder_provider_transform_required,
     ForwarderAdapterHandle,
     provider_adapter_name_is_claude,
     forwarder_claude_api_format, forwarder_claude_transform_required,
     should_failover_after_rectifier_retry_failure,
     AttemptEventPhase, CopilotOptimizerConfig,
-    ForwardFailureCategory, ForwardUpstreamUrlPlanInput,
+    ForwardFailureCategory,
     ForwarderAttemptBodyInput, ForwarderAuthHeadersInput, ForwarderAuthSourceRef,
     ForwarderCopilotAuthOptimizationInput, ForwarderClaudeBodyPolicyInput,
     ForwarderCodexResponsesToChatInput, ForwarderCopilotRequestOptimizationInput,
@@ -36,7 +35,7 @@ use crate::proxy_core_adapter::{
     FailoverSwitchSchedulerRef, ForwarderAttemptRuntimeSourceRef, ForwarderProtocolStateSourceRef,
     ForwarderRequestPartsInput, ForwarderRequestPreparationInput, ForwarderRequestSourceRef,
     ForwarderResponseSourceRef, ForwarderRuntimeStateSourceRef, ForwarderTransportSourceRef,
-    ForwarderUpstreamTransportRequest, ManagedAccountRuntimeSourceRef,
+    ForwarderUpstreamTransportRequest, ForwarderUpstreamUrlInput, ManagedAccountRuntimeSourceRef,
     RectifierConfig, ResolvedChannelAttempt,
 };
 #[cfg(test)]
@@ -1053,22 +1052,18 @@ impl RequestForwarder {
         let claude_api_format_for_url = resolved_claude_api_format.as_deref().or_else(|| {
             is_claude_adapter.then(|| forwarder_claude_api_format(provider))
         });
-        let url_plan = forward_upstream_url_plan(
-            ForwardUpstreamUrlPlanInput {
-                base_url: &base_url,
-                endpoint,
-                is_full_url,
-                codex_responses_to_chat,
-                use_claude_transform: needs_transform && is_claude_adapter,
-                is_copilot,
-                claude_api_format: claude_api_format_for_url,
-                body: &mapped_body,
-                channel_param_overrides: attempt.channel().map(|channel| &channel.param_overrides),
-            },
-            |base_url, effective_endpoint| {
-                forwarder_provider_upstream_url(adapter, base_url, effective_endpoint)
-            },
-        );
+        let url_plan = self.request_source.plan_upstream_url(ForwarderUpstreamUrlInput {
+            adapter,
+            base_url: &base_url,
+            endpoint,
+            is_full_url,
+            codex_responses_to_chat,
+            use_claude_transform: needs_transform && is_claude_adapter,
+            is_copilot,
+            claude_api_format: claude_api_format_for_url,
+            body: &mapped_body,
+            channel_param_overrides: attempt.channel().map(|channel| &channel.param_overrides),
+        });
         let effective_endpoint = url_plan.effective_endpoint;
         let url = url_plan.url;
 
