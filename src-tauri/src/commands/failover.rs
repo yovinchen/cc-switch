@@ -5,21 +5,10 @@
 use crate::database::FailoverQueueItem;
 use crate::provider::Provider;
 use crate::proxy_core_adapter::{
-    plan_auto_failover_toggle, provider_switched_failover_enabled_event_message,
-    AutoFailoverToggleInput, ProxyCoreError,
-    AUTO_FAILOVER_EMPTY_QUEUE_WITHOUT_CURRENT_PROVIDER_MESSAGE,
-    AUTO_FAILOVER_ENABLE_REQUIRES_PROXY_TAKEOVER_MESSAGE,
+    auto_failover_toggle_plan_from_db, provider_switched_failover_enabled_event_message,
 };
 use crate::store::AppState;
-use std::str::FromStr;
 use tauri::Emitter;
-
-fn auto_failover_plan_error_to_string(error: ProxyCoreError) -> String {
-    match error {
-        ProxyCoreError::InvalidRequest(message) => message,
-        other => other.to_string(),
-    }
-}
 
 /// 获取故障转移队列
 #[tauri::command]
@@ -99,56 +88,9 @@ pub async fn set_auto_failover_enabled(
         "[Failover] Setting auto_failover_enabled: app_type='{app_type}', enabled={enabled}"
     );
 
-    // 读取当前配置
-    let mut config = state
-        .db
-        .get_proxy_config_for_app(&app_type)
-        .await
-        .map_err(|e| e.to_string())?;
-
-    if enabled && !config.enabled {
-        return Err(AUTO_FAILOVER_ENABLE_REQUIRES_PROXY_TAKEOVER_MESSAGE.to_string());
-    }
-
-    // 队列为空时把当前供应商自动加入作为 P1，避免用户陷入"必须先加队列才能开启"的死锁
-    let mut current_provider_id = None;
-    let queued_provider_ids = if enabled {
-        let queue = state
-            .db
-            .get_failover_queue(&app_type)
-            .map_err(|e| e.to_string())?;
-
-        if queue.is_empty() {
-            let app_enum = crate::app_config::AppType::from_str(&app_type)
-                .map_err(|_| format!("无效的应用类型: {app_type}"))?;
-
-            let current_id = crate::settings::get_effective_current_provider(&state.db, &app_enum)
-                .map_err(|e| e.to_string())?;
-
-            let Some(current_id) = current_id else {
-                return Err(
-                    AUTO_FAILOVER_EMPTY_QUEUE_WITHOUT_CURRENT_PROVIDER_MESSAGE.to_string(),
-                );
-            };
-
-            current_provider_id = Some(current_id);
-        }
-
-        queue
-            .into_iter()
-            .map(|item| item.provider_id)
-            .collect()
-    } else {
-        Vec::new()
-    };
-
-    let plan = plan_auto_failover_toggle(AutoFailoverToggleInput::new(
-        enabled,
-        config.enabled,
-        queued_provider_ids,
-        current_provider_id,
-    ))
-    .map_err(auto_failover_plan_error_to_string)?;
+    let toggle_plan = auto_failover_toggle_plan_from_db(&state.db, &app_type, enabled).await?;
+    let mut config = toggle_plan.config;
+    let plan = toggle_plan.plan;
 
     let mut auto_added_provider_id = None;
     if let Some(provider_id) = plan.provider_id_to_add_to_queue.as_ref() {

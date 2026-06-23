@@ -2543,6 +2543,8 @@ pub(crate) type ProviderSelectionInput =
     crate::proxy_core::api::routing::ProviderSelectionInput;
 pub(crate) type AutoFailoverToggleInput =
     crate::proxy_core::api::routing::AutoFailoverToggleInput;
+pub(crate) type AutoFailoverTogglePlan =
+    crate::proxy_core::api::routing::AutoFailoverTogglePlan;
 pub(crate) type FailoverQueuePosition =
     crate::proxy_core::api::routing::FailoverQueuePosition;
 pub(crate) type ProxyCoreError = crate::proxy_core::api::errors::ProxyCoreError;
@@ -2745,10 +2747,9 @@ const SERVER_STARTED_EVENT: &str =
     crate::proxy_core::api::events::SERVER_STARTED_EVENT;
 const SERVER_STOPPED_EVENT: &str =
     crate::proxy_core::api::events::SERVER_STOPPED_EVENT;
+#[cfg(test)]
 pub(crate) const AUTO_FAILOVER_ENABLE_REQUIRES_PROXY_TAKEOVER_MESSAGE: &str =
     crate::proxy_core::api::routing::AUTO_FAILOVER_ENABLE_REQUIRES_PROXY_TAKEOVER_MESSAGE;
-pub(crate) const AUTO_FAILOVER_EMPTY_QUEUE_WITHOUT_CURRENT_PROVIDER_MESSAGE: &str =
-    crate::proxy_core::api::routing::AUTO_FAILOVER_EMPTY_QUEUE_WITHOUT_CURRENT_PROVIDER_MESSAGE;
 
 fn build_proxy_events_connected_payload(buffer_size: usize) -> Value {
     crate::proxy_core::api::events::build_proxy_events_connected_payload(buffer_size)
@@ -4712,6 +4713,77 @@ pub(crate) async fn auto_failover_enabled_from_router_db(
     auto_failover_enabled_from_router_config_result(
         app_type,
         db.get_proxy_config_for_app(app_type).await,
+    )
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct AutoFailoverToggleDbPlan {
+    pub(crate) config: AppProxyConfig,
+    pub(crate) plan: AutoFailoverTogglePlan,
+}
+
+fn auto_failover_toggle_error_to_string(error: ProxyCoreError) -> String {
+    match error {
+        ProxyCoreError::InvalidRequest(message) => message,
+        other => other.to_string(),
+    }
+}
+
+pub(crate) fn auto_failover_toggle_plan_from_sources(
+    config: AppProxyConfig,
+    enabled: bool,
+    queued_provider_ids: Vec<String>,
+    current_provider_id: Option<String>,
+) -> Result<AutoFailoverToggleDbPlan, String> {
+    let plan = plan_auto_failover_toggle(AutoFailoverToggleInput::new(
+        enabled,
+        config.enabled,
+        queued_provider_ids,
+        current_provider_id,
+    ))
+    .map_err(auto_failover_toggle_error_to_string)?;
+
+    Ok(AutoFailoverToggleDbPlan { config, plan })
+}
+
+pub(crate) async fn auto_failover_toggle_plan_from_db(
+    db: &Database,
+    app_type: &str,
+    enabled: bool,
+) -> Result<AutoFailoverToggleDbPlan, String> {
+    let config = db
+        .get_proxy_config_for_app(app_type)
+        .await
+        .map_err(|error| error.to_string())?;
+
+    let mut current_provider_id = None;
+    let queued_provider_ids = if enabled {
+        let queue = db
+            .get_failover_queue(app_type)
+            .map_err(|error| error.to_string())?;
+
+        if queue.is_empty() {
+            let app_enum = app_type
+                .parse::<AppType>()
+                .map_err(|_| format!("无效的应用类型: {app_type}"))?;
+            let current_id = crate::settings::get_effective_current_provider(db, &app_enum)
+                .map_err(|error| error.to_string())?;
+            current_provider_id = current_id;
+        }
+
+        queue
+            .into_iter()
+            .map(|item| item.provider_id)
+            .collect()
+    } else {
+        Vec::new()
+    };
+
+    auto_failover_toggle_plan_from_sources(
+        config,
+        enabled,
+        queued_provider_ids,
+        current_provider_id,
     )
 }
 
@@ -11768,6 +11840,49 @@ mod tests {
             "claude",
             Err(AppError::Config("missing proxy_config".to_string()))
         ));
+        let existing_p1_toggle = auto_failover_toggle_plan_from_sources(
+            app_config.clone(),
+            true,
+            vec!["provider-a".to_string()],
+            None,
+        )
+        .expect("toggle with existing P1");
+        assert!(existing_p1_toggle.plan.auto_failover_enabled);
+        assert_eq!(
+            existing_p1_toggle.plan.provider_id_to_switch_to.as_deref(),
+            Some("provider-a")
+        );
+        assert!(existing_p1_toggle.plan.provider_id_to_add_to_queue.is_none());
+        let auto_add_current_toggle = auto_failover_toggle_plan_from_sources(
+            app_config.clone(),
+            true,
+            Vec::new(),
+            Some("current-provider".to_string()),
+        )
+        .expect("toggle with empty queue uses current provider");
+        assert_eq!(
+            auto_add_current_toggle
+                .plan
+                .provider_id_to_add_to_queue
+                .as_deref(),
+            Some("current-provider")
+        );
+        assert_eq!(
+            auto_add_current_toggle.plan.provider_id_to_switch_to.as_deref(),
+            Some("current-provider")
+        );
+        let mut takeover_disabled_config = app_config.clone();
+        takeover_disabled_config.enabled = false;
+        assert_eq!(
+            auto_failover_toggle_plan_from_sources(
+                takeover_disabled_config,
+                true,
+                Vec::new(),
+                None,
+            )
+            .expect_err("enabled toggle should require proxy takeover"),
+            AUTO_FAILOVER_ENABLE_REQUIRES_PROXY_TAKEOVER_MESSAGE
+        );
         assert!(failover_switch_app_enabled_from_config_result(
             "claude",
             Ok(app_config.clone())

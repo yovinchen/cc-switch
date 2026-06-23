@@ -117,6 +117,15 @@ const FORBIDDEN_RESET_CIRCUIT_BREAKER_COMMAND_MARKERS: &[&str] = &[
     "restored_provider_switchback_decision(",
     "FailoverQueuePosition",
 ];
+const FORBIDDEN_SET_AUTO_FAILOVER_COMMAND_MARKERS: &[&str] = &[
+    ".get_proxy_config_for_app(",
+    ".get_failover_queue(",
+    "get_effective_current_provider(",
+    "AppType::from_str(",
+    "plan_auto_failover_toggle(",
+    "AutoFailoverToggleInput",
+    "AUTO_FAILOVER_",
+];
 const FORBIDDEN_PROVIDER_MODULE_CODEX_HISTORY_MARKERS: &[&str] =
     &["codex_chat_history", "providers::codex_chat_history"];
 const FORBIDDEN_PROVIDER_MODULE_KIND_FACADE_MARKERS: &[&str] = &[
@@ -4142,6 +4151,37 @@ fn production_reset_circuit_breaker_command_delegates_switchback_sources_to_adap
     assert!(
         violations.is_empty(),
         "reset_circuit_breaker command must delegate switchback source reads and decision projection to proxy_core_adapter:\n{}",
+        violations.join("\n")
+    );
+}
+
+#[test]
+fn production_set_auto_failover_command_delegates_plan_sources_to_adapter() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let path = manifest_dir.join("src/commands/failover.rs");
+    let source = fs::read_to_string(&path).expect("read commands/failover.rs");
+    let start = source
+        .find("pub async fn set_auto_failover_enabled")
+        .expect("missing set_auto_failover_enabled");
+    let function = &source[start..];
+
+    let mut violations = Vec::new();
+    for (line_index, line) in production_lines(function) {
+        let code = line.split("//").next().unwrap_or_default();
+        for marker in FORBIDDEN_SET_AUTO_FAILOVER_COMMAND_MARKERS {
+            if code.contains(marker) {
+                violations.push(format!(
+                    "src/commands/failover.rs set_auto_failover_enabled:{} contains auto-failover source marker `{}`",
+                    line_index + 1,
+                    marker
+                ));
+            }
+        }
+    }
+
+    assert!(
+        violations.is_empty(),
+        "set_auto_failover_enabled command must delegate plan source reads and core input construction to proxy_core_adapter:\n{}",
         violations.join("\n")
     );
 }
