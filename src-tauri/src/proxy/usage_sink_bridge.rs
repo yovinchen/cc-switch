@@ -11,7 +11,7 @@ use crate::proxy_core_adapter::{
     SseUsageCollector,
     transformed_response_usage_record_from_response_context,
     transformed_streaming_response_usage_record_from_response_context,
-    usage_logging_enabled_from_config_flag, ForwardErrorUsageContext,
+    usage_logging_enabled_from_proxy_config, ForwardErrorUsageContext,
     StreamUsageEventFilter, TransformedResponseUsageContext, TransformedResponseUsageFormat,
     TransformedStreamingResponseUsageContext, UsageRecordFailureLogContext,
     UsageSelectedProviderMissingPhase,
@@ -94,7 +94,7 @@ pub(crate) fn record_transformed_response_usage(
     format: TransformedResponseUsageFormat,
     status_code: u16,
 ) {
-    if !usage_logging_enabled(state) {
+    if !usage_logging_enabled_from_proxy_config(state.config.as_ref()) {
         return;
     }
 
@@ -137,7 +137,7 @@ pub(crate) fn transformed_streaming_usage_collector(
     usage_format: TransformedResponseUsageFormat,
     stream_event_filter: StreamUsageEventFilter,
 ) -> Option<SseUsageCollector> {
-    if !usage_logging_enabled(state) {
+    if !usage_logging_enabled_from_proxy_config(state.config.as_ref()) {
         return None;
     }
 
@@ -193,16 +193,6 @@ pub(crate) fn transformed_streaming_usage_collector(
             );
         },
     ))
-}
-
-fn usage_logging_enabled(state: &ProxyState) -> bool {
-    usage_logging_enabled_from_config_flag(
-        state
-            .config
-            .try_read()
-            .ok()
-            .map(|config| config.enable_logging),
-    )
 }
 
 #[cfg(test)]
