@@ -6,7 +6,6 @@ use super::hyper_client::ProxyResponse;
 use super::{
     error::ProxyError,
     error_mapper::reqwest_send_error_to_proxy_error,
-    events::ProxyEventBus,
     provider_router::ProviderRouter,
     codex_chat_history::CodexChatHistoryStore,
     route_attempt::{apply_channel_model_override, ForwardAttempt},
@@ -69,13 +68,12 @@ use crate::proxy_core_adapter::{
     streaming_body_first_chunk_read_error_message, streaming_body_first_chunk_timeout_message,
     streaming_header_timeout_message, supports_reasoning_effort, thinking_optimization_log_message,
     validate_managed_account_upstream_auth, AttemptEventPhase, CopilotAuthHeaderOverrides,
-    CopilotOptimizerConfig, CurrentRouteTarget, ForwardFailureCategory,
-    ForwardUpstreamUrlPlanInput, GeminiShadowStore, MediaRetryInput, OptimizerConfig,
-    PromptCacheTraceLogInput,
-    FailoverSwitchSchedulerRef, ManagedAccountRuntimeSourceRef, ProxyRuntimeStatus,
-    RectifierConfig, ResolvedChannelAttempt, UpstreamAuthHeadersInput,
-    UpstreamRequestHeadersInput, UpstreamSendPolicyInput, UpstreamTransportKind,
-    UNSUPPORTED_IMAGE_MARKER,
+    CopilotOptimizerConfig, ForwardFailureCategory, ForwardUpstreamUrlPlanInput,
+    GeminiShadowStore, MediaRetryInput, OptimizerConfig, PromptCacheTraceLogInput,
+    FailoverSwitchSchedulerRef, ForwarderRuntimeStateSourceRef,
+    ManagedAccountRuntimeSourceRef, ProxyRuntimeStatus, RectifierConfig,
+    ResolvedChannelAttempt, UpstreamAuthHeadersInput, UpstreamRequestHeadersInput,
+    UpstreamSendPolicyInput, UpstreamTransportKind, UNSUPPORTED_IMAGE_MARKER,
 };
 #[cfg(test)]
 use crate::proxy_core_adapter::provider_router_from_database;
@@ -145,9 +143,7 @@ impl Drop for ActiveConnectionGuard {
 pub struct RequestForwarder {
     /// 共享的 ProviderRouter（持有熔断器状态）
     router: Arc<ProviderRouter>,
-    status: Arc<RwLock<ProxyRuntimeStatus>>,
-    current_providers: Arc<RwLock<std::collections::HashMap<String, CurrentRouteTarget>>>,
-    events: Arc<ProxyEventBus>,
+    runtime_state_source: ForwarderRuntimeStateSourceRef,
     gemini_shadow: Arc<GeminiShadowStore>,
     codex_chat_history: Arc<CodexChatHistoryStore>,
     failover_switch_scheduler: FailoverSwitchSchedulerRef,
@@ -249,9 +245,7 @@ impl RequestForwarder {
     pub(crate) fn new_preplanned(
         router: Arc<ProviderRouter>,
         non_streaming_timeout: u64,
-        status: Arc<RwLock<ProxyRuntimeStatus>>,
-        current_providers: Arc<RwLock<std::collections::HashMap<String, CurrentRouteTarget>>>,
-        events: Arc<ProxyEventBus>,
+        runtime_state_source: ForwarderRuntimeStateSourceRef,
         gemini_shadow: Arc<GeminiShadowStore>,
         codex_chat_history: Arc<CodexChatHistoryStore>,
         failover_switch_scheduler: FailoverSwitchSchedulerRef,
@@ -271,9 +265,7 @@ impl RequestForwarder {
         let max_attempts = (max_retries as usize).saturating_add(1);
         Self {
             router,
-            status,
-            current_providers,
-            events,
+            runtime_state_source,
             gemini_shadow,
             codex_chat_history,
             failover_switch_scheduler,
@@ -315,9 +307,11 @@ impl RequestForwarder {
         app_type: &str,
         attempt: &ForwardAttempt,
     ) {
+        let current_providers = self.runtime_state_source.current_providers();
+        let events = self.runtime_state_source.events();
         record_forward_active_route_target_runtime_source(
-            self.current_providers.as_ref(),
-            self.events.as_ref(),
+            current_providers.as_ref(),
+            events.as_ref(),
             request_id,
             app_type,
             attempt,
@@ -326,8 +320,9 @@ impl RequestForwarder {
     }
 
     async fn record_success_status_and_maybe_switch(&self, app_type: &str, provider: &Provider) {
+        let status = self.runtime_state_source.status();
         let should_switch = record_forward_success_runtime_source(
-            self.status.as_ref(),
+            status.as_ref(),
             self.current_provider_id_at_start.as_str(),
             provider.id.as_str(),
         )
@@ -338,7 +333,8 @@ impl RequestForwarder {
     }
 
     async fn record_failure_status_message(&self, error_message: impl AsRef<str>) {
-        record_forward_failure_runtime_source(self.status.as_ref(), error_message.as_ref()).await;
+        let status = self.runtime_state_source.status();
+        record_forward_failure_runtime_source(status.as_ref(), error_message.as_ref()).await;
     }
 
     fn schedule_failover_switch(&self, app_type: &str, provider: &Provider) {
@@ -350,12 +346,14 @@ impl RequestForwarder {
     }
 
     fn emit_request_started(&self, request_id: &str, app_type: &str) {
-        emit_request_started_event_source(self.events.as_ref(), request_id, app_type);
+        let events = self.runtime_state_source.events();
+        emit_request_started_event_source(events.as_ref(), request_id, app_type);
     }
 
     fn emit_attempt_started(&self, request_id: &str, app_type: &str, attempt: &ForwardAttempt) {
+        let events = self.runtime_state_source.events();
         emit_attempt_event_source(
-            self.events.as_ref(),
+            events.as_ref(),
             request_id,
             app_type,
             attempt,
@@ -365,8 +363,9 @@ impl RequestForwarder {
     }
 
     fn emit_attempt_succeeded(&self, request_id: &str, app_type: &str, attempt: &ForwardAttempt) {
+        let events = self.runtime_state_source.events();
         emit_attempt_event_source(
-            self.events.as_ref(),
+            events.as_ref(),
             request_id,
             app_type,
             attempt,
@@ -382,8 +381,9 @@ impl RequestForwarder {
         attempt: &ForwardAttempt,
         error: &str,
     ) {
+        let events = self.runtime_state_source.events();
         emit_attempt_event_source(
-            self.events.as_ref(),
+            events.as_ref(),
             request_id,
             app_type,
             attempt,
@@ -460,8 +460,9 @@ impl RequestForwarder {
                 retry_error_message.clone(),
             )
             .await;
+            let status = self.runtime_state_source.status();
             record_forward_provider_rectifier_retry_failure_runtime_source(
-                self.status.as_ref(),
+                status.as_ref(),
                 &provider.name,
                 rectifier_label,
                 &retry_error_message,
@@ -500,9 +501,10 @@ impl RequestForwarder {
     ) -> Result<ForwardResult, ForwardError> {
         let request_id = uuid::Uuid::new_v4().to_string();
         self.emit_request_started(&request_id, app_type.as_str());
-        let guard = ActiveConnectionGuard::acquire(self.status.clone()).await;
+        let status = self.runtime_state_source.status();
+        let guard = ActiveConnectionGuard::acquire(status.clone()).await;
         record_forward_request_started_runtime_source(
-            self.status.as_ref(),
+            status.as_ref(),
             &chrono::Utc::now().to_rfc3339(),
         )
         .await;
@@ -625,8 +627,9 @@ impl RequestForwarder {
             // total_requests / last_request_at / active_connections 已由
             // forward_with_preplanned_attempts 在客户端请求维度统一处理，这里只刷
             // 新「正在尝试哪个 provider」的展示字段。
+            let status = self.runtime_state_source.status();
             record_forward_current_provider_runtime_source(
-                self.status.as_ref(),
+                status.as_ref(),
                 provider.id.as_str(),
                 provider.name.as_str(),
             )
@@ -1044,8 +1047,9 @@ impl RequestForwarder {
                             )
                             .await;
 
+                            let status = self.runtime_state_source.status();
                             record_forward_provider_failure_runtime_source(
-                                self.status.as_ref(),
+                                status.as_ref(),
                                 &provider.name,
                                 &error_message,
                             )
@@ -1815,6 +1819,7 @@ impl RequestForwarder {
 mod tests {
     use super::*;
     use crate::database::Database;
+    use crate::proxy::events::ProxyEventBus;
     use crate::proxy_core_adapter::ManagedAccountAuthError;
     use crate::proxy_core_adapter::{canonical_json_string, short_value_hash};
     use crate::proxy_core_adapter::{
@@ -1868,12 +1873,18 @@ mod tests {
         streaming_first_byte_timeout: Duration,
     ) -> RequestForwarder {
         let db = Arc::new(Database::memory().expect("memory db"));
+        let status = Arc::new(RwLock::new(ProxyRuntimeStatus::default()));
+        let current_providers = Arc::new(RwLock::new(HashMap::new()));
+        let events = Arc::new(ProxyEventBus::default());
 
         RequestForwarder {
             router: Arc::new(provider_router_from_database(db.clone())),
-            status: Arc::new(RwLock::new(ProxyRuntimeStatus::default())),
-            current_providers: Arc::new(RwLock::new(HashMap::new())),
-            events: Arc::new(ProxyEventBus::default()),
+            runtime_state_source:
+                crate::proxy_core_adapter::forwarder_runtime_state_source_from_runtime_parts(
+                    status,
+                    current_providers,
+                    events,
+                ),
             gemini_shadow: Arc::new(GeminiShadowStore::new()),
             codex_chat_history: Arc::new(CodexChatHistoryStore::default()),
             failover_switch_scheduler: crate::proxy_core_adapter::noop_failover_switch_scheduler(),
@@ -1894,7 +1905,7 @@ mod tests {
     #[tokio::test]
     async fn forwarder_event_helpers_emit_channel_attempt_payloads() {
         let forwarder = test_forwarder(Duration::from_secs(0), Duration::from_secs(0));
-        let mut subscriber = forwarder.events.subscribe();
+        let mut subscriber = forwarder.runtime_state_source.events().subscribe();
         let provider = test_provider_with_type(None);
         let attempt = ForwardAttempt::from_channel(
             &AppType::Claude,
@@ -1948,7 +1959,7 @@ mod tests {
     #[tokio::test]
     async fn preplanned_forwarding_reuses_request_scope_accounting() {
         let forwarder = test_forwarder(Duration::from_secs(0), Duration::from_secs(0));
-        let mut subscriber = forwarder.events.subscribe();
+        let mut subscriber = forwarder.runtime_state_source.events().subscribe();
 
         let result = forwarder
             .forward_with_preplanned_attempts(
@@ -1969,7 +1980,8 @@ mod tests {
         assert_eq!(started_event.event, "request_started");
         assert_eq!(started_event.payload["appType"], "claude");
 
-        let status = forwarder.status.read().await;
+        let status = forwarder.runtime_state_source.status();
+        let status = status.read().await;
         assert_eq!(status.total_requests, 1);
     }
 

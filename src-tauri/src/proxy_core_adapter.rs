@@ -66,11 +66,9 @@ pub(crate) const COPILOT_INTEGRATION_ID: &str = "vscode-chat";
 pub(crate) struct CcSwitchProxyRuntime {
     pub(crate) db: Arc<Database>,
     pub(crate) provider_router: Arc<ProviderRouter>,
-    pub(crate) status: Arc<RwLock<ProxyRuntimeStatus>>,
-    pub(crate) current_providers: Arc<RwLock<HashMap<String, CurrentRouteTarget>>>,
-    pub(crate) events: Arc<ProxyEventBus>,
     pub(crate) gemini_shadow: Arc<GeminiShadowStore>,
     pub(crate) codex_chat_history: Arc<CodexChatHistoryStore>,
+    pub(crate) runtime_state_source: ForwarderRuntimeStateSourceRef,
     pub(crate) failover_switch_scheduler: FailoverSwitchSchedulerRef,
     pub(crate) managed_account_runtime_source: ManagedAccountRuntimeSourceRef,
 }
@@ -478,6 +476,11 @@ pub(crate) fn proxy_state_from_runtime_sources(
     let current_providers = Arc::new(RwLock::new(HashMap::new()));
     let gemini_shadow = Arc::new(GeminiShadowStore::default());
     let codex_chat_history = Arc::new(CodexChatHistoryStore::default());
+    let runtime_state_source = forwarder_runtime_state_source_from_runtime_parts(
+        status.clone(),
+        current_providers.clone(),
+        events.clone(),
+    );
     let failover_switch_scheduler = failover_switch_scheduler_from_runtime_sources(
         failover_manager.clone(),
         app_handle.clone(),
@@ -488,11 +491,9 @@ pub(crate) fn proxy_state_from_runtime_sources(
         Arc::new(CcSwitchProxyServices::with_runtime(CcSwitchProxyRuntime {
             db: db.clone(),
             provider_router: provider_router.clone(),
-            status: status.clone(),
-            current_providers: current_providers.clone(),
-            events: events.clone(),
             gemini_shadow: gemini_shadow.clone(),
             codex_chat_history: codex_chat_history.clone(),
+            runtime_state_source,
             failover_switch_scheduler,
             managed_account_runtime_source,
         }));
@@ -7822,12 +7823,65 @@ pub(crate) fn noop_failover_switch_scheduler() -> FailoverSwitchSchedulerRef {
     Arc::new(NoopFailoverSwitchScheduler)
 }
 
+pub(crate) type ForwarderRuntimeStateSourceRef =
+    Arc<dyn ForwarderRuntimeStateSource + Send + Sync>;
+
+pub(crate) trait ForwarderRuntimeStateSource {
+    fn status(&self) -> Arc<RwLock<ProxyRuntimeStatus>>;
+    fn current_providers(&self) -> Arc<RwLock<HashMap<String, CurrentRouteTarget>>>;
+    fn events(&self) -> Arc<ProxyEventBus>;
+}
+
+struct CcSwitchForwarderRuntimeStateSource {
+    status: Arc<RwLock<ProxyRuntimeStatus>>,
+    current_providers: Arc<RwLock<HashMap<String, CurrentRouteTarget>>>,
+    events: Arc<ProxyEventBus>,
+}
+
+impl CcSwitchForwarderRuntimeStateSource {
+    fn new(
+        status: Arc<RwLock<ProxyRuntimeStatus>>,
+        current_providers: Arc<RwLock<HashMap<String, CurrentRouteTarget>>>,
+        events: Arc<ProxyEventBus>,
+    ) -> Self {
+        Self {
+            status,
+            current_providers,
+            events,
+        }
+    }
+}
+
+impl ForwarderRuntimeStateSource for CcSwitchForwarderRuntimeStateSource {
+    fn status(&self) -> Arc<RwLock<ProxyRuntimeStatus>> {
+        self.status.clone()
+    }
+
+    fn current_providers(&self) -> Arc<RwLock<HashMap<String, CurrentRouteTarget>>> {
+        self.current_providers.clone()
+    }
+
+    fn events(&self) -> Arc<ProxyEventBus> {
+        self.events.clone()
+    }
+}
+
+pub(crate) fn forwarder_runtime_state_source_from_runtime_parts(
+    status: Arc<RwLock<ProxyRuntimeStatus>>,
+    current_providers: Arc<RwLock<HashMap<String, CurrentRouteTarget>>>,
+    events: Arc<ProxyEventBus>,
+) -> ForwarderRuntimeStateSourceRef {
+    Arc::new(CcSwitchForwarderRuntimeStateSource::new(
+        status,
+        current_providers,
+        events,
+    ))
+}
+
 #[derive(Clone)]
 pub(crate) struct ForwarderRuntimeHostResources {
     pub(crate) provider_router: Arc<ProviderRouter>,
-    pub(crate) status: Arc<RwLock<ProxyRuntimeStatus>>,
-    pub(crate) current_providers: Arc<RwLock<HashMap<String, CurrentRouteTarget>>>,
-    pub(crate) events: Arc<ProxyEventBus>,
+    pub(crate) runtime_state_source: ForwarderRuntimeStateSourceRef,
     pub(crate) gemini_shadow: Arc<GeminiShadowStore>,
     pub(crate) codex_chat_history: Arc<CodexChatHistoryStore>,
     pub(crate) failover_switch_scheduler: FailoverSwitchSchedulerRef,
@@ -7839,9 +7893,7 @@ pub(crate) fn forwarder_runtime_host_resources_from_runtime(
 ) -> ForwarderRuntimeHostResources {
     ForwarderRuntimeHostResources {
         provider_router: runtime.provider_router.clone(),
-        status: runtime.status.clone(),
-        current_providers: runtime.current_providers.clone(),
-        events: runtime.events.clone(),
+        runtime_state_source: runtime.runtime_state_source.clone(),
         gemini_shadow: runtime.gemini_shadow.clone(),
         codex_chat_history: runtime.codex_chat_history.clone(),
         failover_switch_scheduler: runtime.failover_switch_scheduler.clone(),
@@ -7873,9 +7925,7 @@ pub(crate) async fn forward_with_preplanned_host_runtime(
 ) -> ProxyCoreResult<ProxyResult> {
     let ForwarderRuntimeHostResources {
         provider_router,
-        status,
-        current_providers,
-        events,
+        runtime_state_source,
         gemini_shadow,
         codex_chat_history,
         failover_switch_scheduler,
@@ -7894,9 +7944,7 @@ pub(crate) async fn forward_with_preplanned_host_runtime(
     let forwarder = RequestForwarder::new_preplanned(
         provider_router,
         forwarder_options.non_streaming_timeout,
-        status,
-        current_providers,
-        events,
+        runtime_state_source,
         gemini_shadow,
         codex_chat_history,
         failover_switch_scheduler,
@@ -8379,11 +8427,11 @@ impl ProxyServiceRuntimeResources for CcSwitchProxyRuntime {
     }
 
     fn current_providers(&self) -> Arc<RwLock<HashMap<String, CurrentRouteTarget>>> {
-        self.current_providers.clone()
+        self.runtime_state_source.current_providers()
     }
 
     fn events(&self) -> Arc<ProxyEventBus> {
-        self.events.clone()
+        self.runtime_state_source.events()
     }
 }
 

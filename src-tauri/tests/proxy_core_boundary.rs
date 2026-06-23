@@ -5575,6 +5575,59 @@ fn production_forwarder_uses_failover_switch_scheduler_resource() {
 }
 
 #[test]
+fn production_forwarder_uses_runtime_state_source_resource() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let path = manifest_dir.join("src/proxy/forwarder.rs");
+    let source = fs::read_to_string(&path).expect("read forwarder.rs");
+    let struct_slice = function_slice(&source, "pub struct RequestForwarder", "impl RequestForwarder");
+    let impl_slice = function_slice(&source, "impl RequestForwarder", "#[cfg(test)]");
+
+    assert!(
+        struct_slice.contains("runtime_state_source"),
+        "RequestForwarder must receive status/current-provider/events as one injected runtime state source"
+    );
+
+    let struct_forbidden_markers = [
+        "status: Arc<RwLock<ProxyRuntimeStatus>>",
+        "current_providers: Arc<RwLock",
+        "events: Arc<ProxyEventBus>",
+    ];
+    let impl_forbidden_markers = ["self.status", "self.current_providers", "self.events"];
+    let mut violations = Vec::new();
+
+    for (line_index, line) in production_lines(struct_slice) {
+        let code = line.split("//").next().unwrap_or_default();
+        for marker in struct_forbidden_markers {
+            if code.contains(marker) {
+                violations.push(format!(
+                    "src/proxy/forwarder.rs RequestForwarder:{} contains runtime state field marker `{}`",
+                    line_index + 1,
+                    marker
+                ));
+            }
+        }
+    }
+    for (line_index, line) in production_lines(impl_slice) {
+        let code = line.split("//").next().unwrap_or_default();
+        for marker in impl_forbidden_markers {
+            if code.contains(marker) {
+                violations.push(format!(
+                    "src/proxy/forwarder.rs impl RequestForwarder:{} contains direct runtime state marker `{}`",
+                    line_index + 1,
+                    marker
+                ));
+            }
+        }
+    }
+
+    assert!(
+        violations.is_empty(),
+        "forwarder must use an injected runtime state source instead of direct status/current-provider/events fields:\n{}",
+        violations.join("\n")
+    );
+}
+
+#[test]
 fn production_failover_switch_delegates_proxy_config_to_adapter() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let path = manifest_dir.join("src/proxy/failover_switch.rs");

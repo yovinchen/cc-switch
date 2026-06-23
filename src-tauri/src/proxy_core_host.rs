@@ -429,12 +429,17 @@ mod tests {
 
     fn runtime(db: Arc<Database>) -> CcSwitchProxyRuntime {
         let events = Arc::new(ProxyEventBus::default());
+        let status = Arc::new(RwLock::new(ProxyRuntimeStatus::default()));
+        let current_providers = Arc::new(RwLock::new(std::collections::HashMap::new()));
         CcSwitchProxyRuntime {
             db: db.clone(),
             provider_router: Arc::new(provider_router_from_database(db.clone())),
-            status: Arc::new(RwLock::new(ProxyRuntimeStatus::default())),
-            current_providers: Arc::new(RwLock::new(std::collections::HashMap::new())),
-            events,
+            runtime_state_source:
+                crate::proxy_core_adapter::forwarder_runtime_state_source_from_runtime_parts(
+                    status,
+                    current_providers,
+                    events,
+                ),
             gemini_shadow: Arc::new(GeminiShadowStore::default()),
             codex_chat_history: Arc::new(CodexChatHistoryStore::default()),
             failover_switch_scheduler: crate::proxy_core_adapter::noop_failover_switch_scheduler(),
