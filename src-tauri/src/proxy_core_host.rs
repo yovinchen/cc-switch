@@ -9,18 +9,18 @@ use crate::proxy::provider_router::ProviderRouter;
 use crate::proxy::codex_chat_history::CodexChatHistoryStore;
 use crate::proxy_core_adapter::{
     AppKind, AppSummaryConfig, AuthInfo, AuthProfileRef, AuthProvider, CcSwitchChannelHealthStore,
-    ChannelHealthStore, ChannelKeyRecord, ChannelModelRecord, ChannelMigrationMaterializeInput,
-    ChannelMigrationPreviewInput, ChannelQuery, ChannelRecord, ChannelReachabilityProbe,
-    ChannelReachabilityResult, ChannelRouteSource, ChannelSource, ChannelSpec,
-    ChannelTestProbeRequest, ClaudeDesktopModelRouteInput, CurrentRouteTarget, ForwardPipeline,
-    ForwarderRuntimeHostResources, GeminiShadowStore, HostForwardRuntime, ModelCatalog,
-    ModelCatalogProvider, ProviderSource, ProviderSpec, ProxyAppConfig,
+    CcSwitchRoutePolicySource, CcSwitchRouteResolver, ChannelHealthStore, ChannelKeyRecord,
+    ChannelModelRecord, ChannelMigrationMaterializeInput, ChannelMigrationPreviewInput,
+    ChannelQuery, ChannelRecord, ChannelReachabilityProbe, ChannelReachabilityResult,
+    ChannelRouteSource, ChannelSource, ChannelSpec, ChannelTestProbeRequest,
+    ClaudeDesktopModelRouteInput, CurrentRouteTarget, ForwardPipeline, ForwarderRuntimeHostResources,
+    GeminiShadowStore, HostForwardRuntime, ModelCatalog, ModelCatalogProvider, ProviderSource,
+    ProviderSpec, ProxyAppConfig,
     ProxyChannelKeyPatchRequest, ProxyChannelKeyWriteRequest, ProxyChannelModelsReplaceRequest,
     ProxyChannelPatchRequest, ProxyChannelWriteRequest, ProxyConfigSource, ProxyCoreEvent,
     ProxyCoreResult, ProxyEventSink, ProxyGlobalConfig, ProxyRequest, ProxyResult,
-    ProxyRuntimeConfig, ProxyRuntimeStatus, ProxyServices, RoutePlan, RoutePolicy,
-    RoutePolicySource, RouteRequest, RouteResolveRequest, RouteResolveResponse, RouteResolver,
-    UsageRecord, UsageSink,
+    ProxyRuntimeConfig, ProxyRuntimeStatus, ProxyServices, RoutePlan, RoutePolicySource,
+    RouteResolver, UsageRecord, UsageSink,
 };
 use crate::proxy_core_adapter::{
     active_route_target_from_runtime_source,
@@ -49,12 +49,9 @@ use crate::proxy_core_adapter::{
     probe_channel_reachability_from_db_source,
     proxy_app_config_from_db_source, proxy_global_config_from_db_source,
     emit_proxy_core_event_bus_source,
-    management_route_response_from_router_source,
     materialized_channel_records_from_db_source,
     proxy_runtime_config_from_db_source,
     record_usage_in_db_source,
-    route_policy_from_db_source,
-    route_plan_from_request,
     replace_channel_model_records_from_db_source,
     route_candidate_provider_ids_from_router_source,
     update_channel_record_from_db_source,
@@ -64,7 +61,8 @@ use crate::proxy_core_adapter::{
 #[cfg(test)]
 use crate::proxy_core_adapter::{
     apply_channel_auth_profile_providers_from_db, forward_attempts_from_plan,
-    forward_result_to_proxy_result, host_providers_for_plan, ChannelAttemptResult,
+    forward_result_to_proxy_result, host_providers_for_plan,
+    management_route_response_from_router_source, ChannelAttemptResult, RouteRequest,
 };
 use futures::future::BoxFuture;
 #[cfg(test)]
@@ -128,10 +126,8 @@ impl CcSwitchProxyServices {
             channels: CcSwitchChannelSource {
                 db: db.clone(),
             },
-            route_policies: CcSwitchRoutePolicySource { db: db.clone() },
-            route_resolver: CcSwitchRouteResolver {
-                router: runtime.provider_router.clone(),
-            },
+            route_policies: CcSwitchRoutePolicySource::new(db.clone()),
+            route_resolver: CcSwitchRouteResolver::new(runtime.provider_router.clone()),
             health_store: CcSwitchChannelHealthStore::new(
                 db.clone(),
                 runtime.provider_router.clone(),
@@ -162,10 +158,8 @@ impl CcSwitchProxyServices {
             channels: CcSwitchChannelSource {
                 db: db.clone(),
             },
-            route_policies: CcSwitchRoutePolicySource { db: db.clone() },
-            route_resolver: CcSwitchRouteResolver {
-                router: router.clone(),
-            },
+            route_policies: CcSwitchRoutePolicySource::new(db.clone()),
+            route_resolver: CcSwitchRouteResolver::new(router.clone()),
             health_store: CcSwitchChannelHealthStore::new(db.clone(), router.clone()),
             reachability_probe: CcSwitchChannelReachabilityProbe { db: db.clone() },
             auth_provider: CcSwitchAuthProvider,
@@ -440,43 +434,6 @@ impl ChannelSource for CcSwitchChannelSource {
         app: &'a AppKind,
     ) -> BoxFuture<'a, ProxyCoreResult<ChannelMigrationMaterializeInput>> {
         Box::pin(async move { channel_migration_materialize_from_db_source(&self.db, app) })
-    }
-}
-
-#[derive(Clone)]
-struct CcSwitchRoutePolicySource {
-    db: Arc<Database>,
-}
-
-impl RoutePolicySource for CcSwitchRoutePolicySource {
-    fn load_policy<'a>(
-        &'a self,
-        app: &'a AppKind,
-    ) -> BoxFuture<'a, ProxyCoreResult<Option<RoutePolicy>>> {
-        Box::pin(async move { route_policy_from_db_source(&self.db, app) })
-    }
-}
-
-#[derive(Clone)]
-struct CcSwitchRouteResolver {
-    router: Arc<ProviderRouter>,
-}
-
-impl RouteResolver for CcSwitchRouteResolver {
-    fn resolve<'a>(
-        &'a self,
-        request: RouteRequest<'a>,
-    ) -> BoxFuture<'a, ProxyCoreResult<RoutePlan>> {
-        Box::pin(async move { route_plan_from_request(request) })
-    }
-
-    fn resolve_management_route<'a>(
-        &'a self,
-        request: RouteResolveRequest,
-    ) -> BoxFuture<'a, ProxyCoreResult<RouteResolveResponse>> {
-        Box::pin(async move {
-            management_route_response_from_router_source(&self.router, request).await
-        })
     }
 }
 

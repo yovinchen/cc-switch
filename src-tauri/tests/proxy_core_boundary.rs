@@ -200,11 +200,18 @@ const FORBIDDEN_PROXY_CORE_HOST_CHANNEL_MIGRATION_SOURCE_MARKERS: &[&str] = &[
     "channel_migration_materialize_input_from_result(",
 ];
 const FORBIDDEN_PROXY_CORE_HOST_ROUTE_POLICY_SOURCE_MARKERS: &[&str] = &[
+    "struct CcSwitchRoutePolicySource",
+    "impl RoutePolicySource for CcSwitchRoutePolicySource",
+    "route_policy_from_db_source(",
     ".get_failover_queue(",
     "route_policy_from_source(",
     "route_policy_from_failover_queue(",
 ];
 const FORBIDDEN_PROXY_CORE_HOST_ROUTE_RESOLVER_SOURCE_MARKERS: &[&str] = &[
+    "struct CcSwitchRouteResolver",
+    "impl RouteResolver for CcSwitchRouteResolver",
+    "route_plan_from_request(",
+    "management_route_response_from_router_source(",
     ".resolve_channel_route_dry_run(",
     "app_error(\"resolve channel route dry run\"",
     "crate::proxy_core_adapter::route_plan_from_request(",
@@ -3091,7 +3098,7 @@ fn production_proxy_core_host_delegates_channel_migration_source_to_adapter() {
     let channel_migration_source = function_slice(
         &source,
         "    fn preview_legacy_channel_migration",
-        "\n}\n\n#[derive(Clone)]\nstruct CcSwitchRoutePolicySource",
+        "\n}\n\n#[derive(Clone)]\nstruct CcSwitchChannelReachabilityProbe",
     );
 
     let mut violations = Vec::new();
@@ -3120,19 +3127,14 @@ fn production_proxy_core_host_delegates_route_policy_source_to_adapter() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let path = manifest_dir.join("src/proxy_core_host.rs");
     let source = fs::read_to_string(&path).expect("read proxy_core_host.rs");
-    let route_policy_source = function_slice(
-        &source,
-        "impl RoutePolicySource for CcSwitchRoutePolicySource",
-        "#[derive(Clone)]\nstruct CcSwitchRouteResolver",
-    );
 
     let mut violations = Vec::new();
-    for (line_index, line) in production_lines(route_policy_source) {
+    for (line_index, line) in production_lines(&source) {
         let code = line.split("//").next().unwrap_or_default();
         for marker in FORBIDDEN_PROXY_CORE_HOST_ROUTE_POLICY_SOURCE_MARKERS {
             if code.contains(marker) {
                 violations.push(format!(
-                    "src/proxy_core_host.rs CcSwitchRoutePolicySource:{} contains route policy source marker `{}`",
+                    "src/proxy_core_host.rs:{} contains route policy source marker `{}`",
                     line_index + 1,
                     marker
                 ));
@@ -3152,19 +3154,14 @@ fn production_proxy_core_host_delegates_route_resolver_source_to_adapter() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let path = manifest_dir.join("src/proxy_core_host.rs");
     let source = fs::read_to_string(&path).expect("read proxy_core_host.rs");
-    let route_resolver = function_slice(
-        &source,
-        "impl RouteResolver for CcSwitchRouteResolver",
-        "#[derive(Clone)]\nstruct CcSwitchChannelReachabilityProbe",
-    );
 
     let mut violations = Vec::new();
-    for (line_index, line) in production_lines(route_resolver) {
+    for (line_index, line) in production_lines(&source) {
         let code = line.split("//").next().unwrap_or_default();
         for marker in FORBIDDEN_PROXY_CORE_HOST_ROUTE_RESOLVER_SOURCE_MARKERS {
             if code.contains(marker) {
                 violations.push(format!(
-                    "src/proxy_core_host.rs CcSwitchRouteResolver:{} contains route resolver source marker `{}`",
+                    "src/proxy_core_host.rs:{} contains route resolver source marker `{}`",
                     line_index + 1,
                     marker
                 ));

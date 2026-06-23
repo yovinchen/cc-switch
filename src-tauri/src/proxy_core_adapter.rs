@@ -6138,6 +6138,55 @@ pub(crate) fn route_policy_from_db_source(
     Ok(route_policy_from_source(app.clone(), queue))
 }
 
+#[derive(Clone)]
+pub(crate) struct CcSwitchRoutePolicySource {
+    db: Arc<Database>,
+}
+
+impl CcSwitchRoutePolicySource {
+    pub(crate) fn new(db: Arc<Database>) -> Self {
+        Self { db }
+    }
+}
+
+impl RoutePolicySource for CcSwitchRoutePolicySource {
+    fn load_policy<'a>(
+        &'a self,
+        app: &'a AppKind,
+    ) -> BoxFuture<'a, ProxyCoreResult<Option<RoutePolicy>>> {
+        Box::pin(async move { route_policy_from_db_source(&self.db, app) })
+    }
+}
+
+#[derive(Clone)]
+pub(crate) struct CcSwitchRouteResolver {
+    router: Arc<ProviderRouter>,
+}
+
+impl CcSwitchRouteResolver {
+    pub(crate) fn new(router: Arc<ProviderRouter>) -> Self {
+        Self { router }
+    }
+}
+
+impl RouteResolver for CcSwitchRouteResolver {
+    fn resolve<'a>(
+        &'a self,
+        request: RouteRequest<'a>,
+    ) -> BoxFuture<'a, ProxyCoreResult<RoutePlan>> {
+        Box::pin(async move { route_plan_from_request(request) })
+    }
+
+    fn resolve_management_route<'a>(
+        &'a self,
+        request: RouteResolveRequest,
+    ) -> BoxFuture<'a, ProxyCoreResult<RouteResolveResponse>> {
+        Box::pin(async move {
+            management_route_response_from_router_source(&self.router, request).await
+        })
+    }
+}
+
 #[derive(Debug)]
 pub(crate) struct ChannelHealthResetPlan {
     pub(crate) channel_id: String,
