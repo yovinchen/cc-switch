@@ -8,26 +8,17 @@ use crate::proxy::hyper_client::ProxyResponse;
 use crate::proxy::provider_router::ProviderRouter;
 use crate::proxy::codex_chat_history::CodexChatHistoryStore;
 use crate::proxy_core_adapter::{
-    AuthProvider, CcSwitchAuthProvider, CcSwitchChannelHealthStore,
-    CcSwitchChannelReachabilityProbe, CcSwitchChannelSource, CcSwitchConfigSource,
-    CcSwitchEventSink, CcSwitchForwardPipeline, CcSwitchModelCatalogProvider,
-    CcSwitchProviderSource, CcSwitchRoutePolicySource, CcSwitchRouteResolver,
-    CcSwitchUsageSink, ChannelHealthStore, ChannelReachabilityProbe, ChannelSource,
-    CurrentRouteTarget, ForwardPipeline, ForwarderRuntimeHostResources,
-    GeminiShadowStore, HostForwardRuntime, ModelCatalogProvider, ProviderSource,
-    ProxyConfigSource, ProxyCoreResult,
-    ProxyEventSink, ProxyRequest, ProxyResult, ProxyRuntimeStatus, ProxyServices, RoutePlan,
-    RoutePolicySource, RouteResolver, UsageSink,
-};
-use crate::proxy_core_adapter::{
-    forward_proxy_request_with_host_runtime, provider_router_from_database,
+    forward_proxy_request_with_host_runtime, CurrentRouteTarget, ForwarderRuntimeHostResources,
+    GeminiShadowStore, HostForwardRuntime, ProxyCoreResult, ProxyRequest, ProxyResult,
+    ProxyRuntimeStatus, ProxyServiceRuntimeResources, RoutePlan,
 };
 #[cfg(test)]
 use crate::proxy_core_adapter::{
     apply_channel_auth_profile_providers_from_db, forward_attempts_from_plan,
     forward_result_to_proxy_result, host_providers_for_plan,
-    management_route_response_from_router_source, AppKind, AuthProfileRef, ChannelAttemptResult,
-    ChannelQuery, ChannelSpec, ProviderSpec, ProxyCoreEvent, RouteRequest,
+    management_route_response_from_router_source, provider_router_from_database, AppKind,
+    AuthProfileRef, AuthProvider, CcSwitchAuthProvider, ChannelAttemptResult, ChannelQuery,
+    ChannelSpec, ProviderSpec, ProxyCoreEvent, ProxyServices, RouteRequest,
 };
 use futures::future::BoxFuture;
 #[cfg(test)]
@@ -52,131 +43,24 @@ pub(crate) struct CcSwitchProxyRuntime {
     pub(crate) app_handle: Option<tauri::AppHandle>,
 }
 
-#[derive(Clone)]
-#[allow(dead_code)]
-pub(crate) struct CcSwitchProxyServices {
-    config: CcSwitchConfigSource,
-    providers: CcSwitchProviderSource,
-    channels: CcSwitchChannelSource,
-    route_policies: CcSwitchRoutePolicySource,
-    route_resolver: CcSwitchRouteResolver,
-    health_store: CcSwitchChannelHealthStore,
-    reachability_probe: CcSwitchChannelReachabilityProbe,
-    auth_provider: CcSwitchAuthProvider,
-    model_catalog: CcSwitchModelCatalogProvider,
-    usage_sink: CcSwitchUsageSink,
-    event_sink: CcSwitchEventSink,
-    forward_pipeline: CcSwitchForwardPipeline<CcSwitchProxyRuntime>,
-}
+pub(crate) type CcSwitchProxyServices =
+    crate::proxy_core_adapter::CcSwitchProxyServices<CcSwitchProxyRuntime>;
 
-#[allow(dead_code)]
-impl CcSwitchProxyServices {
-    pub(crate) fn new(db: Arc<Database>) -> Self {
-        Self::with_optional_event_bus(db, None)
+impl ProxyServiceRuntimeResources for CcSwitchProxyRuntime {
+    fn db(&self) -> Arc<Database> {
+        self.db.clone()
     }
 
-    pub(crate) fn with_event_bus(db: Arc<Database>, events: Arc<ProxyEventBus>) -> Self {
-        Self::with_optional_event_bus(db, Some(events))
+    fn provider_router(&self) -> Arc<ProviderRouter> {
+        self.provider_router.clone()
     }
 
-    pub(crate) fn with_runtime(runtime: CcSwitchProxyRuntime) -> Self {
-        let db = runtime.db.clone();
-        Self {
-            config: CcSwitchConfigSource::new(db.clone()),
-            providers: CcSwitchProviderSource::new(
-                db.clone(),
-                runtime.provider_router.clone(),
-                runtime.current_providers.clone(),
-            ),
-            channels: CcSwitchChannelSource::new(db.clone()),
-            route_policies: CcSwitchRoutePolicySource::new(db.clone()),
-            route_resolver: CcSwitchRouteResolver::new(runtime.provider_router.clone()),
-            health_store: CcSwitchChannelHealthStore::new(
-                db.clone(),
-                runtime.provider_router.clone(),
-            ),
-            reachability_probe: CcSwitchChannelReachabilityProbe::new(db.clone()),
-            auth_provider: CcSwitchAuthProvider,
-            model_catalog: CcSwitchModelCatalogProvider::new(
-                db.clone(),
-                runtime.provider_router.clone(),
-            ),
-            usage_sink: CcSwitchUsageSink::new(db),
-            event_sink: CcSwitchEventSink::new(Some(runtime.events.clone())),
-            forward_pipeline: CcSwitchForwardPipeline::with_runtime(runtime),
-        }
+    fn current_providers(&self) -> Arc<RwLock<HashMap<String, CurrentRouteTarget>>> {
+        self.current_providers.clone()
     }
 
-    fn with_optional_event_bus(db: Arc<Database>, events: Option<Arc<ProxyEventBus>>) -> Self {
-        let router = Arc::new(provider_router_from_database(db.clone()));
-        Self {
-            config: CcSwitchConfigSource::new(db.clone()),
-            providers: CcSwitchProviderSource::new(
-                db.clone(),
-                router.clone(),
-                Arc::new(RwLock::new(HashMap::new())),
-            ),
-            channels: CcSwitchChannelSource::new(db.clone()),
-            route_policies: CcSwitchRoutePolicySource::new(db.clone()),
-            route_resolver: CcSwitchRouteResolver::new(router.clone()),
-            health_store: CcSwitchChannelHealthStore::new(db.clone(), router.clone()),
-            reachability_probe: CcSwitchChannelReachabilityProbe::new(db.clone()),
-            auth_provider: CcSwitchAuthProvider,
-            model_catalog: CcSwitchModelCatalogProvider::new(db.clone(), router.clone()),
-            usage_sink: CcSwitchUsageSink::new(db.clone()),
-            event_sink: CcSwitchEventSink::new(events),
-            forward_pipeline: CcSwitchForwardPipeline::default(),
-        }
-    }
-}
-
-impl ProxyServices for CcSwitchProxyServices {
-    fn config(&self) -> &(dyn ProxyConfigSource + Send + Sync) {
-        &self.config
-    }
-
-    fn providers(&self) -> &(dyn ProviderSource + Send + Sync) {
-        &self.providers
-    }
-
-    fn channels(&self) -> &(dyn ChannelSource + Send + Sync) {
-        &self.channels
-    }
-
-    fn route_policies(&self) -> &(dyn RoutePolicySource + Send + Sync) {
-        &self.route_policies
-    }
-
-    fn route_resolver(&self) -> &(dyn RouteResolver + Send + Sync) {
-        &self.route_resolver
-    }
-
-    fn health_store(&self) -> &(dyn ChannelHealthStore + Send + Sync) {
-        &self.health_store
-    }
-
-    fn reachability_probe(&self) -> &(dyn ChannelReachabilityProbe + Send + Sync) {
-        &self.reachability_probe
-    }
-
-    fn auth_provider(&self) -> &(dyn AuthProvider + Send + Sync) {
-        &self.auth_provider
-    }
-
-    fn model_catalog(&self) -> &(dyn ModelCatalogProvider + Send + Sync) {
-        &self.model_catalog
-    }
-
-    fn usage_sink(&self) -> &(dyn UsageSink + Send + Sync) {
-        &self.usage_sink
-    }
-
-    fn event_sink(&self) -> &(dyn ProxyEventSink + Send + Sync) {
-        &self.event_sink
-    }
-
-    fn forward_pipeline(&self) -> &(dyn ForwardPipeline + Send + Sync) {
-        &self.forward_pipeline
+    fn events(&self) -> Arc<ProxyEventBus> {
+        self.events.clone()
     }
 }
 

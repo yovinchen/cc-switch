@@ -6277,6 +6277,152 @@ where
     }
 }
 
+pub(crate) trait ProxyServiceRuntimeResources:
+    HostForwardRuntime + Clone + Send + Sync
+{
+    fn db(&self) -> Arc<Database>;
+    fn provider_router(&self) -> Arc<ProviderRouter>;
+    fn current_providers(&self) -> Arc<RwLock<HashMap<String, CurrentRouteTarget>>>;
+    fn events(&self) -> Arc<ProxyEventBus>;
+}
+
+#[derive(Clone)]
+#[allow(dead_code)]
+pub(crate) struct CcSwitchProxyServices<R> {
+    config: CcSwitchConfigSource,
+    providers: CcSwitchProviderSource,
+    channels: CcSwitchChannelSource,
+    route_policies: CcSwitchRoutePolicySource,
+    route_resolver: CcSwitchRouteResolver,
+    health_store: CcSwitchChannelHealthStore,
+    reachability_probe: CcSwitchChannelReachabilityProbe,
+    auth_provider: CcSwitchAuthProvider,
+    model_catalog: CcSwitchModelCatalogProvider,
+    usage_sink: CcSwitchUsageSink,
+    event_sink: CcSwitchEventSink,
+    forward_pipeline: CcSwitchForwardPipeline<R>,
+}
+
+#[allow(dead_code)]
+impl<R> CcSwitchProxyServices<R> {
+    pub(crate) fn new(db: Arc<Database>) -> Self {
+        Self::with_optional_event_bus(db, None)
+    }
+
+    pub(crate) fn with_event_bus(db: Arc<Database>, events: Arc<ProxyEventBus>) -> Self {
+        Self::with_optional_event_bus(db, Some(events))
+    }
+
+    fn with_optional_event_bus(db: Arc<Database>, events: Option<Arc<ProxyEventBus>>) -> Self {
+        let router = Arc::new(provider_router_from_database(db.clone()));
+        Self {
+            config: CcSwitchConfigSource::new(db.clone()),
+            providers: CcSwitchProviderSource::new(
+                db.clone(),
+                router.clone(),
+                Arc::new(RwLock::new(HashMap::new())),
+            ),
+            channels: CcSwitchChannelSource::new(db.clone()),
+            route_policies: CcSwitchRoutePolicySource::new(db.clone()),
+            route_resolver: CcSwitchRouteResolver::new(router.clone()),
+            health_store: CcSwitchChannelHealthStore::new(db.clone(), router.clone()),
+            reachability_probe: CcSwitchChannelReachabilityProbe::new(db.clone()),
+            auth_provider: CcSwitchAuthProvider,
+            model_catalog: CcSwitchModelCatalogProvider::new(db.clone(), router.clone()),
+            usage_sink: CcSwitchUsageSink::new(db.clone()),
+            event_sink: CcSwitchEventSink::new(events),
+            forward_pipeline: CcSwitchForwardPipeline::default(),
+        }
+    }
+}
+
+impl<R> CcSwitchProxyServices<R>
+where
+    R: ProxyServiceRuntimeResources,
+{
+    pub(crate) fn with_runtime(runtime: R) -> Self {
+        let db = runtime.db();
+        let provider_router = runtime.provider_router();
+        Self {
+            config: CcSwitchConfigSource::new(db.clone()),
+            providers: CcSwitchProviderSource::new(
+                db.clone(),
+                provider_router.clone(),
+                runtime.current_providers(),
+            ),
+            channels: CcSwitchChannelSource::new(db.clone()),
+            route_policies: CcSwitchRoutePolicySource::new(db.clone()),
+            route_resolver: CcSwitchRouteResolver::new(provider_router.clone()),
+            health_store: CcSwitchChannelHealthStore::new(
+                db.clone(),
+                provider_router.clone(),
+            ),
+            reachability_probe: CcSwitchChannelReachabilityProbe::new(db.clone()),
+            auth_provider: CcSwitchAuthProvider,
+            model_catalog: CcSwitchModelCatalogProvider::new(
+                db.clone(),
+                provider_router.clone(),
+            ),
+            usage_sink: CcSwitchUsageSink::new(db),
+            event_sink: CcSwitchEventSink::new(Some(runtime.events())),
+            forward_pipeline: CcSwitchForwardPipeline::with_runtime(runtime),
+        }
+    }
+}
+
+impl<R> ProxyServices for CcSwitchProxyServices<R>
+where
+    R: HostForwardRuntime + Send + Sync + 'static,
+{
+    fn config(&self) -> &(dyn ProxyConfigSource + Send + Sync) {
+        &self.config
+    }
+
+    fn providers(&self) -> &(dyn ProviderSource + Send + Sync) {
+        &self.providers
+    }
+
+    fn channels(&self) -> &(dyn ChannelSource + Send + Sync) {
+        &self.channels
+    }
+
+    fn route_policies(&self) -> &(dyn RoutePolicySource + Send + Sync) {
+        &self.route_policies
+    }
+
+    fn route_resolver(&self) -> &(dyn RouteResolver + Send + Sync) {
+        &self.route_resolver
+    }
+
+    fn health_store(&self) -> &(dyn ChannelHealthStore + Send + Sync) {
+        &self.health_store
+    }
+
+    fn reachability_probe(&self) -> &(dyn ChannelReachabilityProbe + Send + Sync) {
+        &self.reachability_probe
+    }
+
+    fn auth_provider(&self) -> &(dyn AuthProvider + Send + Sync) {
+        &self.auth_provider
+    }
+
+    fn model_catalog(&self) -> &(dyn ModelCatalogProvider + Send + Sync) {
+        &self.model_catalog
+    }
+
+    fn usage_sink(&self) -> &(dyn UsageSink + Send + Sync) {
+        &self.usage_sink
+    }
+
+    fn event_sink(&self) -> &(dyn ProxyEventSink + Send + Sync) {
+        &self.event_sink
+    }
+
+    fn forward_pipeline(&self) -> &(dyn ForwardPipeline + Send + Sync) {
+        &self.forward_pipeline
+    }
+}
+
 pub(crate) trait HostForwardRuntime {
     fn forward_host<'a>(
         &'a self,
