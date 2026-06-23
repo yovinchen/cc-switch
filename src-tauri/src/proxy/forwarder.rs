@@ -34,8 +34,8 @@ use crate::proxy_core_adapter::{
     provider_claude_api_format,
     provider_claude_normalize_anthropic_messages,
     provider_claude_transform_request_for_api_format, provider_custom_user_agent_header,
-    provider_codex_chat_reasoning_options, provider_is_codex_oauth, provider_is_full_url,
-    provider_is_github_copilot_upstream,
+    provider_adapter_name_is_claude, provider_codex_chat_reasoning_options,
+    provider_is_codex_oauth, provider_is_full_url, provider_is_github_copilot_upstream,
     provider_uses_anthropic_rectifiers, rectify_anthropic_request, rectify_thinking_budget,
     replace_image_blocks_with_marker,
     record_forward_attempt_failure_runtime_source,
@@ -1285,7 +1285,9 @@ impl RequestForwarder {
                 }
             }
         }
-        let resolved_claude_api_format = if adapter.name() == "Claude" {
+        let adapter_name = adapter.name();
+        let is_claude_adapter = provider_adapter_name_is_claude(adapter_name);
+        let resolved_claude_api_format = if is_claude_adapter {
             Some(
                 self.resolve_claude_api_format(provider, &mapped_body, is_copilot)
                     .await,
@@ -1293,7 +1295,7 @@ impl RequestForwarder {
         } else {
             None
         };
-        if adapter.name() == "Claude" {
+        if is_claude_adapter {
             if let Some(api_format) = resolved_claude_api_format.as_deref() {
                 provider_claude_normalize_anthropic_messages(
                     &mut mapped_body,
@@ -1312,7 +1314,7 @@ impl RequestForwarder {
         let codex_responses_to_chat =
             forwarder_should_convert_codex_responses_to_chat(app_type, provider, endpoint);
         let claude_api_format_for_url = resolved_claude_api_format.as_deref().or_else(|| {
-            (adapter.name() == "Claude").then(|| provider_claude_api_format(provider))
+            is_claude_adapter.then(|| provider_claude_api_format(provider))
         });
         let url_plan = forward_upstream_url_plan(
             ForwardUpstreamUrlPlanInput {
@@ -1320,7 +1322,7 @@ impl RequestForwarder {
                 endpoint,
                 is_full_url,
                 codex_responses_to_chat,
-                use_claude_transform: needs_transform && adapter.name() == "Claude",
+                use_claude_transform: needs_transform && is_claude_adapter,
                 is_copilot,
                 claude_api_format: claude_api_format_for_url,
                 body: &mapped_body,
@@ -1365,7 +1367,7 @@ impl RequestForwarder {
                 supports_reasoning_effort(model),
             )
         } else if needs_transform {
-            if adapter.name() == "Claude" {
+            if is_claude_adapter {
                 let api_format = resolved_claude_api_format
                     .as_deref()
                     .unwrap_or_else(|| provider_claude_api_format(provider));

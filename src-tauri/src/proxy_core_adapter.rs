@@ -4013,6 +4013,10 @@ pub(crate) fn provider_gemini_auth_headers(
 
 pub(crate) use crate::proxy_core::api::transforms::resolve_claude_api_format_from_settings;
 
+pub(crate) fn provider_adapter_name_is_claude(adapter_name: &str) -> bool {
+    adapter_name == "Claude"
+}
+
 pub(crate) fn provider_claude_api_format(provider: &Provider) -> &'static str {
     let meta = provider.meta.as_ref();
     resolve_claude_api_format_from_settings(
@@ -16522,6 +16526,8 @@ command = "latest-command"
 
     #[test]
     fn claude_api_format_adapter_projects_transform_gate() {
+        assert!(provider_adapter_name_is_claude("Claude"));
+        assert!(!provider_adapter_name_is_claude("Codex"));
         assert!(!claude_api_format_needs_transform("anthropic"));
         assert!(claude_api_format_needs_transform("openai_chat"));
         assert!(claude_api_format_needs_transform("openai_responses"));
