@@ -3791,6 +3791,13 @@ pub(crate) fn provider_apply_codex_chat_upstream_model(
     )
 }
 
+pub(crate) fn forwarder_apply_codex_chat_upstream_model(
+    provider: &Provider,
+    body: &mut Value,
+) -> Option<String> {
+    provider_apply_codex_chat_upstream_model(provider, body)
+}
+
 pub(crate) fn provider_codex_chat_reasoning_options(
     provider: &Provider,
     body: &Value,
@@ -3800,6 +3807,13 @@ pub(crate) fn provider_codex_chat_reasoning_options(
         body.get("model").and_then(|value| value.as_str()),
     )
     .map(|profile| CodexChatReasoningOptions::from_profile(&profile))
+}
+
+pub(crate) fn forwarder_codex_chat_reasoning_options(
+    provider: &Provider,
+    body: &Value,
+) -> Option<CodexChatReasoningOptions> {
+    provider_codex_chat_reasoning_options(provider, body)
 }
 
 pub(crate) use crate::proxy_core::api::transforms::{
@@ -12849,6 +12863,17 @@ wire_api = "chat"
             Some("upstream-model")
         );
         assert_eq!(body["model"], "upstream-model");
+        let mut forwarder_body = json!({"model": "client-model"});
+        assert_eq!(
+            forwarder_apply_codex_chat_upstream_model(&chat_provider, &mut forwarder_body)
+                .as_deref(),
+            Some("upstream-model")
+        );
+        assert_eq!(forwarder_body["model"], "upstream-model");
+        assert_eq!(
+            forwarder_codex_chat_reasoning_options(&reasoning_provider, &forwarder_body),
+            provider_codex_chat_reasoning_options(&reasoning_provider, &forwarder_body)
+        );
 
         let profile = normalize_codex_chat_reasoning_profile(CodexChatReasoningProfile {
             supports_effort: Some(true),

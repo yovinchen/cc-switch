@@ -66,6 +66,8 @@ const FORBIDDEN_FORWARDER_CLAUDE_PROVIDER_COMPAT_MARKERS: &[&str] = &[
 const FORBIDDEN_FORWARDER_CODEX_PROVIDER_COMPAT_MARKERS: &[&str] = &[
     "super::providers::should_convert_codex_responses_to_chat(",
     "provider_should_convert_codex_responses_to_chat(",
+    "provider_apply_codex_chat_upstream_model(",
+    "provider_codex_chat_reasoning_options(",
     "super::providers::apply_codex_chat_upstream_model(",
     "super::providers::resolve_codex_chat_reasoning_options(",
 ];

@@ -25,16 +25,18 @@ use crate::proxy_core_adapter::{
     build_upstream_auth_headers, cache_injection_log_message, categorize_forward_failure,
     classify_copilot_request, contains_image_blocks,
     emit_attempt_event_source, emit_request_started_event_source, forward_upstream_url_plan,
+    forwarder_apply_codex_chat_upstream_model,
+    forwarder_codex_chat_reasoning_options,
     forward_failure_kind_from_proxy_error, forwarder_should_convert_codex_responses_to_chat,
     forwarder_uses_anthropic_rectifiers,
     is_openai_o_series,
     is_unsupported_image_error, allow_forward_attempt_runtime_source, merge_copilot_tool_results,
     non_streaming_body_timeout_message, normalize_thinking_type,
     prepare_upstream_request_body_with_report, prompt_cache_trace_log_message,
-    provider_apply_codex_chat_upstream_model, provider_bedrock_env_flag,
+    provider_bedrock_env_flag,
     forwarder_claude_normalize_anthropic_messages,
     forwarder_claude_transform_request_for_api_format, provider_custom_user_agent_header,
-    provider_adapter_name_is_claude, provider_codex_chat_reasoning_options,
+    provider_adapter_name_is_claude,
     provider_is_codex_oauth, provider_is_full_url, provider_is_github_copilot_upstream,
     rectify_anthropic_request, rectify_thinking_budget, replace_image_blocks_with_marker,
     record_forward_attempt_failure_runtime_source,
@@ -1352,8 +1354,9 @@ impl RequestForwarder {
                     "[Codex] Restored or enriched {restored} cached function call item(s) for Chat upstream"
                 );
             }
-            provider_apply_codex_chat_upstream_model(provider, &mut mapped_body);
-            let reasoning_options = provider_codex_chat_reasoning_options(provider, &mapped_body);
+            forwarder_apply_codex_chat_upstream_model(provider, &mut mapped_body);
+            let reasoning_options =
+                forwarder_codex_chat_reasoning_options(provider, &mapped_body);
             let model = mapped_body
                 .get("model")
                 .and_then(|value| value.as_str())
