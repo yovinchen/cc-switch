@@ -20,7 +20,8 @@ use crate::proxy_core_adapter::{
     live_token_sync_provider_from_db,
     live_config_has_proxy_placeholder_for_app, live_takeover_config_matches_proxy_for_app,
     live_takeover_app_types, provider_settings_have_proxy_placeholder_for_app,
-    sync_provider_settings_with_live_token, preserve_codex_mcp_servers_from_existing_config,
+    proxy_app_enabled_from_db, sync_provider_settings_with_live_token,
+    preserve_codex_mcp_servers_from_existing_config,
     preserve_codex_oauth_auth_in_backup_for_configured_policy,
     remove_claude_takeover_env_fields_if_present, CodexLiveWriteProjection,
     proxy_hot_switch_should_refresh_codex_live_from_backup,
@@ -35,9 +36,10 @@ use crate::proxy_core_adapter::{
     require_current_provider_for_app_from_db,
     remove_codex_takeover_auth_placeholder_if_present,
     remove_codex_takeover_config_placeholders_if_present,
-    remove_gemini_takeover_env_fields_if_present, should_block_proxy_switch_to_provider,
-    CircuitBreakerConfig, CodexTakeoverAuthPolicy, LiveTokenProviderSettingsIssue, ProxyConfig,
-    ProxyRuntimeStatus, ProxyServerInfo, ProxyTakeoverStatus,
+    remove_gemini_takeover_env_fields_if_present, set_proxy_app_enabled_in_db,
+    should_block_proxy_switch_to_provider, CircuitBreakerConfig, CodexTakeoverAuthPolicy,
+    LiveTokenProviderSettingsIssue, ProxyConfig, ProxyRuntimeStatus, ProxyServerInfo,
+    ProxyTakeoverStatus,
 };
 use crate::services::provider::{
     build_effective_settings_with_common_config, write_live_with_common_config,
@@ -349,14 +351,10 @@ impl ProxyService {
             }
 
             // 2) 已接管则直接返回（幂等）；但如果缺少备份或占位符残留，需要重建接管
-            let current_config = self
-                .db
-                .get_proxy_config_for_app(app_type_str)
-                .await
-                .map_err(|e| format!("获取 {app_type_str} 配置失败: {e}"))?;
+            let proxy_app_enabled = proxy_app_enabled_from_db(&self.db, app_type_str).await?;
 
             let mut restore_existing_backup_before_takeover = false;
-            if current_config.enabled {
+            if proxy_app_enabled {
                 let has_backup = match self.db.get_live_backup(app_type_str).await {
                     Ok(v) => v.is_some(),
                     Err(e) => {
@@ -421,16 +419,7 @@ impl ProxyService {
             }
 
             // 6) 设置 proxy_config.enabled = true
-            let mut updated_config = self
-                .db
-                .get_proxy_config_for_app(app_type_str)
-                .await
-                .map_err(|e| format!("获取 {app_type_str} 配置失败: {e}"))?;
-            updated_config.enabled = true;
-            self.db
-                .update_proxy_config_for_app(updated_config)
-                .await
-                .map_err(|e| format!("设置 {app_type_str} enabled 状态失败: {e}"))?;
+            set_proxy_app_enabled_in_db(&self.db, app_type_str, true).await?;
 
             // 7) 兼容旧逻辑：写入 any-of 标志（失败不影响功能）
             let _ = self.db.set_live_takeover_active(true).await;
@@ -448,13 +437,7 @@ impl ProxyService {
         }
 
         // 关闭接管：检查 enabled 状态
-        let current_config = self
-            .db
-            .get_proxy_config_for_app(app_type_str)
-            .await
-            .map_err(|e| format!("获取 {app_type_str} 配置失败: {e}"))?;
-
-        if !current_config.enabled {
+        if !proxy_app_enabled_from_db(&self.db, app_type_str).await? {
             return Ok(()); // 未接管，幂等返回
         }
 
@@ -473,16 +456,7 @@ impl ProxyService {
             .map_err(|e| format!("删除 {app_type_str} Live 备份失败: {e}"))?;
 
         // 3) 设置 proxy_config.enabled = false
-        let mut updated_config = self
-            .db
-            .get_proxy_config_for_app(app_type_str)
-            .await
-            .map_err(|e| format!("获取 {app_type_str} 配置失败: {e}"))?;
-        updated_config.enabled = false;
-        self.db
-            .update_proxy_config_for_app(updated_config)
-            .await
-            .map_err(|e| format!("清除 {app_type_str} enabled 状态失败: {e}"))?;
+        set_proxy_app_enabled_in_db(&self.db, app_type_str, false).await?;
 
         // 4) 清除该应用的健康状态（关闭代理时重置队列状态）
         self.db

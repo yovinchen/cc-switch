@@ -1002,6 +1002,45 @@ pub(crate) fn app_summary_config_from_config_source(config: AppProxyConfig) -> A
     AppSummaryConfig::new(config.enabled, config.auto_failover_enabled)
 }
 
+pub(crate) fn proxy_app_config_with_enabled(
+    mut config: AppProxyConfig,
+    enabled: bool,
+) -> AppProxyConfig {
+    config.enabled = enabled;
+    config
+}
+
+pub(crate) async fn proxy_app_enabled_from_db(
+    db: &Database,
+    app_type: &str,
+) -> Result<bool, String> {
+    let config = db
+        .get_proxy_config_for_app(app_type)
+        .await
+        .map_err(|e| format!("获取 {app_type} 配置失败: {e}"))?;
+    Ok(config.enabled)
+}
+
+pub(crate) async fn set_proxy_app_enabled_in_db(
+    db: &Database,
+    app_type: &str,
+    enabled: bool,
+) -> Result<(), String> {
+    let config = db
+        .get_proxy_config_for_app(app_type)
+        .await
+        .map_err(|e| format!("获取 {app_type} 配置失败: {e}"))?;
+    db.update_proxy_config_for_app(proxy_app_config_with_enabled(config, enabled))
+        .await
+        .map_err(|e| {
+            if enabled {
+                format!("设置 {app_type} enabled 状态失败: {e}")
+            } else {
+                format!("清除 {app_type} enabled 状态失败: {e}")
+            }
+        })
+}
+
 pub(crate) async fn app_summary_config_from_db_source(
     db: &Database,
     app: &AppKind,
@@ -12041,6 +12080,14 @@ mod tests {
             "claude",
             Err(AppError::Config("missing proxy_config".to_string()))
         ));
+        let takeover_disabled_app_config =
+            proxy_app_config_with_enabled(app_config.clone(), false);
+        assert!(!takeover_disabled_app_config.enabled);
+        assert!(takeover_disabled_app_config.auto_failover_enabled);
+        let takeover_enabled_app_config =
+            proxy_app_config_with_enabled(takeover_disabled_app_config, true);
+        assert!(takeover_enabled_app_config.enabled);
+        assert!(takeover_enabled_app_config.auto_failover_enabled);
         let switchback_target = reset_circuit_breaker_switchback_target_from_sources(
             true,
             true,
