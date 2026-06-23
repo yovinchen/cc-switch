@@ -519,6 +519,16 @@ pub(crate) async fn record_codex_chat_response_history(
     history.record_response(response).await
 }
 
+pub(crate) async fn transform_codex_chat_response_with_history(
+    chat_response: &Value,
+    tool_context: &CodexToolContext,
+    history: &CodexChatHistoryStore,
+) -> Result<Value, String> {
+    let response = chat_completion_to_response_with_context(chat_response, tool_context)?;
+    record_codex_chat_response_history(history, &response).await;
+    Ok(response)
+}
+
 pub(crate) fn record_codex_chat_response_sse_history(
     stream: impl Stream<Item = Result<Bytes, std::io::Error>> + Send + 'static,
     history: Arc<CodexChatHistoryStore>,
@@ -11697,6 +11707,60 @@ mod tests {
         assert_eq!(state.enrich_request(&mut request), 1);
         assert_eq!(request["input"][0]["type"], "function_call");
         assert_eq!(request["input"][0]["reasoning_content"], "Need context.");
+    }
+
+    #[tokio::test]
+    async fn codex_chat_transform_adapter_records_non_stream_history() {
+        let history = CodexChatHistoryStore::default();
+        let tool_context = CodexToolContext::default();
+        let response = transform_codex_chat_response_with_history(
+            &json!({
+                "id": "chatcmpl_1",
+                "model": "chat-model",
+                "choices": [{
+                    "message": {
+                        "role": "assistant",
+                        "tool_calls": [{
+                            "id": "call_1",
+                            "type": "function",
+                            "function": {
+                                "name": "read_file",
+                                "arguments": "{\"path\":\"README.md\"}"
+                            }
+                        }],
+                        "reasoning_content": "Need the file first."
+                    },
+                    "finish_reason": "tool_calls"
+                }],
+                "usage": {"prompt_tokens": 1, "completion_tokens": 2}
+            }),
+            &tool_context,
+            &history,
+        )
+        .await
+        .expect("transformed response");
+
+        let response_id = response["id"].as_str().expect("response id").to_string();
+        let call_id = response["output"]
+            .as_array()
+            .expect("output array")
+            .iter()
+            .find(|item| item["type"] == "function_call")
+            .and_then(|item| item["call_id"].as_str())
+            .expect("call id")
+            .to_string();
+        let mut request = json!({
+            "previous_response_id": response_id,
+            "input": [{
+                "type": "function_call_output",
+                "call_id": call_id,
+                "output": "ok"
+            }]
+        });
+
+        assert_eq!(history.enrich_request(&mut request).await, 1);
+        assert_eq!(request["input"][0]["type"], "function_call");
+        assert_eq!(request["input"][0]["reasoning_content"], "Need the file first.");
     }
 
     #[test]

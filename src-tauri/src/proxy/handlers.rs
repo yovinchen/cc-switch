@@ -31,7 +31,6 @@ use super::{
 use crate::app_config::AppType;
 use crate::proxy_core_adapter::{
     append_query_to_endpoint_path,
-    chat_completion_to_response_with_context as build_chat_completion_response_with_context,
     claude_stream_usage_event_filter, claude_transform_unlabeled_sse_aggregation,
     codex_stream_usage_event_filter,
     create_logged_passthrough_stream,
@@ -44,9 +43,9 @@ use crate::proxy_core_adapter::{
     parse_json_proxy_request_body,
     parse_json_proxy_request_body_or_null,
     management_auth_decision_from_proxy_config, record_forward_error_usage,
-    record_codex_chat_response_history,
     record_codex_chat_response_sse_history, record_transformed_response_usage,
-    transformed_streaming_usage_collector, provider_is_codex_oauth,
+    transform_codex_chat_response_with_history, transformed_streaming_usage_collector,
+    provider_is_codex_oauth,
     provider_claude_transform_response_for_api_format, provider_needs_claude_transform,
     provider_should_convert_codex_responses_to_chat, response_headers_indicate_sse,
     should_aggregate_codex_oauth_responses_sse, should_use_claude_transform_streaming,
@@ -1026,15 +1025,18 @@ async fn handle_codex_chat_to_responses_transform(
         UpstreamResponseParseFailureLogContext::CodexChat,
         UnlabeledSseFallbackLogContext::CodexChat,
     )?;
-    let responses_response =
-        build_chat_completion_response_with_context(&chat_response, &tool_context)
-            .map_err(|error| {
-                response_transform_error_to_proxy_error(
-                    ResponseTransformFailureContext::CodexChatToResponses,
-                    error,
-                )
-            })?;
-    record_codex_chat_response_history(&state.codex_chat_history, &responses_response).await;
+    let responses_response = transform_codex_chat_response_with_history(
+        &chat_response,
+        &tool_context,
+        &state.codex_chat_history,
+    )
+    .await
+    .map_err(|error| {
+        response_transform_error_to_proxy_error(
+            ResponseTransformFailureContext::CodexChatToResponses,
+            error,
+        )
+    })?;
 
     record_transformed_response_usage(
         state,
