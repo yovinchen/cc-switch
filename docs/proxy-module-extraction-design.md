@@ -908,6 +908,7 @@
 本轮继续把 response processor 的非流式 decoded body content debug 日志收敛到 adapter-owned helper；host `handle_non_streaming` 只传入 body bytes 与 tag，不再负责日志字符串投影。
 本轮继续把 response processor 的 streaming usage collector 创建、provider facts 选择、missing-usage 诊断日志和 usage record 组装收敛到 adapter-owned helper；host `handle_streaming` 只传入 request/route/parser facts 与 services。
 本轮继续把 response processor 的非流式 usage JSON parse、usage log event 输出、disabled logging 诊断和 usage record task 调度收敛到 adapter-owned helper；host `handle_non_streaming` 只传入 body/request/route/parser facts 与 services，并保留 `ProxyError::ConfigError` 映射。
+本轮继续把 response processor 的 `ProxyConfig.enable_logging` 读取和读取失败 fallback 策略收敛到 adapter-owned helper；host 只把 config lock 作为事实传入。
 本轮继续把 forward runtime 的 route plan attempt 构造入口收敛到 adapter；auth profile 的 DB key 注入 wrapper 也已收敛到 adapter，host forward runtime 只调用统一 helper。
 本轮还把 forward runtime 的 auth profile action 应用循环收敛到 adapter，host 不再维护 channel-key DB lookup 闭包。
 本轮继续把 forward runtime 的 current-provider 来源组合收敛到 adapter，host forward runtime 不再读取 settings 或手写 DB fallback 闭包。
