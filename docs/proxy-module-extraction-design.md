@@ -1139,6 +1139,7 @@
 本轮继续把 active connection RAII guard 的 acquire/release 生命周期接入 `ForwarderRuntimeStateSource`：guard 不再直持 `ProxyRuntimeStatus`，连接计数增减的异步释放也通过 runtime source 方法执行，避免流式响应生命周期把 status lock 类型泄漏到 forwarder。
 本轮继续把 request-started 事件发射与 request-started 状态写入接入 `ForwarderRuntimeStateSource`：`RequestForwarder` 只保留请求生命周期顺序编排，不再直接拆出 `ProxyEventBus`/`ProxyRuntimeStatus` 调用 request lifecycle helper。
 本轮继续把 provider/channel attempt started/succeeded/failed 事件发射接入 `ForwarderRuntimeStateSource`：`RequestForwarder` 只决定 attempt 阶段与时机，不再直接拆出 `ProxyEventBus` 调用 attempt event helper。
+本轮继续把 active route target 写入与 route-selected 事件发射接入 `ForwarderRuntimeStateSource`：`RequestForwarder` 不再同时拆出 `current_providers` 与 `ProxyEventBus` 调用 active target helper，后续外部宿主可替换当前路由目标存储/事件桥接。
 本轮继续把 Gemini shadow session store 与 Codex Chat history store 合并为 `ForwarderProtocolStateSource`：`RequestForwarder` 不再直持协议会话状态，Claude/Gemini transform replay 和 Codex Responses->Chat history enrich 仍消费同一批 store，外部宿主可在 adapter 边界替换协议会话状态实现。
 本轮继续把 forwarder 的 provider/channel attempt runtime 包装为 `ForwarderAttemptRuntimeSource`：`RequestForwarder` 不再直持 `ProviderRouter`，attempt 放行、成功/失败健康记录和 neutral permit 释放都通过注入 source 进入 adapter helper，后续可把该 source 替换为独立中转模块的 routing/circuit runtime。
 
