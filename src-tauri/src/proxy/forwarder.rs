@@ -33,7 +33,7 @@ use crate::proxy_core_adapter::{
     forwarder_is_codex_oauth_provider, forwarder_is_full_url_provider,
     forwarder_is_github_copilot_upstream,
     forwarder_replace_images_for_text_only_provider_model, forwarder_uses_anthropic_rectifiers,
-    forwarder_provider_auth_info, forwarder_provider_base_url,
+    forwarder_provider_adapter_name, forwarder_provider_auth_info, forwarder_provider_base_url,
     forwarder_provider_upstream_url,
     forwarder_provider_transform_request, forwarder_provider_transform_required,
     is_openai_o_series,
@@ -685,7 +685,7 @@ impl RequestForwarder {
                     let mut signature_rectifier_non_retryable_client_error = false;
 
                     if self.media_retry_should_trigger(
-                        adapter.name(),
+                        forwarder_provider_adapter_name(adapter.as_ref()),
                         media_rectifier_retried,
                         &provider_body,
                         &e,
@@ -1294,7 +1294,7 @@ impl RequestForwarder {
                 }
             }
         }
-        let adapter_name = adapter.name();
+        let adapter_name = forwarder_provider_adapter_name(adapter);
         let is_claude_adapter = provider_adapter_name_is_claude(adapter_name);
         let resolved_claude_api_format = if is_claude_adapter {
             Some(
@@ -1503,7 +1503,7 @@ impl RequestForwarder {
         let upstream_host = crate::proxy_core_adapter::upstream_host_header_from_url(&url);
 
         let should_send_anthropic_headers = should_send_anthropic_request_headers(
-            adapter.name(),
+            adapter_name,
             resolved_claude_api_format.as_deref(),
         );
 
@@ -1547,7 +1547,7 @@ impl RequestForwarder {
             .map_err(|error| ProxyError::AuthError(error.to_string()))?;
 
         // 输出请求信息日志
-        let tag = adapter.name();
+        let tag = adapter_name;
         let request_model = filtered_body
             .get("model")
             .and_then(|v| v.as_str())
@@ -1567,7 +1567,7 @@ impl RequestForwarder {
         let upstream_proxy_url: Option<String> = super::http_client::get_current_proxy_url();
 
         let preserve_exact_header_case = should_preserve_exact_request_header_case(
-            adapter.name(),
+            adapter_name,
             forwarder_is_codex_oauth_provider(provider),
             is_copilot,
             resolved_claude_api_format.as_deref(),

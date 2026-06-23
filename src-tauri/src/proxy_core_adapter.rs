@@ -4032,6 +4032,10 @@ pub(crate) fn provider_adapter_name_is_claude(adapter_name: &str) -> bool {
     adapter_name == "Claude"
 }
 
+pub(crate) fn forwarder_provider_adapter_name(adapter: &dyn ProviderAdapter) -> &'static str {
+    adapter.name()
+}
+
 pub(crate) fn provider_claude_api_format(provider: &Provider) -> &'static str {
     let meta = provider.meta.as_ref();
     resolve_claude_api_format_from_settings(
@@ -16737,6 +16741,8 @@ command = "latest-command"
         });
         let claude_adapter = crate::proxy::providers::ClaudeAdapter::new();
         let codex_adapter = crate::proxy::providers::CodexAdapter::new();
+        assert_eq!(forwarder_provider_adapter_name(&claude_adapter), "Claude");
+        assert_eq!(forwarder_provider_adapter_name(&codex_adapter), "Codex");
         let codex_provider = Provider::with_id(
             "codex".to_string(),
             "Codex".to_string(),
