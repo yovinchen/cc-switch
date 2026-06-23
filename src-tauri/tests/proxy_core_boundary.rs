@@ -474,6 +474,8 @@ const FORBIDDEN_HANDLER_PROVIDER_ADAPTER_DECISION_MARKERS: &[&str] = &[
 ];
 const FORBIDDEN_HANDLER_CODEX_HISTORY_RECORD_MARKERS: &[&str] =
     &[".record_response(", "record_responses_sse_stream("];
+const FORBIDDEN_PROTOCOL_HANDLER_FORWARD_CORE_ERROR_MARKERS: &[&str] =
+    &["proxy_core_error_to_proxy_error(error)", "record_forward_error_usage("];
 const FORBIDDEN_PROVIDER_ADAPTER_BASE_URL_ERROR_MARKERS: &[&str] = &[
     "缺少 base_url 配置",
     ".ok_or_else(|| ProxyError::ConfigError(",
@@ -1864,6 +1866,62 @@ fn production_handlers_delegate_codex_history_recording_to_adapter() {
     assert!(
         violations.is_empty(),
         "production handlers must delegate Codex history recording to proxy_core_adapter helpers:\n{}",
+        violations.join("\n")
+    );
+}
+
+#[test]
+fn production_protocol_handlers_delegate_forward_core_error_usage_to_adapter() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let path = manifest_dir.join("src/proxy/handlers.rs");
+    let source = fs::read_to_string(&path).expect("read handlers.rs");
+    let protocol_handlers = [
+        function_slice(
+            &source,
+            "async fn handle_messages_for_app(",
+            "\n}\n\n/// Claude 格式转换处理",
+        ),
+        function_slice(
+            &source,
+            "pub async fn handle_chat_completions(",
+            "\n}\n\n/// 处理 /v1/responses 请求",
+        ),
+        function_slice(
+            &source,
+            "pub async fn handle_responses(",
+            "\n}\n\n/// 处理 /v1/responses/compact 请求",
+        ),
+        function_slice(
+            &source,
+            "pub async fn handle_responses_compact(",
+            "\n}\n\nasync fn handle_codex_chat_to_responses_transform(",
+        ),
+        function_slice(
+            &source,
+            "pub async fn handle_gemini(",
+            "\n}\n\n#[cfg(test)]",
+        ),
+    ];
+
+    let mut violations = Vec::new();
+    for handler in protocol_handlers {
+        for (line_index, line) in production_lines(handler) {
+            let code = line.split("//").next().unwrap_or_default();
+            for marker in FORBIDDEN_PROTOCOL_HANDLER_FORWARD_CORE_ERROR_MARKERS {
+                if code.contains(marker) {
+                    violations.push(format!(
+                        "src/proxy/handlers.rs:{} contains forward core error marker `{}`",
+                        line_index + 1,
+                        marker
+                    ));
+                }
+            }
+        }
+    }
+
+    assert!(
+        violations.is_empty(),
+        "protocol handlers must delegate core-error mapping plus forward usage logging to proxy_core_adapter:\n{}",
         violations.join("\n")
     );
 }

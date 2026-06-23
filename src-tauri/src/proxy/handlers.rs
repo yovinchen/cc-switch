@@ -39,7 +39,7 @@ use crate::proxy_core_adapter::{
     extract_gemini_model_from_path, json_proxy_request_from_input, JsonProxyRequestInput,
     parse_json_proxy_request_body,
     parse_json_proxy_request_body_or_null,
-    management_auth_decision_from_proxy_config, record_forward_error_usage,
+    management_auth_decision_from_proxy_config, record_forward_core_error_usage,
     record_claude_transformed_response_usage, record_codex_auto_transformed_response_usage,
     transform_codex_chat_response_with_history, transform_codex_chat_sse_with_history,
     provider_claude_transform_response_for_api_format,
@@ -618,8 +618,7 @@ async fn handle_messages_for_app(
     let result = match engine.handle(proxy_request).await {
         Ok(result) => result,
         Err(error) => {
-            let error = proxy_core_error_to_proxy_error(error);
-            record_forward_error_usage(&state, &ctx, is_stream, &error);
+            let error = record_forward_core_error_usage(&state, &ctx, is_stream, error);
             return Err(error);
         }
     };
@@ -767,8 +766,7 @@ pub async fn handle_chat_completions(
     let result = match engine.handle(proxy_request).await {
         Ok(result) => result,
         Err(error) => {
-            let error = proxy_core_error_to_proxy_error(error);
-            record_forward_error_usage(&state, &ctx, is_stream, &error);
+            let error = record_forward_core_error_usage(&state, &ctx, is_stream, error);
             return codex_proxy_error_to_axum_response(
                 ctx.provider_name_for_error(),
                 &ctx.request_model,
@@ -821,8 +819,7 @@ pub async fn handle_responses(
     let result = match engine.handle(proxy_request).await {
         Ok(result) => result,
         Err(error) => {
-            let error = proxy_core_error_to_proxy_error(error);
-            record_forward_error_usage(&state, &ctx, is_stream, &error);
+            let error = record_forward_core_error_usage(&state, &ctx, is_stream, error);
             return codex_proxy_error_to_axum_response(
                 ctx.provider_name_for_error(),
                 &ctx.request_model,
@@ -887,8 +884,7 @@ pub async fn handle_responses_compact(
     let result = match engine.handle(proxy_request).await {
         Ok(result) => result,
         Err(error) => {
-            let error = proxy_core_error_to_proxy_error(error);
-            record_forward_error_usage(&state, &ctx, is_stream, &error);
+            let error = record_forward_core_error_usage(&state, &ctx, is_stream, error);
             return codex_proxy_error_to_axum_response(
                 ctx.provider_name_for_error(),
                 &ctx.request_model,
@@ -1041,8 +1037,7 @@ pub async fn handle_gemini(
     let result = match engine.handle(proxy_request).await {
         Ok(result) => result,
         Err(error) => {
-            let error = proxy_core_error_to_proxy_error(error);
-            record_forward_error_usage(&state, &ctx, is_stream, &error);
+            let error = record_forward_core_error_usage(&state, &ctx, is_stream, error);
             return Err(error);
         }
     };

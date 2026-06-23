@@ -12,6 +12,7 @@ use crate::provider::{
 use crate::proxy::error::ProxyError;
 use crate::proxy::error_mapper::{
     forward_error_to_core_error, get_error_message, map_proxy_error_to_status,
+    proxy_core_error_to_proxy_error,
 };
 use crate::proxy::events::ProxyEventBus;
 use crate::proxy::failover_switch::FailoverSwitchManager;
@@ -8838,6 +8839,17 @@ pub(crate) fn record_forward_error_usage(
         is_streaming,
         session_id: &ctx.session_id,
     });
+}
+
+pub(crate) fn record_forward_core_error_usage(
+    state: &ProxyState,
+    ctx: &RequestContext,
+    is_streaming: bool,
+    error: ProxyCoreError,
+) -> ProxyError {
+    let error = proxy_core_error_to_proxy_error(error);
+    record_forward_error_usage(state, ctx, is_streaming, &error);
+    error
 }
 
 pub(crate) fn record_transformed_response_usage(
