@@ -3160,28 +3160,77 @@ pub(crate) async fn resolve_managed_account_auth(
     auth_provider: &Provider,
     auth: ProviderAuthInfo,
 ) -> Result<ManagedAccountAuthResolution, ProxyError> {
-    crate::proxy::managed_account_auth::resolve_managed_account_auth(
-        app_handle,
-        auth_provider,
+    let plan = managed_account_auth_plan(
         auth,
-    )
-    .await
+        provider_github_copilot_managed_account_id(auth_provider),
+        provider_codex_oauth_managed_account_id(auth_provider),
+    );
+    let should_send_codex_oauth_session_headers = plan.should_send_codex_oauth_session_headers();
+
+    match plan {
+        ManagedAccountAuthPlan::ResolveRuntimeToken {
+            runtime: runtime @ ManagedAccountAuthRuntime::GitHubCopilot,
+            account_id,
+        } => {
+            let auth = crate::proxy::managed_account_auth::resolve_copilot_auth(
+                app_handle,
+                account_id.as_deref(),
+                runtime,
+            )
+            .await?;
+            Ok(ManagedAccountAuthResolution {
+                auth,
+                codex_oauth_account_id: None,
+                should_send_codex_oauth_session_headers,
+            })
+        }
+        ManagedAccountAuthPlan::ResolveRuntimeToken {
+            runtime: runtime @ ManagedAccountAuthRuntime::CodexOAuth,
+            account_id,
+        } => {
+            let (auth, codex_oauth_account_id) =
+                crate::proxy::managed_account_auth::resolve_codex_oauth(
+                    app_handle,
+                    account_id,
+                    runtime,
+                )
+                .await?;
+            Ok(ManagedAccountAuthResolution {
+                auth,
+                codex_oauth_account_id,
+                should_send_codex_oauth_session_headers,
+            })
+        }
+        ManagedAccountAuthPlan::Passthrough { auth } => Ok(ManagedAccountAuthResolution {
+            auth,
+            codex_oauth_account_id: None,
+            should_send_codex_oauth_session_headers,
+        }),
+    }
 }
 
 pub(crate) async fn resolve_copilot_api_endpoint(
     app_handle: Option<&tauri::AppHandle>,
     auth_provider: &Provider,
 ) -> Option<String> {
-    crate::proxy::managed_account_auth::resolve_copilot_api_endpoint(app_handle, auth_provider)
-        .await
+    let account_id = provider_github_copilot_managed_account_id(auth_provider);
+    crate::proxy::managed_account_auth::resolve_copilot_api_endpoint(
+        app_handle,
+        account_id.as_deref(),
+    )
+    .await
 }
 
 pub(crate) async fn fetch_copilot_live_models(
     app_handle: Option<&tauri::AppHandle>,
     auth_provider: &Provider,
 ) -> Result<Option<Vec<CopilotModel>>, String> {
-    crate::proxy::managed_account_auth::fetch_copilot_live_models(app_handle, auth_provider)
-        .await
+    let account_id = provider_github_copilot_managed_account_id(auth_provider);
+    crate::proxy::managed_account_auth::fetch_copilot_live_models(
+        app_handle,
+        account_id.as_deref(),
+    )
+    .await
 }
 
 pub(crate) async fn resolve_copilot_model_vendor(
@@ -3189,9 +3238,10 @@ pub(crate) async fn resolve_copilot_model_vendor(
     auth_provider: &Provider,
     model_id: &str,
 ) -> Option<String> {
+    let account_id = provider_github_copilot_managed_account_id(auth_provider);
     crate::proxy::managed_account_auth::resolve_copilot_model_vendor(
         app_handle,
-        auth_provider,
+        account_id.as_deref(),
         model_id,
     )
     .await

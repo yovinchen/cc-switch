@@ -1,67 +1,19 @@
 use crate::commands::{CodexOAuthState, CopilotAuthState};
-use crate::provider::Provider;
 use crate::proxy::error::ProxyError;
 use crate::proxy_core_adapter::{
-    managed_account_auth_plan, provider_codex_oauth_managed_account_id,
-    provider_github_copilot_managed_account_id, CopilotModel, ManagedAccountAuthPlan,
-    ManagedAccountAuthResolution, ManagedAccountAuthRuntime, ProviderAuthInfo,
+    CopilotModel, ManagedAccountAuthRuntime, ProviderAuthInfo,
 };
 use tauri::Manager;
 
-pub(crate) async fn resolve_managed_account_auth(
-    app_handle: Option<&tauri::AppHandle>,
-    auth_provider: &Provider,
-    auth: ProviderAuthInfo,
-) -> Result<ManagedAccountAuthResolution, ProxyError> {
-    let plan = managed_account_auth_plan(
-        auth,
-        provider_github_copilot_managed_account_id(auth_provider),
-        provider_codex_oauth_managed_account_id(auth_provider),
-    );
-    let should_send_codex_oauth_session_headers = plan.should_send_codex_oauth_session_headers();
-
-    match plan {
-        ManagedAccountAuthPlan::ResolveRuntimeToken {
-            runtime: runtime @ ManagedAccountAuthRuntime::GitHubCopilot,
-            account_id,
-        } => {
-            let auth = resolve_copilot_auth(app_handle, account_id.as_deref(), runtime).await?;
-            Ok(ManagedAccountAuthResolution {
-                auth,
-                codex_oauth_account_id: None,
-                should_send_codex_oauth_session_headers,
-            })
-        }
-        ManagedAccountAuthPlan::ResolveRuntimeToken {
-            runtime: runtime @ ManagedAccountAuthRuntime::CodexOAuth,
-            account_id,
-        } => {
-            let (auth, codex_oauth_account_id) =
-                resolve_codex_oauth(app_handle, account_id, runtime).await?;
-            Ok(ManagedAccountAuthResolution {
-                auth,
-                codex_oauth_account_id,
-                should_send_codex_oauth_session_headers,
-            })
-        }
-        ManagedAccountAuthPlan::Passthrough { auth } => Ok(ManagedAccountAuthResolution {
-            auth,
-            codex_oauth_account_id: None,
-            should_send_codex_oauth_session_headers,
-        }),
-    }
-}
-
 pub(crate) async fn resolve_copilot_api_endpoint(
     app_handle: Option<&tauri::AppHandle>,
-    auth_provider: &Provider,
+    account_id: Option<&str>,
 ) -> Option<String> {
     let app_handle = app_handle?;
     let copilot_state = app_handle.state::<CopilotAuthState>();
     let copilot_auth = copilot_state.0.read().await;
-    let account_id = provider_github_copilot_managed_account_id(auth_provider);
 
-    Some(match account_id.as_deref() {
+    Some(match account_id {
         Some(id) => copilot_auth.get_api_endpoint(id).await,
         None => copilot_auth.get_default_api_endpoint().await,
     })
@@ -69,7 +21,7 @@ pub(crate) async fn resolve_copilot_api_endpoint(
 
 pub(crate) async fn fetch_copilot_live_models(
     app_handle: Option<&tauri::AppHandle>,
-    auth_provider: &Provider,
+    account_id: Option<&str>,
 ) -> Result<Option<Vec<CopilotModel>>, String> {
     let Some(app_handle) = app_handle else {
         return Ok(None);
@@ -77,9 +29,8 @@ pub(crate) async fn fetch_copilot_live_models(
 
     let copilot_state = app_handle.state::<CopilotAuthState>();
     let copilot_auth = copilot_state.0.read().await;
-    let account_id = provider_github_copilot_managed_account_id(auth_provider);
 
-    match account_id.as_deref() {
+    match account_id {
         Some(id) => copilot_auth.fetch_models_for_account(id).await,
         None => copilot_auth.fetch_models().await,
     }
@@ -89,7 +40,7 @@ pub(crate) async fn fetch_copilot_live_models(
 
 pub(crate) async fn resolve_copilot_model_vendor(
     app_handle: Option<&tauri::AppHandle>,
-    auth_provider: &Provider,
+    account_id: Option<&str>,
     model_id: &str,
 ) -> Option<String> {
     let Some(app_handle) = app_handle else {
@@ -99,9 +50,8 @@ pub(crate) async fn resolve_copilot_model_vendor(
 
     let copilot_state = app_handle.state::<CopilotAuthState>();
     let copilot_auth = copilot_state.0.read().await;
-    let account_id = provider_github_copilot_managed_account_id(auth_provider);
 
-    let vendor_result = match account_id.as_deref() {
+    let vendor_result = match account_id {
         Some(id) => {
             copilot_auth
                 .get_model_vendor_for_account(id, model_id)
@@ -127,7 +77,7 @@ pub(crate) async fn resolve_copilot_model_vendor(
     }
 }
 
-async fn resolve_copilot_auth(
+pub(crate) async fn resolve_copilot_auth(
     app_handle: Option<&tauri::AppHandle>,
     account_id: Option<&str>,
     runtime: ManagedAccountAuthRuntime,
@@ -176,7 +126,7 @@ async fn resolve_copilot_auth(
     }
 }
 
-async fn resolve_codex_oauth(
+pub(crate) async fn resolve_codex_oauth(
     app_handle: Option<&tauri::AppHandle>,
     account_id: Option<String>,
     runtime: ManagedAccountAuthRuntime,
@@ -229,7 +179,8 @@ async fn resolve_codex_oauth(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::proxy_core_adapter::ProviderAuthStrategy;
+    use crate::provider::Provider;
+    use crate::proxy_core_adapter::{resolve_managed_account_auth, ProviderAuthStrategy};
 
     #[tokio::test]
     async fn non_managed_auth_passes_through_without_app_handle() {
@@ -294,22 +245,15 @@ mod tests {
 
     #[tokio::test]
     async fn copilot_runtime_helpers_skip_without_app_handle() {
-        let provider = Provider::with_id(
-            "provider-a".to_string(),
-            "Provider A".to_string(),
-            serde_json::json!({}),
-            None,
-        );
-
-        assert_eq!(resolve_copilot_api_endpoint(None, &provider).await, None);
+        assert_eq!(resolve_copilot_api_endpoint(None, None).await, None);
         assert_eq!(
-            fetch_copilot_live_models(None, &provider)
+            fetch_copilot_live_models(None, None)
                 .await
                 .expect("skip"),
             None
         );
         assert_eq!(
-            resolve_copilot_model_vendor(None, &provider, "gpt-5").await,
+            resolve_copilot_model_vendor(None, None, "gpt-5").await,
             None
         );
     }

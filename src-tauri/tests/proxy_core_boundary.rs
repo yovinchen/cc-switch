@@ -364,6 +364,12 @@ const FORBIDDEN_MANAGED_ACCOUNT_AUTH_STRATEGY_MARKERS: &[&str] = &[
 ];
 const FORBIDDEN_MANAGED_ACCOUNT_AUTH_DTO_MARKERS: &[&str] =
     &["struct ManagedAccountAuthResolution"];
+const FORBIDDEN_MANAGED_ACCOUNT_AUTH_PLAN_SOURCE_MARKERS: &[&str] = &[
+    "managed_account_auth_plan(",
+    "provider_github_copilot_managed_account_id(",
+    "provider_codex_oauth_managed_account_id(",
+    "ManagedAccountAuthPlan::",
+];
 const FORBIDDEN_FORWARDER_FAILOVER_SWITCH_MARKERS: &[&str] = &[".try_switch("];
 const FORBIDDEN_FORWARDER_RUNTIME_EVENT_SOURCE_MARKERS: &[&str] = &[
     ".status.write()",
@@ -5385,6 +5391,33 @@ fn production_managed_account_auth_uses_adapter_resolution_dto() {
     assert!(
         violations.is_empty(),
         "managed account auth resolution DTO must be owned by proxy_core_adapter:\n{}",
+        violations.join("\n")
+    );
+}
+
+#[test]
+fn production_managed_account_auth_uses_adapter_plan_source() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let path = manifest_dir.join("src/proxy/managed_account_auth.rs");
+    let source = fs::read_to_string(&path).expect("read managed_account_auth.rs");
+
+    let mut violations = Vec::new();
+    for (line_index, line) in production_lines(&source) {
+        let code = line.split("//").next().unwrap_or_default();
+        for marker in FORBIDDEN_MANAGED_ACCOUNT_AUTH_PLAN_SOURCE_MARKERS {
+            if code.contains(marker) {
+                violations.push(format!(
+                    "src/proxy/managed_account_auth.rs:{} contains managed auth plan/source marker `{}`",
+                    line_index + 1,
+                    marker
+                ));
+            }
+        }
+    }
+
+    assert!(
+        violations.is_empty(),
+        "managed account auth planning and provider account projection must be owned by proxy_core_adapter:\n{}",
         violations.join("\n")
     );
 }
