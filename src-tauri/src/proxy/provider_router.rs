@@ -11,11 +11,11 @@ use crate::proxy_core_adapter::{
     apply_route_candidate_circuit_availability, auto_failover_enabled_from_router_config_result,
     channel_circuit_key, channel_circuit_key_prefix, channel_route_records_from_db_source,
     circuit_breaker_config_from_router_config_result,
-    circuit_failure_threshold_from_router_config_result, current_provider_id_from_router_sources,
+    circuit_failure_threshold_from_router_config_result,
     provider_circuit_key, provider_circuit_key_prefix,
     provider_failover_circuit_lookups_from_router_sources, proxy_channel_route_inputs_to_core,
     resolve_channel_route as resolve_core_channel_route, route_candidate_channel_circuit_keys,
-    select_current_provider_from_router_source,
+    select_current_provider_from_router_db_source,
     select_failover_providers_from_router_lookup_availability, AllowResult, ChannelRouteSource,
     CircuitBreakerConfig, CircuitBreakerStats, RouteCandidateCircuitKey, RouteResolveRequest,
     RouteResolveResponse,
@@ -92,25 +92,7 @@ impl ProviderRouter {
 
     fn select_current_provider(&self, app_type: &str) -> Result<Vec<Provider>, AppError> {
         // 故障转移关闭：仅使用当前供应商，跳过熔断器检查
-        let current_id = current_provider_id_from_router_sources(
-            app_type,
-            |app_enum| {
-                crate::settings::get_effective_current_provider(&self.db, app_enum)
-                    .ok()
-                    .flatten()
-            },
-            || self.db.get_current_provider(app_type).ok().flatten(),
-        );
-
-        let current = current_id
-            .and_then(|current_id| {
-                self.db
-                    .get_provider_by_id(&current_id, app_type)
-                    .transpose()
-            })
-            .transpose()?;
-
-        select_current_provider_from_router_source(app_type, current)
+        select_current_provider_from_router_db_source(&self.db, app_type)
     }
 
     /// List routable channels for an app without changing the forwarding path.

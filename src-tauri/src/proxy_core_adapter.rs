@@ -4135,6 +4135,27 @@ pub(crate) fn select_current_provider_from_router_source(
         .collect())
 }
 
+pub(crate) fn select_current_provider_from_router_db_source(
+    db: &Database,
+    app_type: &str,
+) -> Result<Vec<Provider>, AppError> {
+    let current_id = current_provider_id_from_router_sources(
+        app_type,
+        |app_enum| {
+            crate::settings::get_effective_current_provider(db, app_enum)
+                .ok()
+                .flatten()
+        },
+        || db.get_current_provider(app_type).ok().flatten(),
+    );
+
+    let current = current_id
+        .and_then(|current_id| db.get_provider_by_id(&current_id, app_type).transpose())
+        .transpose()?;
+
+    select_current_provider_from_router_source(app_type, current)
+}
+
 pub(crate) fn select_failover_providers_from_router_lookup_availability<I>(
     app_type: &str,
     providers: &IndexMap<String, Provider>,
