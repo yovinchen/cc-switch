@@ -84,6 +84,8 @@ const FORBIDDEN_FORWARDER_REQUEST_MEDIA_PROVIDER_FACT_MARKERS: &[&str] =
     &[" replace_images_for_text_only_provider_model("];
 const FORBIDDEN_FORWARDER_PROVIDER_ADAPTER_TRANSFORM_GATE_MARKERS: &[&str] =
     &[".needs_transform("];
+const FORBIDDEN_FORWARDER_PROVIDER_ADAPTER_REQUEST_TRANSFORM_MARKERS: &[&str] =
+    &[".transform_request("];
 const FORBIDDEN_FORWARDER_CHANNEL_STATUS_MAPPING_MARKERS: &[&str] = &[
     "mapped_channel_response_status(",
     "invalid_mapped_channel_response_status_message(",
@@ -3342,6 +3344,33 @@ fn production_forwarder_delegates_provider_adapter_transform_gate_to_adapter() {
     assert!(
         violations.is_empty(),
         "forwarder must consume provider adapter transform gates through proxy_core_adapter helpers:\n{}",
+        violations.join("\n")
+    );
+}
+
+#[test]
+fn production_forwarder_delegates_provider_adapter_request_transform_to_adapter() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let path = manifest_dir.join("src/proxy/forwarder.rs");
+    let source = fs::read_to_string(&path).expect("read forwarder.rs");
+
+    let mut violations = Vec::new();
+    for (line_index, line) in production_lines(&source) {
+        let code = line.split("//").next().unwrap_or_default();
+        for marker in FORBIDDEN_FORWARDER_PROVIDER_ADAPTER_REQUEST_TRANSFORM_MARKERS {
+            if code.contains(marker) {
+                violations.push(format!(
+                    "src/proxy/forwarder.rs:{} contains provider adapter request transform marker `{}`",
+                    line_index + 1,
+                    marker
+                ));
+            }
+        }
+    }
+
+    assert!(
+        violations.is_empty(),
+        "forwarder must consume provider adapter request transforms through proxy_core_adapter helpers:\n{}",
         violations.join("\n")
     );
 }

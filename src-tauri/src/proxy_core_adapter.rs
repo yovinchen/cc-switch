@@ -4068,6 +4068,14 @@ pub(crate) fn forwarder_provider_transform_required(
     adapter.needs_transform(provider)
 }
 
+pub(crate) fn forwarder_provider_transform_request(
+    adapter: &dyn ProviderAdapter,
+    body: Value,
+    provider: &Provider,
+) -> Result<Value, ProxyError> {
+    adapter.transform_request(body, provider)
+}
+
 pub(crate) fn forwarder_claude_normalize_anthropic_messages(
     body: &mut Value,
     provider: &Provider,
@@ -16686,6 +16694,16 @@ command = "latest-command"
         assert!(forwarder_claude_transform_required("openai_chat"));
         assert!(forwarder_provider_transform_required(&claude_adapter, &provider));
         assert!(!forwarder_provider_transform_required(&codex_adapter, &provider));
+        let passthrough_adapter_body = json!({"model": "gpt-4.1"});
+        assert_eq!(
+            forwarder_provider_transform_request(
+                &codex_adapter,
+                passthrough_adapter_body.clone(),
+                &provider
+            )
+            .expect("codex passthrough transform"),
+            passthrough_adapter_body
+        );
         let mut passthrough_body = json!({"model": "claude-3-5-sonnet"});
         assert!(!forwarder_claude_normalize_anthropic_messages(
             &mut passthrough_body,

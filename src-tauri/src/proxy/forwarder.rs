@@ -33,7 +33,7 @@ use crate::proxy_core_adapter::{
     forwarder_is_codex_oauth_provider, forwarder_is_full_url_provider,
     forwarder_is_github_copilot_upstream,
     forwarder_replace_images_for_text_only_provider_model, forwarder_uses_anthropic_rectifiers,
-    forwarder_provider_transform_required,
+    forwarder_provider_transform_request, forwarder_provider_transform_required,
     is_openai_o_series,
     is_unsupported_image_error, allow_forward_attempt_runtime_source, merge_copilot_tool_results,
     non_streaming_body_timeout_message, normalize_thinking_type,
@@ -1387,7 +1387,7 @@ impl RequestForwarder {
                 )
                 .map_err(ProxyError::TransformError)?
             } else {
-                adapter.transform_request(mapped_body, provider)?
+                forwarder_provider_transform_request(adapter, mapped_body, provider)?
             }
         } else {
             mapped_body
