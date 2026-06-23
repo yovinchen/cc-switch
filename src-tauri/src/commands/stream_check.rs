@@ -6,15 +6,14 @@
 use crate::app_config::AppType;
 use crate::commands::copilot::CopilotAuthState;
 use crate::error::AppError;
+use crate::proxy_core_adapter::{
+    provider_github_copilot_managed_account_id, provider_is_full_url,
+    provider_is_github_copilot_stream_check_target, stream_check_proxy_target_ids_from_db,
+};
 use crate::services::stream_check::{
     HealthStatus, StreamCheckConfig, StreamCheckResult, StreamCheckService,
 };
 use crate::store::AppState;
-use crate::proxy_core_adapter::{
-    provider_github_copilot_managed_account_id, provider_is_full_url,
-    provider_is_github_copilot_stream_check_target,
-};
-use std::collections::HashSet;
 use tauri::State;
 
 /// 连通性检查（单个供应商）
@@ -59,20 +58,8 @@ pub async fn stream_check_all_providers(
     let config = state.db.get_stream_check_config()?;
     let providers = state.db.get_all_providers(app_type.as_str())?;
 
-    let allowed_ids: Option<HashSet<String>> = if proxy_targets_only {
-        let mut ids = HashSet::new();
-        if let Ok(Some(current_id)) = state.db.get_current_provider(app_type.as_str()) {
-            ids.insert(current_id);
-        }
-        if let Ok(queue) = state.db.get_failover_queue(app_type.as_str()) {
-            for item in queue {
-                ids.insert(item.provider_id);
-            }
-        }
-        Some(ids)
-    } else {
-        None
-    };
+    let allowed_ids =
+        stream_check_proxy_target_ids_from_db(&state.db, app_type.as_str(), proxy_targets_only);
 
     let mut results = Vec::new();
     for (id, provider) in providers {

@@ -158,6 +158,12 @@ const FORBIDDEN_STREAM_CHECK_PROVIDER_ADAPTER_MARKERS: &[&str] = &[
     "ProviderAdapter",
     ".extract_base_url(",
 ];
+const FORBIDDEN_STREAM_CHECK_COMMAND_PROXY_TARGET_MARKERS: &[&str] = &[
+    "HashSet",
+    ".get_current_provider(",
+    ".get_failover_queue(",
+    "ids.insert(",
+];
 const FORBIDDEN_FORWARDER_MANAGED_AUTH_MARKERS: &[&str] = &[
     "CopilotAuthState",
     "CodexOAuthState",
@@ -3897,6 +3903,38 @@ fn production_stream_check_delegates_provider_adapters_to_adapter() {
     assert!(
         violations.is_empty(),
         "stream_check must resolve provider adapter facts through proxy_core_adapter helpers:\n{}",
+        violations.join("\n")
+    );
+}
+
+#[test]
+fn production_stream_check_command_delegates_proxy_target_filter_to_adapter() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let path = manifest_dir.join("src/commands/stream_check.rs");
+    let source = fs::read_to_string(&path).expect("read commands/stream_check.rs");
+    let function = function_slice(
+        &source,
+        "pub async fn stream_check_all_providers",
+        "/// 获取连通性检查配置",
+    );
+
+    let mut violations = Vec::new();
+    for (line_index, line) in production_lines(function) {
+        let code = line.split("//").next().unwrap_or_default();
+        for marker in FORBIDDEN_STREAM_CHECK_COMMAND_PROXY_TARGET_MARKERS {
+            if code.contains(marker) {
+                violations.push(format!(
+                    "src/commands/stream_check.rs stream_check_all_providers:{} contains proxy-target filter marker `{}`",
+                    line_index + 1,
+                    marker
+                ));
+            }
+        }
+    }
+
+    assert!(
+        violations.is_empty(),
+        "stream_check_all_providers command must delegate proxy-target filter source projection to proxy_core_adapter:\n{}",
         violations.join("\n")
     );
 }

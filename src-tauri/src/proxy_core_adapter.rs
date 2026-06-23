@@ -51,7 +51,7 @@ use indexmap::IndexMap;
 use regex::Regex;
 use rust_decimal::Decimal;
 use serde_json::{Map, Value, json};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use tokio::sync::{Mutex, RwLock};
 use uuid::Uuid;
@@ -4095,6 +4095,47 @@ pub(crate) fn stream_check_provider_base_url(
 ) -> Result<String, ProxyError> {
     let adapter = forwarder_provider_adapter_for_app(app_type);
     forwarder_provider_base_url(adapter.as_ref(), provider)
+}
+
+pub(crate) fn stream_check_proxy_target_ids_from_sources(
+    proxy_targets_only: bool,
+    current_provider_id: Option<String>,
+    failover_provider_ids: impl IntoIterator<Item = String>,
+) -> Option<HashSet<String>> {
+    if !proxy_targets_only {
+        return None;
+    }
+
+    let mut ids = HashSet::new();
+    if let Some(current_provider_id) = current_provider_id {
+        ids.insert(current_provider_id);
+    }
+    ids.extend(failover_provider_ids);
+    Some(ids)
+}
+
+pub(crate) fn stream_check_proxy_target_ids_from_db(
+    db: &Database,
+    app_type: &str,
+    proxy_targets_only: bool,
+) -> Option<HashSet<String>> {
+    if !proxy_targets_only {
+        return None;
+    }
+
+    let current_provider_id = db.get_current_provider(app_type).ok().flatten();
+    let failover_provider_ids = db
+        .get_failover_queue(app_type)
+        .ok()
+        .into_iter()
+        .flatten()
+        .map(|item| item.provider_id);
+
+    stream_check_proxy_target_ids_from_sources(
+        proxy_targets_only,
+        current_provider_id,
+        failover_provider_ids,
+    )
 }
 
 pub(crate) fn forwarder_provider_auth_info(
@@ -18717,6 +18758,34 @@ command = "latest-command"
             DEFAULT_CHANNEL_HEALTH_FAILURE_THRESHOLD
         );
         assert_eq!(update.response_time_ms, Some(123));
+    }
+
+    #[test]
+    fn stream_check_proxy_target_ids_adapter_projects_current_and_failover_sources() {
+        assert!(stream_check_proxy_target_ids_from_sources(
+            false,
+            Some("current".to_string()),
+            vec!["queued".to_string()],
+        )
+        .is_none());
+
+        let ids = stream_check_proxy_target_ids_from_sources(
+            true,
+            Some("current".to_string()),
+            vec!["queued".to_string(), "current".to_string()],
+        )
+        .expect("proxy target filter ids");
+        assert_eq!(ids.len(), 2);
+        assert!(ids.contains("current"));
+        assert!(ids.contains("queued"));
+
+        let empty_ids = stream_check_proxy_target_ids_from_sources(
+            true,
+            None,
+            Vec::<String>::new(),
+        )
+        .expect("empty proxy target filter ids");
+        assert!(empty_ids.is_empty());
     }
 
     #[test]
