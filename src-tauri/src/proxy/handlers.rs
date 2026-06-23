@@ -45,6 +45,7 @@ use crate::proxy_core_adapter::{
     json_proxy_request_from_input, JsonProxyRequestInput,
     openai_responses_to_anthropic_message, parse_json_proxy_request_body,
     parse_json_proxy_request_body_or_null, parse_upstream_json_or_unlabeled_sse,
+    upstream_response_parse_failure_log_message,
     management_auth_decision_from_proxy_config,
     provider_is_codex_oauth, provider_needs_claude_transform,
     provider_should_convert_codex_responses_to_chat, rebuilt_json_proxy_response,
@@ -69,8 +70,8 @@ use crate::proxy_core_adapter::{
     ProxyStatusRequest, ProxyStatusResponse, RoutableModelList, RouteGroupListResponse,
     RouteResolveManagementRequest, RouteResolveRequest, RouteResolveResponse,
     TransformedResponseUsageFormat, UnlabeledSseFallbackLogContext, UnlabeledSseFallbackLogLevel,
-    UpstreamSseAggregationKind, CLAUDE_PARSER_CONFIG, CODEX_PARSER_CONFIG, GEMINI_PARSER_CONFIG,
-    OPENAI_PARSER_CONFIG,
+    UpstreamResponseParseFailureLogContext, UpstreamSseAggregationKind, CLAUDE_PARSER_CONFIG,
+    CODEX_PARSER_CONFIG, GEMINI_PARSER_CONFIG, OPENAI_PARSER_CONFIG,
 };
 use axum::{
     extract::{Path, Query, State},
@@ -743,8 +744,6 @@ async fn handle_claude_transform(
     let (response_headers, _status, body_bytes) =
         read_decoded_body(response, ctx.tag, ctx.body_timeout_duration()).await?;
 
-    let body_str = String::from_utf8_lossy(&body_bytes);
-
     // 兜底嗅探（#2234）：部分网关对 stream:false 强制返回 SSE 体，却把
     // Content-Type 标成 application/json 等，is_sse() 的 header 检查失效。
     // 此时按 SSE 聚合成单个 JSON 再走既有非流转换器，客户端仍收到
@@ -762,7 +761,14 @@ async fn handle_claude_transform(
         || uuid::Uuid::new_v4().to_string(),
     )
     .map_err(|error| {
-        log::error!("[Claude] 解析/聚合上游响应失败: {error}, body: {body_str}");
+        log::error!(
+            "{}",
+            upstream_response_parse_failure_log_message(
+                UpstreamResponseParseFailureLogContext::ClaudeTransform,
+                &error,
+                body_bytes.as_ref(),
+            )
+        );
         response_body_parse_error_to_proxy_error(error)
     })?;
 
@@ -1047,7 +1053,6 @@ async fn handle_codex_chat_to_responses_transform(
     let _connection_guard = connection_guard;
     let (response_headers, status, body_bytes) =
         read_decoded_body(response, ctx.tag, ctx.body_timeout_duration()).await?;
-    let body_str = String::from_utf8_lossy(&body_bytes);
     // 与 Claude 侧 handle_claude_transform 对称的兜底嗅探（#2234）：
     // 上游对 stream:false 返回未标记 Content-Type 的 SSE 体时按 Chat SSE 聚合。
     let parsed_chat_response = parse_upstream_json_or_unlabeled_sse(
@@ -1058,7 +1063,14 @@ async fn handle_codex_chat_to_responses_transform(
         || uuid::Uuid::new_v4().to_string(),
     )
     .map_err(|error| {
-        log::error!("[Codex] 解析/聚合 Chat 上游响应失败: {error}, body: {body_str}");
+        log::error!(
+            "{}",
+            upstream_response_parse_failure_log_message(
+                UpstreamResponseParseFailureLogContext::CodexChat,
+                &error,
+                body_bytes.as_ref(),
+            )
+        );
         response_body_parse_error_to_proxy_error(error)
     })?;
 

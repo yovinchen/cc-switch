@@ -456,6 +456,27 @@ impl AxumResponseBuildErrorContext<'_> {
     }
 }
 
+pub(crate) enum UpstreamResponseParseFailureLogContext {
+    ClaudeTransform,
+    CodexChat,
+}
+
+pub(crate) fn upstream_response_parse_failure_log_message(
+    context: UpstreamResponseParseFailureLogContext,
+    error: &dyn std::fmt::Display,
+    body: &[u8],
+) -> String {
+    let body = String::from_utf8_lossy(body);
+    match context {
+        UpstreamResponseParseFailureLogContext::ClaudeTransform => {
+            format!("[Claude] 解析/聚合上游响应失败: {error}, body: {body}")
+        }
+        UpstreamResponseParseFailureLogContext::CodexChat => {
+            format!("[Codex] 解析/聚合 Chat 上游响应失败: {error}, body: {body}")
+        }
+    }
+}
+
 pub(crate) fn current_route_target_from_forward_attempt(
     app_type: &str,
     attempt: &ForwardAttempt,

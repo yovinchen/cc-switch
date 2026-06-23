@@ -835,6 +835,11 @@ const FORBIDDEN_RESPONSE_BUILD_CONTEXT_LITERAL_MARKERS: &[&str] = &[
     "构建 Responses 错误响应失败",
     "构建代理错误响应失败",
 ];
+const FORBIDDEN_HANDLER_RESPONSE_PARSE_FAILURE_LOG_PROJECTION_MARKERS: &[&str] = &[
+    "String::from_utf8_lossy(",
+    "解析/聚合上游响应失败",
+    "解析/聚合 Chat 上游响应失败",
+];
 const FORBIDDEN_USAGE_SINK_PROVIDER_PROJECTION_MARKERS: &[&str] = &[
     "provider_kind_from_provider(",
     "AppKind::from(",
@@ -2487,6 +2492,33 @@ fn response_pipeline_delegates_axum_build_context_to_adapter() {
     assert!(
         violations.is_empty(),
         "response handlers must delegate Axum response build context projection to proxy_core_adapter:\n{}",
+        violations.join("\n")
+    );
+}
+
+#[test]
+fn handlers_delegate_response_parse_failure_logging_to_adapter() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let path = manifest_dir.join("src/proxy/handlers.rs");
+    let source = fs::read_to_string(&path).expect("read handlers.rs");
+
+    let mut violations = Vec::new();
+    for (line_index, line) in production_lines(&source) {
+        let code = line.split("//").next().unwrap_or_default();
+        for marker in FORBIDDEN_HANDLER_RESPONSE_PARSE_FAILURE_LOG_PROJECTION_MARKERS {
+            if code.contains(marker) {
+                violations.push(format!(
+                    "src/proxy/handlers.rs:{} contains response parse failure log marker `{}`",
+                    line_index + 1,
+                    marker
+                ));
+            }
+        }
+    }
+
+    assert!(
+        violations.is_empty(),
+        "protocol handlers must delegate response parse failure log projection to proxy_core_adapter:\n{}",
         violations.join("\n")
     );
 }
