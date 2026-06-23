@@ -8711,6 +8711,8 @@ pub(crate) struct ForwarderUpstreamRequestParts {
 }
 
 pub(crate) trait ForwarderRequestSource {
+    fn adapter_for_app(&self, app_type: &AppType) -> Box<ForwarderAdapterHandle>;
+
     fn prepare_attempt_body(&self, input: ForwarderAttemptBodyInput<'_>) -> Value;
 
     fn provider_url_facts(
@@ -8793,6 +8795,10 @@ pub(crate) trait ForwarderRequestSource {
 struct CcSwitchForwarderRequestSource;
 
 impl ForwarderRequestSource for CcSwitchForwarderRequestSource {
+    fn adapter_for_app(&self, app_type: &AppType) -> Box<ForwarderAdapterHandle> {
+        forwarder_provider_adapter_for_app(app_type)
+    }
+
     fn prepare_attempt_body(&self, input: ForwarderAttemptBodyInput<'_>) -> Value {
         if !should_apply_bedrock_pre_send_optimizer(
             input.config.enabled,
@@ -14604,6 +14610,17 @@ mod tests {
             CopilotOptimizerConfig::default().warmup_model,
             "gpt-5-mini"
         );
+    }
+
+    #[test]
+    fn forwarder_request_source_selects_adapter_for_app() {
+        let source = CcSwitchForwarderRequestSource;
+
+        let claude_adapter = source.adapter_for_app(&AppType::Claude);
+        let fallback_adapter = source.adapter_for_app(&AppType::Hermes);
+
+        assert_eq!(forwarder_provider_adapter_name(claude_adapter.as_ref()), "Claude");
+        assert_eq!(forwarder_provider_adapter_name(fallback_adapter.as_ref()), "Codex");
     }
 
     #[test]

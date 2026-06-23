@@ -11,7 +11,6 @@ use crate::proxy_core_adapter::{
     build_retryable_forward_failure_log, build_terminal_forward_failure_log,
     categorize_forward_failure,
     forward_failure_kind_from_proxy_error,
-    forwarder_provider_adapter_for_app,
     ForwarderAdapterHandle,
     AttemptEventPhase, CopilotOptimizerConfig,
     ForwardFailureCategory, ForwarderAdapterFactsInput, ForwarderAnthropicRectifierGateInput,
@@ -412,7 +411,7 @@ impl RequestForwarder {
         attempts: Vec<ForwardAttempt>,
     ) -> Result<ForwardResult, ForwardError> {
         // 获取适配器
-        let adapter = forwarder_provider_adapter_for_app(app_type);
+        let adapter = self.request_source.adapter_for_app(app_type);
         let app_type_str = app_type.as_str();
 
         if attempts.is_empty() {
