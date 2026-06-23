@@ -4189,10 +4189,10 @@ pub(crate) async fn auto_failover_enabled_from_router_db(
     )
 }
 
-pub(crate) fn select_current_provider_from_router_source(
+pub(crate) fn select_current_provider_ids_from_router_source(
     app_type: &str,
     current: Option<Provider>,
-) -> Result<Vec<Provider>, AppError> {
+) -> Result<Vec<String>, AppError> {
     let selected_ids = select_provider_ids(ProviderSelectionInput::current(
         current.as_ref().map(|provider| provider.id.clone()),
     ))
@@ -4200,19 +4200,18 @@ pub(crate) fn select_current_provider_from_router_source(
 
     Ok(selected_ids
         .into_iter()
-        .filter_map(|provider_id| {
+        .filter(|provider_id| {
             current
                 .as_ref()
-                .filter(|provider| provider.id == provider_id)
-                .cloned()
+                .is_some_and(|provider| provider.id == *provider_id)
         })
         .collect())
 }
 
-pub(crate) fn select_current_provider_from_router_db_source(
+pub(crate) fn select_current_provider_ids_from_router_db_source(
     db: &Database,
     app_type: &str,
-) -> Result<Vec<Provider>, AppError> {
+) -> Result<Vec<String>, AppError> {
     let current_id = current_provider_id_from_router_sources(
         app_type,
         |app_enum| {
@@ -4227,14 +4226,14 @@ pub(crate) fn select_current_provider_from_router_db_source(
         .and_then(|current_id| db.get_provider_by_id(&current_id, app_type).transpose())
         .transpose()?;
 
-    select_current_provider_from_router_source(app_type, current)
+    select_current_provider_ids_from_router_source(app_type, current)
 }
 
-pub(crate) fn select_failover_providers_from_router_lookup_availability<I>(
+pub(crate) fn select_failover_provider_ids_from_router_lookup_availability<I>(
     app_type: &str,
-    providers: &IndexMap<String, Provider>,
+    provider_ids: &[String],
     lookup_availability: I,
-) -> Result<Vec<Provider>, AppError>
+) -> Result<Vec<String>, AppError>
 where
     I: IntoIterator<Item = (ProviderFailoverCircuitLookup, bool)>,
 {
@@ -4249,19 +4248,23 @@ where
 
     Ok(selected_ids
         .into_iter()
-        .filter_map(|provider_id| providers.get(&provider_id).cloned())
+        .filter(|provider_id| {
+            provider_ids
+                .iter()
+                .any(|configured_provider_id| configured_provider_id == provider_id)
+        })
         .collect())
 }
 
 pub(crate) fn provider_failover_circuit_lookups_from_router_sources(
     app_type: &str,
     queue: impl IntoIterator<Item = FailoverQueueItem>,
-    providers: &IndexMap<String, Provider>,
+    provider_ids: impl IntoIterator<Item = String>,
 ) -> Vec<ProviderFailoverCircuitLookup> {
     provider_failover_circuit_lookups(
         app_type,
         queue.into_iter().map(|item| item.provider_id).collect::<Vec<_>>(),
-        providers.keys().cloned().collect::<Vec<_>>(),
+        provider_ids.into_iter().collect::<Vec<_>>(),
     )
 }
 
@@ -4270,12 +4273,16 @@ pub(crate) fn provider_failover_sources_from_router_db(
     app_type: &str,
 ) -> Result<ProviderFailoverRouterSources, AppError> {
     let providers = db.get_all_providers(app_type)?;
+    let provider_ids = providers.keys().cloned().collect::<Vec<_>>();
     let lookups = provider_failover_circuit_lookups_from_router_sources(
         app_type,
         db.get_failover_queue(app_type)?,
-        &providers,
+        provider_ids.clone(),
     );
-    Ok(ProviderFailoverRouterSources { providers, lookups })
+    Ok(ProviderFailoverRouterSources {
+        provider_ids,
+        lookups,
+    })
 }
 
 pub(crate) struct CcSwitchProviderRouterSources;
@@ -4331,8 +4338,8 @@ impl ProviderRouterProviderSource for CcSwitchProviderRouterProviderSource {
         provider_failover_sources_from_router_db(&self.db, app_type)
     }
 
-    fn current_provider(&self, app_type: &str) -> Result<Vec<Provider>, AppError> {
-        select_current_provider_from_router_db_source(&self.db, app_type)
+    fn current_provider_ids(&self, app_type: &str) -> Result<Vec<String>, AppError> {
+        select_current_provider_ids_from_router_db_source(&self.db, app_type)
     }
 }
 
@@ -5499,10 +5506,10 @@ pub(crate) async fn active_route_target_from_runtime_source(
 }
 
 pub(crate) fn route_candidate_provider_ids_from_selection_result(
-    result: Result<Vec<Provider>, AppError>,
+    result: Result<Vec<String>, AppError>,
 ) -> ProxyCoreResult<Vec<String>> {
     let selection_result = match result {
-        Ok(providers) => Ok(providers.into_iter().map(|provider| provider.id).collect()),
+        Ok(provider_ids) => Ok(provider_ids),
         Err(error) => match provider_selection_failure_from_app_error(&error) {
             Some(failure) => Err(failure),
             None => return Err(app_error("select route candidate providers", error)),
@@ -5519,7 +5526,7 @@ pub(crate) async fn route_candidate_provider_ids_from_router_source(
     router: &ProviderRouter,
     app: &AppKind,
 ) -> ProxyCoreResult<Vec<String>> {
-    route_candidate_provider_ids_from_selection_result(router.select_providers(app.as_str()).await)
+    route_candidate_provider_ids_from_selection_result(router.select_provider_ids(app.as_str()).await)
 }
 
 #[allow(dead_code)]
@@ -5775,22 +5782,31 @@ pub(crate) fn provider_model_catalog_from_db_source(
 }
 
 pub(crate) fn claude_desktop_provider_from_selection_result(
-    result: Result<Vec<Provider>, AppError>,
+    result: Result<Vec<String>, AppError>,
+    load_provider: impl FnOnce(&str) -> Result<Option<Provider>, AppError>,
 ) -> ProxyCoreResult<Provider> {
-    let providers = result.map_err(|error| {
+    let provider_ids = result.map_err(|error| {
         ProxyCoreError::Internal(format!("select claude desktop provider: {error}"))
     })?;
-    providers.into_iter().next().ok_or_else(|| {
+    let provider_id = provider_ids.into_iter().next().ok_or_else(|| {
         ProxyCoreError::Unavailable("no available claude desktop provider".to_string())
-    })
+    })?;
+    load_provider(&provider_id)
+        .map_err(|error| app_error("load claude desktop provider", error))?
+        .ok_or_else(|| {
+            ProxyCoreError::Unavailable("no available claude desktop provider".to_string())
+        })
 }
 
 pub(crate) async fn claude_desktop_model_routes_from_router_source(
+    db: &Database,
     router: &ProviderRouter,
     app: &AppKind,
 ) -> ProxyCoreResult<Vec<ClaudeDesktopModelRouteInput>> {
-    let providers = router.select_providers(app.as_str()).await;
-    let provider = claude_desktop_provider_from_selection_result(providers)?;
+    let provider_ids = router.select_provider_ids(app.as_str()).await;
+    let provider = claude_desktop_provider_from_selection_result(provider_ids, |provider_id| {
+        db.get_provider_by_id(provider_id, app.as_str())
+    })?;
     let routes = crate::claude_desktop_config::proxy_model_routes(&provider)
         .map_err(|error| app_error("load claude desktop model routes", error))?;
     Ok(claude_desktop_model_routes_to_core_inputs(routes))
@@ -9911,7 +9927,7 @@ mod tests {
                     provider_notes: None,
                 },
             ],
-            &failover_providers,
+            failover_providers.keys().cloned().collect::<Vec<_>>(),
         );
         assert_eq!(failover_lookups[0].provider_id, "missing");
         assert!(!failover_lookups[0].configured);
@@ -9921,9 +9937,9 @@ mod tests {
             failover_lookups[1].circuit_key.as_deref(),
             Some("claude:provider-b")
         );
-        let selected_failover = select_failover_providers_from_router_lookup_availability(
+        let selected_failover = select_failover_provider_ids_from_router_lookup_availability(
             "claude",
-            &failover_providers,
+            &failover_providers.keys().cloned().collect::<Vec<_>>(),
             failover_lookups
                 .into_iter()
                 .map(|lookup| {
@@ -9931,9 +9947,8 @@ mod tests {
                     (lookup, available)
                 }),
         )
-        .expect("selected failover providers");
-        assert_eq!(selected_failover.len(), 1);
-        assert_eq!(selected_failover[0].id, "provider-b");
+        .expect("selected failover provider ids");
+        assert_eq!(selected_failover, vec!["provider-b"]);
         assert!(!channel_route_should_load_legacy_projection(
             &ChannelRouteSource::MaterializedChannels
         ));
@@ -10041,12 +10056,11 @@ mod tests {
         let current_provider =
             Provider::with_id("provider-a".to_string(), "Provider A".to_string(), json!({}), None);
         let selected_current =
-            select_current_provider_from_router_source("claude", Some(current_provider))
-                .expect("selected current provider");
-        assert_eq!(selected_current.len(), 1);
-        assert_eq!(selected_current[0].id, "provider-a");
+            select_current_provider_ids_from_router_source("claude", Some(current_provider))
+                .expect("selected current provider id");
+        assert_eq!(selected_current, vec!["provider-a"]);
         assert!(matches!(
-            select_current_provider_from_router_source("claude", None),
+            select_current_provider_ids_from_router_source("claude", None),
             Err(AppError::NoProvidersConfigured)
         ));
 
@@ -13698,20 +13712,24 @@ command = "latest-command"
             provider_catalog.models
         );
         assert_eq!(
-            claude_desktop_provider_from_selection_result(Ok(vec![provider.clone()]))
+            claude_desktop_provider_from_selection_result(
+                Ok(vec!["provider-a".to_string()]),
+                |_| Ok(Some(provider.clone()))
+            )
                 .expect("selected provider")
                 .id,
             "provider-a"
         );
         assert!(matches!(
-            claude_desktop_provider_from_selection_result(Ok(Vec::new())),
+            claude_desktop_provider_from_selection_result(Ok(Vec::new()), |_| Ok(None)),
             Err(ProxyCoreError::Unavailable(message))
                 if message == "no available claude desktop provider"
         ));
         assert!(matches!(
-            claude_desktop_provider_from_selection_result(Err(AppError::Message(
-                "router failed".to_string()
-            ))),
+            claude_desktop_provider_from_selection_result(
+                Err(AppError::Message("router failed".to_string())),
+                |_| Ok(None)
+            ),
             Err(ProxyCoreError::Internal(message))
                 if message == "select claude desktop provider: router failed"
         ));
@@ -13857,18 +13875,8 @@ command = "latest-command"
         );
         assert_eq!(
             route_candidate_provider_ids_from_selection_result(Ok(vec![
-                Provider::with_id(
-                    "provider-a".to_string(),
-                    "Provider A".to_string(),
-                    json!({}),
-                    None,
-                ),
-                Provider::with_id(
-                    "provider-b".to_string(),
-                    "Provider B".to_string(),
-                    json!({}),
-                    None,
-                ),
+                "provider-a".to_string(),
+                "provider-b".to_string(),
             ]))
             .expect("candidate ids"),
             vec!["provider-a".to_string(), "provider-b".to_string()]

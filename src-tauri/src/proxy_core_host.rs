@@ -565,7 +565,7 @@ impl ModelCatalogProvider for CcSwitchModelCatalogProvider {
         app: &'a AppKind,
     ) -> BoxFuture<'a, ProxyCoreResult<Vec<ClaudeDesktopModelRouteInput>>> {
         Box::pin(async move {
-            claude_desktop_model_routes_from_router_source(&self.router, app).await
+            claude_desktop_model_routes_from_router_source(&self.db, &self.router, app).await
         })
     }
 }

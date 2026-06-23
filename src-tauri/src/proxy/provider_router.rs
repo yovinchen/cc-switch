@@ -3,26 +3,23 @@
 //! 负责选择和管理代理目标供应商，实现智能故障转移
 
 use crate::error::AppError;
-use crate::provider::Provider;
 use crate::proxy::circuit_breaker::CircuitBreaker;
 use crate::proxy_core_adapter::{
     app_error_from_proxy_core_error, app_type_from_circuit_key,
     apply_route_candidate_circuit_availability, channel_circuit_key, channel_circuit_key_prefix,
-    provider_circuit_key, provider_circuit_key_prefix,
-    proxy_channel_route_inputs_to_core,
+    provider_circuit_key, provider_circuit_key_prefix, proxy_channel_route_inputs_to_core,
     resolve_channel_route as resolve_core_channel_route, route_candidate_channel_circuit_keys,
-    select_failover_providers_from_router_lookup_availability, AllowResult, ChannelRouteSource,
+    select_failover_provider_ids_from_router_lookup_availability, AllowResult, ChannelRouteSource,
     CircuitBreakerConfig, CircuitBreakerStats, ProviderFailoverCircuitLookup,
     RouteCandidateCircuitKey, RouteResolveRequest, RouteResolveResponse,
 };
 use futures::future::BoxFuture;
-use indexmap::IndexMap;
 use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::RwLock;
 
 pub(crate) struct ProviderFailoverRouterSources {
-    pub(crate) providers: IndexMap<String, Provider>,
+    pub(crate) provider_ids: Vec<String>,
     pub(crate) lookups: Vec<ProviderFailoverCircuitLookup>,
 }
 
@@ -53,17 +50,13 @@ pub(crate) trait ProviderRouterConfigSource: Send + Sync {
         app_type: &'a str,
     ) -> BoxFuture<'a, CircuitBreakerConfig>;
 
-    fn failure_threshold<'a>(
-        &'a self,
-        app_type: &'a str,
-        fallback: u32,
-    ) -> BoxFuture<'a, u32>;
+    fn failure_threshold<'a>(&'a self, app_type: &'a str, fallback: u32) -> BoxFuture<'a, u32>;
 }
 
 pub(crate) trait ProviderRouterProviderSource: Send + Sync {
     fn failover_sources(&self, app_type: &str) -> Result<ProviderFailoverRouterSources, AppError>;
 
-    fn current_provider(&self, app_type: &str) -> Result<Vec<Provider>, AppError>;
+    fn current_provider_ids(&self, app_type: &str) -> Result<Vec<String>, AppError>;
 }
 
 pub(crate) trait ProviderRouterChannelSource: Send + Sync {
@@ -139,20 +132,20 @@ impl ProviderRouter {
     /// 返回按优先级排序的可用供应商列表：
     /// - 故障转移关闭时：仅返回当前供应商
     /// - 故障转移开启时：仅使用故障转移队列，按队列顺序依次尝试（P1 → P2 → ...）
-    pub async fn select_providers(&self, app_type: &str) -> Result<Vec<Provider>, AppError> {
+    pub async fn select_provider_ids(&self, app_type: &str) -> Result<Vec<String>, AppError> {
         // 检查该应用的自动故障转移开关是否开启（从 proxy_config 表读取）
         let auto_failover_enabled = self.sources.config.load_failover_enabled(app_type).await;
 
         let result = if auto_failover_enabled {
-            self.select_failover_providers(app_type).await
+            self.select_failover_provider_ids(app_type).await
         } else {
-            self.select_current_provider(app_type)
+            self.select_current_provider_ids(app_type)
         }?;
 
         Ok(result)
     }
 
-    async fn select_failover_providers(&self, app_type: &str) -> Result<Vec<Provider>, AppError> {
+    async fn select_failover_provider_ids(&self, app_type: &str) -> Result<Vec<String>, AppError> {
         // 故障转移开启：仅按队列顺序依次尝试（P1 → P2 → ...）
         let sources = self.sources.providers.failover_sources(app_type)?;
         let mut lookup_availability = Vec::with_capacity(sources.lookups.len());
@@ -167,16 +160,16 @@ impl ProviderRouter {
             lookup_availability.push((lookup, available));
         }
 
-        select_failover_providers_from_router_lookup_availability(
+        select_failover_provider_ids_from_router_lookup_availability(
             app_type,
-            &sources.providers,
+            &sources.provider_ids,
             lookup_availability,
         )
     }
 
-    fn select_current_provider(&self, app_type: &str) -> Result<Vec<Provider>, AppError> {
+    fn select_current_provider_ids(&self, app_type: &str) -> Result<Vec<String>, AppError> {
         // 故障转移关闭：仅使用当前供应商，跳过熔断器检查
-        self.sources.providers.current_provider(app_type)
+        self.sources.providers.current_provider_ids(app_type)
     }
 
     /// List routable channels for an app without changing the forwarding path.
@@ -271,14 +264,10 @@ impl ProviderRouter {
         }
 
         // 3. 更新数据库健康状态（使用配置的阈值）
-        self.sources.health.record_provider_health(
-            provider_id,
-            app_type,
-            success,
-            error_msg,
-            failure_threshold,
-        )
-        .await?;
+        self.sources
+            .health
+            .record_provider_health(provider_id, app_type, success, error_msg, failure_threshold)
+            .await?;
 
         Ok(())
     }
@@ -463,7 +452,10 @@ impl ProviderRouter {
     }
 
     async fn failure_threshold_for_app(&self, app_type: &str, fallback: u32) -> u32 {
-        self.sources.config.failure_threshold(app_type, fallback).await
+        self.sources
+            .config
+            .failure_threshold(app_type, fallback)
+            .await
     }
 }
 
@@ -471,6 +463,7 @@ impl ProviderRouter {
 mod tests {
     use super::*;
     use crate::database::Database;
+    use crate::provider::Provider;
     use crate::proxy_core_adapter::{
         provider_router_from_database, ChannelRouteSource, CircuitState, RouteResolveRequest,
     };
@@ -557,10 +550,9 @@ mod tests {
         db.add_to_failover_queue("claude", "b").unwrap();
 
         let router = provider_router_from_database(db.clone());
-        let providers = router.select_providers("claude").await.unwrap();
+        let provider_ids = router.select_provider_ids("claude").await.unwrap();
 
-        assert_eq!(providers.len(), 1);
-        assert_eq!(providers[0].id, "a");
+        assert_eq!(provider_ids, vec!["a"]);
     }
 
     #[tokio::test]
@@ -773,12 +765,11 @@ mod tests {
         db.update_proxy_config_for_app(config).await.unwrap();
 
         let router = provider_router_from_database(db.clone());
-        let providers = router.select_providers("claude").await.unwrap();
+        let provider_ids = router.select_provider_ids("claude").await.unwrap();
 
-        assert_eq!(providers.len(), 2);
+        assert_eq!(provider_ids.len(), 2);
         // 故障转移开启时：仅按队列顺序选择（忽略当前供应商）
-        assert_eq!(providers[0].id, "b");
-        assert_eq!(providers[1].id, "a");
+        assert_eq!(provider_ids, vec!["b", "a"]);
     }
 
     #[tokio::test]
@@ -805,15 +796,14 @@ mod tests {
         db.update_proxy_config_for_app(config).await.unwrap();
 
         let router = provider_router_from_database(db.clone());
-        let providers = router.select_providers("claude").await.unwrap();
+        let provider_ids = router.select_provider_ids("claude").await.unwrap();
 
-        assert_eq!(providers.len(), 1);
-        assert_eq!(providers[0].id, "b");
+        assert_eq!(provider_ids, vec!["b"]);
     }
 
     #[tokio::test]
     #[serial]
-    async fn test_select_providers_does_not_consume_half_open_permit() {
+    async fn test_select_provider_ids_does_not_consume_half_open_permit() {
         let _home = TempHome::new();
         let db = Arc::new(Database::memory().unwrap());
 
@@ -848,8 +838,8 @@ mod tests {
             .await
             .unwrap();
 
-        let providers = router.select_providers("claude").await.unwrap();
-        assert_eq!(providers.len(), 2);
+        let provider_ids = router.select_provider_ids("claude").await.unwrap();
+        assert_eq!(provider_ids.len(), 2);
 
         assert!(router.allow_provider_request("b", "claude").await.allowed);
     }

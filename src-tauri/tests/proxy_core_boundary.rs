@@ -16,7 +16,7 @@ const FORBIDDEN_FORWARDER_SELF_PLANNING_MARKERS: &[&str] = &[
     "create_forwarder(",
 ];
 const FORBIDDEN_REQUEST_CONTEXT_PROVIDER_PRESELECT_MARKERS: &[&str] =
-    &["provider_router", ".select_providers("];
+    &["provider_router", ".select_providers(", ".select_provider_ids("];
 const FORBIDDEN_REQUEST_CONTEXT_PROVIDER_ADAPTER_MARKERS: &[&str] =
     &[
         "providers::",
@@ -154,6 +154,7 @@ const FORBIDDEN_PROXY_CORE_HOST_PROVIDER_SOURCE_MARKERS: &[&str] = &[
     ".get_provider_by_id(",
     ".get_current_provider(",
     ".select_providers(",
+    ".select_provider_ids(",
     "current_providers.read(",
     "current_providers.get(",
     "provider_specs_from_source(",
@@ -228,6 +229,7 @@ const FORBIDDEN_PROXY_CORE_HOST_REACHABILITY_PROBE_SOURCE_MARKERS: &[&str] = &[
 const FORBIDDEN_PROXY_CORE_HOST_MODEL_CATALOG_SOURCE_MARKERS: &[&str] = &[
     ".get_provider_by_id(",
     ".select_providers(",
+    ".select_provider_ids(",
     "provider_model_catalog_from_provider(",
     "client_model_catalog_from_source(",
     "claude_desktop_provider_from_selection_result(",
@@ -332,7 +334,6 @@ const FORBIDDEN_PROVIDER_ROUTER_CHANNEL_ROUTE_SOURCE_MARKERS: &[&str] = &[
 ];
 const FORBIDDEN_PROVIDER_ROUTER_SELECTION_MARKERS: &[&str] = &[
     "ProviderSelectionInput::",
-    "select_provider_ids(",
     "provider_selection_candidate_from_failover_lookup(",
     "provider_failover_circuit_lookups(",
     "current_provider_id_from_router_sources(",
@@ -363,6 +364,11 @@ const FORBIDDEN_PROVIDER_ROUTER_COARSE_SOURCE_MARKERS: &[&str] =
     &["trait ProviderRouterSource", "dyn ProviderRouterSource", "with_source("];
 const FORBIDDEN_PROVIDER_ROUTER_CHANNEL_DAO_MARKERS: &[&str] =
     &["ProxyChannelRecord", "ProxyChannelSourceKind"];
+const FORBIDDEN_PROVIDER_ROUTER_PROVIDER_RECORD_MARKERS: &[&str] = &[
+    "use crate::provider::Provider",
+    "IndexMap<String, Provider>",
+    "Result<Vec<Provider>",
+];
 const PROVIDER_ROUTER_DATABASE_CONSTRUCTOR_MARKER: &str = "ProviderRouter::new(";
 const FORBIDDEN_HANDLER_PROXY_REQUEST_BRIDGE_MARKERS: &[&str] = &["ProxyRequest::new("];
 const FORBIDDEN_HANDLER_RAW_JSON_BODY_PARSE_MARKERS: &[&str] = &[
@@ -887,6 +893,7 @@ fn provider_list_handler_delegates_sources_to_proxy_engine() {
         "state.db",
         "provider_router",
         ".select_providers(",
+        ".select_provider_ids(",
         "get_all_providers(",
         "get_current_provider(",
         "get_failover_queue(",
@@ -1478,6 +1485,7 @@ fn claude_desktop_models_handler_delegates_provider_selection_to_proxy_engine() 
     let forbidden_markers = [
         "provider_router",
         ".select_providers(",
+        ".select_provider_ids(",
         "claude_desktop_config::model_list_response",
         "ProxyError::NoAvailableProvider",
     ];
@@ -3635,6 +3643,33 @@ fn production_provider_router_delegates_provider_selection_to_adapter() {
     assert!(
         violations.is_empty(),
         "provider router must delegate provider selection to proxy_core_adapter helpers:\n{}",
+        violations.join("\n")
+    );
+}
+
+#[test]
+fn production_provider_router_selects_provider_ids_not_provider_records() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let path = manifest_dir.join("src/proxy/provider_router.rs");
+    let source = fs::read_to_string(&path).expect("read provider_router.rs");
+
+    let mut violations = Vec::new();
+    for (line_index, line) in production_lines(&source) {
+        let code = line.split("//").next().unwrap_or_default();
+        for marker in FORBIDDEN_PROVIDER_ROUTER_PROVIDER_RECORD_MARKERS {
+            if code.contains(marker) {
+                violations.push(format!(
+                    "src/proxy/provider_router.rs:{} contains provider record marker `{}`",
+                    line_index + 1,
+                    marker
+                ));
+            }
+        }
+    }
+
+    assert!(
+        violations.is_empty(),
+        "provider router must expose provider ids and leave provider records to host adapters:\n{}",
         violations.join("\n")
     );
 }
