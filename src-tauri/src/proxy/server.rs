@@ -8,23 +8,20 @@
 //! the hyper-based HTTP client, producing wire-level header casing identical to
 //! a direct (non-proxied) CLI request.
 
-use super::{
-    error::ProxyError, events::ProxyEventBus, failover_switch::FailoverSwitchManager, handlers,
-    codex_chat_history::CodexChatHistoryStore, provider_router::ProviderRouter,
-};
+use super::{error::ProxyError, handlers};
 use crate::database::Database;
 use crate::proxy_core_adapter::{
     emit_proxy_server_started_event_source, emit_proxy_server_stopped_event_source,
-    proxy_engine_from_services, proxy_runtime_status_from_runtime_sources,
-    proxy_server_info_from_parts, proxy_state_from_runtime_sources,
+    proxy_runtime_status_from_runtime_sources, proxy_server_info_from_parts,
+    proxy_state_from_runtime_sources,
     record_proxy_server_listen_port_runtime_source,
     record_proxy_server_started_runtime_source, record_proxy_server_stopped_runtime_source,
     reset_provider_circuit_breaker_source, set_active_route_target_runtime_source,
-    server_log_codes as log_srv, CircuitBreakerConfig, CurrentRouteTarget, GeminiShadowStore,
-    CcSwitchProxyRuntimeServices as CcSwitchProxyServices, ProxyConfig, ProxyEngine,
-    ProxyRuntimeStatus, ProxyServerInfo,
+    server_log_codes as log_srv, CircuitBreakerConfig, ProxyConfig, ProxyRuntimeStatus,
+    ProxyServerInfo,
     update_all_circuit_breaker_configs_source, update_app_circuit_breaker_config_source,
 };
+pub use crate::proxy_core_adapter::ProxyState;
 use axum::{
     extract::DefaultBodyLimit,
     middleware,
@@ -32,44 +29,10 @@ use axum::{
     Router,
 };
 use hyper_util::rt::TokioIo;
-use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::sync::Arc;
 use tokio::sync::{oneshot, RwLock};
 use tokio::task::JoinHandle;
-
-/// 代理服务器状态（共享）
-#[derive(Clone)]
-pub struct ProxyState {
-    pub db: Arc<Database>,
-    pub config: Arc<RwLock<ProxyConfig>>,
-    pub status: Arc<RwLock<ProxyRuntimeStatus>>,
-    pub start_time: Arc<RwLock<Option<std::time::Instant>>>,
-    /// 每个应用类型当前使用的 provider/channel target。
-    pub current_providers: Arc<RwLock<HashMap<String, CurrentRouteTarget>>>,
-    /// 共享的 ProviderRouter（持有熔断器状态，跨请求保持）
-    pub provider_router: Arc<ProviderRouter>,
-    /// Host adapter surface for the neutral proxy core contracts.
-    pub proxy_core_services: Arc<CcSwitchProxyServices>,
-    /// Gemini Native shadow state，用于 thoughtSignature / tool call 回放
-    pub gemini_shadow: Arc<GeminiShadowStore>,
-    /// Codex Chat bridge history，用于恢复 previous_response_id 指向的 tool call
-    pub codex_chat_history: Arc<CodexChatHistoryStore>,
-    /// AppHandle，用于发射事件和更新托盘菜单
-    #[allow(dead_code)]
-    pub app_handle: Option<tauri::AppHandle>,
-    /// 故障转移切换管理器
-    #[allow(dead_code)]
-    pub failover_manager: Arc<FailoverSwitchManager>,
-    /// 代理事件总线，供外部 SSE 监控和未来 ProxyEventSink 使用。
-    pub events: Arc<ProxyEventBus>,
-}
-
-impl ProxyState {
-    pub(crate) fn proxy_engine(&self) -> ProxyEngine<CcSwitchProxyServices> {
-        proxy_engine_from_services(self.proxy_core_services.clone())
-    }
-}
 
 /// 代理HTTP服务器
 pub struct ProxyServer {
@@ -475,7 +438,7 @@ mod tests {
     use super::*;
     use crate::provider::Provider;
     use crate::proxy_core_adapter::{
-        management_route_response_from_router_source, RouteResolveRequest,
+        management_route_response_from_router_source, CurrentRouteTarget, RouteResolveRequest,
     };
     use axum::{
         body::{to_bytes, Body},

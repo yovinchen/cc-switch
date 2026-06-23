@@ -322,6 +322,10 @@ const FORBIDDEN_PROXY_SERVER_RUNTIME_ASSEMBLY_MARKERS: &[&str] = &[
 ];
 const FORBIDDEN_PROXY_SERVER_HOST_COMPAT_IMPORT_MARKERS: &[&str] =
     &["crate::proxy_core_host::CcSwitchProxyServices"];
+const FORBIDDEN_PROXY_SERVER_RUNTIME_STATE_TYPE_MARKERS: &[&str] = &[
+    "pub struct ProxyState",
+    "impl ProxyState",
+];
 const FORBIDDEN_PROXY_SERVICE_EFFECTIVE_SETTINGS_SOURCE_MARKERS: &[&str] = &[
     "build_effective_settings_with_common_config(",
     "get_config_snippet(",
@@ -6363,6 +6367,33 @@ fn production_proxy_server_imports_runtime_services_from_adapter() {
     assert!(
         violations.is_empty(),
         "production ProxyServer must import runtime services from proxy_core_adapter, not proxy_core_host compat module:\n{}",
+        violations.join("\n")
+    );
+}
+
+#[test]
+fn production_proxy_server_delegates_runtime_state_type_to_adapter() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let path = manifest_dir.join("src/proxy/server.rs");
+    let source = fs::read_to_string(&path).expect("read server.rs");
+
+    let mut violations = Vec::new();
+    for (line_index, line) in production_lines(&source) {
+        let code = line.split("//").next().unwrap_or_default();
+        for marker in FORBIDDEN_PROXY_SERVER_RUNTIME_STATE_TYPE_MARKERS {
+            if code.contains(marker) {
+                violations.push(format!(
+                    "src/proxy/server.rs:{} contains runtime state type marker `{}`",
+                    line_index + 1,
+                    marker
+                ));
+            }
+        }
+    }
+
+    assert!(
+        violations.is_empty(),
+        "production ProxyServer must keep ProxyState type definition in proxy_core_adapter:\n{}",
         violations.join("\n")
     );
 }
