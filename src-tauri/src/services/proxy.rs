@@ -15,7 +15,7 @@ use crate::proxy_core_adapter::{
     codex_backup_projection_error_message, codex_live_write_projection,
     codex_provider_live_write_parts,
     codex_preserved_auth_live_config_text_for_configured_policy,
-    gemini_live_backup_from_effective_settings, is_local_proxy_url,
+    current_provider_for_app_from_db, gemini_live_backup_from_effective_settings, is_local_proxy_url,
     live_backup_snapshot_from_live_config,
     live_config_has_proxy_placeholder_for_app, live_takeover_config_matches_proxy_for_app,
     live_takeover_app_types, provider_settings_have_proxy_placeholder_for_app,
@@ -31,6 +31,7 @@ use crate::proxy_core_adapter::{
     proxy_takeover_marked_state_is_reusable,
     proxy_official_warning_event_from_current_provider_db,
     proxy_takeover_should_restore_existing_backup_before_retakeover,
+    require_current_provider_for_app_from_db,
     remove_codex_takeover_auth_placeholder_if_present,
     remove_codex_takeover_config_placeholders_if_present,
     remove_gemini_takeover_env_fields_if_present, should_block_proxy_switch_to_provider,
@@ -137,20 +138,11 @@ impl ProxyService {
     }
 
     fn get_current_provider_for_app(&self, app_type: &AppType) -> Result<Option<Provider>, String> {
-        let Some(current_id) = crate::settings::get_effective_current_provider(&self.db, app_type)
-            .map_err(|e| format!("获取 {app_type:?} 当前供应商失败: {e}"))?
-        else {
-            return Ok(None);
-        };
-
-        self.db
-            .get_provider_by_id(&current_id, app_type.as_str())
-            .map_err(|e| format!("读取 {app_type:?} 当前供应商失败: {e}"))
+        current_provider_for_app_from_db(&self.db, app_type)
     }
 
     fn require_current_provider_for_app(&self, app_type: &AppType) -> Result<Provider, String> {
-        self.get_current_provider_for_app(app_type)?
-            .ok_or_else(|| format!("{app_type:?} 当前供应商不存在，无法接管 Live 配置"))
+        require_current_provider_for_app_from_db(&self.db, app_type)
     }
 
     /// 设置 AppHandle（在应用初始化时调用）

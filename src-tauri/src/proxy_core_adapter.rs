@@ -2879,6 +2879,28 @@ pub(crate) fn proxy_official_warning_event_from_current_provider_db(
     proxy_official_warning_event_from_provider(app_type.as_str(), Some(&provider))
 }
 
+pub(crate) fn current_provider_for_app_from_db(
+    db: &Database,
+    app_type: &AppType,
+) -> Result<Option<Provider>, String> {
+    let Some(current_id) = crate::settings::get_effective_current_provider(db, app_type)
+        .map_err(|error| format!("获取 {app_type:?} 当前供应商失败: {error}"))?
+    else {
+        return Ok(None);
+    };
+
+    db.get_provider_by_id(&current_id, app_type.as_str())
+        .map_err(|error| format!("读取 {app_type:?} 当前供应商失败: {error}"))
+}
+
+pub(crate) fn require_current_provider_for_app_from_db(
+    db: &Database,
+    app_type: &AppType,
+) -> Result<Provider, String> {
+    current_provider_for_app_from_db(db, app_type)?
+        .ok_or_else(|| format!("{app_type:?} 当前供应商不存在，无法接管 Live 配置"))
+}
+
 pub(crate) struct ProxyEventBusMessage {
     pub(crate) event_name: String,
     pub(crate) payload: Value,
