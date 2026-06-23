@@ -1154,6 +1154,7 @@
 本轮继续把 channel response status mapping 收敛到 `ForwarderResponseSource`：`RequestForwarder` 不再直接调用响应状态映射 helper，响应 source 负责根据当前 channel 的 statusCodeMapping 改写上游状态码并保留原有 debug 语义。
 本轮继续把 forwarder 的上游请求 body/headers/transport-policy 组装包装为 `ForwarderRequestSource`：`RequestForwarder` 不再直接调用请求体过滤、prompt cache trace、stream/identity 策略、ordered headers、body 序列化和 managed-account 上游占位 auth 校验 helper，默认 source 仍保持现有上游请求语义，后续外部宿主可替换请求组装层。
 本轮继续收窄 `ForwarderRequestSource` 的请求 header 策略边界：custom User-Agent provider fact 与 exact header-case 保留策略也由 request source 计算并随上游请求 parts 返回，`RequestForwarder` 不再直接消费这些请求组装 helper。
+本轮继续把 media fallback 的预防式图片替换与反应式 retry body 计划收敛到 `ForwarderRequestSource`：`RequestForwarder` 不再直接调用 media fallback gate、unsupported-image 错误识别、图片块检测或 marker 替换 helper，只消费 request source 产出的替换结果和 retry body。
 本轮继续把 forwarder 的上游 auth header 准备包装为 `ForwarderAuthSource`：`RequestForwarder` 不再直接提取 provider auth、解析 managed-account runtime token、构造 Codex OAuth session headers、注入 Copilot optimizer auth overrides 或调用 upstream auth finalization helper，默认 source 保持现有鉴权语义，后续外部宿主可替换鉴权头组装层。
 本轮继续把 Copilot auth override 的 deterministic request id 与 interaction id 计算收敛到 `ForwarderAuthSource`：`RequestForwarder` 不再直接调用 Copilot session/request/interaction helper，只把分类结果、原始 body、上游 body 和 headers 交给 auth source 生成鉴权 override 输入。
 本轮继续把 Copilot optimizer 的请求体分类与变形收敛到 `ForwarderRequestSource`：`RequestForwarder` 不再直接调用 Copilot 分类、孤立 tool_result 清理、tool_result 合并、thinking block 剥离或 warmup 模型降级 helper，只消费 request source 返回的优化后 body 与分类事实。
