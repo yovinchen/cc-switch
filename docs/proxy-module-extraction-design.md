@@ -308,7 +308,7 @@
 297. host `transform_gemini` 的 Anthropic tool schema hint 类型 re-export 已删除；Gemini streaming 与转换路径直接消费 `proxy-core::AnthropicToolSchemaHints`。
 298. OpenAI Chat Completions SSE -> Anthropic SSE 的状态机已迁入 `proxy-core::OpenAiChatToAnthropicSseState`，覆盖 Chat chunk 到 Anthropic SSE event 的协议转换；async byte transport wrapper 继续在后续步骤收敛。
 299. route dry-run 的 channel/model input 合约与 spec 入口已迁入 `proxy-core::RouteResolveChannelInput::from_channel_spec` / `resolve_channel_route_from_specs`；host 侧 DB record 到 route input 的投影由 `proxy_core_adapter` 承接，以便保留存储态 status/source kind 语义。
-300. 转换后流式响应 usage record 构造已迁入 `proxy-core::transformed_streaming_response_usage_record_with_request_id_fallback`，覆盖 Claude/OpenRouter 与 Codex Chat->Responses 转换流的 usage 解析、全 0 usage 跳过、response/outbound/request 模型归因和 request_id fallback；host `handlers` 只保留 SSE 事件收集、`UsageSink` 调用与日志。
+300. 转换后流式响应 usage record 构造已迁入 `proxy-core::transformed_streaming_response_usage_record_with_request_id_fallback`，覆盖 Claude/OpenRouter 与 Codex Chat->Responses 转换流的 usage 解析、全 0 usage 跳过、response/outbound/request 模型归因和 request_id fallback；host `handlers` 只调用 adapter 的协议专用 usage collector helper，不再直接选择 transformed usage format 或 stream event filter。
 301. OpenAI Chat Completions SSE -> Anthropic SSE 的 async byte transport wrapper 已迁入 `proxy-core::create_openai_chat_to_anthropic_sse_stream`，覆盖 UTF-8 安全拼接、SSE block/data 行解析、上游错误事件和 stream 结束 finalization；原 host `providers::streaming` 兼容 re-export 已删除，端到端协议回归测试归入 `proxy-core::openai_chat_stream`。
 302. OpenAI Responses SSE -> Anthropic SSE 的 async byte transport wrapper 已迁入 `proxy-core::create_openai_responses_to_anthropic_sse_stream`，覆盖 UTF-8 安全拼接、Responses SSE event/data 聚合、JSON parse 兜底跳过和上游错误事件；原 host `providers::streaming_responses` 兼容 re-export 已删除，端到端协议回归测试归入 `proxy-core::openai_responses_stream`。
 303. `handlers` 对 OpenAI Chat/Responses 流式转换 wrapper 的生产调用已改为直接引用 `proxy-core`；host `providers::streaming` 与 `providers::streaming_responses` 均已删除，不再作为 re-export 面参与编译。
@@ -1019,6 +1019,7 @@
 本轮继续把 Codex Chat 非流式 Chat->Responses 转换与 history 记录收敛到 `proxy_core_adapter::transform_codex_chat_response_with_history`，handler 不再直接调用 `chat_completion_to_response_with_context` 或非流 history record helper。
 本轮继续把 Codex Chat 流式 Chat->Responses SSE 转换与 history 记录收敛到 `proxy_core_adapter::transform_codex_chat_sse_with_history`，handler 不再手动串联 Chat SSE 转换 helper 和流式 history record helper。
 本轮继续把 Codex Chat->Responses transform 的 streaming/错标 SSE 聚合决策收敛到 `proxy_core_adapter::codex_chat_transform_streaming_decision`，handler 不再直接判断上游 SSE header 或指定 ChatCompletions 聚合策略。
+本轮继续把 Claude/Codex transformed usage 的 format 与 stream event filter 选择收敛到 `proxy_core_adapter` 的协议专用 helper，handler 不再直接引用 `TransformedResponseUsageFormat`、`claude_stream_usage_event_filter` 或 `codex_stream_usage_event_filter`。
 本轮继续把 Codex Chat 错误体归一化后的非 JSON warning 输出与 Responses 错误体 neutral response 构造收敛到 adapter，`handlers` 不再直接调用 `normalize_codex_chat_error_body` 或 `non_json_body_log_message`。
 本轮继续把转换后 JSON/Codex 错误响应构造失败的日志上下文和 `ProxyCoreError -> ProxyError` 映射收敛到 `error_mapper`，`handlers` 不再直接维护这些构造失败文案。
 本轮继续把 Claude/Codex 响应转换失败的日志上下文和 `TransformError` 包装收敛到 `error_mapper`，`handlers` 不再直接维护响应转换失败文案。
