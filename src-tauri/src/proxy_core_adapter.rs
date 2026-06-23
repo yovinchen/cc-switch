@@ -1098,6 +1098,15 @@ pub(crate) async fn live_takeover_any_enabled_from_db(db: &Database) -> Result<b
         .map_err(|e| format!("检查接管状态失败: {e}"))
 }
 
+pub(crate) async fn clear_provider_health_for_app_in_db(
+    db: &Database,
+    app_type: &str,
+) -> Result<(), String> {
+    db.clear_provider_health_for_app(app_type)
+        .await
+        .map_err(|e| format!("清除 {app_type} 健康状态失败: {e}"))
+}
+
 pub(crate) async fn live_backup_config_for_simple_restore_from_db(
     db: &Database,
     app_type: &AppType,

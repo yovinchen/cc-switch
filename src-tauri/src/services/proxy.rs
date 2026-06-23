@@ -13,6 +13,7 @@ use crate::proxy_core_adapter::{
     apply_codex_takeover_fields_for_provider, apply_codex_unified_session_bucket_for_provider,
     apply_gemini_takeover_env_fields, ClaudeTakeoverAuthPolicy,
     clear_legacy_live_takeover_active_flag_in_db,
+    clear_provider_health_for_app_in_db,
     clear_live_takeover_enabled_flags_in_db,
     codex_backup_projection_error_message, codex_live_write_projection,
     codex_provider_live_write_parts,
@@ -456,10 +457,7 @@ impl ProxyService {
         set_proxy_app_enabled_in_db(&self.db, app_type_str, false).await?;
 
         // 4) 清除该应用的健康状态（关闭代理时重置队列状态）
-        self.db
-            .clear_provider_health_for_app(app_type_str)
-            .await
-            .map_err(|e| format!("清除 {app_type_str} 健康状态失败: {e}"))?;
+        clear_provider_health_for_app_in_db(&self.db, app_type_str).await?;
 
         // 5) 若无其它接管，更新旧标志，并停止代理服务
         // 检查是否还有其它 app 的 enabled = true
