@@ -4,12 +4,12 @@
 
 use crate::app_config::AppType;
 use crate::provider::Provider;
-use crate::proxy::{error::ProxyError, server::ProxyState};
+use crate::proxy::error::ProxyError;
 use crate::proxy_core_adapter::{
     app_proxy_config_from_proxy_app_config, claude_api_format_from_metadata, AppKind,
     extract_proxy_session_id, proxy_core_app_kind_from_app_type,
     request_context_route_update_from_proxy_result_source, RequestContextRouteUpdateError,
-    provider_claude_api_format, request_model_for_forward,
+    provider_claude_api_format, request_model_for_forward, ProxyState,
     response_runtime_policy_from_app_proxy_config, ProxyResult, ProxyServices,
     ResponseRuntimePolicy, ResponseTimeoutConfig,
     selected_provider_display_name_for_error,

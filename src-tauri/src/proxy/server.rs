@@ -21,7 +21,7 @@ use crate::proxy_core_adapter::{
     ProxyServerInfo,
     update_all_circuit_breaker_configs_source, update_app_circuit_breaker_config_source,
 };
-pub use crate::proxy_core_adapter::ProxyState;
+use crate::proxy_core_adapter::ProxyState;
 use axum::{
     extract::DefaultBodyLimit,
     middleware,

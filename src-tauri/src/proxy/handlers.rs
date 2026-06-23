@@ -28,7 +28,6 @@ use super::{
         proxy_event_envelope_to_axum_sse_event,
     },
     response_processor::{process_response, read_decoded_body},
-    server::ProxyState,
 };
 use crate::app_config::AppType;
 use crate::proxy_core_adapter::{
@@ -38,7 +37,7 @@ use crate::proxy_core_adapter::{
     codex_chat_transform_streaming_decision, extract_anthropic_tool_schema_hints,
     extract_gemini_model_from_path, json_proxy_request_from_input, JsonProxyRequestInput,
     parse_json_proxy_request_body,
-    parse_json_proxy_request_body_or_null,
+    parse_json_proxy_request_body_or_null, ProxyState,
     management_auth_decision_from_proxy_config, record_forward_core_error_usage,
     record_claude_transformed_response_usage, record_codex_auto_transformed_response_usage,
     transform_codex_chat_response_with_history, transform_codex_chat_sse_with_history,

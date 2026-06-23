@@ -328,6 +328,11 @@ const FORBIDDEN_PROXY_SERVER_RUNTIME_STATE_TYPE_MARKERS: &[&str] = &[
     "pub struct ProxyState",
     "impl ProxyState",
 ];
+const FORBIDDEN_PROXY_STATE_SERVER_COMPAT_PATH_MARKERS: &[&str] = &[
+    "server::ProxyState",
+    "server::{ProxyState",
+    "pub use crate::proxy_core_adapter::ProxyState",
+];
 const FORBIDDEN_PROXY_SERVICE_EFFECTIVE_SETTINGS_SOURCE_MARKERS: &[&str] = &[
     "build_effective_settings_with_common_config(",
     "get_config_snippet(",
@@ -6458,6 +6463,42 @@ fn production_proxy_server_keeps_host_state_constructor_test_only() {
     assert!(
         violations.is_empty(),
         "production ProxyServer must receive adapter-built ProxyState instead of constructing host state from Database/AppHandle:\n{}",
+        violations.join("\n")
+    );
+}
+
+#[test]
+fn production_proxy_state_imports_use_adapter_path() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let files = [
+        "src/proxy/auth_adapter.rs",
+        "src/proxy/handler_context.rs",
+        "src/proxy/handlers.rs",
+        "src/proxy/response_processor.rs",
+        "src/proxy/server.rs",
+    ];
+
+    let mut violations = Vec::new();
+    for relative in files {
+        let path = manifest_dir.join(relative);
+        let source = fs::read_to_string(&path).unwrap_or_else(|_| panic!("read {relative}"));
+        for (line_index, line) in production_lines(&source) {
+            let code = line.split("//").next().unwrap_or_default();
+            for marker in FORBIDDEN_PROXY_STATE_SERVER_COMPAT_PATH_MARKERS {
+                if code.contains(marker) {
+                    violations.push(format!(
+                        "{relative}:{} contains ProxyState server compat marker `{}`",
+                        line_index + 1,
+                        marker
+                    ));
+                }
+            }
+        }
+    }
+
+    assert!(
+        violations.is_empty(),
+        "production proxy modules must import ProxyState directly from proxy_core_adapter:\n{}",
         violations.join("\n")
     );
 }

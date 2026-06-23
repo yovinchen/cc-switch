@@ -11,7 +11,6 @@ use super::{
         proxy_core_response_to_axum_response,
         proxy_core_response_to_axum_response_with_error_message,
     },
-    server::ProxyState,
 };
 use crate::proxy_core_adapter::{
     create_logged_passthrough_stream, decode_raw_proxy_response_body,
@@ -19,7 +18,7 @@ use crate::proxy_core_adapter::{
     non_streaming_body_timeout_message, passthrough_bytes_proxy_response,
     passthrough_stream_proxy_response, record_non_streaming_response_usage_from_context,
     response_headers_indicate_sse, streaming_usage_collector_from_context,
-    usage_logging_enabled_from_proxy_config, NonStreamingUsageRecordContext,
+    usage_logging_enabled_from_proxy_config, NonStreamingUsageRecordContext, ProxyState,
     AxumResponseBuildErrorContext, StreamingUsageCollectorContext, UsageParserConfig,
 };
 #[cfg(test)]

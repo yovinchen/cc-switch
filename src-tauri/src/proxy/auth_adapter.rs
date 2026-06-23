@@ -1,9 +1,10 @@
 use super::{
     error::ProxyError,
     error_mapper::claude_desktop_gateway_auth_error_to_proxy_error,
-    server::ProxyState,
 };
-use crate::proxy_core_adapter::validate_claude_desktop_gateway_bearer_header;
+use crate::proxy_core_adapter::{
+    validate_claude_desktop_gateway_bearer_header, ProxyState,
+};
 use axum::http::HeaderMap;
 
 pub(crate) fn validate_claude_desktop_gateway_auth(
