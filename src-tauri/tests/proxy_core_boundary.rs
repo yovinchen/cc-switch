@@ -879,6 +879,8 @@ const FORBIDDEN_HANDLER_CLAUDE_STREAMING_DECISION_MARKERS: &[&str] = &[
     "should_aggregate_codex_oauth_responses_sse(",
     "should_use_claude_transform_streaming(",
     "response_headers_indicate_sse(response.headers())",
+    "claude_transform_unlabeled_sse_aggregation(",
+    "Some(UpstreamSseAggregationKind::Responses)",
 ];
 const FORBIDDEN_HANDLER_CODEX_NON_STREAM_TRANSFORM_MARKERS: &[&str] = &[
     "chat_completion_to_response_with_context(",

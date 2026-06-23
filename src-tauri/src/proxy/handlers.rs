@@ -31,8 +31,7 @@ use super::{
 use crate::app_config::AppType;
 use crate::proxy_core_adapter::{
     append_query_to_endpoint_path,
-    claude_stream_usage_event_filter, claude_transform_unlabeled_sse_aggregation,
-    codex_stream_usage_event_filter,
+    claude_stream_usage_event_filter, codex_stream_usage_event_filter,
     create_logged_passthrough_stream,
     codex_chat_error_proxy_response, codex_chat_transform_streaming_decision,
     extract_anthropic_tool_schema_hints,
@@ -65,8 +64,8 @@ use crate::proxy_core_adapter::{
     ProxyStatusRequest, ProxyStatusResponse, RoutableModelList, RouteGroupListResponse,
     RouteResolveManagementRequest, RouteResolveRequest, RouteResolveResponse,
     TransformedResponseUsageFormat, UnlabeledSseFallbackLogContext,
-    UpstreamResponseParseFailureLogContext, UpstreamSseAggregationKind, CLAUDE_PARSER_CONFIG,
-    CODEX_PARSER_CONFIG, GEMINI_PARSER_CONFIG, OPENAI_PARSER_CONFIG,
+    UpstreamResponseParseFailureLogContext, CLAUDE_PARSER_CONFIG, CODEX_PARSER_CONFIG,
+    GEMINI_PARSER_CONFIG, OPENAI_PARSER_CONFIG,
 };
 use axum::{
     extract::{Path, Query, State},
@@ -715,20 +714,11 @@ async fn handle_claude_transform(
     let (response_headers, _status, body_bytes) =
         read_decoded_body(response, ctx.tag, ctx.body_timeout_duration()).await?;
 
-    // 兜底嗅探（#2234）：部分网关对 stream:false 强制返回 SSE 体，却把
-    // Content-Type 标成 application/json 等，is_sse() 的 header 检查失效。
-    // 此时按 SSE 聚合成单个 JSON 再走既有非流转换器，客户端仍收到
-    // Anthropic JSON，非流语义不变。gemini_native 暂无聚合器，落诊断错误。
-    let response_sse_aggregation = if streaming_decision.aggregate_codex_oauth_responses_sse {
-        Some(UpstreamSseAggregationKind::Responses)
-    } else {
-        claude_transform_unlabeled_sse_aggregation(api_format)
-    };
     let upstream_response = parse_logged_upstream_json_or_unlabeled_sse(
         body_bytes.as_ref(),
         &response_headers,
         "Failed to parse upstream response",
-        response_sse_aggregation,
+        streaming_decision.response_sse_aggregation,
         UpstreamResponseParseFailureLogContext::ClaudeTransform,
         UnlabeledSseFallbackLogContext::Claude {
             api_format,

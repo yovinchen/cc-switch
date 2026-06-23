@@ -3955,6 +3955,7 @@ pub(crate) fn provider_needs_claude_transform(provider: &Provider) -> bool {
 pub(crate) struct ClaudeTransformStreamingDecision {
     pub(crate) use_streaming: bool,
     pub(crate) aggregate_codex_oauth_responses_sse: bool,
+    pub(crate) response_sse_aggregation: Option<UpstreamSseAggregationKind>,
 }
 
 pub(crate) fn provider_claude_transform_streaming_decision(
@@ -3976,10 +3977,18 @@ pub(crate) fn provider_claude_transform_streaming_decision(
             is_codex_oauth,
         )
     };
+    let response_sse_aggregation = if use_streaming {
+        None
+    } else if aggregate_codex_oauth_responses_sse {
+        Some(UpstreamSseAggregationKind::Responses)
+    } else {
+        claude_transform_unlabeled_sse_aggregation(api_format)
+    };
 
     ClaudeTransformStreamingDecision {
         use_streaming,
         aggregate_codex_oauth_responses_sse,
+        response_sse_aggregation,
     }
 }
 
@@ -16062,6 +16071,10 @@ command = "latest-command"
         );
         assert!(!aggregate_decision.use_streaming);
         assert!(aggregate_decision.aggregate_codex_oauth_responses_sse);
+        assert!(matches!(
+            aggregate_decision.response_sse_aggregation,
+            Some(UpstreamSseAggregationKind::Responses)
+        ));
 
         let streaming_decision = provider_claude_transform_streaming_decision(
             &codex_provider,
@@ -16071,6 +16084,7 @@ command = "latest-command"
         );
         assert!(streaming_decision.use_streaming);
         assert!(!streaming_decision.aggregate_codex_oauth_responses_sse);
+        assert!(streaming_decision.response_sse_aggregation.is_none());
 
         let plain_provider = Provider::with_id(
             "plain".to_string(),
@@ -16086,6 +16100,20 @@ command = "latest-command"
         );
         assert!(upstream_sse_decision.use_streaming);
         assert!(!upstream_sse_decision.aggregate_codex_oauth_responses_sse);
+        assert!(upstream_sse_decision.response_sse_aggregation.is_none());
+
+        let non_stream_chat_decision = provider_claude_transform_streaming_decision(
+            &plain_provider,
+            false,
+            &HeaderMap::new(),
+            "openai_chat",
+        );
+        assert!(!non_stream_chat_decision.use_streaming);
+        assert!(!non_stream_chat_decision.aggregate_codex_oauth_responses_sse);
+        assert!(matches!(
+            non_stream_chat_decision.response_sse_aggregation,
+            Some(UpstreamSseAggregationKind::ChatCompletions)
+        ));
     }
 
     #[test]
