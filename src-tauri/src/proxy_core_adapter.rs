@@ -8533,6 +8533,17 @@ pub(crate) struct ForwarderPreparedRequest {
     pub(crate) force_identity_encoding: bool,
 }
 
+pub(crate) struct ForwarderCopilotRequestOptimizationInput<'a> {
+    pub(crate) body: Value,
+    pub(crate) headers: &'a HeaderMap,
+    pub(crate) config: &'a CopilotOptimizerConfig,
+}
+
+pub(crate) struct ForwarderCopilotRequestOptimization {
+    pub(crate) body: Value,
+    pub(crate) classification: CopilotClassification,
+}
+
 pub(crate) struct ForwarderRequestPartsInput<'a> {
     pub(crate) method: &'a Method,
     pub(crate) url: &'a str,
@@ -8555,6 +8566,11 @@ pub(crate) struct ForwarderUpstreamRequestParts {
 }
 
 pub(crate) trait ForwarderRequestSource {
+    fn optimize_copilot_request(
+        &self,
+        input: ForwarderCopilotRequestOptimizationInput<'_>,
+    ) -> ForwarderCopilotRequestOptimization;
+
     fn prepare_upstream_body(
         &self,
         input: ForwarderRequestPreparationInput<'_>,
@@ -8569,6 +8585,52 @@ pub(crate) trait ForwarderRequestSource {
 struct CcSwitchForwarderRequestSource;
 
 impl ForwarderRequestSource for CcSwitchForwarderRequestSource {
+    fn optimize_copilot_request(
+        &self,
+        input: ForwarderCopilotRequestOptimizationInput<'_>,
+    ) -> ForwarderCopilotRequestOptimization {
+        let has_anthropic_beta = input.headers.contains_key("anthropic-beta");
+        let classification = classify_copilot_request(
+            &input.body,
+            has_anthropic_beta,
+            input.config.compact_detection,
+            input.config.subagent_detection,
+        );
+
+        log::debug!(
+            "[Copilot] 优化器分类: initiator={}, is_warmup={}, is_compact={}, is_subagent={}",
+            classification.initiator,
+            classification.is_warmup,
+            classification.is_compact,
+            classification.is_subagent
+        );
+
+        let mut body = sanitize_copilot_orphan_tool_results(input.body);
+
+        if input.config.tool_result_merging {
+            body = merge_copilot_tool_results(body);
+        }
+
+        if input.config.strip_thinking {
+            body = strip_copilot_thinking_blocks(body);
+        }
+
+        let warmup_override = apply_copilot_warmup_model_override(
+            body,
+            input.config.warmup_downgrade,
+            classification.is_warmup,
+            &input.config.warmup_model,
+        );
+        if let Some(warmup_model) = &warmup_override.applied_model {
+            log::info!("[Copilot] Warmup 请求降级到模型: {}", warmup_model);
+        }
+
+        ForwarderCopilotRequestOptimization {
+            body: warmup_override.body,
+            classification,
+        }
+    }
+
     fn prepare_upstream_body(
         &self,
         input: ForwarderRequestPreparationInput<'_>,
@@ -13936,6 +13998,31 @@ mod tests {
             CopilotOptimizerConfig::default().warmup_model,
             "gpt-5-mini"
         );
+    }
+
+    #[test]
+    fn forwarder_request_source_wraps_copilot_optimizer_sequence() {
+        let source = CcSwitchForwarderRequestSource;
+        let mut headers = HeaderMap::new();
+        headers.insert(
+            "anthropic-beta",
+            "tools-2024-04-04".parse().expect("header value"),
+        );
+
+        let optimized = source.optimize_copilot_request(
+            ForwarderCopilotRequestOptimizationInput {
+                body: json!({
+                    "model": "claude-sonnet-4",
+                    "messages": [{"role": "user", "content": "Hello"}]
+                }),
+                headers: &headers,
+                config: &CopilotOptimizerConfig::default(),
+            },
+        );
+
+        assert_eq!(optimized.classification.initiator, "user");
+        assert!(optimized.classification.is_warmup);
+        assert_eq!(optimized.body["model"], "gpt-5-mini");
     }
 
     #[test]

@@ -6312,6 +6312,11 @@ fn production_forwarder_uses_request_source_resource() {
         "forwarder_custom_user_agent_header(",
         "should_preserve_exact_request_header_case(",
         "forwarder_is_codex_oauth_provider(",
+        "classify_copilot_request(",
+        "sanitize_copilot_orphan_tool_results(",
+        "merge_copilot_tool_results(",
+        "strip_copilot_thinking_blocks(",
+        "apply_copilot_warmup_model_override(",
     ];
     let mut violations = Vec::new();
 

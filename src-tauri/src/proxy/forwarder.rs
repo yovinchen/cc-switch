@@ -9,10 +9,10 @@ use super::{
 };
 use crate::proxy_core_adapter::{
     apply_bedrock_pre_send_optimizers, apply_copilot_model_normalization,
-    apply_copilot_warmup_model_override, apply_forward_request_model_mapping_from_provider,
+    apply_forward_request_model_mapping_from_provider,
     build_retryable_forward_failure_log, build_terminal_forward_failure_log,
     cache_injection_log_message, categorize_forward_failure,
-    classify_copilot_request, contains_image_blocks, forward_upstream_url_plan,
+    contains_image_blocks, forward_upstream_url_plan,
     forwarder_apply_codex_chat_upstream_model, forwarder_bedrock_env_flag,
     forwarder_codex_chat_reasoning_options,
     forward_failure_kind_from_proxy_error, forwarder_should_convert_codex_responses_to_chat,
@@ -23,7 +23,7 @@ use crate::proxy_core_adapter::{
     forwarder_provider_adapter_name, forwarder_provider_base_url, forwarder_provider_upstream_url,
     forwarder_provider_transform_request, forwarder_provider_transform_required,
     ForwarderAdapterHandle, is_openai_o_series,
-    is_unsupported_image_error, merge_copilot_tool_results,
+    is_unsupported_image_error,
     normalize_thinking_type,
     forwarder_claude_normalize_anthropic_messages,
     provider_adapter_name_is_claude,
@@ -31,17 +31,16 @@ use crate::proxy_core_adapter::{
     resolve_channel_response_status_mapping, resolve_media_prevention_policy,
     forwarder_claude_api_format, forwarder_claude_transform_required,
     responses_to_chat_completions_with_options,
-    sanitize_copilot_orphan_tool_results,
     should_apply_bedrock_pre_send_optimizer,
     should_check_media_retry, should_failover_after_rectifier_retry_failure,
     should_rectify_thinking_budget, should_rectify_thinking_signature,
     should_trigger_media_retry,
-    strip_copilot_thinking_blocks, strip_one_m_suffix_for_upstream,
+    strip_one_m_suffix_for_upstream,
     strip_one_m_suffix_for_upstream_from_body,
     supports_reasoning_effort, thinking_optimization_log_message,
     AttemptEventPhase, CopilotOptimizerConfig, ForwardFailureCategory, ForwardUpstreamUrlPlanInput,
     ForwarderAuthHeadersInput, ForwarderAuthSourceRef, ForwarderCopilotAuthOptimizationInput,
-    MediaRetryInput, OptimizerConfig,
+    ForwarderCopilotRequestOptimizationInput, MediaRetryInput, OptimizerConfig,
     FailoverSwitchSchedulerRef, ForwarderAttemptRuntimeSourceRef, ForwarderProtocolStateSourceRef,
     ForwarderRequestPartsInput, ForwarderRequestPreparationInput, ForwarderRequestSourceRef,
     ForwarderResponseSourceRef, ForwarderRuntimeStateSourceRef, ForwarderTransportSourceRef,
@@ -1140,61 +1139,23 @@ impl RequestForwarder {
         }
 
         // --- Copilot 优化器：分类 + 请求体优化（在格式转换之前执行） ---
-        // 注意：确定性 ID 也在此处计算，因为 mapped_body 在格式转换时会被 move
-        //
-        // 执行顺序（与 copilot-api 对齐）：
+        // 执行顺序（与 copilot-api 对齐）由 request source 保持：
         //   1. 先在原始 body 上分类（保留 tool_result 语义，避免误判为 user）
         //   2. 再清洗孤立 tool_result（防止上游 API 报错）
         //   3. 再合并 tool_result + text（减少 premium 计费）
         let copilot_optimization = if is_copilot && self.copilot_optimizer_config.enabled {
-            // 1. 在原始 body 上分类 — 必须在清洗/合并之前执行
-            //    孤立 tool_result 仍保持 tool_result 类型，分类能正确识别为 agent
-            let has_anthropic_beta = headers.contains_key("anthropic-beta");
-            let classification = classify_copilot_request(
-                &mapped_body,
-                has_anthropic_beta,
-                self.copilot_optimizer_config.compact_detection,
-                self.copilot_optimizer_config.subagent_detection,
+            let optimized = self.request_source.optimize_copilot_request(
+                ForwarderCopilotRequestOptimizationInput {
+                    body: mapped_body,
+                    headers,
+                    config: &self.copilot_optimizer_config,
+                },
             );
-
-            log::debug!(
-                "[Copilot] 优化器分类: initiator={}, is_warmup={}, is_compact={}, is_subagent={}",
-                classification.initiator,
-                classification.is_warmup,
-                classification.is_compact,
-                classification.is_subagent
-            );
-
-            // 2. 孤立 tool_result 清理 — 分类完成后再清洗
-            //    防止上游 API 因不匹配的 tool_result 报错导致重试/重复计费
-            mapped_body = sanitize_copilot_orphan_tool_results(mapped_body);
-
-            // 3. Tool result 合并 — 将 [tool_result, text] 变为 [tool_result(含text)]
-            if self.copilot_optimizer_config.tool_result_merging {
-                mapped_body = merge_copilot_tool_results(mapped_body);
-            }
-
-            // 3.5. 主动剥离 thinking block — Copilot 走 OpenAI 兼容端点不识别该块
-            //      避免上游拒绝后由 rectifier 反应式重试（首次请求已消耗 quota）
-            if self.copilot_optimizer_config.strip_thinking {
-                mapped_body = strip_copilot_thinking_blocks(mapped_body);
-            }
-
-            // 4. Warmup 小模型降级
-            let warmup_override = apply_copilot_warmup_model_override(
-                mapped_body,
-                self.copilot_optimizer_config.warmup_downgrade,
-                classification.is_warmup,
-                &self.copilot_optimizer_config.warmup_model,
-            );
-            if let Some(warmup_model) = &warmup_override.applied_model {
-                log::info!("[Copilot] Warmup 请求降级到模型: {}", warmup_model);
-            }
-            mapped_body = warmup_override.body;
+            mapped_body = optimized.body;
 
             Some(self.auth_source.prepare_copilot_auth_optimization(
                 ForwarderCopilotAuthOptimizationInput {
-                    classification,
+                    classification: optimized.classification,
                     request_classification_enabled: self
                         .copilot_optimizer_config
                         .request_classification,
