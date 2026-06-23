@@ -746,7 +746,7 @@
 735. managed account auth 的 Copilot/Codex OAuth 账号 ID 投影已改为 `proxy_core_adapter::{provider_github_copilot_managed_account_id,provider_codex_oauth_managed_account_id}`：认证模块只负责调用 OAuth manager，`ProviderMeta.authBinding`/旧字段兼容逻辑集中在 adapter。
 736. provider usage 查询命令里的 usage script 与 Copilot account 投影已改为 `proxy_core_adapter::{provider_usage_script,provider_github_copilot_managed_account_id}`：命令层保留模板分支和外部查询副作用，不再直接穿透 `Provider.meta.usage_script` 或 managed-account 绑定字段。
 737. Claude Desktop provider import 的 Claude env、Claude-safe 模型检查与 1M 默认支持 provider 投影已改为 `proxy_core_adapter::{provider_claude_env_settings,provider_claude_models_are_claude_safe,provider_claude_desktop_routes_support_1m_by_default}`：`commands/provider` 继续负责 route suggestion merge/import flow，settings/meta schema 读取集中在 adapter。
-738. saved usage script 查询服务的 usage script 读取已改为 `proxy_core_adapter::provider_usage_script`：`services/provider/usage` 继续负责执行脚本、credential fallback 与结果格式化，不再直接穿透 `Provider.meta.usage_script`。
+738. saved usage script 查询服务的 usage script 读取已改为 `proxy_core_adapter::provider_usage_script`，custom endpoints 服务的列表排序、URL 归一化与 last-used mutation 已改为 `proxy_core_adapter::{provider_custom_endpoint_list,normalize_custom_endpoint_url,custom_endpoint_url_key,mark_custom_endpoint_last_used}`：`services/provider` 继续负责执行脚本、credential fallback、DB 读写与结果格式化，不再直接穿透 provider meta 投影细节。
 739. stream check 服务的 provider-level testConfig 读取已改为 `proxy_core_adapter::provider_stream_check_test_config`：服务层继续负责与全局 `StreamCheckConfig` 合并，`Provider.meta.test_config` 的启用过滤集中在 adapter。
 740. Claude provider adapter 的 Codex OAuth 判定已改为 `proxy_core_adapter::provider_is_codex_oauth`：Claude transform 与 base URL 提取继续消费布尔事实，不再直接调用 `Provider::is_codex_oauth()` 或本地拆 `Provider.meta.provider_type`。
 741. proxy service 的接管策略 provider 判定已改为 `proxy_core_adapter::{provider_is_github_copilot,provider_is_codex_oauth}`：接管写配置仍负责占位符策略和模型字段合并，不再直接调用 `Provider::is_github_copilot()`/`Provider::is_codex_oauth()`。
@@ -1050,6 +1050,7 @@
 本轮继续把 forwarder 对 Codex Responses->Chat 判定、上游模型覆写和 reasoning options 的调用改为直接消费 adapter helper，并删除 provider 模块对应 re-export。
 本轮继续把 forwarder 的 Codex app gate 与 Responses->Chat provider predicate 收敛到 `proxy_core_adapter::forwarder_should_convert_codex_responses_to_chat`，转发器不再直接调用 provider-level Codex chat predicate。
 本轮继续把 global proxy 的显式代理 URL parse、scheme allowlist 和错误消息投影收敛到 `proxy_core_adapter::{validate_explicit_proxy_url,invalid_explicit_proxy_url_message}`，host HTTP client 只负责 reqwest proxy 构造和 client builder。
+本轮继续把 provider custom endpoints 的列表排序、URL key 归一化、空 URL 新增校验和 last-used mutation 收敛到 `proxy_core_adapter`，endpoint service 不再直接穿透 `Provider.meta.custom_endpoints`。
 本轮继续把 Copilot fingerprint header 常量提升到 adapter，`proxy_core_adapter` 不再反向引用 `providers::copilot_auth` 常量。
 本轮继续把 `codex_chat_history` 从 `proxy::providers` 移到 `proxy` 模块根，provider 目录只保留 provider adapter 和账号认证相关实现。
 本轮继续把 `ProviderRouterSource` 拆成 router 端的 provider/channel/config/health 四个 focused port；host adapter 侧拆出对应 DB-backed source/store，并把 `ProviderRouter::new(Arc<Database>)` 迁到 `proxy_core_adapter::provider_router_from_database` factory，生产代码不再直连 router 的 DB 构造入口。
