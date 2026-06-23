@@ -1098,6 +1098,7 @@
 本轮继续把 keep-state 关闭流程里的 legacy `live_takeover_active` 标志清理收敛到 `proxy_core_adapter::clear_legacy_live_takeover_active_flag_in_db`：`ProxyService::stop_with_restore_keep_state` 不再直接读写全局 proxy_config，同时继续保留 per-app enabled 状态用于下次启动自动恢复。
 本轮继续把 `set_takeover_for_app` 的 Live 备份存在性 source 读取收敛到 `proxy_core_adapter::live_takeover_backup_exists_from_db`：service 只消费是否存在备份的事实，读取失败按无备份继续重建接管的兼容策略和 warning 文案由 adapter 维护。
 本轮继续把 `set_takeover_for_app` 的 per-app Live 备份删除收敛到 `proxy_core_adapter::{delete_live_backup_best_effort_in_db,delete_live_backup_in_db}`：同步/写入失败回滚继续静默清理，关闭接管时删除失败继续作为错误返回，两种语义在 adapter 中显式分离。
+本轮继续把 `set_takeover_for_app` 的 legacy 接管 active flag 兼容写入和 any-enabled 读取收敛到 `proxy_core_adapter::{set_legacy_live_takeover_active_best_effort_in_db,live_takeover_any_enabled_from_db}`：service 不再直接调用废弃 DAO 兼容方法或维护“检查接管状态失败”错误投影。
 
 当前原则：核心 crate 可以新增端口和领域字段，但不得引入 `tauri`、`Database`、settings、commands、services 等宿主依赖；现有 runtime 行为必须继续通过 targeted tests 证明不回归。
 
