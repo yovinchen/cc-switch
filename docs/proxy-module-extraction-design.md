@@ -1021,6 +1021,7 @@
 本轮继续把 Copilot fingerprint header 常量提升到 adapter，`proxy_core_adapter` 不再反向引用 `providers::copilot_auth` 常量。
 本轮继续把 `codex_chat_history` 从 `proxy::providers` 移到 `proxy` 模块根，provider 目录只保留 provider adapter 和账号认证相关实现。
 本轮继续把 `ProviderRouterSource` 拆成 router 端的 provider/channel/config/health 四个 focused port；host adapter 侧拆出对应 DB-backed source/store，并把 `ProviderRouter::new(Arc<Database>)` 迁到 `proxy_core_adapter::provider_router_from_database` factory，生产代码不再直连 router 的 DB 构造入口。
+本轮继续把 `ProviderRouter` 的 route channel 输入从 DB `ProxyChannelRecord` 切到 router-local `ProviderRouterChannelRecord`；management channel specs/records 改为 host adapter 直接从 DB source 读取完整记录，避免为了管理 API 把 DAO record 暴露给 router。
 
 当前原则：核心 crate 可以新增端口和领域字段，但不得引入 `tauri`、`Database`、settings、commands、services 等宿主依赖；现有 runtime 行为必须继续通过 targeted tests 证明不回归。
 
@@ -1782,7 +1783,7 @@ Channel 管理 API 的部分 contract 也已开始收敛到 core：`management_a
 
 旧 provider 主地址和 `provider_endpoints` 到 channel 的兼容迁移规划也已进入 core：`build_legacy_channel_migration_plan` 负责 primary/endpoint channel 投影、endpoint 稳定排序、normalized base URL 去重、priority/interface/model route 推导和 review 计数。CC Switch adapter 只把本地 `Provider`、`custom_endpoints`、当前 provider 事实装配成 core input；DAO 只负责读取 legacy provider 事实和写入 `proxy_channels`/models/health。
 
-materialized channel 优先、空表才 fallback 到 legacy projection 的 source 选择规则已由 `channel_route_source_for_materialized_count` 固化，并经 `proxy_core_adapter::channel_route_records_from_db_source` 包装为 host DB source 选择入口；`ProviderRouter` 只调用 adapter helper 获取 `(channels, source)`，不再直接读取 materialized records 或 legacy preview。
+materialized channel 优先、空表才 fallback 到 legacy projection 的 source 选择规则已由 `channel_route_source_for_materialized_count` 固化，并经 `proxy_core_adapter::channel_route_records_from_db_source` 包装为 host DB source 选择入口；`ProviderRouter` 只接收 adapter 投影后的 `ProviderRouterChannelRecord` 路由字段，不再直接读取 materialized records、legacy preview 或完整 `ProxyChannelRecord` DAO 形状。management channel specs/records 则由 host adapter 直接用 DB source 读取完整记录。
 
 dry-run route 的 circuit-open 识别也继续收敛：`route_candidate_channel_circuit_keys` 负责把 `RouteResolveResponse` 的候选投影成 channel circuit lookup facts，`ProviderRouter` 只查询已有 breaker 可用性并把 availability facts 交给 `proxy_core_adapter::apply_route_candidate_circuit_availability`，由 adapter/core 生成 rejected:circuit_open response mutation。
 
@@ -1903,7 +1904,7 @@ ProxyRequest
 | `handlers.rs` | `transport/http/handlers.rs` + `engine` | HTTP 解析留 transport，业务处理移到 engine |
 | `handler_context.rs` | `engine/context.rs` | DB/settings 读取改为 service traits |
 | `forwarder.rs` | `engine/forward_pipeline.rs` | 切掉 Tauri/AppHandle/Database 依赖 |
-| `provider_router.rs` | `engine/routing.rs` | 当前已通过 router 端 provider/channel/config/health 四个 focused port 注入 source/store，DB-backed 构造统一在 host adapter factory；下一步把这些端口对齐到 core-facing `ProviderSource`/`ChannelSource`/`HealthStore`，并把 live breaker map 迁入 runtime-owned routing service |
+| `provider_router.rs` | `engine/routing.rs` | 当前已通过 router 端 provider/channel/config/health 四个 focused port 注入 source/store，channel route 输入已切到 router-local record，DB-backed 构造统一在 host adapter factory；下一步把这些端口对齐到 core-facing `ProviderSource`/`ChannelSource`/`HealthStore`，并把 live breaker map 迁入 runtime-owned routing service |
 | `failover_switch.rs` | `host/cc_switch` | 核心只发 failover event |
 | `response_processor.rs` | `engine/response_pipeline.rs` | 用量落库改为 `UsageSink` |
 | `usage/logger.rs` | `host/cc_switch/database_usage_sink.rs` | 只保留 parser/calculator 在核心 |
