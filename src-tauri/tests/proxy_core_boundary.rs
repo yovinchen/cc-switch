@@ -6226,6 +6226,9 @@ fn production_forwarder_uses_request_source_resource() {
         "request_body_serialize_error_message(",
         "validate_managed_account_upstream_auth(",
         "UpstreamRequestHeadersInput",
+        "forwarder_custom_user_agent_header(",
+        "should_preserve_exact_request_header_case(",
+        "forwarder_is_codex_oauth_provider(",
     ];
     let mut violations = Vec::new();
 

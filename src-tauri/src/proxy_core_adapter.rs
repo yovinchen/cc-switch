@@ -8447,11 +8447,11 @@ pub(crate) struct ForwarderRequestPartsInput<'a> {
     pub(crate) method: &'a Method,
     pub(crate) url: &'a str,
     pub(crate) inbound_headers: &'a HeaderMap,
+    pub(crate) provider: &'a Provider,
     pub(crate) filtered_body: &'a Value,
     pub(crate) auth_headers: &'a [(http::HeaderName, http::HeaderValue)],
     pub(crate) channel_header_overrides: Option<&'a Value>,
     pub(crate) force_identity_encoding: bool,
-    pub(crate) custom_user_agent: Option<&'a http::HeaderValue>,
     pub(crate) is_copilot: bool,
     pub(crate) adapter_name: &'a str,
     pub(crate) resolved_claude_api_format: Option<&'a str>,
@@ -8461,6 +8461,7 @@ pub(crate) struct ForwarderRequestPartsInput<'a> {
 pub(crate) struct ForwarderUpstreamRequestParts {
     pub(crate) ordered_headers: HeaderMap,
     pub(crate) body: Vec<u8>,
+    pub(crate) preserve_exact_header_case: bool,
 }
 
 pub(crate) trait ForwarderRequestSource {
@@ -8536,6 +8537,8 @@ impl ForwarderRequestSource for CcSwitchForwarderRequestSource {
         } else {
             None
         };
+        let custom_user_agent =
+            forwarder_custom_user_agent_header(input.provider, input.is_copilot);
 
         let ordered_headers = build_upstream_request_headers(UpstreamRequestHeadersInput {
             inbound_headers: input.inbound_headers,
@@ -8543,7 +8546,7 @@ impl ForwarderRequestSource for CcSwitchForwarderRequestSource {
             auth_headers: input.auth_headers,
             channel_header_overrides: input.channel_header_overrides,
             force_identity_encoding: input.force_identity_encoding,
-            custom_user_agent: input.custom_user_agent,
+            custom_user_agent: custom_user_agent.as_ref(),
             is_copilot: input.is_copilot,
             should_send_anthropic_headers,
             anthropic_beta_value: anthropic_beta_value.as_deref(),
@@ -8558,9 +8561,17 @@ impl ForwarderRequestSource for CcSwitchForwarderRequestSource {
         validate_managed_account_upstream_auth(input.url, &ordered_headers)
             .map_err(|error| ProxyError::AuthError(error.to_string()))?;
 
+        let preserve_exact_header_case = should_preserve_exact_request_header_case(
+            input.adapter_name,
+            forwarder_is_codex_oauth_provider(input.provider),
+            input.is_copilot,
+            input.resolved_claude_api_format,
+        );
+
         Ok(ForwarderUpstreamRequestParts {
             ordered_headers,
             body,
+            preserve_exact_header_case,
         })
     }
 }

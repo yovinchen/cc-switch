@@ -15,9 +15,8 @@ use crate::proxy_core_adapter::{
     classify_copilot_request, contains_image_blocks, forward_upstream_url_plan,
     forwarder_apply_codex_chat_upstream_model, forwarder_bedrock_env_flag,
     forwarder_codex_chat_reasoning_options,
-    forwarder_custom_user_agent_header,
     forward_failure_kind_from_proxy_error, forwarder_should_convert_codex_responses_to_chat,
-    forwarder_is_codex_oauth_provider, forwarder_is_full_url_provider,
+    forwarder_is_full_url_provider,
     forwarder_is_github_copilot_upstream,
     forwarder_replace_images_for_text_only_provider_model, forwarder_uses_anthropic_rectifiers,
     forwarder_provider_adapter_for_app,
@@ -38,8 +37,8 @@ use crate::proxy_core_adapter::{
     sanitize_copilot_orphan_tool_results,
     should_apply_bedrock_pre_send_optimizer,
     should_check_media_retry, should_failover_after_rectifier_retry_failure,
-    should_preserve_exact_request_header_case, should_rectify_thinking_budget,
-    should_rectify_thinking_signature, should_trigger_media_retry,
+    should_rectify_thinking_budget, should_rectify_thinking_signature,
+    should_trigger_media_retry,
     strip_copilot_thinking_blocks, strip_one_m_suffix_for_upstream,
     strip_one_m_suffix_for_upstream_from_body,
     supports_reasoning_effort, thinking_optimization_log_message,
@@ -55,7 +54,8 @@ use crate::proxy_core_adapter::{
 #[cfg(test)]
 use crate::proxy_core_adapter::{
     build_codex_oauth_session_headers, prepare_upstream_request_body_with_report,
-    provider_router_from_database,
+    forwarder_is_codex_oauth_provider, provider_router_from_database,
+    should_preserve_exact_request_header_case,
     validate_managed_account_upstream_auth,
 };
 use crate::{app_config::AppType, provider::Provider};
@@ -1366,11 +1366,6 @@ impl RequestForwarder {
         let request_is_streaming = prepared_request.request_is_streaming;
         let force_identity_encoding = prepared_request.force_identity_encoding;
 
-        // 自定义 User-Agent：与 stream_check / model_fetch 共用 parse_custom_user_agent，
-        // 运行时静默忽略非法值（前端在输入处给非阻断提示，不在保存时阻断）。
-        // Copilot 指纹 UA 不可覆盖。
-        let custom_user_agent = forwarder_custom_user_agent_header(provider, is_copilot);
-
         let auth_provider = attempt.auth_provider();
         let copilot_auth_optimization = copilot_optimization.as_ref().map(
             |(classification, det_request_id, interaction_id)| {
@@ -1406,13 +1401,13 @@ impl RequestForwarder {
                     method,
                     url: &url,
                     inbound_headers: headers,
+                    provider,
                     filtered_body: &filtered_body,
                     auth_headers: &auth_headers,
                     channel_header_overrides: attempt
                         .channel()
                         .map(|channel| &channel.header_overrides),
                     force_identity_encoding,
-                    custom_user_agent: custom_user_agent.as_ref(),
                     is_copilot,
                     adapter_name,
                     resolved_claude_api_format: resolved_claude_api_format.as_deref(),
@@ -1420,6 +1415,7 @@ impl RequestForwarder {
                 })?;
         let ordered_headers = request_parts.ordered_headers;
         let body_bytes = request_parts.body;
+        let preserve_exact_header_case = request_parts.preserve_exact_header_case;
 
         // 输出请求信息日志
         let tag = adapter_name;
@@ -1437,13 +1433,6 @@ impl RequestForwarder {
                 );
             }
         }
-
-        let preserve_exact_header_case = should_preserve_exact_request_header_case(
-            adapter_name,
-            forwarder_is_codex_oauth_provider(provider),
-            is_copilot,
-            resolved_claude_api_format.as_deref(),
-        );
 
         // 发送请求
         let response = self
