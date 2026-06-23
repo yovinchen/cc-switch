@@ -242,6 +242,11 @@ const FORBIDDEN_PROXY_SERVICE_PROXY_CONFIG_SOURCE_MARKERS: &[&str] = &[
     "保存代理配置失败",
     "保存动态代理端口失败",
 ];
+const FORBIDDEN_PROXY_SERVICE_EFFECTIVE_SETTINGS_SOURCE_MARKERS: &[&str] = &[
+    "build_effective_settings_with_common_config(",
+    "get_config_snippet(",
+    "self.db.as_ref()",
+];
 const FORBIDDEN_FORWARDER_MANAGED_AUTH_MARKERS: &[&str] = &[
     "CopilotAuthState",
     "CodexOAuthState",
@@ -4625,6 +4630,69 @@ fn production_proxy_service_delegates_proxy_config_source_to_adapter() {
     assert!(
         violations.is_empty(),
         "ProxyService must delegate proxy_config source reads and persistence to proxy_core_adapter:\n{}",
+        violations.join("\n")
+    );
+}
+
+#[test]
+fn production_proxy_service_delegates_effective_settings_source_to_adapter() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let path = manifest_dir.join("src/services/proxy.rs");
+    let source = fs::read_to_string(&path).expect("read services/proxy.rs");
+    let functions = [
+        (
+            "claude_provider_with_effective_settings",
+            function_slice(
+                &source,
+                "fn claude_provider_with_effective_settings",
+                "pub async fn sync_claude_live_from_provider_while_proxy_active",
+            ),
+        ),
+        (
+            "sync_codex_live_from_provider_while_proxy_active",
+            function_slice(
+                &source,
+                "pub async fn sync_codex_live_from_provider_while_proxy_active",
+                "fn get_current_provider_for_app",
+            ),
+        ),
+        (
+            "update_live_backup_from_provider_inner",
+            function_slice(
+                &source,
+                "async fn update_live_backup_from_provider_inner",
+                "pub async fn hot_switch_provider",
+            ),
+        ),
+        (
+            "hot_switch_provider_inner",
+            function_slice(
+                &source,
+                "pub(crate) async fn hot_switch_provider_inner",
+                "#[cfg(test)]",
+            ),
+        ),
+    ];
+
+    let mut violations = Vec::new();
+    for (function_name, function) in functions {
+        for (line_index, line) in production_lines(function) {
+            let code = line.split("//").next().unwrap_or_default();
+            for marker in FORBIDDEN_PROXY_SERVICE_EFFECTIVE_SETTINGS_SOURCE_MARKERS {
+                if code.contains(marker) {
+                    violations.push(format!(
+                        "src/services/proxy.rs {function_name}:{} contains effective settings source marker `{}`",
+                        line_index + 1,
+                        marker
+                    ));
+                }
+            }
+        }
+    }
+
+    assert!(
+        violations.is_empty(),
+        "ProxyService must delegate common-config effective settings source reads to proxy_core_adapter:\n{}",
         violations.join("\n")
     );
 }

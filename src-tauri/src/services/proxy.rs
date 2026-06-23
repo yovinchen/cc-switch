@@ -31,6 +31,7 @@ use crate::proxy_core_adapter::{
     live_takeover_app_types, provider_settings_have_proxy_placeholder_for_app,
     persist_ephemeral_listen_port_if_needed_in_db, proxy_app_enabled_from_db,
     proxy_config_from_db, sync_provider_settings_with_live_token,
+    provider_effective_settings_with_common_config_from_db,
     preserve_codex_mcp_servers_from_existing_config,
     preserve_codex_oauth_auth_in_backup_for_configured_policy,
     remove_claude_takeover_env_fields_if_present, CodexLiveWriteProjection,
@@ -54,9 +55,7 @@ use crate::proxy_core_adapter::{
     CodexTakeoverAuthPolicy, LiveTokenProviderSettingsIssue, ProxyConfig, ProxyRuntimeStatus,
     ProxyServerInfo, ProxyTakeoverStatus,
 };
-use crate::services::provider::{
-    build_effective_settings_with_common_config, write_live_with_common_config,
-};
+use crate::services::provider::write_live_with_common_config;
 #[cfg(test)]
 use serde_json::Map;
 use serde_json::{json, Value};
@@ -97,8 +96,8 @@ impl ProxyService {
         provider: &Provider,
     ) -> Result<Provider, String> {
         let mut effective_provider = provider.clone();
-        effective_provider.settings_config = build_effective_settings_with_common_config(
-            self.db.as_ref(),
+        effective_provider.settings_config = provider_effective_settings_with_common_config_from_db(
+            &self.db,
             &AppType::Claude,
             provider,
         )
@@ -129,8 +128,8 @@ impl ProxyService {
         provider: &Provider,
     ) -> Result<(), String> {
         let existing_live = self.read_codex_live().ok();
-        let mut effective_settings = build_effective_settings_with_common_config(
-            self.db.as_ref(),
+        let mut effective_settings = provider_effective_settings_with_common_config_from_db(
+            &self.db,
             &AppType::Codex,
             provider,
         )
@@ -1249,9 +1248,12 @@ impl ProxyService {
     ) -> Result<(), String> {
         let app_type_enum =
             AppType::from_str(app_type).map_err(|_| format!("未知的应用类型: {app_type}"))?;
-        let mut effective_settings =
-            build_effective_settings_with_common_config(self.db.as_ref(), &app_type_enum, provider)
-                .map_err(|e| format!("构建 {app_type} 有效配置失败: {e}"))?;
+        let mut effective_settings = provider_effective_settings_with_common_config_from_db(
+            &self.db,
+            &app_type_enum,
+            provider,
+        )
+        .map_err(|e| format!("构建 {app_type} 有效配置失败: {e}"))?;
 
         if matches!(app_type_enum, AppType::Codex) {
             let existing_backup_value = self
@@ -1388,8 +1390,8 @@ impl ProxyService {
         }
 
         if should_refresh_codex_live_from_backup {
-            let effective_settings = build_effective_settings_with_common_config(
-                self.db.as_ref(),
+            let effective_settings = provider_effective_settings_with_common_config_from_db(
+                &self.db,
                 &AppType::Codex,
                 &provider,
             )

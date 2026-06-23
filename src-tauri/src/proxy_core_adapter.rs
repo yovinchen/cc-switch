@@ -6049,6 +6049,38 @@ pub(crate) fn build_effective_settings_with_common_config(
     ProviderEffectiveSettingsResult { settings, warnings }
 }
 
+pub(crate) fn provider_effective_settings_with_common_config_from_db(
+    db: &Database,
+    app_type: &AppType,
+    provider: &Provider,
+) -> Result<Value, AppError> {
+    let snippet = db.get_config_snippet(app_type.as_str())?;
+    let result =
+        build_effective_settings_with_common_config(app_type, provider, snippet.as_deref());
+    log_provider_effective_settings_warnings(app_type, provider, result.warnings);
+
+    Ok(result.settings)
+}
+
+fn log_provider_effective_settings_warnings(
+    app_type: &AppType,
+    provider: &Provider,
+    warnings: Vec<ProviderEffectiveSettingsWarning>,
+) {
+    for warning in warnings {
+        match warning {
+            ProviderEffectiveSettingsWarning::CommonConfigApply(issue) => {
+                let err = common_config_settings_mutation_issue_message(issue);
+                log::warn!(
+                    "Failed to apply common config for {} provider '{}': {err}",
+                    app_type.as_str(),
+                    provider.id
+                );
+            }
+        }
+    }
+}
+
 pub(crate) fn remove_common_config_from_settings(
     app_type: &AppType,
     settings: &Value,
