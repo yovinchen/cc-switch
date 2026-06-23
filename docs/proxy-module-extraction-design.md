@@ -1072,6 +1072,7 @@
 本轮继续把 `codex_chat_history` 从 `proxy::providers` 移到 `proxy` 模块根，provider 目录只保留 provider adapter 和账号认证相关实现。
 本轮继续把 `ProviderRouterSource` 拆成 router 端的 provider/channel/config/health 四个 focused port；host adapter 侧拆出对应 DB-backed source/store，并把 `ProviderRouter::new(Arc<Database>)` 迁到 `proxy_core_adapter::provider_router_from_database` factory，生产代码不再直连 router 的 DB 构造入口。
 本轮继续把 `ProviderRouter` 的 route channel 输入从 router-local `ProviderRouterChannelRecord` 切到 core `RouteResolveChannelInput`；management channel specs/records 仍由 host adapter 直接从 DB source 读取完整记录，避免为了管理 API 把 DAO record 暴露给 router，也避免 router 维护自己的中转 DTO。
+本轮继续把 forwarder 的 provider adapter base URL 提取收敛到 `proxy_core_adapter::forwarder_provider_base_url`，forwarder 不再直接调用 `ProviderAdapter::extract_base_url`。
 
 当前原则：核心 crate 可以新增端口和领域字段，但不得引入 `tauri`、`Database`、settings、commands、services 等宿主依赖；现有 runtime 行为必须继续通过 targeted tests 证明不回归。
 
