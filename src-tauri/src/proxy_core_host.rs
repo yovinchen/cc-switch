@@ -30,7 +30,7 @@ use crate::proxy_core_adapter::{
     claude_desktop_model_routes_from_router_source,
     channel_key_records_from_db_source,
     channel_model_records_from_db_source,
-    channel_records_from_router_source,
+    channel_records_from_db_source,
     channel_spec_from_source_lookup,
     channel_specs_from_source_lookup,
     channel_migration_materialize_from_db_source,
@@ -129,7 +129,6 @@ impl CcSwitchProxyServices {
             },
             channels: CcSwitchChannelSource {
                 db: db.clone(),
-                router: runtime.provider_router.clone(),
             },
             route_policies: CcSwitchRoutePolicySource { db: db.clone() },
             route_resolver: CcSwitchRouteResolver {
@@ -164,7 +163,6 @@ impl CcSwitchProxyServices {
             },
             channels: CcSwitchChannelSource {
                 db: db.clone(),
-                router: router.clone(),
             },
             route_policies: CcSwitchRoutePolicySource { db: db.clone() },
             route_resolver: CcSwitchRouteResolver {
@@ -319,7 +317,6 @@ impl ProviderSource for CcSwitchProviderSource {
 #[derive(Clone)]
 struct CcSwitchChannelSource {
     db: Arc<Database>,
-    router: Arc<ProviderRouter>,
 }
 
 impl ChannelSource for CcSwitchChannelSource {
@@ -327,9 +324,7 @@ impl ChannelSource for CcSwitchChannelSource {
         &'a self,
         query: ChannelQuery<'a>,
     ) -> BoxFuture<'a, ProxyCoreResult<Vec<ChannelSpec>>> {
-        Box::pin(async move {
-            channel_specs_from_source_lookup(&self.db, &self.router, query).await
-        })
+        Box::pin(async move { channel_specs_from_source_lookup(&self.db, query) })
     }
 
     fn get_channel<'a>(
@@ -428,7 +423,7 @@ impl ChannelSource for CcSwitchChannelSource {
         &'a self,
         app: &'a AppKind,
     ) -> BoxFuture<'a, ProxyCoreResult<(ChannelRouteSource, Vec<ChannelRecord>)>> {
-        Box::pin(async move { channel_records_from_router_source(&self.router, app).await })
+        Box::pin(async move { channel_records_from_db_source(&self.db, app) })
     }
 
     fn list_materialized_channel_records<'a>(

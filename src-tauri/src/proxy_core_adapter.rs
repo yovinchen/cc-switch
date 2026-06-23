@@ -14,9 +14,9 @@ use crate::proxy::events::ProxyEventBus;
 use crate::proxy::failover_switch::FailoverSwitchManager;
 use crate::proxy::hyper_client::ProxyResponse;
 use crate::proxy::provider_router::{
-    ProviderFailoverRouterSources, ProviderRouter, ProviderRouterChannelSource,
-    ProviderRouterConfigSource, ProviderRouterHealthStore, ProviderRouterProviderSource,
-    ProviderRouterSources,
+    ProviderFailoverRouterSources, ProviderRouter, ProviderRouterChannelModelRecord,
+    ProviderRouterChannelRecord, ProviderRouterChannelSource, ProviderRouterConfigSource,
+    ProviderRouterHealthStore, ProviderRouterProviderSource, ProviderRouterSources,
 };
 use crate::proxy::codex_chat_history::CodexChatHistoryStore;
 use crate::proxy::route_attempt::ForwardAttempt;
@@ -4344,8 +4344,8 @@ impl ProviderRouterChannelSource for CcSwitchProviderRouterChannelSource {
     fn channel_route_records(
         &self,
         app_type: &str,
-    ) -> Result<(Vec<ProxyChannelRecord>, ChannelRouteSource), AppError> {
-        channel_route_records_from_db_source(&self.db, app_type)
+    ) -> Result<(Vec<ProviderRouterChannelRecord>, ChannelRouteSource), AppError> {
+        router_channel_records_from_db_source(&self.db, app_type)
             .map_err(app_error_from_proxy_core_error)
     }
 }
@@ -5582,17 +5582,12 @@ pub(crate) fn channel_specs_from_source(
     proxy_channel_records_to_core_specs_for_query(channels, query)
 }
 
-pub(crate) async fn channel_specs_from_source_lookup(
+pub(crate) fn channel_specs_from_source_lookup(
     db: &Database,
-    router: &ProviderRouter,
     query: ChannelQuery<'_>,
 ) -> ProxyCoreResult<Vec<ChannelSpec>> {
     let channels = if query.allow_legacy_projection {
-        router
-            .list_channels_for_app(query.app.as_str())
-            .await
-            .map_err(|error| app_error("list channels", error))?
-            .0
+        channel_route_records_from_db_source(db, query.app.as_str())?.0
     } else {
         db.list_proxy_channels_for_app(query.app.as_str())
             .map_err(|error| app_error("list materialized channels", error))?
@@ -5650,13 +5645,55 @@ pub(crate) fn channel_route_records_from_db_source(
     .map_err(|error| app_error("load channel route records", error))
 }
 
-pub(crate) fn proxy_channel_route_inputs_to_core(
+pub(crate) fn proxy_channel_record_to_router_channel_record(
+    channel: ProxyChannelRecord,
+) -> ProviderRouterChannelRecord {
+    ProviderRouterChannelRecord {
+        id: channel.id,
+        provider_id: channel.provider_id,
+        name: channel.name,
+        status: channel.status,
+        base_url: channel.base_url,
+        interface_kind: channel.interface_kind,
+        groups: channel.groups,
+        models: channel
+            .models
+            .into_iter()
+            .map(|model| ProviderRouterChannelModelRecord {
+                public_model: model.public_model,
+                upstream_model: model.upstream_model,
+            })
+            .collect(),
+        priority: channel.priority,
+        weight: channel.weight,
+        source_kind: channel.source_kind.as_str().to_string(),
+    }
+}
+
+pub(crate) fn proxy_channel_records_to_router_channel_records(
     channels: impl IntoIterator<Item = ProxyChannelRecord>,
+) -> Vec<ProviderRouterChannelRecord> {
+    channels
+        .into_iter()
+        .map(proxy_channel_record_to_router_channel_record)
+        .collect()
+}
+
+pub(crate) fn router_channel_records_from_db_source(
+    db: &Database,
+    app_type: &str,
+) -> ProxyCoreResult<(Vec<ProviderRouterChannelRecord>, ChannelRouteSource)> {
+    let (channels, source) = channel_route_records_from_db_source(db, app_type)?;
+    Ok((proxy_channel_records_to_router_channel_records(channels), source))
+}
+
+pub(crate) fn proxy_channel_route_inputs_to_core(
+    channels: impl IntoIterator<Item = ProviderRouterChannelRecord>,
 ) -> Vec<RouteResolveChannelInput> {
     channels
         .into_iter()
         .map(|channel| {
-            let ProxyChannelRecord {
+            let ProviderRouterChannelRecord {
                 id,
                 provider_id,
                 name,
@@ -5668,7 +5705,6 @@ pub(crate) fn proxy_channel_route_inputs_to_core(
                 priority,
                 weight,
                 source_kind,
-                ..
             } = channel;
 
             route_resolve_channel_input_from_record(RouteResolveChannelRecordInput {
@@ -5688,7 +5724,7 @@ pub(crate) fn proxy_channel_route_inputs_to_core(
                     .collect(),
                 priority,
                 weight,
-                source_kind: source_kind.as_str().to_string(),
+                source_kind,
             })
         })
         .collect()
@@ -8618,14 +8654,11 @@ pub(crate) fn proxy_channel_records_to_core(
         .collect()
 }
 
-pub(crate) async fn channel_records_from_router_source(
-    router: &ProviderRouter,
+pub(crate) fn channel_records_from_db_source(
+    db: &Database,
     app: &AppKind,
 ) -> ProxyCoreResult<(ChannelRouteSource, Vec<ChannelRecord>)> {
-    let (channels, source) = router
-        .list_channels_for_app(app.as_str())
-        .await
-        .map_err(|error| app_error("list channel records", error))?;
+    let (channels, source) = channel_route_records_from_db_source(db, app.as_str())?;
     Ok((source, proxy_channel_records_to_core(channels)))
 }
 

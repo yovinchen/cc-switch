@@ -2,7 +2,6 @@
 //!
 //! 负责选择和管理代理目标供应商，实现智能故障转移
 
-use crate::database::ProxyChannelRecord;
 use crate::error::AppError;
 use crate::provider::Provider;
 use crate::proxy::circuit_breaker::CircuitBreaker;
@@ -25,6 +24,25 @@ use tokio::sync::RwLock;
 pub(crate) struct ProviderFailoverRouterSources {
     pub(crate) providers: IndexMap<String, Provider>,
     pub(crate) lookups: Vec<ProviderFailoverCircuitLookup>,
+}
+
+pub(crate) struct ProviderRouterChannelModelRecord {
+    pub(crate) public_model: String,
+    pub(crate) upstream_model: String,
+}
+
+pub(crate) struct ProviderRouterChannelRecord {
+    pub(crate) id: String,
+    pub(crate) provider_id: String,
+    pub(crate) name: String,
+    pub(crate) status: String,
+    pub(crate) base_url: String,
+    pub(crate) interface_kind: String,
+    pub(crate) groups: Vec<String>,
+    pub(crate) models: Vec<ProviderRouterChannelModelRecord>,
+    pub(crate) priority: i64,
+    pub(crate) weight: u32,
+    pub(crate) source_kind: String,
 }
 
 pub(crate) trait ProviderRouterConfigSource: Send + Sync {
@@ -52,7 +70,7 @@ pub(crate) trait ProviderRouterChannelSource: Send + Sync {
     fn channel_route_records(
         &self,
         app_type: &str,
-    ) -> Result<(Vec<ProxyChannelRecord>, ChannelRouteSource), AppError>;
+    ) -> Result<(Vec<ProviderRouterChannelRecord>, ChannelRouteSource), AppError>;
 }
 
 pub(crate) trait ProviderRouterHealthStore: Send + Sync {
@@ -168,7 +186,7 @@ impl ProviderRouter {
     pub async fn list_channels_for_app(
         &self,
         app_type: &str,
-    ) -> Result<(Vec<ProxyChannelRecord>, ChannelRouteSource), AppError> {
+    ) -> Result<(Vec<ProviderRouterChannelRecord>, ChannelRouteSource), AppError> {
         self.sources.channels.channel_route_records(app_type)
     }
 
