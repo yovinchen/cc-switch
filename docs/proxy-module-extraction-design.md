@@ -1020,7 +1020,7 @@
 本轮继续把 forwarder 对 Codex Responses->Chat 判定、上游模型覆写和 reasoning options 的调用改为直接消费 adapter helper，并删除 provider 模块对应 re-export。
 本轮继续把 Copilot fingerprint header 常量提升到 adapter，`proxy_core_adapter` 不再反向引用 `providers::copilot_auth` 常量。
 本轮继续把 `codex_chat_history` 从 `proxy::providers` 移到 `proxy` 模块根，provider 目录只保留 provider adapter 和账号认证相关实现。
-本轮继续把 `ProviderRouter` 从直接持有 `Database` 改为依赖可注入 `ProviderRouterSource`；`CcSwitchProviderRouterSource` 在 host adapter 内集中承接 provider/channel/config/health 读取与健康状态持久化，保留 `ProviderRouter::new(Arc<Database>)` 兼容入口，后续可继续拆成更细的 `ProviderSource`/`ChannelSource`/`HealthStore` 端口。
+本轮继续把 `ProviderRouterSource` 拆成 router 端的 provider/channel/config/health 四个 focused port；host adapter 侧拆出对应 DB-backed source/store，保留 `ProviderRouter::new(Arc<Database>)` 兼容入口，后续可继续把 router 端口映射到 core-facing `ProviderSource`/`ChannelSource`/`HealthStore`。
 
 当前原则：核心 crate 可以新增端口和领域字段，但不得引入 `tauri`、`Database`、settings、commands、services 等宿主依赖；现有 runtime 行为必须继续通过 targeted tests 证明不回归。
 
@@ -1599,7 +1599,7 @@ pub trait RoutePolicySource: Send + Sync {
 - `ChannelSource` 负责读取可路由 channel，包括现有 provider 主 URL、`provider_endpoints` 投影出来的兼容 channel，以及未来新增的独立 channel 表。
 - `RouteResolver` 负责按 app、接口、模型、group、优先级、权重、熔断、限流和 retry 策略生成尝试计划。
 
-当前分支已先把 `ProviderRouter` 的 DB source 读取和健康持久化收进 `proxy_core_adapter`：router 生产代码不再直接调用 provider/channel/config/health 表的读写 API，而是通过 adapter helper 取得 provider failover sources、current provider source、channel route source、router config 和 health persistence 入口。后续真正拆 crate 时，应把这些 helper 进一步落成可注入的 `ProviderSource`/`ChannelSource`/`HealthStore` trait 实现，而不是让 core 持有 CC Switch `Database`。
+当前分支已先把 `ProviderRouter` 的 DB source 读取和健康持久化收进 `proxy_core_adapter`：router 生产代码不再直接调用 provider/channel/config/health 表的读写 API，而是通过 `ProviderRouterProviderSource`、`ProviderRouterChannelSource`、`ProviderRouterConfigSource` 和 `ProviderRouterHealthStore` 四个可注入端口取得 provider failover sources、current provider source、channel route source、router config 和 health persistence 入口。后续真正拆 crate 时，应把这些 router 端口进一步映射到 core-facing `ProviderSource`/`ChannelSource`/`HealthStore` trait 实现，而不是让 core 持有 CC Switch `Database`。
 
 这样核心仍拥有路由算法，宿主只提供数据。
 
@@ -1903,7 +1903,7 @@ ProxyRequest
 | `handlers.rs` | `transport/http/handlers.rs` + `engine` | HTTP 解析留 transport，业务处理移到 engine |
 | `handler_context.rs` | `engine/context.rs` | DB/settings 读取改为 service traits |
 | `forwarder.rs` | `engine/forward_pipeline.rs` | 切掉 Tauri/AppHandle/Database 依赖 |
-| `provider_router.rs` | `engine/routing.rs` | 当前已通过 `ProviderRouterSource` trait 注入 provider/channel/config/health source，DB-backed 实现在 `CcSwitchProviderRouterSource`；下一步把该粗粒度 source 拆成 `ProviderSource`/`ChannelSource`/`HealthStore`，并把 live breaker map 迁入 runtime-owned routing service |
+| `provider_router.rs` | `engine/routing.rs` | 当前已通过 router 端 provider/channel/config/health 四个 focused port 注入 source/store，DB-backed 实现在 host adapter；下一步把这些端口对齐到 core-facing `ProviderSource`/`ChannelSource`/`HealthStore`，并把 live breaker map 迁入 runtime-owned routing service |
 | `failover_switch.rs` | `host/cc_switch` | 核心只发 failover event |
 | `response_processor.rs` | `engine/response_pipeline.rs` | 用量落库改为 `UsageSink` |
 | `usage/logger.rs` | `host/cc_switch/database_usage_sink.rs` | 只保留 parser/calculator 在核心 |
