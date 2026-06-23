@@ -210,6 +210,10 @@ const FORBIDDEN_PROXY_CORE_HOST_ROUTE_RESOLVER_SOURCE_MARKERS: &[&str] = &[
     "crate::proxy_core_adapter::route_plan_from_request(",
 ];
 const FORBIDDEN_PROXY_CORE_HOST_HEALTH_STORE_SOURCE_MARKERS: &[&str] = &[
+    "struct CcSwitchHealthStore",
+    "impl ChannelHealthStore for CcSwitchHealthStore",
+    "record_channel_attempt_in_db_source(",
+    "reset_channel_health_with_router_source(",
     ".update_proxy_channel_health_with_threshold(",
     ".get_proxy_channel_app_type(",
     ".reset_channel_breaker(",
@@ -3151,7 +3155,7 @@ fn production_proxy_core_host_delegates_route_resolver_source_to_adapter() {
     let route_resolver = function_slice(
         &source,
         "impl RouteResolver for CcSwitchRouteResolver",
-        "#[derive(Clone)]\nstruct CcSwitchHealthStore",
+        "#[derive(Clone)]\nstruct CcSwitchChannelReachabilityProbe",
     );
 
     let mut violations = Vec::new();
@@ -3180,19 +3184,14 @@ fn production_proxy_core_host_delegates_health_store_sources_to_adapter() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let path = manifest_dir.join("src/proxy_core_host.rs");
     let source = fs::read_to_string(&path).expect("read proxy_core_host.rs");
-    let health_store = function_slice(
-        &source,
-        "impl ChannelHealthStore for CcSwitchHealthStore",
-        "#[derive(Clone)]\nstruct CcSwitchChannelReachabilityProbe",
-    );
 
     let mut violations = Vec::new();
-    for (line_index, line) in production_lines(health_store) {
+    for (line_index, line) in production_lines(&source) {
         let code = line.split("//").next().unwrap_or_default();
         for marker in FORBIDDEN_PROXY_CORE_HOST_HEALTH_STORE_SOURCE_MARKERS {
             if code.contains(marker) {
                 violations.push(format!(
-                    "src/proxy_core_host.rs CcSwitchHealthStore:{} contains health store source marker `{}`",
+                    "src/proxy_core_host.rs:{} contains health store source marker `{}`",
                     line_index + 1,
                     marker
                 ));

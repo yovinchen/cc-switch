@@ -6212,6 +6212,36 @@ pub(crate) async fn reset_channel_health_with_router_source(
     Ok(channel_health_reset_from_plan(reset_plan))
 }
 
+#[derive(Clone)]
+pub(crate) struct CcSwitchChannelHealthStore {
+    db: Arc<Database>,
+    router: Arc<ProviderRouter>,
+}
+
+impl CcSwitchChannelHealthStore {
+    pub(crate) fn new(db: Arc<Database>, router: Arc<ProviderRouter>) -> Self {
+        Self { db, router }
+    }
+}
+
+impl ChannelHealthStore for CcSwitchChannelHealthStore {
+    fn record_attempt<'a>(
+        &'a self,
+        result: ChannelAttemptResult,
+    ) -> BoxFuture<'a, ProxyCoreResult<()>> {
+        Box::pin(async move { record_channel_attempt_in_db_source(&self.db, result) })
+    }
+
+    fn reset_channel<'a>(
+        &'a self,
+        channel_id: &'a str,
+    ) -> BoxFuture<'a, ProxyCoreResult<ChannelHealthReset>> {
+        Box::pin(async move {
+            reset_channel_health_with_router_source(&self.db, &self.router, channel_id).await
+        })
+    }
+}
+
 pub(crate) fn proxy_response_to_core_response<G>(
     response: ProxyResponse,
     connection_guard: Option<G>,
