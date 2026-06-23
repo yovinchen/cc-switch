@@ -1103,6 +1103,7 @@
 本轮继续把 `start_with_takeover` 的全量 Live 备份清理收敛到 `proxy_core_adapter::{cleanup_all_live_backups_best_effort_in_db,delete_all_live_backups_best_effort_in_db}`：启动前失败继续输出清理 warning，恢复成功后的清理继续静默 best-effort。
 本轮继续把 `start_with_takeover` 的 legacy 接管 active flag 写入收敛到 `proxy_core_adapter::{set_legacy_live_takeover_active_in_db,set_legacy_live_takeover_active_best_effort_in_db}`：首次写入失败仍中止启动，恢复成功后的回滚写入仍为 best-effort。
 本轮继续把 Live token 回填后的 provider settings 持久化收敛到 `proxy_core_adapter::update_live_token_sync_provider_settings_in_db`：`ProxyService::sync_live_config_to_provider` 只负责判断 token 投影是否产生变更，DB 写回失败继续 warning-only，不阻断接管。
+本轮继续把 `ProxyService::{start,stop}` 的全局 `proxy_enabled` 持久化收敛到 `proxy_core_adapter::{enable_global_proxy_in_db,disable_global_proxy_best_effort_in_db}`：启动时启用失败仍返回错误，停止时禁用失败继续只输出 warning。
 
 当前原则：核心 crate 可以新增端口和领域字段，但不得引入 `tauri`、`Database`、settings、commands、services 等宿主依赖；现有 runtime 行为必须继续通过 targeted tests 证明不回归。
 
