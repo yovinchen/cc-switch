@@ -261,6 +261,21 @@ const FORBIDDEN_PROXY_SERVICE_UPDATE_BACKUP_SAVE_MARKERS: &[&str] = &[
     "序列化 Gemini 配置失败",
     "更新 {app_type} 备份失败",
 ];
+const FORBIDDEN_PROXY_SERVICE_HOT_SWITCH_SOURCE_MARKERS: &[&str] = &[
+    ".get_provider_by_id(",
+    "should_block_proxy_switch_to_provider(",
+    "crate::settings::get_effective_current_provider(",
+    ".get_live_backup(",
+    ".set_current_provider(",
+    "crate::settings::set_current_provider(",
+    "读取供应商失败",
+    "供应商不存在",
+    "读取当前供应商失败",
+    "读取 {app_type} 备份失败",
+    "更新当前供应商失败",
+    "更新本地当前供应商失败",
+    "Cannot switch to official provider during proxy takeover",
+];
 const FORBIDDEN_PROXY_SERVICE_KEEP_STATE_ACTIVE_FLAG_MARKERS: &[&str] = &[
     ".get_proxy_config()",
     ".update_proxy_config(",
@@ -4718,6 +4733,38 @@ fn production_proxy_service_delegates_update_backup_save_to_adapter() {
     assert!(
         violations.is_empty(),
         "ProxyService::update_live_backup_from_provider_inner must delegate provider-derived backup persistence to proxy_core_adapter:\n{}",
+        violations.join("\n")
+    );
+}
+
+#[test]
+fn production_proxy_service_delegates_hot_switch_sources_to_adapter() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let path = manifest_dir.join("src/services/proxy.rs");
+    let source = fs::read_to_string(&path).expect("read services/proxy.rs");
+    let function = function_slice(
+        &source,
+        "pub(crate) async fn hot_switch_provider_inner",
+        "#[cfg(test)]",
+    );
+
+    let mut violations = Vec::new();
+    for (line_index, line) in production_lines(function) {
+        let code = line.split("//").next().unwrap_or_default();
+        for marker in FORBIDDEN_PROXY_SERVICE_HOT_SWITCH_SOURCE_MARKERS {
+            if code.contains(marker) {
+                violations.push(format!(
+                    "src/services/proxy.rs hot_switch_provider_inner:{} contains hot-switch source marker `{}`",
+                    line_index + 1,
+                    marker
+                ));
+            }
+        }
+    }
+
+    assert!(
+        violations.is_empty(),
+        "ProxyService::hot_switch_provider_inner must delegate provider/current/backup source reads and current-provider persistence to proxy_core_adapter:\n{}",
         violations.join("\n")
     );
 }

@@ -32,7 +32,9 @@ use crate::proxy_core_adapter::{
     live_takeover_app_types,
     persist_ephemeral_listen_port_if_needed_in_db, proxy_app_enabled_from_db,
     proxy_config_from_db, sync_provider_settings_with_live_token,
+    persist_hot_switch_current_provider_sources,
     provider_effective_settings_with_common_config_from_db,
+    proxy_hot_switch_target_state_from_db,
     save_live_backup_value_in_db,
     preserve_codex_mcp_servers_from_existing_config,
     preserve_codex_oauth_auth_in_backup_for_configured_policy,
@@ -52,8 +54,7 @@ use crate::proxy_core_adapter::{
     remove_gemini_takeover_env_fields_if_present, set_proxy_app_enabled_in_db,
     save_provider_live_backup_from_effective_settings_in_db,
     set_legacy_live_takeover_active_best_effort_in_db,
-    set_legacy_live_takeover_active_in_db, should_block_proxy_switch_to_provider,
-    ssot_live_restore_provider_from_db,
+    set_legacy_live_takeover_active_in_db, ssot_live_restore_provider_from_db,
     update_live_token_sync_provider_settings_in_db,
     update_proxy_config_preserving_live_takeover_active_in_db, CircuitBreakerConfig,
     CodexTakeoverAuthPolicy, LiveTokenProviderSettingsIssue, ProxyConfig, ProxyRuntimeStatus,
@@ -1235,38 +1236,16 @@ impl ProxyService {
     ) -> Result<HotSwitchOutcome, String> {
         let app_type_enum =
             AppType::from_str(app_type).map_err(|_| format!("无效的应用类型: {app_type}"))?;
-        let provider = self
-            .db
-            .get_provider_by_id(provider_id, app_type)
-            .map_err(|e| format!("读取供应商失败: {e}"))?
-            .ok_or_else(|| format!("供应商不存在: {provider_id}"))?;
-
-        // Defense-in-depth: block official providers during proxy takeover
-        if should_block_proxy_switch_to_provider(true, &provider) {
-            return Err(
-                "代理接管模式下不能切换到官方供应商 (Cannot switch to official provider during proxy takeover)"
-                    .to_string(),
-            );
-        }
-
-        let logical_target_changed =
-            crate::settings::get_effective_current_provider(&self.db, &app_type_enum)
-                .map_err(|e| format!("读取当前供应商失败: {e}"))?
-                .as_deref()
-                != Some(provider_id);
-
-        let has_backup = self
-            .db
-            .get_live_backup(app_type_enum.as_str())
-            .await
-            .map_err(|e| format!("读取 {app_type} 备份失败: {e}"))?
-            .is_some();
+        let target_state =
+            proxy_hot_switch_target_state_from_db(&self.db, &app_type_enum, provider_id).await?;
+        let provider = target_state.provider;
         let live_taken_over = self.detect_takeover_in_live_config_for_app(&app_type_enum);
-        let should_sync_backup = proxy_live_config_owned_by_takeover(has_backup, live_taken_over);
+        let should_sync_backup =
+            proxy_live_config_owned_by_takeover(target_state.has_live_backup, live_taken_over);
         let should_refresh_codex_live_from_backup =
             proxy_hot_switch_should_refresh_codex_live_from_backup(
                 &app_type_enum,
-                has_backup,
+                target_state.has_live_backup,
                 live_taken_over,
             );
         let should_sync_codex_live_while_proxy_active =
@@ -1280,11 +1259,7 @@ impl ProxyService {
                 should_sync_backup,
             );
 
-        self.db
-            .set_current_provider(app_type_enum.as_str(), provider_id)
-            .map_err(|e| format!("更新当前供应商失败: {e}"))?;
-        crate::settings::set_current_provider(&app_type_enum, Some(provider_id))
-            .map_err(|e| format!("更新本地当前供应商失败: {e}"))?;
+        persist_hot_switch_current_provider_sources(&self.db, &app_type_enum, provider_id)?;
 
         if should_sync_backup {
             self.update_live_backup_from_provider_inner(app_type, &provider)
@@ -1325,7 +1300,7 @@ impl ProxyService {
         }
 
         Ok(HotSwitchOutcome {
-            logical_target_changed,
+            logical_target_changed: target_state.logical_target_changed,
         })
     }
 
