@@ -6066,6 +6066,52 @@ fn production_set_auto_failover_command_delegates_plan_sources_to_adapter() {
 }
 
 #[test]
+fn production_forwarder_uses_transport_source_resource() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let path = manifest_dir.join("src/proxy/forwarder.rs");
+    let source = fs::read_to_string(&path).expect("read forwarder.rs");
+    let struct_slice = function_slice(&source, "pub struct RequestForwarder", "impl RequestForwarder");
+    let impl_slice = function_slice(&source, "impl RequestForwarder", "#[cfg(test)]");
+
+    assert!(
+        struct_slice.contains("transport_source"),
+        "RequestForwarder must receive upstream transport execution as an injected source"
+    );
+
+    let impl_forbidden_markers = [
+        "super::http_client::get_current_proxy_url(",
+        "super::http_client::get(",
+        "super::hyper_client::send_request(",
+        "reqwest_send_error_to_proxy_error(",
+        "resolve_upstream_send_policy(",
+        "UpstreamSendPolicyInput",
+        "UpstreamTransportKind::",
+        "is_socks_proxy_url(",
+        "invalid_upstream_url_error_message(",
+    ];
+    let mut violations = Vec::new();
+
+    for (line_index, line) in production_lines(impl_slice) {
+        let code = line.split("//").next().unwrap_or_default();
+        for marker in impl_forbidden_markers {
+            if code.contains(marker) {
+                violations.push(format!(
+                    "src/proxy/forwarder.rs impl RequestForwarder:{} contains direct transport marker `{}`",
+                    line_index + 1,
+                    marker
+                ));
+            }
+        }
+    }
+
+    assert!(
+        violations.is_empty(),
+        "forwarder must send upstream requests through an injected transport source:\n{}",
+        violations.join("\n")
+    );
+}
+
+#[test]
 fn production_forwarder_delegates_runtime_events_to_adapter() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let path = manifest_dir.join("src/proxy/forwarder.rs");

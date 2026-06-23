@@ -452,6 +452,7 @@ mod tests {
                     current_providers,
                     events,
                 ),
+            transport_source: crate::proxy_core_adapter::default_forwarder_transport_source(),
             failover_switch_scheduler: crate::proxy_core_adapter::noop_failover_switch_scheduler(),
             managed_account_runtime_source:
                 crate::proxy_core_adapter::default_managed_account_runtime_source(),

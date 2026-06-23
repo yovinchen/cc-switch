@@ -5,7 +5,6 @@
 use super::hyper_client::ProxyResponse;
 use super::{
     error::ProxyError,
-    error_mapper::reqwest_send_error_to_proxy_error,
     route_attempt::{apply_channel_model_override, ForwardAttempt},
 };
 use crate::proxy_core_adapter::{
@@ -51,15 +50,15 @@ use crate::proxy_core_adapter::{
     strip_copilot_thinking_blocks, strip_one_m_suffix_for_upstream,
     strip_one_m_suffix_for_upstream_from_body, streaming_body_ended_before_first_chunk_message,
     streaming_body_first_chunk_read_error_message, streaming_body_first_chunk_timeout_message,
-    streaming_header_timeout_message, supports_reasoning_effort, thinking_optimization_log_message,
+    supports_reasoning_effort, thinking_optimization_log_message,
     validate_managed_account_upstream_auth, AttemptEventPhase, CopilotAuthHeaderOverrides,
     CopilotOptimizerConfig, ForwardFailureCategory, ForwardUpstreamUrlPlanInput,
     MediaRetryInput, OptimizerConfig, PromptCacheTraceLogInput,
     FailoverSwitchSchedulerRef, ForwarderAttemptRuntimeSourceRef, ForwarderProtocolStateSourceRef,
-    ForwarderRuntimeStateSourceRef, ManagedAccountRuntimeSourceRef,
+    ForwarderRuntimeStateSourceRef, ForwarderTransportSourceRef, ForwarderUpstreamTransportRequest,
+    ManagedAccountRuntimeSourceRef,
     RectifierConfig, ResolvedChannelAttempt, UpstreamAuthHeadersInput,
-    UpstreamRequestHeadersInput, UpstreamSendPolicyInput, UpstreamTransportKind,
-    UNSUPPORTED_IMAGE_MARKER,
+    UpstreamRequestHeadersInput, UNSUPPORTED_IMAGE_MARKER,
 };
 #[cfg(test)]
 use crate::proxy_core_adapter::provider_router_from_database;
@@ -130,6 +129,7 @@ pub struct RequestForwarder {
     attempt_runtime_source: ForwarderAttemptRuntimeSourceRef,
     protocol_state_source: ForwarderProtocolStateSourceRef,
     runtime_state_source: ForwarderRuntimeStateSourceRef,
+    transport_source: ForwarderTransportSourceRef,
     failover_switch_scheduler: FailoverSwitchSchedulerRef,
     managed_account_runtime_source: ManagedAccountRuntimeSourceRef,
     /// 请求开始时的"当前供应商 ID"（用于判断是否需要同步 UI/托盘）
@@ -231,6 +231,7 @@ impl RequestForwarder {
         non_streaming_timeout: u64,
         protocol_state_source: ForwarderProtocolStateSourceRef,
         runtime_state_source: ForwarderRuntimeStateSourceRef,
+        transport_source: ForwarderTransportSourceRef,
         failover_switch_scheduler: FailoverSwitchSchedulerRef,
         managed_account_runtime_source: ManagedAccountRuntimeSourceRef,
         current_provider_id_at_start: String,
@@ -250,6 +251,7 @@ impl RequestForwarder {
             attempt_runtime_source,
             protocol_state_source,
             runtime_state_source,
+            transport_source,
             failover_switch_scheduler,
             managed_account_runtime_source,
             current_provider_id_at_start,
@@ -1511,77 +1513,28 @@ impl RequestForwarder {
             }
         }
 
-        // 获取全局代理 URL
-        let upstream_proxy_url: Option<String> = super::http_client::get_current_proxy_url();
-
         let preserve_exact_header_case = should_preserve_exact_request_header_case(
             adapter_name,
             forwarder_is_codex_oauth_provider(provider),
             is_copilot,
             resolved_claude_api_format.as_deref(),
         );
-        let send_policy = crate::proxy_core_adapter::resolve_upstream_send_policy(
-            UpstreamSendPolicyInput {
-                is_socks_proxy: crate::proxy_core_adapter::is_socks_proxy_url(
-                    upstream_proxy_url.as_deref(),
-                ),
+
+        // 发送请求
+        let response = self
+            .transport_source
+            .send_upstream_request(ForwarderUpstreamTransportRequest {
+                method: method.clone(),
+                url: url.clone(),
+                ordered_headers,
+                extensions: extensions.clone(),
+                body: body_bytes,
                 preserve_exact_header_case,
                 request_is_streaming,
                 non_streaming_timeout: self.non_streaming_timeout,
                 streaming_first_byte_timeout: self.streaming_first_byte_timeout,
-            },
-        );
-
-        // 发送请求
-        let response = if matches!(send_policy.transport, UpstreamTransportKind::PooledReqwest) {
-            // OpenAI / Copilot / Codex 类后端不依赖原始 header 大小写；走 reqwest
-            // 连接池，避免 raw TCP/TLS path 每次请求都重新握手。SOCKS5 也只能走 reqwest。
-            log::debug!(
-                "[Forwarder] Using pooled reqwest client (preserve_exact_header_case={}, socks_proxy={})",
-                preserve_exact_header_case,
-                crate::proxy_core_adapter::is_socks_proxy_url(upstream_proxy_url.as_deref())
-            );
-            let client = super::http_client::get();
-            let mut request = client.request(method.clone(), &url);
-            if let Some(request_timeout) = send_policy.reqwest_request_timeout {
-                request = request.timeout(request_timeout);
-            }
-            for (key, value) in &ordered_headers {
-                request = request.header(key, value);
-            }
-            let send = request.body(body_bytes).send();
-            let send_result = if let Some(header_timeout) = send_policy.streaming_header_timeout {
-                tokio::time::timeout(header_timeout, send)
-                    .await
-                    .map_err(|_| {
-                        ProxyError::Timeout(streaming_header_timeout_message(header_timeout))
-                    })?
-            } else {
-                send.await
-            };
-            let reqwest_resp = send_result.map_err(reqwest_send_error_to_proxy_error)?;
-            ProxyResponse::Reqwest(reqwest_resp)
-        } else {
-            // HTTP 代理或直连：走 hyper raw write（保持 header 大小写）
-            // 如果有 HTTP 代理，hyper_client 会用 CONNECT 隧道穿过代理
-            let uri: http::Uri = url
-                .parse()
-                .map_err(|e| {
-                    ProxyError::ForwardFailed(
-                        crate::proxy_core_adapter::invalid_upstream_url_error_message(&url, e),
-                    )
-                })?;
-            super::hyper_client::send_request(
-                uri,
-                method.clone(),
-                ordered_headers,
-                extensions.clone(),
-                body_bytes,
-                send_policy.base_timeout,
-                upstream_proxy_url.as_deref(),
-            )
-            .await?
-        };
+            })
+            .await?;
 
         let response = self.apply_channel_response_status_mapping(response, attempt)?;
 
@@ -1837,6 +1790,7 @@ mod tests {
                     current_providers,
                     events,
                 ),
+            transport_source: crate::proxy_core_adapter::default_forwarder_transport_source(),
             failover_switch_scheduler: crate::proxy_core_adapter::noop_failover_switch_scheduler(),
             managed_account_runtime_source:
                 crate::proxy_core_adapter::default_managed_account_runtime_source(),

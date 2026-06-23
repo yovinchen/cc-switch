@@ -12,7 +12,7 @@ use crate::provider::{
 use crate::proxy::error::{proxy_error_status_kind, ProxyError};
 use crate::proxy::error_mapper::{
     forward_error_to_core_error, get_error_message, map_proxy_error_to_status,
-    proxy_core_error_to_proxy_error,
+    proxy_core_error_to_proxy_error, reqwest_send_error_to_proxy_error,
 };
 use crate::proxy::events::ProxyEventBus;
 use crate::proxy::failover_switch::FailoverSwitchManager;
@@ -69,6 +69,7 @@ pub(crate) struct CcSwitchProxyRuntime {
     pub(crate) attempt_runtime_source: ForwarderAttemptRuntimeSourceRef,
     pub(crate) protocol_state_source: ForwarderProtocolStateSourceRef,
     pub(crate) runtime_state_source: ForwarderRuntimeStateSourceRef,
+    pub(crate) transport_source: ForwarderTransportSourceRef,
     pub(crate) failover_switch_scheduler: FailoverSwitchSchedulerRef,
     pub(crate) managed_account_runtime_source: ManagedAccountRuntimeSourceRef,
 }
@@ -487,6 +488,7 @@ pub(crate) fn proxy_state_from_runtime_sources(
         current_providers.clone(),
         events.clone(),
     );
+    let transport_source = default_forwarder_transport_source();
     let failover_switch_scheduler = failover_switch_scheduler_from_runtime_sources(
         failover_manager.clone(),
         app_handle.clone(),
@@ -500,6 +502,7 @@ pub(crate) fn proxy_state_from_runtime_sources(
             attempt_runtime_source,
             protocol_state_source,
             runtime_state_source,
+            transport_source,
             failover_switch_scheduler,
             managed_account_runtime_source,
         }));
@@ -8237,11 +8240,107 @@ pub(crate) fn forwarder_attempt_runtime_source_from_router(
     Arc::new(CcSwitchForwarderAttemptRuntimeSource::new(router))
 }
 
+pub(crate) type ForwarderTransportSourceRef =
+    Arc<dyn ForwarderTransportSource + Send + Sync>;
+
+pub(crate) struct ForwarderUpstreamTransportRequest {
+    pub(crate) method: Method,
+    pub(crate) url: String,
+    pub(crate) ordered_headers: HeaderMap,
+    pub(crate) extensions: http::Extensions,
+    pub(crate) body: Vec<u8>,
+    pub(crate) preserve_exact_header_case: bool,
+    pub(crate) request_is_streaming: bool,
+    pub(crate) non_streaming_timeout: std::time::Duration,
+    pub(crate) streaming_first_byte_timeout: std::time::Duration,
+}
+
+pub(crate) trait ForwarderTransportSource {
+    fn send_upstream_request<'a>(
+        &'a self,
+        request: ForwarderUpstreamTransportRequest,
+    ) -> BoxFuture<'a, Result<ProxyResponse, ProxyError>>;
+}
+
+struct CcSwitchForwarderTransportSource;
+
+impl ForwarderTransportSource for CcSwitchForwarderTransportSource {
+    fn send_upstream_request<'a>(
+        &'a self,
+        request: ForwarderUpstreamTransportRequest,
+    ) -> BoxFuture<'a, Result<ProxyResponse, ProxyError>> {
+        Box::pin(async move {
+            let upstream_proxy_url: Option<String> =
+                crate::proxy::http_client::get_current_proxy_url();
+            let is_socks_proxy = is_socks_proxy_url(upstream_proxy_url.as_deref());
+            let send_policy = resolve_upstream_send_policy(UpstreamSendPolicyInput {
+                is_socks_proxy,
+                preserve_exact_header_case: request.preserve_exact_header_case,
+                request_is_streaming: request.request_is_streaming,
+                non_streaming_timeout: request.non_streaming_timeout,
+                streaming_first_byte_timeout: request.streaming_first_byte_timeout,
+            });
+
+            if matches!(send_policy.transport, UpstreamTransportKind::PooledReqwest) {
+                log::debug!(
+                    "[Forwarder] Using pooled reqwest client (preserve_exact_header_case={}, socks_proxy={})",
+                    request.preserve_exact_header_case,
+                    is_socks_proxy
+                );
+                let client = crate::proxy::http_client::get();
+                let mut outbound = client.request(request.method, &request.url);
+                if let Some(request_timeout) = send_policy.reqwest_request_timeout {
+                    outbound = outbound.timeout(request_timeout);
+                }
+                for (key, value) in &request.ordered_headers {
+                    outbound = outbound.header(key, value);
+                }
+                let send = outbound.body(request.body).send();
+                let send_result = if let Some(header_timeout) =
+                    send_policy.streaming_header_timeout
+                {
+                    tokio::time::timeout(header_timeout, send)
+                        .await
+                        .map_err(|_| {
+                            ProxyError::Timeout(streaming_header_timeout_message(header_timeout))
+                        })?
+                } else {
+                    send.await
+                };
+                let reqwest_resp = send_result.map_err(reqwest_send_error_to_proxy_error)?;
+                Ok(ProxyResponse::Reqwest(reqwest_resp))
+            } else {
+                let uri: http::Uri = request.url.parse().map_err(|error| {
+                    ProxyError::ForwardFailed(invalid_upstream_url_error_message(
+                        &request.url,
+                        error,
+                    ))
+                })?;
+                crate::proxy::hyper_client::send_request(
+                    uri,
+                    request.method,
+                    request.ordered_headers,
+                    request.extensions,
+                    request.body,
+                    send_policy.base_timeout,
+                    upstream_proxy_url.as_deref(),
+                )
+                .await
+            }
+        })
+    }
+}
+
+pub(crate) fn default_forwarder_transport_source() -> ForwarderTransportSourceRef {
+    Arc::new(CcSwitchForwarderTransportSource)
+}
+
 #[derive(Clone)]
 pub(crate) struct ForwarderRuntimeHostResources {
     pub(crate) attempt_runtime_source: ForwarderAttemptRuntimeSourceRef,
     pub(crate) protocol_state_source: ForwarderProtocolStateSourceRef,
     pub(crate) runtime_state_source: ForwarderRuntimeStateSourceRef,
+    pub(crate) transport_source: ForwarderTransportSourceRef,
     pub(crate) failover_switch_scheduler: FailoverSwitchSchedulerRef,
     pub(crate) managed_account_runtime_source: ManagedAccountRuntimeSourceRef,
 }
@@ -8253,6 +8352,7 @@ pub(crate) fn forwarder_runtime_host_resources_from_runtime(
         attempt_runtime_source: runtime.attempt_runtime_source.clone(),
         protocol_state_source: runtime.protocol_state_source.clone(),
         runtime_state_source: runtime.runtime_state_source.clone(),
+        transport_source: runtime.transport_source.clone(),
         failover_switch_scheduler: runtime.failover_switch_scheduler.clone(),
         managed_account_runtime_source: runtime.managed_account_runtime_source.clone(),
     }
@@ -8284,6 +8384,7 @@ pub(crate) async fn forward_with_preplanned_host_runtime(
         attempt_runtime_source,
         protocol_state_source,
         runtime_state_source,
+        transport_source,
         failover_switch_scheduler,
         managed_account_runtime_source,
     } = resources;
@@ -8302,6 +8403,7 @@ pub(crate) async fn forward_with_preplanned_host_runtime(
         forwarder_options.non_streaming_timeout,
         protocol_state_source,
         runtime_state_source,
+        transport_source,
         failover_switch_scheduler,
         managed_account_runtime_source,
         current_provider_id,
