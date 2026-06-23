@@ -215,6 +215,17 @@ pub(crate) fn response_transform_error_to_proxy_error(
     ProxyError::TransformError(error)
 }
 
+pub(crate) fn claude_response_transform_error_to_proxy_error(error: String) -> ProxyError {
+    response_transform_error_to_proxy_error(ResponseTransformFailureContext::ClaudeResponse, error)
+}
+
+pub(crate) fn codex_chat_to_responses_transform_error_to_proxy_error(error: String) -> ProxyError {
+    response_transform_error_to_proxy_error(
+        ResponseTransformFailureContext::CodexChatToResponses,
+        error,
+    )
+}
+
 #[cfg(test)]
 pub(crate) fn codex_proxy_error_json(
     provider_name: &str,

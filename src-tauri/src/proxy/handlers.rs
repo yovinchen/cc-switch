@@ -11,11 +11,11 @@ use super::{
     auth_adapter::validate_claude_desktop_gateway_auth,
     error::ProxyError,
     error_mapper::{
-        codex_proxy_error_response, parse_logged_upstream_json_or_unlabeled_sse,
-        response_build_error_to_proxy_error, CoreResponseBuildFailureContext,
-        management_api_error_to_proxy_error,
+        claude_response_transform_error_to_proxy_error,
+        codex_chat_to_responses_transform_error_to_proxy_error, codex_proxy_error_response,
+        parse_logged_upstream_json_or_unlabeled_sse, response_build_error_to_proxy_error,
+        CoreResponseBuildFailureContext, management_api_error_to_proxy_error,
         management_auth_error_to_proxy_error, proxy_core_error_to_proxy_error,
-        response_transform_error_to_proxy_error, ResponseTransformFailureContext,
     },
     forwarder::ActiveConnectionGuard,
     handler_context::RequestContext,
@@ -728,12 +728,7 @@ async fn handle_claude_transform(
         Some(&ctx.session_id),
         tool_schema_hints.as_ref(),
     )
-    .map_err(|error| {
-        response_transform_error_to_proxy_error(
-            ResponseTransformFailureContext::ClaudeResponse,
-            error,
-        )
-    })?;
+    .map_err(claude_response_transform_error_to_proxy_error)?;
 
     record_claude_transformed_response_usage(state, ctx, &anthropic_response, status.as_u16());
 
@@ -974,12 +969,7 @@ async fn handle_codex_chat_to_responses_transform(
         &state.codex_chat_history,
     )
     .await
-    .map_err(|error| {
-        response_transform_error_to_proxy_error(
-            ResponseTransformFailureContext::CodexChatToResponses,
-            error,
-        )
-    })?;
+    .map_err(codex_chat_to_responses_transform_error_to_proxy_error)?;
 
     record_codex_auto_transformed_response_usage(state, ctx, &responses_response, status.as_u16());
 

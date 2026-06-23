@@ -862,6 +862,8 @@ const FORBIDDEN_HANDLER_RESPONSE_BUILD_ERROR_MAPPING_MARKERS: &[&str] = &[
 const FORBIDDEN_HANDLER_RESPONSE_TRANSFORM_ERROR_MAPPING_MARKERS: &[&str] = &[
     "转换响应失败",
     "Chat → Responses 响应转换失败",
+    "ResponseTransformFailureContext::",
+    "response_transform_error_to_proxy_error(",
 ];
 const FORBIDDEN_HANDLER_TRANSFORMED_USAGE_POLICY_MARKERS: &[&str] = &[
     "TransformedResponseUsageFormat::",
