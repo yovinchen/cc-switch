@@ -4082,6 +4082,14 @@ pub(crate) fn forwarder_provider_auth_info(
     adapter.extract_auth(provider)
 }
 
+pub(crate) fn forwarder_provider_upstream_url(
+    adapter: &dyn ProviderAdapter,
+    base_url: &str,
+    endpoint: &str,
+) -> String {
+    adapter.build_url(base_url, endpoint)
+}
+
 pub(crate) fn forwarder_provider_transform_request(
     adapter: &dyn ProviderAdapter,
     body: Value,
@@ -16636,6 +16644,16 @@ command = "latest-command"
 
     #[test]
     fn upstream_url_adapter_projects_codex_and_gemini_url_rules() {
+        let codex_adapter = crate::proxy::providers::CodexAdapter::new();
+        assert_eq!(
+            forwarder_provider_upstream_url(
+                &codex_adapter,
+                "https://api.openai.com/v1",
+                "/chat/completions"
+            ),
+            "https://api.openai.com/v1/chat/completions"
+        );
+
         let (endpoint, passthrough_query) =
             rewrite_codex_responses_endpoint_to_chat("/v1/responses?foo=bar");
         assert_eq!(endpoint, "/chat/completions?foo=bar");

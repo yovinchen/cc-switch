@@ -34,6 +34,7 @@ use crate::proxy_core_adapter::{
     forwarder_is_github_copilot_upstream,
     forwarder_replace_images_for_text_only_provider_model, forwarder_uses_anthropic_rectifiers,
     forwarder_provider_auth_info, forwarder_provider_base_url,
+    forwarder_provider_upstream_url,
     forwarder_provider_transform_request, forwarder_provider_transform_required,
     is_openai_o_series,
     is_unsupported_image_error, allow_forward_attempt_runtime_source, merge_copilot_tool_results,
@@ -1334,7 +1335,9 @@ impl RequestForwarder {
                 body: &mapped_body,
                 channel_param_overrides: attempt.channel().map(|channel| &channel.param_overrides),
             },
-            |base_url, effective_endpoint| adapter.build_url(base_url, effective_endpoint),
+            |base_url, effective_endpoint| {
+                forwarder_provider_upstream_url(adapter, base_url, effective_endpoint)
+            },
         );
         let effective_endpoint = url_plan.effective_endpoint;
         let url = url_plan.url;
