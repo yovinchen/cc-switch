@@ -8670,6 +8670,11 @@ pub(crate) struct ForwarderThinkingBudgetRectifierInput<'a> {
     pub(crate) config: &'a RectifierConfig,
 }
 
+pub(crate) struct ForwarderAnthropicRectifierGateInput<'a> {
+    pub(crate) app_type: &'a AppType,
+    pub(crate) provider: &'a Provider,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum ForwarderRequestRectifierPlan {
     NotTriggered,
@@ -8752,6 +8757,11 @@ pub(crate) trait ForwarderRequestSource {
         &self,
         input: ForwarderMediaRetryPlanInput<'_>,
     ) -> Option<ForwarderMediaRetryPlan>;
+
+    fn anthropic_rectifiers_enabled(
+        &self,
+        input: ForwarderAnthropicRectifierGateInput<'_>,
+    ) -> bool;
 
     fn thinking_signature_rectifier_plan(
         &self,
@@ -9096,6 +9106,13 @@ impl ForwarderRequestSource for CcSwitchForwarderRequestSource {
         );
 
         Some(ForwarderMediaRetryPlan { body })
+    }
+
+    fn anthropic_rectifiers_enabled(
+        &self,
+        input: ForwarderAnthropicRectifierGateInput<'_>,
+    ) -> bool {
+        forwarder_uses_anthropic_rectifiers(input.app_type, input.provider)
     }
 
     fn thinking_signature_rectifier_plan(
@@ -15005,6 +15022,46 @@ base_url = "https://api.openai.com/v1"
         });
 
         assert!(body.get("output_config").is_none());
+    }
+
+    #[test]
+    fn forwarder_request_source_projects_anthropic_rectifier_gate() {
+        let source = CcSwitchForwarderRequestSource;
+        let mut claude_auth_provider = Provider::with_id(
+            "claude-auth".to_string(),
+            "Claude Auth".to_string(),
+            json!({}),
+            None,
+        );
+        claude_auth_provider.meta = Some(ProviderMeta {
+            provider_type: Some("claude_auth".to_string()),
+            ..Default::default()
+        });
+        let default_claude_provider = Provider::with_id(
+            "default-provider".to_string(),
+            "Default Provider".to_string(),
+            json!({}),
+            None,
+        );
+
+        assert!(source.anthropic_rectifiers_enabled(
+            ForwarderAnthropicRectifierGateInput {
+                app_type: &AppType::Claude,
+                provider: &claude_auth_provider,
+            },
+        ));
+        assert!(!source.anthropic_rectifiers_enabled(
+            ForwarderAnthropicRectifierGateInput {
+                app_type: &AppType::Codex,
+                provider: &claude_auth_provider,
+            },
+        ));
+        assert!(source.anthropic_rectifiers_enabled(
+            ForwarderAnthropicRectifierGateInput {
+                app_type: &AppType::Claude,
+                provider: &default_claude_provider,
+            },
+        ));
     }
 
     #[test]

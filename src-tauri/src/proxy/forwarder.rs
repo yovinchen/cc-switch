@@ -11,12 +11,11 @@ use crate::proxy_core_adapter::{
     build_retryable_forward_failure_log, build_terminal_forward_failure_log,
     categorize_forward_failure,
     forward_failure_kind_from_proxy_error,
-    forwarder_uses_anthropic_rectifiers,
     forwarder_provider_adapter_for_app,
     ForwarderAdapterHandle,
     should_failover_after_rectifier_retry_failure,
     AttemptEventPhase, CopilotOptimizerConfig,
-    ForwardFailureCategory, ForwarderAdapterFactsInput,
+    ForwardFailureCategory, ForwarderAdapterFactsInput, ForwarderAnthropicRectifierGateInput,
     ForwarderAttemptBodyInput, ForwarderAuthHeadersInput, ForwarderAuthSourceRef,
     ForwarderCopilotAuthOptimizationInput, ForwarderClaudeBodyPolicyInput,
     ForwarderCodexResponsesToChatInput, ForwarderCodexResponsesToChatPlanInput,
@@ -529,7 +528,9 @@ impl RequestForwarder {
                 Err(e) => {
                     // 检测是否需要触发整流器（仅 Claude/ClaudeAuth 供应商）
                     let is_anthropic_provider =
-                        forwarder_uses_anthropic_rectifiers(app_type, provider);
+                        self.request_source.anthropic_rectifiers_enabled(
+                            ForwarderAnthropicRectifierGateInput { app_type, provider },
+                        );
                     let mut signature_rectifier_non_retryable_client_error = false;
 
                     if let Some(media_retry) =
