@@ -11,7 +11,8 @@ use super::{
     auth_adapter::validate_claude_desktop_gateway_auth,
     error::ProxyError,
     error_mapper::{
-        codex_proxy_error_response, management_api_error_to_proxy_error,
+        codex_proxy_error_response, response_build_error_to_proxy_error,
+        CoreResponseBuildFailureContext, management_api_error_to_proxy_error,
         management_auth_error_to_proxy_error, proxy_core_error_to_proxy_error,
         response_body_parse_error_to_proxy_error,
     },
@@ -825,8 +826,7 @@ async fn handle_claude_transform(
 
     let response = rebuilt_json_proxy_response(status, response_headers, anthropic_response)
         .map_err(|error| {
-            log::error!("[Claude] 构造 JSON 响应失败: {error}");
-            proxy_core_error_to_proxy_error(error)
+            response_build_error_to_proxy_error(CoreResponseBuildFailureContext::ClaudeJson, error)
         })?;
 
     proxy_core_response_to_axum_response(response, AxumResponseBuildErrorContext::ClaudeResponse)
@@ -1107,8 +1107,10 @@ async fn handle_codex_chat_to_responses_transform(
 
     let response = rebuilt_json_proxy_response(status, response_headers, responses_response)
         .map_err(|error| {
-            log::error!("[Codex] 构造 Responses 响应失败: {error}");
-            proxy_core_error_to_proxy_error(error)
+            response_build_error_to_proxy_error(
+                CoreResponseBuildFailureContext::CodexResponses,
+                error,
+            )
         })?;
 
     proxy_core_response_to_axum_response(response, AxumResponseBuildErrorContext::CodexResponses)
@@ -1136,8 +1138,10 @@ async fn handle_codex_chat_error_response(
 
     let response = rebuilt_json_proxy_response(status, response_headers, responses_error).map_err(
         |error| {
-            log::error!("[Codex] 构造 Responses 错误体失败: {error}");
-            proxy_core_error_to_proxy_error(error)
+            response_build_error_to_proxy_error(
+                CoreResponseBuildFailureContext::CodexResponsesError,
+                error,
+            )
         },
     )?;
 
@@ -1168,8 +1172,10 @@ fn build_codex_proxy_error_response(
         error,
     )
     .map_err(|error| {
-        log::error!("[Codex] 构造代理错误响应失败: {error}");
-        proxy_core_error_to_proxy_error(error)
+        response_build_error_to_proxy_error(
+            CoreResponseBuildFailureContext::CodexProxyError,
+            error,
+        )
     })?;
 
     proxy_core_response_to_axum_response(response, AxumResponseBuildErrorContext::CodexProxyError)

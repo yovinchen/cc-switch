@@ -137,6 +137,32 @@ pub(crate) fn response_body_parse_error_to_proxy_error(error: ProxyCoreError) ->
     }
 }
 
+pub(crate) enum CoreResponseBuildFailureContext {
+    ClaudeJson,
+    CodexResponses,
+    CodexResponsesError,
+    CodexProxyError,
+}
+
+impl CoreResponseBuildFailureContext {
+    fn log_prefix(&self) -> &'static str {
+        match self {
+            Self::ClaudeJson => "[Claude] 构造 JSON 响应失败",
+            Self::CodexResponses => "[Codex] 构造 Responses 响应失败",
+            Self::CodexResponsesError => "[Codex] 构造 Responses 错误体失败",
+            Self::CodexProxyError => "[Codex] 构造代理错误响应失败",
+        }
+    }
+}
+
+pub(crate) fn response_build_error_to_proxy_error(
+    context: CoreResponseBuildFailureContext,
+    error: ProxyCoreError,
+) -> ProxyError {
+    log::error!("{}: {error}", context.log_prefix());
+    proxy_core_error_to_proxy_error(error)
+}
+
 #[cfg(test)]
 pub(crate) fn codex_proxy_error_json(
     provider_name: &str,
