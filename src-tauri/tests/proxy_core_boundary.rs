@@ -863,6 +863,13 @@ const FORBIDDEN_HANDLER_RESPONSE_TRANSFORM_ERROR_MAPPING_MARKERS: &[&str] = &[
     "转换响应失败",
     "Chat → Responses 响应转换失败",
 ];
+const FORBIDDEN_HANDLER_TRANSFORMED_USAGE_POLICY_MARKERS: &[&str] = &[
+    "TransformedResponseUsageFormat::",
+    "claude_stream_usage_event_filter",
+    "codex_stream_usage_event_filter",
+    " record_transformed_response_usage(",
+    " transformed_streaming_usage_collector(",
+];
 const FORBIDDEN_HANDLER_CLAUDE_RESPONSE_TRANSFORM_DISPATCH_MARKERS: &[&str] = &[
     "openai_responses_to_anthropic_message(",
     "openai_chat_to_anthropic_message(",
@@ -2622,6 +2629,33 @@ fn handlers_delegate_response_transform_error_mapping_to_error_mapper() {
     assert!(
         violations.is_empty(),
         "protocol handlers must delegate response transform error mapping to error_mapper:\n{}",
+        violations.join("\n")
+    );
+}
+
+#[test]
+fn handlers_delegate_transformed_usage_policy_to_adapter() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let path = manifest_dir.join("src/proxy/handlers.rs");
+    let source = fs::read_to_string(&path).expect("read handlers.rs");
+
+    let mut violations = Vec::new();
+    for (line_index, line) in production_lines(&source) {
+        let code = line.split("//").next().unwrap_or_default();
+        for marker in FORBIDDEN_HANDLER_TRANSFORMED_USAGE_POLICY_MARKERS {
+            if code.contains(marker) {
+                violations.push(format!(
+                    "src/proxy/handlers.rs:{} contains transformed usage policy marker `{}`",
+                    line_index + 1,
+                    marker
+                ));
+            }
+        }
+    }
+
+    assert!(
+        violations.is_empty(),
+        "protocol handlers must delegate transformed usage format/filter policy to proxy_core_adapter:\n{}",
         violations.join("\n")
     );
 }

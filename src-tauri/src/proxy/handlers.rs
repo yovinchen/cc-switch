@@ -31,7 +31,7 @@ use super::{
 use crate::app_config::AppType;
 use crate::proxy_core_adapter::{
     append_query_to_endpoint_path,
-    claude_stream_usage_event_filter, codex_stream_usage_event_filter,
+    claude_transformed_streaming_usage_collector, codex_auto_transformed_streaming_usage_collector,
     create_logged_passthrough_stream,
     codex_chat_error_proxy_response, codex_chat_transform_streaming_decision,
     extract_anthropic_tool_schema_hints,
@@ -39,8 +39,8 @@ use crate::proxy_core_adapter::{
     parse_json_proxy_request_body,
     parse_json_proxy_request_body_or_null,
     management_auth_decision_from_proxy_config, record_forward_error_usage,
-    record_transformed_response_usage, transform_codex_chat_response_with_history,
-    transform_codex_chat_sse_with_history, transformed_streaming_usage_collector,
+    record_claude_transformed_response_usage, record_codex_auto_transformed_response_usage,
+    transform_codex_chat_response_with_history, transform_codex_chat_sse_with_history,
     provider_claude_transform_response_for_api_format,
     provider_claude_transform_sse_for_api_format,
     provider_claude_transform_streaming_decision, provider_needs_claude_transform,
@@ -63,8 +63,8 @@ use crate::proxy_core_adapter::{
     ProxyChannelTestRequest, ProxyChannelWriteRequest, ProxyRuntimeStatus,
     ProxyStatusRequest, ProxyStatusResponse, RoutableModelList, RouteGroupListResponse,
     RouteResolveManagementRequest, RouteResolveRequest, RouteResolveResponse,
-    TransformedResponseUsageFormat, UnlabeledSseFallbackLogContext,
-    UpstreamResponseParseFailureLogContext, CLAUDE_PARSER_CONFIG, CODEX_PARSER_CONFIG,
+    UnlabeledSseFallbackLogContext, UpstreamResponseParseFailureLogContext, CLAUDE_PARSER_CONFIG,
+    CODEX_PARSER_CONFIG,
     GEMINI_PARSER_CONFIG, OPENAI_PARSER_CONFIG,
 };
 use axum::{
@@ -685,13 +685,8 @@ async fn handle_claude_transform(
         );
 
         // 创建使用量收集器；关闭 usage logging 时不要再解析转换后的 SSE。
-        let usage_collector = transformed_streaming_usage_collector(
-            state,
-            ctx,
-            status.as_u16(),
-            TransformedResponseUsageFormat::Claude,
-            claude_stream_usage_event_filter,
-        );
+        let usage_collector =
+            claude_transformed_streaming_usage_collector(state, ctx, status.as_u16());
 
         // 获取流式超时配置
         let timeout_config = ctx.streaming_timeout_config();
@@ -742,13 +737,7 @@ async fn handle_claude_transform(
         )
     })?;
 
-    record_transformed_response_usage(
-        state,
-        ctx,
-        &anthropic_response,
-        TransformedResponseUsageFormat::Claude,
-        status.as_u16(),
-    );
+    record_claude_transformed_response_usage(state, ctx, &anthropic_response, status.as_u16());
 
     rebuilt_json_proxy_response_to_axum_response(
         status,
@@ -960,13 +949,8 @@ async fn handle_codex_chat_to_responses_transform(
             state.codex_chat_history.clone(),
         );
 
-        let usage_collector = transformed_streaming_usage_collector(
-            state,
-            ctx,
-            status.as_u16(),
-            TransformedResponseUsageFormat::CodexAuto,
-            codex_stream_usage_event_filter,
-        );
+        let usage_collector =
+            codex_auto_transformed_streaming_usage_collector(state, ctx, status.as_u16());
 
         let logged_stream = create_logged_passthrough_stream(
             sse_stream,
@@ -1008,13 +992,7 @@ async fn handle_codex_chat_to_responses_transform(
         )
     })?;
 
-    record_transformed_response_usage(
-        state,
-        ctx,
-        &responses_response,
-        TransformedResponseUsageFormat::CodexAuto,
-        status.as_u16(),
-    );
+    record_codex_auto_transformed_response_usage(state, ctx, &responses_response, status.as_u16());
 
     rebuilt_json_proxy_response_to_axum_response(
         status,

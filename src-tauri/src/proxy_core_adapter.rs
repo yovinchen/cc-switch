@@ -8864,6 +8864,36 @@ pub(crate) fn record_transformed_response_usage(
     });
 }
 
+pub(crate) fn record_claude_transformed_response_usage(
+    state: &ProxyState,
+    ctx: &RequestContext,
+    body: &Value,
+    status_code: u16,
+) {
+    record_transformed_response_usage(
+        state,
+        ctx,
+        body,
+        TransformedResponseUsageFormat::Claude,
+        status_code,
+    );
+}
+
+pub(crate) fn record_codex_auto_transformed_response_usage(
+    state: &ProxyState,
+    ctx: &RequestContext,
+    body: &Value,
+    status_code: u16,
+) {
+    record_transformed_response_usage(
+        state,
+        ctx,
+        body,
+        TransformedResponseUsageFormat::CodexAuto,
+        status_code,
+    );
+}
+
 pub(crate) fn transformed_streaming_usage_collector(
     state: &ProxyState,
     ctx: &RequestContext,
@@ -8887,6 +8917,34 @@ pub(crate) fn transformed_streaming_usage_collector(
             usage_format,
             stream_event_filter,
         },
+    )
+}
+
+pub(crate) fn claude_transformed_streaming_usage_collector(
+    state: &ProxyState,
+    ctx: &RequestContext,
+    status_code: u16,
+) -> Option<SseUsageCollector> {
+    transformed_streaming_usage_collector(
+        state,
+        ctx,
+        status_code,
+        TransformedResponseUsageFormat::Claude,
+        claude_stream_usage_event_filter,
+    )
+}
+
+pub(crate) fn codex_auto_transformed_streaming_usage_collector(
+    state: &ProxyState,
+    ctx: &RequestContext,
+    status_code: u16,
+) -> Option<SseUsageCollector> {
+    transformed_streaming_usage_collector(
+        state,
+        ctx,
+        status_code,
+        TransformedResponseUsageFormat::CodexAuto,
+        codex_stream_usage_event_filter,
     )
 }
 
