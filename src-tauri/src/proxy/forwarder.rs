@@ -32,7 +32,7 @@ use crate::proxy_core_adapter::{
     forwarder_provider_adapter_name, forwarder_provider_auth_headers, forwarder_provider_auth_info,
     forwarder_provider_base_url, forwarder_provider_upstream_url,
     forwarder_provider_transform_request, forwarder_provider_transform_required,
-    ForwarderAdapterHandle, fetch_copilot_live_models, is_openai_o_series,
+    ForwarderAdapterHandle, fetch_copilot_live_models_from_runtime_source, is_openai_o_series,
     is_unsupported_image_error, allow_forward_attempt_runtime_source, merge_copilot_tool_results,
     non_streaming_body_timeout_message, normalize_thinking_type,
     prepare_upstream_request_body_with_report, prompt_cache_trace_log_message,
@@ -51,11 +51,11 @@ use crate::proxy_core_adapter::{
     record_forward_provider_rectifier_retry_failure_runtime_source,
     record_forward_request_started_runtime_source, record_forward_success_runtime_source,
     release_forward_attempt_permit_neutral_runtime_source, request_body_filter_log_message,
-    resolve_copilot_api_endpoint,
+    resolve_copilot_api_endpoint_from_runtime_source,
     resolve_copilot_deterministic_interaction_id, resolve_copilot_model_against_ids,
-    resolve_copilot_model_vendor, resolve_copilot_optimizer_session_id,
+    resolve_copilot_model_vendor_from_runtime_source, resolve_copilot_optimizer_session_id,
     resolve_copilot_request_id_with_fallback, resolve_channel_response_status_mapping,
-    resolve_managed_account_auth, resolve_media_prevention_policy,
+    resolve_managed_account_auth_from_runtime_source, resolve_media_prevention_policy,
     forwarder_claude_api_format, forwarder_claude_transform_required,
     resolve_forwarder_claude_api_format,
     resolved_copilot_dynamic_base_url, responses_to_chat_completions_with_options,
@@ -73,7 +73,7 @@ use crate::proxy_core_adapter::{
     CopilotOptimizerConfig, CurrentRouteTarget, ForwardFailureCategory,
     ForwardUpstreamUrlPlanInput, GeminiShadowStore, MediaRetryInput, OptimizerConfig,
     PromptCacheTraceLogInput,
-    ProxyRuntimeStatus, RectifierConfig, ResolvedChannelAttempt,
+    ManagedAccountRuntimeSourceRef, ProxyRuntimeStatus, RectifierConfig, ResolvedChannelAttempt,
     UpstreamAuthHeadersInput, UpstreamRequestHeadersInput, UpstreamSendPolicyInput,
     UpstreamTransportKind, UNSUPPORTED_IMAGE_MARKER,
 };
@@ -154,6 +154,7 @@ pub struct RequestForwarder {
     failover_manager: Arc<FailoverSwitchManager>,
     /// AppHandle，用于发射事件和更新托盘
     app_handle: Option<tauri::AppHandle>,
+    managed_account_runtime_source: ManagedAccountRuntimeSourceRef,
     /// 请求开始时的"当前供应商 ID"（用于判断是否需要同步 UI/托盘）
     current_provider_id_at_start: String,
     /// 代理会话 ID（用于 Gemini Native shadow replay）
@@ -258,6 +259,7 @@ impl RequestForwarder {
         codex_chat_history: Arc<CodexChatHistoryStore>,
         failover_manager: Arc<FailoverSwitchManager>,
         app_handle: Option<tauri::AppHandle>,
+        managed_account_runtime_source: ManagedAccountRuntimeSourceRef,
         current_provider_id_at_start: String,
         session_id: String,
         session_client_provided: bool,
@@ -280,6 +282,7 @@ impl RequestForwarder {
             codex_chat_history,
             failover_manager,
             app_handle,
+            managed_account_runtime_source,
             current_provider_id_at_start,
             session_id,
             session_client_provided,
@@ -1275,7 +1278,11 @@ impl RequestForwarder {
 
         if should_resolve_copilot_dynamic_endpoint(is_copilot, is_full_url) {
             if let Some(dynamic_endpoint) =
-                resolve_copilot_api_endpoint(self.app_handle.as_ref(), provider).await
+                resolve_copilot_api_endpoint_from_runtime_source(
+                    self.managed_account_runtime_source.as_ref(),
+                    provider,
+                )
+                .await
             {
                 if let Some(next_base_url) = resolved_copilot_dynamic_base_url(
                     &base_url,
@@ -1447,7 +1454,12 @@ impl RequestForwarder {
             forwarder_provider_auth_info(adapter, auth_provider)
         {
             let managed_auth =
-                resolve_managed_account_auth(self.app_handle.as_ref(), auth_provider, auth).await?;
+                resolve_managed_account_auth_from_runtime_source(
+                    self.managed_account_runtime_source.as_ref(),
+                    auth_provider,
+                    auth,
+                )
+                .await?;
             auth = managed_auth.auth;
             should_send_codex_oauth_session_headers =
                 managed_auth.should_send_codex_oauth_session_headers;
@@ -1753,8 +1765,12 @@ impl RequestForwarder {
         let copilot_model_vendor = if is_copilot {
             match model {
                 Some(model_id) => {
-                    resolve_copilot_model_vendor(self.app_handle.as_ref(), provider, model_id)
-                        .await
+                    resolve_copilot_model_vendor_from_runtime_source(
+                        self.managed_account_runtime_source.as_ref(),
+                        provider,
+                        model_id,
+                    )
+                    .await
                 }
                 None => None,
             }
@@ -1777,7 +1793,12 @@ impl RequestForwarder {
         };
         let model_id = model_id.to_string();
 
-        let models = match fetch_copilot_live_models(self.app_handle.as_ref(), provider).await {
+        let models = match fetch_copilot_live_models_from_runtime_source(
+            self.managed_account_runtime_source.as_ref(),
+            provider,
+        )
+        .await
+        {
             Ok(Some(models)) => models,
             Ok(None) => return,
             Err(err) => {
@@ -1863,6 +1884,8 @@ mod tests {
             codex_chat_history: Arc::new(CodexChatHistoryStore::default()),
             failover_manager: Arc::new(FailoverSwitchManager::new(db)),
             app_handle: None,
+            managed_account_runtime_source:
+                crate::proxy_core_adapter::default_managed_account_runtime_source(),
             current_provider_id_at_start: String::new(),
             session_id: String::new(),
             session_client_provided: false,

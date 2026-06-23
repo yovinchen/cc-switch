@@ -441,6 +441,8 @@ mod tests {
             codex_chat_history: Arc::new(CodexChatHistoryStore::default()),
             failover_manager: Arc::new(FailoverSwitchManager::new(db)),
             app_handle: None,
+            managed_account_runtime_source:
+                crate::proxy_core_adapter::default_managed_account_runtime_source(),
         }
     }
 

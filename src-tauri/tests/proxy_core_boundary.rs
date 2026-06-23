@@ -5471,6 +5471,44 @@ fn production_adapter_managed_auth_runtime_source_is_trait() {
 }
 
 #[test]
+fn production_forwarder_uses_managed_auth_runtime_source_resource() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let path = manifest_dir.join("src/proxy/forwarder.rs");
+    let source = fs::read_to_string(&path).expect("read forwarder.rs");
+
+    assert!(
+        source.contains("managed_account_runtime_source"),
+        "RequestForwarder must receive managed-account runtime reads as an injected runtime source"
+    );
+
+    let forbidden_markers = [
+        "resolve_managed_account_auth(self.app_handle.as_ref()",
+        "resolve_copilot_api_endpoint(self.app_handle.as_ref()",
+        "fetch_copilot_live_models(self.app_handle.as_ref()",
+        "resolve_copilot_model_vendor(self.app_handle.as_ref()",
+    ];
+    let mut violations = Vec::new();
+    for (line_index, line) in production_lines(&source) {
+        let code = line.split("//").next().unwrap_or_default();
+        for marker in forbidden_markers {
+            if code.contains(marker) {
+                violations.push(format!(
+                    "src/proxy/forwarder.rs:{} contains managed-auth app_handle source marker `{}`",
+                    line_index + 1,
+                    marker
+                ));
+            }
+        }
+    }
+
+    assert!(
+        violations.is_empty(),
+        "forwarder must use the runtime managed-account source instead of app_handle wrappers:\n{}",
+        violations.join("\n")
+    );
+}
+
+#[test]
 fn production_forwarder_delegates_failover_switch_scheduling_to_manager() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let path = manifest_dir.join("src/proxy/forwarder.rs");

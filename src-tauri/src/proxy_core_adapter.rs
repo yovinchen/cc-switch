@@ -73,6 +73,7 @@ pub(crate) struct CcSwitchProxyRuntime {
     pub(crate) codex_chat_history: Arc<CodexChatHistoryStore>,
     pub(crate) failover_manager: Arc<FailoverSwitchManager>,
     pub(crate) app_handle: Option<tauri::AppHandle>,
+    pub(crate) managed_account_runtime_source: ManagedAccountRuntimeSourceRef,
 }
 
 pub(crate) type CcSwitchProxyRuntimeServices =
@@ -478,6 +479,8 @@ pub(crate) fn proxy_state_from_runtime_sources(
     let current_providers = Arc::new(RwLock::new(HashMap::new()));
     let gemini_shadow = Arc::new(GeminiShadowStore::default());
     let codex_chat_history = Arc::new(CodexChatHistoryStore::default());
+    let managed_account_runtime_source =
+        managed_account_runtime_source_from_app_handle(app_handle.clone());
     let proxy_core_services =
         Arc::new(CcSwitchProxyServices::with_runtime(CcSwitchProxyRuntime {
             db: db.clone(),
@@ -489,6 +492,7 @@ pub(crate) fn proxy_state_from_runtime_sources(
             codex_chat_history: codex_chat_history.clone(),
             failover_manager: failover_manager.clone(),
             app_handle: app_handle.clone(),
+            managed_account_runtime_source,
         }));
 
     ProxyState {
@@ -3155,17 +3159,31 @@ pub(crate) struct ManagedAccountAuthResolution {
     pub(crate) should_send_codex_oauth_session_headers: bool,
 }
 
-struct CcSwitchManagedAccountRuntimeSource<'a> {
-    app_handle: Option<&'a tauri::AppHandle>,
+pub(crate) type ManagedAccountRuntimeSourceRef =
+    Arc<dyn ManagedAccountRuntimeSource + Send + Sync>;
+
+pub(crate) struct CcSwitchManagedAccountRuntimeSource {
+    app_handle: Option<tauri::AppHandle>,
 }
 
-impl<'a> CcSwitchManagedAccountRuntimeSource<'a> {
-    fn new(app_handle: Option<&'a tauri::AppHandle>) -> Self {
+impl CcSwitchManagedAccountRuntimeSource {
+    fn new(app_handle: Option<tauri::AppHandle>) -> Self {
         Self { app_handle }
     }
 }
 
-trait ManagedAccountRuntimeSource {
+pub(crate) fn managed_account_runtime_source_from_app_handle(
+    app_handle: Option<tauri::AppHandle>,
+) -> ManagedAccountRuntimeSourceRef {
+    Arc::new(CcSwitchManagedAccountRuntimeSource::new(app_handle))
+}
+
+#[cfg(test)]
+pub(crate) fn default_managed_account_runtime_source() -> ManagedAccountRuntimeSourceRef {
+    managed_account_runtime_source_from_app_handle(None)
+}
+
+pub(crate) trait ManagedAccountRuntimeSource {
     fn resolve_copilot_auth<'a>(
         &'a self,
         account_id: Option<&'a str>,
@@ -3195,7 +3213,7 @@ trait ManagedAccountRuntimeSource {
     ) -> BoxFuture<'a, Option<String>>;
 }
 
-impl ManagedAccountRuntimeSource for CcSwitchManagedAccountRuntimeSource<'_> {
+impl ManagedAccountRuntimeSource for CcSwitchManagedAccountRuntimeSource {
     fn resolve_copilot_auth<'a>(
         &'a self,
         account_id: Option<&'a str>,
@@ -3203,7 +3221,7 @@ impl ManagedAccountRuntimeSource for CcSwitchManagedAccountRuntimeSource<'_> {
     ) -> BoxFuture<'a, Result<ProviderAuthInfo, ProxyError>> {
         Box::pin(async move {
             crate::proxy::managed_account_auth::resolve_copilot_auth(
-                self.app_handle,
+                self.app_handle.as_ref(),
                 account_id,
                 runtime,
             )
@@ -3218,7 +3236,7 @@ impl ManagedAccountRuntimeSource for CcSwitchManagedAccountRuntimeSource<'_> {
     ) -> BoxFuture<'a, Result<(ProviderAuthInfo, Option<String>), ProxyError>> {
         Box::pin(async move {
             crate::proxy::managed_account_auth::resolve_codex_oauth(
-                self.app_handle,
+                self.app_handle.as_ref(),
                 account_id,
                 runtime,
             )
@@ -3232,7 +3250,7 @@ impl ManagedAccountRuntimeSource for CcSwitchManagedAccountRuntimeSource<'_> {
     ) -> BoxFuture<'a, Option<String>> {
         Box::pin(async move {
             crate::proxy::managed_account_auth::resolve_copilot_api_endpoint(
-                self.app_handle,
+                self.app_handle.as_ref(),
                 account_id,
             )
             .await
@@ -3245,7 +3263,7 @@ impl ManagedAccountRuntimeSource for CcSwitchManagedAccountRuntimeSource<'_> {
     ) -> BoxFuture<'a, Result<Option<Vec<CopilotModel>>, String>> {
         Box::pin(async move {
             crate::proxy::managed_account_auth::fetch_copilot_live_models(
-                self.app_handle,
+                self.app_handle.as_ref(),
                 account_id,
             )
             .await
@@ -3259,7 +3277,7 @@ impl ManagedAccountRuntimeSource for CcSwitchManagedAccountRuntimeSource<'_> {
     ) -> BoxFuture<'a, Option<String>> {
         Box::pin(async move {
             crate::proxy::managed_account_auth::resolve_copilot_model_vendor(
-                self.app_handle,
+                self.app_handle.as_ref(),
                 account_id,
                 model_id,
             )
@@ -3315,44 +3333,98 @@ async fn resolve_managed_account_auth_with_runtime_source(
     }
 }
 
+pub(crate) async fn resolve_managed_account_auth_from_runtime_source(
+    runtime_source: &(dyn ManagedAccountRuntimeSource + Send + Sync),
+    auth_provider: &Provider,
+    auth: ProviderAuthInfo,
+) -> Result<ManagedAccountAuthResolution, ProxyError> {
+    resolve_managed_account_auth_with_runtime_source(runtime_source, auth_provider, auth).await
+}
+
+#[cfg(test)]
 pub(crate) async fn resolve_managed_account_auth(
     app_handle: Option<&tauri::AppHandle>,
     auth_provider: &Provider,
     auth: ProviderAuthInfo,
 ) -> Result<ManagedAccountAuthResolution, ProxyError> {
-    let runtime_source = CcSwitchManagedAccountRuntimeSource::new(app_handle);
-    resolve_managed_account_auth_with_runtime_source(&runtime_source, auth_provider, auth).await
+    let runtime_source =
+        managed_account_runtime_source_from_app_handle(app_handle.cloned());
+    resolve_managed_account_auth_from_runtime_source(
+        runtime_source.as_ref(),
+        auth_provider,
+        auth,
+    )
+    .await
 }
 
-pub(crate) async fn resolve_copilot_api_endpoint(
-    app_handle: Option<&tauri::AppHandle>,
+pub(crate) async fn resolve_copilot_api_endpoint_from_runtime_source(
+    runtime_source: &(dyn ManagedAccountRuntimeSource + Send + Sync),
     auth_provider: &Provider,
 ) -> Option<String> {
     let account_id = provider_github_copilot_managed_account_id(auth_provider);
-    CcSwitchManagedAccountRuntimeSource::new(app_handle)
+    runtime_source
         .resolve_copilot_api_endpoint(account_id.as_deref())
         .await
 }
 
-pub(crate) async fn fetch_copilot_live_models(
+#[cfg(test)]
+#[allow(dead_code)]
+pub(crate) async fn resolve_copilot_api_endpoint(
     app_handle: Option<&tauri::AppHandle>,
+    auth_provider: &Provider,
+) -> Option<String> {
+    let runtime_source =
+        managed_account_runtime_source_from_app_handle(app_handle.cloned());
+    resolve_copilot_api_endpoint_from_runtime_source(runtime_source.as_ref(), auth_provider).await
+}
+
+pub(crate) async fn fetch_copilot_live_models_from_runtime_source(
+    runtime_source: &(dyn ManagedAccountRuntimeSource + Send + Sync),
     auth_provider: &Provider,
 ) -> Result<Option<Vec<CopilotModel>>, String> {
     let account_id = provider_github_copilot_managed_account_id(auth_provider);
-    CcSwitchManagedAccountRuntimeSource::new(app_handle)
+    runtime_source
         .fetch_copilot_live_models(account_id.as_deref())
         .await
 }
 
+#[cfg(test)]
+#[allow(dead_code)]
+pub(crate) async fn fetch_copilot_live_models(
+    app_handle: Option<&tauri::AppHandle>,
+    auth_provider: &Provider,
+) -> Result<Option<Vec<CopilotModel>>, String> {
+    let runtime_source =
+        managed_account_runtime_source_from_app_handle(app_handle.cloned());
+    fetch_copilot_live_models_from_runtime_source(runtime_source.as_ref(), auth_provider).await
+}
+
+pub(crate) async fn resolve_copilot_model_vendor_from_runtime_source(
+    runtime_source: &(dyn ManagedAccountRuntimeSource + Send + Sync),
+    auth_provider: &Provider,
+    model_id: &str,
+) -> Option<String> {
+    let account_id = provider_github_copilot_managed_account_id(auth_provider);
+    runtime_source
+        .resolve_copilot_model_vendor(account_id.as_deref(), model_id)
+        .await
+}
+
+#[cfg(test)]
+#[allow(dead_code)]
 pub(crate) async fn resolve_copilot_model_vendor(
     app_handle: Option<&tauri::AppHandle>,
     auth_provider: &Provider,
     model_id: &str,
 ) -> Option<String> {
-    let account_id = provider_github_copilot_managed_account_id(auth_provider);
-    CcSwitchManagedAccountRuntimeSource::new(app_handle)
-        .resolve_copilot_model_vendor(account_id.as_deref(), model_id)
-        .await
+    let runtime_source =
+        managed_account_runtime_source_from_app_handle(app_handle.cloned());
+    resolve_copilot_model_vendor_from_runtime_source(
+        runtime_source.as_ref(),
+        auth_provider,
+        model_id,
+    )
+    .await
 }
 
 pub(crate) const SESSION_REQUEST_ID_PREFIX: &str =
@@ -7703,6 +7775,7 @@ pub(crate) struct ForwarderRuntimeHostResources {
     pub(crate) codex_chat_history: Arc<CodexChatHistoryStore>,
     pub(crate) failover_manager: Arc<FailoverSwitchManager>,
     pub(crate) app_handle: Option<tauri::AppHandle>,
+    pub(crate) managed_account_runtime_source: ManagedAccountRuntimeSourceRef,
 }
 
 pub(crate) fn forwarder_runtime_host_resources_from_runtime(
@@ -7717,6 +7790,7 @@ pub(crate) fn forwarder_runtime_host_resources_from_runtime(
         codex_chat_history: runtime.codex_chat_history.clone(),
         failover_manager: runtime.failover_manager.clone(),
         app_handle: runtime.app_handle.clone(),
+        managed_account_runtime_source: runtime.managed_account_runtime_source.clone(),
     }
 }
 
@@ -7751,6 +7825,7 @@ pub(crate) async fn forward_with_preplanned_host_runtime(
         codex_chat_history,
         failover_manager,
         app_handle,
+        managed_account_runtime_source,
     } = resources;
     let ForwardRuntimeRequest {
         app_type,
@@ -7772,6 +7847,7 @@ pub(crate) async fn forward_with_preplanned_host_runtime(
         codex_chat_history,
         failover_manager,
         app_handle,
+        managed_account_runtime_source,
         current_provider_id,
         session_result.session_id,
         session_result.client_provided,
