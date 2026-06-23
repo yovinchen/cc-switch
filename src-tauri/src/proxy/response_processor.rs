@@ -18,11 +18,11 @@ use super::{
 use crate::proxy_core_adapter::{
     create_logged_passthrough_stream, decode_raw_proxy_response_body,
     log_non_streaming_proxy_response_body, log_streaming_proxy_response_received,
-    non_streaming_body_timeout_message, non_streaming_response_usage_record_from_response_context,
-    NonStreamingResponseUsageContext, passthrough_bytes_proxy_response,
-    passthrough_stream_proxy_response, response_headers_indicate_sse,
-    spawn_usage_record_with_proxy_services, streaming_usage_collector_from_context,
-    usage_logging_enabled_from_config_flag, StreamingUsageCollectorContext, UsageParserConfig,
+    non_streaming_body_timeout_message, passthrough_bytes_proxy_response,
+    passthrough_stream_proxy_response, record_non_streaming_response_usage_from_context,
+    response_headers_indicate_sse, streaming_usage_collector_from_context,
+    usage_logging_enabled_from_config_flag, NonStreamingUsageRecordContext,
+    StreamingUsageCollectorContext, UsageParserConfig,
 };
 #[cfg(test)]
 use crate::proxy_core_adapter::{provider_router_from_database, ProviderKind, TokenUsage};
@@ -134,33 +134,22 @@ pub async fn handle_non_streaming(
 
     log_non_streaming_proxy_response_body(&body_bytes, ctx.tag);
 
-    // 解析并记录使用量。关闭 usage logging 时直接跳过，避免非流式响应整包 JSON parse。
-    if usage_logging_enabled(state) {
-        let output = non_streaming_response_usage_record_from_response_context(
-            NonStreamingResponseUsageContext {
-                body: &body_bytes,
-                response_parser: parser_config.response_parser,
-                provider: ctx.provider_for_usage(),
-                app_type: ctx.app_type_str,
-                request_model: &ctx.request_model,
-                outbound_model: ctx.outbound_model.as_deref(),
-                route_context: ctx.usage_route_context.as_ref(),
-                latency_ms: ctx.latency_ms(),
-                status_code: status.as_u16(),
-                session_id: &ctx.session_id,
-            },
-            || uuid::Uuid::new_v4().to_string(),
-        )
-        .map_err(ProxyError::ConfigError)?;
-
-        if let Some(event) = output.log_event(body_bytes.len()) {
-            log::debug!("{}", event.message(ctx.tag, parser_config.app_type_str));
-        }
-
-        spawn_usage_record_with_proxy_services(state.proxy_core_services.clone(), output.record);
-    } else {
-        log::debug!("[{}] usage logging 已关闭，跳过非流式 usage 解析", ctx.tag);
-    }
+    record_non_streaming_response_usage_from_context(NonStreamingUsageRecordContext {
+        usage_logging_enabled: usage_logging_enabled(state),
+        services: state.proxy_core_services.clone(),
+        body: &body_bytes,
+        parser_config,
+        provider: ctx.provider_for_usage(),
+        app_type: ctx.app_type_str,
+        tag: ctx.tag,
+        request_model: &ctx.request_model,
+        outbound_model: ctx.outbound_model.as_deref(),
+        route_context: ctx.usage_route_context.as_ref(),
+        latency_ms: ctx.latency_ms(),
+        status_code: status.as_u16(),
+        session_id: &ctx.session_id,
+    })
+    .map_err(ProxyError::ConfigError)?;
 
     let response = passthrough_bytes_proxy_response(status, response_headers, body_bytes);
     let build_error_context = format!("[{}] 构建响应失败", ctx.tag);

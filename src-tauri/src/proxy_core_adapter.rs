@@ -8517,6 +8517,63 @@ pub(crate) struct NonStreamingResponseUsageContext<'a> {
     pub(crate) session_id: &'a str,
 }
 
+pub(crate) struct NonStreamingUsageRecordContext<'a, S> {
+    pub(crate) usage_logging_enabled: bool,
+    pub(crate) services: Arc<S>,
+    pub(crate) body: &'a [u8],
+    pub(crate) parser_config: &'a UsageParserConfig,
+    pub(crate) provider: Option<&'a Provider>,
+    pub(crate) app_type: &'a str,
+    pub(crate) tag: &'static str,
+    pub(crate) request_model: &'a str,
+    pub(crate) outbound_model: Option<&'a str>,
+    pub(crate) route_context: Option<&'a UsageRouteContext>,
+    pub(crate) latency_ms: u64,
+    pub(crate) status_code: u16,
+    pub(crate) session_id: &'a str,
+}
+
+pub(crate) fn record_non_streaming_response_usage_from_context<S>(
+    context: NonStreamingUsageRecordContext<'_, S>,
+) -> Result<(), String>
+where
+    S: ProxyServices + Send + Sync + 'static,
+{
+    if !context.usage_logging_enabled {
+        log::debug!(
+            "[{}] usage logging 已关闭，跳过非流式 usage 解析",
+            context.tag
+        );
+        return Ok(());
+    }
+
+    let output = non_streaming_response_usage_record_from_response_context(
+        NonStreamingResponseUsageContext {
+            body: context.body,
+            response_parser: context.parser_config.response_parser,
+            provider: context.provider,
+            app_type: context.app_type,
+            request_model: context.request_model,
+            outbound_model: context.outbound_model,
+            route_context: context.route_context,
+            latency_ms: context.latency_ms,
+            status_code: context.status_code,
+            session_id: context.session_id,
+        },
+        || uuid::Uuid::new_v4().to_string(),
+    )?;
+
+    if let Some(event) = output.log_event(context.body.len()) {
+        log::debug!(
+            "{}",
+            event.message(context.tag, context.parser_config.app_type_str)
+        );
+    }
+
+    spawn_usage_record_with_proxy_services(context.services, output.record);
+    Ok(())
+}
+
 pub(crate) struct ForwardErrorUsageContext<'a> {
     pub(crate) provider: Option<&'a Provider>,
     pub(crate) fallback_provider_id: &'a str,
