@@ -18,7 +18,7 @@
 7. `UsageSink` 已升级为完整 `UsageRecord` 并可通过 `CcSwitchUsageSink` 写入现有 `proxy_request_logs`；response pipeline 与 handler 转换路径的成功 usage、forward error 日志都已改为走 `UsageSink`，app-specific 响应转换仍在 host 层。
 8. 核心响应体已从请求 `ProxyBody` 拆出为 `ProxyResponseBody`，可以表达 empty/json/bytes/stream，避免把 axum/hyper 类型带入 core crate。
 9. `RequestForwarder` 的重试循环已从 attempts 构建中拆出，新增 preplanned attempts 入口，并且预规划入口不再强制持有 `CcSwitchProxyServices`，避免 host runtime adapter 产生自引用。
-10. `CcSwitchForwardPipeline` 已迁为 adapter-owned optional-runtime wrapper，并接入运行中 `ProxyServer` 的共享 router/status/event/history/failover 运行态；`HostForwardRuntime for CcSwitchProxyRuntime` 仍留在 host 装配 DB、router、Tauri handle 等不可移植资源，把 `ProxyEngine::handle` 的 `RoutePlan` 映射为 host `ForwardAttempt` 并复用现有 HTTP 转发链。后续重点转为迁移 response pipeline、模型列表接口和外部管理 API。
+10. `CcSwitchForwardPipeline` 已迁为 adapter-owned optional-runtime wrapper，`CcSwitchProxyServices<R>` 也已迁为 adapter-owned generic `ProxyServices` 容器，并接入运行中 `ProxyServer` 的共享 router/status/event/history/failover 运行态；`HostForwardRuntime for CcSwitchProxyRuntime` 仍留在 host 装配 DB、router、Tauri handle 等不可移植资源，把 `ProxyEngine::handle` 的 `RoutePlan` 映射为 host `ForwardAttempt` 并复用现有 HTTP 转发链。后续重点转为迁移 response pipeline、模型列表接口和外部管理 API。
 11. Codex `/v1/chat/completions` handler 已改为构造 neutral `ProxyRequest` 并进入 `ProxyEngine::handle`；返回的 `ProxyResult` 暂时桥接回旧 `process_response`，保留现有 usage 解析、流式处理和响应构造。
 12. Gemini handler 已改为进入 `ProxyEngine::handle`；模型名继续从 URI 提取，无模型的 `/models` 类端点不会把 `unknown` 写入 route filter，避免误过滤 channel。
 13. Codex `/v1/responses` 与 `/v1/responses/compact` handler 已进入 `ProxyEngine::handle`；chat-to-responses 转换仍在 host 层执行，等待后续 response pipeline 迁移。
@@ -895,6 +895,7 @@
 本轮继续把 usage sink 的计费配置 lookup 输入收敛到 adapter，host 不再直接拆 `UsageRecord` 的 app/provider 字段。
 本轮还把 core event 到 host event bus 的投影+分发入口收敛到 adapter，后续再把 event sink 端口实现本身收敛为 adapter-owned source wrapper。
 本轮继续把 `CcSwitchForwardPipeline` 本身迁为 adapter-owned optional runtime wrapper，runtime 缺失判断和 host forward runtime 调度都在 adapter wrapper 内完成；host services 只持有 `CcSwitchForwardPipeline<CcSwitchProxyRuntime>` 并保留 `HostForwardRuntime for CcSwitchProxyRuntime` 作为 DB/router/Tauri 资源装配点。
+本轮继续把 `CcSwitchProxyServices` 迁为 adapter-owned generic `ProxyServices` 容器；`proxy_core_host` 只保留 `CcSwitchProxyServices = CcSwitchProxyServices<CcSwitchProxyRuntime>` type alias 和 `ProxyServiceRuntimeResources` 实现，用于暴露 DB、ProviderRouter、current providers 与 event bus。
 本轮继续把 response processor 非流式 usage 的 provider 缺失判定和 usage record 输入组装收敛到 adapter wrapper，response processor 只负责读取响应体、记录日志和触发 `UsageSink`。
 本轮继续把 response processor 流式 usage 的 provider facts 选择、缺失 warning 和 usage record 输入组装收敛到 adapter wrapper，response processor 只保留 SSE 异步收集和落库调度。
 本轮继续把 response processor 的 route/channel usage 归因合并收敛到 adapter wrapper，streaming/non-streaming 输出的 `UsageRecord` 已在进入 `UsageSink` 前带好 route context。
