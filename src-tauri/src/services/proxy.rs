@@ -15,10 +15,12 @@ use crate::proxy_core_adapter::{
     clear_legacy_live_takeover_active_flag_in_db,
     clear_provider_health_for_app_in_db,
     clear_live_takeover_enabled_flags_in_db,
+    cleanup_all_live_backups_best_effort_in_db,
     codex_backup_projection_error_message, codex_live_write_projection,
     codex_provider_live_write_parts,
     codex_preserved_auth_live_config_text_for_configured_policy,
     current_provider_for_app_from_db, gemini_live_backup_from_effective_settings,
+    delete_all_live_backups_best_effort_in_db,
     delete_live_backup_best_effort_in_db, delete_live_backup_in_db,
     is_local_proxy_url, live_backup_snapshot_from_live_config, live_token_sync_app_label,
     live_backup_config_for_simple_restore_from_db,
@@ -264,9 +266,7 @@ impl ProxyService {
         // 2. 同步 Live 配置中的 Token 到数据库（确保代理能读到最新的 Token）
         if let Err(e) = self.sync_live_to_providers().await {
             // 同步失败时尚未写入接管配置，但备份可能包含敏感信息，尽量清理
-            if let Err(clean_err) = self.db.delete_all_live_backups().await {
-                log::warn!("清理 Live 备份失败: {clean_err}");
-            }
+            cleanup_all_live_backups_best_effort_in_db(&self.db).await;
             return Err(e);
         }
 
@@ -275,9 +275,7 @@ impl ProxyService {
             match self.start_before_takeover_if_ephemeral_port().await {
                 Ok(started) => started,
                 Err(e) => {
-                    if let Err(clean_err) = self.db.delete_all_live_backups().await {
-                        log::warn!("清理 Live 备份失败: {clean_err}");
-                    }
+                    cleanup_all_live_backups_best_effort_in_db(&self.db).await;
                     return Err(e);
                 }
             };
@@ -285,9 +283,7 @@ impl ProxyService {
         // 3. 在写入接管配置之前先落盘接管标志：
         //    这样即使在接管过程中断电/kill，下次启动也能检测到并自动恢复。
         if let Err(e) = self.db.set_live_takeover_active(true).await {
-            if let Err(clean_err) = self.db.delete_all_live_backups().await {
-                log::warn!("清理 Live 备份失败: {clean_err}");
-            }
+            cleanup_all_live_backups_best_effort_in_db(&self.db).await;
             if started_proxy_before_takeover {
                 let _ = self.stop().await;
             }
@@ -301,7 +297,7 @@ impl ProxyService {
             match self.restore_live_configs().await {
                 Ok(()) => {
                     let _ = self.db.set_live_takeover_active(false).await;
-                    let _ = self.db.delete_all_live_backups().await;
+                    delete_all_live_backups_best_effort_in_db(&self.db).await;
                 }
                 Err(restore_err) => {
                     log::error!("恢复原始配置失败，将保留备份以便下次启动恢复: {restore_err}");
@@ -322,7 +318,7 @@ impl ProxyService {
                 match self.restore_live_configs().await {
                     Ok(()) => {
                         let _ = self.db.set_live_takeover_active(false).await;
-                        let _ = self.db.delete_all_live_backups().await;
+                        delete_all_live_backups_best_effort_in_db(&self.db).await;
                     }
                     Err(restore_err) => {
                         log::error!("恢复原始配置失败，将保留备份以便下次启动恢复: {restore_err}");
