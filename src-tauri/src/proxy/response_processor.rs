@@ -22,7 +22,7 @@ use crate::proxy_core_adapter::{
     passthrough_stream_proxy_response, record_non_streaming_response_usage_from_context,
     response_headers_indicate_sse, streaming_usage_collector_from_context,
     usage_logging_enabled_from_proxy_config, NonStreamingUsageRecordContext,
-    StreamingUsageCollectorContext, UsageParserConfig,
+    AxumResponseBuildErrorContext, StreamingUsageCollectorContext, UsageParserConfig,
 };
 #[cfg(test)]
 use crate::proxy_core_adapter::{provider_router_from_database, ProviderKind, TokenUsage};
@@ -109,10 +109,9 @@ pub async fn handle_streaming(
     );
 
     let response = passthrough_stream_proxy_response(status, response_headers, logged_stream);
-    let build_error_context = format!("[{}] 构建流式响应失败", ctx.tag);
     match proxy_core_response_to_axum_response_with_error_message(
         response,
-        &build_error_context,
+        AxumResponseBuildErrorContext::TaggedStreaming { tag: ctx.tag },
         "Failed to build streaming response",
     ) {
         Ok(response) => response,
@@ -152,8 +151,10 @@ pub async fn handle_non_streaming(
     .map_err(ProxyError::ConfigError)?;
 
     let response = passthrough_bytes_proxy_response(status, response_headers, body_bytes);
-    let build_error_context = format!("[{}] 构建响应失败", ctx.tag);
-    proxy_core_response_to_axum_response(response, &build_error_context)
+    proxy_core_response_to_axum_response(
+        response,
+        AxumResponseBuildErrorContext::TaggedResponse { tag: ctx.tag },
+    )
 }
 
 /// 通用响应处理入口

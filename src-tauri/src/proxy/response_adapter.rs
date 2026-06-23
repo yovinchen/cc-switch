@@ -1,7 +1,7 @@
 use super::{error::ProxyError, hyper_client::ProxyResponse};
 use crate::proxy_core_adapter::{
-    ProxyCoreResponse, ProxyEventEnvelope, ProxyTransportResponse, ProxyTransportResponseBody,
-    request_body_read_error_message,
+    AxumResponseBuildErrorContext, ProxyCoreResponse, ProxyEventEnvelope, ProxyTransportResponse,
+    ProxyTransportResponseBody, request_body_read_error_message,
 };
 use axum::response::sse::Event;
 use bytes::Bytes;
@@ -41,7 +41,7 @@ pub(crate) fn proxy_core_response_to_proxy_response(
 
 pub(crate) fn proxy_core_response_to_axum_response(
     response: ProxyCoreResponse,
-    build_error_context: &str,
+    build_error_context: AxumResponseBuildErrorContext<'_>,
 ) -> Result<axum::response::Response, ProxyError> {
     proxy_core_response_to_axum_response_with_error_message(
         response,
@@ -52,7 +52,7 @@ pub(crate) fn proxy_core_response_to_axum_response(
 
 pub(crate) fn proxy_core_response_to_axum_response_with_error_message(
     response: ProxyCoreResponse,
-    build_error_context: &str,
+    build_error_context: AxumResponseBuildErrorContext<'_>,
     build_error_message: &str,
 ) -> Result<axum::response::Response, ProxyError> {
     let response = response
@@ -74,6 +74,7 @@ pub(crate) fn proxy_core_response_to_axum_response_with_error_message(
         builder = builder.header(key, value);
     }
 
+    let build_error_context = build_error_context.message();
     builder.body(body).map_err(|error| {
         log::error!("{build_error_context}: {error}");
         ProxyError::Internal(format!("{build_error_message}: {error}"))
@@ -124,7 +125,11 @@ mod tests {
             ProxyResponseBody::bytes(Bytes::from_static(b"ok")),
         );
 
-        let response = proxy_core_response_to_axum_response(response, "test").expect("bridge");
+        let response = proxy_core_response_to_axum_response(
+            response,
+            AxumResponseBuildErrorContext::TaggedResponse { tag: "test" },
+        )
+        .expect("bridge");
 
         assert_eq!(response.status(), StatusCode::CREATED);
         assert_eq!(

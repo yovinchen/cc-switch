@@ -53,10 +53,11 @@ use crate::proxy_core_adapter::{
     strip_endpoint_prefix, synthesize_gemini_tool_call_id_with_uuid,
     transformed_sse_proxy_response, validate_management_bearer_header,
     AppChannelListQuery, AppChannelManagementRequest, AppChannelResponse, AppKind, AppListRequest,
-    AppListResponse, AppModelCatalogRequest, AppModelListQuery, ChannelCreateRequest,
-    ChannelDeleteResponse, ChannelHealthResetResponse, ChannelKeyDeleteResponse,
-    ChannelKeyPathRequest, ChannelKeyRecord, ChannelKeyRecordResponse, ChannelKeysResponse,
-    ChannelListQuery, ChannelListRequest, ChannelListResponse, ChannelMigrationMaterializeResponse,
+    AppListResponse, AppModelCatalogRequest, AppModelListQuery, AxumResponseBuildErrorContext,
+    ChannelCreateRequest, ChannelDeleteResponse, ChannelHealthResetResponse,
+    ChannelKeyDeleteResponse, ChannelKeyPathRequest, ChannelKeyRecord, ChannelKeyRecordResponse,
+    ChannelKeysResponse, ChannelListQuery, ChannelListRequest, ChannelListResponse,
+    ChannelMigrationMaterializeResponse,
     ChannelMigrationPreviewResponse, ChannelModelRecord, ChannelModelsResponse, ChannelPathRequest,
     ChannelRecord, ChannelRecordResponse, ChannelRouteCandidate, ChannelRouteRejected,
     ChannelTestResponse, ClaudeDesktopModelListResponse, ClientModelCatalogResponse,
@@ -732,7 +733,10 @@ async fn handle_claude_transform(
         );
 
         let response = transformed_sse_proxy_response(logged_stream);
-        return proxy_core_response_to_axum_response(response, "[Claude] 构建 SSE 响应失败");
+        return proxy_core_response_to_axum_response(
+            response,
+            AxumResponseBuildErrorContext::ClaudeSse,
+        );
     }
 
     // 非流式响应转换 (OpenAI/Responses → Anthropic)
@@ -819,7 +823,7 @@ async fn handle_claude_transform(
             proxy_core_error_to_proxy_error(error)
         })?;
 
-    proxy_core_response_to_axum_response(response, "[Claude] 构建响应失败")
+    proxy_core_response_to_axum_response(response, AxumResponseBuildErrorContext::ClaudeResponse)
 }
 
 // ============================================================================
@@ -1034,7 +1038,10 @@ async fn handle_codex_chat_to_responses_transform(
         );
 
         let response = transformed_sse_proxy_response(logged_stream);
-        return proxy_core_response_to_axum_response(response, "[Codex] 构建 SSE 响应失败");
+        return proxy_core_response_to_axum_response(
+            response,
+            AxumResponseBuildErrorContext::CodexSse,
+        );
     }
 
     let _connection_guard = connection_guard;
@@ -1092,7 +1099,7 @@ async fn handle_codex_chat_to_responses_transform(
             proxy_core_error_to_proxy_error(error)
         })?;
 
-    proxy_core_response_to_axum_response(response, "[Codex] 构建 Responses 响应失败")
+    proxy_core_response_to_axum_response(response, AxumResponseBuildErrorContext::CodexResponses)
 }
 
 /// 把上游 Chat Completions 的错误响应转换为 Responses API 错误形状。
@@ -1122,7 +1129,10 @@ async fn handle_codex_chat_error_response(
         },
     )?;
 
-    proxy_core_response_to_axum_response(response, "[Codex] 构建 Responses 错误响应失败")
+    proxy_core_response_to_axum_response(
+        response,
+        AxumResponseBuildErrorContext::CodexResponsesError,
+    )
 }
 
 /// 把转发层（非上游响应）的失败构造成富化的 Codex 错误响应。
@@ -1150,7 +1160,7 @@ fn build_codex_proxy_error_response(
         proxy_core_error_to_proxy_error(error)
     })?;
 
-    proxy_core_response_to_axum_response(response, "[Codex] 构建代理错误响应失败")
+    proxy_core_response_to_axum_response(response, AxumResponseBuildErrorContext::CodexProxyError)
 }
 
 // ============================================================================
