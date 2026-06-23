@@ -30,7 +30,8 @@ use crate::proxy_core_adapter::{
     forwarder_codex_chat_reasoning_options,
     forwarder_custom_user_agent_header,
     forward_failure_kind_from_proxy_error, forwarder_should_convert_codex_responses_to_chat,
-    forwarder_is_codex_oauth_provider, forwarder_uses_anthropic_rectifiers,
+    forwarder_is_codex_oauth_provider, forwarder_is_full_url_provider,
+    forwarder_is_github_copilot_upstream, forwarder_uses_anthropic_rectifiers,
     is_openai_o_series,
     is_unsupported_image_error, allow_forward_attempt_runtime_source, merge_copilot_tool_results,
     non_streaming_body_timeout_message, normalize_thinking_type,
@@ -38,7 +39,6 @@ use crate::proxy_core_adapter::{
     forwarder_claude_normalize_anthropic_messages,
     forwarder_claude_transform_request_for_api_format,
     provider_adapter_name_is_claude,
-    provider_is_full_url, provider_is_github_copilot_upstream,
     rectify_anthropic_request, rectify_thinking_budget, replace_image_blocks_with_marker,
     record_forward_attempt_failure_runtime_source,
     record_forward_attempt_success_runtime_source,
@@ -1141,10 +1141,10 @@ impl RequestForwarder {
         // 使用适配器提取 base_url
         let mut base_url = adapter.extract_base_url(provider)?;
 
-        let is_full_url = provider_is_full_url(provider);
+        let is_full_url = forwarder_is_full_url_provider(provider);
 
         // GitHub Copilot API 使用 /chat/completions（无 /v1 前缀）
-        let is_copilot = provider_is_github_copilot_upstream(provider, &base_url);
+        let is_copilot = forwarder_is_github_copilot_upstream(provider, &base_url);
 
         // 应用模型映射（独立于格式转换）
         // Claude Desktop proxy 模式必须先把 Desktop 可见的 claude-* route
