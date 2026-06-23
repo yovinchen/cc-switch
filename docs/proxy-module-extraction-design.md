@@ -339,7 +339,7 @@
 328. `CircuitBreakerConfig` DTO、默认值和 `AppProxyConfig` 到熔断器配置/失败阈值的投影已迁入 `proxy-core::circuit_breaker_config`；host `proxy::circuit_breaker` 只保留状态机实现，调用方直接引用 core 配置类型。
 329. provider/channel circuit breaker key、app type 解析和 app scope prefix 规则已迁入 `proxy-core::circuit_breaker_key`；`ProviderRouter` 不再手写 `app:provider` / `channel:app:channel` 字符串契约。
 330. response runtime policy 已在 `proxy-core::response_timeout` 中统一产出 failover-gated timeout 和 `max_retries`；host `RequestContext` 不再手写 failover 关闭时 retry 清零规则。
-331. Codex proxy error code 字符串契约已迁入 `proxy-core::codex_error`；host `error_mapper` 只负责把 `ProxyError` 映射为 core-neutral `CodexProxyErrorKind`。
+331. Codex proxy error code 字符串契约已迁入 `proxy-core::codex_error`；`ProxyError` 到 Codex proxy error facts/kind 的宿主投影已收敛到 `proxy_core_adapter`，host `error_mapper` 只保留兼容 wrapper。
 332. `ProxySession::from_request` 中的 client format、model 和 streaming flag 派生已迁入 `proxy-core::proxy_session_request_metadata`；host session 只补 UUID、时间和 provider 运行态字段。
 333. `ProxyError` 到 HTTP status code 的状态契约已迁入 `proxy-core::proxy_error_http_status_code`；host `ProxyError::into_response` 和 `error_mapper` 共用同一个 host-neutral status kind 映射。
 334. channel route candidate 到 provider settings/meta 的覆盖计划已迁入 `proxy-core::channel_provider_override_plan`；host `route_attempt` 只负责把 core plan 写入 `Provider.settings_config` 和 `Provider.meta`。
@@ -1051,6 +1051,7 @@
 本轮继续把 forwarder 的 Codex app gate 与 Responses->Chat provider predicate 收敛到 `proxy_core_adapter::forwarder_should_convert_codex_responses_to_chat`，转发器不再直接调用 provider-level Codex chat predicate。
 本轮继续把 global proxy 的显式代理 URL parse、scheme allowlist 和错误消息投影收敛到 `proxy_core_adapter::{validate_explicit_proxy_url,invalid_explicit_proxy_url_message}`，host HTTP client 只负责 reqwest proxy 构造和 client builder。
 本轮继续把 provider custom endpoints 的列表排序、URL key 归一化、空 URL 新增校验和 last-used mutation 收敛到 `proxy_core_adapter`，endpoint service 不再直接穿透 `Provider.meta.custom_endpoints`。
+本轮继续把 Codex proxy error facts/kind 的 `ProxyError` 投影收敛到 `proxy_core_adapter`，`error_mapper` 不再直接引用 `CodexProxyErrorKind` 或组装 `CodexProxyHostErrorFacts`。
 本轮继续把 Copilot fingerprint header 常量提升到 adapter，`proxy_core_adapter` 不再反向引用 `providers::copilot_auth` 常量。
 本轮继续把 `codex_chat_history` 从 `proxy::providers` 移到 `proxy` 模块根，provider 目录只保留 provider adapter 和账号认证相关实现。
 本轮继续把 `ProviderRouterSource` 拆成 router 端的 provider/channel/config/health 四个 focused port；host adapter 侧拆出对应 DB-backed source/store，并把 `ProviderRouter::new(Arc<Database>)` 迁到 `proxy_core_adapter::provider_router_from_database` factory，生产代码不再直连 router 的 DB 构造入口。
