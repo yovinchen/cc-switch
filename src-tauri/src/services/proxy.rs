@@ -20,6 +20,7 @@ use crate::proxy_core_adapter::{
     codex_provider_live_write_parts,
     codex_preserved_auth_live_config_text_for_configured_policy,
     current_provider_for_app_from_db, gemini_live_backup_from_effective_settings,
+    existing_live_backup_value_for_update_from_db,
     delete_all_live_backups_best_effort_in_db,
     delete_all_live_backups_in_db,
     delete_live_backup_best_effort_in_db, delete_live_backup_in_db,
@@ -1186,17 +1187,8 @@ impl ProxyService {
         .map_err(|e| format!("构建 {app_type} 有效配置失败: {e}"))?;
 
         if matches!(app_type_enum, AppType::Codex) {
-            let existing_backup_value = self
-                .db
-                .get_live_backup(app_type)
-                .await
-                .map_err(|e| format!("读取 {app_type} 现有备份失败: {e}"))?
-                .map(|backup| {
-                    serde_json::from_str::<Value>(&backup.original_config)
-                        .map_err(|e| format!("解析 {app_type} 现有备份失败: {e}"))
-                })
-                .transpose()?;
-
+            let existing_backup_value =
+                existing_live_backup_value_for_update_from_db(&self.db, app_type).await?;
             if let Some(existing_value) = existing_backup_value.as_ref() {
                 preserve_codex_mcp_servers_from_existing_config(
                     &mut effective_settings,

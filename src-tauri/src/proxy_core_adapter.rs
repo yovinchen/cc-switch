@@ -1255,6 +1255,24 @@ pub(crate) async fn live_backup_value_for_restore_from_db(
         .map_err(|e| format!("解析 {app_type_str} 备份失败: {e}"))
 }
 
+pub(crate) async fn existing_live_backup_value_for_update_from_db(
+    db: &Database,
+    app_type: &str,
+) -> Result<Option<Value>, String> {
+    let backup = db
+        .get_live_backup(app_type)
+        .await
+        .map_err(|e| format!("读取 {app_type} 现有备份失败: {e}"))?;
+
+    let Some(backup) = backup else {
+        return Ok(None);
+    };
+
+    serde_json::from_str::<Value>(&backup.original_config)
+        .map(Some)
+        .map_err(|e| format!("解析 {app_type} 现有备份失败: {e}"))
+}
+
 pub(crate) async fn live_backup_config_for_simple_restore_from_db(
     db: &Database,
     app_type: &AppType,
