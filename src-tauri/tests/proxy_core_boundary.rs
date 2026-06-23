@@ -109,6 +109,14 @@ const FORBIDDEN_FAILOVER_SWITCH_CONFIG_MARKERS: &[&str] =
     &[".get_proxy_config_for_app(", ".enabled"];
 const FORBIDDEN_SWITCH_PROXY_PROVIDER_COMMAND_MARKERS: &[&str] =
     &[".get_provider_by_id(", "should_block_proxy_switch_to_provider("];
+const FORBIDDEN_RESET_CIRCUIT_BREAKER_COMMAND_MARKERS: &[&str] = &[
+    ".get_proxy_config_for_app(",
+    ".get_current_provider(",
+    ".get_failover_queue(",
+    ".get_all_providers(",
+    "restored_provider_switchback_decision(",
+    "FailoverQueuePosition",
+];
 const FORBIDDEN_PROVIDER_MODULE_CODEX_HISTORY_MARKERS: &[&str] =
     &["codex_chat_history", "providers::codex_chat_history"];
 const FORBIDDEN_PROVIDER_MODULE_KIND_FACADE_MARKERS: &[&str] = &[
@@ -4102,6 +4110,38 @@ fn production_switch_proxy_provider_command_delegates_provider_policy_to_service
     assert!(
         violations.is_empty(),
         "switch_proxy_provider command must delegate provider lookup and takeover policy to ProxyService:\n{}",
+        violations.join("\n")
+    );
+}
+
+#[test]
+fn production_reset_circuit_breaker_command_delegates_switchback_sources_to_adapter() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let path = manifest_dir.join("src/commands/proxy.rs");
+    let source = fs::read_to_string(&path).expect("read commands/proxy.rs");
+    let function = function_slice(
+        &source,
+        "pub async fn reset_circuit_breaker",
+        "/// 获取熔断器配置",
+    );
+
+    let mut violations = Vec::new();
+    for (line_index, line) in production_lines(function) {
+        let code = line.split("//").next().unwrap_or_default();
+        for marker in FORBIDDEN_RESET_CIRCUIT_BREAKER_COMMAND_MARKERS {
+            if code.contains(marker) {
+                violations.push(format!(
+                    "src/commands/proxy.rs reset_circuit_breaker:{} contains switchback source marker `{}`",
+                    line_index + 1,
+                    marker
+                ));
+            }
+        }
+    }
+
+    assert!(
+        violations.is_empty(),
+        "reset_circuit_breaker command must delegate switchback source reads and decision projection to proxy_core_adapter:\n{}",
         violations.join("\n")
     );
 }

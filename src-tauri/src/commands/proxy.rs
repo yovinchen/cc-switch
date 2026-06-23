@@ -4,9 +4,9 @@
 
 use crate::error::AppError;
 use crate::proxy_core_adapter::{
-    restored_provider_switchback_decision, AppProxyConfig, CircuitBreakerConfig,
-    CircuitBreakerStats, FailoverQueuePosition, GlobalProxyConfig, ProviderHealth, ProxyConfig,
-    ProxyRuntimeStatus, ProxyServerInfo, ProxyTakeoverStatus,
+    reset_circuit_breaker_switchback_target_from_db, AppProxyConfig, CircuitBreakerConfig,
+    CircuitBreakerStats, GlobalProxyConfig, ProviderHealth, ProxyConfig, ProxyRuntimeStatus,
+    ProxyServerInfo, ProxyTakeoverStatus,
 };
 use crate::store::AppState;
 
@@ -329,68 +329,36 @@ pub async fn reset_circuit_breaker(
         .reset_provider_circuit_breaker(&provider_id, &app_type)
         .await?;
 
-    // 3. 检查是否应该切回优先级更高的供应商（从 proxy_config 表读取）
-    // 只有当该应用已被代理接管（enabled=true）且开启了自动故障转移时才执行
-    let (app_enabled, auto_failover_enabled) = match db.get_proxy_config_for_app(&app_type).await {
-        Ok(config) => (config.enabled, config.auto_failover_enabled),
-        Err(e) => {
-            log::error!("[{app_type}] Failed to read proxy_config: {e}, defaulting to disabled");
-            (false, false)
-        }
-    };
-
-    let proxy_service_running =
-        app_enabled && auto_failover_enabled && state.proxy_service.is_running().await;
-    if proxy_service_running {
-        // 获取当前供应商 ID
-        let current_id = db
-            .get_current_provider(&app_type)
-            .map_err(|e| e.to_string())?;
-
-        if let Some(current_id) = current_id {
-            // 获取故障转移队列
-            let queue = db
-                .get_failover_queue(&app_type)
-                .map_err(|e| e.to_string())?;
-
-            let decision = restored_provider_switchback_decision(
-                app_enabled,
-                auto_failover_enabled,
-                proxy_service_running,
-                &provider_id,
-                &current_id,
-                queue
-                    .into_iter()
-                    .map(|item| FailoverQueuePosition::new(item.provider_id, item.sort_index))
-                    .collect::<Vec<_>>(),
+    let proxy_service_running = state.proxy_service.is_running().await;
+    if let Some(target) = reset_circuit_breaker_switchback_target_from_db(
+        db,
+        &app_type,
+        &provider_id,
+        proxy_service_running,
+    )
+    .await
+    .map_err(|e| e.to_string())?
+    {
+        if let (Some(restored), Some(current)) =
+            (target.restored_sort_index, target.current_sort_index)
+        {
+            log::info!(
+                "[Recovery] 供应商 {provider_id} 已恢复且优先级更高 (P{restored} vs P{current})，自动切换"
             );
+        }
 
-            if decision.should_switch {
-                if let (Some(restored), Some(current)) =
-                    (decision.restored_sort_index, decision.current_sort_index)
-                {
-                    log::info!(
-                        "[Recovery] 供应商 {provider_id} 已恢复且优先级更高 (P{restored} vs P{current})，自动切换"
-                    );
-                }
-
-                // 获取供应商名称用于日志和事件
-                let provider_name = db
-                    .get_all_providers(&app_type)
-                    .ok()
-                    .and_then(|providers| providers.get(&provider_id).map(|p| p.name.clone()))
-                    .unwrap_or_else(|| provider_id.clone());
-
-                // 创建故障转移切换管理器并执行切换
-                let switch_manager =
-                    crate::proxy::failover_switch::FailoverSwitchManager::new(db.clone());
-                if let Err(e) = switch_manager
-                    .try_switch(Some(&app_handle), &app_type, &provider_id, &provider_name)
-                    .await
-                {
-                    log::error!("[Recovery] 自动切换失败: {e}");
-                }
-            }
+        // 创建故障转移切换管理器并执行切换
+        let switch_manager = crate::proxy::failover_switch::FailoverSwitchManager::new(db.clone());
+        if let Err(e) = switch_manager
+            .try_switch(
+                Some(&app_handle),
+                &app_type,
+                &target.provider_id,
+                &target.provider_name,
+            )
+            .await
+        {
+            log::error!("[Recovery] 自动切换失败: {e}");
         }
     }
 

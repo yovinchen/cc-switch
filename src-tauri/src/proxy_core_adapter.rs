@@ -4738,6 +4738,88 @@ pub(crate) async fn failover_switch_app_enabled_from_db(
     )
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct ResetCircuitBreakerSwitchbackTarget {
+    pub(crate) provider_id: String,
+    pub(crate) provider_name: String,
+    pub(crate) restored_sort_index: Option<usize>,
+    pub(crate) current_sort_index: Option<usize>,
+}
+
+pub(crate) fn reset_circuit_breaker_switchback_target_from_sources(
+    app_enabled: bool,
+    auto_failover_enabled: bool,
+    proxy_service_running: bool,
+    restored_provider_id: &str,
+    current_provider_id: Option<String>,
+    queue: impl IntoIterator<Item = FailoverQueueItem>,
+    provider_name: Option<String>,
+) -> Option<ResetCircuitBreakerSwitchbackTarget> {
+    let current_provider_id = current_provider_id?;
+    let decision = restored_provider_switchback_decision(
+        app_enabled,
+        auto_failover_enabled,
+        proxy_service_running,
+        restored_provider_id,
+        &current_provider_id,
+        queue
+            .into_iter()
+            .map(|item| FailoverQueuePosition::new(item.provider_id, item.sort_index))
+            .collect::<Vec<_>>(),
+    );
+
+    if !decision.should_switch {
+        return None;
+    }
+
+    Some(ResetCircuitBreakerSwitchbackTarget {
+        provider_id: restored_provider_id.to_string(),
+        provider_name: provider_name.unwrap_or_else(|| restored_provider_id.to_string()),
+        restored_sort_index: decision.restored_sort_index,
+        current_sort_index: decision.current_sort_index,
+    })
+}
+
+pub(crate) async fn reset_circuit_breaker_switchback_target_from_db(
+    db: &Database,
+    app_type: &str,
+    restored_provider_id: &str,
+    proxy_service_running: bool,
+) -> Result<Option<ResetCircuitBreakerSwitchbackTarget>, AppError> {
+    let (app_enabled, auto_failover_enabled) = match db.get_proxy_config_for_app(app_type).await {
+        Ok(config) => (config.enabled, config.auto_failover_enabled),
+        Err(error) => {
+            log::error!("[{app_type}] Failed to read proxy_config: {error}, defaulting to disabled");
+            return Ok(None);
+        }
+    };
+
+    if !(app_enabled && auto_failover_enabled && proxy_service_running) {
+        return Ok(None);
+    }
+
+    let current_provider_id = db.get_current_provider(app_type)?;
+    let queue = db.get_failover_queue(app_type)?;
+    let provider_name = db
+        .get_all_providers(app_type)
+        .ok()
+        .and_then(|providers| {
+            providers
+                .get(restored_provider_id)
+                .map(|provider| provider.name.clone())
+        });
+
+    Ok(reset_circuit_breaker_switchback_target_from_sources(
+        app_enabled,
+        auto_failover_enabled,
+        proxy_service_running,
+        restored_provider_id,
+        current_provider_id,
+        queue,
+        provider_name,
+    ))
+}
+
 pub(crate) fn select_current_provider_ids_from_router_source(
     app_type: &str,
     current: Option<Provider>,
@@ -11700,6 +11782,58 @@ mod tests {
             "claude",
             Err(AppError::Config("missing proxy_config".to_string()))
         ));
+        let switchback_target = reset_circuit_breaker_switchback_target_from_sources(
+            true,
+            true,
+            true,
+            "provider-a",
+            Some("provider-b".to_string()),
+            vec![
+                FailoverQueueItem {
+                    provider_id: "provider-a".to_string(),
+                    provider_name: "Provider A".to_string(),
+                    sort_index: Some(1),
+                    provider_notes: None,
+                },
+                FailoverQueueItem {
+                    provider_id: "provider-b".to_string(),
+                    provider_name: "Provider B".to_string(),
+                    sort_index: Some(2),
+                    provider_notes: None,
+                },
+            ],
+            Some("Provider A".to_string()),
+        )
+        .expect("restored provider should switch back");
+        assert_eq!(
+            switchback_target,
+            ResetCircuitBreakerSwitchbackTarget {
+                provider_id: "provider-a".to_string(),
+                provider_name: "Provider A".to_string(),
+                restored_sort_index: Some(1),
+                current_sort_index: Some(2),
+            }
+        );
+        assert!(reset_circuit_breaker_switchback_target_from_sources(
+            true,
+            true,
+            true,
+            "provider-a",
+            None,
+            Vec::<FailoverQueueItem>::new(),
+            None,
+        )
+        .is_none());
+        assert!(reset_circuit_breaker_switchback_target_from_sources(
+            false,
+            true,
+            true,
+            "provider-a",
+            Some("provider-b".to_string()),
+            Vec::<FailoverQueueItem>::new(),
+            None,
+        )
+        .is_none());
 
         let loopback_auth =
             management_auth_decision_from_proxy_config_sources(&ProxyConfig::default(), None)
