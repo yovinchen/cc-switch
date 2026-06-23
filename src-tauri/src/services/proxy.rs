@@ -22,6 +22,7 @@ use crate::proxy_core_adapter::{
     current_provider_for_app_from_db, gemini_live_backup_from_effective_settings,
     delete_all_live_backups_best_effort_in_db,
     delete_live_backup_best_effort_in_db, delete_live_backup_in_db,
+    disable_global_proxy_best_effort_in_db, enable_global_proxy_in_db,
     is_local_proxy_url, live_backup_snapshot_from_live_config, live_token_sync_app_label,
     live_backup_config_for_simple_restore_from_db,
     live_takeover_any_enabled_from_db, live_takeover_backup_exists_from_db,
@@ -175,19 +176,7 @@ impl ProxyService {
     /// 启动代理服务器
     pub async fn start(&self) -> Result<ProxyServerInfo, String> {
         // 1. 启动时自动设置 proxy_enabled = true
-        let mut global_config = self
-            .db
-            .get_global_proxy_config()
-            .await
-            .map_err(|e| format!("获取全局代理配置失败: {e}"))?;
-
-        if !global_config.proxy_enabled {
-            global_config.proxy_enabled = true;
-            self.db
-                .update_global_proxy_config(global_config.clone())
-                .await
-                .map_err(|e| format!("更新代理总开关失败: {e}"))?;
-        }
+        enable_global_proxy_in_db(&self.db).await?;
 
         // 2. 获取配置
         let config = self
@@ -573,18 +562,7 @@ impl ProxyService {
                 .map_err(|e| format!("停止代理服务器失败: {e}"))?;
 
             // 停止时设置 proxy_enabled = false
-            let mut global_config = self
-                .db
-                .get_global_proxy_config()
-                .await
-                .map_err(|e| format!("获取全局代理配置失败: {e}"))?;
-
-            if global_config.proxy_enabled {
-                global_config.proxy_enabled = false;
-                if let Err(e) = self.db.update_global_proxy_config(global_config).await {
-                    log::warn!("更新代理总开关失败: {e}");
-                }
-            }
+            disable_global_proxy_best_effort_in_db(&self.db).await?;
 
             log::info!("代理服务器已停止");
             Ok(())

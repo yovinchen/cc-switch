@@ -981,6 +981,36 @@ pub(crate) async fn proxy_global_config_from_db_source(
     Ok(proxy_global_config_from_config(config))
 }
 
+pub(crate) async fn enable_global_proxy_in_db(db: &Database) -> Result<(), String> {
+    let mut config = db
+        .get_global_proxy_config()
+        .await
+        .map_err(|e| format!("获取全局代理配置失败: {e}"))?;
+    if !config.proxy_enabled {
+        config.proxy_enabled = true;
+        db.update_global_proxy_config(config)
+            .await
+            .map_err(|e| format!("更新代理总开关失败: {e}"))?;
+    }
+    Ok(())
+}
+
+pub(crate) async fn disable_global_proxy_best_effort_in_db(
+    db: &Database,
+) -> Result<(), String> {
+    let mut config = db
+        .get_global_proxy_config()
+        .await
+        .map_err(|e| format!("获取全局代理配置失败: {e}"))?;
+    if config.proxy_enabled {
+        config.proxy_enabled = false;
+        if let Err(e) = db.update_global_proxy_config(config).await {
+            log::warn!("更新代理总开关失败: {e}");
+        }
+    }
+    Ok(())
+}
+
 pub(crate) async fn proxy_app_config_from_db_source(
     db: &Database,
     app: &AppKind,
