@@ -446,7 +446,7 @@
 435. `ProxyBody` 到 JSON 请求体的解释规则已迁入 `proxy-core::ProxyBody::into_json`；host forward pipeline 不再维护本地 body parse helper。
 436. Gemini tool-call ID 的随机 UUID 宿主适配已集中到 `proxy_core_adapter::synthesize_gemini_tool_call_id_with_uuid`；handlers 与 Claude provider 不再各自维护重复 wrapper，core 仍只保留确定性 suffix 生成规则。
 437. channel provider override plan 的 settings JSON 应用规则已迁入 `proxy-core::apply_channel_provider_settings_overrides`；host route attempt 只负责把 core plan 应用到宿主 `Provider` 并保留 `ProviderMeta` 更新。
-438. `ChannelQuery` 对 `ChannelSpec` 的 provider/model/group/status 过滤规则已迁入 `proxy-core::channel_matches_query`；host channel source adapter 不再维护本地筛选 helper。
+438. `ChannelQuery` 对 `ChannelSpec` 的 provider/model/group/status 过滤规则已迁入 `proxy-core::channel_matches_query`；adapter-owned channel source 不再维护本地筛选 helper。
 439. `AppProxyConfig` 管理 API raw envelope 的 `currentProviderId` 注入规则已迁入 `proxy-core::app_proxy_config_raw`；adapter-owned config source 负责读取当前 provider 事实并传入 core helper。
 440. `ProxyCoreEventType` 外部事件名和 `ProxyCoreEvent` payload 注入规则已迁入 `proxy-core::{event_name, into_event_payload}`；adapter-owned `CcSwitchEventSink` 负责把 core 事件转发给现有 `ProxyEventBus`，host services 只装配可选事件总线。
 441. `/proxy/v1/channels/{channel_id}/test` 管理 API 已落地；adapter-owned reachability probe 负责读取 channel/provider 并执行现有 stream-check，core 负责 `ProxyChannelTestRequest`/`ChannelTestResponse` 对外契约。
@@ -617,7 +617,7 @@
 606. legacy channel migration 的 provider settings 投影已从 DAO 移到 host adapter `legacy_provider_projection_input`：DAO 不再解析 Codex TOML、env/modelCatalog 或 Claude Desktop model routes，只把 provider fact 投影交给 adapter 后调用 core legacy projection。
 607. legacy channel projection 到 `ProxyChannelRecord` / `ProxyChannelModelRecord` 的 host 映射已移入 `proxy_core_adapter::proxy_channel_record_from_legacy_projection`：DAO 不再逐字段展开 core legacy projection，也不再手写 preview 去重，只负责读取 legacy provider 事实和物化落库。
 608. forward result 到 `ProxyResult` 的 selected route、metadata 和 outbound model 投影已移入 host adapter `proxy_result_from_forward_parts`：`proxy_core_host` 只保留 `ProxyResponse`/connection guard 到 core response 的 runtime 桥接，结果 contract 由 adapter 统一生成。
-609. `CcSwitchChannelSource` 的 channel record 到 `ChannelSpec` 投影与 `ChannelQuery` 过滤已收敛到 host adapter `proxy_channel_records_to_core_specs_for_query`：source 只负责选择 legacy/materialized 数据来源、读取 DB/router 并映射 host 错误。
+609. `CcSwitchChannelSource` 的 channel record 到 `ChannelSpec` 投影与 `ChannelQuery` 过滤已收敛到 host adapter `proxy_channel_records_to_core_specs_for_query`：adapter-owned source 负责选择 legacy/materialized 数据来源、读取 DB/router 并映射 host 错误，`proxy_core_host` 只装配 source。
 610. `CcSwitchProviderSource` 的 DB provider 到 `ProviderSpec` 投影已收敛到 host adapter `proxy_provider_to_core_spec` / `proxy_providers_to_core_specs`：adapter-owned source 负责 provider list/get/current 查询与 active-route runtime map 读取，metadata 脱敏和 provider kind 推断继续由 adapter/core 投影规则生成。
 611. route policy 的 failover queue provider id 到 `RoutePolicy` raw contract 投影已新增 `proxy-core::route_policy_from_failover_provider_ids` 并经 host adapter `route_policy_from_failover_queue` 接入：adapter-owned `CcSwitchRoutePolicySource` 负责读取 DB 队列和错误映射，host 只装配 source。
 612. `CcSwitchConfigSource` 的 global/app/runtime config DTO 投影已新增 `proxy-core` helpers 并由 adapter-owned source wrapper 接入：config source 负责读取 DB/settings，`ProxyGlobalConfig`、`ProxyAppConfig`、optimizer specs 与 `ProxyRuntimeConfig` 的 raw contract 由 core 统一生成。
@@ -913,11 +913,11 @@
 本轮继续把 `ProxyRequest` 解析、forwarder runtime config/current-provider/attempt source 读取和 preplanned launcher 串联为单一 adapter forward runtime 入口，host forward runtime 只保留资源包委托。
 本轮继续把 `CcSwitchConfigSource` 的 global/app/summary/runtime 配置 DB 读取和 core DTO 投影收敛到 adapter-owned source wrapper，host services 只装配 source。
 本轮继续把 `CcSwitchProviderSource` 的 provider list/get/current-provider DB 读取和 `ProviderSpec` 投影收敛到 adapter-owned source wrapper。
-本轮继续把 `CcSwitchChannelSource` 的 channel spec list/get 读取与 `ChannelSpec` 投影收敛到 adapter source wrapper，host channel source 的 spec 查询只保留端口委托。
-本轮继续把 `CcSwitchChannelSource` 的 channel record create/get/update/delete DB 操作与 `ChannelRecord` 投影收敛到 adapter source wrapper，key/model 子资源保留为后续独立切片。
-本轮继续把 `CcSwitchChannelSource` 的 channel key/model 子资源 DB 操作与 `ChannelKeyRecord`/`ChannelModelRecord` 投影收敛到 adapter source wrapper，host channel source 的 key/model 路径只保留端口委托。
-本轮继续把 `CcSwitchChannelSource` 的 route/materialized channel record list 读取与 `ChannelRecord` 投影收敛到 adapter source wrapper，host channel source 的 record list 路径只保留端口委托。
-本轮继续把 `CcSwitchChannelSource` 的 legacy channel migration preview/materialize DB 操作与 response input 投影收敛到 adapter source wrapper，host migration 路径只保留端口委托。
+本轮继续把 `CcSwitchChannelSource` 的 channel spec list/get 读取与 `ChannelSpec` 投影收敛到 adapter-owned source wrapper。
+本轮继续把 `CcSwitchChannelSource` 的 channel record create/get/update/delete DB 操作与 `ChannelRecord` 投影收敛到 adapter-owned source wrapper。
+本轮继续把 `CcSwitchChannelSource` 的 channel key/model 子资源 DB 操作与 `ChannelKeyRecord`/`ChannelModelRecord` 投影收敛到 adapter-owned source wrapper。
+本轮继续把 `CcSwitchChannelSource` 的 route/materialized channel record list 读取与 `ChannelRecord` 投影收敛到 adapter-owned source wrapper。
+本轮继续把 `CcSwitchChannelSource` 的 legacy channel migration preview/materialize DB 操作与 response input 投影收敛到 adapter-owned source wrapper，host services 只装配 channel source。
 本轮继续把 `CcSwitchRoutePolicySource` 的 failover queue DB 读取与 `RoutePolicy` 投影迁入 adapter-owned source，host services 只装配 source。
 本轮继续把 channel health attempt DB 更新、reset app lookup、breaker reset 与 `ChannelHealthReset` 投影迁入 adapter-owned `CcSwitchChannelHealthStore`，host services 只装配 store。
 本轮继续把 `CcSwitchChannelReachabilityProbe` 的 probe request app/provider 投影、provider/config DB 读取、stream-check 调用与 reachability 结果投影收敛到 adapter-owned source wrapper，host services 只装配 probe。
@@ -1970,7 +1970,7 @@ node_modules/.bin/tsc --noEmit
 
 1. `CcSwitchConfigSource` 作为 adapter-owned 端口包装现有 DB/settings 读取。
 2. `CcSwitchProviderSource` 作为 adapter-owned 端口包装 provider/current provider 读取。
-3. `CcSwitchChannelSource` 包装 provider 主 URL、`provider_endpoints` 和未来 channel 表读取。
+3. `CcSwitchChannelSource` 作为 adapter-owned 端口包装 provider 主 URL、`provider_endpoints` 和未来 channel 表读取。
 4. `CcSwitchRoutePolicySource` 包装 failover queue、group 和优先级/权重策略；`CcSwitchRouteResolver` 包装 core route plan 与 management dry-run route resolution。
 5. `CcSwitchChannelHealthStore` 包装 channel health 写入；兼容期可同时写 provider health 聚合。
 6. `CcSwitchUsageSink` 作为 adapter-owned 端口包装 `UsageLogger`；写入必须使用完整 `UsageRecord`，不能用简化 hint 直接写账单。
@@ -2191,7 +2191,7 @@ CC Switch 前端可以继续用 Tauri commands；外部集成用 HTTP API。
 ### 宿主适配测试
 
 - adapter-owned `CcSwitchProviderSource` 与现有 DB provider 表兼容。
-- `CcSwitchChannelSource` 可以从 provider 主 URL、`provider_endpoints` 和新 channel 表生成一致候选。
+- adapter-owned `CcSwitchChannelSource` 可以从 provider 主 URL、`provider_endpoints` 和新 channel 表生成一致候选。
 - 旧配置迁移 dry-run 可以输出新增、重复、需人工确认的 channel。
 - adapter-owned `CcSwitchUsageSink` 写入 `proxy_request_logs` 字段完整，`proxy_core_host` 只装配 sink。
 - adapter-owned `CcSwitchEventSink` 可以驱动托盘和前端事件，`proxy_core_host` 只装配事件总线。
