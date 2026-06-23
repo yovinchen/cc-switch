@@ -4075,6 +4075,13 @@ pub(crate) fn forwarder_provider_base_url(
     adapter.extract_base_url(provider)
 }
 
+pub(crate) fn forwarder_provider_auth_info(
+    adapter: &dyn ProviderAdapter,
+    provider: &Provider,
+) -> Option<ProviderAuthInfo> {
+    adapter.extract_auth(provider)
+}
+
 pub(crate) fn forwarder_provider_transform_request(
     adapter: &dyn ProviderAdapter,
     body: Value,
@@ -14469,6 +14476,26 @@ reasoning = "medium"
             oauth.masked_access_token(),
             Some("ya29...2345".to_string())
         );
+
+        let codex_adapter = crate::proxy::providers::CodexAdapter::new();
+        let codex_provider = Provider::with_id(
+            "codex".to_string(),
+            "Codex".to_string(),
+            json!({"apiKey": "sk-forwarder-auth"}),
+            None,
+        );
+        let forwarder_auth = forwarder_provider_auth_info(&codex_adapter, &codex_provider)
+            .expect("codex forwarder auth info");
+        assert_eq!(forwarder_auth.api_key, "sk-forwarder-auth");
+        assert_eq!(forwarder_auth.strategy, ProviderAuthStrategy::Bearer);
+
+        let missing_auth = Provider::with_id(
+            "missing".to_string(),
+            "Missing".to_string(),
+            json!({}),
+            None,
+        );
+        assert!(forwarder_provider_auth_info(&codex_adapter, &missing_auth).is_none());
     }
 
     #[test]

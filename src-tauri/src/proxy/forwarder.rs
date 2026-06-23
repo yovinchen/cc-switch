@@ -33,7 +33,7 @@ use crate::proxy_core_adapter::{
     forwarder_is_codex_oauth_provider, forwarder_is_full_url_provider,
     forwarder_is_github_copilot_upstream,
     forwarder_replace_images_for_text_only_provider_model, forwarder_uses_anthropic_rectifiers,
-    forwarder_provider_base_url,
+    forwarder_provider_auth_info, forwarder_provider_base_url,
     forwarder_provider_transform_request, forwarder_provider_transform_required,
     is_openai_o_series,
     is_unsupported_image_error, allow_forward_attempt_runtime_source, merge_copilot_tool_results,
@@ -1442,7 +1442,9 @@ impl RequestForwarder {
 
         // 获取认证头（提前准备，用于内联替换）
         let auth_provider = attempt.auth_provider();
-        let mut auth_headers = if let Some(mut auth) = adapter.extract_auth(auth_provider) {
+        let mut auth_headers = if let Some(mut auth) =
+            forwarder_provider_auth_info(adapter, auth_provider)
+        {
             let managed_auth =
                 resolve_managed_account_auth(self.app_handle.as_ref(), auth_provider, auth).await?;
             auth = managed_auth.auth;
