@@ -1111,6 +1111,7 @@
 本轮继续把 `backup_live_configs` / `backup_live_config_strict` 的 Live 备份 JSON 序列化和 `save_live_backup` 错误投影收敛到 `proxy_core_adapter::save_live_backup_value_in_db`：service 只负责读取 live 文件、判断占位符接管状态并决定是否保存备份，备份持久化细节由 adapter 维护。
 本轮继续把 `restore_live_config_for_app_with_fallback_inner` 的 Live 备份读取与 JSON 解析错误投影收敛到 `proxy_core_adapter::live_backup_value_for_restore_from_db`：service 保留“备份是代理占位符则跳过并走 SSOT/清理兜底”的恢复策略，DB backup source 细节由 adapter 维护。
 本轮继续把 `restore_live_from_ssot_for_app` 的当前供应商读取、provider 列表读取和代理占位符供应商保护收敛到 `proxy_core_adapter::ssot_live_restore_provider_from_db`：service 只负责把 adapter 返回的可恢复 provider 写回 live 文件，`write_live_with_common_config` 文件写入边界仍留作后续切片。
+本轮继续把 `update_live_backup_from_provider_inner` 中用于保留 Codex MCP/OAuth 的现有 Live 备份读取与 JSON 解析错误投影收敛到 `proxy_core_adapter::existing_live_backup_value_for_update_from_db`：service 保留备份内容合并和统一会话路由注入，existing backup source 细节由 adapter 维护。
 
 当前原则：核心 crate 可以新增端口和领域字段，但不得引入 `tauri`、`Database`、settings、commands、services 等宿主依赖；现有 runtime 行为必须继续通过 targeted tests 证明不回归。
 
