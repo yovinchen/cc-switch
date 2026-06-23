@@ -3155,8 +3155,76 @@ pub(crate) struct ManagedAccountAuthResolution {
     pub(crate) should_send_codex_oauth_session_headers: bool,
 }
 
-pub(crate) async fn resolve_managed_account_auth(
-    app_handle: Option<&tauri::AppHandle>,
+struct CcSwitchManagedAccountRuntimeSource<'a> {
+    app_handle: Option<&'a tauri::AppHandle>,
+}
+
+impl<'a> CcSwitchManagedAccountRuntimeSource<'a> {
+    fn new(app_handle: Option<&'a tauri::AppHandle>) -> Self {
+        Self { app_handle }
+    }
+
+    async fn resolve_copilot_auth(
+        &self,
+        account_id: Option<&str>,
+        runtime: ManagedAccountAuthRuntime,
+    ) -> Result<ProviderAuthInfo, ProxyError> {
+        crate::proxy::managed_account_auth::resolve_copilot_auth(
+            self.app_handle,
+            account_id,
+            runtime,
+        )
+        .await
+    }
+
+    async fn resolve_codex_oauth(
+        &self,
+        account_id: Option<String>,
+        runtime: ManagedAccountAuthRuntime,
+    ) -> Result<(ProviderAuthInfo, Option<String>), ProxyError> {
+        crate::proxy::managed_account_auth::resolve_codex_oauth(
+            self.app_handle,
+            account_id,
+            runtime,
+        )
+        .await
+    }
+
+    async fn resolve_copilot_api_endpoint(&self, account_id: Option<&str>) -> Option<String> {
+        crate::proxy::managed_account_auth::resolve_copilot_api_endpoint(
+            self.app_handle,
+            account_id,
+        )
+        .await
+    }
+
+    async fn fetch_copilot_live_models(
+        &self,
+        account_id: Option<&str>,
+    ) -> Result<Option<Vec<CopilotModel>>, String> {
+        crate::proxy::managed_account_auth::fetch_copilot_live_models(
+            self.app_handle,
+            account_id,
+        )
+        .await
+    }
+
+    async fn resolve_copilot_model_vendor(
+        &self,
+        account_id: Option<&str>,
+        model_id: &str,
+    ) -> Option<String> {
+        crate::proxy::managed_account_auth::resolve_copilot_model_vendor(
+            self.app_handle,
+            account_id,
+            model_id,
+        )
+        .await
+    }
+}
+
+async fn resolve_managed_account_auth_with_runtime_source(
+    runtime_source: &CcSwitchManagedAccountRuntimeSource<'_>,
     auth_provider: &Provider,
     auth: ProviderAuthInfo,
 ) -> Result<ManagedAccountAuthResolution, ProxyError> {
@@ -3172,12 +3240,9 @@ pub(crate) async fn resolve_managed_account_auth(
             runtime: runtime @ ManagedAccountAuthRuntime::GitHubCopilot,
             account_id,
         } => {
-            let auth = crate::proxy::managed_account_auth::resolve_copilot_auth(
-                app_handle,
-                account_id.as_deref(),
-                runtime,
-            )
-            .await?;
+            let auth = runtime_source
+                .resolve_copilot_auth(account_id.as_deref(), runtime)
+                .await?;
             Ok(ManagedAccountAuthResolution {
                 auth,
                 codex_oauth_account_id: None,
@@ -3188,12 +3253,8 @@ pub(crate) async fn resolve_managed_account_auth(
             runtime: runtime @ ManagedAccountAuthRuntime::CodexOAuth,
             account_id,
         } => {
-            let (auth, codex_oauth_account_id) =
-                crate::proxy::managed_account_auth::resolve_codex_oauth(
-                    app_handle,
-                    account_id,
-                    runtime,
-                )
+            let (auth, codex_oauth_account_id) = runtime_source
+                .resolve_codex_oauth(account_id, runtime)
                 .await?;
             Ok(ManagedAccountAuthResolution {
                 auth,
@@ -3209,16 +3270,23 @@ pub(crate) async fn resolve_managed_account_auth(
     }
 }
 
+pub(crate) async fn resolve_managed_account_auth(
+    app_handle: Option<&tauri::AppHandle>,
+    auth_provider: &Provider,
+    auth: ProviderAuthInfo,
+) -> Result<ManagedAccountAuthResolution, ProxyError> {
+    let runtime_source = CcSwitchManagedAccountRuntimeSource::new(app_handle);
+    resolve_managed_account_auth_with_runtime_source(&runtime_source, auth_provider, auth).await
+}
+
 pub(crate) async fn resolve_copilot_api_endpoint(
     app_handle: Option<&tauri::AppHandle>,
     auth_provider: &Provider,
 ) -> Option<String> {
     let account_id = provider_github_copilot_managed_account_id(auth_provider);
-    crate::proxy::managed_account_auth::resolve_copilot_api_endpoint(
-        app_handle,
-        account_id.as_deref(),
-    )
-    .await
+    CcSwitchManagedAccountRuntimeSource::new(app_handle)
+        .resolve_copilot_api_endpoint(account_id.as_deref())
+        .await
 }
 
 pub(crate) async fn fetch_copilot_live_models(
@@ -3226,11 +3294,9 @@ pub(crate) async fn fetch_copilot_live_models(
     auth_provider: &Provider,
 ) -> Result<Option<Vec<CopilotModel>>, String> {
     let account_id = provider_github_copilot_managed_account_id(auth_provider);
-    crate::proxy::managed_account_auth::fetch_copilot_live_models(
-        app_handle,
-        account_id.as_deref(),
-    )
-    .await
+    CcSwitchManagedAccountRuntimeSource::new(app_handle)
+        .fetch_copilot_live_models(account_id.as_deref())
+        .await
 }
 
 pub(crate) async fn resolve_copilot_model_vendor(
@@ -3239,12 +3305,9 @@ pub(crate) async fn resolve_copilot_model_vendor(
     model_id: &str,
 ) -> Option<String> {
     let account_id = provider_github_copilot_managed_account_id(auth_provider);
-    crate::proxy::managed_account_auth::resolve_copilot_model_vendor(
-        app_handle,
-        account_id.as_deref(),
-        model_id,
-    )
-    .await
+    CcSwitchManagedAccountRuntimeSource::new(app_handle)
+        .resolve_copilot_model_vendor(account_id.as_deref(), model_id)
+        .await
 }
 
 pub(crate) const SESSION_REQUEST_ID_PREFIX: &str =

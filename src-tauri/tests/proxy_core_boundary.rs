@@ -370,6 +370,10 @@ const FORBIDDEN_MANAGED_ACCOUNT_AUTH_PLAN_SOURCE_MARKERS: &[&str] = &[
     "provider_codex_oauth_managed_account_id(",
     "ManagedAccountAuthPlan::",
 ];
+const FORBIDDEN_ADAPTER_MANAGED_AUTH_PLAN_RUNTIME_CALL_MARKERS: &[&str] = &[
+    "crate::proxy::managed_account_auth::resolve_copilot_auth(",
+    "crate::proxy::managed_account_auth::resolve_codex_oauth(",
+];
 const FORBIDDEN_FORWARDER_FAILOVER_SWITCH_MARKERS: &[&str] = &[".try_switch("];
 const FORBIDDEN_FORWARDER_RUNTIME_EVENT_SOURCE_MARKERS: &[&str] = &[
     ".status.write()",
@@ -5418,6 +5422,38 @@ fn production_managed_account_auth_uses_adapter_plan_source() {
     assert!(
         violations.is_empty(),
         "managed account auth planning and provider account projection must be owned by proxy_core_adapter:\n{}",
+        violations.join("\n")
+    );
+}
+
+#[test]
+fn production_adapter_managed_auth_planning_uses_runtime_source() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let path = manifest_dir.join("src/proxy_core_adapter.rs");
+    let source = fs::read_to_string(&path).expect("read proxy_core_adapter.rs");
+    let function = function_slice(
+        &source,
+        "pub(crate) async fn resolve_managed_account_auth",
+        "pub(crate) async fn resolve_copilot_api_endpoint",
+    );
+
+    let mut violations = Vec::new();
+    for (line_index, line) in production_lines(function) {
+        let code = line.split("//").next().unwrap_or_default();
+        for marker in FORBIDDEN_ADAPTER_MANAGED_AUTH_PLAN_RUNTIME_CALL_MARKERS {
+            if code.contains(marker) {
+                violations.push(format!(
+                    "src/proxy_core_adapter.rs resolve_managed_account_auth:{} contains direct runtime call marker `{}`",
+                    line_index + 1,
+                    marker
+                ));
+            }
+        }
+    }
+
+    assert!(
+        violations.is_empty(),
+        "adapter managed-auth planning must call an adapter-owned runtime source instead of host auth functions directly:\n{}",
         violations.join("\n")
     );
 }
