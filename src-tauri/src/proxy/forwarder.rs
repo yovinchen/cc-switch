@@ -33,6 +33,7 @@ use crate::proxy_core_adapter::{
     forwarder_is_codex_oauth_provider, forwarder_is_full_url_provider,
     forwarder_is_github_copilot_upstream,
     forwarder_replace_images_for_text_only_provider_model, forwarder_uses_anthropic_rectifiers,
+    forwarder_provider_base_url,
     forwarder_provider_transform_request, forwarder_provider_transform_required,
     is_openai_o_series,
     is_unsupported_image_error, allow_forward_attempt_runtime_source, merge_copilot_tool_results,
@@ -1143,7 +1144,7 @@ impl RequestForwarder {
     ) -> Result<(ProxyResponse, Option<String>, Option<String>), ProxyError> {
         let provider = attempt.provider();
         // 使用适配器提取 base_url
-        let mut base_url = adapter.extract_base_url(provider)?;
+        let mut base_url = forwarder_provider_base_url(adapter, provider)?;
 
         let is_full_url = forwarder_is_full_url_provider(provider);
 

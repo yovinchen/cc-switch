@@ -4068,6 +4068,13 @@ pub(crate) fn forwarder_provider_transform_required(
     adapter.needs_transform(provider)
 }
 
+pub(crate) fn forwarder_provider_base_url(
+    adapter: &dyn ProviderAdapter,
+    provider: &Provider,
+) -> Result<String, ProxyError> {
+    adapter.extract_base_url(provider)
+}
+
 pub(crate) fn forwarder_provider_transform_request(
     adapter: &dyn ProviderAdapter,
     body: Value,
@@ -16685,6 +16692,23 @@ command = "latest-command"
         });
         let claude_adapter = crate::proxy::providers::ClaudeAdapter::new();
         let codex_adapter = crate::proxy::providers::CodexAdapter::new();
+        let codex_provider = Provider::with_id(
+            "codex".to_string(),
+            "Codex".to_string(),
+            json!({"base_url": "https://relay.example/v1/"}),
+            None,
+        );
+        assert_eq!(
+            forwarder_provider_base_url(&codex_adapter, &codex_provider)
+                .expect("codex base URL"),
+            "https://relay.example/v1"
+        );
+        let missing_base_url = forwarder_provider_base_url(&codex_adapter, &provider)
+            .expect_err("missing codex base URL should fail");
+        assert!(matches!(
+            missing_base_url,
+            ProxyError::ConfigError(message) if message == "Codex Provider 缺少 base_url 配置"
+        ));
         assert_eq!(forwarder_claude_api_format(&provider), "openai_chat");
         assert_eq!(
             resolve_forwarder_claude_api_format(&provider, true, Some("OpenAI")),
