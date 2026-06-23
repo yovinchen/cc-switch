@@ -616,11 +616,14 @@ const FORBIDDEN_PROXY_CORE_HOST_FORWARDER_LAUNCH_MARKERS: &[&str] = &[
     "RequestForwarder::new_preplanned(",
     ".forward_with_preplanned_attempts(",
     "forward_runtime_request_from_proxy_request(",
+    "forward_proxy_request_with_host_runtime(",
     "forward_with_preplanned_host_runtime(",
     "forward_error_to_core_error(",
 ];
-const FORBIDDEN_PROXY_CORE_HOST_FORWARDER_RUNTIME_RESOURCE_MARKERS: &[&str] =
-    &["        ForwarderRuntimeHostResources {"];
+const FORBIDDEN_PROXY_CORE_HOST_FORWARDER_RUNTIME_RESOURCE_MARKERS: &[&str] = &[
+    "        ForwarderRuntimeHostResources {",
+    "forwarder_runtime_host_resources_from_runtime(",
+];
 const FORBIDDEN_PROXY_SERVER_CIRCUIT_RUNTIME_MARKERS: &[&str] = &[
     ".provider_router.update_all_configs(",
     ".provider_router.update_app_configs(",

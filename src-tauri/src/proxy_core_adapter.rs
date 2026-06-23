@@ -7463,6 +7463,20 @@ pub(crate) fn forwarder_runtime_host_resources_from_runtime(
     }
 }
 
+pub(crate) async fn forward_proxy_request_with_cc_switch_runtime(
+    runtime: &CcSwitchProxyRuntime,
+    request: ProxyRequest,
+    plan: RoutePlan,
+) -> ProxyCoreResult<ProxyResult> {
+    forward_proxy_request_with_host_runtime(
+        &runtime.db,
+        forwarder_runtime_host_resources_from_runtime(runtime),
+        request,
+        plan,
+    )
+    .await
+}
+
 pub(crate) async fn forward_with_preplanned_host_runtime(
     resources: ForwarderRuntimeHostResources,
     request: ForwardRuntimeRequest,

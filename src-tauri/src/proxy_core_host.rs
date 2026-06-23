@@ -8,9 +8,9 @@ use crate::proxy::hyper_client::ProxyResponse;
 use crate::proxy::provider_router::ProviderRouter;
 use crate::proxy::codex_chat_history::CodexChatHistoryStore;
 use crate::proxy_core_adapter::{
-    forward_proxy_request_with_host_runtime, forwarder_runtime_host_resources_from_runtime,
-    CurrentRouteTarget, GeminiShadowStore, HostForwardRuntime, ProxyCoreResult, ProxyRequest,
-    ProxyResult, ProxyRuntimeStatus, ProxyServiceRuntimeResources, RoutePlan,
+    forward_proxy_request_with_cc_switch_runtime, CurrentRouteTarget, GeminiShadowStore,
+    HostForwardRuntime, ProxyCoreResult, ProxyRequest, ProxyResult, ProxyRuntimeStatus,
+    ProxyServiceRuntimeResources, RoutePlan,
 };
 #[cfg(test)]
 use crate::proxy_core_adapter::{
@@ -71,13 +71,7 @@ impl HostForwardRuntime for CcSwitchProxyRuntime {
         plan: RoutePlan,
     ) -> BoxFuture<'a, ProxyCoreResult<ProxyResult>> {
         Box::pin(async move {
-            forward_proxy_request_with_host_runtime(
-                &self.db,
-                forwarder_runtime_host_resources_from_runtime(self),
-                request,
-                plan,
-            )
-            .await
+            forward_proxy_request_with_cc_switch_runtime(self, request, plan).await
         })
     }
 }
