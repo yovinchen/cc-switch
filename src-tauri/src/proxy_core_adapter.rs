@@ -3163,68 +3163,113 @@ impl<'a> CcSwitchManagedAccountRuntimeSource<'a> {
     fn new(app_handle: Option<&'a tauri::AppHandle>) -> Self {
         Self { app_handle }
     }
+}
 
-    async fn resolve_copilot_auth(
-        &self,
-        account_id: Option<&str>,
+trait ManagedAccountRuntimeSource {
+    fn resolve_copilot_auth<'a>(
+        &'a self,
+        account_id: Option<&'a str>,
         runtime: ManagedAccountAuthRuntime,
-    ) -> Result<ProviderAuthInfo, ProxyError> {
-        crate::proxy::managed_account_auth::resolve_copilot_auth(
-            self.app_handle,
-            account_id,
-            runtime,
-        )
-        .await
-    }
+    ) -> BoxFuture<'a, Result<ProviderAuthInfo, ProxyError>>;
 
-    async fn resolve_codex_oauth(
-        &self,
+    fn resolve_codex_oauth<'a>(
+        &'a self,
         account_id: Option<String>,
         runtime: ManagedAccountAuthRuntime,
-    ) -> Result<(ProviderAuthInfo, Option<String>), ProxyError> {
-        crate::proxy::managed_account_auth::resolve_codex_oauth(
-            self.app_handle,
-            account_id,
-            runtime,
-        )
-        .await
+    ) -> BoxFuture<'a, Result<(ProviderAuthInfo, Option<String>), ProxyError>>;
+
+    fn resolve_copilot_api_endpoint<'a>(
+        &'a self,
+        account_id: Option<&'a str>,
+    ) -> BoxFuture<'a, Option<String>>;
+
+    fn fetch_copilot_live_models<'a>(
+        &'a self,
+        account_id: Option<&'a str>,
+    ) -> BoxFuture<'a, Result<Option<Vec<CopilotModel>>, String>>;
+
+    fn resolve_copilot_model_vendor<'a>(
+        &'a self,
+        account_id: Option<&'a str>,
+        model_id: &'a str,
+    ) -> BoxFuture<'a, Option<String>>;
+}
+
+impl ManagedAccountRuntimeSource for CcSwitchManagedAccountRuntimeSource<'_> {
+    fn resolve_copilot_auth<'a>(
+        &'a self,
+        account_id: Option<&'a str>,
+        runtime: ManagedAccountAuthRuntime,
+    ) -> BoxFuture<'a, Result<ProviderAuthInfo, ProxyError>> {
+        Box::pin(async move {
+            crate::proxy::managed_account_auth::resolve_copilot_auth(
+                self.app_handle,
+                account_id,
+                runtime,
+            )
+            .await
+        })
     }
 
-    async fn resolve_copilot_api_endpoint(&self, account_id: Option<&str>) -> Option<String> {
-        crate::proxy::managed_account_auth::resolve_copilot_api_endpoint(
-            self.app_handle,
-            account_id,
-        )
-        .await
+    fn resolve_codex_oauth<'a>(
+        &'a self,
+        account_id: Option<String>,
+        runtime: ManagedAccountAuthRuntime,
+    ) -> BoxFuture<'a, Result<(ProviderAuthInfo, Option<String>), ProxyError>> {
+        Box::pin(async move {
+            crate::proxy::managed_account_auth::resolve_codex_oauth(
+                self.app_handle,
+                account_id,
+                runtime,
+            )
+            .await
+        })
     }
 
-    async fn fetch_copilot_live_models(
-        &self,
-        account_id: Option<&str>,
-    ) -> Result<Option<Vec<CopilotModel>>, String> {
-        crate::proxy::managed_account_auth::fetch_copilot_live_models(
-            self.app_handle,
-            account_id,
-        )
-        .await
+    fn resolve_copilot_api_endpoint<'a>(
+        &'a self,
+        account_id: Option<&'a str>,
+    ) -> BoxFuture<'a, Option<String>> {
+        Box::pin(async move {
+            crate::proxy::managed_account_auth::resolve_copilot_api_endpoint(
+                self.app_handle,
+                account_id,
+            )
+            .await
+        })
     }
 
-    async fn resolve_copilot_model_vendor(
-        &self,
-        account_id: Option<&str>,
-        model_id: &str,
-    ) -> Option<String> {
-        crate::proxy::managed_account_auth::resolve_copilot_model_vendor(
-            self.app_handle,
-            account_id,
-            model_id,
-        )
-        .await
+    fn fetch_copilot_live_models<'a>(
+        &'a self,
+        account_id: Option<&'a str>,
+    ) -> BoxFuture<'a, Result<Option<Vec<CopilotModel>>, String>> {
+        Box::pin(async move {
+            crate::proxy::managed_account_auth::fetch_copilot_live_models(
+                self.app_handle,
+                account_id,
+            )
+            .await
+        })
+    }
+
+    fn resolve_copilot_model_vendor<'a>(
+        &'a self,
+        account_id: Option<&'a str>,
+        model_id: &'a str,
+    ) -> BoxFuture<'a, Option<String>> {
+        Box::pin(async move {
+            crate::proxy::managed_account_auth::resolve_copilot_model_vendor(
+                self.app_handle,
+                account_id,
+                model_id,
+            )
+            .await
+        })
     }
 }
 
 async fn resolve_managed_account_auth_with_runtime_source(
-    runtime_source: &CcSwitchManagedAccountRuntimeSource<'_>,
+    runtime_source: &(impl ManagedAccountRuntimeSource + ?Sized),
     auth_provider: &Provider,
     auth: ProviderAuthInfo,
 ) -> Result<ManagedAccountAuthResolution, ProxyError> {

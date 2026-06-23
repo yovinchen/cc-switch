@@ -5459,6 +5459,18 @@ fn production_adapter_managed_auth_planning_uses_runtime_source() {
 }
 
 #[test]
+fn production_adapter_managed_auth_runtime_source_is_trait() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let path = manifest_dir.join("src/proxy_core_adapter.rs");
+    let source = fs::read_to_string(&path).expect("read proxy_core_adapter.rs");
+
+    assert!(
+        source.contains("trait ManagedAccountRuntimeSource"),
+        "proxy_core_adapter must expose managed-account runtime reads behind a source trait"
+    );
+}
+
+#[test]
 fn production_forwarder_delegates_failover_switch_scheduling_to_manager() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let path = manifest_dir.join("src/proxy/forwarder.rs");
