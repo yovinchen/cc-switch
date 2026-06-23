@@ -897,6 +897,7 @@
 本轮继续把 forwarder 的 Claude/ClaudeAuth rectifier gate 收敛到 `proxy_core_adapter::forwarder_uses_anthropic_rectifiers`；provider 级 rectifier 判定不再作为 forwarder 的生产直接依赖。
 本轮继续把 forwarder 的 Codex Responses→Chat 上游模型覆写与 reasoning options 解析收敛到 `proxy_core_adapter::{forwarder_apply_codex_chat_upstream_model, forwarder_codex_chat_reasoning_options}`；provider 级 Codex chat helper 不再作为 forwarder 的生产直接依赖。
 本轮继续把 forwarder 的 Codex OAuth header-casing fact 收敛到 `proxy_core_adapter::forwarder_is_codex_oauth_provider`；provider 级 Codex OAuth 判定不再作为 forwarder 的生产直接依赖。
+本轮继续把 forwarder 的 Bedrock pre-send optimizer provider env fact 收敛到 `proxy_core_adapter::forwarder_bedrock_env_flag`；request optimizer 不再直接消费 provider 级 env 投影 helper。
 本轮继续把 usage sink 的计费配置 lookup 输入收敛到 adapter，host 不再直接拆 `UsageRecord` 的 app/provider 字段。
 本轮还把 core event 到 host event bus 的投影+分发入口收敛到 adapter，后续再把 event sink 端口实现本身收敛为 adapter-owned source wrapper。
 本轮继续把 `CcSwitchForwardPipeline` 本身迁为 adapter-owned optional runtime wrapper，runtime 缺失判断和 host forward runtime 调度都在 adapter wrapper 内完成；host services 只持有 `CcSwitchForwardPipeline<CcSwitchProxyRuntime>` 并保留 `HostForwardRuntime for CcSwitchProxyRuntime` 作为 DB/router/Tauri 资源装配点。
