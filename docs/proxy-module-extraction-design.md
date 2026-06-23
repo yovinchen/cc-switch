@@ -892,6 +892,8 @@
 本轮继续把 channel-key 缺失/禁用 key 的 runtime 错误文案收敛为 core helper，避免 host 在 auth profile 迁移路径中维护第二份错误 contract。
 
 本轮还把 client model catalog 的 app source 选择收敛到 adapter，后续再把 ModelCatalogProvider 端口实现本身迁为 adapter-owned。
+
+本轮继续把 forwarder 的 Claude 请求阶段 normalization 与 request transform 调用收敛到 `proxy_core_adapter::{forwarder_claude_normalize_anthropic_messages, forwarder_claude_transform_request_for_api_format}`；provider 级 Claude helper 不再作为 forwarder 的生产直接依赖。
 本轮继续把 usage sink 的计费配置 lookup 输入收敛到 adapter，host 不再直接拆 `UsageRecord` 的 app/provider 字段。
 本轮还把 core event 到 host event bus 的投影+分发入口收敛到 adapter，后续再把 event sink 端口实现本身收敛为 adapter-owned source wrapper。
 本轮继续把 `CcSwitchForwardPipeline` 本身迁为 adapter-owned optional runtime wrapper，runtime 缺失判断和 host forward runtime 调度都在 adapter wrapper 内完成；host services 只持有 `CcSwitchForwardPipeline<CcSwitchProxyRuntime>` 并保留 `HostForwardRuntime for CcSwitchProxyRuntime` 作为 DB/router/Tauri 资源装配点。
