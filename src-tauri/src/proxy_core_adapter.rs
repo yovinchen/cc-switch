@@ -8574,6 +8574,15 @@ where
     Ok(())
 }
 
+pub(crate) fn usage_logging_enabled_from_proxy_config(config: &RwLock<ProxyConfig>) -> bool {
+    usage_logging_enabled_from_config_flag(
+        config
+            .try_read()
+            .ok()
+            .map(|config| config.enable_logging),
+    )
+}
+
 pub(crate) struct ForwardErrorUsageContext<'a> {
     pub(crate) provider: Option<&'a Provider>,
     pub(crate) fallback_provider_id: &'a str,

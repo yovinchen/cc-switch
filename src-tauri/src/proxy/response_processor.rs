@@ -21,7 +21,7 @@ use crate::proxy_core_adapter::{
     non_streaming_body_timeout_message, passthrough_bytes_proxy_response,
     passthrough_stream_proxy_response, record_non_streaming_response_usage_from_context,
     response_headers_indicate_sse, streaming_usage_collector_from_context,
-    usage_logging_enabled_from_config_flag, NonStreamingUsageRecordContext,
+    usage_logging_enabled_from_proxy_config, NonStreamingUsageRecordContext,
     StreamingUsageCollectorContext, UsageParserConfig,
 };
 #[cfg(test)]
@@ -82,7 +82,7 @@ pub async fn handle_streaming(
 
     // 创建使用量收集器；关闭 usage logging 时不要在流式热路径上解析每个 SSE event。
     let usage_collector = streaming_usage_collector_from_context(StreamingUsageCollectorContext {
-        usage_logging_enabled: usage_logging_enabled(state),
+        usage_logging_enabled: usage_logging_enabled_from_proxy_config(state.config.as_ref()),
         services: state.proxy_core_services.clone(),
         provider: ctx.provider_for_usage(),
         app_type: ctx.app_type_str,
@@ -135,7 +135,7 @@ pub async fn handle_non_streaming(
     log_non_streaming_proxy_response_body(&body_bytes, ctx.tag);
 
     record_non_streaming_response_usage_from_context(NonStreamingUsageRecordContext {
-        usage_logging_enabled: usage_logging_enabled(state),
+        usage_logging_enabled: usage_logging_enabled_from_proxy_config(state.config.as_ref()),
         services: state.proxy_core_services.clone(),
         body: &body_bytes,
         parser_config,
@@ -171,18 +171,6 @@ pub async fn process_response(
     } else {
         handle_non_streaming(response, ctx, state, parser_config, connection_guard).await
     }
-}
-
-// ============================================================================
-// 内部辅助函数
-// ============================================================================
-
-pub(crate) fn usage_logging_enabled(state: &ProxyState) -> bool {
-    usage_logging_enabled_from_config_flag(state
-        .config
-        .try_read()
-        .ok()
-        .map(|config| config.enable_logging))
 }
 
 /// 内部使用量记录函数
