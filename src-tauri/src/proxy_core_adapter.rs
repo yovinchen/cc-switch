@@ -66,6 +66,7 @@ pub(crate) const COPILOT_INTEGRATION_ID: &str = "vscode-chat";
 pub(crate) struct CcSwitchProxyRuntime {
     pub(crate) db: Arc<Database>,
     pub(crate) provider_router: Arc<ProviderRouter>,
+    pub(crate) attempt_runtime_source: ForwarderAttemptRuntimeSourceRef,
     pub(crate) protocol_state_source: ForwarderProtocolStateSourceRef,
     pub(crate) runtime_state_source: ForwarderRuntimeStateSourceRef,
     pub(crate) failover_switch_scheduler: FailoverSwitchSchedulerRef,
@@ -475,6 +476,8 @@ pub(crate) fn proxy_state_from_runtime_sources(
     let current_providers = Arc::new(RwLock::new(HashMap::new()));
     let gemini_shadow = Arc::new(GeminiShadowStore::default());
     let codex_chat_history = Arc::new(CodexChatHistoryStore::default());
+    let attempt_runtime_source =
+        forwarder_attempt_runtime_source_from_router(provider_router.clone());
     let protocol_state_source = forwarder_protocol_state_source_from_runtime_parts(
         gemini_shadow.clone(),
         codex_chat_history.clone(),
@@ -494,6 +497,7 @@ pub(crate) fn proxy_state_from_runtime_sources(
         Arc::new(CcSwitchProxyServices::with_runtime(CcSwitchProxyRuntime {
             db: db.clone(),
             provider_router: provider_router.clone(),
+            attempt_runtime_source,
             protocol_state_source,
             runtime_state_source,
             failover_switch_scheduler,
@@ -7925,9 +7929,131 @@ pub(crate) fn forwarder_protocol_state_source_from_runtime_parts(
     ))
 }
 
+pub(crate) type ForwarderAttemptRuntimeSourceRef =
+    Arc<dyn ForwarderAttemptRuntimeSource + Send + Sync>;
+
+pub(crate) trait ForwarderAttemptRuntimeSource {
+    fn allow<'a>(
+        &'a self,
+        attempt: &'a ForwardAttempt,
+        app_type: &'a str,
+        bypass_circuit_breaker: bool,
+    ) -> BoxFuture<'a, AllowResult>;
+
+    fn record_success<'a>(
+        &'a self,
+        attempt: &'a ForwardAttempt,
+        app_type: &'a str,
+        used_half_open_permit: bool,
+    ) -> BoxFuture<'a, ()>;
+
+    fn record_failure<'a>(
+        &'a self,
+        attempt: &'a ForwardAttempt,
+        app_type: &'a str,
+        used_half_open_permit: bool,
+        error_message: &'a str,
+    ) -> BoxFuture<'a, ()>;
+
+    fn release_attempt_permit_neutral<'a>(
+        &'a self,
+        attempt: &'a ForwardAttempt,
+        app_type: &'a str,
+        used_half_open_permit: bool,
+    ) -> BoxFuture<'a, ()>;
+}
+
+struct CcSwitchForwarderAttemptRuntimeSource {
+    router: Arc<ProviderRouter>,
+}
+
+impl CcSwitchForwarderAttemptRuntimeSource {
+    fn new(router: Arc<ProviderRouter>) -> Self {
+        Self { router }
+    }
+}
+
+impl ForwarderAttemptRuntimeSource for CcSwitchForwarderAttemptRuntimeSource {
+    fn allow<'a>(
+        &'a self,
+        attempt: &'a ForwardAttempt,
+        app_type: &'a str,
+        bypass_circuit_breaker: bool,
+    ) -> BoxFuture<'a, AllowResult> {
+        Box::pin(async move {
+            allow_forward_attempt_runtime_source(
+                self.router.as_ref(),
+                attempt,
+                app_type,
+                bypass_circuit_breaker,
+            )
+            .await
+        })
+    }
+
+    fn record_success<'a>(
+        &'a self,
+        attempt: &'a ForwardAttempt,
+        app_type: &'a str,
+        used_half_open_permit: bool,
+    ) -> BoxFuture<'a, ()> {
+        Box::pin(async move {
+            record_forward_attempt_success_runtime_source(
+                &self.router,
+                attempt,
+                app_type,
+                used_half_open_permit,
+            )
+            .await;
+        })
+    }
+
+    fn record_failure<'a>(
+        &'a self,
+        attempt: &'a ForwardAttempt,
+        app_type: &'a str,
+        used_half_open_permit: bool,
+        error_message: &'a str,
+    ) -> BoxFuture<'a, ()> {
+        Box::pin(async move {
+            record_forward_attempt_failure_runtime_source(
+                self.router.as_ref(),
+                attempt,
+                app_type,
+                used_half_open_permit,
+                error_message,
+            )
+            .await;
+        })
+    }
+
+    fn release_attempt_permit_neutral<'a>(
+        &'a self,
+        attempt: &'a ForwardAttempt,
+        app_type: &'a str,
+        used_half_open_permit: bool,
+    ) -> BoxFuture<'a, ()> {
+        Box::pin(async move {
+            release_forward_attempt_permit_neutral_runtime_source(
+                self.router.as_ref(),
+                attempt,
+                app_type,
+                used_half_open_permit,
+            )
+            .await;
+        })
+    }
+}
+
+pub(crate) fn forwarder_attempt_runtime_source_from_router(
+    router: Arc<ProviderRouter>,
+) -> ForwarderAttemptRuntimeSourceRef {
+    Arc::new(CcSwitchForwarderAttemptRuntimeSource::new(router))
+}
+
 #[derive(Clone)]
 pub(crate) struct ForwarderRuntimeHostResources {
-    pub(crate) provider_router: Arc<ProviderRouter>,
+    pub(crate) attempt_runtime_source: ForwarderAttemptRuntimeSourceRef,
     pub(crate) protocol_state_source: ForwarderProtocolStateSourceRef,
     pub(crate) runtime_state_source: ForwarderRuntimeStateSourceRef,
     pub(crate) failover_switch_scheduler: FailoverSwitchSchedulerRef,
@@ -7938,7 +8064,7 @@ pub(crate) fn forwarder_runtime_host_resources_from_runtime(
     runtime: &CcSwitchProxyRuntime,
 ) -> ForwarderRuntimeHostResources {
     ForwarderRuntimeHostResources {
-        provider_router: runtime.provider_router.clone(),
+        attempt_runtime_source: runtime.attempt_runtime_source.clone(),
         protocol_state_source: runtime.protocol_state_source.clone(),
         runtime_state_source: runtime.runtime_state_source.clone(),
         failover_switch_scheduler: runtime.failover_switch_scheduler.clone(),
@@ -7969,7 +8095,7 @@ pub(crate) async fn forward_with_preplanned_host_runtime(
     attempts: Vec<ForwardAttempt>,
 ) -> ProxyCoreResult<ProxyResult> {
     let ForwarderRuntimeHostResources {
-        provider_router,
+        attempt_runtime_source,
         protocol_state_source,
         runtime_state_source,
         failover_switch_scheduler,
@@ -7986,7 +8112,7 @@ pub(crate) async fn forward_with_preplanned_host_runtime(
     } = request;
     let forwarder_options = forwarder_config.options;
     let forwarder = RequestForwarder::new_preplanned(
-        provider_router,
+        attempt_runtime_source,
         forwarder_options.non_streaming_timeout,
         protocol_state_source,
         runtime_state_source,

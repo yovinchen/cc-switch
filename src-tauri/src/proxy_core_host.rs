@@ -433,9 +433,14 @@ mod tests {
         let current_providers = Arc::new(RwLock::new(std::collections::HashMap::new()));
         let gemini_shadow = Arc::new(GeminiShadowStore::default());
         let codex_chat_history = Arc::new(CodexChatHistoryStore::default());
+        let provider_router = Arc::new(provider_router_from_database(db.clone()));
         CcSwitchProxyRuntime {
             db: db.clone(),
-            provider_router: Arc::new(provider_router_from_database(db.clone())),
+            provider_router: provider_router.clone(),
+            attempt_runtime_source:
+                crate::proxy_core_adapter::forwarder_attempt_runtime_source_from_router(
+                    provider_router,
+                ),
             protocol_state_source:
                 crate::proxy_core_adapter::forwarder_protocol_state_source_from_runtime_parts(
                     gemini_shadow,

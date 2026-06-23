@@ -6,7 +6,6 @@ use super::hyper_client::ProxyResponse;
 use super::{
     error::ProxyError,
     error_mapper::reqwest_send_error_to_proxy_error,
-    provider_router::ProviderRouter,
     route_attempt::{apply_channel_model_override, ForwardAttempt},
 };
 use crate::proxy_core_adapter::{
@@ -30,15 +29,13 @@ use crate::proxy_core_adapter::{
     forwarder_provider_base_url, forwarder_provider_upstream_url,
     forwarder_provider_transform_request, forwarder_provider_transform_required,
     ForwarderAdapterHandle, fetch_copilot_live_models_from_runtime_source, is_openai_o_series,
-    is_unsupported_image_error, allow_forward_attempt_runtime_source, merge_copilot_tool_results,
+    is_unsupported_image_error, merge_copilot_tool_results,
     non_streaming_body_timeout_message, normalize_thinking_type,
     prepare_upstream_request_body_with_report, prompt_cache_trace_log_message,
     forwarder_claude_normalize_anthropic_messages,
     forwarder_claude_transform_request_for_api_format,
     provider_adapter_name_is_claude,
     rectify_anthropic_request, rectify_thinking_budget, replace_image_blocks_with_marker,
-    record_forward_attempt_failure_runtime_source,
-    record_forward_attempt_success_runtime_source,
     record_forward_active_connection_acquired_runtime_source,
     record_forward_active_connection_released_runtime_source,
     record_forward_active_route_target_runtime_source,
@@ -47,7 +44,7 @@ use crate::proxy_core_adapter::{
     record_forward_provider_failure_runtime_source,
     record_forward_provider_rectifier_retry_failure_runtime_source,
     record_forward_request_started_runtime_source, record_forward_success_runtime_source,
-    release_forward_attempt_permit_neutral_runtime_source, request_body_filter_log_message,
+    request_body_filter_log_message,
     resolve_copilot_api_endpoint_from_runtime_source,
     resolve_copilot_deterministic_interaction_id, resolve_copilot_model_against_ids,
     resolve_copilot_model_vendor_from_runtime_source, resolve_copilot_optimizer_session_id,
@@ -69,7 +66,7 @@ use crate::proxy_core_adapter::{
     validate_managed_account_upstream_auth, AttemptEventPhase, CopilotAuthHeaderOverrides,
     CopilotOptimizerConfig, ForwardFailureCategory, ForwardUpstreamUrlPlanInput,
     MediaRetryInput, OptimizerConfig, PromptCacheTraceLogInput,
-    FailoverSwitchSchedulerRef, ForwarderProtocolStateSourceRef,
+    FailoverSwitchSchedulerRef, ForwarderAttemptRuntimeSourceRef, ForwarderProtocolStateSourceRef,
     ForwarderRuntimeStateSourceRef, ManagedAccountRuntimeSourceRef, ProxyRuntimeStatus,
     RectifierConfig, ResolvedChannelAttempt, UpstreamAuthHeadersInput,
     UpstreamRequestHeadersInput, UpstreamSendPolicyInput, UpstreamTransportKind,
@@ -141,8 +138,7 @@ impl Drop for ActiveConnectionGuard {
 }
 
 pub struct RequestForwarder {
-    /// 共享的 ProviderRouter（持有熔断器状态）
-    router: Arc<ProviderRouter>,
+    attempt_runtime_source: ForwarderAttemptRuntimeSourceRef,
     protocol_state_source: ForwarderProtocolStateSourceRef,
     runtime_state_source: ForwarderRuntimeStateSourceRef,
     failover_switch_scheduler: FailoverSwitchSchedulerRef,
@@ -242,7 +238,7 @@ impl RequestForwarder {
     #[allow(dead_code)]
     #[allow(clippy::too_many_arguments)]
     pub(crate) fn new_preplanned(
-        router: Arc<ProviderRouter>,
+        attempt_runtime_source: ForwarderAttemptRuntimeSourceRef,
         non_streaming_timeout: u64,
         protocol_state_source: ForwarderProtocolStateSourceRef,
         runtime_state_source: ForwarderRuntimeStateSourceRef,
@@ -262,7 +258,7 @@ impl RequestForwarder {
         // saturating_add 防止 u32::MAX + 1 溢出。
         let max_attempts = (max_retries as usize).saturating_add(1);
         Self {
-            router,
+            attempt_runtime_source,
             protocol_state_source,
             runtime_state_source,
             failover_switch_scheduler,
@@ -288,13 +284,9 @@ impl RequestForwarder {
         app_type: &str,
         used_half_open_permit: bool,
     ) {
-        record_forward_attempt_success_runtime_source(
-            &self.router,
-            attempt,
-            app_type,
-            used_half_open_permit,
-        )
-        .await;
+        self.attempt_runtime_source
+            .record_success(attempt, app_type, used_half_open_permit)
+            .await;
         self.emit_attempt_succeeded(request_id, app_type, attempt);
     }
 
@@ -397,14 +389,9 @@ impl RequestForwarder {
         used_half_open_permit: bool,
         error_msg: String,
     ) {
-        record_forward_attempt_failure_runtime_source(
-            self.router.as_ref(),
-            attempt,
-            app_type,
-            used_half_open_permit,
-            &error_msg,
-        )
-        .await;
+        self.attempt_runtime_source
+            .record_failure(attempt, app_type, used_half_open_permit, &error_msg)
+            .await;
         self.emit_attempt_failed(request_id, app_type, attempt, &error_msg);
     }
 
@@ -414,13 +401,9 @@ impl RequestForwarder {
         app_type: &str,
         used_half_open_permit: bool,
     ) {
-        release_forward_attempt_permit_neutral_runtime_source(
-            self.router.as_ref(),
-            attempt,
-            app_type,
-            used_half_open_permit,
-        )
-        .await;
+        self.attempt_runtime_source
+            .release_attempt_permit_neutral(attempt, app_type, used_half_open_permit)
+            .await;
     }
 
     /// 整流（thinking signature 或 budget）重试失败后的统一收尾。
@@ -579,13 +562,10 @@ impl RequestForwarder {
 
             // 发起请求前先获取熔断器放行许可（HalfOpen 会占用探测名额）
             // 单 Provider 场景下跳过此检查，避免熔断器阻塞所有请求
-            let permit = allow_forward_attempt_runtime_source(
-                self.router.as_ref(),
-                attempt,
-                app_type_str,
-                bypass_circuit_breaker,
-            )
-            .await;
+            let permit = self
+                .attempt_runtime_source
+                .allow(attempt, app_type_str, bypass_circuit_breaker)
+                .await;
             let allowed = permit.allowed;
             let used_half_open_permit = permit.used_half_open_permit;
 
@@ -1874,9 +1854,11 @@ mod tests {
         let events = Arc::new(ProxyEventBus::default());
         let gemini_shadow = Arc::new(GeminiShadowStore::new());
         let codex_chat_history = Arc::new(CodexChatHistoryStore::default());
+        let router = Arc::new(provider_router_from_database(db.clone()));
 
         RequestForwarder {
-            router: Arc::new(provider_router_from_database(db.clone())),
+            attempt_runtime_source:
+                crate::proxy_core_adapter::forwarder_attempt_runtime_source_from_router(router),
             protocol_state_source:
                 crate::proxy_core_adapter::forwarder_protocol_state_source_from_runtime_parts(
                     gemini_shadow,
