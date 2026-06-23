@@ -8604,6 +8604,20 @@ pub(crate) struct ForwarderProviderTransformInput<'a> {
     pub(crate) provider: &'a Provider,
 }
 
+pub(crate) struct ForwarderTransformPlanInput<'a> {
+    pub(crate) adapter: &'a ForwarderAdapterHandle,
+    pub(crate) provider: &'a Provider,
+    pub(crate) resolved_claude_api_format: Option<&'a str>,
+    pub(crate) is_claude_adapter: bool,
+}
+
+pub(crate) struct ForwarderTransformPlan {
+    pub(crate) needs_transform: bool,
+    pub(crate) use_claude_transform: bool,
+    pub(crate) claude_api_format_for_url: Option<String>,
+    pub(crate) claude_api_format_for_transform: Option<String>,
+}
+
 pub(crate) struct ForwarderUpstreamUrlInput<'a> {
     pub(crate) adapter: &'a ForwarderAdapterHandle,
     pub(crate) base_url: &'a str,
@@ -8719,6 +8733,8 @@ pub(crate) trait ForwarderRequestSource {
         &self,
         input: ForwarderProviderTransformInput<'_>,
     ) -> Result<Value, ProxyError>;
+
+    fn transform_plan(&self, input: ForwarderTransformPlanInput<'_>) -> ForwarderTransformPlan;
 
     fn plan_upstream_url(
         &self,
@@ -8914,6 +8930,28 @@ impl ForwarderRequestSource for CcSwitchForwarderRequestSource {
         input: ForwarderProviderTransformInput<'_>,
     ) -> Result<Value, ProxyError> {
         forwarder_provider_transform_request(input.adapter, input.body, input.provider)
+    }
+
+    fn transform_plan(&self, input: ForwarderTransformPlanInput<'_>) -> ForwarderTransformPlan {
+        let fallback_claude_api_format = input
+            .is_claude_adapter
+            .then(|| forwarder_claude_api_format(input.provider));
+        let claude_api_format = input
+            .resolved_claude_api_format
+            .or(fallback_claude_api_format);
+        let needs_transform = match input.resolved_claude_api_format {
+            Some(api_format) => forwarder_claude_transform_required(api_format),
+            None => forwarder_provider_transform_required(input.adapter, input.provider),
+        };
+
+        ForwarderTransformPlan {
+            needs_transform,
+            use_claude_transform: needs_transform && input.is_claude_adapter,
+            claude_api_format_for_url: claude_api_format.map(str::to_string),
+            claude_api_format_for_transform: input
+                .is_claude_adapter
+                .then(|| claude_api_format.unwrap_or("anthropic").to_string()),
+        }
     }
 
     fn plan_upstream_url(
@@ -14747,6 +14785,68 @@ base_url = "https://api.openai.com/v1"
             .expect("provider transform");
 
         assert_eq!(transformed, body);
+    }
+
+    #[test]
+    fn forwarder_request_source_projects_transform_plan() {
+        let source = CcSwitchForwarderRequestSource;
+        let claude_adapter = forwarder_provider_adapter_for_app(&AppType::Claude);
+        let codex_adapter = forwarder_provider_adapter_for_app(&AppType::Codex);
+        let mut claude_provider = Provider::with_id(
+            "claude-provider".to_string(),
+            "Claude Provider".to_string(),
+            json!({}),
+            None,
+        );
+        claude_provider.meta = Some(ProviderMeta {
+            api_format: Some("openai_chat".to_string()),
+            ..Default::default()
+        });
+
+        let resolved_plan = source.transform_plan(ForwarderTransformPlanInput {
+            adapter: claude_adapter.as_ref(),
+            provider: &claude_provider,
+            resolved_claude_api_format: Some("gemini_native"),
+            is_claude_adapter: true,
+        });
+        assert!(resolved_plan.needs_transform);
+        assert!(resolved_plan.use_claude_transform);
+        assert_eq!(
+            resolved_plan.claude_api_format_for_url.as_deref(),
+            Some("gemini_native")
+        );
+        assert_eq!(
+            resolved_plan.claude_api_format_for_transform.as_deref(),
+            Some("gemini_native")
+        );
+
+        let fallback_plan = source.transform_plan(ForwarderTransformPlanInput {
+            adapter: claude_adapter.as_ref(),
+            provider: &claude_provider,
+            resolved_claude_api_format: None,
+            is_claude_adapter: true,
+        });
+        assert!(fallback_plan.needs_transform);
+        assert!(fallback_plan.use_claude_transform);
+        assert_eq!(
+            fallback_plan.claude_api_format_for_url.as_deref(),
+            Some("openai_chat")
+        );
+        assert_eq!(
+            fallback_plan.claude_api_format_for_transform.as_deref(),
+            Some("openai_chat")
+        );
+
+        let codex_plan = source.transform_plan(ForwarderTransformPlanInput {
+            adapter: codex_adapter.as_ref(),
+            provider: &claude_provider,
+            resolved_claude_api_format: None,
+            is_claude_adapter: false,
+        });
+        assert!(!codex_plan.needs_transform);
+        assert!(!codex_plan.use_claude_transform);
+        assert!(codex_plan.claude_api_format_for_url.is_none());
+        assert!(codex_plan.claude_api_format_for_transform.is_none());
     }
 
     #[test]

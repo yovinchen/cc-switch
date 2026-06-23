@@ -13,9 +13,7 @@ use crate::proxy_core_adapter::{
     forward_failure_kind_from_proxy_error,
     forwarder_uses_anthropic_rectifiers,
     forwarder_provider_adapter_for_app,
-    forwarder_provider_transform_required,
     ForwarderAdapterHandle,
-    forwarder_claude_api_format, forwarder_claude_transform_required,
     should_failover_after_rectifier_retry_failure,
     AttemptEventPhase, CopilotOptimizerConfig,
     ForwardFailureCategory, ForwarderAdapterFactsInput,
@@ -28,7 +26,7 @@ use crate::proxy_core_adapter::{
     ForwarderProviderTransformInput, ForwarderProviderUrlFacts, ForwarderProviderUrlFactsInput,
     ForwarderRequestRectifierPlan,
     ForwarderThinkingBudgetRectifierInput, ForwarderThinkingSignatureRectifierInput,
-    OptimizerConfig,
+    ForwarderTransformPlanInput, OptimizerConfig,
     FailoverSwitchSchedulerRef, ForwarderAttemptRuntimeSourceRef, ForwarderProtocolStateSourceRef,
     ForwarderRequestPartsInput, ForwarderRequestPreparationInput, ForwarderRequestSourceRef,
     ForwarderResponseSourceRef, ForwarderRuntimeStateSourceRef, ForwarderTransportSourceRef,
@@ -1048,10 +1046,15 @@ impl RequestForwarder {
                 );
             }
         }
-        let needs_transform = match resolved_claude_api_format.as_deref() {
-            Some(api_format) => forwarder_claude_transform_required(api_format),
-            None => forwarder_provider_transform_required(adapter, provider),
-        };
+        let transform_plan = self
+            .request_source
+            .transform_plan(ForwarderTransformPlanInput {
+                adapter,
+                provider,
+                resolved_claude_api_format: resolved_claude_api_format.as_deref(),
+                is_claude_adapter,
+            });
+        let needs_transform = transform_plan.needs_transform;
         let codex_responses_to_chat =
             self.request_source
                 .codex_responses_to_chat_enabled(ForwarderCodexResponsesToChatPlanInput {
@@ -1059,18 +1062,15 @@ impl RequestForwarder {
                     provider,
                     endpoint,
                 });
-        let claude_api_format_for_url = resolved_claude_api_format.as_deref().or_else(|| {
-            is_claude_adapter.then(|| forwarder_claude_api_format(provider))
-        });
         let url_plan = self.request_source.plan_upstream_url(ForwarderUpstreamUrlInput {
             adapter,
             base_url: &base_url,
             endpoint,
             is_full_url,
             codex_responses_to_chat,
-            use_claude_transform: needs_transform && is_claude_adapter,
+            use_claude_transform: transform_plan.use_claude_transform,
             is_copilot,
-            claude_api_format: claude_api_format_for_url,
+            claude_api_format: transform_plan.claude_api_format_for_url.as_deref(),
             body: &mapped_body,
             channel_param_overrides: attempt.channel().map(|channel| &channel.param_overrides),
         });
@@ -1106,9 +1106,10 @@ impl RequestForwarder {
             )
         } else if needs_transform {
             if is_claude_adapter {
-                let api_format = resolved_claude_api_format
+                let api_format = transform_plan
+                    .claude_api_format_for_transform
                     .as_deref()
-                    .unwrap_or_else(|| forwarder_claude_api_format(provider));
+                    .unwrap_or("anthropic");
                 self.protocol_state_source
                     .transform_claude_request_for_api_format(
                         mapped_body,
