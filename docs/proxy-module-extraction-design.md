@@ -34,9 +34,9 @@
 23. SSE data 行扫描、跨 chunk UTF-8 缓冲、`[DONE]` 判定和可选 JSON parse 已迁入 `proxy-core::sse::SseEventScanner`；host `response_processor` 只负责 stream transport 拆包、collector 创建和 Axum response 适配。
 24. SSE usage 事件缓存、首个被收集事件计时和 finish-once 防重入已迁入 `proxy-core::sse::SseUsageAccumulator`；host `SseUsageCollector` 只保留异步互斥、usage 事件预过滤、parser/model extractor 回调和 `UsageSink` 落库适配。
 25. Claude/OpenAI/Codex/Gemini 的 SSE usage 事件预过滤函数已迁入 `proxy-core::sse`；协议 parser 配置表也已由 `proxy-core::usage_config` 统一维护，host handler 直接消费 core 配置。
-26. `TokenUsage` 与 Claude/OpenAI/Codex/Gemini 的 usage JSON 解析器已迁入 `proxy-core::usage`；host 调用方已直接引用 core 类型/常量，`proxy::usage::parser` 兼容模块已删除，usage request_id 的 message_id/session 前缀与 fallback 决策由 core 维护，host `usage_sink_bridge` 只注入随机 UUID 生成器。
+26. `TokenUsage` 与 Claude/OpenAI/Codex/Gemini 的 usage JSON 解析器已迁入 `proxy-core::usage`；host 调用方已直接引用 core 类型/常量，`proxy::usage::parser` 兼容模块已删除，usage request_id 的 message_id/session 前缀与 fallback 决策由 core 维护，随机 UUID 生成器注入由 `proxy_core_adapter` 承接。
 27. Claude/OpenAI/Codex/Gemini 的流式 usage model extractor 已迁入 `proxy-core::usage`；host `handler_config` 兼容模块已删除，host handler/response processor 直接消费 core parser 配置。
-28. `TokenUsage` 到 `UsageTokens` 的映射、success/error usage record 的 neutral record 构造、request/outbound/response model 归因规则已迁入 `proxy-core::usage`；host `usage_sink_bridge` 只保留 UUID 生成器注入和 provider meta 到 `ProviderKind` 的适配。
+28. `TokenUsage` 到 `UsageTokens` 的映射、success/error usage record 的 neutral record 构造、request/outbound/response model 归因规则已迁入 `proxy-core::usage`；host `usage_sink_bridge` 已删除，UUID 生成器注入和 provider meta 到 `ProviderKind` 的适配由 `proxy_core_adapter` 承接。
 29. `UsageRecord` 到 `TokenUsage` 的 host 回填转换、pricing model override/request/response 选择规则已迁入 `proxy-core::usage`；adapter-owned `CcSwitchUsageSink` 负责读取 DB 计价配置、查询定价、执行 Decimal 成本计算并写入 `UsageLogger`。
 30. 非流式 body timeout 与流式 first-byte/idle timeout 的 failover-gated 选择规则已迁入 `proxy-core::response_timeout`；host `RequestContext` 只把 app 配置传入 core，并把返回的 `Duration`/`StreamingTimeoutConfig` 接到现有 transport。
 31. Claude transform 是否走 streaming，以及 Codex OAuth Responses 非流请求是否聚合上游 SSE 的路由策略已迁入 `proxy-core::response_transform`；host 只负责识别 provider type 并执行对应的 stream/non-stream transport 分支。
@@ -732,7 +732,7 @@
 721. usage 写入失败 warning 文案已接入 `proxy-core::usage_record_failure_warning_message` 与 `UsageRecordFailureLogContext`：host 只传入 forward-error 或普通 usage 写入失败上下文，`[USG-001]` 与失败请求日志前缀不再散落在 bridge/processor。
 722. usage 写入前的 debug 日志格式已接入 `proxy-core::usage_record_debug_log_message`：host `record_usage_internal` 只负责调用 usage sink，日志字段选择、response/outbound model fallback 与 session fallback 由 core 维护。
 723. usage logging 开关的 config 读取 fallback 策略已接入 `proxy-core::usage_logging_enabled_from_config_flag`：host 只负责从配置锁读取 `enable_logging`，读取失败时默认开启的兼容策略由 core 维护，`response_processor` 流式与非流式路径复用同一 host helper。
-724. usage 路径的 host `Provider` 到 core `ProviderKind` 投影已移入 `proxy_core_adapter::provider_kind_from_provider`：`usage_sink_bridge` 不再持有 provider_type 映射函数，`response_processor` 也不再反向依赖 bridge 获取 core provider kind。
+724. usage 路径的 host `Provider` 到 core `ProviderKind` 投影已移入 `proxy_core_adapter::provider_kind_from_provider`：`usage_sink_bridge` 已删除，`response_processor` 也不再反向依赖 bridge 获取 core provider kind。
 725. Claude transform handler 的 Codex OAuth provider 判定已改为 `proxy_core_adapter::provider_is_codex_oauth`：handler 只消费 provider fact 的布尔投影，`provider.meta.provider_type == "codex_oauth"` 字符串判断不再留在协议处理分支。
 726. forwarder 发送策略里的 Codex OAuth provider 判定已改为 `proxy_core_adapter::provider_is_codex_oauth`：exact header casing 判断继续由 core request-header policy 执行，但 forwarder 不再直接调用 host `Provider::is_codex_oauth()`。
 727. forwarder 的 GitHub Copilot upstream 判定已改为 `proxy_core_adapter::provider_is_github_copilot_upstream`：provider_type 与 base URL 的组合识别仍复用 core request URL policy，但 forwarder 不再直接拆 `provider.meta.provider_type`。
