@@ -1119,6 +1119,7 @@
 本轮继续把 `ProxyServer::new` 的运行态装配收敛到 `proxy_core_adapter::proxy_state_from_runtime_sources`：server 只保留 listener/router/shutdown 生命周期编排，ProviderRouter、事件总线、failover manager、shadow/history store 与 `CcSwitchProxyServices` 装配集中在 adapter 边界内。
 本轮继续把 `ProxyService::write_claude_live` 的 Claude live settings 清洗入口改为直接调用 `proxy_core_adapter::sanitize_claude_settings_for_live`：service 不再绕行 `services::provider` façade，Live 写入仍保留原有 host 文件落盘职责。
 本轮继续把 `CcSwitchProxyRuntime` 到 `ForwarderRuntimeHostResources` 的资源包构造收敛到 `proxy_core_adapter::forwarder_runtime_host_resources_from_runtime`：host forward runtime 只把 runtime 交给 adapter，转发链所需 router/status/event/history/failover/AppHandle 克隆集中在 adapter 边界内。
+本轮继续把 `HostForwardRuntime for CcSwitchProxyRuntime` 的 forwarding bridge 调用收敛到 `proxy_core_adapter::forward_proxy_request_with_cc_switch_runtime`：host trait impl 只转交 `self/request/plan`，adapter 负责取 DB、构造 runtime resources 并进入现有 forwarding bridge。
 
 当前原则：核心 crate 可以新增端口和领域字段，但不得引入 `tauri`、`Database`、settings、commands、services 等宿主依赖；现有 runtime 行为必须继续通过 targeted tests 证明不回归。
 
