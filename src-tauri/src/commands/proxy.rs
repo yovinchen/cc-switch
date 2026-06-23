@@ -4,9 +4,9 @@
 
 use crate::error::AppError;
 use crate::proxy_core_adapter::{
-    restored_provider_switchback_decision, should_block_proxy_switch_to_provider, AppProxyConfig,
-    CircuitBreakerConfig, CircuitBreakerStats, FailoverQueuePosition, GlobalProxyConfig,
-    ProviderHealth, ProxyConfig, ProxyRuntimeStatus, ProxyServerInfo, ProxyTakeoverStatus,
+    restored_provider_switchback_decision, AppProxyConfig, CircuitBreakerConfig,
+    CircuitBreakerStats, FailoverQueuePosition, GlobalProxyConfig, ProviderHealth, ProxyConfig,
+    ProxyRuntimeStatus, ProxyServerInfo, ProxyTakeoverStatus,
 };
 use crate::store::AppState;
 
@@ -284,19 +284,6 @@ pub async fn switch_proxy_provider(
     app_type: String,
     provider_id: String,
 ) -> Result<(), String> {
-    // Block official providers during proxy takeover
-    let provider = state
-        .db
-        .get_provider_by_id(&provider_id, &app_type)
-        .map_err(|e| format!("读取供应商失败: {e}"))?
-        .ok_or_else(|| format!("供应商不存在: {provider_id}"))?;
-    if should_block_proxy_switch_to_provider(true, &provider) {
-        return Err(
-            "代理接管模式下不能切换到官方供应商 (Cannot switch to official provider during proxy takeover)"
-                .to_string(),
-        );
-    }
-
     state
         .proxy_service
         .switch_proxy_target(&app_type, &provider_id)
