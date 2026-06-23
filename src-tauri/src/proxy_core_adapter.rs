@@ -1273,6 +1273,30 @@ pub(crate) async fn existing_live_backup_value_for_update_from_db(
         .map_err(|e| format!("解析 {app_type} 现有备份失败: {e}"))
 }
 
+pub(crate) async fn save_provider_live_backup_from_effective_settings_in_db(
+    db: &Database,
+    app_type: &AppType,
+    effective_settings: &Value,
+) -> Result<(), String> {
+    let app_type_str = app_type.as_str();
+    let backup_json = match app_type {
+        AppType::Claude => serde_json::to_string(effective_settings)
+            .map_err(|e| format!("序列化 Claude 配置失败: {e}"))?,
+        AppType::Codex => serde_json::to_string(effective_settings)
+            .map_err(|e| format!("序列化 Codex 配置失败: {e}"))?,
+        AppType::Gemini => {
+            let env_backup = gemini_live_backup_from_effective_settings(effective_settings);
+            serde_json::to_string(&env_backup)
+                .map_err(|e| format!("序列化 Gemini 配置失败: {e}"))?
+        }
+        _ => return Err(format!("未知的应用类型: {app_type_str}")),
+    };
+
+    db.save_live_backup(app_type_str, &backup_json)
+        .await
+        .map_err(|e| format!("更新 {app_type_str} 备份失败: {e}"))
+}
+
 pub(crate) async fn live_backup_config_for_simple_restore_from_db(
     db: &Database,
     app_type: &AppType,

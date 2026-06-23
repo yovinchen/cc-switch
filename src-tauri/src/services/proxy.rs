@@ -19,8 +19,7 @@ use crate::proxy_core_adapter::{
     codex_backup_projection_error_message, codex_live_write_projection,
     codex_provider_live_write_parts,
     codex_preserved_auth_live_config_text_for_configured_policy,
-    current_provider_for_app_from_db, gemini_live_backup_from_effective_settings,
-    existing_live_backup_value_for_update_from_db,
+    current_provider_for_app_from_db, existing_live_backup_value_for_update_from_db,
     delete_all_live_backups_best_effort_in_db,
     delete_all_live_backups_in_db,
     delete_live_backup_best_effort_in_db, delete_live_backup_in_db,
@@ -51,6 +50,7 @@ use crate::proxy_core_adapter::{
     remove_codex_takeover_auth_placeholder_if_present,
     remove_codex_takeover_config_placeholders_if_present,
     remove_gemini_takeover_env_fields_if_present, set_proxy_app_enabled_in_db,
+    save_provider_live_backup_from_effective_settings_in_db,
     set_legacy_live_takeover_active_best_effort_in_db,
     set_legacy_live_takeover_active_in_db, should_block_proxy_switch_to_provider,
     ssot_live_restore_provider_from_db,
@@ -1208,24 +1208,12 @@ impl ProxyService {
             .map_err(|e| format!("注入统一会话路由失败: {e}"))?;
         }
 
-        let backup_json = match app_type_enum {
-            AppType::Claude => serde_json::to_string(&effective_settings)
-                .map_err(|e| format!("序列化 Claude 配置失败: {e}"))?,
-            AppType::Codex => serde_json::to_string(&effective_settings)
-                .map_err(|e| format!("序列化 Codex 配置失败: {e}"))?,
-            AppType::Gemini => {
-                // Gemini takeover 仅修改 .env；settings.json（含 mcpServers）保持原样。
-                let env_backup = gemini_live_backup_from_effective_settings(&effective_settings);
-                serde_json::to_string(&env_backup)
-                    .map_err(|e| format!("序列化 Gemini 配置失败: {e}"))?
-            }
-            _ => return Err(format!("未知的应用类型: {app_type}")),
-        };
-
-        self.db
-            .save_live_backup(app_type, &backup_json)
-            .await
-            .map_err(|e| format!("更新 {app_type} 备份失败: {e}"))?;
+        save_provider_live_backup_from_effective_settings_in_db(
+            &self.db,
+            &app_type_enum,
+            &effective_settings,
+        )
+        .await?;
 
         log::info!("已更新 {app_type} Live 备份（热切换）");
         Ok(())
