@@ -873,6 +873,10 @@ const FORBIDDEN_HANDLER_CODEX_NON_STREAM_TRANSFORM_MARKERS: &[&str] = &[
     "chat_completion_to_response_with_context(",
     "record_codex_chat_response_history(",
 ];
+const FORBIDDEN_HANDLER_CODEX_STREAM_TRANSFORM_MARKERS: &[&str] = &[
+    "create_responses_sse_stream_from_chat_with_context(",
+    "record_codex_chat_response_sse_history(",
+];
 const PROXY_CORE_MARKER: &str = "crate::proxy_core::";
 const PROXY_CORE_API_MARKER: &str = "crate::proxy_core::api";
 const PROXY_ENGINE_CONSTRUCTOR_MARKER: &str = "ProxyEngine::new(";
@@ -2655,6 +2659,33 @@ fn handlers_delegate_codex_non_stream_transform_to_adapter() {
     assert!(
         violations.is_empty(),
         "protocol handlers must delegate Codex non-stream transform and history recording to proxy_core_adapter:\n{}",
+        violations.join("\n")
+    );
+}
+
+#[test]
+fn handlers_delegate_codex_stream_transform_to_adapter() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let path = manifest_dir.join("src/proxy/handlers.rs");
+    let source = fs::read_to_string(&path).expect("read handlers.rs");
+
+    let mut violations = Vec::new();
+    for (line_index, line) in production_lines(&source) {
+        let code = line.split("//").next().unwrap_or_default();
+        for marker in FORBIDDEN_HANDLER_CODEX_STREAM_TRANSFORM_MARKERS {
+            if code.contains(marker) {
+                violations.push(format!(
+                    "src/proxy/handlers.rs:{} contains Codex stream transform marker `{}`",
+                    line_index + 1,
+                    marker
+                ));
+            }
+        }
+    }
+
+    assert!(
+        violations.is_empty(),
+        "protocol handlers must delegate Codex stream transform and history recording to proxy_core_adapter:\n{}",
         violations.join("\n")
     );
 }

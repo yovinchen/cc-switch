@@ -536,6 +536,18 @@ pub(crate) fn record_codex_chat_response_sse_history(
     record_responses_sse_stream(stream, history)
 }
 
+pub(crate) fn transform_codex_chat_sse_with_history(
+    stream: impl Stream<Item = Result<Bytes, std::io::Error>> + Send + 'static,
+    tool_context: CodexToolContext,
+    history: Arc<CodexChatHistoryStore>,
+) -> impl Stream<Item = Result<Bytes, std::io::Error>> + Send {
+    let responses_stream = create_codex_chat_to_responses_sse_stream_with_context(
+        stream,
+        tool_context,
+    );
+    record_codex_chat_response_sse_history(responses_stream, history)
+}
+
 pub(crate) fn current_route_target_from_forward_attempt(
     app_type: &str,
     attempt: &ForwardAttempt,
@@ -11761,6 +11773,55 @@ mod tests {
         assert_eq!(history.enrich_request(&mut request).await, 1);
         assert_eq!(request["input"][0]["type"], "function_call");
         assert_eq!(request["input"][0]["reasoning_content"], "Need the file first.");
+    }
+
+    #[tokio::test]
+    async fn codex_chat_stream_transform_adapter_records_history() {
+        use futures::StreamExt as _;
+
+        let history = Arc::new(CodexChatHistoryStore::default());
+        let upstream = futures::stream::iter(vec![
+            Ok::<_, std::io::Error>(Bytes::from_static(
+                b"data: {\"id\":\"chatcmpl_stream\",\"model\":\"deepseek-v4-flash\",\"choices\":[{\"delta\":{\"reasoning_content\":\"Need stream file.\"}}]}\n\n",
+            )),
+            Ok(Bytes::from_static(
+                b"data: {\"id\":\"chatcmpl_stream\",\"model\":\"deepseek-v4-flash\",\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":0,\"id\":\"call_stream\",\"type\":\"function\",\"function\":{\"name\":\"read_file\"}}]}}]}\n\n",
+            )),
+            Ok(Bytes::from_static(
+                b"data: {\"id\":\"chatcmpl_stream\",\"model\":\"deepseek-v4-flash\",\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":0,\"function\":{\"arguments\":\"{\\\"path\\\":\\\"README.md\\\"}\"}}]},\"finish_reason\":\"tool_calls\"}]}\n\n",
+            )),
+            Ok(Bytes::from_static(b"data: [DONE]\n\n")),
+        ]);
+
+        let output = transform_codex_chat_sse_with_history(
+            upstream,
+            CodexToolContext::default(),
+            history.clone(),
+        )
+        .collect::<Vec<_>>()
+        .await;
+        let bytes = output
+            .into_iter()
+            .map(|item| item.expect("stream chunk"))
+            .collect::<Vec<_>>();
+        let combined = String::from_utf8(bytes.concat()).expect("utf8 sse");
+        assert!(combined.contains("event: response.output_item.done"));
+
+        let mut request = json!({
+            "previous_response_id": "resp_chatcmpl_stream",
+            "input": [{
+                "type": "function_call_output",
+                "call_id": "call_stream",
+                "output": "ok"
+            }]
+        });
+
+        assert_eq!(history.enrich_request(&mut request).await, 1);
+        assert_eq!(request["input"][0]["type"], "function_call");
+        assert_eq!(
+            request["input"][0]["reasoning_content"],
+            "Need stream file."
+        );
     }
 
     #[test]

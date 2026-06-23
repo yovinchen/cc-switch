@@ -34,7 +34,6 @@ use crate::proxy_core_adapter::{
     claude_stream_usage_event_filter, claude_transform_unlabeled_sse_aggregation,
     codex_stream_usage_event_filter,
     create_logged_passthrough_stream,
-    create_codex_chat_to_responses_sse_stream_with_context as create_responses_sse_stream_from_chat_with_context,
     create_gemini_to_anthropic_sse_stream_with_callbacks as create_anthropic_sse_stream_from_gemini,
     create_openai_chat_to_anthropic_sse_stream as create_anthropic_sse_stream,
     create_openai_responses_to_anthropic_sse_stream as create_anthropic_sse_stream_from_responses,
@@ -43,8 +42,8 @@ use crate::proxy_core_adapter::{
     parse_json_proxy_request_body,
     parse_json_proxy_request_body_or_null,
     management_auth_decision_from_proxy_config, record_forward_error_usage,
-    record_codex_chat_response_sse_history, record_transformed_response_usage,
-    transform_codex_chat_response_with_history, transformed_streaming_usage_collector,
+    record_transformed_response_usage, transform_codex_chat_response_with_history,
+    transform_codex_chat_sse_with_history, transformed_streaming_usage_collector,
     provider_is_codex_oauth,
     provider_claude_transform_response_for_api_format, provider_needs_claude_transform,
     provider_should_convert_codex_responses_to_chat, response_headers_indicate_sse,
@@ -986,9 +985,11 @@ async fn handle_codex_chat_to_responses_transform(
 
     if is_stream || response_headers_indicate_sse(response.headers()) {
         let stream = response.bytes_stream();
-        let sse_stream = create_responses_sse_stream_from_chat_with_context(stream, tool_context);
-        let sse_stream =
-            record_codex_chat_response_sse_history(sse_stream, state.codex_chat_history.clone());
+        let sse_stream = transform_codex_chat_sse_with_history(
+            stream,
+            tool_context,
+            state.codex_chat_history.clone(),
+        );
 
         let usage_collector = transformed_streaming_usage_collector(
             state,
