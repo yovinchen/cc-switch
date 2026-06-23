@@ -19,7 +19,6 @@ use super::{
     },
     forwarder::ActiveConnectionGuard,
     handler_context::RequestContext,
-    codex_chat_history::record_responses_sse_stream,
     response_adapter::{
         collect_axum_request_body, proxy_core_response_to_axum_response,
         proxy_core_response_to_proxy_response, proxy_event_envelope_to_axum_sse_event,
@@ -51,7 +50,7 @@ use crate::proxy_core_adapter::{
     parse_json_proxy_request_body_or_null, parse_upstream_json_or_unlabeled_sse,
     upstream_response_parse_failure_log_message,
     management_auth_decision_from_proxy_config, record_codex_chat_response_history,
-    provider_is_codex_oauth, provider_needs_claude_transform,
+    record_codex_chat_response_sse_history, provider_is_codex_oauth, provider_needs_claude_transform,
     provider_should_convert_codex_responses_to_chat, rebuilt_json_proxy_response,
     response_headers_indicate_sse, should_aggregate_codex_oauth_responses_sse,
     should_use_claude_transform_streaming,
@@ -1022,7 +1021,8 @@ async fn handle_codex_chat_to_responses_transform(
     if is_stream || response_headers_indicate_sse(response.headers()) {
         let stream = response.bytes_stream();
         let sse_stream = create_responses_sse_stream_from_chat_with_context(stream, tool_context);
-        let sse_stream = record_responses_sse_stream(sse_stream, state.codex_chat_history.clone());
+        let sse_stream =
+            record_codex_chat_response_sse_history(sse_stream, state.codex_chat_history.clone());
 
         let usage_collector = transformed_streaming_usage_collector(
             state,

@@ -18,7 +18,7 @@ use crate::proxy::provider_router::{
     ProviderRouterConfigSource, ProviderRouterHealthStore, ProviderRouterProviderSource,
     ProviderRouterSources,
 };
-use crate::proxy::codex_chat_history::CodexChatHistoryStore;
+use crate::proxy::codex_chat_history::{record_responses_sse_stream, CodexChatHistoryStore};
 use crate::proxy::route_attempt::ForwardAttempt;
 use crate::proxy::usage::{RequestLog, UsageLogger};
 use crate::proxy::RequestForwarder;
@@ -512,6 +512,13 @@ pub(crate) async fn record_codex_chat_response_history(
     response: &Value,
 ) -> usize {
     history.record_response(response).await
+}
+
+pub(crate) fn record_codex_chat_response_sse_history(
+    stream: impl Stream<Item = Result<Bytes, std::io::Error>> + Send + 'static,
+    history: Arc<CodexChatHistoryStore>,
+) -> impl Stream<Item = Result<Bytes, std::io::Error>> + Send {
+    record_responses_sse_stream(stream, history)
 }
 
 pub(crate) fn current_route_target_from_forward_attempt(

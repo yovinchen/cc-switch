@@ -472,7 +472,8 @@ const FORBIDDEN_HANDLER_PROVIDER_ADAPTER_DECISION_MARKERS: &[&str] = &[
     ".needs_transform(",
     "super::providers::should_convert_codex_responses_to_chat(",
 ];
-const FORBIDDEN_HANDLER_CODEX_HISTORY_RECORD_MARKERS: &[&str] = &[".record_response("];
+const FORBIDDEN_HANDLER_CODEX_HISTORY_RECORD_MARKERS: &[&str] =
+    &[".record_response(", "record_responses_sse_stream("];
 const FORBIDDEN_PROVIDER_ADAPTER_BASE_URL_ERROR_MARKERS: &[&str] = &[
     "缺少 base_url 配置",
     ".ok_or_else(|| ProxyError::ConfigError(",
