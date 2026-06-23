@@ -15,7 +15,7 @@
 4. 现有 live `RequestForwarder` 的 materialized channel 尝试已改为经 `ProxyEngine` 规划，再映射回 host `ForwardAttempt` 执行，保持旧转发链路不回归。
 5. `ProxyEngine::handle` 已拥有编排骨架：请求计数、route selected 事件、`ForwardPipeline` 端口调用、`UsageSink` 调用。
 6. `CcSwitchEventSink` 已桥接到现有 `ProxyEventBus`，核心事件可以进入 `/proxy/v1/events` 的 SSE 流。
-7. `UsageSink` 已升级为完整 `UsageRecord` 并可通过 `CcSwitchUsageSink` 写入现有 `proxy_request_logs`；response pipeline 与 handler 转换路径的成功 usage、forward error 日志都已改为走 `UsageSink`，app-specific 响应转换仍在 host 层。
+7. `UsageSink` 已升级为完整 `UsageRecord` 并可通过 `CcSwitchUsageSink` 写入现有 `proxy_request_logs`；response pipeline 与 handler 转换路径的成功 usage、forward error 日志都已改为走 `UsageSink`，协议入口的 core error 映射与 forward error usage 记录也已收敛到 `proxy_core_adapter::record_forward_core_error_usage`，app-specific 响应转换仍在 host 层。
 8. 核心响应体已从请求 `ProxyBody` 拆出为 `ProxyResponseBody`，可以表达 empty/json/bytes/stream，避免把 axum/hyper 类型带入 core crate。
 9. `RequestForwarder` 的重试循环已从 attempts 构建中拆出，新增 preplanned attempts 入口，并且预规划入口不再强制持有 `CcSwitchProxyServices`，避免 host runtime adapter 产生自引用。
 10. `CcSwitchForwardPipeline` 已迁为 adapter-owned optional-runtime wrapper，`CcSwitchProxyServices<R>` 也已迁为 adapter-owned generic `ProxyServices` 容器，并接入运行中 `ProxyServer` 的共享 router/status/event/history/failover 运行态；`HostForwardRuntime for CcSwitchProxyRuntime` 仍留在 host 装配 DB、router、Tauri handle 等不可移植资源，把 `ProxyEngine::handle` 的 `RoutePlan` 映射为 host `ForwardAttempt` 并复用现有 HTTP 转发链。后续重点转为迁移 response pipeline、模型列表接口和外部管理 API。
@@ -464,7 +464,7 @@
 453. `/proxy/v1/events` 的 `ProxyEventEnvelope` 到 Axum `Event` transport 适配已迁入 `proxy::response_adapter::proxy_event_envelope_to_axum_sse_event`；host handler 只负责订阅事件流和 keepalive 编排。
 454. `ProxyResult` 回填 host `RequestContext` 的 outbound model、selected provider hydration 和 Claude api_format fallback 已迁入 `RequestContext::{apply_proxy_result,claude_api_format_for_proxy_result}`；各协议 handler 只调用 context 方法。
 455. Claude Desktop gateway 的宿主 token 读取、core bearer 校验和 `ProxyError` 映射已迁入 `proxy::auth_adapter::validate_claude_desktop_gateway_auth`；handler 只负责传入请求 headers。
-456. forward error 的失败请求 usage record 构造与 `UsageSink` 异步调度已从 `proxy::usage_sink_bridge::record_forward_error_usage` 继续上移到 `proxy_core_adapter::record_forward_error_usage`；各协议 handler 只负责把 core/host error 映射后交给 adapter。
+456. forward error 的失败请求 usage record 构造与 `UsageSink` 异步调度已从 `proxy::usage_sink_bridge::record_forward_error_usage` 继续上移到 `proxy_core_adapter::record_forward_error_usage`；协议 handler 的 `ProxyCoreError -> ProxyError` 映射与 forward error usage 记录已继续收敛到 `proxy_core_adapter::record_forward_core_error_usage`。
 457. Claude/Codex 转换响应的非流式 usage 落库调度与流式 `SseUsageCollector` 构造已从 `proxy::usage_sink_bridge` 继续上移到 `proxy_core_adapter`；handler 不再直接拼装 transformed usage record 或调用 `UsageSink`。
 458. `/proxy/v1/groups` 的 channel source facts 到 `RouteGroupListResponse` 投影已迁入 `proxy-core::GroupListRequest::response_from_channel_sources`；host handler 只负责按 app 查询 route source 和 channel specs。
 459. `/proxy/v1/apps/{app}/providers` 的 provider/current/failover/route-candidate facts 已聚合为 `proxy-core::ProviderListSource`；host handler 只负责读取 DB/router facts 并交给 core 生成 provider list response。
@@ -1026,6 +1026,7 @@
 本轮继续把转换后 JSON/Codex 错误响应构造失败的日志上下文和 `ProxyCoreError -> ProxyError` 映射收敛到 `error_mapper` 协议专用 helper，`handlers` 不再直接选择 `CoreResponseBuildFailureContext::CodexResponsesError`/`CodexProxyError` 或调用通用 `response_build_error_to_proxy_error`。
 本轮继续把 Codex Chat 上游错误响应与转发层 Codex proxy error 的 neutral response 构造、build-error 映射和 Axum bridge 收敛到 `response_adapter` 协议专用 helper，`handlers` 不再直接调用 `codex_chat_error_proxy_response`、`codex_proxy_error_response` 或选择 Codex 错误响应的 `AxumResponseBuildErrorContext`。
 本轮继续把 Claude/Codex 响应转换失败的日志上下文和 `TransformError` 包装收敛到 `error_mapper` 协议专用 helper，`handlers` 不再直接选择 `ResponseTransformFailureContext` 或调用通用 `response_transform_error_to_proxy_error`。
+本轮继续把协议入口的 `ProxyCoreError -> ProxyError` 映射与 forward error usage 记录收敛到 `proxy_core_adapter::record_forward_core_error_usage`，Claude/Codex/Gemini handler 不再直接串联 `proxy_core_error_to_proxy_error` 与 `record_forward_error_usage`。
 本轮继续把 ConfigSource 的 app summary DTO 组装收敛到 adapter，`proxy_core_host` 不再直接构造 `AppSummaryConfig`。
 本轮也把管理 API token-source 决策收敛到 adapter，handler middleware 不再直接读取 `CC_SWITCH_PROXY_MANAGEMENT_TOKEN` 或调用 core 决策函数。
 本轮继续把 ProviderRouter 的 channel route input/source fallback 决策收敛到 adapter，router 只消费 adapter 提供的 core route input 与 source，不再暴露 route record 命名。
