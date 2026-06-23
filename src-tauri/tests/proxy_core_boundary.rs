@@ -126,6 +126,13 @@ const FORBIDDEN_MODEL_FETCH_COMMAND_DTO_IMPORT_MARKERS: &[&str] =
     &["services::model_fetch_transport::FetchedModel"];
 const FORBIDDEN_MODEL_FETCH_COMMAND_PROVIDER_DETAIL_MARKERS: &[&str] =
     &["crate::provider::parse_custom_user_agent("];
+const FORBIDDEN_STREAM_CHECK_PROVIDER_ADAPTER_MARKERS: &[&str] = &[
+    "proxy::providers",
+    "get_adapter(",
+    "ClaudeAdapter",
+    "ProviderAdapter",
+    ".extract_base_url(",
+];
 const FORBIDDEN_FORWARDER_MANAGED_AUTH_MARKERS: &[&str] = &[
     "CopilotAuthState",
     "CodexOAuthState",
@@ -3784,6 +3791,33 @@ fn model_fetch_command_delegates_user_agent_parsing_to_adapter() {
     assert!(
         violations.is_empty(),
         "model fetch command must delegate provider-specific User-Agent parsing to proxy_core_adapter:\n{}",
+        violations.join("\n")
+    );
+}
+
+#[test]
+fn production_stream_check_delegates_provider_adapters_to_adapter() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let path = manifest_dir.join("src/services/stream_check.rs");
+    let source = fs::read_to_string(&path).expect("read stream_check.rs");
+
+    let mut violations = Vec::new();
+    for (line_index, line) in production_lines(&source) {
+        let code = line.split("//").next().unwrap_or_default();
+        for marker in FORBIDDEN_STREAM_CHECK_PROVIDER_ADAPTER_MARKERS {
+            if code.contains(marker) {
+                violations.push(format!(
+                    "src/services/stream_check.rs:{} contains provider adapter marker `{}`",
+                    line_index + 1,
+                    marker
+                ));
+            }
+        }
+    }
+
+    assert!(
+        violations.is_empty(),
+        "stream_check must resolve provider adapter facts through proxy_core_adapter helpers:\n{}",
         violations.join("\n")
     );
 }

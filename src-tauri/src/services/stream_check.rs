@@ -23,12 +23,12 @@ use std::time::Instant;
 use crate::app_config::AppType;
 use crate::error::AppError;
 use crate::provider::Provider;
-use crate::proxy::providers::{get_adapter, ClaudeAdapter, ProviderAdapter};
 use crate::proxy_core_adapter::{
     channel_reachability_status_from_latency, provider_custom_user_agent_header,
     provider_hermes_stream_check_base_url, provider_opencode_stream_check_base_url,
     provider_opencode_stream_check_npm, provider_openclaw_stream_check_base_url,
     provider_stream_check_test_config, should_retry_channel_reachability_failure,
+    stream_check_provider_base_url,
 };
 
 pub use crate::proxy_core_adapter::{
@@ -155,11 +155,7 @@ impl StreamCheckService {
             }
             AppType::OpenClaw => Self::extract_openclaw_base_url(provider),
             AppType::Hermes => Self::extract_hermes_base_url(provider),
-            AppType::ClaudeDesktop => ClaudeAdapter::new()
-                .extract_base_url(provider)
-                .map_err(|e| AppError::Message(format!("Failed to extract base_url: {e}"))),
-            _ => get_adapter(app_type)
-                .extract_base_url(provider)
+            _ => stream_check_provider_base_url(app_type, provider)
                 .map_err(|e| AppError::Message(format!("Failed to extract base_url: {e}"))),
         }
     }

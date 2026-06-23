@@ -4084,6 +4084,14 @@ pub(crate) fn forwarder_provider_base_url(
     adapter.extract_base_url(provider)
 }
 
+pub(crate) fn stream_check_provider_base_url(
+    app_type: &AppType,
+    provider: &Provider,
+) -> Result<String, ProxyError> {
+    let adapter = forwarder_provider_adapter_for_app(app_type);
+    forwarder_provider_base_url(adapter.as_ref(), provider)
+}
+
 pub(crate) fn forwarder_provider_auth_info(
     adapter: &dyn ProviderAdapter,
     provider: &Provider,
@@ -17383,6 +17391,33 @@ command = "latest-command"
                 reachability_status.as_str()
             );
         }
+    }
+
+    #[test]
+    fn stream_check_adapter_resolves_standard_provider_base_urls() {
+        let claude_desktop_provider = Provider::with_id(
+            "claude-desktop".to_string(),
+            "Claude Desktop".to_string(),
+            json!({ "env": { "ANTHROPIC_BASE_URL": "https://claude-relay.example/v1" } }),
+            None,
+        );
+        assert_eq!(
+            stream_check_provider_base_url(&AppType::ClaudeDesktop, &claude_desktop_provider)
+                .expect("Claude Desktop base URL"),
+            "https://claude-relay.example/v1"
+        );
+
+        let codex_provider = Provider::with_id(
+            "codex".to_string(),
+            "Codex".to_string(),
+            json!({ "base_url": "https://codex-relay.example/v1/" }),
+            None,
+        );
+        assert_eq!(
+            stream_check_provider_base_url(&AppType::Codex, &codex_provider)
+                .expect("Codex base URL"),
+            "https://codex-relay.example/v1"
+        );
     }
 
     #[test]
