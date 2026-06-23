@@ -870,6 +870,16 @@ const FORBIDDEN_HANDLER_TRANSFORMED_USAGE_POLICY_MARKERS: &[&str] = &[
     " record_transformed_response_usage(",
     " transformed_streaming_usage_collector(",
 ];
+const FORBIDDEN_HANDLER_TRANSFORMED_RESPONSE_BUILD_CONTEXT_MARKERS: &[&str] = &[
+    "CoreResponseBuildFailureContext::ClaudeJson",
+    "CoreResponseBuildFailureContext::CodexResponses",
+    "AxumResponseBuildErrorContext::ClaudeSse",
+    "AxumResponseBuildErrorContext::CodexSse",
+    "AxumResponseBuildErrorContext::ClaudeResponse",
+    "AxumResponseBuildErrorContext::CodexResponses",
+    "rebuilt_json_proxy_response_to_axum_response(",
+    "transformed_sse_proxy_response_to_axum_response(",
+];
 const FORBIDDEN_HANDLER_CLAUDE_RESPONSE_TRANSFORM_DISPATCH_MARKERS: &[&str] = &[
     "openai_responses_to_anthropic_message(",
     "openai_chat_to_anthropic_message(",
@@ -2656,6 +2666,45 @@ fn handlers_delegate_transformed_usage_policy_to_adapter() {
     assert!(
         violations.is_empty(),
         "protocol handlers must delegate transformed usage format/filter policy to proxy_core_adapter:\n{}",
+        violations.join("\n")
+    );
+}
+
+#[test]
+fn handlers_delegate_transformed_response_build_context_to_response_adapter() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let path = manifest_dir.join("src/proxy/handlers.rs");
+    let source = fs::read_to_string(&path).expect("read handlers.rs");
+    let claude_transform = function_slice(
+        &source,
+        "async fn handle_claude_transform(",
+        "\n}\n\n// ============================================================================\n// Codex API",
+    );
+    let codex_transform = function_slice(
+        &source,
+        "async fn handle_codex_chat_to_responses_transform(",
+        "\n}\n\n/// 把上游 Chat Completions 的错误响应转换为 Responses API 错误形状。",
+    );
+
+    let mut violations = Vec::new();
+    for transform in [claude_transform, codex_transform] {
+        for (line_index, line) in production_lines(transform) {
+            let code = line.split("//").next().unwrap_or_default();
+            for marker in FORBIDDEN_HANDLER_TRANSFORMED_RESPONSE_BUILD_CONTEXT_MARKERS {
+                if code.contains(marker) {
+                    violations.push(format!(
+                        "src/proxy/handlers.rs:{} contains transformed response build marker `{}`",
+                        line_index + 1,
+                        marker
+                    ));
+                }
+            }
+        }
+    }
+
+    assert!(
+        violations.is_empty(),
+        "protocol handlers must delegate transformed response build contexts to response_adapter helpers:\n{}",
         violations.join("\n")
     );
 }
