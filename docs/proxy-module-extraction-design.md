@@ -1055,6 +1055,7 @@
 本轮继续把 forward failure 的 `ProxyError -> ForwardFailureKind` 投影收敛到 `proxy_core_adapter`，`error_mapper` 不再直接引用 `ForwardFailureKind` 或调用 core forward-failure 分类入口。
 本轮继续把 forwarder 的 Claude Desktop route 模型映射收敛到 `proxy_core_adapter::apply_forward_request_model_mapping_from_provider`，forwarder 不再直接调用 `claude_desktop_config`。
 本轮继续把 forwarder 的 Claude provider adapter 名称判定收敛到 `proxy_core_adapter::provider_adapter_name_is_claude`，forwarder 不再手写 `adapter.name() == "Claude"`。
+本轮继续把 forwarder 的 Claude 默认 api_format 与 Copilot vendor 分流入口收敛到 `proxy_core_adapter::{forwarder_claude_api_format,resolve_forwarder_claude_api_format}`，forwarder 不再直接读取 provider Claude api format。
 本轮继续把 Copilot fingerprint header 常量提升到 adapter，`proxy_core_adapter` 不再反向引用 `providers::copilot_auth` 常量。
 本轮继续把 `codex_chat_history` 从 `proxy::providers` 移到 `proxy` 模块根，provider 目录只保留 provider adapter 和账号认证相关实现。
 本轮继续把 `ProviderRouterSource` 拆成 router 端的 provider/channel/config/health 四个 focused port；host adapter 侧拆出对应 DB-backed source/store，并把 `ProviderRouter::new(Arc<Database>)` 迁到 `proxy_core_adapter::provider_router_from_database` factory，生产代码不再直连 router 的 DB 构造入口。
