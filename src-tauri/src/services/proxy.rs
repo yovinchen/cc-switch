@@ -27,7 +27,7 @@ use crate::proxy_core_adapter::{
     is_local_proxy_url, live_backup_snapshot_from_live_config, live_token_sync_app_label,
     live_backup_config_for_simple_restore_from_db,
     live_takeover_any_enabled_from_db, live_takeover_backup_exists_from_db,
-    live_token_sync_provider_from_db,
+    live_backup_value_for_restore_from_db, live_token_sync_provider_from_db,
     live_config_has_proxy_placeholder_for_app, live_takeover_config_matches_proxy_for_app,
     live_takeover_app_types, provider_settings_have_proxy_placeholder_for_app,
     persist_ephemeral_listen_port_if_needed_in_db, proxy_app_enabled_from_db,
@@ -946,15 +946,7 @@ impl ProxyService {
         let app_type_str = app_type.as_str();
 
         // 1) 优先从 Live 备份恢复（这是"原始 Live"的唯一可靠来源）
-        let backup = self
-            .db
-            .get_live_backup(app_type_str)
-            .await
-            .map_err(|e| format!("获取 {app_type_str} Live 备份失败: {e}"))?;
-        if let Some(backup) = backup {
-            let config: Value = serde_json::from_str(&backup.original_config)
-                .map_err(|e| format!("解析 {app_type_str} 备份失败: {e}"))?;
-
+        if let Some(config) = live_backup_value_for_restore_from_db(&self.db, app_type).await? {
             // 备份若是代理占位符（异常历史：上次 stop 失败导致 Live 留在了代理状态，
             // 下次接管时又被错误地备份成"原始 Live"），不能直接用 — 否则 stop 后
             // Live 永远卡在 127.0.0.1:15721。落到下面的 SSOT 兜底重建。

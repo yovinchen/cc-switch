@@ -1236,6 +1236,25 @@ pub(crate) async fn clear_all_provider_health_in_db(db: &Database) -> Result<(),
         .map_err(|e| format!("重置健康状态失败: {e}"))
 }
 
+pub(crate) async fn live_backup_value_for_restore_from_db(
+    db: &Database,
+    app_type: &AppType,
+) -> Result<Option<Value>, String> {
+    let app_type_str = app_type.as_str();
+    let backup = db
+        .get_live_backup(app_type_str)
+        .await
+        .map_err(|e| format!("获取 {app_type_str} Live 备份失败: {e}"))?;
+
+    let Some(backup) = backup else {
+        return Ok(None);
+    };
+
+    serde_json::from_str::<Value>(&backup.original_config)
+        .map(Some)
+        .map_err(|e| format!("解析 {app_type_str} 备份失败: {e}"))
+}
+
 pub(crate) async fn live_backup_config_for_simple_restore_from_db(
     db: &Database,
     app_type: &AppType,
