@@ -33,7 +33,7 @@ use crate::proxy_core_adapter::{
     resolve_copilot_request_id_with_fallback, resolve_channel_response_status_mapping,
     resolve_media_prevention_policy,
     forwarder_claude_api_format, forwarder_claude_transform_required,
-    resolve_forwarder_claude_api_format, responses_to_chat_completions_with_options,
+    responses_to_chat_completions_with_options,
     sanitize_copilot_orphan_tool_results,
     should_apply_bedrock_pre_send_optimizer,
     should_check_media_retry, should_failover_after_rectifier_retry_failure,
@@ -1238,7 +1238,8 @@ impl RequestForwarder {
         let is_claude_adapter = provider_adapter_name_is_claude(adapter_name);
         let resolved_claude_api_format = if is_claude_adapter {
             Some(
-                self.resolve_claude_api_format(provider, &mapped_body, is_copilot)
+                self.managed_account_runtime_source
+                    .resolve_claude_api_format_for_provider(provider, &mapped_body, is_copilot)
                     .await,
             )
         } else {
@@ -1517,29 +1518,6 @@ impl RequestForwarder {
                 self.streaming_first_byte_timeout,
             )
             .await
-    }
-
-    async fn resolve_claude_api_format(
-        &self,
-        provider: &Provider,
-        body: &Value,
-        is_copilot: bool,
-    ) -> String {
-        let model = body.get("model").and_then(|value| value.as_str());
-        let copilot_model_vendor = if is_copilot {
-            match model {
-                Some(model_id) => {
-                    self.managed_account_runtime_source
-                        .resolve_copilot_model_vendor_for_provider(provider, model_id)
-                    .await
-                }
-                None => None,
-            }
-        } else {
-            None
-        };
-
-        resolve_forwarder_claude_api_format(provider, is_copilot, copilot_model_vendor.as_deref())
     }
 
     /// 用 Copilot live `/models` 列表确认 model ID 真实可用，找不到时按 family 降级。

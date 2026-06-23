@@ -3295,6 +3295,34 @@ pub(crate) trait ManagedAccountRuntimeSource: Send + Sync {
                 .await
         })
     }
+
+    fn resolve_claude_api_format_for_provider<'a>(
+        &'a self,
+        auth_provider: &'a Provider,
+        body: &'a Value,
+        is_copilot: bool,
+    ) -> BoxFuture<'a, String> {
+        Box::pin(async move {
+            let model = body.get("model").and_then(Value::as_str);
+            let copilot_model_vendor = if is_copilot {
+                match model {
+                    Some(model_id) => {
+                        self.resolve_copilot_model_vendor_for_provider(auth_provider, model_id)
+                            .await
+                    }
+                    None => None,
+                }
+            } else {
+                None
+            };
+
+            resolve_forwarder_claude_api_format(
+                auth_provider,
+                is_copilot,
+                copilot_model_vendor.as_deref(),
+            )
+        })
+    }
 }
 
 impl ManagedAccountRuntimeSource for CcSwitchManagedAccountRuntimeSource {

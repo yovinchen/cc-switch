@@ -5620,6 +5620,46 @@ fn production_forwarder_delegates_copilot_dynamic_base_url_to_runtime_source() {
 }
 
 #[test]
+fn production_forwarder_delegates_claude_api_format_to_runtime_source() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let forwarder_path = manifest_dir.join("src/proxy/forwarder.rs");
+    let forwarder_source = fs::read_to_string(&forwarder_path).expect("read forwarder.rs");
+    let adapter_path = manifest_dir.join("src/proxy_core_adapter.rs");
+    let adapter_source = fs::read_to_string(&adapter_path).expect("read proxy_core_adapter.rs");
+
+    assert!(
+        adapter_source.contains("resolve_claude_api_format_for_provider"),
+        "ManagedAccountRuntimeSource must expose provider-aware Claude API format resolution"
+    );
+
+    let impl_slice = function_slice(&forwarder_source, "impl RequestForwarder", "#[cfg(test)]");
+    let forbidden_markers = [
+        "resolve_copilot_model_vendor_for_provider(",
+        "resolve_forwarder_claude_api_format(",
+    ];
+    let mut violations = Vec::new();
+
+    for (line_index, line) in production_lines(impl_slice) {
+        let code = line.split("//").next().unwrap_or_default();
+        for marker in forbidden_markers {
+            if code.contains(marker) {
+                violations.push(format!(
+                    "src/proxy/forwarder.rs impl RequestForwarder:{} contains direct Claude API format runtime marker `{}`",
+                    line_index + 1,
+                    marker
+                ));
+            }
+        }
+    }
+
+    assert!(
+        violations.is_empty(),
+        "forwarder must resolve Claude API format through the managed-account runtime source:\n{}",
+        violations.join("\n")
+    );
+}
+
+#[test]
 fn production_forwarder_uses_auth_source_resource() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let path = manifest_dir.join("src/proxy/forwarder.rs");
