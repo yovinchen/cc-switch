@@ -25,10 +25,7 @@ use super::{
     },
     response_processor::{process_response, read_decoded_body},
     server::ProxyState,
-    usage_sink_bridge::{
-        record_forward_error_usage, record_transformed_response_usage,
-        transformed_streaming_usage_collector,
-    },
+    usage_sink_bridge::record_forward_error_usage,
 };
 use crate::app_config::AppType;
 use crate::proxy_core_adapter::{
@@ -48,9 +45,11 @@ use crate::proxy_core_adapter::{
     log_unlabeled_sse_fallback_event,
     openai_responses_to_anthropic_message, parse_json_proxy_request_body,
     parse_json_proxy_request_body_or_null, parse_upstream_json_or_unlabeled_sse,
-    upstream_response_parse_failure_log_message,
-    management_auth_decision_from_proxy_config, record_codex_chat_response_history,
-    record_codex_chat_response_sse_history, provider_is_codex_oauth, provider_needs_claude_transform,
+    management_auth_decision_from_proxy_config, upstream_response_parse_failure_log_message,
+    record_codex_chat_response_history,
+    record_codex_chat_response_sse_history, record_transformed_response_usage,
+    transformed_streaming_usage_collector, provider_is_codex_oauth,
+    provider_needs_claude_transform,
     provider_should_convert_codex_responses_to_chat, rebuilt_json_proxy_response,
     response_headers_indicate_sse, should_aggregate_codex_oauth_responses_sse,
     should_use_claude_transform_streaming,

@@ -889,6 +889,10 @@ const FORBIDDEN_USAGE_SINK_PROVIDER_PROJECTION_MARKERS: &[&str] = &[
     "fn spawn_usage_record(",
     "tokio::spawn(async move",
 ];
+const FORBIDDEN_USAGE_SINK_TRANSFORMED_ENTRYPOINT_MARKERS: &[&str] = &[
+    "fn record_transformed_response_usage(",
+    "fn transformed_streaming_usage_collector(",
+];
 const PROXY_CORE_MARKER: &str = "crate::proxy_core::";
 const PROXY_CORE_API_MARKER: &str = "crate::proxy_core::api";
 const PROXY_ENGINE_CONSTRUCTOR_MARKER: &str = "ProxyEngine::new(";
@@ -2669,6 +2673,33 @@ fn usage_sink_bridge_delegates_provider_projection_to_adapter() {
     assert!(
         violations.is_empty(),
         "usage sink bridge must build provider usage facts through proxy_core_adapter helpers:\n{}",
+        violations.join("\n")
+    );
+}
+
+#[test]
+fn usage_sink_bridge_delegates_transformed_usage_entrypoints_to_adapter() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let path = manifest_dir.join("src/proxy/usage_sink_bridge.rs");
+    let source = fs::read_to_string(&path).expect("read usage_sink_bridge.rs");
+
+    let mut violations = Vec::new();
+    for (line_index, line) in production_lines(&source) {
+        let code = line.split("//").next().unwrap_or_default();
+        for marker in FORBIDDEN_USAGE_SINK_TRANSFORMED_ENTRYPOINT_MARKERS {
+            if code.contains(marker) {
+                violations.push(format!(
+                    "src/proxy/usage_sink_bridge.rs:{} contains transformed usage entrypoint marker `{}`",
+                    line_index + 1,
+                    marker
+                ));
+            }
+        }
+    }
+
+    assert!(
+        violations.is_empty(),
+        "usage sink bridge must delegate transformed response usage entrypoints to proxy_core_adapter:\n{}",
         violations.join("\n")
     );
 }

@@ -12,12 +12,14 @@ use crate::provider::{
 use crate::proxy::error_mapper::forward_error_to_core_error;
 use crate::proxy::events::ProxyEventBus;
 use crate::proxy::failover_switch::FailoverSwitchManager;
+use crate::proxy::handler_context::RequestContext;
 use crate::proxy::hyper_client::ProxyResponse;
 use crate::proxy::provider_router::{
     ProviderFailoverRouterSources, ProviderRouter, ProviderRouterChannelSource,
     ProviderRouterConfigSource, ProviderRouterHealthStore, ProviderRouterProviderSource,
     ProviderRouterSources,
 };
+use crate::proxy::server::ProxyState;
 use crate::proxy::codex_chat_history::{record_responses_sse_stream, CodexChatHistoryStore};
 use crate::proxy::route_attempt::ForwardAttempt;
 use crate::proxy::usage::{RequestLog, UsageLogger};
@@ -8671,6 +8673,56 @@ pub(crate) fn usage_logging_enabled_from_proxy_config(config: &RwLock<ProxyConfi
             .try_read()
             .ok()
             .map(|config| config.enable_logging),
+    )
+}
+
+pub(crate) fn record_transformed_response_usage(
+    state: &ProxyState,
+    ctx: &RequestContext,
+    body: &Value,
+    format: TransformedResponseUsageFormat,
+    status_code: u16,
+) {
+    record_transformed_response_usage_from_context(TransformedResponseUsageRecordContext {
+        usage_logging_enabled: usage_logging_enabled_from_proxy_config(state.config.as_ref()),
+        services: state.proxy_core_services.clone(),
+        body,
+        format,
+        provider: ctx.provider_for_usage(),
+        tag: ctx.tag,
+        app_type: ctx.app_type_str,
+        request_model: &ctx.request_model,
+        outbound_model: ctx.outbound_model.as_deref(),
+        route_context: ctx.usage_route_context.as_ref(),
+        latency_ms: ctx.latency_ms(),
+        status_code,
+        session_id: &ctx.session_id,
+    });
+}
+
+pub(crate) fn transformed_streaming_usage_collector(
+    state: &ProxyState,
+    ctx: &RequestContext,
+    status_code: u16,
+    usage_format: TransformedResponseUsageFormat,
+    stream_event_filter: StreamUsageEventFilter,
+) -> Option<SseUsageCollector> {
+    transformed_streaming_usage_collector_from_context(
+        TransformedStreamingUsageCollectorContext {
+            usage_logging_enabled: usage_logging_enabled_from_proxy_config(state.config.as_ref()),
+            services: state.proxy_core_services.clone(),
+            provider: ctx.provider_for_usage(),
+            app_type: ctx.app_type_str,
+            tag: ctx.tag,
+            request_model: &ctx.request_model,
+            outbound_model: ctx.outbound_model.as_deref(),
+            route_context: ctx.usage_route_context.as_ref(),
+            start_time: ctx.start_time,
+            status_code,
+            session_id: &ctx.session_id,
+            usage_format,
+            stream_event_filter,
+        },
     )
 }
 

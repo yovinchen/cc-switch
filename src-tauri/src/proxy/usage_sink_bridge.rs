@@ -5,18 +5,13 @@ use crate::proxy::{
     server::ProxyState,
 };
 use crate::proxy_core_adapter::{
-    record_forward_error_usage_from_context, record_transformed_response_usage_from_context,
-    transformed_streaming_usage_collector_from_context, usage_logging_enabled_from_proxy_config,
-    ForwardErrorUsageRecordContext, SseUsageCollector, StreamUsageEventFilter,
-    TransformedResponseUsageFormat, TransformedResponseUsageRecordContext,
-    TransformedStreamingUsageCollectorContext,
+    record_forward_error_usage_from_context, ForwardErrorUsageRecordContext,
 };
 #[cfg(test)]
 use crate::proxy_core_adapter::{
     success_usage_record_from_app_type_with_request_id_fallback, ProviderKind, TokenUsage,
     UsageRecord,
 };
-use serde_json::Value;
 
 #[cfg(test)]
 #[allow(clippy::too_many_arguments)]
@@ -71,56 +66,6 @@ pub(crate) fn record_forward_error_usage(
         is_streaming,
         session_id: &ctx.session_id,
     });
-}
-
-pub(crate) fn record_transformed_response_usage(
-    state: &ProxyState,
-    ctx: &RequestContext,
-    body: &Value,
-    format: TransformedResponseUsageFormat,
-    status_code: u16,
-) {
-    record_transformed_response_usage_from_context(TransformedResponseUsageRecordContext {
-        usage_logging_enabled: usage_logging_enabled_from_proxy_config(state.config.as_ref()),
-        services: state.proxy_core_services.clone(),
-        body,
-        format,
-        provider: ctx.provider_for_usage(),
-        tag: ctx.tag,
-        app_type: ctx.app_type_str,
-        request_model: &ctx.request_model,
-        outbound_model: ctx.outbound_model.as_deref(),
-        route_context: ctx.usage_route_context.as_ref(),
-        latency_ms: ctx.latency_ms(),
-        status_code,
-        session_id: &ctx.session_id,
-    });
-}
-
-pub(crate) fn transformed_streaming_usage_collector(
-    state: &ProxyState,
-    ctx: &RequestContext,
-    status_code: u16,
-    usage_format: TransformedResponseUsageFormat,
-    stream_event_filter: StreamUsageEventFilter,
-) -> Option<SseUsageCollector> {
-    transformed_streaming_usage_collector_from_context(
-        TransformedStreamingUsageCollectorContext {
-            usage_logging_enabled: usage_logging_enabled_from_proxy_config(state.config.as_ref()),
-            services: state.proxy_core_services.clone(),
-            provider: ctx.provider_for_usage(),
-            app_type: ctx.app_type_str,
-            tag: ctx.tag,
-            request_model: &ctx.request_model,
-            outbound_model: ctx.outbound_model.as_deref(),
-            route_context: ctx.usage_route_context.as_ref(),
-            start_time: ctx.start_time,
-            status_code,
-            session_id: &ctx.session_id,
-            usage_format,
-            stream_event_filter,
-        },
-    )
 }
 
 #[cfg(test)]
