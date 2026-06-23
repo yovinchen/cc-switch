@@ -34,9 +34,6 @@ use crate::proxy_core_adapter::{
     forwarder_claude_transform_request_for_api_format,
     provider_adapter_name_is_claude,
     rectify_anthropic_request, rectify_thinking_budget, replace_image_blocks_with_marker,
-    record_forward_current_provider_runtime_source,
-    record_forward_provider_failure_runtime_source,
-    record_forward_provider_rectifier_retry_failure_runtime_source,
     request_body_filter_log_message,
     resolve_copilot_api_endpoint_from_runtime_source,
     resolve_copilot_deterministic_interaction_id, resolve_copilot_model_against_ids,
@@ -418,14 +415,13 @@ impl RequestForwarder {
                 retry_error_message.clone(),
             )
             .await;
-            let status = self.runtime_state_source.status();
-            record_forward_provider_rectifier_retry_failure_runtime_source(
-                status.as_ref(),
-                &provider.name,
-                rectifier_label,
-                &retry_error_message,
-            )
-            .await;
+            self.runtime_state_source
+                .record_provider_rectifier_retry_failure(
+                    &provider.name,
+                    rectifier_label,
+                    &retry_error_message,
+                )
+                .await;
             *last_error = Some(retry_err);
             *last_provider = Some(provider.clone());
             return None;
@@ -580,13 +576,9 @@ impl RequestForwarder {
             // total_requests / last_request_at / active_connections 已由
             // forward_with_preplanned_attempts 在客户端请求维度统一处理，这里只刷
             // 新「正在尝试哪个 provider」的展示字段。
-            let status = self.runtime_state_source.status();
-            record_forward_current_provider_runtime_source(
-                status.as_ref(),
-                provider.id.as_str(),
-                provider.name.as_str(),
-            )
-            .await;
+            self.runtime_state_source
+                .record_current_provider(provider.id.as_str(), provider.name.as_str())
+                .await;
 
             // 转发请求（每个 Provider 只尝试一次，重试由客户端控制）
             match self
@@ -1000,13 +992,9 @@ impl RequestForwarder {
                             )
                             .await;
 
-                            let status = self.runtime_state_source.status();
-                            record_forward_provider_failure_runtime_source(
-                                status.as_ref(),
-                                &provider.name,
-                                &error_message,
-                            )
-                            .await;
+                            self.runtime_state_source
+                                .record_provider_failure(&provider.name, &error_message)
+                                .await;
 
                             let failure_log = build_retryable_forward_failure_log(
                                 &provider.name,

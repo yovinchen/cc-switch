@@ -7833,6 +7833,7 @@ pub(crate) type ForwarderRuntimeStateSourceRef =
     Arc<dyn ForwarderRuntimeStateSource + Send + Sync>;
 
 pub(crate) trait ForwarderRuntimeStateSource {
+    #[cfg(test)]
     fn status(&self) -> Arc<RwLock<ProxyRuntimeStatus>>;
     fn current_providers(&self) -> Arc<RwLock<HashMap<String, CurrentRouteTarget>>>;
     fn events(&self) -> Arc<ProxyEventBus>;
@@ -7857,6 +7858,22 @@ pub(crate) trait ForwarderRuntimeStateSource {
         provider_id: &'a str,
     ) -> BoxFuture<'a, bool>;
     fn record_failure_status<'a>(&'a self, error_message: &'a str) -> BoxFuture<'a, ()>;
+    fn record_current_provider<'a>(
+        &'a self,
+        provider_id: &'a str,
+        provider_name: &'a str,
+    ) -> BoxFuture<'a, ()>;
+    fn record_provider_failure<'a>(
+        &'a self,
+        provider_name: &'a str,
+        error_message: &'a str,
+    ) -> BoxFuture<'a, ()>;
+    fn record_provider_rectifier_retry_failure<'a>(
+        &'a self,
+        provider_name: &'a str,
+        rectifier_label: &'a str,
+        error_message: &'a str,
+    ) -> BoxFuture<'a, ()>;
     fn record_request_started<'a>(&'a self, started_at: &'a str) -> BoxFuture<'a, ()>;
     fn record_active_connection_acquired<'a>(&'a self) -> BoxFuture<'a, ()>;
     fn record_active_connection_released<'a>(&'a self) -> BoxFuture<'a, ()>;
@@ -7883,6 +7900,7 @@ impl CcSwitchForwarderRuntimeStateSource {
 }
 
 impl ForwarderRuntimeStateSource for CcSwitchForwarderRuntimeStateSource {
+    #[cfg(test)]
     fn status(&self) -> Arc<RwLock<ProxyRuntimeStatus>> {
         self.status.clone()
     }
@@ -7953,6 +7971,53 @@ impl ForwarderRuntimeStateSource for CcSwitchForwarderRuntimeStateSource {
     fn record_failure_status<'a>(&'a self, error_message: &'a str) -> BoxFuture<'a, ()> {
         Box::pin(async move {
             record_forward_failure_runtime_source(self.status.as_ref(), error_message).await;
+        })
+    }
+
+    fn record_current_provider<'a>(
+        &'a self,
+        provider_id: &'a str,
+        provider_name: &'a str,
+    ) -> BoxFuture<'a, ()> {
+        Box::pin(async move {
+            record_forward_current_provider_runtime_source(
+                self.status.as_ref(),
+                provider_id,
+                provider_name,
+            )
+            .await;
+        })
+    }
+
+    fn record_provider_failure<'a>(
+        &'a self,
+        provider_name: &'a str,
+        error_message: &'a str,
+    ) -> BoxFuture<'a, ()> {
+        Box::pin(async move {
+            record_forward_provider_failure_runtime_source(
+                self.status.as_ref(),
+                provider_name,
+                error_message,
+            )
+            .await;
+        })
+    }
+
+    fn record_provider_rectifier_retry_failure<'a>(
+        &'a self,
+        provider_name: &'a str,
+        rectifier_label: &'a str,
+        error_message: &'a str,
+    ) -> BoxFuture<'a, ()> {
+        Box::pin(async move {
+            record_forward_provider_rectifier_retry_failure_runtime_source(
+                self.status.as_ref(),
+                provider_name,
+                rectifier_label,
+                error_message,
+            )
+            .await;
         })
     }
 
