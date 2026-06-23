@@ -1108,6 +1108,7 @@
 本轮继续把 `ProxyService` 中构建有效 provider settings 所需的 common config snippet 读取收敛到 `proxy_core_adapter::provider_effective_settings_with_common_config_from_db`：service 不再通过 provider live 模块穿透读取 DB snippet，只保留接管字段注入、备份合并和 live 写入编排；实际 `write_live_with_common_config` 文件写入边界留作后续独立切片。
 本轮继续把 `stop_with_restore` / `stop_with_restore_keep_state` 的 legacy active flag 清理、全量 Live 备份删除和全量 provider health reset 收敛到 `proxy_core_adapter::{clear_legacy_live_takeover_active_flag_strict_in_db,delete_all_live_backups_in_db,clear_all_provider_health_in_db}`：service 只保留停止 server、恢复 live 文件和 enabled 状态策略编排，cleanup 错误文案由 adapter 维护。
 本轮继续把 `recover_from_crash` 的 legacy active flag 清理和全量 Live 备份删除复用到 `proxy_core_adapter::{clear_legacy_live_takeover_active_flag_strict_in_db,delete_all_live_backups_in_db}`：异常恢复路径只保留 live 文件恢复编排，cleanup 失败仍按旧语义中断返回。
+本轮继续把 `backup_live_configs` / `backup_live_config_strict` 的 Live 备份 JSON 序列化和 `save_live_backup` 错误投影收敛到 `proxy_core_adapter::save_live_backup_value_in_db`：service 只负责读取 live 文件、判断占位符接管状态并决定是否保存备份，备份持久化细节由 adapter 维护。
 
 当前原则：核心 crate 可以新增端口和领域字段，但不得引入 `tauri`、`Database`、settings、commands、services 等宿主依赖；现有 runtime 行为必须继续通过 targeted tests 证明不回归。
 
