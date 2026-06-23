@@ -13,8 +13,6 @@ use super::{
     error_mapper::{
         claude_response_transform_error_to_proxy_error,
         codex_chat_to_responses_transform_error_to_proxy_error,
-        codex_proxy_error_body_build_error_to_proxy_error, codex_proxy_error_response,
-        codex_responses_error_body_build_error_to_proxy_error,
         parse_logged_upstream_json_or_unlabeled_sse, management_api_error_to_proxy_error,
         management_auth_error_to_proxy_error, proxy_core_error_to_proxy_error,
     },
@@ -23,9 +21,10 @@ use super::{
     response_adapter::{
         claude_transformed_json_response_to_axum_response,
         claude_transformed_sse_response_to_axum_response, collect_axum_request_body,
+        codex_chat_error_response_to_axum_response, codex_proxy_error_to_axum_response,
         codex_transformed_json_response_to_axum_response,
-        codex_transformed_sse_response_to_axum_response, proxy_core_response_to_axum_response,
-        proxy_core_response_to_proxy_response, proxy_event_envelope_to_axum_sse_event,
+        codex_transformed_sse_response_to_axum_response, proxy_core_response_to_proxy_response,
+        proxy_event_envelope_to_axum_sse_event,
     },
     response_processor::{process_response, read_decoded_body},
     server::ProxyState,
@@ -35,8 +34,7 @@ use crate::proxy_core_adapter::{
     append_query_to_endpoint_path,
     claude_transformed_streaming_usage_collector, codex_auto_transformed_streaming_usage_collector,
     create_logged_passthrough_stream,
-    codex_chat_error_proxy_response, codex_chat_transform_streaming_decision,
-    extract_anthropic_tool_schema_hints,
+    codex_chat_transform_streaming_decision, extract_anthropic_tool_schema_hints,
     extract_gemini_model_from_path, json_proxy_request_from_input, JsonProxyRequestInput,
     parse_json_proxy_request_body,
     parse_json_proxy_request_body_or_null,
@@ -50,8 +48,8 @@ use crate::proxy_core_adapter::{
     strip_endpoint_prefix,
     validate_management_bearer_header,
     AppChannelListQuery, AppChannelManagementRequest, AppChannelResponse, AppKind, AppListRequest,
-    AppListResponse, AppModelCatalogRequest, AppModelListQuery, AxumResponseBuildErrorContext,
-    ChannelCreateRequest, ChannelDeleteResponse, ChannelHealthResetResponse,
+    AppListResponse, AppModelCatalogRequest, AppModelListQuery, ChannelCreateRequest,
+    ChannelDeleteResponse, ChannelHealthResetResponse,
     ChannelKeyDeleteResponse, ChannelKeyPathRequest, ChannelKeyRecord, ChannelKeyRecordResponse,
     ChannelKeysResponse, ChannelListQuery, ChannelListRequest, ChannelListResponse,
     ChannelMigrationMaterializeResponse,
@@ -777,7 +775,12 @@ pub async fn handle_chat_completions(
         Err(error) => {
             let error = proxy_core_error_to_proxy_error(error);
             record_forward_error_usage(&state, &ctx, is_stream, &error);
-            return build_codex_proxy_error_response(&ctx, &endpoint, &error);
+            return codex_proxy_error_to_axum_response(
+                ctx.provider_name_for_error(),
+                &ctx.request_model,
+                &endpoint,
+                &error,
+            );
         }
     };
 
@@ -826,7 +829,12 @@ pub async fn handle_responses(
         Err(error) => {
             let error = proxy_core_error_to_proxy_error(error);
             record_forward_error_usage(&state, &ctx, is_stream, &error);
-            return build_codex_proxy_error_response(&ctx, &endpoint, &error);
+            return codex_proxy_error_to_axum_response(
+                ctx.provider_name_for_error(),
+                &ctx.request_model,
+                &endpoint,
+                &error,
+            );
         }
     };
 
@@ -887,7 +895,12 @@ pub async fn handle_responses_compact(
         Err(error) => {
             let error = proxy_core_error_to_proxy_error(error);
             record_forward_error_usage(&state, &ctx, is_stream, &error);
-            return build_codex_proxy_error_response(&ctx, &endpoint, &error);
+            return codex_proxy_error_to_axum_response(
+                ctx.provider_name_for_error(),
+                &ctx.request_model,
+                &endpoint,
+                &error,
+            );
         }
     };
 
@@ -991,38 +1004,7 @@ async fn handle_codex_chat_error_response(
     let (response_headers, _status, body_bytes) =
         read_decoded_body(response, ctx.tag, ctx.body_timeout_duration()).await?;
 
-    let response = codex_chat_error_proxy_response(status, response_headers, &body_bytes)
-        .map_err(codex_responses_error_body_build_error_to_proxy_error)?;
-
-    proxy_core_response_to_axum_response(
-        response,
-        AxumResponseBuildErrorContext::CodexResponsesError,
-    )
-}
-
-/// 把转发层（非上游响应）的失败构造成富化的 Codex 错误响应。
-///
-/// 与 `handle_codex_chat_error_response`（处理上游真实错误响应、复制上游头）不同，
-/// 这里没有上游响应可参照，只产出一个 `application/json` 错误体。状态码走
-/// host error adapter 仍负责把 `ProxyError` 映射成 core status kind/context。
-///
-/// 注意：`endpoint` 经 core endpoint query helper 可能携带 query（如 `?beta=true`）并被
-/// 原样写入错误体。当前 Codex 端点不在 query 里放凭证，故安全；若将来复用到
-/// query 携带密钥的端点（如 Gemini 的 `?key=`），需先脱敏再回显。
-fn build_codex_proxy_error_response(
-    ctx: &RequestContext,
-    endpoint: &str,
-    error: &ProxyError,
-) -> Result<axum::response::Response, ProxyError> {
-    let response = codex_proxy_error_response(
-        ctx.provider_name_for_error(),
-        &ctx.request_model,
-        endpoint,
-        error,
-    )
-    .map_err(codex_proxy_error_body_build_error_to_proxy_error)?;
-
-    proxy_core_response_to_axum_response(response, AxumResponseBuildErrorContext::CodexProxyError)
+    codex_chat_error_response_to_axum_response(status, response_headers, &body_bytes)
 }
 
 // ============================================================================
