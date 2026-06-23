@@ -28,6 +28,7 @@ use crate::proxy_core_adapter::{
     forwarder_apply_codex_chat_upstream_model,
     forwarder_bedrock_env_flag,
     forwarder_codex_chat_reasoning_options,
+    forwarder_custom_user_agent_header,
     forward_failure_kind_from_proxy_error, forwarder_should_convert_codex_responses_to_chat,
     forwarder_is_codex_oauth_provider, forwarder_uses_anthropic_rectifiers,
     is_openai_o_series,
@@ -35,7 +36,7 @@ use crate::proxy_core_adapter::{
     non_streaming_body_timeout_message, normalize_thinking_type,
     prepare_upstream_request_body_with_report, prompt_cache_trace_log_message,
     forwarder_claude_normalize_anthropic_messages,
-    forwarder_claude_transform_request_for_api_format, provider_custom_user_agent_header,
+    forwarder_claude_transform_request_for_api_format,
     provider_adapter_name_is_claude,
     provider_is_full_url, provider_is_github_copilot_upstream,
     rectify_anthropic_request, rectify_thinking_budget, replace_image_blocks_with_marker,
@@ -1459,7 +1460,7 @@ impl RequestForwarder {
         // 自定义 User-Agent：与 stream_check / model_fetch 共用 parse_custom_user_agent，
         // 运行时静默忽略非法值（前端在输入处给非阻断提示，不在保存时阻断）。
         // Copilot 指纹 UA 不可覆盖。
-        let custom_user_agent = provider_custom_user_agent_header(provider, is_copilot);
+        let custom_user_agent = forwarder_custom_user_agent_header(provider, is_copilot);
 
         // --- Copilot 优化器：动态 header 注入 ---
         let copilot_auth_header_overrides = copilot_optimization.as_ref().map(

@@ -74,6 +74,8 @@ const FORBIDDEN_FORWARDER_CODEX_PROVIDER_COMPAT_MARKERS: &[&str] = &[
 ];
 const FORBIDDEN_FORWARDER_REQUEST_OPTIMIZER_PROVIDER_FACT_MARKERS: &[&str] =
     &["provider_bedrock_env_flag("];
+const FORBIDDEN_FORWARDER_REQUEST_HEADER_PROVIDER_FACT_MARKERS: &[&str] =
+    &["provider_custom_user_agent_header("];
 const FORBIDDEN_FORWARDER_CHANNEL_STATUS_MAPPING_MARKERS: &[&str] = &[
     "mapped_channel_response_status(",
     "invalid_mapped_channel_response_status_message(",
@@ -3224,6 +3226,33 @@ fn production_forwarder_delegates_request_optimizer_provider_facts_to_adapter() 
     assert!(
         violations.is_empty(),
         "forwarder must consume request optimizer provider facts through proxy_core_adapter helpers:\n{}",
+        violations.join("\n")
+    );
+}
+
+#[test]
+fn production_forwarder_delegates_request_header_provider_facts_to_adapter() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let path = manifest_dir.join("src/proxy/forwarder.rs");
+    let source = fs::read_to_string(&path).expect("read forwarder.rs");
+
+    let mut violations = Vec::new();
+    for (line_index, line) in production_lines(&source) {
+        let code = line.split("//").next().unwrap_or_default();
+        for marker in FORBIDDEN_FORWARDER_REQUEST_HEADER_PROVIDER_FACT_MARKERS {
+            if code.contains(marker) {
+                violations.push(format!(
+                    "src/proxy/forwarder.rs:{} contains request header provider fact marker `{}`",
+                    line_index + 1,
+                    marker
+                ));
+            }
+        }
+    }
+
+    assert!(
+        violations.is_empty(),
+        "forwarder must consume request header provider facts through proxy_core_adapter helpers:\n{}",
         violations.join("\n")
     );
 }

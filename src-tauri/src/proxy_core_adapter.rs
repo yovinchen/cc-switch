@@ -8857,6 +8857,13 @@ pub(crate) fn provider_custom_user_agent_header(
         .and_then(|meta| meta.custom_user_agent_header().ok().flatten())
 }
 
+pub(crate) fn forwarder_custom_user_agent_header(
+    provider: &Provider,
+    is_copilot: bool,
+) -> Option<http::HeaderValue> {
+    provider_custom_user_agent_header(provider, is_copilot)
+}
+
 pub(crate) fn provider_bedrock_env_flag(provider: &Provider) -> Option<&str> {
     bedrock_env_flag_from_provider_settings(&provider.settings_config)
 }
@@ -18278,6 +18285,9 @@ command = "latest-command"
         let provider_user_agent =
             provider_custom_user_agent_header(&provider, false).expect("custom user agent");
         let copilot_provider_user_agent = provider_custom_user_agent_header(&provider, true);
+        let forwarder_user_agent =
+            forwarder_custom_user_agent_header(&provider, false).expect("custom user agent");
+        let forwarder_copilot_user_agent = forwarder_custom_user_agent_header(&provider, true);
         assert_eq!(provider_bedrock_env_flag(&provider), Some("1"));
         assert_eq!(forwarder_bedrock_env_flag(&provider), Some("1"));
         let mut codex_provider = Provider::with_id(
@@ -18331,6 +18341,11 @@ command = "latest-command"
         assert!(usage_provider_is_full_url);
         assert_eq!(provider_user_agent, http::HeaderValue::from_static("cc-switch-test/1.0"));
         assert!(copilot_provider_user_agent.is_none());
+        assert_eq!(
+            forwarder_user_agent,
+            http::HeaderValue::from_static("cc-switch-test/1.0")
+        );
+        assert!(forwarder_copilot_user_agent.is_none());
         assert!(provider_is_github_copilot_upstream(
             &Provider::with_id(
                 "plain".to_string(),
