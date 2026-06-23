@@ -509,7 +509,9 @@ impl ProxyServer {
 mod tests {
     use super::*;
     use crate::provider::Provider;
-    use crate::proxy_core_adapter::RouteResolveRequest;
+    use crate::proxy_core_adapter::{
+        management_route_response_from_router_source, RouteResolveRequest,
+    };
     use axum::{
         body::{to_bytes, Body},
         http::{Method, Request, StatusCode},
@@ -1588,17 +1590,17 @@ mod tests {
                 .await
                 .map_err(|error| error.to_string())?;
 
-            let blocked = server
-                .state
-                .provider_router
-                .resolve_channel_route_dry_run(RouteResolveRequest {
+            let blocked = management_route_response_from_router_source(
+                server.state.provider_router.as_ref(),
+                RouteResolveRequest {
                     app_type: "claude".to_string(),
                     requested_model: Some("legacy-sonnet".to_string()),
                     interface_kind: Some("anthropic_messages".to_string()),
                     route_group: None,
-                })
-                .await
-                .map_err(|error| error.to_string())?;
+                },
+            )
+            .await
+            .map_err(|error| error.to_string())?;
             if !blocked.candidates.is_empty() {
                 return Err(format!(
                     "expected channel breaker to block route: {blocked:?}"
@@ -1629,17 +1631,17 @@ mod tests {
                 return Err(format!("unexpected breaker reset body: {reset}"));
             }
 
-            let recovered = server
-                .state
-                .provider_router
-                .resolve_channel_route_dry_run(RouteResolveRequest {
+            let recovered = management_route_response_from_router_source(
+                server.state.provider_router.as_ref(),
+                RouteResolveRequest {
                     app_type: "claude".to_string(),
                     requested_model: Some("legacy-sonnet".to_string()),
                     interface_kind: Some("anthropic_messages".to_string()),
                     route_group: None,
-                })
-                .await
-                .map_err(|error| error.to_string())?;
+                },
+            )
+            .await
+            .map_err(|error| error.to_string())?;
             if recovered.candidates.len() != 1 || recovered.candidates[0].channel_id != channel_id {
                 return Err(format!(
                     "expected reset channel route recovery: {recovered:?}"
@@ -2352,17 +2354,17 @@ mod tests {
             .await
             .unwrap();
 
-        let blocked = server
-            .state
-            .provider_router
-            .resolve_channel_route_dry_run(RouteResolveRequest {
+        let blocked = management_route_response_from_router_source(
+            server.state.provider_router.as_ref(),
+            RouteResolveRequest {
                 app_type: "claude".to_string(),
                 requested_model: Some("claude-sonnet-4".to_string()),
                 interface_kind: Some("anthropic_messages".to_string()),
                 route_group: None,
-            })
-            .await
-            .unwrap();
+            },
+        )
+        .await
+        .unwrap();
         assert!(blocked.candidates.is_empty());
 
         let reset_response = Service::call(
@@ -2381,17 +2383,17 @@ mod tests {
         assert_eq!(reset["appType"], "claude");
         assert_eq!(reset["reset"], true);
 
-        let recovered = server
-            .state
-            .provider_router
-            .resolve_channel_route_dry_run(RouteResolveRequest {
+        let recovered = management_route_response_from_router_source(
+            server.state.provider_router.as_ref(),
+            RouteResolveRequest {
                 app_type: "claude".to_string(),
                 requested_model: Some("claude-sonnet-4".to_string()),
                 interface_kind: Some("anthropic_messages".to_string()),
                 route_group: None,
-            })
-            .await
-            .unwrap();
+            },
+        )
+        .await
+        .unwrap();
         assert_eq!(recovered.candidates.len(), 1);
     }
 

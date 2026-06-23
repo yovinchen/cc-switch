@@ -5,13 +5,11 @@
 use crate::error::AppError;
 use crate::proxy::circuit_breaker::CircuitBreaker;
 use crate::proxy_core_adapter::{
-    app_error_from_proxy_core_error, app_type_from_circuit_key,
-    apply_route_candidate_circuit_availability, channel_circuit_key, channel_circuit_key_prefix,
-    provider_circuit_key, provider_circuit_key_prefix, proxy_channel_route_inputs_to_core,
-    resolve_channel_route as resolve_core_channel_route, route_candidate_channel_circuit_keys,
+    app_type_from_circuit_key, channel_circuit_key, channel_circuit_key_prefix,
+    provider_circuit_key, provider_circuit_key_prefix,
     select_failover_provider_ids_from_router_lookup_availability, AllowResult, ChannelRouteSource,
     CircuitBreakerConfig, CircuitBreakerStats, ProviderFailoverCircuitLookup,
-    RouteCandidateCircuitKey, RouteResolveRequest, RouteResolveResponse,
+    RouteCandidateCircuitKey,
 };
 use futures::future::BoxFuture;
 use std::collections::HashMap;
@@ -183,33 +181,14 @@ impl ProviderRouter {
         self.sources.channels.channel_route_records(app_type)
     }
 
-    /// Resolve a dry-run channel route for management API/debugging.
-    ///
-    /// This does not allocate circuit-breaker permits and does not mutate
-    /// current provider state.
-    pub async fn resolve_channel_route_dry_run(
+    /// Query live Channel circuit breaker availability for management dry-run candidates.
+    pub(crate) async fn route_candidate_circuit_availability(
         &self,
-        request: RouteResolveRequest,
-    ) -> Result<RouteResolveResponse, AppError> {
-        let (channels, source) = self.list_channels_for_app(&request.app_type).await?;
-        let mut response = resolve_core_channel_route(
-            request,
-            proxy_channel_route_inputs_to_core(channels),
-            source,
-        )
-        .map_err(app_error_from_proxy_core_error)?;
-        let availability = self.route_candidate_circuit_availability(&response).await;
-        apply_route_candidate_circuit_availability(&mut response, availability);
-        Ok(response)
-    }
-
-    async fn route_candidate_circuit_availability(
-        &self,
-        response: &RouteResolveResponse,
+        lookups: impl IntoIterator<Item = RouteCandidateCircuitKey>,
     ) -> Vec<(RouteCandidateCircuitKey, bool)> {
         let mut availability = Vec::new();
 
-        for lookup in route_candidate_channel_circuit_keys(response) {
+        for lookup in lookups {
             let is_available = match self.get_existing_circuit_breaker(&lookup.circuit_key).await {
                 Some(breaker) => breaker.is_available().await,
                 None => true,
@@ -465,7 +444,8 @@ mod tests {
     use crate::database::Database;
     use crate::provider::Provider;
     use crate::proxy_core_adapter::{
-        provider_router_from_database, ChannelRouteSource, CircuitState, RouteResolveRequest,
+        management_route_response_from_router_source, provider_router_from_database,
+        ChannelRouteSource, CircuitState, RouteResolveRequest,
     };
     use crate::settings::CustomEndpoint;
     use serde_json::json;
@@ -588,15 +568,17 @@ mod tests {
         db.set_current_provider("claude", "a").unwrap();
 
         let router = provider_router_from_database(db);
-        let response = router
-            .resolve_channel_route_dry_run(RouteResolveRequest {
+        let response = management_route_response_from_router_source(
+            &router,
+            RouteResolveRequest {
                 app_type: "claude".to_string(),
                 requested_model: Some("claude-sonnet-4".to_string()),
                 interface_kind: Some("anthropic_messages".to_string()),
                 route_group: None,
-            })
-            .await
-            .unwrap();
+            },
+        )
+        .await
+        .unwrap();
 
         assert_eq!(response.source, ChannelRouteSource::LegacyProjection);
         assert_eq!(response.candidates.len(), 2);
@@ -624,15 +606,17 @@ mod tests {
         db.materialize_legacy_proxy_channels("claude").unwrap();
 
         let router = provider_router_from_database(db);
-        let response = router
-            .resolve_channel_route_dry_run(RouteResolveRequest {
+        let response = management_route_response_from_router_source(
+            &router,
+            RouteResolveRequest {
                 app_type: "claude".to_string(),
                 requested_model: Some("claude-sonnet-4".to_string()),
                 interface_kind: Some("anthropic_messages".to_string()),
                 route_group: None,
-            })
-            .await
-            .unwrap();
+            },
+        )
+        .await
+        .unwrap();
 
         assert_eq!(response.source, ChannelRouteSource::MaterializedChannels);
         assert_eq!(response.candidates.len(), 1);
@@ -693,15 +677,17 @@ mod tests {
         assert_eq!(health.consecutive_failures, 1);
         assert_eq!(health.response_time_ms, Some(123));
 
-        let blocked = router
-            .resolve_channel_route_dry_run(RouteResolveRequest {
+        let blocked = management_route_response_from_router_source(
+            &router,
+            RouteResolveRequest {
                 app_type: "claude".to_string(),
                 requested_model: Some("claude-sonnet-4".to_string()),
                 interface_kind: Some("anthropic_messages".to_string()),
                 route_group: None,
-            })
-            .await
-            .unwrap();
+            },
+        )
+        .await
+        .unwrap();
 
         assert!(blocked.candidates.is_empty());
         assert!(blocked.rejected.iter().any(|rejected| {
@@ -725,15 +711,17 @@ mod tests {
         let reset_health = db.get_proxy_channel_health(&channel_id).unwrap();
         assert_eq!(reset_health.status, "unknown");
 
-        let recovered = router
-            .resolve_channel_route_dry_run(RouteResolveRequest {
+        let recovered = management_route_response_from_router_source(
+            &router,
+            RouteResolveRequest {
                 app_type: "claude".to_string(),
                 requested_model: Some("claude-sonnet-4".to_string()),
                 interface_kind: Some("anthropic_messages".to_string()),
                 route_group: None,
-            })
-            .await
-            .unwrap();
+            },
+        )
+        .await
+        .unwrap();
         assert_eq!(recovered.candidates.len(), 1);
         assert!(recovered.rejected.is_empty());
     }

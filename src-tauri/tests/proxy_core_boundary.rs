@@ -353,6 +353,16 @@ const FORBIDDEN_PROVIDER_ROUTER_CIRCUIT_CONFIG_MARKERS: &[&str] = &[
 ];
 const FORBIDDEN_PROVIDER_ROUTER_ROUTE_REJECTION_MARKERS: &[&str] =
     &["reject_unavailable_channel_ids(", "unavailable_channel_ids"];
+const FORBIDDEN_PROVIDER_ROUTER_MANAGEMENT_ROUTE_MARKERS: &[&str] = &[
+    "RouteResolveRequest",
+    "RouteResolveResponse",
+    "resolve_channel_route(",
+    "resolve_core_channel_route(",
+    "proxy_channel_route_inputs_to_core(",
+    "route_candidate_channel_circuit_keys(",
+    "apply_route_candidate_circuit_availability(",
+    "app_error_from_proxy_core_error(",
+];
 const FORBIDDEN_PROVIDER_ROUTER_HEALTH_PERSISTENCE_MARKERS: &[&str] = &[
     ".update_provider_health_with_threshold(",
     ".update_proxy_channel_health_with_threshold(",
@@ -3751,6 +3761,33 @@ fn production_provider_router_delegates_route_rejection_to_adapter() {
     assert!(
         violations.is_empty(),
         "provider router must delegate route rejection projection to proxy_core_adapter helpers:\n{}",
+        violations.join("\n")
+    );
+}
+
+#[test]
+fn production_provider_router_delegates_management_route_resolution_to_adapter() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let path = manifest_dir.join("src/proxy/provider_router.rs");
+    let source = fs::read_to_string(&path).expect("read provider_router.rs");
+
+    let mut violations = Vec::new();
+    for (line_index, line) in production_lines(&source) {
+        let code = line.split("//").next().unwrap_or_default();
+        for marker in FORBIDDEN_PROVIDER_ROUTER_MANAGEMENT_ROUTE_MARKERS {
+            if code.contains(marker) {
+                violations.push(format!(
+                    "src/proxy/provider_router.rs:{} contains management route marker `{}`",
+                    line_index + 1,
+                    marker
+                ));
+            }
+        }
+    }
+
+    assert!(
+        violations.is_empty(),
+        "provider router must delegate management dry-run route resolution to proxy_core_adapter:\n{}",
         violations.join("\n")
     );
 }

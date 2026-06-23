@@ -1839,15 +1839,17 @@ mod tests {
         create_materialized_channel(&db, "channel-high", 100, 20, "upstream-high");
 
         let router = provider_router_from_database(db.clone());
-        let dry_run = router
-            .resolve_channel_route_dry_run(RouteResolveRequest {
+        let dry_run = management_route_response_from_router_source(
+            &router,
+            RouteResolveRequest {
                 app_type: "claude".to_string(),
                 requested_model: Some("sonnet-public".to_string()),
                 interface_kind: Some("anthropic_messages".to_string()),
                 route_group: None,
-            })
-            .await
-            .expect("dry-run route");
+            },
+        )
+        .await
+        .expect("dry-run route");
 
         let services = Arc::new(CcSwitchProxyServices::new(db));
         let engine = ProxyEngine::new(services);

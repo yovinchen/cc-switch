@@ -6365,10 +6365,20 @@ pub(crate) async fn management_route_response_from_router_source(
     router: &ProviderRouter,
     request: RouteResolveRequest,
 ) -> ProxyCoreResult<RouteResolveResponse> {
-    router
-        .resolve_channel_route_dry_run(request)
+    let (channels, source) = router
+        .list_channels_for_app(&request.app_type)
         .await
-        .map_err(|error| app_error("resolve channel route dry run", error))
+        .map_err(|error| app_error("list channel route records", error))?;
+    let mut response = resolve_channel_route(
+        request,
+        proxy_channel_route_inputs_to_core(channels),
+        source,
+    )?;
+    let availability = router
+        .route_candidate_circuit_availability(route_candidate_channel_circuit_keys(&response))
+        .await;
+    apply_route_candidate_circuit_availability(&mut response, availability);
+    Ok(response)
 }
 
 pub(crate) use crate::proxy_core::api::config::{
