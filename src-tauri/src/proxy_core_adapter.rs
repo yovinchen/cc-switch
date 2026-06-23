@@ -13,7 +13,9 @@ use crate::proxy::error_mapper::forward_error_to_core_error;
 use crate::proxy::events::ProxyEventBus;
 use crate::proxy::failover_switch::FailoverSwitchManager;
 use crate::proxy::hyper_client::ProxyResponse;
-use crate::proxy::provider_router::ProviderRouter;
+use crate::proxy::provider_router::{
+    ProviderFailoverRouterSources, ProviderRouter, ProviderRouterSource,
+};
 use crate::proxy::codex_chat_history::CodexChatHistoryStore;
 use crate::proxy::route_attempt::ForwardAttempt;
 use crate::proxy::usage::{RequestLog, UsageLogger};
@@ -4261,11 +4263,6 @@ pub(crate) fn provider_failover_circuit_lookups_from_router_sources(
     )
 }
 
-pub(crate) struct ProviderFailoverRouterSources {
-    pub(crate) providers: IndexMap<String, Provider>,
-    pub(crate) lookups: Vec<ProviderFailoverCircuitLookup>,
-}
-
 pub(crate) fn provider_failover_sources_from_router_db(
     db: &Database,
     app_type: &str,
@@ -4277,6 +4274,98 @@ pub(crate) fn provider_failover_sources_from_router_db(
         &providers,
     );
     Ok(ProviderFailoverRouterSources { providers, lookups })
+}
+
+pub(crate) struct CcSwitchProviderRouterSource {
+    db: Arc<Database>,
+}
+
+impl CcSwitchProviderRouterSource {
+    pub(crate) fn new(db: Arc<Database>) -> Self {
+        Self { db }
+    }
+}
+
+impl ProviderRouterSource for CcSwitchProviderRouterSource {
+    fn load_failover_enabled<'a>(&'a self, app_type: &'a str) -> BoxFuture<'a, bool> {
+        Box::pin(async move { auto_failover_enabled_from_router_db(&self.db, app_type).await })
+    }
+
+    fn failover_sources(&self, app_type: &str) -> Result<ProviderFailoverRouterSources, AppError> {
+        provider_failover_sources_from_router_db(&self.db, app_type)
+    }
+
+    fn current_provider(&self, app_type: &str) -> Result<Vec<Provider>, AppError> {
+        select_current_provider_from_router_db_source(&self.db, app_type)
+    }
+
+    fn channel_route_records(
+        &self,
+        app_type: &str,
+    ) -> Result<(Vec<ProxyChannelRecord>, ChannelRouteSource), AppError> {
+        channel_route_records_from_db_source(&self.db, app_type)
+            .map_err(app_error_from_proxy_core_error)
+    }
+
+    fn circuit_breaker_config<'a>(
+        &'a self,
+        app_type: &'a str,
+    ) -> BoxFuture<'a, CircuitBreakerConfig> {
+        Box::pin(async move { circuit_breaker_config_from_router_db(&self.db, app_type).await })
+    }
+
+    fn failure_threshold<'a>(
+        &'a self,
+        app_type: &'a str,
+        fallback: u32,
+    ) -> BoxFuture<'a, u32> {
+        Box::pin(async move {
+            circuit_failure_threshold_from_router_db(&self.db, app_type, fallback).await
+        })
+    }
+
+    fn record_provider_health<'a>(
+        &'a self,
+        provider_id: &'a str,
+        app_type: &'a str,
+        success: bool,
+        error_msg: Option<String>,
+        failure_threshold: u32,
+    ) -> BoxFuture<'a, Result<(), AppError>> {
+        Box::pin(async move {
+            record_provider_health_result_from_router_db(
+                &self.db,
+                provider_id,
+                app_type,
+                success,
+                error_msg,
+                failure_threshold,
+            )
+            .await
+        })
+    }
+
+    fn record_channel_health(
+        &self,
+        channel_id: &str,
+        success: bool,
+        error_msg: Option<String>,
+        failure_threshold: u32,
+        response_time_ms: Option<i64>,
+    ) -> Result<(), AppError> {
+        record_channel_health_result_from_router_db(
+            &self.db,
+            channel_id,
+            success,
+            error_msg,
+            failure_threshold,
+            response_time_ms,
+        )
+    }
+
+    fn reset_channel_health(&self, channel_id: &str) -> Result<(), AppError> {
+        reset_channel_health_from_router_db(&self.db, channel_id)
+    }
 }
 
 pub(crate) fn current_provider_id_from_router_sources(

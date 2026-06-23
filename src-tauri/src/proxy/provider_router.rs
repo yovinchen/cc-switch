@@ -8,28 +8,73 @@ use crate::provider::Provider;
 use crate::proxy::circuit_breaker::CircuitBreaker;
 use crate::proxy_core_adapter::{
     app_error_from_proxy_core_error, app_type_from_circuit_key,
-    apply_route_candidate_circuit_availability, auto_failover_enabled_from_router_db,
-    channel_circuit_key, channel_circuit_key_prefix, channel_route_records_from_db_source,
-    circuit_breaker_config_from_router_db,
-    circuit_failure_threshold_from_router_db,
-    provider_circuit_key, provider_circuit_key_prefix, provider_failover_sources_from_router_db,
+    apply_route_candidate_circuit_availability, channel_circuit_key, channel_circuit_key_prefix,
+    provider_circuit_key, provider_circuit_key_prefix,
     proxy_channel_route_inputs_to_core,
-    record_channel_health_result_from_router_db, record_provider_health_result_from_router_db,
-    reset_channel_health_from_router_db,
     resolve_channel_route as resolve_core_channel_route, route_candidate_channel_circuit_keys,
-    select_current_provider_from_router_db_source,
     select_failover_providers_from_router_lookup_availability, AllowResult, ChannelRouteSource,
-    CircuitBreakerConfig, CircuitBreakerStats, RouteCandidateCircuitKey, RouteResolveRequest,
-    RouteResolveResponse,
+    CcSwitchProviderRouterSource, CircuitBreakerConfig, CircuitBreakerStats,
+    ProviderFailoverCircuitLookup, RouteCandidateCircuitKey, RouteResolveRequest, RouteResolveResponse,
 };
+use futures::future::BoxFuture;
+use indexmap::IndexMap;
 use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::RwLock;
 
+pub(crate) struct ProviderFailoverRouterSources {
+    pub(crate) providers: IndexMap<String, Provider>,
+    pub(crate) lookups: Vec<ProviderFailoverCircuitLookup>,
+}
+
+pub(crate) trait ProviderRouterSource: Send + Sync {
+    fn load_failover_enabled<'a>(&'a self, app_type: &'a str) -> BoxFuture<'a, bool>;
+
+    fn failover_sources(&self, app_type: &str) -> Result<ProviderFailoverRouterSources, AppError>;
+
+    fn current_provider(&self, app_type: &str) -> Result<Vec<Provider>, AppError>;
+
+    fn channel_route_records(
+        &self,
+        app_type: &str,
+    ) -> Result<(Vec<ProxyChannelRecord>, ChannelRouteSource), AppError>;
+
+    fn circuit_breaker_config<'a>(
+        &'a self,
+        app_type: &'a str,
+    ) -> BoxFuture<'a, CircuitBreakerConfig>;
+
+    fn failure_threshold<'a>(
+        &'a self,
+        app_type: &'a str,
+        fallback: u32,
+    ) -> BoxFuture<'a, u32>;
+
+    fn record_provider_health<'a>(
+        &'a self,
+        provider_id: &'a str,
+        app_type: &'a str,
+        success: bool,
+        error_msg: Option<String>,
+        failure_threshold: u32,
+    ) -> BoxFuture<'a, Result<(), AppError>>;
+
+    fn record_channel_health(
+        &self,
+        channel_id: &str,
+        success: bool,
+        error_msg: Option<String>,
+        failure_threshold: u32,
+        response_time_ms: Option<i64>,
+    ) -> Result<(), AppError>;
+
+    fn reset_channel_health(&self, channel_id: &str) -> Result<(), AppError>;
+}
+
 /// 供应商路由器
 pub struct ProviderRouter {
-    /// 数据库连接
-    db: Arc<Database>,
+    /// Host-provided provider/channel/config/health source.
+    source: Arc<dyn ProviderRouterSource>,
     /// 熔断器管理器 - provider key: "app_type:provider_id", channel key: "channel:app_type:channel_id"
     circuit_breakers: Arc<RwLock<HashMap<String, Arc<CircuitBreaker>>>>,
 }
@@ -37,8 +82,12 @@ pub struct ProviderRouter {
 impl ProviderRouter {
     /// 创建新的供应商路由器
     pub fn new(db: Arc<Database>) -> Self {
+        Self::with_source(Arc::new(CcSwitchProviderRouterSource::new(db)))
+    }
+
+    pub(crate) fn with_source(source: Arc<dyn ProviderRouterSource>) -> Self {
         Self {
-            db,
+            source,
             circuit_breakers: Arc::new(RwLock::new(HashMap::new())),
         }
     }
@@ -50,7 +99,7 @@ impl ProviderRouter {
     /// - 故障转移开启时：仅使用故障转移队列，按队列顺序依次尝试（P1 → P2 → ...）
     pub async fn select_providers(&self, app_type: &str) -> Result<Vec<Provider>, AppError> {
         // 检查该应用的自动故障转移开关是否开启（从 proxy_config 表读取）
-        let auto_failover_enabled = auto_failover_enabled_from_router_db(&self.db, app_type).await;
+        let auto_failover_enabled = self.source.load_failover_enabled(app_type).await;
 
         let result = if auto_failover_enabled {
             self.select_failover_providers(app_type).await
@@ -63,7 +112,7 @@ impl ProviderRouter {
 
     async fn select_failover_providers(&self, app_type: &str) -> Result<Vec<Provider>, AppError> {
         // 故障转移开启：仅按队列顺序依次尝试（P1 → P2 → ...）
-        let sources = provider_failover_sources_from_router_db(&self.db, app_type)?;
+        let sources = self.source.failover_sources(app_type)?;
         let mut lookup_availability = Vec::with_capacity(sources.lookups.len());
         for lookup in sources.lookups {
             let available = match lookup.circuit_key.as_ref() {
@@ -85,7 +134,7 @@ impl ProviderRouter {
 
     fn select_current_provider(&self, app_type: &str) -> Result<Vec<Provider>, AppError> {
         // 故障转移关闭：仅使用当前供应商，跳过熔断器检查
-        select_current_provider_from_router_db_source(&self.db, app_type)
+        self.source.current_provider(app_type)
     }
 
     /// List routable channels for an app without changing the forwarding path.
@@ -96,8 +145,7 @@ impl ProviderRouter {
         &self,
         app_type: &str,
     ) -> Result<(Vec<ProxyChannelRecord>, ChannelRouteSource), AppError> {
-        channel_route_records_from_db_source(&self.db, app_type)
-            .map_err(app_error_from_proxy_core_error)
+        self.source.channel_route_records(app_type)
     }
 
     /// Resolve a dry-run channel route for management API/debugging.
@@ -181,8 +229,7 @@ impl ProviderRouter {
         }
 
         // 3. 更新数据库健康状态（使用配置的阈值）
-        record_provider_health_result_from_router_db(
-            &self.db,
+        self.source.record_provider_health(
             provider_id,
             app_type,
             success,
@@ -216,8 +263,7 @@ impl ProviderRouter {
             breaker.record_failure(used_half_open_permit).await;
         }
 
-        record_channel_health_result_from_router_db(
-            &self.db,
+        self.source.record_channel_health(
             channel_id,
             success,
             error_msg,
@@ -250,7 +296,7 @@ impl ProviderRouter {
     ) -> Result<(), AppError> {
         let circuit_key = channel_circuit_key(app_type, channel_id);
         self.reset_circuit_breaker(&circuit_key).await;
-        reset_channel_health_from_router_db(&self.db, channel_id)
+        self.source.reset_channel_health(channel_id)
     }
 
     /// 仅释放 HalfOpen permit，不影响健康统计（neutral 接口）
@@ -361,7 +407,7 @@ impl ProviderRouter {
         let app_type = app_type_from_circuit_key(key);
 
         // 按应用独立读取熔断器配置
-        let config = circuit_breaker_config_from_router_db(&self.db, app_type).await;
+        let config = self.source.circuit_breaker_config(app_type).await;
 
         let breaker = Arc::new(CircuitBreaker::new(config));
         breakers.insert(key.to_string(), breaker.clone());
@@ -375,7 +421,7 @@ impl ProviderRouter {
     }
 
     async fn failure_threshold_for_app(&self, app_type: &str, fallback: u32) -> u32 {
-        circuit_failure_threshold_from_router_db(&self.db, app_type, fallback).await
+        self.source.failure_threshold(app_type, fallback).await
     }
 }
 
