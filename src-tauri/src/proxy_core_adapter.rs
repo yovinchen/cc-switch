@@ -9,7 +9,10 @@ use crate::openclaw_config::OpenClawProviderConfig;
 use crate::provider::{
     OpenCodeProviderConfig, Provider, ProviderMeta, ProviderTestConfig, UsageScript,
 };
-use crate::proxy::error_mapper::forward_error_to_core_error;
+use crate::proxy::error::ProxyError;
+use crate::proxy::error_mapper::{
+    forward_error_to_core_error, get_error_message, map_proxy_error_to_status,
+};
 use crate::proxy::events::ProxyEventBus;
 use crate::proxy::failover_switch::FailoverSwitchManager;
 use crate::proxy::handler_context::RequestContext;
@@ -8674,6 +8677,28 @@ pub(crate) fn usage_logging_enabled_from_proxy_config(config: &RwLock<ProxyConfi
             .ok()
             .map(|config| config.enable_logging),
     )
+}
+
+pub(crate) fn record_forward_error_usage(
+    state: &ProxyState,
+    ctx: &RequestContext,
+    is_streaming: bool,
+    error: &ProxyError,
+) {
+    record_forward_error_usage_from_context(ForwardErrorUsageRecordContext {
+        services: state.proxy_core_services.clone(),
+        provider: ctx.provider_for_usage(),
+        fallback_provider_id: &ctx.fallback_provider_id(),
+        app_type: ctx.app_type_str,
+        request_model: &ctx.request_model,
+        outbound_model: ctx.outbound_model.as_deref(),
+        route_context: ctx.usage_route_context.as_ref(),
+        status_code: map_proxy_error_to_status(error),
+        error_message: get_error_message(error),
+        latency_ms: ctx.latency_ms(),
+        is_streaming,
+        session_id: &ctx.session_id,
+    });
 }
 
 pub(crate) fn record_transformed_response_usage(

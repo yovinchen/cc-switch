@@ -889,7 +889,8 @@ const FORBIDDEN_USAGE_SINK_PROVIDER_PROJECTION_MARKERS: &[&str] = &[
     "fn spawn_usage_record(",
     "tokio::spawn(async move",
 ];
-const FORBIDDEN_USAGE_SINK_TRANSFORMED_ENTRYPOINT_MARKERS: &[&str] = &[
+const FORBIDDEN_USAGE_SINK_PRODUCTION_ENTRYPOINT_MARKERS: &[&str] = &[
+    "fn record_forward_error_usage(",
     "fn record_transformed_response_usage(",
     "fn transformed_streaming_usage_collector(",
 ];
@@ -2678,7 +2679,7 @@ fn usage_sink_bridge_delegates_provider_projection_to_adapter() {
 }
 
 #[test]
-fn usage_sink_bridge_delegates_transformed_usage_entrypoints_to_adapter() {
+fn usage_sink_bridge_delegates_production_usage_entrypoints_to_adapter() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let path = manifest_dir.join("src/proxy/usage_sink_bridge.rs");
     let source = fs::read_to_string(&path).expect("read usage_sink_bridge.rs");
@@ -2686,10 +2687,10 @@ fn usage_sink_bridge_delegates_transformed_usage_entrypoints_to_adapter() {
     let mut violations = Vec::new();
     for (line_index, line) in production_lines(&source) {
         let code = line.split("//").next().unwrap_or_default();
-        for marker in FORBIDDEN_USAGE_SINK_TRANSFORMED_ENTRYPOINT_MARKERS {
+        for marker in FORBIDDEN_USAGE_SINK_PRODUCTION_ENTRYPOINT_MARKERS {
             if code.contains(marker) {
                 violations.push(format!(
-                    "src/proxy/usage_sink_bridge.rs:{} contains transformed usage entrypoint marker `{}`",
+                    "src/proxy/usage_sink_bridge.rs:{} contains production usage entrypoint marker `{}`",
                     line_index + 1,
                     marker
                 ));
@@ -2699,7 +2700,7 @@ fn usage_sink_bridge_delegates_transformed_usage_entrypoints_to_adapter() {
 
     assert!(
         violations.is_empty(),
-        "usage sink bridge must delegate transformed response usage entrypoints to proxy_core_adapter:\n{}",
+        "usage sink bridge must delegate production usage entrypoints to proxy_core_adapter:\n{}",
         violations.join("\n")
     );
 }

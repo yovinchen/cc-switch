@@ -1,12 +1,3 @@
-use crate::proxy::{
-    error::ProxyError,
-    error_mapper::{get_error_message, map_proxy_error_to_status},
-    handler_context::RequestContext,
-    server::ProxyState,
-};
-use crate::proxy_core_adapter::{
-    record_forward_error_usage_from_context, ForwardErrorUsageRecordContext,
-};
 #[cfg(test)]
 use crate::proxy_core_adapter::{
     success_usage_record_from_app_type_with_request_id_fallback, ProviderKind, TokenUsage,
@@ -44,28 +35,6 @@ pub(crate) fn success_usage_record(
         session_id,
         || uuid::Uuid::new_v4().to_string(),
     )
-}
-
-pub(crate) fn record_forward_error_usage(
-    state: &ProxyState,
-    ctx: &RequestContext,
-    is_streaming: bool,
-    error: &ProxyError,
-) {
-    record_forward_error_usage_from_context(ForwardErrorUsageRecordContext {
-        services: state.proxy_core_services.clone(),
-        provider: ctx.provider_for_usage(),
-        fallback_provider_id: &ctx.fallback_provider_id(),
-        app_type: ctx.app_type_str,
-        request_model: &ctx.request_model,
-        outbound_model: ctx.outbound_model.as_deref(),
-        route_context: ctx.usage_route_context.as_ref(),
-        status_code: map_proxy_error_to_status(error),
-        error_message: get_error_message(error),
-        latency_ms: ctx.latency_ms(),
-        is_streaming,
-        session_id: &ctx.session_id,
-    });
 }
 
 #[cfg(test)]
