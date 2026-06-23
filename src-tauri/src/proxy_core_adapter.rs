@@ -1139,6 +1139,14 @@ pub(crate) async fn clear_legacy_live_takeover_active_flag_in_db(db: &Database) 
     }
 }
 
+pub(crate) async fn clear_legacy_live_takeover_active_flag_strict_in_db(
+    db: &Database,
+) -> Result<(), String> {
+    db.set_live_takeover_active(false)
+        .await
+        .map_err(|e| format!("清除接管状态失败: {e}"))
+}
+
 pub(crate) async fn live_takeover_backup_exists_from_db(db: &Database, app_type: &str) -> bool {
     match db.get_live_backup(app_type).await {
         Ok(backup) => backup.is_some(),
@@ -1201,6 +1209,18 @@ pub(crate) async fn cleanup_all_live_backups_best_effort_in_db(db: &Database) {
 
 pub(crate) async fn delete_all_live_backups_best_effort_in_db(db: &Database) {
     let _ = db.delete_all_live_backups().await;
+}
+
+pub(crate) async fn delete_all_live_backups_in_db(db: &Database) -> Result<(), String> {
+    db.delete_all_live_backups()
+        .await
+        .map_err(|e| format!("删除备份失败: {e}"))
+}
+
+pub(crate) async fn clear_all_provider_health_in_db(db: &Database) -> Result<(), String> {
+    db.clear_all_provider_health()
+        .await
+        .map_err(|e| format!("重置健康状态失败: {e}"))
 }
 
 pub(crate) async fn live_backup_config_for_simple_restore_from_db(

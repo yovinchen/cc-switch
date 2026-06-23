@@ -12,8 +12,8 @@ use crate::proxy_core_adapter::{
     apply_claude_takeover_fields_for_provider, apply_claude_takeover_fields_with_policy,
     apply_codex_takeover_fields_for_provider, apply_codex_unified_session_bucket_for_provider,
     apply_gemini_takeover_env_fields, ClaudeTakeoverAuthPolicy,
-    clear_legacy_live_takeover_active_flag_in_db,
-    clear_provider_health_for_app_in_db,
+    clear_all_provider_health_in_db, clear_legacy_live_takeover_active_flag_in_db,
+    clear_legacy_live_takeover_active_flag_strict_in_db, clear_provider_health_for_app_in_db,
     clear_live_takeover_enabled_flags_in_db,
     cleanup_all_live_backups_best_effort_in_db,
     codex_backup_projection_error_message, codex_live_write_projection,
@@ -21,6 +21,7 @@ use crate::proxy_core_adapter::{
     codex_preserved_auth_live_config_text_for_configured_policy,
     current_provider_for_app_from_db, gemini_live_backup_from_effective_settings,
     delete_all_live_backups_best_effort_in_db,
+    delete_all_live_backups_in_db,
     delete_live_backup_best_effort_in_db, delete_live_backup_in_db,
     disable_global_proxy_best_effort_in_db, enable_global_proxy_in_db,
     is_local_proxy_url, live_backup_snapshot_from_live_config, live_token_sync_app_label,
@@ -568,25 +569,16 @@ impl ProxyService {
         self.restore_live_configs().await?;
 
         // 3. 清除 proxy_config 表中的接管状态（兼容旧版）
-        self.db
-            .set_live_takeover_active(false)
-            .await
-            .map_err(|e| format!("清除接管状态失败: {e}"))?;
+        clear_legacy_live_takeover_active_flag_strict_in_db(&self.db).await?;
 
         // 4. 清除所有应用的 enabled 状态（用户手动关闭，不需要下次自动恢复）
         clear_live_takeover_enabled_flags_in_db(&self.db).await;
 
         // 5. 删除备份
-        self.db
-            .delete_all_live_backups()
-            .await
-            .map_err(|e| format!("删除备份失败: {e}"))?;
+        delete_all_live_backups_in_db(&self.db).await?;
 
         // 6. 重置健康状态（让健康徽章恢复为正常）
-        self.db
-            .clear_all_provider_health()
-            .await
-            .map_err(|e| format!("重置健康状态失败: {e}"))?;
+        clear_all_provider_health_in_db(&self.db).await?;
 
         // 注意：不清除故障转移队列和开关状态，保留供下次开启代理时使用
         log::info!("代理已停止，Live 配置已恢复");
@@ -610,16 +602,10 @@ impl ProxyService {
         clear_legacy_live_takeover_active_flag_in_db(&self.db).await;
 
         // 4. 删除备份（Live 配置已恢复，备份不再需要）
-        self.db
-            .delete_all_live_backups()
-            .await
-            .map_err(|e| format!("删除备份失败: {e}"))?;
+        delete_all_live_backups_in_db(&self.db).await?;
 
         // 5. 重置健康状态
-        self.db
-            .clear_all_provider_health()
-            .await
-            .map_err(|e| format!("重置健康状态失败: {e}"))?;
+        clear_all_provider_health_in_db(&self.db).await?;
 
         log::info!("代理已停止，Live 配置已恢复（保留代理状态，下次启动将自动恢复）");
         Ok(())

@@ -227,6 +227,14 @@ const FORBIDDEN_PROXY_SERVICE_KEEP_STATE_ACTIVE_FLAG_MARKERS: &[&str] = &[
     ".update_proxy_config(",
     ".live_takeover_active =",
 ];
+const FORBIDDEN_PROXY_SERVICE_STOP_RESTORE_CLEANUP_MARKERS: &[&str] = &[
+    ".set_live_takeover_active(",
+    ".delete_all_live_backups(",
+    ".clear_all_provider_health(",
+    "清除接管状态失败",
+    "删除备份失败",
+    "重置健康状态失败",
+];
 const FORBIDDEN_PROXY_SERVICE_GLOBAL_PROXY_ENABLED_MARKERS: &[&str] = &[
     ".get_global_proxy_config(",
     ".update_global_proxy_config(",
@@ -4528,6 +4536,53 @@ fn production_proxy_service_delegates_keep_state_active_flag_to_adapter() {
     assert!(
         violations.is_empty(),
         "ProxyService::stop_with_restore_keep_state must delegate legacy active-flag cleanup to proxy_core_adapter:\n{}",
+        violations.join("\n")
+    );
+}
+
+#[test]
+fn production_proxy_service_delegates_stop_restore_cleanup_to_adapter() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let path = manifest_dir.join("src/services/proxy.rs");
+    let source = fs::read_to_string(&path).expect("read services/proxy.rs");
+    let functions = [
+        (
+            "stop_with_restore",
+            function_slice(
+                &source,
+                "pub async fn stop_with_restore",
+                "/// 停止代理服务器（恢复 Live 配置，但保留 settings 表中的代理状态）",
+            ),
+        ),
+        (
+            "stop_with_restore_keep_state",
+            function_slice(
+                &source,
+                "pub async fn stop_with_restore_keep_state",
+                "/// 备份各应用的 Live 配置",
+            ),
+        ),
+    ];
+
+    let mut violations = Vec::new();
+    for (function_name, function) in functions {
+        for (line_index, line) in production_lines(function) {
+            let code = line.split("//").next().unwrap_or_default();
+            for marker in FORBIDDEN_PROXY_SERVICE_STOP_RESTORE_CLEANUP_MARKERS {
+                if code.contains(marker) {
+                    violations.push(format!(
+                        "src/services/proxy.rs {function_name}:{} contains stop-restore cleanup marker `{}`",
+                        line_index + 1,
+                        marker
+                    ));
+                }
+            }
+        }
+    }
+
+    assert!(
+        violations.is_empty(),
+        "ProxyService stop restore paths must delegate DB cleanup to proxy_core_adapter:\n{}",
         violations.join("\n")
     );
 }
