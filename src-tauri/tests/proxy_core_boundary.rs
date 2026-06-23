@@ -6344,6 +6344,13 @@ fn production_forwarder_uses_request_source_resource() {
         "apply_bedrock_pre_send_optimizers(",
         "thinking_optimization_log_message(",
         "cache_injection_log_message(",
+        "forwarder_apply_codex_chat_upstream_model(",
+        "provider_apply_codex_chat_upstream_model(",
+        "forwarder_codex_chat_reasoning_options(",
+        "provider_codex_chat_reasoning_options(",
+        "responses_to_chat_completions_with_options(",
+        "is_openai_o_series(",
+        "supports_reasoning_effort(",
     ];
     let mut violations = Vec::new();
 

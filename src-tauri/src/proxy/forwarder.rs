@@ -11,8 +11,6 @@ use crate::proxy_core_adapter::{
     build_retryable_forward_failure_log, build_terminal_forward_failure_log,
     categorize_forward_failure,
     forward_upstream_url_plan,
-    forwarder_apply_codex_chat_upstream_model,
-    forwarder_codex_chat_reasoning_options,
     forward_failure_kind_from_proxy_error, forwarder_should_convert_codex_responses_to_chat,
     forwarder_is_full_url_provider,
     forwarder_is_github_copilot_upstream,
@@ -20,16 +18,15 @@ use crate::proxy_core_adapter::{
     forwarder_provider_adapter_for_app,
     forwarder_provider_adapter_name, forwarder_provider_base_url, forwarder_provider_upstream_url,
     forwarder_provider_transform_request, forwarder_provider_transform_required,
-    ForwarderAdapterHandle, is_openai_o_series,
+    ForwarderAdapterHandle,
     provider_adapter_name_is_claude,
     forwarder_claude_api_format, forwarder_claude_transform_required,
-    responses_to_chat_completions_with_options,
     should_failover_after_rectifier_retry_failure,
-    supports_reasoning_effort, AttemptEventPhase, CopilotOptimizerConfig,
+    AttemptEventPhase, CopilotOptimizerConfig,
     ForwardFailureCategory, ForwardUpstreamUrlPlanInput,
     ForwarderAttemptBodyInput, ForwarderAuthHeadersInput, ForwarderAuthSourceRef,
     ForwarderCopilotAuthOptimizationInput, ForwarderClaudeBodyPolicyInput,
-    ForwarderCopilotRequestOptimizationInput,
+    ForwarderCodexResponsesToChatInput, ForwarderCopilotRequestOptimizationInput,
     ForwarderMediaPreventionInput,
     ForwarderMediaRetryPlanInput, ForwarderProviderRequestBodyInput,
     ForwarderRequestRectifierPlan,
@@ -1095,18 +1092,11 @@ impl RequestForwarder {
                     "[Codex] Restored or enriched {restored} cached function call item(s) for Chat upstream"
                 );
             }
-            forwarder_apply_codex_chat_upstream_model(provider, &mut mapped_body);
-            let reasoning_options =
-                forwarder_codex_chat_reasoning_options(provider, &mapped_body);
-            let model = mapped_body
-                .get("model")
-                .and_then(|value| value.as_str())
-                .unwrap_or("");
-            responses_to_chat_completions_with_options(
-                &mapped_body,
-                reasoning_options.as_ref(),
-                is_openai_o_series(model),
-                supports_reasoning_effort(model),
+            self.request_source.convert_codex_responses_to_chat_body(
+                ForwarderCodexResponsesToChatInput {
+                    body: mapped_body,
+                    provider,
+                },
             )
         } else if needs_transform {
             if is_claude_adapter {

@@ -8567,6 +8567,11 @@ pub(crate) struct ForwarderClaudeBodyPolicyInput<'a> {
     pub(crate) request_media_heuristic: bool,
 }
 
+pub(crate) struct ForwarderCodexResponsesToChatInput<'a> {
+    pub(crate) body: Value,
+    pub(crate) provider: &'a Provider,
+}
+
 pub(crate) struct ForwarderMediaPreventionInput<'a> {
     pub(crate) body: &'a mut Value,
     pub(crate) provider: &'a Provider,
@@ -8647,6 +8652,11 @@ pub(crate) trait ForwarderRequestSource {
         &self,
         input: ForwarderClaudeBodyPolicyInput<'_>,
     );
+
+    fn convert_codex_responses_to_chat_body(
+        &self,
+        input: ForwarderCodexResponsesToChatInput<'_>,
+    ) -> Value;
 
     fn optimize_copilot_request(
         &self,
@@ -8782,6 +8792,23 @@ impl ForwarderRequestSource for CcSwitchForwarderRequestSource {
             request_media_fallback: input.request_media_fallback,
             request_media_heuristic: input.request_media_heuristic,
         });
+    }
+
+    fn convert_codex_responses_to_chat_body(
+        &self,
+        input: ForwarderCodexResponsesToChatInput<'_>,
+    ) -> Value {
+        let mut body = input.body;
+        forwarder_apply_codex_chat_upstream_model(input.provider, &mut body);
+        let reasoning_options = forwarder_codex_chat_reasoning_options(input.provider, &body);
+        let model = body.get("model").and_then(|value| value.as_str()).unwrap_or("");
+
+        responses_to_chat_completions_with_options(
+            &body,
+            reasoning_options.as_ref(),
+            is_openai_o_series(model),
+            supports_reasoning_effort(model),
+        )
     }
 
     fn optimize_copilot_request(
@@ -14439,6 +14466,47 @@ mod tests {
                 .get("cache_control")
                 .is_some()
         );
+    }
+
+    #[test]
+    fn forwarder_request_source_converts_codex_responses_to_chat_body() {
+        let source = CcSwitchForwarderRequestSource;
+        let provider = Provider::with_id(
+            "codex-chat".to_string(),
+            "Codex Chat".to_string(),
+            json!({
+                "config": r#"model_provider = "openai"
+model = " upstream-model "
+
+[model_providers.openai]
+wire_api = "chat"
+base_url = "https://api.openai.com/v1"
+"#,
+                "modelCatalog": {
+                    "models": [{"model": "catalog-model"}]
+                }
+            }),
+            None,
+        );
+
+        let body = source.convert_codex_responses_to_chat_body(
+            ForwarderCodexResponsesToChatInput {
+                body: json!({
+                    "model": "client-model",
+                    "instructions": "Stay concise.",
+                    "input": "Hello",
+                    "max_output_tokens": 64,
+                    "stream": true
+                }),
+                provider: &provider,
+            },
+        );
+
+        assert_eq!(body["model"], "upstream-model");
+        assert_eq!(body["messages"][0]["role"], "system");
+        assert_eq!(body["messages"][1]["content"], "Hello");
+        assert_eq!(body["max_tokens"], 64);
+        assert_eq!(body["stream"], true);
     }
 
     #[test]
