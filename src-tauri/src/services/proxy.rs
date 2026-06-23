@@ -6,7 +6,6 @@ use crate::app_config::AppType;
 use crate::config::{get_claude_settings_path, read_json_file, write_json_file};
 use crate::database::Database;
 use crate::provider::Provider;
-use crate::proxy::server::ProxyServer;
 use crate::proxy::switch_lock::SwitchLockManager;
 use crate::proxy_core_adapter::{
     apply_claude_takeover_fields_for_provider, apply_claude_takeover_fields_with_policy,
@@ -60,8 +59,8 @@ use crate::proxy_core_adapter::{
     update_live_token_sync_provider_settings_in_db,
     update_proxy_config_preserving_live_takeover_active_in_db, CircuitBreakerConfig,
     write_ssot_live_restore_provider_with_common_config,
-    CodexTakeoverAuthPolicy, LiveTokenProviderSettingsIssue, ProxyConfig, ProxyRuntimeStatus,
-    ProxyServerInfo, ProxyTakeoverStatus,
+    CcSwitchProxyServer, CodexTakeoverAuthPolicy, LiveTokenProviderSettingsIssue, ProxyConfig,
+    ProxyRuntimeStatus, ProxyServerInfo, ProxyTakeoverStatus,
 };
 #[cfg(test)]
 use serde_json::Map;
@@ -77,7 +76,7 @@ const PROXY_TOKEN_PLACEHOLDER: &str = "PROXY_MANAGED";
 #[derive(Clone)]
 pub struct ProxyService {
     db: Arc<Database>,
-    server: Arc<RwLock<Option<ProxyServer>>>,
+    server: Arc<RwLock<Option<CcSwitchProxyServer>>>,
     /// AppHandle，用于传递给 ProxyServer 以支持故障转移时的 UI 更新
     app_handle: Arc<RwLock<Option<tauri::AppHandle>>>,
     switch_locks: SwitchLockManager,

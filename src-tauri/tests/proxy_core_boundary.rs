@@ -309,6 +309,8 @@ const FORBIDDEN_PROXY_SERVICE_PROXY_CONFIG_SOURCE_MARKERS: &[&str] = &[
     "保存动态代理端口失败",
 ];
 const FORBIDDEN_PROXY_SERVICE_SERVER_FACTORY_MARKERS: &[&str] = &["ProxyServer::new("];
+const FORBIDDEN_PROXY_SERVICE_SERVER_TYPE_MARKERS: &[&str] =
+    &["crate::proxy::server::ProxyServer"];
 const FORBIDDEN_PROXY_SERVER_RUNTIME_ASSEMBLY_MARKERS: &[&str] = &[
     "provider_router_from_database(",
     "ProxyEventBus::default(",
@@ -5094,6 +5096,33 @@ fn production_proxy_service_delegates_server_factory_to_adapter() {
     assert!(
         violations.is_empty(),
         "ProxyService must delegate ProxyServer construction to proxy_core_adapter:\n{}",
+        violations.join("\n")
+    );
+}
+
+#[test]
+fn production_proxy_service_imports_server_type_from_adapter() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let path = manifest_dir.join("src/services/proxy.rs");
+    let source = fs::read_to_string(&path).expect("read services/proxy.rs");
+
+    let mut violations = Vec::new();
+    for (line_index, line) in production_lines(&source) {
+        let code = line.split("//").next().unwrap_or_default();
+        for marker in FORBIDDEN_PROXY_SERVICE_SERVER_TYPE_MARKERS {
+            if code.contains(marker) {
+                violations.push(format!(
+                    "src/services/proxy.rs:{} contains direct server type marker `{}`",
+                    line_index + 1,
+                    marker
+                ));
+            }
+        }
+    }
+
+    assert!(
+        violations.is_empty(),
+        "ProxyService must import the running proxy server type through proxy_core_adapter:\n{}",
         violations.join("\n")
     );
 }

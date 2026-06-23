@@ -461,6 +461,7 @@ pub(crate) type ProxyRuntimeConfig =
     crate::proxy_core::api::config::ProxyRuntimeConfig;
 pub(crate) type ProxyGlobalConfig = crate::proxy_core::api::config::ProxyGlobalConfig;
 pub(crate) type ProxyAppConfig = crate::proxy_core::api::config::ProxyAppConfig;
+pub(crate) type CcSwitchProxyServer = ProxyServer;
 pub(crate) type ProxyServerInfo = crate::proxy_core::api::ports::ProxyServerInfo;
 
 pub(crate) use crate::proxy_core::api::ports::proxy_server_info_from_parts;
@@ -510,7 +511,7 @@ pub(crate) fn proxy_server_from_runtime_config(
     config: ProxyConfig,
     db: Arc<Database>,
     app_handle: Option<tauri::AppHandle>,
-) -> ProxyServer {
+) -> CcSwitchProxyServer {
     ProxyServer::new(config, db, app_handle)
 }
 
