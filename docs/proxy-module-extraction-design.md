@@ -1598,6 +1598,8 @@ pub trait RoutePolicySource: Send + Sync {
 - `ChannelSource` 负责读取可路由 channel，包括现有 provider 主 URL、`provider_endpoints` 投影出来的兼容 channel，以及未来新增的独立 channel 表。
 - `RouteResolver` 负责按 app、接口、模型、group、优先级、权重、熔断、限流和 retry 策略生成尝试计划。
 
+当前分支已先把 `ProviderRouter` 的 DB source 读取和健康持久化收进 `proxy_core_adapter`：router 生产代码不再直接调用 provider/channel/config/health 表的读写 API，而是通过 adapter helper 取得 provider failover sources、current provider source、channel route source、router config 和 health persistence 入口。后续真正拆 crate 时，应把这些 helper 进一步落成可注入的 `ProviderSource`/`ChannelSource`/`HealthStore` trait 实现，而不是让 core 持有 CC Switch `Database`。
+
 这样核心仍拥有路由算法，宿主只提供数据。
 
 ### RouteResolver
@@ -1779,11 +1781,13 @@ Channel 管理 API 的部分 contract 也已开始收敛到 core：`management_a
 
 旧 provider 主地址和 `provider_endpoints` 到 channel 的兼容迁移规划也已进入 core：`build_legacy_channel_migration_plan` 负责 primary/endpoint channel 投影、endpoint 稳定排序、normalized base URL 去重、priority/interface/model route 推导和 review 计数。CC Switch adapter 只把本地 `Provider`、`custom_endpoints`、当前 provider 事实装配成 core input；DAO 只负责读取 legacy provider 事实和写入 `proxy_channels`/models/health。
 
-materialized channel 优先、空表才 fallback 到 legacy projection 的 source 选择规则已由 `channel_route_source_for_materialized_count` 固化，并经 `proxy_core_adapter::channel_route_records_from_sources` 包装为 host record/source 选择入口；`ProviderRouter` 只读取 materialized records，并提供 lazy legacy preview loader。
+materialized channel 优先、空表才 fallback 到 legacy projection 的 source 选择规则已由 `channel_route_source_for_materialized_count` 固化，并经 `proxy_core_adapter::channel_route_records_from_db_source` 包装为 host DB source 选择入口；`ProviderRouter` 只调用 adapter helper 获取 `(channels, source)`，不再直接读取 materialized records 或 legacy preview。
 
 dry-run route 的 circuit-open 识别也继续收敛：`route_candidate_channel_circuit_keys` 负责把 `RouteResolveResponse` 的候选投影成 channel circuit lookup facts，`ProviderRouter` 只查询已有 breaker 可用性并把 availability facts 交给 `proxy_core_adapter::apply_route_candidate_circuit_availability`，由 adapter/core 生成 rejected:circuit_open response mutation。
 
-provider failover 的 circuit lookup 也继续收敛：`provider_failover_circuit_lookups` 负责保留 failover queue 顺序、标记 missing provider 并生成已配置 provider 的 circuit key；`ProviderRouter` 只读取 DB provider facts 与 breaker 可用性，再把 queue/provider map facts 交给 `proxy_core_adapter::provider_failover_circuit_lookups_from_router_sources`，随后把 lookup availability facts 交给 `select_failover_providers_from_router_lookup_availability` 投影为 selection candidates 并执行 core selection 策略。
+provider failover 的 circuit lookup 也继续收敛：`provider_failover_circuit_lookups` 负责保留 failover queue 顺序、标记 missing provider 并生成已配置 provider 的 circuit key；`proxy_core_adapter::provider_failover_sources_from_router_db` 负责读取 DB provider facts 与 failover queue 并投影为 lookup facts，`ProviderRouter` 只查询 live breaker 可用性，随后把 lookup availability facts 交给 `select_failover_providers_from_router_lookup_availability` 投影为 selection candidates 并执行 core selection 策略。
+
+`ProviderRouter` 的配置源和健康持久化也已进一步收口：auto failover gate、circuit breaker config 和 failure threshold 的 `proxy_config` 读取通过 `proxy_core_adapter::*_from_router_db` helper 完成；provider/channel health 写入和 channel health reset 持久化通过 `proxy_core_adapter::*_health_*_from_router_db` helper 完成。`ProviderRouter` 当前保留的核心职责是 live circuit breaker map、permit/half-open 状态机、breaker availability 查询和已有公开方法的 `AppError` 兼容。
 
 auto failover 开关启用的计划也已收敛：`plan_auto_failover_toggle` 负责“接管未开启则拒绝”、“队列非空则切 P1”、“队列为空则自动加入当前 provider 并切换”的纯决策；Tauri command 只读取 config/queue/current provider、执行 DB 队列写入、调用 proxy service 切换、写回 config 并 emit core 事件 contract。
 
@@ -1898,7 +1902,7 @@ ProxyRequest
 | `handlers.rs` | `transport/http/handlers.rs` + `engine` | HTTP 解析留 transport，业务处理移到 engine |
 | `handler_context.rs` | `engine/context.rs` | DB/settings 读取改为 service traits |
 | `forwarder.rs` | `engine/forward_pipeline.rs` | 切掉 Tauri/AppHandle/Database 依赖 |
-| `provider_router.rs` | `engine/routing.rs` | 改为 channel route resolver；provider 数据读取下沉到 `ProviderSource`，channel 数据读取下沉到 `ChannelSource` |
+| `provider_router.rs` | `engine/routing.rs` | 当前已把 provider/channel/config/health DB source 读写收进 adapter helper；下一步把 helper 固化为 `ProviderSource`/`ChannelSource`/`HealthStore` trait，并把 live breaker map 迁入 runtime-owned routing service |
 | `failover_switch.rs` | `host/cc_switch` | 核心只发 failover event |
 | `response_processor.rs` | `engine/response_pipeline.rs` | 用量落库改为 `UsageSink` |
 | `usage/logger.rs` | `host/cc_switch/database_usage_sink.rs` | 只保留 parser/calculator 在核心 |
