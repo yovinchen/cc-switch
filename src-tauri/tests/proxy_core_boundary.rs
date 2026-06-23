@@ -166,6 +166,8 @@ const FORBIDDEN_STREAM_CHECK_COMMAND_PROXY_TARGET_MARKERS: &[&str] = &[
 ];
 const FORBIDDEN_PROXY_SERVICE_TAKEOVER_STATUS_MARKERS: &[&str] =
     &[".get_proxy_config_for_app(", "proxy_takeover_status_from_parts("];
+const FORBIDDEN_PROXY_SERVICE_LIVE_TAKEOVER_APP_LIST_MARKERS: &[&str] =
+    &["[AppType::Claude", "AppType::Claude, AppType::Codex, AppType::Gemini"];
 const FORBIDDEN_FORWARDER_MANAGED_AUTH_MARKERS: &[&str] = &[
     "CopilotAuthState",
     "CodexOAuthState",
@@ -3969,6 +3971,53 @@ fn production_proxy_service_delegates_takeover_status_sources_to_adapter() {
     assert!(
         violations.is_empty(),
         "ProxyService::get_takeover_status must delegate proxy_config source reads and status projection to proxy_core_adapter:\n{}",
+        violations.join("\n")
+    );
+}
+
+#[test]
+fn production_proxy_service_delegates_live_takeover_app_catalog_to_adapter() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let path = manifest_dir.join("src/services/proxy.rs");
+    let source = fs::read_to_string(&path).expect("read services/proxy.rs");
+    let functions = [
+        (
+            "restore_live_configs",
+            function_slice(
+                &source,
+                "async fn restore_live_configs",
+                "async fn restore_live_config_for_app_with_fallback",
+            ),
+        ),
+        (
+            "detect_takeover_in_live_configs",
+            function_slice(
+                &source,
+                "pub fn detect_takeover_in_live_configs",
+                "/// 从供应商配置更新 Live 备份",
+            ),
+        ),
+    ];
+
+    let mut violations = Vec::new();
+    for (function_name, function) in functions {
+        for (line_index, line) in production_lines(function) {
+            let code = line.split("//").next().unwrap_or_default();
+            for marker in FORBIDDEN_PROXY_SERVICE_LIVE_TAKEOVER_APP_LIST_MARKERS {
+                if code.contains(marker) {
+                    violations.push(format!(
+                        "src/services/proxy.rs {function_name}:{} contains live takeover app-list marker `{}`",
+                        line_index + 1,
+                        marker
+                    ));
+                }
+            }
+        }
+    }
+
+    assert!(
+        violations.is_empty(),
+        "ProxyService must get the live-takeover app catalog from proxy_core_adapter:\n{}",
         violations.join("\n")
     );
 }

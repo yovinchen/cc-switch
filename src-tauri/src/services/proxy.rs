@@ -18,8 +18,8 @@ use crate::proxy_core_adapter::{
     gemini_live_backup_from_effective_settings, is_local_proxy_url,
     live_backup_snapshot_from_live_config,
     live_config_has_proxy_placeholder_for_app, live_takeover_config_matches_proxy_for_app,
-    provider_settings_have_proxy_placeholder_for_app, sync_provider_settings_with_live_token,
-    preserve_codex_mcp_servers_from_existing_config,
+    live_takeover_app_types, provider_settings_have_proxy_placeholder_for_app,
+    sync_provider_settings_with_live_token, preserve_codex_mcp_servers_from_existing_config,
     preserve_codex_oauth_auth_in_backup_for_configured_policy,
     remove_claude_takeover_env_fields_if_present, CodexLiveWriteProjection,
     proxy_hot_switch_should_refresh_codex_live_from_backup,
@@ -1123,7 +1123,7 @@ impl ProxyService {
     async fn restore_live_configs(&self) -> Result<(), String> {
         let mut errors = Vec::new();
 
-        for app_type in [AppType::Claude, AppType::Codex, AppType::Gemini] {
+        for app_type in live_takeover_app_types() {
             if let Err(e) = self
                 .restore_live_config_for_app_with_fallback(&app_type)
                 .await
@@ -1397,9 +1397,9 @@ impl ProxyService {
     /// 用于兜底处理：当数据库备份缺失但 Live 文件已经写成代理占位符时，
     /// 启动流程可以据此触发恢复逻辑。
     pub fn detect_takeover_in_live_configs(&self) -> bool {
-        [AppType::Claude, AppType::Codex, AppType::Gemini]
-            .iter()
-            .any(|app_type| self.detect_takeover_in_live_config_for_app(app_type))
+        live_takeover_app_types()
+            .into_iter()
+            .any(|app_type| self.detect_takeover_in_live_config_for_app(&app_type))
     }
 
     /// 从供应商配置更新 Live 备份（用于代理模式下的热切换）

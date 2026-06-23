@@ -1944,6 +1944,10 @@ pub(crate) fn provider_switch_requires_takeover_lock(app_type: &AppType) -> bool
     matches!(app_type, AppType::Claude | AppType::Codex | AppType::Gemini)
 }
 
+pub(crate) fn live_takeover_app_types() -> [AppType; 3] {
+    [AppType::Claude, AppType::Codex, AppType::Gemini]
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum ProviderTakeoverLiveSyncTarget {
     LiveConfig,
@@ -18631,6 +18635,12 @@ command = "latest-command"
         assert!(!provider_switch_requires_takeover_lock(&AppType::OpenCode));
         assert!(!provider_switch_requires_takeover_lock(&AppType::OpenClaw));
         assert!(!provider_switch_requires_takeover_lock(&AppType::Hermes));
+
+        let live_takeover_apps = live_takeover_app_types();
+        assert_eq!(
+            live_takeover_apps,
+            [AppType::Claude, AppType::Codex, AppType::Gemini]
+        );
     }
 
     #[test]
