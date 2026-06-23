@@ -8597,6 +8597,50 @@ pub(crate) struct ForwardErrorUsageContext<'a> {
     pub(crate) session_id: &'a str,
 }
 
+pub(crate) struct ForwardErrorUsageRecordContext<'a, S> {
+    pub(crate) services: Arc<S>,
+    pub(crate) provider: Option<&'a Provider>,
+    pub(crate) fallback_provider_id: &'a str,
+    pub(crate) app_type: &'a str,
+    pub(crate) request_model: &'a str,
+    pub(crate) outbound_model: Option<&'a str>,
+    pub(crate) route_context: Option<&'a UsageRouteContext>,
+    pub(crate) status_code: u16,
+    pub(crate) error_message: String,
+    pub(crate) latency_ms: u64,
+    pub(crate) is_streaming: bool,
+    pub(crate) session_id: &'a str,
+}
+
+pub(crate) fn record_forward_error_usage_from_context<S>(
+    context: ForwardErrorUsageRecordContext<'_, S>,
+) where
+    S: ProxyServices + Send + Sync + 'static,
+{
+    let record = forward_error_usage_record_from_response_context(
+        ForwardErrorUsageContext {
+            provider: context.provider,
+            fallback_provider_id: context.fallback_provider_id,
+            app_type: context.app_type,
+            request_model: context.request_model,
+            outbound_model: context.outbound_model,
+            route_context: context.route_context,
+            status_code: context.status_code,
+            error_message: context.error_message,
+            latency_ms: context.latency_ms,
+            is_streaming: context.is_streaming,
+            session_id: context.session_id,
+        },
+        || uuid::Uuid::new_v4().to_string(),
+    );
+
+    spawn_usage_record_with_proxy_services_context(
+        context.services,
+        record,
+        UsageRecordFailureLogContext::ForwardError,
+    );
+}
+
 pub(crate) struct TransformedResponseUsageContext<'a> {
     pub(crate) body: &'a Value,
     pub(crate) format: TransformedResponseUsageFormat,
@@ -8611,6 +8655,62 @@ pub(crate) struct TransformedResponseUsageContext<'a> {
     pub(crate) session_id: &'a str,
 }
 
+pub(crate) struct TransformedResponseUsageRecordContext<'a, S> {
+    pub(crate) usage_logging_enabled: bool,
+    pub(crate) services: Arc<S>,
+    pub(crate) body: &'a Value,
+    pub(crate) format: TransformedResponseUsageFormat,
+    pub(crate) provider: Option<&'a Provider>,
+    pub(crate) tag: &'a str,
+    pub(crate) app_type: &'a str,
+    pub(crate) request_model: &'a str,
+    pub(crate) outbound_model: Option<&'a str>,
+    pub(crate) route_context: Option<&'a UsageRouteContext>,
+    pub(crate) latency_ms: u64,
+    pub(crate) status_code: u16,
+    pub(crate) session_id: &'a str,
+}
+
+pub(crate) fn record_transformed_response_usage_from_context<S>(
+    context: TransformedResponseUsageRecordContext<'_, S>,
+) where
+    S: ProxyServices + Send + Sync + 'static,
+{
+    if !context.usage_logging_enabled {
+        return;
+    }
+
+    let record = match transformed_response_usage_record_from_response_context(
+        TransformedResponseUsageContext {
+            body: context.body,
+            format: context.format,
+            provider: context.provider,
+            tag: context.tag,
+            app_type: context.app_type,
+            request_model: context.request_model,
+            outbound_model: context.outbound_model,
+            route_context: context.route_context,
+            latency_ms: context.latency_ms,
+            status_code: context.status_code,
+            session_id: context.session_id,
+        },
+        || uuid::Uuid::new_v4().to_string(),
+    ) {
+        Ok(Some(record)) => record,
+        Ok(None) => return,
+        Err(message) => {
+            log::warn!("{message}");
+            return;
+        }
+    };
+
+    spawn_usage_record_with_proxy_services_context(
+        context.services,
+        record,
+        UsageRecordFailureLogContext::UsageRecord,
+    );
+}
+
 pub(crate) struct TransformedStreamingResponseUsageContext<'a> {
     pub(crate) events: &'a [Value],
     pub(crate) format: TransformedResponseUsageFormat,
@@ -8622,6 +8722,87 @@ pub(crate) struct TransformedStreamingResponseUsageContext<'a> {
     pub(crate) first_token_ms: Option<u64>,
     pub(crate) status_code: u16,
     pub(crate) session_id: &'a str,
+}
+
+pub(crate) struct TransformedStreamingUsageCollectorContext<'a, S> {
+    pub(crate) usage_logging_enabled: bool,
+    pub(crate) services: Arc<S>,
+    pub(crate) provider: Option<&'a Provider>,
+    pub(crate) app_type: &'a str,
+    pub(crate) tag: &'static str,
+    pub(crate) request_model: &'a str,
+    pub(crate) outbound_model: Option<&'a str>,
+    pub(crate) route_context: Option<&'a UsageRouteContext>,
+    pub(crate) start_time: std::time::Instant,
+    pub(crate) status_code: u16,
+    pub(crate) session_id: &'a str,
+    pub(crate) usage_format: TransformedResponseUsageFormat,
+    pub(crate) stream_event_filter: StreamUsageEventFilter,
+}
+
+pub(crate) fn transformed_streaming_usage_collector_from_context<S>(
+    context: TransformedStreamingUsageCollectorContext<'_, S>,
+) -> Option<SseUsageCollector>
+where
+    S: ProxyServices + Send + Sync + 'static,
+{
+    if !context.usage_logging_enabled {
+        return None;
+    }
+
+    let provider_facts = match response_usage_provider_facts_from_optional(
+        context.provider,
+        context.app_type,
+        context.tag,
+        UsageSelectedProviderMissingPhase::TransformedStreaming,
+    ) {
+        Ok(provider_facts) => provider_facts,
+        Err(message) => {
+            log::warn!("{message}");
+            return None;
+        }
+    };
+
+    let services = context.services;
+    let request_model = context.request_model.to_string();
+    let outbound_model = context.outbound_model.map(str::to_string);
+    let route_context = context.route_context.cloned();
+    let start_time = context.start_time;
+    let status_code = context.status_code;
+    let session_id = context.session_id.to_string();
+    let usage_format = context.usage_format;
+
+    Some(SseUsageCollector::new(
+        start_time,
+        Some(context.stream_event_filter),
+        move |events, first_token_ms| {
+            let latency_ms = start_time.elapsed().as_millis() as u64;
+            let Some(record) = transformed_streaming_response_usage_record_from_response_context(
+                TransformedStreamingResponseUsageContext {
+                    events: &events,
+                    format: usage_format,
+                    provider_facts: &provider_facts,
+                    request_model: &request_model,
+                    outbound_model: outbound_model.as_deref(),
+                    route_context: route_context.as_ref(),
+                    latency_ms,
+                    first_token_ms,
+                    status_code,
+                    session_id: &session_id,
+                },
+                || uuid::Uuid::new_v4().to_string(),
+            ) else {
+                log::debug!("{}", usage_format.missing_streaming_usage_log_message());
+                return;
+            };
+
+            spawn_usage_record_with_proxy_services_context(
+                services.clone(),
+                record,
+                UsageRecordFailureLogContext::UsageRecord,
+            );
+        },
+    ))
 }
 
 #[cfg(test)]
