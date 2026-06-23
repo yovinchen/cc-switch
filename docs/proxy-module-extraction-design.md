@@ -1083,6 +1083,7 @@
 本轮继续把模型列表命令层的自定义 User-Agent 解析入口收敛到 `proxy_core_adapter::model_fetch_custom_user_agent_header`，命令不再直接调用 provider 模块的 schema helper。
 本轮继续把 stream_check 服务的标准 provider adapter base URL 提取收敛到 `proxy_core_adapter::stream_check_provider_base_url`，服务层不再直接导入 provider adapter registry、trait 或具体 Claude adapter，只保留 reachability HTTP 探测执行。
 本轮继续把 `FailoverSwitchManager` 的 proxy_config enabled 读取收敛到 `proxy_core_adapter::failover_switch_app_enabled_from_db`：manager 只保留 Tauri emit、托盘刷新和 `hot_switch_provider` 宿主副作用，配置读取失败时跳过切换的策略集中在 adapter。
+本轮继续收窄 `switch_proxy_provider` 命令边界：命令层不再直接读取 provider 或重复官方供应商拦截策略，只把 app/provider 交给 `ProxyService::switch_proxy_target`，由 service 热切换路径统一执行 provider 存在性校验和接管模式防线。
 
 当前原则：核心 crate 可以新增端口和领域字段，但不得引入 `tauri`、`Database`、settings、commands、services 等宿主依赖；现有 runtime 行为必须继续通过 targeted tests 证明不回归。
 
