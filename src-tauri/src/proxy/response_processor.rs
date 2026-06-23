@@ -16,7 +16,7 @@ use super::{
     server::ProxyState,
 };
 use crate::proxy_core_adapter::{
-    create_logged_passthrough_stream, decode_response_body, get_content_encoding,
+    create_logged_passthrough_stream, decode_raw_proxy_response_body, get_content_encoding,
     non_streaming_body_timeout_message, non_streaming_response_usage_record_from_response_context,
     NonStreamingResponseUsageContext, passthrough_bytes_proxy_response,
     passthrough_stream_proxy_response,
@@ -24,8 +24,8 @@ use crate::proxy_core_adapter::{
     response_usage_provider_facts_from_optional,
     spawn_usage_record_with_proxy_services,
     streaming_response_usage_record_from_response_context, StreamingResponseUsageContext,
-    usage_logging_enabled_from_config_flag, ResponseBodyDecodeLogLevel, SseUsageCollector,
-    UsageParserConfig, UsageSelectedProviderMissingPhase,
+    usage_logging_enabled_from_config_flag, SseUsageCollector, UsageParserConfig,
+    UsageSelectedProviderMissingPhase,
 };
 #[cfg(test)]
 use crate::proxy_core_adapter::{provider_router_from_database, ProviderKind, TokenUsage};
@@ -44,7 +44,7 @@ pub(crate) async fn read_decoded_body(
     tag: &str,
     body_timeout: Duration,
 ) -> Result<(HeaderMap, http::StatusCode, Bytes), ProxyError> {
-    let mut headers = response.headers().clone();
+    let headers = response.headers().clone();
     let status = response.status();
     let raw_bytes = if body_timeout.is_zero() {
         response.bytes().await?
@@ -54,22 +54,8 @@ pub(crate) async fn read_decoded_body(
             .map_err(|_| ProxyError::Timeout(non_streaming_body_timeout_message(body_timeout)))??
     };
 
-    log::debug!(
-        "[{tag}] 已接收上游响应体: status={}, bytes={}, headers={}",
-        status.as_u16(),
-        raw_bytes.len(),
-        response_headers_log_summary(&headers)
-    );
-
-    let decoded = decode_response_body(&mut headers, &raw_bytes);
-    if let Some(event) = decoded.status.log_event() {
-        match event.level() {
-            ResponseBodyDecodeLogLevel::Debug => log::debug!("{}", event.message(tag)),
-            ResponseBodyDecodeLogLevel::Warn => log::warn!("{}", event.message(tag)),
-        }
-    }
-
-    Ok((headers, status, Bytes::from(decoded.body)))
+    let decoded = decode_raw_proxy_response_body(headers, status, raw_bytes, tag);
+    Ok((decoded.headers, decoded.status, decoded.body))
 }
 
 // ============================================================================

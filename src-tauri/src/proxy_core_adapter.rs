@@ -6279,6 +6279,40 @@ where
 
 type UsageCallbackWithTiming = Arc<dyn Fn(Vec<Value>, Option<u64>) + Send + Sync + 'static>;
 
+pub(crate) struct DecodedProxyResponseBody {
+    pub(crate) headers: HeaderMap,
+    pub(crate) status: http::StatusCode,
+    pub(crate) body: Bytes,
+}
+
+pub(crate) fn decode_raw_proxy_response_body(
+    mut headers: HeaderMap,
+    status: http::StatusCode,
+    raw_bytes: Bytes,
+    tag: &str,
+) -> DecodedProxyResponseBody {
+    log::debug!(
+        "[{tag}] 已接收上游响应体: status={}, bytes={}, headers={}",
+        status.as_u16(),
+        raw_bytes.len(),
+        response_headers_log_summary(&headers)
+    );
+
+    let decoded = decode_response_body(&mut headers, &raw_bytes);
+    if let Some(event) = decoded.status.log_event() {
+        match event.level() {
+            ResponseBodyDecodeLogLevel::Debug => log::debug!("{}", event.message(tag)),
+            ResponseBodyDecodeLogLevel::Warn => log::warn!("{}", event.message(tag)),
+        }
+    }
+
+    DecodedProxyResponseBody {
+        headers,
+        status,
+        body: Bytes::from(decoded.body),
+    }
+}
+
 #[derive(Clone)]
 pub(crate) struct SseUsageCollector {
     inner: Arc<SseUsageCollectorInner>,
@@ -7250,7 +7284,7 @@ pub(crate) use crate::proxy_core::api::transport::{
     get_content_encoding, response_headers_indicate_sse, response_headers_log_summary,
 };
 
-pub(crate) use crate::proxy_core::api::transport::decode_response_body;
+use crate::proxy_core::api::transport::decode_response_body;
 
 #[cfg(test)]
 pub(crate) use crate::proxy_core::api::transport::decompress_body;
