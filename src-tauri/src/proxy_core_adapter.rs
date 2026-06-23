@@ -8329,6 +8329,23 @@ pub(crate) async fn record_usage_in_db_source(
         .map_err(|error| usage_error("record usage", error))
 }
 
+#[derive(Clone)]
+pub(crate) struct CcSwitchUsageSink {
+    db: Arc<Database>,
+}
+
+impl CcSwitchUsageSink {
+    pub(crate) fn new(db: Arc<Database>) -> Self {
+        Self { db }
+    }
+}
+
+impl UsageSink for CcSwitchUsageSink {
+    fn record_usage<'a>(&'a self, record: UsageRecord) -> BoxFuture<'a, ProxyCoreResult<()>> {
+        Box::pin(async move { record_usage_in_db_source(&self.db, record).await })
+    }
+}
+
 pub(crate) use crate::proxy_core::api::model_catalog::{
     claude_takeover_client_model_for_upstream, claude_takeover_default_display_name,
 };

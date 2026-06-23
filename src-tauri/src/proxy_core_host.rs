@@ -10,9 +10,10 @@ use crate::proxy::codex_chat_history::CodexChatHistoryStore;
 use crate::proxy_core_adapter::{
     AppKind, AppSummaryConfig, AuthProvider, CcSwitchAuthProvider, CcSwitchChannelHealthStore,
     CcSwitchChannelReachabilityProbe, CcSwitchEventSink, CcSwitchRoutePolicySource,
-    CcSwitchRouteResolver, ChannelHealthStore, ChannelKeyRecord, ChannelModelRecord,
-    ChannelMigrationMaterializeInput, ChannelMigrationPreviewInput, ChannelQuery, ChannelRecord,
-    ChannelReachabilityProbe, ChannelRouteSource, ChannelSource, ChannelSpec,
+    CcSwitchRouteResolver, CcSwitchUsageSink, ChannelHealthStore, ChannelKeyRecord,
+    ChannelModelRecord, ChannelMigrationMaterializeInput, ChannelMigrationPreviewInput,
+    ChannelQuery, ChannelRecord, ChannelReachabilityProbe, ChannelRouteSource, ChannelSource,
+    ChannelSpec,
     ClaudeDesktopModelRouteInput, CurrentRouteTarget, ForwardPipeline, ForwarderRuntimeHostResources,
     GeminiShadowStore, HostForwardRuntime, ModelCatalog, ModelCatalogProvider, ProviderSource,
     ProviderSpec, ProxyAppConfig,
@@ -20,7 +21,7 @@ use crate::proxy_core_adapter::{
     ProxyChannelPatchRequest, ProxyChannelWriteRequest, ProxyConfigSource, ProxyCoreResult,
     ProxyEventSink, ProxyGlobalConfig, ProxyRequest, ProxyResult,
     ProxyRuntimeConfig, ProxyRuntimeStatus, ProxyServices, RoutePlan, RoutePolicySource,
-    RouteResolver, UsageRecord, UsageSink,
+    RouteResolver, UsageSink,
 };
 use crate::proxy_core_adapter::{
     active_route_target_from_runtime_source,
@@ -48,7 +49,6 @@ use crate::proxy_core_adapter::{
     proxy_app_config_from_db_source, proxy_global_config_from_db_source,
     materialized_channel_records_from_db_source,
     proxy_runtime_config_from_db_source,
-    record_usage_in_db_source,
     replace_channel_model_records_from_db_source,
     route_candidate_provider_ids_from_router_source,
     update_channel_record_from_db_source,
@@ -136,7 +136,7 @@ impl CcSwitchProxyServices {
                 db: db.clone(),
                 router: runtime.provider_router.clone(),
             },
-            usage_sink: CcSwitchUsageSink { db },
+            usage_sink: CcSwitchUsageSink::new(db),
             event_sink: CcSwitchEventSink::new(Some(runtime.events.clone())),
             forward_pipeline: CcSwitchForwardPipeline::with_runtime(runtime),
         }
@@ -163,7 +163,7 @@ impl CcSwitchProxyServices {
                 db: db.clone(),
                 router: router.clone(),
             },
-            usage_sink: CcSwitchUsageSink { db: db.clone() },
+            usage_sink: CcSwitchUsageSink::new(db.clone()),
             event_sink: CcSwitchEventSink::new(events),
             forward_pipeline: CcSwitchForwardPipeline::default(),
         }
@@ -462,17 +462,6 @@ impl ModelCatalogProvider for CcSwitchModelCatalogProvider {
         Box::pin(async move {
             claude_desktop_model_routes_from_router_source(&self.db, &self.router, app).await
         })
-    }
-}
-
-#[derive(Clone)]
-struct CcSwitchUsageSink {
-    db: Arc<Database>,
-}
-
-impl UsageSink for CcSwitchUsageSink {
-    fn record_usage<'a>(&'a self, record: UsageRecord) -> BoxFuture<'a, ProxyCoreResult<()>> {
-        Box::pin(async move { record_usage_in_db_source(&self.db, record).await })
     }
 }
 

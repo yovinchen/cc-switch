@@ -251,6 +251,9 @@ const FORBIDDEN_PROXY_CORE_HOST_MODEL_CATALOG_SOURCE_MARKERS: &[&str] = &[
     "claude_desktop_model_routes_to_core_inputs(",
 ];
 const FORBIDDEN_PROXY_CORE_HOST_USAGE_SINK_SOURCE_MARKERS: &[&str] = &[
+    "struct CcSwitchUsageSink",
+    "impl UsageSink for CcSwitchUsageSink",
+    "record_usage_in_db_source(",
     "UsageLogger::new(",
     "usage_pricing_config_lookup_from_record(",
     ".resolve_pricing_config(",
@@ -3249,7 +3252,7 @@ fn production_proxy_core_host_delegates_model_catalog_source_to_adapter() {
     let model_catalog = function_slice(
         &source,
         "impl ModelCatalogProvider for CcSwitchModelCatalogProvider",
-        "#[derive(Clone)]\nstruct CcSwitchUsageSink",
+        "#[derive(Clone, Default)]\nstruct CcSwitchForwardPipeline",
     );
 
     let mut violations = Vec::new();
@@ -3278,19 +3281,14 @@ fn production_proxy_core_host_delegates_usage_sink_source_to_adapter() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let path = manifest_dir.join("src/proxy_core_host.rs");
     let source = fs::read_to_string(&path).expect("read proxy_core_host.rs");
-    let usage_sink = function_slice(
-        &source,
-        "impl UsageSink for CcSwitchUsageSink",
-        "#[derive(Clone, Default)]\nstruct CcSwitchForwardPipeline",
-    );
 
     let mut violations = Vec::new();
-    for (line_index, line) in production_lines(usage_sink) {
+    for (line_index, line) in production_lines(&source) {
         let code = line.split("//").next().unwrap_or_default();
         for marker in FORBIDDEN_PROXY_CORE_HOST_USAGE_SINK_SOURCE_MARKERS {
             if code.contains(marker) {
                 violations.push(format!(
-                    "src/proxy_core_host.rs CcSwitchUsageSink:{} contains usage sink source marker `{}`",
+                    "src/proxy_core_host.rs:{} contains usage sink source marker `{}`",
                     line_index + 1,
                     marker
                 ));
