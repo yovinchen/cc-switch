@@ -69,6 +69,7 @@ pub(crate) struct CcSwitchProxyRuntime {
     pub(crate) attempt_runtime_source: ForwarderAttemptRuntimeSourceRef,
     pub(crate) protocol_state_source: ForwarderProtocolStateSourceRef,
     pub(crate) runtime_state_source: ForwarderRuntimeStateSourceRef,
+    pub(crate) auth_source: ForwarderAuthSourceRef,
     pub(crate) request_source: ForwarderRequestSourceRef,
     pub(crate) transport_source: ForwarderTransportSourceRef,
     pub(crate) response_source: ForwarderResponseSourceRef,
@@ -490,6 +491,7 @@ pub(crate) fn proxy_state_from_runtime_sources(
         current_providers.clone(),
         events.clone(),
     );
+    let auth_source = default_forwarder_auth_source();
     let request_source = default_forwarder_request_source();
     let transport_source = default_forwarder_transport_source();
     let response_source = default_forwarder_response_source();
@@ -506,6 +508,7 @@ pub(crate) fn proxy_state_from_runtime_sources(
             attempt_runtime_source,
             protocol_state_source,
             runtime_state_source,
+            auth_source,
             request_source,
             transport_source,
             response_source,
@@ -8292,6 +8295,113 @@ pub(crate) fn forwarder_attempt_runtime_source_from_router(
     Arc::new(CcSwitchForwarderAttemptRuntimeSource::new(router))
 }
 
+pub(crate) type ForwarderAuthSourceRef =
+    Arc<dyn ForwarderAuthSource + Send + Sync>;
+
+pub(crate) struct ForwarderCopilotAuthOptimizationInput<'a> {
+    pub(crate) request_classification_enabled: bool,
+    pub(crate) initiator: &'a str,
+    pub(crate) is_subagent: bool,
+    pub(crate) deterministic_request_id: Option<&'a str>,
+    pub(crate) interaction_id: Option<&'a str>,
+}
+
+pub(crate) struct ForwarderAuthHeadersInput<'a> {
+    pub(crate) adapter: &'a ForwarderAdapterHandle,
+    pub(crate) auth_provider: &'a Provider,
+    pub(crate) managed_account_runtime_source: ManagedAccountRuntimeSourceRef,
+    pub(crate) session_id: &'a str,
+    pub(crate) session_client_provided: bool,
+    pub(crate) copilot_optimization: Option<ForwarderCopilotAuthOptimizationInput<'a>>,
+}
+
+pub(crate) struct ForwarderAuthHeaders {
+    pub(crate) auth_headers: Vec<(http::HeaderName, http::HeaderValue)>,
+    pub(crate) codex_oauth_session_headers: Vec<(http::HeaderName, http::HeaderValue)>,
+}
+
+pub(crate) trait ForwarderAuthSource {
+    fn resolve_upstream_auth_headers<'a>(
+        &'a self,
+        input: ForwarderAuthHeadersInput<'a>,
+    ) -> BoxFuture<'a, Result<ForwarderAuthHeaders, ProxyError>>;
+}
+
+struct CcSwitchForwarderAuthSource;
+
+impl ForwarderAuthSource for CcSwitchForwarderAuthSource {
+    fn resolve_upstream_auth_headers<'a>(
+        &'a self,
+        input: ForwarderAuthHeadersInput<'a>,
+    ) -> BoxFuture<'a, Result<ForwarderAuthHeaders, ProxyError>> {
+        Box::pin(async move {
+            let mut codex_oauth_account_id: Option<String> = None;
+            let mut should_send_codex_oauth_session_headers = false;
+            let mut auth_headers = if let Some(mut auth) =
+                forwarder_provider_auth_info(input.adapter, input.auth_provider)
+            {
+                let managed_auth = input
+                    .managed_account_runtime_source
+                    .resolve_auth_for_provider(input.auth_provider, auth)
+                    .await?;
+                auth = managed_auth.auth;
+                should_send_codex_oauth_session_headers =
+                    managed_auth.should_send_codex_oauth_session_headers;
+                codex_oauth_account_id = managed_auth.codex_oauth_account_id;
+
+                forwarder_provider_auth_headers(input.adapter, &auth)?
+            } else {
+                Vec::new()
+            };
+
+            let codex_oauth_session_headers =
+                if should_send_codex_oauth_session_headers && input.session_client_provided {
+                    build_codex_oauth_session_headers(input.session_id)
+                } else {
+                    Vec::new()
+                };
+
+            let copilot_auth_header_overrides =
+                input
+                    .copilot_optimization
+                    .as_ref()
+                    .map(|optimization| CopilotAuthHeaderOverrides {
+                        initiator: optimization
+                            .request_classification_enabled
+                            .then_some(optimization.initiator),
+                        is_subagent: optimization.is_subagent,
+                        deterministic_request_id: optimization.deterministic_request_id,
+                        interaction_id: optimization.interaction_id,
+                    });
+
+            auth_headers = build_upstream_auth_headers(UpstreamAuthHeadersInput {
+                base_auth_headers: &auth_headers,
+                codex_oauth_account_id: codex_oauth_account_id.as_deref(),
+                copilot_overrides: copilot_auth_header_overrides,
+            });
+
+            if input
+                .copilot_optimization
+                .as_ref()
+                .is_some_and(|optimization| optimization.is_subagent)
+            {
+                log::info!(
+                    "[Copilot] 子代理请求: x-initiator=agent, x-interaction-type=conversation-subagent"
+                );
+            }
+
+            Ok(ForwarderAuthHeaders {
+                auth_headers,
+                codex_oauth_session_headers,
+            })
+        })
+    }
+}
+
+pub(crate) fn default_forwarder_auth_source() -> ForwarderAuthSourceRef {
+    Arc::new(CcSwitchForwarderAuthSource)
+}
+
 pub(crate) type ForwarderRequestSourceRef =
     Arc<dyn ForwarderRequestSource + Send + Sync>;
 
@@ -8631,6 +8741,7 @@ pub(crate) struct ForwarderRuntimeHostResources {
     pub(crate) attempt_runtime_source: ForwarderAttemptRuntimeSourceRef,
     pub(crate) protocol_state_source: ForwarderProtocolStateSourceRef,
     pub(crate) runtime_state_source: ForwarderRuntimeStateSourceRef,
+    pub(crate) auth_source: ForwarderAuthSourceRef,
     pub(crate) request_source: ForwarderRequestSourceRef,
     pub(crate) transport_source: ForwarderTransportSourceRef,
     pub(crate) response_source: ForwarderResponseSourceRef,
@@ -8645,6 +8756,7 @@ pub(crate) fn forwarder_runtime_host_resources_from_runtime(
         attempt_runtime_source: runtime.attempt_runtime_source.clone(),
         protocol_state_source: runtime.protocol_state_source.clone(),
         runtime_state_source: runtime.runtime_state_source.clone(),
+        auth_source: runtime.auth_source.clone(),
         request_source: runtime.request_source.clone(),
         transport_source: runtime.transport_source.clone(),
         response_source: runtime.response_source.clone(),
@@ -8679,6 +8791,7 @@ pub(crate) async fn forward_with_preplanned_host_runtime(
         attempt_runtime_source,
         protocol_state_source,
         runtime_state_source,
+        auth_source,
         request_source,
         transport_source,
         response_source,
@@ -8700,6 +8813,7 @@ pub(crate) async fn forward_with_preplanned_host_runtime(
         forwarder_options.non_streaming_timeout,
         protocol_state_source,
         runtime_state_source,
+        auth_source,
         request_source,
         transport_source,
         response_source,

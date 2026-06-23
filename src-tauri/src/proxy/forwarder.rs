@@ -10,9 +10,8 @@ use super::{
 use crate::proxy_core_adapter::{
     apply_bedrock_pre_send_optimizers, apply_copilot_model_normalization,
     apply_copilot_warmup_model_override, apply_forward_request_model_mapping_from_provider,
-    build_codex_oauth_session_headers,
     build_retryable_forward_failure_log, build_terminal_forward_failure_log,
-    build_upstream_auth_headers, cache_injection_log_message, categorize_forward_failure,
+    cache_injection_log_message, categorize_forward_failure,
     classify_copilot_request, contains_image_blocks, forward_upstream_url_plan,
     forwarder_apply_codex_chat_upstream_model, forwarder_bedrock_env_flag,
     forwarder_codex_chat_reasoning_options,
@@ -22,8 +21,7 @@ use crate::proxy_core_adapter::{
     forwarder_is_github_copilot_upstream,
     forwarder_replace_images_for_text_only_provider_model, forwarder_uses_anthropic_rectifiers,
     forwarder_provider_adapter_for_app,
-    forwarder_provider_adapter_name, forwarder_provider_auth_headers, forwarder_provider_auth_info,
-    forwarder_provider_base_url, forwarder_provider_upstream_url,
+    forwarder_provider_adapter_name, forwarder_provider_base_url, forwarder_provider_upstream_url,
     forwarder_provider_transform_request, forwarder_provider_transform_required,
     ForwarderAdapterHandle, is_openai_o_series,
     is_unsupported_image_error, merge_copilot_tool_results,
@@ -47,19 +45,19 @@ use crate::proxy_core_adapter::{
     strip_copilot_thinking_blocks, strip_one_m_suffix_for_upstream,
     strip_one_m_suffix_for_upstream_from_body,
     supports_reasoning_effort, thinking_optimization_log_message,
-    AttemptEventPhase, CopilotAuthHeaderOverrides,
-    CopilotOptimizerConfig, ForwardFailureCategory, ForwardUpstreamUrlPlanInput,
+    AttemptEventPhase, CopilotOptimizerConfig, ForwardFailureCategory, ForwardUpstreamUrlPlanInput,
+    ForwarderAuthHeadersInput, ForwarderAuthSourceRef, ForwarderCopilotAuthOptimizationInput,
     MediaRetryInput, OptimizerConfig,
     FailoverSwitchSchedulerRef, ForwarderAttemptRuntimeSourceRef, ForwarderProtocolStateSourceRef,
     ForwarderRequestPartsInput, ForwarderRequestPreparationInput, ForwarderRequestSourceRef,
     ForwarderResponseSourceRef, ForwarderRuntimeStateSourceRef, ForwarderTransportSourceRef,
     ForwarderUpstreamTransportRequest, ManagedAccountRuntimeSourceRef,
-    RectifierConfig, ResolvedChannelAttempt, UpstreamAuthHeadersInput,
-    UNSUPPORTED_IMAGE_MARKER,
+    RectifierConfig, ResolvedChannelAttempt, UNSUPPORTED_IMAGE_MARKER,
 };
 #[cfg(test)]
 use crate::proxy_core_adapter::{
-    prepare_upstream_request_body_with_report, provider_router_from_database,
+    build_codex_oauth_session_headers, prepare_upstream_request_body_with_report,
+    provider_router_from_database,
     validate_managed_account_upstream_auth,
 };
 use crate::{app_config::AppType, provider::Provider};
@@ -128,6 +126,7 @@ pub struct RequestForwarder {
     attempt_runtime_source: ForwarderAttemptRuntimeSourceRef,
     protocol_state_source: ForwarderProtocolStateSourceRef,
     runtime_state_source: ForwarderRuntimeStateSourceRef,
+    auth_source: ForwarderAuthSourceRef,
     request_source: ForwarderRequestSourceRef,
     transport_source: ForwarderTransportSourceRef,
     response_source: ForwarderResponseSourceRef,
@@ -232,6 +231,7 @@ impl RequestForwarder {
         non_streaming_timeout: u64,
         protocol_state_source: ForwarderProtocolStateSourceRef,
         runtime_state_source: ForwarderRuntimeStateSourceRef,
+        auth_source: ForwarderAuthSourceRef,
         request_source: ForwarderRequestSourceRef,
         transport_source: ForwarderTransportSourceRef,
         response_source: ForwarderResponseSourceRef,
@@ -254,6 +254,7 @@ impl RequestForwarder {
             attempt_runtime_source,
             protocol_state_source,
             runtime_state_source,
+            auth_source,
             request_source,
             transport_source,
             response_source,
@@ -1374,67 +1375,39 @@ impl RequestForwarder {
         let request_is_streaming = prepared_request.request_is_streaming;
         let force_identity_encoding = prepared_request.force_identity_encoding;
 
-        // Codex OAuth 需要注入的 ChatGPT-Account-Id（在动态 token 获取期间填充）
-        let mut codex_oauth_account_id: Option<String> = None;
-        let mut should_send_codex_oauth_session_headers = false;
-
-        // 获取认证头（提前准备，用于内联替换）
-        let auth_provider = attempt.auth_provider();
-        let mut auth_headers = if let Some(mut auth) =
-            forwarder_provider_auth_info(adapter, auth_provider)
-        {
-            let managed_auth =
-                self.managed_account_runtime_source
-                    .resolve_auth_for_provider(auth_provider, auth)
-                .await?;
-            auth = managed_auth.auth;
-            should_send_codex_oauth_session_headers =
-                managed_auth.should_send_codex_oauth_session_headers;
-            codex_oauth_account_id = managed_auth.codex_oauth_account_id;
-
-            forwarder_provider_auth_headers(adapter, &auth)?
-        } else {
-            Vec::new()
-        };
-
-        let codex_oauth_session_headers =
-            if should_send_codex_oauth_session_headers && self.session_client_provided {
-                build_codex_oauth_session_headers(&self.session_id)
-            } else {
-                Vec::new()
-            };
-
         // 自定义 User-Agent：与 stream_check / model_fetch 共用 parse_custom_user_agent，
         // 运行时静默忽略非法值（前端在输入处给非阻断提示，不在保存时阻断）。
         // Copilot 指纹 UA 不可覆盖。
         let custom_user_agent = forwarder_custom_user_agent_header(provider, is_copilot);
 
-        // --- Copilot 优化器：动态 header 注入 ---
-        let copilot_auth_header_overrides = copilot_optimization.as_ref().map(
-            |(classification, det_request_id, interaction_id)| CopilotAuthHeaderOverrides {
-                initiator: self
-                    .copilot_optimizer_config
-                    .request_classification
-                    .then_some(classification.initiator),
-                is_subagent: classification.is_subagent,
-                deterministic_request_id: det_request_id.as_deref(),
-                interaction_id: interaction_id.as_deref(),
+        let auth_provider = attempt.auth_provider();
+        let copilot_auth_optimization = copilot_optimization.as_ref().map(
+            |(classification, det_request_id, interaction_id)| {
+                ForwarderCopilotAuthOptimizationInput {
+                    request_classification_enabled: self
+                        .copilot_optimizer_config
+                        .request_classification,
+                    initiator: classification.initiator,
+                    is_subagent: classification.is_subagent,
+                    deterministic_request_id: det_request_id.as_deref(),
+                    interaction_id: interaction_id.as_deref(),
+                }
             },
         );
 
-        auth_headers = build_upstream_auth_headers(UpstreamAuthHeadersInput {
-            base_auth_headers: &auth_headers,
-            codex_oauth_account_id: codex_oauth_account_id.as_deref(),
-            copilot_overrides: copilot_auth_header_overrides,
-        });
-
-        if let Some((ref classification, _, _)) = copilot_optimization {
-            if classification.is_subagent {
-                log::info!(
-                    "[Copilot] 子代理请求: x-initiator=agent, x-interaction-type=conversation-subagent"
-                );
-            }
-        }
+        let auth_headers = self
+            .auth_source
+            .resolve_upstream_auth_headers(ForwarderAuthHeadersInput {
+                adapter,
+                auth_provider,
+                managed_account_runtime_source: self.managed_account_runtime_source.clone(),
+                session_id: &self.session_id,
+                session_client_provided: self.session_client_provided,
+                copilot_optimization: copilot_auth_optimization,
+            })
+            .await?;
+        let codex_oauth_session_headers = auth_headers.codex_oauth_session_headers;
+        let auth_headers = auth_headers.auth_headers;
 
         let request_parts =
             self.request_source
@@ -1706,6 +1679,7 @@ mod tests {
                     current_providers,
                     events,
                 ),
+            auth_source: crate::proxy_core_adapter::default_forwarder_auth_source(),
             request_source: crate::proxy_core_adapter::default_forwarder_request_source(),
             transport_source: crate::proxy_core_adapter::default_forwarder_transport_source(),
             response_source: crate::proxy_core_adapter::default_forwarder_response_source(),

@@ -5579,6 +5579,50 @@ fn production_forwarder_uses_failover_switch_scheduler_resource() {
 }
 
 #[test]
+fn production_forwarder_uses_auth_source_resource() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let path = manifest_dir.join("src/proxy/forwarder.rs");
+    let source = fs::read_to_string(&path).expect("read forwarder.rs");
+    let struct_slice = function_slice(&source, "pub struct RequestForwarder", "impl RequestForwarder");
+    let impl_slice = function_slice(&source, "impl RequestForwarder", "#[cfg(test)]");
+
+    assert!(
+        struct_slice.contains("auth_source"),
+        "RequestForwarder must receive upstream auth header assembly as an injected source"
+    );
+
+    let impl_forbidden_markers = [
+        "forwarder_provider_auth_info(",
+        "forwarder_provider_auth_headers(",
+        ".resolve_auth_for_provider(",
+        "build_codex_oauth_session_headers(",
+        "build_upstream_auth_headers(",
+        "CopilotAuthHeaderOverrides",
+        "UpstreamAuthHeadersInput",
+    ];
+    let mut violations = Vec::new();
+
+    for (line_index, line) in production_lines(impl_slice) {
+        let code = line.split("//").next().unwrap_or_default();
+        for marker in impl_forbidden_markers {
+            if code.contains(marker) {
+                violations.push(format!(
+                    "src/proxy/forwarder.rs impl RequestForwarder:{} contains direct auth assembly marker `{}`",
+                    line_index + 1,
+                    marker
+                ));
+            }
+        }
+    }
+
+    assert!(
+        violations.is_empty(),
+        "forwarder must use an injected auth source for upstream auth header assembly:\n{}",
+        violations.join("\n")
+    );
+}
+
+#[test]
 fn production_forwarder_uses_runtime_state_source_resource() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let path = manifest_dir.join("src/proxy/forwarder.rs");

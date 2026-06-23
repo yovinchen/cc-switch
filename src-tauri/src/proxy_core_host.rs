@@ -452,6 +452,7 @@ mod tests {
                     current_providers,
                     events,
                 ),
+            auth_source: crate::proxy_core_adapter::default_forwarder_auth_source(),
             request_source: crate::proxy_core_adapter::default_forwarder_request_source(),
             transport_source: crate::proxy_core_adapter::default_forwarder_transport_source(),
             response_source: crate::proxy_core_adapter::default_forwarder_response_source(),
