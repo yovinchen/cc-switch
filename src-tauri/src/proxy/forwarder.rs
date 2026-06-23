@@ -31,7 +31,8 @@ use crate::proxy_core_adapter::{
     forwarder_custom_user_agent_header,
     forward_failure_kind_from_proxy_error, forwarder_should_convert_codex_responses_to_chat,
     forwarder_is_codex_oauth_provider, forwarder_is_full_url_provider,
-    forwarder_is_github_copilot_upstream, forwarder_uses_anthropic_rectifiers,
+    forwarder_is_github_copilot_upstream,
+    forwarder_replace_images_for_text_only_provider_model, forwarder_uses_anthropic_rectifiers,
     is_openai_o_series,
     is_unsupported_image_error, allow_forward_attempt_runtime_source, merge_copilot_tool_results,
     non_streaming_body_timeout_message, normalize_thinking_type,
@@ -49,10 +50,8 @@ use crate::proxy_core_adapter::{
     record_forward_failure_runtime_source,
     record_forward_provider_failure_runtime_source,
     record_forward_provider_rectifier_retry_failure_runtime_source,
-    record_forward_request_started_runtime_source,
-    record_forward_success_runtime_source,
-    release_forward_attempt_permit_neutral_runtime_source,
-    replace_images_for_text_only_provider_model, request_body_filter_log_message,
+    record_forward_request_started_runtime_source, record_forward_success_runtime_source,
+    release_forward_attempt_permit_neutral_runtime_source, request_body_filter_log_message,
     resolve_copilot_deterministic_interaction_id, resolve_copilot_model_against_ids,
     resolve_copilot_optimizer_session_id, resolve_copilot_request_id_with_fallback,
     resolve_channel_response_status_mapping, resolve_media_prevention_policy,
@@ -194,7 +193,11 @@ impl RequestForwarder {
             return 0;
         }
         let replaced_images =
-            replace_images_for_text_only_provider_model(body, provider, policy.allow_heuristic);
+            forwarder_replace_images_for_text_only_provider_model(
+                body,
+                provider,
+                policy.allow_heuristic,
+            );
         if replaced_images > 0 {
             let model = body.get("model").and_then(Value::as_str).unwrap_or("");
             log::info!(

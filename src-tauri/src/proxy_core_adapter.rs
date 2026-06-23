@@ -7707,6 +7707,14 @@ pub(crate) fn replace_images_for_text_only_provider_model(
     replace_images_for_text_only_model(body, &provider.settings_config, allow_heuristic)
 }
 
+pub(crate) fn forwarder_replace_images_for_text_only_provider_model(
+    body: &mut Value,
+    provider: &Provider,
+    allow_heuristic: bool,
+) -> usize {
+    replace_images_for_text_only_provider_model(body, provider, allow_heuristic)
+}
+
 pub(crate) fn rewrite_codex_responses_endpoint_to_chat(
     endpoint: &str,
 ) -> (String, Option<String>) {
@@ -16555,6 +16563,25 @@ command = "latest-command"
             1
         );
         assert_eq!(image_body["messages"][0]["content"][0]["type"], "text");
+
+        let mut forwarder_image_body = json!({
+            "model": "text-model",
+            "messages": [{
+                "role": "user",
+                "content": [
+                    { "type": "image", "source": { "type": "base64", "media_type": "image/png", "data": "abc" } }
+                ]
+            }]
+        });
+        assert_eq!(
+            forwarder_replace_images_for_text_only_provider_model(
+                &mut forwarder_image_body,
+                &text_only_provider,
+                false
+            ),
+            1
+        );
+        assert_eq!(forwarder_image_body["messages"][0]["content"][0]["type"], "text");
     }
 
     #[test]
