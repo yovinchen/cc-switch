@@ -304,6 +304,7 @@ const FORBIDDEN_PROXY_SERVICE_PROXY_CONFIG_SOURCE_MARKERS: &[&str] = &[
     "保存代理配置失败",
     "保存动态代理端口失败",
 ];
+const FORBIDDEN_PROXY_SERVICE_SERVER_FACTORY_MARKERS: &[&str] = &["ProxyServer::new("];
 const FORBIDDEN_PROXY_SERVICE_EFFECTIVE_SETTINGS_SOURCE_MARKERS: &[&str] = &[
     "build_effective_settings_with_common_config(",
     "get_config_snippet(",
@@ -4978,6 +4979,53 @@ fn production_proxy_service_delegates_proxy_config_source_to_adapter() {
     assert!(
         violations.is_empty(),
         "ProxyService must delegate proxy_config source reads and persistence to proxy_core_adapter:\n{}",
+        violations.join("\n")
+    );
+}
+
+#[test]
+fn production_proxy_service_delegates_server_factory_to_adapter() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let path = manifest_dir.join("src/services/proxy.rs");
+    let source = fs::read_to_string(&path).expect("read services/proxy.rs");
+    let functions = [
+        (
+            "start",
+            function_slice(
+                &source,
+                "pub async fn start",
+                "async fn persist_ephemeral_listen_port_if_needed",
+            ),
+        ),
+        (
+            "update_config",
+            function_slice(
+                &source,
+                "pub async fn update_config",
+                "/// 检查服务器是否正在运行",
+            ),
+        ),
+    ];
+
+    let mut violations = Vec::new();
+    for (function_name, function) in functions {
+        for (line_index, line) in production_lines(function) {
+            let code = line.split("//").next().unwrap_or_default();
+            for marker in FORBIDDEN_PROXY_SERVICE_SERVER_FACTORY_MARKERS {
+                if code.contains(marker) {
+                    violations.push(format!(
+                        "src/services/proxy.rs {function_name}:{} contains server factory marker `{}`",
+                        line_index + 1,
+                        marker
+                    ));
+                }
+            }
+        }
+    }
+
+    assert!(
+        violations.is_empty(),
+        "ProxyService must delegate ProxyServer construction to proxy_core_adapter:\n{}",
         violations.join("\n")
     );
 }

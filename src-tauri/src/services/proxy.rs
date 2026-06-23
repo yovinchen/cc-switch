@@ -44,6 +44,7 @@ use crate::proxy_core_adapter::{
     proxy_hot_switch_should_sync_codex_live_while_proxy_active, proxy_live_urls_from_listen_parts,
     proxy_live_config_owned_by_takeover, proxy_runtime_status_stopped,
     proxy_server_info_from_parts,
+    proxy_server_from_runtime_config,
     proxy_takeover_status_from_db,
     proxy_takeover_marked_state_is_reusable,
     proxy_official_warning_event_from_current_provider_db,
@@ -200,7 +201,7 @@ impl ProxyService {
 
         // 4. 创建并启动服务器
         let app_handle = self.app_handle.read().await.clone();
-        let server = ProxyServer::new(config.clone(), self.db.clone(), app_handle);
+        let server = proxy_server_from_runtime_config(config.clone(), self.db.clone(), app_handle);
         let info = server
             .start()
             .await
@@ -1516,7 +1517,8 @@ impl ProxyService {
             }
 
             let app_handle = self.app_handle.read().await.clone();
-            let new_server = ProxyServer::new(new_config.clone(), self.db.clone(), app_handle);
+            let new_server =
+                proxy_server_from_runtime_config(new_config.clone(), self.db.clone(), app_handle);
             let info = new_server
                 .start()
                 .await

@@ -24,7 +24,7 @@ use crate::proxy::provider_router::{
     ProviderRouterConfigSource, ProviderRouterHealthStore, ProviderRouterProviderSource,
     ProviderRouterSources,
 };
-use crate::proxy::server::ProxyState;
+use crate::proxy::server::{ProxyServer, ProxyState};
 use crate::proxy::codex_chat_history::{record_responses_sse_stream, CodexChatHistoryStore};
 use crate::proxy::route_attempt::ForwardAttempt;
 use crate::proxy::usage::{RequestLog, UsageLogger};
@@ -415,6 +415,14 @@ pub(crate) type ProxyAppConfig = crate::proxy_core::api::config::ProxyAppConfig;
 pub(crate) type ProxyServerInfo = crate::proxy_core::api::ports::ProxyServerInfo;
 
 pub(crate) use crate::proxy_core::api::ports::proxy_server_info_from_parts;
+
+pub(crate) fn proxy_server_from_runtime_config(
+    config: ProxyConfig,
+    db: Arc<Database>,
+    app_handle: Option<tauri::AppHandle>,
+) -> ProxyServer {
+    ProxyServer::new(config, db, app_handle)
+}
 
 pub(crate) fn proxy_live_urls_from_listen_parts(
     listen_address: &str,
