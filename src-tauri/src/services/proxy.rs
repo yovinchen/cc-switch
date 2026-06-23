@@ -20,7 +20,7 @@ use crate::proxy_core_adapter::{
     current_provider_for_app_from_db, gemini_live_backup_from_effective_settings,
     is_local_proxy_url, live_backup_snapshot_from_live_config, live_token_sync_app_label,
     live_backup_config_for_simple_restore_from_db,
-    live_token_sync_provider_from_db,
+    live_takeover_backup_exists_from_db, live_token_sync_provider_from_db,
     live_config_has_proxy_placeholder_for_app, live_takeover_config_matches_proxy_for_app,
     live_takeover_app_types, provider_settings_have_proxy_placeholder_for_app,
     proxy_app_enabled_from_db, sync_provider_settings_with_live_token,
@@ -358,13 +358,8 @@ impl ProxyService {
 
             let mut restore_existing_backup_before_takeover = false;
             if proxy_app_enabled {
-                let has_backup = match self.db.get_live_backup(app_type_str).await {
-                    Ok(v) => v.is_some(),
-                    Err(e) => {
-                        log::warn!("读取 {app_type_str} 备份失败（将继续重建接管）: {e}");
-                        false
-                    }
-                };
+                let has_backup =
+                    live_takeover_backup_exists_from_db(&self.db, app_type_str).await;
                 let live_matches_current_proxy =
                     match self.live_takeover_matches_current_proxy(&app).await {
                         Ok(value) => value,
