@@ -176,6 +176,10 @@ const FORBIDDEN_PROXY_CORE_HOST_PROVIDER_SOURCE_MARKERS: &[&str] = &[
     "route_candidate_provider_ids_from_selection_result(",
 ];
 const FORBIDDEN_PROXY_CORE_HOST_CHANNEL_SPEC_SOURCE_MARKERS: &[&str] = &[
+    "struct CcSwitchChannelSource",
+    "impl ChannelSource for CcSwitchChannelSource",
+    "channel_specs_from_source_lookup(",
+    "channel_spec_from_source_lookup(",
     ".list_channels_for_app(",
     ".list_proxy_channels_for_app(",
     ".get_proxy_channel(",
@@ -183,6 +187,10 @@ const FORBIDDEN_PROXY_CORE_HOST_CHANNEL_SPEC_SOURCE_MARKERS: &[&str] = &[
     "channel_spec_from_source(",
 ];
 const FORBIDDEN_PROXY_CORE_HOST_CHANNEL_RECORD_SOURCE_MARKERS: &[&str] = &[
+    "create_channel_record_from_db_source(",
+    "channel_record_from_db_source(",
+    "update_channel_record_from_db_source(",
+    "delete_channel_record_from_db_source(",
     ".create_proxy_channel(",
     ".get_proxy_channel(",
     ".update_proxy_channel(",
@@ -190,6 +198,12 @@ const FORBIDDEN_PROXY_CORE_HOST_CHANNEL_RECORD_SOURCE_MARKERS: &[&str] = &[
     "proxy_channel_record_to_core(",
 ];
 const FORBIDDEN_PROXY_CORE_HOST_CHANNEL_KEY_MODEL_SOURCE_MARKERS: &[&str] = &[
+    "channel_key_records_from_db_source(",
+    "upsert_channel_key_record_from_db_source(",
+    "update_channel_key_record_from_db_source(",
+    "delete_channel_key_record_from_db_source(",
+    "channel_model_records_from_db_source(",
+    "replace_channel_model_records_from_db_source(",
     ".list_proxy_channel_keys(",
     ".upsert_proxy_channel_key(",
     ".update_proxy_channel_key(",
@@ -202,12 +216,16 @@ const FORBIDDEN_PROXY_CORE_HOST_CHANNEL_KEY_MODEL_SOURCE_MARKERS: &[&str] = &[
     "proxy_channel_model_records_to_core(",
 ];
 const FORBIDDEN_PROXY_CORE_HOST_CHANNEL_RECORD_LIST_SOURCE_MARKERS: &[&str] = &[
+    "channel_records_from_db_source(",
+    "materialized_channel_records_from_db_source(",
     ".list_channels_for_app(",
     ".list_proxy_channels_for_app(",
     ".list_all_proxy_channels(",
     "proxy_channel_records_to_core(",
 ];
 const FORBIDDEN_PROXY_CORE_HOST_CHANNEL_MIGRATION_SOURCE_MARKERS: &[&str] = &[
+    "channel_migration_preview_from_db_source(",
+    "channel_migration_materialize_from_db_source(",
     ".preview_legacy_proxy_channel_migration(",
     ".materialize_legacy_proxy_channels(",
     "channel_migration_preview_input_from_result(",
@@ -2990,19 +3008,14 @@ fn production_proxy_core_host_delegates_channel_spec_source_to_adapter() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let path = manifest_dir.join("src/proxy_core_host.rs");
     let source = fs::read_to_string(&path).expect("read proxy_core_host.rs");
-    let channel_spec_source = function_slice(
-        &source,
-        "impl ChannelSource for CcSwitchChannelSource",
-        "    fn create_channel_record",
-    );
 
     let mut violations = Vec::new();
-    for (line_index, line) in production_lines(channel_spec_source) {
+    for (line_index, line) in production_lines(&source) {
         let code = line.split("//").next().unwrap_or_default();
         for marker in FORBIDDEN_PROXY_CORE_HOST_CHANNEL_SPEC_SOURCE_MARKERS {
             if code.contains(marker) {
                 violations.push(format!(
-                    "src/proxy_core_host.rs CcSwitchChannelSource:{} contains channel spec source marker `{}`",
+                    "src/proxy_core_host.rs:{} contains channel spec source marker `{}`",
                     line_index + 1,
                     marker
                 ));
@@ -3022,19 +3035,14 @@ fn production_proxy_core_host_delegates_channel_record_source_to_adapter() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let path = manifest_dir.join("src/proxy_core_host.rs");
     let source = fs::read_to_string(&path).expect("read proxy_core_host.rs");
-    let channel_record_source = function_slice(
-        &source,
-        "    fn create_channel_record",
-        "    fn list_channel_key_records",
-    );
 
     let mut violations = Vec::new();
-    for (line_index, line) in production_lines(channel_record_source) {
+    for (line_index, line) in production_lines(&source) {
         let code = line.split("//").next().unwrap_or_default();
         for marker in FORBIDDEN_PROXY_CORE_HOST_CHANNEL_RECORD_SOURCE_MARKERS {
             if code.contains(marker) {
                 violations.push(format!(
-                    "src/proxy_core_host.rs CcSwitchChannelSource records:{} contains channel record source marker `{}`",
+                    "src/proxy_core_host.rs:{} contains channel record source marker `{}`",
                     line_index + 1,
                     marker
                 ));
@@ -3054,19 +3062,14 @@ fn production_proxy_core_host_delegates_channel_key_model_source_to_adapter() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let path = manifest_dir.join("src/proxy_core_host.rs");
     let source = fs::read_to_string(&path).expect("read proxy_core_host.rs");
-    let channel_key_model_source = function_slice(
-        &source,
-        "    fn list_channel_key_records",
-        "    fn list_channel_records",
-    );
 
     let mut violations = Vec::new();
-    for (line_index, line) in production_lines(channel_key_model_source) {
+    for (line_index, line) in production_lines(&source) {
         let code = line.split("//").next().unwrap_or_default();
         for marker in FORBIDDEN_PROXY_CORE_HOST_CHANNEL_KEY_MODEL_SOURCE_MARKERS {
             if code.contains(marker) {
                 violations.push(format!(
-                    "src/proxy_core_host.rs CcSwitchChannelSource key/model:{} contains channel key/model source marker `{}`",
+                    "src/proxy_core_host.rs:{} contains channel key/model source marker `{}`",
                     line_index + 1,
                     marker
                 ));
@@ -3086,19 +3089,14 @@ fn production_proxy_core_host_delegates_channel_record_list_source_to_adapter() 
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let path = manifest_dir.join("src/proxy_core_host.rs");
     let source = fs::read_to_string(&path).expect("read proxy_core_host.rs");
-    let channel_record_list_source = function_slice(
-        &source,
-        "    fn list_channel_records",
-        "    fn preview_legacy_channel_migration",
-    );
 
     let mut violations = Vec::new();
-    for (line_index, line) in production_lines(channel_record_list_source) {
+    for (line_index, line) in production_lines(&source) {
         let code = line.split("//").next().unwrap_or_default();
         for marker in FORBIDDEN_PROXY_CORE_HOST_CHANNEL_RECORD_LIST_SOURCE_MARKERS {
             if code.contains(marker) {
                 violations.push(format!(
-                    "src/proxy_core_host.rs CcSwitchChannelSource record-list:{} contains channel record list source marker `{}`",
+                    "src/proxy_core_host.rs:{} contains channel record list source marker `{}`",
                     line_index + 1,
                     marker
                 ));
@@ -3118,19 +3116,14 @@ fn production_proxy_core_host_delegates_channel_migration_source_to_adapter() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let path = manifest_dir.join("src/proxy_core_host.rs");
     let source = fs::read_to_string(&path).expect("read proxy_core_host.rs");
-    let channel_migration_source = function_slice(
-        &source,
-        "    fn preview_legacy_channel_migration",
-        "\n}\n\n#[derive(Clone, Default)]\nstruct CcSwitchForwardPipeline",
-    );
 
     let mut violations = Vec::new();
-    for (line_index, line) in production_lines(channel_migration_source) {
+    for (line_index, line) in production_lines(&source) {
         let code = line.split("//").next().unwrap_or_default();
         for marker in FORBIDDEN_PROXY_CORE_HOST_CHANNEL_MIGRATION_SOURCE_MARKERS {
             if code.contains(marker) {
                 violations.push(format!(
-                    "src/proxy_core_host.rs CcSwitchChannelSource migration:{} contains channel migration source marker `{}`",
+                    "src/proxy_core_host.rs:{} contains channel migration source marker `{}`",
                     line_index + 1,
                     marker
                 ));
