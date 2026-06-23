@@ -6339,6 +6339,11 @@ fn production_forwarder_uses_request_source_resource() {
         "strip_one_m_suffix_for_upstream_from_body(",
         "forwarder_claude_normalize_anthropic_messages(",
         "provider_claude_normalize_anthropic_messages(",
+        "should_apply_bedrock_pre_send_optimizer(",
+        "forwarder_bedrock_env_flag(",
+        "apply_bedrock_pre_send_optimizers(",
+        "thinking_optimization_log_message(",
+        "cache_injection_log_message(",
     ];
     let mut violations = Vec::new();
 

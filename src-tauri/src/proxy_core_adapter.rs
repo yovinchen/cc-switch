@@ -8544,6 +8544,12 @@ pub(crate) struct ForwarderCopilotRequestOptimization {
     pub(crate) classification: CopilotClassification,
 }
 
+pub(crate) struct ForwarderAttemptBodyInput<'a> {
+    pub(crate) body: &'a Value,
+    pub(crate) provider: &'a Provider,
+    pub(crate) config: &'a OptimizerConfig,
+}
+
 pub(crate) struct ForwarderProviderRequestBodyInput<'a> {
     pub(crate) app_type: &'a AppType,
     pub(crate) body: Value,
@@ -8630,6 +8636,8 @@ pub(crate) struct ForwarderUpstreamRequestParts {
 }
 
 pub(crate) trait ForwarderRequestSource {
+    fn prepare_attempt_body(&self, input: ForwarderAttemptBodyInput<'_>) -> Value;
+
     fn prepare_provider_request_body(
         &self,
         input: ForwarderProviderRequestBodyInput<'_>,
@@ -8676,6 +8684,29 @@ pub(crate) trait ForwarderRequestSource {
 struct CcSwitchForwarderRequestSource;
 
 impl ForwarderRequestSource for CcSwitchForwarderRequestSource {
+    fn prepare_attempt_body(&self, input: ForwarderAttemptBodyInput<'_>) -> Value {
+        if !should_apply_bedrock_pre_send_optimizer(
+            input.config.enabled,
+            forwarder_bedrock_env_flag(input.provider),
+        ) {
+            return input.body.clone();
+        }
+
+        let mut body = input.body.clone();
+        let report = apply_bedrock_pre_send_optimizers(&mut body, input.config);
+        if let Some(message) = report
+            .thinking
+            .as_ref()
+            .and_then(thinking_optimization_log_message)
+        {
+            log::info!("{message}");
+        }
+        if let Some(message) = report.cache.as_ref().and_then(cache_injection_log_message) {
+            log::info!("{message}");
+        }
+        body
+    }
+
     fn prepare_provider_request_body(
         &self,
         input: ForwarderProviderRequestBodyInput<'_>,
@@ -14357,6 +14388,56 @@ mod tests {
         assert_eq!(
             CopilotOptimizerConfig::default().warmup_model,
             "gpt-5-mini"
+        );
+    }
+
+    #[test]
+    fn forwarder_request_source_prepares_bedrock_attempt_body() {
+        let source = CcSwitchForwarderRequestSource;
+        let provider = Provider::with_id(
+            "bedrock-provider".to_string(),
+            "Bedrock Provider".to_string(),
+            json!({
+                "env": {
+                    "CLAUDE_CODE_USE_BEDROCK": "1"
+                }
+            }),
+            None,
+        );
+        let body = json!({
+            "model": "anthropic.claude-opus-4-6-20250514-v1:0",
+            "max_tokens": 16384,
+            "tools": [{"name": "tool1"}],
+            "system": [{"type": "text", "text": "sys prompt"}],
+            "messages": [
+                {"role": "user", "content": [{"type": "text", "text": "hi"}]},
+                {"role": "assistant", "content": [
+                    {"type": "text", "text": "hello"}
+                ]}
+            ]
+        });
+        let config = OptimizerConfig {
+            enabled: true,
+            thinking_optimizer: true,
+            cache_injection: true,
+            cache_ttl: "1h".to_string(),
+        };
+
+        let prepared = source.prepare_attempt_body(ForwarderAttemptBodyInput {
+            body: &body,
+            provider: &provider,
+            config: &config,
+        });
+
+        assert_eq!(body.get("thinking"), None);
+        assert_eq!(prepared["thinking"]["type"], "adaptive");
+        assert_eq!(prepared["output_config"]["effort"], "max");
+        assert!(prepared["tools"][0].get("cache_control").is_some());
+        assert!(prepared["system"][0].get("cache_control").is_some());
+        assert!(
+            prepared["messages"][1]["content"][0]
+                .get("cache_control")
+                .is_some()
         );
     }
 

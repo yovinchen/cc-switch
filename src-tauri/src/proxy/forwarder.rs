@@ -8,11 +8,10 @@ use super::{
     route_attempt::ForwardAttempt,
 };
 use crate::proxy_core_adapter::{
-    apply_bedrock_pre_send_optimizers, build_retryable_forward_failure_log,
-    build_terminal_forward_failure_log,
-    cache_injection_log_message, categorize_forward_failure,
+    build_retryable_forward_failure_log, build_terminal_forward_failure_log,
+    categorize_forward_failure,
     forward_upstream_url_plan,
-    forwarder_apply_codex_chat_upstream_model, forwarder_bedrock_env_flag,
+    forwarder_apply_codex_chat_upstream_model,
     forwarder_codex_chat_reasoning_options,
     forward_failure_kind_from_proxy_error, forwarder_should_convert_codex_responses_to_chat,
     forwarder_is_full_url_provider,
@@ -25,12 +24,12 @@ use crate::proxy_core_adapter::{
     provider_adapter_name_is_claude,
     forwarder_claude_api_format, forwarder_claude_transform_required,
     responses_to_chat_completions_with_options,
-    should_apply_bedrock_pre_send_optimizer,
     should_failover_after_rectifier_retry_failure,
-    supports_reasoning_effort, thinking_optimization_log_message,
-    AttemptEventPhase, CopilotOptimizerConfig, ForwardFailureCategory, ForwardUpstreamUrlPlanInput,
-    ForwarderAuthHeadersInput, ForwarderAuthSourceRef, ForwarderCopilotAuthOptimizationInput,
-    ForwarderClaudeBodyPolicyInput, ForwarderCopilotRequestOptimizationInput,
+    supports_reasoning_effort, AttemptEventPhase, CopilotOptimizerConfig,
+    ForwardFailureCategory, ForwardUpstreamUrlPlanInput,
+    ForwarderAttemptBodyInput, ForwarderAuthHeadersInput, ForwarderAuthSourceRef,
+    ForwarderCopilotAuthOptimizationInput, ForwarderClaudeBodyPolicyInput,
+    ForwarderCopilotRequestOptimizationInput,
     ForwarderMediaPreventionInput,
     ForwarderMediaRetryPlanInput, ForwarderProviderRequestBodyInput,
     ForwarderRequestRectifierPlan,
@@ -45,7 +44,7 @@ use crate::proxy_core_adapter::{
 #[cfg(test)]
 use crate::proxy_core_adapter::{
     build_codex_oauth_session_headers, prepare_upstream_request_body_with_report,
-    forwarder_is_codex_oauth_provider, provider_router_from_database,
+    forwarder_bedrock_env_flag, forwarder_is_codex_oauth_provider, provider_router_from_database,
     should_preserve_exact_request_header_case,
     validate_managed_account_upstream_auth,
 };
@@ -475,28 +474,13 @@ impl RequestForwarder {
             }
             self.emit_attempt_started(request_id, app_type_str, attempt);
 
-            // PRE-SEND 优化器：每个 provider 独立决定是否优化
-            // clone body 以避免 Bedrock 优化字段泄漏到非 Bedrock provider（failover 场景）
-            let mut provider_body = if should_apply_bedrock_pre_send_optimizer(
-                self.optimizer_config.enabled,
-                forwarder_bedrock_env_flag(provider),
-            ) {
-                let mut b = body.clone();
-                let report = apply_bedrock_pre_send_optimizers(&mut b, &self.optimizer_config);
-                if let Some(message) = report
-                    .thinking
-                    .as_ref()
-                    .and_then(thinking_optimization_log_message)
-                {
-                    log::info!("{message}");
-                }
-                if let Some(message) = report.cache.as_ref().and_then(cache_injection_log_message) {
-                    log::info!("{message}");
-                }
-                b
-            } else {
-                body.clone()
-            };
+            let mut provider_body =
+                self.request_source
+                    .prepare_attempt_body(ForwarderAttemptBodyInput {
+                        body: &body,
+                        provider,
+                        config: &self.optimizer_config,
+                    });
 
             attempted_providers += 1;
 
