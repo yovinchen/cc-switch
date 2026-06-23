@@ -1121,6 +1121,7 @@
 本轮继续把 `CcSwitchProxyRuntime` 到 `ForwarderRuntimeHostResources` 的资源包构造收敛到 `proxy_core_adapter::forwarder_runtime_host_resources_from_runtime`：host forward runtime 只把 runtime 交给 adapter，转发链所需 router/status/event/history/failover/AppHandle 克隆集中在 adapter 边界内。
 本轮继续把 `HostForwardRuntime for CcSwitchProxyRuntime` 的 forwarding bridge 调用收敛到 `proxy_core_adapter::forward_proxy_request_with_cc_switch_runtime`：host trait impl 只转交 `self/request/plan`，adapter 负责取 DB、构造 runtime resources 并进入现有 forwarding bridge。
 本轮继续把 `ProxyServiceRuntimeResources` 与 `HostForwardRuntime` for `CcSwitchProxyRuntime` 两个 runtime trait impl 移入 `proxy_core_adapter`：`proxy_core_host` 只声明 runtime 资源字段和 `CcSwitchProxyServices` 类型别名，adapter 负责把 host runtime 投影成 core service/forwarding 能力。
+本轮继续把 `CcSwitchProxyRuntime` 数据结构和具体 `CcSwitchProxyServices<CcSwitchProxyRuntime>` alias 移入 `proxy_core_adapter`：`proxy_core_host` 仅保留旧模块路径的兼容 re-export，生产版 host 文件不再定义 runtime 数据形状。
 
 当前原则：核心 crate 可以新增端口和领域字段，但不得引入 `tauri`、`Database`、settings、commands、services 等宿主依赖；现有 runtime 行为必须继续通过 targeted tests 证明不回归。
 
