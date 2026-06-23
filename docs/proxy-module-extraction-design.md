@@ -94,7 +94,7 @@
 83. Copilot optimizer 的 orphan tool_result sanitize mutation 已迁入 `proxy-core::request_optimizer`；core 固化“只匹配紧邻上一条 assistant 的 tool_use”的 Anthropic 协议语义，host forwarder 直接调用 core mutation。
 84. Copilot optimizer 的 tool_result/text block 合并 mutation 已迁入 `proxy-core::request_optimizer`；core 负责消息内 text 吸收与连续 tool_result-only user 消息合并，host forwarder 直接调用 core mutation。
 85. Copilot optimizer 的生产调用点已从 host `copilot_optimizer` wrapper 改为直接调用 `proxy-core::request_optimizer`；测试用 host wrapper 也已删除，行为回归以 core `request_optimizer` 测试为准。
-86. 非流式响应 JSON 解析失败后的错标 SSE 嗅探、Chat/Responses 聚合选择和解析/聚合失败诊断消息已迁入 `proxy-core::response_parse`；host `handlers` 只负责按协议传入可用聚合器，解析、fallback event 分发、解析失败日志和 core 错误到现有 `ProxyError` 的映射由 `proxy::error_mapper::parse_logged_upstream_json_or_unlabeled_sse` 承接。解析失败日志的 Claude/Codex 前缀和 body lossy 投影已收敛到 adapter-owned `upstream_response_parse_failure_log_message`，handler 不再直接维护该日志格式。
+86. 非流式响应 JSON 解析失败后的错标 SSE 嗅探、Chat/Responses 聚合选择和解析/聚合失败诊断消息已迁入 `proxy-core::response_parse`；host `handlers` 只负责按协议传入 body/header/聚合事实，解析、fallback event 分发、解析失败日志和 core 错误到现有 `ProxyError` 的映射由 `proxy::error_mapper::{parse_claude_transform_upstream_json_or_unlabeled_sse,parse_codex_chat_upstream_json_or_unlabeled_sse}` 承接。解析失败日志的 Claude/Codex 前缀、body lossy 投影和未标记 SSE fallback context 选择已收敛到 adapter/error mapper，handler 不再直接维护该日志格式或协议 context。
 87. Codex Chat 上游错误体的 JSON/文本解析、非 JSON 预览截断和 Responses 风格 error envelope 归一化已迁入 `proxy-core::codex_error::normalize_codex_chat_error_body`；host handler 只负责读取上游错误 body，非 JSON warning 与 neutral error response 构造由 `proxy_core_adapter::codex_chat_error_proxy_response` 承接，Axum response bridge 由 `proxy::response_adapter::codex_chat_error_response_to_axum_response` 承接。
 88. 转换后 JSON 响应的实体/hop-by-hop/header content-type 重建策略，以及转换后 SSE 响应的固定 `text/event-stream`/`no-cache` 头，已迁入 `proxy-core::response_headers`；host 只负责把 core header 集合写入 Axum response builder。
 89. 转换后 JSON 响应的 header 重建、body 序列化和 neutral `ProxyCoreResponse` 构造已迁入 `proxy-core::response_build::rebuilt_json_proxy_response`；host `handlers` 不再直接调用 core builder 或选择 Claude/Codex build context，而是通过 `proxy::response_adapter` 的协议专用 JSON helper 完成 build-error 映射和 Axum bridge。
@@ -1012,6 +1012,7 @@
 本轮继续把上游响应解析/聚合失败日志的协议前缀与 body lossy 投影收敛到 adapter，`handlers` 不再直接调用 `String::from_utf8_lossy` 拼日志。
 本轮继续把未标记 SSE fallback 诊断 event 的 debug/warn 分发收敛到 adapter，`handlers` 不再直接匹配 `UnlabeledSseFallbackLogLevel`。
 本轮继续把非流式上游 JSON/错标 SSE 解析、解析失败日志、fallback event 分发和 response body parse error 映射收敛到 `error_mapper` helper，`handlers` 不再直接调用 core parse helper 或 parse-error adapter。
+本轮继续把 Claude/Codex 非流式上游响应解析失败文案、`UpstreamResponseParseFailureLogContext` 和 `UnlabeledSseFallbackLogContext` 选择收敛到 `error_mapper` 协议专用 helper，`handlers` 不再直接维护 parse/fallback context。
 本轮继续把转换后 JSON/SSE 的 core response builder 调用、构造失败映射和 Axum bridge 收敛到 `response_adapter` helper，Claude/Codex transform handler 不再直接调用 `rebuilt_json_proxy_response` 或 `transformed_sse_proxy_response`。
 本轮继续把 Claude/Codex transform 正常响应的 JSON/SSE build context 选择收敛到 `response_adapter` 协议专用 helper，handler 不再直接引用 `CoreResponseBuildFailureContext::{ClaudeJson,CodexResponses}` 或对应 `AxumResponseBuildErrorContext`。
 本轮继续把 Claude 非流式响应转换的 api_format 分发收敛到 `proxy_core_adapter::provider_claude_transform_response_for_api_format`，handler 不再直接调用 OpenAI/Gemini 响应转换函数或维护 Gemini rectifier 日志循环。
