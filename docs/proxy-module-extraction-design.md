@@ -94,7 +94,7 @@
 83. Copilot optimizer 的 orphan tool_result sanitize mutation 已迁入 `proxy-core::request_optimizer`；core 固化“只匹配紧邻上一条 assistant 的 tool_use”的 Anthropic 协议语义，host forwarder 直接调用 core mutation。
 84. Copilot optimizer 的 tool_result/text block 合并 mutation 已迁入 `proxy-core::request_optimizer`；core 负责消息内 text 吸收与连续 tool_result-only user 消息合并，host forwarder 直接调用 core mutation。
 85. Copilot optimizer 的生产调用点已从 host `copilot_optimizer` wrapper 改为直接调用 `proxy-core::request_optimizer`；测试用 host wrapper 也已删除，行为回归以 core `request_optimizer` 测试为准。
-86. 非流式响应 JSON 解析失败后的错标 SSE 嗅探、Chat/Responses 聚合选择和解析/聚合失败诊断消息已迁入 `proxy-core::response_parse`；host `handlers` 只负责按协议传入可用聚合器、注入缺失 chat completion id 的 UUID，并把 core 错误映射回现有 `ProxyError`。解析失败日志的 Claude/Codex 前缀和 body lossy 投影已收敛到 adapter-owned `upstream_response_parse_failure_log_message`，handler 不再直接维护该日志格式。
+86. 非流式响应 JSON 解析失败后的错标 SSE 嗅探、Chat/Responses 聚合选择和解析/聚合失败诊断消息已迁入 `proxy-core::response_parse`；host `handlers` 只负责按协议传入可用聚合器，解析、fallback event 分发、解析失败日志和 core 错误到现有 `ProxyError` 的映射由 `proxy::error_mapper::parse_logged_upstream_json_or_unlabeled_sse` 承接。解析失败日志的 Claude/Codex 前缀和 body lossy 投影已收敛到 adapter-owned `upstream_response_parse_failure_log_message`，handler 不再直接维护该日志格式。
 87. Codex Chat 上游错误体的 JSON/文本解析、非 JSON 预览截断和 Responses 风格 error envelope 归一化已迁入 `proxy-core::codex_error::normalize_codex_chat_error_body`；host handler 只负责读取 body 并桥接 Axum response，非 JSON warning 与 neutral error response 构造由 `proxy_core_adapter::codex_chat_error_proxy_response` 承接。
 88. 转换后 JSON 响应的实体/hop-by-hop/header content-type 重建策略，以及转换后 SSE 响应的固定 `text/event-stream`/`no-cache` 头，已迁入 `proxy-core::response_headers`；host 只负责把 core header 集合写入 Axum response builder。
 89. 转换后 JSON 响应的 header 重建、body 序列化和 neutral `ProxyCoreResponse` 构造已迁入 `proxy-core::response_build::rebuilt_json_proxy_response`；host `handlers` 只保留 `ProxyCoreResponse -> Axum Response` transport adapter 和错误映射。
@@ -1011,6 +1011,7 @@
 本轮继续把 Axum response builder 失败上下文投影收敛到 adapter，`handlers` 与 `response_processor` 不再直接维护 Claude/Codex/通用 tag 的 build-error 文案。
 本轮继续把上游响应解析/聚合失败日志的协议前缀与 body lossy 投影收敛到 adapter，`handlers` 不再直接调用 `String::from_utf8_lossy` 拼日志。
 本轮继续把未标记 SSE fallback 诊断 event 的 debug/warn 分发收敛到 adapter，`handlers` 不再直接匹配 `UnlabeledSseFallbackLogLevel`。
+本轮继续把非流式上游 JSON/错标 SSE 解析、解析失败日志、fallback event 分发和 response body parse error 映射收敛到 `error_mapper` helper，`handlers` 不再直接调用 core parse helper 或 parse-error adapter。
 本轮继续把 Codex Chat 错误体归一化后的非 JSON warning 输出与 Responses 错误体 neutral response 构造收敛到 adapter，`handlers` 不再直接调用 `normalize_codex_chat_error_body` 或 `non_json_body_log_message`。
 本轮继续把转换后 JSON/Codex 错误响应构造失败的日志上下文和 `ProxyCoreError -> ProxyError` 映射收敛到 `error_mapper`，`handlers` 不再直接维护这些构造失败文案。
 本轮继续把 Claude/Codex 响应转换失败的日志上下文和 `TransformError` 包装收敛到 `error_mapper`，`handlers` 不再直接维护响应转换失败文案。
