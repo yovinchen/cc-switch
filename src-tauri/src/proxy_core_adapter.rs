@@ -8861,6 +8861,10 @@ pub(crate) fn provider_bedrock_env_flag(provider: &Provider) -> Option<&str> {
     bedrock_env_flag_from_provider_settings(&provider.settings_config)
 }
 
+pub(crate) fn forwarder_bedrock_env_flag(provider: &Provider) -> Option<&str> {
+    provider_bedrock_env_flag(provider)
+}
+
 pub(crate) use crate::proxy_core::api::usage::{
     is_placeholder_pricing_model,
     non_streaming_response_usage_record_from_body_with_request_id_fallback,
@@ -18275,6 +18279,7 @@ command = "latest-command"
             provider_custom_user_agent_header(&provider, false).expect("custom user agent");
         let copilot_provider_user_agent = provider_custom_user_agent_header(&provider, true);
         assert_eq!(provider_bedrock_env_flag(&provider), Some("1"));
+        assert_eq!(forwarder_bedrock_env_flag(&provider), Some("1"));
         let mut codex_provider = Provider::with_id(
             "codex-oauth".to_string(),
             "Codex OAuth".to_string(),

@@ -26,6 +26,7 @@ use crate::proxy_core_adapter::{
     classify_copilot_request, contains_image_blocks,
     emit_attempt_event_source, emit_request_started_event_source, forward_upstream_url_plan,
     forwarder_apply_codex_chat_upstream_model,
+    forwarder_bedrock_env_flag,
     forwarder_codex_chat_reasoning_options,
     forward_failure_kind_from_proxy_error, forwarder_should_convert_codex_responses_to_chat,
     forwarder_is_codex_oauth_provider, forwarder_uses_anthropic_rectifiers,
@@ -33,7 +34,6 @@ use crate::proxy_core_adapter::{
     is_unsupported_image_error, allow_forward_attempt_runtime_source, merge_copilot_tool_results,
     non_streaming_body_timeout_message, normalize_thinking_type,
     prepare_upstream_request_body_with_report, prompt_cache_trace_log_message,
-    provider_bedrock_env_flag,
     forwarder_claude_normalize_anthropic_messages,
     forwarder_claude_transform_request_for_api_format, provider_custom_user_agent_header,
     provider_adapter_name_is_claude,
@@ -597,7 +597,7 @@ impl RequestForwarder {
             // clone body 以避免 Bedrock 优化字段泄漏到非 Bedrock provider（failover 场景）
             let mut provider_body = if should_apply_bedrock_pre_send_optimizer(
                 self.optimizer_config.enabled,
-                provider_bedrock_env_flag(provider),
+                forwarder_bedrock_env_flag(provider),
             ) {
                 let mut b = body.clone();
                 let report = apply_bedrock_pre_send_optimizers(&mut b, &self.optimizer_config);
@@ -1836,7 +1836,7 @@ mod tests {
             }
         });
 
-        assert_eq!(provider_bedrock_env_flag(&provider), Some("1"));
+        assert_eq!(forwarder_bedrock_env_flag(&provider), Some("1"));
     }
 
     fn test_forwarder(
