@@ -8923,6 +8923,10 @@ pub(crate) fn provider_custom_user_agent_header(
         .and_then(|meta| meta.custom_user_agent_header().ok().flatten())
 }
 
+pub(crate) fn model_fetch_custom_user_agent_header(raw: Option<&str>) -> Option<http::HeaderValue> {
+    crate::provider::parse_custom_user_agent(raw).ok().flatten()
+}
+
 pub(crate) fn forwarder_custom_user_agent_header(
     provider: &Provider,
     is_copilot: bool,
@@ -18446,6 +18450,11 @@ command = "latest-command"
         let provider_user_agent =
             provider_custom_user_agent_header(&provider, false).expect("custom user agent");
         let copilot_provider_user_agent = provider_custom_user_agent_header(&provider, true);
+        let model_fetch_user_agent =
+            model_fetch_custom_user_agent_header(Some(" cc-switch-model-fetch/1.0 "))
+                .expect("model fetch custom user agent");
+        assert!(model_fetch_custom_user_agent_header(Some("   ")).is_none());
+        assert!(model_fetch_custom_user_agent_header(Some("bad\nua")).is_none());
         let forwarder_user_agent =
             forwarder_custom_user_agent_header(&provider, false).expect("custom user agent");
         let forwarder_copilot_user_agent = forwarder_custom_user_agent_header(&provider, true);
@@ -18504,6 +18513,10 @@ command = "latest-command"
         assert!(forwarder_provider_is_full_url);
         assert_eq!(provider_user_agent, http::HeaderValue::from_static("cc-switch-test/1.0"));
         assert!(copilot_provider_user_agent.is_none());
+        assert_eq!(
+            model_fetch_user_agent,
+            http::HeaderValue::from_static("cc-switch-model-fetch/1.0")
+        );
         assert_eq!(
             forwarder_user_agent,
             http::HeaderValue::from_static("cc-switch-test/1.0")

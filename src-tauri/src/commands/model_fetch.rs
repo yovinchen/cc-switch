@@ -2,7 +2,7 @@
 //!
 //! 提供 Tauri 命令，供前端在供应商表单中获取可用模型列表。
 
-use crate::proxy_core_adapter::FetchedModel;
+use crate::proxy_core_adapter::{model_fetch_custom_user_agent_header, FetchedModel};
 
 /// 获取供应商的可用模型列表
 ///
@@ -17,9 +17,7 @@ pub async fn fetch_models_for_config(
     custom_user_agent: Option<String>,
 ) -> Result<Vec<FetchedModel>, String> {
     // 与转发 / 检测路径共用 parse_custom_user_agent：非法 UA 静默忽略（不阻断取模型）。
-    let user_agent = crate::provider::parse_custom_user_agent(custom_user_agent.as_deref())
-        .ok()
-        .flatten();
+    let user_agent = model_fetch_custom_user_agent_header(custom_user_agent.as_deref());
     crate::services::model_fetch_transport::fetch_openai_compatible_models(
         &base_url,
         &api_key,

@@ -124,6 +124,8 @@ const FORBIDDEN_MODEL_FETCH_TRANSPORT_DTO_EXPORT_MARKERS: &[&str] =
     &["pub use crate::proxy_core::api::model_catalog::FetchedModel"];
 const FORBIDDEN_MODEL_FETCH_COMMAND_DTO_IMPORT_MARKERS: &[&str] =
     &["services::model_fetch_transport::FetchedModel"];
+const FORBIDDEN_MODEL_FETCH_COMMAND_PROVIDER_DETAIL_MARKERS: &[&str] =
+    &["crate::provider::parse_custom_user_agent("];
 const FORBIDDEN_FORWARDER_MANAGED_AUTH_MARKERS: &[&str] = &[
     "CopilotAuthState",
     "CodexOAuthState",
@@ -3755,6 +3757,33 @@ fn model_fetch_commands_use_adapter_dto_entrypoint() {
     assert!(
         violations.is_empty(),
         "model fetch commands must use proxy_core_adapter as the FetchedModel DTO entrypoint:\n{}",
+        violations.join("\n")
+    );
+}
+
+#[test]
+fn model_fetch_command_delegates_user_agent_parsing_to_adapter() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let path = manifest_dir.join("src/commands/model_fetch.rs");
+    let source = fs::read_to_string(&path).expect("read model_fetch.rs");
+
+    let mut violations = Vec::new();
+    for (line_index, line) in production_lines(&source) {
+        let code = line.split("//").next().unwrap_or_default();
+        for marker in FORBIDDEN_MODEL_FETCH_COMMAND_PROVIDER_DETAIL_MARKERS {
+            if code.contains(marker) {
+                violations.push(format!(
+                    "src/commands/model_fetch.rs:{} contains provider detail marker `{}`",
+                    line_index + 1,
+                    marker
+                ));
+            }
+        }
+    }
+
+    assert!(
+        violations.is_empty(),
+        "model fetch command must delegate provider-specific User-Agent parsing to proxy_core_adapter:\n{}",
         violations.join("\n")
     );
 }
