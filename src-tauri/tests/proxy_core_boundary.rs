@@ -182,6 +182,8 @@ const FORBIDDEN_PROXY_SERVICE_CURRENT_PROVIDER_SOURCE_MARKERS: &[&str] = &[
 const FORBIDDEN_PROXY_SERVICE_LIVE_TOKEN_SYNC_SOURCE_MARKERS: &[&str] = &[
     "get_effective_current_provider(&self.db, &AppType::",
     ".get_provider_by_id(&provider_id,",
+    ".update_provider_settings_config(",
+    "同步 {app_label} Token 到数据库失败",
     "match app_type",
 ];
 const FORBIDDEN_PROXY_SERVICE_TAKEOVER_ENABLED_CONFIG_MARKERS: &[&str] = &[

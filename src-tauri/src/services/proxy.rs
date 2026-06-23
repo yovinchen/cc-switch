@@ -47,8 +47,9 @@ use crate::proxy_core_adapter::{
     remove_gemini_takeover_env_fields_if_present, set_proxy_app_enabled_in_db,
     set_legacy_live_takeover_active_best_effort_in_db,
     set_legacy_live_takeover_active_in_db, should_block_proxy_switch_to_provider,
-    CircuitBreakerConfig, CodexTakeoverAuthPolicy, LiveTokenProviderSettingsIssue, ProxyConfig,
-    ProxyRuntimeStatus, ProxyServerInfo, ProxyTakeoverStatus,
+    update_live_token_sync_provider_settings_in_db, CircuitBreakerConfig, CodexTakeoverAuthPolicy,
+    LiveTokenProviderSettingsIssue, ProxyConfig, ProxyRuntimeStatus, ProxyServerInfo,
+    ProxyTakeoverStatus,
 };
 use crate::services::provider::{
     build_effective_settings_with_common_config, write_live_with_common_config,
@@ -508,15 +509,13 @@ impl ProxyService {
             &mut provider,
             live_config,
         ) {
-            if let Err(e) = self.db.update_provider_settings_config(
-                app_type.as_str(),
+            update_live_token_sync_provider_settings_in_db(
+                &self.db,
+                app_type,
+                app_label,
                 &provider_id,
                 &provider.settings_config,
-            ) {
-                log::warn!("同步 {app_label} Token 到数据库失败: {e}");
-            } else {
-                log::info!("已同步 {app_label} Token 到数据库 (provider: {provider_id})");
-            }
+            );
         }
 
         Ok(())

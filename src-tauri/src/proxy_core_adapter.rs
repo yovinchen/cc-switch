@@ -3075,6 +3075,22 @@ pub(crate) fn live_token_sync_provider_from_db(
         .flatten())
 }
 
+pub(crate) fn update_live_token_sync_provider_settings_in_db(
+    db: &Database,
+    app_type: &AppType,
+    app_label: &str,
+    provider_id: &str,
+    settings_config: &Value,
+) {
+    if let Err(e) =
+        db.update_provider_settings_config(app_type.as_str(), provider_id, settings_config)
+    {
+        log::warn!("同步 {app_label} Token 到数据库失败: {e}");
+    } else {
+        log::info!("已同步 {app_label} Token 到数据库 (provider: {provider_id})");
+    }
+}
+
 pub(crate) struct ProxyEventBusMessage {
     pub(crate) event_name: String,
     pub(crate) payload: Value,
