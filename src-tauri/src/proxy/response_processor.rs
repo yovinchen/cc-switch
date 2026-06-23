@@ -20,12 +20,12 @@ use crate::proxy_core_adapter::{
     non_streaming_body_timeout_message, non_streaming_response_usage_record_from_response_context,
     NonStreamingResponseUsageContext, passthrough_bytes_proxy_response,
     passthrough_stream_proxy_response,
-    record_usage_with_proxy_services,
     response_headers_indicate_sse, response_headers_log_summary,
     response_usage_provider_facts_from_optional,
+    spawn_usage_record_with_proxy_services,
     streaming_response_usage_record_from_response_context, StreamingResponseUsageContext,
     usage_logging_enabled_from_config_flag, ResponseBodyDecodeLogLevel, SseUsageCollector,
-    UsageParserConfig, UsageRecord, UsageSelectedProviderMissingPhase,
+    UsageParserConfig, UsageSelectedProviderMissingPhase,
 };
 #[cfg(test)]
 use crate::proxy_core_adapter::{provider_router_from_database, ProviderKind, TokenUsage};
@@ -178,7 +178,7 @@ pub async fn handle_non_streaming(
             log::debug!("{}", event.message(ctx.tag, parser_config.app_type_str));
         }
 
-        spawn_record_usage(state, output.record);
+        spawn_usage_record_with_proxy_services(state.proxy_core_services.clone(), output.record);
     } else {
         log::debug!("[{}] usage logging 已关闭，跳过非流式 usage 解析", ctx.tag);
     }
@@ -272,7 +272,7 @@ fn create_usage_collector(
                 log::debug!("{message}");
             }
 
-            spawn_record_usage(&state, output.record);
+            spawn_usage_record_with_proxy_services(state.proxy_core_services.clone(), output.record);
         },
     ))
 }
@@ -283,13 +283,6 @@ pub(crate) fn usage_logging_enabled(state: &ProxyState) -> bool {
         .try_read()
         .ok()
         .map(|config| config.enable_logging))
-}
-
-fn spawn_record_usage(state: &ProxyState, record: UsageRecord) {
-    let services = state.proxy_core_services.clone();
-    tokio::spawn(async move {
-        record_usage_with_proxy_services(services.as_ref(), record).await;
-    });
 }
 
 /// 内部使用量记录函数
@@ -330,7 +323,11 @@ async fn log_usage_internal(
         session_id,
     );
 
-    record_usage_with_proxy_services(state.proxy_core_services.as_ref(), record).await;
+    crate::proxy_core_adapter::record_usage_with_proxy_services(
+        state.proxy_core_services.as_ref(),
+        record,
+    )
+    .await;
 }
 
 #[cfg(test)]

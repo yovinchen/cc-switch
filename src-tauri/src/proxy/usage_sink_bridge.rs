@@ -5,19 +5,21 @@ use crate::proxy::{
     server::ProxyState,
 };
 use crate::proxy_core_adapter::{
-    forward_error_usage_record_from_response_context, record_usage_with_proxy_services_context,
+    forward_error_usage_record_from_response_context,
     response_usage_provider_facts_from_optional,
+    spawn_usage_record_with_proxy_services_context,
     SseUsageCollector,
     transformed_response_usage_record_from_response_context,
     transformed_streaming_response_usage_record_from_response_context,
-    usage_logging_enabled_from_config_flag, ForwardErrorUsageContext, ProxyServices,
+    usage_logging_enabled_from_config_flag, ForwardErrorUsageContext,
     StreamUsageEventFilter, TransformedResponseUsageContext, TransformedResponseUsageFormat,
-    TransformedStreamingResponseUsageContext, UsageRecord, UsageRecordFailureLogContext,
+    TransformedStreamingResponseUsageContext, UsageRecordFailureLogContext,
     UsageSelectedProviderMissingPhase,
 };
 #[cfg(test)]
 use crate::proxy_core_adapter::{
     success_usage_record_from_app_type_with_request_id_fallback, ProviderKind, TokenUsage,
+    UsageRecord,
 };
 use serde_json::Value;
 
@@ -78,7 +80,11 @@ pub(crate) fn record_forward_error_usage(
     );
 
     let services = state.proxy_core_services.clone();
-    spawn_usage_record(services, record, UsageRecordFailureLogContext::ForwardError);
+    spawn_usage_record_with_proxy_services_context(
+        services,
+        record,
+        UsageRecordFailureLogContext::ForwardError,
+    );
 }
 
 pub(crate) fn record_transformed_response_usage(
@@ -117,7 +123,11 @@ pub(crate) fn record_transformed_response_usage(
     };
 
     let services = state.proxy_core_services.clone();
-    spawn_usage_record(services, record, UsageRecordFailureLogContext::UsageRecord);
+    spawn_usage_record_with_proxy_services_context(
+        services,
+        record,
+        UsageRecordFailureLogContext::UsageRecord,
+    );
 }
 
 pub(crate) fn transformed_streaming_usage_collector(
@@ -176,7 +186,11 @@ pub(crate) fn transformed_streaming_usage_collector(
             };
 
             let services = services.clone();
-            spawn_usage_record(services, record, UsageRecordFailureLogContext::UsageRecord);
+            spawn_usage_record_with_proxy_services_context(
+                services,
+                record,
+                UsageRecordFailureLogContext::UsageRecord,
+            );
         },
     ))
 }
@@ -189,18 +203,6 @@ fn usage_logging_enabled(state: &ProxyState) -> bool {
             .ok()
             .map(|config| config.enable_logging),
     )
-}
-
-fn spawn_usage_record<S>(
-    services: std::sync::Arc<S>,
-    record: UsageRecord,
-    failure_context: UsageRecordFailureLogContext,
-) where
-    S: ProxyServices + Send + Sync + 'static,
-{
-    tokio::spawn(async move {
-        record_usage_with_proxy_services_context(services.as_ref(), record, failure_context).await;
-    });
 }
 
 #[cfg(test)]

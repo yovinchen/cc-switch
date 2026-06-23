@@ -782,6 +782,8 @@ const FORBIDDEN_RESPONSE_PROCESSOR_USAGE_PROVIDER_PROJECTION_MARKERS: &[&str] = 
     "usage_record_debug_log_message(",
     "usage_record_failure_warning_message(",
     "UsageRecordFailureLogContext::UsageRecord",
+    "fn spawn_record_usage(",
+    "tokio::spawn(async move",
     "streaming_response_usage_record_with_optional_outbound_model(",
     "non_streaming_response_usage_record_from_body_with_request_id_fallback(",
     "non_streaming_response_usage_record_from_provider_body_with_request_id_fallback(",
@@ -809,6 +811,9 @@ const FORBIDDEN_USAGE_SINK_PROVIDER_PROJECTION_MARKERS: &[&str] = &[
     "error_usage_record_with_request_id_fallback(",
     "transformed_response_usage_record_with_request_id_fallback(",
     "transformed_streaming_response_usage_record_with_request_id_fallback(",
+    "record_usage_with_proxy_services_context(",
+    "fn spawn_usage_record(",
+    "tokio::spawn(async move",
 ];
 const PROXY_CORE_MARKER: &str = "crate::proxy_core::";
 const PROXY_CORE_API_MARKER: &str = "crate::proxy_core::api";

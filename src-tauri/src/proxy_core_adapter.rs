@@ -7284,6 +7284,7 @@ pub(crate) struct UsagePricingConfigLookup {
     pub(crate) app_type: String,
 }
 
+#[cfg(test)]
 pub(crate) async fn record_usage_with_proxy_services(
     services: &(dyn ProxyServices + Send + Sync),
     record: UsageRecord,
@@ -7294,6 +7295,29 @@ pub(crate) async fn record_usage_with_proxy_services(
         UsageRecordFailureLogContext::UsageRecord,
     )
     .await
+}
+
+pub(crate) fn spawn_usage_record_with_proxy_services<S>(services: Arc<S>, record: UsageRecord)
+where
+    S: ProxyServices + Send + Sync + 'static,
+{
+    spawn_usage_record_with_proxy_services_context(
+        services,
+        record,
+        UsageRecordFailureLogContext::UsageRecord,
+    );
+}
+
+pub(crate) fn spawn_usage_record_with_proxy_services_context<S>(
+    services: Arc<S>,
+    record: UsageRecord,
+    failure_context: UsageRecordFailureLogContext,
+) where
+    S: ProxyServices + Send + Sync + 'static,
+{
+    tokio::spawn(async move {
+        record_usage_with_proxy_services_context(services.as_ref(), record, failure_context).await;
+    });
 }
 
 pub(crate) async fn record_usage_with_proxy_services_context(
