@@ -8002,6 +8002,7 @@ pub(crate) trait ForwarderRuntimeStateSource {
         rectifier_label: &'a str,
         error_message: &'a str,
     ) -> BoxFuture<'a, ()>;
+    fn should_failover_after_rectifier_retry_failure(&self, error: &ProxyError) -> bool;
     fn record_request_started<'a>(&'a self, started_at: &'a str) -> BoxFuture<'a, ()>;
     fn record_active_connection_acquired<'a>(&'a self) -> BoxFuture<'a, ()>;
     fn record_active_connection_released<'a>(&'a self) -> BoxFuture<'a, ()>;
@@ -8147,6 +8148,11 @@ impl ForwarderRuntimeStateSource for CcSwitchForwarderRuntimeStateSource {
             )
             .await;
         })
+    }
+
+    fn should_failover_after_rectifier_retry_failure(&self, error: &ProxyError) -> bool {
+        let failure = forward_failure_kind_from_proxy_error(error);
+        should_failover_after_rectifier_retry_failure(&failure)
     }
 
     fn record_request_started<'a>(&'a self, started_at: &'a str) -> BoxFuture<'a, ()> {
@@ -15060,6 +15066,31 @@ base_url = "https://api.openai.com/v1"
             ForwarderAnthropicRectifierGateInput {
                 app_type: &AppType::Claude,
                 provider: &default_claude_provider,
+            },
+        ));
+    }
+
+    #[test]
+    fn forwarder_runtime_state_source_classifies_rectifier_retry_failover() {
+        let source = CcSwitchForwarderRuntimeStateSource::new(
+            Arc::new(RwLock::new(ProxyRuntimeStatus::default())),
+            Arc::new(RwLock::new(HashMap::new())),
+            Arc::new(ProxyEventBus::default()),
+        );
+
+        assert!(source.should_failover_after_rectifier_retry_failure(
+            &ProxyError::Timeout("upstream timed out".to_string()),
+        ));
+        assert!(source.should_failover_after_rectifier_retry_failure(
+            &ProxyError::UpstreamError {
+                status: 502,
+                body: Some("bad gateway".to_string()),
+            },
+        ));
+        assert!(!source.should_failover_after_rectifier_retry_failure(
+            &ProxyError::UpstreamError {
+                status: 400,
+                body: Some("invalid request".to_string()),
             },
         ));
     }

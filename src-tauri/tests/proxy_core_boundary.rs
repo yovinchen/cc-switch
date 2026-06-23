@@ -5764,7 +5764,12 @@ fn production_forwarder_uses_runtime_state_source_resource() {
         "current_providers: Arc<RwLock",
         "events: Arc<ProxyEventBus>",
     ];
-    let impl_forbidden_markers = ["self.status", "self.current_providers", "self.events"];
+    let impl_forbidden_markers = [
+        "self.status",
+        "self.current_providers",
+        "self.events",
+        "= should_failover_after_rectifier_retry_failure(",
+    ];
     let mut violations = Vec::new();
 
     for (line_index, line) in production_lines(struct_slice) {

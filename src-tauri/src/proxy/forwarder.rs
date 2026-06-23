@@ -13,7 +13,6 @@ use crate::proxy_core_adapter::{
     forward_failure_kind_from_proxy_error,
     forwarder_provider_adapter_for_app,
     ForwarderAdapterHandle,
-    should_failover_after_rectifier_retry_failure,
     AttemptEventPhase, CopilotOptimizerConfig,
     ForwardFailureCategory, ForwarderAdapterFactsInput, ForwarderAnthropicRectifierGateInput,
     ForwarderAttemptBodyInput, ForwarderAuthHeadersInput, ForwarderAuthSourceRef,
@@ -321,8 +320,9 @@ impl RequestForwarder {
         let provider = attempt.provider();
         // Provider 错误：本家上游/网络确实出问题，下一家 provider 可能可用 → 继续故障转移。
         // 客户端错误：整流后请求仍违法，下一家也修不好 → 直接返回。
-        let failure = forward_failure_kind_from_proxy_error(&retry_err);
-        let is_provider_error = should_failover_after_rectifier_retry_failure(&failure);
+        let is_provider_error = self
+            .runtime_state_source
+            .should_failover_after_rectifier_retry_failure(&retry_err);
 
         if is_provider_error {
             let retry_error_message = retry_err.to_string();
