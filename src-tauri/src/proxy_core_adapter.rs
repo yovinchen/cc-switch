@@ -4757,6 +4757,28 @@ pub(crate) async fn auto_failover_enabled_from_router_db(
     )
 }
 
+pub(crate) fn proxy_takeover_status_from_config_results(
+    claude: Result<AppProxyConfig, AppError>,
+    codex: Result<AppProxyConfig, AppError>,
+    gemini: Result<AppProxyConfig, AppError>,
+) -> ProxyTakeoverStatus {
+    proxy_takeover_status_from_parts(
+        claude.map(|config| config.enabled).unwrap_or(false),
+        codex.map(|config| config.enabled).unwrap_or(false),
+        gemini.map(|config| config.enabled).unwrap_or(false),
+        false,
+        false,
+    )
+}
+
+pub(crate) async fn proxy_takeover_status_from_db(db: &Database) -> ProxyTakeoverStatus {
+    proxy_takeover_status_from_config_results(
+        db.get_proxy_config_for_app(AppType::Claude.as_str()).await,
+        db.get_proxy_config_for_app(AppType::Codex.as_str()).await,
+        db.get_proxy_config_for_app(AppType::Gemini.as_str()).await,
+    )
+}
+
 #[derive(Debug, Clone)]
 pub(crate) struct AutoFailoverToggleDbPlan {
     pub(crate) config: AppProxyConfig,
@@ -14255,6 +14277,30 @@ base_url = "https://api.openai.com/v1"
         assert!(takeover.gemini);
         assert!(!takeover.opencode);
         assert!(!takeover.openclaw);
+        let app_config = |app_type: &str, enabled: bool| AppProxyConfig {
+            app_type: app_type.to_string(),
+            enabled,
+            auto_failover_enabled: true,
+            max_retries: 3,
+            streaming_first_byte_timeout: 60,
+            streaming_idle_timeout: 120,
+            non_streaming_timeout: 600,
+            circuit_failure_threshold: 4,
+            circuit_success_threshold: 2,
+            circuit_timeout_seconds: 60,
+            circuit_error_rate_threshold: 0.6,
+            circuit_min_requests: 10,
+        };
+        let takeover_from_config = proxy_takeover_status_from_config_results(
+            Ok(app_config("claude", true)),
+            Err(AppError::Config("missing codex config".to_string())),
+            Ok(app_config("gemini", true)),
+        );
+        assert!(takeover_from_config.claude);
+        assert!(!takeover_from_config.codex);
+        assert!(takeover_from_config.gemini);
+        assert!(!takeover_from_config.opencode);
+        assert!(!takeover_from_config.openclaw);
 
         assert_eq!(
             proxy_live_urls_from_listen_parts("127.0.0.1", 15721),

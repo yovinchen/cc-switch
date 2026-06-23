@@ -27,9 +27,9 @@ use crate::proxy_core_adapter::{
     proxy_hot_switch_should_sync_codex_live_while_proxy_active, proxy_live_urls_from_listen_parts,
     proxy_live_config_owned_by_takeover, proxy_runtime_status_stopped,
     proxy_server_info_from_parts,
+    proxy_takeover_status_from_db,
     proxy_takeover_marked_state_is_reusable,
     proxy_takeover_should_restore_existing_backup_before_retakeover,
-    proxy_takeover_status_from_parts,
     proxy_official_warning_event_message,
     remove_codex_takeover_auth_placeholder_if_present,
     remove_codex_takeover_config_placeholders_if_present,
@@ -338,36 +338,7 @@ impl ProxyService {
 
     /// 获取各应用的接管状态（是否改写该应用的 Live 配置指向本地代理）
     pub async fn get_takeover_status(&self) -> Result<ProxyTakeoverStatus, String> {
-        // 从 proxy_config.enabled 读取（优先），兼容旧的 live_backup 备份检测
-        let claude_enabled = self
-            .db
-            .get_proxy_config_for_app("claude")
-            .await
-            .map(|c| c.enabled)
-            .unwrap_or(false);
-        let codex_enabled = self
-            .db
-            .get_proxy_config_for_app("codex")
-            .await
-            .map(|c| c.enabled)
-            .unwrap_or(false);
-        let gemini_enabled = self
-            .db
-            .get_proxy_config_for_app("gemini")
-            .await
-            .map(|c| c.enabled)
-            .unwrap_or(false);
-        // OpenCode and OpenClaw don't support proxy features, always return false
-        let opencode_enabled = false;
-        let openclaw_enabled = false;
-
-        Ok(proxy_takeover_status_from_parts(
-            claude_enabled,
-            codex_enabled,
-            gemini_enabled,
-            opencode_enabled,
-            openclaw_enabled,
-        ))
+        Ok(proxy_takeover_status_from_db(&self.db).await)
     }
 
     /// 为指定应用开启/关闭 Live 接管
