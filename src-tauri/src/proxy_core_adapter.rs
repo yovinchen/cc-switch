@@ -8572,6 +8572,12 @@ pub(crate) struct ForwarderCodexResponsesToChatInput<'a> {
     pub(crate) provider: &'a Provider,
 }
 
+pub(crate) struct ForwarderCodexResponsesToChatPlanInput<'a> {
+    pub(crate) app_type: &'a AppType,
+    pub(crate) provider: &'a Provider,
+    pub(crate) endpoint: &'a str,
+}
+
 pub(crate) struct ForwarderProviderTransformInput<'a> {
     pub(crate) adapter: &'a ForwarderAdapterHandle,
     pub(crate) body: Value,
@@ -8671,6 +8677,11 @@ pub(crate) trait ForwarderRequestSource {
         &self,
         input: ForwarderClaudeBodyPolicyInput<'_>,
     );
+
+    fn codex_responses_to_chat_enabled(
+        &self,
+        input: ForwarderCodexResponsesToChatPlanInput<'_>,
+    ) -> bool;
 
     fn convert_codex_responses_to_chat_body(
         &self,
@@ -8821,6 +8832,17 @@ impl ForwarderRequestSource for CcSwitchForwarderRequestSource {
             request_media_fallback: input.request_media_fallback,
             request_media_heuristic: input.request_media_heuristic,
         });
+    }
+
+    fn codex_responses_to_chat_enabled(
+        &self,
+        input: ForwarderCodexResponsesToChatPlanInput<'_>,
+    ) -> bool {
+        forwarder_should_convert_codex_responses_to_chat(
+            input.app_type,
+            input.provider,
+            input.endpoint,
+        )
     }
 
     fn convert_codex_responses_to_chat_body(
@@ -14565,6 +14587,47 @@ base_url = "https://api.openai.com/v1"
         assert_eq!(body["messages"][1]["content"], "Hello");
         assert_eq!(body["max_tokens"], 64);
         assert_eq!(body["stream"], true);
+    }
+
+    #[test]
+    fn forwarder_request_source_projects_codex_responses_to_chat_gate() {
+        let source = CcSwitchForwarderRequestSource;
+        let provider = Provider::with_id(
+            "codex-chat".to_string(),
+            "Codex Chat".to_string(),
+            json!({
+                "config": r#"model_provider = "openai"
+model = " upstream-model "
+
+[model_providers.openai]
+wire_api = "chat"
+base_url = "https://api.openai.com/v1"
+"#,
+            }),
+            None,
+        );
+
+        assert!(source.codex_responses_to_chat_enabled(
+            ForwarderCodexResponsesToChatPlanInput {
+                app_type: &AppType::Codex,
+                provider: &provider,
+                endpoint: "/responses",
+            },
+        ));
+        assert!(!source.codex_responses_to_chat_enabled(
+            ForwarderCodexResponsesToChatPlanInput {
+                app_type: &AppType::Claude,
+                provider: &provider,
+                endpoint: "/responses",
+            },
+        ));
+        assert!(!source.codex_responses_to_chat_enabled(
+            ForwarderCodexResponsesToChatPlanInput {
+                app_type: &AppType::Codex,
+                provider: &provider,
+                endpoint: "/chat/completions",
+            },
+        ));
     }
 
     #[test]

@@ -10,7 +10,7 @@ use super::{
 use crate::proxy_core_adapter::{
     build_retryable_forward_failure_log, build_terminal_forward_failure_log,
     categorize_forward_failure,
-    forward_failure_kind_from_proxy_error, forwarder_should_convert_codex_responses_to_chat,
+    forward_failure_kind_from_proxy_error,
     forwarder_is_full_url_provider,
     forwarder_is_github_copilot_upstream,
     forwarder_uses_anthropic_rectifiers,
@@ -25,7 +25,8 @@ use crate::proxy_core_adapter::{
     ForwardFailureCategory,
     ForwarderAttemptBodyInput, ForwarderAuthHeadersInput, ForwarderAuthSourceRef,
     ForwarderCopilotAuthOptimizationInput, ForwarderClaudeBodyPolicyInput,
-    ForwarderCodexResponsesToChatInput, ForwarderCopilotRequestOptimizationInput,
+    ForwarderCodexResponsesToChatInput, ForwarderCodexResponsesToChatPlanInput,
+    ForwarderCopilotRequestOptimizationInput,
     ForwarderMediaPreventionInput,
     ForwarderMediaRetryPlanInput, ForwarderProviderRequestBodyInput,
     ForwarderProviderTransformInput,
@@ -1048,7 +1049,12 @@ impl RequestForwarder {
             None => forwarder_provider_transform_required(adapter, provider),
         };
         let codex_responses_to_chat =
-            forwarder_should_convert_codex_responses_to_chat(app_type, provider, endpoint);
+            self.request_source
+                .codex_responses_to_chat_enabled(ForwarderCodexResponsesToChatPlanInput {
+                    app_type,
+                    provider,
+                    endpoint,
+                });
         let claude_api_format_for_url = resolved_claude_api_format.as_deref().or_else(|| {
             is_claude_adapter.then(|| forwarder_claude_api_format(provider))
         });
