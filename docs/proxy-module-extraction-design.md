@@ -898,6 +898,7 @@
 本轮继续把 `CcSwitchProxyServices` 迁为 adapter-owned generic `ProxyServices` 容器；`proxy_core_host` 只保留 `CcSwitchProxyServices = CcSwitchProxyServices<CcSwitchProxyRuntime>` type alias 和 `ProxyServiceRuntimeResources` 实现，用于暴露 DB、ProviderRouter、current providers 与 event bus。
 本轮继续把 response processor 非流式 usage 的 provider 缺失判定和 usage record 输入组装收敛到 adapter wrapper，response processor 只负责读取响应体、记录日志和触发 `UsageSink`。
 本轮继续把 response processor 流式 usage 的 provider facts 选择、缺失 warning 和 usage record 输入组装收敛到 adapter wrapper，response processor 只保留 SSE 异步收集和落库调度。
+本轮继续把 response processor 的 SSE usage collector、finish guard、SSE passthrough scanner 和流式 first-byte/idle timeout loop 迁入 adapter-owned `create_logged_passthrough_stream`，host response processor/handlers 只传入 stream、tag、collector、timeout config 与 active-connection guard。
 本轮继续把 response processor 的 route/channel usage 归因合并收敛到 adapter wrapper，streaming/non-streaming 输出的 `UsageRecord` 已在进入 `UsageSink` 前带好 route context。
 本轮继续把 response processor 的 `UsageSink` 调用、usage debug 日志和落库失败 warning 收敛到 adapter wrapper，response processor 只保留 tokio task 调度。
 本轮继续把 usage sink bridge 的 `UsageSink` 调用和落库失败 warning 收敛到 adapter wrapper，bridge 只保留 transformed/forward-error usage 的 task 调度和 failure context 选择。
