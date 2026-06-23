@@ -233,7 +233,7 @@
 222. `proxy::handler_context::extract_gemini_model_from_path` host wrapper 已删除；Gemini handler/context 直接引用 `proxy-core::extract_gemini_model_from_path`，路径解析测试保留在 core。
 223. forwarder 内部的 `request_model_for_forward` / `interface_kind_for_forward` host wrapper 已删除；attempt 规划直接把 `AppType` 投影为 `proxy-core::AppKind` 后调用 core request-url helper。
 224. `OptimizerConfig` 到 thinking optimizer/cache injector core config 的字段投影已收敛到 host 配置类型本身；`thinking_optimizer`/`cache_injector` host facade 已删除，forwarder 直接调用 core mutation 与 core report log helper。
-225. Claude/Codex 非流式 handler 的 response JSON 转换已直接调用 `proxy-core::{openai_responses_to_anthropic_message,openai_chat_to_anthropic_message,chat_completion_to_response_with_context}`；host handler 只保留 history 和 usage 编排，转换失败日志与 `ProxyError::TransformError` 包装由 `error_mapper` 承接。
+225. Claude/Codex 非流式 handler 的 response JSON 转换已收敛到 adapter/core helper：Claude handler 通过 `proxy_core_adapter::provider_claude_transform_response_for_api_format` 分发 OpenAI Responses、OpenAI Chat 与 Gemini Native 响应转换，Codex handler 继续调用 core `chat_completion_to_response_with_context`；host handler 只保留 history 和 usage 编排，转换失败日志与 `ProxyError::TransformError` 包装由 `error_mapper` 承接。
 226. `providers::adapter::auth_header_value` host facade 已删除；Claude/Gemini/Codex adapter 直接调用 `proxy-core::auth_header_value` 并在本地映射认证错误。
 227. Claude provider adapter 的非流式 OpenAI/Responses 响应转换已直接调用 `proxy-core::{openai_chat_to_anthropic_message,openai_responses_to_anthropic_message}`；provider 响应转换 wrapper 仅保留测试路径。
 228. Claude provider adapter 的 Anthropic->OpenAI Chat/Responses 请求转换已直接调用 `proxy-core::{anthropic_to_openai_chat_request,anthropic_to_openai_responses_request}`；OpenAI Chat/Responses provider transform wrappers 均已删除。
@@ -1013,6 +1013,7 @@
 本轮继续把未标记 SSE fallback 诊断 event 的 debug/warn 分发收敛到 adapter，`handlers` 不再直接匹配 `UnlabeledSseFallbackLogLevel`。
 本轮继续把非流式上游 JSON/错标 SSE 解析、解析失败日志、fallback event 分发和 response body parse error 映射收敛到 `error_mapper` helper，`handlers` 不再直接调用 core parse helper 或 parse-error adapter。
 本轮继续把转换后 JSON/SSE 的 core response builder 调用、构造失败映射和 Axum bridge 收敛到 `response_adapter` helper，Claude/Codex transform handler 不再直接调用 `rebuilt_json_proxy_response` 或 `transformed_sse_proxy_response`。
+本轮继续把 Claude 非流式响应转换的 api_format 分发收敛到 `proxy_core_adapter::provider_claude_transform_response_for_api_format`，handler 不再直接调用 OpenAI/Gemini 响应转换函数或维护 Gemini rectifier 日志循环。
 本轮继续把 Codex Chat 错误体归一化后的非 JSON warning 输出与 Responses 错误体 neutral response 构造收敛到 adapter，`handlers` 不再直接调用 `normalize_codex_chat_error_body` 或 `non_json_body_log_message`。
 本轮继续把转换后 JSON/Codex 错误响应构造失败的日志上下文和 `ProxyCoreError -> ProxyError` 映射收敛到 `error_mapper`，`handlers` 不再直接维护这些构造失败文案。
 本轮继续把 Claude/Codex 响应转换失败的日志上下文和 `TransformError` 包装收敛到 `error_mapper`，`handlers` 不再直接维护响应转换失败文案。
