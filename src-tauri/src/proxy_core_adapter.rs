@@ -7983,6 +7983,36 @@ pub(crate) trait HostForwardRuntime {
     ) -> BoxFuture<'a, ProxyCoreResult<ProxyResult>>;
 }
 
+impl ProxyServiceRuntimeResources for CcSwitchProxyRuntime {
+    fn db(&self) -> Arc<Database> {
+        self.db.clone()
+    }
+
+    fn provider_router(&self) -> Arc<ProviderRouter> {
+        self.provider_router.clone()
+    }
+
+    fn current_providers(&self) -> Arc<RwLock<HashMap<String, CurrentRouteTarget>>> {
+        self.current_providers.clone()
+    }
+
+    fn events(&self) -> Arc<ProxyEventBus> {
+        self.events.clone()
+    }
+}
+
+impl HostForwardRuntime for CcSwitchProxyRuntime {
+    fn forward_host<'a>(
+        &'a self,
+        request: ProxyRequest,
+        plan: RoutePlan,
+    ) -> BoxFuture<'a, ProxyCoreResult<ProxyResult>> {
+        Box::pin(async move {
+            forward_proxy_request_with_cc_switch_runtime(self, request, plan).await
+        })
+    }
+}
+
 pub(crate) fn forward_with_optional_host_runtime<'a, R>(
     runtime: Option<&'a R>,
     request: ProxyRequest,

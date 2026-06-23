@@ -8,9 +8,7 @@ use crate::proxy::hyper_client::ProxyResponse;
 use crate::proxy::provider_router::ProviderRouter;
 use crate::proxy::codex_chat_history::CodexChatHistoryStore;
 use crate::proxy_core_adapter::{
-    forward_proxy_request_with_cc_switch_runtime, CurrentRouteTarget, GeminiShadowStore,
-    HostForwardRuntime, ProxyCoreResult, ProxyRequest, ProxyResult, ProxyRuntimeStatus,
-    ProxyServiceRuntimeResources, RoutePlan,
+    CurrentRouteTarget, GeminiShadowStore, ProxyRuntimeStatus,
 };
 #[cfg(test)]
 use crate::proxy_core_adapter::{
@@ -19,8 +17,8 @@ use crate::proxy_core_adapter::{
     management_route_response_from_router_source, provider_router_from_database, AppKind,
     AuthProfileRef, AuthProvider, CcSwitchAuthProvider, ChannelAttemptResult, ChannelQuery,
     ChannelSpec, ProviderSpec, ProxyCoreEvent, ProxyServices, RouteRequest,
+    ProxyRequest, RoutePlan,
 };
-use futures::future::BoxFuture;
 #[cfg(test)]
 use serde_json::Value;
 use std::collections::HashMap;
@@ -45,36 +43,6 @@ pub(crate) struct CcSwitchProxyRuntime {
 
 pub(crate) type CcSwitchProxyServices =
     crate::proxy_core_adapter::CcSwitchProxyServices<CcSwitchProxyRuntime>;
-
-impl ProxyServiceRuntimeResources for CcSwitchProxyRuntime {
-    fn db(&self) -> Arc<Database> {
-        self.db.clone()
-    }
-
-    fn provider_router(&self) -> Arc<ProviderRouter> {
-        self.provider_router.clone()
-    }
-
-    fn current_providers(&self) -> Arc<RwLock<HashMap<String, CurrentRouteTarget>>> {
-        self.current_providers.clone()
-    }
-
-    fn events(&self) -> Arc<ProxyEventBus> {
-        self.events.clone()
-    }
-}
-
-impl HostForwardRuntime for CcSwitchProxyRuntime {
-    fn forward_host<'a>(
-        &'a self,
-        request: ProxyRequest,
-        plan: RoutePlan,
-    ) -> BoxFuture<'a, ProxyCoreResult<ProxyResult>> {
-        Box::pin(async move {
-            forward_proxy_request_with_cc_switch_runtime(self, request, plan).await
-        })
-    }
-}
 
 #[cfg(test)]
 mod tests {
