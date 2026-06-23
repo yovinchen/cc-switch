@@ -22,6 +22,8 @@ use super::{
     response_adapter::{
         collect_axum_request_body, proxy_core_response_to_axum_response,
         proxy_core_response_to_proxy_response, proxy_event_envelope_to_axum_sse_event,
+        rebuilt_json_proxy_response_to_axum_response,
+        transformed_sse_proxy_response_to_axum_response,
     },
     response_processor::{process_response, read_decoded_body},
     server::ProxyState,
@@ -48,11 +50,10 @@ use crate::proxy_core_adapter::{
     record_codex_chat_response_sse_history, record_transformed_response_usage,
     transformed_streaming_usage_collector, provider_is_codex_oauth,
     provider_needs_claude_transform,
-    provider_should_convert_codex_responses_to_chat, rebuilt_json_proxy_response,
-    response_headers_indicate_sse, should_aggregate_codex_oauth_responses_sse,
-    should_use_claude_transform_streaming,
+    provider_should_convert_codex_responses_to_chat, response_headers_indicate_sse,
+    should_aggregate_codex_oauth_responses_sse, should_use_claude_transform_streaming,
     strip_endpoint_prefix, synthesize_gemini_tool_call_id_with_uuid,
-    transformed_sse_proxy_response, validate_management_bearer_header,
+    validate_management_bearer_header,
     AppChannelListQuery, AppChannelManagementRequest, AppChannelResponse, AppKind, AppListRequest,
     AppListResponse, AppModelCatalogRequest, AppModelListQuery, AxumResponseBuildErrorContext,
     ChannelCreateRequest, ChannelDeleteResponse, ChannelHealthResetResponse,
@@ -733,9 +734,8 @@ async fn handle_claude_transform(
             connection_guard,
         );
 
-        let response = transformed_sse_proxy_response(logged_stream);
-        return proxy_core_response_to_axum_response(
-            response,
+        return transformed_sse_proxy_response_to_axum_response(
+            logged_stream,
             AxumResponseBuildErrorContext::ClaudeSse,
         );
     }
@@ -801,12 +801,13 @@ async fn handle_claude_transform(
         status.as_u16(),
     );
 
-    let response = rebuilt_json_proxy_response(status, response_headers, anthropic_response)
-        .map_err(|error| {
-            response_build_error_to_proxy_error(CoreResponseBuildFailureContext::ClaudeJson, error)
-        })?;
-
-    proxy_core_response_to_axum_response(response, AxumResponseBuildErrorContext::ClaudeResponse)
+    rebuilt_json_proxy_response_to_axum_response(
+        status,
+        response_headers,
+        anthropic_response,
+        CoreResponseBuildFailureContext::ClaudeJson,
+        AxumResponseBuildErrorContext::ClaudeResponse,
+    )
 }
 
 // ============================================================================
@@ -1021,9 +1022,8 @@ async fn handle_codex_chat_to_responses_transform(
             connection_guard,
         );
 
-        let response = transformed_sse_proxy_response(logged_stream);
-        return proxy_core_response_to_axum_response(
-            response,
+        return transformed_sse_proxy_response_to_axum_response(
+            logged_stream,
             AxumResponseBuildErrorContext::CodexSse,
         );
     }
@@ -1059,15 +1059,13 @@ async fn handle_codex_chat_to_responses_transform(
         status.as_u16(),
     );
 
-    let response = rebuilt_json_proxy_response(status, response_headers, responses_response)
-        .map_err(|error| {
-            response_build_error_to_proxy_error(
-                CoreResponseBuildFailureContext::CodexResponses,
-                error,
-            )
-        })?;
-
-    proxy_core_response_to_axum_response(response, AxumResponseBuildErrorContext::CodexResponses)
+    rebuilt_json_proxy_response_to_axum_response(
+        status,
+        response_headers,
+        responses_response,
+        CoreResponseBuildFailureContext::CodexResponses,
+        AxumResponseBuildErrorContext::CodexResponses,
+    )
 }
 
 /// 把上游 Chat Completions 的错误响应转换为 Responses API 错误形状。

@@ -1,11 +1,19 @@
-use super::{error::ProxyError, hyper_client::ProxyResponse};
+use super::{
+    error::ProxyError,
+    error_mapper::{response_build_error_to_proxy_error, CoreResponseBuildFailureContext},
+    hyper_client::ProxyResponse,
+};
 use crate::proxy_core_adapter::{
     AxumResponseBuildErrorContext, ProxyCoreResponse, ProxyEventEnvelope, ProxyTransportResponse,
-    ProxyTransportResponseBody, request_body_read_error_message,
+    ProxyTransportResponseBody, rebuilt_json_proxy_response, request_body_read_error_message,
+    transformed_sse_proxy_response,
 };
 use axum::response::sse::Event;
 use bytes::Bytes;
+use futures::Stream;
+use http::{HeaderMap, StatusCode};
 use http_body_util::BodyExt;
+use serde_json::Value;
 
 pub(crate) async fn collect_axum_request_body(
     body: axum::body::Body,
@@ -48,6 +56,25 @@ pub(crate) fn proxy_core_response_to_axum_response(
         build_error_context,
         "Failed to build response",
     )
+}
+
+pub(crate) fn rebuilt_json_proxy_response_to_axum_response(
+    status: StatusCode,
+    headers: HeaderMap,
+    body: Value,
+    response_build_error_context: CoreResponseBuildFailureContext,
+    axum_build_error_context: AxumResponseBuildErrorContext<'_>,
+) -> Result<axum::response::Response, ProxyError> {
+    let response = rebuilt_json_proxy_response(status, headers, body)
+        .map_err(|error| response_build_error_to_proxy_error(response_build_error_context, error))?;
+    proxy_core_response_to_axum_response(response, axum_build_error_context)
+}
+
+pub(crate) fn transformed_sse_proxy_response_to_axum_response(
+    stream: impl Stream<Item = Result<Bytes, std::io::Error>> + Send + 'static,
+    build_error_context: AxumResponseBuildErrorContext<'_>,
+) -> Result<axum::response::Response, ProxyError> {
+    proxy_core_response_to_axum_response(transformed_sse_proxy_response(stream), build_error_context)
 }
 
 pub(crate) fn proxy_core_response_to_axum_response_with_error_message(
@@ -138,6 +165,54 @@ mod tests {
         );
         let body = response.into_body().collect().await.unwrap().to_bytes();
         assert_eq!(body, Bytes::from_static(b"ok"));
+    }
+
+    #[tokio::test]
+    async fn rebuilt_json_proxy_response_to_axum_response_rebuilds_json_headers() {
+        let mut headers = http::HeaderMap::new();
+        headers.insert(
+            http::header::CONTENT_TYPE,
+            http::HeaderValue::from_static("text/plain"),
+        );
+        headers.insert(
+            http::header::CONTENT_ENCODING,
+            http::HeaderValue::from_static("gzip"),
+        );
+
+        let response = rebuilt_json_proxy_response_to_axum_response(
+            StatusCode::OK,
+            headers,
+            json!({"ok": true}),
+            CoreResponseBuildFailureContext::ClaudeJson,
+            AxumResponseBuildErrorContext::ClaudeResponse,
+        )
+        .expect("json response");
+
+        assert_eq!(response.status(), StatusCode::OK);
+        assert_eq!(
+            response.headers().get(http::header::CONTENT_TYPE),
+            Some(&http::HeaderValue::from_static("application/json"))
+        );
+        assert!(!response.headers().contains_key(http::header::CONTENT_ENCODING));
+        let body = response.into_body().collect().await.unwrap().to_bytes();
+        assert_eq!(body, Bytes::from_static(br#"{"ok":true}"#));
+    }
+
+    #[tokio::test]
+    async fn transformed_sse_proxy_response_to_axum_response_sets_sse_headers() {
+        let response = transformed_sse_proxy_response_to_axum_response(
+            futures::stream::once(async { Ok(Bytes::from_static(b"data: {}\n\n")) }),
+            AxumResponseBuildErrorContext::CodexSse,
+        )
+        .expect("sse response");
+
+        assert_eq!(response.status(), StatusCode::OK);
+        assert_eq!(
+            response.headers().get(http::header::CONTENT_TYPE),
+            Some(&http::HeaderValue::from_static("text/event-stream"))
+        );
+        let body = response.into_body().collect().await.unwrap().to_bytes();
+        assert_eq!(body, Bytes::from_static(b"data: {}\n\n"));
     }
 
     #[tokio::test]
