@@ -6359,6 +6359,8 @@ fn production_forwarder_uses_request_source_resource() {
         "forwarder_provider_base_url(",
         "forwarder_is_full_url_provider(",
         "forwarder_is_github_copilot_upstream(",
+        "forwarder_provider_adapter_name(",
+        "provider_adapter_name_is_claude(",
     ];
     let mut violations = Vec::new();
 

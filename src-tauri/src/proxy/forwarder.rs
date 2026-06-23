@@ -13,14 +13,12 @@ use crate::proxy_core_adapter::{
     forward_failure_kind_from_proxy_error,
     forwarder_uses_anthropic_rectifiers,
     forwarder_provider_adapter_for_app,
-    forwarder_provider_adapter_name,
     forwarder_provider_transform_required,
     ForwarderAdapterHandle,
-    provider_adapter_name_is_claude,
     forwarder_claude_api_format, forwarder_claude_transform_required,
     should_failover_after_rectifier_retry_failure,
     AttemptEventPhase, CopilotOptimizerConfig,
-    ForwardFailureCategory,
+    ForwardFailureCategory, ForwarderAdapterFactsInput,
     ForwarderAttemptBodyInput, ForwarderAuthHeadersInput, ForwarderAuthSourceRef,
     ForwarderCopilotAuthOptimizationInput, ForwarderClaudeBodyPolicyInput,
     ForwarderCodexResponsesToChatInput, ForwarderCodexResponsesToChatPlanInput,
@@ -540,7 +538,12 @@ impl RequestForwarder {
                         self.request_source
                             .media_retry_plan(ForwarderMediaRetryPlanInput {
                                 app: app_type_str,
-                                adapter_name: forwarder_provider_adapter_name(adapter.as_ref()),
+                                adapter_name: self
+                                    .request_source
+                                    .adapter_facts(ForwarderAdapterFactsInput {
+                                        adapter: adapter.as_ref(),
+                                    })
+                                    .adapter_name,
                                 provider,
                                 already_retried: media_rectifier_retried,
                                 provider_body: &provider_body,
@@ -1017,8 +1020,11 @@ impl RequestForwarder {
             );
             base_url = next_base_url;
         }
-        let adapter_name = forwarder_provider_adapter_name(adapter);
-        let is_claude_adapter = provider_adapter_name_is_claude(adapter_name);
+        let adapter_facts = self
+            .request_source
+            .adapter_facts(ForwarderAdapterFactsInput { adapter });
+        let adapter_name = adapter_facts.adapter_name;
+        let is_claude_adapter = adapter_facts.is_claude_adapter;
         let resolved_claude_api_format = if is_claude_adapter {
             Some(
                 self.managed_account_runtime_source

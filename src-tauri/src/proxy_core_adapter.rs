@@ -8569,6 +8569,15 @@ pub(crate) struct ForwarderProviderUrlFacts {
     pub(crate) is_copilot: bool,
 }
 
+pub(crate) struct ForwarderAdapterFactsInput<'a> {
+    pub(crate) adapter: &'a ForwarderAdapterHandle,
+}
+
+pub(crate) struct ForwarderAdapterFacts {
+    pub(crate) adapter_name: &'static str,
+    pub(crate) is_claude_adapter: bool,
+}
+
 pub(crate) struct ForwarderClaudeBodyPolicyInput<'a> {
     pub(crate) body: &'a mut Value,
     pub(crate) provider: &'a Provider,
@@ -8684,6 +8693,8 @@ pub(crate) trait ForwarderRequestSource {
         input: ForwarderProviderUrlFactsInput<'_>,
     ) -> Result<ForwarderProviderUrlFacts, ProxyError>;
 
+    fn adapter_facts(&self, input: ForwarderAdapterFactsInput<'_>) -> ForwarderAdapterFacts;
+
     fn prepare_provider_request_body(
         &self,
         input: ForwarderProviderRequestBodyInput<'_>,
@@ -8783,6 +8794,14 @@ impl ForwarderRequestSource for CcSwitchForwarderRequestSource {
             is_copilot: forwarder_is_github_copilot_upstream(input.provider, &base_url),
             base_url,
         })
+    }
+
+    fn adapter_facts(&self, input: ForwarderAdapterFactsInput<'_>) -> ForwarderAdapterFacts {
+        let adapter_name = forwarder_provider_adapter_name(input.adapter);
+        ForwarderAdapterFacts {
+            adapter_name,
+            is_claude_adapter: provider_adapter_name_is_claude(adapter_name),
+        }
     }
 
     fn prepare_provider_request_body(
@@ -14604,6 +14623,25 @@ mod tests {
         assert_eq!(facts.base_url, "https://api.githubcopilot.com");
         assert!(facts.is_full_url);
         assert!(facts.is_copilot);
+    }
+
+    #[test]
+    fn forwarder_request_source_projects_adapter_facts() {
+        let source = CcSwitchForwarderRequestSource;
+        let claude_adapter = forwarder_provider_adapter_for_app(&AppType::Claude);
+        let codex_adapter = forwarder_provider_adapter_for_app(&AppType::Codex);
+
+        let claude_facts = source.adapter_facts(ForwarderAdapterFactsInput {
+            adapter: claude_adapter.as_ref(),
+        });
+        let codex_facts = source.adapter_facts(ForwarderAdapterFactsInput {
+            adapter: codex_adapter.as_ref(),
+        });
+
+        assert_eq!(claude_facts.adapter_name, "Claude");
+        assert!(claude_facts.is_claude_adapter);
+        assert_eq!(codex_facts.adapter_name, "Codex");
+        assert!(!codex_facts.is_claude_adapter);
     }
 
     #[test]
