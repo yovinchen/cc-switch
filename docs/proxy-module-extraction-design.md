@@ -1146,6 +1146,7 @@
 本轮继续收窄 `ForwarderProtocolStateSource` 的生产接口：`RequestForwarder` 不再通过 source getter 拿到 `GeminiShadowStore`/`CodexChatHistoryStore`，而是调用 source 暴露的 Codex Chat request enrich 与 Claude request transform 行为，协议状态存储类型继续留在 adapter 内。
 本轮继续把 forwarder 的 provider/channel attempt runtime 包装为 `ForwarderAttemptRuntimeSource`：`RequestForwarder` 不再直持 `ProviderRouter`，attempt 放行、成功/失败健康记录和 neutral permit 释放都通过注入 source 进入 adapter helper，后续可把该 source 替换为独立中转模块的 routing/circuit runtime。
 本轮继续把 forwarder 的上游发送执行包装为 `ForwarderTransportSource`：`RequestForwarder` 不再直接读取全局代理 URL、展开 reqwest/raw-hyper 发送分支或映射 reqwest 错误，CC Switch 默认 source 仍复用现有 pooled reqwest、raw hyper、SOCKS/HTTP proxy 和 header-case 策略，后续外部宿主可替换 transport 执行层。
+本轮继续把 forwarder 的响应读取与成功就绪判定包装为 `ForwarderResponseSource`：`RequestForwarder` 不再直接读取 response body、执行非流式 body timeout、流式首包 timeout/replay 或错误响应 body 文本提取，默认 source 保持“记录 provider 成功前先确认响应可读”的既有 failover 语义。
 
 当前原则：核心 crate 可以新增端口和领域字段，但不得引入 `tauri`、`Database`、settings、commands、services 等宿主依赖；现有 runtime 行为必须继续通过 targeted tests 证明不回归。
 
