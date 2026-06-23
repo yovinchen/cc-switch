@@ -734,6 +734,12 @@ const FORBIDDEN_PROXY_CORE_ADAPTER_SMALL_HELPER_FACADE_MARKERS: &[&str] = &[
     "fn proxy_server_info_from_parts(",
     "fn proxy_takeover_status_from_parts(",
 ];
+const FORBIDDEN_HTTP_CLIENT_PROXY_URL_VALIDATION_MARKERS: &[&str] = &[
+    "url::Url::parse(",
+    "[\"http\", \"https\", \"socks5\", \"socks5h\"]",
+    "Invalid proxy scheme",
+    "Invalid proxy URL '",
+];
 const FORBIDDEN_CLAUDE_PROVIDER_ADAPTER_TRANSFORM_DECISION_MARKERS: &[&str] = &[
     "ProviderKind::GitHubCopilot",
     "ProviderKind::CodexOAuth",
@@ -2307,6 +2313,33 @@ fn proxy_core_adapter_excludes_small_helper_facades() {
     assert!(
         violations.is_empty(),
         "proxy_core_adapter should expose small pure core helpers directly instead of local one-line facades:\n{}",
+        violations.join("\n")
+    );
+}
+
+#[test]
+fn production_http_client_delegates_explicit_proxy_url_validation_to_adapter() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let path = manifest_dir.join("src/proxy/http_client.rs");
+    let source = fs::read_to_string(&path).expect("read http_client.rs");
+
+    let mut violations = Vec::new();
+    for (line_index, line) in production_lines(&source) {
+        let code = line.split("//").next().unwrap_or_default();
+        for marker in FORBIDDEN_HTTP_CLIENT_PROXY_URL_VALIDATION_MARKERS {
+            if code.contains(marker) {
+                violations.push(format!(
+                    "src/proxy/http_client.rs:{} contains explicit proxy URL validation marker `{}`",
+                    line_index + 1,
+                    marker
+                ));
+            }
+        }
+    }
+
+    assert!(
+        violations.is_empty(),
+        "production HTTP client must delegate explicit proxy URL parsing, scheme allowlist, and error projection to proxy_core_adapter:\n{}",
         violations.join("\n")
     );
 }

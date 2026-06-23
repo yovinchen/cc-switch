@@ -10,8 +10,8 @@ use std::sync::RwLock;
 use std::time::Duration;
 
 use crate::proxy_core_adapter::{
-    mask_url_for_log, proxy_values_point_to_loopback_port, DEFAULT_PROXY_LISTEN_PORT,
-    SYSTEM_PROXY_ENV_KEYS,
+    invalid_explicit_proxy_url_message, mask_url_for_log, proxy_values_point_to_loopback_port,
+    validate_explicit_proxy_url, DEFAULT_PROXY_LISTEN_PORT, SYSTEM_PROXY_ENV_KEYS,
 };
 
 /// 全局 HTTP 客户端实例
@@ -231,21 +231,9 @@ fn build_client(proxy_url: Option<&str>) -> Result<Client, String> {
 
     // 有代理地址则使用代理，否则跟随系统代理
     if let Some(url) = proxy_url {
-        // 先验证 URL 格式和 scheme
-        let parsed = url::Url::parse(url)
-            .map_err(|e| format!("Invalid proxy URL '{}': {}", mask_url_for_log(url), e))?;
-
-        let scheme = parsed.scheme();
-        if !["http", "https", "socks5", "socks5h"].contains(&scheme) {
-            return Err(format!(
-                "Invalid proxy scheme '{}' in URL '{}'. Supported: http, https, socks5, socks5h",
-                scheme,
-                mask_url_for_log(url)
-            ));
-        }
-
+        validate_explicit_proxy_url(url)?;
         let proxy = reqwest::Proxy::all(url)
-            .map_err(|e| format!("Invalid proxy URL '{}': {}", mask_url_for_log(url), e))?;
+            .map_err(|e| invalid_explicit_proxy_url_message(url, e))?;
         builder = builder.proxy(proxy);
         log::debug!("[GlobalProxy] Proxy configured: {}", mask_url_for_log(url));
     } else {

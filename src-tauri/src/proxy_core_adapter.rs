@@ -150,6 +150,34 @@ pub(crate) use crate::proxy_core::api::transport::proxy_url_points_to_loopback_p
 
 pub(crate) use crate::proxy_core::api::transport::proxy_values_point_to_loopback_port;
 
+const SUPPORTED_EXPLICIT_PROXY_SCHEMES: &[&str] = &["http", "https", "socks5", "socks5h"];
+
+pub(crate) fn invalid_explicit_proxy_url_message(
+    proxy_url: &str,
+    error: impl std::fmt::Display,
+) -> String {
+    format!(
+        "Invalid proxy URL '{}': {}",
+        mask_url_for_log(proxy_url),
+        error
+    )
+}
+
+pub(crate) fn validate_explicit_proxy_url(proxy_url: &str) -> Result<(), String> {
+    let parsed = url::Url::parse(proxy_url)
+        .map_err(|error| invalid_explicit_proxy_url_message(proxy_url, error))?;
+    let scheme = parsed.scheme();
+    if !SUPPORTED_EXPLICIT_PROXY_SCHEMES.contains(&scheme) {
+        return Err(format!(
+            "Invalid proxy scheme '{}' in URL '{}'. Supported: {}",
+            scheme,
+            mask_url_for_log(proxy_url),
+            SUPPORTED_EXPLICIT_PROXY_SCHEMES.join(", ")
+        ));
+    }
+    Ok(())
+}
+
 pub(crate) const COPILOT_PUBLIC_GITHUB_DOMAIN: &str =
     crate::proxy_core::api::model_catalog::COPILOT_PUBLIC_GITHUB_DOMAIN;
 
@@ -11138,6 +11166,20 @@ mod tests {
             ["", " http://127.0.0.1:15721 "],
             15721
         ));
+        assert!(validate_explicit_proxy_url("http://127.0.0.1:7890").is_ok());
+        assert!(validate_explicit_proxy_url("socks5h://localhost:1080").is_ok());
+        let invalid_scheme =
+            validate_explicit_proxy_url("ftp://127.0.0.1:7890").expect_err("invalid scheme");
+        assert!(invalid_scheme.contains(
+            "Invalid proxy scheme 'ftp' in URL 'ftp://127.0.0.1:7890'. Supported: http, https, socks5, socks5h"
+        ));
+        let invalid_url = validate_explicit_proxy_url("http://[::1")
+            .expect_err("invalid proxy URL should report parse error");
+        assert!(invalid_url.contains("Invalid proxy URL 'http://[::1':"));
+        assert_eq!(
+            invalid_explicit_proxy_url_message("http://user:pass@127.0.0.1:7890", "bad"),
+            "Invalid proxy URL 'http://127.0.0.1:7890': bad"
+        );
     }
 
     #[test]
