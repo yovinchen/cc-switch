@@ -31,7 +31,6 @@ use crate::proxy_core_adapter::{
     non_streaming_body_timeout_message, normalize_thinking_type,
     prepare_upstream_request_body_with_report, prompt_cache_trace_log_message,
     forwarder_claude_normalize_anthropic_messages,
-    forwarder_claude_transform_request_for_api_format,
     provider_adapter_name_is_claude,
     rectify_anthropic_request, rectify_thinking_budget, replace_image_blocks_with_marker,
     request_body_filter_log_message,
@@ -1298,8 +1297,10 @@ impl RequestForwarder {
         // 转换请求体（如果需要）
         let mut request_body = if codex_responses_to_chat {
             let mut mapped_body = mapped_body;
-            let codex_chat_history = self.protocol_state_source.codex_chat_history();
-            let restored = codex_chat_history.enrich_request(&mut mapped_body).await;
+            let restored = self
+                .protocol_state_source
+                .enrich_codex_chat_request(&mut mapped_body)
+                .await;
             if restored > 0 {
                 log::debug!(
                     "[Codex] Restored or enriched {restored} cached function call item(s) for Chat upstream"
@@ -1323,15 +1324,15 @@ impl RequestForwarder {
                 let api_format = resolved_claude_api_format
                     .as_deref()
                     .unwrap_or_else(|| forwarder_claude_api_format(provider));
-                forwarder_claude_transform_request_for_api_format(
-                    mapped_body,
-                    provider,
-                    api_format,
-                    self.session_client_provided
-                        .then_some(self.session_id.as_str()),
-                    Some(self.protocol_state_source.gemini_shadow().as_ref()),
-                )
-                .map_err(ProxyError::TransformError)?
+                self.protocol_state_source
+                    .transform_claude_request_for_api_format(
+                        mapped_body,
+                        provider,
+                        api_format,
+                        self.session_client_provided
+                            .then_some(self.session_id.as_str()),
+                    )
+                    .map_err(ProxyError::TransformError)?
             } else {
                 forwarder_provider_transform_request(adapter, mapped_body, provider)?
             }

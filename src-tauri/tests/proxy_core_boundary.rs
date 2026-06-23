@@ -5848,7 +5848,12 @@ fn production_forwarder_uses_protocol_state_source_resource() {
         "gemini_shadow: Arc<GeminiShadowStore>",
         "codex_chat_history: Arc<CodexChatHistoryStore>",
     ];
-    let impl_forbidden_markers = ["self.gemini_shadow", "self.codex_chat_history"];
+    let impl_forbidden_markers = [
+        "self.gemini_shadow",
+        "self.codex_chat_history",
+        "self.protocol_state_source.gemini_shadow()",
+        "self.protocol_state_source.codex_chat_history()",
+    ];
     let mut violations = Vec::new();
 
     for (line_index, line) in production_lines(struct_slice) {

@@ -8056,8 +8056,14 @@ pub(crate) type ForwarderProtocolStateSourceRef =
     Arc<dyn ForwarderProtocolStateSource + Send + Sync>;
 
 pub(crate) trait ForwarderProtocolStateSource {
-    fn gemini_shadow(&self) -> Arc<GeminiShadowStore>;
-    fn codex_chat_history(&self) -> Arc<CodexChatHistoryStore>;
+    fn enrich_codex_chat_request<'a>(&'a self, body: &'a mut Value) -> BoxFuture<'a, usize>;
+    fn transform_claude_request_for_api_format(
+        &self,
+        body: Value,
+        provider: &Provider,
+        api_format: &str,
+        session_id: Option<&str>,
+    ) -> Result<Value, String>;
 }
 
 struct CcSwitchForwarderProtocolStateSource {
@@ -8078,12 +8084,24 @@ impl CcSwitchForwarderProtocolStateSource {
 }
 
 impl ForwarderProtocolStateSource for CcSwitchForwarderProtocolStateSource {
-    fn gemini_shadow(&self) -> Arc<GeminiShadowStore> {
-        self.gemini_shadow.clone()
+    fn enrich_codex_chat_request<'a>(&'a self, body: &'a mut Value) -> BoxFuture<'a, usize> {
+        Box::pin(async move { self.codex_chat_history.enrich_request(body).await })
     }
 
-    fn codex_chat_history(&self) -> Arc<CodexChatHistoryStore> {
-        self.codex_chat_history.clone()
+    fn transform_claude_request_for_api_format(
+        &self,
+        body: Value,
+        provider: &Provider,
+        api_format: &str,
+        session_id: Option<&str>,
+    ) -> Result<Value, String> {
+        forwarder_claude_transform_request_for_api_format(
+            body,
+            provider,
+            api_format,
+            session_id,
+            Some(self.gemini_shadow.as_ref()),
+        )
     }
 }
 
