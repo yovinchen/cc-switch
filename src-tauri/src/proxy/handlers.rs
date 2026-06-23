@@ -34,9 +34,6 @@ use crate::proxy_core_adapter::{
     claude_stream_usage_event_filter, claude_transform_unlabeled_sse_aggregation,
     codex_stream_usage_event_filter,
     create_logged_passthrough_stream,
-    create_gemini_to_anthropic_sse_stream_with_callbacks as create_anthropic_sse_stream_from_gemini,
-    create_openai_chat_to_anthropic_sse_stream as create_anthropic_sse_stream,
-    create_openai_responses_to_anthropic_sse_stream as create_anthropic_sse_stream_from_responses,
     codex_chat_error_proxy_response, extract_anthropic_tool_schema_hints,
     extract_gemini_model_from_path, json_proxy_request_from_input, JsonProxyRequestInput,
     parse_json_proxy_request_body,
@@ -45,10 +42,11 @@ use crate::proxy_core_adapter::{
     record_transformed_response_usage, transform_codex_chat_response_with_history,
     transform_codex_chat_sse_with_history, transformed_streaming_usage_collector,
     provider_is_codex_oauth,
-    provider_claude_transform_response_for_api_format, provider_needs_claude_transform,
+    provider_claude_transform_response_for_api_format,
+    provider_claude_transform_sse_for_api_format, provider_needs_claude_transform,
     provider_should_convert_codex_responses_to_chat, response_headers_indicate_sse,
     should_aggregate_codex_oauth_responses_sse, should_use_claude_transform_streaming,
-    strip_endpoint_prefix, synthesize_gemini_tool_call_id_with_uuid,
+    strip_endpoint_prefix,
     validate_management_bearer_header,
     AppChannelListQuery, AppChannelManagementRequest, AppChannelResponse, AppKind, AppListRequest,
     AppListResponse, AppModelCatalogRequest, AppModelListQuery, AxumResponseBuildErrorContext,
@@ -76,7 +74,6 @@ use axum::{
     response::sse::{Event, KeepAlive, Sse},
     Json,
 };
-use bytes::Bytes;
 use serde_json::Value;
 use std::convert::Infallible;
 use std::time::Duration;
@@ -690,25 +687,15 @@ async fn handle_claude_transform(
     let tool_schema_hints = (!tool_schema_hints.is_empty()).then_some(tool_schema_hints);
 
     if use_streaming {
-        // 根据 api_format 选择流式转换器
         let stream = response.bytes_stream();
-        let sse_stream: Box<
-            dyn futures::Stream<Item = Result<Bytes, std::io::Error>> + Send + Unpin,
-        > = if api_format == "openai_responses" {
-            Box::new(Box::pin(create_anthropic_sse_stream_from_responses(stream)))
-        } else if api_format == "gemini_native" {
-            Box::new(Box::pin(create_anthropic_sse_stream_from_gemini(
-                stream,
-                Some(state.gemini_shadow.clone()),
-                Some(provider.id.clone()),
-                Some(ctx.session_id.clone()),
-                tool_schema_hints.clone(),
-                synthesize_gemini_tool_call_id_with_uuid,
-                |name| log::info!("[Claude/Gemini] Rectified tool args for `{name}`"),
-            )))
-        } else {
-            Box::new(Box::pin(create_anthropic_sse_stream(stream)))
-        };
+        let sse_stream = provider_claude_transform_sse_for_api_format(
+            stream,
+            api_format,
+            Some(state.gemini_shadow.clone()),
+            Some(provider.id.clone()),
+            Some(ctx.session_id.clone()),
+            tool_schema_hints.clone(),
+        );
 
         // 创建使用量收集器；关闭 usage logging 时不要再解析转换后的 SSE。
         let usage_collector = transformed_streaming_usage_collector(

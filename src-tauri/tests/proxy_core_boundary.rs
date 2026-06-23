@@ -867,6 +867,11 @@ const FORBIDDEN_HANDLER_CLAUDE_RESPONSE_TRANSFORM_DISPATCH_MARKERS: &[&str] = &[
     "openai_responses_to_anthropic_message(",
     "openai_chat_to_anthropic_message(",
     "gemini_response_to_anthropic_message_with_shadow(",
+    "create_anthropic_sse_stream",
+    "create_openai_chat_to_anthropic_sse_stream(",
+    "create_openai_responses_to_anthropic_sse_stream(",
+    "create_gemini_to_anthropic_sse_stream_with_callbacks(",
+    "Rectified tool args",
     "rectified_tool_names",
 ];
 const FORBIDDEN_HANDLER_CODEX_NON_STREAM_TRANSFORM_MARKERS: &[&str] = &[

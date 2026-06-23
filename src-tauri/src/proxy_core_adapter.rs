@@ -4307,6 +4307,31 @@ pub(crate) fn provider_claude_transform_response_for_api_format(
     }
 }
 
+pub(crate) fn provider_claude_transform_sse_for_api_format(
+    stream: impl Stream<Item = Result<Bytes, std::io::Error>> + Send + 'static,
+    api_format: &str,
+    shadow_store: Option<Arc<GeminiShadowStore>>,
+    provider_id: Option<String>,
+    session_id: Option<String>,
+    tool_schema_hints: Option<AnthropicToolSchemaHints>,
+) -> Box<dyn Stream<Item = Result<Bytes, std::io::Error>> + Send + Unpin> {
+    if api_format == "openai_responses" {
+        Box::new(Box::pin(create_openai_responses_to_anthropic_sse_stream(stream)))
+    } else if api_format == "gemini_native" {
+        Box::new(Box::pin(create_gemini_to_anthropic_sse_stream_with_callbacks(
+            stream,
+            shadow_store,
+            provider_id,
+            session_id,
+            tool_schema_hints,
+            synthesize_gemini_tool_call_id_with_uuid,
+            |name| log::info!("[Claude/Gemini] Rectified tool args for `{name}`"),
+        )))
+    } else {
+        Box::new(Box::pin(create_openai_chat_to_anthropic_sse_stream(stream)))
+    }
+}
+
 pub(crate) fn provider_should_preserve_reasoning_content_for_openai_chat(
     provider: &Provider,
     body: &Value,
@@ -13187,6 +13212,80 @@ base_url = "https://api.openai.com/v1"
             &normalize_provider,
             "openai_chat"
         ));
+    }
+
+    #[tokio::test]
+    async fn claude_stream_transform_adapter_dispatches_api_formats() {
+        use futures::StreamExt as _;
+
+        let chat_stream = futures::stream::iter(vec![
+            Ok::<_, std::io::Error>(Bytes::from_static(
+                b"data: {\"id\":\"chatcmpl_1\",\"model\":\"gpt-4o\",\"choices\":[{\"delta\":{\"content\":\"Hi\"}}]}\n\n",
+            )),
+            Ok(Bytes::from_static(
+                b"data: {\"id\":\"chatcmpl_1\",\"model\":\"gpt-4o\",\"choices\":[{\"delta\":{},\"finish_reason\":\"stop\"}],\"usage\":{\"prompt_tokens\":1,\"completion_tokens\":1}}\n\n",
+            )),
+            Ok(Bytes::from_static(b"data: [DONE]\n\n")),
+        ]);
+        let chat_output = provider_claude_transform_sse_for_api_format(
+            chat_stream,
+            "openai_chat",
+            None,
+            None,
+            None,
+            None,
+        )
+        .collect::<Vec<_>>()
+        .await
+        .into_iter()
+        .map(|item| String::from_utf8(item.expect("chat chunk").to_vec()).expect("chat utf8"))
+        .collect::<String>();
+        assert!(chat_output.contains("event: message_start"));
+        assert!(chat_output.contains("Hi"));
+
+        let responses_stream = futures::stream::iter(vec![Ok::<_, std::io::Error>(
+            Bytes::from_static(
+                b"event: response.created\ndata: {\"type\":\"response.created\",\"response\":{\"id\":\"resp_1\",\"model\":\"gpt-4o\",\"usage\":{\"input_tokens\":1,\"output_tokens\":0}}}\n\nevent: response.content_part.added\ndata: {\"type\":\"response.content_part.added\",\"part\":{\"type\":\"output_text\",\"text\":\"\"},\"output_index\":0,\"content_index\":0}\n\nevent: response.output_text.delta\ndata: {\"type\":\"response.output_text.delta\",\"delta\":\"Done\",\"output_index\":0,\"content_index\":0}\n\nevent: response.content_part.done\ndata: {\"type\":\"response.content_part.done\",\"output_index\":0,\"content_index\":0}\n\nevent: response.completed\ndata: {\"type\":\"response.completed\",\"response\":{\"status\":\"completed\",\"usage\":{\"input_tokens\":1,\"output_tokens\":1}}}\n\n",
+            ),
+        )]);
+        let responses_output = provider_claude_transform_sse_for_api_format(
+            responses_stream,
+            "openai_responses",
+            None,
+            None,
+            None,
+            None,
+        )
+        .collect::<Vec<_>>()
+        .await
+        .into_iter()
+        .map(|item| {
+            String::from_utf8(item.expect("responses chunk").to_vec()).expect("responses utf8")
+        })
+        .collect::<String>();
+        assert!(responses_output.contains("event: message_start"));
+        assert!(responses_output.contains("Done"));
+
+        let gemini_stream = futures::stream::iter(vec![Ok::<_, std::io::Error>(
+            Bytes::from_static(
+                b"data: {\"responseId\":\"gemini_1\",\"modelVersion\":\"gemini-2.5-pro\",\"candidates\":[{\"finishReason\":\"STOP\",\"content\":{\"parts\":[{\"text\":\"Gemini hi\"}]}}],\"usageMetadata\":{\"promptTokenCount\":1,\"candidatesTokenCount\":1,\"totalTokenCount\":2}}\n\n",
+            ),
+        )]);
+        let gemini_output = provider_claude_transform_sse_for_api_format(
+            gemini_stream,
+            "gemini_native",
+            Some(Arc::new(GeminiShadowStore::default())),
+            Some("provider-a".to_string()),
+            Some("session-a".to_string()),
+            None,
+        )
+        .collect::<Vec<_>>()
+        .await
+        .into_iter()
+        .map(|item| String::from_utf8(item.expect("gemini chunk").to_vec()).expect("gemini utf8"))
+        .collect::<String>();
+        assert!(gemini_output.contains("event: message_start"));
+        assert!(gemini_output.contains("Gemini hi"));
     }
 
     #[test]
