@@ -5536,6 +5536,45 @@ fn production_forwarder_delegates_failover_switch_scheduling_to_manager() {
 }
 
 #[test]
+fn production_forwarder_uses_failover_switch_scheduler_resource() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let path = manifest_dir.join("src/proxy/forwarder.rs");
+    let source = fs::read_to_string(&path).expect("read forwarder.rs");
+
+    assert!(
+        source.contains("failover_switch_scheduler"),
+        "RequestForwarder must receive failover switch scheduling as an injected runtime source"
+    );
+
+    let forbidden_markers = [
+        "failover_switch::FailoverSwitchManager",
+        "failover_manager:",
+        "app_handle: Option<tauri::AppHandle>",
+        "self.app_handle.clone()",
+        "self.failover_manager",
+    ];
+    let mut violations = Vec::new();
+    for (line_index, line) in production_lines(&source) {
+        let code = line.split("//").next().unwrap_or_default();
+        for marker in forbidden_markers {
+            if code.contains(marker) {
+                violations.push(format!(
+                    "src/proxy/forwarder.rs:{} contains failover host resource marker `{}`",
+                    line_index + 1,
+                    marker
+                ));
+            }
+        }
+    }
+
+    assert!(
+        violations.is_empty(),
+        "forwarder must use an injected failover switch scheduler instead of host manager/AppHandle resources:\n{}",
+        violations.join("\n")
+    );
+}
+
+#[test]
 fn production_failover_switch_delegates_proxy_config_to_adapter() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let path = manifest_dir.join("src/proxy/failover_switch.rs");

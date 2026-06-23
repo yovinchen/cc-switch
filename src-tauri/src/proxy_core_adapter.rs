@@ -71,8 +71,7 @@ pub(crate) struct CcSwitchProxyRuntime {
     pub(crate) events: Arc<ProxyEventBus>,
     pub(crate) gemini_shadow: Arc<GeminiShadowStore>,
     pub(crate) codex_chat_history: Arc<CodexChatHistoryStore>,
-    pub(crate) failover_manager: Arc<FailoverSwitchManager>,
-    pub(crate) app_handle: Option<tauri::AppHandle>,
+    pub(crate) failover_switch_scheduler: FailoverSwitchSchedulerRef,
     pub(crate) managed_account_runtime_source: ManagedAccountRuntimeSourceRef,
 }
 
@@ -479,6 +478,10 @@ pub(crate) fn proxy_state_from_runtime_sources(
     let current_providers = Arc::new(RwLock::new(HashMap::new()));
     let gemini_shadow = Arc::new(GeminiShadowStore::default());
     let codex_chat_history = Arc::new(CodexChatHistoryStore::default());
+    let failover_switch_scheduler = failover_switch_scheduler_from_runtime_sources(
+        failover_manager.clone(),
+        app_handle.clone(),
+    );
     let managed_account_runtime_source =
         managed_account_runtime_source_from_app_handle(app_handle.clone());
     let proxy_core_services =
@@ -490,8 +493,7 @@ pub(crate) fn proxy_state_from_runtime_sources(
             events: events.clone(),
             gemini_shadow: gemini_shadow.clone(),
             codex_chat_history: codex_chat_history.clone(),
-            failover_manager: failover_manager.clone(),
-            app_handle: app_handle.clone(),
+            failover_switch_scheduler,
             managed_account_runtime_source,
         }));
 
@@ -7765,6 +7767,61 @@ pub(crate) fn required_forward_attempts_from_db_sources(
     Ok(attempts)
 }
 
+pub(crate) type FailoverSwitchSchedulerRef =
+    Arc<dyn FailoverSwitchScheduler + Send + Sync>;
+
+pub(crate) trait FailoverSwitchScheduler {
+    fn schedule_switch(&self, app_type: String, provider_id: String, provider_name: String);
+}
+
+struct CcSwitchFailoverSwitchScheduler {
+    manager: Arc<FailoverSwitchManager>,
+    app_handle: Option<tauri::AppHandle>,
+}
+
+impl CcSwitchFailoverSwitchScheduler {
+    fn new(
+        manager: Arc<FailoverSwitchManager>,
+        app_handle: Option<tauri::AppHandle>,
+    ) -> Self {
+        Self {
+            manager,
+            app_handle,
+        }
+    }
+}
+
+impl FailoverSwitchScheduler for CcSwitchFailoverSwitchScheduler {
+    fn schedule_switch(&self, app_type: String, provider_id: String, provider_name: String) {
+        self.manager.clone().spawn_try_switch(
+            self.app_handle.clone(),
+            app_type,
+            provider_id,
+            provider_name,
+        );
+    }
+}
+
+pub(crate) fn failover_switch_scheduler_from_runtime_sources(
+    manager: Arc<FailoverSwitchManager>,
+    app_handle: Option<tauri::AppHandle>,
+) -> FailoverSwitchSchedulerRef {
+    Arc::new(CcSwitchFailoverSwitchScheduler::new(manager, app_handle))
+}
+
+#[cfg(test)]
+struct NoopFailoverSwitchScheduler;
+
+#[cfg(test)]
+impl FailoverSwitchScheduler for NoopFailoverSwitchScheduler {
+    fn schedule_switch(&self, _app_type: String, _provider_id: String, _provider_name: String) {}
+}
+
+#[cfg(test)]
+pub(crate) fn noop_failover_switch_scheduler() -> FailoverSwitchSchedulerRef {
+    Arc::new(NoopFailoverSwitchScheduler)
+}
+
 #[derive(Clone)]
 pub(crate) struct ForwarderRuntimeHostResources {
     pub(crate) provider_router: Arc<ProviderRouter>,
@@ -7773,8 +7830,7 @@ pub(crate) struct ForwarderRuntimeHostResources {
     pub(crate) events: Arc<ProxyEventBus>,
     pub(crate) gemini_shadow: Arc<GeminiShadowStore>,
     pub(crate) codex_chat_history: Arc<CodexChatHistoryStore>,
-    pub(crate) failover_manager: Arc<FailoverSwitchManager>,
-    pub(crate) app_handle: Option<tauri::AppHandle>,
+    pub(crate) failover_switch_scheduler: FailoverSwitchSchedulerRef,
     pub(crate) managed_account_runtime_source: ManagedAccountRuntimeSourceRef,
 }
 
@@ -7788,8 +7844,7 @@ pub(crate) fn forwarder_runtime_host_resources_from_runtime(
         events: runtime.events.clone(),
         gemini_shadow: runtime.gemini_shadow.clone(),
         codex_chat_history: runtime.codex_chat_history.clone(),
-        failover_manager: runtime.failover_manager.clone(),
-        app_handle: runtime.app_handle.clone(),
+        failover_switch_scheduler: runtime.failover_switch_scheduler.clone(),
         managed_account_runtime_source: runtime.managed_account_runtime_source.clone(),
     }
 }
@@ -7823,8 +7878,7 @@ pub(crate) async fn forward_with_preplanned_host_runtime(
         events,
         gemini_shadow,
         codex_chat_history,
-        failover_manager,
-        app_handle,
+        failover_switch_scheduler,
         managed_account_runtime_source,
     } = resources;
     let ForwardRuntimeRequest {
@@ -7845,8 +7899,7 @@ pub(crate) async fn forward_with_preplanned_host_runtime(
         events,
         gemini_shadow,
         codex_chat_history,
-        failover_manager,
-        app_handle,
+        failover_switch_scheduler,
         managed_account_runtime_source,
         current_provider_id,
         session_result.session_id,

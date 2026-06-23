@@ -5,8 +5,6 @@ use crate::error::AppError;
 #[cfg(test)]
 use crate::proxy::events::ProxyEventBus;
 #[cfg(test)]
-use crate::proxy::failover_switch::FailoverSwitchManager;
-#[cfg(test)]
 use crate::proxy::hyper_client::ProxyResponse;
 #[cfg(test)]
 use crate::proxy::codex_chat_history::CodexChatHistoryStore;
@@ -439,8 +437,7 @@ mod tests {
             events,
             gemini_shadow: Arc::new(GeminiShadowStore::default()),
             codex_chat_history: Arc::new(CodexChatHistoryStore::default()),
-            failover_manager: Arc::new(FailoverSwitchManager::new(db)),
-            app_handle: None,
+            failover_switch_scheduler: crate::proxy_core_adapter::noop_failover_switch_scheduler(),
             managed_account_runtime_source:
                 crate::proxy_core_adapter::default_managed_account_runtime_source(),
         }

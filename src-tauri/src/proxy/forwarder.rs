@@ -7,7 +7,6 @@ use super::{
     error::ProxyError,
     error_mapper::reqwest_send_error_to_proxy_error,
     events::ProxyEventBus,
-    failover_switch::FailoverSwitchManager,
     provider_router::ProviderRouter,
     codex_chat_history::CodexChatHistoryStore,
     route_attempt::{apply_channel_model_override, ForwardAttempt},
@@ -73,9 +72,10 @@ use crate::proxy_core_adapter::{
     CopilotOptimizerConfig, CurrentRouteTarget, ForwardFailureCategory,
     ForwardUpstreamUrlPlanInput, GeminiShadowStore, MediaRetryInput, OptimizerConfig,
     PromptCacheTraceLogInput,
-    ManagedAccountRuntimeSourceRef, ProxyRuntimeStatus, RectifierConfig, ResolvedChannelAttempt,
-    UpstreamAuthHeadersInput, UpstreamRequestHeadersInput, UpstreamSendPolicyInput,
-    UpstreamTransportKind, UNSUPPORTED_IMAGE_MARKER,
+    FailoverSwitchSchedulerRef, ManagedAccountRuntimeSourceRef, ProxyRuntimeStatus,
+    RectifierConfig, ResolvedChannelAttempt, UpstreamAuthHeadersInput,
+    UpstreamRequestHeadersInput, UpstreamSendPolicyInput, UpstreamTransportKind,
+    UNSUPPORTED_IMAGE_MARKER,
 };
 #[cfg(test)]
 use crate::proxy_core_adapter::provider_router_from_database;
@@ -150,10 +150,7 @@ pub struct RequestForwarder {
     events: Arc<ProxyEventBus>,
     gemini_shadow: Arc<GeminiShadowStore>,
     codex_chat_history: Arc<CodexChatHistoryStore>,
-    /// 故障转移切换管理器
-    failover_manager: Arc<FailoverSwitchManager>,
-    /// AppHandle，用于发射事件和更新托盘
-    app_handle: Option<tauri::AppHandle>,
+    failover_switch_scheduler: FailoverSwitchSchedulerRef,
     managed_account_runtime_source: ManagedAccountRuntimeSourceRef,
     /// 请求开始时的"当前供应商 ID"（用于判断是否需要同步 UI/托盘）
     current_provider_id_at_start: String,
@@ -257,8 +254,7 @@ impl RequestForwarder {
         events: Arc<ProxyEventBus>,
         gemini_shadow: Arc<GeminiShadowStore>,
         codex_chat_history: Arc<CodexChatHistoryStore>,
-        failover_manager: Arc<FailoverSwitchManager>,
-        app_handle: Option<tauri::AppHandle>,
+        failover_switch_scheduler: FailoverSwitchSchedulerRef,
         managed_account_runtime_source: ManagedAccountRuntimeSourceRef,
         current_provider_id_at_start: String,
         session_id: String,
@@ -280,8 +276,7 @@ impl RequestForwarder {
             events,
             gemini_shadow,
             codex_chat_history,
-            failover_manager,
-            app_handle,
+            failover_switch_scheduler,
             managed_account_runtime_source,
             current_provider_id_at_start,
             session_id,
@@ -347,8 +342,7 @@ impl RequestForwarder {
     }
 
     fn schedule_failover_switch(&self, app_type: &str, provider: &Provider) {
-        self.failover_manager.clone().spawn_try_switch(
-            self.app_handle.clone(),
+        self.failover_switch_scheduler.schedule_switch(
             app_type.to_string(),
             provider.id.clone(),
             provider.name.clone(),
@@ -1882,8 +1876,7 @@ mod tests {
             events: Arc::new(ProxyEventBus::default()),
             gemini_shadow: Arc::new(GeminiShadowStore::new()),
             codex_chat_history: Arc::new(CodexChatHistoryStore::default()),
-            failover_manager: Arc::new(FailoverSwitchManager::new(db)),
-            app_handle: None,
+            failover_switch_scheduler: crate::proxy_core_adapter::noop_failover_switch_scheduler(),
             managed_account_runtime_source:
                 crate::proxy_core_adapter::default_managed_account_runtime_source(),
             current_provider_id_at_start: String::new(),
