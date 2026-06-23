@@ -66,8 +66,7 @@ pub(crate) const COPILOT_INTEGRATION_ID: &str = "vscode-chat";
 pub(crate) struct CcSwitchProxyRuntime {
     pub(crate) db: Arc<Database>,
     pub(crate) provider_router: Arc<ProviderRouter>,
-    pub(crate) gemini_shadow: Arc<GeminiShadowStore>,
-    pub(crate) codex_chat_history: Arc<CodexChatHistoryStore>,
+    pub(crate) protocol_state_source: ForwarderProtocolStateSourceRef,
     pub(crate) runtime_state_source: ForwarderRuntimeStateSourceRef,
     pub(crate) failover_switch_scheduler: FailoverSwitchSchedulerRef,
     pub(crate) managed_account_runtime_source: ManagedAccountRuntimeSourceRef,
@@ -476,6 +475,10 @@ pub(crate) fn proxy_state_from_runtime_sources(
     let current_providers = Arc::new(RwLock::new(HashMap::new()));
     let gemini_shadow = Arc::new(GeminiShadowStore::default());
     let codex_chat_history = Arc::new(CodexChatHistoryStore::default());
+    let protocol_state_source = forwarder_protocol_state_source_from_runtime_parts(
+        gemini_shadow.clone(),
+        codex_chat_history.clone(),
+    );
     let runtime_state_source = forwarder_runtime_state_source_from_runtime_parts(
         status.clone(),
         current_providers.clone(),
@@ -491,8 +494,7 @@ pub(crate) fn proxy_state_from_runtime_sources(
         Arc::new(CcSwitchProxyServices::with_runtime(CcSwitchProxyRuntime {
             db: db.clone(),
             provider_router: provider_router.clone(),
-            gemini_shadow: gemini_shadow.clone(),
-            codex_chat_history: codex_chat_history.clone(),
+            protocol_state_source,
             runtime_state_source,
             failover_switch_scheduler,
             managed_account_runtime_source,
@@ -7878,12 +7880,56 @@ pub(crate) fn forwarder_runtime_state_source_from_runtime_parts(
     ))
 }
 
+pub(crate) type ForwarderProtocolStateSourceRef =
+    Arc<dyn ForwarderProtocolStateSource + Send + Sync>;
+
+pub(crate) trait ForwarderProtocolStateSource {
+    fn gemini_shadow(&self) -> Arc<GeminiShadowStore>;
+    fn codex_chat_history(&self) -> Arc<CodexChatHistoryStore>;
+}
+
+struct CcSwitchForwarderProtocolStateSource {
+    gemini_shadow: Arc<GeminiShadowStore>,
+    codex_chat_history: Arc<CodexChatHistoryStore>,
+}
+
+impl CcSwitchForwarderProtocolStateSource {
+    fn new(
+        gemini_shadow: Arc<GeminiShadowStore>,
+        codex_chat_history: Arc<CodexChatHistoryStore>,
+    ) -> Self {
+        Self {
+            gemini_shadow,
+            codex_chat_history,
+        }
+    }
+}
+
+impl ForwarderProtocolStateSource for CcSwitchForwarderProtocolStateSource {
+    fn gemini_shadow(&self) -> Arc<GeminiShadowStore> {
+        self.gemini_shadow.clone()
+    }
+
+    fn codex_chat_history(&self) -> Arc<CodexChatHistoryStore> {
+        self.codex_chat_history.clone()
+    }
+}
+
+pub(crate) fn forwarder_protocol_state_source_from_runtime_parts(
+    gemini_shadow: Arc<GeminiShadowStore>,
+    codex_chat_history: Arc<CodexChatHistoryStore>,
+) -> ForwarderProtocolStateSourceRef {
+    Arc::new(CcSwitchForwarderProtocolStateSource::new(
+        gemini_shadow,
+        codex_chat_history,
+    ))
+}
+
 #[derive(Clone)]
 pub(crate) struct ForwarderRuntimeHostResources {
     pub(crate) provider_router: Arc<ProviderRouter>,
+    pub(crate) protocol_state_source: ForwarderProtocolStateSourceRef,
     pub(crate) runtime_state_source: ForwarderRuntimeStateSourceRef,
-    pub(crate) gemini_shadow: Arc<GeminiShadowStore>,
-    pub(crate) codex_chat_history: Arc<CodexChatHistoryStore>,
     pub(crate) failover_switch_scheduler: FailoverSwitchSchedulerRef,
     pub(crate) managed_account_runtime_source: ManagedAccountRuntimeSourceRef,
 }
@@ -7893,9 +7939,8 @@ pub(crate) fn forwarder_runtime_host_resources_from_runtime(
 ) -> ForwarderRuntimeHostResources {
     ForwarderRuntimeHostResources {
         provider_router: runtime.provider_router.clone(),
+        protocol_state_source: runtime.protocol_state_source.clone(),
         runtime_state_source: runtime.runtime_state_source.clone(),
-        gemini_shadow: runtime.gemini_shadow.clone(),
-        codex_chat_history: runtime.codex_chat_history.clone(),
         failover_switch_scheduler: runtime.failover_switch_scheduler.clone(),
         managed_account_runtime_source: runtime.managed_account_runtime_source.clone(),
     }
@@ -7925,9 +7970,8 @@ pub(crate) async fn forward_with_preplanned_host_runtime(
 ) -> ProxyCoreResult<ProxyResult> {
     let ForwarderRuntimeHostResources {
         provider_router,
+        protocol_state_source,
         runtime_state_source,
-        gemini_shadow,
-        codex_chat_history,
         failover_switch_scheduler,
         managed_account_runtime_source,
     } = resources;
@@ -7944,9 +7988,8 @@ pub(crate) async fn forward_with_preplanned_host_runtime(
     let forwarder = RequestForwarder::new_preplanned(
         provider_router,
         forwarder_options.non_streaming_timeout,
+        protocol_state_source,
         runtime_state_source,
-        gemini_shadow,
-        codex_chat_history,
         failover_switch_scheduler,
         managed_account_runtime_source,
         current_provider_id,

@@ -7,7 +7,6 @@ use super::{
     error::ProxyError,
     error_mapper::reqwest_send_error_to_proxy_error,
     provider_router::ProviderRouter,
-    codex_chat_history::CodexChatHistoryStore,
     route_attempt::{apply_channel_model_override, ForwardAttempt},
 };
 use crate::proxy_core_adapter::{
@@ -69,11 +68,12 @@ use crate::proxy_core_adapter::{
     streaming_header_timeout_message, supports_reasoning_effort, thinking_optimization_log_message,
     validate_managed_account_upstream_auth, AttemptEventPhase, CopilotAuthHeaderOverrides,
     CopilotOptimizerConfig, ForwardFailureCategory, ForwardUpstreamUrlPlanInput,
-    GeminiShadowStore, MediaRetryInput, OptimizerConfig, PromptCacheTraceLogInput,
-    FailoverSwitchSchedulerRef, ForwarderRuntimeStateSourceRef,
-    ManagedAccountRuntimeSourceRef, ProxyRuntimeStatus, RectifierConfig,
-    ResolvedChannelAttempt, UpstreamAuthHeadersInput, UpstreamRequestHeadersInput,
-    UpstreamSendPolicyInput, UpstreamTransportKind, UNSUPPORTED_IMAGE_MARKER,
+    MediaRetryInput, OptimizerConfig, PromptCacheTraceLogInput,
+    FailoverSwitchSchedulerRef, ForwarderProtocolStateSourceRef,
+    ForwarderRuntimeStateSourceRef, ManagedAccountRuntimeSourceRef, ProxyRuntimeStatus,
+    RectifierConfig, ResolvedChannelAttempt, UpstreamAuthHeadersInput,
+    UpstreamRequestHeadersInput, UpstreamSendPolicyInput, UpstreamTransportKind,
+    UNSUPPORTED_IMAGE_MARKER,
 };
 #[cfg(test)]
 use crate::proxy_core_adapter::provider_router_from_database;
@@ -143,9 +143,8 @@ impl Drop for ActiveConnectionGuard {
 pub struct RequestForwarder {
     /// 共享的 ProviderRouter（持有熔断器状态）
     router: Arc<ProviderRouter>,
+    protocol_state_source: ForwarderProtocolStateSourceRef,
     runtime_state_source: ForwarderRuntimeStateSourceRef,
-    gemini_shadow: Arc<GeminiShadowStore>,
-    codex_chat_history: Arc<CodexChatHistoryStore>,
     failover_switch_scheduler: FailoverSwitchSchedulerRef,
     managed_account_runtime_source: ManagedAccountRuntimeSourceRef,
     /// 请求开始时的"当前供应商 ID"（用于判断是否需要同步 UI/托盘）
@@ -245,9 +244,8 @@ impl RequestForwarder {
     pub(crate) fn new_preplanned(
         router: Arc<ProviderRouter>,
         non_streaming_timeout: u64,
+        protocol_state_source: ForwarderProtocolStateSourceRef,
         runtime_state_source: ForwarderRuntimeStateSourceRef,
-        gemini_shadow: Arc<GeminiShadowStore>,
-        codex_chat_history: Arc<CodexChatHistoryStore>,
         failover_switch_scheduler: FailoverSwitchSchedulerRef,
         managed_account_runtime_source: ManagedAccountRuntimeSourceRef,
         current_provider_id_at_start: String,
@@ -265,9 +263,8 @@ impl RequestForwarder {
         let max_attempts = (max_retries as usize).saturating_add(1);
         Self {
             router,
+            protocol_state_source,
             runtime_state_source,
-            gemini_shadow,
-            codex_chat_history,
             failover_switch_scheduler,
             managed_account_runtime_source,
             current_provider_id_at_start,
@@ -1357,10 +1354,8 @@ impl RequestForwarder {
         // 转换请求体（如果需要）
         let mut request_body = if codex_responses_to_chat {
             let mut mapped_body = mapped_body;
-            let restored = self
-                .codex_chat_history
-                .enrich_request(&mut mapped_body)
-                .await;
+            let codex_chat_history = self.protocol_state_source.codex_chat_history();
+            let restored = codex_chat_history.enrich_request(&mut mapped_body).await;
             if restored > 0 {
                 log::debug!(
                     "[Codex] Restored or enriched {restored} cached function call item(s) for Chat upstream"
@@ -1390,7 +1385,7 @@ impl RequestForwarder {
                     api_format,
                     self.session_client_provided
                         .then_some(self.session_id.as_str()),
-                    Some(self.gemini_shadow.as_ref()),
+                    Some(self.protocol_state_source.gemini_shadow().as_ref()),
                 )
                 .map_err(ProxyError::TransformError)?
             } else {
@@ -1820,11 +1815,12 @@ mod tests {
     use super::*;
     use crate::database::Database;
     use crate::proxy::events::ProxyEventBus;
+    use crate::proxy::codex_chat_history::CodexChatHistoryStore;
     use crate::proxy_core_adapter::ManagedAccountAuthError;
     use crate::proxy_core_adapter::{canonical_json_string, short_value_hash};
     use crate::proxy_core_adapter::{
         interface_kind_for_forward, request_model_for_forward, AppKind, ChannelRouteCandidate,
-        ResolvedChannelAttempt,
+        GeminiShadowStore, ResolvedChannelAttempt,
         claude_transform_endpoint_rewrite_input_from_body as transform_endpoint_rewrite_input,
         rewrite_claude_transform_endpoint as rewrite_transform_endpoint,
     };
@@ -1876,17 +1872,22 @@ mod tests {
         let status = Arc::new(RwLock::new(ProxyRuntimeStatus::default()));
         let current_providers = Arc::new(RwLock::new(HashMap::new()));
         let events = Arc::new(ProxyEventBus::default());
+        let gemini_shadow = Arc::new(GeminiShadowStore::new());
+        let codex_chat_history = Arc::new(CodexChatHistoryStore::default());
 
         RequestForwarder {
             router: Arc::new(provider_router_from_database(db.clone())),
+            protocol_state_source:
+                crate::proxy_core_adapter::forwarder_protocol_state_source_from_runtime_parts(
+                    gemini_shadow,
+                    codex_chat_history,
+                ),
             runtime_state_source:
                 crate::proxy_core_adapter::forwarder_runtime_state_source_from_runtime_parts(
                     status,
                     current_providers,
                     events,
                 ),
-            gemini_shadow: Arc::new(GeminiShadowStore::new()),
-            codex_chat_history: Arc::new(CodexChatHistoryStore::default()),
             failover_switch_scheduler: crate::proxy_core_adapter::noop_failover_switch_scheduler(),
             managed_account_runtime_source:
                 crate::proxy_core_adapter::default_managed_account_runtime_source(),

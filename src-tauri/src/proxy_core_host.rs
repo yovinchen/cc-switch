@@ -431,17 +431,22 @@ mod tests {
         let events = Arc::new(ProxyEventBus::default());
         let status = Arc::new(RwLock::new(ProxyRuntimeStatus::default()));
         let current_providers = Arc::new(RwLock::new(std::collections::HashMap::new()));
+        let gemini_shadow = Arc::new(GeminiShadowStore::default());
+        let codex_chat_history = Arc::new(CodexChatHistoryStore::default());
         CcSwitchProxyRuntime {
             db: db.clone(),
             provider_router: Arc::new(provider_router_from_database(db.clone())),
+            protocol_state_source:
+                crate::proxy_core_adapter::forwarder_protocol_state_source_from_runtime_parts(
+                    gemini_shadow,
+                    codex_chat_history,
+                ),
             runtime_state_source:
                 crate::proxy_core_adapter::forwarder_runtime_state_source_from_runtime_parts(
                     status,
                     current_providers,
                     events,
                 ),
-            gemini_shadow: Arc::new(GeminiShadowStore::default()),
-            codex_chat_history: Arc::new(CodexChatHistoryStore::default()),
             failover_switch_scheduler: crate::proxy_core_adapter::noop_failover_switch_scheduler(),
             managed_account_runtime_source:
                 crate::proxy_core_adapter::default_managed_account_runtime_source(),

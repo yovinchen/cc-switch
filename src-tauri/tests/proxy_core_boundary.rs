@@ -5628,6 +5628,58 @@ fn production_forwarder_uses_runtime_state_source_resource() {
 }
 
 #[test]
+fn production_forwarder_uses_protocol_state_source_resource() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let path = manifest_dir.join("src/proxy/forwarder.rs");
+    let source = fs::read_to_string(&path).expect("read forwarder.rs");
+    let struct_slice = function_slice(&source, "pub struct RequestForwarder", "impl RequestForwarder");
+    let impl_slice = function_slice(&source, "impl RequestForwarder", "#[cfg(test)]");
+
+    assert!(
+        struct_slice.contains("protocol_state_source"),
+        "RequestForwarder must receive Gemini/Codex protocol state as one injected source"
+    );
+
+    let struct_forbidden_markers = [
+        "gemini_shadow: Arc<GeminiShadowStore>",
+        "codex_chat_history: Arc<CodexChatHistoryStore>",
+    ];
+    let impl_forbidden_markers = ["self.gemini_shadow", "self.codex_chat_history"];
+    let mut violations = Vec::new();
+
+    for (line_index, line) in production_lines(struct_slice) {
+        let code = line.split("//").next().unwrap_or_default();
+        for marker in struct_forbidden_markers {
+            if code.contains(marker) {
+                violations.push(format!(
+                    "src/proxy/forwarder.rs RequestForwarder:{} contains protocol state field marker `{}`",
+                    line_index + 1,
+                    marker
+                ));
+            }
+        }
+    }
+    for (line_index, line) in production_lines(impl_slice) {
+        let code = line.split("//").next().unwrap_or_default();
+        for marker in impl_forbidden_markers {
+            if code.contains(marker) {
+                violations.push(format!(
+                    "src/proxy/forwarder.rs impl RequestForwarder:{} contains direct protocol state marker `{}`",
+                    line_index + 1,
+                    marker
+                ));
+            }
+        }
+    }
+
+    assert!(
+        violations.is_empty(),
+        "forwarder must use an injected protocol state source instead of direct Gemini/Codex state fields:\n{}",
+        violations.join("\n")
+    );
+}
+
+#[test]
 fn production_failover_switch_delegates_proxy_config_to_adapter() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let path = manifest_dir.join("src/proxy/failover_switch.rs");
