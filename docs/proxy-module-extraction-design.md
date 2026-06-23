@@ -332,7 +332,7 @@
 321. channel record/model record 的批量 host-to-core 投影 helper 已从 handler 移到 `proxy_core_adapter::{proxy_channel_records_to_core, proxy_channel_model_records_to_core}`；handler 不再持有 DB record collection 映射细节。
 322. provider spec、channel spec、app summary input 与 current-route provider summary 的 host-to-core 投影组合已移到 `proxy_core_adapter` 命名 helper；handler 只负责取得 DB/router 数据并调用 adapter。
 323. 单条 channel record 与 runtime status 的 host-to-core 投影也已收敛到 `proxy_core_adapter::{proxy_channel_record_to_core, proxy_runtime_status_to_core}`；handler 不再直接导入 `ToProxyCore*` 投影 trait。
-324. route dry-run 使用的 channel route input + source kind 投影已收敛到 `proxy_core_adapter::proxy_channel_route_inputs_to_core`；`proxy::channel_routing` 只负责调用 core resolver 和错误适配，且保留 DB 原始 status 文本用于 rejected reason。
+324. route dry-run 使用的 DB channel record 到 `RouteResolveChannelInput` 投影已收敛到 `proxy_core_adapter::proxy_channel_record_to_route_resolve_channel_input`；router channel source 直接返回 core route input，保留 DB 原始 status/source kind 文本用于 rejected reason。
 325. handler 中直接构造 `ProxyEngine::new(state.proxy_core_services.clone())` 的重复逻辑已收敛到 `ProxyState::proxy_engine`；HTTP handler 不再关心 core service 容器的克隆方式，后续可在 state/adapter 层统一调整 engine 生命周期。
 326. route dry-run 的 circuit-open channel id 到 rejected:circuit_open response mutation 已收敛到 `proxy-core::reject_unavailable_channel_ids`；`ProviderRouter` 只负责查询当前候选的 circuit breaker 可用性并传回不可用 channel id 列表。
 327. provider failover/current 选择的纯策略、auto failover 启用 plan、failover 队列到 provider circuit lookup/candidate 的投影已迁入 `proxy-core::provider_selection`；`ProviderRouter`/Tauri command 只负责读取 DB/settings/circuit breaker 事实并把 core 决策映射回既有 `AppError`、String 错误与 FO 日志。
@@ -1022,7 +1022,7 @@
 本轮继续把 Copilot fingerprint header 常量提升到 adapter，`proxy_core_adapter` 不再反向引用 `providers::copilot_auth` 常量。
 本轮继续把 `codex_chat_history` 从 `proxy::providers` 移到 `proxy` 模块根，provider 目录只保留 provider adapter 和账号认证相关实现。
 本轮继续把 `ProviderRouterSource` 拆成 router 端的 provider/channel/config/health 四个 focused port；host adapter 侧拆出对应 DB-backed source/store，并把 `ProviderRouter::new(Arc<Database>)` 迁到 `proxy_core_adapter::provider_router_from_database` factory，生产代码不再直连 router 的 DB 构造入口。
-本轮继续把 `ProviderRouter` 的 route channel 输入从 DB `ProxyChannelRecord` 切到 router-local `ProviderRouterChannelRecord`；management channel specs/records 改为 host adapter 直接从 DB source 读取完整记录，避免为了管理 API 把 DAO record 暴露给 router。
+本轮继续把 `ProviderRouter` 的 route channel 输入从 router-local `ProviderRouterChannelRecord` 切到 core `RouteResolveChannelInput`；management channel specs/records 仍由 host adapter 直接从 DB source 读取完整记录，避免为了管理 API 把 DAO record 暴露给 router，也避免 router 维护自己的中转 DTO。
 
 当前原则：核心 crate 可以新增端口和领域字段，但不得引入 `tauri`、`Database`、settings、commands、services 等宿主依赖；现有 runtime 行为必须继续通过 targeted tests 证明不回归。
 
@@ -1784,7 +1784,7 @@ Channel 管理 API 的部分 contract 也已开始收敛到 core：`management_a
 
 旧 provider 主地址和 `provider_endpoints` 到 channel 的兼容迁移规划也已进入 core：`build_legacy_channel_migration_plan` 负责 primary/endpoint channel 投影、endpoint 稳定排序、normalized base URL 去重、priority/interface/model route 推导和 review 计数。CC Switch adapter 只把本地 `Provider`、`custom_endpoints`、当前 provider 事实装配成 core input；DAO 只负责读取 legacy provider 事实和写入 `proxy_channels`/models/health。
 
-materialized channel 优先、空表才 fallback 到 legacy projection 的 source 选择规则已由 `channel_route_source_for_materialized_count` 固化，并经 `proxy_core_adapter::channel_route_records_from_db_source` 包装为 host DB source 选择入口；`ProviderRouter` 只接收 adapter 投影后的 `ProviderRouterChannelRecord` 路由字段，不再直接读取 materialized records、legacy preview 或完整 `ProxyChannelRecord` DAO 形状。management channel specs/records 则由 host adapter 直接用 DB source 读取完整记录。
+materialized channel 优先、空表才 fallback 到 legacy projection 的 source 选择规则已由 `channel_route_source_for_materialized_count` 固化，并经 `proxy_core_adapter::channel_route_records_from_db_source` 包装为 host DB source 选择入口；`ProviderRouter` 只接收 adapter 投影后的 `RouteResolveChannelInput` 路由字段，不再直接读取 materialized records、legacy preview、完整 `ProxyChannelRecord` DAO 形状或 router-local channel DTO。management channel specs/records 则由 host adapter 直接用 DB source 读取完整记录。
 
 dry-run route 的 circuit-open 识别也继续收敛：`route_candidate_channel_circuit_keys` 负责把 `RouteResolveResponse` 的候选投影成 channel circuit lookup facts，`proxy_core_adapter::management_route_response_from_router_source` 负责调用 core resolver、向 `ProviderRouter` 查询已有 breaker 可用性并把 availability facts 交给 `apply_route_candidate_circuit_availability`，由 adapter/core 生成 rejected:circuit_open response mutation。
 
