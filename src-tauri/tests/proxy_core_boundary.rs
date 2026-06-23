@@ -193,6 +193,8 @@ const FORBIDDEN_PROXY_SERVICE_TAKEOVER_ENABLED_CONFIG_MARKERS: &[&str] = &[
 ];
 const FORBIDDEN_PROXY_SERVICE_TAKEOVER_BACKUP_SOURCE_MARKERS: &[&str] =
     &[".get_live_backup(", "读取 {app_type_str} 备份失败"];
+const FORBIDDEN_PROXY_SERVICE_TAKEOVER_BACKUP_DELETE_MARKERS: &[&str] =
+    &[".delete_live_backup(", "删除 {app_type_str} Live 备份失败"];
 const FORBIDDEN_PROXY_SERVICE_STOP_RESTORE_ENABLED_CONFIG_MARKERS: &[&str] = &[
     "[\"claude\", \"codex\", \"gemini\"]",
     ".get_proxy_config_for_app(",
@@ -4237,6 +4239,38 @@ fn production_proxy_service_delegates_takeover_backup_source_to_adapter() {
     assert!(
         violations.is_empty(),
         "ProxyService::set_takeover_for_app must delegate takeover backup existence reads to proxy_core_adapter:\n{}",
+        violations.join("\n")
+    );
+}
+
+#[test]
+fn production_proxy_service_delegates_takeover_backup_delete_to_adapter() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let path = manifest_dir.join("src/services/proxy.rs");
+    let source = fs::read_to_string(&path).expect("read services/proxy.rs");
+    let function = function_slice(
+        &source,
+        "pub async fn set_takeover_for_app",
+        "/// 同步 Live 配置中的 Token",
+    );
+
+    let mut violations = Vec::new();
+    for (line_index, line) in production_lines(function) {
+        let code = line.split("//").next().unwrap_or_default();
+        for marker in FORBIDDEN_PROXY_SERVICE_TAKEOVER_BACKUP_DELETE_MARKERS {
+            if code.contains(marker) {
+                violations.push(format!(
+                    "src/services/proxy.rs set_takeover_for_app:{} contains takeover backup delete marker `{}`",
+                    line_index + 1,
+                    marker
+                ));
+            }
+        }
+    }
+
+    assert!(
+        violations.is_empty(),
+        "ProxyService::set_takeover_for_app must delegate takeover backup deletion to proxy_core_adapter:\n{}",
         violations.join("\n")
     );
 }

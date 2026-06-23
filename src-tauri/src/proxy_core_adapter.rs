@@ -1072,6 +1072,19 @@ pub(crate) async fn live_takeover_backup_exists_from_db(db: &Database, app_type:
     }
 }
 
+pub(crate) async fn delete_live_backup_best_effort_in_db(db: &Database, app_type: &str) {
+    let _ = db.delete_live_backup(app_type).await;
+}
+
+pub(crate) async fn delete_live_backup_in_db(
+    db: &Database,
+    app_type: &str,
+) -> Result<(), String> {
+    db.delete_live_backup(app_type)
+        .await
+        .map_err(|e| format!("删除 {app_type} Live 备份失败: {e}"))
+}
+
 pub(crate) async fn live_backup_config_for_simple_restore_from_db(
     db: &Database,
     app_type: &AppType,
