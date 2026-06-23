@@ -7902,6 +7902,10 @@ pub(crate) fn provider_is_codex_oauth(provider: &Provider) -> bool {
     provider_kind_from_provider(provider) == Some(ProviderKind::CodexOAuth)
 }
 
+pub(crate) fn forwarder_is_codex_oauth_provider(provider: &Provider) -> bool {
+    provider_is_codex_oauth(provider)
+}
+
 pub(crate) fn provider_is_github_copilot(provider: &Provider) -> bool {
     provider_kind_from_provider(provider) == Some(ProviderKind::GitHubCopilot)
         || provider
@@ -18301,6 +18305,7 @@ command = "latest-command"
         let source_spec = provider_spec_from_source(&AppKind::Claude, Some(provider.clone()))
             .expect("provider spec")
             .expect("provider");
+        assert!(!forwarder_is_codex_oauth_provider(&provider));
         let source_specs =
             provider_specs_from_source(&AppKind::Claude, vec![provider]).expect("provider specs");
 
@@ -18331,6 +18336,7 @@ command = "latest-command"
             "https://api.githubcopilot.com"
         ));
         assert!(provider_is_codex_oauth(&codex_provider));
+        assert!(forwarder_is_codex_oauth_provider(&codex_provider));
         assert_eq!(
             provider_codex_oauth_managed_account_id(&codex_provider).as_deref(),
             Some("codex-acct-1")

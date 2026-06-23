@@ -68,6 +68,7 @@ const FORBIDDEN_FORWARDER_CODEX_PROVIDER_COMPAT_MARKERS: &[&str] = &[
     "provider_should_convert_codex_responses_to_chat(",
     "provider_apply_codex_chat_upstream_model(",
     "provider_codex_chat_reasoning_options(",
+    "provider_is_codex_oauth(",
     "super::providers::apply_codex_chat_upstream_model(",
     "super::providers::resolve_codex_chat_reasoning_options(",
 ];
