@@ -7613,6 +7613,23 @@ pub(crate) fn apply_provider_model_mapping_from_provider(
     apply_provider_model_mapping(body, &provider.settings_config)
 }
 
+pub(crate) fn apply_forward_request_model_mapping_from_provider(
+    app_type: &AppType,
+    body: Value,
+    provider: &Provider,
+) -> Result<ModelMappingProjection, ProxyError> {
+    if matches!(app_type, AppType::ClaudeDesktop) {
+        return crate::claude_desktop_config::map_proxy_request_model(body, provider)
+            .map(|body| ModelMappingProjection {
+                body,
+                log_message: None,
+            })
+            .map_err(|error| ProxyError::InvalidRequest(error.to_string()));
+    }
+
+    Ok(apply_provider_model_mapping_from_provider(body, provider))
+}
+
 pub(crate) fn replace_images_for_text_only_provider_model(
     body: &mut Value,
     provider: &Provider,
@@ -10614,7 +10631,7 @@ mod tests {
     use super::*;
     use crate::database::ProxyChannelSourceKind;
     use crate::provider::{
-        AuthBinding, AuthBindingSource, ClaudeDesktopModelRoute, ProviderMeta,
+        AuthBinding, AuthBindingSource, ClaudeDesktopMode, ClaudeDesktopModelRoute, ProviderMeta,
     };
     use crate::proxy_core::api::errors::ProxyCoreError;
     use crate::proxy_core::api::session::SessionIdSource;
@@ -16365,6 +16382,49 @@ command = "latest-command"
             Some("unknown")
         );
         assert!(unchanged.log_message.is_none());
+
+        let mut desktop_provider = Provider::with_id(
+            "desktop-proxy".to_string(),
+            "Desktop Proxy".to_string(),
+            json!({}),
+            None,
+        );
+        desktop_provider.meta = Some(ProviderMeta {
+            claude_desktop_mode: Some(ClaudeDesktopMode::Proxy),
+            claude_desktop_model_routes: HashMap::from([(
+                "claude-sonnet-4-6".to_string(),
+                ClaudeDesktopModelRoute {
+                    model: "upstream-sonnet".to_string(),
+                    label_override: None,
+                    supports_1m: Some(true),
+                },
+            )]),
+            ..ProviderMeta::default()
+        });
+        let desktop_projection = apply_forward_request_model_mapping_from_provider(
+            &AppType::ClaudeDesktop,
+            json!({"model": "claude-sonnet-4-6", "messages": []}),
+            &desktop_provider,
+        )
+        .expect("desktop model mapping");
+        assert_eq!(
+            desktop_projection
+                .body
+                .get("model")
+                .and_then(Value::as_str),
+            Some("upstream-sonnet")
+        );
+        assert!(desktop_projection.log_message.is_none());
+        let desktop_error = apply_forward_request_model_mapping_from_provider(
+            &AppType::ClaudeDesktop,
+            json!({"model": "unknown-route", "messages": []}),
+            &desktop_provider,
+        )
+        .expect_err("unknown desktop route");
+        assert!(matches!(
+            desktop_error,
+            ProxyError::InvalidRequest(message) if message.contains("unknown-route")
+        ));
 
         let mut image_body = json!({
             "model": "text-model",

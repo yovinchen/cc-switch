@@ -19,7 +19,7 @@ use crate::proxy::managed_account_auth::{
 };
 use crate::proxy_core_adapter::{
     apply_bedrock_pre_send_optimizers, apply_copilot_model_normalization,
-    apply_copilot_warmup_model_override,
+    apply_copilot_warmup_model_override, apply_forward_request_model_mapping_from_provider,
     build_codex_oauth_session_headers,
     build_retryable_forward_failure_log, build_terminal_forward_failure_log,
     build_upstream_auth_headers, cache_injection_log_message, categorize_forward_failure,
@@ -1146,19 +1146,12 @@ impl RequestForwarder {
         // 应用模型映射（独立于格式转换）
         // Claude Desktop proxy 模式必须先把 Desktop 可见的 claude-* route
         // 映射成真实上游模型名，并且未知 route 要直接报错，不能使用默认模型兜底。
-        let mapped_body = if matches!(app_type, AppType::ClaudeDesktop) {
-            crate::claude_desktop_config::map_proxy_request_model(body.clone(), provider)
-                .map_err(|e| ProxyError::InvalidRequest(e.to_string()))?
-        } else {
-            let projection = crate::proxy_core_adapter::apply_provider_model_mapping_from_provider(
-                body.clone(),
-                provider,
-            );
-            if let Some(message) = projection.log_message {
-                log::debug!("{message}");
-            }
-            projection.body
-        };
+        let projection =
+            apply_forward_request_model_mapping_from_provider(app_type, body.clone(), provider)?;
+        if let Some(message) = projection.log_message {
+            log::debug!("{message}");
+        }
+        let mapped_body = projection.body;
 
         // 与 CCH 对齐：请求前不做 thinking 主动改写（仅保留兼容入口）
         let mut mapped_body = normalize_thinking_type(mapped_body);
