@@ -690,10 +690,10 @@
 679. `RequestContext` 的 app config raw 投影已收敛到 `proxy_core_adapter::app_proxy_config_from_proxy_app_config`：context 不再直接展开 core `ProxyAppConfig.raw` 的 serde 形状，只保留配置读取、response timeout 调用和后续 provider/usage 所需事实。
 680. `RequestContext` 不再保存完整 `AppProxyConfig`：构造时只把 app config 投影为 `ResponseRuntimePolicy`，context 字段只保留 response processor 仍需要的 timeout/retry 策略。
 681. `ProxyResult` 回填 `RequestContext` 的 outbound model、usage route context 与 selected provider hydration 已收敛到 `proxy_core_adapter::request_context_route_update_from_proxy_result`；`UsageSink` 的 missing pricing warning emission 已收敛到 `proxy_core_adapter::log_usage_request_projection_warnings`；context/host sink 只保留 host DB provider 查找、定价查询和落库字段赋值。
-682. `RequestContext::new` 不再调用 `ProviderRouter::select_providers` 或提前保存 provider：provider 只在 `ProxyEngine` 成功返回 route result 后由 `apply_proxy_result` 回填；转发入口 handler 的 `ProxyRequest` app/interface/body/context bridge 已收敛到 `proxy_core_adapter::json_proxy_request_from_input`，forward error usage 与 Codex error envelope 在选路失败时使用 app/tag fallback。
-683. `proxy_core_boundary` 已新增 `RequestContext` provider preselect 禁用扫描：`handler_context.rs` 生产代码不得重新调用 `provider_router` 或 `.select_providers(`，防止请求 context 重新承担 route planning。
+682. `RequestContext::new` 不再调用 `ProviderRouter` selection API 或提前保存 provider：provider 只在 `ProxyEngine` 成功返回 route result 后由 `apply_proxy_result` 回填；转发入口 handler 的 `ProxyRequest` app/interface/body/context bridge 已收敛到 `proxy_core_adapter::json_proxy_request_from_input`，forward error usage 与 Codex error envelope 在选路失败时使用 app/tag fallback。
+683. `proxy_core_boundary` 已新增 `RequestContext` provider preselect 禁用扫描：`handler_context.rs` 生产代码不得重新调用 `provider_router`、`.select_providers(` 或 `.select_provider_ids(`，防止请求 context 重新承担 route planning。
 684. channel reachability probe 已新增 `ChannelReachabilityProbe` core 端口，probe request 的 app 解析、provider 缺失与 probe 错误包装已收敛到 `proxy_core_adapter`：`CcSwitchChannelReachabilityProbe` 保留 DB provider/config 读取和 `StreamCheckService` 副作用，core 负责 channel test 编排、preflight failure 和最终 response envelope。
-685. app namespace catalog 已收敛到 `ProxyConfigSource::list_apps` 端口，CC Switch 桌面宿主的当前 app catalog 事实由 `proxy_core_adapter::cc_switch_app_kinds` 提供；route candidate provider selection 的 host router 结果到 provider id 列表投影已收敛到 `proxy_core_adapter::route_candidate_provider_ids_from_selection_result`，Claude Desktop model route 的 provider selection 结果与错误包装已收敛到 `proxy_core_adapter::claude_desktop_provider_from_selection_result`，ProviderRouter 的 core route error / provider selection failure 到 `AppError` 映射已收敛到 `proxy_core_adapter::{app_error_from_proxy_core_error,app_error_from_provider_selection_failure}`，current provider 的 settings/DB fallback 来源组合已收敛到 `proxy_core_adapter::current_provider_id_from_router_sources`，materialized channel 空表时是否加载 legacy projection 以及最终 records/source 返回已收敛到 `proxy_core_adapter::channel_route_records_from_sources`，`proxy_core_boundary` 已钉住 `proxy_core_host.rs` 生产代码不得直接构造 `ProxyCoreError` variant：`/proxy/v1/apps` 与 `/proxy/v1/groups` 的 handler 不再把 `AppType::all()` 直接传给 engine，`CcSwitchProviderSource`/`CcSwitchModelCatalogProvider` 只负责调用 `ProviderRouter::select_providers`。
+685. app namespace catalog 已收敛到 `ProxyConfigSource::list_apps` 端口，CC Switch 桌面宿主的当前 app catalog 事实由 `proxy_core_adapter::cc_switch_app_kinds` 提供；route candidate provider selection 的 host router 结果已经直接是 provider id 列表，`proxy_core_adapter::route_candidate_provider_ids_from_selection_result` 只负责错误兼容包装；Claude Desktop model route 的 provider id selection 结果与 Provider 回查/错误包装已收敛到 `proxy_core_adapter::claude_desktop_provider_from_selection_result`，完整 Provider 只在 host adapter 需要模型路由时通过 DB 加载；ProviderRouter 的 core route error / provider selection failure 到 `AppError` 映射已收敛到 `proxy_core_adapter::{app_error_from_proxy_core_error,app_error_from_provider_selection_failure}`，current provider 的 settings/DB fallback 来源组合已收敛到 `proxy_core_adapter::current_provider_id_from_router_sources`，materialized channel 空表时是否加载 legacy projection 以及最终 records/source 返回已收敛到 `proxy_core_adapter::channel_route_records_from_sources`，`proxy_core_boundary` 已钉住 `proxy_core_host.rs` 生产代码不得直接构造 `ProxyCoreError` variant：`/proxy/v1/apps` 与 `/proxy/v1/groups` 的 handler 不再把 `AppType::all()` 直接传给 engine，`CcSwitchProviderSource`/`CcSwitchModelCatalogProvider` 只负责消费 `ProviderRouter::select_provider_ids`。
 686. forwarder 上游 URL/effective endpoint 规划已收敛到 `proxy_core_adapter::forward_upstream_url_plan`：Codex Responses->Chat endpoint rewrite、Claude transform endpoint rewrite、Gemini Native URL、full endpoint query 透传和 channel param override 合并不再散落在 `RequestForwarder` 热路径中。
 687. 托管账号动态认证 token 刷新已先从 `RequestForwarder` 热路径抽到 `proxy::managed_account_auth::resolve_managed_account_auth`：forwarder 不再直接依赖 `CodexOAuthState`、`CodexOAuthManager` 或 `CopilotAuthManager` 的刷新细节，只消费 materialized `ProviderAuthInfo`、Codex account id 和 session header gate。
 688. Copilot 托管账号运行态读取已继续收敛到 `proxy::managed_account_auth`：动态 API endpoint、live `/models` 列表和 model vendor 查询不再让 `RequestForwarder` 直接依赖 `CopilotAuthState`，forwarder 只消费 endpoint/model/vendor 事实。
@@ -1001,13 +1001,13 @@
 本轮继续把 ConfigSource 的 app summary DTO 组装收敛到 adapter，host ConfigSource 不再直接构造 `AppSummaryConfig`。
 本轮也把管理 API token-source 决策收敛到 adapter，handler middleware 不再直接读取 `CC_SWITCH_PROXY_MANAGEMENT_TOKEN` 或调用 core 决策函数。
 本轮继续把 ProviderRouter 的 channel route records/source fallback 决策收敛到 adapter，router 只负责读取 materialized records 与按需提供 legacy preview loader。
-本轮继续把 ProviderRouter 的当前供应商选择结果组装收敛到 adapter，router 只负责读取 settings/db 当前 provider 事实和加载 Provider 实体，不再直接构造 `ProviderSelectionInput::current`。
-本轮继续把 ProviderRouter 的 failover 候选选择结果组装收敛到 adapter，router 只负责读取 failover queue、provider map 和 circuit breaker 可用性，不再直接构造 `ProviderSelectionInput` 或调用 `select_provider_ids`。
+本轮继续把 ProviderRouter 的当前供应商选择结果组装收敛到 adapter，router 只消费 adapter 返回的当前 provider id，不再加载完整 Provider 实体或直接构造 `ProviderSelectionInput::current`。
+本轮继续把 ProviderRouter 的 failover 候选选择结果组装收敛到 adapter，router 只负责读取 failover lookup facts、已配置 provider id 列表和 circuit breaker 可用性，不再直接构造 `ProviderSelectionInput` 或调用 core `select_provider_ids`。
 本轮继续把 ProviderRouter 的 auto-failover 配置读取结果决策收敛到 adapter，router 只负责读取 proxy_config，读取失败时的日志和默认禁用故障转移策略由 adapter 维护。
 本轮继续把 ProviderRouter 的 circuit breaker config 与 failure threshold 配置读取结果 fallback 收敛到 adapter，router 只负责读取 proxy_config 并管理 breaker 实例生命周期。
 本轮继续把 ProviderRouter 的 dry-run route circuit availability 到 rejected:circuit_open response mutation 收敛到 adapter，router 只负责按候选 circuit key 查询 breaker 可用性。
-本轮继续把 ProviderRouter 的 failover lookup availability 到 selection candidate 的投影收敛到 adapter，router 只负责读取 failover queue/provider map 并查询 breaker 可用性。
-本轮继续把 ProviderRouter 的 failover queue/provider map 到 provider circuit lookup 的投影收敛到 adapter，router 不再展开 queue provider_id 或 provider map keys。
+本轮继续把 ProviderRouter 的 failover lookup availability 到 selection candidate 的投影收敛到 adapter，router 只负责读取 failover lookup/provider id facts 并查询 breaker 可用性。
+本轮继续把 ProviderRouter 的 failover queue/provider id facts 到 provider circuit lookup 的投影收敛到 adapter，router 不再展开 queue provider_id 或 provider map keys。
 本轮继续把固定 app catalog 从 proxy-core 默认端口移出，`ProxyConfigSource::list_apps` 改为宿主必填能力，CC Switch 的 `AppType::all()` 只保留在 host adapter。
 本轮继续把 RoutePolicy raw 中 `failoverProviderIds` 的读取 contract 收敛到 domain/routing helper，`ProxyEngine` 不再直接读取 raw JSON 字段。
 本轮继续把 forward runtime 的 auth profile DB key 注入 helper 收敛到 adapter，`proxy_core_host` 不再维护本地 wrapper 或直接查询 channel-key。
@@ -1594,13 +1594,13 @@ pub trait RoutePolicySource: Send + Sync {
 }
 ```
 
-当前 `ProviderRouter::select_providers` 应拆成三部分：
+当前 `ProviderRouter::select_provider_ids` 应继续拆成三部分：
 
 - `ProviderSource` 只负责读取供应商/账号元数据。
 - `ChannelSource` 负责读取可路由 channel，包括现有 provider 主 URL、`provider_endpoints` 投影出来的兼容 channel，以及未来新增的独立 channel 表。
 - `RouteResolver` 负责按 app、接口、模型、group、优先级、权重、熔断、限流和 retry 策略生成尝试计划。
 
-当前分支已先把 `ProviderRouter` 的 DB source 读取和健康持久化收进 `proxy_core_adapter`：router 生产代码不再直接调用 provider/channel/config/health 表的读写 API，也不再暴露 `Arc<Database>` 构造入口，而是通过 `ProviderRouterProviderSource`、`ProviderRouterChannelSource`、`ProviderRouterConfigSource` 和 `ProviderRouterHealthStore` 四个可注入端口取得 provider failover sources、current provider source、channel route source、router config 和 health persistence 入口。后续真正拆 crate 时，应把这些 router 端口进一步映射到 core-facing `ProviderSource`/`ChannelSource`/`HealthStore` trait 实现，而不是让 core 持有 CC Switch `Database`。
+当前分支已先把 `ProviderRouter` 的 DB source 读取和健康持久化收进 `proxy_core_adapter`：router 生产代码不再直接调用 provider/channel/config/health 表的读写 API，也不再暴露 `Arc<Database>` 构造入口；provider selection 生产 API 只返回 provider id，完整 Provider record 的加载留在 host adapter。router 通过 `ProviderRouterProviderSource`、`ProviderRouterChannelSource`、`ProviderRouterConfigSource` 和 `ProviderRouterHealthStore` 四个可注入端口取得 provider failover id sources、current provider id source、channel route source、router config 和 health persistence 入口。后续真正拆 crate 时，应把这些 router 端口进一步映射到 core-facing `ProviderSource`/`ChannelSource`/`HealthStore` trait 实现，而不是让 core 持有 CC Switch `Database`。
 
 这样核心仍拥有路由算法，宿主只提供数据。
 
@@ -1787,7 +1787,7 @@ materialized channel 优先、空表才 fallback 到 legacy projection 的 sourc
 
 dry-run route 的 circuit-open 识别也继续收敛：`route_candidate_channel_circuit_keys` 负责把 `RouteResolveResponse` 的候选投影成 channel circuit lookup facts，`ProviderRouter` 只查询已有 breaker 可用性并把 availability facts 交给 `proxy_core_adapter::apply_route_candidate_circuit_availability`，由 adapter/core 生成 rejected:circuit_open response mutation。
 
-provider failover 的 circuit lookup 也继续收敛：`provider_failover_circuit_lookups` 负责保留 failover queue 顺序、标记 missing provider 并生成已配置 provider 的 circuit key；`proxy_core_adapter::provider_failover_sources_from_router_db` 负责读取 DB provider facts 与 failover queue 并投影为 lookup facts，`ProviderRouter` 只查询 live breaker 可用性，随后把 lookup availability facts 交给 `select_failover_providers_from_router_lookup_availability` 投影为 selection candidates 并执行 core selection 策略。
+provider failover 的 circuit lookup 也继续收敛：`provider_failover_circuit_lookups` 负责保留 failover queue 顺序、标记 missing provider 并生成已配置 provider 的 circuit key；`proxy_core_adapter::provider_failover_sources_from_router_db` 负责读取 DB provider id facts 与 failover queue 并投影为 lookup facts，`ProviderRouter` 只查询 live breaker 可用性，随后把 lookup availability facts 交给 `select_failover_provider_ids_from_router_lookup_availability` 投影为 selection candidates 并执行 core selection 策略，最终仍只返回 provider id 列表。
 
 `ProviderRouter` 的配置源和健康持久化也已进一步收口：auto failover gate、circuit breaker config 和 failure threshold 的 `proxy_config` 读取通过 `proxy_core_adapter::*_from_router_db` helper 完成；provider/channel health 写入和 channel health reset 持久化通过 `proxy_core_adapter::*_health_*_from_router_db` helper 完成；DB-backed router 构造统一由 `provider_router_from_database` adapter factory 完成。`ProviderRouter` 当前保留的核心职责是 live circuit breaker map、permit/half-open 状态机、breaker availability 查询和已有公开方法的 `AppError` 兼容。
 
