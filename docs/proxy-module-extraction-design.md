@@ -618,7 +618,7 @@
 607. legacy channel projection 到 `ProxyChannelRecord` / `ProxyChannelModelRecord` 的 host 映射已移入 `proxy_core_adapter::proxy_channel_record_from_legacy_projection`：DAO 不再逐字段展开 core legacy projection，也不再手写 preview 去重，只负责读取 legacy provider 事实和物化落库。
 608. forward result 到 `ProxyResult` 的 selected route、metadata 和 outbound model 投影已移入 host adapter `proxy_result_from_forward_parts`：`proxy_core_host` 只保留 `ProxyResponse`/connection guard 到 core response 的 runtime 桥接，结果 contract 由 adapter 统一生成。
 609. `CcSwitchChannelSource` 的 channel record 到 `ChannelSpec` 投影与 `ChannelQuery` 过滤已收敛到 host adapter `proxy_channel_records_to_core_specs_for_query`：source 只负责选择 legacy/materialized 数据来源、读取 DB/router 并映射 host 错误。
-610. `CcSwitchProviderSource` 的 DB provider 到 `ProviderSpec` 投影已收敛到 host adapter `proxy_provider_to_core_spec` / `proxy_providers_to_core_specs`：source 只负责 provider list/get 查询，metadata 脱敏和 provider kind 推断继续由 adapter/core 投影规则生成。
+610. `CcSwitchProviderSource` 的 DB provider 到 `ProviderSpec` 投影已收敛到 host adapter `proxy_provider_to_core_spec` / `proxy_providers_to_core_specs`：adapter-owned source 负责 provider list/get/current 查询与 active-route runtime map 读取，metadata 脱敏和 provider kind 推断继续由 adapter/core 投影规则生成。
 611. route policy 的 failover queue provider id 到 `RoutePolicy` raw contract 投影已新增 `proxy-core::route_policy_from_failover_provider_ids` 并经 host adapter `route_policy_from_failover_queue` 接入：adapter-owned `CcSwitchRoutePolicySource` 负责读取 DB 队列和错误映射，host 只装配 source。
 612. `CcSwitchConfigSource` 的 global/app/runtime config DTO 投影已新增 `proxy-core` helpers 并由 adapter-owned source wrapper 接入：config source 负责读取 DB/settings，`ProxyGlobalConfig`、`ProxyAppConfig`、optimizer specs 与 `ProxyRuntimeConfig` 的 raw contract 由 core 统一生成。
 613. `CcSwitchAuthProvider` 的 `AuthProfileRef` 到 `AuthInfo` 默认投影已新增 `proxy-core::auth_info_from_profile_ref` 并由 adapter-owned auth provider 包装：`proxy_core_host` 不再保留 auth provider 实现，也不再手写 headers/accountRef/source metadata envelope。
@@ -693,7 +693,7 @@
 682. `RequestContext::new` 不再调用 `ProviderRouter` selection API 或提前保存 provider：provider 只在 `ProxyEngine` 成功返回 route result 后由 `apply_proxy_result` 回填；转发入口 handler 的 `ProxyRequest` app/interface/body/context bridge 已收敛到 `proxy_core_adapter::json_proxy_request_from_input`，forward error usage 与 Codex error envelope 在选路失败时使用 app/tag fallback。
 683. `proxy_core_boundary` 已新增 `RequestContext` provider preselect 禁用扫描：`handler_context.rs` 生产代码不得重新调用 `provider_router`、`.select_providers(` 或 `.select_provider_ids(`，防止请求 context 重新承担 route planning。
 684. channel reachability probe 已新增 `ChannelReachabilityProbe` core 端口，probe request 的 app 解析、provider 缺失、DB provider/config 读取、`StreamCheckService` 副作用和 probe 错误包装均由 adapter-owned `CcSwitchChannelReachabilityProbe` 包装；`proxy_core_host` 只装配 probe，core 负责 channel test 编排、preflight failure 和最终 response envelope。
-685. app namespace catalog 已收敛到 `ProxyConfigSource::list_apps` 端口，CC Switch 桌面宿主的当前 app catalog 事实由 `proxy_core_adapter::cc_switch_app_kinds` 提供；route candidate provider selection 的 host router 结果已经直接是 provider id 列表，`proxy_core_adapter::route_candidate_provider_ids_from_selection_result` 只负责错误兼容包装；Claude Desktop model route 的 provider id selection 结果与 Provider 回查/错误包装已收敛到 `proxy_core_adapter::claude_desktop_provider_from_selection_result`，完整 Provider 只在 adapter-owned model catalog provider 需要模型路由时通过 DB 加载；ProviderRouter 的 core route error / provider selection failure 到 `AppError` 映射已收敛到 `proxy_core_adapter::{app_error_from_proxy_core_error,app_error_from_provider_selection_failure}`，current provider 的 settings/DB fallback 来源组合已收敛到 `proxy_core_adapter::current_provider_id_from_router_sources`，materialized channel 空表时是否加载 legacy projection 以及最终 records/source 返回已收敛到 `proxy_core_adapter::channel_route_records_from_sources`，`proxy_core_boundary` 已钉住 `proxy_core_host.rs` 生产代码不得直接构造 `ProxyCoreError` variant：`/proxy/v1/apps` 与 `/proxy/v1/groups` 的 handler 不再把 `AppType::all()` 直接传给 engine，`CcSwitchProviderSource` 只负责消费 `ProviderRouter::select_provider_ids`，`CcSwitchModelCatalogProvider` 已迁为 adapter-owned。
+685. app namespace catalog 已收敛到 `ProxyConfigSource::list_apps` 端口，CC Switch 桌面宿主的当前 app catalog 事实由 `proxy_core_adapter::cc_switch_app_kinds` 提供；route candidate provider selection 的 host router 结果已经直接是 provider id 列表，`proxy_core_adapter::route_candidate_provider_ids_from_selection_result` 只负责错误兼容包装；Claude Desktop model route 的 provider id selection 结果与 Provider 回查/错误包装已收敛到 `proxy_core_adapter::claude_desktop_provider_from_selection_result`，完整 Provider 只在 adapter-owned model catalog provider 需要模型路由时通过 DB 加载；ProviderRouter 的 core route error / provider selection failure 到 `AppError` 映射已收敛到 `proxy_core_adapter::{app_error_from_proxy_core_error,app_error_from_provider_selection_failure}`，current provider 的 settings/DB fallback 来源组合已收敛到 `proxy_core_adapter::current_provider_id_from_router_sources`，materialized channel 空表时是否加载 legacy projection 以及最终 records/source 返回已收敛到 `proxy_core_adapter::channel_route_records_from_sources`，`proxy_core_boundary` 已钉住 `proxy_core_host.rs` 生产代码不得直接构造 `ProxyCoreError` variant：`/proxy/v1/apps` 与 `/proxy/v1/groups` 的 handler 不再把 `AppType::all()` 直接传给 engine，`CcSwitchProviderSource` 和 `CcSwitchModelCatalogProvider` 已迁为 adapter-owned。
 686. forwarder 上游 URL/effective endpoint 规划已收敛到 `proxy_core_adapter::forward_upstream_url_plan`：Codex Responses->Chat endpoint rewrite、Claude transform endpoint rewrite、Gemini Native URL、full endpoint query 透传和 channel param override 合并不再散落在 `RequestForwarder` 热路径中。
 687. 托管账号动态认证 token 刷新已先从 `RequestForwarder` 热路径抽到 `proxy::managed_account_auth::resolve_managed_account_auth`：forwarder 不再直接依赖 `CodexOAuthState`、`CodexOAuthManager` 或 `CopilotAuthManager` 的刷新细节，只消费 materialized `ProviderAuthInfo`、Codex account id 和 session header gate。
 688. Copilot 托管账号运行态读取已继续收敛到 `proxy::managed_account_auth`：动态 API endpoint、live `/models` 列表和 model vendor 查询不再让 `RequestForwarder` 直接依赖 `CopilotAuthState`，forwarder 只消费 endpoint/model/vendor 事实。
@@ -912,7 +912,7 @@
 本轮继续把 `RequestForwarder::new_preplanned` 构造、预规划 attempts 执行和 forward error 到 core error 的映射收敛到 adapter runtime launcher，host forward runtime 只传入资源包和已解析 runtime facts。
 本轮继续把 `ProxyRequest` 解析、forwarder runtime config/current-provider/attempt source 读取和 preplanned launcher 串联为单一 adapter forward runtime 入口，host forward runtime 只保留资源包委托。
 本轮继续把 `CcSwitchConfigSource` 的 global/app/summary/runtime 配置 DB 读取和 core DTO 投影收敛到 adapter-owned source wrapper，host services 只装配 source。
-本轮继续把 `CcSwitchProviderSource` 的 provider list/get/current-provider DB 读取和 `ProviderSpec` 投影收敛到 adapter source wrapper，host provider source 只保留端口委托与 active-route 内存读取。
+本轮继续把 `CcSwitchProviderSource` 的 provider list/get/current-provider DB 读取和 `ProviderSpec` 投影收敛到 adapter-owned source wrapper。
 本轮继续把 `CcSwitchChannelSource` 的 channel spec list/get 读取与 `ChannelSpec` 投影收敛到 adapter source wrapper，host channel source 的 spec 查询只保留端口委托。
 本轮继续把 `CcSwitchChannelSource` 的 channel record create/get/update/delete DB 操作与 `ChannelRecord` 投影收敛到 adapter source wrapper，key/model 子资源保留为后续独立切片。
 本轮继续把 `CcSwitchChannelSource` 的 channel key/model 子资源 DB 操作与 `ChannelKeyRecord`/`ChannelModelRecord` 投影收敛到 adapter source wrapper，host channel source 的 key/model 路径只保留端口委托。
@@ -923,9 +923,9 @@
 本轮继续把 `CcSwitchChannelReachabilityProbe` 的 probe request app/provider 投影、provider/config DB 读取、stream-check 调用与 reachability 结果投影收敛到 adapter-owned source wrapper，host services 只装配 probe。
 本轮继续把 `CcSwitchModelCatalogProvider` 的 provider catalog DB 读取、client catalog source 选择、Claude Desktop provider route 选择与 model route 投影收敛到 adapter-owned source wrapper，host services 只装配 provider。
 本轮继续把 `CcSwitchUsageSink` 的 usage pricing lookup、pricing model 解析、request log 投影、缺价告警与 usage log 写入收敛到 adapter-owned source wrapper，host services 只装配 sink。
-本轮继续把 `CcSwitchProviderSource` 的 route candidate provider router selection 与 provider-id 投影收敛到 adapter source wrapper，host provider source 的 candidate 路径只保留端口委托。
+本轮继续把 `CcSwitchProviderSource` 的 route candidate provider router selection 与 provider-id 投影收敛到 adapter-owned source wrapper。
 本轮继续把 `CcSwitchRouteResolver` 的 core route plan 委托、management dry-run router 调用与错误映射迁入 adapter-owned resolver，host services 只装配 resolver。
-本轮继续把 `CcSwitchProviderSource` 的 active route runtime map lookup 收敛到 adapter source wrapper，host provider source 不再直接读取 `current_providers`。
+本轮继续把 `CcSwitchProviderSource` 的 active route runtime map lookup 收敛到 adapter-owned source wrapper，`proxy_core_host` 不再直接读取 `current_providers`。
 本轮继续把 `ProxyServer` 的 circuit breaker runtime config 更新与 provider breaker reset 副作用收敛到 adapter runtime wrapper，server 生产方法不再直接调用 ProviderRouter circuit runtime API。
 本轮继续把 `ProxyServer` 的 started/stopped runtime status mutation、uptime/active target status projection 与 active target map 更新收敛到 adapter runtime wrapper，server 生产方法只保留监听生命周期和 transport 编排。
 本轮继续把 `ProxyServer` 的 server started/stopped lifecycle event 分发收敛到 adapter runtime wrapper，server 生产方法只传入监听事实，不再直接构造 event bus message 或 emit payload。
@@ -1969,7 +1969,7 @@ node_modules/.bin/tsc --noEmit
 新增 traits 和 CC Switch adapter 实现。
 
 1. `CcSwitchConfigSource` 作为 adapter-owned 端口包装现有 DB/settings 读取。
-2. `CcSwitchProviderSource` 包装 provider/current provider 读取。
+2. `CcSwitchProviderSource` 作为 adapter-owned 端口包装 provider/current provider 读取。
 3. `CcSwitchChannelSource` 包装 provider 主 URL、`provider_endpoints` 和未来 channel 表读取。
 4. `CcSwitchRoutePolicySource` 包装 failover queue、group 和优先级/权重策略；`CcSwitchRouteResolver` 包装 core route plan 与 management dry-run route resolution。
 5. `CcSwitchChannelHealthStore` 包装 channel health 写入；兼容期可同时写 provider health 聚合。
@@ -2190,7 +2190,7 @@ CC Switch 前端可以继续用 Tauri commands；外部集成用 HTTP API。
 
 ### 宿主适配测试
 
-- `CcSwitchProviderSource` 与现有 DB provider 表兼容。
+- adapter-owned `CcSwitchProviderSource` 与现有 DB provider 表兼容。
 - `CcSwitchChannelSource` 可以从 provider 主 URL、`provider_endpoints` 和新 channel 表生成一致候选。
 - 旧配置迁移 dry-run 可以输出新增、重复、需人工确认的 channel。
 - adapter-owned `CcSwitchUsageSink` 写入 `proxy_request_logs` 字段完整，`proxy_core_host` 只装配 sink。
