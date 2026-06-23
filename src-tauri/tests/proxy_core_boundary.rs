@@ -56,6 +56,8 @@ const FORBIDDEN_FORWARDER_CLAUDE_PROVIDER_COMPAT_MARKERS: &[&str] = &[
     "adapter.name() == \"Claude\"",
     "provider_claude_api_format(",
     "claude_api_format_needs_transform(",
+    "provider_claude_normalize_anthropic_messages(",
+    "provider_claude_transform_request_for_api_format(",
     "super::providers::get_claude_api_format(",
     "super::providers::normalize_anthropic_messages_for_provider(",
     "super::providers::transform_claude_request_for_api_format(",

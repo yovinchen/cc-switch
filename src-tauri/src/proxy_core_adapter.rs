@@ -4046,6 +4046,30 @@ pub(crate) fn forwarder_claude_transform_required(api_format: &str) -> bool {
     claude_api_format_needs_transform(api_format)
 }
 
+pub(crate) fn forwarder_claude_normalize_anthropic_messages(
+    body: &mut Value,
+    provider: &Provider,
+    api_format: &str,
+) -> bool {
+    provider_claude_normalize_anthropic_messages(body, provider, api_format)
+}
+
+pub(crate) fn forwarder_claude_transform_request_for_api_format(
+    body: Value,
+    provider: &Provider,
+    api_format: &str,
+    session_id: Option<&str>,
+    shadow_store: Option<&GeminiShadowStore>,
+) -> Result<Value, String> {
+    provider_claude_transform_request_for_api_format(
+        body,
+        provider,
+        api_format,
+        session_id,
+        shadow_store,
+    )
+}
+
 pub(crate) fn provider_needs_claude_transform(provider: &Provider) -> bool {
     if matches!(
         provider_claude_kind(provider),
@@ -16565,6 +16589,23 @@ command = "latest-command"
         );
         assert!(!forwarder_claude_transform_required("anthropic"));
         assert!(forwarder_claude_transform_required("openai_chat"));
+        let mut passthrough_body = json!({"model": "claude-3-5-sonnet"});
+        assert!(!forwarder_claude_normalize_anthropic_messages(
+            &mut passthrough_body,
+            &provider,
+            "openai_chat"
+        ));
+        assert_eq!(
+            forwarder_claude_transform_request_for_api_format(
+                passthrough_body.clone(),
+                &provider,
+                "anthropic",
+                None,
+                None
+            )
+            .expect("anthropic passthrough"),
+            passthrough_body
+        );
         assert!(!claude_api_format_needs_transform("anthropic"));
         assert!(claude_api_format_needs_transform("openai_chat"));
         assert!(claude_api_format_needs_transform("openai_responses"));

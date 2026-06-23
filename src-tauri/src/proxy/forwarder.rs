@@ -31,8 +31,8 @@ use crate::proxy_core_adapter::{
     non_streaming_body_timeout_message, normalize_thinking_type,
     prepare_upstream_request_body_with_report, prompt_cache_trace_log_message,
     provider_apply_codex_chat_upstream_model, provider_bedrock_env_flag,
-    provider_claude_normalize_anthropic_messages,
-    provider_claude_transform_request_for_api_format, provider_custom_user_agent_header,
+    forwarder_claude_normalize_anthropic_messages,
+    forwarder_claude_transform_request_for_api_format, provider_custom_user_agent_header,
     provider_adapter_name_is_claude, provider_codex_chat_reasoning_options,
     provider_is_codex_oauth, provider_is_full_url, provider_is_github_copilot_upstream,
     provider_uses_anthropic_rectifiers, rectify_anthropic_request, rectify_thinking_budget,
@@ -1297,7 +1297,7 @@ impl RequestForwarder {
         };
         if is_claude_adapter {
             if let Some(api_format) = resolved_claude_api_format.as_deref() {
-                provider_claude_normalize_anthropic_messages(
+                forwarder_claude_normalize_anthropic_messages(
                     &mut mapped_body,
                     provider,
                     api_format,
@@ -1369,7 +1369,7 @@ impl RequestForwarder {
                 let api_format = resolved_claude_api_format
                     .as_deref()
                     .unwrap_or_else(|| forwarder_claude_api_format(provider));
-                provider_claude_transform_request_for_api_format(
+                forwarder_claude_transform_request_for_api_format(
                     mapped_body,
                     provider,
                     api_format,
