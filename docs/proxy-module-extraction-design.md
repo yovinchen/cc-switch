@@ -1079,6 +1079,7 @@
 本轮继续把 forwarder 的 provider adapter registry 入口收敛到 `proxy_core_adapter::forwarder_provider_adapter_for_app`，forwarder 不再直接调用 provider 模块的 `get_adapter`。
 本轮继续把模型列表命令层的 `FetchedModel` DTO 入口收敛到 `proxy_core_adapter::FetchedModel`，`model_fetch_transport` 不再作为命令层 DTO re-export，只保留 core model catalog transport port 的 reqwest 执行实现。
 本轮继续把模型列表命令层的自定义 User-Agent 解析入口收敛到 `proxy_core_adapter::model_fetch_custom_user_agent_header`，命令不再直接调用 provider 模块的 schema helper。
+本轮继续把 stream_check 服务的标准 provider adapter base URL 提取收敛到 `proxy_core_adapter::stream_check_provider_base_url`，服务层不再直接导入 provider adapter registry、trait 或具体 Claude adapter，只保留 reachability HTTP 探测执行。
 
 当前原则：核心 crate 可以新增端口和领域字段，但不得引入 `tauri`、`Database`、settings、commands、services 等宿主依赖；现有 runtime 行为必须继续通过 targeted tests 证明不回归。
 
