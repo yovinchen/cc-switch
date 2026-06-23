@@ -1135,6 +1135,7 @@
 本轮继续把 `CcSwitchManagedAccountRuntimeSource` 提升为 `ManagedAccountRuntimeSource` trait 实现：adapter 的 managed-auth plan/resolution 只依赖运行态 source trait，CC Switch 的 Tauri/Copilot/Codex OAuth 读取保留在默认 source 实现内，为后续外部宿主替换 source 留出稳定接点。
 本轮继续把 `ManagedAccountRuntimeSource` 接入 `CcSwitchProxyRuntime`、`ForwarderRuntimeHostResources` 和 `RequestForwarder`：forwarder 对 Copilot 动态 endpoint、live models、model vendor 和 managed token resolution 的读取都走 runtime 注入 source，不再通过 `app_handle` wrapper 临时构造运行态读取入口。
 本轮继续把 failover 切换调度封装为 `FailoverSwitchScheduler` runtime source：`RequestForwarder` 不再持有 `FailoverSwitchManager` 或 `AppHandle`，只在成功记录后调用注入 scheduler；CC Switch 默认 scheduler 仍在 adapter 内把调度投影到现有 manager、托盘/UI 与 Live 切换副作用。
+本轮继续把 forwarder 的 `ProxyRuntimeStatus`、active route target map 和 `ProxyEventBus` 合并为 `ForwarderRuntimeStateSource`：`RequestForwarder` 不再直持三份运行态状态资源，状态计数、当前目标和事件发射仍通过 adapter helper 执行，后续外部宿主可以替换 runtime state source 或把事件桥接到自己的监控接口。
 
 当前原则：核心 crate 可以新增端口和领域字段，但不得引入 `tauri`、`Database`、settings、commands、services 等宿主依赖；现有 runtime 行为必须继续通过 targeted tests 证明不回归。
 
