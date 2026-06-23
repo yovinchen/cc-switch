@@ -26,6 +26,7 @@ use crate::proxy_core_adapter::{
     classify_copilot_request, contains_image_blocks,
     emit_attempt_event_source, emit_request_started_event_source, forward_upstream_url_plan,
     forward_failure_kind_from_proxy_error, forwarder_should_convert_codex_responses_to_chat,
+    forwarder_uses_anthropic_rectifiers,
     is_openai_o_series,
     is_unsupported_image_error, allow_forward_attempt_runtime_source, merge_copilot_tool_results,
     non_streaming_body_timeout_message, normalize_thinking_type,
@@ -35,8 +36,7 @@ use crate::proxy_core_adapter::{
     forwarder_claude_transform_request_for_api_format, provider_custom_user_agent_header,
     provider_adapter_name_is_claude, provider_codex_chat_reasoning_options,
     provider_is_codex_oauth, provider_is_full_url, provider_is_github_copilot_upstream,
-    provider_uses_anthropic_rectifiers, rectify_anthropic_request, rectify_thinking_budget,
-    replace_image_blocks_with_marker,
+    rectify_anthropic_request, rectify_thinking_budget, replace_image_blocks_with_marker,
     record_forward_attempt_failure_runtime_source,
     record_forward_attempt_success_runtime_source,
     record_forward_active_connection_acquired_runtime_source,
@@ -672,7 +672,7 @@ impl RequestForwarder {
                 Err(e) => {
                     // 检测是否需要触发整流器（仅 Claude/ClaudeAuth 供应商）
                     let is_anthropic_provider =
-                        provider_uses_anthropic_rectifiers(app_type, provider);
+                        forwarder_uses_anthropic_rectifiers(app_type, provider);
                     let mut signature_rectifier_non_retryable_client_error = false;
 
                     if self.media_retry_should_trigger(

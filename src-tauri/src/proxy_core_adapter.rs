@@ -4070,6 +4070,13 @@ pub(crate) fn forwarder_claude_transform_request_for_api_format(
     )
 }
 
+pub(crate) fn forwarder_uses_anthropic_rectifiers(
+    app_type: &AppType,
+    provider: &Provider,
+) -> bool {
+    provider_uses_anthropic_rectifiers(app_type, provider)
+}
+
 pub(crate) fn provider_needs_claude_transform(provider: &Provider) -> bool {
     if matches!(
         provider_claude_kind(provider),
@@ -18307,7 +18314,15 @@ command = "latest-command"
             &AppType::Claude,
             &claude_auth_provider
         ));
+        assert!(forwarder_uses_anthropic_rectifiers(
+            &AppType::Claude,
+            &claude_auth_provider
+        ));
         assert!(!provider_uses_anthropic_rectifiers(
+            &AppType::Codex,
+            &claude_auth_provider
+        ));
+        assert!(!forwarder_uses_anthropic_rectifiers(
             &AppType::Codex,
             &claude_auth_provider
         ));
