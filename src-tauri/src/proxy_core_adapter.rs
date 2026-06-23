@@ -4026,6 +4026,22 @@ pub(crate) fn provider_claude_api_format(provider: &Provider) -> &'static str {
     )
 }
 
+pub(crate) fn forwarder_claude_api_format(provider: &Provider) -> &'static str {
+    provider_claude_api_format(provider)
+}
+
+pub(crate) fn resolve_forwarder_claude_api_format(
+    provider: &Provider,
+    is_copilot: bool,
+    copilot_model_vendor: Option<&str>,
+) -> String {
+    resolve_claude_forward_api_format(
+        forwarder_claude_api_format(provider),
+        is_copilot,
+        copilot_model_vendor,
+    )
+}
+
 pub(crate) fn provider_needs_claude_transform(provider: &Provider) -> bool {
     if matches!(
         provider_claude_kind(provider),
@@ -16528,6 +16544,21 @@ command = "latest-command"
     fn claude_api_format_adapter_projects_transform_gate() {
         assert!(provider_adapter_name_is_claude("Claude"));
         assert!(!provider_adapter_name_is_claude("Codex"));
+        let mut provider = Provider::with_id(
+            "claude".to_string(),
+            "Claude".to_string(),
+            json!({}),
+            None,
+        );
+        provider.meta = Some(ProviderMeta {
+            api_format: Some("openai_chat".to_string()),
+            ..ProviderMeta::default()
+        });
+        assert_eq!(forwarder_claude_api_format(&provider), "openai_chat");
+        assert_eq!(
+            resolve_forwarder_claude_api_format(&provider, true, Some("OpenAI")),
+            "openai_responses"
+        );
         assert!(!claude_api_format_needs_transform("anthropic"));
         assert!(claude_api_format_needs_transform("openai_chat"));
         assert!(claude_api_format_needs_transform("openai_responses"));

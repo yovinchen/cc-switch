@@ -31,7 +31,6 @@ use crate::proxy_core_adapter::{
     non_streaming_body_timeout_message, normalize_thinking_type,
     prepare_upstream_request_body_with_report, prompt_cache_trace_log_message,
     provider_apply_codex_chat_upstream_model, provider_bedrock_env_flag,
-    provider_claude_api_format,
     provider_claude_normalize_anthropic_messages,
     provider_claude_transform_request_for_api_format, provider_custom_user_agent_header,
     provider_adapter_name_is_claude, provider_codex_chat_reasoning_options,
@@ -51,10 +50,10 @@ use crate::proxy_core_adapter::{
     record_forward_success_runtime_source,
     release_forward_attempt_permit_neutral_runtime_source,
     replace_images_for_text_only_provider_model, request_body_filter_log_message,
-    resolve_claude_forward_api_format,
     resolve_copilot_deterministic_interaction_id, resolve_copilot_model_against_ids,
     resolve_copilot_optimizer_session_id, resolve_copilot_request_id_with_fallback,
     resolve_channel_response_status_mapping, resolve_media_prevention_policy,
+    forwarder_claude_api_format, resolve_forwarder_claude_api_format,
     resolved_copilot_dynamic_base_url, responses_to_chat_completions_with_options,
     sanitize_copilot_orphan_tool_results,
     should_apply_bedrock_pre_send_optimizer,
@@ -1314,7 +1313,7 @@ impl RequestForwarder {
         let codex_responses_to_chat =
             forwarder_should_convert_codex_responses_to_chat(app_type, provider, endpoint);
         let claude_api_format_for_url = resolved_claude_api_format.as_deref().or_else(|| {
-            is_claude_adapter.then(|| provider_claude_api_format(provider))
+            is_claude_adapter.then(|| forwarder_claude_api_format(provider))
         });
         let url_plan = forward_upstream_url_plan(
             ForwardUpstreamUrlPlanInput {
@@ -1370,7 +1369,7 @@ impl RequestForwarder {
             if is_claude_adapter {
                 let api_format = resolved_claude_api_format
                     .as_deref()
-                    .unwrap_or_else(|| provider_claude_api_format(provider));
+                    .unwrap_or_else(|| forwarder_claude_api_format(provider));
                 provider_claude_transform_request_for_api_format(
                     mapped_body,
                     provider,
@@ -1752,11 +1751,7 @@ impl RequestForwarder {
             None
         };
 
-        resolve_claude_forward_api_format(
-            provider_claude_api_format(provider),
-            is_copilot,
-            copilot_model_vendor.as_deref(),
-        )
+        resolve_forwarder_claude_api_format(provider, is_copilot, copilot_model_vendor.as_deref())
     }
 
     /// 用 Copilot live `/models` 列表确认 model ID 真实可用，找不到时按 family 降级。
