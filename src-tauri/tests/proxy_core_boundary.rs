@@ -854,6 +854,9 @@ const FORBIDDEN_HANDLER_RESPONSE_PARSE_FAILURE_LOG_PROJECTION_MARKERS: &[&str] =
 const FORBIDDEN_HANDLER_RESPONSE_BUILD_ERROR_MAPPING_MARKERS: &[&str] = &[
     "rebuilt_json_proxy_response(",
     "transformed_sse_proxy_response(",
+    "CoreResponseBuildFailureContext::CodexResponsesError",
+    "CoreResponseBuildFailureContext::CodexProxyError",
+    "response_build_error_to_proxy_error(",
     "构造 JSON 响应失败",
     "构造 Responses 响应失败",
     "构造 Responses 错误体失败",

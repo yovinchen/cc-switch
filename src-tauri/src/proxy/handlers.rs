@@ -12,9 +12,10 @@ use super::{
     error::ProxyError,
     error_mapper::{
         claude_response_transform_error_to_proxy_error,
-        codex_chat_to_responses_transform_error_to_proxy_error, codex_proxy_error_response,
-        parse_logged_upstream_json_or_unlabeled_sse, response_build_error_to_proxy_error,
-        CoreResponseBuildFailureContext, management_api_error_to_proxy_error,
+        codex_chat_to_responses_transform_error_to_proxy_error,
+        codex_proxy_error_body_build_error_to_proxy_error, codex_proxy_error_response,
+        codex_responses_error_body_build_error_to_proxy_error,
+        parse_logged_upstream_json_or_unlabeled_sse, management_api_error_to_proxy_error,
         management_auth_error_to_proxy_error, proxy_core_error_to_proxy_error,
     },
     forwarder::ActiveConnectionGuard,
@@ -990,14 +991,8 @@ async fn handle_codex_chat_error_response(
     let (response_headers, _status, body_bytes) =
         read_decoded_body(response, ctx.tag, ctx.body_timeout_duration()).await?;
 
-    let response = codex_chat_error_proxy_response(status, response_headers, &body_bytes).map_err(
-        |error| {
-            response_build_error_to_proxy_error(
-                CoreResponseBuildFailureContext::CodexResponsesError,
-                error,
-            )
-        },
-    )?;
+    let response = codex_chat_error_proxy_response(status, response_headers, &body_bytes)
+        .map_err(codex_responses_error_body_build_error_to_proxy_error)?;
 
     proxy_core_response_to_axum_response(
         response,
@@ -1025,12 +1020,7 @@ fn build_codex_proxy_error_response(
         endpoint,
         error,
     )
-    .map_err(|error| {
-        response_build_error_to_proxy_error(
-            CoreResponseBuildFailureContext::CodexProxyError,
-            error,
-        )
-    })?;
+    .map_err(codex_proxy_error_body_build_error_to_proxy_error)?;
 
     proxy_core_response_to_axum_response(response, AxumResponseBuildErrorContext::CodexProxyError)
 }

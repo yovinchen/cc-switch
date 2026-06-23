@@ -193,6 +193,18 @@ pub(crate) fn response_build_error_to_proxy_error(
     proxy_core_error_to_proxy_error(error)
 }
 
+pub(crate) fn codex_responses_error_body_build_error_to_proxy_error(
+    error: ProxyCoreError,
+) -> ProxyError {
+    response_build_error_to_proxy_error(CoreResponseBuildFailureContext::CodexResponsesError, error)
+}
+
+pub(crate) fn codex_proxy_error_body_build_error_to_proxy_error(
+    error: ProxyCoreError,
+) -> ProxyError {
+    response_build_error_to_proxy_error(CoreResponseBuildFailureContext::CodexProxyError, error)
+}
+
 pub(crate) enum ResponseTransformFailureContext {
     ClaudeResponse,
     CodexChatToResponses,
