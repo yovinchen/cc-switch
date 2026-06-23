@@ -45,7 +45,8 @@ use crate::proxy_core_adapter::{
     remove_codex_takeover_auth_placeholder_if_present,
     remove_codex_takeover_config_placeholders_if_present,
     remove_gemini_takeover_env_fields_if_present, set_proxy_app_enabled_in_db,
-    set_legacy_live_takeover_active_best_effort_in_db, should_block_proxy_switch_to_provider,
+    set_legacy_live_takeover_active_best_effort_in_db,
+    set_legacy_live_takeover_active_in_db, should_block_proxy_switch_to_provider,
     CircuitBreakerConfig, CodexTakeoverAuthPolicy, LiveTokenProviderSettingsIssue, ProxyConfig,
     ProxyRuntimeStatus, ProxyServerInfo, ProxyTakeoverStatus,
 };
@@ -282,12 +283,12 @@ impl ProxyService {
 
         // 3. 在写入接管配置之前先落盘接管标志：
         //    这样即使在接管过程中断电/kill，下次启动也能检测到并自动恢复。
-        if let Err(e) = self.db.set_live_takeover_active(true).await {
+        if let Err(e) = set_legacy_live_takeover_active_in_db(&self.db, true).await {
             cleanup_all_live_backups_best_effort_in_db(&self.db).await;
             if started_proxy_before_takeover {
                 let _ = self.stop().await;
             }
-            return Err(format!("设置接管状态失败: {e}"));
+            return Err(e);
         }
 
         // 4. 接管各应用的 Live 配置（写入代理地址，清空 Token）
@@ -296,7 +297,7 @@ impl ProxyService {
             log::error!("接管 Live 配置失败，尝试恢复原始配置: {e}");
             match self.restore_live_configs().await {
                 Ok(()) => {
-                    let _ = self.db.set_live_takeover_active(false).await;
+                    set_legacy_live_takeover_active_best_effort_in_db(&self.db, false).await;
                     delete_all_live_backups_best_effort_in_db(&self.db).await;
                 }
                 Err(restore_err) => {
@@ -317,7 +318,7 @@ impl ProxyService {
                 log::error!("代理启动失败，尝试恢复原始配置: {e}");
                 match self.restore_live_configs().await {
                     Ok(()) => {
-                        let _ = self.db.set_live_takeover_active(false).await;
+                        set_legacy_live_takeover_active_best_effort_in_db(&self.db, false).await;
                         delete_all_live_backups_best_effort_in_db(&self.db).await;
                     }
                     Err(restore_err) => {

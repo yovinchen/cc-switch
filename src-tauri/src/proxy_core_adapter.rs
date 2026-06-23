@@ -1092,6 +1092,15 @@ pub(crate) async fn set_legacy_live_takeover_active_best_effort_in_db(
     let _ = db.set_live_takeover_active(active).await;
 }
 
+pub(crate) async fn set_legacy_live_takeover_active_in_db(
+    db: &Database,
+    active: bool,
+) -> Result<(), String> {
+    db.set_live_takeover_active(active)
+        .await
+        .map_err(|e| format!("设置接管状态失败: {e}"))
+}
+
 pub(crate) async fn live_takeover_any_enabled_from_db(db: &Database) -> Result<bool, String> {
     db.is_live_takeover_active()
         .await
