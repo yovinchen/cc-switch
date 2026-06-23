@@ -1127,6 +1127,7 @@
 本轮继续把 `ProxyState` 运行态数据结构与 `proxy_engine` helper 移入 `proxy_core_adapter`：`proxy/server.rs` 只保留旧路径 re-export 和 HTTP listener/router 生命周期，运行态 state shape 由 adapter 维护。
 本轮继续把 `ProxyService` 持有的运行中 server 类型路径收敛到 `proxy_core_adapter::CcSwitchProxyServer`：service 既不直接构造 `ProxyServer`，也不直接导入 `proxy/server.rs` 的具体类型，adapter 继续作为 server runtime 入口。
 本轮继续把生产 `ProxyServer` 构造入口改为 `from_runtime_state(config, state)`：`proxy_core_adapter::proxy_server_from_runtime_config` 负责从 `Database/AppHandle` 装配 `ProxyState`，旧 `ProxyServer::new(config, db, app_handle)` 仅保留为 server 单元测试兼容入口。
+本轮继续把 handler、response processor、auth adapter 和 request context 的 `ProxyState` import 直接切到 `proxy_core_adapter`，并移除 `proxy/server.rs` 对 `ProxyState` 的旧路径 re-export：HTTP server 不再作为运行态 state 类型的兼容出口。
 
 当前原则：核心 crate 可以新增端口和领域字段，但不得引入 `tauri`、`Database`、settings、commands、services 等宿主依赖；现有 runtime 行为必须继续通过 targeted tests 证明不回归。
 
