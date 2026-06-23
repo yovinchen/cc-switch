@@ -3983,6 +3983,28 @@ pub(crate) fn provider_claude_transform_streaming_decision(
     }
 }
 
+pub(crate) struct CodexChatTransformStreamingDecision {
+    pub(crate) use_streaming: bool,
+    pub(crate) response_sse_aggregation: Option<UpstreamSseAggregationKind>,
+}
+
+pub(crate) fn codex_chat_transform_streaming_decision(
+    requested_streaming: bool,
+    response_headers: &HeaderMap,
+) -> CodexChatTransformStreamingDecision {
+    let use_streaming = requested_streaming || response_headers_indicate_sse(response_headers);
+    let response_sse_aggregation = if use_streaming {
+        None
+    } else {
+        Some(UpstreamSseAggregationKind::ChatCompletions)
+    };
+
+    CodexChatTransformStreamingDecision {
+        use_streaming,
+        response_sse_aggregation,
+    }
+}
+
 pub(crate) use crate::proxy_core::api::domain::infer_claude_provider_kind;
 
 pub(crate) fn provider_claude_kind(provider: &Provider) -> ProviderKind {
@@ -16064,6 +16086,32 @@ command = "latest-command"
         );
         assert!(upstream_sse_decision.use_streaming);
         assert!(!upstream_sse_decision.aggregate_codex_oauth_responses_sse);
+    }
+
+    #[test]
+    fn codex_chat_streaming_decision_adapter_preserves_sse_fallback() {
+        let mut sse_headers = HeaderMap::new();
+        sse_headers.insert(
+            http::header::CONTENT_TYPE,
+            http::HeaderValue::from_static("text/event-stream"),
+        );
+
+        let header_streaming_decision =
+            codex_chat_transform_streaming_decision(false, &sse_headers);
+        assert!(header_streaming_decision.use_streaming);
+        assert!(header_streaming_decision.response_sse_aggregation.is_none());
+
+        let requested_streaming_decision =
+            codex_chat_transform_streaming_decision(true, &HeaderMap::new());
+        assert!(requested_streaming_decision.use_streaming);
+        assert!(requested_streaming_decision.response_sse_aggregation.is_none());
+
+        let non_stream_decision = codex_chat_transform_streaming_decision(false, &HeaderMap::new());
+        assert!(!non_stream_decision.use_streaming);
+        assert!(matches!(
+            non_stream_decision.response_sse_aggregation,
+            Some(UpstreamSseAggregationKind::ChatCompletions)
+        ));
     }
 
     #[test]

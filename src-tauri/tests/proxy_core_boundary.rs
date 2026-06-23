@@ -888,6 +888,10 @@ const FORBIDDEN_HANDLER_CODEX_STREAM_TRANSFORM_MARKERS: &[&str] = &[
     "create_responses_sse_stream_from_chat_with_context(",
     "record_codex_chat_response_sse_history(",
 ];
+const FORBIDDEN_HANDLER_CODEX_STREAMING_DECISION_MARKERS: &[&str] = &[
+    "response_headers_indicate_sse(response.headers())",
+    "Some(UpstreamSseAggregationKind::ChatCompletions)",
+];
 const PROXY_CORE_MARKER: &str = "crate::proxy_core::";
 const PROXY_CORE_API_MARKER: &str = "crate::proxy_core::api";
 const PROXY_ENGINE_CONSTRUCTOR_MARKER: &str = "ProxyEngine::new(";
@@ -2734,6 +2738,38 @@ fn handlers_delegate_codex_stream_transform_to_adapter() {
 }
 
 #[test]
+fn handlers_delegate_codex_chat_streaming_decision_to_adapter() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let path = manifest_dir.join("src/proxy/handlers.rs");
+    let source = fs::read_to_string(&path).expect("read handlers.rs");
+    let transform = function_slice(
+        &source,
+        "async fn handle_codex_chat_to_responses_transform(",
+        "\n}\n\n/// 把上游 Chat Completions 的错误响应转换为 Responses API 错误形状。",
+    );
+
+    let mut violations = Vec::new();
+    for (line_index, line) in production_lines(transform) {
+        let code = line.split("//").next().unwrap_or_default();
+        for marker in FORBIDDEN_HANDLER_CODEX_STREAMING_DECISION_MARKERS {
+            if code.contains(marker) {
+                violations.push(format!(
+                    "src/proxy/handlers.rs:{} contains Codex streaming decision marker `{}`",
+                    line_index + 1,
+                    marker
+                ));
+            }
+        }
+    }
+
+    assert!(
+        violations.is_empty(),
+        "Codex Chat->Responses handler must delegate streaming/aggregation decisions to proxy_core_adapter:\n{}",
+        violations.join("\n")
+    );
+}
+
+#[test]
 fn response_pipeline_uses_core_sse_header_decision() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let hyper_client = fs::read_to_string(manifest_dir.join("src/proxy/hyper_client.rs"))
@@ -2741,8 +2777,8 @@ fn response_pipeline_uses_core_sse_header_decision() {
     let response_processor =
         fs::read_to_string(manifest_dir.join("src/proxy/response_processor.rs"))
             .expect("read response_processor.rs");
-    let handlers =
-        fs::read_to_string(manifest_dir.join("src/proxy/handlers.rs")).expect("read handlers.rs");
+    let adapter = fs::read_to_string(manifest_dir.join("src/proxy_core_adapter.rs"))
+        .expect("read proxy_core_adapter.rs");
 
     assert!(
         !hyper_client.contains("fn is_sse("),
@@ -2753,8 +2789,8 @@ fn response_pipeline_uses_core_sse_header_decision() {
         "response_processor should delegate SSE detection to proxy-core"
     );
     assert!(
-        handlers.contains("response_headers_indicate_sse(response.headers())"),
-        "protocol transform handlers should delegate SSE detection to proxy-core"
+        adapter.contains("response_headers_indicate_sse(response_headers)"),
+        "protocol transform handlers should route SSE detection through proxy_core_adapter"
     );
 }
 

@@ -34,7 +34,8 @@ use crate::proxy_core_adapter::{
     claude_stream_usage_event_filter, claude_transform_unlabeled_sse_aggregation,
     codex_stream_usage_event_filter,
     create_logged_passthrough_stream,
-    codex_chat_error_proxy_response, extract_anthropic_tool_schema_hints,
+    codex_chat_error_proxy_response, codex_chat_transform_streaming_decision,
+    extract_anthropic_tool_schema_hints,
     extract_gemini_model_from_path, json_proxy_request_from_input, JsonProxyRequestInput,
     parse_json_proxy_request_body,
     parse_json_proxy_request_body_or_null,
@@ -44,7 +45,7 @@ use crate::proxy_core_adapter::{
     provider_claude_transform_response_for_api_format,
     provider_claude_transform_sse_for_api_format,
     provider_claude_transform_streaming_decision, provider_needs_claude_transform,
-    provider_should_convert_codex_responses_to_chat, response_headers_indicate_sse,
+    provider_should_convert_codex_responses_to_chat,
     strip_endpoint_prefix,
     validate_management_bearer_header,
     AppChannelListQuery, AppChannelManagementRequest, AppChannelResponse, AppKind, AppListRequest,
@@ -958,7 +959,10 @@ async fn handle_codex_chat_to_responses_transform(
         return handle_codex_chat_error_response(response, ctx, status).await;
     }
 
-    if is_stream || response_headers_indicate_sse(response.headers()) {
+    let streaming_decision =
+        codex_chat_transform_streaming_decision(is_stream, response.headers());
+
+    if streaming_decision.use_streaming {
         let stream = response.bytes_stream();
         let sse_stream = transform_codex_chat_sse_with_history(
             stream,
@@ -997,7 +1001,7 @@ async fn handle_codex_chat_to_responses_transform(
         body_bytes.as_ref(),
         &response_headers,
         "Failed to parse upstream chat response",
-        Some(UpstreamSseAggregationKind::ChatCompletions),
+        streaming_decision.response_sse_aggregation,
         UpstreamResponseParseFailureLogContext::CodexChat,
         UnlabeledSseFallbackLogContext::CodexChat,
     )?;
