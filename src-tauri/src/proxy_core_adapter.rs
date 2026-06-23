@@ -3150,7 +3150,7 @@ pub(crate) use crate::proxy_core::api::transport::{
     should_apply_bedrock_pre_send_optimizer, should_check_media_retry,
     should_convert_codex_responses_endpoint_to_chat,
     should_failover_after_rectifier_retry_failure,
-    should_preserve_exact_request_header_case, should_resolve_copilot_dynamic_endpoint,
+    should_preserve_exact_request_header_case,
     should_send_anthropic_request_headers, should_trigger_media_retry, split_endpoint_and_query,
     strip_copilot_thinking_blocks, supports_reasoning_effort,
     UNSUPPORTED_IMAGE_MARKER,
@@ -3251,6 +3251,26 @@ pub(crate) trait ManagedAccountRuntimeSource: Send + Sync {
             let account_id = provider_github_copilot_managed_account_id(auth_provider);
             self.resolve_copilot_api_endpoint(account_id.as_deref())
                 .await
+        })
+    }
+
+    fn resolve_copilot_dynamic_base_url_for_provider<'a>(
+        &'a self,
+        auth_provider: &'a Provider,
+        current_base_url: &'a str,
+        is_copilot: bool,
+        is_full_url: bool,
+    ) -> BoxFuture<'a, Option<String>> {
+        Box::pin(async move {
+            let dynamic_endpoint = self
+                .resolve_copilot_api_endpoint_for_provider(auth_provider)
+                .await?;
+            resolved_copilot_dynamic_base_url(
+                current_base_url,
+                &dynamic_endpoint,
+                is_copilot,
+                is_full_url,
+            )
         })
     }
 

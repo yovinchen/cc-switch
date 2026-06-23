@@ -34,14 +34,12 @@ use crate::proxy_core_adapter::{
     resolve_copilot_request_id_with_fallback, resolve_channel_response_status_mapping,
     resolve_media_prevention_policy,
     forwarder_claude_api_format, forwarder_claude_transform_required,
-    resolve_forwarder_claude_api_format,
-    resolved_copilot_dynamic_base_url, responses_to_chat_completions_with_options,
+    resolve_forwarder_claude_api_format, responses_to_chat_completions_with_options,
     sanitize_copilot_orphan_tool_results,
     should_apply_bedrock_pre_send_optimizer,
     should_check_media_retry, should_failover_after_rectifier_retry_failure,
     should_preserve_exact_request_header_case, should_rectify_thinking_budget,
-    should_rectify_thinking_signature, should_resolve_copilot_dynamic_endpoint,
-    should_trigger_media_retry,
+    should_rectify_thinking_signature, should_trigger_media_retry,
     strip_copilot_thinking_blocks, strip_one_m_suffix_for_upstream,
     strip_one_m_suffix_for_upstream_from_body,
     supports_reasoning_effort, thinking_optimization_log_message,
@@ -1222,26 +1220,19 @@ impl RequestForwarder {
             None
         };
 
-        if should_resolve_copilot_dynamic_endpoint(is_copilot, is_full_url) {
-            if let Some(dynamic_endpoint) =
-                self.managed_account_runtime_source
-                    .resolve_copilot_api_endpoint_for_provider(provider)
-                .await
-            {
-                if let Some(next_base_url) = resolved_copilot_dynamic_base_url(
-                    &base_url,
-                    &dynamic_endpoint,
-                    is_copilot,
-                    is_full_url,
-                ) {
-                    log::debug!(
-                        "[Copilot] 使用动态 API endpoint: {} (原: {})",
-                        next_base_url,
-                        base_url
-                    );
-                    base_url = next_base_url;
-                }
-            }
+        if let Some(next_base_url) = self
+            .managed_account_runtime_source
+            .resolve_copilot_dynamic_base_url_for_provider(
+                provider, &base_url, is_copilot, is_full_url,
+            )
+            .await
+        {
+            log::debug!(
+                "[Copilot] 使用动态 API endpoint: {} (原: {})",
+                next_base_url,
+                base_url
+            );
+            base_url = next_base_url;
         }
         let adapter_name = forwarder_provider_adapter_name(adapter);
         let is_claude_adapter = provider_adapter_name_is_claude(adapter_name);
