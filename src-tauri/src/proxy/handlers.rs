@@ -13,7 +13,8 @@ use super::{
     error_mapper::{
         claude_response_transform_error_to_proxy_error,
         codex_chat_to_responses_transform_error_to_proxy_error,
-        parse_logged_upstream_json_or_unlabeled_sse, management_api_error_to_proxy_error,
+        parse_claude_transform_upstream_json_or_unlabeled_sse,
+        parse_codex_chat_upstream_json_or_unlabeled_sse, management_api_error_to_proxy_error,
         management_auth_error_to_proxy_error, proxy_core_error_to_proxy_error,
     },
     forwarder::ActiveConnectionGuard,
@@ -63,9 +64,7 @@ use crate::proxy_core_adapter::{
     ProxyChannelTestRequest, ProxyChannelWriteRequest, ProxyRuntimeStatus,
     ProxyStatusRequest, ProxyStatusResponse, RoutableModelList, RouteGroupListResponse,
     RouteResolveManagementRequest, RouteResolveRequest, RouteResolveResponse,
-    UnlabeledSseFallbackLogContext, UpstreamResponseParseFailureLogContext, CLAUDE_PARSER_CONFIG,
-    CODEX_PARSER_CONFIG,
-    GEMINI_PARSER_CONFIG, OPENAI_PARSER_CONFIG,
+    CLAUDE_PARSER_CONFIG, CODEX_PARSER_CONFIG, GEMINI_PARSER_CONFIG, OPENAI_PARSER_CONFIG,
 };
 use axum::{
     extract::{Path, Query, State},
@@ -706,17 +705,12 @@ async fn handle_claude_transform(
     let (response_headers, _status, body_bytes) =
         read_decoded_body(response, ctx.tag, ctx.body_timeout_duration()).await?;
 
-    let upstream_response = parse_logged_upstream_json_or_unlabeled_sse(
+    let upstream_response = parse_claude_transform_upstream_json_or_unlabeled_sse(
         body_bytes.as_ref(),
         &response_headers,
-        "Failed to parse upstream response",
         streaming_decision.response_sse_aggregation,
-        UpstreamResponseParseFailureLogContext::ClaudeTransform,
-        UnlabeledSseFallbackLogContext::Claude {
-            api_format,
-            codex_oauth_responses_aggregation: streaming_decision
-                .aggregate_codex_oauth_responses_sse,
-        },
+        api_format,
+        streaming_decision.aggregate_codex_oauth_responses_sse,
     )?;
 
     let anthropic_response = provider_claude_transform_response_for_api_format(
@@ -969,13 +963,10 @@ async fn handle_codex_chat_to_responses_transform(
         read_decoded_body(response, ctx.tag, ctx.body_timeout_duration()).await?;
     // 与 Claude 侧 handle_claude_transform 对称的兜底嗅探（#2234）：
     // 上游对 stream:false 返回未标记 Content-Type 的 SSE 体时按 Chat SSE 聚合。
-    let chat_response = parse_logged_upstream_json_or_unlabeled_sse(
+    let chat_response = parse_codex_chat_upstream_json_or_unlabeled_sse(
         body_bytes.as_ref(),
         &response_headers,
-        "Failed to parse upstream chat response",
         streaming_decision.response_sse_aggregation,
-        UpstreamResponseParseFailureLogContext::CodexChat,
-        UnlabeledSseFallbackLogContext::CodexChat,
     )?;
     let responses_response = transform_codex_chat_response_with_history(
         &chat_response,

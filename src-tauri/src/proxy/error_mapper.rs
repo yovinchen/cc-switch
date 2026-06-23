@@ -167,6 +167,41 @@ pub(crate) fn parse_logged_upstream_json_or_unlabeled_sse(
     Ok(parsed.value)
 }
 
+pub(crate) fn parse_claude_transform_upstream_json_or_unlabeled_sse(
+    body: &[u8],
+    headers: &HeaderMap,
+    aggregation: Option<UpstreamSseAggregationKind>,
+    api_format: &str,
+    aggregate_codex_oauth_responses_sse: bool,
+) -> Result<Value, ProxyError> {
+    parse_logged_upstream_json_or_unlabeled_sse(
+        body,
+        headers,
+        "Failed to parse upstream response",
+        aggregation,
+        UpstreamResponseParseFailureLogContext::ClaudeTransform,
+        UnlabeledSseFallbackLogContext::Claude {
+            api_format,
+            codex_oauth_responses_aggregation: aggregate_codex_oauth_responses_sse,
+        },
+    )
+}
+
+pub(crate) fn parse_codex_chat_upstream_json_or_unlabeled_sse(
+    body: &[u8],
+    headers: &HeaderMap,
+    aggregation: Option<UpstreamSseAggregationKind>,
+) -> Result<Value, ProxyError> {
+    parse_logged_upstream_json_or_unlabeled_sse(
+        body,
+        headers,
+        "Failed to parse upstream chat response",
+        aggregation,
+        UpstreamResponseParseFailureLogContext::CodexChat,
+        UnlabeledSseFallbackLogContext::CodexChat,
+    )
+}
+
 pub(crate) enum CoreResponseBuildFailureContext {
     ClaudeJson,
     CodexResponses,
