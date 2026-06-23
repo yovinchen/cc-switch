@@ -6368,6 +6368,39 @@ fn production_proxy_server_imports_runtime_services_from_adapter() {
 }
 
 #[test]
+fn production_lib_does_not_compile_proxy_core_host_compat_module() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let path = manifest_dir.join("src/lib.rs");
+    let source = fs::read_to_string(&path).expect("read lib.rs");
+    let lines: Vec<&str> = source.lines().collect();
+
+    let mut violations = Vec::new();
+    for (line_index, line) in lines.iter().enumerate() {
+        if line.trim() != "mod proxy_core_host;" {
+            continue;
+        }
+
+        let previous = line_index
+            .checked_sub(1)
+            .and_then(|index| lines.get(index))
+            .map(|line| line.trim())
+            .unwrap_or_default();
+        if previous != "#[cfg(test)]" {
+            violations.push(format!(
+                "src/lib.rs:{} declares proxy_core_host without #[cfg(test)]",
+                line_index + 1
+            ));
+        }
+    }
+
+    assert!(
+        violations.is_empty(),
+        "production lib.rs must keep proxy_core_host as test-only compatibility module:\n{}",
+        violations.join("\n")
+    );
+}
+
+#[test]
 fn production_proxy_server_delegates_runtime_state_to_adapter() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let path = manifest_dir.join("src/proxy/server.rs");
