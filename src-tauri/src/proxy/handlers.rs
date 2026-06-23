@@ -11,11 +11,11 @@ use super::{
     auth_adapter::validate_claude_desktop_gateway_auth,
     error::ProxyError,
     error_mapper::{
-        codex_proxy_error_response, response_build_error_to_proxy_error,
-        CoreResponseBuildFailureContext, management_api_error_to_proxy_error,
+        codex_proxy_error_response, parse_logged_upstream_json_or_unlabeled_sse,
+        response_build_error_to_proxy_error, CoreResponseBuildFailureContext,
+        management_api_error_to_proxy_error,
         management_auth_error_to_proxy_error, proxy_core_error_to_proxy_error,
-        response_body_parse_error_to_proxy_error, response_transform_error_to_proxy_error,
-        ResponseTransformFailureContext,
+        response_transform_error_to_proxy_error, ResponseTransformFailureContext,
     },
     forwarder::ActiveConnectionGuard,
     handler_context::RequestContext,
@@ -41,11 +41,10 @@ use crate::proxy_core_adapter::{
     extract_gemini_model_from_path,
     gemini_response_to_anthropic_message_with_shadow, openai_chat_to_anthropic_message,
     json_proxy_request_from_input, JsonProxyRequestInput,
-    log_unlabeled_sse_fallback_event,
     openai_responses_to_anthropic_message, parse_json_proxy_request_body,
-    parse_json_proxy_request_body_or_null, parse_upstream_json_or_unlabeled_sse,
+    parse_json_proxy_request_body_or_null,
     management_auth_decision_from_proxy_config, record_forward_error_usage,
-    upstream_response_parse_failure_log_message, record_codex_chat_response_history,
+    record_codex_chat_response_history,
     record_codex_chat_response_sse_history, record_transformed_response_usage,
     transformed_streaming_usage_collector, provider_is_codex_oauth,
     provider_needs_claude_transform,
@@ -754,33 +753,17 @@ async fn handle_claude_transform(
     } else {
         claude_transform_unlabeled_sse_aggregation(api_format)
     };
-    let parsed = parse_upstream_json_or_unlabeled_sse(
-        &body_bytes,
+    let upstream_response = parse_logged_upstream_json_or_unlabeled_sse(
+        body_bytes.as_ref(),
         &response_headers,
         "Failed to parse upstream response",
         response_sse_aggregation,
-        || uuid::Uuid::new_v4().to_string(),
-    )
-    .map_err(|error| {
-        log::error!(
-            "{}",
-            upstream_response_parse_failure_log_message(
-                UpstreamResponseParseFailureLogContext::ClaudeTransform,
-                &error,
-                body_bytes.as_ref(),
-            )
-        );
-        response_body_parse_error_to_proxy_error(error)
-    })?;
-
-    log_unlabeled_sse_fallback_event(
-        parsed.source,
+        UpstreamResponseParseFailureLogContext::ClaudeTransform,
         UnlabeledSseFallbackLogContext::Claude {
             api_format,
             codex_oauth_responses_aggregation: aggregate_codex_oauth_responses_sse,
         },
-    );
-    let upstream_response: Value = parsed.value;
+    )?;
 
     // 根据 api_format 选择非流式转换器
     let anthropic_response = if api_format == "openai_responses" {
@@ -1050,31 +1033,14 @@ async fn handle_codex_chat_to_responses_transform(
         read_decoded_body(response, ctx.tag, ctx.body_timeout_duration()).await?;
     // 与 Claude 侧 handle_claude_transform 对称的兜底嗅探（#2234）：
     // 上游对 stream:false 返回未标记 Content-Type 的 SSE 体时按 Chat SSE 聚合。
-    let parsed_chat_response = parse_upstream_json_or_unlabeled_sse(
-        &body_bytes,
+    let chat_response = parse_logged_upstream_json_or_unlabeled_sse(
+        body_bytes.as_ref(),
         &response_headers,
         "Failed to parse upstream chat response",
         Some(UpstreamSseAggregationKind::ChatCompletions),
-        || uuid::Uuid::new_v4().to_string(),
-    )
-    .map_err(|error| {
-        log::error!(
-            "{}",
-            upstream_response_parse_failure_log_message(
-                UpstreamResponseParseFailureLogContext::CodexChat,
-                &error,
-                body_bytes.as_ref(),
-            )
-        );
-        response_body_parse_error_to_proxy_error(error)
-    })?;
-
-    log_unlabeled_sse_fallback_event(
-        parsed_chat_response.source,
+        UpstreamResponseParseFailureLogContext::CodexChat,
         UnlabeledSseFallbackLogContext::CodexChat,
-    );
-
-    let chat_response = parsed_chat_response.value;
+    )?;
     let responses_response =
         build_chat_completion_response_with_context(&chat_response, &tool_context)
             .map_err(|error| {

@@ -838,6 +838,10 @@ const FORBIDDEN_RESPONSE_BUILD_CONTEXT_LITERAL_MARKERS: &[&str] = &[
     "构建代理错误响应失败",
 ];
 const FORBIDDEN_HANDLER_RESPONSE_PARSE_FAILURE_LOG_PROJECTION_MARKERS: &[&str] = &[
+    "parse_upstream_json_or_unlabeled_sse(",
+    "response_body_parse_error_to_proxy_error(",
+    "upstream_response_parse_failure_log_message(",
+    "log_unlabeled_sse_fallback_event(",
     "String::from_utf8_lossy(",
     "解析/聚合上游响应失败",
     "解析/聚合 Chat 上游响应失败",

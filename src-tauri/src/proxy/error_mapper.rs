@@ -6,16 +6,19 @@ use super::{error::ProxyError, ForwardError};
 use crate::proxy::error::proxy_error_status_kind;
 use crate::proxy_core_adapter::{
     codex_proxy_error_response_from_host_facts as core_codex_proxy_error_response,
-    forward_failure_kind_from_proxy_status, proxy_core_error_from_status_kind,
-    proxy_error_http_status_code, ClaudeDesktopGatewayAuthError, CodexProxyErrorKind,
-    CodexProxyHostErrorFacts, ForwardFailureKind, ManagementAuthError, ProxyCoreError,
-    ProxyCoreResponse, ProxyCoreResult,
+    forward_failure_kind_from_proxy_status, log_unlabeled_sse_fallback_event,
+    parse_upstream_json_or_unlabeled_sse, proxy_core_error_from_status_kind,
+    proxy_error_http_status_code, upstream_response_parse_failure_log_message,
+    ClaudeDesktopGatewayAuthError, CodexProxyErrorKind, CodexProxyHostErrorFacts,
+    ForwardFailureKind, ManagementAuthError, ProxyCoreError, ProxyCoreResponse, ProxyCoreResult,
+    UnlabeledSseFallbackLogContext, UpstreamResponseParseFailureLogContext,
+    UpstreamSseAggregationKind,
 };
 #[cfg(test)]
 use crate::proxy_core_adapter::{
     codex_proxy_error_json_from_host_facts as core_codex_proxy_error_json, ProxyResponseBody,
 };
-#[cfg(test)]
+use http::HeaderMap;
 use serde_json::Value;
 
 /// 将 ProxyError 映射到 HTTP 状态码
@@ -135,6 +138,33 @@ pub(crate) fn response_body_parse_error_to_proxy_error(error: ProxyCoreError) ->
         ProxyCoreError::Upstream(message) => ProxyError::TransformError(message),
         other => proxy_core_error_to_proxy_error(other),
     }
+}
+
+pub(crate) fn parse_logged_upstream_json_or_unlabeled_sse(
+    body: &[u8],
+    headers: &HeaderMap,
+    failure_message: &'static str,
+    aggregation: Option<UpstreamSseAggregationKind>,
+    parse_failure_context: UpstreamResponseParseFailureLogContext,
+    fallback_log_context: UnlabeledSseFallbackLogContext<'_>,
+) -> Result<Value, ProxyError> {
+    let parsed = parse_upstream_json_or_unlabeled_sse(
+        body,
+        headers,
+        failure_message,
+        aggregation,
+        || uuid::Uuid::new_v4().to_string(),
+    )
+    .map_err(|error| {
+        log::error!(
+            "{}",
+            upstream_response_parse_failure_log_message(parse_failure_context, &error, body)
+        );
+        response_body_parse_error_to_proxy_error(error)
+    })?;
+
+    log_unlabeled_sse_fallback_event(parsed.source, fallback_log_context);
+    Ok(parsed.value)
 }
 
 pub(crate) enum CoreResponseBuildFailureContext {
