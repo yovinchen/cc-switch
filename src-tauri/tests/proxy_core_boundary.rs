@@ -839,6 +839,8 @@ const FORBIDDEN_HANDLER_RESPONSE_PARSE_FAILURE_LOG_PROJECTION_MARKERS: &[&str] =
     "String::from_utf8_lossy(",
     "解析/聚合上游响应失败",
     "解析/聚合 Chat 上游响应失败",
+    ".unlabeled_sse_fallback_log_event(",
+    "UnlabeledSseFallbackLogLevel::",
 ];
 const FORBIDDEN_HANDLER_RESPONSE_BUILD_ERROR_MAPPING_MARKERS: &[&str] = &[
     "构造 JSON 响应失败",

@@ -477,6 +477,18 @@ pub(crate) fn upstream_response_parse_failure_log_message(
     }
 }
 
+pub(crate) fn log_unlabeled_sse_fallback_event(
+    source: UpstreamJsonBodySource,
+    context: UnlabeledSseFallbackLogContext<'_>,
+) {
+    if let Some(event) = source.unlabeled_sse_fallback_log_event(context) {
+        match event.level {
+            UnlabeledSseFallbackLogLevel::Debug => log::debug!("{}", event.message),
+            UnlabeledSseFallbackLogLevel::Warn => log::warn!("{}", event.message),
+        }
+    }
+}
+
 pub(crate) fn current_route_target_from_forward_attempt(
     app_type: &str,
     attempt: &ForwardAttempt,
@@ -2501,7 +2513,7 @@ pub(crate) use crate::proxy_core::api::transport::{
     append_query_to_endpoint_path, parse_upstream_json_or_unlabeled_sse,
     rebuilt_json_proxy_response, strip_endpoint_prefix, transformed_sse_proxy_response, ProxyBody,
     ProxyRequest, UnlabeledSseFallbackLogContext, UnlabeledSseFallbackLogLevel,
-    UpstreamSseAggregationKind,
+    UpstreamJsonBodySource, UpstreamSseAggregationKind,
 };
 pub(crate) use crate::proxy_core::api::usage::{
     CLAUDE_PARSER_CONFIG, CODEX_PARSER_CONFIG, GEMINI_PARSER_CONFIG, OPENAI_PARSER_CONFIG,

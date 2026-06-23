@@ -45,6 +45,7 @@ use crate::proxy_core_adapter::{
     extract_anthropic_tool_schema_hints, extract_gemini_model_from_path,
     gemini_response_to_anthropic_message_with_shadow, openai_chat_to_anthropic_message,
     json_proxy_request_from_input, JsonProxyRequestInput,
+    log_unlabeled_sse_fallback_event,
     openai_responses_to_anthropic_message, parse_json_proxy_request_body,
     parse_json_proxy_request_body_or_null, parse_upstream_json_or_unlabeled_sse,
     upstream_response_parse_failure_log_message,
@@ -71,7 +72,7 @@ use crate::proxy_core_adapter::{
     ProxyChannelTestRequest, ProxyChannelWriteRequest, ProxyRuntimeStatus,
     ProxyStatusRequest, ProxyStatusResponse, RoutableModelList, RouteGroupListResponse,
     RouteResolveManagementRequest, RouteResolveRequest, RouteResolveResponse,
-    TransformedResponseUsageFormat, UnlabeledSseFallbackLogContext, UnlabeledSseFallbackLogLevel,
+    TransformedResponseUsageFormat, UnlabeledSseFallbackLogContext,
     UpstreamResponseParseFailureLogContext, UpstreamSseAggregationKind, CLAUDE_PARSER_CONFIG,
     CODEX_PARSER_CONFIG, GEMINI_PARSER_CONFIG, OPENAI_PARSER_CONFIG,
 };
@@ -774,19 +775,13 @@ async fn handle_claude_transform(
         response_body_parse_error_to_proxy_error(error)
     })?;
 
-    if let Some(event) =
-        parsed
-            .source
-            .unlabeled_sse_fallback_log_event(UnlabeledSseFallbackLogContext::Claude {
-                api_format,
-                codex_oauth_responses_aggregation: aggregate_codex_oauth_responses_sse,
-            })
-    {
-        match event.level {
-            UnlabeledSseFallbackLogLevel::Debug => log::debug!("{}", event.message),
-            UnlabeledSseFallbackLogLevel::Warn => log::warn!("{}", event.message),
-        }
-    }
+    log_unlabeled_sse_fallback_event(
+        parsed.source,
+        UnlabeledSseFallbackLogContext::Claude {
+            api_format,
+            codex_oauth_responses_aggregation: aggregate_codex_oauth_responses_sse,
+        },
+    );
     let upstream_response: Value = parsed.value;
 
     // 根据 api_format 选择非流式转换器
@@ -1075,15 +1070,10 @@ async fn handle_codex_chat_to_responses_transform(
         response_body_parse_error_to_proxy_error(error)
     })?;
 
-    if let Some(event) = parsed_chat_response
-        .source
-        .unlabeled_sse_fallback_log_event(UnlabeledSseFallbackLogContext::CodexChat)
-    {
-        match event.level {
-            UnlabeledSseFallbackLogLevel::Debug => log::debug!("{}", event.message),
-            UnlabeledSseFallbackLogLevel::Warn => log::warn!("{}", event.message),
-        }
-    }
+    log_unlabeled_sse_fallback_event(
+        parsed_chat_response.source,
+        UnlabeledSseFallbackLogContext::CodexChat,
+    );
 
     let chat_response = parsed_chat_response.value;
     let responses_response =
