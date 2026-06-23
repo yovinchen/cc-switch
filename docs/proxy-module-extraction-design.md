@@ -2,12 +2,12 @@
 
 > 分支：`refactor-proxy-channel-migration-module`
 > 基线：`origin/main`
-> 日期：2026-06-18
+> 日期：2026-06-23
 > 状态：已进入分阶段实现
 
 ## 当前落地状态
 
-截至 2026-06-18，本分支已经完成以下迁移切片：
+截至 2026-06-23，本分支已经完成以下迁移切片：
 
 1. 新增 host-neutral `proxy_core` 领域模型和 `ProxyServices` 端口，主工程通过 `cc-switch-proxy-core` path crate 引用。
 2. 新增 `proxy_channels`、`proxy_channel_models`、`proxy_channel_health` 等 channel 存储，并提供 legacy provider/endpoints 到 channel 的兼容投影。
@@ -1020,6 +1020,7 @@
 本轮继续把 forwarder 对 Codex Responses->Chat 判定、上游模型覆写和 reasoning options 的调用改为直接消费 adapter helper，并删除 provider 模块对应 re-export。
 本轮继续把 Copilot fingerprint header 常量提升到 adapter，`proxy_core_adapter` 不再反向引用 `providers::copilot_auth` 常量。
 本轮继续把 `codex_chat_history` 从 `proxy::providers` 移到 `proxy` 模块根，provider 目录只保留 provider adapter 和账号认证相关实现。
+本轮继续把 `ProviderRouter` 从直接持有 `Database` 改为依赖可注入 `ProviderRouterSource`；`CcSwitchProviderRouterSource` 在 host adapter 内集中承接 provider/channel/config/health 读取与健康状态持久化，保留 `ProviderRouter::new(Arc<Database>)` 兼容入口，后续可继续拆成更细的 `ProviderSource`/`ChannelSource`/`HealthStore` 端口。
 
 当前原则：核心 crate 可以新增端口和领域字段，但不得引入 `tauri`、`Database`、settings、commands、services 等宿主依赖；现有 runtime 行为必须继续通过 targeted tests 证明不回归。
 
@@ -1902,7 +1903,7 @@ ProxyRequest
 | `handlers.rs` | `transport/http/handlers.rs` + `engine` | HTTP 解析留 transport，业务处理移到 engine |
 | `handler_context.rs` | `engine/context.rs` | DB/settings 读取改为 service traits |
 | `forwarder.rs` | `engine/forward_pipeline.rs` | 切掉 Tauri/AppHandle/Database 依赖 |
-| `provider_router.rs` | `engine/routing.rs` | 当前已把 provider/channel/config/health DB source 读写收进 adapter helper；下一步把 helper 固化为 `ProviderSource`/`ChannelSource`/`HealthStore` trait，并把 live breaker map 迁入 runtime-owned routing service |
+| `provider_router.rs` | `engine/routing.rs` | 当前已通过 `ProviderRouterSource` trait 注入 provider/channel/config/health source，DB-backed 实现在 `CcSwitchProviderRouterSource`；下一步把该粗粒度 source 拆成 `ProviderSource`/`ChannelSource`/`HealthStore`，并把 live breaker map 迁入 runtime-owned routing service |
 | `failover_switch.rs` | `host/cc_switch` | 核心只发 failover event |
 | `response_processor.rs` | `engine/response_pipeline.rs` | 用量落库改为 `UsageSink` |
 | `usage/logger.rs` | `host/cc_switch/database_usage_sink.rs` | 只保留 parser/calculator 在核心 |
