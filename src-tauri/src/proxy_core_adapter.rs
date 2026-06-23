@@ -18,6 +18,7 @@ use crate::proxy::events::ProxyEventBus;
 use crate::proxy::failover_switch::FailoverSwitchManager;
 use crate::proxy::handler_context::RequestContext;
 use crate::proxy::hyper_client::ProxyResponse;
+use crate::proxy::providers::ProviderAdapter;
 use crate::proxy::provider_router::{
     ProviderFailoverRouterSources, ProviderRouter, ProviderRouterChannelSource,
     ProviderRouterConfigSource, ProviderRouterHealthStore, ProviderRouterProviderSource,
@@ -4058,6 +4059,13 @@ pub(crate) fn resolve_forwarder_claude_api_format(
 
 pub(crate) fn forwarder_claude_transform_required(api_format: &str) -> bool {
     claude_api_format_needs_transform(api_format)
+}
+
+pub(crate) fn forwarder_provider_transform_required(
+    adapter: &dyn ProviderAdapter,
+    provider: &Provider,
+) -> bool {
+    adapter.needs_transform(provider)
 }
 
 pub(crate) fn forwarder_claude_normalize_anthropic_messages(
@@ -16667,6 +16675,8 @@ command = "latest-command"
             api_format: Some("openai_chat".to_string()),
             ..ProviderMeta::default()
         });
+        let claude_adapter = crate::proxy::providers::ClaudeAdapter::new();
+        let codex_adapter = crate::proxy::providers::CodexAdapter::new();
         assert_eq!(forwarder_claude_api_format(&provider), "openai_chat");
         assert_eq!(
             resolve_forwarder_claude_api_format(&provider, true, Some("OpenAI")),
@@ -16674,6 +16684,8 @@ command = "latest-command"
         );
         assert!(!forwarder_claude_transform_required("anthropic"));
         assert!(forwarder_claude_transform_required("openai_chat"));
+        assert!(forwarder_provider_transform_required(&claude_adapter, &provider));
+        assert!(!forwarder_provider_transform_required(&codex_adapter, &provider));
         let mut passthrough_body = json!({"model": "claude-3-5-sonnet"});
         assert!(!forwarder_claude_normalize_anthropic_messages(
             &mut passthrough_body,

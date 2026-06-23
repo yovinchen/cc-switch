@@ -33,6 +33,7 @@ use crate::proxy_core_adapter::{
     forwarder_is_codex_oauth_provider, forwarder_is_full_url_provider,
     forwarder_is_github_copilot_upstream,
     forwarder_replace_images_for_text_only_provider_model, forwarder_uses_anthropic_rectifiers,
+    forwarder_provider_transform_required,
     is_openai_o_series,
     is_unsupported_image_error, allow_forward_attempt_runtime_source, merge_copilot_tool_results,
     non_streaming_body_timeout_message, normalize_thinking_type,
@@ -1313,7 +1314,7 @@ impl RequestForwarder {
         }
         let needs_transform = match resolved_claude_api_format.as_deref() {
             Some(api_format) => forwarder_claude_transform_required(api_format),
-            None => adapter.needs_transform(provider),
+            None => forwarder_provider_transform_required(adapter, provider),
         };
         let codex_responses_to_chat =
             forwarder_should_convert_codex_responses_to_chat(app_type, provider, endpoint);
