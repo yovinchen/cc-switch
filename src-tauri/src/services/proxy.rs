@@ -29,14 +29,13 @@ use crate::proxy_core_adapter::{
     proxy_server_info_from_parts,
     proxy_takeover_status_from_db,
     proxy_takeover_marked_state_is_reusable,
+    proxy_official_warning_event_from_current_provider_db,
     proxy_takeover_should_restore_existing_backup_before_retakeover,
-    proxy_official_warning_event_message,
     remove_codex_takeover_auth_placeholder_if_present,
     remove_codex_takeover_config_placeholders_if_present,
     remove_gemini_takeover_env_fields_if_present, should_block_proxy_switch_to_provider,
-    should_emit_proxy_official_warning_for_provider, CircuitBreakerConfig, CodexTakeoverAuthPolicy,
-    LiveTokenProviderSettingsIssue, ProxyConfig, ProxyRuntimeStatus, ProxyServerInfo,
-    ProxyTakeoverStatus,
+    CircuitBreakerConfig, CodexTakeoverAuthPolicy, LiveTokenProviderSettingsIssue, ProxyConfig,
+    ProxyRuntimeStatus, ProxyServerInfo, ProxyTakeoverStatus,
 };
 use crate::services::provider::{
     build_effective_settings_with_common_config, write_live_with_common_config,
@@ -444,19 +443,11 @@ impl ProxyService {
             let _ = self.db.set_live_takeover_active(true).await;
 
             // 8) Warn if the current provider is official (risk of account ban via proxy)
-            if let Ok(Some(current_id)) =
-                crate::settings::get_effective_current_provider(&self.db, &app)
+            if let Some(message) =
+                proxy_official_warning_event_from_current_provider_db(&self.db, &app)
             {
-                if let Ok(Some(provider)) = self.db.get_provider_by_id(&current_id, app_type_str) {
-                    if should_emit_proxy_official_warning_for_provider(&provider) {
-                        if let Some(handle) = self.app_handle.read().await.as_ref() {
-                            let message = proxy_official_warning_event_message(
-                                app_type_str,
-                                &provider.name,
-                            );
-                            let _ = handle.emit(&message.event_name, message.payload);
-                        }
-                    }
+                if let Some(handle) = self.app_handle.read().await.as_ref() {
+                    let _ = handle.emit(&message.event_name, message.payload);
                 }
             }
 

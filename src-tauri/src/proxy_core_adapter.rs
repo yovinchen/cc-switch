@@ -2852,6 +2852,33 @@ pub(crate) fn proxy_official_warning_event_message(
     }
 }
 
+pub(crate) fn proxy_official_warning_event_from_provider(
+    app_type: &str,
+    provider: Option<&Provider>,
+) -> Option<ProxyEventBusMessage> {
+    let provider = provider?;
+    if !should_emit_proxy_official_warning_for_provider(provider) {
+        return None;
+    }
+
+    Some(proxy_official_warning_event_message(app_type, &provider.name))
+}
+
+pub(crate) fn proxy_official_warning_event_from_current_provider_db(
+    db: &Database,
+    app_type: &AppType,
+) -> Option<ProxyEventBusMessage> {
+    let current_id = crate::settings::get_effective_current_provider(db, app_type)
+        .ok()
+        .flatten()?;
+    let provider = db
+        .get_provider_by_id(&current_id, app_type.as_str())
+        .ok()
+        .flatten()?;
+
+    proxy_official_warning_event_from_provider(app_type.as_str(), Some(&provider))
+}
+
 pub(crate) struct ProxyEventBusMessage {
     pub(crate) event_name: String,
     pub(crate) payload: Value,
@@ -12512,14 +12539,26 @@ mod tests {
         assert!(provider_is_official_category(&provider));
         assert!(should_emit_proxy_official_warning_for_provider(&provider));
         assert!(should_reapply_codex_official_live_for_provider(&provider));
+        let official_warning_from_provider =
+            proxy_official_warning_event_from_provider("codex", Some(&provider))
+                .expect("official warning from provider");
+        assert_eq!(official_warning_from_provider.event_name, "proxy-official-warning");
+        assert_eq!(official_warning_from_provider.payload["appType"], "codex");
+        assert_eq!(
+            official_warning_from_provider.payload["providerName"],
+            "Official Codex"
+        );
         provider.category = Some("custom".to_string());
         assert!(!provider_is_official_category(&provider));
         assert!(!should_emit_proxy_official_warning_for_provider(&provider));
         assert!(!should_reapply_codex_official_live_for_provider(&provider));
+        assert!(proxy_official_warning_event_from_provider("codex", Some(&provider)).is_none());
         provider.category = None;
         assert!(!provider_is_official_category(&provider));
         assert!(!should_emit_proxy_official_warning_for_provider(&provider));
         assert!(!should_reapply_codex_official_live_for_provider(&provider));
+        assert!(proxy_official_warning_event_from_provider("codex", Some(&provider)).is_none());
+        assert!(proxy_official_warning_event_from_provider("codex", None).is_none());
         assert_eq!(
             build_provider_switched_event_payload("claude", "provider-1", "failover"),
             json!({

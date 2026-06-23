@@ -168,6 +168,12 @@ const FORBIDDEN_PROXY_SERVICE_TAKEOVER_STATUS_MARKERS: &[&str] =
     &[".get_proxy_config_for_app(", "proxy_takeover_status_from_parts("];
 const FORBIDDEN_PROXY_SERVICE_LIVE_TAKEOVER_APP_LIST_MARKERS: &[&str] =
     &["[AppType::Claude", "AppType::Claude, AppType::Codex, AppType::Gemini"];
+const FORBIDDEN_PROXY_SERVICE_OFFICIAL_WARNING_MARKERS: &[&str] = &[
+    "get_effective_current_provider(&self.db, &app)",
+    "get_provider_by_id(&current_id",
+    "should_emit_proxy_official_warning_for_provider(",
+    "proxy_official_warning_event_message(",
+];
 const FORBIDDEN_FORWARDER_MANAGED_AUTH_MARKERS: &[&str] = &[
     "CopilotAuthState",
     "CodexOAuthState",
@@ -4018,6 +4024,38 @@ fn production_proxy_service_delegates_live_takeover_app_catalog_to_adapter() {
     assert!(
         violations.is_empty(),
         "ProxyService must get the live-takeover app catalog from proxy_core_adapter:\n{}",
+        violations.join("\n")
+    );
+}
+
+#[test]
+fn production_proxy_service_delegates_official_warning_source_to_adapter() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let path = manifest_dir.join("src/services/proxy.rs");
+    let source = fs::read_to_string(&path).expect("read services/proxy.rs");
+    let function = function_slice(
+        &source,
+        "pub async fn set_takeover_for_app",
+        "fn read_claude_live",
+    );
+
+    let mut violations = Vec::new();
+    for (line_index, line) in production_lines(function) {
+        let code = line.split("//").next().unwrap_or_default();
+        for marker in FORBIDDEN_PROXY_SERVICE_OFFICIAL_WARNING_MARKERS {
+            if code.contains(marker) {
+                violations.push(format!(
+                    "src/services/proxy.rs set_takeover_for_app:{} contains official-warning source marker `{}`",
+                    line_index + 1,
+                    marker
+                ));
+            }
+        }
+    }
+
+    assert!(
+        violations.is_empty(),
+        "ProxyService::set_takeover_for_app must delegate official-provider warning source reads and projection to proxy_core_adapter:\n{}",
         violations.join("\n")
     );
 }
