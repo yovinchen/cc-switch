@@ -15,8 +15,9 @@ use crate::proxy_core_adapter::{
     codex_backup_projection_error_message, codex_live_write_projection,
     codex_provider_live_write_parts,
     codex_preserved_auth_live_config_text_for_configured_policy,
-    current_provider_for_app_from_db, gemini_live_backup_from_effective_settings, is_local_proxy_url,
-    live_backup_snapshot_from_live_config,
+    current_provider_for_app_from_db, gemini_live_backup_from_effective_settings,
+    is_local_proxy_url, live_backup_snapshot_from_live_config, live_token_sync_app_label,
+    live_token_sync_provider_from_db,
     live_config_has_proxy_placeholder_for_app, live_takeover_config_matches_proxy_for_app,
     live_takeover_app_types, provider_settings_have_proxy_placeholder_for_app,
     sync_provider_settings_with_live_token, preserve_codex_mcp_servers_from_existing_config,
@@ -530,97 +531,30 @@ impl ProxyService {
         app_type: &AppType,
         live_config: &Value,
     ) -> Result<(), String> {
-        match app_type {
-            AppType::Claude => {
-                let provider_id =
-                    crate::settings::get_effective_current_provider(&self.db, &AppType::Claude)
-                        .map_err(|e| format!("获取 Claude 当前供应商失败: {e}"))?;
+        let Some(app_label) = live_token_sync_app_label(app_type) else {
+            return Ok(());
+        };
+        let Some(mut provider) = live_token_sync_provider_from_db(&self.db, app_type)? else {
+            return Ok(());
+        };
 
-                if let Some(provider_id) = provider_id {
-                    if let Ok(Some(mut provider)) =
-                        self.db.get_provider_by_id(&provider_id, "claude")
-                    {
-                        if Self::sync_live_token_to_provider_settings(
-                            &AppType::Claude,
-                            "Claude",
-                            &provider_id,
-                            &mut provider,
-                            live_config,
-                        ) {
-                            if let Err(e) = self.db.update_provider_settings_config(
-                                "claude",
-                                &provider_id,
-                                &provider.settings_config,
-                            ) {
-                                log::warn!("同步 Claude Token 到数据库失败: {e}");
-                            } else {
-                                log::info!("已同步 Claude Token 到数据库 (provider: {provider_id})");
-                            }
-                        }
-                    }
-                }
+        let provider_id = provider.id.clone();
+        if Self::sync_live_token_to_provider_settings(
+            app_type,
+            app_label,
+            &provider_id,
+            &mut provider,
+            live_config,
+        ) {
+            if let Err(e) = self.db.update_provider_settings_config(
+                app_type.as_str(),
+                &provider_id,
+                &provider.settings_config,
+            ) {
+                log::warn!("同步 {app_label} Token 到数据库失败: {e}");
+            } else {
+                log::info!("已同步 {app_label} Token 到数据库 (provider: {provider_id})");
             }
-            AppType::Codex => {
-                let provider_id =
-                    crate::settings::get_effective_current_provider(&self.db, &AppType::Codex)
-                        .map_err(|e| format!("获取 Codex 当前供应商失败: {e}"))?;
-
-                if let Some(provider_id) = provider_id {
-                    if let Ok(Some(mut provider)) =
-                        self.db.get_provider_by_id(&provider_id, "codex")
-                    {
-                        if Self::sync_live_token_to_provider_settings(
-                            &AppType::Codex,
-                            "Codex",
-                            &provider_id,
-                            &mut provider,
-                            live_config,
-                        ) {
-                            if let Err(e) = self.db.update_provider_settings_config(
-                                "codex",
-                                &provider_id,
-                                &provider.settings_config,
-                            ) {
-                                log::warn!("同步 Codex Token 到数据库失败: {e}");
-                            } else {
-                                log::info!("已同步 Codex Token 到数据库 (provider: {provider_id})");
-                            }
-                        }
-                    }
-                }
-            }
-            AppType::Gemini => {
-                let provider_id =
-                    crate::settings::get_effective_current_provider(&self.db, &AppType::Gemini)
-                        .map_err(|e| format!("获取 Gemini 当前供应商失败: {e}"))?;
-
-                if let Some(provider_id) = provider_id {
-                    if let Ok(Some(mut provider)) =
-                        self.db.get_provider_by_id(&provider_id, "gemini")
-                    {
-                        if Self::sync_live_token_to_provider_settings(
-                            &AppType::Gemini,
-                            "Gemini",
-                            &provider_id,
-                            &mut provider,
-                            live_config,
-                        ) {
-                            if let Err(e) = self.db.update_provider_settings_config(
-                                "gemini",
-                                &provider_id,
-                                &provider.settings_config,
-                            ) {
-                                log::warn!("同步 Gemini Token 到数据库失败: {e}");
-                            } else {
-                                log::info!(
-                                    "已同步 Gemini Token 到数据库 (provider: {provider_id})"
-                                );
-                            }
-                        }
-                    }
-                }
-            }
-            _ => {}
         }
 
         Ok(())

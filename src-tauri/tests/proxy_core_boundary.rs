@@ -179,6 +179,11 @@ const FORBIDDEN_PROXY_SERVICE_CURRENT_PROVIDER_SOURCE_MARKERS: &[&str] = &[
     ".get_provider_by_id(&current_id, app_type.as_str())",
     "当前供应商不存在，无法接管 Live 配置",
 ];
+const FORBIDDEN_PROXY_SERVICE_LIVE_TOKEN_SYNC_SOURCE_MARKERS: &[&str] = &[
+    "get_effective_current_provider(&self.db, &AppType::",
+    ".get_provider_by_id(&provider_id,",
+    "match app_type",
+];
 const FORBIDDEN_FORWARDER_MANAGED_AUTH_MARKERS: &[&str] = &[
     "CopilotAuthState",
     "CodexOAuthState",
@@ -4108,6 +4113,38 @@ fn production_proxy_service_delegates_current_provider_source_to_adapter() {
     assert!(
         violations.is_empty(),
         "ProxyService current-provider helpers must delegate source reads and required-provider errors to proxy_core_adapter:\n{}",
+        violations.join("\n")
+    );
+}
+
+#[test]
+fn production_proxy_service_delegates_live_token_sync_source_to_adapter() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let path = manifest_dir.join("src/services/proxy.rs");
+    let source = fs::read_to_string(&path).expect("read services/proxy.rs");
+    let function = function_slice(
+        &source,
+        "async fn sync_live_config_to_provider",
+        "fn sync_live_token_to_provider_settings",
+    );
+
+    let mut violations = Vec::new();
+    for (line_index, line) in production_lines(function) {
+        let code = line.split("//").next().unwrap_or_default();
+        for marker in FORBIDDEN_PROXY_SERVICE_LIVE_TOKEN_SYNC_SOURCE_MARKERS {
+            if code.contains(marker) {
+                violations.push(format!(
+                    "src/services/proxy.rs sync_live_config_to_provider:{} contains live-token sync source marker `{}`",
+                    line_index + 1,
+                    marker
+                ));
+            }
+        }
+    }
+
+    assert!(
+        violations.is_empty(),
+        "ProxyService::sync_live_config_to_provider must delegate current-provider source reads and app support labels to proxy_core_adapter:\n{}",
         violations.join("\n")
     );
 }

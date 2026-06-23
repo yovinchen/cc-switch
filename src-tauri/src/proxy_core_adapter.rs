@@ -2901,6 +2901,34 @@ pub(crate) fn require_current_provider_for_app_from_db(
         .ok_or_else(|| format!("{app_type:?} 当前供应商不存在，无法接管 Live 配置"))
 }
 
+pub(crate) fn live_token_sync_app_label(app_type: &AppType) -> Option<&'static str> {
+    match app_type {
+        AppType::Claude => Some("Claude"),
+        AppType::Codex => Some("Codex"),
+        AppType::Gemini => Some("Gemini"),
+        _ => None,
+    }
+}
+
+pub(crate) fn live_token_sync_provider_from_db(
+    db: &Database,
+    app_type: &AppType,
+) -> Result<Option<Provider>, String> {
+    let Some(app_label) = live_token_sync_app_label(app_type) else {
+        return Ok(None);
+    };
+    let Some(provider_id) = crate::settings::get_effective_current_provider(db, app_type)
+        .map_err(|error| format!("获取 {app_label} 当前供应商失败: {error}"))?
+    else {
+        return Ok(None);
+    };
+
+    Ok(db
+        .get_provider_by_id(&provider_id, app_type.as_str())
+        .ok()
+        .flatten())
+}
+
 pub(crate) struct ProxyEventBusMessage {
     pub(crate) event_name: String,
     pub(crate) payload: Value,
@@ -18702,6 +18730,11 @@ command = "latest-command"
             live_takeover_apps,
             [AppType::Claude, AppType::Codex, AppType::Gemini]
         );
+        assert_eq!(live_token_sync_app_label(&AppType::Claude), Some("Claude"));
+        assert_eq!(live_token_sync_app_label(&AppType::Codex), Some("Codex"));
+        assert_eq!(live_token_sync_app_label(&AppType::Gemini), Some("Gemini"));
+        assert_eq!(live_token_sync_app_label(&AppType::ClaudeDesktop), None);
+        assert_eq!(live_token_sync_app_label(&AppType::OpenCode), None);
     }
 
     #[test]
