@@ -3148,11 +3148,18 @@ pub(crate) use crate::proxy_core::api::auth::ManagedAccountAuthError;
 #[cfg(test)]
 pub(crate) use crate::proxy_core::api::transforms::{canonical_json_string, short_value_hash};
 
+#[derive(Debug)]
+pub(crate) struct ManagedAccountAuthResolution {
+    pub(crate) auth: ProviderAuthInfo,
+    pub(crate) codex_oauth_account_id: Option<String>,
+    pub(crate) should_send_codex_oauth_session_headers: bool,
+}
+
 pub(crate) async fn resolve_managed_account_auth(
     app_handle: Option<&tauri::AppHandle>,
     auth_provider: &Provider,
     auth: ProviderAuthInfo,
-) -> Result<crate::proxy::managed_account_auth::ManagedAccountAuthResolution, ProxyError> {
+) -> Result<ManagedAccountAuthResolution, ProxyError> {
     crate::proxy::managed_account_auth::resolve_managed_account_auth(
         app_handle,
         auth_provider,

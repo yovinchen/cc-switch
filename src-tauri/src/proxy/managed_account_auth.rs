@@ -4,16 +4,9 @@ use crate::proxy::error::ProxyError;
 use crate::proxy_core_adapter::{
     managed_account_auth_plan, provider_codex_oauth_managed_account_id,
     provider_github_copilot_managed_account_id, CopilotModel, ManagedAccountAuthPlan,
-    ManagedAccountAuthRuntime, ProviderAuthInfo,
+    ManagedAccountAuthResolution, ManagedAccountAuthRuntime, ProviderAuthInfo,
 };
 use tauri::Manager;
-
-#[derive(Debug)]
-pub(crate) struct ManagedAccountAuthResolution {
-    pub(crate) auth: ProviderAuthInfo,
-    pub(crate) codex_oauth_account_id: Option<String>,
-    pub(crate) should_send_codex_oauth_session_headers: bool,
-}
 
 pub(crate) async fn resolve_managed_account_auth(
     app_handle: Option<&tauri::AppHandle>,
