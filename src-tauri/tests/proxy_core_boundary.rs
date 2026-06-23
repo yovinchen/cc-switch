@@ -810,6 +810,8 @@ const FORBIDDEN_RESPONSE_PROCESSOR_RESPONSE_LOG_PROJECTION_MARKERS: &[&str] = &[
     "get_content_encoding(",
     "已接收上游流式响应",
     "流式响应含 content-encoding",
+    "上游响应体内容",
+    "String::from_utf8_lossy(",
 ];
 const FORBIDDEN_USAGE_SINK_PROVIDER_PROJECTION_MARKERS: &[&str] = &[
     "provider_kind_from_provider(",

@@ -17,10 +17,10 @@ use super::{
 };
 use crate::proxy_core_adapter::{
     create_logged_passthrough_stream, decode_raw_proxy_response_body,
-    log_streaming_proxy_response_received, non_streaming_body_timeout_message,
-    non_streaming_response_usage_record_from_response_context, NonStreamingResponseUsageContext,
-    passthrough_bytes_proxy_response, passthrough_stream_proxy_response,
-    response_headers_indicate_sse,
+    log_non_streaming_proxy_response_body, log_streaming_proxy_response_received,
+    non_streaming_body_timeout_message, non_streaming_response_usage_record_from_response_context,
+    NonStreamingResponseUsageContext, passthrough_bytes_proxy_response,
+    passthrough_stream_proxy_response, response_headers_indicate_sse,
     response_usage_provider_facts_from_optional,
     spawn_usage_record_with_proxy_services,
     streaming_response_usage_record_from_response_context, StreamingResponseUsageContext,
@@ -122,11 +122,7 @@ pub async fn handle_non_streaming(
     let (response_headers, status, body_bytes) =
         read_decoded_body(response, ctx.tag, ctx.body_timeout_duration()).await?;
 
-    log::debug!(
-        "[{}] 上游响应体内容: {}",
-        ctx.tag,
-        String::from_utf8_lossy(&body_bytes)
-    );
+    log_non_streaming_proxy_response_body(&body_bytes, ctx.tag);
 
     // 解析并记录使用量。关闭 usage logging 时直接跳过，避免非流式响应整包 JSON parse。
     if usage_logging_enabled(state) {

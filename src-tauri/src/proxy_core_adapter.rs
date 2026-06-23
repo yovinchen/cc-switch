@@ -6332,6 +6332,10 @@ pub(crate) fn log_streaming_proxy_response_received(
     }
 }
 
+pub(crate) fn log_non_streaming_proxy_response_body(body: &[u8], tag: &str) {
+    log::debug!("[{tag}] 上游响应体内容: {}", String::from_utf8_lossy(body));
+}
+
 #[derive(Clone)]
 pub(crate) struct SseUsageCollector {
     inner: Arc<SseUsageCollectorInner>,
