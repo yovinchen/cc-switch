@@ -6112,6 +6112,53 @@ fn production_forwarder_uses_transport_source_resource() {
 }
 
 #[test]
+fn production_forwarder_uses_response_source_resource() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let path = manifest_dir.join("src/proxy/forwarder.rs");
+    let source = fs::read_to_string(&path).expect("read forwarder.rs");
+    let struct_slice = function_slice(&source, "pub struct RequestForwarder", "impl RequestForwarder");
+    let impl_slice = function_slice(&source, "impl RequestForwarder", "#[cfg(test)]");
+
+    assert!(
+        struct_slice.contains("response_source"),
+        "RequestForwarder must receive upstream response readiness/body reads as an injected source"
+    );
+
+    let impl_forbidden_markers = [
+        "response.bytes().await",
+        "response.bytes_stream()",
+        "tokio::time::timeout(",
+        "ProxyResponse::buffered(",
+        "ProxyResponse::streamed(",
+        "futures::stream::once(",
+        "non_streaming_body_timeout_message(",
+        "streaming_body_first_chunk_timeout_message(",
+        "streaming_body_ended_before_first_chunk_message(",
+        "streaming_body_first_chunk_read_error_message(",
+    ];
+    let mut violations = Vec::new();
+
+    for (line_index, line) in production_lines(impl_slice) {
+        let code = line.split("//").next().unwrap_or_default();
+        for marker in impl_forbidden_markers {
+            if code.contains(marker) {
+                violations.push(format!(
+                    "src/proxy/forwarder.rs impl RequestForwarder:{} contains direct response-readiness marker `{}`",
+                    line_index + 1,
+                    marker
+                ));
+            }
+        }
+    }
+
+    assert!(
+        violations.is_empty(),
+        "forwarder must use an injected response source for body reads and streaming priming:\n{}",
+        violations.join("\n")
+    );
+}
+
+#[test]
 fn production_forwarder_delegates_runtime_events_to_adapter() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let path = manifest_dir.join("src/proxy/forwarder.rs");

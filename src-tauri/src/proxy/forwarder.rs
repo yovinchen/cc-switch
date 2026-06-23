@@ -27,7 +27,7 @@ use crate::proxy_core_adapter::{
     forwarder_provider_transform_request, forwarder_provider_transform_required,
     ForwarderAdapterHandle, fetch_copilot_live_models_from_runtime_source, is_openai_o_series,
     is_unsupported_image_error, merge_copilot_tool_results,
-    non_streaming_body_timeout_message, normalize_thinking_type,
+    normalize_thinking_type,
     prepare_upstream_request_body_with_report, prompt_cache_trace_log_message,
     forwarder_claude_normalize_anthropic_messages,
     provider_adapter_name_is_claude,
@@ -48,22 +48,20 @@ use crate::proxy_core_adapter::{
     should_rectify_thinking_signature, should_resolve_copilot_dynamic_endpoint,
     should_send_anthropic_request_headers, should_trigger_media_retry,
     strip_copilot_thinking_blocks, strip_one_m_suffix_for_upstream,
-    strip_one_m_suffix_for_upstream_from_body, streaming_body_ended_before_first_chunk_message,
-    streaming_body_first_chunk_read_error_message, streaming_body_first_chunk_timeout_message,
+    strip_one_m_suffix_for_upstream_from_body,
     supports_reasoning_effort, thinking_optimization_log_message,
     validate_managed_account_upstream_auth, AttemptEventPhase, CopilotAuthHeaderOverrides,
     CopilotOptimizerConfig, ForwardFailureCategory, ForwardUpstreamUrlPlanInput,
     MediaRetryInput, OptimizerConfig, PromptCacheTraceLogInput,
     FailoverSwitchSchedulerRef, ForwarderAttemptRuntimeSourceRef, ForwarderProtocolStateSourceRef,
-    ForwarderRuntimeStateSourceRef, ForwarderTransportSourceRef, ForwarderUpstreamTransportRequest,
-    ManagedAccountRuntimeSourceRef,
+    ForwarderResponseSourceRef, ForwarderRuntimeStateSourceRef, ForwarderTransportSourceRef,
+    ForwarderUpstreamTransportRequest, ManagedAccountRuntimeSourceRef,
     RectifierConfig, ResolvedChannelAttempt, UpstreamAuthHeadersInput,
     UpstreamRequestHeadersInput, UNSUPPORTED_IMAGE_MARKER,
 };
 #[cfg(test)]
 use crate::proxy_core_adapter::provider_router_from_database;
 use crate::{app_config::AppType, provider::Provider};
-use futures::StreamExt;
 use http::Extensions;
 use serde_json::Value;
 
@@ -130,6 +128,7 @@ pub struct RequestForwarder {
     protocol_state_source: ForwarderProtocolStateSourceRef,
     runtime_state_source: ForwarderRuntimeStateSourceRef,
     transport_source: ForwarderTransportSourceRef,
+    response_source: ForwarderResponseSourceRef,
     failover_switch_scheduler: FailoverSwitchSchedulerRef,
     managed_account_runtime_source: ManagedAccountRuntimeSourceRef,
     /// 请求开始时的"当前供应商 ID"（用于判断是否需要同步 UI/托盘）
@@ -232,6 +231,7 @@ impl RequestForwarder {
         protocol_state_source: ForwarderProtocolStateSourceRef,
         runtime_state_source: ForwarderRuntimeStateSourceRef,
         transport_source: ForwarderTransportSourceRef,
+        response_source: ForwarderResponseSourceRef,
         failover_switch_scheduler: FailoverSwitchSchedulerRef,
         managed_account_runtime_source: ManagedAccountRuntimeSourceRef,
         current_provider_id_at_start: String,
@@ -252,6 +252,7 @@ impl RequestForwarder {
             protocol_state_source,
             runtime_state_source,
             transport_source,
+            response_source,
             failover_switch_scheduler,
             managed_account_runtime_source,
             current_provider_id_at_start,
@@ -1548,7 +1549,7 @@ impl RequestForwarder {
             Ok((response, resolved_claude_api_format, outbound_model))
         } else {
             let status_code = status.as_u16();
-            let body_text = String::from_utf8(response.bytes().await?.to_vec()).ok();
+            let body_text = self.response_source.upstream_error_body(response).await?;
 
             Err(ProxyError::UpstreamError {
                 status: status_code,
@@ -1595,55 +1596,14 @@ impl RequestForwarder {
         response: ProxyResponse,
         request_is_streaming: bool,
     ) -> Result<ProxyResponse, ProxyError> {
-        if request_is_streaming {
-            return self.prime_streaming_response(response).await;
-        }
-
-        if self.non_streaming_timeout.is_zero() {
-            return Ok(response);
-        }
-
-        let status = response.status();
-        let headers = response.headers().clone();
-        let body_timeout = self.non_streaming_timeout;
-        let body = tokio::time::timeout(body_timeout, response.bytes())
+        self.response_source
+            .prepare_success_response(
+                response,
+                request_is_streaming,
+                self.non_streaming_timeout,
+                self.streaming_first_byte_timeout,
+            )
             .await
-            .map_err(|_| ProxyError::Timeout(non_streaming_body_timeout_message(body_timeout)))??;
-
-        Ok(ProxyResponse::buffered(status, headers, body))
-    }
-
-    async fn prime_streaming_response(
-        &self,
-        response: ProxyResponse,
-    ) -> Result<ProxyResponse, ProxyError> {
-        if self.streaming_first_byte_timeout.is_zero() {
-            return Ok(response);
-        }
-
-        let status = response.status();
-        let headers = response.headers().clone();
-        let timeout = self.streaming_first_byte_timeout;
-        let mut stream = Box::pin(response.bytes_stream());
-
-        let first = tokio::time::timeout(timeout, stream.next())
-            .await
-            .map_err(|_| {
-                ProxyError::Timeout(streaming_body_first_chunk_timeout_message(timeout))
-            })?;
-
-        let Some(first) = first else {
-            return Err(ProxyError::ForwardFailed(
-                streaming_body_ended_before_first_chunk_message().to_string(),
-            ));
-        };
-
-        let first = first.map_err(|e| {
-            ProxyError::ForwardFailed(streaming_body_first_chunk_read_error_message(e))
-        })?;
-
-        let replay = futures::stream::once(async move { Ok(first) }).chain(stream);
-        Ok(ProxyResponse::streamed(status, headers, replay))
     }
 
     async fn resolve_claude_api_format(
@@ -1791,6 +1751,7 @@ mod tests {
                     events,
                 ),
             transport_source: crate::proxy_core_adapter::default_forwarder_transport_source(),
+            response_source: crate::proxy_core_adapter::default_forwarder_response_source(),
             failover_switch_scheduler: crate::proxy_core_adapter::noop_failover_switch_scheduler(),
             managed_account_runtime_source:
                 crate::proxy_core_adapter::default_managed_account_runtime_source(),

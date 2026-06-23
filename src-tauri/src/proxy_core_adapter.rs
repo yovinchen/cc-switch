@@ -70,6 +70,7 @@ pub(crate) struct CcSwitchProxyRuntime {
     pub(crate) protocol_state_source: ForwarderProtocolStateSourceRef,
     pub(crate) runtime_state_source: ForwarderRuntimeStateSourceRef,
     pub(crate) transport_source: ForwarderTransportSourceRef,
+    pub(crate) response_source: ForwarderResponseSourceRef,
     pub(crate) failover_switch_scheduler: FailoverSwitchSchedulerRef,
     pub(crate) managed_account_runtime_source: ManagedAccountRuntimeSourceRef,
 }
@@ -489,6 +490,7 @@ pub(crate) fn proxy_state_from_runtime_sources(
         events.clone(),
     );
     let transport_source = default_forwarder_transport_source();
+    let response_source = default_forwarder_response_source();
     let failover_switch_scheduler = failover_switch_scheduler_from_runtime_sources(
         failover_manager.clone(),
         app_handle.clone(),
@@ -503,6 +505,7 @@ pub(crate) fn proxy_state_from_runtime_sources(
             protocol_state_source,
             runtime_state_source,
             transport_source,
+            response_source,
             failover_switch_scheduler,
             managed_account_runtime_source,
         }));
@@ -8335,12 +8338,105 @@ pub(crate) fn default_forwarder_transport_source() -> ForwarderTransportSourceRe
     Arc::new(CcSwitchForwarderTransportSource)
 }
 
+pub(crate) type ForwarderResponseSourceRef =
+    Arc<dyn ForwarderResponseSource + Send + Sync>;
+
+pub(crate) trait ForwarderResponseSource {
+    fn prepare_success_response<'a>(
+        &'a self,
+        response: ProxyResponse,
+        request_is_streaming: bool,
+        non_streaming_timeout: std::time::Duration,
+        streaming_first_byte_timeout: std::time::Duration,
+    ) -> BoxFuture<'a, Result<ProxyResponse, ProxyError>>;
+
+    fn upstream_error_body<'a>(
+        &'a self,
+        response: ProxyResponse,
+    ) -> BoxFuture<'a, Result<Option<String>, ProxyError>>;
+}
+
+struct CcSwitchForwarderResponseSource;
+
+impl ForwarderResponseSource for CcSwitchForwarderResponseSource {
+    fn prepare_success_response<'a>(
+        &'a self,
+        response: ProxyResponse,
+        request_is_streaming: bool,
+        non_streaming_timeout: std::time::Duration,
+        streaming_first_byte_timeout: std::time::Duration,
+    ) -> BoxFuture<'a, Result<ProxyResponse, ProxyError>> {
+        Box::pin(async move {
+            if request_is_streaming {
+                return prime_streaming_forward_response(response, streaming_first_byte_timeout)
+                    .await;
+            }
+
+            if non_streaming_timeout.is_zero() {
+                return Ok(response);
+            }
+
+            let status = response.status();
+            let headers = response.headers().clone();
+            let body = tokio::time::timeout(non_streaming_timeout, response.bytes())
+                .await
+                .map_err(|_| {
+                    ProxyError::Timeout(non_streaming_body_timeout_message(non_streaming_timeout))
+                })??;
+
+            Ok(ProxyResponse::buffered(status, headers, body))
+        })
+    }
+
+    fn upstream_error_body<'a>(
+        &'a self,
+        response: ProxyResponse,
+    ) -> BoxFuture<'a, Result<Option<String>, ProxyError>> {
+        Box::pin(async move { Ok(String::from_utf8(response.bytes().await?.to_vec()).ok()) })
+    }
+}
+
+async fn prime_streaming_forward_response(
+    response: ProxyResponse,
+    timeout: std::time::Duration,
+) -> Result<ProxyResponse, ProxyError> {
+    if timeout.is_zero() {
+        return Ok(response);
+    }
+
+    let status = response.status();
+    let headers = response.headers().clone();
+    let mut stream = Box::pin(response.bytes_stream());
+
+    let first = tokio::time::timeout(timeout, stream.next())
+        .await
+        .map_err(|_| ProxyError::Timeout(streaming_body_first_chunk_timeout_message(timeout)))?;
+
+    let Some(first) = first else {
+        return Err(ProxyError::ForwardFailed(
+            streaming_body_ended_before_first_chunk_message().to_string(),
+        ));
+    };
+
+    let first = first.map_err(|e| {
+        ProxyError::ForwardFailed(streaming_body_first_chunk_read_error_message(e))
+    })?;
+
+    let replay = futures::stream::once(async move { Ok(first) }).chain(stream);
+    Ok(ProxyResponse::streamed(status, headers, replay))
+}
+
+pub(crate) fn default_forwarder_response_source() -> ForwarderResponseSourceRef {
+    Arc::new(CcSwitchForwarderResponseSource)
+}
+
 #[derive(Clone)]
 pub(crate) struct ForwarderRuntimeHostResources {
     pub(crate) attempt_runtime_source: ForwarderAttemptRuntimeSourceRef,
     pub(crate) protocol_state_source: ForwarderProtocolStateSourceRef,
     pub(crate) runtime_state_source: ForwarderRuntimeStateSourceRef,
     pub(crate) transport_source: ForwarderTransportSourceRef,
+    pub(crate) response_source: ForwarderResponseSourceRef,
     pub(crate) failover_switch_scheduler: FailoverSwitchSchedulerRef,
     pub(crate) managed_account_runtime_source: ManagedAccountRuntimeSourceRef,
 }
@@ -8353,6 +8449,7 @@ pub(crate) fn forwarder_runtime_host_resources_from_runtime(
         protocol_state_source: runtime.protocol_state_source.clone(),
         runtime_state_source: runtime.runtime_state_source.clone(),
         transport_source: runtime.transport_source.clone(),
+        response_source: runtime.response_source.clone(),
         failover_switch_scheduler: runtime.failover_switch_scheduler.clone(),
         managed_account_runtime_source: runtime.managed_account_runtime_source.clone(),
     }
@@ -8385,6 +8482,7 @@ pub(crate) async fn forward_with_preplanned_host_runtime(
         protocol_state_source,
         runtime_state_source,
         transport_source,
+        response_source,
         failover_switch_scheduler,
         managed_account_runtime_source,
     } = resources;
@@ -8404,6 +8502,7 @@ pub(crate) async fn forward_with_preplanned_host_runtime(
         protocol_state_source,
         runtime_state_source,
         transport_source,
+        response_source,
         failover_switch_scheduler,
         managed_account_runtime_source,
         current_provider_id,
