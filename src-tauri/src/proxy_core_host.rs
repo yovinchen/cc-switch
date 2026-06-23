@@ -8,25 +8,22 @@ use crate::proxy::hyper_client::ProxyResponse;
 use crate::proxy::provider_router::ProviderRouter;
 use crate::proxy::codex_chat_history::CodexChatHistoryStore;
 use crate::proxy_core_adapter::{
-    AppKind, AppSummaryConfig, AuthProvider, CcSwitchAuthProvider, CcSwitchChannelHealthStore,
-    CcSwitchChannelReachabilityProbe, CcSwitchEventSink, CcSwitchModelCatalogProvider,
-    CcSwitchRoutePolicySource, CcSwitchRouteResolver, CcSwitchUsageSink, ChannelHealthStore,
-    ChannelKeyRecord, ChannelModelRecord, ChannelMigrationMaterializeInput,
-    ChannelMigrationPreviewInput, ChannelQuery, ChannelRecord, ChannelReachabilityProbe,
-    ChannelRouteSource, ChannelSource, ChannelSpec,
+    AppKind, AuthProvider, CcSwitchAuthProvider, CcSwitchChannelHealthStore,
+    CcSwitchChannelReachabilityProbe, CcSwitchConfigSource, CcSwitchEventSink,
+    CcSwitchModelCatalogProvider, CcSwitchRoutePolicySource, CcSwitchRouteResolver,
+    CcSwitchUsageSink, ChannelHealthStore, ChannelKeyRecord, ChannelModelRecord,
+    ChannelMigrationMaterializeInput, ChannelMigrationPreviewInput, ChannelQuery, ChannelRecord,
+    ChannelReachabilityProbe, ChannelRouteSource, ChannelSource, ChannelSpec,
     CurrentRouteTarget, ForwardPipeline, ForwarderRuntimeHostResources,
     GeminiShadowStore, HostForwardRuntime, ModelCatalogProvider, ProviderSource,
-    ProviderSpec, ProxyAppConfig,
+    ProviderSpec,
     ProxyChannelKeyPatchRequest, ProxyChannelKeyWriteRequest, ProxyChannelModelsReplaceRequest,
     ProxyChannelPatchRequest, ProxyChannelWriteRequest, ProxyConfigSource, ProxyCoreResult,
-    ProxyEventSink, ProxyGlobalConfig, ProxyRequest, ProxyResult,
-    ProxyRuntimeConfig, ProxyRuntimeStatus, ProxyServices, RoutePlan, RoutePolicySource,
-    RouteResolver, UsageSink,
+    ProxyEventSink, ProxyRequest, ProxyResult, ProxyRuntimeStatus, ProxyServices, RoutePlan,
+    RoutePolicySource, RouteResolver, UsageSink,
 };
 use crate::proxy_core_adapter::{
     active_route_target_from_runtime_source,
-    app_summary_config_from_db_source,
-    cc_switch_app_kinds,
     channel_key_records_from_db_source,
     channel_model_records_from_db_source,
     channel_records_from_db_source,
@@ -44,9 +41,7 @@ use crate::proxy_core_adapter::{
     provider_spec_from_db_source,
     provider_specs_from_db_source,
     provider_router_from_database,
-    proxy_app_config_from_db_source, proxy_global_config_from_db_source,
     materialized_channel_records_from_db_source,
-    proxy_runtime_config_from_db_source,
     replace_channel_model_records_from_db_source,
     route_candidate_provider_ids_from_router_source,
     update_channel_record_from_db_source,
@@ -113,7 +108,7 @@ impl CcSwitchProxyServices {
     pub(crate) fn with_runtime(runtime: CcSwitchProxyRuntime) -> Self {
         let db = runtime.db.clone();
         Self {
-            config: CcSwitchConfigSource { db: db.clone() },
+            config: CcSwitchConfigSource::new(db.clone()),
             providers: CcSwitchProviderSource {
                 db: db.clone(),
                 router: runtime.provider_router.clone(),
@@ -143,7 +138,7 @@ impl CcSwitchProxyServices {
     fn with_optional_event_bus(db: Arc<Database>, events: Option<Arc<ProxyEventBus>>) -> Self {
         let router = Arc::new(provider_router_from_database(db.clone()));
         Self {
-            config: CcSwitchConfigSource { db: db.clone() },
+            config: CcSwitchConfigSource::new(db.clone()),
             providers: CcSwitchProviderSource {
                 db: db.clone(),
                 router: router.clone(),
@@ -212,36 +207,6 @@ impl ProxyServices for CcSwitchProxyServices {
 
     fn forward_pipeline(&self) -> &(dyn ForwardPipeline + Send + Sync) {
         &self.forward_pipeline
-    }
-}
-
-#[derive(Clone)]
-struct CcSwitchConfigSource {
-    db: Arc<Database>,
-}
-
-impl ProxyConfigSource for CcSwitchConfigSource {
-    fn list_apps<'a>(&'a self) -> BoxFuture<'a, ProxyCoreResult<Vec<AppKind>>> {
-        Box::pin(async move { Ok(cc_switch_app_kinds()) })
-    }
-
-    fn load_global<'a>(&'a self) -> BoxFuture<'a, ProxyCoreResult<ProxyGlobalConfig>> {
-        Box::pin(async move { proxy_global_config_from_db_source(&self.db).await })
-    }
-
-    fn load_app<'a>(&'a self, app: &'a AppKind) -> BoxFuture<'a, ProxyCoreResult<ProxyAppConfig>> {
-        Box::pin(async move { proxy_app_config_from_db_source(&self.db, app).await })
-    }
-
-    fn load_app_summary<'a>(
-        &'a self,
-        app: &'a AppKind,
-    ) -> BoxFuture<'a, ProxyCoreResult<AppSummaryConfig>> {
-        Box::pin(async move { app_summary_config_from_db_source(&self.db, app).await })
-    }
-
-    fn load_runtime<'a>(&'a self) -> BoxFuture<'a, ProxyCoreResult<ProxyRuntimeConfig>> {
-        Box::pin(async move { proxy_runtime_config_from_db_source(&self.db).await })
     }
 }
 

@@ -138,6 +138,13 @@ const FORBIDDEN_PROXY_CORE_HOST_USAGE_PROJECTION_MARKERS: &[&str] =
 const FORBIDDEN_PROXY_CORE_HOST_APP_SUMMARY_PROJECTION_MARKERS: &[&str] =
     &["AppSummaryConfig::new("];
 const FORBIDDEN_PROXY_CORE_HOST_CONFIG_SOURCE_MARKERS: &[&str] = &[
+    "struct CcSwitchConfigSource",
+    "impl ProxyConfigSource for CcSwitchConfigSource",
+    "cc_switch_app_kinds(",
+    "proxy_global_config_from_db_source(",
+    "proxy_app_config_from_db_source(",
+    "app_summary_config_from_db_source(",
+    "proxy_runtime_config_from_db_source(",
     ".get_global_proxy_config(",
     ".get_proxy_config_for_app(",
     ".get_proxy_config(",
@@ -2922,19 +2929,14 @@ fn production_proxy_core_host_delegates_config_source_to_adapter() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let path = manifest_dir.join("src/proxy_core_host.rs");
     let source = fs::read_to_string(&path).expect("read proxy_core_host.rs");
-    let config_source = function_slice(
-        &source,
-        "impl ProxyConfigSource for CcSwitchConfigSource",
-        "#[derive(Clone)]\nstruct CcSwitchProviderSource",
-    );
 
     let mut violations = Vec::new();
-    for (line_index, line) in production_lines(config_source) {
+    for (line_index, line) in production_lines(&source) {
         let code = line.split("//").next().unwrap_or_default();
         for marker in FORBIDDEN_PROXY_CORE_HOST_CONFIG_SOURCE_MARKERS {
             if code.contains(marker) {
                 violations.push(format!(
-                    "src/proxy_core_host.rs CcSwitchConfigSource:{} contains config source marker `{}`",
+                    "src/proxy_core_host.rs:{} contains config source marker `{}`",
                     line_index + 1,
                     marker
                 ));
