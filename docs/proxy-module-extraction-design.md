@@ -1123,6 +1123,7 @@
 本轮继续把 `ProxyServiceRuntimeResources` 与 `HostForwardRuntime` for `CcSwitchProxyRuntime` 两个 runtime trait impl 移入 `proxy_core_adapter`：`proxy_core_host` 只声明 runtime 资源字段和 `CcSwitchProxyServices` 类型别名，adapter 负责把 host runtime 投影成 core service/forwarding 能力。
 本轮继续把 `CcSwitchProxyRuntime` 数据结构和具体 `CcSwitchProxyServices<CcSwitchProxyRuntime>` alias 移入 `proxy_core_adapter`：`proxy_core_host` 仅保留旧模块路径的兼容 re-export，生产版 host 文件不再定义 runtime 数据形状。
 本轮继续把 `ProxyServer` 对 `CcSwitchProxyServices` 的生产 import 切到 `proxy_core_adapter::CcSwitchProxyRuntimeServices`：运行中 server 的 core services 类型不再依赖 `proxy_core_host` 兼容路径，`proxy_core_host` 的旧 alias 仅保留给测试兼容。
+本轮继续把 `src/lib.rs` 中的 `proxy_core_host` 模块声明限制为 `#[cfg(test)]`：生产 crate 编译图不再包含该兼容模块，相关历史边界测试仍可通过 test-only module 读取旧测试辅助路径。
 
 当前原则：核心 crate 可以新增端口和领域字段，但不得引入 `tauri`、`Database`、settings、commands、services 等宿主依赖；现有 runtime 行为必须继续通过 targeted tests 证明不回归。
 
