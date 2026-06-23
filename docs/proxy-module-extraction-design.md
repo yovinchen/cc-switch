@@ -1101,6 +1101,7 @@
 本轮继续把 `set_takeover_for_app` 的 legacy 接管 active flag 兼容写入和 any-enabled 读取收敛到 `proxy_core_adapter::{set_legacy_live_takeover_active_best_effort_in_db,live_takeover_any_enabled_from_db}`：service 不再直接调用废弃 DAO 兼容方法或维护“检查接管状态失败”错误投影。
 本轮继续把 `set_takeover_for_app` 关闭接管后的 provider health 清理收敛到 `proxy_core_adapter::clear_provider_health_for_app_in_db`：service 不再直接调用 health DAO，清理失败继续按原中文错误返回。
 本轮继续把 `start_with_takeover` 的全量 Live 备份清理收敛到 `proxy_core_adapter::{cleanup_all_live_backups_best_effort_in_db,delete_all_live_backups_best_effort_in_db}`：启动前失败继续输出清理 warning，恢复成功后的清理继续静默 best-effort。
+本轮继续把 `start_with_takeover` 的 legacy 接管 active flag 写入收敛到 `proxy_core_adapter::{set_legacy_live_takeover_active_in_db,set_legacy_live_takeover_active_best_effort_in_db}`：首次写入失败仍中止启动，恢复成功后的回滚写入仍为 best-effort。
 
 当前原则：核心 crate 可以新增端口和领域字段，但不得引入 `tauri`、`Database`、settings、commands、services 等宿主依赖；现有 runtime 行为必须继续通过 targeted tests 证明不回归。
 
