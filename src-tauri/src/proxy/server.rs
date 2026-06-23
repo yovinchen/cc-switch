@@ -16,15 +16,15 @@ use crate::database::Database;
 use crate::proxy_core_adapter::{
     emit_proxy_server_started_event_source, emit_proxy_server_stopped_event_source,
     proxy_engine_from_services, proxy_runtime_status_from_runtime_sources,
-    proxy_server_info_from_parts, record_proxy_server_listen_port_runtime_source,
-    provider_router_from_database,
+    proxy_server_info_from_parts, proxy_state_from_runtime_sources,
+    record_proxy_server_listen_port_runtime_source,
     record_proxy_server_started_runtime_source, record_proxy_server_stopped_runtime_source,
     reset_provider_circuit_breaker_source, set_active_route_target_runtime_source,
     server_log_codes as log_srv, CircuitBreakerConfig, CurrentRouteTarget, GeminiShadowStore,
     ProxyConfig, ProxyEngine, ProxyRuntimeStatus, ProxyServerInfo,
     update_all_circuit_breaker_configs_source, update_app_circuit_breaker_config_source,
 };
-use crate::proxy_core_host::{CcSwitchProxyRuntime, CcSwitchProxyServices};
+use crate::proxy_core_host::CcSwitchProxyServices;
 use axum::{
     extract::DefaultBodyLimit,
     middleware,
@@ -86,42 +86,7 @@ impl ProxyServer {
         db: Arc<Database>,
         app_handle: Option<tauri::AppHandle>,
     ) -> Self {
-        // 创建共享的 ProviderRouter（熔断器状态将跨所有请求保持）
-        let provider_router = Arc::new(provider_router_from_database(db.clone()));
-        let events = Arc::new(ProxyEventBus::default());
-        // 创建故障转移切换管理器
-        let failover_manager = Arc::new(FailoverSwitchManager::new(db.clone()));
-        let status = Arc::new(RwLock::new(ProxyRuntimeStatus::default()));
-        let current_providers = Arc::new(RwLock::new(HashMap::new()));
-        let gemini_shadow = Arc::new(GeminiShadowStore::default());
-        let codex_chat_history = Arc::new(CodexChatHistoryStore::default());
-        let proxy_core_services =
-            Arc::new(CcSwitchProxyServices::with_runtime(CcSwitchProxyRuntime {
-                db: db.clone(),
-                provider_router: provider_router.clone(),
-                status: status.clone(),
-                current_providers: current_providers.clone(),
-                events: events.clone(),
-                gemini_shadow: gemini_shadow.clone(),
-                codex_chat_history: codex_chat_history.clone(),
-                failover_manager: failover_manager.clone(),
-                app_handle: app_handle.clone(),
-            }));
-
-        let state = ProxyState {
-            db,
-            config: Arc::new(RwLock::new(config.clone())),
-            status,
-            start_time: Arc::new(RwLock::new(None)),
-            current_providers,
-            provider_router,
-            proxy_core_services,
-            gemini_shadow,
-            codex_chat_history,
-            app_handle,
-            failover_manager,
-            events,
-        };
+        let state = proxy_state_from_runtime_sources(config.clone(), db, app_handle);
 
         Self {
             config,

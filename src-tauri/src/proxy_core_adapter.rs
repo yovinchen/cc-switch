@@ -29,6 +29,7 @@ use crate::proxy::codex_chat_history::{record_responses_sse_stream, CodexChatHis
 use crate::proxy::route_attempt::ForwardAttempt;
 use crate::proxy::usage::{RequestLog, UsageLogger};
 use crate::proxy::RequestForwarder;
+use crate::proxy_core_host::CcSwitchProxyRuntime;
 use crate::services::stream_check::StreamCheckService;
 use crate::settings::CustomEndpoint;
 use crate::proxy_core::api::domain::{
@@ -415,6 +416,47 @@ pub(crate) type ProxyAppConfig = crate::proxy_core::api::config::ProxyAppConfig;
 pub(crate) type ProxyServerInfo = crate::proxy_core::api::ports::ProxyServerInfo;
 
 pub(crate) use crate::proxy_core::api::ports::proxy_server_info_from_parts;
+
+pub(crate) fn proxy_state_from_runtime_sources(
+    config: ProxyConfig,
+    db: Arc<Database>,
+    app_handle: Option<tauri::AppHandle>,
+) -> ProxyState {
+    let provider_router = Arc::new(provider_router_from_database(db.clone()));
+    let events = Arc::new(ProxyEventBus::default());
+    let failover_manager = Arc::new(FailoverSwitchManager::new(db.clone()));
+    let status = Arc::new(RwLock::new(ProxyRuntimeStatus::default()));
+    let current_providers = Arc::new(RwLock::new(HashMap::new()));
+    let gemini_shadow = Arc::new(GeminiShadowStore::default());
+    let codex_chat_history = Arc::new(CodexChatHistoryStore::default());
+    let proxy_core_services =
+        Arc::new(CcSwitchProxyServices::with_runtime(CcSwitchProxyRuntime {
+            db: db.clone(),
+            provider_router: provider_router.clone(),
+            status: status.clone(),
+            current_providers: current_providers.clone(),
+            events: events.clone(),
+            gemini_shadow: gemini_shadow.clone(),
+            codex_chat_history: codex_chat_history.clone(),
+            failover_manager: failover_manager.clone(),
+            app_handle: app_handle.clone(),
+        }));
+
+    ProxyState {
+        db,
+        config: Arc::new(RwLock::new(config)),
+        status,
+        start_time: Arc::new(RwLock::new(None)),
+        current_providers,
+        provider_router,
+        proxy_core_services,
+        gemini_shadow,
+        codex_chat_history,
+        app_handle,
+        failover_manager,
+        events,
+    }
+}
 
 pub(crate) fn proxy_server_from_runtime_config(
     config: ProxyConfig,

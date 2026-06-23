@@ -309,6 +309,17 @@ const FORBIDDEN_PROXY_SERVICE_PROXY_CONFIG_SOURCE_MARKERS: &[&str] = &[
     "保存动态代理端口失败",
 ];
 const FORBIDDEN_PROXY_SERVICE_SERVER_FACTORY_MARKERS: &[&str] = &["ProxyServer::new("];
+const FORBIDDEN_PROXY_SERVER_RUNTIME_ASSEMBLY_MARKERS: &[&str] = &[
+    "provider_router_from_database(",
+    "ProxyEventBus::default(",
+    "FailoverSwitchManager::new(",
+    "ProxyRuntimeStatus::default(",
+    "GeminiShadowStore::default(",
+    "CodexChatHistoryStore::default(",
+    "CcSwitchProxyServices::with_runtime(",
+    "CcSwitchProxyRuntime {",
+    "ProxyState {",
+];
 const FORBIDDEN_PROXY_SERVICE_EFFECTIVE_SETTINGS_SOURCE_MARKERS: &[&str] = &[
     "build_effective_settings_with_common_config(",
     "get_config_snippet(",
@@ -6186,6 +6197,34 @@ fn production_proxy_server_delegates_circuit_runtime_to_adapter() {
     assert!(
         violations.is_empty(),
         "production ProxyServer must delegate circuit runtime side effects to proxy_core_adapter:\n{}",
+        violations.join("\n")
+    );
+}
+
+#[test]
+fn production_proxy_server_delegates_runtime_assembly_to_adapter() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let path = manifest_dir.join("src/proxy/server.rs");
+    let source = fs::read_to_string(&path).expect("read server.rs");
+    let constructor = function_slice(&source, "    pub fn new", "    pub async fn start");
+
+    let mut violations = Vec::new();
+    for (line_index, line) in production_lines(constructor) {
+        let code = line.split("//").next().unwrap_or_default();
+        for marker in FORBIDDEN_PROXY_SERVER_RUNTIME_ASSEMBLY_MARKERS {
+            if code.contains(marker) {
+                violations.push(format!(
+                    "src/proxy/server.rs ProxyServer::new:{} contains runtime assembly marker `{}`",
+                    line_index + 1,
+                    marker
+                ));
+            }
+        }
+    }
+
+    assert!(
+        violations.is_empty(),
+        "production ProxyServer must delegate runtime assembly to proxy_core_adapter:\n{}",
         violations.join("\n")
     );
 }
