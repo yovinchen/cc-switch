@@ -198,6 +198,13 @@ const FORBIDDEN_PROXY_SERVICE_STOP_RESTORE_ENABLED_CONFIG_MARKERS: &[&str] = &[
     ".enabled =",
     "config.enabled",
 ];
+const FORBIDDEN_PROXY_SERVICE_SIMPLE_RESTORE_BACKUP_SOURCE_MARKERS: &[&str] = &[
+    ".get_live_backup(",
+    "backup.original_config",
+    "解析 Claude 备份失败",
+    "解析 Codex 备份失败",
+    "解析 Gemini 备份失败",
+];
 const FORBIDDEN_FORWARDER_MANAGED_AUTH_MARKERS: &[&str] = &[
     "CopilotAuthState",
     "CodexOAuthState",
@@ -4223,6 +4230,38 @@ fn production_proxy_service_delegates_stop_restore_enabled_config_to_adapter() {
     assert!(
         violations.is_empty(),
         "ProxyService::stop_with_restore must delegate bulk enabled-state cleanup to proxy_core_adapter:\n{}",
+        violations.join("\n")
+    );
+}
+
+#[test]
+fn production_proxy_service_delegates_simple_restore_backup_source_to_adapter() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let path = manifest_dir.join("src/services/proxy.rs");
+    let source = fs::read_to_string(&path).expect("read services/proxy.rs");
+    let function = function_slice(
+        &source,
+        "async fn restore_live_config_for_app_inner",
+        "/// 恢复原始 Live 配置",
+    );
+
+    let mut violations = Vec::new();
+    for (line_index, line) in production_lines(function) {
+        let code = line.split("//").next().unwrap_or_default();
+        for marker in FORBIDDEN_PROXY_SERVICE_SIMPLE_RESTORE_BACKUP_SOURCE_MARKERS {
+            if code.contains(marker) {
+                violations.push(format!(
+                    "src/services/proxy.rs restore_live_config_for_app_inner:{} contains simple restore backup source marker `{}`",
+                    line_index + 1,
+                    marker
+                ));
+            }
+        }
+    }
+
+    assert!(
+        violations.is_empty(),
+        "ProxyService::restore_live_config_for_app_inner must delegate backup source reads and parse-error projection to proxy_core_adapter:\n{}",
         violations.join("\n")
     );
 }

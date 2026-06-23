@@ -1055,6 +1055,28 @@ pub(crate) async fn clear_live_takeover_enabled_flags_in_db(db: &Database) {
     }
 }
 
+pub(crate) async fn live_backup_config_for_simple_restore_from_db(
+    db: &Database,
+    app_type: &AppType,
+) -> Result<Option<Value>, String> {
+    let backup = match db.get_live_backup(app_type.as_str()).await {
+        Ok(backup) => backup,
+        Err(_) => return Ok(None),
+    };
+    let Some(backup) = backup else {
+        return Ok(None);
+    };
+    let app_label = match app_type {
+        AppType::Claude => "Claude",
+        AppType::Codex => "Codex",
+        AppType::Gemini => "Gemini",
+        _ => app_type.as_str(),
+    };
+    serde_json::from_str(&backup.original_config)
+        .map(Some)
+        .map_err(|e| format!("解析 {app_label} 备份失败: {e}"))
+}
+
 pub(crate) async fn app_summary_config_from_db_source(
     db: &Database,
     app: &AppKind,

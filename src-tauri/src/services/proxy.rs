@@ -18,6 +18,7 @@ use crate::proxy_core_adapter::{
     codex_preserved_auth_live_config_text_for_configured_policy,
     current_provider_for_app_from_db, gemini_live_backup_from_effective_settings,
     is_local_proxy_url, live_backup_snapshot_from_live_config, live_token_sync_app_label,
+    live_backup_config_for_simple_restore_from_db,
     live_token_sync_provider_from_db,
     live_config_has_proxy_placeholder_for_app, live_takeover_config_matches_proxy_for_app,
     live_takeover_app_types, provider_settings_have_proxy_placeholder_for_app,
@@ -973,25 +974,25 @@ impl ProxyService {
     async fn restore_live_config_for_app_inner(&self, app_type: &AppType) -> Result<(), String> {
         match app_type {
             AppType::Claude => {
-                if let Ok(Some(backup)) = self.db.get_live_backup("claude").await {
-                    let config: Value = serde_json::from_str(&backup.original_config)
-                        .map_err(|e| format!("解析 Claude 备份失败: {e}"))?;
+                if let Some(config) =
+                    live_backup_config_for_simple_restore_from_db(&self.db, app_type).await?
+                {
                     self.write_claude_live(&config)?;
                     log::info!("Claude Live 配置已恢复");
                 }
             }
             AppType::Codex => {
-                if let Ok(Some(backup)) = self.db.get_live_backup("codex").await {
-                    let config: Value = serde_json::from_str(&backup.original_config)
-                        .map_err(|e| format!("解析 Codex 备份失败: {e}"))?;
+                if let Some(config) =
+                    live_backup_config_for_simple_restore_from_db(&self.db, app_type).await?
+                {
                     self.write_codex_live_verbatim(&config)?;
                     log::info!("Codex Live 配置已恢复");
                 }
             }
             AppType::Gemini => {
-                if let Ok(Some(backup)) = self.db.get_live_backup("gemini").await {
-                    let config: Value = serde_json::from_str(&backup.original_config)
-                        .map_err(|e| format!("解析 Gemini 备份失败: {e}"))?;
+                if let Some(config) =
+                    live_backup_config_for_simple_restore_from_db(&self.db, app_type).await?
+                {
                     self.write_gemini_live(&config)?;
                     log::info!("Gemini Live 配置已恢复");
                 }
