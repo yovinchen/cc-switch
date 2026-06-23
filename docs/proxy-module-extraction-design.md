@@ -1075,6 +1075,7 @@
 本轮继续把 forwarder 的 provider adapter base URL 提取收敛到 `proxy_core_adapter::forwarder_provider_base_url`，forwarder 不再直接调用 `ProviderAdapter::extract_base_url`。
 本轮继续把 forwarder 的 provider adapter auth info 提取收敛到 `proxy_core_adapter::forwarder_provider_auth_info`，forwarder 不再直接调用 `ProviderAdapter::extract_auth`。
 本轮继续把 forwarder 的 provider adapter upstream URL 构造收敛到 `proxy_core_adapter::forwarder_provider_upstream_url`，forwarder 不再直接调用 `ProviderAdapter::build_url`。
+本轮继续把 forwarder 的 provider adapter name 读取收敛到 `proxy_core_adapter::forwarder_provider_adapter_name`，forwarder 不再直接调用 `ProviderAdapter::name`。
 
 当前原则：核心 crate 可以新增端口和领域字段，但不得引入 `tauri`、`Database`、settings、commands、services 等宿主依赖；现有 runtime 行为必须继续通过 targeted tests 证明不回归。
 
