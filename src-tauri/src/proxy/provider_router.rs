@@ -8,10 +8,10 @@ use crate::provider::Provider;
 use crate::proxy::circuit_breaker::CircuitBreaker;
 use crate::proxy_core_adapter::{
     app_error_from_proxy_core_error, app_type_from_circuit_key,
-    apply_route_candidate_circuit_availability, auto_failover_enabled_from_router_config_result,
+    apply_route_candidate_circuit_availability, auto_failover_enabled_from_router_db,
     channel_circuit_key, channel_circuit_key_prefix, channel_route_records_from_db_source,
-    circuit_breaker_config_from_router_config_result,
-    circuit_failure_threshold_from_router_config_result,
+    circuit_breaker_config_from_router_db,
+    circuit_failure_threshold_from_router_db,
     provider_circuit_key, provider_circuit_key_prefix, provider_failover_sources_from_router_db,
     proxy_channel_route_inputs_to_core,
     resolve_channel_route as resolve_core_channel_route, route_candidate_channel_circuit_keys,
@@ -48,10 +48,7 @@ impl ProviderRouter {
     /// - 故障转移开启时：仅使用故障转移队列，按队列顺序依次尝试（P1 → P2 → ...）
     pub async fn select_providers(&self, app_type: &str) -> Result<Vec<Provider>, AppError> {
         // 检查该应用的自动故障转移开关是否开启（从 proxy_config 表读取）
-        let auto_failover_enabled = auto_failover_enabled_from_router_config_result(
-            app_type,
-            self.db.get_proxy_config_for_app(app_type).await,
-        );
+        let auto_failover_enabled = auto_failover_enabled_from_router_db(&self.db, app_type).await;
 
         let result = if auto_failover_enabled {
             self.select_failover_providers(app_type).await
@@ -361,9 +358,7 @@ impl ProviderRouter {
         let app_type = app_type_from_circuit_key(key);
 
         // 按应用独立读取熔断器配置
-        let config = circuit_breaker_config_from_router_config_result(
-            self.db.get_proxy_config_for_app(app_type).await,
-        );
+        let config = circuit_breaker_config_from_router_db(&self.db, app_type).await;
 
         let breaker = Arc::new(CircuitBreaker::new(config));
         breakers.insert(key.to_string(), breaker.clone());
@@ -377,10 +372,7 @@ impl ProviderRouter {
     }
 
     async fn failure_threshold_for_app(&self, app_type: &str, fallback: u32) -> u32 {
-        circuit_failure_threshold_from_router_config_result(
-            self.db.get_proxy_config_for_app(app_type).await,
-            fallback,
-        )
+        circuit_failure_threshold_from_router_db(&self.db, app_type, fallback).await
     }
 }
 

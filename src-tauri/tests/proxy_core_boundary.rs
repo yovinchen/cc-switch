@@ -343,11 +343,12 @@ const FORBIDDEN_PROVIDER_ROUTER_SELECTION_MARKERS: &[&str] = &[
     ".get_failover_queue(",
 ];
 const FORBIDDEN_PROVIDER_ROUTER_FAILOVER_CONFIG_MARKERS: &[&str] =
-    &[".auto_failover_enabled", "默认禁用故障转移"];
+    &[".auto_failover_enabled", "默认禁用故障转移", ".get_proxy_config_for_app("];
 const FORBIDDEN_PROVIDER_ROUTER_CIRCUIT_CONFIG_MARKERS: &[&str] = &[
     "circuit_breaker_config_from_app_config(",
     "circuit_failure_threshold_from_app_config(",
     "get_proxy_config_for_app(app_type).await.ok()",
+    ".get_proxy_config_for_app(",
 ];
 const FORBIDDEN_PROVIDER_ROUTER_ROUTE_REJECTION_MARKERS: &[&str] =
     &["reject_unavailable_channel_ids(", "unavailable_channel_ids"];

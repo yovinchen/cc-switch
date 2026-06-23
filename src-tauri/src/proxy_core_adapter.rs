@@ -4094,12 +4094,30 @@ pub(crate) fn circuit_breaker_config_from_router_config_result(
     circuit_breaker_config_from_app_config(config.as_ref())
 }
 
+pub(crate) async fn circuit_breaker_config_from_router_db(
+    db: &Database,
+    app_type: &str,
+) -> CircuitBreakerConfig {
+    circuit_breaker_config_from_router_config_result(db.get_proxy_config_for_app(app_type).await)
+}
+
 pub(crate) fn circuit_failure_threshold_from_router_config_result(
     result: Result<AppProxyConfig, AppError>,
     fallback: u32,
 ) -> u32 {
     let config = result.ok();
     circuit_failure_threshold_from_app_config(config.as_ref(), fallback)
+}
+
+pub(crate) async fn circuit_failure_threshold_from_router_db(
+    db: &Database,
+    app_type: &str,
+    fallback: u32,
+) -> u32 {
+    circuit_failure_threshold_from_router_config_result(
+        db.get_proxy_config_for_app(app_type).await,
+        fallback,
+    )
 }
 
 pub(crate) fn auto_failover_enabled_from_router_config_result(
@@ -4113,6 +4131,16 @@ pub(crate) fn auto_failover_enabled_from_router_config_result(
             false
         }
     }
+}
+
+pub(crate) async fn auto_failover_enabled_from_router_db(
+    db: &Database,
+    app_type: &str,
+) -> bool {
+    auto_failover_enabled_from_router_config_result(
+        app_type,
+        db.get_proxy_config_for_app(app_type).await,
+    )
 }
 
 pub(crate) fn select_current_provider_from_router_source(
