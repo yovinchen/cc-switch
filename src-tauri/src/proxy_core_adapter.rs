@@ -8567,6 +8567,30 @@ pub(crate) struct ForwarderMediaRetryPlan {
     pub(crate) body: Value,
 }
 
+pub(crate) struct ForwarderThinkingSignatureRectifierInput<'a> {
+    pub(crate) app: &'a str,
+    pub(crate) body: &'a mut Value,
+    pub(crate) error: &'a ProxyError,
+    pub(crate) already_retried: bool,
+    pub(crate) config: &'a RectifierConfig,
+}
+
+pub(crate) struct ForwarderThinkingBudgetRectifierInput<'a> {
+    pub(crate) app: &'a str,
+    pub(crate) body: &'a mut Value,
+    pub(crate) error: &'a ProxyError,
+    pub(crate) already_retried: bool,
+    pub(crate) config: &'a RectifierConfig,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum ForwarderRequestRectifierPlan {
+    NotTriggered,
+    AlreadyRetried,
+    TriggeredUnchanged,
+    Retry,
+}
+
 pub(crate) struct ForwarderRequestPartsInput<'a> {
     pub(crate) method: &'a Method,
     pub(crate) url: &'a str,
@@ -8600,6 +8624,16 @@ pub(crate) trait ForwarderRequestSource {
         &self,
         input: ForwarderMediaRetryPlanInput<'_>,
     ) -> Option<ForwarderMediaRetryPlan>;
+
+    fn thinking_signature_rectifier_plan(
+        &self,
+        input: ForwarderThinkingSignatureRectifierInput<'_>,
+    ) -> ForwarderRequestRectifierPlan;
+
+    fn thinking_budget_rectifier_plan(
+        &self,
+        input: ForwarderThinkingBudgetRectifierInput<'_>,
+    ) -> ForwarderRequestRectifierPlan;
 
     fn prepare_upstream_body(
         &self,
@@ -8737,6 +8771,80 @@ impl ForwarderRequestSource for CcSwitchForwarderRequestSource {
         Some(ForwarderMediaRetryPlan { body })
     }
 
+    fn thinking_signature_rectifier_plan(
+        &self,
+        input: ForwarderThinkingSignatureRectifierInput<'_>,
+    ) -> ForwarderRequestRectifierPlan {
+        let error_message = forwarder_rectifier_error_message(input.error);
+        if !should_rectify_thinking_signature(
+            error_message.as_deref(),
+            &input.config.thinking_signature_core_config(),
+        ) {
+            return ForwarderRequestRectifierPlan::NotTriggered;
+        }
+
+        if input.already_retried {
+            log::warn!("[{}] [RECT-005] 整流器已触发过，不再重试", input.app);
+            return ForwarderRequestRectifierPlan::AlreadyRetried;
+        }
+
+        let rectified = rectify_anthropic_request(input.body);
+        if !rectified.applied {
+            log::warn!(
+                "[{}] [RECT-006] thinking 签名整流器触发但无可整流内容，继续检查 budget；若 budget 也未命中则按客户端错误返回",
+                input.app
+            );
+            return ForwarderRequestRectifierPlan::TriggeredUnchanged;
+        }
+
+        log::info!(
+            "[{}] [RECT-001] thinking 签名整流器触发, 移除 {} thinking blocks, {} redacted_thinking blocks, {} signature fields",
+            input.app,
+            rectified.removed_thinking_blocks,
+            rectified.removed_redacted_thinking_blocks,
+            rectified.removed_signature_fields
+        );
+        ForwarderRequestRectifierPlan::Retry
+    }
+
+    fn thinking_budget_rectifier_plan(
+        &self,
+        input: ForwarderThinkingBudgetRectifierInput<'_>,
+    ) -> ForwarderRequestRectifierPlan {
+        let error_message = forwarder_rectifier_error_message(input.error);
+        if !should_rectify_thinking_budget(
+            error_message.as_deref(),
+            &input.config.thinking_budget_core_config(),
+        ) {
+            return ForwarderRequestRectifierPlan::NotTriggered;
+        }
+
+        if input.already_retried {
+            log::warn!(
+                "[{}] [RECT-013] budget 整流器已触发过，不再重试",
+                input.app
+            );
+            return ForwarderRequestRectifierPlan::AlreadyRetried;
+        }
+
+        let budget_rectified = rectify_thinking_budget(input.body);
+        if !budget_rectified.applied {
+            log::warn!(
+                "[{}] [RECT-014] budget 整流器触发但无可整流内容，不做无意义重试",
+                input.app
+            );
+            return ForwarderRequestRectifierPlan::TriggeredUnchanged;
+        }
+
+        log::info!(
+            "[{}] [RECT-010] thinking budget 整流器触发, before={:?}, after={:?}",
+            input.app,
+            budget_rectified.before,
+            budget_rectified.after
+        );
+        ForwarderRequestRectifierPlan::Retry
+    }
+
     fn prepare_upstream_body(
         &self,
         input: ForwarderRequestPreparationInput<'_>,
@@ -8831,6 +8939,13 @@ impl ForwarderRequestSource for CcSwitchForwarderRequestSource {
             body,
             preserve_exact_header_case,
         })
+    }
+}
+
+fn forwarder_rectifier_error_message(error: &ProxyError) -> Option<String> {
+    match error {
+        ProxyError::UpstreamError { body, .. } => body.clone(),
+        _ => Some(error.to_string()),
     }
 }
 
@@ -14164,6 +14279,72 @@ mod tests {
         assert_eq!(optimized.classification.initiator, "user");
         assert!(optimized.classification.is_warmup);
         assert_eq!(optimized.body["model"], "gpt-5-mini");
+    }
+
+    #[test]
+    fn forwarder_request_source_plans_signature_rectifier_retry() {
+        let source = CcSwitchForwarderRequestSource;
+        let mut body = json!({
+            "messages": [{
+                "role": "assistant",
+                "content": [
+                    {"type": "thinking", "thinking": "private", "signature": "bad"},
+                    {"type": "text", "text": "visible", "signature": "bad"}
+                ]
+            }]
+        });
+        let error = ProxyError::UpstreamError {
+            status: 400,
+            body: Some("invalid signature in thinking block".to_string()),
+        };
+
+        let plan = source.thinking_signature_rectifier_plan(
+            ForwarderThinkingSignatureRectifierInput {
+                app: "claude",
+                body: &mut body,
+                error: &error,
+                already_retried: false,
+                config: &RectifierConfig::default(),
+            },
+        );
+
+        assert_eq!(plan, ForwarderRequestRectifierPlan::Retry);
+        let content = body["messages"][0]["content"].as_array().unwrap();
+        assert_eq!(content.len(), 1);
+        assert_eq!(content[0]["type"], "text");
+        assert!(content[0].get("signature").is_none());
+    }
+
+    #[test]
+    fn forwarder_request_source_plans_budget_rectifier_retry() {
+        let source = CcSwitchForwarderRequestSource;
+        let mut body = json!({
+            "messages": [{"role": "user", "content": "Hello"}],
+            "max_tokens": 1024,
+            "thinking": {"type": "enabled", "budget_tokens": 512}
+        });
+        let error = ProxyError::UpstreamError {
+            status: 400,
+            body: Some(
+                "thinking.budget_tokens: Input should be greater than or equal to 1024"
+                    .to_string(),
+            ),
+        };
+
+        let plan = source.thinking_budget_rectifier_plan(
+            ForwarderThinkingBudgetRectifierInput {
+                app: "claude",
+                body: &mut body,
+                error: &error,
+                already_retried: false,
+                config: &RectifierConfig::default(),
+            },
+        );
+
+        assert_eq!(plan, ForwarderRequestRectifierPlan::Retry);
+        assert_eq!(body["thinking"]["type"], "enabled");
+        assert_eq!(body["thinking"]["budget_tokens"], 32000);
+        assert_eq!(body["max_tokens"], 64000);
     }
 
     #[test]

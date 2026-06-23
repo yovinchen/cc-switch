@@ -6325,6 +6325,12 @@ fn production_forwarder_uses_request_source_resource() {
         "is_unsupported_image_error(",
         "replace_image_blocks_with_marker(",
         "MediaRetryInput",
+        "should_rectify_thinking_signature(",
+        "rectify_anthropic_request(",
+        "thinking_signature_core_config(",
+        "should_rectify_thinking_budget(",
+        "rectify_thinking_budget(",
+        "thinking_budget_core_config(",
     ];
     let mut violations = Vec::new();
 

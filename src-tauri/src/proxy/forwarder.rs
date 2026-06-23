@@ -26,19 +26,19 @@ use crate::proxy_core_adapter::{
     normalize_thinking_type,
     forwarder_claude_normalize_anthropic_messages,
     provider_adapter_name_is_claude,
-    rectify_anthropic_request, rectify_thinking_budget,
     forwarder_claude_api_format, forwarder_claude_transform_required,
     responses_to_chat_completions_with_options,
     should_apply_bedrock_pre_send_optimizer,
     should_failover_after_rectifier_retry_failure,
-    should_rectify_thinking_budget, should_rectify_thinking_signature,
     strip_one_m_suffix_for_upstream,
     strip_one_m_suffix_for_upstream_from_body,
     supports_reasoning_effort, thinking_optimization_log_message,
     AttemptEventPhase, CopilotOptimizerConfig, ForwardFailureCategory, ForwardUpstreamUrlPlanInput,
     ForwarderAuthHeadersInput, ForwarderAuthSourceRef, ForwarderCopilotAuthOptimizationInput,
     ForwarderCopilotRequestOptimizationInput, ForwarderMediaPreventionInput,
-    ForwarderMediaRetryPlanInput, OptimizerConfig,
+    ForwarderMediaRetryPlanInput, ForwarderRequestRectifierPlan,
+    ForwarderThinkingBudgetRectifierInput, ForwarderThinkingSignatureRectifierInput,
+    OptimizerConfig,
     FailoverSwitchSchedulerRef, ForwarderAttemptRuntimeSourceRef, ForwarderProtocolStateSourceRef,
     ForwarderRequestPartsInput, ForwarderRequestPreparationInput, ForwarderRequestSourceRef,
     ForwarderResponseSourceRef, ForwarderRuntimeStateSourceRef, ForwarderTransportSourceRef,
@@ -642,18 +642,17 @@ impl RequestForwarder {
                     }
 
                     if is_anthropic_provider {
-                        let error_message = match &e {
-                            ProxyError::UpstreamError { body, .. } => body.clone(),
-                            _ => Some(e.to_string()),
-                        };
-                        if should_rectify_thinking_signature(
-                            error_message.as_deref(),
-                            &self.rectifier_config.thinking_signature_core_config(),
+                        match self.request_source.thinking_signature_rectifier_plan(
+                            ForwarderThinkingSignatureRectifierInput {
+                                app: app_type_str,
+                                body: &mut provider_body,
+                                error: &e,
+                                already_retried: rectifier_retried,
+                                config: &self.rectifier_config,
+                            },
                         ) {
-                            // 已经重试过：直接返回错误（不可重试客户端错误）
-                            if rectifier_retried {
-                                log::warn!("[{app_type_str}] [RECT-005] 整流器已触发过，不再重试");
-                                // 释放 HalfOpen permit（不记录熔断器，这是客户端兼容性问题）
+                            ForwarderRequestRectifierPlan::NotTriggered => {}
+                            ForwarderRequestRectifierPlan::AlreadyRetried => {
                                 self.release_attempt_permit_neutral(
                                     attempt,
                                     app_type_str,
@@ -666,29 +665,12 @@ impl RequestForwarder {
                                     provider: Some(provider.clone()),
                                 });
                             }
-
-                            // 首次触发：整流请求体
-                            let rectified = rectify_anthropic_request(&mut provider_body);
-
-                            // 整流未生效：继续尝试 budget 整流路径，避免误判后短路
-                            if !rectified.applied {
-                                log::warn!(
-                                    "[{app_type_str}] [RECT-006] thinking 签名整流器触发但无可整流内容，继续检查 budget；若 budget 也未命中则按客户端错误返回"
-                                );
+                            ForwarderRequestRectifierPlan::TriggeredUnchanged => {
                                 signature_rectifier_non_retryable_client_error = true;
-                            } else {
-                                log::info!(
-                                    "[{}] [RECT-001] thinking 签名整流器触发, 移除 {} thinking blocks, {} redacted_thinking blocks, {} signature fields",
-                                    app_type_str,
-                                    rectified.removed_thinking_blocks,
-                                    rectified.removed_redacted_thinking_blocks,
-                                    rectified.removed_signature_fields
-                                );
-
-                                // 标记已重试（当前逻辑下重试后必定 return，保留标记以备将来扩展）
+                            }
+                            ForwarderRequestRectifierPlan::Retry => {
                                 let _ = std::mem::replace(&mut rectifier_retried, true);
 
-                                // 使用同一供应商重试（不计入熔断器）
                                 match self
                                     .forward(
                                         app_type,
@@ -712,7 +694,6 @@ impl RequestForwarder {
                                         )
                                         .await;
 
-                                        // 更新当前应用类型使用的 provider/channel
                                         self.record_active_target(
                                             request_id,
                                             app_type_str,
@@ -763,19 +744,18 @@ impl RequestForwarder {
 
                     // 检测是否需要触发 budget 整流器（仅 Claude/ClaudeAuth 供应商）
                     if is_anthropic_provider {
-                        let error_message = match &e {
-                            ProxyError::UpstreamError { body, .. } => body.clone(),
-                            _ => Some(e.to_string()),
-                        };
-                        if should_rectify_thinking_budget(
-                            error_message.as_deref(),
-                            &self.rectifier_config.thinking_budget_core_config(),
+                        match self.request_source.thinking_budget_rectifier_plan(
+                            ForwarderThinkingBudgetRectifierInput {
+                                app: app_type_str,
+                                body: &mut provider_body,
+                                error: &e,
+                                already_retried: budget_rectifier_retried,
+                                config: &self.rectifier_config,
+                            },
                         ) {
-                            // 已经重试过：直接返回错误（不可重试客户端错误）
-                            if budget_rectifier_retried {
-                                log::warn!(
-                                    "[{app_type_str}] [RECT-013] budget 整流器已触发过，不再重试"
-                                );
+                            ForwarderRequestRectifierPlan::NotTriggered => {}
+                            ForwarderRequestRectifierPlan::AlreadyRetried
+                            | ForwarderRequestRectifierPlan::TriggeredUnchanged => {
                                 self.release_attempt_permit_neutral(
                                     attempt,
                                     app_type_str,
@@ -788,96 +768,77 @@ impl RequestForwarder {
                                     provider: Some(provider.clone()),
                                 });
                             }
+                            ForwarderRequestRectifierPlan::Retry => {
+                                let _ = std::mem::replace(&mut budget_rectifier_retried, true);
 
-                            let budget_rectified = rectify_thinking_budget(&mut provider_body);
-                            if !budget_rectified.applied {
-                                log::warn!(
-                                    "[{app_type_str}] [RECT-014] budget 整流器触发但无可整流内容，不做无意义重试"
-                                );
-                                self.release_attempt_permit_neutral(
-                                    attempt,
-                                    app_type_str,
-                                    used_half_open_permit,
-                                )
-                                .await;
-                                self.record_failure_status_message(e.to_string()).await;
-                                return Err(ForwardError {
-                                    error: e,
-                                    provider: Some(provider.clone()),
-                                });
-                            }
-
-                            log::info!(
-                                "[{}] [RECT-010] thinking budget 整流器触发, before={:?}, after={:?}",
-                                app_type_str,
-                                budget_rectified.before,
-                                budget_rectified.after
-                            );
-
-                            let _ = std::mem::replace(&mut budget_rectifier_retried, true);
-
-                            // 使用同一供应商重试（不计入熔断器）
-                            match self
-                                .forward(
-                                    app_type,
-                                    &method,
-                                    attempt,
-                                    endpoint,
-                                    &provider_body,
-                                    &headers,
-                                    &extensions,
-                                    adapter.as_ref(),
-                                )
-                                .await
-                            {
-                                Ok((response, claude_api_format, outbound_model)) => {
-                                    log::info!("[{app_type_str}] [RECT-011] budget 整流重试成功");
-                                    self.record_success_result(
-                                        request_id,
+                                match self
+                                    .forward(
+                                        app_type,
+                                        &method,
                                         attempt,
-                                        app_type_str,
-                                        used_half_open_permit,
+                                        endpoint,
+                                        &provider_body,
+                                        &headers,
+                                        &extensions,
+                                        adapter.as_ref(),
                                     )
-                                    .await;
-
-                                    self.record_active_target(request_id, app_type_str, attempt)
-                                        .await;
-
-                                    self.record_success_status_and_maybe_switch(
-                                        app_type_str,
-                                        provider,
-                                    )
-                                    .await;
-
-                                    return Ok(ForwardResult {
-                                        response,
-                                        provider: provider.clone(),
-                                        claude_api_format,
-                                        outbound_model,
-                                        selected_channel: attempt.channel().cloned(),
-                                        connection_guard: None,
-                                    });
-                                }
-                                Err(retry_err) => {
-                                    log::warn!(
-                                        "[{app_type_str}] [RECT-012] budget 整流重试仍失败: {retry_err}"
-                                    );
-                                    if let Some(err) = self
-                                        .handle_rectifier_retry_failure(
-                                            retry_err,
+                                    .await
+                                {
+                                    Ok((response, claude_api_format, outbound_model)) => {
+                                        log::info!(
+                                            "[{app_type_str}] [RECT-011] budget 整流重试成功"
+                                        );
+                                        self.record_success_result(
                                             request_id,
                                             attempt,
                                             app_type_str,
                                             used_half_open_permit,
-                                            "budget 整流",
-                                            &mut last_error,
-                                            &mut last_provider,
                                         )
-                                        .await
-                                    {
-                                        return Err(err);
+                                        .await;
+
+                                        self.record_active_target(
+                                            request_id,
+                                            app_type_str,
+                                            attempt,
+                                        )
+                                        .await;
+
+                                        self.record_success_status_and_maybe_switch(
+                                            app_type_str,
+                                            provider,
+                                        )
+                                        .await;
+
+                                        return Ok(ForwardResult {
+                                            response,
+                                            provider: provider.clone(),
+                                            claude_api_format,
+                                            outbound_model,
+                                            selected_channel: attempt.channel().cloned(),
+                                            connection_guard: None,
+                                        });
                                     }
-                                    continue;
+                                    Err(retry_err) => {
+                                        log::warn!(
+                                            "[{app_type_str}] [RECT-012] budget 整流重试仍失败: {retry_err}"
+                                        );
+                                        if let Some(err) = self
+                                            .handle_rectifier_retry_failure(
+                                                retry_err,
+                                                request_id,
+                                                attempt,
+                                                app_type_str,
+                                                used_half_open_permit,
+                                                "budget 整流",
+                                                &mut last_error,
+                                                &mut last_provider,
+                                            )
+                                            .await
+                                        {
+                                            return Err(err);
+                                        }
+                                        continue;
+                                    }
                                 }
                             }
                         }
