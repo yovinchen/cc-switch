@@ -98,6 +98,8 @@ const FORBIDDEN_FORWARDER_PROVIDER_ADAPTER_NAME_MARKERS: &[&str] =
     &[".name()"];
 const FORBIDDEN_FORWARDER_PROVIDER_ADAPTER_REGISTRY_MARKERS: &[&str] =
     &["get_adapter("];
+const FORBIDDEN_FORWARDER_PROVIDER_ADAPTER_TRAIT_MARKERS: &[&str] =
+    &["ProviderAdapter"];
 const FORBIDDEN_FORWARDER_CHANNEL_STATUS_MAPPING_MARKERS: &[&str] = &[
     "mapped_channel_response_status(",
     "invalid_mapped_channel_response_status_message(",
@@ -3557,6 +3559,33 @@ fn production_forwarder_delegates_provider_adapter_registry_to_adapter() {
     assert!(
         violations.is_empty(),
         "forwarder must obtain provider adapters through proxy_core_adapter helpers:\n{}",
+        violations.join("\n")
+    );
+}
+
+#[test]
+fn production_forwarder_uses_adapter_handle_without_provider_trait() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let path = manifest_dir.join("src/proxy/forwarder.rs");
+    let source = fs::read_to_string(&path).expect("read forwarder.rs");
+
+    let mut violations = Vec::new();
+    for (line_index, line) in production_lines(&source) {
+        let code = line.split("//").next().unwrap_or_default();
+        for marker in FORBIDDEN_FORWARDER_PROVIDER_ADAPTER_TRAIT_MARKERS {
+            if code.contains(marker) {
+                violations.push(format!(
+                    "src/proxy/forwarder.rs:{} contains provider adapter trait marker `{}`",
+                    line_index + 1,
+                    marker
+                ));
+            }
+        }
+    }
+
+    assert!(
+        violations.is_empty(),
+        "forwarder must use proxy_core_adapter adapter handles without importing provider adapter traits:\n{}",
         violations.join("\n")
     );
 }

@@ -10,7 +10,6 @@ use super::{
     failover_switch::FailoverSwitchManager,
     provider_router::ProviderRouter,
     codex_chat_history::CodexChatHistoryStore,
-    providers::ProviderAdapter,
     route_attempt::{apply_channel_model_override, ForwardAttempt},
 };
 use crate::proxy::managed_account_auth::{
@@ -37,6 +36,7 @@ use crate::proxy_core_adapter::{
     forwarder_provider_adapter_name, forwarder_provider_auth_headers, forwarder_provider_auth_info,
     forwarder_provider_base_url, forwarder_provider_upstream_url,
     forwarder_provider_transform_request, forwarder_provider_transform_required,
+    ForwarderAdapterHandle,
     is_openai_o_series,
     is_unsupported_image_error, allow_forward_attempt_runtime_source, merge_copilot_tool_results,
     non_streaming_body_timeout_message, normalize_thinking_type,
@@ -1142,7 +1142,7 @@ impl RequestForwarder {
         body: &Value,
         headers: &axum::http::HeaderMap,
         extensions: &Extensions,
-        adapter: &dyn ProviderAdapter,
+        adapter: &ForwarderAdapterHandle,
     ) -> Result<(ProxyResponse, Option<String>, Option<String>), ProxyError> {
         let provider = attempt.provider();
         // 使用适配器提取 base_url

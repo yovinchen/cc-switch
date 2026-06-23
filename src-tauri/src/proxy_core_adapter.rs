@@ -4033,11 +4033,15 @@ pub(crate) fn provider_adapter_name_is_claude(adapter_name: &str) -> bool {
     adapter_name == "Claude"
 }
 
-pub(crate) fn forwarder_provider_adapter_name(adapter: &dyn ProviderAdapter) -> &'static str {
+pub(crate) type ForwarderAdapterHandle = dyn ProviderAdapter;
+
+pub(crate) fn forwarder_provider_adapter_name(adapter: &ForwarderAdapterHandle) -> &'static str {
     adapter.name()
 }
 
-pub(crate) fn forwarder_provider_adapter_for_app(app_type: &AppType) -> Box<dyn ProviderAdapter> {
+pub(crate) fn forwarder_provider_adapter_for_app(
+    app_type: &AppType,
+) -> Box<ForwarderAdapterHandle> {
     get_adapter(app_type)
 }
 
@@ -4071,14 +4075,14 @@ pub(crate) fn forwarder_claude_transform_required(api_format: &str) -> bool {
 }
 
 pub(crate) fn forwarder_provider_transform_required(
-    adapter: &dyn ProviderAdapter,
+    adapter: &ForwarderAdapterHandle,
     provider: &Provider,
 ) -> bool {
     adapter.needs_transform(provider)
 }
 
 pub(crate) fn forwarder_provider_base_url(
-    adapter: &dyn ProviderAdapter,
+    adapter: &ForwarderAdapterHandle,
     provider: &Provider,
 ) -> Result<String, ProxyError> {
     adapter.extract_base_url(provider)
@@ -4093,21 +4097,21 @@ pub(crate) fn stream_check_provider_base_url(
 }
 
 pub(crate) fn forwarder_provider_auth_info(
-    adapter: &dyn ProviderAdapter,
+    adapter: &ForwarderAdapterHandle,
     provider: &Provider,
 ) -> Option<ProviderAuthInfo> {
     adapter.extract_auth(provider)
 }
 
 pub(crate) fn forwarder_provider_auth_headers(
-    adapter: &dyn ProviderAdapter,
+    adapter: &ForwarderAdapterHandle,
     auth: &ProviderAuthInfo,
 ) -> Result<Vec<(http::HeaderName, http::HeaderValue)>, ProxyError> {
     adapter.get_auth_headers(auth)
 }
 
 pub(crate) fn forwarder_provider_upstream_url(
-    adapter: &dyn ProviderAdapter,
+    adapter: &ForwarderAdapterHandle,
     base_url: &str,
     endpoint: &str,
 ) -> String {
@@ -4115,7 +4119,7 @@ pub(crate) fn forwarder_provider_upstream_url(
 }
 
 pub(crate) fn forwarder_provider_transform_request(
-    adapter: &dyn ProviderAdapter,
+    adapter: &ForwarderAdapterHandle,
     body: Value,
     provider: &Provider,
 ) -> Result<Value, ProxyError> {
