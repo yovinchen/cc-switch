@@ -1086,6 +1086,7 @@
 本轮继续收窄 `switch_proxy_provider` 命令边界：命令层不再直接读取 provider 或重复官方供应商拦截策略，只把 app/provider 交给 `ProxyService::switch_proxy_target`，由 service 热切换路径统一执行 provider 存在性校验和接管模式防线。
 本轮继续把 `reset_circuit_breaker` 恢复后切回判断的 source 读取收敛到 `proxy_core_adapter::reset_circuit_breaker_switchback_target_from_db`：命令层保留健康状态重置、运行时熔断器重置和 `FailoverSwitchManager` 的 Tauri 副作用，proxy_config、当前 provider、故障转移队列和 provider name 投影由 adapter 负责。
 本轮继续把 `set_auto_failover_enabled` 的开关 plan source 读取收敛到 `proxy_core_adapter::auto_failover_toggle_plan_from_db`：命令层保留队列写入、目标切换、proxy_config 写回、事件和托盘刷新，proxy_config、故障转移队列、当前 provider 和 core plan 输入组装由 adapter 负责。
+本轮继续把批量 stream check 的 `proxy_targets_only` 过滤 source 读取收敛到 `proxy_core_adapter::stream_check_proxy_target_ids_from_db`：命令层不再直接组合当前 provider 与故障转移队列，只保留 provider 遍历、Copilot endpoint override、可达性探测和日志保存。
 
 当前原则：核心 crate 可以新增端口和领域字段，但不得引入 `tauri`、`Database`、settings、commands、services 等宿主依赖；现有 runtime 行为必须继续通过 targeted tests 证明不回归。
 
