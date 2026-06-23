@@ -489,7 +489,7 @@
 478. `RouteSelection` 的 provider/channel/model route/inbound/outbound interface 字段装配已迁入 `proxy_core_adapter::route_selection_from_parts`；host route resolver 不再手写 core selection 结构体。
 479. route attempt 的 `RouteSelection -> ChannelRouteCandidate -> ResolvedChannelAttempt` 投影、channel provider override 和 request body model override 已迁入 `proxy_core_adapter`；`route_attempt` 模块只负责 host `ForwardAttempt` 组装和 attempt 顺序。
 480. Codex Responses handler 的 tool context 提取与 Chat error body normalization 已迁入 `proxy_core_adapter::{codex_tool_context_from_request,codex_chat_error_proxy_response}`；handler 只负责 Axum transport、`RequestContext` 和 transform 调度。
-481. provider settings 到 request body model mapping 及 debug log message 的投影已迁入 `proxy_core_adapter::apply_provider_model_mapping`；`RequestForwarder` 只负责 Claude Desktop 特例、transport 准备和日志输出。
+481. provider settings 与 Claude Desktop route 到 request body model mapping 的投影已收敛到 `proxy_core_adapter::apply_forward_request_model_mapping_from_provider`；`RequestForwarder` 只负责 transport 准备和可选 debug 日志输出。
 482. Codex Responses -> Chat endpoint rewrite 与 Gemini Native URL build/resolve 投影已迁入 `proxy_core_adapter::{rewrite_codex_responses_endpoint_to_chat,resolve_gemini_native_url}`；forwarder 的 Codex app gate 与 Responses->Chat provider predicate 已收敛到 `proxy_core_adapter::forwarder_should_convert_codex_responses_to_chat`；`RequestForwarder` 保留 provider adapter URL fallback、full-url query 拼接和 transport 分支。
 483. Claude API format 是否需要 transform 的 predicate 已迁入 `proxy_core_adapter::claude_api_format_needs_transform`；`RequestForwarder` 只负责 provider adapter fallback 和 transform 分支调度。
 484. 上游请求 `anthropic-beta` 组装、ordered request headers 构建与 method-aware body serialization 已迁入 `proxy_core_adapter::{anthropic_beta_header_value,build_upstream_request_headers,serialize_upstream_request_body}`；`RequestForwarder` 只负责收集 upstream host、auth/session headers 和 managed-account 校验。
@@ -1053,6 +1053,7 @@
 本轮继续把 provider custom endpoints 的列表排序、URL key 归一化、空 URL 新增校验和 last-used mutation 收敛到 `proxy_core_adapter`，endpoint service 不再直接穿透 `Provider.meta.custom_endpoints`。
 本轮继续把 Codex proxy error facts/kind 的 `ProxyError` 投影收敛到 `proxy_core_adapter`，`error_mapper` 不再直接引用 `CodexProxyErrorKind` 或组装 `CodexProxyHostErrorFacts`。
 本轮继续把 forward failure 的 `ProxyError -> ForwardFailureKind` 投影收敛到 `proxy_core_adapter`，`error_mapper` 不再直接引用 `ForwardFailureKind` 或调用 core forward-failure 分类入口。
+本轮继续把 forwarder 的 Claude Desktop route 模型映射收敛到 `proxy_core_adapter::apply_forward_request_model_mapping_from_provider`，forwarder 不再直接调用 `claude_desktop_config`。
 本轮继续把 Copilot fingerprint header 常量提升到 adapter，`proxy_core_adapter` 不再反向引用 `providers::copilot_auth` 常量。
 本轮继续把 `codex_chat_history` 从 `proxy::providers` 移到 `proxy` 模块根，provider 目录只保留 provider adapter 和账号认证相关实现。
 本轮继续把 `ProviderRouterSource` 拆成 router 端的 provider/channel/config/health 四个 focused port；host adapter 侧拆出对应 DB-backed source/store，并把 `ProviderRouter::new(Arc<Database>)` 迁到 `proxy_core_adapter::provider_router_from_database` factory，生产代码不再直连 router 的 DB 构造入口。
