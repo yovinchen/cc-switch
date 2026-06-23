@@ -6,6 +6,10 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use crate::app_config::AppType;
 use crate::error::AppError;
+use crate::proxy_core_adapter::{
+    custom_endpoint_url_key, mark_custom_endpoint_last_used, normalize_custom_endpoint_url,
+    provider_custom_endpoint_list,
+};
 use crate::settings::CustomEndpoint;
 use crate::store::AppState;
 
@@ -16,19 +20,7 @@ pub fn get_custom_endpoints(
     provider_id: &str,
 ) -> Result<Vec<CustomEndpoint>, AppError> {
     let providers = state.db.get_all_providers(app_type.as_str())?;
-    let Some(provider) = providers.get(provider_id) else {
-        return Ok(vec![]);
-    };
-    let Some(meta) = provider.meta.as_ref() else {
-        return Ok(vec![]);
-    };
-    if meta.custom_endpoints.is_empty() {
-        return Ok(vec![]);
-    }
-
-    let mut result: Vec<_> = meta.custom_endpoints.values().cloned().collect();
-    result.sort_by_key(|ep| std::cmp::Reverse(ep.added_at));
-    Ok(result)
+    Ok(provider_custom_endpoint_list(providers.get(provider_id)))
 }
 
 /// Add a custom endpoint to a provider
@@ -38,14 +30,7 @@ pub fn add_custom_endpoint(
     provider_id: &str,
     url: String,
 ) -> Result<(), AppError> {
-    let normalized = url.trim().trim_end_matches('/').to_string();
-    if normalized.is_empty() {
-        return Err(AppError::localized(
-            "provider.endpoint.url_required",
-            "URL 不能为空",
-            "URL cannot be empty",
-        ));
-    }
+    let normalized = normalize_custom_endpoint_url(&url)?;
 
     state
         .db
@@ -60,7 +45,7 @@ pub fn remove_custom_endpoint(
     provider_id: &str,
     url: String,
 ) -> Result<(), AppError> {
-    let normalized = url.trim().trim_end_matches('/').to_string();
+    let normalized = custom_endpoint_url_key(&url);
     state
         .db
         .remove_custom_endpoint(app_type.as_str(), provider_id, &normalized)?;
@@ -74,16 +59,13 @@ pub fn update_endpoint_last_used(
     provider_id: &str,
     url: String,
 ) -> Result<(), AppError> {
-    let normalized = url.trim().trim_end_matches('/').to_string();
+    let normalized = custom_endpoint_url_key(&url);
 
     // Get provider, update last_used, save back
     let mut providers = state.db.get_all_providers(app_type.as_str())?;
     if let Some(provider) = providers.get_mut(provider_id) {
-        if let Some(meta) = provider.meta.as_mut() {
-            if let Some(endpoint) = meta.custom_endpoints.get_mut(&normalized) {
-                endpoint.last_used = Some(now_millis());
-                state.db.save_provider(app_type.as_str(), provider)?;
-            }
+        if mark_custom_endpoint_last_used(provider, &normalized, now_millis()) {
+            state.db.save_provider(app_type.as_str(), provider)?;
         }
     }
     Ok(())

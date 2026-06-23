@@ -29,6 +29,7 @@ use crate::proxy::route_attempt::ForwardAttempt;
 use crate::proxy::usage::{RequestLog, UsageLogger};
 use crate::proxy::RequestForwarder;
 use crate::services::stream_check::StreamCheckService;
+use crate::settings::CustomEndpoint;
 use crate::proxy_core::api::domain::{
     ChannelSpecInput, ModelRoute, ModelRouteInput, ProviderMetadata, ProviderMetadataInput,
 };
@@ -176,6 +177,48 @@ pub(crate) fn validate_explicit_proxy_url(proxy_url: &str) -> Result<(), String>
         ));
     }
     Ok(())
+}
+
+pub(crate) fn provider_custom_endpoint_list(provider: Option<&Provider>) -> Vec<CustomEndpoint> {
+    let Some(meta) = provider.and_then(|provider| provider.meta.as_ref()) else {
+        return Vec::new();
+    };
+    let mut endpoints: Vec<_> = meta.custom_endpoints.values().cloned().collect();
+    endpoints.sort_by_key(|endpoint| std::cmp::Reverse(endpoint.added_at));
+    endpoints
+}
+
+pub(crate) fn custom_endpoint_url_key(url: &str) -> String {
+    url.trim().trim_end_matches('/').to_string()
+}
+
+pub(crate) fn normalize_custom_endpoint_url(url: &str) -> Result<String, AppError> {
+    let normalized = custom_endpoint_url_key(url);
+    if normalized.is_empty() {
+        return Err(AppError::localized(
+            "provider.endpoint.url_required",
+            "URL 不能为空",
+            "URL cannot be empty",
+        ));
+    }
+    Ok(normalized)
+}
+
+pub(crate) fn mark_custom_endpoint_last_used(
+    provider: &mut Provider,
+    normalized_url: &str,
+    last_used: i64,
+) -> bool {
+    if let Some(endpoint) = provider
+        .meta
+        .as_mut()
+        .and_then(|meta| meta.custom_endpoints.get_mut(normalized_url))
+    {
+        endpoint.last_used = Some(last_used);
+        true
+    } else {
+        false
+    }
 }
 
 pub(crate) const COPILOT_PUBLIC_GITHUB_DOMAIN: &str =
@@ -11180,6 +11223,89 @@ mod tests {
             invalid_explicit_proxy_url_message("http://user:pass@127.0.0.1:7890", "bad"),
             "Invalid proxy URL 'http://127.0.0.1:7890': bad"
         );
+    }
+
+    #[test]
+    fn provider_endpoint_adapter_projects_list_normalization_and_last_used() {
+        let mut endpoints = HashMap::new();
+        endpoints.insert(
+            "https://old.example".to_string(),
+            CustomEndpoint {
+                url: "https://old.example".to_string(),
+                added_at: 10,
+                last_used: None,
+            },
+        );
+        endpoints.insert(
+            "https://new.example".to_string(),
+            CustomEndpoint {
+                url: "https://new.example".to_string(),
+                added_at: 20,
+                last_used: Some(1),
+            },
+        );
+        let mut provider = Provider::with_id(
+            "provider-a".to_string(),
+            "Provider A".to_string(),
+            json!({}),
+            None,
+        );
+        provider.meta = Some(ProviderMeta {
+            custom_endpoints: endpoints,
+            ..ProviderMeta::default()
+        });
+
+        let listed = provider_custom_endpoint_list(Some(&provider));
+        assert_eq!(
+            listed
+                .iter()
+                .map(|endpoint| endpoint.url.as_str())
+                .collect::<Vec<_>>(),
+            vec!["https://new.example", "https://old.example"]
+        );
+        assert!(provider_custom_endpoint_list(None).is_empty());
+        assert!(provider_custom_endpoint_list(Some(&Provider::with_id(
+            "provider-empty".to_string(),
+            "Provider Empty".to_string(),
+            json!({}),
+            None,
+        )))
+        .is_empty());
+
+        assert_eq!(
+            custom_endpoint_url_key(" https://relay.example.com/v1/// "),
+            "https://relay.example.com/v1"
+        );
+        assert_eq!(
+            normalize_custom_endpoint_url(" https://relay.example.com/v1/ ")
+                .expect("normalized endpoint URL"),
+            "https://relay.example.com/v1"
+        );
+        let empty_error = normalize_custom_endpoint_url(" / ").expect_err("empty URL");
+        assert!(matches!(
+            empty_error,
+            AppError::Localized {
+                key: "provider.endpoint.url_required",
+                ..
+            }
+        ));
+
+        assert!(mark_custom_endpoint_last_used(
+            &mut provider,
+            "https://old.example",
+            1234
+        ));
+        let old_last_used = provider
+            .meta
+            .as_ref()
+            .and_then(|meta| meta.custom_endpoints.get("https://old.example"))
+            .and_then(|endpoint| endpoint.last_used);
+        assert_eq!(old_last_used, Some(1234));
+        assert!(!mark_custom_endpoint_last_used(
+            &mut provider,
+            "https://missing.example",
+            5678
+        ));
     }
 
     #[test]

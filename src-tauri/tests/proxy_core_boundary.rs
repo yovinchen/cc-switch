@@ -740,6 +740,12 @@ const FORBIDDEN_HTTP_CLIENT_PROXY_URL_VALIDATION_MARKERS: &[&str] = &[
     "Invalid proxy scheme",
     "Invalid proxy URL '",
 ];
+const FORBIDDEN_PROVIDER_ENDPOINT_SERVICE_PROJECTION_MARKERS: &[&str] = &[
+    ".custom_endpoints",
+    "trim().trim_end_matches('/')",
+    "std::cmp::Reverse(",
+    ".last_used = Some(",
+];
 const FORBIDDEN_CLAUDE_PROVIDER_ADAPTER_TRANSFORM_DECISION_MARKERS: &[&str] = &[
     "ProviderKind::GitHubCopilot",
     "ProviderKind::CodexOAuth",
@@ -2340,6 +2346,33 @@ fn production_http_client_delegates_explicit_proxy_url_validation_to_adapter() {
     assert!(
         violations.is_empty(),
         "production HTTP client must delegate explicit proxy URL parsing, scheme allowlist, and error projection to proxy_core_adapter:\n{}",
+        violations.join("\n")
+    );
+}
+
+#[test]
+fn production_provider_endpoint_service_delegates_projection_to_adapter() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let path = manifest_dir.join("src/services/provider/endpoints.rs");
+    let source = fs::read_to_string(&path).expect("read provider endpoint service");
+
+    let mut violations = Vec::new();
+    for (line_index, line) in production_lines(&source) {
+        let code = line.split("//").next().unwrap_or_default();
+        for marker in FORBIDDEN_PROVIDER_ENDPOINT_SERVICE_PROJECTION_MARKERS {
+            if code.contains(marker) {
+                violations.push(format!(
+                    "src/services/provider/endpoints.rs:{} contains endpoint projection marker `{}`",
+                    line_index + 1,
+                    marker
+                ));
+            }
+        }
+    }
+
+    assert!(
+        violations.is_empty(),
+        "provider endpoint service must delegate custom endpoint normalization, sorting, and last-used mutation to proxy_core_adapter:\n{}",
         violations.join("\n")
     );
 }
