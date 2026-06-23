@@ -52,7 +52,8 @@ use crate::proxy_core_adapter::{
     require_current_provider_for_app_from_db,
     remove_codex_takeover_auth_placeholder_if_present,
     remove_codex_takeover_config_placeholders_if_present,
-    remove_gemini_takeover_env_fields_if_present, set_proxy_app_enabled_in_db,
+    remove_gemini_takeover_env_fields_if_present, sanitize_claude_settings_for_live,
+    set_proxy_app_enabled_in_db,
     save_provider_live_backup_from_effective_settings_in_db,
     set_legacy_live_takeover_active_best_effort_in_db,
     set_legacy_live_takeover_active_in_db, ssot_live_restore_provider_from_db,
@@ -1360,7 +1361,7 @@ impl ProxyService {
 
     fn write_claude_live(&self, config: &Value) -> Result<(), String> {
         let path = get_claude_settings_path();
-        let settings = crate::services::provider::sanitize_claude_settings_for_live(config);
+        let settings = sanitize_claude_settings_for_live(config);
         write_json_file(&path, &settings).map_err(|e| format!("写入 Claude 配置失败: {e}"))
     }
 

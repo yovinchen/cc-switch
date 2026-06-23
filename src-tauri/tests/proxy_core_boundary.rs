@@ -325,6 +325,8 @@ const FORBIDDEN_PROXY_SERVICE_EFFECTIVE_SETTINGS_SOURCE_MARKERS: &[&str] = &[
     "get_config_snippet(",
     "self.db.as_ref()",
 ];
+const FORBIDDEN_PROXY_SERVICE_LIVE_WRITE_PROVIDER_FACADE_MARKERS: &[&str] =
+    &["crate::services::provider::sanitize_claude_settings_for_live("];
 const FORBIDDEN_FORWARDER_MANAGED_AUTH_MARKERS: &[&str] = &[
     "CopilotAuthState",
     "CodexOAuthState",
@@ -5136,6 +5138,34 @@ fn production_proxy_service_delegates_effective_settings_source_to_adapter() {
     assert!(
         violations.is_empty(),
         "ProxyService must delegate common-config effective settings source reads to proxy_core_adapter:\n{}",
+        violations.join("\n")
+    );
+}
+
+#[test]
+fn production_proxy_service_delegates_live_write_provider_facade_to_adapter() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let path = manifest_dir.join("src/services/proxy.rs");
+    let source = fs::read_to_string(&path).expect("read services/proxy.rs");
+    let function = function_slice(&source, "    fn write_claude_live", "    fn read_codex_live");
+
+    let mut violations = Vec::new();
+    for (line_index, line) in production_lines(function) {
+        let code = line.split("//").next().unwrap_or_default();
+        for marker in FORBIDDEN_PROXY_SERVICE_LIVE_WRITE_PROVIDER_FACADE_MARKERS {
+            if code.contains(marker) {
+                violations.push(format!(
+                    "src/services/proxy.rs write_claude_live:{} contains provider facade marker `{}`",
+                    line_index + 1,
+                    marker
+                ));
+            }
+        }
+    }
+
+    assert!(
+        violations.is_empty(),
+        "ProxyService must call live write sanitizers through proxy_core_adapter, not services::provider facade:\n{}",
         violations.join("\n")
     );
 }
