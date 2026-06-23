@@ -58,10 +58,10 @@ use crate::proxy_core_adapter::{
     set_legacy_live_takeover_active_in_db, ssot_live_restore_provider_from_db,
     update_live_token_sync_provider_settings_in_db,
     update_proxy_config_preserving_live_takeover_active_in_db, CircuitBreakerConfig,
+    write_ssot_live_restore_provider_with_common_config,
     CodexTakeoverAuthPolicy, LiveTokenProviderSettingsIssue, ProxyConfig, ProxyRuntimeStatus,
     ProxyServerInfo, ProxyTakeoverStatus,
 };
-use crate::services::provider::write_live_with_common_config;
 #[cfg(test)]
 use serde_json::Map;
 use serde_json::{json, Value};
@@ -1035,8 +1035,7 @@ impl ProxyService {
             return Ok(false);
         };
 
-        write_live_with_common_config(self.db.as_ref(), app_type, &provider)
-            .map_err(|e| format!("写入 {app_type:?} Live 配置失败: {e}"))?;
+        write_ssot_live_restore_provider_with_common_config(&self.db, app_type, &provider)?;
 
         Ok(true)
     }

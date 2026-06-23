@@ -236,6 +236,10 @@ const FORBIDDEN_PROXY_SERVICE_SSOT_RESTORE_PROVIDER_SOURCE_MARKERS: &[&str] = &[
     "读取 {app_type:?} 供应商列表失败",
     "当前供应商配置含代理接管占位符",
 ];
+const FORBIDDEN_PROXY_SERVICE_SSOT_RESTORE_LIVE_WRITE_MARKERS: &[&str] = &[
+    "write_live_with_common_config(",
+    "写入 {app_type:?} Live 配置失败",
+];
 const FORBIDDEN_PROXY_SERVICE_LIVE_BACKUP_SAVE_MARKERS: &[&str] = &[
     ".save_live_backup(",
     "serde_json::to_string(&backup_value)",
@@ -4623,6 +4627,38 @@ fn production_proxy_service_delegates_ssot_restore_provider_source_to_adapter() 
     assert!(
         violations.is_empty(),
         "ProxyService::restore_live_from_ssot_for_app must delegate current-provider source reads and placeholder guard to proxy_core_adapter:\n{}",
+        violations.join("\n")
+    );
+}
+
+#[test]
+fn production_proxy_service_delegates_ssot_restore_live_write_to_adapter() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let path = manifest_dir.join("src/services/proxy.rs");
+    let source = fs::read_to_string(&path).expect("read services/proxy.rs");
+    let function = function_slice(
+        &source,
+        "fn restore_live_from_ssot_for_app",
+        "fn cleanup_takeover_placeholders_in_live_for_app",
+    );
+
+    let mut violations = Vec::new();
+    for (line_index, line) in production_lines(function) {
+        let code = line.split("//").next().unwrap_or_default();
+        for marker in FORBIDDEN_PROXY_SERVICE_SSOT_RESTORE_LIVE_WRITE_MARKERS {
+            if code.contains(marker) {
+                violations.push(format!(
+                    "src/services/proxy.rs restore_live_from_ssot_for_app:{} contains SSOT restore live-write marker `{}`",
+                    line_index + 1,
+                    marker
+                ));
+            }
+        }
+    }
+
+    assert!(
+        violations.is_empty(),
+        "ProxyService::restore_live_from_ssot_for_app must delegate SSOT live writes to proxy_core_adapter:\n{}",
         violations.join("\n")
     );
 }
