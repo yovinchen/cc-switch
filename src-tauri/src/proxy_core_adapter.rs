@@ -1041,6 +1041,20 @@ pub(crate) async fn set_proxy_app_enabled_in_db(
         })
 }
 
+pub(crate) async fn clear_live_takeover_enabled_flags_in_db(db: &Database) {
+    for app_type in live_takeover_app_types() {
+        let app_type = app_type.as_str();
+        if let Ok(config) = db.get_proxy_config_for_app(app_type).await {
+            if config.enabled {
+                let config = proxy_app_config_with_enabled(config, false);
+                if let Err(e) = db.update_proxy_config_for_app(config).await {
+                    log::warn!("清除 {app_type} enabled 状态失败: {e}");
+                }
+            }
+        }
+    }
+}
+
 pub(crate) async fn app_summary_config_from_db_source(
     db: &Database,
     app: &AppKind,

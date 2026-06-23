@@ -12,6 +12,7 @@ use crate::proxy_core_adapter::{
     apply_claude_takeover_fields_for_provider, apply_claude_takeover_fields_with_policy,
     apply_codex_takeover_fields_for_provider, apply_codex_unified_session_bucket_for_provider,
     apply_gemini_takeover_env_fields, ClaudeTakeoverAuthPolicy,
+    clear_live_takeover_enabled_flags_in_db,
     codex_backup_projection_error_message, codex_live_write_projection,
     codex_provider_live_write_parts,
     codex_preserved_auth_live_config_text_for_configured_policy,
@@ -625,16 +626,7 @@ impl ProxyService {
             .map_err(|e| format!("清除接管状态失败: {e}"))?;
 
         // 4. 清除所有应用的 enabled 状态（用户手动关闭，不需要下次自动恢复）
-        for app_type in ["claude", "codex", "gemini"] {
-            if let Ok(mut config) = self.db.get_proxy_config_for_app(app_type).await {
-                if config.enabled {
-                    config.enabled = false;
-                    if let Err(e) = self.db.update_proxy_config_for_app(config).await {
-                        log::warn!("清除 {app_type} enabled 状态失败: {e}");
-                    }
-                }
-            }
-        }
+        clear_live_takeover_enabled_flags_in_db(&self.db).await;
 
         // 5. 删除备份
         self.db

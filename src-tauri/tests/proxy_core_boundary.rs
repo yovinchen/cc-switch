@@ -191,6 +191,13 @@ const FORBIDDEN_PROXY_SERVICE_TAKEOVER_ENABLED_CONFIG_MARKERS: &[&str] = &[
     "current_config.enabled",
     "updated_config.enabled",
 ];
+const FORBIDDEN_PROXY_SERVICE_STOP_RESTORE_ENABLED_CONFIG_MARKERS: &[&str] = &[
+    "[\"claude\", \"codex\", \"gemini\"]",
+    ".get_proxy_config_for_app(",
+    ".update_proxy_config_for_app(",
+    ".enabled =",
+    "config.enabled",
+];
 const FORBIDDEN_FORWARDER_MANAGED_AUTH_MARKERS: &[&str] = &[
     "CopilotAuthState",
     "CodexOAuthState",
@@ -4184,6 +4191,38 @@ fn production_proxy_service_delegates_takeover_enabled_config_to_adapter() {
     assert!(
         violations.is_empty(),
         "ProxyService::set_takeover_for_app must delegate proxy_config enabled reads and writes to proxy_core_adapter:\n{}",
+        violations.join("\n")
+    );
+}
+
+#[test]
+fn production_proxy_service_delegates_stop_restore_enabled_config_to_adapter() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let path = manifest_dir.join("src/services/proxy.rs");
+    let source = fs::read_to_string(&path).expect("read services/proxy.rs");
+    let function = function_slice(
+        &source,
+        "pub async fn stop_with_restore",
+        "/// 停止代理服务器（恢复 Live 配置，但保留 settings 表中的代理状态）",
+    );
+
+    let mut violations = Vec::new();
+    for (line_index, line) in production_lines(function) {
+        let code = line.split("//").next().unwrap_or_default();
+        for marker in FORBIDDEN_PROXY_SERVICE_STOP_RESTORE_ENABLED_CONFIG_MARKERS {
+            if code.contains(marker) {
+                violations.push(format!(
+                    "src/services/proxy.rs stop_with_restore:{} contains stop-restore enabled config marker `{}`",
+                    line_index + 1,
+                    marker
+                ));
+            }
+        }
+    }
+
+    assert!(
+        violations.is_empty(),
+        "ProxyService::stop_with_restore must delegate bulk enabled-state cleanup to proxy_core_adapter:\n{}",
         violations.join("\n")
     );
 }
