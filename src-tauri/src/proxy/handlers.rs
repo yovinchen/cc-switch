@@ -41,11 +41,10 @@ use crate::proxy_core_adapter::{
     management_auth_decision_from_proxy_config, record_forward_error_usage,
     record_transformed_response_usage, transform_codex_chat_response_with_history,
     transform_codex_chat_sse_with_history, transformed_streaming_usage_collector,
-    provider_is_codex_oauth,
     provider_claude_transform_response_for_api_format,
-    provider_claude_transform_sse_for_api_format, provider_needs_claude_transform,
+    provider_claude_transform_sse_for_api_format,
+    provider_claude_transform_streaming_decision, provider_needs_claude_transform,
     provider_should_convert_codex_responses_to_chat, response_headers_indicate_sse,
-    should_aggregate_codex_oauth_responses_sse, should_use_claude_transform_streaming,
     strip_endpoint_prefix,
     validate_management_bearer_header,
     AppChannelListQuery, AppChannelManagementRequest, AppChannelResponse, AppKind, AppListRequest,
@@ -665,28 +664,16 @@ async fn handle_claude_transform(
 ) -> Result<axum::response::Response, ProxyError> {
     let status = response.status();
     let provider = ctx.provider()?;
-    let is_codex_oauth = provider_is_codex_oauth(provider);
-    // Codex OAuth 会把 openai_responses 响应强制升级为 SSE，即使客户端发的是 stream:false。
-    // should_use_claude_transform_streaming 默认会把这个组合路由到流式转换器——虽然能避免
-    // JSON parse 报 422，但会让非流客户端收到 text/event-stream，违反 Anthropic 非流语义。
-    // 这里为这个特定组合打开 override：把上游 SSE 聚合成 Anthropic JSON 回给客户端，其它
-    // 场景（任意上游 is_sse、非 Codex OAuth 等）仍沿用原有流式兜底。
-    let aggregate_codex_oauth_responses_sse =
-        should_aggregate_codex_oauth_responses_sse(is_stream, api_format, is_codex_oauth);
-    let use_streaming = if aggregate_codex_oauth_responses_sse {
-        false
-    } else {
-        should_use_claude_transform_streaming(
-            is_stream,
-            response_headers_indicate_sse(response.headers()),
-            api_format,
-            is_codex_oauth,
-        )
-    };
+    let streaming_decision = provider_claude_transform_streaming_decision(
+        provider,
+        is_stream,
+        response.headers(),
+        api_format,
+    );
     let tool_schema_hints = extract_anthropic_tool_schema_hints(original_body);
     let tool_schema_hints = (!tool_schema_hints.is_empty()).then_some(tool_schema_hints);
 
-    if use_streaming {
+    if streaming_decision.use_streaming {
         let stream = response.bytes_stream();
         let sse_stream = provider_claude_transform_sse_for_api_format(
             stream,
@@ -731,7 +718,7 @@ async fn handle_claude_transform(
     // Content-Type 标成 application/json 等，is_sse() 的 header 检查失效。
     // 此时按 SSE 聚合成单个 JSON 再走既有非流转换器，客户端仍收到
     // Anthropic JSON，非流语义不变。gemini_native 暂无聚合器，落诊断错误。
-    let response_sse_aggregation = if aggregate_codex_oauth_responses_sse {
+    let response_sse_aggregation = if streaming_decision.aggregate_codex_oauth_responses_sse {
         Some(UpstreamSseAggregationKind::Responses)
     } else {
         claude_transform_unlabeled_sse_aggregation(api_format)
@@ -744,7 +731,8 @@ async fn handle_claude_transform(
         UpstreamResponseParseFailureLogContext::ClaudeTransform,
         UnlabeledSseFallbackLogContext::Claude {
             api_format,
-            codex_oauth_responses_aggregation: aggregate_codex_oauth_responses_sse,
+            codex_oauth_responses_aggregation: streaming_decision
+                .aggregate_codex_oauth_responses_sse,
         },
     )?;
 

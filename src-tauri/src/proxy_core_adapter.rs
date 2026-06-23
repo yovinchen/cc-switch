@@ -3952,6 +3952,37 @@ pub(crate) fn provider_needs_claude_transform(provider: &Provider) -> bool {
     claude_api_format_needs_transform(provider_claude_api_format(provider))
 }
 
+pub(crate) struct ClaudeTransformStreamingDecision {
+    pub(crate) use_streaming: bool,
+    pub(crate) aggregate_codex_oauth_responses_sse: bool,
+}
+
+pub(crate) fn provider_claude_transform_streaming_decision(
+    provider: &Provider,
+    requested_streaming: bool,
+    response_headers: &HeaderMap,
+    api_format: &str,
+) -> ClaudeTransformStreamingDecision {
+    let is_codex_oauth = provider_is_codex_oauth(provider);
+    let aggregate_codex_oauth_responses_sse =
+        should_aggregate_codex_oauth_responses_sse(requested_streaming, api_format, is_codex_oauth);
+    let use_streaming = if aggregate_codex_oauth_responses_sse {
+        false
+    } else {
+        should_use_claude_transform_streaming(
+            requested_streaming,
+            response_headers_indicate_sse(response_headers),
+            api_format,
+            is_codex_oauth,
+        )
+    };
+
+    ClaudeTransformStreamingDecision {
+        use_streaming,
+        aggregate_codex_oauth_responses_sse,
+    }
+}
+
 pub(crate) use crate::proxy_core::api::domain::infer_claude_provider_kind;
 
 pub(crate) fn provider_claude_kind(provider: &Provider) -> ProviderKind {
@@ -15981,6 +16012,58 @@ command = "latest-command"
         assert!(claude_api_format_needs_transform("openai_responses"));
         assert!(claude_api_format_needs_transform("gemini_native"));
         assert!(!claude_api_format_needs_transform("unknown"));
+    }
+
+    #[test]
+    fn claude_streaming_decision_adapter_preserves_codex_oauth_aggregation() {
+        let mut codex_provider = Provider::with_id(
+            "codex-oauth".to_string(),
+            "Codex OAuth".to_string(),
+            json!({}),
+            None,
+        );
+        codex_provider.meta = Some(ProviderMeta {
+            provider_type: Some("codex_oauth".to_string()),
+            ..Default::default()
+        });
+        let mut sse_headers = HeaderMap::new();
+        sse_headers.insert(
+            http::header::CONTENT_TYPE,
+            http::HeaderValue::from_static("text/event-stream"),
+        );
+
+        let aggregate_decision = provider_claude_transform_streaming_decision(
+            &codex_provider,
+            false,
+            &sse_headers,
+            "openai_responses",
+        );
+        assert!(!aggregate_decision.use_streaming);
+        assert!(aggregate_decision.aggregate_codex_oauth_responses_sse);
+
+        let streaming_decision = provider_claude_transform_streaming_decision(
+            &codex_provider,
+            true,
+            &HeaderMap::new(),
+            "openai_responses",
+        );
+        assert!(streaming_decision.use_streaming);
+        assert!(!streaming_decision.aggregate_codex_oauth_responses_sse);
+
+        let plain_provider = Provider::with_id(
+            "plain".to_string(),
+            "Plain".to_string(),
+            json!({}),
+            None,
+        );
+        let upstream_sse_decision = provider_claude_transform_streaming_decision(
+            &plain_provider,
+            false,
+            &sse_headers,
+            "openai_chat",
+        );
+        assert!(upstream_sse_decision.use_streaming);
+        assert!(!upstream_sse_decision.aggregate_codex_oauth_responses_sse);
     }
 
     #[test]

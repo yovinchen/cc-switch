@@ -874,6 +874,12 @@ const FORBIDDEN_HANDLER_CLAUDE_RESPONSE_TRANSFORM_DISPATCH_MARKERS: &[&str] = &[
     "Rectified tool args",
     "rectified_tool_names",
 ];
+const FORBIDDEN_HANDLER_CLAUDE_STREAMING_DECISION_MARKERS: &[&str] = &[
+    "provider_is_codex_oauth(",
+    "should_aggregate_codex_oauth_responses_sse(",
+    "should_use_claude_transform_streaming(",
+    "response_headers_indicate_sse(response.headers())",
+];
 const FORBIDDEN_HANDLER_CODEX_NON_STREAM_TRANSFORM_MARKERS: &[&str] = &[
     "chat_completion_to_response_with_context(",
     "record_codex_chat_response_history(",
@@ -2637,6 +2643,38 @@ fn handlers_delegate_claude_response_transform_dispatch_to_adapter() {
     assert!(
         violations.is_empty(),
         "protocol handlers must delegate Claude response transform dispatch to proxy_core_adapter:\n{}",
+        violations.join("\n")
+    );
+}
+
+#[test]
+fn handlers_delegate_claude_streaming_decision_to_adapter() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let path = manifest_dir.join("src/proxy/handlers.rs");
+    let source = fs::read_to_string(&path).expect("read handlers.rs");
+    let transform = function_slice(
+        &source,
+        "async fn handle_claude_transform(",
+        "\n}\n\n// ============================================================================\n// Codex API",
+    );
+
+    let mut violations = Vec::new();
+    for (line_index, line) in production_lines(transform) {
+        let code = line.split("//").next().unwrap_or_default();
+        for marker in FORBIDDEN_HANDLER_CLAUDE_STREAMING_DECISION_MARKERS {
+            if code.contains(marker) {
+                violations.push(format!(
+                    "src/proxy/handlers.rs:{} contains Claude streaming decision marker `{}`",
+                    line_index + 1,
+                    marker
+                ));
+            }
+        }
+    }
+
+    assert!(
+        violations.is_empty(),
+        "Claude transform handler must delegate streaming/aggregation decisions to proxy_core_adapter:\n{}",
         violations.join("\n")
     );
 }
