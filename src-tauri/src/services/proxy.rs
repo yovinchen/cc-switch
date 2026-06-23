@@ -29,7 +29,7 @@ use crate::proxy_core_adapter::{
     live_takeover_any_enabled_from_db, live_takeover_backup_exists_from_db,
     live_backup_value_for_restore_from_db, live_token_sync_provider_from_db,
     live_config_has_proxy_placeholder_for_app, live_takeover_config_matches_proxy_for_app,
-    live_takeover_app_types, provider_settings_have_proxy_placeholder_for_app,
+    live_takeover_app_types,
     persist_ephemeral_listen_port_if_needed_in_db, proxy_app_enabled_from_db,
     proxy_config_from_db, sync_provider_settings_with_live_token,
     provider_effective_settings_with_common_config_from_db,
@@ -52,6 +52,7 @@ use crate::proxy_core_adapter::{
     remove_gemini_takeover_env_fields_if_present, set_proxy_app_enabled_in_db,
     set_legacy_live_takeover_active_best_effort_in_db,
     set_legacy_live_takeover_active_in_db, should_block_proxy_switch_to_provider,
+    ssot_live_restore_provider_from_db,
     update_live_token_sync_provider_settings_in_db,
     update_proxy_config_preserving_live_takeover_active_in_db, CircuitBreakerConfig,
     CodexTakeoverAuthPolicy, LiveTokenProviderSettingsIssue, ProxyConfig, ProxyRuntimeStatus,
@@ -1025,37 +1026,13 @@ impl ProxyService {
     /// - Ok(true)：已成功写回
     /// - Ok(false)：缺少当前供应商/供应商不存在/供应商本身含占位符，无法写回
     fn restore_live_from_ssot_for_app(&self, app_type: &AppType) -> Result<bool, String> {
-        let current_id = crate::settings::get_effective_current_provider(&self.db, app_type)
-            .map_err(|e| format!("获取 {app_type:?} 当前供应商失败: {e}"))?;
-
-        let Some(current_id) = current_id else {
+        let Some(provider) =
+            ssot_live_restore_provider_from_db(&self.db, app_type, PROXY_TOKEN_PLACEHOLDER)?
+        else {
             return Ok(false);
         };
 
-        let providers = self
-            .db
-            .get_all_providers(app_type.as_str())
-            .map_err(|e| format!("读取 {app_type:?} 供应商列表失败: {e}"))?;
-
-        let Some(provider) = providers.get(&current_id) else {
-            return Ok(false);
-        };
-
-        // 供应商配置本身含接管占位符时不可写回（历史异常：接管期间 Live 被
-        // 误导入成了供应商）。写回只会把占位符固化进 Live；返回 Ok(false)
-        // 让调用方落到"清理占位符"兜底。
-        if provider_settings_have_proxy_placeholder_for_app(
-            provider,
-            app_type,
-            PROXY_TOKEN_PLACEHOLDER,
-        ) {
-            log::warn!(
-                "{app_type:?} 当前供应商配置含代理接管占位符（疑似接管期间被导入的残留），跳过 SSOT 写回，改走占位符清理"
-            );
-            return Ok(false);
-        }
-
-        write_live_with_common_config(self.db.as_ref(), app_type, provider)
+        write_live_with_common_config(self.db.as_ref(), app_type, &provider)
             .map_err(|e| format!("写入 {app_type:?} Live 配置失败: {e}"))?;
 
         Ok(true)

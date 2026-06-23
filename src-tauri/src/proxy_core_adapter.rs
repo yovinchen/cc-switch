@@ -3176,6 +3176,40 @@ pub(crate) fn require_current_provider_for_app_from_db(
         .ok_or_else(|| format!("{app_type:?} 当前供应商不存在，无法接管 Live 配置"))
 }
 
+pub(crate) fn ssot_live_restore_provider_from_db(
+    db: &Database,
+    app_type: &AppType,
+    proxy_token_placeholder: &str,
+) -> Result<Option<Provider>, String> {
+    let current_id = crate::settings::get_effective_current_provider(db, app_type)
+        .map_err(|e| format!("获取 {app_type:?} 当前供应商失败: {e}"))?;
+
+    let Some(current_id) = current_id else {
+        return Ok(None);
+    };
+
+    let providers = db
+        .get_all_providers(app_type.as_str())
+        .map_err(|e| format!("读取 {app_type:?} 供应商列表失败: {e}"))?;
+
+    let Some(provider) = providers.get(&current_id) else {
+        return Ok(None);
+    };
+
+    if provider_settings_have_proxy_placeholder_for_app(
+        provider,
+        app_type,
+        proxy_token_placeholder,
+    ) {
+        log::warn!(
+            "{app_type:?} 当前供应商配置含代理接管占位符（疑似接管期间被导入的残留），跳过 SSOT 写回，改走占位符清理"
+        );
+        return Ok(None);
+    }
+
+    Ok(Some(provider.clone()))
+}
+
 pub(crate) fn live_token_sync_app_label(app_type: &AppType) -> Option<&'static str> {
     match app_type {
         AppType::Claude => Some("Claude"),
