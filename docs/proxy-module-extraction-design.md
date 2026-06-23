@@ -905,6 +905,7 @@
 本轮继续把 usage sink bridge 的 forward-error/transformed response usage provider 选择、缺失 warning、record 组装和 route context 合并收敛到 adapter wrapper，bridge 只保留 logging 开关读取和 SSE collector 生命周期入口。
 本轮继续把 response processor 的 raw response body 接收日志、content-encoding decode 调用和 decode status 日志投影收敛到 adapter-owned helper；host `read_decoded_body` 只保留 `ProxyResponse` body 读取、timeout/`ProxyError` 映射和 transport 返回值拆包。
 本轮继续把 response processor 的 streaming response header receive log 与 content-encoding warning 收敛到 adapter-owned helper；host `handle_streaming` 只保留 `ProxyResponse` status/header/stream 拆包、collector 创建和 passthrough response 适配。
+本轮继续把 response processor 的非流式 decoded body content debug 日志收敛到 adapter-owned helper；host `handle_non_streaming` 只传入 body bytes 与 tag，不再负责日志字符串投影。
 本轮继续把 forward runtime 的 route plan attempt 构造入口收敛到 adapter；auth profile 的 DB key 注入 wrapper 也已收敛到 adapter，host forward runtime 只调用统一 helper。
 本轮还把 forward runtime 的 auth profile action 应用循环收敛到 adapter，host 不再维护 channel-key DB lookup 闭包。
 本轮继续把 forward runtime 的 current-provider 来源组合收敛到 adapter，host forward runtime 不再读取 settings 或手写 DB fallback 闭包。
