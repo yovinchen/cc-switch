@@ -1129,6 +1129,7 @@
 本轮继续把生产 `ProxyServer` 构造入口改为 `from_runtime_state(config, state)`：`proxy_core_adapter::proxy_server_from_runtime_config` 负责从 `Database/AppHandle` 装配 `ProxyState`，旧 `ProxyServer::new(config, db, app_handle)` 仅保留为 server 单元测试兼容入口。
 本轮继续把 handler、response processor、auth adapter 和 request context 的 `ProxyState` import 直接切到 `proxy_core_adapter`，并移除 `proxy/server.rs` 对 `ProxyState` 的旧路径 re-export：HTTP server 不再作为运行态 state 类型的兼容出口。
 本轮继续把 forwarder 对托管账号运行时的 Copilot endpoint/model vendor/live model list 以及 token resolution 入口收敛到 `proxy_core_adapter` thin wrappers：forwarder 不再直接依赖 `proxy::managed_account_auth`，后续可在 adapter 内继续把 Tauri runtime 读取替换为外部宿主可注入的 AuthProvider 端口。
+本轮继续把 `ManagedAccountAuthResolution` DTO 迁入 `proxy_core_adapter`：`proxy::managed_account_auth` 只负责读取 Copilot/Codex OAuth 运行时并返回 adapter-owned resolution，结果字段归属不再留在 host auth 模块。
 
 当前原则：核心 crate 可以新增端口和领域字段，但不得引入 `tauri`、`Database`、settings、commands、services 等宿主依赖；现有 runtime 行为必须继续通过 targeted tests 证明不回归。
 
