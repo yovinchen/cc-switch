@@ -1074,6 +1074,7 @@
 本轮继续把 `ProviderRouter` 的 route channel 输入从 router-local `ProviderRouterChannelRecord` 切到 core `RouteResolveChannelInput`；management channel specs/records 仍由 host adapter 直接从 DB source 读取完整记录，避免为了管理 API 把 DAO record 暴露给 router，也避免 router 维护自己的中转 DTO。
 本轮继续把 forwarder 的 provider adapter base URL 提取收敛到 `proxy_core_adapter::forwarder_provider_base_url`，forwarder 不再直接调用 `ProviderAdapter::extract_base_url`。
 本轮继续把 forwarder 的 provider adapter auth info 提取收敛到 `proxy_core_adapter::forwarder_provider_auth_info`，forwarder 不再直接调用 `ProviderAdapter::extract_auth`。
+本轮继续把 forwarder 的 provider adapter auth headers 构造收敛到 `proxy_core_adapter::forwarder_provider_auth_headers`，forwarder 不再直接调用 `ProviderAdapter::get_auth_headers`。
 本轮继续把 forwarder 的 provider adapter upstream URL 构造收敛到 `proxy_core_adapter::forwarder_provider_upstream_url`，forwarder 不再直接调用 `ProviderAdapter::build_url`。
 本轮继续把 forwarder 的 provider adapter name 读取收敛到 `proxy_core_adapter::forwarder_provider_adapter_name`，forwarder 不再直接调用 `ProviderAdapter::name`。
 本轮继续把 forwarder 的 provider adapter registry 入口收敛到 `proxy_core_adapter::forwarder_provider_adapter_for_app`，forwarder 不再直接调用 provider 模块的 `get_adapter`。
