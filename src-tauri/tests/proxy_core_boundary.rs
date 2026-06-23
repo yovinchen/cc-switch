@@ -229,6 +229,9 @@ const FORBIDDEN_PROXY_CORE_HOST_HEALTH_STORE_SOURCE_MARKERS: &[&str] = &[
     "channel_health_reset_from_plan(",
 ];
 const FORBIDDEN_PROXY_CORE_HOST_REACHABILITY_PROBE_SOURCE_MARKERS: &[&str] = &[
+    "struct CcSwitchChannelReachabilityProbe",
+    "impl ChannelReachabilityProbe for CcSwitchChannelReachabilityProbe",
+    "probe_channel_reachability_from_db_source(",
     "StreamCheckService",
     ".get_provider_by_id(",
     ".get_stream_check_config(",
@@ -3106,7 +3109,7 @@ fn production_proxy_core_host_delegates_channel_migration_source_to_adapter() {
     let channel_migration_source = function_slice(
         &source,
         "    fn preview_legacy_channel_migration",
-        "\n}\n\n#[derive(Clone)]\nstruct CcSwitchChannelReachabilityProbe",
+        "\n}\n\n#[derive(Clone)]\nstruct CcSwitchModelCatalogProvider",
     );
 
     let mut violations = Vec::new();
@@ -3216,19 +3219,14 @@ fn production_proxy_core_host_delegates_reachability_probe_source_to_adapter() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let path = manifest_dir.join("src/proxy_core_host.rs");
     let source = fs::read_to_string(&path).expect("read proxy_core_host.rs");
-    let reachability_probe = function_slice(
-        &source,
-        "impl ChannelReachabilityProbe for CcSwitchChannelReachabilityProbe",
-        "#[derive(Clone)]\nstruct CcSwitchModelCatalogProvider",
-    );
 
     let mut violations = Vec::new();
-    for (line_index, line) in production_lines(reachability_probe) {
+    for (line_index, line) in production_lines(&source) {
         let code = line.split("//").next().unwrap_or_default();
         for marker in FORBIDDEN_PROXY_CORE_HOST_REACHABILITY_PROBE_SOURCE_MARKERS {
             if code.contains(marker) {
                 violations.push(format!(
-                    "src/proxy_core_host.rs CcSwitchChannelReachabilityProbe:{} contains reachability probe source marker `{}`",
+                    "src/proxy_core_host.rs:{} contains reachability probe source marker `{}`",
                     line_index + 1,
                     marker
                 ));

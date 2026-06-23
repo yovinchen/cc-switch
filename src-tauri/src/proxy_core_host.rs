@@ -9,10 +9,10 @@ use crate::proxy::provider_router::ProviderRouter;
 use crate::proxy::codex_chat_history::CodexChatHistoryStore;
 use crate::proxy_core_adapter::{
     AppKind, AppSummaryConfig, AuthProvider, CcSwitchAuthProvider, CcSwitchChannelHealthStore,
-    CcSwitchEventSink, CcSwitchRoutePolicySource, CcSwitchRouteResolver, ChannelHealthStore,
-    ChannelKeyRecord, ChannelModelRecord, ChannelMigrationMaterializeInput,
-    ChannelMigrationPreviewInput, ChannelQuery, ChannelRecord, ChannelReachabilityProbe,
-    ChannelReachabilityResult, ChannelRouteSource, ChannelSource, ChannelSpec, ChannelTestProbeRequest,
+    CcSwitchChannelReachabilityProbe, CcSwitchEventSink, CcSwitchRoutePolicySource,
+    CcSwitchRouteResolver, ChannelHealthStore, ChannelKeyRecord, ChannelModelRecord,
+    ChannelMigrationMaterializeInput, ChannelMigrationPreviewInput, ChannelQuery, ChannelRecord,
+    ChannelReachabilityProbe, ChannelRouteSource, ChannelSource, ChannelSpec,
     ClaudeDesktopModelRouteInput, CurrentRouteTarget, ForwardPipeline, ForwarderRuntimeHostResources,
     GeminiShadowStore, HostForwardRuntime, ModelCatalog, ModelCatalogProvider, ProviderSource,
     ProviderSpec, ProxyAppConfig,
@@ -45,7 +45,6 @@ use crate::proxy_core_adapter::{
     provider_model_catalog_from_db_source, provider_spec_from_db_source,
     provider_specs_from_db_source,
     provider_router_from_database,
-    probe_channel_reachability_from_db_source,
     proxy_app_config_from_db_source, proxy_global_config_from_db_source,
     materialized_channel_records_from_db_source,
     proxy_runtime_config_from_db_source,
@@ -131,7 +130,7 @@ impl CcSwitchProxyServices {
                 db.clone(),
                 runtime.provider_router.clone(),
             ),
-            reachability_probe: CcSwitchChannelReachabilityProbe { db: db.clone() },
+            reachability_probe: CcSwitchChannelReachabilityProbe::new(db.clone()),
             auth_provider: CcSwitchAuthProvider,
             model_catalog: CcSwitchModelCatalogProvider {
                 db: db.clone(),
@@ -158,7 +157,7 @@ impl CcSwitchProxyServices {
             route_policies: CcSwitchRoutePolicySource::new(db.clone()),
             route_resolver: CcSwitchRouteResolver::new(router.clone()),
             health_store: CcSwitchChannelHealthStore::new(db.clone(), router.clone()),
-            reachability_probe: CcSwitchChannelReachabilityProbe { db: db.clone() },
+            reachability_probe: CcSwitchChannelReachabilityProbe::new(db.clone()),
             auth_provider: CcSwitchAuthProvider,
             model_catalog: CcSwitchModelCatalogProvider {
                 db: db.clone(),
@@ -431,20 +430,6 @@ impl ChannelSource for CcSwitchChannelSource {
         app: &'a AppKind,
     ) -> BoxFuture<'a, ProxyCoreResult<ChannelMigrationMaterializeInput>> {
         Box::pin(async move { channel_migration_materialize_from_db_source(&self.db, app) })
-    }
-}
-
-#[derive(Clone)]
-struct CcSwitchChannelReachabilityProbe {
-    db: Arc<Database>,
-}
-
-impl ChannelReachabilityProbe for CcSwitchChannelReachabilityProbe {
-    fn probe_channel<'a>(
-        &'a self,
-        request: ChannelTestProbeRequest,
-    ) -> BoxFuture<'a, ProxyCoreResult<ChannelReachabilityResult>> {
-        Box::pin(async move { probe_channel_reachability_from_db_source(&self.db, request).await })
     }
 }
 

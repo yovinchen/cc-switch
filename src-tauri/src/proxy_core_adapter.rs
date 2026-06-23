@@ -8939,6 +8939,26 @@ pub(crate) async fn probe_channel_reachability_from_db_source(
     Ok(stream_check_result_to_channel_reachability(result))
 }
 
+#[derive(Clone)]
+pub(crate) struct CcSwitchChannelReachabilityProbe {
+    db: Arc<Database>,
+}
+
+impl CcSwitchChannelReachabilityProbe {
+    pub(crate) fn new(db: Arc<Database>) -> Self {
+        Self { db }
+    }
+}
+
+impl ChannelReachabilityProbe for CcSwitchChannelReachabilityProbe {
+    fn probe_channel<'a>(
+        &'a self,
+        request: ChannelTestProbeRequest,
+    ) -> BoxFuture<'a, ProxyCoreResult<ChannelReachabilityResult>> {
+        Box::pin(async move { probe_channel_reachability_from_db_source(&self.db, request).await })
+    }
+}
+
 fn provider_metadata_without_secrets(provider: &Provider) -> ProviderMetadata {
     let meta = provider.meta.as_ref();
     provider_metadata_from_input(ProviderMetadataInput {
