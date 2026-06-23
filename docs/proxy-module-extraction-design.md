@@ -1020,7 +1020,7 @@
 本轮继续把 forwarder 对 Codex Responses->Chat 判定、上游模型覆写和 reasoning options 的调用改为直接消费 adapter helper，并删除 provider 模块对应 re-export。
 本轮继续把 Copilot fingerprint header 常量提升到 adapter，`proxy_core_adapter` 不再反向引用 `providers::copilot_auth` 常量。
 本轮继续把 `codex_chat_history` 从 `proxy::providers` 移到 `proxy` 模块根，provider 目录只保留 provider adapter 和账号认证相关实现。
-本轮继续把 `ProviderRouterSource` 拆成 router 端的 provider/channel/config/health 四个 focused port；host adapter 侧拆出对应 DB-backed source/store，保留 `ProviderRouter::new(Arc<Database>)` 兼容入口，后续可继续把 router 端口映射到 core-facing `ProviderSource`/`ChannelSource`/`HealthStore`。
+本轮继续把 `ProviderRouterSource` 拆成 router 端的 provider/channel/config/health 四个 focused port；host adapter 侧拆出对应 DB-backed source/store，并把 `ProviderRouter::new(Arc<Database>)` 迁到 `proxy_core_adapter::provider_router_from_database` factory，生产代码不再直连 router 的 DB 构造入口。
 
 当前原则：核心 crate 可以新增端口和领域字段，但不得引入 `tauri`、`Database`、settings、commands、services 等宿主依赖；现有 runtime 行为必须继续通过 targeted tests 证明不回归。
 
@@ -1599,7 +1599,7 @@ pub trait RoutePolicySource: Send + Sync {
 - `ChannelSource` 负责读取可路由 channel，包括现有 provider 主 URL、`provider_endpoints` 投影出来的兼容 channel，以及未来新增的独立 channel 表。
 - `RouteResolver` 负责按 app、接口、模型、group、优先级、权重、熔断、限流和 retry 策略生成尝试计划。
 
-当前分支已先把 `ProviderRouter` 的 DB source 读取和健康持久化收进 `proxy_core_adapter`：router 生产代码不再直接调用 provider/channel/config/health 表的读写 API，而是通过 `ProviderRouterProviderSource`、`ProviderRouterChannelSource`、`ProviderRouterConfigSource` 和 `ProviderRouterHealthStore` 四个可注入端口取得 provider failover sources、current provider source、channel route source、router config 和 health persistence 入口。后续真正拆 crate 时，应把这些 router 端口进一步映射到 core-facing `ProviderSource`/`ChannelSource`/`HealthStore` trait 实现，而不是让 core 持有 CC Switch `Database`。
+当前分支已先把 `ProviderRouter` 的 DB source 读取和健康持久化收进 `proxy_core_adapter`：router 生产代码不再直接调用 provider/channel/config/health 表的读写 API，也不再暴露 `Arc<Database>` 构造入口，而是通过 `ProviderRouterProviderSource`、`ProviderRouterChannelSource`、`ProviderRouterConfigSource` 和 `ProviderRouterHealthStore` 四个可注入端口取得 provider failover sources、current provider source、channel route source、router config 和 health persistence 入口。后续真正拆 crate 时，应把这些 router 端口进一步映射到 core-facing `ProviderSource`/`ChannelSource`/`HealthStore` trait 实现，而不是让 core 持有 CC Switch `Database`。
 
 这样核心仍拥有路由算法，宿主只提供数据。
 
@@ -1788,7 +1788,7 @@ dry-run route 的 circuit-open 识别也继续收敛：`route_candidate_channel_
 
 provider failover 的 circuit lookup 也继续收敛：`provider_failover_circuit_lookups` 负责保留 failover queue 顺序、标记 missing provider 并生成已配置 provider 的 circuit key；`proxy_core_adapter::provider_failover_sources_from_router_db` 负责读取 DB provider facts 与 failover queue 并投影为 lookup facts，`ProviderRouter` 只查询 live breaker 可用性，随后把 lookup availability facts 交给 `select_failover_providers_from_router_lookup_availability` 投影为 selection candidates 并执行 core selection 策略。
 
-`ProviderRouter` 的配置源和健康持久化也已进一步收口：auto failover gate、circuit breaker config 和 failure threshold 的 `proxy_config` 读取通过 `proxy_core_adapter::*_from_router_db` helper 完成；provider/channel health 写入和 channel health reset 持久化通过 `proxy_core_adapter::*_health_*_from_router_db` helper 完成。`ProviderRouter` 当前保留的核心职责是 live circuit breaker map、permit/half-open 状态机、breaker availability 查询和已有公开方法的 `AppError` 兼容。
+`ProviderRouter` 的配置源和健康持久化也已进一步收口：auto failover gate、circuit breaker config 和 failure threshold 的 `proxy_config` 读取通过 `proxy_core_adapter::*_from_router_db` helper 完成；provider/channel health 写入和 channel health reset 持久化通过 `proxy_core_adapter::*_health_*_from_router_db` helper 完成；DB-backed router 构造统一由 `provider_router_from_database` adapter factory 完成。`ProviderRouter` 当前保留的核心职责是 live circuit breaker map、permit/half-open 状态机、breaker availability 查询和已有公开方法的 `AppError` 兼容。
 
 auto failover 开关启用的计划也已收敛：`plan_auto_failover_toggle` 负责“接管未开启则拒绝”、“队列非空则切 P1”、“队列为空则自动加入当前 provider 并切换”的纯决策；Tauri command 只读取 config/queue/current provider、执行 DB 队列写入、调用 proxy service 切换、写回 config 并 emit core 事件 contract。
 
@@ -1903,7 +1903,7 @@ ProxyRequest
 | `handlers.rs` | `transport/http/handlers.rs` + `engine` | HTTP 解析留 transport，业务处理移到 engine |
 | `handler_context.rs` | `engine/context.rs` | DB/settings 读取改为 service traits |
 | `forwarder.rs` | `engine/forward_pipeline.rs` | 切掉 Tauri/AppHandle/Database 依赖 |
-| `provider_router.rs` | `engine/routing.rs` | 当前已通过 router 端 provider/channel/config/health 四个 focused port 注入 source/store，DB-backed 实现在 host adapter；下一步把这些端口对齐到 core-facing `ProviderSource`/`ChannelSource`/`HealthStore`，并把 live breaker map 迁入 runtime-owned routing service |
+| `provider_router.rs` | `engine/routing.rs` | 当前已通过 router 端 provider/channel/config/health 四个 focused port 注入 source/store，DB-backed 构造统一在 host adapter factory；下一步把这些端口对齐到 core-facing `ProviderSource`/`ChannelSource`/`HealthStore`，并把 live breaker map 迁入 runtime-owned routing service |
 | `failover_switch.rs` | `host/cc_switch` | 核心只发 failover event |
 | `response_processor.rs` | `engine/response_pipeline.rs` | 用量落库改为 `UsageSink` |
 | `usage/logger.rs` | `host/cc_switch/database_usage_sink.rs` | 只保留 parser/calculator 在核心 |
