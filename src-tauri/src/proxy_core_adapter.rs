@@ -18,7 +18,7 @@ use crate::proxy::events::ProxyEventBus;
 use crate::proxy::failover_switch::FailoverSwitchManager;
 use crate::proxy::handler_context::RequestContext;
 use crate::proxy::hyper_client::ProxyResponse;
-use crate::proxy::providers::ProviderAdapter;
+use crate::proxy::providers::{get_adapter, ProviderAdapter};
 use crate::proxy::provider_router::{
     ProviderFailoverRouterSources, ProviderRouter, ProviderRouterChannelSource,
     ProviderRouterConfigSource, ProviderRouterHealthStore, ProviderRouterProviderSource,
@@ -4034,6 +4034,10 @@ pub(crate) fn provider_adapter_name_is_claude(adapter_name: &str) -> bool {
 
 pub(crate) fn forwarder_provider_adapter_name(adapter: &dyn ProviderAdapter) -> &'static str {
     adapter.name()
+}
+
+pub(crate) fn forwarder_provider_adapter_for_app(app_type: &AppType) -> Box<dyn ProviderAdapter> {
+    get_adapter(app_type)
 }
 
 pub(crate) fn provider_claude_api_format(provider: &Provider) -> &'static str {
@@ -16743,6 +16747,16 @@ command = "latest-command"
         let codex_adapter = crate::proxy::providers::CodexAdapter::new();
         assert_eq!(forwarder_provider_adapter_name(&claude_adapter), "Claude");
         assert_eq!(forwarder_provider_adapter_name(&codex_adapter), "Codex");
+        let forwarder_claude_adapter = forwarder_provider_adapter_for_app(&AppType::Claude);
+        assert_eq!(
+            forwarder_provider_adapter_name(forwarder_claude_adapter.as_ref()),
+            "Claude"
+        );
+        let forwarder_fallback_adapter = forwarder_provider_adapter_for_app(&AppType::Hermes);
+        assert_eq!(
+            forwarder_provider_adapter_name(forwarder_fallback_adapter.as_ref()),
+            "Codex"
+        );
         let codex_provider = Provider::with_id(
             "codex".to_string(),
             "Codex".to_string(),

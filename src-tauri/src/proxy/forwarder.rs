@@ -10,7 +10,7 @@ use super::{
     failover_switch::FailoverSwitchManager,
     provider_router::ProviderRouter,
     codex_chat_history::CodexChatHistoryStore,
-    providers::{get_adapter, ProviderAdapter},
+    providers::ProviderAdapter,
     route_attempt::{apply_channel_model_override, ForwardAttempt},
 };
 use crate::proxy::managed_account_auth::{
@@ -33,6 +33,7 @@ use crate::proxy_core_adapter::{
     forwarder_is_codex_oauth_provider, forwarder_is_full_url_provider,
     forwarder_is_github_copilot_upstream,
     forwarder_replace_images_for_text_only_provider_model, forwarder_uses_anthropic_rectifiers,
+    forwarder_provider_adapter_for_app,
     forwarder_provider_adapter_name, forwarder_provider_auth_info, forwarder_provider_base_url,
     forwarder_provider_upstream_url,
     forwarder_provider_transform_request, forwarder_provider_transform_required,
@@ -544,7 +545,7 @@ impl RequestForwarder {
         attempts: Vec<ForwardAttempt>,
     ) -> Result<ForwardResult, ForwardError> {
         // 获取适配器
-        let adapter = get_adapter(app_type);
+        let adapter = forwarder_provider_adapter_for_app(app_type);
         let app_type_str = app_type.as_str();
 
         if attempts.is_empty() {
