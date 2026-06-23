@@ -500,7 +500,7 @@
 489. Copilot GitHub domain normalize、GHES 判定、默认 public domain 与复合 account id 策略已迁入 `proxy_core_adapter`；Copilot auth 模块只负责 token/OAuth 流程、账号存储与 endpoint/model 缓存。
 490. Copilot OAuth/API URL 构造、Copilot API base fallback、模型列表响应解析与 `CopilotModel` 类型入口已迁入 `proxy_core_adapter`；Copilot auth 模块只负责 HTTP 调用、token/OAuth 状态和 endpoint/model 缓存。
 491. Claude Desktop gateway bearer token 校验与 auth error 类型入口已迁入 `proxy_core_adapter`；host auth adapter 只负责读取/创建 gateway token 并映射为 `ProxyError`。
-492. global proxy URL masking、系统代理 env key 与 loopback 自环检测 helper 已迁入 `proxy_core_adapter`；global proxy command 和 host HTTP client 只负责 DB 状态、reqwest client 生命周期和环境变量读取。
+492. global proxy URL masking、显式代理 URL parse/scheme 校验、系统代理 env key 与 loopback 自环检测 helper 已迁入 `proxy_core_adapter`；global proxy command 和 host HTTP client 只负责 DB 状态、reqwest client 生命周期、reqwest proxy 应用和环境变量读取。
 493. 模型拉取 command/service 边界使用的 `FetchedModel` DTO 入口已迁入 `proxy_core_adapter`；model fetch transport 继续只负责 reqwest 执行并复用 core request planning/response parsing ports。
 494. host `ProxyError` 到 HTTP status 的 `ProxyErrorStatusKind` 与状态码解析入口已迁入 `proxy_core_adapter`；host error 模块只负责 `ProxyError` 枚举、Axum response body 和 host/core error bridge。
 495. settings command/DAO 使用的 rectifier、optimizer 与 Copilot optimizer 配置 DTO 入口已迁入 `proxy_core_adapter`；host settings DAO 继续负责 settings key、JSON 持久化与 `AppError` 映射。
@@ -1049,6 +1049,7 @@
 本轮继续删除 provider 模块对 Claude api_format、消息规范化和请求转换兼容函数的 re-export，Claude provider 对外只保留 `ClaudeAdapter`。
 本轮继续把 forwarder 对 Codex Responses->Chat 判定、上游模型覆写和 reasoning options 的调用改为直接消费 adapter helper，并删除 provider 模块对应 re-export。
 本轮继续把 forwarder 的 Codex app gate 与 Responses->Chat provider predicate 收敛到 `proxy_core_adapter::forwarder_should_convert_codex_responses_to_chat`，转发器不再直接调用 provider-level Codex chat predicate。
+本轮继续把 global proxy 的显式代理 URL parse、scheme allowlist 和错误消息投影收敛到 `proxy_core_adapter::{validate_explicit_proxy_url,invalid_explicit_proxy_url_message}`，host HTTP client 只负责 reqwest proxy 构造和 client builder。
 本轮继续把 Copilot fingerprint header 常量提升到 adapter，`proxy_core_adapter` 不再反向引用 `providers::copilot_auth` 常量。
 本轮继续把 `codex_chat_history` 从 `proxy::providers` 移到 `proxy` 模块根，provider 目录只保留 provider adapter 和账号认证相关实现。
 本轮继续把 `ProviderRouterSource` 拆成 router 端的 provider/channel/config/health 四个 focused port；host adapter 侧拆出对应 DB-backed source/store，并把 `ProviderRouter::new(Arc<Database>)` 迁到 `proxy_core_adapter::provider_router_from_database` factory，生产代码不再直连 router 的 DB 构造入口。
