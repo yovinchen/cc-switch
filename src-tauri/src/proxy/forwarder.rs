@@ -11,11 +11,9 @@ use crate::proxy_core_adapter::{
     build_retryable_forward_failure_log, build_terminal_forward_failure_log,
     categorize_forward_failure,
     forward_failure_kind_from_proxy_error,
-    forwarder_is_full_url_provider,
-    forwarder_is_github_copilot_upstream,
     forwarder_uses_anthropic_rectifiers,
     forwarder_provider_adapter_for_app,
-    forwarder_provider_adapter_name, forwarder_provider_base_url,
+    forwarder_provider_adapter_name,
     forwarder_provider_transform_required,
     ForwarderAdapterHandle,
     provider_adapter_name_is_claude,
@@ -29,7 +27,7 @@ use crate::proxy_core_adapter::{
     ForwarderCopilotRequestOptimizationInput,
     ForwarderMediaPreventionInput,
     ForwarderMediaRetryPlanInput, ForwarderProviderRequestBodyInput,
-    ForwarderProviderTransformInput,
+    ForwarderProviderTransformInput, ForwarderProviderUrlFacts, ForwarderProviderUrlFactsInput,
     ForwarderRequestRectifierPlan,
     ForwarderThinkingBudgetRectifierInput, ForwarderThinkingSignatureRectifierInput,
     OptimizerConfig,
@@ -948,13 +946,13 @@ impl RequestForwarder {
         adapter: &ForwarderAdapterHandle,
     ) -> Result<(ProxyResponse, Option<String>, Option<String>), ProxyError> {
         let provider = attempt.provider();
-        // 使用适配器提取 base_url
-        let mut base_url = forwarder_provider_base_url(adapter, provider)?;
-
-        let is_full_url = forwarder_is_full_url_provider(provider);
-
-        // GitHub Copilot API 使用 /chat/completions（无 /v1 前缀）
-        let is_copilot = forwarder_is_github_copilot_upstream(provider, &base_url);
+        let ForwarderProviderUrlFacts {
+            mut base_url,
+            is_full_url,
+            is_copilot,
+        } = self
+            .request_source
+            .provider_url_facts(ForwarderProviderUrlFactsInput { adapter, provider })?;
 
         // Copilot live model resolution is asynchronous runtime state, so it remains
         // in the forwarder after the synchronous request-source projection.

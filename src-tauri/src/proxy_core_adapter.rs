@@ -8558,6 +8558,17 @@ pub(crate) struct ForwarderProviderRequestBodyInput<'a> {
     pub(crate) is_copilot: bool,
 }
 
+pub(crate) struct ForwarderProviderUrlFactsInput<'a> {
+    pub(crate) adapter: &'a ForwarderAdapterHandle,
+    pub(crate) provider: &'a Provider,
+}
+
+pub(crate) struct ForwarderProviderUrlFacts {
+    pub(crate) base_url: String,
+    pub(crate) is_full_url: bool,
+    pub(crate) is_copilot: bool,
+}
+
 pub(crate) struct ForwarderClaudeBodyPolicyInput<'a> {
     pub(crate) body: &'a mut Value,
     pub(crate) provider: &'a Provider,
@@ -8668,6 +8679,11 @@ pub(crate) struct ForwarderUpstreamRequestParts {
 pub(crate) trait ForwarderRequestSource {
     fn prepare_attempt_body(&self, input: ForwarderAttemptBodyInput<'_>) -> Value;
 
+    fn provider_url_facts(
+        &self,
+        input: ForwarderProviderUrlFactsInput<'_>,
+    ) -> Result<ForwarderProviderUrlFacts, ProxyError>;
+
     fn prepare_provider_request_body(
         &self,
         input: ForwarderProviderRequestBodyInput<'_>,
@@ -8755,6 +8771,18 @@ impl ForwarderRequestSource for CcSwitchForwarderRequestSource {
             log::info!("{message}");
         }
         body
+    }
+
+    fn provider_url_facts(
+        &self,
+        input: ForwarderProviderUrlFactsInput<'_>,
+    ) -> Result<ForwarderProviderUrlFacts, ProxyError> {
+        let base_url = forwarder_provider_base_url(input.adapter, input.provider)?;
+        Ok(ForwarderProviderUrlFacts {
+            is_full_url: forwarder_is_full_url_provider(input.provider),
+            is_copilot: forwarder_is_github_copilot_upstream(input.provider, &base_url),
+            base_url,
+        })
     }
 
     fn prepare_provider_request_body(
@@ -14546,6 +14574,36 @@ mod tests {
                 .get("cache_control")
                 .is_some()
         );
+    }
+
+    #[test]
+    fn forwarder_request_source_projects_provider_url_facts() {
+        let source = CcSwitchForwarderRequestSource;
+        let adapter = forwarder_provider_adapter_for_app(&AppType::Codex);
+        let mut provider = Provider::with_id(
+            "copilot-provider".to_string(),
+            "Copilot Provider".to_string(),
+            json!({
+                "base_url": "https://api.githubcopilot.com"
+            }),
+            None,
+        );
+        provider.meta = Some(ProviderMeta {
+            provider_type: Some("github_copilot".to_string()),
+            is_full_url: Some(true),
+            ..Default::default()
+        });
+
+        let facts = source
+            .provider_url_facts(ForwarderProviderUrlFactsInput {
+                adapter: adapter.as_ref(),
+                provider: &provider,
+            })
+            .expect("provider URL facts");
+
+        assert_eq!(facts.base_url, "https://api.githubcopilot.com");
+        assert!(facts.is_full_url);
+        assert!(facts.is_copilot);
     }
 
     #[test]
