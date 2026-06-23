@@ -29,7 +29,8 @@ use crate::proxy_core_adapter::{
     live_token_sync_provider_from_db,
     live_config_has_proxy_placeholder_for_app, live_takeover_config_matches_proxy_for_app,
     live_takeover_app_types, provider_settings_have_proxy_placeholder_for_app,
-    proxy_app_enabled_from_db, sync_provider_settings_with_live_token,
+    persist_ephemeral_listen_port_if_needed_in_db, proxy_app_enabled_from_db,
+    proxy_config_from_db, sync_provider_settings_with_live_token,
     preserve_codex_mcp_servers_from_existing_config,
     preserve_codex_oauth_auth_in_backup_for_configured_policy,
     remove_claude_takeover_env_fields_if_present, CodexLiveWriteProjection,
@@ -48,9 +49,10 @@ use crate::proxy_core_adapter::{
     remove_gemini_takeover_env_fields_if_present, set_proxy_app_enabled_in_db,
     set_legacy_live_takeover_active_best_effort_in_db,
     set_legacy_live_takeover_active_in_db, should_block_proxy_switch_to_provider,
-    update_live_token_sync_provider_settings_in_db, CircuitBreakerConfig, CodexTakeoverAuthPolicy,
-    LiveTokenProviderSettingsIssue, ProxyConfig, ProxyRuntimeStatus, ProxyServerInfo,
-    ProxyTakeoverStatus,
+    update_live_token_sync_provider_settings_in_db,
+    update_proxy_config_preserving_live_takeover_active_in_db, CircuitBreakerConfig,
+    CodexTakeoverAuthPolicy, LiveTokenProviderSettingsIssue, ProxyConfig, ProxyRuntimeStatus,
+    ProxyServerInfo, ProxyTakeoverStatus,
 };
 use crate::services::provider::{
     build_effective_settings_with_common_config, write_live_with_common_config,
@@ -179,11 +181,7 @@ impl ProxyService {
         enable_global_proxy_in_db(&self.db).await?;
 
         // 2. 获取配置
-        let config = self
-            .db
-            .get_proxy_config()
-            .await
-            .map_err(|e| format!("获取代理配置失败: {e}"))?;
+        let config = proxy_config_from_db(&self.db).await?;
 
         // 3. 若已在运行：确保持久化状态（如需要）并返回当前信息
         if let Some(server) = self.server.read().await.as_ref() {
@@ -223,24 +221,11 @@ impl ProxyService {
         config: &ProxyConfig,
         actual_port: u16,
     ) -> Result<(), String> {
-        if config.listen_port != 0 {
-            return Ok(());
-        }
-
-        let mut resolved_config = config.clone();
-        resolved_config.listen_port = actual_port;
-        self.db
-            .update_proxy_config(resolved_config)
-            .await
-            .map_err(|e| format!("保存动态代理端口失败: {e}"))
+        persist_ephemeral_listen_port_if_needed_in_db(&self.db, config, actual_port).await
     }
 
     async fn start_before_takeover_if_ephemeral_port(&self) -> Result<bool, String> {
-        let config = self
-            .db
-            .get_proxy_config()
-            .await
-            .map_err(|e| format!("获取代理配置失败: {e}"))?;
+        let config = proxy_config_from_db(&self.db).await?;
         if config.listen_port != 0 || self.is_running().await {
             return Ok(false);
         }
@@ -737,11 +722,7 @@ impl ProxyService {
 
     /// 构造写入 Live 的代理地址（处理 0.0.0.0 / IPv6 等特殊情况）
     async fn build_proxy_urls(&self) -> Result<(String, String), String> {
-        let config = self
-            .db
-            .get_proxy_config()
-            .await
-            .map_err(|e| format!("获取代理配置失败: {e}"))?;
+        let config = proxy_config_from_db(&self.db).await?;
 
         let mut listen_port = config.listen_port;
         if let Some(server) = self.server.read().await.as_ref() {
@@ -1621,29 +1602,13 @@ impl ProxyService {
 
     /// 获取代理配置
     pub async fn get_config(&self) -> Result<ProxyConfig, String> {
-        self.db
-            .get_proxy_config()
-            .await
-            .map_err(|e| format!("获取代理配置失败: {e}"))
+        proxy_config_from_db(&self.db).await
     }
 
     /// 更新代理配置
     pub async fn update_config(&self, config: &ProxyConfig) -> Result<(), String> {
-        // 记录旧配置用于判定是否需要重启
-        let previous = self
-            .db
-            .get_proxy_config()
-            .await
-            .map_err(|e| format!("获取代理配置失败: {e}"))?;
-
-        // 保存到数据库（保持 live_takeover_active 状态不变）
-        let mut new_config = config.clone();
-        new_config.live_takeover_active = previous.live_takeover_active;
-
-        self.db
-            .update_proxy_config(new_config.clone())
-            .await
-            .map_err(|e| format!("保存代理配置失败: {e}"))?;
+        let (previous, new_config) =
+            update_proxy_config_preserving_live_takeover_active_in_db(&self.db, config).await?;
 
         // 检查服务器当前状态
         let mut server_guard = self.server.write().await;

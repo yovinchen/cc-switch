@@ -234,6 +234,14 @@ const FORBIDDEN_PROXY_SERVICE_GLOBAL_PROXY_ENABLED_MARKERS: &[&str] = &[
     "获取全局代理配置失败",
     "更新代理总开关失败",
 ];
+const FORBIDDEN_PROXY_SERVICE_PROXY_CONFIG_SOURCE_MARKERS: &[&str] = &[
+    ".get_proxy_config()",
+    ".update_proxy_config(",
+    ".live_takeover_active =",
+    "获取代理配置失败",
+    "保存代理配置失败",
+    "保存动态代理端口失败",
+];
 const FORBIDDEN_FORWARDER_MANAGED_AUTH_MARKERS: &[&str] = &[
     "CopilotAuthState",
     "CodexOAuthState",
@@ -4554,6 +4562,69 @@ fn production_proxy_service_delegates_global_proxy_enabled_to_adapter() {
     assert!(
         violations.is_empty(),
         "ProxyService start/stop must delegate global proxy_enabled persistence to proxy_core_adapter:\n{}",
+        violations.join("\n")
+    );
+}
+
+#[test]
+fn production_proxy_service_delegates_proxy_config_source_to_adapter() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let path = manifest_dir.join("src/services/proxy.rs");
+    let source = fs::read_to_string(&path).expect("read services/proxy.rs");
+    let functions = [
+        (
+            "start",
+            function_slice(&source, "pub async fn start", "async fn persist_ephemeral_listen_port_if_needed"),
+        ),
+        (
+            "persist_ephemeral_listen_port_if_needed",
+            function_slice(
+                &source,
+                "async fn persist_ephemeral_listen_port_if_needed",
+                "async fn start_before_takeover_if_ephemeral_port",
+            ),
+        ),
+        (
+            "start_before_takeover_if_ephemeral_port",
+            function_slice(
+                &source,
+                "async fn start_before_takeover_if_ephemeral_port",
+                "/// 启动代理服务器（带 Live 配置接管）",
+            ),
+        ),
+        (
+            "build_proxy_urls",
+            function_slice(&source, "async fn build_proxy_urls", "/// 接管各应用的 Live 配置"),
+        ),
+        (
+            "get_config",
+            function_slice(&source, "pub async fn get_config", "/// 更新代理配置"),
+        ),
+        (
+            "update_config",
+            function_slice(&source, "pub async fn update_config", "/// 检查服务器是否正在运行"),
+        ),
+    ];
+
+    let mut violations = Vec::new();
+    for (function_name, function) in functions {
+        for (line_index, line) in production_lines(function) {
+            let code = line.split("//").next().unwrap_or_default();
+            for marker in FORBIDDEN_PROXY_SERVICE_PROXY_CONFIG_SOURCE_MARKERS {
+                if code.contains(marker) {
+                    violations.push(format!(
+                        "src/services/proxy.rs {function_name}:{} contains proxy config source marker `{}`",
+                        line_index + 1,
+                        marker
+                    ));
+                }
+            }
+        }
+    }
+
+    assert!(
+        violations.is_empty(),
+        "ProxyService must delegate proxy_config source reads and persistence to proxy_core_adapter:\n{}",
         violations.join("\n")
     );
 }

@@ -1071,6 +1071,53 @@ pub(crate) async fn set_proxy_app_enabled_in_db(
         })
 }
 
+pub(crate) async fn proxy_config_from_db(db: &Database) -> Result<ProxyConfig, String> {
+    db.get_proxy_config()
+        .await
+        .map_err(|e| format!("获取代理配置失败: {e}"))
+}
+
+pub(crate) fn proxy_config_with_ephemeral_listen_port(
+    config: &ProxyConfig,
+    actual_port: u16,
+) -> Option<ProxyConfig> {
+    if config.listen_port != 0 {
+        return None;
+    }
+
+    let mut resolved_config = config.clone();
+    resolved_config.listen_port = actual_port;
+    Some(resolved_config)
+}
+
+pub(crate) async fn persist_ephemeral_listen_port_if_needed_in_db(
+    db: &Database,
+    config: &ProxyConfig,
+    actual_port: u16,
+) -> Result<(), String> {
+    let Some(resolved_config) = proxy_config_with_ephemeral_listen_port(config, actual_port) else {
+        return Ok(());
+    };
+
+    db.update_proxy_config(resolved_config)
+        .await
+        .map_err(|e| format!("保存动态代理端口失败: {e}"))
+}
+
+pub(crate) async fn update_proxy_config_preserving_live_takeover_active_in_db(
+    db: &Database,
+    config: &ProxyConfig,
+) -> Result<(ProxyConfig, ProxyConfig), String> {
+    let previous = proxy_config_from_db(db).await?;
+    let mut new_config = config.clone();
+    new_config.live_takeover_active = previous.live_takeover_active;
+
+    db.update_proxy_config(new_config.clone())
+        .await
+        .map_err(|e| format!("保存代理配置失败: {e}"))?;
+    Ok((previous, new_config))
+}
+
 pub(crate) async fn clear_live_takeover_enabled_flags_in_db(db: &Database) {
     for app_type in live_takeover_app_types() {
         let app_type = app_type.as_str();
