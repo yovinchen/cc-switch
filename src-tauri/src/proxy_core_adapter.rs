@@ -507,6 +507,13 @@ pub(crate) fn codex_chat_error_proxy_response(
     rebuilt_json_proxy_response(status, headers, normalized.response_error)
 }
 
+pub(crate) async fn record_codex_chat_response_history(
+    history: &CodexChatHistoryStore,
+    response: &Value,
+) -> usize {
+    history.record_response(response).await
+}
+
 pub(crate) fn current_route_target_from_forward_attempt(
     app_type: &str,
     attempt: &ForwardAttempt,

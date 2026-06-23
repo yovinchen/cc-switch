@@ -50,7 +50,7 @@ use crate::proxy_core_adapter::{
     openai_responses_to_anthropic_message, parse_json_proxy_request_body,
     parse_json_proxy_request_body_or_null, parse_upstream_json_or_unlabeled_sse,
     upstream_response_parse_failure_log_message,
-    management_auth_decision_from_proxy_config,
+    management_auth_decision_from_proxy_config, record_codex_chat_response_history,
     provider_is_codex_oauth, provider_needs_claude_transform,
     provider_should_convert_codex_responses_to_chat, rebuilt_json_proxy_response,
     response_headers_indicate_sse, should_aggregate_codex_oauth_responses_sse,
@@ -1085,10 +1085,7 @@ async fn handle_codex_chat_to_responses_transform(
                     error,
                 )
             })?;
-    state
-        .codex_chat_history
-        .record_response(&responses_response)
-        .await;
+    record_codex_chat_response_history(&state.codex_chat_history, &responses_response).await;
 
     record_transformed_response_usage(
         state,
