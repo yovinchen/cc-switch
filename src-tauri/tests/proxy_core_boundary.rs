@@ -105,6 +105,8 @@ const FORBIDDEN_FORWARDER_CHANNEL_STATUS_MAPPING_MARKERS: &[&str] = &[
     "invalid_mapped_channel_response_status_message(",
     "StatusCode::from_u16(",
 ];
+const FORBIDDEN_FAILOVER_SWITCH_CONFIG_MARKERS: &[&str] =
+    &[".get_proxy_config_for_app(", ".enabled"];
 const FORBIDDEN_PROVIDER_MODULE_CODEX_HISTORY_MARKERS: &[&str] =
     &["codex_chat_history", "providers::codex_chat_history"];
 const FORBIDDEN_PROVIDER_MODULE_KIND_FACADE_MARKERS: &[&str] = &[
@@ -4039,6 +4041,33 @@ fn production_forwarder_delegates_failover_switch_scheduling_to_manager() {
     assert!(
         violations.is_empty(),
         "production forwarder must delegate failover switch scheduling to FailoverSwitchManager:\n{}",
+        violations.join("\n")
+    );
+}
+
+#[test]
+fn production_failover_switch_delegates_proxy_config_to_adapter() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let path = manifest_dir.join("src/proxy/failover_switch.rs");
+    let source = fs::read_to_string(&path).expect("read failover_switch.rs");
+
+    let mut violations = Vec::new();
+    for (line_index, line) in production_lines(&source) {
+        let code = line.split("//").next().unwrap_or_default();
+        for marker in FORBIDDEN_FAILOVER_SWITCH_CONFIG_MARKERS {
+            if code.contains(marker) {
+                violations.push(format!(
+                    "src/proxy/failover_switch.rs:{} contains proxy config marker `{}`",
+                    line_index + 1,
+                    marker
+                ));
+            }
+        }
+    }
+
+    assert!(
+        violations.is_empty(),
+        "FailoverSwitchManager must delegate proxy_config reads and enabled policy to proxy_core_adapter:\n{}",
         violations.join("\n")
     );
 }

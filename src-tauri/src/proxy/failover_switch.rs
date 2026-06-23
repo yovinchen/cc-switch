@@ -8,6 +8,7 @@
 use crate::database::Database;
 use crate::error::AppError;
 use crate::proxy_core_adapter::{
+    failover_switch_app_enabled_from_db,
     failover_switch_pending_key, provider_switched_failover_event_message,
 };
 use std::collections::HashSet;
@@ -102,13 +103,7 @@ impl FailoverSwitchManager {
     ) -> Result<bool, AppError> {
         // 检查该应用是否已被代理接管（enabled=true）
         // 只有被接管的应用才允许执行故障转移切换
-        let app_enabled = match self.db.get_proxy_config_for_app(app_type).await {
-            Ok(config) => config.enabled,
-            Err(e) => {
-                log::warn!("[FO-002] 无法读取 {app_type} 配置: {e}，跳过切换");
-                return Ok(false);
-            }
-        };
+        let app_enabled = failover_switch_app_enabled_from_db(self.db.as_ref(), app_type).await;
 
         if !app_enabled {
             log::debug!("[Failover] {app_type} 未启用代理，跳过切换");
