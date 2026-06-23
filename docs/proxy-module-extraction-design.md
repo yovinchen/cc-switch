@@ -1116,6 +1116,7 @@
 本轮继续把 `hot_switch_provider_inner` 的 provider 读取、官方供应商拦截、当前目标判断、Live 备份存在性读取和 current provider 双写收敛到 `proxy_core_adapter::{proxy_hot_switch_target_state_from_db,persist_hot_switch_current_provider_sources}`：service 只消费目标状态并保留 live 备份刷新、live 文件同步和运行时 active target 更新编排。
 本轮继续把 `ProxyService::{start,update_config}` 中的 `ProxyServer::new` 构造入口收敛到 `proxy_core_adapter::proxy_server_from_runtime_config`：service 仍持有运行中 server 并负责生命周期锁、启动、停止和重启编排，但不再直接绑定 runtime server 构造签名。
 本轮继续把 `restore_live_from_ssot_for_app` 的 SSOT provider live 写入调用和错误投影收敛到 `proxy_core_adapter::write_ssot_live_restore_provider_with_common_config`：service 只保留恢复分支编排，具体 provider common-config live writer 调用留在 adapter 边界内。
+本轮继续把 `ProxyServer::new` 的运行态装配收敛到 `proxy_core_adapter::proxy_state_from_runtime_sources`：server 只保留 listener/router/shutdown 生命周期编排，ProviderRouter、事件总线、failover manager、shadow/history store 与 `CcSwitchProxyServices` 装配集中在 adapter 边界内。
 
 当前原则：核心 crate 可以新增端口和领域字段，但不得引入 `tauri`、`Database`、settings、commands、services 等宿主依赖；现有 runtime 行为必须继续通过 targeted tests 证明不回归。
 
