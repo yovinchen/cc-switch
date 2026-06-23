@@ -6428,6 +6428,41 @@ fn production_proxy_server_delegates_runtime_state_type_to_adapter() {
 }
 
 #[test]
+fn production_proxy_server_keeps_host_state_constructor_test_only() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let path = manifest_dir.join("src/proxy/server.rs");
+    let source = fs::read_to_string(&path).expect("read server.rs");
+    let lines: Vec<&str> = source.lines().collect();
+
+    let mut violations = Vec::new();
+    for (line_index, line) in lines.iter().enumerate() {
+        let trimmed = line.trim();
+        if trimmed != "pub fn new(" && trimmed != "use crate::database::Database;" {
+            continue;
+        }
+
+        let previous = line_index
+            .checked_sub(1)
+            .and_then(|index| lines.get(index))
+            .map(|line| line.trim())
+            .unwrap_or_default();
+        if previous != "#[cfg(test)]" {
+            violations.push(format!(
+                "src/proxy/server.rs:{} keeps host-state constructor/import in production: `{}`",
+                line_index + 1,
+                trimmed
+            ));
+        }
+    }
+
+    assert!(
+        violations.is_empty(),
+        "production ProxyServer must receive adapter-built ProxyState instead of constructing host state from Database/AppHandle:\n{}",
+        violations.join("\n")
+    );
+}
+
+#[test]
 fn production_lib_does_not_compile_proxy_core_host_compat_module() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let path = manifest_dir.join("src/lib.rs");

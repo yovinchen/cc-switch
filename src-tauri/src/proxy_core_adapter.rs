@@ -512,7 +512,8 @@ pub(crate) fn proxy_server_from_runtime_config(
     db: Arc<Database>,
     app_handle: Option<tauri::AppHandle>,
 ) -> CcSwitchProxyServer {
-    ProxyServer::new(config, db, app_handle)
+    let state = proxy_state_from_runtime_sources(config.clone(), db, app_handle);
+    ProxyServer::from_runtime_state(config, state)
 }
 
 pub(crate) fn proxy_live_urls_from_listen_parts(

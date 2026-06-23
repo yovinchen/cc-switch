@@ -9,11 +9,11 @@
 //! a direct (non-proxied) CLI request.
 
 use super::{error::ProxyError, handlers};
+#[cfg(test)]
 use crate::database::Database;
 use crate::proxy_core_adapter::{
     emit_proxy_server_started_event_source, emit_proxy_server_stopped_event_source,
     proxy_runtime_status_from_runtime_sources, proxy_server_info_from_parts,
-    proxy_state_from_runtime_sources,
     record_proxy_server_listen_port_runtime_source,
     record_proxy_server_started_runtime_source, record_proxy_server_stopped_runtime_source,
     reset_provider_circuit_breaker_source, set_active_route_target_runtime_source,
@@ -44,19 +44,27 @@ pub struct ProxyServer {
 }
 
 impl ProxyServer {
-    pub fn new(
-        config: ProxyConfig,
-        db: Arc<Database>,
-        app_handle: Option<tauri::AppHandle>,
-    ) -> Self {
-        let state = proxy_state_from_runtime_sources(config.clone(), db, app_handle);
-
+    pub(crate) fn from_runtime_state(config: ProxyConfig, state: ProxyState) -> Self {
         Self {
             config,
             state,
             shutdown_tx: Arc::new(RwLock::new(None)),
             server_handle: Arc::new(RwLock::new(None)),
         }
+    }
+
+    #[cfg(test)]
+    pub fn new(
+        config: ProxyConfig,
+        db: Arc<Database>,
+        app_handle: Option<tauri::AppHandle>,
+    ) -> Self {
+        let state = crate::proxy_core_adapter::proxy_state_from_runtime_sources(
+            config.clone(),
+            db,
+            app_handle,
+        );
+        Self::from_runtime_state(config, state)
     }
 
     pub async fn start(&self) -> Result<ProxyServerInfo, ProxyError> {
