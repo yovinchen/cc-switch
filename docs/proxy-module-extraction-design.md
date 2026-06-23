@@ -1117,6 +1117,7 @@
 本轮继续把 `ProxyService::{start,update_config}` 中的 `ProxyServer::new` 构造入口收敛到 `proxy_core_adapter::proxy_server_from_runtime_config`：service 仍持有运行中 server 并负责生命周期锁、启动、停止和重启编排，但不再直接绑定 runtime server 构造签名。
 本轮继续把 `restore_live_from_ssot_for_app` 的 SSOT provider live 写入调用和错误投影收敛到 `proxy_core_adapter::write_ssot_live_restore_provider_with_common_config`：service 只保留恢复分支编排，具体 provider common-config live writer 调用留在 adapter 边界内。
 本轮继续把 `ProxyServer::new` 的运行态装配收敛到 `proxy_core_adapter::proxy_state_from_runtime_sources`：server 只保留 listener/router/shutdown 生命周期编排，ProviderRouter、事件总线、failover manager、shadow/history store 与 `CcSwitchProxyServices` 装配集中在 adapter 边界内。
+本轮继续把 `ProxyService::write_claude_live` 的 Claude live settings 清洗入口改为直接调用 `proxy_core_adapter::sanitize_claude_settings_for_live`：service 不再绕行 `services::provider` façade，Live 写入仍保留原有 host 文件落盘职责。
 
 当前原则：核心 crate 可以新增端口和领域字段，但不得引入 `tauri`、`Database`、settings、commands、services 等宿主依赖；现有 runtime 行为必须继续通过 targeted tests 证明不回归。
 
