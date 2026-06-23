@@ -52,8 +52,8 @@
 41. `/proxy/v1/apps/{app}/channels` GET 的普通 channel 列表 payload 与带过滤 dry-run 两种 response envelope 已迁入 `proxy-core::ChannelRecord`/`AppChannelResponse`；host 继续负责 provider router 查询和 route filter 解析。
 42. `/proxy/v1/apps/{app}/routes/current` GET 的当前路由 response envelope、active target contract 与 configured provider summary 已迁入 `proxy-core::CurrentRouteResponse<T>`/`CurrentRouteTarget`/`CurrentRouteProviderSummary`；host 继续负责 active target runtime map 和当前 provider 查询。
 43. `/proxy/v1/apps/{app}/channels/migration/preview` 与 `/materialize` 的 response envelope 和 preview channel payload 已迁入 `proxy-core::ChannelMigrationPreviewResponse<ChannelRecord>`/`ChannelMigrationMaterializeResponse`；旧 provider/endpoint 到 channel 的兼容迁移规划已由 `proxy-core::build_legacy_channel_migration_plan` 负责，host adapter 只装配本地 provider facts，DAO 只负责 DB 读写。
-44. `/proxy/v1/route/resolve` 的 request/response/candidate/rejected/source API contract 已迁入 `proxy-core::{RouteResolveRequest, RouteResolveResponse, ChannelRouteCandidate, ChannelRouteRejected, ChannelRouteSource}`；host `channel_routing` 只保留基于 DB channel record 的 dry-run 解析算法。
-45. `/proxy/v1/route/resolve` 的 dry-run 过滤、淘汰原因生成、兼容接口匹配、候选排序算法和 circuit-open 候选转 rejected 的 response mutation 已迁入 `proxy-core::route_resolve`；host `channel_routing` 缩小为 `ProxyChannelRecord -> RouteResolveChannelInput` 适配层和 `AppError` 映射，source kind 字符串使用 DAO enum 的唯一出口。
+44. `/proxy/v1/route/resolve` 的 request/response/candidate/rejected/source API contract 已迁入 `proxy-core::{RouteResolveRequest, RouteResolveResponse, ChannelRouteCandidate, ChannelRouteRejected, ChannelRouteSource}`；host 不再保留 `channel_routing` 桥接模块，DB channel record 到 route input 的投影由 adapter 承接。
+45. `/proxy/v1/route/resolve` 的 dry-run 过滤、淘汰原因生成、兼容接口匹配、候选排序算法和 circuit-open 候选转 rejected 的 response mutation 已迁入 `proxy-core::route_resolve`；`ProviderRouter` 只暴露 `RouteResolveChannelInput` 与 source，source kind 字符串使用 DAO enum 的唯一出口。
 46. `/proxy/v1/channels` POST/PATCH 与 `/proxy/v1/channels/{channel_id}/models` PUT 的 request DTO 已迁入 `proxy-core::{ProxyChannelWriteRequest, ProxyChannelPatchRequest, ProxyChannelModelWriteRequest, ProxyChannelModelsReplaceRequest}`；host DB DAO 继续负责持久化、规范化和 provider/app 校验。
 47. `/proxy/v1/health` 的 response contract 已迁入 `proxy-core::HealthCheckResponse`；host 只负责注入当前 RFC3339 时间并返回 typed JSON。
 48. `/proxy/v1/apps/{app}/models` 与 `/proxy/v1/apps/{app}/channels` 的 query DTO 和别名归一化已迁入 `proxy-core::{AppModelListQuery, AppChannelListQuery}`；host handler 只负责 axum query 提取和调用 core/adapter。
@@ -411,7 +411,7 @@
 400. Claude/Gemini 生产 request/response 调用点已从 host `transform_gemini` wrapper 改为直接调用 `proxy-core::{anthropic_request_to_gemini_request_with_shadow, gemini_response_to_anthropic_message_with_shadow, gemini_response_to_anthropic_message}`；host wrapper 仅保留测试/兼容入口，UUID suffix 生成和 rectifier 日志仍由 Tauri host 负责。
 401. `providers::transform_gemini` host facade 已删除；Gemini request/response 协议规则只在 `proxy-core::{gemini_request, gemini_response, gemini_stream}` 维护，Tauri host 仅在生产调用点注入 UUID suffix、shadow store、日志和 `ProxyError` 映射。
 402. `proxy::health` 空占位模块已删除；Provider 健康事实继续由现有 circuit breaker、health DAO/query 和 runtime status 路径表达，避免保留无行为 host surface。
-403. `proxy::channel_routing` 桥接模块已删除；management dry-run route resolution 已收敛到 `proxy_core_adapter::management_route_response_from_router_source`，adapter 负责把 router channel records 投影为 core route input、调用 `proxy-core::resolve_channel_route` 并应用 circuit-open rejection；`ProviderRouter` 只提供 channel records/source 和 live circuit availability 查询。
+403. `proxy::channel_routing` 桥接模块已删除；management dry-run route resolution 已收敛到 `proxy_core_adapter::management_route_response_from_router_source`，adapter 负责向 router 读取 core route channel input、调用 `proxy-core::resolve_channel_route` 并应用 circuit-open rejection；`ProviderRouter` 只提供 route channel inputs/source 和 live circuit availability 查询。
 404. `proxy::session::ProxySession` 未使用 host 会话类型和重复解析测试已删除；session metadata、ClientFormat 和 session-id 解析规则由 `proxy-core::session` 维护，host `proxy::session` 仅保留 UUID 生成器注入适配。
 405. 模型目录 HTTP transport 已从 `proxy::model_fetch_transport` 移到 `services::model_fetch_transport`；`proxy-core` 继续负责 OpenAI-compatible/Codex OAuth catalog 的请求计划和响应解析，host reqwest 执行层不再扩大代理转发模块表面积。
 406. `providers::models::{anthropic, openai}` 未使用 DTO 模块已删除；Anthropic/OpenAI/Codex/Gemini 协议 request/response shape 继续由 `proxy-core` 的转换与端口类型维护，host provider 层不再保留死的协议模型副本。
@@ -1000,7 +1000,7 @@
 本轮也把 usage sink bridge 的 forward error 与 transformed usage provider facts 投影收敛到 adapter，bridge 不再直接拼 provider kind、app kind 或 transformed usage record。
 本轮继续把 ConfigSource 的 app summary DTO 组装收敛到 adapter，host ConfigSource 不再直接构造 `AppSummaryConfig`。
 本轮也把管理 API token-source 决策收敛到 adapter，handler middleware 不再直接读取 `CC_SWITCH_PROXY_MANAGEMENT_TOKEN` 或调用 core 决策函数。
-本轮继续把 ProviderRouter 的 channel route records/source fallback 决策收敛到 adapter，router 只负责读取 materialized records 与按需提供 legacy preview loader。
+本轮继续把 ProviderRouter 的 channel route input/source fallback 决策收敛到 adapter，router 只消费 adapter 提供的 core route input 与 source，不再暴露 route record 命名。
 本轮继续把 ProviderRouter 的当前供应商选择结果组装收敛到 adapter，router 只消费 adapter 返回的当前 provider id，不再加载完整 Provider 实体或直接构造 `ProviderSelectionInput::current`。
 本轮继续把 ProviderRouter 的 failover 候选选择结果组装收敛到 adapter，router 只负责读取 failover lookup facts、已配置 provider id 列表和 circuit breaker 可用性，不再直接构造 `ProviderSelectionInput` 或调用 core `select_provider_ids`。
 本轮继续把 ProviderRouter 的 auto-failover 配置读取结果决策收敛到 adapter，router 只负责读取 proxy_config，读取失败时的日志和默认禁用故障转移策略由 adapter 维护。
@@ -1905,7 +1905,7 @@ ProxyRequest
 | `handlers.rs` | `transport/http/handlers.rs` + `engine` | HTTP 解析留 transport，业务处理移到 engine |
 | `handler_context.rs` | `engine/context.rs` | DB/settings 读取改为 service traits |
 | `forwarder.rs` | `engine/forward_pipeline.rs` | 切掉 Tauri/AppHandle/Database 依赖 |
-| `provider_router.rs` | `engine/routing.rs` | 当前已通过 router 端 provider/channel/config/health 四个 focused port 注入 source/store，channel route 输入已切到 router-local record，DB-backed 构造统一在 host adapter factory；下一步把这些端口对齐到 core-facing `ProviderSource`/`ChannelSource`/`HealthStore`，并把 live breaker map 迁入 runtime-owned routing service |
+| `provider_router.rs` | `engine/routing.rs` | 当前已通过 router 端 provider/channel/config/health 四个 focused port 注入 source/store，channel route 输入已切到 core `RouteResolveChannelInput`，DB-backed 构造统一在 host adapter factory；下一步把这些端口对齐到 core-facing `ProviderSource`/`ChannelSource`/`HealthStore`，并把 live breaker map 迁入 runtime-owned routing service |
 | `failover_switch.rs` | `host/cc_switch` | 核心只发 failover event |
 | `response_processor.rs` | `engine/response_pipeline.rs` | 用量落库改为 `UsageSink` |
 | `usage/logger.rs` | `host/cc_switch/database_usage_sink.rs` | 只保留 parser/calculator 在核心 |
