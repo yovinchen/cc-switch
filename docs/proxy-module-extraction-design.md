@@ -1089,6 +1089,7 @@
 本轮继续把批量 stream check 的 `proxy_targets_only` 过滤 source 读取收敛到 `proxy_core_adapter::stream_check_proxy_target_ids_from_db`：命令层不再直接组合当前 provider 与故障转移队列，只保留 provider 遍历、Copilot endpoint override、可达性探测和日志保存。
 本轮继续把 `ProxyService::get_takeover_status` 的 per-app proxy_config enabled 读取和 DTO 投影收敛到 `proxy_core_adapter::proxy_takeover_status_from_db`：service 不再直接读取 Claude/Codex/Gemini 三个配置行或手动构造 `ProxyTakeoverStatus`，读取失败按 false 的兼容语义由 adapter 维护。
 本轮继续把 Live 接管支持的 app catalog 收敛到 `proxy_core_adapter::live_takeover_app_types`：`ProxyService` 的全量恢复和残留接管检测不再手写 Claude/Codex/Gemini 列表，只保留具体 live 配置读写、恢复和检测副作用。
+本轮继续把接管开启后的官方供应商 warning source 和事件投影收敛到 `proxy_core_adapter::proxy_official_warning_event_from_current_provider_db`：`ProxyService::set_takeover_for_app` 不再直接读取当前 provider、加载 Provider 实体或拼 warning payload，只保留 Tauri `AppHandle` emit。
 
 当前原则：核心 crate 可以新增端口和领域字段，但不得引入 `tauri`、`Database`、settings、commands、services 等宿主依赖；现有 runtime 行为必须继续通过 targeted tests 证明不回归。
 
