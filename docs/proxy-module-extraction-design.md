@@ -1141,6 +1141,7 @@
 本轮继续把 provider/channel attempt started/succeeded/failed 事件发射接入 `ForwarderRuntimeStateSource`：`RequestForwarder` 只决定 attempt 阶段与时机，不再直接拆出 `ProxyEventBus` 调用 attempt event helper。
 本轮继续把 active route target 写入与 route-selected 事件发射接入 `ForwarderRuntimeStateSource`：`RequestForwarder` 不再同时拆出 `current_providers` 与 `ProxyEventBus` 调用 active target helper，后续外部宿主可替换当前路由目标存储/事件桥接。
 本轮继续把 forward success/failure 状态写入接入 `ForwarderRuntimeStateSource`：`RequestForwarder` 不再直接拆出 `ProxyRuntimeStatus` 调用 success/failure status helper，成功后是否触发 failover switch 仍由 source 返回布尔结果交给 forwarder 调度。
+本轮继续把 current provider、provider failure 与 rectifier retry failure 状态写入接入 `ForwarderRuntimeStateSource`：`RequestForwarder` 不再直接拆出 `ProxyRuntimeStatus` 调用 provider/current status helper，生产 source trait 的 `status()` 访问面也随之收窄为测试专用。
 本轮继续把 Gemini shadow session store 与 Codex Chat history store 合并为 `ForwarderProtocolStateSource`：`RequestForwarder` 不再直持协议会话状态，Claude/Gemini transform replay 和 Codex Responses->Chat history enrich 仍消费同一批 store，外部宿主可在 adapter 边界替换协议会话状态实现。
 本轮继续把 forwarder 的 provider/channel attempt runtime 包装为 `ForwarderAttemptRuntimeSource`：`RequestForwarder` 不再直持 `ProviderRouter`，attempt 放行、成功/失败健康记录和 neutral permit 释放都通过注入 source 进入 adapter helper，后续可把该 source 替换为独立中转模块的 routing/circuit runtime。
 
