@@ -1105,6 +1105,7 @@
 本轮继续把 Live token 回填后的 provider settings 持久化收敛到 `proxy_core_adapter::update_live_token_sync_provider_settings_in_db`：`ProxyService::sync_live_config_to_provider` 只负责判断 token 投影是否产生变更，DB 写回失败继续 warning-only，不阻断接管。
 本轮继续把 `ProxyService::{start,stop}` 的全局 `proxy_enabled` 持久化收敛到 `proxy_core_adapter::{enable_global_proxy_in_db,disable_global_proxy_best_effort_in_db}`：启动时启用失败仍返回错误，停止时禁用失败继续只输出 warning。
 本轮继续把 `ProxyService` 的 `proxy_config` 读取、动态端口持久化和 `update_config` 保存规则收敛到 `proxy_core_adapter::{proxy_config_from_db,persist_ephemeral_listen_port_if_needed_in_db,update_proxy_config_preserving_live_takeover_active_in_db}`：service 只消费配置事实并根据 previous/new config 判断是否重启，`live_takeover_active` 保留和动态端口写回错误投影由 adapter 维护。
+本轮继续把 `ProxyService` 中构建有效 provider settings 所需的 common config snippet 读取收敛到 `proxy_core_adapter::provider_effective_settings_with_common_config_from_db`：service 不再通过 provider live 模块穿透读取 DB snippet，只保留接管字段注入、备份合并和 live 写入编排；实际 `write_live_with_common_config` 文件写入边界留作后续独立切片。
 
 当前原则：核心 crate 可以新增端口和领域字段，但不得引入 `tauri`、`Database`、settings、commands、services 等宿主依赖；现有 runtime 行为必须继续通过 targeted tests 证明不回归。
 
