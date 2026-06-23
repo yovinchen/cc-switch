@@ -1155,6 +1155,7 @@
 本轮继续收窄 `ForwarderRequestSource` 的请求 header 策略边界：custom User-Agent provider fact 与 exact header-case 保留策略也由 request source 计算并随上游请求 parts 返回，`RequestForwarder` 不再直接消费这些请求组装 helper。
 本轮继续把 forwarder 的上游 auth header 准备包装为 `ForwarderAuthSource`：`RequestForwarder` 不再直接提取 provider auth、解析 managed-account runtime token、构造 Codex OAuth session headers、注入 Copilot optimizer auth overrides 或调用 upstream auth finalization helper，默认 source 保持现有鉴权语义，后续外部宿主可替换鉴权头组装层。
 本轮继续把 Copilot auth override 的 deterministic request id 与 interaction id 计算收敛到 `ForwarderAuthSource`：`RequestForwarder` 不再直接调用 Copilot session/request/interaction helper，只把分类结果、原始 body、上游 body 和 headers 交给 auth source 生成鉴权 override 输入。
+本轮继续把 Copilot optimizer 的请求体分类与变形收敛到 `ForwarderRequestSource`：`RequestForwarder` 不再直接调用 Copilot 分类、孤立 tool_result 清理、tool_result 合并、thinking block 剥离或 warmup 模型降级 helper，只消费 request source 返回的优化后 body 与分类事实。
 
 当前原则：核心 crate 可以新增端口和领域字段，但不得引入 `tauri`、`Database`、settings、commands、services 等宿主依赖；现有 runtime 行为必须继续通过 targeted tests 证明不回归。
 
