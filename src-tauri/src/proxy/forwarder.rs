@@ -25,8 +25,8 @@ use crate::proxy_core_adapter::{
     build_upstream_auth_headers, cache_injection_log_message, categorize_forward_failure,
     classify_copilot_request, contains_image_blocks,
     emit_attempt_event_source, emit_request_started_event_source, forward_upstream_url_plan,
-    is_openai_o_series, is_unsupported_image_error, allow_forward_attempt_runtime_source,
-    merge_copilot_tool_results,
+    forwarder_should_convert_codex_responses_to_chat, is_openai_o_series,
+    is_unsupported_image_error, allow_forward_attempt_runtime_source, merge_copilot_tool_results,
     non_streaming_body_timeout_message, normalize_thinking_type,
     prepare_upstream_request_body_with_report, prompt_cache_trace_log_message,
     provider_apply_codex_chat_upstream_model, provider_bedrock_env_flag,
@@ -34,7 +34,7 @@ use crate::proxy_core_adapter::{
     provider_claude_normalize_anthropic_messages,
     provider_claude_transform_request_for_api_format, provider_custom_user_agent_header,
     provider_codex_chat_reasoning_options, provider_is_codex_oauth, provider_is_full_url,
-    provider_is_github_copilot_upstream, provider_should_convert_codex_responses_to_chat,
+    provider_is_github_copilot_upstream,
     provider_uses_anthropic_rectifiers, rectify_anthropic_request, rectify_thinking_budget,
     replace_image_blocks_with_marker,
     record_forward_attempt_failure_runtime_source,
@@ -1315,8 +1315,8 @@ impl RequestForwarder {
             }
             None => adapter.needs_transform(provider),
         };
-        let codex_responses_to_chat = matches!(app_type, AppType::Codex)
-            && provider_should_convert_codex_responses_to_chat(provider, endpoint);
+        let codex_responses_to_chat =
+            forwarder_should_convert_codex_responses_to_chat(app_type, provider, endpoint);
         let claude_api_format_for_url = resolved_claude_api_format.as_deref().or_else(|| {
             (adapter.name() == "Claude").then(|| provider_claude_api_format(provider))
         });
