@@ -1187,16 +1187,10 @@ impl ProxyService {
         self.restore_live_configs().await?;
 
         // 2. 清除接管标志
-        self.db
-            .set_live_takeover_active(false)
-            .await
-            .map_err(|e| format!("清除接管状态失败: {e}"))?;
+        clear_legacy_live_takeover_active_flag_strict_in_db(&self.db).await?;
 
         // 3. 删除备份
-        self.db
-            .delete_all_live_backups()
-            .await
-            .map_err(|e| format!("删除备份失败: {e}"))?;
+        delete_all_live_backups_in_db(&self.db).await?;
 
         log::info!("已从异常退出中恢复 Live 配置");
         Ok(())
