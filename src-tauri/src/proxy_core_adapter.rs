@@ -4350,7 +4350,7 @@ struct CcSwitchProviderRouterChannelSource {
 }
 
 impl ProviderRouterChannelSource for CcSwitchProviderRouterChannelSource {
-    fn channel_route_records(
+    fn channel_route_inputs(
         &self,
         app_type: &str,
     ) -> Result<(Vec<RouteResolveChannelInput>, ChannelRouteSource), AppError> {
@@ -6328,9 +6328,9 @@ pub(crate) async fn management_route_response_from_router_source(
     request: RouteResolveRequest,
 ) -> ProxyCoreResult<RouteResolveResponse> {
     let (channels, source) = router
-        .list_channels_for_app(&request.app_type)
+        .list_route_channel_inputs_for_app(&request.app_type)
         .await
-        .map_err(|error| app_error("list channel route records", error))?;
+        .map_err(|error| app_error("list channel route inputs", error))?;
     let mut response = resolve_channel_route(request, channels, source)?;
     let availability = router
         .route_candidate_circuit_availability(route_candidate_channel_circuit_keys(&response))

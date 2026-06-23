@@ -377,6 +377,7 @@ const FORBIDDEN_PROVIDER_ROUTER_CHANNEL_DAO_MARKERS: &[&str] = &[
     "ProxyChannelSourceKind",
     "ProviderRouterChannelRecord",
     "ProviderRouterChannelModelRecord",
+    "channel_route_records(",
 ];
 const FORBIDDEN_PROVIDER_ROUTER_PROVIDER_RECORD_MARKERS: &[&str] = &[
     "use crate::provider::Provider",
@@ -3910,7 +3911,7 @@ fn production_provider_router_uses_split_source_ports() {
 }
 
 #[test]
-fn production_provider_router_uses_route_channel_records() {
+fn production_provider_router_uses_route_channel_inputs() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let path = manifest_dir.join("src/proxy/provider_router.rs");
     let source = fs::read_to_string(&path).expect("read provider_router.rs");
@@ -3931,7 +3932,7 @@ fn production_provider_router_uses_route_channel_records() {
 
     assert!(
         violations.is_empty(),
-        "provider router must use route-focused channel records instead of database DAO records:\n{}",
+        "provider router must use core route channel inputs instead of database DAO records or router-local records:\n{}",
         violations.join("\n")
     );
 }

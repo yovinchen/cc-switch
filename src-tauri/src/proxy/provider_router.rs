@@ -39,7 +39,7 @@ pub(crate) trait ProviderRouterProviderSource: Send + Sync {
 }
 
 pub(crate) trait ProviderRouterChannelSource: Send + Sync {
-    fn channel_route_records(
+    fn channel_route_inputs(
         &self,
         app_type: &str,
     ) -> Result<(Vec<RouteResolveChannelInput>, ChannelRouteSource), AppError>;
@@ -155,11 +155,11 @@ impl ProviderRouter {
     ///
     /// Materialized proxy_channels win. If the migration table is still empty,
     /// fall back to a live projection from legacy providers/provider_endpoints.
-    pub async fn list_channels_for_app(
+    pub async fn list_route_channel_inputs_for_app(
         &self,
         app_type: &str,
     ) -> Result<(Vec<RouteResolveChannelInput>, ChannelRouteSource), AppError> {
-        self.sources.channels.channel_route_records(app_type)
+        self.sources.channels.channel_route_inputs(app_type)
     }
 
     /// Query live Channel circuit breaker availability for management dry-run candidates.
