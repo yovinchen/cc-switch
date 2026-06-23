@@ -16,26 +16,23 @@ use super::{
     server::ProxyState,
 };
 use crate::proxy_core_adapter::{
-    decode_response_body, get_content_encoding, non_streaming_body_timeout_message,
-    non_streaming_response_usage_record_from_response_context, NonStreamingResponseUsageContext,
-    passthrough_bytes_proxy_response, passthrough_stream_proxy_response,
+    create_logged_passthrough_stream, decode_response_body, get_content_encoding,
+    non_streaming_body_timeout_message, non_streaming_response_usage_record_from_response_context,
+    NonStreamingResponseUsageContext, passthrough_bytes_proxy_response,
+    passthrough_stream_proxy_response,
     record_usage_with_proxy_services,
     response_headers_indicate_sse, response_headers_log_summary,
     response_usage_provider_facts_from_optional,
     streaming_response_usage_record_from_response_context, StreamingResponseUsageContext,
-    usage_logging_enabled_from_config_flag, ResponseBodyDecodeLogLevel, SseEventScanner,
-    SsePassthroughEventKind, SseUsageAccumulator, StreamUsageEventFilter, StreamingTimeoutConfig,
-    StreamingTimeoutPhase, UsageParserConfig, UsageRecord, UsageSelectedProviderMissingPhase,
+    usage_logging_enabled_from_config_flag, ResponseBodyDecodeLogLevel, SseUsageCollector,
+    UsageParserConfig, UsageRecord, UsageSelectedProviderMissingPhase,
 };
 #[cfg(test)]
 use crate::proxy_core_adapter::{provider_router_from_database, ProviderKind, TokenUsage};
 use axum::http::header::HeaderMap;
 use axum::response::{IntoResponse, Response};
 use bytes::Bytes;
-use futures::stream::{Stream, StreamExt};
-use serde_json::Value;
-use std::{sync::Arc, time::Duration};
-use tokio::sync::Mutex;
+use std::time::Duration;
 
 /// 读取响应体并在需要时解压，确保 headers 与返回 body 一致。
 ///
@@ -209,96 +206,6 @@ pub async fn process_response(
 }
 
 // ============================================================================
-// SSE 使用量收集器
-// ============================================================================
-
-type UsageCallbackWithTiming = Arc<dyn Fn(Vec<Value>, Option<u64>) + Send + Sync + 'static>;
-
-/// SSE 使用量收集器
-#[derive(Clone)]
-pub struct SseUsageCollector {
-    inner: Arc<SseUsageCollectorInner>,
-}
-
-struct SseUsageCollectorInner {
-    accumulator: Mutex<SseUsageAccumulator>,
-    on_complete: UsageCallbackWithTiming,
-    should_collect: Option<StreamUsageEventFilter>,
-}
-
-impl SseUsageCollector {
-    /// 创建使用量收集器；`should_collect` 用来在 hot path 跳过与 usage 无关的事件。
-    pub fn new(
-        start_time: std::time::Instant,
-        should_collect: Option<StreamUsageEventFilter>,
-        callback: impl Fn(Vec<Value>, Option<u64>) + Send + Sync + 'static,
-    ) -> Self {
-        let on_complete: UsageCallbackWithTiming = Arc::new(callback);
-        Self {
-            inner: Arc::new(SseUsageCollectorInner {
-                accumulator: Mutex::new(SseUsageAccumulator::new(start_time)),
-                on_complete,
-                should_collect,
-            }),
-        }
-    }
-
-    pub fn should_collect(&self, data: &str) -> bool {
-        self.inner
-            .should_collect
-            .map(|filter| filter(data))
-            .unwrap_or(true)
-    }
-
-    /// 推送 SSE 事件
-    pub async fn push(&self, event: Value) {
-        let mut accumulator = self.inner.accumulator.lock().await;
-        accumulator.push(event);
-    }
-
-    /// 完成收集并触发回调
-    pub async fn finish(&self) {
-        let snapshot = {
-            let mut accumulator = self.inner.accumulator.lock().await;
-            accumulator.finish()
-        };
-        if let Some(snapshot) = snapshot {
-            (self.inner.on_complete)(snapshot.events, snapshot.first_token_ms);
-        }
-    }
-}
-
-struct SseUsageFinishGuard {
-    collector: Option<SseUsageCollector>,
-}
-
-impl SseUsageFinishGuard {
-    fn new(collector: SseUsageCollector) -> Self {
-        Self {
-            collector: Some(collector),
-        }
-    }
-
-    fn disarm(&mut self) {
-        self.collector = None;
-    }
-}
-
-impl Drop for SseUsageFinishGuard {
-    fn drop(&mut self) {
-        if let Some(collector) = self.collector.take() {
-            if let Ok(handle) = tokio::runtime::Handle::try_current() {
-                handle.spawn(async move {
-                    collector.finish().await;
-                });
-            } else {
-                log::warn!("SSE 用量收尾保护触发时 Tokio runtime 不可用，跳过异步 finish");
-            }
-        }
-    }
-}
-
-// ============================================================================
 // 内部辅助函数
 // ============================================================================
 
@@ -424,107 +331,6 @@ async fn log_usage_internal(
     );
 
     record_usage_with_proxy_services(state.proxy_core_services.as_ref(), record).await;
-}
-
-/// 创建带日志记录和超时控制的透传流
-pub fn create_logged_passthrough_stream(
-    stream: impl Stream<Item = Result<Bytes, std::io::Error>> + Send + 'static,
-    tag: &'static str,
-    usage_collector: Option<SseUsageCollector>,
-    timeout_config: StreamingTimeoutConfig,
-    connection_guard: Option<ActiveConnectionGuard>,
-) -> impl Stream<Item = Result<Bytes, std::io::Error>> + Send {
-    async_stream::stream! {
-        let _conn_guard = connection_guard;
-        let mut sse_scanner = SseEventScanner::new();
-        let mut collector = usage_collector;
-        let mut finish_guard = collector.clone().map(SseUsageFinishGuard::new);
-        let inspect_sse_events =
-            collector.is_some() || log::log_enabled!(log::Level::Debug);
-        let mut is_first_chunk = true;
-
-        tokio::pin!(stream);
-
-        loop {
-            // 选择超时时间：首字节超时或静默期超时
-            let timeout_phase = if is_first_chunk {
-                StreamingTimeoutPhase::FirstByte
-            } else {
-                StreamingTimeoutPhase::Idle
-            };
-            let timeout_duration = timeout_config.duration_for_phase(timeout_phase);
-
-            let chunk_result = match timeout_duration {
-                Some(duration) => {
-                    match tokio::time::timeout(duration, stream.next()).await {
-                        Ok(Some(chunk)) => Some(chunk),
-                        Ok(None) => None, // 流结束
-                        Err(_) => {
-                            // 超时
-                            log::error!(
-                                "[{tag}] {} ({}秒)",
-                                timeout_phase.timeout_message(),
-                                duration.as_secs()
-                            );
-                            yield Err(std::io::Error::other(timeout_phase.timeout_message()));
-                            break;
-                        }
-                    }
-                }
-                None => stream.next().await, // 无超时限制
-            };
-
-            match chunk_result {
-                Some(Ok(bytes)) => {
-                    if is_first_chunk {
-                        log::debug!(
-                            "[{tag}] 已接收上游流式首包: bytes={}",
-                            bytes.len()
-                        );
-                    }
-                    is_first_chunk = false;
-                    if inspect_sse_events {
-                        let events = sse_scanner.push_passthrough_bytes(&bytes, |data| {
-                            collector
-                                .as_ref()
-                                .map(|collector| collector.should_collect(data))
-                                .unwrap_or(false)
-                        });
-
-                        for event in events {
-                            let log_message = event.log_message(tag);
-                            if event.kind == SsePassthroughEventKind::Collect {
-                                if let (Some(collector), Some(json_value)) =
-                                    (&collector, event.parsed)
-                                {
-                                    collector.push(json_value).await;
-                                }
-                            }
-                            log::debug!("{log_message}");
-                        }
-                    }
-
-                    yield Ok(bytes);
-                }
-                Some(Err(e)) => {
-                    log::error!("[{tag}] 流错误: {e}");
-                    yield Err(std::io::Error::other(e.to_string()));
-                    break;
-                }
-                None => {
-                    // 流正常结束
-                    break;
-                }
-            }
-        }
-
-        if let Some(c) = collector.take() {
-            c.finish().await;
-        }
-        if let Some(guard) = &mut finish_guard {
-            guard.disarm();
-        }
-    }
 }
 
 #[cfg(test)]

@@ -22,7 +22,7 @@ use super::{
         collect_axum_request_body, proxy_core_response_to_axum_response,
         proxy_core_response_to_proxy_response, proxy_event_envelope_to_axum_sse_event,
     },
-    response_processor::{create_logged_passthrough_stream, process_response, read_decoded_body},
+    response_processor::{process_response, read_decoded_body},
     server::ProxyState,
     usage_sink_bridge::{
         record_forward_error_usage, record_transformed_response_usage,
@@ -30,12 +30,12 @@ use super::{
     },
 };
 use crate::app_config::AppType;
-use crate::proxy_core_adapter::synthesize_gemini_tool_call_id_with_uuid;
 use crate::proxy_core_adapter::{
     append_query_to_endpoint_path,
     chat_completion_to_response_with_context as build_chat_completion_response_with_context,
     claude_stream_usage_event_filter, claude_transform_unlabeled_sse_aggregation,
     codex_stream_usage_event_filter,
+    create_logged_passthrough_stream,
     create_codex_chat_to_responses_sse_stream_with_context as create_responses_sse_stream_from_chat_with_context,
     create_gemini_to_anthropic_sse_stream_with_callbacks as create_anthropic_sse_stream_from_gemini,
     create_openai_chat_to_anthropic_sse_stream as create_anthropic_sse_stream,
@@ -50,7 +50,8 @@ use crate::proxy_core_adapter::{
     provider_should_convert_codex_responses_to_chat, rebuilt_json_proxy_response,
     response_headers_indicate_sse, should_aggregate_codex_oauth_responses_sse,
     should_use_claude_transform_streaming,
-    strip_endpoint_prefix, transformed_sse_proxy_response, validate_management_bearer_header,
+    strip_endpoint_prefix, synthesize_gemini_tool_call_id_with_uuid,
+    transformed_sse_proxy_response, validate_management_bearer_header,
     AppChannelListQuery, AppChannelManagementRequest, AppChannelResponse, AppKind, AppListRequest,
     AppListResponse, AppModelCatalogRequest, AppModelListQuery, ChannelCreateRequest,
     ChannelDeleteResponse, ChannelHealthResetResponse, ChannelKeyDeleteResponse,

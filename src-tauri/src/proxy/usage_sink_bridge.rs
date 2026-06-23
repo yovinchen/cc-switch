@@ -2,12 +2,12 @@ use crate::proxy::{
     error::ProxyError,
     error_mapper::{get_error_message, map_proxy_error_to_status},
     handler_context::RequestContext,
-    response_processor::SseUsageCollector,
     server::ProxyState,
 };
 use crate::proxy_core_adapter::{
     forward_error_usage_record_from_response_context, record_usage_with_proxy_services_context,
     response_usage_provider_facts_from_optional,
+    SseUsageCollector,
     transformed_response_usage_record_from_response_context,
     transformed_streaming_response_usage_record_from_response_context,
     usage_logging_enabled_from_config_flag, ForwardErrorUsageContext, ProxyServices,

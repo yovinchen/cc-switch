@@ -45,7 +45,7 @@ use rust_decimal::Decimal;
 use serde_json::{Map, Value, json};
 use std::collections::HashMap;
 use std::sync::Arc;
-use tokio::sync::RwLock;
+use tokio::sync::{Mutex, RwLock};
 use uuid::Uuid;
 
 pub(crate) const COPILOT_EDITOR_VERSION: &str = "vscode/1.110.1";
@@ -6274,6 +6274,188 @@ where
         plan: RoutePlan,
     ) -> BoxFuture<'a, ProxyCoreResult<ProxyResult>> {
         forward_with_optional_host_runtime(self.runtime.as_ref(), request, plan)
+    }
+}
+
+type UsageCallbackWithTiming = Arc<dyn Fn(Vec<Value>, Option<u64>) + Send + Sync + 'static>;
+
+#[derive(Clone)]
+pub(crate) struct SseUsageCollector {
+    inner: Arc<SseUsageCollectorInner>,
+}
+
+struct SseUsageCollectorInner {
+    accumulator: Mutex<SseUsageAccumulator>,
+    on_complete: UsageCallbackWithTiming,
+    should_collect: Option<StreamUsageEventFilter>,
+}
+
+impl SseUsageCollector {
+    pub(crate) fn new(
+        start_time: std::time::Instant,
+        should_collect: Option<StreamUsageEventFilter>,
+        callback: impl Fn(Vec<Value>, Option<u64>) + Send + Sync + 'static,
+    ) -> Self {
+        let on_complete: UsageCallbackWithTiming = Arc::new(callback);
+        Self {
+            inner: Arc::new(SseUsageCollectorInner {
+                accumulator: Mutex::new(SseUsageAccumulator::new(start_time)),
+                on_complete,
+                should_collect,
+            }),
+        }
+    }
+
+    pub(crate) fn should_collect(&self, data: &str) -> bool {
+        self.inner
+            .should_collect
+            .map(|filter| filter(data))
+            .unwrap_or(true)
+    }
+
+    pub(crate) async fn push(&self, event: Value) {
+        let mut accumulator = self.inner.accumulator.lock().await;
+        accumulator.push(event);
+    }
+
+    pub(crate) async fn finish(&self) {
+        let snapshot = {
+            let mut accumulator = self.inner.accumulator.lock().await;
+            accumulator.finish()
+        };
+        if let Some(snapshot) = snapshot {
+            (self.inner.on_complete)(snapshot.events, snapshot.first_token_ms);
+        }
+    }
+}
+
+struct SseUsageFinishGuard {
+    collector: Option<SseUsageCollector>,
+}
+
+impl SseUsageFinishGuard {
+    fn new(collector: SseUsageCollector) -> Self {
+        Self {
+            collector: Some(collector),
+        }
+    }
+
+    fn disarm(&mut self) {
+        self.collector = None;
+    }
+}
+
+impl Drop for SseUsageFinishGuard {
+    fn drop(&mut self) {
+        if let Some(collector) = self.collector.take() {
+            if let Ok(handle) = tokio::runtime::Handle::try_current() {
+                handle.spawn(async move {
+                    collector.finish().await;
+                });
+            } else {
+                log::warn!("SSE 用量收尾保护触发时 Tokio runtime 不可用，跳过异步 finish");
+            }
+        }
+    }
+}
+
+pub(crate) fn create_logged_passthrough_stream<G>(
+    stream: impl Stream<Item = Result<Bytes, std::io::Error>> + Send + 'static,
+    tag: &'static str,
+    usage_collector: Option<SseUsageCollector>,
+    timeout_config: StreamingTimeoutConfig,
+    connection_guard: Option<G>,
+) -> impl Stream<Item = Result<Bytes, std::io::Error>> + Send
+where
+    G: Send + 'static,
+{
+    async_stream::stream! {
+        let _conn_guard = connection_guard;
+        let mut sse_scanner = SseEventScanner::new();
+        let mut collector = usage_collector;
+        let mut finish_guard = collector.clone().map(SseUsageFinishGuard::new);
+        let inspect_sse_events =
+            collector.is_some() || log::log_enabled!(log::Level::Debug);
+        let mut is_first_chunk = true;
+
+        tokio::pin!(stream);
+
+        loop {
+            let timeout_phase = if is_first_chunk {
+                StreamingTimeoutPhase::FirstByte
+            } else {
+                StreamingTimeoutPhase::Idle
+            };
+            let timeout_duration = timeout_config.duration_for_phase(timeout_phase);
+
+            let chunk_result = match timeout_duration {
+                Some(duration) => {
+                    match tokio::time::timeout(duration, stream.next()).await {
+                        Ok(Some(chunk)) => Some(chunk),
+                        Ok(None) => None,
+                        Err(_) => {
+                            log::error!(
+                                "[{tag}] {} ({}秒)",
+                                timeout_phase.timeout_message(),
+                                duration.as_secs()
+                            );
+                            yield Err(std::io::Error::other(timeout_phase.timeout_message()));
+                            break;
+                        }
+                    }
+                }
+                None => stream.next().await,
+            };
+
+            match chunk_result {
+                Some(Ok(bytes)) => {
+                    if is_first_chunk {
+                        log::debug!(
+                            "[{tag}] 已接收上游流式首包: bytes={}",
+                            bytes.len()
+                        );
+                    }
+                    is_first_chunk = false;
+                    if inspect_sse_events {
+                        let events = sse_scanner.push_passthrough_bytes(&bytes, |data| {
+                            collector
+                                .as_ref()
+                                .map(|collector| collector.should_collect(data))
+                                .unwrap_or(false)
+                        });
+
+                        for event in events {
+                            let log_message = event.log_message(tag);
+                            if event.kind == SsePassthroughEventKind::Collect {
+                                if let (Some(collector), Some(json_value)) =
+                                    (&collector, event.parsed)
+                                {
+                                    collector.push(json_value).await;
+                                }
+                            }
+                            log::debug!("{log_message}");
+                        }
+                    }
+
+                    yield Ok(bytes);
+                }
+                Some(Err(e)) => {
+                    log::error!("[{tag}] 流错误: {e}");
+                    yield Err(std::io::Error::other(e.to_string()));
+                    break;
+                }
+                None => {
+                    break;
+                }
+            }
+        }
+
+        if let Some(c) = collector.take() {
+            c.finish().await;
+        }
+        if let Some(guard) = &mut finish_guard {
+            guard.disarm();
+        }
     }
 }
 

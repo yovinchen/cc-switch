@@ -786,6 +786,17 @@ const FORBIDDEN_RESPONSE_PROCESSOR_USAGE_PROVIDER_PROJECTION_MARKERS: &[&str] = 
     "non_streaming_response_usage_record_from_body_with_request_id_fallback(",
     "non_streaming_response_usage_record_from_provider_body_with_request_id_fallback(",
 ];
+const FORBIDDEN_RESPONSE_PROCESSOR_STREAM_ORCHESTRATION_MARKERS: &[&str] = &[
+    "fn create_logged_passthrough_stream(",
+    "async_stream::stream!",
+    "SseEventScanner",
+    "SsePassthroughEventKind",
+    "SseUsageAccumulator",
+    "SseUsageFinishGuard",
+    "StreamingTimeoutPhase",
+    "tokio::time::timeout(duration, stream.next())",
+    "push_passthrough_bytes(",
+];
 const FORBIDDEN_USAGE_SINK_PROVIDER_PROJECTION_MARKERS: &[&str] = &[
     "provider_kind_from_provider(",
     "AppKind::from(",
@@ -2302,6 +2313,33 @@ fn response_processor_delegates_usage_provider_projection_to_adapter() {
     assert!(
         violations.is_empty(),
         "response processor must build provider usage facts through proxy_core_adapter helpers:\n{}",
+        violations.join("\n")
+    );
+}
+
+#[test]
+fn response_processor_delegates_stream_orchestration_to_adapter() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let path = manifest_dir.join("src/proxy/response_processor.rs");
+    let source = fs::read_to_string(&path).expect("read response_processor.rs");
+
+    let mut violations = Vec::new();
+    for (line_index, line) in production_lines(&source) {
+        let code = line.split("//").next().unwrap_or_default();
+        for marker in FORBIDDEN_RESPONSE_PROCESSOR_STREAM_ORCHESTRATION_MARKERS {
+            if code.contains(marker) {
+                violations.push(format!(
+                    "src/proxy/response_processor.rs:{} contains stream orchestration marker `{}`",
+                    line_index + 1,
+                    marker
+                ));
+            }
+        }
+    }
+
+    assert!(
+        violations.is_empty(),
+        "response processor must delegate stream scanner/timeout orchestration to proxy_core_adapter:\n{}",
         violations.join("\n")
     );
 }
