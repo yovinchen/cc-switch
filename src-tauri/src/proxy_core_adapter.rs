@@ -3284,6 +3284,26 @@ pub(crate) trait ManagedAccountRuntimeSource: Send + Sync {
         })
     }
 
+    fn resolve_copilot_live_model_for_provider<'a>(
+        &'a self,
+        auth_provider: &'a Provider,
+        model_id: &'a str,
+    ) -> BoxFuture<'a, Result<Option<String>, String>> {
+        Box::pin(async move {
+            let Some(models) = self
+                .fetch_copilot_live_models_for_provider(auth_provider)
+                .await?
+            else {
+                return Ok(None);
+            };
+
+            Ok(resolve_copilot_model_against_ids(
+                model_id,
+                models.iter().map(|model| model.id.as_str()),
+            ))
+        })
+    }
+
     fn resolve_copilot_model_vendor_for_provider<'a>(
         &'a self,
         auth_provider: &'a Provider,

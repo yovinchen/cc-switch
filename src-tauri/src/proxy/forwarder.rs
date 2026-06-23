@@ -28,8 +28,7 @@ use crate::proxy_core_adapter::{
     forwarder_claude_normalize_anthropic_messages,
     provider_adapter_name_is_claude,
     rectify_anthropic_request, rectify_thinking_budget, replace_image_blocks_with_marker,
-    resolve_copilot_deterministic_interaction_id, resolve_copilot_model_against_ids,
-    resolve_copilot_optimizer_session_id,
+    resolve_copilot_deterministic_interaction_id, resolve_copilot_optimizer_session_id,
     resolve_copilot_request_id_with_fallback, resolve_channel_response_status_mapping,
     resolve_media_prevention_policy,
     forwarder_claude_api_format, forwarder_claude_transform_required,
@@ -1532,12 +1531,12 @@ impl RequestForwarder {
         };
         let model_id = model_id.to_string();
 
-        let models = match self
+        let resolved = match self
             .managed_account_runtime_source
-            .fetch_copilot_live_models_for_provider(provider)
+            .resolve_copilot_live_model_for_provider(provider, &model_id)
             .await
         {
-            Ok(Some(models)) => models,
+            Ok(Some(resolved)) => resolved,
             Ok(None) => return,
             Err(err) => {
                 log::debug!("[Copilot] live model list unavailable, skip resolution: {err}");
@@ -1545,13 +1544,8 @@ impl RequestForwarder {
             }
         };
 
-        if let Some(resolved) = resolve_copilot_model_against_ids(
-            &model_id,
-            models.iter().map(|model| model.id.as_str()),
-        ) {
-            log::info!("[Copilot] live-model resolve: {model_id} → {resolved}");
-            body["model"] = serde_json::Value::String(resolved);
-        }
+        log::info!("[Copilot] live-model resolve: {model_id} → {resolved}");
+        body["model"] = serde_json::Value::String(resolved);
     }
 }
 
