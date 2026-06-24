@@ -8133,10 +8133,6 @@ pub(crate) struct ForwarderFailoverSwitchTarget {
 }
 
 pub(crate) trait ForwarderRuntimeStateSource {
-    #[cfg(test)]
-    fn status(&self) -> Arc<RwLock<ProxyRuntimeStatus>>;
-    #[cfg(test)]
-    fn events(&self) -> Arc<ProxyEventBus>;
     fn next_request_id(&self) -> String;
     fn emit_request_started(&self, request_id: &str, app_type: &str);
     fn emit_attempt_started(&self, request_id: &str, app_type: &str, attempt: &ForwardAttempt);
@@ -8227,19 +8223,14 @@ impl CcSwitchForwarderRuntimeStateSource {
             events,
         }
     }
-}
 
-impl ForwarderRuntimeStateSource for CcSwitchForwarderRuntimeStateSource {
     #[cfg(test)]
     fn status(&self) -> Arc<RwLock<ProxyRuntimeStatus>> {
         self.status.clone()
     }
+}
 
-    #[cfg(test)]
-    fn events(&self) -> Arc<ProxyEventBus> {
-        self.events.clone()
-    }
-
+impl ForwarderRuntimeStateSource for CcSwitchForwarderRuntimeStateSource {
     fn next_request_id(&self) -> String {
         Uuid::new_v4().to_string()
     }

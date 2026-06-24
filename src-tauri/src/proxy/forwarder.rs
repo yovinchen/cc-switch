@@ -1185,10 +1185,30 @@ mod tests {
         assert_eq!(forwarder_bedrock_env_flag(&provider), Some("1"));
     }
 
+    struct TestForwarder {
+        forwarder: RequestForwarder,
+        status: Arc<RwLock<ProxyRuntimeStatus>>,
+        events: Arc<ProxyEventBus>,
+    }
+
+    impl std::ops::Deref for TestForwarder {
+        type Target = RequestForwarder;
+
+        fn deref(&self) -> &Self::Target {
+            &self.forwarder
+        }
+    }
+
+    impl std::ops::DerefMut for TestForwarder {
+        fn deref_mut(&mut self) -> &mut Self::Target {
+            &mut self.forwarder
+        }
+    }
+
     fn test_forwarder(
         non_streaming_timeout: Duration,
         streaming_first_byte_timeout: Duration,
-    ) -> RequestForwarder {
+    ) -> TestForwarder {
         let db = Arc::new(Database::memory().expect("memory db"));
         let status = Arc::new(RwLock::new(ProxyRuntimeStatus::default()));
         let current_providers = Arc::new(RwLock::new(HashMap::new()));
@@ -1197,7 +1217,7 @@ mod tests {
         let codex_chat_history = Arc::new(CodexChatHistoryStore::default());
         let router = Arc::new(provider_router_from_database(db.clone()));
 
-        RequestForwarder {
+        let forwarder = RequestForwarder {
             attempt_runtime_source:
                 crate::proxy_core_adapter::forwarder_attempt_runtime_source_from_router(router),
             protocol_state_source:
@@ -1207,9 +1227,9 @@ mod tests {
                 ),
             runtime_state_source:
                 crate::proxy_core_adapter::forwarder_runtime_state_source_from_runtime_parts(
-                    status,
+                    status.clone(),
                     current_providers,
-                    events,
+                    events.clone(),
                 ),
             auth_source: crate::proxy_core_adapter::default_forwarder_auth_source(),
             request_source: crate::proxy_core_adapter::default_forwarder_request_source(),
@@ -1225,13 +1245,18 @@ mod tests {
             non_streaming_timeout,
             streaming_first_byte_timeout,
             max_attempts: 1,
+        };
+        TestForwarder {
+            forwarder,
+            status,
+            events,
         }
     }
 
     #[tokio::test]
     async fn successful_attempt_completion_projects_forward_result_and_route_event() {
         let forwarder = test_forwarder(Duration::from_secs(0), Duration::from_secs(0));
-        let mut subscriber = forwarder.runtime_state_source.events().subscribe();
+        let mut subscriber = forwarder.events.subscribe();
         let provider = test_provider_with_type(None);
         let attempt = ForwardAttempt::from_provider(provider.clone());
         let result = forwarder
@@ -1276,7 +1301,7 @@ mod tests {
     #[tokio::test]
     async fn preplanned_forwarding_reuses_request_scope_accounting() {
         let forwarder = test_forwarder(Duration::from_secs(0), Duration::from_secs(0));
-        let mut subscriber = forwarder.runtime_state_source.events().subscribe();
+        let mut subscriber = forwarder.events.subscribe();
 
         let result = forwarder
             .forward_with_preplanned_attempts(
@@ -1297,8 +1322,7 @@ mod tests {
         assert_eq!(started_event.event, "request_started");
         assert_eq!(started_event.payload["appType"], "claude");
 
-        let status = forwarder.runtime_state_source.status();
-        let status = status.read().await;
+        let status = forwarder.status.read().await;
         assert_eq!(status.total_requests, 1);
     }
 
@@ -1946,7 +1970,7 @@ mod tests {
     // ===== P3: forwarder 层 media 开关回归测试 =====
     // 验证 gate 在 forwarder 这一层的"接线"，而非 request_media 纯函数本身。
 
-    fn forwarder_with_rectifier(config: RectifierConfig) -> RequestForwarder {
+    fn forwarder_with_rectifier(config: RectifierConfig) -> TestForwarder {
         let mut fwd = test_forwarder(Duration::from_secs(1), Duration::from_secs(1));
         fwd.rectifier_config = config;
         fwd
