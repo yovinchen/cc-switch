@@ -1,4 +1,5 @@
 use crate::error::{ProxyCoreError, ProxyCoreResult};
+use crate::ports::AuthInfo;
 use crate::provider_auth::{ProviderAuthInfo, ProviderAuthStrategy};
 use serde_json::Value;
 
@@ -156,6 +157,26 @@ pub fn build_codex_bearer_auth_headers(
         http::HeaderName::from_static("authorization"),
         auth_header_value(&bearer)?,
     )])
+}
+
+pub fn build_auth_provider_headers(
+    auth: &AuthInfo,
+) -> ProxyCoreResult<Option<Vec<(http::HeaderName, http::HeaderValue)>>> {
+    if auth.headers.is_empty() {
+        return Ok(None);
+    }
+
+    let mut headers = Vec::with_capacity(auth.headers.len());
+    for (name, value) in &auth.headers {
+        let name = http::HeaderName::from_bytes(name.as_bytes()).map_err(|error| {
+            ProxyCoreError::InvalidRequest(format!("invalid AuthProvider header name: {error}"))
+        })?;
+        let value = http::HeaderValue::from_str(value).map_err(|error| {
+            ProxyCoreError::InvalidRequest(format!("invalid AuthProvider header value: {error}"))
+        })?;
+        headers.push((name, value));
+    }
+    Ok(Some(headers))
 }
 
 pub fn build_codex_provider_auth_headers(
@@ -637,19 +658,21 @@ fn append_header_from_str(
 #[cfg(test)]
 mod tests {
     use super::{
-        anthropic_beta_header_value, auth_header_value, build_claude_auth_headers,
-        build_claude_provider_auth_headers, build_codex_bearer_auth_headers,
-        build_codex_oauth_session_headers, build_codex_provider_auth_headers,
-        build_copilot_auth_headers, build_gemini_auth_headers, build_gemini_provider_auth_headers,
-        build_upstream_auth_headers, build_upstream_request_headers,
-        claude_auth_header_kind_for_provider_strategy, is_official_codex_client_user_agent,
-        should_preserve_exact_request_header_case, should_send_anthropic_request_headers,
-        should_skip_copilot_fingerprint_request_header, should_strip_forwarded_request_header,
-        upstream_host_header_from_url, ClaudeAuthHeaderKind, ClaudeProviderAuthHeadersInput,
-        CopilotAuthHeaderOverrides, CopilotAuthHeadersInput, UpstreamAuthHeadersInput,
-        UpstreamRequestHeadersInput, CLAUDE_CODE_BETA, DEFAULT_ANTHROPIC_VERSION,
+        anthropic_beta_header_value, auth_header_value, build_auth_provider_headers,
+        build_claude_auth_headers, build_claude_provider_auth_headers,
+        build_codex_bearer_auth_headers, build_codex_oauth_session_headers,
+        build_codex_provider_auth_headers, build_copilot_auth_headers, build_gemini_auth_headers,
+        build_gemini_provider_auth_headers, build_upstream_auth_headers,
+        build_upstream_request_headers, claude_auth_header_kind_for_provider_strategy,
+        is_official_codex_client_user_agent, should_preserve_exact_request_header_case,
+        should_send_anthropic_request_headers, should_skip_copilot_fingerprint_request_header,
+        should_strip_forwarded_request_header, upstream_host_header_from_url, ClaudeAuthHeaderKind,
+        ClaudeProviderAuthHeadersInput, CopilotAuthHeaderOverrides, CopilotAuthHeadersInput,
+        UpstreamAuthHeadersInput, UpstreamRequestHeadersInput, CLAUDE_CODE_BETA,
+        DEFAULT_ANTHROPIC_VERSION,
     };
     use crate::error::ProxyCoreError;
+    use crate::ports::AuthInfo;
     use crate::provider_auth::{ProviderAuthInfo, ProviderAuthStrategy};
     use http::{header, HeaderMap, HeaderName, HeaderValue};
     use serde_json::json;
@@ -746,6 +769,56 @@ mod tests {
         let error =
             build_codex_bearer_auth_headers("bad\r\nx-evil: 1").expect_err("invalid header");
         assert!(matches!(error, ProxyCoreError::Auth(_)));
+    }
+
+    #[test]
+    fn builds_auth_provider_headers_from_core_auth_info() {
+        let empty = AuthInfo {
+            headers: Vec::new(),
+            account_ref: None,
+            metadata: Default::default(),
+        };
+        assert_eq!(build_auth_provider_headers(&empty).unwrap(), None);
+
+        let auth = AuthInfo {
+            headers: vec![(
+                "authorization".to_string(),
+                "Bearer channel-token".to_string(),
+            )],
+            account_ref: Some("channel-key:primary".to_string()),
+            metadata: Default::default(),
+        };
+        let headers = build_auth_provider_headers(&auth).unwrap().unwrap();
+        assert_eq!(headers[0].0.as_str(), "authorization");
+        assert_eq!(
+            headers[0].1,
+            HeaderValue::from_static("Bearer channel-token")
+        );
+    }
+
+    #[test]
+    fn rejects_invalid_auth_provider_headers() {
+        let invalid_name = AuthInfo {
+            headers: vec![("bad header".to_string(), "value".to_string())],
+            account_ref: None,
+            metadata: Default::default(),
+        };
+        assert_eq!(
+            build_auth_provider_headers(&invalid_name)
+                .unwrap_err()
+                .to_string(),
+            "invalid proxy request: invalid AuthProvider header name: invalid HTTP header name"
+        );
+
+        let invalid_value = AuthInfo {
+            headers: vec![("authorization".to_string(), "bad\r\nvalue".to_string())],
+            account_ref: None,
+            metadata: Default::default(),
+        };
+        assert!(build_auth_provider_headers(&invalid_value)
+            .unwrap_err()
+            .to_string()
+            .starts_with("invalid proxy request: invalid AuthProvider header value:"));
     }
 
     #[test]

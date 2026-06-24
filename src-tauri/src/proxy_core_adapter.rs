@@ -3088,7 +3088,7 @@ pub(crate) use crate::proxy_core::api::transport::{
 pub(crate) use crate::proxy_core::api::transport::{
     append_query_to_full_url, apply_bedrock_pre_send_optimizers,
     apply_copilot_warmup_model_override, bedrock_env_flag_from_provider_settings,
-    build_claude_provider_auth_headers, build_claude_upstream_url,
+    build_auth_provider_headers, build_claude_provider_auth_headers, build_claude_upstream_url,
     build_codex_oauth_session_headers, build_codex_provider_auth_headers, build_codex_upstream_url,
     build_gemini_provider_auth_headers, build_retryable_forward_failure_log,
     build_terminal_forward_failure_log, build_upstream_auth_headers, categorize_forward_failure,
@@ -8779,26 +8779,6 @@ fn forwarder_auth_proxy_request(input: &ForwarderAuthHeadersInput<'_>) -> ProxyR
     )
 }
 
-fn forwarder_core_auth_headers(
-    auth: &AuthInfo,
-) -> Result<Option<Vec<(http::HeaderName, http::HeaderValue)>>, ProxyError> {
-    if auth.headers.is_empty() {
-        return Ok(None);
-    }
-
-    let mut headers = Vec::with_capacity(auth.headers.len());
-    for (name, value) in &auth.headers {
-        let name = http::HeaderName::from_bytes(name.as_bytes()).map_err(|error| {
-            ProxyError::InvalidRequest(format!("invalid AuthProvider header name: {error}"))
-        })?;
-        let value = http::HeaderValue::from_str(value).map_err(|error| {
-            ProxyError::InvalidRequest(format!("invalid AuthProvider header value: {error}"))
-        })?;
-        headers.push((name, value));
-    }
-    Ok(Some(headers))
-}
-
 impl ForwarderAuthSource for CcSwitchForwarderAuthSource {
     fn prepare_optional_copilot_auth_optimization(
         &self,
@@ -8833,7 +8813,9 @@ impl ForwarderAuthSource for CcSwitchForwarderAuthSource {
 
             let mut codex_oauth_account_id: Option<String> = None;
             let mut should_send_codex_oauth_session_headers = false;
-            let mut auth_headers = if let Some(headers) = forwarder_core_auth_headers(&core_auth)? {
+            let mut auth_headers = if let Some(headers) =
+                build_auth_provider_headers(&core_auth).map_err(proxy_core_error_to_proxy_error)?
+            {
                 headers
             } else {
                 let auth_provider = input.attempt.auth_provider();
