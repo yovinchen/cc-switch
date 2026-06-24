@@ -2986,10 +2986,10 @@ pub(crate) use crate::proxy_core::api::auth::{
     resolve_copilot_dynamic_base_url_with_runtime_source as resolve_core_copilot_dynamic_base_url_with_runtime_source,
     resolve_copilot_live_model_with_runtime_source as resolve_core_copilot_live_model_with_runtime_source,
     resolve_copilot_model_vendor_with_runtime_source as resolve_core_copilot_model_vendor_with_runtime_source,
-    resolve_managed_account_auth_with_runtime_source as resolve_core_managed_account_auth_with_runtime_source,
+    resolve_managed_account_auth_for_binding_with_runtime_source as resolve_core_managed_account_auth_for_binding_with_runtime_source,
     ManagedAccountAuthResolution, ManagedAccountAuthRuntime, ManagedAccountBindingInput,
     ManagedAccountBindingSource, ManagedAccountRuntimeSource as CoreManagedAccountRuntimeSource,
-    CODEX_OAUTH_AUTH_PROVIDER, GITHUB_COPILOT_AUTH_PROVIDER,
+    GITHUB_COPILOT_AUTH_PROVIDER,
 };
 pub(crate) use crate::proxy_core::api::config::{
     app_proxy_config_defaults_for_app, app_type_from_circuit_key, cache_injection_log_message,
@@ -3146,11 +3146,12 @@ pub(crate) trait ManagedAccountRuntimeSource:
         auth: ProviderAuthInfo,
     ) -> BoxFuture<'a, Result<ManagedAccountAuthResolution, ProxyError>> {
         Box::pin(async move {
-            resolve_core_managed_account_auth_with_runtime_source(
+            let meta = auth_provider.meta.as_ref();
+            resolve_core_managed_account_auth_for_binding_with_runtime_source(
                 self,
                 auth,
-                provider_github_copilot_managed_account_id(auth_provider),
-                provider_codex_oauth_managed_account_id(auth_provider),
+                meta.and_then(provider_managed_account_binding_input),
+                meta.and_then(|meta| meta.github_account_id.as_deref()),
             )
             .await
         })
@@ -11737,10 +11738,6 @@ pub(crate) fn provider_managed_account_id_for(
 
 pub(crate) fn provider_github_copilot_managed_account_id(provider: &Provider) -> Option<String> {
     provider_managed_account_id_for(provider, GITHUB_COPILOT_AUTH_PROVIDER)
-}
-
-pub(crate) fn provider_codex_oauth_managed_account_id(provider: &Provider) -> Option<String> {
-    provider_managed_account_id_for(provider, CODEX_OAUTH_AUTH_PROVIDER)
 }
 
 pub(crate) fn provider_usage_script(provider: Option<&Provider>) -> Option<&UsageScript> {
@@ -24484,7 +24481,7 @@ command = "latest-command"
         assert!(provider_is_codex_oauth(&codex_provider));
         assert!(forwarder_is_codex_oauth_provider(&codex_provider));
         assert_eq!(
-            provider_codex_oauth_managed_account_id(&codex_provider).as_deref(),
+            provider_managed_account_id_for(&codex_provider, "codex_oauth").as_deref(),
             Some("codex-acct-1")
         );
         assert!(provider_uses_anthropic_rectifiers(

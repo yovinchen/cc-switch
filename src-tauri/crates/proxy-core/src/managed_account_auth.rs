@@ -187,6 +187,32 @@ where
     }
 }
 
+pub async fn resolve_managed_account_auth_for_binding_with_runtime_source<S>(
+    runtime_source: &S,
+    auth: ProviderAuthInfo,
+    binding: Option<ManagedAccountBindingInput<'_>>,
+    legacy_github_copilot_account_id: Option<&str>,
+) -> Result<ManagedAccountAuthResolution, S::Error>
+where
+    S: ManagedAccountRuntimeSource + ?Sized,
+{
+    let github_copilot_account_id = managed_account_id_for_auth_provider(
+        GITHUB_COPILOT_AUTH_PROVIDER,
+        binding,
+        legacy_github_copilot_account_id,
+    );
+    let codex_oauth_account_id =
+        managed_account_id_for_auth_provider(CODEX_OAUTH_AUTH_PROVIDER, binding, None);
+
+    resolve_managed_account_auth_with_runtime_source(
+        runtime_source,
+        auth,
+        github_copilot_account_id,
+        codex_oauth_account_id,
+    )
+    .await
+}
+
 pub async fn resolve_copilot_dynamic_base_url_with_runtime_source<S>(
     runtime_source: &S,
     account_id: Option<&str>,
@@ -306,6 +332,7 @@ mod tests {
         managed_account_auth_plan, resolve_copilot_dynamic_base_url_with_runtime_source,
         resolve_copilot_live_model_with_runtime_source,
         resolve_copilot_model_vendor_with_runtime_source,
+        resolve_managed_account_auth_for_binding_with_runtime_source,
         resolve_managed_account_auth_with_runtime_source, validate_managed_account_upstream_auth,
         ManagedAccountAuthError, ManagedAccountAuthPlan, ManagedAccountAuthResolution,
         ManagedAccountAuthRuntime, ManagedAccountBindingInput, ManagedAccountBindingSource,
@@ -647,6 +674,69 @@ mod tests {
             Some("codex-account")
         );
         assert!(codex.should_send_codex_oauth_session_headers);
+    }
+
+    #[test]
+    fn managed_account_runtime_source_resolution_uses_binding_input_accounts() {
+        let source = StaticManagedRuntimeSource;
+
+        let copilot = block_on(
+            resolve_managed_account_auth_for_binding_with_runtime_source(
+                &source,
+                ProviderAuthInfo::new(
+                    PROXY_AUTH_PLACEHOLDER.to_string(),
+                    ProviderAuthStrategy::GitHubCopilot,
+                ),
+                Some(ManagedAccountBindingInput {
+                    source: ManagedAccountBindingSource::ManagedAccount,
+                    auth_provider: Some(GITHUB_COPILOT_AUTH_PROVIDER),
+                    account_id: Some("copilot-binding-account"),
+                }),
+                Some("legacy-account"),
+            ),
+        )
+        .expect("copilot auth from binding");
+        assert_eq!(
+            copilot.auth.api_key,
+            "copilot-token:copilot-binding-account"
+        );
+
+        let codex = block_on(
+            resolve_managed_account_auth_for_binding_with_runtime_source(
+                &source,
+                ProviderAuthInfo::new(
+                    PROXY_AUTH_PLACEHOLDER.to_string(),
+                    ProviderAuthStrategy::CodexOAuth,
+                ),
+                Some(ManagedAccountBindingInput {
+                    source: ManagedAccountBindingSource::ManagedAccount,
+                    auth_provider: Some(CODEX_OAUTH_AUTH_PROVIDER),
+                    account_id: Some("codex-binding-account"),
+                }),
+                Some("legacy-account"),
+            ),
+        )
+        .expect("codex auth from binding");
+        assert_eq!(codex.auth.api_key, "codex-token:codex-binding-account");
+        assert_eq!(
+            codex.codex_oauth_account_id.as_deref(),
+            Some("codex-binding-account")
+        );
+        assert!(codex.should_send_codex_oauth_session_headers);
+
+        let legacy = block_on(
+            resolve_managed_account_auth_for_binding_with_runtime_source(
+                &source,
+                ProviderAuthInfo::new(
+                    PROXY_AUTH_PLACEHOLDER.to_string(),
+                    ProviderAuthStrategy::GitHubCopilot,
+                ),
+                None,
+                Some("legacy-account"),
+            ),
+        )
+        .expect("legacy copilot auth");
+        assert_eq!(legacy.auth.api_key, "copilot-token:legacy-account");
     }
 
     #[test]

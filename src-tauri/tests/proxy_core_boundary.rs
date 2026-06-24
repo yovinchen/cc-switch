@@ -5498,13 +5498,13 @@ fn production_adapter_managed_auth_planning_uses_runtime_source() {
     );
 
     assert!(
-        method.contains("resolve_core_managed_account_auth_with_runtime_source("),
+        method.contains("resolve_core_managed_account_auth_for_binding_with_runtime_source("),
         "adapter managed-auth provider extension must delegate runtime-token resolution to proxy-core"
     );
     assert!(
-        method.contains("provider_github_copilot_managed_account_id(auth_provider)")
-            && method.contains("provider_codex_oauth_managed_account_id(auth_provider)"),
-        "adapter managed-auth provider extension must keep CC Switch Provider account-id projection at the host boundary"
+        method.contains("provider_managed_account_binding_input")
+            && method.contains("github_account_id.as_deref()"),
+        "adapter managed-auth provider extension must project CC Switch ProviderMeta into core binding input"
     );
 
     let mut violations = Vec::new();
