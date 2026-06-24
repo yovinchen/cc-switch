@@ -8,6 +8,14 @@ pub struct MediaPreventionPolicy {
     pub allow_heuristic: bool,
 }
 
+pub struct ForwarderMediaPreventionFacts<'a> {
+    pub rectifier_enabled: bool,
+    pub request_media_fallback: bool,
+    pub request_media_heuristic: bool,
+    pub body: &'a mut Value,
+    pub provider_settings: &'a Value,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct MediaRetryInput<'a> {
     pub adapter_name: &'a str,
@@ -44,6 +52,21 @@ pub fn resolve_media_prevention_policy(
         should_attempt,
         allow_heuristic: should_attempt && request_media_heuristic,
     }
+}
+
+pub fn apply_forwarder_media_prevention_from_facts(
+    input: ForwarderMediaPreventionFacts<'_>,
+) -> usize {
+    let policy = resolve_media_prevention_policy(
+        input.rectifier_enabled,
+        input.request_media_fallback,
+        input.request_media_heuristic,
+    );
+    if !policy.should_attempt {
+        return 0;
+    }
+
+    replace_images_for_text_only_model(input.body, input.provider_settings, policy.allow_heuristic)
 }
 
 pub fn should_check_media_retry(
@@ -446,10 +469,11 @@ fn normalize_model_id(value: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::{
-        contains_image_blocks, forwarder_media_retry_plan_from_facts, is_unsupported_image_error,
+        apply_forwarder_media_prevention_from_facts, contains_image_blocks,
+        forwarder_media_retry_plan_from_facts, is_unsupported_image_error,
         replace_image_blocks_with_marker, replace_images_for_text_only_model,
         resolve_media_prevention_policy, should_check_media_retry, should_trigger_media_retry,
-        ForwarderMediaRetryPlanFacts, MediaRetryInput,
+        ForwarderMediaPreventionFacts, ForwarderMediaRetryPlanFacts, MediaRetryInput,
         UNSUPPORTED_IMAGE_MARKER,
     };
     use serde_json::json;
@@ -484,6 +508,59 @@ mod tests {
                 allow_heuristic: false,
             }
         );
+    }
+
+    #[test]
+    fn forwarder_media_prevention_applies_policy_and_provider_settings() {
+        let settings = json!({
+            "models": [
+                { "id": "deepseek-v4-pro", "input": ["text"] }
+            ]
+        });
+        let mut body = json!({
+            "model": "deepseek-v4-pro",
+            "messages": [{
+                "role": "user",
+                "content": [
+                    { "type": "image", "source": { "type": "base64", "media_type": "image/png", "data": "abc" } }
+                ]
+            }]
+        });
+
+        let replaced = apply_forwarder_media_prevention_from_facts(
+            ForwarderMediaPreventionFacts {
+                rectifier_enabled: true,
+                request_media_fallback: true,
+                request_media_heuristic: false,
+                body: &mut body,
+                provider_settings: &settings,
+            },
+        );
+        assert_eq!(replaced, 1);
+        assert_eq!(body["messages"][0]["content"][0]["type"], "text");
+        assert_eq!(body["messages"][0]["content"][0]["text"], UNSUPPORTED_IMAGE_MARKER);
+
+        let mut disabled_body = json!({
+            "model": "deepseek-v4-pro",
+            "messages": [{
+                "role": "user",
+                "content": [
+                    { "type": "image", "source": { "type": "base64", "media_type": "image/png", "data": "abc" } }
+                ]
+            }]
+        });
+        let disabled_before = disabled_body.clone();
+        let disabled_replaced = apply_forwarder_media_prevention_from_facts(
+            ForwarderMediaPreventionFacts {
+                rectifier_enabled: true,
+                request_media_fallback: false,
+                request_media_heuristic: true,
+                body: &mut disabled_body,
+                provider_settings: &settings,
+            },
+        );
+        assert_eq!(disabled_replaced, 0);
+        assert_eq!(disabled_body, disabled_before);
     }
 
     #[test]

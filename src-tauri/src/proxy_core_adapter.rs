@@ -1649,6 +1649,8 @@ pub(crate) const DEFAULT_PROXY_LISTEN_PORT: u16 =
     crate::proxy_core::api::ports::DEFAULT_PROXY_LISTEN_PORT;
 pub(crate) const DEFAULT_CHANNEL_HEALTH_FAILURE_THRESHOLD: u32 =
     crate::proxy_core::api::ports::DEFAULT_CHANNEL_HEALTH_FAILURE_THRESHOLD;
+pub(crate) type ForwarderMediaPreventionFacts<'a> =
+    crate::proxy_core::api::transport::ForwarderMediaPreventionFacts<'a>;
 pub(crate) type ForwarderMediaRetryPlanFacts<'a> =
     crate::proxy_core::api::transport::ForwarderMediaRetryPlanFacts<'a>;
 pub(crate) type PromptCacheTraceLogInput<'a> =
@@ -3096,7 +3098,7 @@ pub(crate) use crate::proxy_core::api::transport::{
 };
 pub(crate) use crate::proxy_core::api::transport::{
     append_query_to_full_url, apply_bedrock_pre_send_optimizers,
-    auth_provider_proxy_request_from_context,
+    apply_forwarder_media_prevention_from_facts, auth_provider_proxy_request_from_context,
     apply_copilot_warmup_model_override, bedrock_env_flag_from_provider_settings,
     build_claude_provider_auth_headers, build_claude_upstream_url,
     build_codex_provider_auth_headers, build_codex_upstream_url,
@@ -3112,10 +3114,9 @@ pub(crate) use crate::proxy_core::api::transport::{
     prepare_optional_copilot_auth_optimization_for_forwarder,
     parse_json_request_body, parse_json_request_body_or_null,
     prepare_upstream_request_body_with_report, prompt_cache_trace_log_message,
-    replace_images_for_text_only_model,
     request_body_filter_log_message, request_body_read_error_message,
     request_body_serialize_error_message, resolve_codex_provider_uses_chat_completions,
-    resolve_auth_provider_headers, resolve_media_prevention_policy,
+    resolve_auth_provider_headers,
     rewrite_claude_transform_endpoint, sanitize_copilot_orphan_tool_results,
     should_apply_bedrock_pre_send_optimizer, should_convert_codex_responses_endpoint_to_chat,
     should_failover_after_rectifier_retry_failure,
@@ -9155,19 +9156,14 @@ impl CcSwitchForwarderRequestSource {
     }
 
     fn apply_media_prevention(&self, input: ForwarderMediaPreventionInput<'_>) -> usize {
-        let policy = resolve_media_prevention_policy(
-            input.config.enabled,
-            input.config.request_media_fallback,
-            input.config.request_media_heuristic,
-        );
-        if !policy.should_attempt {
-            return 0;
-        }
-
-        let replaced_images = forwarder_replace_images_for_text_only_provider_model(
-            input.body,
-            input.provider,
-            policy.allow_heuristic,
+        let replaced_images = apply_forwarder_media_prevention_from_facts(
+            ForwarderMediaPreventionFacts {
+                rectifier_enabled: input.config.enabled,
+                request_media_fallback: input.config.request_media_fallback,
+                request_media_heuristic: input.config.request_media_heuristic,
+                body: input.body,
+                provider_settings: &input.provider.settings_config,
+            },
         );
         if replaced_images > 0 {
             let model = input
@@ -11179,22 +11175,6 @@ pub(crate) fn apply_forward_request_model_mapping_from_provider(
     }
 
     Ok(apply_provider_model_mapping_from_provider(body, provider))
-}
-
-pub(crate) fn replace_images_for_text_only_provider_model(
-    body: &mut Value,
-    provider: &Provider,
-    allow_heuristic: bool,
-) -> usize {
-    replace_images_for_text_only_model(body, &provider.settings_config, allow_heuristic)
-}
-
-pub(crate) fn forwarder_replace_images_for_text_only_provider_model(
-    body: &mut Value,
-    provider: &Provider,
-    allow_heuristic: bool,
-) -> usize {
-    replace_images_for_text_only_provider_model(body, provider, allow_heuristic)
 }
 
 pub(crate) fn rewrite_codex_responses_endpoint_to_chat(endpoint: &str) -> (String, Option<String>) {
@@ -22430,36 +22410,16 @@ command = "latest-command"
         );
 
         assert_eq!(
-            replace_images_for_text_only_provider_model(
-                &mut image_body,
-                &text_only_provider,
-                false
-            ),
+            apply_forwarder_media_prevention_from_facts(ForwarderMediaPreventionFacts {
+                rectifier_enabled: true,
+                request_media_fallback: true,
+                request_media_heuristic: false,
+                body: &mut image_body,
+                provider_settings: &text_only_provider.settings_config,
+            }),
             1
         );
         assert_eq!(image_body["messages"][0]["content"][0]["type"], "text");
-
-        let mut forwarder_image_body = json!({
-            "model": "text-model",
-            "messages": [{
-                "role": "user",
-                "content": [
-                    { "type": "image", "source": { "type": "base64", "media_type": "image/png", "data": "abc" } }
-                ]
-            }]
-        });
-        assert_eq!(
-            forwarder_replace_images_for_text_only_provider_model(
-                &mut forwarder_image_body,
-                &text_only_provider,
-                false
-            ),
-            1
-        );
-        assert_eq!(
-            forwarder_image_body["messages"][0]["content"][0]["type"],
-            "text"
-        );
     }
 
     #[test]
