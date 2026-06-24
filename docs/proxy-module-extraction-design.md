@@ -446,6 +446,7 @@
 435. `ForwarderAuthSource` 现在持有 managed-account runtime source 并负责托管账号 auth 解析；`RequestForwarder` 在上游 auth headers 阶段不再把 `ManagedAccountRuntimeSource` 作为 input 字段转手传递。
 436. request-side 托管账号运行态决策已收进 `ForwarderRequestSource`：Copilot live model 覆写、Copilot dynamic base URL 和 Claude API format runtime resolution 不再由 `RequestForwarder` 直连 `ManagedAccountRuntimeSource`。
 437. response finalization 的 response、streaming mode 与 timeout facts 已收敛为 `ForwarderResponseFinalizationInput`；`RequestForwarder` 不再以散参形式把响应读取/首包预读策略转手传给 `ForwarderResponseSource`。
+438. host forward bridge 不再拆 `ForwarderRuntimeConfig` 的 timeout/retry/rectifier/optimizer 字段来构造 `RequestForwarder`；runtime config 作为整体进入 forwarder，由 forwarder 构造器在边界内完成 options 与三类 optimizer/rectifier config 投影。
 407. `proxy::types::ApiFormat` 未使用预留枚举已删除；Claude/OpenAI/Gemini format 判断统一沿用 `proxy-core` 的 provider kind、client format 和 response transform contract。
 408. `LogConfig` 已从 `proxy::types` 移到 `settings::LogConfig`；日志设置不再扩大代理运行态类型模块，proxy host types 只保留代理状态/备份等运行态数据。
 409. `RectifierConfig` 的默认值、serde 和 core 检测投影测试已从 host `proxy::types` 迁入 `proxy-core::ports`；host proxy types 不再承担 core 配置契约测试。
