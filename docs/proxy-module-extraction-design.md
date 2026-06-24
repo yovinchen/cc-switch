@@ -1331,6 +1331,7 @@
 本轮继续把 Claude live settings 清理和 JSON common-config subset/merge/remove 辅助收敛到 `proxy-core::ports`：core 维护 host-only 字段剥离、数组一次性匹配删除、深合并与深删除规则，adapter/common-config 路径只复用 core helper。
 本轮继续把 provider 默认 live import 与存储前 settings 归一化收敛到 `proxy-core::ports::{provider_default_live_import_settings,normalize_provider_settings_for_storage}`：core 维护 Claude 旧模型字段兼容和非 Claude no-op 规则，adapter 只负责 `AppType` 到 `AppKind` 投影。
 本轮继续把非 Codex provider 凭据 JSON 形状收敛到 `proxy-core::ports`：core 维护 Claude env、Gemini env map、OpenCode options 与 OpenClaw/Hermes apiKey/baseUrl 的纯提取规则，adapter 继续保留 Codex TOML/API key 解析和宿主 `Provider` 投影。
+本轮继续收窄 provider policy adapter façade：legacy common-config migration skip 直接委托 core `should_skip_provider_legacy_common_config_migration`，credential issue spec 与 key-change issue message 改为 core helper 直接 re-export，adapter 只保留需要宿主 enum/record 投影的入口。
 
 当前原则：核心 crate 可以新增端口和领域字段，但不得引入 `tauri`、`Database`、settings、commands、services 等宿主依赖；现有 runtime 行为必须继续通过 targeted tests 证明不回归。
 

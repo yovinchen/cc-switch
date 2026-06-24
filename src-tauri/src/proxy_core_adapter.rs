@@ -310,12 +310,12 @@ pub(crate) use crate::proxy_core::api::ports::{
     provider_additive_live_write_action_for_app as core_provider_additive_live_write_action,
     provider_additive_update_route_for_app as core_provider_additive_update_route,
     provider_app_has_current_provider as core_provider_app_has_current_provider,
-    provider_credential_issue_spec as core_provider_credential_issue_spec,
+    provider_credential_issue_spec,
     provider_default_live_import_settings as core_provider_default_live_import_settings,
     provider_delete_is_current_provider as core_provider_delete_is_current_provider,
     provider_initial_live_config_managed_marker as core_provider_initial_live_config_managed_marker,
     provider_key_change_policy_issue_for_app as core_provider_key_change_policy_issue,
-    provider_key_change_policy_issue_message as core_provider_key_change_policy_issue_message,
+    provider_key_change_policy_issue_message,
     provider_live_config_presence_error_policy as core_provider_live_config_presence_error_policy,
     provider_live_removal_target_for_app as core_provider_live_removal_target,
     provider_live_sync_scope_for_app as core_provider_live_sync_scope,
@@ -326,7 +326,6 @@ pub(crate) use crate::proxy_core::api::ports::{
     provider_switch_dispatch_for_app as core_provider_switch_dispatch,
     provider_switch_requires_takeover_lock as core_provider_switch_requires_takeover_lock,
     provider_switch_should_mark_live_config_managed as core_provider_switch_should_mark_live_config_managed,
-    provider_supports_legacy_common_config_migration as core_provider_supports_legacy_common_config_migration,
     provider_takeover_live_sync_target_for_app as core_provider_takeover_live_sync_target,
     proxy_urls_match as core_proxy_urls_match,
     proxy_config_preserving_live_takeover_active, proxy_config_with_ephemeral_listen_port,
@@ -340,6 +339,7 @@ pub(crate) use crate::proxy_core::api::ports::{
     sanitize_claude_settings_for_live,
     provider_should_sync_to_live as core_provider_should_sync_to_live,
     should_skip_manual_default_live_import as core_should_skip_manual_default_live_import,
+    should_skip_provider_legacy_common_config_migration as core_should_skip_provider_legacy_common_config_migration,
     should_skip_startup_default_live_import as core_should_skip_startup_default_live_import,
     LiveTokenProviderSettingsIssue, LocalizedErrorSpec, ProviderAdditiveLiveWriteAction,
     ProviderAdditiveUpdateRoute,
@@ -2113,15 +2113,14 @@ pub(crate) fn provider_initial_live_config_managed_marker(
     core_provider_initial_live_config_managed_marker(&AppKind::from(app_type), add_to_live)
 }
 
-pub(crate) fn provider_supports_legacy_common_config_migration(app_type: &AppType) -> bool {
-    core_provider_supports_legacy_common_config_migration(&AppKind::from(app_type))
-}
-
 pub(crate) fn should_skip_provider_legacy_common_config_migration(
     app_type: &AppType,
     legacy_snippet: &str,
 ) -> bool {
-    !provider_supports_legacy_common_config_migration(app_type) || legacy_snippet.trim().is_empty()
+    core_should_skip_provider_legacy_common_config_migration(
+        &AppKind::from(app_type),
+        legacy_snippet,
+    )
 }
 
 pub(crate) fn provider_live_config_presence_error_policy(
@@ -2138,12 +2137,6 @@ pub(crate) fn provider_key_change_policy_issue(
         &AppKind::from(app_type),
         existing_provider.and_then(|provider| provider.category.as_deref()),
     )
-}
-
-pub(crate) fn provider_key_change_policy_issue_message(
-    issue: ProviderKeyChangePolicyIssue,
-) -> &'static str {
-    core_provider_key_change_policy_issue_message(issue)
 }
 
 pub(crate) fn provider_additive_live_write_action(
@@ -2251,10 +2244,6 @@ fn json_object_or_null_common_config_snippet(
 pub(crate) struct ProviderCredentialValues {
     pub(crate) api_key: String,
     pub(crate) base_url: String,
-}
-
-pub(crate) fn provider_credential_issue_spec(issue: ProviderCredentialIssue) -> LocalizedErrorSpec {
-    core_provider_credential_issue_spec(issue)
 }
 
 pub(crate) fn provider_credential_values(
@@ -13399,6 +13388,7 @@ fn account_ref(provider: &Provider) -> Option<String> {
 mod tests {
     use crate::proxy_core::api::ports::{
         json_remove_array_items, normalize_claude_models_in_value,
+        provider_supports_legacy_common_config_migration as core_provider_supports_legacy_common_config_migration,
     };
 
     use super::*;
@@ -23024,11 +23014,11 @@ command = "latest-command"
 
     #[test]
     fn provider_legacy_common_config_migration_skips_additive_and_empty_snippets() {
-        assert!(provider_supports_legacy_common_config_migration(
-            &AppType::Claude
+        assert!(core_provider_supports_legacy_common_config_migration(
+            &AppKind::from(&AppType::Claude)
         ));
-        assert!(!provider_supports_legacy_common_config_migration(
-            &AppType::OpenCode
+        assert!(!core_provider_supports_legacy_common_config_migration(
+            &AppKind::from(&AppType::OpenCode)
         ));
         assert!(!should_skip_provider_legacy_common_config_migration(
             &AppType::Claude,
