@@ -81,6 +81,10 @@ impl ProviderKind {
         matches!(self, Self::GitHubCopilot | Self::CodexOAuth)
     }
 
+    pub fn uses_anthropic_rectifiers(&self) -> bool {
+        matches!(self, Self::Claude | Self::ClaudeAuth)
+    }
+
     pub fn default_endpoint(&self) -> Option<&'static str> {
         match self {
             Self::Claude | Self::ClaudeAuth => Some("https://api.anthropic.com"),
@@ -2302,6 +2306,19 @@ mod tests {
         assert!(ProviderKind::GitHubCopilot.needs_transform());
         assert!(ProviderKind::CodexOAuth.needs_transform());
         assert!(!ProviderKind::Custom("custom".to_string()).needs_transform());
+    }
+
+    #[test]
+    fn provider_kind_reports_anthropic_rectifier_requirements() {
+        assert!(ProviderKind::Claude.uses_anthropic_rectifiers());
+        assert!(ProviderKind::ClaudeAuth.uses_anthropic_rectifiers());
+        assert!(!ProviderKind::Codex.uses_anthropic_rectifiers());
+        assert!(!ProviderKind::Gemini.uses_anthropic_rectifiers());
+        assert!(!ProviderKind::GeminiCli.uses_anthropic_rectifiers());
+        assert!(!ProviderKind::OpenRouter.uses_anthropic_rectifiers());
+        assert!(!ProviderKind::GitHubCopilot.uses_anthropic_rectifiers());
+        assert!(!ProviderKind::CodexOAuth.uses_anthropic_rectifiers());
+        assert!(!ProviderKind::Custom("custom".to_string()).uses_anthropic_rectifiers());
     }
 
     #[test]

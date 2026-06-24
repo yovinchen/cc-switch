@@ -11686,10 +11686,7 @@ pub(crate) fn provider_uses_managed_account_auth(provider: &Provider) -> bool {
 }
 
 pub(crate) fn provider_uses_anthropic_rectifiers(app_type: &AppType, provider: &Provider) -> bool {
-    matches!(
-        provider_kind_from_app_type_and_config(app_type, provider),
-        ProviderKind::Claude | ProviderKind::ClaudeAuth
-    )
+    provider_kind_from_app_type_and_config(app_type, provider).uses_anthropic_rectifiers()
 }
 
 pub(crate) fn provider_is_github_copilot_upstream(provider: &Provider, base_url: &str) -> bool {
