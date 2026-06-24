@@ -53,6 +53,11 @@ pub enum ProviderAuthStrategy {
     CodexOAuth,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ClaudeGeminiCliAuthWarning {
+    MissingAccessToken,
+}
+
 pub fn gemini_auth_strategy_for_provider_kind(
     provider_kind: &ProviderKind,
 ) -> ProviderAuthStrategy {
@@ -97,6 +102,37 @@ pub fn gemini_auth_info_from_api_key(
             ProviderAuthInfo::with_access_token(api_key, credentials.access_token.clone())
         }
         _ => ProviderAuthInfo::new(api_key, ProviderAuthStrategy::Google),
+    }
+}
+
+pub fn claude_static_auth_info_from_key(
+    api_key: String,
+    provider_kind: &ProviderKind,
+    key_source: ClaudeAuthKeySource,
+) -> ProviderAuthInfo {
+    let strategy = claude_static_auth_strategy_for_provider_kind(provider_kind)
+        .or_else(|| claude_anthropic_auth_strategy_for_key_source(key_source))
+        .unwrap_or(ProviderAuthStrategy::Anthropic);
+    ProviderAuthInfo::new(api_key, strategy)
+}
+
+pub fn claude_gemini_cli_auth_info_from_api_key(
+    api_key: String,
+    oauth_credentials: Option<&GeminiOAuthCredentials>,
+) -> (ProviderAuthInfo, Option<ClaudeGeminiCliAuthWarning>) {
+    match oauth_credentials {
+        Some(credentials) if !credentials.access_token.is_empty() => (
+            ProviderAuthInfo::with_access_token(api_key, credentials.access_token.clone()),
+            None,
+        ),
+        Some(_) => (
+            ProviderAuthInfo::new(api_key, ProviderAuthStrategy::GoogleOAuth),
+            Some(ClaudeGeminiCliAuthWarning::MissingAccessToken),
+        ),
+        None => (
+            ProviderAuthInfo::new(api_key, ProviderAuthStrategy::GoogleOAuth),
+            None,
+        ),
     }
 }
 
@@ -295,6 +331,70 @@ mod tests {
         );
         assert_eq!(api_key.strategy, ProviderAuthStrategy::Google);
         assert_eq!(api_key.access_token, None);
+    }
+
+    #[test]
+    fn claude_static_auth_info_from_key_follows_provider_kind_and_source() {
+        let openrouter = claude_static_auth_info_from_key(
+            "or-key".to_string(),
+            &ProviderKind::OpenRouter,
+            ClaudeAuthKeySource::DirectApiKey,
+        );
+        assert_eq!(openrouter.strategy, ProviderAuthStrategy::Bearer);
+
+        let token = claude_static_auth_info_from_key(
+            "claude-token".to_string(),
+            &ProviderKind::Claude,
+            ClaudeAuthKeySource::AnthropicAuthToken,
+        );
+        assert_eq!(token.strategy, ProviderAuthStrategy::ClaudeAuth);
+
+        let direct = claude_static_auth_info_from_key(
+            "sk-direct".to_string(),
+            &ProviderKind::Claude,
+            ClaudeAuthKeySource::DirectApiKey,
+        );
+        assert_eq!(direct.strategy, ProviderAuthStrategy::Anthropic);
+    }
+
+    #[test]
+    fn claude_gemini_cli_auth_info_from_api_key_reports_missing_access_token() {
+        let valid_credentials = GeminiOAuthCredentials {
+            access_token: "ya29.valid".to_string(),
+            refresh_token: Some("refresh-token".to_string()),
+            client_id: None,
+            client_secret: None,
+        };
+        let (valid, valid_warning) = claude_gemini_cli_auth_info_from_api_key(
+            "refresh-token".to_string(),
+            Some(&valid_credentials),
+        );
+        assert_eq!(valid.strategy, ProviderAuthStrategy::GoogleOAuth);
+        assert_eq!(valid.access_token.as_deref(), Some("ya29.valid"));
+        assert_eq!(valid_warning, None);
+
+        let refresh_only = GeminiOAuthCredentials {
+            access_token: String::new(),
+            refresh_token: Some("refresh-token".to_string()),
+            client_id: None,
+            client_secret: None,
+        };
+        let (missing, missing_warning) = claude_gemini_cli_auth_info_from_api_key(
+            "refresh-token".to_string(),
+            Some(&refresh_only),
+        );
+        assert_eq!(missing.strategy, ProviderAuthStrategy::GoogleOAuth);
+        assert_eq!(missing.access_token, None);
+        assert_eq!(
+            missing_warning,
+            Some(ClaudeGeminiCliAuthWarning::MissingAccessToken)
+        );
+
+        let (fallback, fallback_warning) =
+            claude_gemini_cli_auth_info_from_api_key("raw-key".to_string(), None);
+        assert_eq!(fallback.strategy, ProviderAuthStrategy::GoogleOAuth);
+        assert_eq!(fallback.access_token, None);
+        assert_eq!(fallback_warning, None);
     }
 
     #[test]

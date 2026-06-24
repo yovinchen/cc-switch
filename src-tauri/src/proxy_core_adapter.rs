@@ -1534,8 +1534,8 @@ pub(crate) type AuthInfo = crate::proxy_core::api::ports::AuthInfo;
 
 pub(crate) use crate::proxy_core::api::auth::gemini_auth_strategy_for_provider_kind as core_gemini_auth_strategy_for_provider_kind;
 pub(crate) use crate::proxy_core::api::auth::gemini_auth_info_from_api_key as core_gemini_auth_info_from_api_key;
-pub(crate) use crate::proxy_core::api::auth::claude_anthropic_auth_strategy_for_key_source as core_claude_anthropic_auth_strategy_for_key_source;
-pub(crate) use crate::proxy_core::api::auth::claude_static_auth_strategy_for_provider_kind as core_claude_static_auth_strategy_for_provider_kind;
+pub(crate) use crate::proxy_core::api::auth::claude_static_auth_info_from_key as core_claude_static_auth_info_from_key;
+pub(crate) use crate::proxy_core::api::auth::claude_gemini_cli_auth_info_from_api_key as core_claude_gemini_cli_auth_info_from_api_key;
 pub(crate) use crate::proxy_core::api::auth::codex_auth_info_from_api_key as core_codex_auth_info_from_api_key;
 pub(crate) use crate::proxy_core::api::ports::auth_info_from_profile_ref;
 
@@ -5258,21 +5258,20 @@ fn log_claude_auth_key_source(auth_key: Option<&ClaudeAuthKey>) {
 }
 
 fn claude_gemini_cli_auth_info(provider: &Provider, key: String) -> ProviderAuthInfo {
-    match parse_gemini_oauth_credentials(&key) {
-        Some(credentials) if !credentials.access_token.is_empty() => {
-            ProviderAuthInfo::with_access_token(key, credentials.access_token)
-        }
-        Some(_) => {
-            log::warn!(
-                "[Gemini OAuth] access_token missing or empty for provider `{}`; \
-                 bearer auth will likely fail with 401. Refresh \
-                 ~/.gemini/oauth_creds.json via the gemini CLI to obtain a new token.",
-                provider.id
-            );
-            ProviderAuthInfo::new(key, ProviderAuthStrategy::GoogleOAuth)
-        }
-        None => ProviderAuthInfo::new(key, ProviderAuthStrategy::GoogleOAuth),
+    let credentials = parse_gemini_oauth_credentials(&key);
+    let (auth, warning) =
+        core_claude_gemini_cli_auth_info_from_api_key(key, credentials.as_ref());
+
+    if warning.is_some() {
+        log::warn!(
+            "[Gemini OAuth] access_token missing or empty for provider `{}`; \
+             bearer auth will likely fail with 401. Refresh \
+             ~/.gemini/oauth_creds.json via the gemini CLI to obtain a new token.",
+            provider.id
+        );
     }
+
+    auth
 }
 
 pub(crate) fn provider_claude_auth_info(provider: &Provider) -> Option<ProviderAuthInfo> {
@@ -5289,12 +5288,11 @@ pub(crate) fn provider_claude_auth_info(provider: &Provider) -> Option<ProviderA
 
     match provider_type {
         ProviderKind::GeminiCli => Some(claude_gemini_cli_auth_info(provider, key)),
-        _ => {
-            let strategy = core_claude_static_auth_strategy_for_provider_kind(&provider_type)
-                .or_else(|| core_claude_anthropic_auth_strategy_for_key_source(auth_key.source))
-                .unwrap_or(ProviderAuthStrategy::Anthropic);
-            Some(ProviderAuthInfo::new(key, strategy))
-        }
+        _ => Some(core_claude_static_auth_info_from_key(
+            key,
+            &provider_type,
+            auth_key.source,
+        )),
     }
 }
 
