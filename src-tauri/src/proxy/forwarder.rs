@@ -11,8 +11,8 @@ use crate::proxy_core_adapter::{
     ActiveConnectionGuard, ForwarderAdapterHandle, ForwarderAppMediaPreventionInput,
     CopilotOptimizerConfig,
     ForwarderAdapterFactsInput, ForwarderAnthropicRectifierGateInput,
-    ForwarderAttemptAllowInput, ForwarderAttemptBodyInput, ForwarderAuthHeadersInput,
-    ForwarderAuthSourceRef,
+    ForwarderAttemptAllowDecision, ForwarderAttemptAllowInput, ForwarderAttemptBodyInput,
+    ForwarderAuthHeadersInput, ForwarderAuthSourceRef,
     ForwarderMaybeCopilotAuthOptimizationInput, ForwarderChannelResponseStatusInput,
     ForwarderClaudeApiFormatInput, ForwarderClaudeBodyPolicyInput,
     ForwarderCodexResponsesToChatPlanInput,
@@ -365,32 +365,28 @@ impl RequestForwarder {
             let mut budget_rectifier_retried = false;
             let mut media_rectifier_retried = false;
 
-            // 上限检查：尊重用户在 AppProxyConfig.max_retries 上配置的「重试次数」。
-            // 放在熔断器 allow 检查之前，避免在已经超限时还占用 HalfOpen 探测名额。
-            if let Some(limit) = self
-                .attempt_runtime_source
-                .attempt_limit_reached(app_type_str, attempted_providers, self.max_attempts)
-            {
-                log::warn!("{}", limit.log_line);
-                break;
-            }
-
             // 发起请求前先获取熔断器放行许可（HalfOpen 会占用探测名额）
             // 单 Provider 场景下跳过此检查，避免熔断器阻塞所有请求
-            let permit = self
+            let used_half_open_permit = match self
                 .attempt_runtime_source
                 .allow(ForwarderAttemptAllowInput {
                     attempt,
                     app_type: app_type_str,
                     attempts: &attempts,
+                    attempted_providers,
+                    max_attempts: self.max_attempts,
                 })
-                .await;
-            let allowed = permit.allowed;
-            let used_half_open_permit = permit.used_half_open_permit;
-
-            if !allowed {
-                continue;
-            }
+                .await
+            {
+                ForwarderAttemptAllowDecision::Stop(limit) => {
+                    log::warn!("{}", limit.log_line);
+                    break;
+                }
+                ForwarderAttemptAllowDecision::Skipped => continue,
+                ForwarderAttemptAllowDecision::Allowed {
+                    used_half_open_permit,
+                } => used_half_open_permit,
+            };
             self.runtime_state_source
                 .emit_attempt_started(request_id, app_type_str, attempt);
 

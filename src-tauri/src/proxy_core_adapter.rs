@@ -8612,20 +8612,21 @@ pub(crate) struct ForwarderAttemptAllowInput<'a> {
     pub(crate) attempt: &'a ForwardAttempt,
     pub(crate) app_type: &'a str,
     pub(crate) attempts: &'a [ForwardAttempt],
+    pub(crate) attempted_providers: usize,
+    pub(crate) max_attempts: usize,
+}
+
+pub(crate) enum ForwarderAttemptAllowDecision {
+    Stop(ForwarderAttemptLimitReached),
+    Skipped,
+    Allowed { used_half_open_permit: bool },
 }
 
 pub(crate) trait ForwarderAttemptRuntimeSource {
-    fn attempt_limit_reached(
-        &self,
-        app_type: &str,
-        attempted_providers: usize,
-        max_attempts: usize,
-    ) -> Option<ForwarderAttemptLimitReached>;
-
     fn allow<'a>(
         &'a self,
         input: ForwarderAttemptAllowInput<'a>,
-    ) -> BoxFuture<'a, AllowResult>;
+    ) -> BoxFuture<'a, ForwarderAttemptAllowDecision>;
 
     fn record_success<'a>(
         &'a self,
@@ -8662,9 +8663,7 @@ impl CcSwitchForwarderAttemptRuntimeSource {
     fn should_bypass_circuit_breaker(&self, attempts: &[ForwardAttempt]) -> bool {
         forwarder_should_bypass_circuit_breaker(attempts)
     }
-}
 
-impl ForwarderAttemptRuntimeSource for CcSwitchForwarderAttemptRuntimeSource {
     fn attempt_limit_reached(
         &self,
         app_type: &str,
@@ -8673,20 +8672,37 @@ impl ForwarderAttemptRuntimeSource for CcSwitchForwarderAttemptRuntimeSource {
     ) -> Option<ForwarderAttemptLimitReached> {
         forwarder_attempt_limit_reached(app_type, attempted_providers, max_attempts)
     }
+}
 
+impl ForwarderAttemptRuntimeSource for CcSwitchForwarderAttemptRuntimeSource {
     fn allow<'a>(
         &'a self,
         input: ForwarderAttemptAllowInput<'a>,
-    ) -> BoxFuture<'a, AllowResult> {
+    ) -> BoxFuture<'a, ForwarderAttemptAllowDecision> {
         Box::pin(async move {
+            if let Some(limit) = self.attempt_limit_reached(
+                input.app_type,
+                input.attempted_providers,
+                input.max_attempts,
+            ) {
+                return ForwarderAttemptAllowDecision::Stop(limit);
+            }
+
             let bypass_circuit_breaker = self.should_bypass_circuit_breaker(input.attempts);
-            allow_forward_attempt_runtime_source(
+            let permit = allow_forward_attempt_runtime_source(
                 self.router.as_ref(),
                 input.attempt,
                 input.app_type,
                 bypass_circuit_breaker,
             )
-            .await
+            .await;
+            if permit.allowed {
+                ForwarderAttemptAllowDecision::Allowed {
+                    used_half_open_permit: permit.used_half_open_permit,
+                }
+            } else {
+                ForwarderAttemptAllowDecision::Skipped
+            }
         })
     }
 
