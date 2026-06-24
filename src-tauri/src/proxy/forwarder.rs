@@ -12,8 +12,9 @@ use crate::proxy_core_adapter::{
     CopilotOptimizerConfig,
     ForwarderAdapterFactsInput, ForwarderAnthropicRectifierGateInput,
     ForwarderAttemptBodyInput, ForwarderAuthHeadersInput, ForwarderAuthSourceRef,
-    ForwarderMaybeCopilotAuthOptimizationInput, ForwarderClaudeApiFormatInput,
-    ForwarderClaudeBodyPolicyInput, ForwarderCodexResponsesToChatPlanInput,
+    ForwarderMaybeCopilotAuthOptimizationInput, ForwarderChannelResponseStatusInput,
+    ForwarderClaudeApiFormatInput, ForwarderClaudeBodyPolicyInput,
+    ForwarderCodexResponsesToChatPlanInput,
     ForwarderCopilotDynamicBaseUrlInput, ForwarderCopilotLiveModelInput,
     ForwarderCopilotRequestOptimizationGateInput,
     ForwarderFailureDecision, ForwarderMediaRetryPlanInput, ForwarderProviderRequestBodyInput,
@@ -1085,7 +1086,10 @@ impl RequestForwarder {
 
         let response = self
             .response_source
-            .apply_channel_response_status_mapping(response, attempt.channel())?;
+            .apply_channel_response_status_mapping(ForwarderChannelResponseStatusInput {
+                response,
+                channel: attempt.channel(),
+            })?;
 
         let response = self
             .response_source
@@ -1424,7 +1428,10 @@ mod tests {
 
         let mapped = forwarder
             .response_source
-            .apply_channel_response_status_mapping(response, attempt.channel())
+            .apply_channel_response_status_mapping(ForwarderChannelResponseStatusInput {
+                response,
+                channel: attempt.channel(),
+            })
             .expect("status mapping");
 
         assert_eq!(mapped.status(), StatusCode::OK);
@@ -1456,7 +1463,10 @@ mod tests {
 
         let mapped = forwarder
             .response_source
-            .apply_channel_response_status_mapping(response, attempt.channel())
+            .apply_channel_response_status_mapping(ForwarderChannelResponseStatusInput {
+                response,
+                channel: attempt.channel(),
+            })
             .expect("status mapping");
 
         assert_eq!(mapped.status(), StatusCode::TOO_MANY_REQUESTS);

@@ -10164,6 +10164,11 @@ pub(crate) fn default_forwarder_transport_source() -> ForwarderTransportSourceRe
 pub(crate) type ForwarderResponseSourceRef =
     Arc<dyn ForwarderResponseSource + Send + Sync>;
 
+pub(crate) struct ForwarderChannelResponseStatusInput<'a> {
+    pub(crate) response: ProxyResponse,
+    pub(crate) channel: Option<&'a ResolvedChannelAttempt>,
+}
+
 pub(crate) struct ForwarderResponseFinalizationInput {
     pub(crate) response: ProxyResponse,
     pub(crate) request_is_streaming: bool,
@@ -10174,8 +10179,7 @@ pub(crate) struct ForwarderResponseFinalizationInput {
 pub(crate) trait ForwarderResponseSource {
     fn apply_channel_response_status_mapping(
         &self,
-        response: ProxyResponse,
-        channel: Option<&ResolvedChannelAttempt>,
+        input: ForwarderChannelResponseStatusInput<'_>,
     ) -> Result<ProxyResponse, ProxyError>;
 
     fn prepare_success_response<'a>(
@@ -10204,9 +10208,9 @@ struct CcSwitchForwarderResponseSource;
 impl ForwarderResponseSource for CcSwitchForwarderResponseSource {
     fn apply_channel_response_status_mapping(
         &self,
-        response: ProxyResponse,
-        channel: Option<&ResolvedChannelAttempt>,
+        input: ForwarderChannelResponseStatusInput<'_>,
     ) -> Result<ProxyResponse, ProxyError> {
+        let ForwarderChannelResponseStatusInput { response, channel } = input;
         let Some(channel) = channel else {
             return Ok(response);
         };
