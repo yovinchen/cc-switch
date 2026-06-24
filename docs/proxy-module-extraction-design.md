@@ -423,6 +423,7 @@
 412. forwarder 主循环的 max attempts 上限判定和 warning 文案已收敛到 `ForwarderAttemptRuntimeSource::attempt_limit_reached`；host forwarder 不再本地展开 retry policy 的次数比较和日志文本，只在 source 返回 limit 时停止尝试。
 413. legacy 单 provider 场景跳过 circuit breaker 的判定已收敛到 `ForwarderAttemptRuntimeSource::should_bypass_circuit_breaker`；host forwarder 不再本地检查 attempts 数量或 channel 形态，只把 source 返回的 bypass 事实传入 allow 端口。
 414. thinking/media rectifier retry failure 的 provider/client 归因已进一步收敛为 `ForwarderRuntimeStateSource::rectifier_retry_failure_decision` 结构化决策；host forwarder 不再消费布尔 failover gate，只根据 source 返回的 provider failure 或 client failure 执行既有 permit、健康状态和错误返回流程。
+415. terminal forward failure 的 runtime status 文案已收敛到 `ForwarderRuntimeStateSource::{no_available_provider_status_message,terminal_failure_status_message}`；host forwarder 不再硬编码“所有供应商暂时不可用/都失败”的状态投影，只在终态分支记录 source 产出的 message。
 407. `proxy::types::ApiFormat` 未使用预留枚举已删除；Claude/OpenAI/Gemini format 判断统一沿用 `proxy-core` 的 provider kind、client format 和 response transform contract。
 408. `LogConfig` 已从 `proxy::types` 移到 `settings::LogConfig`；日志设置不再扩大代理运行态类型模块，proxy host types 只保留代理状态/备份等运行态数据。
 409. `RectifierConfig` 的默认值、serde 和 core 检测投影测试已从 host `proxy::types` 迁入 `proxy-core::ports`；host proxy types 不再承担 core 配置契约测试。
