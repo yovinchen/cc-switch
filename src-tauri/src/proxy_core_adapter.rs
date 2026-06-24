@@ -320,6 +320,7 @@ pub(crate) use crate::proxy_core::api::ports::{
     provider_live_sync_scope_for_app as core_provider_live_sync_scope,
     provider_omo_switch_pair_for_app_category as core_provider_omo_switch_pair,
     provider_omo_variant_for_app_category as core_provider_omo_variant_for_category,
+    provider_non_codex_credential_values_from_settings as core_provider_non_codex_credential_values_from_settings,
     provider_settings_with_live_token_sync as core_provider_settings_with_live_token_sync,
     provider_switch_backfill_source_id as core_provider_switch_backfill_source_id,
     provider_switch_dispatch_for_app as core_provider_switch_dispatch,
@@ -329,9 +330,6 @@ pub(crate) use crate::proxy_core::api::ports::{
     proxy_urls_match as core_proxy_urls_match,
     proxy_config_preserving_live_takeover_active, proxy_config_with_ephemeral_listen_port,
     proxy_config_with_live_takeover_active, proxy_runtime_status_stopped,
-    claude_env_credentials_from_settings, gemini_env_map_from_settings,
-    openclaw_credential_parts_from_settings, opencode_credential_parts_from_settings,
-    OpenCodeCredentialIssue,
     remove_claude_takeover_env_fields_if_present as core_remove_claude_takeover_env_fields_if_present,
     remove_codex_takeover_auth_placeholder_if_present as core_remove_codex_takeover_auth_placeholder_if_present,
     remove_gemini_takeover_env_fields_if_present as core_remove_gemini_takeover_env_fields_if_present,
@@ -342,9 +340,16 @@ pub(crate) use crate::proxy_core::api::ports::{
     should_skip_startup_default_live_import as core_should_skip_startup_default_live_import,
     LiveTokenProviderSettingsIssue, LocalizedErrorSpec, ProviderAdditiveLiveWriteAction,
     ProviderAdditiveUpdateRoute,
-    ProviderCredentialIssue, ProviderKeyChangePolicyIssue, ProviderLiveConfigPresenceErrorPolicy,
-    ProviderLiveRemovalTarget, ProviderLiveSyncScope, ProviderOmoSwitchPair, ProviderOmoVariant,
+    ProviderCredentialIssue, ProviderCredentialValues as CoreProviderCredentialValues,
+    ProviderKeyChangePolicyIssue, ProviderLiveConfigPresenceErrorPolicy, ProviderLiveRemovalTarget,
+    ProviderLiveSyncScope, ProviderOmoSwitchPair, ProviderOmoVariant,
     ProviderSwitchDispatch, ProviderTakeoverLiveSyncTarget,
+};
+#[cfg(test)]
+pub(crate) use crate::proxy_core::api::ports::{
+    claude_env_credentials_from_settings, gemini_env_map_from_settings,
+    openclaw_credential_parts_from_settings, opencode_credential_parts_from_settings,
+    OpenCodeCredentialIssue,
 };
 
 const PROXY_MANAGEMENT_AUTH_TOKEN_ENV: &str = "CC_SWITCH_PROXY_MANAGEMENT_TOKEN";
@@ -2219,32 +2224,13 @@ pub(crate) fn provider_switch_should_mark_live_config_managed(
     )
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct ProviderCredentialValues {
-    pub(crate) api_key: String,
-    pub(crate) base_url: String,
-}
+pub(crate) type ProviderCredentialValues = CoreProviderCredentialValues;
 
 pub(crate) fn provider_credential_values(
     provider: &Provider,
     app_type: &AppType,
 ) -> Result<ProviderCredentialValues, ProviderCredentialIssue> {
     match app_type {
-        AppType::Claude => {
-            let credentials = claude_env_credentials_from_settings(&provider.settings_config)
-                .ok_or(ProviderCredentialIssue::ClaudeEnvMissing)?;
-            let api_key = credentials
-                .api_key
-                .ok_or(ProviderCredentialIssue::ClaudeApiKeyMissing)?
-                .to_string();
-            let base_url = credentials
-                .base_url
-                .ok_or(ProviderCredentialIssue::ClaudeBaseUrlMissing)?
-                .to_string();
-
-            Ok(ProviderCredentialValues { api_key, base_url })
-        }
-        AppType::ClaudeDesktop => Err(ProviderCredentialIssue::ClaudeDesktopRequiresGateway),
         AppType::Codex => {
             let auth = codex_auth_object_value_from_settings(&provider.settings_config)
                 .ok_or(ProviderCredentialIssue::CodexAuthMissing)?;
@@ -2265,46 +2251,16 @@ pub(crate) fn provider_credential_values(
 
             Ok(ProviderCredentialValues { api_key, base_url })
         }
-        AppType::Gemini => {
-            let env_map = gemini_env_map_from_settings(&provider.settings_config);
-            let api_key = env_map
-                .and_then(|env| env.get("GEMINI_API_KEY"))
-                .and_then(Value::as_str)
-                .ok_or(ProviderCredentialIssue::GeminiApiKeyMissing)?
-                .to_string();
-            let base_url = env_map
-                .and_then(|env| env.get("GOOGLE_GEMINI_BASE_URL"))
-                .and_then(Value::as_str)
-                .unwrap_or("https://generativelanguage.googleapis.com")
-                .to_string();
-
-            Ok(ProviderCredentialValues { api_key, base_url })
-        }
-        AppType::OpenCode => {
-            let parts = opencode_credential_parts_from_settings(&provider.settings_config)
-                .map_err(|issue| match issue {
-                    OpenCodeCredentialIssue::MissingOptions => {
-                        ProviderCredentialIssue::OpenCodeOptionsMissing
-                    }
-                })?;
-            let api_key = parts
-                .api_key
-                .ok_or(ProviderCredentialIssue::OpenCodeApiKeyMissing)?
-                .to_string();
-            let base_url = parts.base_url.unwrap_or("").to_string();
-
-            Ok(ProviderCredentialValues { api_key, base_url })
-        }
-        AppType::OpenClaw | AppType::Hermes => {
-            let parts = openclaw_credential_parts_from_settings(&provider.settings_config);
-            let api_key = parts
-                .api_key
-                .ok_or(ProviderCredentialIssue::OpenClawApiKeyMissing)?
-                .to_string();
-            let base_url = parts.base_url.unwrap_or("").to_string();
-
-            Ok(ProviderCredentialValues { api_key, base_url })
-        }
+        AppType::Claude
+        | AppType::ClaudeDesktop
+        | AppType::Gemini
+        | AppType::OpenCode
+        | AppType::OpenClaw
+        | AppType::Hermes => core_provider_non_codex_credential_values_from_settings(
+            &AppKind::from(app_type),
+            &provider.settings_config,
+        )
+        .map(|values| values.expect("known non-Codex app should project credential values")),
     }
 }
 

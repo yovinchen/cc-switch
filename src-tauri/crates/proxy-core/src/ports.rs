@@ -1969,6 +1969,12 @@ pub enum ProviderCredentialIssue {
     OpenClawApiKeyMissing,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ProviderCredentialValues {
+    pub api_key: String,
+    pub base_url: String,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ClaudeEnvCredentials<'a> {
     pub api_key: Option<&'a str>,
@@ -2015,6 +2021,73 @@ pub fn opencode_credential_parts_from_settings(
         api_key: options.get("apiKey").and_then(Value::as_str),
         base_url: options.get("baseURL").and_then(Value::as_str),
     })
+}
+
+pub fn provider_non_codex_credential_values_from_settings(
+    app: &AppKind,
+    settings_config: &Value,
+) -> Result<Option<ProviderCredentialValues>, ProviderCredentialIssue> {
+    match app {
+        AppKind::Claude => {
+            let credentials = claude_env_credentials_from_settings(settings_config)
+                .ok_or(ProviderCredentialIssue::ClaudeEnvMissing)?;
+            let api_key = credentials
+                .api_key
+                .ok_or(ProviderCredentialIssue::ClaudeApiKeyMissing)?
+                .to_string();
+            let base_url = credentials
+                .base_url
+                .ok_or(ProviderCredentialIssue::ClaudeBaseUrlMissing)?
+                .to_string();
+
+            Ok(Some(ProviderCredentialValues { api_key, base_url }))
+        }
+        AppKind::ClaudeDesktop => Err(ProviderCredentialIssue::ClaudeDesktopRequiresGateway),
+        AppKind::Gemini => {
+            let env_map = gemini_env_map_from_settings(settings_config);
+            let api_key = env_map
+                .and_then(|env| env.get("GEMINI_API_KEY"))
+                .and_then(Value::as_str)
+                .ok_or(ProviderCredentialIssue::GeminiApiKeyMissing)?
+                .to_string();
+            let base_url = env_map
+                .and_then(|env| env.get("GOOGLE_GEMINI_BASE_URL"))
+                .and_then(Value::as_str)
+                .unwrap_or("https://generativelanguage.googleapis.com")
+                .to_string();
+
+            Ok(Some(ProviderCredentialValues { api_key, base_url }))
+        }
+        AppKind::Custom(name) if name.eq_ignore_ascii_case("opencode") => {
+            let parts = opencode_credential_parts_from_settings(settings_config).map_err(
+                |issue| match issue {
+                    OpenCodeCredentialIssue::MissingOptions => {
+                        ProviderCredentialIssue::OpenCodeOptionsMissing
+                    }
+                },
+            )?;
+            let api_key = parts
+                .api_key
+                .ok_or(ProviderCredentialIssue::OpenCodeApiKeyMissing)?
+                .to_string();
+            let base_url = parts.base_url.unwrap_or("").to_string();
+
+            Ok(Some(ProviderCredentialValues { api_key, base_url }))
+        }
+        AppKind::Custom(name)
+            if name.eq_ignore_ascii_case("openclaw") || name.eq_ignore_ascii_case("hermes") =>
+        {
+            let parts = openclaw_credential_parts_from_settings(settings_config);
+            let api_key = parts
+                .api_key
+                .ok_or(ProviderCredentialIssue::OpenClawApiKeyMissing)?
+                .to_string();
+            let base_url = parts.base_url.unwrap_or("").to_string();
+
+            Ok(Some(ProviderCredentialValues { api_key, base_url }))
+        }
+        AppKind::Codex | AppKind::Custom(_) => Ok(None),
+    }
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -4893,7 +4966,7 @@ mod tests {
         proxy_runtime_config_from_proxy_config, provider_additive_live_write_action_for_app,
         provider_additive_update_route_for_app,
         provider_app_has_current_provider, provider_category_is_official,
-        provider_credential_issue_spec,
+        provider_credential_issue_spec, provider_non_codex_credential_values_from_settings,
         provider_delete_is_current_provider, provider_initial_live_config_managed_marker,
         provider_key_change_policy_issue_for_app, provider_key_change_policy_issue_message,
         provider_live_config_presence_error_policy, provider_live_removal_target_for_app,
@@ -4930,8 +5003,8 @@ mod tests {
         GroupListQuery, HealthCheckResponse, ModelCatalog, OptimizerConfig, ProviderHealth,
         ProviderAdditiveLiveWriteAction, ProviderAdditiveUpdateRoute, ProviderHealthUpdateInput,
         CommonConfigSettingsMutationIssue, CommonConfigSnippetIssue, LiveTokenProviderSettingsIssue,
-        ProviderCredentialIssue, ProviderKeyChangePolicyIssue, OpenClawLiveWriteActionDecision,
-        OpenClawLiveWriteConfigDecision, OpenCodeCredentialIssue,
+        ProviderCredentialIssue, ProviderCredentialValues, ProviderKeyChangePolicyIssue,
+        OpenClawLiveWriteActionDecision, OpenClawLiveWriteConfigDecision, OpenCodeCredentialIssue,
         OpenCodeLiveProviderFragmentDecision, OpenCodeLiveWriteActionDecision,
         OpenCodeLiveWriteConfigDecision,
         provider_common_config_storage_normalization_requires_snippet,
@@ -6362,7 +6435,22 @@ mod tests {
             claude_env_credentials_from_settings(&claude_settings).expect("claude env credentials");
         assert_eq!(claude.api_key, Some("claude-token"));
         assert_eq!(claude.base_url, Some("https://claude.example"));
+        assert_eq!(
+            provider_non_codex_credential_values_from_settings(&AppKind::Claude, &claude_settings)
+                .expect("claude credential values"),
+            Some(ProviderCredentialValues {
+                api_key: "claude-token".to_string(),
+                base_url: "https://claude.example".to_string()
+            })
+        );
         assert!(claude_env_credentials_from_settings(&json!({"env": "invalid"})).is_none());
+        assert_eq!(
+            provider_non_codex_credential_values_from_settings(
+                &AppKind::ClaudeDesktop,
+                &claude_settings
+            ),
+            Err(ProviderCredentialIssue::ClaudeDesktopRequiresGateway)
+        );
 
         let gemini_settings = json!({
             "env": {
@@ -6374,6 +6462,25 @@ mod tests {
         assert_eq!(
             gemini_env.get("GEMINI_API_KEY").and_then(Value::as_str),
             Some("gemini-key")
+        );
+        assert_eq!(
+            provider_non_codex_credential_values_from_settings(&AppKind::Gemini, &gemini_settings)
+                .expect("gemini credential values"),
+            Some(ProviderCredentialValues {
+                api_key: "gemini-key".to_string(),
+                base_url: "https://gemini.example".to_string()
+            })
+        );
+        assert_eq!(
+            provider_non_codex_credential_values_from_settings(
+                &AppKind::Gemini,
+                &json!({"env": {"GEMINI_API_KEY": "gemini-key"}})
+            )
+            .expect("gemini default base url"),
+            Some(ProviderCredentialValues {
+                api_key: "gemini-key".to_string(),
+                base_url: "https://generativelanguage.googleapis.com".to_string()
+            })
         );
         assert!(gemini_env_map_from_settings(&json!({"env": "invalid"})).is_none());
 
@@ -6387,6 +6494,17 @@ mod tests {
             .expect("opencode credentials");
         assert_eq!(opencode.api_key, Some("opencode-key"));
         assert_eq!(opencode.base_url, Some("https://opencode.example"));
+        assert_eq!(
+            provider_non_codex_credential_values_from_settings(
+                &AppKind::Custom("opencode".to_string()),
+                &opencode_settings
+            )
+            .expect("opencode credential values"),
+            Some(ProviderCredentialValues {
+                api_key: "opencode-key".to_string(),
+                base_url: "https://opencode.example".to_string()
+            })
+        );
         assert_eq!(
             opencode_common_config_value_from_settings(&json!({
                 "npm": "@ai-sdk/openai",
@@ -6415,6 +6533,41 @@ mod tests {
         let openclaw = openclaw_credential_parts_from_settings(&openclaw_settings);
         assert_eq!(openclaw.api_key, Some("openclaw-key"));
         assert_eq!(openclaw.base_url, Some("https://openclaw.example"));
+        assert_eq!(
+            provider_non_codex_credential_values_from_settings(
+                &AppKind::Custom("openclaw".to_string()),
+                &openclaw_settings
+            )
+            .expect("openclaw credential values"),
+            Some(ProviderCredentialValues {
+                api_key: "openclaw-key".to_string(),
+                base_url: "https://openclaw.example".to_string()
+            })
+        );
+        assert_eq!(
+            provider_non_codex_credential_values_from_settings(
+                &AppKind::Custom("hermes".to_string()),
+                &json!({"apiKey": "hermes-key"})
+            )
+            .expect("hermes credential values"),
+            Some(ProviderCredentialValues {
+                api_key: "hermes-key".to_string(),
+                base_url: String::new()
+            })
+        );
+        assert_eq!(
+            provider_non_codex_credential_values_from_settings(&AppKind::Codex, &json!({}))
+                .expect("codex handled by host"),
+            None
+        );
+        assert_eq!(
+            provider_non_codex_credential_values_from_settings(
+                &AppKind::Custom("unknown".to_string()),
+                &json!({})
+            )
+            .expect("unknown custom app"),
+            None
+        );
         assert_eq!(
             openclaw_common_config_value_from_settings(&json!({
                 "apiKey": "openclaw-key",
