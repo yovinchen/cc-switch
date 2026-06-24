@@ -20,9 +20,9 @@ pub mod config {
         app_proxy_config_defaults_for_app, copilot_optimizer_config_spec_from_config,
         optimizer_config_spec_from_config, proxy_app_config_from_parts,
         proxy_global_config_from_global_config, proxy_runtime_config_from_proxy_config,
-        rectifier_config_spec_from_config, AppProxyConfig, CopilotOptimizerConfigSpec,
-        OptimizerConfigSpec, ProxyAppConfig, ProxyGlobalConfig, ProxyRuntimeConfig,
-        RectifierConfigSpec,
+        rectifier_config_spec_from_config, AppProxyConfig, AppSummaryConfig,
+        CopilotOptimizerConfigSpec, OptimizerConfigSpec, ProxyAppConfig, ProxyGlobalConfig,
+        ProxyRuntimeConfig, RectifierConfigSpec,
     };
     pub use crate::response_timeout::{
         ResponseRuntimePolicy, ResponseTimeoutConfig, StreamingTimeoutConfig,
@@ -210,11 +210,17 @@ pub mod usage {
 }
 
 pub mod prelude {
-    pub use super::auth::{ProviderAuthInfo, ProviderAuthStrategy};
-    pub use super::config::{ProxyRuntimeConfig, ResponseRuntimePolicy};
+    pub use futures::future::BoxFuture;
+
+    pub use super::auth::{ClaudeDesktopModelRouteInput, ProviderAuthInfo, ProviderAuthStrategy};
+    pub use super::config::{
+        AppSummaryConfig, ProxyAppConfig, ProxyGlobalConfig, ProxyRuntimeConfig,
+        ResponseRuntimePolicy,
+    };
     pub use super::domain::{
-        AppKind, AuthProfileRef, InterfaceKind, ModelRoute, ProviderKind, ProviderSpec,
-        ProxyRequest, ProxyResult, RoutePlan, RouteSelection,
+        AppKind, AuthProfileRef, ChannelAttemptResult, InterfaceKind, ModelRoute, ProviderKind,
+        ProviderSpec, ProxyRequest, ProxyResult, RoutePlan, RoutePolicy, RouteRequest,
+        RouteSelection, UsageTokens,
     };
     pub use super::engine::ProxyEngine;
     pub use super::errors::{ProxyCoreError, ProxyCoreResult};
@@ -223,23 +229,23 @@ pub mod prelude {
         AppChannelListQuery, AppChannelResponse, AppListResponse, AppModelListQuery,
         ChannelDeleteResponse, ChannelHealthResetResponse, ChannelKeyDeleteResponse,
         ChannelKeyRecord, ChannelKeyRecordResponse, ChannelKeysResponse, ChannelListQuery,
-        ChannelListResponse, ChannelMigrationMaterializeResponse,
-        ChannelMigrationPreviewResponse, ChannelModelRecord, ChannelModelsResponse,
-        ChannelRecord, ChannelRecordResponse, ChannelTestResponse, CurrentRouteResponse,
+        ChannelListResponse, ChannelMigrationMaterializeResponse, ChannelMigrationPreviewResponse,
+        ChannelModelRecord, ChannelModelsResponse, ChannelReachabilityResult, ChannelRecord,
+        ChannelRecordResponse, ChannelTestProbeRequest, ChannelTestResponse, CurrentRouteResponse,
         GroupListQuery, HealthCheckResponse, ProviderListResponse, ProxyChannelKeyPatchRequest,
         ProxyChannelKeyWriteRequest, ProxyChannelModelWriteRequest,
         ProxyChannelModelsReplaceRequest, ProxyChannelPatchRequest, ProxyChannelTestRequest,
-        ProxyChannelWriteRequest, ProxyStatusResponse, RouteGroupListResponse,
-        RouteResolveRequest, RouteResolveResponse,
+        ProxyChannelWriteRequest, ProxyStatusResponse, RouteGroupListResponse, RouteResolveRequest,
+        RouteResolveResponse,
     };
     pub use super::model_catalog::{
         ClientModelCatalogResponse, FetchedModel, ModelCatalog, RoutableModelList,
     };
     pub use super::ports::CurrentRouteTarget;
     pub use super::ports::{
-        AuthProvider, ChannelHealthStore, ChannelSource, ForwardPipeline, ModelCatalogProvider,
-        ProviderSource, ProxyConfigSource, ProxyServices, RoutePolicySource, RouteResolver,
-        UsageSink,
+        AuthInfo, AuthProvider, ChannelHealthReset, ChannelHealthStore, ChannelReachabilityProbe,
+        ChannelSource, ForwardPipeline, ModelCatalogProvider, ProviderSource, ProxyConfigSource,
+        ProxyEventSink, ProxyServices, RoutePolicySource, RouteResolver, UsageSink,
     };
     pub use super::routing::{ChannelQuery, ChannelSpec, DEFAULT_ROUTE_GROUP};
     pub use super::transport::{
@@ -336,5 +342,286 @@ mod tests {
         assert_eq!(client_response.raw["models"][0]["id"], "relay-sonnet");
         assert_eq!(routable.app_type, "claude");
         assert_eq!(routable.interface_kind.as_deref(), Some("anthropic"));
+    }
+
+    #[test]
+    fn prelude_exposes_host_service_contracts() {
+        use prelude::*;
+        use std::sync::Arc;
+
+        struct StubServices;
+
+        fn unavailable<'a, T: Send + 'a>() -> BoxFuture<'a, ProxyCoreResult<T>> {
+            Box::pin(async {
+                Err(ProxyCoreError::Unavailable(
+                    "stub service is compile-only".to_string(),
+                ))
+            })
+        }
+
+        impl ProxyConfigSource for StubServices {
+            fn list_apps<'a>(&'a self) -> BoxFuture<'a, ProxyCoreResult<Vec<AppKind>>> {
+                Box::pin(async { Ok(vec![AppKind::Claude]) })
+            }
+
+            fn load_global<'a>(&'a self) -> BoxFuture<'a, ProxyCoreResult<ProxyGlobalConfig>> {
+                Box::pin(async { Ok(ProxyGlobalConfig::default()) })
+            }
+
+            fn load_app<'a>(
+                &'a self,
+                app: &'a AppKind,
+            ) -> BoxFuture<'a, ProxyCoreResult<ProxyAppConfig>> {
+                Box::pin(async move {
+                    Ok(ProxyAppConfig {
+                        app: Some(app.clone()),
+                        enabled: true,
+                        ..ProxyAppConfig::default()
+                    })
+                })
+            }
+
+            fn load_runtime<'a>(&'a self) -> BoxFuture<'a, ProxyCoreResult<ProxyRuntimeConfig>> {
+                Box::pin(async { Ok(ProxyRuntimeConfig::default()) })
+            }
+        }
+
+        impl ProviderSource for StubServices {
+            fn list_providers<'a>(
+                &'a self,
+                _app: &'a AppKind,
+            ) -> BoxFuture<'a, ProxyCoreResult<Vec<ProviderSpec>>> {
+                Box::pin(async { Ok(Vec::new()) })
+            }
+
+            fn get_provider<'a>(
+                &'a self,
+                _app: &'a AppKind,
+                _provider_id: &'a str,
+            ) -> BoxFuture<'a, ProxyCoreResult<Option<ProviderSpec>>> {
+                Box::pin(async { Ok(None) })
+            }
+        }
+
+        impl ChannelSource for StubServices {
+            fn list_channels<'a>(
+                &'a self,
+                _query: ChannelQuery<'a>,
+            ) -> BoxFuture<'a, ProxyCoreResult<Vec<ChannelSpec>>> {
+                Box::pin(async { Ok(Vec::new()) })
+            }
+
+            fn get_channel<'a>(
+                &'a self,
+                _channel_id: &'a str,
+            ) -> BoxFuture<'a, ProxyCoreResult<Option<ChannelSpec>>> {
+                Box::pin(async { Ok(None) })
+            }
+        }
+
+        impl RoutePolicySource for StubServices {
+            fn load_policy<'a>(
+                &'a self,
+                app: &'a AppKind,
+            ) -> BoxFuture<'a, ProxyCoreResult<Option<RoutePolicy>>> {
+                let app = app.clone();
+                Box::pin(async move {
+                    Ok(Some(RoutePolicy {
+                        app,
+                        groups: Vec::new(),
+                        raw: serde_json::json!({}),
+                    }))
+                })
+            }
+        }
+
+        impl RouteResolver for StubServices {
+            fn resolve<'a>(
+                &'a self,
+                _request: RouteRequest<'a>,
+            ) -> BoxFuture<'a, ProxyCoreResult<RoutePlan>> {
+                unavailable()
+            }
+        }
+
+        impl ChannelHealthStore for StubServices {
+            fn record_attempt<'a>(
+                &'a self,
+                _result: ChannelAttemptResult,
+            ) -> BoxFuture<'a, ProxyCoreResult<()>> {
+                Box::pin(async { Ok(()) })
+            }
+
+            fn reset_channel<'a>(
+                &'a self,
+                channel_id: &'a str,
+            ) -> BoxFuture<'a, ProxyCoreResult<ChannelHealthReset>> {
+                let channel_id = channel_id.to_string();
+                Box::pin(async move {
+                    Ok(ChannelHealthReset {
+                        channel_id,
+                        app: AppKind::Claude,
+                    })
+                })
+            }
+        }
+
+        impl ChannelReachabilityProbe for StubServices {
+            fn probe_channel<'a>(
+                &'a self,
+                _request: ChannelTestProbeRequest,
+            ) -> BoxFuture<'a, ProxyCoreResult<ChannelReachabilityResult>> {
+                Box::pin(async {
+                    Ok(ChannelReachabilityResult {
+                        success: true,
+                        status: "operational".to_string(),
+                        message: "ok".to_string(),
+                        latency_ms: Some(1),
+                        http_status: Some(200),
+                        tested_at: 1,
+                        retry_count: 0,
+                    })
+                })
+            }
+        }
+
+        impl AuthProvider for StubServices {
+            fn resolve_auth<'a>(
+                &'a self,
+                auth_profile: Option<&'a AuthProfileRef>,
+                _request: &'a ProxyRequest,
+            ) -> BoxFuture<'a, ProxyCoreResult<AuthInfo>> {
+                Box::pin(async move {
+                    Ok(AuthInfo {
+                        account_ref: auth_profile.map(|value| value.0.clone()),
+                        ..AuthInfo::default()
+                    })
+                })
+            }
+        }
+
+        impl ModelCatalogProvider for StubServices {
+            fn load_catalog<'a>(
+                &'a self,
+                _app: &'a AppKind,
+                provider_id: &'a str,
+            ) -> BoxFuture<'a, ProxyCoreResult<ModelCatalog>> {
+                let provider_id = provider_id.to_string();
+                Box::pin(async move {
+                    Ok(ModelCatalog {
+                        provider_id,
+                        models: Vec::new(),
+                        raw: serde_json::json!({ "data": [] }),
+                    })
+                })
+            }
+
+            fn load_client_catalog<'a>(
+                &'a self,
+                app: &'a AppKind,
+            ) -> BoxFuture<'a, ProxyCoreResult<ModelCatalog>> {
+                self.load_catalog(app, "client")
+            }
+        }
+
+        impl UsageSink for StubServices {
+            fn record_usage<'a>(
+                &'a self,
+                _record: UsageRecord,
+            ) -> BoxFuture<'a, ProxyCoreResult<()>> {
+                Box::pin(async { Ok(()) })
+            }
+        }
+
+        impl ProxyEventSink for StubServices {
+            fn emit_event<'a>(
+                &'a self,
+                _event: ProxyCoreEvent,
+            ) -> BoxFuture<'a, ProxyCoreResult<()>> {
+                Box::pin(async { Ok(()) })
+            }
+        }
+
+        impl ForwardPipeline for StubServices {
+            fn forward<'a>(
+                &'a self,
+                _request: ProxyRequest,
+                _plan: RoutePlan,
+            ) -> BoxFuture<'a, ProxyCoreResult<ProxyResult>> {
+                unavailable()
+            }
+        }
+
+        impl ProxyServices for StubServices {
+            fn config(&self) -> &(dyn ProxyConfigSource + Send + Sync) {
+                self
+            }
+
+            fn providers(&self) -> &(dyn ProviderSource + Send + Sync) {
+                self
+            }
+
+            fn channels(&self) -> &(dyn ChannelSource + Send + Sync) {
+                self
+            }
+
+            fn route_policies(&self) -> &(dyn RoutePolicySource + Send + Sync) {
+                self
+            }
+
+            fn route_resolver(&self) -> &(dyn RouteResolver + Send + Sync) {
+                self
+            }
+
+            fn health_store(&self) -> &(dyn ChannelHealthStore + Send + Sync) {
+                self
+            }
+
+            fn reachability_probe(&self) -> &(dyn ChannelReachabilityProbe + Send + Sync) {
+                self
+            }
+
+            fn auth_provider(&self) -> &(dyn AuthProvider + Send + Sync) {
+                self
+            }
+
+            fn model_catalog(&self) -> &(dyn ModelCatalogProvider + Send + Sync) {
+                self
+            }
+
+            fn usage_sink(&self) -> &(dyn UsageSink + Send + Sync) {
+                self
+            }
+
+            fn event_sink(&self) -> &(dyn ProxyEventSink + Send + Sync) {
+                self
+            }
+
+            fn forward_pipeline(&self) -> &(dyn ForwardPipeline + Send + Sync) {
+                self
+            }
+        }
+
+        let engine = ProxyEngine::new(Arc::new(StubServices));
+        let app_config = ProxyAppConfig {
+            app: Some(AppKind::Claude),
+            enabled: true,
+            ..ProxyAppConfig::default()
+        };
+        let summary = AppSummaryConfig::from_proxy_app_config(&app_config);
+        let _desktop_routes: Vec<ClaudeDesktopModelRouteInput> = Vec::new();
+        let _tokens = UsageTokens {
+            input_tokens: 1,
+            output_tokens: 0,
+            cache_read_tokens: 0,
+            cache_creation_tokens: 0,
+        };
+
+        assert_eq!(engine.status().accepted_requests, 0);
+        assert!(summary.enabled);
+        assert!(!ProxyRuntimeConfig::default().route_events_enabled);
+        let _probe: &(dyn ChannelReachabilityProbe + Send + Sync) =
+            engine.services().reachability_probe();
+        let _events: &(dyn ProxyEventSink + Send + Sync) = engine.services().event_sink();
     }
 }
