@@ -624,6 +624,23 @@ pub fn auth_info_from_profile_ref(
     }
 }
 
+pub fn auth_info_from_route_context(
+    app: &AppKind,
+    provider: &ProviderSpec,
+    channel: &ChannelSpec,
+    source: impl Into<String>,
+) -> AuthInfo {
+    let source = source.into();
+    let mut auth = auth_info_from_profile_ref(channel.auth_profile.as_ref(), source.clone());
+    auth.metadata = serde_json::json!({
+        "source": source,
+        "app": app.as_str(),
+        "providerId": provider.id.as_str(),
+        "channelId": channel.id.as_str(),
+    });
+    auth
+}
+
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ModelCatalog {
@@ -3045,7 +3062,8 @@ mod tests {
     use super::{
         AppChannelListQuery, AppChannelListResponse, AppChannelResponse, AppChannelRouteResponse,
         app_proxy_config_defaults_for_app, app_proxy_config_raw, auth_info_from_profile_ref,
-        channel_health_reset_from_parts, channel_health_update_from_input,
+        auth_info_from_route_context, channel_health_reset_from_parts,
+        channel_health_update_from_input,
         channel_model_record_from_input, channel_reachability_result_from_stream_check_result,
         channel_route_source_for_materialized_count,
         proxy_app_config_from_parts, proxy_global_config_from_global_config,
@@ -4286,6 +4304,40 @@ mod tests {
         let anonymous = auth_info_from_profile_ref(None, "cc_switch_provider_config");
         assert_eq!(anonymous.account_ref, None);
         assert_eq!(anonymous.metadata["source"], json!("cc_switch_provider_config"));
+    }
+
+    #[test]
+    fn auth_info_from_route_context_projects_route_metadata() {
+        let provider = ProviderSpec {
+            id: "provider-a".to_string(),
+            name: "Provider A".to_string(),
+            kind: ProviderKind::Claude,
+            account_ref: None,
+            metadata: ProviderMetadata::default(),
+        };
+        let mut channel = route_group_channel_spec(
+            "channel-a",
+            AppKind::Claude,
+            vec![DEFAULT_ROUTE_GROUP.to_string()],
+        );
+        channel.auth_profile = Some(AuthProfileRef::new("provider:claude:anthropic-main"));
+
+        let auth = auth_info_from_route_context(
+            &AppKind::Claude,
+            &provider,
+            &channel,
+            "cc_switch_provider_config",
+        );
+
+        assert!(auth.headers.is_empty());
+        assert_eq!(
+            auth.account_ref.as_deref(),
+            Some("provider:claude:anthropic-main")
+        );
+        assert_eq!(auth.metadata["source"], json!("cc_switch_provider_config"));
+        assert_eq!(auth.metadata["app"], json!("claude"));
+        assert_eq!(auth.metadata["providerId"], json!("provider-a"));
+        assert_eq!(auth.metadata["channelId"], json!("channel-a"));
     }
 
     #[test]

@@ -1010,6 +1010,7 @@ pub(crate) async fn release_forward_attempt_permit_neutral_runtime_source(
 }
 
 pub(crate) type GeminiShadowStore = crate::proxy_core::api::transforms::GeminiShadowStore;
+#[cfg(test)]
 pub(crate) type AuthProfileRef = crate::proxy_core::api::domain::AuthProfileRef;
 #[cfg(test)]
 pub(crate) type ClaudeAuthHeaderKind = crate::proxy_core::api::transport::ClaudeAuthHeaderKind;
@@ -1537,8 +1538,11 @@ pub(crate) use crate::proxy_core::api::auth::gemini_auth_info_from_api_key as co
 pub(crate) use crate::proxy_core::api::auth::claude_static_auth_info_from_key as core_claude_static_auth_info_from_key;
 pub(crate) use crate::proxy_core::api::auth::claude_gemini_cli_auth_info_from_api_key as core_claude_gemini_cli_auth_info_from_api_key;
 pub(crate) use crate::proxy_core::api::auth::codex_auth_info_from_api_key as core_codex_auth_info_from_api_key;
+#[cfg(test)]
 pub(crate) use crate::proxy_core::api::ports::auth_info_from_profile_ref;
+pub(crate) use crate::proxy_core::api::ports::auth_info_from_route_context;
 
+#[cfg(test)]
 pub(crate) fn auth_info_from_cc_switch_provider_config(
     auth_profile: Option<&AuthProfileRef>,
 ) -> AuthInfo {
@@ -1550,14 +1554,7 @@ pub(crate) fn auth_info_from_cc_switch_route_context(
     provider: &ProviderSpec,
     channel: &ChannelSpec,
 ) -> AuthInfo {
-    let mut auth = auth_info_from_cc_switch_provider_config(channel.auth_profile.as_ref());
-    auth.metadata = json!({
-        "source": "cc_switch_provider_config",
-        "app": app.as_str(),
-        "providerId": provider.id.as_str(),
-        "channelId": channel.id.as_str(),
-    });
-    auth
+    auth_info_from_route_context(app, provider, channel, "cc_switch_provider_config")
 }
 
 #[derive(Clone, Default)]
@@ -17599,6 +17596,57 @@ base_url = "https://api.openai.com/v1"
             fallback.metadata["source"],
             json!("cc_switch_provider_config")
         );
+    }
+
+    #[test]
+    fn auth_adapter_projects_cc_switch_route_context_source() {
+        let provider = ProviderSpec {
+            id: "provider-a".to_string(),
+            name: "Provider A".to_string(),
+            kind: ProviderKind::Claude,
+            account_ref: None,
+            metadata: ProviderMetadata::default(),
+        };
+        let channel = channel_spec_from_input(ChannelSpecInput {
+            id: "channel-a".to_string(),
+            provider_id: "provider-a".to_string(),
+            app_type: "claude".to_string(),
+            name: "Channel A".to_string(),
+            status: "enabled".to_string(),
+            base_url: "https://relay.example.com/v1".to_string(),
+            interface_kind: "anthropic_messages".to_string(),
+            auth_profile_ref: Some("provider:claude:anthropic-main".to_string()),
+            models: Vec::new(),
+            groups: Vec::new(),
+            priority: 0,
+            weight: 100,
+            retry_policy: Value::Object(Default::default()),
+            health_policy: Value::Object(Default::default()),
+            header_overrides: Value::Object(Default::default()),
+            param_overrides: Value::Object(Default::default()),
+            status_code_mapping: Value::Array(Vec::new()),
+            tags: Vec::new(),
+            metadata: Value::Object(Default::default()),
+            source_ref: None,
+            needs_review: false,
+            review_reasons: Vec::new(),
+        });
+
+        let auth = auth_info_from_cc_switch_route_context(
+            &AppKind::Claude,
+            &provider,
+            &channel,
+        );
+
+        assert!(auth.headers.is_empty());
+        assert_eq!(
+            auth.account_ref.as_deref(),
+            Some("provider:claude:anthropic-main")
+        );
+        assert_eq!(auth.metadata["source"], json!("cc_switch_provider_config"));
+        assert_eq!(auth.metadata["app"], json!("claude"));
+        assert_eq!(auth.metadata["providerId"], json!("provider-a"));
+        assert_eq!(auth.metadata["channelId"], json!("channel-a"));
     }
 
     #[test]
