@@ -1728,6 +1728,8 @@ use crate::proxy_core::api::ports::{
     contains_claude_common_config_snippet as core_contains_claude_common_config_snippet,
     contains_gemini_common_config_snippet as core_contains_gemini_common_config_snippet,
     gemini_common_config_snippet_from_settings as core_gemini_common_config_snippet_from_settings,
+    openclaw_live_write_action_decision as core_openclaw_live_write_action_decision,
+    openclaw_live_write_config_decision as core_openclaw_live_write_config_decision,
     openclaw_common_config_snippet_from_settings as core_openclaw_common_config_snippet_from_settings,
     opencode_common_config_snippet_from_settings as core_opencode_common_config_snippet_from_settings,
     provider_common_config_storage_normalization_requires_snippet as core_provider_common_config_storage_normalization_requires_snippet,
@@ -1738,6 +1740,8 @@ use crate::proxy_core::api::ports::{
     remove_gemini_common_config_from_settings as core_remove_gemini_common_config_from_settings,
     should_emit_proxy_official_warning_for_provider_category as core_should_emit_proxy_official_warning_for_provider_category,
     should_reapply_codex_official_live_for_provider_category as core_should_reapply_codex_official_live_for_provider_category,
+    OpenClawLiveWriteActionDecision as CoreOpenClawLiveWriteActionDecision,
+    OpenClawLiveWriteConfigDecision as CoreOpenClawLiveWriteConfigDecision,
 };
 #[cfg(test)]
 use crate::proxy_core::api::ports::provider_category_is_official as core_provider_category_is_official;
@@ -1791,18 +1795,27 @@ pub(crate) struct OpenClawLiveWriteProjection {
 
 pub(crate) fn provider_openclaw_live_write_plan(provider: &Provider) -> OpenClawLiveWritePlan {
     let config_to_write = provider.settings_config.clone();
+    let typed_config = serde_json::from_value::<OpenClawProviderConfig>(config_to_write.clone());
+    let decision = core_openclaw_live_write_config_decision(
+        config_to_write,
+        typed_config.as_ref().err().map(|error| error.to_string()),
+        provider_openclaw_has_live_provider_fields(provider),
+    );
 
-    let config = match serde_json::from_value::<OpenClawProviderConfig>(config_to_write.clone()) {
-        Ok(config) => OpenClawLiveWriteConfig::Typed(config),
-        Err(error) if provider_openclaw_has_live_provider_fields(provider) => {
-            OpenClawLiveWriteConfig::Raw {
-                config: config_to_write,
-                parse_error: error.to_string(),
-            }
+    let config = match decision {
+        CoreOpenClawLiveWriteConfigDecision::Typed => {
+            OpenClawLiveWriteConfig::Typed(typed_config.expect("typed OpenClaw config"))
         }
-        Err(error) => OpenClawLiveWriteConfig::Invalid {
-            parse_error: error.to_string(),
+        CoreOpenClawLiveWriteConfigDecision::Raw {
+            config,
+            parse_error,
+        } => OpenClawLiveWriteConfig::Raw {
+            config,
+            parse_error,
         },
+        CoreOpenClawLiveWriteConfigDecision::Invalid { parse_error } => {
+            OpenClawLiveWriteConfig::Invalid { parse_error }
+        }
     };
 
     OpenClawLiveWritePlan { config }
@@ -1813,21 +1826,52 @@ pub(crate) fn provider_openclaw_live_write_projection(
 ) -> OpenClawLiveWriteProjection {
     let plan = provider_openclaw_live_write_plan(provider);
     let action = match plan.config {
-        OpenClawLiveWriteConfig::Typed(config) => OpenClawLiveWriteAction::Typed(config),
+        OpenClawLiveWriteConfig::Typed(config) => {
+            let decision = core_openclaw_live_write_action_decision(
+                &provider.id,
+                CoreOpenClawLiveWriteConfigDecision::Typed,
+            );
+            match decision {
+                CoreOpenClawLiveWriteActionDecision::Typed => {
+                    OpenClawLiveWriteAction::Typed(config)
+                }
+                other => unreachable!("typed OpenClaw plan produced non-typed action: {other:?}"),
+            }
+        }
         OpenClawLiveWriteConfig::Raw {
             config,
             parse_error,
-        } => OpenClawLiveWriteAction::Raw {
-            config,
-            parse_error,
+        } => match core_openclaw_live_write_action_decision(
+            &provider.id,
+            CoreOpenClawLiveWriteConfigDecision::Raw {
+                config,
+                parse_error,
+            },
+        ) {
+            CoreOpenClawLiveWriteActionDecision::Raw {
+                config,
+                parse_error,
+            } => OpenClawLiveWriteAction::Raw {
+                config,
+                parse_error,
+            },
+            other => unreachable!("raw OpenClaw plan produced non-raw action: {other:?}"),
         },
-        OpenClawLiveWriteConfig::Invalid { parse_error } => OpenClawLiveWriteAction::Reject {
-            parse_error,
-            message: format!(
-                "OpenClaw provider '{}' has invalid config structure for live config (must contain 'baseUrl', 'api', or 'models')",
-                provider.id
-            ),
-        },
+        OpenClawLiveWriteConfig::Invalid { parse_error } => {
+            match core_openclaw_live_write_action_decision(
+                &provider.id,
+                CoreOpenClawLiveWriteConfigDecision::Invalid { parse_error },
+            ) {
+                CoreOpenClawLiveWriteActionDecision::Reject {
+                    parse_error,
+                    message,
+                } => OpenClawLiveWriteAction::Reject {
+                    parse_error,
+                    message,
+                },
+                other => unreachable!("invalid OpenClaw plan produced non-reject action: {other:?}"),
+            }
+        }
     };
 
     OpenClawLiveWriteProjection { action }

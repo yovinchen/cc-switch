@@ -2032,6 +2032,65 @@ pub fn openclaw_credential_parts_from_settings(
     }
 }
 
+#[derive(Debug, Clone, PartialEq)]
+pub enum OpenClawLiveWriteConfigDecision {
+    Typed,
+    Raw { config: Value, parse_error: String },
+    Invalid { parse_error: String },
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum OpenClawLiveWriteActionDecision {
+    Typed,
+    Raw {
+        config: Value,
+        parse_error: String,
+    },
+    Reject {
+        parse_error: String,
+        message: String,
+    },
+}
+
+pub fn openclaw_live_write_config_decision(
+    config_to_write: Value,
+    typed_parse_error: Option<String>,
+    has_live_provider_fields: bool,
+) -> OpenClawLiveWriteConfigDecision {
+    match typed_parse_error {
+        None => OpenClawLiveWriteConfigDecision::Typed,
+        Some(parse_error) if has_live_provider_fields => OpenClawLiveWriteConfigDecision::Raw {
+            config: config_to_write,
+            parse_error,
+        },
+        Some(parse_error) => OpenClawLiveWriteConfigDecision::Invalid { parse_error },
+    }
+}
+
+pub fn openclaw_live_write_action_decision(
+    provider_id: &str,
+    config: OpenClawLiveWriteConfigDecision,
+) -> OpenClawLiveWriteActionDecision {
+    match config {
+        OpenClawLiveWriteConfigDecision::Typed => OpenClawLiveWriteActionDecision::Typed,
+        OpenClawLiveWriteConfigDecision::Raw {
+            config,
+            parse_error,
+        } => OpenClawLiveWriteActionDecision::Raw {
+            config,
+            parse_error,
+        },
+        OpenClawLiveWriteConfigDecision::Invalid { parse_error } => {
+            OpenClawLiveWriteActionDecision::Reject {
+                parse_error,
+                message: format!(
+                    "OpenClaw provider '{provider_id}' has invalid config structure for live config (must contain 'baseUrl', 'api', or 'models')"
+                ),
+            }
+        }
+    }
+}
+
 pub fn openclaw_common_config_value_from_settings(settings: &Value) -> Value {
     let mut config = settings.clone();
 
@@ -4727,7 +4786,8 @@ mod tests {
         live_token_sync_app_label, normalize_claude_models_in_value,
         normalize_provider_settings_for_storage, provider_default_live_import_settings,
         openclaw_common_config_value_from_settings, openclaw_credential_parts_from_settings,
-        openclaw_common_config_snippet_from_settings,
+        openclaw_common_config_snippet_from_settings, openclaw_live_write_action_decision,
+        openclaw_live_write_config_decision,
         opencode_common_config_snippet_from_settings,
         opencode_common_config_value_from_settings, opencode_credential_parts_from_settings,
         provider_settings_with_live_token_sync, proxy_urls_match,
@@ -4774,7 +4834,8 @@ mod tests {
         GroupListQuery, HealthCheckResponse, ModelCatalog, OptimizerConfig, ProviderHealth,
         ProviderAdditiveLiveWriteAction, ProviderAdditiveUpdateRoute, ProviderHealthUpdateInput,
         CommonConfigSettingsMutationIssue, CommonConfigSnippetIssue, LiveTokenProviderSettingsIssue,
-        ProviderCredentialIssue, ProviderKeyChangePolicyIssue, OpenCodeCredentialIssue,
+        ProviderCredentialIssue, ProviderKeyChangePolicyIssue, OpenClawLiveWriteActionDecision,
+        OpenClawLiveWriteConfigDecision, OpenCodeCredentialIssue,
         provider_common_config_storage_normalization_requires_snippet,
         provider_uses_common_config_from_parts, ProviderListResponse,
         ProviderLiveConfigPresenceErrorPolicy, ProviderLiveRemovalTarget,
@@ -6268,6 +6329,64 @@ mod tests {
                 "models": {"fast": "claude-sonnet"}
             })
         );
+    }
+
+    #[test]
+    fn openclaw_live_write_policy_classifies_typed_raw_and_reject_paths() {
+        let typed = openclaw_live_write_config_decision(
+            json!({"baseUrl": "https://openclaw.example", "models": []}),
+            None,
+            false,
+        );
+        assert_eq!(typed, OpenClawLiveWriteConfigDecision::Typed);
+        assert_eq!(
+            openclaw_live_write_action_decision("openclaw-typed", typed),
+            OpenClawLiveWriteActionDecision::Typed
+        );
+
+        let raw_settings = json!({"models": {}});
+        let raw = openclaw_live_write_config_decision(
+            raw_settings.clone(),
+            Some("invalid type: map".to_string()),
+            true,
+        );
+        assert_eq!(
+            raw,
+            OpenClawLiveWriteConfigDecision::Raw {
+                config: raw_settings.clone(),
+                parse_error: "invalid type: map".to_string()
+            }
+        );
+        assert_eq!(
+            openclaw_live_write_action_decision("openclaw-raw", raw),
+            OpenClawLiveWriteActionDecision::Raw {
+                config: raw_settings,
+                parse_error: "invalid type: map".to_string()
+            }
+        );
+
+        let invalid = openclaw_live_write_config_decision(
+            json!("invalid"),
+            Some("invalid type: string".to_string()),
+            false,
+        );
+        assert_eq!(
+            invalid,
+            OpenClawLiveWriteConfigDecision::Invalid {
+                parse_error: "invalid type: string".to_string()
+            }
+        );
+        match openclaw_live_write_action_decision("bad-openclaw", invalid) {
+            OpenClawLiveWriteActionDecision::Reject {
+                parse_error,
+                message,
+            } => {
+                assert_eq!(parse_error, "invalid type: string");
+                assert!(message.contains("OpenClaw provider 'bad-openclaw'"));
+                assert!(message.contains("baseUrl"));
+            }
+            other => panic!("expected reject action, got {other:?}"),
+        }
     }
 
     #[test]
