@@ -359,6 +359,18 @@ pub fn build_codex_oauth_session_headers(
     headers
 }
 
+pub fn build_codex_oauth_session_headers_for_forwarder(
+    should_send_session_headers: bool,
+    session_client_provided: bool,
+    session_id: &str,
+) -> Vec<(http::HeaderName, http::HeaderValue)> {
+    if should_send_session_headers && session_client_provided {
+        build_codex_oauth_session_headers(session_id)
+    } else {
+        Vec::new()
+    }
+}
+
 pub fn build_upstream_auth_headers(
     input: UpstreamAuthHeadersInput<'_>,
 ) -> Vec<(http::HeaderName, http::HeaderValue)> {
@@ -661,15 +673,15 @@ mod tests {
         anthropic_beta_header_value, auth_header_value, build_auth_provider_headers,
         build_claude_auth_headers, build_claude_provider_auth_headers,
         build_codex_bearer_auth_headers, build_codex_oauth_session_headers,
-        build_codex_provider_auth_headers, build_copilot_auth_headers, build_gemini_auth_headers,
-        build_gemini_provider_auth_headers, build_upstream_auth_headers,
-        build_upstream_request_headers, claude_auth_header_kind_for_provider_strategy,
-        is_official_codex_client_user_agent, should_preserve_exact_request_header_case,
-        should_send_anthropic_request_headers, should_skip_copilot_fingerprint_request_header,
-        should_strip_forwarded_request_header, upstream_host_header_from_url, ClaudeAuthHeaderKind,
-        ClaudeProviderAuthHeadersInput, CopilotAuthHeaderOverrides, CopilotAuthHeadersInput,
-        UpstreamAuthHeadersInput, UpstreamRequestHeadersInput, CLAUDE_CODE_BETA,
-        DEFAULT_ANTHROPIC_VERSION,
+        build_codex_oauth_session_headers_for_forwarder, build_codex_provider_auth_headers,
+        build_copilot_auth_headers, build_gemini_auth_headers, build_gemini_provider_auth_headers,
+        build_upstream_auth_headers, build_upstream_request_headers,
+        claude_auth_header_kind_for_provider_strategy, is_official_codex_client_user_agent,
+        should_preserve_exact_request_header_case, should_send_anthropic_request_headers,
+        should_skip_copilot_fingerprint_request_header, should_strip_forwarded_request_header,
+        upstream_host_header_from_url, ClaudeAuthHeaderKind, ClaudeProviderAuthHeadersInput,
+        CopilotAuthHeaderOverrides, CopilotAuthHeadersInput, UpstreamAuthHeadersInput,
+        UpstreamRequestHeadersInput, CLAUDE_CODE_BETA, DEFAULT_ANTHROPIC_VERSION,
     };
     use crate::error::ProxyCoreError;
     use crate::ports::AuthInfo;
@@ -1200,6 +1212,31 @@ mod tests {
         assert_eq!(
             map.get("x-codex-window-id"),
             Some(&HeaderValue::from_static("session-abc:0"))
+        );
+    }
+
+    #[test]
+    fn codex_oauth_session_headers_for_forwarder_require_runtime_and_client_session() {
+        assert!(
+            build_codex_oauth_session_headers_for_forwarder(false, true, "session-123").is_empty()
+        );
+        assert!(
+            build_codex_oauth_session_headers_for_forwarder(true, false, "session-123").is_empty()
+        );
+
+        let headers = build_codex_oauth_session_headers_for_forwarder(true, true, "session-123");
+        let mut map = HeaderMap::new();
+        for (name, value) in headers {
+            map.insert(name, value);
+        }
+
+        assert_eq!(
+            map.get("session_id"),
+            Some(&HeaderValue::from_static("session-123"))
+        );
+        assert_eq!(
+            map.get("x-client-request-id"),
+            Some(&HeaderValue::from_static("session-123"))
         );
     }
 

@@ -3089,13 +3089,13 @@ pub(crate) use crate::proxy_core::api::transport::{
     append_query_to_full_url, apply_bedrock_pre_send_optimizers,
     apply_copilot_warmup_model_override, bedrock_env_flag_from_provider_settings,
     build_auth_provider_headers, build_claude_provider_auth_headers, build_claude_upstream_url,
-    build_codex_oauth_session_headers, build_codex_provider_auth_headers, build_codex_upstream_url,
+    build_codex_oauth_session_headers_for_forwarder, build_codex_provider_auth_headers,
+    build_codex_upstream_url,
     build_gemini_provider_auth_headers, build_retryable_forward_failure_log,
     build_terminal_forward_failure_log, build_upstream_auth_headers, categorize_forward_failure,
     classify_copilot_request, claude_transform_endpoint_rewrite_input_from_body,
-    contains_image_blocks,
-    invalid_upstream_url_error_message, is_codex_chat_full_endpoint_base, is_openai_o_series,
-    is_unsupported_image_error, merge_copilot_tool_results,
+    contains_image_blocks, invalid_upstream_url_error_message, is_codex_chat_full_endpoint_base,
+    is_openai_o_series, is_unsupported_image_error, merge_copilot_tool_results,
     parse_json_request_body, parse_json_request_body_or_null,
     prepare_upstream_request_body_with_report, prompt_cache_trace_log_message,
     replace_image_blocks_with_marker, replace_images_for_text_only_model,
@@ -3116,6 +3116,8 @@ pub(crate) use crate::proxy_core::api::transport::build_claude_auth_headers;
 pub(crate) use crate::proxy_core::api::transport::build_copilot_auth_headers;
 #[cfg(test)]
 pub(crate) use crate::proxy_core::api::transport::build_codex_bearer_auth_headers;
+#[cfg(test)]
+pub(crate) use crate::proxy_core::api::transport::build_codex_oauth_session_headers;
 #[cfg(test)]
 pub(crate) use crate::proxy_core::api::transport::build_gemini_auth_headers;
 pub(crate) use crate::proxy_core::api::transport::{
@@ -8835,12 +8837,11 @@ impl ForwarderAuthSource for CcSwitchForwarderAuthSource {
                 }
             };
 
-            let codex_oauth_session_headers =
-                if should_send_codex_oauth_session_headers && input.session_client_provided {
-                    build_codex_oauth_session_headers(input.session_id)
-                } else {
-                    Vec::new()
-                };
+            let codex_oauth_session_headers = build_codex_oauth_session_headers_for_forwarder(
+                should_send_codex_oauth_session_headers,
+                input.session_client_provided,
+                input.session_id,
+            );
 
             let copilot_auth_header_overrides =
                 input.copilot_optimization.as_ref().map(|optimization| {
@@ -15984,6 +15985,81 @@ base_url = "https://api.openai.com/v1"
             .any(|(name, _)| name == http::header::AUTHORIZATION));
     }
 
+    #[tokio::test]
+    async fn forwarder_auth_source_uses_core_codex_oauth_session_header_gate() {
+        let source = forwarder_auth_source_from_managed_account_runtime_source(Arc::new(
+            StaticManagedAuthResolutionSource,
+        ));
+        let adapter = forwarder_provider_adapter_for_app(&AppType::Claude);
+        let provider = provider_with_managed_account_binding("codex_oauth", "codex-acct");
+        let attempt = ForwardAttempt::from_provider(provider);
+        let method = Method::POST;
+        let body = json!({ "model": "gpt-5" });
+        let headers = HeaderMap::new();
+
+        let without_client_session = source
+            .resolve_upstream_auth_headers(ForwarderAuthHeadersInput {
+                adapter: adapter.as_ref(),
+                app_type: &AppType::Claude,
+                method: &method,
+                endpoint: "/v1/messages",
+                request_body: &body,
+                request_headers: &headers,
+                attempt: &attempt,
+                session_id: "session-a",
+                session_client_provided: false,
+                copilot_optimization: None,
+            })
+            .await
+            .expect("resolve auth headers without client session");
+
+        assert!(without_client_session
+            .codex_oauth_session_headers
+            .is_empty());
+
+        let with_client_session = source
+            .resolve_upstream_auth_headers(ForwarderAuthHeadersInput {
+                adapter: adapter.as_ref(),
+                app_type: &AppType::Claude,
+                method: &method,
+                endpoint: "/v1/messages",
+                request_body: &body,
+                request_headers: &headers,
+                attempt: &attempt,
+                session_id: "session-a",
+                session_client_provided: true,
+                copilot_optimization: None,
+            })
+            .await
+            .expect("resolve auth headers with client session");
+
+        assert!(with_client_session
+            .auth_headers
+            .iter()
+            .any(|(name, value)| {
+                name == http::header::AUTHORIZATION
+                    && value == http::HeaderValue::from_static("Bearer codex-token:codex-acct")
+            }));
+
+        let mut session_headers = HeaderMap::new();
+        for (name, value) in with_client_session.codex_oauth_session_headers {
+            session_headers.insert(name, value);
+        }
+
+        assert_eq!(
+            session_headers.get("session_id"),
+            Some(&http::HeaderValue::from_static("session-a"))
+        );
+        assert_eq!(
+            session_headers.get("x-client-request-id"),
+            Some(&http::HeaderValue::from_static("session-a"))
+        );
+        assert_eq!(
+            session_headers.get("x-codex-window-id"),
+            Some(&http::HeaderValue::from_static("session-a:0"))
+        );
+    }
+
     #[test]
     fn forwarder_request_source_prepares_provider_request_body() {
         let source = default_forwarder_request_source();
@@ -16917,6 +16993,7 @@ base_url = "https://api.openai.com/v1"
             None,
         );
         provider.meta = Some(ProviderMeta {
+            provider_type: Some(auth_provider.to_string()),
             auth_binding: Some(AuthBinding {
                 source: AuthBindingSource::ManagedAccount,
                 auth_provider: Some(auth_provider.to_string()),
