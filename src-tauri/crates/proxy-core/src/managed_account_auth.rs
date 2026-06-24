@@ -31,6 +31,35 @@ pub enum ManagedAccountAuthPlan {
     },
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ManagedAccountAuthResolution {
+    pub auth: ProviderAuthInfo,
+    pub codex_oauth_account_id: Option<String>,
+    pub should_send_codex_oauth_session_headers: bool,
+}
+
+impl ManagedAccountAuthResolution {
+    pub fn passthrough(auth: ProviderAuthInfo) -> Self {
+        Self {
+            auth,
+            codex_oauth_account_id: None,
+            should_send_codex_oauth_session_headers: false,
+        }
+    }
+
+    pub fn runtime_token(
+        auth: ProviderAuthInfo,
+        codex_oauth_account_id: Option<String>,
+        should_send_codex_oauth_session_headers: bool,
+    ) -> Self {
+        Self {
+            auth,
+            codex_oauth_account_id,
+            should_send_codex_oauth_session_headers,
+        }
+    }
+}
+
 impl ManagedAccountAuthPlan {
     pub fn should_send_codex_oauth_session_headers(&self) -> bool {
         matches!(
@@ -108,7 +137,8 @@ mod tests {
     use super::{
         headers_contain_proxy_auth_placeholder, is_managed_account_upstream_url,
         managed_account_auth_plan, validate_managed_account_upstream_auth, ManagedAccountAuthError,
-        ManagedAccountAuthPlan, ManagedAccountAuthRuntime, PROXY_AUTH_PLACEHOLDER,
+        ManagedAccountAuthPlan, ManagedAccountAuthResolution, ManagedAccountAuthRuntime,
+        PROXY_AUTH_PLACEHOLDER,
     };
     use http::{HeaderMap, HeaderValue};
 
@@ -172,6 +202,32 @@ mod tests {
             ManagedAccountAuthRuntime::CodexOAuth.provider_auth_strategy(),
             ProviderAuthStrategy::CodexOAuth
         );
+    }
+
+    #[test]
+    fn managed_account_resolution_contract_preserves_runtime_session_facts() {
+        let passthrough = ManagedAccountAuthResolution::passthrough(ProviderAuthInfo::new(
+            "sk-test".to_string(),
+            ProviderAuthStrategy::Bearer,
+        ));
+        assert_eq!(passthrough.auth.api_key, "sk-test");
+        assert_eq!(passthrough.codex_oauth_account_id, None);
+        assert!(!passthrough.should_send_codex_oauth_session_headers);
+
+        let runtime = ManagedAccountAuthResolution::runtime_token(
+            ProviderAuthInfo::new(
+                "runtime-token".to_string(),
+                ProviderAuthStrategy::CodexOAuth,
+            ),
+            Some("codex-account".to_string()),
+            true,
+        );
+        assert_eq!(runtime.auth.api_key, "runtime-token");
+        assert_eq!(
+            runtime.codex_oauth_account_id.as_deref(),
+            Some("codex-account")
+        );
+        assert!(runtime.should_send_codex_oauth_session_headers);
     }
 
     #[test]

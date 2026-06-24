@@ -489,12 +489,14 @@ mod tests {
         impl AuthProvider for StubServices {
             fn resolve_auth<'a>(
                 &'a self,
-                auth_profile: Option<&'a AuthProfileRef>,
+                _app: &'a AppKind,
+                _provider: &'a ProviderSpec,
+                channel: &'a ChannelSpec,
                 _request: &'a ProxyRequest,
             ) -> BoxFuture<'a, ProxyCoreResult<AuthInfo>> {
                 Box::pin(async move {
                     Ok(AuthInfo {
-                        account_ref: auth_profile.map(|value| value.0.clone()),
+                        account_ref: channel.auth_profile.as_ref().map(|value| value.0.clone()),
                         ..AuthInfo::default()
                     })
                 })

@@ -2981,7 +2981,8 @@ pub(crate) use crate::proxy_core::api::auth::{
     validate_management_bearer_header, ManagementAuthDecision,
 };
 pub(crate) use crate::proxy_core::api::auth::{
-    managed_account_auth_plan, ManagedAccountAuthPlan, ManagedAccountAuthRuntime,
+    managed_account_auth_plan, ManagedAccountAuthPlan, ManagedAccountAuthResolution,
+    ManagedAccountAuthRuntime,
 };
 pub(crate) use crate::proxy_core::api::config::{
     app_proxy_config_defaults_for_app, app_type_from_circuit_key, cache_injection_log_message,
@@ -3105,13 +3106,6 @@ pub(crate) use crate::proxy_core::api::usage::{
     normalize_pricing_source, validate_cost_multiplier_value, CostMultiplierValidationError,
     PricingSourceValidationError, PRICING_SOURCE_REQUEST, PRICING_SOURCE_RESPONSE,
 };
-
-#[derive(Debug)]
-pub(crate) struct ManagedAccountAuthResolution {
-    pub(crate) auth: ProviderAuthInfo,
-    pub(crate) codex_oauth_account_id: Option<String>,
-    pub(crate) should_send_codex_oauth_session_headers: bool,
-}
 
 pub(crate) type ManagedAccountRuntimeSourceRef = Arc<dyn ManagedAccountRuntimeSource + Send + Sync>;
 
@@ -3462,11 +3456,11 @@ async fn resolve_managed_account_auth_with_runtime_source(
             let auth = runtime_source
                 .resolve_copilot_auth(account_id.as_deref(), runtime)
                 .await?;
-            Ok(ManagedAccountAuthResolution {
+            Ok(ManagedAccountAuthResolution::runtime_token(
                 auth,
-                codex_oauth_account_id: None,
+                None,
                 should_send_codex_oauth_session_headers,
-            })
+            ))
         }
         ManagedAccountAuthPlan::ResolveRuntimeToken {
             runtime: runtime @ ManagedAccountAuthRuntime::CodexOAuth,
@@ -3475,17 +3469,15 @@ async fn resolve_managed_account_auth_with_runtime_source(
             let (auth, codex_oauth_account_id) = runtime_source
                 .resolve_codex_oauth(account_id, runtime)
                 .await?;
-            Ok(ManagedAccountAuthResolution {
+            Ok(ManagedAccountAuthResolution::runtime_token(
                 auth,
                 codex_oauth_account_id,
                 should_send_codex_oauth_session_headers,
-            })
+            ))
         }
-        ManagedAccountAuthPlan::Passthrough { auth } => Ok(ManagedAccountAuthResolution {
-            auth,
-            codex_oauth_account_id: None,
-            should_send_codex_oauth_session_headers,
-        }),
+        ManagedAccountAuthPlan::Passthrough { auth } => {
+            Ok(ManagedAccountAuthResolution::passthrough(auth))
+        }
     }
 }
 

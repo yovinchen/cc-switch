@@ -677,7 +677,7 @@ mod tests {
     use super::*;
     use crate::claude_desktop_gateway_auth::ClaudeDesktopModelRouteInput;
     use crate::domain::{
-        route_policy_from_failover_provider_ids, AppKind, AuthProfileRef, ChannelAttemptResult,
+        route_policy_from_failover_provider_ids, AppKind, ChannelAttemptResult,
         ChannelHealthPolicy, ChannelOverrides, ChannelSpec, ChannelStatus, InterfaceKind,
         ModelCapabilities, ModelRoute, ProviderKind, ProviderMetadata, ProviderSpec, ProxyBody,
         ProxyCoreResponse, RetryPolicy, RoutePolicy, RouteSelection, UpstreamEndpoint,
