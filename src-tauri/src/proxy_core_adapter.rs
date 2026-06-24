@@ -302,7 +302,6 @@ pub(crate) use crate::proxy_core::api::ports::{
     ensure_codex_takeover_auth_placeholder as core_ensure_codex_takeover_auth_placeholder,
     gemini_live_config_has_proxy_placeholder as core_gemini_live_config_has_proxy_placeholder,
     is_local_proxy_url as core_is_local_proxy_url,
-    json_deep_merge, json_deep_remove, json_value_is_subset,
     launch_env_vars_from_provider_settings as core_launch_env_vars_from_provider_settings,
     live_env_base_url_matches as core_live_env_base_url_matches,
     live_token_sync_app_label as core_live_token_sync_app_label,
@@ -1721,11 +1720,18 @@ pub(crate) use crate::proxy_core::api::domain::{
 
 pub(crate) use crate::proxy_core::api::domain::extract_openclaw_stream_check_base_url;
 use crate::proxy_core::api::ports::{
+    apply_claude_common_config_to_settings as core_apply_claude_common_config_to_settings,
+    apply_gemini_common_config_to_settings as core_apply_gemini_common_config_to_settings,
     claude_common_config_snippet_from_settings as core_claude_common_config_snippet_from_settings,
+    common_config_settings_mutation_issue_message as core_common_config_settings_mutation_issue_message,
     common_config_snippet_issue_message as core_common_config_snippet_issue_message,
+    contains_claude_common_config_snippet as core_contains_claude_common_config_snippet,
+    contains_gemini_common_config_snippet as core_contains_gemini_common_config_snippet,
     gemini_common_config_snippet_from_settings as core_gemini_common_config_snippet_from_settings,
     openclaw_common_config_snippet_from_settings as core_openclaw_common_config_snippet_from_settings,
     opencode_common_config_snippet_from_settings as core_opencode_common_config_snippet_from_settings,
+    remove_claude_common_config_from_settings as core_remove_claude_common_config_from_settings,
+    remove_gemini_common_config_from_settings as core_remove_gemini_common_config_from_settings,
 };
 #[cfg(test)]
 use crate::proxy_core::api::ports::{
@@ -1733,6 +1739,7 @@ use crate::proxy_core::api::ports::{
     opencode_common_config_value_from_settings as core_opencode_common_config_value_from_settings,
 };
 pub(crate) use crate::proxy_core::api::ports::CommonConfigSnippetIssue;
+pub(crate) use crate::proxy_core::api::ports::CommonConfigSettingsMutationIssue;
 
 pub(crate) fn provider_openclaw_stream_check_base_url(provider: &Provider) -> Option<String> {
     extract_openclaw_stream_check_base_url(&provider.settings_config)
@@ -5878,10 +5885,7 @@ pub(crate) fn contains_common_config_snippet(
     }
 
     match app_type {
-        AppType::Claude => match serde_json::from_str::<Value>(trimmed) {
-            Ok(source) if source.is_object() => json_value_is_subset(settings, &source),
-            _ => false,
-        },
+        AppType::Claude => core_contains_claude_common_config_snippet(settings, trimmed),
         AppType::Codex => {
             let config_toml = codex_config_text_from_settings(settings).unwrap_or("");
             if config_toml.trim().is_empty() {
@@ -5899,19 +5903,7 @@ pub(crate) fn contains_common_config_snippet(
 
             toml_item_is_subset(target_doc.as_item(), source_doc.as_item())
         }
-        AppType::Gemini => match serde_json::from_str::<Value>(trimmed) {
-            Ok(Value::Object(source_map)) => {
-                let Some(target_map) = gemini_env_map_from_settings(settings) else {
-                    return false;
-                };
-                source_map.iter().all(|(key, source_value)| {
-                    target_map.get(key).is_some_and(|target_value| {
-                        json_value_is_subset(target_value, source_value)
-                    })
-                })
-            }
-            _ => false,
-        },
+        AppType::Gemini => core_contains_gemini_common_config_snippet(settings, trimmed),
         AppType::OpenCode | AppType::OpenClaw | AppType::Hermes | AppType::ClaudeDesktop => false,
     }
 }
@@ -5943,35 +5935,10 @@ pub(crate) fn provider_common_config_storage_normalization_requires_snippet(
         .unwrap_or(false)
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) enum CommonConfigSettingsMutationIssue {
-    ClaudeCommonConfigJson(String),
-    CodexApplyTargetToml(String),
-    CodexRemoveTargetToml(String),
-    CodexCommonConfigSnippetToml(String),
-    GeminiCommonConfigJson(String),
-}
-
 pub(crate) fn common_config_settings_mutation_issue_message(
     issue: CommonConfigSettingsMutationIssue,
 ) -> String {
-    match issue {
-        CommonConfigSettingsMutationIssue::ClaudeCommonConfigJson(error) => {
-            format!("Invalid Claude common config: {error}")
-        }
-        CommonConfigSettingsMutationIssue::CodexApplyTargetToml(error) => {
-            format!("Invalid Codex config.toml while applying common config: {error}")
-        }
-        CommonConfigSettingsMutationIssue::CodexRemoveTargetToml(error) => {
-            format!("Invalid Codex config.toml while removing common config: {error}")
-        }
-        CommonConfigSettingsMutationIssue::CodexCommonConfigSnippetToml(error) => {
-            format!("Invalid Codex common config snippet: {error}")
-        }
-        CommonConfigSettingsMutationIssue::GeminiCommonConfigJson(error) => {
-            format!("Invalid Gemini common config: {error}")
-        }
-    }
+    core_common_config_settings_mutation_issue_message(issue)
 }
 
 pub(crate) fn apply_common_config_to_settings(
@@ -5985,14 +5952,7 @@ pub(crate) fn apply_common_config_to_settings(
     }
 
     match app_type {
-        AppType::Claude => {
-            let source = serde_json::from_str::<Value>(trimmed).map_err(|e| {
-                CommonConfigSettingsMutationIssue::ClaudeCommonConfigJson(e.to_string())
-            })?;
-            let mut result = settings.clone();
-            json_deep_merge(&mut result, &source);
-            Ok(result)
-        }
+        AppType::Claude => core_apply_claude_common_config_to_settings(settings, trimmed),
         AppType::Codex => {
             let mut result = settings.clone();
             let config_toml = codex_config_text_from_settings(settings).unwrap_or("");
@@ -6013,18 +5973,7 @@ pub(crate) fn apply_common_config_to_settings(
             }
             Ok(result)
         }
-        AppType::Gemini => {
-            let source = serde_json::from_str::<Value>(trimmed).map_err(|e| {
-                CommonConfigSettingsMutationIssue::GeminiCommonConfigJson(e.to_string())
-            })?;
-            let mut result = settings.clone();
-            if let Some(env) = result.get_mut("env") {
-                json_deep_merge(env, &source);
-            } else if let Some(obj) = result.as_object_mut() {
-                obj.insert("env".to_string(), source);
-            }
-            Ok(result)
-        }
+        AppType::Gemini => core_apply_gemini_common_config_to_settings(settings, trimmed),
         AppType::OpenCode | AppType::OpenClaw | AppType::Hermes | AppType::ClaudeDesktop => {
             Ok(settings.clone())
         }
@@ -6107,14 +6056,7 @@ pub(crate) fn remove_common_config_from_settings(
     }
 
     match app_type {
-        AppType::Claude => {
-            let source = serde_json::from_str::<Value>(trimmed).map_err(|e| {
-                CommonConfigSettingsMutationIssue::ClaudeCommonConfigJson(e.to_string())
-            })?;
-            let mut result = settings.clone();
-            json_deep_remove(&mut result, &source);
-            Ok(result)
-        }
+        AppType::Claude => core_remove_claude_common_config_from_settings(settings, trimmed),
         AppType::Codex => {
             let mut result = settings.clone();
             let config_toml = codex_config_text_from_settings(settings).unwrap_or("");
@@ -6135,16 +6077,7 @@ pub(crate) fn remove_common_config_from_settings(
             }
             Ok(result)
         }
-        AppType::Gemini => {
-            let source = serde_json::from_str::<Value>(trimmed).map_err(|e| {
-                CommonConfigSettingsMutationIssue::GeminiCommonConfigJson(e.to_string())
-            })?;
-            let mut result = settings.clone();
-            if let Some(env) = result.get_mut("env") {
-                json_deep_remove(env, &source);
-            }
-            Ok(result)
-        }
+        AppType::Gemini => core_remove_gemini_common_config_from_settings(settings, trimmed),
         AppType::OpenCode | AppType::OpenClaw | AppType::Hermes | AppType::ClaudeDesktop => {
             Ok(settings.clone())
         }
@@ -13144,7 +13077,8 @@ fn account_ref(provider: &Provider) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use crate::proxy_core::api::ports::{
-        json_remove_array_items, normalize_claude_models_in_value,
+        json_deep_merge, json_deep_remove, json_remove_array_items, json_value_is_subset,
+        normalize_claude_models_in_value,
         provider_supports_legacy_common_config_migration as core_provider_supports_legacy_common_config_migration,
     };
 

@@ -2136,6 +2136,139 @@ pub fn json_common_config_snippet_from_value(
         .map_err(|e| CommonConfigSnippetIssue::Serialization(e.to_string()))
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum CommonConfigSettingsMutationIssue {
+    ClaudeCommonConfigJson(String),
+    CodexApplyTargetToml(String),
+    CodexRemoveTargetToml(String),
+    CodexCommonConfigSnippetToml(String),
+    GeminiCommonConfigJson(String),
+}
+
+pub fn common_config_settings_mutation_issue_message(
+    issue: CommonConfigSettingsMutationIssue,
+) -> String {
+    match issue {
+        CommonConfigSettingsMutationIssue::ClaudeCommonConfigJson(error) => {
+            format!("Invalid Claude common config: {error}")
+        }
+        CommonConfigSettingsMutationIssue::CodexApplyTargetToml(error) => {
+            format!("Invalid Codex config.toml while applying common config: {error}")
+        }
+        CommonConfigSettingsMutationIssue::CodexRemoveTargetToml(error) => {
+            format!("Invalid Codex config.toml while removing common config: {error}")
+        }
+        CommonConfigSettingsMutationIssue::CodexCommonConfigSnippetToml(error) => {
+            format!("Invalid Codex common config snippet: {error}")
+        }
+        CommonConfigSettingsMutationIssue::GeminiCommonConfigJson(error) => {
+            format!("Invalid Gemini common config: {error}")
+        }
+    }
+}
+
+pub fn contains_claude_common_config_snippet(settings: &Value, snippet: &str) -> bool {
+    match parsed_common_config_json_object(snippet) {
+        Ok(Some(source)) => json_value_is_subset(settings, &Value::Object(source)),
+        _ => false,
+    }
+}
+
+pub fn contains_gemini_common_config_snippet(settings: &Value, snippet: &str) -> bool {
+    let Ok(Some(source_map)) = parsed_common_config_json_object(snippet) else {
+        return false;
+    };
+    let Some(target_map) = gemini_env_map_from_settings(settings) else {
+        return false;
+    };
+
+    source_map.iter().all(|(key, source_value)| {
+        target_map
+            .get(key)
+            .is_some_and(|target_value| json_value_is_subset(target_value, source_value))
+    })
+}
+
+pub fn apply_claude_common_config_to_settings(
+    settings: &Value,
+    snippet: &str,
+) -> Result<Value, CommonConfigSettingsMutationIssue> {
+    let Some(source) = parsed_common_config_json_object(snippet)
+        .map_err(CommonConfigSettingsMutationIssue::ClaudeCommonConfigJson)?
+    else {
+        return Ok(settings.clone());
+    };
+
+    let mut result = settings.clone();
+    json_deep_merge(&mut result, &Value::Object(source));
+    Ok(result)
+}
+
+pub fn remove_claude_common_config_from_settings(
+    settings: &Value,
+    snippet: &str,
+) -> Result<Value, CommonConfigSettingsMutationIssue> {
+    let Some(source) = parsed_common_config_json_object(snippet)
+        .map_err(CommonConfigSettingsMutationIssue::ClaudeCommonConfigJson)?
+    else {
+        return Ok(settings.clone());
+    };
+
+    let mut result = settings.clone();
+    json_deep_remove(&mut result, &Value::Object(source));
+    Ok(result)
+}
+
+pub fn apply_gemini_common_config_to_settings(
+    settings: &Value,
+    snippet: &str,
+) -> Result<Value, CommonConfigSettingsMutationIssue> {
+    let Some(source) = parsed_common_config_json_object(snippet)
+        .map_err(CommonConfigSettingsMutationIssue::GeminiCommonConfigJson)?
+    else {
+        return Ok(settings.clone());
+    };
+
+    let mut result = settings.clone();
+    if let Some(env) = result.get_mut("env") {
+        json_deep_merge(env, &Value::Object(source));
+    } else if let Some(obj) = result.as_object_mut() {
+        obj.insert("env".to_string(), Value::Object(source));
+    }
+    Ok(result)
+}
+
+pub fn remove_gemini_common_config_from_settings(
+    settings: &Value,
+    snippet: &str,
+) -> Result<Value, CommonConfigSettingsMutationIssue> {
+    let Some(source) = parsed_common_config_json_object(snippet)
+        .map_err(CommonConfigSettingsMutationIssue::GeminiCommonConfigJson)?
+    else {
+        return Ok(settings.clone());
+    };
+
+    let mut result = settings.clone();
+    if let Some(env) = result.get_mut("env") {
+        json_deep_remove(env, &Value::Object(source));
+    }
+    Ok(result)
+}
+
+fn parsed_common_config_json_object(
+    snippet: &str,
+) -> Result<Option<Map<String, Value>>, String> {
+    let trimmed = snippet.trim();
+    if trimmed.is_empty() {
+        return Ok(None);
+    }
+
+    match serde_json::from_str::<Value>(trimmed).map_err(|error| error.to_string())? {
+        Value::Object(map) => Ok(Some(map)),
+        _ => Ok(None),
+    }
+}
+
 pub fn provider_credential_issue_spec(issue: ProviderCredentialIssue) -> LocalizedErrorSpec {
     match issue {
         ProviderCredentialIssue::ClaudeEnvMissing => LocalizedErrorSpec::new(
@@ -4524,19 +4657,23 @@ mod tests {
     use super::{
         AppChannelListQuery, AppChannelListResponse, AppChannelResponse, AppChannelRouteResponse,
         app_proxy_config_defaults_for_app, app_proxy_config_raw, app_proxy_config_with_enabled,
+        apply_claude_common_config_to_settings,
         auth_info_from_profile_ref, auth_info_from_route_context, channel_health_reset_from_parts,
         channel_health_update_from_input,
         channel_model_record_from_input, channel_reachability_result_from_stream_check_result,
         channel_route_source_for_materialized_count,
         apply_claude_takeover_fields_with_policy_and_models,
         apply_codex_takeover_auth_placeholder_if_present, apply_gemini_takeover_env_fields,
+        apply_gemini_common_config_to_settings,
         claude_common_config_snippet_from_settings,
         claude_env_credentials_from_settings, claude_live_config_has_proxy_placeholder,
         claude_takeover_model_fields_from_settings, ClaudeTakeoverAuthPolicy,
         ensure_codex_takeover_auth_placeholder, gemini_env_map_from_settings,
         gemini_common_config_snippet_from_settings,
         gemini_live_config_has_proxy_placeholder, is_local_proxy_url,
+        common_config_settings_mutation_issue_message,
         common_config_snippet_issue_message,
+        contains_claude_common_config_snippet, contains_gemini_common_config_snippet,
         json_common_config_snippet_from_value,
         json_deep_merge, json_deep_remove, json_remove_array_items, json_value_is_subset,
         launch_env_vars_from_provider_settings, live_env_base_url_matches, live_takeover_app_kinds,
@@ -4563,6 +4700,8 @@ mod tests {
         provider_switch_requires_takeover_lock,
         provider_switch_should_mark_live_config_managed,
         provider_takeover_live_sync_target_for_app,
+        remove_claude_common_config_from_settings,
+        remove_gemini_common_config_from_settings,
         should_skip_manual_default_live_import, should_skip_startup_default_live_import,
         should_skip_provider_legacy_common_config_migration,
         AppListResponse, AppModelListQuery, AppProxyConfig, AppSummaryInput,
@@ -4582,8 +4721,8 @@ mod tests {
         CurrentRouteTargetInput, current_route_target_from_input, GlobalProxyConfig,
         GroupListQuery, HealthCheckResponse, ModelCatalog, OptimizerConfig, ProviderHealth,
         ProviderAdditiveLiveWriteAction, ProviderAdditiveUpdateRoute, ProviderHealthUpdateInput,
-        CommonConfigSnippetIssue, LiveTokenProviderSettingsIssue, ProviderCredentialIssue,
-        ProviderKeyChangePolicyIssue, OpenCodeCredentialIssue,
+        CommonConfigSettingsMutationIssue, CommonConfigSnippetIssue, LiveTokenProviderSettingsIssue,
+        ProviderCredentialIssue, ProviderKeyChangePolicyIssue, OpenCodeCredentialIssue,
         ProviderListResponse, ProviderLiveConfigPresenceErrorPolicy, ProviderLiveRemovalTarget,
         ProviderLiveSyncScope, ProviderOmoSwitchPair, ProviderOmoVariant, ProviderSpec,
         ProviderSummaryInput, ProviderSwitchDispatch, ProviderTakeoverLiveSyncTarget,
@@ -6146,6 +6285,62 @@ mod tests {
                 "bad input".to_string()
             )),
             "TOML parse error: bad input"
+        );
+    }
+
+    #[test]
+    fn common_config_runtime_mutations_apply_remove_and_detect_json_snippets() {
+        let claude_settings = json!({
+            "env": {
+                "ANTHROPIC_AUTH_TOKEN": "secret",
+                "EXISTING": "keep"
+            },
+            "allowedTools": ["Bash", "Read"]
+        });
+        let claude_snippet = r#"{"env": {"CLAUDE_CODE_ENABLE_TELEMETRY": "1"}}"#;
+        let applied = apply_claude_common_config_to_settings(&claude_settings, claude_snippet)
+            .expect("claude apply");
+        assert!(contains_claude_common_config_snippet(
+            &applied,
+            claude_snippet
+        ));
+        let removed = remove_claude_common_config_from_settings(&applied, claude_snippet)
+            .expect("claude remove");
+        assert_eq!(
+            removed,
+            json!({
+                "env": {"ANTHROPIC_AUTH_TOKEN": "secret", "EXISTING": "keep"},
+                "allowedTools": ["Bash", "Read"]
+            })
+        );
+
+        let gemini_settings = json!({
+            "env": {
+                "GEMINI_API_KEY": "secret",
+                "EXISTING": "keep"
+            }
+        });
+        let gemini_snippet = r#"{"GOOGLE_CLOUD_PROJECT": "project-a"}"#;
+        let applied = apply_gemini_common_config_to_settings(&gemini_settings, gemini_snippet)
+            .expect("gemini apply");
+        assert!(contains_gemini_common_config_snippet(
+            &applied,
+            gemini_snippet
+        ));
+        let removed = remove_gemini_common_config_from_settings(&applied, gemini_snippet)
+            .expect("gemini remove");
+        assert_eq!(
+            removed,
+            json!({"env": {"GEMINI_API_KEY": "secret", "EXISTING": "keep"}})
+        );
+
+        assert_eq!(
+            common_config_settings_mutation_issue_message(
+                CommonConfigSettingsMutationIssue::GeminiCommonConfigJson(
+                    "bad json".to_string()
+                )
+            ),
+            "Invalid Gemini common config: bad json"
         );
     }
 
