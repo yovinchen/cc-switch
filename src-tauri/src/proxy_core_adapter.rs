@@ -9027,8 +9027,7 @@ pub(crate) struct ForwarderRequestPreparationInput<'a> {
     pub(crate) api_format: Option<&'a str>,
     pub(crate) body: Value,
     pub(crate) session_client_provided: bool,
-    pub(crate) needs_transform: bool,
-    pub(crate) codex_responses_to_chat: bool,
+    pub(crate) transform_plan: &'a ForwarderTransformPlan,
     pub(crate) initial_outbound_model: Option<String>,
     pub(crate) headers: &'a HeaderMap,
 }
@@ -9931,8 +9930,8 @@ impl ForwarderRequestSource for CcSwitchForwarderRequestSource {
         let outbound_model = body_model.clone().or(input.initial_outbound_model);
 
         let transport_policy = resolve_upstream_request_transport_policy(
-            input.needs_transform,
-            input.codex_responses_to_chat,
+            input.transform_plan.needs_transform,
+            input.transform_plan.codex_responses_to_chat,
             input.endpoint,
             &filtered_body,
             input.headers,
@@ -16163,6 +16162,14 @@ base_url = "https://api.openai.com/v1"
     fn forwarder_request_source_prepares_final_body_model_facts() {
         let source = default_forwarder_request_source();
         let headers = HeaderMap::new();
+        let transform_plan = ForwarderTransformPlan {
+            needs_transform: false,
+            use_claude_transform: false,
+            use_provider_transform: false,
+            claude_api_format_for_url: None,
+            claude_api_format_for_transform: None,
+            codex_responses_to_chat: false,
+        };
 
         let prepared = source.prepare_upstream_body(ForwarderRequestPreparationInput {
             app: "codex",
@@ -16171,8 +16178,7 @@ base_url = "https://api.openai.com/v1"
             api_format: None,
             body: json!({ "model": "upstream-sonnet", "messages": [] }),
             session_client_provided: false,
-            needs_transform: false,
-            codex_responses_to_chat: false,
+            transform_plan: &transform_plan,
             initial_outbound_model: Some("initial-model".to_string()),
             headers: &headers,
         });
@@ -16187,8 +16193,7 @@ base_url = "https://api.openai.com/v1"
             api_format: None,
             body: json!({ "messages": [] }),
             session_client_provided: false,
-            needs_transform: false,
-            codex_responses_to_chat: false,
+            transform_plan: &transform_plan,
             initial_outbound_model: Some("initial-model".to_string()),
             headers: &headers,
         });

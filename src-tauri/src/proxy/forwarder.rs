@@ -890,7 +890,6 @@ impl RequestForwarder {
                 resolved_claude_api_format: resolved_claude_api_format.as_deref(),
                 is_claude_adapter,
             });
-        let needs_transform = transform_plan.needs_transform;
         let codex_responses_to_chat = transform_plan.codex_responses_to_chat;
         let url_plan = self.request_source.plan_upstream_url(ForwarderUpstreamUrlInput {
             adapter,
@@ -960,8 +959,7 @@ impl RequestForwarder {
                     api_format: resolved_claude_api_format.as_deref(),
                     body: request_body,
                     session_client_provided: self.session_client_provided,
-                    needs_transform,
-                    codex_responses_to_chat,
+                    transform_plan: &transform_plan,
                     initial_outbound_model,
                     headers,
                 });
