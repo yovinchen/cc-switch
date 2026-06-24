@@ -10164,6 +10164,13 @@ pub(crate) fn default_forwarder_transport_source() -> ForwarderTransportSourceRe
 pub(crate) type ForwarderResponseSourceRef =
     Arc<dyn ForwarderResponseSource + Send + Sync>;
 
+pub(crate) struct ForwarderResponseFinalizationInput {
+    pub(crate) response: ProxyResponse,
+    pub(crate) request_is_streaming: bool,
+    pub(crate) non_streaming_timeout: std::time::Duration,
+    pub(crate) streaming_first_byte_timeout: std::time::Duration,
+}
+
 pub(crate) trait ForwarderResponseSource {
     fn apply_channel_response_status_mapping(
         &self,
@@ -10173,10 +10180,7 @@ pub(crate) trait ForwarderResponseSource {
 
     fn prepare_success_response<'a>(
         &'a self,
-        response: ProxyResponse,
-        request_is_streaming: bool,
-        non_streaming_timeout: std::time::Duration,
-        streaming_first_byte_timeout: std::time::Duration,
+        input: ForwarderResponseFinalizationInput,
     ) -> BoxFuture<'a, Result<ProxyResponse, ProxyError>>;
 
     fn upstream_error_body<'a>(
@@ -10191,10 +10195,7 @@ pub(crate) trait ForwarderResponseSource {
 
     fn finalize_upstream_response<'a>(
         &'a self,
-        response: ProxyResponse,
-        request_is_streaming: bool,
-        non_streaming_timeout: std::time::Duration,
-        streaming_first_byte_timeout: std::time::Duration,
+        input: ForwarderResponseFinalizationInput,
     ) -> BoxFuture<'a, Result<ProxyResponse, ProxyError>>;
 }
 
@@ -10232,12 +10233,16 @@ impl ForwarderResponseSource for CcSwitchForwarderResponseSource {
 
     fn prepare_success_response<'a>(
         &'a self,
-        response: ProxyResponse,
-        request_is_streaming: bool,
-        non_streaming_timeout: std::time::Duration,
-        streaming_first_byte_timeout: std::time::Duration,
+        input: ForwarderResponseFinalizationInput,
     ) -> BoxFuture<'a, Result<ProxyResponse, ProxyError>> {
         Box::pin(async move {
+            let ForwarderResponseFinalizationInput {
+                response,
+                request_is_streaming,
+                non_streaming_timeout,
+                streaming_first_byte_timeout,
+            } = input;
+
             if request_is_streaming {
                 return prime_streaming_forward_response(response, streaming_first_byte_timeout)
                     .await;
@@ -10280,24 +10285,14 @@ impl ForwarderResponseSource for CcSwitchForwarderResponseSource {
 
     fn finalize_upstream_response<'a>(
         &'a self,
-        response: ProxyResponse,
-        request_is_streaming: bool,
-        non_streaming_timeout: std::time::Duration,
-        streaming_first_byte_timeout: std::time::Duration,
+        input: ForwarderResponseFinalizationInput,
     ) -> BoxFuture<'a, Result<ProxyResponse, ProxyError>> {
         Box::pin(async move {
-            if response.status().is_success() {
-                return self
-                    .prepare_success_response(
-                        response,
-                        request_is_streaming,
-                        non_streaming_timeout,
-                        streaming_first_byte_timeout,
-                    )
-                    .await;
+            if input.response.status().is_success() {
+                return self.prepare_success_response(input).await;
             }
 
-            let error = self.upstream_error_response(response).await?;
+            let error = self.upstream_error_response(input.response).await?;
             Err(error)
         })
     }
@@ -16766,12 +16761,12 @@ base_url = "https://api.openai.com/v1"
             Bytes::from_static(b"{\"ok\":true}"),
         );
         let success = source
-            .finalize_upstream_response(
-                success,
-                false,
-                std::time::Duration::from_secs(0),
-                std::time::Duration::from_secs(0),
-            )
+            .finalize_upstream_response(ForwarderResponseFinalizationInput {
+                response: success,
+                request_is_streaming: false,
+                non_streaming_timeout: std::time::Duration::from_secs(0),
+                streaming_first_byte_timeout: std::time::Duration::from_secs(0),
+            })
             .await
             .expect("success response");
         assert_eq!(success.status(), http::StatusCode::OK);
@@ -16786,12 +16781,12 @@ base_url = "https://api.openai.com/v1"
             Bytes::from_static(b"bad request"),
         );
         let error = match source
-            .finalize_upstream_response(
-                failure,
-                false,
-                std::time::Duration::from_secs(0),
-                std::time::Duration::from_secs(0),
-            )
+            .finalize_upstream_response(ForwarderResponseFinalizationInput {
+                response: failure,
+                request_is_streaming: false,
+                non_streaming_timeout: std::time::Duration::from_secs(0),
+                streaming_first_byte_timeout: std::time::Duration::from_secs(0),
+            })
             .await
         {
             Ok(_) => panic!("expected upstream error"),

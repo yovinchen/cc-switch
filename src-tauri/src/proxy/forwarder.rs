@@ -26,7 +26,8 @@ use crate::proxy_core_adapter::{
     ForwarderClaudeProtocolTransformInput, ForwarderCodexChatProtocolEnrichmentInput,
     ForwarderProtocolStateSourceRef,
     ForwarderRequestPartsInput, ForwarderRequestPreparationInput, ForwarderRequestSourceRef,
-    ForwarderResponseSourceRef, ForwarderRuntimeStateSourceRef, ForwarderTransportSourceRef,
+    ForwarderResponseFinalizationInput, ForwarderResponseSourceRef, ForwarderRuntimeStateSourceRef,
+    ForwarderTransportSourceRef,
     ForwarderUpstreamRequestLogInput, ForwarderUpstreamTransportRequest, ForwarderUpstreamUrlInput,
     RectifierConfig, ResolvedChannelAttempt,
 };
@@ -1088,12 +1089,12 @@ impl RequestForwarder {
 
         let response = self
             .response_source
-            .finalize_upstream_response(
+            .finalize_upstream_response(ForwarderResponseFinalizationInput {
                 response,
                 request_is_streaming,
-                self.non_streaming_timeout,
-                self.streaming_first_byte_timeout,
-            )
+                non_streaming_timeout: self.non_streaming_timeout,
+                streaming_first_byte_timeout: self.streaming_first_byte_timeout,
+            })
             .await?;
         Ok(ForwarderUpstreamSuccess {
             response,
@@ -1113,12 +1114,12 @@ impl RequestForwarder {
         request_is_streaming: bool,
     ) -> Result<ProxyResponse, ProxyError> {
         self.response_source
-            .prepare_success_response(
+            .prepare_success_response(ForwarderResponseFinalizationInput {
                 response,
                 request_is_streaming,
-                self.non_streaming_timeout,
-                self.streaming_first_byte_timeout,
-            )
+                non_streaming_timeout: self.non_streaming_timeout,
+                streaming_first_byte_timeout: self.streaming_first_byte_timeout,
+            })
             .await
     }
 
