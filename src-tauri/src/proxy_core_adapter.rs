@@ -8117,19 +8117,19 @@ pub(crate) trait ForwarderRuntimeStateSource {
     fn record_current_provider<'a>(&'a self, provider: &'a Provider) -> BoxFuture<'a, ()>;
     fn record_provider_failure<'a>(
         &'a self,
-        provider_name: &'a str,
+        provider: &'a Provider,
         error_message: &'a str,
     ) -> BoxFuture<'a, ()>;
     fn record_provider_rectifier_retry_failure<'a>(
         &'a self,
-        provider_name: &'a str,
+        provider: &'a Provider,
         rectifier_label: &'a str,
         error_message: &'a str,
     ) -> BoxFuture<'a, ()>;
     fn forward_failure_decision(
         &self,
         error: &ProxyError,
-        provider_name: &str,
+        provider: &Provider,
         attempted_providers: usize,
         total_providers: usize,
     ) -> ForwarderFailureDecision;
@@ -8263,13 +8263,13 @@ impl ForwarderRuntimeStateSource for CcSwitchForwarderRuntimeStateSource {
 
     fn record_provider_failure<'a>(
         &'a self,
-        provider_name: &'a str,
+        provider: &'a Provider,
         error_message: &'a str,
     ) -> BoxFuture<'a, ()> {
         Box::pin(async move {
             record_forward_provider_failure_runtime_source(
                 self.status.as_ref(),
-                provider_name,
+                provider.name.as_str(),
                 error_message,
             )
             .await;
@@ -8278,14 +8278,14 @@ impl ForwarderRuntimeStateSource for CcSwitchForwarderRuntimeStateSource {
 
     fn record_provider_rectifier_retry_failure<'a>(
         &'a self,
-        provider_name: &'a str,
+        provider: &'a Provider,
         rectifier_label: &'a str,
         error_message: &'a str,
     ) -> BoxFuture<'a, ()> {
         Box::pin(async move {
             record_forward_provider_rectifier_retry_failure_runtime_source(
                 self.status.as_ref(),
-                provider_name,
+                provider.name.as_str(),
                 rectifier_label,
                 error_message,
             )
@@ -8296,7 +8296,7 @@ impl ForwarderRuntimeStateSource for CcSwitchForwarderRuntimeStateSource {
     fn forward_failure_decision(
         &self,
         error: &ProxyError,
-        provider_name: &str,
+        provider: &Provider,
         attempted_providers: usize,
         total_providers: usize,
     ) -> ForwarderFailureDecision {
@@ -8306,7 +8306,7 @@ impl ForwarderRuntimeStateSource for CcSwitchForwarderRuntimeStateSource {
             ForwardFailureCategory::Retryable => ForwarderFailureDecision::Retryable {
                 error_message,
                 log: build_retryable_forward_failure_log(
-                    provider_name,
+                    provider.name.as_str(),
                     attempted_providers,
                     total_providers,
                     &failure,
@@ -16149,9 +16149,15 @@ base_url = "https://api.openai.com/v1"
             Arc::new(RwLock::new(HashMap::new())),
             Arc::new(ProxyEventBus::default()),
         );
+        let provider = Provider::with_id(
+            "relay".to_string(),
+            "Relay".to_string(),
+            json!({}),
+            None,
+        );
         let retryable = source.forward_failure_decision(
             &ProxyError::Timeout("upstream timed out".to_string()),
-            "Relay",
+            &provider,
             1,
             2,
         );
@@ -16160,7 +16166,7 @@ base_url = "https://api.openai.com/v1"
             body: Some(r#"{"error":{"message":"bad request"}}"#.to_string()),
         };
         let non_retryable =
-            source.forward_failure_decision(&non_retryable_error, "Relay", 1, 2);
+            source.forward_failure_decision(&non_retryable_error, &provider, 1, 2);
 
         match retryable {
             ForwarderFailureDecision::Retryable { error_message, log } => {
@@ -16187,6 +16193,47 @@ base_url = "https://api.openai.com/v1"
             .expect("terminal failure log for multi-provider attempts");
         assert_eq!(terminal_log.code, "FWD-002");
         assert!(terminal_log.message.contains("上游 HTTP 400"));
+    }
+
+    #[tokio::test]
+    async fn forwarder_runtime_state_source_records_provider_failure_from_provider() {
+        let source = CcSwitchForwarderRuntimeStateSource::new(
+            Arc::new(RwLock::new(ProxyRuntimeStatus::default())),
+            Arc::new(RwLock::new(HashMap::new())),
+            Arc::new(ProxyEventBus::default()),
+        );
+        let provider = Provider::with_id(
+            "relay".to_string(),
+            "Relay".to_string(),
+            json!({}),
+            None,
+        );
+
+        source
+            .record_provider_failure(&provider, "超时: upstream timed out")
+            .await;
+        {
+            let status = source.status();
+            let status = status.read().await;
+            assert_eq!(
+                status.last_error.as_deref(),
+                Some("Provider Relay 失败: 超时: upstream timed out")
+            );
+        }
+
+        source
+            .record_provider_rectifier_retry_failure(
+                &provider,
+                "budget 整流",
+                "上游错误 (状态码 502): bad gateway",
+            )
+            .await;
+        let status = source.status();
+        let status = status.read().await;
+        assert_eq!(
+            status.last_error.as_deref(),
+            Some("Provider Relay budget 整流重试失败: 上游错误 (状态码 502): bad gateway")
+        );
     }
 
     #[tokio::test]

@@ -365,7 +365,7 @@ impl RequestForwarder {
                 .await;
                 self.runtime_state_source
                     .record_provider_rectifier_retry_failure(
-                        &provider.name,
+                        provider,
                         rectifier_label,
                         &error_message,
                     )
@@ -808,7 +808,7 @@ impl RequestForwarder {
                     //    不应污染熔断器和数据库健康度（与 release_permit_neutral 同语义）。
                     let failure_decision = self.runtime_state_source.forward_failure_decision(
                         &e,
-                        &provider.name,
+                        provider,
                         attempted_providers,
                         attempts.len(),
                     );
@@ -829,7 +829,7 @@ impl RequestForwarder {
                             .await;
 
                             self.runtime_state_source
-                                .record_provider_failure(&provider.name, &error_message)
+                                .record_provider_failure(provider, &error_message)
                                 .await;
 
                             log::warn!(
