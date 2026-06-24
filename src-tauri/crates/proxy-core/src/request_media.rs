@@ -18,6 +18,22 @@ pub struct MediaRetryInput<'a> {
     pub unsupported_image_error: bool,
 }
 
+#[derive(Debug, Clone, PartialEq)]
+pub struct ForwarderMediaRetryPlanFacts<'a> {
+    pub adapter_name: &'a str,
+    pub rectifier_enabled: bool,
+    pub request_media_fallback: bool,
+    pub already_retried: bool,
+    pub provider_body: &'a Value,
+    pub unsupported_image_error: bool,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct ForwarderMediaRetryPlanProjection {
+    pub body: Value,
+    pub replaced_images: usize,
+}
+
 pub fn resolve_media_prevention_policy(
     rectifier_enabled: bool,
     request_media_fallback: bool,
@@ -50,6 +66,28 @@ pub fn should_trigger_media_retry(input: MediaRetryInput<'_>) -> bool {
         input.already_retried,
     ) && input.body_has_images
         && input.unsupported_image_error
+}
+
+pub fn forwarder_media_retry_plan_from_facts(
+    input: ForwarderMediaRetryPlanFacts<'_>,
+) -> Option<ForwarderMediaRetryPlanProjection> {
+    if !should_trigger_media_retry(MediaRetryInput {
+        adapter_name: input.adapter_name,
+        rectifier_enabled: input.rectifier_enabled,
+        request_media_fallback: input.request_media_fallback,
+        already_retried: input.already_retried,
+        body_has_images: contains_image_blocks(input.provider_body),
+        unsupported_image_error: input.unsupported_image_error,
+    }) {
+        return None;
+    }
+
+    let mut body = input.provider_body.clone();
+    let replaced_images = replace_image_blocks_with_marker(&mut body);
+    (replaced_images > 0).then_some(ForwarderMediaRetryPlanProjection {
+        body,
+        replaced_images,
+    })
 }
 
 /// Replace image blocks before sending when the routed model is text-only.
@@ -408,9 +446,10 @@ fn normalize_model_id(value: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::{
-        contains_image_blocks, is_unsupported_image_error, replace_image_blocks_with_marker,
-        replace_images_for_text_only_model, resolve_media_prevention_policy,
-        should_check_media_retry, should_trigger_media_retry, MediaRetryInput,
+        contains_image_blocks, forwarder_media_retry_plan_from_facts, is_unsupported_image_error,
+        replace_image_blocks_with_marker, replace_images_for_text_only_model,
+        resolve_media_prevention_policy, should_check_media_retry, should_trigger_media_retry,
+        ForwarderMediaRetryPlanFacts, MediaRetryInput,
         UNSUPPORTED_IMAGE_MARKER,
     };
     use serde_json::json;
@@ -481,6 +520,56 @@ mod tests {
             already_retried: true,
             ..base
         }));
+    }
+
+    #[test]
+    fn forwarder_media_retry_plan_replaces_images_when_retry_facts_trigger() {
+        let body = json!({
+            "model": "vision-rejecting-model",
+            "messages": [{
+                "role": "user",
+                "content": [
+                    { "type": "text", "text": "describe" },
+                    { "type": "image", "source": { "type": "base64", "media_type": "image/png", "data": "abc" } }
+                ]
+            }]
+        });
+
+        let plan = forwarder_media_retry_plan_from_facts(ForwarderMediaRetryPlanFacts {
+            adapter_name: "Claude",
+            rectifier_enabled: true,
+            request_media_fallback: true,
+            already_retried: false,
+            provider_body: &body,
+            unsupported_image_error: true,
+        })
+        .expect("media retry plan");
+
+        assert_eq!(plan.replaced_images, 1);
+        assert_eq!(
+            plan.body["messages"][0]["content"][1]["text"],
+            UNSUPPORTED_IMAGE_MARKER
+        );
+        assert_eq!(body["messages"][0]["content"][1]["type"], "image");
+
+        assert!(forwarder_media_retry_plan_from_facts(ForwarderMediaRetryPlanFacts {
+            adapter_name: "Gemini",
+            rectifier_enabled: true,
+            request_media_fallback: true,
+            already_retried: false,
+            provider_body: &body,
+            unsupported_image_error: true,
+        })
+        .is_none());
+        assert!(forwarder_media_retry_plan_from_facts(ForwarderMediaRetryPlanFacts {
+            adapter_name: "Claude",
+            rectifier_enabled: true,
+            request_media_fallback: true,
+            already_retried: false,
+            provider_body: &body,
+            unsupported_image_error: false,
+        })
+        .is_none());
     }
 
     #[test]

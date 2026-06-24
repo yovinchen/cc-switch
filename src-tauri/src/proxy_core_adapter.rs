@@ -1649,7 +1649,8 @@ pub(crate) const DEFAULT_PROXY_LISTEN_PORT: u16 =
     crate::proxy_core::api::ports::DEFAULT_PROXY_LISTEN_PORT;
 pub(crate) const DEFAULT_CHANNEL_HEALTH_FAILURE_THRESHOLD: u32 =
     crate::proxy_core::api::ports::DEFAULT_CHANNEL_HEALTH_FAILURE_THRESHOLD;
-pub(crate) type MediaRetryInput<'a> = crate::proxy_core::api::transport::MediaRetryInput<'a>;
+pub(crate) type ForwarderMediaRetryPlanFacts<'a> =
+    crate::proxy_core::api::transport::ForwarderMediaRetryPlanFacts<'a>;
 pub(crate) type PromptCacheTraceLogInput<'a> =
     crate::proxy_core::api::transport::PromptCacheTraceLogInput<'a>;
 pub(crate) type AllowResult = crate::proxy_core::api::config::AllowResult;
@@ -3102,24 +3103,25 @@ pub(crate) use crate::proxy_core::api::transport::{
     build_gemini_provider_auth_headers, build_retryable_forward_failure_log,
     build_terminal_forward_failure_log, categorize_forward_failure,
     classify_copilot_request, claude_transform_endpoint_rewrite_input_from_body,
-    contains_image_blocks, AuthProviderHeaderResolution, finalize_forwarder_auth_headers,
-    forwarder_protocol_preparation_from_transform_plan, forwarder_request_body_model,
-    forwarder_transform_plan_from_facts, invalid_upstream_url_error_message,
+    AuthProviderHeaderResolution, finalize_forwarder_auth_headers,
+    forwarder_media_retry_plan_from_facts, forwarder_protocol_preparation_from_transform_plan,
+    forwarder_request_body_model, forwarder_transform_plan_from_facts,
+    invalid_upstream_url_error_message,
     is_codex_chat_full_endpoint_base, is_openai_o_series, is_unsupported_image_error,
     merge_copilot_tool_results,
     prepare_optional_copilot_auth_optimization_for_forwarder,
     parse_json_request_body, parse_json_request_body_or_null,
     prepare_upstream_request_body_with_report, prompt_cache_trace_log_message,
-    replace_image_blocks_with_marker, replace_images_for_text_only_model,
+    replace_images_for_text_only_model,
     request_body_filter_log_message, request_body_read_error_message,
     request_body_serialize_error_message, resolve_codex_provider_uses_chat_completions,
     resolve_auth_provider_headers, resolve_media_prevention_policy,
     rewrite_claude_transform_endpoint, sanitize_copilot_orphan_tool_results,
-    should_apply_bedrock_pre_send_optimizer, should_check_media_retry,
-    should_convert_codex_responses_endpoint_to_chat, should_failover_after_rectifier_retry_failure,
+    should_apply_bedrock_pre_send_optimizer, should_convert_codex_responses_endpoint_to_chat,
+    should_failover_after_rectifier_retry_failure,
     should_preserve_exact_request_header_case, should_send_anthropic_request_headers,
-    should_trigger_media_retry, split_endpoint_and_query, strip_copilot_thinking_blocks,
-    supports_reasoning_effort, UNSUPPORTED_IMAGE_MARKER,
+    split_endpoint_and_query, strip_copilot_thinking_blocks, supports_reasoning_effort,
+    UNSUPPORTED_IMAGE_MARKER,
 };
 #[cfg(test)]
 pub(crate) use crate::proxy_core::api::transport::build_claude_auth_headers;
@@ -9466,15 +9468,6 @@ impl ForwarderRequestSource for CcSwitchForwarderRequestSource {
         &self,
         input: ForwarderMediaRetryPlanInput<'_>,
     ) -> Option<ForwarderMediaRetryPlan> {
-        if !should_check_media_retry(
-            input.adapter_facts.adapter_name,
-            input.config.enabled,
-            input.config.request_media_fallback,
-            input.already_retried,
-        ) {
-            return None;
-        }
-
         let unsupported_image_error = match input.error {
             ProxyError::UpstreamError { status, body } => {
                 is_unsupported_image_error(*status, body.as_deref())
@@ -9482,33 +9475,32 @@ impl ForwarderRequestSource for CcSwitchForwarderRequestSource {
             _ => false,
         };
 
-        if !should_trigger_media_retry(MediaRetryInput {
+        let retry_plan = forwarder_media_retry_plan_from_facts(ForwarderMediaRetryPlanFacts {
             adapter_name: input.adapter_facts.adapter_name,
             rectifier_enabled: input.config.enabled,
             request_media_fallback: input.config.request_media_fallback,
             already_retried: input.already_retried,
-            body_has_images: contains_image_blocks(input.provider_body),
+            provider_body: input.provider_body,
             unsupported_image_error,
-        }) {
-            return None;
-        }
+        })?;
 
-        let mut body = input.provider_body.clone();
-        let replaced_images = replace_image_blocks_with_marker(&mut body);
-        if replaced_images == 0 {
-            return None;
-        }
-
-        let model = body.get("model").and_then(Value::as_str).unwrap_or("");
+        let model = retry_plan
+            .body
+            .get("model")
+            .and_then(Value::as_str)
+            .unwrap_or("");
         log::info!(
-            "[{}] [Media] Upstream rejected image input; retrying provider={} model={} with {replaced_images} image block(s) replaced by {}",
+            "[{}] [Media] Upstream rejected image input; retrying provider={} model={} with {} image block(s) replaced by {}",
             input.app,
             input.provider.id,
             model,
+            retry_plan.replaced_images,
             UNSUPPORTED_IMAGE_MARKER
         );
 
-        Some(ForwarderMediaRetryPlan { body })
+        Some(ForwarderMediaRetryPlan {
+            body: retry_plan.body,
+        })
     }
 
     fn anthropic_rectifiers_enabled(
@@ -16098,6 +16090,65 @@ base_url = "https://api.openai.com/v1"
             1
         );
         assert_eq!(codex_body["messages"][0]["content"][0]["type"], "text");
+    }
+
+    #[test]
+    fn forwarder_request_source_projects_media_retry_plan() {
+        let source = default_forwarder_request_source();
+        let provider = Provider::with_id("media".to_string(), "Media".to_string(), json!({}), None);
+        let adapter_facts = ForwarderAdapterFacts {
+            adapter_name: "Claude",
+            is_claude_adapter: true,
+        };
+        let config = RectifierConfig::default();
+        let provider_body = json!({
+            "model": "vision-rejecting-model",
+            "messages": [{
+                "role": "user",
+                "content": [
+                    { "type": "image", "source": { "type": "base64", "media_type": "image/png", "data": "abc" } }
+                ]
+            }]
+        });
+        let unsupported_image_error = ProxyError::UpstreamError {
+            status: 400,
+            body: Some(
+                r#"{"error":{"message":"This model cannot process image inputs"}}"#.to_string(),
+            ),
+        };
+
+        let plan = source
+            .media_retry_plan(ForwarderMediaRetryPlanInput {
+                app: "claude",
+                adapter_facts: &adapter_facts,
+                provider: &provider,
+                already_retried: false,
+                provider_body: &provider_body,
+                error: &unsupported_image_error,
+                config: &config,
+            })
+            .expect("media retry plan");
+        assert_eq!(plan.body["messages"][0]["content"][0]["type"], "text");
+        assert_eq!(
+            plan.body["messages"][0]["content"][0]["text"],
+            UNSUPPORTED_IMAGE_MARKER
+        );
+
+        let ordinary_error = ProxyError::UpstreamError {
+            status: 400,
+            body: Some(r#"{"error":{"message":"bad request"}}"#.to_string()),
+        };
+        assert!(source
+            .media_retry_plan(ForwarderMediaRetryPlanInput {
+                app: "claude",
+                adapter_facts: &adapter_facts,
+                provider: &provider,
+                already_retried: false,
+                provider_body: &provider_body,
+                error: &ordinary_error,
+                config: &config,
+            })
+            .is_none());
     }
 
     #[test]
