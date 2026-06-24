@@ -5747,24 +5747,9 @@ pub(crate) async fn record_provider_attempt_in_db_source(
 
 pub(crate) fn record_channel_health_attempt_from_router_db(
     db: &Database,
-    channel_id: &str,
-    success: bool,
-    error_msg: Option<String>,
-    failure_threshold: u32,
-    response_time_ms: Option<i64>,
+    result: ChannelAttemptResult,
 ) -> Result<(), AppError> {
-    record_channel_attempt_in_db_source(
-        db,
-        ChannelAttemptResult {
-            channel_id: channel_id.to_string(),
-            success,
-            status_code: None,
-            latency_ms: response_time_ms.and_then(|latency| u64::try_from(latency).ok()),
-            failure_threshold: Some(failure_threshold),
-            error_code: error_msg,
-        },
-    )
-    .map_err(app_error_from_proxy_core_error)
+    record_channel_attempt_in_db_source(db, result).map_err(app_error_from_proxy_core_error)
 }
 
 pub(crate) fn reset_channel_health_from_router_db(
@@ -6307,22 +6292,11 @@ impl ProviderRouterHealthStore for CcSwitchProviderRouterHealthStore {
         })
     }
 
-    fn record_channel_health(
-        &self,
-        channel_id: &str,
-        success: bool,
-        error_msg: Option<String>,
-        failure_threshold: u32,
-        response_time_ms: Option<i64>,
-    ) -> Result<(), AppError> {
-        record_channel_health_attempt_from_router_db(
-            &self.db,
-            channel_id,
-            success,
-            error_msg,
-            failure_threshold,
-            response_time_ms,
-        )
+    fn record_channel_health<'a>(
+        &'a self,
+        result: ChannelAttemptResult,
+    ) -> BoxFuture<'a, Result<(), AppError>> {
+        Box::pin(async move { record_channel_health_attempt_from_router_db(&self.db, result) })
     }
 
     fn reset_channel_health(&self, reset: ChannelHealthReset) -> Result<(), AppError> {

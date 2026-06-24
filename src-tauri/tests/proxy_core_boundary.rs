@@ -8915,7 +8915,10 @@ fn production_provider_router_health_store_uses_core_attempt_facts() {
         "ProviderRouter health store adapter must write provider health through core ProviderHealthStore attempt projection"
     );
     assert!(
-        adapter_slice.contains("record_channel_health_attempt_from_router_db"),
+        adapter_slice.contains("fn record_channel_health<'a>(")
+            && adapter_slice.contains("result: ChannelAttemptResult")
+            && adapter_slice.contains("BoxFuture<'a, Result<(), AppError>>")
+            && adapter_slice.contains("record_channel_health_attempt_from_router_db(&self.db, result)"),
         "ProviderRouter health store adapter must write channel health through core ChannelAttemptResult projection"
     );
     assert!(
@@ -8965,6 +8968,29 @@ fn production_provider_router_resets_channel_health_with_core_reset_fact() {
     assert!(
         !router_slice.contains(".reset_channel_health(channel_id)"),
         "ProviderRouter must not reset channel health through a bare channel_id"
+    );
+}
+
+#[test]
+fn production_provider_router_records_channel_health_with_core_attempt_fact() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let path = manifest_dir.join("src/proxy/provider_router.rs");
+    let source = fs::read_to_string(&path).expect("read provider_router.rs");
+    let router_slice = function_slice(
+        &source,
+        "pub(crate) trait ProviderRouterHealthStore",
+        "    /// 重置熔断器（手动恢复）",
+    );
+
+    assert!(
+        router_slice.contains("result: ChannelAttemptResult")
+            && router_slice.contains("BoxFuture<'a, Result<(), AppError>>")
+            && router_slice.contains(".record_channel_health(ChannelAttemptResult {"),
+        "ProviderRouter channel write must pass the core ChannelAttemptResult fact to its health store"
+    );
+    assert!(
+        !router_slice.contains("record_channel_health(\n            channel_id,"),
+        "ProviderRouter must not write channel health through primitive channel health arguments"
     );
 }
 

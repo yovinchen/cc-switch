@@ -7,9 +7,10 @@ use crate::proxy::circuit_breaker::CircuitBreaker;
 use crate::proxy_core_adapter::{
     app_type_from_circuit_key, channel_circuit_key, channel_circuit_key_prefix,
     channel_health_reset_from_parts, provider_circuit_key, provider_circuit_key_prefix,
-    select_failover_provider_ids_from_router_lookup_availability, AllowResult, ChannelHealthReset,
-    ChannelRouteSource, CircuitBreakerConfig, CircuitBreakerStats, ProviderFailoverCircuitLookup,
-    RouteCandidateCircuitKey, RouteResolveChannelInput,
+    select_failover_provider_ids_from_router_lookup_availability, AllowResult,
+    ChannelAttemptResult, ChannelHealthReset, ChannelRouteSource, CircuitBreakerConfig,
+    CircuitBreakerStats, ProviderFailoverCircuitLookup, RouteCandidateCircuitKey,
+    RouteResolveChannelInput,
 };
 use futures::future::BoxFuture;
 use std::collections::HashMap;
@@ -61,14 +62,10 @@ pub(crate) trait ProviderRouterHealthStore: Send + Sync {
         failure_threshold: u32,
     ) -> BoxFuture<'a, Result<(), AppError>>;
 
-    fn record_channel_health(
-        &self,
-        channel_id: &str,
-        success: bool,
-        error_msg: Option<String>,
-        failure_threshold: u32,
-        response_time_ms: Option<i64>,
-    ) -> Result<(), AppError>;
+    fn record_channel_health<'a>(
+        &'a self,
+        result: ChannelAttemptResult,
+    ) -> BoxFuture<'a, Result<(), AppError>>;
 
     fn reset_channel_health(&self, reset: ChannelHealthReset) -> Result<(), AppError>;
 }
@@ -248,13 +245,17 @@ impl ProviderRouter {
             .record_result(&circuit_key, used_half_open_permit, success)
             .await;
 
-        self.sources.health.record_channel_health(
-            channel_id,
-            success,
-            error_msg,
-            failure_threshold,
-            response_time_ms,
-        )?;
+        self.sources
+            .health
+            .record_channel_health(ChannelAttemptResult {
+                channel_id: channel_id.to_string(),
+                success,
+                status_code: None,
+                latency_ms: response_time_ms.and_then(|latency| u64::try_from(latency).ok()),
+                failure_threshold: Some(failure_threshold),
+                error_code: error_msg,
+            })
+            .await?;
 
         Ok(())
     }
