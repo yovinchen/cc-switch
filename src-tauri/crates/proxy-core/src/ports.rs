@@ -2024,6 +2024,113 @@ pub fn detect_gemini_auth_type(input: GeminiAuthTypeInput<'_>) -> GeminiAuthType
     GeminiAuthType::Generic
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum GeminiEnvParseIssue {
+    MissingEquals { line_number: usize, line: String },
+    EmptyKey { line_number: usize, line: String },
+    InvalidKey { line_number: usize, key: String },
+}
+
+pub fn parse_gemini_env_file(content: &str) -> HashMap<String, String> {
+    let mut map = HashMap::new();
+
+    for line in content.lines() {
+        let line = line.trim();
+        if line.is_empty() || line.starts_with('#') {
+            continue;
+        }
+
+        if let Some((key, value)) = line.split_once('=') {
+            let key = key.trim();
+            let value = value.trim();
+            if !key.is_empty() && key.chars().all(|c| c.is_alphanumeric() || c == '_') {
+                map.insert(key.to_string(), value.to_string());
+            }
+        }
+    }
+
+    map
+}
+
+pub fn parse_gemini_env_file_strict(
+    content: &str,
+) -> Result<HashMap<String, String>, GeminiEnvParseIssue> {
+    let mut map = HashMap::new();
+
+    for (line_num, line) in content.lines().enumerate() {
+        let line = line.trim();
+        let line_number = line_num + 1;
+
+        if line.is_empty() || line.starts_with('#') {
+            continue;
+        }
+
+        if !line.contains('=') {
+            return Err(GeminiEnvParseIssue::MissingEquals {
+                line_number,
+                line: line.to_string(),
+            });
+        }
+
+        if let Some((key, value)) = line.split_once('=') {
+            let key = key.trim();
+            let value = value.trim();
+
+            if key.is_empty() {
+                return Err(GeminiEnvParseIssue::EmptyKey {
+                    line_number,
+                    line: line.to_string(),
+                });
+            }
+
+            if !key.chars().all(|c| c.is_alphanumeric() || c == '_') {
+                return Err(GeminiEnvParseIssue::InvalidKey {
+                    line_number,
+                    key: key.to_string(),
+                });
+            }
+
+            map.insert(key.to_string(), value.to_string());
+        }
+    }
+
+    Ok(map)
+}
+
+pub fn serialize_gemini_env_file(map: &HashMap<String, String>) -> String {
+    let mut lines = Vec::new();
+    let mut keys: Vec<_> = map.keys().collect();
+    keys.sort();
+
+    for key in keys {
+        if let Some(value) = map.get(key) {
+            lines.push(format!("{key}={value}"));
+        }
+    }
+
+    lines.join("\n")
+}
+
+pub fn gemini_env_parse_issue_spec(issue: &GeminiEnvParseIssue) -> LocalizedErrorSpec {
+    match issue {
+        GeminiEnvParseIssue::MissingEquals { line_number, line } => LocalizedErrorSpec::new(
+            "gemini.env.parse_error.no_equals",
+            format!("Gemini .env 文件格式错误（第 {line_number} 行）：缺少 '=' 分隔符\n行内容: {line}"),
+            format!("Invalid Gemini .env format (line {line_number}): missing '=' separator\nLine: {line}"),
+        ),
+        GeminiEnvParseIssue::EmptyKey { line_number, line } => LocalizedErrorSpec::new(
+            "gemini.env.parse_error.empty_key",
+            format!("Gemini .env 文件格式错误（第 {line_number} 行）：环境变量名不能为空\n行内容: {line}"),
+            format!("Invalid Gemini .env format (line {line_number}): variable name cannot be empty\nLine: {line}"),
+        ),
+        GeminiEnvParseIssue::InvalidKey { line_number, key } => LocalizedErrorSpec::new(
+            "gemini.env.parse_error.invalid_key",
+            format!("Gemini .env 文件格式错误（第 {line_number} 行）：环境变量名只能包含字母、数字和下划线\n变量名: {key}"),
+            format!("Invalid Gemini .env format (line {line_number}): variable name can only contain letters, numbers, and underscores\nVariable: {key}"),
+        ),
+    }
+}
+
 pub fn gemini_env_json_from_map(env_map: &HashMap<String, String>) -> Value {
     let env = env_map
         .iter()
@@ -5117,8 +5224,10 @@ mod tests {
         claude_takeover_model_fields_from_settings, ClaudeTakeoverAuthPolicy,
         detect_gemini_auth_type, ensure_codex_takeover_auth_placeholder,
         gemini_contains_packycode_keyword, gemini_env_json_from_map,
-        gemini_env_map_from_settings, gemini_env_string_map_from_settings, GeminiAuthType,
-        GeminiAuthTypeInput,
+        gemini_env_map_from_settings, gemini_env_parse_issue_spec,
+        gemini_env_string_map_from_settings, parse_gemini_env_file,
+        parse_gemini_env_file_strict, serialize_gemini_env_file, GeminiAuthType,
+        GeminiAuthTypeInput, GeminiEnvParseIssue,
         gemini_settings_validation_issue_spec, gemini_common_config_snippet_from_settings,
         gemini_live_config_has_proxy_placeholder, is_local_proxy_url,
         common_config_settings_mutation_issue_message,
@@ -7180,6 +7289,66 @@ mod tests {
             detect_gemini_auth_type(input("Gemini Relay", None, None, &generic_settings)),
             GeminiAuthType::Generic
         );
+    }
+
+    #[test]
+    fn gemini_env_file_parsing_and_serialization_matches_host_behavior() {
+        let content = "
+# comment
+GOOGLE_GEMINI_BASE_URL = https://example.com
+INVALID LINE
+KEY_WITH-DASH=value
+GEMINI_API_KEY = sk-test123
+";
+        let lax = parse_gemini_env_file(content);
+        assert_eq!(lax.len(), 2);
+        assert_eq!(
+            lax.get("GOOGLE_GEMINI_BASE_URL").map(String::as_str),
+            Some("https://example.com")
+        );
+        assert_eq!(lax.get("GEMINI_API_KEY").map(String::as_str), Some("sk-test123"));
+
+        let strict = parse_gemini_env_file_strict(
+            "
+# comment
+GOOGLE_GEMINI_BASE_URL=https://example.com
+GEMINI_API_KEY=sk-test123
+",
+        )
+        .expect("strict env parse");
+        assert_eq!(strict.get("GEMINI_API_KEY").map(String::as_str), Some("sk-test123"));
+
+        assert_eq!(
+            parse_gemini_env_file_strict("VALID=value\nINVALID LINE"),
+            Err(GeminiEnvParseIssue::MissingEquals {
+                line_number: 2,
+                line: "INVALID LINE".to_string(),
+            })
+        );
+        assert_eq!(
+            parse_gemini_env_file_strict("=value"),
+            Err(GeminiEnvParseIssue::EmptyKey {
+                line_number: 1,
+                line: "=value".to_string(),
+            })
+        );
+        let invalid_key = GeminiEnvParseIssue::InvalidKey {
+            line_number: 1,
+            key: "KEY-WITH-DASH".to_string(),
+        };
+        assert_eq!(
+            parse_gemini_env_file_strict("KEY-WITH-DASH=value"),
+            Err(invalid_key.clone())
+        );
+        let invalid_key_spec = gemini_env_parse_issue_spec(&invalid_key);
+        assert_eq!(invalid_key_spec.key, "gemini.env.parse_error.invalid_key");
+        assert!(invalid_key_spec.zh.contains("第 1 行"));
+        assert!(invalid_key_spec.en.contains("Variable: KEY-WITH-DASH"));
+
+        let mut env = HashMap::new();
+        env.insert("B".to_string(), "2".to_string());
+        env.insert("A".to_string(), "1".to_string());
+        assert_eq!(serialize_gemini_env_file(&env), "A=1\nB=2");
     }
 
     #[test]

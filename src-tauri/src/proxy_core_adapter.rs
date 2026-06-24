@@ -302,6 +302,7 @@ pub(crate) use crate::proxy_core::api::ports::{
     detect_gemini_auth_type as core_detect_gemini_auth_type,
     ensure_codex_takeover_auth_placeholder as core_ensure_codex_takeover_auth_placeholder,
     gemini_env_json_from_map as core_gemini_env_json_from_map,
+    gemini_env_parse_issue_spec as core_gemini_env_parse_issue_spec,
     gemini_env_string_map_from_settings as core_gemini_env_string_map_from_settings,
     gemini_settings_validation_issue_spec as core_gemini_settings_validation_issue_spec,
     gemini_live_config_has_proxy_placeholder as core_gemini_live_config_has_proxy_placeholder,
@@ -345,9 +346,9 @@ pub(crate) use crate::proxy_core::api::ports::{
     should_skip_startup_default_live_import as core_should_skip_startup_default_live_import,
     validate_gemini_settings_basic as core_validate_gemini_settings_basic,
     validate_gemini_settings_strict as core_validate_gemini_settings_strict,
-    GeminiAuthType, GeminiAuthTypeInput, GeminiSettingsValidationIssue,
-    LiveTokenProviderSettingsIssue, LocalizedErrorSpec, ProviderAdditiveLiveWriteAction,
-    ProviderAdditiveUpdateRoute,
+    GeminiAuthType, GeminiAuthTypeInput, GeminiEnvParseIssue,
+    GeminiSettingsValidationIssue, LiveTokenProviderSettingsIssue, LocalizedErrorSpec,
+    ProviderAdditiveLiveWriteAction, ProviderAdditiveUpdateRoute,
     ProviderCredentialIssue, ProviderCredentialValues as CoreProviderCredentialValues,
     ProviderKeyChangePolicyIssue, ProviderLiveConfigPresenceErrorPolicy, ProviderLiveRemovalTarget,
     ProviderLiveSyncScope, ProviderOmoSwitchPair, ProviderOmoVariant,
@@ -4370,6 +4371,26 @@ pub(crate) fn gemini_env_json_from_map(env_map: &HashMap<String, String>) -> Val
 
 pub(crate) fn gemini_env_string_map_from_settings(settings: &Value) -> HashMap<String, String> {
     core_gemini_env_string_map_from_settings(settings)
+}
+
+pub(crate) fn parse_gemini_env_file(content: &str) -> HashMap<String, String> {
+    crate::proxy_core::api::ports::parse_gemini_env_file(content)
+}
+
+pub(crate) fn parse_gemini_env_file_strict(
+    content: &str,
+) -> Result<HashMap<String, String>, AppError> {
+    crate::proxy_core::api::ports::parse_gemini_env_file_strict(content)
+        .map_err(gemini_env_parse_issue_to_app_error)
+}
+
+pub(crate) fn serialize_gemini_env_file(env_map: &HashMap<String, String>) -> String {
+    crate::proxy_core::api::ports::serialize_gemini_env_file(env_map)
+}
+
+pub(crate) fn gemini_env_parse_issue_to_app_error(issue: GeminiEnvParseIssue) -> AppError {
+    let spec = core_gemini_env_parse_issue_spec(&issue);
+    AppError::localized(spec.key, spec.zh, spec.en)
 }
 
 pub(crate) fn detect_gemini_auth_type(provider: &Provider) -> GeminiAuthType {

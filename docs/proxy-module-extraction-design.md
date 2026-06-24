@@ -1346,6 +1346,7 @@
 本轮继续把 Gemini settings 的 env map 与 JSON settings 双向投影收敛到 `proxy-core::ports`：core 维护纯 HashMap/JSON 转换和非字符串值过滤，`gemini_config` 仅保留兼容函数名并委托 adapter。
 本轮继续把 Gemini settings 严格切换校验收敛到 `proxy-core::ports::validate_gemini_settings_strict`：core 维护 OAuth 空 env 放行、非空 env 必须含 `GEMINI_API_KEY` 和本地化错误规格，host 只保留 AppError 映射。
 本轮继续把 Gemini provider 鉴权类型判定收敛到 `proxy-core::ports::detect_gemini_auth_type`：core 维护 partner key 优先级、Google official 名称匹配与 PackyCode 关键词规则，host 只负责从 `Provider` 投影输入并执行 settings 文件写入。
+本轮继续把 Gemini `.env` 解析和序列化收敛到 `proxy-core::ports`：core 维护宽松解析、严格行号错误分类和稳定排序输出，adapter 负责把结构化 parse issue 映射回宿主 `AppError`。
 
 当前原则：核心 crate 可以新增端口和领域字段，但不得引入 `tauri`、`Database`、settings、commands、services 等宿主依赖；现有 runtime 行为必须继续通过 targeted tests 证明不回归。
 
