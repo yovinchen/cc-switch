@@ -18,8 +18,9 @@ use crate::proxy_core_adapter::{
     ForwarderFailureDecision, ForwarderMediaRetryPlanInput, ForwarderProviderRequestBodyInput,
     ForwarderProviderUrlFacts, ForwarderProviderUrlFactsInput,
     ForwarderRequestBodyTransformInput, ForwarderRequestRectifierPlan,
-    ForwarderRectifierRetryFailureDecision, ForwarderThinkingBudgetRectifierInput,
-    ForwarderThinkingSignatureRectifierInput, ForwarderTransformPlanInput, OptimizerConfig,
+    ForwarderRectifierRetryFailureDecision, ForwarderFailoverSwitchTarget,
+    ForwarderThinkingBudgetRectifierInput, ForwarderThinkingSignatureRectifierInput,
+    ForwarderTransformPlanInput, OptimizerConfig,
     FailoverSwitchSchedulerRef, ForwarderAttemptRuntimeSourceRef,
     ForwarderClaudeProtocolTransformInput, ForwarderCodexChatProtocolEnrichmentInput,
     ForwarderProtocolStateSourceRef,
@@ -207,12 +208,12 @@ impl RequestForwarder {
     }
 
     async fn record_success_status_and_maybe_switch(&self, app_type: &str, provider: &Provider) {
-        let should_switch = self
+        let switch_target = self
             .runtime_state_source
-            .record_success_status(self.current_provider_id_at_start.as_str(), provider.id.as_str())
+            .record_success_status(self.current_provider_id_at_start.as_str(), provider)
             .await;
-        if should_switch {
-            self.schedule_failover_switch(app_type, provider);
+        if let Some(target) = switch_target {
+            self.schedule_failover_switch(app_type, target);
         }
     }
 
@@ -222,11 +223,15 @@ impl RequestForwarder {
             .await;
     }
 
-    fn schedule_failover_switch(&self, app_type: &str, provider: &Provider) {
+    fn schedule_failover_switch(
+        &self,
+        app_type: &str,
+        target: ForwarderFailoverSwitchTarget,
+    ) {
         self.failover_switch_scheduler.schedule_switch(
             app_type.to_string(),
-            provider.id.clone(),
-            provider.name.clone(),
+            target.provider_id,
+            target.provider_name,
         );
     }
 

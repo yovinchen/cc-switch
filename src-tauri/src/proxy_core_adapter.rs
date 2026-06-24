@@ -8082,6 +8082,12 @@ pub(crate) fn noop_failover_switch_scheduler() -> FailoverSwitchSchedulerRef {
 pub(crate) type ForwarderRuntimeStateSourceRef =
     Arc<dyn ForwarderRuntimeStateSource + Send + Sync>;
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct ForwarderFailoverSwitchTarget {
+    pub(crate) provider_id: String,
+    pub(crate) provider_name: String,
+}
+
 pub(crate) trait ForwarderRuntimeStateSource {
     #[cfg(test)]
     fn status(&self) -> Arc<RwLock<ProxyRuntimeStatus>>;
@@ -8105,8 +8111,8 @@ pub(crate) trait ForwarderRuntimeStateSource {
     fn record_success_status<'a>(
         &'a self,
         current_provider_id_at_start: &'a str,
-        provider_id: &'a str,
-    ) -> BoxFuture<'a, bool>;
+        provider: &'a Provider,
+    ) -> BoxFuture<'a, Option<ForwarderFailoverSwitchTarget>>;
     fn record_failure_status<'a>(&'a self, error_message: &'a str) -> BoxFuture<'a, ()>;
     fn record_current_provider<'a>(
         &'a self,
@@ -8226,15 +8232,19 @@ impl ForwarderRuntimeStateSource for CcSwitchForwarderRuntimeStateSource {
     fn record_success_status<'a>(
         &'a self,
         current_provider_id_at_start: &'a str,
-        provider_id: &'a str,
-    ) -> BoxFuture<'a, bool> {
+        provider: &'a Provider,
+    ) -> BoxFuture<'a, Option<ForwarderFailoverSwitchTarget>> {
         Box::pin(async move {
-            record_forward_success_runtime_source(
+            let should_switch = record_forward_success_runtime_source(
                 self.status.as_ref(),
                 current_provider_id_at_start,
-                provider_id,
+                provider.id.as_str(),
             )
-            .await
+            .await;
+            should_switch.then(|| ForwarderFailoverSwitchTarget {
+                provider_id: provider.id.clone(),
+                provider_name: provider.name.clone(),
+            })
         })
     }
 
@@ -16008,6 +16018,46 @@ base_url = "https://api.openai.com/v1"
             },
         );
         assert!(!forwarder_should_bypass_circuit_breaker(&[channel_attempt]));
+    }
+
+    #[tokio::test]
+    async fn forwarder_runtime_state_source_projects_success_switch_target() {
+        let provider = Provider::with_id(
+            "provider-b".to_string(),
+            "Provider B".to_string(),
+            json!({}),
+            None,
+        );
+        let source = CcSwitchForwarderRuntimeStateSource::new(
+            Arc::new(RwLock::new(ProxyRuntimeStatus::default())),
+            Arc::new(RwLock::new(HashMap::new())),
+            Arc::new(ProxyEventBus::default()),
+        );
+
+        assert_eq!(
+            source
+                .record_success_status("provider-b", &provider)
+                .await,
+            None
+        );
+
+        let source = CcSwitchForwarderRuntimeStateSource::new(
+            Arc::new(RwLock::new(ProxyRuntimeStatus::default())),
+            Arc::new(RwLock::new(HashMap::new())),
+            Arc::new(ProxyEventBus::default()),
+        );
+        let target = source
+            .record_success_status("provider-a", &provider)
+            .await
+            .expect("alternate provider success should schedule switch target");
+
+        assert_eq!(
+            target,
+            ForwarderFailoverSwitchTarget {
+                provider_id: "provider-b".to_string(),
+                provider_name: "Provider B".to_string(),
+            }
+        );
     }
 
     #[test]
