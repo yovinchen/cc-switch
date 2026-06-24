@@ -5827,6 +5827,48 @@ fn production_forwarder_delegates_copilot_live_model_resolution_to_runtime_sourc
 }
 
 #[test]
+fn production_forwarder_uses_request_source_for_managed_account_runtime() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let forwarder_path = manifest_dir.join("src/proxy/forwarder.rs");
+    let forwarder_source = fs::read_to_string(&forwarder_path).expect("read forwarder.rs");
+    let adapter_path = manifest_dir.join("src/proxy_core_adapter.rs");
+    let adapter_source = fs::read_to_string(&adapter_path).expect("read proxy_core_adapter.rs");
+    let struct_slice = function_slice(
+        &forwarder_source,
+        "pub struct RequestForwarder",
+        "impl RequestForwarder",
+    );
+    let impl_slice = function_slice(&forwarder_source, "impl RequestForwarder", "#[cfg(test)]");
+    let request_source_slice = function_slice(
+        &adapter_source,
+        "struct CcSwitchForwarderRequestSource",
+        "impl ForwarderRequestSource for CcSwitchForwarderRequestSource",
+    );
+
+    assert!(
+        !struct_slice.contains("managed_account_runtime_source"),
+        "RequestForwarder must not hold managed-account runtime source directly"
+    );
+    assert!(
+        request_source_slice
+            .contains("managed_account_runtime_source: ManagedAccountRuntimeSourceRef"),
+        "ForwarderRequestSource must own managed-account runtime source for request-side decisions"
+    );
+
+    let required_request_source_calls = [
+        ".apply_copilot_live_model_for_adapter(",
+        ".apply_copilot_dynamic_base_url_for_provider(",
+        ".resolve_claude_api_format_for_adapter(",
+    ];
+    for marker in required_request_source_calls {
+        assert!(
+            impl_slice.contains(marker),
+            "RequestForwarder must call request source method `{marker}`"
+        );
+    }
+}
+
+#[test]
 fn production_forwarder_uses_auth_source_resource() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let path = manifest_dir.join("src/proxy/forwarder.rs");
