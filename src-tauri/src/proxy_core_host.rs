@@ -796,6 +796,7 @@ mod tests {
                 success: false,
                 status_code: Some(StatusCode::TOO_MANY_REQUESTS.as_u16()),
                 latency_ms: Some(123),
+                failure_threshold: None,
                 error_code: Some("rate_limited".to_string()),
             })
             .await

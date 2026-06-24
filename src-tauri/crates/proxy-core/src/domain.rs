@@ -1027,6 +1027,8 @@ pub struct ChannelAttemptResult {
     pub status_code: Option<u16>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub latency_ms: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub failure_threshold: Option<u32>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub error_code: Option<String>,
 }

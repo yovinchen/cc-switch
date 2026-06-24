@@ -759,6 +759,10 @@ const FORBIDDEN_PROVIDER_ROUTER_CHANNEL_DAO_MARKERS: &[&str] = &[
 ];
 const FORBIDDEN_PROVIDER_ROUTER_CHANNEL_SOURCE_ADAPTER_MARKERS: &[&str] =
     &["db: Arc<Database>", "router_channel_route_inputs_from_db_source("];
+const FORBIDDEN_PROVIDER_ROUTER_HEALTH_STORE_ADAPTER_MARKERS: &[&str] = &[
+    "record_channel_health_result_from_router_db(",
+    ".update_proxy_channel_health_with_threshold(",
+];
 const FORBIDDEN_PROVIDER_ROUTER_PROVIDER_RECORD_MARKERS: &[&str] = &[
     "use crate::provider::Provider",
     "IndexMap<String, Provider>",
@@ -8833,6 +8837,43 @@ fn production_provider_router_channel_source_uses_core_channel_source() {
     assert!(
         violations.is_empty(),
         "ProviderRouter channel source adapter must use core ChannelSource instead of DB-specific route helpers:\n{}",
+        violations.join("\n")
+    );
+}
+
+#[test]
+fn production_provider_router_health_store_uses_core_channel_attempts() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let path = manifest_dir.join("src/proxy_core_adapter.rs");
+    let source = fs::read_to_string(&path).expect("read proxy_core_adapter.rs");
+    let adapter_slice = function_slice(
+        &source,
+        "struct CcSwitchProviderRouterHealthStore",
+        "pub(crate) fn current_provider_id_from_router_sources",
+    );
+
+    assert!(
+        adapter_slice.contains("record_channel_health_attempt_from_router_db"),
+        "ProviderRouter health store adapter must write channel health through core ChannelAttemptResult projection"
+    );
+
+    let mut violations = Vec::new();
+    for (line_index, line) in production_lines(adapter_slice) {
+        let code = line.split("//").next().unwrap_or_default();
+        for marker in FORBIDDEN_PROVIDER_ROUTER_HEALTH_STORE_ADAPTER_MARKERS {
+            if code.contains(marker) {
+                violations.push(format!(
+                    "src/proxy_core_adapter.rs CcSwitchProviderRouterHealthStore:{} contains health store adapter marker `{}`",
+                    line_index + 1,
+                    marker
+                ));
+            }
+        }
+    }
+
+    assert!(
+        violations.is_empty(),
+        "ProviderRouter health store adapter must route channel attempts through ChannelAttemptResult instead of direct DB channel health writes:\n{}",
         violations.join("\n")
     );
 }

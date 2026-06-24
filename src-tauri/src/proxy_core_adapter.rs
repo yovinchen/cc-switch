@@ -5724,7 +5724,7 @@ pub(crate) async fn record_provider_health_result_from_router_db(
     .await
 }
 
-pub(crate) fn record_channel_health_result_from_router_db(
+pub(crate) fn record_channel_health_attempt_from_router_db(
     db: &Database,
     channel_id: &str,
     success: bool,
@@ -5732,13 +5732,18 @@ pub(crate) fn record_channel_health_result_from_router_db(
     failure_threshold: u32,
     response_time_ms: Option<i64>,
 ) -> Result<(), AppError> {
-    db.update_proxy_channel_health_with_threshold(
-        channel_id,
-        success,
-        error_msg,
-        failure_threshold,
-        response_time_ms,
+    record_channel_attempt_in_db_source(
+        db,
+        ChannelAttemptResult {
+            channel_id: channel_id.to_string(),
+            success,
+            status_code: None,
+            latency_ms: response_time_ms.and_then(|latency| u64::try_from(latency).ok()),
+            failure_threshold: Some(failure_threshold),
+            error_code: error_msg,
+        },
     )
+    .map_err(app_error_from_proxy_core_error)
 }
 
 pub(crate) fn reset_channel_health_from_router_db(
@@ -6186,7 +6191,7 @@ impl ProviderRouterHealthStore for CcSwitchProviderRouterHealthStore {
         failure_threshold: u32,
         response_time_ms: Option<i64>,
     ) -> Result<(), AppError> {
-        record_channel_health_result_from_router_db(
+        record_channel_health_attempt_from_router_db(
             &self.db,
             channel_id,
             success,
@@ -10844,7 +10849,9 @@ pub(crate) fn channel_health_attempt_db_update(
         channel_id: result.channel_id,
         success: result.success,
         error_code: result.error_code,
-        failure_threshold: DEFAULT_CHANNEL_HEALTH_FAILURE_THRESHOLD,
+        failure_threshold: result
+            .failure_threshold
+            .unwrap_or(DEFAULT_CHANNEL_HEALTH_FAILURE_THRESHOLD),
         response_time_ms: result.latency_ms.map(|latency| latency as i64),
     }
 }
@@ -23815,6 +23822,7 @@ command = "latest-command"
             success: false,
             status_code: Some(429),
             latency_ms: Some(123),
+            failure_threshold: None,
             error_code: Some("rate_limited".to_string()),
         });
 
@@ -23826,6 +23834,18 @@ command = "latest-command"
             DEFAULT_CHANNEL_HEALTH_FAILURE_THRESHOLD
         );
         assert_eq!(update.response_time_ms, Some(123));
+
+        let override_update = channel_health_attempt_db_update(ChannelAttemptResult {
+            channel_id: "channel-a".to_string(),
+            success: false,
+            status_code: None,
+            latency_ms: None,
+            failure_threshold: Some(7),
+            error_code: Some("timeout".to_string()),
+        });
+
+        assert_eq!(override_update.failure_threshold, 7);
+        assert_eq!(override_update.response_time_ms, None);
     }
 
     #[test]
