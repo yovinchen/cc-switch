@@ -296,7 +296,10 @@ pub(crate) type ProxyRuntimeStatus = crate::proxy_core::api::ports::ProxyRuntime
 
 pub(crate) use crate::proxy_core::api::ports::{
     app_proxy_config_with_enabled as proxy_app_config_with_enabled, live_takeover_app_kinds,
+    apply_codex_takeover_auth_placeholder_if_present as core_apply_codex_takeover_auth_placeholder_if_present,
+    apply_gemini_takeover_env_fields as core_apply_gemini_takeover_env_fields,
     claude_live_config_has_proxy_placeholder as core_claude_live_config_has_proxy_placeholder,
+    ensure_codex_takeover_auth_placeholder as core_ensure_codex_takeover_auth_placeholder,
     gemini_live_config_has_proxy_placeholder as core_gemini_live_config_has_proxy_placeholder,
     is_local_proxy_url as core_is_local_proxy_url,
     launch_env_vars_from_provider_settings as core_launch_env_vars_from_provider_settings,
@@ -324,11 +327,14 @@ pub(crate) use crate::proxy_core::api::ports::{
     provider_takeover_live_sync_target_for_app as core_provider_takeover_live_sync_target,
     proxy_config_preserving_live_takeover_active, proxy_config_with_ephemeral_listen_port,
     proxy_config_with_live_takeover_active, proxy_runtime_status_stopped,
+    remove_claude_takeover_env_fields_if_present as core_remove_claude_takeover_env_fields_if_present,
+    remove_codex_takeover_auth_placeholder_if_present as core_remove_codex_takeover_auth_placeholder_if_present,
+    remove_gemini_takeover_env_fields_if_present as core_remove_gemini_takeover_env_fields_if_present,
     provider_should_sync_to_live as core_provider_should_sync_to_live,
     should_skip_manual_default_live_import as core_should_skip_manual_default_live_import,
     should_skip_startup_default_live_import as core_should_skip_startup_default_live_import,
-    LiveTokenProviderSettingsIssue, LocalizedErrorSpec, CLAUDE_TAKEOVER_TOKEN_ENV_KEYS,
-    ProviderAdditiveLiveWriteAction, ProviderAdditiveUpdateRoute,
+    LiveTokenProviderSettingsIssue, LocalizedErrorSpec, ProviderAdditiveLiveWriteAction,
+    ProviderAdditiveUpdateRoute,
     ProviderCredentialIssue, ProviderKeyChangePolicyIssue, ProviderLiveConfigPresenceErrorPolicy,
     ProviderLiveRemovalTarget, ProviderLiveSyncScope, ProviderOmoSwitchPair, ProviderOmoVariant,
     ProviderSwitchDispatch, ProviderTakeoverLiveSyncTarget,
@@ -11220,27 +11226,7 @@ pub(crate) fn remove_claude_takeover_env_fields_if_present<F>(
 where
     F: Fn(&str) -> bool,
 {
-    let env = config.get_mut("env").and_then(Value::as_object_mut)?;
-    let mut changed = false;
-
-    for key in CLAUDE_TAKEOVER_TOKEN_ENV_KEYS {
-        if env.get(key).and_then(Value::as_str) == Some(placeholder) {
-            env.remove(key);
-            changed = true;
-        }
-    }
-
-    if env
-        .get("ANTHROPIC_BASE_URL")
-        .and_then(Value::as_str)
-        .map(is_local_proxy_url)
-        .unwrap_or(false)
-    {
-        env.remove("ANTHROPIC_BASE_URL");
-        changed = true;
-    }
-
-    Some(changed)
+    core_remove_claude_takeover_env_fields_if_present(config, placeholder, is_local_proxy_url)
 }
 
 pub(crate) fn codex_live_config_has_proxy_placeholder(config: &Value, placeholder: &str) -> bool {
@@ -11266,44 +11252,21 @@ pub(crate) fn apply_codex_takeover_auth_placeholder_if_present(
     config: &mut Value,
     placeholder: &str,
 ) -> bool {
-    let Some(auth) = config.get_mut("auth").and_then(Value::as_object_mut) else {
-        return false;
-    };
-
-    auth.insert("OPENAI_API_KEY".to_string(), json!(placeholder));
-    true
+    core_apply_codex_takeover_auth_placeholder_if_present(config, placeholder)
 }
 
 pub(crate) fn ensure_codex_takeover_auth_placeholder(
     config: &mut Value,
     placeholder: &str,
 ) -> bool {
-    if apply_codex_takeover_auth_placeholder_if_present(config, placeholder) {
-        return true;
-    }
-
-    let Some(root) = config.as_object_mut() else {
-        return false;
-    };
-
-    root.insert("auth".to_string(), json!({ "OPENAI_API_KEY": placeholder }));
-    true
+    core_ensure_codex_takeover_auth_placeholder(config, placeholder)
 }
 
 pub(crate) fn remove_codex_takeover_auth_placeholder_if_present(
     config: &mut Value,
     placeholder: &str,
 ) -> bool {
-    let Some(auth) = config.get_mut("auth").and_then(Value::as_object_mut) else {
-        return false;
-    };
-
-    if auth.get("OPENAI_API_KEY").and_then(Value::as_str) != Some(placeholder) {
-        return false;
-    }
-
-    auth.remove("OPENAI_API_KEY");
-    true
+    core_remove_codex_takeover_auth_placeholder_if_present(config, placeholder)
 }
 
 pub(crate) fn remove_codex_takeover_config_placeholders_if_present<F>(
@@ -11444,16 +11407,7 @@ pub(crate) fn apply_gemini_takeover_env_fields(
     proxy_url: &str,
     placeholder: &str,
 ) {
-    if let Some(env) = config.get_mut("env").and_then(Value::as_object_mut) {
-        env.insert("GOOGLE_GEMINI_BASE_URL".to_string(), json!(proxy_url));
-        env.insert("GEMINI_API_KEY".to_string(), json!(placeholder));
-        return;
-    }
-
-    config["env"] = json!({
-        "GOOGLE_GEMINI_BASE_URL": proxy_url,
-        "GEMINI_API_KEY": placeholder
-    });
+    core_apply_gemini_takeover_env_fields(config, proxy_url, placeholder)
 }
 
 pub(crate) fn remove_gemini_takeover_env_fields_if_present<F>(
@@ -11464,25 +11418,7 @@ pub(crate) fn remove_gemini_takeover_env_fields_if_present<F>(
 where
     F: Fn(&str) -> bool,
 {
-    let env = config.get_mut("env").and_then(Value::as_object_mut)?;
-    let mut changed = false;
-
-    if env.get("GEMINI_API_KEY").and_then(Value::as_str) == Some(placeholder) {
-        env.remove("GEMINI_API_KEY");
-        changed = true;
-    }
-
-    if env
-        .get("GOOGLE_GEMINI_BASE_URL")
-        .and_then(Value::as_str)
-        .map(is_local_proxy_url)
-        .unwrap_or(false)
-    {
-        env.remove("GOOGLE_GEMINI_BASE_URL");
-        changed = true;
-    }
-
-    Some(changed)
+    core_remove_gemini_takeover_env_fields_if_present(config, placeholder, is_local_proxy_url)
 }
 
 pub(crate) fn live_takeover_config_matches_proxy_for_app(

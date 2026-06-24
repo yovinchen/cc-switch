@@ -1378,6 +1378,140 @@ fn sync_section_token_to_provider_settings(
     Ok(config)
 }
 
+pub fn remove_claude_takeover_env_fields_if_present<F>(
+    config: &mut Value,
+    placeholder: &str,
+    is_local_proxy_url: F,
+) -> Option<bool>
+where
+    F: Fn(&str) -> bool,
+{
+    let env = config.get_mut("env").and_then(Value::as_object_mut)?;
+    let mut changed = false;
+
+    for key in CLAUDE_TAKEOVER_TOKEN_ENV_KEYS {
+        if env.get(key).and_then(Value::as_str) == Some(placeholder) {
+            env.remove(key);
+            changed = true;
+        }
+    }
+
+    if env
+        .get("ANTHROPIC_BASE_URL")
+        .and_then(Value::as_str)
+        .map(is_local_proxy_url)
+        .unwrap_or(false)
+    {
+        env.remove("ANTHROPIC_BASE_URL");
+        changed = true;
+    }
+
+    Some(changed)
+}
+
+pub fn apply_codex_takeover_auth_placeholder_if_present(
+    config: &mut Value,
+    placeholder: &str,
+) -> bool {
+    let Some(auth) = config.get_mut("auth").and_then(Value::as_object_mut) else {
+        return false;
+    };
+
+    auth.insert(
+        "OPENAI_API_KEY".to_string(),
+        Value::String(placeholder.to_string()),
+    );
+    true
+}
+
+pub fn ensure_codex_takeover_auth_placeholder(config: &mut Value, placeholder: &str) -> bool {
+    if apply_codex_takeover_auth_placeholder_if_present(config, placeholder) {
+        return true;
+    }
+
+    let Some(root) = config.as_object_mut() else {
+        return false;
+    };
+
+    let mut auth = Map::new();
+    auth.insert(
+        "OPENAI_API_KEY".to_string(),
+        Value::String(placeholder.to_string()),
+    );
+    root.insert("auth".to_string(), Value::Object(auth));
+    true
+}
+
+pub fn remove_codex_takeover_auth_placeholder_if_present(
+    config: &mut Value,
+    placeholder: &str,
+) -> bool {
+    let Some(auth) = config.get_mut("auth").and_then(Value::as_object_mut) else {
+        return false;
+    };
+
+    if auth.get("OPENAI_API_KEY").and_then(Value::as_str) != Some(placeholder) {
+        return false;
+    }
+
+    auth.remove("OPENAI_API_KEY");
+    true
+}
+
+pub fn apply_gemini_takeover_env_fields(config: &mut Value, proxy_url: &str, placeholder: &str) {
+    if let Some(env) = config.get_mut("env").and_then(Value::as_object_mut) {
+        env.insert(
+            "GOOGLE_GEMINI_BASE_URL".to_string(),
+            Value::String(proxy_url.to_string()),
+        );
+        env.insert(
+            "GEMINI_API_KEY".to_string(),
+            Value::String(placeholder.to_string()),
+        );
+        return;
+    }
+
+    let mut env = Map::new();
+    env.insert(
+        "GOOGLE_GEMINI_BASE_URL".to_string(),
+        Value::String(proxy_url.to_string()),
+    );
+    env.insert(
+        "GEMINI_API_KEY".to_string(),
+        Value::String(placeholder.to_string()),
+    );
+    config["env"] = Value::Object(env);
+}
+
+pub fn remove_gemini_takeover_env_fields_if_present<F>(
+    config: &mut Value,
+    placeholder: &str,
+    is_local_proxy_url: F,
+) -> Option<bool>
+where
+    F: Fn(&str) -> bool,
+{
+    let env = config.get_mut("env").and_then(Value::as_object_mut)?;
+    let mut changed = false;
+
+    if env.get("GEMINI_API_KEY").and_then(Value::as_str) == Some(placeholder) {
+        env.remove("GEMINI_API_KEY");
+        changed = true;
+    }
+
+    if env
+        .get("GOOGLE_GEMINI_BASE_URL")
+        .and_then(Value::as_str)
+        .map(is_local_proxy_url)
+        .unwrap_or(false)
+    {
+        env.remove("GOOGLE_GEMINI_BASE_URL");
+        changed = true;
+    }
+
+    Some(changed)
+}
+
 pub fn normalize_claude_models_in_value(settings: &mut Value) -> bool {
     let mut changed = false;
     let env = match settings.get_mut("env").and_then(Value::as_object_mut) {
@@ -3874,10 +4008,11 @@ mod tests {
         channel_health_update_from_input,
         channel_model_record_from_input, channel_reachability_result_from_stream_check_result,
         channel_route_source_for_materialized_count,
-        claude_live_config_has_proxy_placeholder, gemini_live_config_has_proxy_placeholder,
-        is_local_proxy_url, launch_env_vars_from_provider_settings, live_takeover_app_kinds,
-        live_token_sync_app_label, normalize_claude_models_in_value,
-        provider_settings_with_live_token_sync,
+        apply_codex_takeover_auth_placeholder_if_present, apply_gemini_takeover_env_fields,
+        claude_live_config_has_proxy_placeholder, ensure_codex_takeover_auth_placeholder,
+        gemini_live_config_has_proxy_placeholder, is_local_proxy_url,
+        launch_env_vars_from_provider_settings, live_takeover_app_kinds, live_token_sync_app_label,
+        normalize_claude_models_in_value, provider_settings_with_live_token_sync,
         proxy_config_preserving_live_takeover_active,
         proxy_app_config_from_parts, proxy_config_with_ephemeral_listen_port,
         proxy_config_with_live_takeover_active, proxy_global_config_from_global_config,
@@ -3935,6 +4070,9 @@ mod tests {
         record_forward_provider_rectifier_retry_failure_status,
         record_forward_request_started_status, record_forward_success_status,
         record_proxy_server_started_status, record_proxy_server_stopped_status,
+        remove_claude_takeover_env_fields_if_present,
+        remove_codex_takeover_auth_placeholder_if_present,
+        remove_gemini_takeover_env_fields_if_present,
         RectifierConfig, RouteGroupListResponse, RouteGroupSourceInput, RouteResolveResponse,
         StreamCheckConfig, StreamCheckResult, DEFAULT_PROXY_LISTEN_ADDRESS,
         DEFAULT_PROXY_LISTEN_PORT, DEFAULT_CHANNEL_HEALTH_FAILURE_THRESHOLD,
@@ -5548,6 +5686,120 @@ mod tests {
             .expect("placeholder should be a valid no-op"),
             None
         );
+    }
+
+    #[test]
+    fn takeover_placeholder_mutations_update_app_specific_live_config() {
+        let placeholder = "PROXY_MANAGED";
+
+        let mut claude_live = json!({
+            "env": {
+                "ANTHROPIC_AUTH_TOKEN": placeholder,
+                "ANTHROPIC_API_KEY": "real-key",
+                "ANTHROPIC_BASE_URL": "http://localhost:15721",
+                "OTHER": "kept"
+            }
+        });
+        assert_eq!(
+            remove_claude_takeover_env_fields_if_present(
+                &mut claude_live,
+                placeholder,
+                |url| url.starts_with("http://localhost"),
+            ),
+            Some(true)
+        );
+        let claude_env = claude_live
+            .get("env")
+            .and_then(Value::as_object)
+            .expect("claude env");
+        assert!(claude_env.get("ANTHROPIC_AUTH_TOKEN").is_none());
+        assert!(claude_env.get("ANTHROPIC_BASE_URL").is_none());
+        assert_eq!(
+            claude_env.get("ANTHROPIC_API_KEY").and_then(Value::as_str),
+            Some("real-key")
+        );
+        assert_eq!(claude_env.get("OTHER").and_then(Value::as_str), Some("kept"));
+
+        let mut codex_live = json!({"auth": {"OPENAI_API_KEY": "real-key"}});
+        assert!(apply_codex_takeover_auth_placeholder_if_present(
+            &mut codex_live,
+            placeholder
+        ));
+        assert_eq!(
+            codex_live
+                .get("auth")
+                .and_then(|auth| auth.get("OPENAI_API_KEY"))
+                .and_then(Value::as_str),
+            Some(placeholder)
+        );
+        assert!(remove_codex_takeover_auth_placeholder_if_present(
+            &mut codex_live,
+            placeholder
+        ));
+        assert!(codex_live
+            .get("auth")
+            .and_then(|auth| auth.get("OPENAI_API_KEY"))
+            .is_none());
+
+        let mut codex_live_without_auth = json!({"config": ""});
+        assert!(!apply_codex_takeover_auth_placeholder_if_present(
+            &mut codex_live_without_auth,
+            placeholder
+        ));
+        assert!(ensure_codex_takeover_auth_placeholder(
+            &mut codex_live_without_auth,
+            placeholder
+        ));
+        assert_eq!(
+            codex_live_without_auth
+                .get("auth")
+                .and_then(|auth| auth.get("OPENAI_API_KEY"))
+                .and_then(Value::as_str),
+            Some(placeholder)
+        );
+
+        let mut gemini_config = json!({
+            "env": {
+                "GOOGLE_GEMINI_BASE_URL": "https://gemini.example",
+                "GEMINI_API_KEY": "real-key",
+                "OTHER": "kept"
+            }
+        });
+        apply_gemini_takeover_env_fields(
+            &mut gemini_config,
+            "http://127.0.0.1:15721",
+            placeholder,
+        );
+        let gemini_env = gemini_config
+            .get("env")
+            .and_then(Value::as_object)
+            .expect("gemini env");
+        assert_eq!(
+            gemini_env
+                .get("GOOGLE_GEMINI_BASE_URL")
+                .and_then(Value::as_str),
+            Some("http://127.0.0.1:15721")
+        );
+        assert_eq!(
+            gemini_env.get("GEMINI_API_KEY").and_then(Value::as_str),
+            Some(placeholder)
+        );
+        assert_eq!(gemini_env.get("OTHER").and_then(Value::as_str), Some("kept"));
+        assert_eq!(
+            remove_gemini_takeover_env_fields_if_present(
+                &mut gemini_config,
+                placeholder,
+                |url| url.starts_with("http://127.0.0.1"),
+            ),
+            Some(true)
+        );
+        let gemini_env = gemini_config
+            .get("env")
+            .and_then(Value::as_object)
+            .expect("gemini env");
+        assert!(gemini_env.get("GOOGLE_GEMINI_BASE_URL").is_none());
+        assert!(gemini_env.get("GEMINI_API_KEY").is_none());
+        assert_eq!(gemini_env.get("OTHER").and_then(Value::as_str), Some("kept"));
     }
 
     #[test]
