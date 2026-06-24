@@ -9129,9 +9129,7 @@ pub(crate) struct ForwarderClaudeBodyPolicyInput<'a> {
     pub(crate) provider: &'a Provider,
     pub(crate) api_format: Option<&'a str>,
     pub(crate) adapter_facts: &'a ForwarderAdapterFacts,
-    pub(crate) rectifier_enabled: bool,
-    pub(crate) request_media_fallback: bool,
-    pub(crate) request_media_heuristic: bool,
+    pub(crate) config: &'a RectifierConfig,
 }
 
 pub(crate) struct ForwarderCodexResponsesToChatInput<'a> {
@@ -9200,18 +9198,14 @@ pub(crate) struct ForwarderUpstreamUrlInput<'a> {
 pub(crate) struct ForwarderMediaPreventionInput<'a> {
     pub(crate) body: &'a mut Value,
     pub(crate) provider: &'a Provider,
-    pub(crate) rectifier_enabled: bool,
-    pub(crate) request_media_fallback: bool,
-    pub(crate) request_media_heuristic: bool,
+    pub(crate) config: &'a RectifierConfig,
 }
 
 pub(crate) struct ForwarderAppMediaPreventionInput<'a> {
     pub(crate) app_type: &'a AppType,
     pub(crate) body: &'a mut Value,
     pub(crate) provider: &'a Provider,
-    pub(crate) rectifier_enabled: bool,
-    pub(crate) request_media_fallback: bool,
-    pub(crate) request_media_heuristic: bool,
+    pub(crate) config: &'a RectifierConfig,
 }
 
 pub(crate) struct ForwarderMediaRetryPlanInput<'a> {
@@ -9221,8 +9215,7 @@ pub(crate) struct ForwarderMediaRetryPlanInput<'a> {
     pub(crate) already_retried: bool,
     pub(crate) provider_body: &'a Value,
     pub(crate) error: &'a ProxyError,
-    pub(crate) rectifier_enabled: bool,
-    pub(crate) request_media_fallback: bool,
+    pub(crate) config: &'a RectifierConfig,
 }
 
 pub(crate) struct ForwarderMediaRetryPlan {
@@ -9463,9 +9456,9 @@ impl CcSwitchForwarderRequestSource {
 
     fn apply_media_prevention(&self, input: ForwarderMediaPreventionInput<'_>) -> usize {
         let policy = resolve_media_prevention_policy(
-            input.rectifier_enabled,
-            input.request_media_fallback,
-            input.request_media_heuristic,
+            input.config.enabled,
+            input.config.request_media_fallback,
+            input.config.request_media_heuristic,
         );
         if !policy.should_attempt {
             return 0;
@@ -9615,9 +9608,7 @@ impl ForwarderRequestSource for CcSwitchForwarderRequestSource {
         self.apply_media_prevention(ForwarderMediaPreventionInput {
             body: input.body,
             provider: input.provider,
-            rectifier_enabled: input.rectifier_enabled,
-            request_media_fallback: input.request_media_fallback,
-            request_media_heuristic: input.request_media_heuristic,
+            config: input.config,
         });
     }
 
@@ -9795,9 +9786,7 @@ impl ForwarderRequestSource for CcSwitchForwarderRequestSource {
         self.apply_media_prevention(ForwarderMediaPreventionInput {
             body: input.body,
             provider: input.provider,
-            rectifier_enabled: input.rectifier_enabled,
-            request_media_fallback: input.request_media_fallback,
-            request_media_heuristic: input.request_media_heuristic,
+            config: input.config,
         })
     }
 
@@ -9807,8 +9796,8 @@ impl ForwarderRequestSource for CcSwitchForwarderRequestSource {
     ) -> Option<ForwarderMediaRetryPlan> {
         if !should_check_media_retry(
             input.adapter_facts.adapter_name,
-            input.rectifier_enabled,
-            input.request_media_fallback,
+            input.config.enabled,
+            input.config.request_media_fallback,
             input.already_retried,
         ) {
             return None;
@@ -9823,8 +9812,8 @@ impl ForwarderRequestSource for CcSwitchForwarderRequestSource {
 
         if !should_trigger_media_retry(MediaRetryInput {
             adapter_name: input.adapter_facts.adapter_name,
-            rectifier_enabled: input.rectifier_enabled,
-            request_media_fallback: input.request_media_fallback,
+            rectifier_enabled: input.config.enabled,
+            request_media_fallback: input.config.request_media_fallback,
             already_retried: input.already_retried,
             body_has_images: contains_image_blocks(input.provider_body),
             unsupported_image_error,
@@ -16164,15 +16153,18 @@ base_url = "https://api.openai.com/v1"
             adapter_name: "Codex",
             is_claude_adapter: false,
         };
+        let media_disabled_config = RectifierConfig {
+            request_media_fallback: false,
+            request_media_heuristic: false,
+            ..RectifierConfig::default()
+        };
 
         source.apply_claude_body_policies(ForwarderClaudeBodyPolicyInput {
             body: &mut body,
             provider: &provider,
             api_format: Some("anthropic"),
             adapter_facts: &claude_adapter_facts,
-            rectifier_enabled: true,
-            request_media_fallback: false,
-            request_media_heuristic: false,
+            config: &media_disabled_config,
         });
 
         assert!(body.get("output_config").is_none());
@@ -16187,9 +16179,7 @@ base_url = "https://api.openai.com/v1"
             provider: &provider,
             api_format: Some("anthropic"),
             adapter_facts: &codex_adapter_facts,
-            rectifier_enabled: true,
-            request_media_fallback: false,
-            request_media_heuristic: false,
+            config: &media_disabled_config,
         });
 
         assert!(skipped_body.get("output_config").is_some());
@@ -16204,6 +16194,7 @@ base_url = "https://api.openai.com/v1"
             json!({}),
             None,
         );
+        let default_config = RectifierConfig::default();
         let mut non_codex_body = json!({
             "model": "deepseek-v4-pro",
             "messages": [{
@@ -16218,9 +16209,7 @@ base_url = "https://api.openai.com/v1"
                 app_type: &AppType::Claude,
                 body: &mut non_codex_body,
                 provider: &provider,
-                rectifier_enabled: true,
-                request_media_fallback: true,
-                request_media_heuristic: true,
+                config: &default_config,
             }),
             0
         );
@@ -16240,9 +16229,7 @@ base_url = "https://api.openai.com/v1"
                 app_type: &AppType::Codex,
                 body: &mut codex_body,
                 provider: &provider,
-                rectifier_enabled: true,
-                request_media_fallback: true,
-                request_media_heuristic: true,
+                config: &default_config,
             }),
             1
         );

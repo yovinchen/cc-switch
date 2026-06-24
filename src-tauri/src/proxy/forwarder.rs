@@ -455,8 +455,7 @@ impl RequestForwarder {
                                 already_retried: media_rectifier_retried,
                                 provider_body: &provider_body,
                                 error: &e,
-                                rectifier_enabled: self.rectifier_config.enabled,
-                                request_media_fallback: self.rectifier_config.request_media_fallback,
+                                config: &self.rectifier_config,
                             })
                     {
                         let _ = std::mem::replace(&mut media_rectifier_retried, true);
@@ -874,9 +873,7 @@ impl RequestForwarder {
                 provider,
                 api_format: resolved_claude_api_format.as_deref(),
                 adapter_facts: &adapter_facts,
-                rectifier_enabled: self.rectifier_config.enabled,
-                request_media_fallback: self.rectifier_config.request_media_fallback,
-                request_media_heuristic: self.rectifier_config.request_media_heuristic,
+                config: &self.rectifier_config,
             },
         );
         let transform_plan = self
@@ -946,9 +943,7 @@ impl RequestForwarder {
                 app_type,
                 body: &mut request_body,
                 provider,
-                rectifier_enabled: self.rectifier_config.enabled,
-                request_media_fallback: self.rectifier_config.request_media_fallback,
-                request_media_heuristic: self.rectifier_config.request_media_heuristic,
+                config: &self.rectifier_config,
             });
 
         let prepared_request =
@@ -1971,9 +1966,7 @@ mod tests {
                 app_type: &AppType::Codex,
                 body,
                 provider,
-                rectifier_enabled: fwd.rectifier_config.enabled,
-                request_media_fallback: fwd.rectifier_config.request_media_fallback,
-                request_media_heuristic: fwd.rectifier_config.request_media_heuristic,
+                config: &fwd.rectifier_config,
             })
     }
 
@@ -1997,8 +1990,7 @@ mod tests {
                 already_retried,
                 provider_body,
                 error,
-                rectifier_enabled: fwd.rectifier_config.enabled,
-                request_media_fallback: fwd.rectifier_config.request_media_fallback,
+                config: &fwd.rectifier_config,
             })
             .is_some()
     }
