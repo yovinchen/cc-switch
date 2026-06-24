@@ -6658,6 +6658,20 @@ fn production_forwarder_uses_request_source_resource() {
         source.contains("outbound_model"),
         "ForwarderPreparedRequest must include finalized outbound model attribution"
     );
+    let request_preparation_input_slice = function_slice(
+        &adapter_source,
+        "pub(crate) struct ForwarderRequestPreparationInput",
+        "pub(crate) struct ForwarderPreparedRequest",
+    );
+    assert!(
+        request_preparation_input_slice.contains("transform_plan: &'a ForwarderTransformPlan"),
+        "ForwarderRequestPreparationInput must carry the cohesive transform plan"
+    );
+    assert!(
+        !request_preparation_input_slice.contains("needs_transform: bool")
+            && !request_preparation_input_slice.contains("codex_responses_to_chat: bool"),
+        "ForwarderRequestPreparationInput must not expose split transport-policy transform facts"
+    );
     assert!(
         source.contains("log_upstream_request"),
         "ForwarderRequestSource must own upstream request logging"
