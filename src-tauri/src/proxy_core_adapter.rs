@@ -67,6 +67,7 @@ pub(crate) struct CcSwitchProxyRuntime {
     pub(crate) db: Arc<Database>,
     pub(crate) provider_router: Arc<ProviderRouter>,
     pub(crate) events: Arc<ProxyEventBus>,
+    pub(crate) current_providers: Arc<RwLock<HashMap<String, CurrentRouteTarget>>>,
     pub(crate) attempt_runtime_source: ForwarderAttemptRuntimeSourceRef,
     pub(crate) protocol_state_source: ForwarderProtocolStateSourceRef,
     pub(crate) runtime_state_source: ForwarderRuntimeStateSourceRef,
@@ -507,6 +508,7 @@ pub(crate) fn proxy_state_from_runtime_sources(
             db: db.clone(),
             provider_router: provider_router.clone(),
             events: events.clone(),
+            current_providers: current_providers.clone(),
             attempt_runtime_source,
             protocol_state_source,
             runtime_state_source,
@@ -8181,7 +8183,6 @@ pub(crate) struct ForwarderFailoverSwitchTarget {
 pub(crate) trait ForwarderRuntimeStateSource {
     #[cfg(test)]
     fn status(&self) -> Arc<RwLock<ProxyRuntimeStatus>>;
-    fn current_providers(&self) -> Arc<RwLock<HashMap<String, CurrentRouteTarget>>>;
     #[cfg(test)]
     fn events(&self) -> Arc<ProxyEventBus>;
     fn next_request_id(&self) -> String;
@@ -8280,10 +8281,6 @@ impl ForwarderRuntimeStateSource for CcSwitchForwarderRuntimeStateSource {
     #[cfg(test)]
     fn status(&self) -> Arc<RwLock<ProxyRuntimeStatus>> {
         self.status.clone()
-    }
-
-    fn current_providers(&self) -> Arc<RwLock<HashMap<String, CurrentRouteTarget>>> {
-        self.current_providers.clone()
     }
 
     #[cfg(test)]
@@ -10776,7 +10773,7 @@ impl ProxyServiceRuntimeResources for CcSwitchProxyRuntime {
     }
 
     fn current_providers(&self) -> Arc<RwLock<HashMap<String, CurrentRouteTarget>>> {
-        self.runtime_state_source.current_providers()
+        self.current_providers.clone()
     }
 
     fn events(&self) -> Arc<ProxyEventBus> {
