@@ -1026,7 +1026,6 @@ impl RequestForwarder {
             .resolve_upstream_auth_headers(ForwarderAuthHeadersInput {
                 adapter,
                 auth_provider,
-                managed_account_runtime_source: self.managed_account_runtime_source.clone(),
                 session_id: &self.session_id,
                 session_client_provided: self.session_client_provided,
                 copilot_optimization,

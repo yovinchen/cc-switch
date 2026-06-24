@@ -493,7 +493,6 @@ pub(crate) fn proxy_state_from_runtime_sources(
         current_providers.clone(),
         events.clone(),
     );
-    let auth_source = default_forwarder_auth_source();
     let request_source = default_forwarder_request_source();
     let transport_source = default_forwarder_transport_source();
     let response_source = default_forwarder_response_source();
@@ -503,6 +502,9 @@ pub(crate) fn proxy_state_from_runtime_sources(
     );
     let managed_account_runtime_source =
         managed_account_runtime_source_from_app_handle(app_handle.clone());
+    let auth_source = forwarder_auth_source_from_managed_account_runtime_source(
+        managed_account_runtime_source.clone(),
+    );
     let proxy_core_services =
         Arc::new(CcSwitchProxyServices::with_runtime(CcSwitchProxyRuntime {
             db: db.clone(),
@@ -8837,7 +8839,6 @@ pub(crate) struct ForwarderPreparedCopilotAuthOptimization {
 pub(crate) struct ForwarderAuthHeadersInput<'a> {
     pub(crate) adapter: &'a ForwarderAdapterHandle,
     pub(crate) auth_provider: &'a Provider,
-    pub(crate) managed_account_runtime_source: ManagedAccountRuntimeSourceRef,
     pub(crate) session_id: &'a str,
     pub(crate) session_client_provided: bool,
     pub(crate) copilot_optimization: Option<ForwarderPreparedCopilotAuthOptimization>,
@@ -8865,7 +8866,17 @@ pub(crate) trait ForwarderAuthSource {
     ) -> BoxFuture<'a, Result<ForwarderAuthHeaders, ProxyError>>;
 }
 
-struct CcSwitchForwarderAuthSource;
+struct CcSwitchForwarderAuthSource {
+    managed_account_runtime_source: ManagedAccountRuntimeSourceRef,
+}
+
+impl CcSwitchForwarderAuthSource {
+    fn new(managed_account_runtime_source: ManagedAccountRuntimeSourceRef) -> Self {
+        Self {
+            managed_account_runtime_source,
+        }
+    }
+}
 
 impl ForwarderAuthSource for CcSwitchForwarderAuthSource {
     fn prepare_copilot_auth_optimization(
@@ -8920,7 +8931,7 @@ impl ForwarderAuthSource for CcSwitchForwarderAuthSource {
             let mut auth_headers = if let Some(mut auth) =
                 forwarder_provider_auth_info(input.adapter, input.auth_provider)
             {
-                let managed_auth = input
+                let managed_auth = self
                     .managed_account_runtime_source
                     .resolve_auth_for_provider(input.auth_provider, auth)
                     .await?;
@@ -8978,8 +8989,19 @@ impl ForwarderAuthSource for CcSwitchForwarderAuthSource {
     }
 }
 
+pub(crate) fn forwarder_auth_source_from_managed_account_runtime_source(
+    managed_account_runtime_source: ManagedAccountRuntimeSourceRef,
+) -> ForwarderAuthSourceRef {
+    Arc::new(CcSwitchForwarderAuthSource::new(
+        managed_account_runtime_source,
+    ))
+}
+
+#[cfg(test)]
 pub(crate) fn default_forwarder_auth_source() -> ForwarderAuthSourceRef {
-    Arc::new(CcSwitchForwarderAuthSource)
+    forwarder_auth_source_from_managed_account_runtime_source(
+        default_managed_account_runtime_source(),
+    )
 }
 
 pub(crate) type ForwarderRequestSourceRef =
@@ -15815,7 +15837,7 @@ base_url = "https://api.openai.com/v1"
 
     #[test]
     fn forwarder_auth_source_prepares_optional_copilot_auth_optimization() {
-        let source = CcSwitchForwarderAuthSource;
+        let source = default_forwarder_auth_source();
         let headers = HeaderMap::new();
         let mut config = CopilotOptimizerConfig::default();
         config.request_classification = true;
