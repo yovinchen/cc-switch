@@ -4,7 +4,6 @@
 
 use super::{
     error::ProxyError,
-    forwarder::ActiveConnectionGuard,
     handler_context::RequestContext,
     hyper_client::ProxyResponse,
     response_adapter::{
@@ -13,6 +12,7 @@ use super::{
     },
 };
 use crate::proxy_core_adapter::{
+    ActiveConnectionGuard,
     create_logged_passthrough_stream, decode_raw_proxy_response_body,
     log_non_streaming_proxy_response_body, log_streaming_proxy_response_received,
     non_streaming_body_timeout_message, passthrough_bytes_proxy_response,

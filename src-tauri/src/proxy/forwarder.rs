@@ -8,7 +8,7 @@ use super::{
     route_attempt::ForwardAttempt,
 };
 use crate::proxy_core_adapter::{
-    ForwarderAdapterHandle, ForwarderAppMediaPreventionInput,
+    ActiveConnectionGuard, ForwarderAdapterHandle, ForwarderAppMediaPreventionInput,
     CopilotOptimizerConfig,
     ForwarderAdapterFactsInput, ForwarderAnthropicRectifierGateInput,
     ForwarderAttemptBodyInput, ForwarderAuthHeadersInput, ForwarderAuthSourceRef,
@@ -66,42 +66,6 @@ pub struct ForwardError {
     pub error: ProxyError,
     #[allow(dead_code)]
     pub provider: Option<Provider>,
-}
-
-/// 活跃连接 RAII guard
-///
-/// 构造时把 `ProxyRuntimeStatus.active_connections` +1；Drop 时在 tokio runtime 上调度
-/// 一个异步任务执行 -1，从而支持把 guard move 进流式 body future（stream 自然结束
-/// 时 guard 与 future 一起 drop）。
-///
-/// 设计动机：之前在请求 wrapper 出口处同步 -1，但流式响应的 body 实际
-/// 在 `create_logged_passthrough_stream` 内还会继续 yield 字节流，导致 UI 的
-/// `active_connections` 计数过早归零。RAII guard 让"减量"由 Rust 类型系统驱动，
-/// 不需要每条出口路径都手动调用。
-pub(crate) struct ActiveConnectionGuard {
-    runtime_state_source: ForwarderRuntimeStateSourceRef,
-}
-
-impl ActiveConnectionGuard {
-    pub(crate) async fn acquire(runtime_state_source: ForwarderRuntimeStateSourceRef) -> Self {
-        runtime_state_source.record_active_connection_acquired().await;
-        Self {
-            runtime_state_source,
-        }
-    }
-}
-
-impl Drop for ActiveConnectionGuard {
-    fn drop(&mut self) {
-        // Drop 不能 await：把减量操作调度到 tokio runtime
-        let runtime_state_source = self.runtime_state_source.clone();
-        if let Ok(handle) = tokio::runtime::Handle::try_current() {
-            handle.spawn(async move {
-                runtime_state_source.record_active_connection_released().await;
-            });
-        }
-        // 没有 runtime 时静默丢失计数（仅 UI 展示用，可接受最终一致性）
-    }
 }
 
 pub struct RequestForwarder {

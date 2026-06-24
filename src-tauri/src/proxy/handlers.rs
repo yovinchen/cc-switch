@@ -17,7 +17,6 @@ use super::{
         parse_codex_chat_upstream_json_or_unlabeled_sse, management_api_error_to_proxy_error,
         management_auth_error_to_proxy_error, proxy_core_error_to_proxy_error,
     },
-    forwarder::ActiveConnectionGuard,
     handler_context::RequestContext,
     response_adapter::{
         claude_transformed_json_response_to_axum_response,
@@ -31,6 +30,7 @@ use super::{
 };
 use crate::app_config::AppType;
 use crate::proxy_core_adapter::{
+    ActiveConnectionGuard,
     append_query_to_endpoint_path,
     claude_transformed_streaming_usage_collector, codex_auto_transformed_streaming_usage_collector,
     create_logged_passthrough_stream,
