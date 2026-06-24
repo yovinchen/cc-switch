@@ -8791,11 +8791,6 @@ pub(crate) struct ForwarderAuthHeaders {
 }
 
 pub(crate) trait ForwarderAuthSource {
-    fn prepare_copilot_auth_optimization(
-        &self,
-        input: ForwarderCopilotAuthOptimizationInput<'_>,
-    ) -> ForwarderPreparedCopilotAuthOptimization;
-
     fn prepare_optional_copilot_auth_optimization(
         &self,
         input: ForwarderMaybeCopilotAuthOptimizationInput<'_>,
@@ -8817,9 +8812,7 @@ impl CcSwitchForwarderAuthSource {
             managed_account_runtime_source,
         }
     }
-}
 
-impl ForwarderAuthSource for CcSwitchForwarderAuthSource {
     fn prepare_copilot_auth_optimization(
         &self,
         input: ForwarderCopilotAuthOptimizationInput<'_>,
@@ -8845,7 +8838,9 @@ impl ForwarderAuthSource for CcSwitchForwarderAuthSource {
             interaction_id,
         }
     }
+}
 
+impl ForwarderAuthSource for CcSwitchForwarderAuthSource {
     fn prepare_optional_copilot_auth_optimization(
         &self,
         input: ForwarderMaybeCopilotAuthOptimizationInput<'_>,
