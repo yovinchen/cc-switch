@@ -442,6 +442,7 @@
 431. request lifecycle id 生成已收敛到 `ForwarderRuntimeStateSource::next_request_id()`；host forwarder 不再直接调用 `uuid::Uuid::new_v4()`，只消费 runtime source 提供的 request id。
 432. active connection RAII guard 类型已从 `proxy::forwarder` 移到 `proxy_core_adapter::ActiveConnectionGuard`；forwarder/handler/response processor 继续传递同一 guard，但运行态连接计数生命周期类型归属 adapter 边界。
 433. `CcSwitchProxyRuntime` 显式持有 `ProxyEventBus` 并供 `CcSwitchProxyServices` event sink 装配使用；`ForwarderRuntimeStateSource::events()` 已收窄为测试专用，生产运行态 source 不再暴露 event bus 读出口。
+434. `CcSwitchProxyRuntime` 显式持有 current route target map 并供 provider/app summary source 装配使用；`ForwarderRuntimeStateSource` 不再暴露 `current_providers()` 读出口，只保留 active route target 写入语义方法。
 407. `proxy::types::ApiFormat` 未使用预留枚举已删除；Claude/OpenAI/Gemini format 判断统一沿用 `proxy-core` 的 provider kind、client format 和 response transform contract。
 408. `LogConfig` 已从 `proxy::types` 移到 `settings::LogConfig`；日志设置不再扩大代理运行态类型模块，proxy host types 只保留代理状态/备份等运行态数据。
 409. `RectifierConfig` 的默认值、serde 和 core 检测投影测试已从 host `proxy::types` 迁入 `proxy-core::ports`；host proxy types 不再承担 core 配置契约测试。
