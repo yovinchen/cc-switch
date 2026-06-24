@@ -1,5 +1,5 @@
 use crate::{
-    domain::{AppKind, CODEX_OAUTH_CLAUDE_BASE_URL},
+    domain::{AppKind, ProviderKind, CODEX_OAUTH_CLAUDE_BASE_URL},
     gemini_url::normalize_gemini_model_id,
 };
 use serde_json::Value;
@@ -243,7 +243,8 @@ pub fn build_codex_upstream_url(base_url: &str, endpoint: &str) -> String {
 }
 
 pub fn is_github_copilot_upstream(provider_type: Option<&str>, base_url: &str) -> bool {
-    matches!(provider_type, Some("github_copilot")) || base_url.contains("githubcopilot.com")
+    provider_type.map(ProviderKind::from) == Some(ProviderKind::GitHubCopilot)
+        || base_url.contains("githubcopilot.com")
 }
 
 pub fn should_resolve_copilot_dynamic_endpoint(is_copilot: bool, is_full_url: bool) -> bool {
@@ -479,13 +480,13 @@ mod tests {
         claude_transform_endpoint_rewrite_input_from_body, extract_gemini_model_from_path,
         interface_kind_for_forward, invalid_upstream_url_error_message,
         is_codex_chat_completions_url, is_codex_chat_full_endpoint_base, is_codex_chat_wire_api,
-        is_codex_responses_endpoint,
-        is_github_copilot_upstream, is_origin_only_url, merge_query_params,
-        request_model_for_forward, resolve_codex_provider_uses_chat_completions,
-        resolved_copilot_dynamic_base_url, rewrite_claude_transform_endpoint,
-        rewrite_codex_responses_endpoint_to_chat, should_convert_codex_responses_endpoint_to_chat,
-        should_resolve_copilot_dynamic_endpoint, split_endpoint_and_query, strip_beta_query,
-        strip_endpoint_prefix, AppKind, ClaudeTransformEndpointRewriteInput,
+        is_codex_responses_endpoint, is_github_copilot_upstream, is_origin_only_url,
+        merge_query_params, request_model_for_forward,
+        resolve_codex_provider_uses_chat_completions, resolved_copilot_dynamic_base_url,
+        rewrite_claude_transform_endpoint, rewrite_codex_responses_endpoint_to_chat,
+        should_convert_codex_responses_endpoint_to_chat, should_resolve_copilot_dynamic_endpoint,
+        split_endpoint_and_query, strip_beta_query, strip_endpoint_prefix, AppKind,
+        ClaudeTransformEndpointRewriteInput,
     };
     use crate::domain::CODEX_OAUTH_CLAUDE_BASE_URL;
     use serde_json::json;
@@ -652,6 +653,10 @@ mod tests {
     fn detects_github_copilot_upstream_from_provider_type_or_base_url() {
         assert!(is_github_copilot_upstream(
             Some("github_copilot"),
+            "https://copilot-api.corp.example.com"
+        ));
+        assert!(is_github_copilot_upstream(
+            Some("github-copilot"),
             "https://copilot-api.corp.example.com"
         ));
         assert!(is_github_copilot_upstream(
