@@ -8145,6 +8145,7 @@ pub(crate) trait ForwarderRuntimeStateSource {
     fn status(&self) -> Arc<RwLock<ProxyRuntimeStatus>>;
     fn current_providers(&self) -> Arc<RwLock<HashMap<String, CurrentRouteTarget>>>;
     fn events(&self) -> Arc<ProxyEventBus>;
+    fn next_request_id(&self) -> String;
     fn emit_request_started(&self, request_id: &str, app_type: &str);
     fn emit_attempt_started(&self, request_id: &str, app_type: &str, attempt: &ForwardAttempt);
     fn emit_attempt_succeeded(&self, request_id: &str, app_type: &str, attempt: &ForwardAttempt);
@@ -8248,6 +8249,10 @@ impl ForwarderRuntimeStateSource for CcSwitchForwarderRuntimeStateSource {
 
     fn events(&self) -> Arc<ProxyEventBus> {
         self.events.clone()
+    }
+
+    fn next_request_id(&self) -> String {
+        Uuid::new_v4().to_string()
     }
 
     fn emit_request_started(&self, request_id: &str, app_type: &str) {
@@ -16327,6 +16332,19 @@ base_url = "https://api.openai.com/v1"
         let status = status.read().await;
         assert_eq!(status.total_requests, 1);
         assert!(status.last_request_at.is_some());
+    }
+
+    #[test]
+    fn forwarder_runtime_state_source_generates_request_ids() {
+        let source = CcSwitchForwarderRuntimeStateSource::new(
+            Arc::new(RwLock::new(ProxyRuntimeStatus::default())),
+            Arc::new(RwLock::new(HashMap::new())),
+            Arc::new(ProxyEventBus::default()),
+        );
+
+        let request_id = source.next_request_id();
+
+        Uuid::parse_str(&request_id).expect("request id should be a UUID");
     }
 
     #[tokio::test]

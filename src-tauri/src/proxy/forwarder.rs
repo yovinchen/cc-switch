@@ -339,7 +339,7 @@ impl RequestForwarder {
         extensions: Extensions,
         attempts: Vec<ForwardAttempt>,
     ) -> Result<ForwardResult, ForwardError> {
-        let request_id = uuid::Uuid::new_v4().to_string();
+        let request_id = self.runtime_state_source.next_request_id();
         self.runtime_state_source
             .emit_request_started(&request_id, app_type.as_str());
         let guard = ActiveConnectionGuard::acquire(self.runtime_state_source.clone()).await;
