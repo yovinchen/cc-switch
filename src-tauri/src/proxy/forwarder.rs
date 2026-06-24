@@ -12,7 +12,7 @@ use crate::proxy_core_adapter::{
     AttemptEventPhase, CopilotOptimizerConfig,
     ForwarderAdapterFactsInput, ForwarderAnthropicRectifierGateInput,
     ForwarderAttemptBodyInput, ForwarderAuthHeadersInput, ForwarderAuthSourceRef,
-    ForwarderCopilotAuthOptimizationInput, ForwarderClaudeBodyPolicyInput,
+    ForwarderMaybeCopilotAuthOptimizationInput, ForwarderClaudeBodyPolicyInput,
     ForwarderCodexResponsesToChatInput, ForwarderCodexResponsesToChatPlanInput,
     ForwarderCopilotRequestOptimizationGateInput,
     ForwarderMediaPreventionInput,
@@ -977,22 +977,17 @@ impl RequestForwarder {
             },
         );
         mapped_body = optimized.body;
-        let copilot_optimization = optimized.classification.map(|classification| {
-            self.auth_source.prepare_copilot_auth_optimization(
-                ForwarderCopilotAuthOptimizationInput {
-                    classification,
-                    request_classification_enabled: self
-                        .copilot_optimizer_config
-                        .request_classification,
-                    deterministic_request_id_enabled: self
-                        .copilot_optimizer_config
-                        .deterministic_request_id,
-                    session_source_body: body,
-                    request_body: &mapped_body,
-                    headers,
-                },
-            )
-        });
+        let copilot_optimization =
+            self.auth_source
+                .prepare_optional_copilot_auth_optimization(
+                    ForwarderMaybeCopilotAuthOptimizationInput {
+                        classification: optimized.classification,
+                        config: &self.copilot_optimizer_config,
+                        session_source_body: body,
+                        request_body: &mapped_body,
+                        headers,
+                    },
+                );
 
         self.managed_account_runtime_source
             .apply_copilot_dynamic_base_url_for_provider(

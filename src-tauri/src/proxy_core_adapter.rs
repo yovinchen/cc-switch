@@ -8492,6 +8492,14 @@ pub(crate) struct ForwarderCopilotAuthOptimizationInput<'a> {
     pub(crate) headers: &'a HeaderMap,
 }
 
+pub(crate) struct ForwarderMaybeCopilotAuthOptimizationInput<'a> {
+    pub(crate) classification: Option<CopilotClassification>,
+    pub(crate) config: &'a CopilotOptimizerConfig,
+    pub(crate) session_source_body: &'a Value,
+    pub(crate) request_body: &'a Value,
+    pub(crate) headers: &'a HeaderMap,
+}
+
 pub(crate) struct ForwarderPreparedCopilotAuthOptimization {
     request_classification_enabled: bool,
     initiator: &'static str,
@@ -8519,6 +8527,11 @@ pub(crate) trait ForwarderAuthSource {
         &self,
         input: ForwarderCopilotAuthOptimizationInput<'_>,
     ) -> ForwarderPreparedCopilotAuthOptimization;
+
+    fn prepare_optional_copilot_auth_optimization(
+        &self,
+        input: ForwarderMaybeCopilotAuthOptimizationInput<'_>,
+    ) -> Option<ForwarderPreparedCopilotAuthOptimization>;
 
     fn resolve_upstream_auth_headers<'a>(
         &'a self,
@@ -8553,6 +8566,22 @@ impl ForwarderAuthSource for CcSwitchForwarderAuthSource {
             deterministic_request_id,
             interaction_id,
         }
+    }
+
+    fn prepare_optional_copilot_auth_optimization(
+        &self,
+        input: ForwarderMaybeCopilotAuthOptimizationInput<'_>,
+    ) -> Option<ForwarderPreparedCopilotAuthOptimization> {
+        input.classification.map(|classification| {
+            self.prepare_copilot_auth_optimization(ForwarderCopilotAuthOptimizationInput {
+                classification,
+                request_classification_enabled: input.config.request_classification,
+                deterministic_request_id_enabled: input.config.deterministic_request_id,
+                session_source_body: input.session_source_body,
+                request_body: input.request_body,
+                headers: input.headers,
+            })
+        })
     }
 
     fn resolve_upstream_auth_headers<'a>(
@@ -15145,6 +15174,54 @@ base_url = "https://api.openai.com/v1"
         );
         assert!(enabled.classification.is_some());
         assert_eq!(enabled.body["model"], "gpt-5-mini");
+    }
+
+    #[test]
+    fn forwarder_auth_source_prepares_optional_copilot_auth_optimization() {
+        let source = CcSwitchForwarderAuthSource;
+        let headers = HeaderMap::new();
+        let mut config = CopilotOptimizerConfig::default();
+        config.request_classification = true;
+        config.deterministic_request_id = true;
+
+        let skipped = source.prepare_optional_copilot_auth_optimization(
+            ForwarderMaybeCopilotAuthOptimizationInput {
+                classification: None,
+                config: &config,
+                session_source_body: &json!({}),
+                request_body: &json!({}),
+                headers: &headers,
+            },
+        );
+        assert!(skipped.is_none());
+
+        let classification = CopilotClassification {
+            initiator: "user",
+            is_warmup: false,
+            is_compact: false,
+            is_subagent: true,
+        };
+        let prepared = source
+            .prepare_optional_copilot_auth_optimization(
+                ForwarderMaybeCopilotAuthOptimizationInput {
+                    classification: Some(classification),
+                    config: &config,
+                    session_source_body: &json!({
+                        "metadata": { "session_id": "session-a" }
+                    }),
+                    request_body: &json!({
+                        "messages": [{"role": "user", "content": "Hello"}]
+                    }),
+                    headers: &headers,
+                },
+            )
+            .expect("prepared copilot auth optimization");
+
+        assert!(prepared.request_classification_enabled);
+        assert_eq!(prepared.initiator, "user");
+        assert!(prepared.is_subagent);
+        assert!(prepared.deterministic_request_id.is_some());
+        assert!(prepared.interaction_id.is_some());
     }
 
     #[test]

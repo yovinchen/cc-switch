@@ -5728,6 +5728,10 @@ fn production_forwarder_uses_auth_source_resource() {
         "resolve_copilot_optimizer_session_id(",
         "resolve_copilot_request_id_with_fallback(",
         "resolve_copilot_deterministic_interaction_id(",
+        "prepare_copilot_auth_optimization(",
+        "ForwarderCopilotAuthOptimizationInput",
+        ".copilot_optimizer_config.request_classification",
+        ".copilot_optimizer_config.deterministic_request_id",
     ];
     let mut violations = Vec::new();
 
