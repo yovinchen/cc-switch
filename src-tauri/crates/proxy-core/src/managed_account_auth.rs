@@ -3,6 +3,7 @@ use http::HeaderMap;
 use thiserror::Error;
 
 use crate::copilot_model_map::{resolve_copilot_model_against_ids, CopilotModel};
+use crate::domain::ProviderKind;
 use crate::provider_auth::{ProviderAuthInfo, ProviderAuthStrategy};
 use crate::request_url::resolved_copilot_dynamic_base_url;
 
@@ -96,6 +97,21 @@ pub fn managed_account_id_for_auth_provider(
     }
 
     None
+}
+
+pub fn provider_kind_uses_managed_account_auth(
+    provider_kind: Option<&ProviderKind>,
+    anthropic_base_url: Option<&str>,
+) -> bool {
+    matches!(
+        provider_kind,
+        Some(ProviderKind::GitHubCopilot | ProviderKind::CodexOAuth)
+    ) || anthropic_base_url
+        .map(|base_url| {
+            base_url.contains("githubcopilot.com")
+                || base_url.contains("chatgpt.com/backend-api/codex")
+        })
+        .unwrap_or(false)
 }
 
 impl ManagedAccountAuthPlan {
@@ -397,7 +413,7 @@ pub fn headers_contain_proxy_auth_placeholder(headers: &HeaderMap) -> bool {
 mod tests {
     use super::{
         headers_contain_proxy_auth_placeholder, is_managed_account_upstream_url,
-        managed_account_auth_plan,
+        managed_account_auth_plan, provider_kind_uses_managed_account_auth,
         resolve_copilot_dynamic_base_url_for_binding_with_runtime_source,
         resolve_copilot_dynamic_base_url_with_runtime_source,
         resolve_copilot_live_model_for_binding_with_runtime_source,
@@ -415,6 +431,7 @@ mod tests {
     use http::{HeaderMap, HeaderValue};
 
     use crate::copilot_model_map::CopilotModel;
+    use crate::domain::ProviderKind;
     use crate::provider_auth::{ProviderAuthInfo, ProviderAuthStrategy};
 
     struct StaticManagedRuntimeSource;
@@ -692,6 +709,30 @@ mod tests {
             ),
             None
         );
+    }
+
+    #[test]
+    fn provider_kind_uses_managed_account_auth_matches_runtime_provider_facts() {
+        assert!(provider_kind_uses_managed_account_auth(
+            Some(&ProviderKind::GitHubCopilot),
+            None,
+        ));
+        assert!(provider_kind_uses_managed_account_auth(
+            Some(&ProviderKind::CodexOAuth),
+            None,
+        ));
+        assert!(provider_kind_uses_managed_account_auth(
+            None,
+            Some("https://api.githubcopilot.com"),
+        ));
+        assert!(provider_kind_uses_managed_account_auth(
+            Some(&ProviderKind::Claude),
+            Some("https://chatgpt.com/backend-api/codex"),
+        ));
+        assert!(!provider_kind_uses_managed_account_auth(
+            Some(&ProviderKind::Claude),
+            Some("https://api.anthropic.com"),
+        ));
     }
 
     #[test]
