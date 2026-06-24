@@ -1312,6 +1312,7 @@
 本轮继续把 proxy live URL 生成规则收敛到 `proxy-core::ports::proxy_live_urls_from_listen_parts`：adapter 不再维护 `0.0.0.0`/`::` 转回环地址、IPv6 URL bracket 和端口 0 不写回的规则，只在 host 启动流程中消费 core 返回的 origin/base URL。
 本轮继续把临时监听端口写回规则收敛到 `proxy-core::ports::proxy_config_with_ephemeral_listen_port`：adapter 只负责持久化 DB，端口 0 才写回实际 bind 端口、固定端口不写回的策略由 core 维护。
 本轮继续把更新 proxy config 时保留 legacy `live_takeover_active` 的规则收敛到 `proxy-core::ports::proxy_config_preserving_live_takeover_active`：adapter 只负责读取 previous config、持久化 new config 和返回前后配置，不再直接维护 legacy flag 复制规则。
+本轮继续把 legacy `live_takeover_active` flag 的配置更新规则收敛到 `proxy-core::ports::proxy_config_with_live_takeover_active`：best-effort 清理路径仍由 adapter 负责 DB 读写，但不再直接改 `ProxyConfig.live_takeover_active` 字段。
 
 当前原则：核心 crate 可以新增端口和领域字段，但不得引入 `tauri`、`Database`、settings、commands、services 等宿主依赖；现有 runtime 行为必须继续通过 targeted tests 证明不回归。
 

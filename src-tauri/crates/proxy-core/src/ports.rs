@@ -1051,6 +1051,14 @@ pub fn proxy_config_preserving_live_takeover_active(
     next
 }
 
+pub fn proxy_config_with_live_takeover_active(
+    mut config: ProxyConfig,
+    active: bool,
+) -> ProxyConfig {
+    config.live_takeover_active = active;
+    config
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ProxyServerInfo {
     pub address: String,
@@ -3129,7 +3137,7 @@ mod tests {
         channel_route_source_for_materialized_count,
         proxy_config_preserving_live_takeover_active,
         proxy_app_config_from_parts, proxy_config_with_ephemeral_listen_port,
-        proxy_global_config_from_global_config,
+        proxy_config_with_live_takeover_active, proxy_global_config_from_global_config,
         proxy_runtime_config_from_proxy_config,
         AppListResponse, AppModelListQuery, AppProxyConfig, AppSummaryInput,
         channel_key_record_from_input,
@@ -4310,6 +4318,26 @@ mod tests {
 
         assert!(merged.live_takeover_active);
         assert_eq!(merged.listen_port, 18080);
+    }
+
+    #[test]
+    fn proxy_config_with_live_takeover_active_updates_only_legacy_flag() {
+        let config = ProxyConfig {
+            live_takeover_active: true,
+            listen_port: 18080,
+            enable_logging: false,
+            ..ProxyConfig::default()
+        };
+
+        let cleared = proxy_config_with_live_takeover_active(config.clone(), false);
+
+        assert!(!cleared.live_takeover_active);
+        assert_eq!(cleared.listen_port, 18080);
+        assert!(!cleared.enable_logging);
+
+        let enabled = proxy_config_with_live_takeover_active(cleared, true);
+        assert!(enabled.live_takeover_active);
+        assert_eq!(enabled.listen_port, config.listen_port);
     }
 
     #[test]

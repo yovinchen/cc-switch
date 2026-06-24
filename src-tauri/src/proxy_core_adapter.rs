@@ -296,7 +296,7 @@ pub(crate) type ProxyRuntimeStatus = crate::proxy_core::api::ports::ProxyRuntime
 
 pub(crate) use crate::proxy_core::api::ports::{
     proxy_config_preserving_live_takeover_active, proxy_config_with_ephemeral_listen_port,
-    proxy_runtime_status_stopped,
+    proxy_config_with_live_takeover_active, proxy_runtime_status_stopped,
 };
 
 const PROXY_MANAGEMENT_AUTH_TOKEN_ENV: &str = "CC_SWITCH_PROXY_MANAGEMENT_TOKEN";
@@ -1210,8 +1210,8 @@ pub(crate) async fn clear_live_takeover_enabled_flags_in_db(db: &Database) {
 }
 
 pub(crate) async fn clear_legacy_live_takeover_active_flag_in_db(db: &Database) {
-    if let Ok(mut config) = db.get_proxy_config().await {
-        config.live_takeover_active = false;
+    if let Ok(config) = db.get_proxy_config().await {
+        let config = proxy_config_with_live_takeover_active(config, false);
         let _ = db.update_proxy_config(config).await;
     }
 }
