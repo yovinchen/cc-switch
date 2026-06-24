@@ -1317,6 +1317,7 @@
 本轮继续把 Live 接管支持的 switch-mode app catalog 收敛到 `proxy-core::ports::live_takeover_app_kinds`：core 统一维护 Claude/Codex/Gemini 清单与顺序，adapter 仅映射为宿主 `AppType` 并保留 DB/live 文件副作用。
 本轮继续把 Provider switch 的 normal/takeover-aware 分流和 takeover lock 适用范围收敛到 `proxy-core::ports::{provider_switch_dispatch_for_app,provider_switch_requires_takeover_lock}`：core 维护 OpenCode OMO/Claude Desktop 直通 normal、Claude/Codex/Gemini 需要 lock 的纯策略，adapter 只投影 `AppType` 与 provider category。
 本轮继续把 Provider takeover-owned live 同步目标和 additive app 删除后端映射收敛到 `proxy-core::ports::{provider_takeover_live_sync_target_for_app,provider_live_removal_target_for_app}`：core 维护 Claude Desktop 写 live config、其他 app 写 backup，以及 OpenCode/OpenClaw/Hermes 删除目标，adapter 继续只负责宿主 enum 投影。
+本轮继续把 Provider live sync scope、current-provider 可用性、删除当前 provider 判定、switch backfill source 与 live_config_managed 标记判定收敛到 `proxy-core::ports`：core 统一维护 additive app 与 switch app 的纯策略，adapter 只负责把宿主 `AppType` 转成 `AppKind`。
 
 当前原则：核心 crate 可以新增端口和领域字段，但不得引入 `tauri`、`Database`、settings、commands、services 等宿主依赖；现有 runtime 行为必须继续通过 targeted tests 证明不回归。
 

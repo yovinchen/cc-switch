@@ -1071,6 +1071,34 @@ pub fn live_takeover_app_kinds() -> [AppKind; 3] {
     [AppKind::Claude, AppKind::Codex, AppKind::Gemini]
 }
 
+fn app_custom_name_is(app: &AppKind, expected: &str) -> bool {
+    matches!(app, AppKind::Custom(value) if value.eq_ignore_ascii_case(expected))
+}
+
+pub fn provider_app_is_additive(app: &AppKind) -> bool {
+    app_custom_name_is(app, "opencode")
+        || app_custom_name_is(app, "openclaw")
+        || app_custom_name_is(app, "hermes")
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ProviderLiveSyncScope {
+    AllProviders,
+    CurrentProvider,
+}
+
+pub fn provider_live_sync_scope_for_app(app: &AppKind) -> ProviderLiveSyncScope {
+    if provider_app_is_additive(app) {
+        ProviderLiveSyncScope::AllProviders
+    } else {
+        ProviderLiveSyncScope::CurrentProvider
+    }
+}
+
+pub fn provider_app_has_current_provider(app: &AppKind) -> bool {
+    !provider_app_is_additive(app)
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ProviderSwitchDispatch {
     Normal,
@@ -1081,7 +1109,7 @@ pub fn provider_switch_dispatch_for_app(
     app: &AppKind,
     provider_category: Option<&str>,
 ) -> ProviderSwitchDispatch {
-    if matches!(app, AppKind::Custom(value) if value.eq_ignore_ascii_case("opencode"))
+    if app_custom_name_is(app, "opencode")
         && matches!(provider_category, Some("omo") | Some("omo-slim"))
     {
         return ProviderSwitchDispatch::Normal;
@@ -1122,18 +1150,45 @@ pub enum ProviderLiveRemovalTarget {
 }
 
 pub fn provider_live_removal_target_for_app(app: &AppKind) -> Option<ProviderLiveRemovalTarget> {
-    match app {
-        AppKind::Custom(value) if value.eq_ignore_ascii_case("opencode") => {
-            Some(ProviderLiveRemovalTarget::OpenCode)
-        }
-        AppKind::Custom(value) if value.eq_ignore_ascii_case("openclaw") => {
-            Some(ProviderLiveRemovalTarget::OpenClaw)
-        }
-        AppKind::Custom(value) if value.eq_ignore_ascii_case("hermes") => {
-            Some(ProviderLiveRemovalTarget::Hermes)
-        }
+    if app_custom_name_is(app, "opencode") {
+        Some(ProviderLiveRemovalTarget::OpenCode)
+    } else if app_custom_name_is(app, "openclaw") {
+        Some(ProviderLiveRemovalTarget::OpenClaw)
+    } else if app_custom_name_is(app, "hermes") {
+        Some(ProviderLiveRemovalTarget::Hermes)
+    } else {
+        None
+    }
+}
+
+pub fn provider_delete_is_current_provider(
+    provider_id: &str,
+    local_current: Option<&str>,
+    db_current: Option<&str>,
+) -> bool {
+    local_current == Some(provider_id) || db_current == Some(provider_id)
+}
+
+pub fn provider_switch_backfill_source_id<'a>(
+    app: &AppKind,
+    current_id: Option<&'a str>,
+    target_id: &str,
+) -> Option<&'a str> {
+    if !provider_app_has_current_provider(app) {
+        return None;
+    }
+
+    match current_id {
+        Some(current_id) if current_id != target_id => Some(current_id),
         _ => None,
     }
+}
+
+pub fn provider_switch_should_mark_live_config_managed(
+    app: &AppKind,
+    live_config_managed: Option<bool>,
+) -> bool {
+    provider_app_is_additive(app) && live_config_managed != Some(true)
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -3216,7 +3271,10 @@ mod tests {
         proxy_app_config_from_parts, proxy_config_with_ephemeral_listen_port,
         proxy_config_with_live_takeover_active, proxy_global_config_from_global_config,
         proxy_runtime_config_from_proxy_config, provider_switch_dispatch_for_app,
-        provider_switch_requires_takeover_lock, provider_live_removal_target_for_app,
+        provider_app_has_current_provider, provider_delete_is_current_provider,
+        provider_live_removal_target_for_app, provider_live_sync_scope_for_app,
+        provider_switch_backfill_source_id, provider_switch_requires_takeover_lock,
+        provider_switch_should_mark_live_config_managed,
         provider_takeover_live_sync_target_for_app,
         AppListResponse, AppModelListQuery, AppProxyConfig, AppSummaryInput,
         channel_key_record_from_input,
@@ -3235,8 +3293,8 @@ mod tests {
         CurrentRouteTargetInput, current_route_target_from_input, GlobalProxyConfig,
         GroupListQuery, HealthCheckResponse, ModelCatalog, OptimizerConfig, ProviderHealth,
         ProviderHealthUpdateInput, ProviderListResponse, ProviderSpec, ProviderSummaryInput,
-        ProviderLiveRemovalTarget, ProviderSwitchDispatch, ProviderTakeoverLiveSyncTarget,
-        ProxyChannelModelWriteRequest,
+        ProviderLiveRemovalTarget, ProviderLiveSyncScope, ProviderSwitchDispatch,
+        ProviderTakeoverLiveSyncTarget, ProxyChannelModelWriteRequest,
         ProxyChannelModelsReplaceRequest, ProxyChannelPatchRequest, ProxyChannelTestRequest,
         ProxyChannelWriteRequest, ProxyConfig, ProxyCoreEvent, ProxyCoreEventType,
         ProxyRuntimeStatus, ProxyStatusResponse, ProxyTakeoverStatus,
@@ -4544,6 +4602,107 @@ mod tests {
         );
         assert_eq!(provider_live_removal_target_for_app(&AppKind::Codex), None);
         assert_eq!(provider_live_removal_target_for_app(&AppKind::Gemini), None);
+    }
+
+    #[test]
+    fn provider_live_sync_scope_uses_additive_app_policy() {
+        assert_eq!(
+            provider_live_sync_scope_for_app(&AppKind::Custom("opencode".to_string())),
+            ProviderLiveSyncScope::AllProviders
+        );
+        assert_eq!(
+            provider_live_sync_scope_for_app(&AppKind::Custom("openclaw".to_string())),
+            ProviderLiveSyncScope::AllProviders
+        );
+        assert_eq!(
+            provider_live_sync_scope_for_app(&AppKind::Claude),
+            ProviderLiveSyncScope::CurrentProvider
+        );
+        assert_eq!(
+            provider_live_sync_scope_for_app(&AppKind::ClaudeDesktop),
+            ProviderLiveSyncScope::CurrentProvider
+        );
+    }
+
+    #[test]
+    fn provider_app_has_current_provider_is_disabled_for_additive_apps() {
+        assert!(!provider_app_has_current_provider(&AppKind::Custom(
+            "opencode".to_string()
+        )));
+        assert!(!provider_app_has_current_provider(&AppKind::Custom(
+            "openclaw".to_string()
+        )));
+        assert!(provider_app_has_current_provider(&AppKind::Claude));
+        assert!(provider_app_has_current_provider(&AppKind::Codex));
+    }
+
+    #[test]
+    fn provider_delete_current_provider_checks_local_or_db_current() {
+        assert!(provider_delete_is_current_provider(
+            "provider-a",
+            Some("provider-a"),
+            None
+        ));
+        assert!(provider_delete_is_current_provider(
+            "provider-a",
+            None,
+            Some("provider-a")
+        ));
+        assert!(provider_delete_is_current_provider(
+            "provider-a",
+            Some("provider-b"),
+            Some("provider-a")
+        ));
+        assert!(!provider_delete_is_current_provider(
+            "provider-a",
+            Some("provider-b"),
+            Some("provider-c")
+        ));
+        assert!(!provider_delete_is_current_provider("provider-a", None, None));
+    }
+
+    #[test]
+    fn provider_switch_backfill_source_id_requires_exclusive_different_current() {
+        assert_eq!(
+            provider_switch_backfill_source_id(&AppKind::Claude, Some("current"), "target"),
+            Some("current")
+        );
+        assert_eq!(
+            provider_switch_backfill_source_id(&AppKind::Claude, Some("target"), "target"),
+            None
+        );
+        assert_eq!(
+            provider_switch_backfill_source_id(&AppKind::Claude, None, "target"),
+            None
+        );
+        assert_eq!(
+            provider_switch_backfill_source_id(
+                &AppKind::Custom("opencode".to_string()),
+                Some("current"),
+                "target"
+            ),
+            None
+        );
+    }
+
+    #[test]
+    fn provider_switch_live_config_managed_mark_only_applies_to_unmanaged_additive() {
+        assert!(provider_switch_should_mark_live_config_managed(
+            &AppKind::Custom("opencode".to_string()),
+            None
+        ));
+        assert!(provider_switch_should_mark_live_config_managed(
+            &AppKind::Custom("openclaw".to_string()),
+            Some(false)
+        ));
+        assert!(!provider_switch_should_mark_live_config_managed(
+            &AppKind::Custom("hermes".to_string()),
+            Some(true)
+        ));
+        assert!(!provider_switch_should_mark_live_config_managed(
+            &AppKind::Claude,
+            None
+        ));
     }
 
     #[test]

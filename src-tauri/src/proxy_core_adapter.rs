@@ -296,13 +296,18 @@ pub(crate) type ProxyRuntimeStatus = crate::proxy_core::api::ports::ProxyRuntime
 
 pub(crate) use crate::proxy_core::api::ports::{
     app_proxy_config_with_enabled as proxy_app_config_with_enabled, live_takeover_app_kinds,
+    provider_app_has_current_provider as core_provider_app_has_current_provider,
+    provider_delete_is_current_provider as core_provider_delete_is_current_provider,
     provider_live_removal_target_for_app as core_provider_live_removal_target,
+    provider_live_sync_scope_for_app as core_provider_live_sync_scope,
+    provider_switch_backfill_source_id as core_provider_switch_backfill_source_id,
     provider_switch_dispatch_for_app as core_provider_switch_dispatch,
     provider_switch_requires_takeover_lock as core_provider_switch_requires_takeover_lock,
+    provider_switch_should_mark_live_config_managed as core_provider_switch_should_mark_live_config_managed,
     provider_takeover_live_sync_target_for_app as core_provider_takeover_live_sync_target,
     proxy_config_preserving_live_takeover_active, proxy_config_with_ephemeral_listen_port,
     proxy_config_with_live_takeover_active, proxy_runtime_status_stopped, ProviderLiveRemovalTarget,
-    ProviderSwitchDispatch, ProviderTakeoverLiveSyncTarget,
+    ProviderLiveSyncScope, ProviderSwitchDispatch, ProviderTakeoverLiveSyncTarget,
 };
 
 const PROXY_MANAGEMENT_AUTH_TOKEN_ENV: &str = "CC_SWITCH_PROXY_MANAGEMENT_TOKEN";
@@ -2094,22 +2099,12 @@ pub(crate) fn should_skip_startup_default_live_import(
     app_type.is_additive_mode() || has_any_provider
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum ProviderLiveSyncScope {
-    AllProviders,
-    CurrentProvider,
-}
-
 pub(crate) fn provider_live_sync_scope(app_type: &AppType) -> ProviderLiveSyncScope {
-    if app_type.is_additive_mode() {
-        ProviderLiveSyncScope::AllProviders
-    } else {
-        ProviderLiveSyncScope::CurrentProvider
-    }
+    core_provider_live_sync_scope(&AppKind::from(app_type))
 }
 
 pub(crate) fn provider_app_has_current_provider(app_type: &AppType) -> bool {
-    !app_type.is_additive_mode()
+    core_provider_app_has_current_provider(&AppKind::from(app_type))
 }
 
 pub(crate) fn provider_should_sync_to_live(provider: &Provider) -> bool {
@@ -2334,7 +2329,7 @@ pub(crate) fn provider_delete_is_current_provider(
     local_current: Option<&str>,
     db_current: Option<&str>,
 ) -> bool {
-    local_current == Some(provider_id) || db_current == Some(provider_id)
+    core_provider_delete_is_current_provider(provider_id, local_current, db_current)
 }
 
 pub(crate) fn provider_switch_backfill_source_id<'a>(
@@ -2342,21 +2337,17 @@ pub(crate) fn provider_switch_backfill_source_id<'a>(
     current_id: Option<&'a str>,
     target_id: &str,
 ) -> Option<&'a str> {
-    if !provider_app_has_current_provider(app_type) {
-        return None;
-    }
-
-    match current_id {
-        Some(current_id) if current_id != target_id => Some(current_id),
-        _ => None,
-    }
+    core_provider_switch_backfill_source_id(&AppKind::from(app_type), current_id, target_id)
 }
 
 pub(crate) fn provider_switch_should_mark_live_config_managed(
     app_type: &AppType,
     live_config_managed: Option<bool>,
 ) -> bool {
-    app_type.is_additive_mode() && live_config_managed != Some(true)
+    core_provider_switch_should_mark_live_config_managed(
+        &AppKind::from(app_type),
+        live_config_managed,
+    )
 }
 
 /// Reads old Claude model keys, writes DEFAULT_* keys, and deletes legacy SMALL_FAST.
