@@ -1300,6 +1300,7 @@
 本轮继续把 retryable forward failure warning 的日志行拼接从 `ForwarderFailureDecision::Retryable` 返回值中移出：`RequestForwarder` 只消费 retryable/error_message 决策并触发 `log_retryable_forward_failure`，外部中转实现不再需要返回 `[FWD-001]` 格式化日志字符串。
 本轮继续把 max-attempt warning 的日志行 payload 从 `ForwarderAttemptAllowDecision::Stop` 中移出：默认 attempt runtime source 在 `allow` 内部记录上限 warning，`RequestForwarder` 只按 `Stop` 中断循环，外部中转实现不再需要返回 max-attempt 格式化日志字符串。
 本轮继续把 forwarder 请求体 transform 执行优先级收敛到 `proxy-core::request_transport::forwarder_request_body_transform_action_from_plan`：Codex Responses→Chat、Claude protocol transformed body、generic provider transform 与 passthrough 的分支选择由 core 纯规则维护，`ForwarderRequestSource` 只负责执行对应宿主 adapter/protocol 转换。
+本轮继续把 max-attempt 停止原因文案收敛到 `proxy-core::forward_failure::build_forward_attempt_limit_reached_log`：默认 attempt runtime source 只负责加 app 前缀和写日志，不再维护尝试上限的宿主侧中文 payload。
 
 当前原则：核心 crate 可以新增端口和领域字段，但不得引入 `tauri`、`Database`、settings、commands、services 等宿主依赖；现有 runtime 行为必须继续通过 targeted tests 证明不回归。
 

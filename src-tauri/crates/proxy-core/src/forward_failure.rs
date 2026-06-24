@@ -13,6 +13,11 @@ pub struct ForwardFailureLog {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ForwardAttemptLimitLog {
+    pub message: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ForwardFailureKind {
     Upstream { status: u16, body: Option<String> },
     Timeout(String),
@@ -121,6 +126,17 @@ pub fn build_terminal_forward_failure_log(
     })
 }
 
+pub fn build_forward_attempt_limit_reached_log(
+    attempted_providers: usize,
+    max_attempts: usize,
+) -> Option<ForwardAttemptLimitLog> {
+    (attempted_providers >= max_attempts).then(|| ForwardAttemptLimitLog {
+        message: format!(
+            "已达最大尝试次数上限 ({attempted_providers}/{max_attempts}), 停止故障转移"
+        ),
+    })
+}
+
 pub fn summarize_forward_failure(failure: &ForwardFailureKind) -> String {
     match failure {
         ForwardFailureKind::Upstream { status, body } => {
@@ -199,6 +215,7 @@ fn extract_json_error_message(body: &Value) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::{
+        build_forward_attempt_limit_reached_log,
         build_retryable_forward_failure_log, build_terminal_forward_failure_log,
         categorize_forward_failure, forward_failure_kind_from_proxy_status,
         should_failover_after_rectifier_retry_failure, summarize_text_for_log,
@@ -250,6 +267,16 @@ mod tests {
         assert_eq!(log.code, ALL_PROVIDERS_FAILED);
         assert!(log.message.contains("已尝试 2/2 个 Provider，均失败"));
         assert!(log.message.contains("connection reset by peer"));
+    }
+
+    #[test]
+    fn attempt_limit_log_only_when_limit_is_reached() {
+        assert!(build_forward_attempt_limit_reached_log(0, 1).is_none());
+
+        let log =
+            build_forward_attempt_limit_reached_log(1, 1).expect("expected attempt limit log");
+
+        assert_eq!(log.message, "已达最大尝试次数上限 (1/1), 停止故障转移");
     }
 
     #[test]

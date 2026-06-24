@@ -3102,8 +3102,9 @@ pub(crate) use crate::proxy_core::api::transport::{
     apply_copilot_warmup_model_override, bedrock_env_flag_from_provider_settings,
     build_claude_provider_auth_headers, build_claude_upstream_url,
     build_codex_provider_auth_headers, build_codex_upstream_url,
-    build_gemini_provider_auth_headers, build_retryable_forward_failure_log,
-    build_terminal_forward_failure_log, categorize_forward_failure,
+    build_forward_attempt_limit_reached_log, build_gemini_provider_auth_headers,
+    build_retryable_forward_failure_log, build_terminal_forward_failure_log,
+    categorize_forward_failure,
     classify_copilot_request, claude_transform_endpoint_rewrite_input_from_body,
     AuthProviderHeaderResolution, finalize_forwarder_auth_headers,
     forwarder_media_retry_plan_from_facts, forwarder_protocol_preparation_from_transform_plan,
@@ -8414,23 +8415,13 @@ pub(crate) fn forwarder_protocol_state_source_from_runtime_parts(
 pub(crate) type ForwarderAttemptRuntimeSourceRef =
     Arc<dyn ForwarderAttemptRuntimeSource + Send + Sync>;
 
-pub(crate) struct ForwarderAttemptLimitReached {
-    pub(crate) log_line: String,
-}
-
-pub(crate) fn forwarder_attempt_limit_reached(
+pub(crate) fn forwarder_attempt_limit_reached_log_line(
     app_type: &str,
     attempted_providers: usize,
     max_attempts: usize,
-) -> Option<ForwarderAttemptLimitReached> {
-    (attempted_providers >= max_attempts).then(|| {
-        let message = format!(
-            "已达最大尝试次数上限 ({attempted_providers}/{max_attempts}), 停止故障转移"
-        );
-        ForwarderAttemptLimitReached {
-            log_line: format!("[{app_type}] {message}"),
-        }
-    })
+) -> Option<String> {
+    build_forward_attempt_limit_reached_log(attempted_providers, max_attempts)
+        .map(|log| format!("[{app_type}] {}", log.message))
 }
 
 pub(crate) fn forwarder_should_bypass_circuit_breaker(attempts: &[ForwardAttempt]) -> bool {
@@ -8498,8 +8489,8 @@ impl CcSwitchForwarderAttemptRuntimeSource {
         app_type: &str,
         attempted_providers: usize,
         max_attempts: usize,
-    ) -> Option<ForwarderAttemptLimitReached> {
-        forwarder_attempt_limit_reached(app_type, attempted_providers, max_attempts)
+    ) -> Option<String> {
+        forwarder_attempt_limit_reached_log_line(app_type, attempted_providers, max_attempts)
     }
 }
 
@@ -8509,12 +8500,12 @@ impl ForwarderAttemptRuntimeSource for CcSwitchForwarderAttemptRuntimeSource {
         input: ForwarderAttemptAllowInput<'a>,
     ) -> BoxFuture<'a, ForwarderAttemptAllowDecision> {
         Box::pin(async move {
-            if let Some(limit) = self.attempt_limit_reached(
+            if let Some(log_line) = self.attempt_limit_reached(
                 input.app_type,
                 input.attempted_providers,
                 input.max_attempts,
             ) {
-                log::warn!("{}", limit.log_line);
+                log::warn!("{log_line}");
                 return ForwarderAttemptAllowDecision::Stop;
             }
 
@@ -16227,11 +16218,11 @@ base_url = "https://api.openai.com/v1"
 
     #[test]
     fn forwarder_attempt_runtime_source_projects_attempt_limit() {
-        assert!(forwarder_attempt_limit_reached("claude", 0, 1).is_none());
-        let limit = forwarder_attempt_limit_reached("claude", 1, 1)
+        assert!(forwarder_attempt_limit_reached_log_line("claude", 0, 1).is_none());
+        let log_line = forwarder_attempt_limit_reached_log_line("claude", 1, 1)
             .expect("attempt count at max should stop");
         assert_eq!(
-            limit.log_line,
+            log_line,
             "[claude] 已达最大尝试次数上限 (1/1), 停止故障转移"
         );
     }
