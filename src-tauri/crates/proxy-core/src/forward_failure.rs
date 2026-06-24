@@ -145,6 +145,13 @@ pub fn forwarder_all_providers_circuit_open_log_line(app_type: &str) -> String {
     )
 }
 
+pub fn forwarder_no_providers_configured_log_line(app_type: &str) -> String {
+    format!(
+        "[{app_type}] [{}] 未配置供应商",
+        log_codes::fo::NO_PROVIDERS
+    )
+}
+
 pub fn build_forward_attempt_limit_reached_log(
     attempted_providers: usize,
     max_attempts: usize,
@@ -286,6 +293,7 @@ mod tests {
         categorize_forward_failure, forward_failure_kind_from_proxy_status,
         forwarder_all_providers_circuit_open_log_line, forwarder_failure_log_line,
         forwarder_no_available_provider_status_message,
+        forwarder_no_providers_configured_log_line,
         forwarder_rectifier_retry_failure_label, forwarder_rectifier_retry_failure_message,
         forwarder_rectifier_retry_success_message,
         forwarder_terminal_failure_status_message,
@@ -357,6 +365,14 @@ mod tests {
         assert_eq!(
             forwarder_all_providers_circuit_open_log_line("codex"),
             "[codex] [FO-004] 所有供应商均已熔断"
+        );
+    }
+
+    #[test]
+    fn forwarder_no_providers_configured_log_line_preserves_warning_contract() {
+        assert_eq!(
+            forwarder_no_providers_configured_log_line("claude"),
+            "[claude] [FO-005] 未配置供应商"
         );
     }
 

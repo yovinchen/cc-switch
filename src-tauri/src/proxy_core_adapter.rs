@@ -175,7 +175,7 @@ pub(crate) fn app_error_from_provider_selection_failure(
             AppError::AllProvidersCircuitOpen
         }
         ProviderSelectionFailure::NoProvidersConfigured => {
-            log::warn!("[{app_type}] [FO-005] 未配置供应商");
+            log::warn!("{}", forwarder_no_providers_configured_log_line(app_type));
             AppError::NoProvidersConfigured
         }
     }
@@ -3086,6 +3086,7 @@ pub(crate) use crate::proxy_core::api::transport::{
     forwarder_failure_log_line as core_forwarder_failure_log_line,
     forwarder_media_retry_plan_from_facts, forwarder_protocol_preparation_from_transform_plan,
     forwarder_no_available_provider_status_message as core_forwarder_no_available_provider_status_message,
+    forwarder_no_providers_configured_log_line,
     forwarder_request_body_model, forwarder_request_body_transform_action_from_plan,
     forwarder_rectifier_retry_failure_label as core_forwarder_rectifier_retry_failure_label,
     forwarder_rectifier_retry_failure_message as core_forwarder_rectifier_retry_failure_message,
