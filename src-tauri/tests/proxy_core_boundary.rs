@@ -5494,7 +5494,7 @@ fn production_adapter_managed_auth_planning_uses_runtime_source() {
     let method = function_slice(
         &source,
         "fn resolve_auth_for_provider<'a>",
-        "fn resolve_copilot_api_endpoint_for_provider<'a>",
+        "fn resolve_copilot_dynamic_base_url_for_provider<'a>",
     );
 
     assert!(

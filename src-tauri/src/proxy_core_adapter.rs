@@ -2981,6 +2981,10 @@ pub(crate) use crate::proxy_core::api::auth::{
     validate_management_bearer_header, ManagementAuthDecision,
 };
 pub(crate) use crate::proxy_core::api::auth::{
+    resolve_copilot_dynamic_base_url_with_runtime_source
+        as resolve_core_copilot_dynamic_base_url_with_runtime_source,
+    resolve_copilot_live_model_with_runtime_source
+        as resolve_core_copilot_live_model_with_runtime_source,
     resolve_managed_account_auth_with_runtime_source as resolve_core_managed_account_auth_with_runtime_source,
     ManagedAccountAuthResolution, ManagedAccountAuthRuntime,
     ManagedAccountRuntimeSource as CoreManagedAccountRuntimeSource,
@@ -3018,8 +3022,8 @@ pub(crate) use crate::proxy_core::api::management::{
     CHANNEL_HEALTH_UNKNOWN_STATUS,
 };
 pub(crate) use crate::proxy_core::api::model_catalog::{
-    apply_copilot_model_normalization, resolve_copilot_model_against_ids,
-    strip_one_m_suffix_for_upstream, strip_one_m_suffix_for_upstream_from_body,
+    apply_copilot_model_normalization, strip_one_m_suffix_for_upstream,
+    strip_one_m_suffix_for_upstream_from_body,
 };
 pub(crate) use crate::proxy_core::api::model_catalog::{
     client_model_catalog_source_for_app, ClientModelCatalogResponse, ClientModelCatalogSource,
@@ -3083,12 +3087,12 @@ pub(crate) use crate::proxy_core::api::transport::{
     request_body_serialize_error_message, resolve_codex_provider_uses_chat_completions,
     resolve_copilot_deterministic_interaction_id, resolve_copilot_optimizer_session_id,
     resolve_copilot_request_id_with_fallback, resolve_media_prevention_policy,
-    resolved_copilot_dynamic_base_url, rewrite_claude_transform_endpoint,
-    sanitize_copilot_orphan_tool_results, should_apply_bedrock_pre_send_optimizer,
-    should_check_media_retry, should_convert_codex_responses_endpoint_to_chat,
-    should_failover_after_rectifier_retry_failure, should_preserve_exact_request_header_case,
-    should_send_anthropic_request_headers, should_trigger_media_retry, split_endpoint_and_query,
-    strip_copilot_thinking_blocks, supports_reasoning_effort, UNSUPPORTED_IMAGE_MARKER,
+    rewrite_claude_transform_endpoint, sanitize_copilot_orphan_tool_results,
+    should_apply_bedrock_pre_send_optimizer, should_check_media_retry,
+    should_convert_codex_responses_endpoint_to_chat, should_failover_after_rectifier_retry_failure,
+    should_preserve_exact_request_header_case, should_send_anthropic_request_headers,
+    should_trigger_media_retry, split_endpoint_and_query, strip_copilot_thinking_blocks,
+    supports_reasoning_effort, UNSUPPORTED_IMAGE_MARKER,
 };
 pub(crate) use crate::proxy_core::api::transport::{
     extract_gemini_model_from_path, request_model_for_forward,
@@ -3150,17 +3154,6 @@ pub(crate) trait ManagedAccountRuntimeSource:
         })
     }
 
-    fn resolve_copilot_api_endpoint_for_provider<'a>(
-        &'a self,
-        auth_provider: &'a Provider,
-    ) -> BoxFuture<'a, Option<String>> {
-        Box::pin(async move {
-            let account_id = provider_github_copilot_managed_account_id(auth_provider);
-            self.resolve_copilot_api_endpoint(account_id.as_deref())
-                .await
-        })
-    }
-
     fn resolve_copilot_dynamic_base_url_for_provider<'a>(
         &'a self,
         auth_provider: &'a Provider,
@@ -3169,15 +3162,15 @@ pub(crate) trait ManagedAccountRuntimeSource:
         is_full_url: bool,
     ) -> BoxFuture<'a, Option<String>> {
         Box::pin(async move {
-            let dynamic_endpoint = self
-                .resolve_copilot_api_endpoint_for_provider(auth_provider)
-                .await?;
-            resolved_copilot_dynamic_base_url(
+            let account_id = provider_github_copilot_managed_account_id(auth_provider);
+            resolve_core_copilot_dynamic_base_url_with_runtime_source(
+                self,
+                account_id.as_deref(),
                 current_base_url,
-                &dynamic_endpoint,
                 is_copilot,
                 is_full_url,
             )
+            .await
         })
     }
 
@@ -3210,33 +3203,19 @@ pub(crate) trait ManagedAccountRuntimeSource:
         })
     }
 
-    fn fetch_copilot_live_models_for_provider<'a>(
-        &'a self,
-        auth_provider: &'a Provider,
-    ) -> BoxFuture<'a, Result<Option<Vec<CopilotModel>>, String>> {
-        Box::pin(async move {
-            let account_id = provider_github_copilot_managed_account_id(auth_provider);
-            self.fetch_copilot_live_models(account_id.as_deref()).await
-        })
-    }
-
     fn resolve_copilot_live_model_for_provider<'a>(
         &'a self,
         auth_provider: &'a Provider,
         model_id: &'a str,
     ) -> BoxFuture<'a, Result<Option<String>, String>> {
         Box::pin(async move {
-            let Some(models) = self
-                .fetch_copilot_live_models_for_provider(auth_provider)
-                .await?
-            else {
-                return Ok(None);
-            };
-
-            Ok(resolve_copilot_model_against_ids(
+            let account_id = provider_github_copilot_managed_account_id(auth_provider);
+            resolve_core_copilot_live_model_with_runtime_source(
+                self,
+                account_id.as_deref(),
                 model_id,
-                models.iter().map(|model| model.id.as_str()),
-            ))
+            )
+            .await
         })
     }
 

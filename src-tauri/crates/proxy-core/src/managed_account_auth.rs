@@ -2,8 +2,9 @@ use futures::future::BoxFuture;
 use http::HeaderMap;
 use thiserror::Error;
 
-use crate::copilot_model_map::CopilotModel;
+use crate::copilot_model_map::{resolve_copilot_model_against_ids, CopilotModel};
 use crate::provider_auth::{ProviderAuthInfo, ProviderAuthStrategy};
+use crate::request_url::resolved_copilot_dynamic_base_url;
 
 pub const PROXY_AUTH_PLACEHOLDER: &str = "PROXY_MANAGED";
 
@@ -151,6 +152,43 @@ where
     }
 }
 
+pub async fn resolve_copilot_dynamic_base_url_with_runtime_source<S>(
+    runtime_source: &S,
+    account_id: Option<&str>,
+    current_base_url: &str,
+    is_copilot: bool,
+    is_full_url: bool,
+) -> Option<String>
+where
+    S: ManagedAccountRuntimeSource + ?Sized,
+{
+    let dynamic_endpoint = runtime_source.resolve_copilot_api_endpoint(account_id).await?;
+    resolved_copilot_dynamic_base_url(
+        current_base_url,
+        &dynamic_endpoint,
+        is_copilot,
+        is_full_url,
+    )
+}
+
+pub async fn resolve_copilot_live_model_with_runtime_source<S>(
+    runtime_source: &S,
+    account_id: Option<&str>,
+    model_id: &str,
+) -> Result<Option<String>, String>
+where
+    S: ManagedAccountRuntimeSource + ?Sized,
+{
+    let Some(models) = runtime_source.fetch_copilot_live_models(account_id).await? else {
+        return Ok(None);
+    };
+
+    Ok(resolve_copilot_model_against_ids(
+        model_id,
+        models.iter().map(|model| model.id.as_str()),
+    ))
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Error)]
 pub enum ManagedAccountAuthError {
     #[error(
@@ -216,9 +254,10 @@ mod tests {
     use super::{
         headers_contain_proxy_auth_placeholder, is_managed_account_upstream_url,
         managed_account_auth_plan, resolve_managed_account_auth_with_runtime_source,
-        validate_managed_account_upstream_auth, ManagedAccountAuthError, ManagedAccountAuthPlan,
-        ManagedAccountAuthResolution, ManagedAccountAuthRuntime, ManagedAccountRuntimeSource,
-        PROXY_AUTH_PLACEHOLDER,
+        resolve_copilot_dynamic_base_url_with_runtime_source,
+        resolve_copilot_live_model_with_runtime_source, validate_managed_account_upstream_auth,
+        ManagedAccountAuthError, ManagedAccountAuthPlan, ManagedAccountAuthResolution,
+        ManagedAccountAuthRuntime, ManagedAccountRuntimeSource, PROXY_AUTH_PLACEHOLDER,
     };
     use futures::{executor::block_on, future::BoxFuture};
     use http::{HeaderMap, HeaderValue};
@@ -273,6 +312,59 @@ mod tests {
             _account_id: Option<&'a str>,
         ) -> BoxFuture<'a, Result<Option<Vec<CopilotModel>>, String>> {
             Box::pin(async move { Ok(None) })
+        }
+
+        fn resolve_copilot_model_vendor<'a>(
+            &'a self,
+            _account_id: Option<&'a str>,
+            _model_id: &'a str,
+        ) -> BoxFuture<'a, Option<String>> {
+            Box::pin(async move { None })
+        }
+    }
+
+    struct StaticCopilotRuntimeSource {
+        endpoint: Option<String>,
+        models: Option<Vec<CopilotModel>>,
+    }
+
+    impl ManagedAccountRuntimeSource for StaticCopilotRuntimeSource {
+        type Error = String;
+
+        fn resolve_copilot_auth<'a>(
+            &'a self,
+            _account_id: Option<&'a str>,
+            _runtime: ManagedAccountAuthRuntime,
+        ) -> BoxFuture<'a, Result<ProviderAuthInfo, Self::Error>> {
+            Box::pin(async move { Err("auth not used".to_string()) })
+        }
+
+        fn resolve_codex_oauth<'a>(
+            &'a self,
+            _account_id: Option<String>,
+            _runtime: ManagedAccountAuthRuntime,
+        ) -> BoxFuture<'a, Result<(ProviderAuthInfo, Option<String>), Self::Error>> {
+            Box::pin(async move { Err("oauth not used".to_string()) })
+        }
+
+        fn resolve_copilot_api_endpoint<'a>(
+            &'a self,
+            account_id: Option<&'a str>,
+        ) -> BoxFuture<'a, Option<String>> {
+            Box::pin(async move {
+                assert_eq!(account_id, Some("copilot-account"));
+                self.endpoint.clone()
+            })
+        }
+
+        fn fetch_copilot_live_models<'a>(
+            &'a self,
+            account_id: Option<&'a str>,
+        ) -> BoxFuture<'a, Result<Option<Vec<CopilotModel>>, String>> {
+            Box::pin(async move {
+                assert_eq!(account_id, Some("copilot-account"));
+                Ok(self.models.clone())
+            })
         }
 
         fn resolve_copilot_model_vendor<'a>(
@@ -419,6 +511,49 @@ mod tests {
         assert_eq!(codex.auth.strategy, ProviderAuthStrategy::CodexOAuth);
         assert_eq!(codex.codex_oauth_account_id.as_deref(), Some("codex-account"));
         assert!(codex.should_send_codex_oauth_session_headers);
+    }
+
+    #[test]
+    fn managed_account_runtime_source_resolves_copilot_dynamic_base_url() {
+        let source = StaticCopilotRuntimeSource {
+            endpoint: Some("https://api.enterprise.githubcopilot.com".to_string()),
+            models: None,
+        };
+
+        let base_url = block_on(resolve_copilot_dynamic_base_url_with_runtime_source(
+            &source,
+            Some("copilot-account"),
+            "https://api.githubcopilot.com",
+            true,
+            false,
+        ));
+
+        assert_eq!(
+            base_url.as_deref(),
+            Some("https://api.enterprise.githubcopilot.com")
+        );
+    }
+
+    #[test]
+    fn managed_account_runtime_source_resolves_copilot_live_model_ids() {
+        let source = StaticCopilotRuntimeSource {
+            endpoint: None,
+            models: Some(vec![CopilotModel {
+                id: "claude-sonnet-4.6".to_string(),
+                name: "Claude Sonnet 4.6".to_string(),
+                vendor: "Anthropic".to_string(),
+                model_picker_enabled: true,
+            }]),
+        };
+
+        let model = block_on(resolve_copilot_live_model_with_runtime_source(
+            &source,
+            Some("copilot-account"),
+            "claude-sonnet-4-6",
+        ))
+        .expect("live model source");
+
+        assert_eq!(model.as_deref(), Some("claude-sonnet-4.6"));
     }
 
     #[test]
