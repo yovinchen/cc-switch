@@ -339,7 +339,7 @@ impl RequestForwarder {
         attempt: &ForwardAttempt,
         app_type_str: &str,
         used_half_open_permit: bool,
-        rectifier_label: &str,
+        retry_kind: ForwarderRectifierRetryKind,
         last_error: &mut Option<ProxyError>,
         last_provider: &mut Option<Provider>,
     ) -> Option<ForwardError> {
@@ -360,7 +360,7 @@ impl RequestForwarder {
                 self.runtime_state_source
                     .record_provider_rectifier_retry_failure(
                         provider,
-                        rectifier_label,
+                        retry_kind,
                         &error_message,
                     )
                     .await;
@@ -616,8 +616,7 @@ impl RequestForwarder {
                                         attempt,
                                         app_type_str,
                                         used_half_open_permit,
-                                        self.runtime_state_source
-                                            .rectifier_retry_failure_label(retry_kind),
+                                        retry_kind,
                                         &mut last_error,
                                         &mut last_provider,
                                     )
@@ -710,8 +709,7 @@ impl RequestForwarder {
                                                 attempt,
                                                 app_type_str,
                                                 used_half_open_permit,
-                                                self.runtime_state_source
-                                                    .rectifier_retry_failure_label(retry_kind),
+                                                retry_kind,
                                                 &mut last_error,
                                                 &mut last_provider,
                                             )
@@ -805,8 +803,7 @@ impl RequestForwarder {
                                                 attempt,
                                                 app_type_str,
                                                 used_half_open_permit,
-                                                self.runtime_state_source
-                                                    .rectifier_retry_failure_label(retry_kind),
+                                                retry_kind,
                                                 &mut last_error,
                                                 &mut last_provider,
                                             )

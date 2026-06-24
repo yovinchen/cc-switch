@@ -8174,7 +8174,7 @@ pub(crate) trait ForwarderRuntimeStateSource {
     fn record_provider_rectifier_retry_failure<'a>(
         &'a self,
         provider: &'a Provider,
-        rectifier_label: &'a str,
+        kind: ForwarderRectifierRetryKind,
         error_message: &'a str,
     ) -> BoxFuture<'a, ()>;
     fn forward_failure_decision(
@@ -8207,10 +8207,6 @@ pub(crate) trait ForwarderRuntimeStateSource {
         kind: ForwarderRectifierRetryKind,
         error: &ProxyError,
     ) -> String;
-    fn rectifier_retry_failure_label(
-        &self,
-        kind: ForwarderRectifierRetryKind,
-    ) -> &'static str;
     fn record_forward_error_status<'a>(&'a self, error: &'a ProxyError) -> BoxFuture<'a, ()>;
     fn record_no_available_provider_status<'a>(&'a self) -> BoxFuture<'a, ()>;
     fn record_terminal_failure_status<'a>(&'a self) -> BoxFuture<'a, ()>;
@@ -8341,14 +8337,14 @@ impl ForwarderRuntimeStateSource for CcSwitchForwarderRuntimeStateSource {
     fn record_provider_rectifier_retry_failure<'a>(
         &'a self,
         provider: &'a Provider,
-        rectifier_label: &'a str,
+        kind: ForwarderRectifierRetryKind,
         error_message: &'a str,
     ) -> BoxFuture<'a, ()> {
         Box::pin(async move {
             record_forward_provider_rectifier_retry_failure_runtime_source(
                 self.status.as_ref(),
                 provider.name.as_str(),
-                rectifier_label,
+                forwarder_rectifier_retry_failure_label(kind),
                 error_message,
             )
             .await;
@@ -8426,13 +8422,6 @@ impl ForwarderRuntimeStateSource for CcSwitchForwarderRuntimeStateSource {
         error: &ProxyError,
     ) -> String {
         forwarder_rectifier_retry_failure_log_line(app_type, kind, error)
-    }
-
-    fn rectifier_retry_failure_label(
-        &self,
-        kind: ForwarderRectifierRetryKind,
-    ) -> &'static str {
-        forwarder_rectifier_retry_failure_label(kind)
     }
 
     fn record_no_available_provider_status<'a>(&'a self) -> BoxFuture<'a, ()> {
@@ -16253,15 +16242,15 @@ base_url = "https://api.openai.com/v1"
             "[claude] [RECT-011] budget 整流重试成功"
         );
         assert_eq!(
-            source.rectifier_retry_failure_label(ForwarderRectifierRetryKind::MediaFallback),
+            forwarder_rectifier_retry_failure_label(ForwarderRectifierRetryKind::MediaFallback),
             "media 降级"
         );
         assert_eq!(
-            source.rectifier_retry_failure_label(ForwarderRectifierRetryKind::ThinkingSignature),
+            forwarder_rectifier_retry_failure_label(ForwarderRectifierRetryKind::ThinkingSignature),
             "整流"
         );
         assert_eq!(
-            source.rectifier_retry_failure_label(ForwarderRectifierRetryKind::ThinkingBudget),
+            forwarder_rectifier_retry_failure_label(ForwarderRectifierRetryKind::ThinkingBudget),
             "budget 整流"
         );
     }
@@ -16404,7 +16393,7 @@ base_url = "https://api.openai.com/v1"
         source
             .record_provider_rectifier_retry_failure(
                 &provider,
-                "budget 整流",
+                ForwarderRectifierRetryKind::ThinkingBudget,
                 "上游错误 (状态码 502): bad gateway",
             )
             .await;
