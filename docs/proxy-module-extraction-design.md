@@ -1339,6 +1339,7 @@
 本轮继续把 provider common-config 启用判定收敛到 `proxy-core::ports`：core 维护显式 `common_config_enabled` 优先级、snippet 非空 gate 和存储归一化是否需要 snippet 的纯策略；adapter 只负责从 `ProviderMeta`、宿主 settings 和 legacy contains 检测投影输入事实。
 本轮继续把 proxy takeover 的 retakeover backup 决策和 official provider category 策略收敛到 `proxy-core::ports`：core 维护 backup 可复用/需恢复、官方供应商 warning 与 Codex official live 重应用判定；adapter 只负责从 `Provider.category` 投影 category 字符串。
 本轮继续把 OpenClaw live write 的 typed/raw/reject 决策收敛到 `proxy-core::ports`：core 维护 typed parse 成功、raw fallback 和 reject 文案策略；adapter 继续负责把 `Provider.settings_config` 反序列化为宿主 `OpenClawProviderConfig`，service 继续负责实际写入 live config。
+本轮继续把 OpenCode live provider fragment 提取和 live write typed/raw/reject 决策收敛到 `proxy-core::ports`：core 维护 full config 中 `provider.{id}` 片段选择、raw fallback 和 reject 文案策略；adapter 继续负责宿主 `OpenCodeProviderConfig` 反序列化，service 继续负责实际写入 live config。
 
 当前原则：核心 crate 可以新增端口和领域字段，但不得引入 `tauri`、`Database`、settings、commands、services 等宿主依赖；现有 runtime 行为必须继续通过 targeted tests 证明不回归。
 

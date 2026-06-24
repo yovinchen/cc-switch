@@ -2017,6 +2017,101 @@ pub fn opencode_credential_parts_from_settings(
     })
 }
 
+#[derive(Debug, Clone, PartialEq)]
+pub struct OpenCodeLiveProviderFragmentDecision {
+    pub config: Value,
+    pub from_full_config: bool,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum OpenCodeLiveWriteConfigDecision {
+    Typed,
+    Raw { config: Value, parse_error: String },
+    Invalid { parse_error: String },
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum OpenCodeLiveWriteActionDecision {
+    Typed,
+    Raw {
+        config: Value,
+        parse_error: String,
+    },
+    Reject {
+        parse_error: String,
+        message: String,
+    },
+}
+
+pub fn opencode_live_provider_fragment_decision(
+    provider_id: &str,
+    settings_config: &Value,
+) -> OpenCodeLiveProviderFragmentDecision {
+    let Some(obj) = settings_config.as_object() else {
+        return OpenCodeLiveProviderFragmentDecision {
+            config: settings_config.clone(),
+            from_full_config: false,
+        };
+    };
+
+    let from_full_config = obj.contains_key("$schema") || obj.contains_key("provider");
+    if from_full_config {
+        let config = obj
+            .get("provider")
+            .and_then(|providers| providers.get(provider_id))
+            .cloned()
+            .unwrap_or_else(|| settings_config.clone());
+        return OpenCodeLiveProviderFragmentDecision {
+            config,
+            from_full_config,
+        };
+    }
+
+    OpenCodeLiveProviderFragmentDecision {
+        config: settings_config.clone(),
+        from_full_config,
+    }
+}
+
+pub fn opencode_live_write_config_decision(
+    config_to_write: Value,
+    typed_parse_error: Option<String>,
+    has_live_provider_fields: bool,
+) -> OpenCodeLiveWriteConfigDecision {
+    match typed_parse_error {
+        None => OpenCodeLiveWriteConfigDecision::Typed,
+        Some(parse_error) if has_live_provider_fields => OpenCodeLiveWriteConfigDecision::Raw {
+            config: config_to_write,
+            parse_error,
+        },
+        Some(parse_error) => OpenCodeLiveWriteConfigDecision::Invalid { parse_error },
+    }
+}
+
+pub fn opencode_live_write_action_decision(
+    provider_id: &str,
+    config: OpenCodeLiveWriteConfigDecision,
+) -> OpenCodeLiveWriteActionDecision {
+    match config {
+        OpenCodeLiveWriteConfigDecision::Typed => OpenCodeLiveWriteActionDecision::Typed,
+        OpenCodeLiveWriteConfigDecision::Raw {
+            config,
+            parse_error,
+        } => OpenCodeLiveWriteActionDecision::Raw {
+            config,
+            parse_error,
+        },
+        OpenCodeLiveWriteConfigDecision::Invalid { parse_error } => {
+            OpenCodeLiveWriteActionDecision::Reject {
+                parse_error,
+                message: format!(
+                    "OpenCode provider '{provider_id}' has invalid config structure for live config (must contain 'npm' or 'options')"
+                ),
+            }
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct OpenClawCredentialParts<'a> {
     pub api_key: Option<&'a str>,
@@ -4788,7 +4883,8 @@ mod tests {
         openclaw_common_config_value_from_settings, openclaw_credential_parts_from_settings,
         openclaw_common_config_snippet_from_settings, openclaw_live_write_action_decision,
         openclaw_live_write_config_decision,
-        opencode_common_config_snippet_from_settings,
+        opencode_common_config_snippet_from_settings, opencode_live_provider_fragment_decision,
+        opencode_live_write_action_decision, opencode_live_write_config_decision,
         opencode_common_config_value_from_settings, opencode_credential_parts_from_settings,
         provider_settings_with_live_token_sync, proxy_urls_match,
         proxy_config_preserving_live_takeover_active,
@@ -4836,6 +4932,8 @@ mod tests {
         CommonConfigSettingsMutationIssue, CommonConfigSnippetIssue, LiveTokenProviderSettingsIssue,
         ProviderCredentialIssue, ProviderKeyChangePolicyIssue, OpenClawLiveWriteActionDecision,
         OpenClawLiveWriteConfigDecision, OpenCodeCredentialIssue,
+        OpenCodeLiveProviderFragmentDecision, OpenCodeLiveWriteActionDecision,
+        OpenCodeLiveWriteConfigDecision,
         provider_common_config_storage_normalization_requires_snippet,
         provider_uses_common_config_from_parts, ProviderListResponse,
         ProviderLiveConfigPresenceErrorPolicy, ProviderLiveRemovalTarget,
@@ -6329,6 +6427,86 @@ mod tests {
                 "models": {"fast": "claude-sonnet"}
             })
         );
+    }
+
+    #[test]
+    fn opencode_live_write_policy_extracts_fragment_and_classifies_write_paths() {
+        let direct_settings = json!({
+            "npm": "@ai-sdk/openai",
+            "options": {"apiKey": "sk-test"}
+        });
+        assert_eq!(
+            opencode_live_provider_fragment_decision("openai", &direct_settings),
+            OpenCodeLiveProviderFragmentDecision {
+                config: direct_settings.clone(),
+                from_full_config: false
+            }
+        );
+
+        let full_settings = json!({
+            "$schema": "https://opencode.ai/config.json",
+            "provider": {
+                "openai": {
+                    "npm": "@ai-sdk/openai",
+                    "options": {"apiKey": "sk-nested"}
+                }
+            }
+        });
+        assert_eq!(
+            opencode_live_provider_fragment_decision("openai", &full_settings),
+            OpenCodeLiveProviderFragmentDecision {
+                config: json!({
+                    "npm": "@ai-sdk/openai",
+                    "options": {"apiKey": "sk-nested"}
+                }),
+                from_full_config: true
+            }
+        );
+        assert_eq!(
+            opencode_live_provider_fragment_decision("missing", &full_settings),
+            OpenCodeLiveProviderFragmentDecision {
+                config: full_settings,
+                from_full_config: true
+            }
+        );
+
+        let typed = opencode_live_write_config_decision(direct_settings, None, false);
+        assert_eq!(typed, OpenCodeLiveWriteConfigDecision::Typed);
+        assert_eq!(
+            opencode_live_write_action_decision("openai", typed),
+            OpenCodeLiveWriteActionDecision::Typed
+        );
+
+        let raw_settings = json!({"npm": Value::Null});
+        let raw = opencode_live_write_config_decision(
+            raw_settings.clone(),
+            Some("invalid type: null".to_string()),
+            true,
+        );
+        assert_eq!(
+            opencode_live_write_action_decision("raw", raw),
+            OpenCodeLiveWriteActionDecision::Raw {
+                config: raw_settings,
+                parse_error: "invalid type: null".to_string()
+            }
+        );
+
+        let invalid = opencode_live_write_config_decision(
+            json!({"name": "Provider"}),
+            Some("missing field `npm`".to_string()),
+            false,
+        );
+        match opencode_live_write_action_decision("invalid", invalid) {
+            OpenCodeLiveWriteActionDecision::Reject {
+                parse_error,
+                message,
+            } => {
+                assert_eq!(parse_error, "missing field `npm`");
+                assert!(message.contains("OpenCode provider 'invalid'"));
+                assert!(message.contains("npm"));
+            }
+            other => panic!("expected reject action, got {other:?}"),
+        }
     }
 
     #[test]

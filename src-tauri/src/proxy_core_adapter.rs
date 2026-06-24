@@ -1731,6 +1731,9 @@ use crate::proxy_core::api::ports::{
     openclaw_live_write_action_decision as core_openclaw_live_write_action_decision,
     openclaw_live_write_config_decision as core_openclaw_live_write_config_decision,
     openclaw_common_config_snippet_from_settings as core_openclaw_common_config_snippet_from_settings,
+    opencode_live_provider_fragment_decision as core_opencode_live_provider_fragment_decision,
+    opencode_live_write_action_decision as core_opencode_live_write_action_decision,
+    opencode_live_write_config_decision as core_opencode_live_write_config_decision,
     opencode_common_config_snippet_from_settings as core_opencode_common_config_snippet_from_settings,
     provider_common_config_storage_normalization_requires_snippet as core_provider_common_config_storage_normalization_requires_snippet,
     provider_uses_common_config_from_parts as core_provider_uses_common_config_from_parts,
@@ -1742,6 +1745,8 @@ use crate::proxy_core::api::ports::{
     should_reapply_codex_official_live_for_provider_category as core_should_reapply_codex_official_live_for_provider_category,
     OpenClawLiveWriteActionDecision as CoreOpenClawLiveWriteActionDecision,
     OpenClawLiveWriteConfigDecision as CoreOpenClawLiveWriteConfigDecision,
+    OpenCodeLiveWriteActionDecision as CoreOpenCodeLiveWriteActionDecision,
+    OpenCodeLiveWriteConfigDecision as CoreOpenCodeLiveWriteConfigDecision,
 };
 #[cfg(test)]
 use crate::proxy_core::api::ports::provider_category_is_official as core_provider_category_is_official;
@@ -2311,29 +2316,11 @@ pub(crate) struct OpenCodeLiveProviderFragment {
 pub(crate) fn provider_opencode_live_provider_fragment(
     provider: &Provider,
 ) -> OpenCodeLiveProviderFragment {
-    let Some(obj) = provider.settings_config.as_object() else {
-        return OpenCodeLiveProviderFragment {
-            config: provider.settings_config.clone(),
-            from_full_config: false,
-        };
-    };
-
-    let from_full_config = obj.contains_key("$schema") || obj.contains_key("provider");
-    if from_full_config {
-        let config = obj
-            .get("provider")
-            .and_then(|providers| providers.get(&provider.id))
-            .cloned()
-            .unwrap_or_else(|| provider.settings_config.clone());
-        return OpenCodeLiveProviderFragment {
-            config,
-            from_full_config,
-        };
-    }
-
+    let fragment =
+        core_opencode_live_provider_fragment_decision(&provider.id, &provider.settings_config);
     OpenCodeLiveProviderFragment {
-        config: provider.settings_config.clone(),
-        from_full_config,
+        config: fragment.config,
+        from_full_config: fragment.from_full_config,
     }
 }
 
@@ -2374,18 +2361,29 @@ pub(crate) struct OpenCodeLiveWriteProjection {
 pub(crate) fn provider_opencode_live_write_plan(provider: &Provider) -> OpenCodeLiveWritePlan {
     let fragment = provider_opencode_live_provider_fragment(provider);
     let config_to_write = fragment.config;
+    let has_live_provider_fields =
+        opencode_live_provider_fragment_has_provider_fields(&config_to_write);
+    let typed_config = serde_json::from_value::<OpenCodeProviderConfig>(config_to_write.clone());
+    let decision = core_opencode_live_write_config_decision(
+        config_to_write,
+        typed_config.as_ref().err().map(|error| error.to_string()),
+        has_live_provider_fields,
+    );
 
-    let config = match serde_json::from_value::<OpenCodeProviderConfig>(config_to_write.clone()) {
-        Ok(config) => OpenCodeLiveWriteConfig::Typed(config),
-        Err(error) if opencode_live_provider_fragment_has_provider_fields(&config_to_write) => {
-            OpenCodeLiveWriteConfig::Raw {
-                config: config_to_write,
-                parse_error: error.to_string(),
-            }
+    let config = match decision {
+        CoreOpenCodeLiveWriteConfigDecision::Typed => {
+            OpenCodeLiveWriteConfig::Typed(typed_config.expect("typed OpenCode config"))
         }
-        Err(error) => OpenCodeLiveWriteConfig::Invalid {
-            parse_error: error.to_string(),
+        CoreOpenCodeLiveWriteConfigDecision::Raw {
+            config,
+            parse_error,
+        } => OpenCodeLiveWriteConfig::Raw {
+            config,
+            parse_error,
         },
+        CoreOpenCodeLiveWriteConfigDecision::Invalid { parse_error } => {
+            OpenCodeLiveWriteConfig::Invalid { parse_error }
+        }
     };
 
     OpenCodeLiveWritePlan {
@@ -2399,21 +2397,51 @@ pub(crate) fn provider_opencode_live_write_projection(
 ) -> OpenCodeLiveWriteProjection {
     let plan = provider_opencode_live_write_plan(provider);
     let action = match plan.config {
-        OpenCodeLiveWriteConfig::Typed(config) => OpenCodeLiveWriteAction::Typed(config),
+        OpenCodeLiveWriteConfig::Typed(config) => {
+            match core_opencode_live_write_action_decision(
+                &provider.id,
+                CoreOpenCodeLiveWriteConfigDecision::Typed,
+            ) {
+                CoreOpenCodeLiveWriteActionDecision::Typed => {
+                    OpenCodeLiveWriteAction::Typed(config)
+                }
+                other => unreachable!("typed OpenCode plan produced non-typed action: {other:?}"),
+            }
+        }
         OpenCodeLiveWriteConfig::Raw {
             config,
             parse_error,
-        } => OpenCodeLiveWriteAction::Raw {
-            config,
-            parse_error,
+        } => match core_opencode_live_write_action_decision(
+            &provider.id,
+            CoreOpenCodeLiveWriteConfigDecision::Raw {
+                config,
+                parse_error,
+            },
+        ) {
+            CoreOpenCodeLiveWriteActionDecision::Raw {
+                config,
+                parse_error,
+            } => OpenCodeLiveWriteAction::Raw {
+                config,
+                parse_error,
+            },
+            other => unreachable!("raw OpenCode plan produced non-raw action: {other:?}"),
         },
-        OpenCodeLiveWriteConfig::Invalid { parse_error } => OpenCodeLiveWriteAction::Reject {
-            parse_error,
-            message: format!(
-                "OpenCode provider '{}' has invalid config structure for live config (must contain 'npm' or 'options')",
-                provider.id
-            ),
-        },
+        OpenCodeLiveWriteConfig::Invalid { parse_error } => {
+            match core_opencode_live_write_action_decision(
+                &provider.id,
+                CoreOpenCodeLiveWriteConfigDecision::Invalid { parse_error },
+            ) {
+                CoreOpenCodeLiveWriteActionDecision::Reject {
+                    parse_error,
+                    message,
+                } => OpenCodeLiveWriteAction::Reject {
+                    parse_error,
+                    message,
+                },
+                other => unreachable!("invalid OpenCode plan produced non-reject action: {other:?}"),
+            }
+        }
     };
 
     OpenCodeLiveWriteProjection {
