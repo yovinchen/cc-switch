@@ -144,6 +144,14 @@ pub fn build_forward_attempt_limit_reached_log(
     })
 }
 
+pub fn forwarder_no_available_provider_status_message() -> &'static str {
+    "所有供应商暂时不可用（熔断器限制）"
+}
+
+pub fn forwarder_terminal_failure_status_message() -> &'static str {
+    "所有供应商都失败"
+}
+
 pub fn forwarder_rectifier_retry_failure_label(
     kind: ForwarderRectifierRetryKind,
 ) -> &'static str {
@@ -264,8 +272,10 @@ mod tests {
         build_forward_attempt_limit_reached_log,
         build_retryable_forward_failure_log, build_terminal_forward_failure_log,
         categorize_forward_failure, forward_failure_kind_from_proxy_status,
+        forwarder_no_available_provider_status_message,
         forwarder_rectifier_retry_failure_label, forwarder_rectifier_retry_failure_message,
         forwarder_rectifier_retry_success_message,
+        forwarder_terminal_failure_status_message,
         should_failover_after_rectifier_retry_failure, summarize_text_for_log,
         summarize_upstream_body_for_log, ForwardFailureCategory, ForwardFailureKind,
         ForwarderRectifierRetryKind,
@@ -326,6 +336,18 @@ mod tests {
             build_forward_attempt_limit_reached_log(1, 1).expect("expected attempt limit log");
 
         assert_eq!(log.message, "已达最大尝试次数上限 (1/1), 停止故障转移");
+    }
+
+    #[test]
+    fn forwarder_failure_status_messages_preserve_runtime_contract() {
+        assert_eq!(
+            forwarder_no_available_provider_status_message(),
+            "所有供应商暂时不可用（熔断器限制）"
+        );
+        assert_eq!(
+            forwarder_terminal_failure_status_message(),
+            "所有供应商都失败"
+        );
     }
 
     #[test]
