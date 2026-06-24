@@ -587,6 +587,14 @@ pub fn codex_api_format_for_interface_kind(interface_kind: &str) -> Option<&'sta
     InterfaceKind::from_storage(interface_kind).codex_api_format()
 }
 
+pub fn default_auth_interface_for_app_kind(app: &AppKind) -> InterfaceKind {
+    match app {
+        AppKind::Claude | AppKind::ClaudeDesktop => InterfaceKind::AnthropicMessages,
+        AppKind::Gemini => InterfaceKind::GeminiNative,
+        AppKind::Codex | AppKind::Custom(_) => InterfaceKind::OpenAiChatCompletions,
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct UpstreamEndpoint {
@@ -2293,6 +2301,30 @@ mod tests {
             Some("openai_responses")
         );
         assert_eq!(codex_api_format_for_interface_kind("gemini_native"), None);
+    }
+
+    #[test]
+    fn default_auth_interface_maps_known_and_custom_apps() {
+        assert_eq!(
+            default_auth_interface_for_app_kind(&AppKind::Claude),
+            InterfaceKind::AnthropicMessages
+        );
+        assert_eq!(
+            default_auth_interface_for_app_kind(&AppKind::ClaudeDesktop),
+            InterfaceKind::AnthropicMessages
+        );
+        assert_eq!(
+            default_auth_interface_for_app_kind(&AppKind::Gemini),
+            InterfaceKind::GeminiNative
+        );
+        assert_eq!(
+            default_auth_interface_for_app_kind(&AppKind::Codex),
+            InterfaceKind::OpenAiChatCompletions
+        );
+        assert_eq!(
+            default_auth_interface_for_app_kind(&AppKind::Custom("opencode".to_string())),
+            InterfaceKind::OpenAiChatCompletions
+        );
     }
 
     #[test]

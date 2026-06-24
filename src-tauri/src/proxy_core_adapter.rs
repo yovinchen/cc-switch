@@ -3050,7 +3050,8 @@ pub(crate) use crate::proxy_core::api::ports::{
 #[cfg(test)]
 pub(crate) use crate::proxy_core::api::routing::DEFAULT_ROUTE_GROUP;
 pub(crate) use crate::proxy_core::api::routing::{
-    route_policy_failover_provider_ids, RoutePolicy, RouteRequest,
+    default_auth_interface_for_app_kind, route_policy_failover_provider_ids, RoutePolicy,
+    RouteRequest,
 };
 pub(crate) use crate::proxy_core::api::transforms::{
     anthropic_request_to_gemini_request_with_shadow, anthropic_to_openai_chat_request,
@@ -8681,13 +8682,7 @@ impl CcSwitchForwarderAuthSource {
 }
 
 fn forwarder_auth_default_interface(app_type: &AppType) -> InterfaceKind {
-    match app_type {
-        AppType::Claude | AppType::ClaudeDesktop => InterfaceKind::AnthropicMessages,
-        AppType::Gemini => InterfaceKind::GeminiNative,
-        AppType::Codex | AppType::OpenCode | AppType::OpenClaw | AppType::Hermes => {
-            InterfaceKind::OpenAiChatCompletions
-        }
-    }
+    default_auth_interface_for_app_kind(&AppKind::from(app_type))
 }
 
 fn forwarder_auth_channel_spec(app_type: &AppType, attempt: &ForwardAttempt) -> ChannelSpec {
@@ -15879,6 +15874,28 @@ base_url = "https://api.openai.com/v1"
         assert!(prepared.is_subagent);
         assert!(prepared.deterministic_request_id.is_some());
         assert!(prepared.interaction_id.is_some());
+    }
+
+    #[test]
+    fn forwarder_auth_default_interface_uses_core_app_policy() {
+        assert_eq!(
+            forwarder_auth_default_interface(&AppType::Claude),
+            InterfaceKind::AnthropicMessages
+        );
+        assert_eq!(
+            forwarder_auth_default_interface(&AppType::ClaudeDesktop),
+            InterfaceKind::AnthropicMessages
+        );
+        assert_eq!(
+            forwarder_auth_default_interface(&AppType::Gemini),
+            InterfaceKind::GeminiNative
+        );
+        for app_type in [AppType::Codex, AppType::OpenCode, AppType::OpenClaw, AppType::Hermes] {
+            assert_eq!(
+                forwarder_auth_default_interface(&app_type),
+                InterfaceKind::OpenAiChatCompletions
+            );
+        }
     }
 
     struct ChannelHeaderAuthProvider;
