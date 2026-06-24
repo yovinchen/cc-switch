@@ -1087,7 +1087,7 @@ impl RequestForwarder {
             },
         )?;
         let mut request_body = transformed_request.body;
-        let mut outbound_model = transformed_request.outbound_model;
+        let initial_outbound_model = transformed_request.outbound_model;
 
         self.request_source
             .apply_app_media_prevention(ForwarderAppMediaPreventionInput {
@@ -1110,13 +1110,11 @@ impl RequestForwarder {
                     session_client_provided: self.session_client_provided,
                     needs_transform,
                     codex_responses_to_chat,
+                    initial_outbound_model,
                     headers,
                 });
         let filtered_body = prepared_request.body;
-        // 出站 body 定稿后刷新真值（覆盖 Codex chat 上游模型覆写、转换层模型改写）
-        if let Some(model) = prepared_request.body_model {
-            outbound_model = Some(model);
-        }
+        let outbound_model = prepared_request.outbound_model;
         let request_model = prepared_request.body_model_label;
         let request_is_streaming = prepared_request.request_is_streaming;
         let force_identity_encoding = prepared_request.force_identity_encoding;

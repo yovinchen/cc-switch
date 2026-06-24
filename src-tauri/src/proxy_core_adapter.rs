@@ -8736,6 +8736,7 @@ pub(crate) struct ForwarderRequestPreparationInput<'a> {
     pub(crate) session_client_provided: bool,
     pub(crate) needs_transform: bool,
     pub(crate) codex_responses_to_chat: bool,
+    pub(crate) initial_outbound_model: Option<String>,
     pub(crate) headers: &'a HeaderMap,
 }
 
@@ -8743,8 +8744,8 @@ pub(crate) struct ForwarderPreparedRequest {
     pub(crate) body: Value,
     pub(crate) request_is_streaming: bool,
     pub(crate) force_identity_encoding: bool,
-    pub(crate) body_model: Option<String>,
     pub(crate) body_model_label: String,
+    pub(crate) outbound_model: Option<String>,
 }
 
 pub(crate) struct ForwarderUpstreamRequestLogInput<'a> {
@@ -9577,6 +9578,7 @@ impl ForwarderRequestSource for CcSwitchForwarderRequestSource {
         let body_model_label = body_model
             .clone()
             .unwrap_or_else(|| "<none>".to_string());
+        let outbound_model = body_model.clone().or(input.initial_outbound_model);
 
         let transport_policy = resolve_upstream_request_transport_policy(
             input.needs_transform,
@@ -9590,8 +9592,8 @@ impl ForwarderRequestSource for CcSwitchForwarderRequestSource {
             body: filtered_body,
             request_is_streaming: transport_policy.is_streaming_request,
             force_identity_encoding: transport_policy.force_identity_encoding,
-            body_model,
             body_model_label,
+            outbound_model,
         }
     }
 
@@ -15803,11 +15805,12 @@ base_url = "https://api.openai.com/v1"
             session_client_provided: false,
             needs_transform: false,
             codex_responses_to_chat: false,
+            initial_outbound_model: Some("initial-model".to_string()),
             headers: &headers,
         });
 
-        assert_eq!(prepared.body_model.as_deref(), Some("upstream-sonnet"));
         assert_eq!(prepared.body_model_label, "upstream-sonnet");
+        assert_eq!(prepared.outbound_model.as_deref(), Some("upstream-sonnet"));
 
         let prepared_without_model = source.prepare_upstream_body(ForwarderRequestPreparationInput {
             app: "codex",
@@ -15818,11 +15821,15 @@ base_url = "https://api.openai.com/v1"
             session_client_provided: false,
             needs_transform: false,
             codex_responses_to_chat: false,
+            initial_outbound_model: Some("initial-model".to_string()),
             headers: &headers,
         });
 
-        assert_eq!(prepared_without_model.body_model, None);
         assert_eq!(prepared_without_model.body_model_label, "<none>");
+        assert_eq!(
+            prepared_without_model.outbound_model.as_deref(),
+            Some("initial-model")
+        );
     }
 
     #[test]

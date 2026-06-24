@@ -6449,6 +6449,10 @@ fn production_forwarder_uses_request_source_resource() {
         "ForwarderPreparedRequest must include finalized body model facts for logging"
     );
     assert!(
+        source.contains("outbound_model"),
+        "ForwarderPreparedRequest must include finalized outbound model attribution"
+    );
+    assert!(
         source.contains("log_upstream_request"),
         "ForwarderRequestSource must own upstream request logging"
     );
@@ -6534,6 +6538,8 @@ fn production_forwarder_uses_request_source_resource() {
         ".get(\"model\")",
         "request_body_model(&mapped_body)",
         "request_body_model(&filtered_body)",
+        "if let Some(model) = prepared_request",
+        "outbound_model = Some(",
         ">>> 请求 URL",
         "请求体内容",
         "serde_json::to_string(&filtered_body)",
