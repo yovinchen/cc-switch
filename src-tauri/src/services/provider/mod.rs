@@ -28,6 +28,7 @@ use crate::proxy_core_adapter::{
     provider_switch_backfill_source_id, provider_switch_dispatch,
     provider_switch_requires_takeover_lock, provider_switch_should_mark_live_config_managed,
     provider_takeover_live_sync_target,
+    validate_provider_gemini_settings,
     proxy_hot_switch_should_sync_claude_live_while_proxy_active,
     proxy_live_config_owned_by_takeover, proxy_switch_should_hot_switch,
     should_block_proxy_switch_to_provider, should_reapply_codex_official_live_for_provider,
@@ -2294,8 +2295,7 @@ impl ProviderService {
                 }
             }
             AppType::Gemini => {
-                use crate::gemini_config::validate_gemini_settings;
-                validate_gemini_settings(&provider.settings_config)?
+                validate_provider_gemini_settings(provider)?
             }
             AppType::OpenCode | AppType::OpenClaw | AppType::Hermes => {}
         }

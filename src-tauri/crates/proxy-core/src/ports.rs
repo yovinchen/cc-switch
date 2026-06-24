@@ -1954,6 +1954,46 @@ impl LocalizedErrorSpec {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum GeminiSettingsValidationIssue {
+    EnvNotObject,
+    ConfigInvalidType,
+}
+
+pub fn validate_gemini_settings_basic(
+    settings: &Value,
+) -> Result<(), GeminiSettingsValidationIssue> {
+    if settings.get("env").is_some_and(|env| !env.is_object()) {
+        return Err(GeminiSettingsValidationIssue::EnvNotObject);
+    }
+
+    if settings
+        .get("config")
+        .is_some_and(|config| !(config.is_object() || config.is_null()))
+    {
+        return Err(GeminiSettingsValidationIssue::ConfigInvalidType);
+    }
+
+    Ok(())
+}
+
+pub fn gemini_settings_validation_issue_spec(
+    issue: GeminiSettingsValidationIssue,
+) -> LocalizedErrorSpec {
+    match issue {
+        GeminiSettingsValidationIssue::EnvNotObject => LocalizedErrorSpec::new(
+            "gemini.validation.invalid_env",
+            "Gemini 配置格式错误: env 必须是对象",
+            "Gemini config invalid: env must be an object",
+        ),
+        GeminiSettingsValidationIssue::ConfigInvalidType => LocalizedErrorSpec::new(
+            "gemini.validation.invalid_config",
+            "Gemini 配置格式错误: config 必须是对象",
+            "Gemini config invalid: config must be an object",
+        ),
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ProviderCredentialIssue {
     ClaudeEnvMissing,
     ClaudeApiKeyMissing,
@@ -4962,7 +5002,7 @@ mod tests {
         claude_env_credentials_from_settings, claude_live_config_has_proxy_placeholder,
         claude_takeover_model_fields_from_settings, ClaudeTakeoverAuthPolicy,
         ensure_codex_takeover_auth_placeholder, gemini_env_map_from_settings,
-        gemini_common_config_snippet_from_settings,
+        gemini_settings_validation_issue_spec, gemini_common_config_snippet_from_settings,
         gemini_live_config_has_proxy_placeholder, is_local_proxy_url,
         common_config_settings_mutation_issue_message,
         common_config_snippet_issue_message,
@@ -5023,7 +5063,8 @@ mod tests {
         CurrentRouteTargetInput, current_route_target_from_input, GlobalProxyConfig,
         GroupListQuery, HealthCheckResponse, ModelCatalog, OptimizerConfig, ProviderHealth,
         ProviderAdditiveLiveWriteAction, ProviderAdditiveUpdateRoute, ProviderHealthUpdateInput,
-        CommonConfigSettingsMutationIssue, CommonConfigSnippetIssue, LiveTokenProviderSettingsIssue,
+        CommonConfigSettingsMutationIssue, CommonConfigSnippetIssue,
+        GeminiSettingsValidationIssue, LiveTokenProviderSettingsIssue,
         ProviderCredentialIssue, ProviderCredentialValues, ProviderKeyChangePolicyIssue,
         OpenClawLiveWriteActionDecision, OpenClawLiveWriteConfigDecision, OpenCodeCredentialIssue,
         OpenCodeLiveProviderFragmentDecision, OpenCodeLiveWriteActionDecision,
@@ -5054,7 +5095,7 @@ mod tests {
         remove_claude_takeover_env_fields_if_present,
         remove_codex_takeover_auth_placeholder_if_present,
         remove_gemini_takeover_env_fields_if_present,
-        sanitize_claude_settings_for_live,
+        sanitize_claude_settings_for_live, validate_gemini_settings_basic,
         RectifierConfig, RouteGroupListResponse, RouteGroupSourceInput, RouteResolveResponse,
         StreamCheckConfig, StreamCheckResult, DEFAULT_PROXY_LISTEN_ADDRESS,
         DEFAULT_PROXY_LISTEN_PORT, DEFAULT_CHANNEL_HEALTH_FAILURE_THRESHOLD,
@@ -6860,6 +6901,43 @@ mod tests {
                 "bad input".to_string()
             )),
             "TOML parse error: bad input"
+        );
+    }
+
+    #[test]
+    fn gemini_settings_basic_validation_rejects_invalid_shapes() {
+        assert!(validate_gemini_settings_basic(&json!({
+            "env": {
+                "GEMINI_MODEL": "gemini-3.5-flash"
+            },
+            "config": {}
+        }))
+        .is_ok());
+        assert!(validate_gemini_settings_basic(&json!({
+            "env": {},
+            "config": Value::Null
+        }))
+        .is_ok());
+        assert_eq!(
+            validate_gemini_settings_basic(&json!({"env": "invalid"})),
+            Err(GeminiSettingsValidationIssue::EnvNotObject)
+        );
+        assert_eq!(
+            validate_gemini_settings_basic(&json!({"config": "invalid"})),
+            Err(GeminiSettingsValidationIssue::ConfigInvalidType)
+        );
+
+        let env_spec =
+            gemini_settings_validation_issue_spec(GeminiSettingsValidationIssue::EnvNotObject);
+        assert_eq!(env_spec.key, "gemini.validation.invalid_env");
+        assert_eq!(env_spec.zh, "Gemini 配置格式错误: env 必须是对象");
+        let config_spec = gemini_settings_validation_issue_spec(
+            GeminiSettingsValidationIssue::ConfigInvalidType,
+        );
+        assert_eq!(config_spec.key, "gemini.validation.invalid_config");
+        assert_eq!(
+            config_spec.en,
+            "Gemini config invalid: config must be an object"
         );
     }
 

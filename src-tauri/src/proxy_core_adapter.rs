@@ -300,6 +300,7 @@ pub(crate) use crate::proxy_core::api::ports::{
     apply_gemini_takeover_env_fields as core_apply_gemini_takeover_env_fields,
     claude_live_config_has_proxy_placeholder as core_claude_live_config_has_proxy_placeholder,
     ensure_codex_takeover_auth_placeholder as core_ensure_codex_takeover_auth_placeholder,
+    gemini_settings_validation_issue_spec as core_gemini_settings_validation_issue_spec,
     gemini_live_config_has_proxy_placeholder as core_gemini_live_config_has_proxy_placeholder,
     is_local_proxy_url as core_is_local_proxy_url,
     launch_env_vars_from_provider_settings as core_launch_env_vars_from_provider_settings,
@@ -339,8 +340,9 @@ pub(crate) use crate::proxy_core::api::ports::{
     should_skip_manual_default_live_import as core_should_skip_manual_default_live_import,
     should_skip_provider_legacy_common_config_migration as core_should_skip_provider_legacy_common_config_migration,
     should_skip_startup_default_live_import as core_should_skip_startup_default_live_import,
-    LiveTokenProviderSettingsIssue, LocalizedErrorSpec, ProviderAdditiveLiveWriteAction,
-    ProviderAdditiveUpdateRoute,
+    validate_gemini_settings_basic as core_validate_gemini_settings_basic,
+    GeminiSettingsValidationIssue, LiveTokenProviderSettingsIssue, LocalizedErrorSpec,
+    ProviderAdditiveLiveWriteAction, ProviderAdditiveUpdateRoute,
     ProviderCredentialIssue, ProviderCredentialValues as CoreProviderCredentialValues,
     ProviderKeyChangePolicyIssue, ProviderLiveConfigPresenceErrorPolicy, ProviderLiveRemovalTarget,
     ProviderLiveSyncScope, ProviderOmoSwitchPair, ProviderOmoVariant,
@@ -4353,6 +4355,22 @@ pub(crate) fn provider_gemini_env_map(
     provider: &Provider,
 ) -> Result<HashMap<String, String>, AppError> {
     crate::gemini_config::json_to_env(&provider.settings_config)
+}
+
+pub(crate) fn gemini_settings_validation_issue_to_app_error(
+    issue: GeminiSettingsValidationIssue,
+) -> AppError {
+    let spec = core_gemini_settings_validation_issue_spec(issue);
+    AppError::localized(spec.key, spec.zh, spec.en)
+}
+
+pub(crate) fn validate_gemini_settings_basic(settings: &Value) -> Result<(), AppError> {
+    core_validate_gemini_settings_basic(settings)
+        .map_err(gemini_settings_validation_issue_to_app_error)
+}
+
+pub(crate) fn validate_provider_gemini_settings(provider: &Provider) -> Result<(), AppError> {
+    validate_gemini_settings_basic(&provider.settings_config)
 }
 
 pub(crate) fn validate_provider_gemini_settings_strict(
@@ -17942,6 +17960,18 @@ base_url = "https://api.openai.com/v1"
             live_env.get("GEMINI_API_KEY").map(String::as_str),
             Some(" ya29.access-token ")
         );
+        validate_provider_gemini_settings(&provider)
+            .expect("provider Gemini settings should pass basic shape validation");
+        let invalid_env_provider = Provider::with_id(
+            "gemini-invalid-env".to_string(),
+            "Gemini Invalid Env".to_string(),
+            json!({"env": "invalid"}),
+            None,
+        );
+        assert!(matches!(
+            validate_provider_gemini_settings(&invalid_env_provider),
+            Err(AppError::Localized { key, .. }) if key == "gemini.validation.invalid_env"
+        ));
         validate_provider_gemini_settings_strict(&provider)
             .expect("provider Gemini settings should be valid for API key mode");
         assert_eq!(

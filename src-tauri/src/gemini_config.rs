@@ -222,30 +222,7 @@ pub fn json_to_env(settings: &Value) -> Result<HashMap<String, String>, AppError
 ///
 /// API Key 的验证会在切换供应商时进行（通过 `validate_gemini_settings_strict`）。
 pub fn validate_gemini_settings(settings: &Value) -> Result<(), AppError> {
-    // 只验证基本结构，不强制要求 GEMINI_API_KEY
-    // 如果有 env 字段，验证它是一个对象
-    if let Some(env) = settings.get("env") {
-        if !env.is_object() {
-            return Err(AppError::localized(
-                "gemini.validation.invalid_env",
-                "Gemini 配置格式错误: env 必须是对象",
-                "Gemini config invalid: env must be an object",
-            ));
-        }
-    }
-
-    // 如果有 config 字段，验证它是对象或 null
-    if let Some(config) = settings.get("config") {
-        if !(config.is_object() || config.is_null()) {
-            return Err(AppError::localized(
-                "gemini.validation.invalid_config",
-                "Gemini 配置格式错误: config 必须是对象",
-                "Gemini config invalid: config must be an object",
-            ));
-        }
-    }
-
-    Ok(())
+    crate::proxy_core_adapter::validate_gemini_settings_basic(settings)
 }
 
 /// 严格验证 Gemini 配置（要求必需字段）
