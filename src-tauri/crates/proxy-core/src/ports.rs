@@ -6,6 +6,9 @@ use super::domain::{
     RoutePolicy, RouteRequest, UsageRecord, DEFAULT_ROUTE_GROUP,
 };
 use super::error::{ProxyCoreError, ProxyCoreResult};
+use super::model_mapping::{
+    claude_takeover_client_model_for_upstream, claude_takeover_default_display_name,
+};
 use super::thinking_budget_rectifier::ThinkingBudgetRectifierConfig;
 use super::thinking_optimizer::ThinkingOptimizerConfig;
 use super::thinking_rectifier::ThinkingSignatureRectifierConfig;
@@ -1145,6 +1148,200 @@ pub const CLAUDE_TAKEOVER_TOKEN_ENV_KEYS: [&str; 4] = [
     "OPENROUTER_API_KEY",
     "OPENAI_API_KEY",
 ];
+
+const CLAUDE_MODEL_OVERRIDE_ENV_KEYS: [&str; 9] = [
+    "ANTHROPIC_MODEL",
+    "ANTHROPIC_REASONING_MODEL",
+    "ANTHROPIC_DEFAULT_HAIKU_MODEL",
+    "ANTHROPIC_DEFAULT_HAIKU_MODEL_NAME",
+    "ANTHROPIC_DEFAULT_SONNET_MODEL",
+    "ANTHROPIC_DEFAULT_SONNET_MODEL_NAME",
+    "ANTHROPIC_DEFAULT_OPUS_MODEL",
+    "ANTHROPIC_DEFAULT_OPUS_MODEL_NAME",
+    "ANTHROPIC_SMALL_FAST_MODEL",
+];
+
+const CLAUDE_TAKEOVER_HAIKU_MODEL: &str = "claude-haiku-4-5";
+const CLAUDE_TAKEOVER_SONNET_MODEL: &str = "claude-sonnet-4-6";
+const CLAUDE_TAKEOVER_OPUS_MODEL: &str = "claude-opus-4-8";
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ClaudeTakeoverAuthPolicy {
+    PreserveExistingOrAuthToken,
+    ManagedAccount { keep_auth_token: bool },
+}
+
+pub fn claude_takeover_model_fields_from_settings(
+    config: &Value,
+) -> Vec<(&'static str, String)> {
+    let Some(env) = config.get("env").and_then(Value::as_object) else {
+        return Vec::new();
+    };
+
+    let default_model = claude_takeover_env_string(env, "ANTHROPIC_MODEL");
+    let small_fast_model = claude_takeover_env_string(env, "ANTHROPIC_SMALL_FAST_MODEL");
+    let haiku_model = claude_takeover_env_string(env, "ANTHROPIC_DEFAULT_HAIKU_MODEL")
+        .or(small_fast_model)
+        .or(default_model);
+    let sonnet_model = claude_takeover_env_string(env, "ANTHROPIC_DEFAULT_SONNET_MODEL")
+        .or(default_model)
+        .or(small_fast_model);
+    let opus_model = claude_takeover_env_string(env, "ANTHROPIC_DEFAULT_OPUS_MODEL")
+        .or(default_model)
+        .or(small_fast_model);
+
+    let mut fields = Vec::with_capacity(6);
+    push_claude_takeover_role_fields(
+        &mut fields,
+        env,
+        "ANTHROPIC_DEFAULT_HAIKU_MODEL",
+        "ANTHROPIC_DEFAULT_HAIKU_MODEL_NAME",
+        CLAUDE_TAKEOVER_HAIKU_MODEL,
+        false,
+        haiku_model,
+    );
+    push_claude_takeover_role_fields(
+        &mut fields,
+        env,
+        "ANTHROPIC_DEFAULT_SONNET_MODEL",
+        "ANTHROPIC_DEFAULT_SONNET_MODEL_NAME",
+        CLAUDE_TAKEOVER_SONNET_MODEL,
+        true,
+        sonnet_model,
+    );
+    push_claude_takeover_role_fields(
+        &mut fields,
+        env,
+        "ANTHROPIC_DEFAULT_OPUS_MODEL",
+        "ANTHROPIC_DEFAULT_OPUS_MODEL_NAME",
+        CLAUDE_TAKEOVER_OPUS_MODEL,
+        true,
+        opus_model,
+    );
+    fields
+}
+
+pub fn apply_claude_takeover_fields_with_policy(
+    config: &mut Value,
+    proxy_url: &str,
+    placeholder: &str,
+    auth_policy: ClaudeTakeoverAuthPolicy,
+) {
+    let takeover_model_fields = claude_takeover_model_fields_from_settings(config);
+
+    apply_claude_takeover_fields_with_policy_and_models(
+        config,
+        proxy_url,
+        placeholder,
+        auth_policy,
+        takeover_model_fields,
+    );
+}
+
+pub fn apply_claude_takeover_fields_with_policy_and_models(
+    config: &mut Value,
+    proxy_url: &str,
+    placeholder: &str,
+    auth_policy: ClaudeTakeoverAuthPolicy,
+    takeover_model_fields: Vec<(&'static str, String)>,
+) {
+    if !config.is_object() {
+        *config = Value::Object(Map::new());
+    }
+
+    let root = config
+        .as_object_mut()
+        .expect("Claude config should be normalized to an object");
+    let env = root
+        .entry("env".to_string())
+        .or_insert_with(|| Value::Object(Map::new()));
+    if !env.is_object() {
+        *env = Value::Object(Map::new());
+    }
+
+    let env = env
+        .as_object_mut()
+        .expect("Claude env should be normalized to an object");
+    env.insert(
+        "ANTHROPIC_BASE_URL".to_string(),
+        Value::String(proxy_url.to_string()),
+    );
+
+    for key in CLAUDE_MODEL_OVERRIDE_ENV_KEYS {
+        env.remove(key);
+    }
+
+    for (key, value) in takeover_model_fields {
+        env.insert(key.to_string(), Value::String(value));
+    }
+
+    match auth_policy {
+        ClaudeTakeoverAuthPolicy::PreserveExistingOrAuthToken => {
+            let mut replaced_any = false;
+            for key in CLAUDE_TAKEOVER_TOKEN_ENV_KEYS {
+                if env.contains_key(key) {
+                    env.insert(key.to_string(), Value::String(placeholder.to_string()));
+                    replaced_any = true;
+                }
+            }
+
+            if !replaced_any {
+                env.insert(
+                    "ANTHROPIC_AUTH_TOKEN".to_string(),
+                    Value::String(placeholder.to_string()),
+                );
+            }
+        }
+        ClaudeTakeoverAuthPolicy::ManagedAccount { keep_auth_token } => {
+            for key in CLAUDE_TAKEOVER_TOKEN_ENV_KEYS {
+                env.remove(key);
+            }
+            env.insert(
+                "ANTHROPIC_API_KEY".to_string(),
+                Value::String(placeholder.to_string()),
+            );
+            if keep_auth_token {
+                env.insert(
+                    "ANTHROPIC_AUTH_TOKEN".to_string(),
+                    Value::String(placeholder.to_string()),
+                );
+            }
+        }
+    }
+}
+
+fn push_claude_takeover_role_fields(
+    fields: &mut Vec<(&'static str, String)>,
+    env: &Map<String, Value>,
+    model_key: &'static str,
+    name_key: &'static str,
+    takeover_model: &'static str,
+    supports_one_m: bool,
+    upstream_model: Option<&str>,
+) {
+    let Some(upstream_model) = upstream_model else {
+        return;
+    };
+
+    fields.push((
+        model_key,
+        claude_takeover_client_model_for_upstream(takeover_model, supports_one_m, upstream_model),
+    ));
+
+    let display_name = claude_takeover_env_string(env, name_key)
+        .map(str::to_string)
+        .unwrap_or_else(|| claude_takeover_default_display_name(upstream_model));
+    if !display_name.is_empty() {
+        fields.push((name_key, display_name));
+    }
+}
+
+fn claude_takeover_env_string<'a>(env: &'a Map<String, Value>, key: &str) -> Option<&'a str> {
+    env.get(key)
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+}
 
 pub fn claude_live_config_has_proxy_placeholder(config: &Value, placeholder: &str) -> bool {
     let Some(env) = config.get("env").and_then(Value::as_object) else {
@@ -4201,8 +4398,10 @@ mod tests {
         channel_health_update_from_input,
         channel_model_record_from_input, channel_reachability_result_from_stream_check_result,
         channel_route_source_for_materialized_count,
+        apply_claude_takeover_fields_with_policy_and_models,
         apply_codex_takeover_auth_placeholder_if_present, apply_gemini_takeover_env_fields,
         claude_env_credentials_from_settings, claude_live_config_has_proxy_placeholder,
+        claude_takeover_model_fields_from_settings, ClaudeTakeoverAuthPolicy,
         ensure_codex_takeover_auth_placeholder, gemini_env_map_from_settings,
         gemini_live_config_has_proxy_placeholder, is_local_proxy_url,
         json_deep_merge, json_deep_remove, json_remove_array_items, json_value_is_subset,
@@ -5988,6 +6187,94 @@ mod tests {
             .expect("placeholder should be a valid no-op"),
             None
         );
+    }
+
+    #[test]
+    fn claude_takeover_model_fields_project_role_aliases_and_display_names() {
+        let fields = claude_takeover_model_fields_from_settings(&json!({
+            "env": {
+                "ANTHROPIC_DEFAULT_HAIKU_MODEL": "deepseek-v4-flash",
+                "ANTHROPIC_DEFAULT_SONNET_MODEL": "deepseek-v4-pro[1M]",
+                "ANTHROPIC_DEFAULT_SONNET_MODEL_NAME": "DeepSeek V4 Pro",
+                "ANTHROPIC_DEFAULT_OPUS_MODEL": "deepseek-v4-ultra [1m]"
+            }
+        }));
+
+        assert!(fields.contains(&(
+            "ANTHROPIC_DEFAULT_HAIKU_MODEL",
+            "claude-haiku-4-5".to_string()
+        )));
+        assert!(fields.contains(&(
+            "ANTHROPIC_DEFAULT_HAIKU_MODEL_NAME",
+            "deepseek-v4-flash".to_string()
+        )));
+        assert!(fields.contains(&(
+            "ANTHROPIC_DEFAULT_SONNET_MODEL",
+            "claude-sonnet-4-6[1M]".to_string()
+        )));
+        assert!(fields.contains(&(
+            "ANTHROPIC_DEFAULT_SONNET_MODEL_NAME",
+            "DeepSeek V4 Pro".to_string()
+        )));
+        assert!(fields.contains(&(
+            "ANTHROPIC_DEFAULT_OPUS_MODEL",
+            "claude-opus-4-8[1M]".to_string()
+        )));
+        assert!(fields.contains(&(
+            "ANTHROPIC_DEFAULT_OPUS_MODEL_NAME",
+            "deepseek-v4-ultra".to_string()
+        )));
+    }
+
+    #[test]
+    fn claude_takeover_policy_rewrites_env_tokens_and_models() {
+        let mut live_config = json!({
+            "env": {
+                "ANTHROPIC_BASE_URL": "https://old.example",
+                "ANTHROPIC_AUTH_TOKEN": "old-token",
+                "ANTHROPIC_MODEL": "stale-model",
+                "OPENAI_API_KEY": "old-openai",
+                "OTHER": "kept"
+            }
+        });
+
+        apply_claude_takeover_fields_with_policy_and_models(
+            &mut live_config,
+            "http://127.0.0.1:15721",
+            "PROXY_MANAGED",
+            ClaudeTakeoverAuthPolicy::ManagedAccount {
+                keep_auth_token: true,
+            },
+            vec![(
+                "ANTHROPIC_DEFAULT_SONNET_MODEL",
+                "claude-sonnet-4-6".to_string(),
+            )],
+        );
+
+        let env = live_config
+            .get("env")
+            .and_then(Value::as_object)
+            .expect("env");
+        assert_eq!(
+            env.get("ANTHROPIC_BASE_URL").and_then(Value::as_str),
+            Some("http://127.0.0.1:15721")
+        );
+        assert!(env.get("ANTHROPIC_MODEL").is_none());
+        assert!(env.get("OPENAI_API_KEY").is_none());
+        assert_eq!(
+            env.get("ANTHROPIC_API_KEY").and_then(Value::as_str),
+            Some("PROXY_MANAGED")
+        );
+        assert_eq!(
+            env.get("ANTHROPIC_AUTH_TOKEN").and_then(Value::as_str),
+            Some("PROXY_MANAGED")
+        );
+        assert_eq!(
+            env.get("ANTHROPIC_DEFAULT_SONNET_MODEL")
+                .and_then(Value::as_str),
+            Some("claude-sonnet-4-6")
+        );
+        assert_eq!(env.get("OTHER").and_then(Value::as_str), Some("kept"));
     }
 
     #[test]
