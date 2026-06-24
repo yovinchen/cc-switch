@@ -6330,12 +6330,23 @@ fn production_forwarder_uses_attempt_runtime_source_resource() {
         "ForwarderAttemptRuntimeSource must receive allow facts through an input DTO"
     );
     assert!(
+        adapter_source.contains("pub(crate) enum ForwarderAttemptAllowDecision"),
+        "ForwarderAttemptRuntimeSource must return a structured allow decision"
+    );
+    assert!(
         adapter_source.contains("attempts: &'a [ForwardAttempt]"),
         "ForwarderAttemptAllowInput must carry all route attempts for default runtime compatibility decisions"
     );
     assert!(
+        adapter_source.contains("attempted_providers: usize")
+            && adapter_source.contains("max_attempts: usize"),
+        "ForwarderAttemptAllowInput must carry max-attempt policy facts"
+    );
+    assert!(
         impl_slice.contains("allow(ForwarderAttemptAllowInput {")
-            && impl_slice.contains("attempts: &attempts,"),
+            && impl_slice.contains("attempts: &attempts,")
+            && impl_slice.contains("attempted_providers,")
+            && impl_slice.contains("max_attempts: self.max_attempts,"),
         "RequestForwarder must pass attempt allow facts as an input DTO"
     );
     assert!(
@@ -6350,6 +6361,10 @@ fn production_forwarder_uses_attempt_runtime_source_resource() {
     assert!(
         !attempt_runtime_trait_slice.contains("should_bypass_circuit_breaker"),
         "ForwarderAttemptRuntimeSource trait must not expose the internal legacy circuit-breaker bypass helper"
+    );
+    assert!(
+        !attempt_runtime_trait_slice.contains("attempt_limit_reached"),
+        "ForwarderAttemptRuntimeSource trait must not expose the internal max-attempt helper"
     );
 
     let struct_forbidden_markers = ["router: Arc<ProviderRouter>"];
