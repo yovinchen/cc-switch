@@ -1196,13 +1196,8 @@ impl RequestForwarder {
                 .await?;
             Ok((response, resolved_claude_api_format, outbound_model))
         } else {
-            let status_code = status.as_u16();
-            let body_text = self.response_source.upstream_error_body(response).await?;
-
-            Err(ProxyError::UpstreamError {
-                status: status_code,
-                body: body_text,
-            })
+            let error = self.response_source.upstream_error_response(response).await?;
+            Err(error)
         }
     }
 

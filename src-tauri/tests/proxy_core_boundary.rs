@@ -6560,6 +6560,10 @@ fn production_forwarder_uses_response_source_resource() {
         struct_slice.contains("response_source"),
         "RequestForwarder must receive upstream response readiness/body reads as an injected source"
     );
+    assert!(
+        source.contains("upstream_error_response"),
+        "ForwarderResponseSource must expose upstream error response projection"
+    );
 
     let impl_forbidden_markers = [
         "response.bytes().await",
@@ -6573,6 +6577,9 @@ fn production_forwarder_uses_response_source_resource() {
         "streaming_body_ended_before_first_chunk_message(",
         "streaming_body_first_chunk_read_error_message(",
         "resolve_channel_response_status_mapping(",
+        "status.as_u16()",
+        "ProxyError::UpstreamError {",
+        "upstream_error_body(response)",
     ];
     let mut violations = Vec::new();
 

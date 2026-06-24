@@ -9736,6 +9736,11 @@ pub(crate) trait ForwarderResponseSource {
         &'a self,
         response: ProxyResponse,
     ) -> BoxFuture<'a, Result<Option<String>, ProxyError>>;
+
+    fn upstream_error_response<'a>(
+        &'a self,
+        response: ProxyResponse,
+    ) -> BoxFuture<'a, Result<ProxyError, ProxyError>>;
 }
 
 struct CcSwitchForwarderResponseSource;
@@ -9804,6 +9809,18 @@ impl ForwarderResponseSource for CcSwitchForwarderResponseSource {
         response: ProxyResponse,
     ) -> BoxFuture<'a, Result<Option<String>, ProxyError>> {
         Box::pin(async move { Ok(String::from_utf8(response.bytes().await?.to_vec()).ok()) })
+    }
+
+    fn upstream_error_response<'a>(
+        &'a self,
+        response: ProxyResponse,
+    ) -> BoxFuture<'a, Result<ProxyError, ProxyError>> {
+        Box::pin(async move {
+            let status = response.status().as_u16();
+            let body = self.upstream_error_body(response).await?;
+
+            Ok(ProxyError::UpstreamError { status, body })
+        })
     }
 }
 
@@ -15675,6 +15692,29 @@ base_url = "https://api.openai.com/v1"
             .expect("terminal failure log for multi-provider attempts");
         assert_eq!(terminal_log.code, "FWD-002");
         assert!(terminal_log.message.contains("上游 HTTP 400"));
+    }
+
+    #[tokio::test]
+    async fn forwarder_response_source_projects_upstream_error_response() {
+        let source = CcSwitchForwarderResponseSource;
+        let response = ProxyResponse::buffered(
+            http::StatusCode::BAD_REQUEST,
+            HeaderMap::new(),
+            Bytes::from_static(br#"{"error":"bad request"}"#),
+        );
+
+        let error = source
+            .upstream_error_response(response)
+            .await
+            .expect("upstream error projection");
+
+        match error {
+            ProxyError::UpstreamError { status, body } => {
+                assert_eq!(status, 400);
+                assert_eq!(body.as_deref(), Some(r#"{"error":"bad request"}"#));
+            }
+            other => panic!("expected upstream error, got {other:?}"),
+        }
     }
 
     struct StaticCopilotModelsSource {
