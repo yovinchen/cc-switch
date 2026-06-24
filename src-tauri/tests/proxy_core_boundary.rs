@@ -5476,12 +5476,33 @@ fn production_adapter_managed_auth_runtime_source_is_trait() {
 #[test]
 fn production_forwarder_uses_managed_auth_runtime_source_resource() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let path = manifest_dir.join("src/proxy/forwarder.rs");
-    let source = fs::read_to_string(&path).expect("read forwarder.rs");
+    let forwarder_path = manifest_dir.join("src/proxy/forwarder.rs");
+    let source = fs::read_to_string(&forwarder_path).expect("read forwarder.rs");
+    let adapter_path = manifest_dir.join("src/proxy_core_adapter.rs");
+    let adapter_source = fs::read_to_string(&adapter_path).expect("read proxy_core_adapter.rs");
+    let struct_slice = function_slice(&source, "pub struct RequestForwarder", "impl RequestForwarder");
+    let auth_source_slice = function_slice(
+        &adapter_source,
+        "struct CcSwitchForwarderAuthSource",
+        "impl ForwarderAuthSource for CcSwitchForwarderAuthSource",
+    );
+    let request_source_slice = function_slice(
+        &adapter_source,
+        "struct CcSwitchForwarderRequestSource",
+        "impl ForwarderRequestSource for CcSwitchForwarderRequestSource",
+    );
 
     assert!(
-        source.contains("managed_account_runtime_source"),
-        "RequestForwarder must receive managed-account runtime reads as an injected runtime source"
+        !struct_slice.contains("managed_account_runtime_source")
+            && struct_slice.contains("auth_source")
+            && struct_slice.contains("request_source"),
+        "RequestForwarder must depend on auth/request sources instead of holding managed-account runtime directly"
+    );
+    assert!(
+        auth_source_slice.contains("managed_account_runtime_source: ManagedAccountRuntimeSourceRef")
+            && request_source_slice
+                .contains("managed_account_runtime_source: ManagedAccountRuntimeSourceRef"),
+        "Forwarder auth/request sources must own managed-account runtime reads"
     );
 
     let forbidden_markers = [
@@ -6100,12 +6121,12 @@ fn production_forwarder_uses_runtime_state_source_resource() {
 #[test]
 fn production_forwarder_active_connection_guard_uses_runtime_state_source() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let path = manifest_dir.join("src/proxy/forwarder.rs");
-    let source = fs::read_to_string(&path).expect("read forwarder.rs");
+    let path = manifest_dir.join("src/proxy_core_adapter.rs");
+    let source = fs::read_to_string(&path).expect("read proxy_core_adapter.rs");
     let guard_slice = function_slice(
         &source,
         "pub(crate) struct ActiveConnectionGuard",
-        "pub struct RequestForwarder",
+        "pub(crate) trait ForwarderRuntimeStateSource",
     );
 
     assert!(
@@ -6126,7 +6147,7 @@ fn production_forwarder_active_connection_guard_uses_runtime_state_source() {
         for marker in forbidden_markers {
             if code.contains(marker) {
                 violations.push(format!(
-                    "src/proxy/forwarder.rs ActiveConnectionGuard:{} contains direct active-connection runtime marker `{}`",
+                    "src/proxy_core_adapter.rs ActiveConnectionGuard:{} contains direct active-connection runtime marker `{}`",
                     line_index + 1,
                     marker
                 ));
