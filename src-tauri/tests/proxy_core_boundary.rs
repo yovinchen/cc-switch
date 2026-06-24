@@ -6666,6 +6666,15 @@ fn production_forwarder_uses_request_source_resource() {
         source.contains("transform_request_body"),
         "ForwarderRequestSource must own transformed request body selection"
     );
+    let transform_plan_slice = function_slice(
+        &adapter_source,
+        "pub(crate) struct ForwarderTransformPlan",
+        "pub(crate) struct ForwarderUpstreamUrlInput",
+    );
+    assert!(
+        transform_plan_slice.contains("codex_responses_to_chat: bool"),
+        "ForwarderTransformPlan must carry the Codex Responses to Chat gate fact"
+    );
     assert!(
         adapter_source.contains("fn request_body_model"),
         "default ForwarderRequestSource implementation must retain request body model projection"
@@ -6695,9 +6704,10 @@ fn production_forwarder_uses_request_source_resource() {
         !request_trait_slice.contains("request_body_model")
             && !request_trait_slice.contains("transform_provider_request_body")
             && !request_trait_slice.contains("convert_codex_responses_to_chat_body")
+            && !request_trait_slice.contains("codex_responses_to_chat_enabled")
             && !request_trait_slice.contains("optimize_copilot_request")
             && !request_trait_slice.contains("apply_media_prevention"),
-        "ForwarderRequestSource trait must not expose internal request body model, provider transform, Codex bridge body, Copilot optimizer, or media prevention helpers"
+        "ForwarderRequestSource trait must not expose internal request body model, provider transform, Codex bridge body/gate, Copilot optimizer, or media prevention helpers"
     );
 
     let impl_forbidden_markers = [
