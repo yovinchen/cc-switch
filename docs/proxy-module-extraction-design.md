@@ -459,6 +459,7 @@
 448. `ForwarderRuntimeStateSource` trait 不再暴露测试用 `status()` / `events()` 读 handle；默认 runtime source 仍持有 status、current route target map 与 event bus，但 forwarder 测试改由本地 fixture 保存观测 handle，外部替换 runtime source 只实现语义化状态/事件写入端口。
 449. `ForwarderAuthSource` trait 不再暴露 `prepare_copilot_auth_optimization` direct helper；Copilot auth override 的 session id、deterministic request id 与 interaction id sequencing 仍由默认 auth source 内部执行，外部替换 auth source 只面对 `prepare_optional_copilot_auth_optimization` 的行为级入口。
 450. `ForwarderAttemptRuntimeSource` trait 不再暴露 `should_bypass_circuit_breaker` legacy helper；默认 attempt runtime source 仍根据完整 attempts 列表执行单 provider 兼容 bypass，外部替换 source 只面对 `allow(ForwarderAttemptAllowInput)` 的行为级放行入口。
+451. `ForwarderAttemptRuntimeSource` trait 不再暴露 `attempt_limit_reached` max-attempt helper；默认 attempt runtime source 在 `allow` 决策内先执行尝试上限判定，再进入 circuit breaker permit，外部替换 source 只返回结构化 `ForwarderAttemptAllowDecision`。
 407. `proxy::types::ApiFormat` 未使用预留枚举已删除；Claude/OpenAI/Gemini format 判断统一沿用 `proxy-core` 的 provider kind、client format 和 response transform contract。
 408. `LogConfig` 已从 `proxy::types` 移到 `settings::LogConfig`；日志设置不再扩大代理运行态类型模块，proxy host types 只保留代理状态/备份等运行态数据。
 409. `RectifierConfig` 的默认值、serde 和 core 检测投影测试已从 host `proxy::types` 迁入 `proxy-core::ports`；host proxy types 不再承担 core 配置契约测试。
@@ -1232,6 +1233,7 @@
 本轮继续把 `prepare_copilot_auth_optimization` 从 `ForwarderAuthSource` trait surface 收进默认 source 内部：direct Copilot auth override sequencing 仍由默认 auth source 包装，但外部替换 source 只需实现 `prepare_optional_copilot_auth_optimization` 行为级入口。
 本轮继续把 Copilot optimizer 的启用 gate、请求体分类与变形收敛到 `ForwarderRequestSource`：`RequestForwarder` 不再直接判断 Copilot optimizer 是否运行，也不再直接调用 Copilot 分类、孤立 tool_result 清理、tool_result 合并、thinking block 剥离或 warmup 模型降级 helper，只消费 request source 返回的优化后 body 与可选分类事实。
 本轮继续收窄 `ForwarderAttemptRuntimeSource` 的放行接口：legacy 单 provider circuit-breaker bypass 判定从 trait surface 收进默认 source 内部，`RequestForwarder` 只通过 `ForwarderAttemptAllowInput` 传当前 attempt、app 和完整 attempts 事实，外部中转实现不再需要复刻 CC Switch 的历史兼容 helper。
+本轮继续把 max-attempt 上限判定并入 `ForwarderAttemptRuntimeSource::allow` 的结构化决策：默认 source 在占用 half-open permit 前先返回 `Stop(ForwarderAttemptLimitReached)`，`RequestForwarder` 只处理 stop/skip/allowed 三种结果，外部中转实现不再需要单独暴露 retry-policy helper。
 
 当前原则：核心 crate 可以新增端口和领域字段，但不得引入 `tauri`、`Database`、settings、commands、services 等宿主依赖；现有 runtime 行为必须继续通过 targeted tests 证明不回归。
 
