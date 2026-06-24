@@ -8175,13 +8175,13 @@ pub(crate) trait ForwarderRuntimeStateSource {
         attempted_providers: usize,
         total_providers: usize,
     ) -> ForwarderFailureDecision;
-    fn terminal_forward_failure_log_line_for_error(
+    fn log_terminal_forward_failure(
         &self,
         app_type: &str,
         attempted_providers: usize,
         total_providers: usize,
         last_error: Option<&ProxyError>,
-    ) -> Option<String>;
+    );
     fn rectifier_retry_failure_decision(
         &self,
         error: &ProxyError,
@@ -8244,6 +8244,22 @@ impl CcSwitchForwarderRuntimeStateSource {
         error: &ProxyError,
     ) -> String {
         forwarder_rectifier_retry_failure_log_line(app_type, kind, error)
+    }
+
+    fn terminal_forward_failure_log_line_for_error(
+        &self,
+        app_type: &str,
+        attempted_providers: usize,
+        total_providers: usize,
+        last_error: Option<&ProxyError>,
+    ) -> Option<String> {
+        let last_failure = last_error.map(forward_failure_kind_from_proxy_error);
+        build_terminal_forward_failure_log(
+            attempted_providers,
+            total_providers,
+            last_failure.as_ref(),
+        )
+        .map(|log| forwarder_failure_log_line(app_type, &log))
     }
 }
 
@@ -8402,20 +8418,21 @@ impl ForwarderRuntimeStateSource for CcSwitchForwarderRuntimeStateSource {
         }
     }
 
-    fn terminal_forward_failure_log_line_for_error(
+    fn log_terminal_forward_failure(
         &self,
         app_type: &str,
         attempted_providers: usize,
         total_providers: usize,
         last_error: Option<&ProxyError>,
-    ) -> Option<String> {
-        let last_failure = last_error.map(forward_failure_kind_from_proxy_error);
-        build_terminal_forward_failure_log(
+    ) {
+        if let Some(log_line) = self.terminal_forward_failure_log_line_for_error(
+            app_type,
             attempted_providers,
             total_providers,
-            last_failure.as_ref(),
-        )
-        .map(|log| forwarder_failure_log_line(app_type, &log))
+            last_error,
+        ) {
+            log::warn!("{log_line}");
+        }
     }
 
     fn rectifier_retry_failure_decision(

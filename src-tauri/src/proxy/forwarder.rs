@@ -772,17 +772,12 @@ impl RequestForwarder {
             .record_terminal_failure_status()
             .await;
 
-        if let Some(log_line) = self
-            .runtime_state_source
-            .terminal_forward_failure_log_line_for_error(
-                app_type_str,
-                attempted_providers,
-                attempts.len(),
-                last_error.as_ref(),
-            )
-        {
-            log::warn!("{log_line}");
-        }
+        self.runtime_state_source.log_terminal_forward_failure(
+            app_type_str,
+            attempted_providers,
+            attempts.len(),
+            last_error.as_ref(),
+        );
 
         Err(ForwardError {
             error: last_error.unwrap_or(ProxyError::MaxRetriesExceeded),
