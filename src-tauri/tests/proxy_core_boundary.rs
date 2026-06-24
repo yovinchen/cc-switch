@@ -6645,6 +6645,20 @@ fn production_forwarder_uses_response_source_resource() {
         "RequestForwarder must receive upstream response readiness/body reads as an injected source"
     );
     assert!(
+        adapter_source.contains("pub(crate) struct ForwarderChannelResponseStatusInput"),
+        "ForwarderResponseSource must receive channel status mapping facts through an input DTO"
+    );
+    assert!(
+        adapter_source.contains("channel: Option<&'a ResolvedChannelAttempt>"),
+        "ForwarderChannelResponseStatusInput must carry the selected channel facts"
+    );
+    assert!(
+        impl_slice.contains(
+            "apply_channel_response_status_mapping(ForwarderChannelResponseStatusInput {"
+        ),
+        "RequestForwarder must pass channel response status facts as a response-source input DTO"
+    );
+    assert!(
         adapter_source.contains("upstream_error_response"),
         "ForwarderResponseSource must expose upstream error response projection"
     );
