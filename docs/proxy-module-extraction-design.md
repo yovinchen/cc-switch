@@ -1027,6 +1027,7 @@
 本轮继续把 provider list/current route 的 source 组装收敛到 adapter，provider handlers 不再直接暴露 ProviderSpec/summary/source DTO 投影细节。
 本轮补齐 `proxy-core::api::prelude` 的 channel management 契约出口：外部中转集成只依赖 prelude 即可拿到 channel 写入、模型/key 子资源、route dry-run、list/status/test 等对外 DTO，避免直接耦合 core 内部 management/ports 模块布局。
 本轮继续补齐 `proxy-core::api::prelude` 的 model catalog 契约出口：外部中转集成可直接复用 `ModelCatalog`、`ClientModelCatalogResponse`、`FetchedModel` 与 route-visible `RoutableModelList`，模型目录接口不再要求调用方知道 model_catalog/domain/ports 的内部拆分。
+本轮继续补齐 `proxy-core::api::prelude` 的 host service 契约出口：外部中转宿主可只依赖 prelude 实现 `ProxyServices` 全套端口，包括 config/provider/channel/route/health/reachability/auth/model catalog/usage/event/forward pipeline，不再需要直接引用 ports/domain 中的零散返回类型或 futures `BoxFuture`。
 本轮继续把 host 生产路径的 `ProxyEngine` 构造入口收敛到 adapter，server/forwarder 不再直接 new core engine。
 本轮同时补充 `proxy_core_boundary` 护栏，防止生产路径重新绕过 adapter 直接构造 `ProxyEngine`。
 本轮继续删除 forwarder 旧 self-planning 兼容路径，route planning 只保留在 `ProxyEngine`/host pipeline 侧，`RequestForwarder` 只执行预规划 attempts。
