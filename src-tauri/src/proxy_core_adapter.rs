@@ -8140,8 +8140,8 @@ pub(crate) trait ForwarderRuntimeStateSource {
         error: &ProxyError,
     ) -> ForwarderRectifierRetryFailureDecision;
     fn record_forward_error_status<'a>(&'a self, error: &'a ProxyError) -> BoxFuture<'a, ()>;
-    fn no_available_provider_status_message(&self) -> String;
-    fn terminal_failure_status_message(&self) -> String;
+    fn record_no_available_provider_status<'a>(&'a self) -> BoxFuture<'a, ()>;
+    fn record_terminal_failure_status<'a>(&'a self) -> BoxFuture<'a, ()>;
     fn record_request_started<'a>(&'a self, started_at: &'a str) -> BoxFuture<'a, ()>;
     fn record_active_connection_acquired<'a>(&'a self) -> BoxFuture<'a, ()>;
     fn record_active_connection_released<'a>(&'a self) -> BoxFuture<'a, ()>;
@@ -8341,12 +8341,24 @@ impl ForwarderRuntimeStateSource for CcSwitchForwarderRuntimeStateSource {
         }
     }
 
-    fn no_available_provider_status_message(&self) -> String {
-        forwarder_no_available_provider_status_message().to_string()
+    fn record_no_available_provider_status<'a>(&'a self) -> BoxFuture<'a, ()> {
+        Box::pin(async move {
+            record_forward_failure_runtime_source(
+                self.status.as_ref(),
+                forwarder_no_available_provider_status_message(),
+            )
+            .await;
+        })
     }
 
-    fn terminal_failure_status_message(&self) -> String {
-        forwarder_terminal_failure_status_message().to_string()
+    fn record_terminal_failure_status<'a>(&'a self) -> BoxFuture<'a, ()> {
+        Box::pin(async move {
+            record_forward_failure_runtime_source(
+                self.status.as_ref(),
+                forwarder_terminal_failure_status_message(),
+            )
+            .await;
+        })
     }
 
     fn record_forward_error_status<'a>(&'a self, error: &'a ProxyError) -> BoxFuture<'a, ()> {
@@ -16117,21 +16129,32 @@ base_url = "https://api.openai.com/v1"
         }
     }
 
-    #[test]
-    fn forwarder_runtime_state_source_projects_terminal_status_messages() {
+    #[tokio::test]
+    async fn forwarder_runtime_state_source_records_terminal_statuses() {
         let source = CcSwitchForwarderRuntimeStateSource::new(
             Arc::new(RwLock::new(ProxyRuntimeStatus::default())),
             Arc::new(RwLock::new(HashMap::new())),
             Arc::new(ProxyEventBus::default()),
         );
 
+        source.record_no_available_provider_status().await;
+        {
+            let status = source.status();
+            let status = status.read().await;
+            assert_eq!(status.failed_requests, 1);
+            assert_eq!(
+                status.last_error.as_deref(),
+                Some("所有供应商暂时不可用（熔断器限制）")
+            );
+        }
+
+        source.record_terminal_failure_status().await;
+        let status = source.status();
+        let status = status.read().await;
+        assert_eq!(status.failed_requests, 2);
         assert_eq!(
-            source.no_available_provider_status_message(),
-            "所有供应商暂时不可用（熔断器限制）"
-        );
-        assert_eq!(
-            source.terminal_failure_status_message(),
-            "所有供应商都失败"
+            status.last_error.as_deref(),
+            Some("所有供应商都失败")
         );
     }
 
