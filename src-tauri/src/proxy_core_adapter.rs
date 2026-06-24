@@ -3031,6 +3031,13 @@ pub(crate) enum ForwarderRectifierRetryFailureDecision {
     ProviderFailure { error_message: String },
     ClientFailure { error_message: String },
 }
+pub(crate) fn forwarder_no_available_provider_status_message() -> &'static str {
+    "所有供应商暂时不可用（熔断器限制）"
+}
+
+pub(crate) fn forwarder_terminal_failure_status_message() -> &'static str {
+    "所有供应商都失败"
+}
 pub(crate) type ManagementAuthError =
     crate::proxy_core::api::auth::ManagementAuthError;
 pub(crate) type CircuitBreakerFailureDecision =
@@ -8125,6 +8132,8 @@ pub(crate) trait ForwarderRuntimeStateSource {
         &self,
         error: &ProxyError,
     ) -> ForwarderRectifierRetryFailureDecision;
+    fn no_available_provider_status_message(&self) -> String;
+    fn terminal_failure_status_message(&self) -> String;
     fn record_request_started<'a>(&'a self, started_at: &'a str) -> BoxFuture<'a, ()>;
     fn record_active_connection_acquired<'a>(&'a self) -> BoxFuture<'a, ()>;
     fn record_active_connection_released<'a>(&'a self) -> BoxFuture<'a, ()>;
@@ -8318,6 +8327,14 @@ impl ForwarderRuntimeStateSource for CcSwitchForwarderRuntimeStateSource {
         } else {
             ForwarderRectifierRetryFailureDecision::ClientFailure { error_message }
         }
+    }
+
+    fn no_available_provider_status_message(&self) -> String {
+        forwarder_no_available_provider_status_message().to_string()
+    }
+
+    fn terminal_failure_status_message(&self) -> String {
+        forwarder_terminal_failure_status_message().to_string()
     }
 
     fn record_request_started<'a>(&'a self, started_at: &'a str) -> BoxFuture<'a, ()> {
@@ -16017,6 +16034,24 @@ base_url = "https://api.openai.com/v1"
                 assert!(error_message.contains("上游错误 (状态码 400)"));
             }
         }
+    }
+
+    #[test]
+    fn forwarder_runtime_state_source_projects_terminal_status_messages() {
+        let source = CcSwitchForwarderRuntimeStateSource::new(
+            Arc::new(RwLock::new(ProxyRuntimeStatus::default())),
+            Arc::new(RwLock::new(HashMap::new())),
+            Arc::new(ProxyEventBus::default()),
+        );
+
+        assert_eq!(
+            source.no_available_provider_status_message(),
+            "所有供应商暂时不可用（熔断器限制）"
+        );
+        assert_eq!(
+            source.terminal_failure_status_message(),
+            "所有供应商都失败"
+        );
     }
 
     #[test]

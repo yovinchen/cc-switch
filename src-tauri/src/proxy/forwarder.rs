@@ -892,8 +892,10 @@ impl RequestForwarder {
 
         if attempted_providers == 0 {
             // providers 列表非空，但全部被熔断器拒绝（典型：HalfOpen 探测名额被占用）
-            self.record_failure_status_message("所有供应商暂时不可用（熔断器限制）")
-                .await;
+            let message = self
+                .runtime_state_source
+                .no_available_provider_status_message();
+            self.record_failure_status_message(message).await;
             return Err(ForwardError {
                 error: ProxyError::NoAvailableProvider,
                 provider: None,
@@ -901,8 +903,8 @@ impl RequestForwarder {
         }
 
         // 所有供应商都失败了
-        self.record_failure_status_message("所有供应商都失败")
-            .await;
+        let message = self.runtime_state_source.terminal_failure_status_message();
+        self.record_failure_status_message(message).await;
 
         if let Some(failure_log) = self.runtime_state_source.terminal_forward_failure_log_for_error(
             attempted_providers,
