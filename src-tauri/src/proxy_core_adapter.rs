@@ -8901,6 +8901,8 @@ pub(crate) trait ForwarderRequestSource {
         input: ForwarderProviderRequestBodyInput<'_>,
     ) -> Result<Value, ProxyError>;
 
+    fn request_body_model(&self, body: &Value) -> Option<String>;
+
     fn apply_claude_body_policies(
         &self,
         input: ForwarderClaudeBodyPolicyInput<'_>,
@@ -9078,6 +9080,13 @@ impl ForwarderRequestSource for CcSwitchForwarderRequestSource {
         }
 
         Ok(body)
+    }
+
+    fn request_body_model(&self, body: &Value) -> Option<String> {
+        body.get("model")
+            .and_then(Value::as_str)
+            .filter(|model| !model.is_empty())
+            .map(str::to_string)
     }
 
     fn apply_claude_body_policies(
@@ -15293,6 +15302,23 @@ base_url = "https://api.openai.com/v1"
             .expect("prepared body");
 
         assert_eq!(body["model"], "upstream-sonnet");
+    }
+
+    #[test]
+    fn forwarder_request_source_projects_request_body_model() {
+        let source = CcSwitchForwarderRequestSource;
+
+        assert_eq!(
+            source
+                .request_body_model(&json!({ "model": "upstream-sonnet" }))
+                .as_deref(),
+            Some("upstream-sonnet")
+        );
+        assert_eq!(
+            source.request_body_model(&json!({ "model": "" })),
+            None
+        );
+        assert_eq!(source.request_body_model(&json!({})), None);
     }
 
     #[test]

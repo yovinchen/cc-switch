@@ -6428,6 +6428,7 @@ fn production_forwarder_uses_request_source_resource() {
         "forwarder_claude_api_format(",
         "forwarder_uses_anthropic_rectifiers(",
         "forwarder_provider_adapter_for_app(",
+        ".get(\"model\")",
     ];
     let mut violations = Vec::new();
 

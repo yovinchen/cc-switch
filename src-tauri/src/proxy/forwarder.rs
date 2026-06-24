@@ -1056,11 +1056,7 @@ impl RequestForwarder {
         // 记录映射后的出站模型名（此时 mapped_body 已完成接管映射 / [1m] 剥离 /
         // Copilot 归一化）。格式转换后若 body 仍带 model 字段会在下方刷新覆盖；
         // gemini_native 等模型在 URL 中的格式则保留此处的转换前真值。
-        let mut outbound_model = mapped_body
-            .get("model")
-            .and_then(|m| m.as_str())
-            .filter(|m| !m.is_empty())
-            .map(str::to_string);
+        let mut outbound_model = self.request_source.request_body_model(&mapped_body);
 
         // 转换请求体（如果需要）
         let mut request_body = if codex_responses_to_chat {
@@ -1134,12 +1130,8 @@ impl RequestForwarder {
                 });
         let filtered_body = prepared_request.body;
         // 出站 body 定稿后刷新真值（覆盖 Codex chat 上游模型覆写、转换层模型改写）
-        if let Some(m) = filtered_body
-            .get("model")
-            .and_then(|m| m.as_str())
-            .filter(|m| !m.is_empty())
-        {
-            outbound_model = Some(m.to_string());
+        if let Some(model) = self.request_source.request_body_model(&filtered_body) {
+            outbound_model = Some(model);
         }
         let request_is_streaming = prepared_request.request_is_streaming;
         let force_identity_encoding = prepared_request.force_identity_encoding;
@@ -1183,10 +1175,10 @@ impl RequestForwarder {
 
         // 输出请求信息日志
         let tag = adapter_name;
-        let request_model = filtered_body
-            .get("model")
-            .and_then(|v| v.as_str())
-            .unwrap_or("<none>");
+        let request_model = self
+            .request_source
+            .request_body_model(&filtered_body)
+            .unwrap_or_else(|| "<none>".to_string());
         log::info!("[{tag}] >>> 请求 URL: {url} (model={request_model})");
         if log::log_enabled!(log::Level::Debug) {
             if let Ok(body_str) = serde_json::to_string(&filtered_body) {
