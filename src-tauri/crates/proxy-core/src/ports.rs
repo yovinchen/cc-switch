@@ -1049,6 +1049,30 @@ pub fn proxy_server_info_from_parts(
     }
 }
 
+pub fn proxy_live_urls_from_listen_parts(
+    listen_address: &str,
+    listen_port: u16,
+) -> Option<(String, String)> {
+    if listen_port == 0 {
+        return None;
+    }
+
+    let connect_host = match listen_address {
+        "0.0.0.0" => "127.0.0.1".to_string(),
+        "::" => "::1".to_string(),
+        _ => listen_address.to_string(),
+    };
+    let connect_host_for_url = if connect_host.contains(':') && !connect_host.starts_with('[') {
+        format!("[{connect_host}]")
+    } else {
+        connect_host
+    };
+
+    let proxy_origin = format!("http://{connect_host_for_url}:{listen_port}");
+    let proxy_codex_base_url = format!("{}/v1", proxy_origin.trim_end_matches('/'));
+    Some((proxy_origin, proxy_codex_base_url))
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
 pub struct ProxyTakeoverStatus {
     pub claude: bool,
@@ -3108,7 +3132,8 @@ mod tests {
         ForwardCurrentProviderStatusInput, ForwardFailureStatusInput,
         ForwardProviderFailureStatusInput, ForwardProviderRectifierRetryFailureStatusInput,
         ForwardRequestStartedStatusInput, ForwardSuccessStatusInput, ForwardSuccessStatusUpdate,
-        ProxyServerStartedStatusInput, proxy_server_info_from_parts,
+        ProxyServerStartedStatusInput, proxy_live_urls_from_listen_parts,
+        proxy_server_info_from_parts,
         proxy_runtime_status_stopped, proxy_takeover_status_from_enabled_options,
         proxy_takeover_status_from_parts,
         apply_proxy_runtime_active_targets, apply_proxy_runtime_uptime,
@@ -4599,6 +4624,39 @@ mod tests {
                 openclaw: false,
             }
         );
+    }
+
+    #[test]
+    fn proxy_live_urls_from_listen_parts_preserves_client_connect_contract() {
+        assert_eq!(
+            proxy_live_urls_from_listen_parts("127.0.0.1", 15721),
+            Some((
+                "http://127.0.0.1:15721".to_string(),
+                "http://127.0.0.1:15721/v1".to_string()
+            ))
+        );
+        assert_eq!(
+            proxy_live_urls_from_listen_parts("0.0.0.0", 15721),
+            Some((
+                "http://127.0.0.1:15721".to_string(),
+                "http://127.0.0.1:15721/v1".to_string()
+            ))
+        );
+        assert_eq!(
+            proxy_live_urls_from_listen_parts("::", 15721),
+            Some((
+                "http://[::1]:15721".to_string(),
+                "http://[::1]:15721/v1".to_string()
+            ))
+        );
+        assert_eq!(
+            proxy_live_urls_from_listen_parts("fd00::1", 15721),
+            Some((
+                "http://[fd00::1]:15721".to_string(),
+                "http://[fd00::1]:15721/v1".to_string()
+            ))
+        );
+        assert_eq!(proxy_live_urls_from_listen_parts("127.0.0.1", 0), None);
     }
 
     #[test]

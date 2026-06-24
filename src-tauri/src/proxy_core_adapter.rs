@@ -538,31 +538,7 @@ pub(crate) fn proxy_server_from_runtime_config(
     ProxyServer::from_runtime_state(config, state)
 }
 
-pub(crate) fn proxy_live_urls_from_listen_parts(
-    listen_address: &str,
-    listen_port: u16,
-) -> Option<(String, String)> {
-    if listen_port == 0 {
-        return None;
-    }
-
-    // listen_address 可能是 0.0.0.0（用于监听所有网卡），但客户端无法用
-    // 0.0.0.0 连接；因此写回到各应用配置时，优先使用本机回环地址。
-    let connect_host = match listen_address {
-        "0.0.0.0" => "127.0.0.1".to_string(),
-        "::" => "::1".to_string(),
-        _ => listen_address.to_string(),
-    };
-    let connect_host_for_url = if connect_host.contains(':') && !connect_host.starts_with('[') {
-        format!("[{connect_host}]")
-    } else {
-        connect_host
-    };
-
-    let proxy_origin = format!("http://{connect_host_for_url}:{listen_port}");
-    let proxy_codex_base_url = format!("{}/v1", proxy_origin.trim_end_matches('/'));
-    Some((proxy_origin, proxy_codex_base_url))
-}
+pub(crate) use crate::proxy_core::api::ports::proxy_live_urls_from_listen_parts;
 
 pub(crate) fn record_proxy_server_listen_port_runtime_source(port: u16) {
     crate::proxy::http_client::set_proxy_port(port);
