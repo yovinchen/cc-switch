@@ -15,7 +15,6 @@ use crate::proxy_core_adapter::{
     ForwarderAuthHeadersInput, ForwarderAuthSourceRef,
     ForwarderMaybeCopilotAuthOptimizationInput, ForwarderChannelResponseStatusInput,
     ForwarderClaudeApiFormatInput, ForwarderClaudeBodyPolicyInput,
-    ForwarderCodexResponsesToChatPlanInput,
     ForwarderCopilotDynamicBaseUrlInput, ForwarderCopilotLiveModelInput,
     ForwarderCopilotRequestOptimizationGateInput,
     ForwarderFailureDecision, ForwarderMediaRetryPlanInput, ForwarderProviderRequestBodyInput,
@@ -884,19 +883,15 @@ impl RequestForwarder {
         let transform_plan = self
             .request_source
             .transform_plan(ForwarderTransformPlanInput {
+                app_type,
                 adapter,
+                endpoint,
                 provider,
                 resolved_claude_api_format: resolved_claude_api_format.as_deref(),
                 is_claude_adapter,
             });
         let needs_transform = transform_plan.needs_transform;
-        let codex_responses_to_chat =
-            self.request_source
-                .codex_responses_to_chat_enabled(ForwarderCodexResponsesToChatPlanInput {
-                    app_type,
-                    provider,
-                    endpoint,
-                });
+        let codex_responses_to_chat = transform_plan.codex_responses_to_chat;
         let url_plan = self.request_source.plan_upstream_url(ForwarderUpstreamUrlInput {
             adapter,
             base_url: &base_url,
@@ -942,7 +937,6 @@ impl RequestForwarder {
                 body: mapped_body,
                 provider,
                 transform_plan: &transform_plan,
-                codex_responses_to_chat,
                 claude_transformed_body,
             },
         )?;

@@ -9140,12 +9140,6 @@ pub(crate) struct ForwarderCodexResponsesToChatInput<'a> {
     pub(crate) provider: &'a Provider,
 }
 
-pub(crate) struct ForwarderCodexResponsesToChatPlanInput<'a> {
-    pub(crate) app_type: &'a AppType,
-    pub(crate) provider: &'a Provider,
-    pub(crate) endpoint: &'a str,
-}
-
 pub(crate) struct ForwarderProviderTransformInput<'a> {
     pub(crate) adapter: &'a ForwarderAdapterHandle,
     pub(crate) body: Value,
@@ -9157,7 +9151,6 @@ pub(crate) struct ForwarderRequestBodyTransformInput<'a> {
     pub(crate) body: Value,
     pub(crate) provider: &'a Provider,
     pub(crate) transform_plan: &'a ForwarderTransformPlan,
-    pub(crate) codex_responses_to_chat: bool,
     pub(crate) claude_transformed_body: Option<Value>,
 }
 
@@ -9167,7 +9160,9 @@ pub(crate) struct ForwarderRequestBodyTransform {
 }
 
 pub(crate) struct ForwarderTransformPlanInput<'a> {
+    pub(crate) app_type: &'a AppType,
     pub(crate) adapter: &'a ForwarderAdapterHandle,
+    pub(crate) endpoint: &'a str,
     pub(crate) provider: &'a Provider,
     pub(crate) resolved_claude_api_format: Option<&'a str>,
     pub(crate) is_claude_adapter: bool,
@@ -9179,6 +9174,7 @@ pub(crate) struct ForwarderTransformPlan {
     pub(crate) use_provider_transform: bool,
     pub(crate) claude_api_format_for_url: Option<String>,
     pub(crate) claude_api_format_for_transform: Option<String>,
+    pub(crate) codex_responses_to_chat: bool,
 }
 
 pub(crate) struct ForwarderUpstreamUrlInput<'a> {
@@ -9297,11 +9293,6 @@ pub(crate) trait ForwarderRequestSource {
         &self,
         input: ForwarderClaudeBodyPolicyInput<'_>,
     );
-
-    fn codex_responses_to_chat_enabled(
-        &self,
-        input: ForwarderCodexResponsesToChatPlanInput<'_>,
-    ) -> bool;
 
     fn transform_request_body(
         &self,
@@ -9618,23 +9609,12 @@ impl ForwarderRequestSource for CcSwitchForwarderRequestSource {
         });
     }
 
-    fn codex_responses_to_chat_enabled(
-        &self,
-        input: ForwarderCodexResponsesToChatPlanInput<'_>,
-    ) -> bool {
-        forwarder_should_convert_codex_responses_to_chat(
-            input.app_type,
-            input.provider,
-            input.endpoint,
-        )
-    }
-
     fn transform_request_body(
         &self,
         input: ForwarderRequestBodyTransformInput<'_>,
     ) -> Result<ForwarderRequestBodyTransform, ProxyError> {
         let outbound_model = self.request_body_model(&input.body);
-        let body = if input.codex_responses_to_chat {
+        let body = if input.transform_plan.codex_responses_to_chat {
             self.convert_codex_responses_to_chat_body(ForwarderCodexResponsesToChatInput {
                 body: input.body,
                 provider: input.provider,
@@ -9658,6 +9638,11 @@ impl ForwarderRequestSource for CcSwitchForwarderRequestSource {
     }
 
     fn transform_plan(&self, input: ForwarderTransformPlanInput<'_>) -> ForwarderTransformPlan {
+        let codex_responses_to_chat = forwarder_should_convert_codex_responses_to_chat(
+            input.app_type,
+            input.provider,
+            input.endpoint,
+        );
         let fallback_claude_api_format = input
             .is_claude_adapter
             .then(|| forwarder_claude_api_format(input.provider));
@@ -9677,6 +9662,7 @@ impl ForwarderRequestSource for CcSwitchForwarderRequestSource {
             claude_api_format_for_transform: input
                 .is_claude_adapter
                 .then(|| claude_api_format.unwrap_or("anthropic").to_string()),
+            codex_responses_to_chat,
         }
     }
 
@@ -15567,6 +15553,8 @@ base_url = "https://api.openai.com/v1"
     #[test]
     fn forwarder_request_source_projects_codex_responses_to_chat_gate() {
         let source = default_forwarder_request_source();
+        let codex_adapter = forwarder_provider_adapter_for_app(&AppType::Codex);
+        let claude_adapter = forwarder_provider_adapter_for_app(&AppType::Claude);
         let provider = Provider::with_id(
             "codex-chat".to_string(),
             "Codex Chat".to_string(),
@@ -15582,27 +15570,42 @@ base_url = "https://api.openai.com/v1"
             None,
         );
 
-        assert!(source.codex_responses_to_chat_enabled(
-            ForwarderCodexResponsesToChatPlanInput {
-                app_type: &AppType::Codex,
-                provider: &provider,
-                endpoint: "/responses",
-            },
-        ));
-        assert!(!source.codex_responses_to_chat_enabled(
-            ForwarderCodexResponsesToChatPlanInput {
-                app_type: &AppType::Claude,
-                provider: &provider,
-                endpoint: "/responses",
-            },
-        ));
-        assert!(!source.codex_responses_to_chat_enabled(
-            ForwarderCodexResponsesToChatPlanInput {
-                app_type: &AppType::Codex,
-                provider: &provider,
-                endpoint: "/chat/completions",
-            },
-        ));
+        assert!(
+            source
+                .transform_plan(ForwarderTransformPlanInput {
+                    app_type: &AppType::Codex,
+                    adapter: codex_adapter.as_ref(),
+                    endpoint: "/responses",
+                    provider: &provider,
+                    resolved_claude_api_format: None,
+                    is_claude_adapter: false,
+                })
+                .codex_responses_to_chat
+        );
+        assert!(
+            !source
+                .transform_plan(ForwarderTransformPlanInput {
+                    app_type: &AppType::Claude,
+                    adapter: claude_adapter.as_ref(),
+                    endpoint: "/responses",
+                    provider: &provider,
+                    resolved_claude_api_format: None,
+                    is_claude_adapter: true,
+                })
+                .codex_responses_to_chat
+        );
+        assert!(
+            !source
+                .transform_plan(ForwarderTransformPlanInput {
+                    app_type: &AppType::Codex,
+                    adapter: codex_adapter.as_ref(),
+                    endpoint: "/chat/completions",
+                    provider: &provider,
+                    resolved_claude_api_format: None,
+                    is_claude_adapter: false,
+                })
+                .codex_responses_to_chat
+        );
     }
 
     #[test]
@@ -15644,6 +15647,7 @@ base_url = "https://api.openai.com/v1"
             use_provider_transform: false,
             claude_api_format_for_url: None,
             claude_api_format_for_transform: None,
+            codex_responses_to_chat: false,
         };
 
         let passthrough = source
@@ -15652,7 +15656,6 @@ base_url = "https://api.openai.com/v1"
                 body: json!({"model": "mapped-model", "messages": []}),
                 provider: &provider,
                 transform_plan: &no_transform_plan,
-                codex_responses_to_chat: false,
                 claude_transformed_body: None,
             })
             .expect("passthrough request body");
@@ -15665,6 +15668,7 @@ base_url = "https://api.openai.com/v1"
             use_provider_transform: false,
             claude_api_format_for_url: Some("openai_chat".to_string()),
             claude_api_format_for_transform: Some("openai_chat".to_string()),
+            codex_responses_to_chat: false,
         };
         let claude_transformed = source
             .transform_request_body(ForwarderRequestBodyTransformInput {
@@ -15672,7 +15676,6 @@ base_url = "https://api.openai.com/v1"
                 body: json!({"model": "mapped-model", "messages": []}),
                 provider: &provider,
                 transform_plan: &claude_transform_plan,
-                codex_responses_to_chat: false,
                 claude_transformed_body: Some(json!({
                     "model": "chat-model",
                     "messages": []
@@ -15710,6 +15713,7 @@ base_url = "https://api.openai.com/v1"
             use_provider_transform: false,
             claude_api_format_for_url: Some("openai_chat".to_string()),
             claude_api_format_for_transform: Some("openai_chat".to_string()),
+            codex_responses_to_chat: true,
         };
 
         let transformed = source
@@ -15722,7 +15726,6 @@ base_url = "https://api.openai.com/v1"
                 }),
                 provider: &provider,
                 transform_plan: &transform_plan,
-                codex_responses_to_chat: true,
                 claude_transformed_body: Some(json!({"model": "should-not-win"})),
             })
             .expect("Codex chat bridge body");
@@ -15750,7 +15753,9 @@ base_url = "https://api.openai.com/v1"
         });
 
         let resolved_plan = source.transform_plan(ForwarderTransformPlanInput {
+            app_type: &AppType::Claude,
             adapter: claude_adapter.as_ref(),
+            endpoint: "/v1/messages",
             provider: &claude_provider,
             resolved_claude_api_format: Some("gemini_native"),
             is_claude_adapter: true,
@@ -15766,9 +15771,12 @@ base_url = "https://api.openai.com/v1"
             resolved_plan.claude_api_format_for_transform.as_deref(),
             Some("gemini_native")
         );
+        assert!(!resolved_plan.codex_responses_to_chat);
 
         let fallback_plan = source.transform_plan(ForwarderTransformPlanInput {
+            app_type: &AppType::Claude,
             adapter: claude_adapter.as_ref(),
+            endpoint: "/v1/messages",
             provider: &claude_provider,
             resolved_claude_api_format: None,
             is_claude_adapter: true,
@@ -15784,9 +15792,12 @@ base_url = "https://api.openai.com/v1"
             fallback_plan.claude_api_format_for_transform.as_deref(),
             Some("openai_chat")
         );
+        assert!(!fallback_plan.codex_responses_to_chat);
 
         let codex_plan = source.transform_plan(ForwarderTransformPlanInput {
+            app_type: &AppType::Codex,
             adapter: codex_adapter.as_ref(),
+            endpoint: "/v1/chat/completions",
             provider: &claude_provider,
             resolved_claude_api_format: None,
             is_claude_adapter: false,
@@ -15796,6 +15807,7 @@ base_url = "https://api.openai.com/v1"
         assert!(!codex_plan.use_provider_transform);
         assert!(codex_plan.claude_api_format_for_url.is_none());
         assert!(codex_plan.claude_api_format_for_transform.is_none());
+        assert!(!codex_plan.codex_responses_to_chat);
     }
 
     #[test]
