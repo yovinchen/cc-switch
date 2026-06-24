@@ -1957,6 +1957,7 @@ impl LocalizedErrorSpec {
 pub enum GeminiSettingsValidationIssue {
     EnvNotObject,
     ConfigInvalidType,
+    MissingApiKey,
 }
 
 pub fn gemini_env_json_from_map(env_map: &HashMap<String, String>) -> Value {
@@ -2003,6 +2004,23 @@ pub fn validate_gemini_settings_basic(
     Ok(())
 }
 
+pub fn validate_gemini_settings_strict(
+    settings: &Value,
+) -> Result<(), GeminiSettingsValidationIssue> {
+    validate_gemini_settings_basic(settings)?;
+
+    let env_map = gemini_env_string_map_from_settings(settings);
+    if env_map.is_empty() {
+        return Ok(());
+    }
+
+    if !env_map.contains_key("GEMINI_API_KEY") {
+        return Err(GeminiSettingsValidationIssue::MissingApiKey);
+    }
+
+    Ok(())
+}
+
 pub fn gemini_settings_validation_issue_spec(
     issue: GeminiSettingsValidationIssue,
 ) -> LocalizedErrorSpec {
@@ -2016,6 +2034,11 @@ pub fn gemini_settings_validation_issue_spec(
             "gemini.validation.invalid_config",
             "Gemini 配置格式错误: config 必须是对象",
             "Gemini config invalid: config must be an object",
+        ),
+        GeminiSettingsValidationIssue::MissingApiKey => LocalizedErrorSpec::new(
+            "gemini.validation.missing_api_key",
+            "Gemini 配置缺少必需字段: GEMINI_API_KEY",
+            "Gemini config missing required field: GEMINI_API_KEY",
         ),
     }
 }
@@ -5124,6 +5147,7 @@ mod tests {
         remove_codex_takeover_auth_placeholder_if_present,
         remove_gemini_takeover_env_fields_if_present,
         sanitize_claude_settings_for_live, validate_gemini_settings_basic,
+        validate_gemini_settings_strict,
         RectifierConfig, RouteGroupListResponse, RouteGroupSourceInput, RouteResolveResponse,
         StreamCheckConfig, StreamCheckResult, DEFAULT_PROXY_LISTEN_ADDRESS,
         DEFAULT_PROXY_LISTEN_PORT, DEFAULT_CHANNEL_HEALTH_FAILURE_THRESHOLD,
@@ -6978,6 +7002,26 @@ mod tests {
             validate_gemini_settings_basic(&json!({"config": "invalid"})),
             Err(GeminiSettingsValidationIssue::ConfigInvalidType)
         );
+        assert!(validate_gemini_settings_strict(&json!({"env": {}})).is_ok());
+        assert!(validate_gemini_settings_strict(&json!({
+            "env": {
+                "GEMINI_API_KEY": "secret",
+                "GEMINI_MODEL": "gemini-3.5-flash"
+            }
+        }))
+        .is_ok());
+        assert_eq!(
+            validate_gemini_settings_strict(&json!({
+                "env": {
+                    "GEMINI_MODEL": "gemini-3.5-flash"
+                }
+            })),
+            Err(GeminiSettingsValidationIssue::MissingApiKey)
+        );
+        assert_eq!(
+            validate_gemini_settings_strict(&json!({"env": "invalid"})),
+            Err(GeminiSettingsValidationIssue::EnvNotObject)
+        );
 
         let env_spec =
             gemini_settings_validation_issue_spec(GeminiSettingsValidationIssue::EnvNotObject);
@@ -6990,6 +7034,16 @@ mod tests {
         assert_eq!(
             config_spec.en,
             "Gemini config invalid: config must be an object"
+        );
+        let missing_api_key_spec =
+            gemini_settings_validation_issue_spec(GeminiSettingsValidationIssue::MissingApiKey);
+        assert_eq!(
+            missing_api_key_spec.key,
+            "gemini.validation.missing_api_key"
+        );
+        assert_eq!(
+            missing_api_key_spec.en,
+            "Gemini config missing required field: GEMINI_API_KEY"
         );
     }
 

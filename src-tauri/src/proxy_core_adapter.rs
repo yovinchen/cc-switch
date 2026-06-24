@@ -343,6 +343,7 @@ pub(crate) use crate::proxy_core::api::ports::{
     should_skip_provider_legacy_common_config_migration as core_should_skip_provider_legacy_common_config_migration,
     should_skip_startup_default_live_import as core_should_skip_startup_default_live_import,
     validate_gemini_settings_basic as core_validate_gemini_settings_basic,
+    validate_gemini_settings_strict as core_validate_gemini_settings_strict,
     GeminiSettingsValidationIssue, LiveTokenProviderSettingsIssue, LocalizedErrorSpec,
     ProviderAdditiveLiveWriteAction, ProviderAdditiveUpdateRoute,
     ProviderCredentialIssue, ProviderCredentialValues as CoreProviderCredentialValues,
@@ -4381,6 +4382,11 @@ pub(crate) fn validate_gemini_settings_basic(settings: &Value) -> Result<(), App
         .map_err(gemini_settings_validation_issue_to_app_error)
 }
 
+pub(crate) fn validate_gemini_settings_strict(settings: &Value) -> Result<(), AppError> {
+    core_validate_gemini_settings_strict(settings)
+        .map_err(gemini_settings_validation_issue_to_app_error)
+}
+
 pub(crate) fn validate_provider_gemini_settings(provider: &Provider) -> Result<(), AppError> {
     validate_gemini_settings_basic(&provider.settings_config)
 }
@@ -4388,7 +4394,7 @@ pub(crate) fn validate_provider_gemini_settings(provider: &Provider) -> Result<(
 pub(crate) fn validate_provider_gemini_settings_strict(
     provider: &Provider,
 ) -> Result<(), AppError> {
-    crate::gemini_config::validate_gemini_settings_strict(&provider.settings_config)
+    validate_gemini_settings_strict(&provider.settings_config)
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

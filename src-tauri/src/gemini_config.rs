@@ -199,43 +199,6 @@ pub fn json_to_env(settings: &Value) -> Result<HashMap<String, String>, AppError
     Ok(crate::proxy_core_adapter::gemini_env_string_map_from_settings(settings))
 }
 
-/// 验证 Gemini 配置的基本结构
-///
-/// 此函数只验证配置的基本格式，不强制要求 GEMINI_API_KEY。
-/// 这允许用户先创建供应商配置，稍后再填写 API Key。
-///
-/// API Key 的验证会在切换供应商时进行（通过 `validate_gemini_settings_strict`）。
-pub fn validate_gemini_settings(settings: &Value) -> Result<(), AppError> {
-    crate::proxy_core_adapter::validate_gemini_settings_basic(settings)
-}
-
-/// 严格验证 Gemini 配置（要求必需字段）
-///
-/// 此函数在切换供应商时使用，确保配置包含所有必需的字段。
-/// 对于需要 API Key 的供应商（如 PackyCode），会验证 GEMINI_API_KEY 字段。
-pub fn validate_gemini_settings_strict(settings: &Value) -> Result<(), AppError> {
-    // 先做基础格式验证（包含 env/config 类型）
-    validate_gemini_settings(settings)?;
-
-    let env_map = json_to_env(settings)?;
-
-    // 如果 env 为空，表示使用 OAuth（如 Google 官方），跳过验证
-    if env_map.is_empty() {
-        return Ok(());
-    }
-
-    // 如果 env 不为空，检查必需字段 GEMINI_API_KEY
-    if !env_map.contains_key("GEMINI_API_KEY") {
-        return Err(AppError::localized(
-            "gemini.validation.missing_api_key",
-            "Gemini 配置缺少必需字段: GEMINI_API_KEY",
-            "Gemini config missing required field: GEMINI_API_KEY",
-        ));
-    }
-
-    Ok(())
-}
-
 /// 获取 Gemini settings.json 文件路径
 ///
 /// 返回路径：`~/.gemini/settings.json`（与 `.env` 文件同级）
@@ -566,9 +529,9 @@ KEY_WITH-DASH=value";
             "env": {}
         });
 
-        assert!(validate_gemini_settings(&settings).is_ok());
+        assert!(crate::proxy_core_adapter::validate_gemini_settings_basic(&settings).is_ok());
         // 严格验证也应该通过（空 env 表示 OAuth）
-        assert!(validate_gemini_settings_strict(&settings).is_ok());
+        assert!(crate::proxy_core_adapter::validate_gemini_settings_strict(&settings).is_ok());
     }
 
     #[test]
@@ -581,8 +544,8 @@ KEY_WITH-DASH=value";
             }
         });
 
-        assert!(validate_gemini_settings(&settings).is_ok());
-        assert!(validate_gemini_settings_strict(&settings).is_ok());
+        assert!(crate::proxy_core_adapter::validate_gemini_settings_basic(&settings).is_ok());
+        assert!(crate::proxy_core_adapter::validate_gemini_settings_strict(&settings).is_ok());
     }
 
     #[test]
@@ -595,9 +558,9 @@ KEY_WITH-DASH=value";
         });
 
         // 基本验证应该通过（允许稍后填写 API Key）
-        assert!(validate_gemini_settings(&settings).is_ok());
+        assert!(crate::proxy_core_adapter::validate_gemini_settings_basic(&settings).is_ok());
         // 严格验证应该失败（切换时要求完整配置）
-        assert!(validate_gemini_settings_strict(&settings).is_err());
+        assert!(crate::proxy_core_adapter::validate_gemini_settings_strict(&settings).is_err());
     }
 
     #[test]
@@ -607,6 +570,6 @@ KEY_WITH-DASH=value";
             "env": "invalid_string"
         });
 
-        assert!(validate_gemini_settings(&settings).is_err());
+        assert!(crate::proxy_core_adapter::validate_gemini_settings_basic(&settings).is_err());
     }
 }

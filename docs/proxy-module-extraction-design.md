@@ -1344,6 +1344,7 @@
 本轮继续把 additive app 的 stream-check base URL 分发收敛到 `proxy-core::domain` 与 `proxy_core_adapter::stream_check_provider_base_url`：core 维护 OpenCode npm fallback、OpenClaw `baseUrl` 与 Hermes `base_url` 纯解析，service 只调用统一入口并保留 reachability 探测职责。
 本轮继续把 Gemini provider settings 基础结构校验收敛到 `proxy-core::ports::validate_gemini_settings_basic`：core 维护 `env`/`config` 字段形状和本地化错误规格，`gemini_config` 与 `ProviderService` 只通过 adapter 复用同一校验入口。
 本轮继续把 Gemini settings 的 env map 与 JSON settings 双向投影收敛到 `proxy-core::ports`：core 维护纯 HashMap/JSON 转换和非字符串值过滤，`gemini_config` 仅保留兼容函数名并委托 adapter。
+本轮继续把 Gemini settings 严格切换校验收敛到 `proxy-core::ports::validate_gemini_settings_strict`：core 维护 OAuth 空 env 放行、非空 env 必须含 `GEMINI_API_KEY` 和本地化错误规格，host 只保留 AppError 映射。
 
 当前原则：核心 crate 可以新增端口和领域字段，但不得引入 `tauri`、`Database`、settings、commands、services 等宿主依赖；现有 runtime 行为必须继续通过 targeted tests 证明不回归。
 

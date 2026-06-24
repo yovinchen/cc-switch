@@ -182,7 +182,7 @@ pub mod ports {
         remove_gemini_common_config_from_settings,
         remove_gemini_takeover_env_fields_if_present,
         provider_live_config_presence_error_policy, provider_should_sync_to_live,
-        proxy_urls_match, validate_gemini_settings_basic,
+        proxy_urls_match, validate_gemini_settings_basic, validate_gemini_settings_strict,
         sanitize_claude_settings_for_live,
         opencode_credential_parts_from_settings, openclaw_credential_parts_from_settings,
         should_emit_proxy_official_warning_for_provider_category,
