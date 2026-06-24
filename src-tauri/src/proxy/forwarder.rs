@@ -36,7 +36,7 @@ use crate::proxy_core_adapter::{
 use crate::proxy_core_adapter::{
     build_codex_oauth_session_headers, prepare_upstream_request_body_with_report,
     forwarder_bedrock_env_flag, forwarder_is_codex_oauth_provider, provider_router_from_database,
-    should_preserve_exact_request_header_case, ForwarderMediaPreventionInput,
+    should_preserve_exact_request_header_case,
     validate_managed_account_upstream_auth,
 };
 use crate::{app_config::AppType, provider::Provider};
@@ -1997,7 +1997,8 @@ mod tests {
         provider: &Provider,
     ) -> usize {
         fwd.request_source
-            .apply_media_prevention(ForwarderMediaPreventionInput {
+            .apply_app_media_prevention(ForwarderAppMediaPreventionInput {
+                app_type: &AppType::Codex,
                 body,
                 provider,
                 rectifier_enabled: fwd.rectifier_config.enabled,

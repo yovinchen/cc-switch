@@ -9274,8 +9274,6 @@ pub(crate) trait ForwarderRequestSource {
 
     fn apply_app_media_prevention(&self, input: ForwarderAppMediaPreventionInput<'_>) -> usize;
 
-    fn apply_media_prevention(&self, input: ForwarderMediaPreventionInput<'_>) -> usize;
-
     fn media_retry_plan(
         &self,
         input: ForwarderMediaRetryPlanInput<'_>,
@@ -9395,6 +9393,33 @@ impl CcSwitchForwarderRequestSource {
             body: warmup_override.body,
             classification,
         }
+    }
+
+    fn apply_media_prevention(&self, input: ForwarderMediaPreventionInput<'_>) -> usize {
+        let policy = resolve_media_prevention_policy(
+            input.rectifier_enabled,
+            input.request_media_fallback,
+            input.request_media_heuristic,
+        );
+        if !policy.should_attempt {
+            return 0;
+        }
+
+        let replaced_images = forwarder_replace_images_for_text_only_provider_model(
+            input.body,
+            input.provider,
+            policy.allow_heuristic,
+        );
+        if replaced_images > 0 {
+            let model = input.body.get("model").and_then(Value::as_str).unwrap_or("");
+            log::info!(
+                "[Media] Replaced {replaced_images} image block(s) with {} for text-only provider={}, model={}",
+                UNSUPPORTED_IMAGE_MARKER,
+                input.provider.id,
+                model
+            );
+        }
+        replaced_images
     }
 }
 
@@ -9696,33 +9721,6 @@ impl ForwarderRequestSource for CcSwitchForwarderRequestSource {
             request_media_fallback: input.request_media_fallback,
             request_media_heuristic: input.request_media_heuristic,
         })
-    }
-
-    fn apply_media_prevention(&self, input: ForwarderMediaPreventionInput<'_>) -> usize {
-        let policy = resolve_media_prevention_policy(
-            input.rectifier_enabled,
-            input.request_media_fallback,
-            input.request_media_heuristic,
-        );
-        if !policy.should_attempt {
-            return 0;
-        }
-
-        let replaced_images = forwarder_replace_images_for_text_only_provider_model(
-            input.body,
-            input.provider,
-            policy.allow_heuristic,
-        );
-        if replaced_images > 0 {
-            let model = input.body.get("model").and_then(Value::as_str).unwrap_or("");
-            log::info!(
-                "[Media] Replaced {replaced_images} image block(s) with {} for text-only provider={}, model={}",
-                UNSUPPORTED_IMAGE_MARKER,
-                input.provider.id,
-                model
-            );
-        }
-        replaced_images
     }
 
     fn media_retry_plan(
