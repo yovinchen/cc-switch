@@ -1139,6 +1139,47 @@ pub fn provider_live_config_presence_error_policy(
     }
 }
 
+pub const CLAUDE_TAKEOVER_TOKEN_ENV_KEYS: [&str; 4] = [
+    "ANTHROPIC_AUTH_TOKEN",
+    "ANTHROPIC_API_KEY",
+    "OPENROUTER_API_KEY",
+    "OPENAI_API_KEY",
+];
+
+pub fn claude_live_config_has_proxy_placeholder(config: &Value, placeholder: &str) -> bool {
+    let Some(env) = config.get("env").and_then(Value::as_object) else {
+        return false;
+    };
+
+    CLAUDE_TAKEOVER_TOKEN_ENV_KEYS
+        .into_iter()
+        .any(|key| env.get(key).and_then(Value::as_str) == Some(placeholder))
+}
+
+pub fn gemini_live_config_has_proxy_placeholder(config: &Value, placeholder: &str) -> bool {
+    config
+        .get("env")
+        .and_then(Value::as_object)
+        .and_then(|env| env.get("GEMINI_API_KEY"))
+        .and_then(Value::as_str)
+        == Some(placeholder)
+}
+
+pub fn is_local_proxy_url(url: &str) -> bool {
+    let url = url.trim();
+    if !url.starts_with("http://") {
+        return false;
+    }
+    let rest = &url["http://".len()..];
+    rest.starts_with("127.0.0.1")
+        || rest.starts_with("localhost")
+        || rest.starts_with("0.0.0.0")
+        || rest.starts_with("[::1]")
+        || rest.starts_with("[::]")
+        || rest.starts_with("::1")
+        || rest.starts_with("::")
+}
+
 pub fn normalize_claude_models_in_value(settings: &mut Value) -> bool {
     let mut changed = false;
     let env = match settings.get_mut("env").and_then(Value::as_object_mut) {
@@ -3635,7 +3676,9 @@ mod tests {
         channel_health_update_from_input,
         channel_model_record_from_input, channel_reachability_result_from_stream_check_result,
         channel_route_source_for_materialized_count,
-        live_takeover_app_kinds, live_token_sync_app_label, normalize_claude_models_in_value,
+        claude_live_config_has_proxy_placeholder, gemini_live_config_has_proxy_placeholder,
+        is_local_proxy_url, live_takeover_app_kinds, live_token_sync_app_label,
+        normalize_claude_models_in_value,
         proxy_config_preserving_live_takeover_active,
         proxy_app_config_from_parts, proxy_config_with_ephemeral_listen_port,
         proxy_config_with_live_takeover_active, proxy_global_config_from_global_config,
@@ -5152,6 +5195,56 @@ mod tests {
         assert!(env.get("ANTHROPIC_SMALL_FAST_MODEL").is_none());
 
         assert!(!normalize_claude_models_in_value(&mut settings));
+    }
+
+    #[test]
+    fn live_proxy_placeholder_probes_detect_claude_and_gemini_tokens() {
+        let placeholder = "PROXY_MANAGED";
+
+        assert!(claude_live_config_has_proxy_placeholder(
+            &json!({ "env": { "ANTHROPIC_API_KEY": placeholder } }),
+            placeholder
+        ));
+        assert!(claude_live_config_has_proxy_placeholder(
+            &json!({ "env": { "OPENROUTER_API_KEY": placeholder } }),
+            placeholder
+        ));
+        assert!(!claude_live_config_has_proxy_placeholder(
+            &json!({ "env": { "ANTHROPIC_AUTH_TOKEN": "real-token" } }),
+            placeholder
+        ));
+        assert!(gemini_live_config_has_proxy_placeholder(
+            &json!({ "env": { "GEMINI_API_KEY": placeholder } }),
+            placeholder
+        ));
+        assert!(!gemini_live_config_has_proxy_placeholder(
+            &json!({ "env": { "GEMINI_API_KEY": "real-key" } }),
+            placeholder
+        ));
+    }
+
+    #[test]
+    fn local_proxy_url_probe_accepts_http_loopback_forms_only() {
+        for url in [
+            " http://127.0.0.1:15721 ",
+            "http://localhost:15721",
+            "http://0.0.0.0:15721",
+            "http://[::1]:15721",
+            "http://[::]:15721",
+            "http://::1:15721",
+            "http://:::15721",
+        ] {
+            assert!(is_local_proxy_url(url), "{url} should be local");
+        }
+
+        for url in [
+            "https://127.0.0.1:15721",
+            "socks5://localhost:15721",
+            "http://relay.example/v1",
+            "",
+        ] {
+            assert!(!is_local_proxy_url(url), "{url} should not be local");
+        }
     }
 
     #[test]

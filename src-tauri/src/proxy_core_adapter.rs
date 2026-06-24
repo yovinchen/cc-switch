@@ -296,6 +296,9 @@ pub(crate) type ProxyRuntimeStatus = crate::proxy_core::api::ports::ProxyRuntime
 
 pub(crate) use crate::proxy_core::api::ports::{
     app_proxy_config_with_enabled as proxy_app_config_with_enabled, live_takeover_app_kinds,
+    claude_live_config_has_proxy_placeholder as core_claude_live_config_has_proxy_placeholder,
+    gemini_live_config_has_proxy_placeholder as core_gemini_live_config_has_proxy_placeholder,
+    is_local_proxy_url as core_is_local_proxy_url,
     live_token_sync_app_label as core_live_token_sync_app_label,
     normalize_claude_models_in_value as core_normalize_claude_models_in_value,
     provider_additive_live_write_action_for_app as core_provider_additive_live_write_action,
@@ -322,7 +325,8 @@ pub(crate) use crate::proxy_core::api::ports::{
     provider_should_sync_to_live as core_provider_should_sync_to_live,
     should_skip_manual_default_live_import as core_should_skip_manual_default_live_import,
     should_skip_startup_default_live_import as core_should_skip_startup_default_live_import,
-    LocalizedErrorSpec, ProviderAdditiveLiveWriteAction, ProviderAdditiveUpdateRoute,
+    LocalizedErrorSpec, CLAUDE_TAKEOVER_TOKEN_ENV_KEYS, ProviderAdditiveLiveWriteAction,
+    ProviderAdditiveUpdateRoute,
     ProviderCredentialIssue, ProviderKeyChangePolicyIssue, ProviderLiveConfigPresenceErrorPolicy,
     ProviderLiveRemovalTarget, ProviderLiveSyncScope, ProviderOmoSwitchPair, ProviderOmoVariant,
     ProviderSwitchDispatch, ProviderTakeoverLiveSyncTarget,
@@ -11231,36 +11235,12 @@ pub(crate) fn sync_provider_settings_with_live_token(
     }
 }
 
-const CLAUDE_TAKEOVER_TOKEN_ENV_KEYS: [&str; 4] = [
-    "ANTHROPIC_AUTH_TOKEN",
-    "ANTHROPIC_API_KEY",
-    "OPENROUTER_API_KEY",
-    "OPENAI_API_KEY",
-];
-
 pub(crate) fn claude_live_config_has_proxy_placeholder(config: &Value, placeholder: &str) -> bool {
-    let Some(env) = config.get("env").and_then(Value::as_object) else {
-        return false;
-    };
-
-    CLAUDE_TAKEOVER_TOKEN_ENV_KEYS
-        .into_iter()
-        .any(|key| env.get(key).and_then(Value::as_str) == Some(placeholder))
+    core_claude_live_config_has_proxy_placeholder(config, placeholder)
 }
 
 pub(crate) fn is_local_proxy_url(url: &str) -> bool {
-    let url = url.trim();
-    if !url.starts_with("http://") {
-        return false;
-    }
-    let rest = &url["http://".len()..];
-    rest.starts_with("127.0.0.1")
-        || rest.starts_with("localhost")
-        || rest.starts_with("0.0.0.0")
-        || rest.starts_with("[::1]")
-        || rest.starts_with("[::]")
-        || rest.starts_with("::1")
-        || rest.starts_with("::")
+    core_is_local_proxy_url(url)
 }
 
 pub(crate) fn remove_claude_takeover_env_fields_if_present<F>(
@@ -11487,12 +11467,7 @@ pub(crate) fn codex_live_write_projection(
 }
 
 pub(crate) fn gemini_live_config_has_proxy_placeholder(config: &Value, placeholder: &str) -> bool {
-    config
-        .get("env")
-        .and_then(Value::as_object)
-        .and_then(|env| env.get("GEMINI_API_KEY"))
-        .and_then(Value::as_str)
-        == Some(placeholder)
+    core_gemini_live_config_has_proxy_placeholder(config, placeholder)
 }
 
 pub(crate) fn apply_gemini_takeover_env_fields(
