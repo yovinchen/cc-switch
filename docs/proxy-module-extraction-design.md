@@ -441,7 +441,7 @@
 430. request-started runtime status 的 timestamp 生成已收敛到 `ForwarderRuntimeStateSource::record_request_started_now()`；host forwarder 不再直接调用 `chrono::Utc` 或传递中间时间字符串。
 431. request lifecycle id 生成已收敛到 `ForwarderRuntimeStateSource::next_request_id()`；host forwarder 不再直接调用 `uuid::Uuid::new_v4()`，只消费 runtime source 提供的 request id。
 432. active connection RAII guard 类型已从 `proxy::forwarder` 移到 `proxy_core_adapter::ActiveConnectionGuard`；forwarder/handler/response processor 继续传递同一 guard，但运行态连接计数生命周期类型归属 adapter 边界。
-433. `CcSwitchProxyRuntime` 显式持有 `ProxyEventBus` 并供 `CcSwitchProxyServices` event sink 装配使用；`ForwarderRuntimeStateSource::events()` 已收窄为测试专用，生产运行态 source 不再暴露 event bus 读出口。
+433. `CcSwitchProxyRuntime` 显式持有 `ProxyEventBus` 并供 `CcSwitchProxyServices` event sink 装配使用；`ForwarderRuntimeStateSource` 不再暴露 event bus 读出口，测试观测也改由 fixture 自持 event handle。
 434. `CcSwitchProxyRuntime` 显式持有 current route target map 并供 provider/app summary source 装配使用；`ForwarderRuntimeStateSource` 不再暴露 `current_providers()` 读出口，只保留 active route target 写入语义方法。
 435. `ForwarderAuthSource` 现在持有 managed-account runtime source 并负责托管账号 auth 解析；`RequestForwarder` 在上游 auth headers 阶段不再把 `ManagedAccountRuntimeSource` 作为 input 字段转手传递。
 436. request-side 托管账号运行态决策已收进 `ForwarderRequestSource`：Copilot live model 覆写、Copilot dynamic base URL 和 Claude API format runtime resolution 不再由 `RequestForwarder` 直连 `ManagedAccountRuntimeSource`。
@@ -457,6 +457,7 @@
 446. `ForwarderRequestSource` trait 不再暴露 `optimize_copilot_request` Copilot optimizer sequencing helper；Copilot 分类、孤立 tool_result 清理、tool_result 合并、thinking strip 与 warmup 模型降级仍由默认 source 内部执行，外部替换 source 只面对 `prepare_copilot_request_optimization` 的完整优化 gate 结果。
 447. `ForwarderRequestSource` trait 不再暴露 `apply_media_prevention` media replacement helper；预防式图片替换策略、text-only provider/model 判定与替换日志仍由默认 source 内部执行，外部替换 source 只面对 `apply_app_media_prevention` 与 `apply_claude_body_policies` 的行为级入口。
 448. `ForwarderRuntimeStateSource` trait 不再暴露测试用 `status()` / `events()` 读 handle；默认 runtime source 仍持有 status、current route target map 与 event bus，但 forwarder 测试改由本地 fixture 保存观测 handle，外部替换 runtime source 只实现语义化状态/事件写入端口。
+449. `ForwarderAuthSource` trait 不再暴露 `prepare_copilot_auth_optimization` direct helper；Copilot auth override 的 session id、deterministic request id 与 interaction id sequencing 仍由默认 auth source 内部执行，外部替换 auth source 只面对 `prepare_optional_copilot_auth_optimization` 的行为级入口。
 407. `proxy::types::ApiFormat` 未使用预留枚举已删除；Claude/OpenAI/Gemini format 判断统一沿用 `proxy-core` 的 provider kind、client format 和 response transform contract。
 408. `LogConfig` 已从 `proxy::types` 移到 `settings::LogConfig`；日志设置不再扩大代理运行态类型模块，proxy host types 只保留代理状态/备份等运行态数据。
 409. `RectifierConfig` 的默认值、serde 和 core 检测投影测试已从 host `proxy::types` 迁入 `proxy-core::ports`；host proxy types 不再承担 core 配置契约测试。
@@ -1227,6 +1228,7 @@
 本轮继续把 thinking signature/budget rectifier 的错误触发判断、Anthropic app/provider gate 与请求体整流收敛到 `ForwarderRequestSource`：`RequestForwarder` 不再直接抽取 rectifier 错误文本、调用 signature/budget 判定或 app/provider gate helper，只根据 request source 返回的 rectifier plan 编排同 provider 重试与失败归因。
 本轮继续把 forwarder 的上游 auth header 准备包装为 `ForwarderAuthSource`：`RequestForwarder` 不再直接提取 provider auth、解析 managed-account runtime token、构造 Codex OAuth session headers、注入 Copilot optimizer auth overrides 或调用 upstream auth finalization helper，默认 source 保持现有鉴权语义，后续外部宿主可替换鉴权头组装层。
 本轮继续把 Copilot auth override 的可选准备、request classification/deterministic request id gate、deterministic request id 与 interaction id 计算收敛到 `ForwarderAuthSource`：`RequestForwarder` 不再直接调用 Copilot session/request/interaction helper，也不再读取 optimizer auth override 配置字段，只把可选分类事实、配置、原始 body、上游 body 和 headers 交给 auth source。
+本轮继续把 `prepare_copilot_auth_optimization` 从 `ForwarderAuthSource` trait surface 收进默认 source 内部：direct Copilot auth override sequencing 仍由默认 auth source 包装，但外部替换 source 只需实现 `prepare_optional_copilot_auth_optimization` 行为级入口。
 本轮继续把 Copilot optimizer 的启用 gate、请求体分类与变形收敛到 `ForwarderRequestSource`：`RequestForwarder` 不再直接判断 Copilot optimizer 是否运行，也不再直接调用 Copilot 分类、孤立 tool_result 清理、tool_result 合并、thinking block 剥离或 warmup 模型降级 helper，只消费 request source 返回的优化后 body 与可选分类事实。
 
 当前原则：核心 crate 可以新增端口和领域字段，但不得引入 `tauri`、`Database`、settings、commands、services 等宿主依赖；现有 runtime 行为必须继续通过 targeted tests 证明不回归。
