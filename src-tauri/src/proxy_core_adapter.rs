@@ -1022,8 +1022,8 @@ pub(crate) type ClaudeProviderAuthHeadersInput<'a> =
 #[cfg(test)]
 pub(crate) type CopilotAuthHeadersInput<'a> =
     crate::proxy_core::api::transport::CopilotAuthHeadersInput<'a>;
-pub(crate) type CopilotAuthHeaderOverrides<'a> =
-    crate::proxy_core::api::transport::CopilotAuthHeaderOverrides<'a>;
+pub(crate) type CopilotAuthHeaderOverrideFacts<'a> =
+    crate::proxy_core::api::transport::CopilotAuthHeaderOverrideFacts<'a>;
 pub(crate) type CopilotClassification = crate::proxy_core::api::transport::CopilotClassification;
 pub(crate) type ResponseRuntimePolicy = crate::proxy_core::api::config::ResponseRuntimePolicy;
 pub(crate) type ResponseTimeoutConfig = crate::proxy_core::api::config::ResponseTimeoutConfig;
@@ -3090,7 +3090,7 @@ pub(crate) use crate::proxy_core::api::transport::{
     apply_copilot_warmup_model_override, bedrock_env_flag_from_provider_settings,
     build_auth_provider_headers, build_claude_provider_auth_headers, build_claude_upstream_url,
     build_codex_oauth_session_headers_for_forwarder, build_codex_provider_auth_headers,
-    build_codex_upstream_url,
+    build_codex_upstream_url, build_copilot_auth_header_overrides_for_forwarder,
     build_gemini_provider_auth_headers, build_retryable_forward_failure_log,
     build_terminal_forward_failure_log, build_upstream_auth_headers, categorize_forward_failure,
     classify_copilot_request, claude_transform_endpoint_rewrite_input_from_body,
@@ -3107,6 +3107,7 @@ pub(crate) use crate::proxy_core::api::transport::{
     should_apply_bedrock_pre_send_optimizer, should_check_media_retry,
     should_convert_codex_responses_endpoint_to_chat, should_failover_after_rectifier_retry_failure,
     should_preserve_exact_request_header_case, should_send_anthropic_request_headers,
+    should_log_copilot_subagent_auth_override,
     should_trigger_media_retry, split_endpoint_and_query, strip_copilot_thinking_blocks,
     supports_reasoning_effort, UNSUPPORTED_IMAGE_MARKER,
 };
@@ -8845,14 +8846,18 @@ impl ForwarderAuthSource for CcSwitchForwarderAuthSource {
 
             let copilot_auth_header_overrides =
                 input.copilot_optimization.as_ref().map(|optimization| {
-                    CopilotAuthHeaderOverrides {
-                        initiator: optimization
-                            .request_classification_enabled
-                            .then_some(optimization.initiator),
-                        is_subagent: optimization.is_subagent,
-                        deterministic_request_id: optimization.deterministic_request_id.as_deref(),
-                        interaction_id: optimization.interaction_id.as_deref(),
-                    }
+                    build_copilot_auth_header_overrides_for_forwarder(
+                        CopilotAuthHeaderOverrideFacts {
+                            request_classification_enabled: optimization
+                                .request_classification_enabled,
+                            initiator: optimization.initiator,
+                            is_subagent: optimization.is_subagent,
+                            deterministic_request_id: optimization
+                                .deterministic_request_id
+                                .as_deref(),
+                            interaction_id: optimization.interaction_id.as_deref(),
+                        },
+                    )
                 });
 
             auth_headers = build_upstream_auth_headers(UpstreamAuthHeadersInput {
@@ -8861,11 +8866,7 @@ impl ForwarderAuthSource for CcSwitchForwarderAuthSource {
                 copilot_overrides: copilot_auth_header_overrides,
             });
 
-            if input
-                .copilot_optimization
-                .as_ref()
-                .is_some_and(|optimization| optimization.is_subagent)
-            {
+            if should_log_copilot_subagent_auth_override(copilot_auth_header_overrides) {
                 log::info!(
                     "[Copilot] 子代理请求: x-initiator=agent, x-interaction-type=conversation-subagent"
                 );
@@ -16057,6 +16058,73 @@ base_url = "https://api.openai.com/v1"
         assert_eq!(
             session_headers.get("x-codex-window-id"),
             Some(&http::HeaderValue::from_static("session-a:0"))
+        );
+    }
+
+    #[tokio::test]
+    async fn forwarder_auth_source_uses_core_copilot_auth_override_facts() {
+        let source = forwarder_auth_source_from_managed_account_runtime_source(Arc::new(
+            StaticManagedAuthResolutionSource,
+        ));
+        let adapter = forwarder_provider_adapter_for_app(&AppType::Claude);
+        let provider = provider_with_managed_account_binding("github_copilot", "copilot-acct");
+        let attempt = ForwardAttempt::from_provider(provider);
+        let method = Method::POST;
+        let body = json!({ "model": "claude-sonnet-4" });
+        let headers = HeaderMap::new();
+
+        let resolved = source
+            .resolve_upstream_auth_headers(ForwarderAuthHeadersInput {
+                adapter: adapter.as_ref(),
+                app_type: &AppType::Claude,
+                method: &method,
+                endpoint: "/v1/messages",
+                request_body: &body,
+                request_headers: &headers,
+                attempt: &attempt,
+                session_id: "session-a",
+                session_client_provided: false,
+                copilot_optimization: Some(ForwarderPreparedCopilotAuthOptimization {
+                    request_classification_enabled: true,
+                    initiator: "agent",
+                    is_subagent: true,
+                    deterministic_request_id: Some("request-id".to_string()),
+                    interaction_id: Some("interaction-id".to_string()),
+                }),
+            })
+            .await
+            .expect("resolve copilot auth headers");
+
+        let mut map = HeaderMap::new();
+        for (name, value) in resolved.auth_headers {
+            map.insert(name, value);
+        }
+
+        assert_eq!(
+            map.get(http::header::AUTHORIZATION),
+            Some(&http::HeaderValue::from_static(
+                "Bearer copilot-token:copilot-acct"
+            ))
+        );
+        assert_eq!(
+            map.get("x-initiator"),
+            Some(&http::HeaderValue::from_static("agent"))
+        );
+        assert_eq!(
+            map.get("x-interaction-type"),
+            Some(&http::HeaderValue::from_static("conversation-subagent"))
+        );
+        assert_eq!(
+            map.get("x-request-id"),
+            Some(&http::HeaderValue::from_static("request-id"))
+        );
+        assert_eq!(
+            map.get("x-agent-task-id"),
+            Some(&http::HeaderValue::from_static("request-id"))
+        );
+        assert_eq!(
+            map.get("x-interaction-id"),
+            Some(&http::HeaderValue::from_static("interaction-id"))
         );
     }
 

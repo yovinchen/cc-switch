@@ -79,6 +79,14 @@ pub struct CopilotAuthHeaderOverrides<'a> {
     pub interaction_id: Option<&'a str>,
 }
 
+pub struct CopilotAuthHeaderOverrideFacts<'a> {
+    pub request_classification_enabled: bool,
+    pub initiator: &'a str,
+    pub is_subagent: bool,
+    pub deterministic_request_id: Option<&'a str>,
+    pub interaction_id: Option<&'a str>,
+}
+
 pub struct CopilotAuthHeadersInput<'a> {
     pub api_key: &'a str,
     pub request_id: &'a str,
@@ -369,6 +377,25 @@ pub fn build_codex_oauth_session_headers_for_forwarder(
     } else {
         Vec::new()
     }
+}
+
+pub fn build_copilot_auth_header_overrides_for_forwarder<'a>(
+    facts: CopilotAuthHeaderOverrideFacts<'a>,
+) -> CopilotAuthHeaderOverrides<'a> {
+    CopilotAuthHeaderOverrides {
+        initiator: facts
+            .request_classification_enabled
+            .then_some(facts.initiator),
+        is_subagent: facts.is_subagent,
+        deterministic_request_id: facts.deterministic_request_id,
+        interaction_id: facts.interaction_id,
+    }
+}
+
+pub fn should_log_copilot_subagent_auth_override(
+    overrides: Option<CopilotAuthHeaderOverrides<'_>>,
+) -> bool {
+    overrides.is_some_and(|overrides| overrides.is_subagent)
 }
 
 pub fn build_upstream_auth_headers(
@@ -674,14 +701,16 @@ mod tests {
         build_claude_auth_headers, build_claude_provider_auth_headers,
         build_codex_bearer_auth_headers, build_codex_oauth_session_headers,
         build_codex_oauth_session_headers_for_forwarder, build_codex_provider_auth_headers,
-        build_copilot_auth_headers, build_gemini_auth_headers, build_gemini_provider_auth_headers,
-        build_upstream_auth_headers, build_upstream_request_headers,
-        claude_auth_header_kind_for_provider_strategy, is_official_codex_client_user_agent,
+        build_copilot_auth_header_overrides_for_forwarder, build_copilot_auth_headers,
+        build_gemini_auth_headers, build_gemini_provider_auth_headers, build_upstream_auth_headers,
+        build_upstream_request_headers, claude_auth_header_kind_for_provider_strategy,
+        is_official_codex_client_user_agent, should_log_copilot_subagent_auth_override,
         should_preserve_exact_request_header_case, should_send_anthropic_request_headers,
         should_skip_copilot_fingerprint_request_header, should_strip_forwarded_request_header,
         upstream_host_header_from_url, ClaudeAuthHeaderKind, ClaudeProviderAuthHeadersInput,
-        CopilotAuthHeaderOverrides, CopilotAuthHeadersInput, UpstreamAuthHeadersInput,
-        UpstreamRequestHeadersInput, CLAUDE_CODE_BETA, DEFAULT_ANTHROPIC_VERSION,
+        CopilotAuthHeaderOverrideFacts, CopilotAuthHeaderOverrides, CopilotAuthHeadersInput,
+        UpstreamAuthHeadersInput, UpstreamRequestHeadersInput, CLAUDE_CODE_BETA,
+        DEFAULT_ANTHROPIC_VERSION,
     };
     use crate::error::ProxyCoreError;
     use crate::ports::AuthInfo;
@@ -1238,6 +1267,39 @@ mod tests {
             map.get("x-client-request-id"),
             Some(&HeaderValue::from_static("session-123"))
         );
+    }
+
+    #[test]
+    fn builds_copilot_auth_header_overrides_from_forwarder_facts() {
+        let overrides =
+            build_copilot_auth_header_overrides_for_forwarder(CopilotAuthHeaderOverrideFacts {
+                request_classification_enabled: true,
+                initiator: "agent",
+                is_subagent: true,
+                deterministic_request_id: Some("request-id"),
+                interaction_id: Some("interaction-id"),
+            });
+
+        assert_eq!(overrides.initiator, Some("agent"));
+        assert!(overrides.is_subagent);
+        assert_eq!(overrides.deterministic_request_id, Some("request-id"));
+        assert_eq!(overrides.interaction_id, Some("interaction-id"));
+        assert!(should_log_copilot_subagent_auth_override(Some(overrides)));
+
+        let disabled_initiator =
+            build_copilot_auth_header_overrides_for_forwarder(CopilotAuthHeaderOverrideFacts {
+                request_classification_enabled: false,
+                initiator: "agent",
+                is_subagent: false,
+                deterministic_request_id: None,
+                interaction_id: None,
+            });
+
+        assert_eq!(disabled_initiator.initiator, None);
+        assert!(!should_log_copilot_subagent_auth_override(Some(
+            disabled_initiator
+        )));
+        assert!(!should_log_copilot_subagent_auth_override(None));
     }
 
     #[test]
