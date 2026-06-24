@@ -8,7 +8,8 @@ use crate::database::{
 use crate::error::AppError;
 use crate::openclaw_config::OpenClawProviderConfig;
 use crate::provider::{
-    OpenCodeProviderConfig, Provider, ProviderMeta, ProviderTestConfig, UsageScript,
+    AuthBindingSource, OpenCodeProviderConfig, Provider, ProviderMeta, ProviderTestConfig,
+    UsageScript,
 };
 use crate::proxy::codex_chat_history::{record_responses_sse_stream, CodexChatHistoryStore};
 use crate::proxy::error::{proxy_error_status_kind, ProxyError};
@@ -2981,15 +2982,14 @@ pub(crate) use crate::proxy_core::api::auth::{
     validate_management_bearer_header, ManagementAuthDecision,
 };
 pub(crate) use crate::proxy_core::api::auth::{
-    resolve_copilot_dynamic_base_url_with_runtime_source
-        as resolve_core_copilot_dynamic_base_url_with_runtime_source,
-    resolve_copilot_live_model_with_runtime_source
-        as resolve_core_copilot_live_model_with_runtime_source,
-    resolve_copilot_model_vendor_with_runtime_source
-        as resolve_core_copilot_model_vendor_with_runtime_source,
+    managed_account_id_for_auth_provider as core_managed_account_id_for_auth_provider,
+    resolve_copilot_dynamic_base_url_with_runtime_source as resolve_core_copilot_dynamic_base_url_with_runtime_source,
+    resolve_copilot_live_model_with_runtime_source as resolve_core_copilot_live_model_with_runtime_source,
+    resolve_copilot_model_vendor_with_runtime_source as resolve_core_copilot_model_vendor_with_runtime_source,
     resolve_managed_account_auth_with_runtime_source as resolve_core_managed_account_auth_with_runtime_source,
-    ManagedAccountAuthResolution, ManagedAccountAuthRuntime,
-    ManagedAccountRuntimeSource as CoreManagedAccountRuntimeSource,
+    ManagedAccountAuthResolution, ManagedAccountAuthRuntime, ManagedAccountBindingInput,
+    ManagedAccountBindingSource, ManagedAccountRuntimeSource as CoreManagedAccountRuntimeSource,
+    CODEX_OAUTH_AUTH_PROVIDER, GITHUB_COPILOT_AUTH_PROVIDER,
 };
 pub(crate) use crate::proxy_core::api::config::{
     app_proxy_config_defaults_for_app, app_type_from_circuit_key, cache_injection_log_message,
@@ -11709,18 +11709,38 @@ pub(crate) fn provider_is_github_copilot_stream_check_target(provider: &Provider
     provider_is_github_copilot_upstream(provider, base_url)
 }
 
+fn provider_managed_account_binding_input(
+    meta: &ProviderMeta,
+) -> Option<ManagedAccountBindingInput<'_>> {
+    let binding = meta.auth_binding.as_ref()?;
+    Some(ManagedAccountBindingInput {
+        source: match binding.source {
+            AuthBindingSource::ProviderConfig => ManagedAccountBindingSource::ProviderConfig,
+            AuthBindingSource::ManagedAccount => ManagedAccountBindingSource::ManagedAccount,
+        },
+        auth_provider: binding.auth_provider.as_deref(),
+        account_id: binding.account_id.as_deref(),
+    })
+}
+
+pub(crate) fn provider_managed_account_id_for(
+    provider: &Provider,
+    auth_provider: &str,
+) -> Option<String> {
+    let meta = provider.meta.as_ref()?;
+    core_managed_account_id_for_auth_provider(
+        auth_provider,
+        provider_managed_account_binding_input(meta),
+        meta.github_account_id.as_deref(),
+    )
+}
+
 pub(crate) fn provider_github_copilot_managed_account_id(provider: &Provider) -> Option<String> {
-    provider
-        .meta
-        .as_ref()
-        .and_then(|meta| meta.managed_account_id_for("github_copilot"))
+    provider_managed_account_id_for(provider, GITHUB_COPILOT_AUTH_PROVIDER)
 }
 
 pub(crate) fn provider_codex_oauth_managed_account_id(provider: &Provider) -> Option<String> {
-    provider
-        .meta
-        .as_ref()
-        .and_then(|meta| meta.managed_account_id_for("codex_oauth"))
+    provider_managed_account_id_for(provider, CODEX_OAUTH_AUTH_PROVIDER)
 }
 
 pub(crate) fn provider_usage_script(provider: Option<&Provider>) -> Option<&UsageScript> {
@@ -14439,8 +14459,8 @@ fn provider_metadata_without_secrets(provider: &Provider) -> ProviderMetadata {
 fn account_ref(provider: &Provider) -> Option<String> {
     provider.meta.as_ref().and_then(|meta| {
         let provider_type = meta.provider_type.as_deref();
-        let account_id =
-            provider_type.and_then(|provider_type| meta.managed_account_id_for(provider_type));
+        let account_id = provider_type
+            .and_then(|provider_type| provider_managed_account_id_for(provider, provider_type));
         provider_account_ref(provider_type, account_id.as_deref())
     })
 }
@@ -24488,6 +24508,53 @@ command = "latest-command"
         assert!(!serialized.contains("secret-token"));
         assert!(!serialized.contains("ANTHROPIC_AUTH_TOKEN"));
         assert!(!serialized.contains("settingsConfig"));
+    }
+
+    #[test]
+    fn provider_managed_account_binding_projection_uses_core_policy() {
+        let mut legacy_provider = Provider::with_id(
+            "legacy-copilot".to_string(),
+            "Legacy Copilot".to_string(),
+            json!({}),
+            None,
+        );
+        legacy_provider.meta = Some(ProviderMeta {
+            provider_type: Some("github_copilot".to_string()),
+            github_account_id: Some("legacy-acct".to_string()),
+            ..ProviderMeta::default()
+        });
+
+        assert_eq!(
+            provider_github_copilot_managed_account_id(&legacy_provider).as_deref(),
+            Some("legacy-acct")
+        );
+        assert_eq!(
+            account_ref(&legacy_provider).as_deref(),
+            Some("github_copilot:legacy-acct")
+        );
+
+        let mut default_account_provider = Provider::with_id(
+            "default-copilot".to_string(),
+            "Default Copilot".to_string(),
+            json!({}),
+            None,
+        );
+        default_account_provider.meta = Some(ProviderMeta {
+            provider_type: Some("github_copilot".to_string()),
+            github_account_id: Some("legacy-acct".to_string()),
+            auth_binding: Some(AuthBinding {
+                source: AuthBindingSource::ManagedAccount,
+                auth_provider: Some("github_copilot".to_string()),
+                account_id: None,
+            }),
+            ..ProviderMeta::default()
+        });
+
+        assert_eq!(
+            provider_github_copilot_managed_account_id(&default_account_provider),
+            None
+        );
+        assert_eq!(account_ref(&default_account_provider), None);
     }
 
     #[test]

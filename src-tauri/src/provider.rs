@@ -507,25 +507,6 @@ impl ProviderMeta {
     pub fn custom_user_agent_header(&self) -> Result<Option<HeaderValue>, InvalidHeaderValue> {
         parse_custom_user_agent(self.custom_user_agent.as_deref())
     }
-
-    /// 解析指定托管认证供应商绑定的账号 ID。
-    ///
-    /// 新版优先读取 authBinding，旧版继续兼容 githubAccountId。
-    pub fn managed_account_id_for(&self, auth_provider: &str) -> Option<String> {
-        if let Some(binding) = self.auth_binding.as_ref() {
-            if binding.source == AuthBindingSource::ManagedAccount
-                && binding.auth_provider.as_deref() == Some(auth_provider)
-            {
-                return binding.account_id.clone();
-            }
-        }
-
-        if auth_provider == "github_copilot" {
-            return self.github_account_id.clone();
-        }
-
-        None
-    }
 }
 
 impl ProviderManager {

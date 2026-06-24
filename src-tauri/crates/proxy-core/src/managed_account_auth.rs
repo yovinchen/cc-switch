@@ -7,6 +7,8 @@ use crate::provider_auth::{ProviderAuthInfo, ProviderAuthStrategy};
 use crate::request_url::resolved_copilot_dynamic_base_url;
 
 pub const PROXY_AUTH_PLACEHOLDER: &str = "PROXY_MANAGED";
+pub const GITHUB_COPILOT_AUTH_PROVIDER: &str = "github_copilot";
+pub const CODEX_OAUTH_AUTH_PROVIDER: &str = "codex_oauth";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ManagedAccountAuthRuntime {
@@ -41,6 +43,19 @@ pub struct ManagedAccountAuthResolution {
     pub should_send_codex_oauth_session_headers: bool,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ManagedAccountBindingSource {
+    ProviderConfig,
+    ManagedAccount,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ManagedAccountBindingInput<'a> {
+    pub source: ManagedAccountBindingSource,
+    pub auth_provider: Option<&'a str>,
+    pub account_id: Option<&'a str>,
+}
+
 impl ManagedAccountAuthResolution {
     pub fn passthrough(auth: ProviderAuthInfo) -> Self {
         Self {
@@ -61,6 +76,26 @@ impl ManagedAccountAuthResolution {
             should_send_codex_oauth_session_headers,
         }
     }
+}
+
+pub fn managed_account_id_for_auth_provider(
+    auth_provider: &str,
+    binding: Option<ManagedAccountBindingInput<'_>>,
+    legacy_github_copilot_account_id: Option<&str>,
+) -> Option<String> {
+    if let Some(binding) = binding {
+        if binding.source == ManagedAccountBindingSource::ManagedAccount
+            && binding.auth_provider == Some(auth_provider)
+        {
+            return binding.account_id.map(str::to_string);
+        }
+    }
+
+    if auth_provider == GITHUB_COPILOT_AUTH_PROVIDER {
+        return legacy_github_copilot_account_id.map(str::to_string);
+    }
+
+    None
 }
 
 impl ManagedAccountAuthPlan {
@@ -162,13 +197,10 @@ pub async fn resolve_copilot_dynamic_base_url_with_runtime_source<S>(
 where
     S: ManagedAccountRuntimeSource + ?Sized,
 {
-    let dynamic_endpoint = runtime_source.resolve_copilot_api_endpoint(account_id).await?;
-    resolved_copilot_dynamic_base_url(
-        current_base_url,
-        &dynamic_endpoint,
-        is_copilot,
-        is_full_url,
-    )
+    let dynamic_endpoint = runtime_source
+        .resolve_copilot_api_endpoint(account_id)
+        .await?;
+    resolved_copilot_dynamic_base_url(current_base_url, &dynamic_endpoint, is_copilot, is_full_url)
 }
 
 pub async fn resolve_copilot_live_model_with_runtime_source<S>(
@@ -271,12 +303,14 @@ pub fn headers_contain_proxy_auth_placeholder(headers: &HeaderMap) -> bool {
 mod tests {
     use super::{
         headers_contain_proxy_auth_placeholder, is_managed_account_upstream_url,
-        managed_account_auth_plan, resolve_managed_account_auth_with_runtime_source,
-        resolve_copilot_dynamic_base_url_with_runtime_source,
+        managed_account_auth_plan, resolve_copilot_dynamic_base_url_with_runtime_source,
         resolve_copilot_live_model_with_runtime_source,
-        resolve_copilot_model_vendor_with_runtime_source, validate_managed_account_upstream_auth,
+        resolve_copilot_model_vendor_with_runtime_source,
+        resolve_managed_account_auth_with_runtime_source, validate_managed_account_upstream_auth,
         ManagedAccountAuthError, ManagedAccountAuthPlan, ManagedAccountAuthResolution,
-        ManagedAccountAuthRuntime, ManagedAccountRuntimeSource, PROXY_AUTH_PLACEHOLDER,
+        ManagedAccountAuthRuntime, ManagedAccountBindingInput, ManagedAccountBindingSource,
+        ManagedAccountRuntimeSource, CODEX_OAUTH_AUTH_PROVIDER, GITHUB_COPILOT_AUTH_PROVIDER,
+        PROXY_AUTH_PLACEHOLDER,
     };
     use futures::{executor::block_on, future::BoxFuture};
     use http::{HeaderMap, HeaderValue};
@@ -487,6 +521,81 @@ mod tests {
     }
 
     #[test]
+    fn managed_account_binding_input_resolves_current_and_legacy_account_ids() {
+        let github_binding = ManagedAccountBindingInput {
+            source: ManagedAccountBindingSource::ManagedAccount,
+            auth_provider: Some(GITHUB_COPILOT_AUTH_PROVIDER),
+            account_id: Some("copilot-account"),
+        };
+        assert_eq!(
+            super::managed_account_id_for_auth_provider(
+                GITHUB_COPILOT_AUTH_PROVIDER,
+                Some(github_binding),
+                Some("legacy-account"),
+            )
+            .as_deref(),
+            Some("copilot-account")
+        );
+
+        let codex_binding = ManagedAccountBindingInput {
+            source: ManagedAccountBindingSource::ManagedAccount,
+            auth_provider: Some(CODEX_OAUTH_AUTH_PROVIDER),
+            account_id: Some("codex-account"),
+        };
+        assert_eq!(
+            super::managed_account_id_for_auth_provider(
+                CODEX_OAUTH_AUTH_PROVIDER,
+                Some(codex_binding),
+                Some("legacy-account"),
+            )
+            .as_deref(),
+            Some("codex-account")
+        );
+
+        assert_eq!(
+            super::managed_account_id_for_auth_provider(
+                GITHUB_COPILOT_AUTH_PROVIDER,
+                None,
+                Some("legacy-account"),
+            )
+            .as_deref(),
+            Some("legacy-account")
+        );
+    }
+
+    #[test]
+    fn managed_account_binding_input_preserves_source_and_empty_account_semantics() {
+        let provider_config_binding = ManagedAccountBindingInput {
+            source: ManagedAccountBindingSource::ProviderConfig,
+            auth_provider: Some(GITHUB_COPILOT_AUTH_PROVIDER),
+            account_id: Some("ignored-account"),
+        };
+        assert_eq!(
+            super::managed_account_id_for_auth_provider(
+                GITHUB_COPILOT_AUTH_PROVIDER,
+                Some(provider_config_binding),
+                Some("legacy-account"),
+            )
+            .as_deref(),
+            Some("legacy-account")
+        );
+
+        let default_account_binding = ManagedAccountBindingInput {
+            source: ManagedAccountBindingSource::ManagedAccount,
+            auth_provider: Some(GITHUB_COPILOT_AUTH_PROVIDER),
+            account_id: None,
+        };
+        assert_eq!(
+            super::managed_account_id_for_auth_provider(
+                GITHUB_COPILOT_AUTH_PROVIDER,
+                Some(default_account_binding),
+                Some("legacy-account"),
+            ),
+            None
+        );
+    }
+
+    #[test]
     fn managed_account_runtime_source_resolution_passes_through_non_runtime_auth() {
         let source = StaticManagedRuntimeSource;
         let auth = ProviderAuthInfo::new("sk-test".to_string(), ProviderAuthStrategy::Bearer);
@@ -533,7 +642,10 @@ mod tests {
         .expect("codex oauth resolution");
         assert_eq!(codex.auth.api_key, "codex-token:codex-account");
         assert_eq!(codex.auth.strategy, ProviderAuthStrategy::CodexOAuth);
-        assert_eq!(codex.codex_oauth_account_id.as_deref(), Some("codex-account"));
+        assert_eq!(
+            codex.codex_oauth_account_id.as_deref(),
+            Some("codex-account")
+        );
         assert!(codex.should_send_codex_oauth_session_headers);
     }
 
