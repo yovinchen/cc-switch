@@ -18,7 +18,7 @@ use crate::proxy_core_adapter::{
     ForwarderFailureDecision, ForwarderMediaRetryPlanInput, ForwarderProviderRequestBodyInput,
     ForwarderProviderUrlFacts, ForwarderProviderUrlFactsInput,
     ForwarderRequestBodyTransformInput, ForwarderRequestRectifierPlan,
-    ForwarderRectifierRetryFailureDecision, ForwarderFailoverSwitchTarget,
+    ForwarderRectifierRetryFailureDecision, ForwarderRectifierRetryKind, ForwarderFailoverSwitchTarget,
     ForwarderThinkingBudgetRectifierInput, ForwarderThinkingSignatureRectifierInput,
     ForwarderTransformPlanInput, OptimizerConfig,
     FailoverSwitchSchedulerRef, ForwarderAttemptRuntimeSourceRef,
@@ -565,6 +565,7 @@ impl RequestForwarder {
                             })
                     {
                         let _ = std::mem::replace(&mut media_rectifier_retried, true);
+                        let retry_kind = ForwarderRectifierRetryKind::MediaFallback;
 
                         match self
                             .forward(
@@ -581,7 +582,12 @@ impl RequestForwarder {
                         {
                             Ok(success) => {
                                 log::info!(
-                                    "[{app_type_str}] [Media] Unsupported-image retry succeeded"
+                                    "{}",
+                                    self.runtime_state_source
+                                        .rectifier_retry_success_log_line(
+                                            app_type_str,
+                                            retry_kind,
+                                        )
                                 );
                                 return Ok(self
                                     .complete_successful_attempt(
@@ -595,7 +601,13 @@ impl RequestForwarder {
                             }
                             Err(retry_err) => {
                                 log::warn!(
-                                    "[{app_type_str}] [Media] Unsupported-image retry still failed: {retry_err}"
+                                    "{}",
+                                    self.runtime_state_source
+                                        .rectifier_retry_failure_log_line(
+                                            app_type_str,
+                                            retry_kind,
+                                            &retry_err,
+                                        )
                                 );
                                 if let Some(err) = self
                                     .handle_rectifier_retry_failure(
@@ -604,7 +616,8 @@ impl RequestForwarder {
                                         attempt,
                                         app_type_str,
                                         used_half_open_permit,
-                                        "media 降级",
+                                        self.runtime_state_source
+                                            .rectifier_retry_failure_label(retry_kind),
                                         &mut last_error,
                                         &mut last_provider,
                                     )
@@ -646,6 +659,7 @@ impl RequestForwarder {
                             }
                             ForwarderRequestRectifierPlan::Retry => {
                                 let _ = std::mem::replace(&mut rectifier_retried, true);
+                                let retry_kind = ForwarderRectifierRetryKind::ThinkingSignature;
 
                                 match self
                                     .forward(
@@ -661,7 +675,14 @@ impl RequestForwarder {
                                     .await
                                 {
                                     Ok(success) => {
-                                        log::info!("[{app_type_str}] [RECT-002] 整流重试成功");
+                                        log::info!(
+                                            "{}",
+                                            self.runtime_state_source
+                                                .rectifier_retry_success_log_line(
+                                                    app_type_str,
+                                                    retry_kind,
+                                                )
+                                        );
                                         return Ok(self
                                             .complete_successful_attempt(
                                                 request_id,
@@ -674,7 +695,13 @@ impl RequestForwarder {
                                     }
                                     Err(retry_err) => {
                                         log::warn!(
-                                            "[{app_type_str}] [RECT-003] 整流重试仍失败: {retry_err}"
+                                            "{}",
+                                            self.runtime_state_source
+                                                .rectifier_retry_failure_log_line(
+                                                    app_type_str,
+                                                    retry_kind,
+                                                    &retry_err,
+                                                )
                                         );
                                         if let Some(err) = self
                                             .handle_rectifier_retry_failure(
@@ -683,7 +710,8 @@ impl RequestForwarder {
                                                 attempt,
                                                 app_type_str,
                                                 used_half_open_permit,
-                                                "整流",
+                                                self.runtime_state_source
+                                                    .rectifier_retry_failure_label(retry_kind),
                                                 &mut last_error,
                                                 &mut last_provider,
                                             )
@@ -726,6 +754,7 @@ impl RequestForwarder {
                             }
                             ForwarderRequestRectifierPlan::Retry => {
                                 let _ = std::mem::replace(&mut budget_rectifier_retried, true);
+                                let retry_kind = ForwarderRectifierRetryKind::ThinkingBudget;
 
                                 match self
                                     .forward(
@@ -742,7 +771,12 @@ impl RequestForwarder {
                                 {
                                     Ok(success) => {
                                         log::info!(
-                                            "[{app_type_str}] [RECT-011] budget 整流重试成功"
+                                            "{}",
+                                            self.runtime_state_source
+                                                .rectifier_retry_success_log_line(
+                                                    app_type_str,
+                                                    retry_kind,
+                                                )
                                         );
                                         return Ok(self
                                             .complete_successful_attempt(
@@ -756,7 +790,13 @@ impl RequestForwarder {
                                     }
                                     Err(retry_err) => {
                                         log::warn!(
-                                            "[{app_type_str}] [RECT-012] budget 整流重试仍失败: {retry_err}"
+                                            "{}",
+                                            self.runtime_state_source
+                                                .rectifier_retry_failure_log_line(
+                                                    app_type_str,
+                                                    retry_kind,
+                                                    &retry_err,
+                                                )
                                         );
                                         if let Some(err) = self
                                             .handle_rectifier_retry_failure(
@@ -765,7 +805,8 @@ impl RequestForwarder {
                                                 attempt,
                                                 app_type_str,
                                                 used_half_open_permit,
-                                                "budget 整流",
+                                                self.runtime_state_source
+                                                    .rectifier_retry_failure_label(retry_kind),
                                                 &mut last_error,
                                                 &mut last_provider,
                                             )

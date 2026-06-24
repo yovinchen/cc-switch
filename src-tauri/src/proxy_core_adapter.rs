@@ -3034,6 +3034,39 @@ pub(crate) enum ForwarderRectifierRetryFailureDecision {
     ProviderFailure { error_message: String },
     ClientFailure,
 }
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum ForwarderRectifierRetryKind {
+    MediaFallback,
+    ThinkingSignature,
+    ThinkingBudget,
+}
+impl ForwarderRectifierRetryKind {
+    fn failure_label(self) -> &'static str {
+        match self {
+            Self::MediaFallback => "media 降级",
+            Self::ThinkingSignature => "整流",
+            Self::ThinkingBudget => "budget 整流",
+        }
+    }
+
+    fn success_message(self) -> &'static str {
+        match self {
+            Self::MediaFallback => "[Media] Unsupported-image retry succeeded",
+            Self::ThinkingSignature => "[RECT-002] 整流重试成功",
+            Self::ThinkingBudget => "[RECT-011] budget 整流重试成功",
+        }
+    }
+
+    fn failure_message(self, error: &ProxyError) -> String {
+        match self {
+            Self::MediaFallback => {
+                format!("[Media] Unsupported-image retry still failed: {error}")
+            }
+            Self::ThinkingSignature => format!("[RECT-003] 整流重试仍失败: {error}"),
+            Self::ThinkingBudget => format!("[RECT-012] budget 整流重试仍失败: {error}"),
+        }
+    }
+}
 pub(crate) fn forwarder_no_available_provider_status_message() -> &'static str {
     "所有供应商暂时不可用（熔断器限制）"
 }
@@ -3044,6 +3077,27 @@ pub(crate) fn forwarder_terminal_failure_status_message() -> &'static str {
 
 pub(crate) fn forwarder_failure_log_line(app_type: &str, log: &ForwardFailureLog) -> String {
     format!("[{app_type}] [{}] {}", log.code, log.message)
+}
+
+pub(crate) fn forwarder_rectifier_retry_success_log_line(
+    app_type: &str,
+    kind: ForwarderRectifierRetryKind,
+) -> String {
+    format!("[{app_type}] {}", kind.success_message())
+}
+
+pub(crate) fn forwarder_rectifier_retry_failure_log_line(
+    app_type: &str,
+    kind: ForwarderRectifierRetryKind,
+    error: &ProxyError,
+) -> String {
+    format!("[{app_type}] {}", kind.failure_message(error))
+}
+
+pub(crate) fn forwarder_rectifier_retry_failure_label(
+    kind: ForwarderRectifierRetryKind,
+) -> &'static str {
+    kind.failure_label()
 }
 pub(crate) type ManagementAuthError =
     crate::proxy_core::api::auth::ManagementAuthError;
@@ -8142,6 +8196,21 @@ pub(crate) trait ForwarderRuntimeStateSource {
         &self,
         error: &ProxyError,
     ) -> ForwarderRectifierRetryFailureDecision;
+    fn rectifier_retry_success_log_line(
+        &self,
+        app_type: &str,
+        kind: ForwarderRectifierRetryKind,
+    ) -> String;
+    fn rectifier_retry_failure_log_line(
+        &self,
+        app_type: &str,
+        kind: ForwarderRectifierRetryKind,
+        error: &ProxyError,
+    ) -> String;
+    fn rectifier_retry_failure_label(
+        &self,
+        kind: ForwarderRectifierRetryKind,
+    ) -> &'static str;
     fn record_forward_error_status<'a>(&'a self, error: &'a ProxyError) -> BoxFuture<'a, ()>;
     fn record_no_available_provider_status<'a>(&'a self) -> BoxFuture<'a, ()>;
     fn record_terminal_failure_status<'a>(&'a self) -> BoxFuture<'a, ()>;
@@ -8340,6 +8409,30 @@ impl ForwarderRuntimeStateSource for CcSwitchForwarderRuntimeStateSource {
         } else {
             ForwarderRectifierRetryFailureDecision::ClientFailure
         }
+    }
+
+    fn rectifier_retry_success_log_line(
+        &self,
+        app_type: &str,
+        kind: ForwarderRectifierRetryKind,
+    ) -> String {
+        forwarder_rectifier_retry_success_log_line(app_type, kind)
+    }
+
+    fn rectifier_retry_failure_log_line(
+        &self,
+        app_type: &str,
+        kind: ForwarderRectifierRetryKind,
+        error: &ProxyError,
+    ) -> String {
+        forwarder_rectifier_retry_failure_log_line(app_type, kind, error)
+    }
+
+    fn rectifier_retry_failure_label(
+        &self,
+        kind: ForwarderRectifierRetryKind,
+    ) -> &'static str {
+        forwarder_rectifier_retry_failure_label(kind)
     }
 
     fn record_no_available_provider_status<'a>(&'a self) -> BoxFuture<'a, ()> {
@@ -16126,6 +16219,51 @@ base_url = "https://api.openai.com/v1"
             }
             ForwarderRectifierRetryFailureDecision::ClientFailure => {}
         }
+    }
+
+    #[test]
+    fn forwarder_runtime_state_source_projects_rectifier_retry_logs() {
+        let source = CcSwitchForwarderRuntimeStateSource::new(
+            Arc::new(RwLock::new(ProxyRuntimeStatus::default())),
+            Arc::new(RwLock::new(HashMap::new())),
+            Arc::new(ProxyEventBus::default()),
+        );
+        let timeout = ProxyError::Timeout("upstream timed out".to_string());
+
+        assert_eq!(
+            source.rectifier_retry_success_log_line(
+                "claude",
+                ForwarderRectifierRetryKind::MediaFallback,
+            ),
+            "[claude] [Media] Unsupported-image retry succeeded"
+        );
+        assert_eq!(
+            source.rectifier_retry_failure_log_line(
+                "claude",
+                ForwarderRectifierRetryKind::ThinkingSignature,
+                &timeout,
+            ),
+            "[claude] [RECT-003] 整流重试仍失败: 超时: upstream timed out"
+        );
+        assert_eq!(
+            source.rectifier_retry_success_log_line(
+                "claude",
+                ForwarderRectifierRetryKind::ThinkingBudget,
+            ),
+            "[claude] [RECT-011] budget 整流重试成功"
+        );
+        assert_eq!(
+            source.rectifier_retry_failure_label(ForwarderRectifierRetryKind::MediaFallback),
+            "media 降级"
+        );
+        assert_eq!(
+            source.rectifier_retry_failure_label(ForwarderRectifierRetryKind::ThinkingSignature),
+            "整流"
+        );
+        assert_eq!(
+            source.rectifier_retry_failure_label(ForwarderRectifierRetryKind::ThinkingBudget),
+            "budget 整流"
+        );
     }
 
     #[tokio::test]
