@@ -1002,15 +1002,15 @@ impl RequestForwarder {
             .adapter_facts(ForwarderAdapterFactsInput { adapter });
         let adapter_name = adapter_facts.adapter_name;
         let is_claude_adapter = adapter_facts.is_claude_adapter;
-        let resolved_claude_api_format = if is_claude_adapter {
-            Some(
-                self.managed_account_runtime_source
-                    .resolve_claude_api_format_for_provider(provider, &mapped_body, is_copilot)
-                    .await,
+        let resolved_claude_api_format = self
+            .managed_account_runtime_source
+            .resolve_claude_api_format_for_adapter(
+                provider,
+                &mapped_body,
+                is_copilot,
+                is_claude_adapter,
             )
-        } else {
-            None
-        };
+            .await;
         if is_claude_adapter {
             if let Some(api_format) = resolved_claude_api_format.as_deref() {
                 self.request_source.apply_claude_body_policies(

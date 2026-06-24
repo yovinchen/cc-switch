@@ -5630,12 +5630,13 @@ fn production_forwarder_delegates_claude_api_format_to_runtime_source() {
     let adapter_source = fs::read_to_string(&adapter_path).expect("read proxy_core_adapter.rs");
 
     assert!(
-        adapter_source.contains("resolve_claude_api_format_for_provider"),
-        "ManagedAccountRuntimeSource must expose provider-aware Claude API format resolution"
+        adapter_source.contains("resolve_claude_api_format_for_adapter"),
+        "ManagedAccountRuntimeSource must expose adapter-gated Claude API format resolution"
     );
 
     let impl_slice = function_slice(&forwarder_source, "impl RequestForwarder", "#[cfg(test)]");
     let forbidden_markers = [
+        "resolve_claude_api_format_for_provider(",
         "resolve_copilot_model_vendor_for_provider(",
         "resolve_forwarder_claude_api_format(",
     ];

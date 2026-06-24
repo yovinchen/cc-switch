@@ -3404,6 +3404,29 @@ pub(crate) trait ManagedAccountRuntimeSource: Send + Sync {
             )
         })
     }
+
+    fn resolve_claude_api_format_for_adapter<'a>(
+        &'a self,
+        auth_provider: &'a Provider,
+        body: &'a Value,
+        is_copilot: bool,
+        is_claude_adapter: bool,
+    ) -> BoxFuture<'a, Option<String>> {
+        Box::pin(async move {
+            if !is_claude_adapter {
+                return None;
+            }
+
+            Some(
+                self.resolve_claude_api_format_for_provider(
+                    auth_provider,
+                    body,
+                    is_copilot,
+                )
+                .await,
+            )
+        })
+    }
 }
 
 impl ManagedAccountRuntimeSource for CcSwitchManagedAccountRuntimeSource {
@@ -15515,6 +15538,37 @@ base_url = "https://api.openai.com/v1"
             .await;
 
         assert_eq!(base_url, "https://api.enterprise.githubcopilot.com");
+    }
+
+    #[tokio::test]
+    async fn managed_account_runtime_source_gates_claude_api_format_by_adapter() {
+        let source = StaticCopilotModelsSource {
+            endpoint: None,
+            models: None,
+        };
+        let provider = Provider::with_id(
+            "claude".to_string(),
+            "Claude".to_string(),
+            json!({
+                "api_format": "openai_chat"
+            }),
+            None,
+        );
+        let body = json!({ "model": "claude-sonnet-4" });
+
+        assert_eq!(
+            source
+                .resolve_claude_api_format_for_adapter(&provider, &body, false, false)
+                .await,
+            None
+        );
+        assert_eq!(
+            source
+                .resolve_claude_api_format_for_adapter(&provider, &body, false, true)
+                .await
+                .as_deref(),
+            Some("openai_chat")
+        );
     }
 
     #[test]
