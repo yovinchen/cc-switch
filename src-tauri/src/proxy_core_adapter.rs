@@ -294,7 +294,9 @@ pub(crate) type CopilotOptimizerConfig = crate::proxy_core::api::ports::CopilotO
 pub(crate) type ProxyConfig = crate::proxy_core::api::ports::ProxyConfig;
 pub(crate) type ProxyRuntimeStatus = crate::proxy_core::api::ports::ProxyRuntimeStatus;
 
-pub(crate) use crate::proxy_core::api::ports::proxy_runtime_status_stopped;
+pub(crate) use crate::proxy_core::api::ports::{
+    proxy_config_with_ephemeral_listen_port, proxy_runtime_status_stopped,
+};
 
 const PROXY_MANAGEMENT_AUTH_TOKEN_ENV: &str = "CC_SWITCH_PROXY_MANAGEMENT_TOKEN";
 
@@ -1163,19 +1165,6 @@ pub(crate) async fn proxy_config_from_db(db: &Database) -> Result<ProxyConfig, S
     db.get_proxy_config()
         .await
         .map_err(|e| format!("获取代理配置失败: {e}"))
-}
-
-pub(crate) fn proxy_config_with_ephemeral_listen_port(
-    config: &ProxyConfig,
-    actual_port: u16,
-) -> Option<ProxyConfig> {
-    if config.listen_port != 0 {
-        return None;
-    }
-
-    let mut resolved_config = config.clone();
-    resolved_config.listen_port = actual_port;
-    Some(resolved_config)
 }
 
 pub(crate) async fn persist_ephemeral_listen_port_if_needed_in_db(

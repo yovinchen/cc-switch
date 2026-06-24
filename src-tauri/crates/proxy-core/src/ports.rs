@@ -1030,6 +1030,19 @@ pub fn proxy_runtime_config_from_proxy_config(
     }
 }
 
+pub fn proxy_config_with_ephemeral_listen_port(
+    config: &ProxyConfig,
+    actual_port: u16,
+) -> Option<ProxyConfig> {
+    if config.listen_port != 0 {
+        return None;
+    }
+
+    let mut resolved_config = config.clone();
+    resolved_config.listen_port = actual_port;
+    Some(resolved_config)
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ProxyServerInfo {
     pub address: String,
@@ -3106,7 +3119,8 @@ mod tests {
         channel_health_update_from_input,
         channel_model_record_from_input, channel_reachability_result_from_stream_check_result,
         channel_route_source_for_materialized_count,
-        proxy_app_config_from_parts, proxy_global_config_from_global_config,
+        proxy_app_config_from_parts, proxy_config_with_ephemeral_listen_port,
+        proxy_global_config_from_global_config,
         proxy_runtime_config_from_proxy_config,
         AppListResponse, AppModelListQuery, AppProxyConfig, AppSummaryInput,
         channel_key_record_from_input,
@@ -4252,6 +4266,22 @@ mod tests {
         assert!(raw_without_provider
             .get("currentProviderId")
             .is_some_and(Value::is_null));
+    }
+
+    #[test]
+    fn proxy_config_with_ephemeral_listen_port_only_updates_port_zero() {
+        let mut config = ProxyConfig {
+            listen_port: 0,
+            ..ProxyConfig::default()
+        };
+
+        let resolved = proxy_config_with_ephemeral_listen_port(&config, 18200)
+            .expect("port zero should persist actual port");
+        assert_eq!(resolved.listen_port, 18200);
+        assert_eq!(resolved.listen_address, config.listen_address);
+
+        config.listen_port = 15721;
+        assert!(proxy_config_with_ephemeral_listen_port(&config, 18200).is_none());
     }
 
     #[test]

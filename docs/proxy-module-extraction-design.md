@@ -1310,6 +1310,7 @@
 本轮继续把 ProviderRouter 读取 auto-failover 配置失败时默认禁用的决策收敛到 `proxy-core::provider_selection::provider_router_auto_failover_enabled_decision`：adapter 只把 `AppProxyConfig.auto_failover_enabled` 投影为 bool、按 core 返回的 log line 发 error，不再维护读取失败 fallback 策略。
 本轮继续把接管状态的 enabled/缺失配置矩阵收敛到 `proxy-core::ports::proxy_takeover_status_from_enabled_options`：adapter 只把 DB config 读取结果投影成 `Option<bool>`，不再维护 Claude/Codex/Gemini 缺失时默认 false 和 OpenCode/OpenClaw 默认 false 的状态组装规则。
 本轮继续把 proxy live URL 生成规则收敛到 `proxy-core::ports::proxy_live_urls_from_listen_parts`：adapter 不再维护 `0.0.0.0`/`::` 转回环地址、IPv6 URL bracket 和端口 0 不写回的规则，只在 host 启动流程中消费 core 返回的 origin/base URL。
+本轮继续把临时监听端口写回规则收敛到 `proxy-core::ports::proxy_config_with_ephemeral_listen_port`：adapter 只负责持久化 DB，端口 0 才写回实际 bind 端口、固定端口不写回的策略由 core 维护。
 
 当前原则：核心 crate 可以新增端口和领域字段，但不得引入 `tauri`、`Database`、settings、commands、services 等宿主依赖；现有 runtime 行为必须继续通过 targeted tests 证明不回归。
 
