@@ -1026,6 +1026,9 @@ pub(crate) type CopilotAuthHeadersInput<'a> =
 pub(crate) type CopilotClassification = crate::proxy_core::api::transport::CopilotClassification;
 pub(crate) type ForwarderMaybeCopilotAuthOptimizationInput<'a> =
     crate::proxy_core::api::transport::OptionalCopilotAuthOptimizationPreparationInput<'a>;
+pub(crate) type ForwarderAuthHeaders = crate::proxy_core::api::transport::ForwarderAuthHeaders;
+pub(crate) type ForwarderAuthHeaderFinalizationInput<'a> =
+    crate::proxy_core::api::transport::ForwarderAuthHeaderFinalizationInput<'a>;
 pub(crate) type ForwarderPreparedCopilotAuthOptimization =
     crate::proxy_core::api::transport::PreparedCopilotAuthOptimization;
 pub(crate) type ResponseRuntimePolicy = crate::proxy_core::api::config::ResponseRuntimePolicy;
@@ -2820,8 +2823,6 @@ pub(crate) use crate::proxy_core::api::domain::{channel_spec_from_input, model_r
 
 #[cfg(test)]
 pub(crate) type ProxyCoreUpstreamEndpoint = crate::proxy_core::api::domain::UpstreamEndpoint;
-pub(crate) type UpstreamAuthHeadersInput<'a> =
-    crate::proxy_core::api::transport::UpstreamAuthHeadersInput<'a>;
 pub(crate) type UpstreamRequestHeadersInput<'a> =
     crate::proxy_core::api::transport::UpstreamRequestHeadersInput<'a>;
 pub(crate) type UpstreamSendPolicyInput =
@@ -3089,13 +3090,13 @@ pub(crate) use crate::proxy_core::api::transport::{
     auth_provider_proxy_request_from_context,
     apply_copilot_warmup_model_override, bedrock_env_flag_from_provider_settings,
     build_auth_provider_headers, build_claude_provider_auth_headers, build_claude_upstream_url,
-    build_codex_oauth_session_headers_for_forwarder, build_codex_provider_auth_headers,
-    build_codex_upstream_url, build_copilot_auth_header_overrides_for_forwarder,
+    build_codex_provider_auth_headers, build_codex_upstream_url,
     build_gemini_provider_auth_headers, build_retryable_forward_failure_log,
-    build_terminal_forward_failure_log, build_upstream_auth_headers, categorize_forward_failure,
+    build_terminal_forward_failure_log, categorize_forward_failure,
     classify_copilot_request, claude_transform_endpoint_rewrite_input_from_body,
-    contains_image_blocks, invalid_upstream_url_error_message, is_codex_chat_full_endpoint_base,
-    is_openai_o_series, is_unsupported_image_error, merge_copilot_tool_results,
+    contains_image_blocks, finalize_forwarder_auth_headers, invalid_upstream_url_error_message,
+    is_codex_chat_full_endpoint_base, is_openai_o_series, is_unsupported_image_error,
+    merge_copilot_tool_results,
     prepare_optional_copilot_auth_optimization_for_forwarder,
     parse_json_request_body, parse_json_request_body_or_null,
     prepare_upstream_request_body_with_report, prompt_cache_trace_log_message,
@@ -3107,7 +3108,6 @@ pub(crate) use crate::proxy_core::api::transport::{
     should_apply_bedrock_pre_send_optimizer, should_check_media_retry,
     should_convert_codex_responses_endpoint_to_chat, should_failover_after_rectifier_retry_failure,
     should_preserve_exact_request_header_case, should_send_anthropic_request_headers,
-    should_log_copilot_subagent_auth_override,
     should_trigger_media_retry, split_endpoint_and_query, strip_copilot_thinking_blocks,
     supports_reasoning_effort, UNSUPPORTED_IMAGE_MARKER,
 };
@@ -8602,11 +8602,6 @@ pub(crate) struct ForwarderAuthHeadersInput<'a> {
     pub(crate) copilot_optimization: Option<ForwarderPreparedCopilotAuthOptimization>,
 }
 
-pub(crate) struct ForwarderAuthHeaders {
-    pub(crate) auth_headers: Vec<(http::HeaderName, http::HeaderValue)>,
-    pub(crate) codex_oauth_session_headers: Vec<(http::HeaderName, http::HeaderValue)>,
-}
-
 pub(crate) trait ForwarderAuthSource {
     fn prepare_optional_copilot_auth_optimization(
         &self,
@@ -8687,7 +8682,7 @@ impl ForwarderAuthSource for CcSwitchForwarderAuthSource {
 
             let mut codex_oauth_account_id: Option<String> = None;
             let mut should_send_codex_oauth_session_headers = false;
-            let mut auth_headers = if let Some(headers) =
+            let auth_headers = if let Some(headers) =
                 build_auth_provider_headers(&core_auth).map_err(proxy_core_error_to_proxy_error)?
             {
                 headers
@@ -8709,35 +8704,23 @@ impl ForwarderAuthSource for CcSwitchForwarderAuthSource {
                 }
             };
 
-            let codex_oauth_session_headers = build_codex_oauth_session_headers_for_forwarder(
-                should_send_codex_oauth_session_headers,
-                input.session_client_provided,
-                input.session_id,
-            );
-
-            let copilot_auth_header_overrides =
-                input.copilot_optimization.as_ref().map(|optimization| {
-                    build_copilot_auth_header_overrides_for_forwarder(
-                        optimization.as_header_override_facts(),
-                    )
+            let finalized_auth_headers =
+                finalize_forwarder_auth_headers(ForwarderAuthHeaderFinalizationInput {
+                    base_auth_headers: &auth_headers,
+                    should_send_codex_oauth_session_headers,
+                    session_client_provided: input.session_client_provided,
+                    session_id: input.session_id,
+                    codex_oauth_account_id: codex_oauth_account_id.as_deref(),
+                    copilot_optimization: input.copilot_optimization.as_ref(),
                 });
 
-            auth_headers = build_upstream_auth_headers(UpstreamAuthHeadersInput {
-                base_auth_headers: &auth_headers,
-                codex_oauth_account_id: codex_oauth_account_id.as_deref(),
-                copilot_overrides: copilot_auth_header_overrides,
-            });
-
-            if should_log_copilot_subagent_auth_override(copilot_auth_header_overrides) {
+            if finalized_auth_headers.should_log_copilot_subagent_auth_override {
                 log::info!(
                     "[Copilot] 子代理请求: x-initiator=agent, x-interaction-type=conversation-subagent"
                 );
             }
 
-            Ok(ForwarderAuthHeaders {
-                auth_headers,
-                codex_oauth_session_headers,
-            })
+            Ok(finalized_auth_headers)
         })
     }
 }

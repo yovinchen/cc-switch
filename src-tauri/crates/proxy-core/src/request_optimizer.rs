@@ -2,9 +2,14 @@ use std::collections::HashSet;
 
 use crate::cache_injector::{CacheInjectionReport, inject_cache_control};
 use crate::ports::{CopilotOptimizerConfig, OptimizerConfig};
-use crate::request_headers::CopilotAuthHeaderOverrideFacts;
+use crate::request_headers::{
+    build_codex_oauth_session_headers_for_forwarder,
+    build_copilot_auth_header_overrides_for_forwarder, build_upstream_auth_headers,
+    should_log_copilot_subagent_auth_override, CopilotAuthHeaderOverrideFacts,
+    UpstreamAuthHeadersInput,
+};
 use crate::thinking_optimizer::{ThinkingOptimizationReport, optimize_thinking};
-use http::HeaderMap;
+use http::{HeaderMap, HeaderName, HeaderValue};
 use serde_json::Value;
 use sha2::{Digest, Sha256};
 
@@ -33,6 +38,21 @@ pub struct OptionalCopilotAuthOptimizationPreparationInput<'a> {
     pub session_source_body: &'a Value,
     pub request_body: &'a Value,
     pub headers: &'a HeaderMap,
+}
+
+pub struct ForwarderAuthHeaderFinalizationInput<'a> {
+    pub base_auth_headers: &'a [(HeaderName, HeaderValue)],
+    pub should_send_codex_oauth_session_headers: bool,
+    pub session_client_provided: bool,
+    pub session_id: &'a str,
+    pub codex_oauth_account_id: Option<&'a str>,
+    pub copilot_optimization: Option<&'a PreparedCopilotAuthOptimization>,
+}
+
+pub struct ForwarderAuthHeaders {
+    pub auth_headers: Vec<(HeaderName, HeaderValue)>,
+    pub codex_oauth_session_headers: Vec<(HeaderName, HeaderValue)>,
+    pub should_log_copilot_subagent_auth_override: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -295,6 +315,36 @@ pub fn prepare_optional_copilot_auth_optimization_for_forwarder(
                 fallback_request_id,
             )
         })
+}
+
+pub fn finalize_forwarder_auth_headers(
+    input: ForwarderAuthHeaderFinalizationInput<'_>,
+) -> ForwarderAuthHeaders {
+    let codex_oauth_session_headers = build_codex_oauth_session_headers_for_forwarder(
+        input.should_send_codex_oauth_session_headers,
+        input.session_client_provided,
+        input.session_id,
+    );
+    let copilot_overrides = input
+        .copilot_optimization
+        .map(|optimization| {
+            build_copilot_auth_header_overrides_for_forwarder(
+                optimization.as_header_override_facts(),
+            )
+        });
+    let auth_headers = build_upstream_auth_headers(UpstreamAuthHeadersInput {
+        base_auth_headers: input.base_auth_headers,
+        codex_oauth_account_id: input.codex_oauth_account_id,
+        copilot_overrides,
+    });
+    let should_log_copilot_subagent_auth_override =
+        should_log_copilot_subagent_auth_override(copilot_overrides);
+
+    ForwarderAuthHeaders {
+        auth_headers,
+        codex_oauth_session_headers,
+        should_log_copilot_subagent_auth_override,
+    }
 }
 
 /// Merge user tool_result and text blocks so Copilot treats tool continuations as agent turns.
@@ -669,19 +719,20 @@ mod tests {
 
     use super::{
         apply_bedrock_pre_send_optimizers, apply_copilot_warmup_model_override,
-        classify_copilot_request, merge_copilot_tool_results,
+        classify_copilot_request, finalize_forwarder_auth_headers, merge_copilot_tool_results,
         bedrock_env_flag_from_provider_settings, parse_session_from_user_id,
         prepare_copilot_auth_optimization_for_forwarder,
         prepare_optional_copilot_auth_optimization_for_forwarder,
         provider_declares_bedrock, resolve_copilot_optimizer_session_id,
         sanitize_copilot_orphan_tool_results, should_apply_bedrock_pre_send_optimizer,
         CopilotAuthOptimizationPreparationInput, CopilotClassification,
-        OptionalCopilotAuthOptimizationPreparationInput,
+        ForwarderAuthHeaderFinalizationInput, OptionalCopilotAuthOptimizationPreparationInput,
+        PreparedCopilotAuthOptimization,
         resolve_copilot_deterministic_interaction_id, resolve_copilot_deterministic_request_id,
         resolve_copilot_request_id_with_fallback, resolve_copilot_warmup_model_override,
         strip_copilot_thinking_blocks,
     };
-    use http::{HeaderMap, HeaderValue};
+    use http::{HeaderMap, HeaderName, HeaderValue};
     use serde_json::json;
 
     #[test]
@@ -1235,6 +1286,91 @@ mod tests {
         assert!(!prepared.is_subagent);
         assert_eq!(prepared.deterministic_request_id, None);
         assert!(prepared.interaction_id.is_some());
+    }
+
+    #[test]
+    fn finalizes_forwarder_auth_headers_with_session_account_and_copilot_overrides() {
+        let base_auth_headers = vec![
+            (
+                HeaderName::from_static("authorization"),
+                HeaderValue::from_static("Bearer token"),
+            ),
+            (
+                HeaderName::from_static("x-request-id"),
+                HeaderValue::from_static("old-request"),
+            ),
+            (
+                HeaderName::from_static("x-agent-task-id"),
+                HeaderValue::from_static("old-task"),
+            ),
+            (
+                HeaderName::from_static("x-initiator"),
+                HeaderValue::from_static("user"),
+            ),
+            (
+                HeaderName::from_static("x-interaction-type"),
+                HeaderValue::from_static("conversation-agent"),
+            ),
+        ];
+        let copilot_optimization = PreparedCopilotAuthOptimization {
+            request_classification_enabled: true,
+            initiator: "agent",
+            is_subagent: true,
+            deterministic_request_id: Some("request-id".to_string()),
+            interaction_id: Some("interaction-id".to_string()),
+        };
+
+        let finalized = finalize_forwarder_auth_headers(ForwarderAuthHeaderFinalizationInput {
+            base_auth_headers: &base_auth_headers,
+            should_send_codex_oauth_session_headers: true,
+            session_client_provided: true,
+            session_id: "session-123",
+            codex_oauth_account_id: Some("account-1"),
+            copilot_optimization: Some(&copilot_optimization),
+        });
+
+        let mut auth_headers = HeaderMap::new();
+        for (name, value) in finalized.auth_headers {
+            auth_headers.insert(name, value);
+        }
+        assert_eq!(
+            auth_headers.get("authorization"),
+            Some(&HeaderValue::from_static("Bearer token"))
+        );
+        assert_eq!(
+            auth_headers.get("x-request-id"),
+            Some(&HeaderValue::from_static("request-id"))
+        );
+        assert_eq!(
+            auth_headers.get("x-agent-task-id"),
+            Some(&HeaderValue::from_static("request-id"))
+        );
+        assert_eq!(
+            auth_headers.get("x-initiator"),
+            Some(&HeaderValue::from_static("agent"))
+        );
+        assert_eq!(
+            auth_headers.get("x-interaction-type"),
+            Some(&HeaderValue::from_static("conversation-subagent"))
+        );
+        assert_eq!(
+            auth_headers.get("x-interaction-id"),
+            Some(&HeaderValue::from_static("interaction-id"))
+        );
+        assert_eq!(
+            auth_headers.get("chatgpt-account-id"),
+            Some(&HeaderValue::from_static("account-1"))
+        );
+
+        let mut session_headers = HeaderMap::new();
+        for (name, value) in finalized.codex_oauth_session_headers {
+            session_headers.insert(name, value);
+        }
+        assert_eq!(
+            session_headers.get("session_id"),
+            Some(&HeaderValue::from_static("session-123"))
+        );
+        assert!(finalized.should_log_copilot_subagent_auth_override);
     }
 
     #[test]
