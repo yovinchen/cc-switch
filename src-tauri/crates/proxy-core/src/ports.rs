@@ -1071,6 +1071,15 @@ pub fn live_takeover_app_kinds() -> [AppKind; 3] {
     [AppKind::Claude, AppKind::Codex, AppKind::Gemini]
 }
 
+pub fn live_token_sync_app_label(app: &AppKind) -> Option<&'static str> {
+    match app {
+        AppKind::Claude => Some("Claude"),
+        AppKind::Codex => Some("Codex"),
+        AppKind::Gemini => Some("Gemini"),
+        AppKind::ClaudeDesktop | AppKind::Custom(_) => None,
+    }
+}
+
 fn app_custom_name_is(app: &AppKind, expected: &str) -> bool {
     matches!(app, AppKind::Custom(value) if value.eq_ignore_ascii_case(expected))
 }
@@ -3426,7 +3435,8 @@ mod tests {
         channel_health_update_from_input,
         channel_model_record_from_input, channel_reachability_result_from_stream_check_result,
         channel_route_source_for_materialized_count,
-        live_takeover_app_kinds, proxy_config_preserving_live_takeover_active,
+        live_takeover_app_kinds, live_token_sync_app_label,
+        proxy_config_preserving_live_takeover_active,
         proxy_app_config_from_parts, proxy_config_with_ephemeral_listen_port,
         proxy_config_with_live_takeover_active, proxy_global_config_from_global_config,
         proxy_runtime_config_from_proxy_config, provider_additive_live_write_action_for_app,
@@ -4681,6 +4691,18 @@ mod tests {
         );
         assert!(!live_takeover_app_kinds().contains(&AppKind::ClaudeDesktop));
         assert!(!live_takeover_app_kinds().contains(&AppKind::Custom("opencode".to_string())));
+    }
+
+    #[test]
+    fn live_token_sync_app_label_only_covers_switch_mode_live_apps() {
+        assert_eq!(live_token_sync_app_label(&AppKind::Claude), Some("Claude"));
+        assert_eq!(live_token_sync_app_label(&AppKind::Codex), Some("Codex"));
+        assert_eq!(live_token_sync_app_label(&AppKind::Gemini), Some("Gemini"));
+        assert_eq!(live_token_sync_app_label(&AppKind::ClaudeDesktop), None);
+        assert_eq!(
+            live_token_sync_app_label(&AppKind::Custom("opencode".to_string())),
+            None
+        );
     }
 
     #[test]

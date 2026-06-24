@@ -296,6 +296,7 @@ pub(crate) type ProxyRuntimeStatus = crate::proxy_core::api::ports::ProxyRuntime
 
 pub(crate) use crate::proxy_core::api::ports::{
     app_proxy_config_with_enabled as proxy_app_config_with_enabled, live_takeover_app_kinds,
+    live_token_sync_app_label as core_live_token_sync_app_label,
     provider_additive_live_write_action_for_app as core_provider_additive_live_write_action,
     provider_additive_update_route_for_app as core_provider_additive_update_route,
     provider_app_has_current_provider as core_provider_app_has_current_provider,
@@ -3534,12 +3535,7 @@ pub(crate) fn write_ssot_live_restore_provider_with_common_config(
 }
 
 pub(crate) fn live_token_sync_app_label(app_type: &AppType) -> Option<&'static str> {
-    match app_type {
-        AppType::Claude => Some("Claude"),
-        AppType::Codex => Some("Codex"),
-        AppType::Gemini => Some("Gemini"),
-        _ => None,
-    }
+    core_live_token_sync_app_label(&AppKind::from(app_type))
 }
 
 pub(crate) fn live_token_sync_provider_from_db(
