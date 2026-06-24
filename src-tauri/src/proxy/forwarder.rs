@@ -996,20 +996,14 @@ impl RequestForwarder {
             None
         };
 
-        if let Some(next_base_url) = self
-            .managed_account_runtime_source
-            .resolve_copilot_dynamic_base_url_for_provider(
-                provider, &base_url, is_copilot, is_full_url,
+        self.managed_account_runtime_source
+            .apply_copilot_dynamic_base_url_for_provider(
+                provider,
+                &mut base_url,
+                is_copilot,
+                is_full_url,
             )
-            .await
-        {
-            log::debug!(
-                "[Copilot] 使用动态 API endpoint: {} (原: {})",
-                next_base_url,
-                base_url
-            );
-            base_url = next_base_url;
-        }
+            .await;
         let adapter_facts = self
             .request_source
             .adapter_facts(ForwarderAdapterFactsInput { adapter });

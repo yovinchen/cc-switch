@@ -5587,15 +5587,17 @@ fn production_forwarder_delegates_copilot_dynamic_base_url_to_runtime_source() {
     let adapter_source = fs::read_to_string(&adapter_path).expect("read proxy_core_adapter.rs");
 
     assert!(
-        adapter_source.contains("resolve_copilot_dynamic_base_url_for_provider"),
-        "ManagedAccountRuntimeSource must expose provider-aware Copilot dynamic base URL resolution"
+        adapter_source.contains("apply_copilot_dynamic_base_url_for_provider"),
+        "ManagedAccountRuntimeSource must expose provider-aware Copilot dynamic base URL mutation"
     );
 
     let impl_slice = function_slice(&forwarder_source, "impl RequestForwarder", "#[cfg(test)]");
     let forbidden_markers = [
+        "resolve_copilot_dynamic_base_url_for_provider(",
         "resolve_copilot_api_endpoint_for_provider(",
         "resolved_copilot_dynamic_base_url(",
         "should_resolve_copilot_dynamic_endpoint(",
+        "使用动态 API endpoint",
     ];
     let mut violations = Vec::new();
 

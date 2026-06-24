@@ -3278,6 +3278,35 @@ pub(crate) trait ManagedAccountRuntimeSource: Send + Sync {
         })
     }
 
+    fn apply_copilot_dynamic_base_url_for_provider<'a>(
+        &'a self,
+        auth_provider: &'a Provider,
+        base_url: &'a mut String,
+        is_copilot: bool,
+        is_full_url: bool,
+    ) -> BoxFuture<'a, ()> {
+        Box::pin(async move {
+            let Some(next_base_url) = self
+                .resolve_copilot_dynamic_base_url_for_provider(
+                    auth_provider,
+                    base_url,
+                    is_copilot,
+                    is_full_url,
+                )
+                .await
+            else {
+                return;
+            };
+
+            log::debug!(
+                "[Copilot] 使用动态 API endpoint: {} (原: {})",
+                next_base_url,
+                base_url
+            );
+            *base_url = next_base_url;
+        })
+    }
+
     fn fetch_copilot_live_models_for_provider<'a>(
         &'a self,
         auth_provider: &'a Provider,
@@ -15222,6 +15251,7 @@ base_url = "https://api.openai.com/v1"
     }
 
     struct StaticCopilotModelsSource {
+        endpoint: Option<String>,
         models: Option<Vec<CopilotModel>>,
     }
 
@@ -15254,7 +15284,7 @@ base_url = "https://api.openai.com/v1"
             &'a self,
             _account_id: Option<&'a str>,
         ) -> BoxFuture<'a, Option<String>> {
-            Box::pin(async move { None })
+            Box::pin(async move { self.endpoint.clone() })
         }
 
         fn fetch_copilot_live_models<'a>(
@@ -15276,6 +15306,7 @@ base_url = "https://api.openai.com/v1"
     #[tokio::test]
     async fn managed_account_runtime_source_applies_copilot_live_model_to_body() {
         let source = StaticCopilotModelsSource {
+            endpoint: None,
             models: Some(vec![CopilotModel {
                 id: "claude-sonnet-4.6".to_string(),
                 name: "Claude Sonnet 4.6".to_string(),
@@ -15296,6 +15327,27 @@ base_url = "https://api.openai.com/v1"
             .await;
 
         assert_eq!(body["model"], "claude-sonnet-4.6");
+    }
+
+    #[tokio::test]
+    async fn managed_account_runtime_source_applies_copilot_dynamic_base_url() {
+        let source = StaticCopilotModelsSource {
+            endpoint: Some("https://api.enterprise.githubcopilot.com".to_string()),
+            models: None,
+        };
+        let provider = Provider::with_id(
+            "copilot".to_string(),
+            "Copilot".to_string(),
+            json!({}),
+            None,
+        );
+        let mut base_url = "https://api.githubcopilot.com".to_string();
+
+        source
+            .apply_copilot_dynamic_base_url_for_provider(&provider, &mut base_url, true, false)
+            .await;
+
+        assert_eq!(base_url, "https://api.enterprise.githubcopilot.com");
     }
 
     #[test]
