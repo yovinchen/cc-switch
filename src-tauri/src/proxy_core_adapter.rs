@@ -5677,11 +5677,25 @@ pub(crate) fn circuit_breaker_config_from_router_config_result(
     circuit_breaker_config_from_app_config(config.as_ref())
 }
 
-pub(crate) async fn circuit_breaker_config_from_router_db(
-    db: &Database,
+pub(crate) async fn router_app_proxy_config_from_config_source(
+    source: &(dyn ProxyConfigSource + Send + Sync),
+    app_type: &str,
+) -> Result<AppProxyConfig, AppError> {
+    let app = AppKind::from(app_type);
+    let config = source
+        .load_app(&app)
+        .await
+        .map_err(|error| AppError::Message(error.to_string()))?;
+    app_proxy_config_from_proxy_app_config(&config).map_err(AppError::Config)
+}
+
+pub(crate) async fn circuit_breaker_config_from_router_config_source(
+    source: &(dyn ProxyConfigSource + Send + Sync),
     app_type: &str,
 ) -> CircuitBreakerConfig {
-    circuit_breaker_config_from_router_config_result(db.get_proxy_config_for_app(app_type).await)
+    circuit_breaker_config_from_router_config_result(
+        router_app_proxy_config_from_config_source(source, app_type).await,
+    )
 }
 
 pub(crate) fn circuit_failure_threshold_from_router_config_result(
@@ -5690,17 +5704,6 @@ pub(crate) fn circuit_failure_threshold_from_router_config_result(
 ) -> u32 {
     let config = result.ok();
     circuit_failure_threshold_from_app_config(config.as_ref(), fallback)
-}
-
-pub(crate) async fn circuit_failure_threshold_from_router_db(
-    db: &Database,
-    app_type: &str,
-    fallback: u32,
-) -> u32 {
-    circuit_failure_threshold_from_router_config_result(
-        db.get_proxy_config_for_app(app_type).await,
-        fallback,
-    )
 }
 
 pub(crate) async fn record_provider_health_result_from_router_db(
@@ -5758,10 +5761,24 @@ pub(crate) fn auto_failover_enabled_from_router_config_result(
     }
 }
 
-pub(crate) async fn auto_failover_enabled_from_router_db(db: &Database, app_type: &str) -> bool {
+pub(crate) async fn circuit_failure_threshold_from_router_config_source(
+    source: &(dyn ProxyConfigSource + Send + Sync),
+    app_type: &str,
+    fallback: u32,
+) -> u32 {
+    circuit_failure_threshold_from_router_config_result(
+        router_app_proxy_config_from_config_source(source, app_type).await,
+        fallback,
+    )
+}
+
+pub(crate) async fn auto_failover_enabled_from_router_config_source(
+    source: &(dyn ProxyConfigSource + Send + Sync),
+    app_type: &str,
+) -> bool {
     auto_failover_enabled_from_router_config_result(
         app_type,
-        db.get_proxy_config_for_app(app_type).await,
+        router_app_proxy_config_from_config_source(source, app_type).await,
     )
 }
 
@@ -6060,7 +6077,9 @@ pub(crate) struct CcSwitchProviderRouterSources;
 impl CcSwitchProviderRouterSources {
     pub(crate) fn from_database(db: Arc<Database>) -> ProviderRouterSources {
         ProviderRouterSources::new(
-            Arc::new(CcSwitchProviderRouterConfigSource { db: db.clone() }),
+            Arc::new(CcSwitchProviderRouterConfigSource {
+                source: CcSwitchConfigSource::new(db.clone()),
+            }),
             Arc::new(CcSwitchProviderRouterProviderSource { db: db.clone() }),
             Arc::new(CcSwitchProviderRouterChannelSource {
                 source: CcSwitchChannelSource::new(db.clone()),
@@ -6075,24 +6094,29 @@ pub(crate) fn provider_router_from_database(db: Arc<Database>) -> ProviderRouter
 }
 
 struct CcSwitchProviderRouterConfigSource {
-    db: Arc<Database>,
+    source: CcSwitchConfigSource,
 }
 
 impl ProviderRouterConfigSource for CcSwitchProviderRouterConfigSource {
     fn load_failover_enabled<'a>(&'a self, app_type: &'a str) -> BoxFuture<'a, bool> {
-        Box::pin(async move { auto_failover_enabled_from_router_db(&self.db, app_type).await })
+        Box::pin(async move {
+            auto_failover_enabled_from_router_config_source(&self.source, app_type).await
+        })
     }
 
     fn circuit_breaker_config<'a>(
         &'a self,
         app_type: &'a str,
     ) -> BoxFuture<'a, CircuitBreakerConfig> {
-        Box::pin(async move { circuit_breaker_config_from_router_db(&self.db, app_type).await })
+        Box::pin(async move {
+            circuit_breaker_config_from_router_config_source(&self.source, app_type).await
+        })
     }
 
     fn failure_threshold<'a>(&'a self, app_type: &'a str, fallback: u32) -> BoxFuture<'a, u32> {
         Box::pin(async move {
-            circuit_failure_threshold_from_router_db(&self.db, app_type, fallback).await
+            circuit_failure_threshold_from_router_config_source(&self.source, app_type, fallback)
+                .await
         })
     }
 }
