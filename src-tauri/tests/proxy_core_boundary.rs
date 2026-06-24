@@ -6373,6 +6373,10 @@ fn production_forwarder_uses_attempt_runtime_source_resource() {
         "ForwarderAttemptRuntimeSource must return a structured allow decision"
     );
     assert!(
+        adapter_source.contains("    Stop,"),
+        "ForwarderAttemptAllowDecision::Stop must not carry formatted log-line payloads"
+    );
+    assert!(
         adapter_source.contains("attempts: &'a [ForwardAttempt]"),
         "ForwarderAttemptAllowInput must carry all route attempts for default runtime compatibility decisions"
     );
@@ -6391,6 +6395,14 @@ fn production_forwarder_uses_attempt_runtime_source_resource() {
     assert!(
         adapter_source.contains("fn should_bypass_circuit_breaker"),
         "default ForwarderAttemptRuntimeSource implementation must retain legacy circuit-breaker bypass projection"
+    );
+    assert!(
+        adapter_source.contains("fn attempt_limit_reached"),
+        "default ForwarderAttemptRuntimeSource implementation must retain max-attempt log-line projection"
+    );
+    assert!(
+        !impl_slice.contains("limit.log_line"),
+        "RequestForwarder must not consume formatted max-attempt log-line payloads from attempt allow decisions"
     );
     let attempt_runtime_trait_slice = function_slice(
         &adapter_source,
