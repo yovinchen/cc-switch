@@ -6545,6 +6545,10 @@ fn production_forwarder_uses_request_source_resource() {
         adapter_source.contains("fn optimize_copilot_request"),
         "default ForwarderRequestSource implementation must retain Copilot optimizer sequencing"
     );
+    assert!(
+        adapter_source.contains("fn apply_media_prevention"),
+        "default ForwarderRequestSource implementation must retain media prevention replacement"
+    );
     let request_trait_slice = function_slice(
         &adapter_source,
         "pub(crate) trait ForwarderRequestSource",
@@ -6554,8 +6558,9 @@ fn production_forwarder_uses_request_source_resource() {
         !request_trait_slice.contains("request_body_model")
             && !request_trait_slice.contains("transform_provider_request_body")
             && !request_trait_slice.contains("convert_codex_responses_to_chat_body")
-            && !request_trait_slice.contains("optimize_copilot_request"),
-        "ForwarderRequestSource trait must not expose internal request body model, provider transform, Codex bridge body, or Copilot optimizer helpers"
+            && !request_trait_slice.contains("optimize_copilot_request")
+            && !request_trait_slice.contains("apply_media_prevention"),
+        "ForwarderRequestSource trait must not expose internal request body model, provider transform, Codex bridge body, Copilot optimizer, or media prevention helpers"
     );
 
     let impl_forbidden_markers = [
