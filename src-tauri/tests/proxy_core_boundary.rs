@@ -6665,6 +6665,10 @@ fn production_forwarder_uses_response_source_resource() {
         adapter_source.contains("fn upstream_error_response"),
         "default ForwarderResponseSource implementation must retain upstream error response projection"
     );
+    assert!(
+        adapter_source.contains("fn prepare_success_response"),
+        "default ForwarderResponseSource implementation must retain success response readiness projection"
+    );
     let response_trait_slice = function_slice(
         &adapter_source,
         "pub(crate) trait ForwarderResponseSource",
@@ -6672,8 +6676,9 @@ fn production_forwarder_uses_response_source_resource() {
     );
     assert!(
         !response_trait_slice.contains("upstream_error_body")
-            && !response_trait_slice.contains("upstream_error_response"),
-        "ForwarderResponseSource trait must not expose internal upstream error body projection helpers"
+            && !response_trait_slice.contains("upstream_error_response")
+            && !response_trait_slice.contains("prepare_success_response"),
+        "ForwarderResponseSource trait must not expose internal response readiness or upstream error projection helpers"
     );
     assert!(
         adapter_source.contains("finalize_upstream_response"),
