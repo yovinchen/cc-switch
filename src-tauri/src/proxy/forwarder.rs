@@ -991,10 +991,6 @@ impl RequestForwarder {
                     resolved_claude_api_format: resolved_claude_api_format.as_deref(),
                     codex_oauth_session_headers: &codex_oauth_session_headers,
                 })?;
-        let ordered_headers = request_parts.ordered_headers;
-        let body_bytes = request_parts.body;
-        let preserve_exact_header_case = request_parts.preserve_exact_header_case;
-
         self.request_source
             .log_upstream_request(ForwarderUpstreamRequestLogInput {
                 adapter_facts: &adapter_facts,
@@ -1010,10 +1006,8 @@ impl RequestForwarder {
             .send_upstream_request(ForwarderUpstreamTransportRequest {
                 method: method.clone(),
                 url: url.clone(),
-                ordered_headers,
+                request_parts,
                 extensions: extensions.clone(),
-                body: body_bytes,
-                preserve_exact_header_case,
                 request_is_streaming,
                 non_streaming_timeout: self.non_streaming_timeout,
                 streaming_first_byte_timeout: self.streaming_first_byte_timeout,

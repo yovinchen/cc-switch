@@ -10067,10 +10067,8 @@ pub(crate) type ForwarderTransportSourceRef =
 pub(crate) struct ForwarderUpstreamTransportRequest {
     pub(crate) method: Method,
     pub(crate) url: String,
-    pub(crate) ordered_headers: HeaderMap,
+    pub(crate) request_parts: ForwarderUpstreamRequestParts,
     pub(crate) extensions: http::Extensions,
-    pub(crate) body: Vec<u8>,
-    pub(crate) preserve_exact_header_case: bool,
     pub(crate) request_is_streaming: bool,
     pub(crate) non_streaming_timeout: std::time::Duration,
     pub(crate) streaming_first_byte_timeout: std::time::Duration,
@@ -10096,7 +10094,7 @@ impl ForwarderTransportSource for CcSwitchForwarderTransportSource {
             let is_socks_proxy = is_socks_proxy_url(upstream_proxy_url.as_deref());
             let send_policy = resolve_upstream_send_policy(UpstreamSendPolicyInput {
                 is_socks_proxy,
-                preserve_exact_header_case: request.preserve_exact_header_case,
+                preserve_exact_header_case: request.request_parts.preserve_exact_header_case,
                 request_is_streaming: request.request_is_streaming,
                 non_streaming_timeout: request.non_streaming_timeout,
                 streaming_first_byte_timeout: request.streaming_first_byte_timeout,
@@ -10105,7 +10103,7 @@ impl ForwarderTransportSource for CcSwitchForwarderTransportSource {
             if matches!(send_policy.transport, UpstreamTransportKind::PooledReqwest) {
                 log::debug!(
                     "[Forwarder] Using pooled reqwest client (preserve_exact_header_case={}, socks_proxy={})",
-                    request.preserve_exact_header_case,
+                    request.request_parts.preserve_exact_header_case,
                     is_socks_proxy
                 );
                 let client = crate::proxy::http_client::get();
@@ -10113,10 +10111,10 @@ impl ForwarderTransportSource for CcSwitchForwarderTransportSource {
                 if let Some(request_timeout) = send_policy.reqwest_request_timeout {
                     outbound = outbound.timeout(request_timeout);
                 }
-                for (key, value) in &request.ordered_headers {
+                for (key, value) in &request.request_parts.ordered_headers {
                     outbound = outbound.header(key, value);
                 }
-                let send = outbound.body(request.body).send();
+                let send = outbound.body(request.request_parts.body).send();
                 let send_result = if let Some(header_timeout) =
                     send_policy.streaming_header_timeout
                 {
@@ -10140,9 +10138,9 @@ impl ForwarderTransportSource for CcSwitchForwarderTransportSource {
                 crate::proxy::hyper_client::send_request(
                     uri,
                     request.method,
-                    request.ordered_headers,
+                    request.request_parts.ordered_headers,
                     request.extensions,
-                    request.body,
+                    request.request_parts.body,
                     send_policy.base_timeout,
                     upstream_proxy_url.as_deref(),
                 )
