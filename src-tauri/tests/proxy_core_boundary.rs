@@ -5491,19 +5491,29 @@ fn production_adapter_managed_auth_planning_uses_runtime_source() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let path = manifest_dir.join("src/proxy_core_adapter.rs");
     let source = fs::read_to_string(&path).expect("read proxy_core_adapter.rs");
-    let function = function_slice(
+    let method = function_slice(
         &source,
-        "async fn resolve_managed_account_auth_with_runtime_source",
-        "#[cfg(test)]\npub(crate) async fn resolve_managed_account_auth_from_runtime_source",
+        "fn resolve_auth_for_provider<'a>",
+        "fn resolve_copilot_api_endpoint_for_provider<'a>",
+    );
+
+    assert!(
+        method.contains("resolve_core_managed_account_auth_with_runtime_source("),
+        "adapter managed-auth provider extension must delegate runtime-token resolution to proxy-core"
+    );
+    assert!(
+        method.contains("provider_github_copilot_managed_account_id(auth_provider)")
+            && method.contains("provider_codex_oauth_managed_account_id(auth_provider)"),
+        "adapter managed-auth provider extension must keep CC Switch Provider account-id projection at the host boundary"
     );
 
     let mut violations = Vec::new();
-    for (line_index, line) in production_lines(function) {
+    for (line_index, line) in production_lines(method) {
         let code = line.split("//").next().unwrap_or_default();
         for marker in FORBIDDEN_ADAPTER_MANAGED_AUTH_PLAN_RUNTIME_CALL_MARKERS {
             if code.contains(marker) {
                 violations.push(format!(
-                    "src/proxy_core_adapter.rs resolve_managed_account_auth:{} contains direct runtime call marker `{}`",
+                    "src/proxy_core_adapter.rs ManagedAccountRuntimeSource::resolve_auth_for_provider:{} contains direct runtime call marker `{}`",
                     line_index + 1,
                     marker
                 ));
@@ -5513,7 +5523,7 @@ fn production_adapter_managed_auth_planning_uses_runtime_source() {
 
     assert!(
         violations.is_empty(),
-        "adapter managed-auth planning must call an adapter-owned runtime source instead of host auth functions directly:\n{}",
+        "adapter managed-auth provider extension must call core runtime-source orchestration instead of host auth functions directly:\n{}",
         violations.join("\n")
     );
 }

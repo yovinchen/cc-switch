@@ -1,6 +1,8 @@
+use futures::future::BoxFuture;
 use http::HeaderMap;
 use thiserror::Error;
 
+use crate::copilot_model_map::CopilotModel;
 use crate::provider_auth::{ProviderAuthInfo, ProviderAuthStrategy};
 
 pub const PROXY_AUTH_PLACEHOLDER: &str = "PROXY_MANAGED";
@@ -72,6 +74,83 @@ impl ManagedAccountAuthPlan {
     }
 }
 
+pub trait ManagedAccountRuntimeSource: Send + Sync {
+    type Error;
+
+    fn resolve_copilot_auth<'a>(
+        &'a self,
+        account_id: Option<&'a str>,
+        runtime: ManagedAccountAuthRuntime,
+    ) -> BoxFuture<'a, Result<ProviderAuthInfo, Self::Error>>;
+
+    fn resolve_codex_oauth<'a>(
+        &'a self,
+        account_id: Option<String>,
+        runtime: ManagedAccountAuthRuntime,
+    ) -> BoxFuture<'a, Result<(ProviderAuthInfo, Option<String>), Self::Error>>;
+
+    fn resolve_copilot_api_endpoint<'a>(
+        &'a self,
+        account_id: Option<&'a str>,
+    ) -> BoxFuture<'a, Option<String>>;
+
+    fn fetch_copilot_live_models<'a>(
+        &'a self,
+        account_id: Option<&'a str>,
+    ) -> BoxFuture<'a, Result<Option<Vec<CopilotModel>>, String>>;
+
+    fn resolve_copilot_model_vendor<'a>(
+        &'a self,
+        account_id: Option<&'a str>,
+        model_id: &'a str,
+    ) -> BoxFuture<'a, Option<String>>;
+}
+
+pub async fn resolve_managed_account_auth_with_runtime_source<S>(
+    runtime_source: &S,
+    auth: ProviderAuthInfo,
+    github_copilot_account_id: Option<String>,
+    codex_oauth_account_id: Option<String>,
+) -> Result<ManagedAccountAuthResolution, S::Error>
+where
+    S: ManagedAccountRuntimeSource + ?Sized,
+{
+    let plan = managed_account_auth_plan(auth, github_copilot_account_id, codex_oauth_account_id);
+    let should_send_codex_oauth_session_headers = plan.should_send_codex_oauth_session_headers();
+
+    match plan {
+        ManagedAccountAuthPlan::ResolveRuntimeToken {
+            runtime: runtime @ ManagedAccountAuthRuntime::GitHubCopilot,
+            account_id,
+        } => {
+            let auth = runtime_source
+                .resolve_copilot_auth(account_id.as_deref(), runtime)
+                .await?;
+            Ok(ManagedAccountAuthResolution::runtime_token(
+                auth,
+                None,
+                should_send_codex_oauth_session_headers,
+            ))
+        }
+        ManagedAccountAuthPlan::ResolveRuntimeToken {
+            runtime: runtime @ ManagedAccountAuthRuntime::CodexOAuth,
+            account_id,
+        } => {
+            let (auth, codex_oauth_account_id) = runtime_source
+                .resolve_codex_oauth(account_id, runtime)
+                .await?;
+            Ok(ManagedAccountAuthResolution::runtime_token(
+                auth,
+                codex_oauth_account_id,
+                should_send_codex_oauth_session_headers,
+            ))
+        }
+        ManagedAccountAuthPlan::Passthrough { auth } => {
+            Ok(ManagedAccountAuthResolution::passthrough(auth))
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Error)]
 pub enum ManagedAccountAuthError {
     #[error(
@@ -136,13 +215,74 @@ pub fn headers_contain_proxy_auth_placeholder(headers: &HeaderMap) -> bool {
 mod tests {
     use super::{
         headers_contain_proxy_auth_placeholder, is_managed_account_upstream_url,
-        managed_account_auth_plan, validate_managed_account_upstream_auth, ManagedAccountAuthError,
-        ManagedAccountAuthPlan, ManagedAccountAuthResolution, ManagedAccountAuthRuntime,
+        managed_account_auth_plan, resolve_managed_account_auth_with_runtime_source,
+        validate_managed_account_upstream_auth, ManagedAccountAuthError, ManagedAccountAuthPlan,
+        ManagedAccountAuthResolution, ManagedAccountAuthRuntime, ManagedAccountRuntimeSource,
         PROXY_AUTH_PLACEHOLDER,
     };
+    use futures::{executor::block_on, future::BoxFuture};
     use http::{HeaderMap, HeaderValue};
 
+    use crate::copilot_model_map::CopilotModel;
     use crate::provider_auth::{ProviderAuthInfo, ProviderAuthStrategy};
+
+    struct StaticManagedRuntimeSource;
+
+    impl ManagedAccountRuntimeSource for StaticManagedRuntimeSource {
+        type Error = String;
+
+        fn resolve_copilot_auth<'a>(
+            &'a self,
+            account_id: Option<&'a str>,
+            runtime: ManagedAccountAuthRuntime,
+        ) -> BoxFuture<'a, Result<ProviderAuthInfo, Self::Error>> {
+            Box::pin(async move {
+                Ok(ProviderAuthInfo::new(
+                    format!("copilot-token:{}", account_id.unwrap_or("default")),
+                    runtime.provider_auth_strategy(),
+                ))
+            })
+        }
+
+        fn resolve_codex_oauth<'a>(
+            &'a self,
+            account_id: Option<String>,
+            runtime: ManagedAccountAuthRuntime,
+        ) -> BoxFuture<'a, Result<(ProviderAuthInfo, Option<String>), Self::Error>> {
+            Box::pin(async move {
+                let account_id = account_id.unwrap_or_else(|| "codex-default".to_string());
+                Ok((
+                    ProviderAuthInfo::new(
+                        format!("codex-token:{account_id}"),
+                        runtime.provider_auth_strategy(),
+                    ),
+                    Some(account_id),
+                ))
+            })
+        }
+
+        fn resolve_copilot_api_endpoint<'a>(
+            &'a self,
+            _account_id: Option<&'a str>,
+        ) -> BoxFuture<'a, Option<String>> {
+            Box::pin(async move { None })
+        }
+
+        fn fetch_copilot_live_models<'a>(
+            &'a self,
+            _account_id: Option<&'a str>,
+        ) -> BoxFuture<'a, Result<Option<Vec<CopilotModel>>, String>> {
+            Box::pin(async move { Ok(None) })
+        }
+
+        fn resolve_copilot_model_vendor<'a>(
+            &'a self,
+            _account_id: Option<&'a str>,
+            _model_id: &'a str,
+        ) -> BoxFuture<'a, Option<String>> {
+            Box::pin(async move { None })
+        }
+    }
 
     #[test]
     fn managed_account_plan_passes_through_non_runtime_auth() {
@@ -228,6 +368,57 @@ mod tests {
             Some("codex-account")
         );
         assert!(runtime.should_send_codex_oauth_session_headers);
+    }
+
+    #[test]
+    fn managed_account_runtime_source_resolution_passes_through_non_runtime_auth() {
+        let source = StaticManagedRuntimeSource;
+        let auth = ProviderAuthInfo::new("sk-test".to_string(), ProviderAuthStrategy::Bearer);
+
+        let resolved = block_on(resolve_managed_account_auth_with_runtime_source(
+            &source,
+            auth.clone(),
+            Some("copilot-account".to_string()),
+            Some("codex-account".to_string()),
+        ))
+        .expect("managed auth passthrough");
+
+        assert_eq!(resolved, ManagedAccountAuthResolution::passthrough(auth));
+    }
+
+    #[test]
+    fn managed_account_runtime_source_resolution_uses_bound_accounts() {
+        let source = StaticManagedRuntimeSource;
+
+        let copilot = block_on(resolve_managed_account_auth_with_runtime_source(
+            &source,
+            ProviderAuthInfo::new(
+                PROXY_AUTH_PLACEHOLDER.to_string(),
+                ProviderAuthStrategy::GitHubCopilot,
+            ),
+            Some("copilot-account".to_string()),
+            Some("codex-account".to_string()),
+        ))
+        .expect("copilot auth resolution");
+        assert_eq!(copilot.auth.api_key, "copilot-token:copilot-account");
+        assert_eq!(copilot.auth.strategy, ProviderAuthStrategy::GitHubCopilot);
+        assert_eq!(copilot.codex_oauth_account_id, None);
+        assert!(!copilot.should_send_codex_oauth_session_headers);
+
+        let codex = block_on(resolve_managed_account_auth_with_runtime_source(
+            &source,
+            ProviderAuthInfo::new(
+                PROXY_AUTH_PLACEHOLDER.to_string(),
+                ProviderAuthStrategy::CodexOAuth,
+            ),
+            Some("copilot-account".to_string()),
+            Some("codex-account".to_string()),
+        ))
+        .expect("codex oauth resolution");
+        assert_eq!(codex.auth.api_key, "codex-token:codex-account");
+        assert_eq!(codex.auth.strategy, ProviderAuthStrategy::CodexOAuth);
+        assert_eq!(codex.codex_oauth_account_id.as_deref(), Some("codex-account"));
+        assert!(codex.should_send_codex_oauth_session_headers);
     }
 
     #[test]

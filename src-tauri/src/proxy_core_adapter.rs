@@ -2981,8 +2981,9 @@ pub(crate) use crate::proxy_core::api::auth::{
     validate_management_bearer_header, ManagementAuthDecision,
 };
 pub(crate) use crate::proxy_core::api::auth::{
-    managed_account_auth_plan, ManagedAccountAuthPlan, ManagedAccountAuthResolution,
-    ManagedAccountAuthRuntime,
+    resolve_managed_account_auth_with_runtime_source as resolve_core_managed_account_auth_with_runtime_source,
+    ManagedAccountAuthResolution, ManagedAccountAuthRuntime,
+    ManagedAccountRuntimeSource as CoreManagedAccountRuntimeSource,
 };
 pub(crate) use crate::proxy_core::api::config::{
     app_proxy_config_defaults_for_app, app_type_from_circuit_key, cache_injection_log_message,
@@ -3130,42 +3131,22 @@ pub(crate) fn default_managed_account_runtime_source() -> ManagedAccountRuntimeS
     managed_account_runtime_source_from_app_handle(None)
 }
 
-pub(crate) trait ManagedAccountRuntimeSource: Send + Sync {
-    fn resolve_copilot_auth<'a>(
-        &'a self,
-        account_id: Option<&'a str>,
-        runtime: ManagedAccountAuthRuntime,
-    ) -> BoxFuture<'a, Result<ProviderAuthInfo, ProxyError>>;
-
-    fn resolve_codex_oauth<'a>(
-        &'a self,
-        account_id: Option<String>,
-        runtime: ManagedAccountAuthRuntime,
-    ) -> BoxFuture<'a, Result<(ProviderAuthInfo, Option<String>), ProxyError>>;
-
-    fn resolve_copilot_api_endpoint<'a>(
-        &'a self,
-        account_id: Option<&'a str>,
-    ) -> BoxFuture<'a, Option<String>>;
-
-    fn fetch_copilot_live_models<'a>(
-        &'a self,
-        account_id: Option<&'a str>,
-    ) -> BoxFuture<'a, Result<Option<Vec<CopilotModel>>, String>>;
-
-    fn resolve_copilot_model_vendor<'a>(
-        &'a self,
-        account_id: Option<&'a str>,
-        model_id: &'a str,
-    ) -> BoxFuture<'a, Option<String>>;
-
+pub(crate) trait ManagedAccountRuntimeSource:
+    CoreManagedAccountRuntimeSource<Error = ProxyError> + Send + Sync
+{
     fn resolve_auth_for_provider<'a>(
         &'a self,
         auth_provider: &'a Provider,
         auth: ProviderAuthInfo,
     ) -> BoxFuture<'a, Result<ManagedAccountAuthResolution, ProxyError>> {
         Box::pin(async move {
-            resolve_managed_account_auth_with_runtime_source(self, auth_provider, auth).await
+            resolve_core_managed_account_auth_with_runtime_source(
+                self,
+                auth,
+                provider_github_copilot_managed_account_id(auth_provider),
+                provider_codex_oauth_managed_account_id(auth_provider),
+            )
+            .await
         })
     }
 
@@ -3363,7 +3344,14 @@ pub(crate) trait ManagedAccountRuntimeSource: Send + Sync {
     }
 }
 
-impl ManagedAccountRuntimeSource for CcSwitchManagedAccountRuntimeSource {
+impl<T> ManagedAccountRuntimeSource for T where
+    T: CoreManagedAccountRuntimeSource<Error = ProxyError> + Send + Sync
+{
+}
+
+impl CoreManagedAccountRuntimeSource for CcSwitchManagedAccountRuntimeSource {
+    type Error = ProxyError;
+
     fn resolve_copilot_auth<'a>(
         &'a self,
         account_id: Option<&'a str>,
@@ -3433,51 +3421,6 @@ impl ManagedAccountRuntimeSource for CcSwitchManagedAccountRuntimeSource {
             )
             .await
         })
-    }
-}
-
-async fn resolve_managed_account_auth_with_runtime_source(
-    runtime_source: &(impl ManagedAccountRuntimeSource + ?Sized),
-    auth_provider: &Provider,
-    auth: ProviderAuthInfo,
-) -> Result<ManagedAccountAuthResolution, ProxyError> {
-    let plan = managed_account_auth_plan(
-        auth,
-        provider_github_copilot_managed_account_id(auth_provider),
-        provider_codex_oauth_managed_account_id(auth_provider),
-    );
-    let should_send_codex_oauth_session_headers = plan.should_send_codex_oauth_session_headers();
-
-    match plan {
-        ManagedAccountAuthPlan::ResolveRuntimeToken {
-            runtime: runtime @ ManagedAccountAuthRuntime::GitHubCopilot,
-            account_id,
-        } => {
-            let auth = runtime_source
-                .resolve_copilot_auth(account_id.as_deref(), runtime)
-                .await?;
-            Ok(ManagedAccountAuthResolution::runtime_token(
-                auth,
-                None,
-                should_send_codex_oauth_session_headers,
-            ))
-        }
-        ManagedAccountAuthPlan::ResolveRuntimeToken {
-            runtime: runtime @ ManagedAccountAuthRuntime::CodexOAuth,
-            account_id,
-        } => {
-            let (auth, codex_oauth_account_id) = runtime_source
-                .resolve_codex_oauth(account_id, runtime)
-                .await?;
-            Ok(ManagedAccountAuthResolution::runtime_token(
-                auth,
-                codex_oauth_account_id,
-                should_send_codex_oauth_session_headers,
-            ))
-        }
-        ManagedAccountAuthPlan::Passthrough { auth } => {
-            Ok(ManagedAccountAuthResolution::passthrough(auth))
-        }
     }
 }
 
@@ -16931,7 +16874,9 @@ base_url = "https://api.openai.com/v1"
         models: Option<Vec<CopilotModel>>,
     }
 
-    impl ManagedAccountRuntimeSource for StaticCopilotModelsSource {
+    impl CoreManagedAccountRuntimeSource for StaticCopilotModelsSource {
+        type Error = ProxyError;
+
         fn resolve_copilot_auth<'a>(
             &'a self,
             _account_id: Option<&'a str>,
@@ -16981,7 +16926,9 @@ base_url = "https://api.openai.com/v1"
 
     struct StaticManagedAuthResolutionSource;
 
-    impl ManagedAccountRuntimeSource for StaticManagedAuthResolutionSource {
+    impl CoreManagedAccountRuntimeSource for StaticManagedAuthResolutionSource {
+        type Error = ProxyError;
+
         fn resolve_copilot_auth<'a>(
             &'a self,
             account_id: Option<&'a str>,

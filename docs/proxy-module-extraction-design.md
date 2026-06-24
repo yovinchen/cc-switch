@@ -407,6 +407,7 @@
 396. host `transform_gemini::rectify_tool_call_parts` facade 已删除；非流式 response rectifier 现在由 core 产出 `rectified_tool_names`，host 仅消费这些名称写入既有日志。
 397. Gemini request transform 的 shadow session 读取与 request envelope 调用 wrapper 已迁入 `proxy-core::anthropic_request_to_gemini_request_with_shadow`；host `anthropic_to_gemini_with_shadow` 只转发 store/provider/session 并映射 core 错误。
 398. Gemini Native 非流式 response 转换后的 shadow store 写入 wrapper 已迁入 `proxy-core::gemini_response_to_anthropic_message_with_shadow`；host 只传入 store/provider/session、记录 rectifier 日志并映射 core 错误。
+399. 托管账号运行态读取端口已迁入 `proxy-core::managed_account_auth::ManagedAccountRuntimeSource`；core 负责按 GitHub Copilot/Codex OAuth runtime plan 调用宿主 source 并组装 `ManagedAccountAuthResolution`，host adapter 只负责把 CC Switch Provider 的 account binding 投影为 account id，并实现 Tauri/Copilot/Codex OAuth 的默认 source。
 399. host `transform_gemini::{extract_anthropic_tool_schema_hints, rectify_tool_call_args}` passthrough facade 已删除；handler 和测试直接引用 `proxy-core` 的 tool schema hint/args rectifier contract。
 400. Claude/Gemini 生产 request/response 调用点已从 host `transform_gemini` wrapper 改为直接调用 `proxy-core::{anthropic_request_to_gemini_request_with_shadow, gemini_response_to_anthropic_message_with_shadow, gemini_response_to_anthropic_message}`；host wrapper 仅保留测试/兼容入口，UUID suffix 生成和 rectifier 日志仍由 Tauri host 负责。
 401. `providers::transform_gemini` host facade 已删除；Gemini request/response 协议规则只在 `proxy-core::{gemini_request, gemini_response, gemini_stream}` 维护，Tauri host 仅在生产调用点注入 UUID suffix、shadow store、日志和 `ProxyError` 映射。
