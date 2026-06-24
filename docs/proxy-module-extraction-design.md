@@ -1334,7 +1334,7 @@
 本轮继续收窄 provider policy adapter façade：legacy common-config migration skip 直接委托 core `should_skip_provider_legacy_common_config_migration`，credential issue spec 与 key-change issue message 改为 core helper 直接 re-export，adapter 只保留需要宿主 enum/record 投影的入口。
 本轮继续把 Claude takeover 模型字段派生与 env 写入策略收敛到 `proxy-core::ports`：core 维护角色别名、`[1M]` 标记、显示名 fallback、模型覆盖字段清理和 token placeholder 策略；adapter 继续保留 `Provider` 到 managed-account/Copilot auth policy 的宿主投影。
 本轮继续把 OpenCode/OpenClaw common-config 片段里的 provider 凭据剥离规则收敛到 `proxy-core::ports`：core 维护 `options.apiKey`/`options.baseURL` 与 `apiKey`/`baseUrl` 的纯 JSON 删除策略，adapter 继续保留 snippet 序列化、Codex TOML 和宿主 `AppType` 分发。
-本轮继续把非 Codex common-config snippet 生成规则收敛到 `proxy-core::ports`：core 维护 Claude/Gemini/OpenCode/OpenClaw 的 provider 字段剥离、空片段 `{}` fallback 和 JSON pretty serialization；adapter 继续保留 Codex TOML 清理与 `AppType` 分发。
+本轮继续把非 Codex common-config snippet 生成与分发入口收敛到 `proxy-core::ports`：core 维护 Claude/Gemini/OpenCode/OpenClaw 的 provider 字段剥离、Claude Desktop/Hermes 空片段、空片段 `{}` fallback 和 JSON pretty serialization；adapter 继续保留 Codex TOML 清理和宿主 `Provider` 投影。
 本轮继续把 Claude/Gemini common-config 的 contains/apply/remove 运行时 JSON 规则收敛到 `proxy-core::ports`：core 维护 JSON snippet 解析、Claude 深合并/深删除、Gemini env 合并/删除和错误文案；adapter 继续保留 Codex TOML merge/remove 与 `AppType` 分发。
 本轮继续把 provider common-config 启用判定收敛到 `proxy-core::ports`：core 维护显式 `common_config_enabled` 优先级、snippet 非空 gate 和存储归一化是否需要 snippet 的纯策略；adapter 只负责从 `ProviderMeta`、宿主 settings 和 legacy contains 检测投影输入事实。
 本轮继续把 proxy takeover 的 retakeover backup 决策和 official provider category 策略收敛到 `proxy-core::ports`：core 维护 backup 可复用/需恢复、官方供应商 warning 与 Codex official live 重应用判定；adapter 只负责从 `Provider.category` 投影 category 字符串。

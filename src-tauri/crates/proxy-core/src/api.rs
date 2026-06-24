@@ -169,6 +169,7 @@ pub mod ports {
         provider_initial_live_config_managed_marker, provider_key_change_policy_issue_for_app,
         provider_key_change_policy_issue_message, provider_omo_switch_pair_for_app_category,
         provider_omo_variant_for_app_category, provider_settings_with_live_token_sync,
+        provider_non_codex_common_config_snippet_from_settings,
         provider_non_codex_credential_values_from_settings,
         provider_supports_legacy_common_config_migration,
         provider_uses_common_config_from_parts,

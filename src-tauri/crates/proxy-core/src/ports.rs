@@ -2378,6 +2378,25 @@ pub fn openclaw_common_config_snippet_from_settings(
     json_common_config_snippet_from_value(openclaw_common_config_value_from_settings(settings))
 }
 
+pub fn provider_non_codex_common_config_snippet_from_settings(
+    app: &AppKind,
+    settings: &Value,
+) -> Result<Option<String>, CommonConfigSnippetIssue> {
+    match app {
+        AppKind::Claude => claude_common_config_snippet_from_settings(settings).map(Some),
+        AppKind::ClaudeDesktop => Ok(Some(String::new())),
+        AppKind::Gemini => gemini_common_config_snippet_from_settings(settings).map(Some),
+        AppKind::Custom(name) if name.eq_ignore_ascii_case("opencode") => {
+            opencode_common_config_snippet_from_settings(settings).map(Some)
+        }
+        AppKind::Custom(name) if name.eq_ignore_ascii_case("openclaw") => {
+            openclaw_common_config_snippet_from_settings(settings).map(Some)
+        }
+        AppKind::Custom(name) if name.eq_ignore_ascii_case("hermes") => Ok(Some(String::new())),
+        AppKind::Codex | AppKind::Custom(_) => Ok(None),
+    }
+}
+
 pub fn json_common_config_snippet_from_value(
     config: Value,
 ) -> Result<String, CommonConfigSnippetIssue> {
@@ -4966,7 +4985,9 @@ mod tests {
         proxy_runtime_config_from_proxy_config, provider_additive_live_write_action_for_app,
         provider_additive_update_route_for_app,
         provider_app_has_current_provider, provider_category_is_official,
-        provider_credential_issue_spec, provider_non_codex_credential_values_from_settings,
+        provider_credential_issue_spec,
+        provider_non_codex_common_config_snippet_from_settings,
+        provider_non_codex_credential_values_from_settings,
         provider_delete_is_current_provider, provider_initial_live_config_managed_marker,
         provider_key_change_policy_issue_for_app, provider_key_change_policy_issue_message,
         provider_live_config_presence_error_policy, provider_live_removal_target_for_app,
@@ -6778,6 +6799,56 @@ mod tests {
         assert_eq!(
             serde_json::from_str::<Value>(&openclaw_snippet).expect("openclaw json"),
             json!({"api": {"chat": "/v1/chat/completions"}})
+        );
+
+        let dispatched = provider_non_codex_common_config_snippet_from_settings(
+            &AppKind::Custom("opencode".to_string()),
+            &json!({
+                "npm": "@ai-sdk/openai",
+                "options": {
+                    "apiKey": "secret",
+                    "baseURL": "https://opencode.example",
+                    "timeout": 30
+                }
+            }),
+        )
+        .expect("opencode dispatch")
+        .expect("opencode snippet");
+        assert_eq!(
+            serde_json::from_str::<Value>(&dispatched).expect("opencode dispatched json"),
+            json!({"npm": "@ai-sdk/openai", "options": {"timeout": 30}})
+        );
+        assert_eq!(
+            provider_non_codex_common_config_snippet_from_settings(
+                &AppKind::ClaudeDesktop,
+                &json!({"ignored": true})
+            )
+            .expect("claude desktop dispatch"),
+            Some(String::new())
+        );
+        assert_eq!(
+            provider_non_codex_common_config_snippet_from_settings(
+                &AppKind::Custom("hermes".to_string()),
+                &json!({"ignored": true})
+            )
+            .expect("hermes dispatch"),
+            Some(String::new())
+        );
+        assert_eq!(
+            provider_non_codex_common_config_snippet_from_settings(
+                &AppKind::Codex,
+                &json!({"config": "model = \"gpt-5\""})
+            )
+            .expect("codex dispatch"),
+            None
+        );
+        assert_eq!(
+            provider_non_codex_common_config_snippet_from_settings(
+                &AppKind::Custom("future".to_string()),
+                &json!({"setting": true})
+            )
+            .expect("unknown custom dispatch"),
+            None
         );
 
         assert_eq!(

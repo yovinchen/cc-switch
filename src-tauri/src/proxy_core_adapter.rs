@@ -318,6 +318,7 @@ pub(crate) use crate::proxy_core::api::ports::{
     provider_live_config_presence_error_policy as core_provider_live_config_presence_error_policy,
     provider_live_removal_target_for_app as core_provider_live_removal_target,
     provider_live_sync_scope_for_app as core_provider_live_sync_scope,
+    provider_non_codex_common_config_snippet_from_settings as core_provider_non_codex_common_config_snippet_from_settings,
     provider_omo_switch_pair_for_app_category as core_provider_omo_switch_pair,
     provider_omo_variant_for_app_category as core_provider_omo_variant_for_category,
     provider_non_codex_credential_values_from_settings as core_provider_non_codex_credential_values_from_settings,
@@ -1727,19 +1728,15 @@ pub(crate) use crate::proxy_core::api::domain::extract_openclaw_stream_check_bas
 use crate::proxy_core::api::ports::{
     apply_claude_common_config_to_settings as core_apply_claude_common_config_to_settings,
     apply_gemini_common_config_to_settings as core_apply_gemini_common_config_to_settings,
-    claude_common_config_snippet_from_settings as core_claude_common_config_snippet_from_settings,
     common_config_settings_mutation_issue_message as core_common_config_settings_mutation_issue_message,
     common_config_snippet_issue_message as core_common_config_snippet_issue_message,
     contains_claude_common_config_snippet as core_contains_claude_common_config_snippet,
     contains_gemini_common_config_snippet as core_contains_gemini_common_config_snippet,
-    gemini_common_config_snippet_from_settings as core_gemini_common_config_snippet_from_settings,
     openclaw_live_write_action_decision as core_openclaw_live_write_action_decision,
     openclaw_live_write_config_decision as core_openclaw_live_write_config_decision,
-    openclaw_common_config_snippet_from_settings as core_openclaw_common_config_snippet_from_settings,
     opencode_live_provider_fragment_decision as core_opencode_live_provider_fragment_decision,
     opencode_live_write_action_decision as core_opencode_live_write_action_decision,
     opencode_live_write_config_decision as core_opencode_live_write_config_decision,
-    opencode_common_config_snippet_from_settings as core_opencode_common_config_snippet_from_settings,
     provider_common_config_storage_normalization_requires_snippet as core_provider_common_config_storage_normalization_requires_snippet,
     provider_uses_common_config_from_parts as core_provider_uses_common_config_from_parts,
     proxy_takeover_marked_state_is_reusable as core_proxy_takeover_marked_state_is_reusable,
@@ -1983,20 +1980,18 @@ pub(crate) fn common_config_snippet_from_settings(
     settings: &Value,
 ) -> Result<String, CommonConfigSnippetIssue> {
     match app_type {
-        AppType::Claude => claude_common_config_snippet_from_settings(settings),
-        AppType::ClaudeDesktop => Ok(String::new()),
         AppType::Codex => codex_common_config_snippet_from_settings(settings),
-        AppType::Gemini => gemini_common_config_snippet_from_settings(settings),
-        AppType::OpenCode => opencode_common_config_snippet_from_settings(settings),
-        AppType::OpenClaw => openclaw_common_config_snippet_from_settings(settings),
-        AppType::Hermes => Ok(String::new()),
+        AppType::Claude
+        | AppType::ClaudeDesktop
+        | AppType::Gemini
+        | AppType::OpenCode
+        | AppType::OpenClaw
+        | AppType::Hermes => core_provider_non_codex_common_config_snippet_from_settings(
+            &AppKind::from(app_type),
+            settings,
+        )
+        .map(|snippet| snippet.expect("known non-Codex app should project common config snippet")),
     }
-}
-
-pub(crate) fn claude_common_config_snippet_from_settings(
-    settings: &Value,
-) -> Result<String, CommonConfigSnippetIssue> {
-    core_claude_common_config_snippet_from_settings(settings)
 }
 
 pub(crate) fn codex_common_config_snippet_from_settings(
@@ -2034,24 +2029,6 @@ pub(crate) fn codex_common_config_snippet_from_settings(
     }
 
     Ok(cleaned.trim().to_string())
-}
-
-pub(crate) fn gemini_common_config_snippet_from_settings(
-    settings: &Value,
-) -> Result<String, CommonConfigSnippetIssue> {
-    core_gemini_common_config_snippet_from_settings(settings)
-}
-
-pub(crate) fn opencode_common_config_snippet_from_settings(
-    settings: &Value,
-) -> Result<String, CommonConfigSnippetIssue> {
-    core_opencode_common_config_snippet_from_settings(settings)
-}
-
-pub(crate) fn openclaw_common_config_snippet_from_settings(
-    settings: &Value,
-) -> Result<String, CommonConfigSnippetIssue> {
-    core_openclaw_common_config_snippet_from_settings(settings)
 }
 
 pub(crate) fn provider_default_live_import_settings(
@@ -18957,6 +18934,33 @@ reasoning = "medium"
             apply_common_config_to_settings(&AppType::Gemini, &gemini_settings, gemini_snippet)
                 .expect("gemini apply");
         assert_eq!(applied, json!({"env": {"SHARED_REGION": "us-central1"}}));
+
+        let opencode_snippet = common_config_snippet_from_settings(
+            &AppType::OpenCode,
+            &json!({
+                "npm": "@ai-sdk/openai",
+                "options": {
+                    "apiKey": "secret",
+                    "baseURL": "https://opencode.example",
+                    "timeout": 30
+                }
+            }),
+        )
+        .expect("opencode snippet");
+        assert_eq!(
+            serde_json::from_str::<Value>(&opencode_snippet).expect("opencode snippet json"),
+            json!({"npm": "@ai-sdk/openai", "options": {"timeout": 30}})
+        );
+        assert_eq!(
+            common_config_snippet_from_settings(&AppType::ClaudeDesktop, &json!({}))
+                .expect("claude desktop snippet"),
+            ""
+        );
+        assert_eq!(
+            common_config_snippet_from_settings(&AppType::Hermes, &json!({}))
+                .expect("hermes snippet"),
+            ""
+        );
 
         assert_eq!(
             common_config_settings_mutation_issue_message(
