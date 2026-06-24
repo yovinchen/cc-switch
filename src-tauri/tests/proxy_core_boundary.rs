@@ -6019,10 +6019,16 @@ fn production_forwarder_uses_auth_source_resource() {
 
     let adapter_path = manifest_dir.join("src/proxy_core_adapter.rs");
     let adapter_source = fs::read_to_string(&adapter_path).expect("read proxy_core_adapter.rs");
+    assert!(
+        adapter_source.contains(
+            "type ForwarderAuthHeaders = crate::proxy_core::api::transport::ForwarderAuthHeaders"
+        ),
+        "ForwarderAuthHeaders DTO must be owned by proxy-core and exposed through an adapter alias"
+    );
     let auth_input_slice = function_slice(
         &adapter_source,
         "pub(crate) struct ForwarderAuthHeadersInput",
-        "pub(crate) struct ForwarderAuthHeaders {",
+        "pub(crate) trait ForwarderAuthSource",
     );
     let auth_source_slice = function_slice(
         &adapter_source,
@@ -6064,7 +6070,7 @@ fn production_forwarder_uses_auth_source_resource() {
         "ForwarderAuthHeadersInput must carry route/request facts for core AuthProvider resolution"
     );
     assert!(
-        auth_source_slice.contains("fn prepare_copilot_auth_optimization"),
+        auth_impl_slice.contains("fn prepare_optional_copilot_auth_optimization"),
         "default ForwarderAuthSource implementation must retain direct Copilot auth override preparation"
     );
     assert!(
@@ -6841,6 +6847,9 @@ fn production_forwarder_uses_request_source_resource() {
     let source = fs::read_to_string(&path).expect("read forwarder.rs");
     let adapter_path = manifest_dir.join("src/proxy_core_adapter.rs");
     let adapter_source = fs::read_to_string(&adapter_path).expect("read proxy_core_adapter.rs");
+    let core_transport_path = manifest_dir.join("crates/proxy-core/src/request_transport.rs");
+    let core_transport_source =
+        fs::read_to_string(&core_transport_path).expect("read request_transport.rs");
     let struct_slice = function_slice(
         &source,
         "pub struct RequestForwarder",
@@ -6882,10 +6891,16 @@ fn production_forwarder_uses_request_source_resource() {
         source.contains("transform_request_body"),
         "ForwarderRequestSource must own transformed request body selection"
     );
+    assert!(
+        adapter_source.contains(
+            "type ForwarderTransformPlan =\n    crate::proxy_core::api::transport::ForwarderTransformPlan"
+        ),
+        "ForwarderTransformPlan DTO must be owned by proxy-core and exposed through an adapter alias"
+    );
     let transform_plan_slice = function_slice(
-        &adapter_source,
-        "pub(crate) struct ForwarderTransformPlan",
-        "pub(crate) struct ForwarderUpstreamUrlInput",
+        &core_transport_source,
+        "pub struct ForwarderTransformPlan",
+        "pub struct ForwarderTransformPlanFacts",
     );
     assert!(
         transform_plan_slice.contains("codex_responses_to_chat: bool"),
@@ -6906,19 +6921,27 @@ fn production_forwarder_uses_request_source_resource() {
             && !upstream_url_input_slice.contains("claude_api_format: Option"),
         "ForwarderUpstreamUrlInput must not expose split transform-plan URL facts"
     );
+    assert!(
+        adapter_source.contains(
+            "type ForwarderProtocolPreparationInput<'a> =\n    crate::proxy_core::api::transport::ForwarderProtocolPreparationInput<'a>"
+        ) && adapter_source.contains(
+            "type ForwarderProtocolPreparation =\n    crate::proxy_core::api::transport::ForwarderProtocolPreparation"
+        ),
+        "ForwarderProtocolPreparation DTOs must be owned by proxy-core and exposed through adapter aliases"
+    );
     let protocol_preparation_input_slice = function_slice(
-        &adapter_source,
-        "pub(crate) struct ForwarderProtocolPreparationInput",
-        "pub(crate) struct ForwarderProtocolPreparation {",
+        &core_transport_source,
+        "pub struct ForwarderProtocolPreparationInput",
+        "pub enum ForwarderRequestBodyTransformAction",
     );
     assert!(
         protocol_preparation_input_slice.contains("transform_plan: &'a ForwarderTransformPlan"),
         "ForwarderProtocolPreparationInput must carry the cohesive transform plan"
     );
     let protocol_preparation_slice = function_slice(
-        &adapter_source,
-        "pub(crate) struct ForwarderProtocolPreparation {",
-        "pub(crate) struct ForwarderUpstreamUrlInput",
+        &core_transport_source,
+        "pub struct ForwarderProtocolPreparation",
+        "pub fn forwarder_transform_plan_from_facts",
     );
     assert!(
         protocol_preparation_slice.contains("should_transform_claude_request: bool")
@@ -7102,7 +7125,7 @@ fn production_forwarder_uses_request_source_resource() {
         );
     }
     assert!(
-        adapter_source.contains("fn request_body_model"),
+        adapter_source.contains("forwarder_request_body_model("),
         "default ForwarderRequestSource implementation must retain request body model projection"
     );
     assert!(
