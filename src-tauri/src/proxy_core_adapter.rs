@@ -171,7 +171,7 @@ pub(crate) fn app_error_from_provider_selection_failure(
 ) -> AppError {
     match error {
         ProviderSelectionFailure::AllProvidersCircuitOpen => {
-            log::warn!("[{app_type}] [FO-004] 所有供应商均已熔断");
+            log::warn!("{}", forwarder_all_providers_circuit_open_log_line(app_type));
             AppError::AllProvidersCircuitOpen
         }
         ProviderSelectionFailure::NoProvidersConfigured => {
@@ -3082,6 +3082,7 @@ pub(crate) use crate::proxy_core::api::transport::{
     categorize_forward_failure,
     classify_copilot_request, claude_transform_endpoint_rewrite_input_from_body,
     AuthProviderHeaderResolution, finalize_forwarder_auth_headers,
+    forwarder_all_providers_circuit_open_log_line,
     forwarder_failure_log_line as core_forwarder_failure_log_line,
     forwarder_media_retry_plan_from_facts, forwarder_protocol_preparation_from_transform_plan,
     forwarder_no_available_provider_status_message as core_forwarder_no_available_provider_status_message,

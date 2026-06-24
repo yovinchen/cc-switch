@@ -1,6 +1,7 @@
 use serde_json::Value;
 
 use crate::error::ProxyErrorStatusKind;
+use crate::log_codes;
 
 pub const PROVIDER_FAILED_RETRY: &str = "FWD-001";
 pub const ALL_PROVIDERS_FAILED: &str = "FWD-002";
@@ -135,6 +136,13 @@ pub fn build_terminal_forward_failure_log(
 
 pub fn forwarder_failure_log_line(app_type: &str, log: &ForwardFailureLog) -> String {
     format!("[{app_type}] [{}] {}", log.code, log.message)
+}
+
+pub fn forwarder_all_providers_circuit_open_log_line(app_type: &str) -> String {
+    format!(
+        "[{app_type}] [{}] 所有供应商均已熔断",
+        log_codes::fo::ALL_CIRCUIT_OPEN
+    )
 }
 
 pub fn build_forward_attempt_limit_reached_log(
@@ -276,7 +284,7 @@ mod tests {
         build_forward_attempt_limit_reached_log,
         build_retryable_forward_failure_log, build_terminal_forward_failure_log,
         categorize_forward_failure, forward_failure_kind_from_proxy_status,
-        forwarder_failure_log_line,
+        forwarder_all_providers_circuit_open_log_line, forwarder_failure_log_line,
         forwarder_no_available_provider_status_message,
         forwarder_rectifier_retry_failure_label, forwarder_rectifier_retry_failure_message,
         forwarder_rectifier_retry_success_message,
@@ -341,6 +349,14 @@ mod tests {
         assert_eq!(
             forwarder_failure_log_line("claude", &log),
             "[claude] [FWD-001] Provider primary 失败，继续尝试下一个 (1/2): 请求超时: upstream timed out"
+        );
+    }
+
+    #[test]
+    fn forwarder_all_providers_circuit_open_log_line_preserves_warning_contract() {
+        assert_eq!(
+            forwarder_all_providers_circuit_open_log_line("codex"),
+            "[codex] [FO-004] 所有供应商均已熔断"
         );
     }
 

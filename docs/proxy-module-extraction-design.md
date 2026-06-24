@@ -1304,6 +1304,7 @@
 本轮继续把 media/signature/budget rectifier retry 的 kind、成功/失败文案和 provider failure label 收敛到 `proxy-core::forward_failure`：adapter 只保留 app 前缀兼容壳和 `ProxyError` 到字符串的 host 映射，不再维护三类 retry payload。
 本轮继续把 terminal/no-available forward failure 的 runtime status 文案收敛到 `proxy-core::forward_failure::{forwarder_no_available_provider_status_message,forwarder_terminal_failure_status_message}`：runtime state source 只负责写入状态，不再维护终态错误中文 payload。
 本轮继续把普通 forward failure 的 app/code 日志行格式收敛到 `proxy-core::forward_failure::forwarder_failure_log_line`：adapter 只保留调用兼容壳，不再维护 `[app] [FWD-*]` 拼接规则。
+本轮继续把 all-providers-circuit-open 的 FO-004 warning 日志行收敛到 `proxy-core::forward_failure::forwarder_all_providers_circuit_open_log_line`：provider selection failure adapter 只负责在 host 边界发出 warning，不再维护 `[FO-004] 所有供应商均已熔断` payload。
 
 当前原则：核心 crate 可以新增端口和领域字段，但不得引入 `tauri`、`Database`、settings、commands、services 等宿主依赖；现有 runtime 行为必须继续通过 targeted tests 证明不回归。
 
