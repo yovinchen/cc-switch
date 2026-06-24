@@ -1037,6 +1037,8 @@ pub(crate) type ForwarderProtocolPreparationInput<'a> =
     crate::proxy_core::api::transport::ForwarderProtocolPreparationInput<'a>;
 pub(crate) type ForwarderTransformPlan =
     crate::proxy_core::api::transport::ForwarderTransformPlan;
+pub(crate) type ForwarderTransformPlanFacts<'a> =
+    crate::proxy_core::api::transport::ForwarderTransformPlanFacts<'a>;
 pub(crate) type ResponseRuntimePolicy = crate::proxy_core::api::config::ResponseRuntimePolicy;
 pub(crate) type ResponseTimeoutConfig = crate::proxy_core::api::config::ResponseTimeoutConfig;
 pub(crate) type StreamingTimeoutConfig = crate::proxy_core::api::config::StreamingTimeoutConfig;
@@ -3101,7 +3103,7 @@ pub(crate) use crate::proxy_core::api::transport::{
     build_terminal_forward_failure_log, categorize_forward_failure,
     classify_copilot_request, claude_transform_endpoint_rewrite_input_from_body,
     contains_image_blocks, AuthProviderHeaderResolution, finalize_forwarder_auth_headers,
-    forwarder_protocol_preparation_from_transform_plan,
+    forwarder_protocol_preparation_from_transform_plan, forwarder_transform_plan_from_facts,
     invalid_upstream_url_error_message,
     is_codex_chat_full_endpoint_base, is_openai_o_series, is_unsupported_image_error,
     merge_copilot_tool_results,
@@ -4947,10 +4949,6 @@ pub(crate) fn resolve_forwarder_claude_api_format(
         is_copilot,
         copilot_model_vendor,
     )
-}
-
-pub(crate) fn forwarder_claude_transform_required(api_format: &str) -> bool {
-    claude_api_format_needs_transform(api_format)
 }
 
 pub(crate) fn forwarder_provider_transform_required(
@@ -9362,25 +9360,16 @@ impl ForwarderRequestSource for CcSwitchForwarderRequestSource {
             .adapter_facts
             .is_claude_adapter
             .then(|| forwarder_claude_api_format(input.provider));
-        let claude_api_format = input
-            .resolved_claude_api_format
-            .or(fallback_claude_api_format);
-        let needs_transform = match input.resolved_claude_api_format {
-            Some(api_format) => forwarder_claude_transform_required(api_format),
-            None => forwarder_provider_transform_required(input.adapter, input.provider),
-        };
+        let provider_transform_required = input.resolved_claude_api_format.is_none()
+            && forwarder_provider_transform_required(input.adapter, input.provider);
 
-        ForwarderTransformPlan {
-            needs_transform,
-            use_claude_transform: needs_transform && input.adapter_facts.is_claude_adapter,
-            use_provider_transform: needs_transform && !input.adapter_facts.is_claude_adapter,
-            claude_api_format_for_url: claude_api_format.map(str::to_string),
-            claude_api_format_for_transform: input
-                .adapter_facts
-                .is_claude_adapter
-                .then(|| claude_api_format.unwrap_or("anthropic").to_string()),
+        forwarder_transform_plan_from_facts(ForwarderTransformPlanFacts {
             codex_responses_to_chat,
-        }
+            adapter_is_claude: input.adapter_facts.is_claude_adapter,
+            resolved_claude_api_format: input.resolved_claude_api_format,
+            fallback_claude_api_format,
+            provider_transform_required,
+        })
     }
 
     fn protocol_preparation(
@@ -22613,8 +22602,6 @@ command = "latest-command"
             resolve_forwarder_claude_api_format(&provider, true, Some("OpenAI")),
             "openai_responses"
         );
-        assert!(!forwarder_claude_transform_required("anthropic"));
-        assert!(forwarder_claude_transform_required("openai_chat"));
         assert!(forwarder_provider_transform_required(
             &claude_adapter,
             &provider

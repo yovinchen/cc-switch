@@ -1,3 +1,4 @@
+use crate::response_transform::claude_api_format_needs_transform;
 use http::HeaderMap;
 use serde_json::{Map, Value};
 use std::net::IpAddr;
@@ -53,6 +54,14 @@ pub struct ForwarderTransformPlan {
     pub codex_responses_to_chat: bool,
 }
 
+pub struct ForwarderTransformPlanFacts<'a> {
+    pub codex_responses_to_chat: bool,
+    pub adapter_is_claude: bool,
+    pub resolved_claude_api_format: Option<&'a str>,
+    pub fallback_claude_api_format: Option<&'a str>,
+    pub provider_transform_required: bool,
+}
+
 pub struct ForwarderProtocolPreparationInput<'a> {
     pub transform_plan: &'a ForwarderTransformPlan,
 }
@@ -62,6 +71,33 @@ pub struct ForwarderProtocolPreparation {
     pub should_transform_claude_request: bool,
     pub claude_api_format_for_transform: Option<String>,
     pub codex_chat_enrichment_enabled: bool,
+}
+
+pub fn forwarder_transform_plan_from_facts(
+    input: ForwarderTransformPlanFacts<'_>,
+) -> ForwarderTransformPlan {
+    let fallback_claude_api_format = input
+        .adapter_is_claude
+        .then_some(input.fallback_claude_api_format)
+        .flatten();
+    let claude_api_format = input
+        .resolved_claude_api_format
+        .or(fallback_claude_api_format);
+    let needs_transform = match input.resolved_claude_api_format {
+        Some(api_format) => claude_api_format_needs_transform(api_format),
+        None => input.provider_transform_required,
+    };
+
+    ForwarderTransformPlan {
+        needs_transform,
+        use_claude_transform: needs_transform && input.adapter_is_claude,
+        use_provider_transform: needs_transform && !input.adapter_is_claude,
+        claude_api_format_for_url: claude_api_format.map(str::to_string),
+        claude_api_format_for_transform: input
+            .adapter_is_claude
+            .then(|| claude_api_format.unwrap_or("anthropic").to_string()),
+        codex_responses_to_chat: input.codex_responses_to_chat,
+    }
 }
 
 pub fn forwarder_protocol_preparation_from_transform_plan(
@@ -316,18 +352,75 @@ fn valid_status_code(value: u64) -> Option<u16> {
 #[cfg(test)]
 mod tests {
     use super::{
+        forwarder_protocol_preparation_from_transform_plan, forwarder_transform_plan_from_facts,
         invalid_mapped_channel_response_status_message, is_socks_proxy_url,
         is_streaming_upstream_request, mapped_channel_response_status,
         proxy_url_points_to_loopback_port, proxy_values_point_to_loopback_port,
         request_body_stream_flag, resolve_channel_response_status_mapping,
-        forwarder_protocol_preparation_from_transform_plan,
         resolve_upstream_request_transport_policy, resolve_upstream_send_policy,
-        ForwarderProtocolPreparationInput, ForwarderTransformPlan, UpstreamSendPolicyInput,
-        UpstreamTransportKind, DEFAULT_UPSTREAM_SEND_TIMEOUT, STREAMING_REQWEST_REQUEST_TIMEOUT,
+        ForwarderProtocolPreparationInput, ForwarderTransformPlan, ForwarderTransformPlanFacts,
+        UpstreamSendPolicyInput, UpstreamTransportKind, DEFAULT_UPSTREAM_SEND_TIMEOUT,
+        STREAMING_REQWEST_REQUEST_TIMEOUT,
     };
     use http::{header::ACCEPT, HeaderMap, HeaderValue};
     use serde_json::json;
     use std::time::Duration;
+
+    #[test]
+    fn forwarder_transform_plan_projects_host_facts() {
+        let resolved_claude = forwarder_transform_plan_from_facts(ForwarderTransformPlanFacts {
+            codex_responses_to_chat: false,
+            adapter_is_claude: true,
+            resolved_claude_api_format: Some("gemini_native"),
+            fallback_claude_api_format: Some("openai_chat"),
+            provider_transform_required: false,
+        });
+        assert!(resolved_claude.needs_transform);
+        assert!(resolved_claude.use_claude_transform);
+        assert!(!resolved_claude.use_provider_transform);
+        assert_eq!(
+            resolved_claude.claude_api_format_for_url.as_deref(),
+            Some("gemini_native")
+        );
+        assert_eq!(
+            resolved_claude.claude_api_format_for_transform.as_deref(),
+            Some("gemini_native")
+        );
+        assert!(!resolved_claude.codex_responses_to_chat);
+
+        let fallback_claude = forwarder_transform_plan_from_facts(ForwarderTransformPlanFacts {
+            codex_responses_to_chat: false,
+            adapter_is_claude: true,
+            resolved_claude_api_format: None,
+            fallback_claude_api_format: Some("openai_chat"),
+            provider_transform_required: true,
+        });
+        assert!(fallback_claude.needs_transform);
+        assert!(fallback_claude.use_claude_transform);
+        assert!(!fallback_claude.use_provider_transform);
+        assert_eq!(
+            fallback_claude.claude_api_format_for_url.as_deref(),
+            Some("openai_chat")
+        );
+        assert_eq!(
+            fallback_claude.claude_api_format_for_transform.as_deref(),
+            Some("openai_chat")
+        );
+
+        let provider_transform = forwarder_transform_plan_from_facts(ForwarderTransformPlanFacts {
+            codex_responses_to_chat: true,
+            adapter_is_claude: false,
+            resolved_claude_api_format: None,
+            fallback_claude_api_format: Some("openai_chat"),
+            provider_transform_required: true,
+        });
+        assert!(provider_transform.needs_transform);
+        assert!(!provider_transform.use_claude_transform);
+        assert!(provider_transform.use_provider_transform);
+        assert!(provider_transform.claude_api_format_for_url.is_none());
+        assert!(provider_transform.claude_api_format_for_transform.is_none());
+        assert!(provider_transform.codex_responses_to_chat);
+    }
 
     #[test]
     fn forwarder_protocol_preparation_projects_transform_plan() {
