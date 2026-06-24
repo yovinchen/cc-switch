@@ -1099,6 +1099,165 @@ pub fn provider_app_has_current_provider(app: &AppKind) -> bool {
     !provider_app_is_additive(app)
 }
 
+pub fn provider_initial_live_config_managed_marker(
+    app: &AppKind,
+    add_to_live: bool,
+) -> Option<bool> {
+    if provider_app_is_additive(app) {
+        Some(add_to_live)
+    } else {
+        None
+    }
+}
+
+pub fn provider_supports_legacy_common_config_migration(app: &AppKind) -> bool {
+    !provider_app_is_additive(app)
+}
+
+pub fn should_skip_provider_legacy_common_config_migration(
+    app: &AppKind,
+    legacy_snippet: &str,
+) -> bool {
+    !provider_supports_legacy_common_config_migration(app) || legacy_snippet.trim().is_empty()
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ProviderKeyChangePolicyIssue {
+    UnsupportedAppMode,
+    ExclusiveCurrentStateProvider,
+}
+
+pub fn provider_key_change_policy_issue_for_app(
+    app: &AppKind,
+    existing_provider_category: Option<&str>,
+) -> Option<ProviderKeyChangePolicyIssue> {
+    if !provider_app_is_additive(app) {
+        return Some(ProviderKeyChangePolicyIssue::UnsupportedAppMode);
+    }
+
+    if app_custom_name_is(app, "opencode")
+        && matches!(existing_provider_category, Some("omo") | Some("omo-slim"))
+    {
+        return Some(ProviderKeyChangePolicyIssue::ExclusiveCurrentStateProvider);
+    }
+
+    None
+}
+
+pub fn provider_key_change_policy_issue_message(
+    issue: ProviderKeyChangePolicyIssue,
+) -> &'static str {
+    match issue {
+        ProviderKeyChangePolicyIssue::UnsupportedAppMode => {
+            "Only additive-mode providers support changing provider key"
+        }
+        ProviderKeyChangePolicyIssue::ExclusiveCurrentStateProvider => {
+            "Provider key cannot be changed for OMO/OMO Slim providers"
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ProviderAdditiveLiveWriteAction {
+    SkipExclusiveCurrentStateProvider,
+    SkipNotRequested,
+    Write,
+}
+
+pub fn provider_additive_live_write_action_for_app(
+    app: &AppKind,
+    provider_category: Option<&str>,
+    add_to_live: bool,
+) -> ProviderAdditiveLiveWriteAction {
+    if app_custom_name_is(app, "opencode")
+        && matches!(provider_category, Some("omo") | Some("omo-slim"))
+    {
+        return ProviderAdditiveLiveWriteAction::SkipExclusiveCurrentStateProvider;
+    }
+
+    if !add_to_live {
+        return ProviderAdditiveLiveWriteAction::SkipNotRequested;
+    }
+
+    ProviderAdditiveLiveWriteAction::Write
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ProviderOmoVariant {
+    Standard,
+    Slim,
+}
+
+impl ProviderOmoVariant {
+    pub fn category(self) -> &'static str {
+        match self {
+            ProviderOmoVariant::Standard => "omo",
+            ProviderOmoVariant::Slim => "omo-slim",
+        }
+    }
+
+    fn opposite(self) -> Self {
+        match self {
+            ProviderOmoVariant::Standard => ProviderOmoVariant::Slim,
+            ProviderOmoVariant::Slim => ProviderOmoVariant::Standard,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ProviderOmoSwitchPair {
+    pub enable: ProviderOmoVariant,
+    pub disable: ProviderOmoVariant,
+}
+
+pub fn provider_omo_variant_for_app_category(
+    app: &AppKind,
+    category: Option<&str>,
+) -> Option<ProviderOmoVariant> {
+    if !app_custom_name_is(app, "opencode") {
+        return None;
+    }
+
+    match category {
+        Some("omo") => Some(ProviderOmoVariant::Standard),
+        Some("omo-slim") => Some(ProviderOmoVariant::Slim),
+        _ => None,
+    }
+}
+
+pub fn provider_omo_switch_pair_for_app_category(
+    app: &AppKind,
+    category: Option<&str>,
+) -> Option<ProviderOmoSwitchPair> {
+    let enable = provider_omo_variant_for_app_category(app, category)?;
+
+    Some(ProviderOmoSwitchPair {
+        enable,
+        disable: enable.opposite(),
+    })
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ProviderAdditiveUpdateRoute {
+    OmoVariant(ProviderOmoVariant),
+    LiveConfigPresence,
+}
+
+pub fn provider_additive_update_route_for_app(
+    app: &AppKind,
+    category: Option<&str>,
+) -> Option<ProviderAdditiveUpdateRoute> {
+    if !provider_app_is_additive(app) {
+        return None;
+    }
+
+    if let Some(omo_variant) = provider_omo_variant_for_app_category(app, category) {
+        return Some(ProviderAdditiveUpdateRoute::OmoVariant(omo_variant));
+    }
+
+    Some(ProviderAdditiveUpdateRoute::LiveConfigPresence)
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ProviderSwitchDispatch {
     Normal,
@@ -3270,12 +3429,18 @@ mod tests {
         live_takeover_app_kinds, proxy_config_preserving_live_takeover_active,
         proxy_app_config_from_parts, proxy_config_with_ephemeral_listen_port,
         proxy_config_with_live_takeover_active, proxy_global_config_from_global_config,
-        proxy_runtime_config_from_proxy_config, provider_switch_dispatch_for_app,
+        proxy_runtime_config_from_proxy_config, provider_additive_live_write_action_for_app,
+        provider_additive_update_route_for_app,
         provider_app_has_current_provider, provider_delete_is_current_provider,
+        provider_initial_live_config_managed_marker, provider_key_change_policy_issue_for_app,
+        provider_key_change_policy_issue_message,
         provider_live_removal_target_for_app, provider_live_sync_scope_for_app,
-        provider_switch_backfill_source_id, provider_switch_requires_takeover_lock,
+        provider_omo_switch_pair_for_app_category, provider_omo_variant_for_app_category,
+        provider_supports_legacy_common_config_migration, provider_switch_backfill_source_id,
+        provider_switch_dispatch_for_app, provider_switch_requires_takeover_lock,
         provider_switch_should_mark_live_config_managed,
         provider_takeover_live_sync_target_for_app,
+        should_skip_provider_legacy_common_config_migration,
         AppListResponse, AppModelListQuery, AppProxyConfig, AppSummaryInput,
         channel_key_record_from_input,
         channel_reachability_status_from_latency, channel_record_from_input, ChannelDeleteResponse,
@@ -3292,9 +3457,11 @@ mod tests {
         CurrentRouteProviderSummaryInput, CurrentRouteResponse, CurrentRouteTarget,
         CurrentRouteTargetInput, current_route_target_from_input, GlobalProxyConfig,
         GroupListQuery, HealthCheckResponse, ModelCatalog, OptimizerConfig, ProviderHealth,
-        ProviderHealthUpdateInput, ProviderListResponse, ProviderSpec, ProviderSummaryInput,
-        ProviderLiveRemovalTarget, ProviderLiveSyncScope, ProviderSwitchDispatch,
-        ProviderTakeoverLiveSyncTarget, ProxyChannelModelWriteRequest,
+        ProviderAdditiveLiveWriteAction, ProviderAdditiveUpdateRoute, ProviderHealthUpdateInput,
+        ProviderKeyChangePolicyIssue, ProviderListResponse, ProviderOmoSwitchPair,
+        ProviderOmoVariant, ProviderSpec, ProviderSummaryInput, ProviderLiveRemovalTarget,
+        ProviderLiveSyncScope, ProviderSwitchDispatch, ProviderTakeoverLiveSyncTarget,
+        ProxyChannelModelWriteRequest,
         ProxyChannelModelsReplaceRequest, ProxyChannelPatchRequest, ProxyChannelTestRequest,
         ProxyChannelWriteRequest, ProxyConfig, ProxyCoreEvent, ProxyCoreEventType,
         ProxyRuntimeStatus, ProxyStatusResponse, ProxyTakeoverStatus,
@@ -4703,6 +4870,201 @@ mod tests {
             &AppKind::Claude,
             None
         ));
+    }
+
+    #[test]
+    fn provider_initial_live_config_managed_marker_only_applies_to_additive_apps() {
+        assert_eq!(
+            provider_initial_live_config_managed_marker(
+                &AppKind::Custom("opencode".to_string()),
+                true
+            ),
+            Some(true)
+        );
+        assert_eq!(
+            provider_initial_live_config_managed_marker(
+                &AppKind::Custom("openclaw".to_string()),
+                false
+            ),
+            Some(false)
+        );
+        assert_eq!(
+            provider_initial_live_config_managed_marker(&AppKind::Claude, true),
+            None
+        );
+    }
+
+    #[test]
+    fn provider_legacy_common_config_migration_skips_additive_and_empty_snippets() {
+        assert!(provider_supports_legacy_common_config_migration(
+            &AppKind::Claude
+        ));
+        assert!(!provider_supports_legacy_common_config_migration(
+            &AppKind::Custom("opencode".to_string())
+        ));
+        assert!(!should_skip_provider_legacy_common_config_migration(
+            &AppKind::Claude,
+            "legacy = true"
+        ));
+        assert!(should_skip_provider_legacy_common_config_migration(
+            &AppKind::Claude,
+            "  \n  "
+        ));
+        assert!(should_skip_provider_legacy_common_config_migration(
+            &AppKind::Custom("openclaw".to_string()),
+            "legacy = true"
+        ));
+    }
+
+    #[test]
+    fn provider_key_change_policy_blocks_non_additive_and_omo_providers() {
+        assert_eq!(
+            provider_key_change_policy_issue_for_app(&AppKind::Claude, None),
+            Some(ProviderKeyChangePolicyIssue::UnsupportedAppMode)
+        );
+        assert_eq!(
+            provider_key_change_policy_issue_for_app(
+                &AppKind::Custom("opencode".to_string()),
+                Some("omo")
+            ),
+            Some(ProviderKeyChangePolicyIssue::ExclusiveCurrentStateProvider)
+        );
+        assert_eq!(
+            provider_key_change_policy_issue_for_app(
+                &AppKind::Custom("opencode".to_string()),
+                Some("custom")
+            ),
+            None
+        );
+        assert_eq!(
+            provider_key_change_policy_issue_for_app(
+                &AppKind::Custom("openclaw".to_string()),
+                None
+            ),
+            None
+        );
+        assert_eq!(
+            provider_key_change_policy_issue_message(
+                ProviderKeyChangePolicyIssue::UnsupportedAppMode
+            ),
+            "Only additive-mode providers support changing provider key"
+        );
+    }
+
+    #[test]
+    fn provider_additive_live_write_action_skips_omo_and_unrequested_writes() {
+        assert_eq!(
+            provider_additive_live_write_action_for_app(
+                &AppKind::Custom("opencode".to_string()),
+                Some("omo-slim"),
+                true
+            ),
+            ProviderAdditiveLiveWriteAction::SkipExclusiveCurrentStateProvider
+        );
+        assert_eq!(
+            provider_additive_live_write_action_for_app(
+                &AppKind::Custom("opencode".to_string()),
+                Some("custom"),
+                false
+            ),
+            ProviderAdditiveLiveWriteAction::SkipNotRequested
+        );
+        assert_eq!(
+            provider_additive_live_write_action_for_app(
+                &AppKind::Custom("openclaw".to_string()),
+                Some("custom"),
+                true
+            ),
+            ProviderAdditiveLiveWriteAction::Write
+        );
+    }
+
+    #[test]
+    fn provider_omo_switch_pair_maps_enable_and_disable_variants() {
+        assert_eq!(
+            provider_omo_variant_for_app_category(
+                &AppKind::Custom("opencode".to_string()),
+                Some("omo")
+            ),
+            Some(ProviderOmoVariant::Standard)
+        );
+        assert_eq!(
+            provider_omo_switch_pair_for_app_category(
+                &AppKind::Custom("opencode".to_string()),
+                Some("omo")
+            ),
+            Some(ProviderOmoSwitchPair {
+                enable: ProviderOmoVariant::Standard,
+                disable: ProviderOmoVariant::Slim,
+            })
+        );
+        assert_eq!(
+            provider_omo_variant_for_app_category(
+                &AppKind::Custom("opencode".to_string()),
+                Some("omo-slim")
+            ),
+            Some(ProviderOmoVariant::Slim)
+        );
+        assert_eq!(
+            provider_omo_switch_pair_for_app_category(
+                &AppKind::Custom("opencode".to_string()),
+                Some("omo-slim")
+            ),
+            Some(ProviderOmoSwitchPair {
+                enable: ProviderOmoVariant::Slim,
+                disable: ProviderOmoVariant::Standard,
+            })
+        );
+        assert_eq!(ProviderOmoVariant::Standard.category(), "omo");
+        assert_eq!(ProviderOmoVariant::Slim.category(), "omo-slim");
+        assert_eq!(
+            provider_omo_switch_pair_for_app_category(
+                &AppKind::Custom("opencode".to_string()),
+                Some("custom")
+            ),
+            None
+        );
+        assert_eq!(
+            provider_omo_variant_for_app_category(&AppKind::Claude, Some("omo")),
+            None
+        );
+    }
+
+    #[test]
+    fn provider_additive_update_route_keeps_omo_separate_from_live_presence() {
+        assert_eq!(
+            provider_additive_update_route_for_app(
+                &AppKind::Custom("opencode".to_string()),
+                Some("omo")
+            ),
+            Some(ProviderAdditiveUpdateRoute::OmoVariant(
+                ProviderOmoVariant::Standard
+            ))
+        );
+        assert_eq!(
+            provider_additive_update_route_for_app(
+                &AppKind::Custom("opencode".to_string()),
+                Some("omo-slim")
+            ),
+            Some(ProviderAdditiveUpdateRoute::OmoVariant(
+                ProviderOmoVariant::Slim
+            ))
+        );
+        assert_eq!(
+            provider_additive_update_route_for_app(
+                &AppKind::Custom("opencode".to_string()),
+                Some("custom")
+            ),
+            Some(ProviderAdditiveUpdateRoute::LiveConfigPresence)
+        );
+        assert_eq!(
+            provider_additive_update_route_for_app(&AppKind::Custom("openclaw".to_string()), None),
+            Some(ProviderAdditiveUpdateRoute::LiveConfigPresence)
+        );
+        assert_eq!(
+            provider_additive_update_route_for_app(&AppKind::Claude, Some("omo")),
+            None
+        );
     }
 
     #[test]

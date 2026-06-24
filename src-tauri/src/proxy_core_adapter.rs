@@ -296,18 +296,28 @@ pub(crate) type ProxyRuntimeStatus = crate::proxy_core::api::ports::ProxyRuntime
 
 pub(crate) use crate::proxy_core::api::ports::{
     app_proxy_config_with_enabled as proxy_app_config_with_enabled, live_takeover_app_kinds,
+    provider_additive_live_write_action_for_app as core_provider_additive_live_write_action,
+    provider_additive_update_route_for_app as core_provider_additive_update_route,
     provider_app_has_current_provider as core_provider_app_has_current_provider,
     provider_delete_is_current_provider as core_provider_delete_is_current_provider,
+    provider_initial_live_config_managed_marker as core_provider_initial_live_config_managed_marker,
+    provider_key_change_policy_issue_for_app as core_provider_key_change_policy_issue,
+    provider_key_change_policy_issue_message as core_provider_key_change_policy_issue_message,
     provider_live_removal_target_for_app as core_provider_live_removal_target,
     provider_live_sync_scope_for_app as core_provider_live_sync_scope,
+    provider_omo_switch_pair_for_app_category as core_provider_omo_switch_pair,
+    provider_omo_variant_for_app_category as core_provider_omo_variant_for_category,
     provider_switch_backfill_source_id as core_provider_switch_backfill_source_id,
     provider_switch_dispatch_for_app as core_provider_switch_dispatch,
     provider_switch_requires_takeover_lock as core_provider_switch_requires_takeover_lock,
     provider_switch_should_mark_live_config_managed as core_provider_switch_should_mark_live_config_managed,
+    provider_supports_legacy_common_config_migration as core_provider_supports_legacy_common_config_migration,
     provider_takeover_live_sync_target_for_app as core_provider_takeover_live_sync_target,
     proxy_config_preserving_live_takeover_active, proxy_config_with_ephemeral_listen_port,
-    proxy_config_with_live_takeover_active, proxy_runtime_status_stopped, ProviderLiveRemovalTarget,
-    ProviderLiveSyncScope, ProviderSwitchDispatch, ProviderTakeoverLiveSyncTarget,
+    proxy_config_with_live_takeover_active, proxy_runtime_status_stopped,
+    ProviderAdditiveLiveWriteAction, ProviderAdditiveUpdateRoute, ProviderKeyChangePolicyIssue,
+    ProviderLiveRemovalTarget, ProviderLiveSyncScope, ProviderOmoSwitchPair, ProviderOmoVariant,
+    ProviderSwitchDispatch, ProviderTakeoverLiveSyncTarget,
 };
 
 const PROXY_MANAGEMENT_AUTH_TOKEN_ENV: &str = "CC_SWITCH_PROXY_MANAGEMENT_TOKEN";
@@ -2119,15 +2129,11 @@ pub(crate) fn provider_initial_live_config_managed_marker(
     app_type: &AppType,
     add_to_live: bool,
 ) -> Option<bool> {
-    if app_type.is_additive_mode() {
-        Some(add_to_live)
-    } else {
-        None
-    }
+    core_provider_initial_live_config_managed_marker(&AppKind::from(app_type), add_to_live)
 }
 
 pub(crate) fn provider_supports_legacy_common_config_migration(app_type: &AppType) -> bool {
-    !app_type.is_additive_mode()
+    core_provider_supports_legacy_common_config_migration(&AppKind::from(app_type))
 }
 
 pub(crate) fn should_skip_provider_legacy_common_config_migration(
@@ -2153,50 +2159,20 @@ pub(crate) fn provider_live_config_presence_error_policy(
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum ProviderKeyChangePolicyIssue {
-    UnsupportedAppMode,
-    ExclusiveCurrentStateProvider,
-}
-
 pub(crate) fn provider_key_change_policy_issue(
     app_type: &AppType,
     existing_provider: Option<&Provider>,
 ) -> Option<ProviderKeyChangePolicyIssue> {
-    if !app_type.is_additive_mode() {
-        return Some(ProviderKeyChangePolicyIssue::UnsupportedAppMode);
-    }
-
-    if matches!(app_type, AppType::OpenCode)
-        && matches!(
-            existing_provider.and_then(|provider| provider.category.as_deref()),
-            Some("omo") | Some("omo-slim")
-        )
-    {
-        return Some(ProviderKeyChangePolicyIssue::ExclusiveCurrentStateProvider);
-    }
-
-    None
+    core_provider_key_change_policy_issue(
+        &AppKind::from(app_type),
+        existing_provider.and_then(|provider| provider.category.as_deref()),
+    )
 }
 
 pub(crate) fn provider_key_change_policy_issue_message(
     issue: ProviderKeyChangePolicyIssue,
 ) -> &'static str {
-    match issue {
-        ProviderKeyChangePolicyIssue::UnsupportedAppMode => {
-            "Only additive-mode providers support changing provider key"
-        }
-        ProviderKeyChangePolicyIssue::ExclusiveCurrentStateProvider => {
-            "Provider key cannot be changed for OMO/OMO Slim providers"
-        }
-    }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum ProviderAdditiveLiveWriteAction {
-    SkipExclusiveCurrentStateProvider,
-    SkipNotRequested,
-    Write,
+    core_provider_key_change_policy_issue_message(issue)
 }
 
 pub(crate) fn provider_additive_live_write_action(
@@ -2204,93 +2180,32 @@ pub(crate) fn provider_additive_live_write_action(
     provider: &Provider,
     add_to_live: bool,
 ) -> ProviderAdditiveLiveWriteAction {
-    if matches!(app_type, AppType::OpenCode)
-        && matches!(provider.category.as_deref(), Some("omo") | Some("omo-slim"))
-    {
-        return ProviderAdditiveLiveWriteAction::SkipExclusiveCurrentStateProvider;
-    }
-
-    if !add_to_live {
-        return ProviderAdditiveLiveWriteAction::SkipNotRequested;
-    }
-
-    ProviderAdditiveLiveWriteAction::Write
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum ProviderOmoVariant {
-    Standard,
-    Slim,
-}
-
-impl ProviderOmoVariant {
-    pub(crate) fn category(self) -> &'static str {
-        match self {
-            ProviderOmoVariant::Standard => "omo",
-            ProviderOmoVariant::Slim => "omo-slim",
-        }
-    }
-
-    fn opposite(self) -> Self {
-        match self {
-            ProviderOmoVariant::Standard => ProviderOmoVariant::Slim,
-            ProviderOmoVariant::Slim => ProviderOmoVariant::Standard,
-        }
-    }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct ProviderOmoSwitchPair {
-    pub(crate) enable: ProviderOmoVariant,
-    pub(crate) disable: ProviderOmoVariant,
+    core_provider_additive_live_write_action(
+        &AppKind::from(app_type),
+        provider.category.as_deref(),
+        add_to_live,
+    )
 }
 
 pub(crate) fn provider_omo_variant_for_category(
     app_type: &AppType,
     category: Option<&str>,
 ) -> Option<ProviderOmoVariant> {
-    if !matches!(app_type, AppType::OpenCode) {
-        return None;
-    }
-
-    match category {
-        Some("omo") => Some(ProviderOmoVariant::Standard),
-        Some("omo-slim") => Some(ProviderOmoVariant::Slim),
-        _ => None,
-    }
+    core_provider_omo_variant_for_category(&AppKind::from(app_type), category)
 }
 
 pub(crate) fn provider_omo_switch_pair(
     app_type: &AppType,
     provider: &Provider,
 ) -> Option<ProviderOmoSwitchPair> {
-    let enable = provider_omo_variant_for_category(app_type, provider.category.as_deref())?;
-
-    Some(ProviderOmoSwitchPair {
-        enable,
-        disable: enable.opposite(),
-    })
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum ProviderAdditiveUpdateRoute {
-    OmoVariant(ProviderOmoVariant),
-    LiveConfigPresence,
+    core_provider_omo_switch_pair(&AppKind::from(app_type), provider.category.as_deref())
 }
 
 pub(crate) fn provider_additive_update_route(
     app_type: &AppType,
     category: Option<&str>,
 ) -> Option<ProviderAdditiveUpdateRoute> {
-    if !app_type.is_additive_mode() {
-        return None;
-    }
-
-    if let Some(omo_variant) = provider_omo_variant_for_category(app_type, category) {
-        return Some(ProviderAdditiveUpdateRoute::OmoVariant(omo_variant));
-    }
-
-    Some(ProviderAdditiveUpdateRoute::LiveConfigPresence)
+    core_provider_additive_update_route(&AppKind::from(app_type), category)
 }
 
 pub(crate) fn provider_switch_dispatch(
