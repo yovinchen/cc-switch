@@ -10132,11 +10132,6 @@ pub(crate) trait ForwarderResponseSource {
         input: ForwarderChannelResponseStatusInput<'_>,
     ) -> Result<ProxyResponse, ProxyError>;
 
-    fn prepare_success_response<'a>(
-        &'a self,
-        input: ForwarderResponseFinalizationInput,
-    ) -> BoxFuture<'a, Result<ProxyResponse, ProxyError>>;
-
     fn finalize_upstream_response<'a>(
         &'a self,
         input: ForwarderResponseFinalizationInput,
@@ -10146,6 +10141,39 @@ pub(crate) trait ForwarderResponseSource {
 struct CcSwitchForwarderResponseSource;
 
 impl CcSwitchForwarderResponseSource {
+    fn prepare_success_response<'a>(
+        &'a self,
+        input: ForwarderResponseFinalizationInput,
+    ) -> BoxFuture<'a, Result<ProxyResponse, ProxyError>> {
+        Box::pin(async move {
+            let ForwarderResponseFinalizationInput {
+                response,
+                request_is_streaming,
+                non_streaming_timeout,
+                streaming_first_byte_timeout,
+            } = input;
+
+            if request_is_streaming {
+                return prime_streaming_forward_response(response, streaming_first_byte_timeout)
+                    .await;
+            }
+
+            if non_streaming_timeout.is_zero() {
+                return Ok(response);
+            }
+
+            let status = response.status();
+            let headers = response.headers().clone();
+            let body = tokio::time::timeout(non_streaming_timeout, response.bytes())
+                .await
+                .map_err(|_| {
+                    ProxyError::Timeout(non_streaming_body_timeout_message(non_streaming_timeout))
+                })??;
+
+            Ok(ProxyResponse::buffered(status, headers, body))
+        })
+    }
+
     fn upstream_error_body<'a>(
         &'a self,
         response: ProxyResponse,
@@ -10194,39 +10222,6 @@ impl ForwarderResponseSource for CcSwitchForwarderResponseSource {
         }
 
         Ok(response.with_status(status_mapping.mapped_status))
-    }
-
-    fn prepare_success_response<'a>(
-        &'a self,
-        input: ForwarderResponseFinalizationInput,
-    ) -> BoxFuture<'a, Result<ProxyResponse, ProxyError>> {
-        Box::pin(async move {
-            let ForwarderResponseFinalizationInput {
-                response,
-                request_is_streaming,
-                non_streaming_timeout,
-                streaming_first_byte_timeout,
-            } = input;
-
-            if request_is_streaming {
-                return prime_streaming_forward_response(response, streaming_first_byte_timeout)
-                    .await;
-            }
-
-            if non_streaming_timeout.is_zero() {
-                return Ok(response);
-            }
-
-            let status = response.status();
-            let headers = response.headers().clone();
-            let body = tokio::time::timeout(non_streaming_timeout, response.bytes())
-                .await
-                .map_err(|_| {
-                    ProxyError::Timeout(non_streaming_body_timeout_message(non_streaming_timeout))
-                })??;
-
-            Ok(ProxyResponse::buffered(status, headers, body))
-        })
     }
 
     fn finalize_upstream_response<'a>(

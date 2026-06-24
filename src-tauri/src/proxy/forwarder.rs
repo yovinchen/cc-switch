@@ -1118,7 +1118,7 @@ impl RequestForwarder {
         request_is_streaming: bool,
     ) -> Result<ProxyResponse, ProxyError> {
         self.response_source
-            .prepare_success_response(ForwarderResponseFinalizationInput {
+            .finalize_upstream_response(ForwarderResponseFinalizationInput {
                 response,
                 request_is_streaming,
                 non_streaming_timeout: self.non_streaming_timeout,
