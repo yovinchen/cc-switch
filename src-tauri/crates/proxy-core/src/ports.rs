@@ -1139,6 +1139,104 @@ pub fn provider_live_config_presence_error_policy(
     }
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct LocalizedErrorSpec {
+    pub key: &'static str,
+    pub zh: String,
+    pub en: String,
+}
+
+impl LocalizedErrorSpec {
+    pub fn new(key: &'static str, zh: impl Into<String>, en: impl Into<String>) -> Self {
+        Self {
+            key,
+            zh: zh.into(),
+            en: en.into(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ProviderCredentialIssue {
+    ClaudeEnvMissing,
+    ClaudeApiKeyMissing,
+    ClaudeBaseUrlMissing,
+    ClaudeDesktopRequiresGateway,
+    CodexAuthMissing,
+    CodexApiKeyMissing,
+    CodexBaseUrlMissing,
+    CodexBaseUrlInvalid,
+    GeminiApiKeyMissing,
+    OpenCodeOptionsMissing,
+    OpenCodeApiKeyMissing,
+    OpenClawApiKeyMissing,
+}
+
+pub fn provider_credential_issue_spec(issue: ProviderCredentialIssue) -> LocalizedErrorSpec {
+    match issue {
+        ProviderCredentialIssue::ClaudeEnvMissing => LocalizedErrorSpec::new(
+            "provider.claude.env.missing",
+            "配置格式错误: 缺少 env",
+            "Invalid configuration: missing env section",
+        ),
+        ProviderCredentialIssue::ClaudeApiKeyMissing => LocalizedErrorSpec::new(
+            "provider.claude.api_key.missing",
+            "缺少 API Key",
+            "API key is missing",
+        ),
+        ProviderCredentialIssue::ClaudeBaseUrlMissing => LocalizedErrorSpec::new(
+            "provider.claude.base_url.missing",
+            "缺少 ANTHROPIC_BASE_URL 配置",
+            "Missing ANTHROPIC_BASE_URL configuration",
+        ),
+        ProviderCredentialIssue::ClaudeDesktopRequiresGateway => LocalizedErrorSpec::new(
+            "provider.claude_desktop.gateway.required",
+            "Claude Desktop 凭据必须通过 gateway 配置解析",
+            "Claude Desktop credentials must be resolved through gateway configuration",
+        ),
+        ProviderCredentialIssue::CodexAuthMissing => LocalizedErrorSpec::new(
+            "provider.codex.auth.missing",
+            "配置格式错误: 缺少 auth",
+            "Invalid configuration: missing auth section",
+        ),
+        ProviderCredentialIssue::CodexApiKeyMissing => LocalizedErrorSpec::new(
+            "provider.codex.api_key.missing",
+            "缺少 API Key",
+            "API key is missing",
+        ),
+        ProviderCredentialIssue::CodexBaseUrlMissing => LocalizedErrorSpec::new(
+            "provider.codex.base_url.missing",
+            "config.toml 中缺少 base_url 配置",
+            "base_url is missing from config.toml",
+        ),
+        ProviderCredentialIssue::CodexBaseUrlInvalid => LocalizedErrorSpec::new(
+            "provider.codex.base_url.invalid",
+            "config.toml 中 base_url 格式错误",
+            "base_url in config.toml has invalid format",
+        ),
+        ProviderCredentialIssue::GeminiApiKeyMissing => LocalizedErrorSpec::new(
+            "gemini.missing_api_key",
+            "缺少 GEMINI_API_KEY",
+            "Missing GEMINI_API_KEY",
+        ),
+        ProviderCredentialIssue::OpenCodeOptionsMissing => LocalizedErrorSpec::new(
+            "provider.opencode.options.missing",
+            "配置格式错误: 缺少 options",
+            "Invalid configuration: missing options section",
+        ),
+        ProviderCredentialIssue::OpenCodeApiKeyMissing => LocalizedErrorSpec::new(
+            "provider.opencode.api_key.missing",
+            "缺少 API Key",
+            "API key is missing",
+        ),
+        ProviderCredentialIssue::OpenClawApiKeyMissing => LocalizedErrorSpec::new(
+            "provider.openclaw.api_key.missing",
+            "缺少 API Key",
+            "API key is missing",
+        ),
+    }
+}
+
 pub fn provider_initial_live_config_managed_marker(
     app: &AppKind,
     add_to_live: bool,
@@ -3472,9 +3570,9 @@ mod tests {
         proxy_config_with_live_takeover_active, proxy_global_config_from_global_config,
         proxy_runtime_config_from_proxy_config, provider_additive_live_write_action_for_app,
         provider_additive_update_route_for_app,
-        provider_app_has_current_provider, provider_delete_is_current_provider,
-        provider_initial_live_config_managed_marker, provider_key_change_policy_issue_for_app,
-        provider_key_change_policy_issue_message,
+        provider_app_has_current_provider, provider_credential_issue_spec,
+        provider_delete_is_current_provider, provider_initial_live_config_managed_marker,
+        provider_key_change_policy_issue_for_app, provider_key_change_policy_issue_message,
         provider_live_config_presence_error_policy, provider_live_removal_target_for_app,
         provider_live_sync_scope_for_app,
         provider_omo_switch_pair_for_app_category, provider_omo_variant_for_app_category,
@@ -3502,9 +3600,10 @@ mod tests {
         CurrentRouteTargetInput, current_route_target_from_input, GlobalProxyConfig,
         GroupListQuery, HealthCheckResponse, ModelCatalog, OptimizerConfig, ProviderHealth,
         ProviderAdditiveLiveWriteAction, ProviderAdditiveUpdateRoute, ProviderHealthUpdateInput,
-        ProviderKeyChangePolicyIssue, ProviderListResponse, ProviderLiveConfigPresenceErrorPolicy,
-        ProviderLiveRemovalTarget, ProviderLiveSyncScope, ProviderOmoSwitchPair, ProviderOmoVariant,
-        ProviderSpec, ProviderSummaryInput, ProviderSwitchDispatch, ProviderTakeoverLiveSyncTarget,
+        ProviderCredentialIssue, ProviderKeyChangePolicyIssue, ProviderListResponse,
+        ProviderLiveConfigPresenceErrorPolicy, ProviderLiveRemovalTarget, ProviderLiveSyncScope,
+        ProviderOmoSwitchPair, ProviderOmoVariant, ProviderSpec, ProviderSummaryInput,
+        ProviderSwitchDispatch, ProviderTakeoverLiveSyncTarget,
         ProxyChannelModelWriteRequest,
         ProxyChannelModelsReplaceRequest, ProxyChannelPatchRequest, ProxyChannelTestRequest,
         ProxyChannelWriteRequest, ProxyConfig, ProxyCoreEvent, ProxyCoreEventType,
@@ -4908,6 +5007,43 @@ mod tests {
         assert_eq!(
             provider_live_config_presence_error_policy(Some(false)),
             ProviderLiveConfigPresenceErrorPolicy::TreatErrorAsMissing
+        );
+    }
+
+    #[test]
+    fn provider_credential_issue_specs_cover_user_facing_messages() {
+        let missing_codex_base_url =
+            provider_credential_issue_spec(ProviderCredentialIssue::CodexBaseUrlMissing);
+        assert_eq!(
+            missing_codex_base_url.key,
+            "provider.codex.base_url.missing"
+        );
+        assert_eq!(
+            missing_codex_base_url.zh,
+            "config.toml 中缺少 base_url 配置"
+        );
+        assert_eq!(
+            missing_codex_base_url.en,
+            "base_url is missing from config.toml"
+        );
+
+        let missing_options =
+            provider_credential_issue_spec(ProviderCredentialIssue::OpenCodeOptionsMissing);
+        assert_eq!(missing_options.key, "provider.opencode.options.missing");
+        assert_eq!(
+            missing_options.en,
+            "Invalid configuration: missing options section"
+        );
+
+        let claude_desktop =
+            provider_credential_issue_spec(ProviderCredentialIssue::ClaudeDesktopRequiresGateway);
+        assert_eq!(
+            claude_desktop.key,
+            "provider.claude_desktop.gateway.required"
+        );
+        assert_eq!(
+            claude_desktop.en,
+            "Claude Desktop credentials must be resolved through gateway configuration"
         );
     }
 

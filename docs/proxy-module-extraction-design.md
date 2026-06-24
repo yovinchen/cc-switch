@@ -1321,6 +1321,7 @@
 本轮继续把 Provider 新增/更新路径里的 additive live write、key rename、legacy common-config migration、初始 live_config_managed marker、OpenCode OMO/OMO Slim switch/update 分流收敛到 `proxy-core::ports`：core 维护 app/category 纯策略和错误文案，adapter 继续只投影宿主 provider category。
 本轮继续把 Live token sync 支持 app label 收敛到 `proxy-core::ports::live_token_sync_app_label`：core 维护 Claude/Codex/Gemini label 矩阵，adapter 只把宿主 `AppType` 映射为 `AppKind`，DB/current provider 查询仍留在 host。
 本轮继续把默认 live import 跳过策略、provider 是否同步 live 和 DB-only provider live-config presence 错误策略收敛到 `proxy-core::ports`：core 消费 `AppKind` 与 `live_config_managed` 事实，adapter 继续负责 provider meta 投影和实际 DB/live 读写。
+本轮继续把 provider credential issue 的本地化错误规格收敛到 `proxy-core::ports`：core 维护稳定的 key/中英文文案映射，adapter 继续负责从宿主 provider settings 提取凭据事实并把 spec 转成 `AppError`。
 
 当前原则：核心 crate 可以新增端口和领域字段，但不得引入 `tauri`、`Database`、settings、commands、services 等宿主依赖；现有 runtime 行为必须继续通过 targeted tests 证明不回归。
 
