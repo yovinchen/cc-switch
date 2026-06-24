@@ -9182,10 +9182,8 @@ pub(crate) struct ForwarderUpstreamUrlInput<'a> {
     pub(crate) base_url: &'a str,
     pub(crate) endpoint: &'a str,
     pub(crate) is_full_url: bool,
-    pub(crate) codex_responses_to_chat: bool,
-    pub(crate) use_claude_transform: bool,
+    pub(crate) transform_plan: &'a ForwarderTransformPlan,
     pub(crate) is_copilot: bool,
-    pub(crate) claude_api_format: Option<&'a str>,
     pub(crate) body: &'a Value,
     pub(crate) channel_param_overrides: Option<&'a Value>,
 }
@@ -9675,10 +9673,10 @@ impl ForwarderRequestSource for CcSwitchForwarderRequestSource {
                 base_url: input.base_url,
                 endpoint: input.endpoint,
                 is_full_url: input.is_full_url,
-                codex_responses_to_chat: input.codex_responses_to_chat,
-                use_claude_transform: input.use_claude_transform,
+                codex_responses_to_chat: input.transform_plan.codex_responses_to_chat,
+                use_claude_transform: input.transform_plan.use_claude_transform,
                 is_copilot: input.is_copilot,
-                claude_api_format: input.claude_api_format,
+                claude_api_format: input.transform_plan.claude_api_format_for_url.as_deref(),
                 body: input.body,
                 channel_param_overrides: input.channel_param_overrides,
             },
@@ -15816,16 +15814,22 @@ base_url = "https://api.openai.com/v1"
         let adapter = forwarder_provider_adapter_for_app(&AppType::Codex);
         let body = json!({});
         let param_overrides = json!({"api-version": "2026-06-21"});
+        let transform_plan = ForwarderTransformPlan {
+            needs_transform: false,
+            use_claude_transform: false,
+            use_provider_transform: false,
+            claude_api_format_for_url: None,
+            claude_api_format_for_transform: None,
+            codex_responses_to_chat: true,
+        };
 
         let plan = source.plan_upstream_url(ForwarderUpstreamUrlInput {
             adapter: adapter.as_ref(),
             base_url: "https://api.openai.com/v1/chat/completions",
             endpoint: "/v1/responses?foo=bar&api-version=old",
             is_full_url: false,
-            codex_responses_to_chat: true,
-            use_claude_transform: false,
+            transform_plan: &transform_plan,
             is_copilot: false,
-            claude_api_format: None,
             body: &body,
             channel_param_overrides: Some(&param_overrides),
         });

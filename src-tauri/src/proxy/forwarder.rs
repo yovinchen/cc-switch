@@ -897,10 +897,8 @@ impl RequestForwarder {
             base_url: &base_url,
             endpoint,
             is_full_url,
-            codex_responses_to_chat,
-            use_claude_transform: transform_plan.use_claude_transform,
+            transform_plan: &transform_plan,
             is_copilot,
-            claude_api_format: transform_plan.claude_api_format_for_url.as_deref(),
             body: &mapped_body,
             channel_param_overrides: attempt.channel().map(|channel| &channel.param_overrides),
         });
