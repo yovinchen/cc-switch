@@ -454,6 +454,7 @@
 443. `ForwarderRequestSource` trait 不再暴露 `request_body_model` 内部 JSON model probe；最终 body model label 与 outbound model attribution 仍由默认 source 内部计算，并通过 `transform_request_body` / `prepare_upstream_body` 的结构化结果对 forwarder 暴露。
 444. `ForwarderRequestSource` trait 不再暴露 `transform_provider_request_body` provider-adapter branch helper；通用 provider transform 包装仍由默认 source 内部执行，外部替换 source 只面对 `transform_request_body` 的完整转换选择结果。
 445. `ForwarderRequestSource` trait 不再暴露 `convert_codex_responses_to_chat_body` Codex bridge body helper；Responses 到 Chat Completions 的 body 转换仍由默认 source 内部执行，外部替换 source 只面对 `transform_request_body` 的完整转换选择结果。
+446. `ForwarderRequestSource` trait 不再暴露 `optimize_copilot_request` Copilot optimizer sequencing helper；Copilot 分类、孤立 tool_result 清理、tool_result 合并、thinking strip 与 warmup 模型降级仍由默认 source 内部执行，外部替换 source 只面对 `prepare_copilot_request_optimization` 的完整优化 gate 结果。
 407. `proxy::types::ApiFormat` 未使用预留枚举已删除；Claude/OpenAI/Gemini format 判断统一沿用 `proxy-core` 的 provider kind、client format 和 response transform contract。
 408. `LogConfig` 已从 `proxy::types` 移到 `settings::LogConfig`；日志设置不再扩大代理运行态类型模块，proxy host types 只保留代理状态/备份等运行态数据。
 409. `RectifierConfig` 的默认值、serde 和 core 检测投影测试已从 host `proxy::types` 迁入 `proxy-core::ports`；host proxy types 不再承担 core 配置契约测试。
@@ -1205,6 +1206,7 @@
 本轮继续把 `request_body_model` 从 `ForwarderRequestSource` trait surface 收进默认 source 内部：外部替换 source 不再需要实现独立 JSON model probe，只需通过 transformed/prepared request 级结果返回模型归因事实。
 本轮继续把 `transform_provider_request_body` 从 `ForwarderRequestSource` trait surface 收进默认 source 内部：provider adapter transform branch 仍由默认 source 包装，但外部替换 source 只需实现完整的 `transform_request_body` 行为级入口。
 本轮继续把 `convert_codex_responses_to_chat_body` 从 `ForwarderRequestSource` trait surface 收进默认 source 内部：Codex Responses 到 Chat Completions body 转换仍由默认 source 包装，但外部替换 source 只需实现完整的 `transform_request_body` 行为级入口。
+本轮继续把 `optimize_copilot_request` 从 `ForwarderRequestSource` trait surface 收进默认 source 内部：Copilot 分类、body cleanup、tool_result merge、thinking strip 与 warmup override sequencing 仍由默认 source 包装，但外部替换 source 只需实现 `prepare_copilot_request_optimization` 行为级入口。
 本轮继续把上游请求 URL/model 与 debug body 日志收敛到 `ForwarderRequestSource::log_upstream_request`：`RequestForwarder` 不再拼接请求日志文本或直接序列化 finalized body，只把 adapter tag、URL、model label 和 body 交给 request source。
 本轮继续收窄 `ForwarderRequestSource` 的请求 header 策略边界：custom User-Agent provider fact 与 exact header-case 保留策略也由 request source 计算并随上游请求 parts 返回，`RequestForwarder` 不再直接消费这些请求组装 helper。
 本轮继续把每个 provider attempt 的 Bedrock pre-send optimizer 收敛到 `ForwarderRequestSource`：Bedrock env flag 判断、thinking/cache 优化 mutation 与对应日志投影都在 request source 内完成，`RequestForwarder` 只消费按 provider 独立克隆后的 attempt body，避免 failover 场景优化字段泄漏。
