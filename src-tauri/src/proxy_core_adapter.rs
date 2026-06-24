@@ -8114,11 +8114,7 @@ pub(crate) trait ForwarderRuntimeStateSource {
         provider: &'a Provider,
     ) -> BoxFuture<'a, Option<ForwarderFailoverSwitchTarget>>;
     fn record_failure_status<'a>(&'a self, error_message: &'a str) -> BoxFuture<'a, ()>;
-    fn record_current_provider<'a>(
-        &'a self,
-        provider_id: &'a str,
-        provider_name: &'a str,
-    ) -> BoxFuture<'a, ()>;
+    fn record_current_provider<'a>(&'a self, provider: &'a Provider) -> BoxFuture<'a, ()>;
     fn record_provider_failure<'a>(
         &'a self,
         provider_name: &'a str,
@@ -8254,16 +8250,12 @@ impl ForwarderRuntimeStateSource for CcSwitchForwarderRuntimeStateSource {
         })
     }
 
-    fn record_current_provider<'a>(
-        &'a self,
-        provider_id: &'a str,
-        provider_name: &'a str,
-    ) -> BoxFuture<'a, ()> {
+    fn record_current_provider<'a>(&'a self, provider: &'a Provider) -> BoxFuture<'a, ()> {
         Box::pin(async move {
             record_forward_current_provider_runtime_source(
                 self.status.as_ref(),
-                provider_id,
-                provider_name,
+                provider.id.as_str(),
+                provider.name.as_str(),
             )
             .await;
         })
@@ -16058,6 +16050,28 @@ base_url = "https://api.openai.com/v1"
                 provider_name: "Provider B".to_string(),
             }
         );
+    }
+
+    #[tokio::test]
+    async fn forwarder_runtime_state_source_records_current_provider_from_provider() {
+        let source = CcSwitchForwarderRuntimeStateSource::new(
+            Arc::new(RwLock::new(ProxyRuntimeStatus::default())),
+            Arc::new(RwLock::new(HashMap::new())),
+            Arc::new(ProxyEventBus::default()),
+        );
+        let provider = Provider::with_id(
+            "provider-a".to_string(),
+            "Provider A".to_string(),
+            json!({}),
+            None,
+        );
+
+        source.record_current_provider(&provider).await;
+
+        let status = source.status();
+        let status = status.read().await;
+        assert_eq!(status.current_provider_id.as_deref(), Some("provider-a"));
+        assert_eq!(status.current_provider.as_deref(), Some("Provider A"));
     }
 
     #[test]

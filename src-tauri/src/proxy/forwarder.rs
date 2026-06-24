@@ -512,7 +512,7 @@ impl RequestForwarder {
             // forward_with_preplanned_attempts 在客户端请求维度统一处理，这里只刷
             // 新「正在尝试哪个 provider」的展示字段。
             self.runtime_state_source
-                .record_current_provider(provider.id.as_str(), provider.name.as_str())
+                .record_current_provider(provider)
                 .await;
 
             // 转发请求（每个 Provider 只尝试一次，重试由客户端控制）
