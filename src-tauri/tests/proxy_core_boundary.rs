@@ -15,32 +15,32 @@ const FORBIDDEN_FORWARDER_SELF_PLANNING_MARKERS: &[&str] = &[
     "build_forward_attempts(",
     "create_forwarder(",
 ];
-const FORBIDDEN_REQUEST_CONTEXT_PROVIDER_PRESELECT_MARKERS: &[&str] =
-    &["provider_router", ".select_providers(", ".select_provider_ids("];
-const FORBIDDEN_REQUEST_CONTEXT_PROVIDER_ADAPTER_MARKERS: &[&str] =
-    &[
-        "providers::",
-        "get_claude_api_format(",
-        "AppKind::from(",
-        "selected_route.provider",
-        "selected_provider_missing_from_source_message(",
-        "request_context_route_update_from_proxy_result(",
-    ];
-const FORBIDDEN_PROXY_ERROR_MAPPER_CODEX_PROJECTION_MARKERS: &[&str] =
-    &[
-        "CodexProxyErrorContext",
-        "CodexProxyHostErrorFacts",
-        "CodexProxyErrorKind",
-        "codex_proxy_error_code(",
-        "codex_proxy_error_facts(",
-        "codex_proxy_error_kind(",
-    ];
-const FORBIDDEN_PROXY_ERROR_MAPPER_FORWARD_FAILURE_PROJECTION_MARKERS: &[&str] =
-    &[
-        "ForwardFailureKind",
-        "forward_failure_kind_from_proxy_status(",
-        "forward_failure_message(",
-    ];
+const FORBIDDEN_REQUEST_CONTEXT_PROVIDER_PRESELECT_MARKERS: &[&str] = &[
+    "provider_router",
+    ".select_providers(",
+    ".select_provider_ids(",
+];
+const FORBIDDEN_REQUEST_CONTEXT_PROVIDER_ADAPTER_MARKERS: &[&str] = &[
+    "providers::",
+    "get_claude_api_format(",
+    "AppKind::from(",
+    "selected_route.provider",
+    "selected_provider_missing_from_source_message(",
+    "request_context_route_update_from_proxy_result(",
+];
+const FORBIDDEN_PROXY_ERROR_MAPPER_CODEX_PROJECTION_MARKERS: &[&str] = &[
+    "CodexProxyErrorContext",
+    "CodexProxyHostErrorFacts",
+    "CodexProxyErrorKind",
+    "codex_proxy_error_code(",
+    "codex_proxy_error_facts(",
+    "codex_proxy_error_kind(",
+];
+const FORBIDDEN_PROXY_ERROR_MAPPER_FORWARD_FAILURE_PROJECTION_MARKERS: &[&str] = &[
+    "ForwardFailureKind",
+    "forward_failure_kind_from_proxy_status(",
+    "forward_failure_message(",
+];
 const FORBIDDEN_FORWARDER_URL_PLANNING_MARKERS: &[&str] = &[
     "rewrite_codex_responses_endpoint_to_chat(",
     "rewrite_claude_transform_endpoint(",
@@ -82,24 +82,16 @@ const FORBIDDEN_FORWARDER_REQUEST_URL_PROVIDER_FACT_MARKERS: &[&str] = &[
 ];
 const FORBIDDEN_FORWARDER_REQUEST_MEDIA_PROVIDER_FACT_MARKERS: &[&str] =
     &[" replace_images_for_text_only_provider_model("];
-const FORBIDDEN_FORWARDER_PROVIDER_ADAPTER_TRANSFORM_GATE_MARKERS: &[&str] =
-    &[".needs_transform("];
+const FORBIDDEN_FORWARDER_PROVIDER_ADAPTER_TRANSFORM_GATE_MARKERS: &[&str] = &[".needs_transform("];
 const FORBIDDEN_FORWARDER_PROVIDER_ADAPTER_REQUEST_TRANSFORM_MARKERS: &[&str] =
     &[".transform_request("];
-const FORBIDDEN_FORWARDER_PROVIDER_ADAPTER_BASE_URL_MARKERS: &[&str] =
-    &[".extract_base_url("];
-const FORBIDDEN_FORWARDER_PROVIDER_ADAPTER_AUTH_INFO_MARKERS: &[&str] =
-    &[".extract_auth("];
-const FORBIDDEN_FORWARDER_PROVIDER_ADAPTER_AUTH_HEADER_MARKERS: &[&str] =
-    &[".get_auth_headers("];
-const FORBIDDEN_FORWARDER_PROVIDER_ADAPTER_URL_BUILD_MARKERS: &[&str] =
-    &[".build_url("];
-const FORBIDDEN_FORWARDER_PROVIDER_ADAPTER_NAME_MARKERS: &[&str] =
-    &[".name()"];
-const FORBIDDEN_FORWARDER_PROVIDER_ADAPTER_REGISTRY_MARKERS: &[&str] =
-    &["get_adapter("];
-const FORBIDDEN_FORWARDER_PROVIDER_ADAPTER_TRAIT_MARKERS: &[&str] =
-    &["ProviderAdapter"];
+const FORBIDDEN_FORWARDER_PROVIDER_ADAPTER_BASE_URL_MARKERS: &[&str] = &[".extract_base_url("];
+const FORBIDDEN_FORWARDER_PROVIDER_ADAPTER_AUTH_INFO_MARKERS: &[&str] = &[".extract_auth("];
+const FORBIDDEN_FORWARDER_PROVIDER_ADAPTER_AUTH_HEADER_MARKERS: &[&str] = &[".get_auth_headers("];
+const FORBIDDEN_FORWARDER_PROVIDER_ADAPTER_URL_BUILD_MARKERS: &[&str] = &[".build_url("];
+const FORBIDDEN_FORWARDER_PROVIDER_ADAPTER_NAME_MARKERS: &[&str] = &[".name()"];
+const FORBIDDEN_FORWARDER_PROVIDER_ADAPTER_REGISTRY_MARKERS: &[&str] = &["get_adapter("];
+const FORBIDDEN_FORWARDER_PROVIDER_ADAPTER_TRAIT_MARKERS: &[&str] = &["ProviderAdapter"];
 const FORBIDDEN_FORWARDER_CHANNEL_STATUS_MAPPING_MARKERS: &[&str] = &[
     "mapped_channel_response_status(",
     "invalid_mapped_channel_response_status_message(",
@@ -107,8 +99,10 @@ const FORBIDDEN_FORWARDER_CHANNEL_STATUS_MAPPING_MARKERS: &[&str] = &[
 ];
 const FORBIDDEN_FAILOVER_SWITCH_CONFIG_MARKERS: &[&str] =
     &[".get_proxy_config_for_app(", ".enabled"];
-const FORBIDDEN_SWITCH_PROXY_PROVIDER_COMMAND_MARKERS: &[&str] =
-    &[".get_provider_by_id(", "should_block_proxy_switch_to_provider("];
+const FORBIDDEN_SWITCH_PROXY_PROVIDER_COMMAND_MARKERS: &[&str] = &[
+    ".get_provider_by_id(",
+    "should_block_proxy_switch_to_provider(",
+];
 const FORBIDDEN_RESET_CIRCUIT_BREAKER_COMMAND_MARKERS: &[&str] = &[
     ".get_proxy_config_for_app(",
     ".get_current_provider(",
@@ -164,10 +158,14 @@ const FORBIDDEN_STREAM_CHECK_COMMAND_PROXY_TARGET_MARKERS: &[&str] = &[
     ".get_failover_queue(",
     "ids.insert(",
 ];
-const FORBIDDEN_PROXY_SERVICE_TAKEOVER_STATUS_MARKERS: &[&str] =
-    &[".get_proxy_config_for_app(", "proxy_takeover_status_from_parts("];
-const FORBIDDEN_PROXY_SERVICE_LIVE_TAKEOVER_APP_LIST_MARKERS: &[&str] =
-    &["[AppType::Claude", "AppType::Claude, AppType::Codex, AppType::Gemini"];
+const FORBIDDEN_PROXY_SERVICE_TAKEOVER_STATUS_MARKERS: &[&str] = &[
+    ".get_proxy_config_for_app(",
+    "proxy_takeover_status_from_parts(",
+];
+const FORBIDDEN_PROXY_SERVICE_LIVE_TAKEOVER_APP_LIST_MARKERS: &[&str] = &[
+    "[AppType::Claude",
+    "AppType::Claude, AppType::Codex, AppType::Gemini",
+];
 const FORBIDDEN_PROXY_SERVICE_OFFICIAL_WARNING_MARKERS: &[&str] = &[
     "get_effective_current_provider(&self.db, &app)",
     "get_provider_by_id(&current_id",
@@ -202,8 +200,10 @@ const FORBIDDEN_PROXY_SERVICE_TAKEOVER_ACTIVE_FLAG_MARKERS: &[&str] = &[
     ".is_live_takeover_active(",
     "检查接管状态失败",
 ];
-const FORBIDDEN_PROXY_SERVICE_TAKEOVER_HEALTH_CLEANUP_MARKERS: &[&str] =
-    &[".clear_provider_health_for_app(", "清除 {app_type_str} 健康状态失败"];
+const FORBIDDEN_PROXY_SERVICE_TAKEOVER_HEALTH_CLEANUP_MARKERS: &[&str] = &[
+    ".clear_provider_health_for_app(",
+    "清除 {app_type_str} 健康状态失败",
+];
 const FORBIDDEN_PROXY_SERVICE_START_TAKEOVER_BACKUP_CLEANUP_MARKERS: &[&str] =
     &[".delete_all_live_backups(", "清理 Live 备份失败"];
 const FORBIDDEN_PROXY_SERVICE_START_TAKEOVER_ACTIVE_FLAG_MARKERS: &[&str] =
@@ -309,8 +309,7 @@ const FORBIDDEN_PROXY_SERVICE_PROXY_CONFIG_SOURCE_MARKERS: &[&str] = &[
     "保存动态代理端口失败",
 ];
 const FORBIDDEN_PROXY_SERVICE_SERVER_FACTORY_MARKERS: &[&str] = &["ProxyServer::new("];
-const FORBIDDEN_PROXY_SERVICE_SERVER_TYPE_MARKERS: &[&str] =
-    &["crate::proxy::server::ProxyServer"];
+const FORBIDDEN_PROXY_SERVICE_SERVER_TYPE_MARKERS: &[&str] = &["crate::proxy::server::ProxyServer"];
 const FORBIDDEN_PROXY_SERVER_RUNTIME_ASSEMBLY_MARKERS: &[&str] = &[
     "provider_router_from_database(",
     "ProxyEventBus::default(",
@@ -324,10 +323,8 @@ const FORBIDDEN_PROXY_SERVER_RUNTIME_ASSEMBLY_MARKERS: &[&str] = &[
 ];
 const FORBIDDEN_PROXY_SERVER_HOST_COMPAT_IMPORT_MARKERS: &[&str] =
     &["crate::proxy_core_host::CcSwitchProxyServices"];
-const FORBIDDEN_PROXY_SERVER_RUNTIME_STATE_TYPE_MARKERS: &[&str] = &[
-    "pub struct ProxyState",
-    "impl ProxyState",
-];
+const FORBIDDEN_PROXY_SERVER_RUNTIME_STATE_TYPE_MARKERS: &[&str] =
+    &["pub struct ProxyState", "impl ProxyState"];
 const FORBIDDEN_PROXY_STATE_SERVER_COMPAT_PATH_MARKERS: &[&str] = &[
     "server::ProxyState",
     "server::{ProxyState",
@@ -402,8 +399,10 @@ const FORBIDDEN_FORWARDER_ATTEMPT_RUNTIME_MARKERS: &[&str] = &[
     ".release_permit_neutral(",
 ];
 const FORBIDDEN_PROXY_CORE_HOST_ERROR_MARKERS: &[&str] = &["ProxyCoreError::"];
-const FORBIDDEN_PROXY_CORE_ADAPTER_PROVIDER_COPILOT_MARKERS: &[&str] =
-    &["providers::copilot_auth::COPILOT_", "copilot_auth::COPILOT_"];
+const FORBIDDEN_PROXY_CORE_ADAPTER_PROVIDER_COPILOT_MARKERS: &[&str] = &[
+    "providers::copilot_auth::COPILOT_",
+    "copilot_auth::COPILOT_",
+];
 const FORBIDDEN_PROXY_CORE_ADAPTER_MODEL_FETCH_FACADE_MARKERS: &[&str] = &[
     "CodexOAuthModelsRequest",
     "OpenAiCompatibleModelsRequest",
@@ -710,8 +709,11 @@ const FORBIDDEN_PROVIDER_ROUTER_SELECTION_MARKERS: &[&str] = &[
     ".get_all_providers(",
     ".get_failover_queue(",
 ];
-const FORBIDDEN_PROVIDER_ROUTER_FAILOVER_CONFIG_MARKERS: &[&str] =
-    &[".auto_failover_enabled", "默认禁用故障转移", ".get_proxy_config_for_app("];
+const FORBIDDEN_PROVIDER_ROUTER_FAILOVER_CONFIG_MARKERS: &[&str] = &[
+    ".auto_failover_enabled",
+    "默认禁用故障转移",
+    ".get_proxy_config_for_app(",
+];
 const FORBIDDEN_PROVIDER_ROUTER_CIRCUIT_CONFIG_MARKERS: &[&str] = &[
     "circuit_breaker_config_from_app_config(",
     "circuit_failure_threshold_from_app_config(",
@@ -737,8 +739,11 @@ const FORBIDDEN_PROVIDER_ROUTER_HEALTH_PERSISTENCE_MARKERS: &[&str] = &[
 ];
 const FORBIDDEN_PROVIDER_ROUTER_CONCRETE_SOURCE_MARKERS: &[&str] =
     &["    db: Arc<Database>,", "self.db"];
-const FORBIDDEN_PROVIDER_ROUTER_COARSE_SOURCE_MARKERS: &[&str] =
-    &["trait ProviderRouterSource", "dyn ProviderRouterSource", "with_source("];
+const FORBIDDEN_PROVIDER_ROUTER_COARSE_SOURCE_MARKERS: &[&str] = &[
+    "trait ProviderRouterSource",
+    "dyn ProviderRouterSource",
+    "with_source(",
+];
 const FORBIDDEN_PROVIDER_ROUTER_CHANNEL_DAO_MARKERS: &[&str] = &[
     "ProxyChannelRecord",
     "ProxyChannelSourceKind",
@@ -767,8 +772,10 @@ const FORBIDDEN_HANDLER_PROVIDER_ADAPTER_DECISION_MARKERS: &[&str] = &[
 ];
 const FORBIDDEN_HANDLER_CODEX_HISTORY_RECORD_MARKERS: &[&str] =
     &[".record_response(", "record_responses_sse_stream("];
-const FORBIDDEN_PROTOCOL_HANDLER_FORWARD_CORE_ERROR_MARKERS: &[&str] =
-    &["proxy_core_error_to_proxy_error(error)", "record_forward_error_usage("];
+const FORBIDDEN_PROTOCOL_HANDLER_FORWARD_CORE_ERROR_MARKERS: &[&str] = &[
+    "proxy_core_error_to_proxy_error(error)",
+    "record_forward_error_usage(",
+];
 const FORBIDDEN_PROVIDER_ADAPTER_BASE_URL_ERROR_MARKERS: &[&str] = &[
     "缺少 base_url 配置",
     ".ok_or_else(|| ProxyError::ConfigError(",
@@ -2338,7 +2345,8 @@ fn production_provider_adapters_exclude_provider_kind_test_facades() {
 
     let mut violations = Vec::new();
     for relative in provider_paths {
-        let source = fs::read_to_string(manifest_dir.join(relative)).expect("read provider adapter");
+        let source =
+            fs::read_to_string(manifest_dir.join(relative)).expect("read provider adapter");
         for (line_index, line) in production_lines(&source) {
             let code = line.split("//").next().unwrap_or_default();
             for marker in FORBIDDEN_PROVIDER_ADAPTER_TEST_FACADE_MARKERS {
@@ -2465,11 +2473,8 @@ fn production_simple_provider_adapters_delegate_auth_headers_to_adapter() {
     for relative in provider_paths {
         let path = manifest_dir.join(relative);
         let source = fs::read_to_string(&path).expect("read provider adapter source");
-        let get_auth_headers = function_slice(
-            &source,
-            "    fn get_auth_headers(",
-            "\n}\n\n#[cfg(test)]",
-        );
+        let get_auth_headers =
+            function_slice(&source, "    fn get_auth_headers(", "\n}\n\n#[cfg(test)]");
         for (line_index, line) in production_lines(get_auth_headers) {
             let code = line.split("//").next().unwrap_or_default();
             for marker in FORBIDDEN_PROVIDER_ADAPTER_AUTH_HEADER_MARKERS {
@@ -3854,7 +3859,11 @@ fn production_provider_module_excludes_codex_chat_history_state() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let provider_mod_path = manifest_dir.join("src/proxy/providers/mod.rs");
     let provider_mod = fs::read_to_string(&provider_mod_path).expect("read providers/mod.rs");
-    let proxy_paths = ["src/proxy/forwarder.rs", "src/proxy/handlers.rs", "src/proxy/server.rs"];
+    let proxy_paths = [
+        "src/proxy/forwarder.rs",
+        "src/proxy/handlers.rs",
+        "src/proxy/server.rs",
+    ];
 
     let mut violations = Vec::new();
     for (line_index, line) in production_lines(&provider_mod) {
@@ -4015,10 +4024,7 @@ fn model_fetch_commands_use_adapter_dto_entrypoint() {
     let transport_path = manifest_dir.join("src/services/model_fetch_transport.rs");
     let transport_source =
         fs::read_to_string(&transport_path).expect("read model_fetch_transport.rs");
-    let command_paths = [
-        "src/commands/model_fetch.rs",
-        "src/commands/codex_oauth.rs",
-    ];
+    let command_paths = ["src/commands/model_fetch.rs", "src/commands/codex_oauth.rs"];
 
     let mut violations = Vec::new();
     for (line_index, line) in production_lines(&transport_source) {
@@ -4980,11 +4986,19 @@ fn production_proxy_service_delegates_global_proxy_enabled_to_adapter() {
     let functions = [
         (
             "start",
-            function_slice(&source, "pub async fn start", "async fn start_before_takeover_if_ephemeral_port"),
+            function_slice(
+                &source,
+                "pub async fn start",
+                "async fn start_before_takeover_if_ephemeral_port",
+            ),
         ),
         (
             "stop",
-            function_slice(&source, "pub async fn stop", "pub async fn stop_with_restore"),
+            function_slice(
+                &source,
+                "pub async fn stop",
+                "pub async fn stop_with_restore",
+            ),
         ),
     ];
 
@@ -5019,7 +5033,11 @@ fn production_proxy_service_delegates_proxy_config_source_to_adapter() {
     let functions = [
         (
             "start",
-            function_slice(&source, "pub async fn start", "async fn persist_ephemeral_listen_port_if_needed"),
+            function_slice(
+                &source,
+                "pub async fn start",
+                "async fn persist_ephemeral_listen_port_if_needed",
+            ),
         ),
         (
             "persist_ephemeral_listen_port_if_needed",
@@ -5039,7 +5057,11 @@ fn production_proxy_service_delegates_proxy_config_source_to_adapter() {
         ),
         (
             "build_proxy_urls",
-            function_slice(&source, "async fn build_proxy_urls", "/// 接管各应用的 Live 配置"),
+            function_slice(
+                &source,
+                "async fn build_proxy_urls",
+                "/// 接管各应用的 Live 配置",
+            ),
         ),
         (
             "get_config",
@@ -5047,7 +5069,11 @@ fn production_proxy_service_delegates_proxy_config_source_to_adapter() {
         ),
         (
             "update_config",
-            function_slice(&source, "pub async fn update_config", "/// 检查服务器是否正在运行"),
+            function_slice(
+                &source,
+                "pub async fn update_config",
+                "/// 检查服务器是否正在运行",
+            ),
         ),
     ];
 
@@ -5216,7 +5242,11 @@ fn production_proxy_service_delegates_live_write_provider_facade_to_adapter() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let path = manifest_dir.join("src/services/proxy.rs");
     let source = fs::read_to_string(&path).expect("read services/proxy.rs");
-    let function = function_slice(&source, "    fn write_claude_live", "    fn read_codex_live");
+    let function = function_slice(
+        &source,
+        "    fn write_claude_live",
+        "    fn read_codex_live",
+    );
 
     let mut violations = Vec::new();
     for (line_index, line) in production_lines(function) {
@@ -5906,7 +5936,11 @@ fn production_forwarder_uses_auth_source_resource() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let path = manifest_dir.join("src/proxy/forwarder.rs");
     let source = fs::read_to_string(&path).expect("read forwarder.rs");
-    let struct_slice = function_slice(&source, "pub struct RequestForwarder", "impl RequestForwarder");
+    let struct_slice = function_slice(
+        &source,
+        "pub struct RequestForwarder",
+        "impl RequestForwarder",
+    );
     let impl_slice = function_slice(&source, "impl RequestForwarder", "#[cfg(test)]");
 
     assert!(
@@ -5992,7 +6026,11 @@ fn production_forwarder_uses_runtime_state_source_resource() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let path = manifest_dir.join("src/proxy/forwarder.rs");
     let source = fs::read_to_string(&path).expect("read forwarder.rs");
-    let struct_slice = function_slice(&source, "pub struct RequestForwarder", "impl RequestForwarder");
+    let struct_slice = function_slice(
+        &source,
+        "pub struct RequestForwarder",
+        "impl RequestForwarder",
+    );
     let impl_slice = function_slice(&source, "impl RequestForwarder", "#[cfg(test)]");
     let adapter_path = manifest_dir.join("src/proxy_core_adapter.rs");
     let adapter_source = fs::read_to_string(&adapter_path).expect("read proxy_core_adapter.rs");
@@ -6327,7 +6365,11 @@ fn production_forwarder_uses_protocol_state_source_resource() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let path = manifest_dir.join("src/proxy/forwarder.rs");
     let source = fs::read_to_string(&path).expect("read forwarder.rs");
-    let struct_slice = function_slice(&source, "pub struct RequestForwarder", "impl RequestForwarder");
+    let struct_slice = function_slice(
+        &source,
+        "pub struct RequestForwarder",
+        "impl RequestForwarder",
+    );
     let impl_slice = function_slice(&source, "impl RequestForwarder", "#[cfg(test)]");
 
     assert!(
@@ -6395,7 +6437,11 @@ fn production_forwarder_uses_attempt_runtime_source_resource() {
     let source = fs::read_to_string(&path).expect("read forwarder.rs");
     let adapter_path = manifest_dir.join("src/proxy_core_adapter.rs");
     let adapter_source = fs::read_to_string(&adapter_path).expect("read proxy_core_adapter.rs");
-    let struct_slice = function_slice(&source, "pub struct RequestForwarder", "impl RequestForwarder");
+    let struct_slice = function_slice(
+        &source,
+        "pub struct RequestForwarder",
+        "impl RequestForwarder",
+    );
     let impl_slice = function_slice(&source, "impl RequestForwarder", "#[cfg(test)]");
 
     assert!(
@@ -6625,9 +6671,13 @@ fn production_forwarder_uses_transport_source_resource() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let path = manifest_dir.join("src/proxy/forwarder.rs");
     let source = fs::read_to_string(&path).expect("read forwarder.rs");
-    let struct_slice = function_slice(&source, "pub struct RequestForwarder", "impl RequestForwarder");
     let adapter_path = manifest_dir.join("src/proxy_core_adapter.rs");
     let adapter_source = fs::read_to_string(&adapter_path).expect("read proxy_core_adapter.rs");
+    let struct_slice = function_slice(
+        &source,
+        "pub struct RequestForwarder",
+        "impl RequestForwarder",
+    );
     let impl_slice = function_slice(&source, "impl RequestForwarder", "#[cfg(test)]");
 
     assert!(
@@ -6702,7 +6752,11 @@ fn production_forwarder_uses_request_source_resource() {
     let source = fs::read_to_string(&path).expect("read forwarder.rs");
     let adapter_path = manifest_dir.join("src/proxy_core_adapter.rs");
     let adapter_source = fs::read_to_string(&adapter_path).expect("read proxy_core_adapter.rs");
-    let struct_slice = function_slice(&source, "pub struct RequestForwarder", "impl RequestForwarder");
+    let struct_slice = function_slice(
+        &source,
+        "pub struct RequestForwarder",
+        "impl RequestForwarder",
+    );
     let impl_slice = function_slice(&source, "impl RequestForwarder", "#[cfg(test)]");
 
     assert!(
@@ -7105,7 +7159,11 @@ fn production_forwarder_uses_response_source_resource() {
     let source = fs::read_to_string(&path).expect("read forwarder.rs");
     let adapter_path = manifest_dir.join("src/proxy_core_adapter.rs");
     let adapter_source = fs::read_to_string(&adapter_path).expect("read proxy_core_adapter.rs");
-    let struct_slice = function_slice(&source, "pub struct RequestForwarder", "impl RequestForwarder");
+    let struct_slice = function_slice(
+        &source,
+        "pub struct RequestForwarder",
+        "impl RequestForwarder",
+    );
     let impl_slice = function_slice(&source, "impl RequestForwarder", "#[cfg(test)]");
 
     assert!(
@@ -8088,11 +8146,8 @@ fn production_proxy_server_delegates_circuit_runtime_to_adapter() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let path = manifest_dir.join("src/proxy/server.rs");
     let source = fs::read_to_string(&path).expect("read server.rs");
-    let circuit_runtime = function_slice(
-        &source,
-        "    /// 热更新熔断器配置",
-        "\n}\n\n#[cfg(test)]",
-    );
+    let circuit_runtime =
+        function_slice(&source, "    /// 热更新熔断器配置", "\n}\n\n#[cfg(test)]");
 
     let mut violations = Vec::new();
     for (line_index, line) in production_lines(circuit_runtime) {
@@ -8306,11 +8361,7 @@ fn production_proxy_server_delegates_runtime_state_to_adapter() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let path = manifest_dir.join("src/proxy/server.rs");
     let source = fs::read_to_string(&path).expect("read server.rs");
-    let runtime_state = function_slice(
-        &source,
-        "    pub async fn start",
-        "    fn build_router",
-    );
+    let runtime_state = function_slice(&source, "    pub async fn start", "    fn build_router");
 
     let mut violations = Vec::new();
     for (line_index, line) in production_lines(runtime_state) {
