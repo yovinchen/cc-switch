@@ -1180,6 +1180,51 @@ pub fn is_local_proxy_url(url: &str) -> bool {
         || rest.starts_with("::")
 }
 
+pub fn launch_env_vars_from_provider_settings(
+    config: &Value,
+    app: &AppKind,
+) -> Vec<(String, String)> {
+    let mut env_vars = Vec::new();
+
+    let Some(obj) = config.as_object() else {
+        return env_vars;
+    };
+
+    if let Some(env) = obj.get("env").and_then(Value::as_object) {
+        for (key, value) in env {
+            if let Some(str_val) = value.as_str() {
+                env_vars.push((key.clone(), str_val.to_string()));
+            }
+        }
+
+        let base_url_key = match app {
+            AppKind::Claude | AppKind::ClaudeDesktop => Some("ANTHROPIC_BASE_URL"),
+            AppKind::Gemini => Some("GOOGLE_GEMINI_BASE_URL"),
+            _ => None,
+        };
+
+        if let Some(key) = base_url_key {
+            if let Some(url_str) = env.get(key).and_then(Value::as_str) {
+                env_vars.push((key.to_string(), url_str.to_string()));
+            }
+        }
+    }
+
+    if matches!(app, AppKind::Codex) {
+        if let Some(auth) = obj.get("auth").and_then(Value::as_str) {
+            env_vars.push(("OPENAI_API_KEY".to_string(), auth.to_string()));
+        }
+    }
+
+    if matches!(app, AppKind::Gemini) {
+        if let Some(api_key) = obj.get("api_key").and_then(Value::as_str) {
+            env_vars.push(("GEMINI_API_KEY".to_string(), api_key.to_string()));
+        }
+    }
+
+    env_vars
+}
+
 pub fn normalize_claude_models_in_value(settings: &mut Value) -> bool {
     let mut changed = false;
     let env = match settings.get_mut("env").and_then(Value::as_object_mut) {
@@ -3677,8 +3722,8 @@ mod tests {
         channel_model_record_from_input, channel_reachability_result_from_stream_check_result,
         channel_route_source_for_materialized_count,
         claude_live_config_has_proxy_placeholder, gemini_live_config_has_proxy_placeholder,
-        is_local_proxy_url, live_takeover_app_kinds, live_token_sync_app_label,
-        normalize_claude_models_in_value,
+        is_local_proxy_url, launch_env_vars_from_provider_settings, live_takeover_app_kinds,
+        live_token_sync_app_label, normalize_claude_models_in_value,
         proxy_config_preserving_live_takeover_active,
         proxy_app_config_from_parts, proxy_config_with_ephemeral_listen_port,
         proxy_config_with_live_takeover_active, proxy_global_config_from_global_config,
@@ -5245,6 +5290,43 @@ mod tests {
         ] {
             assert!(!is_local_proxy_url(url), "{url} should not be local");
         }
+    }
+
+    #[test]
+    fn provider_launch_env_projection_uses_app_specific_settings() {
+        let settings = json!({
+            "env": {
+                "ANTHROPIC_AUTH_TOKEN": "anthropic-token",
+                "ANTHROPIC_BASE_URL": "https://anthropic.example.com",
+                "GOOGLE_GEMINI_BASE_URL": "https://gemini.example.com",
+                "IGNORED_NUMERIC": 42
+            },
+            "auth": "codex-token",
+            "api_key": "gemini-key"
+        });
+
+        let claude_env = launch_env_vars_from_provider_settings(&settings, &AppKind::Claude);
+        assert!(claude_env.contains(&(
+            "ANTHROPIC_AUTH_TOKEN".to_string(),
+            "anthropic-token".to_string()
+        )));
+        assert!(claude_env.contains(&(
+            "ANTHROPIC_BASE_URL".to_string(),
+            "https://anthropic.example.com".to_string()
+        )));
+        assert!(!claude_env.iter().any(|(key, _)| key == "IGNORED_NUMERIC"));
+
+        let codex_env = launch_env_vars_from_provider_settings(&settings, &AppKind::Codex);
+        assert!(codex_env.contains(&("OPENAI_API_KEY".to_string(), "codex-token".to_string())));
+
+        let gemini_env = launch_env_vars_from_provider_settings(&settings, &AppKind::Gemini);
+        assert!(gemini_env.contains(&(
+            "GOOGLE_GEMINI_BASE_URL".to_string(),
+            "https://gemini.example.com".to_string()
+        )));
+        assert!(gemini_env.contains(&("GEMINI_API_KEY".to_string(), "gemini-key".to_string())));
+
+        assert!(launch_env_vars_from_provider_settings(&json!("bad"), &AppKind::Claude).is_empty());
     }
 
     #[test]

@@ -299,6 +299,7 @@ pub(crate) use crate::proxy_core::api::ports::{
     claude_live_config_has_proxy_placeholder as core_claude_live_config_has_proxy_placeholder,
     gemini_live_config_has_proxy_placeholder as core_gemini_live_config_has_proxy_placeholder,
     is_local_proxy_url as core_is_local_proxy_url,
+    launch_env_vars_from_provider_settings as core_launch_env_vars_from_provider_settings,
     live_token_sync_app_label as core_live_token_sync_app_label,
     normalize_claude_models_in_value as core_normalize_claude_models_in_value,
     provider_additive_live_write_action_for_app as core_provider_additive_live_write_action,
@@ -11691,45 +11692,7 @@ fn launch_env_vars_from_provider_settings(
     config: &Value,
     app_type: &AppType,
 ) -> Vec<(String, String)> {
-    let mut env_vars = Vec::new();
-
-    let Some(obj) = config.as_object() else {
-        return env_vars;
-    };
-
-    if let Some(env) = obj.get("env").and_then(Value::as_object) {
-        for (key, value) in env {
-            if let Some(str_val) = value.as_str() {
-                env_vars.push((key.clone(), str_val.to_string()));
-            }
-        }
-
-        let base_url_key = match app_type {
-            AppType::Claude | AppType::ClaudeDesktop => Some("ANTHROPIC_BASE_URL"),
-            AppType::Gemini => Some("GOOGLE_GEMINI_BASE_URL"),
-            _ => None,
-        };
-
-        if let Some(key) = base_url_key {
-            if let Some(url_str) = env.get(key).and_then(Value::as_str) {
-                env_vars.push((key.to_string(), url_str.to_string()));
-            }
-        }
-    }
-
-    if *app_type == AppType::Codex {
-        if let Some(auth) = obj.get("auth").and_then(Value::as_str) {
-            env_vars.push(("OPENAI_API_KEY".to_string(), auth.to_string()));
-        }
-    }
-
-    if *app_type == AppType::Gemini {
-        if let Some(api_key) = obj.get("api_key").and_then(Value::as_str) {
-            env_vars.push(("GEMINI_API_KEY".to_string(), api_key.to_string()));
-        }
-    }
-
-    env_vars
+    core_launch_env_vars_from_provider_settings(config, &AppKind::from(app_type))
 }
 
 pub(crate) fn provider_claude_models_are_claude_safe(provider: &Provider) -> bool {

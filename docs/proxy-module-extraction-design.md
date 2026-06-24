@@ -1324,6 +1324,7 @@
 本轮继续把 provider credential issue 的本地化错误规格收敛到 `proxy-core::ports`：core 维护稳定的 key/中英文文案映射，adapter 继续负责从宿主 provider settings 提取凭据事实并把 spec 转成 `AppError`。
 本轮继续把 Claude default model 归一化收敛到 `proxy-core::ports::normalize_claude_models_in_value`：core 维护旧 `ANTHROPIC_MODEL`/`ANTHROPIC_SMALL_FAST_MODEL` 到 `ANTHROPIC_DEFAULT_*` 的纯 JSON 变换，adapter 仅按 `AppType::Claude` 调用。
 本轮继续把 Claude/Gemini live proxy placeholder probe 和本地 proxy URL 判定收敛到 `proxy-core::ports`：core 维护 env token key 与 loopback URL 纯规则，Codex TOML experimental bearer token 检测暂留 adapter 以复用宿主 `codex_config` parser。
+本轮继续把 provider launch env 投影收敛到 `proxy-core::ports::launch_env_vars_from_provider_settings`：core 维护 Claude/Codex/Gemini 从 provider settings JSON 到启动环境变量的纯映射，adapter 仅负责传入宿主 `Provider.settings_config` 与 `AppType` 映射。
 
 当前原则：核心 crate 可以新增端口和领域字段，但不得引入 `tauri`、`Database`、settings、commands、services 等宿主依赖；现有 runtime 行为必须继续通过 targeted tests 证明不回归。
 
