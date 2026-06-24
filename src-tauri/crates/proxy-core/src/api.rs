@@ -142,8 +142,9 @@ pub mod routing {
     pub use crate::domain::{
         ChannelQuery, ChannelSpec, ChannelStatus, InterfaceKind, ResolvedChannelAttempt, RoutePlan,
         RoutePlanProviderMatch, RoutePolicy, RouteRequest, RouteSelection, DEFAULT_ROUTE_GROUP,
-        default_auth_interface_for_app_kind, forwarding_requires_runtime_error_message,
-        interfaces_compatible, build_route_plan, route_group_matches,
+        auth_channel_spec_from_attempt, default_auth_interface_for_app_kind,
+        forwarding_requires_runtime_error_message, interfaces_compatible, build_route_plan,
+        route_group_matches,
         route_plan_no_matching_host_providers_error_message, route_plan_provider_ids,
         route_plan_provider_match,
         route_plan_providers_unconfigured_error_message, route_plan_selections,

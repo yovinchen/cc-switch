@@ -3050,8 +3050,7 @@ pub(crate) use crate::proxy_core::api::ports::{
 #[cfg(test)]
 pub(crate) use crate::proxy_core::api::routing::DEFAULT_ROUTE_GROUP;
 pub(crate) use crate::proxy_core::api::routing::{
-    default_auth_interface_for_app_kind, route_policy_failover_provider_ids, RoutePolicy,
-    RouteRequest,
+    auth_channel_spec_from_attempt, route_policy_failover_provider_ids, RoutePolicy, RouteRequest,
 };
 pub(crate) use crate::proxy_core::api::transforms::{
     anthropic_request_to_gemini_request_with_shadow, anthropic_to_openai_chat_request,
@@ -8681,75 +8680,14 @@ impl CcSwitchForwarderAuthSource {
     }
 }
 
-fn forwarder_auth_default_interface(app_type: &AppType) -> InterfaceKind {
-    default_auth_interface_for_app_kind(&AppKind::from(app_type))
-}
-
 fn forwarder_auth_channel_spec(app_type: &AppType, attempt: &ForwardAttempt) -> ChannelSpec {
     let provider = attempt.provider();
-    match attempt.channel() {
-        Some(channel) => channel_spec_from_input(ChannelSpecInput {
-            id: channel.channel_id.clone(),
-            provider_id: provider.id.clone(),
-            app_type: app_type.as_str().to_string(),
-            name: channel.channel_name.clone(),
-            status: "enabled".to_string(),
-            base_url: channel.base_url.clone(),
-            interface_kind: channel.interface_kind.clone(),
-            auth_profile_ref: channel.auth_profile_ref.clone(),
-            models: match (&channel.public_model, &channel.upstream_model) {
-                (Some(public_model), Some(upstream_model)) => vec![ModelRouteInput {
-                    public_model: public_model.clone(),
-                    upstream_model: upstream_model.clone(),
-                    capabilities: Value::Object(Default::default()),
-                    pricing_model: None,
-                    request_overrides: Value::Object(Default::default()),
-                    response_overrides: Value::Object(Default::default()),
-                }],
-                _ => Vec::new(),
-            },
-            groups: vec![crate::proxy_core::api::routing::DEFAULT_ROUTE_GROUP.to_string()],
-            priority: 0,
-            weight: 100,
-            retry_policy: Value::Object(Default::default()),
-            health_policy: Value::Object(Default::default()),
-            header_overrides: channel.header_overrides.clone(),
-            param_overrides: channel.param_overrides.clone(),
-            status_code_mapping: channel.status_code_mapping.clone(),
-            tags: Vec::new(),
-            metadata: Value::Object(Default::default()),
-            source_ref: None,
-            needs_review: false,
-            review_reasons: Vec::new(),
-        }),
-        None => {
-            let interface = forwarder_auth_default_interface(app_type);
-            channel_spec_from_input(ChannelSpecInput {
-                id: provider.id.clone(),
-                provider_id: provider.id.clone(),
-                app_type: app_type.as_str().to_string(),
-                name: provider.name.clone(),
-                status: "enabled".to_string(),
-                base_url: String::new(),
-                interface_kind: interface.as_str().to_string(),
-                auth_profile_ref: None,
-                models: Vec::new(),
-                groups: vec![crate::proxy_core::api::routing::DEFAULT_ROUTE_GROUP.to_string()],
-                priority: 0,
-                weight: 100,
-                retry_policy: Value::Object(Default::default()),
-                health_policy: Value::Object(Default::default()),
-                header_overrides: Value::Object(Default::default()),
-                param_overrides: Value::Object(Default::default()),
-                status_code_mapping: Value::Array(Vec::new()),
-                tags: Vec::new(),
-                metadata: Value::Object(Default::default()),
-                source_ref: None,
-                needs_review: false,
-                review_reasons: Vec::new(),
-            })
-        }
-    }
+    auth_channel_spec_from_attempt(
+        &AppKind::from(app_type),
+        provider.id.as_str(),
+        provider.name.as_str(),
+        attempt.channel(),
+    )
 }
 
 fn forwarder_auth_proxy_request(input: &ForwarderAuthHeadersInput<'_>) -> ProxyRequest {
@@ -15877,24 +15815,31 @@ base_url = "https://api.openai.com/v1"
     }
 
     #[test]
-    fn forwarder_auth_default_interface_uses_core_app_policy() {
-        assert_eq!(
-            forwarder_auth_default_interface(&AppType::Claude),
-            InterfaceKind::AnthropicMessages
-        );
-        assert_eq!(
-            forwarder_auth_default_interface(&AppType::ClaudeDesktop),
-            InterfaceKind::AnthropicMessages
-        );
-        assert_eq!(
-            forwarder_auth_default_interface(&AppType::Gemini),
-            InterfaceKind::GeminiNative
-        );
-        for app_type in [AppType::Codex, AppType::OpenCode, AppType::OpenClaw, AppType::Hermes] {
-            assert_eq!(
-                forwarder_auth_default_interface(&app_type),
-                InterfaceKind::OpenAiChatCompletions
+    fn forwarder_auth_channel_spec_uses_core_fallback_app_policy() {
+        let cases = [
+            (AppType::Claude, InterfaceKind::AnthropicMessages),
+            (AppType::ClaudeDesktop, InterfaceKind::AnthropicMessages),
+            (AppType::Gemini, InterfaceKind::GeminiNative),
+            (AppType::Codex, InterfaceKind::OpenAiChatCompletions),
+            (AppType::OpenCode, InterfaceKind::OpenAiChatCompletions),
+            (AppType::OpenClaw, InterfaceKind::OpenAiChatCompletions),
+            (AppType::Hermes, InterfaceKind::OpenAiChatCompletions),
+        ];
+
+        for (app_type, expected_interface) in cases {
+            let provider = Provider::with_id(
+                "provider-a".to_string(),
+                "Provider A".to_string(),
+                json!({}),
+                None,
             );
+            let attempt = ForwardAttempt::from_provider(provider);
+            let spec = forwarder_auth_channel_spec(&app_type, &attempt);
+
+            assert_eq!(spec.id, "provider-a");
+            assert_eq!(spec.name, "Provider A");
+            assert_eq!(spec.interface, expected_interface);
+            assert!(spec.models.is_empty());
         }
     }
 

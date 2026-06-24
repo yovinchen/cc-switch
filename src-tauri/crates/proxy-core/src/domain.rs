@@ -595,6 +595,77 @@ pub fn default_auth_interface_for_app_kind(app: &AppKind) -> InterfaceKind {
     }
 }
 
+pub fn auth_channel_spec_from_attempt(
+    app: &AppKind,
+    provider_id: &str,
+    provider_name: &str,
+    channel: Option<&ResolvedChannelAttempt>,
+) -> ChannelSpec {
+    match channel {
+        Some(channel) => channel_spec_from_input(ChannelSpecInput {
+            id: channel.channel_id.clone(),
+            provider_id: provider_id.to_string(),
+            app_type: app.as_str().to_string(),
+            name: channel.channel_name.clone(),
+            status: "enabled".to_string(),
+            base_url: channel.base_url.clone(),
+            interface_kind: channel.interface_kind.clone(),
+            auth_profile_ref: channel.auth_profile_ref.clone(),
+            models: match (&channel.public_model, &channel.upstream_model) {
+                (Some(public_model), Some(upstream_model)) => vec![ModelRouteInput {
+                    public_model: public_model.clone(),
+                    upstream_model: upstream_model.clone(),
+                    capabilities: Value::Object(Default::default()),
+                    pricing_model: None,
+                    request_overrides: Value::Object(Default::default()),
+                    response_overrides: Value::Object(Default::default()),
+                }],
+                _ => Vec::new(),
+            },
+            groups: vec![DEFAULT_ROUTE_GROUP.to_string()],
+            priority: 0,
+            weight: 100,
+            retry_policy: Value::Object(Default::default()),
+            health_policy: Value::Object(Default::default()),
+            header_overrides: channel.header_overrides.clone(),
+            param_overrides: channel.param_overrides.clone(),
+            status_code_mapping: channel.status_code_mapping.clone(),
+            tags: Vec::new(),
+            metadata: Value::Object(Default::default()),
+            source_ref: None,
+            needs_review: false,
+            review_reasons: Vec::new(),
+        }),
+        None => {
+            let interface = default_auth_interface_for_app_kind(app);
+            channel_spec_from_input(ChannelSpecInput {
+                id: provider_id.to_string(),
+                provider_id: provider_id.to_string(),
+                app_type: app.as_str().to_string(),
+                name: provider_name.to_string(),
+                status: "enabled".to_string(),
+                base_url: String::new(),
+                interface_kind: interface.as_str().to_string(),
+                auth_profile_ref: None,
+                models: Vec::new(),
+                groups: vec![DEFAULT_ROUTE_GROUP.to_string()],
+                priority: 0,
+                weight: 100,
+                retry_policy: Value::Object(Default::default()),
+                health_policy: Value::Object(Default::default()),
+                header_overrides: Value::Object(Default::default()),
+                param_overrides: Value::Object(Default::default()),
+                status_code_mapping: Value::Array(Vec::new()),
+                tags: Vec::new(),
+                metadata: Value::Object(Default::default()),
+                source_ref: None,
+                needs_review: false,
+                review_reasons: Vec::new(),
+            })
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct UpstreamEndpoint {
@@ -2324,6 +2395,67 @@ mod tests {
         assert_eq!(
             default_auth_interface_for_app_kind(&AppKind::Custom("opencode".to_string())),
             InterfaceKind::OpenAiChatCompletions
+        );
+    }
+
+    #[test]
+    fn auth_channel_spec_uses_provider_fallback_when_channel_missing() {
+        let spec =
+            auth_channel_spec_from_attempt(&AppKind::Gemini, "provider-a", "Provider A", None);
+
+        assert_eq!(spec.id, "provider-a");
+        assert_eq!(spec.provider_id, "provider-a");
+        assert_eq!(spec.name, "Provider A");
+        assert_eq!(spec.app, AppKind::Gemini);
+        assert_eq!(spec.status, ChannelStatus::Enabled);
+        assert_eq!(spec.endpoint.base_url, "");
+        assert_eq!(spec.interface, InterfaceKind::GeminiNative);
+        assert_eq!(spec.auth_profile, None);
+        assert!(spec.models.is_empty());
+        assert_eq!(spec.groups, vec![DEFAULT_ROUTE_GROUP.to_string()]);
+        assert_eq!(spec.priority, 0);
+        assert_eq!(spec.weight, 100);
+    }
+
+    #[test]
+    fn auth_channel_spec_projects_resolved_channel_attempt() {
+        let attempt = ResolvedChannelAttempt {
+            channel_id: "channel-a".to_string(),
+            channel_name: "Channel A".to_string(),
+            base_url: "https://relay.example.com/v1".to_string(),
+            interface_kind: "openai_chat_completions".to_string(),
+            auth_profile_ref: Some("provider:codex:relay".to_string()),
+            public_model: Some("gpt-public".to_string()),
+            upstream_model: Some("gpt-upstream".to_string()),
+            header_overrides: json!({ "x-route": "a" }),
+            param_overrides: json!({ "temperature": 0.2 }),
+            status_code_mapping: json!([{ "from": 429, "to": 503 }]),
+        };
+
+        let spec = auth_channel_spec_from_attempt(
+            &AppKind::Codex,
+            "provider-a",
+            "Provider A",
+            Some(&attempt),
+        );
+
+        assert_eq!(spec.id, "channel-a");
+        assert_eq!(spec.provider_id, "provider-a");
+        assert_eq!(spec.name, "Channel A");
+        assert_eq!(spec.endpoint.base_url, "https://relay.example.com/v1");
+        assert_eq!(spec.interface, InterfaceKind::OpenAiChatCompletions);
+        assert_eq!(
+            spec.auth_profile.as_ref().map(|profile| profile.0.as_str()),
+            Some("provider:codex:relay")
+        );
+        assert_eq!(spec.models.len(), 1);
+        assert_eq!(spec.models[0].public_model, "gpt-public");
+        assert_eq!(spec.models[0].upstream_model, "gpt-upstream");
+        assert_eq!(spec.overrides.headers, json!({ "x-route": "a" }));
+        assert_eq!(spec.overrides.params, json!({ "temperature": 0.2 }));
+        assert_eq!(
+            spec.overrides.status_code_mapping,
+            json!([{ "from": 429, "to": 503 }])
         );
     }
 
