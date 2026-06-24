@@ -1,5 +1,5 @@
 use crate::error::{ProxyCoreError, ProxyCoreResult};
-use crate::provider_auth::ProviderAuthStrategy;
+use crate::provider_auth::{ProviderAuthInfo, ProviderAuthStrategy};
 use serde_json::Value;
 
 const REQUEST_HEADERS_STRIPPED_BEFORE_UPSTREAM: &[&str] = &[
@@ -171,6 +171,16 @@ pub fn build_gemini_auth_headers(
         http::HeaderName::from_static("x-goog-api-key"),
         auth_header_value(api_key)?,
     )])
+}
+
+pub fn build_gemini_provider_auth_headers(
+    auth: &ProviderAuthInfo,
+) -> ProxyCoreResult<Vec<(http::HeaderName, http::HeaderValue)>> {
+    build_gemini_auth_headers(
+        &auth.api_key,
+        auth.access_token.as_deref(),
+        matches!(auth.strategy, ProviderAuthStrategy::GoogleOAuth),
+    )
 }
 
 pub fn build_claude_auth_headers(
@@ -584,16 +594,17 @@ mod tests {
     use super::{
         anthropic_beta_header_value, auth_header_value, build_claude_auth_headers,
         build_codex_bearer_auth_headers, build_codex_oauth_session_headers,
-        build_copilot_auth_headers, build_gemini_auth_headers, build_upstream_auth_headers,
-        build_upstream_request_headers, claude_auth_header_kind_for_provider_strategy,
-        is_official_codex_client_user_agent, should_preserve_exact_request_header_case,
-        should_send_anthropic_request_headers, should_skip_copilot_fingerprint_request_header,
-        should_strip_forwarded_request_header, upstream_host_header_from_url, ClaudeAuthHeaderKind,
-        CopilotAuthHeaderOverrides, CopilotAuthHeadersInput, UpstreamAuthHeadersInput,
-        UpstreamRequestHeadersInput, CLAUDE_CODE_BETA, DEFAULT_ANTHROPIC_VERSION,
+        build_copilot_auth_headers, build_gemini_auth_headers, build_gemini_provider_auth_headers,
+        build_upstream_auth_headers, build_upstream_request_headers,
+        claude_auth_header_kind_for_provider_strategy, is_official_codex_client_user_agent,
+        should_preserve_exact_request_header_case, should_send_anthropic_request_headers,
+        should_skip_copilot_fingerprint_request_header, should_strip_forwarded_request_header,
+        upstream_host_header_from_url, ClaudeAuthHeaderKind, CopilotAuthHeaderOverrides,
+        CopilotAuthHeadersInput, UpstreamAuthHeadersInput, UpstreamRequestHeadersInput,
+        CLAUDE_CODE_BETA, DEFAULT_ANTHROPIC_VERSION,
     };
     use crate::error::ProxyCoreError;
-    use crate::provider_auth::ProviderAuthStrategy;
+    use crate::provider_auth::{ProviderAuthInfo, ProviderAuthStrategy};
     use http::{header, HeaderMap, HeaderName, HeaderValue};
     use serde_json::json;
 
@@ -717,6 +728,25 @@ mod tests {
             fallback_headers[0].1,
             HeaderValue::from_static("Bearer ya29.raw-token")
         );
+    }
+
+    #[test]
+    fn builds_gemini_provider_auth_headers_from_auth_strategy() {
+        let oauth = ProviderAuthInfo::with_access_token(
+            "refresh-token".to_string(),
+            "ya29.access-token".to_string(),
+        );
+        let oauth_headers = build_gemini_provider_auth_headers(&oauth).unwrap();
+        assert_eq!(oauth_headers[0].0.as_str(), "authorization");
+        assert_eq!(
+            oauth_headers[0].1,
+            HeaderValue::from_static("Bearer ya29.access-token")
+        );
+
+        let api_key = ProviderAuthInfo::new("gemini-key".to_string(), ProviderAuthStrategy::Google);
+        let api_key_headers = build_gemini_provider_auth_headers(&api_key).unwrap();
+        assert_eq!(api_key_headers[0].0.as_str(), "x-goog-api-key");
+        assert_eq!(api_key_headers[0].1, HeaderValue::from_static("gemini-key"));
     }
 
     #[test]

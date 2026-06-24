@@ -3085,7 +3085,7 @@ pub(crate) use crate::proxy_core::api::transport::{
     apply_copilot_warmup_model_override, bedrock_env_flag_from_provider_settings,
     build_claude_auth_headers, build_claude_upstream_url, build_codex_bearer_auth_headers,
     build_codex_oauth_session_headers, build_codex_upstream_url, build_copilot_auth_headers,
-    build_gemini_auth_headers, build_retryable_forward_failure_log,
+    build_gemini_provider_auth_headers, build_retryable_forward_failure_log,
     build_terminal_forward_failure_log, build_upstream_auth_headers, categorize_forward_failure,
     claude_auth_header_kind_for_provider_strategy, classify_copilot_request,
     claude_transform_endpoint_rewrite_input_from_body, contains_image_blocks,
@@ -3105,6 +3105,8 @@ pub(crate) use crate::proxy_core::api::transport::{
     should_trigger_media_retry, split_endpoint_and_query, strip_copilot_thinking_blocks,
     supports_reasoning_effort, UNSUPPORTED_IMAGE_MARKER,
 };
+#[cfg(test)]
+pub(crate) use crate::proxy_core::api::transport::build_gemini_auth_headers;
 pub(crate) use crate::proxy_core::api::transport::{
     extract_gemini_model_from_path, request_model_for_forward,
 };
@@ -4887,12 +4889,7 @@ pub(crate) fn provider_gemini_auth_info(provider: &Provider) -> Option<ProviderA
 pub(crate) fn provider_gemini_auth_headers(
     auth: &ProviderAuthInfo,
 ) -> Result<Vec<(http::HeaderName, http::HeaderValue)>, String> {
-    build_gemini_auth_headers(
-        &auth.api_key,
-        auth.access_token.as_deref(),
-        matches!(auth.strategy, ProviderAuthStrategy::GoogleOAuth),
-    )
-    .map_err(|error| error.to_string())
+    build_gemini_provider_auth_headers(auth).map_err(|error| error.to_string())
 }
 
 pub(crate) use crate::proxy_core::api::transforms::resolve_claude_api_format_from_settings;
