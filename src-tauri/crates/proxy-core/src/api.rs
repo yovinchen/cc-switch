@@ -219,6 +219,19 @@ pub mod prelude {
     pub use super::engine::ProxyEngine;
     pub use super::errors::{ProxyCoreError, ProxyCoreResult};
     pub use super::events::{ProxyCoreEvent, ProxyCoreEventType};
+    pub use super::management::{
+        AppChannelListQuery, AppChannelResponse, AppListResponse, AppModelListQuery,
+        ChannelDeleteResponse, ChannelHealthResetResponse, ChannelKeyDeleteResponse,
+        ChannelKeyRecord, ChannelKeyRecordResponse, ChannelKeysResponse, ChannelListQuery,
+        ChannelListResponse, ChannelMigrationMaterializeResponse,
+        ChannelMigrationPreviewResponse, ChannelModelRecord, ChannelModelsResponse,
+        ChannelRecord, ChannelRecordResponse, ChannelTestResponse, CurrentRouteResponse,
+        GroupListQuery, HealthCheckResponse, ProviderListResponse, ProxyChannelKeyPatchRequest,
+        ProxyChannelKeyWriteRequest, ProxyChannelModelWriteRequest,
+        ProxyChannelModelsReplaceRequest, ProxyChannelPatchRequest, ProxyChannelTestRequest,
+        ProxyChannelWriteRequest, ProxyStatusResponse, RouteGroupListResponse,
+        RouteResolveRequest, RouteResolveResponse,
+    };
     pub use super::ports::CurrentRouteTarget;
     pub use super::ports::{
         AuthProvider, ChannelHealthStore, ChannelSource, ForwardPipeline, ModelCatalogProvider,
@@ -258,5 +271,41 @@ mod tests {
         assert_eq!(event_payload["bufferSize"], 16);
         assert_eq!(routing::DEFAULT_ROUTE_GROUP, "default");
         assert_eq!(logging::cb::MANUAL_RESET, "CB-006");
+    }
+
+    #[test]
+    fn prelude_exposes_channel_management_contracts() {
+        use prelude::*;
+
+        let write_request = ProxyChannelWriteRequest {
+            app_type: "claude".to_string(),
+            provider_id: "provider-a".to_string(),
+            name: "relay-a".to_string(),
+            base_url: "https://relay.example/v1".to_string(),
+            interface_kind: "anthropic".to_string(),
+            models: vec![ProxyChannelModelWriteRequest {
+                public_model: "claude-sonnet".to_string(),
+                upstream_model: "relay-sonnet".to_string(),
+                ..ProxyChannelModelWriteRequest::default()
+            }],
+            ..ProxyChannelWriteRequest::default()
+        };
+        let route_request = RouteResolveRequest {
+            app_type: write_request.app_type.clone(),
+            requested_model: Some("claude-sonnet".to_string()),
+            interface_kind: Some(write_request.interface_kind.clone()),
+            route_group: None,
+        };
+        let channel_list: ChannelListResponse<ChannelRecord> =
+            ChannelListResponse::new(Vec::new());
+        let test_request = ProxyChannelTestRequest {
+            model: route_request.requested_model.clone(),
+            interface_kind: route_request.interface_kind.clone(),
+        };
+
+        assert_eq!(write_request.models[0].upstream_model, "relay-sonnet");
+        assert!(channel_list.channels.is_empty());
+        assert_eq!(test_request.requested_model(), Some("claude-sonnet"));
+        assert_eq!(test_request.requested_interface(), Some("anthropic"));
     }
 }
