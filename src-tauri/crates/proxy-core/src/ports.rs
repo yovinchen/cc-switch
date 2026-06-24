@@ -1081,7 +1081,7 @@ pub fn provider_switch_dispatch_for_app(
     app: &AppKind,
     provider_category: Option<&str>,
 ) -> ProviderSwitchDispatch {
-    if matches!(app, AppKind::Custom(value) if value == "opencode")
+    if matches!(app, AppKind::Custom(value) if value.eq_ignore_ascii_case("opencode"))
         && matches!(provider_category, Some("omo") | Some("omo-slim"))
     {
         return ProviderSwitchDispatch::Normal;
@@ -1096,6 +1096,44 @@ pub fn provider_switch_dispatch_for_app(
 
 pub fn provider_switch_requires_takeover_lock(app: &AppKind) -> bool {
     live_takeover_app_kinds().contains(app)
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ProviderTakeoverLiveSyncTarget {
+    LiveConfig,
+    LiveBackup,
+}
+
+pub fn provider_takeover_live_sync_target_for_app(
+    app: &AppKind,
+) -> ProviderTakeoverLiveSyncTarget {
+    if matches!(app, AppKind::ClaudeDesktop) {
+        ProviderTakeoverLiveSyncTarget::LiveConfig
+    } else {
+        ProviderTakeoverLiveSyncTarget::LiveBackup
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ProviderLiveRemovalTarget {
+    OpenCode,
+    OpenClaw,
+    Hermes,
+}
+
+pub fn provider_live_removal_target_for_app(app: &AppKind) -> Option<ProviderLiveRemovalTarget> {
+    match app {
+        AppKind::Custom(value) if value.eq_ignore_ascii_case("opencode") => {
+            Some(ProviderLiveRemovalTarget::OpenCode)
+        }
+        AppKind::Custom(value) if value.eq_ignore_ascii_case("openclaw") => {
+            Some(ProviderLiveRemovalTarget::OpenClaw)
+        }
+        AppKind::Custom(value) if value.eq_ignore_ascii_case("hermes") => {
+            Some(ProviderLiveRemovalTarget::Hermes)
+        }
+        _ => None,
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -3178,7 +3216,8 @@ mod tests {
         proxy_app_config_from_parts, proxy_config_with_ephemeral_listen_port,
         proxy_config_with_live_takeover_active, proxy_global_config_from_global_config,
         proxy_runtime_config_from_proxy_config, provider_switch_dispatch_for_app,
-        provider_switch_requires_takeover_lock,
+        provider_switch_requires_takeover_lock, provider_live_removal_target_for_app,
+        provider_takeover_live_sync_target_for_app,
         AppListResponse, AppModelListQuery, AppProxyConfig, AppSummaryInput,
         channel_key_record_from_input,
         channel_reachability_status_from_latency, channel_record_from_input, ChannelDeleteResponse,
@@ -3196,7 +3235,8 @@ mod tests {
         CurrentRouteTargetInput, current_route_target_from_input, GlobalProxyConfig,
         GroupListQuery, HealthCheckResponse, ModelCatalog, OptimizerConfig, ProviderHealth,
         ProviderHealthUpdateInput, ProviderListResponse, ProviderSpec, ProviderSummaryInput,
-        ProviderSwitchDispatch, ProxyChannelModelWriteRequest,
+        ProviderLiveRemovalTarget, ProviderSwitchDispatch, ProviderTakeoverLiveSyncTarget,
+        ProxyChannelModelWriteRequest,
         ProxyChannelModelsReplaceRequest, ProxyChannelPatchRequest, ProxyChannelTestRequest,
         ProxyChannelWriteRequest, ProxyConfig, ProxyCoreEvent, ProxyCoreEventType,
         ProxyRuntimeStatus, ProxyStatusResponse, ProxyTakeoverStatus,
@@ -4457,6 +4497,53 @@ mod tests {
         assert!(!provider_switch_requires_takeover_lock(&AppKind::Custom(
             "opencode".to_string()
         )));
+    }
+
+    #[test]
+    fn provider_takeover_live_sync_target_keeps_desktop_on_live_config() {
+        assert_eq!(
+            provider_takeover_live_sync_target_for_app(&AppKind::ClaudeDesktop),
+            ProviderTakeoverLiveSyncTarget::LiveConfig
+        );
+        assert_eq!(
+            provider_takeover_live_sync_target_for_app(&AppKind::Claude),
+            ProviderTakeoverLiveSyncTarget::LiveBackup
+        );
+        assert_eq!(
+            provider_takeover_live_sync_target_for_app(&AppKind::Codex),
+            ProviderTakeoverLiveSyncTarget::LiveBackup
+        );
+        assert_eq!(
+            provider_takeover_live_sync_target_for_app(&AppKind::Gemini),
+            ProviderTakeoverLiveSyncTarget::LiveBackup
+        );
+        assert_eq!(
+            provider_takeover_live_sync_target_for_app(&AppKind::Custom("opencode".to_string())),
+            ProviderTakeoverLiveSyncTarget::LiveBackup
+        );
+    }
+
+    #[test]
+    fn provider_live_removal_target_maps_additive_custom_apps_only() {
+        assert_eq!(
+            provider_live_removal_target_for_app(&AppKind::Custom("opencode".to_string())),
+            Some(ProviderLiveRemovalTarget::OpenCode)
+        );
+        assert_eq!(
+            provider_live_removal_target_for_app(&AppKind::Custom("openclaw".to_string())),
+            Some(ProviderLiveRemovalTarget::OpenClaw)
+        );
+        assert_eq!(
+            provider_live_removal_target_for_app(&AppKind::Custom("hermes".to_string())),
+            Some(ProviderLiveRemovalTarget::Hermes)
+        );
+        assert_eq!(provider_live_removal_target_for_app(&AppKind::Claude), None);
+        assert_eq!(
+            provider_live_removal_target_for_app(&AppKind::ClaudeDesktop),
+            None
+        );
+        assert_eq!(provider_live_removal_target_for_app(&AppKind::Codex), None);
+        assert_eq!(provider_live_removal_target_for_app(&AppKind::Gemini), None);
     }
 
     #[test]

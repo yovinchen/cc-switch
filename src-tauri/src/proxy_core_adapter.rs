@@ -296,10 +296,13 @@ pub(crate) type ProxyRuntimeStatus = crate::proxy_core::api::ports::ProxyRuntime
 
 pub(crate) use crate::proxy_core::api::ports::{
     app_proxy_config_with_enabled as proxy_app_config_with_enabled, live_takeover_app_kinds,
+    provider_live_removal_target_for_app as core_provider_live_removal_target,
     provider_switch_dispatch_for_app as core_provider_switch_dispatch,
     provider_switch_requires_takeover_lock as core_provider_switch_requires_takeover_lock,
+    provider_takeover_live_sync_target_for_app as core_provider_takeover_live_sync_target,
     proxy_config_preserving_live_takeover_active, proxy_config_with_ephemeral_listen_port,
-    proxy_config_with_live_takeover_active, proxy_runtime_status_stopped, ProviderSwitchDispatch,
+    proxy_config_with_live_takeover_active, proxy_runtime_status_stopped, ProviderLiveRemovalTarget,
+    ProviderSwitchDispatch, ProviderTakeoverLiveSyncTarget,
 };
 
 const PROXY_MANAGEMENT_AUTH_TOKEN_ENV: &str = "CC_SWITCH_PROXY_MANAGEMENT_TOKEN";
@@ -2314,38 +2317,16 @@ pub(crate) fn live_takeover_app_types() -> [AppType; 3] {
     })
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum ProviderTakeoverLiveSyncTarget {
-    LiveConfig,
-    LiveBackup,
-}
-
 pub(crate) fn provider_takeover_live_sync_target(
     app_type: &AppType,
 ) -> ProviderTakeoverLiveSyncTarget {
-    if matches!(app_type, AppType::ClaudeDesktop) {
-        ProviderTakeoverLiveSyncTarget::LiveConfig
-    } else {
-        ProviderTakeoverLiveSyncTarget::LiveBackup
-    }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum ProviderLiveRemovalTarget {
-    OpenCode,
-    OpenClaw,
-    Hermes,
+    core_provider_takeover_live_sync_target(&AppKind::from(app_type))
 }
 
 pub(crate) fn provider_live_removal_target(
     app_type: &AppType,
 ) -> Option<ProviderLiveRemovalTarget> {
-    match app_type {
-        AppType::OpenCode => Some(ProviderLiveRemovalTarget::OpenCode),
-        AppType::OpenClaw => Some(ProviderLiveRemovalTarget::OpenClaw),
-        AppType::Hermes => Some(ProviderLiveRemovalTarget::Hermes),
-        _ => None,
-    }
+    core_provider_live_removal_target(&AppKind::from(app_type))
 }
 
 pub(crate) fn provider_delete_is_current_provider(

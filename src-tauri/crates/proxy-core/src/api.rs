@@ -123,6 +123,8 @@ pub mod ports {
         proxy_global_config_from_global_config, proxy_runtime_config_from_proxy_config,
         proxy_runtime_status_stopped, live_takeover_app_kinds, provider_switch_dispatch_for_app,
         provider_switch_requires_takeover_lock, ProviderSwitchDispatch,
+        provider_live_removal_target_for_app, provider_takeover_live_sync_target_for_app,
+        ProviderLiveRemovalTarget, ProviderTakeoverLiveSyncTarget,
         proxy_live_urls_from_listen_parts, proxy_server_info_from_parts,
         proxy_takeover_status_from_enabled_options,
         proxy_takeover_status_from_parts, apply_proxy_runtime_uptime,
