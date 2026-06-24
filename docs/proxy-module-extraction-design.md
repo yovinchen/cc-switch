@@ -1250,6 +1250,7 @@
 本轮继续把 forwarder 的上游 auth header 准备包装为 `ForwarderAuthSource`：`RequestForwarder` 不再直接提取 provider auth、解析 managed-account runtime token、构造 Codex OAuth session headers、注入 Copilot optimizer auth overrides 或调用 upstream auth finalization helper，默认 source 保持现有鉴权语义，后续外部宿主可替换鉴权头组装层。
 本轮继续把 Copilot auth override 的可选准备、request classification/deterministic request id gate、deterministic request id 与 interaction id 计算收敛到 `ForwarderAuthSource`：`RequestForwarder` 不再直接调用 Copilot session/request/interaction helper，也不再读取 optimizer auth override 配置字段，只把可选分类事实、配置、原始 body、上游 body 和 headers 交给 auth source。
 本轮继续把 `prepare_copilot_auth_optimization` 从 `ForwarderAuthSource` trait surface 收进默认 source 内部：direct Copilot auth override sequencing 仍由默认 auth source 包装，但外部替换 source 只需实现 `prepare_optional_copilot_auth_optimization` 行为级入口。
+本轮继续把 core-facing `AuthProvider` 接入 `ForwarderAuthSource` 热路径：默认 auth source 在构造上游认证头前先用 app/provider/channel/request 上下文调用 `AuthProvider::resolve_auth`，若返回显式 `AuthInfo.headers` 则直接作为 base auth headers；CC Switch 默认 `CcSwitchAuthProvider` 仍返回空 headers，因此现有 provider adapter、managed-account token 刷新、Codex session header 和 Copilot auth override fallback 语义不变。
 本轮继续把 Copilot optimizer 的启用 gate、请求体分类与变形收敛到 `ForwarderRequestSource`：`RequestForwarder` 不再直接判断 Copilot optimizer 是否运行，也不再直接调用 Copilot 分类、孤立 tool_result 清理、tool_result 合并、thinking block 剥离或 warmup 模型降级 helper，只消费 request source 返回的优化后 body 与可选分类事实。
 本轮继续收窄 `ForwarderAttemptRuntimeSource` 的放行接口：legacy 单 provider circuit-breaker bypass 判定从 trait surface 收进默认 source 内部，`RequestForwarder` 只通过 `ForwarderAttemptAllowInput` 传当前 attempt、app 和完整 attempts 事实，外部中转实现不再需要复刻 CC Switch 的历史兼容 helper。
 本轮继续把 max-attempt 上限判定并入 `ForwarderAttemptRuntimeSource::allow` 的结构化决策：默认 source 在占用 half-open permit 前先返回 `Stop(ForwarderAttemptLimitReached)`，`RequestForwarder` 只处理 stop/skip/allowed 三种结果，外部中转实现不再需要单独暴露 retry-policy helper。
@@ -1976,9 +1977,9 @@ pub trait AuthProvider: Send + Sync {
 }
 ```
 
-本轮已把 `proxy-core` 端口签名从单独的 `auth_profile` 参数推进到 `app + provider + channel + request` 上下文；`CcSwitchAuthProvider` 会把 app/provider/channel 事实放入 `AuthInfo.metadata`，外部中转实现因此可以按 channel 选择不同 key、账号或 token runtime。当前生产 header 组装仍由 `ForwarderAuthSource` 调用 provider adapter 完成，channel-key 注入由 `apply_channel_auth_profile_providers_from_db` 在生成 `ForwardAttempt` 后处理；已补 DB-backed 回归测试，证明相同 `key_ref` 在不同 channel 下会按 `channel_id` 各自取 key，不会全局串用。
+本轮已把 `proxy-core` 端口签名从单独的 `auth_profile` 参数推进到 `app + provider + channel + request` 上下文；`CcSwitchAuthProvider` 会把 app/provider/channel 事实放入 `AuthInfo.metadata`，外部中转实现因此可以按 channel 选择不同 key、账号或 token runtime。生产 header 组装也已让 `ForwarderAuthSource` 先调用 core `AuthProvider`：如果外部实现返回显式 `AuthInfo.headers`，默认 source 会直接使用这些 header；如果返回空 headers，则继续走 CC Switch 现有 provider adapter 与 managed-account fallback。channel-key 注入仍由 `apply_channel_auth_profile_providers_from_db` 在生成 `ForwardAttempt` 后处理；已补 DB-backed 回归测试，证明相同 `key_ref` 在不同 channel 下会按 `channel_id` 各自取 key，不会全局串用。
 
-provider adapter 仍负责将 `AuthInfo` 变成 header，但 token 刷新和宿主账号状态读取不在 adapter 内完成。channel 可以指向同一个 provider 的不同 key/auth profile，必须避免把一个 channel 的 key 泄漏到另一个 channel。下一步是让 `ForwarderAuthSource` 消费 core `AuthProvider` 返回的 `AuthInfo`，再逐步把 managed-account token 刷新、channel-key 轮询/随机和失败回退收敛到宿主可替换端口。
+provider adapter 仍负责 CC Switch 默认 fallback 的 provider settings 到 header 转换，但 token 刷新和宿主账号状态读取不在 provider adapter 内完成。channel 可以指向同一个 provider 的不同 key/auth profile，必须避免把一个 channel 的 key 泄漏到另一个 channel。下一步是把 managed-account token 刷新、channel-key 轮询/随机和失败回退继续收敛到宿主可替换端口，直到 forwarder 不再需要理解 CC Switch 的 provider settings 鉴权细节。
 
 ### Model catalog 接口
 

@@ -963,12 +963,16 @@ impl RequestForwarder {
                     headers,
                 });
 
-        let auth_provider = attempt.auth_provider();
         let auth_headers = self
             .auth_source
             .resolve_upstream_auth_headers(ForwarderAuthHeadersInput {
                 adapter,
-                auth_provider,
+                app_type,
+                method,
+                endpoint,
+                request_body: body,
+                request_headers: headers,
+                attempt,
                 session_id: &self.session_id,
                 session_client_provided: self.session_client_provided,
                 copilot_optimization,

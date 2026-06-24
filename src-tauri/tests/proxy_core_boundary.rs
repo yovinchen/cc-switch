@@ -5998,7 +5998,7 @@ fn production_forwarder_uses_auth_source_resource() {
     let auth_input_slice = function_slice(
         &adapter_source,
         "pub(crate) struct ForwarderAuthHeadersInput",
-        "pub(crate) struct ForwarderAuthHeaders",
+        "pub(crate) struct ForwarderAuthHeaders {",
     );
     let auth_source_slice = function_slice(
         &adapter_source,
@@ -6010,6 +6010,11 @@ fn production_forwarder_uses_auth_source_resource() {
         "pub(crate) trait ForwarderAuthSource",
         "struct CcSwitchForwarderAuthSource",
     );
+    let auth_impl_slice = function_slice(
+        &adapter_source,
+        "impl ForwarderAuthSource for CcSwitchForwarderAuthSource",
+        "pub(crate) fn forwarder_auth_source_from_managed_account_runtime_source",
+    );
 
     assert!(
         !auth_input_slice.contains("ManagedAccountRuntimeSourceRef"),
@@ -6018,6 +6023,21 @@ fn production_forwarder_uses_auth_source_resource() {
     assert!(
         auth_source_slice.contains("managed_account_runtime_source: ManagedAccountRuntimeSourceRef"),
         "ForwarderAuthSource must own managed-account runtime source for auth resolution"
+    );
+    assert!(
+        auth_source_slice.contains("auth_provider: AuthProviderRef"),
+        "ForwarderAuthSource must own the core AuthProvider for route-context auth resolution"
+    );
+    assert!(
+        auth_impl_slice.contains(".auth_provider")
+            && auth_impl_slice.contains(".resolve_auth("),
+        "ForwarderAuthSource must call core AuthProvider before assembling upstream auth headers"
+    );
+    assert!(
+        auth_input_slice.contains("attempt:")
+            && auth_input_slice.contains("request_body:")
+            && auth_input_slice.contains("request_headers:"),
+        "ForwarderAuthHeadersInput must carry route/request facts for core AuthProvider resolution"
     );
     assert!(
         auth_source_slice.contains("fn prepare_copilot_auth_optimization"),

@@ -8719,6 +8719,7 @@ pub(crate) fn forwarder_attempt_runtime_source_from_router(
 }
 
 pub(crate) type ForwarderAuthSourceRef = Arc<dyn ForwarderAuthSource + Send + Sync>;
+pub(crate) type AuthProviderRef = Arc<dyn AuthProvider + Send + Sync>;
 
 pub(crate) struct ForwarderCopilotAuthOptimizationInput<'a> {
     pub(crate) classification: CopilotClassification,
@@ -8747,7 +8748,12 @@ pub(crate) struct ForwarderPreparedCopilotAuthOptimization {
 
 pub(crate) struct ForwarderAuthHeadersInput<'a> {
     pub(crate) adapter: &'a ForwarderAdapterHandle,
-    pub(crate) auth_provider: &'a Provider,
+    pub(crate) app_type: &'a AppType,
+    pub(crate) method: &'a Method,
+    pub(crate) endpoint: &'a str,
+    pub(crate) request_body: &'a Value,
+    pub(crate) request_headers: &'a HeaderMap,
+    pub(crate) attempt: &'a ForwardAttempt,
     pub(crate) session_id: &'a str,
     pub(crate) session_client_provided: bool,
     pub(crate) copilot_optimization: Option<ForwarderPreparedCopilotAuthOptimization>,
@@ -8772,12 +8778,17 @@ pub(crate) trait ForwarderAuthSource {
 
 struct CcSwitchForwarderAuthSource {
     managed_account_runtime_source: ManagedAccountRuntimeSourceRef,
+    auth_provider: AuthProviderRef,
 }
 
 impl CcSwitchForwarderAuthSource {
-    fn new(managed_account_runtime_source: ManagedAccountRuntimeSourceRef) -> Self {
+    fn new(
+        managed_account_runtime_source: ManagedAccountRuntimeSourceRef,
+        auth_provider: AuthProviderRef,
+    ) -> Self {
         Self {
             managed_account_runtime_source,
+            auth_provider,
         }
     }
 
@@ -8804,6 +8815,125 @@ impl CcSwitchForwarderAuthSource {
     }
 }
 
+fn forwarder_auth_default_interface(app_type: &AppType) -> InterfaceKind {
+    match app_type {
+        AppType::Claude | AppType::ClaudeDesktop => InterfaceKind::AnthropicMessages,
+        AppType::Gemini => InterfaceKind::GeminiNative,
+        AppType::Codex | AppType::OpenCode | AppType::OpenClaw | AppType::Hermes => {
+            InterfaceKind::OpenAiChatCompletions
+        }
+    }
+}
+
+fn forwarder_auth_channel_spec(app_type: &AppType, attempt: &ForwardAttempt) -> ChannelSpec {
+    let provider = attempt.provider();
+    match attempt.channel() {
+        Some(channel) => channel_spec_from_input(ChannelSpecInput {
+            id: channel.channel_id.clone(),
+            provider_id: provider.id.clone(),
+            app_type: app_type.as_str().to_string(),
+            name: channel.channel_name.clone(),
+            status: "enabled".to_string(),
+            base_url: channel.base_url.clone(),
+            interface_kind: channel.interface_kind.clone(),
+            auth_profile_ref: channel.auth_profile_ref.clone(),
+            models: match (&channel.public_model, &channel.upstream_model) {
+                (Some(public_model), Some(upstream_model)) => vec![ModelRouteInput {
+                    public_model: public_model.clone(),
+                    upstream_model: upstream_model.clone(),
+                    capabilities: Value::Object(Default::default()),
+                    pricing_model: None,
+                    request_overrides: Value::Object(Default::default()),
+                    response_overrides: Value::Object(Default::default()),
+                }],
+                _ => Vec::new(),
+            },
+            groups: vec![crate::proxy_core::api::routing::DEFAULT_ROUTE_GROUP.to_string()],
+            priority: 0,
+            weight: 100,
+            retry_policy: Value::Object(Default::default()),
+            health_policy: Value::Object(Default::default()),
+            header_overrides: channel.header_overrides.clone(),
+            param_overrides: channel.param_overrides.clone(),
+            status_code_mapping: channel.status_code_mapping.clone(),
+            tags: Vec::new(),
+            metadata: Value::Object(Default::default()),
+            source_ref: None,
+            needs_review: false,
+            review_reasons: Vec::new(),
+        }),
+        None => {
+            let interface = forwarder_auth_default_interface(app_type);
+            channel_spec_from_input(ChannelSpecInput {
+                id: provider.id.clone(),
+                provider_id: provider.id.clone(),
+                app_type: app_type.as_str().to_string(),
+                name: provider.name.clone(),
+                status: "enabled".to_string(),
+                base_url: String::new(),
+                interface_kind: interface.as_str().to_string(),
+                auth_profile_ref: None,
+                models: Vec::new(),
+                groups: vec![crate::proxy_core::api::routing::DEFAULT_ROUTE_GROUP.to_string()],
+                priority: 0,
+                weight: 100,
+                retry_policy: Value::Object(Default::default()),
+                health_policy: Value::Object(Default::default()),
+                header_overrides: Value::Object(Default::default()),
+                param_overrides: Value::Object(Default::default()),
+                status_code_mapping: Value::Array(Vec::new()),
+                tags: Vec::new(),
+                metadata: Value::Object(Default::default()),
+                source_ref: None,
+                needs_review: false,
+                review_reasons: Vec::new(),
+            })
+        }
+    }
+}
+
+fn forwarder_auth_proxy_request(input: &ForwarderAuthHeadersInput<'_>) -> ProxyRequest {
+    let channel = forwarder_auth_channel_spec(input.app_type, input.attempt);
+    let requested_model = input
+        .request_body
+        .get("model")
+        .and_then(Value::as_str)
+        .map(ToString::to_string);
+
+    ProxyRequest::new(
+        AppKind::from(input.app_type),
+        input.method.clone(),
+        input.endpoint,
+        channel.interface.clone(),
+        ProxyBody::Json(input.request_body.clone()),
+    )
+    .with_observed_request_context(
+        requested_model,
+        input.request_headers.clone(),
+        http::Extensions::new(),
+    )
+}
+
+fn forwarder_core_auth_headers(
+    auth: &AuthInfo,
+) -> Result<Option<Vec<(http::HeaderName, http::HeaderValue)>>, ProxyError> {
+    if auth.headers.is_empty() {
+        return Ok(None);
+    }
+
+    let mut headers = Vec::with_capacity(auth.headers.len());
+    for (name, value) in &auth.headers {
+        let name = http::HeaderName::from_bytes(name.as_bytes()).map_err(|error| {
+            ProxyError::InvalidRequest(format!("invalid AuthProvider header name: {error}"))
+        })?;
+        let value = http::HeaderValue::from_str(value).map_err(|error| {
+            ProxyError::InvalidRequest(format!("invalid AuthProvider header value: {error}"))
+        })?;
+        headers.push((name, value));
+    }
+    Ok(Some(headers))
+}
+
 impl ForwarderAuthSource for CcSwitchForwarderAuthSource {
     fn prepare_optional_copilot_auth_optimization(
         &self,
@@ -8826,23 +8956,36 @@ impl ForwarderAuthSource for CcSwitchForwarderAuthSource {
         input: ForwarderAuthHeadersInput<'a>,
     ) -> BoxFuture<'a, Result<ForwarderAuthHeaders, ProxyError>> {
         Box::pin(async move {
+            let app = AppKind::from(input.app_type);
+            let provider = proxy_provider_to_core_spec(input.attempt.provider(), input.app_type);
+            let channel = forwarder_auth_channel_spec(input.app_type, input.attempt);
+            let request = forwarder_auth_proxy_request(&input);
+            let core_auth = self
+                .auth_provider
+                .resolve_auth(&app, &provider, &channel, &request)
+                .await
+                .map_err(proxy_core_error_to_proxy_error)?;
+
             let mut codex_oauth_account_id: Option<String> = None;
             let mut should_send_codex_oauth_session_headers = false;
-            let mut auth_headers = if let Some(mut auth) =
-                forwarder_provider_auth_info(input.adapter, input.auth_provider)
-            {
-                let managed_auth = self
-                    .managed_account_runtime_source
-                    .resolve_auth_for_provider(input.auth_provider, auth)
-                    .await?;
-                auth = managed_auth.auth;
-                should_send_codex_oauth_session_headers =
-                    managed_auth.should_send_codex_oauth_session_headers;
-                codex_oauth_account_id = managed_auth.codex_oauth_account_id;
-
-                forwarder_provider_auth_headers(input.adapter, &auth)?
+            let mut auth_headers = if let Some(headers) = forwarder_core_auth_headers(&core_auth)? {
+                headers
             } else {
-                Vec::new()
+                let auth_provider = input.attempt.auth_provider();
+                if let Some(mut auth) = forwarder_provider_auth_info(input.adapter, auth_provider) {
+                    let managed_auth = self
+                        .managed_account_runtime_source
+                        .resolve_auth_for_provider(auth_provider, auth)
+                        .await?;
+                    auth = managed_auth.auth;
+                    should_send_codex_oauth_session_headers =
+                        managed_auth.should_send_codex_oauth_session_headers;
+                    codex_oauth_account_id = managed_auth.codex_oauth_account_id;
+
+                    forwarder_provider_auth_headers(input.adapter, &auth)?
+                } else {
+                    Vec::new()
+                }
             };
 
             let codex_oauth_session_headers =
@@ -8891,8 +9034,19 @@ impl ForwarderAuthSource for CcSwitchForwarderAuthSource {
 pub(crate) fn forwarder_auth_source_from_managed_account_runtime_source(
     managed_account_runtime_source: ManagedAccountRuntimeSourceRef,
 ) -> ForwarderAuthSourceRef {
+    forwarder_auth_source_from_sources(
+        managed_account_runtime_source,
+        Arc::new(CcSwitchAuthProvider),
+    )
+}
+
+pub(crate) fn forwarder_auth_source_from_sources(
+    managed_account_runtime_source: ManagedAccountRuntimeSourceRef,
+    auth_provider: AuthProviderRef,
+) -> ForwarderAuthSourceRef {
     Arc::new(CcSwitchForwarderAuthSource::new(
         managed_account_runtime_source,
+        auth_provider,
     ))
 }
 
@@ -15864,6 +16018,108 @@ base_url = "https://api.openai.com/v1"
         assert!(prepared.is_subagent);
         assert!(prepared.deterministic_request_id.is_some());
         assert!(prepared.interaction_id.is_some());
+    }
+
+    struct ChannelHeaderAuthProvider;
+
+    impl AuthProvider for ChannelHeaderAuthProvider {
+        fn resolve_auth<'a>(
+            &'a self,
+            app: &'a AppKind,
+            provider: &'a ProviderSpec,
+            channel: &'a ChannelSpec,
+            request: &'a ProxyRequest,
+        ) -> BoxFuture<'a, ProxyCoreResult<AuthInfo>> {
+            let app = app.as_str().to_string();
+            let provider_id = provider.id.clone();
+            let channel_id = channel.id.clone();
+            let requested_model = request.requested_model.clone();
+            Box::pin(async move {
+                Ok(AuthInfo {
+                    headers: vec![(
+                        "x-core-auth-channel".to_string(),
+                        channel_id.clone(),
+                    )],
+                    account_ref: Some(provider_id.clone()),
+                    metadata: json!({
+                        "app": app,
+                        "providerId": provider_id,
+                        "channelId": channel_id,
+                        "requestedModel": requested_model,
+                    }),
+                })
+            })
+        }
+    }
+
+    #[tokio::test]
+    async fn forwarder_auth_source_uses_core_auth_provider_route_context_headers() {
+        let source = forwarder_auth_source_from_sources(
+            default_managed_account_runtime_source(),
+            Arc::new(ChannelHeaderAuthProvider),
+        );
+        let adapter = forwarder_provider_adapter_for_app(&AppType::Claude);
+        let provider = Provider::with_id(
+            "provider-a".to_string(),
+            "Provider A".to_string(),
+            json!({
+                "env": {
+                    "ANTHROPIC_API_KEY": "provider-key"
+                }
+            }),
+            None,
+        );
+        let attempt = ForwardAttempt::from_channel(
+            &AppType::Claude,
+            &provider,
+            ChannelRouteCandidate {
+                channel_id: "channel-auth".to_string(),
+                provider_id: provider.id.clone(),
+                channel_name: "Channel Auth".to_string(),
+                base_url: "https://relay.example.com/v1".to_string(),
+                interface_kind: "anthropic_messages".to_string(),
+                public_model: Some("sonnet-public".to_string()),
+                upstream_model: Some("sonnet-upstream".to_string()),
+                route_group: "default".to_string(),
+                priority: 100,
+                weight: 1,
+                source_kind: "manual".to_string(),
+            },
+        );
+        let method = Method::POST;
+        let body = json!({ "model": "sonnet-public" });
+        let headers = HeaderMap::new();
+
+        let resolved = source
+            .resolve_upstream_auth_headers(ForwarderAuthHeadersInput {
+                adapter: adapter.as_ref(),
+                app_type: &AppType::Claude,
+                method: &method,
+                endpoint: "/v1/messages",
+                request_body: &body,
+                request_headers: &headers,
+                attempt: &attempt,
+                session_id: "session-a",
+                session_client_provided: false,
+                copilot_optimization: None,
+            })
+            .await
+            .expect("resolve auth headers");
+
+        assert_eq!(resolved.codex_oauth_session_headers.len(), 0);
+        assert_eq!(resolved.auth_headers.len(), 1);
+        assert_eq!(
+            resolved.auth_headers[0].0,
+            http::HeaderName::from_static("x-core-auth-channel")
+        );
+        assert_eq!(
+            resolved.auth_headers[0].1.to_str().expect("header value"),
+            "channel-auth"
+        );
+        assert!(!resolved
+            .auth_headers
+            .iter()
+            .any(|(name, _)| name == http::header::AUTHORIZATION));
     }
 
     #[test]
