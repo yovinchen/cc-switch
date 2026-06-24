@@ -6009,44 +6009,66 @@ pub(crate) async fn reset_circuit_breaker_switchback_target_from_db(
     ))
 }
 
+#[cfg(test)]
 pub(crate) fn select_current_provider_ids_from_router_source(
     app_type: &str,
     current: Option<Provider>,
 ) -> Result<Vec<String>, AppError> {
+    select_current_provider_ids_from_router_provider_id_source(
+        app_type,
+        current.map(|provider| provider.id),
+    )
+}
+
+pub(crate) fn select_current_provider_ids_from_router_provider_id_source(
+    app_type: &str,
+    current_provider_id: Option<String>,
+) -> Result<Vec<String>, AppError> {
     let selected_ids = select_provider_ids(ProviderSelectionInput::current(
-        current.as_ref().map(|provider| provider.id.clone()),
+        current_provider_id.clone(),
     ))
     .map_err(|error| app_error_from_provider_selection_failure(app_type, error))?;
 
     Ok(selected_ids
         .into_iter()
-        .filter(|provider_id| {
-            current
-                .as_ref()
-                .is_some_and(|provider| provider.id == *provider_id)
-        })
+        .filter(|provider_id| current_provider_id.as_ref() == Some(provider_id))
         .collect())
 }
 
-pub(crate) fn select_current_provider_ids_from_router_db_source(
-    db: &Database,
+pub(crate) async fn provider_ids_from_router_provider_source(
+    source: &(dyn ProviderSource + Send + Sync),
     app_type: &str,
 ) -> Result<Vec<String>, AppError> {
-    let current_id = current_provider_id_from_router_sources(
-        app_type,
-        |app_enum| {
-            crate::settings::get_effective_current_provider(db, app_enum)
-                .ok()
-                .flatten()
-        },
-        || db.get_current_provider(app_type).ok().flatten(),
-    );
+    let app = AppKind::from(app_type);
+    let providers = source
+        .list_providers(&app)
+        .await
+        .map_err(app_error_from_proxy_core_error)?;
+    Ok(providers
+        .into_iter()
+        .map(|provider| provider.id)
+        .collect())
+}
 
-    let current = current_id
-        .and_then(|current_id| db.get_provider_by_id(&current_id, app_type).transpose())
-        .transpose()?;
+pub(crate) async fn select_current_provider_ids_from_router_provider_source(
+    source: &(dyn ProviderSource + Send + Sync),
+    app_type: &str,
+) -> Result<Vec<String>, AppError> {
+    let app = AppKind::from(app_type);
+    let current_provider_id = source
+        .current_provider_id(&app)
+        .await
+        .map_err(app_error_from_proxy_core_error)?;
+    let current_provider_id = match current_provider_id {
+        Some(current_provider_id) => source
+            .get_provider(&app, &current_provider_id)
+            .await
+            .map_err(app_error_from_proxy_core_error)?
+            .map(|provider| provider.id),
+        None => None,
+    };
 
-    select_current_provider_ids_from_router_source(app_type, current)
+    select_current_provider_ids_from_router_provider_id_source(app_type, current_provider_id)
 }
 
 pub(crate) fn select_failover_provider_ids_from_router_lookup_availability<I>(
@@ -6091,15 +6113,15 @@ pub(crate) fn provider_failover_circuit_lookups_from_router_sources(
     )
 }
 
-pub(crate) fn provider_failover_sources_from_router_db(
-    db: &Database,
+pub(crate) async fn provider_failover_sources_from_router_provider_source(
+    source: &(dyn ProviderSource + Send + Sync),
     app_type: &str,
+    queue: impl IntoIterator<Item = FailoverQueueItem>,
 ) -> Result<ProviderFailoverRouterSources, AppError> {
-    let providers = db.get_all_providers(app_type)?;
-    let provider_ids = providers.keys().cloned().collect::<Vec<_>>();
+    let provider_ids = provider_ids_from_router_provider_source(source, app_type).await?;
     let lookups = provider_failover_circuit_lookups_from_router_sources(
         app_type,
-        db.get_failover_queue(app_type)?,
+        queue,
         provider_ids.clone(),
     );
     Ok(ProviderFailoverRouterSources {
@@ -6161,13 +6183,59 @@ struct CcSwitchProviderRouterProviderSource {
     db: Arc<Database>,
 }
 
-impl ProviderRouterProviderSource for CcSwitchProviderRouterProviderSource {
-    fn failover_sources(&self, app_type: &str) -> Result<ProviderFailoverRouterSources, AppError> {
-        provider_failover_sources_from_router_db(&self.db, app_type)
+impl ProviderSource for CcSwitchProviderRouterProviderSource {
+    fn list_providers<'a>(
+        &'a self,
+        app: &'a AppKind,
+    ) -> BoxFuture<'a, ProxyCoreResult<Vec<ProviderSpec>>> {
+        Box::pin(async move { provider_specs_from_db_source(&self.db, app) })
     }
 
-    fn current_provider_ids(&self, app_type: &str) -> Result<Vec<String>, AppError> {
-        select_current_provider_ids_from_router_db_source(&self.db, app_type)
+    fn get_provider<'a>(
+        &'a self,
+        app: &'a AppKind,
+        provider_id: &'a str,
+    ) -> BoxFuture<'a, ProxyCoreResult<Option<ProviderSpec>>> {
+        Box::pin(async move { provider_spec_from_db_source(&self.db, app, provider_id) })
+    }
+
+    fn current_provider_id<'a>(
+        &'a self,
+        app: &'a AppKind,
+    ) -> BoxFuture<'a, ProxyCoreResult<Option<String>>> {
+        Box::pin(async move {
+            let app_type = app_type_from_proxy_core_app(app)?;
+            Ok(current_provider_id_from_router_sources(
+                app_type.as_str(),
+                |app_enum| {
+                    crate::settings::get_effective_current_provider(&self.db, app_enum)
+                        .ok()
+                        .flatten()
+                },
+                || self.db.get_current_provider(app_type.as_str()).ok().flatten(),
+            ))
+        })
+    }
+}
+
+impl ProviderRouterProviderSource for CcSwitchProviderRouterProviderSource {
+    fn failover_sources<'a>(
+        &'a self,
+        app_type: &'a str,
+    ) -> BoxFuture<'a, Result<ProviderFailoverRouterSources, AppError>> {
+        Box::pin(async move {
+            let queue = self.db.get_failover_queue(app_type)?;
+            provider_failover_sources_from_router_provider_source(self, app_type, queue).await
+        })
+    }
+
+    fn current_provider_ids<'a>(
+        &'a self,
+        app_type: &'a str,
+    ) -> BoxFuture<'a, Result<Vec<String>, AppError>> {
+        Box::pin(async move {
+            select_current_provider_ids_from_router_provider_source(self, app_type).await
+        })
     }
 }
 
@@ -17446,6 +17514,14 @@ base_url = "https://api.openai.com/v1"
             select_current_provider_ids_from_router_source("claude", Some(current_provider))
                 .expect("selected current provider id");
         assert_eq!(selected_current, vec!["provider-a"]);
+        assert_eq!(
+            select_current_provider_ids_from_router_provider_id_source(
+                "claude",
+                Some("provider-a".to_string())
+            )
+            .expect("selected current provider id from id"),
+            vec!["provider-a"]
+        );
         assert!(matches!(
             select_current_provider_ids_from_router_source("claude", None),
             Err(AppError::NoProvidersConfigured)
@@ -17490,6 +17566,101 @@ base_url = "https://api.openai.com/v1"
         assert!(response.candidates.is_empty());
         assert_eq!(response.rejected.len(), 1);
         assert_eq!(response.rejected[0].reasons, vec!["circuit_open"]);
+    }
+
+    struct StaticProviderSource {
+        providers: Vec<ProviderSpec>,
+        current_provider_id: Option<String>,
+    }
+
+    impl ProviderSource for StaticProviderSource {
+        fn list_providers<'a>(
+            &'a self,
+            _app: &'a AppKind,
+        ) -> BoxFuture<'a, ProxyCoreResult<Vec<ProviderSpec>>> {
+            Box::pin(async move { Ok(self.providers.clone()) })
+        }
+
+        fn get_provider<'a>(
+            &'a self,
+            _app: &'a AppKind,
+            provider_id: &'a str,
+        ) -> BoxFuture<'a, ProxyCoreResult<Option<ProviderSpec>>> {
+            Box::pin(async move {
+                Ok(self
+                    .providers
+                    .iter()
+                    .find(|provider| provider.id == provider_id)
+                    .cloned())
+            })
+        }
+
+        fn current_provider_id<'a>(
+            &'a self,
+            _app: &'a AppKind,
+        ) -> BoxFuture<'a, ProxyCoreResult<Option<String>>> {
+            Box::pin(async move { Ok(self.current_provider_id.clone()) })
+        }
+    }
+
+    fn static_provider_spec(id: &str) -> ProviderSpec {
+        ProviderSpec {
+            id: id.to_string(),
+            name: id.to_string(),
+            kind: ProviderKind::Claude,
+            account_ref: None,
+            metadata: ProviderMetadata::default(),
+        }
+    }
+
+    #[tokio::test]
+    async fn provider_router_provider_source_projects_core_provider_source() {
+        let source = StaticProviderSource {
+            providers: vec![
+                static_provider_spec("provider-a"),
+                static_provider_spec("provider-b"),
+            ],
+            current_provider_id: Some("provider-a".to_string()),
+        };
+
+        let provider_ids = provider_ids_from_router_provider_source(&source, "claude")
+            .await
+            .expect("provider ids");
+        assert_eq!(provider_ids, vec!["provider-a", "provider-b"]);
+
+        let current_ids = select_current_provider_ids_from_router_provider_source(
+            &source,
+            "claude",
+        )
+        .await
+        .expect("current provider ids");
+        assert_eq!(current_ids, vec!["provider-a"]);
+
+        let failover_sources = provider_failover_sources_from_router_provider_source(
+            &source,
+            "claude",
+            vec![
+                FailoverQueueItem {
+                    provider_id: "provider-b".to_string(),
+                    provider_name: "Provider B".to_string(),
+                    sort_index: Some(0),
+                    provider_notes: None,
+                },
+                FailoverQueueItem {
+                    provider_id: "missing".to_string(),
+                    provider_name: "Missing".to_string(),
+                    sort_index: Some(1),
+                    provider_notes: None,
+                },
+            ],
+        )
+        .await
+        .expect("failover sources");
+        assert_eq!(failover_sources.provider_ids, vec!["provider-a", "provider-b"]);
+        assert_eq!(failover_sources.lookups[0].provider_id, "provider-b");
+        assert!(failover_sources.lookups[0].configured);
+        assert_eq!(failover_sources.lookups[1].provider_id, "missing");
+        assert!(!failover_sources.lookups[1].configured);
     }
 
     #[test]

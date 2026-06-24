@@ -726,6 +726,12 @@ const FORBIDDEN_PROVIDER_ROUTER_CONFIG_SOURCE_ADAPTER_MARKERS: &[&str] = &[
     "circuit_breaker_config_from_router_db(",
     "circuit_failure_threshold_from_router_db(",
 ];
+const FORBIDDEN_PROVIDER_ROUTER_PROVIDER_SOURCE_ADAPTER_MARKERS: &[&str] = &[
+    "provider_failover_sources_from_router_db(",
+    "select_current_provider_ids_from_router_db_source(",
+    ".get_all_providers(",
+    ".get_provider_by_id(",
+];
 const FORBIDDEN_PROVIDER_ROUTER_ROUTE_REJECTION_MARKERS: &[&str] =
     &["reject_unavailable_channel_ids(", "unavailable_channel_ids"];
 const FORBIDDEN_PROVIDER_ROUTER_MANAGEMENT_ROUTE_MARKERS: &[&str] = &[
@@ -8798,6 +8804,48 @@ fn production_provider_router_config_source_uses_core_config_source() {
     assert!(
         violations.is_empty(),
         "ProviderRouter config source adapter must use core ProxyConfigSource instead of DB-specific config helpers:\n{}",
+        violations.join("\n")
+    );
+}
+
+#[test]
+fn production_provider_router_provider_source_uses_core_provider_source() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let path = manifest_dir.join("src/proxy_core_adapter.rs");
+    let source = fs::read_to_string(&path).expect("read proxy_core_adapter.rs");
+    let adapter_slice = function_slice(
+        &source,
+        "struct CcSwitchProviderRouterProviderSource",
+        "struct CcSwitchProviderRouterChannelSource",
+    );
+
+    assert!(
+        adapter_slice.contains("impl ProviderSource for CcSwitchProviderRouterProviderSource"),
+        "ProviderRouter provider source adapter must expose a core-facing ProviderSource"
+    );
+    assert!(
+        adapter_slice.contains("provider_ids_from_router_provider_source")
+            && adapter_slice.contains("select_current_provider_ids_from_router_provider_source"),
+        "ProviderRouter provider source adapter must project provider ids through ProviderSource helpers"
+    );
+
+    let mut violations = Vec::new();
+    for (line_index, line) in production_lines(adapter_slice) {
+        let code = line.split("//").next().unwrap_or_default();
+        for marker in FORBIDDEN_PROVIDER_ROUTER_PROVIDER_SOURCE_ADAPTER_MARKERS {
+            if code.contains(marker) {
+                violations.push(format!(
+                    "src/proxy_core_adapter.rs CcSwitchProviderRouterProviderSource:{} contains provider source adapter marker `{}`",
+                    line_index + 1,
+                    marker
+                ));
+            }
+        }
+    }
+
+    assert!(
+        violations.is_empty(),
+        "ProviderRouter provider source adapter must use core ProviderSource projection instead of DB-specific router provider helpers:\n{}",
         violations.join("\n")
     );
 }

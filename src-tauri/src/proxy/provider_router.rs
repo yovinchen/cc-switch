@@ -33,9 +33,15 @@ pub(crate) trait ProviderRouterConfigSource: Send + Sync {
 }
 
 pub(crate) trait ProviderRouterProviderSource: Send + Sync {
-    fn failover_sources(&self, app_type: &str) -> Result<ProviderFailoverRouterSources, AppError>;
+    fn failover_sources<'a>(
+        &'a self,
+        app_type: &'a str,
+    ) -> BoxFuture<'a, Result<ProviderFailoverRouterSources, AppError>>;
 
-    fn current_provider_ids(&self, app_type: &str) -> Result<Vec<String>, AppError>;
+    fn current_provider_ids<'a>(
+        &'a self,
+        app_type: &'a str,
+    ) -> BoxFuture<'a, Result<Vec<String>, AppError>>;
 }
 
 pub(crate) trait ProviderRouterChannelSource: Send + Sync {
@@ -119,7 +125,7 @@ impl ProviderRouter {
         let result = if auto_failover_enabled {
             self.select_failover_provider_ids(app_type).await
         } else {
-            self.select_current_provider_ids(app_type)
+            self.select_current_provider_ids(app_type).await
         }?;
 
         Ok(result)
@@ -127,7 +133,7 @@ impl ProviderRouter {
 
     async fn select_failover_provider_ids(&self, app_type: &str) -> Result<Vec<String>, AppError> {
         // 故障转移开启：仅按队列顺序依次尝试（P1 → P2 → ...）
-        let sources = self.sources.providers.failover_sources(app_type)?;
+        let sources = self.sources.providers.failover_sources(app_type).await?;
         let mut lookup_availability = Vec::with_capacity(sources.lookups.len());
         for lookup in sources.lookups {
             let available = match lookup.circuit_key.as_ref() {
@@ -144,9 +150,9 @@ impl ProviderRouter {
         )
     }
 
-    fn select_current_provider_ids(&self, app_type: &str) -> Result<Vec<String>, AppError> {
+    async fn select_current_provider_ids(&self, app_type: &str) -> Result<Vec<String>, AppError> {
         // 故障转移关闭：仅使用当前供应商，跳过熔断器检查
-        self.sources.providers.current_provider_ids(app_type)
+        self.sources.providers.current_provider_ids(app_type).await
     }
 
     /// List routable channels for an app without changing the forwarding path.
