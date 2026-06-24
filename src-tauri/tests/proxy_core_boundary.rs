@@ -6504,6 +6504,8 @@ fn production_forwarder_uses_request_source_resource() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let path = manifest_dir.join("src/proxy/forwarder.rs");
     let source = fs::read_to_string(&path).expect("read forwarder.rs");
+    let adapter_path = manifest_dir.join("src/proxy_core_adapter.rs");
+    let adapter_source = fs::read_to_string(&adapter_path).expect("read proxy_core_adapter.rs");
     let struct_slice = function_slice(&source, "pub struct RequestForwarder", "impl RequestForwarder");
     let impl_slice = function_slice(&source, "impl RequestForwarder", "#[cfg(test)]");
 
@@ -6526,6 +6528,19 @@ fn production_forwarder_uses_request_source_resource() {
     assert!(
         source.contains("transform_request_body"),
         "ForwarderRequestSource must own transformed request body selection"
+    );
+    assert!(
+        adapter_source.contains("fn request_body_model"),
+        "default ForwarderRequestSource implementation must retain request body model projection"
+    );
+    let request_trait_slice = function_slice(
+        &adapter_source,
+        "pub(crate) trait ForwarderRequestSource",
+        "struct CcSwitchForwarderRequestSource",
+    );
+    assert!(
+        !request_trait_slice.contains("request_body_model"),
+        "ForwarderRequestSource trait must not expose internal request body model projection helpers"
     );
 
     let impl_forbidden_markers = [
