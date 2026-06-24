@@ -8690,7 +8690,7 @@ pub(crate) struct ForwarderAttemptAllowInput<'a> {
 }
 
 pub(crate) enum ForwarderAttemptAllowDecision {
-    Stop(ForwarderAttemptLimitReached),
+    Stop,
     Skipped,
     Allowed { used_half_open_permit: bool },
 }
@@ -8758,7 +8758,8 @@ impl ForwarderAttemptRuntimeSource for CcSwitchForwarderAttemptRuntimeSource {
                 input.attempted_providers,
                 input.max_attempts,
             ) {
-                return ForwarderAttemptAllowDecision::Stop(limit);
+                log::warn!("{}", limit.log_line);
+                return ForwarderAttemptAllowDecision::Stop;
             }
 
             let bypass_circuit_breaker = self.should_bypass_circuit_breaker(input.attempts);

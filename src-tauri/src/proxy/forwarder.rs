@@ -378,10 +378,7 @@ impl RequestForwarder {
                 })
                 .await
             {
-                ForwarderAttemptAllowDecision::Stop(limit) => {
-                    log::warn!("{}", limit.log_line);
-                    break;
-                }
+                ForwarderAttemptAllowDecision::Stop => break,
                 ForwarderAttemptAllowDecision::Skipped => continue,
                 ForwarderAttemptAllowDecision::Allowed {
                     used_half_open_permit,
