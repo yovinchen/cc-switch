@@ -3013,7 +3013,9 @@ pub(crate) use crate::proxy_core::api::ports::{
 };
 #[cfg(test)]
 pub(crate) use crate::proxy_core::api::routing::DEFAULT_ROUTE_GROUP;
-pub(crate) use crate::proxy_core::api::routing::{RoutePolicy, RouteRequest};
+pub(crate) use crate::proxy_core::api::routing::{
+    route_policy_failover_provider_ids, RoutePolicy, RouteRequest,
+};
 pub(crate) use crate::proxy_core::api::transforms::{
     anthropic_request_to_gemini_request_with_shadow, anthropic_to_openai_chat_request,
     anthropic_to_openai_responses_request, append_utf8_safe, build_gemini_upstream_url,
@@ -6071,6 +6073,21 @@ pub(crate) async fn select_current_provider_ids_from_router_provider_source(
     select_current_provider_ids_from_router_provider_id_source(app_type, current_provider_id)
 }
 
+pub(crate) async fn failover_provider_ids_from_route_policy_source(
+    source: &(dyn RoutePolicySource + Send + Sync),
+    app_type: &str,
+) -> Result<Vec<String>, AppError> {
+    let app = AppKind::from(app_type);
+    let policy = source
+        .load_policy(&app)
+        .await
+        .map_err(app_error_from_proxy_core_error)?;
+    Ok(policy
+        .as_ref()
+        .map(route_policy_failover_provider_ids)
+        .unwrap_or_default())
+}
+
 pub(crate) fn select_failover_provider_ids_from_router_lookup_availability<I>(
     app_type: &str,
     provider_ids: &[String],
@@ -6100,15 +6117,12 @@ where
 
 pub(crate) fn provider_failover_circuit_lookups_from_router_sources(
     app_type: &str,
-    queue: impl IntoIterator<Item = FailoverQueueItem>,
+    failover_provider_ids: impl IntoIterator<Item = String>,
     provider_ids: impl IntoIterator<Item = String>,
 ) -> Vec<ProviderFailoverCircuitLookup> {
     provider_failover_circuit_lookups(
         app_type,
-        queue
-            .into_iter()
-            .map(|item| item.provider_id)
-            .collect::<Vec<_>>(),
+        failover_provider_ids.into_iter().collect::<Vec<_>>(),
         provider_ids.into_iter().collect::<Vec<_>>(),
     )
 }
@@ -6116,12 +6130,12 @@ pub(crate) fn provider_failover_circuit_lookups_from_router_sources(
 pub(crate) async fn provider_failover_sources_from_router_provider_source(
     source: &(dyn ProviderSource + Send + Sync),
     app_type: &str,
-    queue: impl IntoIterator<Item = FailoverQueueItem>,
+    failover_provider_ids: impl IntoIterator<Item = String>,
 ) -> Result<ProviderFailoverRouterSources, AppError> {
     let provider_ids = provider_ids_from_router_provider_source(source, app_type).await?;
     let lookups = provider_failover_circuit_lookups_from_router_sources(
         app_type,
-        queue,
+        failover_provider_ids,
         provider_ids.clone(),
     );
     Ok(ProviderFailoverRouterSources {
@@ -6138,7 +6152,10 @@ impl CcSwitchProviderRouterSources {
             Arc::new(CcSwitchProviderRouterConfigSource {
                 source: CcSwitchConfigSource::new(db.clone()),
             }),
-            Arc::new(CcSwitchProviderRouterProviderSource { db: db.clone() }),
+            Arc::new(CcSwitchProviderRouterProviderSource {
+                db: db.clone(),
+                route_policies: CcSwitchRoutePolicySource::new(db.clone()),
+            }),
             Arc::new(CcSwitchProviderRouterChannelSource {
                 source: CcSwitchChannelSource::new(db.clone()),
             }),
@@ -6181,6 +6198,7 @@ impl ProviderRouterConfigSource for CcSwitchProviderRouterConfigSource {
 
 struct CcSwitchProviderRouterProviderSource {
     db: Arc<Database>,
+    route_policies: CcSwitchRoutePolicySource,
 }
 
 impl ProviderSource for CcSwitchProviderRouterProviderSource {
@@ -6224,8 +6242,15 @@ impl ProviderRouterProviderSource for CcSwitchProviderRouterProviderSource {
         app_type: &'a str,
     ) -> BoxFuture<'a, Result<ProviderFailoverRouterSources, AppError>> {
         Box::pin(async move {
-            let queue = self.db.get_failover_queue(app_type)?;
-            provider_failover_sources_from_router_provider_source(self, app_type, queue).await
+            let failover_provider_ids =
+                failover_provider_ids_from_route_policy_source(&self.route_policies, app_type)
+                    .await?;
+            provider_failover_sources_from_router_provider_source(
+                self,
+                app_type,
+                failover_provider_ids,
+            )
+            .await
         })
     }
 
@@ -17359,24 +17384,9 @@ base_url = "https://api.openai.com/v1"
         let failover_lookups = provider_failover_circuit_lookups_from_router_sources(
             "claude",
             vec![
-                FailoverQueueItem {
-                    provider_id: "missing".to_string(),
-                    provider_name: "Missing".to_string(),
-                    sort_index: Some(0),
-                    provider_notes: None,
-                },
-                FailoverQueueItem {
-                    provider_id: "provider-b".to_string(),
-                    provider_name: "Provider B".to_string(),
-                    sort_index: Some(1),
-                    provider_notes: None,
-                },
-                FailoverQueueItem {
-                    provider_id: "provider-a".to_string(),
-                    provider_name: "Provider A".to_string(),
-                    sort_index: Some(2),
-                    provider_notes: None,
-                },
+                "missing".to_string(),
+                "provider-b".to_string(),
+                "provider-a".to_string(),
             ],
             failover_providers.keys().cloned().collect::<Vec<_>>(),
         );
@@ -17573,6 +17583,10 @@ base_url = "https://api.openai.com/v1"
         current_provider_id: Option<String>,
     }
 
+    struct StaticRoutePolicySource {
+        failover_provider_ids: Vec<String>,
+    }
+
     impl ProviderSource for StaticProviderSource {
         fn list_providers<'a>(
             &'a self,
@@ -17600,6 +17614,22 @@ base_url = "https://api.openai.com/v1"
             _app: &'a AppKind,
         ) -> BoxFuture<'a, ProxyCoreResult<Option<String>>> {
             Box::pin(async move { Ok(self.current_provider_id.clone()) })
+        }
+    }
+
+    impl RoutePolicySource for StaticRoutePolicySource {
+        fn load_policy<'a>(
+            &'a self,
+            app: &'a AppKind,
+        ) -> BoxFuture<'a, ProxyCoreResult<Option<RoutePolicy>>> {
+            Box::pin(async move {
+                Ok(Some(
+                    crate::proxy_core::api::routing::route_policy_from_failover_provider_ids(
+                        app.clone(),
+                        self.failover_provider_ids.clone(),
+                    ),
+                ))
+            })
         }
     }
 
@@ -17636,23 +17666,19 @@ base_url = "https://api.openai.com/v1"
         .expect("current provider ids");
         assert_eq!(current_ids, vec!["provider-a"]);
 
+        let route_policy_source = StaticRoutePolicySource {
+            failover_provider_ids: vec!["provider-b".to_string(), "missing".to_string()],
+        };
+        let failover_provider_ids =
+            failover_provider_ids_from_route_policy_source(&route_policy_source, "claude")
+                .await
+                .expect("failover provider ids");
+        assert_eq!(failover_provider_ids, vec!["provider-b", "missing"]);
+
         let failover_sources = provider_failover_sources_from_router_provider_source(
             &source,
             "claude",
-            vec![
-                FailoverQueueItem {
-                    provider_id: "provider-b".to_string(),
-                    provider_name: "Provider B".to_string(),
-                    sort_index: Some(0),
-                    provider_notes: None,
-                },
-                FailoverQueueItem {
-                    provider_id: "missing".to_string(),
-                    provider_name: "Missing".to_string(),
-                    sort_index: Some(1),
-                    provider_notes: None,
-                },
-            ],
+            failover_provider_ids,
         )
         .await
         .expect("failover sources");

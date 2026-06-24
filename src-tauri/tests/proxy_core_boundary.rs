@@ -731,6 +731,7 @@ const FORBIDDEN_PROVIDER_ROUTER_PROVIDER_SOURCE_ADAPTER_MARKERS: &[&str] = &[
     "select_current_provider_ids_from_router_db_source(",
     ".get_all_providers(",
     ".get_provider_by_id(",
+    ".get_failover_queue(",
 ];
 const FORBIDDEN_PROVIDER_ROUTER_ROUTE_REJECTION_MARKERS: &[&str] =
     &["reject_unavailable_channel_ids(", "unavailable_channel_ids"];
@@ -8822,6 +8823,11 @@ fn production_provider_router_provider_source_uses_core_provider_source() {
     assert!(
         adapter_slice.contains("impl ProviderSource for CcSwitchProviderRouterProviderSource"),
         "ProviderRouter provider source adapter must expose a core-facing ProviderSource"
+    );
+    assert!(
+        adapter_slice.contains("route_policies: CcSwitchRoutePolicySource")
+            && adapter_slice.contains("failover_provider_ids_from_route_policy_source"),
+        "ProviderRouter provider source adapter must read failover queue facts through RoutePolicySource"
     );
     assert!(
         adapter_slice.contains("provider_ids_from_router_provider_source")
