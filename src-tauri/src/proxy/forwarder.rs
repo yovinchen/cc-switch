@@ -948,8 +948,6 @@ impl RequestForwarder {
             .request_source
             .provider_url_facts(ForwarderProviderUrlFactsInput { adapter, provider })?;
 
-        // Copilot live model resolution is asynchronous runtime state, so it remains
-        // in the forwarder after the synchronous request-source projection.
         let mut mapped_body = self.request_source.prepare_provider_request_body(
             ForwarderProviderRequestBodyInput {
                 app_type,
@@ -960,7 +958,8 @@ impl RequestForwarder {
             },
         )?;
         if is_copilot {
-            self.apply_copilot_live_model_resolution(provider, &mut mapped_body)
+            self.managed_account_runtime_source
+                .apply_copilot_live_model_for_provider(provider, &mut mapped_body)
                 .await;
         }
 
@@ -1273,34 +1272,6 @@ impl RequestForwarder {
             .await
     }
 
-    /// 用 Copilot live `/models` 列表确认 model ID 真实可用，找不到时按 family 降级。
-    /// 命中缓存后是同步的；首次请求或 5 min 缓存过期后会触发一次 HTTP。
-    async fn apply_copilot_live_model_resolution(
-        &self,
-        provider: &Provider,
-        body: &mut serde_json::Value,
-    ) {
-        let Some(model_id) = body.get("model").and_then(|v| v.as_str()) else {
-            return;
-        };
-        let model_id = model_id.to_string();
-
-        let resolved = match self
-            .managed_account_runtime_source
-            .resolve_copilot_live_model_for_provider(provider, &model_id)
-            .await
-        {
-            Ok(Some(resolved)) => resolved,
-            Ok(None) => return,
-            Err(err) => {
-                log::debug!("[Copilot] live model list unavailable, skip resolution: {err}");
-                return;
-            }
-        };
-
-        log::info!("[Copilot] live-model resolve: {model_id} → {resolved}");
-        body["model"] = serde_json::Value::String(resolved);
-    }
 }
 
 #[cfg(test)]

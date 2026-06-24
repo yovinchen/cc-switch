@@ -3308,6 +3308,34 @@ pub(crate) trait ManagedAccountRuntimeSource: Send + Sync {
         })
     }
 
+    fn apply_copilot_live_model_for_provider<'a>(
+        &'a self,
+        auth_provider: &'a Provider,
+        body: &'a mut Value,
+    ) -> BoxFuture<'a, ()> {
+        Box::pin(async move {
+            let Some(model_id) = body.get("model").and_then(Value::as_str) else {
+                return;
+            };
+            let model_id = model_id.to_string();
+
+            let resolved = match self
+                .resolve_copilot_live_model_for_provider(auth_provider, &model_id)
+                .await
+            {
+                Ok(Some(resolved)) => resolved,
+                Ok(None) => return,
+                Err(err) => {
+                    log::debug!("[Copilot] live model list unavailable, skip resolution: {err}");
+                    return;
+                }
+            };
+
+            log::info!("[Copilot] live-model resolve: {model_id} → {resolved}");
+            body["model"] = Value::String(resolved);
+        })
+    }
+
     fn resolve_copilot_model_vendor_for_provider<'a>(
         &'a self,
         auth_provider: &'a Provider,
@@ -15191,6 +15219,83 @@ base_url = "https://api.openai.com/v1"
             .expect("terminal failure log for multi-provider attempts");
         assert_eq!(terminal_log.code, "FWD-002");
         assert!(terminal_log.message.contains("上游 HTTP 400"));
+    }
+
+    struct StaticCopilotModelsSource {
+        models: Option<Vec<CopilotModel>>,
+    }
+
+    impl ManagedAccountRuntimeSource for StaticCopilotModelsSource {
+        fn resolve_copilot_auth<'a>(
+            &'a self,
+            _account_id: Option<&'a str>,
+            _runtime: ManagedAccountAuthRuntime,
+        ) -> BoxFuture<'a, Result<ProviderAuthInfo, ProxyError>> {
+            Box::pin(async move {
+                Err(ProxyError::AuthError(
+                    "test source does not resolve auth".to_string(),
+                ))
+            })
+        }
+
+        fn resolve_codex_oauth<'a>(
+            &'a self,
+            _account_id: Option<String>,
+            _runtime: ManagedAccountAuthRuntime,
+        ) -> BoxFuture<'a, Result<(ProviderAuthInfo, Option<String>), ProxyError>> {
+            Box::pin(async move {
+                Err(ProxyError::AuthError(
+                    "test source does not resolve oauth".to_string(),
+                ))
+            })
+        }
+
+        fn resolve_copilot_api_endpoint<'a>(
+            &'a self,
+            _account_id: Option<&'a str>,
+        ) -> BoxFuture<'a, Option<String>> {
+            Box::pin(async move { None })
+        }
+
+        fn fetch_copilot_live_models<'a>(
+            &'a self,
+            _account_id: Option<&'a str>,
+        ) -> BoxFuture<'a, Result<Option<Vec<CopilotModel>>, String>> {
+            Box::pin(async move { Ok(self.models.clone()) })
+        }
+
+        fn resolve_copilot_model_vendor<'a>(
+            &'a self,
+            _account_id: Option<&'a str>,
+            _model_id: &'a str,
+        ) -> BoxFuture<'a, Option<String>> {
+            Box::pin(async move { None })
+        }
+    }
+
+    #[tokio::test]
+    async fn managed_account_runtime_source_applies_copilot_live_model_to_body() {
+        let source = StaticCopilotModelsSource {
+            models: Some(vec![CopilotModel {
+                id: "claude-sonnet-4.6".to_string(),
+                name: "Claude Sonnet 4.6".to_string(),
+                vendor: "Anthropic".to_string(),
+                model_picker_enabled: true,
+            }]),
+        };
+        let provider = Provider::with_id(
+            "copilot".to_string(),
+            "Copilot".to_string(),
+            json!({}),
+            None,
+        );
+        let mut body = json!({ "model": "claude-sonnet-4-6" });
+
+        source
+            .apply_copilot_live_model_for_provider(&provider, &mut body)
+            .await;
+
+        assert_eq!(body["model"], "claude-sonnet-4.6");
     }
 
     #[test]
