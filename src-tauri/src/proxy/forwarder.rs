@@ -1067,30 +1067,28 @@ impl RequestForwarder {
                     provider,
                 },
             )
+        } else if transform_plan.use_claude_transform {
+            let api_format = transform_plan
+                .claude_api_format_for_transform
+                .as_deref()
+                .unwrap_or("anthropic");
+            self.protocol_state_source
+                .transform_claude_request_for_api_format(
+                    mapped_body,
+                    provider,
+                    api_format,
+                    self.session_client_provided
+                        .then_some(self.session_id.as_str()),
+                )
+                .map_err(ProxyError::TransformError)?
         } else if needs_transform {
-            if is_claude_adapter {
-                let api_format = transform_plan
-                    .claude_api_format_for_transform
-                    .as_deref()
-                    .unwrap_or("anthropic");
-                self.protocol_state_source
-                    .transform_claude_request_for_api_format(
-                        mapped_body,
-                        provider,
-                        api_format,
-                        self.session_client_provided
-                            .then_some(self.session_id.as_str()),
-                    )
-                    .map_err(ProxyError::TransformError)?
-            } else {
-                self.request_source.transform_provider_request_body(
-                    ForwarderProviderTransformInput {
-                        adapter,
-                        body: mapped_body,
-                        provider,
-                    },
-                )?
-            }
+            self.request_source.transform_provider_request_body(
+                ForwarderProviderTransformInput {
+                    adapter,
+                    body: mapped_body,
+                    provider,
+                },
+            )?
         } else {
             mapped_body
         };
