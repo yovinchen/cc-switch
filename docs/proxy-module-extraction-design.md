@@ -1327,6 +1327,7 @@
 本轮继续把 provider launch env 投影收敛到 `proxy-core::ports::launch_env_vars_from_provider_settings`：core 维护 Claude/Codex/Gemini 从 provider settings JSON 到启动环境变量的纯映射，adapter 仅负责传入宿主 `Provider.settings_config` 与 `AppType` 映射。
 本轮继续把 live token 同步到 provider settings 的 JSON 变换收敛到 `proxy-core::ports::provider_settings_with_live_token_sync`：core 维护 Claude/Codex/Gemini token 提取、placeholder no-op、空 settings 初始化和非法 settings 报错规则，adapter 仅负责把结果写回宿主 `Provider`。
 本轮继续把 takeover placeholder/env 的纯 JSON mutation 收敛到 `proxy-core::ports`：core 维护 Claude env 清理、Codex auth placeholder 增删与 Gemini env 写入/清理，adapter 继续保留 Codex TOML config placeholder 清理和 live 文件副作用。
+本轮继续把 live takeover 的 URL/base-url 纯匹配规则收敛到 `proxy-core::ports::{proxy_urls_match,live_env_base_url_matches}`：core 维护 trim 与尾斜杠兼容，adapter 继续组合 Codex TOML base_url 解析。
 
 当前原则：核心 crate 可以新增端口和领域字段，但不得引入 `tauri`、`Database`、settings、commands、services 等宿主依赖；现有 runtime 行为必须继续通过 targeted tests 证明不回归。
 

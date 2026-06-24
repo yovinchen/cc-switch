@@ -303,6 +303,7 @@ pub(crate) use crate::proxy_core::api::ports::{
     gemini_live_config_has_proxy_placeholder as core_gemini_live_config_has_proxy_placeholder,
     is_local_proxy_url as core_is_local_proxy_url,
     launch_env_vars_from_provider_settings as core_launch_env_vars_from_provider_settings,
+    live_env_base_url_matches as core_live_env_base_url_matches,
     live_token_sync_app_label as core_live_token_sync_app_label,
     normalize_claude_models_in_value as core_normalize_claude_models_in_value,
     provider_additive_live_write_action_for_app as core_provider_additive_live_write_action,
@@ -325,6 +326,7 @@ pub(crate) use crate::proxy_core::api::ports::{
     provider_switch_should_mark_live_config_managed as core_provider_switch_should_mark_live_config_managed,
     provider_supports_legacy_common_config_migration as core_provider_supports_legacy_common_config_migration,
     provider_takeover_live_sync_target_for_app as core_provider_takeover_live_sync_target,
+    proxy_urls_match as core_proxy_urls_match,
     proxy_config_preserving_live_takeover_active, proxy_config_with_ephemeral_listen_port,
     proxy_config_with_live_takeover_active, proxy_runtime_status_stopped,
     remove_claude_takeover_env_fields_if_present as core_remove_claude_takeover_env_fields_if_present,
@@ -11453,15 +11455,11 @@ pub(crate) fn live_takeover_config_matches_proxy_for_app(
 }
 
 fn live_env_base_url_matches(config: &Value, key: &str, expected: &str) -> bool {
-    config
-        .get("env")
-        .and_then(|value| value.get(key))
-        .and_then(Value::as_str)
-        .is_some_and(|url| proxy_urls_match(url, expected))
+    core_live_env_base_url_matches(config, key, expected)
 }
 
 fn proxy_urls_match(actual: &str, expected: &str) -> bool {
-    actual.trim().trim_end_matches('/') == expected.trim().trim_end_matches('/')
+    core_proxy_urls_match(actual, expected)
 }
 
 fn codex_config_has_base_url_matching(config_text: &str, predicate: impl Fn(&str) -> bool) -> bool {

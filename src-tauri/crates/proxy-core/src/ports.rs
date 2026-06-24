@@ -1512,6 +1512,18 @@ where
     Some(changed)
 }
 
+pub fn proxy_urls_match(actual: &str, expected: &str) -> bool {
+    actual.trim().trim_end_matches('/') == expected.trim().trim_end_matches('/')
+}
+
+pub fn live_env_base_url_matches(config: &Value, key: &str, expected: &str) -> bool {
+    config
+        .get("env")
+        .and_then(|value| value.get(key))
+        .and_then(Value::as_str)
+        .is_some_and(|url| proxy_urls_match(url, expected))
+}
+
 pub fn normalize_claude_models_in_value(settings: &mut Value) -> bool {
     let mut changed = false;
     let env = match settings.get_mut("env").and_then(Value::as_object_mut) {
@@ -4011,8 +4023,9 @@ mod tests {
         apply_codex_takeover_auth_placeholder_if_present, apply_gemini_takeover_env_fields,
         claude_live_config_has_proxy_placeholder, ensure_codex_takeover_auth_placeholder,
         gemini_live_config_has_proxy_placeholder, is_local_proxy_url,
-        launch_env_vars_from_provider_settings, live_takeover_app_kinds, live_token_sync_app_label,
-        normalize_claude_models_in_value, provider_settings_with_live_token_sync,
+        launch_env_vars_from_provider_settings, live_env_base_url_matches, live_takeover_app_kinds,
+        live_token_sync_app_label, normalize_claude_models_in_value,
+        provider_settings_with_live_token_sync, proxy_urls_match,
         proxy_config_preserving_live_takeover_active,
         proxy_app_config_from_parts, proxy_config_with_ephemeral_listen_port,
         proxy_config_with_live_takeover_active, proxy_global_config_from_global_config,
@@ -5800,6 +5813,40 @@ mod tests {
         assert!(gemini_env.get("GOOGLE_GEMINI_BASE_URL").is_none());
         assert!(gemini_env.get("GEMINI_API_KEY").is_none());
         assert_eq!(gemini_env.get("OTHER").and_then(Value::as_str), Some("kept"));
+    }
+
+    #[test]
+    fn live_env_base_url_matching_trims_whitespace_and_trailing_slashes() {
+        assert!(proxy_urls_match(
+            " http://127.0.0.1:15721/ ",
+            "http://127.0.0.1:15721"
+        ));
+        assert!(!proxy_urls_match(
+            "https://relay.example/v1",
+            "http://127.0.0.1:15721/v1"
+        ));
+
+        let config = json!({
+            "env": {
+                "ANTHROPIC_BASE_URL": " http://127.0.0.1:15721/ ",
+                "GOOGLE_GEMINI_BASE_URL": "https://gemini.example"
+            }
+        });
+        assert!(live_env_base_url_matches(
+            &config,
+            "ANTHROPIC_BASE_URL",
+            "http://127.0.0.1:15721"
+        ));
+        assert!(!live_env_base_url_matches(
+            &config,
+            "GOOGLE_GEMINI_BASE_URL",
+            "http://127.0.0.1:15721"
+        ));
+        assert!(!live_env_base_url_matches(
+            &json!({"env": {"ANTHROPIC_BASE_URL": 42}}),
+            "ANTHROPIC_BASE_URL",
+            "http://127.0.0.1:15721"
+        ));
     }
 
     #[test]
