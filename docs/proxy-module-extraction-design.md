@@ -424,12 +424,13 @@
 413. legacy 单 provider 场景跳过 circuit breaker 的判定已收敛到 `ForwarderAttemptRuntimeSource::should_bypass_circuit_breaker`；host forwarder 不再本地检查 attempts 数量或 channel 形态，只把 source 返回的 bypass 事实传入 allow 端口。
 414. thinking/media rectifier retry failure 的 provider/client 归因已进一步收敛为 `ForwarderRuntimeStateSource::rectifier_retry_failure_decision` 结构化决策；host forwarder 不再消费布尔 failover gate，只根据 source 返回的 provider failure 或 client failure 执行既有 permit、健康状态和错误返回流程。
 415. terminal/no-available forward failure 的 runtime status 记录已收敛到 `ForwarderRuntimeStateSource::{record_no_available_provider_status,record_terminal_failure_status}`；host forwarder 不再接收中间状态文案，只在终态分支触发 source 写入状态。
-416. ordinary forward failure 的 retryable/non-retryable error message 投影已并入 `ForwarderRuntimeStateSource::forward_failure_decision`；host forwarder 不再对普通 forward 错误执行 `to_string()` 来填充熔断记录或 runtime status，只消费 source 决策中的 message。
+416. ordinary forward failure 的 retryable error message 与日志投影已并入 `ForwarderRuntimeStateSource::forward_failure_decision`，non-retryable 分支改为直接调用 `record_forward_error_status`；host forwarder 不再对普通 forward 错误执行 `to_string()` 来填充熔断记录或 runtime status。
 417. rectifier client-side failure 的 runtime status 记录已收敛到 `ForwarderRuntimeStateSource::record_forward_error_status`；signature/budget rectifier 客户端失败分支不再直接对 `ProxyError` 执行 `to_string()` 或处理中间状态文案，只把错误交给 runtime source 写入状态。
 418. success status 后的 failover switch target 已收敛到 `ForwarderRuntimeStateSource::record_success_status` 返回的 `ForwarderFailoverSwitchTarget`；host forwarder 不再把成功状态的 bool 决策重新投影为 provider id/name，只调度 source 返回的 target。
 419. forwarder 四条成功返回分支已收敛到 `complete_successful_attempt` 单入口；`forward()` 返回结构化 `ForwarderUpstreamSuccess`，成功副作用、active target 更新、status/switch 调度和 `ForwardResult` 投影不再在主成功/media/signature/budget retry 分支重复展开。
 420. per-attempt current provider 状态写入已收敛到 `ForwarderRuntimeStateSource::record_current_provider(&Provider)`；host forwarder 不再拆 `provider.id/name` 写 runtime status，只传递当前 provider 事实。
 421. provider failure 名称投影已收敛到 `ForwarderRuntimeStateSource::{forward_failure_decision,record_provider_failure,record_provider_rectifier_retry_failure}` 接收 `&Provider`；host forwarder 不再拆 `provider.name` 构造重试日志或 runtime failure status。
+422. 客户端侧 rectifier retry failure 与 ordinary non-retryable failure 的 runtime status 记录已统一走 `ForwarderRuntimeStateSource::record_forward_error_status`；对应决策枚举不再携带只用于状态写入的 `error_message` 字段，host forwarder 不再保留 message-only failure status helper。
 407. `proxy::types::ApiFormat` 未使用预留枚举已删除；Claude/OpenAI/Gemini format 判断统一沿用 `proxy-core` 的 provider kind、client format 和 response transform contract。
 408. `LogConfig` 已从 `proxy::types` 移到 `settings::LogConfig`；日志设置不再扩大代理运行态类型模块，proxy host types 只保留代理状态/备份等运行态数据。
 409. `RectifierConfig` 的默认值、serde 和 core 检测投影测试已从 host `proxy::types` 迁入 `proxy-core::ports`；host proxy types 不再承担 core 配置契约测试。
