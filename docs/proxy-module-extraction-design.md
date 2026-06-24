@@ -1151,6 +1151,7 @@
 本轮继续把普通 forward failure 的 `ProxyError -> ForwardFailureKind` 投影、可重试分类和 provider/terminal 失败日志策略接入 `ForwarderRuntimeStateSource`：`RequestForwarder` 不再直接调用 forward failure helper，只消费 source 返回的失败事实、重试决策和日志记录内容。
 本轮继续把 Gemini shadow session store 与 Codex Chat history store 合并为 `ForwarderProtocolStateSource`：`RequestForwarder` 不再直持协议会话状态，Claude/Gemini transform replay 和 Codex Responses->Chat history enrich 仍消费同一批 store，外部宿主可在 adapter 边界替换协议会话状态实现。
 本轮继续收窄 `ForwarderProtocolStateSource` 的生产接口：`RequestForwarder` 不再通过 source getter 拿到 `GeminiShadowStore`/`CodexChatHistoryStore`，而是调用 source 暴露的 Codex Chat request enrich 与 Claude request transform 行为，协议状态存储类型继续留在 adapter 内。
+本轮继续把 Codex Chat history enrich 的恢复计数日志收敛到 `ForwarderProtocolStateSource::enrich_codex_chat_request`：`RequestForwarder` 不再读取 enrich 返回数量或维护协议状态日志文本，只等待 protocol source 完成请求体补全。
 本轮继续把 forwarder 的 provider/channel attempt runtime 包装为 `ForwarderAttemptRuntimeSource`：`RequestForwarder` 不再直持 `ProviderRouter`，attempt 放行、成功/失败健康记录和 neutral permit 释放都通过注入 source 进入 adapter helper，后续可把该 source 替换为独立中转模块的 routing/circuit runtime。
 本轮继续把 forwarder 的上游发送执行包装为 `ForwarderTransportSource`：`RequestForwarder` 不再直接读取全局代理 URL、展开 reqwest/raw-hyper 发送分支或映射 reqwest 错误，CC Switch 默认 source 仍复用现有 pooled reqwest、raw hyper、SOCKS/HTTP proxy 和 header-case 策略，后续外部宿主可替换 transport 执行层。
 本轮继续把 forwarder 的响应读取与成功就绪判定包装为 `ForwarderResponseSource`：`RequestForwarder` 不再直接读取 response body、执行非流式 body timeout、流式首包 timeout/replay 或错误响应 body 文本提取，默认 source 保持“记录 provider 成功前先确认响应可读”的既有 failover 语义。
