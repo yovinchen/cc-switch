@@ -9240,11 +9240,6 @@ pub(crate) trait ForwarderRequestSource {
         input: ForwarderCodexResponsesToChatPlanInput<'_>,
     ) -> bool;
 
-    fn convert_codex_responses_to_chat_body(
-        &self,
-        input: ForwarderCodexResponsesToChatInput<'_>,
-    ) -> Value;
-
     fn transform_request_body(
         &self,
         input: ForwarderRequestBodyTransformInput<'_>,
@@ -9342,6 +9337,23 @@ impl CcSwitchForwarderRequestSource {
         input: ForwarderProviderTransformInput<'_>,
     ) -> Result<Value, ProxyError> {
         forwarder_provider_transform_request(input.adapter, input.body, input.provider)
+    }
+
+    fn convert_codex_responses_to_chat_body(
+        &self,
+        input: ForwarderCodexResponsesToChatInput<'_>,
+    ) -> Value {
+        let mut body = input.body;
+        forwarder_apply_codex_chat_upstream_model(input.provider, &mut body);
+        let reasoning_options = forwarder_codex_chat_reasoning_options(input.provider, &body);
+        let model = body.get("model").and_then(|value| value.as_str()).unwrap_or("");
+
+        responses_to_chat_completions_with_options(
+            &body,
+            reasoning_options.as_ref(),
+            is_openai_o_series(model),
+            supports_reasoning_effort(model),
+        )
     }
 }
 
@@ -9485,23 +9497,6 @@ impl ForwarderRequestSource for CcSwitchForwarderRequestSource {
             input.app_type,
             input.provider,
             input.endpoint,
-        )
-    }
-
-    fn convert_codex_responses_to_chat_body(
-        &self,
-        input: ForwarderCodexResponsesToChatInput<'_>,
-    ) -> Value {
-        let mut body = input.body;
-        forwarder_apply_codex_chat_upstream_model(input.provider, &mut body);
-        let reasoning_options = forwarder_codex_chat_reasoning_options(input.provider, &body);
-        let model = body.get("model").and_then(|value| value.as_str()).unwrap_or("");
-
-        responses_to_chat_completions_with_options(
-            &body,
-            reasoning_options.as_ref(),
-            is_openai_o_series(model),
-            supports_reasoning_effort(model),
         )
     }
 
@@ -15474,7 +15469,7 @@ mod tests {
 
     #[test]
     fn forwarder_request_source_converts_codex_responses_to_chat_body() {
-        let source = default_forwarder_request_source();
+        let source = CcSwitchForwarderRequestSource::new(default_managed_account_runtime_source());
         let provider = Provider::with_id(
             "codex-chat".to_string(),
             "Codex Chat".to_string(),
