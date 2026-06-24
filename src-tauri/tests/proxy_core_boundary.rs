@@ -5769,6 +5769,10 @@ fn production_forwarder_uses_runtime_state_source_resource() {
         "self.current_providers",
         "self.events",
         "= should_failover_after_rectifier_retry_failure(",
+        "forward_failure_kind_from_proxy_error(",
+        "categorize_forward_failure(",
+        "build_retryable_forward_failure_log(",
+        "build_terminal_forward_failure_log(",
     ];
     let mut violations = Vec::new();
 

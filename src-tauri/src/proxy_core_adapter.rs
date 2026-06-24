@@ -3021,6 +3021,8 @@ pub(crate) type CodexProxyErrorKind =
     crate::proxy_core::api::transforms::CodexProxyErrorKind;
 pub(crate) type ForwardFailureKind =
     crate::proxy_core::api::transport::ForwardFailureKind;
+pub(crate) type ForwardFailureLog =
+    crate::proxy_core::api::transport::ForwardFailureLog;
 pub(crate) type ManagementAuthError =
     crate::proxy_core::api::auth::ManagementAuthError;
 pub(crate) type CircuitBreakerFailureDecision =
@@ -8002,6 +8004,21 @@ pub(crate) trait ForwarderRuntimeStateSource {
         rectifier_label: &'a str,
         error_message: &'a str,
     ) -> BoxFuture<'a, ()>;
+    fn forward_failure_kind(&self, error: &ProxyError) -> ForwardFailureKind;
+    fn is_retryable_forward_failure(&self, failure: &ForwardFailureKind) -> bool;
+    fn retryable_forward_failure_log(
+        &self,
+        provider_name: &str,
+        attempted_providers: usize,
+        total_providers: usize,
+        failure: &ForwardFailureKind,
+    ) -> ForwardFailureLog;
+    fn terminal_forward_failure_log(
+        &self,
+        attempted_providers: usize,
+        total_providers: usize,
+        last_failure: Option<&ForwardFailureKind>,
+    ) -> Option<ForwardFailureLog>;
     fn should_failover_after_rectifier_retry_failure(&self, error: &ProxyError) -> bool;
     fn record_request_started<'a>(&'a self, started_at: &'a str) -> BoxFuture<'a, ()>;
     fn record_active_connection_acquired<'a>(&'a self) -> BoxFuture<'a, ()>;
@@ -8148,6 +8165,41 @@ impl ForwarderRuntimeStateSource for CcSwitchForwarderRuntimeStateSource {
             )
             .await;
         })
+    }
+
+    fn forward_failure_kind(&self, error: &ProxyError) -> ForwardFailureKind {
+        forward_failure_kind_from_proxy_error(error)
+    }
+
+    fn is_retryable_forward_failure(&self, failure: &ForwardFailureKind) -> bool {
+        matches!(
+            categorize_forward_failure(failure),
+            ForwardFailureCategory::Retryable
+        )
+    }
+
+    fn retryable_forward_failure_log(
+        &self,
+        provider_name: &str,
+        attempted_providers: usize,
+        total_providers: usize,
+        failure: &ForwardFailureKind,
+    ) -> ForwardFailureLog {
+        build_retryable_forward_failure_log(
+            provider_name,
+            attempted_providers,
+            total_providers,
+            failure,
+        )
+    }
+
+    fn terminal_forward_failure_log(
+        &self,
+        attempted_providers: usize,
+        total_providers: usize,
+        last_failure: Option<&ForwardFailureKind>,
+    ) -> Option<ForwardFailureLog> {
+        build_terminal_forward_failure_log(attempted_providers, total_providers, last_failure)
     }
 
     fn should_failover_after_rectifier_retry_failure(&self, error: &ProxyError) -> bool {
@@ -15110,6 +15162,35 @@ base_url = "https://api.openai.com/v1"
                 body: Some("invalid request".to_string()),
             },
         ));
+    }
+
+    #[test]
+    fn forwarder_runtime_state_source_projects_forward_failure_policy() {
+        let source = CcSwitchForwarderRuntimeStateSource::new(
+            Arc::new(RwLock::new(ProxyRuntimeStatus::default())),
+            Arc::new(RwLock::new(HashMap::new())),
+            Arc::new(ProxyEventBus::default()),
+        );
+        let retryable = source.forward_failure_kind(&ProxyError::Timeout(
+            "upstream timed out".to_string(),
+        ));
+        let non_retryable = source.forward_failure_kind(&ProxyError::UpstreamError {
+            status: 400,
+            body: Some(r#"{"error":{"message":"bad request"}}"#.to_string()),
+        });
+
+        assert!(source.is_retryable_forward_failure(&retryable));
+        assert!(!source.is_retryable_forward_failure(&non_retryable));
+
+        let retry_log = source.retryable_forward_failure_log("Relay", 1, 2, &retryable);
+        assert_eq!(retry_log.code, "FWD-001");
+        assert!(retry_log.message.contains("Relay"));
+
+        let terminal_log = source
+            .terminal_forward_failure_log(2, 2, Some(&non_retryable))
+            .expect("terminal failure log for multi-provider attempts");
+        assert_eq!(terminal_log.code, "FWD-002");
+        assert!(terminal_log.message.contains("上游 HTTP 400"));
     }
 
     #[test]
