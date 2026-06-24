@@ -315,6 +315,7 @@ pub(crate) use crate::proxy_core::api::ports::{
     provider_live_sync_scope_for_app as core_provider_live_sync_scope,
     provider_omo_switch_pair_for_app_category as core_provider_omo_switch_pair,
     provider_omo_variant_for_app_category as core_provider_omo_variant_for_category,
+    provider_settings_with_live_token_sync as core_provider_settings_with_live_token_sync,
     provider_switch_backfill_source_id as core_provider_switch_backfill_source_id,
     provider_switch_dispatch_for_app as core_provider_switch_dispatch,
     provider_switch_requires_takeover_lock as core_provider_switch_requires_takeover_lock,
@@ -326,8 +327,8 @@ pub(crate) use crate::proxy_core::api::ports::{
     provider_should_sync_to_live as core_provider_should_sync_to_live,
     should_skip_manual_default_live_import as core_should_skip_manual_default_live_import,
     should_skip_startup_default_live_import as core_should_skip_startup_default_live_import,
-    LocalizedErrorSpec, CLAUDE_TAKEOVER_TOKEN_ENV_KEYS, ProviderAdditiveLiveWriteAction,
-    ProviderAdditiveUpdateRoute,
+    LiveTokenProviderSettingsIssue, LocalizedErrorSpec, CLAUDE_TAKEOVER_TOKEN_ENV_KEYS,
+    ProviderAdditiveLiveWriteAction, ProviderAdditiveUpdateRoute,
     ProviderCredentialIssue, ProviderKeyChangePolicyIssue, ProviderLiveConfigPresenceErrorPolicy,
     ProviderLiveRemovalTarget, ProviderLiveSyncScope, ProviderOmoSwitchPair, ProviderOmoVariant,
     ProviderSwitchDispatch, ProviderTakeoverLiveSyncTarget,
@@ -11169,51 +11170,18 @@ pub(crate) fn live_backup_snapshot_from_live_config(
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum LiveTokenProviderSettingsIssue {
-    InvalidProviderSettings,
-}
-
 pub(crate) fn provider_settings_with_live_token_sync(
     app_type: &AppType,
     live_config: &Value,
     provider_settings: &Value,
     placeholder: &str,
 ) -> Result<Option<Value>, LiveTokenProviderSettingsIssue> {
-    match app_type {
-        AppType::Claude => {
-            let Some((token_key, token)) = claude_live_token_pair(live_config, placeholder) else {
-                return Ok(None);
-            };
-            sync_claude_live_token_to_provider_settings(provider_settings, token_key, token)
-                .map(Some)
-        }
-        AppType::Codex => {
-            let Some(token) = codex_live_openai_api_key(live_config, placeholder) else {
-                return Ok(None);
-            };
-            sync_section_token_to_provider_settings(
-                provider_settings,
-                "auth",
-                "OPENAI_API_KEY",
-                token,
-            )
-            .map(Some)
-        }
-        AppType::Gemini => {
-            let Some(token) = gemini_live_api_key(live_config, placeholder) else {
-                return Ok(None);
-            };
-            sync_section_token_to_provider_settings(
-                provider_settings,
-                "env",
-                "GEMINI_API_KEY",
-                token,
-            )
-            .map(Some)
-        }
-        _ => Ok(None),
-    }
+    core_provider_settings_with_live_token_sync(
+        &AppKind::from(app_type),
+        live_config,
+        provider_settings,
+        placeholder,
+    )
 }
 
 pub(crate) fn sync_provider_settings_with_live_token(
@@ -11586,106 +11554,6 @@ fn codex_config_has_base_url_matching(config_text: &str, predicate: impl Fn(&str
     doc.get("base_url")
         .and_then(|value| value.as_str())
         .is_some_and(predicate)
-}
-
-fn claude_live_token_pair<'a>(
-    live_config: &'a Value,
-    placeholder: &str,
-) -> Option<(&'static str, &'a str)> {
-    let env = live_config.get("env").and_then(Value::as_object)?;
-
-    CLAUDE_TAKEOVER_TOKEN_ENV_KEYS.into_iter().find_map(|key| {
-        non_placeholder_trimmed_string(env.get(key), placeholder).map(|token| (key, token))
-    })
-}
-
-fn codex_live_openai_api_key<'a>(live_config: &'a Value, placeholder: &str) -> Option<&'a str> {
-    non_placeholder_trimmed_string(
-        live_config
-            .get("auth")
-            .and_then(Value::as_object)
-            .and_then(|auth| auth.get("OPENAI_API_KEY")),
-        placeholder,
-    )
-}
-
-fn gemini_live_api_key<'a>(live_config: &'a Value, placeholder: &str) -> Option<&'a str> {
-    non_placeholder_trimmed_string(
-        live_config
-            .get("env")
-            .and_then(Value::as_object)
-            .and_then(|env| env.get("GEMINI_API_KEY")),
-        placeholder,
-    )
-}
-
-fn non_placeholder_trimmed_string<'a>(
-    value: Option<&'a Value>,
-    placeholder: &str,
-) -> Option<&'a str> {
-    value
-        .and_then(Value::as_str)
-        .map(str::trim)
-        .filter(|token| !token.is_empty() && *token != placeholder)
-}
-
-fn sync_claude_live_token_to_provider_settings(
-    provider_settings: &Value,
-    token_key: &'static str,
-    token: &str,
-) -> Result<Value, LiveTokenProviderSettingsIssue> {
-    let mut config = provider_settings.clone();
-
-    if let Some(env_obj) = config.get_mut("env").and_then(Value::as_object_mut) {
-        if token_key == "ANTHROPIC_AUTH_TOKEN" || token_key == "ANTHROPIC_API_KEY" {
-            let mut updated = false;
-            if env_obj.contains_key("ANTHROPIC_AUTH_TOKEN") {
-                env_obj.insert("ANTHROPIC_AUTH_TOKEN".to_string(), json!(token));
-                updated = true;
-            }
-            if env_obj.contains_key("ANTHROPIC_API_KEY") {
-                env_obj.insert("ANTHROPIC_API_KEY".to_string(), json!(token));
-                updated = true;
-            }
-            if !updated {
-                env_obj.insert(token_key.to_string(), json!(token));
-            }
-        } else {
-            env_obj.insert(token_key.to_string(), json!(token));
-        }
-
-        return Ok(config);
-    }
-
-    sync_section_token_to_provider_settings(provider_settings, "env", token_key, token)
-}
-
-fn sync_section_token_to_provider_settings(
-    provider_settings: &Value,
-    section_key: &str,
-    token_key: &str,
-    token: &str,
-) -> Result<Value, LiveTokenProviderSettingsIssue> {
-    let mut config = provider_settings.clone();
-
-    if let Some(section_obj) = config.get_mut(section_key).and_then(Value::as_object_mut) {
-        section_obj.insert(token_key.to_string(), json!(token));
-        return Ok(config);
-    }
-
-    if config.is_null() {
-        config = json!({});
-    }
-
-    let Some(root) = config.as_object_mut() else {
-        return Err(LiveTokenProviderSettingsIssue::InvalidProviderSettings);
-    };
-
-    let mut section = Map::new();
-    section.insert(token_key.to_string(), json!(token));
-    root.insert(section_key.to_string(), Value::Object(section));
-
-    Ok(config)
 }
 
 fn launch_env_vars_from_provider_settings(

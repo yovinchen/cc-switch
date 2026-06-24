@@ -1225,6 +1225,159 @@ pub fn launch_env_vars_from_provider_settings(
     env_vars
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum LiveTokenProviderSettingsIssue {
+    InvalidProviderSettings,
+}
+
+pub fn provider_settings_with_live_token_sync(
+    app: &AppKind,
+    live_config: &Value,
+    provider_settings: &Value,
+    placeholder: &str,
+) -> Result<Option<Value>, LiveTokenProviderSettingsIssue> {
+    match app {
+        AppKind::Claude => {
+            let Some((token_key, token)) = claude_live_token_pair(live_config, placeholder) else {
+                return Ok(None);
+            };
+            sync_claude_live_token_to_provider_settings(provider_settings, token_key, token)
+                .map(Some)
+        }
+        AppKind::Codex => {
+            let Some(token) = codex_live_openai_api_key(live_config, placeholder) else {
+                return Ok(None);
+            };
+            sync_section_token_to_provider_settings(
+                provider_settings,
+                "auth",
+                "OPENAI_API_KEY",
+                token,
+            )
+            .map(Some)
+        }
+        AppKind::Gemini => {
+            let Some(token) = gemini_live_api_key(live_config, placeholder) else {
+                return Ok(None);
+            };
+            sync_section_token_to_provider_settings(
+                provider_settings,
+                "env",
+                "GEMINI_API_KEY",
+                token,
+            )
+            .map(Some)
+        }
+        _ => Ok(None),
+    }
+}
+
+fn claude_live_token_pair<'a>(
+    live_config: &'a Value,
+    placeholder: &str,
+) -> Option<(&'static str, &'a str)> {
+    let env = live_config.get("env").and_then(Value::as_object)?;
+
+    CLAUDE_TAKEOVER_TOKEN_ENV_KEYS.into_iter().find_map(|key| {
+        non_placeholder_trimmed_string(env.get(key), placeholder).map(|token| (key, token))
+    })
+}
+
+fn codex_live_openai_api_key<'a>(live_config: &'a Value, placeholder: &str) -> Option<&'a str> {
+    non_placeholder_trimmed_string(
+        live_config
+            .get("auth")
+            .and_then(Value::as_object)
+            .and_then(|auth| auth.get("OPENAI_API_KEY")),
+        placeholder,
+    )
+}
+
+fn gemini_live_api_key<'a>(live_config: &'a Value, placeholder: &str) -> Option<&'a str> {
+    non_placeholder_trimmed_string(
+        live_config
+            .get("env")
+            .and_then(Value::as_object)
+            .and_then(|env| env.get("GEMINI_API_KEY")),
+        placeholder,
+    )
+}
+
+fn non_placeholder_trimmed_string<'a>(
+    value: Option<&'a Value>,
+    placeholder: &str,
+) -> Option<&'a str> {
+    value
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|token| !token.is_empty() && *token != placeholder)
+}
+
+fn sync_claude_live_token_to_provider_settings(
+    provider_settings: &Value,
+    token_key: &'static str,
+    token: &str,
+) -> Result<Value, LiveTokenProviderSettingsIssue> {
+    let mut config = provider_settings.clone();
+
+    if let Some(env_obj) = config.get_mut("env").and_then(Value::as_object_mut) {
+        if token_key == "ANTHROPIC_AUTH_TOKEN" || token_key == "ANTHROPIC_API_KEY" {
+            let mut updated = false;
+            if env_obj.contains_key("ANTHROPIC_AUTH_TOKEN") {
+                env_obj.insert(
+                    "ANTHROPIC_AUTH_TOKEN".to_string(),
+                    Value::String(token.to_string()),
+                );
+                updated = true;
+            }
+            if env_obj.contains_key("ANTHROPIC_API_KEY") {
+                env_obj.insert(
+                    "ANTHROPIC_API_KEY".to_string(),
+                    Value::String(token.to_string()),
+                );
+                updated = true;
+            }
+            if !updated {
+                env_obj.insert(token_key.to_string(), Value::String(token.to_string()));
+            }
+        } else {
+            env_obj.insert(token_key.to_string(), Value::String(token.to_string()));
+        }
+
+        return Ok(config);
+    }
+
+    sync_section_token_to_provider_settings(provider_settings, "env", token_key, token)
+}
+
+fn sync_section_token_to_provider_settings(
+    provider_settings: &Value,
+    section_key: &str,
+    token_key: &str,
+    token: &str,
+) -> Result<Value, LiveTokenProviderSettingsIssue> {
+    let mut config = provider_settings.clone();
+
+    if let Some(section_obj) = config.get_mut(section_key).and_then(Value::as_object_mut) {
+        section_obj.insert(token_key.to_string(), Value::String(token.to_string()));
+        return Ok(config);
+    }
+
+    if config.is_null() {
+        config = Value::Object(Map::new());
+    }
+
+    let Some(root) = config.as_object_mut() else {
+        return Err(LiveTokenProviderSettingsIssue::InvalidProviderSettings);
+    };
+
+    let mut section = Map::new();
+    section.insert(token_key.to_string(), Value::String(token.to_string()));
+    root.insert(section_key.to_string(), Value::Object(section));
+
+    Ok(config)
+}
+
 pub fn normalize_claude_models_in_value(settings: &mut Value) -> bool {
     let mut changed = false;
     let env = match settings.get_mut("env").and_then(Value::as_object_mut) {
@@ -3724,6 +3877,7 @@ mod tests {
         claude_live_config_has_proxy_placeholder, gemini_live_config_has_proxy_placeholder,
         is_local_proxy_url, launch_env_vars_from_provider_settings, live_takeover_app_kinds,
         live_token_sync_app_label, normalize_claude_models_in_value,
+        provider_settings_with_live_token_sync,
         proxy_config_preserving_live_takeover_active,
         proxy_app_config_from_parts, proxy_config_with_ephemeral_listen_port,
         proxy_config_with_live_takeover_active, proxy_global_config_from_global_config,
@@ -3759,10 +3913,10 @@ mod tests {
         CurrentRouteTargetInput, current_route_target_from_input, GlobalProxyConfig,
         GroupListQuery, HealthCheckResponse, ModelCatalog, OptimizerConfig, ProviderHealth,
         ProviderAdditiveLiveWriteAction, ProviderAdditiveUpdateRoute, ProviderHealthUpdateInput,
-        ProviderCredentialIssue, ProviderKeyChangePolicyIssue, ProviderListResponse,
-        ProviderLiveConfigPresenceErrorPolicy, ProviderLiveRemovalTarget, ProviderLiveSyncScope,
-        ProviderOmoSwitchPair, ProviderOmoVariant, ProviderSpec, ProviderSummaryInput,
-        ProviderSwitchDispatch, ProviderTakeoverLiveSyncTarget,
+        LiveTokenProviderSettingsIssue, ProviderCredentialIssue, ProviderKeyChangePolicyIssue,
+        ProviderListResponse, ProviderLiveConfigPresenceErrorPolicy, ProviderLiveRemovalTarget,
+        ProviderLiveSyncScope, ProviderOmoSwitchPair, ProviderOmoVariant, ProviderSpec,
+        ProviderSummaryInput, ProviderSwitchDispatch, ProviderTakeoverLiveSyncTarget,
         ProxyChannelModelWriteRequest,
         ProxyChannelModelsReplaceRequest, ProxyChannelPatchRequest, ProxyChannelTestRequest,
         ProxyChannelWriteRequest, ProxyConfig, ProxyCoreEvent, ProxyCoreEventType,
@@ -5327,6 +5481,73 @@ mod tests {
         assert!(gemini_env.contains(&("GEMINI_API_KEY".to_string(), "gemini-key".to_string())));
 
         assert!(launch_env_vars_from_provider_settings(&json!("bad"), &AppKind::Claude).is_empty());
+    }
+
+    #[test]
+    fn live_token_sync_projects_app_specific_provider_settings() {
+        let placeholder = "PROXY_MANAGED";
+
+        let claude_settings = provider_settings_with_live_token_sync(
+            &AppKind::Claude,
+            &json!({ "env": { "ANTHROPIC_AUTH_TOKEN": " fresh-claude " } }),
+            &json!({ "env": {
+                "ANTHROPIC_AUTH_TOKEN": "stale-auth",
+                "ANTHROPIC_API_KEY": "stale-api"
+            } }),
+            placeholder,
+        )
+        .expect("claude sync should be valid")
+        .expect("claude token should sync");
+        assert_eq!(
+            claude_settings
+                .get("env")
+                .and_then(|env| env.get("ANTHROPIC_AUTH_TOKEN"))
+                .and_then(Value::as_str),
+            Some("fresh-claude")
+        );
+        assert_eq!(
+            claude_settings
+                .get("env")
+                .and_then(|env| env.get("ANTHROPIC_API_KEY"))
+                .and_then(Value::as_str),
+            Some("fresh-claude")
+        );
+
+        let codex_settings = provider_settings_with_live_token_sync(
+            &AppKind::Codex,
+            &json!({ "auth": { "OPENAI_API_KEY": " fresh-codex " } }),
+            &Value::Null,
+            placeholder,
+        )
+        .expect("codex sync should create auth")
+        .expect("codex token should sync");
+        assert_eq!(
+            codex_settings
+                .get("auth")
+                .and_then(|auth| auth.get("OPENAI_API_KEY"))
+                .and_then(Value::as_str),
+            Some("fresh-codex")
+        );
+
+        assert_eq!(
+            provider_settings_with_live_token_sync(
+                &AppKind::Gemini,
+                &json!({ "env": { "GEMINI_API_KEY": "fresh-gemini" } }),
+                &json!("invalid-settings"),
+                placeholder,
+            ),
+            Err(LiveTokenProviderSettingsIssue::InvalidProviderSettings)
+        );
+        assert_eq!(
+            provider_settings_with_live_token_sync(
+                &AppKind::Gemini,
+                &json!({ "env": { "GEMINI_API_KEY": placeholder } }),
+                &Value::Null,
+                placeholder,
+            )
+            .expect("placeholder should be a valid no-op"),
+            None
+        );
     }
 
     #[test]
