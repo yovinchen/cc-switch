@@ -1730,6 +1730,8 @@ use crate::proxy_core::api::ports::{
     gemini_common_config_snippet_from_settings as core_gemini_common_config_snippet_from_settings,
     openclaw_common_config_snippet_from_settings as core_openclaw_common_config_snippet_from_settings,
     opencode_common_config_snippet_from_settings as core_opencode_common_config_snippet_from_settings,
+    provider_common_config_storage_normalization_requires_snippet as core_provider_common_config_storage_normalization_requires_snippet,
+    provider_uses_common_config_from_parts as core_provider_uses_common_config_from_parts,
     remove_claude_common_config_from_settings as core_remove_claude_common_config_from_settings,
     remove_gemini_common_config_from_settings as core_remove_gemini_common_config_from_settings,
 };
@@ -5913,26 +5915,31 @@ pub(crate) fn provider_uses_common_config(
     provider: &Provider,
     snippet: Option<&str>,
 ) -> bool {
-    match provider
+    let explicit_enabled = provider
         .meta
         .as_ref()
-        .and_then(|meta| meta.common_config_enabled)
-    {
-        Some(explicit) => explicit && snippet.is_some_and(|value| !value.trim().is_empty()),
-        None => snippet.is_some_and(|value| {
+        .and_then(|meta| meta.common_config_enabled);
+    let settings_contains_snippet = explicit_enabled.is_none()
+        && snippet.is_some_and(|value| {
             contains_common_config_snippet(app_type, &provider.settings_config, value)
-        }),
-    }
+        });
+
+    core_provider_uses_common_config_from_parts(
+        explicit_enabled,
+        snippet,
+        settings_contains_snippet,
+    )
 }
 
 pub(crate) fn provider_common_config_storage_normalization_requires_snippet(
     provider: &Provider,
 ) -> bool {
-    provider
+    let explicit_enabled = provider
         .meta
         .as_ref()
-        .and_then(|meta| meta.common_config_enabled)
-        .unwrap_or(false)
+        .and_then(|meta| meta.common_config_enabled);
+
+    core_provider_common_config_storage_normalization_requires_snippet(explicit_enabled)
 }
 
 pub(crate) fn common_config_settings_mutation_issue_message(

@@ -2255,6 +2255,23 @@ pub fn remove_gemini_common_config_from_settings(
     Ok(result)
 }
 
+pub fn provider_uses_common_config_from_parts(
+    explicit_enabled: Option<bool>,
+    snippet: Option<&str>,
+    settings_contains_snippet: bool,
+) -> bool {
+    match explicit_enabled {
+        Some(explicit) => explicit && snippet_has_content(snippet),
+        None => snippet_has_content(snippet) && settings_contains_snippet,
+    }
+}
+
+pub fn provider_common_config_storage_normalization_requires_snippet(
+    explicit_enabled: Option<bool>,
+) -> bool {
+    explicit_enabled.unwrap_or(false)
+}
+
 fn parsed_common_config_json_object(
     snippet: &str,
 ) -> Result<Option<Map<String, Value>>, String> {
@@ -2267,6 +2284,10 @@ fn parsed_common_config_json_object(
         Value::Object(map) => Ok(Some(map)),
         _ => Ok(None),
     }
+}
+
+fn snippet_has_content(snippet: Option<&str>) -> bool {
+    snippet.is_some_and(|value| !value.trim().is_empty())
 }
 
 pub fn provider_credential_issue_spec(issue: ProviderCredentialIssue) -> LocalizedErrorSpec {
@@ -4723,7 +4744,9 @@ mod tests {
         ProviderAdditiveLiveWriteAction, ProviderAdditiveUpdateRoute, ProviderHealthUpdateInput,
         CommonConfigSettingsMutationIssue, CommonConfigSnippetIssue, LiveTokenProviderSettingsIssue,
         ProviderCredentialIssue, ProviderKeyChangePolicyIssue, OpenCodeCredentialIssue,
-        ProviderListResponse, ProviderLiveConfigPresenceErrorPolicy, ProviderLiveRemovalTarget,
+        provider_common_config_storage_normalization_requires_snippet,
+        provider_uses_common_config_from_parts, ProviderListResponse,
+        ProviderLiveConfigPresenceErrorPolicy, ProviderLiveRemovalTarget,
         ProviderLiveSyncScope, ProviderOmoSwitchPair, ProviderOmoVariant, ProviderSpec,
         ProviderSummaryInput, ProviderSwitchDispatch, ProviderTakeoverLiveSyncTarget,
         ProxyChannelModelWriteRequest,
@@ -6342,6 +6365,44 @@ mod tests {
             ),
             "Invalid Gemini common config: bad json"
         );
+    }
+
+    #[test]
+    fn provider_common_config_meta_policy_prefers_explicit_enablement() {
+        assert!(provider_uses_common_config_from_parts(
+            Some(true),
+            Some("  {\"env\":{}}  "),
+            false
+        ));
+        assert!(!provider_uses_common_config_from_parts(
+            Some(true),
+            Some("   "),
+            true
+        ));
+        assert!(!provider_uses_common_config_from_parts(
+            Some(false),
+            Some("{\"env\":{}}"),
+            true
+        ));
+        assert!(provider_uses_common_config_from_parts(
+            None,
+            Some("{\"env\":{}}"),
+            true
+        ));
+        assert!(!provider_uses_common_config_from_parts(
+            None,
+            Some("{\"env\":{}}"),
+            false
+        ));
+        assert!(!provider_uses_common_config_from_parts(None, None, true));
+
+        assert!(provider_common_config_storage_normalization_requires_snippet(Some(
+            true
+        )));
+        assert!(!provider_common_config_storage_normalization_requires_snippet(Some(
+            false
+        )));
+        assert!(!provider_common_config_storage_normalization_requires_snippet(None));
     }
 
     #[test]
