@@ -456,6 +456,7 @@
 445. `ForwarderRequestSource` trait 不再暴露 `convert_codex_responses_to_chat_body` Codex bridge body helper；Responses 到 Chat Completions 的 body 转换仍由默认 source 内部执行，外部替换 source 只面对 `transform_request_body` 的完整转换选择结果。
 446. `ForwarderRequestSource` trait 不再暴露 `optimize_copilot_request` Copilot optimizer sequencing helper；Copilot 分类、孤立 tool_result 清理、tool_result 合并、thinking strip 与 warmup 模型降级仍由默认 source 内部执行，外部替换 source 只面对 `prepare_copilot_request_optimization` 的完整优化 gate 结果。
 447. `ForwarderRequestSource` trait 不再暴露 `apply_media_prevention` media replacement helper；预防式图片替换策略、text-only provider/model 判定与替换日志仍由默认 source 内部执行，外部替换 source 只面对 `apply_app_media_prevention` 与 `apply_claude_body_policies` 的行为级入口。
+448. `ForwarderRuntimeStateSource` trait 不再暴露测试用 `status()` / `events()` 读 handle；默认 runtime source 仍持有 status、current route target map 与 event bus，但 forwarder 测试改由本地 fixture 保存观测 handle，外部替换 runtime source 只实现语义化状态/事件写入端口。
 407. `proxy::types::ApiFormat` 未使用预留枚举已删除；Claude/OpenAI/Gemini format 判断统一沿用 `proxy-core` 的 provider kind、client format 和 response transform contract。
 408. `LogConfig` 已从 `proxy::types` 移到 `settings::LogConfig`；日志设置不再扩大代理运行态类型模块，proxy host types 只保留代理状态/备份等运行态数据。
 409. `RectifierConfig` 的默认值、serde 和 core 检测投影测试已从 host `proxy::types` 迁入 `proxy-core::ports`；host proxy types 不再承担 core 配置契约测试。
@@ -1189,7 +1190,8 @@
 本轮继续把 provider/channel attempt started/succeeded/failed 事件发射接入 `ForwarderRuntimeStateSource`：`RequestForwarder` 只决定 attempt 阶段与时机，不再直接拆出 `ProxyEventBus` 调用 attempt event helper。
 本轮继续把 active route target 写入与 route-selected 事件发射接入 `ForwarderRuntimeStateSource`：`RequestForwarder` 不再同时拆出 `current_providers` 与 `ProxyEventBus` 调用 active target helper，后续外部宿主可替换当前路由目标存储/事件桥接。
 本轮继续把 forward success/failure 状态写入接入 `ForwarderRuntimeStateSource`：`RequestForwarder` 不再直接拆出 `ProxyRuntimeStatus` 调用 success/failure status helper，成功后是否触发 failover switch 仍由 source 返回布尔结果交给 forwarder 调度。
-本轮继续把 current provider、provider failure、rectifier retry failure 状态写入与 rectifier retry failure failover 分类接入 `ForwarderRuntimeStateSource`：`RequestForwarder` 不再直接拆出 `ProxyRuntimeStatus` 或调用 retry-failure policy helper，生产 source trait 的 `status()` 访问面也随之收窄为测试专用。
+本轮继续把 current provider、provider failure、rectifier retry failure 状态写入与 rectifier retry failure failover 分类接入 `ForwarderRuntimeStateSource`：`RequestForwarder` 不再直接拆出 `ProxyRuntimeStatus` 或调用 retry-failure policy helper，运行态状态观测也不再作为生产路径依赖。
+本轮继续收窄 `ForwarderRuntimeStateSource` trait surface：测试用 `status()` / `events()` 读 handle 不再属于 trait contract，forwarder 单测通过 fixture 自持 status/event bus 观测运行态结果，默认 source 只保留 concrete 层的 status 观测 helper 供 adapter 单测验证状态写入。
 本轮继续把普通 forward failure 的 `ProxyError -> ForwardFailureKind` 投影、可重试分类和 provider/terminal 失败日志策略接入 `ForwarderRuntimeStateSource`：`RequestForwarder` 不再直接调用 forward failure helper，只消费 source 返回的失败事实、重试决策和日志记录内容。
 本轮继续把 Gemini shadow session store 与 Codex Chat history store 合并为 `ForwarderProtocolStateSource`：`RequestForwarder` 不再直持协议会话状态，Claude/Gemini transform replay 和 Codex Responses->Chat history enrich 仍消费同一批 store，外部宿主可在 adapter 边界替换协议会话状态实现。
 本轮继续收窄 `ForwarderProtocolStateSource` 的生产接口：`RequestForwarder` 不再通过 source getter 拿到 `GeminiShadowStore`/`CodexChatHistoryStore`，而是调用 source 暴露的 Codex Chat request enrich 与 Claude request transform 行为，协议状态存储类型继续留在 adapter 内。
