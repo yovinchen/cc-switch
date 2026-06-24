@@ -1120,9 +1120,10 @@ impl RequestForwarder {
                 });
         let filtered_body = prepared_request.body;
         // 出站 body 定稿后刷新真值（覆盖 Codex chat 上游模型覆写、转换层模型改写）
-        if let Some(model) = self.request_source.request_body_model(&filtered_body) {
+        if let Some(model) = prepared_request.body_model {
             outbound_model = Some(model);
         }
+        let request_model = prepared_request.body_model_label;
         let request_is_streaming = prepared_request.request_is_streaming;
         let force_identity_encoding = prepared_request.force_identity_encoding;
 
@@ -1165,10 +1166,6 @@ impl RequestForwarder {
 
         // 输出请求信息日志
         let tag = adapter_name;
-        let request_model = self
-            .request_source
-            .request_body_model(&filtered_body)
-            .unwrap_or_else(|| "<none>".to_string());
         log::info!("[{tag}] >>> 请求 URL: {url} (model={request_model})");
         if log::log_enabled!(log::Level::Debug) {
             if let Ok(body_str) = serde_json::to_string(&filtered_body) {

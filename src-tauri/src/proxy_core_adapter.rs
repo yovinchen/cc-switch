@@ -8721,6 +8721,8 @@ pub(crate) struct ForwarderPreparedRequest {
     pub(crate) body: Value,
     pub(crate) request_is_streaming: bool,
     pub(crate) force_identity_encoding: bool,
+    pub(crate) body_model: Option<String>,
+    pub(crate) body_model_label: String,
 }
 
 pub(crate) struct ForwarderCopilotRequestOptimizationInput<'a> {
@@ -9491,6 +9493,11 @@ impl ForwarderRequestSource for CcSwitchForwarderRequestSource {
             );
         }
 
+        let body_model = self.request_body_model(&filtered_body);
+        let body_model_label = body_model
+            .clone()
+            .unwrap_or_else(|| "<none>".to_string());
+
         let transport_policy = resolve_upstream_request_transport_policy(
             input.needs_transform,
             input.codex_responses_to_chat,
@@ -9503,6 +9510,8 @@ impl ForwarderRequestSource for CcSwitchForwarderRequestSource {
             body: filtered_body,
             request_is_streaming: transport_policy.is_streaming_request,
             force_identity_encoding: transport_policy.force_identity_encoding,
+            body_model,
+            body_model_label,
         }
     }
 
@@ -15498,6 +15507,42 @@ base_url = "https://api.openai.com/v1"
             1
         );
         assert_eq!(codex_body["messages"][0]["content"][0]["type"], "text");
+    }
+
+    #[test]
+    fn forwarder_request_source_prepares_final_body_model_facts() {
+        let source = CcSwitchForwarderRequestSource;
+        let headers = HeaderMap::new();
+
+        let prepared = source.prepare_upstream_body(ForwarderRequestPreparationInput {
+            app: "codex",
+            provider_id: "provider-a",
+            endpoint: "/v1/chat/completions",
+            api_format: None,
+            body: json!({ "model": "upstream-sonnet", "messages": [] }),
+            session_client_provided: false,
+            needs_transform: false,
+            codex_responses_to_chat: false,
+            headers: &headers,
+        });
+
+        assert_eq!(prepared.body_model.as_deref(), Some("upstream-sonnet"));
+        assert_eq!(prepared.body_model_label, "upstream-sonnet");
+
+        let prepared_without_model = source.prepare_upstream_body(ForwarderRequestPreparationInput {
+            app: "codex",
+            provider_id: "provider-a",
+            endpoint: "/v1/chat/completions",
+            api_format: None,
+            body: json!({ "messages": [] }),
+            session_client_provided: false,
+            needs_transform: false,
+            codex_responses_to_chat: false,
+            headers: &headers,
+        });
+
+        assert_eq!(prepared_without_model.body_model, None);
+        assert_eq!(prepared_without_model.body_model_label, "<none>");
     }
 
     #[test]

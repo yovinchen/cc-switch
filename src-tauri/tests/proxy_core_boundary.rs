@@ -6396,6 +6396,10 @@ fn production_forwarder_uses_request_source_resource() {
         struct_slice.contains("request_source"),
         "RequestForwarder must receive upstream request assembly as an injected source"
     );
+    assert!(
+        source.contains("body_model_label"),
+        "ForwarderPreparedRequest must include finalized body model facts for logging"
+    );
 
     let impl_forbidden_markers = [
         "prepare_upstream_request_body_with_report(",
@@ -6470,6 +6474,7 @@ fn production_forwarder_uses_request_source_resource() {
         "forwarder_uses_anthropic_rectifiers(",
         "forwarder_provider_adapter_for_app(",
         ".get(\"model\")",
+        "request_body_model(&filtered_body)",
     ];
     let mut violations = Vec::new();
 
