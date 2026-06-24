@@ -1732,9 +1732,15 @@ use crate::proxy_core::api::ports::{
     opencode_common_config_snippet_from_settings as core_opencode_common_config_snippet_from_settings,
     provider_common_config_storage_normalization_requires_snippet as core_provider_common_config_storage_normalization_requires_snippet,
     provider_uses_common_config_from_parts as core_provider_uses_common_config_from_parts,
+    proxy_takeover_marked_state_is_reusable as core_proxy_takeover_marked_state_is_reusable,
+    proxy_takeover_should_restore_existing_backup_before_retakeover as core_proxy_takeover_should_restore_existing_backup_before_retakeover,
     remove_claude_common_config_from_settings as core_remove_claude_common_config_from_settings,
     remove_gemini_common_config_from_settings as core_remove_gemini_common_config_from_settings,
+    should_emit_proxy_official_warning_for_provider_category as core_should_emit_proxy_official_warning_for_provider_category,
+    should_reapply_codex_official_live_for_provider_category as core_should_reapply_codex_official_live_for_provider_category,
 };
+#[cfg(test)]
+use crate::proxy_core::api::ports::provider_category_is_official as core_provider_category_is_official;
 #[cfg(test)]
 use crate::proxy_core::api::ports::{
     openclaw_common_config_value_from_settings as core_openclaw_common_config_value_from_settings,
@@ -6144,26 +6150,30 @@ pub(crate) fn proxy_takeover_marked_state_is_reusable(
     has_live_backup: bool,
     live_matches_current_proxy: bool,
 ) -> bool {
-    has_live_backup && live_matches_current_proxy
+    core_proxy_takeover_marked_state_is_reusable(has_live_backup, live_matches_current_proxy)
 }
 
 pub(crate) fn proxy_takeover_should_restore_existing_backup_before_retakeover(
     has_live_backup: bool,
     live_matches_current_proxy: bool,
 ) -> bool {
-    has_live_backup && !live_matches_current_proxy
+    core_proxy_takeover_should_restore_existing_backup_before_retakeover(
+        has_live_backup,
+        live_matches_current_proxy,
+    )
 }
 
+#[cfg(test)]
 pub(crate) fn provider_is_official_category(provider: &Provider) -> bool {
-    provider.category.as_deref() == Some("official")
+    core_provider_category_is_official(provider.category.as_deref())
 }
 
 pub(crate) fn should_emit_proxy_official_warning_for_provider(provider: &Provider) -> bool {
-    provider_is_official_category(provider)
+    core_should_emit_proxy_official_warning_for_provider_category(provider.category.as_deref())
 }
 
 pub(crate) fn should_reapply_codex_official_live_for_provider(provider: &Provider) -> bool {
-    provider_is_official_category(provider)
+    core_should_reapply_codex_official_live_for_provider_category(provider.category.as_deref())
 }
 
 pub(crate) use crate::proxy_core::api::routing::{

@@ -1818,6 +1818,32 @@ pub fn proxy_urls_match(actual: &str, expected: &str) -> bool {
     actual.trim().trim_end_matches('/') == expected.trim().trim_end_matches('/')
 }
 
+pub fn proxy_takeover_marked_state_is_reusable(
+    has_live_backup: bool,
+    live_matches_current_proxy: bool,
+) -> bool {
+    has_live_backup && live_matches_current_proxy
+}
+
+pub fn proxy_takeover_should_restore_existing_backup_before_retakeover(
+    has_live_backup: bool,
+    live_matches_current_proxy: bool,
+) -> bool {
+    has_live_backup && !live_matches_current_proxy
+}
+
+pub fn provider_category_is_official(category: Option<&str>) -> bool {
+    category == Some("official")
+}
+
+pub fn should_emit_proxy_official_warning_for_provider_category(category: Option<&str>) -> bool {
+    provider_category_is_official(category)
+}
+
+pub fn should_reapply_codex_official_live_for_provider_category(category: Option<&str>) -> bool {
+    provider_category_is_official(category)
+}
+
 pub fn live_env_base_url_matches(config: &Value, key: &str, expected: &str) -> bool {
     config
         .get("env")
@@ -4710,7 +4736,8 @@ mod tests {
         proxy_config_with_live_takeover_active, proxy_global_config_from_global_config,
         proxy_runtime_config_from_proxy_config, provider_additive_live_write_action_for_app,
         provider_additive_update_route_for_app,
-        provider_app_has_current_provider, provider_credential_issue_spec,
+        provider_app_has_current_provider, provider_category_is_official,
+        provider_credential_issue_spec,
         provider_delete_is_current_provider, provider_initial_live_config_managed_marker,
         provider_key_change_policy_issue_for_app, provider_key_change_policy_issue_message,
         provider_live_config_presence_error_policy, provider_live_removal_target_for_app,
@@ -4721,8 +4748,12 @@ mod tests {
         provider_switch_requires_takeover_lock,
         provider_switch_should_mark_live_config_managed,
         provider_takeover_live_sync_target_for_app,
+        proxy_takeover_marked_state_is_reusable,
+        proxy_takeover_should_restore_existing_backup_before_retakeover,
         remove_claude_common_config_from_settings,
         remove_gemini_common_config_from_settings,
+        should_emit_proxy_official_warning_for_provider_category,
+        should_reapply_codex_official_live_for_provider_category,
         should_skip_manual_default_live_import, should_skip_startup_default_live_import,
         should_skip_provider_legacy_common_config_migration,
         AppListResponse, AppModelListQuery, AppProxyConfig, AppSummaryInput,
@@ -6916,6 +6947,41 @@ mod tests {
             "ANTHROPIC_BASE_URL",
             "http://127.0.0.1:15721"
         ));
+    }
+
+    #[test]
+    fn takeover_retakeover_and_official_category_policies_are_host_neutral() {
+        assert!(!proxy_takeover_marked_state_is_reusable(false, false));
+        assert!(!proxy_takeover_marked_state_is_reusable(true, false));
+        assert!(!proxy_takeover_marked_state_is_reusable(false, true));
+        assert!(proxy_takeover_marked_state_is_reusable(true, true));
+
+        assert!(!proxy_takeover_should_restore_existing_backup_before_retakeover(
+            false, false
+        ));
+        assert!(proxy_takeover_should_restore_existing_backup_before_retakeover(
+            true, false
+        ));
+        assert!(!proxy_takeover_should_restore_existing_backup_before_retakeover(
+            false, true
+        ));
+        assert!(!proxy_takeover_should_restore_existing_backup_before_retakeover(
+            true, true
+        ));
+
+        assert!(provider_category_is_official(Some("official")));
+        assert!(!provider_category_is_official(Some("cn_official")));
+        assert!(!provider_category_is_official(None));
+        assert!(should_emit_proxy_official_warning_for_provider_category(Some(
+            "official"
+        )));
+        assert!(!should_emit_proxy_official_warning_for_provider_category(Some(
+            "custom"
+        )));
+        assert!(should_reapply_codex_official_live_for_provider_category(Some(
+            "official"
+        )));
+        assert!(!should_reapply_codex_official_live_for_provider_category(None));
     }
 
     #[test]
