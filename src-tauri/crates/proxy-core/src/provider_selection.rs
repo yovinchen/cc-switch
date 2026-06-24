@@ -1,11 +1,22 @@
 use super::circuit_breaker_key::provider_circuit_key;
 use crate::error::{ProxyCoreError, ProxyCoreResult};
+use crate::log_codes;
 use std::collections::HashSet;
 
 pub const AUTO_FAILOVER_ENABLE_REQUIRES_PROXY_TAKEOVER_MESSAGE: &str =
     "需要先启用该应用的代理接管，再开启故障转移";
 pub const AUTO_FAILOVER_EMPTY_QUEUE_WITHOUT_CURRENT_PROVIDER_MESSAGE: &str =
     "故障转移队列为空，且未设置当前供应商，无法开启故障转移";
+
+pub fn failover_config_read_error_log_line(
+    app_type: &str,
+    error: impl std::fmt::Display,
+) -> String {
+    format!(
+        "[{}] 无法读取 {app_type} 配置: {error}，跳过切换",
+        log_codes::fo::CONFIG_READ_ERROR
+    )
+}
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ProviderSelectionCandidate {
@@ -356,7 +367,8 @@ pub fn should_attempt_restored_provider_switchback(
 mod tests {
     use super::{
         current_provider_db_fallback_required, current_provider_id_from_sources,
-        current_provider_id_option_from_sources, failover_switch_pending_key,
+        current_provider_id_option_from_sources, failover_config_read_error_log_line,
+        failover_switch_pending_key,
         plan_auto_failover_toggle, provider_failover_circuit_lookups,
         provider_selection_candidate_from_failover_lookup, restored_provider_switchback_decision,
         route_candidate_provider_ids_from_selection_result, select_provider_ids,
@@ -367,6 +379,14 @@ mod tests {
         AUTO_FAILOVER_EMPTY_QUEUE_WITHOUT_CURRENT_PROVIDER_MESSAGE,
         AUTO_FAILOVER_ENABLE_REQUIRES_PROXY_TAKEOVER_MESSAGE,
     };
+
+    #[test]
+    fn failover_config_read_error_log_line_preserves_warning_contract() {
+        assert_eq!(
+            failover_config_read_error_log_line("claude", "db locked"),
+            "[FO-002] 无法读取 claude 配置: db locked，跳过切换"
+        );
+    }
 
     #[test]
     fn failover_disabled_selects_current_provider_only() {

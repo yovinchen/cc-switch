@@ -3039,7 +3039,8 @@ pub(crate) use crate::proxy_core::api::ports::{
 #[cfg(test)]
 pub(crate) use crate::proxy_core::api::routing::DEFAULT_ROUTE_GROUP;
 pub(crate) use crate::proxy_core::api::routing::{
-    auth_channel_spec_from_attempt, route_policy_failover_provider_ids, RoutePolicy, RouteRequest,
+    auth_channel_spec_from_attempt, failover_config_read_error_log_line,
+    route_policy_failover_provider_ids, RoutePolicy, RouteRequest,
 };
 pub(crate) use crate::proxy_core::api::transforms::{
     anthropic_request_to_gemini_request_with_shadow, anthropic_to_openai_chat_request,
@@ -5691,7 +5692,7 @@ pub(crate) fn failover_switch_app_enabled_from_config_result(
     match result {
         Ok(config) => config.enabled,
         Err(error) => {
-            log::warn!("[FO-002] 无法读取 {app_type} 配置: {error}，跳过切换");
+            log::warn!("{}", failover_config_read_error_log_line(app_type, error));
             false
         }
     }
