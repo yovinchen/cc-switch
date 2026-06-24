@@ -6537,6 +6537,10 @@ fn production_forwarder_uses_request_source_resource() {
         adapter_source.contains("fn transform_provider_request_body"),
         "default ForwarderRequestSource implementation must retain provider transform wrapping"
     );
+    assert!(
+        adapter_source.contains("fn convert_codex_responses_to_chat_body"),
+        "default ForwarderRequestSource implementation must retain Codex Responses to Chat body conversion"
+    );
     let request_trait_slice = function_slice(
         &adapter_source,
         "pub(crate) trait ForwarderRequestSource",
@@ -6544,8 +6548,9 @@ fn production_forwarder_uses_request_source_resource() {
     );
     assert!(
         !request_trait_slice.contains("request_body_model")
-            && !request_trait_slice.contains("transform_provider_request_body"),
-        "ForwarderRequestSource trait must not expose internal request body model or provider transform helpers"
+            && !request_trait_slice.contains("transform_provider_request_body")
+            && !request_trait_slice.contains("convert_codex_responses_to_chat_body"),
+        "ForwarderRequestSource trait must not expose internal request body model, provider transform, or Codex bridge body helpers"
     );
 
     let impl_forbidden_markers = [
