@@ -8146,13 +8146,14 @@ pub(crate) trait ForwarderRuntimeStateSource {
     fn current_providers(&self) -> Arc<RwLock<HashMap<String, CurrentRouteTarget>>>;
     fn events(&self) -> Arc<ProxyEventBus>;
     fn emit_request_started(&self, request_id: &str, app_type: &str);
-    fn emit_attempt_event(
+    fn emit_attempt_started(&self, request_id: &str, app_type: &str, attempt: &ForwardAttempt);
+    fn emit_attempt_succeeded(&self, request_id: &str, app_type: &str, attempt: &ForwardAttempt);
+    fn emit_attempt_failed(
         &self,
         request_id: &str,
         app_type: &str,
         attempt: &ForwardAttempt,
-        phase: AttemptEventPhase,
-        error: Option<&str>,
+        error: &str,
     );
     fn record_active_route_target<'a>(
         &'a self,
@@ -8253,21 +8254,42 @@ impl ForwarderRuntimeStateSource for CcSwitchForwarderRuntimeStateSource {
         emit_request_started_event_source(self.events.as_ref(), request_id, app_type);
     }
 
-    fn emit_attempt_event(
+    fn emit_attempt_started(&self, request_id: &str, app_type: &str, attempt: &ForwardAttempt) {
+        emit_attempt_event_source(
+            self.events.as_ref(),
+            request_id,
+            app_type,
+            attempt,
+            AttemptEventPhase::Started,
+            None,
+        );
+    }
+
+    fn emit_attempt_succeeded(&self, request_id: &str, app_type: &str, attempt: &ForwardAttempt) {
+        emit_attempt_event_source(
+            self.events.as_ref(),
+            request_id,
+            app_type,
+            attempt,
+            AttemptEventPhase::Succeeded,
+            None,
+        );
+    }
+
+    fn emit_attempt_failed(
         &self,
         request_id: &str,
         app_type: &str,
         attempt: &ForwardAttempt,
-        phase: AttemptEventPhase,
-        error: Option<&str>,
+        error: &str,
     ) {
         emit_attempt_event_source(
             self.events.as_ref(),
             request_id,
             app_type,
             attempt,
-            phase,
-            error,
+            AttemptEventPhase::Failed,
+            Some(error),
         );
     }
 
@@ -16409,6 +16431,59 @@ base_url = "https://api.openai.com/v1"
             status.last_error.as_deref(),
             Some("Provider Relay budget 整流重试失败: 上游错误 (状态码 502): bad gateway")
         );
+    }
+
+    #[tokio::test]
+    async fn forwarder_runtime_state_source_emits_attempt_phase_events() {
+        let provider = Provider::with_id(
+            "relay".to_string(),
+            "Relay".to_string(),
+            json!({}),
+            None,
+        );
+        let attempt = ForwardAttempt::from_channel(
+            &AppType::Claude,
+            &provider,
+            ChannelRouteCandidate {
+                channel_id: "channel-a".to_string(),
+                provider_id: provider.id.clone(),
+                channel_name: "Relay A".to_string(),
+                base_url: "https://relay.example.com/v1".to_string(),
+                interface_kind: "openai_responses".to_string(),
+                public_model: Some("public-sonnet".to_string()),
+                upstream_model: Some("upstream-sonnet".to_string()),
+                route_group: "default".to_string(),
+                priority: 100,
+                weight: 50,
+                source_kind: "manual".to_string(),
+            },
+        );
+        let events = Arc::new(ProxyEventBus::default());
+        let mut subscriber = events.subscribe();
+        let source = CcSwitchForwarderRuntimeStateSource::new(
+            Arc::new(RwLock::new(ProxyRuntimeStatus::default())),
+            Arc::new(RwLock::new(HashMap::new())),
+            events,
+        );
+
+        source.emit_attempt_started("req-1", "claude", &attempt);
+        let started = subscriber.recv().await.expect("started event");
+        assert_eq!(started.event, "channel_attempt");
+        assert_eq!(started.payload["requestId"], "req-1");
+        assert_eq!(started.payload["channelId"], "channel-a");
+        assert!(started.payload.get("error").is_none());
+
+        source.emit_attempt_succeeded("req-1", "claude", &attempt);
+        let succeeded = subscriber.recv().await.expect("succeeded event");
+        assert_eq!(succeeded.event, "channel_succeeded");
+        assert_eq!(succeeded.payload["channelId"], "channel-a");
+        assert!(succeeded.payload.get("error").is_none());
+
+        source.emit_attempt_failed("req-1", "claude", &attempt, "upstream failed");
+        let failed = subscriber.recv().await.expect("failed event");
+        assert_eq!(failed.event, "channel_failed");
+        assert_eq!(failed.payload["channelId"], "channel-a");
+        assert_eq!(failed.payload["error"], "upstream failed");
     }
 
     #[tokio::test]

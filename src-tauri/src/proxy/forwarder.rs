@@ -9,7 +9,7 @@ use super::{
 };
 use crate::proxy_core_adapter::{
     ForwarderAdapterHandle, ForwarderAppMediaPreventionInput,
-    AttemptEventPhase, CopilotOptimizerConfig,
+    CopilotOptimizerConfig,
     ForwarderAdapterFactsInput, ForwarderAnthropicRectifierGateInput,
     ForwarderAttemptBodyInput, ForwarderAuthHeadersInput, ForwarderAuthSourceRef,
     ForwarderMaybeCopilotAuthOptimizationInput, ForwarderClaudeBodyPolicyInput,
@@ -254,23 +254,13 @@ impl RequestForwarder {
     }
 
     fn emit_attempt_started(&self, request_id: &str, app_type: &str, attempt: &ForwardAttempt) {
-        self.runtime_state_source.emit_attempt_event(
-            request_id,
-            app_type,
-            attempt,
-            AttemptEventPhase::Started,
-            None,
-        );
+        self.runtime_state_source
+            .emit_attempt_started(request_id, app_type, attempt);
     }
 
     fn emit_attempt_succeeded(&self, request_id: &str, app_type: &str, attempt: &ForwardAttempt) {
-        self.runtime_state_source.emit_attempt_event(
-            request_id,
-            app_type,
-            attempt,
-            AttemptEventPhase::Succeeded,
-            None,
-        );
+        self.runtime_state_source
+            .emit_attempt_succeeded(request_id, app_type, attempt);
     }
 
     fn emit_attempt_failed(
@@ -280,13 +270,8 @@ impl RequestForwarder {
         attempt: &ForwardAttempt,
         error: &str,
     ) {
-        self.runtime_state_source.emit_attempt_event(
-            request_id,
-            app_type,
-            attempt,
-            AttemptEventPhase::Failed,
-            Some(error),
-        );
+        self.runtime_state_source
+            .emit_attempt_failed(request_id, app_type, attempt, error);
     }
 
     async fn record_failure_result(
