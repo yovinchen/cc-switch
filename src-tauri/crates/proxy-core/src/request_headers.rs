@@ -148,6 +148,12 @@ pub fn build_codex_bearer_auth_headers(
     )])
 }
 
+pub fn build_codex_provider_auth_headers(
+    auth: &ProviderAuthInfo,
+) -> ProxyCoreResult<Vec<(http::HeaderName, http::HeaderValue)>> {
+    build_codex_bearer_auth_headers(&auth.api_key)
+}
+
 pub fn build_gemini_auth_headers(
     api_key: &str,
     access_token: Option<&str>,
@@ -594,14 +600,14 @@ mod tests {
     use super::{
         anthropic_beta_header_value, auth_header_value, build_claude_auth_headers,
         build_codex_bearer_auth_headers, build_codex_oauth_session_headers,
-        build_copilot_auth_headers, build_gemini_auth_headers, build_gemini_provider_auth_headers,
-        build_upstream_auth_headers, build_upstream_request_headers,
-        claude_auth_header_kind_for_provider_strategy, is_official_codex_client_user_agent,
-        should_preserve_exact_request_header_case, should_send_anthropic_request_headers,
-        should_skip_copilot_fingerprint_request_header, should_strip_forwarded_request_header,
-        upstream_host_header_from_url, ClaudeAuthHeaderKind, CopilotAuthHeaderOverrides,
-        CopilotAuthHeadersInput, UpstreamAuthHeadersInput, UpstreamRequestHeadersInput,
-        CLAUDE_CODE_BETA, DEFAULT_ANTHROPIC_VERSION,
+        build_codex_provider_auth_headers, build_copilot_auth_headers, build_gemini_auth_headers,
+        build_gemini_provider_auth_headers, build_upstream_auth_headers,
+        build_upstream_request_headers, claude_auth_header_kind_for_provider_strategy,
+        is_official_codex_client_user_agent, should_preserve_exact_request_header_case,
+        should_send_anthropic_request_headers, should_skip_copilot_fingerprint_request_header,
+        should_strip_forwarded_request_header, upstream_host_header_from_url, ClaudeAuthHeaderKind,
+        CopilotAuthHeaderOverrides, CopilotAuthHeadersInput, UpstreamAuthHeadersInput,
+        UpstreamRequestHeadersInput, CLAUDE_CODE_BETA, DEFAULT_ANTHROPIC_VERSION,
     };
     use crate::error::ProxyCoreError;
     use crate::provider_auth::{ProviderAuthInfo, ProviderAuthStrategy};
@@ -700,6 +706,16 @@ mod tests {
         let error =
             build_codex_bearer_auth_headers("bad\r\nx-evil: 1").expect_err("invalid header");
         assert!(matches!(error, ProxyCoreError::Auth(_)));
+    }
+
+    #[test]
+    fn builds_codex_provider_auth_headers_from_auth_info() {
+        let auth = ProviderAuthInfo::new("sk-codex".to_string(), ProviderAuthStrategy::Bearer);
+        let headers = build_codex_provider_auth_headers(&auth).unwrap();
+
+        assert_eq!(headers.len(), 1);
+        assert_eq!(headers[0].0.as_str(), "authorization");
+        assert_eq!(headers[0].1, HeaderValue::from_static("Bearer sk-codex"));
     }
 
     #[test]
