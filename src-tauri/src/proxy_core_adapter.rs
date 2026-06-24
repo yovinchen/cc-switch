@@ -9245,11 +9245,6 @@ pub(crate) trait ForwarderRequestSource {
         input: ForwarderCodexResponsesToChatInput<'_>,
     ) -> Value;
 
-    fn transform_provider_request_body(
-        &self,
-        input: ForwarderProviderTransformInput<'_>,
-    ) -> Result<Value, ProxyError>;
-
     fn transform_request_body(
         &self,
         input: ForwarderRequestBodyTransformInput<'_>,
@@ -9340,6 +9335,13 @@ impl CcSwitchForwarderRequestSource {
             .and_then(Value::as_str)
             .filter(|model| !model.is_empty())
             .map(str::to_string)
+    }
+
+    fn transform_provider_request_body(
+        &self,
+        input: ForwarderProviderTransformInput<'_>,
+    ) -> Result<Value, ProxyError> {
+        forwarder_provider_transform_request(input.adapter, input.body, input.provider)
     }
 }
 
@@ -9501,13 +9503,6 @@ impl ForwarderRequestSource for CcSwitchForwarderRequestSource {
             is_openai_o_series(model),
             supports_reasoning_effort(model),
         )
-    }
-
-    fn transform_provider_request_body(
-        &self,
-        input: ForwarderProviderTransformInput<'_>,
-    ) -> Result<Value, ProxyError> {
-        forwarder_provider_transform_request(input.adapter, input.body, input.provider)
     }
 
     fn transform_request_body(
@@ -15561,7 +15556,7 @@ base_url = "https://api.openai.com/v1"
 
     #[test]
     fn forwarder_request_source_wraps_provider_transform_request() {
-        let source = default_forwarder_request_source();
+        let source = CcSwitchForwarderRequestSource::new(default_managed_account_runtime_source());
         let adapter = forwarder_provider_adapter_for_app(&AppType::Codex);
         let provider = Provider::with_id(
             "codex-provider".to_string(),
