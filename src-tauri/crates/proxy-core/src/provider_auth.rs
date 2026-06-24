@@ -1,4 +1,5 @@
 use crate::claude_auth::{extract_claude_auth_key_from_settings, ClaudeAuthKeySource};
+use crate::domain::ProviderKind;
 use crate::secret::mask_secret;
 use serde_json::{Map, Value};
 
@@ -49,6 +50,15 @@ pub enum ProviderAuthStrategy {
     GoogleOAuth,
     GitHubCopilot,
     CodexOAuth,
+}
+
+pub fn gemini_auth_strategy_for_provider_kind(
+    provider_kind: &ProviderKind,
+) -> ProviderAuthStrategy {
+    match provider_kind {
+        ProviderKind::GeminiCli => ProviderAuthStrategy::GoogleOAuth,
+        _ => ProviderAuthStrategy::Google,
+    }
 }
 
 pub fn settings_config_with_channel_auth_key(
@@ -198,6 +208,22 @@ mod tests {
                 }
             }
         }
+    }
+
+    #[test]
+    fn gemini_auth_strategy_follows_provider_kind() {
+        assert_eq!(
+            gemini_auth_strategy_for_provider_kind(&ProviderKind::GeminiCli),
+            ProviderAuthStrategy::GoogleOAuth
+        );
+        assert_eq!(
+            gemini_auth_strategy_for_provider_kind(&ProviderKind::Gemini),
+            ProviderAuthStrategy::Google
+        );
+        assert_eq!(
+            gemini_auth_strategy_for_provider_kind(&ProviderKind::Claude),
+            ProviderAuthStrategy::Google
+        );
     }
 
     #[test]

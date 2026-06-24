@@ -1528,6 +1528,7 @@ pub(crate) type ProviderAuthInfo = crate::proxy_core::api::auth::ProviderAuthInf
 pub(crate) type ProviderAuthStrategy = crate::proxy_core::api::auth::ProviderAuthStrategy;
 pub(crate) type AuthInfo = crate::proxy_core::api::ports::AuthInfo;
 
+pub(crate) use crate::proxy_core::api::auth::gemini_auth_strategy_for_provider_kind as core_gemini_auth_strategy_for_provider_kind;
 pub(crate) use crate::proxy_core::api::ports::auth_info_from_profile_ref;
 
 pub(crate) fn auth_info_from_cc_switch_provider_config(
@@ -4858,10 +4859,7 @@ pub(crate) fn provider_gemini_kind(provider: &Provider) -> ProviderKind {
 }
 
 pub(crate) fn provider_gemini_auth_strategy(provider: &Provider) -> ProviderAuthStrategy {
-    match provider_gemini_kind(provider) {
-        ProviderKind::GeminiCli => ProviderAuthStrategy::GoogleOAuth,
-        _ => ProviderAuthStrategy::Google,
-    }
+    core_gemini_auth_strategy_for_provider_kind(&provider_gemini_kind(provider))
 }
 
 pub(crate) fn provider_gemini_auth_info(provider: &Provider) -> Option<ProviderAuthInfo> {
