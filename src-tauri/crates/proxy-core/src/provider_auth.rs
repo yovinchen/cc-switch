@@ -82,6 +82,10 @@ pub fn claude_static_auth_strategy_for_provider_kind(
     }
 }
 
+pub fn codex_auth_info_from_api_key(api_key: String) -> ProviderAuthInfo {
+    ProviderAuthInfo::new(api_key, ProviderAuthStrategy::Bearer)
+}
+
 pub fn settings_config_with_channel_auth_key(
     app_type: &str,
     settings_config: &Value,
@@ -209,6 +213,15 @@ mod tests {
     }
 
     #[test]
+    fn codex_auth_info_from_api_key_selects_bearer_strategy() {
+        let auth = codex_auth_info_from_api_key("sk-codex".to_string());
+
+        assert_eq!(auth.api_key, "sk-codex");
+        assert_eq!(auth.strategy, ProviderAuthStrategy::Bearer);
+        assert_eq!(auth.access_token, None);
+    }
+
+    #[test]
     fn provider_auth_strategies_are_distinct() {
         let strategies = [
             ProviderAuthStrategy::Anthropic,
@@ -299,7 +312,9 @@ mod tests {
             " new-key ",
         );
         assert_eq!(
-            anthropic.pointer("/env/ANTHROPIC_API_KEY").and_then(Value::as_str),
+            anthropic
+                .pointer("/env/ANTHROPIC_API_KEY")
+                .and_then(Value::as_str),
             Some("new-key")
         );
 
@@ -309,7 +324,9 @@ mod tests {
             "router-key",
         );
         assert_eq!(
-            openrouter.pointer("/env/OPENROUTER_API_KEY").and_then(Value::as_str),
+            openrouter
+                .pointer("/env/OPENROUTER_API_KEY")
+                .and_then(Value::as_str),
             Some("router-key")
         );
 
@@ -318,14 +335,19 @@ mod tests {
             &json!({"api_key": "old-direct"}),
             "direct-key",
         );
-        assert_eq!(direct.get("apiKey").and_then(Value::as_str), Some("direct-key"));
+        assert_eq!(
+            direct.get("apiKey").and_then(Value::as_str),
+            Some("direct-key")
+        );
     }
 
     #[test]
     fn channel_auth_key_settings_use_app_specific_env_defaults() {
         let gemini = settings_config_with_channel_auth_key("gemini", &json!({}), "gemini-key");
         assert_eq!(
-            gemini.pointer("/env/GEMINI_API_KEY").and_then(Value::as_str),
+            gemini
+                .pointer("/env/GEMINI_API_KEY")
+                .and_then(Value::as_str),
             Some("gemini-key")
         );
 

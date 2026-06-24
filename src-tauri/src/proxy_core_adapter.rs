@@ -1532,6 +1532,7 @@ pub(crate) type AuthInfo = crate::proxy_core::api::ports::AuthInfo;
 pub(crate) use crate::proxy_core::api::auth::gemini_auth_strategy_for_provider_kind as core_gemini_auth_strategy_for_provider_kind;
 pub(crate) use crate::proxy_core::api::auth::claude_anthropic_auth_strategy_for_key_source as core_claude_anthropic_auth_strategy_for_key_source;
 pub(crate) use crate::proxy_core::api::auth::claude_static_auth_strategy_for_provider_kind as core_claude_static_auth_strategy_for_provider_kind;
+pub(crate) use crate::proxy_core::api::auth::codex_auth_info_from_api_key as core_codex_auth_info_from_api_key;
 pub(crate) use crate::proxy_core::api::ports::auth_info_from_profile_ref;
 
 pub(crate) fn auth_info_from_cc_switch_provider_config(
@@ -3849,8 +3850,7 @@ pub(crate) fn provider_codex_api_key(provider: &Provider) -> Option<String> {
 }
 
 pub(crate) fn provider_codex_auth_info(provider: &Provider) -> Option<ProviderAuthInfo> {
-    provider_codex_api_key(provider)
-        .map(|key| ProviderAuthInfo::new(key, ProviderAuthStrategy::Bearer))
+    provider_codex_api_key(provider).map(core_codex_auth_info_from_api_key)
 }
 
 pub(crate) fn codex_auth_object_value_from_settings(settings: &Value) -> Option<&Value> {
