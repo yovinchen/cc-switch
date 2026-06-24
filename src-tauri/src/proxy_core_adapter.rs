@@ -3084,6 +3084,7 @@ pub(crate) use crate::proxy_core::api::transport::{
 };
 pub(crate) use crate::proxy_core::api::transport::{
     append_query_to_full_url, apply_bedrock_pre_send_optimizers,
+    auth_provider_proxy_request_from_context,
     apply_copilot_warmup_model_override, bedrock_env_flag_from_provider_settings,
     build_auth_provider_headers, build_claude_provider_auth_headers, build_claude_upstream_url,
     build_codex_oauth_session_headers_for_forwarder, build_codex_provider_auth_headers,
@@ -8690,25 +8691,17 @@ fn forwarder_auth_channel_spec(app_type: &AppType, attempt: &ForwardAttempt) -> 
     )
 }
 
-fn forwarder_auth_proxy_request(input: &ForwarderAuthHeadersInput<'_>) -> ProxyRequest {
-    let channel = forwarder_auth_channel_spec(input.app_type, input.attempt);
-    let requested_model = input
-        .request_body
-        .get("model")
-        .and_then(Value::as_str)
-        .map(ToString::to_string);
-
-    ProxyRequest::new(
+fn forwarder_auth_proxy_request(
+    input: &ForwarderAuthHeadersInput<'_>,
+    channel: &ChannelSpec,
+) -> ProxyRequest {
+    auth_provider_proxy_request_from_context(
         AppKind::from(input.app_type),
         input.method.clone(),
         input.endpoint,
-        channel.interface.clone(),
-        ProxyBody::Json(input.request_body.clone()),
-    )
-    .with_observed_request_context(
-        requested_model,
-        input.request_headers.clone(),
-        http::Extensions::new(),
+        channel,
+        input.request_body,
+        input.request_headers,
     )
 }
 
@@ -8737,7 +8730,7 @@ impl ForwarderAuthSource for CcSwitchForwarderAuthSource {
             let app = AppKind::from(input.app_type);
             let provider = proxy_provider_to_core_spec(input.attempt.provider(), input.app_type);
             let channel = forwarder_auth_channel_spec(input.app_type, input.attempt);
-            let request = forwarder_auth_proxy_request(&input);
+            let request = forwarder_auth_proxy_request(&input, &channel);
             let core_auth = self
                 .auth_provider
                 .resolve_auth(&app, &provider, &channel, &request)

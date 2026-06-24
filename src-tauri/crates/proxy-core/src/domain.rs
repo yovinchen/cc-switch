@@ -1392,6 +1392,33 @@ impl ProxyRequest {
     }
 }
 
+pub fn auth_provider_proxy_request_from_context(
+    app: AppKind,
+    method: Method,
+    endpoint: impl Into<String>,
+    channel: &ChannelSpec,
+    request_body: &Value,
+    request_headers: &HeaderMap,
+) -> ProxyRequest {
+    let requested_model = request_body
+        .get("model")
+        .and_then(Value::as_str)
+        .map(ToString::to_string);
+
+    ProxyRequest::new(
+        app,
+        method,
+        endpoint,
+        channel.interface.clone(),
+        ProxyBody::Json(request_body.clone()),
+    )
+    .with_observed_request_context(
+        requested_model,
+        request_headers.clone(),
+        http::Extensions::new(),
+    )
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub enum ProxyBody {
     Empty,
@@ -2091,6 +2118,51 @@ mod tests {
             Some(&http::HeaderValue::from_static("req-1"))
         );
         assert_eq!(request.extensions.get::<usize>(), Some(&42));
+    }
+
+    #[test]
+    fn auth_provider_proxy_request_context_projects_channel_model_headers_and_body() {
+        let channel = auth_channel_spec_from_attempt(
+            &AppKind::Claude,
+            "provider-a",
+            "Provider A",
+            Some(&ResolvedChannelAttempt {
+                channel_id: "channel-a".to_string(),
+                channel_name: "Channel A".to_string(),
+                base_url: "https://relay.example.com/v1".to_string(),
+                interface_kind: "anthropic_messages".to_string(),
+                auth_profile_ref: None,
+                public_model: Some("sonnet-public".to_string()),
+                upstream_model: Some("sonnet-upstream".to_string()),
+                header_overrides: Value::Object(Default::default()),
+                param_overrides: Value::Object(Default::default()),
+                status_code_mapping: Value::Array(Vec::new()),
+            }),
+        );
+        let mut headers = HeaderMap::new();
+        headers.insert("x-request-id", http::HeaderValue::from_static("req-1"));
+        let body = json!({ "model": "sonnet-public", "stream": true });
+
+        let request = auth_provider_proxy_request_from_context(
+            AppKind::Claude,
+            Method::POST,
+            "/v1/messages",
+            &channel,
+            &body,
+            &headers,
+        );
+
+        assert_eq!(request.app, AppKind::Claude);
+        assert_eq!(request.method, Method::POST);
+        assert_eq!(request.endpoint, "/v1/messages");
+        assert_eq!(request.inbound_interface, InterfaceKind::AnthropicMessages);
+        assert_eq!(request.requested_model.as_deref(), Some("sonnet-public"));
+        assert_eq!(
+            request.headers.get("x-request-id"),
+            Some(&http::HeaderValue::from_static("req-1"))
+        );
+        assert!(request.extensions.get::<usize>().is_none());
+        assert_eq!(request.body, ProxyBody::Json(body));
     }
 
     #[test]

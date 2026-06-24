@@ -170,8 +170,8 @@ pub mod session {
 
 pub mod transport {
     pub use crate::domain::{
-        ProxyBody, ProxyCoreResponse, ProxyRequest, ProxyResponseBody, ProxyResult,
-        ProxyTransportResponse, ProxyTransportResponseBody,
+        auth_provider_proxy_request_from_context, ProxyBody, ProxyCoreResponse, ProxyRequest,
+        ProxyResponseBody, ProxyResult, ProxyTransportResponse, ProxyTransportResponseBody,
     };
     pub use crate::forward_failure::*;
     pub use crate::request_body::*;
