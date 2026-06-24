@@ -143,6 +143,7 @@ pub mod ports {
         claude_takeover_auth_policy_from_provider_facts,
         claude_takeover_model_fields_from_settings, ClaudeTakeoverAuthPolicy,
         ClaudeTakeoverProviderFacts,
+        codex_takeover_toml_config_patch, CodexTakeoverTomlConfigPatch,
         common_config_settings_mutation_issue_message,
         common_config_snippet_issue_message,
         contains_claude_common_config_snippet,

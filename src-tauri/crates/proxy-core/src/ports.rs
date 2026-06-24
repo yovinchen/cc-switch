@@ -2177,6 +2177,24 @@ pub fn usage_script_credentials_from_parts(
     ProviderCredentialValues { api_key, base_url }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct CodexTakeoverTomlConfigPatch<'a> {
+    pub base_url: &'a str,
+    pub wire_api: &'static str,
+    pub model: Option<&'a str>,
+}
+
+pub fn codex_takeover_toml_config_patch<'a>(
+    proxy_url: &'a str,
+    upstream_model: Option<&'a str>,
+) -> CodexTakeoverTomlConfigPatch<'a> {
+    CodexTakeoverTomlConfigPatch {
+        base_url: proxy_url,
+        wire_api: "responses",
+        model: upstream_model,
+    }
+}
+
 pub fn gemini_env_parse_issue_spec(issue: &GeminiEnvParseIssue) -> LocalizedErrorSpec {
     match issue {
         GeminiEnvParseIssue::MissingEquals { line_number, line } => LocalizedErrorSpec::new(
@@ -5291,6 +5309,7 @@ mod tests {
         claude_takeover_auth_policy_from_provider_facts,
         claude_takeover_model_fields_from_settings, ClaudeTakeoverAuthPolicy,
         ClaudeTakeoverProviderFacts,
+        codex_takeover_toml_config_patch, CodexTakeoverTomlConfigPatch,
         detect_gemini_auth_type, ensure_codex_takeover_auth_placeholder,
         gemini_contains_packycode_keyword, gemini_env_json_from_map,
         gemini_env_map_from_settings, gemini_env_parse_issue_spec,
@@ -7444,6 +7463,29 @@ GEMINI_API_KEY=sk-test123
             ProviderCredentialValues {
                 api_key: "provider-key".to_string(),
                 base_url: "https://provider.example.com".to_string(),
+            }
+        );
+    }
+
+    #[test]
+    fn codex_takeover_toml_patch_forces_proxy_responses_and_optional_model() {
+        assert_eq!(
+            codex_takeover_toml_config_patch("http://127.0.0.1:15721/v1", None),
+            CodexTakeoverTomlConfigPatch {
+                base_url: "http://127.0.0.1:15721/v1",
+                wire_api: "responses",
+                model: None,
+            }
+        );
+        assert_eq!(
+            codex_takeover_toml_config_patch(
+                "http://127.0.0.1:15721/v1",
+                Some("upstream-model")
+            ),
+            CodexTakeoverTomlConfigPatch {
+                base_url: "http://127.0.0.1:15721/v1",
+                wire_api: "responses",
+                model: Some("upstream-model"),
             }
         );
     }

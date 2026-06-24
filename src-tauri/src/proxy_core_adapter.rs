@@ -4107,14 +4107,20 @@ pub(crate) fn codex_takeover_toml_config_for_provider(
     proxy_url: &str,
     provider: Option<&Provider>,
 ) -> String {
-    let updated = crate::codex_config::update_codex_toml_field(toml_str, "base_url", proxy_url)
+    let upstream_model = provider.and_then(provider_codex_upstream_model);
+    let patch = crate::proxy_core::api::ports::codex_takeover_toml_config_patch(
+        proxy_url,
+        upstream_model.as_deref(),
+    );
+
+    let updated = crate::codex_config::update_codex_toml_field(toml_str, "base_url", patch.base_url)
         .unwrap_or_else(|_| toml_str.to_string());
     let mut updated =
-        crate::codex_config::update_codex_toml_field(&updated, "wire_api", "responses")
+        crate::codex_config::update_codex_toml_field(&updated, "wire_api", patch.wire_api)
             .unwrap_or(updated);
 
-    if let Some(upstream_model) = provider.and_then(provider_codex_upstream_model) {
-        updated = crate::codex_config::update_codex_toml_field(&updated, "model", &upstream_model)
+    if let Some(upstream_model) = patch.model {
+        updated = crate::codex_config::update_codex_toml_field(&updated, "model", upstream_model)
             .unwrap_or(updated);
     }
 
