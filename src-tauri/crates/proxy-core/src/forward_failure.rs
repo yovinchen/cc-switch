@@ -133,6 +133,10 @@ pub fn build_terminal_forward_failure_log(
     })
 }
 
+pub fn forwarder_failure_log_line(app_type: &str, log: &ForwardFailureLog) -> String {
+    format!("[{app_type}] [{}] {}", log.code, log.message)
+}
+
 pub fn build_forward_attempt_limit_reached_log(
     attempted_providers: usize,
     max_attempts: usize,
@@ -272,6 +276,7 @@ mod tests {
         build_forward_attempt_limit_reached_log,
         build_retryable_forward_failure_log, build_terminal_forward_failure_log,
         categorize_forward_failure, forward_failure_kind_from_proxy_status,
+        forwarder_failure_log_line,
         forwarder_no_available_provider_status_message,
         forwarder_rectifier_retry_failure_label, forwarder_rectifier_retry_failure_message,
         forwarder_rectifier_retry_success_message,
@@ -326,6 +331,17 @@ mod tests {
         assert_eq!(log.code, ALL_PROVIDERS_FAILED);
         assert!(log.message.contains("已尝试 2/2 个 Provider，均失败"));
         assert!(log.message.contains("connection reset by peer"));
+    }
+
+    #[test]
+    fn forwarder_failure_log_line_adds_app_and_code_prefix() {
+        let failure = ForwardFailureKind::Timeout("upstream timed out".to_string());
+        let log = build_retryable_forward_failure_log("primary", 1, 2, &failure);
+
+        assert_eq!(
+            forwarder_failure_log_line("claude", &log),
+            "[claude] [FWD-001] Provider primary 失败，继续尝试下一个 (1/2): 请求超时: upstream timed out"
+        );
     }
 
     #[test]

@@ -2935,7 +2935,7 @@ pub(crate) fn forwarder_terminal_failure_status_message() -> &'static str {
 }
 
 pub(crate) fn forwarder_failure_log_line(app_type: &str, log: &ForwardFailureLog) -> String {
-    format!("[{app_type}] [{}] {}", log.code, log.message)
+    core_forwarder_failure_log_line(app_type, log)
 }
 
 pub(crate) fn forwarder_rectifier_retry_success_log_line(
@@ -3082,6 +3082,7 @@ pub(crate) use crate::proxy_core::api::transport::{
     categorize_forward_failure,
     classify_copilot_request, claude_transform_endpoint_rewrite_input_from_body,
     AuthProviderHeaderResolution, finalize_forwarder_auth_headers,
+    forwarder_failure_log_line as core_forwarder_failure_log_line,
     forwarder_media_retry_plan_from_facts, forwarder_protocol_preparation_from_transform_plan,
     forwarder_no_available_provider_status_message as core_forwarder_no_available_provider_status_message,
     forwarder_request_body_model, forwarder_request_body_transform_action_from_plan,
