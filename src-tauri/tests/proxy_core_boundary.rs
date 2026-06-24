@@ -6660,11 +6660,11 @@ fn production_forwarder_uses_request_source_resource() {
         "RequestForwarder must receive upstream request assembly as an injected source"
     );
     assert!(
-        source.contains("body_model_label"),
+        adapter_source.contains("body_model_label"),
         "ForwarderPreparedRequest must include finalized body model facts for logging"
     );
     assert!(
-        source.contains("outbound_model"),
+        adapter_source.contains("outbound_model"),
         "ForwarderPreparedRequest must include finalized outbound model attribution"
     );
     let request_preparation_input_slice = function_slice(
@@ -6793,6 +6793,36 @@ fn production_forwarder_uses_request_source_resource() {
             "{input_name} must not expose split adapter name or Claude-adapter facts"
         );
     }
+    let prepared_request_inputs = [
+        (
+            "ForwarderUpstreamRequestLogInput",
+            function_slice(
+                &adapter_source,
+                "pub(crate) struct ForwarderUpstreamRequestLogInput",
+                "pub(crate) struct ForwarderCopilotRequestOptimizationInput",
+            ),
+        ),
+        (
+            "ForwarderRequestPartsInput",
+            function_slice(
+                &adapter_source,
+                "pub(crate) struct ForwarderRequestPartsInput",
+                "pub(crate) struct ForwarderUpstreamRequestParts",
+            ),
+        ),
+    ];
+    for (input_name, input_slice) in prepared_request_inputs {
+        assert!(
+            input_slice.contains("prepared_request: &'a ForwarderPreparedRequest"),
+            "{input_name} must carry the cohesive prepared request"
+        );
+        assert!(
+            !input_slice.contains("filtered_body: &'a Value")
+                && !input_slice.contains("body_model_label: &'a str")
+                && !input_slice.contains("force_identity_encoding: bool"),
+            "{input_name} must not expose split prepared request facts"
+        );
+    }
     let rectifier_config_inputs = [
         (
             "ForwarderClaudeBodyPolicyInput",
@@ -6853,6 +6883,17 @@ fn production_forwarder_uses_request_source_resource() {
         assert!(
             !impl_slice.contains(marker),
             "RequestForwarder must pass RectifierConfig cohesively instead of split marker `{marker}`"
+        );
+    }
+    let forbidden_prepared_request_access = [
+        "let filtered_body = prepared_request.body",
+        "let request_model = prepared_request.body_model_label",
+        "let force_identity_encoding = prepared_request.force_identity_encoding",
+    ];
+    for marker in forbidden_prepared_request_access {
+        assert!(
+            !impl_slice.contains(marker),
+            "RequestForwarder must pass ForwarderPreparedRequest cohesively instead of split marker `{marker}`"
         );
     }
     let forbidden_protocol_plan_access = [
