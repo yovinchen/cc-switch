@@ -1171,6 +1171,26 @@ pub enum ClaudeTakeoverAuthPolicy {
     ManagedAccount { keep_auth_token: bool },
 }
 
+#[derive(Debug, Clone, Copy)]
+pub struct ClaudeTakeoverProviderFacts<'a> {
+    pub provider_settings_config: &'a Value,
+    pub uses_managed_account: bool,
+    pub is_github_copilot: bool,
+}
+
+pub fn claude_takeover_auth_policy_from_provider_facts(
+    uses_managed_account: bool,
+    is_github_copilot: bool,
+) -> ClaudeTakeoverAuthPolicy {
+    if uses_managed_account {
+        ClaudeTakeoverAuthPolicy::ManagedAccount {
+            keep_auth_token: !is_github_copilot,
+        }
+    } else {
+        ClaudeTakeoverAuthPolicy::PreserveExistingOrAuthToken
+    }
+}
+
 pub fn claude_takeover_model_fields_from_settings(
     config: &Value,
 ) -> Vec<(&'static str, String)> {
@@ -1228,6 +1248,31 @@ pub fn apply_claude_takeover_fields_with_policy(
     auth_policy: ClaudeTakeoverAuthPolicy,
 ) {
     let takeover_model_fields = claude_takeover_model_fields_from_settings(config);
+
+    apply_claude_takeover_fields_with_policy_and_models(
+        config,
+        proxy_url,
+        placeholder,
+        auth_policy,
+        takeover_model_fields,
+    );
+}
+
+pub fn apply_claude_takeover_fields_for_provider_facts(
+    config: &mut Value,
+    proxy_url: &str,
+    placeholder: &str,
+    facts: ClaudeTakeoverProviderFacts<'_>,
+) {
+    let auth_policy = claude_takeover_auth_policy_from_provider_facts(
+        facts.uses_managed_account,
+        facts.is_github_copilot,
+    );
+    let takeover_model_fields = if facts.uses_managed_account {
+        claude_takeover_model_fields_from_settings(facts.provider_settings_config)
+    } else {
+        claude_takeover_model_fields_from_settings(config)
+    };
 
     apply_claude_takeover_fields_with_policy_and_models(
         config,
@@ -5237,12 +5282,15 @@ mod tests {
         channel_health_update_from_input,
         channel_model_record_from_input, channel_reachability_result_from_stream_check_result,
         channel_route_source_for_materialized_count,
+        apply_claude_takeover_fields_for_provider_facts,
         apply_claude_takeover_fields_with_policy_and_models,
         apply_codex_takeover_auth_placeholder_if_present, apply_gemini_takeover_env_fields,
         apply_gemini_common_config_to_settings,
         claude_common_config_snippet_from_settings,
         claude_env_credentials_from_settings, claude_live_config_has_proxy_placeholder,
+        claude_takeover_auth_policy_from_provider_facts,
         claude_takeover_model_fields_from_settings, ClaudeTakeoverAuthPolicy,
+        ClaudeTakeoverProviderFacts,
         detect_gemini_auth_type, ensure_codex_takeover_auth_placeholder,
         gemini_contains_packycode_keyword, gemini_env_json_from_map,
         gemini_env_map_from_settings, gemini_env_parse_issue_spec,
@@ -7857,6 +7905,105 @@ GEMINI_API_KEY=sk-test123
             Some("claude-sonnet-4-6")
         );
         assert_eq!(env.get("OTHER").and_then(Value::as_str), Some("kept"));
+    }
+
+    #[test]
+    fn claude_takeover_provider_facts_choose_policy_and_model_source() {
+        assert_eq!(
+            claude_takeover_auth_policy_from_provider_facts(true, true),
+            ClaudeTakeoverAuthPolicy::ManagedAccount {
+                keep_auth_token: false
+            }
+        );
+        assert_eq!(
+            claude_takeover_auth_policy_from_provider_facts(true, false),
+            ClaudeTakeoverAuthPolicy::ManagedAccount {
+                keep_auth_token: true
+            }
+        );
+        assert_eq!(
+            claude_takeover_auth_policy_from_provider_facts(false, false),
+            ClaudeTakeoverAuthPolicy::PreserveExistingOrAuthToken
+        );
+
+        let provider_settings = json!({
+            "env": {
+                "ANTHROPIC_DEFAULT_HAIKU_MODEL": "gpt-5.4-mini",
+                "ANTHROPIC_DEFAULT_SONNET_MODEL": "gpt-5.4",
+                "ANTHROPIC_DEFAULT_OPUS_MODEL": "gpt-5.4"
+            }
+        });
+        let mut live_config = json!({
+            "env": {
+                "ANTHROPIC_AUTH_TOKEN": "stale-token",
+                "ANTHROPIC_DEFAULT_HAIKU_MODEL": "stale-haiku",
+                "ANTHROPIC_DEFAULT_SONNET_MODEL": "stale-sonnet",
+                "ANTHROPIC_DEFAULT_OPUS_MODEL": "stale-opus"
+            }
+        });
+
+        apply_claude_takeover_fields_for_provider_facts(
+            &mut live_config,
+            "http://127.0.0.1:15721",
+            "PROXY_MANAGED",
+            ClaudeTakeoverProviderFacts {
+                provider_settings_config: &provider_settings,
+                uses_managed_account: true,
+                is_github_copilot: false,
+            },
+        );
+
+        let env = live_config
+            .get("env")
+            .and_then(Value::as_object)
+            .expect("env");
+        assert_eq!(
+            env.get("ANTHROPIC_BASE_URL").and_then(Value::as_str),
+            Some("http://127.0.0.1:15721")
+        );
+        assert_eq!(
+            env.get("ANTHROPIC_API_KEY").and_then(Value::as_str),
+            Some("PROXY_MANAGED")
+        );
+        assert_eq!(
+            env.get("ANTHROPIC_AUTH_TOKEN").and_then(Value::as_str),
+            Some("PROXY_MANAGED")
+        );
+        assert_eq!(
+            env.get("ANTHROPIC_DEFAULT_HAIKU_MODEL")
+                .and_then(Value::as_str),
+            Some("claude-haiku-4-5")
+        );
+        assert_eq!(
+            env.get("ANTHROPIC_DEFAULT_HAIKU_MODEL_NAME")
+                .and_then(Value::as_str),
+            Some("gpt-5.4-mini")
+        );
+
+        let mut copilot_live_config = json!({
+            "env": {
+                "ANTHROPIC_AUTH_TOKEN": "stale-token"
+            }
+        });
+        apply_claude_takeover_fields_for_provider_facts(
+            &mut copilot_live_config,
+            "http://127.0.0.1:15721",
+            "PROXY_MANAGED",
+            ClaudeTakeoverProviderFacts {
+                provider_settings_config: &provider_settings,
+                uses_managed_account: true,
+                is_github_copilot: true,
+            },
+        );
+        let copilot_env = copilot_live_config
+            .get("env")
+            .and_then(Value::as_object)
+            .expect("env");
+        assert!(copilot_env.get("ANTHROPIC_AUTH_TOKEN").is_none());
+        assert_eq!(
+            copilot_env.get("ANTHROPIC_API_KEY").and_then(Value::as_str),
+            Some("PROXY_MANAGED")
+        );
     }
 
     #[test]

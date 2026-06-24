@@ -1348,6 +1348,7 @@
 本轮继续把 Gemini provider 鉴权类型判定收敛到 `proxy-core::ports::detect_gemini_auth_type`：core 维护 partner key 优先级、Google official 名称匹配与 PackyCode 关键词规则，host 只负责从 `Provider` 投影输入并执行 settings 文件写入。
 本轮继续把 Gemini `.env` 解析和序列化收敛到 `proxy-core::ports`：core 维护宽松解析、严格行号错误分类和稳定排序输出，adapter 负责把结构化 parse issue 映射回宿主 `AppError`。
 本轮继续把 usage script 凭据覆盖策略收敛到 `proxy-core::ports::usage_script_credentials_from_parts`：core 维护脚本显式非空值优先、空值回退 provider 凭据和 `baseUrl` 去尾斜杠规则，host 继续负责按 app/provider settings 提取 fallback 与执行脚本。
+本轮继续把 Claude takeover 的 provider facts 决策收敛到 `proxy-core::ports::apply_claude_takeover_fields_for_provider_facts`：core 维护 managed-account/Copilot auth policy、provider-vs-live 模型字段来源和 env 写入，adapter 只投影宿主 provider facts。
 
 当前原则：核心 crate 可以新增端口和领域字段，但不得引入 `tauri`、`Database`、settings、commands、services 等宿主依赖；现有 runtime 行为必须继续通过 targeted tests 证明不回归。
 

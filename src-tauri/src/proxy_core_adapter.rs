@@ -12562,22 +12562,22 @@ pub(crate) use crate::proxy_core::api::model_catalog::{
     claude_takeover_client_model_for_upstream, claude_takeover_default_display_name,
 };
 use crate::proxy_core::api::ports::{
+    apply_claude_takeover_fields_for_provider_facts as core_apply_claude_takeover_fields_for_provider_facts,
     apply_claude_takeover_fields_with_policy as core_apply_claude_takeover_fields_with_policy,
+    ClaudeTakeoverProviderFacts,
+};
+#[cfg(test)]
+use crate::proxy_core::api::ports::{
     apply_claude_takeover_fields_with_policy_and_models as core_apply_claude_takeover_fields_with_policy_and_models,
     claude_takeover_model_fields_from_settings as core_claude_takeover_model_fields_from_settings,
 };
 pub(crate) use crate::proxy_core::api::ports::ClaudeTakeoverAuthPolicy;
 
+#[cfg(test)]
 pub(crate) fn provider_claude_takeover_model_fields(
     provider: &Provider,
 ) -> Vec<(&'static str, String)> {
     core_claude_takeover_model_fields_from_settings(&provider.settings_config)
-}
-
-pub(crate) fn claude_takeover_model_fields_from_settings(
-    config: &Value,
-) -> Vec<(&'static str, String)> {
-    core_claude_takeover_model_fields_from_settings(config)
 }
 
 pub(crate) fn apply_claude_takeover_fields_for_provider(
@@ -12586,30 +12586,15 @@ pub(crate) fn apply_claude_takeover_fields_for_provider(
     placeholder: &str,
     provider: &Provider,
 ) {
-    let uses_managed_account = provider_uses_managed_account_auth(provider);
-    let auth_policy = if uses_managed_account {
-        // Codex 系（含仅凭 base_url 识别、无 provider_type meta 的）必须保留
-        // ANTHROPIC_AUTH_TOKEN 占位符：Claude Code 缺该键会弹登录提示（#3784）。
-        // Copilot 维持仅 API_KEY 占位，避免与 /login 管理的 key 冲突（#1049）。
-        ClaudeTakeoverAuthPolicy::ManagedAccount {
-            keep_auth_token: !provider_is_github_copilot(provider),
-        }
-    } else {
-        ClaudeTakeoverAuthPolicy::PreserveExistingOrAuthToken
-    };
-    // Copilot/Codex 接管时 live config 可能还是旧供应商；显示模型必须跟随目标 provider。
-    let takeover_model_fields = if uses_managed_account {
-        provider_claude_takeover_model_fields(provider)
-    } else {
-        claude_takeover_model_fields_from_settings(config)
-    };
-
-    apply_claude_takeover_fields_with_policy_and_models(
+    core_apply_claude_takeover_fields_for_provider_facts(
         config,
         proxy_url,
         placeholder,
-        auth_policy,
-        takeover_model_fields,
+        ClaudeTakeoverProviderFacts {
+            provider_settings_config: &provider.settings_config,
+            uses_managed_account: provider_uses_managed_account_auth(provider),
+            is_github_copilot: provider_is_github_copilot(provider),
+        },
     );
 }
 
@@ -12622,6 +12607,7 @@ pub(crate) fn apply_claude_takeover_fields_with_policy(
     core_apply_claude_takeover_fields_with_policy(config, proxy_url, placeholder, auth_policy);
 }
 
+#[cfg(test)]
 pub(crate) fn apply_claude_takeover_fields_with_policy_and_models(
     config: &mut Value,
     proxy_url: &str,
