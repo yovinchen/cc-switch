@@ -3023,6 +3023,10 @@ pub(crate) type ForwardFailureKind =
     crate::proxy_core::api::transport::ForwardFailureKind;
 pub(crate) type ForwardFailureLog =
     crate::proxy_core::api::transport::ForwardFailureLog;
+pub(crate) enum ForwarderFailureDecision {
+    Retryable { log: ForwardFailureLog },
+    NonRetryable,
+}
 pub(crate) type ManagementAuthError =
     crate::proxy_core::api::auth::ManagementAuthError;
 pub(crate) type CircuitBreakerFailureDecision =
@@ -8100,20 +8104,18 @@ pub(crate) trait ForwarderRuntimeStateSource {
         rectifier_label: &'a str,
         error_message: &'a str,
     ) -> BoxFuture<'a, ()>;
-    fn forward_failure_kind(&self, error: &ProxyError) -> ForwardFailureKind;
-    fn is_retryable_forward_failure(&self, failure: &ForwardFailureKind) -> bool;
-    fn retryable_forward_failure_log(
+    fn forward_failure_decision(
         &self,
+        error: &ProxyError,
         provider_name: &str,
         attempted_providers: usize,
         total_providers: usize,
-        failure: &ForwardFailureKind,
-    ) -> ForwardFailureLog;
-    fn terminal_forward_failure_log(
+    ) -> ForwarderFailureDecision;
+    fn terminal_forward_failure_log_for_error(
         &self,
         attempted_providers: usize,
         total_providers: usize,
-        last_failure: Option<&ForwardFailureKind>,
+        last_error: Option<&ProxyError>,
     ) -> Option<ForwardFailureLog>;
     fn should_failover_after_rectifier_retry_failure(&self, error: &ProxyError) -> bool;
     fn record_request_started<'a>(&'a self, started_at: &'a str) -> BoxFuture<'a, ()>;
@@ -8263,39 +8265,39 @@ impl ForwarderRuntimeStateSource for CcSwitchForwarderRuntimeStateSource {
         })
     }
 
-    fn forward_failure_kind(&self, error: &ProxyError) -> ForwardFailureKind {
-        forward_failure_kind_from_proxy_error(error)
-    }
-
-    fn is_retryable_forward_failure(&self, failure: &ForwardFailureKind) -> bool {
-        matches!(
-            categorize_forward_failure(failure),
-            ForwardFailureCategory::Retryable
-        )
-    }
-
-    fn retryable_forward_failure_log(
+    fn forward_failure_decision(
         &self,
+        error: &ProxyError,
         provider_name: &str,
         attempted_providers: usize,
         total_providers: usize,
-        failure: &ForwardFailureKind,
-    ) -> ForwardFailureLog {
-        build_retryable_forward_failure_log(
-            provider_name,
-            attempted_providers,
-            total_providers,
-            failure,
-        )
+    ) -> ForwarderFailureDecision {
+        let failure = forward_failure_kind_from_proxy_error(error);
+        match categorize_forward_failure(&failure) {
+            ForwardFailureCategory::Retryable => ForwarderFailureDecision::Retryable {
+                log: build_retryable_forward_failure_log(
+                    provider_name,
+                    attempted_providers,
+                    total_providers,
+                    &failure,
+                ),
+            },
+            ForwardFailureCategory::NonRetryable => ForwarderFailureDecision::NonRetryable,
+        }
     }
 
-    fn terminal_forward_failure_log(
+    fn terminal_forward_failure_log_for_error(
         &self,
         attempted_providers: usize,
         total_providers: usize,
-        last_failure: Option<&ForwardFailureKind>,
+        last_error: Option<&ProxyError>,
     ) -> Option<ForwardFailureLog> {
-        build_terminal_forward_failure_log(attempted_providers, total_providers, last_failure)
+        let last_failure = last_error.map(forward_failure_kind_from_proxy_error);
+        build_terminal_forward_failure_log(
+            attempted_providers,
+            total_providers,
+            last_failure.as_ref(),
+        )
     }
 
     fn should_failover_after_rectifier_retry_failure(&self, error: &ProxyError) -> bool {
@@ -15904,23 +15906,38 @@ base_url = "https://api.openai.com/v1"
             Arc::new(RwLock::new(HashMap::new())),
             Arc::new(ProxyEventBus::default()),
         );
-        let retryable = source.forward_failure_kind(&ProxyError::Timeout(
-            "upstream timed out".to_string(),
-        ));
-        let non_retryable = source.forward_failure_kind(&ProxyError::UpstreamError {
+        let retryable = source.forward_failure_decision(
+            &ProxyError::Timeout("upstream timed out".to_string()),
+            "Relay",
+            1,
+            2,
+        );
+        let non_retryable_error = ProxyError::UpstreamError {
             status: 400,
             body: Some(r#"{"error":{"message":"bad request"}}"#.to_string()),
-        });
+        };
+        let non_retryable =
+            source.forward_failure_decision(&non_retryable_error, "Relay", 1, 2);
 
-        assert!(source.is_retryable_forward_failure(&retryable));
-        assert!(!source.is_retryable_forward_failure(&non_retryable));
+        match retryable {
+            ForwarderFailureDecision::Retryable { log } => {
+                assert_eq!(log.code, "FWD-001");
+                assert!(log.message.contains("Relay"));
+            }
+            ForwarderFailureDecision::NonRetryable => {
+                panic!("timeout should be retryable")
+            }
+        }
 
-        let retry_log = source.retryable_forward_failure_log("Relay", 1, 2, &retryable);
-        assert_eq!(retry_log.code, "FWD-001");
-        assert!(retry_log.message.contains("Relay"));
+        match non_retryable {
+            ForwarderFailureDecision::Retryable { .. } => {
+                panic!("client 400 should be non-retryable")
+            }
+            ForwarderFailureDecision::NonRetryable => {}
+        }
 
         let terminal_log = source
-            .terminal_forward_failure_log(2, 2, Some(&non_retryable))
+            .terminal_forward_failure_log_for_error(2, 2, Some(&non_retryable_error))
             .expect("terminal failure log for multi-provider attempts");
         assert_eq!(terminal_log.code, "FWD-002");
         assert!(terminal_log.message.contains("上游 HTTP 400"));

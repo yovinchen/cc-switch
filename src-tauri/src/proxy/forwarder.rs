@@ -15,7 +15,7 @@ use crate::proxy_core_adapter::{
     ForwarderMaybeCopilotAuthOptimizationInput, ForwarderClaudeBodyPolicyInput,
     ForwarderCodexResponsesToChatPlanInput,
     ForwarderCopilotRequestOptimizationGateInput,
-    ForwarderMediaRetryPlanInput, ForwarderProviderRequestBodyInput,
+    ForwarderFailureDecision, ForwarderMediaRetryPlanInput, ForwarderProviderRequestBodyInput,
     ForwarderProviderUrlFacts, ForwarderProviderUrlFactsInput,
     ForwarderRequestBodyTransformInput, ForwarderRequestRectifierPlan,
     ForwarderThinkingBudgetRectifierInput, ForwarderThinkingSignatureRectifierInput,
@@ -837,53 +837,55 @@ impl RequestForwarder {
                     // 先分类错误，决定是否计入 provider 健康度
                     // —— NonRetryable 是客户端层错误，无论换哪家 provider 都会被拒绝，
                     //    不应污染熔断器和数据库健康度（与 release_permit_neutral 同语义）。
-                    let failure = self.runtime_state_source.forward_failure_kind(&e);
+                    let failure_decision = self.runtime_state_source.forward_failure_decision(
+                        &e,
+                        &provider.name,
+                        attempted_providers,
+                        attempts.len(),
+                    );
 
-                    if self.runtime_state_source.is_retryable_forward_failure(&failure) {
-                        // 可重试：真正的 provider 故障 → 记录失败并更新熔断器/DB 健康度
-                        let error_message = e.to_string();
-                        self.record_failure_result(
-                            request_id,
-                            attempt,
-                            app_type_str,
-                            used_half_open_permit,
-                            error_message.clone(),
-                        )
-                        .await;
-
-                        self.runtime_state_source
-                            .record_provider_failure(&provider.name, &error_message)
+                    match failure_decision {
+                        ForwarderFailureDecision::Retryable { log: failure_log } => {
+                            // 可重试：真正的 provider 故障 → 记录失败并更新熔断器/DB 健康度
+                            let error_message = e.to_string();
+                            self.record_failure_result(
+                                request_id,
+                                attempt,
+                                app_type_str,
+                                used_half_open_permit,
+                                error_message.clone(),
+                            )
                             .await;
 
-                        let failure_log = self.runtime_state_source.retryable_forward_failure_log(
-                            &provider.name,
-                            attempted_providers,
-                            attempts.len(),
-                            &failure,
-                        );
-                        log::warn!(
-                            "[{app_type_str}] [{}] {}",
-                            failure_log.code,
-                            failure_log.message
-                        );
+                            self.runtime_state_source
+                                .record_provider_failure(&provider.name, &error_message)
+                                .await;
 
-                        last_error = Some(e);
-                        last_provider = Some(provider.clone());
-                        // 继续尝试下一个供应商
-                        continue;
-                    } else {
-                        // 不可重试：客户端层错误或客户端断连 → 不污染健康度，仅释放 HalfOpen permit
-                        self.release_attempt_permit_neutral(
-                            attempt,
-                            app_type_str,
-                            used_half_open_permit,
-                        )
-                        .await;
-                        self.record_failure_status_message(e.to_string()).await;
-                        return Err(ForwardError {
-                            error: e,
-                            provider: Some(provider.clone()),
-                        });
+                            log::warn!(
+                                "[{app_type_str}] [{}] {}",
+                                failure_log.code,
+                                failure_log.message
+                            );
+
+                            last_error = Some(e);
+                            last_provider = Some(provider.clone());
+                            // 继续尝试下一个供应商
+                            continue;
+                        }
+                        ForwarderFailureDecision::NonRetryable => {
+                            // 不可重试：客户端层错误或客户端断连 → 不污染健康度，仅释放 HalfOpen permit
+                            self.release_attempt_permit_neutral(
+                                attempt,
+                                app_type_str,
+                                used_half_open_permit,
+                            )
+                            .await;
+                            self.record_failure_status_message(e.to_string()).await;
+                            return Err(ForwardError {
+                                error: e,
+                                provider: Some(provider.clone()),
+                            });
+                        }
                     }
                 }
             }
@@ -903,13 +905,10 @@ impl RequestForwarder {
         self.record_failure_status_message("所有供应商都失败")
             .await;
 
-        let last_failure = last_error
-            .as_ref()
-            .map(|error| self.runtime_state_source.forward_failure_kind(error));
-        if let Some(failure_log) = self.runtime_state_source.terminal_forward_failure_log(
+        if let Some(failure_log) = self.runtime_state_source.terminal_forward_failure_log_for_error(
             attempted_providers,
             attempts.len(),
-            last_failure.as_ref(),
+            last_error.as_ref(),
         ) {
             log::warn!(
                 "[{app_type_str}] [{}] {}",
