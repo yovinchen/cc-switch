@@ -5951,10 +5951,32 @@ fn production_forwarder_uses_runtime_state_source_resource() {
     let source = fs::read_to_string(&path).expect("read forwarder.rs");
     let struct_slice = function_slice(&source, "pub struct RequestForwarder", "impl RequestForwarder");
     let impl_slice = function_slice(&source, "impl RequestForwarder", "#[cfg(test)]");
+    let adapter_path = manifest_dir.join("src/proxy_core_adapter.rs");
+    let adapter_source = fs::read_to_string(&adapter_path).expect("read proxy_core_adapter.rs");
+    let runtime_trait_slice = function_slice(
+        &adapter_source,
+        "pub(crate) trait ForwarderRuntimeStateSource",
+        "struct CcSwitchForwarderRuntimeStateSource",
+    );
+    let runtime_source_slice = function_slice(
+        &adapter_source,
+        "struct CcSwitchForwarderRuntimeStateSource",
+        "impl CcSwitchForwarderRuntimeStateSource",
+    );
 
     assert!(
         struct_slice.contains("runtime_state_source"),
         "RequestForwarder must receive status/current-provider/events as one injected runtime state source"
+    );
+    assert!(
+        runtime_source_slice.contains("status: Arc<RwLock<ProxyRuntimeStatus>>")
+            && runtime_source_slice.contains("current_providers: Arc<RwLock")
+            && runtime_source_slice.contains("events: Arc<ProxyEventBus>"),
+        "default ForwarderRuntimeStateSource implementation must own status/current-provider/events runtime resources"
+    );
+    assert!(
+        !runtime_trait_slice.contains("fn status(") && !runtime_trait_slice.contains("fn events("),
+        "ForwarderRuntimeStateSource trait must not expose runtime status or event bus read handles"
     );
 
     let struct_forbidden_markers = [
