@@ -154,6 +154,7 @@
 143. Provider 认证 header value 构造和非法 credential 字节校验已迁入 `proxy-core::request_headers::auth_header_value`；host provider adapter 调用点直接引用 core helper，并只在调用处把 `ProxyCoreError::Auth` 映射为 `ProxyError::AuthError`。
 144. Codex Chat Completions 到 Responses 的 response id/status 映射、usage JSON 形状归一化和 custom tool arguments input 提取规则已迁入 `proxy-core::response_transform`；host 非流式与流式调用点已直接引用 core，不再保留 Codex Chat provider facade。
 145. Forwarder 的转换后请求体选择（Codex Responses→Chat、Claude protocol transform body、provider transform、passthrough）和映射后初始 outbound model 归因已收敛到 `ForwarderRequestSource::transform_request_body`；host forwarder 只保留 Codex history enrichment 与 Claude session/shadow 状态调用。
+146. Codex Chat history enrichment 的启用 gate 已收敛到 `ForwarderProtocolStateSource::enrich_codex_chat_request` 输入；host forwarder 不再本地包裹 `codex_responses_to_chat` 条件，只传入状态源需要的 enabled 事实和可变 body。
 145. Codex Responses 到 Chat 的 role 映射、pending reasoning 拼接/去重、assistant reasoning 回填和 tool_call reasoning_content 占位兜底已迁入 `proxy-core::response_transform`；完整 input 遍历状态机见第 159 条。
 146. Codex Responses content 到 Chat content 的 text/refusal/image/file/audio 形状转换规则已迁入 `proxy-core::response_transform::responses_content_to_chat_content`；request 级遍历与转换编排也已收敛到 core。
 147. Codex Responses instructions 文本归一化与 Chat system message 头部归并规则已迁入 `proxy-core::response_transform::{responses_instruction_text,collapse_system_messages_to_head}`；请求 envelope 组装顺序由 core 统一维护。
