@@ -1530,6 +1530,7 @@ pub(crate) type AuthInfo = crate::proxy_core::api::ports::AuthInfo;
 
 pub(crate) use crate::proxy_core::api::auth::gemini_auth_strategy_for_provider_kind as core_gemini_auth_strategy_for_provider_kind;
 pub(crate) use crate::proxy_core::api::auth::claude_anthropic_auth_strategy_for_key_source as core_claude_anthropic_auth_strategy_for_key_source;
+pub(crate) use crate::proxy_core::api::auth::claude_static_auth_strategy_for_provider_kind as core_claude_static_auth_strategy_for_provider_kind;
 pub(crate) use crate::proxy_core::api::ports::auth_info_from_profile_ref;
 
 pub(crate) fn auth_info_from_cc_switch_provider_config(
@@ -5286,13 +5287,9 @@ pub(crate) fn provider_claude_auth_info(provider: &Provider) -> Option<ProviderA
 
     match provider_type {
         ProviderKind::GeminiCli => Some(claude_gemini_cli_auth_info(provider, key)),
-        ProviderKind::Gemini => Some(ProviderAuthInfo::new(key, ProviderAuthStrategy::Google)),
-        ProviderKind::OpenRouter => Some(ProviderAuthInfo::new(key, ProviderAuthStrategy::Bearer)),
-        ProviderKind::ClaudeAuth => {
-            Some(ProviderAuthInfo::new(key, ProviderAuthStrategy::ClaudeAuth))
-        }
         _ => {
-            let strategy = core_claude_anthropic_auth_strategy_for_key_source(auth_key.source)
+            let strategy = core_claude_static_auth_strategy_for_provider_kind(&provider_type)
+                .or_else(|| core_claude_anthropic_auth_strategy_for_key_source(auth_key.source))
                 .unwrap_or(ProviderAuthStrategy::Anthropic);
             Some(ProviderAuthInfo::new(key, strategy))
         }

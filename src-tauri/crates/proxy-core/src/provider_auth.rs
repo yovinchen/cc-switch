@@ -71,6 +71,17 @@ pub fn claude_anthropic_auth_strategy_for_key_source(
     }
 }
 
+pub fn claude_static_auth_strategy_for_provider_kind(
+    provider_kind: &ProviderKind,
+) -> Option<ProviderAuthStrategy> {
+    match provider_kind {
+        ProviderKind::Gemini => Some(ProviderAuthStrategy::Google),
+        ProviderKind::OpenRouter => Some(ProviderAuthStrategy::Bearer),
+        ProviderKind::ClaudeAuth => Some(ProviderAuthStrategy::ClaudeAuth),
+        _ => None,
+    }
+}
+
 pub fn settings_config_with_channel_auth_key(
     app_type: &str,
     settings_config: &Value,
@@ -252,6 +263,30 @@ mod tests {
         );
         assert_eq!(
             claude_anthropic_auth_strategy_for_key_source(ClaudeAuthKeySource::DirectApiKey),
+            None
+        );
+    }
+
+    #[test]
+    fn claude_static_auth_strategy_follows_provider_kind() {
+        assert_eq!(
+            claude_static_auth_strategy_for_provider_kind(&ProviderKind::Gemini),
+            Some(ProviderAuthStrategy::Google)
+        );
+        assert_eq!(
+            claude_static_auth_strategy_for_provider_kind(&ProviderKind::OpenRouter),
+            Some(ProviderAuthStrategy::Bearer)
+        );
+        assert_eq!(
+            claude_static_auth_strategy_for_provider_kind(&ProviderKind::ClaudeAuth),
+            Some(ProviderAuthStrategy::ClaudeAuth)
+        );
+        assert_eq!(
+            claude_static_auth_strategy_for_provider_kind(&ProviderKind::GeminiCli),
+            None
+        );
+        assert_eq!(
+            claude_static_auth_strategy_for_provider_kind(&ProviderKind::Claude),
             None
         );
     }
