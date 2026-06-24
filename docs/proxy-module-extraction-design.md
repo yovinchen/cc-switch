@@ -436,6 +436,7 @@
 425. provider-scoped rectifier retry failure 状态记录已改为 `ForwarderRuntimeStateSource::record_provider_rectifier_retry_failure(&Provider, ForwarderRectifierRetryKind, error_message)`；host forwarder 不再取回 label 字符串再回传 source，label 投影完全保留在 runtime source 内部。
 426. forwarder max-attempt warning 行格式已收敛到 `ForwarderAttemptRuntimeSource::attempt_limit_reached(app, attempted, max)` 返回的 `ForwarderAttemptLimitReached::log_line`；host forwarder 不再拼接 app 前缀或保留中间 message 投影。
 427. 成功后的 failover switch 调度已改为 `FailoverSwitchScheduler::schedule_switch(app, ForwarderFailoverSwitchTarget)`；host forwarder 不再拆 target 的 provider id/name 或自行把 app 投影为 owned string，调度输入转换留在 scheduler 边界。
+428. attempt started/succeeded/failed phase 选择已收敛到 `ForwarderRuntimeStateSource::{emit_attempt_started,emit_attempt_succeeded,emit_attempt_failed}`；host forwarder 不再导入/传递 `AttemptEventPhase`，只触发语义化事件方法。
 407. `proxy::types::ApiFormat` 未使用预留枚举已删除；Claude/OpenAI/Gemini format 判断统一沿用 `proxy-core` 的 provider kind、client format 和 response transform contract。
 408. `LogConfig` 已从 `proxy::types` 移到 `settings::LogConfig`；日志设置不再扩大代理运行态类型模块，proxy host types 只保留代理状态/备份等运行态数据。
 409. `RectifierConfig` 的默认值、serde 和 core 检测投影测试已从 host `proxy::types` 迁入 `proxy-core::ports`；host proxy types 不再承担 core 配置契约测试。
