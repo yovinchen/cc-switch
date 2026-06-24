@@ -423,7 +423,7 @@
 412. forwarder 主循环的 max attempts 上限判定和 warning 文案已收敛到 `ForwarderAttemptRuntimeSource::attempt_limit_reached`；host forwarder 不再本地展开 retry policy 的次数比较和日志文本，只在 source 返回 limit 时停止尝试。
 413. legacy 单 provider 场景跳过 circuit breaker 的判定已收敛到 `ForwarderAttemptRuntimeSource::should_bypass_circuit_breaker`；host forwarder 不再本地检查 attempts 数量或 channel 形态，只把 source 返回的 bypass 事实传入 allow 端口。
 414. thinking/media rectifier retry failure 的 provider/client 归因已进一步收敛为 `ForwarderRuntimeStateSource::rectifier_retry_failure_decision` 结构化决策；host forwarder 不再消费布尔 failover gate，只根据 source 返回的 provider failure 或 client failure 执行既有 permit、健康状态和错误返回流程。
-415. terminal forward failure 的 runtime status 文案已收敛到 `ForwarderRuntimeStateSource::{no_available_provider_status_message,terminal_failure_status_message}`；host forwarder 不再硬编码“所有供应商暂时不可用/都失败”的状态投影，只在终态分支记录 source 产出的 message。
+415. terminal/no-available forward failure 的 runtime status 记录已收敛到 `ForwarderRuntimeStateSource::{record_no_available_provider_status,record_terminal_failure_status}`；host forwarder 不再接收中间状态文案，只在终态分支触发 source 写入状态。
 416. ordinary forward failure 的 retryable/non-retryable error message 投影已并入 `ForwarderRuntimeStateSource::forward_failure_decision`；host forwarder 不再对普通 forward 错误执行 `to_string()` 来填充熔断记录或 runtime status，只消费 source 决策中的 message。
 417. rectifier client-side failure 的 runtime status 记录已收敛到 `ForwarderRuntimeStateSource::record_forward_error_status`；signature/budget rectifier 客户端失败分支不再直接对 `ProxyError` 执行 `to_string()` 或处理中间状态文案，只把错误交给 runtime source 写入状态。
 418. success status 后的 failover switch target 已收敛到 `ForwarderRuntimeStateSource::record_success_status` 返回的 `ForwarderFailoverSwitchTarget`；host forwarder 不再把成功状态的 bool 决策重新投影为 provider id/name，只调度 source 返回的 target。
