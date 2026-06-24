@@ -38,6 +38,7 @@ use crate::proxy_core_adapter::{
     forwarder_bedrock_env_flag, forwarder_is_codex_oauth_provider, provider_router_from_database,
     should_preserve_exact_request_header_case,
     validate_managed_account_upstream_auth,
+    ForwarderAdapterFacts,
 };
 use crate::{app_config::AppType, provider::Provider};
 use http::Extensions;
@@ -444,12 +445,11 @@ impl RequestForwarder {
                         self.request_source
                             .media_retry_plan(ForwarderMediaRetryPlanInput {
                                 app: app_type_str,
-                                adapter_name: self
+                                adapter_facts: &self
                                     .request_source
                                     .adapter_facts(ForwarderAdapterFactsInput {
                                         adapter: adapter.as_ref(),
-                                    })
-                                    .adapter_name,
+                                    }),
                                 provider,
                                 already_retried: media_rectifier_retried,
                                 provider_body: &provider_body,
@@ -858,15 +858,13 @@ impl RequestForwarder {
         let adapter_facts = self
             .request_source
             .adapter_facts(ForwarderAdapterFactsInput { adapter });
-        let adapter_name = adapter_facts.adapter_name;
-        let is_claude_adapter = adapter_facts.is_claude_adapter;
         let resolved_claude_api_format = self
             .request_source
             .resolve_claude_api_format_for_adapter(ForwarderClaudeApiFormatInput {
                 provider,
                 body: &mapped_body,
                 is_copilot,
-                is_claude_adapter,
+                adapter_facts: &adapter_facts,
             })
             .await;
         self.request_source.apply_claude_body_policies(
@@ -874,7 +872,7 @@ impl RequestForwarder {
                 body: &mut mapped_body,
                 provider,
                 api_format: resolved_claude_api_format.as_deref(),
-                is_claude_adapter,
+                adapter_facts: &adapter_facts,
                 rectifier_enabled: self.rectifier_config.enabled,
                 request_media_fallback: self.rectifier_config.request_media_fallback,
                 request_media_heuristic: self.rectifier_config.request_media_heuristic,
@@ -888,7 +886,7 @@ impl RequestForwarder {
                 endpoint,
                 provider,
                 resolved_claude_api_format: resolved_claude_api_format.as_deref(),
-                is_claude_adapter,
+                adapter_facts: &adapter_facts,
             });
         let codex_responses_to_chat = transform_plan.codex_responses_to_chat;
         let url_plan = self.request_source.plan_upstream_url(ForwarderUpstreamUrlInput {
@@ -997,7 +995,7 @@ impl RequestForwarder {
                         .map(|channel| &channel.header_overrides),
                     force_identity_encoding,
                     is_copilot,
-                    adapter_name,
+                    adapter_facts: &adapter_facts,
                     resolved_claude_api_format: resolved_claude_api_format.as_deref(),
                     codex_oauth_session_headers: &codex_oauth_session_headers,
                 })?;
@@ -1007,7 +1005,7 @@ impl RequestForwarder {
 
         self.request_source
             .log_upstream_request(ForwarderUpstreamRequestLogInput {
-                adapter_name,
+                adapter_facts: &adapter_facts,
                 url: &url,
                 body_model_label: &request_model,
                 filtered_body: &filtered_body,
@@ -1978,16 +1976,20 @@ mod tests {
 
     fn media_retry_should_trigger_for_test(
         fwd: &RequestForwarder,
-        adapter_name: &str,
+        adapter_name: &'static str,
         already_retried: bool,
         provider_body: &Value,
         error: &ProxyError,
     ) -> bool {
         let provider = provider_with_settings(json!({}));
+        let adapter_facts = ForwarderAdapterFacts {
+            adapter_name,
+            is_claude_adapter: adapter_name == "Claude",
+        };
         fwd.request_source
             .media_retry_plan(ForwarderMediaRetryPlanInput {
                 app: "claude",
-                adapter_name,
+                adapter_facts: &adapter_facts,
                 provider: &provider,
                 already_retried,
                 provider_body,

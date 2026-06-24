@@ -9041,7 +9041,7 @@ pub(crate) struct ForwarderPreparedRequest {
 }
 
 pub(crate) struct ForwarderUpstreamRequestLogInput<'a> {
-    pub(crate) adapter_name: &'a str,
+    pub(crate) adapter_facts: &'a ForwarderAdapterFacts,
     pub(crate) url: &'a str,
     pub(crate) body_model_label: &'a str,
     pub(crate) filtered_body: &'a Value,
@@ -9077,7 +9077,7 @@ pub(crate) struct ForwarderClaudeApiFormatInput<'a> {
     pub(crate) provider: &'a Provider,
     pub(crate) body: &'a Value,
     pub(crate) is_copilot: bool,
-    pub(crate) is_claude_adapter: bool,
+    pub(crate) adapter_facts: &'a ForwarderAdapterFacts,
 }
 
 pub(crate) struct ForwarderCopilotRequestOptimization {
@@ -9128,7 +9128,7 @@ pub(crate) struct ForwarderClaudeBodyPolicyInput<'a> {
     pub(crate) body: &'a mut Value,
     pub(crate) provider: &'a Provider,
     pub(crate) api_format: Option<&'a str>,
-    pub(crate) is_claude_adapter: bool,
+    pub(crate) adapter_facts: &'a ForwarderAdapterFacts,
     pub(crate) rectifier_enabled: bool,
     pub(crate) request_media_fallback: bool,
     pub(crate) request_media_heuristic: bool,
@@ -9164,7 +9164,7 @@ pub(crate) struct ForwarderTransformPlanInput<'a> {
     pub(crate) endpoint: &'a str,
     pub(crate) provider: &'a Provider,
     pub(crate) resolved_claude_api_format: Option<&'a str>,
-    pub(crate) is_claude_adapter: bool,
+    pub(crate) adapter_facts: &'a ForwarderAdapterFacts,
 }
 
 pub(crate) struct ForwarderTransformPlan {
@@ -9206,7 +9206,7 @@ pub(crate) struct ForwarderAppMediaPreventionInput<'a> {
 
 pub(crate) struct ForwarderMediaRetryPlanInput<'a> {
     pub(crate) app: &'a str,
-    pub(crate) adapter_name: &'a str,
+    pub(crate) adapter_facts: &'a ForwarderAdapterFacts,
     pub(crate) provider: &'a Provider,
     pub(crate) already_retried: bool,
     pub(crate) provider_body: &'a Value,
@@ -9258,7 +9258,7 @@ pub(crate) struct ForwarderRequestPartsInput<'a> {
     pub(crate) channel_header_overrides: Option<&'a Value>,
     pub(crate) force_identity_encoding: bool,
     pub(crate) is_copilot: bool,
-    pub(crate) adapter_name: &'a str,
+    pub(crate) adapter_facts: &'a ForwarderAdapterFacts,
     pub(crate) resolved_claude_api_format: Option<&'a str>,
     pub(crate) codex_oauth_session_headers: &'a [(http::HeaderName, http::HeaderValue)],
 }
@@ -9585,7 +9585,7 @@ impl ForwarderRequestSource for CcSwitchForwarderRequestSource {
         &self,
         input: ForwarderClaudeBodyPolicyInput<'_>,
     ) {
-        if !input.is_claude_adapter {
+        if !input.adapter_facts.is_claude_adapter {
             return;
         }
         let Some(api_format) = input.api_format else {
@@ -9641,6 +9641,7 @@ impl ForwarderRequestSource for CcSwitchForwarderRequestSource {
             input.endpoint,
         );
         let fallback_claude_api_format = input
+            .adapter_facts
             .is_claude_adapter
             .then(|| forwarder_claude_api_format(input.provider));
         let claude_api_format = input
@@ -9653,10 +9654,11 @@ impl ForwarderRequestSource for CcSwitchForwarderRequestSource {
 
         ForwarderTransformPlan {
             needs_transform,
-            use_claude_transform: needs_transform && input.is_claude_adapter,
-            use_provider_transform: needs_transform && !input.is_claude_adapter,
+            use_claude_transform: needs_transform && input.adapter_facts.is_claude_adapter,
+            use_provider_transform: needs_transform && !input.adapter_facts.is_claude_adapter,
             claude_api_format_for_url: claude_api_format.map(str::to_string),
             claude_api_format_for_transform: input
+                .adapter_facts
                 .is_claude_adapter
                 .then(|| claude_api_format.unwrap_or("anthropic").to_string()),
             codex_responses_to_chat,
@@ -9749,7 +9751,7 @@ impl ForwarderRequestSource for CcSwitchForwarderRequestSource {
                     input.provider,
                     input.body,
                     input.is_copilot,
-                    input.is_claude_adapter,
+                    input.adapter_facts.is_claude_adapter,
                 )
                 .await
         })
@@ -9774,7 +9776,7 @@ impl ForwarderRequestSource for CcSwitchForwarderRequestSource {
         input: ForwarderMediaRetryPlanInput<'_>,
     ) -> Option<ForwarderMediaRetryPlan> {
         if !should_check_media_retry(
-            input.adapter_name,
+            input.adapter_facts.adapter_name,
             input.rectifier_enabled,
             input.request_media_fallback,
             input.already_retried,
@@ -9790,7 +9792,7 @@ impl ForwarderRequestSource for CcSwitchForwarderRequestSource {
         };
 
         if !should_trigger_media_retry(MediaRetryInput {
-            adapter_name: input.adapter_name,
+            adapter_name: input.adapter_facts.adapter_name,
             rectifier_enabled: input.rectifier_enabled,
             request_media_fallback: input.request_media_fallback,
             already_retried: input.already_retried,
@@ -9947,7 +9949,7 @@ impl ForwarderRequestSource for CcSwitchForwarderRequestSource {
     }
 
     fn log_upstream_request(&self, input: ForwarderUpstreamRequestLogInput<'_>) {
-        let tag = input.adapter_name;
+        let tag = input.adapter_facts.adapter_name;
         let url = input.url;
         let request_model = input.body_model_label;
 
@@ -9969,7 +9971,7 @@ impl ForwarderRequestSource for CcSwitchForwarderRequestSource {
     ) -> Result<ForwarderUpstreamRequestParts, ProxyError> {
         let upstream_host = upstream_host_header_from_url(input.url);
         let should_send_anthropic_headers = should_send_anthropic_request_headers(
-            input.adapter_name,
+            input.adapter_facts.adapter_name,
             input.resolved_claude_api_format,
         );
         let anthropic_beta_value = if should_send_anthropic_headers {
@@ -10007,7 +10009,7 @@ impl ForwarderRequestSource for CcSwitchForwarderRequestSource {
             .map_err(|error| ProxyError::AuthError(error.to_string()))?;
 
         let preserve_exact_header_case = should_preserve_exact_request_header_case(
-            input.adapter_name,
+            input.adapter_facts.adapter_name,
             forwarder_is_codex_oauth_provider(input.provider),
             input.is_copilot,
             input.resolved_claude_api_format,
@@ -15552,6 +15554,12 @@ base_url = "https://api.openai.com/v1"
         let source = default_forwarder_request_source();
         let codex_adapter = forwarder_provider_adapter_for_app(&AppType::Codex);
         let claude_adapter = forwarder_provider_adapter_for_app(&AppType::Claude);
+        let codex_adapter_facts = source.adapter_facts(ForwarderAdapterFactsInput {
+            adapter: codex_adapter.as_ref(),
+        });
+        let claude_adapter_facts = source.adapter_facts(ForwarderAdapterFactsInput {
+            adapter: claude_adapter.as_ref(),
+        });
         let provider = Provider::with_id(
             "codex-chat".to_string(),
             "Codex Chat".to_string(),
@@ -15575,7 +15583,7 @@ base_url = "https://api.openai.com/v1"
                     endpoint: "/responses",
                     provider: &provider,
                     resolved_claude_api_format: None,
-                    is_claude_adapter: false,
+                    adapter_facts: &codex_adapter_facts,
                 })
                 .codex_responses_to_chat
         );
@@ -15587,7 +15595,7 @@ base_url = "https://api.openai.com/v1"
                     endpoint: "/responses",
                     provider: &provider,
                     resolved_claude_api_format: None,
-                    is_claude_adapter: true,
+                    adapter_facts: &claude_adapter_facts,
                 })
                 .codex_responses_to_chat
         );
@@ -15599,7 +15607,7 @@ base_url = "https://api.openai.com/v1"
                     endpoint: "/chat/completions",
                     provider: &provider,
                     resolved_claude_api_format: None,
-                    is_claude_adapter: false,
+                    adapter_facts: &codex_adapter_facts,
                 })
                 .codex_responses_to_chat
         );
@@ -15738,6 +15746,12 @@ base_url = "https://api.openai.com/v1"
         let source = default_forwarder_request_source();
         let claude_adapter = forwarder_provider_adapter_for_app(&AppType::Claude);
         let codex_adapter = forwarder_provider_adapter_for_app(&AppType::Codex);
+        let claude_adapter_facts = source.adapter_facts(ForwarderAdapterFactsInput {
+            adapter: claude_adapter.as_ref(),
+        });
+        let codex_adapter_facts = source.adapter_facts(ForwarderAdapterFactsInput {
+            adapter: codex_adapter.as_ref(),
+        });
         let mut claude_provider = Provider::with_id(
             "claude-provider".to_string(),
             "Claude Provider".to_string(),
@@ -15755,7 +15769,7 @@ base_url = "https://api.openai.com/v1"
             endpoint: "/v1/messages",
             provider: &claude_provider,
             resolved_claude_api_format: Some("gemini_native"),
-            is_claude_adapter: true,
+            adapter_facts: &claude_adapter_facts,
         });
         assert!(resolved_plan.needs_transform);
         assert!(resolved_plan.use_claude_transform);
@@ -15776,7 +15790,7 @@ base_url = "https://api.openai.com/v1"
             endpoint: "/v1/messages",
             provider: &claude_provider,
             resolved_claude_api_format: None,
-            is_claude_adapter: true,
+            adapter_facts: &claude_adapter_facts,
         });
         assert!(fallback_plan.needs_transform);
         assert!(fallback_plan.use_claude_transform);
@@ -15797,7 +15811,7 @@ base_url = "https://api.openai.com/v1"
             endpoint: "/v1/chat/completions",
             provider: &claude_provider,
             resolved_claude_api_format: None,
-            is_claude_adapter: false,
+            adapter_facts: &codex_adapter_facts,
         });
         assert!(!codex_plan.needs_transform);
         assert!(!codex_plan.use_claude_transform);
@@ -16073,12 +16087,20 @@ base_url = "https://api.openai.com/v1"
             "output_config": { "effort": "max" },
             "messages": [{ "role": "user", "content": "hello" }]
         });
+        let claude_adapter_facts = ForwarderAdapterFacts {
+            adapter_name: "Claude",
+            is_claude_adapter: true,
+        };
+        let codex_adapter_facts = ForwarderAdapterFacts {
+            adapter_name: "Codex",
+            is_claude_adapter: false,
+        };
 
         source.apply_claude_body_policies(ForwarderClaudeBodyPolicyInput {
             body: &mut body,
             provider: &provider,
             api_format: Some("anthropic"),
-            is_claude_adapter: true,
+            adapter_facts: &claude_adapter_facts,
             rectifier_enabled: true,
             request_media_fallback: false,
             request_media_heuristic: false,
@@ -16095,7 +16117,7 @@ base_url = "https://api.openai.com/v1"
             body: &mut skipped_body,
             provider: &provider,
             api_format: Some("anthropic"),
-            is_claude_adapter: false,
+            adapter_facts: &codex_adapter_facts,
             rectifier_enabled: true,
             request_media_fallback: false,
             request_media_heuristic: false,
