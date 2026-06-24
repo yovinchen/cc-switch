@@ -229,6 +229,32 @@ where
     resolved_copilot_dynamic_base_url(current_base_url, &dynamic_endpoint, is_copilot, is_full_url)
 }
 
+pub async fn resolve_copilot_dynamic_base_url_for_binding_with_runtime_source<S>(
+    runtime_source: &S,
+    binding: Option<ManagedAccountBindingInput<'_>>,
+    legacy_github_copilot_account_id: Option<&str>,
+    current_base_url: &str,
+    is_copilot: bool,
+    is_full_url: bool,
+) -> Option<String>
+where
+    S: ManagedAccountRuntimeSource + ?Sized,
+{
+    let account_id = managed_account_id_for_auth_provider(
+        GITHUB_COPILOT_AUTH_PROVIDER,
+        binding,
+        legacy_github_copilot_account_id,
+    );
+    resolve_copilot_dynamic_base_url_with_runtime_source(
+        runtime_source,
+        account_id.as_deref(),
+        current_base_url,
+        is_copilot,
+        is_full_url,
+    )
+    .await
+}
+
 pub async fn resolve_copilot_live_model_with_runtime_source<S>(
     runtime_source: &S,
     account_id: Option<&str>,
@@ -247,6 +273,24 @@ where
     ))
 }
 
+pub async fn resolve_copilot_live_model_for_binding_with_runtime_source<S>(
+    runtime_source: &S,
+    binding: Option<ManagedAccountBindingInput<'_>>,
+    legacy_github_copilot_account_id: Option<&str>,
+    model_id: &str,
+) -> Result<Option<String>, String>
+where
+    S: ManagedAccountRuntimeSource + ?Sized,
+{
+    let account_id = managed_account_id_for_auth_provider(
+        GITHUB_COPILOT_AUTH_PROVIDER,
+        binding,
+        legacy_github_copilot_account_id,
+    );
+    resolve_copilot_live_model_with_runtime_source(runtime_source, account_id.as_deref(), model_id)
+        .await
+}
+
 pub async fn resolve_copilot_model_vendor_with_runtime_source<S>(
     runtime_source: &S,
     account_id: Option<&str>,
@@ -263,6 +307,30 @@ where
     runtime_source
         .resolve_copilot_model_vendor(account_id, model_id)
         .await
+}
+
+pub async fn resolve_copilot_model_vendor_for_binding_with_runtime_source<S>(
+    runtime_source: &S,
+    binding: Option<ManagedAccountBindingInput<'_>>,
+    legacy_github_copilot_account_id: Option<&str>,
+    model_id: &str,
+    is_copilot: bool,
+) -> Option<String>
+where
+    S: ManagedAccountRuntimeSource + ?Sized,
+{
+    let account_id = managed_account_id_for_auth_provider(
+        GITHUB_COPILOT_AUTH_PROVIDER,
+        binding,
+        legacy_github_copilot_account_id,
+    );
+    resolve_copilot_model_vendor_with_runtime_source(
+        runtime_source,
+        account_id.as_deref(),
+        model_id,
+        is_copilot,
+    )
+    .await
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Error)]
@@ -329,8 +397,12 @@ pub fn headers_contain_proxy_auth_placeholder(headers: &HeaderMap) -> bool {
 mod tests {
     use super::{
         headers_contain_proxy_auth_placeholder, is_managed_account_upstream_url,
-        managed_account_auth_plan, resolve_copilot_dynamic_base_url_with_runtime_source,
+        managed_account_auth_plan,
+        resolve_copilot_dynamic_base_url_for_binding_with_runtime_source,
+        resolve_copilot_dynamic_base_url_with_runtime_source,
+        resolve_copilot_live_model_for_binding_with_runtime_source,
         resolve_copilot_live_model_with_runtime_source,
+        resolve_copilot_model_vendor_for_binding_with_runtime_source,
         resolve_copilot_model_vendor_with_runtime_source,
         resolve_managed_account_auth_for_binding_with_runtime_source,
         resolve_managed_account_auth_with_runtime_source, validate_managed_account_upstream_auth,
@@ -807,6 +879,60 @@ mod tests {
             false,
         ));
         assert_eq!(skipped, None);
+    }
+
+    #[test]
+    fn managed_account_runtime_source_resolves_copilot_facts_from_binding_input() {
+        let source = StaticCopilotRuntimeSource {
+            endpoint: Some("https://api.enterprise.githubcopilot.com".to_string()),
+            models: Some(vec![CopilotModel {
+                id: "claude-sonnet-4.6".to_string(),
+                name: "Claude Sonnet 4.6".to_string(),
+                vendor: "Anthropic".to_string(),
+                model_picker_enabled: true,
+            }]),
+            vendor: Some("Anthropic".to_string()),
+        };
+        let binding = Some(ManagedAccountBindingInput {
+            source: ManagedAccountBindingSource::ManagedAccount,
+            auth_provider: Some(GITHUB_COPILOT_AUTH_PROVIDER),
+            account_id: Some("copilot-account"),
+        });
+
+        let base_url = block_on(
+            resolve_copilot_dynamic_base_url_for_binding_with_runtime_source(
+                &source,
+                binding,
+                Some("legacy-account"),
+                "https://api.githubcopilot.com",
+                true,
+                false,
+            ),
+        );
+        assert_eq!(
+            base_url.as_deref(),
+            Some("https://api.enterprise.githubcopilot.com")
+        );
+
+        let model = block_on(resolve_copilot_live_model_for_binding_with_runtime_source(
+            &source,
+            binding,
+            Some("legacy-account"),
+            "claude-sonnet-4-6",
+        ))
+        .expect("live model source");
+        assert_eq!(model.as_deref(), Some("claude-sonnet-4.6"));
+
+        let vendor = block_on(
+            resolve_copilot_model_vendor_for_binding_with_runtime_source(
+                &source,
+                binding,
+                Some("legacy-account"),
+                "claude-sonnet-4",
+                true,
+            ),
+        );
+        assert_eq!(vendor.as_deref(), Some("Anthropic"));
     }
 
     #[test]

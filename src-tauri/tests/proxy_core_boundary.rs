@@ -5699,6 +5699,12 @@ fn production_forwarder_delegates_copilot_dynamic_base_url_to_runtime_source() {
         adapter_source.contains("apply_copilot_dynamic_base_url_for_provider"),
         "ManagedAccountRuntimeSource must expose provider-aware Copilot dynamic base URL mutation"
     );
+    assert!(
+        adapter_source.contains(
+            "resolve_core_copilot_dynamic_base_url_for_binding_with_runtime_source("
+        ),
+        "ManagedAccountRuntimeSource must delegate Copilot dynamic endpoint account binding to proxy-core"
+    );
 
     let impl_slice = function_slice(&forwarder_source, "impl RequestForwarder", "#[cfg(test)]");
     let forbidden_markers = [
@@ -5743,7 +5749,7 @@ fn production_forwarder_delegates_claude_api_format_to_runtime_source() {
         "ManagedAccountRuntimeSource must expose adapter-gated Claude API format resolution"
     );
     assert!(
-        adapter_source.contains("resolve_core_copilot_model_vendor_with_runtime_source("),
+        adapter_source.contains("resolve_core_copilot_model_vendor_for_binding_with_runtime_source("),
         "ManagedAccountRuntimeSource must delegate Copilot model vendor runtime gating to proxy-core"
     );
 
@@ -5914,6 +5920,10 @@ fn production_forwarder_delegates_copilot_live_model_resolution_to_runtime_sourc
     assert!(
         adapter_source.contains("apply_copilot_live_model_for_adapter"),
         "ManagedAccountRuntimeSource must expose adapter-gated Copilot live model body resolution"
+    );
+    assert!(
+        adapter_source.contains("resolve_core_copilot_live_model_for_binding_with_runtime_source("),
+        "ManagedAccountRuntimeSource must delegate Copilot live model account binding to proxy-core"
     );
 
     let impl_slice = function_slice(&forwarder_source, "impl RequestForwarder", "#[cfg(test)]");
