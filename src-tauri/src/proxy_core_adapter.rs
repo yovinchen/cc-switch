@@ -2983,6 +2983,8 @@ pub(crate) use crate::proxy_core::api::auth::{
 };
 pub(crate) use crate::proxy_core::api::auth::{
     managed_account_id_for_auth_provider as core_managed_account_id_for_auth_provider,
+    provider_kind_is_codex_oauth as core_provider_kind_is_codex_oauth,
+    provider_kind_is_github_copilot as core_provider_kind_is_github_copilot,
     provider_kind_uses_managed_account_auth as core_provider_kind_uses_managed_account_auth,
     resolve_copilot_dynamic_base_url_for_binding_with_runtime_source as resolve_core_copilot_dynamic_base_url_for_binding_with_runtime_source,
     resolve_copilot_live_model_for_binding_with_runtime_source as resolve_core_copilot_live_model_for_binding_with_runtime_source,
@@ -11656,7 +11658,8 @@ pub(crate) fn provider_kind_from_provider(provider: &Provider) -> Option<Provide
 }
 
 pub(crate) fn provider_is_codex_oauth(provider: &Provider) -> bool {
-    provider_kind_from_provider(provider) == Some(ProviderKind::CodexOAuth)
+    let provider_kind = provider_kind_from_provider(provider);
+    core_provider_kind_is_codex_oauth(provider_kind.as_ref())
 }
 
 pub(crate) fn forwarder_is_codex_oauth_provider(provider: &Provider) -> bool {
@@ -11664,13 +11667,14 @@ pub(crate) fn forwarder_is_codex_oauth_provider(provider: &Provider) -> bool {
 }
 
 pub(crate) fn provider_is_github_copilot(provider: &Provider) -> bool {
-    provider_kind_from_provider(provider) == Some(ProviderKind::GitHubCopilot)
-        || provider
+    let provider_kind = provider_kind_from_provider(provider);
+    core_provider_kind_is_github_copilot(
+        provider_kind.as_ref(),
+        provider
             .settings_config
             .pointer("/env/ANTHROPIC_BASE_URL")
-            .and_then(Value::as_str)
-            .map(|base_url| base_url.contains("githubcopilot.com"))
-            .unwrap_or(false)
+            .and_then(Value::as_str),
+    )
 }
 
 pub(crate) fn provider_uses_managed_account_auth(provider: &Provider) -> bool {

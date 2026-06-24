@@ -103,15 +103,25 @@ pub fn provider_kind_uses_managed_account_auth(
     provider_kind: Option<&ProviderKind>,
     anthropic_base_url: Option<&str>,
 ) -> bool {
-    matches!(
-        provider_kind,
-        Some(ProviderKind::GitHubCopilot | ProviderKind::CodexOAuth)
-    ) || anthropic_base_url
-        .map(|base_url| {
-            base_url.contains("githubcopilot.com")
-                || base_url.contains("chatgpt.com/backend-api/codex")
-        })
-        .unwrap_or(false)
+    provider_kind_is_github_copilot(provider_kind, anthropic_base_url)
+        || provider_kind_is_codex_oauth(provider_kind)
+        || anthropic_base_url
+            .map(|base_url| base_url.contains("chatgpt.com/backend-api/codex"))
+            .unwrap_or(false)
+}
+
+pub fn provider_kind_is_github_copilot(
+    provider_kind: Option<&ProviderKind>,
+    anthropic_base_url: Option<&str>,
+) -> bool {
+    matches!(provider_kind, Some(ProviderKind::GitHubCopilot))
+        || anthropic_base_url
+            .map(|base_url| base_url.contains("githubcopilot.com"))
+            .unwrap_or(false)
+}
+
+pub fn provider_kind_is_codex_oauth(provider_kind: Option<&ProviderKind>) -> bool {
+    matches!(provider_kind, Some(ProviderKind::CodexOAuth))
 }
 
 impl ManagedAccountAuthPlan {
@@ -413,7 +423,8 @@ pub fn headers_contain_proxy_auth_placeholder(headers: &HeaderMap) -> bool {
 mod tests {
     use super::{
         headers_contain_proxy_auth_placeholder, is_managed_account_upstream_url,
-        managed_account_auth_plan, provider_kind_uses_managed_account_auth,
+        managed_account_auth_plan, provider_kind_is_codex_oauth, provider_kind_is_github_copilot,
+        provider_kind_uses_managed_account_auth,
         resolve_copilot_dynamic_base_url_for_binding_with_runtime_source,
         resolve_copilot_dynamic_base_url_with_runtime_source,
         resolve_copilot_live_model_for_binding_with_runtime_source,
@@ -733,6 +744,30 @@ mod tests {
             Some(&ProviderKind::Claude),
             Some("https://api.anthropic.com"),
         ));
+    }
+
+    #[test]
+    fn provider_kind_runtime_classification_matches_meta_and_base_url_facts() {
+        assert!(provider_kind_is_github_copilot(
+            Some(&ProviderKind::GitHubCopilot),
+            None,
+        ));
+        assert!(provider_kind_is_github_copilot(
+            Some(&ProviderKind::Claude),
+            Some("https://api.githubcopilot.com"),
+        ));
+        assert!(!provider_kind_is_github_copilot(
+            Some(&ProviderKind::CodexOAuth),
+            Some("https://chatgpt.com/backend-api/codex"),
+        ));
+
+        assert!(provider_kind_is_codex_oauth(Some(
+            &ProviderKind::CodexOAuth
+        )));
+        assert!(!provider_kind_is_codex_oauth(Some(
+            &ProviderKind::GitHubCopilot
+        )));
+        assert!(!provider_kind_is_codex_oauth(None));
     }
 
     #[test]
