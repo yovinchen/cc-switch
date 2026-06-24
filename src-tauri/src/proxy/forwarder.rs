@@ -439,12 +439,11 @@ impl RequestForwarder {
 
             // 上限检查：尊重用户在 AppProxyConfig.max_retries 上配置的「重试次数」。
             // 放在熔断器 allow 检查之前，避免在已经超限时还占用 HalfOpen 探测名额。
-            if attempted_providers >= self.max_attempts {
-                log::warn!(
-                    "[{app_type_str}] 已达最大尝试次数上限 ({}/{}), 停止故障转移",
-                    attempted_providers,
-                    self.max_attempts
-                );
+            if let Some(limit) = self
+                .attempt_runtime_source
+                .attempt_limit_reached(attempted_providers, self.max_attempts)
+            {
+                log::warn!("[{app_type_str}] {}", limit.message);
                 break;
             }
 

@@ -8431,7 +8431,28 @@ pub(crate) fn forwarder_protocol_state_source_from_runtime_parts(
 pub(crate) type ForwarderAttemptRuntimeSourceRef =
     Arc<dyn ForwarderAttemptRuntimeSource + Send + Sync>;
 
+pub(crate) struct ForwarderAttemptLimitReached {
+    pub(crate) message: String,
+}
+
+pub(crate) fn forwarder_attempt_limit_reached(
+    attempted_providers: usize,
+    max_attempts: usize,
+) -> Option<ForwarderAttemptLimitReached> {
+    (attempted_providers >= max_attempts).then(|| ForwarderAttemptLimitReached {
+        message: format!(
+            "已达最大尝试次数上限 ({attempted_providers}/{max_attempts}), 停止故障转移"
+        ),
+    })
+}
+
 pub(crate) trait ForwarderAttemptRuntimeSource {
+    fn attempt_limit_reached(
+        &self,
+        attempted_providers: usize,
+        max_attempts: usize,
+    ) -> Option<ForwarderAttemptLimitReached>;
+
     fn allow<'a>(
         &'a self,
         attempt: &'a ForwardAttempt,
@@ -8473,6 +8494,14 @@ impl CcSwitchForwarderAttemptRuntimeSource {
 }
 
 impl ForwarderAttemptRuntimeSource for CcSwitchForwarderAttemptRuntimeSource {
+    fn attempt_limit_reached(
+        &self,
+        attempted_providers: usize,
+        max_attempts: usize,
+    ) -> Option<ForwarderAttemptLimitReached> {
+        forwarder_attempt_limit_reached(attempted_providers, max_attempts)
+    }
+
     fn allow<'a>(
         &'a self,
         attempt: &'a ForwardAttempt,
@@ -15872,6 +15901,17 @@ base_url = "https://api.openai.com/v1"
                 provider: &default_claude_provider,
             },
         ));
+    }
+
+    #[test]
+    fn forwarder_attempt_runtime_source_projects_attempt_limit() {
+        assert!(forwarder_attempt_limit_reached(0, 1).is_none());
+        let limit = forwarder_attempt_limit_reached(1, 1)
+            .expect("attempt count at max should stop");
+        assert_eq!(
+            limit.message,
+            "已达最大尝试次数上限 (1/1), 停止故障转移"
+        );
     }
 
     #[test]
