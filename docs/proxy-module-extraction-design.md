@@ -186,9 +186,6 @@
 175. 测试专用 `proxy::copilot_optimizer` wrapper 已删除；Copilot optimizer 分类、ID、tool_result merge/sanitize 与 thinking strip 行为只在 `proxy-core::request_optimizer` 维护并测试，host forwarder 保留配置 gating 和日志。
 176. Chat/Responses/Codex transform 对 reasoning model 判定、reasoning effort 解析和 billing header strip 的调用已改为直接引用 `proxy-core::request_body`，`transform` 模块不再作为这些 core helper 的二次 re-export 面。
 177. Forwarder 对媒体降级日志中的 unsupported image marker 已直接引用 `proxy-core::request_media`，`media_sanitizer` 不再作为该 core 常量的二次 re-export 面。
-178. Forwarder 的转换后请求体选择（Codex Responses→Chat、Claude protocol transform body、provider transform、passthrough）和映射后初始 outbound model 归因已收敛到 `ForwarderRequestSource::transform_request_body`；host forwarder 只保留 Codex history enrichment 与 Claude session/shadow 状态调用。
-179. Codex Chat history enrichment 的启用 gate 已收敛到 `ForwarderProtocolStateSource::enrich_codex_chat_request` 输入；host forwarder 不再本地包裹 `codex_responses_to_chat` 条件，只传入状态源需要的 enabled 事实和可变 body。
-180. 上游响应的 success/error 判定、成功响应 first-byte/body-read 准备和非成功响应 `ProxyError::UpstreamError` 投影已收敛到 `ForwarderResponseSource::finalize_upstream_response`；host forwarder 不再直接读取 `response.status().is_success()`。
 178. `proxy::session` 与 `proxy::usage` 上剩余的 core 类型 re-export 已删除；response handler、session adapter 和 usage 调用方直接引用 `proxy-core` 类型。
 179. Thinking budget/signature rectifier host wrapper 的 result/snapshot 类型别名已删除；wrapper 返回 core result 类型，只保留 `RectifierConfig` 到 core config 的投影。
 180. Claude takeover service 对 `[1M]` 模型后缀的字符串剥离已直接引用 `proxy-core::model_mapping`；host `model_mapper` facade 已删除，不再为该纯字符串 helper 提供二次出口。
@@ -418,6 +415,10 @@
 404. `proxy::session::ProxySession` 未使用 host 会话类型和重复解析测试已删除；session metadata、ClientFormat 和 session-id 解析规则由 `proxy-core::session` 维护，host `proxy::session` 仅保留 UUID 生成器注入适配。
 405. 模型目录 HTTP transport 已从 `proxy::model_fetch_transport` 移到 `services::model_fetch_transport`；`proxy-core` 继续负责 OpenAI-compatible/Codex OAuth catalog 的请求计划和响应解析，host reqwest 执行层不再扩大代理转发模块表面积。
 406. `providers::models::{anthropic, openai}` 未使用 DTO 模块已删除；Anthropic/OpenAI/Codex/Gemini 协议 request/response shape 继续由 `proxy-core` 的转换与端口类型维护，host provider 层不再保留死的协议模型副本。
+407. Forwarder 的转换后请求体选择（Codex Responses→Chat、Claude protocol transform body、provider transform、passthrough）和映射后初始 outbound model 归因已收敛到 `ForwarderRequestSource::transform_request_body`；host forwarder 只保留 Codex history enrichment 与 Claude session/shadow 状态调用。
+408. Codex Chat history enrichment 的启用 gate 已收敛到 `ForwarderProtocolStateSource::enrich_codex_chat_request` 输入；host forwarder 不再本地包裹 `codex_responses_to_chat` 条件，只传入状态源需要的 enabled 事实和可变 body。
+409. 上游响应的 success/error 判定、成功响应 first-byte/body-read 准备和非成功响应 `ProxyError::UpstreamError` 投影已收敛到 `ForwarderResponseSource::finalize_upstream_response`；host forwarder 不再直接读取 `response.status().is_success()`。
+410. 出站 body 定稿后的最终 outbound model 归因已收敛到 `ForwarderRequestSource::prepare_upstream_body` 输出；host forwarder 不再本地执行 prepared body model 覆盖初始 mapped model 的回退链。
 407. `proxy::types::ApiFormat` 未使用预留枚举已删除；Claude/OpenAI/Gemini format 判断统一沿用 `proxy-core` 的 provider kind、client format 和 response transform contract。
 408. `LogConfig` 已从 `proxy::types` 移到 `settings::LogConfig`；日志设置不再扩大代理运行态类型模块，proxy host types 只保留代理状态/备份等运行态数据。
 409. `RectifierConfig` 的默认值、serde 和 core 检测投影测试已从 host `proxy::types` 迁入 `proxy-core::ports`；host proxy types 不再承担 core 配置契约测试。
