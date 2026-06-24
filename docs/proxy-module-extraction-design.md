@@ -439,6 +439,7 @@
 428. attempt started/succeeded/failed phase 选择已收敛到 `ForwarderRuntimeStateSource::{emit_attempt_started,emit_attempt_succeeded,emit_attempt_failed}`；host forwarder 不再导入/传递 `AttemptEventPhase`，只触发语义化事件方法。
 429. request-started、attempt 事件和 active route target 的 host forwarder 薄 wrapper 已删除；`RequestForwarder` 直接调用 `ForwarderRuntimeStateSource` 语义方法，channel route target 状态写入与 `route_selected` 事件回归测试下移到 source 层。
 430. request-started runtime status 的 timestamp 生成已收敛到 `ForwarderRuntimeStateSource::record_request_started_now()`；host forwarder 不再直接调用 `chrono::Utc` 或传递中间时间字符串。
+431. request lifecycle id 生成已收敛到 `ForwarderRuntimeStateSource::next_request_id()`；host forwarder 不再直接调用 `uuid::Uuid::new_v4()`，只消费 runtime source 提供的 request id。
 407. `proxy::types::ApiFormat` 未使用预留枚举已删除；Claude/OpenAI/Gemini format 判断统一沿用 `proxy-core` 的 provider kind、client format 和 response transform contract。
 408. `LogConfig` 已从 `proxy::types` 移到 `settings::LogConfig`；日志设置不再扩大代理运行态类型模块，proxy host types 只保留代理状态/备份等运行态数据。
 409. `RectifierConfig` 的默认值、serde 和 core 检测投影测试已从 host `proxy::types` 迁入 `proxy-core::ports`；host proxy types 不再承担 core 配置契约测试。
