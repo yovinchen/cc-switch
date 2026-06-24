@@ -437,6 +437,7 @@ mod tests {
         CcSwitchProxyRuntime {
             db: db.clone(),
             provider_router: provider_router.clone(),
+            events: events.clone(),
             attempt_runtime_source:
                 crate::proxy_core_adapter::forwarder_attempt_runtime_source_from_router(
                     provider_router,

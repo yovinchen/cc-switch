@@ -66,6 +66,7 @@ pub(crate) const COPILOT_INTEGRATION_ID: &str = "vscode-chat";
 pub(crate) struct CcSwitchProxyRuntime {
     pub(crate) db: Arc<Database>,
     pub(crate) provider_router: Arc<ProviderRouter>,
+    pub(crate) events: Arc<ProxyEventBus>,
     pub(crate) attempt_runtime_source: ForwarderAttemptRuntimeSourceRef,
     pub(crate) protocol_state_source: ForwarderProtocolStateSourceRef,
     pub(crate) runtime_state_source: ForwarderRuntimeStateSourceRef,
@@ -505,6 +506,7 @@ pub(crate) fn proxy_state_from_runtime_sources(
         Arc::new(CcSwitchProxyServices::with_runtime(CcSwitchProxyRuntime {
             db: db.clone(),
             provider_router: provider_router.clone(),
+            events: events.clone(),
             attempt_runtime_source,
             protocol_state_source,
             runtime_state_source,
@@ -8180,6 +8182,7 @@ pub(crate) trait ForwarderRuntimeStateSource {
     #[cfg(test)]
     fn status(&self) -> Arc<RwLock<ProxyRuntimeStatus>>;
     fn current_providers(&self) -> Arc<RwLock<HashMap<String, CurrentRouteTarget>>>;
+    #[cfg(test)]
     fn events(&self) -> Arc<ProxyEventBus>;
     fn next_request_id(&self) -> String;
     fn emit_request_started(&self, request_id: &str, app_type: &str);
@@ -8283,6 +8286,7 @@ impl ForwarderRuntimeStateSource for CcSwitchForwarderRuntimeStateSource {
         self.current_providers.clone()
     }
 
+    #[cfg(test)]
     fn events(&self) -> Arc<ProxyEventBus> {
         self.events.clone()
     }
@@ -10776,7 +10780,7 @@ impl ProxyServiceRuntimeResources for CcSwitchProxyRuntime {
     }
 
     fn events(&self) -> Arc<ProxyEventBus> {
-        self.runtime_state_source.events()
+        self.events.clone()
     }
 }
 
