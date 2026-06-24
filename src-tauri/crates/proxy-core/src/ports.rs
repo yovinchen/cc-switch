@@ -1043,6 +1043,14 @@ pub fn proxy_config_with_ephemeral_listen_port(
     Some(resolved_config)
 }
 
+pub fn proxy_config_preserving_live_takeover_active(
+    previous: &ProxyConfig,
+    mut next: ProxyConfig,
+) -> ProxyConfig {
+    next.live_takeover_active = previous.live_takeover_active;
+    next
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ProxyServerInfo {
     pub address: String,
@@ -3119,6 +3127,7 @@ mod tests {
         channel_health_update_from_input,
         channel_model_record_from_input, channel_reachability_result_from_stream_check_result,
         channel_route_source_for_materialized_count,
+        proxy_config_preserving_live_takeover_active,
         proxy_app_config_from_parts, proxy_config_with_ephemeral_listen_port,
         proxy_global_config_from_global_config,
         proxy_runtime_config_from_proxy_config,
@@ -4282,6 +4291,25 @@ mod tests {
 
         config.listen_port = 15721;
         assert!(proxy_config_with_ephemeral_listen_port(&config, 18200).is_none());
+    }
+
+    #[test]
+    fn proxy_config_preserving_live_takeover_active_carries_legacy_flag_forward() {
+        let previous = ProxyConfig {
+            live_takeover_active: true,
+            listen_port: 15721,
+            ..ProxyConfig::default()
+        };
+        let next = ProxyConfig {
+            live_takeover_active: false,
+            listen_port: 18080,
+            ..ProxyConfig::default()
+        };
+
+        let merged = proxy_config_preserving_live_takeover_active(&previous, next);
+
+        assert!(merged.live_takeover_active);
+        assert_eq!(merged.listen_port, 18080);
     }
 
     #[test]
