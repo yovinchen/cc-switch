@@ -9230,8 +9230,6 @@ pub(crate) trait ForwarderRequestSource {
         input: ForwarderProviderRequestBodyInput<'_>,
     ) -> Result<Value, ProxyError>;
 
-    fn request_body_model(&self, body: &Value) -> Option<String>;
-
     fn apply_claude_body_policies(
         &self,
         input: ForwarderClaudeBodyPolicyInput<'_>,
@@ -9335,6 +9333,13 @@ impl CcSwitchForwarderRequestSource {
         Self {
             managed_account_runtime_source,
         }
+    }
+
+    fn request_body_model(&self, body: &Value) -> Option<String> {
+        body.get("model")
+            .and_then(Value::as_str)
+            .filter(|model| !model.is_empty())
+            .map(str::to_string)
     }
 }
 
@@ -9443,13 +9448,6 @@ impl ForwarderRequestSource for CcSwitchForwarderRequestSource {
         }
 
         Ok(body)
-    }
-
-    fn request_body_model(&self, body: &Value) -> Option<String> {
-        body.get("model")
-            .and_then(Value::as_str)
-            .filter(|model| !model.is_empty())
-            .map(str::to_string)
     }
 
     fn apply_claude_body_policies(
@@ -15953,7 +15951,7 @@ base_url = "https://api.openai.com/v1"
 
     #[test]
     fn forwarder_request_source_projects_request_body_model() {
-        let source = default_forwarder_request_source();
+        let source = CcSwitchForwarderRequestSource::new(default_managed_account_runtime_source());
 
         assert_eq!(
             source
