@@ -2983,6 +2983,7 @@ pub(crate) use crate::proxy_core::api::auth::{
 };
 pub(crate) use crate::proxy_core::api::auth::{
     managed_account_id_for_auth_provider as core_managed_account_id_for_auth_provider,
+    managed_provider_auth_info_for_provider_kind as core_managed_provider_auth_info_for_provider_kind,
     provider_kind_is_codex_oauth as core_provider_kind_is_codex_oauth,
     provider_kind_is_github_copilot as core_provider_kind_is_github_copilot,
     provider_kind_uses_managed_account_auth as core_provider_kind_uses_managed_account_auth,
@@ -5283,18 +5284,8 @@ fn claude_gemini_cli_auth_info(provider: &Provider, key: String) -> ProviderAuth
 pub(crate) fn provider_claude_auth_info(provider: &Provider) -> Option<ProviderAuthInfo> {
     let provider_type = provider_claude_kind(provider);
 
-    if provider_type == ProviderKind::GitHubCopilot {
-        return Some(ProviderAuthInfo::new(
-            "copilot_placeholder".to_string(),
-            ProviderAuthStrategy::GitHubCopilot,
-        ));
-    }
-
-    if provider_type == ProviderKind::CodexOAuth {
-        return Some(ProviderAuthInfo::new(
-            "codex_oauth_placeholder".to_string(),
-            ProviderAuthStrategy::CodexOAuth,
-        ));
+    if let Some(auth) = core_managed_provider_auth_info_for_provider_kind(&provider_type) {
+        return Some(auth);
     }
 
     let auth_key = provider_claude_auth_key(provider);

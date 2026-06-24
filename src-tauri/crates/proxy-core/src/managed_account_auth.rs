@@ -10,6 +10,8 @@ use crate::request_url::resolved_copilot_dynamic_base_url;
 pub const PROXY_AUTH_PLACEHOLDER: &str = "PROXY_MANAGED";
 pub const GITHUB_COPILOT_AUTH_PROVIDER: &str = "github_copilot";
 pub const CODEX_OAUTH_AUTH_PROVIDER: &str = "codex_oauth";
+pub const GITHUB_COPILOT_AUTH_PLACEHOLDER: &str = "copilot_placeholder";
+pub const CODEX_OAUTH_AUTH_PLACEHOLDER: &str = "codex_oauth_placeholder";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ManagedAccountAuthRuntime {
@@ -122,6 +124,22 @@ pub fn provider_kind_is_github_copilot(
 
 pub fn provider_kind_is_codex_oauth(provider_kind: Option<&ProviderKind>) -> bool {
     matches!(provider_kind, Some(ProviderKind::CodexOAuth))
+}
+
+pub fn managed_provider_auth_info_for_provider_kind(
+    provider_kind: &ProviderKind,
+) -> Option<ProviderAuthInfo> {
+    match provider_kind {
+        ProviderKind::GitHubCopilot => Some(ProviderAuthInfo::new(
+            GITHUB_COPILOT_AUTH_PLACEHOLDER.to_string(),
+            ProviderAuthStrategy::GitHubCopilot,
+        )),
+        ProviderKind::CodexOAuth => Some(ProviderAuthInfo::new(
+            CODEX_OAUTH_AUTH_PLACEHOLDER.to_string(),
+            ProviderAuthStrategy::CodexOAuth,
+        )),
+        _ => None,
+    }
 }
 
 impl ManagedAccountAuthPlan {
@@ -423,7 +441,8 @@ pub fn headers_contain_proxy_auth_placeholder(headers: &HeaderMap) -> bool {
 mod tests {
     use super::{
         headers_contain_proxy_auth_placeholder, is_managed_account_upstream_url,
-        managed_account_auth_plan, provider_kind_is_codex_oauth, provider_kind_is_github_copilot,
+        managed_account_auth_plan, managed_provider_auth_info_for_provider_kind,
+        provider_kind_is_codex_oauth, provider_kind_is_github_copilot,
         provider_kind_uses_managed_account_auth,
         resolve_copilot_dynamic_base_url_for_binding_with_runtime_source,
         resolve_copilot_dynamic_base_url_with_runtime_source,
@@ -435,8 +454,8 @@ mod tests {
         resolve_managed_account_auth_with_runtime_source, validate_managed_account_upstream_auth,
         ManagedAccountAuthError, ManagedAccountAuthPlan, ManagedAccountAuthResolution,
         ManagedAccountAuthRuntime, ManagedAccountBindingInput, ManagedAccountBindingSource,
-        ManagedAccountRuntimeSource, CODEX_OAUTH_AUTH_PROVIDER, GITHUB_COPILOT_AUTH_PROVIDER,
-        PROXY_AUTH_PLACEHOLDER,
+        ManagedAccountRuntimeSource, CODEX_OAUTH_AUTH_PLACEHOLDER, CODEX_OAUTH_AUTH_PROVIDER,
+        GITHUB_COPILOT_AUTH_PLACEHOLDER, GITHUB_COPILOT_AUTH_PROVIDER, PROXY_AUTH_PLACEHOLDER,
     };
     use futures::{executor::block_on, future::BoxFuture};
     use http::{HeaderMap, HeaderValue};
@@ -768,6 +787,23 @@ mod tests {
             &ProviderKind::GitHubCopilot
         )));
         assert!(!provider_kind_is_codex_oauth(None));
+    }
+
+    #[test]
+    fn managed_provider_auth_info_uses_runtime_placeholder_contract() {
+        let copilot = managed_provider_auth_info_for_provider_kind(&ProviderKind::GitHubCopilot)
+            .expect("copilot auth info");
+        assert_eq!(copilot.api_key, GITHUB_COPILOT_AUTH_PLACEHOLDER);
+        assert_eq!(copilot.strategy, ProviderAuthStrategy::GitHubCopilot);
+        assert_eq!(copilot.access_token, None);
+
+        let codex = managed_provider_auth_info_for_provider_kind(&ProviderKind::CodexOAuth)
+            .expect("codex oauth auth info");
+        assert_eq!(codex.api_key, CODEX_OAUTH_AUTH_PLACEHOLDER);
+        assert_eq!(codex.strategy, ProviderAuthStrategy::CodexOAuth);
+        assert_eq!(codex.access_token, None);
+
+        assert!(managed_provider_auth_info_for_provider_kind(&ProviderKind::Claude).is_none());
     }
 
     #[test]
