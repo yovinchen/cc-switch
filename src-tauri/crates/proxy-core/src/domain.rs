@@ -266,6 +266,19 @@ pub enum ChannelAuthProfileResolution {
     Ignore,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ChannelAuthProfileAction {
+    Provider {
+        provider_id: String,
+        missing_provider_warning: String,
+    },
+    ChannelKey {
+        channel_id: String,
+        key_ref: String,
+    },
+    Ignore,
+}
+
 impl AuthProfileRef {
     pub fn new(value: impl Into<String>) -> Self {
         Self(value.into())
@@ -329,6 +342,35 @@ pub fn channel_auth_profile_missing_provider_warning(
     format!(
         "[{app_type}] channel auth profile references missing provider: {auth_profile_ref}"
     )
+}
+
+pub fn channel_auth_profile_action(
+    app_type: &str,
+    auth_profile_ref: Option<&str>,
+    channel_id: Option<&str>,
+) -> ChannelAuthProfileAction {
+    let auth_profile_ref_value = auth_profile_ref.map(AuthProfileRef::new);
+    match channel_auth_profile_resolution(auth_profile_ref_value.as_ref(), app_type) {
+        ChannelAuthProfileResolution::Provider { provider_id } => {
+            ChannelAuthProfileAction::Provider {
+                provider_id,
+                missing_provider_warning: channel_auth_profile_missing_provider_warning(
+                    app_type,
+                    auth_profile_ref,
+                ),
+            }
+        }
+        ChannelAuthProfileResolution::ChannelKey { key_ref } => {
+            let Some(channel_id) = channel_id else {
+                return ChannelAuthProfileAction::Ignore;
+            };
+            ChannelAuthProfileAction::ChannelKey {
+                channel_id: channel_id.to_string(),
+                key_ref,
+            }
+        }
+        ChannelAuthProfileResolution::Ignore => ChannelAuthProfileAction::Ignore,
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -1692,6 +1734,46 @@ mod tests {
         assert_eq!(
             channel_auth_profile_missing_provider_warning("claude", None),
             "[claude] channel auth profile references missing provider: "
+        );
+    }
+
+    #[test]
+    fn channel_auth_profile_action_preserves_runtime_attempt_semantics() {
+        assert_eq!(
+            channel_auth_profile_action(
+                "claude",
+                Some("provider:claude:auth-provider"),
+                Some("channel-a"),
+            ),
+            ChannelAuthProfileAction::Provider {
+                provider_id: "auth-provider".to_string(),
+                missing_provider_warning:
+                    "[claude] channel auth profile references missing provider: provider:claude:auth-provider"
+                        .to_string(),
+            }
+        );
+        assert_eq!(
+            channel_auth_profile_action(
+                "claude",
+                Some("provider:codex:auth-provider"),
+                Some("channel-a"),
+            ),
+            ChannelAuthProfileAction::Ignore
+        );
+        assert_eq!(
+            channel_auth_profile_action("claude", Some("channel-key: primary "), Some("channel-a")),
+            ChannelAuthProfileAction::ChannelKey {
+                channel_id: "channel-a".to_string(),
+                key_ref: "primary".to_string(),
+            }
+        );
+        assert_eq!(
+            channel_auth_profile_action("claude", Some("channel-key:primary"), None),
+            ChannelAuthProfileAction::Ignore
+        );
+        assert_eq!(
+            channel_auth_profile_action("claude", Some("vault:primary"), Some("channel-a")),
+            ChannelAuthProfileAction::Ignore
         );
     }
 
