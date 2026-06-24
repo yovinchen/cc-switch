@@ -8725,6 +8725,13 @@ pub(crate) struct ForwarderPreparedRequest {
     pub(crate) body_model_label: String,
 }
 
+pub(crate) struct ForwarderUpstreamRequestLogInput<'a> {
+    pub(crate) adapter_name: &'a str,
+    pub(crate) url: &'a str,
+    pub(crate) body_model_label: &'a str,
+    pub(crate) filtered_body: &'a Value,
+}
+
 pub(crate) struct ForwarderCopilotRequestOptimizationInput<'a> {
     pub(crate) body: Value,
     pub(crate) headers: &'a HeaderMap,
@@ -9002,6 +9009,8 @@ pub(crate) trait ForwarderRequestSource {
         &self,
         input: ForwarderRequestPreparationInput<'_>,
     ) -> ForwarderPreparedRequest;
+
+    fn log_upstream_request(&self, input: ForwarderUpstreamRequestLogInput<'_>);
 
     fn build_upstream_request_parts(
         &self,
@@ -9512,6 +9521,23 @@ impl ForwarderRequestSource for CcSwitchForwarderRequestSource {
             force_identity_encoding: transport_policy.force_identity_encoding,
             body_model,
             body_model_label,
+        }
+    }
+
+    fn log_upstream_request(&self, input: ForwarderUpstreamRequestLogInput<'_>) {
+        let tag = input.adapter_name;
+        let url = input.url;
+        let request_model = input.body_model_label;
+
+        log::info!("[{tag}] >>> 请求 URL: {url} (model={request_model})");
+        if log::log_enabled!(log::Level::Debug) {
+            if let Ok(body_str) = serde_json::to_string(input.filtered_body) {
+                log::debug!(
+                    "[{tag}] >>> 请求体内容 ({}字节): {}",
+                    body_str.len(),
+                    body_str
+                );
+            }
         }
     }
 

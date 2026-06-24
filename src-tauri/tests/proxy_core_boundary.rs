@@ -6400,6 +6400,10 @@ fn production_forwarder_uses_request_source_resource() {
         source.contains("body_model_label"),
         "ForwarderPreparedRequest must include finalized body model facts for logging"
     );
+    assert!(
+        source.contains("log_upstream_request"),
+        "ForwarderRequestSource must own upstream request logging"
+    );
 
     let impl_forbidden_markers = [
         "prepare_upstream_request_body_with_report(",
@@ -6475,6 +6479,9 @@ fn production_forwarder_uses_request_source_resource() {
         "forwarder_provider_adapter_for_app(",
         ".get(\"model\")",
         "request_body_model(&filtered_body)",
+        ">>> 请求 URL",
+        "请求体内容",
+        "serde_json::to_string(&filtered_body)",
     ];
     let mut violations = Vec::new();
 

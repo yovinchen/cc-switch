@@ -23,8 +23,8 @@ use crate::proxy_core_adapter::{
     FailoverSwitchSchedulerRef, ForwarderAttemptRuntimeSourceRef, ForwarderProtocolStateSourceRef,
     ForwarderRequestPartsInput, ForwarderRequestPreparationInput, ForwarderRequestSourceRef,
     ForwarderResponseSourceRef, ForwarderRuntimeStateSourceRef, ForwarderTransportSourceRef,
-    ForwarderUpstreamTransportRequest, ForwarderUpstreamUrlInput, ManagedAccountRuntimeSourceRef,
-    RectifierConfig, ResolvedChannelAttempt,
+    ForwarderUpstreamRequestLogInput, ForwarderUpstreamTransportRequest, ForwarderUpstreamUrlInput,
+    ManagedAccountRuntimeSourceRef, RectifierConfig, ResolvedChannelAttempt,
 };
 #[cfg(test)]
 use crate::proxy_core_adapter::{
@@ -1164,18 +1164,13 @@ impl RequestForwarder {
         let body_bytes = request_parts.body;
         let preserve_exact_header_case = request_parts.preserve_exact_header_case;
 
-        // 输出请求信息日志
-        let tag = adapter_name;
-        log::info!("[{tag}] >>> 请求 URL: {url} (model={request_model})");
-        if log::log_enabled!(log::Level::Debug) {
-            if let Ok(body_str) = serde_json::to_string(&filtered_body) {
-                log::debug!(
-                    "[{tag}] >>> 请求体内容 ({}字节): {}",
-                    body_str.len(),
-                    body_str
-                );
-            }
-        }
+        self.request_source
+            .log_upstream_request(ForwarderUpstreamRequestLogInput {
+                adapter_name,
+                url: &url,
+                body_model_label: &request_model,
+                filtered_body: &filtered_body,
+            });
 
         // 发送请求
         let response = self
