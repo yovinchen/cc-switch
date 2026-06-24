@@ -1198,6 +1198,7 @@
 本轮继续把 `ManagedAccountRuntimeSource` 接入 `CcSwitchProxyRuntime`、`ForwarderRuntimeHostResources` 和 `RequestForwarder`：forwarder 对 Copilot 动态 endpoint、live models、model vendor 和 managed token resolution 的读取都走 runtime 注入 source，不再通过 `app_handle` wrapper 临时构造运行态读取入口。
 本轮继续收窄 `ManagedAccountRuntimeSource` 的 forwarder 生产接口：provider account-id 投影、managed auth plan/resolution、Copilot dynamic endpoint、live models 与 model vendor 查询都改为 source 的 provider-aware 方法，`RequestForwarder` 不再调用 `*_from_runtime_source` helper。
 本轮继续收窄 managed-auth 的测试入口：`proxy_core_adapter` 不再保留 test-only `AppHandle` convenience wrapper，单测通过 `ManagedAccountRuntimeSource` 直接验证 plan/resolution 行为，避免后续测试重新依赖 Tauri runtime 入口。
+本轮继续补强 managed-auth 外部 source contract：adapter 单测使用 fake `ManagedAccountRuntimeSource` 覆盖 provider `authBinding` 到 Copilot/Codex account id 的投影、Codex OAuth account id 回传和 session header gate，证明外部宿主可替换 token runtime 而不复刻 Tauri 状态读取。
 本轮继续把 Copilot dynamic endpoint 到上游 `base_url` 的选择、日志和写回收敛到 `ManagedAccountRuntimeSource::apply_copilot_dynamic_base_url_for_provider`：`RequestForwarder` 不再直接读取 runtime endpoint、调用 dynamic base URL 决策 helper 或维护 base URL mutation 细节，只触发 source 行为。
 本轮继续把 Claude adapter gate、Copilot model vendor 读取与 Claude API format 决策收敛到 `ManagedAccountRuntimeSource::resolve_claude_api_format_for_adapter`：`RequestForwarder` 不再直接读取 Copilot vendor、判断是否需要解析 Claude API format 或调用 Claude format 决策 helper，只消费 source 返回的可选 API format。
 本轮继续把 Claude body policy 的 adapter/API-format gate 收敛到 `ForwarderRequestSource::apply_claude_body_policies`：`RequestForwarder` 不再先行判断是否应用 Claude body policy，只把 adapter fact、可选 API format 与 rectifier 配置交给 request source。
@@ -2372,7 +2373,7 @@ CC Switch 前端可以继续用 Tauri commands；外部集成用 HTTP API。
 | Streaming guard 生命周期变化 | active connection 过早归零或泄露 | 保留 RAII guard 模型，把 guard 纳入 `ProxyResult` stream owner |
 | 用量解析从响应 pipeline 拆出后漏记 | 统计不准 | `UsageSink` 只替换落库，不替换 parser；先 snapshot 当前 parser tests |
 | 故障转移事件异步化后 UI 不更新 | 用户看不到实际 provider | 核心发事件，host adapter 同步现有 `hot_switch_provider` 路径 |
-| OAuth token 刷新被移出 forwarder 后时序改变 | Copilot/Codex OAuth 请求失败 | `managed_account_auth` 覆盖非托管透传、缺少 AppHandle 的错误路径和 Copilot runtime 无 AppHandle skip；后续 `AuthProvider` 继续补 token 缓存、刷新、失败回退测试 |
+| OAuth token 刷新被移出 forwarder 后时序改变 | Copilot/Codex OAuth 请求失败 | `managed_account_auth` 覆盖非托管透传、缺少 AppHandle 的错误路径和 Copilot runtime 无 AppHandle skip；`ManagedAccountRuntimeSource` contract 已覆盖 provider account 绑定、Codex account 回传和 session header gate；后续 `AuthProvider` 继续补 token 缓存、刷新、失败回退测试 |
 | Live 接管逻辑误入核心 | 独立模块仍不可复用 | import 防线和 code review checklist 强制拦截 |
 | 一次性移动 4.5 万行导致冲突大 | 难 review、难回滚 | 按端口、engine、transport、crate 分阶段小提交 |
 | channel 与 provider 健康边界混淆 | 一个地址失败误伤同 provider 其他地址 | 熔断、健康、auto-ban 全部以 `channel_id` 为主键，provider 只做聚合展示 |

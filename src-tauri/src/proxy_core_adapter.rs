@@ -16714,6 +16714,115 @@ base_url = "https://api.openai.com/v1"
         }
     }
 
+    struct StaticManagedAuthResolutionSource;
+
+    impl ManagedAccountRuntimeSource for StaticManagedAuthResolutionSource {
+        fn resolve_copilot_auth<'a>(
+            &'a self,
+            account_id: Option<&'a str>,
+            runtime: ManagedAccountAuthRuntime,
+        ) -> BoxFuture<'a, Result<ProviderAuthInfo, ProxyError>> {
+            Box::pin(async move {
+                Ok(ProviderAuthInfo::new(
+                    format!("copilot-token:{}", account_id.unwrap_or("default")),
+                    runtime.provider_auth_strategy(),
+                ))
+            })
+        }
+
+        fn resolve_codex_oauth<'a>(
+            &'a self,
+            account_id: Option<String>,
+            runtime: ManagedAccountAuthRuntime,
+        ) -> BoxFuture<'a, Result<(ProviderAuthInfo, Option<String>), ProxyError>> {
+            Box::pin(async move {
+                let resolved_account_id = account_id.unwrap_or_else(|| "codex-default".to_string());
+                Ok((
+                    ProviderAuthInfo::new(
+                        format!("codex-token:{resolved_account_id}"),
+                        runtime.provider_auth_strategy(),
+                    ),
+                    Some(resolved_account_id),
+                ))
+            })
+        }
+
+        fn resolve_copilot_api_endpoint<'a>(
+            &'a self,
+            _account_id: Option<&'a str>,
+        ) -> BoxFuture<'a, Option<String>> {
+            Box::pin(async move { None })
+        }
+
+        fn fetch_copilot_live_models<'a>(
+            &'a self,
+            _account_id: Option<&'a str>,
+        ) -> BoxFuture<'a, Result<Option<Vec<CopilotModel>>, String>> {
+            Box::pin(async move { Ok(None) })
+        }
+
+        fn resolve_copilot_model_vendor<'a>(
+            &'a self,
+            _account_id: Option<&'a str>,
+            _model_id: &'a str,
+        ) -> BoxFuture<'a, Option<String>> {
+            Box::pin(async move { None })
+        }
+    }
+
+    fn provider_with_managed_account_binding(auth_provider: &str, account_id: &str) -> Provider {
+        let mut provider = Provider::with_id(
+            format!("{auth_provider}-provider"),
+            "Managed Account Provider".to_string(),
+            json!({}),
+            None,
+        );
+        provider.meta = Some(ProviderMeta {
+            auth_binding: Some(AuthBinding {
+                source: AuthBindingSource::ManagedAccount,
+                auth_provider: Some(auth_provider.to_string()),
+                account_id: Some(account_id.to_string()),
+            }),
+            ..ProviderMeta::default()
+        });
+        provider
+    }
+
+    #[tokio::test]
+    async fn managed_account_runtime_source_resolves_provider_account_bindings() {
+        let source = StaticManagedAuthResolutionSource;
+        let copilot_provider =
+            provider_with_managed_account_binding("github_copilot", "copilot-acct");
+        let codex_provider = provider_with_managed_account_binding("codex_oauth", "codex-acct");
+
+        let copilot = source
+            .resolve_auth_for_provider(
+                &copilot_provider,
+                ProviderAuthInfo::new(
+                    "PROXY_MANAGED".to_string(),
+                    ProviderAuthStrategy::GitHubCopilot,
+                ),
+            )
+            .await
+            .expect("copilot managed auth");
+        assert_eq!(copilot.auth.api_key, "copilot-token:copilot-acct");
+        assert_eq!(copilot.auth.strategy, ProviderAuthStrategy::GitHubCopilot);
+        assert_eq!(copilot.codex_oauth_account_id, None);
+        assert!(!copilot.should_send_codex_oauth_session_headers);
+
+        let codex = source
+            .resolve_auth_for_provider(
+                &codex_provider,
+                ProviderAuthInfo::new("PROXY_MANAGED".to_string(), ProviderAuthStrategy::CodexOAuth),
+            )
+            .await
+            .expect("codex managed auth");
+        assert_eq!(codex.auth.api_key, "codex-token:codex-acct");
+        assert_eq!(codex.auth.strategy, ProviderAuthStrategy::CodexOAuth);
+        assert_eq!(codex.codex_oauth_account_id.as_deref(), Some("codex-acct"));
+        assert!(codex.should_send_codex_oauth_session_headers);
+    }
+
     #[tokio::test]
     async fn managed_account_runtime_source_gates_copilot_live_model_by_adapter() {
         let source = StaticCopilotModelsSource {
