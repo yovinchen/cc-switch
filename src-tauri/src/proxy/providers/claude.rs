@@ -325,23 +325,11 @@ mod tests {
             .map(|(name, value)| (name.as_str(), value.to_str().unwrap()))
             .collect();
         assert_eq!(pairs[0], ("authorization", "Bearer copilot-token"));
-        assert_eq!(
-            pairs[1],
-            ("editor-version", COPILOT_EDITOR_VERSION)
-        );
-        assert_eq!(
-            pairs[2],
-            ("editor-plugin-version", COPILOT_PLUGIN_VERSION)
-        );
-        assert_eq!(
-            pairs[3],
-            ("copilot-integration-id", COPILOT_INTEGRATION_ID)
-        );
+        assert_eq!(pairs[1], ("editor-version", COPILOT_EDITOR_VERSION));
+        assert_eq!(pairs[2], ("editor-plugin-version", COPILOT_PLUGIN_VERSION));
+        assert_eq!(pairs[3], ("copilot-integration-id", COPILOT_INTEGRATION_ID));
         assert_eq!(pairs[4], ("user-agent", COPILOT_USER_AGENT));
-        assert_eq!(
-            pairs[5],
-            ("x-github-api-version", COPILOT_API_VERSION)
-        );
+        assert_eq!(pairs[5], ("x-github-api-version", COPILOT_API_VERSION));
         assert_eq!(pairs[6], ("openai-intent", "conversation-agent"));
         assert_eq!(pairs[7], ("x-initiator", "user"));
         assert_eq!(pairs[8], ("x-interaction-type", "conversation-agent"));

@@ -13,57 +13,52 @@ use super::{
     error_mapper::{
         claude_response_transform_error_to_proxy_error,
         codex_chat_to_responses_transform_error_to_proxy_error,
+        management_api_error_to_proxy_error, management_auth_error_to_proxy_error,
         parse_claude_transform_upstream_json_or_unlabeled_sse,
-        parse_codex_chat_upstream_json_or_unlabeled_sse, management_api_error_to_proxy_error,
-        management_auth_error_to_proxy_error, proxy_core_error_to_proxy_error,
+        parse_codex_chat_upstream_json_or_unlabeled_sse, proxy_core_error_to_proxy_error,
     },
     handler_context::RequestContext,
     response_adapter::{
         claude_transformed_json_response_to_axum_response,
-        claude_transformed_sse_response_to_axum_response, collect_axum_request_body,
+        claude_transformed_sse_response_to_axum_response,
         codex_chat_error_response_to_axum_response, codex_proxy_error_to_axum_response,
         codex_transformed_json_response_to_axum_response,
-        codex_transformed_sse_response_to_axum_response, proxy_core_response_to_proxy_response,
-        proxy_event_envelope_to_axum_sse_event,
+        codex_transformed_sse_response_to_axum_response, collect_axum_request_body,
+        proxy_core_response_to_proxy_response, proxy_event_envelope_to_axum_sse_event,
     },
     response_processor::{process_response, read_decoded_body},
 };
 use crate::app_config::AppType;
 use crate::proxy_core_adapter::{
+    append_query_to_endpoint_path, claude_transformed_streaming_usage_collector,
     ActiveConnectionGuard,
-    append_query_to_endpoint_path,
-    claude_transformed_streaming_usage_collector, codex_auto_transformed_streaming_usage_collector,
-    create_logged_passthrough_stream,
-    codex_chat_transform_streaming_decision, extract_anthropic_tool_schema_hints,
-    extract_gemini_model_from_path, json_proxy_request_from_input, JsonProxyRequestInput,
-    parse_json_proxy_request_body,
-    parse_json_proxy_request_body_or_null, ProxyState,
-    management_auth_decision_from_proxy_config, record_forward_core_error_usage,
+    codex_auto_transformed_streaming_usage_collector, codex_chat_transform_streaming_decision,
+    create_logged_passthrough_stream, extract_anthropic_tool_schema_hints,
+    extract_gemini_model_from_path, json_proxy_request_from_input,
+    management_auth_decision_from_proxy_config, parse_json_proxy_request_body,
+    parse_json_proxy_request_body_or_null, provider_claude_transform_response_for_api_format,
+    provider_claude_transform_sse_for_api_format, provider_claude_transform_streaming_decision,
+    provider_needs_claude_transform, provider_should_convert_codex_responses_to_chat,
     record_claude_transformed_response_usage, record_codex_auto_transformed_response_usage,
+    record_forward_core_error_usage, strip_endpoint_prefix,
     transform_codex_chat_response_with_history, transform_codex_chat_sse_with_history,
-    provider_claude_transform_response_for_api_format,
-    provider_claude_transform_sse_for_api_format,
-    provider_claude_transform_streaming_decision, provider_needs_claude_transform,
-    provider_should_convert_codex_responses_to_chat,
-    strip_endpoint_prefix,
-    validate_management_bearer_header,
-    AppChannelListQuery, AppChannelManagementRequest, AppChannelResponse, AppKind, AppListRequest,
-    AppListResponse, AppModelCatalogRequest, AppModelListQuery, ChannelCreateRequest,
-    ChannelDeleteResponse, ChannelHealthResetResponse,
+    validate_management_bearer_header, AppChannelListQuery, AppChannelManagementRequest,
+    AppChannelResponse, AppKind, AppListRequest, AppListResponse, AppModelCatalogRequest,
+    AppModelListQuery, ChannelCreateRequest, ChannelDeleteResponse, ChannelHealthResetResponse,
     ChannelKeyDeleteResponse, ChannelKeyPathRequest, ChannelKeyRecord, ChannelKeyRecordResponse,
     ChannelKeysResponse, ChannelListQuery, ChannelListRequest, ChannelListResponse,
-    ChannelMigrationMaterializeResponse,
-    ChannelMigrationPreviewResponse, ChannelModelRecord, ChannelModelsResponse, ChannelPathRequest,
-    ChannelRecord, ChannelRecordResponse, ChannelRouteCandidate, ChannelRouteRejected,
-    ChannelTestResponse, ClaudeDesktopModelListResponse, ClientModelCatalogResponse,
-    CodexToolContext, CurrentRouteResponse, CurrentRouteTarget, GroupListQuery, GroupListRequest,
-    HealthCheckRequest, HealthCheckResponse, InterfaceKind, ManagementAppPathRequest,
+    ChannelMigrationMaterializeResponse, ChannelMigrationPreviewResponse, ChannelModelRecord,
+    ChannelModelsResponse, ChannelPathRequest, ChannelRecord, ChannelRecordResponse,
+    ChannelRouteCandidate, ChannelRouteRejected, ChannelTestResponse,
+    ClaudeDesktopModelListResponse, ClientModelCatalogResponse, CodexToolContext,
+    CurrentRouteResponse, CurrentRouteTarget, GroupListQuery, GroupListRequest, HealthCheckRequest,
+    HealthCheckResponse, InterfaceKind, JsonProxyRequestInput, ManagementAppPathRequest,
     ManagementAuthDecision, ProviderListResponse, ProxyChannelKeyPatchRequest,
     ProxyChannelKeyWriteRequest, ProxyChannelModelsReplaceRequest, ProxyChannelPatchRequest,
-    ProxyChannelTestRequest, ProxyChannelWriteRequest, ProxyRuntimeStatus,
+    ProxyChannelTestRequest, ProxyChannelWriteRequest, ProxyRuntimeStatus, ProxyState,
     ProxyStatusRequest, ProxyStatusResponse, RoutableModelList, RouteGroupListResponse,
-    RouteResolveManagementRequest, RouteResolveRequest, RouteResolveResponse,
-    CLAUDE_PARSER_CONFIG, CODEX_PARSER_CONFIG, GEMINI_PARSER_CONFIG, OPENAI_PARSER_CONFIG,
+    RouteResolveManagementRequest, RouteResolveRequest, RouteResolveResponse, CLAUDE_PARSER_CONFIG,
+    CODEX_PARSER_CONFIG, GEMINI_PARSER_CONFIG, OPENAI_PARSER_CONFIG,
 };
 use axum::{
     extract::{Path, Query, State},
@@ -928,8 +923,7 @@ async fn handle_codex_chat_to_responses_transform(
         return handle_codex_chat_error_response(response, ctx, status).await;
     }
 
-    let streaming_decision =
-        codex_chat_transform_streaming_decision(is_stream, response.headers());
+    let streaming_decision = codex_chat_transform_streaming_decision(is_stream, response.headers());
 
     if streaming_decision.use_streaming {
         let stream = response.bytes_stream();

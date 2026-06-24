@@ -16,10 +16,9 @@ use crate::proxy_core_adapter::{
     normalize_proxy_channel_models_replace_request_fields,
     normalize_proxy_channel_patch_request_fields, normalize_proxy_channel_write_request_fields,
     normalize_required_channel_string, stable_channel_id, ChannelHealthUpdateInput,
-    ChannelRequestValidationError,
-    ProxyChannelKeyPatchRequest, ProxyChannelKeyWriteRequest, ProxyChannelModelWriteRequest,
-    ProxyChannelModelsReplaceRequest, ProxyChannelPatchRequest, ProxyChannelWriteRequest,
-    CHANNEL_HEALTH_UNKNOWN_STATUS,
+    ChannelRequestValidationError, ProxyChannelKeyPatchRequest, ProxyChannelKeyWriteRequest,
+    ProxyChannelModelWriteRequest, ProxyChannelModelsReplaceRequest, ProxyChannelPatchRequest,
+    ProxyChannelWriteRequest, CHANNEL_HEALTH_UNKNOWN_STATUS,
 };
 use rusqlite::{params, Connection, OptionalExtension, Row};
 use serde::{Deserialize, Serialize};

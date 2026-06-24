@@ -2,15 +2,15 @@ use super::{
     error::ProxyError,
     error_mapper::{
         codex_proxy_error_body_build_error_to_proxy_error, codex_proxy_error_response,
-        codex_responses_error_body_build_error_to_proxy_error,
-        response_build_error_to_proxy_error, CoreResponseBuildFailureContext,
+        codex_responses_error_body_build_error_to_proxy_error, response_build_error_to_proxy_error,
+        CoreResponseBuildFailureContext,
     },
     hyper_client::ProxyResponse,
 };
 use crate::proxy_core_adapter::{
-    codex_chat_error_proxy_response, AxumResponseBuildErrorContext, ProxyCoreResponse,
+    codex_chat_error_proxy_response, rebuilt_json_proxy_response, request_body_read_error_message,
+    transformed_sse_proxy_response, AxumResponseBuildErrorContext, ProxyCoreResponse,
     ProxyEventEnvelope, ProxyTransportResponse, ProxyTransportResponseBody,
-    rebuilt_json_proxy_response, request_body_read_error_message, transformed_sse_proxy_response,
 };
 use axum::response::sse::Event;
 use bytes::Bytes;
@@ -19,9 +19,7 @@ use http::{HeaderMap, StatusCode};
 use http_body_util::BodyExt;
 use serde_json::Value;
 
-pub(crate) async fn collect_axum_request_body(
-    body: axum::body::Body,
-) -> Result<Bytes, ProxyError> {
+pub(crate) async fn collect_axum_request_body(body: axum::body::Body) -> Result<Bytes, ProxyError> {
     body.collect()
         .await
         .map_err(|error| ProxyError::Internal(request_body_read_error_message(error)))
@@ -69,8 +67,9 @@ pub(crate) fn rebuilt_json_proxy_response_to_axum_response(
     response_build_error_context: CoreResponseBuildFailureContext,
     axum_build_error_context: AxumResponseBuildErrorContext<'_>,
 ) -> Result<axum::response::Response, ProxyError> {
-    let response = rebuilt_json_proxy_response(status, headers, body)
-        .map_err(|error| response_build_error_to_proxy_error(response_build_error_context, error))?;
+    let response = rebuilt_json_proxy_response(status, headers, body).map_err(|error| {
+        response_build_error_to_proxy_error(response_build_error_context, error)
+    })?;
     proxy_core_response_to_axum_response(response, axum_build_error_context)
 }
 
@@ -78,13 +77,19 @@ pub(crate) fn transformed_sse_proxy_response_to_axum_response(
     stream: impl Stream<Item = Result<Bytes, std::io::Error>> + Send + 'static,
     build_error_context: AxumResponseBuildErrorContext<'_>,
 ) -> Result<axum::response::Response, ProxyError> {
-    proxy_core_response_to_axum_response(transformed_sse_proxy_response(stream), build_error_context)
+    proxy_core_response_to_axum_response(
+        transformed_sse_proxy_response(stream),
+        build_error_context,
+    )
 }
 
 pub(crate) fn claude_transformed_sse_response_to_axum_response(
     stream: impl Stream<Item = Result<Bytes, std::io::Error>> + Send + 'static,
 ) -> Result<axum::response::Response, ProxyError> {
-    transformed_sse_proxy_response_to_axum_response(stream, AxumResponseBuildErrorContext::ClaudeSse)
+    transformed_sse_proxy_response_to_axum_response(
+        stream,
+        AxumResponseBuildErrorContext::ClaudeSse,
+    )
 }
 
 pub(crate) fn codex_transformed_sse_response_to_axum_response(
@@ -188,7 +193,7 @@ pub(crate) fn proxy_event_envelope_to_axum_sse_event(event: ProxyEventEnvelope) 
 mod tests {
     use super::*;
     use crate::proxy_core_adapter::{ProxyEventEnvelope, ProxyResponseBody};
-    use axum::response::{IntoResponse, sse::Sse};
+    use axum::response::{sse::Sse, IntoResponse};
     use http::StatusCode;
     use serde_json::json;
     use std::convert::Infallible;
@@ -261,7 +266,9 @@ mod tests {
             response.headers().get(http::header::CONTENT_TYPE),
             Some(&http::HeaderValue::from_static("application/json"))
         );
-        assert!(!response.headers().contains_key(http::header::CONTENT_ENCODING));
+        assert!(!response
+            .headers()
+            .contains_key(http::header::CONTENT_ENCODING));
         let body = response.into_body().collect().await.unwrap().to_bytes();
         assert_eq!(body, Bytes::from_static(br#"{"ok":true}"#));
     }
@@ -297,10 +304,11 @@ mod tests {
             Some(&http::HeaderValue::from_static("application/json"))
         );
 
-        let response = codex_transformed_sse_response_to_axum_response(
-            futures::stream::once(async { Ok(Bytes::from_static(b"data: {}\n\n")) }),
-        )
-        .expect("codex sse response");
+        let response =
+            codex_transformed_sse_response_to_axum_response(futures::stream::once(async {
+                Ok(Bytes::from_static(b"data: {}\n\n"))
+            }))
+            .expect("codex sse response");
         assert_eq!(response.status(), StatusCode::OK);
         assert_eq!(
             response.headers().get(http::header::CONTENT_TYPE),

@@ -4,15 +4,15 @@
 
 use crate::error::AppError;
 use crate::proxy_core_adapter::{
-    app_proxy_config_defaults_for_app, normalize_pricing_source,
-    provider_health_update_from_input, validate_cost_multiplier_value, AppProxyConfig,
-    CircuitBreakerConfig, CostMultiplierValidationError, GlobalProxyConfig,
-    PricingSourceValidationError, ProviderHealth, ProviderHealthUpdateInput, ProxyConfig,
+    app_proxy_config_defaults_for_app, normalize_pricing_source, provider_health_update_from_input,
+    validate_cost_multiplier_value, AppProxyConfig, CircuitBreakerConfig,
+    CostMultiplierValidationError, GlobalProxyConfig, PricingSourceValidationError, ProviderHealth,
+    ProviderHealthUpdateInput, ProxyConfig,
 };
 pub(crate) use crate::proxy_core_adapter::{PRICING_SOURCE_REQUEST, PRICING_SOURCE_RESPONSE};
 use rust_decimal::Decimal;
 
-use super::super::{Database, LiveBackup, lock_conn};
+use super::super::{lock_conn, Database, LiveBackup};
 
 pub(crate) fn validate_cost_multiplier(value: &str) -> Result<Decimal, AppError> {
     validate_cost_multiplier_value(value).map_err(|err| match err {
@@ -624,9 +624,7 @@ impl Database {
     ///
     /// 熔断器配置已合并到 proxy_config 表，每 app 独立
     /// 此方法保留用于兼容旧代码，建议使用 get_proxy_config_for_app
-    pub async fn get_circuit_breaker_config(
-        &self,
-    ) -> Result<CircuitBreakerConfig, AppError> {
+    pub async fn get_circuit_breaker_config(&self) -> Result<CircuitBreakerConfig, AppError> {
         // 使用 block 限制 conn 的作用域，避免跨 await 持有锁
         let result = {
             let conn = lock_conn!(self.conn);

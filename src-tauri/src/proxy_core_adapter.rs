@@ -1,14 +1,16 @@
 use crate::app_config::AppType;
 use crate::claude_desktop_config::ResolvedModelRoute;
 use crate::database::{
-    Database, FailoverQueueItem, ProxyChannelKeyRecord, ProxyChannelModelRecord, ProxyChannelRecord,
-    ProxyChannelMigrationPreview, ProxyChannelMaterializeResult, ProxyChannelSourceKind,
+    Database, FailoverQueueItem, ProxyChannelKeyRecord, ProxyChannelMaterializeResult,
+    ProxyChannelMigrationPreview, ProxyChannelModelRecord, ProxyChannelRecord,
+    ProxyChannelSourceKind,
 };
 use crate::error::AppError;
 use crate::openclaw_config::OpenClawProviderConfig;
 use crate::provider::{
     OpenCodeProviderConfig, Provider, ProviderMeta, ProviderTestConfig, UsageScript,
 };
+use crate::proxy::codex_chat_history::{record_responses_sse_stream, CodexChatHistoryStore};
 use crate::proxy::error::{proxy_error_status_kind, ProxyError};
 use crate::proxy::error_mapper::{
     forward_error_to_core_error, get_error_message, map_proxy_error_to_status,
@@ -18,39 +20,38 @@ use crate::proxy::events::ProxyEventBus;
 use crate::proxy::failover_switch::FailoverSwitchManager;
 use crate::proxy::handler_context::RequestContext;
 use crate::proxy::hyper_client::ProxyResponse;
-use crate::proxy::providers::{get_adapter, ProviderAdapter};
 use crate::proxy::provider_router::{
     ProviderFailoverRouterSources, ProviderRouter, ProviderRouterChannelSource,
     ProviderRouterConfigSource, ProviderRouterHealthStore, ProviderRouterProviderSource,
     ProviderRouterSources,
 };
-use crate::proxy::codex_chat_history::{record_responses_sse_stream, CodexChatHistoryStore};
+use crate::proxy::providers::{get_adapter, ProviderAdapter};
 use crate::proxy::route_attempt::ForwardAttempt;
 use crate::proxy::server::ProxyServer;
 use crate::proxy::usage::{RequestLog, UsageLogger};
 use crate::proxy::RequestForwarder;
-use crate::services::stream_check::StreamCheckService;
-use crate::settings::CustomEndpoint;
+#[cfg(test)]
+use crate::proxy_core::api::domain::{ChannelHealthPolicy, ChannelOverrides, UpstreamEndpoint};
 use crate::proxy_core::api::domain::{
     ChannelSpecInput, ModelRoute, ModelRouteInput, ProviderMetadata, ProviderMetadataInput,
 };
-#[cfg(test)]
-use crate::proxy_core::api::domain::{ChannelHealthPolicy, ChannelOverrides, UpstreamEndpoint};
 pub(crate) use crate::proxy_core::api::management::ChannelReachabilityResult;
+#[cfg(test)]
+use crate::proxy_core::api::routing::RouteResolveModelInput;
 use crate::proxy_core::api::routing::{
     route_resolve_channel_input_from_record, RouteResolveChannelRecordInput,
     RouteResolveModelRecordInput,
 };
-#[cfg(test)]
-use crate::proxy_core::api::routing::RouteResolveModelInput;
 use crate::proxy_core::api::session::SessionIdResult;
+use crate::services::stream_check::StreamCheckService;
+use crate::settings::CustomEndpoint;
 use bytes::Bytes;
 use futures::{future::BoxFuture, Stream, StreamExt};
 use http::{HeaderMap, Method};
 use indexmap::IndexMap;
 use regex::Regex;
 use rust_decimal::Decimal;
-use serde_json::{Map, Value, json};
+use serde_json::{json, Map, Value};
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use tokio::sync::{Mutex, RwLock};
@@ -78,8 +79,7 @@ pub(crate) struct CcSwitchProxyRuntime {
     pub(crate) failover_switch_scheduler: FailoverSwitchSchedulerRef,
 }
 
-pub(crate) type CcSwitchProxyRuntimeServices =
-    CcSwitchProxyServices<CcSwitchProxyRuntime>;
+pub(crate) type CcSwitchProxyRuntimeServices = CcSwitchProxyServices<CcSwitchProxyRuntime>;
 
 /// 代理服务器状态（共享）
 #[derive(Clone)]
@@ -123,18 +123,14 @@ pub(crate) fn synthesize_gemini_tool_call_id_with_uuid() -> String {
 pub(crate) type ClaudeDesktopGatewayAuthError =
     crate::proxy_core::api::auth::ClaudeDesktopGatewayAuthError;
 
-pub(crate) type ProxyErrorStatusKind =
-    crate::proxy_core::api::errors::ProxyErrorStatusKind;
+pub(crate) type ProxyErrorStatusKind = crate::proxy_core::api::errors::ProxyErrorStatusKind;
 
 pub(crate) use crate::proxy_core::api::errors::{
     proxy_core_error_from_status_kind, proxy_error_http_status_code, proxy_error_response_body,
     upstream_proxy_error_response_body,
 };
 
-pub(crate) fn error_message_with_context(
-    context: &str,
-    error: impl std::fmt::Display,
-) -> String {
+pub(crate) fn error_message_with_context(context: &str, error: impl std::fmt::Display) -> String {
     crate::proxy_core::api::errors::error_message_with_context(context, &error.to_string())
 }
 
@@ -188,7 +184,9 @@ pub(crate) fn provider_selection_failure_from_app_error(
     error: &AppError,
 ) -> Option<ProviderSelectionFailure> {
     match error {
-        AppError::AllProvidersCircuitOpen => Some(ProviderSelectionFailure::AllProvidersCircuitOpen),
+        AppError::AllProvidersCircuitOpen => {
+            Some(ProviderSelectionFailure::AllProvidersCircuitOpen)
+        }
         AppError::NoProvidersConfigured => Some(ProviderSelectionFailure::NoProvidersConfigured),
         _ => None,
     }
@@ -286,17 +284,14 @@ pub(crate) type CopilotModel = crate::proxy_core::api::model_catalog::CopilotMod
 
 pub(crate) use crate::proxy_core::api::model_catalog::{
     copilot_api_base, copilot_github_client_id, copilot_github_device_code_url,
-    copilot_github_oauth_token_url, copilot_github_user_url, copilot_token_url,
-    copilot_usage_url,
+    copilot_github_oauth_token_url, copilot_github_user_url, copilot_token_url, copilot_usage_url,
 };
 
 pub(crate) type RectifierConfig = crate::proxy_core::api::ports::RectifierConfig;
 pub(crate) type OptimizerConfig = crate::proxy_core::api::ports::OptimizerConfig;
-pub(crate) type CopilotOptimizerConfig =
-    crate::proxy_core::api::ports::CopilotOptimizerConfig;
+pub(crate) type CopilotOptimizerConfig = crate::proxy_core::api::ports::CopilotOptimizerConfig;
 pub(crate) type ProxyConfig = crate::proxy_core::api::ports::ProxyConfig;
-pub(crate) type ProxyRuntimeStatus =
-    crate::proxy_core::api::ports::ProxyRuntimeStatus;
+pub(crate) type ProxyRuntimeStatus = crate::proxy_core::api::ports::ProxyRuntimeStatus;
 
 pub(crate) use crate::proxy_core::api::ports::proxy_runtime_status_stopped;
 
@@ -335,10 +330,7 @@ pub(crate) fn record_forward_success_status(
     .should_switch_current_provider
 }
 
-pub(crate) fn record_forward_failure_status(
-    status: &mut ProxyRuntimeStatus,
-    error_message: &str,
-) {
+pub(crate) fn record_forward_failure_status(status: &mut ProxyRuntimeStatus, error_message: &str) {
     crate::proxy_core::api::ports::record_forward_failure_status(
         status,
         crate::proxy_core::api::ports::ForwardFailureStatusInput { error_message },
@@ -460,8 +452,7 @@ pub(crate) use crate::proxy_core::api::ports::{
     apply_proxy_runtime_uptime, record_proxy_server_stopped_status,
 };
 
-pub(crate) type ProxyRuntimeConfig =
-    crate::proxy_core::api::config::ProxyRuntimeConfig;
+pub(crate) type ProxyRuntimeConfig = crate::proxy_core::api::config::ProxyRuntimeConfig;
 pub(crate) type ProxyGlobalConfig = crate::proxy_core::api::config::ProxyGlobalConfig;
 pub(crate) type ProxyAppConfig = crate::proxy_core::api::config::ProxyAppConfig;
 pub(crate) type CcSwitchProxyServer = ProxyServer;
@@ -492,8 +483,6 @@ pub(crate) fn proxy_state_from_runtime_sources(
         current_providers.clone(),
         events.clone(),
     );
-    let transport_source = default_forwarder_transport_source();
-    let response_source = default_forwarder_response_source();
     let failover_switch_scheduler = failover_switch_scheduler_from_runtime_sources(
         failover_manager.clone(),
         app_handle.clone(),
@@ -506,21 +495,22 @@ pub(crate) fn proxy_state_from_runtime_sources(
     let request_source = forwarder_request_source_from_managed_account_runtime_source(
         managed_account_runtime_source.clone(),
     );
-    let proxy_core_services =
-        Arc::new(CcSwitchProxyServices::with_runtime(CcSwitchProxyRuntime {
-            db: db.clone(),
-            provider_router: provider_router.clone(),
-            events: events.clone(),
-            current_providers: current_providers.clone(),
-            attempt_runtime_source,
-            protocol_state_source,
-            runtime_state_source,
-            auth_source,
-            request_source,
-            transport_source,
-            response_source,
-            failover_switch_scheduler,
-        }));
+    let transport_source = default_forwarder_transport_source();
+    let response_source = default_forwarder_response_source();
+    let proxy_core_services = Arc::new(CcSwitchProxyServices::with_runtime(CcSwitchProxyRuntime {
+        db: db.clone(),
+        provider_router: provider_router.clone(),
+        events: events.clone(),
+        current_providers: current_providers.clone(),
+        attempt_runtime_source,
+        protocol_state_source,
+        runtime_state_source,
+        auth_source,
+        request_source,
+        transport_source,
+        response_source,
+        failover_switch_scheduler,
+    }));
 
     ProxyState {
         db,
@@ -577,8 +567,7 @@ pub(crate) fn record_proxy_server_listen_port_runtime_source(port: u16) {
     crate::proxy::http_client::set_proxy_port(port);
 }
 
-pub(crate) type ProxyTakeoverStatus =
-    crate::proxy_core::api::ports::ProxyTakeoverStatus;
+pub(crate) type ProxyTakeoverStatus = crate::proxy_core::api::ports::ProxyTakeoverStatus;
 
 pub(crate) use crate::proxy_core::api::ports::proxy_takeover_status_from_parts;
 
@@ -586,32 +575,26 @@ pub(crate) type ClaudeDesktopModelListResponse =
     crate::proxy_core::api::auth::ClaudeDesktopModelListResponse;
 pub(crate) type ClaudeDesktopModelRouteInput =
     crate::proxy_core::api::auth::ClaudeDesktopModelRouteInput;
-pub(crate) type ProxyCoreResponse =
-    crate::proxy_core::api::transport::ProxyCoreResponse;
+pub(crate) type ProxyCoreResponse = crate::proxy_core::api::transport::ProxyCoreResponse;
 pub(crate) type RequestBodyJsonParseError =
     crate::proxy_core::api::transport::RequestBodyJsonParseError;
 pub(crate) type ProxyCoreResult<T> = crate::proxy_core::api::errors::ProxyCoreResult<T>;
 pub(crate) type ProxyEngine<S> = crate::proxy_core::api::engine::ProxyEngine<S>;
 pub(crate) type ProxyResult = crate::proxy_core::api::transport::ProxyResult;
 pub(crate) type ProxyCoreEvent = crate::proxy_core::api::events::ProxyCoreEvent;
-pub(crate) type ProxyEventEnvelope =
-    crate::proxy_core::api::events::ProxyEventEnvelope;
+pub(crate) type ProxyEventEnvelope = crate::proxy_core::api::events::ProxyEventEnvelope;
 pub(crate) type CodexChatHistorySseRecord =
     crate::proxy_core::api::transforms::CodexChatHistorySseRecord;
-pub(crate) type CodexChatHistoryState =
-    crate::proxy_core::api::transforms::CodexChatHistoryState;
+pub(crate) type CodexChatHistoryState = crate::proxy_core::api::transforms::CodexChatHistoryState;
 pub(crate) type CodexChatErrorNormalization =
     crate::proxy_core::api::transforms::CodexChatErrorNormalization;
 pub(crate) type CodexChatReasoningOptions =
     crate::proxy_core::api::transforms::CodexChatReasoningOptions;
 pub(crate) type CodexChatReasoningProfile =
     crate::proxy_core::api::transforms::CodexChatReasoningProfile;
-pub(crate) type CodexToolContext =
-    crate::proxy_core::api::transforms::CodexToolContext;
-pub(crate) type ProxyResponseBody =
-    crate::proxy_core::api::transport::ProxyResponseBody;
-pub(crate) type ProxyTransportResponse =
-    crate::proxy_core::api::transport::ProxyTransportResponse;
+pub(crate) type CodexToolContext = crate::proxy_core::api::transforms::CodexToolContext;
+pub(crate) type ProxyResponseBody = crate::proxy_core::api::transport::ProxyResponseBody;
+pub(crate) type ProxyTransportResponse = crate::proxy_core::api::transport::ProxyTransportResponse;
 pub(crate) type ProxyTransportResponseBody =
     crate::proxy_core::api::transport::ProxyTransportResponseBody;
 pub(crate) type ResponseBodyDecodeLogLevel =
@@ -628,18 +611,15 @@ pub(crate) type NonStreamingResponseUsageRecord =
     crate::proxy_core::api::usage::NonStreamingResponseUsageRecord;
 pub(crate) type StreamingResponseUsageRecord =
     crate::proxy_core::api::usage::StreamingResponseUsageRecord;
-pub(crate) type UsageParserConfig =
-    crate::proxy_core::api::usage::UsageParserConfig;
-pub(crate) type StreamUsageEventFilter =
-    crate::proxy_core::api::usage::StreamUsageEventFilter;
+pub(crate) type UsageParserConfig = crate::proxy_core::api::usage::UsageParserConfig;
+pub(crate) type StreamUsageEventFilter = crate::proxy_core::api::usage::StreamUsageEventFilter;
 pub(crate) type TransformedResponseUsageFormat =
     crate::proxy_core::api::usage::TransformedResponseUsageFormat;
 pub(crate) type UsageSelectedProviderMissingPhase =
     crate::proxy_core::api::usage::UsageSelectedProviderMissingPhase;
 pub(crate) type UsageRecordFailureLogContext =
     crate::proxy_core::api::usage::UsageRecordFailureLogContext;
-pub(crate) type CurrentRouteTarget =
-    crate::proxy_core::api::ports::CurrentRouteTarget;
+pub(crate) type CurrentRouteTarget = crate::proxy_core::api::ports::CurrentRouteTarget;
 
 pub(crate) enum AxumResponseBuildErrorContext<'a> {
     TaggedStreaming { tag: &'a str },
@@ -745,10 +725,8 @@ pub(crate) fn transform_codex_chat_sse_with_history(
     tool_context: CodexToolContext,
     history: Arc<CodexChatHistoryStore>,
 ) -> impl Stream<Item = Result<Bytes, std::io::Error>> + Send {
-    let responses_stream = create_codex_chat_to_responses_sse_stream_with_context(
-        stream,
-        tool_context,
-    );
+    let responses_stream =
+        create_codex_chat_to_responses_sse_stream_with_context(stream, tool_context);
     record_codex_chat_response_sse_history(responses_stream, history)
 }
 
@@ -1020,11 +998,7 @@ pub(crate) async fn release_forward_attempt_permit_neutral_runtime_source(
 ) {
     if let Some(channel) = attempt.channel() {
         router
-            .release_channel_permit_neutral(
-                &channel.channel_id,
-                app_type,
-                used_half_open_permit,
-            )
+            .release_channel_permit_neutral(&channel.channel_id, app_type, used_half_open_permit)
             .await;
         return;
     }
@@ -1034,36 +1008,26 @@ pub(crate) async fn release_forward_attempt_permit_neutral_runtime_source(
         .await;
 }
 
-pub(crate) type GeminiShadowStore =
-    crate::proxy_core::api::transforms::GeminiShadowStore;
+pub(crate) type GeminiShadowStore = crate::proxy_core::api::transforms::GeminiShadowStore;
 pub(crate) type AuthProfileRef = crate::proxy_core::api::domain::AuthProfileRef;
-pub(crate) type ClaudeAuthHeaderKind =
-    crate::proxy_core::api::transport::ClaudeAuthHeaderKind;
+pub(crate) type ClaudeAuthHeaderKind = crate::proxy_core::api::transport::ClaudeAuthHeaderKind;
 pub(crate) type ClaudeAuthKey = crate::proxy_core::api::auth::ClaudeAuthKey;
-pub(crate) type ClaudeAuthKeySource =
-    crate::proxy_core::api::auth::ClaudeAuthKeySource;
+pub(crate) type ClaudeAuthKeySource = crate::proxy_core::api::auth::ClaudeAuthKeySource;
 pub(crate) type ClaudePromptCacheKeyResolution =
     crate::proxy_core::api::transforms::ClaudePromptCacheKeyResolution;
 pub(crate) type CopilotAuthHeadersInput<'a> =
     crate::proxy_core::api::transport::CopilotAuthHeadersInput<'a>;
 pub(crate) type CopilotAuthHeaderOverrides<'a> =
     crate::proxy_core::api::transport::CopilotAuthHeaderOverrides<'a>;
-pub(crate) type CopilotClassification =
-    crate::proxy_core::api::transport::CopilotClassification;
-pub(crate) type ResponseRuntimePolicy =
-    crate::proxy_core::api::config::ResponseRuntimePolicy;
-pub(crate) type ResponseTimeoutConfig =
-    crate::proxy_core::api::config::ResponseTimeoutConfig;
-pub(crate) type StreamingTimeoutConfig =
-    crate::proxy_core::api::config::StreamingTimeoutConfig;
-pub(crate) type StreamingTimeoutPhase =
-    crate::proxy_core::api::transport::StreamingTimeoutPhase;
-pub(crate) type SseEventScanner =
-    crate::proxy_core::api::transforms::SseEventScanner;
+pub(crate) type CopilotClassification = crate::proxy_core::api::transport::CopilotClassification;
+pub(crate) type ResponseRuntimePolicy = crate::proxy_core::api::config::ResponseRuntimePolicy;
+pub(crate) type ResponseTimeoutConfig = crate::proxy_core::api::config::ResponseTimeoutConfig;
+pub(crate) type StreamingTimeoutConfig = crate::proxy_core::api::config::StreamingTimeoutConfig;
+pub(crate) type StreamingTimeoutPhase = crate::proxy_core::api::transport::StreamingTimeoutPhase;
+pub(crate) type SseEventScanner = crate::proxy_core::api::transforms::SseEventScanner;
 pub(crate) type SsePassthroughEventKind =
     crate::proxy_core::api::transforms::SsePassthroughEventKind;
-pub(crate) type SseUsageAccumulator =
-    crate::proxy_core::api::transforms::SseUsageAccumulator;
+pub(crate) type SseUsageAccumulator = crate::proxy_core::api::transforms::SseUsageAccumulator;
 pub(crate) type GlobalProxyConfig = crate::proxy_core::api::ports::GlobalProxyConfig;
 pub(crate) type AppProxyConfig = crate::proxy_core::api::config::AppProxyConfig;
 
@@ -1078,9 +1042,7 @@ pub(crate) fn current_provider_id_from_settings_for_app(app: &AppKind) -> Option
         .and_then(crate::settings::get_current_provider)
 }
 
-pub(crate) fn current_provider_id_from_settings_for_app_type(
-    app_type: &AppType,
-) -> Option<String> {
+pub(crate) fn current_provider_id_from_settings_for_app_type(app_type: &AppType) -> Option<String> {
     crate::settings::get_current_provider(app_type)
 }
 
@@ -1126,9 +1088,7 @@ pub(crate) async fn enable_global_proxy_in_db(db: &Database) -> Result<(), Strin
     Ok(())
 }
 
-pub(crate) async fn disable_global_proxy_best_effort_in_db(
-    db: &Database,
-) -> Result<(), String> {
+pub(crate) async fn disable_global_proxy_best_effort_in_db(db: &Database) -> Result<(), String> {
     let mut config = db
         .get_global_proxy_config()
         .await
@@ -1292,19 +1252,13 @@ pub(crate) async fn delete_live_backup_best_effort_in_db(db: &Database, app_type
     let _ = db.delete_live_backup(app_type).await;
 }
 
-pub(crate) async fn delete_live_backup_in_db(
-    db: &Database,
-    app_type: &str,
-) -> Result<(), String> {
+pub(crate) async fn delete_live_backup_in_db(db: &Database, app_type: &str) -> Result<(), String> {
     db.delete_live_backup(app_type)
         .await
         .map_err(|e| format!("删除 {app_type} Live 备份失败: {e}"))
 }
 
-pub(crate) async fn set_legacy_live_takeover_active_best_effort_in_db(
-    db: &Database,
-    active: bool,
-) {
+pub(crate) async fn set_legacy_live_takeover_active_best_effort_in_db(db: &Database, active: bool) {
     let _ = db.set_live_takeover_active(active).await;
 }
 
@@ -1514,9 +1468,7 @@ pub(crate) fn app_proxy_config_from_proxy_app_config(
         .map_err(|error| format!("invalid app proxy config: {error}"))
 }
 
-pub(crate) use crate::proxy_core::api::config::{
-    proxy_runtime_config_from_proxy_config as proxy_runtime_config_from_config,
-};
+pub(crate) use crate::proxy_core::api::config::proxy_runtime_config_from_proxy_config as proxy_runtime_config_from_config;
 
 pub(crate) fn proxy_runtime_config_from_config_source(config: ProxyConfig) -> ProxyRuntimeConfig {
     proxy_runtime_config_from_config(config, false)
@@ -1570,10 +1522,8 @@ impl ProxyConfigSource for CcSwitchConfigSource {
 
 pub(crate) type ProviderHealth = crate::proxy_core::api::ports::ProviderHealth;
 pub(crate) type ProviderKind = crate::proxy_core::api::domain::ProviderKind;
-pub(crate) type ProviderAuthInfo =
-    crate::proxy_core::api::auth::ProviderAuthInfo;
-pub(crate) type ProviderAuthStrategy =
-    crate::proxy_core::api::auth::ProviderAuthStrategy;
+pub(crate) type ProviderAuthInfo = crate::proxy_core::api::auth::ProviderAuthInfo;
+pub(crate) type ProviderAuthStrategy = crate::proxy_core::api::auth::ProviderAuthStrategy;
 pub(crate) type AuthInfo = crate::proxy_core::api::ports::AuthInfo;
 
 pub(crate) use crate::proxy_core::api::ports::auth_info_from_profile_ref;
@@ -1593,18 +1543,14 @@ impl AuthProvider for CcSwitchAuthProvider {
         auth_profile: Option<&'a AuthProfileRef>,
         _request: &'a ProxyRequest,
     ) -> BoxFuture<'a, ProxyCoreResult<AuthInfo>> {
-        Box::pin(async move {
-            Ok(auth_info_from_cc_switch_provider_config(auth_profile))
-        })
+        Box::pin(async move { Ok(auth_info_from_cc_switch_provider_config(auth_profile)) })
     }
 }
 
-pub(crate) type AttemptEventChannel<'a> =
-    crate::proxy_core::api::events::AttemptEventChannel<'a>;
+pub(crate) type AttemptEventChannel<'a> = crate::proxy_core::api::events::AttemptEventChannel<'a>;
 pub(crate) type AttemptEventPayloadInput<'a> =
     crate::proxy_core::api::events::AttemptEventPayloadInput<'a>;
-pub(crate) type AttemptEventPhase =
-    crate::proxy_core::api::events::AttemptEventPhase;
+pub(crate) type AttemptEventPhase = crate::proxy_core::api::events::AttemptEventPhase;
 
 pub(crate) fn attempt_event_payload_from_forward_attempt(
     request_id: &str,
@@ -1652,32 +1598,25 @@ pub(crate) fn route_selected_event_message_from_forward_attempt(
     proxy_core_event_to_bus_message(ProxyCoreEvent {
         event_type: crate::proxy_core::api::events::ProxyCoreEventType::RouteSelected,
         request_id: Some(request_id.to_string()),
-        channel_id: attempt
-            .channel()
-            .map(|channel| channel.channel_id.clone()),
+        channel_id: attempt.channel().map(|channel| channel.channel_id.clone()),
         payload: attempt_event_payload_from_forward_attempt(request_id, app_type, attempt, None),
     })
 }
 
-pub(crate) type ChannelAttemptResult =
-    crate::proxy_core::api::ports::ChannelAttemptResult;
+pub(crate) type ChannelAttemptResult = crate::proxy_core::api::ports::ChannelAttemptResult;
 pub(crate) type ChannelQuery<'a> = crate::proxy_core::api::routing::ChannelQuery<'a>;
-pub(crate) type ForwardFailureCategory =
-    crate::proxy_core::api::transport::ForwardFailureCategory;
+pub(crate) type ForwardFailureCategory = crate::proxy_core::api::transport::ForwardFailureCategory;
 
 pub(crate) const DEFAULT_PROXY_LISTEN_PORT: u16 =
     crate::proxy_core::api::ports::DEFAULT_PROXY_LISTEN_PORT;
 pub(crate) const DEFAULT_CHANNEL_HEALTH_FAILURE_THRESHOLD: u32 =
     crate::proxy_core::api::ports::DEFAULT_CHANNEL_HEALTH_FAILURE_THRESHOLD;
-pub(crate) type MediaRetryInput<'a> =
-    crate::proxy_core::api::transport::MediaRetryInput<'a>;
+pub(crate) type MediaRetryInput<'a> = crate::proxy_core::api::transport::MediaRetryInput<'a>;
 pub(crate) type PromptCacheTraceLogInput<'a> =
     crate::proxy_core::api::transport::PromptCacheTraceLogInput<'a>;
 pub(crate) type AllowResult = crate::proxy_core::api::config::AllowResult;
-pub(crate) type CircuitBreakerConfig =
-    crate::proxy_core::api::config::CircuitBreakerConfig;
-pub(crate) type CircuitBreakerStats =
-    crate::proxy_core::api::config::CircuitBreakerStats;
+pub(crate) type CircuitBreakerConfig = crate::proxy_core::api::config::CircuitBreakerConfig;
+pub(crate) type CircuitBreakerStats = crate::proxy_core::api::config::CircuitBreakerStats;
 pub(crate) type CircuitState = crate::proxy_core::api::config::CircuitState;
 
 pub(crate) mod circuit_breaker_log_codes {
@@ -1705,34 +1644,27 @@ pub(crate) mod server_log_codes {
 
 pub(crate) type ProxyCoreAppKind = crate::proxy_core::api::domain::AppKind;
 #[cfg(test)]
-pub(crate) type ProxyCoreChannelOverrides =
-    crate::proxy_core::api::domain::ChannelOverrides;
+pub(crate) type ProxyCoreChannelOverrides = crate::proxy_core::api::domain::ChannelOverrides;
 pub(crate) type ChannelSpec = crate::proxy_core::api::routing::ChannelSpec;
 #[cfg(test)]
-pub(crate) type ProxyCoreChannelSpec =
-    crate::proxy_core::api::routing::ChannelSpec;
+pub(crate) type ProxyCoreChannelSpec = crate::proxy_core::api::routing::ChannelSpec;
 #[cfg(test)]
 pub(crate) type ChannelStatus = crate::proxy_core::api::routing::ChannelStatus;
 #[cfg(test)]
-pub(crate) type ProxyCoreChannelStatus =
-    crate::proxy_core::api::routing::ChannelStatus;
+pub(crate) type ProxyCoreChannelStatus = crate::proxy_core::api::routing::ChannelStatus;
 #[cfg(test)]
-pub(crate) type ProxyCoreInterfaceKind =
-    crate::proxy_core::api::routing::InterfaceKind;
+pub(crate) type ProxyCoreInterfaceKind = crate::proxy_core::api::routing::InterfaceKind;
 #[cfg(test)]
-pub(crate) type ProxyCoreModelCapabilities =
-    crate::proxy_core::api::domain::ModelCapabilities;
+pub(crate) type ProxyCoreModelCapabilities = crate::proxy_core::api::domain::ModelCapabilities;
 #[cfg(test)]
 pub(crate) type ProxyCoreModelRoute = crate::proxy_core::api::domain::ModelRoute;
 pub(crate) type ModelCatalog = crate::proxy_core::api::model_catalog::ModelCatalog;
 pub(crate) type FetchedModel = crate::proxy_core::api::model_catalog::FetchedModel;
 #[cfg(test)]
-pub(crate) type ProxyCoreProviderMetadata =
-    crate::proxy_core::api::domain::ProviderMetadata;
+pub(crate) type ProxyCoreProviderMetadata = crate::proxy_core::api::domain::ProviderMetadata;
 pub(crate) type ProviderSpec = crate::proxy_core::api::domain::ProviderSpec;
 #[cfg(test)]
-pub(crate) type ProxyCoreProviderSpec =
-    crate::proxy_core::api::domain::ProviderSpec;
+pub(crate) type ProxyCoreProviderSpec = crate::proxy_core::api::domain::ProviderSpec;
 
 pub(crate) use crate::proxy_core::api::domain::{
     provider_account_ref, provider_metadata_from_input,
@@ -1753,13 +1685,8 @@ pub(crate) fn provider_openclaw_has_live_provider_fields(provider: &Provider) ->
 #[derive(Debug, Clone)]
 pub(crate) enum OpenClawLiveWriteConfig {
     Typed(OpenClawProviderConfig),
-    Raw {
-        config: Value,
-        parse_error: String,
-    },
-    Invalid {
-        parse_error: String,
-    },
+    Raw { config: Value, parse_error: String },
+    Invalid { parse_error: String },
 }
 
 #[derive(Debug, Clone)]
@@ -2747,20 +2674,13 @@ pub(crate) fn provider_opencode_live_provider_fragment(
     }
 }
 
-pub(crate) use crate::proxy_core::api::domain::{
-    opencode_settings_have_live_provider_fields as opencode_live_provider_fragment_has_provider_fields,
-};
+pub(crate) use crate::proxy_core::api::domain::opencode_settings_have_live_provider_fields as opencode_live_provider_fragment_has_provider_fields;
 
 #[derive(Debug, Clone)]
 pub(crate) enum OpenCodeLiveWriteConfig {
     Typed(OpenCodeProviderConfig),
-    Raw {
-        config: Value,
-        parse_error: String,
-    },
-    Invalid {
-        parse_error: String,
-    },
+    Raw { config: Value, parse_error: String },
+    Invalid { parse_error: String },
 }
 
 #[derive(Debug, Clone)]
@@ -2788,9 +2708,7 @@ pub(crate) struct OpenCodeLiveWriteProjection {
     pub(crate) from_full_config: bool,
 }
 
-pub(crate) fn provider_opencode_live_write_plan(
-    provider: &Provider,
-) -> OpenCodeLiveWritePlan {
+pub(crate) fn provider_opencode_live_write_plan(provider: &Provider) -> OpenCodeLiveWritePlan {
     let fragment = provider_opencode_live_provider_fragment(provider);
     let config_to_write = fragment.config;
 
@@ -2874,35 +2792,27 @@ pub(crate) use crate::proxy_core::api::domain::channel_auth_profile_missing_prov
 pub(crate) use crate::proxy_core::api::domain::{channel_spec_from_input, model_route_from_input};
 
 #[cfg(test)]
-pub(crate) type ProxyCoreUpstreamEndpoint =
-    crate::proxy_core::api::domain::UpstreamEndpoint;
+pub(crate) type ProxyCoreUpstreamEndpoint = crate::proxy_core::api::domain::UpstreamEndpoint;
 pub(crate) type UpstreamAuthHeadersInput<'a> =
     crate::proxy_core::api::transport::UpstreamAuthHeadersInput<'a>;
 pub(crate) type UpstreamRequestHeadersInput<'a> =
     crate::proxy_core::api::transport::UpstreamRequestHeadersInput<'a>;
 pub(crate) type UpstreamSendPolicyInput =
     crate::proxy_core::api::transport::UpstreamSendPolicyInput;
-pub(crate) type UpstreamTransportKind =
-    crate::proxy_core::api::transport::UpstreamTransportKind;
+pub(crate) type UpstreamTransportKind = crate::proxy_core::api::transport::UpstreamTransportKind;
 pub(crate) type ChannelRequestValidationError =
     crate::proxy_core::api::routing::ChannelRequestValidationError;
-pub(crate) type ChannelRouteSource =
-    crate::proxy_core::api::management::ChannelRouteSource;
+pub(crate) type ChannelRouteSource = crate::proxy_core::api::management::ChannelRouteSource;
 pub(crate) type ChannelRecord = crate::proxy_core::api::management::ChannelRecord;
-pub type ChannelReachabilityStatus =
-    crate::proxy_core::api::management::ChannelReachabilityStatus;
+pub type ChannelReachabilityStatus = crate::proxy_core::api::management::ChannelReachabilityStatus;
 pub type StreamCheckConfig = crate::proxy_core::api::management::StreamCheckConfig;
 pub type StreamCheckResult = crate::proxy_core::api::management::StreamCheckResult;
-pub(crate) type ChannelKeyRecord =
-    crate::proxy_core::api::management::ChannelKeyRecord;
-pub(crate) type ChannelKeyRecordInput =
-    crate::proxy_core::api::management::ChannelKeyRecordInput;
-pub(crate) type ChannelModelRecord =
-    crate::proxy_core::api::management::ChannelModelRecord;
+pub(crate) type ChannelKeyRecord = crate::proxy_core::api::management::ChannelKeyRecord;
+pub(crate) type ChannelKeyRecordInput = crate::proxy_core::api::management::ChannelKeyRecordInput;
+pub(crate) type ChannelModelRecord = crate::proxy_core::api::management::ChannelModelRecord;
 pub(crate) type ChannelModelRecordInput =
     crate::proxy_core::api::management::ChannelModelRecordInput;
-pub(crate) type ChannelRecordInput =
-    crate::proxy_core::api::management::ChannelRecordInput;
+pub(crate) type ChannelRecordInput = crate::proxy_core::api::management::ChannelRecordInput;
 
 pub(crate) use crate::proxy_core::api::management::{
     channel_key_record_from_input, channel_model_record_from_input, channel_record_from_input,
@@ -2911,17 +2821,14 @@ pub(crate) use crate::proxy_core::api::management::{
 pub(crate) type InterfaceKind = crate::proxy_core::api::routing::InterfaceKind;
 pub(crate) type LegacyChannelModelProjection =
     crate::proxy_core::api::routing::LegacyChannelModelProjection;
-pub(crate) type LegacyChannelProjection =
-    crate::proxy_core::api::routing::LegacyChannelProjection;
+pub(crate) type LegacyChannelProjection = crate::proxy_core::api::routing::LegacyChannelProjection;
 #[cfg(test)]
 pub(crate) type LegacyChannelProjectionInput =
     crate::proxy_core::api::routing::LegacyChannelProjectionInput;
 pub(crate) type LegacyChannelMigrationPlanInput =
     crate::proxy_core::api::routing::LegacyChannelMigrationPlanInput;
-pub(crate) type LegacyEndpointInput =
-    crate::proxy_core::api::routing::LegacyEndpointInput;
-pub(crate) type LegacyModelRouteInput =
-    crate::proxy_core::api::routing::LegacyModelRouteInput;
+pub(crate) type LegacyEndpointInput = crate::proxy_core::api::routing::LegacyEndpointInput;
+pub(crate) type LegacyModelRouteInput = crate::proxy_core::api::routing::LegacyModelRouteInput;
 pub(crate) type LegacyProviderChannelMigrationInput =
     crate::proxy_core::api::routing::LegacyProviderChannelMigrationInput;
 pub(crate) type LegacyProviderProjectionInput =
@@ -2943,42 +2850,31 @@ pub(crate) type ProviderFailoverCircuitLookup =
     crate::proxy_core::api::routing::ProviderFailoverCircuitLookup;
 pub(crate) type ProviderSelectionFailure =
     crate::proxy_core::api::routing::ProviderSelectionFailure;
-pub(crate) type ProviderSelectionInput =
-    crate::proxy_core::api::routing::ProviderSelectionInput;
-pub(crate) type AutoFailoverToggleInput =
-    crate::proxy_core::api::routing::AutoFailoverToggleInput;
-pub(crate) type AutoFailoverTogglePlan =
-    crate::proxy_core::api::routing::AutoFailoverTogglePlan;
-pub(crate) type FailoverQueuePosition =
-    crate::proxy_core::api::routing::FailoverQueuePosition;
+pub(crate) type ProviderSelectionInput = crate::proxy_core::api::routing::ProviderSelectionInput;
+pub(crate) type AutoFailoverToggleInput = crate::proxy_core::api::routing::AutoFailoverToggleInput;
+pub(crate) type AutoFailoverTogglePlan = crate::proxy_core::api::routing::AutoFailoverTogglePlan;
+pub(crate) type FailoverQueuePosition = crate::proxy_core::api::routing::FailoverQueuePosition;
 pub(crate) type ProxyCoreError = crate::proxy_core::api::errors::ProxyCoreError;
 #[cfg(test)]
 pub(crate) type ProxyCoreEventType = crate::proxy_core::api::events::ProxyCoreEventType;
 pub(crate) type AppKind = crate::proxy_core::api::domain::AppKind;
 #[cfg(test)]
 pub(crate) type RetryPolicy = crate::proxy_core::api::domain::RetryPolicy;
-pub(crate) type RouteResolveRequest =
-    crate::proxy_core::api::management::RouteResolveRequest;
-pub(crate) type RouteResolveResponse =
-    crate::proxy_core::api::management::RouteResolveResponse;
+pub(crate) type RouteResolveRequest = crate::proxy_core::api::management::RouteResolveRequest;
+pub(crate) type RouteResolveResponse = crate::proxy_core::api::management::RouteResolveResponse;
 pub(crate) type RouteResolveChannelInput =
     crate::proxy_core::api::routing::RouteResolveChannelInput;
 pub(crate) type RouteCandidateCircuitKey =
     crate::proxy_core::api::routing::RouteCandidateCircuitKey;
-pub(crate) type ChannelRouteCandidate =
-    crate::proxy_core::api::routing::ChannelRouteCandidate;
-pub(crate) type ResolvedChannelAttempt =
-    crate::proxy_core::api::routing::ResolvedChannelAttempt;
+pub(crate) type ChannelRouteCandidate = crate::proxy_core::api::routing::ChannelRouteCandidate;
+pub(crate) type ResolvedChannelAttempt = crate::proxy_core::api::routing::ResolvedChannelAttempt;
 pub(crate) type RoutePlan = crate::proxy_core::api::routing::RoutePlan;
 pub(crate) type RouteSelection = crate::proxy_core::api::routing::RouteSelection;
 pub(crate) type CodexProxyErrorContext<'a> =
     crate::proxy_core::api::transforms::CodexProxyErrorContext<'a>;
-pub(crate) type CodexProxyErrorKind =
-    crate::proxy_core::api::transforms::CodexProxyErrorKind;
-pub(crate) type ForwardFailureKind =
-    crate::proxy_core::api::transport::ForwardFailureKind;
-pub(crate) type ForwardFailureLog =
-    crate::proxy_core::api::transport::ForwardFailureLog;
+pub(crate) type CodexProxyErrorKind = crate::proxy_core::api::transforms::CodexProxyErrorKind;
+pub(crate) type ForwardFailureKind = crate::proxy_core::api::transport::ForwardFailureKind;
+pub(crate) type ForwardFailureLog = crate::proxy_core::api::transport::ForwardFailureLog;
 pub(crate) enum ForwarderFailureDecision {
     Retryable {
         error_message: String,
@@ -3054,94 +2950,21 @@ pub(crate) fn forwarder_rectifier_retry_failure_label(
 ) -> &'static str {
     kind.failure_label()
 }
-pub(crate) type ManagementAuthError =
-    crate::proxy_core::api::auth::ManagementAuthError;
+pub(crate) type ManagementAuthError = crate::proxy_core::api::auth::ManagementAuthError;
 pub(crate) type CircuitBreakerFailureDecision =
     crate::proxy_core::api::config::CircuitBreakerFailureDecision;
-pub(crate) use crate::proxy_core::api::management::channel_not_found_error;
-pub(crate) use crate::proxy_core::api::ports::{
-    AppSummaryConfig, AuthProvider, ChannelHealthReset, ChannelHealthStore,
-    ChannelReachabilityProbe, ChannelSource, ForwardPipeline, ModelCatalogProvider,
-    ProviderSource, ProxyConfigSource, ProxyEventSink, ProxyServices, RoutePolicySource,
-    RouteResolver, UsageSink, channel_health_reset_from_parts,
-};
-pub(crate) use crate::proxy_core::api::domain::channel_matches_query;
+pub(crate) use crate::proxy_core::api::auth::validate_managed_account_upstream_auth;
 #[cfg(test)]
-pub(crate) use crate::proxy_core::api::routing::DEFAULT_ROUTE_GROUP;
-pub(crate) use crate::proxy_core::api::routing::{RoutePolicy, RouteRequest};
-pub(crate) use crate::proxy_core::api::transforms::{
-    claude_api_format_from_metadata, CLAUDE_API_FORMAT_METADATA_KEY,
-};
+pub(crate) use crate::proxy_core::api::auth::ManagedAccountAuthError;
 pub(crate) use crate::proxy_core::api::auth::{
     channel_auth_profile_missing_key_error_message, extract_claude_auth_key_from_settings,
-    is_gemini_oauth_key_shape, parse_gemini_oauth_credentials,
-    resolve_management_auth_decision, validate_claude_desktop_gateway_bearer_header,
-    validate_management_bearer_header, settings_config_with_channel_auth_key,
-    ManagementAuthDecision,
+    is_gemini_oauth_key_shape, parse_gemini_oauth_credentials, resolve_management_auth_decision,
+    settings_config_with_channel_auth_key, validate_claude_desktop_gateway_bearer_header,
+    validate_management_bearer_header, ManagementAuthDecision,
 };
-pub(crate) use crate::proxy_core::api::management::{
-    channel_health_update_from_input,
-    channel_reachability_result_from_stream_check_result as stream_check_result_to_channel_reachability,
-    channel_reachability_status_from_latency, provider_health_update_from_input,
-    should_retry_channel_reachability_failure,
-    AppChannelListQuery,
-    AppChannelManagementRequest, AppChannelResponse, AppListRequest, AppListResponse,
-    AppModelCatalogRequest,
-    AppModelListQuery, ChannelCreateRequest,
-    CHANNEL_HEALTH_UNKNOWN_STATUS,
-    ChannelDeleteResponse, ChannelHealthResetResponse,
-    ChannelHealthUpdateInput, ChannelKeyDeleteResponse,
-    ChannelKeyPathRequest, ChannelKeyRecordResponse,
-    ChannelKeysResponse, ChannelListQuery,
-    ChannelListRequest, ChannelListResponse,
-    ChannelMigrationMaterializeInput, ChannelMigrationMaterializeResponse,
-    ChannelMigrationPreviewInput, ChannelMigrationPreviewResponse, ChannelModelsResponse,
-    ChannelPathRequest, ChannelRecordResponse,
-    ChannelRouteRejected,
-    ChannelTestProbeRequest, ChannelTestResponse, CurrentRouteResponse, GroupListQuery,
-    GroupListRequest, HealthCheckRequest, HealthCheckResponse, ManagementAppPathRequest,
-    ProviderHealthUpdateInput, ProviderListResponse,
-    ProxyChannelModelsReplaceRequest, ProxyChannelTestRequest, ProxyStatusRequest,
-    ProxyStatusResponse, RouteGroupListResponse,
-    RouteResolveManagementRequest,
+pub(crate) use crate::proxy_core::api::auth::{
+    managed_account_auth_plan, ManagedAccountAuthPlan, ManagedAccountAuthRuntime,
 };
-pub(crate) use crate::proxy_core::api::model_catalog::{
-    client_model_catalog_source_for_app, ClientModelCatalogResponse, ClientModelCatalogSource,
-    RoutableModelList,
-};
-pub(crate) use crate::proxy_core::api::transforms::{
-    anthropic_request_to_gemini_request_with_shadow, anthropic_to_openai_chat_request,
-    anthropic_to_openai_responses_request, append_utf8_safe, AnthropicToolSchemaHints,
-    chat_completion_to_response_with_context, claude_stream_usage_event_filter,
-    claude_transform_unlabeled_sse_aggregation, codex_stream_usage_event_filter,
-    create_codex_chat_to_responses_sse_stream_with_context,
-    create_gemini_to_anthropic_sse_stream_with_callbacks,
-    create_openai_chat_to_anthropic_sse_stream,
-    create_openai_responses_to_anthropic_sse_stream, extract_anthropic_tool_schema_hints,
-    build_gemini_upstream_url, gemini_response_to_anthropic_message,
-    gemini_response_to_anthropic_message_with_shadow, inspect_codex_chat_history_sse_block,
-    openai_chat_to_anthropic_message, openai_responses_to_anthropic_message,
-    should_aggregate_codex_oauth_responses_sse,
-    should_preserve_reasoning_content_for_openai_chat, should_use_claude_transform_streaming,
-    take_sse_block,
-};
-pub(crate) use crate::proxy_core::api::transport::{
-    append_query_to_endpoint_path, parse_upstream_json_or_unlabeled_sse,
-    rebuilt_json_proxy_response, strip_endpoint_prefix, transformed_sse_proxy_response, ProxyBody,
-    ProxyRequest, UnlabeledSseFallbackLogContext, UnlabeledSseFallbackLogLevel,
-    UpstreamJsonBodySource, UpstreamSseAggregationKind,
-};
-pub(crate) use crate::proxy_core::api::usage::{
-    CLAUDE_PARSER_CONFIG, CODEX_PARSER_CONFIG, GEMINI_PARSER_CONFIG, OPENAI_PARSER_CONFIG,
-    error_usage_record_with_request_id_fallback,
-    transformed_response_usage_record_with_request_id_fallback,
-    transformed_streaming_response_usage_record_with_request_id_fallback,
-    usage_logging_enabled_from_config_flag, usage_record_debug_log_message,
-    usage_record_failure_warning_message, usage_selected_provider_missing_log_message,
-};
-#[cfg(test)]
-pub(crate) use crate::proxy_core::api::usage::success_usage_record_with_request_id_fallback;
-pub(crate) use crate::proxy_core::api::auth::validate_managed_account_upstream_auth;
 pub(crate) use crate::proxy_core::api::config::{
     app_proxy_config_defaults_for_app, app_type_from_circuit_key, cache_injection_log_message,
     channel_circuit_key, channel_circuit_key_prefix, circuit_breaker_config_from_app_config,
@@ -3150,63 +2973,118 @@ pub(crate) use crate::proxy_core::api::config::{
     should_rectify_thinking_budget, should_rectify_thinking_signature,
     thinking_optimization_log_message,
 };
+pub(crate) use crate::proxy_core::api::domain::channel_matches_query;
 use crate::proxy_core::api::events::{
-    attempt_event_name, build_attempt_event_payload,
-    build_proxy_official_warning_event_payload, build_provider_switched_event_payload,
-    build_request_started_event_payload,
+    attempt_event_name, build_attempt_event_payload, build_provider_switched_event_payload,
+    build_proxy_official_warning_event_payload, build_request_started_event_payload,
+};
+pub(crate) use crate::proxy_core::api::management::channel_not_found_error;
+pub(crate) use crate::proxy_core::api::management::{
+    channel_health_update_from_input,
+    channel_reachability_result_from_stream_check_result as stream_check_result_to_channel_reachability,
+    channel_reachability_status_from_latency, provider_health_update_from_input,
+    should_retry_channel_reachability_failure, AppChannelListQuery, AppChannelManagementRequest,
+    AppChannelResponse, AppListRequest, AppListResponse, AppModelCatalogRequest, AppModelListQuery,
+    ChannelCreateRequest, ChannelDeleteResponse, ChannelHealthResetResponse,
+    ChannelHealthUpdateInput, ChannelKeyDeleteResponse, ChannelKeyPathRequest,
+    ChannelKeyRecordResponse, ChannelKeysResponse, ChannelListQuery, ChannelListRequest,
+    ChannelListResponse, ChannelMigrationMaterializeInput, ChannelMigrationMaterializeResponse,
+    ChannelMigrationPreviewInput, ChannelMigrationPreviewResponse, ChannelModelsResponse,
+    ChannelPathRequest, ChannelRecordResponse, ChannelRouteRejected, ChannelTestProbeRequest,
+    ChannelTestResponse, CurrentRouteResponse, GroupListQuery, GroupListRequest,
+    HealthCheckRequest, HealthCheckResponse, ManagementAppPathRequest, ProviderHealthUpdateInput,
+    ProviderListResponse, ProxyChannelModelsReplaceRequest, ProxyChannelTestRequest,
+    ProxyStatusRequest, ProxyStatusResponse, RouteGroupListResponse, RouteResolveManagementRequest,
+    CHANNEL_HEALTH_UNKNOWN_STATUS,
 };
 pub(crate) use crate::proxy_core::api::model_catalog::{
     apply_copilot_model_normalization, resolve_copilot_model_against_ids,
     strip_one_m_suffix_for_upstream, strip_one_m_suffix_for_upstream_from_body,
 };
+pub(crate) use crate::proxy_core::api::model_catalog::{
+    client_model_catalog_source_for_app, ClientModelCatalogResponse, ClientModelCatalogSource,
+    RoutableModelList,
+};
+pub(crate) use crate::proxy_core::api::ports::{
+    channel_health_reset_from_parts, AppSummaryConfig, AuthProvider, ChannelHealthReset,
+    ChannelHealthStore, ChannelReachabilityProbe, ChannelSource, ForwardPipeline,
+    ModelCatalogProvider, ProviderSource, ProxyConfigSource, ProxyEventSink, ProxyServices,
+    RoutePolicySource, RouteResolver, UsageSink,
+};
+#[cfg(test)]
+pub(crate) use crate::proxy_core::api::routing::DEFAULT_ROUTE_GROUP;
+pub(crate) use crate::proxy_core::api::routing::{RoutePolicy, RouteRequest};
+pub(crate) use crate::proxy_core::api::transforms::{
+    anthropic_request_to_gemini_request_with_shadow, anthropic_to_openai_chat_request,
+    anthropic_to_openai_responses_request, append_utf8_safe, build_gemini_upstream_url,
+    chat_completion_to_response_with_context, claude_stream_usage_event_filter,
+    claude_transform_unlabeled_sse_aggregation, codex_stream_usage_event_filter,
+    create_codex_chat_to_responses_sse_stream_with_context,
+    create_gemini_to_anthropic_sse_stream_with_callbacks,
+    create_openai_chat_to_anthropic_sse_stream, create_openai_responses_to_anthropic_sse_stream,
+    extract_anthropic_tool_schema_hints, gemini_response_to_anthropic_message,
+    gemini_response_to_anthropic_message_with_shadow, inspect_codex_chat_history_sse_block,
+    openai_chat_to_anthropic_message, openai_responses_to_anthropic_message,
+    should_aggregate_codex_oauth_responses_sse, should_preserve_reasoning_content_for_openai_chat,
+    should_use_claude_transform_streaming, take_sse_block, AnthropicToolSchemaHints,
+};
+#[cfg(test)]
+pub(crate) use crate::proxy_core::api::transforms::{canonical_json_string, short_value_hash};
+pub(crate) use crate::proxy_core::api::transforms::{
+    claude_api_format_from_metadata, CLAUDE_API_FORMAT_METADATA_KEY,
+};
 pub(crate) use crate::proxy_core::api::transforms::{
     resolve_claude_forward_api_format, responses_to_chat_completions_with_options,
+};
+#[cfg(test)]
+pub(crate) use crate::proxy_core::api::transport::interface_kind_for_forward;
+pub(crate) use crate::proxy_core::api::transport::{
+    append_query_to_endpoint_path, parse_upstream_json_or_unlabeled_sse,
+    rebuilt_json_proxy_response, strip_endpoint_prefix, transformed_sse_proxy_response, ProxyBody,
+    ProxyRequest, UnlabeledSseFallbackLogContext, UnlabeledSseFallbackLogLevel,
+    UpstreamJsonBodySource, UpstreamSseAggregationKind,
 };
 pub(crate) use crate::proxy_core::api::transport::{
     append_query_to_full_url, apply_bedrock_pre_send_optimizers,
     apply_copilot_warmup_model_override, bedrock_env_flag_from_provider_settings,
     build_claude_auth_headers, build_claude_upstream_url, build_codex_bearer_auth_headers,
-    build_codex_oauth_session_headers, build_copilot_auth_headers, build_gemini_auth_headers,
-    build_retryable_forward_failure_log, build_terminal_forward_failure_log,
-    build_upstream_auth_headers, categorize_forward_failure, classify_copilot_request,
-    claude_transform_endpoint_rewrite_input_from_body,
-    contains_image_blocks, is_codex_chat_full_endpoint_base,
-    invalid_upstream_url_error_message, is_openai_o_series, is_unsupported_image_error,
-    merge_copilot_tool_results,
+    build_codex_oauth_session_headers, build_codex_upstream_url, build_copilot_auth_headers,
+    build_gemini_auth_headers, build_retryable_forward_failure_log,
+    build_terminal_forward_failure_log, build_upstream_auth_headers, categorize_forward_failure,
+    classify_copilot_request, claude_transform_endpoint_rewrite_input_from_body,
+    contains_image_blocks, invalid_upstream_url_error_message, is_codex_chat_full_endpoint_base,
+    is_openai_o_series, is_unsupported_image_error, merge_copilot_tool_results,
     parse_json_request_body, parse_json_request_body_or_null,
     prepare_upstream_request_body_with_report, prompt_cache_trace_log_message,
     replace_image_blocks_with_marker, replace_images_for_text_only_model,
     request_body_filter_log_message, request_body_read_error_message,
-    request_body_serialize_error_message,
-    resolve_copilot_deterministic_interaction_id,
-    resolve_codex_provider_uses_chat_completions, resolve_copilot_optimizer_session_id,
+    request_body_serialize_error_message, resolve_codex_provider_uses_chat_completions,
+    resolve_copilot_deterministic_interaction_id, resolve_copilot_optimizer_session_id,
     resolve_copilot_request_id_with_fallback, resolve_media_prevention_policy,
-    resolved_copilot_dynamic_base_url, sanitize_copilot_orphan_tool_results,
-    should_apply_bedrock_pre_send_optimizer, should_check_media_retry,
-    should_convert_codex_responses_endpoint_to_chat,
-    should_failover_after_rectifier_retry_failure,
-    should_preserve_exact_request_header_case,
+    resolved_copilot_dynamic_base_url, rewrite_claude_transform_endpoint,
+    sanitize_copilot_orphan_tool_results, should_apply_bedrock_pre_send_optimizer,
+    should_check_media_retry, should_convert_codex_responses_endpoint_to_chat,
+    should_failover_after_rectifier_retry_failure, should_preserve_exact_request_header_case,
     should_send_anthropic_request_headers, should_trigger_media_retry, split_endpoint_and_query,
-    strip_copilot_thinking_blocks, supports_reasoning_effort,
-    UNSUPPORTED_IMAGE_MARKER,
-    build_codex_upstream_url, rewrite_claude_transform_endpoint,
+    strip_copilot_thinking_blocks, supports_reasoning_effort, UNSUPPORTED_IMAGE_MARKER,
 };
 pub(crate) use crate::proxy_core::api::transport::{
     extract_gemini_model_from_path, request_model_for_forward,
 };
 #[cfg(test)]
-pub(crate) use crate::proxy_core::api::transport::interface_kind_for_forward;
+pub(crate) use crate::proxy_core::api::usage::success_usage_record_with_request_id_fallback;
+pub(crate) use crate::proxy_core::api::usage::{
+    error_usage_record_with_request_id_fallback,
+    transformed_response_usage_record_with_request_id_fallback,
+    transformed_streaming_response_usage_record_with_request_id_fallback,
+    usage_logging_enabled_from_config_flag, usage_record_debug_log_message,
+    usage_record_failure_warning_message, usage_selected_provider_missing_log_message,
+    CLAUDE_PARSER_CONFIG, CODEX_PARSER_CONFIG, GEMINI_PARSER_CONFIG, OPENAI_PARSER_CONFIG,
+};
 pub(crate) use crate::proxy_core::api::usage::{
     normalize_pricing_source, validate_cost_multiplier_value, CostMultiplierValidationError,
     PricingSourceValidationError, PRICING_SOURCE_REQUEST, PRICING_SOURCE_RESPONSE,
 };
-pub(crate) use crate::proxy_core::api::auth::{
-    managed_account_auth_plan, ManagedAccountAuthPlan, ManagedAccountAuthRuntime,
-};
-#[cfg(test)]
-pub(crate) use crate::proxy_core::api::auth::ManagedAccountAuthError;
-#[cfg(test)]
-pub(crate) use crate::proxy_core::api::transforms::{canonical_json_string, short_value_hash};
 
 #[derive(Debug)]
 pub(crate) struct ManagedAccountAuthResolution {
@@ -3215,8 +3093,7 @@ pub(crate) struct ManagedAccountAuthResolution {
     pub(crate) should_send_codex_oauth_session_headers: bool,
 }
 
-pub(crate) type ManagedAccountRuntimeSourceRef =
-    Arc<dyn ManagedAccountRuntimeSource + Send + Sync>;
+pub(crate) type ManagedAccountRuntimeSourceRef = Arc<dyn ManagedAccountRuntimeSource + Send + Sync>;
 
 pub(crate) struct CcSwitchManagedAccountRuntimeSource {
     app_handle: Option<tauri::AppHandle>,
@@ -3465,12 +3342,8 @@ pub(crate) trait ManagedAccountRuntimeSource: Send + Sync {
             }
 
             Some(
-                self.resolve_claude_api_format_for_provider(
-                    auth_provider,
-                    body,
-                    is_copilot,
-                )
-                .await,
+                self.resolve_claude_api_format_for_provider(auth_provider, body, is_copilot)
+                    .await,
             )
         })
     }
@@ -3613,14 +3486,9 @@ pub(crate) async fn resolve_managed_account_auth(
     auth_provider: &Provider,
     auth: ProviderAuthInfo,
 ) -> Result<ManagedAccountAuthResolution, ProxyError> {
-    let runtime_source =
-        managed_account_runtime_source_from_app_handle(app_handle.cloned());
-    resolve_managed_account_auth_from_runtime_source(
-        runtime_source.as_ref(),
-        auth_provider,
-        auth,
-    )
-    .await
+    let runtime_source = managed_account_runtime_source_from_app_handle(app_handle.cloned());
+    resolve_managed_account_auth_from_runtime_source(runtime_source.as_ref(), auth_provider, auth)
+        .await
 }
 
 #[cfg(test)]
@@ -3639,8 +3507,7 @@ pub(crate) async fn resolve_copilot_api_endpoint(
     app_handle: Option<&tauri::AppHandle>,
     auth_provider: &Provider,
 ) -> Option<String> {
-    let runtime_source =
-        managed_account_runtime_source_from_app_handle(app_handle.cloned());
+    let runtime_source = managed_account_runtime_source_from_app_handle(app_handle.cloned());
     resolve_copilot_api_endpoint_from_runtime_source(runtime_source.as_ref(), auth_provider).await
 }
 
@@ -3660,8 +3527,7 @@ pub(crate) async fn fetch_copilot_live_models(
     app_handle: Option<&tauri::AppHandle>,
     auth_provider: &Provider,
 ) -> Result<Option<Vec<CopilotModel>>, String> {
-    let runtime_source =
-        managed_account_runtime_source_from_app_handle(app_handle.cloned());
+    let runtime_source = managed_account_runtime_source_from_app_handle(app_handle.cloned());
     fetch_copilot_live_models_from_runtime_source(runtime_source.as_ref(), auth_provider).await
 }
 
@@ -3683,8 +3549,7 @@ pub(crate) async fn resolve_copilot_model_vendor(
     auth_provider: &Provider,
     model_id: &str,
 ) -> Option<String> {
-    let runtime_source =
-        managed_account_runtime_source_from_app_handle(app_handle.cloned());
+    let runtime_source = managed_account_runtime_source_from_app_handle(app_handle.cloned());
     resolve_copilot_model_vendor_from_runtime_source(
         runtime_source.as_ref(),
         auth_provider,
@@ -3697,22 +3562,17 @@ pub(crate) const SESSION_REQUEST_ID_PREFIX: &str =
     crate::proxy_core::api::usage::SESSION_REQUEST_ID_PREFIX;
 const PROXY_EVENTS_CONNECTED_EVENT: &str =
     crate::proxy_core::api::events::PROXY_EVENTS_CONNECTED_EVENT;
-const PROXY_EVENTS_LAGGED_EVENT: &str =
-    crate::proxy_core::api::events::PROXY_EVENTS_LAGGED_EVENT;
+const PROXY_EVENTS_LAGGED_EVENT: &str = crate::proxy_core::api::events::PROXY_EVENTS_LAGGED_EVENT;
 const PROXY_OFFICIAL_WARNING_EVENT: &str =
     crate::proxy_core::api::events::PROXY_OFFICIAL_WARNING_EVENT;
-const PROVIDER_SWITCHED_EVENT: &str =
-    crate::proxy_core::api::events::PROVIDER_SWITCHED_EVENT;
+const PROVIDER_SWITCHED_EVENT: &str = crate::proxy_core::api::events::PROVIDER_SWITCHED_EVENT;
 const PROVIDER_SWITCHED_SOURCE_FAILOVER: &str =
     crate::proxy_core::api::events::PROVIDER_SWITCHED_SOURCE_FAILOVER;
 const PROVIDER_SWITCHED_SOURCE_FAILOVER_ENABLED: &str =
     crate::proxy_core::api::events::PROVIDER_SWITCHED_SOURCE_FAILOVER_ENABLED;
-const REQUEST_STARTED_EVENT: &str =
-    crate::proxy_core::api::events::REQUEST_STARTED_EVENT;
-const SERVER_STARTED_EVENT: &str =
-    crate::proxy_core::api::events::SERVER_STARTED_EVENT;
-const SERVER_STOPPED_EVENT: &str =
-    crate::proxy_core::api::events::SERVER_STOPPED_EVENT;
+const REQUEST_STARTED_EVENT: &str = crate::proxy_core::api::events::REQUEST_STARTED_EVENT;
+const SERVER_STARTED_EVENT: &str = crate::proxy_core::api::events::SERVER_STARTED_EVENT;
+const SERVER_STOPPED_EVENT: &str = crate::proxy_core::api::events::SERVER_STOPPED_EVENT;
 #[cfg(test)]
 pub(crate) const AUTO_FAILOVER_ENABLE_REQUIRES_PROXY_TAKEOVER_MESSAGE: &str =
     crate::proxy_core::api::routing::AUTO_FAILOVER_ENABLE_REQUIRES_PROXY_TAKEOVER_MESSAGE;
@@ -3823,7 +3683,10 @@ pub(crate) fn proxy_official_warning_event_from_provider(
         return None;
     }
 
-    Some(proxy_official_warning_event_message(app_type, &provider.name))
+    Some(proxy_official_warning_event_message(
+        app_type,
+        &provider.name,
+    ))
 }
 
 pub(crate) fn proxy_official_warning_event_from_current_provider_db(
@@ -3937,11 +3800,8 @@ pub(crate) fn ssot_live_restore_provider_from_db(
         return Ok(None);
     };
 
-    if provider_settings_have_proxy_placeholder_for_app(
-        provider,
-        app_type,
-        proxy_token_placeholder,
-    ) {
+    if provider_settings_have_proxy_placeholder_for_app(provider, app_type, proxy_token_placeholder)
+    {
         log::warn!(
             "{app_type:?} 当前供应商配置含代理接管占位符（疑似接管期间被导入的残留），跳过 SSOT 写回，改走占位符清理"
         );
@@ -4026,18 +3886,12 @@ pub(crate) fn proxy_core_event_to_bus_message(event: ProxyCoreEvent) -> ProxyEve
     }
 }
 
-pub(crate) fn emit_proxy_core_event(
-    event: ProxyCoreEvent,
-    mut emit: impl FnMut(String, Value),
-) {
+pub(crate) fn emit_proxy_core_event(event: ProxyCoreEvent, mut emit: impl FnMut(String, Value)) {
     let message = proxy_core_event_to_bus_message(event);
     emit(message.event_name, message.payload);
 }
 
-pub(crate) fn emit_proxy_core_event_bus_source(
-    events: &ProxyEventBus,
-    event: ProxyCoreEvent,
-) {
+pub(crate) fn emit_proxy_core_event_bus_source(events: &ProxyEventBus, event: ProxyCoreEvent) {
     emit_proxy_core_event(event, |event_name, payload| {
         events.emit(event_name, payload);
     });
@@ -4296,10 +4150,11 @@ pub(crate) struct CodexProviderBackfillParts<'a> {
 pub(crate) fn provider_codex_backfill_parts(provider: &Provider) -> CodexProviderBackfillParts<'_> {
     CodexProviderBackfillParts {
         template_settings: &provider.settings_config,
-        restore_provider_token: crate::codex_config::should_restore_codex_provider_token_for_backfill(
-            provider.category.as_deref(),
-            &provider.settings_config,
-        ),
+        restore_provider_token:
+            crate::codex_config::should_restore_codex_provider_token_for_backfill(
+                provider.category.as_deref(),
+                &provider.settings_config,
+            ),
         strip_unified_session_bucket: provider.category.as_deref() == Some("official"),
     }
 }
@@ -4363,9 +4218,8 @@ pub(crate) fn restore_live_settings_for_provider_backfill(
     if let Err(err) =
         strip_codex_unified_session_bucket_for_provider_backfill(provider, &mut settings)
     {
-        warnings.push(ProviderBackfillSettingsWarning::CodexUnifiedSessionBucketStrip(
-            err.to_string(),
-        ));
+        warnings
+            .push(ProviderBackfillSettingsWarning::CodexUnifiedSessionBucketStrip(err.to_string()));
     }
 
     // `modelCatalog` is a cc-switch-private field whose SSOT is the DB. Live's
@@ -5348,10 +5202,7 @@ pub(crate) fn forwarder_claude_transform_request_for_api_format(
     )
 }
 
-pub(crate) fn forwarder_uses_anthropic_rectifiers(
-    app_type: &AppType,
-    provider: &Provider,
-) -> bool {
+pub(crate) fn forwarder_uses_anthropic_rectifiers(app_type: &AppType, provider: &Provider) -> bool {
     provider_uses_anthropic_rectifiers(app_type, provider)
 }
 
@@ -5792,17 +5643,21 @@ pub(crate) fn provider_claude_transform_sse_for_api_format(
     tool_schema_hints: Option<AnthropicToolSchemaHints>,
 ) -> Box<dyn Stream<Item = Result<Bytes, std::io::Error>> + Send + Unpin> {
     if api_format == "openai_responses" {
-        Box::new(Box::pin(create_openai_responses_to_anthropic_sse_stream(stream)))
-    } else if api_format == "gemini_native" {
-        Box::new(Box::pin(create_gemini_to_anthropic_sse_stream_with_callbacks(
+        Box::new(Box::pin(create_openai_responses_to_anthropic_sse_stream(
             stream,
-            shadow_store,
-            provider_id,
-            session_id,
-            tool_schema_hints,
-            synthesize_gemini_tool_call_id_with_uuid,
-            |name| log::info!("[Claude/Gemini] Rectified tool args for `{name}`"),
         )))
+    } else if api_format == "gemini_native" {
+        Box::new(Box::pin(
+            create_gemini_to_anthropic_sse_stream_with_callbacks(
+                stream,
+                shadow_store,
+                provider_id,
+                session_id,
+                tool_schema_hints,
+                synthesize_gemini_tool_call_id_with_uuid,
+                |name| log::info!("[Claude/Gemini] Rectified tool args for `{name}`"),
+            ),
+        ))
     } else {
         Box::new(Box::pin(create_openai_chat_to_anthropic_sse_stream(stream)))
     }
@@ -5903,10 +5758,7 @@ pub(crate) fn auto_failover_enabled_from_router_config_result(
     }
 }
 
-pub(crate) async fn auto_failover_enabled_from_router_db(
-    db: &Database,
-    app_type: &str,
-) -> bool {
+pub(crate) async fn auto_failover_enabled_from_router_db(db: &Database, app_type: &str) -> bool {
     auto_failover_enabled_from_router_config_result(
         app_type,
         db.get_proxy_config_for_app(app_type).await,
@@ -5990,10 +5842,7 @@ pub(crate) async fn auto_failover_toggle_plan_from_db(
             current_provider_id = current_id;
         }
 
-        queue
-            .into_iter()
-            .map(|item| item.provider_id)
-            .collect()
+        queue.into_iter().map(|item| item.provider_id).collect()
     } else {
         Vec::new()
     };
@@ -6019,10 +5868,7 @@ pub(crate) fn failover_switch_app_enabled_from_config_result(
     }
 }
 
-pub(crate) async fn failover_switch_app_enabled_from_db(
-    db: &Database,
-    app_type: &str,
-) -> bool {
+pub(crate) async fn failover_switch_app_enabled_from_db(db: &Database, app_type: &str) -> bool {
     failover_switch_app_enabled_from_config_result(
         app_type,
         db.get_proxy_config_for_app(app_type).await,
@@ -6080,7 +5926,9 @@ pub(crate) async fn reset_circuit_breaker_switchback_target_from_db(
     let (app_enabled, auto_failover_enabled) = match db.get_proxy_config_for_app(app_type).await {
         Ok(config) => (config.enabled, config.auto_failover_enabled),
         Err(error) => {
-            log::error!("[{app_type}] Failed to read proxy_config: {error}, defaulting to disabled");
+            log::error!(
+                "[{app_type}] Failed to read proxy_config: {error}, defaulting to disabled"
+            );
             return Ok(None);
         }
     };
@@ -6091,14 +5939,11 @@ pub(crate) async fn reset_circuit_breaker_switchback_target_from_db(
 
     let current_provider_id = db.get_current_provider(app_type)?;
     let queue = db.get_failover_queue(app_type)?;
-    let provider_name = db
-        .get_all_providers(app_type)
-        .ok()
-        .and_then(|providers| {
-            providers
-                .get(restored_provider_id)
-                .map(|provider| provider.name.clone())
-        });
+    let provider_name = db.get_all_providers(app_type).ok().and_then(|providers| {
+        providers
+            .get(restored_provider_id)
+            .map(|provider| provider.name.clone())
+    });
 
     Ok(reset_circuit_breaker_switchback_target_from_sources(
         app_enabled,
@@ -6185,7 +6030,10 @@ pub(crate) fn provider_failover_circuit_lookups_from_router_sources(
 ) -> Vec<ProviderFailoverCircuitLookup> {
     provider_failover_circuit_lookups(
         app_type,
-        queue.into_iter().map(|item| item.provider_id).collect::<Vec<_>>(),
+        queue
+            .into_iter()
+            .map(|item| item.provider_id)
+            .collect::<Vec<_>>(),
         provider_ids.into_iter().collect::<Vec<_>>(),
     )
 }
@@ -6240,11 +6088,7 @@ impl ProviderRouterConfigSource for CcSwitchProviderRouterConfigSource {
         Box::pin(async move { circuit_breaker_config_from_router_db(&self.db, app_type).await })
     }
 
-    fn failure_threshold<'a>(
-        &'a self,
-        app_type: &'a str,
-        fallback: u32,
-    ) -> BoxFuture<'a, u32> {
+    fn failure_threshold<'a>(&'a self, app_type: &'a str, fallback: u32) -> BoxFuture<'a, u32> {
         Box::pin(async move {
             circuit_failure_threshold_from_router_db(&self.db, app_type, fallback).await
         })
@@ -6353,7 +6197,10 @@ pub(crate) fn should_block_proxy_switch_to_provider(
     proxy_takeover_active: bool,
     provider: &Provider,
 ) -> bool {
-    should_block_proxy_switch_to_provider_category(proxy_takeover_active, provider.category.as_deref())
+    should_block_proxy_switch_to_provider_category(
+        proxy_takeover_active,
+        provider.category.as_deref(),
+    )
 }
 
 pub(crate) fn proxy_live_config_owned_by_takeover(
@@ -6412,9 +6259,7 @@ pub(crate) fn json_value_is_subset(target: &Value, source: &Value) -> bool {
             source_map.iter().all(|(key, source_value)| {
                 target_map
                     .get(key)
-                    .is_some_and(|target_value| {
-                        json_value_is_subset(target_value, source_value)
-                    })
+                    .is_some_and(|target_value| json_value_is_subset(target_value, source_value))
             })
         }
         Value::Array(source_arr) => {
@@ -6472,9 +6317,7 @@ pub(crate) fn json_deep_merge(target: &mut Value, source: &Value) {
 }
 
 pub(crate) fn json_deep_remove(target: &mut Value, source: &Value) {
-    let (Some(target_map), Some(source_map)) =
-        (target.as_object_mut(), source.as_object())
-    else {
+    let (Some(target_map), Some(source_map)) = (target.as_object_mut(), source.as_object()) else {
         return;
     };
 
@@ -6501,10 +6344,7 @@ pub(crate) fn json_deep_remove(target: &mut Value, source: &Value) {
     }
 }
 
-pub(crate) fn toml_value_is_subset(
-    target: &toml_edit::Value,
-    source: &toml_edit::Value,
-) -> bool {
+pub(crate) fn toml_value_is_subset(target: &toml_edit::Value, source: &toml_edit::Value) -> bool {
     match (target, source) {
         (toml_edit::Value::String(target), toml_edit::Value::String(source)) => {
             target.value() == source.value()
@@ -6558,10 +6398,7 @@ pub(crate) fn toml_array_contains_subset(
     })
 }
 
-pub(crate) fn toml_remove_array_items(
-    target: &mut toml_edit::Array,
-    source: &toml_edit::Array,
-) {
+pub(crate) fn toml_remove_array_items(target: &mut toml_edit::Array, source: &toml_edit::Array) {
     for source_item in source.iter() {
         let index = {
             let target_items: Vec<&toml_edit::Value> = target.iter().collect();
@@ -6643,7 +6480,9 @@ fn remove_toml_item(target: &mut toml_edit::Item, source: &toml_edit::Item) {
                     toml_remove_array_items(target_arr, source_arr);
                     remove_item = target_arr.is_empty();
                 }
-                (target_value, source_value) if toml_value_is_subset(target_value, source_value) => {
+                (target_value, source_value)
+                    if toml_value_is_subset(target_value, source_value) =>
+                {
                     remove_item = true;
                 }
                 _ => {}
@@ -6716,11 +6555,9 @@ pub(crate) fn contains_common_config_snippet(
                     return false;
                 };
                 source_map.iter().all(|(key, source_value)| {
-                    target_map
-                        .get(key)
-                        .is_some_and(|target_value| {
-                            json_value_is_subset(target_value, source_value)
-                        })
+                    target_map.get(key).is_some_and(|target_value| {
+                        json_value_is_subset(target_value, source_value)
+                    })
                 })
             }
             _ => false,
@@ -6812,21 +6649,13 @@ pub(crate) fn apply_common_config_to_settings(
             let mut target_doc = if config_toml.trim().is_empty() {
                 toml_edit::DocumentMut::new()
             } else {
-                config_toml
-                    .parse::<toml_edit::DocumentMut>()
-                    .map_err(|e| {
-                        CommonConfigSettingsMutationIssue::CodexApplyTargetToml(
-                            e.to_string(),
-                        )
-                    })?
+                config_toml.parse::<toml_edit::DocumentMut>().map_err(|e| {
+                    CommonConfigSettingsMutationIssue::CodexApplyTargetToml(e.to_string())
+                })?
             };
-            let source_doc = trimmed
-                .parse::<toml_edit::DocumentMut>()
-                .map_err(|e| {
-                    CommonConfigSettingsMutationIssue::CodexCommonConfigSnippetToml(
-                        e.to_string(),
-                    )
-                })?;
+            let source_doc = trimmed.parse::<toml_edit::DocumentMut>().map_err(|e| {
+                CommonConfigSettingsMutationIssue::CodexCommonConfigSnippetToml(e.to_string())
+            })?;
 
             merge_toml_table_like(target_doc.as_table_mut(), source_doc.as_table());
             if let Some(obj) = result.as_object_mut() {
@@ -6875,9 +6704,9 @@ pub(crate) fn build_effective_settings_with_common_config(
         if let Some(snippet_text) = snippet {
             match apply_common_config_to_settings(app_type, &settings, snippet_text) {
                 Ok(applied_settings) => settings = applied_settings,
-                Err(issue) => warnings.push(ProviderEffectiveSettingsWarning::CommonConfigApply(
-                    issue,
-                )),
+                Err(issue) => {
+                    warnings.push(ProviderEffectiveSettingsWarning::CommonConfigApply(issue))
+                }
             }
         }
     }
@@ -6942,21 +6771,13 @@ pub(crate) fn remove_common_config_from_settings(
             let mut target_doc = if config_toml.trim().is_empty() {
                 toml_edit::DocumentMut::new()
             } else {
-                config_toml
-                    .parse::<toml_edit::DocumentMut>()
-                    .map_err(|e| {
-                        CommonConfigSettingsMutationIssue::CodexRemoveTargetToml(
-                            e.to_string(),
-                        )
-                    })?
+                config_toml.parse::<toml_edit::DocumentMut>().map_err(|e| {
+                    CommonConfigSettingsMutationIssue::CodexRemoveTargetToml(e.to_string())
+                })?
             };
-            let source_doc = trimmed
-                .parse::<toml_edit::DocumentMut>()
-                .map_err(|e| {
-                    CommonConfigSettingsMutationIssue::CodexCommonConfigSnippetToml(
-                        e.to_string(),
-                    )
-                })?;
+            let source_doc = trimmed.parse::<toml_edit::DocumentMut>().map_err(|e| {
+                CommonConfigSettingsMutationIssue::CodexCommonConfigSnippetToml(e.to_string())
+            })?;
 
             remove_toml_table_like(target_doc.as_table_mut(), source_doc.as_table());
             if let Some(obj) = result.as_object_mut() {
@@ -7004,8 +6825,7 @@ pub(crate) fn strip_common_config_from_live_settings_for_backfill(
         live_settings
     };
 
-    let result =
-        restore_live_settings_for_provider_backfill(app_type, provider, backfill_settings);
+    let result = restore_live_settings_for_provider_backfill(app_type, provider, backfill_settings);
     warnings.extend(result.warnings);
 
     ProviderBackfillSettingsResult {
@@ -7057,21 +6877,20 @@ pub(crate) fn should_reapply_codex_official_live_for_provider(provider: &Provide
 }
 
 pub(crate) use crate::proxy_core::api::routing::{
-    current_provider_db_fallback_required, current_provider_id_from_sources,
-    current_provider_id_option_from_sources, failover_switch_pending_key,
-    legacy_provider_codex_catalog_models_from_settings, legacy_provider_config_text_from_settings,
-    legacy_provider_env_from_settings,
+    apply_route_candidate_circuit_availability, current_provider_db_fallback_required,
+    current_provider_id_from_sources, current_provider_id_option_from_sources,
+    failover_switch_pending_key, legacy_provider_codex_catalog_models_from_settings,
+    legacy_provider_config_text_from_settings, legacy_provider_env_from_settings,
     normalize_channel_base_url, normalize_proxy_channel_key_patch_request_fields,
     normalize_proxy_channel_key_write_request_fields,
     normalize_proxy_channel_model_write_request_fields,
     normalize_proxy_channel_models_replace_request_fields,
     normalize_proxy_channel_patch_request_fields, normalize_proxy_channel_write_request_fields,
-    normalize_required_channel_string,
-    plan_auto_failover_toggle, provider_failover_circuit_lookups,
-    provider_selection_candidate_from_failover_lookup, restored_provider_switchback_decision,
-    select_provider_ids, should_block_proxy_switch_to_provider_category,
-    apply_route_candidate_circuit_availability, resolve_channel_route,
-    route_candidate_channel_circuit_keys, stable_channel_id,
+    normalize_required_channel_string, plan_auto_failover_toggle,
+    provider_failover_circuit_lookups, provider_selection_candidate_from_failover_lookup,
+    resolve_channel_route, restored_provider_switchback_decision,
+    route_candidate_channel_circuit_keys, select_provider_ids,
+    should_block_proxy_switch_to_provider_category, stable_channel_id,
 };
 
 #[cfg(test)]
@@ -7480,7 +7299,9 @@ pub(crate) async fn route_candidate_provider_ids_from_router_source(
     router: &ProviderRouter,
     app: &AppKind,
 ) -> ProxyCoreResult<Vec<String>> {
-    route_candidate_provider_ids_from_selection_result(router.select_provider_ids(app.as_str()).await)
+    route_candidate_provider_ids_from_selection_result(
+        router.select_provider_ids(app.as_str()).await,
+    )
 }
 
 #[derive(Clone)]
@@ -7540,9 +7361,9 @@ impl ProviderSource for CcSwitchProviderSource {
         &'a self,
         app: &'a AppKind,
     ) -> BoxFuture<'a, ProxyCoreResult<Vec<String>>> {
-        Box::pin(async move {
-            route_candidate_provider_ids_from_router_source(&self.router, app).await
-        })
+        Box::pin(
+            async move { route_candidate_provider_ids_from_router_source(&self.router, app).await },
+        )
     }
 }
 
@@ -7826,10 +7647,7 @@ pub(crate) fn client_model_catalog_from_optional_raw(
     app: &AppKind,
     raw: Option<Value>,
 ) -> ModelCatalog {
-    crate::proxy_core::api::model_catalog::client_model_catalog_from_optional_raw(
-        app.as_str(),
-        raw,
-    )
+    crate::proxy_core::api::model_catalog::client_model_catalog_from_optional_raw(app.as_str(), raw)
 }
 
 pub(crate) fn client_model_catalog_raw_from_source(
@@ -7843,9 +7661,7 @@ pub(crate) fn client_model_catalog_raw_from_source(
     }
 }
 
-pub(crate) fn client_model_catalog_from_app_source(
-    app: &AppKind,
-) -> ProxyCoreResult<ModelCatalog> {
+pub(crate) fn client_model_catalog_from_app_source(app: &AppKind) -> ProxyCoreResult<ModelCatalog> {
     let source = client_model_catalog_source_for_app(app.as_str());
     let raw = client_model_catalog_raw_from_source(source);
     Ok(client_model_catalog_from_optional_raw(app, raw))
@@ -8031,8 +7847,7 @@ pub(crate) fn required_forward_attempts_from_db_sources(
     Ok(attempts)
 }
 
-pub(crate) type FailoverSwitchSchedulerRef =
-    Arc<dyn FailoverSwitchScheduler + Send + Sync>;
+pub(crate) type FailoverSwitchSchedulerRef = Arc<dyn FailoverSwitchScheduler + Send + Sync>;
 
 pub(crate) trait FailoverSwitchScheduler {
     fn schedule_switch(&self, app_type: &str, target: ForwarderFailoverSwitchTarget);
@@ -8044,10 +7859,7 @@ struct CcSwitchFailoverSwitchScheduler {
 }
 
 impl CcSwitchFailoverSwitchScheduler {
-    fn new(
-        manager: Arc<FailoverSwitchManager>,
-        app_handle: Option<tauri::AppHandle>,
-    ) -> Self {
+    fn new(manager: Arc<FailoverSwitchManager>, app_handle: Option<tauri::AppHandle>) -> Self {
         Self {
             manager,
             app_handle,
@@ -8086,8 +7898,7 @@ pub(crate) fn noop_failover_switch_scheduler() -> FailoverSwitchSchedulerRef {
     Arc::new(NoopFailoverSwitchScheduler)
 }
 
-pub(crate) type ForwarderRuntimeStateSourceRef =
-    Arc<dyn ForwarderRuntimeStateSource + Send + Sync>;
+pub(crate) type ForwarderRuntimeStateSourceRef = Arc<dyn ForwarderRuntimeStateSource + Send + Sync>;
 
 /// 活跃连接 RAII guard
 ///
@@ -8105,7 +7916,9 @@ pub(crate) struct ActiveConnectionGuard {
 
 impl ActiveConnectionGuard {
     pub(crate) async fn acquire(runtime_state_source: ForwarderRuntimeStateSourceRef) -> Self {
-        runtime_state_source.record_active_connection_acquired().await;
+        runtime_state_source
+            .record_active_connection_acquired()
+            .await;
         Self {
             runtime_state_source,
         }
@@ -8118,7 +7931,9 @@ impl Drop for ActiveConnectionGuard {
         let runtime_state_source = self.runtime_state_source.clone();
         if let Ok(handle) = tokio::runtime::Handle::try_current() {
             handle.spawn(async move {
-                runtime_state_source.record_active_connection_released().await;
+                runtime_state_source
+                    .record_active_connection_released()
+                    .await;
             });
         }
         // 没有 runtime 时静默丢失计数（仅 UI 展示用，可接受最终一致性）
@@ -8617,9 +8432,7 @@ impl ForwarderProtocolStateSource for CcSwitchForwarderProtocolStateSource {
         input: ForwarderClaudeProtocolTransformInput<'_>,
     ) -> Result<Value, String> {
         let api_format = input.api_format.unwrap_or("anthropic");
-        let session_id = input
-            .session_client_provided
-            .then_some(input.session_id);
+        let session_id = input.session_client_provided.then_some(input.session_id);
 
         forwarder_claude_transform_request_for_api_format(
             input.body,
@@ -8826,8 +8639,7 @@ pub(crate) fn forwarder_attempt_runtime_source_from_router(
     Arc::new(CcSwitchForwarderAttemptRuntimeSource::new(router))
 }
 
-pub(crate) type ForwarderAuthSourceRef =
-    Arc<dyn ForwarderAuthSource + Send + Sync>;
+pub(crate) type ForwarderAuthSourceRef = Arc<dyn ForwarderAuthSource + Send + Sync>;
 
 pub(crate) struct ForwarderCopilotAuthOptimizationInput<'a> {
     pub(crate) classification: CopilotClassification,
@@ -8896,15 +8708,11 @@ impl CcSwitchForwarderAuthSource {
     ) -> ForwarderPreparedCopilotAuthOptimization {
         let session_id =
             resolve_copilot_optimizer_session_id(input.session_source_body, input.headers);
-        let deterministic_request_id = input
-            .deterministic_request_id_enabled
-            .then(|| {
-                resolve_copilot_request_id_with_fallback(
-                    input.request_body,
-                    &session_id,
-                    || uuid::Uuid::new_v4().to_string(),
-                )
-            });
+        let deterministic_request_id = input.deterministic_request_id_enabled.then(|| {
+            resolve_copilot_request_id_with_fallback(input.request_body, &session_id, || {
+                uuid::Uuid::new_v4().to_string()
+            })
+        });
         let interaction_id = resolve_copilot_deterministic_interaction_id(&session_id);
 
         ForwarderPreparedCopilotAuthOptimization {
@@ -8966,17 +8774,16 @@ impl ForwarderAuthSource for CcSwitchForwarderAuthSource {
                 };
 
             let copilot_auth_header_overrides =
-                input
-                    .copilot_optimization
-                    .as_ref()
-                    .map(|optimization| CopilotAuthHeaderOverrides {
+                input.copilot_optimization.as_ref().map(|optimization| {
+                    CopilotAuthHeaderOverrides {
                         initiator: optimization
                             .request_classification_enabled
                             .then_some(optimization.initiator),
                         is_subagent: optimization.is_subagent,
                         deterministic_request_id: optimization.deterministic_request_id.as_deref(),
                         interaction_id: optimization.interaction_id.as_deref(),
-                    });
+                    }
+                });
 
             auth_headers = build_upstream_auth_headers(UpstreamAuthHeadersInput {
                 base_auth_headers: &auth_headers,
@@ -9017,8 +8824,7 @@ pub(crate) fn default_forwarder_auth_source() -> ForwarderAuthSourceRef {
     )
 }
 
-pub(crate) type ForwarderRequestSourceRef =
-    Arc<dyn ForwarderRequestSource + Send + Sync>;
+pub(crate) type ForwarderRequestSourceRef = Arc<dyn ForwarderRequestSource + Send + Sync>;
 
 pub(crate) struct ForwarderRequestPreparationInput<'a> {
     pub(crate) app: &'a str,
@@ -9287,10 +9093,7 @@ pub(crate) trait ForwarderRequestSource {
         input: ForwarderProviderRequestBodyInput<'_>,
     ) -> Result<Value, ProxyError>;
 
-    fn apply_claude_body_policies(
-        &self,
-        input: ForwarderClaudeBodyPolicyInput<'_>,
-    );
+    fn apply_claude_body_policies(&self, input: ForwarderClaudeBodyPolicyInput<'_>);
 
     fn transform_request_body(
         &self,
@@ -9304,10 +9107,7 @@ pub(crate) trait ForwarderRequestSource {
         input: ForwarderProtocolPreparationInput<'_>,
     ) -> ForwarderProtocolPreparation;
 
-    fn plan_upstream_url(
-        &self,
-        input: ForwarderUpstreamUrlInput<'_>,
-    ) -> ForwardUpstreamUrlPlan;
+    fn plan_upstream_url(&self, input: ForwarderUpstreamUrlInput<'_>) -> ForwardUpstreamUrlPlan;
 
     fn prepare_copilot_request_optimization(
         &self,
@@ -9336,10 +9136,8 @@ pub(crate) trait ForwarderRequestSource {
         input: ForwarderMediaRetryPlanInput<'_>,
     ) -> Option<ForwarderMediaRetryPlan>;
 
-    fn anthropic_rectifiers_enabled(
-        &self,
-        input: ForwarderAnthropicRectifierGateInput<'_>,
-    ) -> bool;
+    fn anthropic_rectifiers_enabled(&self, input: ForwarderAnthropicRectifierGateInput<'_>)
+        -> bool;
 
     fn thinking_signature_rectifier_plan(
         &self,
@@ -9396,7 +9194,10 @@ impl CcSwitchForwarderRequestSource {
         let mut body = input.body;
         forwarder_apply_codex_chat_upstream_model(input.provider, &mut body);
         let reasoning_options = forwarder_codex_chat_reasoning_options(input.provider, &body);
-        let model = body.get("model").and_then(|value| value.as_str()).unwrap_or("");
+        let model = body
+            .get("model")
+            .and_then(|value| value.as_str())
+            .unwrap_or("");
 
         responses_to_chat_completions_with_options(
             &body,
@@ -9468,7 +9269,11 @@ impl CcSwitchForwarderRequestSource {
             policy.allow_heuristic,
         );
         if replaced_images > 0 {
-            let model = input.body.get("model").and_then(Value::as_str).unwrap_or("");
+            let model = input
+                .body
+                .get("model")
+                .and_then(Value::as_str)
+                .unwrap_or("");
             log::info!(
                 "[Media] Replaced {replaced_images} image block(s) with {} for text-only provider={}, model={}",
                 UNSUPPORTED_IMAGE_MARKER,
@@ -9572,13 +9377,10 @@ impl ForwarderRequestSource for CcSwitchForwarderRequestSource {
             return Ok(body);
         }
 
-        let one_m_model_change = body
-            .get("model")
-            .and_then(Value::as_str)
-            .and_then(|model| {
-                let stripped = strip_one_m_suffix_for_upstream(model);
-                (stripped != model).then(|| (model.to_string(), stripped.to_string()))
-            });
+        let one_m_model_change = body.get("model").and_then(Value::as_str).and_then(|model| {
+            let stripped = strip_one_m_suffix_for_upstream(model);
+            (stripped != model).then(|| (model.to_string(), stripped.to_string()))
+        });
         body = strip_one_m_suffix_for_upstream_from_body(body);
         if let Some((model, stripped)) = one_m_model_change {
             log::debug!("[ModelMapper] 去除本地 1M 标记: {model} → {stripped}");
@@ -9587,10 +9389,7 @@ impl ForwarderRequestSource for CcSwitchForwarderRequestSource {
         Ok(body)
     }
 
-    fn apply_claude_body_policies(
-        &self,
-        input: ForwarderClaudeBodyPolicyInput<'_>,
-    ) {
+    fn apply_claude_body_policies(&self, input: ForwarderClaudeBodyPolicyInput<'_>) {
         if !input.adapter_facts.is_claude_adapter {
             return;
         }
@@ -9598,11 +9397,7 @@ impl ForwarderRequestSource for CcSwitchForwarderRequestSource {
             return;
         };
 
-        forwarder_claude_normalize_anthropic_messages(
-            input.body,
-            input.provider,
-            api_format,
-        );
+        forwarder_claude_normalize_anthropic_messages(input.body, input.provider, api_format);
         self.apply_media_prevention(ForwarderMediaPreventionInput {
             body: input.body,
             provider: input.provider,
@@ -9673,8 +9468,8 @@ impl ForwarderRequestSource for CcSwitchForwarderRequestSource {
         &self,
         input: ForwarderProtocolPreparationInput<'_>,
     ) -> ForwarderProtocolPreparation {
-        let should_transform_claude_request = input.transform_plan.use_claude_transform
-            && !input.transform_plan.codex_responses_to_chat;
+        let should_transform_claude_request =
+            input.transform_plan.use_claude_transform && !input.transform_plan.codex_responses_to_chat;
         ForwarderProtocolPreparation {
             should_transform_claude_request,
             claude_api_format_for_transform: should_transform_claude_request
@@ -9684,10 +9479,7 @@ impl ForwarderRequestSource for CcSwitchForwarderRequestSource {
         }
     }
 
-    fn plan_upstream_url(
-        &self,
-        input: ForwarderUpstreamUrlInput<'_>,
-    ) -> ForwardUpstreamUrlPlan {
+    fn plan_upstream_url(&self, input: ForwarderUpstreamUrlInput<'_>) -> ForwardUpstreamUrlPlan {
         forward_upstream_url_plan(
             ForwardUpstreamUrlPlanInput {
                 base_url: input.base_url,
@@ -9893,10 +9685,7 @@ impl ForwarderRequestSource for CcSwitchForwarderRequestSource {
         }
 
         if input.already_retried {
-            log::warn!(
-                "[{}] [RECT-013] budget 整流器已触发过，不再重试",
-                input.app
-            );
+            log::warn!("[{}] [RECT-013] budget 整流器已触发过，不再重试", input.app);
             return ForwarderRequestRectifierPlan::AlreadyRetried;
         }
 
@@ -9943,9 +9732,7 @@ impl ForwarderRequestSource for CcSwitchForwarderRequestSource {
         }
 
         let body_model = self.request_body_model(&filtered_body);
-        let body_model_label = body_model
-            .clone()
-            .unwrap_or_else(|| "<none>".to_string());
+        let body_model_label = body_model.clone().unwrap_or_else(|| "<none>".to_string());
         let outbound_model = body_model.clone().or(input.initial_outbound_model);
 
         let transport_policy = resolve_upstream_request_transport_policy(
@@ -10061,8 +9848,7 @@ pub(crate) fn default_forwarder_request_source() -> ForwarderRequestSourceRef {
     )
 }
 
-pub(crate) type ForwarderTransportSourceRef =
-    Arc<dyn ForwarderTransportSource + Send + Sync>;
+pub(crate) type ForwarderTransportSourceRef = Arc<dyn ForwarderTransportSource + Send + Sync>;
 
 pub(crate) struct ForwarderUpstreamTransportRequest {
     pub(crate) method: Method,
@@ -10115,8 +9901,7 @@ impl ForwarderTransportSource for CcSwitchForwarderTransportSource {
                     outbound = outbound.header(key, value);
                 }
                 let send = outbound.body(request.request_parts.body).send();
-                let send_result = if let Some(header_timeout) =
-                    send_policy.streaming_header_timeout
+                let send_result = if let Some(header_timeout) = send_policy.streaming_header_timeout
                 {
                     tokio::time::timeout(header_timeout, send)
                         .await
@@ -10154,8 +9939,7 @@ pub(crate) fn default_forwarder_transport_source() -> ForwarderTransportSourceRe
     Arc::new(CcSwitchForwarderTransportSource)
 }
 
-pub(crate) type ForwarderResponseSourceRef =
-    Arc<dyn ForwarderResponseSource + Send + Sync>;
+pub(crate) type ForwarderResponseSourceRef = Arc<dyn ForwarderResponseSource + Send + Sync>;
 
 pub(crate) struct ForwarderChannelResponseStatusInput<'a> {
     pub(crate) response: ProxyResponse,
@@ -10304,9 +10088,8 @@ async fn prime_streaming_forward_response(
         ));
     };
 
-    let first = first.map_err(|e| {
-        ProxyError::ForwardFailed(streaming_body_first_chunk_read_error_message(e))
-    })?;
+    let first = first
+        .map_err(|e| ProxyError::ForwardFailed(streaming_body_first_chunk_read_error_message(e)))?;
 
     let replay = futures::stream::once(async move { Ok(first) }).chain(stream);
     Ok(ProxyResponse::streamed(status, headers, replay))
@@ -10778,16 +10561,10 @@ where
             channels: CcSwitchChannelSource::new(db.clone()),
             route_policies: CcSwitchRoutePolicySource::new(db.clone()),
             route_resolver: CcSwitchRouteResolver::new(provider_router.clone()),
-            health_store: CcSwitchChannelHealthStore::new(
-                db.clone(),
-                provider_router.clone(),
-            ),
+            health_store: CcSwitchChannelHealthStore::new(db.clone(), provider_router.clone()),
             reachability_probe: CcSwitchChannelReachabilityProbe::new(db.clone()),
             auth_provider: CcSwitchAuthProvider,
-            model_catalog: CcSwitchModelCatalogProvider::new(
-                db.clone(),
-                provider_router.clone(),
-            ),
+            model_catalog: CcSwitchModelCatalogProvider::new(db.clone(), provider_router.clone()),
             usage_sink: CcSwitchUsageSink::new(db),
             event_sink: CcSwitchEventSink::new(Some(runtime.events())),
             forward_pipeline: CcSwitchForwardPipeline::with_runtime(runtime),
@@ -10880,9 +10657,9 @@ impl HostForwardRuntime for CcSwitchProxyRuntime {
         request: ProxyRequest,
         plan: RoutePlan,
     ) -> BoxFuture<'a, ProxyCoreResult<ProxyResult>> {
-        Box::pin(async move {
-            forward_proxy_request_with_cc_switch_runtime(self, request, plan).await
-        })
+        Box::pin(
+            async move { forward_proxy_request_with_cc_switch_runtime(self, request, plan).await },
+        )
     }
 }
 
@@ -11011,9 +10788,7 @@ pub(crate) fn channel_health_reset_plan_from_lookup(
     })
 }
 
-pub(crate) fn channel_health_reset_from_plan(
-    plan: ChannelHealthResetPlan,
-) -> ChannelHealthReset {
+pub(crate) fn channel_health_reset_from_plan(plan: ChannelHealthResetPlan) -> ChannelHealthReset {
     channel_health_reset_from_parts(plan.channel_id, plan.app_type.as_str())
 }
 
@@ -11546,9 +11321,7 @@ pub(crate) fn forwarder_replace_images_for_text_only_provider_model(
     replace_images_for_text_only_provider_model(body, provider, allow_heuristic)
 }
 
-pub(crate) fn rewrite_codex_responses_endpoint_to_chat(
-    endpoint: &str,
-) -> (String, Option<String>) {
+pub(crate) fn rewrite_codex_responses_endpoint_to_chat(endpoint: &str) -> (String, Option<String>) {
     crate::proxy_core::api::transport::rewrite_codex_responses_endpoint_to_chat(endpoint)
         .into_parts()
 }
@@ -11783,10 +11556,7 @@ pub(crate) fn provider_is_github_copilot_upstream(provider: &Provider, base_url:
     )
 }
 
-pub(crate) fn forwarder_is_github_copilot_upstream(
-    provider: &Provider,
-    base_url: &str,
-) -> bool {
+pub(crate) fn forwarder_is_github_copilot_upstream(provider: &Provider, base_url: &str) -> bool {
     provider_is_github_copilot_upstream(provider, base_url)
 }
 
@@ -11942,10 +11712,7 @@ const CLAUDE_TAKEOVER_TOKEN_ENV_KEYS: [&str; 4] = [
     "OPENAI_API_KEY",
 ];
 
-pub(crate) fn claude_live_config_has_proxy_placeholder(
-    config: &Value,
-    placeholder: &str,
-) -> bool {
+pub(crate) fn claude_live_config_has_proxy_placeholder(config: &Value, placeholder: &str) -> bool {
     let Some(env) = config.get("env").and_then(Value::as_object) else {
         return false;
     };
@@ -12001,10 +11768,7 @@ where
     Some(changed)
 }
 
-pub(crate) fn codex_live_config_has_proxy_placeholder(
-    config: &Value,
-    placeholder: &str,
-) -> bool {
+pub(crate) fn codex_live_config_has_proxy_placeholder(config: &Value, placeholder: &str) -> bool {
     if config
         .get("auth")
         .and_then(Value::as_object)
@@ -12047,10 +11811,7 @@ pub(crate) fn ensure_codex_takeover_auth_placeholder(
         return false;
     };
 
-    root.insert(
-        "auth".to_string(),
-        json!({ "OPENAI_API_KEY": placeholder }),
-    );
+    root.insert("auth".to_string(), json!({ "OPENAI_API_KEY": placeholder }));
     true
 }
 
@@ -12199,10 +11960,7 @@ pub(crate) fn codex_live_write_projection(
     })
 }
 
-pub(crate) fn gemini_live_config_has_proxy_placeholder(
-    config: &Value,
-    placeholder: &str,
-) -> bool {
+pub(crate) fn gemini_live_config_has_proxy_placeholder(config: &Value, placeholder: &str) -> bool {
     config
         .get("env")
         .and_then(Value::as_object)
@@ -12300,10 +12058,7 @@ fn proxy_urls_match(actual: &str, expected: &str) -> bool {
     actual.trim().trim_end_matches('/') == expected.trim().trim_end_matches('/')
 }
 
-fn codex_config_has_base_url_matching(
-    config_text: &str,
-    predicate: impl Fn(&str) -> bool,
-) -> bool {
+fn codex_config_has_base_url_matching(config_text: &str, predicate: impl Fn(&str) -> bool) -> bool {
     let Ok(doc) = toml::from_str::<toml::Value>(config_text) else {
         return false;
     };
@@ -12337,11 +12092,9 @@ fn claude_live_token_pair<'a>(
 ) -> Option<(&'static str, &'a str)> {
     let env = live_config.get("env").and_then(Value::as_object)?;
 
-    CLAUDE_TAKEOVER_TOKEN_ENV_KEYS
-        .into_iter()
-        .find_map(|key| {
-            non_placeholder_trimmed_string(env.get(key), placeholder).map(|token| (key, token))
-        })
+    CLAUDE_TAKEOVER_TOKEN_ENV_KEYS.into_iter().find_map(|key| {
+        non_placeholder_trimmed_string(env.get(key), placeholder).map(|token| (key, token))
+    })
 }
 
 fn codex_live_openai_api_key<'a>(live_config: &'a Value, placeholder: &str) -> Option<&'a str> {
@@ -12496,9 +12249,7 @@ pub(crate) fn provider_claude_models_are_claude_safe(provider: &Provider) -> boo
     .all(crate::claude_desktop_config::is_claude_safe_model_id)
 }
 
-pub(crate) fn provider_claude_desktop_routes_support_1m_by_default(
-    provider: &Provider,
-) -> bool {
+pub(crate) fn provider_claude_desktop_routes_support_1m_by_default(provider: &Provider) -> bool {
     !matches!(
         provider
             .meta
@@ -12635,7 +12386,12 @@ fn provider_uses_anthropic_messages_format(provider: &Provider) -> bool {
         .meta
         .as_ref()
         .and_then(|meta| meta.api_format.as_deref())
-        .or_else(|| provider.settings_config.get("api_format").and_then(Value::as_str))
+        .or_else(|| {
+            provider
+                .settings_config
+                .get("api_format")
+                .and_then(Value::as_str)
+        })
         .map(str::trim)
         .unwrap_or("anthropic");
 
@@ -12729,8 +12485,8 @@ pub(crate) fn forwarder_bedrock_env_flag(provider: &Provider) -> Option<&str> {
 pub(crate) use crate::proxy_core::api::usage::{
     is_placeholder_pricing_model,
     non_streaming_response_usage_record_from_body_with_request_id_fallback,
-    streaming_response_usage_record_with_optional_outbound_model,
-    usage_record_with_route_context, usage_route_context_from_selection,
+    streaming_response_usage_record_with_optional_outbound_model, usage_record_with_route_context,
+    usage_route_context_from_selection,
 };
 
 #[derive(Debug, Clone)]
@@ -12943,10 +12699,7 @@ where
 
 pub(crate) fn usage_logging_enabled_from_proxy_config(config: &RwLock<ProxyConfig>) -> bool {
     usage_logging_enabled_from_config_flag(
-        config
-            .try_read()
-            .ok()
-            .map(|config| config.enable_logging),
+        config.try_read().ok().map(|config| config.enable_logging),
     )
 }
 
@@ -13044,23 +12797,21 @@ pub(crate) fn transformed_streaming_usage_collector(
     usage_format: TransformedResponseUsageFormat,
     stream_event_filter: StreamUsageEventFilter,
 ) -> Option<SseUsageCollector> {
-    transformed_streaming_usage_collector_from_context(
-        TransformedStreamingUsageCollectorContext {
-            usage_logging_enabled: usage_logging_enabled_from_proxy_config(state.config.as_ref()),
-            services: state.proxy_core_services.clone(),
-            provider: ctx.provider_for_usage(),
-            app_type: ctx.app_type_str,
-            tag: ctx.tag,
-            request_model: &ctx.request_model,
-            outbound_model: ctx.outbound_model.as_deref(),
-            route_context: ctx.usage_route_context.as_ref(),
-            start_time: ctx.start_time,
-            status_code,
-            session_id: &ctx.session_id,
-            usage_format,
-            stream_event_filter,
-        },
-    )
+    transformed_streaming_usage_collector_from_context(TransformedStreamingUsageCollectorContext {
+        usage_logging_enabled: usage_logging_enabled_from_proxy_config(state.config.as_ref()),
+        services: state.proxy_core_services.clone(),
+        provider: ctx.provider_for_usage(),
+        app_type: ctx.app_type_str,
+        tag: ctx.tag,
+        request_model: &ctx.request_model,
+        outbound_model: ctx.outbound_model.as_deref(),
+        route_context: ctx.usage_route_context.as_ref(),
+        start_time: ctx.start_time,
+        status_code,
+        session_id: &ctx.session_id,
+        usage_format,
+        stream_event_filter,
+    })
 }
 
 pub(crate) fn claude_transformed_streaming_usage_collector(
@@ -13590,18 +13341,19 @@ pub(crate) fn non_streaming_response_usage_record_from_response_context(
     let provider = context
         .provider
         .ok_or_else(|| selected_provider_not_applied_message(context.app_type))?;
-    let mut output = non_streaming_response_usage_record_from_provider_body_with_request_id_fallback(
-        context.body,
-        context.response_parser,
-        provider,
-        context.app_type,
-        context.request_model,
-        context.outbound_model,
-        context.latency_ms,
-        context.status_code,
-        Some(context.session_id.to_string()),
-        request_id_fallback,
-    );
+    let mut output =
+        non_streaming_response_usage_record_from_provider_body_with_request_id_fallback(
+            context.body,
+            context.response_parser,
+            provider,
+            context.app_type,
+            context.request_model,
+            context.outbound_model,
+            context.latency_ms,
+            context.status_code,
+            Some(context.session_id.to_string()),
+            request_id_fallback,
+        );
     output.record = usage_record_with_route_context(output.record, context.route_context);
     Ok(output)
 }
@@ -13984,11 +13736,7 @@ fn push_claude_takeover_role_fields(
 
     fields.push((
         model_key,
-        claude_takeover_client_model_for_upstream(
-            takeover_model,
-            supports_one_m,
-            upstream_model,
-        ),
+        claude_takeover_client_model_for_upstream(takeover_model, supports_one_m, upstream_model),
     ));
 
     let display_name = claude_takeover_env_string(env, name_key)
@@ -13999,10 +13747,7 @@ fn push_claude_takeover_role_fields(
     }
 }
 
-fn claude_takeover_env_string<'a>(
-    env: &'a Map<String, Value>,
-    key: &str,
-) -> Option<&'a str> {
+fn claude_takeover_env_string<'a>(env: &'a Map<String, Value>, key: &str) -> Option<&'a str> {
     env.get(key)
         .and_then(Value::as_str)
         .map(str::trim)
@@ -14407,9 +14152,9 @@ impl ChannelSource for CcSwitchChannelSource {
         channel_id: &'a str,
         key_ref: &'a str,
     ) -> BoxFuture<'a, ProxyCoreResult<bool>> {
-        Box::pin(async move {
-            delete_channel_key_record_from_db_source(&self.db, channel_id, key_ref)
-        })
+        Box::pin(
+            async move { delete_channel_key_record_from_db_source(&self.db, channel_id, key_ref) },
+        )
     }
 
     fn list_channel_model_records<'a>(
@@ -14487,9 +14232,7 @@ pub(crate) fn channel_test_provider_from_probe_source(
     provider.ok_or_else(|| ProxyCoreError::Config(request.provider_not_found_message()))
 }
 
-pub(crate) fn channel_reachability_probe_error(
-    error: impl std::fmt::Display,
-) -> ProxyCoreError {
+pub(crate) fn channel_reachability_probe_error(error: impl std::fmt::Display) -> ProxyCoreError {
     ProxyCoreError::Internal(error.to_string())
 }
 
@@ -14549,9 +14292,7 @@ fn provider_metadata_without_secrets(provider: &Provider) -> ProviderMetadata {
             .and_then(|meta| meta.auth_binding.as_ref())
             .map(|binding| json!(binding)),
         endpoint_auto_select: meta.and_then(|meta| meta.endpoint_auto_select),
-        custom_endpoint_count: meta
-            .map(|meta| meta.custom_endpoints.len())
-            .unwrap_or(0),
+        custom_endpoint_count: meta.map(|meta| meta.custom_endpoints.len()).unwrap_or(0),
     })
 }
 
@@ -14652,7 +14393,10 @@ mod tests {
         );
         assert_eq!(bridged_request.requested_model.as_deref(), Some("gpt-5"));
         assert_eq!(
-            bridged_request.headers.get("x-test").and_then(|value| value.to_str().ok()),
+            bridged_request
+                .headers
+                .get("x-test")
+                .and_then(|value| value.to_str().ok()),
             Some("1")
         );
         assert_eq!(
@@ -14662,7 +14406,10 @@ mod tests {
                 .map(String::as_str),
             Some("extension-value")
         );
-        assert_eq!(bridged_request.body, ProxyBody::Json(json!({"model": "gpt-5"})));
+        assert_eq!(
+            bridged_request.body,
+            ProxyBody::Json(json!({"model": "gpt-5"}))
+        );
 
         let forward_request = forward_runtime_request_from_proxy_request(ProxyRequest::new(
             AppKind::Claude,
@@ -14676,7 +14423,10 @@ mod tests {
         assert_eq!(forward_request.method, Method::POST);
         assert_eq!(forward_request.endpoint, "/v1/messages");
         assert_eq!(forward_request.body, json!({"ok": true}));
-        assert_eq!(forward_request.session_result.source, SessionIdSource::Generated);
+        assert_eq!(
+            forward_request.session_result.source,
+            SessionIdSource::Generated
+        );
         assert!(!forward_request.session_result.client_provided);
         Uuid::parse_str(&forward_request.session_result.session_id)
             .expect("generated forward session id should be a UUID");
@@ -14980,7 +14730,10 @@ mod tests {
             Some(ProviderKind::GitHubCopilot)
         );
         assert_eq!(output.record.app, AppKind::ClaudeDesktop);
-        assert_eq!(output.record.response_model.as_deref(), Some("response-model"));
+        assert_eq!(
+            output.record.response_model.as_deref(),
+            Some("response-model")
+        );
         assert_eq!(output.record.outbound_model, "outbound-model");
         assert_eq!(output.record.tokens.input_tokens, 2);
         assert_eq!(output.record.tokens.output_tokens, 3);
@@ -15155,11 +14908,8 @@ mod tests {
         .expect("apply provider auth profile");
         assert_eq!(provider_attempt.auth_provider().id, "provider-auth");
 
-        let mut channel_key_attempt = attempt_with_auth_ref(
-            &route_provider,
-            "channel-key",
-            "channel-key:primary",
-        );
+        let mut channel_key_attempt =
+            attempt_with_auth_ref(&route_provider, "channel-key", "channel-key:primary");
         apply_channel_auth_profile_providers_from_source(
             &AppType::Claude,
             &providers,
@@ -15380,10 +15130,7 @@ mod tests {
                 "cacheTtl": "1h"
             })
         );
-        assert_eq!(
-            CopilotOptimizerConfig::default().warmup_model,
-            "gpt-5-mini"
-        );
+        assert_eq!(CopilotOptimizerConfig::default().warmup_model, "gpt-5-mini");
     }
 
     #[test]
@@ -15393,8 +15140,14 @@ mod tests {
         let claude_adapter = source.adapter_for_app(&AppType::Claude);
         let fallback_adapter = source.adapter_for_app(&AppType::Hermes);
 
-        assert_eq!(forwarder_provider_adapter_name(claude_adapter.as_ref()), "Claude");
-        assert_eq!(forwarder_provider_adapter_name(fallback_adapter.as_ref()), "Codex");
+        assert_eq!(
+            forwarder_provider_adapter_name(claude_adapter.as_ref()),
+            "Claude"
+        );
+        assert_eq!(
+            forwarder_provider_adapter_name(fallback_adapter.as_ref()),
+            "Codex"
+        );
     }
 
     #[tokio::test]
@@ -15466,11 +15219,9 @@ mod tests {
         assert_eq!(prepared["output_config"]["effort"], "max");
         assert!(prepared["tools"][0].get("cache_control").is_some());
         assert!(prepared["system"][0].get("cache_control").is_some());
-        assert!(
-            prepared["messages"][1]["content"][0]
-                .get("cache_control")
-                .is_some()
-        );
+        assert!(prepared["messages"][1]["content"][0]
+            .get("cache_control")
+            .is_some());
     }
 
     #[test]
@@ -15543,8 +15294,8 @@ base_url = "https://api.openai.com/v1"
             None,
         );
 
-        let body = source.convert_codex_responses_to_chat_body(
-            ForwarderCodexResponsesToChatInput {
+        let body =
+            source.convert_codex_responses_to_chat_body(ForwarderCodexResponsesToChatInput {
                 body: json!({
                     "model": "client-model",
                     "instructions": "Stay concise.",
@@ -15553,8 +15304,7 @@ base_url = "https://api.openai.com/v1"
                     "stream": true
                 }),
                 provider: &provider,
-            },
-        );
+            });
 
         assert_eq!(body["model"], "upstream-model");
         assert_eq!(body["messages"][0]["role"], "system");
@@ -15923,16 +15673,14 @@ base_url = "https://api.openai.com/v1"
             "tools-2024-04-04".parse().expect("header value"),
         );
 
-        let optimized = source.optimize_copilot_request(
-            ForwarderCopilotRequestOptimizationInput {
-                body: json!({
-                    "model": "claude-sonnet-4",
-                    "messages": [{"role": "user", "content": "Hello"}]
-                }),
-                headers: &headers,
-                config: &CopilotOptimizerConfig::default(),
-            },
-        );
+        let optimized = source.optimize_copilot_request(ForwarderCopilotRequestOptimizationInput {
+            body: json!({
+                "model": "claude-sonnet-4",
+                "messages": [{"role": "user", "content": "Hello"}]
+            }),
+            headers: &headers,
+            config: &CopilotOptimizerConfig::default(),
+        });
 
         assert_eq!(optimized.classification.initiator, "user");
         assert!(optimized.classification.is_warmup);
@@ -16087,10 +15835,7 @@ base_url = "https://api.openai.com/v1"
                 .as_deref(),
             Some("upstream-sonnet")
         );
-        assert_eq!(
-            source.request_body_model(&json!({ "model": "" })),
-            None
-        );
+        assert_eq!(source.request_body_model(&json!({ "model": "" })), None);
         assert_eq!(source.request_body_model(&json!({})), None);
     }
 
@@ -16183,12 +15928,7 @@ base_url = "https://api.openai.com/v1"
     #[test]
     fn forwarder_request_source_gates_app_media_prevention() {
         let source = default_forwarder_request_source();
-        let provider = Provider::with_id(
-            "media".to_string(),
-            "Media".to_string(),
-            json!({}),
-            None,
-        );
+        let provider = Provider::with_id("media".to_string(), "Media".to_string(), json!({}), None);
         let default_config = RectifierConfig::default();
         let mut non_codex_body = json!({
             "model": "deepseek-v4-pro",
@@ -16259,17 +15999,18 @@ base_url = "https://api.openai.com/v1"
         assert_eq!(prepared.body_model_label, "upstream-sonnet");
         assert_eq!(prepared.outbound_model.as_deref(), Some("upstream-sonnet"));
 
-        let prepared_without_model = source.prepare_upstream_body(ForwarderRequestPreparationInput {
-            app: "codex",
-            provider_id: "provider-a",
-            endpoint: "/v1/chat/completions",
-            api_format: None,
-            body: json!({ "messages": [] }),
-            session_client_provided: false,
-            transform_plan: &transform_plan,
-            initial_outbound_model: Some("initial-model".to_string()),
-            headers: &headers,
-        });
+        let prepared_without_model =
+            source.prepare_upstream_body(ForwarderRequestPreparationInput {
+                app: "codex",
+                provider_id: "provider-a",
+                endpoint: "/v1/chat/completions",
+                api_format: None,
+                body: json!({ "messages": [] }),
+                session_client_provided: false,
+                transform_plan: &transform_plan,
+                initial_outbound_model: Some("initial-model".to_string()),
+                headers: &headers,
+            });
 
         assert_eq!(prepared_without_model.body_model_label, "<none>");
         assert_eq!(
@@ -16298,24 +16039,24 @@ base_url = "https://api.openai.com/v1"
             None,
         );
 
-        assert!(source.anthropic_rectifiers_enabled(
-            ForwarderAnthropicRectifierGateInput {
+        assert!(
+            source.anthropic_rectifiers_enabled(ForwarderAnthropicRectifierGateInput {
                 app_type: &AppType::Claude,
                 provider: &claude_auth_provider,
-            },
-        ));
-        assert!(!source.anthropic_rectifiers_enabled(
-            ForwarderAnthropicRectifierGateInput {
+            },)
+        );
+        assert!(
+            !source.anthropic_rectifiers_enabled(ForwarderAnthropicRectifierGateInput {
                 app_type: &AppType::Codex,
                 provider: &claude_auth_provider,
-            },
-        ));
-        assert!(source.anthropic_rectifiers_enabled(
-            ForwarderAnthropicRectifierGateInput {
+            },)
+        );
+        assert!(
+            source.anthropic_rectifiers_enabled(ForwarderAnthropicRectifierGateInput {
                 app_type: &AppType::Claude,
                 provider: &default_claude_provider,
-            },
-        ));
+            },)
+        );
     }
 
     #[test]
@@ -16338,7 +16079,9 @@ base_url = "https://api.openai.com/v1"
             None,
         );
         let legacy_attempt = ForwardAttempt::from_provider(provider.clone());
-        assert!(forwarder_should_bypass_circuit_breaker(&[legacy_attempt.clone()]));
+        assert!(forwarder_should_bypass_circuit_breaker(&[
+            legacy_attempt.clone()
+        ]));
         assert!(!forwarder_should_bypass_circuit_breaker(&[]));
         assert!(!forwarder_should_bypass_circuit_breaker(&[
             legacy_attempt.clone(),
@@ -16380,9 +16123,7 @@ base_url = "https://api.openai.com/v1"
         );
 
         assert_eq!(
-            source
-                .record_success_status("provider-b", &provider)
-                .await,
+            source.record_success_status("provider-b", &provider).await,
             None
         );
 
@@ -16537,10 +16278,7 @@ base_url = "https://api.openai.com/v1"
         let status = source.status();
         let status = status.read().await;
         assert_eq!(status.failed_requests, 2);
-        assert_eq!(
-            status.last_error.as_deref(),
-            Some("所有供应商都失败")
-        );
+        assert_eq!(status.last_error.as_deref(), Some("所有供应商都失败"));
     }
 
     #[tokio::test]
@@ -16581,9 +16319,7 @@ base_url = "https://api.openai.com/v1"
         );
 
         source
-            .record_forward_error_status(&ProxyError::Timeout(
-                "upstream timed out".to_string(),
-            ))
+            .record_forward_error_status(&ProxyError::Timeout("upstream timed out".to_string()))
             .await;
 
         let status = source.status();
@@ -16602,12 +16338,7 @@ base_url = "https://api.openai.com/v1"
             Arc::new(RwLock::new(HashMap::new())),
             Arc::new(ProxyEventBus::default()),
         );
-        let provider = Provider::with_id(
-            "relay".to_string(),
-            "Relay".to_string(),
-            json!({}),
-            None,
-        );
+        let provider = Provider::with_id("relay".to_string(), "Relay".to_string(), json!({}), None);
         let retryable =
             source.forward_failure_decision(&ProxyError::Timeout("upstream timed out".to_string()));
         let non_retryable_error = ProxyError::UpstreamError {
@@ -16656,12 +16387,7 @@ base_url = "https://api.openai.com/v1"
             Arc::new(RwLock::new(HashMap::new())),
             Arc::new(ProxyEventBus::default()),
         );
-        let provider = Provider::with_id(
-            "relay".to_string(),
-            "Relay".to_string(),
-            json!({}),
-            None,
-        );
+        let provider = Provider::with_id("relay".to_string(), "Relay".to_string(), json!({}), None);
 
         source
             .record_provider_failure(&provider, "超时: upstream timed out")
@@ -17025,15 +16751,14 @@ base_url = "https://api.openai.com/v1"
             body: Some("invalid signature in thinking block".to_string()),
         };
 
-        let plan = source.thinking_signature_rectifier_plan(
-            ForwarderThinkingSignatureRectifierInput {
+        let plan =
+            source.thinking_signature_rectifier_plan(ForwarderThinkingSignatureRectifierInput {
                 app: "claude",
                 body: &mut body,
                 error: &error,
                 already_retried: false,
                 config: &RectifierConfig::default(),
-            },
-        );
+            });
 
         assert_eq!(plan, ForwarderRequestRectifierPlan::Retry);
         let content = body["messages"][0]["content"].as_array().unwrap();
@@ -17053,20 +16778,17 @@ base_url = "https://api.openai.com/v1"
         let error = ProxyError::UpstreamError {
             status: 400,
             body: Some(
-                "thinking.budget_tokens: Input should be greater than or equal to 1024"
-                    .to_string(),
+                "thinking.budget_tokens: Input should be greater than or equal to 1024".to_string(),
             ),
         };
 
-        let plan = source.thinking_budget_rectifier_plan(
-            ForwarderThinkingBudgetRectifierInput {
-                app: "claude",
-                body: &mut body,
-                error: &error,
-                already_retried: false,
-                config: &RectifierConfig::default(),
-            },
-        );
+        let plan = source.thinking_budget_rectifier_plan(ForwarderThinkingBudgetRectifierInput {
+            app: "claude",
+            body: &mut body,
+            error: &error,
+            already_retried: false,
+            config: &RectifierConfig::default(),
+        });
 
         assert_eq!(plan, ForwarderRequestRectifierPlan::Retry);
         assert_eq!(body["thinking"]["type"], "enabled");
@@ -17128,7 +16850,10 @@ base_url = "https://api.openai.com/v1"
             existing_p1_toggle.plan.provider_id_to_switch_to.as_deref(),
             Some("provider-a")
         );
-        assert!(existing_p1_toggle.plan.provider_id_to_add_to_queue.is_none());
+        assert!(existing_p1_toggle
+            .plan
+            .provider_id_to_add_to_queue
+            .is_none());
         let auto_add_current_toggle = auto_failover_toggle_plan_from_sources(
             app_config.clone(),
             true,
@@ -17144,7 +16869,10 @@ base_url = "https://api.openai.com/v1"
             Some("current-provider")
         );
         assert_eq!(
-            auto_add_current_toggle.plan.provider_id_to_switch_to.as_deref(),
+            auto_add_current_toggle
+                .plan
+                .provider_id_to_switch_to
+                .as_deref(),
             Some("current-provider")
         );
         let mut takeover_disabled_config = app_config.clone();
@@ -17173,8 +16901,7 @@ base_url = "https://api.openai.com/v1"
             "claude",
             Err(AppError::Config("missing proxy_config".to_string()))
         ));
-        let takeover_disabled_app_config =
-            proxy_app_config_with_enabled(app_config.clone(), false);
+        let takeover_disabled_app_config = proxy_app_config_with_enabled(app_config.clone(), false);
         assert!(!takeover_disabled_app_config.enabled);
         assert!(takeover_disabled_app_config.auto_failover_enabled);
         let takeover_enabled_app_config =
@@ -17265,13 +16992,15 @@ base_url = "https://api.openai.com/v1"
             ManagementAuthDecision::RequireToken("config-token".to_string())
         );
 
-        assert_eq!(CircuitBreakerConfig::from(&app_config), CircuitBreakerConfig::default());
+        assert_eq!(
+            CircuitBreakerConfig::from(&app_config),
+            CircuitBreakerConfig::default()
+        );
         let mut custom_breaker_app_config = app_config.clone();
         custom_breaker_app_config.circuit_failure_threshold = 7;
         custom_breaker_app_config.circuit_timeout_seconds = 45;
-        let projected_breaker_config = circuit_breaker_config_from_router_config_result(Ok(
-            custom_breaker_app_config.clone(),
-        ));
+        let projected_breaker_config =
+            circuit_breaker_config_from_router_config_result(Ok(custom_breaker_app_config.clone()));
         assert_eq!(projected_breaker_config.failure_threshold, 7);
         assert_eq!(projected_breaker_config.timeout_seconds, 45);
         assert_eq!(
@@ -17281,10 +17010,7 @@ base_url = "https://api.openai.com/v1"
             CircuitBreakerConfig::default()
         );
         assert_eq!(
-            circuit_failure_threshold_from_router_config_result(
-                Ok(custom_breaker_app_config),
-                9,
-            ),
+            circuit_failure_threshold_from_router_config_result(Ok(custom_breaker_app_config), 9,),
             7
         );
         assert_eq!(
@@ -17378,9 +17104,7 @@ base_url = "https://api.openai.com/v1"
                 streaming_first_byte_timeout: ResponseTimeoutConfig::default()
                     .streaming
                     .first_byte_timeout,
-                streaming_idle_timeout: ResponseTimeoutConfig::default()
-                    .streaming
-                    .idle_timeout,
+                streaming_idle_timeout: ResponseTimeoutConfig::default().streaming.idle_timeout,
                 max_retries: 0,
             }
         );
@@ -17396,8 +17120,9 @@ base_url = "https://api.openai.com/v1"
             .and_then(Value::as_bool),
             Some(true)
         );
-        assert!(!proxy_runtime_config_from_config_source(ProxyConfig::default())
-            .privacy_filter_enabled);
+        assert!(
+            !proxy_runtime_config_from_config_source(ProxyConfig::default()).privacy_filter_enabled
+        );
     }
 
     #[test]
@@ -17413,17 +17138,20 @@ base_url = "https://api.openai.com/v1"
 
         let fallback = auth_info_from_cc_switch_provider_config(None);
         assert!(fallback.account_ref.is_none());
-        assert_eq!(fallback.metadata["source"], json!("cc_switch_provider_config"));
+        assert_eq!(
+            fallback.metadata["source"],
+            json!("cc_switch_provider_config")
+        );
     }
 
     #[test]
     fn circuit_and_route_adapter_projects_provider_router_contracts() {
         assert_eq!(circuit_breaker_log_codes::OPEN_TO_HALF_OPEN, "CB-001");
+        assert_eq!(circuit_breaker_log_codes::HALF_OPEN_TO_CLOSED, "CB-002");
         assert_eq!(
-            circuit_breaker_log_codes::HALF_OPEN_TO_CLOSED,
-            "CB-002"
+            provider_circuit_key("claude", "provider-a"),
+            "claude:provider-a"
         );
-        assert_eq!(provider_circuit_key("claude", "provider-a"), "claude:provider-a");
         assert_eq!(
             channel_circuit_key("claude", "channel-a"),
             "channel:claude:channel-a"
@@ -17520,12 +17248,10 @@ base_url = "https://api.openai.com/v1"
         let selected_failover = select_failover_provider_ids_from_router_lookup_availability(
             "claude",
             &failover_providers.keys().cloned().collect::<Vec<_>>(),
-            failover_lookups
-                .into_iter()
-                .map(|lookup| {
-                    let available = lookup.provider_id == "provider-b";
-                    (lookup, available)
-                }),
+            failover_lookups.into_iter().map(|lookup| {
+                let available = lookup.provider_id == "provider-b";
+                (lookup, available)
+            }),
         )
         .expect("selected failover provider ids");
         assert_eq!(selected_failover, vec!["provider-b"]);
@@ -17573,7 +17299,9 @@ base_url = "https://api.openai.com/v1"
             current_provider_id_option_from_sources(Some("settings-provider"), Some("db-provider")),
             Some("settings-provider".to_string())
         );
-        assert!(!current_provider_db_fallback_required(Some("settings-provider")));
+        assert!(!current_provider_db_fallback_required(Some(
+            "settings-provider"
+        )));
         assert!(!current_provider_db_fallback_required(Some("")));
         assert!(current_provider_db_fallback_required(None));
         assert_eq!(current_provider_id_option_from_sources(None, None), None);
@@ -17633,8 +17361,12 @@ base_url = "https://api.openai.com/v1"
             "db-provider"
         );
         assert_eq!(forward_current_provider_id_from_source(None, || None), "");
-        let current_provider =
-            Provider::with_id("provider-a".to_string(), "Provider A".to_string(), json!({}), None);
+        let current_provider = Provider::with_id(
+            "provider-a".to_string(),
+            "Provider A".to_string(),
+            json!({}),
+            None,
+        );
         let selected_current =
             select_current_provider_ids_from_router_source("claude", Some(current_provider))
                 .expect("selected current provider id");
@@ -17709,8 +17441,7 @@ base_url = "https://api.openai.com/v1"
                 "providerName": "Official Claude",
             })
         );
-        let official_warning =
-            proxy_official_warning_event_message("claude", "Official Claude");
+        let official_warning = proxy_official_warning_event_message("claude", "Official Claude");
         assert_eq!(official_warning.event_name, "proxy-official-warning");
         assert_eq!(
             official_warning.payload,
@@ -17732,7 +17463,10 @@ base_url = "https://api.openai.com/v1"
         let official_warning_from_provider =
             proxy_official_warning_event_from_provider("codex", Some(&provider))
                 .expect("official warning from provider");
-        assert_eq!(official_warning_from_provider.event_name, "proxy-official-warning");
+        assert_eq!(
+            official_warning_from_provider.event_name,
+            "proxy-official-warning"
+        );
         assert_eq!(official_warning_from_provider.payload["appType"], "codex");
         assert_eq!(
             official_warning_from_provider.payload["providerName"],
@@ -17757,14 +17491,16 @@ base_url = "https://api.openai.com/v1"
                 "source": "failover",
             })
         );
-        let provider_switched =
-            provider_switched_failover_event_message("claude", "provider-1");
+        let provider_switched = provider_switched_failover_event_message("claude", "provider-1");
         assert_eq!(provider_switched.event_name, "provider-switched");
         assert_eq!(provider_switched.payload["source"], "failover");
         let provider_switched_enabled =
             provider_switched_failover_enabled_event_message("claude", "provider-1");
         assert_eq!(provider_switched_enabled.event_name, "provider-switched");
-        assert_eq!(provider_switched_enabled.payload["source"], "failoverEnabled");
+        assert_eq!(
+            provider_switched_enabled.payload["source"],
+            "failoverEnabled"
+        );
         assert_eq!(
             build_server_started_event_payload("127.0.0.1", 15721),
             json!({"address": "127.0.0.1", "port": 15721})
@@ -17774,7 +17510,10 @@ base_url = "https://api.openai.com/v1"
             .is_some_and(|object| object.is_empty()));
         let server_started = server_started_event_message("127.0.0.1", 15721);
         assert_eq!(server_started.event_name, "server_started");
-        assert_eq!(server_started.payload, json!({"address": "127.0.0.1", "port": 15721}));
+        assert_eq!(
+            server_started.payload,
+            json!({"address": "127.0.0.1", "port": 15721})
+        );
         let server_stopped = server_stopped_event_message();
         assert_eq!(server_stopped.event_name, "server_stopped");
         assert!(server_stopped
@@ -17974,7 +17713,10 @@ base_url = "https://api.openai.com/v1"
 
         assert_eq!(history.enrich_request(&mut request).await, 1);
         assert_eq!(request["input"][0]["type"], "function_call");
-        assert_eq!(request["input"][0]["reasoning_content"], "Need the file first.");
+        assert_eq!(
+            request["input"][0]["reasoning_content"],
+            "Need the file first."
+        );
     }
 
     #[tokio::test]
@@ -18089,12 +17831,11 @@ base_url = "https://api.openai.com/v1"
             headers[0].1,
             http::HeaderValue::from_static("Bearer sk-test")
         );
-        let auth_headers =
-            provider_codex_auth_headers(&ProviderAuthInfo::new(
-                "sk-provider".to_string(),
-                ProviderAuthStrategy::Bearer,
-            ))
-            .expect("provider codex auth headers");
+        let auth_headers = provider_codex_auth_headers(&ProviderAuthInfo::new(
+            "sk-provider".to_string(),
+            ProviderAuthStrategy::Bearer,
+        ))
+        .expect("provider codex auth headers");
         assert_eq!(auth_headers[0].0.as_str(), "authorization");
         assert_eq!(
             auth_headers[0].1,
@@ -18148,11 +17889,14 @@ base_url = "https://api.openai.com/v1"
             codex_config_text_from_settings(&json!({"config": "model = \"gpt-5\""})),
             Some("model = \"gpt-5\"")
         );
-        assert_eq!(codex_config_text_from_settings(&json!({"config": 42})), None);
+        assert_eq!(
+            codex_config_text_from_settings(&json!({"config": 42})),
+            None
+        );
         assert_eq!(codex_config_text_from_settings(&json!({})), None);
         let codex_auth_settings = json!({"auth": {"OPENAI_API_KEY": "sk-auth"}});
-        let auth = codex_auth_object_value_from_settings(&codex_auth_settings)
-            .expect("codex auth object");
+        let auth =
+            codex_auth_object_value_from_settings(&codex_auth_settings).expect("codex auth object");
         assert_eq!(
             codex_api_key_from_auth_and_config(Some(auth), Some("")).as_deref(),
             Some("sk-auth")
@@ -18210,18 +17954,12 @@ base_url = "https://api.openai.com/v1"
             &AppType::Codex,
             api_key_live_provider.settings_config.clone(),
         );
-        assert_eq!(
-            imported_custom_provider.category.as_deref(),
-            Some("custom")
-        );
+        assert_eq!(imported_custom_provider.category.as_deref(), Some("custom"));
         let imported_claude_provider = provider_from_default_live_settings(
             &AppType::Claude,
             json!({"env": {"ANTHROPIC_API_KEY": "sk-test"}}),
         );
-        assert_eq!(
-            imported_claude_provider.category.as_deref(),
-            Some("custom")
-        );
+        assert_eq!(imported_claude_provider.category.as_deref(), Some("custom"));
         let bearer_live_provider = Provider::with_id(
             "codex-live-bearer".to_string(),
             "Codex Live Bearer".to_string(),
@@ -18274,13 +18012,11 @@ experimental_bearer_token = "live-token"
                 .and_then(Value::as_str),
             Some("live-token")
         );
-        assert!(
-            !live_backfill_settings
-                .get("config")
-                .and_then(Value::as_str)
-                .expect("restored config")
-                .contains("experimental_bearer_token")
-        );
+        assert!(!live_backfill_settings
+            .get("config")
+            .and_then(Value::as_str)
+            .expect("restored config")
+            .contains("experimental_bearer_token"));
         let injected_unified_config =
             crate::codex_config::inject_codex_unified_session_bucket("").expect("inject");
         let mut official_unified_backfill = json!({"config": injected_unified_config});
@@ -18289,13 +18025,11 @@ experimental_bearer_token = "live-token"
             &mut official_unified_backfill,
         )
         .expect("strip official unified session bucket");
-        assert!(
-            !official_unified_backfill
-                .get("config")
-                .and_then(Value::as_str)
-                .expect("official stripped config")
-                .contains("model_provider")
-        );
+        assert!(!official_unified_backfill
+            .get("config")
+            .and_then(Value::as_str)
+            .expect("official stripped config")
+            .contains("model_provider"));
         let mut custom_unified_backfill = json!({
             "config": crate::codex_config::inject_codex_unified_session_bucket("").expect("inject")
         });
@@ -18304,25 +18038,24 @@ experimental_bearer_token = "live-token"
             &mut custom_unified_backfill,
         )
         .expect("custom backfill no-op");
-        assert!(
-            custom_unified_backfill
-                .get("config")
-                .and_then(Value::as_str)
-                .expect("custom retained config")
-                .contains("model_provider")
-        );
+        assert!(custom_unified_backfill
+            .get("config")
+            .and_then(Value::as_str)
+            .expect("custom retained config")
+            .contains("model_provider"));
         let write_settings = json!({
             "auth": {"OPENAI_API_KEY": "sk-write"},
             "config": "model = \"gpt-5\""
         });
-        let write_parts = codex_provider_live_write_parts(
-            &write_settings,
-            &custom_category_provider,
-        )
-        .expect("codex provider live write parts");
+        let write_parts =
+            codex_provider_live_write_parts(&write_settings, &custom_category_provider)
+                .expect("codex provider live write parts");
         assert_eq!(write_parts.category, Some("custom"));
         assert_eq!(
-            write_parts.auth.get("OPENAI_API_KEY").and_then(Value::as_str),
+            write_parts
+                .auth
+                .get("OPENAI_API_KEY")
+                .and_then(Value::as_str),
             Some("sk-write")
         );
         assert_eq!(write_parts.config_text, Some("model = \"gpt-5\""));
@@ -18501,7 +18234,10 @@ wire_api = "chat"
             provider_codex_chat_reasoning_profile(&reasoning_provider, Some("deepseek-v4-pro"))
                 .expect("deepseek reasoning profile");
         assert_eq!(inferred_profile.supports_effort, Some(true));
-        assert_eq!(inferred_profile.effort_value_mode.as_deref(), Some("deepseek"));
+        assert_eq!(
+            inferred_profile.effort_value_mode.as_deref(),
+            Some("deepseek")
+        );
         let mut explicit_reasoning_provider = Provider::with_id(
             "codex-explicit-reasoning".to_string(),
             "Explicit Reasoning".to_string(),
@@ -18599,9 +18335,7 @@ wire_api = "chat"
             Some("responses")
         );
         assert_eq!(
-            parsed_takeover
-                .get("model")
-                .and_then(toml::Value::as_str),
+            parsed_takeover.get("model").and_then(toml::Value::as_str),
             Some("upstream-model")
         );
         let mut existing_auth_only_live = json!({
@@ -18692,13 +18426,11 @@ base_url = "https://api.openai.com/v1"
         assert_eq!(enabled_policy.timeout.streaming.idle_timeout, 120);
 
         assert_eq!(
-            extract_gemini_model_from_path("/v1beta/models/gemini-pro:generateContent")
-                .as_deref(),
+            extract_gemini_model_from_path("/v1beta/models/gemini-pro:generateContent").as_deref(),
             Some("gemini-pro")
         );
         assert_eq!(
-            request_model_for_forward(&AppKind::Codex, "", &json!({"model": " gpt-5 "}))
-                .as_deref(),
+            request_model_for_forward(&AppKind::Codex, "", &json!({"model": " gpt-5 "})).as_deref(),
             Some("gpt-5")
         );
         assert_eq!(
@@ -18810,9 +18542,15 @@ base_url = "https://api.openai.com/v1"
             "Gemini Provider 缺少 base_url 配置"
         );
         let provider_auth = provider_gemini_auth_info(&provider).expect("gemini oauth auth info");
-        assert_eq!(provider_gemini_auth_strategy(&provider), ProviderAuthStrategy::GoogleOAuth);
+        assert_eq!(
+            provider_gemini_auth_strategy(&provider),
+            ProviderAuthStrategy::GoogleOAuth
+        );
         assert_eq!(provider_auth.api_key, "ya29.access-token");
-        assert_eq!(provider_auth.access_token.as_deref(), Some("ya29.access-token"));
+        assert_eq!(
+            provider_auth.access_token.as_deref(),
+            Some("ya29.access-token")
+        );
         assert_eq!(provider_auth.strategy, ProviderAuthStrategy::GoogleOAuth);
         let api_key_provider = Provider::with_id(
             "gemini-api-key".to_string(),
@@ -18855,16 +18593,14 @@ base_url = "https://api.openai.com/v1"
             .map(|obj| obj.contains_key("mcpServers")),
             Some(true)
         );
-        assert!(
-            provider_gemini_live_config_object(&Provider::with_id(
-                "gemini-null-config".to_string(),
-                "Gemini Null Config".to_string(),
-                json!({"config": Value::Null}),
-                None,
-            ))
-            .expect("null config should preserve live file")
-            .is_none()
-        );
+        assert!(provider_gemini_live_config_object(&Provider::with_id(
+            "gemini-null-config".to_string(),
+            "Gemini Null Config".to_string(),
+            json!({"config": Value::Null}),
+            None,
+        ))
+        .expect("null config should preserve live file")
+        .is_none());
         assert!(matches!(
             provider_gemini_live_config_object(&Provider::with_id(
                 "gemini-invalid-config".to_string(),
@@ -18912,12 +18648,9 @@ base_url = "https://api.openai.com/v1"
             "https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent"
         );
 
-        let oauth_headers = build_gemini_auth_headers(
-            "refresh-token",
-            Some("ya29.access-token"),
-            true,
-        )
-        .expect("oauth headers");
+        let oauth_headers =
+            build_gemini_auth_headers("refresh-token", Some("ya29.access-token"), true)
+                .expect("oauth headers");
         assert_eq!(oauth_headers[0].0.as_str(), "authorization");
         assert_eq!(
             oauth_headers[0].1,
@@ -18941,12 +18674,11 @@ base_url = "https://api.openai.com/v1"
             api_key_headers[0].1,
             http::HeaderValue::from_static("AIza-api-key")
         );
-        let provider_api_key_headers =
-            provider_gemini_auth_headers(&ProviderAuthInfo::new(
-                "AIza-provider-key".to_string(),
-                ProviderAuthStrategy::Google,
-            ))
-            .expect("provider gemini api key headers");
+        let provider_api_key_headers = provider_gemini_auth_headers(&ProviderAuthInfo::new(
+            "AIza-provider-key".to_string(),
+            ProviderAuthStrategy::Google,
+        ))
+        .expect("provider gemini api key headers");
         assert_eq!(provider_api_key_headers[0].0.as_str(), "x-goog-api-key");
         assert_eq!(
             provider_api_key_headers[0].1,
@@ -18966,8 +18698,8 @@ base_url = "https://api.openai.com/v1"
             resolve_claude_api_format_from_settings(None, Some("openai_chat"), &settings),
             "openai_chat"
         );
-        let auth_key = extract_claude_auth_key_from_settings(&settings)
-            .expect("anthropic auth token");
+        let auth_key =
+            extract_claude_auth_key_from_settings(&settings).expect("anthropic auth token");
         assert_eq!(auth_key.key, "claude-token");
         assert_eq!(auth_key.source, ClaudeAuthKeySource::AnthropicAuthToken);
         assert_eq!(
@@ -19307,7 +19039,10 @@ base_url = "https://api.openai.com/v1"
             None,
         )
         .expect("explicit chat response");
-        assert_eq!(explicit_chat_response["content"][0]["text"], "Explicit chat");
+        assert_eq!(
+            explicit_chat_response["content"][0]["text"],
+            "Explicit chat"
+        );
 
         let explicit_responses_response = provider_claude_transform_response_for_api_format(
             &json!({
@@ -19496,11 +19231,7 @@ base_url = "https://api.openai.com/v1"
         assert!(!stopped.running);
         assert_eq!(stopped.port, 0);
         assert!(stopped.active_targets.is_empty());
-        let info = proxy_server_info_from_parts(
-            "127.0.0.1",
-            15721,
-            "2026-06-21T00:00:00Z",
-        );
+        let info = proxy_server_info_from_parts("127.0.0.1", 15721, "2026-06-21T00:00:00Z");
         assert_eq!(info.address, "127.0.0.1");
         assert_eq!(info.port, 15721);
         assert_eq!(info.started_at, "2026-06-21T00:00:00Z");
@@ -19589,8 +19320,7 @@ base_url = "https://api.openai.com/v1"
             })
         );
 
-        let provider_only =
-            current_route_target_from_provider("codex", "provider-b", "Provider B");
+        let provider_only = current_route_target_from_provider("codex", "provider-b", "Provider B");
         assert_eq!(provider_only.app_type, "codex");
         assert_eq!(provider_only.provider_id, "provider-b");
         assert_eq!(provider_only.provider_name, "Provider B");
@@ -19665,33 +19395,25 @@ base_url = "https://api.openai.com/v1"
             &AppType::Claude,
             true
         ));
-        assert!(!proxy_hot_switch_should_sync_claude_live_while_proxy_active(
-            &AppType::Claude,
-            false
-        ));
+        assert!(
+            !proxy_hot_switch_should_sync_claude_live_while_proxy_active(&AppType::Claude, false)
+        );
         assert!(proxy_hot_switch_should_sync_claude_live_while_proxy_active(
             &AppType::Claude,
             true
         ));
-        assert!(!proxy_hot_switch_should_sync_claude_live_while_proxy_active(
-            &AppType::Codex,
-            true
-        ));
+        assert!(
+            !proxy_hot_switch_should_sync_claude_live_while_proxy_active(&AppType::Codex, true)
+        );
 
         assert!(!proxy_takeover_marked_state_is_reusable(false, false));
         assert!(!proxy_takeover_marked_state_is_reusable(true, false));
         assert!(!proxy_takeover_marked_state_is_reusable(false, true));
         assert!(proxy_takeover_marked_state_is_reusable(true, true));
-        assert!(!proxy_takeover_should_restore_existing_backup_before_retakeover(
-            false, false
-        ));
+        assert!(!proxy_takeover_should_restore_existing_backup_before_retakeover(false, false));
         assert!(proxy_takeover_should_restore_existing_backup_before_retakeover(true, false));
-        assert!(!proxy_takeover_should_restore_existing_backup_before_retakeover(
-            false, true
-        ));
-        assert!(!proxy_takeover_should_restore_existing_backup_before_retakeover(
-            true, true
-        ));
+        assert!(!proxy_takeover_should_restore_existing_backup_before_retakeover(false, true));
+        assert!(!proxy_takeover_should_restore_existing_backup_before_retakeover(true, true));
     }
 
     #[test]
@@ -19847,9 +19569,8 @@ reasoning = "medium"
         let applied_config = applied["config"].as_str().expect("codex config");
         assert!(applied_config.contains("[shared]"));
         assert!(applied_config.contains("reasoning = \"medium\""));
-        let stripped =
-            remove_common_config_from_settings(&AppType::Codex, &applied, codex_snippet)
-                .expect("codex remove");
+        let stripped = remove_common_config_from_settings(&AppType::Codex, &applied, codex_snippet)
+            .expect("codex remove");
         assert_eq!(stripped, codex_settings);
 
         let gemini_settings = json!({});
@@ -19857,10 +19578,7 @@ reasoning = "medium"
         let applied =
             apply_common_config_to_settings(&AppType::Gemini, &gemini_settings, gemini_snippet)
                 .expect("gemini apply");
-        assert_eq!(
-            applied,
-            json!({"env": {"SHARED_REGION": "us-central1"}})
-        );
+        assert_eq!(applied, json!({"env": {"SHARED_REGION": "us-central1"}}));
 
         assert_eq!(
             common_config_settings_mutation_issue_message(
@@ -19965,9 +19683,7 @@ reasoning = "medium"
         );
         let snippet = r#"{ "includeCoAuthoredBy": false }"#;
 
-        assert!(!provider_common_config_storage_normalization_requires_snippet(
-            &provider
-        ));
+        assert!(!provider_common_config_storage_normalization_requires_snippet(&provider));
         assert_eq!(
             normalize_provider_common_config_for_storage(
                 &AppType::Claude,
@@ -19983,16 +19699,10 @@ reasoning = "medium"
             ..Default::default()
         });
 
-        assert!(provider_common_config_storage_normalization_requires_snippet(
-            &provider
-        ));
+        assert!(provider_common_config_storage_normalization_requires_snippet(&provider));
         assert_eq!(
-            normalize_provider_common_config_for_storage(
-                &AppType::Claude,
-                &provider,
-                Some("   ")
-            )
-            .expect("empty snippet"),
+            normalize_provider_common_config_for_storage(&AppType::Claude, &provider, Some("   "))
+                .expect("empty snippet"),
             None
         );
         assert_eq!(
@@ -20118,10 +19828,7 @@ reasoning = "medium"
             "ya29.access-token-12345".to_string(),
         );
         assert_eq!(oauth.strategy, ProviderAuthStrategy::GoogleOAuth);
-        assert_eq!(
-            oauth.masked_access_token(),
-            Some("ya29...2345".to_string())
-        );
+        assert_eq!(oauth.masked_access_token(), Some("ya29...2345".to_string()));
 
         let codex_adapter = crate::proxy::providers::CodexAdapter::new();
         let codex_provider = Provider::with_id(
@@ -20223,7 +19930,10 @@ reasoning = "medium"
             }),
             None,
         );
-        assert_eq!(provider_claude_kind(&anthropic_provider), ProviderKind::Claude);
+        assert_eq!(
+            provider_claude_kind(&anthropic_provider),
+            ProviderKind::Claude
+        );
         let openrouter_provider = Provider::with_id(
             "openrouter".to_string(),
             "OpenRouter".to_string(),
@@ -20302,7 +20012,10 @@ reasoning = "medium"
             }),
             None,
         );
-        assert_eq!(provider_gemini_kind(&gemini_provider), ProviderKind::GeminiCli);
+        assert_eq!(
+            provider_gemini_kind(&gemini_provider),
+            ProviderKind::GeminiCli
+        );
         assert_eq!(
             provider_kind_from_app_type_and_config(&AppType::Gemini, &gemini_provider),
             ProviderKind::GeminiCli
@@ -20353,20 +20066,14 @@ reasoning = "medium"
         assert!(!claude_env.iter().any(|(key, _)| key == "IGNORED_NUMERIC"));
 
         let codex_env = provider_launch_env_vars_for_app(&provider, &AppType::Codex);
-        assert!(codex_env.contains(&(
-            "OPENAI_API_KEY".to_string(),
-            "codex-token".to_string()
-        )));
+        assert!(codex_env.contains(&("OPENAI_API_KEY".to_string(), "codex-token".to_string())));
 
         let gemini_env = provider_launch_env_vars_for_app(&provider, &AppType::Gemini);
         assert!(gemini_env.contains(&(
             "GOOGLE_GEMINI_BASE_URL".to_string(),
             "https://gemini.example.com".to_string()
         )));
-        assert!(gemini_env.contains(&(
-            "GEMINI_API_KEY".to_string(),
-            "gemini-key".to_string()
-        )));
+        assert!(gemini_env.contains(&("GEMINI_API_KEY".to_string(), "gemini-key".to_string())));
     }
 
     #[test]
@@ -20473,11 +20180,8 @@ reasoning = "medium"
             }
         });
         assert_eq!(
-            remove_claude_takeover_env_fields_if_present(
-                &mut claude_live,
-                placeholder,
-                |url| url.starts_with("http://localhost")
-            ),
+            remove_claude_takeover_env_fields_if_present(&mut claude_live, placeholder, |url| url
+                .starts_with("http://localhost")),
             Some(true)
         );
         let claude_env = claude_live
@@ -20490,7 +20194,10 @@ reasoning = "medium"
             claude_env.get("ANTHROPIC_API_KEY").and_then(Value::as_str),
             Some("real-key")
         );
-        assert_eq!(claude_env.get("OTHER").and_then(Value::as_str), Some("kept"));
+        assert_eq!(
+            claude_env.get("OTHER").and_then(Value::as_str),
+            Some("kept")
+        );
 
         let mut claude_real_config = json!({
             "env": {
@@ -20620,16 +20327,14 @@ base_url = "https://relay.example/v1"
             .expect("disabled preservation should be a valid no-op"),
             None
         );
-        assert!(
-            codex_preserved_auth_live_config_text_for_policy(
-                &codex_config_only,
-                placeholder,
-                true,
-                true,
-            )
-            .expect("enabled preservation should be valid")
-            .is_some()
-        );
+        assert!(codex_preserved_auth_live_config_text_for_policy(
+            &codex_config_only,
+            placeholder,
+            true,
+            true,
+        )
+        .expect("enabled preservation should be valid")
+        .is_some());
         assert_eq!(
             codex_preserved_auth_live_config_text_if_proxy_placeholder(
                 &codex_live_with_real_auth,
@@ -20665,11 +20370,7 @@ base_url = "https://relay.example/v1"
                 "OTHER": "kept"
             }
         });
-        apply_gemini_takeover_env_fields(
-            &mut gemini_config,
-            "http://127.0.0.1:15721",
-            placeholder,
-        );
+        apply_gemini_takeover_env_fields(&mut gemini_config, "http://127.0.0.1:15721", placeholder);
         let gemini_env = gemini_config
             .get("env")
             .and_then(Value::as_object)
@@ -20684,13 +20385,14 @@ base_url = "https://relay.example/v1"
             gemini_env.get("GEMINI_API_KEY").and_then(Value::as_str),
             Some(placeholder)
         );
-        assert_eq!(gemini_env.get("OTHER").and_then(Value::as_str), Some("kept"));
         assert_eq!(
-            remove_gemini_takeover_env_fields_if_present(
-                &mut gemini_config,
-                placeholder,
-                |url| url.starts_with("http://127.0.0.1")
-            ),
+            gemini_env.get("OTHER").and_then(Value::as_str),
+            Some("kept")
+        );
+        assert_eq!(
+            remove_gemini_takeover_env_fields_if_present(&mut gemini_config, placeholder, |url| {
+                url.starts_with("http://127.0.0.1")
+            }),
             Some(true)
         );
         let gemini_env = gemini_config
@@ -20699,7 +20401,10 @@ base_url = "https://relay.example/v1"
             .expect("gemini env");
         assert!(gemini_env.get("GOOGLE_GEMINI_BASE_URL").is_none());
         assert!(gemini_env.get("GEMINI_API_KEY").is_none());
-        assert_eq!(gemini_env.get("OTHER").and_then(Value::as_str), Some("kept"));
+        assert_eq!(
+            gemini_env.get("OTHER").and_then(Value::as_str),
+            Some("kept")
+        );
 
         let mut gemini_real_config = json!({
             "env": {
@@ -20726,24 +20431,19 @@ base_url = "https://relay.example/v1"
             Some("https://gemini.example")
         );
         assert_eq!(
-            gemini_real_env.get("GEMINI_API_KEY").and_then(Value::as_str),
+            gemini_real_env
+                .get("GEMINI_API_KEY")
+                .and_then(Value::as_str),
             Some("real-key")
         );
 
         let mut missing_env = json!({});
         assert_eq!(
-            remove_gemini_takeover_env_fields_if_present(
-                &mut missing_env,
-                placeholder,
-                |url| url.starts_with("http://127.0.0.1")
-            ),
+            remove_gemini_takeover_env_fields_if_present(&mut missing_env, placeholder, |url| url
+                .starts_with("http://127.0.0.1")),
             None
         );
-        apply_gemini_takeover_env_fields(
-            &mut missing_env,
-            "http://127.0.0.1:15721",
-            placeholder,
-        );
+        apply_gemini_takeover_env_fields(&mut missing_env, "http://127.0.0.1:15721", placeholder);
         assert_eq!(
             missing_env
                 .get("env")
@@ -20767,9 +20467,9 @@ base_url = "https://relay.example/v1"
                 config_text,
             } => {
                 assert_eq!(projected_auth, auth);
-                assert!(config_text.contains(
-                    "model_catalog_json = \"cc-switch-model-catalog.json\""
-                ));
+                assert!(
+                    config_text.contains("model_catalog_json = \"cc-switch-model-catalog.json\"")
+                );
             }
             other => panic!("unexpected projection: {other:?}"),
         }
@@ -21050,15 +20750,13 @@ command = "latest-command"
             json!({ "env": { "GEMINI_API_KEY": "stale-gemini" } }),
             None,
         );
-        assert!(
-            sync_provider_settings_with_live_token(
-                &AppType::Gemini,
-                &json!({ "env": { "GEMINI_API_KEY": "fresh-gemini" } }),
-                &mut gemini_provider,
-                placeholder,
-            )
-            .expect("provider token sync should be valid")
-        );
+        assert!(sync_provider_settings_with_live_token(
+            &AppType::Gemini,
+            &json!({ "env": { "GEMINI_API_KEY": "fresh-gemini" } }),
+            &mut gemini_provider,
+            placeholder,
+        )
+        .expect("provider token sync should be valid"));
         assert_eq!(
             gemini_provider
                 .settings_config
@@ -21261,9 +20959,11 @@ command = "latest-command"
         });
         assert_eq!(
             provider_claude_desktop_proxy_config_validation_issue(&proxy_bad_format),
-            Some(ClaudeDesktopProxyProviderConfigValidationIssue::ApiFormatUnsupported(
-                "unsupported_wire".to_string()
-            ))
+            Some(
+                ClaudeDesktopProxyProviderConfigValidationIssue::ApiFormatUnsupported(
+                    "unsupported_wire".to_string()
+                )
+            )
         );
     }
 
@@ -21274,7 +20974,12 @@ command = "latest-command"
             "https://api.example.com/v1"
         );
         assert_eq!(
-            stable_channel_id("Claude", "Provider A", "legacy_primary", "https://api.example.com"),
+            stable_channel_id(
+                "Claude",
+                "Provider A",
+                "legacy_primary",
+                "https://api.example.com"
+            ),
             "legacy-claude-provider-a-legacy-primary-fcc8db014bbc"
         );
 
@@ -21533,13 +21238,16 @@ command = "latest-command"
         assert!(codex_settings_have_model_catalog_specs(&settings));
         assert_eq!(codex_default_model_context_window(), 128_000);
 
-        let catalog = codex_model_catalog_from_settings(&settings, 128_000, &template)
-            .expect("catalog");
+        let catalog =
+            codex_model_catalog_from_settings(&settings, 128_000, &template).expect("catalog");
         let models = catalog
             .get("models")
             .and_then(Value::as_array)
             .expect("models");
-        assert_eq!(models[0].get("slug").and_then(Value::as_str), Some("kimi-k2"));
+        assert_eq!(
+            models[0].get("slug").and_then(Value::as_str),
+            Some("kimi-k2")
+        );
         assert_eq!(
             models[0].get("context_window").and_then(Value::as_u64),
             Some(64_000)
@@ -21574,8 +21282,7 @@ command = "latest-command"
             }
         });
 
-        let provider_catalog =
-            provider_model_catalog_from_settings("provider-a", Some(&settings));
+        let provider_catalog = provider_model_catalog_from_settings("provider-a", Some(&settings));
         assert_eq!(provider_catalog.provider_id, "provider-a");
         assert_eq!(
             provider_catalog.models,
@@ -21601,8 +21308,8 @@ command = "latest-command"
                 Ok(vec!["provider-a".to_string()]),
                 |_| Ok(Some(provider.clone()))
             )
-                .expect("selected provider")
-                .id,
+            .expect("selected provider")
+            .id,
             "provider-a"
         );
         assert!(matches!(
@@ -21624,7 +21331,10 @@ command = "latest-command"
         );
         let mut live_config = json!({"auth": {}, "config": ""});
         attach_codex_model_catalog_from_provider(&mut live_config, Some(&provider));
-        assert_eq!(live_config.get("modelCatalog"), settings.get("modelCatalog"));
+        assert_eq!(
+            live_config.get("modelCatalog"),
+            settings.get("modelCatalog")
+        );
         assert_eq!(
             codex_live_settings_with_model_catalog(
                 json!({"auth": {}, "config": ""}),
@@ -21651,10 +21361,7 @@ command = "latest-command"
             json!({"config": ""}),
             None,
         );
-        attach_codex_model_catalog_from_provider(
-            &mut live_config,
-            Some(&provider_without_catalog),
-        );
+        attach_codex_model_catalog_from_provider(&mut live_config, Some(&provider_without_catalog));
         assert_eq!(
             live_config.get("modelCatalog"),
             Some(&json!({ "models": [] }))
@@ -21684,7 +21391,10 @@ command = "latest-command"
             client_model_catalog_raw_from_text(r#"{"models":[{"id":"gpt-5"}]}"#),
             json!({"models":[{"id":"gpt-5"}]})
         );
-        assert_eq!(client_model_catalog_raw_from_text("not json"), json!({"models": []}));
+        assert_eq!(
+            client_model_catalog_raw_from_text("not json"),
+            json!({"models": []})
+        );
         assert_eq!(empty_client_model_catalog_raw(), json!({"models": []}));
     }
 
@@ -21767,8 +21477,10 @@ command = "latest-command"
             vec!["provider-a".to_string(), "provider-b".to_string()]
         );
         assert_eq!(
-            route_candidate_provider_ids_from_selection_result(Err(AppError::NoProvidersConfigured))
-                .expect("empty no providers"),
+            route_candidate_provider_ids_from_selection_result(Err(
+                AppError::NoProvidersConfigured
+            ))
+            .expect("empty no providers"),
             Vec::<String>::new()
         );
         assert_eq!(
@@ -21786,7 +21498,9 @@ command = "latest-command"
                 if message == "select route candidate providers: router failed"
         ));
         assert_eq!(
-            route_selection_for_forward_result(&plan, Some("ch-b"), "provider-a").channel.id,
+            route_selection_for_forward_result(&plan, Some("ch-b"), "provider-a")
+                .channel
+                .id,
             "ch-b"
         );
         assert_eq!(
@@ -21834,7 +21548,10 @@ command = "latest-command"
             },
         )
         .expect("sourced route update");
-        assert_eq!(sourced_update.outbound_model.as_deref(), Some("upstream-sonnet"));
+        assert_eq!(
+            sourced_update.outbound_model.as_deref(),
+            Some("upstream-sonnet")
+        );
         assert_eq!(sourced_update.usage_route_context.channel_id, "ch-b");
         assert_eq!(sourced_update.provider.id, "provider-b");
         let missing_sourced_update = request_context_route_update_from_proxy_result_source(
@@ -21924,7 +21641,10 @@ command = "latest-command"
             .as_deref(),
             Some("upstream-sonnet")
         );
-        assert_eq!(body.get("model").and_then(Value::as_str), Some("upstream-sonnet"));
+        assert_eq!(
+            body.get("model").and_then(Value::as_str),
+            Some("upstream-sonnet")
+        );
     }
 
     #[test]
@@ -22227,10 +21947,7 @@ command = "latest-command"
         )
         .expect("desktop model mapping");
         assert_eq!(
-            desktop_projection
-                .body
-                .get("model")
-                .and_then(Value::as_str),
+            desktop_projection.body.get("model").and_then(Value::as_str),
             Some("upstream-sonnet")
         );
         assert!(desktop_projection.log_message.is_none());
@@ -22264,7 +21981,11 @@ command = "latest-command"
         );
 
         assert_eq!(
-            replace_images_for_text_only_provider_model(&mut image_body, &text_only_provider, false),
+            replace_images_for_text_only_provider_model(
+                &mut image_body,
+                &text_only_provider,
+                false
+            ),
             1
         );
         assert_eq!(image_body["messages"][0]["content"][0]["type"], "text");
@@ -22286,7 +22007,10 @@ command = "latest-command"
             ),
             1
         );
-        assert_eq!(forwarder_image_body["messages"][0]["content"][0]["type"], "text");
+        assert_eq!(
+            forwarder_image_body["messages"][0]["content"][0]["type"],
+            "text"
+        );
     }
 
     #[test]
@@ -22320,8 +22044,14 @@ command = "latest-command"
             },
             |base_url, effective_endpoint| format!("{base_url}{effective_endpoint}"),
         );
-        assert_eq!(codex_plan.effective_endpoint, "/chat/completions?foo=bar&api-version=old");
-        assert_eq!(codex_plan.passthrough_query.as_deref(), Some("foo=bar&api-version=old"));
+        assert_eq!(
+            codex_plan.effective_endpoint,
+            "/chat/completions?foo=bar&api-version=old"
+        );
+        assert_eq!(
+            codex_plan.passthrough_query.as_deref(),
+            Some("foo=bar&api-version=old")
+        );
         assert_eq!(
             codex_plan.url,
             "https://api.openai.com/v1/chat/completions?foo=bar&api-version=2026-06-21"
@@ -22372,12 +22102,8 @@ command = "latest-command"
     fn claude_api_format_adapter_projects_transform_gate() {
         assert!(provider_adapter_name_is_claude("Claude"));
         assert!(!provider_adapter_name_is_claude("Codex"));
-        let mut provider = Provider::with_id(
-            "claude".to_string(),
-            "Claude".to_string(),
-            json!({}),
-            None,
-        );
+        let mut provider =
+            Provider::with_id("claude".to_string(), "Claude".to_string(), json!({}), None);
         provider.meta = Some(ProviderMeta {
             api_format: Some("openai_chat".to_string()),
             ..ProviderMeta::default()
@@ -22403,8 +22129,7 @@ command = "latest-command"
             None,
         );
         assert_eq!(
-            forwarder_provider_base_url(&codex_adapter, &codex_provider)
-                .expect("codex base URL"),
+            forwarder_provider_base_url(&codex_adapter, &codex_provider).expect("codex base URL"),
             "https://relay.example/v1"
         );
         let missing_base_url = forwarder_provider_base_url(&codex_adapter, &provider)
@@ -22420,8 +22145,14 @@ command = "latest-command"
         );
         assert!(!forwarder_claude_transform_required("anthropic"));
         assert!(forwarder_claude_transform_required("openai_chat"));
-        assert!(forwarder_provider_transform_required(&claude_adapter, &provider));
-        assert!(!forwarder_provider_transform_required(&codex_adapter, &provider));
+        assert!(forwarder_provider_transform_required(
+            &claude_adapter,
+            &provider
+        ));
+        assert!(!forwarder_provider_transform_required(
+            &codex_adapter,
+            &provider
+        ));
         let passthrough_adapter_body = json!({"model": "gpt-4.1"});
         assert_eq!(
             forwarder_provider_transform_request(
@@ -22497,12 +22228,8 @@ command = "latest-command"
         assert!(!streaming_decision.aggregate_codex_oauth_responses_sse);
         assert!(streaming_decision.response_sse_aggregation.is_none());
 
-        let plain_provider = Provider::with_id(
-            "plain".to_string(),
-            "Plain".to_string(),
-            json!({}),
-            None,
-        );
+        let plain_provider =
+            Provider::with_id("plain".to_string(), "Plain".to_string(), json!({}), None);
         let upstream_sse_decision = provider_claude_transform_streaming_decision(
             &plain_provider,
             false,
@@ -22543,7 +22270,9 @@ command = "latest-command"
         let requested_streaming_decision =
             codex_chat_transform_streaming_decision(true, &HeaderMap::new());
         assert!(requested_streaming_decision.use_streaming);
-        assert!(requested_streaming_decision.response_sse_aggregation.is_none());
+        assert!(requested_streaming_decision
+            .response_sse_aggregation
+            .is_none());
 
         let non_stream_decision = codex_chat_transform_streaming_decision(false, &HeaderMap::new());
         assert!(!non_stream_decision.use_streaming);
@@ -22582,7 +22311,9 @@ command = "latest-command"
         });
 
         assert_eq!(
-            headers.get(http::header::HOST).and_then(|value| value.to_str().ok()),
+            headers
+                .get(http::header::HOST)
+                .and_then(|value| value.to_str().ok()),
             Some("upstream.example")
         );
         assert_eq!(
@@ -22610,12 +22341,13 @@ command = "latest-command"
             Some("application/json")
         );
 
-        assert!(serialize_upstream_request_body(&http::Method::GET, &json!({"model": "x"}))
-            .unwrap()
-            .is_empty());
+        assert!(
+            serialize_upstream_request_body(&http::Method::GET, &json!({"model": "x"}))
+                .unwrap()
+                .is_empty()
+        );
         assert_eq!(
-            serialize_upstream_request_body(&http::Method::POST, &json!({"model": "x"}))
-                .unwrap(),
+            serialize_upstream_request_body(&http::Method::POST, &json!({"model": "x"})).unwrap(),
             br#"{"model":"x"}"#
         );
     }
@@ -22698,8 +22430,7 @@ command = "latest-command"
             is_streaming: true,
             metadata: json!({}),
         };
-        let pricing =
-            ModelPricing::from_strings("3.0", "15.0", "0.3", "3.75").expect("pricing");
+        let pricing = ModelPricing::from_strings("3.0", "15.0", "0.3", "3.75").expect("pricing");
         let lookup = usage_pricing_config_lookup_from_record(&record);
         assert_eq!(lookup.provider_id, "provider-a");
         assert_eq!(lookup.app_type, "claude");
@@ -22731,13 +22462,10 @@ command = "latest-command"
         assert!(projection.log.is_streaming);
         assert_eq!(projection.log.cost_multiplier, "2");
 
-        let missing_pricing = usage_record_to_request_log(
-            &record,
-            "response",
-            None,
-            Decimal::new(1, 0),
-            || "fallback".to_string(),
-        );
+        let missing_pricing =
+            usage_record_to_request_log(&record, "response", None, Decimal::new(1, 0), || {
+                "fallback".to_string()
+            });
         assert_eq!(
             missing_pricing.missing_pricing_warning_message.as_deref(),
             Some("[USG-002] 模型定价未找到，成本将记录为 0: upstream-sonnet")
@@ -22969,8 +22697,8 @@ command = "latest-command"
                 .id,
             "provider-a"
         );
-        let missing_provider = channel_test_provider_from_probe_source(&probe, None)
-            .expect_err("missing provider");
+        let missing_provider =
+            channel_test_provider_from_probe_source(&probe, None).expect_err("missing provider");
         assert!(matches!(
             missing_provider,
             ProxyCoreError::Config(message)
@@ -23117,7 +22845,10 @@ command = "latest-command"
         }
 
         let typed_plan = provider_openclaw_live_write_plan(&credential_provider);
-        assert!(matches!(typed_plan.config, OpenClawLiveWriteConfig::Typed(_)));
+        assert!(matches!(
+            typed_plan.config,
+            OpenClawLiveWriteConfig::Typed(_)
+        ));
 
         let typed_config = serde_json::from_value::<OpenClawProviderConfig>(json!({
             "baseUrl": "https://openclaw.example",
@@ -23162,10 +22893,13 @@ command = "latest-command"
             Err(OpenClawLiveImportIssue::EmptyId)
         ));
         assert!(matches!(
-            provider_from_openclaw_live_config("empty", &OpenClawProviderConfig {
-                models: Vec::new(),
-                ..typed_config.clone()
-            }),
+            provider_from_openclaw_live_config(
+                "empty",
+                &OpenClawProviderConfig {
+                    models: Vec::new(),
+                    ..typed_config.clone()
+                }
+            ),
             Err(OpenClawLiveImportIssue::NoModels)
         ));
 
@@ -23291,9 +23025,11 @@ command = "latest-command"
         let plan = provider_opencode_live_write_plan(&provider);
         assert!(!plan.from_full_config);
         assert!(matches!(plan.config, OpenCodeLiveWriteConfig::Typed(_)));
-        assert!(opencode_live_provider_fragment_has_provider_fields(&json!({
-            "npm": Value::Null
-        })));
+        assert!(opencode_live_provider_fragment_has_provider_fields(
+            &json!({
+                "npm": Value::Null
+            })
+        ));
         let raw_provider = Provider::with_id(
             "raw".to_string(),
             "Raw".to_string(),
@@ -23317,12 +23053,16 @@ command = "latest-command"
             provider_opencode_live_write_projection(&raw_provider).action,
             OpenCodeLiveWriteAction::Raw { .. }
         ));
-        assert!(opencode_live_provider_fragment_has_provider_fields(&json!({
-            "options": {}
-        })));
-        assert!(!opencode_live_provider_fragment_has_provider_fields(&json!({
-            "name": "Provider"
-        })));
+        assert!(opencode_live_provider_fragment_has_provider_fields(
+            &json!({
+                "options": {}
+            })
+        ));
+        assert!(!opencode_live_provider_fragment_has_provider_fields(
+            &json!({
+                "name": "Provider"
+            })
+        ));
         let invalid_provider = Provider::with_id(
             "invalid".to_string(),
             "Invalid".to_string(),
@@ -23407,8 +23147,8 @@ command = "latest-command"
             }),
             None,
         );
-        let claude_credentials = provider_credential_values(&claude, &AppType::Claude)
-            .expect("claude credentials");
+        let claude_credentials =
+            provider_credential_values(&claude, &AppType::Claude).expect("claude credentials");
         assert_eq!(claude_credentials.api_key, "token");
         assert_eq!(claude_credentials.base_url, "https://claude.example");
 
@@ -23421,8 +23161,8 @@ command = "latest-command"
             }),
             None,
         );
-        let codex_credentials = provider_credential_values(&codex, &AppType::Codex)
-            .expect("codex credentials");
+        let codex_credentials =
+            provider_credential_values(&codex, &AppType::Codex).expect("codex credentials");
         assert_eq!(codex_credentials.api_key, "sk-test");
         assert_eq!(codex_credentials.base_url, "https://codex.example/v1");
 
@@ -23432,8 +23172,8 @@ command = "latest-command"
             json!({"env": {"GEMINI_API_KEY": "AIza-test"}}),
             None,
         );
-        let gemini_credentials = provider_credential_values(&gemini, &AppType::Gemini)
-            .expect("gemini credentials");
+        let gemini_credentials =
+            provider_credential_values(&gemini, &AppType::Gemini).expect("gemini credentials");
         assert_eq!(gemini_credentials.api_key, "AIza-test");
         assert_eq!(
             gemini_credentials.base_url,
@@ -23453,10 +23193,7 @@ command = "latest-command"
         let missing_base_url_spec =
             provider_credential_issue_spec(ProviderCredentialIssue::CodexBaseUrlMissing);
         assert_eq!(missing_base_url_spec.key, "provider.codex.base_url.missing");
-        assert_eq!(
-            missing_base_url_spec.zh,
-            "config.toml 中缺少 base_url 配置"
-        );
+        assert_eq!(missing_base_url_spec.zh, "config.toml 中缺少 base_url 配置");
         assert_eq!(
             missing_base_url_spec.en,
             "base_url is missing from config.toml"
@@ -23943,7 +23680,11 @@ command = "latest-command"
             Some("provider-b"),
             Some("provider-c")
         ));
-        assert!(!provider_delete_is_current_provider("provider-a", None, None));
+        assert!(!provider_delete_is_current_provider(
+            "provider-a",
+            None,
+            None
+        ));
     }
 
     #[test]
@@ -24069,12 +23810,9 @@ command = "latest-command"
         assert!(ids.contains("current"));
         assert!(ids.contains("queued"));
 
-        let empty_ids = stream_check_proxy_target_ids_from_sources(
-            true,
-            None,
-            Vec::<String>::new(),
-        )
-        .expect("empty proxy target filter ids");
+        let empty_ids =
+            stream_check_proxy_target_ids_from_sources(true, None, Vec::<String>::new())
+                .expect("empty proxy target filter ids");
         assert!(empty_ids.is_empty());
     }
 
@@ -24141,7 +23879,8 @@ command = "latest-command"
         let stream_check_timeout_secs =
             provider_stream_check_test_config(&provider).and_then(|config| config.timeout_secs);
         assert_eq!(
-            provider_usage_script(Some(&provider)).and_then(|script| script.template_type.as_deref()),
+            provider_usage_script(Some(&provider))
+                .and_then(|script| script.template_type.as_deref()),
             Some("github_copilot")
         );
         assert!(provider_usage_script(None).is_none());
@@ -24211,7 +23950,10 @@ command = "latest-command"
         assert_eq!(stream_check_timeout_secs, Some(20));
         assert!(usage_provider_is_full_url);
         assert!(forwarder_provider_is_full_url);
-        assert_eq!(provider_user_agent, http::HeaderValue::from_static("cc-switch-test/1.0"));
+        assert_eq!(
+            provider_user_agent,
+            http::HeaderValue::from_static("cc-switch-test/1.0")
+        );
         assert!(copilot_provider_user_agent.is_none());
         assert_eq!(
             model_fetch_user_agent,
@@ -24223,21 +23965,11 @@ command = "latest-command"
         );
         assert!(forwarder_copilot_user_agent.is_none());
         assert!(provider_is_github_copilot_upstream(
-            &Provider::with_id(
-                "plain".to_string(),
-                "Plain".to_string(),
-                json!({}),
-                None,
-            ),
+            &Provider::with_id("plain".to_string(), "Plain".to_string(), json!({}), None,),
             "https://api.githubcopilot.com"
         ));
         assert!(forwarder_is_github_copilot_upstream(
-            &Provider::with_id(
-                "plain".to_string(),
-                "Plain".to_string(),
-                json!({}),
-                None,
-            ),
+            &Provider::with_id("plain".to_string(), "Plain".to_string(), json!({}), None,),
             "https://api.githubcopilot.com"
         ));
         assert!(provider_is_codex_oauth(&codex_provider));
@@ -24325,7 +24057,10 @@ command = "latest-command"
             .expect("legacy route records");
 
         assert_eq!(source_spec.id, "ch-1");
-        assert_eq!(materialized_source, ChannelRouteSource::MaterializedChannels);
+        assert_eq!(
+            materialized_source,
+            ChannelRouteSource::MaterializedChannels
+        );
         assert_eq!(materialized_channels[0].id, "ch-1");
         assert_eq!(legacy_source, ChannelRouteSource::LegacyProjection);
         assert_eq!(legacy_channels[0].id, "ch-1");

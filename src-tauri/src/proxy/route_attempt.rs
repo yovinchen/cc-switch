@@ -7,8 +7,8 @@ use crate::app_config::AppType;
 use crate::provider::Provider;
 use crate::proxy_core_adapter::{
     apply_channel_provider_overrides, channel_route_candidate_from_selection,
-    resolved_channel_attempt_from_selection, route_plan_selections,
-    ResolvedChannelAttempt, RoutePlan, RouteSelection,
+    resolved_channel_attempt_from_selection, route_plan_selections, ResolvedChannelAttempt,
+    RoutePlan, RouteSelection,
 };
 #[cfg(test)]
 use serde_json::Value;
@@ -119,10 +119,7 @@ pub(crate) fn forward_attempts_from_route_plan(
 }
 
 #[cfg(test)]
-pub(crate) fn apply_channel_model_override(
-    body: &mut serde_json::Value,
-    attempt: &ForwardAttempt,
-) {
+pub(crate) fn apply_channel_model_override(body: &mut serde_json::Value, attempt: &ForwardAttempt) {
     let Some(channel) = attempt.channel() else {
         return;
     };

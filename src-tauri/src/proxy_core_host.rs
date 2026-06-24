@@ -3,19 +3,19 @@ use crate::database::Database;
 #[cfg(test)]
 use crate::error::AppError;
 #[cfg(test)]
+use crate::proxy::codex_chat_history::CodexChatHistoryStore;
+#[cfg(test)]
 use crate::proxy::events::ProxyEventBus;
 #[cfg(test)]
 use crate::proxy::hyper_client::ProxyResponse;
-#[cfg(test)]
-use crate::proxy::codex_chat_history::CodexChatHistoryStore;
 #[cfg(test)]
 use crate::proxy_core_adapter::{
     apply_channel_auth_profile_providers_from_db, forward_attempts_from_plan,
     forward_result_to_proxy_result, host_providers_for_plan,
     management_route_response_from_router_source, provider_router_from_database, AppKind,
-    AuthProfileRef, AuthProvider, CcSwitchAuthProvider, ChannelAttemptResult, ChannelQuery,
-    ChannelSpec, CcSwitchProxyRuntime, GeminiShadowStore, ProviderSpec, ProxyCoreEvent,
-    ProxyServices, RouteRequest, ProxyRequest, RoutePlan,
+    AuthProfileRef, AuthProvider, CcSwitchAuthProvider, CcSwitchProxyRuntime, ChannelAttemptResult,
+    ChannelQuery, ChannelSpec, GeminiShadowStore, ProviderSpec, ProxyCoreEvent, ProxyRequest,
+    ProxyServices, RoutePlan, RouteRequest,
 };
 #[cfg(test)]
 use serde_json::Value;
@@ -36,13 +36,12 @@ mod tests {
     use crate::app_config::AppType;
     use crate::provider::Provider;
     use crate::proxy_core_adapter::{
-        ChannelStatus, ProviderKind, ProxyBody, ProxyCoreChannelOverrides as ChannelOverrides,
-        ProxyCoreInterfaceKind as InterfaceKind,
-        ProxyCoreModelCapabilities as ModelCapabilities, ProxyCoreModelRoute as ModelRoute,
+        proxy_response_to_core_response, ChannelStatus, ProviderKind, ProxyBody,
         ProxyChannelKeyWriteRequest, ProxyChannelModelWriteRequest, ProxyChannelWriteRequest,
-        ProxyCoreEventType, ProxyCoreUpstreamEndpoint as UpstreamEndpoint, ProxyEngine,
-        proxy_response_to_core_response,
-        ProxyCoreError, ProxyResponseBody, ProxyRuntimeStatus, ResolvedChannelAttempt, RetryPolicy,
+        ProxyCoreChannelOverrides as ChannelOverrides, ProxyCoreError, ProxyCoreEventType,
+        ProxyCoreInterfaceKind as InterfaceKind, ProxyCoreModelCapabilities as ModelCapabilities,
+        ProxyCoreModelRoute as ModelRoute, ProxyCoreUpstreamEndpoint as UpstreamEndpoint,
+        ProxyEngine, ProxyResponseBody, ProxyRuntimeStatus, ResolvedChannelAttempt, RetryPolicy,
         RouteResolveRequest, RouteSelection, UsageRecord, UsageTokens,
     };
     use bytes::Bytes;
@@ -489,7 +488,10 @@ mod tests {
         assert!(app.rectifier.enabled);
         assert_eq!(app.rectifier.raw["enabled"], json!(true));
         assert_eq!(app.optimizer.raw["cacheTtl"], json!("1h"));
-        assert_eq!(app.copilot_optimizer.raw["warmupModel"], json!("gpt-5-mini"));
+        assert_eq!(
+            app.copilot_optimizer.raw["warmupModel"],
+            json!("gpt-5-mini")
+        );
 
         let summary = services
             .config()
@@ -974,7 +976,10 @@ mod tests {
         let proxy_result = forward_result_to_proxy_result(result, plan);
 
         assert_eq!(proxy_result.selected_route.channel.id, "channel-b");
-        assert_eq!(proxy_result.outbound_model.as_deref(), Some("upstream-sonnet"));
+        assert_eq!(
+            proxy_result.outbound_model.as_deref(),
+            Some("upstream-sonnet")
+        );
         assert_eq!(
             proxy_result
                 .metadata

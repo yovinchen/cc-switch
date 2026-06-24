@@ -15,8 +15,7 @@ use crate::proxy_core_adapter::{
     provider_claude_desktop_proxy_config_validation_issue,
     provider_claude_desktop_proxy_has_base_url_and_key,
     provider_should_normalize_mimo_anthropic_thinking_history,
-    ClaudeDesktopDirectProviderValidationIssue,
-    ClaudeDesktopProxyProviderConfigValidationIssue,
+    ClaudeDesktopDirectProviderValidationIssue, ClaudeDesktopProxyProviderConfigValidationIssue,
 };
 
 pub const PROFILE_ID: &str = "00000000-0000-4000-8000-000000157210";
@@ -377,9 +376,7 @@ pub fn validate_proxy_provider(provider: &Provider) -> Result<(), AppError> {
     Ok(())
 }
 
-fn direct_validation_issue_to_error(
-    issue: ClaudeDesktopDirectProviderValidationIssue,
-) -> AppError {
+fn direct_validation_issue_to_error(issue: ClaudeDesktopDirectProviderValidationIssue) -> AppError {
     match issue {
         ClaudeDesktopDirectProviderValidationIssue::SettingsNotObject => AppError::localized(
             "claude_desktop.provider.settings_not_object",
@@ -415,13 +412,11 @@ fn proxy_config_validation_issue_to_error(
     issue: ClaudeDesktopProxyProviderConfigValidationIssue,
 ) -> AppError {
     match issue {
-        ClaudeDesktopProxyProviderConfigValidationIssue::SettingsNotObject => {
-            AppError::localized(
-                "claude_desktop.provider.settings_not_object",
-                "Claude Desktop 本地路由供应商配置必须是 JSON 对象",
-                "Claude Desktop proxy provider configuration must be a JSON object",
-            )
-        }
+        ClaudeDesktopProxyProviderConfigValidationIssue::SettingsNotObject => AppError::localized(
+            "claude_desktop.provider.settings_not_object",
+            "Claude Desktop 本地路由供应商配置必须是 JSON 对象",
+            "Claude Desktop proxy provider configuration must be a JSON object",
+        ),
         ClaudeDesktopProxyProviderConfigValidationIssue::ApiFormatUnsupported(api_format) => {
             AppError::localized(
                 "claude_desktop.provider.api_format_unsupported",

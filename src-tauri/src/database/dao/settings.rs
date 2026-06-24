@@ -2,7 +2,7 @@
 //!
 //! 提供键值对形式的通用设置存储。
 
-use crate::database::{Database, lock_conn};
+use crate::database::{lock_conn, Database};
 use crate::error::AppError;
 use crate::proxy_core_adapter::{CopilotOptimizerConfig, OptimizerConfig, RectifierConfig};
 use crate::settings::LogConfig;

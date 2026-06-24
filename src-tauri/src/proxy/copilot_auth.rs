@@ -28,9 +28,8 @@ use crate::proxy_core_adapter::{
     copilot_api_base, copilot_composite_account_id, copilot_github_client_id,
     copilot_github_device_code_url, copilot_github_oauth_token_url, copilot_github_user_url,
     copilot_token_url, copilot_usage_url, is_copilot_ghes_domain, normalize_github_domain,
-    parse_copilot_models_response_bytes, CopilotModel, COPILOT_API_VERSION,
-    COPILOT_EDITOR_VERSION, COPILOT_PLUGIN_VERSION, COPILOT_PUBLIC_GITHUB_DOMAIN,
-    COPILOT_USER_AGENT,
+    parse_copilot_models_response_bytes, CopilotModel, COPILOT_API_VERSION, COPILOT_EDITOR_VERSION,
+    COPILOT_PLUGIN_VERSION, COPILOT_PUBLIC_GITHUB_DOMAIN, COPILOT_USER_AGENT,
 };
 
 const DEFAULT_GITHUB_DOMAIN: &str = COPILOT_PUBLIC_GITHUB_DOMAIN;
@@ -1308,8 +1307,7 @@ impl CopilotAuthManager {
                 .await
             {
                 Ok(user) => {
-                    let account_id =
-                        copilot_composite_account_id(DEFAULT_GITHUB_DOMAIN, user.id);
+                    let account_id = copilot_composite_account_id(DEFAULT_GITHUB_DOMAIN, user.id);
 
                     // 尝试获取 Copilot token 验证订阅
                     if let Err(e) = self

@@ -232,8 +232,8 @@ fn build_client(proxy_url: Option<&str>) -> Result<Client, String> {
     // 有代理地址则使用代理，否则跟随系统代理
     if let Some(url) = proxy_url {
         validate_explicit_proxy_url(url)?;
-        let proxy = reqwest::Proxy::all(url)
-            .map_err(|e| invalid_explicit_proxy_url_message(url, e))?;
+        let proxy =
+            reqwest::Proxy::all(url).map_err(|e| invalid_explicit_proxy_url_message(url, e))?;
         builder = builder.proxy(proxy);
         log::debug!("[GlobalProxy] Proxy configured: {}", mask_url_for_log(url));
     } else {

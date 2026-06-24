@@ -6,15 +6,13 @@ use crate::app_config::AppType;
 use crate::provider::Provider;
 use crate::proxy::error::ProxyError;
 use crate::proxy_core_adapter::{
-    app_proxy_config_from_proxy_app_config, claude_api_format_from_metadata, AppKind,
-    extract_proxy_session_id, proxy_core_app_kind_from_app_type,
-    request_context_route_update_from_proxy_result_source, RequestContextRouteUpdateError,
-    provider_claude_api_format, request_model_for_forward, ProxyState,
-    response_runtime_policy_from_app_proxy_config, ProxyResult, ProxyServices,
-    ResponseRuntimePolicy, ResponseTimeoutConfig,
-    selected_provider_display_name_for_error,
-    selected_provider_not_applied_message, StreamingTimeoutConfig, unselected_provider_fallback_id,
-    UsageRouteContext,
+    app_proxy_config_from_proxy_app_config, claude_api_format_from_metadata,
+    extract_proxy_session_id, provider_claude_api_format, proxy_core_app_kind_from_app_type,
+    request_context_route_update_from_proxy_result_source, request_model_for_forward,
+    response_runtime_policy_from_app_proxy_config, selected_provider_display_name_for_error,
+    selected_provider_not_applied_message, unselected_provider_fallback_id, AppKind, ProxyResult,
+    ProxyServices, ProxyState, RequestContextRouteUpdateError, ResponseRuntimePolicy,
+    ResponseTimeoutConfig, StreamingTimeoutConfig, UsageRouteContext,
 };
 use axum::http::HeaderMap;
 use std::time::Instant;
@@ -89,8 +87,8 @@ impl RequestContext {
             .map_err(ProxyError::ConfigError)?;
         let response_runtime_policy = response_runtime_policy_from_app_proxy_config(&app_config);
 
-        let request_model = request_model_for_forward(&app_kind, "", body)
-            .unwrap_or_else(|| "unknown".to_string());
+        let request_model =
+            request_model_for_forward(&app_kind, "", body).unwrap_or_else(|| "unknown".to_string());
 
         // 提取 Session ID
         let session_result = extract_proxy_session_id(headers, body, app_type_str);
@@ -134,12 +132,9 @@ impl RequestContext {
         // 否则 GET /v1beta/models/<id>?key=... 会把 query 拼到 request_model 上。
         let endpoint = uri.path();
 
-        self.request_model = request_model_for_forward(
-            &AppKind::Gemini,
-            endpoint,
-            &serde_json::Value::Null,
-        )
-        .unwrap_or_else(|| "unknown".to_string());
+        self.request_model =
+            request_model_for_forward(&AppKind::Gemini, endpoint, &serde_json::Value::Null)
+                .unwrap_or_else(|| "unknown".to_string());
 
         self
     }
@@ -182,7 +177,9 @@ impl RequestContext {
 
     pub fn provider_name_for_error(&self) -> &str {
         selected_provider_display_name_for_error(
-            self.provider.as_ref().map(|provider| provider.name.as_str()),
+            self.provider
+                .as_ref()
+                .map(|provider| provider.name.as_str()),
             self.tag,
         )
     }
@@ -274,7 +271,8 @@ mod tests {
 
         assert_eq!(ctx.provider().expect("selected provider").id, "provider-a");
         assert_eq!(
-            ctx.provider_for_usage().map(|provider| provider.id.as_str()),
+            ctx.provider_for_usage()
+                .map(|provider| provider.id.as_str()),
             Some("provider-a")
         );
         assert_eq!(ctx.provider_name_for_error(), "Provider A");

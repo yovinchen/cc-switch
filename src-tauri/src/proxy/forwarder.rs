@@ -3,44 +3,38 @@
 //! 负责将请求转发到上游Provider，支持故障转移
 
 use super::hyper_client::ProxyResponse;
-use super::{
-    error::ProxyError,
-    route_attempt::ForwardAttempt,
-};
-use crate::proxy_core_adapter::{
-    ActiveConnectionGuard, ForwarderAdapterHandle, ForwarderAppMediaPreventionInput,
-    CopilotOptimizerConfig,
-    ForwarderAdapterFactsInput, ForwarderAnthropicRectifierGateInput,
-    ForwarderAttemptAllowDecision, ForwarderAttemptAllowInput, ForwarderAttemptBodyInput,
-    ForwarderAuthHeadersInput, ForwarderAuthSourceRef,
-    ForwarderMaybeCopilotAuthOptimizationInput, ForwarderChannelResponseStatusInput,
-    ForwarderClaudeApiFormatInput, ForwarderClaudeBodyPolicyInput,
-    ForwarderProtocolPreparationInput,
-    ForwarderCopilotDynamicBaseUrlInput, ForwarderCopilotLiveModelInput,
-    ForwarderCopilotRequestOptimizationGateInput,
-    ForwarderFailureDecision, ForwarderMediaRetryPlanInput, ForwarderProviderRequestBodyInput,
-    ForwarderProviderUrlFacts, ForwarderProviderUrlFactsInput,
-    ForwarderRequestBodyTransformInput, ForwarderRequestRectifierPlan,
-    ForwarderRectifierRetryFailureDecision, ForwarderRectifierRetryKind,
-    ForwarderThinkingBudgetRectifierInput, ForwarderThinkingSignatureRectifierInput,
-    ForwarderTransformPlanInput, OptimizerConfig,
-    FailoverSwitchSchedulerRef, ForwarderAttemptRuntimeSourceRef,
-    ForwarderClaudeProtocolTransformInput, ForwarderCodexChatProtocolEnrichmentInput,
-    ForwarderProtocolStateSourceRef,
-    ForwarderRequestPartsInput, ForwarderRequestPreparationInput, ForwarderRequestSourceRef,
-    ForwarderResponseFinalizationInput, ForwarderResponseSourceRef, ForwarderRuntimeStateSourceRef,
-    ForwarderRuntimeConfig, ForwarderTransportSourceRef,
-    ForwarderUpstreamRequestLogInput, ForwarderUpstreamTransportRequest, ForwarderUpstreamUrlInput,
-    RectifierConfig, ResolvedChannelAttempt,
-};
+use super::{error::ProxyError, route_attempt::ForwardAttempt};
 #[cfg(test)]
 use crate::proxy_core_adapter::{
-    build_codex_oauth_session_headers, prepare_upstream_request_body_with_report,
-    forwarder_bedrock_env_flag, forwarder_is_codex_oauth_provider, provider_router_from_database,
-    should_preserve_exact_request_header_case,
+    build_codex_oauth_session_headers, forwarder_bedrock_env_flag,
+    forwarder_is_codex_oauth_provider, prepare_upstream_request_body_with_report,
+    provider_router_from_database, should_preserve_exact_request_header_case,
     validate_managed_account_upstream_auth,
-    ForwarderAdapterFacts,
 };
+use crate::proxy_core_adapter::{
+    ActiveConnectionGuard, CopilotOptimizerConfig, FailoverSwitchSchedulerRef,
+    ForwarderAdapterFactsInput, ForwarderAdapterHandle, ForwarderAnthropicRectifierGateInput,
+    ForwarderAppMediaPreventionInput, ForwarderAttemptAllowDecision, ForwarderAttemptAllowInput,
+    ForwarderAttemptBodyInput, ForwarderAttemptRuntimeSourceRef,
+    ForwarderAuthHeadersInput, ForwarderAuthSourceRef, ForwarderChannelResponseStatusInput,
+    ForwarderClaudeBodyPolicyInput, ForwarderClaudeApiFormatInput, ForwarderClaudeProtocolTransformInput,
+    ForwarderCodexChatProtocolEnrichmentInput,
+    ForwarderCopilotDynamicBaseUrlInput, ForwarderCopilotLiveModelInput,
+    ForwarderCopilotRequestOptimizationGateInput, ForwarderFailureDecision,
+    ForwarderMaybeCopilotAuthOptimizationInput, ForwarderMediaRetryPlanInput,
+    ForwarderProtocolPreparationInput, ForwarderProtocolStateSourceRef,
+    ForwarderProviderRequestBodyInput, ForwarderProviderUrlFacts, ForwarderProviderUrlFactsInput,
+    ForwarderRectifierRetryFailureDecision,
+    ForwarderRectifierRetryKind, ForwarderRequestBodyTransformInput, ForwarderRequestPartsInput,
+    ForwarderRequestPreparationInput, ForwarderRequestRectifierPlan, ForwarderRequestSourceRef,
+    ForwarderResponseFinalizationInput, ForwarderResponseSourceRef, ForwarderRuntimeStateSourceRef,
+    ForwarderThinkingBudgetRectifierInput, ForwarderThinkingSignatureRectifierInput,
+    ForwarderRuntimeConfig, ForwarderTransformPlanInput, ForwarderTransportSourceRef,
+    ForwarderUpstreamRequestLogInput, ForwarderUpstreamTransportRequest, ForwarderUpstreamUrlInput,
+    OptimizerConfig, RectifierConfig, ResolvedChannelAttempt,
+};
+#[cfg(test)]
+use crate::proxy_core_adapter::ForwarderAdapterFacts;
 use crate::{app_config::AppType, provider::Provider};
 use http::Extensions;
 use serde_json::Value;
@@ -436,10 +430,9 @@ impl RequestForwarder {
                 }
                 Err(e) => {
                     // 检测是否需要触发整流器（仅 Claude/ClaudeAuth 供应商）
-                    let is_anthropic_provider =
-                        self.request_source.anthropic_rectifiers_enabled(
-                            ForwarderAnthropicRectifierGateInput { app_type, provider },
-                        );
+                    let is_anthropic_provider = self.request_source.anthropic_rectifiers_enabled(
+                        ForwarderAnthropicRectifierGateInput { app_type, provider },
+                    );
                     let mut signature_rectifier_non_retryable_client_error = false;
 
                     if let Some(media_retry) =
@@ -531,7 +524,9 @@ impl RequestForwarder {
                                     used_half_open_permit,
                                 )
                                 .await;
-                                self.runtime_state_source.record_forward_error_status(&e).await;
+                                self.runtime_state_source
+                                    .record_forward_error_status(&e)
+                                    .await;
                                 return Err(ForwardError {
                                     error: e,
                                     provider: Some(provider.clone()),
@@ -618,7 +613,9 @@ impl RequestForwarder {
                                     used_half_open_permit,
                                 )
                                 .await;
-                                self.runtime_state_source.record_forward_error_status(&e).await;
+                                self.runtime_state_source
+                                    .record_forward_error_status(&e)
+                                    .await;
                                 return Err(ForwardError {
                                     error: e,
                                     provider: Some(provider.clone()),
@@ -689,7 +686,9 @@ impl RequestForwarder {
                             used_half_open_permit,
                         )
                         .await;
-                        self.runtime_state_source.record_forward_error_status(&e).await;
+                        self.runtime_state_source
+                            .record_forward_error_status(&e)
+                            .await;
                         return Err(ForwardError {
                             error: e,
                             provider: Some(provider.clone()),
@@ -740,7 +739,9 @@ impl RequestForwarder {
                                 used_half_open_permit,
                             )
                             .await;
-                            self.runtime_state_source.record_forward_error_status(&e).await;
+                            self.runtime_state_source
+                                .record_forward_error_status(&e)
+                                .await;
                             return Err(ForwardError {
                                 error: e,
                                 provider: Some(provider.clone()),
@@ -835,17 +836,15 @@ impl RequestForwarder {
             },
         );
         mapped_body = optimized.body;
-        let copilot_optimization =
-            self.auth_source
-                .prepare_optional_copilot_auth_optimization(
-                    ForwarderMaybeCopilotAuthOptimizationInput {
-                        classification: optimized.classification,
-                        config: &self.copilot_optimizer_config,
-                        session_source_body: body,
-                        request_body: &mapped_body,
-                        headers,
-                    },
-                );
+        let copilot_optimization = self.auth_source.prepare_optional_copilot_auth_optimization(
+            ForwarderMaybeCopilotAuthOptimizationInput {
+                classification: optimized.classification,
+                config: &self.copilot_optimizer_config,
+                session_source_body: body,
+                request_body: &mapped_body,
+                headers,
+            },
+        );
 
         self.request_source
             .apply_copilot_dynamic_base_url_for_provider(ForwarderCopilotDynamicBaseUrlInput {
@@ -867,15 +866,14 @@ impl RequestForwarder {
                 adapter_facts: &adapter_facts,
             })
             .await;
-        self.request_source.apply_claude_body_policies(
-            ForwarderClaudeBodyPolicyInput {
+        self.request_source
+            .apply_claude_body_policies(ForwarderClaudeBodyPolicyInput {
                 body: &mut mapped_body,
                 provider,
                 api_format: resolved_claude_api_format.as_deref(),
                 adapter_facts: &adapter_facts,
                 config: &self.rectifier_config,
-            },
-        );
+            });
         let transform_plan = self
             .request_source
             .transform_plan(ForwarderTransformPlanInput {
@@ -891,34 +889,39 @@ impl RequestForwarder {
                 .protocol_preparation(ForwarderProtocolPreparationInput {
                     transform_plan: &transform_plan,
                 });
-        let url_plan = self.request_source.plan_upstream_url(ForwarderUpstreamUrlInput {
-            adapter,
-            base_url: &base_url,
-            endpoint,
-            is_full_url,
-            transform_plan: &transform_plan,
-            is_copilot,
-            body: &mapped_body,
-            channel_param_overrides: attempt.channel().map(|channel| &channel.param_overrides),
-        });
+        let url_plan = self
+            .request_source
+            .plan_upstream_url(ForwarderUpstreamUrlInput {
+                adapter,
+                base_url: &base_url,
+                endpoint,
+                is_full_url,
+                transform_plan: &transform_plan,
+                is_copilot,
+                body: &mapped_body,
+                channel_param_overrides: attempt.channel().map(|channel| &channel.param_overrides),
+            });
         let effective_endpoint = url_plan.effective_endpoint;
         let url = url_plan.url;
 
-        let claude_transformed_body = if protocol_preparation.should_transform_claude_request {
-            Some(
-                self.protocol_state_source
-                    .transform_claude_request(ForwarderClaudeProtocolTransformInput {
-                        body: mapped_body.clone(),
-                        provider,
-                        api_format: protocol_preparation.claude_api_format_for_transform.as_deref(),
-                        session_id: &self.session_id,
-                        session_client_provided: self.session_client_provided,
-                    })
-                    .map_err(ProxyError::TransformError)?,
-            )
-        } else {
-            None
-        };
+        let claude_transformed_body =
+            if protocol_preparation.should_transform_claude_request {
+                Some(
+                    self.protocol_state_source
+                        .transform_claude_request(ForwarderClaudeProtocolTransformInput {
+                            body: mapped_body.clone(),
+                            provider,
+                            api_format: protocol_preparation
+                                .claude_api_format_for_transform
+                                .as_deref(),
+                            session_id: &self.session_id,
+                            session_client_provided: self.session_client_provided,
+                        })
+                        .map_err(ProxyError::TransformError)?,
+                )
+            } else {
+                None
+            };
 
         self.protocol_state_source
             .enrich_codex_chat_request(ForwarderCodexChatProtocolEnrichmentInput {
@@ -926,15 +929,15 @@ impl RequestForwarder {
                 enabled: protocol_preparation.codex_chat_enrichment_enabled,
             })
             .await;
-        let transformed_request = self.request_source.transform_request_body(
-            ForwarderRequestBodyTransformInput {
-                adapter,
-                body: mapped_body,
-                provider,
-                transform_plan: &transform_plan,
-                claude_transformed_body,
-            },
-        )?;
+        let transformed_request =
+            self.request_source
+                .transform_request_body(ForwarderRequestBodyTransformInput {
+                    adapter,
+                    body: mapped_body,
+                    provider,
+                    transform_plan: &transform_plan,
+                    claude_transformed_body,
+                })?;
         let mut request_body = transformed_request.body;
         let initial_outbound_model = transformed_request.outbound_model;
 
@@ -1056,23 +1059,22 @@ impl RequestForwarder {
             })
             .await
     }
-
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::database::Database;
-    use crate::proxy::events::ProxyEventBus;
     use crate::proxy::codex_chat_history::CodexChatHistoryStore;
-    use crate::proxy_core_adapter::{ManagedAccountAuthError, ProxyRuntimeStatus};
+    use crate::proxy::events::ProxyEventBus;
     use crate::proxy_core_adapter::{canonical_json_string, short_value_hash};
     use crate::proxy_core_adapter::{
-        interface_kind_for_forward, request_model_for_forward, AppKind, GeminiShadowStore,
-        ResolvedChannelAttempt,
         claude_transform_endpoint_rewrite_input_from_body as transform_endpoint_rewrite_input,
-        rewrite_claude_transform_endpoint as rewrite_transform_endpoint,
+        interface_kind_for_forward, request_model_for_forward,
+        rewrite_claude_transform_endpoint as rewrite_transform_endpoint, AppKind,
+        GeminiShadowStore, ResolvedChannelAttempt,
     };
+    use crate::proxy_core_adapter::{ManagedAccountAuthError, ProxyRuntimeStatus};
     use axum::http::header::{HeaderValue, ACCEPT};
     use axum::http::HeaderMap;
     use bytes::Bytes;
@@ -2021,7 +2023,10 @@ mod tests {
         let provider = provider_with_settings(json!({}));
         let mut body = body_with_image("deepseek-v4-pro");
 
-        assert_eq!(apply_media_prevention_for_test(&fwd, &mut body, &provider), 0);
+        assert_eq!(
+            apply_media_prevention_for_test(&fwd, &mut body, &provider),
+            0
+        );
         assert_eq!(body["messages"][0]["content"][0]["type"], "image");
     }
 

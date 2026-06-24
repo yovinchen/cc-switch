@@ -565,11 +565,13 @@ fn codex_model_catalog_from_settings(
     let default_context_window = extract_codex_top_level_u64(config_text, "model_context_window")
         .unwrap_or_else(crate::proxy_core_adapter::codex_default_model_context_window);
     let template = load_codex_model_catalog_template()?;
-    Ok(crate::proxy_core_adapter::codex_model_catalog_from_settings(
-        settings,
-        default_context_window,
-        &template,
-    ))
+    Ok(
+        crate::proxy_core_adapter::codex_model_catalog_from_settings(
+            settings,
+            default_context_window,
+            &template,
+        ),
+    )
 }
 
 fn set_codex_model_catalog_json_field(

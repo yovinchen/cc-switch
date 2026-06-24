@@ -1,8 +1,6 @@
 use crate::commands::{CodexOAuthState, CopilotAuthState};
 use crate::proxy::error::ProxyError;
-use crate::proxy_core_adapter::{
-    CopilotModel, ManagedAccountAuthRuntime, ProviderAuthInfo,
-};
+use crate::proxy_core_adapter::{CopilotModel, ManagedAccountAuthRuntime, ProviderAuthInfo};
 use tauri::Manager;
 
 pub(crate) async fn resolve_copilot_api_endpoint(
@@ -247,9 +245,7 @@ mod tests {
     async fn copilot_runtime_helpers_skip_without_app_handle() {
         assert_eq!(resolve_copilot_api_endpoint(None, None).await, None);
         assert_eq!(
-            fetch_copilot_live_models(None, None)
-                .await
-                .expect("skip"),
+            fetch_copilot_live_models(None, None).await.expect("skip"),
             None
         );
         assert_eq!(

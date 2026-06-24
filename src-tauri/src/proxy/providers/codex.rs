@@ -435,11 +435,9 @@ wire_api = "chat"
         }));
 
         // 模型名含 "deepseek"，但平台是 OpenRouter —— 平台规则必须覆盖模型规则。
-        let config = provider_codex_chat_reasoning_profile(
-            &provider,
-            Some("deepseek/deepseek-chat-v3.1"),
-        )
-        .unwrap();
+        let config =
+            provider_codex_chat_reasoning_profile(&provider, Some("deepseek/deepseek-chat-v3.1"))
+                .unwrap();
 
         assert_eq!(config.thinking_param.as_deref(), Some("none"));
         assert_eq!(config.effort_param.as_deref(), Some("reasoning.effort"));

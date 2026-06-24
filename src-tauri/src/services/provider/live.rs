@@ -12,35 +12,32 @@ use crate::config::{delete_file, get_claude_settings_path, read_json_file, write
 use crate::database::Database;
 use crate::error::AppError;
 use crate::provider::Provider;
-use crate::proxy_core_adapter::{
-    build_effective_settings_with_common_config as adapter_build_effective_settings_with_common_config,
-    common_config_settings_mutation_issue_message,
-    remove_common_config_from_settings as adapter_remove_common_config_from_settings,
-    codex_live_settings_with_model_catalog, gemini_live_settings_from_env_json_and_config,
-    provider_default_live_import_settings,
-    normalize_provider_common_config_for_storage as adapter_normalize_provider_common_config_for_storage,
-    provider_codex_live_snapshot_parts, provider_from_default_live_settings,
-    CommonConfigSettingsMutationIssue,
-    gemini_live_settings_to_write, OpenClawLiveWriteAction,
-    OpenCodeLiveWriteAction,
-    ProviderBackfillSettingsWarning, ProviderEffectiveSettingsWarning,
-    provider_common_config_storage_normalization_requires_snippet,
-    provider_from_hermes_live_config, provider_from_openclaw_live_config,
-    provider_from_opencode_live_config, provider_gemini_env_map,
-    provider_gemini_live_config_object, provider_opencode_live_write_projection,
-    provider_live_sync_scope, provider_openclaw_live_write_projection, HermesLiveImportIssue,
-    OpenClawLiveImportIssue, OpenCodeLiveImportIssue, ProviderLiveSyncScope,
-    provider_should_sync_to_live,
-    proxy_live_config_owned_by_takeover,
-    restore_live_settings_for_provider_backfill as adapter_restore_live_settings_for_provider_backfill,
-    sanitize_claude_settings_for_live,
-    should_skip_manual_default_live_import,
-    should_skip_startup_default_live_import,
-    strip_common_config_from_live_settings_for_backfill as adapter_strip_common_config_from_live_settings_for_backfill,
-    validate_provider_gemini_settings_strict, CodexLiveSnapshotIssue, GeminiLiveConfigIssue,
-};
 #[cfg(test)]
 use crate::proxy_core_adapter::apply_common_config_to_settings as adapter_apply_common_config_to_settings;
+use crate::proxy_core_adapter::{
+    build_effective_settings_with_common_config as adapter_build_effective_settings_with_common_config,
+    codex_live_settings_with_model_catalog, common_config_settings_mutation_issue_message,
+    gemini_live_settings_from_env_json_and_config, gemini_live_settings_to_write,
+    normalize_provider_common_config_for_storage as adapter_normalize_provider_common_config_for_storage,
+    provider_codex_live_snapshot_parts,
+    provider_common_config_storage_normalization_requires_snippet,
+    provider_default_live_import_settings, provider_from_default_live_settings,
+    provider_from_hermes_live_config, provider_from_openclaw_live_config,
+    provider_from_opencode_live_config, provider_gemini_env_map,
+    provider_gemini_live_config_object, provider_live_sync_scope,
+    provider_openclaw_live_write_projection, provider_opencode_live_write_projection,
+    provider_should_sync_to_live, proxy_live_config_owned_by_takeover,
+    remove_common_config_from_settings as adapter_remove_common_config_from_settings,
+    restore_live_settings_for_provider_backfill as adapter_restore_live_settings_for_provider_backfill,
+    sanitize_claude_settings_for_live, should_skip_manual_default_live_import,
+    should_skip_startup_default_live_import,
+    strip_common_config_from_live_settings_for_backfill as adapter_strip_common_config_from_live_settings_for_backfill,
+    validate_provider_gemini_settings_strict, CodexLiveSnapshotIssue,
+    CommonConfigSettingsMutationIssue, GeminiLiveConfigIssue, HermesLiveImportIssue,
+    OpenClawLiveImportIssue, OpenClawLiveWriteAction, OpenCodeLiveImportIssue,
+    OpenCodeLiveWriteAction, ProviderBackfillSettingsWarning, ProviderEffectiveSettingsWarning,
+    ProviderLiveSyncScope,
+};
 use crate::services::mcp::McpService;
 use crate::store::AppState;
 
@@ -335,14 +332,15 @@ pub(crate) fn write_live_snapshot(app_type: &AppType, provider: &Provider) -> Re
             ));
         }
         AppType::Codex => {
-            let parts = provider_codex_live_snapshot_parts(provider).map_err(|issue| match issue {
-                CodexLiveSnapshotIssue::NotObject => {
-                    AppError::Config("Codex 供应商配置必须是 JSON 对象".to_string())
-                }
-                CodexLiveSnapshotIssue::MissingAuth => {
-                    AppError::Config("Codex 供应商配置缺少 'auth' 字段".to_string())
-                }
-            })?;
+            let parts =
+                provider_codex_live_snapshot_parts(provider).map_err(|issue| match issue {
+                    CodexLiveSnapshotIssue::NotObject => {
+                        AppError::Config("Codex 供应商配置必须是 JSON 对象".to_string())
+                    }
+                    CodexLiveSnapshotIssue::MissingAuth => {
+                        AppError::Config("Codex 供应商配置缺少 'auth' 字段".to_string())
+                    }
+                })?;
 
             crate::codex_config::write_codex_provider_live_with_catalog(
                 &provider.settings_config,
@@ -1215,11 +1213,7 @@ mod tests {
             "Gemini common config should be matched inside env"
         );
         assert!(
-            !contains_common_config_snippet(
-                &AppType::Gemini,
-                &json!({"env": "invalid"}),
-                snippet
-            ),
+            !contains_common_config_snippet(&AppType::Gemini, &json!({"env": "invalid"}), snippet),
             "non-object env should not match Gemini common config"
         );
     }
@@ -1236,9 +1230,7 @@ mod tests {
         let err = write_live_snapshot(&AppType::Codex, &provider)
             .expect_err("missing auth should be rejected before writing live files");
 
-        assert!(err
-            .to_string()
-            .contains("Codex 供应商配置缺少 'auth' 字段"));
+        assert!(err.to_string().contains("Codex 供应商配置缺少 'auth' 字段"));
     }
 
     #[test]

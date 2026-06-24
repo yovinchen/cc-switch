@@ -95,10 +95,7 @@ mod tests {
         };
         db.save_stream_check_config(&config).expect("save config");
 
-        assert_eq!(
-            db.get_stream_check_config().expect("saved config"),
-            config
-        );
+        assert_eq!(db.get_stream_check_config().expect("saved config"), config);
         assert_eq!(
             serde_json::from_str::<serde_json::Value>(
                 &db.get_setting("stream_check_config")

@@ -19,19 +19,18 @@ use crate::proxy_core_adapter::{
     common_config_snippet_from_settings, common_config_snippet_issue_message,
     normalize_provider_settings_for_storage, provider_additive_live_write_action,
     provider_additive_update_route, provider_app_has_current_provider,
-    provider_credential_issue_spec, provider_credential_values, provider_key_change_policy_issue,
-    provider_key_change_policy_issue_message, provider_live_config_presence_error_policy,
+    provider_credential_issue_spec, provider_credential_values,
     provider_delete_is_current_provider, provider_initial_live_config_managed_marker,
-    provider_live_removal_target, provider_live_sync_scope,
-    provider_omo_switch_pair, provider_omo_variant_for_category,
+    provider_key_change_policy_issue, provider_key_change_policy_issue_message,
+    provider_live_config_presence_error_policy, provider_live_removal_target,
+    provider_live_sync_scope, provider_omo_switch_pair, provider_omo_variant_for_category,
     provider_settings_validation_issue_spec, provider_settings_validation_parts,
     provider_switch_backfill_source_id, provider_switch_dispatch,
-    provider_switch_requires_takeover_lock,
-    provider_switch_should_mark_live_config_managed, provider_takeover_live_sync_target,
+    provider_switch_requires_takeover_lock, provider_switch_should_mark_live_config_managed,
+    provider_takeover_live_sync_target,
     proxy_hot_switch_should_sync_claude_live_while_proxy_active,
     proxy_live_config_owned_by_takeover, proxy_switch_should_hot_switch,
-    should_block_proxy_switch_to_provider,
-    should_reapply_codex_official_live_for_provider,
+    should_block_proxy_switch_to_provider, should_reapply_codex_official_live_for_provider,
     should_skip_provider_legacy_common_config_migration, CommonConfigSnippetIssue,
     ProviderAdditiveLiveWriteAction, ProviderAdditiveUpdateRoute, ProviderCredentialIssue,
     ProviderLiveConfigPresenceErrorPolicy, ProviderLiveRemovalTarget, ProviderLiveSyncScope,
@@ -519,7 +518,7 @@ base_url = "http://localhost:8080"
         let settings = json!({ "config": config_toml });
         let extracted =
             ProviderService::extract_common_config_snippet_from_settings(AppType::Codex, &settings)
-            .expect("extract_codex_common_config should succeed");
+                .expect("extract_codex_common_config should succeed");
 
         assert!(
             !extracted
@@ -555,9 +554,11 @@ base_url = "http://localhost:8080"
             }
         });
 
-        let extracted =
-            ProviderService::extract_common_config_snippet_from_settings(AppType::Gemini, &settings)
-            .expect("extract_gemini_common_config should succeed");
+        let extracted = ProviderService::extract_common_config_snippet_from_settings(
+            AppType::Gemini,
+            &settings,
+        )
+        .expect("extract_gemini_common_config should succeed");
         let value: Value = serde_json::from_str(&extracted).expect("valid JSON common config");
 
         assert_eq!(value["SHARED_REGION"], "us-central1");
@@ -1545,8 +1546,7 @@ impl ProviderService {
 
         // Additive mode apps (OpenCode, OpenClaw): only sync to live when the provider
         // already exists in live config. Editing a DB-only provider must not auto-add it.
-        if let Some(route) =
-            provider_additive_update_route(&app_type, provider.category.as_deref())
+        if let Some(route) = provider_additive_update_route(&app_type, provider.category.as_deref())
         {
             if let ProviderAdditiveUpdateRoute::OmoVariant(omo_variant) = route {
                 let variant = Self::omo_variant_descriptor(omo_variant);
@@ -1641,8 +1641,7 @@ impl ProviderService {
                 if proxy_hot_switch_should_sync_claude_live_while_proxy_active(
                     &app_type,
                     should_sync_via_proxy,
-                )
-                    && futures::executor::block_on(state.proxy_service.is_running())
+                ) && futures::executor::block_on(state.proxy_service.is_running())
                 {
                     futures::executor::block_on(
                         state
@@ -1885,11 +1884,9 @@ impl ProviderService {
         if let Some(omo_pair) = provider_omo_switch_pair(&app_type, provider) {
             let enable = Self::omo_variant_descriptor(omo_pair.enable);
             let disable = Self::omo_variant_descriptor(omo_pair.disable);
-            state.db.set_omo_provider_current(
-                app_type.as_str(),
-                id,
-                omo_pair.enable.category(),
-            )?;
+            state
+                .db
+                .set_omo_provider_current(app_type.as_str(), id, omo_pair.enable.category())?;
             crate::services::OmoService::write_config_to_file(state, enable)?;
             let _ = crate::services::OmoService::delete_config_file(disable);
             return Ok(SwitchResult::default());
@@ -1915,7 +1912,9 @@ impl ProviderService {
                     );
                     if let Err(e) = state.db.save_provider(app_type.as_str(), &current_provider) {
                         log::warn!("Backfill failed: {e}");
-                        result.warnings.push(format!("backfill_failed:{current_id}"));
+                        result
+                            .warnings
+                            .push(format!("backfill_failed:{current_id}"));
                     }
                 }
             }
@@ -1965,9 +1964,10 @@ impl ProviderService {
             let mut updated = provider.clone();
             Self::set_provider_live_config_managed(&mut updated, true);
             if let Err(e) = state.db.save_provider(app_type.as_str(), &updated) {
-                let rollback_result = provider_live_removal_target(&app_type).map_or(Ok(()), |target| {
-                    Self::remove_provider_from_live_by_target(target, &provider.id)
-                });
+                let rollback_result = provider_live_removal_target(&app_type)
+                    .map_or(Ok(()), |target| {
+                        Self::remove_provider_from_live_by_target(target, &provider.id)
+                    });
 
                 match rollback_result {
                     Ok(()) => {
@@ -2278,8 +2278,8 @@ impl ProviderService {
     }
 
     fn validate_provider_settings(app_type: &AppType, provider: &Provider) -> Result<(), AppError> {
-        let validation_parts = provider_settings_validation_parts(app_type, provider)
-            .map_err(|issue| {
+        let validation_parts =
+            provider_settings_validation_parts(app_type, provider).map_err(|issue| {
                 Self::provider_settings_validation_issue_to_app_error(issue, &provider.id)
             })?;
 

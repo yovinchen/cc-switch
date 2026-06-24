@@ -4,6 +4,10 @@
 
 use super::{error::ProxyError, ForwardError};
 use crate::proxy::error::proxy_error_status_kind;
+#[cfg(test)]
+use crate::proxy_core_adapter::{
+    codex_proxy_error_json_from_proxy_error as core_codex_proxy_error_json, ProxyResponseBody,
+};
 use crate::proxy_core_adapter::{
     codex_proxy_error_response_from_proxy_error as core_codex_proxy_error_response,
     log_unlabeled_sse_fallback_event, parse_upstream_json_or_unlabeled_sse,
@@ -12,10 +16,6 @@ use crate::proxy_core_adapter::{
     ManagementAuthError, ProxyCoreError, ProxyCoreResponse, ProxyCoreResult,
     UnlabeledSseFallbackLogContext, UpstreamResponseParseFailureLogContext,
     UpstreamSseAggregationKind,
-};
-#[cfg(test)]
-use crate::proxy_core_adapter::{
-    codex_proxy_error_json_from_proxy_error as core_codex_proxy_error_json, ProxyResponseBody,
 };
 use http::HeaderMap;
 use serde_json::Value;
@@ -124,20 +124,17 @@ pub(crate) fn parse_logged_upstream_json_or_unlabeled_sse(
     parse_failure_context: UpstreamResponseParseFailureLogContext,
     fallback_log_context: UnlabeledSseFallbackLogContext<'_>,
 ) -> Result<Value, ProxyError> {
-    let parsed = parse_upstream_json_or_unlabeled_sse(
-        body,
-        headers,
-        failure_message,
-        aggregation,
-        || uuid::Uuid::new_v4().to_string(),
-    )
-    .map_err(|error| {
-        log::error!(
-            "{}",
-            upstream_response_parse_failure_log_message(parse_failure_context, &error, body)
-        );
-        response_body_parse_error_to_proxy_error(error)
-    })?;
+    let parsed =
+        parse_upstream_json_or_unlabeled_sse(body, headers, failure_message, aggregation, || {
+            uuid::Uuid::new_v4().to_string()
+        })
+        .map_err(|error| {
+            log::error!(
+                "{}",
+                upstream_response_parse_failure_log_message(parse_failure_context, &error, body)
+            );
+            response_body_parse_error_to_proxy_error(error)
+        })?;
 
     log_unlabeled_sse_fallback_event(parsed.source, fallback_log_context);
     Ok(parsed.value)

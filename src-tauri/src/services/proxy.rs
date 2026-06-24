@@ -10,57 +10,47 @@ use crate::proxy::switch_lock::SwitchLockManager;
 use crate::proxy_core_adapter::{
     apply_claude_takeover_fields_for_provider, apply_claude_takeover_fields_with_policy,
     apply_codex_takeover_fields_for_provider, apply_codex_unified_session_bucket_for_provider,
-    apply_gemini_takeover_env_fields, ClaudeTakeoverAuthPolicy,
+    apply_gemini_takeover_env_fields, cleanup_all_live_backups_best_effort_in_db,
     clear_all_provider_health_in_db, clear_legacy_live_takeover_active_flag_in_db,
-    clear_legacy_live_takeover_active_flag_strict_in_db, clear_provider_health_for_app_in_db,
-    clear_live_takeover_enabled_flags_in_db,
-    cleanup_all_live_backups_best_effort_in_db,
-    codex_backup_projection_error_message, codex_live_write_projection,
-    codex_provider_live_write_parts,
-    codex_preserved_auth_live_config_text_for_configured_policy,
-    current_provider_for_app_from_db, existing_live_backup_value_for_update_from_db,
-    delete_all_live_backups_best_effort_in_db,
-    delete_all_live_backups_in_db,
+    clear_legacy_live_takeover_active_flag_strict_in_db, clear_live_takeover_enabled_flags_in_db,
+    clear_provider_health_for_app_in_db, codex_backup_projection_error_message,
+    codex_live_write_projection, codex_preserved_auth_live_config_text_for_configured_policy,
+    codex_provider_live_write_parts, current_provider_for_app_from_db,
+    delete_all_live_backups_best_effort_in_db, delete_all_live_backups_in_db,
     delete_live_backup_best_effort_in_db, delete_live_backup_in_db,
     disable_global_proxy_best_effort_in_db, enable_global_proxy_in_db,
-    is_local_proxy_url, live_backup_snapshot_from_live_config, live_token_sync_app_label,
-    live_backup_config_for_simple_restore_from_db,
-    live_takeover_any_enabled_from_db, live_takeover_backup_exists_from_db,
-    live_backup_value_for_restore_from_db, live_token_sync_provider_from_db,
-    live_config_has_proxy_placeholder_for_app, live_takeover_config_matches_proxy_for_app,
-    live_takeover_app_types,
-    persist_ephemeral_listen_port_if_needed_in_db, proxy_app_enabled_from_db,
-    proxy_config_from_db, sync_provider_settings_with_live_token,
-    persist_hot_switch_current_provider_sources,
-    provider_effective_settings_with_common_config_from_db,
-    proxy_hot_switch_target_state_from_db,
-    save_live_backup_value_in_db,
+    existing_live_backup_value_for_update_from_db, is_local_proxy_url,
+    live_backup_config_for_simple_restore_from_db, live_backup_snapshot_from_live_config,
+    live_backup_value_for_restore_from_db, live_config_has_proxy_placeholder_for_app,
+    live_takeover_any_enabled_from_db, live_takeover_app_types,
+    live_takeover_backup_exists_from_db, live_takeover_config_matches_proxy_for_app,
+    live_token_sync_app_label, live_token_sync_provider_from_db,
+    persist_ephemeral_listen_port_if_needed_in_db, persist_hot_switch_current_provider_sources,
     preserve_codex_mcp_servers_from_existing_config,
     preserve_codex_oauth_auth_in_backup_for_configured_policy,
-    remove_claude_takeover_env_fields_if_present, CodexLiveWriteProjection,
-    proxy_hot_switch_should_refresh_codex_live_from_backup,
+    provider_effective_settings_with_common_config_from_db, proxy_app_enabled_from_db,
+    proxy_config_from_db, proxy_hot_switch_should_refresh_codex_live_from_backup,
     proxy_hot_switch_should_sync_claude_live_while_proxy_active,
-    proxy_hot_switch_should_sync_codex_live_while_proxy_active, proxy_live_urls_from_listen_parts,
-    proxy_live_config_owned_by_takeover, proxy_runtime_status_stopped,
-    proxy_server_info_from_parts,
-    proxy_server_from_runtime_config,
-    proxy_takeover_status_from_db,
+    proxy_hot_switch_should_sync_codex_live_while_proxy_active,
+    proxy_hot_switch_target_state_from_db, proxy_live_config_owned_by_takeover,
+    proxy_live_urls_from_listen_parts, proxy_official_warning_event_from_current_provider_db,
+    proxy_runtime_status_stopped, proxy_server_from_runtime_config, proxy_server_info_from_parts,
     proxy_takeover_marked_state_is_reusable,
-    proxy_official_warning_event_from_current_provider_db,
-    proxy_takeover_should_restore_existing_backup_before_retakeover,
-    require_current_provider_for_app_from_db,
+    proxy_takeover_should_restore_existing_backup_before_retakeover, proxy_takeover_status_from_db,
+    remove_claude_takeover_env_fields_if_present,
     remove_codex_takeover_auth_placeholder_if_present,
     remove_codex_takeover_config_placeholders_if_present,
-    remove_gemini_takeover_env_fields_if_present, sanitize_claude_settings_for_live,
-    set_proxy_app_enabled_in_db,
+    remove_gemini_takeover_env_fields_if_present, require_current_provider_for_app_from_db,
+    sanitize_claude_settings_for_live, save_live_backup_value_in_db,
     save_provider_live_backup_from_effective_settings_in_db,
-    set_legacy_live_takeover_active_best_effort_in_db,
-    set_legacy_live_takeover_active_in_db, ssot_live_restore_provider_from_db,
-    update_live_token_sync_provider_settings_in_db,
-    update_proxy_config_preserving_live_takeover_active_in_db, CircuitBreakerConfig,
-    write_ssot_live_restore_provider_with_common_config,
-    CcSwitchProxyServer, CodexTakeoverAuthPolicy, LiveTokenProviderSettingsIssue, ProxyConfig,
-    ProxyRuntimeStatus, ProxyServerInfo, ProxyTakeoverStatus,
+    set_legacy_live_takeover_active_best_effort_in_db, set_legacy_live_takeover_active_in_db,
+    set_proxy_app_enabled_in_db, ssot_live_restore_provider_from_db,
+    sync_provider_settings_with_live_token, update_live_token_sync_provider_settings_in_db,
+    update_proxy_config_preserving_live_takeover_active_in_db,
+    write_ssot_live_restore_provider_with_common_config, CcSwitchProxyServer, CircuitBreakerConfig,
+    ClaudeTakeoverAuthPolicy, CodexLiveWriteProjection, CodexTakeoverAuthPolicy,
+    LiveTokenProviderSettingsIssue, ProxyConfig, ProxyRuntimeStatus, ProxyServerInfo,
+    ProxyTakeoverStatus,
 };
 #[cfg(test)]
 use serde_json::Map;
@@ -102,12 +92,13 @@ impl ProxyService {
         provider: &Provider,
     ) -> Result<Provider, String> {
         let mut effective_provider = provider.clone();
-        effective_provider.settings_config = provider_effective_settings_with_common_config_from_db(
-            &self.db,
-            &AppType::Claude,
-            provider,
-        )
-        .map_err(|e| format!("构建 claude 有效配置失败: {e}"))?;
+        effective_provider.settings_config =
+            provider_effective_settings_with_common_config_from_db(
+                &self.db,
+                &AppType::Claude,
+                provider,
+            )
+            .map_err(|e| format!("构建 claude 有效配置失败: {e}"))?;
         Ok(effective_provider)
     }
 
@@ -338,8 +329,7 @@ impl ProxyService {
 
             let mut restore_existing_backup_before_takeover = false;
             if proxy_app_enabled {
-                let has_backup =
-                    live_takeover_backup_exists_from_db(&self.db, app_type_str).await;
+                let has_backup = live_takeover_backup_exists_from_db(&self.db, app_type_str).await;
                 let live_matches_current_proxy =
                     match self.live_takeover_matches_current_proxy(&app).await {
                         Ok(value) => value,
@@ -751,11 +741,7 @@ impl ProxyService {
 
         // Gemini: 修改 GOOGLE_GEMINI_BASE_URL，使用占位符替代真实 Token（代理会注入真实 Token）
         if let Ok(mut live_config) = self.read_gemini_live() {
-            apply_gemini_takeover_env_fields(
-                &mut live_config,
-                &proxy_url,
-                PROXY_TOKEN_PLACEHOLDER,
-            );
+            apply_gemini_takeover_env_fields(&mut live_config, &proxy_url, PROXY_TOKEN_PLACEHOLDER);
             self.write_gemini_live(&live_config)?;
             log::info!("Gemini Live 配置已接管，代理地址: {proxy_url}");
         }
@@ -1206,7 +1192,7 @@ impl ProxyService {
             // 统一会话开关：备份是接管释放时恢复 live 的来源，官方配置的
             // 共享 custom 路由注入必须落在备份里，否则恢复后开关失效。
             apply_codex_unified_session_bucket_for_provider(provider, &mut effective_settings)
-            .map_err(|e| format!("注入统一会话路由失败: {e}"))?;
+                .map_err(|e| format!("注入统一会话路由失败: {e}"))?;
         }
 
         save_provider_live_backup_from_effective_settings_in_db(
@@ -1627,8 +1613,8 @@ impl ProxyService {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::proxy_core_adapter::codex_takeover_toml_config_for_provider;
     use crate::provider::ProviderMeta;
+    use crate::proxy_core_adapter::codex_takeover_toml_config_for_provider;
     use serial_test::serial;
     use std::env;
     use tempfile::TempDir;
@@ -1949,9 +1935,7 @@ mod tests {
             }),
             None,
         );
-        assert!(crate::proxy_core_adapter::provider_uses_managed_account_auth(
-            &provider
-        ));
+        assert!(crate::proxy_core_adapter::provider_uses_managed_account_auth(&provider));
         assert!(!crate::proxy_core_adapter::provider_is_codex_oauth(
             &provider
         ));
@@ -3200,11 +3184,7 @@ wire_api = "responses"
         });
 
         let proxy_url = "http://127.0.0.1:5000/v1";
-        let output = codex_takeover_toml_config_for_provider(
-            input,
-            proxy_url,
-            Some(&provider),
-        );
+        let output = codex_takeover_toml_config_for_provider(input, proxy_url, Some(&provider));
         let parsed: toml::Value =
             toml::from_str(&output).expect("updated config should be valid TOML");
 
@@ -3437,8 +3417,7 @@ wire_api = "responses"
             }),
             None,
         );
-        db.save_provider("codex", &provider)
-            .expect("save provider");
+        db.save_provider("codex", &provider).expect("save provider");
         db.set_current_provider("codex", "codex-p1")
             .expect("set current provider");
 

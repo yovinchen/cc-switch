@@ -11,17 +11,16 @@
 use super::{error::ProxyError, handlers};
 #[cfg(test)]
 use crate::database::Database;
+use crate::proxy_core_adapter::ProxyState;
 use crate::proxy_core_adapter::{
     emit_proxy_server_started_event_source, emit_proxy_server_stopped_event_source,
     proxy_runtime_status_from_runtime_sources, proxy_server_info_from_parts,
-    record_proxy_server_listen_port_runtime_source,
-    record_proxy_server_started_runtime_source, record_proxy_server_stopped_runtime_source,
-    reset_provider_circuit_breaker_source, set_active_route_target_runtime_source,
-    server_log_codes as log_srv, CircuitBreakerConfig, ProxyConfig, ProxyRuntimeStatus,
-    ProxyServerInfo,
+    record_proxy_server_listen_port_runtime_source, record_proxy_server_started_runtime_source,
+    record_proxy_server_stopped_runtime_source, reset_provider_circuit_breaker_source,
+    server_log_codes as log_srv, set_active_route_target_runtime_source,
     update_all_circuit_breaker_configs_source, update_app_circuit_breaker_config_source,
+    CircuitBreakerConfig, ProxyConfig, ProxyRuntimeStatus, ProxyServerInfo,
 };
-use crate::proxy_core_adapter::ProxyState;
 use axum::{
     extract::DefaultBodyLimit,
     middleware,
@@ -774,8 +773,7 @@ mod tests {
             .build()
             .expect("reqwest client");
         let base_url = format!("http://127.0.0.1:{}", info.port);
-        let (reachable_channel_base_url, upstream_handle) =
-            start_reachability_probe_server().await;
+        let (reachable_channel_base_url, upstream_handle) = start_reachability_probe_server().await;
 
         let smoke = async {
             let health_response = client

@@ -1,6 +1,6 @@
 use crate::proxy_core_adapter::{
-    proxy_error_http_status_code, proxy_error_response_body,
-    upstream_proxy_error_response_body, ProxyErrorStatusKind,
+    proxy_error_http_status_code, proxy_error_response_body, upstream_proxy_error_response_body,
+    ProxyErrorStatusKind,
 };
 use axum::{
     http::StatusCode,
@@ -183,8 +183,7 @@ mod tests {
         let body = axum::body::to_bytes(response.into_body(), usize::MAX)
             .await
             .expect("read response body");
-        let json: serde_json::Value =
-            serde_json::from_slice(&body).expect("proxy error json body");
+        let json: serde_json::Value = serde_json::from_slice(&body).expect("proxy error json body");
         assert_eq!(json["error"]["message"], "请求转发失败: dns lookup failed");
         assert_eq!(json["error"]["type"], "proxy_error");
     }

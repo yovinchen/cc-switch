@@ -137,10 +137,10 @@ async fn resolve_copilot_base_url_override(
 
 #[cfg(test)]
 mod tests {
+    use crate::provider::{Provider, ProviderMeta};
     use crate::proxy_core_adapter::{
         provider_is_full_url, provider_is_github_copilot_stream_check_target,
     };
-    use crate::provider::{Provider, ProviderMeta};
     use serde_json::json;
 
     #[test]
@@ -162,7 +162,9 @@ mod tests {
             icon_color: None,
             in_failover_queue: false,
         };
-        assert!(provider_is_github_copilot_stream_check_target(&typed_provider));
+        assert!(provider_is_github_copilot_stream_check_target(
+            &typed_provider
+        ));
 
         let url_provider = Provider {
             id: "p2".to_string(),
@@ -182,7 +184,9 @@ mod tests {
             icon_color: None,
             in_failover_queue: false,
         };
-        assert!(provider_is_github_copilot_stream_check_target(&url_provider));
+        assert!(provider_is_github_copilot_stream_check_target(
+            &url_provider
+        ));
     }
 
     #[test]
