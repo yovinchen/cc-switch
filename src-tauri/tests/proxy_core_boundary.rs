@@ -5677,9 +5677,18 @@ fn production_forwarder_delegates_claude_body_policy_gate_to_request_source() {
         adapter_source.contains("api_format: Option<&'a str>"),
         "ForwarderRequestSource must own optional Claude API format gating for body policies"
     );
+    let body_policy_input_slice = function_slice(
+        &adapter_source,
+        "pub(crate) struct ForwarderClaudeBodyPolicyInput",
+        "pub(crate) struct ForwarderCodexResponsesToChatInput",
+    );
     assert!(
-        adapter_source.contains("is_claude_adapter: bool"),
-        "ForwarderRequestSource must own adapter gating for Claude body policies"
+        body_policy_input_slice.contains("adapter_facts: &'a ForwarderAdapterFacts"),
+        "ForwarderRequestSource must receive adapter facts for Claude body policy gating"
+    );
+    assert!(
+        !body_policy_input_slice.contains("is_claude_adapter: bool"),
+        "ForwarderClaudeBodyPolicyInput must not expose a split Claude-adapter gate"
     );
 
     let impl_slice = function_slice(&forwarder_source, "impl RequestForwarder", "#[cfg(test)]");
@@ -6703,6 +6712,72 @@ fn production_forwarder_uses_request_source_resource() {
             && !upstream_url_input_slice.contains("use_claude_transform: bool")
             && !upstream_url_input_slice.contains("claude_api_format: Option"),
         "ForwarderUpstreamUrlInput must not expose split transform-plan URL facts"
+    );
+    let adapter_fact_inputs = [
+        (
+            "ForwarderUpstreamRequestLogInput",
+            function_slice(
+                &adapter_source,
+                "pub(crate) struct ForwarderUpstreamRequestLogInput",
+                "pub(crate) struct ForwarderCopilotRequestOptimizationInput",
+            ),
+        ),
+        (
+            "ForwarderClaudeApiFormatInput",
+            function_slice(
+                &adapter_source,
+                "pub(crate) struct ForwarderClaudeApiFormatInput",
+                "pub(crate) struct ForwarderCopilotRequestOptimization",
+            ),
+        ),
+        (
+            "ForwarderClaudeBodyPolicyInput",
+            function_slice(
+                &adapter_source,
+                "pub(crate) struct ForwarderClaudeBodyPolicyInput",
+                "pub(crate) struct ForwarderCodexResponsesToChatInput",
+            ),
+        ),
+        (
+            "ForwarderTransformPlanInput",
+            function_slice(
+                &adapter_source,
+                "pub(crate) struct ForwarderTransformPlanInput",
+                "pub(crate) struct ForwarderUpstreamUrlInput",
+            ),
+        ),
+        (
+            "ForwarderMediaRetryPlanInput",
+            function_slice(
+                &adapter_source,
+                "pub(crate) struct ForwarderMediaRetryPlanInput",
+                "pub(crate) struct ForwarderThinkingSignatureRectifierInput",
+            ),
+        ),
+        (
+            "ForwarderRequestPartsInput",
+            function_slice(
+                &adapter_source,
+                "pub(crate) struct ForwarderRequestPartsInput",
+                "pub(crate) struct ForwarderUpstreamRequestParts",
+            ),
+        ),
+    ];
+    for (input_name, input_slice) in adapter_fact_inputs {
+        assert!(
+            input_slice.contains("adapter_facts: &'a ForwarderAdapterFacts"),
+            "{input_name} must carry the cohesive adapter facts"
+        );
+        assert!(
+            !input_slice.contains("adapter_name: &'a str")
+                && !input_slice.contains("is_claude_adapter: bool"),
+            "{input_name} must not expose split adapter name or Claude-adapter facts"
+        );
+    }
+    assert!(
+        !impl_slice.contains("let adapter_name = adapter_facts.adapter_name")
+            && !impl_slice.contains("let is_claude_adapter = adapter_facts.is_claude_adapter"),
+        "RequestForwarder must not split adapter facts into scalar locals for request assembly"
     );
     assert!(
         adapter_source.contains("fn request_body_model"),
