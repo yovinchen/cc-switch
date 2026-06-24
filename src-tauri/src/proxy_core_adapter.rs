@@ -570,6 +570,8 @@ pub(crate) fn record_proxy_server_listen_port_runtime_source(port: u16) {
 
 pub(crate) type ProxyTakeoverStatus = crate::proxy_core::api::ports::ProxyTakeoverStatus;
 
+pub(crate) use crate::proxy_core::api::ports::proxy_takeover_status_from_enabled_options;
+#[cfg(test)]
 pub(crate) use crate::proxy_core::api::ports::proxy_takeover_status_from_parts;
 
 pub(crate) type ClaudeDesktopModelListResponse =
@@ -5602,12 +5604,12 @@ pub(crate) fn proxy_takeover_status_from_config_results(
     codex: Result<AppProxyConfig, AppError>,
     gemini: Result<AppProxyConfig, AppError>,
 ) -> ProxyTakeoverStatus {
-    proxy_takeover_status_from_parts(
-        claude.map(|config| config.enabled).unwrap_or(false),
-        codex.map(|config| config.enabled).unwrap_or(false),
-        gemini.map(|config| config.enabled).unwrap_or(false),
-        false,
-        false,
+    proxy_takeover_status_from_enabled_options(
+        claude.ok().map(|config| config.enabled),
+        codex.ok().map(|config| config.enabled),
+        gemini.ok().map(|config| config.enabled),
+        None,
+        None,
     )
 }
 

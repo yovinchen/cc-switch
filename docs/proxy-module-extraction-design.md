@@ -1308,6 +1308,7 @@
 本轮继续把 no-providers-configured 的 FO-005 warning 日志行收敛到 `proxy-core::forward_failure::forwarder_no_providers_configured_log_line`：provider selection failure adapter 保留 AppError 映射与日志副作用，不再维护 `[FO-005] 未配置供应商` payload。
 本轮继续把 failover switch 配置读取失败的 FO-002 warning 日志行收敛到 `proxy-core::provider_selection::failover_config_read_error_log_line`：adapter 仍负责读取 config、默认返回 false 和发 warning，不再维护 `[FO-002] 无法读取...跳过切换` payload。
 本轮继续把 ProviderRouter 读取 auto-failover 配置失败时默认禁用的决策收敛到 `proxy-core::provider_selection::provider_router_auto_failover_enabled_decision`：adapter 只把 `AppProxyConfig.auto_failover_enabled` 投影为 bool、按 core 返回的 log line 发 error，不再维护读取失败 fallback 策略。
+本轮继续把接管状态的 enabled/缺失配置矩阵收敛到 `proxy-core::ports::proxy_takeover_status_from_enabled_options`：adapter 只把 DB config 读取结果投影成 `Option<bool>`，不再维护 Claude/Codex/Gemini 缺失时默认 false 和 OpenCode/OpenClaw 默认 false 的状态组装规则。
 
 当前原则：核心 crate 可以新增端口和领域字段，但不得引入 `tauri`、`Database`、settings、commands、services 等宿主依赖；现有 runtime 行为必须继续通过 targeted tests 证明不回归。
 

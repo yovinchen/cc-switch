@@ -1074,6 +1074,22 @@ pub fn proxy_takeover_status_from_parts(
     }
 }
 
+pub fn proxy_takeover_status_from_enabled_options(
+    claude: Option<bool>,
+    codex: Option<bool>,
+    gemini: Option<bool>,
+    opencode: Option<bool>,
+    openclaw: Option<bool>,
+) -> ProxyTakeoverStatus {
+    proxy_takeover_status_from_parts(
+        claude.unwrap_or(false),
+        codex.unwrap_or(false),
+        gemini.unwrap_or(false),
+        opencode.unwrap_or(false),
+        openclaw.unwrap_or(false),
+    )
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ProviderHealth {
     pub provider_id: String,
@@ -3088,12 +3104,13 @@ mod tests {
         ProxyChannelModelWriteRequest,
         ProxyChannelModelsReplaceRequest, ProxyChannelPatchRequest, ProxyChannelTestRequest,
         ProxyChannelWriteRequest, ProxyConfig, ProxyCoreEvent, ProxyCoreEventType,
-        ProxyRuntimeStatus, ProxyStatusResponse,
+        ProxyRuntimeStatus, ProxyStatusResponse, ProxyTakeoverStatus,
         ForwardCurrentProviderStatusInput, ForwardFailureStatusInput,
         ForwardProviderFailureStatusInput, ForwardProviderRectifierRetryFailureStatusInput,
         ForwardRequestStartedStatusInput, ForwardSuccessStatusInput, ForwardSuccessStatusUpdate,
         ProxyServerStartedStatusInput, proxy_server_info_from_parts,
-        proxy_runtime_status_stopped, proxy_takeover_status_from_parts,
+        proxy_runtime_status_stopped, proxy_takeover_status_from_enabled_options,
+        proxy_takeover_status_from_parts,
         apply_proxy_runtime_active_targets, apply_proxy_runtime_uptime,
         record_active_connection_acquired_status, record_active_connection_released_status,
         record_forward_current_provider_status, record_forward_failure_status,
@@ -4561,6 +4578,26 @@ mod tests {
                 "opencode": false,
                 "openclaw": false
             })
+        );
+    }
+
+    #[test]
+    fn proxy_takeover_status_from_enabled_options_defaults_missing_apps_off() {
+        assert_eq!(
+            proxy_takeover_status_from_enabled_options(
+                Some(true),
+                None,
+                Some(false),
+                Some(true),
+                None,
+            ),
+            ProxyTakeoverStatus {
+                claude: true,
+                codex: false,
+                gemini: false,
+                opencode: true,
+                openclaw: false,
+            }
         );
     }
 
