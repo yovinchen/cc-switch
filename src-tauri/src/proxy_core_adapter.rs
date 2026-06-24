@@ -1530,6 +1530,7 @@ pub(crate) type ProviderAuthStrategy = crate::proxy_core::api::auth::ProviderAut
 pub(crate) type AuthInfo = crate::proxy_core::api::ports::AuthInfo;
 
 pub(crate) use crate::proxy_core::api::auth::gemini_auth_strategy_for_provider_kind as core_gemini_auth_strategy_for_provider_kind;
+pub(crate) use crate::proxy_core::api::auth::gemini_auth_info_from_api_key as core_gemini_auth_info_from_api_key;
 pub(crate) use crate::proxy_core::api::auth::claude_anthropic_auth_strategy_for_key_source as core_claude_anthropic_auth_strategy_for_key_source;
 pub(crate) use crate::proxy_core::api::auth::claude_static_auth_strategy_for_provider_kind as core_claude_static_auth_strategy_for_provider_kind;
 pub(crate) use crate::proxy_core::api::auth::codex_auth_info_from_api_key as core_codex_auth_info_from_api_key;
@@ -4872,20 +4873,13 @@ pub(crate) fn provider_gemini_auth_strategy(provider: &Provider) -> ProviderAuth
 
 pub(crate) fn provider_gemini_auth_info(provider: &Provider) -> Option<ProviderAuthInfo> {
     let key = provider_gemini_api_key(provider)?;
-
-    match provider_gemini_auth_strategy(provider) {
-        ProviderAuthStrategy::GoogleOAuth => {
-            if let Some(credentials) = parse_gemini_oauth_credentials(&key) {
-                Some(ProviderAuthInfo::with_access_token(
-                    key,
-                    credentials.access_token,
-                ))
-            } else {
-                Some(ProviderAuthInfo::new(key, ProviderAuthStrategy::Google))
-            }
-        }
-        _ => Some(ProviderAuthInfo::new(key, ProviderAuthStrategy::Google)),
-    }
+    let strategy = provider_gemini_auth_strategy(provider);
+    let credentials = parse_gemini_oauth_credentials(&key);
+    Some(core_gemini_auth_info_from_api_key(
+        key,
+        strategy,
+        credentials.as_ref(),
+    ))
 }
 
 pub(crate) fn provider_gemini_auth_headers(

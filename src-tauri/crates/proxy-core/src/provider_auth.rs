@@ -1,5 +1,6 @@
 use crate::claude_auth::{extract_claude_auth_key_from_settings, ClaudeAuthKeySource};
 use crate::domain::ProviderKind;
+use crate::gemini_auth::GeminiOAuthCredentials;
 use crate::secret::mask_secret;
 use serde_json::{Map, Value};
 
@@ -84,6 +85,19 @@ pub fn claude_static_auth_strategy_for_provider_kind(
 
 pub fn codex_auth_info_from_api_key(api_key: String) -> ProviderAuthInfo {
     ProviderAuthInfo::new(api_key, ProviderAuthStrategy::Bearer)
+}
+
+pub fn gemini_auth_info_from_api_key(
+    api_key: String,
+    strategy: ProviderAuthStrategy,
+    oauth_credentials: Option<&GeminiOAuthCredentials>,
+) -> ProviderAuthInfo {
+    match (strategy, oauth_credentials) {
+        (ProviderAuthStrategy::GoogleOAuth, Some(credentials)) => {
+            ProviderAuthInfo::with_access_token(api_key, credentials.access_token.clone())
+        }
+        _ => ProviderAuthInfo::new(api_key, ProviderAuthStrategy::Google),
+    }
 }
 
 pub fn settings_config_with_channel_auth_key(
@@ -219,6 +233,68 @@ mod tests {
         assert_eq!(auth.api_key, "sk-codex");
         assert_eq!(auth.strategy, ProviderAuthStrategy::Bearer);
         assert_eq!(auth.access_token, None);
+    }
+
+    #[test]
+    fn gemini_auth_info_from_api_key_selects_oauth_when_credentials_parse() {
+        let credentials = GeminiOAuthCredentials {
+            access_token: "ya29.access-token".to_string(),
+            refresh_token: Some("refresh-token".to_string()),
+            client_id: None,
+            client_secret: None,
+        };
+
+        let auth = gemini_auth_info_from_api_key(
+            "refresh-token".to_string(),
+            ProviderAuthStrategy::GoogleOAuth,
+            Some(&credentials),
+        );
+
+        assert_eq!(auth.api_key, "refresh-token");
+        assert_eq!(auth.strategy, ProviderAuthStrategy::GoogleOAuth);
+        assert_eq!(auth.access_token.as_deref(), Some("ya29.access-token"));
+    }
+
+    #[test]
+    fn gemini_auth_info_from_api_key_preserves_empty_oauth_token_contract() {
+        let credentials = GeminiOAuthCredentials {
+            access_token: String::new(),
+            refresh_token: Some("refresh-token".to_string()),
+            client_id: None,
+            client_secret: None,
+        };
+
+        let auth = gemini_auth_info_from_api_key(
+            "refresh-token".to_string(),
+            ProviderAuthStrategy::GoogleOAuth,
+            Some(&credentials),
+        );
+
+        assert_eq!(auth.strategy, ProviderAuthStrategy::GoogleOAuth);
+        assert_eq!(auth.access_token.as_deref(), Some(""));
+    }
+
+    #[test]
+    fn gemini_auth_info_from_api_key_falls_back_to_google_api_key() {
+        let oauth_without_credentials = gemini_auth_info_from_api_key(
+            "AIza-api-key".to_string(),
+            ProviderAuthStrategy::GoogleOAuth,
+            None,
+        );
+        assert_eq!(oauth_without_credentials.api_key, "AIza-api-key");
+        assert_eq!(
+            oauth_without_credentials.strategy,
+            ProviderAuthStrategy::Google
+        );
+        assert_eq!(oauth_without_credentials.access_token, None);
+
+        let api_key = gemini_auth_info_from_api_key(
+            "AIza-api-key".to_string(),
+            ProviderAuthStrategy::Google,
+            None,
+        );
+        assert_eq!(api_key.strategy, ProviderAuthStrategy::Google);
+        assert_eq!(api_key.access_token, None);
     }
 
     #[test]
