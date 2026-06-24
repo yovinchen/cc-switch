@@ -1700,6 +1700,19 @@ pub fn normalize_claude_models_in_value(settings: &mut Value) -> bool {
     changed
 }
 
+pub fn provider_default_live_import_settings(app: &AppKind, mut settings: Value) -> Value {
+    let _ = normalize_provider_settings_for_storage(app, &mut settings);
+    settings
+}
+
+pub fn normalize_provider_settings_for_storage(app: &AppKind, settings: &mut Value) -> bool {
+    if matches!(app, AppKind::Claude) {
+        return normalize_claude_models_in_value(settings);
+    }
+
+    false
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct LocalizedErrorSpec {
     pub key: &'static str,
@@ -4131,6 +4144,7 @@ mod tests {
         json_deep_merge, json_deep_remove, json_remove_array_items, json_value_is_subset,
         launch_env_vars_from_provider_settings, live_env_base_url_matches, live_takeover_app_kinds,
         live_token_sync_app_label, normalize_claude_models_in_value,
+        normalize_provider_settings_for_storage, provider_default_live_import_settings,
         provider_settings_with_live_token_sync, proxy_urls_match,
         proxy_config_preserving_live_takeover_active,
         proxy_app_config_from_parts, proxy_config_with_ephemeral_listen_port,
@@ -5652,6 +5666,56 @@ mod tests {
         assert!(env.get("ANTHROPIC_SMALL_FAST_MODEL").is_none());
 
         assert!(!normalize_claude_models_in_value(&mut settings));
+    }
+
+    #[test]
+    fn provider_settings_storage_normalization_only_changes_claude_settings() {
+        let imported = provider_default_live_import_settings(
+            &AppKind::Claude,
+            json!({
+                "env": {
+                    "ANTHROPIC_MODEL": "claude-sonnet",
+                    "ANTHROPIC_SMALL_FAST_MODEL": "claude-haiku"
+                }
+            }),
+        );
+        assert_eq!(
+            imported["env"]["ANTHROPIC_DEFAULT_HAIKU_MODEL"].as_str(),
+            Some("claude-haiku")
+        );
+        assert_eq!(
+            imported["env"]["ANTHROPIC_DEFAULT_SONNET_MODEL"].as_str(),
+            Some("claude-sonnet")
+        );
+        assert!(imported["env"].get("ANTHROPIC_SMALL_FAST_MODEL").is_none());
+
+        let mut saved = json!({
+            "env": {
+                "ANTHROPIC_MODEL": "claude-sonnet",
+                "ANTHROPIC_SMALL_FAST_MODEL": "claude-haiku"
+            }
+        });
+        assert!(normalize_provider_settings_for_storage(
+            &AppKind::Claude,
+            &mut saved
+        ));
+        assert_eq!(
+            saved["env"]["ANTHROPIC_DEFAULT_HAIKU_MODEL"].as_str(),
+            Some("claude-haiku")
+        );
+        assert!(saved["env"].get("ANTHROPIC_SMALL_FAST_MODEL").is_none());
+
+        let codex_settings = json!({"config": "model = \"gpt-5\""});
+        assert_eq!(
+            provider_default_live_import_settings(&AppKind::Codex, codex_settings.clone()),
+            codex_settings
+        );
+        let mut codex_saved = codex_settings.clone();
+        assert!(!normalize_provider_settings_for_storage(
+            &AppKind::Codex,
+            &mut codex_saved
+        ));
+        assert_eq!(codex_saved, codex_settings);
     }
 
     #[test]

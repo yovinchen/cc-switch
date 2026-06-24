@@ -306,11 +306,12 @@ pub(crate) use crate::proxy_core::api::ports::{
     launch_env_vars_from_provider_settings as core_launch_env_vars_from_provider_settings,
     live_env_base_url_matches as core_live_env_base_url_matches,
     live_token_sync_app_label as core_live_token_sync_app_label,
-    normalize_claude_models_in_value as core_normalize_claude_models_in_value,
+    normalize_provider_settings_for_storage as core_normalize_provider_settings_for_storage,
     provider_additive_live_write_action_for_app as core_provider_additive_live_write_action,
     provider_additive_update_route_for_app as core_provider_additive_update_route,
     provider_app_has_current_provider as core_provider_app_has_current_provider,
     provider_credential_issue_spec as core_provider_credential_issue_spec,
+    provider_default_live_import_settings as core_provider_default_live_import_settings,
     provider_delete_is_current_provider as core_provider_delete_is_current_provider,
     provider_initial_live_config_managed_marker as core_provider_initial_live_config_managed_marker,
     provider_key_change_policy_issue_for_app as core_provider_key_change_policy_issue,
@@ -2102,21 +2103,16 @@ pub(crate) fn openclaw_common_config_snippet_from_settings(
 
 pub(crate) fn provider_default_live_import_settings(
     app_type: &AppType,
-    mut settings: Value,
+    settings: Value,
 ) -> Value {
-    let _ = normalize_provider_settings_for_storage(app_type, &mut settings);
-    settings
+    core_provider_default_live_import_settings(&AppKind::from(app_type), settings)
 }
 
 pub(crate) fn normalize_provider_settings_for_storage(
     app_type: &AppType,
     settings: &mut Value,
 ) -> bool {
-    if matches!(app_type, AppType::Claude) {
-        return normalize_claude_models_in_value(settings);
-    }
-
-    false
+    core_normalize_provider_settings_for_storage(&AppKind::from(app_type), settings)
 }
 
 pub(crate) fn should_skip_manual_default_live_import(
@@ -2280,11 +2276,6 @@ pub(crate) fn provider_switch_should_mark_live_config_managed(
         &AppKind::from(app_type),
         live_config_managed,
     )
-}
-
-/// Reads old Claude model keys, writes DEFAULT_* keys, and deletes legacy SMALL_FAST.
-pub(crate) fn normalize_claude_models_in_value(settings: &mut Value) -> bool {
-    core_normalize_claude_models_in_value(settings)
 }
 
 fn json_object_or_null_common_config_snippet(
@@ -13470,7 +13461,9 @@ fn account_ref(provider: &Provider) -> Option<String> {
 
 #[cfg(test)]
 mod tests {
-    use crate::proxy_core::api::ports::json_remove_array_items;
+    use crate::proxy_core::api::ports::{
+        json_remove_array_items, normalize_claude_models_in_value,
+    };
 
     use super::*;
     use crate::database::ProxyChannelSourceKind;
