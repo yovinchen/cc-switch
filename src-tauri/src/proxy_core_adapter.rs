@@ -1037,8 +1037,6 @@ pub(crate) async fn release_forward_attempt_permit_neutral_runtime_source(
 pub(crate) type GeminiShadowStore =
     crate::proxy_core::api::transforms::GeminiShadowStore;
 pub(crate) type AuthProfileRef = crate::proxy_core::api::domain::AuthProfileRef;
-pub(crate) type ChannelAuthProfileResolution =
-    crate::proxy_core::api::domain::ChannelAuthProfileResolution;
 pub(crate) type ClaudeAuthHeaderKind =
     crate::proxy_core::api::transport::ClaudeAuthHeaderKind;
 pub(crate) type ClaudeAuthKey = crate::proxy_core::api::auth::ClaudeAuthKey;
@@ -2868,59 +2866,10 @@ pub(crate) fn provider_from_opencode_live_config(
     Ok(provider)
 }
 
-pub(crate) fn channel_auth_profile_resolution(
-    auth_profile_ref: Option<&str>,
-    app_type: &str,
-) -> ChannelAuthProfileResolution {
-    let auth_profile_ref = auth_profile_ref.map(AuthProfileRef::new);
-    crate::proxy_core::api::domain::channel_auth_profile_resolution(
-        auth_profile_ref.as_ref(),
-        app_type,
-    )
-}
-
-pub(crate) use crate::proxy_core::api::domain::channel_auth_profile_missing_provider_warning;
-
-pub(crate) enum ChannelAuthProfileAction {
-    Provider {
-        provider_id: String,
-        missing_provider_warning: String,
-    },
-    ChannelKey {
-        channel_id: String,
-        key_ref: String,
-    },
-    Ignore,
-}
-
-pub(crate) fn channel_auth_profile_action(
-    app_type: &str,
-    auth_profile_ref: Option<&str>,
-    channel_id: Option<&str>,
-) -> ChannelAuthProfileAction {
-    match channel_auth_profile_resolution(auth_profile_ref, app_type) {
-        ChannelAuthProfileResolution::Provider { provider_id } => {
-            ChannelAuthProfileAction::Provider {
-                provider_id,
-                missing_provider_warning: channel_auth_profile_missing_provider_warning(
-                    app_type,
-                    auth_profile_ref,
-                ),
-            }
-        }
-        ChannelAuthProfileResolution::ChannelKey { key_ref } => {
-            let Some(channel_id) = channel_id else {
-                return ChannelAuthProfileAction::Ignore;
-            };
-            ChannelAuthProfileAction::ChannelKey {
-                channel_id: channel_id.to_string(),
-                key_ref,
-            }
-        }
-        ChannelAuthProfileResolution::Ignore => ChannelAuthProfileAction::Ignore,
-    }
-}
-
+pub(crate) use crate::proxy_core::api::domain::{
+    channel_auth_profile_action, channel_auth_profile_missing_provider_warning,
+    ChannelAuthProfileAction,
+};
 pub(crate) use crate::proxy_core::api::domain::{channel_spec_from_input, model_route_from_input};
 
 #[cfg(test)]
