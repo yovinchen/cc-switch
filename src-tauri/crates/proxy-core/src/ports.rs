@@ -2030,6 +2030,112 @@ pub fn opencode_common_config_value_from_settings(settings: &Value) -> Value {
     config
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum CommonConfigSnippetIssue {
+    Serialization(String),
+    TomlParse(String),
+}
+
+pub fn common_config_snippet_issue_message(issue: CommonConfigSnippetIssue) -> String {
+    match issue {
+        CommonConfigSnippetIssue::Serialization(error) => {
+            format!("Serialization failed: {error}")
+        }
+        CommonConfigSnippetIssue::TomlParse(error) => format!("TOML parse error: {error}"),
+    }
+}
+
+pub fn claude_common_config_snippet_from_settings(
+    settings: &Value,
+) -> Result<String, CommonConfigSnippetIssue> {
+    let mut config = settings.clone();
+
+    const ENV_EXCLUDES: &[&str] = &[
+        "ANTHROPIC_API_KEY",
+        "ANTHROPIC_AUTH_TOKEN",
+        "ANTHROPIC_MODEL",
+        "ANTHROPIC_REASONING_MODEL",
+        "ANTHROPIC_DEFAULT_HAIKU_MODEL",
+        "ANTHROPIC_DEFAULT_HAIKU_MODEL_NAME",
+        "ANTHROPIC_DEFAULT_OPUS_MODEL",
+        "ANTHROPIC_DEFAULT_OPUS_MODEL_NAME",
+        "ANTHROPIC_DEFAULT_SONNET_MODEL",
+        "ANTHROPIC_DEFAULT_SONNET_MODEL_NAME",
+        "ANTHROPIC_BASE_URL",
+    ];
+    const TOP_LEVEL_EXCLUDES: &[&str] = &["apiBaseUrl", "primaryModel", "smallFastModel"];
+
+    if let Some(env) = config.get_mut("env").and_then(Value::as_object_mut) {
+        for key in ENV_EXCLUDES {
+            env.remove(*key);
+        }
+        if env.is_empty() {
+            if let Some(obj) = config.as_object_mut() {
+                obj.remove("env");
+            }
+        }
+    }
+
+    if let Some(obj) = config.as_object_mut() {
+        for key in TOP_LEVEL_EXCLUDES {
+            obj.remove(*key);
+        }
+    }
+
+    if config.as_object().is_none_or(|obj| obj.is_empty()) {
+        return Ok("{}".to_string());
+    }
+
+    json_common_config_snippet_from_value(config)
+}
+
+pub fn gemini_common_config_snippet_from_settings(
+    settings: &Value,
+) -> Result<String, CommonConfigSnippetIssue> {
+    let env = gemini_env_map_from_settings(settings);
+
+    let mut snippet = Map::new();
+    if let Some(env) = env {
+        for (key, value) in env {
+            if key == "GOOGLE_GEMINI_BASE_URL" || key == "GEMINI_API_KEY" {
+                continue;
+            }
+            let Value::String(v) = value else {
+                continue;
+            };
+            let trimmed = v.trim();
+            if !trimmed.is_empty() {
+                snippet.insert(key.to_string(), Value::String(trimmed.to_string()));
+            }
+        }
+    }
+
+    json_common_config_snippet_from_value(Value::Object(snippet))
+}
+
+pub fn opencode_common_config_snippet_from_settings(
+    settings: &Value,
+) -> Result<String, CommonConfigSnippetIssue> {
+    json_common_config_snippet_from_value(opencode_common_config_value_from_settings(settings))
+}
+
+pub fn openclaw_common_config_snippet_from_settings(
+    settings: &Value,
+) -> Result<String, CommonConfigSnippetIssue> {
+    json_common_config_snippet_from_value(openclaw_common_config_value_from_settings(settings))
+}
+
+pub fn json_common_config_snippet_from_value(
+    config: Value,
+) -> Result<String, CommonConfigSnippetIssue> {
+    if config.is_null() || config.as_object().is_some_and(|obj| obj.is_empty()) {
+        return Ok("{}".to_string());
+    }
+
+    serde_json::to_string_pretty(&config)
+        .map_err(|e| CommonConfigSnippetIssue::Serialization(e.to_string()))
+}
+
 pub fn provider_credential_issue_spec(issue: ProviderCredentialIssue) -> LocalizedErrorSpec {
     match issue {
         ProviderCredentialIssue::ClaudeEnvMissing => LocalizedErrorSpec::new(
@@ -4424,15 +4530,21 @@ mod tests {
         channel_route_source_for_materialized_count,
         apply_claude_takeover_fields_with_policy_and_models,
         apply_codex_takeover_auth_placeholder_if_present, apply_gemini_takeover_env_fields,
+        claude_common_config_snippet_from_settings,
         claude_env_credentials_from_settings, claude_live_config_has_proxy_placeholder,
         claude_takeover_model_fields_from_settings, ClaudeTakeoverAuthPolicy,
         ensure_codex_takeover_auth_placeholder, gemini_env_map_from_settings,
+        gemini_common_config_snippet_from_settings,
         gemini_live_config_has_proxy_placeholder, is_local_proxy_url,
+        common_config_snippet_issue_message,
+        json_common_config_snippet_from_value,
         json_deep_merge, json_deep_remove, json_remove_array_items, json_value_is_subset,
         launch_env_vars_from_provider_settings, live_env_base_url_matches, live_takeover_app_kinds,
         live_token_sync_app_label, normalize_claude_models_in_value,
         normalize_provider_settings_for_storage, provider_default_live_import_settings,
         openclaw_common_config_value_from_settings, openclaw_credential_parts_from_settings,
+        openclaw_common_config_snippet_from_settings,
+        opencode_common_config_snippet_from_settings,
         opencode_common_config_value_from_settings, opencode_credential_parts_from_settings,
         provider_settings_with_live_token_sync, proxy_urls_match,
         proxy_config_preserving_live_takeover_active,
@@ -4470,8 +4582,8 @@ mod tests {
         CurrentRouteTargetInput, current_route_target_from_input, GlobalProxyConfig,
         GroupListQuery, HealthCheckResponse, ModelCatalog, OptimizerConfig, ProviderHealth,
         ProviderAdditiveLiveWriteAction, ProviderAdditiveUpdateRoute, ProviderHealthUpdateInput,
-        LiveTokenProviderSettingsIssue, ProviderCredentialIssue, ProviderKeyChangePolicyIssue,
-        OpenCodeCredentialIssue,
+        CommonConfigSnippetIssue, LiveTokenProviderSettingsIssue, ProviderCredentialIssue,
+        ProviderKeyChangePolicyIssue, OpenCodeCredentialIssue,
         ProviderListResponse, ProviderLiveConfigPresenceErrorPolicy, ProviderLiveRemovalTarget,
         ProviderLiveSyncScope, ProviderOmoSwitchPair, ProviderOmoVariant, ProviderSpec,
         ProviderSummaryInput, ProviderSwitchDispatch, ProviderTakeoverLiveSyncTarget,
@@ -5962,6 +6074,78 @@ mod tests {
                 "api": {"chat": "/v1/chat/completions"},
                 "models": {"fast": "claude-sonnet"}
             })
+        );
+    }
+
+    #[test]
+    fn common_config_snippets_strip_provider_specific_fields() {
+        let claude_snippet = claude_common_config_snippet_from_settings(&json!({
+            "env": {
+                "ANTHROPIC_AUTH_TOKEN": "secret",
+                "ANTHROPIC_BASE_URL": "https://anthropic.example",
+                "CLAUDE_CODE_ENABLE_TELEMETRY": "1"
+            },
+            "apiBaseUrl": "https://legacy.example",
+            "allowedTools": ["Bash"]
+        }))
+        .expect("claude snippet");
+        assert_eq!(
+            serde_json::from_str::<Value>(&claude_snippet).expect("claude json"),
+            json!({
+                "env": {"CLAUDE_CODE_ENABLE_TELEMETRY": "1"},
+                "allowedTools": ["Bash"]
+            })
+        );
+
+        let gemini_snippet = gemini_common_config_snippet_from_settings(&json!({
+            "env": {
+                "GEMINI_API_KEY": "secret",
+                "GOOGLE_GEMINI_BASE_URL": "https://gemini.example",
+                "GOOGLE_CLOUD_PROJECT": " project-a ",
+                "EMPTY": "   ",
+                "NON_STRING": 42
+            }
+        }))
+        .expect("gemini snippet");
+        assert_eq!(
+            serde_json::from_str::<Value>(&gemini_snippet).expect("gemini json"),
+            json!({"GOOGLE_CLOUD_PROJECT": "project-a"})
+        );
+
+        let opencode_snippet = opencode_common_config_snippet_from_settings(&json!({
+            "npm": "@ai-sdk/openai",
+            "options": {
+                "apiKey": "secret",
+                "baseURL": "https://opencode.example",
+                "timeout": 30
+            }
+        }))
+        .expect("opencode snippet");
+        assert_eq!(
+            serde_json::from_str::<Value>(&opencode_snippet).expect("opencode json"),
+            json!({"npm": "@ai-sdk/openai", "options": {"timeout": 30}})
+        );
+
+        let openclaw_snippet = openclaw_common_config_snippet_from_settings(&json!({
+            "apiKey": "secret",
+            "baseUrl": "https://openclaw.example",
+            "api": {"chat": "/v1/chat/completions"}
+        }))
+        .expect("openclaw snippet");
+        assert_eq!(
+            serde_json::from_str::<Value>(&openclaw_snippet).expect("openclaw json"),
+            json!({"api": {"chat": "/v1/chat/completions"}})
+        );
+
+        assert_eq!(
+            json_common_config_snippet_from_value(Value::Null).expect("null snippet"),
+            "{}"
+        );
+        assert_eq!(
+            common_config_snippet_issue_message(CommonConfigSnippetIssue::TomlParse(
+                "bad input".to_string()
+            )),
+            "TOML parse error: bad input"
         );
     }
 

@@ -1334,6 +1334,7 @@
 本轮继续收窄 provider policy adapter façade：legacy common-config migration skip 直接委托 core `should_skip_provider_legacy_common_config_migration`，credential issue spec 与 key-change issue message 改为 core helper 直接 re-export，adapter 只保留需要宿主 enum/record 投影的入口。
 本轮继续把 Claude takeover 模型字段派生与 env 写入策略收敛到 `proxy-core::ports`：core 维护角色别名、`[1M]` 标记、显示名 fallback、模型覆盖字段清理和 token placeholder 策略；adapter 继续保留 `Provider` 到 managed-account/Copilot auth policy 的宿主投影。
 本轮继续把 OpenCode/OpenClaw common-config 片段里的 provider 凭据剥离规则收敛到 `proxy-core::ports`：core 维护 `options.apiKey`/`options.baseURL` 与 `apiKey`/`baseUrl` 的纯 JSON 删除策略，adapter 继续保留 snippet 序列化、Codex TOML 和宿主 `AppType` 分发。
+本轮继续把非 Codex common-config snippet 生成规则收敛到 `proxy-core::ports`：core 维护 Claude/Gemini/OpenCode/OpenClaw 的 provider 字段剥离、空片段 `{}` fallback 和 JSON pretty serialization；adapter 继续保留 Codex TOML 清理与 `AppType` 分发。
 
 当前原则：核心 crate 可以新增端口和领域字段，但不得引入 `tauri`、`Database`、settings、commands、services 等宿主依赖；现有 runtime 行为必须继续通过 targeted tests 证明不回归。
 
