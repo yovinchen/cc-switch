@@ -8637,30 +8637,6 @@ impl CcSwitchForwarderAuthSource {
     }
 }
 
-fn forwarder_auth_channel_spec(app_type: &AppType, attempt: &ForwardAttempt) -> ChannelSpec {
-    let provider = attempt.provider();
-    auth_channel_spec_from_attempt(
-        &AppKind::from(app_type),
-        provider.id.as_str(),
-        provider.name.as_str(),
-        attempt.channel(),
-    )
-}
-
-fn forwarder_auth_proxy_request(
-    input: &ForwarderAuthHeadersInput<'_>,
-    channel: &ChannelSpec,
-) -> ProxyRequest {
-    auth_provider_proxy_request_from_context(
-        AppKind::from(input.app_type),
-        input.method.clone(),
-        input.endpoint,
-        channel,
-        input.request_body,
-        input.request_headers,
-    )
-}
-
 impl ForwarderAuthSource for CcSwitchForwarderAuthSource {
     fn prepare_optional_copilot_auth_optimization(
         &self,
@@ -8677,9 +8653,22 @@ impl ForwarderAuthSource for CcSwitchForwarderAuthSource {
     ) -> BoxFuture<'a, Result<ForwarderAuthHeaders, ProxyError>> {
         Box::pin(async move {
             let app = AppKind::from(input.app_type);
-            let provider = proxy_provider_to_core_spec(input.attempt.provider(), input.app_type);
-            let channel = forwarder_auth_channel_spec(input.app_type, input.attempt);
-            let request = forwarder_auth_proxy_request(&input, &channel);
+            let attempt_provider = input.attempt.provider();
+            let provider = proxy_provider_to_core_spec(attempt_provider, input.app_type);
+            let channel = auth_channel_spec_from_attempt(
+                &app,
+                attempt_provider.id.as_str(),
+                attempt_provider.name.as_str(),
+                input.attempt.channel(),
+            );
+            let request = auth_provider_proxy_request_from_context(
+                app.clone(),
+                input.method.clone(),
+                input.endpoint,
+                &channel,
+                input.request_body,
+                input.request_headers,
+            );
             let core_auth = self
                 .auth_provider
                 .resolve_auth(&app, &provider, &channel, &request)
@@ -15700,35 +15689,6 @@ base_url = "https://api.openai.com/v1"
         assert!(prepared.is_subagent);
         assert!(prepared.deterministic_request_id.is_some());
         assert!(prepared.interaction_id.is_some());
-    }
-
-    #[test]
-    fn forwarder_auth_channel_spec_uses_core_fallback_app_policy() {
-        let cases = [
-            (AppType::Claude, InterfaceKind::AnthropicMessages),
-            (AppType::ClaudeDesktop, InterfaceKind::AnthropicMessages),
-            (AppType::Gemini, InterfaceKind::GeminiNative),
-            (AppType::Codex, InterfaceKind::OpenAiChatCompletions),
-            (AppType::OpenCode, InterfaceKind::OpenAiChatCompletions),
-            (AppType::OpenClaw, InterfaceKind::OpenAiChatCompletions),
-            (AppType::Hermes, InterfaceKind::OpenAiChatCompletions),
-        ];
-
-        for (app_type, expected_interface) in cases {
-            let provider = Provider::with_id(
-                "provider-a".to_string(),
-                "Provider A".to_string(),
-                json!({}),
-                None,
-            );
-            let attempt = ForwardAttempt::from_provider(provider);
-            let spec = forwarder_auth_channel_spec(&app_type, &attempt);
-
-            assert_eq!(spec.id, "provider-a");
-            assert_eq!(spec.name, "Provider A");
-            assert_eq!(spec.interface, expected_interface);
-            assert!(spec.models.is_empty());
-        }
     }
 
     struct ChannelHeaderAuthProvider;
