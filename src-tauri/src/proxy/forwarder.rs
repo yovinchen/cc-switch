@@ -199,18 +199,8 @@ impl RequestForwarder {
         self.attempt_runtime_source
             .record_success(attempt, app_type, used_half_open_permit)
             .await;
-        self.emit_attempt_succeeded(request_id, app_type, attempt);
-    }
-
-    async fn record_active_target(
-        &self,
-        request_id: &str,
-        app_type: &str,
-        attempt: &ForwardAttempt,
-    ) {
         self.runtime_state_source
-            .record_active_route_target(request_id, app_type, attempt)
-            .await;
+            .emit_attempt_succeeded(request_id, app_type, attempt);
     }
 
     async fn record_success_status_and_maybe_switch(&self, app_type: &str, provider: &Provider) {
@@ -234,7 +224,9 @@ impl RequestForwarder {
     ) -> ForwardResult {
         self.record_success_result(request_id, attempt, app_type, used_half_open_permit)
             .await;
-        self.record_active_target(request_id, app_type, attempt).await;
+        self.runtime_state_source
+            .record_active_route_target(request_id, app_type, attempt)
+            .await;
         self.record_success_status_and_maybe_switch(app_type, attempt.provider())
             .await;
 
@@ -248,32 +240,6 @@ impl RequestForwarder {
         }
     }
 
-    fn emit_request_started(&self, request_id: &str, app_type: &str) {
-        self.runtime_state_source
-            .emit_request_started(request_id, app_type);
-    }
-
-    fn emit_attempt_started(&self, request_id: &str, app_type: &str, attempt: &ForwardAttempt) {
-        self.runtime_state_source
-            .emit_attempt_started(request_id, app_type, attempt);
-    }
-
-    fn emit_attempt_succeeded(&self, request_id: &str, app_type: &str, attempt: &ForwardAttempt) {
-        self.runtime_state_source
-            .emit_attempt_succeeded(request_id, app_type, attempt);
-    }
-
-    fn emit_attempt_failed(
-        &self,
-        request_id: &str,
-        app_type: &str,
-        attempt: &ForwardAttempt,
-        error: &str,
-    ) {
-        self.runtime_state_source
-            .emit_attempt_failed(request_id, app_type, attempt, error);
-    }
-
     async fn record_failure_result(
         &self,
         request_id: &str,
@@ -285,7 +251,8 @@ impl RequestForwarder {
         self.attempt_runtime_source
             .record_failure(attempt, app_type, used_half_open_permit, &error_msg)
             .await;
-        self.emit_attempt_failed(request_id, app_type, attempt, &error_msg);
+        self.runtime_state_source
+            .emit_attempt_failed(request_id, app_type, attempt, &error_msg);
     }
 
     async fn release_attempt_permit_neutral(
@@ -373,7 +340,8 @@ impl RequestForwarder {
         attempts: Vec<ForwardAttempt>,
     ) -> Result<ForwardResult, ForwardError> {
         let request_id = uuid::Uuid::new_v4().to_string();
-        self.emit_request_started(&request_id, app_type.as_str());
+        self.runtime_state_source
+            .emit_request_started(&request_id, app_type.as_str());
         let guard = ActiveConnectionGuard::acquire(self.runtime_state_source.clone()).await;
         let request_started_at = chrono::Utc::now().to_rfc3339();
         self.runtime_state_source
@@ -464,7 +432,8 @@ impl RequestForwarder {
             if !allowed {
                 continue;
             }
-            self.emit_attempt_started(request_id, app_type_str, attempt);
+            self.runtime_state_source
+                .emit_attempt_started(request_id, app_type_str, attempt);
 
             let mut provider_body =
                 self.request_source
@@ -1202,8 +1171,8 @@ mod tests {
     use crate::proxy_core_adapter::{ManagedAccountAuthError, ProxyRuntimeStatus};
     use crate::proxy_core_adapter::{canonical_json_string, short_value_hash};
     use crate::proxy_core_adapter::{
-        interface_kind_for_forward, request_model_for_forward, AppKind, ChannelRouteCandidate,
-        GeminiShadowStore, ResolvedChannelAttempt,
+        interface_kind_for_forward, request_model_for_forward, AppKind, GeminiShadowStore,
+        ResolvedChannelAttempt,
         claude_transform_endpoint_rewrite_input_from_body as transform_endpoint_rewrite_input,
         rewrite_claude_transform_endpoint as rewrite_transform_endpoint,
     };
@@ -1292,60 +1261,6 @@ mod tests {
             streaming_first_byte_timeout,
             max_attempts: 1,
         }
-    }
-
-    #[tokio::test]
-    async fn forwarder_event_helpers_emit_channel_attempt_payloads() {
-        let forwarder = test_forwarder(Duration::from_secs(0), Duration::from_secs(0));
-        let mut subscriber = forwarder.runtime_state_source.events().subscribe();
-        let provider = test_provider_with_type(None);
-        let attempt = ForwardAttempt::from_channel(
-            &AppType::Claude,
-            &provider,
-            ChannelRouteCandidate {
-                channel_id: "channel-a".to_string(),
-                provider_id: provider.id.clone(),
-                channel_name: "Relay A".to_string(),
-                base_url: "https://relay.example.com/v1".to_string(),
-                interface_kind: "openai_responses".to_string(),
-                public_model: Some("public-sonnet".to_string()),
-                upstream_model: Some("upstream-sonnet".to_string()),
-                route_group: "default".to_string(),
-                priority: 100,
-                weight: 50,
-                source_kind: "manual".to_string(),
-            },
-        );
-
-        forwarder.emit_attempt_started("req-1", "claude", &attempt);
-        let attempt_event = subscriber.recv().await.expect("attempt event");
-        assert_eq!(attempt_event.event, "channel_attempt");
-        assert_eq!(attempt_event.payload["requestId"], "req-1");
-        assert_eq!(attempt_event.payload["providerId"], "provider-1");
-        assert_eq!(attempt_event.payload["channelId"], "channel-a");
-        assert_eq!(attempt_event.payload["interfaceKind"], "openai_responses");
-        assert_eq!(attempt_event.payload["upstreamModel"], "upstream-sonnet");
-
-        forwarder.emit_attempt_succeeded("req-1", "claude", &attempt);
-        let success_event = subscriber.recv().await.expect("success event");
-        assert_eq!(success_event.event, "channel_succeeded");
-        assert_eq!(success_event.payload["channelName"], "Relay A");
-
-        forwarder.emit_attempt_failed("req-1", "claude", &attempt, "upstream failed");
-        let failed_event = subscriber.recv().await.expect("failed event");
-        assert_eq!(failed_event.event, "channel_failed");
-        assert_eq!(failed_event.payload["error"], "upstream failed");
-        assert_eq!(failed_event.payload["channelId"], "channel-a");
-
-        forwarder
-            .record_active_target("req-route", "claude", &attempt)
-            .await;
-        let route_event = subscriber.recv().await.expect("route selected event");
-        assert_eq!(route_event.event, "route_selected");
-        assert_eq!(route_event.payload["requestId"], "req-route");
-        assert_eq!(route_event.payload["providerId"], "provider-1");
-        assert_eq!(route_event.payload["channelId"], "channel-a");
-        assert_eq!(route_event.payload["interfaceKind"], "openai_responses");
     }
 
     #[tokio::test]

@@ -16487,6 +16487,61 @@ base_url = "https://api.openai.com/v1"
     }
 
     #[tokio::test]
+    async fn forwarder_runtime_state_source_records_active_route_target_event() {
+        let provider = Provider::with_id(
+            "relay".to_string(),
+            "Relay".to_string(),
+            json!({}),
+            None,
+        );
+        let attempt = ForwardAttempt::from_channel(
+            &AppType::Claude,
+            &provider,
+            ChannelRouteCandidate {
+                channel_id: "channel-a".to_string(),
+                provider_id: provider.id.clone(),
+                channel_name: "Relay A".to_string(),
+                base_url: "https://relay.example.com/v1".to_string(),
+                interface_kind: "openai_responses".to_string(),
+                public_model: Some("public-sonnet".to_string()),
+                upstream_model: Some("upstream-sonnet".to_string()),
+                route_group: "default".to_string(),
+                priority: 100,
+                weight: 50,
+                source_kind: "manual".to_string(),
+            },
+        );
+        let current_providers = Arc::new(RwLock::new(HashMap::new()));
+        let events = Arc::new(ProxyEventBus::default());
+        let mut subscriber = events.subscribe();
+        let source = CcSwitchForwarderRuntimeStateSource::new(
+            Arc::new(RwLock::new(ProxyRuntimeStatus::default())),
+            current_providers.clone(),
+            events,
+        );
+
+        source
+            .record_active_route_target("req-route", "claude", &attempt)
+            .await;
+
+        let current_providers = current_providers.read().await;
+        let target = current_providers
+            .get("claude")
+            .expect("active route target");
+        assert_eq!(target.provider_id, "relay");
+        assert_eq!(target.channel_id.as_deref(), Some("channel-a"));
+        assert_eq!(target.interface_kind.as_deref(), Some("openai_responses"));
+        assert_eq!(target.upstream_model.as_deref(), Some("upstream-sonnet"));
+
+        let route_event = subscriber.recv().await.expect("route selected event");
+        assert_eq!(route_event.event, "route_selected");
+        assert_eq!(route_event.payload["requestId"], "req-route");
+        assert_eq!(route_event.payload["providerId"], "relay");
+        assert_eq!(route_event.payload["channelId"], "channel-a");
+        assert_eq!(route_event.payload["interfaceKind"], "openai_responses");
+    }
+
+    #[tokio::test]
     async fn forwarder_response_source_projects_upstream_error_response() {
         let source = CcSwitchForwarderResponseSource;
         let response = ProxyResponse::buffered(
