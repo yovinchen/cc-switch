@@ -451,6 +451,7 @@
 440. `ForwarderResponseSource` trait 不再暴露 `upstream_error_body` / `upstream_error_response` 内部 helper；非成功上游响应的 status/body 投影仍由默认 source 内部完成，并只通过 `finalize_upstream_response` 对 forwarder 暴露。
 441. channel authProfileRef 到 provider/channel-key/ignore 的 attempt action 判定已迁入 `proxy-core::channel_auth_profile_action` 与 `ChannelAuthProfileAction`；host adapter 不再维护本地 enum 或 resolution wrapper，只负责 provider/key 查询和 provider settings mutation。
 442. `ForwarderResponseSource` trait 不再暴露 `prepare_success_response` 成功 readiness helper；非流式 body buffering 与流式首包 replay 仍由默认 source 内部执行，`RequestForwarder` 与外部替换 source 只面对 `finalize_upstream_response`。
+443. `ForwarderRequestSource` trait 不再暴露 `request_body_model` 内部 JSON model probe；最终 body model label 与 outbound model attribution 仍由默认 source 内部计算，并通过 `transform_request_body` / `prepare_upstream_body` 的结构化结果对 forwarder 暴露。
 407. `proxy::types::ApiFormat` 未使用预留枚举已删除；Claude/OpenAI/Gemini format 判断统一沿用 `proxy-core` 的 provider kind、client format 和 response transform contract。
 408. `LogConfig` 已从 `proxy::types` 移到 `settings::LogConfig`；日志设置不再扩大代理运行态类型模块，proxy host types 只保留代理状态/备份等运行态数据。
 409. `RectifierConfig` 的默认值、serde 和 core 检测投影测试已从 host `proxy::types` 迁入 `proxy-core::ports`；host proxy types 不再承担 core 配置契约测试。
@@ -1199,6 +1200,7 @@
 本轮还把 channel authProfileRef 的 provider/channel-key/ignore action 判定从 adapter 上移到 `proxy-core::domain`：core 现在同时持有 auth profile 解析、missing provider warning 和 attempt action contract，host adapter 只执行 provider/key 查询、key materialization 和 attempt 写入副作用。
 本轮继续把 forwarder 的上游请求 body/headers/transport-policy 组装包装为 `ForwarderRequestSource`：`RequestForwarder` 不再直接调用请求体过滤、prompt cache trace、stream/identity 策略、ordered headers、body 序列化和 managed-account 上游占位 auth 校验 helper，默认 source 仍保持现有上游请求语义，后续外部宿主可替换请求组装层。
 本轮继续把 finalized upstream body 的 model/outbound logging label 收敛到 `ForwarderPreparedRequest`：`RequestForwarder` 不再在请求体定稿后再次投影 `filtered_body.model`，只消费 request source 随 prepared body 返回的最终模型事实。
+本轮继续把 `request_body_model` 从 `ForwarderRequestSource` trait surface 收进默认 source 内部：外部替换 source 不再需要实现独立 JSON model probe，只需通过 transformed/prepared request 级结果返回模型归因事实。
 本轮继续把上游请求 URL/model 与 debug body 日志收敛到 `ForwarderRequestSource::log_upstream_request`：`RequestForwarder` 不再拼接请求日志文本或直接序列化 finalized body，只把 adapter tag、URL、model label 和 body 交给 request source。
 本轮继续收窄 `ForwarderRequestSource` 的请求 header 策略边界：custom User-Agent provider fact 与 exact header-case 保留策略也由 request source 计算并随上游请求 parts 返回，`RequestForwarder` 不再直接消费这些请求组装 helper。
 本轮继续把每个 provider attempt 的 Bedrock pre-send optimizer 收敛到 `ForwarderRequestSource`：Bedrock env flag 判断、thinking/cache 优化 mutation 与对应日志投影都在 request source 内完成，`RequestForwarder` 只消费按 provider 独立克隆后的 attempt body，避免 failover 场景优化字段泄漏。
