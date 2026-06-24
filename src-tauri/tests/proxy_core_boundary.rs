@@ -5896,6 +5896,11 @@ fn production_forwarder_uses_auth_source_resource() {
         "struct CcSwitchForwarderAuthSource",
         "impl ForwarderAuthSource for CcSwitchForwarderAuthSource",
     );
+    let auth_trait_slice = function_slice(
+        &adapter_source,
+        "pub(crate) trait ForwarderAuthSource",
+        "struct CcSwitchForwarderAuthSource",
+    );
 
     assert!(
         !auth_input_slice.contains("ManagedAccountRuntimeSourceRef"),
@@ -5904,6 +5909,14 @@ fn production_forwarder_uses_auth_source_resource() {
     assert!(
         auth_source_slice.contains("managed_account_runtime_source: ManagedAccountRuntimeSourceRef"),
         "ForwarderAuthSource must own managed-account runtime source for auth resolution"
+    );
+    assert!(
+        auth_source_slice.contains("fn prepare_copilot_auth_optimization"),
+        "default ForwarderAuthSource implementation must retain direct Copilot auth override preparation"
+    );
+    assert!(
+        !auth_trait_slice.contains("prepare_copilot_auth_optimization"),
+        "ForwarderAuthSource trait must not expose direct Copilot auth override helper"
     );
 
     let impl_forbidden_markers = [
