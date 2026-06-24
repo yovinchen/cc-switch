@@ -3026,7 +3026,7 @@ pub(crate) type ForwardFailureLog =
 pub(crate) enum ForwarderFailureDecision {
     Retryable {
         error_message: String,
-        log: ForwardFailureLog,
+        log_line: String,
     },
     NonRetryable,
 }
@@ -3040,6 +3040,10 @@ pub(crate) fn forwarder_no_available_provider_status_message() -> &'static str {
 
 pub(crate) fn forwarder_terminal_failure_status_message() -> &'static str {
     "所有供应商都失败"
+}
+
+pub(crate) fn forwarder_failure_log_line(app_type: &str, log: &ForwardFailureLog) -> String {
+    format!("[{app_type}] [{}] {}", log.code, log.message)
 }
 pub(crate) type ManagementAuthError =
     crate::proxy_core::api::auth::ManagementAuthError;
@@ -8121,17 +8125,19 @@ pub(crate) trait ForwarderRuntimeStateSource {
     ) -> BoxFuture<'a, ()>;
     fn forward_failure_decision(
         &self,
+        app_type: &str,
         error: &ProxyError,
         provider: &Provider,
         attempted_providers: usize,
         total_providers: usize,
     ) -> ForwarderFailureDecision;
-    fn terminal_forward_failure_log_for_error(
+    fn terminal_forward_failure_log_line_for_error(
         &self,
+        app_type: &str,
         attempted_providers: usize,
         total_providers: usize,
         last_error: Option<&ProxyError>,
-    ) -> Option<ForwardFailureLog>;
+    ) -> Option<String>;
     fn rectifier_retry_failure_decision(
         &self,
         error: &ProxyError,
@@ -8282,6 +8288,7 @@ impl ForwarderRuntimeStateSource for CcSwitchForwarderRuntimeStateSource {
 
     fn forward_failure_decision(
         &self,
+        app_type: &str,
         error: &ProxyError,
         provider: &Provider,
         attempted_providers: usize,
@@ -8290,31 +8297,36 @@ impl ForwarderRuntimeStateSource for CcSwitchForwarderRuntimeStateSource {
         let failure = forward_failure_kind_from_proxy_error(error);
         let error_message = error.to_string();
         match categorize_forward_failure(&failure) {
-            ForwardFailureCategory::Retryable => ForwarderFailureDecision::Retryable {
-                error_message,
-                log: build_retryable_forward_failure_log(
+            ForwardFailureCategory::Retryable => {
+                let log = build_retryable_forward_failure_log(
                     provider.name.as_str(),
                     attempted_providers,
                     total_providers,
                     &failure,
-                ),
-            },
+                );
+                ForwarderFailureDecision::Retryable {
+                    error_message,
+                    log_line: forwarder_failure_log_line(app_type, &log),
+                }
+            }
             ForwardFailureCategory::NonRetryable => ForwarderFailureDecision::NonRetryable,
         }
     }
 
-    fn terminal_forward_failure_log_for_error(
+    fn terminal_forward_failure_log_line_for_error(
         &self,
+        app_type: &str,
         attempted_providers: usize,
         total_providers: usize,
         last_error: Option<&ProxyError>,
-    ) -> Option<ForwardFailureLog> {
+    ) -> Option<String> {
         let last_failure = last_error.map(forward_failure_kind_from_proxy_error);
         build_terminal_forward_failure_log(
             attempted_providers,
             total_providers,
             last_failure.as_ref(),
         )
+        .map(|log| forwarder_failure_log_line(app_type, &log))
     }
 
     fn rectifier_retry_failure_decision(
@@ -16182,6 +16194,7 @@ base_url = "https://api.openai.com/v1"
             None,
         );
         let retryable = source.forward_failure_decision(
+            "claude",
             &ProxyError::Timeout("upstream timed out".to_string()),
             &provider,
             1,
@@ -16192,13 +16205,18 @@ base_url = "https://api.openai.com/v1"
             body: Some(r#"{"error":{"message":"bad request"}}"#.to_string()),
         };
         let non_retryable =
-            source.forward_failure_decision(&non_retryable_error, &provider, 1, 2);
+            source.forward_failure_decision("claude", &non_retryable_error, &provider, 1, 2);
 
         match retryable {
-            ForwarderFailureDecision::Retryable { error_message, log } => {
+            ForwarderFailureDecision::Retryable {
+                error_message,
+                log_line,
+            } => {
                 assert_eq!(error_message, "超时: upstream timed out");
-                assert_eq!(log.code, "FWD-001");
-                assert!(log.message.contains("Relay"));
+                assert_eq!(
+                    log_line,
+                    "[claude] [FWD-001] Provider Relay 失败，继续尝试下一个 (1/2): 请求超时: upstream timed out"
+                );
             }
             ForwarderFailureDecision::NonRetryable => {
                 panic!("timeout should be retryable")
@@ -16212,11 +16230,11 @@ base_url = "https://api.openai.com/v1"
             ForwarderFailureDecision::NonRetryable => {}
         }
 
-        let terminal_log = source
-            .terminal_forward_failure_log_for_error(2, 2, Some(&non_retryable_error))
+        let terminal_log_line = source
+            .terminal_forward_failure_log_line_for_error("claude", 2, 2, Some(&non_retryable_error))
             .expect("terminal failure log for multi-provider attempts");
-        assert_eq!(terminal_log.code, "FWD-002");
-        assert!(terminal_log.message.contains("上游 HTTP 400"));
+        assert!(terminal_log_line.starts_with("[claude] [FWD-002] "));
+        assert!(terminal_log_line.contains("上游 HTTP 400"));
     }
 
     #[tokio::test]

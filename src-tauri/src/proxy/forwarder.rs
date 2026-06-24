@@ -798,6 +798,7 @@ impl RequestForwarder {
                     // —— NonRetryable 是客户端层错误，无论换哪家 provider 都会被拒绝，
                     //    不应污染熔断器和数据库健康度（与 release_permit_neutral 同语义）。
                     let failure_decision = self.runtime_state_source.forward_failure_decision(
+                        app_type_str,
                         &e,
                         provider,
                         attempted_providers,
@@ -807,7 +808,7 @@ impl RequestForwarder {
                     match failure_decision {
                         ForwarderFailureDecision::Retryable {
                             error_message,
-                            log: failure_log,
+                            log_line,
                         } => {
                             // 可重试：真正的 provider 故障 → 记录失败并更新熔断器/DB 健康度
                             self.record_failure_result(
@@ -823,11 +824,7 @@ impl RequestForwarder {
                                 .record_provider_failure(provider, &error_message)
                                 .await;
 
-                            log::warn!(
-                                "[{app_type_str}] [{}] {}",
-                                failure_log.code,
-                                failure_log.message
-                            );
+                            log::warn!("{log_line}");
 
                             last_error = Some(e);
                             last_provider = Some(provider.clone());
@@ -869,16 +866,16 @@ impl RequestForwarder {
             .record_terminal_failure_status()
             .await;
 
-        if let Some(failure_log) = self.runtime_state_source.terminal_forward_failure_log_for_error(
-            attempted_providers,
-            attempts.len(),
-            last_error.as_ref(),
-        ) {
-            log::warn!(
-                "[{app_type_str}] [{}] {}",
-                failure_log.code,
-                failure_log.message
-            );
+        if let Some(log_line) = self
+            .runtime_state_source
+            .terminal_forward_failure_log_line_for_error(
+                app_type_str,
+                attempted_providers,
+                attempts.len(),
+                last_error.as_ref(),
+            )
+        {
+            log::warn!("{log_line}");
         }
 
         Err(ForwardError {
