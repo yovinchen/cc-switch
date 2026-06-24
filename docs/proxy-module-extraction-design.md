@@ -450,6 +450,7 @@
 439. channel response status mapping 的 response 与 selected channel facts 已收敛为 `ForwarderChannelResponseStatusInput`；`RequestForwarder` 不再以散参形式把 statusCodeMapping 所需事实转手传给 `ForwarderResponseSource`。
 440. `ForwarderResponseSource` trait 不再暴露 `upstream_error_body` / `upstream_error_response` 内部 helper；非成功上游响应的 status/body 投影仍由默认 source 内部完成，并只通过 `finalize_upstream_response` 对 forwarder 暴露。
 441. channel authProfileRef 到 provider/channel-key/ignore 的 attempt action 判定已迁入 `proxy-core::channel_auth_profile_action` 与 `ChannelAuthProfileAction`；host adapter 不再维护本地 enum 或 resolution wrapper，只负责 provider/key 查询和 provider settings mutation。
+442. `ForwarderResponseSource` trait 不再暴露 `prepare_success_response` 成功 readiness helper；非流式 body buffering 与流式首包 replay 仍由默认 source 内部执行，`RequestForwarder` 与外部替换 source 只面对 `finalize_upstream_response`。
 407. `proxy::types::ApiFormat` 未使用预留枚举已删除；Claude/OpenAI/Gemini format 判断统一沿用 `proxy-core` 的 provider kind、client format 和 response transform contract。
 408. `LogConfig` 已从 `proxy::types` 移到 `settings::LogConfig`；日志设置不再扩大代理运行态类型模块，proxy host types 只保留代理状态/备份等运行态数据。
 409. `RectifierConfig` 的默认值、serde 和 core 检测投影测试已从 host `proxy::types` 迁入 `proxy-core::ports`；host proxy types 不再承担 core 配置契约测试。
@@ -1194,6 +1195,7 @@
 本轮继续把 forwarder 的响应读取与成功就绪判定包装为 `ForwarderResponseSource`：`RequestForwarder` 不再直接读取 response body、执行非流式 body timeout、流式首包 timeout/replay 或错误响应 body 文本提取，默认 source 保持“记录 provider 成功前先确认响应可读”的既有 failover 语义。
 本轮继续把 channel response status mapping 收敛到 `ForwarderResponseSource`：`RequestForwarder` 不再直接调用响应状态映射 helper，响应 source 负责根据当前 channel 的 statusCodeMapping 改写上游状态码并保留原有 debug 语义。
 本轮继续把非成功上游响应的 status/body 到 `ProxyError::UpstreamError` 投影收敛到 `ForwarderResponseSource::finalize_upstream_response`：`RequestForwarder` 不再直接读取 status code、读取错误 body 或构造 upstream error，默认 source 内部 helper 不作为 trait surface 暴露。
+本轮继续把成功响应 readiness helper 从 `ForwarderResponseSource` trait surface 收进默认 source 内部：`prepare_success_response` 仍负责非流式 body buffering 和流式首包 replay，但只作为 `CcSwitchForwarderResponseSource` 内部 helper，`RequestForwarder` 的测试入口也改为通过 `finalize_upstream_response` 覆盖同一语义。
 本轮还把 channel authProfileRef 的 provider/channel-key/ignore action 判定从 adapter 上移到 `proxy-core::domain`：core 现在同时持有 auth profile 解析、missing provider warning 和 attempt action contract，host adapter 只执行 provider/key 查询、key materialization 和 attempt 写入副作用。
 本轮继续把 forwarder 的上游请求 body/headers/transport-policy 组装包装为 `ForwarderRequestSource`：`RequestForwarder` 不再直接调用请求体过滤、prompt cache trace、stream/identity 策略、ordered headers、body 序列化和 managed-account 上游占位 auth 校验 helper，默认 source 仍保持现有上游请求语义，后续外部宿主可替换请求组装层。
 本轮继续把 finalized upstream body 的 model/outbound logging label 收敛到 `ForwarderPreparedRequest`：`RequestForwarder` 不再在请求体定稿后再次投影 `filtered_body.model`，只消费 request source 随 prepared body 返回的最终模型事实。
