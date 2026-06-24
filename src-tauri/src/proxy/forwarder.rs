@@ -18,8 +18,8 @@ use crate::proxy_core_adapter::{
     ForwarderFailureDecision, ForwarderMediaRetryPlanInput, ForwarderProviderRequestBodyInput,
     ForwarderProviderUrlFacts, ForwarderProviderUrlFactsInput,
     ForwarderRequestBodyTransformInput, ForwarderRequestRectifierPlan,
-    ForwarderThinkingBudgetRectifierInput, ForwarderThinkingSignatureRectifierInput,
-    ForwarderTransformPlanInput, OptimizerConfig,
+    ForwarderRectifierRetryFailureDecision, ForwarderThinkingBudgetRectifierInput,
+    ForwarderThinkingSignatureRectifierInput, ForwarderTransformPlanInput, OptimizerConfig,
     FailoverSwitchSchedulerRef, ForwarderAttemptRuntimeSourceRef,
     ForwarderClaudeProtocolTransformInput, ForwarderCodexChatProtocolEnrichmentInput,
     ForwarderProtocolStateSourceRef,
@@ -315,42 +315,40 @@ impl RequestForwarder {
         last_provider: &mut Option<Provider>,
     ) -> Option<ForwardError> {
         let provider = attempt.provider();
-        // Provider 错误：本家上游/网络确实出问题，下一家 provider 可能可用 → 继续故障转移。
-        // 客户端错误：整流后请求仍违法，下一家也修不好 → 直接返回。
-        let is_provider_error = self
+        match self
             .runtime_state_source
-            .should_failover_after_rectifier_retry_failure(&retry_err);
-
-        if is_provider_error {
-            let retry_error_message = retry_err.to_string();
-            self.record_failure_result(
-                request_id,
-                attempt,
-                app_type_str,
-                used_half_open_permit,
-                retry_error_message.clone(),
-            )
-            .await;
-            self.runtime_state_source
-                .record_provider_rectifier_retry_failure(
-                    &provider.name,
-                    rectifier_label,
-                    &retry_error_message,
+            .rectifier_retry_failure_decision(&retry_err)
+        {
+            ForwarderRectifierRetryFailureDecision::ProviderFailure { error_message } => {
+                self.record_failure_result(
+                    request_id,
+                    attempt,
+                    app_type_str,
+                    used_half_open_permit,
+                    error_message.clone(),
                 )
                 .await;
-            *last_error = Some(retry_err);
-            *last_provider = Some(provider.clone());
-            return None;
+                self.runtime_state_source
+                    .record_provider_rectifier_retry_failure(
+                        &provider.name,
+                        rectifier_label,
+                        &error_message,
+                    )
+                    .await;
+                *last_error = Some(retry_err);
+                *last_provider = Some(provider.clone());
+                None
+            }
+            ForwarderRectifierRetryFailureDecision::ClientFailure { error_message } => {
+                self.release_attempt_permit_neutral(attempt, app_type_str, used_half_open_permit)
+                    .await;
+                self.record_failure_status_message(error_message).await;
+                Some(ForwardError {
+                    error: retry_err,
+                    provider: Some(provider.clone()),
+                })
+            }
         }
-
-        self.release_attempt_permit_neutral(attempt, app_type_str, used_half_open_permit)
-            .await;
-        self.record_failure_status_message(retry_err.to_string())
-            .await;
-        Some(ForwardError {
-            error: retry_err,
-            provider: Some(provider.clone()),
-        })
     }
 
     /// Forward a request using attempts planned by a caller such as ProxyEngine.

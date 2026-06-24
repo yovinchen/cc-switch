@@ -3027,6 +3027,10 @@ pub(crate) enum ForwarderFailureDecision {
     Retryable { log: ForwardFailureLog },
     NonRetryable,
 }
+pub(crate) enum ForwarderRectifierRetryFailureDecision {
+    ProviderFailure { error_message: String },
+    ClientFailure { error_message: String },
+}
 pub(crate) type ManagementAuthError =
     crate::proxy_core::api::auth::ManagementAuthError;
 pub(crate) type CircuitBreakerFailureDecision =
@@ -8117,7 +8121,10 @@ pub(crate) trait ForwarderRuntimeStateSource {
         total_providers: usize,
         last_error: Option<&ProxyError>,
     ) -> Option<ForwardFailureLog>;
-    fn should_failover_after_rectifier_retry_failure(&self, error: &ProxyError) -> bool;
+    fn rectifier_retry_failure_decision(
+        &self,
+        error: &ProxyError,
+    ) -> ForwarderRectifierRetryFailureDecision;
     fn record_request_started<'a>(&'a self, started_at: &'a str) -> BoxFuture<'a, ()>;
     fn record_active_connection_acquired<'a>(&'a self) -> BoxFuture<'a, ()>;
     fn record_active_connection_released<'a>(&'a self) -> BoxFuture<'a, ()>;
@@ -8300,9 +8307,17 @@ impl ForwarderRuntimeStateSource for CcSwitchForwarderRuntimeStateSource {
         )
     }
 
-    fn should_failover_after_rectifier_retry_failure(&self, error: &ProxyError) -> bool {
+    fn rectifier_retry_failure_decision(
+        &self,
+        error: &ProxyError,
+    ) -> ForwarderRectifierRetryFailureDecision {
         let failure = forward_failure_kind_from_proxy_error(error);
-        should_failover_after_rectifier_retry_failure(&failure)
+        let error_message = error.to_string();
+        if should_failover_after_rectifier_retry_failure(&failure) {
+            ForwarderRectifierRetryFailureDecision::ProviderFailure { error_message }
+        } else {
+            ForwarderRectifierRetryFailureDecision::ClientFailure { error_message }
+        }
     }
 
     fn record_request_started<'a>(&'a self, started_at: &'a str) -> BoxFuture<'a, ()> {
@@ -15968,21 +15983,40 @@ base_url = "https://api.openai.com/v1"
             Arc::new(ProxyEventBus::default()),
         );
 
-        assert!(source.should_failover_after_rectifier_retry_failure(
-            &ProxyError::Timeout("upstream timed out".to_string()),
-        ));
-        assert!(source.should_failover_after_rectifier_retry_failure(
-            &ProxyError::UpstreamError {
-                status: 502,
-                body: Some("bad gateway".to_string()),
-            },
-        ));
-        assert!(!source.should_failover_after_rectifier_retry_failure(
-            &ProxyError::UpstreamError {
-                status: 400,
-                body: Some("invalid request".to_string()),
-            },
-        ));
+        match source.rectifier_retry_failure_decision(&ProxyError::Timeout(
+            "upstream timed out".to_string(),
+        )) {
+            ForwarderRectifierRetryFailureDecision::ProviderFailure { error_message } => {
+                assert_eq!(error_message, "超时: upstream timed out");
+            }
+            ForwarderRectifierRetryFailureDecision::ClientFailure { .. } => {
+                panic!("timeout should fail over to the next provider")
+            }
+        }
+
+        match source.rectifier_retry_failure_decision(&ProxyError::UpstreamError {
+            status: 502,
+            body: Some("bad gateway".to_string()),
+        }) {
+            ForwarderRectifierRetryFailureDecision::ProviderFailure { error_message } => {
+                assert!(error_message.contains("上游错误 (状态码 502)"));
+            }
+            ForwarderRectifierRetryFailureDecision::ClientFailure { .. } => {
+                panic!("5xx upstream error should fail over to the next provider")
+            }
+        }
+
+        match source.rectifier_retry_failure_decision(&ProxyError::UpstreamError {
+            status: 400,
+            body: Some("invalid request".to_string()),
+        }) {
+            ForwarderRectifierRetryFailureDecision::ProviderFailure { .. } => {
+                panic!("client 400 should not fail over after rectifier retry")
+            }
+            ForwarderRectifierRetryFailureDecision::ClientFailure { error_message } => {
+                assert!(error_message.contains("上游错误 (状态码 400)"));
+            }
+        }
     }
 
     #[test]
