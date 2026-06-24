@@ -153,8 +153,6 @@
 142. Codex Chat/Responses 兼容所需的 reasoning_content 拼接、Responses function_call item 组装和 namespace/reasoning 附加规则已迁入 `proxy-core::response_transform`；host 非流式、streaming 与 history 调用方已直接引用 core helper。
 143. Provider 认证 header value 构造和非法 credential 字节校验已迁入 `proxy-core::request_headers::auth_header_value`；host provider adapter 调用点直接引用 core helper，并只在调用处把 `ProxyCoreError::Auth` 映射为 `ProxyError::AuthError`。
 144. Codex Chat Completions 到 Responses 的 response id/status 映射、usage JSON 形状归一化和 custom tool arguments input 提取规则已迁入 `proxy-core::response_transform`；host 非流式与流式调用点已直接引用 core，不再保留 Codex Chat provider facade。
-145. Forwarder 的转换后请求体选择（Codex Responses→Chat、Claude protocol transform body、provider transform、passthrough）和映射后初始 outbound model 归因已收敛到 `ForwarderRequestSource::transform_request_body`；host forwarder 只保留 Codex history enrichment 与 Claude session/shadow 状态调用。
-146. Codex Chat history enrichment 的启用 gate 已收敛到 `ForwarderProtocolStateSource::enrich_codex_chat_request` 输入；host forwarder 不再本地包裹 `codex_responses_to_chat` 条件，只传入状态源需要的 enabled 事实和可变 body。
 145. Codex Responses 到 Chat 的 role 映射、pending reasoning 拼接/去重、assistant reasoning 回填和 tool_call reasoning_content 占位兜底已迁入 `proxy-core::response_transform`；完整 input 遍历状态机见第 159 条。
 146. Codex Responses content 到 Chat content 的 text/refusal/image/file/audio 形状转换规则已迁入 `proxy-core::response_transform::responses_content_to_chat_content`；request 级遍历与转换编排也已收敛到 core。
 147. Codex Responses instructions 文本归一化与 Chat system message 头部归并规则已迁入 `proxy-core::response_transform::{responses_instruction_text,collapse_system_messages_to_head}`；请求 envelope 组装顺序由 core 统一维护。
@@ -188,6 +186,9 @@
 175. 测试专用 `proxy::copilot_optimizer` wrapper 已删除；Copilot optimizer 分类、ID、tool_result merge/sanitize 与 thinking strip 行为只在 `proxy-core::request_optimizer` 维护并测试，host forwarder 保留配置 gating 和日志。
 176. Chat/Responses/Codex transform 对 reasoning model 判定、reasoning effort 解析和 billing header strip 的调用已改为直接引用 `proxy-core::request_body`，`transform` 模块不再作为这些 core helper 的二次 re-export 面。
 177. Forwarder 对媒体降级日志中的 unsupported image marker 已直接引用 `proxy-core::request_media`，`media_sanitizer` 不再作为该 core 常量的二次 re-export 面。
+178. Forwarder 的转换后请求体选择（Codex Responses→Chat、Claude protocol transform body、provider transform、passthrough）和映射后初始 outbound model 归因已收敛到 `ForwarderRequestSource::transform_request_body`；host forwarder 只保留 Codex history enrichment 与 Claude session/shadow 状态调用。
+179. Codex Chat history enrichment 的启用 gate 已收敛到 `ForwarderProtocolStateSource::enrich_codex_chat_request` 输入；host forwarder 不再本地包裹 `codex_responses_to_chat` 条件，只传入状态源需要的 enabled 事实和可变 body。
+180. 上游响应的 success/error 判定、成功响应 first-byte/body-read 准备和非成功响应 `ProxyError::UpstreamError` 投影已收敛到 `ForwarderResponseSource::finalize_upstream_response`；host forwarder 不再直接读取 `response.status().is_success()`。
 178. `proxy::session` 与 `proxy::usage` 上剩余的 core 类型 re-export 已删除；response handler、session adapter 和 usage 调用方直接引用 `proxy-core` 类型。
 179. Thinking budget/signature rectifier host wrapper 的 result/snapshot 类型别名已删除；wrapper 返回 core result 类型，只保留 `RectifierConfig` 到 core config 的投影。
 180. Claude takeover service 对 `[1M]` 模型后缀的字符串剥离已直接引用 `proxy-core::model_mapping`；host `model_mapper` facade 已删除，不再为该纯字符串 helper 提供二次出口。
