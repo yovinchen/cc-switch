@@ -6675,6 +6675,21 @@ fn production_forwarder_uses_request_source_resource() {
         transform_plan_slice.contains("codex_responses_to_chat: bool"),
         "ForwarderTransformPlan must carry the Codex Responses to Chat gate fact"
     );
+    let upstream_url_input_slice = function_slice(
+        &adapter_source,
+        "pub(crate) struct ForwarderUpstreamUrlInput",
+        "pub(crate) struct ForwarderMediaPreventionInput",
+    );
+    assert!(
+        upstream_url_input_slice.contains("transform_plan: &'a ForwarderTransformPlan"),
+        "ForwarderUpstreamUrlInput must carry the cohesive transform plan"
+    );
+    assert!(
+        !upstream_url_input_slice.contains("codex_responses_to_chat: bool")
+            && !upstream_url_input_slice.contains("use_claude_transform: bool")
+            && !upstream_url_input_slice.contains("claude_api_format: Option"),
+        "ForwarderUpstreamUrlInput must not expose split transform-plan URL facts"
+    );
     assert!(
         adapter_source.contains("fn request_body_model"),
         "default ForwarderRequestSource implementation must retain request body model projection"
