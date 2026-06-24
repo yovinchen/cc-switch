@@ -479,14 +479,8 @@ impl RequestForwarder {
                             .await
                         {
                             Ok(success) => {
-                                log::info!(
-                                    "{}",
-                                    self.runtime_state_source
-                                        .rectifier_retry_success_log_line(
-                                            app_type_str,
-                                            retry_kind,
-                                        )
-                                );
+                                self.runtime_state_source
+                                    .log_rectifier_retry_success(app_type_str, retry_kind);
                                 return Ok(self
                                     .complete_successful_attempt(
                                         request_id,
@@ -498,14 +492,10 @@ impl RequestForwarder {
                                     .await);
                             }
                             Err(retry_err) => {
-                                log::warn!(
-                                    "{}",
-                                    self.runtime_state_source
-                                        .rectifier_retry_failure_log_line(
-                                            app_type_str,
-                                            retry_kind,
-                                            &retry_err,
-                                        )
+                                self.runtime_state_source.log_rectifier_retry_failure(
+                                    app_type_str,
+                                    retry_kind,
+                                    &retry_err,
                                 );
                                 if let Some(err) = self
                                     .handle_rectifier_retry_failure(
@@ -572,14 +562,8 @@ impl RequestForwarder {
                                     .await
                                 {
                                     Ok(success) => {
-                                        log::info!(
-                                            "{}",
-                                            self.runtime_state_source
-                                                .rectifier_retry_success_log_line(
-                                                    app_type_str,
-                                                    retry_kind,
-                                                )
-                                        );
+                                        self.runtime_state_source
+                                            .log_rectifier_retry_success(app_type_str, retry_kind);
                                         return Ok(self
                                             .complete_successful_attempt(
                                                 request_id,
@@ -591,14 +575,10 @@ impl RequestForwarder {
                                             .await);
                                     }
                                     Err(retry_err) => {
-                                        log::warn!(
-                                            "{}",
-                                            self.runtime_state_source
-                                                .rectifier_retry_failure_log_line(
-                                                    app_type_str,
-                                                    retry_kind,
-                                                    &retry_err,
-                                                )
+                                        self.runtime_state_source.log_rectifier_retry_failure(
+                                            app_type_str,
+                                            retry_kind,
+                                            &retry_err,
                                         );
                                         if let Some(err) = self
                                             .handle_rectifier_retry_failure(
@@ -666,14 +646,8 @@ impl RequestForwarder {
                                     .await
                                 {
                                     Ok(success) => {
-                                        log::info!(
-                                            "{}",
-                                            self.runtime_state_source
-                                                .rectifier_retry_success_log_line(
-                                                    app_type_str,
-                                                    retry_kind,
-                                                )
-                                        );
+                                        self.runtime_state_source
+                                            .log_rectifier_retry_success(app_type_str, retry_kind);
                                         return Ok(self
                                             .complete_successful_attempt(
                                                 request_id,
@@ -685,14 +659,10 @@ impl RequestForwarder {
                                             .await);
                                     }
                                     Err(retry_err) => {
-                                        log::warn!(
-                                            "{}",
-                                            self.runtime_state_source
-                                                .rectifier_retry_failure_log_line(
-                                                    app_type_str,
-                                                    retry_kind,
-                                                    &retry_err,
-                                                )
+                                        self.runtime_state_source.log_rectifier_retry_failure(
+                                            app_type_str,
+                                            retry_kind,
+                                            &retry_err,
                                         );
                                         if let Some(err) = self
                                             .handle_rectifier_retry_failure(

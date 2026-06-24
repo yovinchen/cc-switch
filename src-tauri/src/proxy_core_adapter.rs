@@ -8186,17 +8186,17 @@ pub(crate) trait ForwarderRuntimeStateSource {
         &self,
         error: &ProxyError,
     ) -> ForwarderRectifierRetryFailureDecision;
-    fn rectifier_retry_success_log_line(
+    fn log_rectifier_retry_success(
         &self,
         app_type: &str,
         kind: ForwarderRectifierRetryKind,
-    ) -> String;
-    fn rectifier_retry_failure_log_line(
+    );
+    fn log_rectifier_retry_failure(
         &self,
         app_type: &str,
         kind: ForwarderRectifierRetryKind,
         error: &ProxyError,
-    ) -> String;
+    );
     fn record_forward_error_status<'a>(&'a self, error: &'a ProxyError) -> BoxFuture<'a, ()>;
     fn record_no_available_provider_status<'a>(&'a self) -> BoxFuture<'a, ()>;
     fn record_terminal_failure_status<'a>(&'a self) -> BoxFuture<'a, ()>;
@@ -8227,6 +8227,23 @@ impl CcSwitchForwarderRuntimeStateSource {
     #[cfg(test)]
     fn status(&self) -> Arc<RwLock<ProxyRuntimeStatus>> {
         self.status.clone()
+    }
+
+    fn rectifier_retry_success_log_line(
+        &self,
+        app_type: &str,
+        kind: ForwarderRectifierRetryKind,
+    ) -> String {
+        forwarder_rectifier_retry_success_log_line(app_type, kind)
+    }
+
+    fn rectifier_retry_failure_log_line(
+        &self,
+        app_type: &str,
+        kind: ForwarderRectifierRetryKind,
+        error: &ProxyError,
+    ) -> String {
+        forwarder_rectifier_retry_failure_log_line(app_type, kind, error)
     }
 }
 
@@ -8414,21 +8431,24 @@ impl ForwarderRuntimeStateSource for CcSwitchForwarderRuntimeStateSource {
         }
     }
 
-    fn rectifier_retry_success_log_line(
+    fn log_rectifier_retry_success(
         &self,
         app_type: &str,
         kind: ForwarderRectifierRetryKind,
-    ) -> String {
-        forwarder_rectifier_retry_success_log_line(app_type, kind)
+    ) {
+        log::info!("{}", self.rectifier_retry_success_log_line(app_type, kind));
     }
 
-    fn rectifier_retry_failure_log_line(
+    fn log_rectifier_retry_failure(
         &self,
         app_type: &str,
         kind: ForwarderRectifierRetryKind,
         error: &ProxyError,
-    ) -> String {
-        forwarder_rectifier_retry_failure_log_line(app_type, kind, error)
+    ) {
+        log::warn!(
+            "{}",
+            self.rectifier_retry_failure_log_line(app_type, kind, error)
+        );
     }
 
     fn record_no_available_provider_status<'a>(&'a self) -> BoxFuture<'a, ()> {
