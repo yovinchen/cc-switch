@@ -1521,6 +1521,7 @@ impl ProxyConfigSource for CcSwitchConfigSource {
 }
 
 pub(crate) type ProviderHealth = crate::proxy_core::api::ports::ProviderHealth;
+pub(crate) type ProviderAttemptResult = crate::proxy_core::api::ports::ProviderAttemptResult;
 pub(crate) type ProviderKind = crate::proxy_core::api::domain::ProviderKind;
 pub(crate) type ProviderAuthInfo = crate::proxy_core::api::auth::ProviderAuthInfo;
 pub(crate) type ProviderAuthStrategy = crate::proxy_core::api::auth::ProviderAuthStrategy;
@@ -3008,8 +3009,8 @@ pub(crate) use crate::proxy_core::api::model_catalog::{
 pub(crate) use crate::proxy_core::api::ports::{
     channel_health_reset_from_parts, AppSummaryConfig, AuthProvider, ChannelHealthReset,
     ChannelHealthStore, ChannelReachabilityProbe, ChannelSource, ForwardPipeline,
-    ModelCatalogProvider, ProviderSource, ProxyConfigSource, ProxyEventSink, ProxyServices,
-    RoutePolicySource, RouteResolver, UsageSink,
+    ModelCatalogProvider, ProviderHealthStore, ProviderSource, ProxyConfigSource, ProxyEventSink,
+    ProxyServices, RoutePolicySource, RouteResolver, UsageSink,
 };
 #[cfg(test)]
 pub(crate) use crate::proxy_core::api::routing::DEFAULT_ROUTE_GROUP;
@@ -5717,36 +5718,22 @@ pub(crate) struct ProviderHealthAttemptDbUpdate {
 }
 
 pub(crate) fn provider_health_attempt_db_update(
-    provider_id: &str,
-    app_type: &str,
-    success: bool,
-    error_msg: Option<String>,
-    failure_threshold: u32,
+    result: ProviderAttemptResult,
 ) -> ProviderHealthAttemptDbUpdate {
     ProviderHealthAttemptDbUpdate {
-        provider_id: provider_id.to_string(),
-        app_type: app_type.to_string(),
-        success,
-        error_msg,
-        failure_threshold,
+        provider_id: result.provider_id,
+        app_type: result.app.as_str().to_string(),
+        success: result.success,
+        error_msg: result.error_message,
+        failure_threshold: result.failure_threshold,
     }
 }
 
-pub(crate) async fn record_provider_health_attempt_from_router_db(
+pub(crate) async fn record_provider_attempt_in_db_source(
     db: &Database,
-    provider_id: &str,
-    app_type: &str,
-    success: bool,
-    error_msg: Option<String>,
-    failure_threshold: u32,
-) -> Result<(), AppError> {
-    let update = provider_health_attempt_db_update(
-        provider_id,
-        app_type,
-        success,
-        error_msg,
-        failure_threshold,
-    );
+    result: ProviderAttemptResult,
+) -> ProxyCoreResult<()> {
+    let update = provider_health_attempt_db_update(result);
     db.update_provider_health_with_threshold(
         &update.provider_id,
         &update.app_type,
@@ -5755,6 +5742,7 @@ pub(crate) async fn record_provider_health_attempt_from_router_db(
         update.failure_threshold,
     )
     .await
+    .map_err(|error| app_error("record provider attempt", error))
 }
 
 pub(crate) fn record_channel_health_attempt_from_router_db(
@@ -6285,6 +6273,15 @@ struct CcSwitchProviderRouterHealthStore {
     db: Arc<Database>,
 }
 
+impl ProviderHealthStore for CcSwitchProviderRouterHealthStore {
+    fn record_attempt<'a>(
+        &'a self,
+        result: ProviderAttemptResult,
+    ) -> BoxFuture<'a, ProxyCoreResult<()>> {
+        Box::pin(async move { record_provider_attempt_in_db_source(&self.db, result).await })
+    }
+}
+
 impl ProviderRouterHealthStore for CcSwitchProviderRouterHealthStore {
     fn record_provider_health<'a>(
         &'a self,
@@ -6295,15 +6292,18 @@ impl ProviderRouterHealthStore for CcSwitchProviderRouterHealthStore {
         failure_threshold: u32,
     ) -> BoxFuture<'a, Result<(), AppError>> {
         Box::pin(async move {
-            record_provider_health_attempt_from_router_db(
-                &self.db,
-                provider_id,
-                app_type,
-                success,
-                error_msg,
-                failure_threshold,
+            ProviderHealthStore::record_attempt(
+                self,
+                ProviderAttemptResult {
+                    provider_id: provider_id.to_string(),
+                    app: AppKind::from(app_type),
+                    success,
+                    failure_threshold,
+                    error_message: error_msg,
+                },
             )
             .await
+            .map_err(app_error_from_proxy_core_error)
         })
     }
 
@@ -24078,13 +24078,13 @@ command = "latest-command"
 
     #[test]
     fn provider_health_adapter_projects_attempt_db_update() {
-        let update = provider_health_attempt_db_update(
-            "provider-a",
-            "claude",
-            false,
-            Some("timeout".to_string()),
-            3,
-        );
+        let update = provider_health_attempt_db_update(ProviderAttemptResult {
+            provider_id: "provider-a".to_string(),
+            app: AppKind::Claude,
+            success: false,
+            failure_threshold: 3,
+            error_message: Some("timeout".to_string()),
+        });
 
         assert_eq!(update.provider_id, "provider-a");
         assert_eq!(update.app_type, "claude");

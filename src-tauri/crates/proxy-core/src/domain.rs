@@ -1033,6 +1033,17 @@ pub struct ChannelAttemptResult {
     pub error_code: Option<String>,
 }
 
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ProviderAttemptResult {
+    pub provider_id: String,
+    pub app: AppKind,
+    pub success: bool,
+    pub failure_threshold: u32,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub error_message: Option<String>,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ResolvedChannelAttempt {

@@ -2,8 +2,8 @@ use super::cache_injector::CacheInjectionConfig;
 use super::claude_desktop_gateway_auth::ClaudeDesktopModelRouteInput;
 use super::domain::{
     AppKind, AuthProfileRef, ChannelAttemptResult, ChannelQuery, ChannelSpec, InterfaceKind,
-    ModelRoute, ProviderSpec, ProxyRequest, ProxyResult, RoutePlan, RoutePolicy, RouteRequest,
-    UsageRecord, DEFAULT_ROUTE_GROUP,
+    ModelRoute, ProviderAttemptResult, ProviderSpec, ProxyRequest, ProxyResult, RoutePlan,
+    RoutePolicy, RouteRequest, UsageRecord, DEFAULT_ROUTE_GROUP,
 };
 use super::error::{ProxyCoreError, ProxyCoreResult};
 use super::thinking_budget_rectifier::ThinkingBudgetRectifierConfig;
@@ -294,6 +294,13 @@ pub trait ChannelHealthStore: Send + Sync {
         &'a self,
         channel_id: &'a str,
     ) -> BoxFuture<'a, ProxyCoreResult<ChannelHealthReset>>;
+}
+
+pub trait ProviderHealthStore: Send + Sync {
+    fn record_attempt<'a>(
+        &'a self,
+        result: ProviderAttemptResult,
+    ) -> BoxFuture<'a, ProxyCoreResult<()>>;
 }
 
 pub trait ChannelReachabilityProbe: Send + Sync {

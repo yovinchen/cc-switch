@@ -100,7 +100,7 @@ pub mod model_catalog {
 }
 
 pub mod ports {
-    pub use crate::domain::{ChannelAttemptPlan, ChannelAttemptResult};
+    pub use crate::domain::{ChannelAttemptPlan, ChannelAttemptResult, ProviderAttemptResult};
     pub use crate::ports::{
         app_proxy_config_defaults_for_app, auth_info_from_profile_ref, AppProxyConfig,
         AppSummaryConfig, AuthInfo, AuthProvider, ChannelHealthReset, ChannelHealthResetResponse,
@@ -126,7 +126,7 @@ pub mod ports {
         record_forward_provider_rectifier_retry_failure_status,
         record_forward_request_started_status, record_forward_success_status,
         record_proxy_server_started_status, record_proxy_server_stopped_status,
-        rectifier_config_spec_from_config, ProviderHealth,
+        rectifier_config_spec_from_config, ProviderHealth, ProviderHealthStore,
         ProviderHealthUpdate, ProviderHealthUpdateInput, ProviderSource, ProxyAppConfig,
         ProxyConfig, ProxyConfigSource, ProxyCoreEvent, ProxyCoreEventType, ProxyEventSink,
         ProxyGlobalConfig, ProxyRuntimeConfig, ProxyRuntimeStatus, ProxyServerInfo,
@@ -244,8 +244,9 @@ pub mod prelude {
     pub use super::ports::CurrentRouteTarget;
     pub use super::ports::{
         AuthInfo, AuthProvider, ChannelHealthReset, ChannelHealthStore, ChannelReachabilityProbe,
-        ChannelSource, ForwardPipeline, ModelCatalogProvider, ProviderSource, ProxyConfigSource,
-        ProxyEventSink, ProxyServices, RoutePolicySource, RouteResolver, UsageSink,
+        ChannelSource, ForwardPipeline, ModelCatalogProvider, ProviderAttemptResult,
+        ProviderHealthStore, ProviderSource, ProxyConfigSource, ProxyEventSink, ProxyServices,
+        RoutePolicySource, RouteResolver, UsageSink,
     };
     pub use super::routing::{ChannelQuery, ChannelSpec, DEFAULT_ROUTE_GROUP};
     pub use super::transport::{

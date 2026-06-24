@@ -768,6 +768,7 @@ const FORBIDDEN_PROVIDER_ROUTER_CHANNEL_SOURCE_ADAPTER_MARKERS: &[&str] =
     &["db: Arc<Database>", "router_channel_route_inputs_from_db_source("];
 const FORBIDDEN_PROVIDER_ROUTER_HEALTH_STORE_ADAPTER_MARKERS: &[&str] = &[
     "record_provider_health_result_from_router_db(",
+    "record_provider_health_attempt_from_router_db(",
     "record_channel_health_result_from_router_db(",
     ".update_provider_health_with_threshold(",
     ".update_proxy_channel_health_with_threshold(",
@@ -8909,8 +8910,10 @@ fn production_provider_router_health_store_uses_core_attempt_facts() {
     );
 
     assert!(
-        adapter_slice.contains("record_provider_health_attempt_from_router_db"),
-        "ProviderRouter health store adapter must write provider health through provider attempt projection"
+        adapter_slice.contains("impl ProviderHealthStore for CcSwitchProviderRouterHealthStore")
+            && adapter_slice.contains("ProviderAttemptResult")
+            && adapter_slice.contains("record_provider_attempt_in_db_source"),
+        "ProviderRouter health store adapter must write provider health through core ProviderHealthStore attempt projection"
     );
     assert!(
         adapter_slice.contains("record_channel_health_attempt_from_router_db"),
