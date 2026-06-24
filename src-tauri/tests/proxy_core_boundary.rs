@@ -6605,12 +6605,41 @@ fn production_forwarder_uses_transport_source_resource() {
     let path = manifest_dir.join("src/proxy/forwarder.rs");
     let source = fs::read_to_string(&path).expect("read forwarder.rs");
     let struct_slice = function_slice(&source, "pub struct RequestForwarder", "impl RequestForwarder");
+    let adapter_path = manifest_dir.join("src/proxy_core_adapter.rs");
+    let adapter_source = fs::read_to_string(&adapter_path).expect("read proxy_core_adapter.rs");
     let impl_slice = function_slice(&source, "impl RequestForwarder", "#[cfg(test)]");
 
     assert!(
         struct_slice.contains("transport_source"),
         "RequestForwarder must receive upstream transport execution as an injected source"
     );
+
+    let transport_request_slice = function_slice(
+        &adapter_source,
+        "pub(crate) struct ForwarderUpstreamTransportRequest",
+        "pub(crate) trait ForwarderTransportSource",
+    );
+    assert!(
+        transport_request_slice.contains("request_parts: ForwarderUpstreamRequestParts"),
+        "ForwarderUpstreamTransportRequest must carry cohesive request parts"
+    );
+    assert!(
+        !transport_request_slice.contains("ordered_headers: HeaderMap")
+            && !transport_request_slice.contains("body: Vec<u8>")
+            && !transport_request_slice.contains("preserve_exact_header_case: bool"),
+        "ForwarderUpstreamTransportRequest must not expose split request parts"
+    );
+    let forbidden_request_part_splits = [
+        "let ordered_headers = request_parts.ordered_headers",
+        "let body_bytes = request_parts.body",
+        "let preserve_exact_header_case = request_parts.preserve_exact_header_case",
+    ];
+    for marker in forbidden_request_part_splits {
+        assert!(
+            !impl_slice.contains(marker),
+            "RequestForwarder must pass ForwarderUpstreamRequestParts cohesively instead of split marker `{marker}`"
+        );
+    }
 
     let impl_forbidden_markers = [
         "super::http_client::get_current_proxy_url(",
