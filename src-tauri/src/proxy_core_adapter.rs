@@ -8211,7 +8211,7 @@ pub(crate) trait ForwarderRuntimeStateSource {
     fn record_forward_error_status<'a>(&'a self, error: &'a ProxyError) -> BoxFuture<'a, ()>;
     fn record_no_available_provider_status<'a>(&'a self) -> BoxFuture<'a, ()>;
     fn record_terminal_failure_status<'a>(&'a self) -> BoxFuture<'a, ()>;
-    fn record_request_started<'a>(&'a self, started_at: &'a str) -> BoxFuture<'a, ()>;
+    fn record_request_started_now<'a>(&'a self) -> BoxFuture<'a, ()>;
     fn record_active_connection_acquired<'a>(&'a self) -> BoxFuture<'a, ()>;
     fn record_active_connection_released<'a>(&'a self) -> BoxFuture<'a, ()>;
 }
@@ -8473,9 +8473,10 @@ impl ForwarderRuntimeStateSource for CcSwitchForwarderRuntimeStateSource {
         })
     }
 
-    fn record_request_started<'a>(&'a self, started_at: &'a str) -> BoxFuture<'a, ()> {
+    fn record_request_started_now<'a>(&'a self) -> BoxFuture<'a, ()> {
         Box::pin(async move {
-            record_forward_request_started_runtime_source(self.status.as_ref(), started_at).await;
+            let started_at = chrono::Utc::now().to_rfc3339();
+            record_forward_request_started_runtime_source(self.status.as_ref(), &started_at).await;
         })
     }
 
@@ -16310,6 +16311,22 @@ base_url = "https://api.openai.com/v1"
             status.last_error.as_deref(),
             Some("所有供应商都失败")
         );
+    }
+
+    #[tokio::test]
+    async fn forwarder_runtime_state_source_records_request_started_timestamp() {
+        let source = CcSwitchForwarderRuntimeStateSource::new(
+            Arc::new(RwLock::new(ProxyRuntimeStatus::default())),
+            Arc::new(RwLock::new(HashMap::new())),
+            Arc::new(ProxyEventBus::default()),
+        );
+
+        source.record_request_started_now().await;
+
+        let status = source.status();
+        let status = status.read().await;
+        assert_eq!(status.total_requests, 1);
+        assert!(status.last_request_at.is_some());
     }
 
     #[tokio::test]

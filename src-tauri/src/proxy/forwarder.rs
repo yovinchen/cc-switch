@@ -343,10 +343,7 @@ impl RequestForwarder {
         self.runtime_state_source
             .emit_request_started(&request_id, app_type.as_str());
         let guard = ActiveConnectionGuard::acquire(self.runtime_state_source.clone()).await;
-        let request_started_at = chrono::Utc::now().to_rfc3339();
-        self.runtime_state_source
-            .record_request_started(&request_started_at)
-            .await;
+        self.runtime_state_source.record_request_started_now().await;
         let result = self
             .forward_preplanned_attempts_inner(
                 &request_id,
