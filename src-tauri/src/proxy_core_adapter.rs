@@ -9252,11 +9252,6 @@ pub(crate) trait ForwarderRequestSource {
         input: ForwarderUpstreamUrlInput<'_>,
     ) -> ForwardUpstreamUrlPlan;
 
-    fn optimize_copilot_request(
-        &self,
-        input: ForwarderCopilotRequestOptimizationInput<'_>,
-    ) -> ForwarderCopilotRequestOptimization;
-
     fn prepare_copilot_request_optimization(
         &self,
         input: ForwarderCopilotRequestOptimizationGateInput<'_>,
@@ -9354,6 +9349,52 @@ impl CcSwitchForwarderRequestSource {
             is_openai_o_series(model),
             supports_reasoning_effort(model),
         )
+    }
+
+    fn optimize_copilot_request(
+        &self,
+        input: ForwarderCopilotRequestOptimizationInput<'_>,
+    ) -> ForwarderCopilotRequestOptimization {
+        let has_anthropic_beta = input.headers.contains_key("anthropic-beta");
+        let classification = classify_copilot_request(
+            &input.body,
+            has_anthropic_beta,
+            input.config.compact_detection,
+            input.config.subagent_detection,
+        );
+
+        log::debug!(
+            "[Copilot] 优化器分类: initiator={}, is_warmup={}, is_compact={}, is_subagent={}",
+            classification.initiator,
+            classification.is_warmup,
+            classification.is_compact,
+            classification.is_subagent
+        );
+
+        let mut body = sanitize_copilot_orphan_tool_results(input.body);
+
+        if input.config.tool_result_merging {
+            body = merge_copilot_tool_results(body);
+        }
+
+        if input.config.strip_thinking {
+            body = strip_copilot_thinking_blocks(body);
+        }
+
+        let warmup_override = apply_copilot_warmup_model_override(
+            body,
+            input.config.warmup_downgrade,
+            classification.is_warmup,
+            &input.config.warmup_model,
+        );
+        if let Some(warmup_model) = &warmup_override.applied_model {
+            log::info!("[Copilot] Warmup 请求降级到模型: {}", warmup_model);
+        }
+
+        ForwarderCopilotRequestOptimization {
+            body: warmup_override.body,
+            classification,
+        }
     }
 }
 
@@ -9571,52 +9612,6 @@ impl ForwarderRequestSource for CcSwitchForwarderRequestSource {
                 forwarder_provider_upstream_url(input.adapter, base_url, effective_endpoint)
             },
         )
-    }
-
-    fn optimize_copilot_request(
-        &self,
-        input: ForwarderCopilotRequestOptimizationInput<'_>,
-    ) -> ForwarderCopilotRequestOptimization {
-        let has_anthropic_beta = input.headers.contains_key("anthropic-beta");
-        let classification = classify_copilot_request(
-            &input.body,
-            has_anthropic_beta,
-            input.config.compact_detection,
-            input.config.subagent_detection,
-        );
-
-        log::debug!(
-            "[Copilot] 优化器分类: initiator={}, is_warmup={}, is_compact={}, is_subagent={}",
-            classification.initiator,
-            classification.is_warmup,
-            classification.is_compact,
-            classification.is_subagent
-        );
-
-        let mut body = sanitize_copilot_orphan_tool_results(input.body);
-
-        if input.config.tool_result_merging {
-            body = merge_copilot_tool_results(body);
-        }
-
-        if input.config.strip_thinking {
-            body = strip_copilot_thinking_blocks(body);
-        }
-
-        let warmup_override = apply_copilot_warmup_model_override(
-            body,
-            input.config.warmup_downgrade,
-            classification.is_warmup,
-            &input.config.warmup_model,
-        );
-        if let Some(warmup_model) = &warmup_override.applied_model {
-            log::info!("[Copilot] Warmup 请求降级到模型: {}", warmup_model);
-        }
-
-        ForwarderCopilotRequestOptimization {
-            body: warmup_override.body,
-            classification,
-        }
     }
 
     fn prepare_copilot_request_optimization(
@@ -15778,7 +15773,7 @@ base_url = "https://api.openai.com/v1"
 
     #[test]
     fn forwarder_request_source_wraps_copilot_optimizer_sequence() {
-        let source = default_forwarder_request_source();
+        let source = CcSwitchForwarderRequestSource::new(default_managed_account_runtime_source());
         let mut headers = HeaderMap::new();
         headers.insert(
             "anthropic-beta",
