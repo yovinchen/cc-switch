@@ -5712,12 +5712,14 @@ fn production_forwarder_delegates_copilot_live_model_resolution_to_runtime_sourc
     let adapter_source = fs::read_to_string(&adapter_path).expect("read proxy_core_adapter.rs");
 
     assert!(
-        adapter_source.contains("apply_copilot_live_model_for_provider"),
-        "ManagedAccountRuntimeSource must expose provider-aware Copilot live model body resolution"
+        adapter_source.contains("apply_copilot_live_model_for_adapter"),
+        "ManagedAccountRuntimeSource must expose adapter-gated Copilot live model body resolution"
     );
 
     let impl_slice = function_slice(&forwarder_source, "impl RequestForwarder", "#[cfg(test)]");
     let forbidden_markers = [
+        "apply_copilot_live_model_for_provider(",
+        "if is_copilot {",
         "apply_copilot_live_model_resolution(",
         "resolve_copilot_live_model_for_provider(",
         "fetch_copilot_live_models_for_provider(",

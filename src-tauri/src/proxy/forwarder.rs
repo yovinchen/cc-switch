@@ -957,11 +957,9 @@ impl RequestForwarder {
                 is_copilot,
             },
         )?;
-        if is_copilot {
-            self.managed_account_runtime_source
-                .apply_copilot_live_model_for_provider(provider, &mut mapped_body)
-                .await;
-        }
+        self.managed_account_runtime_source
+            .apply_copilot_live_model_for_adapter(provider, &mut mapped_body, is_copilot)
+            .await;
 
         // --- Copilot 优化器：分类 + 请求体优化（在格式转换之前执行） ---
         // 执行顺序（与 copilot-api 对齐）由 request source 保持：

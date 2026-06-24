@@ -3365,6 +3365,22 @@ pub(crate) trait ManagedAccountRuntimeSource: Send + Sync {
         })
     }
 
+    fn apply_copilot_live_model_for_adapter<'a>(
+        &'a self,
+        auth_provider: &'a Provider,
+        body: &'a mut Value,
+        is_copilot: bool,
+    ) -> BoxFuture<'a, ()> {
+        Box::pin(async move {
+            if !is_copilot {
+                return;
+            }
+
+            self.apply_copilot_live_model_for_provider(auth_provider, body)
+                .await;
+        })
+    }
+
     fn resolve_copilot_model_vendor_for_provider<'a>(
         &'a self,
         auth_provider: &'a Provider,
@@ -15546,7 +15562,7 @@ base_url = "https://api.openai.com/v1"
     }
 
     #[tokio::test]
-    async fn managed_account_runtime_source_applies_copilot_live_model_to_body() {
+    async fn managed_account_runtime_source_gates_copilot_live_model_by_adapter() {
         let source = StaticCopilotModelsSource {
             endpoint: None,
             models: Some(vec![CopilotModel {
@@ -15565,7 +15581,13 @@ base_url = "https://api.openai.com/v1"
         let mut body = json!({ "model": "claude-sonnet-4-6" });
 
         source
-            .apply_copilot_live_model_for_provider(&provider, &mut body)
+            .apply_copilot_live_model_for_adapter(&provider, &mut body, false)
+            .await;
+
+        assert_eq!(body["model"], "claude-sonnet-4-6");
+
+        source
+            .apply_copilot_live_model_for_adapter(&provider, &mut body, true)
             .await;
 
         assert_eq!(body["model"], "claude-sonnet-4.6");
