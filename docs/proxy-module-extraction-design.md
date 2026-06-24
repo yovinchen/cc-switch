@@ -462,6 +462,7 @@
 451. `ForwarderAttemptRuntimeSource` trait 不再暴露 `attempt_limit_reached` max-attempt helper；默认 attempt runtime source 在 `allow` 决策内先执行尝试上限判定，再进入 circuit breaker permit，外部替换 source 只返回结构化 `ForwarderAttemptAllowDecision`。
 452. `ForwarderRuntimeStateSource` trait 不再暴露 `rectifier_retry_success_log_line` / `rectifier_retry_failure_log_line` 字符串 helper；默认 runtime state source 仍保留日志行投影并通过 `log_rectifier_retry_success` / `log_rectifier_retry_failure` 执行日志副作用。
 453. `ForwarderRuntimeStateSource` trait 不再暴露 `terminal_forward_failure_log_line_for_error` 字符串 helper；默认 runtime state source 仍保留 terminal failure 日志行投影并通过 `log_terminal_forward_failure` 执行日志副作用。
+454. `ForwarderFailureDecision::Retryable` 不再携带 `log_line` 字符串；默认 runtime state source 仍保留 retryable forward failure 日志行投影并通过 `log_retryable_forward_failure` 执行日志副作用。
 407. `proxy::types::ApiFormat` 未使用预留枚举已删除；Claude/OpenAI/Gemini format 判断统一沿用 `proxy-core` 的 provider kind、client format 和 response transform contract。
 408. `LogConfig` 已从 `proxy::types` 移到 `settings::LogConfig`；日志设置不再扩大代理运行态类型模块，proxy host types 只保留代理状态/备份等运行态数据。
 409. `RectifierConfig` 的默认值、serde 和 core 检测投影测试已从 host `proxy::types` 迁入 `proxy-core::ports`；host proxy types 不再承担 core 配置契约测试。
@@ -1238,6 +1239,7 @@
 本轮继续把 max-attempt 上限判定并入 `ForwarderAttemptRuntimeSource::allow` 的结构化决策：默认 source 在占用 half-open permit 前先返回 `Stop(ForwarderAttemptLimitReached)`，`RequestForwarder` 只处理 stop/skip/allowed 三种结果，外部中转实现不再需要单独暴露 retry-policy helper。
 本轮继续收窄 `ForwarderRuntimeStateSource` 的日志接口：media/signature/budget rectifier retry 的成功/失败日志行拼接从 trait surface 收进默认 source 内部，`RequestForwarder` 只触发 `log_rectifier_retry_success` / `log_rectifier_retry_failure` 行为方法，外部中转实现不再需要返回 CC Switch 格式化日志字符串。
 本轮继续把 terminal forward failure warning 的日志行拼接从 `ForwarderRuntimeStateSource` trait surface 收进默认 source 内部：`RequestForwarder` 只触发 `log_terminal_forward_failure`，外部中转实现不再需要返回 `[FWD-002]` 格式化日志字符串。
+本轮继续把 retryable forward failure warning 的日志行拼接从 `ForwarderFailureDecision::Retryable` 返回值中移出：`RequestForwarder` 只消费 retryable/error_message 决策并触发 `log_retryable_forward_failure`，外部中转实现不再需要返回 `[FWD-001]` 格式化日志字符串。
 
 当前原则：核心 crate 可以新增端口和领域字段，但不得引入 `tauri`、`Database`、settings、commands、services 等宿主依赖；现有 runtime 行为必须继续通过 targeted tests 证明不回归。
 
