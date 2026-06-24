@@ -313,7 +313,9 @@ pub trait ChannelReachabilityProbe: Send + Sync {
 pub trait AuthProvider: Send + Sync {
     fn resolve_auth<'a>(
         &'a self,
-        auth_profile: Option<&'a AuthProfileRef>,
+        app: &'a AppKind,
+        provider: &'a ProviderSpec,
+        channel: &'a ChannelSpec,
         request: &'a ProxyRequest,
     ) -> BoxFuture<'a, ProxyCoreResult<AuthInfo>>;
 }

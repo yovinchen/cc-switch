@@ -1535,16 +1535,33 @@ pub(crate) fn auth_info_from_cc_switch_provider_config(
     auth_info_from_profile_ref(auth_profile, "cc_switch_provider_config")
 }
 
+pub(crate) fn auth_info_from_cc_switch_route_context(
+    app: &AppKind,
+    provider: &ProviderSpec,
+    channel: &ChannelSpec,
+) -> AuthInfo {
+    let mut auth = auth_info_from_cc_switch_provider_config(channel.auth_profile.as_ref());
+    auth.metadata = json!({
+        "source": "cc_switch_provider_config",
+        "app": app.as_str(),
+        "providerId": provider.id.as_str(),
+        "channelId": channel.id.as_str(),
+    });
+    auth
+}
+
 #[derive(Clone, Default)]
 pub(crate) struct CcSwitchAuthProvider;
 
 impl AuthProvider for CcSwitchAuthProvider {
     fn resolve_auth<'a>(
         &'a self,
-        auth_profile: Option<&'a AuthProfileRef>,
+        app: &'a AppKind,
+        provider: &'a ProviderSpec,
+        channel: &'a ChannelSpec,
         _request: &'a ProxyRequest,
     ) -> BoxFuture<'a, ProxyCoreResult<AuthInfo>> {
-        Box::pin(async move { Ok(auth_info_from_cc_switch_provider_config(auth_profile)) })
+        Box::pin(async move { Ok(auth_info_from_cc_switch_route_context(app, provider, channel)) })
     }
 }
 

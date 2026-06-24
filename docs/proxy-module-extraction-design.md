@@ -1976,7 +1976,9 @@ pub trait AuthProvider: Send + Sync {
 }
 ```
 
-provider adapter 仍负责将 `AuthInfo` 变成 header，但 token 刷新和宿主账号状态读取不在 adapter 内完成。channel 可以指向同一个 provider 的不同 key/auth profile，必须避免把一个 channel 的 key 泄漏到另一个 channel。
+本轮已把 `proxy-core` 端口签名从单独的 `auth_profile` 参数推进到 `app + provider + channel + request` 上下文；`CcSwitchAuthProvider` 会把 app/provider/channel 事实放入 `AuthInfo.metadata`，外部中转实现因此可以按 channel 选择不同 key、账号或 token runtime。当前生产 header 组装仍由 `ForwarderAuthSource` 调用 provider adapter 完成，channel-key 注入由 `apply_channel_auth_profile_providers_from_db` 在生成 `ForwardAttempt` 后处理；已补 DB-backed 回归测试，证明相同 `key_ref` 在不同 channel 下会按 `channel_id` 各自取 key，不会全局串用。
+
+provider adapter 仍负责将 `AuthInfo` 变成 header，但 token 刷新和宿主账号状态读取不在 adapter 内完成。channel 可以指向同一个 provider 的不同 key/auth profile，必须避免把一个 channel 的 key 泄漏到另一个 channel。下一步是让 `ForwarderAuthSource` 消费 core `AuthProvider` 返回的 `AuthInfo`，再逐步把 managed-account token 刷新、channel-key 轮询/随机和失败回退收敛到宿主可替换端口。
 
 ### Model catalog 接口
 
@@ -2378,7 +2380,7 @@ CC Switch 前端可以继续用 Tauri commands；外部集成用 HTTP API。
 | 一次性移动 4.5 万行导致冲突大 | 难 review、难回滚 | 按端口、engine、transport、crate 分阶段小提交 |
 | channel 与 provider 健康边界混淆 | 一个地址失败误伤同 provider 其他地址 | 熔断、健康、auto-ban 全部以 `channel_id` 为主键，provider 只做聚合展示 |
 | 模型映射歧义 | 请求被发往不支持的模型或计价错误 | `RouteResolver` 输出淘汰原因；`/proxy/v1/route/resolve` 支持 dry-run；usage 记录 public/upstream/pricing model |
-| channel key 串用 | 多地址/多账号时认证泄漏 | `AuthProvider::resolve_auth` 同时接收 provider 和 channel；测试确保 header 不跨 channel 复用 |
+| channel key 串用 | 多地址/多账号时认证泄漏 | `AuthProvider::resolve_auth` 已接收 app/provider/channel/request 上下文；DB-backed 测试确保相同 `key_ref` 会按 `channel_id` 分别解析，后续迁移 header 组装时必须保留该隔离 |
 | 权重随机导致测试不稳定 | 路由测试 flaky | route resolver 注入 deterministic RNG/seed；单元测试固定 seed |
 | 旧 `provider_endpoints` 迁移重复 | 生成重复 channel 或顺序变化 | 迁移脚本按 provider_id + normalized base_url 去重，dry-run 输出差异 |
 

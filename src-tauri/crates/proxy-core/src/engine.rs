@@ -685,13 +685,14 @@ mod tests {
     };
     use crate::error::ProxyCoreError;
     use crate::ports::{
-        channel_key_record_from_input, channel_model_record_from_input, channel_record_from_input,
-        AppChannelListResponse, AuthInfo, AuthProvider, ChannelHealthStore, ChannelKeyRecordInput,
-        ChannelModelRecordInput, ChannelMigrationMaterializeInput, ChannelMigrationPreviewInput,
-        ChannelReachabilityProbe, ChannelReachabilityResult, ChannelRecordInput,
-        ChannelRouteSource, ChannelSource, ChannelTestProbeRequest, ForwardPipeline, ModelCatalog,
-        ModelCatalogProvider, ProviderSource, ProxyAppConfig, ProxyChannelKeyPatchRequest,
-        ProxyChannelKeyWriteRequest, ProxyChannelModelWriteRequest,
+        auth_info_from_profile_ref, channel_key_record_from_input,
+        channel_model_record_from_input, channel_record_from_input, AppChannelListResponse,
+        AuthInfo, AuthProvider, ChannelHealthStore, ChannelKeyRecordInput, ChannelModelRecordInput,
+        ChannelMigrationMaterializeInput, ChannelMigrationPreviewInput, ChannelReachabilityProbe,
+        ChannelReachabilityResult, ChannelRecordInput, ChannelRouteSource, ChannelSource,
+        ChannelTestProbeRequest, ForwardPipeline, ModelCatalog, ModelCatalogProvider,
+        ProviderSource, ProxyAppConfig, ProxyChannelKeyPatchRequest, ProxyChannelKeyWriteRequest,
+        ProxyChannelModelWriteRequest,
         ProxyChannelModelsReplaceRequest, ProxyChannelPatchRequest, ProxyChannelTestRequest,
         ProxyChannelWriteRequest, ProxyConfigSource, ProxyCoreEvent, ProxyEventSink,
         ProxyGlobalConfig, ProxyRuntimeConfig, RoutePolicySource, RouteResolver,
@@ -1285,10 +1286,17 @@ mod tests {
     impl AuthProvider for TestServices {
         fn resolve_auth<'a>(
             &'a self,
-            _auth_profile: Option<&'a AuthProfileRef>,
+            _app: &'a AppKind,
+            _provider: &'a ProviderSpec,
+            channel: &'a ChannelSpec,
             _request: &'a ProxyRequest,
         ) -> BoxFuture<'a, ProxyCoreResult<AuthInfo>> {
-            Box::pin(async { Ok(AuthInfo::default()) })
+            Box::pin(async move {
+                Ok(auth_info_from_profile_ref(
+                    channel.auth_profile.as_ref(),
+                    "test_services",
+                ))
+            })
         }
     }
 

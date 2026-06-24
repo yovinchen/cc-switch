@@ -414,6 +414,76 @@ mod tests {
         ));
     }
 
+    #[test]
+    fn channel_key_auth_profile_keeps_same_key_ref_scoped_per_channel() {
+        let db = Database::memory().expect("memory db");
+        save_claude_provider(&db);
+
+        for (channel_id, key_value) in [
+            ("channel-auth-a", "sk-channel-a"),
+            ("channel-auth-b", "sk-channel-b"),
+        ] {
+            db.create_proxy_channel(ProxyChannelWriteRequest {
+                id: Some(channel_id.to_string()),
+                provider_id: "anthropic-main".to_string(),
+                app_type: "claude".to_string(),
+                name: channel_id.to_string(),
+                base_url: format!("https://{channel_id}.example.com/v1"),
+                interface_kind: "anthropic_messages".to_string(),
+                auth_profile_ref: Some("channel-key:primary".to_string()),
+                ..ProxyChannelWriteRequest::default()
+            })
+            .expect("create channel");
+            db.upsert_proxy_channel_key(
+                channel_id,
+                "primary",
+                ProxyChannelKeyWriteRequest {
+                    key_value: key_value.to_string(),
+                    status: "enabled".to_string(),
+                    priority: 10,
+                    weight: 100,
+                },
+            )
+            .expect("upsert channel key");
+        }
+
+        let providers = db.get_all_providers("claude").expect("load providers");
+        let mut attempts = Vec::new();
+        for channel_id in ["channel-auth-a", "channel-auth-b"] {
+            let mut plan = route_plan("anthropic-main", channel_id);
+            plan.selection.channel.auth_profile = Some(AuthProfileRef::new("channel-key:primary"));
+            let route_providers =
+                host_providers_for_plan(&providers, &plan).expect("route providers");
+            attempts.extend(forward_attempts_from_plan(
+                &AppType::Claude,
+                &route_providers,
+                &plan,
+            ));
+        }
+
+        apply_channel_auth_profile_providers_from_db(
+            &db,
+            &AppType::Claude,
+            &providers,
+            &mut attempts,
+        )
+        .expect("apply channel key auth profiles");
+
+        let auth_keys: Vec<_> = attempts
+            .iter()
+            .map(|attempt| {
+                attempt
+                    .auth_provider()
+                    .settings_config
+                    .pointer("/env/ANTHROPIC_API_KEY")
+                    .and_then(Value::as_str)
+                    .expect("channel auth key")
+                    .to_string()
+            })
+            .collect();
+        assert_eq!(auth_keys, vec!["sk-channel-a", "sk-channel-b"]);
+    }
+
     fn proxy_request() -> ProxyRequest {
         let mut request = ProxyRequest::new(
             AppKind::Claude,
@@ -570,10 +640,17 @@ mod tests {
     async fn auth_provider_projects_profile_ref_through_core() {
         let provider = CcSwitchAuthProvider;
         let request = proxy_request();
-        let auth_profile = AuthProfileRef::new("provider:claude:anthropic-main");
+        let mut plan = route_plan("anthropic-main", "channel-auth");
+        plan.selection.channel.auth_profile =
+            Some(AuthProfileRef::new("provider:claude:anthropic-main"));
 
         let auth = provider
-            .resolve_auth(Some(&auth_profile), &request)
+            .resolve_auth(
+                &request.app,
+                &plan.selection.provider,
+                &plan.selection.channel,
+                &request,
+            )
             .await
             .expect("resolve auth");
 
@@ -583,6 +660,9 @@ mod tests {
             Some("provider:claude:anthropic-main")
         );
         assert_eq!(auth.metadata["source"], json!("cc_switch_provider_config"));
+        assert_eq!(auth.metadata["app"], json!("claude"));
+        assert_eq!(auth.metadata["providerId"], json!("anthropic-main"));
+        assert_eq!(auth.metadata["channelId"], json!("channel-auth"));
     }
 
     #[tokio::test]
