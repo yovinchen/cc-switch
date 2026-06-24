@@ -56,6 +56,12 @@ pub struct ForwardResult {
     pub(crate) connection_guard: Option<ActiveConnectionGuard>,
 }
 
+struct ForwarderUpstreamSuccess {
+    response: ProxyResponse,
+    claude_api_format: Option<String>,
+    outbound_model: Option<String>,
+}
+
 pub struct ForwardError {
     pub error: ProxyError,
     #[allow(dead_code)]
@@ -233,6 +239,30 @@ impl RequestForwarder {
             target.provider_id,
             target.provider_name,
         );
+    }
+
+    async fn complete_successful_attempt(
+        &self,
+        request_id: &str,
+        app_type: &str,
+        attempt: &ForwardAttempt,
+        used_half_open_permit: bool,
+        success: ForwarderUpstreamSuccess,
+    ) -> ForwardResult {
+        self.record_success_result(request_id, attempt, app_type, used_half_open_permit)
+            .await;
+        self.record_active_target(request_id, app_type, attempt).await;
+        self.record_success_status_and_maybe_switch(app_type, attempt.provider())
+            .await;
+
+        ForwardResult {
+            response: success.response,
+            provider: attempt.provider().clone(),
+            claude_api_format: success.claude_api_format,
+            outbound_model: success.outbound_model,
+            selected_channel: attempt.channel().cloned(),
+            connection_guard: None,
+        }
     }
 
     fn emit_request_started(&self, request_id: &str, app_type: &str) {
@@ -499,32 +529,18 @@ impl RequestForwarder {
                 )
                 .await
             {
-                Ok((response, claude_api_format, outbound_model)) => {
+                Ok(success) => {
                     // 成功：普通闭合熔断状态异步记录，避免阻塞流式首包返回；
                     // HalfOpen 探测仍同步等待，保证 permit 与熔断状态及时释放。
-                    self.record_success_result(
-                        request_id,
-                        attempt,
-                        app_type_str,
-                        used_half_open_permit,
-                    )
-                    .await;
-
-                    // 更新当前应用类型使用的 provider/channel
-                    self.record_active_target(request_id, app_type_str, attempt)
-                        .await;
-
-                    self.record_success_status_and_maybe_switch(app_type_str, provider)
-                        .await;
-
-                    return Ok(ForwardResult {
-                        response,
-                        provider: provider.clone(),
-                        claude_api_format,
-                        outbound_model,
-                        selected_channel: attempt.channel().cloned(),
-                        connection_guard: None,
-                    });
+                    return Ok(self
+                        .complete_successful_attempt(
+                            request_id,
+                            app_type_str,
+                            attempt,
+                            used_half_open_permit,
+                            success,
+                        )
+                        .await);
                 }
                 Err(e) => {
                     // 检测是否需要触发整流器（仅 Claude/ClaudeAuth 供应商）
@@ -567,35 +583,19 @@ impl RequestForwarder {
                             )
                             .await
                         {
-                            Ok((response, claude_api_format, outbound_model)) => {
+                            Ok(success) => {
                                 log::info!(
                                     "[{app_type_str}] [Media] Unsupported-image retry succeeded"
                                 );
-                                self.record_success_result(
-                                    request_id,
-                                    attempt,
-                                    app_type_str,
-                                    used_half_open_permit,
-                                )
-                                .await;
-
-                                self.record_active_target(request_id, app_type_str, attempt)
-                                    .await;
-
-                                self.record_success_status_and_maybe_switch(
-                                    app_type_str,
-                                    provider,
-                                )
-                                .await;
-
-                                return Ok(ForwardResult {
-                                    response,
-                                    provider: provider.clone(),
-                                    claude_api_format,
-                                    outbound_model,
-                                    selected_channel: attempt.channel().cloned(),
-                                    connection_guard: None,
-                                });
+                                return Ok(self
+                                    .complete_successful_attempt(
+                                        request_id,
+                                        app_type_str,
+                                        attempt,
+                                        used_half_open_permit,
+                                        success,
+                                    )
+                                    .await);
                             }
                             Err(retry_err) => {
                                 log::warn!(
@@ -666,37 +666,17 @@ impl RequestForwarder {
                                     )
                                     .await
                                 {
-                                    Ok((response, claude_api_format, outbound_model)) => {
+                                    Ok(success) => {
                                         log::info!("[{app_type_str}] [RECT-002] 整流重试成功");
-                                        self.record_success_result(
-                                            request_id,
-                                            attempt,
-                                            app_type_str,
-                                            used_half_open_permit,
-                                        )
-                                        .await;
-
-                                        self.record_active_target(
-                                            request_id,
-                                            app_type_str,
-                                            attempt,
-                                        )
-                                        .await;
-
-                                        self.record_success_status_and_maybe_switch(
-                                            app_type_str,
-                                            provider,
-                                        )
-                                        .await;
-
-                                        return Ok(ForwardResult {
-                                            response,
-                                            provider: provider.clone(),
-                                            claude_api_format,
-                                            outbound_model,
-                                            selected_channel: attempt.channel().cloned(),
-                                            connection_guard: None,
-                                        });
+                                        return Ok(self
+                                            .complete_successful_attempt(
+                                                request_id,
+                                                app_type_str,
+                                                attempt,
+                                                used_half_open_permit,
+                                                success,
+                                            )
+                                            .await);
                                     }
                                     Err(retry_err) => {
                                         log::warn!(
@@ -768,39 +748,19 @@ impl RequestForwarder {
                                     )
                                     .await
                                 {
-                                    Ok((response, claude_api_format, outbound_model)) => {
+                                    Ok(success) => {
                                         log::info!(
                                             "[{app_type_str}] [RECT-011] budget 整流重试成功"
                                         );
-                                        self.record_success_result(
-                                            request_id,
-                                            attempt,
-                                            app_type_str,
-                                            used_half_open_permit,
-                                        )
-                                        .await;
-
-                                        self.record_active_target(
-                                            request_id,
-                                            app_type_str,
-                                            attempt,
-                                        )
-                                        .await;
-
-                                        self.record_success_status_and_maybe_switch(
-                                            app_type_str,
-                                            provider,
-                                        )
-                                        .await;
-
-                                        return Ok(ForwardResult {
-                                            response,
-                                            provider: provider.clone(),
-                                            claude_api_format,
-                                            outbound_model,
-                                            selected_channel: attempt.channel().cloned(),
-                                            connection_guard: None,
-                                        });
+                                        return Ok(self
+                                            .complete_successful_attempt(
+                                                request_id,
+                                                app_type_str,
+                                                attempt,
+                                                used_half_open_permit,
+                                                success,
+                                            )
+                                            .await);
                                     }
                                     Err(retry_err) => {
                                         log::warn!(
@@ -938,8 +898,7 @@ impl RequestForwarder {
 
     /// 转发单个请求（使用适配器）
     ///
-    /// 成功时返回 `(response, claude_api_format, outbound_model)`，其中
-    /// `outbound_model` 是最终发往上游的模型名（所有映射/改写之后）。
+    /// 成功时返回上游响应以及最终发往上游的模型名（所有映射/改写之后）。
     #[allow(clippy::too_many_arguments)]
     async fn forward(
         &self,
@@ -951,7 +910,7 @@ impl RequestForwarder {
         headers: &axum::http::HeaderMap,
         extensions: &Extensions,
         adapter: &ForwarderAdapterHandle,
-    ) -> Result<(ProxyResponse, Option<String>, Option<String>), ProxyError> {
+    ) -> Result<ForwarderUpstreamSuccess, ProxyError> {
         let provider = attempt.provider();
         let ForwarderProviderUrlFacts {
             mut base_url,
@@ -1205,7 +1164,11 @@ impl RequestForwarder {
                 self.streaming_first_byte_timeout,
             )
             .await?;
-        Ok((response, resolved_claude_api_format, outbound_model))
+        Ok(ForwarderUpstreamSuccess {
+            response,
+            claude_api_format: resolved_claude_api_format,
+            outbound_model,
+        })
     }
 
     /// 故障转移开启时，成功不能只看上游响应头。
@@ -1383,6 +1346,51 @@ mod tests {
         assert_eq!(route_event.payload["providerId"], "provider-1");
         assert_eq!(route_event.payload["channelId"], "channel-a");
         assert_eq!(route_event.payload["interfaceKind"], "openai_responses");
+    }
+
+    #[tokio::test]
+    async fn successful_attempt_completion_projects_forward_result_and_route_event() {
+        let forwarder = test_forwarder(Duration::from_secs(0), Duration::from_secs(0));
+        let mut subscriber = forwarder.runtime_state_source.events().subscribe();
+        let provider = test_provider_with_type(None);
+        let attempt = ForwardAttempt::from_provider(provider.clone());
+        let result = forwarder
+            .complete_successful_attempt(
+                "req-success",
+                "claude",
+                &attempt,
+                false,
+                ForwarderUpstreamSuccess {
+                    response: ProxyResponse::buffered(
+                        StatusCode::OK,
+                        HeaderMap::new(),
+                        Bytes::from_static(b"{\"ok\":true}"),
+                    ),
+                    claude_api_format: Some("openai_chat".to_string()),
+                    outbound_model: Some("upstream-sonnet".to_string()),
+                },
+            )
+            .await;
+
+        assert_eq!(result.provider.id, provider.id);
+        assert_eq!(result.claude_api_format.as_deref(), Some("openai_chat"));
+        assert_eq!(result.outbound_model.as_deref(), Some("upstream-sonnet"));
+        assert!(result.selected_channel.is_none());
+        assert_eq!(result.response.status(), StatusCode::OK);
+        assert_eq!(
+            result.response.bytes().await.expect("response body"),
+            Bytes::from_static(b"{\"ok\":true}")
+        );
+
+        let success_event = subscriber.recv().await.expect("success event");
+        assert_eq!(success_event.event, "provider_succeeded");
+        assert_eq!(success_event.payload["requestId"], "req-success");
+        assert_eq!(success_event.payload["providerId"], "provider-1");
+
+        let route_event = subscriber.recv().await.expect("route selected event");
+        assert_eq!(route_event.event, "route_selected");
+        assert_eq!(route_event.payload["requestId"], "req-success");
+        assert_eq!(route_event.payload["providerId"], "provider-1");
     }
 
     #[tokio::test]
