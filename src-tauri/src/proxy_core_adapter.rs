@@ -8166,14 +8166,7 @@ pub(crate) trait ForwarderRuntimeStateSource {
         kind: ForwarderRectifierRetryKind,
         error_message: &'a str,
     ) -> BoxFuture<'a, ()>;
-    fn forward_failure_decision(
-        &self,
-        app_type: &str,
-        error: &ProxyError,
-        provider: &Provider,
-        attempted_providers: usize,
-        total_providers: usize,
-    ) -> ForwarderFailureDecision;
+    fn forward_failure_decision(&self, error: &ProxyError) -> ForwarderFailureDecision;
     fn log_retryable_forward_failure(
         &self,
         app_type: &str,
@@ -8416,14 +8409,7 @@ impl ForwarderRuntimeStateSource for CcSwitchForwarderRuntimeStateSource {
         })
     }
 
-    fn forward_failure_decision(
-        &self,
-        _app_type: &str,
-        error: &ProxyError,
-        _provider: &Provider,
-        _attempted_providers: usize,
-        _total_providers: usize,
-    ) -> ForwarderFailureDecision {
+    fn forward_failure_decision(&self, error: &ProxyError) -> ForwarderFailureDecision {
         let failure = forward_failure_kind_from_proxy_error(error);
         let error_message = error.to_string();
         match categorize_forward_failure(&failure) {
@@ -16528,19 +16514,13 @@ base_url = "https://api.openai.com/v1"
             json!({}),
             None,
         );
-        let retryable = source.forward_failure_decision(
-            "claude",
-            &ProxyError::Timeout("upstream timed out".to_string()),
-            &provider,
-            1,
-            2,
-        );
+        let retryable =
+            source.forward_failure_decision(&ProxyError::Timeout("upstream timed out".to_string()));
         let non_retryable_error = ProxyError::UpstreamError {
             status: 400,
             body: Some(r#"{"error":{"message":"bad request"}}"#.to_string()),
         };
-        let non_retryable =
-            source.forward_failure_decision("claude", &non_retryable_error, &provider, 1, 2);
+        let non_retryable = source.forward_failure_decision(&non_retryable_error);
 
         match retryable {
             ForwarderFailureDecision::Retryable { error_message } => {

@@ -700,13 +700,7 @@ impl RequestForwarder {
                     // 先分类错误，决定是否计入 provider 健康度
                     // —— NonRetryable 是客户端层错误，无论换哪家 provider 都会被拒绝，
                     //    不应污染熔断器和数据库健康度（与 release_permit_neutral 同语义）。
-                    let failure_decision = self.runtime_state_source.forward_failure_decision(
-                        app_type_str,
-                        &e,
-                        provider,
-                        attempted_providers,
-                        attempts.len(),
-                    );
+                    let failure_decision = self.runtime_state_source.forward_failure_decision(&e);
 
                     match failure_decision {
                         ForwarderFailureDecision::Retryable {
