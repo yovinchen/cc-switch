@@ -11,7 +11,8 @@ use crate::proxy_core_adapter::{
     ActiveConnectionGuard, ForwarderAdapterHandle, ForwarderAppMediaPreventionInput,
     CopilotOptimizerConfig,
     ForwarderAdapterFactsInput, ForwarderAnthropicRectifierGateInput,
-    ForwarderAttemptBodyInput, ForwarderAuthHeadersInput, ForwarderAuthSourceRef,
+    ForwarderAttemptAllowInput, ForwarderAttemptBodyInput, ForwarderAuthHeadersInput,
+    ForwarderAuthSourceRef,
     ForwarderMaybeCopilotAuthOptimizationInput, ForwarderChannelResponseStatusInput,
     ForwarderClaudeApiFormatInput, ForwarderClaudeBodyPolicyInput,
     ForwarderCodexResponsesToChatPlanInput,
@@ -355,13 +356,6 @@ impl RequestForwarder {
         let mut last_provider = None;
         let mut attempted_providers = 0usize;
 
-        // Legacy 单 Provider 场景下跳过熔断器检查（故障转移关闭时）。
-        // Materialized channel attempts are already explicit route units and
-        // should use channel-level breaker state.
-        let bypass_circuit_breaker = self
-            .attempt_runtime_source
-            .should_bypass_circuit_breaker(&attempts);
-
         // 依次尝试每个供应商
         for attempt in attempts.iter() {
             let provider = attempt.provider();
@@ -385,7 +379,11 @@ impl RequestForwarder {
             // 单 Provider 场景下跳过此检查，避免熔断器阻塞所有请求
             let permit = self
                 .attempt_runtime_source
-                .allow(attempt, app_type_str, bypass_circuit_breaker)
+                .allow(ForwarderAttemptAllowInput {
+                    attempt,
+                    app_type: app_type_str,
+                    attempts: &attempts,
+                })
                 .await;
             let allowed = permit.allowed;
             let used_half_open_permit = permit.used_half_open_permit;

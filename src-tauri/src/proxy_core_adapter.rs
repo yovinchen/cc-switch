@@ -8608,6 +8608,12 @@ pub(crate) fn forwarder_should_bypass_circuit_breaker(attempts: &[ForwardAttempt
     attempts.len() == 1 && !attempts[0].is_channel()
 }
 
+pub(crate) struct ForwarderAttemptAllowInput<'a> {
+    pub(crate) attempt: &'a ForwardAttempt,
+    pub(crate) app_type: &'a str,
+    pub(crate) attempts: &'a [ForwardAttempt],
+}
+
 pub(crate) trait ForwarderAttemptRuntimeSource {
     fn attempt_limit_reached(
         &self,
@@ -8616,13 +8622,9 @@ pub(crate) trait ForwarderAttemptRuntimeSource {
         max_attempts: usize,
     ) -> Option<ForwarderAttemptLimitReached>;
 
-    fn should_bypass_circuit_breaker(&self, attempts: &[ForwardAttempt]) -> bool;
-
     fn allow<'a>(
         &'a self,
-        attempt: &'a ForwardAttempt,
-        app_type: &'a str,
-        bypass_circuit_breaker: bool,
+        input: ForwarderAttemptAllowInput<'a>,
     ) -> BoxFuture<'a, AllowResult>;
 
     fn record_success<'a>(
@@ -8656,6 +8658,10 @@ impl CcSwitchForwarderAttemptRuntimeSource {
     fn new(router: Arc<ProviderRouter>) -> Self {
         Self { router }
     }
+
+    fn should_bypass_circuit_breaker(&self, attempts: &[ForwardAttempt]) -> bool {
+        forwarder_should_bypass_circuit_breaker(attempts)
+    }
 }
 
 impl ForwarderAttemptRuntimeSource for CcSwitchForwarderAttemptRuntimeSource {
@@ -8668,21 +8674,16 @@ impl ForwarderAttemptRuntimeSource for CcSwitchForwarderAttemptRuntimeSource {
         forwarder_attempt_limit_reached(app_type, attempted_providers, max_attempts)
     }
 
-    fn should_bypass_circuit_breaker(&self, attempts: &[ForwardAttempt]) -> bool {
-        forwarder_should_bypass_circuit_breaker(attempts)
-    }
-
     fn allow<'a>(
         &'a self,
-        attempt: &'a ForwardAttempt,
-        app_type: &'a str,
-        bypass_circuit_breaker: bool,
+        input: ForwarderAttemptAllowInput<'a>,
     ) -> BoxFuture<'a, AllowResult> {
         Box::pin(async move {
+            let bypass_circuit_breaker = self.should_bypass_circuit_breaker(input.attempts);
             allow_forward_attempt_runtime_source(
                 self.router.as_ref(),
-                attempt,
-                app_type,
+                input.attempt,
+                input.app_type,
                 bypass_circuit_breaker,
             )
             .await
