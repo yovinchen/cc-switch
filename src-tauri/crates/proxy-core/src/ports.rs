@@ -1923,6 +1923,40 @@ pub fn live_env_base_url_matches(config: &Value, key: &str, expected: &str) -> b
         .is_some_and(|url| proxy_urls_match(url, expected))
 }
 
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct CodexLiveTakeoverMatchFacts {
+    pub config_has_proxy_placeholder: bool,
+    pub config_base_url_matches_proxy: bool,
+}
+
+pub fn live_takeover_config_matches_proxy_for_app(
+    app: &AppKind,
+    config: &Value,
+    proxy_url: &str,
+    placeholder: &str,
+    codex_facts: CodexLiveTakeoverMatchFacts,
+) -> bool {
+    match app {
+        AppKind::Claude => {
+            live_config_has_proxy_placeholder_for_app(app, config, placeholder, false)
+                && live_env_base_url_matches(config, "ANTHROPIC_BASE_URL", proxy_url)
+        }
+        AppKind::Codex => {
+            live_config_has_proxy_placeholder_for_app(
+                app,
+                config,
+                placeholder,
+                codex_facts.config_has_proxy_placeholder,
+            ) && codex_facts.config_base_url_matches_proxy
+        }
+        AppKind::Gemini => {
+            live_config_has_proxy_placeholder_for_app(app, config, placeholder, false)
+                && live_env_base_url_matches(config, "GOOGLE_GEMINI_BASE_URL", proxy_url)
+        }
+        _ => false,
+    }
+}
+
 pub fn normalize_claude_models_in_value(settings: &mut Value) -> bool {
     let mut changed = false;
     let env = match settings.get_mut("env").and_then(Value::as_object_mut) {
@@ -5335,6 +5369,7 @@ mod tests {
         claude_takeover_auth_policy_from_provider_facts,
         claude_takeover_model_fields_from_settings, ClaudeTakeoverAuthPolicy,
         ClaudeTakeoverProviderFacts,
+        CodexLiveTakeoverMatchFacts,
         codex_live_auth_has_proxy_placeholder, codex_takeover_toml_config_patch,
         CodexTakeoverTomlConfigPatch,
         detect_gemini_auth_type, ensure_codex_takeover_auth_placeholder,
@@ -5351,7 +5386,7 @@ mod tests {
         json_common_config_snippet_from_value,
         json_deep_merge, json_deep_remove, json_remove_array_items, json_value_is_subset,
         launch_env_vars_from_provider_settings, live_env_base_url_matches, live_takeover_app_kinds,
-        live_config_has_proxy_placeholder_for_app,
+        live_config_has_proxy_placeholder_for_app, live_takeover_config_matches_proxy_for_app,
         live_token_sync_app_label, normalize_claude_models_in_value,
         normalize_provider_settings_for_storage, provider_default_live_import_settings,
         openclaw_common_config_value_from_settings, openclaw_credential_parts_from_settings,
@@ -8259,6 +8294,91 @@ GEMINI_API_KEY=sk-test123
             &json!({"env": {"ANTHROPIC_BASE_URL": 42}}),
             "ANTHROPIC_BASE_URL",
             "http://127.0.0.1:15721"
+        ));
+    }
+
+    #[test]
+    fn live_takeover_proxy_match_uses_app_specific_placeholder_and_base_url_facts() {
+        let placeholder = "PROXY_MANAGED";
+        let proxy_url = "http://127.0.0.1:15721";
+
+        assert!(live_takeover_config_matches_proxy_for_app(
+            &AppKind::Claude,
+            &json!({
+                "env": {
+                    "ANTHROPIC_AUTH_TOKEN": placeholder,
+                    "ANTHROPIC_BASE_URL": "http://127.0.0.1:15721/"
+                }
+            }),
+            proxy_url,
+            placeholder,
+            CodexLiveTakeoverMatchFacts::default()
+        ));
+        assert!(!live_takeover_config_matches_proxy_for_app(
+            &AppKind::Claude,
+            &json!({
+                "env": {
+                    "ANTHROPIC_AUTH_TOKEN": placeholder,
+                    "ANTHROPIC_BASE_URL": "https://api.anthropic.com"
+                }
+            }),
+            proxy_url,
+            placeholder,
+            CodexLiveTakeoverMatchFacts::default()
+        ));
+        assert!(live_takeover_config_matches_proxy_for_app(
+            &AppKind::Codex,
+            &json!({ "auth": { "OPENAI_API_KEY": placeholder } }),
+            proxy_url,
+            placeholder,
+            CodexLiveTakeoverMatchFacts {
+                config_has_proxy_placeholder: false,
+                config_base_url_matches_proxy: true,
+            }
+        ));
+        assert!(live_takeover_config_matches_proxy_for_app(
+            &AppKind::Codex,
+            &json!({ "auth": { "OPENAI_API_KEY": "real-key" } }),
+            proxy_url,
+            placeholder,
+            CodexLiveTakeoverMatchFacts {
+                config_has_proxy_placeholder: true,
+                config_base_url_matches_proxy: true,
+            }
+        ));
+        assert!(!live_takeover_config_matches_proxy_for_app(
+            &AppKind::Codex,
+            &json!({ "auth": { "OPENAI_API_KEY": placeholder } }),
+            proxy_url,
+            placeholder,
+            CodexLiveTakeoverMatchFacts {
+                config_has_proxy_placeholder: false,
+                config_base_url_matches_proxy: false,
+            }
+        ));
+        assert!(live_takeover_config_matches_proxy_for_app(
+            &AppKind::Gemini,
+            &json!({
+                "env": {
+                    "GEMINI_API_KEY": placeholder,
+                    "GOOGLE_GEMINI_BASE_URL": "http://127.0.0.1:15721/"
+                }
+            }),
+            proxy_url,
+            placeholder,
+            CodexLiveTakeoverMatchFacts::default()
+        ));
+        assert!(!live_takeover_config_matches_proxy_for_app(
+            &AppKind::ClaudeDesktop,
+            &json!({
+                "env": {
+                    "ANTHROPIC_AUTH_TOKEN": placeholder,
+                    "ANTHROPIC_BASE_URL": "http://127.0.0.1:15721"
+                }
+            }),
+            proxy_url,
+            placeholder,
+            CodexLiveTakeoverMatchFacts::default()
         ));
     }
 

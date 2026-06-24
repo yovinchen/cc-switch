@@ -298,19 +298,17 @@ pub(crate) use crate::proxy_core::api::ports::{
     app_proxy_config_with_enabled as proxy_app_config_with_enabled, live_takeover_app_kinds,
     apply_codex_takeover_auth_placeholder_if_present as core_apply_codex_takeover_auth_placeholder_if_present,
     apply_gemini_takeover_env_fields as core_apply_gemini_takeover_env_fields,
-    claude_live_config_has_proxy_placeholder as core_claude_live_config_has_proxy_placeholder,
-    codex_live_auth_has_proxy_placeholder as core_codex_live_auth_has_proxy_placeholder,
+    CodexLiveTakeoverMatchFacts,
     detect_gemini_auth_type as core_detect_gemini_auth_type,
     ensure_codex_takeover_auth_placeholder as core_ensure_codex_takeover_auth_placeholder,
     gemini_env_json_from_map as core_gemini_env_json_from_map,
     gemini_env_parse_issue_spec as core_gemini_env_parse_issue_spec,
     gemini_env_string_map_from_settings as core_gemini_env_string_map_from_settings,
     gemini_settings_validation_issue_spec as core_gemini_settings_validation_issue_spec,
-    gemini_live_config_has_proxy_placeholder as core_gemini_live_config_has_proxy_placeholder,
     is_local_proxy_url as core_is_local_proxy_url,
     launch_env_vars_from_provider_settings as core_launch_env_vars_from_provider_settings,
     live_config_has_proxy_placeholder_for_app as core_live_config_has_proxy_placeholder_for_app,
-    live_env_base_url_matches as core_live_env_base_url_matches,
+    live_takeover_config_matches_proxy_for_app as core_live_takeover_config_matches_proxy_for_app,
     live_token_sync_app_label as core_live_token_sync_app_label,
     normalize_provider_settings_for_storage as core_normalize_provider_settings_for_storage,
     provider_additive_live_write_action_for_app as core_provider_additive_live_write_action,
@@ -10998,10 +10996,6 @@ pub(crate) fn sync_provider_settings_with_live_token(
     }
 }
 
-pub(crate) fn claude_live_config_has_proxy_placeholder(config: &Value, placeholder: &str) -> bool {
-    core_claude_live_config_has_proxy_placeholder(config, placeholder)
-}
-
 pub(crate) fn is_local_proxy_url(url: &str) -> bool {
     core_is_local_proxy_url(url)
 }
@@ -11015,11 +11009,6 @@ where
     F: Fn(&str) -> bool,
 {
     core_remove_claude_takeover_env_fields_if_present(config, placeholder, is_local_proxy_url)
-}
-
-pub(crate) fn codex_live_config_has_proxy_placeholder(config: &Value, placeholder: &str) -> bool {
-    core_codex_live_auth_has_proxy_placeholder(config, placeholder)
-        || codex_config_has_proxy_placeholder(config, placeholder)
 }
 
 fn codex_config_has_proxy_placeholder(config: &Value, placeholder: &str) -> bool {
@@ -11181,10 +11170,6 @@ pub(crate) fn codex_live_write_projection(
     })
 }
 
-pub(crate) fn gemini_live_config_has_proxy_placeholder(config: &Value, placeholder: &str) -> bool {
-    core_gemini_live_config_has_proxy_placeholder(config, placeholder)
-}
-
 pub(crate) fn apply_gemini_takeover_env_fields(
     config: &mut Value,
     proxy_url: &str,
@@ -11211,32 +11196,29 @@ pub(crate) fn live_takeover_config_matches_proxy_for_app(
     codex_proxy_base_url: &str,
     placeholder: &str,
 ) -> bool {
-    match app_type {
-        AppType::Claude => {
-            claude_live_config_has_proxy_placeholder(config, placeholder)
-                && live_env_base_url_matches(config, "ANTHROPIC_BASE_URL", proxy_url)
-        }
-        AppType::Codex => {
-            codex_live_config_has_proxy_placeholder(config, placeholder)
-                && config
-                    .get("config")
-                    .and_then(Value::as_str)
-                    .is_some_and(|config_text| {
-                        codex_config_has_base_url_matching(config_text, |url| {
-                            proxy_urls_match(url, codex_proxy_base_url)
-                        })
+    let codex_facts = if matches!(app_type, AppType::Codex) {
+        CodexLiveTakeoverMatchFacts {
+            config_has_proxy_placeholder: codex_config_has_proxy_placeholder(config, placeholder),
+            config_base_url_matches_proxy: config
+                .get("config")
+                .and_then(Value::as_str)
+                .is_some_and(|config_text| {
+                    codex_config_has_base_url_matching(config_text, |url| {
+                        proxy_urls_match(url, codex_proxy_base_url)
                     })
+                }),
         }
-        AppType::Gemini => {
-            gemini_live_config_has_proxy_placeholder(config, placeholder)
-                && live_env_base_url_matches(config, "GOOGLE_GEMINI_BASE_URL", proxy_url)
-        }
-        _ => false,
-    }
-}
+    } else {
+        CodexLiveTakeoverMatchFacts::default()
+    };
 
-fn live_env_base_url_matches(config: &Value, key: &str, expected: &str) -> bool {
-    core_live_env_base_url_matches(config, key, expected)
+    core_live_takeover_config_matches_proxy_for_app(
+        &AppKind::from(app_type),
+        config,
+        proxy_url,
+        placeholder,
+        codex_facts,
+    )
 }
 
 fn proxy_urls_match(actual: &str, expected: &str) -> bool {

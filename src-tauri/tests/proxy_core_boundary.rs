@@ -5407,6 +5407,38 @@ fn proxy_core_adapter_delegates_live_placeholder_app_dispatch_to_core() {
 }
 
 #[test]
+fn proxy_core_adapter_delegates_live_takeover_match_app_dispatch_to_core() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let path = manifest_dir.join("src/proxy_core_adapter.rs");
+    let source = fs::read_to_string(&path).expect("read proxy_core_adapter.rs");
+    let function = function_slice(
+        &source,
+        "pub(crate) fn live_takeover_config_matches_proxy_for_app",
+        "fn proxy_urls_match",
+    );
+
+    assert!(
+        function.contains("core_live_takeover_config_matches_proxy_for_app("),
+        "proxy_core_adapter must delegate live takeover proxy-match app dispatch to proxy-core"
+    );
+    assert!(
+        function.contains("CodexLiveTakeoverMatchFacts"),
+        "proxy_core_adapter should project Codex TOML placeholder/base_url facts for proxy-core"
+    );
+    assert!(
+        function.contains("codex_config_has_base_url_matching("),
+        "proxy_core_adapter should keep host TOML base_url parsing as a projected Codex fact"
+    );
+
+    for marker in ["AppType::Claude =>", "AppType::Gemini =>"] {
+        assert!(
+            !function.contains(marker),
+            "proxy_core_adapter must not keep app-specific takeover-match dispatch marker `{marker}`"
+        );
+    }
+}
+
+#[test]
 fn production_forwarder_delegates_managed_auth_resolution_to_adapter() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let path = manifest_dir.join("src/proxy/forwarder.rs");
