@@ -8338,7 +8338,7 @@ pub(crate) type ForwarderProtocolStateSourceRef =
     Arc<dyn ForwarderProtocolStateSource + Send + Sync>;
 
 pub(crate) trait ForwarderProtocolStateSource {
-    fn enrich_codex_chat_request<'a>(&'a self, body: &'a mut Value) -> BoxFuture<'a, usize>;
+    fn enrich_codex_chat_request<'a>(&'a self, body: &'a mut Value) -> BoxFuture<'a, ()>;
     fn transform_claude_request_for_api_format(
         &self,
         body: Value,
@@ -8366,8 +8366,15 @@ impl CcSwitchForwarderProtocolStateSource {
 }
 
 impl ForwarderProtocolStateSource for CcSwitchForwarderProtocolStateSource {
-    fn enrich_codex_chat_request<'a>(&'a self, body: &'a mut Value) -> BoxFuture<'a, usize> {
-        Box::pin(async move { self.codex_chat_history.enrich_request(body).await })
+    fn enrich_codex_chat_request<'a>(&'a self, body: &'a mut Value) -> BoxFuture<'a, ()> {
+        Box::pin(async move {
+            let restored = self.codex_chat_history.enrich_request(body).await;
+            if restored > 0 {
+                log::debug!(
+                    "[Codex] Restored or enriched {restored} cached function call item(s) for Chat upstream"
+                );
+            }
+        })
     }
 
     fn transform_claude_request_for_api_format(

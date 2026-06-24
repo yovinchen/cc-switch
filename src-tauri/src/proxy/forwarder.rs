@@ -1059,15 +1059,9 @@ impl RequestForwarder {
         // 转换请求体（如果需要）
         let mut request_body = if codex_responses_to_chat {
             let mut mapped_body = mapped_body;
-            let restored = self
-                .protocol_state_source
+            self.protocol_state_source
                 .enrich_codex_chat_request(&mut mapped_body)
                 .await;
-            if restored > 0 {
-                log::debug!(
-                    "[Codex] Restored or enriched {restored} cached function call item(s) for Chat upstream"
-                );
-            }
             self.request_source.convert_codex_responses_to_chat_body(
                 ForwarderCodexResponsesToChatInput {
                     body: mapped_body,

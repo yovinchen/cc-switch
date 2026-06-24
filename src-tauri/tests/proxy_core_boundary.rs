@@ -6087,6 +6087,8 @@ fn production_forwarder_uses_protocol_state_source_resource() {
         "self.codex_chat_history",
         "self.protocol_state_source.gemini_shadow()",
         "self.protocol_state_source.codex_chat_history()",
+        "let restored = self",
+        "Restored or enriched",
     ];
     let mut violations = Vec::new();
 
