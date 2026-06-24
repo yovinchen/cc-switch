@@ -7206,9 +7206,8 @@ fn production_forwarder_uses_response_source_resource() {
         "ForwarderChannelResponseStatusInput must carry the selected channel facts"
     );
     assert!(
-        impl_slice.contains(
-            "apply_channel_response_status_mapping(ForwarderChannelResponseStatusInput {"
-        ),
+        impl_slice.contains("apply_channel_response_status_mapping(")
+            && impl_slice.contains("ForwarderChannelResponseStatusInput {"),
         "RequestForwarder must pass channel response status facts as a response-source input DTO"
     );
     assert!(
@@ -8919,6 +8918,11 @@ fn production_provider_router_health_store_uses_core_attempt_facts() {
         adapter_slice.contains("record_channel_health_attempt_from_router_db"),
         "ProviderRouter health store adapter must write channel health through core ChannelAttemptResult projection"
     );
+    assert!(
+        adapter_slice.contains("fn reset_channel_health(&self, reset: ChannelHealthReset)")
+            && adapter_slice.contains("reset_channel_health_from_router_db(&self.db, reset)"),
+        "ProviderRouter health store adapter must reset channel health through core ChannelHealthReset facts"
+    );
 
     let mut violations = Vec::new();
     for (line_index, line) in production_lines(adapter_slice) {
@@ -8938,6 +8942,29 @@ fn production_provider_router_health_store_uses_core_attempt_facts() {
         violations.is_empty(),
         "ProviderRouter health store adapter must route health writes through attempt facts instead of direct DB health writes:\n{}",
         violations.join("\n")
+    );
+}
+
+#[test]
+fn production_provider_router_resets_channel_health_with_core_reset_fact() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let path = manifest_dir.join("src/proxy/provider_router.rs");
+    let source = fs::read_to_string(&path).expect("read provider_router.rs");
+    let router_slice = function_slice(
+        &source,
+        "pub(crate) trait ProviderRouterHealthStore",
+        "    /// 仅释放 HalfOpen permit",
+    );
+
+    assert!(
+        router_slice.contains("fn reset_channel_health(&self, reset: ChannelHealthReset)")
+            && router_slice.contains("channel_health_reset_from_parts(channel_id, app_type)")
+            && router_slice.contains(".reset_channel_health(channel_health_reset_from_parts"),
+        "ProviderRouter channel reset must pass the app-scoped core ChannelHealthReset fact to its health store"
+    );
+    assert!(
+        !router_slice.contains(".reset_channel_health(channel_id)"),
+        "ProviderRouter must not reset channel health through a bare channel_id"
     );
 }
 

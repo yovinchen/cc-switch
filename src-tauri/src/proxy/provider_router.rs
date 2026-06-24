@@ -6,9 +6,9 @@ use crate::error::AppError;
 use crate::proxy::circuit_breaker::CircuitBreaker;
 use crate::proxy_core_adapter::{
     app_type_from_circuit_key, channel_circuit_key, channel_circuit_key_prefix,
-    provider_circuit_key, provider_circuit_key_prefix,
-    select_failover_provider_ids_from_router_lookup_availability, AllowResult, ChannelRouteSource,
-    CircuitBreakerConfig, CircuitBreakerStats, ProviderFailoverCircuitLookup,
+    channel_health_reset_from_parts, provider_circuit_key, provider_circuit_key_prefix,
+    select_failover_provider_ids_from_router_lookup_availability, AllowResult, ChannelHealthReset,
+    ChannelRouteSource, CircuitBreakerConfig, CircuitBreakerStats, ProviderFailoverCircuitLookup,
     RouteCandidateCircuitKey, RouteResolveChannelInput,
 };
 use futures::future::BoxFuture;
@@ -70,7 +70,7 @@ pub(crate) trait ProviderRouterHealthStore: Send + Sync {
         response_time_ms: Option<i64>,
     ) -> Result<(), AppError>;
 
-    fn reset_channel_health(&self, channel_id: &str) -> Result<(), AppError>;
+    fn reset_channel_health(&self, reset: ChannelHealthReset) -> Result<(), AppError>;
 }
 
 pub(crate) struct ProviderRouterSources {
@@ -278,7 +278,9 @@ impl ProviderRouter {
     ) -> Result<(), AppError> {
         let circuit_key = channel_circuit_key(app_type, channel_id);
         self.reset_circuit_breaker(&circuit_key).await;
-        self.sources.health.reset_channel_health(channel_id)
+        self.sources
+            .health
+            .reset_channel_health(channel_health_reset_from_parts(channel_id, app_type))
     }
 
     /// 仅释放 HalfOpen permit，不影响健康统计（neutral 接口）

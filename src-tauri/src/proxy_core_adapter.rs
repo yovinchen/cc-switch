@@ -5769,9 +5769,9 @@ pub(crate) fn record_channel_health_attempt_from_router_db(
 
 pub(crate) fn reset_channel_health_from_router_db(
     db: &Database,
-    channel_id: &str,
+    reset: ChannelHealthReset,
 ) -> Result<(), AppError> {
-    db.reset_proxy_channel_health(channel_id)
+    db.reset_proxy_channel_health(&reset.channel_id)
 }
 
 pub(crate) fn auto_failover_enabled_from_router_config_result(
@@ -6325,8 +6325,8 @@ impl ProviderRouterHealthStore for CcSwitchProviderRouterHealthStore {
         )
     }
 
-    fn reset_channel_health(&self, channel_id: &str) -> Result<(), AppError> {
-        reset_channel_health_from_router_db(&self.db, channel_id)
+    fn reset_channel_health(&self, reset: ChannelHealthReset) -> Result<(), AppError> {
+        reset_channel_health_from_router_db(&self.db, reset)
     }
 }
 
