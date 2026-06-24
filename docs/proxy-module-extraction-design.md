@@ -470,6 +470,7 @@
 459. `ForwarderRequestPreparationInput` 不再暴露拆开的 `needs_transform` / `codex_responses_to_chat` transport-policy facts；上游 body 定稿阶段直接消费 `ForwarderTransformPlan`，默认 source 内部再投影给 transport policy resolver。
 460. `ForwarderRequestSource` 的 adapter 相关输入不再暴露拆开的 `adapter_name` / `is_claude_adapter` facts；Claude format/policy、transform plan、media retry、request parts 与 upstream log 均消费 `ForwarderAdapterFacts`，host forwarder 不再充当 adapter fact bus。
 461. protocol preparation 的 Claude transform 与 Codex chat enrichment 决策已收敛为 `ForwarderProtocolPreparation`；`RequestForwarder` 不再直接读取 `ForwarderTransformPlan` 的 `codex_responses_to_chat` / `use_claude_transform` / `claude_api_format_for_transform` 字段。
+462. media/rectifier 相关 request-source 输入不再暴露拆开的 `rectifier_enabled` / `request_media_fallback` / `request_media_heuristic` 开关；Claude body policy、app media prevention、media retry 均消费完整 `RectifierConfig`。
 407. `proxy::types::ApiFormat` 未使用预留枚举已删除；Claude/OpenAI/Gemini format 判断统一沿用 `proxy-core` 的 provider kind、client format 和 response transform contract。
 408. `LogConfig` 已从 `proxy::types` 移到 `settings::LogConfig`；日志设置不再扩大代理运行态类型模块，proxy host types 只保留代理状态/备份等运行态数据。
 409. `RectifierConfig` 的默认值、serde 和 core 检测投影测试已从 host `proxy::types` 迁入 `proxy-core::ports`；host proxy types 不再承担 core 配置契约测试。
