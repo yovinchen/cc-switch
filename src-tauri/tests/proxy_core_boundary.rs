@@ -6793,11 +6793,68 @@ fn production_forwarder_uses_request_source_resource() {
             "{input_name} must not expose split adapter name or Claude-adapter facts"
         );
     }
+    let rectifier_config_inputs = [
+        (
+            "ForwarderClaudeBodyPolicyInput",
+            function_slice(
+                &adapter_source,
+                "pub(crate) struct ForwarderClaudeBodyPolicyInput",
+                "pub(crate) struct ForwarderCodexResponsesToChatInput",
+            ),
+        ),
+        (
+            "ForwarderMediaPreventionInput",
+            function_slice(
+                &adapter_source,
+                "pub(crate) struct ForwarderMediaPreventionInput",
+                "pub(crate) struct ForwarderAppMediaPreventionInput",
+            ),
+        ),
+        (
+            "ForwarderAppMediaPreventionInput",
+            function_slice(
+                &adapter_source,
+                "pub(crate) struct ForwarderAppMediaPreventionInput",
+                "pub(crate) struct ForwarderMediaRetryPlanInput",
+            ),
+        ),
+        (
+            "ForwarderMediaRetryPlanInput",
+            function_slice(
+                &adapter_source,
+                "pub(crate) struct ForwarderMediaRetryPlanInput",
+                "pub(crate) struct ForwarderThinkingSignatureRectifierInput",
+            ),
+        ),
+    ];
+    for (input_name, input_slice) in rectifier_config_inputs {
+        assert!(
+            input_slice.contains("config: &'a RectifierConfig"),
+            "{input_name} must carry the cohesive rectifier config"
+        );
+        assert!(
+            !input_slice.contains("rectifier_enabled: bool")
+                && !input_slice.contains("request_media_fallback: bool")
+                && !input_slice.contains("request_media_heuristic: bool"),
+            "{input_name} must not expose split rectifier/media switch facts"
+        );
+    }
     assert!(
         !impl_slice.contains("let adapter_name = adapter_facts.adapter_name")
             && !impl_slice.contains("let is_claude_adapter = adapter_facts.is_claude_adapter"),
         "RequestForwarder must not split adapter facts into scalar locals for request assembly"
     );
+    let forbidden_rectifier_config_access = [
+        "rectifier_enabled: self.rectifier_config.enabled",
+        "request_media_fallback: self.rectifier_config.request_media_fallback",
+        "request_media_heuristic: self.rectifier_config.request_media_heuristic",
+    ];
+    for marker in forbidden_rectifier_config_access {
+        assert!(
+            !impl_slice.contains(marker),
+            "RequestForwarder must pass RectifierConfig cohesively instead of split marker `{marker}`"
+        );
+    }
     let forbidden_protocol_plan_access = [
         "let codex_responses_to_chat = transform_plan.codex_responses_to_chat",
         "transform_plan.codex_responses_to_chat",
