@@ -5839,6 +5839,28 @@ fn production_forwarder_uses_auth_source_resource() {
         "RequestForwarder must receive upstream auth header assembly as an injected source"
     );
 
+    let adapter_path = manifest_dir.join("src/proxy_core_adapter.rs");
+    let adapter_source = fs::read_to_string(&adapter_path).expect("read proxy_core_adapter.rs");
+    let auth_input_slice = function_slice(
+        &adapter_source,
+        "pub(crate) struct ForwarderAuthHeadersInput",
+        "pub(crate) struct ForwarderAuthHeaders",
+    );
+    let auth_source_slice = function_slice(
+        &adapter_source,
+        "struct CcSwitchForwarderAuthSource",
+        "impl ForwarderAuthSource for CcSwitchForwarderAuthSource",
+    );
+
+    assert!(
+        !auth_input_slice.contains("ManagedAccountRuntimeSourceRef"),
+        "ForwarderAuthHeadersInput must not carry managed-account runtime source through RequestForwarder"
+    );
+    assert!(
+        auth_source_slice.contains("managed_account_runtime_source: ManagedAccountRuntimeSourceRef"),
+        "ForwarderAuthSource must own managed-account runtime source for auth resolution"
+    );
+
     let impl_forbidden_markers = [
         "forwarder_provider_auth_info(",
         "forwarder_provider_auth_headers(",
