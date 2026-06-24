@@ -232,6 +232,9 @@ pub mod prelude {
         ProxyChannelWriteRequest, ProxyStatusResponse, RouteGroupListResponse,
         RouteResolveRequest, RouteResolveResponse,
     };
+    pub use super::model_catalog::{
+        ClientModelCatalogResponse, FetchedModel, ModelCatalog, RoutableModelList,
+    };
     pub use super::ports::CurrentRouteTarget;
     pub use super::ports::{
         AuthProvider, ChannelHealthStore, ChannelSource, ForwardPipeline, ModelCatalogProvider,
@@ -307,5 +310,31 @@ mod tests {
         assert!(channel_list.channels.is_empty());
         assert_eq!(test_request.requested_model(), Some("claude-sonnet"));
         assert_eq!(test_request.requested_interface(), Some("anthropic"));
+    }
+
+    #[test]
+    fn prelude_exposes_model_catalog_contracts() {
+        use prelude::*;
+
+        let fetched = FetchedModel {
+            id: "relay-sonnet".to_string(),
+            owned_by: Some("provider-a".to_string()),
+        };
+        let catalog = ModelCatalog {
+            provider_id: "provider-a".to_string(),
+            models: vec![fetched.id.clone()],
+            raw: serde_json::json!({ "models": [{ "id": fetched.id }] }),
+        };
+        let client_response = ClientModelCatalogResponse::from_catalog(catalog);
+        let routable = RoutableModelList::new(
+            "claude",
+            Some("default".to_string()),
+            Some("anthropic".to_string()),
+            Vec::new(),
+        );
+
+        assert_eq!(client_response.raw["models"][0]["id"], "relay-sonnet");
+        assert_eq!(routable.app_type, "claude");
+        assert_eq!(routable.interface_kind.as_deref(), Some("anthropic"));
     }
 }
