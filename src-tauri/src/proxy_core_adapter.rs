@@ -296,8 +296,10 @@ pub(crate) type ProxyRuntimeStatus = crate::proxy_core::api::ports::ProxyRuntime
 
 pub(crate) use crate::proxy_core::api::ports::{
     app_proxy_config_with_enabled as proxy_app_config_with_enabled, live_takeover_app_kinds,
+    provider_switch_dispatch_for_app as core_provider_switch_dispatch,
+    provider_switch_requires_takeover_lock as core_provider_switch_requires_takeover_lock,
     proxy_config_preserving_live_takeover_active, proxy_config_with_ephemeral_listen_port,
-    proxy_config_with_live_takeover_active, proxy_runtime_status_stopped,
+    proxy_config_with_live_takeover_active, proxy_runtime_status_stopped, ProviderSwitchDispatch,
 };
 
 const PROXY_MANAGEMENT_AUTH_TOKEN_ENV: &str = "CC_SWITCH_PROXY_MANAGEMENT_TOKEN";
@@ -2293,31 +2295,15 @@ pub(crate) fn provider_additive_update_route(
     Some(ProviderAdditiveUpdateRoute::LiveConfigPresence)
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum ProviderSwitchDispatch {
-    Normal,
-    TakeoverAware,
-}
-
 pub(crate) fn provider_switch_dispatch(
     app_type: &AppType,
     provider: &Provider,
 ) -> ProviderSwitchDispatch {
-    if matches!(app_type, AppType::OpenCode)
-        && matches!(provider.category.as_deref(), Some("omo") | Some("omo-slim"))
-    {
-        return ProviderSwitchDispatch::Normal;
-    }
-
-    if matches!(app_type, AppType::ClaudeDesktop) {
-        return ProviderSwitchDispatch::Normal;
-    }
-
-    ProviderSwitchDispatch::TakeoverAware
+    core_provider_switch_dispatch(&AppKind::from(app_type), provider.category.as_deref())
 }
 
 pub(crate) fn provider_switch_requires_takeover_lock(app_type: &AppType) -> bool {
-    matches!(app_type, AppType::Claude | AppType::Codex | AppType::Gemini)
+    core_provider_switch_requires_takeover_lock(&AppKind::from(app_type))
 }
 
 pub(crate) fn live_takeover_app_types() -> [AppType; 3] {

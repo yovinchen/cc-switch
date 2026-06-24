@@ -1315,6 +1315,7 @@
 本轮继续把 legacy `live_takeover_active` flag 的配置更新规则收敛到 `proxy-core::ports::proxy_config_with_live_takeover_active`：best-effort 清理路径仍由 adapter 负责 DB 读写，但不再直接改 `ProxyConfig.live_takeover_active` 字段。
 本轮继续把 app 级 proxy config 的 enabled flag 更新规则收敛到 `proxy-core::ports::app_proxy_config_with_enabled`：adapter 只负责读取/写回 app config 和错误文案，不再维护 `AppProxyConfig.enabled` 字段更新 helper。
 本轮继续把 Live 接管支持的 switch-mode app catalog 收敛到 `proxy-core::ports::live_takeover_app_kinds`：core 统一维护 Claude/Codex/Gemini 清单与顺序，adapter 仅映射为宿主 `AppType` 并保留 DB/live 文件副作用。
+本轮继续把 Provider switch 的 normal/takeover-aware 分流和 takeover lock 适用范围收敛到 `proxy-core::ports::{provider_switch_dispatch_for_app,provider_switch_requires_takeover_lock}`：core 维护 OpenCode OMO/Claude Desktop 直通 normal、Claude/Codex/Gemini 需要 lock 的纯策略，adapter 只投影 `AppType` 与 provider category。
 
 当前原则：核心 crate 可以新增端口和领域字段，但不得引入 `tauri`、`Database`、settings、commands、services 等宿主依赖；现有 runtime 行为必须继续通过 targeted tests 证明不回归。
 

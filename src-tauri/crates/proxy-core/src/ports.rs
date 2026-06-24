@@ -1071,6 +1071,33 @@ pub fn live_takeover_app_kinds() -> [AppKind; 3] {
     [AppKind::Claude, AppKind::Codex, AppKind::Gemini]
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ProviderSwitchDispatch {
+    Normal,
+    TakeoverAware,
+}
+
+pub fn provider_switch_dispatch_for_app(
+    app: &AppKind,
+    provider_category: Option<&str>,
+) -> ProviderSwitchDispatch {
+    if matches!(app, AppKind::Custom(value) if value == "opencode")
+        && matches!(provider_category, Some("omo") | Some("omo-slim"))
+    {
+        return ProviderSwitchDispatch::Normal;
+    }
+
+    if matches!(app, AppKind::ClaudeDesktop) {
+        return ProviderSwitchDispatch::Normal;
+    }
+
+    ProviderSwitchDispatch::TakeoverAware
+}
+
+pub fn provider_switch_requires_takeover_lock(app: &AppKind) -> bool {
+    live_takeover_app_kinds().contains(app)
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ProxyServerInfo {
     pub address: String,
@@ -3150,7 +3177,8 @@ mod tests {
         live_takeover_app_kinds, proxy_config_preserving_live_takeover_active,
         proxy_app_config_from_parts, proxy_config_with_ephemeral_listen_port,
         proxy_config_with_live_takeover_active, proxy_global_config_from_global_config,
-        proxy_runtime_config_from_proxy_config,
+        proxy_runtime_config_from_proxy_config, provider_switch_dispatch_for_app,
+        provider_switch_requires_takeover_lock,
         AppListResponse, AppModelListQuery, AppProxyConfig, AppSummaryInput,
         channel_key_record_from_input,
         channel_reachability_status_from_latency, channel_record_from_input, ChannelDeleteResponse,
@@ -3168,7 +3196,7 @@ mod tests {
         CurrentRouteTargetInput, current_route_target_from_input, GlobalProxyConfig,
         GroupListQuery, HealthCheckResponse, ModelCatalog, OptimizerConfig, ProviderHealth,
         ProviderHealthUpdateInput, ProviderListResponse, ProviderSpec, ProviderSummaryInput,
-        ProxyChannelModelWriteRequest,
+        ProviderSwitchDispatch, ProxyChannelModelWriteRequest,
         ProxyChannelModelsReplaceRequest, ProxyChannelPatchRequest, ProxyChannelTestRequest,
         ProxyChannelWriteRequest, ProxyConfig, ProxyCoreEvent, ProxyCoreEventType,
         ProxyRuntimeStatus, ProxyStatusResponse, ProxyTakeoverStatus,
@@ -4388,6 +4416,47 @@ mod tests {
         );
         assert!(!live_takeover_app_kinds().contains(&AppKind::ClaudeDesktop));
         assert!(!live_takeover_app_kinds().contains(&AppKind::Custom("opencode".to_string())));
+    }
+
+    #[test]
+    fn provider_switch_dispatch_keeps_host_side_effects_out_of_policy() {
+        assert_eq!(
+            provider_switch_dispatch_for_app(
+                &AppKind::Custom("opencode".to_string()),
+                Some("omo")
+            ),
+            ProviderSwitchDispatch::Normal
+        );
+        assert_eq!(
+            provider_switch_dispatch_for_app(
+                &AppKind::Custom("opencode".to_string()),
+                Some("omo-slim")
+            ),
+            ProviderSwitchDispatch::Normal
+        );
+        assert_eq!(
+            provider_switch_dispatch_for_app(&AppKind::ClaudeDesktop, Some("regular")),
+            ProviderSwitchDispatch::Normal
+        );
+        assert_eq!(
+            provider_switch_dispatch_for_app(&AppKind::Custom("opencode".to_string()), None),
+            ProviderSwitchDispatch::TakeoverAware
+        );
+        assert_eq!(
+            provider_switch_dispatch_for_app(&AppKind::Claude, Some("regular")),
+            ProviderSwitchDispatch::TakeoverAware
+        );
+    }
+
+    #[test]
+    fn provider_switch_takeover_lock_uses_live_takeover_catalog() {
+        assert!(provider_switch_requires_takeover_lock(&AppKind::Claude));
+        assert!(provider_switch_requires_takeover_lock(&AppKind::Codex));
+        assert!(provider_switch_requires_takeover_lock(&AppKind::Gemini));
+        assert!(!provider_switch_requires_takeover_lock(&AppKind::ClaudeDesktop));
+        assert!(!provider_switch_requires_takeover_lock(&AppKind::Custom(
+            "opencode".to_string()
+        )));
     }
 
     #[test]
