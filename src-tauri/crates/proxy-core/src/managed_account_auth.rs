@@ -26,6 +26,10 @@ impl ManagedAccountAuthRuntime {
             Self::CodexOAuth => ProviderAuthStrategy::CodexOAuth,
         }
     }
+
+    pub fn provider_auth_info(self, token: String) -> ProviderAuthInfo {
+        ProviderAuthInfo::new(token, self.provider_auth_strategy())
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -615,6 +619,9 @@ mod tests {
             ManagedAccountAuthRuntime::GitHubCopilot.provider_auth_strategy(),
             ProviderAuthStrategy::GitHubCopilot
         );
+        let auth = ManagedAccountAuthRuntime::GitHubCopilot.provider_auth_info("token".to_string());
+        assert_eq!(auth.api_key, "token");
+        assert_eq!(auth.strategy, ProviderAuthStrategy::GitHubCopilot);
     }
 
     #[test]
@@ -638,6 +645,9 @@ mod tests {
             ManagedAccountAuthRuntime::CodexOAuth.provider_auth_strategy(),
             ProviderAuthStrategy::CodexOAuth
         );
+        let auth = ManagedAccountAuthRuntime::CodexOAuth.provider_auth_info("token".to_string());
+        assert_eq!(auth.api_key, "token");
+        assert_eq!(auth.strategy, ProviderAuthStrategy::CodexOAuth);
     }
 
     #[test]

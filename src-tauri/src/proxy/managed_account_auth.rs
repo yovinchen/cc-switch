@@ -107,10 +107,7 @@ pub(crate) async fn resolve_copilot_auth(
                 "[Copilot] 成功获取 Copilot token (account={})",
                 account_id.unwrap_or("default")
             );
-            Ok(ProviderAuthInfo::new(
-                token,
-                runtime.provider_auth_strategy(),
-            ))
+            Ok(runtime.provider_auth_info(token))
         }
         Err(error) => {
             log::error!(
@@ -160,10 +157,7 @@ pub(crate) async fn resolve_codex_oauth(
                 "[CodexOAuth] 成功获取 access_token (account={})",
                 resolved_account_id.as_deref().unwrap_or("default")
             );
-            Ok((
-                ProviderAuthInfo::new(token, runtime.provider_auth_strategy()),
-                resolved_account_id,
-            ))
+            Ok((runtime.provider_auth_info(token), resolved_account_id))
         }
         Err(error) => {
             log::error!("[CodexOAuth] 获取 access_token 失败: {error}");
