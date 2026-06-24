@@ -302,6 +302,7 @@ pub(crate) use crate::proxy_core::api::ports::{
     ensure_codex_takeover_auth_placeholder as core_ensure_codex_takeover_auth_placeholder,
     gemini_live_config_has_proxy_placeholder as core_gemini_live_config_has_proxy_placeholder,
     is_local_proxy_url as core_is_local_proxy_url,
+    json_deep_merge, json_deep_remove, json_value_is_subset,
     launch_env_vars_from_provider_settings as core_launch_env_vars_from_provider_settings,
     live_env_base_url_matches as core_live_env_base_url_matches,
     live_token_sync_app_label as core_live_token_sync_app_label,
@@ -332,6 +333,7 @@ pub(crate) use crate::proxy_core::api::ports::{
     remove_claude_takeover_env_fields_if_present as core_remove_claude_takeover_env_fields_if_present,
     remove_codex_takeover_auth_placeholder_if_present as core_remove_codex_takeover_auth_placeholder_if_present,
     remove_gemini_takeover_env_fields_if_present as core_remove_gemini_takeover_env_fields_if_present,
+    sanitize_claude_settings_for_live,
     provider_should_sync_to_live as core_provider_should_sync_to_live,
     should_skip_manual_default_live_import as core_should_skip_manual_default_live_import,
     should_skip_startup_default_live_import as core_should_skip_startup_default_live_import,
@@ -5859,111 +5861,6 @@ pub(crate) fn proxy_hot_switch_should_sync_claude_live_while_proxy_active(
     proxy_live_owned_by_takeover: bool,
 ) -> bool {
     matches!(app_type, AppType::Claude) && proxy_live_owned_by_takeover
-}
-
-pub(crate) fn sanitize_claude_settings_for_live(settings: &Value) -> Value {
-    let mut sanitized = settings.clone();
-    if let Some(obj) = sanitized.as_object_mut() {
-        obj.remove("api_format");
-        obj.remove("apiFormat");
-        obj.remove("openrouter_compat_mode");
-        obj.remove("openrouterCompatMode");
-    }
-    sanitized
-}
-
-pub(crate) fn json_value_is_subset(target: &Value, source: &Value) -> bool {
-    match source {
-        Value::Object(source_map) => {
-            let Some(target_map) = target.as_object() else {
-                return false;
-            };
-            source_map.iter().all(|(key, source_value)| {
-                target_map
-                    .get(key)
-                    .is_some_and(|target_value| json_value_is_subset(target_value, source_value))
-            })
-        }
-        Value::Array(source_arr) => {
-            let Some(target_arr) = target.as_array() else {
-                return false;
-            };
-            json_array_contains_subset(target_arr, source_arr)
-        }
-        _ => target == source,
-    }
-}
-
-pub(crate) fn json_array_contains_subset(target_arr: &[Value], source_arr: &[Value]) -> bool {
-    let mut matched = vec![false; target_arr.len()];
-
-    source_arr.iter().all(|source_item| {
-        if let Some((index, _)) = target_arr.iter().enumerate().find(|(index, target_item)| {
-            !matched[*index] && json_value_is_subset(target_item, source_item)
-        }) {
-            matched[index] = true;
-            true
-        } else {
-            false
-        }
-    })
-}
-
-pub(crate) fn json_remove_array_items(target_arr: &mut Vec<Value>, source_arr: &[Value]) {
-    for source_item in source_arr {
-        if let Some(index) = target_arr
-            .iter()
-            .position(|target_item| json_value_is_subset(target_item, source_item))
-        {
-            target_arr.remove(index);
-        }
-    }
-}
-
-pub(crate) fn json_deep_merge(target: &mut Value, source: &Value) {
-    match (target, source) {
-        (Value::Object(target_map), Value::Object(source_map)) => {
-            for (key, source_value) in source_map {
-                match target_map.get_mut(key) {
-                    Some(target_value) => json_deep_merge(target_value, source_value),
-                    None => {
-                        target_map.insert(key.clone(), source_value.clone());
-                    }
-                }
-            }
-        }
-        (target_value, source_value) => {
-            *target_value = source_value.clone();
-        }
-    }
-}
-
-pub(crate) fn json_deep_remove(target: &mut Value, source: &Value) {
-    let (Some(target_map), Some(source_map)) = (target.as_object_mut(), source.as_object()) else {
-        return;
-    };
-
-    for (key, source_value) in source_map {
-        let mut remove_key = false;
-
-        if let Some(target_value) = target_map.get_mut(key) {
-            if source_value.is_object() && target_value.is_object() {
-                json_deep_remove(target_value, source_value);
-                remove_key = target_value.as_object().is_some_and(|obj| obj.is_empty());
-            } else if let (Some(target_arr), Some(source_arr)) =
-                (target_value.as_array_mut(), source_value.as_array())
-            {
-                json_remove_array_items(target_arr, source_arr);
-                remove_key = target_arr.is_empty();
-            } else if json_value_is_subset(target_value, source_value) {
-                remove_key = true;
-            }
-        }
-
-        if remove_key {
-            target_map.remove(key);
-        }
-    }
 }
 
 pub(crate) fn toml_value_is_subset(target: &toml_edit::Value, source: &toml_edit::Value) -> bool {
@@ -13573,6 +13470,8 @@ fn account_ref(provider: &Provider) -> Option<String> {
 
 #[cfg(test)]
 mod tests {
+    use crate::proxy_core::api::ports::json_remove_array_items;
+
     use super::*;
     use crate::database::ProxyChannelSourceKind;
     use crate::provider::{

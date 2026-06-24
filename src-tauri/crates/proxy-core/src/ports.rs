@@ -1180,6 +1180,111 @@ pub fn is_local_proxy_url(url: &str) -> bool {
         || rest.starts_with("::")
 }
 
+pub fn sanitize_claude_settings_for_live(settings: &Value) -> Value {
+    let mut sanitized = settings.clone();
+    if let Some(obj) = sanitized.as_object_mut() {
+        obj.remove("api_format");
+        obj.remove("apiFormat");
+        obj.remove("openrouter_compat_mode");
+        obj.remove("openrouterCompatMode");
+    }
+    sanitized
+}
+
+pub fn json_value_is_subset(target: &Value, source: &Value) -> bool {
+    match source {
+        Value::Object(source_map) => {
+            let Some(target_map) = target.as_object() else {
+                return false;
+            };
+            source_map.iter().all(|(key, source_value)| {
+                target_map
+                    .get(key)
+                    .is_some_and(|target_value| json_value_is_subset(target_value, source_value))
+            })
+        }
+        Value::Array(source_arr) => {
+            let Some(target_arr) = target.as_array() else {
+                return false;
+            };
+            json_array_contains_subset(target_arr, source_arr)
+        }
+        _ => target == source,
+    }
+}
+
+pub fn json_array_contains_subset(target_arr: &[Value], source_arr: &[Value]) -> bool {
+    let mut matched = vec![false; target_arr.len()];
+
+    source_arr.iter().all(|source_item| {
+        if let Some((index, _)) = target_arr.iter().enumerate().find(|(index, target_item)| {
+            !matched[*index] && json_value_is_subset(target_item, source_item)
+        }) {
+            matched[index] = true;
+            true
+        } else {
+            false
+        }
+    })
+}
+
+pub fn json_remove_array_items(target_arr: &mut Vec<Value>, source_arr: &[Value]) {
+    for source_item in source_arr {
+        if let Some(index) = target_arr
+            .iter()
+            .position(|target_item| json_value_is_subset(target_item, source_item))
+        {
+            target_arr.remove(index);
+        }
+    }
+}
+
+pub fn json_deep_merge(target: &mut Value, source: &Value) {
+    match (target, source) {
+        (Value::Object(target_map), Value::Object(source_map)) => {
+            for (key, source_value) in source_map {
+                match target_map.get_mut(key) {
+                    Some(target_value) => json_deep_merge(target_value, source_value),
+                    None => {
+                        target_map.insert(key.clone(), source_value.clone());
+                    }
+                }
+            }
+        }
+        (target_value, source_value) => {
+            *target_value = source_value.clone();
+        }
+    }
+}
+
+pub fn json_deep_remove(target: &mut Value, source: &Value) {
+    let (Some(target_map), Some(source_map)) = (target.as_object_mut(), source.as_object()) else {
+        return;
+    };
+
+    for (key, source_value) in source_map {
+        let mut remove_key = false;
+
+        if let Some(target_value) = target_map.get_mut(key) {
+            if source_value.is_object() && target_value.is_object() {
+                json_deep_remove(target_value, source_value);
+                remove_key = target_value.as_object().is_some_and(|obj| obj.is_empty());
+            } else if let (Some(target_arr), Some(source_arr)) =
+                (target_value.as_array_mut(), source_value.as_array())
+            {
+                json_remove_array_items(target_arr, source_arr);
+                remove_key = target_arr.is_empty();
+            } else if json_value_is_subset(target_value, source_value) {
+                remove_key = true;
+            }
+        }
+
+        if remove_key {
+            target_map.remove(key);
+        }
+    }
+}
+
 pub fn launch_env_vars_from_provider_settings(
     config: &Value,
     app: &AppKind,
@@ -4023,6 +4128,7 @@ mod tests {
         apply_codex_takeover_auth_placeholder_if_present, apply_gemini_takeover_env_fields,
         claude_live_config_has_proxy_placeholder, ensure_codex_takeover_auth_placeholder,
         gemini_live_config_has_proxy_placeholder, is_local_proxy_url,
+        json_deep_merge, json_deep_remove, json_remove_array_items, json_value_is_subset,
         launch_env_vars_from_provider_settings, live_env_base_url_matches, live_takeover_app_kinds,
         live_token_sync_app_label, normalize_claude_models_in_value,
         provider_settings_with_live_token_sync, proxy_urls_match,
@@ -4086,6 +4192,7 @@ mod tests {
         remove_claude_takeover_env_fields_if_present,
         remove_codex_takeover_auth_placeholder_if_present,
         remove_gemini_takeover_env_fields_if_present,
+        sanitize_claude_settings_for_live,
         RectifierConfig, RouteGroupListResponse, RouteGroupSourceInput, RouteResolveResponse,
         StreamCheckConfig, StreamCheckResult, DEFAULT_PROXY_LISTEN_ADDRESS,
         DEFAULT_PROXY_LISTEN_PORT, DEFAULT_CHANNEL_HEALTH_FAILURE_THRESHOLD,
@@ -5847,6 +5954,97 @@ mod tests {
             "ANTHROPIC_BASE_URL",
             "http://127.0.0.1:15721"
         ));
+    }
+
+    #[test]
+    fn sanitize_claude_settings_for_live_strips_host_only_fields() {
+        let sanitized = sanitize_claude_settings_for_live(&json!({
+            "api_format": "anthropic",
+            "apiFormat": "openai",
+            "openrouter_compat_mode": true,
+            "openrouterCompatMode": true,
+            "env": {
+                "ANTHROPIC_API_KEY": "sk-test"
+            },
+            "includeCoAuthoredBy": false
+        }));
+
+        assert_eq!(
+            sanitized,
+            json!({
+                "env": {
+                    "ANTHROPIC_API_KEY": "sk-test"
+                },
+                "includeCoAuthoredBy": false
+            })
+        );
+    }
+
+    #[test]
+    fn json_subset_helpers_match_and_remove_array_items_once() {
+        let target = json!({
+            "allowedTools": [
+                { "name": "tool-a", "scope": "global" },
+                { "name": "tool-b", "scope": "local" },
+                { "name": "tool-a", "scope": "project" }
+            ],
+            "env": {
+                "A": "1",
+                "B": "2"
+            }
+        });
+        let source = json!({
+            "allowedTools": [
+                { "name": "tool-a" },
+                { "name": "tool-b", "scope": "local" }
+            ],
+            "env": {
+                "A": "1"
+            }
+        });
+        assert!(json_value_is_subset(&target, &source));
+
+        let mut target_arr = target["allowedTools"].as_array().cloned().unwrap();
+        let source_arr = source["allowedTools"].as_array().unwrap();
+        json_remove_array_items(&mut target_arr, source_arr);
+        assert_eq!(
+            target_arr,
+            vec![json!({ "name": "tool-a", "scope": "project" })]
+        );
+    }
+
+    #[test]
+    fn json_deep_merge_and_remove_preserve_unrelated_fields() {
+        let mut target = json!({
+            "env": {
+                "ANTHROPIC_API_KEY": "sk-test"
+            },
+            "allowedTools": ["tool-a", "tool-b"],
+            "includeCoAuthoredBy": true
+        });
+        let source = json!({
+            "env": {
+                "CLAUDE_CODE_USE_BEDROCK": "1"
+            },
+            "allowedTools": ["tool-a"],
+            "includeCoAuthoredBy": false
+        });
+
+        json_deep_merge(&mut target, &source);
+        assert_eq!(target["env"]["ANTHROPIC_API_KEY"], json!("sk-test"));
+        assert_eq!(target["env"]["CLAUDE_CODE_USE_BEDROCK"], json!("1"));
+        assert_eq!(target["allowedTools"], json!(["tool-a"]));
+        assert_eq!(target["includeCoAuthoredBy"], json!(false));
+
+        json_deep_remove(&mut target, &source);
+        assert_eq!(
+            target,
+            json!({
+                "env": {
+                    "ANTHROPIC_API_KEY": "sk-test"
+                }
+            })
+        );
     }
 
     #[test]
