@@ -760,7 +760,9 @@ const FORBIDDEN_PROVIDER_ROUTER_CHANNEL_DAO_MARKERS: &[&str] = &[
 const FORBIDDEN_PROVIDER_ROUTER_CHANNEL_SOURCE_ADAPTER_MARKERS: &[&str] =
     &["db: Arc<Database>", "router_channel_route_inputs_from_db_source("];
 const FORBIDDEN_PROVIDER_ROUTER_HEALTH_STORE_ADAPTER_MARKERS: &[&str] = &[
+    "record_provider_health_result_from_router_db(",
     "record_channel_health_result_from_router_db(",
+    ".update_provider_health_with_threshold(",
     ".update_proxy_channel_health_with_threshold(",
 ];
 const FORBIDDEN_PROVIDER_ROUTER_PROVIDER_RECORD_MARKERS: &[&str] = &[
@@ -8842,7 +8844,7 @@ fn production_provider_router_channel_source_uses_core_channel_source() {
 }
 
 #[test]
-fn production_provider_router_health_store_uses_core_channel_attempts() {
+fn production_provider_router_health_store_uses_core_attempt_facts() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let path = manifest_dir.join("src/proxy_core_adapter.rs");
     let source = fs::read_to_string(&path).expect("read proxy_core_adapter.rs");
@@ -8852,6 +8854,10 @@ fn production_provider_router_health_store_uses_core_channel_attempts() {
         "pub(crate) fn current_provider_id_from_router_sources",
     );
 
+    assert!(
+        adapter_slice.contains("record_provider_health_attempt_from_router_db"),
+        "ProviderRouter health store adapter must write provider health through provider attempt projection"
+    );
     assert!(
         adapter_slice.contains("record_channel_health_attempt_from_router_db"),
         "ProviderRouter health store adapter must write channel health through core ChannelAttemptResult projection"
@@ -8873,7 +8879,7 @@ fn production_provider_router_health_store_uses_core_channel_attempts() {
 
     assert!(
         violations.is_empty(),
-        "ProviderRouter health store adapter must route channel attempts through ChannelAttemptResult instead of direct DB channel health writes:\n{}",
+        "ProviderRouter health store adapter must route health writes through attempt facts instead of direct DB health writes:\n{}",
         violations.join("\n")
     );
 }

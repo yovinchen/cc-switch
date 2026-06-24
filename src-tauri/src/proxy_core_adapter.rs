@@ -5706,7 +5706,31 @@ pub(crate) fn circuit_failure_threshold_from_router_config_result(
     circuit_failure_threshold_from_app_config(config.as_ref(), fallback)
 }
 
-pub(crate) async fn record_provider_health_result_from_router_db(
+pub(crate) struct ProviderHealthAttemptDbUpdate {
+    pub(crate) provider_id: String,
+    pub(crate) app_type: String,
+    pub(crate) success: bool,
+    pub(crate) error_msg: Option<String>,
+    pub(crate) failure_threshold: u32,
+}
+
+pub(crate) fn provider_health_attempt_db_update(
+    provider_id: &str,
+    app_type: &str,
+    success: bool,
+    error_msg: Option<String>,
+    failure_threshold: u32,
+) -> ProviderHealthAttemptDbUpdate {
+    ProviderHealthAttemptDbUpdate {
+        provider_id: provider_id.to_string(),
+        app_type: app_type.to_string(),
+        success,
+        error_msg,
+        failure_threshold,
+    }
+}
+
+pub(crate) async fn record_provider_health_attempt_from_router_db(
     db: &Database,
     provider_id: &str,
     app_type: &str,
@@ -5714,12 +5738,19 @@ pub(crate) async fn record_provider_health_result_from_router_db(
     error_msg: Option<String>,
     failure_threshold: u32,
 ) -> Result<(), AppError> {
-    db.update_provider_health_with_threshold(
+    let update = provider_health_attempt_db_update(
         provider_id,
         app_type,
         success,
         error_msg,
         failure_threshold,
+    );
+    db.update_provider_health_with_threshold(
+        &update.provider_id,
+        &update.app_type,
+        update.success,
+        update.error_msg,
+        update.failure_threshold,
     )
     .await
 }
@@ -6171,7 +6202,7 @@ impl ProviderRouterHealthStore for CcSwitchProviderRouterHealthStore {
         failure_threshold: u32,
     ) -> BoxFuture<'a, Result<(), AppError>> {
         Box::pin(async move {
-            record_provider_health_result_from_router_db(
+            record_provider_health_attempt_from_router_db(
                 &self.db,
                 provider_id,
                 app_type,
@@ -23846,6 +23877,23 @@ command = "latest-command"
 
         assert_eq!(override_update.failure_threshold, 7);
         assert_eq!(override_update.response_time_ms, None);
+    }
+
+    #[test]
+    fn provider_health_adapter_projects_attempt_db_update() {
+        let update = provider_health_attempt_db_update(
+            "provider-a",
+            "claude",
+            false,
+            Some("timeout".to_string()),
+            3,
+        );
+
+        assert_eq!(update.provider_id, "provider-a");
+        assert_eq!(update.app_type, "claude");
+        assert!(!update.success);
+        assert_eq!(update.error_msg.as_deref(), Some("timeout"));
+        assert_eq!(update.failure_threshold, 3);
     }
 
     #[test]
