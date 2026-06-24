@@ -639,9 +639,7 @@ impl RequestForwarder {
                                     used_half_open_permit,
                                 )
                                 .await;
-                                let message =
-                                    self.runtime_state_source.forward_error_status_message(&e);
-                                self.record_failure_status_message(message).await;
+                                self.runtime_state_source.record_forward_error_status(&e).await;
                                 return Err(ForwardError {
                                     error: e,
                                     provider: Some(provider.clone()),
@@ -724,9 +722,7 @@ impl RequestForwarder {
                                     used_half_open_permit,
                                 )
                                 .await;
-                                let message =
-                                    self.runtime_state_source.forward_error_status_message(&e);
-                                self.record_failure_status_message(message).await;
+                                self.runtime_state_source.record_forward_error_status(&e).await;
                                 return Err(ForwardError {
                                     error: e,
                                     provider: Some(provider.clone()),
@@ -795,8 +791,7 @@ impl RequestForwarder {
                             used_half_open_permit,
                         )
                         .await;
-                        let message = self.runtime_state_source.forward_error_status_message(&e);
-                        self.record_failure_status_message(message).await;
+                        self.runtime_state_source.record_forward_error_status(&e).await;
                         return Err(ForwardError {
                             error: e,
                             provider: Some(provider.clone()),

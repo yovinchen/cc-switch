@@ -3043,10 +3043,6 @@ pub(crate) fn forwarder_no_available_provider_status_message() -> &'static str {
 pub(crate) fn forwarder_terminal_failure_status_message() -> &'static str {
     "所有供应商都失败"
 }
-
-pub(crate) fn forwarder_error_status_message(error: &ProxyError) -> String {
-    error.to_string()
-}
 pub(crate) type ManagementAuthError =
     crate::proxy_core::api::auth::ManagementAuthError;
 pub(crate) type CircuitBreakerFailureDecision =
@@ -8143,7 +8139,7 @@ pub(crate) trait ForwarderRuntimeStateSource {
         &self,
         error: &ProxyError,
     ) -> ForwarderRectifierRetryFailureDecision;
-    fn forward_error_status_message(&self, error: &ProxyError) -> String;
+    fn record_forward_error_status<'a>(&'a self, error: &'a ProxyError) -> BoxFuture<'a, ()>;
     fn no_available_provider_status_message(&self) -> String;
     fn terminal_failure_status_message(&self) -> String;
     fn record_request_started<'a>(&'a self, started_at: &'a str) -> BoxFuture<'a, ()>;
@@ -8353,8 +8349,11 @@ impl ForwarderRuntimeStateSource for CcSwitchForwarderRuntimeStateSource {
         forwarder_terminal_failure_status_message().to_string()
     }
 
-    fn forward_error_status_message(&self, error: &ProxyError) -> String {
-        forwarder_error_status_message(error)
+    fn record_forward_error_status<'a>(&'a self, error: &'a ProxyError) -> BoxFuture<'a, ()> {
+        Box::pin(async move {
+            let error_message = error.to_string();
+            record_forward_failure_runtime_source(self.status.as_ref(), &error_message).await;
+        })
     }
 
     fn record_request_started<'a>(&'a self, started_at: &'a str) -> BoxFuture<'a, ()> {
@@ -16134,11 +16133,28 @@ base_url = "https://api.openai.com/v1"
             source.terminal_failure_status_message(),
             "所有供应商都失败"
         );
+    }
+
+    #[tokio::test]
+    async fn forwarder_runtime_state_source_records_forward_error_status() {
+        let source = CcSwitchForwarderRuntimeStateSource::new(
+            Arc::new(RwLock::new(ProxyRuntimeStatus::default())),
+            Arc::new(RwLock::new(HashMap::new())),
+            Arc::new(ProxyEventBus::default()),
+        );
+
+        source
+            .record_forward_error_status(&ProxyError::Timeout(
+                "upstream timed out".to_string(),
+            ))
+            .await;
+
+        let status = source.status();
+        let status = status.read().await;
+        assert_eq!(status.failed_requests, 1);
         assert_eq!(
-            source.forward_error_status_message(&ProxyError::Timeout(
-                "upstream timed out".to_string()
-            )),
-            "超时: upstream timed out"
+            status.last_error.as_deref(),
+            Some("超时: upstream timed out")
         );
     }
 
