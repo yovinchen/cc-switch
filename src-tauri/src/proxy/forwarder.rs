@@ -844,9 +844,11 @@ impl RequestForwarder {
                     );
 
                     match failure_decision {
-                        ForwarderFailureDecision::Retryable { log: failure_log } => {
+                        ForwarderFailureDecision::Retryable {
+                            error_message,
+                            log: failure_log,
+                        } => {
                             // 可重试：真正的 provider 故障 → 记录失败并更新熔断器/DB 健康度
-                            let error_message = e.to_string();
                             self.record_failure_result(
                                 request_id,
                                 attempt,
@@ -871,7 +873,7 @@ impl RequestForwarder {
                             // 继续尝试下一个供应商
                             continue;
                         }
-                        ForwarderFailureDecision::NonRetryable => {
+                        ForwarderFailureDecision::NonRetryable { error_message } => {
                             // 不可重试：客户端层错误或客户端断连 → 不污染健康度，仅释放 HalfOpen permit
                             self.release_attempt_permit_neutral(
                                 attempt,
@@ -879,7 +881,7 @@ impl RequestForwarder {
                                 used_half_open_permit,
                             )
                             .await;
-                            self.record_failure_status_message(e.to_string()).await;
+                            self.record_failure_status_message(error_message).await;
                             return Err(ForwardError {
                                 error: e,
                                 provider: Some(provider.clone()),
