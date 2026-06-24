@@ -5991,6 +5991,21 @@ fn production_forwarder_uses_runtime_state_source_resource() {
         !runtime_trait_slice.contains("fn status(") && !runtime_trait_slice.contains("fn events("),
         "ForwarderRuntimeStateSource trait must not expose runtime status or event bus read handles"
     );
+    assert!(
+        adapter_source.contains("fn rectifier_retry_success_log_line")
+            && adapter_source.contains("fn rectifier_retry_failure_log_line"),
+        "default ForwarderRuntimeStateSource implementation must retain rectifier retry log-line projection"
+    );
+    assert!(
+        !runtime_trait_slice.contains("rectifier_retry_success_log_line")
+            && !runtime_trait_slice.contains("rectifier_retry_failure_log_line"),
+        "ForwarderRuntimeStateSource trait must not expose internal rectifier retry log-line helpers"
+    );
+    assert!(
+        impl_slice.contains("log_rectifier_retry_success(")
+            && impl_slice.contains("log_rectifier_retry_failure("),
+        "RequestForwarder must trigger rectifier retry logging through runtime-state behavior methods"
+    );
 
     let struct_forbidden_markers = [
         "status: Arc<RwLock<ProxyRuntimeStatus>>",
