@@ -6713,6 +6713,25 @@ fn production_forwarder_uses_request_source_resource() {
             && !upstream_url_input_slice.contains("claude_api_format: Option"),
         "ForwarderUpstreamUrlInput must not expose split transform-plan URL facts"
     );
+    let protocol_preparation_input_slice = function_slice(
+        &adapter_source,
+        "pub(crate) struct ForwarderProtocolPreparationInput",
+        "pub(crate) struct ForwarderProtocolPreparation {",
+    );
+    assert!(
+        protocol_preparation_input_slice.contains("transform_plan: &'a ForwarderTransformPlan"),
+        "ForwarderProtocolPreparationInput must carry the cohesive transform plan"
+    );
+    let protocol_preparation_slice = function_slice(
+        &adapter_source,
+        "pub(crate) struct ForwarderProtocolPreparation {",
+        "pub(crate) struct ForwarderUpstreamUrlInput",
+    );
+    assert!(
+        protocol_preparation_slice.contains("should_transform_claude_request: bool")
+            && protocol_preparation_slice.contains("codex_chat_enrichment_enabled: bool"),
+        "ForwarderProtocolPreparation must expose protocol-preparation decisions"
+    );
     let adapter_fact_inputs = [
         (
             "ForwarderUpstreamRequestLogInput",
@@ -6779,6 +6798,18 @@ fn production_forwarder_uses_request_source_resource() {
             && !impl_slice.contains("let is_claude_adapter = adapter_facts.is_claude_adapter"),
         "RequestForwarder must not split adapter facts into scalar locals for request assembly"
     );
+    let forbidden_protocol_plan_access = [
+        "let codex_responses_to_chat = transform_plan.codex_responses_to_chat",
+        "transform_plan.codex_responses_to_chat",
+        "transform_plan.use_claude_transform",
+        "transform_plan.claude_api_format_for_transform",
+    ];
+    for marker in forbidden_protocol_plan_access {
+        assert!(
+            !impl_slice.contains(marker),
+            "RequestForwarder must use ForwarderProtocolPreparation instead of direct protocol transform-plan marker `{marker}`"
+        );
+    }
     assert!(
         adapter_source.contains("fn request_body_model"),
         "default ForwarderRequestSource implementation must retain request body model projection"
