@@ -1011,20 +1011,17 @@ impl RequestForwarder {
                 is_claude_adapter,
             )
             .await;
-        if is_claude_adapter {
-            if let Some(api_format) = resolved_claude_api_format.as_deref() {
-                self.request_source.apply_claude_body_policies(
-                    ForwarderClaudeBodyPolicyInput {
-                        body: &mut mapped_body,
-                        provider,
-                        api_format,
-                        rectifier_enabled: self.rectifier_config.enabled,
-                        request_media_fallback: self.rectifier_config.request_media_fallback,
-                        request_media_heuristic: self.rectifier_config.request_media_heuristic,
-                    },
-                );
-            }
-        }
+        self.request_source.apply_claude_body_policies(
+            ForwarderClaudeBodyPolicyInput {
+                body: &mut mapped_body,
+                provider,
+                api_format: resolved_claude_api_format.as_deref(),
+                is_claude_adapter,
+                rectifier_enabled: self.rectifier_config.enabled,
+                request_media_fallback: self.rectifier_config.request_media_fallback,
+                request_media_heuristic: self.rectifier_config.request_media_heuristic,
+            },
+        );
         let transform_plan = self
             .request_source
             .transform_plan(ForwarderTransformPlanInput {

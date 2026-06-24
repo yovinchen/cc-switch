@@ -8760,7 +8760,8 @@ pub(crate) struct ForwarderAdapterFacts {
 pub(crate) struct ForwarderClaudeBodyPolicyInput<'a> {
     pub(crate) body: &'a mut Value,
     pub(crate) provider: &'a Provider,
-    pub(crate) api_format: &'a str,
+    pub(crate) api_format: Option<&'a str>,
+    pub(crate) is_claude_adapter: bool,
     pub(crate) rectifier_enabled: bool,
     pub(crate) request_media_fallback: bool,
     pub(crate) request_media_heuristic: bool,
@@ -9083,10 +9084,17 @@ impl ForwarderRequestSource for CcSwitchForwarderRequestSource {
         &self,
         input: ForwarderClaudeBodyPolicyInput<'_>,
     ) {
+        if !input.is_claude_adapter {
+            return;
+        }
+        let Some(api_format) = input.api_format else {
+            return;
+        };
+
         forwarder_claude_normalize_anthropic_messages(
             input.body,
             input.provider,
-            input.api_format,
+            api_format,
         );
         self.apply_media_prevention(ForwarderMediaPreventionInput {
             body: input.body,
@@ -15337,13 +15345,31 @@ base_url = "https://api.openai.com/v1"
         source.apply_claude_body_policies(ForwarderClaudeBodyPolicyInput {
             body: &mut body,
             provider: &provider,
-            api_format: "anthropic",
+            api_format: Some("anthropic"),
+            is_claude_adapter: true,
             rectifier_enabled: true,
             request_media_fallback: false,
             request_media_heuristic: false,
         });
 
         assert!(body.get("output_config").is_none());
+
+        let mut skipped_body = json!({
+            "model": "deepseek-v4-pro",
+            "output_config": { "effort": "max" },
+            "messages": [{ "role": "user", "content": "hello" }]
+        });
+        source.apply_claude_body_policies(ForwarderClaudeBodyPolicyInput {
+            body: &mut skipped_body,
+            provider: &provider,
+            api_format: Some("anthropic"),
+            is_claude_adapter: false,
+            rectifier_enabled: true,
+            request_media_fallback: false,
+            request_media_heuristic: false,
+        });
+
+        assert!(skipped_body.get("output_config").is_some());
     }
 
     #[test]

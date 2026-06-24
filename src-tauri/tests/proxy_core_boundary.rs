@@ -5663,6 +5663,47 @@ fn production_forwarder_delegates_claude_api_format_to_runtime_source() {
 }
 
 #[test]
+fn production_forwarder_delegates_claude_body_policy_gate_to_request_source() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let forwarder_path = manifest_dir.join("src/proxy/forwarder.rs");
+    let forwarder_source = fs::read_to_string(&forwarder_path).expect("read forwarder.rs");
+    let adapter_path = manifest_dir.join("src/proxy_core_adapter.rs");
+    let adapter_source = fs::read_to_string(&adapter_path).expect("read proxy_core_adapter.rs");
+
+    assert!(
+        adapter_source.contains("api_format: Option<&'a str>"),
+        "ForwarderRequestSource must own optional Claude API format gating for body policies"
+    );
+    assert!(
+        adapter_source.contains("is_claude_adapter: bool"),
+        "ForwarderRequestSource must own adapter gating for Claude body policies"
+    );
+
+    let impl_slice = function_slice(&forwarder_source, "impl RequestForwarder", "#[cfg(test)]");
+    let forbidden_markers = ["if let Some(api_format) = resolved_claude_api_format.as_deref()"];
+    let mut violations = Vec::new();
+
+    for (line_index, line) in production_lines(impl_slice) {
+        let code = line.split("//").next().unwrap_or_default();
+        for marker in forbidden_markers {
+            if code.contains(marker) {
+                violations.push(format!(
+                    "src/proxy/forwarder.rs impl RequestForwarder:{} contains direct Claude body policy gate marker `{}`",
+                    line_index + 1,
+                    marker
+                ));
+            }
+        }
+    }
+
+    assert!(
+        violations.is_empty(),
+        "forwarder must delegate Claude body policy gating to the request source:\n{}",
+        violations.join("\n")
+    );
+}
+
+#[test]
 fn production_forwarder_delegates_copilot_live_model_resolution_to_runtime_source() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let forwarder_path = manifest_dir.join("src/proxy/forwarder.rs");
