@@ -464,6 +464,7 @@
 453. `ForwarderRuntimeStateSource` trait 不再暴露 `terminal_forward_failure_log_line_for_error` 字符串 helper；默认 runtime state source 仍保留 terminal failure 日志行投影并通过 `log_terminal_forward_failure` 执行日志副作用。
 454. `ForwarderFailureDecision::Retryable` 不再携带 `log_line` 字符串；默认 runtime state source 仍保留 retryable forward failure 日志行投影并通过 `log_retryable_forward_failure` 执行日志副作用。
 455. `ForwarderAttemptAllowDecision::Stop` 不再携带 `ForwarderAttemptLimitReached` 日志 payload；默认 attempt runtime source 仍保留 max-attempt 日志行投影并在 `allow` 决策内执行日志副作用。
+456. `ForwarderRuntimeStateSource::forward_failure_decision` 不再接收 app/provider/attempt retry log context；普通 forward failure 的可重试分类只依赖 `ProxyError`，provider/attempt facts 只进入 `log_retryable_forward_failure` 日志行为入口。
 407. `proxy::types::ApiFormat` 未使用预留枚举已删除；Claude/OpenAI/Gemini format 判断统一沿用 `proxy-core` 的 provider kind、client format 和 response transform contract。
 408. `LogConfig` 已从 `proxy::types` 移到 `settings::LogConfig`；日志设置不再扩大代理运行态类型模块，proxy host types 只保留代理状态/备份等运行态数据。
 409. `RectifierConfig` 的默认值、serde 和 core 检测投影测试已从 host `proxy::types` 迁入 `proxy-core::ports`；host proxy types 不再承担 core 配置契约测试。
