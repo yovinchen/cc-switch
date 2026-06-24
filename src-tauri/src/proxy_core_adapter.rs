@@ -9043,8 +9043,7 @@ pub(crate) struct ForwarderPreparedRequest {
 pub(crate) struct ForwarderUpstreamRequestLogInput<'a> {
     pub(crate) adapter_facts: &'a ForwarderAdapterFacts,
     pub(crate) url: &'a str,
-    pub(crate) body_model_label: &'a str,
-    pub(crate) filtered_body: &'a Value,
+    pub(crate) prepared_request: &'a ForwarderPreparedRequest,
 }
 
 pub(crate) struct ForwarderCopilotRequestOptimizationInput<'a> {
@@ -9256,10 +9255,9 @@ pub(crate) struct ForwarderRequestPartsInput<'a> {
     pub(crate) url: &'a str,
     pub(crate) inbound_headers: &'a HeaderMap,
     pub(crate) provider: &'a Provider,
-    pub(crate) filtered_body: &'a Value,
+    pub(crate) prepared_request: &'a ForwarderPreparedRequest,
     pub(crate) auth_headers: &'a [(http::HeaderName, http::HeaderValue)],
     pub(crate) channel_header_overrides: Option<&'a Value>,
-    pub(crate) force_identity_encoding: bool,
     pub(crate) is_copilot: bool,
     pub(crate) adapter_facts: &'a ForwarderAdapterFacts,
     pub(crate) resolved_claude_api_format: Option<&'a str>,
@@ -9970,11 +9968,11 @@ impl ForwarderRequestSource for CcSwitchForwarderRequestSource {
     fn log_upstream_request(&self, input: ForwarderUpstreamRequestLogInput<'_>) {
         let tag = input.adapter_facts.adapter_name;
         let url = input.url;
-        let request_model = input.body_model_label;
+        let request_model = &input.prepared_request.body_model_label;
 
         log::info!("[{tag}] >>> 请求 URL: {url} (model={request_model})");
         if log::log_enabled!(log::Level::Debug) {
-            if let Ok(body_str) = serde_json::to_string(input.filtered_body) {
+            if let Ok(body_str) = serde_json::to_string(&input.prepared_request.body) {
                 log::debug!(
                     "[{tag}] >>> 请求体内容 ({}字节): {}",
                     body_str.len(),
@@ -10011,7 +10009,7 @@ impl ForwarderRequestSource for CcSwitchForwarderRequestSource {
             upstream_host: upstream_host.as_deref(),
             auth_headers: input.auth_headers,
             channel_header_overrides: input.channel_header_overrides,
-            force_identity_encoding: input.force_identity_encoding,
+            force_identity_encoding: input.prepared_request.force_identity_encoding,
             custom_user_agent: custom_user_agent.as_ref(),
             is_copilot: input.is_copilot,
             should_send_anthropic_headers,
@@ -10020,9 +10018,8 @@ impl ForwarderRequestSource for CcSwitchForwarderRequestSource {
             ensure_json_content_type: true,
         });
 
-        let body = serialize_upstream_request_body(input.method, input.filtered_body).map_err(
-            |error| ProxyError::Internal(request_body_serialize_error_message(error)),
-        )?;
+        let body = serialize_upstream_request_body(input.method, &input.prepared_request.body)
+            .map_err(|error| ProxyError::Internal(request_body_serialize_error_message(error)))?;
 
         validate_managed_account_upstream_auth(input.url, &ordered_headers)
             .map_err(|error| ProxyError::AuthError(error.to_string()))?;

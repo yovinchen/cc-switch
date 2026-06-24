@@ -959,11 +959,6 @@ impl RequestForwarder {
                     initial_outbound_model,
                     headers,
                 });
-        let filtered_body = prepared_request.body;
-        let outbound_model = prepared_request.outbound_model;
-        let request_model = prepared_request.body_model_label;
-        let request_is_streaming = prepared_request.request_is_streaming;
-        let force_identity_encoding = prepared_request.force_identity_encoding;
 
         let auth_provider = attempt.auth_provider();
         let auth_headers = self
@@ -986,12 +981,11 @@ impl RequestForwarder {
                     url: &url,
                     inbound_headers: headers,
                     provider,
-                    filtered_body: &filtered_body,
+                    prepared_request: &prepared_request,
                     auth_headers: &auth_headers,
                     channel_header_overrides: attempt
                         .channel()
                         .map(|channel| &channel.header_overrides),
-                    force_identity_encoding,
                     is_copilot,
                     adapter_facts: &adapter_facts,
                     resolved_claude_api_format: resolved_claude_api_format.as_deref(),
@@ -1005,9 +999,10 @@ impl RequestForwarder {
             .log_upstream_request(ForwarderUpstreamRequestLogInput {
                 adapter_facts: &adapter_facts,
                 url: &url,
-                body_model_label: &request_model,
-                filtered_body: &filtered_body,
+                prepared_request: &prepared_request,
             });
+        let request_is_streaming = prepared_request.request_is_streaming;
+        let outbound_model = prepared_request.outbound_model.clone();
 
         // 发送请求
         let response = self
