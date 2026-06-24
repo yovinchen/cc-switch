@@ -27,7 +27,7 @@ use crate::proxy_core_adapter::{
     ForwarderProtocolStateSourceRef,
     ForwarderRequestPartsInput, ForwarderRequestPreparationInput, ForwarderRequestSourceRef,
     ForwarderResponseFinalizationInput, ForwarderResponseSourceRef, ForwarderRuntimeStateSourceRef,
-    ForwarderTransportSourceRef,
+    ForwarderRuntimeConfig, ForwarderTransportSourceRef,
     ForwarderUpstreamRequestLogInput, ForwarderUpstreamTransportRequest, ForwarderUpstreamUrlInput,
     RectifierConfig, ResolvedChannelAttempt,
 };
@@ -108,7 +108,6 @@ impl RequestForwarder {
     #[allow(clippy::too_many_arguments)]
     pub(crate) fn new_preplanned(
         attempt_runtime_source: ForwarderAttemptRuntimeSourceRef,
-        non_streaming_timeout: u64,
         protocol_state_source: ForwarderProtocolStateSourceRef,
         runtime_state_source: ForwarderRuntimeStateSourceRef,
         auth_source: ForwarderAuthSourceRef,
@@ -116,19 +115,20 @@ impl RequestForwarder {
         transport_source: ForwarderTransportSourceRef,
         response_source: ForwarderResponseSourceRef,
         failover_switch_scheduler: FailoverSwitchSchedulerRef,
+        runtime_config: ForwarderRuntimeConfig,
         current_provider_id_at_start: String,
         session_id: String,
         session_client_provided: bool,
-        streaming_first_byte_timeout: u64,
-        _streaming_idle_timeout: u64,
-        rectifier_config: RectifierConfig,
-        optimizer_config: OptimizerConfig,
-        copilot_optimizer_config: CopilotOptimizerConfig,
-        max_retries: u32,
     ) -> Self {
+        let ForwarderRuntimeConfig {
+            options,
+            rectifier,
+            optimizer,
+            copilot_optimizer,
+        } = runtime_config;
         // max_retries 是「失败后重试次数」语义，attempt 上限 = retries + 1。
         // saturating_add 防止 u32::MAX + 1 溢出。
-        let max_attempts = (max_retries as usize).saturating_add(1);
+        let max_attempts = (options.max_retries as usize).saturating_add(1);
         Self {
             attempt_runtime_source,
             protocol_state_source,
@@ -141,12 +141,12 @@ impl RequestForwarder {
             current_provider_id_at_start,
             session_id,
             session_client_provided,
-            rectifier_config,
-            optimizer_config,
-            copilot_optimizer_config,
-            non_streaming_timeout: std::time::Duration::from_secs(non_streaming_timeout),
+            rectifier_config: rectifier,
+            optimizer_config: optimizer,
+            copilot_optimizer_config: copilot_optimizer,
+            non_streaming_timeout: std::time::Duration::from_secs(options.non_streaming_timeout),
             streaming_first_byte_timeout: std::time::Duration::from_secs(
-                streaming_first_byte_timeout,
+                options.streaming_first_byte_timeout,
             ),
             max_attempts,
         }

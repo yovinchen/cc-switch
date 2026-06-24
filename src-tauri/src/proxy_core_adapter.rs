@@ -10400,10 +10400,8 @@ pub(crate) async fn forward_with_preplanned_host_runtime(
         body,
         session_result,
     } = request;
-    let forwarder_options = forwarder_config.options;
     let forwarder = RequestForwarder::new_preplanned(
         attempt_runtime_source,
-        forwarder_options.non_streaming_timeout,
         protocol_state_source,
         runtime_state_source,
         auth_source,
@@ -10411,15 +10409,10 @@ pub(crate) async fn forward_with_preplanned_host_runtime(
         transport_source,
         response_source,
         failover_switch_scheduler,
+        forwarder_config,
         current_provider_id,
         session_result.session_id,
         session_result.client_provided,
-        forwarder_options.streaming_first_byte_timeout,
-        forwarder_options.streaming_idle_timeout,
-        forwarder_config.rectifier,
-        forwarder_config.optimizer,
-        forwarder_config.copilot_optimizer,
-        forwarder_options.max_retries,
     );
 
     let result = forwarder
