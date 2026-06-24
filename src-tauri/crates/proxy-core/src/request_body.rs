@@ -74,6 +74,13 @@ pub fn parse_json_request_body_or_null(bytes: &[u8]) -> Result<Value, RequestBod
     }
 }
 
+pub fn forwarder_request_body_model(body: &Value) -> Option<String> {
+    body.get("model")
+        .and_then(Value::as_str)
+        .filter(|model| !model.is_empty())
+        .map(str::to_string)
+}
+
 pub fn request_body_read_error_message(error: impl fmt::Display) -> String {
     format!("Failed to read request body: {error}")
 }
@@ -595,7 +602,7 @@ mod tests {
         clean_openai_tool_schema, codex_chat_reasoning_requested,
         codex_provider_catalog_model_ids_from_settings, filter_private_params,
         filter_private_params_with_whitelist, filter_private_params_with_whitelist_report,
-        inject_openai_stream_include_usage, is_openai_o_series,
+        forwarder_request_body_model, inject_openai_stream_include_usage, is_openai_o_series,
         map_anthropic_tool_choice_to_openai_chat, map_anthropic_tool_choice_to_openai_responses,
         map_codex_chat_reasoning_effort, method_allows_upstream_request_body,
         parse_json_request_body, parse_json_request_body_or_null,
@@ -610,6 +617,20 @@ mod tests {
     use http::Method;
     use serde_json::json;
     use std::collections::HashSet;
+
+    #[test]
+    fn forwarder_request_body_model_projects_non_empty_raw_model() {
+        assert_eq!(
+            forwarder_request_body_model(&json!({ "model": "upstream-sonnet" })).as_deref(),
+            Some("upstream-sonnet")
+        );
+        assert_eq!(forwarder_request_body_model(&json!({ "model": "" })), None);
+        assert_eq!(forwarder_request_body_model(&json!({})), None);
+        assert_eq!(
+            forwarder_request_body_model(&json!({ "model": "  " })).as_deref(),
+            Some("  ")
+        );
+    }
 
     #[test]
     fn parses_json_request_body_with_stable_error_message() {

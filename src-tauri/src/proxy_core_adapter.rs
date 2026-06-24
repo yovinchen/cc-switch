@@ -3103,8 +3103,8 @@ pub(crate) use crate::proxy_core::api::transport::{
     build_terminal_forward_failure_log, categorize_forward_failure,
     classify_copilot_request, claude_transform_endpoint_rewrite_input_from_body,
     contains_image_blocks, AuthProviderHeaderResolution, finalize_forwarder_auth_headers,
-    forwarder_protocol_preparation_from_transform_plan, forwarder_transform_plan_from_facts,
-    invalid_upstream_url_error_message,
+    forwarder_protocol_preparation_from_transform_plan, forwarder_request_body_model,
+    forwarder_transform_plan_from_facts, invalid_upstream_url_error_message,
     is_codex_chat_full_endpoint_base, is_openai_o_series, is_unsupported_image_error,
     merge_copilot_tool_results,
     prepare_optional_copilot_auth_optimization_for_forwarder,
@@ -9079,13 +9079,6 @@ impl CcSwitchForwarderRequestSource {
         }
     }
 
-    fn request_body_model(&self, body: &Value) -> Option<String> {
-        body.get("model")
-            .and_then(Value::as_str)
-            .filter(|model| !model.is_empty())
-            .map(str::to_string)
-    }
-
     fn transform_provider_request_body(
         &self,
         input: ForwarderProviderTransformInput<'_>,
@@ -9315,7 +9308,7 @@ impl ForwarderRequestSource for CcSwitchForwarderRequestSource {
         &self,
         input: ForwarderRequestBodyTransformInput<'_>,
     ) -> Result<ForwarderRequestBodyTransform, ProxyError> {
-        let outbound_model = self.request_body_model(&input.body);
+        let outbound_model = forwarder_request_body_model(&input.body);
         let body = if input.transform_plan.codex_responses_to_chat {
             self.convert_codex_responses_to_chat_body(ForwarderCodexResponsesToChatInput {
                 body: input.body,
@@ -9620,7 +9613,7 @@ impl ForwarderRequestSource for CcSwitchForwarderRequestSource {
             );
         }
 
-        let body_model = self.request_body_model(&filtered_body);
+        let body_model = forwarder_request_body_model(&filtered_body);
         let body_model_label = body_model.clone().unwrap_or_else(|| "<none>".to_string());
         let outbound_model = body_model.clone().or(input.initial_outbound_model);
 
@@ -15973,20 +15966,6 @@ base_url = "https://api.openai.com/v1"
             .expect("prepared body");
 
         assert_eq!(body["model"], "upstream-sonnet");
-    }
-
-    #[test]
-    fn forwarder_request_source_projects_request_body_model() {
-        let source = CcSwitchForwarderRequestSource::new(default_managed_account_runtime_source());
-
-        assert_eq!(
-            source
-                .request_body_model(&json!({ "model": "upstream-sonnet" }))
-                .as_deref(),
-            Some("upstream-sonnet")
-        );
-        assert_eq!(source.request_body_model(&json!({ "model": "" })), None);
-        assert_eq!(source.request_body_model(&json!({})), None);
     }
 
     #[test]
