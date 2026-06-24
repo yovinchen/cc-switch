@@ -6062,7 +6062,9 @@ impl CcSwitchProviderRouterSources {
         ProviderRouterSources::new(
             Arc::new(CcSwitchProviderRouterConfigSource { db: db.clone() }),
             Arc::new(CcSwitchProviderRouterProviderSource { db: db.clone() }),
-            Arc::new(CcSwitchProviderRouterChannelSource { db: db.clone() }),
+            Arc::new(CcSwitchProviderRouterChannelSource {
+                source: CcSwitchChannelSource::new(db.clone()),
+            }),
             Arc::new(CcSwitchProviderRouterHealthStore { db }),
         )
     }
@@ -6110,16 +6112,19 @@ impl ProviderRouterProviderSource for CcSwitchProviderRouterProviderSource {
 }
 
 struct CcSwitchProviderRouterChannelSource {
-    db: Arc<Database>,
+    source: CcSwitchChannelSource,
 }
 
 impl ProviderRouterChannelSource for CcSwitchProviderRouterChannelSource {
-    fn channel_route_inputs(
-        &self,
-        app_type: &str,
-    ) -> Result<(Vec<RouteResolveChannelInput>, ChannelRouteSource), AppError> {
-        router_channel_route_inputs_from_db_source(&self.db, app_type)
-            .map_err(app_error_from_proxy_core_error)
+    fn channel_route_inputs<'a>(
+        &'a self,
+        app_type: &'a str,
+    ) -> BoxFuture<'a, Result<(Vec<RouteResolveChannelInput>, ChannelRouteSource), AppError>> {
+        Box::pin(async move {
+            router_channel_route_inputs_from_channel_source(&self.source, app_type)
+                .await
+                .map_err(app_error_from_proxy_core_error)
+        })
     }
 }
 
@@ -7490,8 +7495,15 @@ pub(crate) fn channel_route_records_from_db_source(
     .map_err(|error| app_error("load channel route records", error))
 }
 
+#[cfg(test)]
 pub(crate) fn proxy_channel_record_to_route_resolve_channel_input(
     channel: ProxyChannelRecord,
+) -> RouteResolveChannelInput {
+    channel_record_to_route_resolve_channel_input(proxy_channel_record_to_core(channel))
+}
+
+pub(crate) fn channel_record_to_route_resolve_channel_input(
+    channel: ChannelRecord,
 ) -> RouteResolveChannelInput {
     route_resolve_channel_input_from_record(RouteResolveChannelRecordInput {
         channel_id: channel.id,
@@ -7511,27 +7523,28 @@ pub(crate) fn proxy_channel_record_to_route_resolve_channel_input(
             .collect(),
         priority: channel.priority,
         weight: channel.weight,
-        source_kind: channel.source_kind.as_str().to_string(),
+        source_kind: channel.source_kind,
     })
 }
 
-pub(crate) fn proxy_channel_records_to_route_resolve_channel_inputs(
-    channels: impl IntoIterator<Item = ProxyChannelRecord>,
+pub(crate) fn channel_records_to_route_resolve_channel_inputs(
+    channels: impl IntoIterator<Item = ChannelRecord>,
 ) -> Vec<RouteResolveChannelInput> {
     channels
         .into_iter()
-        .map(proxy_channel_record_to_route_resolve_channel_input)
+        .map(channel_record_to_route_resolve_channel_input)
         .collect()
 }
 
-pub(crate) fn router_channel_route_inputs_from_db_source(
-    db: &Database,
+pub(crate) async fn router_channel_route_inputs_from_channel_source(
+    source: &(dyn ChannelSource + Send + Sync),
     app_type: &str,
 ) -> ProxyCoreResult<(Vec<RouteResolveChannelInput>, ChannelRouteSource)> {
-    let (channels, source) = channel_route_records_from_db_source(db, app_type)?;
+    let app = AppKind::from(app_type);
+    let (route_source, channels) = source.list_channel_records(&app).await?;
     Ok((
-        proxy_channel_records_to_route_resolve_channel_inputs(channels),
-        source,
+        channel_records_to_route_resolve_channel_inputs(channels),
+        route_source,
     ))
 }
 

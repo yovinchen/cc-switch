@@ -39,10 +39,10 @@ pub(crate) trait ProviderRouterProviderSource: Send + Sync {
 }
 
 pub(crate) trait ProviderRouterChannelSource: Send + Sync {
-    fn channel_route_inputs(
-        &self,
-        app_type: &str,
-    ) -> Result<(Vec<RouteResolveChannelInput>, ChannelRouteSource), AppError>;
+    fn channel_route_inputs<'a>(
+        &'a self,
+        app_type: &'a str,
+    ) -> BoxFuture<'a, Result<(Vec<RouteResolveChannelInput>, ChannelRouteSource), AppError>>;
 }
 
 pub(crate) trait ProviderRouterHealthStore: Send + Sync {
@@ -157,7 +157,7 @@ impl ProviderRouter {
         &self,
         app_type: &str,
     ) -> Result<(Vec<RouteResolveChannelInput>, ChannelRouteSource), AppError> {
-        self.sources.channels.channel_route_inputs(app_type)
+        self.sources.channels.channel_route_inputs(app_type).await
     }
 
     /// Query live Channel circuit breaker availability for management dry-run candidates.
