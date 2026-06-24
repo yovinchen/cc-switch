@@ -8080,7 +8080,7 @@ pub(crate) type FailoverSwitchSchedulerRef =
     Arc<dyn FailoverSwitchScheduler + Send + Sync>;
 
 pub(crate) trait FailoverSwitchScheduler {
-    fn schedule_switch(&self, app_type: String, provider_id: String, provider_name: String);
+    fn schedule_switch(&self, app_type: &str, target: ForwarderFailoverSwitchTarget);
 }
 
 struct CcSwitchFailoverSwitchScheduler {
@@ -8101,12 +8101,12 @@ impl CcSwitchFailoverSwitchScheduler {
 }
 
 impl FailoverSwitchScheduler for CcSwitchFailoverSwitchScheduler {
-    fn schedule_switch(&self, app_type: String, provider_id: String, provider_name: String) {
+    fn schedule_switch(&self, app_type: &str, target: ForwarderFailoverSwitchTarget) {
         self.manager.clone().spawn_try_switch(
             self.app_handle.clone(),
-            app_type,
-            provider_id,
-            provider_name,
+            app_type.to_string(),
+            target.provider_id,
+            target.provider_name,
         );
     }
 }
@@ -8123,7 +8123,7 @@ struct NoopFailoverSwitchScheduler;
 
 #[cfg(test)]
 impl FailoverSwitchScheduler for NoopFailoverSwitchScheduler {
-    fn schedule_switch(&self, _app_type: String, _provider_id: String, _provider_name: String) {}
+    fn schedule_switch(&self, _app_type: &str, _target: ForwarderFailoverSwitchTarget) {}
 }
 
 #[cfg(test)]

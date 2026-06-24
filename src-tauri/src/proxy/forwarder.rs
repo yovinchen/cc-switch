@@ -18,7 +18,7 @@ use crate::proxy_core_adapter::{
     ForwarderFailureDecision, ForwarderMediaRetryPlanInput, ForwarderProviderRequestBodyInput,
     ForwarderProviderUrlFacts, ForwarderProviderUrlFactsInput,
     ForwarderRequestBodyTransformInput, ForwarderRequestRectifierPlan,
-    ForwarderRectifierRetryFailureDecision, ForwarderRectifierRetryKind, ForwarderFailoverSwitchTarget,
+    ForwarderRectifierRetryFailureDecision, ForwarderRectifierRetryKind,
     ForwarderThinkingBudgetRectifierInput, ForwarderThinkingSignatureRectifierInput,
     ForwarderTransformPlanInput, OptimizerConfig,
     FailoverSwitchSchedulerRef, ForwarderAttemptRuntimeSourceRef,
@@ -219,20 +219,9 @@ impl RequestForwarder {
             .record_success_status(self.current_provider_id_at_start.as_str(), provider)
             .await;
         if let Some(target) = switch_target {
-            self.schedule_failover_switch(app_type, target);
+            self.failover_switch_scheduler
+                .schedule_switch(app_type, target);
         }
-    }
-
-    fn schedule_failover_switch(
-        &self,
-        app_type: &str,
-        target: ForwarderFailoverSwitchTarget,
-    ) {
-        self.failover_switch_scheduler.schedule_switch(
-            app_type.to_string(),
-            target.provider_id,
-            target.provider_name,
-        );
     }
 
     async fn complete_successful_attempt(
