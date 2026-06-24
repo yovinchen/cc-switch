@@ -6533,14 +6533,19 @@ fn production_forwarder_uses_request_source_resource() {
         adapter_source.contains("fn request_body_model"),
         "default ForwarderRequestSource implementation must retain request body model projection"
     );
+    assert!(
+        adapter_source.contains("fn transform_provider_request_body"),
+        "default ForwarderRequestSource implementation must retain provider transform wrapping"
+    );
     let request_trait_slice = function_slice(
         &adapter_source,
         "pub(crate) trait ForwarderRequestSource",
         "struct CcSwitchForwarderRequestSource",
     );
     assert!(
-        !request_trait_slice.contains("request_body_model"),
-        "ForwarderRequestSource trait must not expose internal request body model projection helpers"
+        !request_trait_slice.contains("request_body_model")
+            && !request_trait_slice.contains("transform_provider_request_body"),
+        "ForwarderRequestSource trait must not expose internal request body model or provider transform helpers"
     );
 
     let impl_forbidden_markers = [
