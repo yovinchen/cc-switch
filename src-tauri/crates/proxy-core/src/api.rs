@@ -144,6 +144,8 @@ pub mod ports {
         launch_env_vars_from_provider_settings,
         live_env_base_url_matches,
         normalize_claude_models_in_value, normalize_provider_settings_for_storage,
+        opencode_common_config_value_from_settings,
+        openclaw_common_config_value_from_settings,
         provider_credential_issue_spec,
         provider_default_live_import_settings,
         provider_initial_live_config_managed_marker, provider_key_change_policy_issue_for_app,

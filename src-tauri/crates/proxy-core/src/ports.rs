@@ -2006,6 +2006,30 @@ pub fn openclaw_credential_parts_from_settings(
     }
 }
 
+pub fn openclaw_common_config_value_from_settings(settings: &Value) -> Value {
+    let mut config = settings.clone();
+
+    if let Some(obj) = config.as_object_mut() {
+        obj.remove("apiKey");
+        obj.remove("baseUrl");
+    }
+
+    config
+}
+
+pub fn opencode_common_config_value_from_settings(settings: &Value) -> Value {
+    let mut config = settings.clone();
+
+    if let Some(obj) = config.as_object_mut() {
+        if let Some(options) = obj.get_mut("options").and_then(Value::as_object_mut) {
+            options.remove("apiKey");
+            options.remove("baseURL");
+        }
+    }
+
+    config
+}
+
 pub fn provider_credential_issue_spec(issue: ProviderCredentialIssue) -> LocalizedErrorSpec {
     match issue {
         ProviderCredentialIssue::ClaudeEnvMissing => LocalizedErrorSpec::new(
@@ -4408,7 +4432,8 @@ mod tests {
         launch_env_vars_from_provider_settings, live_env_base_url_matches, live_takeover_app_kinds,
         live_token_sync_app_label, normalize_claude_models_in_value,
         normalize_provider_settings_for_storage, provider_default_live_import_settings,
-        openclaw_credential_parts_from_settings, opencode_credential_parts_from_settings,
+        openclaw_common_config_value_from_settings, openclaw_credential_parts_from_settings,
+        opencode_common_config_value_from_settings, opencode_credential_parts_from_settings,
         provider_settings_with_live_token_sync, proxy_urls_match,
         proxy_config_preserving_live_takeover_active,
         proxy_app_config_from_parts, proxy_config_with_ephemeral_listen_port,
@@ -5899,6 +5924,22 @@ mod tests {
         assert_eq!(opencode.api_key, Some("opencode-key"));
         assert_eq!(opencode.base_url, Some("https://opencode.example"));
         assert_eq!(
+            opencode_common_config_value_from_settings(&json!({
+                "npm": "@ai-sdk/openai",
+                "options": {
+                    "apiKey": "opencode-key",
+                    "baseURL": "https://opencode.example",
+                    "timeout": 30
+                },
+                "models": {"fast": "gpt-4o-mini"}
+            })),
+            json!({
+                "npm": "@ai-sdk/openai",
+                "options": {"timeout": 30},
+                "models": {"fast": "gpt-4o-mini"}
+            })
+        );
+        assert_eq!(
             opencode_credential_parts_from_settings(&json!({})),
             Err(OpenCodeCredentialIssue::MissingOptions)
         );
@@ -5910,6 +5951,18 @@ mod tests {
         let openclaw = openclaw_credential_parts_from_settings(&openclaw_settings);
         assert_eq!(openclaw.api_key, Some("openclaw-key"));
         assert_eq!(openclaw.base_url, Some("https://openclaw.example"));
+        assert_eq!(
+            openclaw_common_config_value_from_settings(&json!({
+                "apiKey": "openclaw-key",
+                "baseUrl": "https://openclaw.example",
+                "api": {"chat": "/v1/chat/completions"},
+                "models": {"fast": "claude-sonnet"}
+            })),
+            json!({
+                "api": {"chat": "/v1/chat/completions"},
+                "models": {"fast": "claude-sonnet"}
+            })
+        );
     }
 
     #[test]

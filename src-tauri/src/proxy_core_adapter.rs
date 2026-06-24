@@ -1720,6 +1720,10 @@ pub(crate) use crate::proxy_core::api::domain::{
 };
 
 pub(crate) use crate::proxy_core::api::domain::extract_openclaw_stream_check_base_url;
+use crate::proxy_core::api::ports::{
+    openclaw_common_config_value_from_settings as core_openclaw_common_config_value_from_settings,
+    opencode_common_config_value_from_settings as core_opencode_common_config_value_from_settings,
+};
 
 pub(crate) fn provider_openclaw_stream_check_base_url(provider: &Provider) -> Option<String> {
     extract_openclaw_stream_check_base_url(&provider.settings_config)
@@ -1840,14 +1844,7 @@ pub(crate) fn provider_from_openclaw_live_config(
 }
 
 pub(crate) fn openclaw_common_config_value_from_settings(settings: &Value) -> Value {
-    let mut config = settings.clone();
-
-    if let Some(obj) = config.as_object_mut() {
-        obj.remove("apiKey");
-        obj.remove("baseUrl");
-    }
-
-    config
+    core_openclaw_common_config_value_from_settings(settings)
 }
 
 pub(crate) use crate::proxy_core::api::domain::extract_hermes_stream_check_base_url;
@@ -1894,16 +1891,7 @@ pub(crate) fn provider_opencode_stream_check_base_url(
 }
 
 pub(crate) fn opencode_common_config_value_from_settings(settings: &Value) -> Value {
-    let mut config = settings.clone();
-
-    if let Some(obj) = config.as_object_mut() {
-        if let Some(options) = obj.get_mut("options").and_then(Value::as_object_mut) {
-            options.remove("apiKey");
-            options.remove("baseURL");
-        }
-    }
-
-    config
+    core_opencode_common_config_value_from_settings(settings)
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
