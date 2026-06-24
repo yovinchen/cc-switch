@@ -6001,6 +6001,10 @@ fn production_forwarder_uses_runtime_state_source_resource() {
         "default ForwarderRuntimeStateSource implementation must retain terminal failure log-line projection"
     );
     assert!(
+        adapter_source.contains("fn retryable_forward_failure_log_line"),
+        "default ForwarderRuntimeStateSource implementation must retain retryable failure log-line projection"
+    );
+    assert!(
         !runtime_trait_slice.contains("rectifier_retry_success_log_line")
             && !runtime_trait_slice.contains("rectifier_retry_failure_log_line"),
         "ForwarderRuntimeStateSource trait must not expose internal rectifier retry log-line helpers"
@@ -6010,6 +6014,10 @@ fn production_forwarder_uses_runtime_state_source_resource() {
         "ForwarderRuntimeStateSource trait must not expose internal terminal failure log-line helper"
     );
     assert!(
+        !runtime_trait_slice.contains("retryable_forward_failure_log_line"),
+        "ForwarderRuntimeStateSource trait must not expose internal retryable failure log-line helper"
+    );
+    assert!(
         impl_slice.contains("log_rectifier_retry_success(")
             && impl_slice.contains("log_rectifier_retry_failure("),
         "RequestForwarder must trigger rectifier retry logging through runtime-state behavior methods"
@@ -6017,6 +6025,10 @@ fn production_forwarder_uses_runtime_state_source_resource() {
     assert!(
         impl_slice.contains("log_terminal_forward_failure("),
         "RequestForwarder must trigger terminal failure logging through a runtime-state behavior method"
+    );
+    assert!(
+        impl_slice.contains("log_retryable_forward_failure("),
+        "RequestForwarder must trigger retryable failure logging through a runtime-state behavior method"
     );
 
     let struct_forbidden_markers = [
