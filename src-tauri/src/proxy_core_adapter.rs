@@ -9176,6 +9176,16 @@ pub(crate) struct ForwarderTransformPlan {
     pub(crate) codex_responses_to_chat: bool,
 }
 
+pub(crate) struct ForwarderProtocolPreparationInput<'a> {
+    pub(crate) transform_plan: &'a ForwarderTransformPlan,
+}
+
+pub(crate) struct ForwarderProtocolPreparation {
+    pub(crate) should_transform_claude_request: bool,
+    pub(crate) claude_api_format_for_transform: Option<String>,
+    pub(crate) codex_chat_enrichment_enabled: bool,
+}
+
 pub(crate) struct ForwarderUpstreamUrlInput<'a> {
     pub(crate) adapter: &'a ForwarderAdapterHandle,
     pub(crate) base_url: &'a str,
@@ -9297,6 +9307,11 @@ pub(crate) trait ForwarderRequestSource {
     ) -> Result<ForwarderRequestBodyTransform, ProxyError>;
 
     fn transform_plan(&self, input: ForwarderTransformPlanInput<'_>) -> ForwarderTransformPlan;
+
+    fn protocol_preparation(
+        &self,
+        input: ForwarderProtocolPreparationInput<'_>,
+    ) -> ForwarderProtocolPreparation;
 
     fn plan_upstream_url(
         &self,
@@ -9662,6 +9677,21 @@ impl ForwarderRequestSource for CcSwitchForwarderRequestSource {
                 .is_claude_adapter
                 .then(|| claude_api_format.unwrap_or("anthropic").to_string()),
             codex_responses_to_chat,
+        }
+    }
+
+    fn protocol_preparation(
+        &self,
+        input: ForwarderProtocolPreparationInput<'_>,
+    ) -> ForwarderProtocolPreparation {
+        let should_transform_claude_request = input.transform_plan.use_claude_transform
+            && !input.transform_plan.codex_responses_to_chat;
+        ForwarderProtocolPreparation {
+            should_transform_claude_request,
+            claude_api_format_for_transform: should_transform_claude_request
+                .then(|| input.transform_plan.claude_api_format_for_transform.clone())
+                .flatten(),
+            codex_chat_enrichment_enabled: input.transform_plan.codex_responses_to_chat,
         }
     }
 
@@ -15819,6 +15849,45 @@ base_url = "https://api.openai.com/v1"
         assert!(codex_plan.claude_api_format_for_url.is_none());
         assert!(codex_plan.claude_api_format_for_transform.is_none());
         assert!(!codex_plan.codex_responses_to_chat);
+    }
+
+    #[test]
+    fn forwarder_request_source_projects_protocol_preparation() {
+        let source = default_forwarder_request_source();
+        let claude_transform_plan = ForwarderTransformPlan {
+            needs_transform: true,
+            use_claude_transform: true,
+            use_provider_transform: false,
+            claude_api_format_for_url: Some("openai_chat".to_string()),
+            claude_api_format_for_transform: Some("openai_chat".to_string()),
+            codex_responses_to_chat: false,
+        };
+        let claude_preparation =
+            source.protocol_preparation(ForwarderProtocolPreparationInput {
+                transform_plan: &claude_transform_plan,
+            });
+        assert!(claude_preparation.should_transform_claude_request);
+        assert_eq!(
+            claude_preparation.claude_api_format_for_transform.as_deref(),
+            Some("openai_chat")
+        );
+        assert!(!claude_preparation.codex_chat_enrichment_enabled);
+
+        let codex_bridge_plan = ForwarderTransformPlan {
+            needs_transform: true,
+            use_claude_transform: true,
+            use_provider_transform: false,
+            claude_api_format_for_url: Some("openai_chat".to_string()),
+            claude_api_format_for_transform: Some("openai_chat".to_string()),
+            codex_responses_to_chat: true,
+        };
+        let codex_preparation =
+            source.protocol_preparation(ForwarderProtocolPreparationInput {
+                transform_plan: &codex_bridge_plan,
+            });
+        assert!(!codex_preparation.should_transform_claude_request);
+        assert!(codex_preparation.claude_api_format_for_transform.is_none());
+        assert!(codex_preparation.codex_chat_enrichment_enabled);
     }
 
     #[test]

@@ -15,6 +15,7 @@ use crate::proxy_core_adapter::{
     ForwarderAuthHeadersInput, ForwarderAuthSourceRef,
     ForwarderMaybeCopilotAuthOptimizationInput, ForwarderChannelResponseStatusInput,
     ForwarderClaudeApiFormatInput, ForwarderClaudeBodyPolicyInput,
+    ForwarderProtocolPreparationInput,
     ForwarderCopilotDynamicBaseUrlInput, ForwarderCopilotLiveModelInput,
     ForwarderCopilotRequestOptimizationGateInput,
     ForwarderFailureDecision, ForwarderMediaRetryPlanInput, ForwarderProviderRequestBodyInput,
@@ -888,7 +889,11 @@ impl RequestForwarder {
                 resolved_claude_api_format: resolved_claude_api_format.as_deref(),
                 adapter_facts: &adapter_facts,
             });
-        let codex_responses_to_chat = transform_plan.codex_responses_to_chat;
+        let protocol_preparation =
+            self.request_source
+                .protocol_preparation(ForwarderProtocolPreparationInput {
+                    transform_plan: &transform_plan,
+                });
         let url_plan = self.request_source.plan_upstream_url(ForwarderUpstreamUrlInput {
             adapter,
             base_url: &base_url,
@@ -902,15 +907,13 @@ impl RequestForwarder {
         let effective_endpoint = url_plan.effective_endpoint;
         let url = url_plan.url;
 
-        let claude_transformed_body = if transform_plan.use_claude_transform
-            && !codex_responses_to_chat
-        {
+        let claude_transformed_body = if protocol_preparation.should_transform_claude_request {
             Some(
                 self.protocol_state_source
                     .transform_claude_request(ForwarderClaudeProtocolTransformInput {
                         body: mapped_body.clone(),
                         provider,
-                        api_format: transform_plan.claude_api_format_for_transform.as_deref(),
+                        api_format: protocol_preparation.claude_api_format_for_transform.as_deref(),
                         session_id: &self.session_id,
                         session_client_provided: self.session_client_provided,
                     })
@@ -923,7 +926,7 @@ impl RequestForwarder {
         self.protocol_state_source
             .enrich_codex_chat_request(ForwarderCodexChatProtocolEnrichmentInput {
                 body: &mut mapped_body,
-                enabled: codex_responses_to_chat,
+                enabled: protocol_preparation.codex_chat_enrichment_enabled,
             })
             .await;
         let transformed_request = self.request_source.transform_request_body(
