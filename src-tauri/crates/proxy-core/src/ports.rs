@@ -1067,6 +1067,10 @@ pub fn proxy_config_with_live_takeover_active(
     config
 }
 
+pub fn live_takeover_app_kinds() -> [AppKind; 3] {
+    [AppKind::Claude, AppKind::Codex, AppKind::Gemini]
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ProxyServerInfo {
     pub address: String,
@@ -3143,7 +3147,7 @@ mod tests {
         channel_health_update_from_input,
         channel_model_record_from_input, channel_reachability_result_from_stream_check_result,
         channel_route_source_for_materialized_count,
-        proxy_config_preserving_live_takeover_active,
+        live_takeover_app_kinds, proxy_config_preserving_live_takeover_active,
         proxy_app_config_from_parts, proxy_config_with_ephemeral_listen_port,
         proxy_config_with_live_takeover_active, proxy_global_config_from_global_config,
         proxy_runtime_config_from_proxy_config,
@@ -4374,6 +4378,16 @@ mod tests {
         let enabled = proxy_config_with_live_takeover_active(cleared, true);
         assert!(enabled.live_takeover_active);
         assert_eq!(enabled.listen_port, config.listen_port);
+    }
+
+    #[test]
+    fn live_takeover_app_kinds_are_core_owned_switch_mode_apps() {
+        assert_eq!(
+            live_takeover_app_kinds(),
+            [AppKind::Claude, AppKind::Codex, AppKind::Gemini]
+        );
+        assert!(!live_takeover_app_kinds().contains(&AppKind::ClaudeDesktop));
+        assert!(!live_takeover_app_kinds().contains(&AppKind::Custom("opencode".to_string())));
     }
 
     #[test]

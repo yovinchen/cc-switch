@@ -1314,6 +1314,7 @@
 本轮继续把更新 proxy config 时保留 legacy `live_takeover_active` 的规则收敛到 `proxy-core::ports::proxy_config_preserving_live_takeover_active`：adapter 只负责读取 previous config、持久化 new config 和返回前后配置，不再直接维护 legacy flag 复制规则。
 本轮继续把 legacy `live_takeover_active` flag 的配置更新规则收敛到 `proxy-core::ports::proxy_config_with_live_takeover_active`：best-effort 清理路径仍由 adapter 负责 DB 读写，但不再直接改 `ProxyConfig.live_takeover_active` 字段。
 本轮继续把 app 级 proxy config 的 enabled flag 更新规则收敛到 `proxy-core::ports::app_proxy_config_with_enabled`：adapter 只负责读取/写回 app config 和错误文案，不再维护 `AppProxyConfig.enabled` 字段更新 helper。
+本轮继续把 Live 接管支持的 switch-mode app catalog 收敛到 `proxy-core::ports::live_takeover_app_kinds`：core 统一维护 Claude/Codex/Gemini 清单与顺序，adapter 仅映射为宿主 `AppType` 并保留 DB/live 文件副作用。
 
 当前原则：核心 crate 可以新增端口和领域字段，但不得引入 `tauri`、`Database`、settings、commands、services 等宿主依赖；现有 runtime 行为必须继续通过 targeted tests 证明不回归。
 

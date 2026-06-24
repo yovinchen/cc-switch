@@ -295,7 +295,7 @@ pub(crate) type ProxyConfig = crate::proxy_core::api::ports::ProxyConfig;
 pub(crate) type ProxyRuntimeStatus = crate::proxy_core::api::ports::ProxyRuntimeStatus;
 
 pub(crate) use crate::proxy_core::api::ports::{
-    app_proxy_config_with_enabled as proxy_app_config_with_enabled,
+    app_proxy_config_with_enabled as proxy_app_config_with_enabled, live_takeover_app_kinds,
     proxy_config_preserving_live_takeover_active, proxy_config_with_ephemeral_listen_port,
     proxy_config_with_live_takeover_active, proxy_runtime_status_stopped,
 };
@@ -2321,7 +2321,11 @@ pub(crate) fn provider_switch_requires_takeover_lock(app_type: &AppType) -> bool
 }
 
 pub(crate) fn live_takeover_app_types() -> [AppType; 3] {
-    [AppType::Claude, AppType::Codex, AppType::Gemini]
+    live_takeover_app_kinds().map(|app| {
+        app.as_str()
+            .parse::<AppType>()
+            .expect("proxy-core live takeover app kind must be supported by cc-switch")
+    })
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

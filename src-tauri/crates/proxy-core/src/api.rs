@@ -121,7 +121,7 @@ pub mod ports {
         proxy_app_config_from_parts, proxy_config_with_ephemeral_listen_port,
         proxy_config_preserving_live_takeover_active, proxy_config_with_live_takeover_active,
         proxy_global_config_from_global_config, proxy_runtime_config_from_proxy_config,
-        proxy_runtime_status_stopped, proxy_live_urls_from_listen_parts,
+        proxy_runtime_status_stopped, live_takeover_app_kinds, proxy_live_urls_from_listen_parts,
         proxy_server_info_from_parts, proxy_takeover_status_from_enabled_options,
         proxy_takeover_status_from_parts, apply_proxy_runtime_uptime,
         record_active_connection_acquired_status, record_active_connection_released_status,
