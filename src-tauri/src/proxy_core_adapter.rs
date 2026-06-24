@@ -76,7 +76,6 @@ pub(crate) struct CcSwitchProxyRuntime {
     pub(crate) transport_source: ForwarderTransportSourceRef,
     pub(crate) response_source: ForwarderResponseSourceRef,
     pub(crate) failover_switch_scheduler: FailoverSwitchSchedulerRef,
-    pub(crate) managed_account_runtime_source: ManagedAccountRuntimeSourceRef,
 }
 
 pub(crate) type CcSwitchProxyRuntimeServices =
@@ -493,7 +492,6 @@ pub(crate) fn proxy_state_from_runtime_sources(
         current_providers.clone(),
         events.clone(),
     );
-    let request_source = default_forwarder_request_source();
     let transport_source = default_forwarder_transport_source();
     let response_source = default_forwarder_response_source();
     let failover_switch_scheduler = failover_switch_scheduler_from_runtime_sources(
@@ -503,6 +501,9 @@ pub(crate) fn proxy_state_from_runtime_sources(
     let managed_account_runtime_source =
         managed_account_runtime_source_from_app_handle(app_handle.clone());
     let auth_source = forwarder_auth_source_from_managed_account_runtime_source(
+        managed_account_runtime_source.clone(),
+    );
+    let request_source = forwarder_request_source_from_managed_account_runtime_source(
         managed_account_runtime_source.clone(),
     );
     let proxy_core_services =
@@ -519,7 +520,6 @@ pub(crate) fn proxy_state_from_runtime_sources(
             transport_source,
             response_source,
             failover_switch_scheduler,
-            managed_account_runtime_source,
         }));
 
     ProxyState {
@@ -9048,6 +9048,26 @@ pub(crate) struct ForwarderCopilotRequestOptimizationGateInput<'a> {
     pub(crate) is_copilot: bool,
 }
 
+pub(crate) struct ForwarderCopilotLiveModelInput<'a> {
+    pub(crate) provider: &'a Provider,
+    pub(crate) body: &'a mut Value,
+    pub(crate) is_copilot: bool,
+}
+
+pub(crate) struct ForwarderCopilotDynamicBaseUrlInput<'a> {
+    pub(crate) provider: &'a Provider,
+    pub(crate) base_url: &'a mut String,
+    pub(crate) is_copilot: bool,
+    pub(crate) is_full_url: bool,
+}
+
+pub(crate) struct ForwarderClaudeApiFormatInput<'a> {
+    pub(crate) provider: &'a Provider,
+    pub(crate) body: &'a Value,
+    pub(crate) is_copilot: bool,
+    pub(crate) is_claude_adapter: bool,
+}
+
 pub(crate) struct ForwarderCopilotRequestOptimization {
     pub(crate) body: Value,
     pub(crate) classification: CopilotClassification,
@@ -9304,6 +9324,21 @@ pub(crate) trait ForwarderRequestSource {
         input: ForwarderCopilotRequestOptimizationGateInput<'_>,
     ) -> ForwarderMaybeCopilotRequestOptimization;
 
+    fn apply_copilot_live_model_for_adapter<'a>(
+        &'a self,
+        input: ForwarderCopilotLiveModelInput<'a>,
+    ) -> BoxFuture<'a, ()>;
+
+    fn apply_copilot_dynamic_base_url_for_provider<'a>(
+        &'a self,
+        input: ForwarderCopilotDynamicBaseUrlInput<'a>,
+    ) -> BoxFuture<'a, ()>;
+
+    fn resolve_claude_api_format_for_adapter<'a>(
+        &'a self,
+        input: ForwarderClaudeApiFormatInput<'a>,
+    ) -> BoxFuture<'a, Option<String>>;
+
     fn apply_app_media_prevention(&self, input: ForwarderAppMediaPreventionInput<'_>) -> usize;
 
     fn apply_media_prevention(&self, input: ForwarderMediaPreventionInput<'_>) -> usize;
@@ -9341,7 +9376,17 @@ pub(crate) trait ForwarderRequestSource {
     ) -> Result<ForwarderUpstreamRequestParts, ProxyError>;
 }
 
-struct CcSwitchForwarderRequestSource;
+struct CcSwitchForwarderRequestSource {
+    managed_account_runtime_source: ManagedAccountRuntimeSourceRef,
+}
+
+impl CcSwitchForwarderRequestSource {
+    fn new(managed_account_runtime_source: ManagedAccountRuntimeSourceRef) -> Self {
+        Self {
+            managed_account_runtime_source,
+        }
+    }
+}
 
 impl ForwarderRequestSource for CcSwitchForwarderRequestSource {
     fn adapter_for_app(&self, app_type: &AppType) -> Box<ForwarderAdapterHandle> {
@@ -9659,6 +9704,53 @@ impl ForwarderRequestSource for CcSwitchForwarderRequestSource {
         }
     }
 
+    fn apply_copilot_live_model_for_adapter<'a>(
+        &'a self,
+        input: ForwarderCopilotLiveModelInput<'a>,
+    ) -> BoxFuture<'a, ()> {
+        Box::pin(async move {
+            self.managed_account_runtime_source
+                .apply_copilot_live_model_for_adapter(
+                    input.provider,
+                    input.body,
+                    input.is_copilot,
+                )
+                .await;
+        })
+    }
+
+    fn apply_copilot_dynamic_base_url_for_provider<'a>(
+        &'a self,
+        input: ForwarderCopilotDynamicBaseUrlInput<'a>,
+    ) -> BoxFuture<'a, ()> {
+        Box::pin(async move {
+            self.managed_account_runtime_source
+                .apply_copilot_dynamic_base_url_for_provider(
+                    input.provider,
+                    input.base_url,
+                    input.is_copilot,
+                    input.is_full_url,
+                )
+                .await;
+        })
+    }
+
+    fn resolve_claude_api_format_for_adapter<'a>(
+        &'a self,
+        input: ForwarderClaudeApiFormatInput<'a>,
+    ) -> BoxFuture<'a, Option<String>> {
+        Box::pin(async move {
+            self.managed_account_runtime_source
+                .resolve_claude_api_format_for_adapter(
+                    input.provider,
+                    input.body,
+                    input.is_copilot,
+                    input.is_claude_adapter,
+                )
+                .await
+        })
+    }
+
     fn apply_app_media_prevention(&self, input: ForwarderAppMediaPreventionInput<'_>) -> usize {
         if !matches!(input.app_type, AppType::Codex) {
             return 0;
@@ -9959,8 +10051,19 @@ fn forwarder_rectifier_error_message(error: &ProxyError) -> Option<String> {
     }
 }
 
+pub(crate) fn forwarder_request_source_from_managed_account_runtime_source(
+    managed_account_runtime_source: ManagedAccountRuntimeSourceRef,
+) -> ForwarderRequestSourceRef {
+    Arc::new(CcSwitchForwarderRequestSource::new(
+        managed_account_runtime_source,
+    ))
+}
+
+#[cfg(test)]
 pub(crate) fn default_forwarder_request_source() -> ForwarderRequestSourceRef {
-    Arc::new(CcSwitchForwarderRequestSource)
+    forwarder_request_source_from_managed_account_runtime_source(
+        default_managed_account_runtime_source(),
+    )
 }
 
 pub(crate) type ForwarderTransportSourceRef =
@@ -10244,7 +10347,6 @@ pub(crate) struct ForwarderRuntimeHostResources {
     pub(crate) transport_source: ForwarderTransportSourceRef,
     pub(crate) response_source: ForwarderResponseSourceRef,
     pub(crate) failover_switch_scheduler: FailoverSwitchSchedulerRef,
-    pub(crate) managed_account_runtime_source: ManagedAccountRuntimeSourceRef,
 }
 
 pub(crate) fn forwarder_runtime_host_resources_from_runtime(
@@ -10259,7 +10361,6 @@ pub(crate) fn forwarder_runtime_host_resources_from_runtime(
         transport_source: runtime.transport_source.clone(),
         response_source: runtime.response_source.clone(),
         failover_switch_scheduler: runtime.failover_switch_scheduler.clone(),
-        managed_account_runtime_source: runtime.managed_account_runtime_source.clone(),
     }
 }
 
@@ -10294,7 +10395,6 @@ pub(crate) async fn forward_with_preplanned_host_runtime(
         transport_source,
         response_source,
         failover_switch_scheduler,
-        managed_account_runtime_source,
     } = resources;
     let ForwardRuntimeRequest {
         app_type,
@@ -10316,7 +10416,6 @@ pub(crate) async fn forward_with_preplanned_host_runtime(
         transport_source,
         response_source,
         failover_switch_scheduler,
-        managed_account_runtime_source,
         current_provider_id,
         session_result.session_id,
         session_result.client_provided,
@@ -15317,7 +15416,7 @@ mod tests {
 
     #[test]
     fn forwarder_request_source_selects_adapter_for_app() {
-        let source = CcSwitchForwarderRequestSource;
+        let source = default_forwarder_request_source();
 
         let claude_adapter = source.adapter_for_app(&AppType::Claude);
         let fallback_adapter = source.adapter_for_app(&AppType::Hermes);
@@ -15354,7 +15453,7 @@ mod tests {
 
     #[test]
     fn forwarder_request_source_prepares_bedrock_attempt_body() {
-        let source = CcSwitchForwarderRequestSource;
+        let source = default_forwarder_request_source();
         let provider = Provider::with_id(
             "bedrock-provider".to_string(),
             "Bedrock Provider".to_string(),
@@ -15404,7 +15503,7 @@ mod tests {
 
     #[test]
     fn forwarder_request_source_projects_provider_url_facts() {
-        let source = CcSwitchForwarderRequestSource;
+        let source = default_forwarder_request_source();
         let adapter = forwarder_provider_adapter_for_app(&AppType::Codex);
         let mut provider = Provider::with_id(
             "copilot-provider".to_string(),
@@ -15434,7 +15533,7 @@ mod tests {
 
     #[test]
     fn forwarder_request_source_projects_adapter_facts() {
-        let source = CcSwitchForwarderRequestSource;
+        let source = default_forwarder_request_source();
         let claude_adapter = forwarder_provider_adapter_for_app(&AppType::Claude);
         let codex_adapter = forwarder_provider_adapter_for_app(&AppType::Codex);
 
@@ -15453,7 +15552,7 @@ mod tests {
 
     #[test]
     fn forwarder_request_source_converts_codex_responses_to_chat_body() {
-        let source = CcSwitchForwarderRequestSource;
+        let source = default_forwarder_request_source();
         let provider = Provider::with_id(
             "codex-chat".to_string(),
             "Codex Chat".to_string(),
@@ -15494,7 +15593,7 @@ base_url = "https://api.openai.com/v1"
 
     #[test]
     fn forwarder_request_source_projects_codex_responses_to_chat_gate() {
-        let source = CcSwitchForwarderRequestSource;
+        let source = default_forwarder_request_source();
         let provider = Provider::with_id(
             "codex-chat".to_string(),
             "Codex Chat".to_string(),
@@ -15535,7 +15634,7 @@ base_url = "https://api.openai.com/v1"
 
     #[test]
     fn forwarder_request_source_wraps_provider_transform_request() {
-        let source = CcSwitchForwarderRequestSource;
+        let source = default_forwarder_request_source();
         let adapter = forwarder_provider_adapter_for_app(&AppType::Codex);
         let provider = Provider::with_id(
             "codex-provider".to_string(),
@@ -15558,7 +15657,7 @@ base_url = "https://api.openai.com/v1"
 
     #[test]
     fn forwarder_request_source_transforms_request_body_and_tracks_outbound_model() {
-        let source = CcSwitchForwarderRequestSource;
+        let source = default_forwarder_request_source();
         let adapter = forwarder_provider_adapter_for_app(&AppType::Claude);
         let provider = Provider::with_id(
             "provider-a".to_string(),
@@ -15616,7 +15715,7 @@ base_url = "https://api.openai.com/v1"
 
     #[test]
     fn forwarder_request_source_prefers_codex_chat_bridge_over_claude_body() {
-        let source = CcSwitchForwarderRequestSource;
+        let source = default_forwarder_request_source();
         let adapter = forwarder_provider_adapter_for_app(&AppType::Claude);
         let provider = Provider::with_id(
             "codex-chat".to_string(),
@@ -15663,7 +15762,7 @@ base_url = "https://api.openai.com/v1"
 
     #[test]
     fn forwarder_request_source_projects_transform_plan() {
-        let source = CcSwitchForwarderRequestSource;
+        let source = default_forwarder_request_source();
         let claude_adapter = forwarder_provider_adapter_for_app(&AppType::Claude);
         let codex_adapter = forwarder_provider_adapter_for_app(&AppType::Codex);
         let mut claude_provider = Provider::with_id(
@@ -15728,7 +15827,7 @@ base_url = "https://api.openai.com/v1"
 
     #[test]
     fn forwarder_request_source_plans_codex_upstream_url() {
-        let source = CcSwitchForwarderRequestSource;
+        let source = default_forwarder_request_source();
         let adapter = forwarder_provider_adapter_for_app(&AppType::Codex);
         let body = json!({});
         let param_overrides = json!({"api-version": "2026-06-21"});
@@ -15762,7 +15861,7 @@ base_url = "https://api.openai.com/v1"
 
     #[test]
     fn forwarder_request_source_wraps_copilot_optimizer_sequence() {
-        let source = CcSwitchForwarderRequestSource;
+        let source = default_forwarder_request_source();
         let mut headers = HeaderMap::new();
         headers.insert(
             "anthropic-beta",
@@ -15787,7 +15886,7 @@ base_url = "https://api.openai.com/v1"
 
     #[test]
     fn forwarder_request_source_gates_copilot_optimizer_sequence() {
-        let source = CcSwitchForwarderRequestSource;
+        let source = default_forwarder_request_source();
         let mut headers = HeaderMap::new();
         headers.insert(
             "anthropic-beta",
@@ -15885,7 +15984,7 @@ base_url = "https://api.openai.com/v1"
 
     #[test]
     fn forwarder_request_source_prepares_provider_request_body() {
-        let source = CcSwitchForwarderRequestSource;
+        let source = default_forwarder_request_source();
         let provider = Provider::with_id(
             "provider-a".to_string(),
             "Provider A".to_string(),
@@ -15925,7 +16024,7 @@ base_url = "https://api.openai.com/v1"
 
     #[test]
     fn forwarder_request_source_projects_request_body_model() {
-        let source = CcSwitchForwarderRequestSource;
+        let source = default_forwarder_request_source();
 
         assert_eq!(
             source
@@ -15942,7 +16041,7 @@ base_url = "https://api.openai.com/v1"
 
     #[test]
     fn forwarder_request_source_normalizes_copilot_model_body() {
-        let source = CcSwitchForwarderRequestSource;
+        let source = default_forwarder_request_source();
         let provider = Provider::with_id(
             "provider-a".to_string(),
             "Provider A".to_string(),
@@ -15965,7 +16064,7 @@ base_url = "https://api.openai.com/v1"
 
     #[test]
     fn forwarder_request_source_applies_claude_body_policies() {
-        let source = CcSwitchForwarderRequestSource;
+        let source = default_forwarder_request_source();
         let mut provider = Provider::with_id(
             "claude-normalize".to_string(),
             "Claude Normalize".to_string(),
@@ -16019,7 +16118,7 @@ base_url = "https://api.openai.com/v1"
 
     #[test]
     fn forwarder_request_source_gates_app_media_prevention() {
-        let source = CcSwitchForwarderRequestSource;
+        let source = default_forwarder_request_source();
         let provider = Provider::with_id(
             "media".to_string(),
             "Media".to_string(),
@@ -16073,7 +16172,7 @@ base_url = "https://api.openai.com/v1"
 
     #[test]
     fn forwarder_request_source_prepares_final_body_model_facts() {
-        let source = CcSwitchForwarderRequestSource;
+        let source = default_forwarder_request_source();
         let headers = HeaderMap::new();
 
         let prepared = source.prepare_upstream_body(ForwarderRequestPreparationInput {
@@ -16114,7 +16213,7 @@ base_url = "https://api.openai.com/v1"
 
     #[test]
     fn forwarder_request_source_projects_anthropic_rectifier_gate() {
-        let source = CcSwitchForwarderRequestSource;
+        let source = default_forwarder_request_source();
         let mut claude_auth_provider = Provider::with_id(
             "claude-auth".to_string(),
             "Claude Auth".to_string(),
@@ -16847,7 +16946,7 @@ base_url = "https://api.openai.com/v1"
 
     #[test]
     fn forwarder_request_source_plans_signature_rectifier_retry() {
-        let source = CcSwitchForwarderRequestSource;
+        let source = default_forwarder_request_source();
         let mut body = json!({
             "messages": [{
                 "role": "assistant",
@@ -16881,7 +16980,7 @@ base_url = "https://api.openai.com/v1"
 
     #[test]
     fn forwarder_request_source_plans_budget_rectifier_retry() {
-        let source = CcSwitchForwarderRequestSource;
+        let source = default_forwarder_request_source();
         let mut body = json!({
             "messages": [{"role": "user", "content": "Hello"}],
             "max_tokens": 1024,

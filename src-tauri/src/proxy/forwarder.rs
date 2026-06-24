@@ -12,8 +12,9 @@ use crate::proxy_core_adapter::{
     CopilotOptimizerConfig,
     ForwarderAdapterFactsInput, ForwarderAnthropicRectifierGateInput,
     ForwarderAttemptBodyInput, ForwarderAuthHeadersInput, ForwarderAuthSourceRef,
-    ForwarderMaybeCopilotAuthOptimizationInput, ForwarderClaudeBodyPolicyInput,
-    ForwarderCodexResponsesToChatPlanInput,
+    ForwarderMaybeCopilotAuthOptimizationInput, ForwarderClaudeApiFormatInput,
+    ForwarderClaudeBodyPolicyInput, ForwarderCodexResponsesToChatPlanInput,
+    ForwarderCopilotDynamicBaseUrlInput, ForwarderCopilotLiveModelInput,
     ForwarderCopilotRequestOptimizationGateInput,
     ForwarderFailureDecision, ForwarderMediaRetryPlanInput, ForwarderProviderRequestBodyInput,
     ForwarderProviderUrlFacts, ForwarderProviderUrlFactsInput,
@@ -27,7 +28,7 @@ use crate::proxy_core_adapter::{
     ForwarderRequestPartsInput, ForwarderRequestPreparationInput, ForwarderRequestSourceRef,
     ForwarderResponseSourceRef, ForwarderRuntimeStateSourceRef, ForwarderTransportSourceRef,
     ForwarderUpstreamRequestLogInput, ForwarderUpstreamTransportRequest, ForwarderUpstreamUrlInput,
-    ManagedAccountRuntimeSourceRef, RectifierConfig, ResolvedChannelAttempt,
+    RectifierConfig, ResolvedChannelAttempt,
 };
 #[cfg(test)]
 use crate::proxy_core_adapter::{
@@ -77,7 +78,6 @@ pub struct RequestForwarder {
     transport_source: ForwarderTransportSourceRef,
     response_source: ForwarderResponseSourceRef,
     failover_switch_scheduler: FailoverSwitchSchedulerRef,
-    managed_account_runtime_source: ManagedAccountRuntimeSourceRef,
     /// 请求开始时的"当前供应商 ID"（用于判断是否需要同步 UI/托盘）
     current_provider_id_at_start: String,
     /// 代理会话 ID（用于 Gemini Native shadow replay）
@@ -115,7 +115,6 @@ impl RequestForwarder {
         transport_source: ForwarderTransportSourceRef,
         response_source: ForwarderResponseSourceRef,
         failover_switch_scheduler: FailoverSwitchSchedulerRef,
-        managed_account_runtime_source: ManagedAccountRuntimeSourceRef,
         current_provider_id_at_start: String,
         session_id: String,
         session_client_provided: bool,
@@ -138,7 +137,6 @@ impl RequestForwarder {
             transport_source,
             response_source,
             failover_switch_scheduler,
-            managed_account_runtime_source,
             current_provider_id_at_start,
             session_id,
             session_client_provided,
@@ -859,8 +857,12 @@ impl RequestForwarder {
                 is_copilot,
             },
         )?;
-        self.managed_account_runtime_source
-            .apply_copilot_live_model_for_adapter(provider, &mut mapped_body, is_copilot)
+        self.request_source
+            .apply_copilot_live_model_for_adapter(ForwarderCopilotLiveModelInput {
+                provider,
+                body: &mut mapped_body,
+                is_copilot,
+            })
             .await;
 
         // --- Copilot 优化器：分类 + 请求体优化（在格式转换之前执行） ---
@@ -889,13 +891,13 @@ impl RequestForwarder {
                     },
                 );
 
-        self.managed_account_runtime_source
-            .apply_copilot_dynamic_base_url_for_provider(
+        self.request_source
+            .apply_copilot_dynamic_base_url_for_provider(ForwarderCopilotDynamicBaseUrlInput {
                 provider,
-                &mut base_url,
+                base_url: &mut base_url,
                 is_copilot,
                 is_full_url,
-            )
+            })
             .await;
         let adapter_facts = self
             .request_source
@@ -903,13 +905,13 @@ impl RequestForwarder {
         let adapter_name = adapter_facts.adapter_name;
         let is_claude_adapter = adapter_facts.is_claude_adapter;
         let resolved_claude_api_format = self
-            .managed_account_runtime_source
-            .resolve_claude_api_format_for_adapter(
+            .request_source
+            .resolve_claude_api_format_for_adapter(ForwarderClaudeApiFormatInput {
                 provider,
-                &mapped_body,
+                body: &mapped_body,
                 is_copilot,
                 is_claude_adapter,
-            )
+            })
             .await;
         self.request_source.apply_claude_body_policies(
             ForwarderClaudeBodyPolicyInput {
@@ -1209,8 +1211,6 @@ mod tests {
             transport_source: crate::proxy_core_adapter::default_forwarder_transport_source(),
             response_source: crate::proxy_core_adapter::default_forwarder_response_source(),
             failover_switch_scheduler: crate::proxy_core_adapter::noop_failover_switch_scheduler(),
-            managed_account_runtime_source:
-                crate::proxy_core_adapter::default_managed_account_runtime_source(),
             current_provider_id_at_start: String::new(),
             session_id: String::new(),
             session_client_provided: false,
