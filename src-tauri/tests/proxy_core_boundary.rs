@@ -6018,6 +6018,10 @@ fn production_forwarder_uses_runtime_state_source_resource() {
         "ForwarderRuntimeStateSource trait must not expose internal retryable failure log-line helper"
     );
     assert!(
+        runtime_trait_slice.contains("fn forward_failure_decision(&self, error: &ProxyError)"),
+        "ForwarderRuntimeStateSource failure classification must only depend on ProxyError"
+    );
+    assert!(
         impl_slice.contains("log_rectifier_retry_success(")
             && impl_slice.contains("log_rectifier_retry_failure("),
         "RequestForwarder must trigger rectifier retry logging through runtime-state behavior methods"
@@ -6029,6 +6033,10 @@ fn production_forwarder_uses_runtime_state_source_resource() {
     assert!(
         impl_slice.contains("log_retryable_forward_failure("),
         "RequestForwarder must trigger retryable failure logging through a runtime-state behavior method"
+    );
+    assert!(
+        impl_slice.contains("forward_failure_decision(&e)"),
+        "RequestForwarder must classify forward failures without passing retry log context"
     );
 
     let struct_forbidden_markers = [
